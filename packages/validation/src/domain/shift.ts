@@ -1,5 +1,12 @@
 import { z } from "zod";
-import { currencies, preferredLanguages, shiftCategories, shiftStatuses, shiftUrgencies, timesOfDay } from "@rwos/shared";
+import {
+  currencies,
+  preferredLanguages,
+  shiftCategories,
+  shiftStatuses,
+  shiftUrgencies,
+  timesOfDay
+} from "@rwos/shared";
 import { isoDateTimeSchema } from "./worker";
 
 export const moneyAmountSchema = z
@@ -78,7 +85,10 @@ export const shiftDiscoveryFiltersSchema = z
     keyword: z.string().min(1).max(120).optional(),
     city: z.string().min(1).max(120).optional(),
     category: z.enum(shiftCategories).optional(),
-    date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/u).optional(),
+    date: z
+      .string()
+      .regex(/^\d{4}-\d{2}-\d{2}$/u)
+      .optional(),
     minimumHourlyRateMinor: z.number().int().min(0).optional(),
     timeOfDay: z.enum(timesOfDay).optional(),
     urgency: z.enum(shiftUrgencies).optional()

@@ -3,7 +3,10 @@ import { preferredLanguages, verificationStatuses, workEligibilityStatuses } fro
 
 export const isoDateTimeSchema = z
   .string()
-  .refine((value) => !Number.isNaN(Date.parse(value)), "Expected an ISO-compatible datetime string");
+  .refine(
+    (value) => !Number.isNaN(Date.parse(value)),
+    "Expected an ISO-compatible datetime string"
+  );
 
 export const workerIdentitySchema = z
   .object({

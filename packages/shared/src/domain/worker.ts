@@ -1,5 +1,11 @@
 export const preferredLanguages = ["en", "fr", "ar"] as const;
-export const workEligibilityStatuses = ["unknown", "pending", "verified", "rejected", "expired"] as const;
+export const workEligibilityStatuses = [
+  "unknown",
+  "pending",
+  "verified",
+  "rejected",
+  "expired"
+] as const;
 export const verificationStatuses = ["unverified", "pending", "verified", "rejected"] as const;
 
 export type PreferredLanguage = (typeof preferredLanguages)[number];

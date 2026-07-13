@@ -96,6 +96,8 @@ describe("shift discovery validation", () => {
   });
 
   it("rejects invalid status values", () => {
-    expect(() => shiftDiscoveryRecordSchema.parse({ ...shiftFixture, status: "available" })).toThrow();
+    expect(() =>
+      shiftDiscoveryRecordSchema.parse({ ...shiftFixture, status: "available" })
+    ).toThrow();
   });
 });
