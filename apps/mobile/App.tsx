@@ -1,6 +1,14 @@
 import { StatusBar } from "expo-status-bar";
-import { useState } from "react";
-import { Pressable, SafeAreaView, ScrollView, StyleSheet, Text, View } from "react-native";
+import { createElement, useState, type ReactNode } from "react";
+import {
+  Platform,
+  Pressable,
+  SafeAreaView,
+  ScrollView,
+  StyleSheet,
+  Text,
+  View
+} from "react-native";
 import { colors, radii, spacing, touch, typography } from "@rwos/design-system";
 import { AvailableShiftsScreen, ShiftDetailsScreen } from "./src/features/shifts";
 import { mobileTabs, productName, type MobileTabId } from "./src/navigation/routes";
@@ -40,8 +48,8 @@ export default function App() {
       <StatusBar style="dark" />
       <View style={styles.app}>
         <View style={styles.header}>
-          <Text style={styles.productName}>{productName}</Text>
-          <Text style={styles.headerText}>Worker app foundation - G01 shift discovery</Text>
+          <HeaderText variant="title">{productName}</HeaderText>
+          <HeaderText variant="subtitle">Worker app foundation - G01 shift discovery</HeaderText>
         </View>
         <View style={styles.content}>{renderScreen()}</View>
         <View style={styles.tabBar}>
@@ -60,6 +68,22 @@ export default function App() {
         </View>
       </View>
     </SafeAreaView>
+  );
+}
+
+function HeaderText({ children, variant }: { children: ReactNode; variant: "title" | "subtitle" }) {
+  if (Platform.OS === "web") {
+    return createElement(
+      "div",
+      {
+        style: variant === "title" ? webHeaderTitleStyle : webHeaderSubtitleStyle
+      },
+      children
+    );
+  }
+
+  return (
+    <Text style={variant === "title" ? styles.productName : styles.headerText}>{children}</Text>
   );
 }
 
@@ -85,29 +109,46 @@ function PlaceholderScreen({ tabId }: { tabId: MobileTabId }) {
 const styles = StyleSheet.create({
   safeArea: {
     backgroundColor: colors.surface,
-    flex: 1
+    flex: 1,
+    minHeight: "100%",
+    width: "100%"
   },
   app: {
-    flex: 1
+    flex: 1,
+    alignSelf: "stretch",
+    minWidth: "100%",
+    width: "100%"
   },
   header: {
+    alignSelf: "stretch",
     backgroundColor: colors.deepTeal,
     gap: spacing.xs,
-    padding: spacing.lg
+    minWidth: "100%",
+    padding: spacing.lg,
+    width: "100%"
   },
   productName: {
     color: colors.cream,
     fontSize: typography.title,
-    fontWeight: "700"
+    fontWeight: "700",
+    maxWidth: "100%",
+    minWidth: "100%",
+    width: "100%"
   },
   headerText: {
     color: colors.surface,
-    fontSize: typography.small
+    fontSize: typography.small,
+    maxWidth: "100%",
+    minWidth: "100%",
+    width: "100%"
   },
   content: {
-    flex: 1
+    alignSelf: "stretch",
+    flex: 1,
+    width: "100%"
   },
   tabBar: {
+    alignSelf: "stretch",
     backgroundColor: colors.surfaceRaised,
     borderColor: colors.border,
     borderTopWidth: 1,
@@ -115,7 +156,8 @@ const styles = StyleSheet.create({
     flexWrap: "wrap",
     gap: spacing.xs,
     justifyContent: "space-around",
-    padding: spacing.sm
+    padding: spacing.sm,
+    width: "100%"
   },
   tabButton: {
     alignItems: "center",
@@ -143,3 +185,22 @@ const styles = StyleSheet.create({
     padding: spacing.lg
   }
 });
+
+const webHeaderTitleStyle = {
+  color: colors.cream,
+  display: "block",
+  fontSize: typography.title,
+  fontWeight: 700,
+  lineHeight: "34px",
+  whiteSpace: "normal",
+  width: "100%"
+} as const;
+
+const webHeaderSubtitleStyle = {
+  color: colors.surface,
+  display: "block",
+  fontSize: typography.small,
+  lineHeight: "18px",
+  whiteSpace: "normal",
+  width: "100%"
+} as const;
