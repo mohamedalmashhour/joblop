@@ -1,0 +1,20 @@
+{
+  "name": "@rwos/api",
+  "version": "0.1.0-foundation",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "dev": "tsx src/server.ts",
+    "lint": "eslint .",
+    "start": "node dist/server.js",
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@rwos/config": "workspace:*",
+    "@rwos/observability": "workspace:*",
+    "fastify": "^5.4.0"
+  },
+  "devDependencies": {}
+}

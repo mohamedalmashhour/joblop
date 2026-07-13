@@ -1,0 +1,32 @@
+{
+  "name": "resident-workforce-os",
+  "version": "0.1.0-foundation",
+  "private": true,
+  "packageManager": "pnpm@10.33.2",
+  "engines": {
+    "node": ">=20.20.2 <21",
+    "pnpm": "10.33.2"
+  },
+  "scripts": {
+    "format": "prettier --check .",
+    "format:write": "prettier --write .",
+    "lint": "eslint .",
+    "typecheck": "tsc -b tsconfig.build.json",
+    "test": "vitest run",
+    "build": "pnpm -r --if-present build",
+    "validate:env": "tsx scripts/validate-env.ts",
+    "validate:boundaries": "tsx scripts/validate-boundaries.ts",
+    "scan:secrets": "tsx scripts/scan-secrets.ts",
+    "validate": "pnpm format && pnpm lint && pnpm typecheck && pnpm test && pnpm validate:env && pnpm validate:boundaries && pnpm scan:secrets && pnpm build"
+  },
+  "devDependencies": {
+    "@eslint/js": "^9.31.0",
+    "@types/node": "^20.19.8",
+    "eslint": "^9.31.0",
+    "prettier": "^3.6.2",
+    "tsx": "^4.20.3",
+    "typescript": "^5.8.3",
+    "typescript-eslint": "^8.36.0",
+    "vitest": "^3.2.4"
+  }
+}

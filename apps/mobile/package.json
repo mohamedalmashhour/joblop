@@ -1,0 +1,25 @@
+{
+  "name": "@rwos/mobile",
+  "version": "0.1.0-foundation",
+  "private": true,
+  "main": "index.ts",
+  "scripts": {
+    "build": "EXPO_HOME=.expo EXPO_NO_TELEMETRY=1 expo export --platform web --output-dir dist",
+    "typecheck": "tsc --noEmit",
+    "lint": "eslint .",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@rwos/design-system": "workspace:*",
+    "@rwos/shared": "workspace:*",
+    "expo": "^53.0.20",
+    "expo-status-bar": "^2.2.3",
+    "react": "19.0.0",
+    "react-native": "0.79.5",
+    "react-native-web": "^0.20.0",
+    "@expo/metro-runtime": "~5.0.5"
+  },
+  "devDependencies": {
+    "@types/react": "^19.0.14"
+  }
+}

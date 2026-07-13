@@ -1,0 +1,27 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "lib": ["ES2022", "DOM"],
+    "module": "ESNext",
+    "moduleResolution": "Bundler",
+    "strict": true,
+    "skipLibCheck": true,
+    "esModuleInterop": true,
+    "forceConsistentCasingInFileNames": true,
+    "resolveJsonModule": true,
+    "noUncheckedIndexedAccess": true,
+    "exactOptionalPropertyTypes": true,
+    "baseUrl": ".",
+    "paths": {
+      "@rwos/auth": ["packages/auth/src/index.ts"],
+      "@rwos/config": ["packages/config/src/index.ts"],
+      "@rwos/database": ["packages/database/src/index.ts"],
+      "@rwos/design-system": ["packages/design-system/src/index.ts"],
+      "@rwos/notifications": ["packages/notifications/src/index.ts"],
+      "@rwos/observability": ["packages/observability/src/index.ts"],
+      "@rwos/shared": ["packages/shared/src/index.ts"],
+      "@rwos/ui": ["packages/ui/src/index.ts"],
+      "@rwos/validation": ["packages/validation/src/index.ts"]
+    }
+  }
+}

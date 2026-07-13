@@ -1,0 +1,23 @@
+{
+  "expo": {
+    "name": "Resident Workforce OS",
+    "slug": "resident-workforce-os",
+    "scheme": "rwos",
+    "version": "0.1.0",
+    "orientation": "portrait",
+    "userInterfaceStyle": "light",
+    "newArchEnabled": true,
+    "web": {
+      "bundler": "metro"
+    },
+    "ios": {
+      "bundleIdentifier": "app.residentworkforce.mobile"
+    },
+    "android": {
+      "package": "app.residentworkforce.mobile"
+    },
+    "extra": {
+      "foundationOnly": true
+    }
+  }
+}

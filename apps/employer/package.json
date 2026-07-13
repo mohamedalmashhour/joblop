@@ -1,0 +1,21 @@
+{
+  "name": "@rwos/employer",
+  "version": "0.1.0-foundation",
+  "private": true,
+  "scripts": {
+    "build": "next build",
+    "lint": "eslint .",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@rwos/design-system": "workspace:*",
+    "@rwos/shared": "workspace:*",
+    "next": "^15.4.1",
+    "react": "^19.1.0",
+    "react-dom": "^19.1.0"
+  },
+  "devDependencies": {
+    "@types/react": "^19.1.8",
+    "@types/react-dom": "^19.1.6"
+  }
+}
