@@ -4,6 +4,11 @@ export const mobileRouteNames = {
   home: "rwos://worker/home",
   available: "rwos://worker/available",
   shiftDetails: "rwos://worker/available/:shiftId",
+  applicationSummary: "rwos://worker/available/:shiftId/apply",
+  applicationSuccess: "rwos://worker/applications/:applicationId/success",
+  applicationDetails: "rwos://worker/applications/:applicationId",
+  offerDetails: "rwos://worker/offers/:offerId",
+  confirmationDetails: "rwos://worker/confirmations/:confirmationId",
   filters: "rwos://worker/available/filters",
   myShifts: "rwos://worker/my-shifts",
   billing: "rwos://worker/billing",
@@ -23,7 +28,7 @@ export const mobileTabs = [
     id: "my-shifts",
     label: "My Shifts",
     routeName: mobileRouteNames.myShifts,
-    status: "Reserved for G03"
+    status: "G02 applications, offers and confirmations"
   },
   {
     id: "billing",

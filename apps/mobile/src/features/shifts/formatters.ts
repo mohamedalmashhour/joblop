@@ -1,4 +1,6 @@
-import type { MoneyAmount, ShiftDiscoveryRecord } from "@rwos/shared";
+import type { MoneyAmount, ShiftDiscoveryRecord, ShiftOfferSnapshot } from "@rwos/shared";
+
+type ShiftTimeRangeRecord = Pick<ShiftDiscoveryRecord | ShiftOfferSnapshot, "startAt" | "endAt">;
 
 export function formatMoney(amount: MoneyAmount): string {
   const dollars = amount.amountMinor / 100;
@@ -19,7 +21,7 @@ export function formatShiftDate(isoDateTime: string): string {
   }).format(new Date(isoDateTime));
 }
 
-export function formatShiftTimeRange(shift: ShiftDiscoveryRecord): string {
+export function formatShiftTimeRange(shift: ShiftTimeRangeRecord): string {
   const formatter = new Intl.DateTimeFormat("en-CA", {
     hour: "numeric",
     minute: "2-digit",
@@ -29,7 +31,7 @@ export function formatShiftTimeRange(shift: ShiftDiscoveryRecord): string {
   return `${formatter.format(new Date(shift.startAt))} - ${formatter.format(new Date(shift.endAt))}`;
 }
 
-export function formatDurationHours(shift: ShiftDiscoveryRecord): string {
+export function formatDurationHours(shift: ShiftTimeRangeRecord): string {
   const hours = (Date.parse(shift.endAt) - Date.parse(shift.startAt)) / 3_600_000;
   return `${hours.toFixed(hours % 1 === 0 ? 0 : 1)} hours`;
 }

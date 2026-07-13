@@ -26,10 +26,12 @@ import { getUnavailableApplicationsMessage } from "./stateModel";
 
 export function ShiftDetailsScreen({
   shiftId,
+  onApply,
   onBack,
   repository = mockShiftDiscoveryRepository
 }: {
   shiftId: string;
+  onApply?: (shiftId: string) => void;
   onBack: () => void;
   repository?: ShiftDiscoveryRepository;
 }) {
@@ -142,10 +144,22 @@ export function ShiftDetailsScreen({
             </Card>
           </Section>
 
-          <Section title="G01 action boundary">
+          <Section title="Worker application">
             <Card>
-              <Heading>Applications disabled</Heading>
-              <BodyText>{getUnavailableApplicationsMessage()}</BodyText>
+              <Heading>Apply for this shift</Heading>
+              <BodyText>
+                Review the worker-facing compensation, schedule and duties before submitting your
+                application. Employer approval and final confirmation happen after this step.
+              </BodyText>
+              {onApply ? (
+                <Button
+                  label="Review application"
+                  onPress={() => onApply(shift.id)}
+                  testID="apply-shift"
+                />
+              ) : (
+                <SmallText>{getUnavailableApplicationsMessage()}</SmallText>
+              )}
             </Card>
           </Section>
         </View>

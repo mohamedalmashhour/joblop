@@ -1,5 +1,5 @@
 import { StatusBar } from "expo-status-bar";
-import { createElement, useState, type ReactNode } from "react";
+import { createElement, useMemo, useState, type ReactNode } from "react";
 import {
   Platform,
   Pressable,
@@ -10,24 +10,104 @@ import {
   View
 } from "react-native";
 import { colors, radii, spacing, touch, typography } from "@rwos/design-system";
+import {
+  ApplicationDetailsScreen,
+  ApplicationSuccessScreen,
+  ApplicationSummaryScreen,
+  ConfirmationDetailsScreen,
+  MockWorkerApplicationRepository,
+  MyShiftsScreen,
+  OfferDetailsScreen
+} from "./src/features/applications";
 import { AvailableShiftsScreen, ShiftDetailsScreen } from "./src/features/shifts";
+import { MockShiftDiscoveryRepository } from "./src/features/shifts/mockShiftDiscoveryRepository";
 import { mobileTabs, productName, type MobileTabId } from "./src/navigation/routes";
 import { BodyText, Card, Heading, SmallText } from "./src/ui/primitives";
 
 type MobileScreen =
   | Readonly<{ name: "tab"; tabId: MobileTabId }>
-  | Readonly<{ name: "shift-details"; shiftId: string }>;
+  | Readonly<{ name: "shift-details"; shiftId: string }>
+  | Readonly<{ name: "application-summary"; shiftId: string }>
+  | Readonly<{ name: "application-success"; applicationId: string }>
+  | Readonly<{ name: "application-details"; applicationId: string }>
+  | Readonly<{ name: "offer-details"; offerId: string }>
+  | Readonly<{ name: "confirmation-details"; confirmationId: string }>;
 
 export default function App() {
   const [screen, setScreen] = useState<MobileScreen>({ name: "tab", tabId: "home" });
-  const activeTabId = screen.name === "tab" ? screen.tabId : "available";
+  const shiftRepository = useMemo(() => new MockShiftDiscoveryRepository(), []);
+  const applicationRepository = useMemo(() => new MockWorkerApplicationRepository(), []);
+  const activeTabId =
+    screen.name === "tab"
+      ? screen.tabId
+      : ["application-details", "offer-details", "confirmation-details"].includes(screen.name)
+        ? "my-shifts"
+        : "available";
 
   const renderScreen = () => {
     if (screen.name === "shift-details") {
       return (
         <ShiftDetailsScreen
+          onApply={(shiftId) => setScreen({ name: "application-summary", shiftId })}
           onBack={() => setScreen({ name: "tab", tabId: "available" })}
+          repository={shiftRepository}
           shiftId={screen.shiftId}
+        />
+      );
+    }
+
+    if (screen.name === "application-summary") {
+      return (
+        <ApplicationSummaryScreen
+          applicationRepository={applicationRepository}
+          onBack={() => setScreen({ name: "shift-details", shiftId: screen.shiftId })}
+          onSubmitted={(applicationId) => setScreen({ name: "application-success", applicationId })}
+          shiftId={screen.shiftId}
+          shiftRepository={shiftRepository}
+        />
+      );
+    }
+
+    if (screen.name === "application-success") {
+      return (
+        <ApplicationSuccessScreen
+          applicationId={screen.applicationId}
+          onOpenApplication={(applicationId) =>
+            setScreen({ name: "application-details", applicationId })
+          }
+          onOpenMyShifts={() => setScreen({ name: "tab", tabId: "my-shifts" })}
+        />
+      );
+    }
+
+    if (screen.name === "application-details") {
+      return (
+        <ApplicationDetailsScreen
+          applicationId={screen.applicationId}
+          applicationRepository={applicationRepository}
+          onBack={() => setScreen({ name: "tab", tabId: "my-shifts" })}
+        />
+      );
+    }
+
+    if (screen.name === "offer-details") {
+      return (
+        <OfferDetailsScreen
+          applicationRepository={applicationRepository}
+          offerId={screen.offerId}
+          onBack={() => setScreen({ name: "tab", tabId: "my-shifts" })}
+          onDone={() => setScreen({ name: "tab", tabId: "my-shifts" })}
+        />
+      );
+    }
+
+    if (screen.name === "confirmation-details") {
+      return (
+        <ConfirmationDetailsScreen
+          applicationRepository={applicationRepository}
+          confirmationId={screen.confirmationId}
+          onBack={() => setScreen({ name: "tab", tabId: "my-shifts" })}
+          onDone={() => setScreen({ name: "tab", tabId: "my-shifts" })}
         />
       );
     }
@@ -36,6 +116,22 @@ export default function App() {
       return (
         <AvailableShiftsScreen
           onOpenShift={(shiftId) => setScreen({ name: "shift-details", shiftId })}
+          repository={shiftRepository}
+        />
+      );
+    }
+
+    if (screen.tabId === "my-shifts") {
+      return (
+        <MyShiftsScreen
+          applicationRepository={applicationRepository}
+          onOpenApplication={(applicationId) =>
+            setScreen({ name: "application-details", applicationId })
+          }
+          onOpenConfirmation={(confirmationId) =>
+            setScreen({ name: "confirmation-details", confirmationId })
+          }
+          onOpenOffer={(offerId) => setScreen({ name: "offer-details", offerId })}
         />
       );
     }
@@ -49,7 +145,9 @@ export default function App() {
       <View style={styles.app}>
         <View style={styles.header}>
           <HeaderText variant="title">{productName}</HeaderText>
-          <HeaderText variant="subtitle">Worker app foundation - G01 shift discovery</HeaderText>
+          <HeaderText variant="subtitle">
+            Worker app foundation - G02 applications and offers
+          </HeaderText>
         </View>
         <View style={styles.content}>{renderScreen()}</View>
         <View style={styles.tabBar}>
@@ -97,8 +195,8 @@ function PlaceholderScreen({ tabId }: { tabId: MobileTabId }) {
           <Heading>{tab?.label ?? "Route"}</Heading>
           <BodyText>{tab?.status ?? "Placeholder route"}</BodyText>
           <SmallText>
-            Placeholder screen. G01 implements only Available and Shift Details. This route name is
-            preserved for future milestones.
+            Placeholder screen. G02 implements Available, Shift Details, Applications, Offers,
+            Confirmations and My Shifts. This route name is preserved for future milestones.
           </SmallText>
         </Card>
       </View>
