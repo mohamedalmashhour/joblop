@@ -2,17 +2,17 @@
 
 ## Status
 
-Proposed next milestone. Not started.
+Implemented locally as `RWO-G01`.
+
+See [RWO-G01.md](./RWO-G01.md).
 
 ## Scope
 
-- Authentication foundation.
-- Worker profile foundation.
-- Shift model.
+- Worker identity domain foundation.
+- Shift discovery model.
 - Available Shift List.
 - Shift Details.
-- Basic API.
-- Database schema proposal.
+- Mock repository boundary.
 - Navigation.
 - Tests.
 
@@ -23,4 +23,5 @@ Proposed next milestone. Not started.
 - Admin workflows.
 - Billing and payroll.
 - AI recommendations.
+- Basic API and database schema remain future work.
 - Production deployment.
