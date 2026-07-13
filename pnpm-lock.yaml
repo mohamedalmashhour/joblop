@@ -118,6 +118,12 @@ importers:
       '@rwos/shared':
         specifier: workspace:*
         version: link:../../packages/shared
+      '@rwos/ui':
+        specifier: workspace:*
+        version: link:../../packages/ui
+      '@rwos/validation':
+        specifier: workspace:*
+        version: link:../../packages/validation
       expo:
         specifier: ^53.0.20
         version: 53.0.27(@babel/core@7.29.7)(@expo/metro-runtime@5.0.5(react-native@0.79.5(@babel/core@7.29.7)(@types/react@19.2.17)(react@19.0.0)))(react-native@0.79.5(@babel/core@7.29.7)(@types/react@19.2.17)(react@19.0.0))(react@19.0.0)
@@ -168,6 +174,9 @@ importers:
 
   packages/validation:
     dependencies:
+      '@rwos/shared':
+        specifier: workspace:*
+        version: link:../shared
       zod:
         specifier: ^4.0.5
         version: 4.4.3

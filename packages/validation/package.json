@@ -12,6 +12,7 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
+    "@rwos/shared": "workspace:*",
     "zod": "^4.0.5"
   }
 }

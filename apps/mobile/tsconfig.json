@@ -6,5 +6,11 @@
     "composite": true,
     "types": ["node"]
   },
-  "include": ["index.ts", "App.tsx", "src/**/*.ts", "src/**/*.tsx"]
+  "include": ["index.ts", "App.tsx", "src/**/*.ts", "src/**/*.tsx"],
+  "references": [
+    { "path": "../../packages/design-system" },
+    { "path": "../../packages/shared" },
+    { "path": "../../packages/ui" },
+    { "path": "../../packages/validation" }
+  ]
 }
