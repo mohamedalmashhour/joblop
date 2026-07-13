@@ -1,3 +1,5 @@
+export * from "./domain";
+
 export const rwosProduct = {
   name: "Resident Workforce OS",
   baseline: "Engineering Foundation",
