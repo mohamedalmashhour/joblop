@@ -36,7 +36,7 @@ export default function AboutPage() {
           <a href="/#worker" style={styles.secondaryButton}>
             Become worker
           </a>
-          <a href="/#employer" style={styles.primaryButton}>
+          <a href="/signup/employer" style={styles.primaryButton}>
             Request staff
           </a>
         </div>
@@ -53,7 +53,7 @@ export default function AboutPage() {
             human approval, attendance evidence, and privacy-aware records.
           </p>
           <div style={styles.heroActions}>
-            <a href="/#employer" style={styles.primaryButtonLarge}>
+            <a href="/signup/employer" style={styles.primaryButtonLarge}>
               Request staff
             </a>
             <a href="/#worker" style={styles.secondaryButtonLarge}>
@@ -181,7 +181,7 @@ export default function AboutPage() {
           </h2>
         </div>
         <div style={styles.ctaActions}>
-          <a href="/#employer" style={styles.primaryButton}>
+          <a href="/signup/employer" style={styles.primaryButton}>
             Request staff
           </a>
           <a href="/#worker" style={styles.secondaryButton}>

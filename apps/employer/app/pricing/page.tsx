@@ -34,7 +34,7 @@ export default function PricingPage() {
           </a>
         </nav>
         <div style={styles.headerActions}>
-          <a href="/#employer" style={styles.primaryButton}>
+          <a href="/signup/employer" style={styles.primaryButton}>
             Request staff
           </a>
           <a href="#estimate" style={styles.secondaryButton}>
@@ -55,7 +55,7 @@ export default function PricingPage() {
           and applicable business rules.
         </p>
         <div style={styles.heroActions}>
-          <a href="/#employer" style={styles.primaryButtonLarge}>
+          <a href="/signup/employer" style={styles.primaryButtonLarge}>
             Request staff
           </a>
           <a href="#estimate" style={styles.secondaryButtonLarge}>

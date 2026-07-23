@@ -1,0 +1,70 @@
+import { EmployerShell, WorkflowRoutes } from "../EmployerShell";
+import { dashboardAttention, dashboardBoundaries, dashboardSections } from "../employerJourneyContent";
+import { styles } from "../employerStyles";
+
+export default function EmployerDashboardPage() {
+  return (
+    <EmployerShell
+      currentRoute="/employer/dashboard"
+      eyebrow="Page 037 - Employer Dashboard"
+      title="Employer operational home for staffing attention, risks, and governed workflow handoffs."
+      lede="The dashboard summarizes employer-side staffing activity. It does not become the source of truth for shifts, workers, payments, messages, notifications, documents, or compliance."
+      actions={
+        <span style={styles.disabledAction} aria-disabled="true">
+          Create Shift next
+        </span>
+      }
+    >
+      <section style={styles.section}>
+        <div style={styles.sectionHeader}>
+          <p style={styles.eyebrowDark}>Primary attention band</p>
+          <h2 style={styles.sectionTitle}>What requires attention now?</h2>
+          <p style={styles.sectionCopy}>
+            Dashboard values are development summaries until source contracts are connected. They
+            route to authoritative workflows rather than silently executing actions.
+          </p>
+        </div>
+        <div style={styles.cardGrid}>
+          {dashboardAttention.map((card) => (
+            <article key={card.title} style={styles.tintedCard}>
+              <h3 style={styles.cardTitle}>{card.title}</h3>
+              <p style={styles.cardText}>{card.state}</p>
+              <p style={styles.cardText}>{card.route}</p>
+            </article>
+          ))}
+        </div>
+      </section>
+
+      <section style={styles.whiteSection}>
+        <div style={styles.sectionHeader}>
+          <p style={styles.eyebrowDark}>Operational workspace</p>
+          <h2 style={styles.sectionTitle}>Staffing, people, communications, finance, and support summaries.</h2>
+        </div>
+        <div style={styles.pillGrid}>
+          {dashboardSections.map((section) => (
+            <span key={section} style={styles.pill}>
+              {section}
+            </span>
+          ))}
+        </div>
+      </section>
+
+      <section style={styles.section}>
+        <div style={styles.sectionHeader}>
+          <p style={styles.eyebrowDark}>AI assistant panel</p>
+          <h2 style={styles.sectionTitle}>AI may summarize visible dashboard items only.</h2>
+        </div>
+        <div style={styles.cardGrid}>
+          {dashboardBoundaries.map((boundary) => (
+            <article key={boundary} style={styles.card}>
+              <p style={styles.cardText}>{boundary}</p>
+            </article>
+          ))}
+        </div>
+      </section>
+
+      <WorkflowRoutes currentRoute="/employer/dashboard" />
+    </EmployerShell>
+  );
+}
+

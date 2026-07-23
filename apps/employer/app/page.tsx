@@ -42,7 +42,7 @@ export default function LandingPage() {
           <a href="#worker" style={styles.secondaryButton}>
             Become worker
           </a>
-          <a href="#employer" style={styles.primaryButton}>
+          <a href="/signup/employer" style={styles.primaryButton}>
             Request staff
           </a>
         </div>
@@ -57,7 +57,7 @@ export default function LandingPage() {
             keep decisions governed. AI assists with recommendations. Humans review and approve.
           </p>
           <div style={styles.heroActions}>
-            <a href="#employer" style={styles.primaryButtonLarge}>
+            <a href="/signup/employer" style={styles.primaryButtonLarge}>
               Request staff
             </a>
             <a href="#worker" style={styles.secondaryButtonLarge}>
@@ -90,9 +90,9 @@ export default function LandingPage() {
               <option value="recurring">Recurring</option>
             </select>
           </label>
-          <button type="button" style={styles.fullButton}>
+          <a href="/signup/employer" style={styles.fullButton}>
             Start request
-          </button>
+          </a>
           <p style={styles.guardrail}>Starts human review, not automatic dispatch.</p>
         </aside>
       </section>
@@ -241,7 +241,7 @@ export default function LandingPage() {
           <a href="#worker" style={styles.footerLink}>
             Become a Worker
           </a>
-          <a href="#employer" style={styles.footerLink}>
+          <a href="/signup/employer" style={styles.footerLink}>
             Request Staff
           </a>
         </nav>

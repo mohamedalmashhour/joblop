@@ -38,7 +38,7 @@ export default function HowItWorksPage() {
           <a href="/#worker" style={styles.secondaryButton}>
             I want shifts
           </a>
-          <a href="/#employer" style={styles.primaryButton}>
+          <a href="/signup/employer" style={styles.primaryButton}>
             I need staff
           </a>
         </div>
@@ -52,7 +52,7 @@ export default function HowItWorksPage() {
           pricing, attendance, payroll, or payment.
         </p>
         <div style={styles.heroActions}>
-          <a href="/#employer" style={styles.primaryButtonLarge}>
+          <a href="/signup/employer" style={styles.primaryButtonLarge}>
             I need staff
           </a>
           <a href="/#worker" style={styles.secondaryButtonLarge}>
