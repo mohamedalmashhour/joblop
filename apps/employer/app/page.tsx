@@ -28,7 +28,7 @@ export default function LandingPage() {
           <a href="#employer" style={styles.navLink}>
             Employer
           </a>
-          <a href="#pricing" style={styles.navLink}>
+          <a href="/pricing" style={styles.navLink}>
             Pricing
           </a>
           <a href="#faq" style={styles.navLink}>
