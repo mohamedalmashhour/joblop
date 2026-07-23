@@ -16,6 +16,9 @@ export default function LandingPage() {
           Resident Job
         </a>
         <nav aria-label="Primary navigation" style={styles.nav}>
+          <a href="/about" style={styles.navLink}>
+            About
+          </a>
           <a href="#how-it-works" style={styles.navLink}>
             How it works
           </a>
@@ -217,6 +220,9 @@ export default function LandingPage() {
       <footer style={styles.footer}>
         <span>Resident Job</span>
         <nav aria-label="Footer navigation" style={styles.footerLinks}>
+          <a href="/about" style={styles.footerLink}>
+            About
+          </a>
           <a href="#contact" style={styles.footerLink}>
             Contact
           </a>
