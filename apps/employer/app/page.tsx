@@ -19,7 +19,7 @@ export default function LandingPage() {
           <a href="/about" style={styles.navLink}>
             About
           </a>
-          <a href="#how-it-works" style={styles.navLink}>
+          <a href="/how-it-works" style={styles.navLink}>
             How it works
           </a>
           <a href="#worker" style={styles.navLink}>
