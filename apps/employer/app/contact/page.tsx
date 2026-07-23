@@ -30,6 +30,9 @@ export default function ContactPage() {
           <a href="/contact" style={styles.navLink} aria-current="page">
             Contact
           </a>
+          <a href="/faq" style={styles.navLink}>
+            FAQ
+          </a>
           <a href="/#sign-in" style={styles.navLink}>
             Sign in
           </a>
@@ -326,4 +329,3 @@ const styles: Record<string, CSSProperties> = {
   footerLink: { color: "#ffffff", fontWeight: 700, textDecoration: "none" },
   footerNote: { color: "#dce8e8", fontSize: 13 }
 };
-

@@ -223,6 +223,9 @@ export default function PricingPage() {
           <a href="/pricing" style={styles.footerLink}>
             Pricing
           </a>
+          <a href="/faq" style={styles.footerLink}>
+            FAQ
+          </a>
         </nav>
         <span style={styles.footerNote}>Payment integration is not part of this public page.</span>
       </footer>

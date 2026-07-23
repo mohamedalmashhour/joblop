@@ -31,7 +31,7 @@ export default function LandingPage() {
           <a href="/pricing" style={styles.navLink}>
             Pricing
           </a>
-          <a href="#faq" style={styles.navLink}>
+          <a href="/faq" style={styles.navLink}>
             FAQ
           </a>
           <a href="#sign-in" style={styles.navLink}>
@@ -215,6 +215,9 @@ export default function LandingPage() {
             </article>
           ))}
         </div>
+        <a href="/faq" style={styles.faqLink}>
+          View governed FAQ
+        </a>
       </section>
 
       <footer style={styles.footer}>
@@ -607,6 +610,18 @@ const styles: Record<string, CSSProperties> = {
     color: "#071f4d",
     fontSize: 17,
     margin: 0
+  },
+  faqLink: {
+    alignItems: "center",
+    background: "#071f4d",
+    borderRadius: 8,
+    color: "#ffffff",
+    display: "inline-flex",
+    fontWeight: 900,
+    marginTop: 18,
+    minHeight: 48,
+    padding: "0 18px",
+    textDecoration: "none"
   },
   footer: {
     alignItems: "center",
