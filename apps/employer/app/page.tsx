@@ -223,7 +223,10 @@ export default function LandingPage() {
           <a href="/about" style={styles.footerLink}>
             About
           </a>
-          <a href="#contact" style={styles.footerLink}>
+          <a href="/pricing" style={styles.footerLink}>
+            Pricing
+          </a>
+          <a href="/contact" style={styles.footerLink}>
             Contact
           </a>
           <a href="#privacy" style={styles.footerLink}>

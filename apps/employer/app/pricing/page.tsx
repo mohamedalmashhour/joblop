@@ -26,7 +26,7 @@ export default function PricingPage() {
           <a href="/pricing" style={styles.navLink} aria-current="page">
             Pricing
           </a>
-          <a href="/#contact" style={styles.navLink}>
+          <a href="/contact" style={styles.navLink}>
             Contact
           </a>
           <a href="/#sign-in" style={styles.navLink}>
@@ -529,4 +529,3 @@ const styles: Record<string, CSSProperties> = {
     fontSize: 13
   }
 };
-

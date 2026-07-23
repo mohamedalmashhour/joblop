@@ -24,10 +24,10 @@ export default function HowItWorksPage() {
           <a href="/how-it-works" style={styles.navLink} aria-current="page">
             How it works
           </a>
-          <a href="/#pricing" style={styles.navLink}>
+          <a href="/pricing" style={styles.navLink}>
             Pricing
           </a>
-          <a href="/#contact" style={styles.navLink}>
+          <a href="/contact" style={styles.navLink}>
             Contact
           </a>
           <a href="/#sign-in" style={styles.navLink}>
@@ -141,7 +141,7 @@ export default function HowItWorksPage() {
           <a href="/#faq" style={styles.primaryButton}>
             View FAQ
           </a>
-          <a href="/#contact" style={styles.secondaryButton}>
+          <a href="/contact" style={styles.secondaryButton}>
             Contact us
           </a>
         </div>

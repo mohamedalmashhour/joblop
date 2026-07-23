@@ -22,7 +22,7 @@ export default function AboutPage() {
           <a href="/#how-it-works" style={styles.navLink}>
             How it works
           </a>
-          <a href="/#pricing" style={styles.navLink}>
+          <a href="/pricing" style={styles.navLink}>
             Pricing
           </a>
           <a href="/#faq" style={styles.navLink}>
@@ -187,7 +187,7 @@ export default function AboutPage() {
           <a href="/#worker" style={styles.secondaryButton}>
             Become a worker
           </a>
-          <a href="/#contact" style={styles.tertiaryButton}>
+          <a href="/contact" style={styles.tertiaryButton}>
             Contact us
           </a>
         </div>
@@ -548,4 +548,3 @@ const styles: Record<string, CSSProperties> = {
     fontSize: 13
   }
 };
-
