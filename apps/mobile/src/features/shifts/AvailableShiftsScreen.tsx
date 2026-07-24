@@ -109,6 +109,11 @@ export function AvailableShiftsScreen({
     if (initialState) setState({ status: "loading" });
   };
 
+  const resetSearchWithinActiveCapsule = () => {
+    setMinimumRate("");
+    updateFilter({ ...resetFilters(), category: selectedCapsule.category });
+  };
+
   const setMinimumHourlyRate = (value: string) => {
     setMinimumRate(value);
     const parsed = Number.parseInt(value, 10);
@@ -187,7 +192,9 @@ export function AvailableShiftsScreen({
               })}
             </View>
             <View style={styles.experiencePanel}>
-              <SmallText>Experience listed for {selectedCapsule.label}</SmallText>
+              <SmallText>Active job search: {selectedCapsule.label}</SmallText>
+              <BodyText>{selectedCapsule.summary}</BodyText>
+              <SmallText>Experience listed for this worker group</SmallText>
               <View style={styles.experienceList}>
                 {selectedCapsule.experience.map((item) => (
                   <Text key={item} style={styles.experienceChip}>
@@ -243,10 +250,7 @@ export function AvailableShiftsScreen({
             />
             <Button
               label="Reset filters"
-              onPress={() => {
-                setMinimumRate("");
-                updateFilter(resetFilters());
-              }}
+              onPress={resetSearchWithinActiveCapsule}
               variant="secondary"
             />
           </Section>
