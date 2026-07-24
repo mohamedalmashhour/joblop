@@ -32,6 +32,14 @@ import {
 import { mockShiftDiscoveryRepository } from "../shifts/mockShiftDiscoveryRepository";
 import { demoWorkerId } from "./repository";
 import { mockWorkerApplicationRepository } from "./mockWorkerApplicationRepository";
+import {
+  getWorkerResponseBoundaryCopy,
+  workerApplicationBoundaries,
+  workerApplicationStateModel,
+  workerAssignmentFixtureDisclosure,
+  workerAssignmentOfferStateModel,
+  workerOfferConsentChecklist
+} from "./workerAssignmentOfferContent";
 
 type AppRepositoryProps = {
   applicationRepository?: WorkerApplicationRepository;
@@ -169,6 +177,10 @@ export function ApplicationSummaryScreen({
                 Application Submitted != Selected. Fixture-backed submission does not claim server
                 persistence.
               </SmallText>
+              <Divider />
+              {workerApplicationBoundaries.slice(0, 4).map((boundary) => (
+                <SmallText key={boundary}>{boundary}</SmallText>
+              ))}
               {error ? <SmallText testID="application-error">{error}</SmallText> : null}
               <Button
                 disabled={submitting}
@@ -206,6 +218,7 @@ export function ApplicationSuccessScreen({
               shift becomes confirmed.
             </BodyText>
             <SmallText>Application Submitted != Selected. Selected != Assigned.</SmallText>
+            <SmallText>No backend assignment engine or real notification is connected.</SmallText>
             <SmallText>Application ID: {applicationId}</SmallText>
             <Button label="View application" onPress={() => onOpenApplication(applicationId)} />
             <Button label="Go to My Shifts" onPress={onOpenMyShifts} variant="secondary" />
@@ -263,7 +276,9 @@ export function MyShiftsScreen({
           <View style={styles.headerRow}>
             <View>
               <Heading>My Shifts</Heading>
-              <SmallText>G02 applications, offers and confirmations only.</SmallText>
+              <SmallText>
+                Worker applications, assignment offers and confirmation states. Fixture-backed.
+              </SmallText>
             </View>
             <Button label="Refresh" onPress={loadApplications} variant="secondary" />
           </View>
@@ -356,6 +371,11 @@ export function ApplicationDetailsScreen({
               {summary.application.workerNote ? (
                 <BodyText>Worker note: {summary.application.workerNote}</BodyText>
               ) : null}
+              <Divider />
+              <SmallText>State model: {workerApplicationStateModel.join(" -> ")}</SmallText>
+              {workerApplicationBoundaries.map((boundary) => (
+                <SmallText key={boundary}>{boundary}</SmallText>
+              ))}
               {message ? <SmallText>{message}</SmallText> : null}
               {["submitted", "under_review", "offered"].includes(summary.application.status) ? (
                 <Button label="Withdraw application" onPress={withdraw} variant="danger" />
@@ -437,6 +457,14 @@ export function OfferDetailsScreen({
                 original={summary.offer.originalShiftSnapshot}
               />
               <SmallText>Expires: {summary.offer.expiresAt}</SmallText>
+              <Divider />
+              <SmallText>Offer states: {workerAssignmentOfferStateModel.join(" -> ")}</SmallText>
+              {workerOfferConsentChecklist.map((item) => (
+                <SmallText key={item}>{item}</SmallText>
+              ))}
+              {getWorkerResponseBoundaryCopy().map((item) => (
+                <SmallText key={item}>{item}</SmallText>
+              ))}
               {confirming ? (
                 <SmallText>
                   Final review active for {confirming}. Press the same action again to record the
@@ -522,6 +550,12 @@ export function ConfirmationDetailsScreen({
               </BodyText>
               <SmallText>Requested: {summary.confirmation.requestedAt}</SmallText>
               <SmallText>Expires: {summary.confirmation.expiresAt}</SmallText>
+              <Divider />
+              <SmallText>Confirmed assignment != attendance.</SmallText>
+              <SmallText>Attendance != timesheet approval. Timesheet approval != payroll.</SmallText>
+              {workerAssignmentFixtureDisclosure.map((item) => (
+                <SmallText key={item}>{item}</SmallText>
+              ))}
               {confirming ? (
                 <SmallText>
                   Final review active for {confirming}. Press the same action again to record the
