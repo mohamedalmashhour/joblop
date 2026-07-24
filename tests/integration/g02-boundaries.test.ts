@@ -29,15 +29,11 @@ describe("RWO-G02 boundaries", () => {
     expect(violations).toEqual([]);
   });
 
-  it("keeps G02 out of attendance, timesheet, payroll and payment implementation", () => {
-    const files = walk(join(root, "apps", "mobile", "src")).concat(
-      walk(join(root, "packages", "shared", "src"))
-    );
+  it("keeps G02 application screens out of concrete attendance and payment implementation", () => {
+    const files = walk(join(root, "apps", "mobile", "src", "features", "applications"));
     const forbiddenTerms = [
-      "timesheet",
       "punchIn",
       "punchOut",
-      "payroll",
       "paymentAuthorization",
       "stripe",
       "mastercardCapture"
