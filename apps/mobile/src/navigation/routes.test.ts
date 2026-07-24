@@ -41,6 +41,10 @@ describe("mobile foundation navigation", () => {
       "rwos://worker/assignments/:assignmentId/timesheet"
     );
     expect(mobileRouteNames.workerEarnings).toBe("rwos://worker/earnings");
+    expect(mobileRouteNames.workerRatings).toBe("rwos://worker/ratings");
+    expect(mobileRouteNames.workerMessages).toBe("rwos://worker/messages");
+    expect(mobileRouteNames.workerSupport).toBe("rwos://worker/support");
+    expect(mobileRouteNames.workerOwnerReview).toBe("rwos://worker/owner-review");
     expect(mobileRouteNames.filters).toBe("rwos://worker/available/filters");
   });
 });

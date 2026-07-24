@@ -24,6 +24,7 @@ import { MockShiftDiscoveryRepository } from "./src/features/shifts/mockShiftDis
 import { WorkerAttendanceScreen, type WorkerAttendanceStage } from "./src/features/worker-attendance";
 import { WorkerEarningsScreen } from "./src/features/worker-earnings";
 import { WorkerDashboardHandoffScreen, WorkerOnboardingScreen } from "./src/features/worker-onboarding";
+import { WorkerServiceScreen, type WorkerServiceMode } from "./src/features/worker-service";
 import { WorkerTimesheetScreen, type WorkerTimesheetStage } from "./src/features/worker-timesheets";
 import { mobileTabs, productName, type MobileTabId } from "./src/navigation/routes";
 import { BodyText, Card, Heading, SmallText } from "./src/ui/primitives";
@@ -43,7 +44,8 @@ type MobileScreen =
   | Readonly<{ name: "worker-onboarding-review" }>
   | Readonly<{ name: "worker-dashboard" }>
   | Readonly<{ name: "worker-attendance"; stage: WorkerAttendanceStage }>
-  | Readonly<{ name: "worker-timesheet"; stage: WorkerTimesheetStage }>;
+  | Readonly<{ name: "worker-timesheet"; stage: WorkerTimesheetStage }>
+  | Readonly<{ name: "worker-service"; mode: WorkerServiceMode }>;
 
 type WorkerGroupId = "kitchen" | "care" | "helper" | "maintenance";
 
@@ -57,6 +59,8 @@ export default function App() {
       ? screen.tabId
       : ["application-details", "offer-details", "confirmation-details"].includes(screen.name)
         ? "my-shifts"
+        : screen.name === "worker-service"
+          ? "notifications"
         : "available";
 
   const renderScreen = () => {
@@ -209,6 +213,22 @@ export default function App() {
       );
     }
 
+    if (screen.name === "worker-service") {
+      return (
+        <WorkerServiceScreen
+          mode={screen.mode}
+          onOpenAttendance={() => setScreen({ name: "worker-attendance", stage: "overview" })}
+          onOpenAvailable={() => setScreen({ name: "tab", tabId: "available" })}
+          onOpenEarnings={() => setScreen({ name: "tab", tabId: "billing" })}
+          onOpenMode={(mode) => setScreen({ name: "worker-service", mode })}
+          onOpenMyShifts={() => setScreen({ name: "tab", tabId: "my-shifts" })}
+          onOpenOnboarding={() => setScreen({ name: "worker-signup" })}
+          onOpenProfile={() => setScreen({ name: "tab", tabId: "profile" })}
+          onOpenTimesheet={() => setScreen({ name: "worker-timesheet", stage: "review" })}
+        />
+      );
+    }
+
     if (screen.tabId === "available") {
       return (
         <AvailableShiftsScreen
@@ -237,6 +257,8 @@ export default function App() {
       <PlaceholderScreen
         onOpenAvailable={() => setScreen({ name: "tab", tabId: "available" })}
         onOpenOnboarding={() => setScreen({ name: "worker-signup" })}
+        onOpenOwnerReview={() => setScreen({ name: "worker-service", mode: "ownerReview" })}
+        onOpenServiceMode={(mode) => setScreen({ name: "worker-service", mode })}
         onOpenShift={(shiftId) => setScreen({ name: "shift-details", shiftId })}
         selectedWorkerGroup={selectedWorkerGroup}
         setSelectedWorkerGroup={setSelectedWorkerGroup}
@@ -294,6 +316,8 @@ function HeaderText({ children, variant }: { children: ReactNode; variant: "titl
 function PlaceholderScreen({
   onOpenAvailable,
   onOpenOnboarding,
+  onOpenOwnerReview,
+  onOpenServiceMode,
   onOpenShift,
   selectedWorkerGroup,
   setSelectedWorkerGroup,
@@ -301,6 +325,8 @@ function PlaceholderScreen({
 }: {
   onOpenAvailable: () => void;
   onOpenOnboarding: () => void;
+  onOpenOwnerReview: () => void;
+  onOpenServiceMode: (mode: WorkerServiceMode) => void;
   onOpenShift: (shiftId: string) => void;
   selectedWorkerGroup: WorkerGroupId;
   setSelectedWorkerGroup: (groupId: WorkerGroupId) => void;
@@ -344,6 +370,13 @@ function PlaceholderScreen({
               style={styles.fullListButton}
             >
               <Text style={styles.fullListButtonText}>Start worker onboarding</Text>
+            </Pressable>
+            <Pressable
+              accessibilityRole="button"
+              onPress={onOpenOwnerReview}
+              style={styles.fullListButton}
+            >
+              <Text style={styles.fullListButtonText}>Open worker owner review</Text>
             </Pressable>
           </Card>
           <View style={styles.metricGrid}>
@@ -540,21 +573,17 @@ function PlaceholderScreen({
 
   if (tabId === "notifications") {
     return (
-      <ScrollView style={styles.placeholderScroll}>
-        <View style={styles.screenStack}>
-          <Card>
-            <Heading>Notifications</Heading>
-            <BodyText>Approval-first alerts for shifts, offers and documents.</BodyText>
-          </Card>
-          {notifications.map((item) => (
-            <Card key={item.title}>
-              <SmallText>{item.time}</SmallText>
-              <Heading>{item.title}</Heading>
-              <BodyText>{item.body}</BodyText>
-            </Card>
-          ))}
-        </View>
-      </ScrollView>
+      <WorkerServiceScreen
+        mode="messages"
+        onOpenAttendance={() => undefined}
+        onOpenAvailable={onOpenAvailable}
+        onOpenEarnings={() => undefined}
+        onOpenMode={onOpenServiceMode}
+        onOpenMyShifts={() => undefined}
+        onOpenOnboarding={onOpenOnboarding}
+        onOpenProfile={() => undefined}
+        onOpenTimesheet={() => undefined}
+      />
     );
   }
 
@@ -814,24 +843,6 @@ const profileMenuItems = [
     detail: "Support, questions, account help",
     icon: "?",
     title: "Help"
-  }
-] as const;
-
-const notifications = [
-  {
-    time: "2 min ago",
-    title: "Urgent chef offer",
-    body: "Laval Residence needs a chef who can work alone. Review before accepting."
-  },
-  {
-    time: "Today",
-    title: "Document verified",
-    body: "Food safety credential accepted by admin review."
-  },
-  {
-    time: "Yesterday",
-    title: "Payment received",
-    body: "Worker payout line added to your earnings section."
   }
 ] as const;
 
