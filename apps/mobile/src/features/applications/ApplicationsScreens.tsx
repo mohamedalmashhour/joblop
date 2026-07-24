@@ -165,6 +165,10 @@ export function ApplicationSummaryScreen({
                 Submitting means you want this shift. It does not create a confirmed shift until an
                 offer is accepted and the final confirmation is completed.
               </BodyText>
+              <SmallText>
+                Application Submitted != Selected. Fixture-backed submission does not claim server
+                persistence.
+              </SmallText>
               {error ? <SmallText testID="application-error">{error}</SmallText> : null}
               <Button
                 disabled={submitting}
@@ -201,6 +205,7 @@ export function ApplicationSuccessScreen({
               review may create an offer, and a final confirmation is still required before the
               shift becomes confirmed.
             </BodyText>
+            <SmallText>Application Submitted != Selected. Selected != Assigned.</SmallText>
             <SmallText>Application ID: {applicationId}</SmallText>
             <Button label="View application" onPress={() => onOpenApplication(applicationId)} />
             <Button label="Go to My Shifts" onPress={onOpenMyShifts} variant="secondary" />

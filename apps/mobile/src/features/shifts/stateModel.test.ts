@@ -26,6 +26,6 @@ describe("shift discovery mobile state model", () => {
   });
 
   it("keeps applications unavailable in G01", () => {
-    expect(getUnavailableApplicationsMessage()).toContain("Applications are not enabled in G01");
+    expect(getUnavailableApplicationsMessage()).toContain("not guaranteed assignments");
   });
 });

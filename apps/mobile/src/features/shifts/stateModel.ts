@@ -23,5 +23,5 @@ export function getShiftDiscoveryState(
 }
 
 export function getUnavailableApplicationsMessage(): string {
-  return "Applications are not enabled in G01. This screen is for shift discovery review only.";
+  return "Applications require the worker application workflow. Visible shifts are not guaranteed assignments.";
 }

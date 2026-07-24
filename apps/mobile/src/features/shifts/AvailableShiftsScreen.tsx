@@ -99,7 +99,9 @@ export function AvailableShiftsScreen({
           <View style={styles.header}>
             <View>
               <Heading>Available shifts</Heading>
-              <SmallText>G01 discovery only. Applications and acceptance are disabled.</SmallText>
+              <SmallText>
+                Fixture-backed discovery. Visible shifts are not guaranteed assignments.
+              </SmallText>
             </View>
             <Badge
               label={`${activeFilterCount} filters`}
@@ -193,8 +195,8 @@ export function AvailableShiftsScreen({
           ) : null}
 
           <BodyText>
-            Demo data is local to G01. A future API repository will replace this mock adapter after
-            review.
+            Demo data is local fixture data. A future API repository and eligibility engine will
+            replace this mock adapter after review.
           </BodyText>
         </View>
       </ScrollView>

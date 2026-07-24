@@ -23,6 +23,11 @@ import {
 } from "./formatters";
 import { mockShiftDiscoveryRepository } from "./mockShiftDiscoveryRepository";
 import { getUnavailableApplicationsMessage } from "./stateModel";
+import {
+  getEligibilitySummary,
+  workerShiftBoundaries,
+  workerShiftDataTruth
+} from "./workerShiftDiscoveryContent";
 
 export function ShiftDetailsScreen({
   shiftId,
@@ -83,6 +88,10 @@ export function ShiftDetailsScreen({
 
   const urgencyTone =
     shift.urgency === "immediate" ? "danger" : shift.urgency === "urgent" ? "warning" : "success";
+  const eligibilitySummary = getEligibilitySummary({
+    hasRequiredCertifications: shift.requiredCertifications.length > 0,
+    hasScheduleConflict: false
+  });
 
   return (
     <ScreenContainer testID="shift-details-screen">
@@ -121,10 +130,17 @@ export function ShiftDetailsScreen({
           <Section title="Work details">
             <Card>
               <BodyText>{shift.description}</BodyText>
+              <SmallText>Role: {shift.category}</SmallText>
+              <SmallText>Department: fixture department aligned to role</SmallText>
+              <SmallText>Timezone: local fixture timezone</SmallText>
               <SmallText>Experience: {shift.requiredExperienceYears}+ years</SmallText>
               <SmallText>
                 Certifications: {shift.requiredCertifications.join(", ") || "None listed"}
               </SmallText>
+              <SmallText>Worker count: fixture requirement not live capacity</SmallText>
+              <SmallText>Urgent premium: included only where configured in fixture data</SmallText>
+              <SmallText>Transport terms: worker confirms travel before applying</SmallText>
+              <SmallText>Travel terms: allowance shown only when configured</SmallText>
               <SmallText>Languages: {shift.requiredLanguages.join(", ")}</SmallText>
               <SmallText>Dress code: {shift.dressCode}</SmallText>
               <SmallText>Break policy: {shift.breakPolicy}</SmallText>
@@ -133,6 +149,25 @@ export function ShiftDetailsScreen({
                 Application deadline: {formatShiftDate(shift.applicationDeadline)}
               </SmallText>
               <SmallText>Status: {shift.status}</SmallText>
+            </Card>
+          </Section>
+
+          <Section title="Eligibility summary">
+            <Card>
+              <Heading>Eligibility is not guaranteed</Heading>
+              <BodyText>{eligibilitySummary}</BodyText>
+              <SmallText>Data freshness: fixture updated {formatShiftDate(shift.updatedAt)}</SmallText>
+              {workerShiftBoundaries.map((boundary) => (
+                <SmallText key={boundary}>- {boundary}</SmallText>
+              ))}
+            </Card>
+          </Section>
+
+          <Section title="Data source">
+            <Card>
+              {workerShiftDataTruth.map((truth) => (
+                <SmallText key={truth}>- {truth}</SmallText>
+              ))}
             </Card>
           </Section>
 
