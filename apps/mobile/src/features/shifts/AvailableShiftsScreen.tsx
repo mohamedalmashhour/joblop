@@ -29,35 +29,133 @@ import { ShiftCard } from "./ShiftCard";
 
 const urgencies: readonly ShiftUrgency[] = ["normal", "urgent", "immediate"];
 const times: readonly TimeOfDay[] = ["morning", "afternoon", "evening", "night"];
+const quebecMinimumWage = {
+  amount: 16.6,
+  effectiveDate: "May 1, 2026",
+  source: "CNESST / Gouvernement du Quebec"
+} as const;
 
 const workerSearchCapsules: readonly Readonly<{
   category: ShiftCategory;
-  experience: readonly string[];
   label: string;
+  specialties: readonly Readonly<{
+    description: string;
+    experience: readonly string[];
+    id: string;
+    keyword: string;
+    label: string;
+    medianHourlyWage: number;
+    wageOccupation: string;
+    wageSource: string;
+  }>[];
   summary: string;
 }>[] = [
   {
     category: "kitchen",
-    experience: ["Chef", "Kitchen aide", "Dishwasher", "Food safety", "Working alone"],
     label: "Kitchen",
+    specialties: [
+      {
+        description: "Chef shifts where the worker may need to handle meal service independently.",
+        experience: ["Menu review", "Hot meal service", "Food safety", "Working alone"],
+        id: "kitchen-chef",
+        keyword: "chef",
+        label: "Chef",
+        medianHourlyWage: 18,
+        wageOccupation: "Cook in Quebec",
+        wageSource: "Job Bank, updated November 19, 2025"
+      },
+      {
+        description: "Kitchen aide support for prep, service, cleanup, and supervisor-led work.",
+        experience: ["Prep support", "Dishwasher", "Kitchen cleanup", "Supervisor on site"],
+        id: "kitchen-aide",
+        keyword: "kitchen",
+        label: "Kitchen aide",
+        medianHourlyWage: 16.6,
+        wageOccupation: "Food counter attendants, kitchen helpers and related support occupations in Quebec",
+        wageSource: "Job Bank, updated November 19, 2025"
+      }
+    ],
     summary: "Meal prep, dishwashing, kitchen support, urgent chef coverage."
   },
   {
     category: "care",
-    experience: ["Care aide", "PSW support", "Nurse-supervised routines", "Resident support"],
     label: "Care / Nurse",
+    specialties: [
+      {
+        description: "Care aide shifts for resident routines with appropriate supervision.",
+        experience: ["Evening care routine", "Resident support", "Handoff notes", "PDSB / CPR"],
+        id: "care-aide",
+        keyword: "care",
+        label: "Care aide",
+        medianHourlyWage: 25.1,
+        wageOccupation: "Nurse aide in Quebec",
+        wageSource: "Job Bank, updated November 19, 2025"
+      },
+      {
+        description: "Nurse-support work where the worker follows site direction and credentials apply.",
+        experience: ["Nurse supervisor", "Resident handoff", "Care team coordination"],
+        id: "care-nurse-support",
+        keyword: "nurse",
+        label: "Nurse support",
+        medianHourlyWage: 25.1,
+        wageOccupation: "Nurse aide in Quebec",
+        wageSource: "Job Bank, updated November 19, 2025"
+      }
+    ],
     summary: "Care shifts where approval, supervision, and credentials may apply."
   },
   {
     category: "housekeeping",
-    experience: ["Housekeeping", "Laundry", "Dining support", "Floor service"],
     label: "Helper",
+    specialties: [
+      {
+        description: "Housekeeping shifts for room turnover, common areas, and supplies.",
+        experience: ["Room turnover", "Common-area cleaning", "Supply reporting"],
+        id: "helper-housekeeping",
+        keyword: "housekeeping",
+        label: "Housekeeping",
+        medianHourlyWage: 20.47,
+        wageOccupation: "Light duty cleaner in Quebec",
+        wageSource: "Job Bank, updated November 19, 2025"
+      },
+      {
+        description: "Residence support work for dining, laundry, and floor-service assistance.",
+        experience: ["Dining support", "Laundry", "Floor service", "General residence help"],
+        id: "helper-service",
+        keyword: "support",
+        label: "Service helper",
+        medianHourlyWage: 16.6,
+        wageOccupation: "Food counter attendants, kitchen helpers and related support occupations in Quebec",
+        wageSource: "Job Bank, updated November 19, 2025"
+      }
+    ],
     summary: "General residence support, housekeeping, laundry, and service tasks."
   },
   {
     category: "maintenance",
-    experience: ["Maintenance", "Repairs", "Facility support", "Safety checks"],
     label: "Maintenance",
+    specialties: [
+      {
+        description: "Maintenance work for repairs, facility checks, and building support.",
+        experience: ["Repairs", "Facility support", "Safety checks", "Site access"],
+        id: "maintenance-repairs",
+        keyword: "maintenance",
+        label: "Repairs",
+        medianHourlyWage: 25,
+        wageOccupation: "Maintenance person - building in Quebec",
+        wageSource: "Job Bank, updated November 19, 2025"
+      },
+      {
+        description: "Urgent facility support where timing, safety, and access need review.",
+        experience: ["Urgent response", "Building support", "Safety review"],
+        id: "maintenance-urgent",
+        keyword: "facility",
+        label: "Urgent facility",
+        medianHourlyWage: 25,
+        wageOccupation: "Maintenance person - building in Quebec",
+        wageSource: "Job Bank, updated November 19, 2025"
+      }
+    ],
     summary: "Building support and maintenance work where site access may be required."
   }
 ] as const;
@@ -71,7 +169,11 @@ export function AvailableShiftsScreen({
   repository?: ShiftDiscoveryRepository;
   initialState?: ShiftDiscoveryState;
 }) {
-  const [filters, setFilters] = useState<ShiftDiscoveryFilters>({ category: "kitchen" });
+  const [filters, setFilters] = useState<ShiftDiscoveryFilters>({
+    category: "kitchen",
+    keyword: "chef"
+  });
+  const [selectedSpecialtyId, setSelectedSpecialtyId] = useState("kitchen-chef");
   const [state, setState] = useState<ShiftDiscoveryState>(initialState ?? { status: "loading" });
   const [refreshing, setRefreshing] = useState(false);
   const [minimumRate, setMinimumRate] = useState("");
@@ -80,6 +182,9 @@ export function AvailableShiftsScreen({
   const selectedCapsule =
     workerSearchCapsules.find((capsule) => capsule.category === filters.category) ??
     workerSearchCapsules[0]!;
+  const selectedSpecialty =
+    selectedCapsule.specialties.find((specialty) => specialty.id === selectedSpecialtyId) ??
+    selectedCapsule.specialties[0]!;
 
   const loadShifts = useCallback(async () => {
     try {
@@ -109,9 +214,50 @@ export function AvailableShiftsScreen({
     if (initialState) setState({ status: "loading" });
   };
 
+  const selectCapsule = (capsule: (typeof workerSearchCapsules)[number]) => {
+    const firstSpecialty = capsule.specialties[0]!;
+    setSelectedSpecialtyId(firstSpecialty.id);
+    updateFilter({
+      ...filters,
+      category: capsule.category,
+      keyword: firstSpecialty.keyword
+    });
+  };
+
+  const selectSpecialty = (specialty: (typeof selectedCapsule.specialties)[number]) => {
+    setSelectedSpecialtyId(specialty.id);
+    updateFilter({
+      ...filters,
+      category: selectedCapsule.category,
+      keyword: specialty.keyword
+    });
+  };
+
+  const applyAiSuggestedSearch = () => {
+    const suggestedRate = Math.max(
+      selectedSpecialty.medianHourlyWage,
+      quebecMinimumWage.amount
+    );
+    const suggestedFilters: ShiftDiscoveryFilters = {
+      ...filters,
+      category: selectedCapsule.category,
+      keyword: selectedSpecialty.keyword,
+      minimumHourlyRateMinor: Math.round(suggestedRate * 100),
+      ...(selectedCapsule.category === "kitchen" ? { urgency: "immediate" as const } : {}),
+      ...(selectedCapsule.category === "care" ? { timeOfDay: "evening" as const } : {})
+    };
+
+    setMinimumRate(String(suggestedRate));
+    updateFilter(suggestedFilters);
+  };
+
   const resetSearchWithinActiveCapsule = () => {
     setMinimumRate("");
-    updateFilter({ ...resetFilters(), category: selectedCapsule.category });
+    updateFilter({
+      ...resetFilters(),
+      category: selectedCapsule.category,
+      keyword: selectedSpecialty.keyword
+    });
   };
 
   const setMinimumHourlyRate = (value: string) => {
@@ -168,7 +314,7 @@ export function AvailableShiftsScreen({
                     accessibilityRole="button"
                     accessibilityState={{ selected: isSelected }}
                     key={capsule.category}
-                    onPress={() => updateFilter({ ...filters, category: capsule.category })}
+                    onPress={() => selectCapsule(capsule)}
                     style={[styles.searchCapsule, isSelected && styles.searchCapsuleActive]}
                   >
                     <Text
@@ -191,17 +337,75 @@ export function AvailableShiftsScreen({
                 );
               })}
             </View>
+            <View style={styles.specialtyPanel}>
+              <SmallText>Narrow by specialty</SmallText>
+              <View style={styles.specialtyRail}>
+                {selectedCapsule.specialties.map((specialty) => {
+                  const isSelected = selectedSpecialty.id === specialty.id;
+                  return (
+                    <Pressable
+                      accessibilityLabel={`Select ${specialty.label} specialty`}
+                      accessibilityRole="button"
+                      accessibilityState={{ selected: isSelected }}
+                      key={specialty.id}
+                      onPress={() => selectSpecialty(specialty)}
+                      style={[styles.specialtyCapsule, isSelected && styles.specialtyCapsuleActive]}
+                    >
+                      <Text
+                        style={[
+                          styles.specialtyCapsuleText,
+                          isSelected && styles.specialtyCapsuleTextActive
+                        ]}
+                      >
+                        {specialty.label}
+                      </Text>
+                    </Pressable>
+                  );
+                })}
+              </View>
+            </View>
             <View style={styles.experiencePanel}>
               <SmallText>Active job search: {selectedCapsule.label}</SmallText>
-              <BodyText>{selectedCapsule.summary}</BodyText>
-              <SmallText>Experience listed for this worker group</SmallText>
+              <BodyText>{selectedSpecialty.description}</BodyText>
+              <SmallText>Experience listed for {selectedSpecialty.label}</SmallText>
               <View style={styles.experienceList}>
-                {selectedCapsule.experience.map((item) => (
+                {selectedSpecialty.experience.map((item) => (
                   <Text key={item} style={styles.experienceChip}>
                     {item}
                   </Text>
                 ))}
               </View>
+            </View>
+            <View style={styles.aiPanel}>
+              <SmallText>AI Search Assistant</SmallText>
+              <Heading>Suggested search brain</Heading>
+              <BodyText>
+                AI can suggest filters from your active capsule and specialty. It does not apply,
+                accept, assign, or guarantee work unless you choose the suggestion.
+              </BodyText>
+              <View style={styles.aiEvidenceList}>
+                <SmallText>Group: {selectedCapsule.label}</SmallText>
+                <SmallText>Specialty: {selectedSpecialty.label}</SmallText>
+                <SmallText>Suggested keyword: {selectedSpecialty.keyword}</SmallText>
+                <SmallText>
+                  Quebec minimum wage: ${quebecMinimumWage.amount.toFixed(2)}/hr effective{" "}
+                  {quebecMinimumWage.effectiveDate}
+                </SmallText>
+                <SmallText>
+                  Median reference: ${selectedSpecialty.medianHourlyWage.toFixed(2)}/hr -{" "}
+                  {selectedSpecialty.wageOccupation}
+                </SmallText>
+                <SmallText>Source: {selectedSpecialty.wageSource}</SmallText>
+              </View>
+              <Button
+                label="Apply AI wage-aware filters"
+                onPress={applyAiSuggestedSearch}
+                variant="secondary"
+              />
+              <SmallText>
+                Wage guidance is informational. Final shift compensation depends on approved shift
+                terms and governed employer/worker workflows.
+              </SmallText>
             </View>
             <Input
               label="Keyword"
@@ -372,5 +576,55 @@ const styles = StyleSheet.create({
     overflow: "hidden",
     paddingHorizontal: spacing.sm,
     paddingVertical: spacing.xs
+  },
+  specialtyPanel: {
+    backgroundColor: colors.surfaceRaised,
+    borderColor: colors.border,
+    borderRadius: radii.md,
+    borderWidth: 1,
+    gap: spacing.sm,
+    padding: spacing.md
+  },
+  specialtyRail: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: spacing.sm
+  },
+  specialtyCapsule: {
+    backgroundColor: colors.surface,
+    borderColor: colors.border,
+    borderRadius: radii.pill,
+    borderWidth: 1,
+    minHeight: touch.minimumTarget,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm
+  },
+  specialtyCapsuleActive: {
+    backgroundColor: colors.deepTeal,
+    borderColor: colors.deepTeal
+  },
+  specialtyCapsuleText: {
+    color: colors.deepTeal,
+    fontSize: typography.small,
+    fontWeight: "900"
+  },
+  specialtyCapsuleTextActive: {
+    color: colors.cream
+  },
+  aiPanel: {
+    backgroundColor: "#f0fff8",
+    borderColor: colors.success,
+    borderRadius: radii.md,
+    borderWidth: 1,
+    gap: spacing.sm,
+    padding: spacing.md
+  },
+  aiEvidenceList: {
+    backgroundColor: colors.surface,
+    borderColor: colors.border,
+    borderRadius: radii.md,
+    borderWidth: 1,
+    gap: spacing.xs,
+    padding: spacing.sm
   }
 });
