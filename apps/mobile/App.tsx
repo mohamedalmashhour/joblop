@@ -337,10 +337,14 @@ function PlaceholderScreen({
   const group = workerGroups.find((item) => item.id === selectedWorkerGroup) ?? workerGroups[0]!;
   const groupOffers = workerGroupOffers.filter((offer) => offer.groupId === selectedWorkerGroup);
   const [rateAdjustments, setRateAdjustments] = useState<Record<string, number>>({});
+  const [selectedCalendarDay, setSelectedCalendarDay] = useState<string>(workerWeek[0]?.day ?? "Mon");
+  const [selectedCalendarTile, setSelectedCalendarTile] = useState<string>("Available Orders Calendar: Today");
   const adjustedRatePreferences = workerRatePreferenceRules.map((item) => ({
     ...item,
     adjustedRate: item.baseRate + (rateAdjustments[item.id] ?? 0)
   }));
+  const selectedCalendarStatus =
+    workerWeek.find((item) => item.day === selectedCalendarDay)?.status ?? "Calendar selection";
   const updateRateAdjustment = (preferenceId: string, delta: number) => {
     setRateAdjustments((current) => {
       const existing = current[preferenceId] ?? 0;
@@ -402,33 +406,40 @@ function PlaceholderScreen({
           </View>
           <Card>
             <SmallText>Registered groups</SmallText>
-            <Heading>Where do you want to work today?</Heading>
+            <Heading>Search Work Capsules</Heading>
             <BodyText>
-              Staff see the groups approved in their profile. Each group opens the correct offer
-              area for that worker.
+              Tap a work capsule to search offers in that approved group. Capsules filter visible
+              work only; they do not approve eligibility or assign a shift.
             </BodyText>
-            <View style={styles.groupGrid}>
+            <View style={styles.groupCapsuleRail}>
               {workerGroups.map((item) => (
                 <Pressable
+                  accessibilityLabel={`Search ${item.title} work capsule`}
                   accessibilityRole="button"
+                  accessibilityState={{ selected: selectedWorkerGroup === item.id }}
                   key={item.id}
                   onPress={() => setSelectedWorkerGroup(item.id)}
                   style={[
-                    styles.groupCard,
-                    selectedWorkerGroup === item.id ? styles.groupCardActive : null
+                    styles.groupCapsule,
+                    selectedWorkerGroup === item.id ? styles.groupCapsuleActive : null
                   ]}
                 >
                   <Text
                     style={[
-                      styles.groupTitle,
-                      selectedWorkerGroup === item.id ? styles.groupTitleActive : null
+                      styles.groupCapsuleTitle,
+                      selectedWorkerGroup === item.id ? styles.groupCapsuleTitleActive : null
                     ]}
                   >
                     {item.title}
                   </Text>
-                  <SmallText>{item.skills}</SmallText>
-                  <Text style={styles.groupCount}>{item.openOffers}</Text>
-                  <SmallText>open offers</SmallText>
+                  <Text
+                    style={[
+                      styles.groupCapsuleCount,
+                      selectedWorkerGroup === item.id ? styles.groupCapsuleCountActive : null
+                    ]}
+                  >
+                    {item.openOffers} open
+                  </Text>
                 </Pressable>
               ))}
             </View>
@@ -503,13 +514,30 @@ function PlaceholderScreen({
           </Card>
           <View style={styles.calendarStrip}>
             {workerWeek.map((day) => (
-              <View key={day.day} style={[styles.dayCard, day.status === "Emergency" && styles.hotDay]}>
+              <Pressable
+                accessibilityLabel={`Select ${day.day} calendar day`}
+                accessibilityRole="button"
+                accessibilityState={{ selected: selectedCalendarDay === day.day }}
+                key={day.day}
+                onPress={() => setSelectedCalendarDay(day.day)}
+                style={[
+                  styles.dayCard,
+                  day.status === "Emergency" && styles.hotDay,
+                  selectedCalendarDay === day.day && styles.dayCardActive
+                ]}
+              >
                 <SmallText>{day.day}</SmallText>
                 <Text style={styles.dayNumber}>{day.date}</Text>
                 <SmallText>{day.status}</SmallText>
-              </View>
+              </Pressable>
             ))}
           </View>
+          <Card>
+            <SmallText>Active calendar focus</SmallText>
+            <Heading>{selectedCalendarDay}</Heading>
+            <BodyText>{selectedCalendarStatus}</BodyText>
+            <SmallText>{selectedCalendarTile}</SmallText>
+          </Card>
           <Card>
             <Heading>Today&apos;s Schedule</Heading>
             {workerCalendar.map((item) => (
@@ -534,13 +562,28 @@ function PlaceholderScreen({
               </View>
             ))}
           </Card>
-          <CalendarBoard title="Available Orders Calendar" items={workerAvailableOrders} />
-          <CalendarBoard title="Past & Future Orders Calendar" items={workerOrderHistory} />
+          <CalendarBoard
+            items={workerAvailableOrders}
+            onSelect={setSelectedCalendarTile}
+            selectedKey={selectedCalendarTile}
+            title="Available Orders Calendar"
+          />
+          <CalendarBoard
+            items={workerOrderHistory}
+            onSelect={setSelectedCalendarTile}
+            selectedKey={selectedCalendarTile}
+            title="Past & Future Orders Calendar"
+          />
           <AdjustableRatePreferences
             items={adjustedRatePreferences}
             onAdjust={updateRateAdjustment}
           />
-          <CalendarBoard title="Revenue Calendar" items={workerRevenueCalendar} />
+          <CalendarBoard
+            items={workerRevenueCalendar}
+            onSelect={setSelectedCalendarTile}
+            selectedKey={selectedCalendarTile}
+            title="Revenue Calendar"
+          />
         </View>
       </ScrollView>
     );
@@ -621,29 +664,41 @@ function PlaceholderScreen({
 
 function CalendarBoard({
   items,
+  onSelect,
+  selectedKey,
   title
 }: {
   items: readonly Readonly<{ day: string; value: string; detail: string; tone?: "hot" | "money" }>[];
+  onSelect: (selectedKey: string) => void;
+  selectedKey: string;
   title: string;
 }) {
   return (
     <Card>
       <Heading>{title}</Heading>
       <View style={styles.calendarBoard}>
-        {items.map((item) => (
-          <View
-            key={`${title}-${item.day}-${item.value}`}
-            style={[
-              styles.calendarCell,
-              item.tone === "hot" && styles.calendarCellHot,
-              item.tone === "money" && styles.calendarCellMoney
-            ]}
-          >
-            <SmallText>{item.day}</SmallText>
-            <Text style={styles.calendarValue}>{item.value}</Text>
-            <SmallText>{item.detail}</SmallText>
-          </View>
-        ))}
+        {items.map((item) => {
+          const itemKey = `${title}: ${item.day}`;
+          return (
+            <Pressable
+              accessibilityLabel={`Select ${title} ${item.day}`}
+              accessibilityRole="button"
+              accessibilityState={{ selected: selectedKey === itemKey }}
+              key={`${title}-${item.day}-${item.value}`}
+              onPress={() => onSelect(itemKey)}
+              style={[
+                styles.calendarCell,
+                item.tone === "hot" && styles.calendarCellHot,
+                item.tone === "money" && styles.calendarCellMoney,
+                selectedKey === itemKey && styles.calendarCellActive
+              ]}
+            >
+              <SmallText>{item.day}</SmallText>
+              <Text style={styles.calendarValue}>{item.value}</Text>
+              <SmallText>{item.detail}</SmallText>
+            </Pressable>
+          );
+        })}
       </View>
     </Card>
   );
@@ -1074,6 +1129,50 @@ const styles = StyleSheet.create({
     gap: spacing.sm,
     marginTop: spacing.md
   },
+  groupCapsuleRail: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: spacing.sm,
+    marginTop: spacing.md
+  },
+  groupCapsule: {
+    alignItems: "center",
+    backgroundColor: colors.surface,
+    borderColor: colors.border,
+    borderRadius: radii.pill,
+    borderWidth: 1,
+    flexDirection: "row",
+    gap: spacing.sm,
+    minHeight: touch.minimumTarget,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm
+  },
+  groupCapsuleActive: {
+    backgroundColor: colors.deepTeal,
+    borderColor: colors.deepTeal
+  },
+  groupCapsuleCount: {
+    backgroundColor: colors.cream,
+    borderRadius: radii.pill,
+    color: colors.deepTeal,
+    fontSize: typography.micro,
+    fontWeight: "900",
+    overflow: "hidden",
+    paddingHorizontal: spacing.sm,
+    paddingVertical: spacing.xs
+  },
+  groupCapsuleCountActive: {
+    backgroundColor: colors.surfaceRaised,
+    color: colors.deepTeal
+  },
+  groupCapsuleTitle: {
+    color: colors.deepTeal,
+    fontSize: typography.small,
+    fontWeight: "900"
+  },
+  groupCapsuleTitleActive: {
+    color: colors.cream
+  },
   groupCard: {
     backgroundColor: colors.surface,
     borderColor: colors.border,
@@ -1248,6 +1347,10 @@ const styles = StyleSheet.create({
     backgroundColor: "#fff4f4",
     borderColor: colors.danger
   },
+  dayCardActive: {
+    borderColor: colors.deepTeal,
+    borderWidth: 2
+  },
   dayNumber: {
     color: colors.deepTeal,
     fontSize: 28,
@@ -1277,6 +1380,10 @@ const styles = StyleSheet.create({
   calendarCellMoney: {
     backgroundColor: "#f0fff8",
     borderColor: colors.success
+  },
+  calendarCellActive: {
+    borderColor: colors.deepTeal,
+    borderWidth: 2
   },
   calendarValue: {
     color: colors.deepTeal,

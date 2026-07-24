@@ -199,8 +199,11 @@ export const styles: Record<string, CSSProperties> = {
     background: "rgba(255,255,255,0.76)",
     border: "1px solid #dce8e8",
     borderRadius: 8,
+    color: "#0b1f3a",
+    display: "block",
     minHeight: 142,
-    padding: 12
+    padding: 12,
+    textDecoration: "none"
   },
   pillGrid: {
     display: "grid",

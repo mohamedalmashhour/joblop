@@ -183,25 +183,29 @@ export const dashboardAvailableOrdersCalendar = [
     day: "Today",
     value: "4",
     detail: "Open staffing requests",
-    state: "Requested"
+    state: "Requested",
+    route: "/employer/shifts"
   },
   {
     day: "Urgent",
     value: "1",
     detail: "Priority review, not guaranteed coverage",
-    state: "In review"
+    state: "In review",
+    route: "/employer/shifts/urgent"
   },
   {
     day: "Tomorrow",
     value: "3",
     detail: "Published fixture shifts",
-    state: "Open"
+    state: "Open",
+    route: "/employer/shifts"
   },
   {
     day: "This week",
     value: "8",
     detail: "Needs employer review",
-    state: "Pending"
+    state: "Pending",
+    route: "/employer/applicants"
   }
 ] as const;
 
@@ -210,25 +214,29 @@ export const dashboardOrderCalendar = [
     day: "Past",
     value: "18",
     detail: "Completed fixture orders",
-    state: "Completed"
+    state: "Completed",
+    route: "/employer/reports"
   },
   {
     day: "Today",
     value: "5",
     detail: "Confirmed or active",
-    state: "Scheduled"
+    state: "Scheduled",
+    route: "/employer/assignments/detail"
   },
   {
     day: "Future",
     value: "11",
     detail: "Upcoming approved requests",
-    state: "Planned"
+    state: "Planned",
+    route: "/employer/shifts"
   },
   {
     day: "Review",
     value: "2",
     detail: "Requires human decision",
-    state: "Action needed"
+    state: "Action needed",
+    route: "/employer/assignments/review"
   }
 ] as const;
 
@@ -237,24 +245,28 @@ export const dashboardRevenueCalendar = [
     day: "Estimated",
     value: "$3.4k",
     detail: "Before final attendance review",
-    state: "Estimate"
+    state: "Estimate",
+    route: "/employer/invoices"
   },
   {
     day: "Invoice",
     value: "$2.1k",
     detail: "Generated from approved timesheets",
-    state: "Draft"
+    state: "Draft",
+    route: "/employer/invoices"
   },
   {
     day: "Due",
     value: "$1.8k",
     detail: "Employer payment workflow",
-    state: "Pending"
+    state: "Pending",
+    route: "/employer/payments"
   },
   {
     day: "Paid",
     value: "$6.2k",
     detail: "Settled fixture history",
-    state: "Settled"
+    state: "Settled",
+    route: "/employer/payments"
   }
 ] as const;

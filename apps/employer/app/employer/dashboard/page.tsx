@@ -101,7 +101,13 @@ function CalendarPanel({
   title,
   tone = "default"
 }: {
-  items: readonly Readonly<{ day: string; detail: string; state: string; value: string }>[];
+  items: readonly Readonly<{
+    day: string;
+    detail: string;
+    route: string;
+    state: string;
+    value: string;
+  }>[];
   title: string;
   tone?: "default" | "money" | "urgent";
 }) {
@@ -116,12 +122,17 @@ function CalendarPanel({
       <h3 style={styles.cardTitle}>{title}</h3>
       <div style={styles.calendarGrid}>
         {items.map((item) => (
-          <div key={`${title}-${item.day}`} style={styles.calendarTile}>
+          <a
+            aria-label={`${title}: open ${item.day} ${item.state}`}
+            href={item.route}
+            key={`${title}-${item.day}`}
+            style={styles.calendarTile}
+          >
             <span style={styles.routeStatus}>{item.day}</span>
             <strong style={styles.calendarMetric}>{item.value}</strong>
             <p style={styles.cardText}>{item.detail}</p>
             <span style={styles.calendarState}>{item.state}</span>
-          </div>
+          </a>
         ))}
       </div>
     </article>
