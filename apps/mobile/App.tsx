@@ -411,38 +411,10 @@ function PlaceholderScreen({
               Tap a work capsule to search offers in that approved group. Capsules filter visible
               work only; they do not approve eligibility or assign a shift.
             </BodyText>
-            <View style={styles.groupCapsuleRail}>
-              {workerGroups.map((item) => (
-                <Pressable
-                  accessibilityLabel={`Search ${item.title} work capsule`}
-                  accessibilityRole="button"
-                  accessibilityState={{ selected: selectedWorkerGroup === item.id }}
-                  key={item.id}
-                  onPress={() => setSelectedWorkerGroup(item.id)}
-                  style={[
-                    styles.groupCapsule,
-                    selectedWorkerGroup === item.id ? styles.groupCapsuleActive : null
-                  ]}
-                >
-                  <Text
-                    style={[
-                      styles.groupCapsuleTitle,
-                      selectedWorkerGroup === item.id ? styles.groupCapsuleTitleActive : null
-                    ]}
-                  >
-                    {item.title}
-                  </Text>
-                  <Text
-                    style={[
-                      styles.groupCapsuleCount,
-                      selectedWorkerGroup === item.id ? styles.groupCapsuleCountActive : null
-                    ]}
-                  >
-                    {item.openOffers} open
-                  </Text>
-                </Pressable>
-              ))}
-            </View>
+            <WorkerGroupCapsules
+              selectedWorkerGroup={selectedWorkerGroup}
+              setSelectedWorkerGroup={setSelectedWorkerGroup}
+            />
           </Card>
           <Card>
             <SmallText>{group.title} group</SmallText>
@@ -511,6 +483,19 @@ function PlaceholderScreen({
             <SmallText>Worker OS</SmallText>
             <Heading>Calendar & Availability</Heading>
             <BodyText>View confirmed shifts, offers, on-call blocks, and unavailable time.</BodyText>
+          </Card>
+          <Card>
+            <SmallText>Search work first</SmallText>
+            <Heading>Select Work Capsule</Heading>
+            <BodyText>
+              Choose the kind of work you need before checking the calendar. The selected capsule
+              filters available orders and rate preferences for this worker only.
+            </BodyText>
+            <WorkerGroupCapsules
+              selectedWorkerGroup={selectedWorkerGroup}
+              setSelectedWorkerGroup={setSelectedWorkerGroup}
+            />
+            <SmallText>Current capsule: {group.title}</SmallText>
           </Card>
           <View style={styles.calendarStrip}>
             {workerWeek.map((day) => (
@@ -659,6 +644,49 @@ function PlaceholderScreen({
         </Card>
       </View>
     </ScrollView>
+  );
+}
+
+function WorkerGroupCapsules({
+  selectedWorkerGroup,
+  setSelectedWorkerGroup
+}: {
+  selectedWorkerGroup: WorkerGroupId;
+  setSelectedWorkerGroup: (groupId: WorkerGroupId) => void;
+}) {
+  return (
+    <View style={styles.groupCapsuleRail}>
+      {workerGroups.map((item) => (
+        <Pressable
+          accessibilityLabel={`Search ${item.title} work capsule`}
+          accessibilityRole="button"
+          accessibilityState={{ selected: selectedWorkerGroup === item.id }}
+          key={item.id}
+          onPress={() => setSelectedWorkerGroup(item.id)}
+          style={[
+            styles.groupCapsule,
+            selectedWorkerGroup === item.id ? styles.groupCapsuleActive : null
+          ]}
+        >
+          <Text
+            style={[
+              styles.groupCapsuleTitle,
+              selectedWorkerGroup === item.id ? styles.groupCapsuleTitleActive : null
+            ]}
+          >
+            {item.title}
+          </Text>
+          <Text
+            style={[
+              styles.groupCapsuleCount,
+              selectedWorkerGroup === item.id ? styles.groupCapsuleCountActive : null
+            ]}
+          >
+            {item.openOffers} open
+          </Text>
+        </Pressable>
+      ))}
+    </View>
   );
 }
 
