@@ -73,6 +73,36 @@ const workerSearchCapsules: readonly Readonly<{
         medianHourlyWage: 16.6,
         wageOccupation: "Food counter attendants, kitchen helpers and related support occupations in Quebec",
         wageSource: "Job Bank, updated November 19, 2025"
+      },
+      {
+        description: "Waiter and waitress shifts for meal service, dining-room setup, and resident service.",
+        experience: ["Dining-room service", "Meal delivery", "Table setup", "Resident-facing service"],
+        id: "kitchen-waitress",
+        keyword: "waitress",
+        label: "Waiter / waitress",
+        medianHourlyWage: 20,
+        wageOccupation: "Waiter/waitress in Quebec",
+        wageSource: "Job Bank, updated November 19, 2025"
+      },
+      {
+        description: "Dietary aide work for tray preparation, texture-modified meals, and service support.",
+        experience: ["Tray prep", "Dietary notes", "Texture-modified meals", "Meal service support"],
+        id: "kitchen-dietary-aide",
+        keyword: "dietary",
+        label: "Dietary aide",
+        medianHourlyWage: 16.6,
+        wageOccupation: "Food counter attendants, kitchen helpers and related support occupations in Quebec",
+        wageSource: "Job Bank, updated November 19, 2025"
+      },
+      {
+        description: "Prep cook shifts for batch preparation, ingredient setup, and supervised cooking.",
+        experience: ["Batch prep", "Ingredient setup", "Safe food handling", "Recipe support"],
+        id: "kitchen-prep-cook",
+        keyword: "prep cook",
+        label: "Prep cook",
+        medianHourlyWage: 18,
+        wageOccupation: "Cook in Quebec",
+        wageSource: "Job Bank, updated November 19, 2025"
       }
     ],
     summary: "Meal prep, dishwashing, kitchen support, urgent chef coverage."
@@ -100,6 +130,26 @@ const workerSearchCapsules: readonly Readonly<{
         medianHourlyWage: 25.1,
         wageOccupation: "Nurse aide in Quebec",
         wageSource: "Job Bank, updated November 19, 2025"
+      },
+      {
+        description: "Companion support shifts for non-clinical resident presence and daily routine help.",
+        experience: ["Companionship", "Activity support", "Meal reminders", "Non-clinical help"],
+        id: "care-companion",
+        keyword: "companion",
+        label: "Companion",
+        medianHourlyWage: 25.1,
+        wageOccupation: "Nurse aide in Quebec",
+        wageSource: "Job Bank, updated November 19, 2025"
+      },
+      {
+        description: "Recreation support for activities, resident programs, and supervised group assistance.",
+        experience: ["Activity setup", "Group support", "Resident engagement", "Program cleanup"],
+        id: "care-recreation",
+        keyword: "recreation",
+        label: "Recreation aide",
+        medianHourlyWage: 25.1,
+        wageOccupation: "Nurse aide in Quebec",
+        wageSource: "Job Bank proxy reference, updated November 19, 2025"
       }
     ],
     summary: "Care shifts where approval, supervision, and credentials may apply."
@@ -127,6 +177,36 @@ const workerSearchCapsules: readonly Readonly<{
         medianHourlyWage: 16.6,
         wageOccupation: "Food counter attendants, kitchen helpers and related support occupations in Quebec",
         wageSource: "Job Bank, updated November 19, 2025"
+      },
+      {
+        description: "Laundry shifts for linens, resident laundry handling, folding, and cart restocking.",
+        experience: ["Laundry sorting", "Linen carts", "Folding", "Restocking"],
+        id: "helper-laundry",
+        keyword: "laundry",
+        label: "Laundry",
+        medianHourlyWage: 20.47,
+        wageOccupation: "Light duty cleaner in Quebec",
+        wageSource: "Job Bank, updated November 19, 2025"
+      },
+      {
+        description: "Reception support for visitor routing, calls, front-desk notes, and basic admin help.",
+        experience: ["Front desk", "Visitor routing", "Phone support", "Admin notes"],
+        id: "helper-reception",
+        keyword: "reception",
+        label: "Reception",
+        medianHourlyWage: 22,
+        wageOccupation: "Receptionist in Quebec",
+        wageSource: "Job Bank wage reference"
+      },
+      {
+        description: "Security support for controlled access, sign-in monitoring, and site patrol assistance.",
+        experience: ["Access control", "Visitor log", "Site patrol", "Incident notes"],
+        id: "helper-security",
+        keyword: "security",
+        label: "Security",
+        medianHourlyWage: 22,
+        wageOccupation: "Security guard in Quebec",
+        wageSource: "Job Bank wage reference"
       }
     ],
     summary: "General residence support, housekeeping, laundry, and service tasks."
@@ -141,6 +221,46 @@ const workerSearchCapsules: readonly Readonly<{
         id: "maintenance-repairs",
         keyword: "maintenance",
         label: "Repairs",
+        medianHourlyWage: 25,
+        wageOccupation: "Maintenance person - building in Quebec",
+        wageSource: "Job Bank, updated November 19, 2025"
+      },
+      {
+        description: "Electrical maintenance support for lighting, basic troubleshooting, and safe escalation.",
+        experience: ["Lighting", "Electrical troubleshooting", "Breaker awareness", "Escalation notes"],
+        id: "maintenance-electrician",
+        keyword: "electrician",
+        label: "Electrician",
+        medianHourlyWage: 41.3,
+        wageOccupation: "Electrician in Quebec",
+        wageSource: "Job Bank, updated November 19, 2025"
+      },
+      {
+        description: "Plumbing support for leaks, fixtures, drains, and maintenance coordination.",
+        experience: ["Leak checks", "Fixture repair", "Drain support", "Water shutoff awareness"],
+        id: "maintenance-plumber",
+        keyword: "plumber",
+        label: "Plumber",
+        medianHourlyWage: 40,
+        wageOccupation: "Plumber in Quebec",
+        wageSource: "Job Bank, updated November 19, 2025"
+      },
+      {
+        description: "Painting shifts for touch-ups, room refreshes, patch prep, and safe cleanup.",
+        experience: ["Wall prep", "Paint touch-ups", "Room refresh", "Safe cleanup"],
+        id: "maintenance-painter",
+        keyword: "painter",
+        label: "Painter",
+        medianHourlyWage: 34.98,
+        wageOccupation: "Painter in Quebec",
+        wageSource: "Job Bank, updated November 19, 2025"
+      },
+      {
+        description: "Grounds and facility work for exterior checks, simple repairs, and seasonal support.",
+        experience: ["Grounds support", "Exterior checks", "Seasonal cleanup", "Facility notes"],
+        id: "maintenance-grounds",
+        keyword: "grounds",
+        label: "Grounds / facility",
         medianHourlyWage: 25,
         wageOccupation: "Maintenance person - building in Quebec",
         wageSource: "Job Bank, updated November 19, 2025"
@@ -332,6 +452,14 @@ export function AvailableShiftsScreen({
                       ]}
                     >
                       {capsule.summary}
+                    </Text>
+                    <Text
+                      style={[
+                        styles.searchCapsuleCount,
+                        isSelected && styles.searchCapsuleCountActive
+                      ]}
+                    >
+                      {capsule.specialties.length} job types
                     </Text>
                   </Pressable>
                 );
@@ -553,6 +681,19 @@ const styles = StyleSheet.create({
   },
   searchCapsuleSummaryActive: {
     color: colors.surface
+  },
+  searchCapsuleCount: {
+    backgroundColor: colors.cream,
+    borderRadius: radii.pill,
+    color: colors.deepTeal,
+    fontSize: typography.micro,
+    fontWeight: "900",
+    overflow: "hidden",
+    paddingHorizontal: spacing.sm,
+    paddingVertical: spacing.xs
+  },
+  searchCapsuleCountActive: {
+    backgroundColor: colors.surfaceRaised
   },
   experiencePanel: {
     backgroundColor: colors.surface,
