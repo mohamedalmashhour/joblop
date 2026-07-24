@@ -34,6 +34,9 @@ describe("mobile foundation navigation", () => {
       "rwos://worker/onboarding/availability"
     );
     expect(mobileRouteNames.workerOnboardingReview).toBe("rwos://worker/onboarding/review");
+    expect(mobileRouteNames.workerAttendance).toBe(
+      "rwos://worker/assignments/:assignmentId/attendance"
+    );
     expect(mobileRouteNames.filters).toBe("rwos://worker/available/filters");
   });
 });

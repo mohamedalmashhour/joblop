@@ -493,11 +493,13 @@ export function ConfirmationDetailsScreen({
   applicationRepository = mockWorkerApplicationRepository,
   confirmationId,
   onBack,
-  onDone
+  onDone,
+  onOpenAttendance
 }: AppRepositoryProps & {
   confirmationId: string;
   onBack: () => void;
   onDone: () => void;
+  onOpenAttendance?: () => void;
 }) {
   const [summary, setSummary] = useState<WorkerApplicationSummary | null>(null);
   const [loading, setLoading] = useState(true);
@@ -570,6 +572,9 @@ export function ConfirmationDetailsScreen({
                 </View>
               ) : null}
               <Button label="Back to My Shifts" onPress={onDone} variant="secondary" />
+              {summary.confirmation.status === "confirmed" && onOpenAttendance ? (
+                <Button label="Open attendance handoff" onPress={onOpenAttendance} />
+              ) : null}
             </Card>
           </Section>
         </View>

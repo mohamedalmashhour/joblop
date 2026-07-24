@@ -21,6 +21,7 @@ import {
 } from "./src/features/applications";
 import { AvailableShiftsScreen, ShiftDetailsScreen } from "./src/features/shifts";
 import { MockShiftDiscoveryRepository } from "./src/features/shifts/mockShiftDiscoveryRepository";
+import { WorkerAttendanceScreen, type WorkerAttendanceStage } from "./src/features/worker-attendance";
 import { WorkerDashboardHandoffScreen, WorkerOnboardingScreen } from "./src/features/worker-onboarding";
 import { mobileTabs, productName, type MobileTabId } from "./src/navigation/routes";
 import { BodyText, Card, Heading, SmallText } from "./src/ui/primitives";
@@ -38,7 +39,8 @@ type MobileScreen =
   | Readonly<{ name: "worker-qualifications-setup" }>
   | Readonly<{ name: "worker-availability-setup" }>
   | Readonly<{ name: "worker-onboarding-review" }>
-  | Readonly<{ name: "worker-dashboard" }>;
+  | Readonly<{ name: "worker-dashboard" }>
+  | Readonly<{ name: "worker-attendance"; stage: WorkerAttendanceStage }>;
 
 type WorkerGroupId = "kitchen" | "care" | "helper" | "maintenance";
 
@@ -118,6 +120,7 @@ export default function App() {
           confirmationId={screen.confirmationId}
           onBack={() => setScreen({ name: "tab", tabId: "my-shifts" })}
           onDone={() => setScreen({ name: "tab", tabId: "my-shifts" })}
+          onOpenAttendance={() => setScreen({ name: "worker-attendance", stage: "overview" })}
         />
       );
     }
@@ -177,6 +180,17 @@ export default function App() {
         <WorkerDashboardHandoffScreen
           onOpenAvailable={() => setScreen({ name: "tab", tabId: "available" })}
           onOpenProfile={() => setScreen({ name: "tab", tabId: "profile" })}
+        />
+      );
+    }
+
+    if (screen.name === "worker-attendance") {
+      return (
+        <WorkerAttendanceScreen
+          onBack={() => setScreen({ name: "tab", tabId: "my-shifts" })}
+          onOpenTimesheet={() => setScreen({ name: "tab", tabId: "billing" })}
+          onSelectStage={(stage) => setScreen({ name: "worker-attendance", stage })}
+          stage={screen.stage}
         />
       );
     }
