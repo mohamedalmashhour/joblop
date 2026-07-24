@@ -16,6 +16,7 @@ export const mobileRouteNames = {
   workerOnboardingReview: "rwos://worker/onboarding/review",
   workerAttendance: "rwos://worker/assignments/:assignmentId/attendance",
   workerTimesheet: "rwos://worker/assignments/:assignmentId/timesheet",
+  workerEarnings: "rwos://worker/earnings",
   filters: "rwos://worker/available/filters",
   calendar: "rwos://worker/calendar",
   myShifts: "rwos://worker/my-shifts",
@@ -48,7 +49,7 @@ export const mobileTabs = [
     id: "billing",
     label: "Billing",
     routeName: mobileRouteNames.billing,
-    status: "Reserved for G04"
+    status: "Worker earnings and payable status"
   },
   {
     id: "profile",

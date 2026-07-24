@@ -22,6 +22,7 @@ import {
 import { AvailableShiftsScreen, ShiftDetailsScreen } from "./src/features/shifts";
 import { MockShiftDiscoveryRepository } from "./src/features/shifts/mockShiftDiscoveryRepository";
 import { WorkerAttendanceScreen, type WorkerAttendanceStage } from "./src/features/worker-attendance";
+import { WorkerEarningsScreen } from "./src/features/worker-earnings";
 import { WorkerDashboardHandoffScreen, WorkerOnboardingScreen } from "./src/features/worker-onboarding";
 import { WorkerTimesheetScreen, type WorkerTimesheetStage } from "./src/features/worker-timesheets";
 import { mobileTabs, productName, type MobileTabId } from "./src/navigation/routes";
@@ -443,36 +444,7 @@ function PlaceholderScreen({
   }
 
   if (tabId === "billing") {
-    return (
-      <ScrollView style={styles.placeholderScroll}>
-        <View style={styles.screenStack}>
-          <Card>
-            <SmallText>Worker pay only</SmallText>
-            <Heading>Billing & Earnings</Heading>
-            <BodyText>Worker app never shows client billing or platform margin.</BodyText>
-          </Card>
-          <View style={styles.metricGrid}>
-            <View style={styles.metricCard}>
-              <SmallText>This week</SmallText>
-              <Text style={styles.metricValue}>$1,250</Text>
-              <SmallText>Estimated worker earnings</SmallText>
-            </View>
-            <View style={styles.metricCard}>
-              <SmallText>Travel</SmallText>
-              <Text style={styles.metricValue}>$86</Text>
-              <SmallText>Approved allowances</SmallText>
-            </View>
-          </View>
-          {earningsRows.map((row) => (
-            <Card key={row.title}>
-              <Heading>{row.title}</Heading>
-              <BodyText>{row.amount}</BodyText>
-              <SmallText>{row.note}</SmallText>
-            </Card>
-          ))}
-        </View>
-      </ScrollView>
-    );
+    return <WorkerEarningsScreen />;
   }
 
   if (tabId === "calendar") {
@@ -785,12 +757,6 @@ const workerRevenueCalendar = [
   { day: "Tue", value: "$360", detail: "Expected", tone: "money" },
   { day: "Wed", value: "$0", detail: "Open" },
   { day: "Payout", value: "$1,250", detail: "Next cycle", tone: "money" }
-] as const;
-
-const earningsRows = [
-  { title: "Kitchen Staff - Sunrise", amount: "$240.00", note: "Paid in next worker payout cycle" },
-  { title: "Emergency Chef - Laval", amount: "$360.00", note: "Pending punch out confirmation" },
-  { title: "Travel allowance", amount: "$42.00", note: "Separate from hourly pay" }
 ] as const;
 
 const profileSections = [

@@ -40,6 +40,7 @@ describe("mobile foundation navigation", () => {
     expect(mobileRouteNames.workerTimesheet).toBe(
       "rwos://worker/assignments/:assignmentId/timesheet"
     );
+    expect(mobileRouteNames.workerEarnings).toBe("rwos://worker/earnings");
     expect(mobileRouteNames.filters).toBe("rwos://worker/available/filters");
   });
 });
