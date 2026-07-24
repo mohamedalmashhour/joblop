@@ -9,7 +9,13 @@ export const mobileRouteNames = {
   applicationDetails: "rwos://worker/applications/:applicationId",
   offerDetails: "rwos://worker/offers/:offerId",
   confirmationDetails: "rwos://worker/confirmations/:confirmationId",
+  workerSignup: "rwos://worker/signup",
+  workerProfileSetup: "rwos://worker/onboarding/profile",
+  workerQualificationsSetup: "rwos://worker/onboarding/qualifications",
+  workerAvailabilitySetup: "rwos://worker/onboarding/availability",
+  workerOnboardingReview: "rwos://worker/onboarding/review",
   filters: "rwos://worker/available/filters",
+  calendar: "rwos://worker/calendar",
   myShifts: "rwos://worker/my-shifts",
   billing: "rwos://worker/billing",
   profile: "rwos://worker/profile",
@@ -29,6 +35,12 @@ export const mobileTabs = [
     label: "My Shifts",
     routeName: mobileRouteNames.myShifts,
     status: "G02 applications, offers and confirmations"
+  },
+  {
+    id: "calendar",
+    label: "Calendar",
+    routeName: mobileRouteNames.calendar,
+    status: "Worker calendar and availability"
   },
   {
     id: "billing",

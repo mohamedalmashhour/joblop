@@ -7,6 +7,7 @@ describe("mobile foundation navigation", () => {
       "home",
       "available",
       "my-shifts",
+      "calendar",
       "billing",
       "profile",
       "notifications"
@@ -24,6 +25,15 @@ describe("mobile foundation navigation", () => {
     expect(mobileRouteNames.confirmationDetails).toBe(
       "rwos://worker/confirmations/:confirmationId"
     );
+    expect(mobileRouteNames.workerSignup).toBe("rwos://worker/signup");
+    expect(mobileRouteNames.workerProfileSetup).toBe("rwos://worker/onboarding/profile");
+    expect(mobileRouteNames.workerQualificationsSetup).toBe(
+      "rwos://worker/onboarding/qualifications"
+    );
+    expect(mobileRouteNames.workerAvailabilitySetup).toBe(
+      "rwos://worker/onboarding/availability"
+    );
+    expect(mobileRouteNames.workerOnboardingReview).toBe("rwos://worker/onboarding/review");
     expect(mobileRouteNames.filters).toBe("rwos://worker/available/filters");
   });
 });
