@@ -54,13 +54,6 @@ export const shiftWorkflow = [
     route: "/employer/shifts/ai-suggestions",
     status: "Advisory matching",
     boundary: "AI suggestions are advisory; humans review and assignment workflows remain authoritative."
-  },
-  {
-    page: "045",
-    title: "Applicants",
-    route: "/employer/applicants",
-    status: "Next workflow boundary",
-    boundary: "Applicant review is a separate workflow; this milestone exposes the handoff only."
   }
 ] as const;
 

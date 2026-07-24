@@ -9,7 +9,7 @@ export default function AIWorkerSuggestionsPage() {
       eyebrow="Page 044 - AI Worker Suggestions"
       title="Review advisory worker suggestions without hidden ranking or automatic assignment."
       lede="AI suggestions explain compatibility and missing information. Employers still use human review, Applicants, and assignment workflows for decisions."
-      actions={<a href="/employer/applicants" style={styles.primaryButton}>Applicants next</a>}
+      actions={<a href="/employer/applicants/compare" style={styles.primaryButton}>Compare candidates</a>}
     >
       <section style={styles.section}>
         <div style={styles.sectionHeader}><p style={styles.eyebrowDark}>Suggestion inputs</p><h2 style={styles.sectionTitle}>Inputs must be job-relevant, authorized, and explainable.</h2></div>
@@ -24,6 +24,7 @@ export default function AIWorkerSuggestionsPage() {
           <p style={styles.cardText}>Confidence guidance: review required.</p>
           <p style={styles.cardText}>Missing information: final eligibility and worker response not confirmed.</p>
           <p style={styles.cardText}>Action: shortlist for human review, not assignment.</p>
+          <a href="/employer/applicants/compare" style={{ ...styles.secondaryButton, marginTop: 12 }}>Compare with applicants</a>
         </article>
       </section>
 

@@ -25,8 +25,7 @@ describe("Employer shift management milestone content", () => {
       "/employer/shifts/publish",
       "/employer/shifts/detail",
       "/employer/shifts/published",
-      "/employer/shifts/ai-suggestions",
-      "/employer/applicants"
+      "/employer/shifts/ai-suggestions"
     ]);
   });
 

@@ -1,9 +1,10 @@
 import type { ReactNode } from "react";
+import { assignmentWorkflow } from "./assignmentWorkflowContent";
 import { employerWorkflow } from "./employerJourneyContent";
 import { styles } from "./employerStyles";
 import { shiftWorkflow } from "./shifts/shiftManagementContent";
 
-const employerNavigation = [...employerWorkflow, ...shiftWorkflow] as const;
+const employerNavigation = [...employerWorkflow, ...shiftWorkflow, ...assignmentWorkflow] as const;
 
 export function EmployerShell({
   actions,

@@ -1,37 +1,54 @@
 import { EmployerShell, WorkflowRoutes } from "../EmployerShell";
+import {
+  applicantBoundaries,
+  assignmentDataStates,
+  prohibitedSensitiveApplicantData
+} from "../assignmentWorkflowContent";
 import { styles } from "../employerStyles";
+import { ApplicantReviewPanel } from "./ApplicantReviewPanel";
 
-export default function ApplicantsHandoffPage() {
+export default function ApplicantsPage() {
   return (
     <EmployerShell
       currentRoute="/employer/applicants"
       eyebrow="Page 045 - Applicants"
-      title="Applicant review is the next employer workflow and remains pending implementation."
-      lede="This handoff prevents a dead end after publishing a shift. It does not review applicants, select workers, assign workers, or contact workers."
-      actions={<a href="/employer/shifts/detail" style={styles.secondaryButton}>Back to shift detail</a>}
+      title="Review applicants for a published shift without creating an assignment."
+      lede="Applicants supports human review, filtering, qualification summaries, availability review, and comparison handoff. Assignment happens later."
+      actions={<a href="/employer/applicants/detail" style={styles.primaryButton}>Open applicant detail</a>}
     >
-      <section style={styles.section}>
+      <ApplicantReviewPanel />
+
+      <section style={styles.whiteSection}>
         <div style={styles.sectionHeader}>
-          <p style={styles.eyebrowDark}>Next workflow boundary</p>
-          <h2 style={styles.sectionTitle}>Applicants are not implemented in this shift-creation milestone.</h2>
-          <p style={styles.sectionCopy}>
-            The next milestone will add governed applicant review, AI suggestion handoff, candidate
-            comparison, and manual assignment boundaries.
-          </p>
+          <p style={styles.eyebrowDark}>Applicant boundaries</p>
+          <h2 style={styles.sectionTitle}>Applicant review is not assignment.</h2>
         </div>
         <div style={styles.cardGrid}>
-          {[
-            "Published shift != Applicant approval",
-            "Applicant review != Worker assignment",
-            "AI suggestion != Human selection",
-            "Human selection != Worker acceptance"
-          ].map((boundary) => (
-            <article key={boundary} style={styles.tintedCard}>
+          {applicantBoundaries.map((boundary) => (
+            <article key={boundary} style={styles.card}>
               <p style={styles.cardText}>{boundary}</p>
             </article>
           ))}
         </div>
       </section>
+
+      <section style={styles.section}>
+        <div style={styles.twoColumn}>
+          <article style={styles.tintedCard}>
+            <h3 style={styles.cardTitle}>Hidden sensitive information</h3>
+            <div style={styles.pillGrid}>
+              {prohibitedSensitiveApplicantData.map((item) => <span key={item} style={styles.pill}>{item}</span>)}
+            </div>
+          </article>
+          <article style={styles.tintedCard}>
+            <h3 style={styles.cardTitle}>Integration state</h3>
+            <ol style={styles.stepList}>
+              {assignmentDataStates.map((state) => <li key={state} style={styles.stepItem}>{state}</li>)}
+            </ol>
+          </article>
+        </div>
+      </section>
+
       <WorkflowRoutes currentRoute="/employer/applicants" />
     </EmployerShell>
   );
