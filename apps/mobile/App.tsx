@@ -23,6 +23,7 @@ import { AvailableShiftsScreen, ShiftDetailsScreen } from "./src/features/shifts
 import { MockShiftDiscoveryRepository } from "./src/features/shifts/mockShiftDiscoveryRepository";
 import { WorkerAttendanceScreen, type WorkerAttendanceStage } from "./src/features/worker-attendance";
 import { WorkerDashboardHandoffScreen, WorkerOnboardingScreen } from "./src/features/worker-onboarding";
+import { WorkerTimesheetScreen, type WorkerTimesheetStage } from "./src/features/worker-timesheets";
 import { mobileTabs, productName, type MobileTabId } from "./src/navigation/routes";
 import { BodyText, Card, Heading, SmallText } from "./src/ui/primitives";
 
@@ -40,7 +41,8 @@ type MobileScreen =
   | Readonly<{ name: "worker-availability-setup" }>
   | Readonly<{ name: "worker-onboarding-review" }>
   | Readonly<{ name: "worker-dashboard" }>
-  | Readonly<{ name: "worker-attendance"; stage: WorkerAttendanceStage }>;
+  | Readonly<{ name: "worker-attendance"; stage: WorkerAttendanceStage }>
+  | Readonly<{ name: "worker-timesheet"; stage: WorkerTimesheetStage }>;
 
 type WorkerGroupId = "kitchen" | "care" | "helper" | "maintenance";
 
@@ -188,8 +190,19 @@ export default function App() {
       return (
         <WorkerAttendanceScreen
           onBack={() => setScreen({ name: "tab", tabId: "my-shifts" })}
-          onOpenTimesheet={() => setScreen({ name: "tab", tabId: "billing" })}
+          onOpenTimesheet={() => setScreen({ name: "worker-timesheet", stage: "review" })}
           onSelectStage={(stage) => setScreen({ name: "worker-attendance", stage })}
+          stage={screen.stage}
+        />
+      );
+    }
+
+    if (screen.name === "worker-timesheet") {
+      return (
+        <WorkerTimesheetScreen
+          onBack={() => setScreen({ name: "worker-attendance", stage: "review" })}
+          onOpenEarnings={() => setScreen({ name: "tab", tabId: "billing" })}
+          onSelectStage={(stage) => setScreen({ name: "worker-timesheet", stage })}
           stage={screen.stage}
         />
       );

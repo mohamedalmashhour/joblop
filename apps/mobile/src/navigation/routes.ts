@@ -15,6 +15,7 @@ export const mobileRouteNames = {
   workerAvailabilitySetup: "rwos://worker/onboarding/availability",
   workerOnboardingReview: "rwos://worker/onboarding/review",
   workerAttendance: "rwos://worker/assignments/:assignmentId/attendance",
+  workerTimesheet: "rwos://worker/assignments/:assignmentId/timesheet",
   filters: "rwos://worker/available/filters",
   calendar: "rwos://worker/calendar",
   myShifts: "rwos://worker/my-shifts",
