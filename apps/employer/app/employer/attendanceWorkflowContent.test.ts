@@ -16,8 +16,7 @@ describe("Employer attendance monitoring workflow content", () => {
       "/employer/attendance/clock-in",
       "/employer/attendance/in-progress",
       "/employer/attendance/clock-out",
-      "/employer/attendance/exceptions",
-      "/employer/timesheets"
+      "/employer/attendance/exceptions"
     ]);
   });
 

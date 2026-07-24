@@ -56,13 +56,6 @@ export const attendanceWorkflow = [
     route: "/employer/attendance/exceptions",
     status: "Manual review",
     boundary: "Attendance exception does not automatically mean worker misconduct."
-  },
-  {
-    page: "049",
-    title: "Timesheet Handoff",
-    route: "/employer/timesheets",
-    status: "Next milestone boundary",
-    boundary: "Timesheet review is separate from attendance monitoring."
   }
 ] as const;
 

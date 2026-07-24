@@ -4,8 +4,9 @@ import { attendanceWorkflow } from "./attendanceWorkflowContent";
 import { employerWorkflow } from "./employerJourneyContent";
 import { styles } from "./employerStyles";
 import { shiftWorkflow } from "./shifts/shiftManagementContent";
+import { timesheetWorkflow } from "./timesheetWorkflowContent";
 
-const employerNavigation = [...employerWorkflow, ...shiftWorkflow, ...assignmentWorkflow, ...attendanceWorkflow] as const;
+const employerNavigation = [...employerWorkflow, ...shiftWorkflow, ...assignmentWorkflow, ...attendanceWorkflow, ...timesheetWorkflow] as const;
 
 export function EmployerShell({
   actions,
