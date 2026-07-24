@@ -3,10 +3,11 @@ import { assignmentWorkflow } from "./assignmentWorkflowContent";
 import { attendanceWorkflow } from "./attendanceWorkflowContent";
 import { employerWorkflow } from "./employerJourneyContent";
 import { styles } from "./employerStyles";
+import { invoiceWorkflow } from "./invoiceWorkflowContent";
 import { shiftWorkflow } from "./shifts/shiftManagementContent";
 import { timesheetWorkflow } from "./timesheetWorkflowContent";
 
-const employerNavigation = [...employerWorkflow, ...shiftWorkflow, ...assignmentWorkflow, ...attendanceWorkflow, ...timesheetWorkflow] as const;
+const employerNavigation = [...employerWorkflow, ...shiftWorkflow, ...assignmentWorkflow, ...attendanceWorkflow, ...timesheetWorkflow, ...invoiceWorkflow] as const;
 
 export function EmployerShell({
   actions,
