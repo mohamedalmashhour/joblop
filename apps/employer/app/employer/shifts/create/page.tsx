@@ -1,4 +1,5 @@
 import { EmployerShell, WorkflowRoutes } from "../../EmployerShell";
+import { CreateShiftDraftForm } from "./CreateShiftDraftForm";
 import {
   conflictWarnings,
   qualificationTypes,
@@ -18,21 +19,7 @@ export default function CreateShiftPage() {
       lede="This page owns scheduled terms and staffing requirements only. Publication, assignment, attendance, payroll, invoice, and payment remain separate workflows."
       actions={<a href="/employer/shifts/recurring" style={styles.primaryButton}>Recurring shift</a>}
     >
-      <section style={styles.section}>
-        <div style={styles.sectionHeader}>
-          <p style={styles.eyebrowDark}>Shift terms</p>
-          <h2 style={styles.sectionTitle}>Define the planned need before publication.</h2>
-        </div>
-        <div style={styles.formGrid}>
-          <label style={styles.fieldLabel}>Residence<input placeholder="Select active residence" style={styles.input} /></label>
-          <label style={styles.fieldLabel}>Department<input placeholder="Select operational department" style={styles.input} /></label>
-          <label style={styles.fieldLabel}>Role needed<input placeholder="Kitchen aide, nurse, helper, maintenance" style={styles.input} /></label>
-          <label style={styles.fieldLabel}>Date and time<input placeholder="Scheduled start and end" style={styles.input} /></label>
-          <label style={styles.fieldLabel}>Worker count<input placeholder="Requested quantity" style={styles.input} /></label>
-          <label style={styles.fieldLabel}>Worker-facing rate<input placeholder="Configured rate summary" style={styles.input} /></label>
-        </div>
-        <p style={styles.warning}>This form is a development surface. It does not save, publish, assign, notify, calculate payroll, or create invoices.</p>
-      </section>
+      <CreateShiftDraftForm />
 
       <section style={styles.whiteSection}>
         <div style={styles.sectionHeader}>
@@ -76,4 +63,3 @@ export default function CreateShiftPage() {
     </EmployerShell>
   );
 }
-

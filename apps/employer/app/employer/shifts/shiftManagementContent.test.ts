@@ -21,8 +21,12 @@ describe("Employer shift management milestone content", () => {
       "/employer/shifts/create",
       "/employer/shifts/recurring",
       "/employer/shifts/urgent",
+      "/employer/shifts/review",
+      "/employer/shifts/publish",
+      "/employer/shifts/detail",
       "/employer/shifts/published",
-      "/employer/shifts/ai-suggestions"
+      "/employer/shifts/ai-suggestions",
+      "/employer/applicants"
     ]);
   });
 
@@ -63,4 +67,3 @@ describe("Employer shift management milestone content", () => {
     );
   });
 });
-

@@ -9,7 +9,7 @@ export default function AIWorkerSuggestionsPage() {
       eyebrow="Page 044 - AI Worker Suggestions"
       title="Review advisory worker suggestions without hidden ranking or automatic assignment."
       lede="AI suggestions explain compatibility and missing information. Employers still use human review, Applicants, and assignment workflows for decisions."
-      actions={<span style={styles.disabledAction} aria-disabled="true">Applicants next</span>}
+      actions={<a href="/employer/applicants" style={styles.primaryButton}>Applicants next</a>}
     >
       <section style={styles.section}>
         <div style={styles.sectionHeader}><p style={styles.eyebrowDark}>Suggestion inputs</p><h2 style={styles.sectionTitle}>Inputs must be job-relevant, authorized, and explainable.</h2></div>
@@ -35,4 +35,3 @@ export default function AIWorkerSuggestionsPage() {
     </EmployerShell>
   );
 }
-

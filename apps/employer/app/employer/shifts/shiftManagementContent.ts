@@ -22,6 +22,27 @@ export const shiftWorkflow = [
   },
   {
     page: "041",
+    title: "Shift Review",
+    route: "/employer/shifts/review",
+    status: "Draft review",
+    boundary: "Review validates planned terms only; it does not publish, assign, or notify workers."
+  },
+  {
+    page: "041",
+    title: "Publish Shift",
+    route: "/employer/shifts/publish",
+    status: "Publication request",
+    boundary: "Publication opens staffing activity but does not fill, assign, or start attendance."
+  },
+  {
+    page: "041",
+    title: "Shift Detail",
+    route: "/employer/shifts/detail",
+    status: "Published detail",
+    boundary: "Shift detail summarizes terms and hands off to applicants without approving anyone."
+  },
+  {
+    page: "041",
     title: "Published Shift",
     route: "/employer/shifts/published",
     status: "Published state view",
@@ -33,6 +54,13 @@ export const shiftWorkflow = [
     route: "/employer/shifts/ai-suggestions",
     status: "Advisory matching",
     boundary: "AI suggestions are advisory; humans review and assignment workflows remain authoritative."
+  },
+  {
+    page: "045",
+    title: "Applicants",
+    route: "/employer/applicants",
+    status: "Next workflow boundary",
+    boundary: "Applicant review is a separate workflow; this milestone exposes the handoff only."
   }
 ] as const;
 
