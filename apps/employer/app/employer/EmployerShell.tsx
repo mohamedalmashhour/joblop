@@ -1,6 +1,9 @@
 import type { ReactNode } from "react";
 import { employerWorkflow } from "./employerJourneyContent";
 import { styles } from "./employerStyles";
+import { shiftWorkflow } from "./shifts/shiftManagementContent";
+
+const employerNavigation = [...employerWorkflow, ...shiftWorkflow] as const;
 
 export function EmployerShell({
   actions,
@@ -24,7 +27,7 @@ export function EmployerShell({
           Resident Job
         </a>
         <nav aria-label="Employer navigation" style={styles.nav}>
-          {employerWorkflow.map((step) => (
+          {employerNavigation.map((step) => (
             <a
               key={step.route}
               href={step.route}
@@ -71,7 +74,7 @@ export function WorkflowRoutes({ currentRoute }: { currentRoute: string }) {
         </h2>
       </div>
       <div style={styles.routeGrid}>
-        {employerWorkflow.map((step) => (
+        {employerNavigation.map((step) => (
           <a key={step.route} href={step.route} style={styles.routeCard}>
             <span style={styles.routeStatus}>
               Page {step.page} {step.route === currentRoute ? "Current" : step.status}
@@ -84,4 +87,3 @@ export function WorkflowRoutes({ currentRoute }: { currentRoute: string }) {
     </section>
   );
 }
-
