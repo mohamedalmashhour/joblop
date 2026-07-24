@@ -1,5 +1,12 @@
 import { EmployerShell, WorkflowRoutes } from "../EmployerShell";
-import { dashboardAttention, dashboardBoundaries, dashboardSections } from "../employerJourneyContent";
+import {
+  dashboardAttention,
+  dashboardAvailableOrdersCalendar,
+  dashboardBoundaries,
+  dashboardOrderCalendar,
+  dashboardRevenueCalendar,
+  dashboardSections
+} from "../employerJourneyContent";
 import { styles } from "../employerStyles";
 
 export default function EmployerDashboardPage() {
@@ -51,6 +58,27 @@ export default function EmployerDashboardPage() {
 
       <section style={styles.section}>
         <div style={styles.sectionHeader}>
+          <p style={styles.eyebrowDark}>Employer calendars</p>
+          <h2 style={styles.sectionTitle}>Orders and billing are visible without becoming workflow authority.</h2>
+          <p style={styles.sectionCopy}>
+            These fixture-backed calendars keep available requests, past and future staffing, and
+            revenue timing separate. Estimates route to invoices and payments; they do not confirm
+            final charges.
+          </p>
+        </div>
+        <div style={styles.cardGrid}>
+          <CalendarPanel
+            items={dashboardAvailableOrdersCalendar}
+            title="Available Orders Calendar"
+            tone="urgent"
+          />
+          <CalendarPanel items={dashboardOrderCalendar} title="Past & Future Orders Calendar" />
+          <CalendarPanel items={dashboardRevenueCalendar} title="Revenue Calendar" tone="money" />
+        </div>
+      </section>
+
+      <section style={styles.section}>
+        <div style={styles.sectionHeader}>
           <p style={styles.eyebrowDark}>AI assistant panel</p>
           <h2 style={styles.sectionTitle}>AI may summarize visible dashboard items only.</h2>
         </div>
@@ -65,5 +93,37 @@ export default function EmployerDashboardPage() {
 
       <WorkflowRoutes currentRoute="/employer/dashboard" />
     </EmployerShell>
+  );
+}
+
+function CalendarPanel({
+  items,
+  title,
+  tone = "default"
+}: {
+  items: readonly Readonly<{ day: string; detail: string; state: string; value: string }>[];
+  title: string;
+  tone?: "default" | "money" | "urgent";
+}) {
+  return (
+    <article
+      style={{
+        ...styles.card,
+        ...(tone === "urgent" ? styles.calendarCardUrgent : {}),
+        ...(tone === "money" ? styles.calendarCardMoney : {})
+      }}
+    >
+      <h3 style={styles.cardTitle}>{title}</h3>
+      <div style={styles.calendarGrid}>
+        {items.map((item) => (
+          <div key={`${title}-${item.day}`} style={styles.calendarTile}>
+            <span style={styles.routeStatus}>{item.day}</span>
+            <strong style={styles.calendarMetric}>{item.value}</strong>
+            <p style={styles.cardText}>{item.detail}</p>
+            <span style={styles.calendarState}>{item.state}</span>
+          </div>
+        ))}
+      </div>
+    </article>
   );
 }

@@ -163,6 +163,45 @@ export const styles: Record<string, CSSProperties> = {
     lineHeight: 1.55,
     margin: "8px 0 0"
   },
+  calendarCardMoney: {
+    background: "#f0fff8",
+    borderColor: "#9fd8bc"
+  },
+  calendarCardUrgent: {
+    background: "#fff8d8",
+    borderColor: "#e8d782"
+  },
+  calendarGrid: {
+    display: "grid",
+    gap: 10,
+    gridTemplateColumns: "repeat(auto-fit, minmax(128px, 1fr))",
+    marginTop: 14
+  },
+  calendarMetric: {
+    color: "#071f4d",
+    display: "block",
+    fontSize: 24,
+    fontWeight: 900,
+    marginTop: 4
+  },
+  calendarState: {
+    background: "#ffffff",
+    border: "1px solid #dce8e8",
+    borderRadius: 999,
+    color: "#123b78",
+    display: "inline-flex",
+    fontSize: 12,
+    fontWeight: 900,
+    marginTop: 10,
+    padding: "5px 8px"
+  },
+  calendarTile: {
+    background: "rgba(255,255,255,0.76)",
+    border: "1px solid #dce8e8",
+    borderRadius: 8,
+    minHeight: 142,
+    padding: 12
+  },
   pillGrid: {
     display: "grid",
     gap: 10,
@@ -257,4 +296,3 @@ export const styles: Record<string, CSSProperties> = {
     textDecoration: "none"
   }
 };
-

@@ -5,7 +5,10 @@ import {
   companyBoundaries,
   companyIdentityLayers,
   dashboardAttention,
+  dashboardAvailableOrdersCalendar,
   dashboardBoundaries,
+  dashboardOrderCalendar,
+  dashboardRevenueCalendar,
   departmentBoundaries,
   departmentTypes,
   employerWorkflow,
@@ -50,6 +53,15 @@ describe("Employer journey milestone content", () => {
     expect(dashboardBoundaries.join(" ")).toContain("AI suggestions are advisory");
   });
 
+  it("shows separate employer calendars for available orders, order history, and revenue timing", () => {
+    expect(dashboardAvailableOrdersCalendar.map((item) => item.state)).toContain("In review");
+    expect(dashboardOrderCalendar.map((item) => item.state)).toContain("Action needed");
+    expect(dashboardRevenueCalendar.map((item) => item.state)).toContain("Estimate");
+    expect(dashboardRevenueCalendar.map((item) => item.detail)).toContain(
+      "Generated from approved timesheets"
+    );
+  });
+
   it("keeps department setup configurable without professional authorization claims", () => {
     expect(departmentTypes).toContain("Kitchen");
     expect(departmentTypes).toContain("Maintenance");
@@ -58,4 +70,3 @@ describe("Employer journey milestone content", () => {
     );
   });
 });
-

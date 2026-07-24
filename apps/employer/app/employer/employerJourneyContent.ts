@@ -178,3 +178,83 @@ export const dashboardBoundaries = [
   "AI suggestions are advisory and never approve, assign, reject, edit, bill, or modify compliance."
 ] as const;
 
+export const dashboardAvailableOrdersCalendar = [
+  {
+    day: "Today",
+    value: "4",
+    detail: "Open staffing requests",
+    state: "Requested"
+  },
+  {
+    day: "Urgent",
+    value: "1",
+    detail: "Priority review, not guaranteed coverage",
+    state: "In review"
+  },
+  {
+    day: "Tomorrow",
+    value: "3",
+    detail: "Published fixture shifts",
+    state: "Open"
+  },
+  {
+    day: "This week",
+    value: "8",
+    detail: "Needs employer review",
+    state: "Pending"
+  }
+] as const;
+
+export const dashboardOrderCalendar = [
+  {
+    day: "Past",
+    value: "18",
+    detail: "Completed fixture orders",
+    state: "Completed"
+  },
+  {
+    day: "Today",
+    value: "5",
+    detail: "Confirmed or active",
+    state: "Scheduled"
+  },
+  {
+    day: "Future",
+    value: "11",
+    detail: "Upcoming approved requests",
+    state: "Planned"
+  },
+  {
+    day: "Review",
+    value: "2",
+    detail: "Requires human decision",
+    state: "Action needed"
+  }
+] as const;
+
+export const dashboardRevenueCalendar = [
+  {
+    day: "Estimated",
+    value: "$3.4k",
+    detail: "Before final attendance review",
+    state: "Estimate"
+  },
+  {
+    day: "Invoice",
+    value: "$2.1k",
+    detail: "Generated from approved timesheets",
+    state: "Draft"
+  },
+  {
+    day: "Due",
+    value: "$1.8k",
+    detail: "Employer payment workflow",
+    state: "Pending"
+  },
+  {
+    day: "Paid",
+    value: "$6.2k",
+    detail: "Settled fixture history",
+    state: "Settled"
+  }
+] as const;

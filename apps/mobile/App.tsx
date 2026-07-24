@@ -336,6 +336,18 @@ function PlaceholderScreen({
   const title = tab?.label ?? "Route";
   const group = workerGroups.find((item) => item.id === selectedWorkerGroup) ?? workerGroups[0]!;
   const groupOffers = workerGroupOffers.filter((offer) => offer.groupId === selectedWorkerGroup);
+  const [rateAdjustments, setRateAdjustments] = useState<Record<string, number>>({});
+  const adjustedRatePreferences = workerRatePreferenceRules.map((item) => ({
+    ...item,
+    adjustedRate: item.baseRate + (rateAdjustments[item.id] ?? 0)
+  }));
+  const updateRateAdjustment = (preferenceId: string, delta: number) => {
+    setRateAdjustments((current) => {
+      const existing = current[preferenceId] ?? 0;
+      const next = Math.max(-6, Math.min(18, existing + delta));
+      return { ...current, [preferenceId]: next };
+    });
+  };
 
   if (tabId === "home") {
     return (
@@ -524,6 +536,10 @@ function PlaceholderScreen({
           </Card>
           <CalendarBoard title="Available Orders Calendar" items={workerAvailableOrders} />
           <CalendarBoard title="Past & Future Orders Calendar" items={workerOrderHistory} />
+          <AdjustableRatePreferences
+            items={adjustedRatePreferences}
+            onAdjust={updateRateAdjustment}
+          />
           <CalendarBoard title="Revenue Calendar" items={workerRevenueCalendar} />
         </View>
       </ScrollView>
@@ -629,6 +645,61 @@ function CalendarBoard({
           </View>
         ))}
       </View>
+    </Card>
+  );
+}
+
+function AdjustableRatePreferences({
+  items,
+  onAdjust
+}: {
+  items: readonly Readonly<{
+    adjustedRate: number;
+    baseRate: number;
+    id: string;
+    need: string;
+    note: string;
+    title: string;
+  }>[];
+  onAdjust: (preferenceId: string, delta: number) => void;
+}) {
+  return (
+    <Card>
+      <SmallText>Worker controlled preferences</SmallText>
+      <Heading>Variable Rate Preferences</Heading>
+      <BodyText>
+        Adjust these preferences to reflect your availability needs. They influence matching only;
+        they are not guaranteed earnings, payroll, or final payment.
+      </BodyText>
+      {items.map((item) => (
+        <View key={item.id} style={styles.ratePreferenceRow}>
+          <View style={styles.timelineBody}>
+            <Text style={styles.timelineTitle}>{item.title}</Text>
+            <SmallText>{item.need}</SmallText>
+            <SmallText>{item.note}</SmallText>
+            <SmallText>Base preference: ${item.baseRate}/hr</SmallText>
+          </View>
+          <View style={styles.rateControl}>
+            <Pressable
+              accessibilityLabel={`Decrease ${item.title} preference`}
+              accessibilityRole="button"
+              onPress={() => onAdjust(item.id, -2)}
+              style={styles.rateButton}
+            >
+              <Text style={styles.rateButtonText}>-</Text>
+            </Pressable>
+            <Text style={styles.rateValue}>${item.adjustedRate}/hr</Text>
+            <Pressable
+              accessibilityLabel={`Increase ${item.title} preference`}
+              accessibilityRole="button"
+              onPress={() => onAdjust(item.id, 2)}
+              style={styles.rateButton}
+            >
+              <Text style={styles.rateButtonText}>+</Text>
+            </Pressable>
+          </View>
+        </View>
+      ))}
     </Card>
   );
 }
@@ -786,6 +857,37 @@ const workerRevenueCalendar = [
   { day: "Tue", value: "$360", detail: "Expected", tone: "money" },
   { day: "Wed", value: "$0", detail: "Open" },
   { day: "Payout", value: "$1,250", detail: "Next cycle", tone: "money" }
+] as const;
+
+const workerRatePreferenceRules = [
+  {
+    baseRate: 28,
+    id: "standard",
+    need: "Regular accepted shifts",
+    note: "Used as a worker preference signal, not a guaranteed offer.",
+    title: "Standard day"
+  },
+  {
+    baseRate: 34,
+    id: "urgent",
+    need: "Short-notice or urgent availability",
+    note: "Urgency may influence recommendations only.",
+    title: "Urgent coverage"
+  },
+  {
+    baseRate: 32,
+    id: "weekend",
+    need: "Weekend and evening availability",
+    note: "Final compensation still depends on approved shift terms.",
+    title: "Weekend / evening"
+  },
+  {
+    baseRate: 30,
+    id: "travel",
+    need: "Longer travel or distant residence",
+    note: "Travel allowance and reimbursement remain separate governed items.",
+    title: "Travel-sensitive"
+  }
 ] as const;
 
 const profileSections = [
@@ -1180,6 +1282,44 @@ const styles = StyleSheet.create({
     color: colors.deepTeal,
     fontSize: 24,
     fontWeight: "900"
+  },
+  rateButton: {
+    alignItems: "center",
+    backgroundColor: colors.deepTeal,
+    borderRadius: radii.sm,
+    justifyContent: "center",
+    minHeight: touch.minimumTarget,
+    minWidth: touch.minimumTarget
+  },
+  rateButtonText: {
+    color: colors.surfaceRaised,
+    fontSize: typography.title,
+    fontWeight: "900"
+  },
+  rateControl: {
+    alignItems: "center",
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: spacing.xs,
+    justifyContent: "flex-end",
+    minWidth: 150
+  },
+  ratePreferenceRow: {
+    alignItems: "center",
+    borderBottomColor: colors.border,
+    borderBottomWidth: 1,
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: spacing.md,
+    justifyContent: "space-between",
+    paddingVertical: spacing.md
+  },
+  rateValue: {
+    color: colors.deepTeal,
+    fontSize: typography.body,
+    fontWeight: "900",
+    minWidth: 68,
+    textAlign: "center"
   }
 });
 
