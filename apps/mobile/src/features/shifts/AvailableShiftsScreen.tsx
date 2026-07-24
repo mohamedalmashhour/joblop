@@ -27,6 +27,12 @@ import type { ShiftDiscoveryState } from "./repository";
 import { getShiftDiscoveryState } from "./stateModel";
 import { ShiftCard } from "./ShiftCard";
 
+type WorkerLearningCapsule = {
+  experience: string;
+  groupLabel: string;
+  title: string;
+};
+
 const urgencies: readonly ShiftUrgency[] = ["normal", "urgent", "immediate"];
 const times: readonly TimeOfDay[] = ["morning", "afternoon", "evening", "night"];
 const quebecMinimumWage = {
@@ -297,6 +303,9 @@ export function AvailableShiftsScreen({
   const [state, setState] = useState<ShiftDiscoveryState>(initialState ?? { status: "loading" });
   const [refreshing, setRefreshing] = useState(false);
   const [minimumRate, setMinimumRate] = useState("");
+  const [workerLearningCapsules, setWorkerLearningCapsules] = useState<WorkerLearningCapsule[]>([]);
+  const [workerLearningExperience, setWorkerLearningExperience] = useState("");
+  const [workerLearningTitle, setWorkerLearningTitle] = useState("");
 
   const activeFilterCount = useMemo(() => countActiveFilters(filters), [filters]);
   const selectedCapsule =
@@ -369,6 +378,24 @@ export function AvailableShiftsScreen({
 
     setMinimumRate(String(suggestedRate));
     updateFilter(suggestedFilters);
+  };
+
+  const saveWorkerLearningCapsule = () => {
+    const title = workerLearningTitle.trim();
+    if (!title) return;
+
+    setWorkerLearningCapsules((current) => [
+      ...current,
+      {
+        experience:
+          workerLearningExperience.trim() ||
+          "Worker-described experience pending verification and profile review.",
+        groupLabel: selectedCapsule.label,
+        title
+      }
+    ]);
+    setWorkerLearningTitle("");
+    setWorkerLearningExperience("");
   };
 
   const resetSearchWithinActiveCapsule = () => {
@@ -534,6 +561,40 @@ export function AvailableShiftsScreen({
                 Wage guidance is informational. Final shift compensation depends on approved shift
                 terms and governed employer/worker workflows.
               </SmallText>
+            </View>
+            <View style={styles.learningPanel}>
+              <SmallText>Worker learning capsule</SmallText>
+              <Heading>Add experience AI should consider later</Heading>
+              <BodyText>
+                Save experience that is missing from the capsule list. This is local learning input
+                only; it does not verify credentials, update the profile, or train production AI.
+              </BodyText>
+              <Input
+                label="Experience capsule"
+                onChangeText={setWorkerLearningTitle}
+                placeholder="Example: pastry, HVAC, dementia support"
+                value={workerLearningTitle}
+              />
+              <Input
+                label="Experience details"
+                onChangeText={setWorkerLearningExperience}
+                placeholder="Tools, years, setting, language, supervisor context"
+                value={workerLearningExperience}
+              />
+              <Button
+                label="Save worker capsule locally"
+                onPress={saveWorkerLearningCapsule}
+                variant={workerLearningTitle.trim() ? "secondary" : "primary"}
+              />
+              <View style={styles.experienceList}>
+                {workerLearningCapsules.map((capsule) => (
+                  <View key={`${capsule.groupLabel}-${capsule.title}`} style={styles.learningCard}>
+                    <Text style={styles.learningTitle}>{capsule.title}</Text>
+                    <SmallText>{capsule.groupLabel}</SmallText>
+                    <SmallText>{capsule.experience}</SmallText>
+                  </View>
+                ))}
+              </View>
             </View>
             <Input
               label="Keyword"
@@ -767,5 +828,27 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     gap: spacing.xs,
     padding: spacing.sm
+  },
+  learningPanel: {
+    backgroundColor: colors.cream,
+    borderColor: colors.warning,
+    borderRadius: radii.md,
+    borderWidth: 1,
+    gap: spacing.sm,
+    padding: spacing.md
+  },
+  learningCard: {
+    backgroundColor: colors.surface,
+    borderColor: colors.border,
+    borderRadius: radii.md,
+    borderWidth: 1,
+    gap: spacing.xs,
+    minWidth: 160,
+    padding: spacing.sm
+  },
+  learningTitle: {
+    color: colors.deepTeal,
+    fontSize: typography.small,
+    fontWeight: "900"
   }
 });
