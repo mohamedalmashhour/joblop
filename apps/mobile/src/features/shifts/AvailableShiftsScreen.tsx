@@ -43,6 +43,7 @@ const quebecMinimumWage = {
 
 const workerSearchCapsules: readonly Readonly<{
   category: ShiftCategory;
+  code: string;
   label: string;
   specialties: readonly Readonly<{
     description: string;
@@ -58,6 +59,7 @@ const workerSearchCapsules: readonly Readonly<{
 }>[] = [
   {
     category: "kitchen",
+    code: "K",
     label: "Kitchen",
     specialties: [
       {
@@ -115,6 +117,7 @@ const workerSearchCapsules: readonly Readonly<{
   },
   {
     category: "care",
+    code: "C",
     label: "Care / Nurse",
     specialties: [
       {
@@ -162,6 +165,7 @@ const workerSearchCapsules: readonly Readonly<{
   },
   {
     category: "housekeeping",
+    code: "H",
     label: "Helper",
     specialties: [
       {
@@ -219,6 +223,7 @@ const workerSearchCapsules: readonly Readonly<{
   },
   {
     category: "maintenance",
+    code: "M",
     label: "Maintenance",
     specialties: [
       {
@@ -441,6 +446,31 @@ export function AvailableShiftsScreen({
             />
           </View>
 
+          <View style={styles.searchHero}>
+            <View style={styles.heroCopy}>
+              <SmallText>Worker job search</SmallText>
+              <Text style={styles.heroTitle}>Find the right work capsule first.</Text>
+              <Text style={styles.heroBody}>
+                Choose a group, narrow to a specialty, review experience, then apply safe AI
+                guidance only when it helps.
+              </Text>
+            </View>
+            <View style={styles.heroFocusCard}>
+              <Text style={styles.heroFocusCode}>{selectedCapsule.code}</Text>
+              <Text style={styles.heroFocusTitle}>{selectedSpecialty.label}</Text>
+              <SmallText>{selectedCapsule.label}</SmallText>
+            </View>
+          </View>
+
+          <View style={styles.searchFlow}>
+            {["Group", "Specialty", "Experience", "AI filter"].map((step, index) => (
+              <View key={step} style={styles.flowStep}>
+                <Text style={styles.flowNumber}>{index + 1}</Text>
+                <Text style={styles.flowLabel}>{step}</Text>
+              </View>
+            ))}
+          </View>
+
           <Section title="Search and filters">
             <View style={styles.capsuleHeader}>
               <View style={styles.capsuleTitleColumn}>
@@ -464,6 +494,14 @@ export function AvailableShiftsScreen({
                     onPress={() => selectCapsule(capsule)}
                     style={[styles.searchCapsule, isSelected && styles.searchCapsuleActive]}
                   >
+                    <Text
+                      style={[
+                        styles.searchCapsuleCode,
+                        isSelected && styles.searchCapsuleCodeActive
+                      ]}
+                    >
+                      {capsule.code}
+                    </Text>
                     <Text
                       style={[
                         styles.searchCapsuleTitle,
@@ -522,6 +560,22 @@ export function AvailableShiftsScreen({
             <View style={styles.experiencePanel}>
               <SmallText>Active job search: {selectedCapsule.label}</SmallText>
               <BodyText>{selectedSpecialty.description}</BodyText>
+              <View style={styles.selectedSummaryGrid}>
+                <View style={styles.selectedSummaryItem}>
+                  <SmallText>Specialty</SmallText>
+                  <Text style={styles.selectedSummaryValue}>{selectedSpecialty.label}</Text>
+                </View>
+                <View style={styles.selectedSummaryItem}>
+                  <SmallText>Keyword</SmallText>
+                  <Text style={styles.selectedSummaryValue}>{selectedSpecialty.keyword}</Text>
+                </View>
+                <View style={styles.selectedSummaryItem}>
+                  <SmallText>Median</SmallText>
+                  <Text style={styles.selectedSummaryValue}>
+                    ${selectedSpecialty.medianHourlyWage.toFixed(2)}/hr
+                  </Text>
+                </View>
+              </View>
               <SmallText>Experience listed for {selectedSpecialty.label}</SmallText>
               <View style={styles.experienceList}>
                 {selectedSpecialty.experience.map((item) => (
@@ -691,6 +745,83 @@ const styles = StyleSheet.create({
     gap: spacing.md,
     justifyContent: "space-between"
   },
+  searchHero: {
+    backgroundColor: colors.deepTeal,
+    borderRadius: radii.lg,
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: spacing.md,
+    justifyContent: "space-between",
+    padding: spacing.lg
+  },
+  heroCopy: {
+    flex: 1,
+    gap: spacing.sm,
+    minWidth: 220
+  },
+  heroTitle: {
+    color: colors.cream,
+    fontSize: typography.title,
+    fontWeight: "900",
+    lineHeight: 32
+  },
+  heroBody: {
+    color: colors.surface,
+    fontSize: typography.body,
+    lineHeight: 22
+  },
+  heroFocusCard: {
+    alignItems: "center",
+    backgroundColor: colors.surfaceRaised,
+    borderRadius: radii.md,
+    gap: spacing.xs,
+    justifyContent: "center",
+    minHeight: 136,
+    minWidth: 132,
+    padding: spacing.md
+  },
+  heroFocusCode: {
+    color: colors.deepTeal,
+    fontSize: 42,
+    fontWeight: "900"
+  },
+  heroFocusTitle: {
+    color: colors.text,
+    fontSize: typography.body,
+    fontWeight: "900",
+    textAlign: "center"
+  },
+  searchFlow: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: spacing.sm
+  },
+  flowStep: {
+    alignItems: "center",
+    backgroundColor: colors.surfaceRaised,
+    borderColor: colors.border,
+    borderRadius: radii.pill,
+    borderWidth: 1,
+    flexDirection: "row",
+    gap: spacing.xs,
+    minHeight: touch.minimumTarget,
+    paddingHorizontal: spacing.md
+  },
+  flowNumber: {
+    backgroundColor: colors.deepTeal,
+    borderRadius: radii.pill,
+    color: colors.cream,
+    fontSize: typography.micro,
+    fontWeight: "900",
+    overflow: "hidden",
+    paddingHorizontal: spacing.sm,
+    paddingVertical: spacing.xs
+  },
+  flowLabel: {
+    color: colors.deepTeal,
+    fontSize: typography.small,
+    fontWeight: "900"
+  },
   filterRow: {
     flexDirection: "row",
     flexWrap: "wrap",
@@ -726,6 +857,21 @@ const styles = StyleSheet.create({
   searchCapsuleActive: {
     backgroundColor: colors.deepTeal,
     borderColor: colors.deepTeal
+  },
+  searchCapsuleCode: {
+    alignSelf: "flex-start",
+    backgroundColor: colors.deepTeal,
+    borderRadius: radii.pill,
+    color: colors.cream,
+    fontSize: typography.small,
+    fontWeight: "900",
+    overflow: "hidden",
+    paddingHorizontal: spacing.sm,
+    paddingVertical: spacing.xs
+  },
+  searchCapsuleCodeActive: {
+    backgroundColor: colors.surfaceRaised,
+    color: colors.deepTeal
   },
   searchCapsuleTitle: {
     color: colors.deepTeal,
@@ -778,6 +924,26 @@ const styles = StyleSheet.create({
     overflow: "hidden",
     paddingHorizontal: spacing.sm,
     paddingVertical: spacing.xs
+  },
+  selectedSummaryGrid: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: spacing.sm
+  },
+  selectedSummaryItem: {
+    backgroundColor: colors.surfaceRaised,
+    borderColor: colors.border,
+    borderRadius: radii.md,
+    borderWidth: 1,
+    flexGrow: 1,
+    minWidth: 120,
+    padding: spacing.sm
+  },
+  selectedSummaryValue: {
+    color: colors.deepTeal,
+    fontSize: typography.small,
+    fontWeight: "900",
+    marginTop: spacing.xs
   },
   specialtyPanel: {
     backgroundColor: colors.surfaceRaised,
