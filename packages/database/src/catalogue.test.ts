@@ -32,6 +32,9 @@ describe("Phase 01 development catalogue", () => {
 
   it("declares only approved Phase 01 permissions", () => {
     expect(phase01PermissionKeys).toContain("job_request.approve_for_dispatch");
+    expect(phase01PermissionKeys).toContain("dispatch.prepare_offer");
+    expect(phase01PermissionKeys).toContain("worker_offer.create");
+    expect(phase01PermissionKeys).toContain("worker_offer.respond");
     expect(phase01PermissionKeys).toContain("audit.read");
     expect(phase01PermissionKeys).toContain("job_request.admin_review");
     expect(phase01PermissionKeys).not.toContain("job_request.admin_read");
@@ -39,15 +42,24 @@ describe("Phase 01 development catalogue", () => {
     expect(phase01PermissionKeys).not.toContain("payment.execute");
   });
 
-  it("declares explicit role-permission mappings without activating dispatcher", () => {
+  it("declares explicit role-permission mappings for dispatch and worker offer boundaries", () => {
     const platformAdmin = phase01RolePermissionMappings.find(
       (mapping) => mapping.accessRoleKey === "PLATFORM_ADMINISTRATOR"
     );
-    const dispatcher = phase01RolePermissionMappings.find((mapping) => mapping.accessRoleKey === "DISPATCHER");
+    const dispatcher = phase01RolePermissionMappings.find(
+      (mapping) => mapping.accessRoleKey === "DISPATCHER"
+    );
+    const worker = phase01RolePermissionMappings.find(
+      (mapping) => mapping.accessRoleKey === "WORKER_ACCESS"
+    );
 
     expect(platformAdmin?.permissionKeys).toContain("platform.supervise");
     expect(platformAdmin?.permissionKeys).toContain("job_request.approve_for_dispatch");
-    expect(dispatcher?.permissionKeys).toEqual([]);
+    expect(platformAdmin?.permissionKeys).toContain("worker_offer.approve");
+    expect(dispatcher?.permissionKeys).toContain("dispatch.prepare_offer");
+    expect(dispatcher?.permissionKeys).toContain("worker_offer.send");
+    expect(dispatcher?.permissionKeys).not.toContain("worker_offer.supervise");
+    expect(worker?.permissionKeys).toEqual(["worker_offer.respond"]);
   });
 
   it("keeps catalogue keys unique and deterministic", () => {
@@ -132,7 +144,10 @@ describe("Phase 01 development catalogue", () => {
       "facility_support",
       "emergency_maintenance"
     ]);
-    expect(client.roleDefinitionList().find((roleDefinition) => roleDefinition.key === "chef")?.workGroupId).toBe("work-group-1");
+    expect(
+      client.roleDefinitionList().find((roleDefinition) => roleDefinition.key === "chef")
+        ?.workGroupId
+    ).toBe("work-group-1");
   });
 
   it("preserves owner-edited RoleDefinition presentation, inactive lifecycle, and WorkGroup relationship during seed", async () => {
@@ -163,7 +178,9 @@ describe("Phase 01 development catalogue", () => {
 
     await seedDevelopmentCatalogue(client as never);
 
-    expect(client.roleDefinitionList().find((roleDefinition) => roleDefinition.key === "chef")).toMatchObject({
+    expect(
+      client.roleDefinitionList().find((roleDefinition) => roleDefinition.key === "chef")
+    ).toMatchObject({
       workGroupId: "legacy-work-group",
       displayLabel: "Owner Edited Chef",
       displayOrder: 99,
@@ -208,7 +225,8 @@ class FakeCatalogueClient {
   private rolePermissions = new Set<string>();
 
   workGroup = {
-    findUnique: async (input: { where: { key: string } }) => this.workGroups.find((workGroup) => workGroup.key === input.where.key) ?? null,
+    findUnique: async (input: { where: { key: string } }) =>
+      this.workGroups.find((workGroup) => workGroup.key === input.where.key) ?? null,
     create: async (input: { data: Omit<FakeWorkGroup, "id"> }) => {
       const workGroup = {
         id: `work-group-${this.workGroups.length + 1}`,
@@ -223,7 +241,8 @@ class FakeCatalogueClient {
   };
 
   roleDefinition = {
-    findUnique: async (input: { where: { key: string } }) => this.roleDefinitions.get(input.where.key) ?? null,
+    findUnique: async (input: { where: { key: string } }) =>
+      this.roleDefinitions.get(input.where.key) ?? null,
     create: async (input: {
       data: {
         key: string;
@@ -299,7 +318,12 @@ class FakeCatalogueClient {
 
   accessRolePermission = {
     upsert: async (input: {
-      where: { accessRoleDefinitionId_permissionDefinitionId: { accessRoleDefinitionId: string; permissionDefinitionId: string } };
+      where: {
+        accessRoleDefinitionId_permissionDefinitionId: {
+          accessRoleDefinitionId: string;
+          permissionDefinitionId: string;
+        };
+      };
       create: { accessRoleDefinitionId: string; permissionDefinitionId: string };
     }) => {
       const key = `${input.where.accessRoleDefinitionId_permissionDefinitionId.accessRoleDefinitionId}:${input.where.accessRoleDefinitionId_permissionDefinitionId.permissionDefinitionId}`;

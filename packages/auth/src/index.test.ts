@@ -16,6 +16,7 @@ import {
   createOrganizationMembershipService,
   createResidenceService,
   createRoleDefinitionService,
+  createWorkerOfferService,
   createWorkGroupService,
   hashPassword,
   hashSessionToken,
@@ -43,11 +44,17 @@ import type {
   StoredDepartment,
   StoredDispatchCandidate,
   StoredDispatchReview,
+  StoredWorkerIdentity,
+  StoredWorkerOffer,
+  StoredWorkerOfferDeliveryAttempt,
+  StoredWorkerOfferResponse,
+  StoredWorkerOfferTermsVersion,
   StoredRoleDefinition,
   StoredWorkGroup,
   RoleDefinitionRepository,
   JobRequestRepository,
   UpdateSessionInput,
+  WorkerOfferRepository,
   WorkGroupRepository,
   StoredJobRequest
 } from "./index";
@@ -479,8 +486,16 @@ describe("authorization foundation", () => {
       "dispatch.cancel",
       "dispatch.close",
       "dispatch.prepare_offer",
-      "dispatch.audit_read"
+      "dispatch.audit_read",
+      "worker_offer.create",
+      "worker_offer.read",
+      "worker_offer.approve",
+      "worker_offer.send",
+      "worker_offer.withdraw",
+      "worker_offer.cancel",
+      "worker_offer.audit_read"
     ]);
+    expect(service.rolePermissions("WORKER_ACCESS")).toEqual(["worker_offer.respond"]);
     await expect(
       service.decide({
         session: activeSession(),
@@ -510,6 +525,19 @@ describe("authorization foundation", () => {
         session: activeSession(),
         roles: ["DISPATCHER"],
         permission: "dispatch.supervise",
+        platformContext: { platform: true }
+      })
+    ).resolves.toMatchObject({
+      status: "permission_missing",
+      allow: false,
+      internalReason: "role_lacks_permission"
+    });
+
+    await expect(
+      service.decide({
+        session: activeSession(),
+        roles: ["DISPATCHER"],
+        permission: "worker_offer.supervise",
         platformContext: { platform: true }
       })
     ).resolves.toMatchObject({
@@ -2316,7 +2344,9 @@ describe("dispatch foundation", () => {
 
   it("supports human shortlist and offer-preparation boundary without creating assignments", async () => {
     const { dispatchService, dispatchRepository, approvedJobRequest, adminSession } =
-      await createApprovedDispatchContext({ candidateSource: new FixtureDispatchCandidateSource() });
+      await createApprovedDispatchContext({
+        candidateSource: new FixtureDispatchCandidateSource()
+      });
     const dispatchReview = await dispatchService.createDispatch({
       session: adminSession,
       roles: ["DISPATCHER"],
@@ -2378,7 +2408,9 @@ describe("dispatch foundation", () => {
 
   it("returns employer dispatch status without candidate details", async () => {
     const { dispatchService, approvedJobRequest, adminSession, ownerId, organization } =
-      await createApprovedDispatchContext({ candidateSource: new FixtureDispatchCandidateSource() });
+      await createApprovedDispatchContext({
+        candidateSource: new FixtureDispatchCandidateSource()
+      });
     const dispatchReview = await dispatchService.createDispatch({
       session: adminSession,
       roles: ["DISPATCHER"],
@@ -2421,6 +2453,157 @@ describe("dispatch foundation", () => {
     ).rejects.toMatchObject({
       decision: expect.objectContaining({ status: "permission_denied" })
     });
+  });
+});
+
+describe("worker offer foundation", () => {
+  it("creates offers only from offer-preparation dispatch and enforces remaining-worker capacity", async () => {
+    const { workerOfferService, workerOfferRepository, dispatchReview, adminSession, workerOne } =
+      await createWorkerOfferContext();
+    const offer = await workerOfferService.createOffer({
+      session: adminSession,
+      roles: ["DISPATCHER"],
+      dispatchReviewId: dispatchReview.id,
+      workerIdentityId: workerOne.id,
+      expiresAt: new Date("2026-08-12T10:00:00.000Z"),
+      compensationSummary: "Informational worker-facing summary only."
+    });
+
+    expect(offer.status).toBe("draft");
+    expect(offer.currentTermsVersion).toMatchObject({
+      versionNumber: 1,
+      workerVisibleTitle: "Dispatch Chef Coverage"
+    });
+    expect(JSON.stringify(offer)).not.toContain("bank");
+    expect(JSON.stringify(offer)).not.toContain("payroll");
+    await expect(
+      workerOfferService.createOffer({
+        session: adminSession,
+        roles: ["DISPATCHER"],
+        dispatchReviewId: dispatchReview.id,
+        workerIdentityId: workerOne.id,
+        expiresAt: new Date("2026-08-12T10:00:00.000Z")
+      })
+    ).rejects.toMatchObject({
+      decision: expect.objectContaining({ status: "capacity_exceeded" })
+    });
+    expect(workerOfferRepository.auditActions()).toEqual([
+      "worker_offer.created",
+      "worker_offer.terms_version_created"
+    ]);
+  });
+
+  it("approves, sends, views, and accepts without creating Assignment", async () => {
+    const {
+      workerOfferService,
+      workerOfferRepository,
+      dispatchRepository,
+      dispatchReview,
+      adminSession,
+      workerOne,
+      workerSession
+    } = await createWorkerOfferContext();
+    const draft = await workerOfferService.createOffer({
+      session: adminSession,
+      roles: ["DISPATCHER"],
+      dispatchReviewId: dispatchReview.id,
+      workerIdentityId: workerOne.id,
+      expiresAt: new Date("2026-08-12T10:00:00.000Z")
+    });
+    const approved = await workerOfferService.approve({
+      session: adminSession,
+      roles: ["DISPATCHER"],
+      workerOfferId: draft.id,
+      expectedVersion: draft.versionToken
+    });
+    const sent = await workerOfferService.send({
+      session: adminSession,
+      roles: ["DISPATCHER"],
+      workerOfferId: approved.id,
+      expectedVersion: approved.versionToken
+    });
+    const viewed = await workerOfferService.workerRead({
+      session: workerSession,
+      roles: ["WORKER_ACCESS"],
+      workerOfferId: sent.id
+    });
+    const accepted = await workerOfferService.accept({
+      session: workerSession,
+      roles: ["WORKER_ACCESS"],
+      workerOfferId: viewed.id,
+      expectedVersion: viewed.versionToken,
+      expectedTermsVersionId: viewed.currentTermsVersion!.id
+    });
+
+    expect(approved.status).toBe("approved");
+    expect(sent.status).toBe("sent");
+    expect(viewed.status).toBe("viewed");
+    expect(accepted.status).toBe("accepted");
+    expect(dispatchRepository.createdAssignments).toBe(0);
+    expect(dispatchRepository.createdWorkerOffers).toBe(0);
+    expect(workerOfferRepository.auditActions()).toEqual(
+      expect.arrayContaining([
+        "worker_offer.approved",
+        "worker_offer.sent",
+        "worker_offer.delivery_attempted",
+        "worker_offer.viewed",
+        "worker_offer.accepted"
+      ])
+    );
+  });
+
+  it("rejects worker responses for stale terms, expired offers, and non-owned offers", async () => {
+    const {
+      workerOfferService,
+      workerOfferRepository,
+      dispatchReview,
+      adminSession,
+      workerOne,
+      otherWorkerSession
+    } = await createWorkerOfferContext();
+    const draft = await workerOfferService.createOffer({
+      session: adminSession,
+      roles: ["DISPATCHER"],
+      dispatchReviewId: dispatchReview.id,
+      workerIdentityId: workerOne.id,
+      expiresAt: new Date("2026-08-12T10:00:00.000Z")
+    });
+    const approved = await workerOfferService.approve({
+      session: adminSession,
+      roles: ["DISPATCHER"],
+      workerOfferId: draft.id,
+      expectedVersion: draft.versionToken
+    });
+    const sent = await workerOfferService.send({
+      session: adminSession,
+      roles: ["DISPATCHER"],
+      workerOfferId: approved.id,
+      expectedVersion: approved.versionToken
+    });
+
+    await expect(
+      workerOfferService.accept({
+        session: otherWorkerSession,
+        roles: ["WORKER_ACCESS"],
+        workerOfferId: sent.id,
+        expectedVersion: sent.versionToken,
+        expectedTermsVersionId: sent.currentTermsVersion!.id
+      })
+    ).rejects.toMatchObject({
+      decision: expect.objectContaining({ status: "permission_denied" })
+    });
+    await expect(
+      workerOfferService.accept({
+        session: activeSession({ emailNormalized: "worker-one@example.com" }),
+        roles: ["WORKER_ACCESS"],
+        workerOfferId: sent.id,
+        expectedVersion: sent.versionToken,
+        expectedTermsVersionId: "stale-terms-version"
+      })
+    ).rejects.toMatchObject({
+      decision: expect.objectContaining({ status: "stale_terms" })
+    });
+    expect(workerOfferRepository.auditActions()).toContain("worker_offer.response_rejected");
   });
 });
 
@@ -3498,6 +3681,220 @@ class MemoryDispatchRepository implements DispatchRepository {
   }
 }
 
+class MemoryWorkerOfferRepository implements WorkerOfferRepository {
+  private workerIdentities = new Map<string, StoredWorkerIdentity>();
+  private workerOffers = new Map<string, StoredWorkerOffer>();
+  private termsVersions = new Map<string, StoredWorkerOfferTermsVersion>();
+  private deliveryAttempts = new Map<string, StoredWorkerOfferDeliveryAttempt>();
+  private responses = new Map<string, StoredWorkerOfferResponse>();
+  private auditEvents: Parameters<WorkerOfferRepository["recordWorkerOfferAuditEvent"]>[0][] = [];
+  private nextWorkerIdentity = 1;
+  private nextOffer = 1;
+  private nextTerms = 1;
+  private nextDelivery = 1;
+  private nextResponse = 1;
+
+  auditActions() {
+    return this.auditEvents.map((event) => event.action);
+  }
+
+  async findWorkerIdentityById(workerIdentityId: string) {
+    return this.workerIdentities.get(workerIdentityId) ?? null;
+  }
+
+  async findWorkerIdentityByUserId(userId: string) {
+    return (
+      [...this.workerIdentities.values()].find((identity) => identity.userId === userId) ?? null
+    );
+  }
+
+  async createWorkerIdentity(input: Parameters<WorkerOfferRepository["createWorkerIdentity"]>[0]) {
+    const identity: StoredWorkerIdentity = {
+      id: `worker-identity-${this.nextWorkerIdentity}`,
+      userId: input.userId,
+      displayName: input.displayName ?? null,
+      preferredLanguage: input.preferredLanguage ?? null,
+      status: "active",
+      createdAt: input.now,
+      updatedAt: input.now,
+      version: 0
+    };
+    this.nextWorkerIdentity += 1;
+    this.workerIdentities.set(identity.id, identity);
+    return identity;
+  }
+
+  async createWorkerOffer(input: Parameters<WorkerOfferRepository["createWorkerOffer"]>[0]) {
+    const offer: StoredWorkerOffer = {
+      id: `worker-offer-${this.nextOffer}`,
+      dispatchReviewId: input.dispatchReview.id,
+      jobRequestId: input.jobRequest.id,
+      organizationId: input.dispatchReview.organizationId,
+      residenceId: input.dispatchReview.residenceId,
+      departmentId: input.dispatchReview.departmentId,
+      workerIdentityId: input.workerIdentity.id,
+      currentTermsVersionId: null,
+      status: "draft",
+      expiresAt: input.expiresAt,
+      approvedAt: null,
+      sentAt: null,
+      deliveredAt: null,
+      viewedAt: null,
+      respondedAt: null,
+      withdrawnAt: null,
+      cancelledAt: null,
+      createdByUserId: input.actorUserId,
+      updatedByUserId: null,
+      approvedByUserId: null,
+      sentByUserId: null,
+      withdrawnByUserId: null,
+      cancelledByUserId: null,
+      createdAt: input.now,
+      updatedAt: input.now,
+      version: 0
+    };
+    this.nextOffer += 1;
+    this.workerOffers.set(offer.id, offer);
+
+    const termsVersion: StoredWorkerOfferTermsVersion = {
+      id: `worker-offer-terms-${this.nextTerms}`,
+      workerOfferId: offer.id,
+      versionNumber: 1,
+      workerVisibleTitle: input.workerVisibleTitle,
+      workerVisibleSummary: input.workerVisibleSummary,
+      timezone: input.jobRequest.timezone,
+      startAt: input.jobRequest.startAt,
+      endAt: input.jobRequest.endAt,
+      workGroupId: input.jobRequest.workGroupId,
+      roleDefinitionId: input.jobRequest.roleDefinitionId,
+      compensationSummary: input.compensationSummary,
+      policySummary: input.policySummary,
+      createdByUserId: input.actorUserId,
+      createdAt: input.now
+    };
+    this.nextTerms += 1;
+    this.termsVersions.set(termsVersion.id, termsVersion);
+    offer.currentTermsVersionId = termsVersion.id;
+    offer.updatedByUserId = input.actorUserId;
+    return { offer, termsVersion };
+  }
+
+  async findWorkerOfferById(workerOfferId: string) {
+    return this.workerOffers.get(workerOfferId) ?? null;
+  }
+
+  async findCurrentTermsVersion(workerOfferId: string) {
+    return (
+      [...this.termsVersions.values()]
+        .filter((terms) => terms.workerOfferId === workerOfferId)
+        .sort((left, right) => right.versionNumber - left.versionNumber)[0] ?? null
+    );
+  }
+
+  async listWorkerOffers(input: Parameters<WorkerOfferRepository["listWorkerOffers"]>[0]) {
+    return [...this.workerOffers.values()]
+      .filter(
+        (offer) => !input.dispatchReviewId || offer.dispatchReviewId === input.dispatchReviewId
+      )
+      .filter((offer) => !input.organizationId || offer.organizationId === input.organizationId)
+      .filter(
+        (offer) => !input.workerIdentityId || offer.workerIdentityId === input.workerIdentityId
+      )
+      .filter((offer) => !input.statuses || input.statuses.includes(offer.status))
+      .sort(
+        (left, right) =>
+          right.updatedAt.getTime() - left.updatedAt.getTime() ||
+          right.createdAt.getTime() - left.createdAt.getTime()
+      );
+  }
+
+  async countCapacityOffersForDispatch(dispatchReviewId: string) {
+    return [...this.workerOffers.values()].filter(
+      (offer) =>
+        offer.dispatchReviewId === dispatchReviewId &&
+        ["draft", "approved", "sent", "delivered", "viewed", "accepted"].includes(offer.status)
+    ).length;
+  }
+
+  async updateWorkerOffer(input: Parameters<WorkerOfferRepository["updateWorkerOffer"]>[0]) {
+    const offer = this.workerOffers.get(input.workerOfferId);
+    if (!offer || offer.version !== input.expectedVersion) return null;
+
+    if (input.status !== undefined) offer.status = input.status;
+    if (input.approvedAt !== undefined) {
+      offer.approvedAt = input.approvedAt;
+      offer.approvedByUserId = input.actorUserId;
+    }
+    if (input.sentAt !== undefined) {
+      offer.sentAt = input.sentAt;
+      offer.sentByUserId = input.actorUserId;
+    }
+    if (input.deliveredAt !== undefined) offer.deliveredAt = input.deliveredAt;
+    if (input.viewedAt !== undefined) offer.viewedAt = input.viewedAt;
+    if (input.respondedAt !== undefined) offer.respondedAt = input.respondedAt;
+    if (input.withdrawnAt !== undefined) {
+      offer.withdrawnAt = input.withdrawnAt;
+      offer.withdrawnByUserId = input.actorUserId;
+    }
+    if (input.cancelledAt !== undefined) {
+      offer.cancelledAt = input.cancelledAt;
+      offer.cancelledByUserId = input.actorUserId;
+    }
+    offer.updatedByUserId = input.actorUserId;
+    offer.updatedAt = input.now;
+    offer.version += 1;
+    return offer;
+  }
+
+  async createDeliveryAttempt(
+    input: Parameters<WorkerOfferRepository["createDeliveryAttempt"]>[0]
+  ) {
+    const delivery: StoredWorkerOfferDeliveryAttempt = {
+      id: `worker-offer-delivery-${this.nextDelivery}`,
+      workerOfferId: input.workerOfferId,
+      status: input.status,
+      providerBoundary: input.providerBoundary,
+      reason: input.reason,
+      attemptedAt: input.status === "attempted" ? input.now : null,
+      deliveredAt: input.status === "delivered" ? input.now : null,
+      failedAt: input.status === "failed" ? input.now : null,
+      createdByUserId: input.actorUserId,
+      createdAt: input.now
+    };
+    this.nextDelivery += 1;
+    this.deliveryAttempts.set(delivery.id, delivery);
+    return delivery;
+  }
+
+  async findResponseByOfferId(workerOfferId: string) {
+    return (
+      [...this.responses.values()].find((response) => response.workerOfferId === workerOfferId) ??
+      null
+    );
+  }
+
+  async createResponse(input: Parameters<WorkerOfferRepository["createResponse"]>[0]) {
+    const response: StoredWorkerOfferResponse = {
+      id: `worker-offer-response-${this.nextResponse}`,
+      workerOfferId: input.workerOfferId,
+      workerIdentityId: input.workerIdentityId,
+      termsVersionId: input.termsVersionId,
+      responseType: input.responseType,
+      reason: input.reason,
+      createdAt: input.now
+    };
+    this.nextResponse += 1;
+    this.responses.set(response.id, response);
+    return response;
+  }
+
+  async recordWorkerOfferAuditEvent(
+    input: Parameters<WorkerOfferRepository["recordWorkerOfferAuditEvent"]>[0]
+  ) {
+    this.auditEvents.push(input);
+  }
+}
+
 class FixtureDispatchCandidateSource implements DispatchCandidateSource {
   async searchCandidates(input: Parameters<DispatchCandidateSource["searchCandidates"]>[0]) {
     const candidate = await this.evaluateCandidate({
@@ -3767,6 +4164,107 @@ async function createApprovedDispatchContext(
     ownerId,
     organization
   };
+}
+
+async function createWorkerOfferContext() {
+  const { dispatchService, dispatchRepository, approvedJobRequest, adminSession, organization } =
+    await createApprovedDispatchContext({
+      candidateSource: new FixtureDispatchCandidateSource()
+    });
+  const workerOfferRepository = new MemoryWorkerOfferRepository();
+  const workerOfferService = createWorkerOfferService(
+    workerOfferRepository,
+    dispatchRepository,
+    new MemoryJobRequestRepositoryWithSeed(approvedJobRequest),
+    createAuthorizationService()
+  );
+  const dispatchReview = await dispatchService.createDispatch({
+    session: adminSession,
+    roles: ["DISPATCHER"],
+    jobRequestIdOrNumber: approvedJobRequest.id
+  });
+  const reviewing = await dispatchService.startCandidateReview({
+    session: adminSession,
+    roles: ["DISPATCHER"],
+    dispatchReviewId: dispatchReview.id,
+    expectedVersion: dispatchReview.versionToken
+  });
+  const evaluated = await dispatchService.evaluateCandidate({
+    session: adminSession,
+    roles: ["DISPATCHER"],
+    dispatchReviewId: reviewing.id,
+    candidateSourceReference: "worker-alpha"
+  });
+  if (evaluated.status === "available") {
+    await dispatchService.addCandidateToShortlist({
+      session: adminSession,
+      roles: ["DISPATCHER"],
+      dispatchReviewId: reviewing.id,
+      candidateSourceReference: "worker-alpha"
+    });
+  }
+  const latest = await dispatchService.getDispatch({
+    session: adminSession,
+    roles: ["DISPATCHER"],
+    dispatchReviewId: reviewing.id
+  });
+  const ready = await dispatchService.markShortlistReady({
+    session: adminSession,
+    roles: ["DISPATCHER"],
+    dispatchReviewId: latest.dispatchReview.id,
+    expectedVersion: latest.dispatchReview.versionToken
+  });
+  const offerPreparation = await dispatchService.moveToOfferPreparation({
+    session: adminSession,
+    roles: ["DISPATCHER"],
+    dispatchReviewId: ready.id,
+    expectedVersion: ready.versionToken
+  });
+  const workerOne = await workerOfferService.ensureWorkerIdentity({
+    userId: "00000000-0000-4000-8000-000000000001",
+    displayName: "Worker One",
+    preferredLanguage: "en"
+  });
+  await workerOfferService.ensureWorkerIdentity({
+    userId: "00000000-0000-4000-8000-000000000002",
+    displayName: "Worker Two",
+    preferredLanguage: "en"
+  });
+
+  return {
+    workerOfferService,
+    workerOfferRepository,
+    dispatchRepository,
+    dispatchReview: offerPreparation,
+    adminSession,
+    workerOne,
+    workerSession: activeSession({ emailNormalized: "worker-one@example.com" }),
+    otherWorkerSession: {
+      ...activeSession({ emailNormalized: "worker-two@example.com" }),
+      user: {
+        ...activeSession().user,
+        id: "00000000-0000-4000-8000-000000000002",
+        emailNormalized: "worker-two@example.com"
+      }
+    },
+    organization
+  };
+}
+
+class MemoryJobRequestRepositoryWithSeed extends MemoryJobRequestRepository {
+  constructor(private readonly seededJobRequest: StoredJobRequest) {
+    super();
+  }
+
+  override async findJobRequestById(jobRequestId: string) {
+    return this.seededJobRequest.id === jobRequestId ? this.seededJobRequest : null;
+  }
+
+  override async findJobRequestByNumber(jobRequestNumber: string) {
+    return this.seededJobRequest.jobRequestNumber === jobRequestNumber
+      ? this.seededJobRequest
+      : null;
+  }
 }
 
 function activeSession(

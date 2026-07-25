@@ -34,6 +34,7 @@ import type {
   StoredJobRequest,
   RoleDefinitionRepository,
   UpdateSessionInput,
+  WorkerOfferService,
   WorkGroupRepository
 } from "@rwos/auth";
 import { buildApi } from "./app";
@@ -1175,8 +1176,7 @@ describe("api dispatch foundation", () => {
           return apiDispatchReview();
         }
       },
-      resolveAuthorizationRoles: (userId) =>
-        platformUserIds.has(userId) ? ["DISPATCHER"] : []
+      resolveAuthorizationRoles: (userId) => (platformUserIds.has(userId) ? ["DISPATCHER"] : [])
     });
     const dispatcher = await registerApiUser(app);
     platformUserIds.add(authRepository.lastUserId());
@@ -1246,6 +1246,69 @@ describe("api dispatch foundation", () => {
   });
 });
 
+describe("api worker offer foundation", () => {
+  it("routes platform offer creation and worker response without assignment APIs", async () => {
+    const authRepository = new ApiMemoryAuthenticationRepository();
+    const workerOffer = apiWorkerOffer();
+    const calls: string[] = [];
+    const app = buildApi({
+      authService: createAuthenticationService(authRepository, testAuthOptions()),
+      workerOfferService: {
+        ...createApiUnavailableWorkerOfferService(),
+        async createOffer(input) {
+          calls.push(`create:${input.dispatchReviewId}:${input.workerIdentityId}`);
+          return workerOffer;
+        },
+        async accept(input) {
+          calls.push(`accept:${input.expectedTermsVersionId}`);
+          return { ...workerOffer, status: "accepted", version: 3, versionToken: 3 };
+        }
+      },
+      resolveAuthorizationRoles: async () => ["DISPATCHER", "WORKER_ACCESS"]
+    });
+    const user = await registerApiUser(app);
+    const created = await app.inject({
+      method: "POST",
+      url: "/platform/worker-offers",
+      headers: { authorization: `Bearer ${user.token}` },
+      payload: {
+        dispatchReviewId: "dispatch-api-1",
+        workerIdentityId: "worker-identity-api-1",
+        expiresAt: "2026-08-12T10:00:00.000Z"
+      }
+    });
+    const accepted = await app.inject({
+      method: "POST",
+      url: `/worker/offers/${workerOffer.id}/accept`,
+      headers: { authorization: `Bearer ${user.token}` },
+      payload: {
+        expectedVersion: workerOffer.versionToken,
+        expectedTermsVersionId: workerOffer.currentTermsVersion!.id
+      }
+    });
+    const assignment = await app.inject({
+      method: "POST",
+      url: "/platform/assignments",
+      headers: { authorization: `Bearer ${user.token}` },
+      payload: {}
+    });
+
+    expect(created.statusCode).toBe(201);
+    expect(created.json().workerOffer).toMatchObject({
+      status: "draft",
+      currentTermsVersion: { workerVisibleTitle: "Dinner Chef Coverage" }
+    });
+    expect(accepted.statusCode).toBe(200);
+    expect(accepted.json().workerOffer.status).toBe("accepted");
+    expect(assignment.statusCode).toBe(404);
+    expect(calls).toEqual([
+      "create:dispatch-api-1:worker-identity-api-1",
+      `accept:${workerOffer.currentTermsVersion!.id}`
+    ]);
+    await app.close();
+  });
+});
+
 function createApiUnavailableDispatchService(): DispatchService {
   const unavailable = async () => {
     throw new Error("dispatch service unavailable in this API test");
@@ -1271,6 +1334,27 @@ function createApiUnavailableDispatchService(): DispatchService {
     readAuditSummary: unavailable,
     getEmployerDispatchStatus: unavailable
   } as DispatchService;
+}
+
+function createApiUnavailableWorkerOfferService(): WorkerOfferService {
+  const unavailable = async () => {
+    throw new Error("worker offer service unavailable in this API test");
+  };
+
+  return {
+    ensureWorkerIdentity: unavailable,
+    createOffer: unavailable,
+    listOffers: unavailable,
+    readOffer: unavailable,
+    approve: unavailable,
+    send: unavailable,
+    workerRead: unavailable,
+    accept: unavailable,
+    decline: unavailable,
+    withdraw: unavailable,
+    cancel: unavailable,
+    readAuditSummary: unavailable
+  } as WorkerOfferService;
 }
 
 function apiDispatchReview(): Awaited<ReturnType<DispatchService["createDispatch"]>> {
@@ -1302,6 +1386,55 @@ function apiDispatchReview(): Awaited<ReturnType<DispatchService["createDispatch
     updatedAt: now,
     version: 0,
     versionToken: 0
+  };
+}
+
+function apiWorkerOffer(): Awaited<ReturnType<WorkerOfferService["createOffer"]>> {
+  const now = new Date("2026-07-25T14:00:00.000Z");
+  return {
+    id: "worker-offer-api-1",
+    dispatchReviewId: "dispatch-api-1",
+    jobRequestId: "job-request-api-1",
+    organizationId: "org-api-1",
+    residenceId: "residence-api-1",
+    departmentId: "department-api-1",
+    workerIdentityId: "worker-identity-api-1",
+    currentTermsVersionId: "worker-offer-terms-api-1",
+    status: "draft",
+    expiresAt: new Date("2026-08-12T10:00:00.000Z"),
+    approvedAt: null,
+    sentAt: null,
+    deliveredAt: null,
+    viewedAt: null,
+    respondedAt: null,
+    withdrawnAt: null,
+    cancelledAt: null,
+    createdByUserId: "admin-api-1",
+    updatedByUserId: null,
+    approvedByUserId: null,
+    sentByUserId: null,
+    withdrawnByUserId: null,
+    cancelledByUserId: null,
+    createdAt: now,
+    updatedAt: now,
+    version: 2,
+    currentTermsVersion: {
+      id: "worker-offer-terms-api-1",
+      workerOfferId: "worker-offer-api-1",
+      versionNumber: 1,
+      workerVisibleTitle: "Dinner Chef Coverage",
+      workerVisibleSummary: "Worker-visible fixture summary.",
+      timezone: "America/Toronto",
+      startAt: new Date("2026-08-12T12:00:00.000Z"),
+      endAt: new Date("2026-08-12T20:00:00.000Z"),
+      workGroupId: "work-group-kitchen",
+      roleDefinitionId: "role-chef",
+      compensationSummary: "Informational only.",
+      policySummary: "No Assignment created.",
+      createdByUserId: "admin-api-1",
+      createdAt: now
+    },
+    versionToken: 2
   };
 }
 
