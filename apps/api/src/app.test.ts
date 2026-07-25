@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   createAuthorizationService,
   createAuthenticationService,
+  createEmployerOrganizationService,
   createOrganizationMembershipService
 } from "@rwos/auth";
 import type {
@@ -9,9 +10,11 @@ import type {
   AuthenticationRepository,
   CreateLocalUserInput,
   CreateSessionInput,
+  EmployerOrganizationRepository,
   InviteMembershipInput,
   OrganizationMembershipRepository,
   RecordAuthenticationAuditEventInput,
+  StoredEmployerOrganization,
   StoredOrganizationMembership,
   StoredAuthenticationSession,
   StoredAuthenticationUser,
@@ -333,6 +336,189 @@ describe("api organization membership foundation", () => {
   });
 });
 
+describe("api employer organization foundation", () => {
+  it("creates an employer organization with owner membership context", async () => {
+    const authRepository = new ApiMemoryAuthenticationRepository();
+    const membershipRepository = new ApiMemoryOrganizationMembershipRepository();
+    const membershipService = createOrganizationMembershipService(membershipRepository);
+    const organizationRepository = new ApiMemoryEmployerOrganizationRepository(membershipRepository);
+    const organizationService = createEmployerOrganizationService(
+      organizationRepository,
+      membershipService,
+      createAuthorizationService()
+    );
+    const app = buildApi({
+      authService: createAuthenticationService(authRepository, testAuthOptions()),
+      membershipService,
+      organizationService
+    });
+    const registration = await registerApiUser(app);
+
+    const created = await app.inject({
+      method: "POST",
+      url: "/organizations",
+      headers: { authorization: `Bearer ${registration.token}` },
+      payload: {
+        legalName: "Sunrise Residence Group",
+        displayName: "Sunrise Residence"
+      }
+    });
+
+    expect(created.statusCode).toBe(201);
+    expect(created.json()).toMatchObject({
+      organization: {
+        legalName: "Sunrise Residence Group",
+        displayName: "Sunrise Residence",
+        status: "active"
+      },
+      membership: {
+        status: "active",
+        roleKeys: ["ORGANIZATION_OWNER"]
+      },
+      organizationContext: {
+        roles: ["ORGANIZATION_OWNER"]
+      }
+    });
+
+    await app.close();
+  });
+
+  it("reads, updates, and reports status only within explicit organization context", async () => {
+    const authRepository = new ApiMemoryAuthenticationRepository();
+    const membershipRepository = new ApiMemoryOrganizationMembershipRepository();
+    const membershipService = createOrganizationMembershipService(membershipRepository);
+    const organizationRepository = new ApiMemoryEmployerOrganizationRepository(membershipRepository);
+    const organizationService = createEmployerOrganizationService(
+      organizationRepository,
+      membershipService,
+      createAuthorizationService()
+    );
+    const app = buildApi({
+      authService: createAuthenticationService(authRepository, testAuthOptions()),
+      membershipService,
+      organizationService
+    });
+    const registration = await registerApiUser(app);
+    const created = await app.inject({
+      method: "POST",
+      url: "/organizations",
+      headers: { authorization: `Bearer ${registration.token}` },
+      payload: {
+        legalName: "Tenant API",
+        displayName: "Tenant API"
+      }
+    });
+    const organization = created.json().organization;
+
+    const current = await app.inject({
+      method: "GET",
+      url: `/organizations/current?organizationId=${organization.id}`,
+      headers: { authorization: `Bearer ${registration.token}` }
+    });
+    const updated = await app.inject({
+      method: "PATCH",
+      url: `/organizations/${organization.id}`,
+      headers: { authorization: `Bearer ${registration.token}` },
+      payload: {
+        expectedVersion: organization.version,
+        displayName: "Tenant API Updated"
+      }
+    });
+    const status = await app.inject({
+      method: "GET",
+      url: `/organizations/${organization.id}/status`,
+      headers: { authorization: `Bearer ${registration.token}` }
+    });
+
+    expect(current.statusCode).toBe(200);
+    expect(updated.statusCode).toBe(200);
+    expect(updated.json().organization.displayName).toBe("Tenant API Updated");
+    expect(status.statusCode).toBe(200);
+    expect(status.json()).toMatchObject({
+      organizationId: organization.id,
+      status: "active"
+    });
+
+    await app.close();
+  });
+
+  it("denies anonymous, wrong tenant, and stale organization access safely", async () => {
+    const authRepository = new ApiMemoryAuthenticationRepository();
+    const membershipRepository = new ApiMemoryOrganizationMembershipRepository();
+    const membershipService = createOrganizationMembershipService(membershipRepository);
+    const organizationService = createEmployerOrganizationService(
+      new ApiMemoryEmployerOrganizationRepository(membershipRepository),
+      membershipService,
+      createAuthorizationService()
+    );
+    const app = buildApi({
+      authService: createAuthenticationService(authRepository, testAuthOptions()),
+      membershipService,
+      organizationService
+    });
+    const first = await registerApiUser(app);
+    const firstOrganizationResponse = await app.inject({
+      method: "POST",
+      url: "/organizations",
+      headers: { authorization: `Bearer ${first.token}` },
+      payload: {
+        legalName: "Tenant First",
+        displayName: "Tenant First"
+      }
+    });
+    const second = await app.inject({
+      method: "POST",
+      url: "/auth/register",
+      payload: {
+        email: "second@example.com",
+        password: "ValidPassword123",
+        displayName: "Second Employer"
+      }
+    });
+    const secondOrganizationResponse = await app.inject({
+      method: "POST",
+      url: "/organizations",
+      headers: { authorization: `Bearer ${second.json().token}` },
+      payload: {
+        legalName: "Tenant Second",
+        displayName: "Tenant Second"
+      }
+    });
+    const firstOrganization = firstOrganizationResponse.json().organization;
+    const secondOrganization = secondOrganizationResponse.json().organization;
+
+    const anonymous = await app.inject({
+      method: "POST",
+      url: "/organizations",
+      payload: { legalName: "No Session", displayName: "No Session" }
+    });
+    const crossTenant = await app.inject({
+      method: "GET",
+      url: `/organizations/${secondOrganization.id}`,
+      headers: { authorization: `Bearer ${first.token}` }
+    });
+    const stale = await app.inject({
+      method: "PATCH",
+      url: `/organizations/${firstOrganization.id}`,
+      headers: { authorization: `Bearer ${first.token}` },
+      payload: {
+        expectedVersion: "2020-01-01T00:00:00.000Z",
+        displayName: "Stale"
+      }
+    });
+
+    expect(anonymous.statusCode).toBe(403);
+    expect(crossTenant.statusCode).toBe(403);
+    expect(stale.statusCode).toBe(403);
+    expect(crossTenant.json()).toEqual({
+      error: "RWOS_AUTHORIZATION_DENIED",
+      message: "Access denied."
+    });
+
+    await app.close();
+  });
+});
+
 class ApiMemoryAuthenticationRepository implements AuthenticationRepository {
   private users = new Map<string, StoredAuthenticationUser>();
   private sessions = new Map<string, StoredAuthenticationSession>();
@@ -502,7 +688,110 @@ class ApiMemoryOrganizationMembershipRepository implements OrganizationMembershi
   }
 }
 
+class ApiMemoryEmployerOrganizationRepository implements EmployerOrganizationRepository {
+  private organizations = new Map<string, StoredEmployerOrganization>();
+  private organizationAuditEvents: Parameters<EmployerOrganizationRepository["recordOrganizationAuditEvent"]>[0][] = [];
+  private nextOrganization = 1;
+
+  constructor(private readonly membershipRepository: ApiMemoryOrganizationMembershipRepository) {}
+
+  auditEvents() {
+    return this.organizationAuditEvents;
+  }
+
+  async findOrganizationById(organizationId: string) {
+    return this.organizations.get(organizationId) ?? null;
+  }
+
+  async findOrganizationByPublicId(publicId: string) {
+    return [...this.organizations.values()].find((organization) => organization.publicId === publicId) ?? null;
+  }
+
+  async createOrganizationWithOwnerMembership(input: Parameters<EmployerOrganizationRepository["createOrganizationWithOwnerMembership"]>[0]) {
+    if ([...this.organizations.values()].some((organization) => organization.legalName === input.legalName)) {
+      throw new Error("RWOS_ORGANIZATION_DUPLICATE");
+    }
+
+    const organization: StoredEmployerOrganization = {
+      id: `api-org-${this.nextOrganization}`,
+      publicId: input.publicId,
+      legalName: input.legalName,
+      displayName: input.displayName,
+      status: "active",
+      createdByUserId: input.actorUserId,
+      reviewedByUserId: null,
+      createdAt: input.now,
+      updatedAt: input.now,
+      restrictedAt: null,
+      suspendedAt: null,
+      closedAt: null
+    };
+
+    this.nextOrganization += 1;
+    this.organizations.set(organization.id, organization);
+
+    try {
+      const membership = await this.membershipRepository.createMembership({
+        organizationId: organization.id,
+        userId: input.actorUserId,
+        invitedByUserId: input.actorUserId,
+        accessRoleKeys: [input.ownerRoleKey],
+        expiresAt: null,
+        now: input.now
+      });
+      await this.membershipRepository.updateMembershipStatus({
+        membershipId: membership.id,
+        status: "active",
+        actorUserId: input.actorUserId,
+        now: input.now
+      });
+      const activeMembership = await this.membershipRepository.findMembershipById(membership.id);
+
+      return { organization, membership: activeMembership ?? membership };
+    } catch (error) {
+      this.organizations.delete(organization.id);
+      throw error;
+    }
+  }
+
+  async updateOrganization(input: Parameters<EmployerOrganizationRepository["updateOrganization"]>[0]) {
+    const organization = this.organizations.get(input.organizationId);
+
+    if (!organization || organization.updatedAt.getTime() !== input.expectedUpdatedAt.getTime()) {
+      return null;
+    }
+
+    if (input.legalName !== undefined) organization.legalName = input.legalName;
+    if (input.displayName !== undefined) organization.displayName = input.displayName;
+    organization.updatedAt = new Date(input.now.getTime() + 1);
+
+    return organization;
+  }
+
+  async updateOrganizationStatus(input: Parameters<EmployerOrganizationRepository["updateOrganizationStatus"]>[0]) {
+    const organization = this.organizations.get(input.organizationId);
+
+    if (!organization || organization.updatedAt.getTime() !== input.expectedUpdatedAt.getTime()) {
+      return null;
+    }
+
+    organization.status = input.status;
+    organization.updatedAt = new Date(input.now.getTime() + 1);
+    if (input.status === "active") organization.suspendedAt = null;
+    if (input.status === "suspended") organization.suspendedAt = input.now;
+    if (input.status === "closed") organization.closedAt = input.now;
+
+    return organization;
+  }
+
+  async recordOrganizationAuditEvent(input: Parameters<EmployerOrganizationRepository["recordOrganizationAuditEvent"]>[0]) {
+    this.organizationAuditEvents.push(input);
+  }
+}
+
 function testAuthOptions() {
+  let nextToken = 1;
+
   return {
     passwordHashOptions: {
       costFactor: 1_024,
@@ -511,7 +800,7 @@ function testAuthOptions() {
       keyLength: 32,
       saltLength: 8
     },
-    randomToken: () => "api-session-token-000000000000000000001"
+    randomToken: () => `api-session-token-${String(nextToken++).padStart(21, "0")}`
   };
 }
 

@@ -9,6 +9,7 @@ import {
   authorizationRoleDefinitions,
   createAuthorizationService,
   createAuthenticationService,
+  createEmployerOrganizationService,
   createOrganizationMembershipService,
   hashPassword,
   hashSessionToken,
@@ -17,12 +18,14 @@ import {
 } from "./index";
 import type {
   AuthorizationAuditEventInput,
+  EmployerOrganizationRepository,
   InviteMembershipInput,
   AuthenticationRepository,
   CreateLocalUserInput,
   CreateSessionInput,
   OrganizationMembershipRepository,
   RecordAuthenticationAuditEventInput,
+  StoredEmployerOrganization,
   StoredOrganizationMembership,
   StoredAuthenticationSession,
   StoredAuthenticationUser,
@@ -595,6 +598,214 @@ describe("organization membership foundation", () => {
   });
 });
 
+describe("employer organization foundation", () => {
+  it("creates an organization with active owner membership and audit records", async () => {
+    const membershipRepository = new MemoryOrganizationMembershipRepository();
+    const organizationRepository = new MemoryEmployerOrganizationRepository(membershipRepository);
+    const membershipService = createOrganizationMembershipService(membershipRepository);
+    const service = createEmployerOrganizationService(
+      organizationRepository,
+      membershipService,
+      createAuthorizationService(),
+      { now: () => new Date("2026-07-25T12:00:00.000Z") }
+    );
+
+    const created = await service.createOrganization({
+      actorUserId: "00000000-0000-4000-8000-000000000001",
+      legalName: "  Sunrise Residence Group  ",
+      displayName: "Sunrise Residence",
+      correlationId: "org-create-test"
+    });
+
+    expect(created.organization).toMatchObject({
+      legalName: "Sunrise Residence Group",
+      displayName: "Sunrise Residence",
+      status: "active",
+      createdByUserId: "00000000-0000-4000-8000-000000000001"
+    });
+    expect(created.membership).toMatchObject({
+      userId: "00000000-0000-4000-8000-000000000001",
+      status: "active",
+      roleKeys: ["ORGANIZATION_OWNER"]
+    });
+    expect(organizationRepository.auditActions()).toContain("organization.created");
+    expect(membershipRepository.auditActions()).toEqual(["membership.activated", "membership.access_role_changed"]);
+  });
+
+  it("requires active membership and organization permission for read and update", async () => {
+    const membershipRepository = new MemoryOrganizationMembershipRepository();
+    const organizationRepository = new MemoryEmployerOrganizationRepository(membershipRepository);
+    const membershipService = createOrganizationMembershipService(membershipRepository);
+    const service = createEmployerOrganizationService(organizationRepository, membershipService, createAuthorizationService());
+    const created = await service.createOrganization({
+      actorUserId: "00000000-0000-4000-8000-000000000001",
+      legalName: "Tenant A",
+      displayName: "Tenant A"
+    });
+
+    await expect(
+      service.getOrganization({
+        actorUserId: "00000000-0000-4000-8000-000000000002",
+        organizationId: created.organization.id
+      })
+    ).rejects.toMatchObject({ decision: expect.objectContaining({ status: "membership_denied" }) });
+
+    const staff = await membershipService.inviteMembership({
+      organizationId: created.organization.id,
+      userId: "00000000-0000-4000-8000-000000000003",
+      invitedByUserId: "00000000-0000-4000-8000-000000000001",
+      accessRoleKeys: ["ORGANIZATION_STAFF"]
+    });
+    await membershipService.activateMembership({
+      userId: staff.userId,
+      membershipId: staff.id,
+      actorUserId: "00000000-0000-4000-8000-000000000001"
+    });
+
+    await expect(
+      service.getOrganization({ actorUserId: staff.userId, organizationId: created.organization.id })
+    ).resolves.toMatchObject({ id: created.organization.id });
+    await expect(
+      service.updateOrganization({
+        actorUserId: staff.userId,
+        organizationId: created.organization.id,
+        expectedVersion: created.organization.version,
+        displayName: "Staff Update"
+      })
+    ).rejects.toMatchObject({ decision: expect.objectContaining({ status: "permission_denied" }) });
+  });
+
+  it("keeps tenants isolated and does not treat platform supervision as ownership", async () => {
+    const membershipRepository = new MemoryOrganizationMembershipRepository();
+    const organizationRepository = new MemoryEmployerOrganizationRepository(membershipRepository);
+    const service = createEmployerOrganizationService(
+      organizationRepository,
+      createOrganizationMembershipService(membershipRepository),
+      createAuthorizationService()
+    );
+    const tenantA = await service.createOrganization({
+      actorUserId: "00000000-0000-4000-8000-000000000001",
+      legalName: "Tenant A",
+      displayName: "Tenant A"
+    });
+    const tenantB = await service.createOrganization({
+      actorUserId: "00000000-0000-4000-8000-000000000002",
+      legalName: "Tenant B",
+      displayName: "Tenant B"
+    });
+    await membershipRepository.createMembership({
+      organizationId: tenantA.organization.id,
+      userId: "00000000-0000-4000-8000-000000000004",
+      invitedByUserId: null,
+      accessRoleKeys: ["PLATFORM_ADMINISTRATOR"],
+      expiresAt: null,
+      now: new Date("2026-07-25T12:00:00.000Z")
+    });
+    const platformMembership = await membershipRepository.findMembershipForUserByOrganization(
+      "00000000-0000-4000-8000-000000000004",
+      tenantA.organization.id
+    );
+    await membershipRepository.updateMembershipStatus({
+      membershipId: platformMembership!.id,
+      status: "active",
+      actorUserId: null,
+      now: new Date("2026-07-25T12:00:00.000Z")
+    });
+
+    await expect(
+      service.getOrganization({ actorUserId: tenantA.membership.userId, organizationId: tenantB.organization.id })
+    ).rejects.toMatchObject({ decision: expect.objectContaining({ status: "membership_denied" }) });
+    await expect(
+      service.getOrganization({
+        actorUserId: "00000000-0000-4000-8000-000000000004",
+        organizationId: tenantA.organization.id
+      })
+    ).rejects.toMatchObject({ decision: expect.objectContaining({ status: "permission_denied" }) });
+  });
+
+  it("uses optimistic concurrency and blocks suspended or closed organizations without changing user state", async () => {
+    const membershipRepository = new MemoryOrganizationMembershipRepository();
+    const organizationRepository = new MemoryEmployerOrganizationRepository(membershipRepository);
+    const service = createEmployerOrganizationService(
+      organizationRepository,
+      createOrganizationMembershipService(membershipRepository),
+      createAuthorizationService()
+    );
+    const created = await service.createOrganization({
+      actorUserId: "00000000-0000-4000-8000-000000000001",
+      legalName: "Tenant Concurrency",
+      displayName: "Tenant Concurrency"
+    });
+    const updated = await service.updateOrganization({
+      actorUserId: created.membership.userId,
+      organizationId: created.organization.id,
+      expectedVersion: created.organization.version,
+      displayName: "Tenant Updated"
+    });
+
+    await expect(
+      service.updateOrganization({
+        actorUserId: created.membership.userId,
+        organizationId: created.organization.id,
+        expectedVersion: created.organization.version,
+        displayName: "Stale Update"
+      })
+    ).rejects.toMatchObject({ decision: expect.objectContaining({ status: "version_conflict" }) });
+
+    const suspended = await service.updateOrganizationStatus({
+      actorUserId: created.membership.userId,
+      organizationId: created.organization.id,
+      expectedVersion: updated.version,
+      status: "suspended"
+    });
+    await expect(
+      service.getOrganization({ actorUserId: created.membership.userId, organizationId: created.organization.id })
+    ).rejects.toMatchObject({
+      decision: expect.objectContaining({ status: "organization_inactive", internalReason: "organization_suspended" })
+    });
+
+    const reactivated = await service.updateOrganizationStatus({
+      actorUserId: created.membership.userId,
+      organizationId: created.organization.id,
+      expectedVersion: suspended.version,
+      status: "active"
+    });
+    const closed = await service.updateOrganizationStatus({
+      actorUserId: created.membership.userId,
+      organizationId: created.organization.id,
+      expectedVersion: reactivated.version,
+      status: "closed"
+    });
+
+    expect(closed.status).toBe("closed");
+    expect(created.membership.status).toBe("active");
+    expect(organizationRepository.auditActions()).toEqual(
+      expect.arrayContaining(["organization.updated", "organization.suspended", "organization.reactivated", "organization.closed"])
+    );
+  });
+
+  it("rolls back organization creation when owner membership bootstrap fails", async () => {
+    const membershipRepository = new MemoryOrganizationMembershipRepository();
+    const organizationRepository = new MemoryEmployerOrganizationRepository(membershipRepository);
+    organizationRepository.failOwnerMembershipBootstrap = true;
+    const service = createEmployerOrganizationService(
+      organizationRepository,
+      createOrganizationMembershipService(membershipRepository),
+      createAuthorizationService()
+    );
+
+    await expect(
+      service.createOrganization({
+        actorUserId: "00000000-0000-4000-8000-000000000001",
+        legalName: "Rollback Tenant",
+        displayName: "Rollback Tenant"
+      })
+    ).rejects.toMatchObject({ decision: expect.objectContaining({ status: "bootstrap_failed" }) });
+    expect(organizationRepository.organizationCount()).toBe(0);
+    expect(await membershipRepository.listMembershipsForUser("00000000-0000-4000-8000-000000000001")).toHaveLength(0);
+  });
+});
+
 class MemoryAuthorizationAuditSink {
   events: AuthorizationAuditEventInput[] = [];
 
@@ -688,6 +899,154 @@ class MemoryOrganizationMembershipRepository implements OrganizationMembershipRe
   }
 
   async recordMembershipAuditEvent(input: Parameters<OrganizationMembershipRepository["recordMembershipAuditEvent"]>[0]) {
+    this.auditEvents.push(input);
+  }
+}
+
+class MemoryEmployerOrganizationRepository implements EmployerOrganizationRepository {
+  failOwnerMembershipBootstrap = false;
+  private organizations = new Map<string, StoredEmployerOrganization>();
+  private auditEvents: Parameters<EmployerOrganizationRepository["recordOrganizationAuditEvent"]>[0][] = [];
+  private nextOrganization = 1;
+
+  constructor(private readonly membershipRepository: MemoryOrganizationMembershipRepository) {}
+
+  auditActions() {
+    return this.auditEvents.map((event) => event.action);
+  }
+
+  organizationCount() {
+    return this.organizations.size;
+  }
+
+  async findOrganizationById(organizationId: string) {
+    return this.organizations.get(organizationId) ?? null;
+  }
+
+  async findOrganizationByPublicId(publicId: string) {
+    return [...this.organizations.values()].find((organization) => organization.publicId === publicId) ?? null;
+  }
+
+  async createOrganizationWithOwnerMembership(input: Parameters<EmployerOrganizationRepository["createOrganizationWithOwnerMembership"]>[0]) {
+    if ([...this.organizations.values()].some((organization) => organization.legalName === input.legalName)) {
+      throw new Error("RWOS_ORGANIZATION_DUPLICATE");
+    }
+
+    const organization: StoredEmployerOrganization = {
+      id: `org-${this.nextOrganization}`,
+      publicId: input.publicId,
+      legalName: input.legalName,
+      displayName: input.displayName,
+      status: "active",
+      createdByUserId: input.actorUserId,
+      reviewedByUserId: null,
+      createdAt: input.now,
+      updatedAt: input.now,
+      restrictedAt: null,
+      suspendedAt: null,
+      closedAt: null
+    };
+
+    this.nextOrganization += 1;
+    this.organizations.set(organization.id, organization);
+
+    try {
+      if (this.failOwnerMembershipBootstrap) {
+        throw new Error("TEST_OWNER_MEMBERSHIP_BOOTSTRAP_FAILED");
+      }
+
+      const membership = await this.membershipRepository.createMembership({
+        organizationId: organization.id,
+        userId: input.actorUserId,
+        invitedByUserId: input.actorUserId,
+        accessRoleKeys: [input.ownerRoleKey],
+        expiresAt: null,
+        now: input.now
+      });
+      await this.membershipRepository.updateMembershipStatus({
+        membershipId: membership.id,
+        status: "active",
+        actorUserId: input.actorUserId,
+        now: input.now
+      });
+      await this.recordOrganizationAuditEvent({
+        action: "organization.created",
+        organizationId: organization.id,
+        actorUserId: input.actorUserId,
+        priorState: null,
+        newState: organization.status,
+        reason: null,
+        correlationId: input.correlationId,
+        createdAt: input.now
+      });
+      await this.membershipRepository.recordMembershipAuditEvent({
+        action: "membership.activated",
+        membershipId: membership.id,
+        organizationId: organization.id,
+        userId: input.actorUserId,
+        actorUserId: input.actorUserId,
+        reason: "owner_membership_bootstrap",
+        priorState: null,
+        newState: "active",
+        correlationId: input.correlationId,
+        createdAt: input.now
+      });
+      await this.membershipRepository.recordMembershipAuditEvent({
+        action: "membership.access_role_changed",
+        membershipId: membership.id,
+        organizationId: organization.id,
+        userId: input.actorUserId,
+        actorUserId: input.actorUserId,
+        reason: "organization_owner_bootstrap",
+        priorState: null,
+        newState: input.ownerRoleKey,
+        correlationId: input.correlationId,
+        createdAt: input.now
+      });
+
+      const activeMembership = await this.membershipRepository.findMembershipById(membership.id);
+
+      return { organization, membership: activeMembership ?? membership };
+    } catch (error) {
+      this.organizations.delete(organization.id);
+      throw error;
+    }
+  }
+
+  async updateOrganization(input: Parameters<EmployerOrganizationRepository["updateOrganization"]>[0]) {
+    const organization = this.organizations.get(input.organizationId);
+
+    if (!organization || organization.updatedAt.getTime() !== input.expectedUpdatedAt.getTime()) {
+      return null;
+    }
+
+    if (input.legalName !== undefined) organization.legalName = input.legalName;
+    if (input.displayName !== undefined) organization.displayName = input.displayName;
+    organization.updatedAt = new Date(input.now.getTime() + 1);
+
+    return organization;
+  }
+
+  async updateOrganizationStatus(input: Parameters<EmployerOrganizationRepository["updateOrganizationStatus"]>[0]) {
+    const organization = this.organizations.get(input.organizationId);
+
+    if (!organization || organization.updatedAt.getTime() !== input.expectedUpdatedAt.getTime()) {
+      return null;
+    }
+
+    organization.status = input.status;
+    organization.updatedAt = new Date(input.now.getTime() + 1);
+    if (input.status === "active") {
+      organization.restrictedAt = null;
+      organization.suspendedAt = null;
+    }
+    if (input.status === "suspended") organization.suspendedAt = input.now;
+    if (input.status === "closed") organization.closedAt = input.now;
+
+    return organization;
+  }
+
+  async recordOrganizationAuditEvent(input: Parameters<EmployerOrganizationRepository["recordOrganizationAuditEvent"]>[0]) {
     this.auditEvents.push(input);
   }
 }
