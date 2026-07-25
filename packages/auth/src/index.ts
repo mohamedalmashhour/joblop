@@ -528,6 +528,138 @@ export class ResidenceError extends Error {
   }
 }
 
+export type DepartmentStatus = "draft" | "active" | "restricted" | "inactive" | "closed";
+export type DepartmentDecisionStatus =
+  | "allow"
+  | "invalid_input"
+  | "not_found"
+  | "membership_denied"
+  | "permission_denied"
+  | "organization_inactive"
+  | "residence_inactive"
+  | "department_inactive"
+  | "version_conflict"
+  | "invalid_transition"
+  | "audit_failed";
+
+export interface StoredDepartment {
+  id: string;
+  publicId: string;
+  organizationId: string;
+  residenceId: string;
+  name: string;
+  status: DepartmentStatus;
+  createdByUserId: string | null;
+  createdAt: Date;
+  updatedAt: Date;
+  archivedAt: Date | null;
+}
+
+export interface PublicDepartment {
+  id: string;
+  publicId: string;
+  organizationId: string;
+  residenceId: string;
+  name: string;
+  status: DepartmentStatus;
+  createdByUserId: string | null;
+  createdAt: Date;
+  updatedAt: Date;
+  archivedAt: Date | null;
+  version: string;
+}
+
+export interface DepartmentDecision {
+  status: DepartmentDecisionStatus;
+  allow: boolean;
+  department: PublicDepartment | null;
+  residence: PublicResidence | null;
+  organization: PublicEmployerOrganization | null;
+  membership: PublicOrganizationMembership | null;
+  roles: readonly AuthorizationRoleKey[];
+  internalReason: string | null;
+  externalCode: typeof authorizationDeniedCode | null;
+  externalMessage: typeof authorizationDeniedMessage | null;
+}
+
+export interface CreateDepartmentInput {
+  actorUserId: string;
+  organizationId: string;
+  residenceId: string;
+  name: string;
+  correlationId?: string;
+}
+
+export interface UpdateDepartmentInput {
+  actorUserId: string;
+  organizationId: string;
+  residenceId: string;
+  departmentId: string;
+  expectedVersion: string;
+  name?: string | null;
+  correlationId?: string;
+}
+
+export interface DepartmentRepository {
+  findDepartmentById(departmentId: string): Promise<StoredDepartment | null>;
+  listDepartmentsByResidence(input: { organizationId: string; residenceId: string; status?: DepartmentStatus | null }): Promise<StoredDepartment[]>;
+  createDepartment(input: {
+    publicId: string;
+    organizationId: string;
+    residenceId: string;
+    name: string;
+    actorUserId: string;
+    correlationId: string;
+    now: Date;
+  }): Promise<StoredDepartment>;
+  updateDepartment(input: {
+    departmentId: string;
+    organizationId: string;
+    residenceId: string;
+    expectedUpdatedAt: Date;
+    name?: string | undefined;
+    actorUserId: string;
+    now: Date;
+  }): Promise<StoredDepartment | null>;
+  updateDepartmentStatus(input: {
+    departmentId: string;
+    organizationId: string;
+    residenceId: string;
+    expectedUpdatedAt: Date;
+    status: Extract<DepartmentStatus, "active" | "inactive" | "closed">;
+    actorUserId: string;
+    now: Date;
+  }): Promise<StoredDepartment | null>;
+  recordDepartmentAuditEvent(input: {
+    action:
+      | "department.created"
+      | "department.updated"
+      | "department.inactivated"
+      | "department.reactivated"
+      | "department.closed"
+      | "department.access_denied";
+    organizationId: string | null;
+    residenceId: string | null;
+    departmentId: string | null;
+    actorUserId: string | null;
+    priorState: string | null;
+    newState: string | null;
+    reason: string | null;
+    correlationId: string;
+    createdAt: Date;
+  }): Promise<void>;
+}
+
+export class DepartmentError extends Error {
+  decision: DepartmentDecision;
+
+  constructor(decision: DepartmentDecision) {
+    super(authorizationDeniedMessage);
+    this.name = "DepartmentError";
+    this.decision = decision;
+  }
+}
+
 export class AuthorizationDeniedError extends Error {
   code = authorizationDeniedCode;
   decision: AuthorizationDecision;
@@ -582,27 +714,27 @@ export const authorizationPermissionDefinitions = [
   ),
   permission(
     "department.read",
-    "Read department records within a future organization context.",
+    "Read department records within an organization and residence context.",
     "organization",
-    "reserved",
+    "active",
     "May expose operating structure.",
-    "Deny without organization context; no active department API."
+    "Deny without organization and residence context."
   ),
   permission(
     "department.create",
-    "Create department records within a future organization context.",
+    "Create department records within an organization and residence context.",
     "organization",
-    "reserved",
+    "active",
     "Could create operational units before membership controls exist.",
-    "Mapped only to approved organization roles; no active endpoint."
+    "Mapped only to approved organization roles."
   ),
   permission(
     "department.update",
-    "Update department records within a future organization context.",
+    "Update department records within an organization and residence context.",
     "organization",
-    "reserved",
+    "active",
     "Could alter operating units.",
-    "Mapped only to approved organization roles; no active endpoint."
+    "Mapped only to approved organization roles."
   ),
   permission(
     "work_group.read",
@@ -1589,6 +1721,296 @@ export function createResidenceService(
 }
 
 export type ResidenceService = ReturnType<typeof createResidenceService>;
+
+export function createDepartmentService(
+  departmentRepository: DepartmentRepository,
+  residenceRepository: ResidenceRepository,
+  organizationRepository: EmployerOrganizationRepository,
+  membershipService: OrganizationMembershipService,
+  authorizationService: AuthorizationService,
+  options: { now?: () => Date } = {}
+) {
+  const now = options.now ?? (() => new Date());
+
+  return {
+    async createDepartment(input: CreateDepartmentInput) {
+      const currentTime = now();
+      const correlationId = input.correlationId ?? createDepartmentCorrelationId();
+      const name = normalizeDepartmentText(input.name, 2, 160);
+
+      if (!name) {
+        const decision = departmentDeny("invalid_input", "invalid_department_name", null, null, null, null, []);
+        await auditDepartmentDenial(departmentRepository, {
+          decision,
+          actorUserId: input.actorUserId,
+          correlationId,
+          createdAt: currentTime
+        });
+        throw new DepartmentError(decision);
+      }
+
+      const authorization = await authorizeDepartmentOperation({
+        departmentRepository,
+        residenceRepository,
+        organizationRepository,
+        membershipService,
+        authorizationService,
+        actorUserId: input.actorUserId,
+        organizationId: input.organizationId,
+        residenceId: input.residenceId,
+        department: null,
+        permission: "department.create",
+        correlationId,
+        now: currentTime
+      });
+
+      if (!authorization.allow) {
+        throw new DepartmentError(authorization);
+      }
+
+      try {
+        const department = await departmentRepository.createDepartment({
+          publicId: createPublicDepartmentId(),
+          organizationId: input.organizationId,
+          residenceId: input.residenceId,
+          name,
+          actorUserId: input.actorUserId,
+          correlationId,
+          now: currentTime
+        });
+
+        return toPublicDepartment(department);
+      } catch (error) {
+        const decision = departmentDeny(
+          "audit_failed",
+          error instanceof Error ? error.message : "department_create_failed",
+          null,
+          authorization.residence,
+          authorization.organization,
+          authorization.membership,
+          authorization.roles
+        );
+        await auditDepartmentDenial(departmentRepository, {
+          decision,
+          actorUserId: input.actorUserId,
+          correlationId,
+          createdAt: currentTime
+        });
+        throw new DepartmentError(decision);
+      }
+    },
+
+    async getDepartment(input: { actorUserId: string; organizationId: string; residenceId: string; departmentId: string; correlationId?: string }) {
+      const currentTime = now();
+      const department = await departmentRepository.findDepartmentById(input.departmentId);
+      const authorization = await authorizeDepartmentOperation({
+        departmentRepository,
+        residenceRepository,
+        organizationRepository,
+        membershipService,
+        authorizationService,
+        actorUserId: input.actorUserId,
+        organizationId: input.organizationId,
+        residenceId: input.residenceId,
+        department,
+        permission: "department.read",
+        correlationId: input.correlationId,
+        now: currentTime,
+        allowInactiveDepartmentRead: true,
+        allowInactiveResidenceRead: true
+      });
+
+      if (!authorization.allow || !authorization.department) {
+        throw new DepartmentError(authorization);
+      }
+
+      return authorization.department;
+    },
+
+    async listDepartments(input: {
+      actorUserId: string;
+      organizationId: string;
+      residenceId: string;
+      status?: DepartmentStatus | null;
+      correlationId?: string;
+    }) {
+      const currentTime = now();
+      const authorization = await authorizeDepartmentOperation({
+        departmentRepository,
+        residenceRepository,
+        organizationRepository,
+        membershipService,
+        authorizationService,
+        actorUserId: input.actorUserId,
+        organizationId: input.organizationId,
+        residenceId: input.residenceId,
+        department: null,
+        permission: "department.read",
+        correlationId: input.correlationId,
+        now: currentTime,
+        allowInactiveResidenceRead: true
+      });
+
+      if (!authorization.allow) {
+        throw new DepartmentError(authorization);
+      }
+
+      const status = input.status && departmentStatuses.includes(input.status) ? input.status : null;
+
+      return (await departmentRepository.listDepartmentsByResidence({ organizationId: input.organizationId, residenceId: input.residenceId, status })).map(toPublicDepartment);
+    },
+
+    async updateDepartment(input: UpdateDepartmentInput) {
+      const currentTime = now();
+      const department = await departmentRepository.findDepartmentById(input.departmentId);
+      const authorization = await authorizeDepartmentOperation({
+        departmentRepository,
+        residenceRepository,
+        organizationRepository,
+        membershipService,
+        authorizationService,
+        actorUserId: input.actorUserId,
+        organizationId: input.organizationId,
+        residenceId: input.residenceId,
+        department,
+        permission: "department.update",
+        correlationId: input.correlationId,
+        now: currentTime
+      });
+
+      if (!authorization.allow || !authorization.department) {
+        throw new DepartmentError(authorization);
+      }
+
+      const name = input.name == null ? undefined : normalizeDepartmentText(input.name, 2, 160);
+
+      if (input.name != null && !name) {
+        throw new DepartmentError(
+          departmentDeny("invalid_input", "invalid_department_name", authorization.department, authorization.residence, authorization.organization, authorization.membership, authorization.roles)
+        );
+      }
+
+      const expectedUpdatedAt = parseDepartmentVersion(input.expectedVersion);
+
+      if (!expectedUpdatedAt) {
+        throw new DepartmentError(
+          departmentDeny("version_conflict", "invalid_version", authorization.department, authorization.residence, authorization.organization, authorization.membership, authorization.roles)
+        );
+      }
+
+      const updated = await departmentRepository.updateDepartment({
+        departmentId: input.departmentId,
+        organizationId: input.organizationId,
+        residenceId: input.residenceId,
+        expectedUpdatedAt,
+        name,
+        actorUserId: input.actorUserId,
+        now: currentTime
+      });
+
+      if (!updated) {
+        throw new DepartmentError(
+          departmentDeny("version_conflict", "stale_version", authorization.department, authorization.residence, authorization.organization, authorization.membership, authorization.roles)
+        );
+      }
+
+      await recordDepartmentAudit(departmentRepository, {
+        action: "department.updated",
+        organizationId: input.organizationId,
+        residenceId: input.residenceId,
+        departmentId: updated.id,
+        actorUserId: input.actorUserId,
+        priorState: department?.status ?? null,
+        newState: updated.status,
+        reason: null,
+        correlationId: input.correlationId,
+        createdAt: currentTime
+      });
+
+      return toPublicDepartment(updated);
+    },
+
+    async updateDepartmentStatus(input: {
+      actorUserId: string;
+      organizationId: string;
+      residenceId: string;
+      departmentId: string;
+      expectedVersion: string;
+      status: Extract<DepartmentStatus, "active" | "inactive" | "closed">;
+      reason: string;
+      correlationId?: string;
+    }) {
+      const currentTime = now();
+      const department = await departmentRepository.findDepartmentById(input.departmentId);
+      const authorization = await authorizeDepartmentOperation({
+        departmentRepository,
+        residenceRepository,
+        organizationRepository,
+        membershipService,
+        authorizationService,
+        actorUserId: input.actorUserId,
+        organizationId: input.organizationId,
+        residenceId: input.residenceId,
+        department,
+        permission: "department.update",
+        correlationId: input.correlationId,
+        now: currentTime,
+        allowInactiveDepartmentStatusChange: true
+      });
+
+      if (!authorization.allow || !authorization.department || !department) {
+        throw new DepartmentError(authorization);
+      }
+
+      if (!isAllowedDepartmentTransition(department.status, input.status)) {
+        throw new DepartmentError(
+          departmentDeny("invalid_transition", "invalid_department_status_transition", authorization.department, authorization.residence, authorization.organization, authorization.membership, authorization.roles)
+        );
+      }
+
+      const expectedUpdatedAt = parseDepartmentVersion(input.expectedVersion);
+
+      if (!expectedUpdatedAt) {
+        throw new DepartmentError(
+          departmentDeny("version_conflict", "invalid_version", authorization.department, authorization.residence, authorization.organization, authorization.membership, authorization.roles)
+        );
+      }
+
+      const updated = await departmentRepository.updateDepartmentStatus({
+        departmentId: input.departmentId,
+        organizationId: input.organizationId,
+        residenceId: input.residenceId,
+        expectedUpdatedAt,
+        status: input.status,
+        actorUserId: input.actorUserId,
+        now: currentTime
+      });
+
+      if (!updated) {
+        throw new DepartmentError(
+          departmentDeny("version_conflict", "stale_version", authorization.department, authorization.residence, authorization.organization, authorization.membership, authorization.roles)
+        );
+      }
+
+      await recordDepartmentAudit(departmentRepository, {
+        action: input.status === "inactive" ? "department.inactivated" : input.status === "closed" ? "department.closed" : "department.reactivated",
+        organizationId: input.organizationId,
+        residenceId: input.residenceId,
+        departmentId: updated.id,
+        actorUserId: input.actorUserId,
+        priorState: department.status,
+        newState: updated.status,
+        reason: normalizeOptionalResidenceText(input.reason, 240),
+        correlationId: input.correlationId,
+        createdAt: currentTime
+      });
+
+      return toPublicDepartment(updated);
+    }
+  };
+}
+
+export type DepartmentService = ReturnType<typeof createDepartmentService>;
 
 export const authenticationErrorCode = "RWOS_AUTHENTICATION_FAILED";
 export const authenticationErrorMessage = "Authentication failed.";
@@ -2782,6 +3204,130 @@ export function createPrismaResidenceRepository(prismaClient: unknown): Residenc
   };
 }
 
+type PrismaDepartmentClient = Pick<PrismaEmployerOrganizationClient, "auditActorReference" | "auditEvent"> & {
+  $transaction<T>(callback: (transaction: PrismaDepartmentClient) => Promise<T>): Promise<T>;
+  department: {
+    findUnique(args: { where: { id: string } }): Promise<StoredDepartment | null>;
+    findMany(args: {
+      where: { organizationId: string; residenceId: string; status?: DepartmentStatus | undefined };
+      orderBy: { name: "asc" };
+    }): Promise<StoredDepartment[]>;
+    create(args: {
+      data: {
+        publicId: string;
+        organizationId: string;
+        residenceId: string;
+        name: string;
+        status: "active";
+        createdByUserId: string;
+        createdAt: Date;
+        updatedAt: Date;
+      };
+    }): Promise<StoredDepartment>;
+    updateMany(args: {
+      where: { id: string; organizationId: string; residenceId: string; updatedAt: Date };
+      data: {
+        name?: string | undefined;
+        status?: DepartmentStatus | undefined;
+        archivedAt?: Date | null | undefined;
+        updatedAt: Date;
+      };
+    }): Promise<{ count: number }>;
+  };
+};
+
+export function createPrismaDepartmentRepository(prismaClient: unknown): DepartmentRepository {
+  const prisma = prismaClient as PrismaDepartmentClient;
+
+  return {
+    findDepartmentById(departmentId) {
+      return prisma.department.findUnique({
+        where: { id: departmentId }
+      });
+    },
+
+    listDepartmentsByResidence(input) {
+      return prisma.department.findMany({
+        where: {
+          organizationId: input.organizationId,
+          residenceId: input.residenceId,
+          ...(input.status ? { status: input.status } : {})
+        },
+        orderBy: { name: "asc" }
+      });
+    },
+
+    async createDepartment(input) {
+      return prisma.$transaction(async (transaction) => {
+        const department = await transaction.department.create({
+          data: {
+            publicId: input.publicId,
+            organizationId: input.organizationId,
+            residenceId: input.residenceId,
+            name: input.name,
+            status: "active",
+            createdByUserId: input.actorUserId,
+            createdAt: input.now,
+            updatedAt: input.now
+          }
+        });
+
+        await recordPrismaDepartmentAudit(transaction, {
+          action: "department.created",
+          organizationId: input.organizationId,
+          residenceId: input.residenceId,
+          departmentId: department.id,
+          actorUserId: input.actorUserId,
+          priorState: null,
+          newState: department.status,
+          reason: null,
+          correlationId: input.correlationId,
+          createdAt: input.now
+        });
+
+        return department;
+      });
+    },
+
+    async updateDepartment(input) {
+      const result = await prisma.department.updateMany({
+        where: { id: input.departmentId, organizationId: input.organizationId, residenceId: input.residenceId, updatedAt: input.expectedUpdatedAt },
+        data: {
+          name: input.name,
+          updatedAt: input.now
+        }
+      });
+
+      if (result.count !== 1) {
+        return null;
+      }
+
+      return this.findDepartmentById(input.departmentId);
+    },
+
+    async updateDepartmentStatus(input) {
+      const result = await prisma.department.updateMany({
+        where: { id: input.departmentId, organizationId: input.organizationId, residenceId: input.residenceId, updatedAt: input.expectedUpdatedAt },
+        data: {
+          status: input.status,
+          archivedAt: input.status === "closed" ? input.now : input.status === "active" ? null : undefined,
+          updatedAt: input.now
+        }
+      });
+
+      if (result.count !== 1) {
+        return null;
+      }
+
+      return this.findDepartmentById(input.departmentId);
+    },
+
+    async recordDepartmentAuditEvent(input) {
+      await recordPrismaDepartmentAudit(prisma, input);
+    }
+  };
+}
+
 function resolvePasswordHashOptions(options: PasswordHashOptions) {
   return {
     costFactor: options.costFactor ?? readPositiveInteger("RWOS_PASSWORD_SCRYPT_N", defaultPasswordOptions.costFactor),
@@ -3763,6 +4309,350 @@ function createPublicResidenceId() {
 
 function createResidenceCorrelationId() {
   return `residence_${randomBytes(12).toString("base64url")}`;
+}
+
+const departmentStatuses = ["draft", "active", "restricted", "inactive", "closed"] as const satisfies readonly DepartmentStatus[];
+
+function toPublicDepartment(department: StoredDepartment): PublicDepartment {
+  return {
+    id: department.id,
+    publicId: department.publicId,
+    organizationId: department.organizationId,
+    residenceId: department.residenceId,
+    name: department.name,
+    status: department.status,
+    createdByUserId: department.createdByUserId,
+    createdAt: department.createdAt,
+    updatedAt: department.updatedAt,
+    archivedAt: department.archivedAt,
+    version: department.updatedAt.toISOString()
+  };
+}
+
+async function authorizeDepartmentOperation(input: {
+  departmentRepository: DepartmentRepository;
+  residenceRepository: ResidenceRepository;
+  organizationRepository: EmployerOrganizationRepository;
+  membershipService: OrganizationMembershipService;
+  authorizationService: AuthorizationService;
+  actorUserId: string;
+  organizationId: string;
+  residenceId: string;
+  department: StoredDepartment | null;
+  permission: AuthorizationPermissionKey;
+  correlationId?: string | undefined;
+  now: Date;
+  allowInactiveResidenceRead?: boolean | undefined;
+  allowInactiveDepartmentRead?: boolean | undefined;
+  allowInactiveDepartmentStatusChange?: boolean | undefined;
+}): Promise<DepartmentDecision> {
+  const organization = await input.organizationRepository.findOrganizationById(input.organizationId);
+
+  if (!organization) {
+    const decision = departmentDeny("not_found", "organization_not_found", null, null, null, null, []);
+    await auditDepartmentDenial(input.departmentRepository, {
+      decision,
+      actorUserId: input.actorUserId,
+      correlationId: input.correlationId,
+      createdAt: input.now
+    });
+    return decision;
+  }
+
+  const organizationPublic = toPublicOrganization(organization);
+  const residence = await input.residenceRepository.findResidenceById(input.residenceId);
+  const residencePublic = residence ? toPublicResidence(residence) : null;
+  const membershipDecision = await input.membershipService.selectOrganizationContext({
+    userId: input.actorUserId,
+    organizationId: input.organizationId,
+    ...(input.correlationId ? { correlationId: input.correlationId } : {})
+  });
+
+  if (!membershipDecision.allow || !membershipDecision.membership) {
+    const decision = departmentDeny(
+      "membership_denied",
+      membershipDecision.internalReason ?? "membership_denied",
+      input.department ? toPublicDepartment(input.department) : null,
+      residencePublic,
+      organizationPublic,
+      membershipDecision.membership,
+      membershipDecision.roles
+    );
+    await auditDepartmentDenial(input.departmentRepository, {
+      decision,
+      actorUserId: input.actorUserId,
+      correlationId: input.correlationId,
+      createdAt: input.now
+    });
+    return decision;
+  }
+
+  const authorizationDecision = await input.authorizationService.decide({
+    session: {
+      authenticated: true,
+      user: {
+        id: input.actorUserId,
+        publicId: "department_context_user",
+        emailNormalized: "department-context@example.invalid",
+        displayName: null,
+        status: "active"
+      },
+      session: {
+        id: "department-context-session",
+        userId: input.actorUserId,
+        expiresAt: input.now
+      }
+    },
+    roles: membershipDecision.roles,
+    permission: input.permission,
+    resourceContext: { organizationId: input.organizationId },
+    ...(input.correlationId ? { correlationId: input.correlationId } : {})
+  });
+
+  if (!authorizationDecision.allow) {
+    const decision = departmentDeny(
+      "permission_denied",
+      authorizationDecision.internalReason ?? "permission_denied",
+      input.department ? toPublicDepartment(input.department) : null,
+      residencePublic,
+      organizationPublic,
+      membershipDecision.membership,
+      membershipDecision.roles
+    );
+    await auditDepartmentDenial(input.departmentRepository, {
+      decision,
+      actorUserId: input.actorUserId,
+      correlationId: input.correlationId,
+      createdAt: input.now
+    });
+    return decision;
+  }
+
+  if (organizationBlocksOrdinaryOperations(organization.status)) {
+    const decision = departmentDeny(
+      "organization_inactive",
+      `organization_${organization.status}`,
+      input.department ? toPublicDepartment(input.department) : null,
+      residencePublic,
+      organizationPublic,
+      membershipDecision.membership,
+      membershipDecision.roles
+    );
+    await auditDepartmentDenial(input.departmentRepository, {
+      decision,
+      actorUserId: input.actorUserId,
+      correlationId: input.correlationId,
+      createdAt: input.now
+    });
+    return decision;
+  }
+
+  if (!residence || residence.organizationId !== input.organizationId) {
+    const decision = departmentDeny("not_found", "residence_not_found", null, null, organizationPublic, membershipDecision.membership, membershipDecision.roles);
+    await auditDepartmentDenial(input.departmentRepository, {
+      decision,
+      actorUserId: input.actorUserId,
+      correlationId: input.correlationId,
+      createdAt: input.now
+    });
+    return decision;
+  }
+
+  if (residenceBlocksOrdinaryUpdates(residence.status) && !input.allowInactiveResidenceRead) {
+    const decision = departmentDeny(
+      "residence_inactive",
+      `residence_${residence.status}`,
+      input.department ? toPublicDepartment(input.department) : null,
+      residencePublic,
+      organizationPublic,
+      membershipDecision.membership,
+      membershipDecision.roles
+    );
+    await auditDepartmentDenial(input.departmentRepository, {
+      decision,
+      actorUserId: input.actorUserId,
+      correlationId: input.correlationId,
+      createdAt: input.now
+    });
+    return decision;
+  }
+
+  if (input.department) {
+    if (input.department.organizationId !== input.organizationId || input.department.residenceId !== input.residenceId) {
+      const decision = departmentDeny("not_found", "department_not_found", null, residencePublic, organizationPublic, membershipDecision.membership, membershipDecision.roles);
+      await auditDepartmentDenial(input.departmentRepository, {
+        decision,
+        actorUserId: input.actorUserId,
+        correlationId: input.correlationId,
+        createdAt: input.now
+      });
+      return decision;
+    }
+
+    if (departmentBlocksOrdinaryUpdates(input.department.status) && !input.allowInactiveDepartmentRead && !input.allowInactiveDepartmentStatusChange) {
+      const decision = departmentDeny(
+        "department_inactive",
+        `department_${input.department.status}`,
+        toPublicDepartment(input.department),
+        residencePublic,
+        organizationPublic,
+        membershipDecision.membership,
+        membershipDecision.roles
+      );
+      await auditDepartmentDenial(input.departmentRepository, {
+        decision,
+        actorUserId: input.actorUserId,
+        correlationId: input.correlationId,
+        createdAt: input.now
+      });
+      return decision;
+    }
+  } else if (input.permission !== "department.create" && input.permission !== "department.read") {
+    const decision = departmentDeny("not_found", "department_not_found", null, residencePublic, organizationPublic, membershipDecision.membership, membershipDecision.roles);
+    await auditDepartmentDenial(input.departmentRepository, {
+      decision,
+      actorUserId: input.actorUserId,
+      correlationId: input.correlationId,
+      createdAt: input.now
+    });
+    return decision;
+  }
+
+  return {
+    status: "allow",
+    allow: true,
+    department: input.department ? toPublicDepartment(input.department) : null,
+    residence: residencePublic,
+    organization: organizationPublic,
+    membership: membershipDecision.membership,
+    roles: membershipDecision.roles,
+    internalReason: null,
+    externalCode: null,
+    externalMessage: null
+  };
+}
+
+function departmentBlocksOrdinaryUpdates(status: DepartmentStatus) {
+  return status === "closed" || status === "inactive" || status === "restricted";
+}
+
+function isAllowedDepartmentTransition(current: DepartmentStatus, next: Extract<DepartmentStatus, "active" | "inactive" | "closed">) {
+  if (current === "closed") return false;
+  if (next === "active") return current === "inactive" || current === "draft";
+  if (next === "inactive") return current === "active";
+  if (next === "closed") return current === "active" || current === "inactive" || current === "draft";
+
+  return false;
+}
+
+function departmentDeny(
+  status: Exclude<DepartmentDecisionStatus, "allow">,
+  internalReason: string,
+  department: PublicDepartment | null,
+  residence: PublicResidence | null,
+  organization: PublicEmployerOrganization | null,
+  membership: PublicOrganizationMembership | null,
+  roles: readonly AuthorizationRoleKey[]
+): DepartmentDecision {
+  return {
+    status,
+    allow: false,
+    department,
+    residence,
+    organization,
+    membership,
+    roles,
+    internalReason,
+    externalCode: authorizationDeniedCode,
+    externalMessage: authorizationDeniedMessage
+  };
+}
+
+async function auditDepartmentDenial(
+  repository: DepartmentRepository,
+  input: {
+    decision: DepartmentDecision;
+    actorUserId: string | null;
+    correlationId?: string | undefined;
+    createdAt: Date;
+  }
+) {
+  await recordDepartmentAudit(repository, {
+    action: "department.access_denied",
+    organizationId: input.decision.organization?.id ?? input.decision.department?.organizationId ?? input.decision.residence?.organizationId ?? null,
+    residenceId: input.decision.residence?.id ?? input.decision.department?.residenceId ?? null,
+    departmentId: input.decision.department?.id ?? null,
+    actorUserId: input.actorUserId,
+    priorState: input.decision.department?.status ?? null,
+    newState: "denied",
+    reason: input.decision.internalReason,
+    correlationId: input.correlationId,
+    createdAt: input.createdAt
+  });
+}
+
+async function recordDepartmentAudit(
+  repository: DepartmentRepository,
+  input: Omit<Parameters<DepartmentRepository["recordDepartmentAuditEvent"]>[0], "correlationId"> & {
+    correlationId?: string | undefined;
+  }
+) {
+  await repository.recordDepartmentAuditEvent({
+    ...input,
+    correlationId: input.correlationId ?? createDepartmentCorrelationId()
+  });
+}
+
+async function recordPrismaDepartmentAudit(
+  prisma: Pick<PrismaDepartmentClient, "auditActorReference" | "auditEvent">,
+  input: Parameters<DepartmentRepository["recordDepartmentAuditEvent"]>[0]
+) {
+  const actorReference = await prisma.auditActorReference.create({
+    data: {
+      actorType: input.actorUserId ? "user" : "system",
+      ...(input.actorUserId ? { userId: input.actorUserId } : {}),
+      ...(input.organizationId ? { organizationId: input.organizationId } : {}),
+      displayLabel: input.actorUserId ? "Department actor" : "Department boundary"
+    }
+  });
+
+  await prisma.auditEvent.create({
+    data: {
+      actorReferenceId: actorReference.id,
+      organizationId: input.organizationId,
+      entityType: "department",
+      entityId: input.departmentId ?? nilEntityId,
+      entityPublicReference: input.departmentId,
+      action: input.action,
+      priorState: input.priorState,
+      newState: input.newState,
+      reason: input.reason,
+      source: "api",
+      correlationId: input.correlationId,
+      policyVersion: "department-foundation-v1",
+      createdAt: input.createdAt
+    }
+  });
+}
+
+function normalizeDepartmentText(value: string, minLength: number, maxLength: number) {
+  const normalized = value.trim().replace(/\s+/g, " ");
+
+  return normalized.length >= minLength && normalized.length <= maxLength ? normalized : "";
+}
+
+function parseDepartmentVersion(version: string) {
+  const parsed = new Date(version);
+
+  return Number.isNaN(parsed.getTime()) ? null : parsed;
+}
+
+function createPublicDepartmentId() {
+  return `dept_${randomBytes(12).toString("base64url")}`;
+}
+
+function createDepartmentCorrelationId() {
+  return `department_${randomBytes(12).toString("base64url")}`;
 }
 
 async function scrypt(password: string, salt: Buffer, keyLength: number, options: { N: number; r: number; p: number }) {

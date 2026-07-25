@@ -2,6 +2,7 @@ import Fastify, { type FastifyReply } from "fastify";
 import {
   AuthenticationError,
   AuthenticationRequiredError,
+  DepartmentError,
   EmployerOrganizationError,
   OrganizationMembershipError,
   PasswordPolicyError,
@@ -14,9 +15,11 @@ import {
   authorizationDeniedMessage,
   createAuthenticationService,
   createAuthorizationService,
+  createDepartmentService,
   createEmployerOrganizationService,
   createOrganizationMembershipService,
   createResidenceService,
+  createPrismaDepartmentRepository,
   createPrismaAuthenticationRepository,
   createPrismaEmployerOrganizationRepository,
   createPrismaOrganizationMembershipRepository,
@@ -27,6 +30,8 @@ import {
   type AuthorizationRoleKey,
   type AuthorizationService,
   type AuthenticationService,
+  type DepartmentService,
+  type DepartmentStatus,
   type EmployerOrganizationService,
   type OrganizationMembershipService,
   type ResidenceService,
@@ -42,6 +47,7 @@ export interface BuildApiOptions {
   membershipService?: OrganizationMembershipService;
   organizationService?: EmployerOrganizationService;
   residenceService?: ResidenceService;
+  departmentService?: DepartmentService;
   resolveAuthorizationRoles?: (userId: string) => Promise<readonly AuthorizationRoleKey[]> | readonly AuthorizationRoleKey[];
 }
 
@@ -68,6 +74,15 @@ export function buildApi(options: BuildApiOptions = {}) {
   const residenceService =
     options.residenceService ??
     createResidenceService(createPrismaResidenceRepository(prisma!), organizationRepository!, membershipService, authorizationService);
+  const departmentService =
+    options.departmentService ??
+    createDepartmentService(
+      createPrismaDepartmentRepository(prisma!),
+      createPrismaResidenceRepository(prisma!),
+      organizationRepository!,
+      membershipService,
+      authorizationService
+    );
   const resolveAuthorizationRoles = options.resolveAuthorizationRoles ?? (() => []);
 
   if (prisma) {
@@ -87,6 +102,10 @@ export function buildApi(options: BuildApiOptions = {}) {
 
     if (error instanceof ResidenceError) {
       return sendResidenceDenied(reply);
+    }
+
+    if (error instanceof DepartmentError) {
+      return sendDepartmentDenied(reply);
     }
 
     throw error;
@@ -581,6 +600,119 @@ export function buildApi(options: BuildApiOptions = {}) {
     return reply.code(200).send({ residence: serializeResidence(residence) });
   });
 
+  app.post("/organizations/:organizationId/residences/:residenceId/departments", async (request, reply) => {
+    const session = await authService.validateSession(readBearerToken(request.headers.authorization));
+
+    if (!session.authenticated || !session.user) {
+      return sendDepartmentDenied(reply);
+    }
+
+    const body = asRecord(request.body);
+    const name = readRequiredString(body, "name");
+
+    if (!name) {
+      return reply.code(400).send({
+        error: "RWOS_INVALID_DEPARTMENT_REQUEST",
+        message: "Invalid department request."
+      });
+    }
+
+    const department = await departmentService.createDepartment({
+      actorUserId: session.user.id,
+      organizationId: readRouteParam(request.params, "organizationId"),
+      residenceId: readRouteParam(request.params, "residenceId"),
+      name
+    });
+
+    return reply.code(201).send({ department: serializeDepartment(department) });
+  });
+
+  app.get("/organizations/:organizationId/residences/:residenceId/departments", async (request, reply) => {
+    const session = await authService.validateSession(readBearerToken(request.headers.authorization));
+
+    if (!session.authenticated || !session.user) {
+      return sendDepartmentDenied(reply);
+    }
+
+    const status = readDepartmentStatus(readOptionalString(asRecord(request.query), "status"));
+    const departments = await departmentService.listDepartments({
+      actorUserId: session.user.id,
+      organizationId: readRouteParam(request.params, "organizationId"),
+      residenceId: readRouteParam(request.params, "residenceId"),
+      status
+    });
+
+    return reply.code(200).send({ departments: departments.map(serializeDepartment) });
+  });
+
+  app.get("/organizations/:organizationId/residences/:residenceId/departments/:departmentId", async (request, reply) => {
+    const session = await authService.validateSession(readBearerToken(request.headers.authorization));
+
+    if (!session.authenticated || !session.user) {
+      return sendDepartmentDenied(reply);
+    }
+
+    const department = await departmentService.getDepartment({
+      actorUserId: session.user.id,
+      organizationId: readRouteParam(request.params, "organizationId"),
+      residenceId: readRouteParam(request.params, "residenceId"),
+      departmentId: readRouteParam(request.params, "departmentId")
+    });
+
+    return reply.code(200).send({ department: serializeDepartment(department) });
+  });
+
+  app.patch("/organizations/:organizationId/residences/:residenceId/departments/:departmentId", async (request, reply) => {
+    const session = await authService.validateSession(readBearerToken(request.headers.authorization));
+
+    if (!session.authenticated || !session.user) {
+      return sendDepartmentDenied(reply);
+    }
+
+    const body = asRecord(request.body);
+    const department = await departmentService.updateDepartment({
+      actorUserId: session.user.id,
+      organizationId: readRouteParam(request.params, "organizationId"),
+      residenceId: readRouteParam(request.params, "residenceId"),
+      departmentId: readRouteParam(request.params, "departmentId"),
+      expectedVersion: readRequiredString(body, "expectedVersion") ?? "",
+      name: readOptionalString(body, "name")
+    });
+
+    return reply.code(200).send({ department: serializeDepartment(department) });
+  });
+
+  app.post("/organizations/:organizationId/residences/:residenceId/departments/:departmentId/status", async (request, reply) => {
+    const session = await authService.validateSession(readBearerToken(request.headers.authorization));
+
+    if (!session.authenticated || !session.user) {
+      return sendDepartmentDenied(reply);
+    }
+
+    const body = asRecord(request.body);
+    const status = readDepartmentLifecycleStatus(readRequiredString(body, "status"));
+    const reason = readRequiredString(body, "reason");
+
+    if (!status || !reason) {
+      return reply.code(400).send({
+        error: "RWOS_INVALID_DEPARTMENT_REQUEST",
+        message: "Invalid department request."
+      });
+    }
+
+    const department = await departmentService.updateDepartmentStatus({
+      actorUserId: session.user.id,
+      organizationId: readRouteParam(request.params, "organizationId"),
+      residenceId: readRouteParam(request.params, "residenceId"),
+      departmentId: readRouteParam(request.params, "departmentId"),
+      expectedVersion: readRequiredString(body, "expectedVersion") ?? "",
+      status,
+      reason
+    });
+
+    return reply.code(200).send({ department: serializeDepartment(department) });
+  });
+
   return app;
 }
 
@@ -679,6 +811,13 @@ function sendResidenceDenied(reply: FastifyReply) {
   });
 }
 
+function sendDepartmentDenied(reply: FastifyReply) {
+  return reply.code(403).send({
+    error: authorizationDeniedCode,
+    message: authorizationDeniedMessage
+  });
+}
+
 function serializeMemberships(memberships: Awaited<ReturnType<OrganizationMembershipService["listMemberships"]>>) {
   return memberships.map(serializeMembership);
 }
@@ -715,10 +854,27 @@ function serializeResidence(residence: Awaited<ReturnType<ResidenceService["getR
   };
 }
 
+function serializeDepartment(department: Awaited<ReturnType<DepartmentService["getDepartment"]>>) {
+  return {
+    ...department,
+    createdAt: department.createdAt.toISOString(),
+    updatedAt: department.updatedAt.toISOString(),
+    archivedAt: department.archivedAt?.toISOString() ?? null
+  };
+}
+
 function readResidenceStatus(value: string | null): ResidenceStatus | null {
   return value === "draft" || value === "active" || value === "restricted" || value === "inactive" || value === "closed" ? value : null;
 }
 
 function readResidenceLifecycleStatus(value: string | null) {
+  return value === "active" || value === "inactive" || value === "closed" ? value : null;
+}
+
+function readDepartmentStatus(value: string | null): DepartmentStatus | null {
+  return value === "draft" || value === "active" || value === "restricted" || value === "inactive" || value === "closed" ? value : null;
+}
+
+function readDepartmentLifecycleStatus(value: string | null) {
   return value === "active" || value === "inactive" || value === "closed" ? value : null;
 }
