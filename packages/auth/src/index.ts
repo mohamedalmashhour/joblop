@@ -74,6 +74,17 @@ export const authorizationPermissionKeys = [
   "worker_offer.audit_read",
   "worker_offer.respond",
   "worker_offer.supervise",
+  "assignment.create",
+  "assignment.read",
+  "assignment.cancel",
+  "assignment.withdraw",
+  "assignment.mark_replacement_required",
+  "assignment.attendance_handoff",
+  "assignment.audit_read",
+  "assignment.worker_read",
+  "assignment.worker_acknowledge",
+  "assignment.worker_withdraw",
+  "assignment.supervise",
   "audit.read",
   "platform.supervise"
 ] as const;
@@ -1536,6 +1547,176 @@ export class WorkerOfferError extends Error {
   }
 }
 
+export type AssignmentStatus =
+  | "pending_validation"
+  | "confirmed"
+  | "worker_acknowledged"
+  | "ready_for_attendance"
+  | "in_attendance_window"
+  | "attendance_handoff"
+  | "worker_withdrawn"
+  | "employer_cancelled"
+  | "platform_cancelled"
+  | "replacement_required"
+  | "expired_before_start"
+  | "closed";
+
+export type AssignmentDecisionStatus =
+  | "allow"
+  | "invalid_input"
+  | "not_found"
+  | "permission_denied"
+  | "version_conflict"
+  | "invalid_transition"
+  | "capacity_exceeded"
+  | "worker_identity_inactive"
+  | "worker_offer_not_accepted"
+  | "terms_unavailable"
+  | "assignment_exists"
+  | "conflict_detected";
+
+export interface StoredAssignment {
+  id: string;
+  jobRequestId: string;
+  dispatchReviewId: string;
+  workerOfferId: string;
+  workerOfferTermsVersionId: string;
+  workerIdentityId: string;
+  organizationId: string;
+  residenceId: string;
+  departmentId: string;
+  workGroupId: string;
+  roleDefinitionId: string;
+  status: AssignmentStatus;
+  confirmedStartAt: Date;
+  confirmedEndAt: Date;
+  timezone: string;
+  confirmedTitle: string;
+  confirmedRoleSummary: string | null;
+  confirmedWorksiteSummary: string | null;
+  confirmedDepartmentSummary: string | null;
+  confirmedResponsibilitySummary: string | null;
+  confirmedPolicySummary: string | null;
+  confirmedCompensationSummary: string | null;
+  validationSnapshot: unknown | null;
+  capacityCheckedAt: Date;
+  conflictCheckedAt: Date;
+  confirmedAt: Date;
+  workerAcknowledgedAt: Date | null;
+  readyForAttendanceAt: Date | null;
+  attendanceWindowStartedAt: Date | null;
+  attendanceHandoffAt: Date | null;
+  workerWithdrawnAt: Date | null;
+  cancelledAt: Date | null;
+  replacementRequiredAt: Date | null;
+  closedAt: Date | null;
+  cancellationReasonCategory: string | null;
+  createdByUserId: string;
+  updatedByUserId: string | null;
+  confirmedByUserId: string | null;
+  cancelledByUserId: string | null;
+  createdAt: Date;
+  updatedAt: Date;
+  version: number;
+}
+
+export interface PublicAssignment extends StoredAssignment {
+  versionToken: number;
+  attendanceBoundary: "not_started" | "handoff_ready" | "handoff_completed";
+}
+
+export interface AssignmentDecision {
+  status: AssignmentDecisionStatus;
+  allow: boolean;
+  assignment: PublicAssignment | null;
+  roles: readonly AuthorizationRoleKey[];
+  internalReason: string | null;
+  externalCode: typeof authorizationDeniedCode | null;
+  externalMessage: typeof authorizationDeniedMessage | null;
+}
+
+export interface AssignmentRepository {
+  createAssignmentFromAcceptedOffer(input: {
+    workerOffer: StoredWorkerOffer;
+    termsVersion: StoredWorkerOfferTermsVersion;
+    jobRequest: StoredJobRequest;
+    dispatchReview: StoredDispatchReview;
+    workerIdentity: StoredWorkerIdentity;
+    actorUserId: string;
+    validationSnapshot: Record<string, unknown>;
+    now: Date;
+  }): Promise<StoredAssignment>;
+  findAssignmentById(assignmentId: string): Promise<StoredAssignment | null>;
+  findAssignmentByWorkerOfferId(workerOfferId: string): Promise<StoredAssignment | null>;
+  listAssignments(input: {
+    organizationId?: string | undefined;
+    workerIdentityId?: string | undefined;
+    jobRequestId?: string | undefined;
+    statuses?: readonly AssignmentStatus[] | undefined;
+  }): Promise<StoredAssignment[]>;
+  countActiveAssignmentsForJobRequest(jobRequestId: string): Promise<number>;
+  countConflictingAssignments(input: {
+    workerIdentityId: string;
+    startAt: Date;
+    endAt: Date;
+    excludeAssignmentId?: string | undefined;
+  }): Promise<number>;
+  updateAssignment(input: {
+    assignmentId: string;
+    expectedVersion: number;
+    actorUserId: string | null;
+    status?: AssignmentStatus | undefined;
+    workerAcknowledgedAt?: Date | null | undefined;
+    readyForAttendanceAt?: Date | null | undefined;
+    attendanceWindowStartedAt?: Date | null | undefined;
+    attendanceHandoffAt?: Date | null | undefined;
+    workerWithdrawnAt?: Date | null | undefined;
+    cancelledAt?: Date | null | undefined;
+    replacementRequiredAt?: Date | null | undefined;
+    closedAt?: Date | null | undefined;
+    cancellationReasonCategory?: string | null | undefined;
+    now: Date;
+  }): Promise<StoredAssignment | null>;
+  recordAssignmentAuditEvent(input: {
+    action:
+      | "assignment.creation_attempted"
+      | "assignment.validation_passed"
+      | "assignment.validation_failed"
+      | "assignment.confirmed"
+      | "assignment.worker_acknowledged"
+      | "assignment.ready_for_attendance"
+      | "assignment.attendance_window_started"
+      | "assignment.attendance_handoff"
+      | "assignment.worker_withdrawn"
+      | "assignment.employer_cancelled"
+      | "assignment.platform_cancelled"
+      | "assignment.replacement_required"
+      | "assignment.closed"
+      | "assignment.access_denied"
+      | "assignment.version_conflict";
+    organizationId: string | null;
+    assignmentId: string | null;
+    workerOfferId: string | null;
+    jobRequestId: string | null;
+    actorUserId: string | null;
+    priorState: string | null;
+    newState: string | null;
+    reason: string | null;
+    correlationId: string;
+    createdAt: Date;
+  }): Promise<void>;
+}
+
+export class AssignmentError extends Error {
+  decision: AssignmentDecision;
+
+  constructor(decision: AssignmentDecision) {
+    super(authorizationDeniedMessage);
+    this.name = "AssignmentError";
+    this.decision = decision;
+  }
+}
+
 export class AuthorizationDeniedError extends Error {
   code = authorizationDeniedCode;
   decision: AuthorizationDecision;
@@ -1853,6 +2034,94 @@ export const authorizationPermissionDefinitions = [
     "Not assigned to active roles in this foundation."
   ),
   permission(
+    "assignment.create",
+    "Create an authoritative Assignment from an accepted Worker Offer after final validation.",
+    "platform",
+    "active",
+    "Could incorrectly convert an offer into attendance if preconditions are bypassed.",
+    "Requires accepted Worker Offer, capacity validation, conflict recheck, and platform actor."
+  ),
+  permission(
+    "assignment.read",
+    "Read governed Assignment status for authorized platform or employer users.",
+    "organization",
+    "active",
+    "Could expose worker operational commitments beyond minimum necessary access.",
+    "Requires organization context and returns Assignment status only."
+  ),
+  permission(
+    "assignment.cancel",
+    "Cancel an Assignment through a governed administrative boundary.",
+    "platform",
+    "active",
+    "Could erase a work commitment without audit or replacement context.",
+    "Requires reason category and preserves historical Assignment."
+  ),
+  permission(
+    "assignment.withdraw",
+    "Record worker withdrawal from an Assignment through a governed platform boundary.",
+    "platform",
+    "active",
+    "Could be confused with discipline or timesheet impact.",
+    "Preserves neutral withdrawal state and does not calculate penalties."
+  ),
+  permission(
+    "assignment.mark_replacement_required",
+    "Mark an Assignment as requiring replacement without executing replacement.",
+    "platform",
+    "active",
+    "Could be mistaken for replacement dispatch execution.",
+    "Marks boundary only; Replacement Engine remains downstream."
+  ),
+  permission(
+    "assignment.attendance_handoff",
+    "Move Assignment to the Attendance handoff boundary.",
+    "platform",
+    "active",
+    "Could be mistaken for GPS or attendance evidence.",
+    "Does not create attendance records, GPS events, worked time, or timesheets."
+  ),
+  permission(
+    "assignment.audit_read",
+    "Read Assignment audit summaries.",
+    "platform",
+    "active",
+    "Could expose operational history beyond least privilege.",
+    "Dispatcher and Platform Administrator only."
+  ),
+  permission(
+    "assignment.worker_read",
+    "Allow a worker to read their own Assignment.",
+    "none",
+    "active",
+    "Could expose another worker's schedule if ownership is not enforced.",
+    "Requires authenticated WorkerIdentity ownership."
+  ),
+  permission(
+    "assignment.worker_acknowledge",
+    "Allow a worker to acknowledge their own Assignment.",
+    "none",
+    "active",
+    "Could be confused with attendance acceptance.",
+    "Acknowledgement does not create attendance evidence."
+  ),
+  permission(
+    "assignment.worker_withdraw",
+    "Allow a worker to request withdrawal from their own Assignment.",
+    "none",
+    "active",
+    "Could be treated as discipline if not neutral and auditable.",
+    "Records neutral withdrawal boundary only; replacement remains downstream."
+  ),
+  permission(
+    "assignment.supervise",
+    "Reserved future Assignment supervision capability.",
+    "platform",
+    "reserved",
+    "Would grant elevated assignment oversight if activated silently.",
+    "Not assigned to active roles in this foundation."
+  ),
+  permission(
     "audit.read",
     "Read approved audit summaries.",
     "platform",
@@ -1893,6 +2162,13 @@ export const authorizationRoleDefinitions = [
     "worker_offer.withdraw",
     "worker_offer.cancel",
     "worker_offer.audit_read",
+    "assignment.create",
+    "assignment.read",
+    "assignment.cancel",
+    "assignment.withdraw",
+    "assignment.mark_replacement_required",
+    "assignment.attendance_handoff",
+    "assignment.audit_read",
     "audit.read"
   ]),
   roleDefinition("ORGANIZATION_OWNER", "Organization Owner", "organization", [
@@ -1910,7 +2186,8 @@ export const authorizationRoleDefinitions = [
     "job_request.read",
     "job_request.update_draft",
     "job_request.submit",
-    "job_request.cancel"
+    "job_request.cancel",
+    "assignment.read"
   ]),
   roleDefinition("ORGANIZATION_ADMINISTRATOR", "Organization Administrator", "organization", [
     "organization.read",
@@ -1926,7 +2203,8 @@ export const authorizationRoleDefinitions = [
     "job_request.read",
     "job_request.update_draft",
     "job_request.submit",
-    "job_request.cancel"
+    "job_request.cancel",
+    "assignment.read"
   ]),
   roleDefinition("ORGANIZATION_STAFF", "Organization Staff", "organization", [
     "organization.read",
@@ -1938,9 +2216,15 @@ export const authorizationRoleDefinitions = [
     "job_request.read",
     "job_request.update_draft",
     "job_request.submit",
-    "job_request.cancel"
+    "job_request.cancel",
+    "assignment.read"
   ]),
-  roleDefinition("WORKER_ACCESS", "Worker Access", "none", ["worker_offer.respond"]),
+  roleDefinition("WORKER_ACCESS", "Worker Access", "none", [
+    "worker_offer.respond",
+    "assignment.worker_read",
+    "assignment.worker_acknowledge",
+    "assignment.worker_withdraw"
+  ]),
   roleDefinition("DISPATCHER", "Dispatcher", "platform", [
     "dispatch.create",
     "dispatch.read",
@@ -1958,7 +2242,14 @@ export const authorizationRoleDefinitions = [
     "worker_offer.send",
     "worker_offer.withdraw",
     "worker_offer.cancel",
-    "worker_offer.audit_read"
+    "worker_offer.audit_read",
+    "assignment.create",
+    "assignment.read",
+    "assignment.cancel",
+    "assignment.withdraw",
+    "assignment.mark_replacement_required",
+    "assignment.attendance_handoff",
+    "assignment.audit_read"
   ])
 ] as const satisfies readonly AuthorizationRoleDefinition[];
 
@@ -5999,6 +6290,925 @@ function createWorkerOfferCorrelationId() {
   return `worker_offer_${randomBytes(12).toString("base64url")}`;
 }
 
+export function createAssignmentService(
+  assignmentRepository: AssignmentRepository,
+  workerOfferRepository: WorkerOfferRepository,
+  dispatchRepository: DispatchRepository,
+  jobRequestRepository: JobRequestRepository,
+  authorizationService: AuthorizationService,
+  options: { now?: () => Date } = {}
+) {
+  const now = options.now ?? (() => new Date());
+
+  return {
+    async createFromAcceptedOffer(input: {
+      session: SessionValidationResult;
+      roles?: readonly AuthorizationRoleKey[];
+      workerOfferId: string;
+      correlationId?: string;
+    }) {
+      const currentTime = now();
+      const decision = await authorizeAssignmentPlatformOperation({
+        assignmentRepository,
+        authorizationService,
+        session: input.session,
+        roles: input.roles ?? [],
+        permission: "assignment.create",
+        assignment: null,
+        correlationId: input.correlationId,
+        now: currentTime
+      });
+      if (!decision.allow) throw new AssignmentError(decision);
+
+      await recordAssignmentAudit(assignmentRepository, {
+        action: "assignment.creation_attempted",
+        organizationId: null,
+        assignmentId: null,
+        workerOfferId: input.workerOfferId,
+        jobRequestId: null,
+        actorUserId: input.session.user?.id ?? null,
+        priorState: null,
+        newState: "pending_validation",
+        reason: "create_from_accepted_worker_offer",
+        correlationId: input.correlationId,
+        createdAt: currentTime
+      });
+
+      const workerOffer = await workerOfferRepository.findWorkerOfferById(input.workerOfferId);
+      if (!workerOffer) {
+        throw new AssignmentError(
+          assignmentDeny("not_found", "worker_offer_not_found", null, input.roles ?? [])
+        );
+      }
+      if (workerOffer.status !== "accepted") {
+        await recordAssignmentValidationFailure({
+          assignmentRepository,
+          workerOffer,
+          session: input.session,
+          reason: `worker_offer_not_accepted:${workerOffer.status}`,
+          correlationId: input.correlationId,
+          now: currentTime
+        });
+        throw new AssignmentError(
+          assignmentDeny(
+            "worker_offer_not_accepted",
+            `worker_offer_not_accepted:${workerOffer.status}`,
+            null,
+            input.roles ?? []
+          )
+        );
+      }
+
+      if (await assignmentRepository.findAssignmentByWorkerOfferId(workerOffer.id)) {
+        throw new AssignmentError(
+          assignmentDeny("assignment_exists", "assignment_already_exists", null, input.roles ?? [])
+        );
+      }
+
+      const [termsVersion, jobRequest, dispatchReview, workerIdentity] = await Promise.all([
+        workerOfferRepository.findCurrentTermsVersion(workerOffer.id),
+        jobRequestRepository.findJobRequestById(workerOffer.jobRequestId),
+        dispatchRepository.findDispatchReviewById(workerOffer.dispatchReviewId),
+        workerOfferRepository.findWorkerIdentityById(workerOffer.workerIdentityId)
+      ]);
+
+      if (!termsVersion || termsVersion.id !== workerOffer.currentTermsVersionId) {
+        await recordAssignmentValidationFailure({
+          assignmentRepository,
+          workerOffer,
+          session: input.session,
+          reason: "accepted_terms_unavailable",
+          correlationId: input.correlationId,
+          now: currentTime
+        });
+        throw new AssignmentError(
+          assignmentDeny("terms_unavailable", "accepted_terms_unavailable", null, input.roles ?? [])
+        );
+      }
+      if (!jobRequest || !dispatchReview || !workerIdentity) {
+        await recordAssignmentValidationFailure({
+          assignmentRepository,
+          workerOffer,
+          session: input.session,
+          reason: "source_record_unavailable",
+          correlationId: input.correlationId,
+          now: currentTime
+        });
+        throw new AssignmentError(
+          assignmentDeny("not_found", "source_record_unavailable", null, input.roles ?? [])
+        );
+      }
+      if (workerIdentity.status !== "active") {
+        await recordAssignmentValidationFailure({
+          assignmentRepository,
+          workerOffer,
+          session: input.session,
+          reason: "worker_identity_not_active",
+          correlationId: input.correlationId,
+          now: currentTime
+        });
+        throw new AssignmentError(
+          assignmentDeny(
+            "worker_identity_inactive",
+            "worker_identity_not_active",
+            null,
+            input.roles ?? []
+          )
+        );
+      }
+
+      const activeAssignments = await assignmentRepository.countActiveAssignmentsForJobRequest(
+        jobRequest.id
+      );
+      if (activeAssignments >= jobRequest.numberOfWorkers) {
+        await recordAssignmentValidationFailure({
+          assignmentRepository,
+          workerOffer,
+          session: input.session,
+          reason: "job_request_capacity_reached",
+          correlationId: input.correlationId,
+          now: currentTime
+        });
+        throw new AssignmentError(
+          assignmentDeny(
+            "capacity_exceeded",
+            "job_request_capacity_reached",
+            null,
+            input.roles ?? []
+          )
+        );
+      }
+
+      const conflictCount = await assignmentRepository.countConflictingAssignments({
+        workerIdentityId: workerIdentity.id,
+        startAt: termsVersion.startAt,
+        endAt: termsVersion.endAt
+      });
+      if (conflictCount > 0) {
+        await recordAssignmentValidationFailure({
+          assignmentRepository,
+          workerOffer,
+          session: input.session,
+          reason: "worker_schedule_conflict",
+          correlationId: input.correlationId,
+          now: currentTime
+        });
+        throw new AssignmentError(
+          assignmentDeny("conflict_detected", "worker_schedule_conflict", null, input.roles ?? [])
+        );
+      }
+
+      const validationSnapshot = {
+        policyVersion: "assignment-foundation-v1",
+        workerOfferStatus: workerOffer.status,
+        termsVersionId: termsVersion.id,
+        jobRequestStatus: jobRequest.status,
+        dispatchReviewState: dispatchReview.state,
+        activeAssignmentsBeforeCreate: activeAssignments,
+        requiredWorkerCount: jobRequest.numberOfWorkers,
+        conflictCount,
+        attendanceCreated: false,
+        workerCalendarCreated: false,
+        payrollCreated: false
+      };
+
+      await recordAssignmentAudit(assignmentRepository, {
+        action: "assignment.validation_passed",
+        organizationId: workerOffer.organizationId,
+        assignmentId: null,
+        workerOfferId: workerOffer.id,
+        jobRequestId: workerOffer.jobRequestId,
+        actorUserId: input.session.user?.id ?? null,
+        priorState: "pending_validation",
+        newState: "confirmed",
+        reason: "final_validation_passed",
+        correlationId: input.correlationId,
+        createdAt: currentTime
+      });
+
+      const assignment = await assignmentRepository.createAssignmentFromAcceptedOffer({
+        workerOffer,
+        termsVersion,
+        jobRequest,
+        dispatchReview,
+        workerIdentity,
+        actorUserId: input.session.user?.id ?? "system",
+        validationSnapshot,
+        now: currentTime
+      });
+      await recordAssignmentAudit(assignmentRepository, {
+        action: "assignment.confirmed",
+        organizationId: assignment.organizationId,
+        assignmentId: assignment.id,
+        workerOfferId: assignment.workerOfferId,
+        jobRequestId: assignment.jobRequestId,
+        actorUserId: input.session.user?.id ?? null,
+        priorState: "pending_validation",
+        newState: assignment.status,
+        reason: "accepted_worker_offer_confirmed",
+        correlationId: input.correlationId,
+        createdAt: currentTime
+      });
+      return toPublicAssignment(assignment);
+    },
+
+    async listAssignments(input: {
+      session: SessionValidationResult;
+      roles?: readonly AuthorizationRoleKey[];
+      organizationId?: string | null;
+      jobRequestId?: string | null;
+      statuses?: readonly AssignmentStatus[];
+      correlationId?: string;
+    }) {
+      const decision = await authorizeAssignmentReadOperation({
+        assignmentRepository,
+        authorizationService,
+        session: input.session,
+        roles: input.roles ?? [],
+        organizationId: input.organizationId ?? null,
+        assignment: null,
+        correlationId: input.correlationId,
+        now: now()
+      });
+      if (!decision.allow) throw new AssignmentError(decision);
+
+      return (
+        await assignmentRepository.listAssignments({
+          organizationId: input.organizationId ?? undefined,
+          jobRequestId: input.jobRequestId ?? undefined,
+          statuses: input.statuses
+        })
+      ).map(toPublicAssignment);
+    },
+
+    async readAssignment(input: {
+      session: SessionValidationResult;
+      roles?: readonly AuthorizationRoleKey[];
+      assignmentId: string;
+      correlationId?: string;
+    }) {
+      const assignment = await requireAuthorizedAssignment({
+        assignmentRepository,
+        authorizationService,
+        session: input.session,
+        roles: input.roles ?? [],
+        permission: "assignment.read",
+        assignmentId: input.assignmentId,
+        correlationId: input.correlationId,
+        now: now()
+      });
+      return assignment.publicAssignment;
+    },
+
+    async workerRead(input: {
+      session: SessionValidationResult;
+      roles?: readonly AuthorizationRoleKey[];
+      assignmentId: string;
+      correlationId?: string;
+    }) {
+      const workerIdentity = await requireWorkerIdentityForSession(
+        workerOfferRepository,
+        input.session
+      );
+      const assignment = await requireWorkerOwnedAssignment({
+        assignmentRepository,
+        authorizationService,
+        session: input.session,
+        roles: input.roles ?? [],
+        workerIdentity,
+        assignmentId: input.assignmentId,
+        permission: "assignment.worker_read",
+        correlationId: input.correlationId,
+        now: now()
+      });
+      return assignment.publicAssignment;
+    },
+
+    async acknowledge(input: AssignmentTransitionInput) {
+      const workerIdentity = await requireWorkerIdentityForSession(
+        workerOfferRepository,
+        input.session
+      );
+      const assignment = await requireWorkerOwnedAssignment({
+        assignmentRepository,
+        authorizationService,
+        session: input.session,
+        roles: input.roles ?? [],
+        workerIdentity,
+        assignmentId: input.assignmentId,
+        permission: "assignment.worker_acknowledge",
+        correlationId: input.correlationId,
+        now: now()
+      });
+      return transitionAssignment({
+        ...input,
+        assignmentRepository,
+        authorizationService,
+        assignment: assignment.stored,
+        permission: "assignment.worker_acknowledge",
+        allowedFrom: ["confirmed", "ready_for_attendance"],
+        nextStatus: "worker_acknowledged",
+        action: "assignment.worker_acknowledged",
+        workerAcknowledgedAt: true,
+        platform: false,
+        now: now()
+      });
+    },
+
+    async workerWithdraw(input: AssignmentTransitionInput & { reason: string }) {
+      const workerIdentity = await requireWorkerIdentityForSession(
+        workerOfferRepository,
+        input.session
+      );
+      const assignment = await requireWorkerOwnedAssignment({
+        assignmentRepository,
+        authorizationService,
+        session: input.session,
+        roles: input.roles ?? [],
+        workerIdentity,
+        assignmentId: input.assignmentId,
+        permission: "assignment.worker_withdraw",
+        correlationId: input.correlationId,
+        now: now()
+      });
+      return transitionAssignment({
+        ...input,
+        assignmentRepository,
+        authorizationService,
+        assignment: assignment.stored,
+        permission: "assignment.worker_withdraw",
+        allowedFrom: ["confirmed", "worker_acknowledged", "ready_for_attendance"],
+        nextStatus: "worker_withdrawn",
+        action: "assignment.worker_withdrawn",
+        workerWithdrawnAt: true,
+        platform: false,
+        now: now()
+      });
+    },
+
+    async markReadyForAttendance(input: AssignmentTransitionInput) {
+      return transitionAssignmentById({
+        ...input,
+        assignmentRepository,
+        authorizationService,
+        permission: "assignment.attendance_handoff",
+        allowedFrom: ["confirmed", "worker_acknowledged"],
+        nextStatus: "ready_for_attendance",
+        action: "assignment.ready_for_attendance",
+        readyForAttendanceAt: true,
+        platform: true,
+        now: now()
+      });
+    },
+
+    async startAttendanceWindow(input: AssignmentTransitionInput) {
+      return transitionAssignmentById({
+        ...input,
+        assignmentRepository,
+        authorizationService,
+        permission: "assignment.attendance_handoff",
+        allowedFrom: ["ready_for_attendance"],
+        nextStatus: "in_attendance_window",
+        action: "assignment.attendance_window_started",
+        attendanceWindowStartedAt: true,
+        platform: true,
+        now: now()
+      });
+    },
+
+    async attendanceHandoff(input: AssignmentTransitionInput) {
+      return transitionAssignmentById({
+        ...input,
+        assignmentRepository,
+        authorizationService,
+        permission: "assignment.attendance_handoff",
+        allowedFrom: ["ready_for_attendance", "in_attendance_window"],
+        nextStatus: "attendance_handoff",
+        action: "assignment.attendance_handoff",
+        attendanceHandoffAt: true,
+        platform: true,
+        now: now()
+      });
+    },
+
+    async cancel(input: AssignmentTransitionInput & { reason: string; status?: AssignmentStatus }) {
+      const status = input.status ?? "platform_cancelled";
+      if (!["employer_cancelled", "platform_cancelled"].includes(status)) {
+        throw new AssignmentError(
+          assignmentDeny("invalid_input", "invalid_cancellation_status", null, input.roles ?? [])
+        );
+      }
+      return transitionAssignmentById({
+        ...input,
+        assignmentRepository,
+        authorizationService,
+        permission: "assignment.cancel",
+        allowedFrom: [
+          "confirmed",
+          "worker_acknowledged",
+          "ready_for_attendance",
+          "in_attendance_window"
+        ],
+        nextStatus: status,
+        action:
+          status === "employer_cancelled"
+            ? "assignment.employer_cancelled"
+            : "assignment.platform_cancelled",
+        cancelledAt: true,
+        cancellationReasonCategory: input.reason,
+        platform: true,
+        now: now()
+      });
+    },
+
+    async markReplacementRequired(input: AssignmentTransitionInput & { reason: string }) {
+      return transitionAssignmentById({
+        ...input,
+        assignmentRepository,
+        authorizationService,
+        permission: "assignment.mark_replacement_required",
+        allowedFrom: [
+          "confirmed",
+          "worker_acknowledged",
+          "ready_for_attendance",
+          "worker_withdrawn",
+          "employer_cancelled",
+          "platform_cancelled",
+          "expired_before_start"
+        ],
+        nextStatus: "replacement_required",
+        action: "assignment.replacement_required",
+        replacementRequiredAt: true,
+        cancellationReasonCategory: input.reason,
+        platform: true,
+        now: now()
+      });
+    },
+
+    async readAuditSummary(input: {
+      session: SessionValidationResult;
+      roles?: readonly AuthorizationRoleKey[];
+      assignmentId: string;
+      correlationId?: string;
+    }) {
+      const assignment = await requireAuthorizedAssignment({
+        assignmentRepository,
+        authorizationService,
+        session: input.session,
+        roles: input.roles ?? [],
+        permission: "assignment.audit_read",
+        assignmentId: input.assignmentId,
+        correlationId: input.correlationId,
+        now: now()
+      });
+      return {
+        assignmentId: assignment.stored.id,
+        workerOfferId: assignment.stored.workerOfferId,
+        jobRequestId: assignment.stored.jobRequestId,
+        policyVersion: "assignment-foundation-v1",
+        auditAvailable: true,
+        message: "Assignment audit is available through governed audit records."
+      };
+    }
+  };
+}
+
+export type AssignmentService = ReturnType<typeof createAssignmentService>;
+
+interface AssignmentTransitionInput {
+  session: SessionValidationResult;
+  roles?: readonly AuthorizationRoleKey[];
+  assignmentId: string;
+  expectedVersion: number;
+  reason?: string;
+  correlationId?: string;
+}
+
+const activeAssignmentStates: readonly AssignmentStatus[] = [
+  "pending_validation",
+  "confirmed",
+  "worker_acknowledged",
+  "ready_for_attendance",
+  "in_attendance_window",
+  "attendance_handoff"
+] as const;
+
+function toPublicAssignment(assignment: StoredAssignment): PublicAssignment {
+  return {
+    ...assignment,
+    versionToken: assignment.version,
+    attendanceBoundary:
+      assignment.status === "attendance_handoff"
+        ? "handoff_completed"
+        : assignment.status === "ready_for_attendance" ||
+            assignment.status === "in_attendance_window"
+          ? "handoff_ready"
+          : "not_started"
+  };
+}
+
+function assignmentDeny(
+  status: Exclude<AssignmentDecisionStatus, "allow">,
+  internalReason: string,
+  assignment: PublicAssignment | null,
+  roles: readonly AuthorizationRoleKey[]
+): AssignmentDecision {
+  return {
+    status,
+    allow: false,
+    assignment,
+    roles,
+    internalReason,
+    externalCode: authorizationDeniedCode,
+    externalMessage: authorizationDeniedMessage
+  };
+}
+
+async function authorizeAssignmentPlatformOperation(input: {
+  assignmentRepository: AssignmentRepository;
+  authorizationService: AuthorizationService;
+  session: SessionValidationResult;
+  roles: readonly AuthorizationRoleKey[];
+  permission: AuthorizationPermissionKey;
+  assignment?: StoredAssignment | null | undefined;
+  correlationId?: string | undefined;
+  now: Date;
+}): Promise<AssignmentDecision> {
+  const authorizationDecision = await input.authorizationService.decide({
+    session: input.session,
+    roles: input.roles,
+    permission: input.permission,
+    platformContext: { platform: true },
+    ...(input.correlationId ? { correlationId: input.correlationId } : {})
+  });
+  const publicAssignment = input.assignment ? toPublicAssignment(input.assignment) : null;
+
+  if (!authorizationDecision.allow) {
+    const decision = assignmentDeny(
+      "permission_denied",
+      authorizationDecision.internalReason ?? "permission_denied",
+      publicAssignment,
+      input.roles
+    );
+    await recordAssignmentDenial(input.assignmentRepository, {
+      decision,
+      actorUserId: input.session.user?.id ?? null,
+      correlationId: input.correlationId,
+      createdAt: input.now
+    });
+    return decision;
+  }
+
+  return {
+    status: "allow",
+    allow: true,
+    assignment: publicAssignment,
+    roles: input.roles,
+    internalReason: null,
+    externalCode: null,
+    externalMessage: null
+  };
+}
+
+async function authorizeAssignmentReadOperation(input: {
+  assignmentRepository: AssignmentRepository;
+  authorizationService: AuthorizationService;
+  session: SessionValidationResult;
+  roles: readonly AuthorizationRoleKey[];
+  organizationId: string | null;
+  assignment?: StoredAssignment | null | undefined;
+  correlationId?: string | undefined;
+  now: Date;
+}): Promise<AssignmentDecision> {
+  const organizationId = input.assignment?.organizationId ?? input.organizationId;
+  const authorizationDecision = await input.authorizationService.decide({
+    session: input.session,
+    roles: input.roles,
+    permission: "assignment.read",
+    resourceContext: { organizationId },
+    ...(input.correlationId ? { correlationId: input.correlationId } : {})
+  });
+  const publicAssignment = input.assignment ? toPublicAssignment(input.assignment) : null;
+
+  if (!authorizationDecision.allow) {
+    const decision = assignmentDeny(
+      "permission_denied",
+      authorizationDecision.internalReason ?? "permission_denied",
+      publicAssignment,
+      input.roles
+    );
+    await recordAssignmentDenial(input.assignmentRepository, {
+      decision,
+      actorUserId: input.session.user?.id ?? null,
+      correlationId: input.correlationId,
+      createdAt: input.now
+    });
+    return decision;
+  }
+
+  return {
+    status: "allow",
+    allow: true,
+    assignment: publicAssignment,
+    roles: input.roles,
+    internalReason: null,
+    externalCode: null,
+    externalMessage: null
+  };
+}
+
+async function requireAuthorizedAssignment(input: {
+  assignmentRepository: AssignmentRepository;
+  authorizationService: AuthorizationService;
+  session: SessionValidationResult;
+  roles: readonly AuthorizationRoleKey[];
+  permission: AuthorizationPermissionKey;
+  assignmentId: string;
+  correlationId?: string | undefined;
+  now: Date;
+}) {
+  const assignment = await input.assignmentRepository.findAssignmentById(input.assignmentId);
+  const decision =
+    input.permission === "assignment.read"
+      ? await authorizeAssignmentReadOperation({
+          assignmentRepository: input.assignmentRepository,
+          authorizationService: input.authorizationService,
+          session: input.session,
+          roles: input.roles,
+          organizationId: assignment?.organizationId ?? null,
+          assignment,
+          correlationId: input.correlationId,
+          now: input.now
+        })
+      : await authorizeAssignmentPlatformOperation({
+          assignmentRepository: input.assignmentRepository,
+          authorizationService: input.authorizationService,
+          session: input.session,
+          roles: input.roles,
+          permission: input.permission,
+          assignment,
+          correlationId: input.correlationId,
+          now: input.now
+        });
+
+  if (!assignment || !decision.allow) {
+    throw new AssignmentError(
+      !assignment
+        ? assignmentDeny("not_found", "assignment_not_found", null, input.roles)
+        : decision
+    );
+  }
+
+  return { stored: assignment, publicAssignment: toPublicAssignment(assignment) };
+}
+
+async function requireWorkerOwnedAssignment(input: {
+  assignmentRepository: AssignmentRepository;
+  authorizationService: AuthorizationService;
+  session: SessionValidationResult;
+  roles: readonly AuthorizationRoleKey[];
+  workerIdentity: StoredWorkerIdentity;
+  assignmentId: string;
+  permission: AuthorizationPermissionKey;
+  correlationId?: string | undefined;
+  now: Date;
+}) {
+  const authorizationDecision = await input.authorizationService.decide({
+    session: input.session,
+    roles: input.roles,
+    permission: input.permission,
+    ...(input.correlationId ? { correlationId: input.correlationId } : {})
+  });
+  const assignment = await input.assignmentRepository.findAssignmentById(input.assignmentId);
+  const publicAssignment = assignment ? toPublicAssignment(assignment) : null;
+  if (!assignment || assignment.workerIdentityId !== input.workerIdentity.id) {
+    const decision = assignmentDeny(
+      !assignment ? "not_found" : "permission_denied",
+      !assignment ? "assignment_not_found" : "assignment_not_owned_by_worker",
+      publicAssignment,
+      input.roles
+    );
+    await recordAssignmentDenial(input.assignmentRepository, {
+      decision,
+      actorUserId: input.session.user?.id ?? null,
+      correlationId: input.correlationId,
+      createdAt: input.now
+    });
+    throw new AssignmentError(decision);
+  }
+  if (!authorizationDecision.allow) {
+    const decision = assignmentDeny(
+      "permission_denied",
+      authorizationDecision.internalReason ?? "permission_denied",
+      publicAssignment,
+      input.roles
+    );
+    await recordAssignmentDenial(input.assignmentRepository, {
+      decision,
+      actorUserId: input.session.user?.id ?? null,
+      correlationId: input.correlationId,
+      createdAt: input.now
+    });
+    throw new AssignmentError(decision);
+  }
+  return { stored: assignment, publicAssignment: toPublicAssignment(assignment) };
+}
+
+async function transitionAssignmentById(
+  input: AssignmentTransitionInput & {
+    assignmentRepository: AssignmentRepository;
+    authorizationService: AuthorizationService;
+    permission: AuthorizationPermissionKey;
+    allowedFrom: readonly AssignmentStatus[];
+    nextStatus: AssignmentStatus;
+    action: Parameters<AssignmentRepository["recordAssignmentAuditEvent"]>[0]["action"];
+    workerAcknowledgedAt?: boolean | undefined;
+    readyForAttendanceAt?: boolean | undefined;
+    attendanceWindowStartedAt?: boolean | undefined;
+    attendanceHandoffAt?: boolean | undefined;
+    workerWithdrawnAt?: boolean | undefined;
+    cancelledAt?: boolean | undefined;
+    replacementRequiredAt?: boolean | undefined;
+    closedAt?: boolean | undefined;
+    cancellationReasonCategory?: string | null | undefined;
+    platform: boolean;
+    now: Date;
+  }
+) {
+  const assignment = await requireAuthorizedAssignment({
+    assignmentRepository: input.assignmentRepository,
+    authorizationService: input.authorizationService,
+    session: input.session,
+    roles: input.roles ?? [],
+    permission: input.permission,
+    assignmentId: input.assignmentId,
+    correlationId: input.correlationId,
+    now: input.now
+  });
+  return transitionAssignment({ ...input, assignment: assignment.stored });
+}
+
+async function transitionAssignment(
+  input: AssignmentTransitionInput & {
+    assignmentRepository: AssignmentRepository;
+    authorizationService: AuthorizationService;
+    assignment: StoredAssignment;
+    permission: AuthorizationPermissionKey;
+    allowedFrom: readonly AssignmentStatus[];
+    nextStatus: AssignmentStatus;
+    action: Parameters<AssignmentRepository["recordAssignmentAuditEvent"]>[0]["action"];
+    workerAcknowledgedAt?: boolean | undefined;
+    readyForAttendanceAt?: boolean | undefined;
+    attendanceWindowStartedAt?: boolean | undefined;
+    attendanceHandoffAt?: boolean | undefined;
+    workerWithdrawnAt?: boolean | undefined;
+    cancelledAt?: boolean | undefined;
+    replacementRequiredAt?: boolean | undefined;
+    closedAt?: boolean | undefined;
+    cancellationReasonCategory?: string | null | undefined;
+    platform: boolean;
+    now: Date;
+  }
+) {
+  const assignment = input.assignment;
+  if (!input.allowedFrom.includes(assignment.status)) {
+    throw new AssignmentError(
+      assignmentDeny(
+        "invalid_transition",
+        `cannot_transition_from_${assignment.status}`,
+        toPublicAssignment(assignment),
+        input.roles ?? []
+      )
+    );
+  }
+
+  const updated = await input.assignmentRepository.updateAssignment({
+    assignmentId: assignment.id,
+    expectedVersion: input.expectedVersion,
+    actorUserId: input.session.user?.id ?? null,
+    status: input.nextStatus,
+    workerAcknowledgedAt: input.workerAcknowledgedAt ? input.now : undefined,
+    readyForAttendanceAt: input.readyForAttendanceAt ? input.now : undefined,
+    attendanceWindowStartedAt: input.attendanceWindowStartedAt ? input.now : undefined,
+    attendanceHandoffAt: input.attendanceHandoffAt ? input.now : undefined,
+    workerWithdrawnAt: input.workerWithdrawnAt ? input.now : undefined,
+    cancelledAt: input.cancelledAt ? input.now : undefined,
+    replacementRequiredAt: input.replacementRequiredAt ? input.now : undefined,
+    closedAt: input.closedAt ? input.now : undefined,
+    cancellationReasonCategory:
+      input.cancellationReasonCategory === undefined
+        ? undefined
+        : normalizeOptionalResidenceText(input.cancellationReasonCategory, 160),
+    now: input.now
+  });
+
+  if (!updated) {
+    await recordAssignmentAudit(input.assignmentRepository, {
+      action: "assignment.version_conflict",
+      organizationId: assignment.organizationId,
+      assignmentId: assignment.id,
+      workerOfferId: assignment.workerOfferId,
+      jobRequestId: assignment.jobRequestId,
+      actorUserId: input.session.user?.id ?? null,
+      priorState: assignment.status,
+      newState: assignment.status,
+      reason: "stale_version",
+      correlationId: input.correlationId,
+      createdAt: input.now
+    });
+    throw new AssignmentError(
+      assignmentDeny(
+        "version_conflict",
+        "stale_version",
+        toPublicAssignment(assignment),
+        input.roles ?? []
+      )
+    );
+  }
+
+  await recordAssignmentAudit(input.assignmentRepository, {
+    action: input.action,
+    organizationId: updated.organizationId,
+    assignmentId: updated.id,
+    workerOfferId: updated.workerOfferId,
+    jobRequestId: updated.jobRequestId,
+    actorUserId: input.session.user?.id ?? null,
+    priorState: assignment.status,
+    newState: updated.status,
+    reason: input.reason ?? null,
+    correlationId: input.correlationId,
+    createdAt: input.now
+  });
+
+  return toPublicAssignment(updated);
+}
+
+async function recordAssignmentValidationFailure(input: {
+  assignmentRepository: AssignmentRepository;
+  workerOffer: StoredWorkerOffer;
+  session: SessionValidationResult;
+  reason: string;
+  correlationId?: string | undefined;
+  now: Date;
+}) {
+  await recordAssignmentAudit(input.assignmentRepository, {
+    action: "assignment.validation_failed",
+    organizationId: input.workerOffer.organizationId,
+    assignmentId: null,
+    workerOfferId: input.workerOffer.id,
+    jobRequestId: input.workerOffer.jobRequestId,
+    actorUserId: input.session.user?.id ?? null,
+    priorState: "pending_validation",
+    newState: "blocked",
+    reason: input.reason,
+    correlationId: input.correlationId,
+    createdAt: input.now
+  });
+}
+
+async function recordAssignmentDenial(
+  repository: AssignmentRepository,
+  input: {
+    decision: AssignmentDecision;
+    actorUserId: string | null;
+    correlationId?: string | undefined;
+    createdAt: Date;
+  }
+) {
+  await recordAssignmentAudit(repository, {
+    action: "assignment.access_denied",
+    organizationId: input.decision.assignment?.organizationId ?? null,
+    assignmentId: input.decision.assignment?.id ?? null,
+    workerOfferId: input.decision.assignment?.workerOfferId ?? null,
+    jobRequestId: input.decision.assignment?.jobRequestId ?? null,
+    actorUserId: input.actorUserId,
+    priorState: input.decision.assignment?.status ?? null,
+    newState: "denied",
+    reason: input.decision.internalReason,
+    correlationId: input.correlationId,
+    createdAt: input.createdAt
+  });
+}
+
+async function recordAssignmentAudit(
+  repository: AssignmentRepository,
+  input: Omit<
+    Parameters<AssignmentRepository["recordAssignmentAuditEvent"]>[0],
+    "correlationId"
+  > & {
+    correlationId?: string | undefined;
+  }
+) {
+  await repository.recordAssignmentAuditEvent({
+    ...input,
+    correlationId: input.correlationId ?? createAssignmentCorrelationId()
+  });
+}
+
+function createAssignmentCorrelationId() {
+  return `assignment_${randomBytes(12).toString("base64url")}`;
+}
+
 const nonTerminalDispatchStates: readonly DispatchReviewStatus[] = [
   "draft",
   "active",
@@ -8829,6 +10039,218 @@ export function createPrismaWorkerOfferRepository(prismaClient: unknown): Worker
   };
 }
 
+type PrismaAssignmentClient = Pick<
+  PrismaWorkerOfferClient,
+  "auditActorReference" | "auditEvent" | "$transaction"
+> & {
+  assignment: {
+    create(args: { data: CreateAssignmentPrismaData }): Promise<StoredAssignment>;
+    findUnique(args: {
+      where: { id?: string | undefined; workerOfferId?: string | undefined };
+    }): Promise<StoredAssignment | null>;
+    findMany(args: {
+      where?: {
+        organizationId?: string | undefined;
+        workerIdentityId?: string | undefined;
+        jobRequestId?: string | undefined;
+        status?: { in: readonly AssignmentStatus[] } | undefined;
+        confirmedStartAt?: { lt: Date } | undefined;
+        confirmedEndAt?: { gt: Date } | undefined;
+        id?: { not: string } | undefined;
+      };
+      orderBy: [{ updatedAt: "desc" }, { confirmedStartAt: "asc" }];
+    }): Promise<StoredAssignment[]>;
+    count(args: {
+      where: {
+        jobRequestId?: string | undefined;
+        workerIdentityId?: string | undefined;
+        status?: { in: readonly AssignmentStatus[] } | undefined;
+        confirmedStartAt?: { lt: Date } | undefined;
+        confirmedEndAt?: { gt: Date } | undefined;
+        id?: { not: string } | undefined;
+      };
+    }): Promise<number>;
+    updateMany(args: {
+      where: { id: string; version: number };
+      data: Partial<UpdateAssignmentPrismaData>;
+    }): Promise<{ count: number }>;
+  };
+};
+
+type CreateAssignmentPrismaData = {
+  jobRequestId: string;
+  dispatchReviewId: string;
+  workerOfferId: string;
+  workerOfferTermsVersionId: string;
+  workerIdentityId: string;
+  organizationId: string;
+  residenceId: string;
+  departmentId: string;
+  workGroupId: string;
+  roleDefinitionId: string;
+  status: AssignmentStatus;
+  confirmedStartAt: Date;
+  confirmedEndAt: Date;
+  timezone: string;
+  confirmedTitle: string;
+  confirmedRoleSummary: string | null;
+  confirmedWorksiteSummary: string | null;
+  confirmedDepartmentSummary: string | null;
+  confirmedResponsibilitySummary: string | null;
+  confirmedPolicySummary: string | null;
+  confirmedCompensationSummary: string | null;
+  validationSnapshot: Record<string, unknown>;
+  capacityCheckedAt: Date;
+  conflictCheckedAt: Date;
+  confirmedAt: Date;
+  createdByUserId: string;
+  confirmedByUserId: string;
+  createdAt: Date;
+  updatedAt: Date;
+};
+
+type UpdateAssignmentPrismaData = {
+  status: AssignmentStatus;
+  workerAcknowledgedAt: Date | null;
+  readyForAttendanceAt: Date | null;
+  attendanceWindowStartedAt: Date | null;
+  attendanceHandoffAt: Date | null;
+  workerWithdrawnAt: Date | null;
+  cancelledAt: Date | null;
+  replacementRequiredAt: Date | null;
+  closedAt: Date | null;
+  cancellationReasonCategory: string | null;
+  updatedByUserId: string | null;
+  cancelledByUserId: string | null;
+  updatedAt: Date;
+  version: { increment: number };
+};
+
+export function createPrismaAssignmentRepository(prismaClient: unknown): AssignmentRepository {
+  const prisma = prismaClient as PrismaAssignmentClient;
+
+  return {
+    createAssignmentFromAcceptedOffer(input) {
+      return prisma.assignment.create({
+        data: {
+          jobRequestId: input.workerOffer.jobRequestId,
+          dispatchReviewId: input.workerOffer.dispatchReviewId,
+          workerOfferId: input.workerOffer.id,
+          workerOfferTermsVersionId: input.termsVersion.id,
+          workerIdentityId: input.workerIdentity.id,
+          organizationId: input.workerOffer.organizationId,
+          residenceId: input.workerOffer.residenceId,
+          departmentId: input.workerOffer.departmentId,
+          workGroupId: input.termsVersion.workGroupId,
+          roleDefinitionId: input.termsVersion.roleDefinitionId,
+          status: "confirmed",
+          confirmedStartAt: input.termsVersion.startAt,
+          confirmedEndAt: input.termsVersion.endAt,
+          timezone: input.termsVersion.timezone,
+          confirmedTitle: input.termsVersion.workerVisibleTitle,
+          confirmedRoleSummary: input.jobRequest.title,
+          confirmedWorksiteSummary: input.dispatchReview.residenceId,
+          confirmedDepartmentSummary: input.dispatchReview.departmentId,
+          confirmedResponsibilitySummary: input.termsVersion.workerVisibleSummary,
+          confirmedPolicySummary: input.termsVersion.policySummary,
+          confirmedCompensationSummary: input.termsVersion.compensationSummary,
+          validationSnapshot: input.validationSnapshot,
+          capacityCheckedAt: input.now,
+          conflictCheckedAt: input.now,
+          confirmedAt: input.now,
+          createdByUserId: input.actorUserId,
+          confirmedByUserId: input.actorUserId,
+          createdAt: input.now,
+          updatedAt: input.now
+        }
+      });
+    },
+
+    findAssignmentById(assignmentId) {
+      return prisma.assignment.findUnique({ where: { id: assignmentId } });
+    },
+
+    findAssignmentByWorkerOfferId(workerOfferId) {
+      return prisma.assignment.findUnique({ where: { workerOfferId } });
+    },
+
+    listAssignments(input) {
+      return prisma.assignment.findMany({
+        where: {
+          ...(input.organizationId ? { organizationId: input.organizationId } : {}),
+          ...(input.workerIdentityId ? { workerIdentityId: input.workerIdentityId } : {}),
+          ...(input.jobRequestId ? { jobRequestId: input.jobRequestId } : {}),
+          ...(input.statuses ? { status: { in: input.statuses } } : {})
+        },
+        orderBy: [{ updatedAt: "desc" }, { confirmedStartAt: "asc" }]
+      });
+    },
+
+    countActiveAssignmentsForJobRequest(jobRequestId) {
+      return prisma.assignment.count({
+        where: { jobRequestId, status: { in: activeAssignmentStates } }
+      });
+    },
+
+    countConflictingAssignments(input) {
+      return prisma.assignment.count({
+        where: {
+          workerIdentityId: input.workerIdentityId,
+          status: { in: activeAssignmentStates },
+          confirmedStartAt: { lt: input.endAt },
+          confirmedEndAt: { gt: input.startAt },
+          ...(input.excludeAssignmentId ? { id: { not: input.excludeAssignmentId } } : {})
+        }
+      });
+    },
+
+    async updateAssignment(input) {
+      const data: Partial<UpdateAssignmentPrismaData> = {
+        updatedByUserId: input.actorUserId,
+        updatedAt: input.now,
+        version: { increment: 1 }
+      };
+
+      if (input.status !== undefined) data.status = input.status;
+      if (input.workerAcknowledgedAt !== undefined) {
+        data.workerAcknowledgedAt = input.workerAcknowledgedAt;
+      }
+      if (input.readyForAttendanceAt !== undefined) {
+        data.readyForAttendanceAt = input.readyForAttendanceAt;
+      }
+      if (input.attendanceWindowStartedAt !== undefined) {
+        data.attendanceWindowStartedAt = input.attendanceWindowStartedAt;
+      }
+      if (input.attendanceHandoffAt !== undefined)
+        data.attendanceHandoffAt = input.attendanceHandoffAt;
+      if (input.workerWithdrawnAt !== undefined) data.workerWithdrawnAt = input.workerWithdrawnAt;
+      if (input.cancelledAt !== undefined) {
+        data.cancelledAt = input.cancelledAt;
+        data.cancelledByUserId = input.actorUserId;
+      }
+      if (input.replacementRequiredAt !== undefined) {
+        data.replacementRequiredAt = input.replacementRequiredAt;
+      }
+      if (input.closedAt !== undefined) data.closedAt = input.closedAt;
+      if (input.cancellationReasonCategory !== undefined) {
+        data.cancellationReasonCategory = input.cancellationReasonCategory;
+      }
+
+      const result = await prisma.assignment.updateMany({
+        where: { id: input.assignmentId, version: input.expectedVersion },
+        data
+      });
+      if (result.count !== 1) return null;
+
+      return this.findAssignmentById(input.assignmentId);
+    },
+
+    async recordAssignmentAuditEvent(input) {
+      await recordPrismaAssignmentAudit(prisma, input);
+    }
+  };
+}
+
 function resolvePasswordHashOptions(options: PasswordHashOptions) {
   return {
     costFactor:
@@ -9031,7 +10453,8 @@ function isSensitiveAuthorizationDenial(decision: AuthorizationDecision) {
     decision.permission === "platform.supervise" ||
     decision.permission.startsWith("job_request.") ||
     decision.permission.startsWith("dispatch.") ||
-    decision.permission.startsWith("worker_offer.")
+    decision.permission.startsWith("worker_offer.") ||
+    decision.permission.startsWith("assignment.")
   );
 }
 
@@ -11407,6 +12830,38 @@ async function recordPrismaWorkerOfferAudit(
       source: "api",
       correlationId: input.correlationId,
       policyVersion: "worker-offer-foundation-v1",
+      createdAt: input.createdAt
+    }
+  });
+}
+
+async function recordPrismaAssignmentAudit(
+  prisma: Pick<PrismaAssignmentClient, "auditActorReference" | "auditEvent">,
+  input: Parameters<AssignmentRepository["recordAssignmentAuditEvent"]>[0]
+) {
+  const actorReference = await prisma.auditActorReference.create({
+    data: {
+      actorType: input.actorUserId ? "user" : "system",
+      ...(input.actorUserId ? { userId: input.actorUserId } : {}),
+      ...(input.organizationId ? { organizationId: input.organizationId } : {}),
+      displayLabel: input.actorUserId ? "Assignment actor" : "Assignment boundary"
+    }
+  });
+
+  await prisma.auditEvent.create({
+    data: {
+      actorReferenceId: actorReference.id,
+      organizationId: input.organizationId,
+      entityType: "assignment",
+      entityId: input.assignmentId ?? nilEntityId,
+      entityPublicReference: input.jobRequestId,
+      action: input.action,
+      priorState: input.priorState,
+      newState: input.newState,
+      reason: input.reason,
+      source: "api",
+      correlationId: input.correlationId,
+      policyVersion: "assignment-foundation-v1",
       createdAt: input.createdAt
     }
   });

@@ -2,6 +2,7 @@ import Fastify, { type FastifyReply } from "fastify";
 import {
   AuthenticationError,
   AuthenticationRequiredError,
+  AssignmentError,
   DepartmentError,
   DispatchError,
   EmployerOrganizationError,
@@ -19,6 +20,7 @@ import {
   authorizationDeniedCode,
   authorizationDeniedMessage,
   createAuthenticationService,
+  createAssignmentService,
   createAuthorizationService,
   createDepartmentService,
   createDispatchService,
@@ -29,6 +31,7 @@ import {
   createRoleDefinitionService,
   createWorkerOfferService,
   createWorkGroupService,
+  createPrismaAssignmentRepository,
   createPrismaDepartmentRepository,
   createPrismaDispatchRepository,
   createPrismaAuthenticationRepository,
@@ -44,6 +47,8 @@ import {
   toSafeAuthorizationResponse,
   type AuthorizationRoleKey,
   type AuthorizationService,
+  type AssignmentService,
+  type AssignmentStatus,
   type AuthenticationService,
   type DepartmentService,
   type DepartmentStatus,
@@ -74,6 +79,7 @@ export interface BuildApiOptions {
   departmentService?: DepartmentService;
   dispatchService?: DispatchService;
   workerOfferService?: WorkerOfferService;
+  assignmentService?: AssignmentService;
   workGroupService?: WorkGroupService;
   roleDefinitionService?: RoleDefinitionService;
   jobRequestService?: JobRequestService;
@@ -162,6 +168,17 @@ export function buildApi(options: BuildApiOptions = {}) {
           authorizationService
         )
       : createUnavailableWorkerOfferService());
+  const assignmentService =
+    options.assignmentService ??
+    (prisma
+      ? createAssignmentService(
+          createPrismaAssignmentRepository(prisma),
+          createPrismaWorkerOfferRepository(prisma),
+          createPrismaDispatchRepository(prisma),
+          createPrismaJobRequestRepository(prisma),
+          authorizationService
+        )
+      : createUnavailableAssignmentService());
   const resolveAuthorizationRoles = options.resolveAuthorizationRoles ?? (() => []);
 
   if (prisma) {
@@ -205,6 +222,10 @@ export function buildApi(options: BuildApiOptions = {}) {
 
     if (error instanceof WorkerOfferError) {
       return sendWorkerOfferDenied(reply);
+    }
+
+    if (error instanceof AssignmentError) {
+      return sendAssignmentDenied(reply);
     }
 
     throw error;
@@ -1971,6 +1992,231 @@ export function buildApi(options: BuildApiOptions = {}) {
     return reply.code(200).send({ workerOffer: serializeWorkerOffer(workerOffer) });
   });
 
+  app.post("/platform/assignments", async (request, reply) => {
+    const session = await authService.validateSession(
+      readBearerToken(request.headers.authorization)
+    );
+    if (!session.authenticated || !session.user) return sendAssignmentDenied(reply);
+
+    const body = asRecord(request.body);
+    const assignment = await assignmentService.createFromAcceptedOffer({
+      session,
+      roles: await resolveAuthorizationRoles(session.user.id),
+      workerOfferId: readRequiredString(body, "workerOfferId") ?? ""
+    });
+
+    return reply.code(201).send({ assignment: serializeAssignment(assignment) });
+  });
+
+  app.get("/platform/assignments", async (request, reply) => {
+    const session = await authService.validateSession(
+      readBearerToken(request.headers.authorization)
+    );
+    if (!session.authenticated || !session.user) return sendAssignmentDenied(reply);
+
+    const query = asRecord(request.query);
+    const status = readAssignmentStatus(readOptionalString(query, "status"));
+    const assignments = await assignmentService.listAssignments({
+      session,
+      roles: await resolveAuthorizationRoles(session.user.id),
+      organizationId: readOptionalString(query, "organizationId"),
+      jobRequestId: readOptionalString(query, "jobRequestId"),
+      ...(status ? { statuses: [status] } : {})
+    });
+
+    return reply
+      .code(200)
+      .send({ assignments: assignments.map((item) => serializeAssignment(item)) });
+  });
+
+  app.get("/platform/assignments/:assignmentId", async (request, reply) => {
+    const session = await authService.validateSession(
+      readBearerToken(request.headers.authorization)
+    );
+    if (!session.authenticated || !session.user) return sendAssignmentDenied(reply);
+
+    const assignment = await assignmentService.readAssignment({
+      session,
+      roles: await resolveAuthorizationRoles(session.user.id),
+      assignmentId: readRouteParam(request.params, "assignmentId")
+    });
+
+    return reply.code(200).send({ assignment: serializeAssignment(assignment) });
+  });
+
+  app.post("/platform/assignments/:assignmentId/ready-for-attendance", async (request, reply) => {
+    const session = await authService.validateSession(
+      readBearerToken(request.headers.authorization)
+    );
+    if (!session.authenticated || !session.user) return sendAssignmentDenied(reply);
+
+    const body = asRecord(request.body);
+    const assignment = await assignmentService.markReadyForAttendance({
+      session,
+      roles: await resolveAuthorizationRoles(session.user.id),
+      assignmentId: readRouteParam(request.params, "assignmentId"),
+      expectedVersion: readOptionalNumber(body, "expectedVersion") ?? 0
+    });
+
+    return reply.code(200).send({ assignment: serializeAssignment(assignment) });
+  });
+
+  app.post("/platform/assignments/:assignmentId/attendance-window", async (request, reply) => {
+    const session = await authService.validateSession(
+      readBearerToken(request.headers.authorization)
+    );
+    if (!session.authenticated || !session.user) return sendAssignmentDenied(reply);
+
+    const body = asRecord(request.body);
+    const assignment = await assignmentService.startAttendanceWindow({
+      session,
+      roles: await resolveAuthorizationRoles(session.user.id),
+      assignmentId: readRouteParam(request.params, "assignmentId"),
+      expectedVersion: readOptionalNumber(body, "expectedVersion") ?? 0
+    });
+
+    return reply.code(200).send({ assignment: serializeAssignment(assignment) });
+  });
+
+  app.post("/platform/assignments/:assignmentId/attendance-handoff", async (request, reply) => {
+    const session = await authService.validateSession(
+      readBearerToken(request.headers.authorization)
+    );
+    if (!session.authenticated || !session.user) return sendAssignmentDenied(reply);
+
+    const body = asRecord(request.body);
+    const assignment = await assignmentService.attendanceHandoff({
+      session,
+      roles: await resolveAuthorizationRoles(session.user.id),
+      assignmentId: readRouteParam(request.params, "assignmentId"),
+      expectedVersion: readOptionalNumber(body, "expectedVersion") ?? 0
+    });
+
+    return reply.code(200).send({ assignment: serializeAssignment(assignment) });
+  });
+
+  app.post("/platform/assignments/:assignmentId/cancel", async (request, reply) => {
+    const session = await authService.validateSession(
+      readBearerToken(request.headers.authorization)
+    );
+    if (!session.authenticated || !session.user) return sendAssignmentDenied(reply);
+
+    const body = asRecord(request.body);
+    const assignment = await assignmentService.cancel({
+      session,
+      roles: await resolveAuthorizationRoles(session.user.id),
+      assignmentId: readRouteParam(request.params, "assignmentId"),
+      expectedVersion: readOptionalNumber(body, "expectedVersion") ?? 0,
+      reason: readRequiredString(body, "reason") ?? "",
+      status: readAssignmentStatus(readOptionalString(body, "status")) ?? "platform_cancelled"
+    });
+
+    return reply.code(200).send({ assignment: serializeAssignment(assignment) });
+  });
+
+  app.post("/platform/assignments/:assignmentId/replacement-required", async (request, reply) => {
+    const session = await authService.validateSession(
+      readBearerToken(request.headers.authorization)
+    );
+    if (!session.authenticated || !session.user) return sendAssignmentDenied(reply);
+
+    const body = asRecord(request.body);
+    const assignment = await assignmentService.markReplacementRequired({
+      session,
+      roles: await resolveAuthorizationRoles(session.user.id),
+      assignmentId: readRouteParam(request.params, "assignmentId"),
+      expectedVersion: readOptionalNumber(body, "expectedVersion") ?? 0,
+      reason: readRequiredString(body, "reason") ?? ""
+    });
+
+    return reply.code(200).send({ assignment: serializeAssignment(assignment) });
+  });
+
+  app.get("/platform/assignments/:assignmentId/audit", async (request, reply) => {
+    const session = await authService.validateSession(
+      readBearerToken(request.headers.authorization)
+    );
+    if (!session.authenticated || !session.user) return sendAssignmentDenied(reply);
+
+    const audit = await assignmentService.readAuditSummary({
+      session,
+      roles: await resolveAuthorizationRoles(session.user.id),
+      assignmentId: readRouteParam(request.params, "assignmentId")
+    });
+
+    return reply.code(200).send({ audit });
+  });
+
+  app.get("/organizations/:organizationId/assignments", async (request, reply) => {
+    const session = await authService.validateSession(
+      readBearerToken(request.headers.authorization)
+    );
+    if (!session.authenticated || !session.user) return sendAssignmentDenied(reply);
+
+    const query = asRecord(request.query);
+    const status = readAssignmentStatus(readOptionalString(query, "status"));
+    const assignments = await assignmentService.listAssignments({
+      session,
+      roles: await resolveAuthorizationRoles(session.user.id),
+      organizationId: readRouteParam(request.params, "organizationId"),
+      ...(status ? { statuses: [status] } : {})
+    });
+
+    return reply
+      .code(200)
+      .send({ assignments: assignments.map((item) => serializeAssignment(item)) });
+  });
+
+  app.get("/worker/assignments/:assignmentId", async (request, reply) => {
+    const session = await authService.validateSession(
+      readBearerToken(request.headers.authorization)
+    );
+    if (!session.authenticated || !session.user) return sendAssignmentDenied(reply);
+
+    const assignment = await assignmentService.workerRead({
+      session,
+      roles: await resolveAuthorizationRoles(session.user.id),
+      assignmentId: readRouteParam(request.params, "assignmentId")
+    });
+
+    return reply.code(200).send({ assignment: serializeAssignment(assignment) });
+  });
+
+  app.post("/worker/assignments/:assignmentId/acknowledge", async (request, reply) => {
+    const session = await authService.validateSession(
+      readBearerToken(request.headers.authorization)
+    );
+    if (!session.authenticated || !session.user) return sendAssignmentDenied(reply);
+
+    const body = asRecord(request.body);
+    const assignment = await assignmentService.acknowledge({
+      session,
+      roles: await resolveAuthorizationRoles(session.user.id),
+      assignmentId: readRouteParam(request.params, "assignmentId"),
+      expectedVersion: readOptionalNumber(body, "expectedVersion") ?? 0
+    });
+
+    return reply.code(200).send({ assignment: serializeAssignment(assignment) });
+  });
+
+  app.post("/worker/assignments/:assignmentId/withdraw", async (request, reply) => {
+    const session = await authService.validateSession(
+      readBearerToken(request.headers.authorization)
+    );
+    if (!session.authenticated || !session.user) return sendAssignmentDenied(reply);
+
+    const body = asRecord(request.body);
+    const assignment = await assignmentService.workerWithdraw({
+      session,
+      roles: await resolveAuthorizationRoles(session.user.id),
+      assignmentId: readRouteParam(request.params, "assignmentId"),
+      expectedVersion: readOptionalNumber(body, "expectedVersion") ?? 0,
+      reason: readRequiredString(body, "reason") ?? ""
+    });
+
+    return reply.code(200).send({ assignment: serializeAssignment(assignment) });
+  });
+
   async function resolveCatalogueReadRoles(userId: string, organizationId: string | null) {
     if (organizationId) {
       const decision = await membershipService.selectOrganizationContext({
@@ -2145,6 +2391,13 @@ function sendWorkerOfferDenied(reply: FastifyReply) {
   });
 }
 
+function sendAssignmentDenied(reply: FastifyReply) {
+  return reply.code(403).send({
+    error: authorizationDeniedCode,
+    message: authorizationDeniedMessage
+  });
+}
+
 function serializeMemberships(
   memberships: Awaited<ReturnType<OrganizationMembershipService["listMemberships"]>>
 ) {
@@ -2289,6 +2542,29 @@ function serializeWorkerOffer(workerOffer: Awaited<ReturnType<WorkerOfferService
   };
 }
 
+function serializeAssignment(
+  assignment: Awaited<ReturnType<AssignmentService["createFromAcceptedOffer"]>>
+) {
+  return {
+    ...assignment,
+    confirmedStartAt: assignment.confirmedStartAt.toISOString(),
+    confirmedEndAt: assignment.confirmedEndAt.toISOString(),
+    capacityCheckedAt: assignment.capacityCheckedAt.toISOString(),
+    conflictCheckedAt: assignment.conflictCheckedAt.toISOString(),
+    confirmedAt: assignment.confirmedAt.toISOString(),
+    workerAcknowledgedAt: assignment.workerAcknowledgedAt?.toISOString() ?? null,
+    readyForAttendanceAt: assignment.readyForAttendanceAt?.toISOString() ?? null,
+    attendanceWindowStartedAt: assignment.attendanceWindowStartedAt?.toISOString() ?? null,
+    attendanceHandoffAt: assignment.attendanceHandoffAt?.toISOString() ?? null,
+    workerWithdrawnAt: assignment.workerWithdrawnAt?.toISOString() ?? null,
+    cancelledAt: assignment.cancelledAt?.toISOString() ?? null,
+    replacementRequiredAt: assignment.replacementRequiredAt?.toISOString() ?? null,
+    closedAt: assignment.closedAt?.toISOString() ?? null,
+    createdAt: assignment.createdAt.toISOString(),
+    updatedAt: assignment.updatedAt.toISOString()
+  };
+}
+
 function readResidenceStatus(value: string | null): ResidenceStatus | null {
   return value === "draft" ||
     value === "active" ||
@@ -2350,6 +2626,23 @@ function readWorkerOfferStatus(value: string | null): WorkerOfferStatus | null {
     value === "expired" ||
     value === "withdrawn" ||
     value === "cancelled"
+    ? value
+    : null;
+}
+
+function readAssignmentStatus(value: string | null): AssignmentStatus | null {
+  return value === "pending_validation" ||
+    value === "confirmed" ||
+    value === "worker_acknowledged" ||
+    value === "ready_for_attendance" ||
+    value === "in_attendance_window" ||
+    value === "attendance_handoff" ||
+    value === "worker_withdrawn" ||
+    value === "employer_cancelled" ||
+    value === "platform_cancelled" ||
+    value === "replacement_required" ||
+    value === "expired_before_start" ||
+    value === "closed"
     ? value
     : null;
 }
@@ -2416,4 +2709,33 @@ function createUnavailableWorkerOfferService(): WorkerOfferService {
     cancel: denied,
     readAuditSummary: denied
   } as WorkerOfferService;
+}
+
+function createUnavailableAssignmentService(): AssignmentService {
+  const denied = async () => {
+    throw new AssignmentError({
+      status: "permission_denied",
+      allow: false,
+      assignment: null,
+      roles: [],
+      internalReason: "assignment_service_unavailable",
+      externalCode: authorizationDeniedCode,
+      externalMessage: authorizationDeniedMessage
+    });
+  };
+
+  return {
+    createFromAcceptedOffer: denied,
+    listAssignments: denied,
+    readAssignment: denied,
+    workerRead: denied,
+    acknowledge: denied,
+    workerWithdraw: denied,
+    markReadyForAttendance: denied,
+    startAttendanceWindow: denied,
+    attendanceHandoff: denied,
+    cancel: denied,
+    markReplacementRequired: denied,
+    readAuditSummary: denied
+  } as AssignmentService;
 }
