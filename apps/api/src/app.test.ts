@@ -1,8 +1,10 @@
 import { describe, expect, it } from "vitest";
 import {
+  createAuthorizationService,
   createAuthenticationService
 } from "@rwos/auth";
 import type {
+  AuthorizationRoleKey,
   AuthenticationRepository,
   CreateLocalUserInput,
   CreateSessionInput,
@@ -138,6 +140,87 @@ describe("api authentication foundation", () => {
   });
 });
 
+describe("api authorization foundation", () => {
+  it("keeps authorization responses safe and deny-by-default", async () => {
+    const repository = new ApiMemoryAuthenticationRepository();
+    const app = buildApi({
+      authService: createAuthenticationService(repository, testAuthOptions())
+    });
+    const registration = await registerApiUser(app);
+
+    const denied = await app.inject({
+      method: "POST",
+      url: "/authz/platform-admin/probe",
+      headers: {
+        authorization: `Bearer ${registration.token}`
+      }
+    });
+
+    expect(denied.statusCode).toBe(403);
+    expect(denied.json()).toEqual({
+      authorized: false,
+      error: "RWOS_AUTHORIZATION_DENIED",
+      message: "Access denied."
+    });
+
+    await app.close();
+  });
+
+  it("allows explicit platform administrator to pass the platform supervision probe", async () => {
+    const repository = new ApiMemoryAuthenticationRepository();
+    const app = buildApi({
+      authService: createAuthenticationService(repository, testAuthOptions()),
+      authorizationService: createAuthorizationService(),
+      resolveAuthorizationRoles: () => ["PLATFORM_ADMINISTRATOR"]
+    });
+    const registration = await registerApiUser(app);
+
+    const allowed = await app.inject({
+      method: "POST",
+      url: "/authz/platform-admin/probe",
+      headers: {
+        authorization: `Bearer ${registration.token}`
+      }
+    });
+
+    expect(allowed.statusCode).toBe(200);
+    expect(allowed.json()).toEqual({ authorized: true });
+
+    await app.close();
+  });
+
+  it("checks permissions without exposing internal denial diagnostics", async () => {
+    const repository = new ApiMemoryAuthenticationRepository();
+    const roles: AuthorizationRoleKey[] = ["ORGANIZATION_OWNER"];
+    const app = buildApi({
+      authService: createAuthenticationService(repository, testAuthOptions()),
+      resolveAuthorizationRoles: () => roles
+    });
+    const registration = await registerApiUser(app);
+
+    const check = await app.inject({
+      method: "POST",
+      url: "/authz/check",
+      headers: {
+        authorization: `Bearer ${registration.token}`
+      },
+      payload: {
+        permission: "platform.supervise",
+        platform: true
+      }
+    });
+
+    expect(check.statusCode).toBe(403);
+    expect(check.json()).toEqual({
+      authorized: false,
+      error: "RWOS_AUTHORIZATION_DENIED",
+      message: "Access denied."
+    });
+
+    await app.close();
+  });
+});
+
 class ApiMemoryAuthenticationRepository implements AuthenticationRepository {
   private users = new Map<string, StoredAuthenticationUser>();
   private sessions = new Map<string, StoredAuthenticationSession>();
@@ -219,4 +302,31 @@ class ApiMemoryAuthenticationRepository implements AuthenticationRepository {
   async recordAuthenticationAuditEvent(input: RecordAuthenticationAuditEventInput) {
     this.auditEvents.push(input);
   }
+}
+
+function testAuthOptions() {
+  return {
+    passwordHashOptions: {
+      costFactor: 1_024,
+      blockSize: 8,
+      parallelization: 1,
+      keyLength: 32,
+      saltLength: 8
+    },
+    randomToken: () => "api-session-token-000000000000000000001"
+  };
+}
+
+async function registerApiUser(app: ReturnType<typeof buildApi>) {
+  const response = await app.inject({
+    method: "POST",
+    url: "/auth/register",
+    payload: {
+      email: "Employer@Example.com",
+      password: "ValidPassword123",
+      displayName: "Example Employer"
+    }
+  });
+
+  return response.json() as { token: string };
 }

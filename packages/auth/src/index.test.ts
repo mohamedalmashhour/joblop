@@ -4,12 +4,18 @@ import {
   AuthenticationRequiredError,
   PasswordPolicyError,
   RegistrationUnavailableError,
+  authorizationDeniedCode,
+  authorizationDeniedMessage,
+  authorizationRoleDefinitions,
+  createAuthorizationService,
   createAuthenticationService,
   hashPassword,
   hashSessionToken,
+  toSafeAuthorizationResponse,
   verifyPassword
 } from "./index";
 import type {
+  AuthorizationAuditEventInput,
   AuthenticationRepository,
   CreateLocalUserInput,
   CreateSessionInput,
@@ -263,3 +269,224 @@ describe("session token hashing", () => {
     expect(hashSessionToken(token)).toBe(hashSessionToken(token));
   });
 });
+
+describe("authorization foundation", () => {
+  it("denies no role, unknown permission, and missing required context", async () => {
+    const service = createAuthorizationService();
+    const session = activeSession();
+
+    await expect(
+      service.decide({
+        session,
+        permission: "platform.supervise",
+        platformContext: { platform: true }
+      })
+    ).resolves.toMatchObject({ status: "permission_missing", allow: false, internalReason: "no_role" });
+
+    await expect(
+      service.decide({
+        session,
+        roles: ["PLATFORM_ADMINISTRATOR"],
+        permission: "unknown.permission",
+        platformContext: { platform: true }
+      })
+    ).resolves.toMatchObject({ status: "permission_missing", allow: false, internalReason: "unknown_permission" });
+
+    await expect(
+      service.decide({
+        session,
+        roles: ["ORGANIZATION_OWNER"],
+        permission: "organization.read"
+      })
+    ).resolves.toMatchObject({
+      status: "context_required",
+      allow: false,
+      internalReason: "organization_context_required"
+    });
+  });
+
+  it("denies invalid, expired, revoked, disabled, and closed sessions", async () => {
+    const service = createAuthorizationService();
+
+    await expect(
+      service.decide({
+        session: { authenticated: false, user: null, session: null },
+        roles: ["PLATFORM_ADMINISTRATOR"],
+        permission: "platform.supervise",
+        platformContext: { platform: true }
+      })
+    ).resolves.toMatchObject({ status: "session_invalid" });
+
+    for (const status of ["disabled", "closed"] as const) {
+      await expect(
+        service.decide({
+          session: activeSession({ userStatus: status }),
+          roles: ["PLATFORM_ADMINISTRATOR"],
+          permission: "platform.supervise",
+          platformContext: { platform: true }
+        })
+      ).resolves.toMatchObject({ status: "account_inactive", internalReason: `account_${status}` });
+    }
+  });
+
+  it("allows only explicit Platform Administrator for platform supervision", async () => {
+    const service = createAuthorizationService();
+
+    await expect(
+      service.decide({
+        session: activeSession(),
+        roles: ["PLATFORM_ADMINISTRATOR"],
+        permission: "platform.supervise",
+        platformContext: { platform: true }
+      })
+    ).resolves.toMatchObject({ status: "allow", allow: true });
+
+    await expect(
+      service.decide({
+        session: activeSession(),
+        roles: ["ORGANIZATION_OWNER"],
+        permission: "platform.supervise",
+        platformContext: { platform: true }
+      })
+    ).resolves.toMatchObject({ status: "permission_missing", internalReason: "role_lacks_permission" });
+  });
+
+  it("denies worker access for organization management and keeps staff permissions limited", async () => {
+    const service = createAuthorizationService();
+
+    await expect(
+      service.decide({
+        session: activeSession(),
+        roles: ["WORKER_ACCESS"],
+        permission: "organization.update",
+        resourceContext: { organizationId: "org_123" }
+      })
+    ).resolves.toMatchObject({ status: "permission_missing", internalReason: "role_lacks_permission" });
+
+    expect(service.rolePermissions("ORGANIZATION_STAFF")).toEqual([
+      "organization.read",
+      "residence.read",
+      "department.read",
+      "work_group.read",
+      "role_definition.read",
+      "job_request.create",
+      "job_request.read",
+      "job_request.update_draft",
+      "job_request.submit",
+      "job_request.cancel"
+    ]);
+    expect(service.rolePermissions("ORGANIZATION_STAFF")).not.toContain("organization.update");
+    expect(service.rolePermissions("ORGANIZATION_STAFF")).not.toContain("platform.supervise");
+  });
+
+  it("does not grant authority from development mode, email domain, or first-user assumptions", async () => {
+    const service = createAuthorizationService();
+
+    await expect(
+      service.decide({
+        session: activeSession({ emailNormalized: "founder@residentworkforce.example" }),
+        roles: [],
+        permission: "platform.supervise",
+        platformContext: { platform: true }
+      })
+    ).resolves.toMatchObject({ allow: false, internalReason: "no_role" });
+  });
+
+  it("keeps reserved permissions from authorizing unimplemented workflows", async () => {
+    const service = createAuthorizationService();
+
+    await expect(
+      service.decide({
+        session: activeSession(),
+        roles: ["ORGANIZATION_OWNER"],
+        permission: "job_request.create",
+        resourceContext: { organizationId: "org_123" }
+      })
+    ).resolves.toMatchObject({
+      status: "deny",
+      allow: false,
+      internalReason: "permission_reserved_for_future_service"
+    });
+  });
+
+  it("returns safe external denial while preserving internal reason", async () => {
+    const decision = await createAuthorizationService().decide({
+      session: activeSession(),
+      roles: ["ORGANIZATION_OWNER"],
+      permission: "platform.supervise",
+      platformContext: { platform: true }
+    });
+
+    expect(decision.internalReason).toBe("role_lacks_permission");
+    expect(toSafeAuthorizationResponse(decision)).toEqual({
+      authorized: false,
+      error: authorizationDeniedCode,
+      message: authorizationDeniedMessage
+    });
+  });
+
+  it("records audit hooks for sensitive denial and platform supervision", async () => {
+    const auditSink = new MemoryAuthorizationAuditSink();
+    const service = createAuthorizationService(auditSink);
+
+    await service.decide({
+      session: activeSession(),
+      roles: ["ORGANIZATION_OWNER"],
+      permission: "platform.supervise",
+      platformContext: { platform: true },
+      correlationId: "authz-denied"
+    });
+    await service.decide({
+      session: activeSession(),
+      roles: ["PLATFORM_ADMINISTRATOR"],
+      permission: "platform.supervise",
+      platformContext: { platform: true },
+      correlationId: "authz-allowed"
+    });
+
+    expect(auditSink.events).toEqual([
+      expect.objectContaining({
+        action: "authorization.denied",
+        permission: "platform.supervise",
+        reason: "role_lacks_permission",
+        correlationId: "authz-denied"
+      }),
+      expect.objectContaining({
+        action: "authorization.platform_supervision",
+        permission: "platform.supervise",
+        reason: "platform_supervision_allowed",
+        correlationId: "authz-allowed"
+      })
+    ]);
+  });
+
+  it("declares Dispatcher without active permissions until dispatch implementation", () => {
+    expect(authorizationRoleDefinitions.find((role) => role.key === "DISPATCHER")?.permissions).toEqual([]);
+  });
+});
+
+class MemoryAuthorizationAuditSink {
+  events: AuthorizationAuditEventInput[] = [];
+
+  async recordAuthorizationAuditEvent(input: AuthorizationAuditEventInput) {
+    this.events.push(input);
+  }
+}
+
+function activeSession(input: { userStatus?: StoredAuthenticationUser["status"]; emailNormalized?: string } = {}) {
+  return {
+    authenticated: true,
+    user: {
+      id: "00000000-0000-4000-8000-000000000001",
+      publicId: "usr_test",
+      emailNormalized: input.emailNormalized ?? "test@example.com",
+      displayName: "Test User",
+      status: input.userStatus ?? "active"
+    },
+    session: {
+      id: "session-1",
+      userId: "00000000-0000-4000-8000-000000000001",
+      expiresAt: new Date("2026-07-25T08:00:00.000Z")
+    }
+  };
+}
