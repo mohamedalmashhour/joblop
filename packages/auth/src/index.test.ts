@@ -11,6 +11,7 @@ import {
   createAuthenticationService,
   createDepartmentService,
   createEmployerOrganizationService,
+  createJobRequestService,
   createOrganizationMembershipService,
   createResidenceService,
   createRoleDefinitionService,
@@ -40,8 +41,10 @@ import type {
   StoredRoleDefinition,
   StoredWorkGroup,
   RoleDefinitionRepository,
+  JobRequestRepository,
   UpdateSessionInput,
-  WorkGroupRepository
+  WorkGroupRepository,
+  StoredJobRequest
 } from "./index";
 
 const passwordHashOptions = {
@@ -64,7 +67,9 @@ describe("authentication password foundation", () => {
   });
 
   it("rejects passwords outside the registration policy", async () => {
-    await expect(hashPassword("short1", passwordHashOptions)).rejects.toBeInstanceOf(PasswordPolicyError);
+    await expect(hashPassword("short1", passwordHashOptions)).rejects.toBeInstanceOf(
+      PasswordPolicyError
+    );
   });
 });
 
@@ -94,7 +99,9 @@ describe("authentication service foundation", () => {
     await expect(
       service.register({ email: "PERSON@example.com", password: "AnotherPassword123" })
     ).rejects.toBeInstanceOf(RegistrationUnavailableError);
-    expect(repository.auditActions().filter((action) => action === "auth.registration")).toHaveLength(2);
+    expect(
+      repository.auditActions().filter((action) => action === "auth.registration")
+    ).toHaveLength(2);
   });
 
   it("signs in with valid credentials and does not reveal failed-login causes", async () => {
@@ -102,7 +109,10 @@ describe("authentication service foundation", () => {
     const service = createTestAuthenticationService(repository);
     await service.register({ email: "sign-in@example.com", password: "ValidPassword123" });
 
-    const result = await service.signIn({ email: "sign-in@example.com", password: "ValidPassword123" });
+    const result = await service.signIn({
+      email: "sign-in@example.com",
+      password: "ValidPassword123"
+    });
     await expect(
       service.signIn({ email: "sign-in@example.com", password: "WrongPassword123" })
     ).rejects.toBeInstanceOf(AuthenticationError);
@@ -112,14 +122,22 @@ describe("authentication service foundation", () => {
 
     expect(result.session.userId).toBe(result.user.id);
     expect(repository.auditActions()).toContain("auth.login_success");
-    expect(repository.auditActions().filter((action) => action === "auth.login_failed")).toHaveLength(2);
+    expect(
+      repository.auditActions().filter((action) => action === "auth.login_failed")
+    ).toHaveLength(2);
   });
 
   it("blocks disabled and closed accounts with generic authentication errors", async () => {
     const repository = new MemoryAuthenticationRepository();
     const service = createTestAuthenticationService(repository);
-    const disabled = await service.register({ email: "disabled@example.com", password: "ValidPassword123" });
-    const closed = await service.register({ email: "closed@example.com", password: "ValidPassword123" });
+    const disabled = await service.register({
+      email: "disabled@example.com",
+      password: "ValidPassword123"
+    });
+    const closed = await service.register({
+      email: "closed@example.com",
+      password: "ValidPassword123"
+    });
 
     repository.setUserStatus(disabled.user.id, "disabled");
     repository.setUserStatus(closed.user.id, "closed");
@@ -127,9 +145,9 @@ describe("authentication service foundation", () => {
     await expect(
       service.signIn({ email: "disabled@example.com", password: "ValidPassword123" })
     ).rejects.toBeInstanceOf(AuthenticationError);
-    await expect(service.signIn({ email: "closed@example.com", password: "ValidPassword123" })).rejects.toBeInstanceOf(
-      AuthenticationError
-    );
+    await expect(
+      service.signIn({ email: "closed@example.com", password: "ValidPassword123" })
+    ).rejects.toBeInstanceOf(AuthenticationError);
 
     expect(repository.auditActions()).toContain("auth.account_disabled");
     expect(repository.auditActions()).toContain("auth.account_closed");
@@ -149,19 +167,35 @@ describe("authentication service foundation", () => {
       password: "ValidPassword123"
     });
 
-    await expect(service.validateSession(registration.token)).resolves.toMatchObject({ authenticated: true });
+    await expect(service.validateSession(registration.token)).resolves.toMatchObject({
+      authenticated: true
+    });
 
     currentTime = new Date("2026-07-25T05:02:00.000Z");
-    await expect(service.validateSession(registration.token)).resolves.toMatchObject({ authenticated: false });
+    await expect(service.validateSession(registration.token)).resolves.toMatchObject({
+      authenticated: false
+    });
     expect(repository.auditActions()).toContain("auth.session_expired");
 
-    const signIn = await service.signIn({ email: "session@example.com", password: "ValidPassword123" });
-    await expect(service.revokeSession({ token: signIn.token, reason: "logout" })).resolves.toEqual({ revoked: true });
-    await expect(service.validateSession(signIn.token)).resolves.toMatchObject({ authenticated: false });
+    const signIn = await service.signIn({
+      email: "session@example.com",
+      password: "ValidPassword123"
+    });
+    await expect(service.revokeSession({ token: signIn.token, reason: "logout" })).resolves.toEqual(
+      { revoked: true }
+    );
+    await expect(service.validateSession(signIn.token)).resolves.toMatchObject({
+      authenticated: false
+    });
     expect(repository.auditActions()).toContain("auth.logout");
 
-    const secondSignIn = await service.signIn({ email: "session@example.com", password: "ValidPassword123" });
-    await expect(service.revokeSession({ token: secondSignIn.token })).resolves.toEqual({ revoked: true });
+    const secondSignIn = await service.signIn({
+      email: "session@example.com",
+      password: "ValidPassword123"
+    });
+    await expect(service.revokeSession({ token: secondSignIn.token })).resolves.toEqual({
+      revoked: true
+    });
     expect(repository.auditActions()).toContain("auth.session_revoked");
   });
 
@@ -262,7 +296,9 @@ class MemoryAuthenticationRepository implements AuthenticationRepository {
   }
 
   async updateSession(input: UpdateSessionInput) {
-    const session = [...this.sessions.values()].find((candidate) => candidate.id === input.sessionId);
+    const session = [...this.sessions.values()].find(
+      (candidate) => candidate.id === input.sessionId
+    );
 
     if (!session) {
       return null;
@@ -300,7 +336,11 @@ describe("authorization foundation", () => {
         permission: "platform.supervise",
         platformContext: { platform: true }
       })
-    ).resolves.toMatchObject({ status: "permission_missing", allow: false, internalReason: "no_role" });
+    ).resolves.toMatchObject({
+      status: "permission_missing",
+      allow: false,
+      internalReason: "no_role"
+    });
 
     await expect(
       service.decide({
@@ -309,7 +349,11 @@ describe("authorization foundation", () => {
         permission: "unknown.permission",
         platformContext: { platform: true }
       })
-    ).resolves.toMatchObject({ status: "permission_missing", allow: false, internalReason: "unknown_permission" });
+    ).resolves.toMatchObject({
+      status: "permission_missing",
+      allow: false,
+      internalReason: "unknown_permission"
+    });
 
     await expect(
       service.decide({
@@ -367,7 +411,10 @@ describe("authorization foundation", () => {
         permission: "platform.supervise",
         platformContext: { platform: true }
       })
-    ).resolves.toMatchObject({ status: "permission_missing", internalReason: "role_lacks_permission" });
+    ).resolves.toMatchObject({
+      status: "permission_missing",
+      internalReason: "role_lacks_permission"
+    });
   });
 
   it("denies worker access for organization management and keeps staff permissions limited", async () => {
@@ -380,7 +427,10 @@ describe("authorization foundation", () => {
         permission: "organization.update",
         resourceContext: { organizationId: "org_123" }
       })
-    ).resolves.toMatchObject({ status: "permission_missing", internalReason: "role_lacks_permission" });
+    ).resolves.toMatchObject({
+      status: "permission_missing",
+      internalReason: "role_lacks_permission"
+    });
 
     expect(service.rolePermissions("ORGANIZATION_STAFF")).toEqual([
       "organization.read",
@@ -411,20 +461,21 @@ describe("authorization foundation", () => {
     ).resolves.toMatchObject({ allow: false, internalReason: "no_role" });
   });
 
-  it("keeps reserved permissions from authorizing unimplemented workflows", async () => {
+  it("keeps future dispatch permissions from authorizing unimplemented workflows", async () => {
     const service = createAuthorizationService();
 
+    expect(service.rolePermissions("DISPATCHER")).toEqual([]);
     await expect(
       service.decide({
         session: activeSession(),
-        roles: ["ORGANIZATION_OWNER"],
-        permission: "job_request.create",
-        resourceContext: { organizationId: "org_123" }
+        roles: ["DISPATCHER"],
+        permission: "platform.supervise",
+        platformContext: { platform: true }
       })
     ).resolves.toMatchObject({
-      status: "deny",
+      status: "permission_missing",
       allow: false,
-      internalReason: "permission_reserved_for_future_service"
+      internalReason: "role_lacks_permission"
     });
   });
 
@@ -480,7 +531,9 @@ describe("authorization foundation", () => {
   });
 
   it("declares Dispatcher without active permissions until dispatch implementation", () => {
-    expect(authorizationRoleDefinitions.find((role) => role.key === "DISPATCHER")?.permissions).toEqual([]);
+    expect(
+      authorizationRoleDefinitions.find((role) => role.key === "DISPATCHER")?.permissions
+    ).toEqual([]);
   });
 });
 
@@ -534,18 +587,39 @@ describe("organization membership foundation", () => {
     });
 
     await expect(
-      service.selectOrganizationContext({ userId: invited.userId, organizationId: invited.organizationId })
-    ).resolves.toMatchObject({ allow: false, status: "membership_inactive", internalReason: "membership_invited" });
+      service.selectOrganizationContext({
+        userId: invited.userId,
+        organizationId: invited.organizationId
+      })
+    ).resolves.toMatchObject({
+      allow: false,
+      status: "membership_inactive",
+      internalReason: "membership_invited"
+    });
 
-    await service.activateMembership({ userId: invited.userId, membershipId: invited.id, actorUserId: invited.userId });
+    await service.activateMembership({
+      userId: invited.userId,
+      membershipId: invited.id,
+      actorUserId: invited.userId
+    });
     await expect(
-      service.selectOrganizationContext({ userId: invited.userId, organizationId: invited.organizationId })
+      service.selectOrganizationContext({
+        userId: invited.userId,
+        organizationId: invited.organizationId
+      })
     ).resolves.toMatchObject({ allow: true, roles: ["ORGANIZATION_OWNER"] });
 
     currentTime = new Date("2026-07-25T11:01:00.000Z");
     await expect(
-      service.selectOrganizationContext({ userId: invited.userId, organizationId: invited.organizationId })
-    ).resolves.toMatchObject({ allow: false, status: "membership_expired", internalReason: "membership_expired" });
+      service.selectOrganizationContext({
+        userId: invited.userId,
+        organizationId: invited.organizationId
+      })
+    ).resolves.toMatchObject({
+      allow: false,
+      status: "membership_expired",
+      internalReason: "membership_expired"
+    });
 
     await expect(
       service.selectOrganizationContext({ userId: invited.userId, organizationId: "org-missing" })
@@ -556,9 +630,15 @@ describe("organization membership foundation", () => {
     const repository = new MemoryOrganizationMembershipRepository();
     const service = createOrganizationMembershipService(repository);
     const first = await service.inviteMembership(inviteInput());
-    await service.activateMembership({ userId: first.userId, membershipId: first.id, actorUserId: first.userId });
+    await service.activateMembership({
+      userId: first.userId,
+      membershipId: first.id,
+      actorUserId: first.userId
+    });
 
-    await expect(service.selectOrganizationContext({ userId: first.userId })).resolves.toMatchObject({
+    await expect(
+      service.selectOrganizationContext({ userId: first.userId })
+    ).resolves.toMatchObject({
       allow: false,
       status: "context_required"
     });
@@ -568,13 +648,21 @@ describe("organization membership foundation", () => {
       organizationId: "org-2",
       accessRoleKeys: ["ORGANIZATION_STAFF"]
     });
-    await service.activateMembership({ userId: second.userId, membershipId: second.id, actorUserId: second.userId });
+    await service.activateMembership({
+      userId: second.userId,
+      membershipId: second.id,
+      actorUserId: second.userId
+    });
 
-    await expect(service.selectOrganizationContext({ userId: first.userId })).resolves.toMatchObject({
+    await expect(
+      service.selectOrganizationContext({ userId: first.userId })
+    ).resolves.toMatchObject({
       allow: false,
       status: "context_required"
     });
-    await expect(service.selectOrganizationContext({ userId: first.userId, organizationId: "org-2" })).resolves.toMatchObject({
+    await expect(
+      service.selectOrganizationContext({ userId: first.userId, organizationId: "org-2" })
+    ).resolves.toMatchObject({
       allow: true,
       roles: ["ORGANIZATION_STAFF"]
     });
@@ -588,9 +676,7 @@ describe("organization membership foundation", () => {
     await expect(service.inviteMembership(inviteInput())).rejects.toMatchObject({
       decision: expect.objectContaining({ status: "duplicate_membership" })
     });
-    await expect(
-      service.getMembership("different-user", membership.id)
-    ).resolves.toBeNull();
+    await expect(service.getMembership("different-user", membership.id)).resolves.toBeNull();
   });
 
   it("changes access roles without implementing role assignment workflows beyond membership", async () => {
@@ -641,14 +727,21 @@ describe("employer organization foundation", () => {
       roleKeys: ["ORGANIZATION_OWNER"]
     });
     expect(organizationRepository.auditActions()).toContain("organization.created");
-    expect(membershipRepository.auditActions()).toEqual(["membership.activated", "membership.access_role_changed"]);
+    expect(membershipRepository.auditActions()).toEqual([
+      "membership.activated",
+      "membership.access_role_changed"
+    ]);
   });
 
   it("requires active membership and organization permission for read and update", async () => {
     const membershipRepository = new MemoryOrganizationMembershipRepository();
     const organizationRepository = new MemoryEmployerOrganizationRepository(membershipRepository);
     const membershipService = createOrganizationMembershipService(membershipRepository);
-    const service = createEmployerOrganizationService(organizationRepository, membershipService, createAuthorizationService());
+    const service = createEmployerOrganizationService(
+      organizationRepository,
+      membershipService,
+      createAuthorizationService()
+    );
     const created = await service.createOrganization({
       actorUserId: "00000000-0000-4000-8000-000000000001",
       legalName: "Tenant A",
@@ -675,7 +768,10 @@ describe("employer organization foundation", () => {
     });
 
     await expect(
-      service.getOrganization({ actorUserId: staff.userId, organizationId: created.organization.id })
+      service.getOrganization({
+        actorUserId: staff.userId,
+        organizationId: created.organization.id
+      })
     ).resolves.toMatchObject({ id: created.organization.id });
     await expect(
       service.updateOrganization({
@@ -725,7 +821,10 @@ describe("employer organization foundation", () => {
     });
 
     await expect(
-      service.getOrganization({ actorUserId: tenantA.membership.userId, organizationId: tenantB.organization.id })
+      service.getOrganization({
+        actorUserId: tenantA.membership.userId,
+        organizationId: tenantB.organization.id
+      })
     ).rejects.toMatchObject({ decision: expect.objectContaining({ status: "membership_denied" }) });
     await expect(
       service.getOrganization({
@@ -771,9 +870,15 @@ describe("employer organization foundation", () => {
       status: "suspended"
     });
     await expect(
-      service.getOrganization({ actorUserId: created.membership.userId, organizationId: created.organization.id })
+      service.getOrganization({
+        actorUserId: created.membership.userId,
+        organizationId: created.organization.id
+      })
     ).rejects.toMatchObject({
-      decision: expect.objectContaining({ status: "organization_inactive", internalReason: "organization_suspended" })
+      decision: expect.objectContaining({
+        status: "organization_inactive",
+        internalReason: "organization_suspended"
+      })
     });
 
     const reactivated = await service.updateOrganizationStatus({
@@ -792,7 +897,12 @@ describe("employer organization foundation", () => {
     expect(closed.status).toBe("closed");
     expect(created.membership.status).toBe("active");
     expect(organizationRepository.auditActions()).toEqual(
-      expect.arrayContaining(["organization.updated", "organization.suspended", "organization.reactivated", "organization.closed"])
+      expect.arrayContaining([
+        "organization.updated",
+        "organization.suspended",
+        "organization.reactivated",
+        "organization.closed"
+      ])
     );
   });
 
@@ -814,13 +924,16 @@ describe("employer organization foundation", () => {
       })
     ).rejects.toMatchObject({ decision: expect.objectContaining({ status: "bootstrap_failed" }) });
     expect(organizationRepository.organizationCount()).toBe(0);
-    expect(await membershipRepository.listMembershipsForUser("00000000-0000-4000-8000-000000000001")).toHaveLength(0);
+    expect(
+      await membershipRepository.listMembershipsForUser("00000000-0000-4000-8000-000000000001")
+    ).toHaveLength(0);
   });
 });
 
 describe("residence foundation", () => {
   it("creates, reads, lists, updates, and audits organization residences", async () => {
-    const { organizationService, residenceService, residenceRepository } = createResidenceTestServices();
+    const { organizationService, residenceService, residenceRepository } =
+      createResidenceTestServices();
     const ownerId = "00000000-0000-4000-8000-000000000001";
     const organization = await organizationService.createOrganization({
       actorUserId: ownerId,
@@ -842,7 +955,10 @@ describe("residence foundation", () => {
       organizationId: organization.organization.id,
       residenceId: created.id
     });
-    const listed = await residenceService.listResidences({ actorUserId: ownerId, organizationId: organization.organization.id });
+    const listed = await residenceService.listResidences({
+      actorUserId: ownerId,
+      organizationId: organization.organization.id
+    });
     const updated = await residenceService.updateResidence({
       actorUserId: ownerId,
       organizationId: organization.organization.id,
@@ -862,11 +978,20 @@ describe("residence foundation", () => {
   });
 
   it("enforces tenant isolation, membership state, and residence permissions", async () => {
-    const { organizationService, residenceService, membershipService } = createResidenceTestServices();
+    const { organizationService, residenceService, membershipService } =
+      createResidenceTestServices();
     const ownerA = "00000000-0000-4000-8000-000000000001";
     const ownerB = "00000000-0000-4000-8000-000000000002";
-    const organizationA = await organizationService.createOrganization({ actorUserId: ownerA, legalName: "Tenant A", displayName: "Tenant A" });
-    const organizationB = await organizationService.createOrganization({ actorUserId: ownerB, legalName: "Tenant B", displayName: "Tenant B" });
+    const organizationA = await organizationService.createOrganization({
+      actorUserId: ownerA,
+      legalName: "Tenant A",
+      displayName: "Tenant A"
+    });
+    const organizationB = await organizationService.createOrganization({
+      actorUserId: ownerB,
+      legalName: "Tenant B",
+      displayName: "Tenant B"
+    });
     const residenceB = await residenceService.createResidence({
       actorUserId: ownerB,
       organizationId: organizationB.organization.id,
@@ -880,16 +1005,31 @@ describe("residence foundation", () => {
     });
 
     await expect(
-      residenceService.getResidence({ actorUserId: ownerA, organizationId: organizationB.organization.id, residenceId: residenceB.id })
+      residenceService.getResidence({
+        actorUserId: ownerA,
+        organizationId: organizationB.organization.id,
+        residenceId: residenceB.id
+      })
     ).rejects.toMatchObject({ decision: expect.objectContaining({ status: "membership_denied" }) });
     await expect(
-      residenceService.listResidences({ actorUserId: ownerA, organizationId: organizationB.organization.id })
+      residenceService.listResidences({
+        actorUserId: ownerA,
+        organizationId: organizationB.organization.id
+      })
     ).rejects.toMatchObject({ decision: expect.objectContaining({ status: "membership_denied" }) });
     await expect(
-      residenceService.createResidence({ actorUserId: staff.userId, organizationId: organizationA.organization.id, name: "Invited Staff Residence" })
+      residenceService.createResidence({
+        actorUserId: staff.userId,
+        organizationId: organizationA.organization.id,
+        name: "Invited Staff Residence"
+      })
     ).rejects.toMatchObject({ decision: expect.objectContaining({ status: "membership_denied" }) });
 
-    await membershipService.activateMembership({ userId: staff.userId, membershipId: staff.id, actorUserId: ownerA });
+    await membershipService.activateMembership({
+      userId: staff.userId,
+      membershipId: staff.id,
+      actorUserId: ownerA
+    });
     await expect(
       residenceService.updateResidence({
         actorUserId: staff.userId,
@@ -904,8 +1044,16 @@ describe("residence foundation", () => {
   it("handles stale versions and approved active inactive closed transitions", async () => {
     const { organizationService, residenceService } = createResidenceTestServices();
     const ownerId = "00000000-0000-4000-8000-000000000001";
-    const organization = await organizationService.createOrganization({ actorUserId: ownerId, legalName: "Lifecycle Tenant", displayName: "Lifecycle Tenant" });
-    const residence = await residenceService.createResidence({ actorUserId: ownerId, organizationId: organization.organization.id, name: "Lifecycle Residence" });
+    const organization = await organizationService.createOrganization({
+      actorUserId: ownerId,
+      legalName: "Lifecycle Tenant",
+      displayName: "Lifecycle Tenant"
+    });
+    const residence = await residenceService.createResidence({
+      actorUserId: ownerId,
+      organizationId: organization.organization.id,
+      name: "Lifecycle Residence"
+    });
     const updated = await residenceService.updateResidence({
       actorUserId: ownerId,
       organizationId: organization.organization.id,
@@ -958,7 +1106,9 @@ describe("residence foundation", () => {
         status: "active",
         reason: "not allowed"
       })
-    ).rejects.toMatchObject({ decision: expect.objectContaining({ status: "invalid_transition" }) });
+    ).rejects.toMatchObject({
+      decision: expect.objectContaining({ status: "invalid_transition" })
+    });
     await expect(
       residenceService.updateResidence({
         actorUserId: ownerId,
@@ -967,16 +1117,26 @@ describe("residence foundation", () => {
         expectedVersion: closed.version,
         name: "Closed Update"
       })
-    ).rejects.toMatchObject({ decision: expect.objectContaining({ status: "residence_inactive" }) });
+    ).rejects.toMatchObject({
+      decision: expect.objectContaining({ status: "residence_inactive" })
+    });
     await expect(
-      residenceService.getResidence({ actorUserId: ownerId, organizationId: organization.organization.id, residenceId: residence.id })
+      residenceService.getResidence({
+        actorUserId: ownerId,
+        organizationId: organization.organization.id,
+        residenceId: residence.id
+      })
     ).resolves.toMatchObject({ status: "closed" });
   });
 
   it("blocks residence management when employer organization is suspended or closed", async () => {
     const { organizationService, residenceService } = createResidenceTestServices();
     const ownerId = "00000000-0000-4000-8000-000000000001";
-    const organization = await organizationService.createOrganization({ actorUserId: ownerId, legalName: "Blocked Tenant", displayName: "Blocked Tenant" });
+    const organization = await organizationService.createOrganization({
+      actorUserId: ownerId,
+      legalName: "Blocked Tenant",
+      displayName: "Blocked Tenant"
+    });
     const suspended = await organizationService.updateOrganizationStatus({
       actorUserId: ownerId,
       organizationId: organization.organization.id,
@@ -985,8 +1145,14 @@ describe("residence foundation", () => {
     });
 
     await expect(
-      residenceService.createResidence({ actorUserId: ownerId, organizationId: organization.organization.id, name: "Blocked Residence" })
-    ).rejects.toMatchObject({ decision: expect.objectContaining({ status: "organization_inactive" }) });
+      residenceService.createResidence({
+        actorUserId: ownerId,
+        organizationId: organization.organization.id,
+        name: "Blocked Residence"
+      })
+    ).rejects.toMatchObject({
+      decision: expect.objectContaining({ status: "organization_inactive" })
+    });
 
     await expect(
       organizationService.updateOrganizationStatus({
@@ -999,9 +1165,14 @@ describe("residence foundation", () => {
   });
 
   it("rolls back residence creation if transactional audit fails", async () => {
-    const { organizationService, residenceService, residenceRepository } = createResidenceTestServices();
+    const { organizationService, residenceService, residenceRepository } =
+      createResidenceTestServices();
     const ownerId = "00000000-0000-4000-8000-000000000001";
-    const organization = await organizationService.createOrganization({ actorUserId: ownerId, legalName: "Rollback Residence", displayName: "Rollback Residence" });
+    const organization = await organizationService.createOrganization({
+      actorUserId: ownerId,
+      legalName: "Rollback Residence",
+      displayName: "Rollback Residence"
+    });
     residenceRepository.failCreateAudit = true;
 
     await expect(
@@ -1017,10 +1188,19 @@ describe("residence foundation", () => {
 
 describe("department foundation", () => {
   it("creates, reads, lists, updates, and audits departments under one residence", async () => {
-    const { organizationService, residenceService, departmentService, departmentRepository } = createDepartmentTestServices();
+    const { organizationService, residenceService, departmentService, departmentRepository } =
+      createDepartmentTestServices();
     const ownerId = "00000000-0000-4000-8000-000000000001";
-    const organization = await organizationService.createOrganization({ actorUserId: ownerId, legalName: "Department Tenant", displayName: "Department Tenant" });
-    const residence = await residenceService.createResidence({ actorUserId: ownerId, organizationId: organization.organization.id, name: "Department Residence" });
+    const organization = await organizationService.createOrganization({
+      actorUserId: ownerId,
+      legalName: "Department Tenant",
+      displayName: "Department Tenant"
+    });
+    const residence = await residenceService.createResidence({
+      actorUserId: ownerId,
+      organizationId: organization.organization.id,
+      name: "Department Residence"
+    });
     const created = await departmentService.createDepartment({
       actorUserId: ownerId,
       organizationId: organization.organization.id,
@@ -1033,7 +1213,11 @@ describe("department foundation", () => {
       residenceId: residence.id,
       departmentId: created.id
     });
-    const listed = await departmentService.listDepartments({ actorUserId: ownerId, organizationId: organization.organization.id, residenceId: residence.id });
+    const listed = await departmentService.listDepartments({
+      actorUserId: ownerId,
+      organizationId: organization.organization.id,
+      residenceId: residence.id
+    });
     const updated = await departmentService.updateDepartment({
       actorUserId: ownerId,
       organizationId: organization.organization.id,
@@ -1046,17 +1230,37 @@ describe("department foundation", () => {
     expect(read.id).toBe(created.id);
     expect(listed).toHaveLength(1);
     expect(updated.name).toBe("Dining and Kitchen");
-    expect(departmentRepository.auditActions()).toEqual(["department.created", "department.updated"]);
+    expect(departmentRepository.auditActions()).toEqual([
+      "department.created",
+      "department.updated"
+    ]);
   });
 
   it("enforces tenant isolation, residence ownership, membership state, and permissions", async () => {
-    const { organizationService, residenceService, departmentService, membershipService } = createDepartmentTestServices();
+    const { organizationService, residenceService, departmentService, membershipService } =
+      createDepartmentTestServices();
     const ownerA = "00000000-0000-4000-8000-000000000001";
     const ownerB = "00000000-0000-4000-8000-000000000002";
-    const organizationA = await organizationService.createOrganization({ actorUserId: ownerA, legalName: "Department Tenant A", displayName: "Department Tenant A" });
-    const organizationB = await organizationService.createOrganization({ actorUserId: ownerB, legalName: "Department Tenant B", displayName: "Department Tenant B" });
-    const residenceA = await residenceService.createResidence({ actorUserId: ownerA, organizationId: organizationA.organization.id, name: "Residence A" });
-    const residenceB = await residenceService.createResidence({ actorUserId: ownerB, organizationId: organizationB.organization.id, name: "Residence B" });
+    const organizationA = await organizationService.createOrganization({
+      actorUserId: ownerA,
+      legalName: "Department Tenant A",
+      displayName: "Department Tenant A"
+    });
+    const organizationB = await organizationService.createOrganization({
+      actorUserId: ownerB,
+      legalName: "Department Tenant B",
+      displayName: "Department Tenant B"
+    });
+    const residenceA = await residenceService.createResidence({
+      actorUserId: ownerA,
+      organizationId: organizationA.organization.id,
+      name: "Residence A"
+    });
+    const residenceB = await residenceService.createResidence({
+      actorUserId: ownerB,
+      organizationId: organizationB.organization.id,
+      name: "Residence B"
+    });
     const departmentB = await departmentService.createDepartment({
       actorUserId: ownerB,
       organizationId: organizationB.organization.id,
@@ -1095,7 +1299,11 @@ describe("department foundation", () => {
       })
     ).rejects.toMatchObject({ decision: expect.objectContaining({ status: "membership_denied" }) });
 
-    await membershipService.activateMembership({ userId: staff.userId, membershipId: staff.id, actorUserId: ownerA });
+    await membershipService.activateMembership({
+      userId: staff.userId,
+      membershipId: staff.id,
+      actorUserId: ownerA
+    });
     await expect(
       departmentService.updateDepartment({
         actorUserId: staff.userId,
@@ -1109,11 +1317,25 @@ describe("department foundation", () => {
   });
 
   it("handles stale versions and approved active inactive closed transitions", async () => {
-    const { organizationService, residenceService, departmentService } = createDepartmentTestServices();
+    const { organizationService, residenceService, departmentService } =
+      createDepartmentTestServices();
     const ownerId = "00000000-0000-4000-8000-000000000001";
-    const organization = await organizationService.createOrganization({ actorUserId: ownerId, legalName: "Department Lifecycle", displayName: "Department Lifecycle" });
-    const residence = await residenceService.createResidence({ actorUserId: ownerId, organizationId: organization.organization.id, name: "Lifecycle Residence" });
-    const department = await departmentService.createDepartment({ actorUserId: ownerId, organizationId: organization.organization.id, residenceId: residence.id, name: "Lifecycle Department" });
+    const organization = await organizationService.createOrganization({
+      actorUserId: ownerId,
+      legalName: "Department Lifecycle",
+      displayName: "Department Lifecycle"
+    });
+    const residence = await residenceService.createResidence({
+      actorUserId: ownerId,
+      organizationId: organization.organization.id,
+      name: "Lifecycle Residence"
+    });
+    const department = await departmentService.createDepartment({
+      actorUserId: ownerId,
+      organizationId: organization.organization.id,
+      residenceId: residence.id,
+      name: "Lifecycle Department"
+    });
     const updated = await departmentService.updateDepartment({
       actorUserId: ownerId,
       organizationId: organization.organization.id,
@@ -1172,7 +1394,9 @@ describe("department foundation", () => {
         status: "active",
         reason: "not allowed"
       })
-    ).rejects.toMatchObject({ decision: expect.objectContaining({ status: "invalid_transition" }) });
+    ).rejects.toMatchObject({
+      decision: expect.objectContaining({ status: "invalid_transition" })
+    });
     await expect(
       departmentService.updateDepartment({
         actorUserId: ownerId,
@@ -1182,7 +1406,9 @@ describe("department foundation", () => {
         expectedVersion: closed.version,
         name: "Closed Update"
       })
-    ).rejects.toMatchObject({ decision: expect.objectContaining({ status: "department_inactive" }) });
+    ).rejects.toMatchObject({
+      decision: expect.objectContaining({ status: "department_inactive" })
+    });
     await expect(
       departmentService.getDepartment({
         actorUserId: ownerId,
@@ -1194,10 +1420,19 @@ describe("department foundation", () => {
   });
 
   it("blocks department management when employer organization or residence is inactive", async () => {
-    const { organizationService, residenceService, departmentService } = createDepartmentTestServices();
+    const { organizationService, residenceService, departmentService } =
+      createDepartmentTestServices();
     const ownerId = "00000000-0000-4000-8000-000000000001";
-    const organization = await organizationService.createOrganization({ actorUserId: ownerId, legalName: "Department Blocked", displayName: "Department Blocked" });
-    const residence = await residenceService.createResidence({ actorUserId: ownerId, organizationId: organization.organization.id, name: "Blocked Residence" });
+    const organization = await organizationService.createOrganization({
+      actorUserId: ownerId,
+      legalName: "Department Blocked",
+      displayName: "Department Blocked"
+    });
+    const residence = await residenceService.createResidence({
+      actorUserId: ownerId,
+      organizationId: organization.organization.id,
+      name: "Blocked Residence"
+    });
     const inactiveResidence = await residenceService.updateResidenceStatus({
       actorUserId: ownerId,
       organizationId: organization.organization.id,
@@ -1208,8 +1443,15 @@ describe("department foundation", () => {
     });
 
     await expect(
-      departmentService.createDepartment({ actorUserId: ownerId, organizationId: organization.organization.id, residenceId: inactiveResidence.id, name: "Blocked Department" })
-    ).rejects.toMatchObject({ decision: expect.objectContaining({ status: "residence_inactive" }) });
+      departmentService.createDepartment({
+        actorUserId: ownerId,
+        organizationId: organization.organization.id,
+        residenceId: inactiveResidence.id,
+        name: "Blocked Department"
+      })
+    ).rejects.toMatchObject({
+      decision: expect.objectContaining({ status: "residence_inactive" })
+    });
 
     const reactivated = await residenceService.updateResidenceStatus({
       actorUserId: ownerId,
@@ -1229,15 +1471,31 @@ describe("department foundation", () => {
     expect(reactivated.status).toBe("active");
     expect(suspended.status).toBe("suspended");
     await expect(
-      departmentService.createDepartment({ actorUserId: ownerId, organizationId: organization.organization.id, residenceId: residence.id, name: "Org Blocked Department" })
-    ).rejects.toMatchObject({ decision: expect.objectContaining({ status: "organization_inactive" }) });
+      departmentService.createDepartment({
+        actorUserId: ownerId,
+        organizationId: organization.organization.id,
+        residenceId: residence.id,
+        name: "Org Blocked Department"
+      })
+    ).rejects.toMatchObject({
+      decision: expect.objectContaining({ status: "organization_inactive" })
+    });
   });
 
   it("rolls back department creation if transactional audit fails", async () => {
-    const { organizationService, residenceService, departmentService, departmentRepository } = createDepartmentTestServices();
+    const { organizationService, residenceService, departmentService, departmentRepository } =
+      createDepartmentTestServices();
     const ownerId = "00000000-0000-4000-8000-000000000001";
-    const organization = await organizationService.createOrganization({ actorUserId: ownerId, legalName: "Department Rollback", displayName: "Department Rollback" });
-    const residence = await residenceService.createResidence({ actorUserId: ownerId, organizationId: organization.organization.id, name: "Rollback Residence" });
+    const organization = await organizationService.createOrganization({
+      actorUserId: ownerId,
+      legalName: "Department Rollback",
+      displayName: "Department Rollback"
+    });
+    const residence = await residenceService.createResidence({
+      actorUserId: ownerId,
+      organizationId: organization.organization.id,
+      name: "Rollback Residence"
+    });
     departmentRepository.failCreateAudit = true;
 
     await expect(
@@ -1323,10 +1581,19 @@ describe("work groups foundation", () => {
       reason: "catalogue ready"
     });
 
-    expect(updated).toMatchObject({ slug: "kitchen", displayLabel: "Kitchen Operations", displayOrder: 11, iconKey: "chef-hat" });
+    expect(updated).toMatchObject({
+      slug: "kitchen",
+      displayLabel: "Kitchen Operations",
+      displayOrder: 11,
+      iconKey: "chef-hat"
+    });
     expect(inactive.status).toBe("inactive");
     expect(reactivated.status).toBe("active");
-    expect(workGroupRepository.auditActions()).toEqual(["work_group.updated", "work_group.deactivated", "work_group.activated"]);
+    expect(workGroupRepository.auditActions()).toEqual([
+      "work_group.updated",
+      "work_group.deactivated",
+      "work_group.activated"
+    ]);
   });
 
   it("hides inactive WorkGroups from ordinary reads while platform admins can see them", async () => {
@@ -1358,7 +1625,9 @@ describe("work groups foundation", () => {
         session,
         roles: ["PLATFORM_ADMINISTRATOR"]
       })
-    ).resolves.toEqual(expect.arrayContaining([expect.objectContaining({ slug: "kitchen", status: "inactive" })]));
+    ).resolves.toEqual(
+      expect.arrayContaining([expect.objectContaining({ slug: "kitchen", status: "inactive" })])
+    );
   });
 
   it("rejects stale updates, unknown slugs, anonymous reads, and invalid lifecycle transitions safely", async () => {
@@ -1409,7 +1678,9 @@ describe("work groups foundation", () => {
         status: "inactive",
         reason: "already inactive"
       })
-    ).rejects.toMatchObject({ decision: expect.objectContaining({ status: "invalid_transition" }) });
+    ).rejects.toMatchObject({
+      decision: expect.objectContaining({ status: "invalid_transition" })
+    });
   });
 });
 
@@ -1464,9 +1735,22 @@ describe("role definitions foundation", () => {
       identifier: "personal-support-worker"
     });
 
-    expect(kitchenRoles.map((role) => role.slug)).toEqual(["chef", "sous-chef", "cook", "kitchen-helper", "dishwasher"]);
-    expect(byCode).toMatchObject({ code: "LICENSED_PRACTICAL_NURSE", slug: "licensed-practical-nurse", workGroupSlug: "care-nursing" });
-    expect(bySlug).toMatchObject({ code: "PERSONAL_SUPPORT_WORKER", slug: "personal-support-worker" });
+    expect(kitchenRoles.map((role) => role.slug)).toEqual([
+      "chef",
+      "sous-chef",
+      "cook",
+      "kitchen-helper",
+      "dishwasher"
+    ]);
+    expect(byCode).toMatchObject({
+      code: "LICENSED_PRACTICAL_NURSE",
+      slug: "licensed-practical-nurse",
+      workGroupSlug: "care-nursing"
+    });
+    expect(bySlug).toMatchObject({
+      code: "PERSONAL_SUPPORT_WORKER",
+      slug: "personal-support-worker"
+    });
   });
 
   it("allows ordinary catalogue reads but denies organization owner management", async () => {
@@ -1557,7 +1841,9 @@ describe("role definitions foundation", () => {
         roles: ["PLATFORM_ADMINISTRATOR"],
         workGroupSlug: "kitchen"
       })
-    ).resolves.toEqual(expect.arrayContaining([expect.objectContaining({ slug: "chef", workGroupSlug: "kitchen" })]));
+    ).resolves.toEqual(
+      expect.arrayContaining([expect.objectContaining({ slug: "chef", workGroupSlug: "kitchen" })])
+    );
   });
 
   it("rejects stale updates, unknown identifiers, anonymous reads, and invalid lifecycle transitions safely", async () => {
@@ -1608,7 +1894,321 @@ describe("role definitions foundation", () => {
         status: "inactive",
         reason: "already inactive"
       })
-    ).rejects.toMatchObject({ decision: expect.objectContaining({ status: "invalid_transition" }) });
+    ).rejects.toMatchObject({
+      decision: expect.objectContaining({ status: "invalid_transition" })
+    });
+  });
+});
+
+describe("job request foundation", () => {
+  it("creates immutable human-readable numbers and submits through the employer boundary", async () => {
+    const {
+      organizationService,
+      residenceService,
+      departmentService,
+      jobRequestService,
+      jobRequestRepository
+    } = createJobRequestTestServices();
+    const ownerId = "owner-job-request";
+    const organization = await organizationService.createOrganization({
+      actorUserId: ownerId,
+      legalName: "Job Request Org",
+      displayName: "Job Request Org"
+    });
+    const residence = await residenceService.createResidence({
+      actorUserId: ownerId,
+      organizationId: organization.organization.id,
+      name: "Job Request Residence"
+    });
+    const department = await departmentService.createDepartment({
+      actorUserId: ownerId,
+      organizationId: organization.organization.id,
+      residenceId: residence.id,
+      name: "Kitchen"
+    });
+
+    const draft = await jobRequestService.createDraft({
+      actorUserId: ownerId,
+      organizationId: organization.organization.id,
+      residenceId: residence.id,
+      departmentId: department.id,
+      workGroupSlug: "kitchen",
+      roleDefinitionIdentifier: "chef",
+      title: "Evening Chef Coverage",
+      description: "Resident dinner service coverage",
+      numberOfWorkers: 2,
+      urgency: "urgent",
+      requestType: "single_day",
+      timezone: "America/Toronto",
+      startAt: new Date("2026-08-01T20:00:00.000Z"),
+      endAt: new Date("2026-08-02T02:00:00.000Z")
+    });
+    const secondDraft = await jobRequestService.createDraft({
+      actorUserId: ownerId,
+      organizationId: organization.organization.id,
+      residenceId: residence.id,
+      departmentId: department.id,
+      workGroupSlug: "care-nursing",
+      roleDefinitionIdentifier: "personal-support-worker",
+      title: "PSW Morning Support",
+      description: null,
+      numberOfWorkers: 1,
+      urgency: "normal",
+      requestType: "single_day",
+      timezone: "America/Toronto",
+      startAt: new Date("2026-08-03T12:00:00.000Z"),
+      endAt: new Date("2026-08-03T18:00:00.000Z")
+    });
+
+    expect(draft.jobRequestNumber).toBe("JR-2026-000001");
+    expect(secondDraft.jobRequestNumber).toBe("JR-2026-000002");
+    expect(draft.status).toBe("draft");
+    expect(draft.versionToken).toBe(0);
+
+    const submitted = await jobRequestService.submit({
+      actorUserId: ownerId,
+      organizationId: organization.organization.id,
+      jobRequestId: draft.id,
+      expectedVersion: draft.versionToken
+    });
+
+    expect(submitted.status).toBe("submitted");
+    expect(submitted.versionToken).toBe(1);
+    expect(submitted.jobRequestNumber).toBe(draft.jobRequestNumber);
+    expect(jobRequestRepository.auditActions()).toEqual([
+      "job_request.created",
+      "job_request.created",
+      "job_request.submitted"
+    ]);
+  });
+
+  it("enforces parent ownership, tenant isolation, state transitions, and optimistic concurrency", async () => {
+    const {
+      organizationService,
+      residenceService,
+      departmentService,
+      jobRequestService,
+      jobRequestRepository
+    } = createJobRequestTestServices();
+    const ownerA = "owner-job-request-a";
+    const ownerB = "owner-job-request-b";
+    const organizationA = await organizationService.createOrganization({
+      actorUserId: ownerA,
+      legalName: "Tenant A",
+      displayName: "Tenant A"
+    });
+    const organizationB = await organizationService.createOrganization({
+      actorUserId: ownerB,
+      legalName: "Tenant B",
+      displayName: "Tenant B"
+    });
+    const residenceA = await residenceService.createResidence({
+      actorUserId: ownerA,
+      organizationId: organizationA.organization.id,
+      name: "Residence A"
+    });
+    const residenceB = await residenceService.createResidence({
+      actorUserId: ownerB,
+      organizationId: organizationB.organization.id,
+      name: "Residence B"
+    });
+    const departmentA = await departmentService.createDepartment({
+      actorUserId: ownerA,
+      organizationId: organizationA.organization.id,
+      residenceId: residenceA.id,
+      name: "Kitchen A"
+    });
+    const departmentB = await departmentService.createDepartment({
+      actorUserId: ownerB,
+      organizationId: organizationB.organization.id,
+      residenceId: residenceB.id,
+      name: "Kitchen B"
+    });
+
+    await expect(
+      jobRequestService.createDraft({
+        actorUserId: ownerA,
+        organizationId: organizationA.organization.id,
+        residenceId: residenceA.id,
+        departmentId: departmentB.id,
+        workGroupSlug: "kitchen",
+        roleDefinitionIdentifier: "chef",
+        title: "Invalid Parent Chain",
+        numberOfWorkers: 1,
+        urgency: "normal",
+        requestType: "single_day",
+        timezone: "America/Toronto",
+        startAt: new Date("2026-08-01T12:00:00.000Z"),
+        endAt: new Date("2026-08-01T18:00:00.000Z")
+      })
+    ).rejects.toMatchObject({ decision: expect.objectContaining({ status: "parent_mismatch" }) });
+
+    const draft = await jobRequestService.createDraft({
+      actorUserId: ownerA,
+      organizationId: organizationA.organization.id,
+      residenceId: residenceA.id,
+      departmentId: departmentA.id,
+      workGroupSlug: "kitchen",
+      roleDefinitionIdentifier: "chef",
+      title: "Tenant A Chef",
+      numberOfWorkers: 1,
+      urgency: "normal",
+      requestType: "single_day",
+      timezone: "America/Toronto",
+      startAt: new Date("2026-08-02T12:00:00.000Z"),
+      endAt: new Date("2026-08-02T18:00:00.000Z")
+    });
+
+    await expect(
+      jobRequestService.getForOrganization({
+        actorUserId: ownerB,
+        organizationId: organizationB.organization.id,
+        jobRequestIdOrNumber: draft.id
+      })
+    ).rejects.toMatchObject({ decision: expect.objectContaining({ status: "not_found" }) });
+
+    await expect(
+      jobRequestService.updateDraft({
+        actorUserId: ownerA,
+        organizationId: organizationA.organization.id,
+        jobRequestId: draft.id,
+        expectedVersion: draft.versionToken + 1,
+        title: "Stale Update"
+      })
+    ).rejects.toMatchObject({ decision: expect.objectContaining({ status: "version_conflict" }) });
+
+    const submitted = await jobRequestService.submit({
+      actorUserId: ownerA,
+      organizationId: organizationA.organization.id,
+      jobRequestId: draft.id,
+      expectedVersion: draft.versionToken
+    });
+
+    await expect(
+      jobRequestService.updateDraft({
+        actorUserId: ownerA,
+        organizationId: organizationA.organization.id,
+        jobRequestId: draft.id,
+        expectedVersion: submitted.versionToken,
+        title: "Cannot Edit Submitted"
+      })
+    ).rejects.toMatchObject({
+      decision: expect.objectContaining({ status: "invalid_transition" })
+    });
+    expect(jobRequestRepository.auditActions()).toEqual([
+      "job_request.created",
+      "job_request.submitted"
+    ]);
+  });
+
+  it("supports admin intake review, information requests, resubmission, and dispatch-boundary approval", async () => {
+    const {
+      organizationService,
+      residenceService,
+      departmentService,
+      jobRequestService,
+      jobRequestRepository
+    } = createJobRequestTestServices();
+    const ownerId = "owner-admin-intake";
+    const adminSession = activeSession({ emailNormalized: "admin@example.com" });
+    const organization = await organizationService.createOrganization({
+      actorUserId: ownerId,
+      legalName: "Admin Intake Org",
+      displayName: "Admin Intake Org"
+    });
+    const residence = await residenceService.createResidence({
+      actorUserId: ownerId,
+      organizationId: organization.organization.id,
+      name: "Admin Intake Residence"
+    });
+    const department = await departmentService.createDepartment({
+      actorUserId: ownerId,
+      organizationId: organization.organization.id,
+      residenceId: residence.id,
+      name: "Care"
+    });
+    const draft = await jobRequestService.createDraft({
+      actorUserId: ownerId,
+      organizationId: organization.organization.id,
+      residenceId: residence.id,
+      departmentId: department.id,
+      workGroupSlug: "care-nursing",
+      roleDefinitionIdentifier: "personal-support-worker",
+      title: "PSW Weekend Coverage",
+      numberOfWorkers: 3,
+      urgency: "urgent",
+      requestType: "multi_day",
+      timezone: "America/Toronto",
+      startAt: new Date("2026-08-07T12:00:00.000Z"),
+      endAt: new Date("2026-08-09T18:00:00.000Z")
+    });
+    const submitted = await jobRequestService.submit({
+      actorUserId: ownerId,
+      organizationId: organization.organization.id,
+      jobRequestId: draft.id,
+      expectedVersion: draft.versionToken
+    });
+
+    await expect(
+      jobRequestService.startAdminReview({
+        session: adminSession,
+        roles: ["ORGANIZATION_OWNER"],
+        jobRequestId: submitted.id,
+        expectedVersion: submitted.versionToken
+      })
+    ).rejects.toMatchObject({ decision: expect.objectContaining({ status: "permission_denied" }) });
+
+    const adminReview = await jobRequestService.startAdminReview({
+      session: adminSession,
+      roles: ["PLATFORM_ADMINISTRATOR"],
+      jobRequestId: submitted.id,
+      expectedVersion: submitted.versionToken
+    });
+    const informationRequired = await jobRequestService.requestInformation({
+      session: adminSession,
+      roles: ["PLATFORM_ADMINISTRATOR"],
+      jobRequestId: adminReview.id,
+      expectedVersion: adminReview.versionToken,
+      reason: "Confirm the exact weekend meal support window."
+    });
+    const resubmitted = await jobRequestService.submit({
+      actorUserId: ownerId,
+      organizationId: organization.organization.id,
+      jobRequestId: informationRequired.id,
+      expectedVersion: informationRequired.versionToken
+    });
+    const secondAdminReview = await jobRequestService.startAdminReview({
+      session: adminSession,
+      roles: ["PLATFORM_ADMINISTRATOR"],
+      jobRequestId: resubmitted.id,
+      expectedVersion: resubmitted.versionToken
+    });
+    const approved = await jobRequestService.approveForDispatch({
+      session: adminSession,
+      roles: ["PLATFORM_ADMINISTRATOR"],
+      jobRequestId: secondAdminReview.id,
+      expectedVersion: secondAdminReview.versionToken
+    });
+
+    expect(approved.status).toBe("approved_for_dispatch");
+    expect(
+      (
+        await jobRequestService.listAdminIntake({
+          session: adminSession,
+          roles: ["PLATFORM_ADMINISTRATOR"]
+        })
+      ).map((jobRequest) => jobRequest.id)
+    ).not.toContain(approved.id);
+    expect(jobRequestRepository.auditActions()).toEqual([
+      "job_request.created",
+      "job_request.submitted",
+      "job_request.access_denied",
+      "job_request.admin_review_started",
+      "job_request.information_requested",
+      "job_request.resubmitted",
+      "job_request.admin_review_started",
+      "job_request.approved_for_dispatch"
+    ]);
   });
 });
 
@@ -1622,7 +2222,9 @@ class MemoryAuthorizationAuditSink {
 
 class MemoryOrganizationMembershipRepository implements OrganizationMembershipRepository {
   private memberships = new Map<string, StoredOrganizationMembership>();
-  private auditEvents: Parameters<OrganizationMembershipRepository["recordMembershipAuditEvent"]>[0][] = [];
+  private auditEvents: Parameters<
+    OrganizationMembershipRepository["recordMembershipAuditEvent"]
+  >[0][] = [];
   private nextMembership = 1;
 
   auditActions() {
@@ -1645,7 +2247,9 @@ class MemoryOrganizationMembershipRepository implements OrganizationMembershipRe
     );
   }
 
-  async createMembership(input: Parameters<OrganizationMembershipRepository["createMembership"]>[0]) {
+  async createMembership(
+    input: Parameters<OrganizationMembershipRepository["createMembership"]>[0]
+  ) {
     const membership: StoredOrganizationMembership = {
       id: `membership-${this.nextMembership}`,
       organizationId: input.organizationId,
@@ -1676,7 +2280,9 @@ class MemoryOrganizationMembershipRepository implements OrganizationMembershipRe
     return membership;
   }
 
-  async updateMembershipStatus(input: Parameters<OrganizationMembershipRepository["updateMembershipStatus"]>[0]) {
+  async updateMembershipStatus(
+    input: Parameters<OrganizationMembershipRepository["updateMembershipStatus"]>[0]
+  ) {
     const membership = this.memberships.get(input.membershipId);
 
     if (!membership) throw new Error("TEST_MEMBERSHIP_NOT_FOUND");
@@ -1690,7 +2296,9 @@ class MemoryOrganizationMembershipRepository implements OrganizationMembershipRe
     return membership;
   }
 
-  async replaceMembershipRoles(input: Parameters<OrganizationMembershipRepository["replaceMembershipRoles"]>[0]) {
+  async replaceMembershipRoles(
+    input: Parameters<OrganizationMembershipRepository["replaceMembershipRoles"]>[0]
+  ) {
     const membership = this.memberships.get(input.membershipId);
 
     if (!membership) throw new Error("TEST_MEMBERSHIP_NOT_FOUND");
@@ -1704,7 +2312,9 @@ class MemoryOrganizationMembershipRepository implements OrganizationMembershipRe
     return membership;
   }
 
-  async recordMembershipAuditEvent(input: Parameters<OrganizationMembershipRepository["recordMembershipAuditEvent"]>[0]) {
+  async recordMembershipAuditEvent(
+    input: Parameters<OrganizationMembershipRepository["recordMembershipAuditEvent"]>[0]
+  ) {
     this.auditEvents.push(input);
   }
 }
@@ -1712,7 +2322,9 @@ class MemoryOrganizationMembershipRepository implements OrganizationMembershipRe
 class MemoryEmployerOrganizationRepository implements EmployerOrganizationRepository {
   failOwnerMembershipBootstrap = false;
   private organizations = new Map<string, StoredEmployerOrganization>();
-  private auditEvents: Parameters<EmployerOrganizationRepository["recordOrganizationAuditEvent"]>[0][] = [];
+  private auditEvents: Parameters<
+    EmployerOrganizationRepository["recordOrganizationAuditEvent"]
+  >[0][] = [];
   private nextOrganization = 1;
 
   constructor(private readonly membershipRepository: MemoryOrganizationMembershipRepository) {}
@@ -1730,11 +2342,20 @@ class MemoryEmployerOrganizationRepository implements EmployerOrganizationReposi
   }
 
   async findOrganizationByPublicId(publicId: string) {
-    return [...this.organizations.values()].find((organization) => organization.publicId === publicId) ?? null;
+    return (
+      [...this.organizations.values()].find((organization) => organization.publicId === publicId) ??
+      null
+    );
   }
 
-  async createOrganizationWithOwnerMembership(input: Parameters<EmployerOrganizationRepository["createOrganizationWithOwnerMembership"]>[0]) {
-    if ([...this.organizations.values()].some((organization) => organization.legalName === input.legalName)) {
+  async createOrganizationWithOwnerMembership(
+    input: Parameters<EmployerOrganizationRepository["createOrganizationWithOwnerMembership"]>[0]
+  ) {
+    if (
+      [...this.organizations.values()].some(
+        (organization) => organization.legalName === input.legalName
+      )
+    ) {
       throw new Error("RWOS_ORGANIZATION_DUPLICATE");
     }
 
@@ -1819,7 +2440,9 @@ class MemoryEmployerOrganizationRepository implements EmployerOrganizationReposi
     }
   }
 
-  async updateOrganization(input: Parameters<EmployerOrganizationRepository["updateOrganization"]>[0]) {
+  async updateOrganization(
+    input: Parameters<EmployerOrganizationRepository["updateOrganization"]>[0]
+  ) {
     const organization = this.organizations.get(input.organizationId);
 
     if (!organization || organization.updatedAt.getTime() !== input.expectedUpdatedAt.getTime()) {
@@ -1833,7 +2456,9 @@ class MemoryEmployerOrganizationRepository implements EmployerOrganizationReposi
     return organization;
   }
 
-  async updateOrganizationStatus(input: Parameters<EmployerOrganizationRepository["updateOrganizationStatus"]>[0]) {
+  async updateOrganizationStatus(
+    input: Parameters<EmployerOrganizationRepository["updateOrganizationStatus"]>[0]
+  ) {
     const organization = this.organizations.get(input.organizationId);
 
     if (!organization || organization.updatedAt.getTime() !== input.expectedUpdatedAt.getTime()) {
@@ -1852,7 +2477,9 @@ class MemoryEmployerOrganizationRepository implements EmployerOrganizationReposi
     return organization;
   }
 
-  async recordOrganizationAuditEvent(input: Parameters<EmployerOrganizationRepository["recordOrganizationAuditEvent"]>[0]) {
+  async recordOrganizationAuditEvent(
+    input: Parameters<EmployerOrganizationRepository["recordOrganizationAuditEvent"]>[0]
+  ) {
     this.auditEvents.push(input);
   }
 }
@@ -1875,9 +2502,15 @@ class MemoryResidenceRepository implements ResidenceRepository {
     return this.residences.get(residenceId) ?? null;
   }
 
-  async listResidencesByOrganization(input: Parameters<ResidenceRepository["listResidencesByOrganization"]>[0]) {
+  async listResidencesByOrganization(
+    input: Parameters<ResidenceRepository["listResidencesByOrganization"]>[0]
+  ) {
     return [...this.residences.values()]
-      .filter((residence) => residence.organizationId === input.organizationId && (!input.status || residence.status === input.status))
+      .filter(
+        (residence) =>
+          residence.organizationId === input.organizationId &&
+          (!input.status || residence.status === input.status)
+      )
       .sort((left, right) => left.name.localeCompare(right.name));
   }
 
@@ -1928,7 +2561,11 @@ class MemoryResidenceRepository implements ResidenceRepository {
   async updateResidence(input: Parameters<ResidenceRepository["updateResidence"]>[0]) {
     const residence = this.residences.get(input.residenceId);
 
-    if (!residence || residence.organizationId !== input.organizationId || residence.updatedAt.getTime() !== input.expectedUpdatedAt.getTime()) {
+    if (
+      !residence ||
+      residence.organizationId !== input.organizationId ||
+      residence.updatedAt.getTime() !== input.expectedUpdatedAt.getTime()
+    ) {
       return null;
     }
 
@@ -1945,18 +2582,29 @@ class MemoryResidenceRepository implements ResidenceRepository {
   async updateResidenceStatus(input: Parameters<ResidenceRepository["updateResidenceStatus"]>[0]) {
     const residence = this.residences.get(input.residenceId);
 
-    if (!residence || residence.organizationId !== input.organizationId || residence.updatedAt.getTime() !== input.expectedUpdatedAt.getTime()) {
+    if (
+      !residence ||
+      residence.organizationId !== input.organizationId ||
+      residence.updatedAt.getTime() !== input.expectedUpdatedAt.getTime()
+    ) {
       return null;
     }
 
     residence.status = input.status;
-    residence.archivedAt = input.status === "closed" ? input.now : input.status === "active" ? null : residence.archivedAt;
+    residence.archivedAt =
+      input.status === "closed"
+        ? input.now
+        : input.status === "active"
+          ? null
+          : residence.archivedAt;
     residence.updatedAt = new Date(input.now.getTime() + 1);
 
     return residence;
   }
 
-  async recordResidenceAuditEvent(input: Parameters<ResidenceRepository["recordResidenceAuditEvent"]>[0]) {
+  async recordResidenceAuditEvent(
+    input: Parameters<ResidenceRepository["recordResidenceAuditEvent"]>[0]
+  ) {
     this.auditEvents.push(input);
   }
 }
@@ -1979,9 +2627,16 @@ class MemoryDepartmentRepository implements DepartmentRepository {
     return this.departments.get(departmentId) ?? null;
   }
 
-  async listDepartmentsByResidence(input: Parameters<DepartmentRepository["listDepartmentsByResidence"]>[0]) {
+  async listDepartmentsByResidence(
+    input: Parameters<DepartmentRepository["listDepartmentsByResidence"]>[0]
+  ) {
     return [...this.departments.values()]
-      .filter((department) => department.organizationId === input.organizationId && department.residenceId === input.residenceId && (!input.status || department.status === input.status))
+      .filter(
+        (department) =>
+          department.organizationId === input.organizationId &&
+          department.residenceId === input.residenceId &&
+          (!input.status || department.status === input.status)
+      )
       .sort((left, right) => left.name.localeCompare(right.name));
   }
 
@@ -2045,7 +2700,9 @@ class MemoryDepartmentRepository implements DepartmentRepository {
     return department;
   }
 
-  async updateDepartmentStatus(input: Parameters<DepartmentRepository["updateDepartmentStatus"]>[0]) {
+  async updateDepartmentStatus(
+    input: Parameters<DepartmentRepository["updateDepartmentStatus"]>[0]
+  ) {
     const department = this.departments.get(input.departmentId);
 
     if (
@@ -2058,13 +2715,20 @@ class MemoryDepartmentRepository implements DepartmentRepository {
     }
 
     department.status = input.status;
-    department.archivedAt = input.status === "closed" ? input.now : input.status === "active" ? null : department.archivedAt;
+    department.archivedAt =
+      input.status === "closed"
+        ? input.now
+        : input.status === "active"
+          ? null
+          : department.archivedAt;
     department.updatedAt = new Date(input.now.getTime() + 1);
 
     return department;
   }
 
-  async recordDepartmentAuditEvent(input: Parameters<DepartmentRepository["recordDepartmentAuditEvent"]>[0]) {
+  async recordDepartmentAuditEvent(
+    input: Parameters<DepartmentRepository["recordDepartmentAuditEvent"]>[0]
+  ) {
     this.auditEvents.push(input);
   }
 }
@@ -2112,7 +2776,12 @@ class MemoryWorkGroupRepository implements WorkGroupRepository {
   async listWorkGroups(input: Parameters<WorkGroupRepository["listWorkGroups"]>[0]) {
     return [...this.workGroups.values()]
       .filter((workGroup) => input.includeInactive || workGroup.status === "active")
-      .sort((left, right) => left.displayOrder - right.displayOrder || left.displayLabel.localeCompare(right.displayLabel) || left.key.localeCompare(right.key));
+      .sort(
+        (left, right) =>
+          left.displayOrder - right.displayOrder ||
+          left.displayLabel.localeCompare(right.displayLabel) ||
+          left.key.localeCompare(right.key)
+      );
   }
 
   async updateWorkGroup(input: Parameters<WorkGroupRepository["updateWorkGroup"]>[0]) {
@@ -2143,7 +2812,9 @@ class MemoryWorkGroupRepository implements WorkGroupRepository {
     return workGroup;
   }
 
-  async recordWorkGroupAuditEvent(input: Parameters<WorkGroupRepository["recordWorkGroupAuditEvent"]>[0]) {
+  async recordWorkGroupAuditEvent(
+    input: Parameters<WorkGroupRepository["recordWorkGroupAuditEvent"]>[0]
+  ) {
     this.auditEvents.push(input);
   }
 }
@@ -2151,7 +2822,8 @@ class MemoryWorkGroupRepository implements WorkGroupRepository {
 class MemoryRoleDefinitionRepository implements RoleDefinitionRepository {
   private workGroups = new Map<string, StoredWorkGroup>();
   private roleDefinitions = new Map<string, StoredRoleDefinition>();
-  private auditEvents: Parameters<RoleDefinitionRepository["recordRoleDefinitionAuditEvent"]>[0][] = [];
+  private auditEvents: Parameters<RoleDefinitionRepository["recordRoleDefinitionAuditEvent"]>[0][] =
+    [];
 
   constructor() {
     const createdAt = new Date("2026-07-25T08:00:00.000Z");
@@ -2217,7 +2889,11 @@ class MemoryRoleDefinitionRepository implements RoleDefinitionRepository {
   }
 
   async findRoleDefinitionById(roleDefinitionId: string) {
-    return [...this.roleDefinitions.values()].find((roleDefinition) => roleDefinition.id === roleDefinitionId) ?? null;
+    return (
+      [...this.roleDefinitions.values()].find(
+        (roleDefinition) => roleDefinition.id === roleDefinitionId
+      ) ?? null
+    );
   }
 
   async findRoleDefinitionByKey(key: string) {
@@ -2227,7 +2903,10 @@ class MemoryRoleDefinitionRepository implements RoleDefinitionRepository {
   async listRoleDefinitions(input: Parameters<RoleDefinitionRepository["listRoleDefinitions"]>[0]) {
     return [...this.roleDefinitions.values()]
       .filter((roleDefinition) => input.includeInactive || roleDefinition.status === "active")
-      .filter((roleDefinition) => !input.workGroupKey || roleDefinition.workGroup.key === input.workGroupKey)
+      .filter(
+        (roleDefinition) =>
+          !input.workGroupKey || roleDefinition.workGroup.key === input.workGroupKey
+      )
       .sort(
         (left, right) =>
           left.workGroup.displayOrder - right.workGroup.displayOrder ||
@@ -2237,23 +2916,36 @@ class MemoryRoleDefinitionRepository implements RoleDefinitionRepository {
       );
   }
 
-  async updateRoleDefinition(input: Parameters<RoleDefinitionRepository["updateRoleDefinition"]>[0]) {
-    const roleDefinition = [...this.roleDefinitions.values()].find((candidate) => candidate.id === input.roleDefinitionId);
-    if (!roleDefinition || roleDefinition.updatedAt.getTime() !== input.expectedUpdatedAt.getTime()) return null;
+  async updateRoleDefinition(
+    input: Parameters<RoleDefinitionRepository["updateRoleDefinition"]>[0]
+  ) {
+    const roleDefinition = [...this.roleDefinitions.values()].find(
+      (candidate) => candidate.id === input.roleDefinitionId
+    );
+    if (!roleDefinition || roleDefinition.updatedAt.getTime() !== input.expectedUpdatedAt.getTime())
+      return null;
 
     if (input.displayLabel !== undefined) roleDefinition.displayLabel = input.displayLabel;
     if (input.displayOrder !== undefined) roleDefinition.displayOrder = input.displayOrder;
-    if (input.localizedLabelKey !== undefined) roleDefinition.localizedLabelKey = input.localizedLabelKey;
-    if (input.qualificationSummary !== undefined) roleDefinition.qualificationSummary = input.qualificationSummary;
-    if (input.safetyRequirementSummary !== undefined) roleDefinition.safetyRequirementSummary = input.safetyRequirementSummary;
+    if (input.localizedLabelKey !== undefined)
+      roleDefinition.localizedLabelKey = input.localizedLabelKey;
+    if (input.qualificationSummary !== undefined)
+      roleDefinition.qualificationSummary = input.qualificationSummary;
+    if (input.safetyRequirementSummary !== undefined)
+      roleDefinition.safetyRequirementSummary = input.safetyRequirementSummary;
     roleDefinition.updatedAt = new Date(input.now.getTime() + 1);
 
     return roleDefinition;
   }
 
-  async updateRoleDefinitionStatus(input: Parameters<RoleDefinitionRepository["updateRoleDefinitionStatus"]>[0]) {
-    const roleDefinition = [...this.roleDefinitions.values()].find((candidate) => candidate.id === input.roleDefinitionId);
-    if (!roleDefinition || roleDefinition.updatedAt.getTime() !== input.expectedUpdatedAt.getTime()) return null;
+  async updateRoleDefinitionStatus(
+    input: Parameters<RoleDefinitionRepository["updateRoleDefinitionStatus"]>[0]
+  ) {
+    const roleDefinition = [...this.roleDefinitions.values()].find(
+      (candidate) => candidate.id === input.roleDefinitionId
+    );
+    if (!roleDefinition || roleDefinition.updatedAt.getTime() !== input.expectedUpdatedAt.getTime())
+      return null;
 
     roleDefinition.status = input.status;
     roleDefinition.updatedAt = new Date(input.now.getTime() + 1);
@@ -2261,7 +2953,151 @@ class MemoryRoleDefinitionRepository implements RoleDefinitionRepository {
     return roleDefinition;
   }
 
-  async recordRoleDefinitionAuditEvent(input: Parameters<RoleDefinitionRepository["recordRoleDefinitionAuditEvent"]>[0]) {
+  async recordRoleDefinitionAuditEvent(
+    input: Parameters<RoleDefinitionRepository["recordRoleDefinitionAuditEvent"]>[0]
+  ) {
+    this.auditEvents.push(input);
+  }
+}
+
+class MemoryJobRequestRepository implements JobRequestRepository {
+  private jobRequests = new Map<string, StoredJobRequest>();
+  private sequences = new Map<number, number>();
+  private auditEvents: Parameters<JobRequestRepository["recordJobRequestAuditEvent"]>[0][] = [];
+  private nextJobRequest = 1;
+
+  auditActions() {
+    return this.auditEvents.map((event) => event.action);
+  }
+
+  async createDraft(input: Parameters<JobRequestRepository["createDraft"]>[0]) {
+    const year = input.now.getUTCFullYear();
+    const nextSequence = (this.sequences.get(year) ?? 0) + 1;
+    this.sequences.set(year, nextSequence);
+    const jobRequest: StoredJobRequest = {
+      id: `job-request-${this.nextJobRequest}`,
+      jobRequestNumber: `JR-${year}-${String(nextSequence).padStart(6, "0")}`,
+      organizationId: input.organizationId,
+      residenceId: input.residenceId,
+      departmentId: input.departmentId,
+      workGroupId: input.workGroupId,
+      roleDefinitionId: input.roleDefinitionId,
+      creatorUserId: input.actorUserId,
+      title: input.title,
+      description: input.description,
+      numberOfWorkers: input.numberOfWorkers,
+      urgency: input.urgency,
+      requestType: input.requestType,
+      timezone: input.timezone,
+      startAt: input.startAt,
+      endAt: input.endAt,
+      isMultiDay: input.isMultiDay,
+      hasRecurringIntent: input.hasRecurringIntent,
+      status: "draft",
+      adminReviewReason: null,
+      version: 0,
+      createdByUserId: input.actorUserId,
+      updatedByUserId: null,
+      createdAt: input.now,
+      updatedAt: input.now,
+      submittedAt: null,
+      cancelledAt: null,
+      expiredAt: null,
+      archivedAt: null
+    };
+
+    this.nextJobRequest += 1;
+    this.jobRequests.set(jobRequest.id, jobRequest);
+    await this.recordJobRequestAuditEvent({
+      action: "job_request.created",
+      organizationId: jobRequest.organizationId,
+      jobRequestId: jobRequest.id,
+      jobRequestNumber: jobRequest.jobRequestNumber,
+      actorUserId: input.actorUserId,
+      priorState: null,
+      newState: jobRequest.status,
+      reason: null,
+      correlationId: input.correlationId,
+      createdAt: input.now
+    });
+
+    return jobRequest;
+  }
+
+  async findJobRequestById(jobRequestId: string) {
+    return this.jobRequests.get(jobRequestId) ?? null;
+  }
+
+  async findJobRequestByNumber(jobRequestNumber: string) {
+    return (
+      [...this.jobRequests.values()].find(
+        (jobRequest) => jobRequest.jobRequestNumber === jobRequestNumber
+      ) ?? null
+    );
+  }
+
+  async listJobRequests(input: Parameters<JobRequestRepository["listJobRequests"]>[0]) {
+    return [...this.jobRequests.values()]
+      .filter(
+        (jobRequest) => !input.organizationId || jobRequest.organizationId === input.organizationId
+      )
+      .filter((jobRequest) => !input.residenceId || jobRequest.residenceId === input.residenceId)
+      .filter((jobRequest) => !input.departmentId || jobRequest.departmentId === input.departmentId)
+      .filter((jobRequest) => !input.statuses || input.statuses.includes(jobRequest.status))
+      .sort(
+        (left, right) =>
+          right.createdAt.getTime() - left.createdAt.getTime() ||
+          right.jobRequestNumber.localeCompare(left.jobRequestNumber)
+      );
+  }
+
+  async updateDraft(input: Parameters<JobRequestRepository["updateDraft"]>[0]) {
+    const jobRequest = this.jobRequests.get(input.jobRequestId);
+    if (!jobRequest || jobRequest.version !== input.expectedVersion) return null;
+
+    if (input.residenceId !== undefined) jobRequest.residenceId = input.residenceId;
+    if (input.departmentId !== undefined) jobRequest.departmentId = input.departmentId;
+    if (input.workGroupId !== undefined) jobRequest.workGroupId = input.workGroupId;
+    if (input.roleDefinitionId !== undefined) jobRequest.roleDefinitionId = input.roleDefinitionId;
+    if (input.title !== undefined) jobRequest.title = input.title;
+    if (input.description !== undefined) jobRequest.description = input.description;
+    if (input.numberOfWorkers !== undefined) jobRequest.numberOfWorkers = input.numberOfWorkers;
+    if (input.urgency !== undefined) jobRequest.urgency = input.urgency;
+    if (input.requestType !== undefined) jobRequest.requestType = input.requestType;
+    if (input.timezone !== undefined) jobRequest.timezone = input.timezone;
+    if (input.startAt !== undefined) jobRequest.startAt = input.startAt;
+    if (input.endAt !== undefined) jobRequest.endAt = input.endAt;
+    if (input.isMultiDay !== undefined) jobRequest.isMultiDay = input.isMultiDay;
+    if (input.hasRecurringIntent !== undefined)
+      jobRequest.hasRecurringIntent = input.hasRecurringIntent;
+    jobRequest.updatedByUserId = input.actorUserId;
+    jobRequest.updatedAt = input.now;
+    jobRequest.version += 1;
+
+    return jobRequest;
+  }
+
+  async transitionJobRequest(input: Parameters<JobRequestRepository["transitionJobRequest"]>[0]) {
+    const jobRequest = this.jobRequests.get(input.jobRequestId);
+    if (!jobRequest || jobRequest.version !== input.expectedVersion) return null;
+
+    jobRequest.status = input.status;
+    if (input.adminReviewReason !== undefined)
+      jobRequest.adminReviewReason = input.adminReviewReason;
+    jobRequest.updatedByUserId = input.actorUserId;
+    jobRequest.updatedAt = input.now;
+    if (input.status === "submitted") jobRequest.submittedAt = input.now;
+    if (input.status === "cancelled") jobRequest.cancelledAt = input.now;
+    if (input.status === "expired") jobRequest.expiredAt = input.now;
+    if (input.status === "archived") jobRequest.archivedAt = input.now;
+    jobRequest.version += 1;
+
+    return jobRequest;
+  }
+
+  async recordJobRequestAuditEvent(
+    input: Parameters<JobRequestRepository["recordJobRequestAuditEvent"]>[0]
+  ) {
     this.auditEvents.push(input);
   }
 }
@@ -2272,8 +3108,17 @@ function createResidenceTestServices() {
   const residenceRepository = new MemoryResidenceRepository();
   const membershipService = createOrganizationMembershipService(membershipRepository);
   const authorizationService = createAuthorizationService();
-  const organizationService = createEmployerOrganizationService(organizationRepository, membershipService, authorizationService);
-  const residenceService = createResidenceService(residenceRepository, organizationRepository, membershipService, authorizationService);
+  const organizationService = createEmployerOrganizationService(
+    organizationRepository,
+    membershipService,
+    authorizationService
+  );
+  const residenceService = createResidenceService(
+    residenceRepository,
+    organizationRepository,
+    membershipService,
+    authorizationService
+  );
 
   return {
     membershipService,
@@ -2290,8 +3135,17 @@ function createDepartmentTestServices() {
   const departmentRepository = new MemoryDepartmentRepository();
   const membershipService = createOrganizationMembershipService(membershipRepository);
   const authorizationService = createAuthorizationService();
-  const organizationService = createEmployerOrganizationService(organizationRepository, membershipService, authorizationService);
-  const residenceService = createResidenceService(residenceRepository, organizationRepository, membershipService, authorizationService);
+  const organizationService = createEmployerOrganizationService(
+    organizationRepository,
+    membershipService,
+    authorizationService
+  );
+  const residenceService = createResidenceService(
+    residenceRepository,
+    organizationRepository,
+    membershipService,
+    authorizationService
+  );
   const departmentService = createDepartmentService(
     departmentRepository,
     residenceRepository,
@@ -2323,7 +3177,10 @@ function createWorkGroupTestServices() {
 function createRoleDefinitionTestServices() {
   const roleDefinitionRepository = new MemoryRoleDefinitionRepository();
   const authorizationService = createAuthorizationService();
-  const roleDefinitionService = createRoleDefinitionService(roleDefinitionRepository, authorizationService);
+  const roleDefinitionService = createRoleDefinitionService(
+    roleDefinitionRepository,
+    authorizationService
+  );
 
   return {
     roleDefinitionService,
@@ -2331,7 +3188,57 @@ function createRoleDefinitionTestServices() {
   };
 }
 
-function activeSession(input: { userStatus?: StoredAuthenticationUser["status"]; emailNormalized?: string } = {}) {
+function createJobRequestTestServices() {
+  const membershipRepository = new MemoryOrganizationMembershipRepository();
+  const organizationRepository = new MemoryEmployerOrganizationRepository(membershipRepository);
+  const residenceRepository = new MemoryResidenceRepository();
+  const departmentRepository = new MemoryDepartmentRepository();
+  const workGroupRepository = new MemoryWorkGroupRepository();
+  const roleDefinitionRepository = new MemoryRoleDefinitionRepository();
+  const jobRequestRepository = new MemoryJobRequestRepository();
+  const membershipService = createOrganizationMembershipService(membershipRepository);
+  const authorizationService = createAuthorizationService();
+  const organizationService = createEmployerOrganizationService(
+    organizationRepository,
+    membershipService,
+    authorizationService
+  );
+  const residenceService = createResidenceService(
+    residenceRepository,
+    organizationRepository,
+    membershipService,
+    authorizationService
+  );
+  const departmentService = createDepartmentService(
+    departmentRepository,
+    residenceRepository,
+    organizationRepository,
+    membershipService,
+    authorizationService
+  );
+  const jobRequestService = createJobRequestService(
+    jobRequestRepository,
+    organizationRepository,
+    residenceRepository,
+    departmentRepository,
+    workGroupRepository,
+    roleDefinitionRepository,
+    membershipService,
+    authorizationService
+  );
+
+  return {
+    organizationService,
+    residenceService,
+    departmentService,
+    jobRequestService,
+    jobRequestRepository
+  };
+}
+
+function activeSession(
+  input: { userStatus?: StoredAuthenticationUser["status"]; emailNormalized?: string } = {}
+) {
   return {
     authenticated: true,
     user: {

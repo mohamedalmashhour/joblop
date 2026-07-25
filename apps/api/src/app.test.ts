@@ -4,6 +4,7 @@ import {
   createAuthenticationService,
   createDepartmentService,
   createEmployerOrganizationService,
+  createJobRequestService,
   createOrganizationMembershipService,
   createResidenceService,
   createRoleDefinitionService,
@@ -17,6 +18,7 @@ import type {
   DepartmentRepository,
   EmployerOrganizationRepository,
   InviteMembershipInput,
+  JobRequestRepository,
   OrganizationMembershipRepository,
   RecordAuthenticationAuditEventInput,
   ResidenceRepository,
@@ -28,6 +30,7 @@ import type {
   StoredDepartment,
   StoredRoleDefinition,
   StoredWorkGroup,
+  StoredJobRequest,
   RoleDefinitionRepository,
   UpdateSessionInput,
   WorkGroupRepository
@@ -252,7 +255,11 @@ describe("api organization membership foundation", () => {
     const registration = await registerApiUser(app);
     const userId = authRepository.firstUserId();
     const membership = await membershipService.inviteMembership(apiInviteInput(userId));
-    await membershipService.activateMembership({ userId, membershipId: membership.id, actorUserId: userId });
+    await membershipService.activateMembership({
+      userId,
+      membershipId: membership.id,
+      actorUserId: userId
+    });
 
     const list = await app.inject({
       method: "GET",
@@ -281,7 +288,9 @@ describe("api organization membership foundation", () => {
 
   it("denies missing organization context and wrong membership access safely", async () => {
     const authRepository = new ApiMemoryAuthenticationRepository();
-    const membershipService = createOrganizationMembershipService(new ApiMemoryOrganizationMembershipRepository());
+    const membershipService = createOrganizationMembershipService(
+      new ApiMemoryOrganizationMembershipRepository()
+    );
     const app = buildApi({
       authService: createAuthenticationService(authRepository, testAuthOptions()),
       membershipService
@@ -353,7 +362,9 @@ describe("api employer organization foundation", () => {
     const authRepository = new ApiMemoryAuthenticationRepository();
     const membershipRepository = new ApiMemoryOrganizationMembershipRepository();
     const membershipService = createOrganizationMembershipService(membershipRepository);
-    const organizationRepository = new ApiMemoryEmployerOrganizationRepository(membershipRepository);
+    const organizationRepository = new ApiMemoryEmployerOrganizationRepository(
+      membershipRepository
+    );
     const organizationService = createEmployerOrganizationService(
       organizationRepository,
       membershipService,
@@ -399,7 +410,9 @@ describe("api employer organization foundation", () => {
     const authRepository = new ApiMemoryAuthenticationRepository();
     const membershipRepository = new ApiMemoryOrganizationMembershipRepository();
     const membershipService = createOrganizationMembershipService(membershipRepository);
-    const organizationRepository = new ApiMemoryEmployerOrganizationRepository(membershipRepository);
+    const organizationRepository = new ApiMemoryEmployerOrganizationRepository(
+      membershipRepository
+    );
     const organizationService = createEmployerOrganizationService(
       organizationRepository,
       membershipService,
@@ -535,7 +548,11 @@ describe("api residence foundation", () => {
   it("creates, lists, reads, updates, and changes residence status inside organization context", async () => {
     const { app, authRepository } = buildResidenceApi();
     const registration = await registerApiUser(app);
-    const organization = await createApiOrganization(app, registration.token, "Residence API Tenant");
+    const organization = await createApiOrganization(
+      app,
+      registration.token,
+      "Residence API Tenant"
+    );
     const created = await app.inject({
       method: "POST",
       url: `/organizations/${organization.id}/residences`,
@@ -613,7 +630,11 @@ describe("api residence foundation", () => {
         displayName: "Second Residence Employer"
       }
     });
-    const secondOrganization = await createApiOrganization(app, second.json().token, "Residence Tenant Two");
+    const secondOrganization = await createApiOrganization(
+      app,
+      second.json().token,
+      "Residence Tenant Two"
+    );
 
     const anonymous = await app.inject({
       method: "POST",
@@ -657,8 +678,17 @@ describe("api department foundation", () => {
   it("creates, lists, reads, updates, and changes department status inside residence context", async () => {
     const { app } = buildDepartmentApi();
     const registration = await registerApiUser(app);
-    const organization = await createApiOrganization(app, registration.token, "Department API Tenant");
-    const residence = await createApiResidence(app, registration.token, organization.id, "Department API Residence");
+    const organization = await createApiOrganization(
+      app,
+      registration.token,
+      "Department API Tenant"
+    );
+    const residence = await createApiResidence(
+      app,
+      registration.token,
+      organization.id,
+      "Department API Residence"
+    );
     const created = await app.inject({
       method: "POST",
       url: `/organizations/${organization.id}/residences/${residence.id}/departments`,
@@ -711,8 +741,17 @@ describe("api department foundation", () => {
   it("denies anonymous, cross-tenant, guessed department, and stale update access safely", async () => {
     const { app } = buildDepartmentApi();
     const first = await registerApiUser(app);
-    const firstOrganization = await createApiOrganization(app, first.token, "Department Tenant One");
-    const firstResidence = await createApiResidence(app, first.token, firstOrganization.id, "Tenant One Residence");
+    const firstOrganization = await createApiOrganization(
+      app,
+      first.token,
+      "Department Tenant One"
+    );
+    const firstResidence = await createApiResidence(
+      app,
+      first.token,
+      firstOrganization.id,
+      "Tenant One Residence"
+    );
     const department = (
       await app.inject({
         method: "POST",
@@ -730,8 +769,17 @@ describe("api department foundation", () => {
         displayName: "Second Department Employer"
       }
     });
-    const secondOrganization = await createApiOrganization(app, second.json().token, "Department Tenant Two");
-    const secondResidence = await createApiResidence(app, second.json().token, secondOrganization.id, "Tenant Two Residence");
+    const secondOrganization = await createApiOrganization(
+      app,
+      second.json().token,
+      "Department Tenant Two"
+    );
+    const secondResidence = await createApiResidence(
+      app,
+      second.json().token,
+      secondOrganization.id,
+      "Tenant Two Residence"
+    );
 
     const anonymous = await app.inject({
       method: "POST",
@@ -775,7 +823,11 @@ describe("api work groups foundation", () => {
   it("allows ordinary organization users to list and read active WorkGroups", async () => {
     const { app } = buildWorkGroupApi();
     const registration = await registerApiUser(app);
-    const organization = await createApiOrganization(app, registration.token, "WorkGroup API Tenant");
+    const organization = await createApiOrganization(
+      app,
+      registration.token,
+      "WorkGroup API Tenant"
+    );
     const listed = await app.inject({
       method: "GET",
       url: `/work-groups?organizationId=${organization.id}`,
@@ -795,7 +847,10 @@ describe("api work groups foundation", () => {
       "maintenance"
     ]);
     expect(read.statusCode).toBe(200);
-    expect(read.json().workGroup).toMatchObject({ slug: "care-nursing", displayLabel: "Care / Nursing" });
+    expect(read.json().workGroup).toMatchObject({
+      slug: "care-nursing",
+      displayLabel: "Care / Nursing"
+    });
 
     await app.close();
   });
@@ -813,7 +868,11 @@ describe("api work groups foundation", () => {
       }
     });
     grantPlatformAdmin(authRepository.lastUserId());
-    const ordinaryOrganization = await createApiOrganization(app, ordinary.token, "Ordinary WorkGroup Tenant");
+    const ordinaryOrganization = await createApiOrganization(
+      app,
+      ordinary.token,
+      "Ordinary WorkGroup Tenant"
+    );
     const denied = await app.inject({
       method: "PATCH",
       url: "/platform/work-groups/kitchen",
@@ -828,7 +887,9 @@ describe("api work groups foundation", () => {
       url: "/platform/work-groups",
       headers: { authorization: `Bearer ${platform.json().token}` }
     });
-    const kitchen = all.json().workGroups.find((workGroup: { slug: string }) => workGroup.slug === "kitchen");
+    const kitchen = all
+      .json()
+      .workGroups.find((workGroup: { slug: string }) => workGroup.slug === "kitchen");
     const updated = await app.inject({
       method: "PATCH",
       url: "/platform/work-groups/kitchen",
@@ -858,7 +919,11 @@ describe("api work groups foundation", () => {
     expect(denied.statusCode).toBe(403);
     expect(all.statusCode).toBe(200);
     expect(updated.statusCode).toBe(200);
-    expect(updated.json().workGroup).toMatchObject({ slug: "kitchen", displayLabel: "Kitchen Operations", displayOrder: 11 });
+    expect(updated.json().workGroup).toMatchObject({
+      slug: "kitchen",
+      displayLabel: "Kitchen Operations",
+      displayOrder: 11
+    });
     expect(inactive.statusCode).toBe(200);
     expect(inactive.json().workGroup.status).toBe("inactive");
     expect(ordinaryAfterInactive.statusCode).toBe(403);
@@ -871,7 +936,11 @@ describe("api role definitions foundation", () => {
   it("allows ordinary organization users to list, filter, and read active RoleDefinitions", async () => {
     const { app } = buildRoleDefinitionApi();
     const registration = await registerApiUser(app);
-    const organization = await createApiOrganization(app, registration.token, "RoleDefinition API Tenant");
+    const organization = await createApiOrganization(
+      app,
+      registration.token,
+      "RoleDefinition API Tenant"
+    );
     const listed = await app.inject({
       method: "GET",
       url: `/role-definitions?organizationId=${organization.id}`,
@@ -930,7 +999,11 @@ describe("api role definitions foundation", () => {
       }
     });
     grantPlatformAdmin(authRepository.lastUserId());
-    const ordinaryOrganization = await createApiOrganization(app, ordinary.token, "Ordinary RoleDefinition Tenant");
+    const ordinaryOrganization = await createApiOrganization(
+      app,
+      ordinary.token,
+      "Ordinary RoleDefinition Tenant"
+    );
     const denied = await app.inject({
       method: "PATCH",
       url: "/platform/role-definitions/chef",
@@ -975,10 +1048,113 @@ describe("api role definitions foundation", () => {
     expect(denied.statusCode).toBe(403);
     expect(all.statusCode).toBe(200);
     expect(updated.statusCode).toBe(200);
-    expect(updated.json().roleDefinition).toMatchObject({ code: "CHEF", slug: "chef", displayLabel: "Executive Chef", displayOrder: 12 });
+    expect(updated.json().roleDefinition).toMatchObject({
+      code: "CHEF",
+      slug: "chef",
+      displayLabel: "Executive Chef",
+      displayOrder: 12
+    });
     expect(inactive.statusCode).toBe(200);
     expect(inactive.json().roleDefinition.status).toBe("inactive");
     expect(ordinaryAfterInactive.statusCode).toBe(403);
+
+    await app.close();
+  });
+});
+
+describe("api job request foundation", () => {
+  it("connects employer draft and submit APIs to platform intake without dispatch execution", async () => {
+    const { app, authRepository, grantPlatformAdmin } = buildJobRequestApi();
+    const employer = await registerApiUser(app);
+    const organization = await createApiOrganization(app, employer.token, "Job Request API Tenant");
+    const residence = await createApiResidence(
+      app,
+      employer.token,
+      organization.id,
+      "Job Request API Residence"
+    );
+    const department = await createApiDepartment(
+      app,
+      employer.token,
+      organization.id,
+      residence.id,
+      "Kitchen"
+    );
+    const created = await app.inject({
+      method: "POST",
+      url: `/organizations/${organization.id}/job-requests`,
+      headers: { authorization: `Bearer ${employer.token}` },
+      payload: {
+        residenceId: residence.id,
+        departmentId: department.id,
+        workGroup: "kitchen",
+        roleDefinition: "chef",
+        title: "Dinner Chef Coverage",
+        description: "Fixture-backed API validation only.",
+        numberOfWorkers: 1,
+        urgency: "urgent",
+        requestType: "single_day",
+        timezone: "America/Toronto",
+        startAt: "2026-08-10T20:00:00.000Z",
+        endAt: "2026-08-11T02:00:00.000Z"
+      }
+    });
+    const draft = created.json().jobRequest as {
+      id: string;
+      jobRequestNumber: string;
+      versionToken: number;
+    };
+    const listed = await app.inject({
+      method: "GET",
+      url: `/organizations/${organization.id}/job-requests`,
+      headers: { authorization: `Bearer ${employer.token}` }
+    });
+    const submitted = await app.inject({
+      method: "POST",
+      url: `/organizations/${organization.id}/job-requests/${draft.id}/submit`,
+      headers: { authorization: `Bearer ${employer.token}` },
+      payload: { expectedVersion: draft.versionToken }
+    });
+    const platform = await app.inject({
+      method: "POST",
+      url: "/auth/register",
+      payload: {
+        email: "platform-job-request@example.com",
+        password: "ValidPassword123",
+        displayName: "Platform Job Request Admin"
+      }
+    });
+    grantPlatformAdmin(authRepository.lastUserId());
+    const intake = await app.inject({
+      method: "GET",
+      url: "/platform/job-requests/intake",
+      headers: { authorization: `Bearer ${platform.json().token}` }
+    });
+    const adminReview = await app.inject({
+      method: "POST",
+      url: `/platform/job-requests/intake/${draft.id}/admin-review`,
+      headers: { authorization: `Bearer ${platform.json().token}` },
+      payload: { expectedVersion: submitted.json().jobRequest.versionToken }
+    });
+    const approved = await app.inject({
+      method: "POST",
+      url: `/platform/job-requests/intake/${draft.id}/approve-for-dispatch`,
+      headers: { authorization: `Bearer ${platform.json().token}` },
+      payload: { expectedVersion: adminReview.json().jobRequest.versionToken }
+    });
+
+    expect(created.statusCode).toBe(201);
+    expect(draft.jobRequestNumber).toBe("JR-2026-000001");
+    expect(listed.statusCode).toBe(200);
+    expect(listed.json().jobRequests).toHaveLength(1);
+    expect(submitted.statusCode).toBe(200);
+    expect(submitted.json().jobRequest.status).toBe("submitted");
+    expect(intake.statusCode).toBe(200);
+    expect(intake.json().jobRequests.map((jobRequest: { id: string }) => jobRequest.id)).toContain(
+      draft.id
+    );
+    expect(approved.statusCode).toBe(200);
+    expect(approved.json().jobRequest.status).toBe("approved_for_dispatch");
 
     await app.close();
   });
@@ -1051,7 +1227,9 @@ class ApiMemoryAuthenticationRepository implements AuthenticationRepository {
   }
 
   async updateSession(input: UpdateSessionInput) {
-    const session = [...this.sessions.values()].find((candidate) => candidate.id === input.sessionId);
+    const session = [...this.sessions.values()].find(
+      (candidate) => candidate.id === input.sessionId
+    );
 
     if (!session) return null;
 
@@ -1103,7 +1281,9 @@ class ApiMemoryOrganizationMembershipRepository implements OrganizationMembershi
     );
   }
 
-  async createMembership(input: Parameters<OrganizationMembershipRepository["createMembership"]>[0]) {
+  async createMembership(
+    input: Parameters<OrganizationMembershipRepository["createMembership"]>[0]
+  ) {
     const membership: StoredOrganizationMembership = {
       id: `api-membership-${this.nextMembership}`,
       organizationId: input.organizationId,
@@ -1132,7 +1312,9 @@ class ApiMemoryOrganizationMembershipRepository implements OrganizationMembershi
     return membership;
   }
 
-  async updateMembershipStatus(input: Parameters<OrganizationMembershipRepository["updateMembershipStatus"]>[0]) {
+  async updateMembershipStatus(
+    input: Parameters<OrganizationMembershipRepository["updateMembershipStatus"]>[0]
+  ) {
     const membership = this.memberships.get(input.membershipId);
 
     if (!membership) throw new Error("TEST_MEMBERSHIP_NOT_FOUND");
@@ -1146,12 +1328,16 @@ class ApiMemoryOrganizationMembershipRepository implements OrganizationMembershi
     return membership;
   }
 
-  async replaceMembershipRoles(input: Parameters<OrganizationMembershipRepository["replaceMembershipRoles"]>[0]) {
+  async replaceMembershipRoles(
+    input: Parameters<OrganizationMembershipRepository["replaceMembershipRoles"]>[0]
+  ) {
     const membership = this.memberships.get(input.membershipId);
 
     if (!membership) throw new Error("TEST_MEMBERSHIP_NOT_FOUND");
 
-    membership.membershipRoles = input.accessRoleKeys.map((roleKey) => ({ accessRole: { key: roleKey } }));
+    membership.membershipRoles = input.accessRoleKeys.map((roleKey) => ({
+      accessRole: { key: roleKey }
+    }));
 
     return membership;
   }
@@ -1163,7 +1349,9 @@ class ApiMemoryOrganizationMembershipRepository implements OrganizationMembershi
 
 class ApiMemoryEmployerOrganizationRepository implements EmployerOrganizationRepository {
   private organizations = new Map<string, StoredEmployerOrganization>();
-  private organizationAuditEvents: Parameters<EmployerOrganizationRepository["recordOrganizationAuditEvent"]>[0][] = [];
+  private organizationAuditEvents: Parameters<
+    EmployerOrganizationRepository["recordOrganizationAuditEvent"]
+  >[0][] = [];
   private nextOrganization = 1;
 
   constructor(private readonly membershipRepository: ApiMemoryOrganizationMembershipRepository) {}
@@ -1177,11 +1365,20 @@ class ApiMemoryEmployerOrganizationRepository implements EmployerOrganizationRep
   }
 
   async findOrganizationByPublicId(publicId: string) {
-    return [...this.organizations.values()].find((organization) => organization.publicId === publicId) ?? null;
+    return (
+      [...this.organizations.values()].find((organization) => organization.publicId === publicId) ??
+      null
+    );
   }
 
-  async createOrganizationWithOwnerMembership(input: Parameters<EmployerOrganizationRepository["createOrganizationWithOwnerMembership"]>[0]) {
-    if ([...this.organizations.values()].some((organization) => organization.legalName === input.legalName)) {
+  async createOrganizationWithOwnerMembership(
+    input: Parameters<EmployerOrganizationRepository["createOrganizationWithOwnerMembership"]>[0]
+  ) {
+    if (
+      [...this.organizations.values()].some(
+        (organization) => organization.legalName === input.legalName
+      )
+    ) {
       throw new Error("RWOS_ORGANIZATION_DUPLICATE");
     }
 
@@ -1227,7 +1424,9 @@ class ApiMemoryEmployerOrganizationRepository implements EmployerOrganizationRep
     }
   }
 
-  async updateOrganization(input: Parameters<EmployerOrganizationRepository["updateOrganization"]>[0]) {
+  async updateOrganization(
+    input: Parameters<EmployerOrganizationRepository["updateOrganization"]>[0]
+  ) {
     const organization = this.organizations.get(input.organizationId);
 
     if (!organization || organization.updatedAt.getTime() !== input.expectedUpdatedAt.getTime()) {
@@ -1241,7 +1440,9 @@ class ApiMemoryEmployerOrganizationRepository implements EmployerOrganizationRep
     return organization;
   }
 
-  async updateOrganizationStatus(input: Parameters<EmployerOrganizationRepository["updateOrganizationStatus"]>[0]) {
+  async updateOrganizationStatus(
+    input: Parameters<EmployerOrganizationRepository["updateOrganizationStatus"]>[0]
+  ) {
     const organization = this.organizations.get(input.organizationId);
 
     if (!organization || organization.updatedAt.getTime() !== input.expectedUpdatedAt.getTime()) {
@@ -1257,7 +1458,9 @@ class ApiMemoryEmployerOrganizationRepository implements EmployerOrganizationRep
     return organization;
   }
 
-  async recordOrganizationAuditEvent(input: Parameters<EmployerOrganizationRepository["recordOrganizationAuditEvent"]>[0]) {
+  async recordOrganizationAuditEvent(
+    input: Parameters<EmployerOrganizationRepository["recordOrganizationAuditEvent"]>[0]
+  ) {
     this.organizationAuditEvents.push(input);
   }
 }
@@ -1270,9 +1473,15 @@ class ApiMemoryResidenceRepository implements ResidenceRepository {
     return this.residences.get(residenceId) ?? null;
   }
 
-  async listResidencesByOrganization(input: Parameters<ResidenceRepository["listResidencesByOrganization"]>[0]) {
+  async listResidencesByOrganization(
+    input: Parameters<ResidenceRepository["listResidencesByOrganization"]>[0]
+  ) {
     return [...this.residences.values()]
-      .filter((residence) => residence.organizationId === input.organizationId && (!input.status || residence.status === input.status))
+      .filter(
+        (residence) =>
+          residence.organizationId === input.organizationId &&
+          (!input.status || residence.status === input.status)
+      )
       .sort((left, right) => left.name.localeCompare(right.name));
   }
 
@@ -1313,7 +1522,11 @@ class ApiMemoryResidenceRepository implements ResidenceRepository {
   async updateResidence(input: Parameters<ResidenceRepository["updateResidence"]>[0]) {
     const residence = this.residences.get(input.residenceId);
 
-    if (!residence || residence.organizationId !== input.organizationId || residence.updatedAt.getTime() !== input.expectedUpdatedAt.getTime()) {
+    if (
+      !residence ||
+      residence.organizationId !== input.organizationId ||
+      residence.updatedAt.getTime() !== input.expectedUpdatedAt.getTime()
+    ) {
       return null;
     }
 
@@ -1330,18 +1543,29 @@ class ApiMemoryResidenceRepository implements ResidenceRepository {
   async updateResidenceStatus(input: Parameters<ResidenceRepository["updateResidenceStatus"]>[0]) {
     const residence = this.residences.get(input.residenceId);
 
-    if (!residence || residence.organizationId !== input.organizationId || residence.updatedAt.getTime() !== input.expectedUpdatedAt.getTime()) {
+    if (
+      !residence ||
+      residence.organizationId !== input.organizationId ||
+      residence.updatedAt.getTime() !== input.expectedUpdatedAt.getTime()
+    ) {
       return null;
     }
 
     residence.status = input.status;
-    residence.archivedAt = input.status === "closed" ? input.now : input.status === "active" ? null : residence.archivedAt;
+    residence.archivedAt =
+      input.status === "closed"
+        ? input.now
+        : input.status === "active"
+          ? null
+          : residence.archivedAt;
     residence.updatedAt = new Date(input.now.getTime() + 1);
 
     return residence;
   }
 
-  async recordResidenceAuditEvent(input: Parameters<ResidenceRepository["recordResidenceAuditEvent"]>[0]) {
+  async recordResidenceAuditEvent(
+    input: Parameters<ResidenceRepository["recordResidenceAuditEvent"]>[0]
+  ) {
     void input;
 
     return undefined;
@@ -1356,9 +1580,16 @@ class ApiMemoryDepartmentRepository implements DepartmentRepository {
     return this.departments.get(departmentId) ?? null;
   }
 
-  async listDepartmentsByResidence(input: Parameters<DepartmentRepository["listDepartmentsByResidence"]>[0]) {
+  async listDepartmentsByResidence(
+    input: Parameters<DepartmentRepository["listDepartmentsByResidence"]>[0]
+  ) {
     return [...this.departments.values()]
-      .filter((department) => department.organizationId === input.organizationId && department.residenceId === input.residenceId && (!input.status || department.status === input.status))
+      .filter(
+        (department) =>
+          department.organizationId === input.organizationId &&
+          department.residenceId === input.residenceId &&
+          (!input.status || department.status === input.status)
+      )
       .sort((left, right) => left.name.localeCompare(right.name));
   }
 
@@ -1412,7 +1643,9 @@ class ApiMemoryDepartmentRepository implements DepartmentRepository {
     return department;
   }
 
-  async updateDepartmentStatus(input: Parameters<DepartmentRepository["updateDepartmentStatus"]>[0]) {
+  async updateDepartmentStatus(
+    input: Parameters<DepartmentRepository["updateDepartmentStatus"]>[0]
+  ) {
     const department = this.departments.get(input.departmentId);
 
     if (
@@ -1425,13 +1658,20 @@ class ApiMemoryDepartmentRepository implements DepartmentRepository {
     }
 
     department.status = input.status;
-    department.archivedAt = input.status === "closed" ? input.now : input.status === "active" ? null : department.archivedAt;
+    department.archivedAt =
+      input.status === "closed"
+        ? input.now
+        : input.status === "active"
+          ? null
+          : department.archivedAt;
     department.updatedAt = new Date(input.now.getTime() + 1);
 
     return department;
   }
 
-  async recordDepartmentAuditEvent(input: Parameters<DepartmentRepository["recordDepartmentAuditEvent"]>[0]) {
+  async recordDepartmentAuditEvent(
+    input: Parameters<DepartmentRepository["recordDepartmentAuditEvent"]>[0]
+  ) {
     void input;
 
     return undefined;
@@ -1476,7 +1716,12 @@ class ApiMemoryWorkGroupRepository implements WorkGroupRepository {
   async listWorkGroups(input: Parameters<WorkGroupRepository["listWorkGroups"]>[0]) {
     return [...this.workGroups.values()]
       .filter((workGroup) => input.includeInactive || workGroup.status === "active")
-      .sort((left, right) => left.displayOrder - right.displayOrder || left.displayLabel.localeCompare(right.displayLabel) || left.key.localeCompare(right.key));
+      .sort(
+        (left, right) =>
+          left.displayOrder - right.displayOrder ||
+          left.displayLabel.localeCompare(right.displayLabel) ||
+          left.key.localeCompare(right.key)
+      );
   }
 
   async updateWorkGroup(input: Parameters<WorkGroupRepository["updateWorkGroup"]>[0]) {
@@ -1507,7 +1752,9 @@ class ApiMemoryWorkGroupRepository implements WorkGroupRepository {
     return workGroup;
   }
 
-  async recordWorkGroupAuditEvent(input: Parameters<WorkGroupRepository["recordWorkGroupAuditEvent"]>[0]) {
+  async recordWorkGroupAuditEvent(
+    input: Parameters<WorkGroupRepository["recordWorkGroupAuditEvent"]>[0]
+  ) {
     void input;
 
     return undefined;
@@ -1572,7 +1819,11 @@ class ApiMemoryRoleDefinitionRepository implements RoleDefinitionRepository {
   }
 
   async findRoleDefinitionById(roleDefinitionId: string) {
-    return [...this.roleDefinitions.values()].find((roleDefinition) => roleDefinition.id === roleDefinitionId) ?? null;
+    return (
+      [...this.roleDefinitions.values()].find(
+        (roleDefinition) => roleDefinition.id === roleDefinitionId
+      ) ?? null
+    );
   }
 
   async findRoleDefinitionByKey(key: string) {
@@ -1582,7 +1833,10 @@ class ApiMemoryRoleDefinitionRepository implements RoleDefinitionRepository {
   async listRoleDefinitions(input: Parameters<RoleDefinitionRepository["listRoleDefinitions"]>[0]) {
     return [...this.roleDefinitions.values()]
       .filter((roleDefinition) => input.includeInactive || roleDefinition.status === "active")
-      .filter((roleDefinition) => !input.workGroupKey || roleDefinition.workGroup.key === input.workGroupKey)
+      .filter(
+        (roleDefinition) =>
+          !input.workGroupKey || roleDefinition.workGroup.key === input.workGroupKey
+      )
       .sort(
         (left, right) =>
           left.workGroup.displayOrder - right.workGroup.displayOrder ||
@@ -1592,23 +1846,36 @@ class ApiMemoryRoleDefinitionRepository implements RoleDefinitionRepository {
       );
   }
 
-  async updateRoleDefinition(input: Parameters<RoleDefinitionRepository["updateRoleDefinition"]>[0]) {
-    const roleDefinition = [...this.roleDefinitions.values()].find((candidate) => candidate.id === input.roleDefinitionId);
-    if (!roleDefinition || roleDefinition.updatedAt.getTime() !== input.expectedUpdatedAt.getTime()) return null;
+  async updateRoleDefinition(
+    input: Parameters<RoleDefinitionRepository["updateRoleDefinition"]>[0]
+  ) {
+    const roleDefinition = [...this.roleDefinitions.values()].find(
+      (candidate) => candidate.id === input.roleDefinitionId
+    );
+    if (!roleDefinition || roleDefinition.updatedAt.getTime() !== input.expectedUpdatedAt.getTime())
+      return null;
 
     if (input.displayLabel !== undefined) roleDefinition.displayLabel = input.displayLabel;
     if (input.displayOrder !== undefined) roleDefinition.displayOrder = input.displayOrder;
-    if (input.localizedLabelKey !== undefined) roleDefinition.localizedLabelKey = input.localizedLabelKey;
-    if (input.qualificationSummary !== undefined) roleDefinition.qualificationSummary = input.qualificationSummary;
-    if (input.safetyRequirementSummary !== undefined) roleDefinition.safetyRequirementSummary = input.safetyRequirementSummary;
+    if (input.localizedLabelKey !== undefined)
+      roleDefinition.localizedLabelKey = input.localizedLabelKey;
+    if (input.qualificationSummary !== undefined)
+      roleDefinition.qualificationSummary = input.qualificationSummary;
+    if (input.safetyRequirementSummary !== undefined)
+      roleDefinition.safetyRequirementSummary = input.safetyRequirementSummary;
     roleDefinition.updatedAt = new Date(input.now.getTime() + 1);
 
     return roleDefinition;
   }
 
-  async updateRoleDefinitionStatus(input: Parameters<RoleDefinitionRepository["updateRoleDefinitionStatus"]>[0]) {
-    const roleDefinition = [...this.roleDefinitions.values()].find((candidate) => candidate.id === input.roleDefinitionId);
-    if (!roleDefinition || roleDefinition.updatedAt.getTime() !== input.expectedUpdatedAt.getTime()) return null;
+  async updateRoleDefinitionStatus(
+    input: Parameters<RoleDefinitionRepository["updateRoleDefinitionStatus"]>[0]
+  ) {
+    const roleDefinition = [...this.roleDefinitions.values()].find(
+      (candidate) => candidate.id === input.roleDefinitionId
+    );
+    if (!roleDefinition || roleDefinition.updatedAt.getTime() !== input.expectedUpdatedAt.getTime())
+      return null;
 
     roleDefinition.status = input.status;
     roleDefinition.updatedAt = new Date(input.now.getTime() + 1);
@@ -1616,10 +1883,149 @@ class ApiMemoryRoleDefinitionRepository implements RoleDefinitionRepository {
     return roleDefinition;
   }
 
-  async recordRoleDefinitionAuditEvent(input: Parameters<RoleDefinitionRepository["recordRoleDefinitionAuditEvent"]>[0]) {
+  async recordRoleDefinitionAuditEvent(
+    input: Parameters<RoleDefinitionRepository["recordRoleDefinitionAuditEvent"]>[0]
+  ) {
     void input;
 
     return undefined;
+  }
+}
+
+class ApiMemoryJobRequestRepository implements JobRequestRepository {
+  private jobRequests = new Map<string, StoredJobRequest>();
+  private sequences = new Map<number, number>();
+  private nextJobRequest = 1;
+
+  async createDraft(input: Parameters<JobRequestRepository["createDraft"]>[0]) {
+    const year = input.now.getUTCFullYear();
+    const nextSequence = (this.sequences.get(year) ?? 0) + 1;
+    this.sequences.set(year, nextSequence);
+    const jobRequest: StoredJobRequest = {
+      id: `job-request-api-${this.nextJobRequest}`,
+      jobRequestNumber: `JR-${year}-${String(nextSequence).padStart(6, "0")}`,
+      organizationId: input.organizationId,
+      residenceId: input.residenceId,
+      departmentId: input.departmentId,
+      workGroupId: input.workGroupId,
+      roleDefinitionId: input.roleDefinitionId,
+      creatorUserId: input.actorUserId,
+      title: input.title,
+      description: input.description,
+      numberOfWorkers: input.numberOfWorkers,
+      urgency: input.urgency,
+      requestType: input.requestType,
+      timezone: input.timezone,
+      startAt: input.startAt,
+      endAt: input.endAt,
+      isMultiDay: input.isMultiDay,
+      hasRecurringIntent: input.hasRecurringIntent,
+      status: "draft",
+      adminReviewReason: null,
+      version: 0,
+      createdByUserId: input.actorUserId,
+      updatedByUserId: null,
+      createdAt: input.now,
+      updatedAt: input.now,
+      submittedAt: null,
+      cancelledAt: null,
+      expiredAt: null,
+      archivedAt: null
+    };
+
+    this.nextJobRequest += 1;
+    this.jobRequests.set(jobRequest.id, jobRequest);
+    await this.recordJobRequestAuditEvent({
+      action: "job_request.created",
+      organizationId: jobRequest.organizationId,
+      jobRequestId: jobRequest.id,
+      jobRequestNumber: jobRequest.jobRequestNumber,
+      actorUserId: input.actorUserId,
+      priorState: null,
+      newState: jobRequest.status,
+      reason: null,
+      correlationId: input.correlationId,
+      createdAt: input.now
+    });
+
+    return jobRequest;
+  }
+
+  async findJobRequestById(jobRequestId: string) {
+    return this.jobRequests.get(jobRequestId) ?? null;
+  }
+
+  async findJobRequestByNumber(jobRequestNumber: string) {
+    return (
+      [...this.jobRequests.values()].find(
+        (jobRequest) => jobRequest.jobRequestNumber === jobRequestNumber
+      ) ?? null
+    );
+  }
+
+  async listJobRequests(input: Parameters<JobRequestRepository["listJobRequests"]>[0]) {
+    return [...this.jobRequests.values()]
+      .filter(
+        (jobRequest) => !input.organizationId || jobRequest.organizationId === input.organizationId
+      )
+      .filter((jobRequest) => !input.residenceId || jobRequest.residenceId === input.residenceId)
+      .filter((jobRequest) => !input.departmentId || jobRequest.departmentId === input.departmentId)
+      .filter((jobRequest) => !input.statuses || input.statuses.includes(jobRequest.status))
+      .sort(
+        (left, right) =>
+          right.createdAt.getTime() - left.createdAt.getTime() ||
+          right.jobRequestNumber.localeCompare(left.jobRequestNumber)
+      );
+  }
+
+  async updateDraft(input: Parameters<JobRequestRepository["updateDraft"]>[0]) {
+    const jobRequest = this.jobRequests.get(input.jobRequestId);
+    if (!jobRequest || jobRequest.version !== input.expectedVersion) return null;
+
+    if (input.residenceId !== undefined) jobRequest.residenceId = input.residenceId;
+    if (input.departmentId !== undefined) jobRequest.departmentId = input.departmentId;
+    if (input.workGroupId !== undefined) jobRequest.workGroupId = input.workGroupId;
+    if (input.roleDefinitionId !== undefined) jobRequest.roleDefinitionId = input.roleDefinitionId;
+    if (input.title !== undefined) jobRequest.title = input.title;
+    if (input.description !== undefined) jobRequest.description = input.description;
+    if (input.numberOfWorkers !== undefined) jobRequest.numberOfWorkers = input.numberOfWorkers;
+    if (input.urgency !== undefined) jobRequest.urgency = input.urgency;
+    if (input.requestType !== undefined) jobRequest.requestType = input.requestType;
+    if (input.timezone !== undefined) jobRequest.timezone = input.timezone;
+    if (input.startAt !== undefined) jobRequest.startAt = input.startAt;
+    if (input.endAt !== undefined) jobRequest.endAt = input.endAt;
+    if (input.isMultiDay !== undefined) jobRequest.isMultiDay = input.isMultiDay;
+    if (input.hasRecurringIntent !== undefined)
+      jobRequest.hasRecurringIntent = input.hasRecurringIntent;
+    jobRequest.updatedByUserId = input.actorUserId;
+    jobRequest.updatedAt = input.now;
+    jobRequest.version += 1;
+
+    return jobRequest;
+  }
+
+  async transitionJobRequest(input: Parameters<JobRequestRepository["transitionJobRequest"]>[0]) {
+    const jobRequest = this.jobRequests.get(input.jobRequestId);
+    if (!jobRequest || jobRequest.version !== input.expectedVersion) return null;
+
+    jobRequest.status = input.status;
+    if (input.adminReviewReason !== undefined)
+      jobRequest.adminReviewReason = input.adminReviewReason;
+    jobRequest.updatedByUserId = input.actorUserId;
+    jobRequest.updatedAt = input.now;
+    if (input.status === "submitted") jobRequest.submittedAt = input.now;
+    if (input.status === "cancelled") jobRequest.cancelledAt = input.now;
+    if (input.status === "expired") jobRequest.expiredAt = input.now;
+    if (input.status === "archived") jobRequest.archivedAt = input.now;
+    jobRequest.version += 1;
+
+    return jobRequest;
+  }
+
+  async recordJobRequestAuditEvent(
+    input: Parameters<JobRequestRepository["recordJobRequestAuditEvent"]>[0]
+  ) {
+    void input;
   }
 }
 
@@ -1658,7 +2064,11 @@ function buildResidenceApi() {
   const membershipService = createOrganizationMembershipService(membershipRepository);
   const authorizationService = createAuthorizationService();
   const organizationRepository = new ApiMemoryEmployerOrganizationRepository(membershipRepository);
-  const organizationService = createEmployerOrganizationService(organizationRepository, membershipService, authorizationService);
+  const organizationService = createEmployerOrganizationService(
+    organizationRepository,
+    membershipService,
+    authorizationService
+  );
   const residenceService = createResidenceService(
     new ApiMemoryResidenceRepository(),
     organizationRepository,
@@ -1681,7 +2091,11 @@ function buildDepartmentApi() {
   const membershipService = createOrganizationMembershipService(membershipRepository);
   const authorizationService = createAuthorizationService();
   const organizationRepository = new ApiMemoryEmployerOrganizationRepository(membershipRepository);
-  const organizationService = createEmployerOrganizationService(organizationRepository, membershipService, authorizationService);
+  const organizationService = createEmployerOrganizationService(
+    organizationRepository,
+    membershipService,
+    authorizationService
+  );
   const residenceRepository = new ApiMemoryResidenceRepository();
   const residenceService = createResidenceService(
     residenceRepository,
@@ -1713,14 +2127,22 @@ function buildWorkGroupApi() {
   const membershipService = createOrganizationMembershipService(membershipRepository);
   const authorizationService = createAuthorizationService();
   const organizationRepository = new ApiMemoryEmployerOrganizationRepository(membershipRepository);
-  const organizationService = createEmployerOrganizationService(organizationRepository, membershipService, authorizationService);
+  const organizationService = createEmployerOrganizationService(
+    organizationRepository,
+    membershipService,
+    authorizationService
+  );
   const platformAdminUserIds = new Set<string>();
   const app = buildApi({
     authService: createAuthenticationService(authRepository, testAuthOptions()),
     membershipService,
     organizationService,
-    workGroupService: createWorkGroupService(new ApiMemoryWorkGroupRepository(), authorizationService),
-    resolveAuthorizationRoles: (userId) => (platformAdminUserIds.has(userId) ? ["PLATFORM_ADMINISTRATOR"] : [])
+    workGroupService: createWorkGroupService(
+      new ApiMemoryWorkGroupRepository(),
+      authorizationService
+    ),
+    resolveAuthorizationRoles: (userId) =>
+      platformAdminUserIds.has(userId) ? ["PLATFORM_ADMINISTRATOR"] : []
   });
 
   return {
@@ -1736,14 +2158,22 @@ function buildRoleDefinitionApi() {
   const membershipService = createOrganizationMembershipService(membershipRepository);
   const authorizationService = createAuthorizationService();
   const organizationRepository = new ApiMemoryEmployerOrganizationRepository(membershipRepository);
-  const organizationService = createEmployerOrganizationService(organizationRepository, membershipService, authorizationService);
+  const organizationService = createEmployerOrganizationService(
+    organizationRepository,
+    membershipService,
+    authorizationService
+  );
   const platformAdminUserIds = new Set<string>();
   const app = buildApi({
     authService: createAuthenticationService(authRepository, testAuthOptions()),
     membershipService,
     organizationService,
-    roleDefinitionService: createRoleDefinitionService(new ApiMemoryRoleDefinitionRepository(), authorizationService),
-    resolveAuthorizationRoles: (userId) => (platformAdminUserIds.has(userId) ? ["PLATFORM_ADMINISTRATOR"] : [])
+    roleDefinitionService: createRoleDefinitionService(
+      new ApiMemoryRoleDefinitionRepository(),
+      authorizationService
+    ),
+    resolveAuthorizationRoles: (userId) =>
+      platformAdminUserIds.has(userId) ? ["PLATFORM_ADMINISTRATOR"] : []
   });
 
   return {
@@ -1753,7 +2183,66 @@ function buildRoleDefinitionApi() {
   };
 }
 
-async function createApiOrganization(app: ReturnType<typeof buildApi>, token: string, legalName: string) {
+function buildJobRequestApi() {
+  const authRepository = new ApiMemoryAuthenticationRepository();
+  const membershipRepository = new ApiMemoryOrganizationMembershipRepository();
+  const membershipService = createOrganizationMembershipService(membershipRepository);
+  const authorizationService = createAuthorizationService();
+  const organizationRepository = new ApiMemoryEmployerOrganizationRepository(membershipRepository);
+  const residenceRepository = new ApiMemoryResidenceRepository();
+  const departmentRepository = new ApiMemoryDepartmentRepository();
+  const platformAdminUserIds = new Set<string>();
+  const organizationService = createEmployerOrganizationService(
+    organizationRepository,
+    membershipService,
+    authorizationService
+  );
+  const residenceService = createResidenceService(
+    residenceRepository,
+    organizationRepository,
+    membershipService,
+    authorizationService
+  );
+  const departmentService = createDepartmentService(
+    departmentRepository,
+    residenceRepository,
+    organizationRepository,
+    membershipService,
+    authorizationService
+  );
+  const jobRequestService = createJobRequestService(
+    new ApiMemoryJobRequestRepository(),
+    organizationRepository,
+    residenceRepository,
+    departmentRepository,
+    new ApiMemoryWorkGroupRepository(),
+    new ApiMemoryRoleDefinitionRepository(),
+    membershipService,
+    authorizationService
+  );
+  const app = buildApi({
+    authService: createAuthenticationService(authRepository, testAuthOptions()),
+    membershipService,
+    organizationService,
+    residenceService,
+    departmentService,
+    jobRequestService,
+    resolveAuthorizationRoles: (userId) =>
+      platformAdminUserIds.has(userId) ? ["PLATFORM_ADMINISTRATOR"] : []
+  });
+
+  return {
+    app,
+    authRepository,
+    grantPlatformAdmin: (userId: string) => platformAdminUserIds.add(userId)
+  };
+}
+
+async function createApiOrganization(
+  app: ReturnType<typeof buildApi>,
+  token: string,
+  legalName: string
+) {
   const response = await app.inject({
     method: "POST",
     url: "/organizations",
@@ -1769,7 +2258,12 @@ async function createApiOrganization(app: ReturnType<typeof buildApi>, token: st
   return response.json().organization as { id: string; version: string };
 }
 
-async function createApiResidence(app: ReturnType<typeof buildApi>, token: string, organizationId: string, name: string) {
+async function createApiResidence(
+  app: ReturnType<typeof buildApi>,
+  token: string,
+  organizationId: string,
+  name: string
+) {
   const response = await app.inject({
     method: "POST",
     url: `/organizations/${organizationId}/residences`,
@@ -1780,6 +2274,25 @@ async function createApiResidence(app: ReturnType<typeof buildApi>, token: strin
   expect(response.statusCode).toBe(201);
 
   return response.json().residence as { id: string; version: string };
+}
+
+async function createApiDepartment(
+  app: ReturnType<typeof buildApi>,
+  token: string,
+  organizationId: string,
+  residenceId: string,
+  name: string
+) {
+  const response = await app.inject({
+    method: "POST",
+    url: `/organizations/${organizationId}/residences/${residenceId}/departments`,
+    headers: { authorization: `Bearer ${token}` },
+    payload: { name }
+  });
+
+  expect(response.statusCode).toBe(201);
+
+  return response.json().department as { id: string; version: string };
 }
 
 function apiInviteInput(userId: string): InviteMembershipInput {
