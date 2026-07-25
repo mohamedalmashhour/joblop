@@ -7,7 +7,7 @@ describe("MockShiftDiscoveryRepository", () => {
   it("lists only available open shifts", async () => {
     const shifts = await repository.listAvailableShifts();
 
-    expect(shifts.length).toBe(3);
+    expect(shifts.length).toBe(12);
     expect(shifts.every((shift) => shift.status === "open")).toBe(true);
   });
 
@@ -42,7 +42,8 @@ describe("MockShiftDiscoveryRepository", () => {
     await expect(repository.listShiftCategories()).resolves.toEqual([
       "care",
       "housekeeping",
-      "kitchen"
+      "kitchen",
+      "maintenance"
     ]);
     await expect(repository.listSupportedCities()).resolves.toEqual([
       "Laval",
