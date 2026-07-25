@@ -128,6 +128,135 @@ export interface AuthorizationAuditSink {
   recordAuthorizationAuditEvent(input: AuthorizationAuditEventInput): Promise<void>;
 }
 
+export type OrganizationMembershipStatus = "invited" | "active" | "suspended" | "revoked" | "expired";
+export type OrganizationMembershipDecisionStatus =
+  | "allow"
+  | "membership_missing"
+  | "context_required"
+  | "membership_inactive"
+  | "membership_expired"
+  | "duplicate_membership"
+  | "access_role_missing";
+
+export interface StoredMembershipAccessRole {
+  accessRole: {
+    key: AuthorizationRoleKey;
+  };
+}
+
+export interface StoredOrganizationMembership {
+  id: string;
+  organizationId: string;
+  userId: string;
+  status: OrganizationMembershipStatus;
+  invitedByUserId: string | null;
+  createdAt: Date;
+  acceptedAt: Date | null;
+  suspendedAt: Date | null;
+  revokedAt: Date | null;
+  expiredAt: Date | null;
+  organization: {
+    id: string;
+    publicId: string;
+    displayName: string;
+    status: string;
+  };
+  membershipRoles: StoredMembershipAccessRole[];
+}
+
+export interface PublicOrganizationMembership {
+  id: string;
+  organizationId: string;
+  organizationPublicId: string;
+  organizationDisplayName: string;
+  userId: string;
+  status: OrganizationMembershipStatus;
+  roleKeys: AuthorizationRoleKey[];
+  invitedByUserId: string | null;
+  invitedAt: Date;
+  activatedAt: Date | null;
+  suspendedAt: Date | null;
+  revokedAt: Date | null;
+  expiresAt: Date | null;
+  updatedAt: Date;
+}
+
+export interface OrganizationMembershipDecision {
+  status: OrganizationMembershipDecisionStatus;
+  allow: boolean;
+  membership: PublicOrganizationMembership | null;
+  organizationId: string | null;
+  roles: readonly AuthorizationRoleKey[];
+  internalReason: string | null;
+  externalCode: typeof authorizationDeniedCode | null;
+  externalMessage: typeof authorizationDeniedMessage | null;
+}
+
+export interface InviteMembershipInput {
+  organizationId: string;
+  userId: string;
+  invitedByUserId: string | null;
+  accessRoleKeys: readonly AuthorizationRoleKey[];
+  expiresAt?: Date | null;
+  correlationId?: string;
+}
+
+export interface OrganizationMembershipRepository {
+  listMembershipsForUser(userId: string): Promise<StoredOrganizationMembership[]>;
+  findMembershipById(membershipId: string): Promise<StoredOrganizationMembership | null>;
+  findMembershipForUserByOrganization(userId: string, organizationId: string): Promise<StoredOrganizationMembership | null>;
+  createMembership(input: {
+    organizationId: string;
+    userId: string;
+    invitedByUserId: string | null;
+    accessRoleKeys: readonly AuthorizationRoleKey[];
+    expiresAt: Date | null;
+    now: Date;
+  }): Promise<StoredOrganizationMembership>;
+  updateMembershipStatus(input: {
+    membershipId: string;
+    status: OrganizationMembershipStatus;
+    actorUserId: string | null;
+    now: Date;
+  }): Promise<StoredOrganizationMembership>;
+  replaceMembershipRoles(input: {
+    membershipId: string;
+    accessRoleKeys: readonly AuthorizationRoleKey[];
+    actorUserId: string | null;
+    now: Date;
+  }): Promise<StoredOrganizationMembership>;
+  recordMembershipAuditEvent(input: {
+    action:
+      | "membership.invited"
+      | "membership.activated"
+      | "membership.suspended"
+      | "membership.revoked"
+      | "membership.expired"
+      | "membership.context_selected"
+      | "membership.access_role_changed"
+      | "membership.denied";
+    membershipId: string | null;
+    organizationId: string | null;
+    userId: string | null;
+    actorUserId: string | null;
+    reason: string | null;
+    priorState: string | null;
+    newState: string | null;
+    correlationId: string;
+    createdAt: Date;
+  }): Promise<void>;
+}
+
+export class OrganizationMembershipError extends Error {
+  decision: OrganizationMembershipDecision;
+
+  constructor(decision: OrganizationMembershipDecision) {
+    super(authorizationDeniedMessage);
+    this.name = "OrganizationMembershipError";
+    this.decision = decision;
+  }
+}
+
 export class AuthorizationDeniedError extends Error {
   code = authorizationDeniedCode;
   decision: AuthorizationDecision;
@@ -471,6 +600,216 @@ export function toSafeAuthorizationResponse(decision: AuthorizationDecision) {
     message: authorizationDeniedMessage
   };
 }
+
+export function createOrganizationMembershipService(
+  repository: OrganizationMembershipRepository,
+  options: { now?: () => Date } = {}
+) {
+  const now = options.now ?? (() => new Date());
+
+  return {
+    async inviteMembership(input: InviteMembershipInput) {
+      const currentTime = now();
+      const existingMembership = await repository.findMembershipForUserByOrganization(input.userId, input.organizationId);
+
+      if (existingMembership) {
+        const decision = membershipDeny("duplicate_membership", "duplicate_membership", null, input.organizationId, []);
+        await auditMembershipDenial(repository, {
+          decision,
+          userId: input.userId,
+          actorUserId: input.invitedByUserId,
+          correlationId: input.correlationId,
+          createdAt: currentTime
+        });
+        throw new OrganizationMembershipError(decision);
+      }
+
+      const membership = await repository.createMembership({
+        organizationId: input.organizationId,
+        userId: input.userId,
+        invitedByUserId: input.invitedByUserId,
+        accessRoleKeys: input.accessRoleKeys,
+        expiresAt: input.expiresAt ?? null,
+        now: currentTime
+      });
+      await recordMembershipAudit(repository, {
+        action: "membership.invited",
+        membershipId: membership.id,
+        organizationId: membership.organizationId,
+        userId: membership.userId,
+        actorUserId: input.invitedByUserId,
+        reason: null,
+        priorState: null,
+        newState: "invited",
+        correlationId: input.correlationId,
+        createdAt: currentTime
+      });
+
+      return toPublicMembership(membership);
+    },
+
+    async listMemberships(userId: string) {
+      return (await repository.listMembershipsForUser(userId)).map(toPublicMembership);
+    },
+
+    async getMembership(userId: string, membershipId: string) {
+      const membership = await repository.findMembershipById(membershipId);
+
+      if (!membership || membership.userId !== userId) {
+        return null;
+      }
+
+      return toPublicMembership(membership);
+    },
+
+    async activateMembership(input: { userId: string; membershipId: string; actorUserId: string; correlationId?: string }) {
+      const membership = await assertMembershipBelongsToUser(repository, input.userId, input.membershipId);
+      const currentTime = now();
+      const updated = await repository.updateMembershipStatus({
+        membershipId: membership.id,
+        status: "active",
+        actorUserId: input.actorUserId,
+        now: currentTime
+      });
+      await recordMembershipAudit(repository, {
+        action: "membership.activated",
+        membershipId: membership.id,
+        organizationId: membership.organizationId,
+        userId: membership.userId,
+        actorUserId: input.actorUserId,
+        reason: null,
+        priorState: membership.status,
+        newState: "active",
+        correlationId: input.correlationId,
+        createdAt: currentTime
+      });
+
+      return toPublicMembership(updated);
+    },
+
+    async suspendMembership(input: { userId: string; membershipId: string; actorUserId: string; correlationId?: string }) {
+      return updateMembershipLifecycle(repository, {
+        ...input,
+        status: "suspended",
+        auditAction: "membership.suspended",
+        now: now()
+      });
+    },
+
+    async revokeMembership(input: { userId: string; membershipId: string; actorUserId: string; correlationId?: string }) {
+      return updateMembershipLifecycle(repository, {
+        ...input,
+        status: "revoked",
+        auditAction: "membership.revoked",
+        now: now()
+      });
+    },
+
+    async expireMembership(input: { userId: string; membershipId: string; actorUserId: string | null; correlationId?: string }) {
+      return updateMembershipLifecycle(repository, {
+        ...input,
+        status: "expired",
+        auditAction: "membership.expired",
+        now: now()
+      });
+    },
+
+    async changeMembershipRoles(input: {
+      userId: string;
+      membershipId: string;
+      actorUserId: string;
+      accessRoleKeys: readonly AuthorizationRoleKey[];
+      correlationId?: string;
+    }) {
+      const membership = await assertMembershipBelongsToUser(repository, input.userId, input.membershipId);
+      const currentTime = now();
+      const updated = await repository.replaceMembershipRoles({
+        membershipId: membership.id,
+        accessRoleKeys: input.accessRoleKeys,
+        actorUserId: input.actorUserId,
+        now: currentTime
+      });
+      await recordMembershipAudit(repository, {
+        action: "membership.access_role_changed",
+        membershipId: membership.id,
+        organizationId: membership.organizationId,
+        userId: membership.userId,
+        actorUserId: input.actorUserId,
+        reason: null,
+        priorState: membershipRoleKeys(membership).join(","),
+        newState: input.accessRoleKeys.join(","),
+        correlationId: input.correlationId,
+        createdAt: currentTime
+      });
+
+      return toPublicMembership(updated);
+    },
+
+    async selectOrganizationContext(input: {
+      userId: string;
+      organizationId?: string | null;
+      correlationId?: string;
+    }): Promise<OrganizationMembershipDecision> {
+      const currentTime = now();
+
+      if (!input.organizationId) {
+        const decision = membershipDeny("context_required", "organization_context_required", null, null, []);
+        await auditMembershipDenial(repository, {
+          decision,
+          userId: input.userId,
+          actorUserId: input.userId,
+          correlationId: input.correlationId,
+          createdAt: currentTime
+        });
+        return decision;
+      }
+
+      const membership = await repository.findMembershipForUserByOrganization(input.userId, input.organizationId);
+
+      if (!membership) {
+        const decision = membershipDeny("membership_missing", "membership_not_found", null, input.organizationId, []);
+        await auditMembershipDenial(repository, {
+          decision,
+          userId: input.userId,
+          actorUserId: input.userId,
+          correlationId: input.correlationId,
+          createdAt: currentTime
+        });
+        return decision;
+      }
+
+      const decision = evaluateMembershipForContext(membership, currentTime);
+
+      if (!decision.allow) {
+        await auditMembershipDenial(repository, {
+          decision,
+          userId: input.userId,
+          actorUserId: input.userId,
+          correlationId: input.correlationId,
+          createdAt: currentTime
+        });
+        return decision;
+      }
+
+      await recordMembershipAudit(repository, {
+        action: "membership.context_selected",
+        membershipId: membership.id,
+        organizationId: membership.organizationId,
+        userId: membership.userId,
+        actorUserId: input.userId,
+        reason: null,
+        priorState: null,
+        newState: "context_selected",
+        correlationId: input.correlationId,
+        createdAt: currentTime
+      });
+
+      return decision;
+    }
+  };
+}
+
+export type OrganizationMembershipService = ReturnType<typeof createOrganizationMembershipService>;
 
 export const authenticationErrorCode = "RWOS_AUTHENTICATION_FAILED";
 export const authenticationErrorMessage = "Authentication failed.";
@@ -1149,6 +1488,215 @@ export function createPrismaAuthenticationRepository(prismaClient: unknown): Aut
   };
 }
 
+type PrismaMembershipClient = {
+  organizationMembership: {
+    findMany(args: {
+      where: { userId: string };
+      include: typeof membershipInclude;
+      orderBy: { createdAt: "asc" };
+    }): Promise<StoredOrganizationMembership[]>;
+    findUnique(args: { where: { id: string }; include: typeof membershipInclude }): Promise<StoredOrganizationMembership | null>;
+    findFirst(args: {
+      where: { userId: string; organizationId: string };
+      include: typeof membershipInclude;
+    }): Promise<StoredOrganizationMembership | null>;
+    create(args: {
+      data: {
+        organizationId: string;
+        userId: string;
+        invitedByUserId: string | null;
+        status: "invited";
+        createdAt: Date;
+        expiredAt: Date | null;
+        membershipRoles: {
+          create: { accessRoleDefinitionId: string }[];
+        };
+      };
+      include: typeof membershipInclude;
+    }): Promise<StoredOrganizationMembership>;
+    update(args: {
+      where: { id: string };
+      data: {
+        status?: OrganizationMembershipStatus | undefined;
+        acceptedAt?: Date | null | undefined;
+        suspendedAt?: Date | null | undefined;
+        revokedAt?: Date | null | undefined;
+        expiredAt?: Date | null | undefined;
+      };
+      include: typeof membershipInclude;
+    }): Promise<StoredOrganizationMembership>;
+  };
+  accessRoleDefinition: {
+    findMany(args: { where: { key: { in: readonly AuthorizationRoleKey[] } } }): Promise<{ id: string; key: AuthorizationRoleKey }[]>;
+  };
+  membershipAccessRole: {
+    deleteMany(args: { where: { membershipId: string } }): Promise<unknown>;
+    createMany(args: {
+      data: { membershipId: string; accessRoleDefinitionId: string; assignedByUserId: string | null }[];
+      skipDuplicates: true;
+    }): Promise<unknown>;
+  };
+  auditActorReference: {
+    create(args: {
+      data: {
+        actorType: AuthenticationAuditActorType;
+        userId?: string;
+        organizationId?: string;
+        displayLabel: string;
+      };
+    }): Promise<{ id: string }>;
+  };
+  auditEvent: {
+    create(args: {
+      data: {
+        actorReferenceId: string;
+        organizationId: string | null;
+        entityType: "organization_membership";
+        entityId: string;
+        entityPublicReference: string | null;
+        action: string;
+        priorState: string | null;
+        newState: string | null;
+        reason: string | null;
+        source: "api";
+        correlationId: string;
+        policyVersion: string;
+        createdAt: Date;
+      };
+    }): Promise<unknown>;
+  };
+};
+
+const membershipInclude = {
+  organization: true,
+  membershipRoles: {
+    include: {
+      accessRole: true
+    }
+  }
+} as const;
+
+export function createPrismaOrganizationMembershipRepository(prismaClient: unknown): OrganizationMembershipRepository {
+  const prisma = prismaClient as PrismaMembershipClient;
+
+  return {
+    listMembershipsForUser(userId) {
+      return prisma.organizationMembership.findMany({
+        where: { userId },
+        include: membershipInclude,
+        orderBy: { createdAt: "asc" }
+      });
+    },
+
+    findMembershipById(membershipId) {
+      return prisma.organizationMembership.findUnique({
+        where: { id: membershipId },
+        include: membershipInclude
+      });
+    },
+
+    findMembershipForUserByOrganization(userId, organizationId) {
+      return prisma.organizationMembership.findFirst({
+        where: { userId, organizationId },
+        include: membershipInclude
+      });
+    },
+
+    async createMembership(input) {
+      const accessRoles = await resolveMembershipAccessRoles(prisma, input.accessRoleKeys);
+
+      if (accessRoles.length !== input.accessRoleKeys.length) {
+        throw new Error("RWOS_MEMBERSHIP_ACCESS_ROLE_MISSING");
+      }
+
+      return prisma.organizationMembership.create({
+        data: {
+          organizationId: input.organizationId,
+          userId: input.userId,
+          invitedByUserId: input.invitedByUserId,
+          status: "invited",
+          createdAt: input.now,
+          expiredAt: input.expiresAt,
+          membershipRoles: {
+            create: accessRoles.map((accessRole) => ({
+              accessRoleDefinitionId: accessRole.id
+            }))
+          }
+        },
+        include: membershipInclude
+      });
+    },
+
+    updateMembershipStatus(input) {
+      return prisma.organizationMembership.update({
+        where: { id: input.membershipId },
+        data: membershipStatusUpdate(input.status, input.now),
+        include: membershipInclude
+      });
+    },
+
+    async replaceMembershipRoles(input) {
+      const accessRoles = await resolveMembershipAccessRoles(prisma, input.accessRoleKeys);
+
+      if (accessRoles.length !== input.accessRoleKeys.length) {
+        throw new Error("RWOS_MEMBERSHIP_ACCESS_ROLE_MISSING");
+      }
+
+      await prisma.membershipAccessRole.deleteMany({
+        where: { membershipId: input.membershipId }
+      });
+      await prisma.membershipAccessRole.createMany({
+        data: accessRoles.map((accessRole) => ({
+          membershipId: input.membershipId,
+          accessRoleDefinitionId: accessRole.id,
+          assignedByUserId: input.actorUserId
+        })),
+        skipDuplicates: true
+      });
+
+      const updated = await prisma.organizationMembership.findUnique({
+        where: { id: input.membershipId },
+        include: membershipInclude
+      });
+
+      if (!updated) {
+        throw new Error("RWOS_MEMBERSHIP_NOT_FOUND");
+      }
+
+      return updated;
+    },
+
+    async recordMembershipAuditEvent(input) {
+      const actorReference = await prisma.auditActorReference.create({
+        data: {
+          actorType: input.actorUserId ? "user" : "system",
+          ...(input.actorUserId ? { userId: input.actorUserId } : {}),
+          ...(input.organizationId ? { organizationId: input.organizationId } : {}),
+          displayLabel: input.actorUserId ? "Membership actor" : "Membership boundary"
+        }
+      });
+
+      await prisma.auditEvent.create({
+        data: {
+          actorReferenceId: actorReference.id,
+          organizationId: input.organizationId,
+          entityType: "organization_membership",
+          entityId: input.membershipId ?? nilEntityId,
+          entityPublicReference: input.userId,
+          action: input.action,
+          priorState: input.priorState,
+          newState: input.newState,
+          reason: input.reason,
+          source: "api",
+          correlationId: input.correlationId,
+          policyVersion: "organization-membership-foundation-v1",
+          createdAt: input.createdAt
+        }
+      });
+    }
+  };
+}
+
 function resolvePasswordHashOptions(options: PasswordHashOptions) {
   return {
     costFactor: options.costFactor ?? readPositiveInteger("RWOS_PASSWORD_SCRYPT_N", defaultPasswordOptions.costFactor),
@@ -1342,6 +1890,210 @@ function isSensitiveAuthorizationDenial(decision: AuthorizationDecision) {
 
 function createAuthorizationCorrelationId() {
   return `authz_${randomBytes(12).toString("base64url")}`;
+}
+
+function toPublicMembership(membership: StoredOrganizationMembership): PublicOrganizationMembership {
+  return {
+    id: membership.id,
+    organizationId: membership.organizationId,
+    organizationPublicId: membership.organization.publicId,
+    organizationDisplayName: membership.organization.displayName,
+    userId: membership.userId,
+    status: membership.status,
+    roleKeys: membershipRoleKeys(membership),
+    invitedByUserId: membership.invitedByUserId,
+    invitedAt: membership.createdAt,
+    activatedAt: membership.acceptedAt,
+    suspendedAt: membership.suspendedAt,
+    revokedAt: membership.revokedAt,
+    expiresAt: membership.expiredAt,
+    updatedAt: latestMembershipTimestamp(membership)
+  };
+}
+
+function membershipRoleKeys(membership: StoredOrganizationMembership) {
+  return membership.membershipRoles.map((membershipRole) => membershipRole.accessRole.key);
+}
+
+function latestMembershipTimestamp(membership: StoredOrganizationMembership) {
+  return [membership.acceptedAt, membership.suspendedAt, membership.revokedAt, membership.expiredAt, membership.createdAt]
+    .filter((timestamp): timestamp is Date => Boolean(timestamp))
+    .sort((left, right) => right.getTime() - left.getTime())[0] ?? membership.createdAt;
+}
+
+async function assertMembershipBelongsToUser(
+  repository: OrganizationMembershipRepository,
+  userId: string,
+  membershipId: string
+) {
+  const membership = await repository.findMembershipById(membershipId);
+
+  if (!membership || membership.userId !== userId) {
+    throw new OrganizationMembershipError(membershipDeny("membership_missing", "membership_not_found", null, null, []));
+  }
+
+  return membership;
+}
+
+async function updateMembershipLifecycle(
+  repository: OrganizationMembershipRepository,
+  input: {
+    userId: string;
+    membershipId: string;
+    actorUserId: string | null;
+    correlationId?: string;
+    status: OrganizationMembershipStatus;
+    auditAction: Parameters<OrganizationMembershipRepository["recordMembershipAuditEvent"]>[0]["action"];
+    now: Date;
+  }
+) {
+  const membership = await assertMembershipBelongsToUser(repository, input.userId, input.membershipId);
+  const updated = await repository.updateMembershipStatus({
+    membershipId: membership.id,
+    status: input.status,
+    actorUserId: input.actorUserId,
+    now: input.now
+  });
+  await recordMembershipAudit(repository, {
+    action: input.auditAction,
+    membershipId: membership.id,
+    organizationId: membership.organizationId,
+    userId: membership.userId,
+    actorUserId: input.actorUserId,
+    reason: null,
+    priorState: membership.status,
+    newState: input.status,
+    correlationId: input.correlationId,
+    createdAt: input.now
+  });
+
+  return toPublicMembership(updated);
+}
+
+function evaluateMembershipForContext(
+  membership: StoredOrganizationMembership,
+  currentTime: Date
+): OrganizationMembershipDecision {
+  const publicMembership = toPublicMembership(membership);
+  const roles = membershipRoleKeys(membership);
+
+  if (membership.expiredAt && membership.expiredAt.getTime() <= currentTime.getTime()) {
+    return membershipDeny("membership_expired", "membership_expired", publicMembership, membership.organizationId, roles);
+  }
+
+  if (membership.status !== "active") {
+    return membershipDeny(`membership_${membership.status}`, `membership_${membership.status}`, publicMembership, membership.organizationId, roles);
+  }
+
+  return {
+    status: "allow",
+    allow: true,
+    membership: publicMembership,
+    organizationId: membership.organizationId,
+    roles,
+    internalReason: null,
+    externalCode: null,
+    externalMessage: null
+  };
+}
+
+function membershipDeny(
+  status:
+    | Exclude<OrganizationMembershipDecisionStatus, "allow">
+    | "membership_invited"
+    | "membership_suspended"
+    | "membership_revoked"
+    | "membership_expired",
+  internalReason: string,
+  membership: PublicOrganizationMembership | null,
+  organizationId: string | null,
+  roles: readonly AuthorizationRoleKey[]
+): OrganizationMembershipDecision {
+  return {
+    status: normalizeMembershipDecisionStatus(status),
+    allow: false,
+    membership,
+    organizationId,
+    roles,
+    internalReason,
+    externalCode: authorizationDeniedCode,
+    externalMessage: authorizationDeniedMessage
+  };
+}
+
+function normalizeMembershipDecisionStatus(
+  status:
+    | Exclude<OrganizationMembershipDecisionStatus, "allow">
+    | "membership_invited"
+    | "membership_suspended"
+    | "membership_revoked"
+    | "membership_expired"
+): OrganizationMembershipDecisionStatus {
+  if (status === "membership_invited" || status === "membership_suspended" || status === "membership_revoked") {
+    return "membership_inactive";
+  }
+
+  return status === "membership_expired" ? "membership_expired" : status;
+}
+
+async function auditMembershipDenial(
+  repository: OrganizationMembershipRepository,
+  input: {
+    decision: OrganizationMembershipDecision;
+    userId: string | null;
+    actorUserId: string | null;
+    correlationId?: string | undefined;
+    createdAt: Date;
+  }
+) {
+  await recordMembershipAudit(repository, {
+    action: "membership.denied",
+    membershipId: input.decision.membership?.id ?? null,
+    organizationId: input.decision.organizationId,
+    userId: input.userId,
+    actorUserId: input.actorUserId,
+    reason: input.decision.internalReason,
+    priorState: input.decision.membership?.status ?? null,
+    newState: "denied",
+    correlationId: input.correlationId,
+    createdAt: input.createdAt
+  });
+}
+
+async function recordMembershipAudit(
+  repository: OrganizationMembershipRepository,
+  input: Omit<Parameters<OrganizationMembershipRepository["recordMembershipAuditEvent"]>[0], "correlationId"> & {
+    correlationId?: string | undefined;
+  }
+) {
+  await repository.recordMembershipAuditEvent({
+    ...input,
+    correlationId: input.correlationId ?? createMembershipCorrelationId()
+  });
+}
+
+async function resolveMembershipAccessRoles(prisma: PrismaMembershipClient, accessRoleKeys: readonly AuthorizationRoleKey[]) {
+  return prisma.accessRoleDefinition.findMany({
+    where: {
+      key: {
+        in: [...new Set(accessRoleKeys)]
+      }
+    }
+  });
+}
+
+function membershipStatusUpdate(status: OrganizationMembershipStatus, now: Date) {
+  return {
+    status,
+    acceptedAt: status === "active" ? now : undefined,
+    suspendedAt: status === "suspended" ? now : undefined,
+    revokedAt: status === "revoked" ? now : undefined,
+    expiredAt: status === "expired" ? now : undefined
+  };
+}
+
+function createMembershipCorrelationId() {
+  return `membership_${randomBytes(12).toString("base64url")}`;
 }
 
 async function scrypt(password: string, salt: Buffer, keyLength: number, options: { N: number; r: number; p: number }) {

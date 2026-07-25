@@ -2,6 +2,7 @@ import Fastify, { type FastifyReply } from "fastify";
 import {
   AuthenticationError,
   AuthenticationRequiredError,
+  OrganizationMembershipError,
   PasswordPolicyError,
   RegistrationUnavailableError,
   authenticationErrorCode,
@@ -11,13 +12,16 @@ import {
   authorizationDeniedMessage,
   createAuthenticationService,
   createAuthorizationService,
+  createOrganizationMembershipService,
   createPrismaAuthenticationRepository,
+  createPrismaOrganizationMembershipRepository,
   passwordPolicyErrorCode,
   registrationUnavailableCode,
   toSafeAuthorizationResponse,
   type AuthorizationRoleKey,
   type AuthorizationService,
-  type AuthenticationService
+  type AuthenticationService,
+  type OrganizationMembershipService
 } from "@rwos/auth";
 import { getRuntimeConfig } from "@rwos/config";
 import { createPrismaClient } from "@rwos/database";
@@ -26,6 +30,7 @@ import { createLogger } from "@rwos/observability";
 export interface BuildApiOptions {
   authService?: AuthenticationService;
   authorizationService?: AuthorizationService;
+  membershipService?: OrganizationMembershipService;
   resolveAuthorizationRoles?: (userId: string) => Promise<readonly AuthorizationRoleKey[]> | readonly AuthorizationRoleKey[];
 }
 
@@ -39,6 +44,8 @@ export function buildApi(options: BuildApiOptions = {}) {
       sessionTtlSeconds: 60 * 60 * 8
     });
   const authorizationService = options.authorizationService ?? createAuthorizationService();
+  const membershipService =
+    options.membershipService ?? createOrganizationMembershipService(createPrismaOrganizationMembershipRepository(prisma!));
   const resolveAuthorizationRoles = options.resolveAuthorizationRoles ?? (() => []);
 
   if (prisma) {
@@ -46,6 +53,14 @@ export function buildApi(options: BuildApiOptions = {}) {
       await prisma.$disconnect();
     });
   }
+
+  app.setErrorHandler((error, _request, reply) => {
+    if (error instanceof OrganizationMembershipError) {
+      return sendMembershipDenied(reply);
+    }
+
+    throw error;
+  });
 
   app.get("/health", async () => {
     const config = getRuntimeConfig();
@@ -210,6 +225,111 @@ export function buildApi(options: BuildApiOptions = {}) {
     return reply.code(decision.allow ? 200 : 403).send(toSafeAuthorizationResponse(decision));
   });
 
+  app.get("/memberships", async (request, reply) => {
+    const session = await authService.validateSession(readBearerToken(request.headers.authorization));
+
+    if (!session.authenticated || !session.user) {
+      return sendMembershipDenied(reply);
+    }
+
+    return reply.code(200).send({
+      memberships: serializeMemberships(await membershipService.listMemberships(session.user.id))
+    });
+  });
+
+  app.get("/memberships/:membershipId", async (request, reply) => {
+    const session = await authService.validateSession(readBearerToken(request.headers.authorization));
+
+    if (!session.authenticated || !session.user) {
+      return sendMembershipDenied(reply);
+    }
+
+    const membershipId = readRouteParam(request.params, "membershipId");
+    const membership = membershipId ? await membershipService.getMembership(session.user.id, membershipId) : null;
+
+    if (!membership) {
+      return sendMembershipDenied(reply);
+    }
+
+    return reply.code(200).send({
+      membership: serializeMembership(membership)
+    });
+  });
+
+  app.post("/memberships/:membershipId/activate", async (request, reply) => {
+    const session = await authService.validateSession(readBearerToken(request.headers.authorization));
+
+    if (!session.authenticated || !session.user) {
+      return sendMembershipDenied(reply);
+    }
+
+    const membership = await membershipService.activateMembership({
+      userId: session.user.id,
+      membershipId: readRouteParam(request.params, "membershipId"),
+      actorUserId: session.user.id
+    });
+
+    return reply.code(200).send({ membership: serializeMembership(membership) });
+  });
+
+  app.post("/memberships/:membershipId/suspend", async (request, reply) => {
+    const session = await authService.validateSession(readBearerToken(request.headers.authorization));
+
+    if (!session.authenticated || !session.user) {
+      return sendMembershipDenied(reply);
+    }
+
+    const membership = await membershipService.suspendMembership({
+      userId: session.user.id,
+      membershipId: readRouteParam(request.params, "membershipId"),
+      actorUserId: session.user.id
+    });
+
+    return reply.code(200).send({ membership: serializeMembership(membership) });
+  });
+
+  app.post("/memberships/:membershipId/revoke", async (request, reply) => {
+    const session = await authService.validateSession(readBearerToken(request.headers.authorization));
+
+    if (!session.authenticated || !session.user) {
+      return sendMembershipDenied(reply);
+    }
+
+    const membership = await membershipService.revokeMembership({
+      userId: session.user.id,
+      membershipId: readRouteParam(request.params, "membershipId"),
+      actorUserId: session.user.id
+    });
+
+    return reply.code(200).send({ membership: serializeMembership(membership) });
+  });
+
+  app.post("/memberships/context/select", async (request, reply) => {
+    const session = await authService.validateSession(readBearerToken(request.headers.authorization));
+
+    if (!session.authenticated || !session.user) {
+      return sendMembershipDenied(reply);
+    }
+
+    const body = asRecord(request.body);
+    const decision = await membershipService.selectOrganizationContext({
+      userId: session.user.id,
+      organizationId: readOptionalString(body, "organizationId")
+    });
+
+    if (!decision.allow) {
+      return sendMembershipDenied(reply);
+    }
+
+    return reply.code(200).send({
+      organizationContext: {
+        organizationId: decision.organizationId,
+        membership: decision.membership ? serializeMembership(decision.membership) : null,
+        roles: decision.roles
+      }
+    });
+  });
+
   return app;
 }
 
@@ -231,6 +351,13 @@ function readBearerToken(authorization: string | undefined) {
   if (!authorization?.startsWith("Bearer ")) return null;
 
   return authorization.slice("Bearer ".length).trim() || null;
+}
+
+function readRouteParam(params: unknown, key: string) {
+  const record = asRecord(params);
+  const value = record[key];
+
+  return typeof value === "string" ? value : "";
 }
 
 function serializeAuthenticationResult(result: {
@@ -278,4 +405,27 @@ function sendAuthenticationError(reply: FastifyReply, error: unknown) {
   }
 
   throw error;
+}
+
+function sendMembershipDenied(reply: FastifyReply) {
+  return reply.code(403).send({
+    error: authorizationDeniedCode,
+    message: authorizationDeniedMessage
+  });
+}
+
+function serializeMemberships(memberships: Awaited<ReturnType<OrganizationMembershipService["listMemberships"]>>) {
+  return memberships.map(serializeMembership);
+}
+
+function serializeMembership(membership: Awaited<ReturnType<OrganizationMembershipService["listMemberships"]>>[number]) {
+  return {
+    ...membership,
+    invitedAt: membership.invitedAt.toISOString(),
+    activatedAt: membership.activatedAt?.toISOString() ?? null,
+    suspendedAt: membership.suspendedAt?.toISOString() ?? null,
+    revokedAt: membership.revokedAt?.toISOString() ?? null,
+    expiresAt: membership.expiresAt?.toISOString() ?? null,
+    updatedAt: membership.updatedAt.toISOString()
+  };
 }
