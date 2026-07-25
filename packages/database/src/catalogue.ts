@@ -37,19 +37,51 @@ export const phase01PermissionKeys = [
   "job_request.admin_review",
   "job_request.request_information",
   "job_request.approve_for_dispatch",
+  "dispatch.create",
+  "dispatch.read",
+  "dispatch.review_candidates",
+  "dispatch.manage_shortlist",
+  "dispatch.pause",
+  "dispatch.resume",
+  "dispatch.cancel",
+  "dispatch.close",
+  "dispatch.prepare_offer",
+  "dispatch.audit_read",
+  "dispatch.supervise",
+  "worker_offer.create",
+  "worker_offer.read",
+  "worker_offer.approve",
+  "worker_offer.send",
+  "worker_offer.withdraw",
+  "worker_offer.cancel",
+  "worker_offer.audit_read",
+  "worker_offer.respond",
+  "worker_offer.supervise",
   "audit.read",
   "platform.supervise"
 ] as const;
 
 export const phase01AccessRoles = [
-  { key: "PLATFORM_ADMINISTRATOR", scope: "platform", description: "Explicit platform administrator." },
-  { key: "ORGANIZATION_OWNER", scope: "organization", description: "Future organization owner boundary." },
+  {
+    key: "PLATFORM_ADMINISTRATOR",
+    scope: "platform",
+    description: "Explicit platform administrator."
+  },
+  {
+    key: "ORGANIZATION_OWNER",
+    scope: "organization",
+    description: "Future organization owner boundary."
+  },
   {
     key: "ORGANIZATION_ADMINISTRATOR",
     scope: "organization",
     description: "Future organization administration boundary."
   },
-  { key: "ORGANIZATION_STAFF", scope: "organization", description: "Future organization staff boundary." },
+  {
+    key: "ORGANIZATION_STAFF",
+    scope: "organization",
+    description: "Future organization staff boundary."
+  },
   { key: "WORKER_ACCESS", scope: "worker", description: "Worker account access boundary." },
   {
     key: "DISPATCHER",
@@ -64,6 +96,23 @@ export const phase01RolePermissionMappings = [
     "job_request.admin_review",
     "job_request.request_information",
     "job_request.approve_for_dispatch",
+    "dispatch.create",
+    "dispatch.read",
+    "dispatch.review_candidates",
+    "dispatch.manage_shortlist",
+    "dispatch.pause",
+    "dispatch.resume",
+    "dispatch.cancel",
+    "dispatch.close",
+    "dispatch.prepare_offer",
+    "dispatch.audit_read",
+    "worker_offer.create",
+    "worker_offer.read",
+    "worker_offer.approve",
+    "worker_offer.send",
+    "worker_offer.withdraw",
+    "worker_offer.cancel",
+    "worker_offer.audit_read",
     "audit.read"
   ]),
   rolePermissions("ORGANIZATION_OWNER", [
@@ -111,8 +160,26 @@ export const phase01RolePermissionMappings = [
     "job_request.submit",
     "job_request.cancel"
   ]),
-  rolePermissions("WORKER_ACCESS", []),
-  rolePermissions("DISPATCHER", [])
+  rolePermissions("WORKER_ACCESS", ["worker_offer.respond"]),
+  rolePermissions("DISPATCHER", [
+    "dispatch.create",
+    "dispatch.read",
+    "dispatch.review_candidates",
+    "dispatch.manage_shortlist",
+    "dispatch.pause",
+    "dispatch.resume",
+    "dispatch.cancel",
+    "dispatch.close",
+    "dispatch.prepare_offer",
+    "dispatch.audit_read",
+    "worker_offer.create",
+    "worker_offer.read",
+    "worker_offer.approve",
+    "worker_offer.send",
+    "worker_offer.withdraw",
+    "worker_offer.cancel",
+    "worker_offer.audit_read"
+  ])
 ] as const;
 
 export const developmentWorkGroups = [
@@ -122,13 +189,19 @@ export const developmentWorkGroups = [
     displayOrder: 10,
     iconKey: "utensils",
     qualificationSummary: "Food-service experience and applicable food-safety readiness.",
-    safetyRequirementSummary: "Non-slip shoes, uniform, gloves, and site orientation where required.",
+    safetyRequirementSummary:
+      "Non-slip shoes, uniform, gloves, and site orientation where required.",
     defaultTemplateKey: "kitchen_request",
     roles: [
       role("chef", "Chef", 10, "Food-service leadership and menu execution."),
       role("sous_chef", "Sous-chef", 20, "Kitchen supervision and service preparation support."),
       role("cook", "Cook", 30, "Meal preparation and station execution."),
-      role("kitchen_helper", "Kitchen helper", 40, "Preparation, cleaning, and general kitchen support."),
+      role(
+        "kitchen_helper",
+        "Kitchen helper",
+        40,
+        "Preparation, cleaning, and general kitchen support."
+      ),
       role("dishwasher", "Dishwasher", 50, "Dishwashing, sanitation, and back-of-house support.")
     ]
   },
@@ -163,12 +236,18 @@ export const developmentWorkGroups = [
     displayOrder: 30,
     iconKey: "sparkles",
     qualificationSummary: "Facility support, cleaning, laundry, or dining-room experience.",
-    safetyRequirementSummary: "Gloves, uniform, cleaning-product orientation, and equipment readiness.",
+    safetyRequirementSummary:
+      "Gloves, uniform, cleaning-product orientation, and equipment readiness.",
     defaultTemplateKey: "housekeeping_support_request",
     roles: [
       role("housekeeper", "Housekeeper", 10, "Resident-room and facility cleaning support."),
       role("laundry_worker", "Laundry worker", 20, "Laundry handling and linen support."),
-      role("dining_room_aide", "Dining-room aide", 30, "Dining-room setup and meal-service support."),
+      role(
+        "dining_room_aide",
+        "Dining-room aide",
+        30,
+        "Dining-room setup and meal-service support."
+      ),
       role("general_support", "General support", 40, "General facility support role.")
     ]
   },
@@ -184,7 +263,12 @@ export const developmentWorkGroups = [
       role("general_maintenance", "General maintenance", 10, "General maintenance support."),
       role("repair_technician", "Repair technician", 20, "Repair and troubleshooting support."),
       role("facility_support", "Facility support", 30, "Facility operations support."),
-      role("emergency_maintenance", "Emergency maintenance", 40, "Urgent facility maintenance support.")
+      role(
+        "emergency_maintenance",
+        "Emergency maintenance",
+        40,
+        "Urgent facility maintenance support."
+      )
     ]
   }
 ] as const satisfies readonly DevelopmentWorkGroup[];
@@ -205,7 +289,10 @@ function role(
   };
 }
 
-function rolePermissions(accessRoleKey: string, permissionKeys: readonly (typeof phase01PermissionKeys)[number][]) {
+function rolePermissions(
+  accessRoleKey: string,
+  permissionKeys: readonly (typeof phase01PermissionKeys)[number][]
+) {
   return {
     accessRoleKey,
     permissionKeys
