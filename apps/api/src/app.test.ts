@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   createAuthorizationService,
   createAuthenticationService,
+  createDepartmentService,
   createEmployerOrganizationService,
   createOrganizationMembershipService,
   createResidenceService
@@ -11,6 +12,7 @@ import type {
   AuthenticationRepository,
   CreateLocalUserInput,
   CreateSessionInput,
+  DepartmentRepository,
   EmployerOrganizationRepository,
   InviteMembershipInput,
   OrganizationMembershipRepository,
@@ -21,6 +23,7 @@ import type {
   StoredResidence,
   StoredAuthenticationSession,
   StoredAuthenticationUser,
+  StoredDepartment,
   UpdateSessionInput
 } from "@rwos/auth";
 import { buildApi } from "./app";
@@ -644,6 +647,124 @@ describe("api residence foundation", () => {
   });
 });
 
+describe("api department foundation", () => {
+  it("creates, lists, reads, updates, and changes department status inside residence context", async () => {
+    const { app } = buildDepartmentApi();
+    const registration = await registerApiUser(app);
+    const organization = await createApiOrganization(app, registration.token, "Department API Tenant");
+    const residence = await createApiResidence(app, registration.token, organization.id, "Department API Residence");
+    const created = await app.inject({
+      method: "POST",
+      url: `/organizations/${organization.id}/residences/${residence.id}/departments`,
+      headers: { authorization: `Bearer ${registration.token}` },
+      payload: { name: "Care Services" }
+    });
+    const department = created.json().department;
+    const listed = await app.inject({
+      method: "GET",
+      url: `/organizations/${organization.id}/residences/${residence.id}/departments`,
+      headers: { authorization: `Bearer ${registration.token}` }
+    });
+    const read = await app.inject({
+      method: "GET",
+      url: `/organizations/${organization.id}/residences/${residence.id}/departments/${department.id}`,
+      headers: { authorization: `Bearer ${registration.token}` }
+    });
+    const updated = await app.inject({
+      method: "PATCH",
+      url: `/organizations/${organization.id}/residences/${residence.id}/departments/${department.id}`,
+      headers: { authorization: `Bearer ${registration.token}` },
+      payload: {
+        expectedVersion: department.version,
+        name: "Care and Nursing"
+      }
+    });
+    const inactive = await app.inject({
+      method: "POST",
+      url: `/organizations/${organization.id}/residences/${residence.id}/departments/${department.id}/status`,
+      headers: { authorization: `Bearer ${registration.token}` },
+      payload: {
+        expectedVersion: updated.json().department.version,
+        status: "inactive",
+        reason: "temporary pause"
+      }
+    });
+
+    expect(created.statusCode).toBe(201);
+    expect(listed.statusCode).toBe(200);
+    expect(listed.json().departments).toHaveLength(1);
+    expect(read.statusCode).toBe(200);
+    expect(updated.statusCode).toBe(200);
+    expect(updated.json().department.name).toBe("Care and Nursing");
+    expect(inactive.statusCode).toBe(200);
+    expect(inactive.json().department.status).toBe("inactive");
+
+    await app.close();
+  });
+
+  it("denies anonymous, cross-tenant, guessed department, and stale update access safely", async () => {
+    const { app } = buildDepartmentApi();
+    const first = await registerApiUser(app);
+    const firstOrganization = await createApiOrganization(app, first.token, "Department Tenant One");
+    const firstResidence = await createApiResidence(app, first.token, firstOrganization.id, "Tenant One Residence");
+    const department = (
+      await app.inject({
+        method: "POST",
+        url: `/organizations/${firstOrganization.id}/residences/${firstResidence.id}/departments`,
+        headers: { authorization: `Bearer ${first.token}` },
+        payload: { name: "Tenant One Department" }
+      })
+    ).json().department;
+    const second = await app.inject({
+      method: "POST",
+      url: "/auth/register",
+      payload: {
+        email: "department-second@example.com",
+        password: "ValidPassword123",
+        displayName: "Second Department Employer"
+      }
+    });
+    const secondOrganization = await createApiOrganization(app, second.json().token, "Department Tenant Two");
+    const secondResidence = await createApiResidence(app, second.json().token, secondOrganization.id, "Tenant Two Residence");
+
+    const anonymous = await app.inject({
+      method: "POST",
+      url: `/organizations/${firstOrganization.id}/residences/${firstResidence.id}/departments`,
+      payload: { name: "Anonymous Department" }
+    });
+    const crossTenantRead = await app.inject({
+      method: "GET",
+      url: `/organizations/${secondOrganization.id}/residences/${secondResidence.id}/departments/${department.id}`,
+      headers: { authorization: `Bearer ${first.token}` }
+    });
+    const guessed = await app.inject({
+      method: "GET",
+      url: `/organizations/${firstOrganization.id}/residences/${firstResidence.id}/departments/missing-department`,
+      headers: { authorization: `Bearer ${first.token}` }
+    });
+    const stale = await app.inject({
+      method: "PATCH",
+      url: `/organizations/${firstOrganization.id}/residences/${firstResidence.id}/departments/${department.id}`,
+      headers: { authorization: `Bearer ${first.token}` },
+      payload: {
+        expectedVersion: "2020-01-01T00:00:00.000Z",
+        name: "Stale Department"
+      }
+    });
+
+    expect(anonymous.statusCode).toBe(403);
+    expect(crossTenantRead.statusCode).toBe(403);
+    expect(guessed.statusCode).toBe(403);
+    expect(stale.statusCode).toBe(403);
+    expect(crossTenantRead.json()).toEqual({
+      error: "RWOS_AUTHORIZATION_DENIED",
+      message: "Access denied."
+    });
+
+    await app.close();
+  });
+});
+
 class ApiMemoryAuthenticationRepository implements AuthenticationRepository {
   private users = new Map<string, StoredAuthenticationUser>();
   private sessions = new Map<string, StoredAuthenticationSession>();
@@ -1000,6 +1121,96 @@ class ApiMemoryResidenceRepository implements ResidenceRepository {
   }
 }
 
+class ApiMemoryDepartmentRepository implements DepartmentRepository {
+  private departments = new Map<string, StoredDepartment>();
+  private nextDepartment = 1;
+
+  async findDepartmentById(departmentId: string) {
+    return this.departments.get(departmentId) ?? null;
+  }
+
+  async listDepartmentsByResidence(input: Parameters<DepartmentRepository["listDepartmentsByResidence"]>[0]) {
+    return [...this.departments.values()]
+      .filter((department) => department.organizationId === input.organizationId && department.residenceId === input.residenceId && (!input.status || department.status === input.status))
+      .sort((left, right) => left.name.localeCompare(right.name));
+  }
+
+  async createDepartment(input: Parameters<DepartmentRepository["createDepartment"]>[0]) {
+    const department: StoredDepartment = {
+      id: `api-department-${this.nextDepartment}`,
+      publicId: input.publicId,
+      organizationId: input.organizationId,
+      residenceId: input.residenceId,
+      name: input.name,
+      status: "active",
+      createdByUserId: input.actorUserId,
+      createdAt: input.now,
+      updatedAt: input.now,
+      archivedAt: null
+    };
+
+    this.nextDepartment += 1;
+    this.departments.set(department.id, department);
+    await this.recordDepartmentAuditEvent({
+      action: "department.created",
+      organizationId: department.organizationId,
+      residenceId: department.residenceId,
+      departmentId: department.id,
+      actorUserId: input.actorUserId,
+      priorState: null,
+      newState: department.status,
+      reason: null,
+      correlationId: input.correlationId,
+      createdAt: input.now
+    });
+
+    return department;
+  }
+
+  async updateDepartment(input: Parameters<DepartmentRepository["updateDepartment"]>[0]) {
+    const department = this.departments.get(input.departmentId);
+
+    if (
+      !department ||
+      department.organizationId !== input.organizationId ||
+      department.residenceId !== input.residenceId ||
+      department.updatedAt.getTime() !== input.expectedUpdatedAt.getTime()
+    ) {
+      return null;
+    }
+
+    if (input.name !== undefined) department.name = input.name;
+    department.updatedAt = new Date(input.now.getTime() + 1);
+
+    return department;
+  }
+
+  async updateDepartmentStatus(input: Parameters<DepartmentRepository["updateDepartmentStatus"]>[0]) {
+    const department = this.departments.get(input.departmentId);
+
+    if (
+      !department ||
+      department.organizationId !== input.organizationId ||
+      department.residenceId !== input.residenceId ||
+      department.updatedAt.getTime() !== input.expectedUpdatedAt.getTime()
+    ) {
+      return null;
+    }
+
+    department.status = input.status;
+    department.archivedAt = input.status === "closed" ? input.now : input.status === "active" ? null : department.archivedAt;
+    department.updatedAt = new Date(input.now.getTime() + 1);
+
+    return department;
+  }
+
+  async recordDepartmentAuditEvent(input: Parameters<DepartmentRepository["recordDepartmentAuditEvent"]>[0]) {
+    void input;
+
+    return undefined;
+  }
+}
+
 function testAuthOptions() {
   let nextToken = 1;
 
@@ -1052,6 +1263,38 @@ function buildResidenceApi() {
   return { app, authRepository };
 }
 
+function buildDepartmentApi() {
+  const authRepository = new ApiMemoryAuthenticationRepository();
+  const membershipRepository = new ApiMemoryOrganizationMembershipRepository();
+  const membershipService = createOrganizationMembershipService(membershipRepository);
+  const authorizationService = createAuthorizationService();
+  const organizationRepository = new ApiMemoryEmployerOrganizationRepository(membershipRepository);
+  const organizationService = createEmployerOrganizationService(organizationRepository, membershipService, authorizationService);
+  const residenceRepository = new ApiMemoryResidenceRepository();
+  const residenceService = createResidenceService(
+    residenceRepository,
+    organizationRepository,
+    membershipService,
+    authorizationService
+  );
+  const departmentService = createDepartmentService(
+    new ApiMemoryDepartmentRepository(),
+    residenceRepository,
+    organizationRepository,
+    membershipService,
+    authorizationService
+  );
+  const app = buildApi({
+    authService: createAuthenticationService(authRepository, testAuthOptions()),
+    membershipService,
+    organizationService,
+    residenceService,
+    departmentService
+  });
+
+  return { app, authRepository };
+}
+
 async function createApiOrganization(app: ReturnType<typeof buildApi>, token: string, legalName: string) {
   const response = await app.inject({
     method: "POST",
@@ -1066,6 +1309,19 @@ async function createApiOrganization(app: ReturnType<typeof buildApi>, token: st
   expect(response.statusCode).toBe(201);
 
   return response.json().organization as { id: string; version: string };
+}
+
+async function createApiResidence(app: ReturnType<typeof buildApi>, token: string, organizationId: string, name: string) {
+  const response = await app.inject({
+    method: "POST",
+    url: `/organizations/${organizationId}/residences`,
+    headers: { authorization: `Bearer ${token}` },
+    payload: { name }
+  });
+
+  expect(response.statusCode).toBe(201);
+
+  return response.json().residence as { id: string; version: string };
 }
 
 function apiInviteInput(userId: string): InviteMembershipInput {

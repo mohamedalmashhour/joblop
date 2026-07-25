@@ -9,6 +9,7 @@ import {
   authorizationRoleDefinitions,
   createAuthorizationService,
   createAuthenticationService,
+  createDepartmentService,
   createEmployerOrganizationService,
   createOrganizationMembershipService,
   createResidenceService,
@@ -24,6 +25,7 @@ import type {
   AuthenticationRepository,
   CreateLocalUserInput,
   CreateSessionInput,
+  DepartmentRepository,
   OrganizationMembershipRepository,
   RecordAuthenticationAuditEventInput,
   ResidenceRepository,
@@ -32,6 +34,7 @@ import type {
   StoredResidence,
   StoredAuthenticationSession,
   StoredAuthenticationUser,
+  StoredDepartment,
   UpdateSessionInput
 } from "./index";
 
@@ -1006,6 +1009,243 @@ describe("residence foundation", () => {
   });
 });
 
+describe("department foundation", () => {
+  it("creates, reads, lists, updates, and audits departments under one residence", async () => {
+    const { organizationService, residenceService, departmentService, departmentRepository } = createDepartmentTestServices();
+    const ownerId = "00000000-0000-4000-8000-000000000001";
+    const organization = await organizationService.createOrganization({ actorUserId: ownerId, legalName: "Department Tenant", displayName: "Department Tenant" });
+    const residence = await residenceService.createResidence({ actorUserId: ownerId, organizationId: organization.organization.id, name: "Department Residence" });
+    const created = await departmentService.createDepartment({
+      actorUserId: ownerId,
+      organizationId: organization.organization.id,
+      residenceId: residence.id,
+      name: "Dining Services"
+    });
+    const read = await departmentService.getDepartment({
+      actorUserId: ownerId,
+      organizationId: organization.organization.id,
+      residenceId: residence.id,
+      departmentId: created.id
+    });
+    const listed = await departmentService.listDepartments({ actorUserId: ownerId, organizationId: organization.organization.id, residenceId: residence.id });
+    const updated = await departmentService.updateDepartment({
+      actorUserId: ownerId,
+      organizationId: organization.organization.id,
+      residenceId: residence.id,
+      departmentId: created.id,
+      expectedVersion: created.version,
+      name: "Dining and Kitchen"
+    });
+
+    expect(read.id).toBe(created.id);
+    expect(listed).toHaveLength(1);
+    expect(updated.name).toBe("Dining and Kitchen");
+    expect(departmentRepository.auditActions()).toEqual(["department.created", "department.updated"]);
+  });
+
+  it("enforces tenant isolation, residence ownership, membership state, and permissions", async () => {
+    const { organizationService, residenceService, departmentService, membershipService } = createDepartmentTestServices();
+    const ownerA = "00000000-0000-4000-8000-000000000001";
+    const ownerB = "00000000-0000-4000-8000-000000000002";
+    const organizationA = await organizationService.createOrganization({ actorUserId: ownerA, legalName: "Department Tenant A", displayName: "Department Tenant A" });
+    const organizationB = await organizationService.createOrganization({ actorUserId: ownerB, legalName: "Department Tenant B", displayName: "Department Tenant B" });
+    const residenceA = await residenceService.createResidence({ actorUserId: ownerA, organizationId: organizationA.organization.id, name: "Residence A" });
+    const residenceB = await residenceService.createResidence({ actorUserId: ownerB, organizationId: organizationB.organization.id, name: "Residence B" });
+    const departmentB = await departmentService.createDepartment({
+      actorUserId: ownerB,
+      organizationId: organizationB.organization.id,
+      residenceId: residenceB.id,
+      name: "Tenant B Department"
+    });
+    const staff = await membershipService.inviteMembership({
+      organizationId: organizationA.organization.id,
+      userId: "00000000-0000-4000-8000-000000000003",
+      invitedByUserId: ownerA,
+      accessRoleKeys: ["ORGANIZATION_STAFF"]
+    });
+
+    await expect(
+      departmentService.getDepartment({
+        actorUserId: ownerA,
+        organizationId: organizationB.organization.id,
+        residenceId: residenceB.id,
+        departmentId: departmentB.id
+      })
+    ).rejects.toMatchObject({ decision: expect.objectContaining({ status: "membership_denied" }) });
+    await expect(
+      departmentService.getDepartment({
+        actorUserId: ownerA,
+        organizationId: organizationA.organization.id,
+        residenceId: residenceA.id,
+        departmentId: departmentB.id
+      })
+    ).rejects.toMatchObject({ decision: expect.objectContaining({ status: "not_found" }) });
+    await expect(
+      departmentService.createDepartment({
+        actorUserId: staff.userId,
+        organizationId: organizationA.organization.id,
+        residenceId: residenceA.id,
+        name: "Invited Staff Department"
+      })
+    ).rejects.toMatchObject({ decision: expect.objectContaining({ status: "membership_denied" }) });
+
+    await membershipService.activateMembership({ userId: staff.userId, membershipId: staff.id, actorUserId: ownerA });
+    await expect(
+      departmentService.updateDepartment({
+        actorUserId: staff.userId,
+        organizationId: organizationA.organization.id,
+        residenceId: residenceA.id,
+        departmentId: departmentB.id,
+        expectedVersion: departmentB.version,
+        name: "Wrong Tenant"
+      })
+    ).rejects.toMatchObject({ decision: expect.objectContaining({ status: "permission_denied" }) });
+  });
+
+  it("handles stale versions and approved active inactive closed transitions", async () => {
+    const { organizationService, residenceService, departmentService } = createDepartmentTestServices();
+    const ownerId = "00000000-0000-4000-8000-000000000001";
+    const organization = await organizationService.createOrganization({ actorUserId: ownerId, legalName: "Department Lifecycle", displayName: "Department Lifecycle" });
+    const residence = await residenceService.createResidence({ actorUserId: ownerId, organizationId: organization.organization.id, name: "Lifecycle Residence" });
+    const department = await departmentService.createDepartment({ actorUserId: ownerId, organizationId: organization.organization.id, residenceId: residence.id, name: "Lifecycle Department" });
+    const updated = await departmentService.updateDepartment({
+      actorUserId: ownerId,
+      organizationId: organization.organization.id,
+      residenceId: residence.id,
+      departmentId: department.id,
+      expectedVersion: department.version,
+      name: "Lifecycle Department Updated"
+    });
+
+    await expect(
+      departmentService.updateDepartment({
+        actorUserId: ownerId,
+        organizationId: organization.organization.id,
+        residenceId: residence.id,
+        departmentId: department.id,
+        expectedVersion: department.version,
+        name: "Stale"
+      })
+    ).rejects.toMatchObject({ decision: expect.objectContaining({ status: "version_conflict" }) });
+
+    const inactive = await departmentService.updateDepartmentStatus({
+      actorUserId: ownerId,
+      organizationId: organization.organization.id,
+      residenceId: residence.id,
+      departmentId: department.id,
+      expectedVersion: updated.version,
+      status: "inactive",
+      reason: "temporary pause"
+    });
+    const reactivated = await departmentService.updateDepartmentStatus({
+      actorUserId: ownerId,
+      organizationId: organization.organization.id,
+      residenceId: residence.id,
+      departmentId: department.id,
+      expectedVersion: inactive.version,
+      status: "active",
+      reason: "ready"
+    });
+    const closed = await departmentService.updateDepartmentStatus({
+      actorUserId: ownerId,
+      organizationId: organization.organization.id,
+      residenceId: residence.id,
+      departmentId: department.id,
+      expectedVersion: reactivated.version,
+      status: "closed",
+      reason: "permanent closure"
+    });
+
+    await expect(
+      departmentService.updateDepartmentStatus({
+        actorUserId: ownerId,
+        organizationId: organization.organization.id,
+        residenceId: residence.id,
+        departmentId: department.id,
+        expectedVersion: closed.version,
+        status: "active",
+        reason: "not allowed"
+      })
+    ).rejects.toMatchObject({ decision: expect.objectContaining({ status: "invalid_transition" }) });
+    await expect(
+      departmentService.updateDepartment({
+        actorUserId: ownerId,
+        organizationId: organization.organization.id,
+        residenceId: residence.id,
+        departmentId: department.id,
+        expectedVersion: closed.version,
+        name: "Closed Update"
+      })
+    ).rejects.toMatchObject({ decision: expect.objectContaining({ status: "department_inactive" }) });
+    await expect(
+      departmentService.getDepartment({
+        actorUserId: ownerId,
+        organizationId: organization.organization.id,
+        residenceId: residence.id,
+        departmentId: department.id
+      })
+    ).resolves.toMatchObject({ status: "closed" });
+  });
+
+  it("blocks department management when employer organization or residence is inactive", async () => {
+    const { organizationService, residenceService, departmentService } = createDepartmentTestServices();
+    const ownerId = "00000000-0000-4000-8000-000000000001";
+    const organization = await organizationService.createOrganization({ actorUserId: ownerId, legalName: "Department Blocked", displayName: "Department Blocked" });
+    const residence = await residenceService.createResidence({ actorUserId: ownerId, organizationId: organization.organization.id, name: "Blocked Residence" });
+    const inactiveResidence = await residenceService.updateResidenceStatus({
+      actorUserId: ownerId,
+      organizationId: organization.organization.id,
+      residenceId: residence.id,
+      expectedVersion: residence.version,
+      status: "inactive",
+      reason: "paused"
+    });
+
+    await expect(
+      departmentService.createDepartment({ actorUserId: ownerId, organizationId: organization.organization.id, residenceId: inactiveResidence.id, name: "Blocked Department" })
+    ).rejects.toMatchObject({ decision: expect.objectContaining({ status: "residence_inactive" }) });
+
+    const reactivated = await residenceService.updateResidenceStatus({
+      actorUserId: ownerId,
+      organizationId: organization.organization.id,
+      residenceId: residence.id,
+      expectedVersion: inactiveResidence.version,
+      status: "active",
+      reason: "ready"
+    });
+    const suspended = await organizationService.updateOrganizationStatus({
+      actorUserId: ownerId,
+      organizationId: organization.organization.id,
+      expectedVersion: organization.organization.version,
+      status: "suspended"
+    });
+
+    expect(reactivated.status).toBe("active");
+    expect(suspended.status).toBe("suspended");
+    await expect(
+      departmentService.createDepartment({ actorUserId: ownerId, organizationId: organization.organization.id, residenceId: residence.id, name: "Org Blocked Department" })
+    ).rejects.toMatchObject({ decision: expect.objectContaining({ status: "organization_inactive" }) });
+  });
+
+  it("rolls back department creation if transactional audit fails", async () => {
+    const { organizationService, residenceService, departmentService, departmentRepository } = createDepartmentTestServices();
+    const ownerId = "00000000-0000-4000-8000-000000000001";
+    const organization = await organizationService.createOrganization({ actorUserId: ownerId, legalName: "Department Rollback", displayName: "Department Rollback" });
+    const residence = await residenceService.createResidence({ actorUserId: ownerId, organizationId: organization.organization.id, name: "Rollback Residence" });
+    departmentRepository.failCreateAudit = true;
+
+    await expect(
+      departmentService.createDepartment({
+        actorUserId: ownerId,
+        organizationId: organization.organization.id,
+        residenceId: residence.id,
+        name: "Rollback Department"
+      })
+    ).rejects.toMatchObject({ decision: expect.objectContaining({ status: "audit_failed" }) });
+    expect(departmentRepository.departmentCount()).toBe(0);
+  });
+});
+
 class MemoryAuthorizationAuditSink {
   events: AuthorizationAuditEventInput[] = [];
 
@@ -1355,6 +1595,114 @@ class MemoryResidenceRepository implements ResidenceRepository {
   }
 }
 
+class MemoryDepartmentRepository implements DepartmentRepository {
+  failCreateAudit = false;
+  private departments = new Map<string, StoredDepartment>();
+  private auditEvents: Parameters<DepartmentRepository["recordDepartmentAuditEvent"]>[0][] = [];
+  private nextDepartment = 1;
+
+  auditActions() {
+    return this.auditEvents.map((event) => event.action);
+  }
+
+  departmentCount() {
+    return this.departments.size;
+  }
+
+  async findDepartmentById(departmentId: string) {
+    return this.departments.get(departmentId) ?? null;
+  }
+
+  async listDepartmentsByResidence(input: Parameters<DepartmentRepository["listDepartmentsByResidence"]>[0]) {
+    return [...this.departments.values()]
+      .filter((department) => department.organizationId === input.organizationId && department.residenceId === input.residenceId && (!input.status || department.status === input.status))
+      .sort((left, right) => left.name.localeCompare(right.name));
+  }
+
+  async createDepartment(input: Parameters<DepartmentRepository["createDepartment"]>[0]) {
+    const department: StoredDepartment = {
+      id: `department-${this.nextDepartment}`,
+      publicId: input.publicId,
+      organizationId: input.organizationId,
+      residenceId: input.residenceId,
+      name: input.name,
+      status: "active",
+      createdByUserId: input.actorUserId,
+      createdAt: input.now,
+      updatedAt: input.now,
+      archivedAt: null
+    };
+
+    this.nextDepartment += 1;
+    this.departments.set(department.id, department);
+
+    try {
+      if (this.failCreateAudit) {
+        throw new Error("TEST_DEPARTMENT_AUDIT_FAILED");
+      }
+
+      await this.recordDepartmentAuditEvent({
+        action: "department.created",
+        organizationId: department.organizationId,
+        residenceId: department.residenceId,
+        departmentId: department.id,
+        actorUserId: input.actorUserId,
+        priorState: null,
+        newState: department.status,
+        reason: null,
+        correlationId: input.correlationId,
+        createdAt: input.now
+      });
+
+      return department;
+    } catch (error) {
+      this.departments.delete(department.id);
+      throw error;
+    }
+  }
+
+  async updateDepartment(input: Parameters<DepartmentRepository["updateDepartment"]>[0]) {
+    const department = this.departments.get(input.departmentId);
+
+    if (
+      !department ||
+      department.organizationId !== input.organizationId ||
+      department.residenceId !== input.residenceId ||
+      department.updatedAt.getTime() !== input.expectedUpdatedAt.getTime()
+    ) {
+      return null;
+    }
+
+    if (input.name !== undefined) department.name = input.name;
+    department.updatedAt = new Date(input.now.getTime() + 1);
+
+    return department;
+  }
+
+  async updateDepartmentStatus(input: Parameters<DepartmentRepository["updateDepartmentStatus"]>[0]) {
+    const department = this.departments.get(input.departmentId);
+
+    if (
+      !department ||
+      department.organizationId !== input.organizationId ||
+      department.residenceId !== input.residenceId ||
+      department.updatedAt.getTime() !== input.expectedUpdatedAt.getTime()
+    ) {
+      return null;
+    }
+
+    department.status = input.status;
+    department.archivedAt = input.status === "closed" ? input.now : input.status === "active" ? null : department.archivedAt;
+    department.updatedAt = new Date(input.now.getTime() + 1);
+
+    return department;
+  }
+
+  async recordDepartmentAuditEvent(input: Parameters<DepartmentRepository["recordDepartmentAuditEvent"]>[0]) {
+    this.auditEvents.push(input);
+  }
+}
+
 function createResidenceTestServices() {
   const membershipRepository = new MemoryOrganizationMembershipRepository();
   const organizationRepository = new MemoryEmployerOrganizationRepository(membershipRepository);
@@ -1369,6 +1717,32 @@ function createResidenceTestServices() {
     organizationService,
     residenceService,
     residenceRepository
+  };
+}
+
+function createDepartmentTestServices() {
+  const membershipRepository = new MemoryOrganizationMembershipRepository();
+  const organizationRepository = new MemoryEmployerOrganizationRepository(membershipRepository);
+  const residenceRepository = new MemoryResidenceRepository();
+  const departmentRepository = new MemoryDepartmentRepository();
+  const membershipService = createOrganizationMembershipService(membershipRepository);
+  const authorizationService = createAuthorizationService();
+  const organizationService = createEmployerOrganizationService(organizationRepository, membershipService, authorizationService);
+  const residenceService = createResidenceService(residenceRepository, organizationRepository, membershipService, authorizationService);
+  const departmentService = createDepartmentService(
+    departmentRepository,
+    residenceRepository,
+    organizationRepository,
+    membershipService,
+    authorizationService
+  );
+
+  return {
+    membershipService,
+    organizationService,
+    residenceService,
+    departmentService,
+    departmentRepository
   };
 }
 
