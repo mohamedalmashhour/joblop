@@ -8,6 +8,7 @@ import {
   PasswordPolicyError,
   ResidenceError,
   RegistrationUnavailableError,
+  RoleDefinitionError,
   WorkGroupError,
   authenticationErrorCode,
   authenticationErrorMessage,
@@ -20,12 +21,14 @@ import {
   createEmployerOrganizationService,
   createOrganizationMembershipService,
   createResidenceService,
+  createRoleDefinitionService,
   createWorkGroupService,
   createPrismaDepartmentRepository,
   createPrismaAuthenticationRepository,
   createPrismaEmployerOrganizationRepository,
   createPrismaOrganizationMembershipRepository,
   createPrismaResidenceRepository,
+  createPrismaRoleDefinitionRepository,
   createPrismaWorkGroupRepository,
   passwordPolicyErrorCode,
   registrationUnavailableCode,
@@ -39,6 +42,7 @@ import {
   type OrganizationMembershipService,
   type ResidenceService,
   type ResidenceStatus,
+  type RoleDefinitionService,
   type WorkGroupService
 } from "@rwos/auth";
 import { getRuntimeConfig } from "@rwos/config";
@@ -53,6 +57,7 @@ export interface BuildApiOptions {
   residenceService?: ResidenceService;
   departmentService?: DepartmentService;
   workGroupService?: WorkGroupService;
+  roleDefinitionService?: RoleDefinitionService;
   resolveAuthorizationRoles?: (userId: string) => Promise<readonly AuthorizationRoleKey[]> | readonly AuthorizationRoleKey[];
 }
 
@@ -89,6 +94,8 @@ export function buildApi(options: BuildApiOptions = {}) {
       authorizationService
     );
   const workGroupService = options.workGroupService ?? createWorkGroupService(createPrismaWorkGroupRepository(prisma!), authorizationService);
+  const roleDefinitionService =
+    options.roleDefinitionService ?? createRoleDefinitionService(createPrismaRoleDefinitionRepository(prisma!), authorizationService);
   const resolveAuthorizationRoles = options.resolveAuthorizationRoles ?? (() => []);
 
   if (prisma) {
@@ -116,6 +123,10 @@ export function buildApi(options: BuildApiOptions = {}) {
 
     if (error instanceof WorkGroupError) {
       return sendWorkGroupDenied(reply);
+    }
+
+    if (error instanceof RoleDefinitionError) {
+      return sendRoleDefinitionDenied(reply);
     }
 
     throw error;
@@ -291,7 +302,7 @@ export function buildApi(options: BuildApiOptions = {}) {
       return sendWorkGroupDenied(reply);
     }
 
-    const roles = await resolveWorkGroupReadRoles(session.user.id, readOptionalString(asRecord(request.query), "organizationId"));
+    const roles = await resolveCatalogueReadRoles(session.user.id, readOptionalString(asRecord(request.query), "organizationId"));
     const workGroups = await workGroupService.listActiveWorkGroups({ session, roles });
 
     return reply.code(200).send({ workGroups: workGroups.map(serializeWorkGroup) });
@@ -304,7 +315,7 @@ export function buildApi(options: BuildApiOptions = {}) {
       return sendWorkGroupDenied(reply);
     }
 
-    const roles = await resolveWorkGroupReadRoles(session.user.id, readOptionalString(asRecord(request.query), "organizationId"));
+    const roles = await resolveCatalogueReadRoles(session.user.id, readOptionalString(asRecord(request.query), "organizationId"));
     const workGroup = await workGroupService.getActiveWorkGroup({
       session,
       roles,
@@ -394,6 +405,126 @@ export function buildApi(options: BuildApiOptions = {}) {
     });
 
     return reply.code(200).send({ workGroup: serializeWorkGroup(workGroup) });
+  });
+
+  app.get("/role-definitions", async (request, reply) => {
+    const session = await authService.validateSession(readBearerToken(request.headers.authorization));
+
+    if (!session.authenticated || !session.user) {
+      return sendRoleDefinitionDenied(reply);
+    }
+
+    const query = asRecord(request.query);
+    const roles = await resolveCatalogueReadRoles(session.user.id, readOptionalString(query, "organizationId"));
+    const roleDefinitions = await roleDefinitionService.listActiveRoleDefinitions({
+      session,
+      roles,
+      workGroupSlug: readOptionalString(query, "workGroup")
+    });
+
+    return reply.code(200).send({ roleDefinitions: roleDefinitions.map(serializeRoleDefinition) });
+  });
+
+  app.get("/role-definitions/:identifier", async (request, reply) => {
+    const session = await authService.validateSession(readBearerToken(request.headers.authorization));
+
+    if (!session.authenticated || !session.user) {
+      return sendRoleDefinitionDenied(reply);
+    }
+
+    const roles = await resolveCatalogueReadRoles(session.user.id, readOptionalString(asRecord(request.query), "organizationId"));
+    const roleDefinition = await roleDefinitionService.getActiveRoleDefinition({
+      session,
+      roles,
+      identifier: readRouteParam(request.params, "identifier")
+    });
+
+    return reply.code(200).send({ roleDefinition: serializeRoleDefinition(roleDefinition) });
+  });
+
+  app.get("/platform/role-definitions", async (request, reply) => {
+    const session = await authService.validateSession(readBearerToken(request.headers.authorization));
+
+    if (!session.authenticated || !session.user) {
+      return sendRoleDefinitionDenied(reply);
+    }
+
+    const roleDefinitions = await roleDefinitionService.listAllRoleDefinitions({
+      session,
+      roles: await resolveAuthorizationRoles(session.user.id),
+      workGroupSlug: readOptionalString(asRecord(request.query), "workGroup")
+    });
+
+    return reply.code(200).send({ roleDefinitions: roleDefinitions.map(serializeRoleDefinition) });
+  });
+
+  app.get("/platform/role-definitions/:identifier", async (request, reply) => {
+    const session = await authService.validateSession(readBearerToken(request.headers.authorization));
+
+    if (!session.authenticated || !session.user) {
+      return sendRoleDefinitionDenied(reply);
+    }
+
+    const roleDefinition = await roleDefinitionService.getRoleDefinitionForManagement({
+      session,
+      roles: await resolveAuthorizationRoles(session.user.id),
+      identifier: readRouteParam(request.params, "identifier")
+    });
+
+    return reply.code(200).send({ roleDefinition: serializeRoleDefinition(roleDefinition) });
+  });
+
+  app.patch("/platform/role-definitions/:identifier", async (request, reply) => {
+    const session = await authService.validateSession(readBearerToken(request.headers.authorization));
+
+    if (!session.authenticated || !session.user) {
+      return sendRoleDefinitionDenied(reply);
+    }
+
+    const body = asRecord(request.body);
+    const roleDefinition = await roleDefinitionService.updateRoleDefinition({
+      session,
+      roles: await resolveAuthorizationRoles(session.user.id),
+      identifier: readRouteParam(request.params, "identifier"),
+      expectedVersion: readRequiredString(body, "expectedVersion") ?? "",
+      displayLabel: readOptionalString(body, "displayLabel"),
+      displayOrder: readOptionalNumber(body, "displayOrder"),
+      localizedLabelKey: readOptionalString(body, "localizedLabelKey"),
+      qualificationSummary: readOptionalString(body, "qualificationSummary"),
+      safetyRequirementSummary: readOptionalString(body, "safetyRequirementSummary")
+    });
+
+    return reply.code(200).send({ roleDefinition: serializeRoleDefinition(roleDefinition) });
+  });
+
+  app.post("/platform/role-definitions/:identifier/status", async (request, reply) => {
+    const session = await authService.validateSession(readBearerToken(request.headers.authorization));
+
+    if (!session.authenticated || !session.user) {
+      return sendRoleDefinitionDenied(reply);
+    }
+
+    const body = asRecord(request.body);
+    const status = readRoleDefinitionLifecycleStatus(readRequiredString(body, "status"));
+    const reason = readRequiredString(body, "reason");
+
+    if (!status || !reason) {
+      return reply.code(400).send({
+        error: "RWOS_INVALID_ROLE_DEFINITION_REQUEST",
+        message: "Invalid role definition request."
+      });
+    }
+
+    const roleDefinition = await roleDefinitionService.updateRoleDefinitionStatus({
+      session,
+      roles: await resolveAuthorizationRoles(session.user.id),
+      identifier: readRouteParam(request.params, "identifier"),
+      expectedVersion: readRequiredString(body, "expectedVersion") ?? "",
+      status,
+      reason
+    });
+
+    return reply.code(200).send({ roleDefinition: serializeRoleDefinition(roleDefinition) });
   });
 
   app.get("/memberships", async (request, reply) => {
@@ -835,7 +966,7 @@ export function buildApi(options: BuildApiOptions = {}) {
     return reply.code(200).send({ department: serializeDepartment(department) });
   });
 
-  async function resolveWorkGroupReadRoles(userId: string, organizationId: string | null) {
+  async function resolveCatalogueReadRoles(userId: string, organizationId: string | null) {
     if (organizationId) {
       const decision = await membershipService.selectOrganizationContext({ userId, organizationId });
 
@@ -962,6 +1093,13 @@ function sendWorkGroupDenied(reply: FastifyReply) {
   });
 }
 
+function sendRoleDefinitionDenied(reply: FastifyReply) {
+  return reply.code(403).send({
+    error: authorizationDeniedCode,
+    message: authorizationDeniedMessage
+  });
+}
+
 function serializeMemberships(memberships: Awaited<ReturnType<OrganizationMembershipService["listMemberships"]>>) {
   return memberships.map(serializeMembership);
 }
@@ -1015,6 +1153,14 @@ function serializeWorkGroup(workGroup: Awaited<ReturnType<WorkGroupService["getA
   };
 }
 
+function serializeRoleDefinition(roleDefinition: Awaited<ReturnType<RoleDefinitionService["getActiveRoleDefinition"]>>) {
+  return {
+    ...roleDefinition,
+    createdAt: roleDefinition.createdAt.toISOString(),
+    updatedAt: roleDefinition.updatedAt.toISOString()
+  };
+}
+
 function readResidenceStatus(value: string | null): ResidenceStatus | null {
   return value === "draft" || value === "active" || value === "restricted" || value === "inactive" || value === "closed" ? value : null;
 }
@@ -1032,5 +1178,9 @@ function readDepartmentLifecycleStatus(value: string | null) {
 }
 
 function readWorkGroupLifecycleStatus(value: string | null) {
+  return value === "active" || value === "inactive" ? value : null;
+}
+
+function readRoleDefinitionLifecycleStatus(value: string | null) {
   return value === "active" || value === "inactive" ? value : null;
 }

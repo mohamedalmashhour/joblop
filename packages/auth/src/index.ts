@@ -749,6 +749,103 @@ export class WorkGroupError extends Error {
   }
 }
 
+export type RoleDefinitionStatus = "active" | "inactive" | "retired";
+export type RoleDefinitionDecisionStatus =
+  | "allow"
+  | "invalid_input"
+  | "not_found"
+  | "permission_denied"
+  | "version_conflict"
+  | "invalid_transition"
+  | "audit_failed";
+
+export interface StoredRoleDefinition {
+  id: string;
+  workGroupId: string;
+  key: string;
+  displayLabel: string;
+  status: RoleDefinitionStatus;
+  displayOrder: number;
+  localizedLabelKey: string | null;
+  qualificationSummary: string | null;
+  safetyRequirementSummary: string | null;
+  adminConfigurable: boolean;
+  createdAt: Date;
+  updatedAt: Date;
+  workGroup: StoredWorkGroup;
+}
+
+export interface PublicRoleDefinition {
+  id: string;
+  workGroupId: string;
+  workGroupSlug: string;
+  code: string;
+  slug: string;
+  displayLabel: string;
+  status: RoleDefinitionStatus;
+  displayOrder: number;
+  localizedLabelKey: string | null;
+  qualificationSummary: string | null;
+  safetyRequirementSummary: string | null;
+  adminConfigurable: boolean;
+  createdAt: Date;
+  updatedAt: Date;
+  version: string;
+}
+
+export interface RoleDefinitionDecision {
+  status: RoleDefinitionDecisionStatus;
+  allow: boolean;
+  roleDefinition: PublicRoleDefinition | null;
+  roles: readonly AuthorizationRoleKey[];
+  internalReason: string | null;
+  externalCode: typeof authorizationDeniedCode | null;
+  externalMessage: typeof authorizationDeniedMessage | null;
+}
+
+export interface RoleDefinitionRepository {
+  findRoleDefinitionById(roleDefinitionId: string): Promise<StoredRoleDefinition | null>;
+  findRoleDefinitionByKey(key: string): Promise<StoredRoleDefinition | null>;
+  listRoleDefinitions(input: { includeInactive: boolean; workGroupKey?: string | undefined }): Promise<StoredRoleDefinition[]>;
+  updateRoleDefinition(input: {
+    roleDefinitionId: string;
+    expectedUpdatedAt: Date;
+    displayLabel?: string | undefined;
+    displayOrder?: number | undefined;
+    localizedLabelKey?: string | null | undefined;
+    qualificationSummary?: string | null | undefined;
+    safetyRequirementSummary?: string | null | undefined;
+    now: Date;
+  }): Promise<StoredRoleDefinition | null>;
+  updateRoleDefinitionStatus(input: {
+    roleDefinitionId: string;
+    expectedUpdatedAt: Date;
+    status: Extract<RoleDefinitionStatus, "active" | "inactive">;
+    now: Date;
+  }): Promise<StoredRoleDefinition | null>;
+  recordRoleDefinitionAuditEvent(input: {
+    action: "role_definition.updated" | "role_definition.activated" | "role_definition.deactivated" | "role_definition.access_denied";
+    roleDefinitionId: string | null;
+    workGroupId: string | null;
+    actorUserId: string | null;
+    priorState: string | null;
+    newState: string | null;
+    reason: string | null;
+    correlationId: string;
+    createdAt: Date;
+  }): Promise<void>;
+}
+
+export class RoleDefinitionError extends Error {
+  decision: RoleDefinitionDecision;
+
+  constructor(decision: RoleDefinitionDecision) {
+    super(authorizationDeniedMessage);
+    this.name = "RoleDefinitionError";
+    this.decision = decision;
+  }
+}
+
 export class AuthorizationDeniedError extends Error {
   code = authorizationDeniedCode;
   decision: AuthorizationDecision;
@@ -837,9 +934,9 @@ export const authorizationPermissionDefinitions = [
     "role_definition.read",
     "Read the approved operational role definition catalogue.",
     "none",
-    "reserved",
-    "Low risk, but catalogue APIs are not active in this phase.",
-    "Role matrix may include it; no active endpoint."
+    "active",
+    "Low risk global catalogue read with no tenant-owned data.",
+    "Only active role definitions under active WorkGroups are exposed to ordinary users."
   ),
   permission(
     "job_request.create",
@@ -2344,6 +2441,266 @@ export function createWorkGroupService(
 
 export type WorkGroupService = ReturnType<typeof createWorkGroupService>;
 
+export function createRoleDefinitionService(
+  roleDefinitionRepository: RoleDefinitionRepository,
+  authorizationService: AuthorizationService,
+  options: { now?: () => Date } = {}
+) {
+  const now = options.now ?? (() => new Date());
+
+  return {
+    async listActiveRoleDefinitions(input: {
+      session: SessionValidationResult;
+      roles?: readonly AuthorizationRoleKey[];
+      workGroupSlug?: string | null;
+      correlationId?: string;
+    }) {
+      const decision = await authorizeRoleDefinitionOperation({
+        roleDefinitionRepository,
+        authorizationService,
+        session: input.session,
+        roles: input.roles ?? [],
+        permission: "role_definition.read",
+        correlationId: input.correlationId,
+        now: now()
+      });
+
+      if (!decision.allow) throw new RoleDefinitionError(decision);
+
+      return (await roleDefinitionRepository.listRoleDefinitions({
+        includeInactive: false,
+        workGroupKey: input.workGroupSlug ? workGroupSlugToKey(input.workGroupSlug) : undefined
+      }))
+        .filter((roleDefinition) => roleDefinition.workGroup.status === "active")
+        .map(toPublicRoleDefinition);
+    },
+
+    async getActiveRoleDefinition(input: {
+      session: SessionValidationResult;
+      roles?: readonly AuthorizationRoleKey[];
+      identifier: string;
+      correlationId?: string;
+    }) {
+      const roleDefinition = await roleDefinitionRepository.findRoleDefinitionByKey(roleDefinitionIdentifierToKey(input.identifier));
+      const decision = await authorizeRoleDefinitionOperation({
+        roleDefinitionRepository,
+        authorizationService,
+        session: input.session,
+        roles: input.roles ?? [],
+        permission: "role_definition.read",
+        roleDefinition,
+        correlationId: input.correlationId,
+        now: now()
+      });
+
+      if (!decision.allow || !decision.roleDefinition || decision.roleDefinition.status !== "active" || roleDefinition?.workGroup.status !== "active") {
+        throw new RoleDefinitionError(decision.allow ? roleDefinitionDeny("not_found", "role_definition_not_found", null, input.roles ?? []) : decision);
+      }
+
+      return decision.roleDefinition;
+    },
+
+    async listAllRoleDefinitions(input: {
+      session: SessionValidationResult;
+      roles?: readonly AuthorizationRoleKey[];
+      workGroupSlug?: string | null;
+      correlationId?: string;
+    }) {
+      const decision = await authorizeRoleDefinitionOperation({
+        roleDefinitionRepository,
+        authorizationService,
+        session: input.session,
+        roles: input.roles ?? [],
+        permission: "platform.supervise",
+        platform: true,
+        correlationId: input.correlationId,
+        now: now()
+      });
+
+      if (!decision.allow) throw new RoleDefinitionError(decision);
+
+      return (await roleDefinitionRepository.listRoleDefinitions({
+        includeInactive: true,
+        workGroupKey: input.workGroupSlug ? workGroupSlugToKey(input.workGroupSlug) : undefined
+      })).map(toPublicRoleDefinition);
+    },
+
+    async getRoleDefinitionForManagement(input: {
+      session: SessionValidationResult;
+      roles?: readonly AuthorizationRoleKey[];
+      identifier: string;
+      correlationId?: string;
+    }) {
+      const roleDefinition = await roleDefinitionRepository.findRoleDefinitionByKey(roleDefinitionIdentifierToKey(input.identifier));
+      const decision = await authorizeRoleDefinitionOperation({
+        roleDefinitionRepository,
+        authorizationService,
+        session: input.session,
+        roles: input.roles ?? [],
+        permission: "platform.supervise",
+        platform: true,
+        roleDefinition,
+        correlationId: input.correlationId,
+        now: now()
+      });
+
+      if (!decision.allow || !decision.roleDefinition) {
+        throw new RoleDefinitionError(decision.allow ? roleDefinitionDeny("not_found", "role_definition_not_found", null, input.roles ?? []) : decision);
+      }
+
+      return decision.roleDefinition;
+    },
+
+    async updateRoleDefinition(input: {
+      session: SessionValidationResult;
+      roles?: readonly AuthorizationRoleKey[];
+      identifier: string;
+      expectedVersion: string;
+      displayLabel?: string | null;
+      displayOrder?: number | null;
+      localizedLabelKey?: string | null;
+      qualificationSummary?: string | null;
+      safetyRequirementSummary?: string | null;
+      correlationId?: string;
+    }) {
+      const currentTime = now();
+      const roleDefinition = await roleDefinitionRepository.findRoleDefinitionByKey(roleDefinitionIdentifierToKey(input.identifier));
+      const decision = await authorizeRoleDefinitionOperation({
+        roleDefinitionRepository,
+        authorizationService,
+        session: input.session,
+        roles: input.roles ?? [],
+        permission: "platform.supervise",
+        platform: true,
+        roleDefinition,
+        correlationId: input.correlationId,
+        now: currentTime
+      });
+
+      if (!decision.allow || !roleDefinition) {
+        throw new RoleDefinitionError(decision.allow ? roleDefinitionDeny("not_found", "role_definition_not_found", null, input.roles ?? []) : decision);
+      }
+
+      const expectedUpdatedAt = parseCatalogueVersion(input.expectedVersion);
+      const displayLabel = input.displayLabel == null ? undefined : normalizeCatalogueText(input.displayLabel, 2, 120);
+      const displayOrder = input.displayOrder == null ? undefined : input.displayOrder;
+      const localizedLabelKey = input.localizedLabelKey === undefined ? undefined : normalizeOptionalResidenceText(input.localizedLabelKey, 120);
+      const qualificationSummary = input.qualificationSummary === undefined ? undefined : normalizeOptionalResidenceText(input.qualificationSummary, 500);
+      const safetyRequirementSummary = input.safetyRequirementSummary === undefined ? undefined : normalizeOptionalResidenceText(input.safetyRequirementSummary, 500);
+
+      if (!expectedUpdatedAt) {
+        throw new RoleDefinitionError(roleDefinitionDeny("version_conflict", "invalid_version", toPublicRoleDefinition(roleDefinition), input.roles ?? []));
+      }
+
+      if (input.displayLabel != null && !displayLabel) {
+        throw new RoleDefinitionError(roleDefinitionDeny("invalid_input", "invalid_role_definition_label", toPublicRoleDefinition(roleDefinition), input.roles ?? []));
+      }
+
+      if (displayOrder !== undefined && (!Number.isInteger(displayOrder) || displayOrder < 1 || displayOrder > 10_000)) {
+        throw new RoleDefinitionError(
+          roleDefinitionDeny("invalid_input", "invalid_role_definition_display_order", toPublicRoleDefinition(roleDefinition), input.roles ?? [])
+        );
+      }
+
+      const updated = await roleDefinitionRepository.updateRoleDefinition({
+        roleDefinitionId: roleDefinition.id,
+        expectedUpdatedAt,
+        displayLabel,
+        displayOrder,
+        localizedLabelKey,
+        qualificationSummary,
+        safetyRequirementSummary,
+        now: currentTime
+      });
+
+      if (!updated) {
+        throw new RoleDefinitionError(roleDefinitionDeny("version_conflict", "stale_version", toPublicRoleDefinition(roleDefinition), input.roles ?? []));
+      }
+
+      await recordRoleDefinitionAudit(roleDefinitionRepository, {
+        action: "role_definition.updated",
+        roleDefinitionId: updated.id,
+        workGroupId: updated.workGroupId,
+        actorUserId: input.session.user?.id ?? null,
+        priorState: roleDefinition.status,
+        newState: updated.status,
+        reason: null,
+        correlationId: input.correlationId,
+        createdAt: currentTime
+      });
+
+      return toPublicRoleDefinition(updated);
+    },
+
+    async updateRoleDefinitionStatus(input: {
+      session: SessionValidationResult;
+      roles?: readonly AuthorizationRoleKey[];
+      identifier: string;
+      expectedVersion: string;
+      status: Extract<RoleDefinitionStatus, "active" | "inactive">;
+      reason: string;
+      correlationId?: string;
+    }) {
+      const currentTime = now();
+      const roleDefinition = await roleDefinitionRepository.findRoleDefinitionByKey(roleDefinitionIdentifierToKey(input.identifier));
+      const decision = await authorizeRoleDefinitionOperation({
+        roleDefinitionRepository,
+        authorizationService,
+        session: input.session,
+        roles: input.roles ?? [],
+        permission: "platform.supervise",
+        platform: true,
+        roleDefinition,
+        correlationId: input.correlationId,
+        now: currentTime
+      });
+
+      if (!decision.allow || !roleDefinition) {
+        throw new RoleDefinitionError(decision.allow ? roleDefinitionDeny("not_found", "role_definition_not_found", null, input.roles ?? []) : decision);
+      }
+
+      if (!isAllowedRoleDefinitionTransition(roleDefinition.status, input.status)) {
+        throw new RoleDefinitionError(
+          roleDefinitionDeny("invalid_transition", "invalid_role_definition_status_transition", toPublicRoleDefinition(roleDefinition), input.roles ?? [])
+        );
+      }
+
+      const expectedUpdatedAt = parseCatalogueVersion(input.expectedVersion);
+
+      if (!expectedUpdatedAt) {
+        throw new RoleDefinitionError(roleDefinitionDeny("version_conflict", "invalid_version", toPublicRoleDefinition(roleDefinition), input.roles ?? []));
+      }
+
+      const updated = await roleDefinitionRepository.updateRoleDefinitionStatus({
+        roleDefinitionId: roleDefinition.id,
+        expectedUpdatedAt,
+        status: input.status,
+        now: currentTime
+      });
+
+      if (!updated) {
+        throw new RoleDefinitionError(roleDefinitionDeny("version_conflict", "stale_version", toPublicRoleDefinition(roleDefinition), input.roles ?? []));
+      }
+
+      await recordRoleDefinitionAudit(roleDefinitionRepository, {
+        action: input.status === "active" ? "role_definition.activated" : "role_definition.deactivated",
+        roleDefinitionId: updated.id,
+        workGroupId: updated.workGroupId,
+        actorUserId: input.session.user?.id ?? null,
+        priorState: roleDefinition.status,
+        newState: updated.status,
+        reason: normalizeOptionalResidenceText(input.reason, 240),
+        correlationId: input.correlationId,
+        createdAt: currentTime
+      });
+
+      return toPublicRoleDefinition(updated);
+    }
+  };
+}
+
+export type RoleDefinitionService = ReturnType<typeof createRoleDefinitionService>;
+
 export const authenticationErrorCode = "RWOS_AUTHENTICATION_FAILED";
 export const authenticationErrorMessage = "Authentication failed.";
 export const authenticationRequiredCode = "RWOS_AUTHENTICATION_REQUIRED";
@@ -3739,6 +4096,96 @@ export function createPrismaWorkGroupRepository(prismaClient: unknown): WorkGrou
 
     async recordWorkGroupAuditEvent(input) {
       await recordPrismaWorkGroupAudit(prisma, input);
+    }
+  };
+}
+
+type PrismaRoleDefinitionClient = Pick<PrismaEmployerOrganizationClient, "auditActorReference" | "auditEvent"> & {
+  roleDefinition: {
+    findUnique(args: { where: { id: string } | { key: string }; include: { workGroup: true } }): Promise<StoredRoleDefinition | null>;
+    findMany(args: {
+      where?: { status?: RoleDefinitionStatus | undefined; workGroup?: { key: string } | undefined };
+      include: { workGroup: true };
+      orderBy: [{ workGroup: { displayOrder: "asc" } }, { displayOrder: "asc" }, { displayLabel: "asc" }, { key: "asc" }];
+    }): Promise<StoredRoleDefinition[]>;
+    updateMany(args: {
+      where: { id: string; updatedAt: Date };
+      data: {
+        displayLabel?: string | undefined;
+        displayOrder?: number | undefined;
+        localizedLabelKey?: string | null | undefined;
+        qualificationSummary?: string | null | undefined;
+        safetyRequirementSummary?: string | null | undefined;
+        status?: RoleDefinitionStatus | undefined;
+        updatedAt: Date;
+      };
+    }): Promise<{ count: number }>;
+  };
+};
+
+export function createPrismaRoleDefinitionRepository(prismaClient: unknown): RoleDefinitionRepository {
+  const prisma = prismaClient as PrismaRoleDefinitionClient;
+
+  return {
+    findRoleDefinitionById(roleDefinitionId) {
+      return prisma.roleDefinition.findUnique({
+        where: { id: roleDefinitionId },
+        include: { workGroup: true }
+      });
+    },
+
+    findRoleDefinitionByKey(key) {
+      return prisma.roleDefinition.findUnique({
+        where: { key },
+        include: { workGroup: true }
+      });
+    },
+
+    listRoleDefinitions(input) {
+      return prisma.roleDefinition.findMany({
+        where: {
+          ...(input.includeInactive ? {} : { status: "active" as const }),
+          ...(input.workGroupKey ? { workGroup: { key: input.workGroupKey } } : {})
+        },
+        include: { workGroup: true },
+        orderBy: [{ workGroup: { displayOrder: "asc" } }, { displayOrder: "asc" }, { displayLabel: "asc" }, { key: "asc" }]
+      });
+    },
+
+    async updateRoleDefinition(input) {
+      const result = await prisma.roleDefinition.updateMany({
+        where: { id: input.roleDefinitionId, updatedAt: input.expectedUpdatedAt },
+        data: {
+          displayLabel: input.displayLabel,
+          displayOrder: input.displayOrder,
+          localizedLabelKey: input.localizedLabelKey,
+          qualificationSummary: input.qualificationSummary,
+          safetyRequirementSummary: input.safetyRequirementSummary,
+          updatedAt: input.now
+        }
+      });
+
+      if (result.count !== 1) return null;
+
+      return this.findRoleDefinitionById(input.roleDefinitionId);
+    },
+
+    async updateRoleDefinitionStatus(input) {
+      const result = await prisma.roleDefinition.updateMany({
+        where: { id: input.roleDefinitionId, updatedAt: input.expectedUpdatedAt },
+        data: {
+          status: input.status,
+          updatedAt: input.now
+        }
+      });
+
+      if (result.count !== 1) return null;
+
+      return this.findRoleDefinitionById(input.roleDefinitionId);
+    },
+
+    async recordRoleDefinitionAuditEvent(input) {
+      await recordPrismaRoleDefinitionAudit(prisma, input);
     }
   };
 }
@@ -5222,6 +5669,161 @@ async function recordPrismaWorkGroupAudit(
   });
 }
 
+function toPublicRoleDefinition(roleDefinition: StoredRoleDefinition): PublicRoleDefinition {
+  return {
+    id: roleDefinition.id,
+    workGroupId: roleDefinition.workGroupId,
+    workGroupSlug: workGroupKeyToSlug(roleDefinition.workGroup.key),
+    code: roleDefinitionKeyToCode(roleDefinition.key),
+    slug: roleDefinitionKeyToSlug(roleDefinition.key),
+    displayLabel: roleDefinition.displayLabel,
+    status: roleDefinition.status,
+    displayOrder: roleDefinition.displayOrder,
+    localizedLabelKey: roleDefinition.localizedLabelKey,
+    qualificationSummary: roleDefinition.qualificationSummary,
+    safetyRequirementSummary: roleDefinition.safetyRequirementSummary,
+    adminConfigurable: roleDefinition.adminConfigurable,
+    createdAt: roleDefinition.createdAt,
+    updatedAt: roleDefinition.updatedAt,
+    version: roleDefinition.updatedAt.toISOString()
+  };
+}
+
+async function authorizeRoleDefinitionOperation(input: {
+  roleDefinitionRepository: RoleDefinitionRepository;
+  authorizationService: AuthorizationService;
+  session: SessionValidationResult;
+  roles: readonly AuthorizationRoleKey[];
+  permission: AuthorizationPermissionKey;
+  roleDefinition?: StoredRoleDefinition | null;
+  platform?: boolean | undefined;
+  correlationId?: string | undefined;
+  now: Date;
+}): Promise<RoleDefinitionDecision> {
+  const decision = await input.authorizationService.decide({
+    session: input.session,
+    roles: input.roles,
+    permission: input.permission,
+    platformContext: { platform: input.platform === true },
+    ...(input.correlationId ? { correlationId: input.correlationId } : {})
+  });
+
+  if (!decision.allow) {
+    const roleDefinitionDecision = roleDefinitionDeny(
+      "permission_denied",
+      decision.internalReason ?? "permission_denied",
+      input.roleDefinition ? toPublicRoleDefinition(input.roleDefinition) : null,
+      input.roles
+    );
+
+    await auditRoleDefinitionDenial(input.roleDefinitionRepository, {
+      decision: roleDefinitionDecision,
+      actorUserId: input.session.user?.id ?? null,
+      correlationId: input.correlationId,
+      createdAt: input.now
+    });
+
+    return roleDefinitionDecision;
+  }
+
+  return {
+    status: "allow",
+    allow: true,
+    roleDefinition: input.roleDefinition ? toPublicRoleDefinition(input.roleDefinition) : null,
+    roles: input.roles,
+    internalReason: null,
+    externalCode: null,
+    externalMessage: null
+  };
+}
+
+function roleDefinitionDeny(
+  status: RoleDefinitionDecisionStatus,
+  internalReason: string,
+  roleDefinition: PublicRoleDefinition | null,
+  roles: readonly AuthorizationRoleKey[]
+): RoleDefinitionDecision {
+  return {
+    status,
+    allow: false,
+    roleDefinition,
+    roles,
+    internalReason,
+    externalCode: authorizationDeniedCode,
+    externalMessage: authorizationDeniedMessage
+  };
+}
+
+function isAllowedRoleDefinitionTransition(current: RoleDefinitionStatus, next: Extract<RoleDefinitionStatus, "active" | "inactive">) {
+  if (current === "retired") return false;
+  return current !== next;
+}
+
+async function auditRoleDefinitionDenial(
+  repository: RoleDefinitionRepository,
+  input: {
+    decision: RoleDefinitionDecision;
+    actorUserId: string | null;
+    correlationId?: string | undefined;
+    createdAt: Date;
+  }
+) {
+  await recordRoleDefinitionAudit(repository, {
+    action: "role_definition.access_denied",
+    roleDefinitionId: input.decision.roleDefinition?.id ?? null,
+    workGroupId: input.decision.roleDefinition?.workGroupId ?? null,
+    actorUserId: input.actorUserId,
+    priorState: input.decision.roleDefinition?.status ?? null,
+    newState: "denied",
+    reason: input.decision.internalReason,
+    correlationId: input.correlationId,
+    createdAt: input.createdAt
+  });
+}
+
+async function recordRoleDefinitionAudit(
+  repository: RoleDefinitionRepository,
+  input: Omit<Parameters<RoleDefinitionRepository["recordRoleDefinitionAuditEvent"]>[0], "correlationId"> & {
+    correlationId?: string | undefined;
+  }
+) {
+  await repository.recordRoleDefinitionAuditEvent({
+    ...input,
+    correlationId: input.correlationId ?? createRoleDefinitionCorrelationId()
+  });
+}
+
+async function recordPrismaRoleDefinitionAudit(
+  prisma: Pick<PrismaRoleDefinitionClient, "auditActorReference" | "auditEvent">,
+  input: Parameters<RoleDefinitionRepository["recordRoleDefinitionAuditEvent"]>[0]
+) {
+  const actorReference = await prisma.auditActorReference.create({
+    data: {
+      actorType: input.actorUserId ? "user" : "system",
+      ...(input.actorUserId ? { userId: input.actorUserId } : {}),
+      displayLabel: input.actorUserId ? "RoleDefinition actor" : "RoleDefinition boundary"
+    }
+  });
+
+  await prisma.auditEvent.create({
+    data: {
+      actorReferenceId: actorReference.id,
+      organizationId: null,
+      entityType: "role_definition",
+      entityId: input.roleDefinitionId ?? nilEntityId,
+      entityPublicReference: input.roleDefinitionId,
+      action: input.action,
+      priorState: input.priorState,
+      newState: input.newState,
+      reason: input.reason,
+      source: "api",
+      correlationId: input.correlationId,
+      policyVersion: "role-definitions-foundation-v1",
+      createdAt: input.createdAt
+    }
+  });
+}
+
 function workGroupKeyToSlug(key: string) {
   return key.replace(/_/g, "-");
 }
@@ -5237,6 +5839,10 @@ function normalizeCatalogueText(value: string, minLength: number, maxLength: num
 }
 
 function parseWorkGroupVersion(version: string) {
+  return parseCatalogueVersion(version);
+}
+
+function parseCatalogueVersion(version: string) {
   const parsed = new Date(version);
 
   return Number.isNaN(parsed.getTime()) ? null : parsed;
@@ -5244,6 +5850,22 @@ function parseWorkGroupVersion(version: string) {
 
 function createWorkGroupCorrelationId() {
   return `work_group_${randomBytes(12).toString("base64url")}`;
+}
+
+function roleDefinitionKeyToCode(key: string) {
+  return key.trim().toUpperCase();
+}
+
+function roleDefinitionKeyToSlug(key: string) {
+  return key.trim().toLowerCase().replace(/_/g, "-");
+}
+
+function roleDefinitionIdentifierToKey(identifier: string) {
+  return identifier.trim().toLowerCase().replace(/-/g, "_");
+}
+
+function createRoleDefinitionCorrelationId() {
+  return `role_definition_${randomBytes(12).toString("base64url")}`;
 }
 
 async function scrypt(password: string, salt: Buffer, keyLength: number, options: { N: number; r: number; p: number }) {

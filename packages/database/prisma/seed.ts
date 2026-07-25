@@ -32,31 +32,32 @@ export async function seedDevelopmentCatalogue(client = createPrismaClient()) {
      */
 
     for (const roleDefinition of workGroup.roles) {
-      await client.roleDefinition.upsert({
-        where: { key: roleDefinition.key },
-        create: {
-          key: roleDefinition.key,
-          displayLabel: roleDefinition.displayLabel,
-          displayOrder: roleDefinition.displayOrder,
-          localizedLabelKey: roleDefinition.localizedLabelKey,
-          qualificationSummary: roleDefinition.qualificationSummary,
-          safetyRequirementSummary: roleDefinition.safetyRequirementSummary,
-          adminConfigurable: false,
-          status: "active",
-          workGroupId: storedWorkGroup.id
-        },
-        update: {
-          displayLabel: roleDefinition.displayLabel,
-          displayOrder: roleDefinition.displayOrder,
-          localizedLabelKey: roleDefinition.localizedLabelKey,
-          qualificationSummary: roleDefinition.qualificationSummary,
-          safetyRequirementSummary: roleDefinition.safetyRequirementSummary,
-          adminConfigurable: false,
-          status: "active",
-          workGroupId: storedWorkGroup.id
-        }
+      const existingRoleDefinition = await client.roleDefinition.findUnique({
+        where: { key: roleDefinition.key }
       });
+
+      if (!existingRoleDefinition) {
+        await client.roleDefinition.create({
+          data: {
+            key: roleDefinition.key,
+            displayLabel: roleDefinition.displayLabel,
+            displayOrder: roleDefinition.displayOrder,
+            localizedLabelKey: roleDefinition.localizedLabelKey,
+            qualificationSummary: roleDefinition.qualificationSummary,
+          safetyRequirementSummary: roleDefinition.safetyRequirementSummary,
+            adminConfigurable: false,
+            status: "active",
+            workGroupId: storedWorkGroup.id
+          }
+        });
+      }
     }
+    /*
+     * RoleDefinition catalogue identity and presentation are owner-governed.
+     * Seeding creates missing foundation records but does not overwrite
+     * existing labels, order, summaries, inactive lifecycle state, or the
+     * accepted WorkGroup relationship.
+     */
   }
 
   for (const accessRole of phase01AccessRoles) {
