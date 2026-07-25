@@ -254,6 +254,21 @@ enum WorkerOfferResponseType {
   declined
 }
 
+enum AssignmentStatus {
+  pending_validation
+  confirmed
+  worker_acknowledged
+  ready_for_attendance
+  in_attendance_window
+  attendance_handoff
+  worker_withdrawn
+  employer_cancelled
+  platform_cancelled
+  replacement_required
+  expired_before_start
+  closed
+}
+
 model User {
   id              String     @id @default(uuid()) @db.Uuid
   publicId        String     @unique @map("public_id")
@@ -292,6 +307,10 @@ model User {
   cancelledWorkerOffers         WorkerOffer[]                @relation("WorkerOfferCancelledByUser")
   createdWorkerOfferTerms       WorkerOfferTermsVersion[]    @relation("WorkerOfferTermsCreatedByUser")
   createdWorkerOfferDeliveries  WorkerOfferDeliveryAttempt[] @relation("WorkerOfferDeliveryCreatedByUser")
+  createdAssignments            Assignment[]                 @relation("AssignmentCreatedByUser")
+  updatedAssignments            Assignment[]                 @relation("AssignmentUpdatedByUser")
+  confirmedAssignments          Assignment[]                 @relation("AssignmentConfirmedByUser")
+  cancelledAssignments          Assignment[]                 @relation("AssignmentCancelledByUser")
   auditActorReferences          AuditActorReference[]
 
   @@index([emailNormalized], map: "users_email_normalized_idx")
@@ -361,6 +380,7 @@ model EmployerOrganization {
   jobRequests          JobRequest[]
   dispatchReviews      DispatchReview[]
   workerOffers         WorkerOffer[]
+  assignments          Assignment[]
   auditActorReferences AuditActorReference[]
   auditEvents          AuditEvent[]
 
@@ -411,6 +431,7 @@ model Residence {
   jobRequests     JobRequest[]
   dispatchReviews DispatchReview[]
   workerOffers    WorkerOffer[]
+  assignments     Assignment[]
 
   @@unique([organizationId, id], map: "residences_organization_id_id_key")
   @@index([organizationId, status], map: "residences_organization_id_status_idx")
@@ -436,6 +457,7 @@ model Department {
   jobRequests     JobRequest[]
   dispatchReviews DispatchReview[]
   workerOffers    WorkerOffer[]
+  assignments     Assignment[]
 
   @@unique([organizationId, id], map: "departments_organization_id_id_key")
   @@unique([residenceId, id], map: "departments_residence_id_id_key")
@@ -463,6 +485,7 @@ model WorkGroup {
   jobRequests      JobRequest[]
   dispatchReviews  DispatchReview[]
   workerOfferTerms WorkerOfferTermsVersion[]
+  assignments      Assignment[]
 
   @@index([status, displayOrder], map: "work_groups_status_display_order_idx")
   @@map("work_groups")
@@ -486,6 +509,7 @@ model RoleDefinition {
   jobRequests      JobRequest[]
   dispatchReviews  DispatchReview[]
   workerOfferTerms WorkerOfferTermsVersion[]
+  assignments      Assignment[]
 
   @@unique([workGroupId, id], map: "role_definitions_work_group_id_id_key")
   @@index([workGroupId, status, displayOrder], map: "role_definitions_work_group_id_status_display_order_idx")
@@ -601,6 +625,7 @@ model JobRequest {
   updatedBy       User?                @relation("JobRequestUpdatedByUser", fields: [updatedByUserId], references: [id], onDelete: SetNull)
   dispatchReviews DispatchReview[]
   workerOffers    WorkerOffer[]
+  assignments     Assignment[]
 
   @@index([jobRequestNumber], map: "job_requests_job_request_number_idx")
   @@index([organizationId, status, createdAt], map: "job_requests_organization_id_status_created_at_idx")
@@ -649,6 +674,7 @@ model DispatchReview {
   updatedBy        User?                @relation("DispatchReviewUpdatedByUser", fields: [updatedByUserId], references: [id], onDelete: SetNull)
   candidates       DispatchCandidate[]
   workerOffers     WorkerOffer[]
+  assignments      Assignment[]
 
   @@index([jobRequestId], map: "dispatch_reviews_job_request_id_idx")
   @@index([organizationId, state, updatedAt], map: "dispatch_reviews_organization_id_state_updated_at_idx")
@@ -706,9 +732,10 @@ model WorkerIdentity {
   updatedAt         DateTime             @updatedAt @map("updated_at") @db.Timestamptz(3)
   version           Int                  @default(1)
 
-  user      User                  @relation(fields: [userId], references: [id], onDelete: Restrict)
-  offers    WorkerOffer[]
-  responses WorkerOfferResponse[]
+  user        User                  @relation(fields: [userId], references: [id], onDelete: Restrict)
+  offers      WorkerOffer[]
+  responses   WorkerOfferResponse[]
+  assignments Assignment[]
 
   @@index([status], map: "worker_identities_status_idx")
   @@map("worker_identities")
@@ -752,6 +779,7 @@ model WorkerOffer {
   termsVersions       WorkerOfferTermsVersion[]    @relation("WorkerOfferTerms")
   deliveryAttempts    WorkerOfferDeliveryAttempt[]
   responses           WorkerOfferResponse[]
+  assignment          Assignment?
   createdBy           User                         @relation("WorkerOfferCreatedByUser", fields: [createdByUserId], references: [id], onDelete: Restrict)
   updatedBy           User?                        @relation("WorkerOfferUpdatedByUser", fields: [updatedByUserId], references: [id], onDelete: SetNull)
   approvedBy          User?                        @relation("WorkerOfferApprovedByUser", fields: [approvedByUserId], references: [id], onDelete: SetNull)
@@ -789,6 +817,7 @@ model WorkerOfferTermsVersion {
   roleDefinition  RoleDefinition        @relation(fields: [workGroupId, roleDefinitionId], references: [workGroupId, id], onDelete: Restrict)
   createdBy       User                  @relation("WorkerOfferTermsCreatedByUser", fields: [createdByUserId], references: [id], onDelete: Restrict)
   responses       WorkerOfferResponse[]
+  assignments     Assignment[]
 
   @@unique([workerOfferId, versionNumber], map: "worker_offer_terms_offer_version_key")
   @@index([workerOfferId, createdAt], map: "worker_offer_terms_worker_offer_id_created_at_idx")
@@ -831,6 +860,73 @@ model WorkerOfferResponse {
   @@unique([workerOfferId], map: "worker_offer_responses_worker_offer_id_key")
   @@index([workerIdentityId, createdAt], map: "worker_offer_responses_worker_identity_id_created_at_idx")
   @@map("worker_offer_responses")
+}
+
+model Assignment {
+  id                             String           @id @default(uuid()) @db.Uuid
+  jobRequestId                   String           @map("job_request_id") @db.Uuid
+  dispatchReviewId               String           @map("dispatch_review_id") @db.Uuid
+  workerOfferId                  String           @unique @map("worker_offer_id") @db.Uuid
+  workerOfferTermsVersionId      String           @map("worker_offer_terms_version_id") @db.Uuid
+  workerIdentityId               String           @map("worker_identity_id") @db.Uuid
+  organizationId                 String           @map("organization_id") @db.Uuid
+  residenceId                    String           @map("residence_id") @db.Uuid
+  departmentId                   String           @map("department_id") @db.Uuid
+  workGroupId                    String           @map("work_group_id") @db.Uuid
+  roleDefinitionId               String           @map("role_definition_id") @db.Uuid
+  status                         AssignmentStatus @default(confirmed)
+  confirmedStartAt               DateTime         @map("confirmed_start_at") @db.Timestamptz(3)
+  confirmedEndAt                 DateTime         @map("confirmed_end_at") @db.Timestamptz(3)
+  timezone                       String
+  confirmedTitle                 String           @map("confirmed_title")
+  confirmedRoleSummary           String?          @map("confirmed_role_summary")
+  confirmedWorksiteSummary       String?          @map("confirmed_worksite_summary")
+  confirmedDepartmentSummary     String?          @map("confirmed_department_summary")
+  confirmedResponsibilitySummary String?          @map("confirmed_responsibility_summary")
+  confirmedPolicySummary         String?          @map("confirmed_policy_summary")
+  confirmedCompensationSummary   String?          @map("confirmed_compensation_summary")
+  validationSnapshot             Json?            @map("validation_snapshot")
+  capacityCheckedAt              DateTime         @map("capacity_checked_at") @db.Timestamptz(3)
+  conflictCheckedAt              DateTime         @map("conflict_checked_at") @db.Timestamptz(3)
+  confirmedAt                    DateTime         @map("confirmed_at") @db.Timestamptz(3)
+  workerAcknowledgedAt           DateTime?        @map("worker_acknowledged_at") @db.Timestamptz(3)
+  readyForAttendanceAt           DateTime?        @map("ready_for_attendance_at") @db.Timestamptz(3)
+  attendanceWindowStartedAt      DateTime?        @map("attendance_window_started_at") @db.Timestamptz(3)
+  attendanceHandoffAt            DateTime?        @map("attendance_handoff_at") @db.Timestamptz(3)
+  workerWithdrawnAt              DateTime?        @map("worker_withdrawn_at") @db.Timestamptz(3)
+  cancelledAt                    DateTime?        @map("cancelled_at") @db.Timestamptz(3)
+  replacementRequiredAt          DateTime?        @map("replacement_required_at") @db.Timestamptz(3)
+  closedAt                       DateTime?        @map("closed_at") @db.Timestamptz(3)
+  cancellationReasonCategory     String?          @map("cancellation_reason_category")
+  createdByUserId                String           @map("created_by_user_id") @db.Uuid
+  updatedByUserId                String?          @map("updated_by_user_id") @db.Uuid
+  confirmedByUserId              String?          @map("confirmed_by_user_id") @db.Uuid
+  cancelledByUserId              String?          @map("cancelled_by_user_id") @db.Uuid
+  createdAt                      DateTime         @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt                      DateTime         @updatedAt @map("updated_at") @db.Timestamptz(3)
+  version                        Int              @default(1)
+
+  jobRequest              JobRequest              @relation(fields: [jobRequestId], references: [id], onDelete: Restrict)
+  dispatchReview          DispatchReview          @relation(fields: [dispatchReviewId], references: [id], onDelete: Restrict)
+  workerOffer             WorkerOffer             @relation(fields: [workerOfferId], references: [id], onDelete: Restrict)
+  workerOfferTermsVersion WorkerOfferTermsVersion @relation(fields: [workerOfferTermsVersionId], references: [id], onDelete: Restrict)
+  workerIdentity          WorkerIdentity          @relation(fields: [workerIdentityId], references: [id], onDelete: Restrict)
+  organization            EmployerOrganization    @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  residence               Residence               @relation(fields: [organizationId, residenceId], references: [organizationId, id], onDelete: Restrict)
+  department              Department              @relation(fields: [organizationId, residenceId, departmentId], references: [organizationId, residenceId, id], onDelete: Restrict)
+  workGroup               WorkGroup               @relation(fields: [workGroupId], references: [id], onDelete: Restrict)
+  roleDefinition          RoleDefinition          @relation(fields: [workGroupId, roleDefinitionId], references: [workGroupId, id], onDelete: Restrict)
+  createdBy               User                    @relation("AssignmentCreatedByUser", fields: [createdByUserId], references: [id], onDelete: Restrict)
+  updatedBy               User?                   @relation("AssignmentUpdatedByUser", fields: [updatedByUserId], references: [id], onDelete: SetNull)
+  confirmedBy             User?                   @relation("AssignmentConfirmedByUser", fields: [confirmedByUserId], references: [id], onDelete: SetNull)
+  cancelledBy             User?                   @relation("AssignmentCancelledByUser", fields: [cancelledByUserId], references: [id], onDelete: SetNull)
+
+  @@index([jobRequestId, status], map: "assignments_job_request_id_status_idx")
+  @@index([dispatchReviewId, status], map: "assignments_dispatch_review_id_status_idx")
+  @@index([organizationId, status, updatedAt], map: "assignments_organization_id_status_updated_at_idx")
+  @@index([workerIdentityId, status, confirmedStartAt], map: "assignments_worker_identity_id_status_start_idx")
+  @@index([residenceId, departmentId, confirmedStartAt], map: "assignments_residence_department_start_idx")
+  @@map("assignments")
 }
 
 model AuditActorReference {
