@@ -57,6 +57,17 @@ export const phase01PermissionKeys = [
   "worker_offer.audit_read",
   "worker_offer.respond",
   "worker_offer.supervise",
+  "assignment.create",
+  "assignment.read",
+  "assignment.cancel",
+  "assignment.withdraw",
+  "assignment.mark_replacement_required",
+  "assignment.attendance_handoff",
+  "assignment.audit_read",
+  "assignment.worker_read",
+  "assignment.worker_acknowledge",
+  "assignment.worker_withdraw",
+  "assignment.supervise",
   "audit.read",
   "platform.supervise"
 ] as const;
@@ -113,6 +124,13 @@ export const phase01RolePermissionMappings = [
     "worker_offer.withdraw",
     "worker_offer.cancel",
     "worker_offer.audit_read",
+    "assignment.create",
+    "assignment.read",
+    "assignment.cancel",
+    "assignment.withdraw",
+    "assignment.mark_replacement_required",
+    "assignment.attendance_handoff",
+    "assignment.audit_read",
     "audit.read"
   ]),
   rolePermissions("ORGANIZATION_OWNER", [
@@ -130,7 +148,8 @@ export const phase01RolePermissionMappings = [
     "job_request.read",
     "job_request.update_draft",
     "job_request.submit",
-    "job_request.cancel"
+    "job_request.cancel",
+    "assignment.read"
   ]),
   rolePermissions("ORGANIZATION_ADMINISTRATOR", [
     "organization.read",
@@ -146,7 +165,8 @@ export const phase01RolePermissionMappings = [
     "job_request.read",
     "job_request.update_draft",
     "job_request.submit",
-    "job_request.cancel"
+    "job_request.cancel",
+    "assignment.read"
   ]),
   rolePermissions("ORGANIZATION_STAFF", [
     "organization.read",
@@ -158,9 +178,15 @@ export const phase01RolePermissionMappings = [
     "job_request.read",
     "job_request.update_draft",
     "job_request.submit",
-    "job_request.cancel"
+    "job_request.cancel",
+    "assignment.read"
   ]),
-  rolePermissions("WORKER_ACCESS", ["worker_offer.respond"]),
+  rolePermissions("WORKER_ACCESS", [
+    "worker_offer.respond",
+    "assignment.worker_read",
+    "assignment.worker_acknowledge",
+    "assignment.worker_withdraw"
+  ]),
   rolePermissions("DISPATCHER", [
     "dispatch.create",
     "dispatch.read",
@@ -178,7 +204,14 @@ export const phase01RolePermissionMappings = [
     "worker_offer.send",
     "worker_offer.withdraw",
     "worker_offer.cancel",
-    "worker_offer.audit_read"
+    "worker_offer.audit_read",
+    "assignment.create",
+    "assignment.read",
+    "assignment.cancel",
+    "assignment.withdraw",
+    "assignment.mark_replacement_required",
+    "assignment.attendance_handoff",
+    "assignment.audit_read"
   ])
 ] as const;
 
