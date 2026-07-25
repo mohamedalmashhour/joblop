@@ -257,6 +257,131 @@ export class OrganizationMembershipError extends Error {
   }
 }
 
+export type EmployerOrganizationStatus = "invited" | "pending_review" | "active" | "restricted" | "suspended" | "closed";
+export type EmployerOrganizationDecisionStatus =
+  | "allow"
+  | "invalid_input"
+  | "not_found"
+  | "membership_denied"
+  | "permission_denied"
+  | "organization_inactive"
+  | "version_conflict"
+  | "duplicate_organization"
+  | "bootstrap_failed";
+
+export interface StoredEmployerOrganization {
+  id: string;
+  publicId: string;
+  legalName: string;
+  displayName: string;
+  status: EmployerOrganizationStatus;
+  createdByUserId: string | null;
+  reviewedByUserId: string | null;
+  createdAt: Date;
+  updatedAt: Date;
+  restrictedAt: Date | null;
+  suspendedAt: Date | null;
+  closedAt: Date | null;
+}
+
+export interface PublicEmployerOrganization {
+  id: string;
+  publicId: string;
+  legalName: string;
+  displayName: string;
+  status: EmployerOrganizationStatus;
+  createdByUserId: string | null;
+  reviewedByUserId: string | null;
+  createdAt: Date;
+  updatedAt: Date;
+  restrictedAt: Date | null;
+  suspendedAt: Date | null;
+  closedAt: Date | null;
+  version: string;
+}
+
+export interface EmployerOrganizationDecision {
+  status: EmployerOrganizationDecisionStatus;
+  allow: boolean;
+  organization: PublicEmployerOrganization | null;
+  membership: PublicOrganizationMembership | null;
+  roles: readonly AuthorizationRoleKey[];
+  internalReason: string | null;
+  externalCode: typeof authorizationDeniedCode | null;
+  externalMessage: typeof authorizationDeniedMessage | null;
+}
+
+export interface CreateEmployerOrganizationInput {
+  actorUserId: string;
+  legalName: string;
+  displayName: string;
+  correlationId?: string;
+}
+
+export interface UpdateEmployerOrganizationInput {
+  actorUserId: string;
+  organizationId: string;
+  expectedVersion: string;
+  legalName?: string | null;
+  displayName?: string | null;
+  correlationId?: string;
+}
+
+export interface EmployerOrganizationRepository {
+  findOrganizationById(organizationId: string): Promise<StoredEmployerOrganization | null>;
+  findOrganizationByPublicId(publicId: string): Promise<StoredEmployerOrganization | null>;
+  createOrganizationWithOwnerMembership(input: {
+    publicId: string;
+    legalName: string;
+    displayName: string;
+    actorUserId: string;
+    ownerRoleKey: AuthorizationRoleKey;
+    correlationId: string;
+    now: Date;
+  }): Promise<{ organization: StoredEmployerOrganization; membership: StoredOrganizationMembership }>;
+  updateOrganization(input: {
+    organizationId: string;
+    expectedUpdatedAt: Date;
+    legalName?: string | undefined;
+    displayName?: string | undefined;
+    actorUserId: string;
+    now: Date;
+  }): Promise<StoredEmployerOrganization | null>;
+  updateOrganizationStatus(input: {
+    organizationId: string;
+    expectedUpdatedAt: Date;
+    status: EmployerOrganizationStatus;
+    actorUserId: string;
+    now: Date;
+  }): Promise<StoredEmployerOrganization | null>;
+  recordOrganizationAuditEvent(input: {
+    action:
+      | "organization.created"
+      | "organization.updated"
+      | "organization.suspended"
+      | "organization.reactivated"
+      | "organization.closed"
+      | "organization.access_denied";
+    organizationId: string | null;
+    actorUserId: string | null;
+    priorState: string | null;
+    newState: string | null;
+    reason: string | null;
+    correlationId: string;
+    createdAt: Date;
+  }): Promise<void>;
+}
+
+export class EmployerOrganizationError extends Error {
+  decision: EmployerOrganizationDecision;
+
+  constructor(decision: EmployerOrganizationDecision) {
+    super(authorizationDeniedMessage);
+    this.name = "EmployerOrganizationError";
+    this.decision = decision;
+  }
+}
+
 export class AuthorizationDeniedError extends Error {
   code = authorizationDeniedCode;
   decision: AuthorizationDecision;
@@ -271,19 +396,19 @@ export class AuthorizationDeniedError extends Error {
 export const authorizationPermissionDefinitions = [
   permission(
     "organization.read",
-    "Read organization summary records within a future organization context.",
+    "Read organization summary records within an organization context.",
     "organization",
-    "reserved",
+    "active",
     "May expose organization information if context is not enforced.",
-    "Deny without organization context; do not activate an organization API yet."
+    "Deny without organization context."
   ),
   permission(
     "organization.update",
-    "Update organization summary records within a future organization context.",
+    "Update organization summary records within an organization context.",
     "organization",
-    "reserved",
+    "active",
     "Could alter organization data if granted outside ownership controls.",
-    "Organization Owner only in matrix; no active endpoint."
+    "Organization Owner only in matrix."
   ),
   permission(
     "residence.read",
@@ -810,6 +935,233 @@ export function createOrganizationMembershipService(
 }
 
 export type OrganizationMembershipService = ReturnType<typeof createOrganizationMembershipService>;
+
+export function createEmployerOrganizationService(
+  repository: EmployerOrganizationRepository,
+  membershipService: OrganizationMembershipService,
+  authorizationService: AuthorizationService,
+  options: { now?: () => Date } = {}
+) {
+  const now = options.now ?? (() => new Date());
+
+  return {
+    async createOrganization(input: CreateEmployerOrganizationInput) {
+      const currentTime = now();
+      const correlationId = input.correlationId ?? createOrganizationCorrelationId();
+      const legalName = normalizeOrganizationName(input.legalName);
+      const displayName = normalizeOrganizationName(input.displayName);
+
+      if (!legalName || !displayName) {
+        const decision = organizationDeny("invalid_input", "invalid_organization_name", null, null, []);
+        await auditOrganizationDenial(repository, {
+          decision,
+          actorUserId: input.actorUserId,
+          correlationId,
+          createdAt: currentTime
+        });
+        throw new EmployerOrganizationError(decision);
+      }
+
+      try {
+        const created = await repository.createOrganizationWithOwnerMembership({
+          publicId: createPublicOrganizationId(),
+          legalName,
+          displayName,
+          actorUserId: input.actorUserId,
+          ownerRoleKey: "ORGANIZATION_OWNER",
+          correlationId,
+          now: currentTime
+        });
+
+        return {
+          organization: toPublicOrganization(created.organization),
+          membership: toPublicMembership(created.membership),
+          organizationContext: {
+            organizationId: created.organization.id,
+            roles: membershipRoleKeys(created.membership)
+          }
+        };
+      } catch (error) {
+        const decision = organizationDeny(
+          error instanceof Error && error.message === "RWOS_ORGANIZATION_DUPLICATE"
+            ? "duplicate_organization"
+            : "bootstrap_failed",
+          error instanceof Error ? error.message : "organization_bootstrap_failed",
+          null,
+          null,
+          []
+        );
+        await auditOrganizationDenial(repository, {
+          decision,
+          actorUserId: input.actorUserId,
+          correlationId,
+          createdAt: currentTime
+        });
+        throw new EmployerOrganizationError(decision);
+      }
+    },
+
+    async getOrganization(input: { actorUserId: string; organizationId: string; correlationId?: string }) {
+      const organization = await repository.findOrganizationById(input.organizationId);
+      const decision = await authorizeOrganizationOperation({
+        repository,
+        membershipService,
+        authorizationService,
+        actorUserId: input.actorUserId,
+        organization,
+        organizationId: input.organizationId,
+        permission: "organization.read",
+        correlationId: input.correlationId,
+        now: now()
+      });
+
+      if (!decision.allow || !decision.organization) {
+        throw new EmployerOrganizationError(decision);
+      }
+
+      return decision.organization;
+    },
+
+    async getOrganizationStatus(input: { actorUserId: string; organizationId: string; correlationId?: string }) {
+      return this.getOrganization(input);
+    },
+
+    async updateOrganization(input: UpdateEmployerOrganizationInput) {
+      const currentTime = now();
+      const organization = await repository.findOrganizationById(input.organizationId);
+      const decision = await authorizeOrganizationOperation({
+        repository,
+        membershipService,
+        authorizationService,
+        actorUserId: input.actorUserId,
+        organization,
+        organizationId: input.organizationId,
+        permission: "organization.update",
+        correlationId: input.correlationId,
+        now: currentTime
+      });
+
+      if (!decision.allow || !decision.organization) {
+        throw new EmployerOrganizationError(decision);
+      }
+
+      const legalName = input.legalName === undefined || input.legalName === null ? undefined : normalizeOrganizationName(input.legalName);
+      const displayName =
+        input.displayName === undefined || input.displayName === null ? undefined : normalizeOrganizationName(input.displayName);
+
+      if ((input.legalName != null && !legalName) || (input.displayName != null && !displayName)) {
+        throw new EmployerOrganizationError(
+          organizationDeny("invalid_input", "invalid_organization_name", decision.organization, decision.membership, decision.roles)
+        );
+      }
+
+      const expectedUpdatedAt = parseOrganizationVersion(input.expectedVersion);
+
+      if (!expectedUpdatedAt) {
+        throw new EmployerOrganizationError(
+          organizationDeny("version_conflict", "invalid_version", decision.organization, decision.membership, decision.roles)
+        );
+      }
+
+      const updated = await repository.updateOrganization({
+        organizationId: input.organizationId,
+        expectedUpdatedAt,
+        legalName,
+        displayName,
+        actorUserId: input.actorUserId,
+        now: currentTime
+      });
+
+      if (!updated) {
+        throw new EmployerOrganizationError(
+          organizationDeny("version_conflict", "stale_version", decision.organization, decision.membership, decision.roles)
+        );
+      }
+
+      await recordOrganizationAudit(repository, {
+        action: "organization.updated",
+        organizationId: updated.id,
+        actorUserId: input.actorUserId,
+        priorState: organization?.status ?? null,
+        newState: updated.status,
+        reason: null,
+        correlationId: input.correlationId,
+        createdAt: currentTime
+      });
+
+      return toPublicOrganization(updated);
+    },
+
+    async updateOrganizationStatus(input: {
+      actorUserId: string;
+      organizationId: string;
+      expectedVersion: string;
+      status: Extract<EmployerOrganizationStatus, "active" | "suspended" | "closed">;
+      correlationId?: string;
+    }) {
+      const currentTime = now();
+      const organization = await repository.findOrganizationById(input.organizationId);
+      const decision = await authorizeOrganizationOperation({
+        repository,
+        membershipService,
+        authorizationService,
+        actorUserId: input.actorUserId,
+        organization,
+        organizationId: input.organizationId,
+        permission: "organization.update",
+        correlationId: input.correlationId,
+        now: currentTime,
+        allowInactiveSelfStatusChange: true
+      });
+
+      if (!decision.allow || !decision.organization) {
+        throw new EmployerOrganizationError(decision);
+      }
+
+      const expectedUpdatedAt = parseOrganizationVersion(input.expectedVersion);
+
+      if (!expectedUpdatedAt) {
+        throw new EmployerOrganizationError(
+          organizationDeny("version_conflict", "invalid_version", decision.organization, decision.membership, decision.roles)
+        );
+      }
+
+      const updated = await repository.updateOrganizationStatus({
+        organizationId: input.organizationId,
+        expectedUpdatedAt,
+        status: input.status,
+        actorUserId: input.actorUserId,
+        now: currentTime
+      });
+
+      if (!updated) {
+        throw new EmployerOrganizationError(
+          organizationDeny("version_conflict", "stale_version", decision.organization, decision.membership, decision.roles)
+        );
+      }
+
+      await recordOrganizationAudit(repository, {
+        action:
+          input.status === "suspended"
+            ? "organization.suspended"
+            : input.status === "closed"
+              ? "organization.closed"
+              : "organization.reactivated",
+        organizationId: updated.id,
+        actorUserId: input.actorUserId,
+        priorState: organization?.status ?? null,
+        newState: updated.status,
+        reason: null,
+        correlationId: input.correlationId,
+        createdAt: currentTime
+      });
+
+      return toPublicOrganization(updated);
+    }
+  };
+}
+
+export type EmployerOrganizationService = ReturnType<typeof createEmployerOrganizationService>;
 
 export const authenticationErrorCode = "RWOS_AUTHENTICATION_FAILED";
 export const authenticationErrorMessage = "Authentication failed.";
@@ -1505,7 +1857,7 @@ type PrismaMembershipClient = {
         organizationId: string;
         userId: string;
         invitedByUserId: string | null;
-        status: "invited";
+        status: OrganizationMembershipStatus;
         createdAt: Date;
         expiredAt: Date | null;
         membershipRoles: {
@@ -1551,7 +1903,7 @@ type PrismaMembershipClient = {
       data: {
         actorReferenceId: string;
         organizationId: string | null;
-        entityType: "organization_membership";
+        entityType: string;
         entityId: string;
         entityPublicReference: string | null;
         action: string;
@@ -1693,6 +2045,176 @@ export function createPrismaOrganizationMembershipRepository(prismaClient: unkno
           createdAt: input.createdAt
         }
       });
+    }
+  };
+}
+
+type PrismaEmployerOrganizationClient = PrismaMembershipClient & {
+  $transaction<T>(callback: (transaction: PrismaEmployerOrganizationClient) => Promise<T>): Promise<T>;
+  employerOrganization: {
+    findUnique(args: { where: { id?: string; publicId?: string } }): Promise<StoredEmployerOrganization | null>;
+    findFirst(args: { where: { legalName: string } }): Promise<StoredEmployerOrganization | null>;
+    create(args: {
+      data: {
+        publicId: string;
+        legalName: string;
+        displayName: string;
+        status: EmployerOrganizationStatus;
+        createdByUserId: string;
+        createdAt: Date;
+        updatedAt: Date;
+      };
+    }): Promise<StoredEmployerOrganization>;
+    updateMany(args: {
+      where: { id: string; updatedAt: Date };
+      data: {
+        legalName?: string | undefined;
+        displayName?: string | undefined;
+        status?: EmployerOrganizationStatus | undefined;
+        restrictedAt?: Date | null | undefined;
+        suspendedAt?: Date | null | undefined;
+        closedAt?: Date | null | undefined;
+        updatedAt: Date;
+      };
+    }): Promise<{ count: number }>;
+  };
+};
+
+export function createPrismaEmployerOrganizationRepository(prismaClient: unknown): EmployerOrganizationRepository {
+  const prisma = prismaClient as PrismaEmployerOrganizationClient;
+
+  return {
+    findOrganizationById(organizationId) {
+      return prisma.employerOrganization.findUnique({
+        where: { id: organizationId }
+      });
+    },
+
+    findOrganizationByPublicId(publicId) {
+      return prisma.employerOrganization.findUnique({
+        where: { publicId }
+      });
+    },
+
+    async createOrganizationWithOwnerMembership(input) {
+      return prisma.$transaction(async (transaction) => {
+        const existing = await transaction.employerOrganization.findFirst({
+          where: { legalName: input.legalName }
+        });
+
+        if (existing) {
+          throw new Error("RWOS_ORGANIZATION_DUPLICATE");
+        }
+
+        const organization = await transaction.employerOrganization.create({
+          data: {
+            publicId: input.publicId,
+            legalName: input.legalName,
+            displayName: input.displayName,
+            status: "active",
+            createdByUserId: input.actorUserId,
+            createdAt: input.now,
+            updatedAt: input.now
+          }
+        });
+        const accessRoles = await resolveMembershipAccessRoles(transaction, [input.ownerRoleKey]);
+
+        if (accessRoles.length !== 1) {
+          throw new Error("RWOS_ORGANIZATION_OWNER_ROLE_MISSING");
+        }
+
+        const membership = await transaction.organizationMembership.create({
+          data: {
+            organizationId: organization.id,
+            userId: input.actorUserId,
+            invitedByUserId: input.actorUserId,
+            status: "active",
+            createdAt: input.now,
+            expiredAt: null,
+            membershipRoles: {
+              create: [{ accessRoleDefinitionId: accessRoles[0]!.id }]
+            }
+          },
+          include: membershipInclude
+        });
+
+        await recordPrismaOrganizationAudit(transaction, {
+          action: "organization.created",
+          organizationId: organization.id,
+          actorUserId: input.actorUserId,
+          priorState: null,
+          newState: organization.status,
+          reason: null,
+          correlationId: input.correlationId,
+          createdAt: input.now
+        });
+        await recordPrismaMembershipAudit(transaction, {
+          action: "membership.activated",
+          membershipId: membership.id,
+          organizationId: organization.id,
+          userId: input.actorUserId,
+          actorUserId: input.actorUserId,
+          reason: "owner_membership_bootstrap",
+          priorState: null,
+          newState: "active",
+          correlationId: input.correlationId,
+          createdAt: input.now
+        });
+        await recordPrismaMembershipAudit(transaction, {
+          action: "membership.access_role_changed",
+          membershipId: membership.id,
+          organizationId: organization.id,
+          userId: input.actorUserId,
+          actorUserId: input.actorUserId,
+          reason: "organization_owner_bootstrap",
+          priorState: null,
+          newState: input.ownerRoleKey,
+          correlationId: input.correlationId,
+          createdAt: input.now
+        });
+
+        return { organization, membership };
+      });
+    },
+
+    async updateOrganization(input) {
+      const result = await prisma.employerOrganization.updateMany({
+        where: { id: input.organizationId, updatedAt: input.expectedUpdatedAt },
+        data: {
+          legalName: input.legalName,
+          displayName: input.displayName,
+          updatedAt: input.now
+        }
+      });
+
+      if (result.count !== 1) {
+        return null;
+      }
+
+      return this.findOrganizationById(input.organizationId);
+    },
+
+    async updateOrganizationStatus(input) {
+      const result = await prisma.employerOrganization.updateMany({
+        where: { id: input.organizationId, updatedAt: input.expectedUpdatedAt },
+        data: {
+          status: input.status,
+          restrictedAt: input.status === "active" ? null : undefined,
+          suspendedAt: input.status === "suspended" ? input.now : input.status === "active" ? null : undefined,
+          closedAt: input.status === "closed" ? input.now : undefined,
+          updatedAt: input.now
+        }
+      });
+
+      if (result.count !== 1) {
+        return null;
+      }
+
+      return this.findOrganizationById(input.organizationId);
+    },
+
+    async recordOrganizationAuditEvent(input) {
+      await recordPrismaOrganizationAudit(prisma, input);
     }
   };
 }
@@ -2094,6 +2616,278 @@ function membershipStatusUpdate(status: OrganizationMembershipStatus, now: Date)
 
 function createMembershipCorrelationId() {
   return `membership_${randomBytes(12).toString("base64url")}`;
+}
+
+function toPublicOrganization(organization: StoredEmployerOrganization): PublicEmployerOrganization {
+  return {
+    id: organization.id,
+    publicId: organization.publicId,
+    legalName: organization.legalName,
+    displayName: organization.displayName,
+    status: organization.status,
+    createdByUserId: organization.createdByUserId,
+    reviewedByUserId: organization.reviewedByUserId,
+    createdAt: organization.createdAt,
+    updatedAt: organization.updatedAt,
+    restrictedAt: organization.restrictedAt,
+    suspendedAt: organization.suspendedAt,
+    closedAt: organization.closedAt,
+    version: organization.updatedAt.toISOString()
+  };
+}
+
+async function authorizeOrganizationOperation(input: {
+  repository: EmployerOrganizationRepository;
+  membershipService: OrganizationMembershipService;
+  authorizationService: AuthorizationService;
+  actorUserId: string;
+  organization: StoredEmployerOrganization | null;
+  organizationId: string;
+  permission: AuthorizationPermissionKey;
+  correlationId?: string | undefined;
+  now: Date;
+  allowInactiveSelfStatusChange?: boolean | undefined;
+}): Promise<EmployerOrganizationDecision> {
+  if (!input.organization) {
+    const decision = organizationDeny("not_found", "organization_not_found", null, null, []);
+    await auditOrganizationDenial(input.repository, {
+      decision,
+      actorUserId: input.actorUserId,
+      correlationId: input.correlationId,
+      createdAt: input.now
+    });
+    return decision;
+  }
+
+  const membershipDecision = await input.membershipService.selectOrganizationContext({
+    userId: input.actorUserId,
+    organizationId: input.organizationId,
+    ...(input.correlationId ? { correlationId: input.correlationId } : {})
+  });
+
+  if (!membershipDecision.allow || !membershipDecision.membership) {
+    const decision = organizationDeny(
+      "membership_denied",
+      membershipDecision.internalReason ?? "membership_denied",
+      toPublicOrganization(input.organization),
+      membershipDecision.membership,
+      membershipDecision.roles
+    );
+    await auditOrganizationDenial(input.repository, {
+      decision,
+      actorUserId: input.actorUserId,
+      correlationId: input.correlationId,
+      createdAt: input.now
+    });
+    return decision;
+  }
+
+  const authorizationDecision = await input.authorizationService.decide({
+    session: {
+      authenticated: true,
+      user: {
+        id: input.actorUserId,
+        publicId: "organization_context_user",
+        emailNormalized: "organization-context@example.invalid",
+        displayName: null,
+        status: "active"
+      },
+      session: {
+        id: "organization-context-session",
+        userId: input.actorUserId,
+        expiresAt: input.now
+      }
+    },
+    roles: membershipDecision.roles,
+    permission: input.permission,
+    resourceContext: { organizationId: input.organizationId },
+    ...(input.correlationId ? { correlationId: input.correlationId } : {})
+  });
+
+  if (!authorizationDecision.allow) {
+    const decision = organizationDeny(
+      "permission_denied",
+      authorizationDecision.internalReason ?? "permission_denied",
+      toPublicOrganization(input.organization),
+      membershipDecision.membership,
+      membershipDecision.roles
+    );
+    await auditOrganizationDenial(input.repository, {
+      decision,
+      actorUserId: input.actorUserId,
+      correlationId: input.correlationId,
+      createdAt: input.now
+    });
+    return decision;
+  }
+
+  if (organizationBlocksOrdinaryOperations(input.organization.status) && !input.allowInactiveSelfStatusChange) {
+    const decision = organizationDeny(
+      "organization_inactive",
+      `organization_${input.organization.status}`,
+      toPublicOrganization(input.organization),
+      membershipDecision.membership,
+      membershipDecision.roles
+    );
+    await auditOrganizationDenial(input.repository, {
+      decision,
+      actorUserId: input.actorUserId,
+      correlationId: input.correlationId,
+      createdAt: input.now
+    });
+    return decision;
+  }
+
+  return {
+    status: "allow",
+    allow: true,
+    organization: toPublicOrganization(input.organization),
+    membership: membershipDecision.membership,
+    roles: membershipDecision.roles,
+    internalReason: null,
+    externalCode: null,
+    externalMessage: null
+  };
+}
+
+function organizationBlocksOrdinaryOperations(status: EmployerOrganizationStatus) {
+  return status === "suspended" || status === "closed" || status === "restricted";
+}
+
+function organizationDeny(
+  status: Exclude<EmployerOrganizationDecisionStatus, "allow">,
+  internalReason: string,
+  organization: PublicEmployerOrganization | null,
+  membership: PublicOrganizationMembership | null,
+  roles: readonly AuthorizationRoleKey[]
+): EmployerOrganizationDecision {
+  return {
+    status,
+    allow: false,
+    organization,
+    membership,
+    roles,
+    internalReason,
+    externalCode: authorizationDeniedCode,
+    externalMessage: authorizationDeniedMessage
+  };
+}
+
+async function auditOrganizationDenial(
+  repository: EmployerOrganizationRepository,
+  input: {
+    decision: EmployerOrganizationDecision;
+    actorUserId: string | null;
+    correlationId?: string | undefined;
+    createdAt: Date;
+  }
+) {
+  await recordOrganizationAudit(repository, {
+    action: "organization.access_denied",
+    organizationId: input.decision.organization?.id ?? null,
+    actorUserId: input.actorUserId,
+    priorState: input.decision.organization?.status ?? null,
+    newState: "denied",
+    reason: input.decision.internalReason,
+    correlationId: input.correlationId,
+    createdAt: input.createdAt
+  });
+}
+
+async function recordOrganizationAudit(
+  repository: EmployerOrganizationRepository,
+  input: Omit<Parameters<EmployerOrganizationRepository["recordOrganizationAuditEvent"]>[0], "correlationId"> & {
+    correlationId?: string | undefined;
+  }
+) {
+  await repository.recordOrganizationAuditEvent({
+    ...input,
+    correlationId: input.correlationId ?? createOrganizationCorrelationId()
+  });
+}
+
+async function recordPrismaOrganizationAudit(
+  prisma: Pick<PrismaEmployerOrganizationClient, "auditActorReference" | "auditEvent">,
+  input: Parameters<EmployerOrganizationRepository["recordOrganizationAuditEvent"]>[0]
+) {
+  const actorReference = await prisma.auditActorReference.create({
+    data: {
+      actorType: input.actorUserId ? "user" : "system",
+      ...(input.actorUserId ? { userId: input.actorUserId } : {}),
+      ...(input.organizationId ? { organizationId: input.organizationId } : {}),
+      displayLabel: input.actorUserId ? "Organization actor" : "Organization boundary"
+    }
+  });
+
+  await prisma.auditEvent.create({
+    data: {
+      actorReferenceId: actorReference.id,
+      organizationId: input.organizationId,
+      entityType: "employer_organization",
+      entityId: input.organizationId ?? nilEntityId,
+      entityPublicReference: input.organizationId,
+      action: input.action,
+      priorState: input.priorState,
+      newState: input.newState,
+      reason: input.reason,
+      source: "api",
+      correlationId: input.correlationId,
+      policyVersion: "employer-organization-foundation-v1",
+      createdAt: input.createdAt
+    }
+  });
+}
+
+async function recordPrismaMembershipAudit(
+  prisma: Pick<PrismaMembershipClient, "auditActorReference" | "auditEvent">,
+  input: Parameters<OrganizationMembershipRepository["recordMembershipAuditEvent"]>[0]
+) {
+  const actorReference = await prisma.auditActorReference.create({
+    data: {
+      actorType: input.actorUserId ? "user" : "system",
+      ...(input.actorUserId ? { userId: input.actorUserId } : {}),
+      ...(input.organizationId ? { organizationId: input.organizationId } : {}),
+      displayLabel: input.actorUserId ? "Membership actor" : "Membership boundary"
+    }
+  });
+
+  await prisma.auditEvent.create({
+    data: {
+      actorReferenceId: actorReference.id,
+      organizationId: input.organizationId,
+      entityType: "organization_membership",
+      entityId: input.membershipId ?? nilEntityId,
+      entityPublicReference: input.userId,
+      action: input.action,
+      priorState: input.priorState,
+      newState: input.newState,
+      reason: input.reason,
+      source: "api",
+      correlationId: input.correlationId,
+      policyVersion: "organization-membership-foundation-v1",
+      createdAt: input.createdAt
+    }
+  });
+}
+
+function normalizeOrganizationName(value: string) {
+  const normalized = value.trim().replace(/\s+/g, " ");
+
+  return normalized.length >= 2 && normalized.length <= 160 ? normalized : "";
+}
+
+function parseOrganizationVersion(version: string) {
+  const parsed = new Date(version);
+
+  return Number.isNaN(parsed.getTime()) ? null : parsed;
+}
+
+function createPublicOrganizationId() {
+  return `org_${randomBytes(12).toString("base64url")}`;
+}
+
+function createOrganizationCorrelationId() {
+  return `org_${randomBytes(12).toString("base64url")}`;
 }
 
 async function scrypt(password: string, salt: Buffer, keyLength: number, options: { N: number; r: number; p: number }) {

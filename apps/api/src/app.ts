@@ -2,6 +2,7 @@ import Fastify, { type FastifyReply } from "fastify";
 import {
   AuthenticationError,
   AuthenticationRequiredError,
+  EmployerOrganizationError,
   OrganizationMembershipError,
   PasswordPolicyError,
   RegistrationUnavailableError,
@@ -12,8 +13,10 @@ import {
   authorizationDeniedMessage,
   createAuthenticationService,
   createAuthorizationService,
+  createEmployerOrganizationService,
   createOrganizationMembershipService,
   createPrismaAuthenticationRepository,
+  createPrismaEmployerOrganizationRepository,
   createPrismaOrganizationMembershipRepository,
   passwordPolicyErrorCode,
   registrationUnavailableCode,
@@ -21,6 +24,7 @@ import {
   type AuthorizationRoleKey,
   type AuthorizationService,
   type AuthenticationService,
+  type EmployerOrganizationService,
   type OrganizationMembershipService
 } from "@rwos/auth";
 import { getRuntimeConfig } from "@rwos/config";
@@ -31,6 +35,7 @@ export interface BuildApiOptions {
   authService?: AuthenticationService;
   authorizationService?: AuthorizationService;
   membershipService?: OrganizationMembershipService;
+  organizationService?: EmployerOrganizationService;
   resolveAuthorizationRoles?: (userId: string) => Promise<readonly AuthorizationRoleKey[]> | readonly AuthorizationRoleKey[];
 }
 
@@ -46,6 +51,13 @@ export function buildApi(options: BuildApiOptions = {}) {
   const authorizationService = options.authorizationService ?? createAuthorizationService();
   const membershipService =
     options.membershipService ?? createOrganizationMembershipService(createPrismaOrganizationMembershipRepository(prisma!));
+  const organizationService =
+    options.organizationService ??
+    createEmployerOrganizationService(
+      createPrismaEmployerOrganizationRepository(prisma!),
+      membershipService,
+      authorizationService
+    );
   const resolveAuthorizationRoles = options.resolveAuthorizationRoles ?? (() => []);
 
   if (prisma) {
@@ -57,6 +69,10 @@ export function buildApi(options: BuildApiOptions = {}) {
   app.setErrorHandler((error, _request, reply) => {
     if (error instanceof OrganizationMembershipError) {
       return sendMembershipDenied(reply);
+    }
+
+    if (error instanceof EmployerOrganizationError) {
+      return sendOrganizationDenied(reply);
     }
 
     throw error;
@@ -330,6 +346,111 @@ export function buildApi(options: BuildApiOptions = {}) {
     });
   });
 
+  app.post("/organizations", async (request, reply) => {
+    const session = await authService.validateSession(readBearerToken(request.headers.authorization));
+
+    if (!session.authenticated || !session.user) {
+      return sendOrganizationDenied(reply);
+    }
+
+    const body = asRecord(request.body);
+    const legalName = readRequiredString(body, "legalName");
+    const displayName = readRequiredString(body, "displayName");
+
+    if (!legalName || !displayName) {
+      return reply.code(400).send({
+        error: "RWOS_INVALID_ORGANIZATION_REQUEST",
+        message: "Invalid organization request."
+      });
+    }
+
+    const created = await organizationService.createOrganization({
+      actorUserId: session.user.id,
+      legalName,
+      displayName
+    });
+
+    return reply.code(201).send({
+      organization: serializeOrganization(created.organization),
+      membership: serializeMembership(created.membership),
+      organizationContext: created.organizationContext
+    });
+  });
+
+  app.get("/organizations/current", async (request, reply) => {
+    const session = await authService.validateSession(readBearerToken(request.headers.authorization));
+
+    if (!session.authenticated || !session.user) {
+      return sendOrganizationDenied(reply);
+    }
+
+    const organizationId = readOptionalString(asRecord(request.query), "organizationId");
+
+    if (!organizationId) {
+      return sendOrganizationDenied(reply);
+    }
+
+    const organization = await organizationService.getOrganization({
+      actorUserId: session.user.id,
+      organizationId
+    });
+
+    return reply.code(200).send({ organization: serializeOrganization(organization) });
+  });
+
+  app.get("/organizations/:organizationId", async (request, reply) => {
+    const session = await authService.validateSession(readBearerToken(request.headers.authorization));
+
+    if (!session.authenticated || !session.user) {
+      return sendOrganizationDenied(reply);
+    }
+
+    const organization = await organizationService.getOrganization({
+      actorUserId: session.user.id,
+      organizationId: readRouteParam(request.params, "organizationId")
+    });
+
+    return reply.code(200).send({ organization: serializeOrganization(organization) });
+  });
+
+  app.get("/organizations/:organizationId/status", async (request, reply) => {
+    const session = await authService.validateSession(readBearerToken(request.headers.authorization));
+
+    if (!session.authenticated || !session.user) {
+      return sendOrganizationDenied(reply);
+    }
+
+    const organization = await organizationService.getOrganizationStatus({
+      actorUserId: session.user.id,
+      organizationId: readRouteParam(request.params, "organizationId")
+    });
+
+    return reply.code(200).send({
+      organizationId: organization.id,
+      status: organization.status,
+      version: organization.version
+    });
+  });
+
+  app.patch("/organizations/:organizationId", async (request, reply) => {
+    const session = await authService.validateSession(readBearerToken(request.headers.authorization));
+
+    if (!session.authenticated || !session.user) {
+      return sendOrganizationDenied(reply);
+    }
+
+    const body = asRecord(request.body);
+    const organization = await organizationService.updateOrganization({
+      actorUserId: session.user.id,
+      organizationId: readRouteParam(request.params, "organizationId"),
+      expectedVersion: readRequiredString(body, "expectedVersion") ?? "",
+      legalName: readOptionalString(body, "legalName"),
+      displayName: readOptionalString(body, "displayName")
+    });
+
+    return reply.code(200).send({ organization: serializeOrganization(organization) });
+  });
+
   return app;
 }
 
@@ -414,6 +535,13 @@ function sendMembershipDenied(reply: FastifyReply) {
   });
 }
 
+function sendOrganizationDenied(reply: FastifyReply) {
+  return reply.code(403).send({
+    error: authorizationDeniedCode,
+    message: authorizationDeniedMessage
+  });
+}
+
 function serializeMemberships(memberships: Awaited<ReturnType<OrganizationMembershipService["listMemberships"]>>) {
   return memberships.map(serializeMembership);
 }
@@ -427,5 +555,16 @@ function serializeMembership(membership: Awaited<ReturnType<OrganizationMembersh
     revokedAt: membership.revokedAt?.toISOString() ?? null,
     expiresAt: membership.expiresAt?.toISOString() ?? null,
     updatedAt: membership.updatedAt.toISOString()
+  };
+}
+
+function serializeOrganization(organization: Awaited<ReturnType<EmployerOrganizationService["getOrganization"]>>) {
+  return {
+    ...organization,
+    createdAt: organization.createdAt.toISOString(),
+    updatedAt: organization.updatedAt.toISOString(),
+    restrictedAt: organization.restrictedAt?.toISOString() ?? null,
+    suspendedAt: organization.suspendedAt?.toISOString() ?? null,
+    closedAt: organization.closedAt?.toISOString() ?? null
   };
 }
