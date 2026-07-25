@@ -37,10 +37,12 @@ describe("Phase 01 development catalogue", () => {
     expect(phase01PermissionKeys).toContain("worker_offer.respond");
     expect(phase01PermissionKeys).toContain("assignment.create");
     expect(phase01PermissionKeys).toContain("assignment.worker_acknowledge");
+    expect(phase01PermissionKeys).toContain("attendance.create");
+    expect(phase01PermissionKeys).toContain("attendance.worker_check_in");
     expect(phase01PermissionKeys).toContain("audit.read");
     expect(phase01PermissionKeys).toContain("job_request.admin_review");
     expect(phase01PermissionKeys).not.toContain("job_request.admin_read");
-    expect(phase01PermissionKeys).not.toContain("attendance.create");
+    expect(phase01PermissionKeys).not.toContain("timesheet.create");
     expect(phase01PermissionKeys).not.toContain("payment.execute");
   });
 
@@ -59,16 +61,22 @@ describe("Phase 01 development catalogue", () => {
     expect(platformAdmin?.permissionKeys).toContain("job_request.approve_for_dispatch");
     expect(platformAdmin?.permissionKeys).toContain("worker_offer.approve");
     expect(platformAdmin?.permissionKeys).toContain("assignment.create");
+    expect(platformAdmin?.permissionKeys).toContain("attendance.create");
     expect(dispatcher?.permissionKeys).toContain("dispatch.prepare_offer");
     expect(dispatcher?.permissionKeys).toContain("worker_offer.send");
     expect(dispatcher?.permissionKeys).toContain("assignment.attendance_handoff");
+    expect(dispatcher?.permissionKeys).toContain("attendance.audit_read");
     expect(dispatcher?.permissionKeys).not.toContain("worker_offer.supervise");
     expect(dispatcher?.permissionKeys).not.toContain("assignment.supervise");
+    expect(dispatcher?.permissionKeys).not.toContain("attendance.supervise");
     expect(worker?.permissionKeys).toEqual([
       "worker_offer.respond",
       "assignment.worker_read",
       "assignment.worker_acknowledge",
-      "assignment.worker_withdraw"
+      "assignment.worker_withdraw",
+      "attendance.worker_read",
+      "attendance.worker_check_in",
+      "attendance.worker_check_out"
     ]);
   });
 

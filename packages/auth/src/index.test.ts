@@ -8,6 +8,7 @@ import {
   authorizationDeniedMessage,
   authorizationRoleDefinitions,
   createAssignmentService,
+  createAttendanceService,
   createAuthorizationService,
   createAuthenticationService,
   createDepartmentService,
@@ -27,6 +28,7 @@ import {
 import type {
   AuthorizationAuditEventInput,
   AssignmentRepository,
+  AttendanceRepository,
   EmployerOrganizationRepository,
   InviteMembershipInput,
   AuthenticationRepository,
@@ -43,6 +45,7 @@ import type {
   StoredResidence,
   StoredAuthenticationSession,
   StoredAssignment,
+  StoredAttendanceRecord,
   StoredAuthenticationUser,
   StoredDepartment,
   StoredDispatchCandidate,
@@ -458,7 +461,8 @@ describe("authorization foundation", () => {
       "job_request.update_draft",
       "job_request.submit",
       "job_request.cancel",
-      "assignment.read"
+      "assignment.read",
+      "attendance.read"
     ]);
     expect(service.rolePermissions("ORGANIZATION_STAFF")).not.toContain("organization.update");
     expect(service.rolePermissions("ORGANIZATION_STAFF")).not.toContain("platform.supervise");
@@ -504,13 +508,23 @@ describe("authorization foundation", () => {
       "assignment.withdraw",
       "assignment.mark_replacement_required",
       "assignment.attendance_handoff",
-      "assignment.audit_read"
+      "assignment.audit_read",
+      "attendance.create",
+      "attendance.read",
+      "attendance.check_in",
+      "attendance.check_out",
+      "attendance.override",
+      "attendance.cancel",
+      "attendance.audit_read"
     ]);
     expect(service.rolePermissions("WORKER_ACCESS")).toEqual([
       "worker_offer.respond",
       "assignment.worker_read",
       "assignment.worker_acknowledge",
-      "assignment.worker_withdraw"
+      "assignment.worker_withdraw",
+      "attendance.worker_read",
+      "attendance.worker_check_in",
+      "attendance.worker_check_out"
     ]);
     await expect(
       service.decide({
@@ -2837,6 +2851,218 @@ describe("assignment foundation", () => {
   });
 });
 
+describe("attendance foundation", () => {
+  it("creates AttendanceRecord only from an attendance-ready Assignment", async () => {
+    const { attendanceService, attendanceRepository, assignment, adminSession } =
+      await createAttendanceContext();
+
+    const attendanceRecord = await attendanceService.createFromAssignment({
+      session: adminSession,
+      roles: ["DISPATCHER"],
+      assignmentId: assignment.id,
+      verificationMethod: "qr_code"
+    });
+
+    expect(attendanceRecord.status).toBe("pending_start");
+    expect(attendanceRecord.assignmentId).toBe(assignment.id);
+    expect(attendanceRecord.assignmentStatusSnapshot).toBe("attendance_handoff");
+    expect(attendanceRecord.verificationMethod).toBe("qr_code");
+    expect(attendanceRecord.verificationBoundary).toBe("provider_neutral");
+    expect(attendanceRecord.timesheetBoundary).toBe("not_started");
+    expect(attendanceRepository.modifiedAssignments).toBe(0);
+    expect(attendanceRepository.createdTimesheets).toBe(0);
+    expect(attendanceRepository.createdPayrollRecords).toBe(0);
+    expect(attendanceRepository.createdFinanceRecords).toBe(0);
+    expect(attendanceRepository.createdInvoices).toBe(0);
+    expect(attendanceRepository.createdGpsProviderRecords).toBe(0);
+    expect(attendanceRepository.createdOfflineSyncRecords).toBe(0);
+    expect(attendanceRepository.createdNotificationProviderMessages).toBe(0);
+    expect(attendanceRepository.createdAnalyticsEvents).toBe(0);
+    expect(attendanceRepository.createdAiActions).toBe(0);
+    expect(attendanceRepository.auditActions()).toEqual(
+      expect.arrayContaining(["attendance.creation_attempted", "attendance.created"])
+    );
+  });
+
+  it("rejects non-ready Assignments and duplicate AttendanceRecords", async () => {
+    const { attendanceService, attendanceRepository, assignment, adminSession } =
+      await createAttendanceContext({ assignmentReady: false });
+
+    await expect(
+      attendanceService.createFromAssignment({
+        session: adminSession,
+        roles: ["DISPATCHER"],
+        assignmentId: assignment.id
+      })
+    ).rejects.toMatchObject({
+      decision: expect.objectContaining({ status: "assignment_not_ready" })
+    });
+
+    const readyContext = await createAttendanceContext();
+    const created = await readyContext.attendanceService.createFromAssignment({
+      session: readyContext.adminSession,
+      roles: ["DISPATCHER"],
+      assignmentId: readyContext.assignment.id
+    });
+
+    await expect(
+      readyContext.attendanceService.createFromAssignment({
+        session: readyContext.adminSession,
+        roles: ["DISPATCHER"],
+        assignmentId: readyContext.assignment.id
+      })
+    ).rejects.toMatchObject({
+      decision: expect.objectContaining({ status: "attendance_exists" })
+    });
+    expect(created.status).toBe("pending_start");
+    expect(attendanceRepository.auditActions()).toContain("attendance.validation_failed");
+  });
+
+  it("allows worker check-in and check-out without calculating timesheets or payroll", async () => {
+    const { attendanceService, attendanceRepository, assignment, adminSession, workerSession } =
+      await createAttendanceContext();
+    const attendanceRecord = await attendanceService.createFromAssignment({
+      session: adminSession,
+      roles: ["DISPATCHER"],
+      assignmentId: assignment.id,
+      verificationMethod: "none"
+    });
+
+    const checkedIn = await attendanceService.workerCheckIn({
+      session: workerSession,
+      roles: ["WORKER_ACCESS"],
+      attendanceRecordId: attendanceRecord.id,
+      expectedVersion: attendanceRecord.versionToken,
+      method: "secure_pin",
+      evidenceSummary: "Worker submitted secure PIN.",
+      locationPolicyResult: "not_required"
+    });
+    const checkedOut = await attendanceService.workerCheckOut({
+      session: workerSession,
+      roles: ["WORKER_ACCESS"],
+      attendanceRecordId: checkedIn.id,
+      expectedVersion: checkedIn.versionToken,
+      method: "secure_pin",
+      evidenceSummary: "Worker submitted secure PIN at departure.",
+      locationPolicyResult: "not_required"
+    });
+    const completed = await attendanceService.markCompleted({
+      session: adminSession,
+      roles: ["DISPATCHER"],
+      attendanceRecordId: checkedOut.id,
+      expectedVersion: checkedOut.versionToken
+    });
+
+    expect(checkedIn.status).toBe("checked_in");
+    expect(checkedIn.checkInMethod).toBe("secure_pin");
+    expect(checkedOut.status).toBe("checked_out");
+    expect(completed.status).toBe("completed");
+    expect(completed.timesheetBoundary).toBe("handoff_ready");
+    expect(attendanceRepository.createdTimesheets).toBe(0);
+    expect(attendanceRepository.createdPayrollRecords).toBe(0);
+    expect(attendanceRepository.createdFinanceRecords).toBe(0);
+    expect(attendanceRepository.createdGpsProviderRecords).toBe(0);
+    expect(attendanceRepository.auditActions()).toEqual(
+      expect.arrayContaining([
+        "attendance.check_in_attempted",
+        "attendance.checked_in",
+        "attendance.check_out_attempted",
+        "attendance.checked_out",
+        "attendance.completed"
+      ])
+    );
+  });
+
+  it("prevents duplicate check-in/check-out and workers from reading another worker attendance", async () => {
+    const { attendanceService, assignment, adminSession, workerSession, otherWorkerSession } =
+      await createAttendanceContext();
+    const attendanceRecord = await attendanceService.createFromAssignment({
+      session: adminSession,
+      roles: ["DISPATCHER"],
+      assignmentId: assignment.id
+    });
+    const checkedIn = await attendanceService.workerCheckIn({
+      session: workerSession,
+      roles: ["WORKER_ACCESS"],
+      attendanceRecordId: attendanceRecord.id,
+      expectedVersion: attendanceRecord.versionToken,
+      method: "none"
+    });
+
+    await expect(
+      attendanceService.workerCheckIn({
+        session: workerSession,
+        roles: ["WORKER_ACCESS"],
+        attendanceRecordId: checkedIn.id,
+        expectedVersion: checkedIn.versionToken,
+        method: "none"
+      })
+    ).rejects.toMatchObject({
+      decision: expect.objectContaining({ status: "duplicate_check_in" })
+    });
+    await expect(
+      attendanceService.workerRead({
+        session: otherWorkerSession,
+        roles: ["WORKER_ACCESS"],
+        attendanceRecordId: checkedIn.id
+      })
+    ).rejects.toMatchObject({
+      decision: expect.objectContaining({ status: "permission_denied" })
+    });
+    const checkedOut = await attendanceService.workerCheckOut({
+      session: workerSession,
+      roles: ["WORKER_ACCESS"],
+      attendanceRecordId: checkedIn.id,
+      expectedVersion: checkedIn.versionToken,
+      method: "none"
+    });
+    await expect(
+      attendanceService.workerCheckOut({
+        session: workerSession,
+        roles: ["WORKER_ACCESS"],
+        attendanceRecordId: checkedOut.id,
+        expectedVersion: checkedOut.versionToken,
+        method: "none"
+      })
+    ).rejects.toMatchObject({
+      decision: expect.objectContaining({ status: "duplicate_check_out" })
+    });
+  });
+
+  it("supports employer read-only status and neutral exception/cancel states", async () => {
+    const { attendanceService, attendanceRepository, assignment, adminSession } =
+      await createAttendanceContext();
+    const attendanceRecord = await attendanceService.createFromAssignment({
+      session: adminSession,
+      roles: ["DISPATCHER"],
+      assignmentId: assignment.id
+    });
+
+    const employerVisible = await attendanceService.listAttendance({
+      session: activeSession(),
+      roles: ["ORGANIZATION_OWNER"],
+      organizationId: attendanceRecord.organizationId
+    });
+    const exception = await attendanceService.markException({
+      session: adminSession,
+      roles: ["DISPATCHER"],
+      attendanceRecordId: attendanceRecord.id,
+      expectedVersion: attendanceRecord.versionToken,
+      reason: "invalid_location",
+      note: "Review required; no fault assigned."
+    });
+
+    expect(employerVisible).toHaveLength(1);
+    expect(employerVisible.at(0)?.status).toBe("pending_start");
+    expect(exception.status).toBe("exception");
+    expect(exception.exceptionCategory).toBe("invalid_location");
+    expect(exception.supervisorNote).toBe("Review required; no fault assigned.");
+    expect(attendanceRepository.createdAnalyticsEvents).toBe(0);
+    expect(attendanceRepository.createdAiActions).toBe(0);
+    expect(attendanceRepository.auditActions()).toContain("attendance.exception");
+  });
+});
+
 class MemoryAuthorizationAuditSink {
   events: AuthorizationAuditEventInput[] = [];
 
@@ -4299,6 +4525,156 @@ class MemoryAssignmentRepository implements AssignmentRepository {
   }
 }
 
+class MemoryAttendanceRepository implements AttendanceRepository {
+  private attendanceRecords = new Map<string, StoredAttendanceRecord>();
+  private auditEvents: Parameters<AttendanceRepository["recordAttendanceAuditEvent"]>[0][] = [];
+  private nextAttendanceRecord = 1;
+
+  createdTimesheets = 0;
+  createdPayrollRecords = 0;
+  createdFinanceRecords = 0;
+  createdInvoices = 0;
+  createdGpsProviderRecords = 0;
+  createdOfflineSyncRecords = 0;
+  createdNotificationProviderMessages = 0;
+  createdAnalyticsEvents = 0;
+  createdAiActions = 0;
+  modifiedAssignments = 0;
+
+  auditActions() {
+    return this.auditEvents.map((event) => event.action);
+  }
+
+  async createAttendanceFromAssignment(
+    input: Parameters<AttendanceRepository["createAttendanceFromAssignment"]>[0]
+  ) {
+    const attendanceRecord: StoredAttendanceRecord = {
+      id: `attendance-${this.nextAttendanceRecord}`,
+      assignmentId: input.assignment.id,
+      jobRequestId: input.assignment.jobRequestId,
+      workerIdentityId: input.assignment.workerIdentityId,
+      organizationId: input.assignment.organizationId,
+      residenceId: input.assignment.residenceId,
+      departmentId: input.assignment.departmentId,
+      workGroupId: input.assignment.workGroupId,
+      roleDefinitionId: input.assignment.roleDefinitionId,
+      status: "pending_start",
+      scheduledStartAt: input.assignment.confirmedStartAt,
+      scheduledEndAt: input.assignment.confirmedEndAt,
+      timezone: input.assignment.timezone,
+      assignmentStatusSnapshot: input.assignment.status,
+      verificationMethod: input.verificationMethod,
+      checkInAt: null,
+      checkInMethod: null,
+      checkInEvidenceSummary: null,
+      checkInLocationPolicyResult: null,
+      checkOutAt: null,
+      checkOutMethod: null,
+      checkOutEvidenceSummary: null,
+      checkOutLocationPolicyResult: null,
+      exceptionCategory: null,
+      supervisorNote: null,
+      createdByUserId: input.actorUserId,
+      updatedByUserId: null,
+      checkedInByUserId: null,
+      checkedOutByUserId: null,
+      cancelledByUserId: null,
+      createdAt: input.now,
+      updatedAt: input.now,
+      completedAt: null,
+      cancelledAt: null,
+      version: 0
+    };
+    this.nextAttendanceRecord += 1;
+    this.attendanceRecords.set(attendanceRecord.id, attendanceRecord);
+    return attendanceRecord;
+  }
+
+  async findAttendanceById(attendanceRecordId: string) {
+    return this.attendanceRecords.get(attendanceRecordId) ?? null;
+  }
+
+  async findAttendanceByAssignmentId(assignmentId: string) {
+    return (
+      [...this.attendanceRecords.values()].find(
+        (attendanceRecord) => attendanceRecord.assignmentId === assignmentId
+      ) ?? null
+    );
+  }
+
+  async listAttendance(input: Parameters<AttendanceRepository["listAttendance"]>[0]) {
+    return [...this.attendanceRecords.values()]
+      .filter(
+        (attendanceRecord) =>
+          !input.organizationId || attendanceRecord.organizationId === input.organizationId
+      )
+      .filter(
+        (attendanceRecord) =>
+          !input.workerIdentityId || attendanceRecord.workerIdentityId === input.workerIdentityId
+      )
+      .filter(
+        (attendanceRecord) =>
+          !input.assignmentId || attendanceRecord.assignmentId === input.assignmentId
+      )
+      .filter(
+        (attendanceRecord) => !input.statuses || input.statuses.includes(attendanceRecord.status)
+      )
+      .sort(
+        (left, right) =>
+          right.updatedAt.getTime() - left.updatedAt.getTime() ||
+          left.scheduledStartAt.getTime() - right.scheduledStartAt.getTime()
+      );
+  }
+
+  async updateAttendance(input: Parameters<AttendanceRepository["updateAttendance"]>[0]) {
+    const attendanceRecord = this.attendanceRecords.get(input.attendanceRecordId);
+    if (!attendanceRecord || attendanceRecord.version !== input.expectedVersion) return null;
+
+    if (input.status !== undefined) attendanceRecord.status = input.status;
+    if (input.checkInAt !== undefined) attendanceRecord.checkInAt = input.checkInAt;
+    if (input.checkInMethod !== undefined) attendanceRecord.checkInMethod = input.checkInMethod;
+    if (input.checkInEvidenceSummary !== undefined) {
+      attendanceRecord.checkInEvidenceSummary = input.checkInEvidenceSummary;
+    }
+    if (input.checkInLocationPolicyResult !== undefined) {
+      attendanceRecord.checkInLocationPolicyResult = input.checkInLocationPolicyResult;
+    }
+    if (input.checkOutAt !== undefined) attendanceRecord.checkOutAt = input.checkOutAt;
+    if (input.checkOutMethod !== undefined) attendanceRecord.checkOutMethod = input.checkOutMethod;
+    if (input.checkOutEvidenceSummary !== undefined) {
+      attendanceRecord.checkOutEvidenceSummary = input.checkOutEvidenceSummary;
+    }
+    if (input.checkOutLocationPolicyResult !== undefined) {
+      attendanceRecord.checkOutLocationPolicyResult = input.checkOutLocationPolicyResult;
+    }
+    if (input.exceptionCategory !== undefined) {
+      attendanceRecord.exceptionCategory = input.exceptionCategory;
+    }
+    if (input.supervisorNote !== undefined) attendanceRecord.supervisorNote = input.supervisorNote;
+    if (input.completedAt !== undefined) attendanceRecord.completedAt = input.completedAt;
+    if (input.cancelledAt !== undefined) attendanceRecord.cancelledAt = input.cancelledAt;
+    if (input.checkedInByUserId !== undefined) {
+      attendanceRecord.checkedInByUserId = input.checkedInByUserId;
+    }
+    if (input.checkedOutByUserId !== undefined) {
+      attendanceRecord.checkedOutByUserId = input.checkedOutByUserId;
+    }
+    if (input.cancelledByUserId !== undefined) {
+      attendanceRecord.cancelledByUserId = input.cancelledByUserId;
+    }
+    attendanceRecord.updatedByUserId = input.actorUserId;
+    attendanceRecord.updatedAt = input.now;
+    attendanceRecord.version += 1;
+    return attendanceRecord;
+  }
+
+  async recordAttendanceAuditEvent(
+    input: Parameters<AttendanceRepository["recordAttendanceAuditEvent"]>[0]
+  ) {
+    this.auditEvents.push(input);
+  }
+}
+
 class FixtureDispatchCandidateSource implements DispatchCandidateSource {
   async searchCandidates(input: Parameters<DispatchCandidateSource["searchCandidates"]>[0]) {
     const candidate = await this.evaluateCandidate({
@@ -4703,6 +5079,47 @@ async function createAcceptedAssignmentContext() {
     assignmentService,
     assignmentRepository,
     acceptedOffer
+  };
+}
+
+async function createAttendanceContext(input: { assignmentReady?: boolean } = {}) {
+  const context = await createAcceptedAssignmentContext();
+  const attendanceRepository = new MemoryAttendanceRepository();
+  const attendanceService = createAttendanceService(
+    attendanceRepository,
+    context.assignmentRepository,
+    context.workerOfferRepository,
+    createAuthorizationService()
+  );
+  const confirmed = await context.assignmentService.createFromAcceptedOffer({
+    session: context.adminSession,
+    roles: ["DISPATCHER"],
+    workerOfferId: context.acceptedOffer.id
+  });
+  const ready =
+    input.assignmentReady === false
+      ? null
+      : await context.assignmentService.markReadyForAttendance({
+          session: context.adminSession,
+          roles: ["DISPATCHER"],
+          assignmentId: confirmed.id,
+          expectedVersion: confirmed.versionToken
+        });
+  const assignment =
+    ready === null
+      ? confirmed
+      : await context.assignmentService.attendanceHandoff({
+          session: context.adminSession,
+          roles: ["DISPATCHER"],
+          assignmentId: ready.id,
+          expectedVersion: ready.versionToken
+        });
+
+  return {
+    ...context,
+    attendanceService,
+    attendanceRepository,
+    assignment
   };
 }
 

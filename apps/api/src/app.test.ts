@@ -13,6 +13,7 @@ import {
 import type {
   AuthorizationRoleKey,
   AssignmentService,
+  AttendanceService,
   AuthenticationRepository,
   CreateLocalUserInput,
   CreateSessionInput,
@@ -1363,9 +1364,9 @@ describe("api assignment foundation", () => {
       headers: { authorization: `Bearer ${user.token}` },
       payload: { expectedVersion: 1 }
     });
-    const attendance = await app.inject({
+    const timesheet = await app.inject({
       method: "POST",
-      url: "/platform/attendance",
+      url: "/platform/timesheets",
       headers: { authorization: `Bearer ${user.token}` },
       payload: {}
     });
@@ -1382,12 +1383,146 @@ describe("api assignment foundation", () => {
     expect(employerVisible.json().assignments).toHaveLength(1);
     expect(handoff.statusCode).toBe(200);
     expect(handoff.json().assignment.status).toBe("attendance_handoff");
-    expect(attendance.statusCode).toBe(404);
+    expect(timesheet.statusCode).toBe(404);
     expect(calls).toEqual([
       "create:worker-offer-api-1",
       "ack:assignment-api-1",
       "list:org-api-1",
       "handoff:assignment-api-1"
+    ]);
+    await app.close();
+  });
+});
+
+describe("api attendance foundation", () => {
+  it("routes Attendance creation, worker check-in/out, employer read-only status, and Timesheet boundary", async () => {
+    const authRepository = new ApiMemoryAuthenticationRepository();
+    const attendanceRecord = apiAttendanceRecord();
+    const calls: string[] = [];
+    const app = buildApi({
+      authService: createAuthenticationService(authRepository, testAuthOptions()),
+      attendanceService: {
+        ...createApiUnavailableAttendanceService(),
+        async createFromAssignment(input) {
+          calls.push(`create:${input.assignmentId}`);
+          return attendanceRecord;
+        },
+        async workerCheckIn(input) {
+          calls.push(`check-in:${input.attendanceRecordId}`);
+          return {
+            ...attendanceRecord,
+            status: "checked_in",
+            checkInAt: new Date("2026-08-12T12:03:00.000Z"),
+            checkInMethod: input.method ?? "none",
+            checkInEvidenceSummary: input.evidenceSummary ?? null,
+            checkInLocationPolicyResult: input.locationPolicyResult ?? null,
+            version: 1,
+            versionToken: 1
+          };
+        },
+        async workerCheckOut(input) {
+          calls.push(`check-out:${input.attendanceRecordId}`);
+          return {
+            ...attendanceRecord,
+            status: "checked_out",
+            checkInAt: new Date("2026-08-12T12:03:00.000Z"),
+            checkOutAt: new Date("2026-08-12T20:01:00.000Z"),
+            checkOutMethod: input.method ?? "none",
+            checkOutEvidenceSummary: input.evidenceSummary ?? null,
+            checkOutLocationPolicyResult: input.locationPolicyResult ?? null,
+            version: 2,
+            versionToken: 2
+          };
+        },
+        async listAttendance(input) {
+          calls.push(`list:${input.organizationId ?? "none"}`);
+          return [attendanceRecord];
+        },
+        async markCompleted(input) {
+          calls.push(`complete:${input.attendanceRecordId}`);
+          return {
+            ...attendanceRecord,
+            status: "completed",
+            completedAt: new Date("2026-08-12T20:05:00.000Z"),
+            timesheetBoundary: "handoff_ready",
+            version: 3,
+            versionToken: 3
+          };
+        }
+      },
+      resolveAuthorizationRoles: async () => ["DISPATCHER", "ORGANIZATION_OWNER", "WORKER_ACCESS"]
+    });
+    const user = await registerApiUser(app);
+
+    const created = await app.inject({
+      method: "POST",
+      url: "/platform/attendance",
+      headers: { authorization: `Bearer ${user.token}` },
+      payload: { assignmentId: "assignment-api-1", verificationMethod: "qr_code" }
+    });
+    const checkedIn = await app.inject({
+      method: "POST",
+      url: `/worker/attendance/${attendanceRecord.id}/check-in`,
+      headers: { authorization: `Bearer ${user.token}` },
+      payload: {
+        expectedVersion: attendanceRecord.versionToken,
+        method: "secure_pin",
+        evidenceSummary: "Worker-owned evidence only.",
+        locationPolicyResult: "not_required"
+      }
+    });
+    const employerVisible = await app.inject({
+      method: "GET",
+      url: `/organizations/${attendanceRecord.organizationId}/attendance`,
+      headers: { authorization: `Bearer ${user.token}` }
+    });
+    const checkedOut = await app.inject({
+      method: "POST",
+      url: `/worker/attendance/${attendanceRecord.id}/check-out`,
+      headers: { authorization: `Bearer ${user.token}` },
+      payload: {
+        expectedVersion: 1,
+        method: "secure_pin",
+        evidenceSummary: "Worker-owned departure evidence only.",
+        locationPolicyResult: "not_required"
+      }
+    });
+    const completed = await app.inject({
+      method: "POST",
+      url: `/platform/attendance/${attendanceRecord.id}/complete`,
+      headers: { authorization: `Bearer ${user.token}` },
+      payload: { expectedVersion: 2 }
+    });
+    const timesheet = await app.inject({
+      method: "POST",
+      url: "/platform/timesheets",
+      headers: { authorization: `Bearer ${user.token}` },
+      payload: {}
+    });
+
+    expect(created.statusCode).toBe(201);
+    expect(created.json().attendanceRecord).toMatchObject({
+      status: "pending_start",
+      assignmentId: "assignment-api-1",
+      verificationBoundary: "provider_neutral",
+      timesheetBoundary: "not_started"
+    });
+    expect(checkedIn.statusCode).toBe(200);
+    expect(checkedIn.json().attendanceRecord.status).toBe("checked_in");
+    expect(checkedIn.json().attendanceRecord.checkInMethod).toBe("secure_pin");
+    expect(employerVisible.statusCode).toBe(200);
+    expect(employerVisible.json().attendanceRecords).toHaveLength(1);
+    expect(checkedOut.statusCode).toBe(200);
+    expect(checkedOut.json().attendanceRecord.status).toBe("checked_out");
+    expect(completed.statusCode).toBe(200);
+    expect(completed.json().attendanceRecord.timesheetBoundary).toBe("handoff_ready");
+    expect(timesheet.statusCode).toBe(404);
+    expect(calls).toEqual([
+      "create:assignment-api-1",
+      "check-in:attendance-api-1",
+      "list:org-api-1",
+      "check-out:attendance-api-1",
+      "complete:attendance-api-1"
     ]);
     await app.close();
   });
@@ -1460,6 +1595,26 @@ function createApiUnavailableAssignmentService(): AssignmentService {
     markReplacementRequired: unavailable,
     readAuditSummary: unavailable
   } as AssignmentService;
+}
+
+function createApiUnavailableAttendanceService(): AttendanceService {
+  const unavailable = async () => {
+    throw new Error("attendance service unavailable in this API test");
+  };
+
+  return {
+    createFromAssignment: unavailable,
+    listAttendance: unavailable,
+    readAttendance: unavailable,
+    workerRead: unavailable,
+    workerCheckIn: unavailable,
+    workerCheckOut: unavailable,
+    markCompleted: unavailable,
+    markMissed: unavailable,
+    markException: unavailable,
+    cancel: unavailable,
+    readAuditSummary: unavailable
+  } as AttendanceService;
 }
 
 function apiDispatchReview(): Awaited<ReturnType<DispatchService["createDispatch"]>> {
@@ -1594,6 +1749,50 @@ function apiAssignment(): Awaited<ReturnType<AssignmentService["createFromAccept
     version: 0,
     versionToken: 0,
     attendanceBoundary: "not_started"
+  };
+}
+
+function apiAttendanceRecord(): Awaited<ReturnType<AttendanceService["createFromAssignment"]>> {
+  const now = new Date("2026-07-25T14:00:00.000Z");
+  return {
+    id: "attendance-api-1",
+    assignmentId: "assignment-api-1",
+    jobRequestId: "job-request-api-1",
+    workerIdentityId: "worker-identity-api-1",
+    organizationId: "org-api-1",
+    residenceId: "residence-api-1",
+    departmentId: "department-api-1",
+    workGroupId: "work-group-kitchen",
+    roleDefinitionId: "role-chef",
+    status: "pending_start",
+    scheduledStartAt: new Date("2026-08-12T12:00:00.000Z"),
+    scheduledEndAt: new Date("2026-08-12T20:00:00.000Z"),
+    timezone: "America/Toronto",
+    assignmentStatusSnapshot: "attendance_handoff",
+    verificationMethod: "provider_neutral_fixture",
+    checkInAt: null,
+    checkInMethod: null,
+    checkInEvidenceSummary: null,
+    checkInLocationPolicyResult: null,
+    checkOutAt: null,
+    checkOutMethod: null,
+    checkOutEvidenceSummary: null,
+    checkOutLocationPolicyResult: null,
+    exceptionCategory: null,
+    supervisorNote: null,
+    createdByUserId: "admin-api-1",
+    updatedByUserId: null,
+    checkedInByUserId: null,
+    checkedOutByUserId: null,
+    cancelledByUserId: null,
+    createdAt: now,
+    updatedAt: now,
+    completedAt: null,
+    cancelledAt: null,
+    version: 0,
+    versionToken: 0,
+    timesheetBoundary: "not_started",
+    verificationBoundary: "provider_neutral"
   };
 }
 
