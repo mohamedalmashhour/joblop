@@ -65,6 +65,15 @@ export const authorizationPermissionKeys = [
   "dispatch.prepare_offer",
   "dispatch.audit_read",
   "dispatch.supervise",
+  "worker_offer.create",
+  "worker_offer.read",
+  "worker_offer.approve",
+  "worker_offer.send",
+  "worker_offer.withdraw",
+  "worker_offer.cancel",
+  "worker_offer.audit_read",
+  "worker_offer.respond",
+  "worker_offer.supervise",
   "audit.read",
   "platform.supervise"
 ] as const;
@@ -1075,39 +1084,17 @@ export type DispatchSummaryState =
   | "expired"
   | "not_evaluated";
 export type DispatchAvailabilityState =
-  | "available"
-  | "partially_available"
-  | "unavailable"
-  | "not_evaluated"
-  | "source_unavailable";
+  "available" | "partially_available" | "unavailable" | "not_evaluated" | "source_unavailable";
 export type DispatchConflictState =
-  | "conflict_free"
-  | "conflict_detected"
-  | "not_evaluated"
-  | "source_unavailable";
+  "conflict_free" | "conflict_detected" | "not_evaluated" | "source_unavailable";
 export type DispatchServiceAreaState =
-  | "inside_service_area"
-  | "outside_service_area"
-  | "not_evaluated"
-  | "source_unavailable";
+  "inside_service_area" | "outside_service_area" | "not_evaluated" | "source_unavailable";
 export type DispatchTravelState =
-  | "suitable"
-  | "unsuitable"
-  | "unknown"
-  | "not_evaluated"
-  | "source_unavailable";
+  "suitable" | "unsuitable" | "unknown" | "not_evaluated" | "source_unavailable";
 export type DispatchTransportState =
-  | "available"
-  | "unavailable"
-  | "unknown"
-  | "not_evaluated"
-  | "source_unavailable";
+  "available" | "unavailable" | "unknown" | "not_evaluated" | "source_unavailable";
 export type DispatchRecommendationState =
-  | "not_evaluated"
-  | "recommended"
-  | "not_recommended"
-  | "alternative"
-  | "unavailable";
+  "not_evaluated" | "recommended" | "not_recommended" | "alternative" | "unavailable";
 export type DispatchShortlistState = "not_shortlisted" | "shortlisted" | "removed";
 export type DispatchDecisionStatus =
   | "allow"
@@ -1322,6 +1309,229 @@ export class DispatchError extends Error {
   constructor(decision: DispatchDecision) {
     super(authorizationDeniedMessage);
     this.name = "DispatchError";
+    this.decision = decision;
+  }
+}
+
+export type WorkerIdentityStatus = "active" | "inactive" | "closed";
+export type WorkerOfferStatus =
+  | "draft"
+  | "approved"
+  | "sent"
+  | "delivered"
+  | "viewed"
+  | "accepted"
+  | "declined"
+  | "expired"
+  | "withdrawn"
+  | "cancelled";
+export type WorkerOfferDeliveryStatus = "pending" | "attempted" | "delivered" | "failed";
+export type WorkerOfferResponseType = "accepted" | "declined";
+export type WorkerOfferDecisionStatus =
+  | "allow"
+  | "invalid_input"
+  | "not_found"
+  | "permission_denied"
+  | "version_conflict"
+  | "invalid_transition"
+  | "expired"
+  | "duplicate_response"
+  | "stale_terms"
+  | "capacity_exceeded"
+  | "worker_identity_inactive";
+
+export interface StoredWorkerIdentity {
+  id: string;
+  userId: string;
+  displayName: string | null;
+  preferredLanguage: string | null;
+  status: WorkerIdentityStatus;
+  createdAt: Date;
+  updatedAt: Date;
+  version: number;
+}
+
+export interface StoredWorkerOffer {
+  id: string;
+  dispatchReviewId: string;
+  jobRequestId: string;
+  organizationId: string;
+  residenceId: string;
+  departmentId: string;
+  workerIdentityId: string;
+  currentTermsVersionId: string | null;
+  status: WorkerOfferStatus;
+  expiresAt: Date;
+  approvedAt: Date | null;
+  sentAt: Date | null;
+  deliveredAt: Date | null;
+  viewedAt: Date | null;
+  respondedAt: Date | null;
+  withdrawnAt: Date | null;
+  cancelledAt: Date | null;
+  createdByUserId: string;
+  updatedByUserId: string | null;
+  approvedByUserId: string | null;
+  sentByUserId: string | null;
+  withdrawnByUserId: string | null;
+  cancelledByUserId: string | null;
+  createdAt: Date;
+  updatedAt: Date;
+  version: number;
+}
+
+export interface StoredWorkerOfferTermsVersion {
+  id: string;
+  workerOfferId: string;
+  versionNumber: number;
+  workerVisibleTitle: string;
+  workerVisibleSummary: string | null;
+  timezone: string;
+  startAt: Date;
+  endAt: Date;
+  workGroupId: string;
+  roleDefinitionId: string;
+  compensationSummary: string | null;
+  policySummary: string | null;
+  createdByUserId: string;
+  createdAt: Date;
+}
+
+export interface StoredWorkerOfferDeliveryAttempt {
+  id: string;
+  workerOfferId: string;
+  status: WorkerOfferDeliveryStatus;
+  providerBoundary: string;
+  reason: string | null;
+  attemptedAt: Date | null;
+  deliveredAt: Date | null;
+  failedAt: Date | null;
+  createdByUserId: string | null;
+  createdAt: Date;
+}
+
+export interface StoredWorkerOfferResponse {
+  id: string;
+  workerOfferId: string;
+  workerIdentityId: string;
+  termsVersionId: string;
+  responseType: WorkerOfferResponseType;
+  reason: string | null;
+  createdAt: Date;
+}
+
+export interface PublicWorkerOffer extends StoredWorkerOffer {
+  currentTermsVersion: StoredWorkerOfferTermsVersion | null;
+  versionToken: number;
+}
+
+export interface WorkerOfferDecision {
+  status: WorkerOfferDecisionStatus;
+  allow: boolean;
+  workerOffer: PublicWorkerOffer | null;
+  roles: readonly AuthorizationRoleKey[];
+  internalReason: string | null;
+  externalCode: typeof authorizationDeniedCode | null;
+  externalMessage: typeof authorizationDeniedMessage | null;
+}
+
+export interface WorkerOfferRepository {
+  findWorkerIdentityById(workerIdentityId: string): Promise<StoredWorkerIdentity | null>;
+  findWorkerIdentityByUserId(userId: string): Promise<StoredWorkerIdentity | null>;
+  createWorkerIdentity(input: {
+    userId: string;
+    displayName?: string | null;
+    preferredLanguage?: string | null;
+    now: Date;
+  }): Promise<StoredWorkerIdentity>;
+  createWorkerOffer(input: {
+    dispatchReview: StoredDispatchReview;
+    jobRequest: StoredJobRequest;
+    workerIdentity: StoredWorkerIdentity;
+    expiresAt: Date;
+    workerVisibleTitle: string;
+    workerVisibleSummary: string | null;
+    compensationSummary: string | null;
+    policySummary: string | null;
+    actorUserId: string;
+    now: Date;
+  }): Promise<{ offer: StoredWorkerOffer; termsVersion: StoredWorkerOfferTermsVersion }>;
+  findWorkerOfferById(workerOfferId: string): Promise<StoredWorkerOffer | null>;
+  findCurrentTermsVersion(workerOfferId: string): Promise<StoredWorkerOfferTermsVersion | null>;
+  listWorkerOffers(input: {
+    dispatchReviewId?: string | undefined;
+    organizationId?: string | undefined;
+    workerIdentityId?: string | undefined;
+    statuses?: readonly WorkerOfferStatus[] | undefined;
+  }): Promise<StoredWorkerOffer[]>;
+  countCapacityOffersForDispatch(dispatchReviewId: string): Promise<number>;
+  updateWorkerOffer(input: {
+    workerOfferId: string;
+    expectedVersion: number;
+    actorUserId: string | null;
+    status?: WorkerOfferStatus | undefined;
+    approvedAt?: Date | null | undefined;
+    sentAt?: Date | null | undefined;
+    deliveredAt?: Date | null | undefined;
+    viewedAt?: Date | null | undefined;
+    respondedAt?: Date | null | undefined;
+    withdrawnAt?: Date | null | undefined;
+    cancelledAt?: Date | null | undefined;
+    now: Date;
+  }): Promise<StoredWorkerOffer | null>;
+  createDeliveryAttempt(input: {
+    workerOfferId: string;
+    status: WorkerOfferDeliveryStatus;
+    providerBoundary: string;
+    reason: string | null;
+    actorUserId: string | null;
+    now: Date;
+  }): Promise<StoredWorkerOfferDeliveryAttempt>;
+  findResponseByOfferId(workerOfferId: string): Promise<StoredWorkerOfferResponse | null>;
+  createResponse(input: {
+    workerOfferId: string;
+    workerIdentityId: string;
+    termsVersionId: string;
+    responseType: WorkerOfferResponseType;
+    reason: string | null;
+    now: Date;
+  }): Promise<StoredWorkerOfferResponse>;
+  recordWorkerOfferAuditEvent(input: {
+    action:
+      | "worker_offer.created"
+      | "worker_offer.terms_version_created"
+      | "worker_offer.approved"
+      | "worker_offer.sent"
+      | "worker_offer.delivery_attempted"
+      | "worker_offer.delivery_succeeded"
+      | "worker_offer.delivery_failed"
+      | "worker_offer.viewed"
+      | "worker_offer.accepted"
+      | "worker_offer.declined"
+      | "worker_offer.expired"
+      | "worker_offer.withdrawn"
+      | "worker_offer.cancelled"
+      | "worker_offer.response_rejected"
+      | "worker_offer.access_denied";
+    organizationId: string | null;
+    workerOfferId: string | null;
+    dispatchReviewId: string | null;
+    jobRequestId: string | null;
+    actorUserId: string | null;
+    priorState: string | null;
+    newState: string | null;
+    reason: string | null;
+    correlationId: string;
+    createdAt: Date;
+  }): Promise<void>;
+}
+
+export class WorkerOfferError extends Error {
+  decision: WorkerOfferDecision;
+
+  constructor(decision: WorkerOfferDecision) {
+    super(authorizationDeniedMessage);
+    this.name = "WorkerOfferError";
     this.decision = decision;
   }
 }
@@ -1571,6 +1781,78 @@ export const authorizationPermissionDefinitions = [
     "Not assigned to active roles in this foundation."
   ),
   permission(
+    "worker_offer.create",
+    "Create governed Worker Offers from an offer-preparation dispatch boundary.",
+    "platform",
+    "active",
+    "Could expose worker-facing terms or exceed remaining staffing need.",
+    "Dispatcher and Platform Administrator only; does not create Assignment."
+  ),
+  permission(
+    "worker_offer.read",
+    "Read governed Worker Offer summaries.",
+    "platform",
+    "active",
+    "Could expose worker offer state beyond minimum operational need.",
+    "Dispatcher and Platform Administrator only."
+  ),
+  permission(
+    "worker_offer.approve",
+    "Approve a draft Worker Offer for sending.",
+    "platform",
+    "active",
+    "Could make incomplete offer terms eligible for sending.",
+    "Requires draft offer, current terms version, and explicit human actor."
+  ),
+  permission(
+    "worker_offer.send",
+    "Send an approved Worker Offer through the abstract delivery boundary.",
+    "platform",
+    "active",
+    "Could be mistaken for notification-provider execution.",
+    "Creates only abstract delivery attempts; no provider integration."
+  ),
+  permission(
+    "worker_offer.withdraw",
+    "Withdraw a non-terminal Worker Offer.",
+    "platform",
+    "active",
+    "Could remove worker opportunity without auditability.",
+    "Requires dispatcher authority and reason."
+  ),
+  permission(
+    "worker_offer.cancel",
+    "Cancel a Worker Offer before Assignment authority exists.",
+    "platform",
+    "active",
+    "Could be confused with cancelling Assignment or attendance.",
+    "Requires dispatcher authority and reason; no Assignment changes."
+  ),
+  permission(
+    "worker_offer.audit_read",
+    "Read Worker Offer audit summaries.",
+    "platform",
+    "active",
+    "Could expose internal offer history.",
+    "Dispatcher and Platform Administrator only."
+  ),
+  permission(
+    "worker_offer.respond",
+    "Allow a worker to accept or decline their own sent offer.",
+    "none",
+    "active",
+    "Could accept another worker's offer if ownership is not enforced.",
+    "Requires authenticated WorkerIdentity ownership and current terms."
+  ),
+  permission(
+    "worker_offer.supervise",
+    "Reserved future Worker Offer supervision capability.",
+    "platform",
+    "reserved",
+    "Would grant elevated offer oversight if activated silently.",
+    "Not assigned to active roles in this foundation."
+  ),
+  permission(
     "audit.read",
     "Read approved audit summaries.",
     "platform",
@@ -1604,6 +1886,13 @@ export const authorizationRoleDefinitions = [
     "dispatch.close",
     "dispatch.prepare_offer",
     "dispatch.audit_read",
+    "worker_offer.create",
+    "worker_offer.read",
+    "worker_offer.approve",
+    "worker_offer.send",
+    "worker_offer.withdraw",
+    "worker_offer.cancel",
+    "worker_offer.audit_read",
     "audit.read"
   ]),
   roleDefinition("ORGANIZATION_OWNER", "Organization Owner", "organization", [
@@ -1651,7 +1940,7 @@ export const authorizationRoleDefinitions = [
     "job_request.submit",
     "job_request.cancel"
   ]),
-  roleDefinition("WORKER_ACCESS", "Worker Access", "none", []),
+  roleDefinition("WORKER_ACCESS", "Worker Access", "none", ["worker_offer.respond"]),
   roleDefinition("DISPATCHER", "Dispatcher", "platform", [
     "dispatch.create",
     "dispatch.read",
@@ -1662,7 +1951,14 @@ export const authorizationRoleDefinitions = [
     "dispatch.cancel",
     "dispatch.close",
     "dispatch.prepare_offer",
-    "dispatch.audit_read"
+    "dispatch.audit_read",
+    "worker_offer.create",
+    "worker_offer.read",
+    "worker_offer.approve",
+    "worker_offer.send",
+    "worker_offer.withdraw",
+    "worker_offer.cancel",
+    "worker_offer.audit_read"
   ])
 ] as const satisfies readonly AuthorizationRoleDefinition[];
 
@@ -4341,15 +4637,24 @@ export function createDispatchService(
 
       if (!decision.allow) throw new DispatchError(decision);
       if (!jobRequest) {
-        throw new DispatchError(dispatchDeny("not_found", "job_request_not_found", null, input.roles ?? []));
+        throw new DispatchError(
+          dispatchDeny("not_found", "job_request_not_found", null, input.roles ?? [])
+        );
       }
       if (jobRequest.status !== "approved_for_dispatch") {
         throw new DispatchError(
-          dispatchDeny("job_request_not_ready", "job_request_not_approved_for_dispatch", null, input.roles ?? [])
+          dispatchDeny(
+            "job_request_not_ready",
+            "job_request_not_approved_for_dispatch",
+            null,
+            input.roles ?? []
+          )
         );
       }
 
-      const existing = await dispatchRepository.findActiveDispatchReviewForJobRequest(jobRequest.id);
+      const existing = await dispatchRepository.findActiveDispatchReviewForJobRequest(
+        jobRequest.id
+      );
       if (existing) {
         throw new DispatchError(
           dispatchDeny(
@@ -4418,7 +4723,9 @@ export function createDispatchService(
       correlationId?: string;
     }) {
       const currentTime = now();
-      const dispatchReview = await dispatchRepository.findDispatchReviewById(input.dispatchReviewId);
+      const dispatchReview = await dispatchRepository.findDispatchReviewById(
+        input.dispatchReviewId
+      );
       const decision = await authorizeDispatchPlatformOperation({
         dispatchRepository,
         authorizationService,
@@ -4439,7 +4746,9 @@ export function createDispatchService(
 
       return {
         dispatchReview: toPublicDispatchReview(dispatchReview),
-        candidates: (await dispatchRepository.listCandidates(dispatchReview.id)).map(toPublicDispatchCandidate)
+        candidates: (await dispatchRepository.listCandidates(dispatchReview.id)).map(
+          toPublicDispatchCandidate
+        )
       };
     },
 
@@ -4769,7 +5078,11 @@ export function createDispatchService(
         correlationId: input.correlationId,
         now: currentTime
       });
-      if (!authorization.allow || !jobRequest || jobRequest.organizationId !== input.organizationId) {
+      if (
+        !authorization.allow ||
+        !jobRequest ||
+        jobRequest.organizationId !== input.organizationId
+      ) {
         throw new JobRequestError(
           authorization.allow
             ? jobRequestDeny(
@@ -4792,6 +5105,899 @@ export function createDispatchService(
 }
 
 export type DispatchService = ReturnType<typeof createDispatchService>;
+
+export function createWorkerOfferService(
+  workerOfferRepository: WorkerOfferRepository,
+  dispatchRepository: DispatchRepository,
+  jobRequestRepository: JobRequestRepository,
+  authorizationService: AuthorizationService,
+  options: { now?: () => Date } = {}
+) {
+  const now = options.now ?? (() => new Date());
+
+  return {
+    async ensureWorkerIdentity(input: {
+      userId: string;
+      displayName?: string | null;
+      preferredLanguage?: string | null;
+    }) {
+      const existing = await workerOfferRepository.findWorkerIdentityByUserId(input.userId);
+      if (existing) return existing;
+
+      return workerOfferRepository.createWorkerIdentity({
+        userId: input.userId,
+        displayName: normalizeOptionalResidenceText(input.displayName ?? null, 160),
+        preferredLanguage: normalizeOptionalResidenceText(input.preferredLanguage ?? null, 40),
+        now: now()
+      });
+    },
+
+    async createOffer(input: {
+      session: SessionValidationResult;
+      roles?: readonly AuthorizationRoleKey[];
+      dispatchReviewId: string;
+      workerIdentityId: string;
+      expiresAt: Date;
+      workerVisibleTitle?: string | null;
+      workerVisibleSummary?: string | null;
+      compensationSummary?: string | null;
+      policySummary?: string | null;
+      correlationId?: string;
+    }) {
+      const currentTime = now();
+      const dispatchReview = await dispatchRepository.findDispatchReviewById(
+        input.dispatchReviewId
+      );
+      const decision = await authorizeWorkerOfferPlatformOperation({
+        workerOfferRepository,
+        authorizationService,
+        session: input.session,
+        roles: input.roles ?? [],
+        permission: "worker_offer.create",
+        workerOffer: null,
+        correlationId: input.correlationId,
+        now: currentTime
+      });
+      if (!decision.allow) throw new WorkerOfferError(decision);
+      if (!dispatchReview) {
+        throw new WorkerOfferError(
+          workerOfferDeny("not_found", "dispatch_not_found", null, input.roles ?? [])
+        );
+      }
+      if (dispatchReview.state !== "offer_preparation") {
+        throw new WorkerOfferError(
+          workerOfferDeny(
+            "invalid_transition",
+            `dispatch_not_in_offer_preparation:${dispatchReview.state}`,
+            null,
+            input.roles ?? []
+          )
+        );
+      }
+
+      const jobRequest = await jobRequestRepository.findJobRequestById(dispatchReview.jobRequestId);
+      const workerIdentity = await workerOfferRepository.findWorkerIdentityById(
+        input.workerIdentityId
+      );
+      if (!jobRequest) {
+        throw new WorkerOfferError(
+          workerOfferDeny("not_found", "job_request_not_found", null, input.roles ?? [])
+        );
+      }
+      if (!workerIdentity) {
+        throw new WorkerOfferError(
+          workerOfferDeny("not_found", "worker_identity_not_found", null, input.roles ?? [])
+        );
+      }
+      if (workerIdentity.status !== "active") {
+        throw new WorkerOfferError(
+          workerOfferDeny(
+            "worker_identity_inactive",
+            "worker_identity_not_active",
+            null,
+            input.roles ?? []
+          )
+        );
+      }
+      if (input.expiresAt <= currentTime) {
+        throw new WorkerOfferError(
+          workerOfferDeny("invalid_input", "offer_expiry_must_be_future", null, input.roles ?? [])
+        );
+      }
+
+      const remainingWorkerCount = Math.max(
+        0,
+        dispatchReview.requiredWorkerCount - dispatchReview.preparedOfferCount
+      );
+      const activeOfferCount = await workerOfferRepository.countCapacityOffersForDispatch(
+        dispatchReview.id
+      );
+      if (activeOfferCount >= remainingWorkerCount) {
+        throw new WorkerOfferError(
+          workerOfferDeny(
+            "capacity_exceeded",
+            "remaining_worker_count_reached",
+            null,
+            input.roles ?? []
+          )
+        );
+      }
+
+      const title =
+        normalizeRequiredJobRequestText(input.workerVisibleTitle ?? jobRequest.title, 4, 160) ??
+        jobRequest.title;
+      const created = await workerOfferRepository.createWorkerOffer({
+        dispatchReview,
+        jobRequest,
+        workerIdentity,
+        expiresAt: input.expiresAt,
+        workerVisibleTitle: title,
+        workerVisibleSummary: normalizeOptionalResidenceText(
+          input.workerVisibleSummary ?? jobRequest.description,
+          2000
+        ),
+        compensationSummary: normalizeOptionalResidenceText(input.compensationSummary ?? null, 500),
+        policySummary: normalizeOptionalResidenceText(input.policySummary ?? null, 500),
+        actorUserId: input.session.user?.id ?? "system",
+        now: currentTime
+      });
+      const publicOffer = toPublicWorkerOffer(created.offer, created.termsVersion);
+      await recordWorkerOfferAudit(workerOfferRepository, {
+        action: "worker_offer.created",
+        organizationId: created.offer.organizationId,
+        workerOfferId: created.offer.id,
+        dispatchReviewId: created.offer.dispatchReviewId,
+        jobRequestId: created.offer.jobRequestId,
+        actorUserId: input.session.user?.id ?? null,
+        priorState: null,
+        newState: created.offer.status,
+        reason: null,
+        correlationId: input.correlationId,
+        createdAt: currentTime
+      });
+      await recordWorkerOfferAudit(workerOfferRepository, {
+        action: "worker_offer.terms_version_created",
+        organizationId: created.offer.organizationId,
+        workerOfferId: created.offer.id,
+        dispatchReviewId: created.offer.dispatchReviewId,
+        jobRequestId: created.offer.jobRequestId,
+        actorUserId: input.session.user?.id ?? null,
+        priorState: null,
+        newState: String(created.termsVersion.versionNumber),
+        reason: created.termsVersion.id,
+        correlationId: input.correlationId,
+        createdAt: currentTime
+      });
+
+      return publicOffer;
+    },
+
+    async listOffers(input: {
+      session: SessionValidationResult;
+      roles?: readonly AuthorizationRoleKey[];
+      dispatchReviewId?: string | null;
+      organizationId?: string | null;
+      statuses?: readonly WorkerOfferStatus[];
+      correlationId?: string;
+    }) {
+      const decision = await authorizeWorkerOfferPlatformOperation({
+        workerOfferRepository,
+        authorizationService,
+        session: input.session,
+        roles: input.roles ?? [],
+        permission: "worker_offer.read",
+        workerOffer: null,
+        correlationId: input.correlationId,
+        now: now()
+      });
+      if (!decision.allow) throw new WorkerOfferError(decision);
+
+      return Promise.all(
+        (
+          await workerOfferRepository.listWorkerOffers({
+            dispatchReviewId: input.dispatchReviewId ?? undefined,
+            organizationId: input.organizationId ?? undefined,
+            statuses: input.statuses
+          })
+        ).map(async (offer) =>
+          toPublicWorkerOffer(offer, await workerOfferRepository.findCurrentTermsVersion(offer.id))
+        )
+      );
+    },
+
+    async readOffer(input: {
+      session: SessionValidationResult;
+      roles?: readonly AuthorizationRoleKey[];
+      workerOfferId: string;
+      correlationId?: string;
+    }) {
+      const offer = await requireAuthorizedWorkerOffer({
+        workerOfferRepository,
+        authorizationService,
+        session: input.session,
+        roles: input.roles ?? [],
+        permission: "worker_offer.read",
+        workerOfferId: input.workerOfferId,
+        correlationId: input.correlationId,
+        now: now()
+      });
+      return offer.publicOffer;
+    },
+
+    async approve(input: WorkerOfferTransitionInput) {
+      return transitionWorkerOffer({
+        ...input,
+        workerOfferRepository,
+        authorizationService,
+        permission: "worker_offer.approve",
+        allowedFrom: ["draft"],
+        nextStatus: "approved",
+        action: "worker_offer.approved",
+        approvedAt: true,
+        now: now()
+      });
+    },
+
+    async send(input: WorkerOfferTransitionInput) {
+      const sent = await transitionWorkerOffer({
+        ...input,
+        workerOfferRepository,
+        authorizationService,
+        permission: "worker_offer.send",
+        allowedFrom: ["approved"],
+        nextStatus: "sent",
+        action: "worker_offer.sent",
+        sentAt: true,
+        now: now()
+      });
+      await workerOfferRepository.createDeliveryAttempt({
+        workerOfferId: sent.id,
+        status: "attempted",
+        providerBoundary: "abstract",
+        reason: "provider_deferred",
+        actorUserId: input.session.user?.id ?? null,
+        now: sent.updatedAt
+      });
+      await recordWorkerOfferAudit(workerOfferRepository, {
+        action: "worker_offer.delivery_attempted",
+        organizationId: sent.organizationId,
+        workerOfferId: sent.id,
+        dispatchReviewId: sent.dispatchReviewId,
+        jobRequestId: sent.jobRequestId,
+        actorUserId: input.session.user?.id ?? null,
+        priorState: sent.status,
+        newState: sent.status,
+        reason: "abstract_delivery_boundary",
+        correlationId: input.correlationId,
+        createdAt: sent.updatedAt
+      });
+      return sent;
+    },
+
+    async workerRead(input: {
+      session: SessionValidationResult;
+      roles?: readonly AuthorizationRoleKey[];
+      workerOfferId: string;
+      correlationId?: string;
+    }) {
+      const currentTime = now();
+      const workerIdentity = await requireWorkerIdentityForSession(
+        workerOfferRepository,
+        input.session
+      );
+      const offer = await requireWorkerOwnedOffer({
+        workerOfferRepository,
+        authorizationService,
+        session: input.session,
+        roles: input.roles ?? [],
+        workerIdentity,
+        workerOfferId: input.workerOfferId,
+        correlationId: input.correlationId,
+        now: currentTime
+      });
+      if (offer.stored.status === "sent" || offer.stored.status === "delivered") {
+        const viewed = await workerOfferRepository.updateWorkerOffer({
+          workerOfferId: offer.stored.id,
+          expectedVersion: offer.stored.version,
+          actorUserId: input.session.user?.id ?? null,
+          status: "viewed",
+          viewedAt: currentTime,
+          now: currentTime
+        });
+        if (viewed) {
+          await recordWorkerOfferAudit(workerOfferRepository, {
+            action: "worker_offer.viewed",
+            organizationId: viewed.organizationId,
+            workerOfferId: viewed.id,
+            dispatchReviewId: viewed.dispatchReviewId,
+            jobRequestId: viewed.jobRequestId,
+            actorUserId: input.session.user?.id ?? null,
+            priorState: offer.stored.status,
+            newState: viewed.status,
+            reason: null,
+            correlationId: input.correlationId,
+            createdAt: currentTime
+          });
+          return toPublicWorkerOffer(
+            viewed,
+            await workerOfferRepository.findCurrentTermsVersion(viewed.id)
+          );
+        }
+      }
+      return offer.publicOffer;
+    },
+
+    async accept(input: WorkerOfferResponseInput) {
+      return respondToWorkerOffer({
+        ...input,
+        workerOfferRepository,
+        authorizationService,
+        responseType: "accepted",
+        nextStatus: "accepted",
+        action: "worker_offer.accepted",
+        now: now()
+      });
+    },
+
+    async decline(input: WorkerOfferResponseInput) {
+      return respondToWorkerOffer({
+        ...input,
+        workerOfferRepository,
+        authorizationService,
+        responseType: "declined",
+        nextStatus: "declined",
+        action: "worker_offer.declined",
+        now: now()
+      });
+    },
+
+    async withdraw(input: WorkerOfferTransitionInput & { reason: string }) {
+      return transitionWorkerOffer({
+        ...input,
+        workerOfferRepository,
+        authorizationService,
+        permission: "worker_offer.withdraw",
+        allowedFrom: ["draft", "approved", "sent", "delivered", "viewed"],
+        nextStatus: "withdrawn",
+        action: "worker_offer.withdrawn",
+        withdrawnAt: true,
+        now: now()
+      });
+    },
+
+    async cancel(input: WorkerOfferTransitionInput & { reason: string }) {
+      return transitionWorkerOffer({
+        ...input,
+        workerOfferRepository,
+        authorizationService,
+        permission: "worker_offer.cancel",
+        allowedFrom: ["draft", "approved", "sent", "delivered", "viewed"],
+        nextStatus: "cancelled",
+        action: "worker_offer.cancelled",
+        cancelledAt: true,
+        now: now()
+      });
+    },
+
+    async readAuditSummary(input: {
+      session: SessionValidationResult;
+      roles?: readonly AuthorizationRoleKey[];
+      workerOfferId: string;
+      correlationId?: string;
+    }) {
+      const offer = await requireAuthorizedWorkerOffer({
+        workerOfferRepository,
+        authorizationService,
+        session: input.session,
+        roles: input.roles ?? [],
+        permission: "worker_offer.audit_read",
+        workerOfferId: input.workerOfferId,
+        correlationId: input.correlationId,
+        now: now()
+      });
+      return {
+        workerOfferId: offer.stored.id,
+        dispatchReviewId: offer.stored.dispatchReviewId,
+        jobRequestId: offer.stored.jobRequestId,
+        policyVersion: "worker-offer-foundation-v1",
+        auditAvailable: true,
+        message: "Worker Offer audit is available through governed audit records."
+      };
+    }
+  };
+}
+
+export type WorkerOfferService = ReturnType<typeof createWorkerOfferService>;
+
+interface WorkerOfferTransitionInput {
+  session: SessionValidationResult;
+  roles?: readonly AuthorizationRoleKey[];
+  workerOfferId: string;
+  expectedVersion: number;
+  reason?: string;
+  correlationId?: string;
+}
+
+interface WorkerOfferResponseInput {
+  session: SessionValidationResult;
+  roles?: readonly AuthorizationRoleKey[];
+  workerOfferId: string;
+  expectedVersion: number;
+  expectedTermsVersionId: string;
+  reason?: string | null;
+  correlationId?: string;
+}
+
+const workerOfferCapacityStates: readonly WorkerOfferStatus[] = [
+  "draft",
+  "approved",
+  "sent",
+  "delivered",
+  "viewed",
+  "accepted"
+] as const;
+
+function toPublicWorkerOffer(
+  offer: StoredWorkerOffer,
+  currentTermsVersion: StoredWorkerOfferTermsVersion | null
+): PublicWorkerOffer {
+  return {
+    ...offer,
+    currentTermsVersion,
+    versionToken: offer.version
+  };
+}
+
+function workerOfferDeny(
+  status: Exclude<WorkerOfferDecisionStatus, "allow">,
+  internalReason: string,
+  workerOffer: PublicWorkerOffer | null,
+  roles: readonly AuthorizationRoleKey[]
+): WorkerOfferDecision {
+  return {
+    status,
+    allow: false,
+    workerOffer,
+    roles,
+    internalReason,
+    externalCode: authorizationDeniedCode,
+    externalMessage: authorizationDeniedMessage
+  };
+}
+
+async function authorizeWorkerOfferPlatformOperation(input: {
+  workerOfferRepository: WorkerOfferRepository;
+  authorizationService: AuthorizationService;
+  session: SessionValidationResult;
+  roles: readonly AuthorizationRoleKey[];
+  permission: AuthorizationPermissionKey;
+  workerOffer?: StoredWorkerOffer | null | undefined;
+  correlationId?: string | undefined;
+  now: Date;
+}): Promise<WorkerOfferDecision> {
+  const authorizationDecision = await input.authorizationService.decide({
+    session: input.session,
+    roles: input.roles,
+    permission: input.permission,
+    platformContext: { platform: true },
+    ...(input.correlationId ? { correlationId: input.correlationId } : {})
+  });
+
+  const publicOffer = input.workerOffer
+    ? toPublicWorkerOffer(
+        input.workerOffer,
+        await input.workerOfferRepository.findCurrentTermsVersion(input.workerOffer.id)
+      )
+    : null;
+
+  if (!authorizationDecision.allow) {
+    const decision = workerOfferDeny(
+      "permission_denied",
+      authorizationDecision.internalReason ?? "permission_denied",
+      publicOffer,
+      input.roles
+    );
+    await recordWorkerOfferDenial(input.workerOfferRepository, {
+      decision,
+      actorUserId: input.session.user?.id ?? null,
+      correlationId: input.correlationId,
+      createdAt: input.now
+    });
+    return decision;
+  }
+
+  return {
+    status: "allow",
+    allow: true,
+    workerOffer: publicOffer,
+    roles: input.roles,
+    internalReason: null,
+    externalCode: null,
+    externalMessage: null
+  };
+}
+
+async function requireAuthorizedWorkerOffer(input: {
+  workerOfferRepository: WorkerOfferRepository;
+  authorizationService: AuthorizationService;
+  session: SessionValidationResult;
+  roles: readonly AuthorizationRoleKey[];
+  permission: AuthorizationPermissionKey;
+  workerOfferId: string;
+  correlationId?: string | undefined;
+  now: Date;
+}) {
+  const workerOffer = await input.workerOfferRepository.findWorkerOfferById(input.workerOfferId);
+  const decision = await authorizeWorkerOfferPlatformOperation({
+    workerOfferRepository: input.workerOfferRepository,
+    authorizationService: input.authorizationService,
+    session: input.session,
+    roles: input.roles,
+    permission: input.permission,
+    workerOffer,
+    correlationId: input.correlationId,
+    now: input.now
+  });
+  if (!decision.allow || !workerOffer) {
+    throw new WorkerOfferError(
+      decision.allow
+        ? workerOfferDeny("not_found", "worker_offer_not_found", null, input.roles)
+        : decision
+    );
+  }
+
+  return {
+    stored: workerOffer,
+    publicOffer: toPublicWorkerOffer(
+      workerOffer,
+      await input.workerOfferRepository.findCurrentTermsVersion(workerOffer.id)
+    )
+  };
+}
+
+async function requireWorkerIdentityForSession(
+  workerOfferRepository: WorkerOfferRepository,
+  session: SessionValidationResult
+) {
+  if (!session.authenticated || !session.user) {
+    throw new WorkerOfferError(workerOfferDeny("permission_denied", "session_invalid", null, []));
+  }
+  const workerIdentity = await workerOfferRepository.findWorkerIdentityByUserId(session.user.id);
+  if (!workerIdentity) {
+    throw new WorkerOfferError(workerOfferDeny("not_found", "worker_identity_not_found", null, []));
+  }
+  if (workerIdentity.status !== "active") {
+    throw new WorkerOfferError(
+      workerOfferDeny("worker_identity_inactive", "worker_identity_not_active", null, [])
+    );
+  }
+  return workerIdentity;
+}
+
+async function requireWorkerOwnedOffer(input: {
+  workerOfferRepository: WorkerOfferRepository;
+  authorizationService: AuthorizationService;
+  session: SessionValidationResult;
+  roles: readonly AuthorizationRoleKey[];
+  workerIdentity: StoredWorkerIdentity;
+  workerOfferId: string;
+  correlationId?: string | undefined;
+  now: Date;
+}) {
+  const authorizationDecision = await input.authorizationService.decide({
+    session: input.session,
+    roles: input.roles,
+    permission: "worker_offer.respond",
+    ...(input.correlationId ? { correlationId: input.correlationId } : {})
+  });
+  const workerOffer = await input.workerOfferRepository.findWorkerOfferById(input.workerOfferId);
+  const publicOffer = workerOffer
+    ? toPublicWorkerOffer(
+        workerOffer,
+        await input.workerOfferRepository.findCurrentTermsVersion(workerOffer.id)
+      )
+    : null;
+  if (!authorizationDecision.allow || !workerOffer) {
+    throw new WorkerOfferError(
+      authorizationDecision.allow
+        ? workerOfferDeny("not_found", "worker_offer_not_found", null, input.roles)
+        : workerOfferDeny(
+            "permission_denied",
+            authorizationDecision.internalReason ?? "permission_denied",
+            publicOffer,
+            input.roles
+          )
+    );
+  }
+  if (workerOffer.workerIdentityId !== input.workerIdentity.id) {
+    const decision = workerOfferDeny(
+      "permission_denied",
+      "worker_offer_not_owned_by_worker",
+      publicOffer,
+      input.roles
+    );
+    await recordWorkerOfferDenial(input.workerOfferRepository, {
+      decision,
+      actorUserId: input.session.user?.id ?? null,
+      correlationId: input.correlationId,
+      createdAt: input.now
+    });
+    throw new WorkerOfferError(decision);
+  }
+
+  return { stored: workerOffer, publicOffer: publicOffer! };
+}
+
+async function transitionWorkerOffer(
+  input: WorkerOfferTransitionInput & {
+    workerOfferRepository: WorkerOfferRepository;
+    authorizationService: AuthorizationService;
+    permission: AuthorizationPermissionKey;
+    allowedFrom: readonly WorkerOfferStatus[];
+    nextStatus: WorkerOfferStatus;
+    action: Parameters<WorkerOfferRepository["recordWorkerOfferAuditEvent"]>[0]["action"];
+    approvedAt?: boolean;
+    sentAt?: boolean;
+    withdrawnAt?: boolean;
+    cancelledAt?: boolean;
+    now: Date;
+  }
+) {
+  const offer = await requireAuthorizedWorkerOffer({
+    workerOfferRepository: input.workerOfferRepository,
+    authorizationService: input.authorizationService,
+    session: input.session,
+    roles: input.roles ?? [],
+    permission: input.permission,
+    workerOfferId: input.workerOfferId,
+    correlationId: input.correlationId,
+    now: input.now
+  });
+  if (!input.allowedFrom.includes(offer.stored.status)) {
+    throw new WorkerOfferError(
+      workerOfferDeny(
+        "invalid_transition",
+        `cannot_transition_from_${offer.stored.status}_to_${input.nextStatus}`,
+        offer.publicOffer,
+        input.roles ?? []
+      )
+    );
+  }
+  const reason =
+    input.reason === undefined ? null : normalizeRequiredJobRequestText(input.reason, 2, 1000);
+  if (input.reason !== undefined && !reason) {
+    throw new WorkerOfferError(
+      workerOfferDeny(
+        "invalid_input",
+        "transition_reason_required",
+        offer.publicOffer,
+        input.roles ?? []
+      )
+    );
+  }
+  const updated = await input.workerOfferRepository.updateWorkerOffer({
+    workerOfferId: offer.stored.id,
+    expectedVersion: input.expectedVersion,
+    actorUserId: input.session.user?.id ?? null,
+    status: input.nextStatus,
+    ...(input.approvedAt ? { approvedAt: input.now } : {}),
+    ...(input.sentAt ? { sentAt: input.now } : {}),
+    ...(input.withdrawnAt ? { withdrawnAt: input.now } : {}),
+    ...(input.cancelledAt ? { cancelledAt: input.now } : {}),
+    now: input.now
+  });
+  if (!updated) {
+    throw new WorkerOfferError(
+      workerOfferDeny("version_conflict", "stale_version", offer.publicOffer, input.roles ?? [])
+    );
+  }
+  await recordWorkerOfferAudit(input.workerOfferRepository, {
+    action: input.action,
+    organizationId: updated.organizationId,
+    workerOfferId: updated.id,
+    dispatchReviewId: updated.dispatchReviewId,
+    jobRequestId: updated.jobRequestId,
+    actorUserId: input.session.user?.id ?? null,
+    priorState: offer.stored.status,
+    newState: updated.status,
+    reason,
+    correlationId: input.correlationId,
+    createdAt: input.now
+  });
+  return toPublicWorkerOffer(
+    updated,
+    await input.workerOfferRepository.findCurrentTermsVersion(updated.id)
+  );
+}
+
+async function respondToWorkerOffer(
+  input: WorkerOfferResponseInput & {
+    workerOfferRepository: WorkerOfferRepository;
+    authorizationService: AuthorizationService;
+    responseType: WorkerOfferResponseType;
+    nextStatus: Extract<WorkerOfferStatus, "accepted" | "declined">;
+    action: Parameters<WorkerOfferRepository["recordWorkerOfferAuditEvent"]>[0]["action"];
+    now: Date;
+  }
+) {
+  const workerIdentity = await requireWorkerIdentityForSession(
+    input.workerOfferRepository,
+    input.session
+  );
+  const offer = await requireWorkerOwnedOffer({
+    workerOfferRepository: input.workerOfferRepository,
+    authorizationService: input.authorizationService,
+    session: input.session,
+    roles: input.roles ?? [],
+    workerIdentity,
+    workerOfferId: input.workerOfferId,
+    correlationId: input.correlationId,
+    now: input.now
+  });
+  const terms = offer.publicOffer.currentTermsVersion;
+  if (!terms || terms.id !== input.expectedTermsVersionId) {
+    await recordRejectedWorkerResponse(input, offer.stored, "stale_terms");
+    throw new WorkerOfferError(
+      workerOfferDeny("stale_terms", "stale_terms", offer.publicOffer, input.roles ?? [])
+    );
+  }
+  if (!["sent", "delivered", "viewed"].includes(offer.stored.status)) {
+    await recordRejectedWorkerResponse(
+      input,
+      offer.stored,
+      `cannot_respond_from_${offer.stored.status}`
+    );
+    throw new WorkerOfferError(
+      workerOfferDeny(
+        "invalid_transition",
+        `cannot_respond_from_${offer.stored.status}`,
+        offer.publicOffer,
+        input.roles ?? []
+      )
+    );
+  }
+  if (offer.stored.expiresAt <= input.now) {
+    const expired = await input.workerOfferRepository.updateWorkerOffer({
+      workerOfferId: offer.stored.id,
+      expectedVersion: offer.stored.version,
+      actorUserId: input.session.user?.id ?? null,
+      status: "expired",
+      now: input.now
+    });
+    await recordWorkerOfferAudit(input.workerOfferRepository, {
+      action: "worker_offer.expired",
+      organizationId: offer.stored.organizationId,
+      workerOfferId: offer.stored.id,
+      dispatchReviewId: offer.stored.dispatchReviewId,
+      jobRequestId: offer.stored.jobRequestId,
+      actorUserId: input.session.user?.id ?? null,
+      priorState: offer.stored.status,
+      newState: expired?.status ?? "expired",
+      reason: "server_expiry",
+      correlationId: input.correlationId,
+      createdAt: input.now
+    });
+    throw new WorkerOfferError(
+      workerOfferDeny("expired", "offer_expired", offer.publicOffer, input.roles ?? [])
+    );
+  }
+  if (await input.workerOfferRepository.findResponseByOfferId(offer.stored.id)) {
+    await recordRejectedWorkerResponse(input, offer.stored, "duplicate_response");
+    throw new WorkerOfferError(
+      workerOfferDeny(
+        "duplicate_response",
+        "duplicate_response",
+        offer.publicOffer,
+        input.roles ?? []
+      )
+    );
+  }
+  await input.workerOfferRepository.createResponse({
+    workerOfferId: offer.stored.id,
+    workerIdentityId: workerIdentity.id,
+    termsVersionId: terms.id,
+    responseType: input.responseType,
+    reason: normalizeOptionalResidenceText(input.reason ?? null, 1000),
+    now: input.now
+  });
+  const updated = await input.workerOfferRepository.updateWorkerOffer({
+    workerOfferId: offer.stored.id,
+    expectedVersion: input.expectedVersion,
+    actorUserId: input.session.user?.id ?? null,
+    status: input.nextStatus,
+    respondedAt: input.now,
+    now: input.now
+  });
+  if (!updated) {
+    throw new WorkerOfferError(
+      workerOfferDeny("version_conflict", "stale_version", offer.publicOffer, input.roles ?? [])
+    );
+  }
+  await recordWorkerOfferAudit(input.workerOfferRepository, {
+    action: input.action,
+    organizationId: updated.organizationId,
+    workerOfferId: updated.id,
+    dispatchReviewId: updated.dispatchReviewId,
+    jobRequestId: updated.jobRequestId,
+    actorUserId: input.session.user?.id ?? null,
+    priorState: offer.stored.status,
+    newState: updated.status,
+    reason: null,
+    correlationId: input.correlationId,
+    createdAt: input.now
+  });
+  return toPublicWorkerOffer(
+    updated,
+    await input.workerOfferRepository.findCurrentTermsVersion(updated.id)
+  );
+}
+
+async function recordRejectedWorkerResponse(
+  input: WorkerOfferResponseInput & {
+    workerOfferRepository: WorkerOfferRepository;
+    responseType: WorkerOfferResponseType;
+    now: Date;
+  },
+  offer: StoredWorkerOffer,
+  reason: string
+) {
+  await recordWorkerOfferAudit(input.workerOfferRepository, {
+    action: "worker_offer.response_rejected",
+    organizationId: offer.organizationId,
+    workerOfferId: offer.id,
+    dispatchReviewId: offer.dispatchReviewId,
+    jobRequestId: offer.jobRequestId,
+    actorUserId: input.session.user?.id ?? null,
+    priorState: offer.status,
+    newState: offer.status,
+    reason,
+    correlationId: input.correlationId,
+    createdAt: input.now
+  });
+}
+
+async function recordWorkerOfferDenial(
+  repository: WorkerOfferRepository,
+  input: {
+    decision: WorkerOfferDecision;
+    actorUserId: string | null;
+    correlationId?: string | undefined;
+    createdAt: Date;
+  }
+) {
+  await recordWorkerOfferAudit(repository, {
+    action: "worker_offer.access_denied",
+    organizationId: input.decision.workerOffer?.organizationId ?? null,
+    workerOfferId: input.decision.workerOffer?.id ?? null,
+    dispatchReviewId: input.decision.workerOffer?.dispatchReviewId ?? null,
+    jobRequestId: input.decision.workerOffer?.jobRequestId ?? null,
+    actorUserId: input.actorUserId,
+    priorState: input.decision.workerOffer?.status ?? null,
+    newState: "denied",
+    reason: input.decision.internalReason,
+    correlationId: input.correlationId,
+    createdAt: input.createdAt
+  });
+}
+
+async function recordWorkerOfferAudit(
+  repository: WorkerOfferRepository,
+  input: Omit<
+    Parameters<WorkerOfferRepository["recordWorkerOfferAuditEvent"]>[0],
+    "correlationId"
+  > & {
+    correlationId?: string | undefined;
+  }
+) {
+  await repository.recordWorkerOfferAuditEvent({
+    ...input,
+    correlationId: input.correlationId ?? createWorkerOfferCorrelationId()
+  });
+}
+
+function createWorkerOfferCorrelationId() {
+  return `worker_offer_${randomBytes(12).toString("base64url")}`;
+}
 
 const nonTerminalDispatchStates: readonly DispatchReviewStatus[] = [
   "draft",
@@ -4957,9 +6163,7 @@ async function requireAuthorizedDispatch(input: {
   });
   if (!decision.allow || !dispatchReview) {
     throw new DispatchError(
-      decision.allow
-        ? dispatchDeny("not_found", "dispatch_not_found", null, input.roles)
-        : decision
+      decision.allow ? dispatchDeny("not_found", "dispatch_not_found", null, input.roles) : decision
     );
   }
 
@@ -5031,20 +6235,22 @@ async function updateDispatchBoundary(input: {
   return toPublicDispatchReview(updated);
 }
 
-async function transitionDispatchReview(input: DispatchTransitionInput & {
-  dispatchRepository: DispatchRepository;
-  authorizationService: AuthorizationService;
-  permission: AuthorizationPermissionKey;
-  allowedFrom: readonly DispatchReviewStatus[];
-  nextState: DispatchReviewStatus;
-  action: Parameters<DispatchRepository["recordDispatchAuditEvent"]>[0]["action"];
-  startedAt?: boolean;
-  pausedAt?: boolean;
-  cancelledAt?: boolean;
-  closedAt?: boolean;
-  prepareOfferBoundary?: boolean;
-  now: Date;
-}) {
+async function transitionDispatchReview(
+  input: DispatchTransitionInput & {
+    dispatchRepository: DispatchRepository;
+    authorizationService: AuthorizationService;
+    permission: AuthorizationPermissionKey;
+    allowedFrom: readonly DispatchReviewStatus[];
+    nextState: DispatchReviewStatus;
+    action: Parameters<DispatchRepository["recordDispatchAuditEvent"]>[0]["action"];
+    startedAt?: boolean;
+    pausedAt?: boolean;
+    cancelledAt?: boolean;
+    closedAt?: boolean;
+    prepareOfferBoundary?: boolean;
+    now: Date;
+  }
+) {
   const dispatch = await requireAuthorizedDispatch({
     dispatchRepository: input.dispatchRepository,
     authorizationService: input.authorizationService,
@@ -5069,7 +6275,12 @@ async function transitionDispatchReview(input: DispatchTransitionInput & {
     input.reason === undefined ? null : normalizeRequiredJobRequestText(input.reason, 2, 1000);
   if (input.reason !== undefined && !reason) {
     throw new DispatchError(
-      dispatchDeny("invalid_input", "transition_reason_required", dispatch.publicDispatch, input.roles ?? [])
+      dispatchDeny(
+        "invalid_input",
+        "transition_reason_required",
+        dispatch.publicDispatch,
+        input.roles ?? []
+      )
     );
   }
   const updated = await input.dispatchRepository.updateDispatchReview({
@@ -5142,7 +6353,7 @@ async function updateCandidateShortlistBoundary(
   }
   const shortlistOrder =
     input.shortlistState === "shortlisted"
-      ? input.shortlistOrder ?? dispatch.stored.shortlistedCandidateCount + 1
+      ? (input.shortlistOrder ?? dispatch.stored.shortlistedCandidateCount + 1)
       : null;
   const candidate = await input.dispatchRepository.updateCandidateShortlist({
     dispatchReviewId: dispatch.stored.id,
@@ -5237,10 +6448,7 @@ async function recordDispatchDenial(
 
 async function recordDispatchAudit(
   repository: DispatchRepository,
-  input: Omit<
-    Parameters<DispatchRepository["recordDispatchAuditEvent"]>[0],
-    "correlationId"
-  > & {
+  input: Omit<Parameters<DispatchRepository["recordDispatchAuditEvent"]>[0], "correlationId"> & {
     correlationId?: string | undefined;
   }
 ) {
@@ -7212,7 +8420,8 @@ export function createPrismaDispatchRepository(prismaClient: unknown): DispatchR
         data.operationalOwnerUserId = input.operationalOwnerUserId;
       if (input.shortlistedCandidateCount !== undefined)
         data.shortlistedCandidateCount = input.shortlistedCandidateCount;
-      if (input.preparedOfferCount !== undefined) data.preparedOfferCount = input.preparedOfferCount;
+      if (input.preparedOfferCount !== undefined)
+        data.preparedOfferCount = input.preparedOfferCount;
       if (input.startedAt !== undefined) data.startedAt = input.startedAt;
       if (input.pausedAt !== undefined) data.pausedAt = input.pausedAt;
       if (input.cancelledAt !== undefined) data.cancelledAt = input.cancelledAt;
@@ -7309,6 +8518,313 @@ export function createPrismaDispatchRepository(prismaClient: unknown): DispatchR
 
     async recordDispatchAuditEvent(input) {
       await recordPrismaDispatchAudit(prisma, input);
+    }
+  };
+}
+
+type PrismaWorkerOfferClient = Pick<PrismaDispatchClient, "auditActorReference" | "auditEvent"> & {
+  $transaction<T>(fn: (transaction: PrismaWorkerOfferClient) => Promise<T>): Promise<T>;
+  workerIdentity: {
+    findUnique(args: {
+      where: { id?: string | undefined; userId?: string | undefined };
+    }): Promise<StoredWorkerIdentity | null>;
+    create(args: {
+      data: {
+        userId: string;
+        displayName?: string | null;
+        preferredLanguage?: string | null;
+        status: WorkerIdentityStatus;
+        createdAt: Date;
+        updatedAt: Date;
+      };
+    }): Promise<StoredWorkerIdentity>;
+  };
+  workerOffer: {
+    create(args: { data: CreateWorkerOfferPrismaData }): Promise<StoredWorkerOffer>;
+    findUnique(args: { where: { id: string } }): Promise<StoredWorkerOffer | null>;
+    findMany(args: {
+      where?: {
+        dispatchReviewId?: string | undefined;
+        organizationId?: string | undefined;
+        workerIdentityId?: string | undefined;
+        status?: { in: readonly WorkerOfferStatus[] } | undefined;
+      };
+      orderBy: [{ updatedAt: "desc" }, { createdAt: "desc" }];
+    }): Promise<StoredWorkerOffer[]>;
+    count(args: {
+      where: { dispatchReviewId: string; status: { in: readonly WorkerOfferStatus[] } };
+    }): Promise<number>;
+    update(args: {
+      where: { id: string };
+      data: Partial<UpdateWorkerOfferPrismaData>;
+    }): Promise<StoredWorkerOffer>;
+    updateMany(args: {
+      where: { id: string; version: number };
+      data: Partial<UpdateWorkerOfferPrismaData>;
+    }): Promise<{ count: number }>;
+  };
+  workerOfferTermsVersion: {
+    create(args: {
+      data: CreateWorkerOfferTermsPrismaData;
+    }): Promise<StoredWorkerOfferTermsVersion>;
+    findFirst(args: {
+      where: { workerOfferId: string };
+      orderBy: { versionNumber: "desc" };
+    }): Promise<StoredWorkerOfferTermsVersion | null>;
+  };
+  workerOfferDeliveryAttempt: {
+    create(args: {
+      data: {
+        workerOfferId: string;
+        status: WorkerOfferDeliveryStatus;
+        providerBoundary: string;
+        reason: string | null;
+        attemptedAt?: Date | null;
+        deliveredAt?: Date | null;
+        failedAt?: Date | null;
+        createdByUserId: string | null;
+        createdAt: Date;
+      };
+    }): Promise<StoredWorkerOfferDeliveryAttempt>;
+  };
+  workerOfferResponse: {
+    findUnique(args: {
+      where: { workerOfferId: string };
+    }): Promise<StoredWorkerOfferResponse | null>;
+    create(args: {
+      data: {
+        workerOfferId: string;
+        workerIdentityId: string;
+        termsVersionId: string;
+        responseType: WorkerOfferResponseType;
+        reason: string | null;
+        createdAt: Date;
+      };
+    }): Promise<StoredWorkerOfferResponse>;
+  };
+};
+
+type CreateWorkerOfferPrismaData = {
+  dispatchReviewId: string;
+  jobRequestId: string;
+  organizationId: string;
+  residenceId: string;
+  departmentId: string;
+  workerIdentityId: string;
+  status: WorkerOfferStatus;
+  expiresAt: Date;
+  createdByUserId: string;
+  createdAt: Date;
+  updatedAt: Date;
+};
+
+type CreateWorkerOfferTermsPrismaData = {
+  workerOfferId: string;
+  versionNumber: number;
+  workerVisibleTitle: string;
+  workerVisibleSummary: string | null;
+  timezone: string;
+  startAt: Date;
+  endAt: Date;
+  workGroupId: string;
+  roleDefinitionId: string;
+  compensationSummary: string | null;
+  policySummary: string | null;
+  createdByUserId: string;
+  createdAt: Date;
+};
+
+type UpdateWorkerOfferPrismaData = {
+  currentTermsVersionId: string | null;
+  status: WorkerOfferStatus;
+  approvedAt: Date | null;
+  sentAt: Date | null;
+  deliveredAt: Date | null;
+  viewedAt: Date | null;
+  respondedAt: Date | null;
+  withdrawnAt: Date | null;
+  cancelledAt: Date | null;
+  updatedByUserId: string | null;
+  approvedByUserId: string | null;
+  sentByUserId: string | null;
+  withdrawnByUserId: string | null;
+  cancelledByUserId: string | null;
+  updatedAt: Date;
+  version: { increment: number };
+};
+
+export function createPrismaWorkerOfferRepository(prismaClient: unknown): WorkerOfferRepository {
+  const prisma = prismaClient as PrismaWorkerOfferClient;
+
+  return {
+    findWorkerIdentityById(workerIdentityId) {
+      return prisma.workerIdentity.findUnique({ where: { id: workerIdentityId } });
+    },
+
+    findWorkerIdentityByUserId(userId) {
+      return prisma.workerIdentity.findUnique({ where: { userId } });
+    },
+
+    createWorkerIdentity(input) {
+      return prisma.workerIdentity.create({
+        data: {
+          userId: input.userId,
+          displayName: input.displayName ?? null,
+          preferredLanguage: input.preferredLanguage ?? null,
+          status: "active",
+          createdAt: input.now,
+          updatedAt: input.now
+        }
+      });
+    },
+
+    createWorkerOffer(input) {
+      return prisma.$transaction(async (transaction) => {
+        const offer = await transaction.workerOffer.create({
+          data: {
+            dispatchReviewId: input.dispatchReview.id,
+            jobRequestId: input.jobRequest.id,
+            organizationId: input.dispatchReview.organizationId,
+            residenceId: input.dispatchReview.residenceId,
+            departmentId: input.dispatchReview.departmentId,
+            workerIdentityId: input.workerIdentity.id,
+            status: "draft",
+            expiresAt: input.expiresAt,
+            createdByUserId: input.actorUserId,
+            createdAt: input.now,
+            updatedAt: input.now
+          }
+        });
+        const termsVersion = await transaction.workerOfferTermsVersion.create({
+          data: {
+            workerOfferId: offer.id,
+            versionNumber: 1,
+            workerVisibleTitle: input.workerVisibleTitle,
+            workerVisibleSummary: input.workerVisibleSummary,
+            timezone: input.jobRequest.timezone,
+            startAt: input.jobRequest.startAt,
+            endAt: input.jobRequest.endAt,
+            workGroupId: input.jobRequest.workGroupId,
+            roleDefinitionId: input.jobRequest.roleDefinitionId,
+            compensationSummary: input.compensationSummary,
+            policySummary: input.policySummary,
+            createdByUserId: input.actorUserId,
+            createdAt: input.now
+          }
+        });
+        const updated = await transaction.workerOffer.update({
+          where: { id: offer.id },
+          data: {
+            currentTermsVersionId: termsVersion.id,
+            updatedByUserId: input.actorUserId,
+            updatedAt: input.now
+          }
+        });
+        return { offer: updated, termsVersion };
+      });
+    },
+
+    findWorkerOfferById(workerOfferId) {
+      return prisma.workerOffer.findUnique({ where: { id: workerOfferId } });
+    },
+
+    findCurrentTermsVersion(workerOfferId) {
+      return prisma.workerOfferTermsVersion.findFirst({
+        where: { workerOfferId },
+        orderBy: { versionNumber: "desc" }
+      });
+    },
+
+    listWorkerOffers(input) {
+      return prisma.workerOffer.findMany({
+        where: {
+          ...(input.dispatchReviewId ? { dispatchReviewId: input.dispatchReviewId } : {}),
+          ...(input.organizationId ? { organizationId: input.organizationId } : {}),
+          ...(input.workerIdentityId ? { workerIdentityId: input.workerIdentityId } : {}),
+          ...(input.statuses ? { status: { in: input.statuses } } : {})
+        },
+        orderBy: [{ updatedAt: "desc" }, { createdAt: "desc" }]
+      });
+    },
+
+    countCapacityOffersForDispatch(dispatchReviewId) {
+      return prisma.workerOffer.count({
+        where: { dispatchReviewId, status: { in: workerOfferCapacityStates } }
+      });
+    },
+
+    async updateWorkerOffer(input) {
+      const data: Partial<UpdateWorkerOfferPrismaData> = {
+        updatedByUserId: input.actorUserId,
+        updatedAt: input.now,
+        version: { increment: 1 }
+      };
+
+      if (input.status !== undefined) data.status = input.status;
+      if (input.approvedAt !== undefined) {
+        data.approvedAt = input.approvedAt;
+        data.approvedByUserId = input.actorUserId;
+      }
+      if (input.sentAt !== undefined) {
+        data.sentAt = input.sentAt;
+        data.sentByUserId = input.actorUserId;
+      }
+      if (input.deliveredAt !== undefined) data.deliveredAt = input.deliveredAt;
+      if (input.viewedAt !== undefined) data.viewedAt = input.viewedAt;
+      if (input.respondedAt !== undefined) data.respondedAt = input.respondedAt;
+      if (input.withdrawnAt !== undefined) {
+        data.withdrawnAt = input.withdrawnAt;
+        data.withdrawnByUserId = input.actorUserId;
+      }
+      if (input.cancelledAt !== undefined) {
+        data.cancelledAt = input.cancelledAt;
+        data.cancelledByUserId = input.actorUserId;
+      }
+
+      const result = await prisma.workerOffer.updateMany({
+        where: { id: input.workerOfferId, version: input.expectedVersion },
+        data
+      });
+      if (result.count !== 1) return null;
+
+      return this.findWorkerOfferById(input.workerOfferId);
+    },
+
+    createDeliveryAttempt(input) {
+      return prisma.workerOfferDeliveryAttempt.create({
+        data: {
+          workerOfferId: input.workerOfferId,
+          status: input.status,
+          providerBoundary: input.providerBoundary,
+          reason: input.reason,
+          attemptedAt: input.status === "attempted" ? input.now : null,
+          deliveredAt: input.status === "delivered" ? input.now : null,
+          failedAt: input.status === "failed" ? input.now : null,
+          createdByUserId: input.actorUserId,
+          createdAt: input.now
+        }
+      });
+    },
+
+    findResponseByOfferId(workerOfferId) {
+      return prisma.workerOfferResponse.findUnique({ where: { workerOfferId } });
+    },
+
+    createResponse(input) {
+      return prisma.workerOfferResponse.create({
+        data: {
+          workerOfferId: input.workerOfferId,
+          workerIdentityId: input.workerIdentityId,
+          termsVersionId: input.termsVersionId,
+          responseType: input.responseType,
+          reason: input.reason,
+          createdAt: input.now
+        }
+      });
+    },
+
+    async recordWorkerOfferAuditEvent(input) {
+      await recordPrismaWorkerOfferAudit(prisma, input);
     }
   };
 }
@@ -7514,7 +9030,8 @@ function isSensitiveAuthorizationDenial(decision: AuthorizationDecision) {
   return (
     decision.permission === "platform.supervise" ||
     decision.permission.startsWith("job_request.") ||
-    decision.permission.startsWith("dispatch.")
+    decision.permission.startsWith("dispatch.") ||
+    decision.permission.startsWith("worker_offer.")
   );
 }
 
@@ -9858,6 +11375,38 @@ async function recordPrismaDispatchAudit(
       source: "api",
       correlationId: input.correlationId,
       policyVersion: "dispatch-foundation-v1",
+      createdAt: input.createdAt
+    }
+  });
+}
+
+async function recordPrismaWorkerOfferAudit(
+  prisma: Pick<PrismaWorkerOfferClient, "auditActorReference" | "auditEvent">,
+  input: Parameters<WorkerOfferRepository["recordWorkerOfferAuditEvent"]>[0]
+) {
+  const actorReference = await prisma.auditActorReference.create({
+    data: {
+      actorType: input.actorUserId ? "user" : "system",
+      ...(input.actorUserId ? { userId: input.actorUserId } : {}),
+      ...(input.organizationId ? { organizationId: input.organizationId } : {}),
+      displayLabel: input.actorUserId ? "Worker Offer actor" : "Worker Offer boundary"
+    }
+  });
+
+  await prisma.auditEvent.create({
+    data: {
+      actorReferenceId: actorReference.id,
+      organizationId: input.organizationId,
+      entityType: "worker_offer",
+      entityId: input.workerOfferId ?? nilEntityId,
+      entityPublicReference: input.jobRequestId,
+      action: input.action,
+      priorState: input.priorState,
+      newState: input.newState,
+      reason: input.reason,
+      source: "api",
+      correlationId: input.correlationId,
+      policyVersion: "worker-offer-foundation-v1",
       createdAt: input.createdAt
     }
   });

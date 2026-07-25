@@ -11,6 +11,7 @@ import {
   ResidenceError,
   RegistrationUnavailableError,
   RoleDefinitionError,
+  WorkerOfferError,
   WorkGroupError,
   authenticationErrorCode,
   authenticationErrorMessage,
@@ -26,6 +27,7 @@ import {
   createOrganizationMembershipService,
   createResidenceService,
   createRoleDefinitionService,
+  createWorkerOfferService,
   createWorkGroupService,
   createPrismaDepartmentRepository,
   createPrismaDispatchRepository,
@@ -35,6 +37,7 @@ import {
   createPrismaOrganizationMembershipRepository,
   createPrismaResidenceRepository,
   createPrismaRoleDefinitionRepository,
+  createPrismaWorkerOfferRepository,
   createPrismaWorkGroupRepository,
   passwordPolicyErrorCode,
   registrationUnavailableCode,
@@ -54,6 +57,8 @@ import {
   type ResidenceService,
   type ResidenceStatus,
   type RoleDefinitionService,
+  type WorkerOfferService,
+  type WorkerOfferStatus,
   type WorkGroupService
 } from "@rwos/auth";
 import { getRuntimeConfig } from "@rwos/config";
@@ -68,6 +73,7 @@ export interface BuildApiOptions {
   residenceService?: ResidenceService;
   departmentService?: DepartmentService;
   dispatchService?: DispatchService;
+  workerOfferService?: WorkerOfferService;
   workGroupService?: WorkGroupService;
   roleDefinitionService?: RoleDefinitionService;
   jobRequestService?: JobRequestService;
@@ -146,6 +152,16 @@ export function buildApi(options: BuildApiOptions = {}) {
           authorizationService
         )
       : createUnavailableDispatchService());
+  const workerOfferService =
+    options.workerOfferService ??
+    (prisma
+      ? createWorkerOfferService(
+          createPrismaWorkerOfferRepository(prisma),
+          createPrismaDispatchRepository(prisma),
+          createPrismaJobRequestRepository(prisma),
+          authorizationService
+        )
+      : createUnavailableWorkerOfferService());
   const resolveAuthorizationRoles = options.resolveAuthorizationRoles ?? (() => []);
 
   if (prisma) {
@@ -185,6 +201,10 @@ export function buildApi(options: BuildApiOptions = {}) {
 
     if (error instanceof DispatchError) {
       return sendDispatchDenied(reply);
+    }
+
+    if (error instanceof WorkerOfferError) {
+      return sendWorkerOfferDenied(reply);
     }
 
     throw error;
@@ -1752,6 +1772,205 @@ export function buildApi(options: BuildApiOptions = {}) {
     }
   );
 
+  app.post("/platform/worker-offers", async (request, reply) => {
+    const session = await authService.validateSession(
+      readBearerToken(request.headers.authorization)
+    );
+    if (!session.authenticated || !session.user) return sendWorkerOfferDenied(reply);
+
+    const body = asRecord(request.body);
+    const expiresAt = readRequiredDate(body, "expiresAt");
+    if (!expiresAt) return sendWorkerOfferDenied(reply);
+
+    const workerOffer = await workerOfferService.createOffer({
+      session,
+      roles: await resolveAuthorizationRoles(session.user.id),
+      dispatchReviewId: readRequiredString(body, "dispatchReviewId") ?? "",
+      workerIdentityId: readRequiredString(body, "workerIdentityId") ?? "",
+      expiresAt,
+      workerVisibleTitle: readOptionalString(body, "workerVisibleTitle"),
+      workerVisibleSummary: readOptionalString(body, "workerVisibleSummary"),
+      compensationSummary: readOptionalString(body, "compensationSummary"),
+      policySummary: readOptionalString(body, "policySummary")
+    });
+
+    return reply.code(201).send({ workerOffer: serializeWorkerOffer(workerOffer) });
+  });
+
+  app.get("/platform/worker-offers", async (request, reply) => {
+    const session = await authService.validateSession(
+      readBearerToken(request.headers.authorization)
+    );
+    if (!session.authenticated || !session.user) return sendWorkerOfferDenied(reply);
+
+    const query = asRecord(request.query);
+    const status = readWorkerOfferStatus(readOptionalString(query, "status"));
+    const workerOffers = await workerOfferService.listOffers({
+      session,
+      roles: await resolveAuthorizationRoles(session.user.id),
+      dispatchReviewId: readOptionalString(query, "dispatchReviewId"),
+      organizationId: readOptionalString(query, "organizationId"),
+      ...(status ? { statuses: [status] } : {})
+    });
+
+    return reply
+      .code(200)
+      .send({ workerOffers: workerOffers.map((item) => serializeWorkerOffer(item)) });
+  });
+
+  app.get("/platform/worker-offers/:workerOfferId", async (request, reply) => {
+    const session = await authService.validateSession(
+      readBearerToken(request.headers.authorization)
+    );
+    if (!session.authenticated || !session.user) return sendWorkerOfferDenied(reply);
+
+    const workerOffer = await workerOfferService.readOffer({
+      session,
+      roles: await resolveAuthorizationRoles(session.user.id),
+      workerOfferId: readRouteParam(request.params, "workerOfferId")
+    });
+
+    return reply.code(200).send({ workerOffer: serializeWorkerOffer(workerOffer) });
+  });
+
+  app.post("/platform/worker-offers/:workerOfferId/approve", async (request, reply) => {
+    const session = await authService.validateSession(
+      readBearerToken(request.headers.authorization)
+    );
+    if (!session.authenticated || !session.user) return sendWorkerOfferDenied(reply);
+
+    const body = asRecord(request.body);
+    const workerOffer = await workerOfferService.approve({
+      session,
+      roles: await resolveAuthorizationRoles(session.user.id),
+      workerOfferId: readRouteParam(request.params, "workerOfferId"),
+      expectedVersion: readOptionalNumber(body, "expectedVersion") ?? 0
+    });
+
+    return reply.code(200).send({ workerOffer: serializeWorkerOffer(workerOffer) });
+  });
+
+  app.post("/platform/worker-offers/:workerOfferId/send", async (request, reply) => {
+    const session = await authService.validateSession(
+      readBearerToken(request.headers.authorization)
+    );
+    if (!session.authenticated || !session.user) return sendWorkerOfferDenied(reply);
+
+    const body = asRecord(request.body);
+    const workerOffer = await workerOfferService.send({
+      session,
+      roles: await resolveAuthorizationRoles(session.user.id),
+      workerOfferId: readRouteParam(request.params, "workerOfferId"),
+      expectedVersion: readOptionalNumber(body, "expectedVersion") ?? 0
+    });
+
+    return reply.code(200).send({ workerOffer: serializeWorkerOffer(workerOffer) });
+  });
+
+  app.post("/platform/worker-offers/:workerOfferId/withdraw", async (request, reply) => {
+    const session = await authService.validateSession(
+      readBearerToken(request.headers.authorization)
+    );
+    if (!session.authenticated || !session.user) return sendWorkerOfferDenied(reply);
+
+    const body = asRecord(request.body);
+    const workerOffer = await workerOfferService.withdraw({
+      session,
+      roles: await resolveAuthorizationRoles(session.user.id),
+      workerOfferId: readRouteParam(request.params, "workerOfferId"),
+      expectedVersion: readOptionalNumber(body, "expectedVersion") ?? 0,
+      reason: readRequiredString(body, "reason") ?? ""
+    });
+
+    return reply.code(200).send({ workerOffer: serializeWorkerOffer(workerOffer) });
+  });
+
+  app.post("/platform/worker-offers/:workerOfferId/cancel", async (request, reply) => {
+    const session = await authService.validateSession(
+      readBearerToken(request.headers.authorization)
+    );
+    if (!session.authenticated || !session.user) return sendWorkerOfferDenied(reply);
+
+    const body = asRecord(request.body);
+    const workerOffer = await workerOfferService.cancel({
+      session,
+      roles: await resolveAuthorizationRoles(session.user.id),
+      workerOfferId: readRouteParam(request.params, "workerOfferId"),
+      expectedVersion: readOptionalNumber(body, "expectedVersion") ?? 0,
+      reason: readRequiredString(body, "reason") ?? ""
+    });
+
+    return reply.code(200).send({ workerOffer: serializeWorkerOffer(workerOffer) });
+  });
+
+  app.get("/platform/worker-offers/:workerOfferId/audit", async (request, reply) => {
+    const session = await authService.validateSession(
+      readBearerToken(request.headers.authorization)
+    );
+    if (!session.authenticated || !session.user) return sendWorkerOfferDenied(reply);
+
+    const audit = await workerOfferService.readAuditSummary({
+      session,
+      roles: await resolveAuthorizationRoles(session.user.id),
+      workerOfferId: readRouteParam(request.params, "workerOfferId")
+    });
+
+    return reply.code(200).send({ audit });
+  });
+
+  app.get("/worker/offers/:workerOfferId", async (request, reply) => {
+    const session = await authService.validateSession(
+      readBearerToken(request.headers.authorization)
+    );
+    if (!session.authenticated || !session.user) return sendWorkerOfferDenied(reply);
+
+    const workerOffer = await workerOfferService.workerRead({
+      session,
+      roles: await resolveAuthorizationRoles(session.user.id),
+      workerOfferId: readRouteParam(request.params, "workerOfferId")
+    });
+
+    return reply.code(200).send({ workerOffer: serializeWorkerOffer(workerOffer) });
+  });
+
+  app.post("/worker/offers/:workerOfferId/accept", async (request, reply) => {
+    const session = await authService.validateSession(
+      readBearerToken(request.headers.authorization)
+    );
+    if (!session.authenticated || !session.user) return sendWorkerOfferDenied(reply);
+
+    const body = asRecord(request.body);
+    const workerOffer = await workerOfferService.accept({
+      session,
+      roles: await resolveAuthorizationRoles(session.user.id),
+      workerOfferId: readRouteParam(request.params, "workerOfferId"),
+      expectedVersion: readOptionalNumber(body, "expectedVersion") ?? 0,
+      expectedTermsVersionId: readRequiredString(body, "expectedTermsVersionId") ?? "",
+      reason: readOptionalString(body, "reason")
+    });
+
+    return reply.code(200).send({ workerOffer: serializeWorkerOffer(workerOffer) });
+  });
+
+  app.post("/worker/offers/:workerOfferId/decline", async (request, reply) => {
+    const session = await authService.validateSession(
+      readBearerToken(request.headers.authorization)
+    );
+    if (!session.authenticated || !session.user) return sendWorkerOfferDenied(reply);
+
+    const body = asRecord(request.body);
+    const workerOffer = await workerOfferService.decline({
+      session,
+      roles: await resolveAuthorizationRoles(session.user.id),
+      workerOfferId: readRouteParam(request.params, "workerOfferId"),
+      expectedVersion: readOptionalNumber(body, "expectedVersion") ?? 0,
+      expectedTermsVersionId: readRequiredString(body, "expectedTermsVersionId") ?? "",
+      reason: readOptionalString(body, "reason")
+    });
+
+    return reply.code(200).send({ workerOffer: serializeWorkerOffer(workerOffer) });
+  });
+
   async function resolveCatalogueReadRoles(userId: string, organizationId: string | null) {
     if (organizationId) {
       const decision = await membershipService.selectOrganizationContext({
@@ -1919,6 +2138,13 @@ function sendDispatchDenied(reply: FastifyReply) {
   });
 }
 
+function sendWorkerOfferDenied(reply: FastifyReply) {
+  return reply.code(403).send({
+    error: authorizationDeniedCode,
+    message: authorizationDeniedMessage
+  });
+}
+
 function serializeMemberships(
   memberships: Awaited<ReturnType<OrganizationMembershipService["listMemberships"]>>
 ) {
@@ -2039,6 +2265,30 @@ function serializeEmployerDispatchStatus(
   };
 }
 
+function serializeWorkerOffer(workerOffer: Awaited<ReturnType<WorkerOfferService["createOffer"]>>) {
+  return {
+    ...workerOffer,
+    expiresAt: workerOffer.expiresAt.toISOString(),
+    approvedAt: workerOffer.approvedAt?.toISOString() ?? null,
+    sentAt: workerOffer.sentAt?.toISOString() ?? null,
+    deliveredAt: workerOffer.deliveredAt?.toISOString() ?? null,
+    viewedAt: workerOffer.viewedAt?.toISOString() ?? null,
+    respondedAt: workerOffer.respondedAt?.toISOString() ?? null,
+    withdrawnAt: workerOffer.withdrawnAt?.toISOString() ?? null,
+    cancelledAt: workerOffer.cancelledAt?.toISOString() ?? null,
+    createdAt: workerOffer.createdAt.toISOString(),
+    updatedAt: workerOffer.updatedAt.toISOString(),
+    currentTermsVersion: workerOffer.currentTermsVersion
+      ? {
+          ...workerOffer.currentTermsVersion,
+          startAt: workerOffer.currentTermsVersion.startAt.toISOString(),
+          endAt: workerOffer.currentTermsVersion.endAt.toISOString(),
+          createdAt: workerOffer.currentTermsVersion.createdAt.toISOString()
+        }
+      : null
+  };
+}
+
 function readResidenceStatus(value: string | null): ResidenceStatus | null {
   return value === "draft" ||
     value === "active" ||
@@ -2089,6 +2339,21 @@ function readDispatchPriority(value: string | null): DispatchPriority | null {
   return value === "normal" || value === "urgent" || value === "emergency" ? value : null;
 }
 
+function readWorkerOfferStatus(value: string | null): WorkerOfferStatus | null {
+  return value === "draft" ||
+    value === "approved" ||
+    value === "sent" ||
+    value === "delivered" ||
+    value === "viewed" ||
+    value === "accepted" ||
+    value === "declined" ||
+    value === "expired" ||
+    value === "withdrawn" ||
+    value === "cancelled"
+    ? value
+    : null;
+}
+
 function createUnavailableDispatchService(): DispatchService {
   const denied = async () => {
     throw new DispatchError({
@@ -2122,4 +2387,33 @@ function createUnavailableDispatchService(): DispatchService {
     readAuditSummary: denied,
     getEmployerDispatchStatus: denied
   } as DispatchService;
+}
+
+function createUnavailableWorkerOfferService(): WorkerOfferService {
+  const denied = async () => {
+    throw new WorkerOfferError({
+      status: "permission_denied",
+      allow: false,
+      workerOffer: null,
+      roles: [],
+      internalReason: "worker_offer_service_unavailable",
+      externalCode: authorizationDeniedCode,
+      externalMessage: authorizationDeniedMessage
+    });
+  };
+
+  return {
+    ensureWorkerIdentity: denied,
+    createOffer: denied,
+    listOffers: denied,
+    readOffer: denied,
+    approve: denied,
+    send: denied,
+    workerRead: denied,
+    accept: denied,
+    decline: denied,
+    withdraw: denied,
+    cancel: denied,
+    readAuditSummary: denied
+  } as WorkerOfferService;
 }
