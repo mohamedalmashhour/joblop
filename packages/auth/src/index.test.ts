@@ -7,6 +7,7 @@ import {
   authorizationDeniedCode,
   authorizationDeniedMessage,
   authorizationRoleDefinitions,
+  createAssignmentService,
   createAuthorizationService,
   createAuthenticationService,
   createDepartmentService,
@@ -25,6 +26,7 @@ import {
 } from "./index";
 import type {
   AuthorizationAuditEventInput,
+  AssignmentRepository,
   EmployerOrganizationRepository,
   InviteMembershipInput,
   AuthenticationRepository,
@@ -40,6 +42,7 @@ import type {
   StoredOrganizationMembership,
   StoredResidence,
   StoredAuthenticationSession,
+  StoredAssignment,
   StoredAuthenticationUser,
   StoredDepartment,
   StoredDispatchCandidate,
@@ -454,7 +457,8 @@ describe("authorization foundation", () => {
       "job_request.read",
       "job_request.update_draft",
       "job_request.submit",
-      "job_request.cancel"
+      "job_request.cancel",
+      "assignment.read"
     ]);
     expect(service.rolePermissions("ORGANIZATION_STAFF")).not.toContain("organization.update");
     expect(service.rolePermissions("ORGANIZATION_STAFF")).not.toContain("platform.supervise");
@@ -493,9 +497,21 @@ describe("authorization foundation", () => {
       "worker_offer.send",
       "worker_offer.withdraw",
       "worker_offer.cancel",
-      "worker_offer.audit_read"
+      "worker_offer.audit_read",
+      "assignment.create",
+      "assignment.read",
+      "assignment.cancel",
+      "assignment.withdraw",
+      "assignment.mark_replacement_required",
+      "assignment.attendance_handoff",
+      "assignment.audit_read"
     ]);
-    expect(service.rolePermissions("WORKER_ACCESS")).toEqual(["worker_offer.respond"]);
+    expect(service.rolePermissions("WORKER_ACCESS")).toEqual([
+      "worker_offer.respond",
+      "assignment.worker_read",
+      "assignment.worker_acknowledge",
+      "assignment.worker_withdraw"
+    ]);
     await expect(
       service.decide({
         session: activeSession(),
@@ -2607,6 +2623,220 @@ describe("worker offer foundation", () => {
   });
 });
 
+describe("assignment foundation", () => {
+  it("creates Assignment only from an accepted Worker Offer and preserves downstream boundaries", async () => {
+    const {
+      assignmentService,
+      assignmentRepository,
+      acceptedOffer,
+      adminSession,
+      approvedJobRequest
+    } = await createAcceptedAssignmentContext();
+
+    const assignment = await assignmentService.createFromAcceptedOffer({
+      session: adminSession,
+      roles: ["DISPATCHER"],
+      workerOfferId: acceptedOffer.id
+    });
+
+    expect(assignment.status).toBe("confirmed");
+    expect(assignment.workerOfferId).toBe(acceptedOffer.id);
+    expect(assignment.workerOfferTermsVersionId).toBe(acceptedOffer.currentTermsVersion!.id);
+    expect(assignment.jobRequestId).toBe(approvedJobRequest.id);
+    expect(assignment.attendanceBoundary).toBe("not_started");
+    expect(assignment.validationSnapshot).toMatchObject({
+      policyVersion: "assignment-foundation-v1",
+      workerOfferStatus: "accepted",
+      attendanceCreated: false,
+      workerCalendarCreated: false,
+      payrollCreated: false
+    });
+    expect(assignmentRepository.createdAttendanceRecords).toBe(0);
+    expect(assignmentRepository.createdWorkerCalendarEntries).toBe(0);
+    expect(assignmentRepository.createdTimesheets).toBe(0);
+    expect(assignmentRepository.createdPayrollRecords).toBe(0);
+    expect(assignmentRepository.createdNotificationProviderMessages).toBe(0);
+    expect(assignmentRepository.auditActions()).toEqual(
+      expect.arrayContaining([
+        "assignment.creation_attempted",
+        "assignment.validation_passed",
+        "assignment.confirmed"
+      ])
+    );
+  });
+
+  it("rejects non-accepted offers, duplicate assignments, capacity overflow, and conflicts", async () => {
+    const { assignmentService, assignmentRepository, acceptedOffer, adminSession } =
+      await createAcceptedAssignmentContext();
+    const draftContext = await createWorkerOfferContext();
+    const draftAssignmentService = createAssignmentService(
+      new MemoryAssignmentRepository(),
+      draftContext.workerOfferRepository,
+      draftContext.dispatchRepository,
+      new MemoryJobRequestRepositoryWithSeed(draftContext.approvedJobRequest),
+      createAuthorizationService()
+    );
+    const draftOffer = await draftContext.workerOfferService.createOffer({
+      session: draftContext.adminSession,
+      roles: ["DISPATCHER"],
+      dispatchReviewId: draftContext.dispatchReview.id,
+      workerIdentityId: draftContext.workerOne.id,
+      expiresAt: new Date("2026-08-12T10:00:00.000Z")
+    });
+
+    await expect(
+      draftAssignmentService.createFromAcceptedOffer({
+        session: draftContext.adminSession,
+        roles: ["DISPATCHER"],
+        workerOfferId: draftOffer.id
+      })
+    ).rejects.toMatchObject({
+      decision: expect.objectContaining({ status: "worker_offer_not_accepted" })
+    });
+
+    const assignment = await assignmentService.createFromAcceptedOffer({
+      session: adminSession,
+      roles: ["DISPATCHER"],
+      workerOfferId: acceptedOffer.id
+    });
+
+    await expect(
+      assignmentService.createFromAcceptedOffer({
+        session: adminSession,
+        roles: ["DISPATCHER"],
+        workerOfferId: acceptedOffer.id
+      })
+    ).rejects.toMatchObject({
+      decision: expect.objectContaining({ status: "assignment_exists" })
+    });
+
+    expect(
+      await assignmentRepository.countActiveAssignmentsForJobRequest(assignment.jobRequestId)
+    ).toBe(1);
+    expect(
+      await assignmentRepository.countConflictingAssignments({
+        workerIdentityId: assignment.workerIdentityId,
+        startAt: assignment.confirmedStartAt,
+        endAt: assignment.confirmedEndAt
+      })
+    ).toBe(1);
+  });
+
+  it("keeps worker acknowledgement separate from creation and stops at attendance handoff", async () => {
+    const { assignmentService, assignmentRepository, acceptedOffer, adminSession, workerSession } =
+      await createAcceptedAssignmentContext();
+    const confirmed = await assignmentService.createFromAcceptedOffer({
+      session: adminSession,
+      roles: ["DISPATCHER"],
+      workerOfferId: acceptedOffer.id
+    });
+    const acknowledged = await assignmentService.acknowledge({
+      session: workerSession,
+      roles: ["WORKER_ACCESS"],
+      assignmentId: confirmed.id,
+      expectedVersion: confirmed.versionToken
+    });
+    const ready = await assignmentService.markReadyForAttendance({
+      session: adminSession,
+      roles: ["DISPATCHER"],
+      assignmentId: acknowledged.id,
+      expectedVersion: acknowledged.versionToken
+    });
+    const windowStarted = await assignmentService.startAttendanceWindow({
+      session: adminSession,
+      roles: ["DISPATCHER"],
+      assignmentId: ready.id,
+      expectedVersion: ready.versionToken
+    });
+    const handoff = await assignmentService.attendanceHandoff({
+      session: adminSession,
+      roles: ["DISPATCHER"],
+      assignmentId: windowStarted.id,
+      expectedVersion: windowStarted.versionToken
+    });
+
+    expect(acknowledged.status).toBe("worker_acknowledged");
+    expect(ready.status).toBe("ready_for_attendance");
+    expect(windowStarted.status).toBe("in_attendance_window");
+    expect(handoff.status).toBe("attendance_handoff");
+    expect(handoff.attendanceBoundary).toBe("handoff_completed");
+    expect(assignmentRepository.createdAttendanceRecords).toBe(0);
+    expect(assignmentRepository.auditActions()).toEqual(
+      expect.arrayContaining([
+        "assignment.worker_acknowledged",
+        "assignment.ready_for_attendance",
+        "assignment.attendance_window_started",
+        "assignment.attendance_handoff"
+      ])
+    );
+  });
+
+  it("allows employer read-only status and prevents workers from reading another worker assignment", async () => {
+    const { assignmentService, acceptedOffer, adminSession, workerSession, otherWorkerSession } =
+      await createAcceptedAssignmentContext();
+    const assignment = await assignmentService.createFromAcceptedOffer({
+      session: adminSession,
+      roles: ["DISPATCHER"],
+      workerOfferId: acceptedOffer.id
+    });
+
+    const employerVisible = await assignmentService.listAssignments({
+      session: activeSession(),
+      roles: ["ORGANIZATION_OWNER"],
+      organizationId: assignment.organizationId
+    });
+    const workerVisible = await assignmentService.workerRead({
+      session: workerSession,
+      roles: ["WORKER_ACCESS"],
+      assignmentId: assignment.id
+    });
+
+    expect(employerVisible).toHaveLength(1);
+    expect(employerVisible.at(0)?.status).toBe("confirmed");
+    expect(workerVisible.id).toBe(assignment.id);
+    await expect(
+      assignmentService.workerRead({
+        session: otherWorkerSession,
+        roles: ["WORKER_ACCESS"],
+        assignmentId: assignment.id
+      })
+    ).rejects.toMatchObject({
+      decision: expect.objectContaining({ status: "permission_denied" })
+    });
+  });
+
+  it("records neutral withdrawal and replacement boundary without executing replacement", async () => {
+    const { assignmentService, assignmentRepository, acceptedOffer, adminSession, workerSession } =
+      await createAcceptedAssignmentContext();
+    const assignment = await assignmentService.createFromAcceptedOffer({
+      session: adminSession,
+      roles: ["DISPATCHER"],
+      workerOfferId: acceptedOffer.id
+    });
+    const withdrawn = await assignmentService.workerWithdraw({
+      session: workerSession,
+      roles: ["WORKER_ACCESS"],
+      assignmentId: assignment.id,
+      expectedVersion: assignment.versionToken,
+      reason: "worker_requested_withdrawal"
+    });
+    const replacement = await assignmentService.markReplacementRequired({
+      session: adminSession,
+      roles: ["DISPATCHER"],
+      assignmentId: withdrawn.id,
+      expectedVersion: withdrawn.versionToken,
+      reason: "worker_withdrawn"
+    });
+
+    expect(withdrawn.status).toBe("worker_withdrawn");
+    expect(replacement.status).toBe("replacement_required");
+    expect(assignmentRepository.createdNotificationProviderMessages).toBe(0);
+    expect(assignmentRepository.auditActions()).toEqual(
+      expect.arrayContaining(["assignment.worker_withdrawn", "assignment.replacement_required"])
+    );
+  });
+});
+
 class MemoryAuthorizationAuditSink {
   events: AuthorizationAuditEventInput[] = [];
 
@@ -3895,6 +4125,180 @@ class MemoryWorkerOfferRepository implements WorkerOfferRepository {
   }
 }
 
+class MemoryAssignmentRepository implements AssignmentRepository {
+  private assignments = new Map<string, StoredAssignment>();
+  private auditEvents: Parameters<AssignmentRepository["recordAssignmentAuditEvent"]>[0][] = [];
+  private nextAssignment = 1;
+
+  createdAttendanceRecords = 0;
+  createdWorkerCalendarEntries = 0;
+  createdTimesheets = 0;
+  createdPayrollRecords = 0;
+  createdNotificationProviderMessages = 0;
+
+  auditActions() {
+    return this.auditEvents.map((event) => event.action);
+  }
+
+  async createAssignmentFromAcceptedOffer(
+    input: Parameters<AssignmentRepository["createAssignmentFromAcceptedOffer"]>[0]
+  ) {
+    const assignment: StoredAssignment = {
+      id: `assignment-${this.nextAssignment}`,
+      jobRequestId: input.workerOffer.jobRequestId,
+      dispatchReviewId: input.workerOffer.dispatchReviewId,
+      workerOfferId: input.workerOffer.id,
+      workerOfferTermsVersionId: input.termsVersion.id,
+      workerIdentityId: input.workerIdentity.id,
+      organizationId: input.workerOffer.organizationId,
+      residenceId: input.workerOffer.residenceId,
+      departmentId: input.workerOffer.departmentId,
+      workGroupId: input.termsVersion.workGroupId,
+      roleDefinitionId: input.termsVersion.roleDefinitionId,
+      status: "confirmed",
+      confirmedStartAt: input.termsVersion.startAt,
+      confirmedEndAt: input.termsVersion.endAt,
+      timezone: input.termsVersion.timezone,
+      confirmedTitle: input.termsVersion.workerVisibleTitle,
+      confirmedRoleSummary: input.jobRequest.title,
+      confirmedWorksiteSummary: input.dispatchReview.residenceId,
+      confirmedDepartmentSummary: input.dispatchReview.departmentId,
+      confirmedResponsibilitySummary: input.termsVersion.workerVisibleSummary,
+      confirmedPolicySummary: input.termsVersion.policySummary,
+      confirmedCompensationSummary: input.termsVersion.compensationSummary,
+      validationSnapshot: input.validationSnapshot,
+      capacityCheckedAt: input.now,
+      conflictCheckedAt: input.now,
+      confirmedAt: input.now,
+      workerAcknowledgedAt: null,
+      readyForAttendanceAt: null,
+      attendanceWindowStartedAt: null,
+      attendanceHandoffAt: null,
+      workerWithdrawnAt: null,
+      cancelledAt: null,
+      replacementRequiredAt: null,
+      closedAt: null,
+      cancellationReasonCategory: null,
+      createdByUserId: input.actorUserId,
+      updatedByUserId: null,
+      confirmedByUserId: input.actorUserId,
+      cancelledByUserId: null,
+      createdAt: input.now,
+      updatedAt: input.now,
+      version: 0
+    };
+    this.nextAssignment += 1;
+    this.assignments.set(assignment.id, assignment);
+    return assignment;
+  }
+
+  async findAssignmentById(assignmentId: string) {
+    return this.assignments.get(assignmentId) ?? null;
+  }
+
+  async findAssignmentByWorkerOfferId(workerOfferId: string) {
+    return (
+      [...this.assignments.values()].find(
+        (assignment) => assignment.workerOfferId === workerOfferId
+      ) ?? null
+    );
+  }
+
+  async listAssignments(input: Parameters<AssignmentRepository["listAssignments"]>[0]) {
+    return [...this.assignments.values()]
+      .filter(
+        (assignment) => !input.organizationId || assignment.organizationId === input.organizationId
+      )
+      .filter(
+        (assignment) =>
+          !input.workerIdentityId || assignment.workerIdentityId === input.workerIdentityId
+      )
+      .filter((assignment) => !input.jobRequestId || assignment.jobRequestId === input.jobRequestId)
+      .filter((assignment) => !input.statuses || input.statuses.includes(assignment.status))
+      .sort(
+        (left, right) =>
+          right.updatedAt.getTime() - left.updatedAt.getTime() ||
+          left.confirmedStartAt.getTime() - right.confirmedStartAt.getTime()
+      );
+  }
+
+  async countActiveAssignmentsForJobRequest(jobRequestId: string) {
+    return [...this.assignments.values()].filter(
+      (assignment) =>
+        assignment.jobRequestId === jobRequestId &&
+        [
+          "pending_validation",
+          "confirmed",
+          "worker_acknowledged",
+          "ready_for_attendance",
+          "in_attendance_window",
+          "attendance_handoff"
+        ].includes(assignment.status)
+    ).length;
+  }
+
+  async countConflictingAssignments(
+    input: Parameters<AssignmentRepository["countConflictingAssignments"]>[0]
+  ) {
+    return [...this.assignments.values()].filter(
+      (assignment) =>
+        assignment.workerIdentityId === input.workerIdentityId &&
+        assignment.id !== input.excludeAssignmentId &&
+        [
+          "pending_validation",
+          "confirmed",
+          "worker_acknowledged",
+          "ready_for_attendance",
+          "in_attendance_window",
+          "attendance_handoff"
+        ].includes(assignment.status) &&
+        assignment.confirmedStartAt < input.endAt &&
+        assignment.confirmedEndAt > input.startAt
+    ).length;
+  }
+
+  async updateAssignment(input: Parameters<AssignmentRepository["updateAssignment"]>[0]) {
+    const assignment = this.assignments.get(input.assignmentId);
+    if (!assignment || assignment.version !== input.expectedVersion) return null;
+
+    if (input.status !== undefined) assignment.status = input.status;
+    if (input.workerAcknowledgedAt !== undefined) {
+      assignment.workerAcknowledgedAt = input.workerAcknowledgedAt;
+    }
+    if (input.readyForAttendanceAt !== undefined) {
+      assignment.readyForAttendanceAt = input.readyForAttendanceAt;
+    }
+    if (input.attendanceWindowStartedAt !== undefined) {
+      assignment.attendanceWindowStartedAt = input.attendanceWindowStartedAt;
+    }
+    if (input.attendanceHandoffAt !== undefined)
+      assignment.attendanceHandoffAt = input.attendanceHandoffAt;
+    if (input.workerWithdrawnAt !== undefined)
+      assignment.workerWithdrawnAt = input.workerWithdrawnAt;
+    if (input.cancelledAt !== undefined) {
+      assignment.cancelledAt = input.cancelledAt;
+      assignment.cancelledByUserId = input.actorUserId;
+    }
+    if (input.replacementRequiredAt !== undefined) {
+      assignment.replacementRequiredAt = input.replacementRequiredAt;
+    }
+    if (input.closedAt !== undefined) assignment.closedAt = input.closedAt;
+    if (input.cancellationReasonCategory !== undefined) {
+      assignment.cancellationReasonCategory = input.cancellationReasonCategory;
+    }
+    assignment.updatedByUserId = input.actorUserId;
+    assignment.updatedAt = input.now;
+    assignment.version += 1;
+    return assignment;
+  }
+
+  async recordAssignmentAuditEvent(
+    input: Parameters<AssignmentRepository["recordAssignmentAuditEvent"]>[0]
+  ) {
+    this.auditEvents.push(input);
+  }
+}
+
 class FixtureDispatchCandidateSource implements DispatchCandidateSource {
   async searchCandidates(input: Parameters<DispatchCandidateSource["searchCandidates"]>[0]) {
     const candidate = await this.evaluateCandidate({
@@ -4247,7 +4651,58 @@ async function createWorkerOfferContext() {
         emailNormalized: "worker-two@example.com"
       }
     },
+    approvedJobRequest,
     organization
+  };
+}
+
+async function createAcceptedAssignmentContext() {
+  const context = await createWorkerOfferContext();
+  const assignmentRepository = new MemoryAssignmentRepository();
+  const assignmentService = createAssignmentService(
+    assignmentRepository,
+    context.workerOfferRepository,
+    context.dispatchRepository,
+    new MemoryJobRequestRepositoryWithSeed(context.approvedJobRequest),
+    createAuthorizationService()
+  );
+  const draftForAcceptance = await context.workerOfferService.createOffer({
+    session: context.adminSession,
+    roles: ["DISPATCHER"],
+    dispatchReviewId: context.dispatchReview.id,
+    workerIdentityId: context.workerOne.id,
+    expiresAt: new Date("2026-08-12T10:00:00.000Z")
+  });
+  const approved = await context.workerOfferService.approve({
+    session: context.adminSession,
+    roles: ["DISPATCHER"],
+    workerOfferId: draftForAcceptance.id,
+    expectedVersion: draftForAcceptance.versionToken
+  });
+  const sent = await context.workerOfferService.send({
+    session: context.adminSession,
+    roles: ["DISPATCHER"],
+    workerOfferId: approved.id,
+    expectedVersion: approved.versionToken
+  });
+  const viewed = await context.workerOfferService.workerRead({
+    session: context.workerSession,
+    roles: ["WORKER_ACCESS"],
+    workerOfferId: sent.id
+  });
+  const acceptedOffer = await context.workerOfferService.accept({
+    session: context.workerSession,
+    roles: ["WORKER_ACCESS"],
+    workerOfferId: viewed.id,
+    expectedVersion: viewed.versionToken,
+    expectedTermsVersionId: viewed.currentTermsVersion!.id
+  });
+
+  return {
+    ...context,
+    assignmentService,
+    assignmentRepository,
+    acceptedOffer
   };
 }
 

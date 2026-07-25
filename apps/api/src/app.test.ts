@@ -12,6 +12,7 @@ import {
 } from "@rwos/auth";
 import type {
   AuthorizationRoleKey,
+  AssignmentService,
   AuthenticationRepository,
   CreateLocalUserInput,
   CreateSessionInput,
@@ -1247,7 +1248,7 @@ describe("api dispatch foundation", () => {
 });
 
 describe("api worker offer foundation", () => {
-  it("routes platform offer creation and worker response without assignment APIs", async () => {
+  it("routes platform offer creation and worker response without creating Assignment", async () => {
     const authRepository = new ApiMemoryAuthenticationRepository();
     const workerOffer = apiWorkerOffer();
     const calls: string[] = [];
@@ -1286,12 +1287,6 @@ describe("api worker offer foundation", () => {
         expectedTermsVersionId: workerOffer.currentTermsVersion!.id
       }
     });
-    const assignment = await app.inject({
-      method: "POST",
-      url: "/platform/assignments",
-      headers: { authorization: `Bearer ${user.token}` },
-      payload: {}
-    });
 
     expect(created.statusCode).toBe(201);
     expect(created.json().workerOffer).toMatchObject({
@@ -1300,10 +1295,99 @@ describe("api worker offer foundation", () => {
     });
     expect(accepted.statusCode).toBe(200);
     expect(accepted.json().workerOffer.status).toBe("accepted");
-    expect(assignment.statusCode).toBe(404);
     expect(calls).toEqual([
       "create:dispatch-api-1:worker-identity-api-1",
       `accept:${workerOffer.currentTermsVersion!.id}`
+    ]);
+    await app.close();
+  });
+});
+
+describe("api assignment foundation", () => {
+  it("routes Assignment creation, worker acknowledgement, employer read-only status, and attendance handoff", async () => {
+    const authRepository = new ApiMemoryAuthenticationRepository();
+    const assignment = apiAssignment();
+    const calls: string[] = [];
+    const app = buildApi({
+      authService: createAuthenticationService(authRepository, testAuthOptions()),
+      assignmentService: {
+        ...createApiUnavailableAssignmentService(),
+        async createFromAcceptedOffer(input) {
+          calls.push(`create:${input.workerOfferId}`);
+          return assignment;
+        },
+        async acknowledge(input) {
+          calls.push(`ack:${input.assignmentId}`);
+          return { ...assignment, status: "worker_acknowledged", version: 1, versionToken: 1 };
+        },
+        async listAssignments(input) {
+          calls.push(`list:${input.organizationId ?? "none"}`);
+          return [assignment];
+        },
+        async attendanceHandoff(input) {
+          calls.push(`handoff:${input.assignmentId}`);
+          return {
+            ...assignment,
+            status: "attendance_handoff",
+            attendanceHandoffAt: new Date("2026-07-25T15:00:00.000Z"),
+            attendanceBoundary: "handoff_completed",
+            version: 2,
+            versionToken: 2
+          };
+        }
+      },
+      resolveAuthorizationRoles: async () => ["DISPATCHER", "ORGANIZATION_OWNER", "WORKER_ACCESS"]
+    });
+    const user = await registerApiUser(app);
+
+    const created = await app.inject({
+      method: "POST",
+      url: "/platform/assignments",
+      headers: { authorization: `Bearer ${user.token}` },
+      payload: { workerOfferId: "worker-offer-api-1" }
+    });
+    const acknowledged = await app.inject({
+      method: "POST",
+      url: `/worker/assignments/${assignment.id}/acknowledge`,
+      headers: { authorization: `Bearer ${user.token}` },
+      payload: { expectedVersion: assignment.versionToken }
+    });
+    const employerVisible = await app.inject({
+      method: "GET",
+      url: `/organizations/${assignment.organizationId}/assignments`,
+      headers: { authorization: `Bearer ${user.token}` }
+    });
+    const handoff = await app.inject({
+      method: "POST",
+      url: `/platform/assignments/${assignment.id}/attendance-handoff`,
+      headers: { authorization: `Bearer ${user.token}` },
+      payload: { expectedVersion: 1 }
+    });
+    const attendance = await app.inject({
+      method: "POST",
+      url: "/platform/attendance",
+      headers: { authorization: `Bearer ${user.token}` },
+      payload: {}
+    });
+
+    expect(created.statusCode).toBe(201);
+    expect(created.json().assignment).toMatchObject({
+      status: "confirmed",
+      workerOfferId: "worker-offer-api-1",
+      attendanceBoundary: "not_started"
+    });
+    expect(acknowledged.statusCode).toBe(200);
+    expect(acknowledged.json().assignment.status).toBe("worker_acknowledged");
+    expect(employerVisible.statusCode).toBe(200);
+    expect(employerVisible.json().assignments).toHaveLength(1);
+    expect(handoff.statusCode).toBe(200);
+    expect(handoff.json().assignment.status).toBe("attendance_handoff");
+    expect(attendance.statusCode).toBe(404);
+    expect(calls).toEqual([
+      "create:worker-offer-api-1",
+      "ack:assignment-api-1",
+      "list:org-api-1",
+      "handoff:assignment-api-1"
     ]);
     await app.close();
   });
@@ -1355,6 +1439,27 @@ function createApiUnavailableWorkerOfferService(): WorkerOfferService {
     cancel: unavailable,
     readAuditSummary: unavailable
   } as WorkerOfferService;
+}
+
+function createApiUnavailableAssignmentService(): AssignmentService {
+  const unavailable = async () => {
+    throw new Error("assignment service unavailable in this API test");
+  };
+
+  return {
+    createFromAcceptedOffer: unavailable,
+    listAssignments: unavailable,
+    readAssignment: unavailable,
+    workerRead: unavailable,
+    acknowledge: unavailable,
+    workerWithdraw: unavailable,
+    markReadyForAttendance: unavailable,
+    startAttendanceWindow: unavailable,
+    attendanceHandoff: unavailable,
+    cancel: unavailable,
+    markReplacementRequired: unavailable,
+    readAuditSummary: unavailable
+  } as AssignmentService;
 }
 
 function apiDispatchReview(): Awaited<ReturnType<DispatchService["createDispatch"]>> {
@@ -1435,6 +1540,60 @@ function apiWorkerOffer(): Awaited<ReturnType<WorkerOfferService["createOffer"]>
       createdAt: now
     },
     versionToken: 2
+  };
+}
+
+function apiAssignment(): Awaited<ReturnType<AssignmentService["createFromAcceptedOffer"]>> {
+  const now = new Date("2026-07-25T14:00:00.000Z");
+  return {
+    id: "assignment-api-1",
+    jobRequestId: "job-request-api-1",
+    dispatchReviewId: "dispatch-api-1",
+    workerOfferId: "worker-offer-api-1",
+    workerOfferTermsVersionId: "worker-offer-terms-api-1",
+    workerIdentityId: "worker-identity-api-1",
+    organizationId: "org-api-1",
+    residenceId: "residence-api-1",
+    departmentId: "department-api-1",
+    workGroupId: "work-group-kitchen",
+    roleDefinitionId: "role-chef",
+    status: "confirmed",
+    confirmedStartAt: new Date("2026-08-12T12:00:00.000Z"),
+    confirmedEndAt: new Date("2026-08-12T20:00:00.000Z"),
+    timezone: "America/Toronto",
+    confirmedTitle: "Dinner Chef Coverage",
+    confirmedRoleSummary: "Chef",
+    confirmedWorksiteSummary: "Residence operational summary",
+    confirmedDepartmentSummary: "Kitchen",
+    confirmedResponsibilitySummary: "Worker-visible responsibilities only.",
+    confirmedPolicySummary: "Assignment only; Attendance deferred.",
+    confirmedCompensationSummary: "Informational worker-facing summary.",
+    validationSnapshot: {
+      policyVersion: "assignment-foundation-v1",
+      attendanceCreated: false,
+      workerCalendarCreated: false
+    },
+    capacityCheckedAt: now,
+    conflictCheckedAt: now,
+    confirmedAt: now,
+    workerAcknowledgedAt: null,
+    readyForAttendanceAt: null,
+    attendanceWindowStartedAt: null,
+    attendanceHandoffAt: null,
+    workerWithdrawnAt: null,
+    cancelledAt: null,
+    replacementRequiredAt: null,
+    closedAt: null,
+    cancellationReasonCategory: null,
+    createdByUserId: "admin-api-1",
+    updatedByUserId: null,
+    confirmedByUserId: "admin-api-1",
+    cancelledByUserId: null,
+    createdAt: now,
+    updatedAt: now,
+    version: 0,
+    versionToken: 0,
+    attendanceBoundary: "not_started"
   };
 }
 

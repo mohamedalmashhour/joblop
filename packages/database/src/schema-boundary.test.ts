@@ -32,6 +32,7 @@ describe("Prisma Phase 01 schema boundary", () => {
       "WorkerOfferTermsVersion",
       "WorkerOfferDeliveryAttempt",
       "WorkerOfferResponse",
+      "Assignment",
       "AuditActorReference",
       "AuditEvent"
     ]) {
@@ -41,7 +42,6 @@ describe("Prisma Phase 01 schema boundary", () => {
 
   it("keeps deferred workflow entities out of Phase 01", () => {
     for (const deferredModel of [
-      "Assignment",
       "AttendanceRecord",
       "Timesheet",
       "Invoice",
