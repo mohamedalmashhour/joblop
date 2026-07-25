@@ -223,6 +223,37 @@ enum DispatchShortlistState {
   removed
 }
 
+enum WorkerIdentityStatus {
+  active
+  inactive
+  closed
+}
+
+enum WorkerOfferStatus {
+  draft
+  approved
+  sent
+  delivered
+  viewed
+  accepted
+  declined
+  expired
+  withdrawn
+  cancelled
+}
+
+enum WorkerOfferDeliveryStatus {
+  pending
+  attempted
+  delivered
+  failed
+}
+
+enum WorkerOfferResponseType {
+  accepted
+  declined
+}
+
 model User {
   id              String     @id @default(uuid()) @db.Uuid
   publicId        String     @unique @map("public_id")
@@ -237,21 +268,30 @@ model User {
 
   identities                    UserIdentity[]
   sessions                      Session[]
-  createdOrganizations          EmployerOrganization[]   @relation("EmployerOrganizationCreatedByUser")
-  reviewedOrganizations         EmployerOrganization[]   @relation("EmployerOrganizationReviewedByUser")
-  memberships                   OrganizationMembership[] @relation("OrganizationMembershipUser")
-  invitedMemberships            OrganizationMembership[] @relation("OrganizationMembershipInvitedByUser")
-  createdResidences             Residence[]              @relation("ResidenceCreatedByUser")
-  createdDepartments            Department[]             @relation("DepartmentCreatedByUser")
-  assignedMembershipAccessRoles MembershipAccessRole[]   @relation("MembershipAccessRoleAssignedByUser")
-  createdJobRequests            JobRequest[]             @relation("JobRequestCreator")
-  authoredJobRequests           JobRequest[]             @relation("JobRequestCreatedByUser")
-  updatedJobRequests            JobRequest[]             @relation("JobRequestUpdatedByUser")
-  ownedDispatchReviews          DispatchReview[]         @relation("DispatchReviewOwner")
-  createdDispatchReviews        DispatchReview[]         @relation("DispatchReviewCreatedByUser")
-  updatedDispatchReviews        DispatchReview[]         @relation("DispatchReviewUpdatedByUser")
-  addedDispatchCandidates       DispatchCandidate[]      @relation("DispatchCandidateAddedByUser")
-  removedDispatchCandidates     DispatchCandidate[]      @relation("DispatchCandidateRemovedByUser")
+  createdOrganizations          EmployerOrganization[]       @relation("EmployerOrganizationCreatedByUser")
+  reviewedOrganizations         EmployerOrganization[]       @relation("EmployerOrganizationReviewedByUser")
+  memberships                   OrganizationMembership[]     @relation("OrganizationMembershipUser")
+  invitedMemberships            OrganizationMembership[]     @relation("OrganizationMembershipInvitedByUser")
+  createdResidences             Residence[]                  @relation("ResidenceCreatedByUser")
+  createdDepartments            Department[]                 @relation("DepartmentCreatedByUser")
+  assignedMembershipAccessRoles MembershipAccessRole[]       @relation("MembershipAccessRoleAssignedByUser")
+  createdJobRequests            JobRequest[]                 @relation("JobRequestCreator")
+  authoredJobRequests           JobRequest[]                 @relation("JobRequestCreatedByUser")
+  updatedJobRequests            JobRequest[]                 @relation("JobRequestUpdatedByUser")
+  ownedDispatchReviews          DispatchReview[]             @relation("DispatchReviewOwner")
+  createdDispatchReviews        DispatchReview[]             @relation("DispatchReviewCreatedByUser")
+  updatedDispatchReviews        DispatchReview[]             @relation("DispatchReviewUpdatedByUser")
+  addedDispatchCandidates       DispatchCandidate[]          @relation("DispatchCandidateAddedByUser")
+  removedDispatchCandidates     DispatchCandidate[]          @relation("DispatchCandidateRemovedByUser")
+  workerIdentity                WorkerIdentity?
+  createdWorkerOffers           WorkerOffer[]                @relation("WorkerOfferCreatedByUser")
+  updatedWorkerOffers           WorkerOffer[]                @relation("WorkerOfferUpdatedByUser")
+  approvedWorkerOffers          WorkerOffer[]                @relation("WorkerOfferApprovedByUser")
+  sentWorkerOffers              WorkerOffer[]                @relation("WorkerOfferSentByUser")
+  withdrawnWorkerOffers         WorkerOffer[]                @relation("WorkerOfferWithdrawnByUser")
+  cancelledWorkerOffers         WorkerOffer[]                @relation("WorkerOfferCancelledByUser")
+  createdWorkerOfferTerms       WorkerOfferTermsVersion[]    @relation("WorkerOfferTermsCreatedByUser")
+  createdWorkerOfferDeliveries  WorkerOfferDeliveryAttempt[] @relation("WorkerOfferDeliveryCreatedByUser")
   auditActorReferences          AuditActorReference[]
 
   @@index([emailNormalized], map: "users_email_normalized_idx")
@@ -320,6 +360,7 @@ model EmployerOrganization {
   departments          Department[]
   jobRequests          JobRequest[]
   dispatchReviews      DispatchReview[]
+  workerOffers         WorkerOffer[]
   auditActorReferences AuditActorReference[]
   auditEvents          AuditEvent[]
 
@@ -369,6 +410,7 @@ model Residence {
   departments     Department[]
   jobRequests     JobRequest[]
   dispatchReviews DispatchReview[]
+  workerOffers    WorkerOffer[]
 
   @@unique([organizationId, id], map: "residences_organization_id_id_key")
   @@index([organizationId, status], map: "residences_organization_id_status_idx")
@@ -393,6 +435,7 @@ model Department {
   createdBy       User?                @relation("DepartmentCreatedByUser", fields: [createdByUserId], references: [id], onDelete: SetNull)
   jobRequests     JobRequest[]
   dispatchReviews DispatchReview[]
+  workerOffers    WorkerOffer[]
 
   @@unique([organizationId, id], map: "departments_organization_id_id_key")
   @@unique([residenceId, id], map: "departments_residence_id_id_key")
@@ -416,9 +459,10 @@ model WorkGroup {
   createdAt                DateTime        @default(now()) @map("created_at") @db.Timestamptz(3)
   updatedAt                DateTime        @updatedAt @map("updated_at") @db.Timestamptz(3)
 
-  roleDefinitions RoleDefinition[]
-  jobRequests     JobRequest[]
-  dispatchReviews DispatchReview[]
+  roleDefinitions  RoleDefinition[]
+  jobRequests      JobRequest[]
+  dispatchReviews  DispatchReview[]
+  workerOfferTerms WorkerOfferTermsVersion[]
 
   @@index([status, displayOrder], map: "work_groups_status_display_order_idx")
   @@map("work_groups")
@@ -438,9 +482,10 @@ model RoleDefinition {
   createdAt                DateTime        @default(now()) @map("created_at") @db.Timestamptz(3)
   updatedAt                DateTime        @updatedAt @map("updated_at") @db.Timestamptz(3)
 
-  workGroup       WorkGroup        @relation(fields: [workGroupId], references: [id], onDelete: Restrict)
-  jobRequests     JobRequest[]
-  dispatchReviews DispatchReview[]
+  workGroup        WorkGroup                 @relation(fields: [workGroupId], references: [id], onDelete: Restrict)
+  jobRequests      JobRequest[]
+  dispatchReviews  DispatchReview[]
+  workerOfferTerms WorkerOfferTermsVersion[]
 
   @@unique([workGroupId, id], map: "role_definitions_work_group_id_id_key")
   @@index([workGroupId, status, displayOrder], map: "role_definitions_work_group_id_status_display_order_idx")
@@ -555,6 +600,7 @@ model JobRequest {
   createdBy       User                 @relation("JobRequestCreatedByUser", fields: [createdByUserId], references: [id], onDelete: Restrict)
   updatedBy       User?                @relation("JobRequestUpdatedByUser", fields: [updatedByUserId], references: [id], onDelete: SetNull)
   dispatchReviews DispatchReview[]
+  workerOffers    WorkerOffer[]
 
   @@index([jobRequestNumber], map: "job_requests_job_request_number_idx")
   @@index([organizationId, status, createdAt], map: "job_requests_organization_id_status_created_at_idx")
@@ -602,6 +648,7 @@ model DispatchReview {
   createdBy        User                 @relation("DispatchReviewCreatedByUser", fields: [createdByUserId], references: [id], onDelete: Restrict)
   updatedBy        User?                @relation("DispatchReviewUpdatedByUser", fields: [updatedByUserId], references: [id], onDelete: SetNull)
   candidates       DispatchCandidate[]
+  workerOffers     WorkerOffer[]
 
   @@index([jobRequestId], map: "dispatch_reviews_job_request_id_idx")
   @@index([organizationId, state, updatedAt], map: "dispatch_reviews_organization_id_state_updated_at_idx")
@@ -647,6 +694,143 @@ model DispatchCandidate {
   @@index([dispatchReviewId, sourceFreshnessAt], map: "dispatch_candidates_dispatch_review_id_source_freshness_at_idx")
   @@index([candidateSourceReference], map: "dispatch_candidates_candidate_source_reference_idx")
   @@map("dispatch_candidates")
+}
+
+model WorkerIdentity {
+  id                String               @id @default(uuid()) @db.Uuid
+  userId            String               @unique @map("user_id") @db.Uuid
+  displayName       String?              @map("display_name")
+  preferredLanguage String?              @map("preferred_language")
+  status            WorkerIdentityStatus @default(active)
+  createdAt         DateTime             @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt         DateTime             @updatedAt @map("updated_at") @db.Timestamptz(3)
+  version           Int                  @default(1)
+
+  user      User                  @relation(fields: [userId], references: [id], onDelete: Restrict)
+  offers    WorkerOffer[]
+  responses WorkerOfferResponse[]
+
+  @@index([status], map: "worker_identities_status_idx")
+  @@map("worker_identities")
+}
+
+model WorkerOffer {
+  id                    String            @id @default(uuid()) @db.Uuid
+  dispatchReviewId      String            @map("dispatch_review_id") @db.Uuid
+  jobRequestId          String            @map("job_request_id") @db.Uuid
+  organizationId        String            @map("organization_id") @db.Uuid
+  residenceId           String            @map("residence_id") @db.Uuid
+  departmentId          String            @map("department_id") @db.Uuid
+  workerIdentityId      String            @map("worker_identity_id") @db.Uuid
+  currentTermsVersionId String?           @unique @map("current_terms_version_id") @db.Uuid
+  status                WorkerOfferStatus @default(draft)
+  expiresAt             DateTime          @map("expires_at") @db.Timestamptz(3)
+  approvedAt            DateTime?         @map("approved_at") @db.Timestamptz(3)
+  sentAt                DateTime?         @map("sent_at") @db.Timestamptz(3)
+  deliveredAt           DateTime?         @map("delivered_at") @db.Timestamptz(3)
+  viewedAt              DateTime?         @map("viewed_at") @db.Timestamptz(3)
+  respondedAt           DateTime?         @map("responded_at") @db.Timestamptz(3)
+  withdrawnAt           DateTime?         @map("withdrawn_at") @db.Timestamptz(3)
+  cancelledAt           DateTime?         @map("cancelled_at") @db.Timestamptz(3)
+  createdByUserId       String            @map("created_by_user_id") @db.Uuid
+  updatedByUserId       String?           @map("updated_by_user_id") @db.Uuid
+  approvedByUserId      String?           @map("approved_by_user_id") @db.Uuid
+  sentByUserId          String?           @map("sent_by_user_id") @db.Uuid
+  withdrawnByUserId     String?           @map("withdrawn_by_user_id") @db.Uuid
+  cancelledByUserId     String?           @map("cancelled_by_user_id") @db.Uuid
+  createdAt             DateTime          @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt             DateTime          @updatedAt @map("updated_at") @db.Timestamptz(3)
+  version               Int               @default(1)
+
+  dispatchReview      DispatchReview               @relation(fields: [dispatchReviewId], references: [id], onDelete: Restrict)
+  jobRequest          JobRequest                   @relation(fields: [jobRequestId], references: [id], onDelete: Restrict)
+  organization        EmployerOrganization         @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  residence           Residence                    @relation(fields: [organizationId, residenceId], references: [organizationId, id], onDelete: Restrict)
+  department          Department                   @relation(fields: [organizationId, residenceId, departmentId], references: [organizationId, residenceId, id], onDelete: Restrict)
+  workerIdentity      WorkerIdentity               @relation(fields: [workerIdentityId], references: [id], onDelete: Restrict)
+  currentTermsVersion WorkerOfferTermsVersion?     @relation("CurrentWorkerOfferTerms", fields: [currentTermsVersionId], references: [id], onDelete: Restrict)
+  termsVersions       WorkerOfferTermsVersion[]    @relation("WorkerOfferTerms")
+  deliveryAttempts    WorkerOfferDeliveryAttempt[]
+  responses           WorkerOfferResponse[]
+  createdBy           User                         @relation("WorkerOfferCreatedByUser", fields: [createdByUserId], references: [id], onDelete: Restrict)
+  updatedBy           User?                        @relation("WorkerOfferUpdatedByUser", fields: [updatedByUserId], references: [id], onDelete: SetNull)
+  approvedBy          User?                        @relation("WorkerOfferApprovedByUser", fields: [approvedByUserId], references: [id], onDelete: SetNull)
+  sentBy              User?                        @relation("WorkerOfferSentByUser", fields: [sentByUserId], references: [id], onDelete: SetNull)
+  withdrawnBy         User?                        @relation("WorkerOfferWithdrawnByUser", fields: [withdrawnByUserId], references: [id], onDelete: SetNull)
+  cancelledBy         User?                        @relation("WorkerOfferCancelledByUser", fields: [cancelledByUserId], references: [id], onDelete: SetNull)
+
+  @@unique([dispatchReviewId, workerIdentityId], map: "worker_offers_dispatch_worker_key")
+  @@index([dispatchReviewId, status], map: "worker_offers_dispatch_review_id_status_idx")
+  @@index([organizationId, status, updatedAt], map: "worker_offers_organization_id_status_updated_at_idx")
+  @@index([workerIdentityId, status, expiresAt], map: "worker_offers_worker_identity_id_status_expires_at_idx")
+  @@index([jobRequestId, status], map: "worker_offers_job_request_id_status_idx")
+  @@map("worker_offers")
+}
+
+model WorkerOfferTermsVersion {
+  id                   String   @id @default(uuid()) @db.Uuid
+  workerOfferId        String   @map("worker_offer_id") @db.Uuid
+  versionNumber        Int      @map("version_number")
+  workerVisibleTitle   String   @map("worker_visible_title")
+  workerVisibleSummary String?  @map("worker_visible_summary")
+  timezone             String
+  startAt              DateTime @map("start_at") @db.Timestamptz(3)
+  endAt                DateTime @map("end_at") @db.Timestamptz(3)
+  workGroupId          String   @map("work_group_id") @db.Uuid
+  roleDefinitionId     String   @map("role_definition_id") @db.Uuid
+  compensationSummary  String?  @map("compensation_summary")
+  policySummary        String?  @map("policy_summary")
+  createdByUserId      String   @map("created_by_user_id") @db.Uuid
+  createdAt            DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  workerOffer     WorkerOffer           @relation("WorkerOfferTerms", fields: [workerOfferId], references: [id], onDelete: Cascade)
+  currentForOffer WorkerOffer?          @relation("CurrentWorkerOfferTerms")
+  workGroup       WorkGroup             @relation(fields: [workGroupId], references: [id], onDelete: Restrict)
+  roleDefinition  RoleDefinition        @relation(fields: [workGroupId, roleDefinitionId], references: [workGroupId, id], onDelete: Restrict)
+  createdBy       User                  @relation("WorkerOfferTermsCreatedByUser", fields: [createdByUserId], references: [id], onDelete: Restrict)
+  responses       WorkerOfferResponse[]
+
+  @@unique([workerOfferId, versionNumber], map: "worker_offer_terms_offer_version_key")
+  @@index([workerOfferId, createdAt], map: "worker_offer_terms_worker_offer_id_created_at_idx")
+  @@map("worker_offer_terms_versions")
+}
+
+model WorkerOfferDeliveryAttempt {
+  id               String                    @id @default(uuid()) @db.Uuid
+  workerOfferId    String                    @map("worker_offer_id") @db.Uuid
+  status           WorkerOfferDeliveryStatus @default(pending)
+  providerBoundary String                    @default("abstract") @map("provider_boundary")
+  reason           String?
+  attemptedAt      DateTime?                 @map("attempted_at") @db.Timestamptz(3)
+  deliveredAt      DateTime?                 @map("delivered_at") @db.Timestamptz(3)
+  failedAt         DateTime?                 @map("failed_at") @db.Timestamptz(3)
+  createdByUserId  String?                   @map("created_by_user_id") @db.Uuid
+  createdAt        DateTime                  @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  workerOffer WorkerOffer @relation(fields: [workerOfferId], references: [id], onDelete: Cascade)
+  createdBy   User?       @relation("WorkerOfferDeliveryCreatedByUser", fields: [createdByUserId], references: [id], onDelete: SetNull)
+
+  @@index([workerOfferId, createdAt], map: "worker_offer_delivery_worker_offer_id_created_at_idx")
+  @@index([status, createdAt], map: "worker_offer_delivery_status_created_at_idx")
+  @@map("worker_offer_delivery_attempts")
+}
+
+model WorkerOfferResponse {
+  id               String                  @id @default(uuid()) @db.Uuid
+  workerOfferId    String                  @map("worker_offer_id") @db.Uuid
+  workerIdentityId String                  @map("worker_identity_id") @db.Uuid
+  termsVersionId   String                  @map("terms_version_id") @db.Uuid
+  responseType     WorkerOfferResponseType @map("response_type")
+  reason           String?
+  createdAt        DateTime                @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  workerOffer    WorkerOffer             @relation(fields: [workerOfferId], references: [id], onDelete: Restrict)
+  workerIdentity WorkerIdentity          @relation(fields: [workerIdentityId], references: [id], onDelete: Restrict)
+  termsVersion   WorkerOfferTermsVersion @relation(fields: [termsVersionId], references: [id], onDelete: Restrict)
+
+  @@unique([workerOfferId], map: "worker_offer_responses_worker_offer_id_key")
+  @@index([workerIdentityId, createdAt], map: "worker_offer_responses_worker_identity_id_created_at_idx")
+  @@map("worker_offer_responses")
 }
 
 model AuditActorReference {
