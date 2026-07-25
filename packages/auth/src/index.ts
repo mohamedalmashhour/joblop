@@ -13,9 +13,7 @@ export const adminRoles = [
 ] as const;
 
 export type PlatformRole =
-  | (typeof workerRoles)[number]
-  | (typeof employerRoles)[number]
-  | (typeof adminRoles)[number];
+  (typeof workerRoles)[number] | (typeof employerRoles)[number] | (typeof adminRoles)[number];
 
 export function assertRole(currentRole: PlatformRole, allowedRoles: readonly PlatformRole[]) {
   if (!allowedRoles.includes(currentRole)) {
@@ -128,7 +126,8 @@ export interface AuthorizationAuditSink {
   recordAuthorizationAuditEvent(input: AuthorizationAuditEventInput): Promise<void>;
 }
 
-export type OrganizationMembershipStatus = "invited" | "active" | "suspended" | "revoked" | "expired";
+export type OrganizationMembershipStatus =
+  "invited" | "active" | "suspended" | "revoked" | "expired";
 export type OrganizationMembershipDecisionStatus =
   | "allow"
   | "membership_missing"
@@ -204,7 +203,10 @@ export interface InviteMembershipInput {
 export interface OrganizationMembershipRepository {
   listMembershipsForUser(userId: string): Promise<StoredOrganizationMembership[]>;
   findMembershipById(membershipId: string): Promise<StoredOrganizationMembership | null>;
-  findMembershipForUserByOrganization(userId: string, organizationId: string): Promise<StoredOrganizationMembership | null>;
+  findMembershipForUserByOrganization(
+    userId: string,
+    organizationId: string
+  ): Promise<StoredOrganizationMembership | null>;
   createMembership(input: {
     organizationId: string;
     userId: string;
@@ -257,7 +259,8 @@ export class OrganizationMembershipError extends Error {
   }
 }
 
-export type EmployerOrganizationStatus = "invited" | "pending_review" | "active" | "restricted" | "suspended" | "closed";
+export type EmployerOrganizationStatus =
+  "invited" | "pending_review" | "active" | "restricted" | "suspended" | "closed";
 export type EmployerOrganizationDecisionStatus =
   | "allow"
   | "invalid_input"
@@ -338,7 +341,10 @@ export interface EmployerOrganizationRepository {
     ownerRoleKey: AuthorizationRoleKey;
     correlationId: string;
     now: Date;
-  }): Promise<{ organization: StoredEmployerOrganization; membership: StoredOrganizationMembership }>;
+  }): Promise<{
+    organization: StoredEmployerOrganization;
+    membership: StoredOrganizationMembership;
+  }>;
   updateOrganization(input: {
     organizationId: string;
     expectedUpdatedAt: Date;
@@ -466,7 +472,10 @@ export interface UpdateResidenceInput {
 
 export interface ResidenceRepository {
   findResidenceById(residenceId: string): Promise<StoredResidence | null>;
-  listResidencesByOrganization(input: { organizationId: string; status?: ResidenceStatus | null }): Promise<StoredResidence[]>;
+  listResidencesByOrganization(input: {
+    organizationId: string;
+    status?: ResidenceStatus | null;
+  }): Promise<StoredResidence[]>;
   createResidence(input: {
     publicId: string;
     organizationId: string;
@@ -602,7 +611,11 @@ export interface UpdateDepartmentInput {
 
 export interface DepartmentRepository {
   findDepartmentById(departmentId: string): Promise<StoredDepartment | null>;
-  listDepartmentsByResidence(input: { organizationId: string; residenceId: string; status?: DepartmentStatus | null }): Promise<StoredDepartment[]>;
+  listDepartmentsByResidence(input: {
+    organizationId: string;
+    residenceId: string;
+    status?: DepartmentStatus | null;
+  }): Promise<StoredDepartment[]>;
   createDepartment(input: {
     publicId: string;
     organizationId: string;
@@ -728,7 +741,11 @@ export interface WorkGroupRepository {
     now: Date;
   }): Promise<StoredWorkGroup | null>;
   recordWorkGroupAuditEvent(input: {
-    action: "work_group.updated" | "work_group.activated" | "work_group.deactivated" | "work_group.access_denied";
+    action:
+      | "work_group.updated"
+      | "work_group.activated"
+      | "work_group.deactivated"
+      | "work_group.access_denied";
     workGroupId: string | null;
     actorUserId: string | null;
     priorState: string | null;
@@ -806,7 +823,10 @@ export interface RoleDefinitionDecision {
 export interface RoleDefinitionRepository {
   findRoleDefinitionById(roleDefinitionId: string): Promise<StoredRoleDefinition | null>;
   findRoleDefinitionByKey(key: string): Promise<StoredRoleDefinition | null>;
-  listRoleDefinitions(input: { includeInactive: boolean; workGroupKey?: string | undefined }): Promise<StoredRoleDefinition[]>;
+  listRoleDefinitions(input: {
+    includeInactive: boolean;
+    workGroupKey?: string | undefined;
+  }): Promise<StoredRoleDefinition[]>;
   updateRoleDefinition(input: {
     roleDefinitionId: string;
     expectedUpdatedAt: Date;
@@ -824,7 +844,11 @@ export interface RoleDefinitionRepository {
     now: Date;
   }): Promise<StoredRoleDefinition | null>;
   recordRoleDefinitionAuditEvent(input: {
-    action: "role_definition.updated" | "role_definition.activated" | "role_definition.deactivated" | "role_definition.access_denied";
+    action:
+      | "role_definition.updated"
+      | "role_definition.activated"
+      | "role_definition.deactivated"
+      | "role_definition.access_denied";
     roleDefinitionId: string | null;
     workGroupId: string | null;
     actorUserId: string | null;
@@ -842,6 +866,172 @@ export class RoleDefinitionError extends Error {
   constructor(decision: RoleDefinitionDecision) {
     super(authorizationDeniedMessage);
     this.name = "RoleDefinitionError";
+    this.decision = decision;
+  }
+}
+
+export type JobRequestStatus =
+  | "draft"
+  | "submitted"
+  | "admin_review"
+  | "information_required"
+  | "approved_for_dispatch"
+  | "cancelled"
+  | "expired"
+  | "archived";
+export type JobRequestUrgency = "normal" | "urgent" | "immediate";
+export type JobRequestType = "single_day" | "multi_day" | "recurring_intent";
+export type JobRequestDecisionStatus =
+  | "allow"
+  | "invalid_input"
+  | "not_found"
+  | "membership_denied"
+  | "permission_denied"
+  | "organization_inactive"
+  | "residence_inactive"
+  | "department_inactive"
+  | "catalogue_inactive"
+  | "parent_mismatch"
+  | "version_conflict"
+  | "invalid_transition"
+  | "audit_failed";
+
+export interface StoredJobRequest {
+  id: string;
+  jobRequestNumber: string;
+  organizationId: string;
+  residenceId: string;
+  departmentId: string;
+  workGroupId: string;
+  roleDefinitionId: string;
+  creatorUserId: string;
+  title: string;
+  description: string | null;
+  numberOfWorkers: number;
+  urgency: JobRequestUrgency;
+  requestType: JobRequestType;
+  timezone: string;
+  startAt: Date;
+  endAt: Date;
+  isMultiDay: boolean;
+  hasRecurringIntent: boolean;
+  status: JobRequestStatus;
+  adminReviewReason: string | null;
+  version: number;
+  createdByUserId: string;
+  updatedByUserId: string | null;
+  createdAt: Date;
+  updatedAt: Date;
+  submittedAt: Date | null;
+  cancelledAt: Date | null;
+  expiredAt: Date | null;
+  archivedAt: Date | null;
+}
+
+export interface PublicJobRequest extends StoredJobRequest {
+  versionToken: number;
+}
+
+export interface JobRequestDecision {
+  status: JobRequestDecisionStatus;
+  allow: boolean;
+  jobRequest: PublicJobRequest | null;
+  organization: PublicEmployerOrganization | null;
+  membership: PublicOrganizationMembership | null;
+  roles: readonly AuthorizationRoleKey[];
+  internalReason: string | null;
+  externalCode: typeof authorizationDeniedCode | null;
+  externalMessage: typeof authorizationDeniedMessage | null;
+}
+
+export interface JobRequestRepository {
+  createDraft(input: {
+    organizationId: string;
+    residenceId: string;
+    departmentId: string;
+    workGroupId: string;
+    roleDefinitionId: string;
+    actorUserId: string;
+    title: string;
+    description: string | null;
+    numberOfWorkers: number;
+    urgency: JobRequestUrgency;
+    requestType: JobRequestType;
+    timezone: string;
+    startAt: Date;
+    endAt: Date;
+    isMultiDay: boolean;
+    hasRecurringIntent: boolean;
+    now: Date;
+    correlationId: string;
+  }): Promise<StoredJobRequest>;
+  findJobRequestById(jobRequestId: string): Promise<StoredJobRequest | null>;
+  findJobRequestByNumber(jobRequestNumber: string): Promise<StoredJobRequest | null>;
+  listJobRequests(input: {
+    organizationId?: string | undefined;
+    residenceId?: string | undefined;
+    departmentId?: string | undefined;
+    statuses?: readonly JobRequestStatus[] | undefined;
+  }): Promise<StoredJobRequest[]>;
+  updateDraft(input: {
+    jobRequestId: string;
+    expectedVersion: number;
+    actorUserId: string;
+    residenceId?: string | undefined;
+    departmentId?: string | undefined;
+    workGroupId?: string | undefined;
+    roleDefinitionId?: string | undefined;
+    title?: string | undefined;
+    description?: string | null | undefined;
+    numberOfWorkers?: number | undefined;
+    urgency?: JobRequestUrgency | undefined;
+    requestType?: JobRequestType | undefined;
+    timezone?: string | undefined;
+    startAt?: Date | undefined;
+    endAt?: Date | undefined;
+    isMultiDay?: boolean | undefined;
+    hasRecurringIntent?: boolean | undefined;
+    now: Date;
+  }): Promise<StoredJobRequest | null>;
+  transitionJobRequest(input: {
+    jobRequestId: string;
+    expectedVersion: number;
+    actorUserId: string;
+    status: JobRequestStatus;
+    adminReviewReason?: string | null | undefined;
+    now: Date;
+  }): Promise<StoredJobRequest | null>;
+  recordJobRequestAuditEvent(input: {
+    action:
+      | "job_request.created"
+      | "job_request.updated"
+      | "job_request.submitted"
+      | "job_request.admin_review_started"
+      | "job_request.information_requested"
+      | "job_request.resubmitted"
+      | "job_request.approved_for_dispatch"
+      | "job_request.cancelled"
+      | "job_request.expired"
+      | "job_request.archived"
+      | "job_request.access_denied";
+    organizationId: string | null;
+    jobRequestId: string | null;
+    jobRequestNumber: string | null;
+    actorUserId: string | null;
+    priorState: string | null;
+    newState: string | null;
+    reason: string | null;
+    correlationId: string;
+    createdAt: Date;
+  }): Promise<void>;
+}
+
+export class JobRequestError extends Error {
+  decision: JobRequestDecision;
+
+  constructor(decision: JobRequestDecision) {
+    super(authorizationDeniedMessage);
+    this.name = "JobRequestError";
     this.decision = decision;
   }
 }
@@ -940,75 +1130,75 @@ export const authorizationPermissionDefinitions = [
   ),
   permission(
     "job_request.create",
-    "Create future job requests within a future organization context.",
+    "Create draft job requests within an organization context.",
     "organization",
-    "reserved",
-    "Could create commercial demand if activated too early.",
-    "Reserved until Job Request Foundation."
+    "active",
+    "Creates commercial staffing demand.",
+    "Requires active organization membership and active parent records."
   ),
   permission(
     "job_request.read",
-    "Read future job requests within a future organization context.",
+    "Read job requests within an organization context.",
     "organization",
-    "reserved",
+    "active",
     "May expose commercial staffing demand.",
-    "Reserved until Job Request Foundation."
+    "Requires active organization membership or explicit platform intake authority."
   ),
   permission(
     "job_request.update_draft",
-    "Update future draft job requests within a future organization context.",
+    "Update draft job requests within an organization context.",
     "organization",
-    "reserved",
+    "active",
     "Could alter commercial demand.",
-    "Reserved until Job Request Foundation."
+    "Allowed only before governed submission or information-required resubmission."
   ),
   permission(
     "job_request.submit",
-    "Submit future job requests for admin review.",
+    "Submit job requests for admin review.",
     "organization",
-    "reserved",
+    "active",
     "Could trigger operational review before workflow exists.",
-    "Reserved until Job Request Foundation."
+    "Allowed for draft and information-required requests only."
   ),
   permission(
     "job_request.cancel",
-    "Cancel future job requests within a future organization context.",
+    "Cancel job requests within a governed organization context.",
     "organization",
-    "reserved",
+    "active",
     "Could alter commercial demand.",
-    "Reserved until Job Request Foundation."
+    "Allowed only for approved pre-dispatch states."
   ),
   permission(
     "job_request.admin_review",
-    "Perform future platform job request review.",
+    "Perform platform job request intake review.",
     "platform",
-    "reserved",
+    "active",
     "Could approve operational dispatch if activated too early.",
-    "Platform Administrator only; reserved until admin intake."
+    "Platform Administrator only."
   ),
   permission(
     "job_request.request_information",
-    "Request future job request information from an employer.",
+    "Request job request information from an employer.",
     "platform",
-    "reserved",
+    "active",
     "Could affect employer workflow if activated too early.",
-    "Platform Administrator only; reserved until admin intake."
+    "Platform Administrator only; requires a reason."
   ),
   permission(
     "job_request.approve_for_dispatch",
-    "Approve future job requests for dispatch.",
+    "Approve job requests for the future dispatch boundary.",
     "platform",
-    "reserved",
+    "active",
     "Could move staffing demand into dispatch if activated too early.",
-    "Platform Administrator only; reserved until dispatch."
+    "Creates only the approved-for-dispatch boundary state."
   ),
   permission(
     "audit.read",
-    "Read future audit summaries.",
+    "Read approved audit summaries.",
     "platform",
-    "reserved",
+    "active",
     "Could expose sensitive operational history.",
-    "Platform Administrator only; no audit API yet."
+    "Platform Administrator only."
   ),
   permission(
     "platform.supervise",
@@ -1123,7 +1313,9 @@ export function createAuthorizationService(auditSink?: AuthorizationAuditSink) {
 
 export type AuthorizationService = ReturnType<typeof createAuthorizationService>;
 
-export function createAuthorizationDecision(input: AuthorizationDecisionInput): AuthorizationDecision {
+export function createAuthorizationDecision(
+  input: AuthorizationDecisionInput
+): AuthorizationDecision {
   const roles = sanitizeAuthorizationRoles(input.roles ?? []);
   const permissionDefinition = getAuthorizationPermission(input.permission);
   const correlationId = input.correlationId ?? createAuthorizationCorrelationId();
@@ -1133,7 +1325,13 @@ export function createAuthorizationDecision(input: AuthorizationDecisionInput): 
   }
 
   if (input.session.user.status === "disabled" || input.session.user.status === "closed") {
-    return deny("account_inactive", `account_${input.session.user.status}`, input.permission, roles, correlationId);
+    return deny(
+      "account_inactive",
+      `account_${input.session.user.status}`,
+      input.permission,
+      roles,
+      correlationId
+    );
   }
 
   if (!permissionDefinition) {
@@ -1145,11 +1343,23 @@ export function createAuthorizationDecision(input: AuthorizationDecisionInput): 
   }
 
   if (permissionDefinition.context === "organization" && !input.resourceContext?.organizationId) {
-    return deny("context_required", "organization_context_required", input.permission, roles, correlationId);
+    return deny(
+      "context_required",
+      "organization_context_required",
+      input.permission,
+      roles,
+      correlationId
+    );
   }
 
   if (permissionDefinition.context === "platform" && input.platformContext?.platform !== true) {
-    return deny("context_required", "platform_context_required", input.permission, roles, correlationId);
+    return deny(
+      "context_required",
+      "platform_context_required",
+      input.permission,
+      roles,
+      correlationId
+    );
   }
 
   const permissions = new Set(
@@ -1157,11 +1367,23 @@ export function createAuthorizationDecision(input: AuthorizationDecisionInput): 
   );
 
   if (!permissions.has(permissionDefinition.key)) {
-    return deny("permission_missing", "role_lacks_permission", input.permission, roles, correlationId);
+    return deny(
+      "permission_missing",
+      "role_lacks_permission",
+      input.permission,
+      roles,
+      correlationId
+    );
   }
 
   if (permissionDefinition.lifecycle === "reserved") {
-    return deny("deny", "permission_reserved_for_future_service", input.permission, roles, correlationId);
+    return deny(
+      "deny",
+      "permission_reserved_for_future_service",
+      input.permission,
+      roles,
+      correlationId
+    );
   }
 
   return {
@@ -1199,10 +1421,19 @@ export function createOrganizationMembershipService(
   return {
     async inviteMembership(input: InviteMembershipInput) {
       const currentTime = now();
-      const existingMembership = await repository.findMembershipForUserByOrganization(input.userId, input.organizationId);
+      const existingMembership = await repository.findMembershipForUserByOrganization(
+        input.userId,
+        input.organizationId
+      );
 
       if (existingMembership) {
-        const decision = membershipDeny("duplicate_membership", "duplicate_membership", null, input.organizationId, []);
+        const decision = membershipDeny(
+          "duplicate_membership",
+          "duplicate_membership",
+          null,
+          input.organizationId,
+          []
+        );
         await auditMembershipDenial(repository, {
           decision,
           userId: input.userId,
@@ -1251,8 +1482,17 @@ export function createOrganizationMembershipService(
       return toPublicMembership(membership);
     },
 
-    async activateMembership(input: { userId: string; membershipId: string; actorUserId: string; correlationId?: string }) {
-      const membership = await assertMembershipBelongsToUser(repository, input.userId, input.membershipId);
+    async activateMembership(input: {
+      userId: string;
+      membershipId: string;
+      actorUserId: string;
+      correlationId?: string;
+    }) {
+      const membership = await assertMembershipBelongsToUser(
+        repository,
+        input.userId,
+        input.membershipId
+      );
       const currentTime = now();
       const updated = await repository.updateMembershipStatus({
         membershipId: membership.id,
@@ -1276,7 +1516,12 @@ export function createOrganizationMembershipService(
       return toPublicMembership(updated);
     },
 
-    async suspendMembership(input: { userId: string; membershipId: string; actorUserId: string; correlationId?: string }) {
+    async suspendMembership(input: {
+      userId: string;
+      membershipId: string;
+      actorUserId: string;
+      correlationId?: string;
+    }) {
       return updateMembershipLifecycle(repository, {
         ...input,
         status: "suspended",
@@ -1285,7 +1530,12 @@ export function createOrganizationMembershipService(
       });
     },
 
-    async revokeMembership(input: { userId: string; membershipId: string; actorUserId: string; correlationId?: string }) {
+    async revokeMembership(input: {
+      userId: string;
+      membershipId: string;
+      actorUserId: string;
+      correlationId?: string;
+    }) {
       return updateMembershipLifecycle(repository, {
         ...input,
         status: "revoked",
@@ -1294,7 +1544,12 @@ export function createOrganizationMembershipService(
       });
     },
 
-    async expireMembership(input: { userId: string; membershipId: string; actorUserId: string | null; correlationId?: string }) {
+    async expireMembership(input: {
+      userId: string;
+      membershipId: string;
+      actorUserId: string | null;
+      correlationId?: string;
+    }) {
       return updateMembershipLifecycle(repository, {
         ...input,
         status: "expired",
@@ -1310,7 +1565,11 @@ export function createOrganizationMembershipService(
       accessRoleKeys: readonly AuthorizationRoleKey[];
       correlationId?: string;
     }) {
-      const membership = await assertMembershipBelongsToUser(repository, input.userId, input.membershipId);
+      const membership = await assertMembershipBelongsToUser(
+        repository,
+        input.userId,
+        input.membershipId
+      );
       const currentTime = now();
       const updated = await repository.replaceMembershipRoles({
         membershipId: membership.id,
@@ -1342,7 +1601,13 @@ export function createOrganizationMembershipService(
       const currentTime = now();
 
       if (!input.organizationId) {
-        const decision = membershipDeny("context_required", "organization_context_required", null, null, []);
+        const decision = membershipDeny(
+          "context_required",
+          "organization_context_required",
+          null,
+          null,
+          []
+        );
         await auditMembershipDenial(repository, {
           decision,
           userId: input.userId,
@@ -1353,10 +1618,19 @@ export function createOrganizationMembershipService(
         return decision;
       }
 
-      const membership = await repository.findMembershipForUserByOrganization(input.userId, input.organizationId);
+      const membership = await repository.findMembershipForUserByOrganization(
+        input.userId,
+        input.organizationId
+      );
 
       if (!membership) {
-        const decision = membershipDeny("membership_missing", "membership_not_found", null, input.organizationId, []);
+        const decision = membershipDeny(
+          "membership_missing",
+          "membership_not_found",
+          null,
+          input.organizationId,
+          []
+        );
         await auditMembershipDenial(repository, {
           decision,
           userId: input.userId,
@@ -1416,7 +1690,13 @@ export function createEmployerOrganizationService(
       const displayName = normalizeOrganizationName(input.displayName);
 
       if (!legalName || !displayName) {
-        const decision = organizationDeny("invalid_input", "invalid_organization_name", null, null, []);
+        const decision = organizationDeny(
+          "invalid_input",
+          "invalid_organization_name",
+          null,
+          null,
+          []
+        );
         await auditOrganizationDenial(repository, {
           decision,
           actorUserId: input.actorUserId,
@@ -1465,7 +1745,11 @@ export function createEmployerOrganizationService(
       }
     },
 
-    async getOrganization(input: { actorUserId: string; organizationId: string; correlationId?: string }) {
+    async getOrganization(input: {
+      actorUserId: string;
+      organizationId: string;
+      correlationId?: string;
+    }) {
       const organization = await repository.findOrganizationById(input.organizationId);
       const decision = await authorizeOrganizationOperation({
         repository,
@@ -1486,7 +1770,11 @@ export function createEmployerOrganizationService(
       return decision.organization;
     },
 
-    async getOrganizationStatus(input: { actorUserId: string; organizationId: string; correlationId?: string }) {
+    async getOrganizationStatus(input: {
+      actorUserId: string;
+      organizationId: string;
+      correlationId?: string;
+    }) {
       return this.getOrganization(input);
     },
 
@@ -1509,13 +1797,24 @@ export function createEmployerOrganizationService(
         throw new EmployerOrganizationError(decision);
       }
 
-      const legalName = input.legalName === undefined || input.legalName === null ? undefined : normalizeOrganizationName(input.legalName);
+      const legalName =
+        input.legalName === undefined || input.legalName === null
+          ? undefined
+          : normalizeOrganizationName(input.legalName);
       const displayName =
-        input.displayName === undefined || input.displayName === null ? undefined : normalizeOrganizationName(input.displayName);
+        input.displayName === undefined || input.displayName === null
+          ? undefined
+          : normalizeOrganizationName(input.displayName);
 
       if ((input.legalName != null && !legalName) || (input.displayName != null && !displayName)) {
         throw new EmployerOrganizationError(
-          organizationDeny("invalid_input", "invalid_organization_name", decision.organization, decision.membership, decision.roles)
+          organizationDeny(
+            "invalid_input",
+            "invalid_organization_name",
+            decision.organization,
+            decision.membership,
+            decision.roles
+          )
         );
       }
 
@@ -1523,7 +1822,13 @@ export function createEmployerOrganizationService(
 
       if (!expectedUpdatedAt) {
         throw new EmployerOrganizationError(
-          organizationDeny("version_conflict", "invalid_version", decision.organization, decision.membership, decision.roles)
+          organizationDeny(
+            "version_conflict",
+            "invalid_version",
+            decision.organization,
+            decision.membership,
+            decision.roles
+          )
         );
       }
 
@@ -1538,7 +1843,13 @@ export function createEmployerOrganizationService(
 
       if (!updated) {
         throw new EmployerOrganizationError(
-          organizationDeny("version_conflict", "stale_version", decision.organization, decision.membership, decision.roles)
+          organizationDeny(
+            "version_conflict",
+            "stale_version",
+            decision.organization,
+            decision.membership,
+            decision.roles
+          )
         );
       }
 
@@ -1586,7 +1897,13 @@ export function createEmployerOrganizationService(
 
       if (!expectedUpdatedAt) {
         throw new EmployerOrganizationError(
-          organizationDeny("version_conflict", "invalid_version", decision.organization, decision.membership, decision.roles)
+          organizationDeny(
+            "version_conflict",
+            "invalid_version",
+            decision.organization,
+            decision.membership,
+            decision.roles
+          )
         );
       }
 
@@ -1600,7 +1917,13 @@ export function createEmployerOrganizationService(
 
       if (!updated) {
         throw new EmployerOrganizationError(
-          organizationDeny("version_conflict", "stale_version", decision.organization, decision.membership, decision.roles)
+          organizationDeny(
+            "version_conflict",
+            "stale_version",
+            decision.organization,
+            decision.membership,
+            decision.roles
+          )
         );
       }
 
@@ -1647,7 +1970,14 @@ export function createResidenceService(
       const country = normalizeOptionalResidenceText(input.country, 80);
 
       if (!name) {
-        const decision = residenceDeny("invalid_input", "invalid_residence_name", null, null, null, []);
+        const decision = residenceDeny(
+          "invalid_input",
+          "invalid_residence_name",
+          null,
+          null,
+          null,
+          []
+        );
         await auditResidenceDenial(residenceRepository, {
           decision,
           actorUserId: input.actorUserId,
@@ -1708,7 +2038,12 @@ export function createResidenceService(
       }
     },
 
-    async getResidence(input: { actorUserId: string; organizationId: string; residenceId: string; correlationId?: string }) {
+    async getResidence(input: {
+      actorUserId: string;
+      organizationId: string;
+      residenceId: string;
+      correlationId?: string;
+    }) {
       const currentTime = now();
       const residence = await residenceRepository.findResidenceById(input.residenceId);
       const authorization = await authorizeResidenceOperation({
@@ -1732,7 +2067,12 @@ export function createResidenceService(
       return authorization.residence;
     },
 
-    async listResidences(input: { actorUserId: string; organizationId: string; status?: ResidenceStatus | null; correlationId?: string }) {
+    async listResidences(input: {
+      actorUserId: string;
+      organizationId: string;
+      status?: ResidenceStatus | null;
+      correlationId?: string;
+    }) {
       const currentTime = now();
       const authorization = await authorizeResidenceOperation({
         residenceRepository,
@@ -1754,7 +2094,12 @@ export function createResidenceService(
 
       const status = input.status && residenceStatuses.includes(input.status) ? input.status : null;
 
-      return (await residenceRepository.listResidencesByOrganization({ organizationId: input.organizationId, status })).map(toPublicResidence);
+      return (
+        await residenceRepository.listResidencesByOrganization({
+          organizationId: input.organizationId,
+          status
+        })
+      ).map(toPublicResidence);
     },
 
     async updateResidence(input: UpdateResidenceInput) {
@@ -1778,14 +2123,27 @@ export function createResidenceService(
       }
 
       const name = input.name == null ? undefined : normalizeResidenceText(input.name, 2, 160);
-      const addressSummary = input.addressSummary === undefined ? undefined : normalizeOptionalResidenceText(input.addressSummary, 240);
-      const city = input.city === undefined ? undefined : normalizeOptionalResidenceText(input.city, 120);
-      const region = input.region === undefined ? undefined : normalizeOptionalResidenceText(input.region, 120);
-      const country = input.country === undefined ? undefined : normalizeOptionalResidenceText(input.country, 80);
+      const addressSummary =
+        input.addressSummary === undefined
+          ? undefined
+          : normalizeOptionalResidenceText(input.addressSummary, 240);
+      const city =
+        input.city === undefined ? undefined : normalizeOptionalResidenceText(input.city, 120);
+      const region =
+        input.region === undefined ? undefined : normalizeOptionalResidenceText(input.region, 120);
+      const country =
+        input.country === undefined ? undefined : normalizeOptionalResidenceText(input.country, 80);
 
       if (input.name != null && !name) {
         throw new ResidenceError(
-          residenceDeny("invalid_input", "invalid_residence_name", authorization.residence, authorization.organization, authorization.membership, authorization.roles)
+          residenceDeny(
+            "invalid_input",
+            "invalid_residence_name",
+            authorization.residence,
+            authorization.organization,
+            authorization.membership,
+            authorization.roles
+          )
         );
       }
 
@@ -1793,7 +2151,14 @@ export function createResidenceService(
 
       if (!expectedUpdatedAt) {
         throw new ResidenceError(
-          residenceDeny("version_conflict", "invalid_version", authorization.residence, authorization.organization, authorization.membership, authorization.roles)
+          residenceDeny(
+            "version_conflict",
+            "invalid_version",
+            authorization.residence,
+            authorization.organization,
+            authorization.membership,
+            authorization.roles
+          )
         );
       }
 
@@ -1812,7 +2177,14 @@ export function createResidenceService(
 
       if (!updated) {
         throw new ResidenceError(
-          residenceDeny("version_conflict", "stale_version", authorization.residence, authorization.organization, authorization.membership, authorization.roles)
+          residenceDeny(
+            "version_conflict",
+            "stale_version",
+            authorization.residence,
+            authorization.organization,
+            authorization.membership,
+            authorization.roles
+          )
         );
       }
 
@@ -1862,7 +2234,14 @@ export function createResidenceService(
 
       if (!isAllowedResidenceTransition(residence.status, input.status)) {
         throw new ResidenceError(
-          residenceDeny("invalid_transition", "invalid_residence_status_transition", authorization.residence, authorization.organization, authorization.membership, authorization.roles)
+          residenceDeny(
+            "invalid_transition",
+            "invalid_residence_status_transition",
+            authorization.residence,
+            authorization.organization,
+            authorization.membership,
+            authorization.roles
+          )
         );
       }
 
@@ -1870,7 +2249,14 @@ export function createResidenceService(
 
       if (!expectedUpdatedAt) {
         throw new ResidenceError(
-          residenceDeny("version_conflict", "invalid_version", authorization.residence, authorization.organization, authorization.membership, authorization.roles)
+          residenceDeny(
+            "version_conflict",
+            "invalid_version",
+            authorization.residence,
+            authorization.organization,
+            authorization.membership,
+            authorization.roles
+          )
         );
       }
 
@@ -1885,12 +2271,24 @@ export function createResidenceService(
 
       if (!updated) {
         throw new ResidenceError(
-          residenceDeny("version_conflict", "stale_version", authorization.residence, authorization.organization, authorization.membership, authorization.roles)
+          residenceDeny(
+            "version_conflict",
+            "stale_version",
+            authorization.residence,
+            authorization.organization,
+            authorization.membership,
+            authorization.roles
+          )
         );
       }
 
       await recordResidenceAudit(residenceRepository, {
-        action: input.status === "inactive" ? "residence.inactivated" : input.status === "closed" ? "residence.closed" : "residence.reactivated",
+        action:
+          input.status === "inactive"
+            ? "residence.inactivated"
+            : input.status === "closed"
+              ? "residence.closed"
+              : "residence.reactivated",
         organizationId: input.organizationId,
         residenceId: updated.id,
         actorUserId: input.actorUserId,
@@ -1925,7 +2323,15 @@ export function createDepartmentService(
       const name = normalizeDepartmentText(input.name, 2, 160);
 
       if (!name) {
-        const decision = departmentDeny("invalid_input", "invalid_department_name", null, null, null, null, []);
+        const decision = departmentDeny(
+          "invalid_input",
+          "invalid_department_name",
+          null,
+          null,
+          null,
+          null,
+          []
+        );
         await auditDepartmentDenial(departmentRepository, {
           decision,
           actorUserId: input.actorUserId,
@@ -1986,7 +2392,13 @@ export function createDepartmentService(
       }
     },
 
-    async getDepartment(input: { actorUserId: string; organizationId: string; residenceId: string; departmentId: string; correlationId?: string }) {
+    async getDepartment(input: {
+      actorUserId: string;
+      organizationId: string;
+      residenceId: string;
+      departmentId: string;
+      correlationId?: string;
+    }) {
       const currentTime = now();
       const department = await departmentRepository.findDepartmentById(input.departmentId);
       const authorization = await authorizeDepartmentOperation({
@@ -2041,9 +2453,16 @@ export function createDepartmentService(
         throw new DepartmentError(authorization);
       }
 
-      const status = input.status && departmentStatuses.includes(input.status) ? input.status : null;
+      const status =
+        input.status && departmentStatuses.includes(input.status) ? input.status : null;
 
-      return (await departmentRepository.listDepartmentsByResidence({ organizationId: input.organizationId, residenceId: input.residenceId, status })).map(toPublicDepartment);
+      return (
+        await departmentRepository.listDepartmentsByResidence({
+          organizationId: input.organizationId,
+          residenceId: input.residenceId,
+          status
+        })
+      ).map(toPublicDepartment);
     },
 
     async updateDepartment(input: UpdateDepartmentInput) {
@@ -2072,7 +2491,15 @@ export function createDepartmentService(
 
       if (input.name != null && !name) {
         throw new DepartmentError(
-          departmentDeny("invalid_input", "invalid_department_name", authorization.department, authorization.residence, authorization.organization, authorization.membership, authorization.roles)
+          departmentDeny(
+            "invalid_input",
+            "invalid_department_name",
+            authorization.department,
+            authorization.residence,
+            authorization.organization,
+            authorization.membership,
+            authorization.roles
+          )
         );
       }
 
@@ -2080,7 +2507,15 @@ export function createDepartmentService(
 
       if (!expectedUpdatedAt) {
         throw new DepartmentError(
-          departmentDeny("version_conflict", "invalid_version", authorization.department, authorization.residence, authorization.organization, authorization.membership, authorization.roles)
+          departmentDeny(
+            "version_conflict",
+            "invalid_version",
+            authorization.department,
+            authorization.residence,
+            authorization.organization,
+            authorization.membership,
+            authorization.roles
+          )
         );
       }
 
@@ -2096,7 +2531,15 @@ export function createDepartmentService(
 
       if (!updated) {
         throw new DepartmentError(
-          departmentDeny("version_conflict", "stale_version", authorization.department, authorization.residence, authorization.organization, authorization.membership, authorization.roles)
+          departmentDeny(
+            "version_conflict",
+            "stale_version",
+            authorization.department,
+            authorization.residence,
+            authorization.organization,
+            authorization.membership,
+            authorization.roles
+          )
         );
       }
 
@@ -2150,7 +2593,15 @@ export function createDepartmentService(
 
       if (!isAllowedDepartmentTransition(department.status, input.status)) {
         throw new DepartmentError(
-          departmentDeny("invalid_transition", "invalid_department_status_transition", authorization.department, authorization.residence, authorization.organization, authorization.membership, authorization.roles)
+          departmentDeny(
+            "invalid_transition",
+            "invalid_department_status_transition",
+            authorization.department,
+            authorization.residence,
+            authorization.organization,
+            authorization.membership,
+            authorization.roles
+          )
         );
       }
 
@@ -2158,7 +2609,15 @@ export function createDepartmentService(
 
       if (!expectedUpdatedAt) {
         throw new DepartmentError(
-          departmentDeny("version_conflict", "invalid_version", authorization.department, authorization.residence, authorization.organization, authorization.membership, authorization.roles)
+          departmentDeny(
+            "version_conflict",
+            "invalid_version",
+            authorization.department,
+            authorization.residence,
+            authorization.organization,
+            authorization.membership,
+            authorization.roles
+          )
         );
       }
 
@@ -2174,12 +2633,25 @@ export function createDepartmentService(
 
       if (!updated) {
         throw new DepartmentError(
-          departmentDeny("version_conflict", "stale_version", authorization.department, authorization.residence, authorization.organization, authorization.membership, authorization.roles)
+          departmentDeny(
+            "version_conflict",
+            "stale_version",
+            authorization.department,
+            authorization.residence,
+            authorization.organization,
+            authorization.membership,
+            authorization.roles
+          )
         );
       }
 
       await recordDepartmentAudit(departmentRepository, {
-        action: input.status === "inactive" ? "department.inactivated" : input.status === "closed" ? "department.closed" : "department.reactivated",
+        action:
+          input.status === "inactive"
+            ? "department.inactivated"
+            : input.status === "closed"
+              ? "department.closed"
+              : "department.reactivated",
         organizationId: input.organizationId,
         residenceId: input.residenceId,
         departmentId: updated.id,
@@ -2225,7 +2697,9 @@ export function createWorkGroupService(
         throw new WorkGroupError(decision);
       }
 
-      return (await workGroupRepository.listWorkGroups({ includeInactive: false })).map(toPublicWorkGroup);
+      return (await workGroupRepository.listWorkGroups({ includeInactive: false })).map(
+        toPublicWorkGroup
+      );
     },
 
     async getActiveWorkGroup(input: {
@@ -2235,7 +2709,9 @@ export function createWorkGroupService(
       correlationId?: string;
     }) {
       const currentTime = now();
-      const workGroup = await workGroupRepository.findWorkGroupByKey(workGroupSlugToKey(input.slug));
+      const workGroup = await workGroupRepository.findWorkGroupByKey(
+        workGroupSlugToKey(input.slug)
+      );
       const decision = await authorizeWorkGroupOperation({
         workGroupRepository,
         authorizationService,
@@ -2248,7 +2724,11 @@ export function createWorkGroupService(
       });
 
       if (!decision.allow || !decision.workGroup || decision.workGroup.status !== "active") {
-        throw new WorkGroupError(decision.allow ? workGroupDeny("not_found", "work_group_not_found", null, input.roles ?? []) : decision);
+        throw new WorkGroupError(
+          decision.allow
+            ? workGroupDeny("not_found", "work_group_not_found", null, input.roles ?? [])
+            : decision
+        );
       }
 
       return decision.workGroup;
@@ -2274,7 +2754,9 @@ export function createWorkGroupService(
         throw new WorkGroupError(decision);
       }
 
-      return (await workGroupRepository.listWorkGroups({ includeInactive: true })).map(toPublicWorkGroup);
+      return (await workGroupRepository.listWorkGroups({ includeInactive: true })).map(
+        toPublicWorkGroup
+      );
     },
 
     async getWorkGroupForManagement(input: {
@@ -2283,7 +2765,9 @@ export function createWorkGroupService(
       slug: string;
       correlationId?: string;
     }) {
-      const workGroup = await workGroupRepository.findWorkGroupByKey(workGroupSlugToKey(input.slug));
+      const workGroup = await workGroupRepository.findWorkGroupByKey(
+        workGroupSlugToKey(input.slug)
+      );
       const decision = await authorizeWorkGroupOperation({
         workGroupRepository,
         authorizationService,
@@ -2297,7 +2781,11 @@ export function createWorkGroupService(
       });
 
       if (!decision.allow || !decision.workGroup) {
-        throw new WorkGroupError(decision.allow ? workGroupDeny("not_found", "work_group_not_found", null, input.roles ?? []) : decision);
+        throw new WorkGroupError(
+          decision.allow
+            ? workGroupDeny("not_found", "work_group_not_found", null, input.roles ?? [])
+            : decision
+        );
       }
 
       return decision.workGroup;
@@ -2314,7 +2802,9 @@ export function createWorkGroupService(
       correlationId?: string;
     }) {
       const currentTime = now();
-      const workGroup = await workGroupRepository.findWorkGroupByKey(workGroupSlugToKey(input.slug));
+      const workGroup = await workGroupRepository.findWorkGroupByKey(
+        workGroupSlugToKey(input.slug)
+      );
       const decision = await authorizeWorkGroupOperation({
         workGroupRepository,
         authorizationService,
@@ -2328,24 +2818,54 @@ export function createWorkGroupService(
       });
 
       if (!decision.allow || !workGroup) {
-        throw new WorkGroupError(decision.allow ? workGroupDeny("not_found", "work_group_not_found", null, input.roles ?? []) : decision);
+        throw new WorkGroupError(
+          decision.allow
+            ? workGroupDeny("not_found", "work_group_not_found", null, input.roles ?? [])
+            : decision
+        );
       }
 
       const expectedUpdatedAt = parseWorkGroupVersion(input.expectedVersion);
-      const displayLabel = input.displayLabel == null ? undefined : normalizeCatalogueText(input.displayLabel, 2, 120);
+      const displayLabel =
+        input.displayLabel == null ? undefined : normalizeCatalogueText(input.displayLabel, 2, 120);
       const displayOrder = input.displayOrder == null ? undefined : input.displayOrder;
-      const iconKey = input.iconKey === undefined ? undefined : normalizeOptionalResidenceText(input.iconKey, 80);
+      const iconKey =
+        input.iconKey === undefined ? undefined : normalizeOptionalResidenceText(input.iconKey, 80);
 
       if (!expectedUpdatedAt) {
-        throw new WorkGroupError(workGroupDeny("version_conflict", "invalid_version", toPublicWorkGroup(workGroup), input.roles ?? []));
+        throw new WorkGroupError(
+          workGroupDeny(
+            "version_conflict",
+            "invalid_version",
+            toPublicWorkGroup(workGroup),
+            input.roles ?? []
+          )
+        );
       }
 
       if (input.displayLabel != null && !displayLabel) {
-        throw new WorkGroupError(workGroupDeny("invalid_input", "invalid_work_group_label", toPublicWorkGroup(workGroup), input.roles ?? []));
+        throw new WorkGroupError(
+          workGroupDeny(
+            "invalid_input",
+            "invalid_work_group_label",
+            toPublicWorkGroup(workGroup),
+            input.roles ?? []
+          )
+        );
       }
 
-      if (displayOrder !== undefined && (!Number.isInteger(displayOrder) || displayOrder < 1 || displayOrder > 10_000)) {
-        throw new WorkGroupError(workGroupDeny("invalid_input", "invalid_work_group_display_order", toPublicWorkGroup(workGroup), input.roles ?? []));
+      if (
+        displayOrder !== undefined &&
+        (!Number.isInteger(displayOrder) || displayOrder < 1 || displayOrder > 10_000)
+      ) {
+        throw new WorkGroupError(
+          workGroupDeny(
+            "invalid_input",
+            "invalid_work_group_display_order",
+            toPublicWorkGroup(workGroup),
+            input.roles ?? []
+          )
+        );
       }
 
       const updated = await workGroupRepository.updateWorkGroup({
@@ -2358,7 +2878,14 @@ export function createWorkGroupService(
       });
 
       if (!updated) {
-        throw new WorkGroupError(workGroupDeny("version_conflict", "stale_version", toPublicWorkGroup(workGroup), input.roles ?? []));
+        throw new WorkGroupError(
+          workGroupDeny(
+            "version_conflict",
+            "stale_version",
+            toPublicWorkGroup(workGroup),
+            input.roles ?? []
+          )
+        );
       }
 
       await recordWorkGroupAudit(workGroupRepository, {
@@ -2385,7 +2912,9 @@ export function createWorkGroupService(
       correlationId?: string;
     }) {
       const currentTime = now();
-      const workGroup = await workGroupRepository.findWorkGroupByKey(workGroupSlugToKey(input.slug));
+      const workGroup = await workGroupRepository.findWorkGroupByKey(
+        workGroupSlugToKey(input.slug)
+      );
       const decision = await authorizeWorkGroupOperation({
         workGroupRepository,
         authorizationService,
@@ -2399,17 +2928,35 @@ export function createWorkGroupService(
       });
 
       if (!decision.allow || !workGroup) {
-        throw new WorkGroupError(decision.allow ? workGroupDeny("not_found", "work_group_not_found", null, input.roles ?? []) : decision);
+        throw new WorkGroupError(
+          decision.allow
+            ? workGroupDeny("not_found", "work_group_not_found", null, input.roles ?? [])
+            : decision
+        );
       }
 
       if (!isAllowedWorkGroupTransition(workGroup.status, input.status)) {
-        throw new WorkGroupError(workGroupDeny("invalid_transition", "invalid_work_group_status_transition", toPublicWorkGroup(workGroup), input.roles ?? []));
+        throw new WorkGroupError(
+          workGroupDeny(
+            "invalid_transition",
+            "invalid_work_group_status_transition",
+            toPublicWorkGroup(workGroup),
+            input.roles ?? []
+          )
+        );
       }
 
       const expectedUpdatedAt = parseWorkGroupVersion(input.expectedVersion);
 
       if (!expectedUpdatedAt) {
-        throw new WorkGroupError(workGroupDeny("version_conflict", "invalid_version", toPublicWorkGroup(workGroup), input.roles ?? []));
+        throw new WorkGroupError(
+          workGroupDeny(
+            "version_conflict",
+            "invalid_version",
+            toPublicWorkGroup(workGroup),
+            input.roles ?? []
+          )
+        );
       }
 
       const updated = await workGroupRepository.updateWorkGroupStatus({
@@ -2420,7 +2967,14 @@ export function createWorkGroupService(
       });
 
       if (!updated) {
-        throw new WorkGroupError(workGroupDeny("version_conflict", "stale_version", toPublicWorkGroup(workGroup), input.roles ?? []));
+        throw new WorkGroupError(
+          workGroupDeny(
+            "version_conflict",
+            "stale_version",
+            toPublicWorkGroup(workGroup),
+            input.roles ?? []
+          )
+        );
       }
 
       await recordWorkGroupAudit(workGroupRepository, {
@@ -2467,10 +3021,12 @@ export function createRoleDefinitionService(
 
       if (!decision.allow) throw new RoleDefinitionError(decision);
 
-      return (await roleDefinitionRepository.listRoleDefinitions({
-        includeInactive: false,
-        workGroupKey: input.workGroupSlug ? workGroupSlugToKey(input.workGroupSlug) : undefined
-      }))
+      return (
+        await roleDefinitionRepository.listRoleDefinitions({
+          includeInactive: false,
+          workGroupKey: input.workGroupSlug ? workGroupSlugToKey(input.workGroupSlug) : undefined
+        })
+      )
         .filter((roleDefinition) => roleDefinition.workGroup.status === "active")
         .map(toPublicRoleDefinition);
     },
@@ -2481,7 +3037,9 @@ export function createRoleDefinitionService(
       identifier: string;
       correlationId?: string;
     }) {
-      const roleDefinition = await roleDefinitionRepository.findRoleDefinitionByKey(roleDefinitionIdentifierToKey(input.identifier));
+      const roleDefinition = await roleDefinitionRepository.findRoleDefinitionByKey(
+        roleDefinitionIdentifierToKey(input.identifier)
+      );
       const decision = await authorizeRoleDefinitionOperation({
         roleDefinitionRepository,
         authorizationService,
@@ -2493,8 +3051,17 @@ export function createRoleDefinitionService(
         now: now()
       });
 
-      if (!decision.allow || !decision.roleDefinition || decision.roleDefinition.status !== "active" || roleDefinition?.workGroup.status !== "active") {
-        throw new RoleDefinitionError(decision.allow ? roleDefinitionDeny("not_found", "role_definition_not_found", null, input.roles ?? []) : decision);
+      if (
+        !decision.allow ||
+        !decision.roleDefinition ||
+        decision.roleDefinition.status !== "active" ||
+        roleDefinition?.workGroup.status !== "active"
+      ) {
+        throw new RoleDefinitionError(
+          decision.allow
+            ? roleDefinitionDeny("not_found", "role_definition_not_found", null, input.roles ?? [])
+            : decision
+        );
       }
 
       return decision.roleDefinition;
@@ -2519,10 +3086,12 @@ export function createRoleDefinitionService(
 
       if (!decision.allow) throw new RoleDefinitionError(decision);
 
-      return (await roleDefinitionRepository.listRoleDefinitions({
-        includeInactive: true,
-        workGroupKey: input.workGroupSlug ? workGroupSlugToKey(input.workGroupSlug) : undefined
-      })).map(toPublicRoleDefinition);
+      return (
+        await roleDefinitionRepository.listRoleDefinitions({
+          includeInactive: true,
+          workGroupKey: input.workGroupSlug ? workGroupSlugToKey(input.workGroupSlug) : undefined
+        })
+      ).map(toPublicRoleDefinition);
     },
 
     async getRoleDefinitionForManagement(input: {
@@ -2531,7 +3100,9 @@ export function createRoleDefinitionService(
       identifier: string;
       correlationId?: string;
     }) {
-      const roleDefinition = await roleDefinitionRepository.findRoleDefinitionByKey(roleDefinitionIdentifierToKey(input.identifier));
+      const roleDefinition = await roleDefinitionRepository.findRoleDefinitionByKey(
+        roleDefinitionIdentifierToKey(input.identifier)
+      );
       const decision = await authorizeRoleDefinitionOperation({
         roleDefinitionRepository,
         authorizationService,
@@ -2545,7 +3116,11 @@ export function createRoleDefinitionService(
       });
 
       if (!decision.allow || !decision.roleDefinition) {
-        throw new RoleDefinitionError(decision.allow ? roleDefinitionDeny("not_found", "role_definition_not_found", null, input.roles ?? []) : decision);
+        throw new RoleDefinitionError(
+          decision.allow
+            ? roleDefinitionDeny("not_found", "role_definition_not_found", null, input.roles ?? [])
+            : decision
+        );
       }
 
       return decision.roleDefinition;
@@ -2564,7 +3139,9 @@ export function createRoleDefinitionService(
       correlationId?: string;
     }) {
       const currentTime = now();
-      const roleDefinition = await roleDefinitionRepository.findRoleDefinitionByKey(roleDefinitionIdentifierToKey(input.identifier));
+      const roleDefinition = await roleDefinitionRepository.findRoleDefinitionByKey(
+        roleDefinitionIdentifierToKey(input.identifier)
+      );
       const decision = await authorizeRoleDefinitionOperation({
         roleDefinitionRepository,
         authorizationService,
@@ -2578,27 +3155,63 @@ export function createRoleDefinitionService(
       });
 
       if (!decision.allow || !roleDefinition) {
-        throw new RoleDefinitionError(decision.allow ? roleDefinitionDeny("not_found", "role_definition_not_found", null, input.roles ?? []) : decision);
+        throw new RoleDefinitionError(
+          decision.allow
+            ? roleDefinitionDeny("not_found", "role_definition_not_found", null, input.roles ?? [])
+            : decision
+        );
       }
 
       const expectedUpdatedAt = parseCatalogueVersion(input.expectedVersion);
-      const displayLabel = input.displayLabel == null ? undefined : normalizeCatalogueText(input.displayLabel, 2, 120);
+      const displayLabel =
+        input.displayLabel == null ? undefined : normalizeCatalogueText(input.displayLabel, 2, 120);
       const displayOrder = input.displayOrder == null ? undefined : input.displayOrder;
-      const localizedLabelKey = input.localizedLabelKey === undefined ? undefined : normalizeOptionalResidenceText(input.localizedLabelKey, 120);
-      const qualificationSummary = input.qualificationSummary === undefined ? undefined : normalizeOptionalResidenceText(input.qualificationSummary, 500);
-      const safetyRequirementSummary = input.safetyRequirementSummary === undefined ? undefined : normalizeOptionalResidenceText(input.safetyRequirementSummary, 500);
+      const localizedLabelKey =
+        input.localizedLabelKey === undefined
+          ? undefined
+          : normalizeOptionalResidenceText(input.localizedLabelKey, 120);
+      const qualificationSummary =
+        input.qualificationSummary === undefined
+          ? undefined
+          : normalizeOptionalResidenceText(input.qualificationSummary, 500);
+      const safetyRequirementSummary =
+        input.safetyRequirementSummary === undefined
+          ? undefined
+          : normalizeOptionalResidenceText(input.safetyRequirementSummary, 500);
 
       if (!expectedUpdatedAt) {
-        throw new RoleDefinitionError(roleDefinitionDeny("version_conflict", "invalid_version", toPublicRoleDefinition(roleDefinition), input.roles ?? []));
+        throw new RoleDefinitionError(
+          roleDefinitionDeny(
+            "version_conflict",
+            "invalid_version",
+            toPublicRoleDefinition(roleDefinition),
+            input.roles ?? []
+          )
+        );
       }
 
       if (input.displayLabel != null && !displayLabel) {
-        throw new RoleDefinitionError(roleDefinitionDeny("invalid_input", "invalid_role_definition_label", toPublicRoleDefinition(roleDefinition), input.roles ?? []));
+        throw new RoleDefinitionError(
+          roleDefinitionDeny(
+            "invalid_input",
+            "invalid_role_definition_label",
+            toPublicRoleDefinition(roleDefinition),
+            input.roles ?? []
+          )
+        );
       }
 
-      if (displayOrder !== undefined && (!Number.isInteger(displayOrder) || displayOrder < 1 || displayOrder > 10_000)) {
+      if (
+        displayOrder !== undefined &&
+        (!Number.isInteger(displayOrder) || displayOrder < 1 || displayOrder > 10_000)
+      ) {
         throw new RoleDefinitionError(
-          roleDefinitionDeny("invalid_input", "invalid_role_definition_display_order", toPublicRoleDefinition(roleDefinition), input.roles ?? [])
+          roleDefinitionDeny(
+            "invalid_input",
+            "invalid_role_definition_display_order",
+            toPublicRoleDefinition(roleDefinition),
+            input.roles ?? []
+          )
         );
       }
 
@@ -2614,7 +3227,14 @@ export function createRoleDefinitionService(
       });
 
       if (!updated) {
-        throw new RoleDefinitionError(roleDefinitionDeny("version_conflict", "stale_version", toPublicRoleDefinition(roleDefinition), input.roles ?? []));
+        throw new RoleDefinitionError(
+          roleDefinitionDeny(
+            "version_conflict",
+            "stale_version",
+            toPublicRoleDefinition(roleDefinition),
+            input.roles ?? []
+          )
+        );
       }
 
       await recordRoleDefinitionAudit(roleDefinitionRepository, {
@@ -2642,7 +3262,9 @@ export function createRoleDefinitionService(
       correlationId?: string;
     }) {
       const currentTime = now();
-      const roleDefinition = await roleDefinitionRepository.findRoleDefinitionByKey(roleDefinitionIdentifierToKey(input.identifier));
+      const roleDefinition = await roleDefinitionRepository.findRoleDefinitionByKey(
+        roleDefinitionIdentifierToKey(input.identifier)
+      );
       const decision = await authorizeRoleDefinitionOperation({
         roleDefinitionRepository,
         authorizationService,
@@ -2656,19 +3278,35 @@ export function createRoleDefinitionService(
       });
 
       if (!decision.allow || !roleDefinition) {
-        throw new RoleDefinitionError(decision.allow ? roleDefinitionDeny("not_found", "role_definition_not_found", null, input.roles ?? []) : decision);
+        throw new RoleDefinitionError(
+          decision.allow
+            ? roleDefinitionDeny("not_found", "role_definition_not_found", null, input.roles ?? [])
+            : decision
+        );
       }
 
       if (!isAllowedRoleDefinitionTransition(roleDefinition.status, input.status)) {
         throw new RoleDefinitionError(
-          roleDefinitionDeny("invalid_transition", "invalid_role_definition_status_transition", toPublicRoleDefinition(roleDefinition), input.roles ?? [])
+          roleDefinitionDeny(
+            "invalid_transition",
+            "invalid_role_definition_status_transition",
+            toPublicRoleDefinition(roleDefinition),
+            input.roles ?? []
+          )
         );
       }
 
       const expectedUpdatedAt = parseCatalogueVersion(input.expectedVersion);
 
       if (!expectedUpdatedAt) {
-        throw new RoleDefinitionError(roleDefinitionDeny("version_conflict", "invalid_version", toPublicRoleDefinition(roleDefinition), input.roles ?? []));
+        throw new RoleDefinitionError(
+          roleDefinitionDeny(
+            "version_conflict",
+            "invalid_version",
+            toPublicRoleDefinition(roleDefinition),
+            input.roles ?? []
+          )
+        );
       }
 
       const updated = await roleDefinitionRepository.updateRoleDefinitionStatus({
@@ -2679,11 +3317,19 @@ export function createRoleDefinitionService(
       });
 
       if (!updated) {
-        throw new RoleDefinitionError(roleDefinitionDeny("version_conflict", "stale_version", toPublicRoleDefinition(roleDefinition), input.roles ?? []));
+        throw new RoleDefinitionError(
+          roleDefinitionDeny(
+            "version_conflict",
+            "stale_version",
+            toPublicRoleDefinition(roleDefinition),
+            input.roles ?? []
+          )
+        );
       }
 
       await recordRoleDefinitionAudit(roleDefinitionRepository, {
-        action: input.status === "active" ? "role_definition.activated" : "role_definition.deactivated",
+        action:
+          input.status === "active" ? "role_definition.activated" : "role_definition.deactivated",
         roleDefinitionId: updated.id,
         workGroupId: updated.workGroupId,
         actorUserId: input.session.user?.id ?? null,
@@ -2700,6 +3346,552 @@ export function createRoleDefinitionService(
 }
 
 export type RoleDefinitionService = ReturnType<typeof createRoleDefinitionService>;
+
+export function createJobRequestService(
+  jobRequestRepository: JobRequestRepository,
+  organizationRepository: EmployerOrganizationRepository,
+  residenceRepository: ResidenceRepository,
+  departmentRepository: DepartmentRepository,
+  workGroupRepository: WorkGroupRepository,
+  roleDefinitionRepository: RoleDefinitionRepository,
+  membershipService: OrganizationMembershipService,
+  authorizationService: AuthorizationService,
+  options: { now?: () => Date } = {}
+) {
+  const now = options.now ?? (() => new Date());
+
+  return {
+    async createDraft(input: {
+      actorUserId: string;
+      organizationId: string;
+      residenceId: string;
+      departmentId: string;
+      workGroupSlug: string;
+      roleDefinitionIdentifier: string;
+      title: string;
+      description?: string | null;
+      numberOfWorkers: number;
+      urgency: JobRequestUrgency;
+      requestType: JobRequestType;
+      timezone: string;
+      startAt: Date;
+      endAt: Date;
+      correlationId?: string;
+    }) {
+      const currentTime = now();
+      const authorization = await authorizeJobRequestEmployerOperation({
+        organizationRepository,
+        jobRequestRepository,
+        membershipService,
+        authorizationService,
+        actorUserId: input.actorUserId,
+        organizationId: input.organizationId,
+        permission: "job_request.create",
+        correlationId: input.correlationId,
+        now: currentTime
+      });
+
+      if (!authorization.allow || !authorization.organization)
+        throw new JobRequestError(authorization);
+
+      const parent = await validateJobRequestParents({
+        organization: authorization.organization,
+        residenceRepository,
+        departmentRepository,
+        workGroupRepository,
+        roleDefinitionRepository,
+        residenceId: input.residenceId,
+        departmentId: input.departmentId,
+        workGroupSlug: input.workGroupSlug,
+        roleDefinitionIdentifier: input.roleDefinitionIdentifier,
+        requireActiveParents: true,
+        roles: authorization.roles
+      });
+
+      if (!parent.allow) throw new JobRequestError(parent);
+
+      const title = normalizeRequiredJobRequestText(input.title, 4, 160);
+      const description = normalizeOptionalResidenceText(input.description ?? null, 2000);
+      const numberOfWorkers = normalizeWorkerCount(input.numberOfWorkers);
+      const timezone = normalizeRequiredJobRequestText(input.timezone, 2, 80);
+      const isMultiDay = isMultiDayRange(input.startAt, input.endAt);
+      const hasRecurringIntent = input.requestType === "recurring_intent";
+
+      if (
+        !title ||
+        !timezone ||
+        numberOfWorkers < 1 ||
+        !isValidJobRequestTiming(input.startAt, input.endAt)
+      ) {
+        throw new JobRequestError(
+          jobRequestDeny(
+            "invalid_input",
+            "invalid_job_request_payload",
+            null,
+            authorization.roles,
+            authorization.organization,
+            authorization.membership
+          )
+        );
+      }
+
+      const draft = await jobRequestRepository.createDraft({
+        organizationId: input.organizationId,
+        residenceId: input.residenceId,
+        departmentId: input.departmentId,
+        workGroupId: parent.workGroup!.id,
+        roleDefinitionId: parent.roleDefinition!.id,
+        actorUserId: input.actorUserId,
+        title,
+        description,
+        numberOfWorkers,
+        urgency: input.urgency,
+        requestType: input.requestType,
+        timezone,
+        startAt: input.startAt,
+        endAt: input.endAt,
+        isMultiDay,
+        hasRecurringIntent,
+        now: currentTime,
+        correlationId: input.correlationId ?? createJobRequestCorrelationId()
+      });
+
+      return toPublicJobRequest(draft);
+    },
+
+    async listForOrganization(input: {
+      actorUserId: string;
+      organizationId: string;
+      residenceId?: string | null;
+      departmentId?: string | null;
+      correlationId?: string;
+    }) {
+      const currentTime = now();
+      const authorization = await authorizeJobRequestEmployerOperation({
+        organizationRepository,
+        jobRequestRepository,
+        membershipService,
+        authorizationService,
+        actorUserId: input.actorUserId,
+        organizationId: input.organizationId,
+        permission: "job_request.read",
+        correlationId: input.correlationId,
+        now: currentTime
+      });
+
+      if (!authorization.allow) throw new JobRequestError(authorization);
+
+      return (
+        await jobRequestRepository.listJobRequests({
+          organizationId: input.organizationId,
+          residenceId: input.residenceId ?? undefined,
+          departmentId: input.departmentId ?? undefined
+        })
+      ).map(toPublicJobRequest);
+    },
+
+    async getForOrganization(input: {
+      actorUserId: string;
+      organizationId: string;
+      jobRequestIdOrNumber: string;
+      correlationId?: string;
+    }) {
+      const currentTime = now();
+      const jobRequest = await findJobRequestByIdOrNumber(
+        jobRequestRepository,
+        input.jobRequestIdOrNumber
+      );
+      const authorization = await authorizeJobRequestEmployerOperation({
+        organizationRepository,
+        jobRequestRepository,
+        membershipService,
+        authorizationService,
+        actorUserId: input.actorUserId,
+        organizationId: input.organizationId,
+        permission: "job_request.read",
+        jobRequest,
+        correlationId: input.correlationId,
+        now: currentTime
+      });
+
+      if (
+        !authorization.allow ||
+        !jobRequest ||
+        jobRequest.organizationId !== input.organizationId
+      ) {
+        throw new JobRequestError(
+          authorization.allow
+            ? jobRequestDeny(
+                "not_found",
+                "job_request_not_found",
+                null,
+                authorization.roles,
+                authorization.organization,
+                authorization.membership
+              )
+            : authorization
+        );
+      }
+
+      return toPublicJobRequest(jobRequest);
+    },
+
+    async updateDraft(input: {
+      actorUserId: string;
+      organizationId: string;
+      jobRequestId: string;
+      expectedVersion: number;
+      residenceId?: string | null;
+      departmentId?: string | null;
+      workGroupSlug?: string | null;
+      roleDefinitionIdentifier?: string | null;
+      title?: string | null;
+      description?: string | null;
+      numberOfWorkers?: number | null;
+      urgency?: JobRequestUrgency | null;
+      requestType?: JobRequestType | null;
+      timezone?: string | null;
+      startAt?: Date | null;
+      endAt?: Date | null;
+      correlationId?: string;
+    }) {
+      const currentTime = now();
+      const jobRequest = await jobRequestRepository.findJobRequestById(input.jobRequestId);
+      const authorization = await authorizeJobRequestEmployerOperation({
+        organizationRepository,
+        jobRequestRepository,
+        membershipService,
+        authorizationService,
+        actorUserId: input.actorUserId,
+        organizationId: input.organizationId,
+        permission: "job_request.update_draft",
+        jobRequest,
+        correlationId: input.correlationId,
+        now: currentTime
+      });
+
+      if (
+        !authorization.allow ||
+        !jobRequest ||
+        jobRequest.organizationId !== input.organizationId
+      ) {
+        throw new JobRequestError(
+          authorization.allow
+            ? jobRequestDeny(
+                "not_found",
+                "job_request_not_found",
+                null,
+                authorization.roles,
+                authorization.organization,
+                authorization.membership
+              )
+            : authorization
+        );
+      }
+
+      if (jobRequest.status !== "draft" && jobRequest.status !== "information_required") {
+        throw new JobRequestError(
+          jobRequestDeny(
+            "invalid_transition",
+            "job_request_not_editable",
+            toPublicJobRequest(jobRequest),
+            authorization.roles,
+            authorization.organization,
+            authorization.membership
+          )
+        );
+      }
+
+      const targetResidenceId = input.residenceId ?? jobRequest.residenceId;
+      const targetDepartmentId = input.departmentId ?? jobRequest.departmentId;
+      const workGroup = input.workGroupSlug
+        ? await workGroupRepository.findWorkGroupByKey(workGroupSlugToKey(input.workGroupSlug))
+        : await workGroupRepository.findWorkGroupById(jobRequest.workGroupId);
+      const roleDefinition = input.roleDefinitionIdentifier
+        ? await roleDefinitionRepository.findRoleDefinitionByKey(
+            roleDefinitionIdentifierToKey(input.roleDefinitionIdentifier)
+          )
+        : await roleDefinitionRepository.findRoleDefinitionById(jobRequest.roleDefinitionId);
+
+      const parent = await validateJobRequestParents({
+        organization: authorization.organization!,
+        residenceRepository,
+        departmentRepository,
+        workGroupRepository,
+        roleDefinitionRepository,
+        residenceId: targetResidenceId,
+        departmentId: targetDepartmentId,
+        workGroupSlug: workGroup ? workGroupKeyToSlug(workGroup.key) : "",
+        roleDefinitionIdentifier: roleDefinition ? roleDefinition.key : "",
+        requireActiveParents: true,
+        roles: authorization.roles
+      });
+
+      if (!parent.allow) throw new JobRequestError(parent);
+
+      const startAt = input.startAt ?? jobRequest.startAt;
+      const endAt = input.endAt ?? jobRequest.endAt;
+
+      if (!isValidJobRequestTiming(startAt, endAt)) {
+        throw new JobRequestError(
+          jobRequestDeny(
+            "invalid_input",
+            "invalid_job_request_timing",
+            toPublicJobRequest(jobRequest),
+            authorization.roles,
+            authorization.organization,
+            authorization.membership
+          )
+        );
+      }
+
+      const updated = await jobRequestRepository.updateDraft({
+        jobRequestId: jobRequest.id,
+        expectedVersion: input.expectedVersion,
+        actorUserId: input.actorUserId,
+        residenceId: targetResidenceId,
+        departmentId: targetDepartmentId,
+        workGroupId: parent.workGroup!.id,
+        roleDefinitionId: parent.roleDefinition!.id,
+        title:
+          input.title == null ? undefined : normalizeRequiredJobRequestText(input.title, 4, 160),
+        description:
+          input.description === undefined
+            ? undefined
+            : normalizeOptionalResidenceText(input.description, 2000),
+        numberOfWorkers:
+          input.numberOfWorkers == null ? undefined : normalizeWorkerCount(input.numberOfWorkers),
+        urgency: input.urgency ?? undefined,
+        requestType: input.requestType ?? undefined,
+        timezone:
+          input.timezone == null
+            ? undefined
+            : normalizeRequiredJobRequestText(input.timezone, 2, 80),
+        startAt,
+        endAt,
+        isMultiDay: isMultiDayRange(startAt, endAt),
+        hasRecurringIntent: (input.requestType ?? jobRequest.requestType) === "recurring_intent",
+        now: currentTime
+      });
+
+      if (!updated) {
+        throw new JobRequestError(
+          jobRequestDeny(
+            "version_conflict",
+            "stale_version",
+            toPublicJobRequest(jobRequest),
+            authorization.roles,
+            authorization.organization,
+            authorization.membership
+          )
+        );
+      }
+
+      await recordJobRequestAudit(jobRequestRepository, {
+        action: "job_request.updated",
+        organizationId: updated.organizationId,
+        jobRequestId: updated.id,
+        jobRequestNumber: updated.jobRequestNumber,
+        actorUserId: input.actorUserId,
+        priorState: jobRequest.status,
+        newState: updated.status,
+        reason: null,
+        correlationId: input.correlationId,
+        createdAt: currentTime
+      });
+
+      return toPublicJobRequest(updated);
+    },
+
+    async submit(input: {
+      actorUserId: string;
+      organizationId: string;
+      jobRequestId: string;
+      expectedVersion: number;
+      correlationId?: string;
+    }) {
+      return transitionEmployerJobRequest({
+        jobRequestRepository,
+        organizationRepository,
+        membershipService,
+        authorizationService,
+        actorUserId: input.actorUserId,
+        organizationId: input.organizationId,
+        jobRequestId: input.jobRequestId,
+        expectedVersion: input.expectedVersion,
+        permission: "job_request.submit",
+        allowedFrom: ["draft", "information_required"],
+        nextStatus: "submitted",
+        action: "job_request.submitted",
+        correlationId: input.correlationId,
+        now: currentTimeFrom(now)
+      });
+    },
+
+    async cancel(input: {
+      actorUserId: string;
+      organizationId: string;
+      jobRequestId: string;
+      expectedVersion: number;
+      reason: string;
+      correlationId?: string;
+    }) {
+      return transitionEmployerJobRequest({
+        jobRequestRepository,
+        organizationRepository,
+        membershipService,
+        authorizationService,
+        actorUserId: input.actorUserId,
+        organizationId: input.organizationId,
+        jobRequestId: input.jobRequestId,
+        expectedVersion: input.expectedVersion,
+        permission: "job_request.cancel",
+        allowedFrom: ["draft", "submitted", "information_required", "approved_for_dispatch"],
+        nextStatus: "cancelled",
+        action: "job_request.cancelled",
+        reason: input.reason,
+        correlationId: input.correlationId,
+        now: currentTimeFrom(now)
+      });
+    },
+
+    async listAdminIntake(input: {
+      session: SessionValidationResult;
+      roles?: readonly AuthorizationRoleKey[];
+      correlationId?: string;
+    }) {
+      const decision = await authorizeJobRequestPlatformOperation({
+        jobRequestRepository,
+        authorizationService,
+        session: input.session,
+        roles: input.roles ?? [],
+        permission: "job_request.admin_review",
+        correlationId: input.correlationId,
+        now: now()
+      });
+
+      if (!decision.allow) throw new JobRequestError(decision);
+
+      return (
+        await jobRequestRepository.listJobRequests({
+          statuses: ["submitted", "admin_review", "information_required"]
+        })
+      ).map(toPublicJobRequest);
+    },
+
+    async getForAdmin(input: {
+      session: SessionValidationResult;
+      roles?: readonly AuthorizationRoleKey[];
+      jobRequestIdOrNumber: string;
+      correlationId?: string;
+    }) {
+      const jobRequest = await findJobRequestByIdOrNumber(
+        jobRequestRepository,
+        input.jobRequestIdOrNumber
+      );
+      const decision = await authorizeJobRequestPlatformOperation({
+        jobRequestRepository,
+        authorizationService,
+        session: input.session,
+        roles: input.roles ?? [],
+        permission: "job_request.admin_review",
+        jobRequest,
+        correlationId: input.correlationId,
+        now: now()
+      });
+
+      if (!decision.allow || !jobRequest) {
+        throw new JobRequestError(
+          decision.allow
+            ? jobRequestDeny(
+                "not_found",
+                "job_request_not_found",
+                null,
+                input.roles ?? [],
+                null,
+                null
+              )
+            : decision
+        );
+      }
+
+      return toPublicJobRequest(jobRequest);
+    },
+
+    async startAdminReview(input: {
+      session: SessionValidationResult;
+      roles?: readonly AuthorizationRoleKey[];
+      jobRequestId: string;
+      expectedVersion: number;
+      correlationId?: string;
+    }) {
+      return transitionPlatformJobRequest({
+        jobRequestRepository,
+        authorizationService,
+        session: input.session,
+        roles: input.roles ?? [],
+        jobRequestId: input.jobRequestId,
+        expectedVersion: input.expectedVersion,
+        permission: "job_request.admin_review",
+        allowedFrom: ["submitted"],
+        nextStatus: "admin_review",
+        action: "job_request.admin_review_started",
+        correlationId: input.correlationId,
+        now: currentTimeFrom(now)
+      });
+    },
+
+    async requestInformation(input: {
+      session: SessionValidationResult;
+      roles?: readonly AuthorizationRoleKey[];
+      jobRequestId: string;
+      expectedVersion: number;
+      reason: string;
+      correlationId?: string;
+    }) {
+      return transitionPlatformJobRequest({
+        jobRequestRepository,
+        authorizationService,
+        session: input.session,
+        roles: input.roles ?? [],
+        jobRequestId: input.jobRequestId,
+        expectedVersion: input.expectedVersion,
+        permission: "job_request.request_information",
+        allowedFrom: ["admin_review"],
+        nextStatus: "information_required",
+        action: "job_request.information_requested",
+        reason: input.reason,
+        correlationId: input.correlationId,
+        now: currentTimeFrom(now)
+      });
+    },
+
+    async approveForDispatch(input: {
+      session: SessionValidationResult;
+      roles?: readonly AuthorizationRoleKey[];
+      jobRequestId: string;
+      expectedVersion: number;
+      correlationId?: string;
+    }) {
+      return transitionPlatformJobRequest({
+        jobRequestRepository,
+        authorizationService,
+        session: input.session,
+        roles: input.roles ?? [],
+        jobRequestId: input.jobRequestId,
+        expectedVersion: input.expectedVersion,
+        permission: "job_request.approve_for_dispatch",
+        allowedFrom: ["admin_review"],
+        nextStatus: "approved_for_dispatch",
+        action: "job_request.approved_for_dispatch",
+        correlationId: input.correlationId,
+        now: currentTimeFrom(now)
+      });
+    }
+  };
+}
+
+export type JobRequestService = ReturnType<typeof createJobRequestService>;
 
 export const authenticationErrorCode = "RWOS_AUTHENTICATION_FAILED";
 export const authenticationErrorMessage = "Authentication failed.";
@@ -2723,11 +3915,7 @@ const dummyPasswordHash =
   "scrypt:v1:16384:8:1:64:dGVzdC1kdW1teS1zYWx0LXYx:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA";
 
 export type AuthenticationUserStatus =
-  | "email_verification_pending"
-  | "active"
-  | "restricted"
-  | "disabled"
-  | "closed";
+  "email_verification_pending" | "active" | "restricted" | "disabled" | "closed";
 
 export type AuthenticationIdentityProvider = "local_password" | "dev_test" | "future_oauth";
 export type AuthenticationSessionStatus = "active" | "expired" | "revoked";
@@ -2905,7 +4093,12 @@ export function normalizeEmail(email: string) {
 }
 
 export function validatePasswordForRegistration(password: string) {
-  return password.length >= 12 && password.length <= 256 && /[A-Za-z]/.test(password) && /\d/.test(password);
+  return (
+    password.length >= 12 &&
+    password.length <= 256 &&
+    /[A-Za-z]/.test(password) &&
+    /\d/.test(password)
+  );
 }
 
 export async function hashPassword(password: string, options: PasswordHashOptions = {}) {
@@ -3023,7 +4216,14 @@ export function createAuthenticationService(
         createdAt: currentTime
       });
 
-      const session = await createSessionForUser(repository, user, randomToken, sessionTtlSeconds, currentTime, input);
+      const session = await createSessionForUser(
+        repository,
+        user,
+        randomToken,
+        sessionTtlSeconds,
+        currentTime,
+        input
+      );
 
       return {
         user: toPublicUser(user),
@@ -3042,7 +4242,9 @@ export function createAuthenticationService(
       const emailNormalized = normalizeEmail(input.email);
       const currentTime = now();
       const user = await repository.findUserByEmailNormalized(emailNormalized);
-      const identity = user?.identities.find((candidate) => candidate.provider === "local_password");
+      const identity = user?.identities.find(
+        (candidate) => candidate.provider === "local_password"
+      );
       const passwordMatches = await verifyPassword(input.password, identity?.passwordHash);
 
       if (!user || !identity || !passwordMatches) {
@@ -3079,7 +4281,14 @@ export function createAuthenticationService(
         throw new AuthenticationError();
       }
 
-      const session = await createSessionForUser(repository, user, randomToken, sessionTtlSeconds, currentTime, input);
+      const session = await createSessionForUser(
+        repository,
+        user,
+        randomToken,
+        sessionTtlSeconds,
+        currentTime,
+        input
+      );
       await recordAuthenticationAudit(repository, {
         action: "auth.login_success",
         actorType: "user",
@@ -3286,7 +4495,9 @@ type PrismaAuthClient = {
   };
 };
 
-export function createPrismaAuthenticationRepository(prismaClient: unknown): AuthenticationRepository {
+export function createPrismaAuthenticationRepository(
+  prismaClient: unknown
+): AuthenticationRepository {
   const prisma = prismaClient as PrismaAuthClient;
 
   return {
@@ -3385,7 +4596,10 @@ type PrismaMembershipClient = {
       include: typeof membershipInclude;
       orderBy: { createdAt: "asc" };
     }): Promise<StoredOrganizationMembership[]>;
-    findUnique(args: { where: { id: string }; include: typeof membershipInclude }): Promise<StoredOrganizationMembership | null>;
+    findUnique(args: {
+      where: { id: string };
+      include: typeof membershipInclude;
+    }): Promise<StoredOrganizationMembership | null>;
     findFirst(args: {
       where: { userId: string; organizationId: string };
       include: typeof membershipInclude;
@@ -3417,12 +4631,18 @@ type PrismaMembershipClient = {
     }): Promise<StoredOrganizationMembership>;
   };
   accessRoleDefinition: {
-    findMany(args: { where: { key: { in: readonly AuthorizationRoleKey[] } } }): Promise<{ id: string; key: AuthorizationRoleKey }[]>;
+    findMany(args: {
+      where: { key: { in: readonly AuthorizationRoleKey[] } };
+    }): Promise<{ id: string; key: AuthorizationRoleKey }[]>;
   };
   membershipAccessRole: {
     deleteMany(args: { where: { membershipId: string } }): Promise<unknown>;
     createMany(args: {
-      data: { membershipId: string; accessRoleDefinitionId: string; assignedByUserId: string | null }[];
+      data: {
+        membershipId: string;
+        accessRoleDefinitionId: string;
+        assignedByUserId: string | null;
+      }[];
       skipDuplicates: true;
     }): Promise<unknown>;
   };
@@ -3466,7 +4686,9 @@ const membershipInclude = {
   }
 } as const;
 
-export function createPrismaOrganizationMembershipRepository(prismaClient: unknown): OrganizationMembershipRepository {
+export function createPrismaOrganizationMembershipRepository(
+  prismaClient: unknown
+): OrganizationMembershipRepository {
   const prisma = prismaClient as PrismaMembershipClient;
 
   return {
@@ -3588,9 +4810,13 @@ export function createPrismaOrganizationMembershipRepository(prismaClient: unkno
 }
 
 type PrismaEmployerOrganizationClient = PrismaMembershipClient & {
-  $transaction<T>(callback: (transaction: PrismaEmployerOrganizationClient) => Promise<T>): Promise<T>;
+  $transaction<T>(
+    callback: (transaction: PrismaEmployerOrganizationClient) => Promise<T>
+  ): Promise<T>;
   employerOrganization: {
-    findUnique(args: { where: { id?: string; publicId?: string } }): Promise<StoredEmployerOrganization | null>;
+    findUnique(args: {
+      where: { id?: string; publicId?: string };
+    }): Promise<StoredEmployerOrganization | null>;
     findFirst(args: { where: { legalName: string } }): Promise<StoredEmployerOrganization | null>;
     create(args: {
       data: {
@@ -3618,7 +4844,9 @@ type PrismaEmployerOrganizationClient = PrismaMembershipClient & {
   };
 };
 
-export function createPrismaEmployerOrganizationRepository(prismaClient: unknown): EmployerOrganizationRepository {
+export function createPrismaEmployerOrganizationRepository(
+  prismaClient: unknown
+): EmployerOrganizationRepository {
   const prisma = prismaClient as PrismaEmployerOrganizationClient;
 
   return {
@@ -3738,7 +4966,8 @@ export function createPrismaEmployerOrganizationRepository(prismaClient: unknown
         data: {
           status: input.status,
           restrictedAt: input.status === "active" ? null : undefined,
-          suspendedAt: input.status === "suspended" ? input.now : input.status === "active" ? null : undefined,
+          suspendedAt:
+            input.status === "suspended" ? input.now : input.status === "active" ? null : undefined,
           closedAt: input.status === "closed" ? input.now : undefined,
           updatedAt: input.now
         }
@@ -3757,7 +4986,10 @@ export function createPrismaEmployerOrganizationRepository(prismaClient: unknown
   };
 }
 
-type PrismaResidenceClient = Pick<PrismaEmployerOrganizationClient, "auditActorReference" | "auditEvent"> & {
+type PrismaResidenceClient = Pick<
+  PrismaEmployerOrganizationClient,
+  "auditActorReference" | "auditEvent"
+> & {
   $transaction<T>(callback: (transaction: PrismaResidenceClient) => Promise<T>): Promise<T>;
   residence: {
     findUnique(args: { where: { id: string } }): Promise<StoredResidence | null>;
@@ -3852,7 +5084,11 @@ export function createPrismaResidenceRepository(prismaClient: unknown): Residenc
 
     async updateResidence(input) {
       const result = await prisma.residence.updateMany({
-        where: { id: input.residenceId, organizationId: input.organizationId, updatedAt: input.expectedUpdatedAt },
+        where: {
+          id: input.residenceId,
+          organizationId: input.organizationId,
+          updatedAt: input.expectedUpdatedAt
+        },
         data: {
           name: input.name,
           addressSummary: input.addressSummary,
@@ -3872,10 +5108,15 @@ export function createPrismaResidenceRepository(prismaClient: unknown): Residenc
 
     async updateResidenceStatus(input) {
       const result = await prisma.residence.updateMany({
-        where: { id: input.residenceId, organizationId: input.organizationId, updatedAt: input.expectedUpdatedAt },
+        where: {
+          id: input.residenceId,
+          organizationId: input.organizationId,
+          updatedAt: input.expectedUpdatedAt
+        },
         data: {
           status: input.status,
-          archivedAt: input.status === "closed" ? input.now : input.status === "active" ? null : undefined,
+          archivedAt:
+            input.status === "closed" ? input.now : input.status === "active" ? null : undefined,
           updatedAt: input.now
         }
       });
@@ -3893,7 +5134,10 @@ export function createPrismaResidenceRepository(prismaClient: unknown): Residenc
   };
 }
 
-type PrismaDepartmentClient = Pick<PrismaEmployerOrganizationClient, "auditActorReference" | "auditEvent"> & {
+type PrismaDepartmentClient = Pick<
+  PrismaEmployerOrganizationClient,
+  "auditActorReference" | "auditEvent"
+> & {
   $transaction<T>(callback: (transaction: PrismaDepartmentClient) => Promise<T>): Promise<T>;
   department: {
     findUnique(args: { where: { id: string } }): Promise<StoredDepartment | null>;
@@ -3980,7 +5224,12 @@ export function createPrismaDepartmentRepository(prismaClient: unknown): Departm
 
     async updateDepartment(input) {
       const result = await prisma.department.updateMany({
-        where: { id: input.departmentId, organizationId: input.organizationId, residenceId: input.residenceId, updatedAt: input.expectedUpdatedAt },
+        where: {
+          id: input.departmentId,
+          organizationId: input.organizationId,
+          residenceId: input.residenceId,
+          updatedAt: input.expectedUpdatedAt
+        },
         data: {
           name: input.name,
           updatedAt: input.now
@@ -3996,10 +5245,16 @@ export function createPrismaDepartmentRepository(prismaClient: unknown): Departm
 
     async updateDepartmentStatus(input) {
       const result = await prisma.department.updateMany({
-        where: { id: input.departmentId, organizationId: input.organizationId, residenceId: input.residenceId, updatedAt: input.expectedUpdatedAt },
+        where: {
+          id: input.departmentId,
+          organizationId: input.organizationId,
+          residenceId: input.residenceId,
+          updatedAt: input.expectedUpdatedAt
+        },
         data: {
           status: input.status,
-          archivedAt: input.status === "closed" ? input.now : input.status === "active" ? null : undefined,
+          archivedAt:
+            input.status === "closed" ? input.now : input.status === "active" ? null : undefined,
           updatedAt: input.now
         }
       });
@@ -4017,9 +5272,14 @@ export function createPrismaDepartmentRepository(prismaClient: unknown): Departm
   };
 }
 
-type PrismaWorkGroupClient = Pick<PrismaEmployerOrganizationClient, "auditActorReference" | "auditEvent"> & {
+type PrismaWorkGroupClient = Pick<
+  PrismaEmployerOrganizationClient,
+  "auditActorReference" | "auditEvent"
+> & {
   workGroup: {
-    findUnique(args: { where: { id: string } } | { where: { key: string } }): Promise<StoredWorkGroup | null>;
+    findUnique(
+      args: { where: { id: string } } | { where: { key: string } }
+    ): Promise<StoredWorkGroup | null>;
     findMany(args: {
       where?: { status?: WorkGroupStatus | undefined };
       orderBy: [{ displayOrder: "asc" }, { displayLabel: "asc" }, { key: "asc" }];
@@ -4100,13 +5360,27 @@ export function createPrismaWorkGroupRepository(prismaClient: unknown): WorkGrou
   };
 }
 
-type PrismaRoleDefinitionClient = Pick<PrismaEmployerOrganizationClient, "auditActorReference" | "auditEvent"> & {
+type PrismaRoleDefinitionClient = Pick<
+  PrismaEmployerOrganizationClient,
+  "auditActorReference" | "auditEvent"
+> & {
   roleDefinition: {
-    findUnique(args: { where: { id: string } | { key: string }; include: { workGroup: true } }): Promise<StoredRoleDefinition | null>;
-    findMany(args: {
-      where?: { status?: RoleDefinitionStatus | undefined; workGroup?: { key: string } | undefined };
+    findUnique(args: {
+      where: { id: string } | { key: string };
       include: { workGroup: true };
-      orderBy: [{ workGroup: { displayOrder: "asc" } }, { displayOrder: "asc" }, { displayLabel: "asc" }, { key: "asc" }];
+    }): Promise<StoredRoleDefinition | null>;
+    findMany(args: {
+      where?: {
+        status?: RoleDefinitionStatus | undefined;
+        workGroup?: { key: string } | undefined;
+      };
+      include: { workGroup: true };
+      orderBy: [
+        { workGroup: { displayOrder: "asc" } },
+        { displayOrder: "asc" },
+        { displayLabel: "asc" },
+        { key: "asc" }
+      ];
     }): Promise<StoredRoleDefinition[]>;
     updateMany(args: {
       where: { id: string; updatedAt: Date };
@@ -4123,7 +5397,9 @@ type PrismaRoleDefinitionClient = Pick<PrismaEmployerOrganizationClient, "auditA
   };
 };
 
-export function createPrismaRoleDefinitionRepository(prismaClient: unknown): RoleDefinitionRepository {
+export function createPrismaRoleDefinitionRepository(
+  prismaClient: unknown
+): RoleDefinitionRepository {
   const prisma = prismaClient as PrismaRoleDefinitionClient;
 
   return {
@@ -4148,7 +5424,12 @@ export function createPrismaRoleDefinitionRepository(prismaClient: unknown): Rol
           ...(input.workGroupKey ? { workGroup: { key: input.workGroupKey } } : {})
         },
         include: { workGroup: true },
-        orderBy: [{ workGroup: { displayOrder: "asc" } }, { displayOrder: "asc" }, { displayLabel: "asc" }, { key: "asc" }]
+        orderBy: [
+          { workGroup: { displayOrder: "asc" } },
+          { displayOrder: "asc" },
+          { displayLabel: "asc" },
+          { key: "asc" }
+        ]
       });
     },
 
@@ -4190,9 +5471,240 @@ export function createPrismaRoleDefinitionRepository(prismaClient: unknown): Rol
   };
 }
 
+type PrismaJobRequestClient = Pick<
+  PrismaEmployerOrganizationClient,
+  "auditActorReference" | "auditEvent"
+> & {
+  $transaction<T>(callback: (transaction: PrismaJobRequestClient) => Promise<T>): Promise<T>;
+  jobRequestSequence: {
+    upsert(args: {
+      where: { scopeYear: number };
+      create: { scopeYear: number; lastValue: number };
+      update: Record<string, never>;
+    }): Promise<{ scopeYear: number; lastValue: number }>;
+    update(args: {
+      where: { scopeYear: number };
+      data: { lastValue: { increment: number } };
+    }): Promise<{ scopeYear: number; lastValue: number }>;
+  };
+  jobRequest: {
+    create(args: { data: CreateJobRequestPrismaData }): Promise<StoredJobRequest>;
+    findUnique(args: {
+      where: { id: string } | { jobRequestNumber: string };
+    }): Promise<StoredJobRequest | null>;
+    findMany(args: {
+      where?: {
+        organizationId?: string | undefined;
+        residenceId?: string | undefined;
+        departmentId?: string | undefined;
+        status?: { in: readonly JobRequestStatus[] } | undefined;
+      };
+      orderBy: [{ createdAt: "desc" }, { jobRequestNumber: "desc" }];
+    }): Promise<StoredJobRequest[]>;
+    updateMany(args: {
+      where: { id: string; version: number };
+      data: Partial<UpdateJobRequestPrismaData>;
+    }): Promise<{ count: number }>;
+  };
+};
+
+type CreateJobRequestPrismaData = {
+  jobRequestNumber: string;
+  organizationId: string;
+  residenceId: string;
+  departmentId: string;
+  workGroupId: string;
+  roleDefinitionId: string;
+  creatorUserId: string;
+  createdByUserId: string;
+  title: string;
+  description: string | null;
+  numberOfWorkers: number;
+  urgency: JobRequestUrgency;
+  requestType: JobRequestType;
+  timezone: string;
+  startAt: Date;
+  endAt: Date;
+  isMultiDay: boolean;
+  hasRecurringIntent: boolean;
+  status: "draft";
+  createdAt: Date;
+  updatedAt: Date;
+};
+
+type UpdateJobRequestPrismaData = {
+  residenceId: string;
+  departmentId: string;
+  workGroupId: string;
+  roleDefinitionId: string;
+  title: string;
+  description: string | null;
+  numberOfWorkers: number;
+  urgency: JobRequestUrgency;
+  requestType: JobRequestType;
+  timezone: string;
+  startAt: Date;
+  endAt: Date;
+  isMultiDay: boolean;
+  hasRecurringIntent: boolean;
+  status: JobRequestStatus;
+  adminReviewReason: string | null;
+  version: { increment: number };
+  updatedByUserId: string;
+  updatedAt: Date;
+  submittedAt: Date | null;
+  cancelledAt: Date | null;
+  expiredAt: Date | null;
+  archivedAt: Date | null;
+};
+
+export function createPrismaJobRequestRepository(prismaClient: unknown): JobRequestRepository {
+  const prisma = prismaClient as PrismaJobRequestClient;
+
+  return {
+    async createDraft(input) {
+      return prisma.$transaction(async (transaction) => {
+        const year = input.now.getUTCFullYear();
+        await transaction.jobRequestSequence.upsert({
+          where: { scopeYear: year },
+          create: { scopeYear: year, lastValue: 0 },
+          update: {}
+        });
+        const sequence = await transaction.jobRequestSequence.update({
+          where: { scopeYear: year },
+          data: { lastValue: { increment: 1 } }
+        });
+        const jobRequestNumber = formatJobRequestNumber(year, sequence.lastValue);
+        const created = await transaction.jobRequest.create({
+          data: {
+            jobRequestNumber,
+            organizationId: input.organizationId,
+            residenceId: input.residenceId,
+            departmentId: input.departmentId,
+            workGroupId: input.workGroupId,
+            roleDefinitionId: input.roleDefinitionId,
+            creatorUserId: input.actorUserId,
+            createdByUserId: input.actorUserId,
+            title: input.title,
+            description: input.description,
+            numberOfWorkers: input.numberOfWorkers,
+            urgency: input.urgency,
+            requestType: input.requestType,
+            timezone: input.timezone,
+            startAt: input.startAt,
+            endAt: input.endAt,
+            isMultiDay: input.isMultiDay,
+            hasRecurringIntent: input.hasRecurringIntent,
+            status: "draft",
+            createdAt: input.now,
+            updatedAt: input.now
+          }
+        });
+        await recordPrismaJobRequestAudit(transaction, {
+          action: "job_request.created",
+          organizationId: created.organizationId,
+          jobRequestId: created.id,
+          jobRequestNumber: created.jobRequestNumber,
+          actorUserId: input.actorUserId,
+          priorState: null,
+          newState: created.status,
+          reason: null,
+          correlationId: input.correlationId,
+          createdAt: input.now
+        });
+
+        return created;
+      });
+    },
+
+    findJobRequestById(jobRequestId) {
+      return prisma.jobRequest.findUnique({ where: { id: jobRequestId } });
+    },
+
+    findJobRequestByNumber(jobRequestNumber) {
+      return prisma.jobRequest.findUnique({ where: { jobRequestNumber } });
+    },
+
+    listJobRequests(input) {
+      return prisma.jobRequest.findMany({
+        where: {
+          ...(input.organizationId ? { organizationId: input.organizationId } : {}),
+          ...(input.residenceId ? { residenceId: input.residenceId } : {}),
+          ...(input.departmentId ? { departmentId: input.departmentId } : {}),
+          ...(input.statuses ? { status: { in: input.statuses } } : {})
+        },
+        orderBy: [{ createdAt: "desc" }, { jobRequestNumber: "desc" }]
+      });
+    },
+
+    async updateDraft(input) {
+      const data: Partial<UpdateJobRequestPrismaData> = {
+        updatedByUserId: input.actorUserId,
+        updatedAt: input.now,
+        version: { increment: 1 }
+      };
+
+      if (input.residenceId !== undefined) data.residenceId = input.residenceId;
+      if (input.departmentId !== undefined) data.departmentId = input.departmentId;
+      if (input.workGroupId !== undefined) data.workGroupId = input.workGroupId;
+      if (input.roleDefinitionId !== undefined) data.roleDefinitionId = input.roleDefinitionId;
+      if (input.title !== undefined) data.title = input.title;
+      if (input.description !== undefined) data.description = input.description;
+      if (input.numberOfWorkers !== undefined) data.numberOfWorkers = input.numberOfWorkers;
+      if (input.urgency !== undefined) data.urgency = input.urgency;
+      if (input.requestType !== undefined) data.requestType = input.requestType;
+      if (input.timezone !== undefined) data.timezone = input.timezone;
+      if (input.startAt !== undefined) data.startAt = input.startAt;
+      if (input.endAt !== undefined) data.endAt = input.endAt;
+      if (input.isMultiDay !== undefined) data.isMultiDay = input.isMultiDay;
+      if (input.hasRecurringIntent !== undefined)
+        data.hasRecurringIntent = input.hasRecurringIntent;
+
+      const result = await prisma.jobRequest.updateMany({
+        where: { id: input.jobRequestId, version: input.expectedVersion },
+        data
+      });
+
+      if (result.count !== 1) return null;
+
+      return this.findJobRequestById(input.jobRequestId);
+    },
+
+    async transitionJobRequest(input) {
+      const data: Partial<UpdateJobRequestPrismaData> = {
+        status: input.status,
+        updatedByUserId: input.actorUserId,
+        updatedAt: input.now,
+        version: { increment: 1 }
+      };
+
+      if (input.adminReviewReason !== undefined) data.adminReviewReason = input.adminReviewReason;
+      if (input.status === "submitted") data.submittedAt = input.now;
+      if (input.status === "cancelled") data.cancelledAt = input.now;
+      if (input.status === "expired") data.expiredAt = input.now;
+      if (input.status === "archived") data.archivedAt = input.now;
+
+      const result = await prisma.jobRequest.updateMany({
+        where: { id: input.jobRequestId, version: input.expectedVersion },
+        data
+      });
+
+      if (result.count !== 1) return null;
+
+      return this.findJobRequestById(input.jobRequestId);
+    },
+
+    async recordJobRequestAuditEvent(input) {
+      await recordPrismaJobRequestAudit(prisma, input);
+    }
+  };
+}
+
 function resolvePasswordHashOptions(options: PasswordHashOptions) {
   return {
-    costFactor: options.costFactor ?? readPositiveInteger("RWOS_PASSWORD_SCRYPT_N", defaultPasswordOptions.costFactor),
+    costFactor:
+      options.costFactor ??
+      readPositiveInteger("RWOS_PASSWORD_SCRYPT_N", defaultPasswordOptions.costFactor),
     blockSize: options.blockSize ?? defaultPasswordOptions.blockSize,
     parallelization: options.parallelization ?? defaultPasswordOptions.parallelization,
     keyLength: options.keyLength ?? defaultPasswordOptions.keyLength,
@@ -4273,7 +5785,9 @@ function toPublicUser(user: StoredAuthenticationUser): PublicAuthenticationUser 
   };
 }
 
-function toPublicSession(session: Pick<StoredAuthenticationSession, "id" | "userId" | "expiresAt">) {
+function toPublicSession(
+  session: Pick<StoredAuthenticationSession, "id" | "userId" | "expiresAt">
+) {
   return {
     id: session.id,
     userId: session.userId,
@@ -4291,7 +5805,9 @@ function unauthenticatedSession(): SessionValidationResult {
 
 async function recordAuthenticationAudit(
   repository: AuthenticationRepository,
-  input: Omit<RecordAuthenticationAuditEventInput, "correlationId"> & { correlationId?: string | undefined }
+  input: Omit<RecordAuthenticationAuditEventInput, "correlationId"> & {
+    correlationId?: string | undefined;
+  }
 ) {
   await repository.recordAuthenticationAuditEvent({
     ...input,
@@ -4347,7 +5863,9 @@ function roleDefinition(
 }
 
 function getAuthorizationPermission(permissionKey: string) {
-  return authorizationPermissionDefinitions.find((permissionDefinition) => permissionDefinition.key === permissionKey);
+  return authorizationPermissionDefinitions.find(
+    (permissionDefinition) => permissionDefinition.key === permissionKey
+  );
 }
 
 function getAuthorizationRole(roleKey: AuthorizationRoleKey) {
@@ -4355,7 +5873,9 @@ function getAuthorizationRole(roleKey: AuthorizationRoleKey) {
 }
 
 function sanitizeAuthorizationRoles(roles: readonly AuthorizationRoleKey[]) {
-  return roles.filter((role, index) => authorizationRoleKeys.includes(role) && roles.indexOf(role) === index);
+  return roles.filter(
+    (role, index) => authorizationRoleKeys.includes(role) && roles.indexOf(role) === index
+  );
 }
 
 function deny(
@@ -4378,14 +5898,18 @@ function deny(
 }
 
 function isSensitiveAuthorizationDenial(decision: AuthorizationDecision) {
-  return decision.permission === "platform.supervise" || decision.permission.startsWith("job_request.");
+  return (
+    decision.permission === "platform.supervise" || decision.permission.startsWith("job_request.")
+  );
 }
 
 function createAuthorizationCorrelationId() {
   return `authz_${randomBytes(12).toString("base64url")}`;
 }
 
-function toPublicMembership(membership: StoredOrganizationMembership): PublicOrganizationMembership {
+function toPublicMembership(
+  membership: StoredOrganizationMembership
+): PublicOrganizationMembership {
   return {
     id: membership.id,
     organizationId: membership.organizationId,
@@ -4409,9 +5933,17 @@ function membershipRoleKeys(membership: StoredOrganizationMembership) {
 }
 
 function latestMembershipTimestamp(membership: StoredOrganizationMembership) {
-  return [membership.acceptedAt, membership.suspendedAt, membership.revokedAt, membership.expiredAt, membership.createdAt]
-    .filter((timestamp): timestamp is Date => Boolean(timestamp))
-    .sort((left, right) => right.getTime() - left.getTime())[0] ?? membership.createdAt;
+  return (
+    [
+      membership.acceptedAt,
+      membership.suspendedAt,
+      membership.revokedAt,
+      membership.expiredAt,
+      membership.createdAt
+    ]
+      .filter((timestamp): timestamp is Date => Boolean(timestamp))
+      .sort((left, right) => right.getTime() - left.getTime())[0] ?? membership.createdAt
+  );
 }
 
 async function assertMembershipBelongsToUser(
@@ -4422,7 +5954,9 @@ async function assertMembershipBelongsToUser(
   const membership = await repository.findMembershipById(membershipId);
 
   if (!membership || membership.userId !== userId) {
-    throw new OrganizationMembershipError(membershipDeny("membership_missing", "membership_not_found", null, null, []));
+    throw new OrganizationMembershipError(
+      membershipDeny("membership_missing", "membership_not_found", null, null, [])
+    );
   }
 
   return membership;
@@ -4436,11 +5970,17 @@ async function updateMembershipLifecycle(
     actorUserId: string | null;
     correlationId?: string;
     status: OrganizationMembershipStatus;
-    auditAction: Parameters<OrganizationMembershipRepository["recordMembershipAuditEvent"]>[0]["action"];
+    auditAction: Parameters<
+      OrganizationMembershipRepository["recordMembershipAuditEvent"]
+    >[0]["action"];
     now: Date;
   }
 ) {
-  const membership = await assertMembershipBelongsToUser(repository, input.userId, input.membershipId);
+  const membership = await assertMembershipBelongsToUser(
+    repository,
+    input.userId,
+    input.membershipId
+  );
   const updated = await repository.updateMembershipStatus({
     membershipId: membership.id,
     status: input.status,
@@ -4471,11 +6011,23 @@ function evaluateMembershipForContext(
   const roles = membershipRoleKeys(membership);
 
   if (membership.expiredAt && membership.expiredAt.getTime() <= currentTime.getTime()) {
-    return membershipDeny("membership_expired", "membership_expired", publicMembership, membership.organizationId, roles);
+    return membershipDeny(
+      "membership_expired",
+      "membership_expired",
+      publicMembership,
+      membership.organizationId,
+      roles
+    );
   }
 
   if (membership.status !== "active") {
-    return membershipDeny(`membership_${membership.status}`, `membership_${membership.status}`, publicMembership, membership.organizationId, roles);
+    return membershipDeny(
+      `membership_${membership.status}`,
+      `membership_${membership.status}`,
+      publicMembership,
+      membership.organizationId,
+      roles
+    );
   }
 
   return {
@@ -4522,7 +6074,11 @@ function normalizeMembershipDecisionStatus(
     | "membership_revoked"
     | "membership_expired"
 ): OrganizationMembershipDecisionStatus {
-  if (status === "membership_invited" || status === "membership_suspended" || status === "membership_revoked") {
+  if (
+    status === "membership_invited" ||
+    status === "membership_suspended" ||
+    status === "membership_revoked"
+  ) {
     return "membership_inactive";
   }
 
@@ -4555,7 +6111,10 @@ async function auditMembershipDenial(
 
 async function recordMembershipAudit(
   repository: OrganizationMembershipRepository,
-  input: Omit<Parameters<OrganizationMembershipRepository["recordMembershipAuditEvent"]>[0], "correlationId"> & {
+  input: Omit<
+    Parameters<OrganizationMembershipRepository["recordMembershipAuditEvent"]>[0],
+    "correlationId"
+  > & {
     correlationId?: string | undefined;
   }
 ) {
@@ -4565,7 +6124,10 @@ async function recordMembershipAudit(
   });
 }
 
-async function resolveMembershipAccessRoles(prisma: PrismaMembershipClient, accessRoleKeys: readonly AuthorizationRoleKey[]) {
+async function resolveMembershipAccessRoles(
+  prisma: PrismaMembershipClient,
+  accessRoleKeys: readonly AuthorizationRoleKey[]
+) {
   return prisma.accessRoleDefinition.findMany({
     where: {
       key: {
@@ -4589,7 +6151,9 @@ function createMembershipCorrelationId() {
   return `membership_${randomBytes(12).toString("base64url")}`;
 }
 
-function toPublicOrganization(organization: StoredEmployerOrganization): PublicEmployerOrganization {
+function toPublicOrganization(
+  organization: StoredEmployerOrganization
+): PublicEmployerOrganization {
   return {
     id: organization.id,
     publicId: organization.publicId,
@@ -4692,7 +6256,10 @@ async function authorizeOrganizationOperation(input: {
     return decision;
   }
 
-  if (organizationBlocksOrdinaryOperations(input.organization.status) && !input.allowInactiveSelfStatusChange) {
+  if (
+    organizationBlocksOrdinaryOperations(input.organization.status) &&
+    !input.allowInactiveSelfStatusChange
+  ) {
     const decision = organizationDeny(
       "organization_inactive",
       `organization_${input.organization.status}`,
@@ -4767,7 +6334,10 @@ async function auditOrganizationDenial(
 
 async function recordOrganizationAudit(
   repository: EmployerOrganizationRepository,
-  input: Omit<Parameters<EmployerOrganizationRepository["recordOrganizationAuditEvent"]>[0], "correlationId"> & {
+  input: Omit<
+    Parameters<EmployerOrganizationRepository["recordOrganizationAuditEvent"]>[0],
+    "correlationId"
+  > & {
     correlationId?: string | undefined;
   }
 ) {
@@ -4861,7 +6431,13 @@ function createOrganizationCorrelationId() {
   return `org_${randomBytes(12).toString("base64url")}`;
 }
 
-const residenceStatuses = ["draft", "active", "restricted", "inactive", "closed"] as const satisfies readonly ResidenceStatus[];
+const residenceStatuses = [
+  "draft",
+  "active",
+  "restricted",
+  "inactive",
+  "closed"
+] as const satisfies readonly ResidenceStatus[];
 
 function toPublicResidence(residence: StoredResidence): PublicResidence {
   return {
@@ -4896,7 +6472,9 @@ async function authorizeResidenceOperation(input: {
   allowInactiveResidenceRead?: boolean | undefined;
   allowInactiveResidenceStatusChange?: boolean | undefined;
 }): Promise<ResidenceDecision> {
-  const organization = await input.organizationRepository.findOrganizationById(input.organizationId);
+  const organization = await input.organizationRepository.findOrganizationById(
+    input.organizationId
+  );
 
   if (!organization) {
     const decision = residenceDeny("not_found", "organization_not_found", null, null, null, []);
@@ -4994,7 +6572,14 @@ async function authorizeResidenceOperation(input: {
 
   if (input.residence) {
     if (input.residence.organizationId !== input.organizationId) {
-      const decision = residenceDeny("not_found", "residence_not_found", null, organizationPublic, membershipDecision.membership, membershipDecision.roles);
+      const decision = residenceDeny(
+        "not_found",
+        "residence_not_found",
+        null,
+        organizationPublic,
+        membershipDecision.membership,
+        membershipDecision.roles
+      );
       await auditResidenceDenial(input.residenceRepository, {
         decision,
         actorUserId: input.actorUserId,
@@ -5004,7 +6589,11 @@ async function authorizeResidenceOperation(input: {
       return decision;
     }
 
-    if (residenceBlocksOrdinaryUpdates(input.residence.status) && !input.allowInactiveResidenceRead && !input.allowInactiveResidenceStatusChange) {
+    if (
+      residenceBlocksOrdinaryUpdates(input.residence.status) &&
+      !input.allowInactiveResidenceRead &&
+      !input.allowInactiveResidenceStatusChange
+    ) {
       const decision = residenceDeny(
         "residence_inactive",
         `residence_${input.residence.status}`,
@@ -5022,7 +6611,14 @@ async function authorizeResidenceOperation(input: {
       return decision;
     }
   } else if (input.permission !== "residence.create" && input.permission !== "residence.read") {
-    const decision = residenceDeny("not_found", "residence_not_found", null, organizationPublic, membershipDecision.membership, membershipDecision.roles);
+    const decision = residenceDeny(
+      "not_found",
+      "residence_not_found",
+      null,
+      organizationPublic,
+      membershipDecision.membership,
+      membershipDecision.roles
+    );
     await auditResidenceDenial(input.residenceRepository, {
       decision,
       actorUserId: input.actorUserId,
@@ -5049,11 +6645,15 @@ function residenceBlocksOrdinaryUpdates(status: ResidenceStatus) {
   return status === "closed" || status === "inactive" || status === "restricted";
 }
 
-function isAllowedResidenceTransition(current: ResidenceStatus, next: Extract<ResidenceStatus, "active" | "inactive" | "closed">) {
+function isAllowedResidenceTransition(
+  current: ResidenceStatus,
+  next: Extract<ResidenceStatus, "active" | "inactive" | "closed">
+) {
   if (current === "closed") return false;
   if (next === "active") return current === "inactive" || current === "draft";
   if (next === "inactive") return current === "active";
-  if (next === "closed") return current === "active" || current === "inactive" || current === "draft";
+  if (next === "closed")
+    return current === "active" || current === "inactive" || current === "draft";
 
   return false;
 }
@@ -5090,7 +6690,8 @@ async function auditResidenceDenial(
 ) {
   await recordResidenceAudit(repository, {
     action: "residence.access_denied",
-    organizationId: input.decision.organization?.id ?? input.decision.residence?.organizationId ?? null,
+    organizationId:
+      input.decision.organization?.id ?? input.decision.residence?.organizationId ?? null,
     residenceId: input.decision.residence?.id ?? null,
     actorUserId: input.actorUserId,
     priorState: input.decision.residence?.status ?? null,
@@ -5173,7 +6774,13 @@ function createResidenceCorrelationId() {
   return `residence_${randomBytes(12).toString("base64url")}`;
 }
 
-const departmentStatuses = ["draft", "active", "restricted", "inactive", "closed"] as const satisfies readonly DepartmentStatus[];
+const departmentStatuses = [
+  "draft",
+  "active",
+  "restricted",
+  "inactive",
+  "closed"
+] as const satisfies readonly DepartmentStatus[];
 
 function toPublicDepartment(department: StoredDepartment): PublicDepartment {
   return {
@@ -5208,10 +6815,20 @@ async function authorizeDepartmentOperation(input: {
   allowInactiveDepartmentRead?: boolean | undefined;
   allowInactiveDepartmentStatusChange?: boolean | undefined;
 }): Promise<DepartmentDecision> {
-  const organization = await input.organizationRepository.findOrganizationById(input.organizationId);
+  const organization = await input.organizationRepository.findOrganizationById(
+    input.organizationId
+  );
 
   if (!organization) {
-    const decision = departmentDeny("not_found", "organization_not_found", null, null, null, null, []);
+    const decision = departmentDeny(
+      "not_found",
+      "organization_not_found",
+      null,
+      null,
+      null,
+      null,
+      []
+    );
     await auditDepartmentDenial(input.departmentRepository, {
       decision,
       actorUserId: input.actorUserId,
@@ -5310,7 +6927,15 @@ async function authorizeDepartmentOperation(input: {
   }
 
   if (!residence || residence.organizationId !== input.organizationId) {
-    const decision = departmentDeny("not_found", "residence_not_found", null, null, organizationPublic, membershipDecision.membership, membershipDecision.roles);
+    const decision = departmentDeny(
+      "not_found",
+      "residence_not_found",
+      null,
+      null,
+      organizationPublic,
+      membershipDecision.membership,
+      membershipDecision.roles
+    );
     await auditDepartmentDenial(input.departmentRepository, {
       decision,
       actorUserId: input.actorUserId,
@@ -5340,8 +6965,19 @@ async function authorizeDepartmentOperation(input: {
   }
 
   if (input.department) {
-    if (input.department.organizationId !== input.organizationId || input.department.residenceId !== input.residenceId) {
-      const decision = departmentDeny("not_found", "department_not_found", null, residencePublic, organizationPublic, membershipDecision.membership, membershipDecision.roles);
+    if (
+      input.department.organizationId !== input.organizationId ||
+      input.department.residenceId !== input.residenceId
+    ) {
+      const decision = departmentDeny(
+        "not_found",
+        "department_not_found",
+        null,
+        residencePublic,
+        organizationPublic,
+        membershipDecision.membership,
+        membershipDecision.roles
+      );
       await auditDepartmentDenial(input.departmentRepository, {
         decision,
         actorUserId: input.actorUserId,
@@ -5351,7 +6987,11 @@ async function authorizeDepartmentOperation(input: {
       return decision;
     }
 
-    if (departmentBlocksOrdinaryUpdates(input.department.status) && !input.allowInactiveDepartmentRead && !input.allowInactiveDepartmentStatusChange) {
+    if (
+      departmentBlocksOrdinaryUpdates(input.department.status) &&
+      !input.allowInactiveDepartmentRead &&
+      !input.allowInactiveDepartmentStatusChange
+    ) {
       const decision = departmentDeny(
         "department_inactive",
         `department_${input.department.status}`,
@@ -5370,7 +7010,15 @@ async function authorizeDepartmentOperation(input: {
       return decision;
     }
   } else if (input.permission !== "department.create" && input.permission !== "department.read") {
-    const decision = departmentDeny("not_found", "department_not_found", null, residencePublic, organizationPublic, membershipDecision.membership, membershipDecision.roles);
+    const decision = departmentDeny(
+      "not_found",
+      "department_not_found",
+      null,
+      residencePublic,
+      organizationPublic,
+      membershipDecision.membership,
+      membershipDecision.roles
+    );
     await auditDepartmentDenial(input.departmentRepository, {
       decision,
       actorUserId: input.actorUserId,
@@ -5398,11 +7046,15 @@ function departmentBlocksOrdinaryUpdates(status: DepartmentStatus) {
   return status === "closed" || status === "inactive" || status === "restricted";
 }
 
-function isAllowedDepartmentTransition(current: DepartmentStatus, next: Extract<DepartmentStatus, "active" | "inactive" | "closed">) {
+function isAllowedDepartmentTransition(
+  current: DepartmentStatus,
+  next: Extract<DepartmentStatus, "active" | "inactive" | "closed">
+) {
   if (current === "closed") return false;
   if (next === "active") return current === "inactive" || current === "draft";
   if (next === "inactive") return current === "active";
-  if (next === "closed") return current === "active" || current === "inactive" || current === "draft";
+  if (next === "closed")
+    return current === "active" || current === "inactive" || current === "draft";
 
   return false;
 }
@@ -5441,7 +7093,11 @@ async function auditDepartmentDenial(
 ) {
   await recordDepartmentAudit(repository, {
     action: "department.access_denied",
-    organizationId: input.decision.organization?.id ?? input.decision.department?.organizationId ?? input.decision.residence?.organizationId ?? null,
+    organizationId:
+      input.decision.organization?.id ??
+      input.decision.department?.organizationId ??
+      input.decision.residence?.organizationId ??
+      null,
     residenceId: input.decision.residence?.id ?? input.decision.department?.residenceId ?? null,
     departmentId: input.decision.department?.id ?? null,
     actorUserId: input.actorUserId,
@@ -5455,7 +7111,10 @@ async function auditDepartmentDenial(
 
 async function recordDepartmentAudit(
   repository: DepartmentRepository,
-  input: Omit<Parameters<DepartmentRepository["recordDepartmentAuditEvent"]>[0], "correlationId"> & {
+  input: Omit<
+    Parameters<DepartmentRepository["recordDepartmentAuditEvent"]>[0],
+    "correlationId"
+  > & {
     correlationId?: string | undefined;
   }
 ) {
@@ -5580,7 +7239,10 @@ async function authorizeWorkGroupOperation(input: {
   };
 }
 
-function isAllowedWorkGroupTransition(current: WorkGroupStatus, next: Extract<WorkGroupStatus, "active" | "inactive">) {
+function isAllowedWorkGroupTransition(
+  current: WorkGroupStatus,
+  next: Extract<WorkGroupStatus, "active" | "inactive">
+) {
   if (current === "retired") return false;
   if (next === "active") return current === "inactive";
   if (next === "inactive") return current === "active";
@@ -5754,7 +7416,10 @@ function roleDefinitionDeny(
   };
 }
 
-function isAllowedRoleDefinitionTransition(current: RoleDefinitionStatus, next: Extract<RoleDefinitionStatus, "active" | "inactive">) {
+function isAllowedRoleDefinitionTransition(
+  current: RoleDefinitionStatus,
+  next: Extract<RoleDefinitionStatus, "active" | "inactive">
+) {
   if (current === "retired") return false;
   return current !== next;
 }
@@ -5783,7 +7448,10 @@ async function auditRoleDefinitionDenial(
 
 async function recordRoleDefinitionAudit(
   repository: RoleDefinitionRepository,
-  input: Omit<Parameters<RoleDefinitionRepository["recordRoleDefinitionAuditEvent"]>[0], "correlationId"> & {
+  input: Omit<
+    Parameters<RoleDefinitionRepository["recordRoleDefinitionAuditEvent"]>[0],
+    "correlationId"
+  > & {
     correlationId?: string | undefined;
   }
 ) {
@@ -5868,7 +7536,693 @@ function createRoleDefinitionCorrelationId() {
   return `role_definition_${randomBytes(12).toString("base64url")}`;
 }
 
-async function scrypt(password: string, salt: Buffer, keyLength: number, options: { N: number; r: number; p: number }) {
+type JobRequestParentDecision = JobRequestDecision & {
+  workGroup?: StoredWorkGroup | undefined;
+  roleDefinition?: StoredRoleDefinition | undefined;
+};
+
+function currentTimeFrom(now: () => Date) {
+  return now();
+}
+
+function toPublicJobRequest(jobRequest: StoredJobRequest): PublicJobRequest {
+  return {
+    ...jobRequest,
+    versionToken: jobRequest.version
+  };
+}
+
+function jobRequestDeny(
+  status: Exclude<JobRequestDecisionStatus, "allow">,
+  internalReason: string,
+  jobRequest: PublicJobRequest | null,
+  roles: readonly AuthorizationRoleKey[],
+  organization: PublicEmployerOrganization | null,
+  membership: PublicOrganizationMembership | null
+): JobRequestDecision {
+  return {
+    status,
+    allow: false,
+    jobRequest,
+    organization,
+    membership,
+    roles,
+    internalReason,
+    externalCode: authorizationDeniedCode,
+    externalMessage: authorizationDeniedMessage
+  };
+}
+
+async function authorizeJobRequestEmployerOperation(input: {
+  organizationRepository: EmployerOrganizationRepository;
+  jobRequestRepository: JobRequestRepository;
+  membershipService: OrganizationMembershipService;
+  authorizationService: AuthorizationService;
+  actorUserId: string;
+  organizationId: string;
+  permission: AuthorizationPermissionKey;
+  jobRequest?: StoredJobRequest | null | undefined;
+  correlationId?: string | undefined;
+  now: Date;
+}): Promise<JobRequestDecision> {
+  const organization = await input.organizationRepository.findOrganizationById(
+    input.organizationId
+  );
+
+  if (!organization) {
+    const decision = jobRequestDeny(
+      "not_found",
+      "organization_not_found",
+      input.jobRequest ? toPublicJobRequest(input.jobRequest) : null,
+      [],
+      null,
+      null
+    );
+    await auditJobRequestDenial(input.jobRequestRepository, {
+      decision,
+      actorUserId: input.actorUserId,
+      correlationId: input.correlationId,
+      createdAt: input.now
+    });
+    return decision;
+  }
+
+  const organizationPublic = toPublicOrganization(organization);
+  const membershipDecision = await input.membershipService.selectOrganizationContext({
+    userId: input.actorUserId,
+    organizationId: input.organizationId,
+    ...(input.correlationId ? { correlationId: input.correlationId } : {})
+  });
+
+  if (!membershipDecision.allow || !membershipDecision.membership) {
+    const decision = jobRequestDeny(
+      "membership_denied",
+      membershipDecision.internalReason ?? "membership_denied",
+      input.jobRequest ? toPublicJobRequest(input.jobRequest) : null,
+      membershipDecision.roles,
+      organizationPublic,
+      membershipDecision.membership
+    );
+    await auditJobRequestDenial(input.jobRequestRepository, {
+      decision,
+      actorUserId: input.actorUserId,
+      correlationId: input.correlationId,
+      createdAt: input.now
+    });
+    return decision;
+  }
+
+  if (organizationBlocksOrdinaryOperations(organization.status)) {
+    const decision = jobRequestDeny(
+      "organization_inactive",
+      `organization_${organization.status}`,
+      input.jobRequest ? toPublicJobRequest(input.jobRequest) : null,
+      membershipDecision.roles,
+      organizationPublic,
+      membershipDecision.membership
+    );
+    await auditJobRequestDenial(input.jobRequestRepository, {
+      decision,
+      actorUserId: input.actorUserId,
+      correlationId: input.correlationId,
+      createdAt: input.now
+    });
+    return decision;
+  }
+
+  const authorizationDecision = await input.authorizationService.decide({
+    session: {
+      authenticated: true,
+      user: {
+        id: input.actorUserId,
+        publicId: "job-request-context-user",
+        emailNormalized: "job-request-context@example.invalid",
+        displayName: null,
+        status: "active"
+      },
+      session: {
+        id: "job-request-context-session",
+        userId: input.actorUserId,
+        expiresAt: input.now
+      }
+    },
+    roles: membershipDecision.roles,
+    permission: input.permission,
+    resourceContext: { organizationId: input.organizationId },
+    ...(input.correlationId ? { correlationId: input.correlationId } : {})
+  });
+
+  if (!authorizationDecision.allow) {
+    const decision = jobRequestDeny(
+      "permission_denied",
+      authorizationDecision.internalReason ?? "permission_denied",
+      input.jobRequest ? toPublicJobRequest(input.jobRequest) : null,
+      membershipDecision.roles,
+      organizationPublic,
+      membershipDecision.membership
+    );
+    await auditJobRequestDenial(input.jobRequestRepository, {
+      decision,
+      actorUserId: input.actorUserId,
+      correlationId: input.correlationId,
+      createdAt: input.now
+    });
+    return decision;
+  }
+
+  return {
+    status: "allow",
+    allow: true,
+    jobRequest: input.jobRequest ? toPublicJobRequest(input.jobRequest) : null,
+    organization: organizationPublic,
+    membership: membershipDecision.membership,
+    roles: membershipDecision.roles,
+    internalReason: null,
+    externalCode: null,
+    externalMessage: null
+  };
+}
+
+async function authorizeJobRequestPlatformOperation(input: {
+  jobRequestRepository: JobRequestRepository;
+  authorizationService: AuthorizationService;
+  session: SessionValidationResult;
+  roles: readonly AuthorizationRoleKey[];
+  permission: AuthorizationPermissionKey;
+  jobRequest?: StoredJobRequest | null | undefined;
+  correlationId?: string | undefined;
+  now: Date;
+}): Promise<JobRequestDecision> {
+  const authorizationDecision = await input.authorizationService.decide({
+    session: input.session,
+    roles: input.roles,
+    permission: input.permission,
+    platformContext: { platform: true },
+    ...(input.correlationId ? { correlationId: input.correlationId } : {})
+  });
+
+  if (!authorizationDecision.allow) {
+    const decision = jobRequestDeny(
+      "permission_denied",
+      authorizationDecision.internalReason ?? "permission_denied",
+      input.jobRequest ? toPublicJobRequest(input.jobRequest) : null,
+      input.roles,
+      null,
+      null
+    );
+    await auditJobRequestDenial(input.jobRequestRepository, {
+      decision,
+      actorUserId: input.session.user?.id ?? null,
+      correlationId: input.correlationId,
+      createdAt: input.now
+    });
+    return decision;
+  }
+
+  return {
+    status: "allow",
+    allow: true,
+    jobRequest: input.jobRequest ? toPublicJobRequest(input.jobRequest) : null,
+    organization: null,
+    membership: null,
+    roles: input.roles,
+    internalReason: null,
+    externalCode: null,
+    externalMessage: null
+  };
+}
+
+async function validateJobRequestParents(input: {
+  organization: PublicEmployerOrganization;
+  residenceRepository: ResidenceRepository;
+  departmentRepository: DepartmentRepository;
+  workGroupRepository: WorkGroupRepository;
+  roleDefinitionRepository: RoleDefinitionRepository;
+  residenceId: string;
+  departmentId: string;
+  workGroupSlug: string;
+  roleDefinitionIdentifier: string;
+  requireActiveParents: boolean;
+  roles: readonly AuthorizationRoleKey[];
+}): Promise<JobRequestParentDecision> {
+  const residence = await input.residenceRepository.findResidenceById(input.residenceId);
+  if (!residence || residence.organizationId !== input.organization.id) {
+    return jobRequestDeny(
+      "parent_mismatch",
+      "residence_not_in_organization",
+      null,
+      input.roles,
+      input.organization,
+      null
+    );
+  }
+
+  if (input.requireActiveParents && residence.status !== "active") {
+    return jobRequestDeny(
+      "residence_inactive",
+      `residence_${residence.status}`,
+      null,
+      input.roles,
+      input.organization,
+      null
+    );
+  }
+
+  const department = await input.departmentRepository.findDepartmentById(input.departmentId);
+  if (
+    !department ||
+    department.organizationId !== input.organization.id ||
+    department.residenceId !== residence.id
+  ) {
+    return jobRequestDeny(
+      "parent_mismatch",
+      "department_not_in_residence",
+      null,
+      input.roles,
+      input.organization,
+      null
+    );
+  }
+
+  if (input.requireActiveParents && department.status !== "active") {
+    return jobRequestDeny(
+      "department_inactive",
+      `department_${department.status}`,
+      null,
+      input.roles,
+      input.organization,
+      null
+    );
+  }
+
+  const workGroup = await input.workGroupRepository.findWorkGroupByKey(
+    workGroupSlugToKey(input.workGroupSlug)
+  );
+  if (!workGroup) {
+    return jobRequestDeny(
+      "not_found",
+      "work_group_not_found",
+      null,
+      input.roles,
+      input.organization,
+      null
+    );
+  }
+
+  if (input.requireActiveParents && workGroup.status !== "active") {
+    return jobRequestDeny(
+      "catalogue_inactive",
+      `work_group_${workGroup.status}`,
+      null,
+      input.roles,
+      input.organization,
+      null
+    );
+  }
+
+  const roleDefinition = await input.roleDefinitionRepository.findRoleDefinitionByKey(
+    roleDefinitionIdentifierToKey(input.roleDefinitionIdentifier)
+  );
+  if (!roleDefinition) {
+    return jobRequestDeny(
+      "not_found",
+      "role_definition_not_found",
+      null,
+      input.roles,
+      input.organization,
+      null
+    );
+  }
+
+  if (roleDefinition.workGroupId !== workGroup.id) {
+    return jobRequestDeny(
+      "parent_mismatch",
+      "role_definition_not_in_work_group",
+      null,
+      input.roles,
+      input.organization,
+      null
+    );
+  }
+
+  if (input.requireActiveParents && roleDefinition.status !== "active") {
+    return jobRequestDeny(
+      "catalogue_inactive",
+      `role_definition_${roleDefinition.status}`,
+      null,
+      input.roles,
+      input.organization,
+      null
+    );
+  }
+
+  return {
+    status: "allow",
+    allow: true,
+    jobRequest: null,
+    organization: input.organization,
+    membership: null,
+    roles: input.roles,
+    internalReason: null,
+    externalCode: null,
+    externalMessage: null,
+    workGroup,
+    roleDefinition
+  };
+}
+
+async function transitionEmployerJobRequest(input: {
+  jobRequestRepository: JobRequestRepository;
+  organizationRepository: EmployerOrganizationRepository;
+  membershipService: OrganizationMembershipService;
+  authorizationService: AuthorizationService;
+  actorUserId: string;
+  organizationId: string;
+  jobRequestId: string;
+  expectedVersion: number;
+  permission: AuthorizationPermissionKey;
+  allowedFrom: readonly JobRequestStatus[];
+  nextStatus: JobRequestStatus;
+  action: Parameters<JobRequestRepository["recordJobRequestAuditEvent"]>[0]["action"];
+  reason?: string | undefined;
+  correlationId?: string | undefined;
+  now: Date;
+}) {
+  const jobRequest = await input.jobRequestRepository.findJobRequestById(input.jobRequestId);
+  const authorization = await authorizeJobRequestEmployerOperation({
+    organizationRepository: input.organizationRepository,
+    jobRequestRepository: input.jobRequestRepository,
+    membershipService: input.membershipService,
+    authorizationService: input.authorizationService,
+    actorUserId: input.actorUserId,
+    organizationId: input.organizationId,
+    permission: input.permission,
+    jobRequest,
+    correlationId: input.correlationId,
+    now: input.now
+  });
+
+  if (!authorization.allow || !jobRequest || jobRequest.organizationId !== input.organizationId) {
+    throw new JobRequestError(
+      authorization.allow
+        ? jobRequestDeny(
+            "not_found",
+            "job_request_not_found",
+            null,
+            authorization.roles,
+            authorization.organization,
+            authorization.membership
+          )
+        : authorization
+    );
+  }
+
+  if (!input.allowedFrom.includes(jobRequest.status)) {
+    throw new JobRequestError(
+      jobRequestDeny(
+        "invalid_transition",
+        `cannot_transition_from_${jobRequest.status}_to_${input.nextStatus}`,
+        toPublicJobRequest(jobRequest),
+        authorization.roles,
+        authorization.organization,
+        authorization.membership
+      )
+    );
+  }
+
+  const priorStatus = jobRequest.status;
+  const reason =
+    input.reason === undefined ? null : normalizeRequiredJobRequestText(input.reason, 2, 1000);
+  if (input.reason !== undefined && !reason) {
+    throw new JobRequestError(
+      jobRequestDeny(
+        "invalid_input",
+        "transition_reason_required",
+        toPublicJobRequest(jobRequest),
+        authorization.roles,
+        authorization.organization,
+        authorization.membership
+      )
+    );
+  }
+
+  const updated = await input.jobRequestRepository.transitionJobRequest({
+    jobRequestId: jobRequest.id,
+    expectedVersion: input.expectedVersion,
+    actorUserId: input.actorUserId,
+    status: input.nextStatus,
+    adminReviewReason: input.nextStatus === "submitted" ? null : reason,
+    now: input.now
+  });
+
+  if (!updated) {
+    throw new JobRequestError(
+      jobRequestDeny(
+        "version_conflict",
+        "stale_version",
+        toPublicJobRequest(jobRequest),
+        authorization.roles,
+        authorization.organization,
+        authorization.membership
+      )
+    );
+  }
+
+  const action =
+    input.action === "job_request.submitted" && priorStatus === "information_required"
+      ? "job_request.resubmitted"
+      : input.action;
+  await recordJobRequestAudit(input.jobRequestRepository, {
+    action,
+    organizationId: updated.organizationId,
+    jobRequestId: updated.id,
+    jobRequestNumber: updated.jobRequestNumber,
+    actorUserId: input.actorUserId,
+    priorState: priorStatus,
+    newState: updated.status,
+    reason,
+    correlationId: input.correlationId,
+    createdAt: input.now
+  });
+
+  return toPublicJobRequest(updated);
+}
+
+async function transitionPlatformJobRequest(input: {
+  jobRequestRepository: JobRequestRepository;
+  authorizationService: AuthorizationService;
+  session: SessionValidationResult;
+  roles: readonly AuthorizationRoleKey[];
+  jobRequestId: string;
+  expectedVersion: number;
+  permission: AuthorizationPermissionKey;
+  allowedFrom: readonly JobRequestStatus[];
+  nextStatus: JobRequestStatus;
+  action: Parameters<JobRequestRepository["recordJobRequestAuditEvent"]>[0]["action"];
+  reason?: string | undefined;
+  correlationId?: string | undefined;
+  now: Date;
+}) {
+  const jobRequest = await input.jobRequestRepository.findJobRequestById(input.jobRequestId);
+  const decision = await authorizeJobRequestPlatformOperation({
+    jobRequestRepository: input.jobRequestRepository,
+    authorizationService: input.authorizationService,
+    session: input.session,
+    roles: input.roles,
+    permission: input.permission,
+    jobRequest,
+    correlationId: input.correlationId,
+    now: input.now
+  });
+
+  if (!decision.allow || !jobRequest) {
+    throw new JobRequestError(
+      decision.allow
+        ? jobRequestDeny("not_found", "job_request_not_found", null, input.roles, null, null)
+        : decision
+    );
+  }
+
+  if (!input.allowedFrom.includes(jobRequest.status)) {
+    throw new JobRequestError(
+      jobRequestDeny(
+        "invalid_transition",
+        `cannot_transition_from_${jobRequest.status}_to_${input.nextStatus}`,
+        toPublicJobRequest(jobRequest),
+        input.roles,
+        null,
+        null
+      )
+    );
+  }
+
+  const priorStatus = jobRequest.status;
+  const reason =
+    input.reason === undefined ? null : normalizeRequiredJobRequestText(input.reason, 2, 1000);
+  if (input.reason !== undefined && !reason) {
+    throw new JobRequestError(
+      jobRequestDeny(
+        "invalid_input",
+        "transition_reason_required",
+        toPublicJobRequest(jobRequest),
+        input.roles,
+        null,
+        null
+      )
+    );
+  }
+
+  const updated = await input.jobRequestRepository.transitionJobRequest({
+    jobRequestId: jobRequest.id,
+    expectedVersion: input.expectedVersion,
+    actorUserId: input.session.user?.id ?? "system",
+    status: input.nextStatus,
+    adminReviewReason: reason,
+    now: input.now
+  });
+
+  if (!updated) {
+    throw new JobRequestError(
+      jobRequestDeny(
+        "version_conflict",
+        "stale_version",
+        toPublicJobRequest(jobRequest),
+        input.roles,
+        null,
+        null
+      )
+    );
+  }
+
+  await recordJobRequestAudit(input.jobRequestRepository, {
+    action: input.action,
+    organizationId: updated.organizationId,
+    jobRequestId: updated.id,
+    jobRequestNumber: updated.jobRequestNumber,
+    actorUserId: input.session.user?.id ?? null,
+    priorState: priorStatus,
+    newState: updated.status,
+    reason,
+    correlationId: input.correlationId,
+    createdAt: input.now
+  });
+
+  return toPublicJobRequest(updated);
+}
+
+async function findJobRequestByIdOrNumber(repository: JobRequestRepository, idOrNumber: string) {
+  return (
+    (await repository.findJobRequestById(idOrNumber)) ??
+    repository.findJobRequestByNumber(idOrNumber.trim().toUpperCase())
+  );
+}
+
+function normalizeRequiredJobRequestText(value: string, minLength: number, maxLength: number) {
+  return normalizeCatalogueText(value, minLength, maxLength);
+}
+
+function normalizeWorkerCount(value: number) {
+  return Number.isInteger(value) && value > 0 && value <= 500 ? value : 0;
+}
+
+function isValidJobRequestTiming(startAt: Date, endAt: Date) {
+  return (
+    startAt instanceof Date &&
+    endAt instanceof Date &&
+    !Number.isNaN(startAt.getTime()) &&
+    !Number.isNaN(endAt.getTime()) &&
+    endAt.getTime() > startAt.getTime()
+  );
+}
+
+function isMultiDayRange(startAt: Date, endAt: Date) {
+  return startAt.toISOString().slice(0, 10) !== endAt.toISOString().slice(0, 10);
+}
+
+function formatJobRequestNumber(year: number, sequenceValue: number) {
+  return `JR-${year}-${String(sequenceValue).padStart(6, "0")}`;
+}
+
+function createJobRequestCorrelationId() {
+  return `job_request_${randomBytes(12).toString("base64url")}`;
+}
+
+async function auditJobRequestDenial(
+  repository: JobRequestRepository,
+  input: {
+    decision: JobRequestDecision;
+    actorUserId: string | null;
+    correlationId?: string | undefined;
+    createdAt: Date;
+  }
+) {
+  await recordJobRequestAudit(repository, {
+    action: "job_request.access_denied",
+    organizationId:
+      input.decision.organization?.id ?? input.decision.jobRequest?.organizationId ?? null,
+    jobRequestId: input.decision.jobRequest?.id ?? null,
+    jobRequestNumber: input.decision.jobRequest?.jobRequestNumber ?? null,
+    actorUserId: input.actorUserId,
+    priorState: input.decision.jobRequest?.status ?? null,
+    newState: "denied",
+    reason: input.decision.internalReason,
+    correlationId: input.correlationId,
+    createdAt: input.createdAt
+  });
+}
+
+async function recordJobRequestAudit(
+  repository: JobRequestRepository,
+  input: Omit<
+    Parameters<JobRequestRepository["recordJobRequestAuditEvent"]>[0],
+    "correlationId"
+  > & {
+    correlationId?: string | undefined;
+  }
+) {
+  await repository.recordJobRequestAuditEvent({
+    ...input,
+    correlationId: input.correlationId ?? createJobRequestCorrelationId()
+  });
+}
+
+async function recordPrismaJobRequestAudit(
+  prisma: Pick<PrismaJobRequestClient, "auditActorReference" | "auditEvent">,
+  input: Parameters<JobRequestRepository["recordJobRequestAuditEvent"]>[0]
+) {
+  const actorReference = await prisma.auditActorReference.create({
+    data: {
+      actorType: input.actorUserId ? "user" : "system",
+      ...(input.actorUserId ? { userId: input.actorUserId } : {}),
+      displayLabel: input.actorUserId ? "JobRequest actor" : "JobRequest boundary"
+    }
+  });
+
+  await prisma.auditEvent.create({
+    data: {
+      actorReferenceId: actorReference.id,
+      organizationId: input.organizationId,
+      entityType: "job_request",
+      entityId: input.jobRequestId ?? nilEntityId,
+      entityPublicReference: input.jobRequestNumber,
+      action: input.action,
+      priorState: input.priorState,
+      newState: input.newState,
+      reason: input.reason,
+      source: "api",
+      correlationId: input.correlationId,
+      policyVersion: "job-request-foundation-v1",
+      createdAt: input.createdAt
+    }
+  });
+}
+
+async function scrypt(
+  password: string,
+  salt: Buffer,
+  keyLength: number,
+  options: { N: number; r: number; p: number }
+) {
   return new Promise<Buffer>((resolve, reject) => {
     scryptCallback(password, salt, keyLength, options, (error, derivedKey) => {
       if (error) {

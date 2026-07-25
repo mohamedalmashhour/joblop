@@ -4,6 +4,7 @@ import {
   AuthenticationRequiredError,
   DepartmentError,
   EmployerOrganizationError,
+  JobRequestError,
   OrganizationMembershipError,
   PasswordPolicyError,
   ResidenceError,
@@ -19,6 +20,7 @@ import {
   createAuthorizationService,
   createDepartmentService,
   createEmployerOrganizationService,
+  createJobRequestService,
   createOrganizationMembershipService,
   createResidenceService,
   createRoleDefinitionService,
@@ -26,6 +28,7 @@ import {
   createPrismaDepartmentRepository,
   createPrismaAuthenticationRepository,
   createPrismaEmployerOrganizationRepository,
+  createPrismaJobRequestRepository,
   createPrismaOrganizationMembershipRepository,
   createPrismaResidenceRepository,
   createPrismaRoleDefinitionRepository,
@@ -39,6 +42,9 @@ import {
   type DepartmentService,
   type DepartmentStatus,
   type EmployerOrganizationService,
+  type JobRequestService,
+  type JobRequestType,
+  type JobRequestUrgency,
   type OrganizationMembershipService,
   type ResidenceService,
   type ResidenceStatus,
@@ -58,7 +64,10 @@ export interface BuildApiOptions {
   departmentService?: DepartmentService;
   workGroupService?: WorkGroupService;
   roleDefinitionService?: RoleDefinitionService;
-  resolveAuthorizationRoles?: (userId: string) => Promise<readonly AuthorizationRoleKey[]> | readonly AuthorizationRoleKey[];
+  jobRequestService?: JobRequestService;
+  resolveAuthorizationRoles?: (
+    userId: string
+  ) => Promise<readonly AuthorizationRoleKey[]> | readonly AuthorizationRoleKey[];
 }
 
 export function buildApi(options: BuildApiOptions = {}) {
@@ -72,7 +81,8 @@ export function buildApi(options: BuildApiOptions = {}) {
     });
   const authorizationService = options.authorizationService ?? createAuthorizationService();
   const membershipService =
-    options.membershipService ?? createOrganizationMembershipService(createPrismaOrganizationMembershipRepository(prisma!));
+    options.membershipService ??
+    createOrganizationMembershipService(createPrismaOrganizationMembershipRepository(prisma!));
   const organizationRepository = prisma ? createPrismaEmployerOrganizationRepository(prisma) : null;
   const organizationService =
     options.organizationService ??
@@ -83,7 +93,12 @@ export function buildApi(options: BuildApiOptions = {}) {
     );
   const residenceService =
     options.residenceService ??
-    createResidenceService(createPrismaResidenceRepository(prisma!), organizationRepository!, membershipService, authorizationService);
+    createResidenceService(
+      createPrismaResidenceRepository(prisma!),
+      organizationRepository!,
+      membershipService,
+      authorizationService
+    );
   const departmentService =
     options.departmentService ??
     createDepartmentService(
@@ -93,9 +108,27 @@ export function buildApi(options: BuildApiOptions = {}) {
       membershipService,
       authorizationService
     );
-  const workGroupService = options.workGroupService ?? createWorkGroupService(createPrismaWorkGroupRepository(prisma!), authorizationService);
+  const workGroupService =
+    options.workGroupService ??
+    createWorkGroupService(createPrismaWorkGroupRepository(prisma!), authorizationService);
   const roleDefinitionService =
-    options.roleDefinitionService ?? createRoleDefinitionService(createPrismaRoleDefinitionRepository(prisma!), authorizationService);
+    options.roleDefinitionService ??
+    createRoleDefinitionService(
+      createPrismaRoleDefinitionRepository(prisma!),
+      authorizationService
+    );
+  const jobRequestService =
+    options.jobRequestService ??
+    createJobRequestService(
+      createPrismaJobRequestRepository(prisma!),
+      organizationRepository!,
+      createPrismaResidenceRepository(prisma!),
+      createPrismaDepartmentRepository(prisma!),
+      createPrismaWorkGroupRepository(prisma!),
+      createPrismaRoleDefinitionRepository(prisma!),
+      membershipService,
+      authorizationService
+    );
   const resolveAuthorizationRoles = options.resolveAuthorizationRoles ?? (() => []);
 
   if (prisma) {
@@ -127,6 +160,10 @@ export function buildApi(options: BuildApiOptions = {}) {
 
     if (error instanceof RoleDefinitionError) {
       return sendRoleDefinitionDenied(reply);
+    }
+
+    if (error instanceof JobRequestError) {
+      return sendJobRequestDenied(reply);
     }
 
     throw error;
@@ -201,7 +238,9 @@ export function buildApi(options: BuildApiOptions = {}) {
   });
 
   app.get("/auth/session", async (request, reply) => {
-    const session = await authService.validateSession(readBearerToken(request.headers.authorization));
+    const session = await authService.validateSession(
+      readBearerToken(request.headers.authorization)
+    );
 
     if (!session.authenticated) {
       return reply.code(401).send({
@@ -243,7 +282,9 @@ export function buildApi(options: BuildApiOptions = {}) {
   });
 
   app.post("/authz/check", async (request, reply) => {
-    const session = await authService.validateSession(readBearerToken(request.headers.authorization));
+    const session = await authService.validateSession(
+      readBearerToken(request.headers.authorization)
+    );
 
     if (!session.authenticated || !session.user) {
       return reply.code(403).send({
@@ -276,7 +317,9 @@ export function buildApi(options: BuildApiOptions = {}) {
   });
 
   app.post("/authz/platform-admin/probe", async (request, reply) => {
-    const session = await authService.validateSession(readBearerToken(request.headers.authorization));
+    const session = await authService.validateSession(
+      readBearerToken(request.headers.authorization)
+    );
 
     if (!session.authenticated || !session.user) {
       return reply.code(403).send({
@@ -296,26 +339,36 @@ export function buildApi(options: BuildApiOptions = {}) {
   });
 
   app.get("/work-groups", async (request, reply) => {
-    const session = await authService.validateSession(readBearerToken(request.headers.authorization));
+    const session = await authService.validateSession(
+      readBearerToken(request.headers.authorization)
+    );
 
     if (!session.authenticated || !session.user) {
       return sendWorkGroupDenied(reply);
     }
 
-    const roles = await resolveCatalogueReadRoles(session.user.id, readOptionalString(asRecord(request.query), "organizationId"));
+    const roles = await resolveCatalogueReadRoles(
+      session.user.id,
+      readOptionalString(asRecord(request.query), "organizationId")
+    );
     const workGroups = await workGroupService.listActiveWorkGroups({ session, roles });
 
     return reply.code(200).send({ workGroups: workGroups.map(serializeWorkGroup) });
   });
 
   app.get("/work-groups/:slug", async (request, reply) => {
-    const session = await authService.validateSession(readBearerToken(request.headers.authorization));
+    const session = await authService.validateSession(
+      readBearerToken(request.headers.authorization)
+    );
 
     if (!session.authenticated || !session.user) {
       return sendWorkGroupDenied(reply);
     }
 
-    const roles = await resolveCatalogueReadRoles(session.user.id, readOptionalString(asRecord(request.query), "organizationId"));
+    const roles = await resolveCatalogueReadRoles(
+      session.user.id,
+      readOptionalString(asRecord(request.query), "organizationId")
+    );
     const workGroup = await workGroupService.getActiveWorkGroup({
       session,
       roles,
@@ -326,7 +379,9 @@ export function buildApi(options: BuildApiOptions = {}) {
   });
 
   app.get("/platform/work-groups", async (request, reply) => {
-    const session = await authService.validateSession(readBearerToken(request.headers.authorization));
+    const session = await authService.validateSession(
+      readBearerToken(request.headers.authorization)
+    );
 
     if (!session.authenticated || !session.user) {
       return sendWorkGroupDenied(reply);
@@ -341,7 +396,9 @@ export function buildApi(options: BuildApiOptions = {}) {
   });
 
   app.get("/platform/work-groups/:slug", async (request, reply) => {
-    const session = await authService.validateSession(readBearerToken(request.headers.authorization));
+    const session = await authService.validateSession(
+      readBearerToken(request.headers.authorization)
+    );
 
     if (!session.authenticated || !session.user) {
       return sendWorkGroupDenied(reply);
@@ -357,7 +414,9 @@ export function buildApi(options: BuildApiOptions = {}) {
   });
 
   app.patch("/platform/work-groups/:slug", async (request, reply) => {
-    const session = await authService.validateSession(readBearerToken(request.headers.authorization));
+    const session = await authService.validateSession(
+      readBearerToken(request.headers.authorization)
+    );
 
     if (!session.authenticated || !session.user) {
       return sendWorkGroupDenied(reply);
@@ -378,7 +437,9 @@ export function buildApi(options: BuildApiOptions = {}) {
   });
 
   app.post("/platform/work-groups/:slug/status", async (request, reply) => {
-    const session = await authService.validateSession(readBearerToken(request.headers.authorization));
+    const session = await authService.validateSession(
+      readBearerToken(request.headers.authorization)
+    );
 
     if (!session.authenticated || !session.user) {
       return sendWorkGroupDenied(reply);
@@ -408,14 +469,19 @@ export function buildApi(options: BuildApiOptions = {}) {
   });
 
   app.get("/role-definitions", async (request, reply) => {
-    const session = await authService.validateSession(readBearerToken(request.headers.authorization));
+    const session = await authService.validateSession(
+      readBearerToken(request.headers.authorization)
+    );
 
     if (!session.authenticated || !session.user) {
       return sendRoleDefinitionDenied(reply);
     }
 
     const query = asRecord(request.query);
-    const roles = await resolveCatalogueReadRoles(session.user.id, readOptionalString(query, "organizationId"));
+    const roles = await resolveCatalogueReadRoles(
+      session.user.id,
+      readOptionalString(query, "organizationId")
+    );
     const roleDefinitions = await roleDefinitionService.listActiveRoleDefinitions({
       session,
       roles,
@@ -426,13 +492,18 @@ export function buildApi(options: BuildApiOptions = {}) {
   });
 
   app.get("/role-definitions/:identifier", async (request, reply) => {
-    const session = await authService.validateSession(readBearerToken(request.headers.authorization));
+    const session = await authService.validateSession(
+      readBearerToken(request.headers.authorization)
+    );
 
     if (!session.authenticated || !session.user) {
       return sendRoleDefinitionDenied(reply);
     }
 
-    const roles = await resolveCatalogueReadRoles(session.user.id, readOptionalString(asRecord(request.query), "organizationId"));
+    const roles = await resolveCatalogueReadRoles(
+      session.user.id,
+      readOptionalString(asRecord(request.query), "organizationId")
+    );
     const roleDefinition = await roleDefinitionService.getActiveRoleDefinition({
       session,
       roles,
@@ -443,7 +514,9 @@ export function buildApi(options: BuildApiOptions = {}) {
   });
 
   app.get("/platform/role-definitions", async (request, reply) => {
-    const session = await authService.validateSession(readBearerToken(request.headers.authorization));
+    const session = await authService.validateSession(
+      readBearerToken(request.headers.authorization)
+    );
 
     if (!session.authenticated || !session.user) {
       return sendRoleDefinitionDenied(reply);
@@ -459,7 +532,9 @@ export function buildApi(options: BuildApiOptions = {}) {
   });
 
   app.get("/platform/role-definitions/:identifier", async (request, reply) => {
-    const session = await authService.validateSession(readBearerToken(request.headers.authorization));
+    const session = await authService.validateSession(
+      readBearerToken(request.headers.authorization)
+    );
 
     if (!session.authenticated || !session.user) {
       return sendRoleDefinitionDenied(reply);
@@ -475,7 +550,9 @@ export function buildApi(options: BuildApiOptions = {}) {
   });
 
   app.patch("/platform/role-definitions/:identifier", async (request, reply) => {
-    const session = await authService.validateSession(readBearerToken(request.headers.authorization));
+    const session = await authService.validateSession(
+      readBearerToken(request.headers.authorization)
+    );
 
     if (!session.authenticated || !session.user) {
       return sendRoleDefinitionDenied(reply);
@@ -498,7 +575,9 @@ export function buildApi(options: BuildApiOptions = {}) {
   });
 
   app.post("/platform/role-definitions/:identifier/status", async (request, reply) => {
-    const session = await authService.validateSession(readBearerToken(request.headers.authorization));
+    const session = await authService.validateSession(
+      readBearerToken(request.headers.authorization)
+    );
 
     if (!session.authenticated || !session.user) {
       return sendRoleDefinitionDenied(reply);
@@ -528,7 +607,9 @@ export function buildApi(options: BuildApiOptions = {}) {
   });
 
   app.get("/memberships", async (request, reply) => {
-    const session = await authService.validateSession(readBearerToken(request.headers.authorization));
+    const session = await authService.validateSession(
+      readBearerToken(request.headers.authorization)
+    );
 
     if (!session.authenticated || !session.user) {
       return sendMembershipDenied(reply);
@@ -540,14 +621,18 @@ export function buildApi(options: BuildApiOptions = {}) {
   });
 
   app.get("/memberships/:membershipId", async (request, reply) => {
-    const session = await authService.validateSession(readBearerToken(request.headers.authorization));
+    const session = await authService.validateSession(
+      readBearerToken(request.headers.authorization)
+    );
 
     if (!session.authenticated || !session.user) {
       return sendMembershipDenied(reply);
     }
 
     const membershipId = readRouteParam(request.params, "membershipId");
-    const membership = membershipId ? await membershipService.getMembership(session.user.id, membershipId) : null;
+    const membership = membershipId
+      ? await membershipService.getMembership(session.user.id, membershipId)
+      : null;
 
     if (!membership) {
       return sendMembershipDenied(reply);
@@ -559,7 +644,9 @@ export function buildApi(options: BuildApiOptions = {}) {
   });
 
   app.post("/memberships/:membershipId/activate", async (request, reply) => {
-    const session = await authService.validateSession(readBearerToken(request.headers.authorization));
+    const session = await authService.validateSession(
+      readBearerToken(request.headers.authorization)
+    );
 
     if (!session.authenticated || !session.user) {
       return sendMembershipDenied(reply);
@@ -575,7 +662,9 @@ export function buildApi(options: BuildApiOptions = {}) {
   });
 
   app.post("/memberships/:membershipId/suspend", async (request, reply) => {
-    const session = await authService.validateSession(readBearerToken(request.headers.authorization));
+    const session = await authService.validateSession(
+      readBearerToken(request.headers.authorization)
+    );
 
     if (!session.authenticated || !session.user) {
       return sendMembershipDenied(reply);
@@ -591,7 +680,9 @@ export function buildApi(options: BuildApiOptions = {}) {
   });
 
   app.post("/memberships/:membershipId/revoke", async (request, reply) => {
-    const session = await authService.validateSession(readBearerToken(request.headers.authorization));
+    const session = await authService.validateSession(
+      readBearerToken(request.headers.authorization)
+    );
 
     if (!session.authenticated || !session.user) {
       return sendMembershipDenied(reply);
@@ -607,7 +698,9 @@ export function buildApi(options: BuildApiOptions = {}) {
   });
 
   app.post("/memberships/context/select", async (request, reply) => {
-    const session = await authService.validateSession(readBearerToken(request.headers.authorization));
+    const session = await authService.validateSession(
+      readBearerToken(request.headers.authorization)
+    );
 
     if (!session.authenticated || !session.user) {
       return sendMembershipDenied(reply);
@@ -633,7 +726,9 @@ export function buildApi(options: BuildApiOptions = {}) {
   });
 
   app.post("/organizations", async (request, reply) => {
-    const session = await authService.validateSession(readBearerToken(request.headers.authorization));
+    const session = await authService.validateSession(
+      readBearerToken(request.headers.authorization)
+    );
 
     if (!session.authenticated || !session.user) {
       return sendOrganizationDenied(reply);
@@ -664,7 +759,9 @@ export function buildApi(options: BuildApiOptions = {}) {
   });
 
   app.get("/organizations/current", async (request, reply) => {
-    const session = await authService.validateSession(readBearerToken(request.headers.authorization));
+    const session = await authService.validateSession(
+      readBearerToken(request.headers.authorization)
+    );
 
     if (!session.authenticated || !session.user) {
       return sendOrganizationDenied(reply);
@@ -685,7 +782,9 @@ export function buildApi(options: BuildApiOptions = {}) {
   });
 
   app.get("/organizations/:organizationId", async (request, reply) => {
-    const session = await authService.validateSession(readBearerToken(request.headers.authorization));
+    const session = await authService.validateSession(
+      readBearerToken(request.headers.authorization)
+    );
 
     if (!session.authenticated || !session.user) {
       return sendOrganizationDenied(reply);
@@ -700,7 +799,9 @@ export function buildApi(options: BuildApiOptions = {}) {
   });
 
   app.get("/organizations/:organizationId/status", async (request, reply) => {
-    const session = await authService.validateSession(readBearerToken(request.headers.authorization));
+    const session = await authService.validateSession(
+      readBearerToken(request.headers.authorization)
+    );
 
     if (!session.authenticated || !session.user) {
       return sendOrganizationDenied(reply);
@@ -719,7 +820,9 @@ export function buildApi(options: BuildApiOptions = {}) {
   });
 
   app.patch("/organizations/:organizationId", async (request, reply) => {
-    const session = await authService.validateSession(readBearerToken(request.headers.authorization));
+    const session = await authService.validateSession(
+      readBearerToken(request.headers.authorization)
+    );
 
     if (!session.authenticated || !session.user) {
       return sendOrganizationDenied(reply);
@@ -738,7 +841,9 @@ export function buildApi(options: BuildApiOptions = {}) {
   });
 
   app.post("/organizations/:organizationId/residences", async (request, reply) => {
-    const session = await authService.validateSession(readBearerToken(request.headers.authorization));
+    const session = await authService.validateSession(
+      readBearerToken(request.headers.authorization)
+    );
 
     if (!session.authenticated || !session.user) {
       return sendResidenceDenied(reply);
@@ -768,7 +873,9 @@ export function buildApi(options: BuildApiOptions = {}) {
   });
 
   app.get("/organizations/:organizationId/residences", async (request, reply) => {
-    const session = await authService.validateSession(readBearerToken(request.headers.authorization));
+    const session = await authService.validateSession(
+      readBearerToken(request.headers.authorization)
+    );
 
     if (!session.authenticated || !session.user) {
       return sendResidenceDenied(reply);
@@ -785,7 +892,9 @@ export function buildApi(options: BuildApiOptions = {}) {
   });
 
   app.get("/organizations/:organizationId/residences/:residenceId", async (request, reply) => {
-    const session = await authService.validateSession(readBearerToken(request.headers.authorization));
+    const session = await authService.validateSession(
+      readBearerToken(request.headers.authorization)
+    );
 
     if (!session.authenticated || !session.user) {
       return sendResidenceDenied(reply);
@@ -801,7 +910,9 @@ export function buildApi(options: BuildApiOptions = {}) {
   });
 
   app.patch("/organizations/:organizationId/residences/:residenceId", async (request, reply) => {
-    const session = await authService.validateSession(readBearerToken(request.headers.authorization));
+    const session = await authService.validateSession(
+      readBearerToken(request.headers.authorization)
+    );
 
     if (!session.authenticated || !session.user) {
       return sendResidenceDenied(reply);
@@ -823,152 +934,486 @@ export function buildApi(options: BuildApiOptions = {}) {
     return reply.code(200).send({ residence: serializeResidence(residence) });
   });
 
-  app.post("/organizations/:organizationId/residences/:residenceId/status", async (request, reply) => {
-    const session = await authService.validateSession(readBearerToken(request.headers.authorization));
+  app.post(
+    "/organizations/:organizationId/residences/:residenceId/status",
+    async (request, reply) => {
+      const session = await authService.validateSession(
+        readBearerToken(request.headers.authorization)
+      );
+
+      if (!session.authenticated || !session.user) {
+        return sendResidenceDenied(reply);
+      }
+
+      const body = asRecord(request.body);
+      const status = readResidenceLifecycleStatus(readRequiredString(body, "status"));
+      const reason = readRequiredString(body, "reason");
+
+      if (!status || !reason) {
+        return reply.code(400).send({
+          error: "RWOS_INVALID_RESIDENCE_REQUEST",
+          message: "Invalid residence request."
+        });
+      }
+
+      const residence = await residenceService.updateResidenceStatus({
+        actorUserId: session.user.id,
+        organizationId: readRouteParam(request.params, "organizationId"),
+        residenceId: readRouteParam(request.params, "residenceId"),
+        expectedVersion: readRequiredString(body, "expectedVersion") ?? "",
+        status,
+        reason
+      });
+
+      return reply.code(200).send({ residence: serializeResidence(residence) });
+    }
+  );
+
+  app.post(
+    "/organizations/:organizationId/residences/:residenceId/departments",
+    async (request, reply) => {
+      const session = await authService.validateSession(
+        readBearerToken(request.headers.authorization)
+      );
+
+      if (!session.authenticated || !session.user) {
+        return sendDepartmentDenied(reply);
+      }
+
+      const body = asRecord(request.body);
+      const name = readRequiredString(body, "name");
+
+      if (!name) {
+        return reply.code(400).send({
+          error: "RWOS_INVALID_DEPARTMENT_REQUEST",
+          message: "Invalid department request."
+        });
+      }
+
+      const department = await departmentService.createDepartment({
+        actorUserId: session.user.id,
+        organizationId: readRouteParam(request.params, "organizationId"),
+        residenceId: readRouteParam(request.params, "residenceId"),
+        name
+      });
+
+      return reply.code(201).send({ department: serializeDepartment(department) });
+    }
+  );
+
+  app.get(
+    "/organizations/:organizationId/residences/:residenceId/departments",
+    async (request, reply) => {
+      const session = await authService.validateSession(
+        readBearerToken(request.headers.authorization)
+      );
+
+      if (!session.authenticated || !session.user) {
+        return sendDepartmentDenied(reply);
+      }
+
+      const status = readDepartmentStatus(readOptionalString(asRecord(request.query), "status"));
+      const departments = await departmentService.listDepartments({
+        actorUserId: session.user.id,
+        organizationId: readRouteParam(request.params, "organizationId"),
+        residenceId: readRouteParam(request.params, "residenceId"),
+        status
+      });
+
+      return reply.code(200).send({ departments: departments.map(serializeDepartment) });
+    }
+  );
+
+  app.get(
+    "/organizations/:organizationId/residences/:residenceId/departments/:departmentId",
+    async (request, reply) => {
+      const session = await authService.validateSession(
+        readBearerToken(request.headers.authorization)
+      );
+
+      if (!session.authenticated || !session.user) {
+        return sendDepartmentDenied(reply);
+      }
+
+      const department = await departmentService.getDepartment({
+        actorUserId: session.user.id,
+        organizationId: readRouteParam(request.params, "organizationId"),
+        residenceId: readRouteParam(request.params, "residenceId"),
+        departmentId: readRouteParam(request.params, "departmentId")
+      });
+
+      return reply.code(200).send({ department: serializeDepartment(department) });
+    }
+  );
+
+  app.patch(
+    "/organizations/:organizationId/residences/:residenceId/departments/:departmentId",
+    async (request, reply) => {
+      const session = await authService.validateSession(
+        readBearerToken(request.headers.authorization)
+      );
+
+      if (!session.authenticated || !session.user) {
+        return sendDepartmentDenied(reply);
+      }
+
+      const body = asRecord(request.body);
+      const department = await departmentService.updateDepartment({
+        actorUserId: session.user.id,
+        organizationId: readRouteParam(request.params, "organizationId"),
+        residenceId: readRouteParam(request.params, "residenceId"),
+        departmentId: readRouteParam(request.params, "departmentId"),
+        expectedVersion: readRequiredString(body, "expectedVersion") ?? "",
+        name: readOptionalString(body, "name")
+      });
+
+      return reply.code(200).send({ department: serializeDepartment(department) });
+    }
+  );
+
+  app.post(
+    "/organizations/:organizationId/residences/:residenceId/departments/:departmentId/status",
+    async (request, reply) => {
+      const session = await authService.validateSession(
+        readBearerToken(request.headers.authorization)
+      );
+
+      if (!session.authenticated || !session.user) {
+        return sendDepartmentDenied(reply);
+      }
+
+      const body = asRecord(request.body);
+      const status = readDepartmentLifecycleStatus(readRequiredString(body, "status"));
+      const reason = readRequiredString(body, "reason");
+
+      if (!status || !reason) {
+        return reply.code(400).send({
+          error: "RWOS_INVALID_DEPARTMENT_REQUEST",
+          message: "Invalid department request."
+        });
+      }
+
+      const department = await departmentService.updateDepartmentStatus({
+        actorUserId: session.user.id,
+        organizationId: readRouteParam(request.params, "organizationId"),
+        residenceId: readRouteParam(request.params, "residenceId"),
+        departmentId: readRouteParam(request.params, "departmentId"),
+        expectedVersion: readRequiredString(body, "expectedVersion") ?? "",
+        status,
+        reason
+      });
+
+      return reply.code(200).send({ department: serializeDepartment(department) });
+    }
+  );
+
+  app.post("/organizations/:organizationId/job-requests", async (request, reply) => {
+    const session = await authService.validateSession(
+      readBearerToken(request.headers.authorization)
+    );
 
     if (!session.authenticated || !session.user) {
-      return sendResidenceDenied(reply);
+      return sendJobRequestDenied(reply);
     }
 
     const body = asRecord(request.body);
-    const status = readResidenceLifecycleStatus(readRequiredString(body, "status"));
-    const reason = readRequiredString(body, "reason");
+    const urgency = readJobRequestUrgency(readRequiredString(body, "urgency"));
+    const requestType = readJobRequestType(readRequiredString(body, "requestType"));
+    const startAt = readRequiredDate(body, "startAt");
+    const endAt = readRequiredDate(body, "endAt");
 
-    if (!status || !reason) {
+    if (!urgency || !requestType || !startAt || !endAt) {
       return reply.code(400).send({
-        error: "RWOS_INVALID_RESIDENCE_REQUEST",
-        message: "Invalid residence request."
+        error: "RWOS_INVALID_JOB_REQUEST",
+        message: "Invalid job request."
       });
     }
 
-    const residence = await residenceService.updateResidenceStatus({
+    const jobRequest = await jobRequestService.createDraft({
       actorUserId: session.user.id,
       organizationId: readRouteParam(request.params, "organizationId"),
-      residenceId: readRouteParam(request.params, "residenceId"),
-      expectedVersion: readRequiredString(body, "expectedVersion") ?? "",
-      status,
-      reason
+      residenceId: readRequiredString(body, "residenceId") ?? "",
+      departmentId: readRequiredString(body, "departmentId") ?? "",
+      workGroupSlug: readRequiredString(body, "workGroup") ?? "",
+      roleDefinitionIdentifier: readRequiredString(body, "roleDefinition") ?? "",
+      title: readRequiredString(body, "title") ?? "",
+      description: readOptionalString(body, "description"),
+      numberOfWorkers: readOptionalNumber(body, "numberOfWorkers") ?? 0,
+      urgency,
+      requestType,
+      timezone: readRequiredString(body, "timezone") ?? "",
+      startAt,
+      endAt
     });
 
-    return reply.code(200).send({ residence: serializeResidence(residence) });
+    return reply.code(201).send({ jobRequest: serializeJobRequest(jobRequest) });
   });
 
-  app.post("/organizations/:organizationId/residences/:residenceId/departments", async (request, reply) => {
-    const session = await authService.validateSession(readBearerToken(request.headers.authorization));
+  app.get("/organizations/:organizationId/job-requests", async (request, reply) => {
+    const session = await authService.validateSession(
+      readBearerToken(request.headers.authorization)
+    );
 
     if (!session.authenticated || !session.user) {
-      return sendDepartmentDenied(reply);
+      return sendJobRequestDenied(reply);
     }
 
-    const body = asRecord(request.body);
-    const name = readRequiredString(body, "name");
+    const query = asRecord(request.query);
+    const jobRequests = await jobRequestService.listForOrganization({
+      actorUserId: session.user.id,
+      organizationId: readRouteParam(request.params, "organizationId"),
+      residenceId: readOptionalString(query, "residenceId"),
+      departmentId: readOptionalString(query, "departmentId")
+    });
 
-    if (!name) {
-      return reply.code(400).send({
-        error: "RWOS_INVALID_DEPARTMENT_REQUEST",
-        message: "Invalid department request."
+    return reply.code(200).send({ jobRequests: jobRequests.map(serializeJobRequest) });
+  });
+
+  app.get(
+    "/organizations/:organizationId/job-requests/:jobRequestIdOrNumber",
+    async (request, reply) => {
+      const session = await authService.validateSession(
+        readBearerToken(request.headers.authorization)
+      );
+
+      if (!session.authenticated || !session.user) {
+        return sendJobRequestDenied(reply);
+      }
+
+      const jobRequest = await jobRequestService.getForOrganization({
+        actorUserId: session.user.id,
+        organizationId: readRouteParam(request.params, "organizationId"),
+        jobRequestIdOrNumber: readRouteParam(request.params, "jobRequestIdOrNumber")
       });
+
+      return reply.code(200).send({ jobRequest: serializeJobRequest(jobRequest) });
     }
+  );
 
-    const department = await departmentService.createDepartment({
-      actorUserId: session.user.id,
-      organizationId: readRouteParam(request.params, "organizationId"),
-      residenceId: readRouteParam(request.params, "residenceId"),
-      name
-    });
-
-    return reply.code(201).send({ department: serializeDepartment(department) });
-  });
-
-  app.get("/organizations/:organizationId/residences/:residenceId/departments", async (request, reply) => {
-    const session = await authService.validateSession(readBearerToken(request.headers.authorization));
+  app.patch("/organizations/:organizationId/job-requests/:jobRequestId", async (request, reply) => {
+    const session = await authService.validateSession(
+      readBearerToken(request.headers.authorization)
+    );
 
     if (!session.authenticated || !session.user) {
-      return sendDepartmentDenied(reply);
-    }
-
-    const status = readDepartmentStatus(readOptionalString(asRecord(request.query), "status"));
-    const departments = await departmentService.listDepartments({
-      actorUserId: session.user.id,
-      organizationId: readRouteParam(request.params, "organizationId"),
-      residenceId: readRouteParam(request.params, "residenceId"),
-      status
-    });
-
-    return reply.code(200).send({ departments: departments.map(serializeDepartment) });
-  });
-
-  app.get("/organizations/:organizationId/residences/:residenceId/departments/:departmentId", async (request, reply) => {
-    const session = await authService.validateSession(readBearerToken(request.headers.authorization));
-
-    if (!session.authenticated || !session.user) {
-      return sendDepartmentDenied(reply);
-    }
-
-    const department = await departmentService.getDepartment({
-      actorUserId: session.user.id,
-      organizationId: readRouteParam(request.params, "organizationId"),
-      residenceId: readRouteParam(request.params, "residenceId"),
-      departmentId: readRouteParam(request.params, "departmentId")
-    });
-
-    return reply.code(200).send({ department: serializeDepartment(department) });
-  });
-
-  app.patch("/organizations/:organizationId/residences/:residenceId/departments/:departmentId", async (request, reply) => {
-    const session = await authService.validateSession(readBearerToken(request.headers.authorization));
-
-    if (!session.authenticated || !session.user) {
-      return sendDepartmentDenied(reply);
+      return sendJobRequestDenied(reply);
     }
 
     const body = asRecord(request.body);
-    const department = await departmentService.updateDepartment({
-      actorUserId: session.user.id,
-      organizationId: readRouteParam(request.params, "organizationId"),
-      residenceId: readRouteParam(request.params, "residenceId"),
-      departmentId: readRouteParam(request.params, "departmentId"),
-      expectedVersion: readRequiredString(body, "expectedVersion") ?? "",
-      name: readOptionalString(body, "name")
-    });
+    const urgency =
+      body.urgency === undefined
+        ? null
+        : readJobRequestUrgency(readRequiredString(body, "urgency"));
+    const requestType =
+      body.requestType === undefined
+        ? null
+        : readJobRequestType(readRequiredString(body, "requestType"));
 
-    return reply.code(200).send({ department: serializeDepartment(department) });
-  });
-
-  app.post("/organizations/:organizationId/residences/:residenceId/departments/:departmentId/status", async (request, reply) => {
-    const session = await authService.validateSession(readBearerToken(request.headers.authorization));
-
-    if (!session.authenticated || !session.user) {
-      return sendDepartmentDenied(reply);
+    if (body.urgency !== undefined && !urgency) {
+      return reply
+        .code(400)
+        .send({ error: "RWOS_INVALID_JOB_REQUEST", message: "Invalid job request." });
     }
 
-    const body = asRecord(request.body);
-    const status = readDepartmentLifecycleStatus(readRequiredString(body, "status"));
-    const reason = readRequiredString(body, "reason");
+    if (body.requestType !== undefined && !requestType) {
+      return reply
+        .code(400)
+        .send({ error: "RWOS_INVALID_JOB_REQUEST", message: "Invalid job request." });
+    }
 
-    if (!status || !reason) {
-      return reply.code(400).send({
-        error: "RWOS_INVALID_DEPARTMENT_REQUEST",
-        message: "Invalid department request."
+    const jobRequest = await jobRequestService.updateDraft({
+      actorUserId: session.user.id,
+      organizationId: readRouteParam(request.params, "organizationId"),
+      jobRequestId: readRouteParam(request.params, "jobRequestId"),
+      expectedVersion: readOptionalNumber(body, "expectedVersion") ?? 0,
+      residenceId: readOptionalString(body, "residenceId"),
+      departmentId: readOptionalString(body, "departmentId"),
+      workGroupSlug: readOptionalString(body, "workGroup"),
+      roleDefinitionIdentifier: readOptionalString(body, "roleDefinition"),
+      title: readOptionalString(body, "title"),
+      description: body.description === null ? null : readOptionalString(body, "description"),
+      numberOfWorkers: readOptionalNumber(body, "numberOfWorkers"),
+      urgency,
+      requestType,
+      timezone: readOptionalString(body, "timezone"),
+      startAt: readOptionalDate(body, "startAt"),
+      endAt: readOptionalDate(body, "endAt")
+    });
+
+    return reply.code(200).send({ jobRequest: serializeJobRequest(jobRequest) });
+  });
+
+  app.post(
+    "/organizations/:organizationId/job-requests/:jobRequestId/submit",
+    async (request, reply) => {
+      const session = await authService.validateSession(
+        readBearerToken(request.headers.authorization)
+      );
+
+      if (!session.authenticated || !session.user) {
+        return sendJobRequestDenied(reply);
+      }
+
+      const body = asRecord(request.body);
+      const jobRequest = await jobRequestService.submit({
+        actorUserId: session.user.id,
+        organizationId: readRouteParam(request.params, "organizationId"),
+        jobRequestId: readRouteParam(request.params, "jobRequestId"),
+        expectedVersion: readOptionalNumber(body, "expectedVersion") ?? 0
       });
+
+      return reply.code(200).send({ jobRequest: serializeJobRequest(jobRequest) });
+    }
+  );
+
+  app.post(
+    "/organizations/:organizationId/job-requests/:jobRequestId/cancel",
+    async (request, reply) => {
+      const session = await authService.validateSession(
+        readBearerToken(request.headers.authorization)
+      );
+
+      if (!session.authenticated || !session.user) {
+        return sendJobRequestDenied(reply);
+      }
+
+      const body = asRecord(request.body);
+      const reason = readRequiredString(body, "reason");
+
+      if (!reason) {
+        return reply
+          .code(400)
+          .send({ error: "RWOS_INVALID_JOB_REQUEST", message: "Invalid job request." });
+      }
+
+      const jobRequest = await jobRequestService.cancel({
+        actorUserId: session.user.id,
+        organizationId: readRouteParam(request.params, "organizationId"),
+        jobRequestId: readRouteParam(request.params, "jobRequestId"),
+        expectedVersion: readOptionalNumber(body, "expectedVersion") ?? 0,
+        reason
+      });
+
+      return reply.code(200).send({ jobRequest: serializeJobRequest(jobRequest) });
+    }
+  );
+
+  app.get("/platform/job-requests/intake", async (request, reply) => {
+    const session = await authService.validateSession(
+      readBearerToken(request.headers.authorization)
+    );
+
+    if (!session.authenticated || !session.user) {
+      return sendJobRequestDenied(reply);
     }
 
-    const department = await departmentService.updateDepartmentStatus({
-      actorUserId: session.user.id,
-      organizationId: readRouteParam(request.params, "organizationId"),
-      residenceId: readRouteParam(request.params, "residenceId"),
-      departmentId: readRouteParam(request.params, "departmentId"),
-      expectedVersion: readRequiredString(body, "expectedVersion") ?? "",
-      status,
-      reason
+    const jobRequests = await jobRequestService.listAdminIntake({
+      session,
+      roles: await resolveAuthorizationRoles(session.user.id)
     });
 
-    return reply.code(200).send({ department: serializeDepartment(department) });
+    return reply.code(200).send({ jobRequests: jobRequests.map(serializeJobRequest) });
   });
+
+  app.get("/platform/job-requests/intake/:jobRequestIdOrNumber", async (request, reply) => {
+    const session = await authService.validateSession(
+      readBearerToken(request.headers.authorization)
+    );
+
+    if (!session.authenticated || !session.user) {
+      return sendJobRequestDenied(reply);
+    }
+
+    const jobRequest = await jobRequestService.getForAdmin({
+      session,
+      roles: await resolveAuthorizationRoles(session.user.id),
+      jobRequestIdOrNumber: readRouteParam(request.params, "jobRequestIdOrNumber")
+    });
+
+    return reply.code(200).send({ jobRequest: serializeJobRequest(jobRequest) });
+  });
+
+  app.post("/platform/job-requests/intake/:jobRequestId/admin-review", async (request, reply) => {
+    const session = await authService.validateSession(
+      readBearerToken(request.headers.authorization)
+    );
+
+    if (!session.authenticated || !session.user) {
+      return sendJobRequestDenied(reply);
+    }
+
+    const body = asRecord(request.body);
+    const jobRequest = await jobRequestService.startAdminReview({
+      session,
+      roles: await resolveAuthorizationRoles(session.user.id),
+      jobRequestId: readRouteParam(request.params, "jobRequestId"),
+      expectedVersion: readOptionalNumber(body, "expectedVersion") ?? 0
+    });
+
+    return reply.code(200).send({ jobRequest: serializeJobRequest(jobRequest) });
+  });
+
+  app.post(
+    "/platform/job-requests/intake/:jobRequestId/request-information",
+    async (request, reply) => {
+      const session = await authService.validateSession(
+        readBearerToken(request.headers.authorization)
+      );
+
+      if (!session.authenticated || !session.user) {
+        return sendJobRequestDenied(reply);
+      }
+
+      const body = asRecord(request.body);
+      const reason = readRequiredString(body, "reason");
+
+      if (!reason) {
+        return reply
+          .code(400)
+          .send({ error: "RWOS_INVALID_JOB_REQUEST", message: "Invalid job request." });
+      }
+
+      const jobRequest = await jobRequestService.requestInformation({
+        session,
+        roles: await resolveAuthorizationRoles(session.user.id),
+        jobRequestId: readRouteParam(request.params, "jobRequestId"),
+        expectedVersion: readOptionalNumber(body, "expectedVersion") ?? 0,
+        reason
+      });
+
+      return reply.code(200).send({ jobRequest: serializeJobRequest(jobRequest) });
+    }
+  );
+
+  app.post(
+    "/platform/job-requests/intake/:jobRequestId/approve-for-dispatch",
+    async (request, reply) => {
+      const session = await authService.validateSession(
+        readBearerToken(request.headers.authorization)
+      );
+
+      if (!session.authenticated || !session.user) {
+        return sendJobRequestDenied(reply);
+      }
+
+      const body = asRecord(request.body);
+      const jobRequest = await jobRequestService.approveForDispatch({
+        session,
+        roles: await resolveAuthorizationRoles(session.user.id),
+        jobRequestId: readRouteParam(request.params, "jobRequestId"),
+        expectedVersion: readOptionalNumber(body, "expectedVersion") ?? 0
+      });
+
+      return reply.code(200).send({ jobRequest: serializeJobRequest(jobRequest) });
+    }
+  );
 
   async function resolveCatalogueReadRoles(userId: string, organizationId: string | null) {
     if (organizationId) {
-      const decision = await membershipService.selectOrganizationContext({ userId, organizationId });
+      const decision = await membershipService.selectOrganizationContext({
+        userId,
+        organizationId
+      });
 
       return decision.allow ? decision.roles : [];
     }
@@ -980,7 +1425,9 @@ export function buildApi(options: BuildApiOptions = {}) {
 }
 
 function asRecord(value: unknown): Record<string, unknown> {
-  return value && typeof value === "object" && !Array.isArray(value) ? (value as Record<string, unknown>) : {};
+  return value && typeof value === "object" && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : {};
 }
 
 function readRequiredString(body: Record<string, unknown>, key: string) {
@@ -996,6 +1443,20 @@ function readOptionalString(body: Record<string, unknown>, key: string) {
 function readOptionalNumber(body: Record<string, unknown>, key: string) {
   const value = body[key];
   return typeof value === "number" ? value : null;
+}
+
+function readRequiredDate(body: Record<string, unknown>, key: string) {
+  const value = body[key];
+  if (typeof value !== "string") return null;
+
+  const parsed = new Date(value);
+  return Number.isNaN(parsed.getTime()) ? null : parsed;
+}
+
+function readOptionalDate(body: Record<string, unknown>, key: string) {
+  if (body[key] === undefined || body[key] === null) return null;
+
+  return readRequiredDate(body, key);
 }
 
 function readBearerToken(authorization: string | undefined) {
@@ -1100,11 +1561,22 @@ function sendRoleDefinitionDenied(reply: FastifyReply) {
   });
 }
 
-function serializeMemberships(memberships: Awaited<ReturnType<OrganizationMembershipService["listMemberships"]>>) {
+function sendJobRequestDenied(reply: FastifyReply) {
+  return reply.code(403).send({
+    error: authorizationDeniedCode,
+    message: authorizationDeniedMessage
+  });
+}
+
+function serializeMemberships(
+  memberships: Awaited<ReturnType<OrganizationMembershipService["listMemberships"]>>
+) {
   return memberships.map(serializeMembership);
 }
 
-function serializeMembership(membership: Awaited<ReturnType<OrganizationMembershipService["listMemberships"]>>[number]) {
+function serializeMembership(
+  membership: Awaited<ReturnType<OrganizationMembershipService["listMemberships"]>>[number]
+) {
   return {
     ...membership,
     invitedAt: membership.invitedAt.toISOString(),
@@ -1116,7 +1588,9 @@ function serializeMembership(membership: Awaited<ReturnType<OrganizationMembersh
   };
 }
 
-function serializeOrganization(organization: Awaited<ReturnType<EmployerOrganizationService["getOrganization"]>>) {
+function serializeOrganization(
+  organization: Awaited<ReturnType<EmployerOrganizationService["getOrganization"]>>
+) {
   return {
     ...organization,
     createdAt: organization.createdAt.toISOString(),
@@ -1145,7 +1619,9 @@ function serializeDepartment(department: Awaited<ReturnType<DepartmentService["g
   };
 }
 
-function serializeWorkGroup(workGroup: Awaited<ReturnType<WorkGroupService["getActiveWorkGroup"]>>) {
+function serializeWorkGroup(
+  workGroup: Awaited<ReturnType<WorkGroupService["getActiveWorkGroup"]>>
+) {
   return {
     ...workGroup,
     createdAt: workGroup.createdAt.toISOString(),
@@ -1153,7 +1629,9 @@ function serializeWorkGroup(workGroup: Awaited<ReturnType<WorkGroupService["getA
   };
 }
 
-function serializeRoleDefinition(roleDefinition: Awaited<ReturnType<RoleDefinitionService["getActiveRoleDefinition"]>>) {
+function serializeRoleDefinition(
+  roleDefinition: Awaited<ReturnType<RoleDefinitionService["getActiveRoleDefinition"]>>
+) {
   return {
     ...roleDefinition,
     createdAt: roleDefinition.createdAt.toISOString(),
@@ -1161,8 +1639,28 @@ function serializeRoleDefinition(roleDefinition: Awaited<ReturnType<RoleDefiniti
   };
 }
 
+function serializeJobRequest(jobRequest: Awaited<ReturnType<JobRequestService["createDraft"]>>) {
+  return {
+    ...jobRequest,
+    startAt: jobRequest.startAt.toISOString(),
+    endAt: jobRequest.endAt.toISOString(),
+    createdAt: jobRequest.createdAt.toISOString(),
+    updatedAt: jobRequest.updatedAt.toISOString(),
+    submittedAt: jobRequest.submittedAt?.toISOString() ?? null,
+    cancelledAt: jobRequest.cancelledAt?.toISOString() ?? null,
+    expiredAt: jobRequest.expiredAt?.toISOString() ?? null,
+    archivedAt: jobRequest.archivedAt?.toISOString() ?? null
+  };
+}
+
 function readResidenceStatus(value: string | null): ResidenceStatus | null {
-  return value === "draft" || value === "active" || value === "restricted" || value === "inactive" || value === "closed" ? value : null;
+  return value === "draft" ||
+    value === "active" ||
+    value === "restricted" ||
+    value === "inactive" ||
+    value === "closed"
+    ? value
+    : null;
 }
 
 function readResidenceLifecycleStatus(value: string | null) {
@@ -1170,7 +1668,13 @@ function readResidenceLifecycleStatus(value: string | null) {
 }
 
 function readDepartmentStatus(value: string | null): DepartmentStatus | null {
-  return value === "draft" || value === "active" || value === "restricted" || value === "inactive" || value === "closed" ? value : null;
+  return value === "draft" ||
+    value === "active" ||
+    value === "restricted" ||
+    value === "inactive" ||
+    value === "closed"
+    ? value
+    : null;
 }
 
 function readDepartmentLifecycleStatus(value: string | null) {
@@ -1183,4 +1687,14 @@ function readWorkGroupLifecycleStatus(value: string | null) {
 
 function readRoleDefinitionLifecycleStatus(value: string | null) {
   return value === "active" || value === "inactive" ? value : null;
+}
+
+function readJobRequestUrgency(value: string | null): JobRequestUrgency | null {
+  return value === "normal" || value === "urgent" || value === "immediate" ? value : null;
+}
+
+function readJobRequestType(value: string | null): JobRequestType | null {
+  return value === "single_day" || value === "multi_day" || value === "recurring_intent"
+    ? value
+    : null;
 }
