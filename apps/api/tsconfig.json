@@ -8,5 +8,10 @@
     "types": ["node", "vitest/globals"]
   },
   "include": ["src/**/*.ts"],
-  "references": [{ "path": "../../packages/config" }, { "path": "../../packages/observability" }]
+  "references": [
+    { "path": "../../packages/auth" },
+    { "path": "../../packages/config" },
+    { "path": "../../packages/database" },
+    { "path": "../../packages/observability" }
+  ]
 }

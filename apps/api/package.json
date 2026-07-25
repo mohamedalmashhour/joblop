@@ -12,7 +12,9 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
+    "@rwos/auth": "workspace:*",
     "@rwos/config": "workspace:*",
+    "@rwos/database": "workspace:*",
     "@rwos/observability": "workspace:*",
     "fastify": "^5.4.0"
   },
