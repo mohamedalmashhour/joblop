@@ -3,6 +3,7 @@ import {
   AuthenticationError,
   AuthenticationRequiredError,
   AssignmentError,
+  AttendanceError,
   DepartmentError,
   DispatchError,
   EmployerOrganizationError,
@@ -21,6 +22,7 @@ import {
   authorizationDeniedMessage,
   createAuthenticationService,
   createAssignmentService,
+  createAttendanceService,
   createAuthorizationService,
   createDepartmentService,
   createDispatchService,
@@ -32,6 +34,7 @@ import {
   createWorkerOfferService,
   createWorkGroupService,
   createPrismaAssignmentRepository,
+  createPrismaAttendanceRepository,
   createPrismaDepartmentRepository,
   createPrismaDispatchRepository,
   createPrismaAuthenticationRepository,
@@ -49,6 +52,8 @@ import {
   type AuthorizationService,
   type AssignmentService,
   type AssignmentStatus,
+  type AttendanceService,
+  type AttendanceStatus,
   type AuthenticationService,
   type DepartmentService,
   type DepartmentStatus,
@@ -80,6 +85,7 @@ export interface BuildApiOptions {
   dispatchService?: DispatchService;
   workerOfferService?: WorkerOfferService;
   assignmentService?: AssignmentService;
+  attendanceService?: AttendanceService;
   workGroupService?: WorkGroupService;
   roleDefinitionService?: RoleDefinitionService;
   jobRequestService?: JobRequestService;
@@ -179,6 +185,16 @@ export function buildApi(options: BuildApiOptions = {}) {
           authorizationService
         )
       : createUnavailableAssignmentService());
+  const attendanceService =
+    options.attendanceService ??
+    (prisma
+      ? createAttendanceService(
+          createPrismaAttendanceRepository(prisma),
+          createPrismaAssignmentRepository(prisma),
+          createPrismaWorkerOfferRepository(prisma),
+          authorizationService
+        )
+      : createUnavailableAttendanceService());
   const resolveAuthorizationRoles = options.resolveAuthorizationRoles ?? (() => []);
 
   if (prisma) {
@@ -226,6 +242,10 @@ export function buildApi(options: BuildApiOptions = {}) {
 
     if (error instanceof AssignmentError) {
       return sendAssignmentDenied(reply);
+    }
+
+    if (error instanceof AttendanceError) {
+      return sendAttendanceDenied(reply);
     }
 
     throw error;
@@ -2217,6 +2237,221 @@ export function buildApi(options: BuildApiOptions = {}) {
     return reply.code(200).send({ assignment: serializeAssignment(assignment) });
   });
 
+  app.post("/platform/attendance", async (request, reply) => {
+    const session = await authService.validateSession(
+      readBearerToken(request.headers.authorization)
+    );
+    if (!session.authenticated || !session.user) return sendAttendanceDenied(reply);
+
+    const body = asRecord(request.body);
+    const attendanceRecord = await attendanceService.createFromAssignment({
+      session,
+      roles: await resolveAuthorizationRoles(session.user.id),
+      assignmentId: readRequiredString(body, "assignmentId") ?? "",
+      verificationMethod: readOptionalString(body, "verificationMethod")
+    });
+
+    return reply.code(201).send({ attendanceRecord: serializeAttendanceRecord(attendanceRecord) });
+  });
+
+  app.get("/platform/attendance", async (request, reply) => {
+    const session = await authService.validateSession(
+      readBearerToken(request.headers.authorization)
+    );
+    if (!session.authenticated || !session.user) return sendAttendanceDenied(reply);
+
+    const query = asRecord(request.query);
+    const status = readAttendanceStatus(readOptionalString(query, "status"));
+    const attendanceRecords = await attendanceService.listAttendance({
+      session,
+      roles: await resolveAuthorizationRoles(session.user.id),
+      organizationId: readOptionalString(query, "organizationId"),
+      assignmentId: readOptionalString(query, "assignmentId"),
+      ...(status ? { statuses: [status] } : {})
+    });
+
+    return reply.code(200).send({
+      attendanceRecords: attendanceRecords.map((item) => serializeAttendanceRecord(item))
+    });
+  });
+
+  app.get("/platform/attendance/:attendanceRecordId", async (request, reply) => {
+    const session = await authService.validateSession(
+      readBearerToken(request.headers.authorization)
+    );
+    if (!session.authenticated || !session.user) return sendAttendanceDenied(reply);
+
+    const attendanceRecord = await attendanceService.readAttendance({
+      session,
+      roles: await resolveAuthorizationRoles(session.user.id),
+      attendanceRecordId: readRouteParam(request.params, "attendanceRecordId")
+    });
+
+    return reply.code(200).send({ attendanceRecord: serializeAttendanceRecord(attendanceRecord) });
+  });
+
+  app.post("/platform/attendance/:attendanceRecordId/complete", async (request, reply) => {
+    const session = await authService.validateSession(
+      readBearerToken(request.headers.authorization)
+    );
+    if (!session.authenticated || !session.user) return sendAttendanceDenied(reply);
+
+    const body = asRecord(request.body);
+    const attendanceRecord = await attendanceService.markCompleted({
+      session,
+      roles: await resolveAuthorizationRoles(session.user.id),
+      attendanceRecordId: readRouteParam(request.params, "attendanceRecordId"),
+      expectedVersion: readOptionalNumber(body, "expectedVersion") ?? 0
+    });
+
+    return reply.code(200).send({ attendanceRecord: serializeAttendanceRecord(attendanceRecord) });
+  });
+
+  app.post("/platform/attendance/:attendanceRecordId/missed", async (request, reply) => {
+    const session = await authService.validateSession(
+      readBearerToken(request.headers.authorization)
+    );
+    if (!session.authenticated || !session.user) return sendAttendanceDenied(reply);
+
+    const body = asRecord(request.body);
+    const attendanceRecord = await attendanceService.markMissed({
+      session,
+      roles: await resolveAuthorizationRoles(session.user.id),
+      attendanceRecordId: readRouteParam(request.params, "attendanceRecordId"),
+      expectedVersion: readOptionalNumber(body, "expectedVersion") ?? 0,
+      reason: readRequiredString(body, "reason") ?? ""
+    });
+
+    return reply.code(200).send({ attendanceRecord: serializeAttendanceRecord(attendanceRecord) });
+  });
+
+  app.post("/platform/attendance/:attendanceRecordId/exception", async (request, reply) => {
+    const session = await authService.validateSession(
+      readBearerToken(request.headers.authorization)
+    );
+    if (!session.authenticated || !session.user) return sendAttendanceDenied(reply);
+
+    const body = asRecord(request.body);
+    const attendanceRecord = await attendanceService.markException({
+      session,
+      roles: await resolveAuthorizationRoles(session.user.id),
+      attendanceRecordId: readRouteParam(request.params, "attendanceRecordId"),
+      expectedVersion: readOptionalNumber(body, "expectedVersion") ?? 0,
+      reason: readRequiredString(body, "reason") ?? "",
+      note: readOptionalString(body, "note")
+    });
+
+    return reply.code(200).send({ attendanceRecord: serializeAttendanceRecord(attendanceRecord) });
+  });
+
+  app.post("/platform/attendance/:attendanceRecordId/cancel", async (request, reply) => {
+    const session = await authService.validateSession(
+      readBearerToken(request.headers.authorization)
+    );
+    if (!session.authenticated || !session.user) return sendAttendanceDenied(reply);
+
+    const body = asRecord(request.body);
+    const attendanceRecord = await attendanceService.cancel({
+      session,
+      roles: await resolveAuthorizationRoles(session.user.id),
+      attendanceRecordId: readRouteParam(request.params, "attendanceRecordId"),
+      expectedVersion: readOptionalNumber(body, "expectedVersion") ?? 0,
+      reason: readRequiredString(body, "reason") ?? ""
+    });
+
+    return reply.code(200).send({ attendanceRecord: serializeAttendanceRecord(attendanceRecord) });
+  });
+
+  app.get("/platform/attendance/:attendanceRecordId/audit", async (request, reply) => {
+    const session = await authService.validateSession(
+      readBearerToken(request.headers.authorization)
+    );
+    if (!session.authenticated || !session.user) return sendAttendanceDenied(reply);
+
+    const audit = await attendanceService.readAuditSummary({
+      session,
+      roles: await resolveAuthorizationRoles(session.user.id),
+      attendanceRecordId: readRouteParam(request.params, "attendanceRecordId")
+    });
+
+    return reply.code(200).send({ audit });
+  });
+
+  app.get("/organizations/:organizationId/attendance", async (request, reply) => {
+    const session = await authService.validateSession(
+      readBearerToken(request.headers.authorization)
+    );
+    if (!session.authenticated || !session.user) return sendAttendanceDenied(reply);
+
+    const query = asRecord(request.query);
+    const status = readAttendanceStatus(readOptionalString(query, "status"));
+    const attendanceRecords = await attendanceService.listAttendance({
+      session,
+      roles: await resolveAuthorizationRoles(session.user.id),
+      organizationId: readRouteParam(request.params, "organizationId"),
+      ...(status ? { statuses: [status] } : {})
+    });
+
+    return reply.code(200).send({
+      attendanceRecords: attendanceRecords.map((item) => serializeAttendanceRecord(item))
+    });
+  });
+
+  app.get("/worker/attendance/:attendanceRecordId", async (request, reply) => {
+    const session = await authService.validateSession(
+      readBearerToken(request.headers.authorization)
+    );
+    if (!session.authenticated || !session.user) return sendAttendanceDenied(reply);
+
+    const attendanceRecord = await attendanceService.workerRead({
+      session,
+      roles: await resolveAuthorizationRoles(session.user.id),
+      attendanceRecordId: readRouteParam(request.params, "attendanceRecordId")
+    });
+
+    return reply.code(200).send({ attendanceRecord: serializeAttendanceRecord(attendanceRecord) });
+  });
+
+  app.post("/worker/attendance/:attendanceRecordId/check-in", async (request, reply) => {
+    const session = await authService.validateSession(
+      readBearerToken(request.headers.authorization)
+    );
+    if (!session.authenticated || !session.user) return sendAttendanceDenied(reply);
+
+    const body = asRecord(request.body);
+    const attendanceRecord = await attendanceService.workerCheckIn({
+      session,
+      roles: await resolveAuthorizationRoles(session.user.id),
+      attendanceRecordId: readRouteParam(request.params, "attendanceRecordId"),
+      expectedVersion: readOptionalNumber(body, "expectedVersion") ?? 0,
+      method: readOptionalString(body, "method"),
+      evidenceSummary: readOptionalString(body, "evidenceSummary"),
+      locationPolicyResult: readOptionalString(body, "locationPolicyResult")
+    });
+
+    return reply.code(200).send({ attendanceRecord: serializeAttendanceRecord(attendanceRecord) });
+  });
+
+  app.post("/worker/attendance/:attendanceRecordId/check-out", async (request, reply) => {
+    const session = await authService.validateSession(
+      readBearerToken(request.headers.authorization)
+    );
+    if (!session.authenticated || !session.user) return sendAttendanceDenied(reply);
+
+    const body = asRecord(request.body);
+    const attendanceRecord = await attendanceService.workerCheckOut({
+      session,
+      roles: await resolveAuthorizationRoles(session.user.id),
+      attendanceRecordId: readRouteParam(request.params, "attendanceRecordId"),
+      expectedVersion: readOptionalNumber(body, "expectedVersion") ?? 0,
+      method: readOptionalString(body, "method"),
+      evidenceSummary: readOptionalString(body, "evidenceSummary"),
+      locationPolicyResult: readOptionalString(body, "locationPolicyResult")
+    });
+
+    return reply.code(200).send({ attendanceRecord: serializeAttendanceRecord(attendanceRecord) });
+  });
+
   async function resolveCatalogueReadRoles(userId: string, organizationId: string | null) {
     if (organizationId) {
       const decision = await membershipService.selectOrganizationContext({
@@ -2398,6 +2633,13 @@ function sendAssignmentDenied(reply: FastifyReply) {
   });
 }
 
+function sendAttendanceDenied(reply: FastifyReply) {
+  return reply.code(403).send({
+    error: authorizationDeniedCode,
+    message: authorizationDeniedMessage
+  });
+}
+
 function serializeMemberships(
   memberships: Awaited<ReturnType<OrganizationMembershipService["listMemberships"]>>
 ) {
@@ -2565,6 +2807,22 @@ function serializeAssignment(
   };
 }
 
+function serializeAttendanceRecord(
+  attendanceRecord: Awaited<ReturnType<AttendanceService["createFromAssignment"]>>
+) {
+  return {
+    ...attendanceRecord,
+    scheduledStartAt: attendanceRecord.scheduledStartAt.toISOString(),
+    scheduledEndAt: attendanceRecord.scheduledEndAt.toISOString(),
+    checkInAt: attendanceRecord.checkInAt?.toISOString() ?? null,
+    checkOutAt: attendanceRecord.checkOutAt?.toISOString() ?? null,
+    createdAt: attendanceRecord.createdAt.toISOString(),
+    updatedAt: attendanceRecord.updatedAt.toISOString(),
+    completedAt: attendanceRecord.completedAt?.toISOString() ?? null,
+    cancelledAt: attendanceRecord.cancelledAt?.toISOString() ?? null
+  };
+}
+
 function readResidenceStatus(value: string | null): ResidenceStatus | null {
   return value === "draft" ||
     value === "active" ||
@@ -2643,6 +2901,18 @@ function readAssignmentStatus(value: string | null): AssignmentStatus | null {
     value === "replacement_required" ||
     value === "expired_before_start" ||
     value === "closed"
+    ? value
+    : null;
+}
+
+function readAttendanceStatus(value: string | null): AttendanceStatus | null {
+  return value === "pending_start" ||
+    value === "checked_in" ||
+    value === "checked_out" ||
+    value === "completed" ||
+    value === "missed" ||
+    value === "cancelled" ||
+    value === "exception"
     ? value
     : null;
 }
@@ -2738,4 +3008,32 @@ function createUnavailableAssignmentService(): AssignmentService {
     markReplacementRequired: denied,
     readAuditSummary: denied
   } as AssignmentService;
+}
+
+function createUnavailableAttendanceService(): AttendanceService {
+  const denied = async () => {
+    throw new AttendanceError({
+      status: "permission_denied",
+      allow: false,
+      attendanceRecord: null,
+      roles: [],
+      internalReason: "attendance_service_unavailable",
+      externalCode: authorizationDeniedCode,
+      externalMessage: authorizationDeniedMessage
+    });
+  };
+
+  return {
+    createFromAssignment: denied,
+    listAttendance: denied,
+    readAttendance: denied,
+    workerRead: denied,
+    workerCheckIn: denied,
+    workerCheckOut: denied,
+    markCompleted: denied,
+    markMissed: denied,
+    markException: denied,
+    cancel: denied,
+    readAuditSummary: denied
+  } as AttendanceService;
 }

@@ -85,6 +85,17 @@ export const authorizationPermissionKeys = [
   "assignment.worker_acknowledge",
   "assignment.worker_withdraw",
   "assignment.supervise",
+  "attendance.create",
+  "attendance.read",
+  "attendance.check_in",
+  "attendance.check_out",
+  "attendance.override",
+  "attendance.cancel",
+  "attendance.audit_read",
+  "attendance.worker_read",
+  "attendance.worker_check_in",
+  "attendance.worker_check_out",
+  "attendance.supervise",
   "audit.read",
   "platform.supervise"
 ] as const;
@@ -1717,6 +1728,156 @@ export class AssignmentError extends Error {
   }
 }
 
+export type AttendanceStatus =
+  | "pending_start"
+  | "checked_in"
+  | "checked_out"
+  | "completed"
+  | "missed"
+  | "cancelled"
+  | "exception";
+
+export type AttendanceDecisionStatus =
+  | "allow"
+  | "invalid_input"
+  | "not_found"
+  | "permission_denied"
+  | "version_conflict"
+  | "invalid_transition"
+  | "assignment_not_ready"
+  | "attendance_exists"
+  | "duplicate_check_in"
+  | "duplicate_check_out"
+  | "check_out_before_check_in";
+
+export interface StoredAttendanceRecord {
+  id: string;
+  assignmentId: string;
+  jobRequestId: string;
+  workerIdentityId: string;
+  organizationId: string;
+  residenceId: string;
+  departmentId: string;
+  workGroupId: string;
+  roleDefinitionId: string;
+  status: AttendanceStatus;
+  scheduledStartAt: Date;
+  scheduledEndAt: Date;
+  timezone: string;
+  assignmentStatusSnapshot: string;
+  verificationMethod: string;
+  checkInAt: Date | null;
+  checkInMethod: string | null;
+  checkInEvidenceSummary: string | null;
+  checkInLocationPolicyResult: string | null;
+  checkOutAt: Date | null;
+  checkOutMethod: string | null;
+  checkOutEvidenceSummary: string | null;
+  checkOutLocationPolicyResult: string | null;
+  exceptionCategory: string | null;
+  supervisorNote: string | null;
+  createdByUserId: string;
+  updatedByUserId: string | null;
+  checkedInByUserId: string | null;
+  checkedOutByUserId: string | null;
+  cancelledByUserId: string | null;
+  createdAt: Date;
+  updatedAt: Date;
+  completedAt: Date | null;
+  cancelledAt: Date | null;
+  version: number;
+}
+
+export interface PublicAttendanceRecord extends StoredAttendanceRecord {
+  versionToken: number;
+  timesheetBoundary: "not_started" | "handoff_ready";
+  verificationBoundary: "provider_neutral";
+}
+
+export interface AttendanceDecision {
+  status: AttendanceDecisionStatus;
+  allow: boolean;
+  attendanceRecord: PublicAttendanceRecord | null;
+  roles: readonly AuthorizationRoleKey[];
+  internalReason: string | null;
+  externalCode: typeof authorizationDeniedCode | null;
+  externalMessage: typeof authorizationDeniedMessage | null;
+}
+
+export interface AttendanceRepository {
+  createAttendanceFromAssignment(input: {
+    assignment: StoredAssignment;
+    actorUserId: string;
+    verificationMethod: string;
+    now: Date;
+  }): Promise<StoredAttendanceRecord>;
+  findAttendanceById(attendanceRecordId: string): Promise<StoredAttendanceRecord | null>;
+  findAttendanceByAssignmentId(assignmentId: string): Promise<StoredAttendanceRecord | null>;
+  listAttendance(input: {
+    organizationId?: string | undefined;
+    workerIdentityId?: string | undefined;
+    assignmentId?: string | undefined;
+    statuses?: readonly AttendanceStatus[] | undefined;
+  }): Promise<StoredAttendanceRecord[]>;
+  updateAttendance(input: {
+    attendanceRecordId: string;
+    expectedVersion: number;
+    actorUserId: string | null;
+    status?: AttendanceStatus | undefined;
+    checkInAt?: Date | null | undefined;
+    checkInMethod?: string | null | undefined;
+    checkInEvidenceSummary?: string | null | undefined;
+    checkInLocationPolicyResult?: string | null | undefined;
+    checkOutAt?: Date | null | undefined;
+    checkOutMethod?: string | null | undefined;
+    checkOutEvidenceSummary?: string | null | undefined;
+    checkOutLocationPolicyResult?: string | null | undefined;
+    exceptionCategory?: string | null | undefined;
+    supervisorNote?: string | null | undefined;
+    completedAt?: Date | null | undefined;
+    cancelledAt?: Date | null | undefined;
+    checkedInByUserId?: string | null | undefined;
+    checkedOutByUserId?: string | null | undefined;
+    cancelledByUserId?: string | null | undefined;
+    now: Date;
+  }): Promise<StoredAttendanceRecord | null>;
+  recordAttendanceAuditEvent(input: {
+    action:
+      | "attendance.creation_attempted"
+      | "attendance.validation_failed"
+      | "attendance.created"
+      | "attendance.check_in_attempted"
+      | "attendance.checked_in"
+      | "attendance.check_out_attempted"
+      | "attendance.checked_out"
+      | "attendance.completed"
+      | "attendance.missed"
+      | "attendance.cancelled"
+      | "attendance.exception"
+      | "attendance.access_denied"
+      | "attendance.version_conflict";
+    organizationId: string | null;
+    attendanceRecordId: string | null;
+    assignmentId: string | null;
+    actorUserId: string | null;
+    priorState: string | null;
+    newState: string | null;
+    reason: string | null;
+    correlationId: string;
+    createdAt: Date;
+  }): Promise<void>;
+}
+
+export class AttendanceError extends Error {
+  decision: AttendanceDecision;
+
+  constructor(decision: AttendanceDecision) {
+    super(authorizationDeniedMessage);
+    this.name = "AttendanceError";
+    this.decision = decision;
+  }
+}
+
 export class AuthorizationDeniedError extends Error {
   code = authorizationDeniedCode;
   decision: AuthorizationDecision;
@@ -2122,6 +2283,94 @@ export const authorizationPermissionDefinitions = [
     "Not assigned to active roles in this foundation."
   ),
   permission(
+    "attendance.create",
+    "Create an AttendanceRecord from a valid Assignment.",
+    "platform",
+    "active",
+    "Could create operational evidence without a valid Assignment if preconditions are bypassed.",
+    "Requires Assignment handoff state and creates no timesheet, payroll, finance, or GPS provider record."
+  ),
+  permission(
+    "attendance.read",
+    "Read governed Attendance status for authorized platform or employer users.",
+    "organization",
+    "active",
+    "Could expose worker presence information beyond minimum necessary access.",
+    "Requires organization context and returns attendance status only."
+  ),
+  permission(
+    "attendance.check_in",
+    "Record platform-supervised check-in evidence.",
+    "platform",
+    "active",
+    "Could fabricate arrival evidence if not actor-bound and audited.",
+    "Records timestamped evidence only; does not approve time or payroll."
+  ),
+  permission(
+    "attendance.check_out",
+    "Record platform-supervised check-out evidence.",
+    "platform",
+    "active",
+    "Could fabricate departure evidence if not actor-bound and audited.",
+    "Records timestamped evidence only; does not approve time or payroll."
+  ),
+  permission(
+    "attendance.override",
+    "Mark an AttendanceRecord as an exception or completed by supervised review.",
+    "platform",
+    "active",
+    "Could be mistaken for timesheet approval or worker discipline.",
+    "Preserves original evidence and does not calculate approved hours."
+  ),
+  permission(
+    "attendance.cancel",
+    "Cancel Attendance when Assignment context is no longer valid.",
+    "platform",
+    "active",
+    "Could erase operational evidence without audit if misused.",
+    "Preserves cancelled state and does not modify Assignment history."
+  ),
+  permission(
+    "attendance.audit_read",
+    "Read Attendance audit summaries.",
+    "platform",
+    "active",
+    "Could expose operational evidence history beyond least privilege.",
+    "Dispatcher and Platform Administrator only."
+  ),
+  permission(
+    "attendance.worker_read",
+    "Allow a worker to read their own AttendanceRecord.",
+    "none",
+    "active",
+    "Could expose another worker's attendance if ownership is not enforced.",
+    "Requires authenticated WorkerIdentity ownership."
+  ),
+  permission(
+    "attendance.worker_check_in",
+    "Allow a worker to check in to their own AttendanceRecord.",
+    "none",
+    "active",
+    "Could fabricate another worker's arrival if ownership is not enforced.",
+    "Records worker-owned timestamp evidence only."
+  ),
+  permission(
+    "attendance.worker_check_out",
+    "Allow a worker to check out of their own AttendanceRecord.",
+    "none",
+    "active",
+    "Could fabricate another worker's departure if ownership is not enforced.",
+    "Records worker-owned timestamp evidence only."
+  ),
+  permission(
+    "attendance.supervise",
+    "Reserved future Attendance supervision capability.",
+    "platform",
+    "reserved",
+    "Would grant elevated attendance oversight if activated silently.",
+    "Not assigned to active roles in this foundation."
+  ),
+  permission(
     "audit.read",
     "Read approved audit summaries.",
     "platform",
@@ -2169,6 +2418,13 @@ export const authorizationRoleDefinitions = [
     "assignment.mark_replacement_required",
     "assignment.attendance_handoff",
     "assignment.audit_read",
+    "attendance.create",
+    "attendance.read",
+    "attendance.check_in",
+    "attendance.check_out",
+    "attendance.override",
+    "attendance.cancel",
+    "attendance.audit_read",
     "audit.read"
   ]),
   roleDefinition("ORGANIZATION_OWNER", "Organization Owner", "organization", [
@@ -2187,7 +2443,8 @@ export const authorizationRoleDefinitions = [
     "job_request.update_draft",
     "job_request.submit",
     "job_request.cancel",
-    "assignment.read"
+    "assignment.read",
+    "attendance.read"
   ]),
   roleDefinition("ORGANIZATION_ADMINISTRATOR", "Organization Administrator", "organization", [
     "organization.read",
@@ -2204,7 +2461,8 @@ export const authorizationRoleDefinitions = [
     "job_request.update_draft",
     "job_request.submit",
     "job_request.cancel",
-    "assignment.read"
+    "assignment.read",
+    "attendance.read"
   ]),
   roleDefinition("ORGANIZATION_STAFF", "Organization Staff", "organization", [
     "organization.read",
@@ -2217,13 +2475,17 @@ export const authorizationRoleDefinitions = [
     "job_request.update_draft",
     "job_request.submit",
     "job_request.cancel",
-    "assignment.read"
+    "assignment.read",
+    "attendance.read"
   ]),
   roleDefinition("WORKER_ACCESS", "Worker Access", "none", [
     "worker_offer.respond",
     "assignment.worker_read",
     "assignment.worker_acknowledge",
-    "assignment.worker_withdraw"
+    "assignment.worker_withdraw",
+    "attendance.worker_read",
+    "attendance.worker_check_in",
+    "attendance.worker_check_out"
   ]),
   roleDefinition("DISPATCHER", "Dispatcher", "platform", [
     "dispatch.create",
@@ -2249,7 +2511,14 @@ export const authorizationRoleDefinitions = [
     "assignment.withdraw",
     "assignment.mark_replacement_required",
     "assignment.attendance_handoff",
-    "assignment.audit_read"
+    "assignment.audit_read",
+    "attendance.create",
+    "attendance.read",
+    "attendance.check_in",
+    "attendance.check_out",
+    "attendance.override",
+    "attendance.cancel",
+    "attendance.audit_read"
   ])
 ] as const satisfies readonly AuthorizationRoleDefinition[];
 
@@ -6977,6 +7246,7 @@ async function requireWorkerOwnedAssignment(input: {
     session: input.session,
     roles: input.roles,
     permission: input.permission,
+    platformContext: { platform: true },
     ...(input.correlationId ? { correlationId: input.correlationId } : {})
   });
   const assignment = await input.assignmentRepository.findAssignmentById(input.assignmentId);
@@ -7207,6 +7477,901 @@ async function recordAssignmentAudit(
 
 function createAssignmentCorrelationId() {
   return `assignment_${randomBytes(12).toString("base64url")}`;
+}
+
+export function createAttendanceService(
+  attendanceRepository: AttendanceRepository,
+  assignmentRepository: AssignmentRepository,
+  workerOfferRepository: WorkerOfferRepository,
+  authorizationService: AuthorizationService,
+  options: { now?: () => Date } = {}
+) {
+  const now = options.now ?? (() => new Date());
+
+  return {
+    async createFromAssignment(input: {
+      session: SessionValidationResult;
+      roles?: readonly AuthorizationRoleKey[];
+      assignmentId: string;
+      verificationMethod?: string | null;
+      correlationId?: string;
+    }) {
+      const currentTime = now();
+      const decision = await authorizeAttendancePlatformOperation({
+        attendanceRepository,
+        authorizationService,
+        session: input.session,
+        roles: input.roles ?? [],
+        permission: "attendance.create",
+        attendanceRecord: null,
+        correlationId: input.correlationId,
+        now: currentTime
+      });
+      if (!decision.allow) throw new AttendanceError(decision);
+
+      await recordAttendanceAudit(attendanceRepository, {
+        action: "attendance.creation_attempted",
+        organizationId: null,
+        attendanceRecordId: null,
+        assignmentId: input.assignmentId,
+        actorUserId: input.session.user?.id ?? null,
+        priorState: null,
+        newState: "pending_start",
+        reason: "create_from_assignment",
+        correlationId: input.correlationId,
+        createdAt: currentTime
+      });
+
+      const assignment = await assignmentRepository.findAssignmentById(input.assignmentId);
+      if (!assignment) {
+        throw new AttendanceError(
+          attendanceDeny("not_found", "assignment_not_found", null, input.roles ?? [])
+        );
+      }
+      if (!attendanceReadyAssignmentStates.includes(assignment.status)) {
+        await recordAttendanceValidationFailure({
+          attendanceRepository,
+          assignment,
+          session: input.session,
+          reason: `assignment_not_ready:${assignment.status}`,
+          correlationId: input.correlationId,
+          now: currentTime
+        });
+        throw new AttendanceError(
+          attendanceDeny(
+            "assignment_not_ready",
+            `assignment_not_ready:${assignment.status}`,
+            null,
+            input.roles ?? []
+          )
+        );
+      }
+      if (await attendanceRepository.findAttendanceByAssignmentId(assignment.id)) {
+        throw new AttendanceError(
+          attendanceDeny("attendance_exists", "attendance_already_exists", null, input.roles ?? [])
+        );
+      }
+
+      const attendanceRecord = await attendanceRepository.createAttendanceFromAssignment({
+        assignment,
+        actorUserId: input.session.user?.id ?? "system",
+        verificationMethod: normalizeVerificationMethod(input.verificationMethod),
+        now: currentTime
+      });
+
+      await recordAttendanceAudit(attendanceRepository, {
+        action: "attendance.created",
+        organizationId: attendanceRecord.organizationId,
+        attendanceRecordId: attendanceRecord.id,
+        assignmentId: attendanceRecord.assignmentId,
+        actorUserId: input.session.user?.id ?? null,
+        priorState: null,
+        newState: attendanceRecord.status,
+        reason: "assignment_validated",
+        correlationId: input.correlationId,
+        createdAt: currentTime
+      });
+
+      return toPublicAttendanceRecord(attendanceRecord);
+    },
+
+    async listAttendance(input: {
+      session: SessionValidationResult;
+      roles?: readonly AuthorizationRoleKey[];
+      organizationId?: string | null;
+      assignmentId?: string | null;
+      statuses?: readonly AttendanceStatus[];
+      correlationId?: string;
+    }) {
+      const decision = await authorizeAttendanceReadOperation({
+        attendanceRepository,
+        authorizationService,
+        session: input.session,
+        roles: input.roles ?? [],
+        organizationId: input.organizationId ?? null,
+        attendanceRecord: null,
+        correlationId: input.correlationId,
+        now: now()
+      });
+      if (!decision.allow) throw new AttendanceError(decision);
+
+      return (
+        await attendanceRepository.listAttendance({
+          organizationId: input.organizationId ?? undefined,
+          assignmentId: input.assignmentId ?? undefined,
+          statuses: input.statuses
+        })
+      ).map(toPublicAttendanceRecord);
+    },
+
+    async readAttendance(input: {
+      session: SessionValidationResult;
+      roles?: readonly AuthorizationRoleKey[];
+      attendanceRecordId: string;
+      correlationId?: string;
+    }) {
+      const attendance = await requireAuthorizedAttendance({
+        attendanceRepository,
+        authorizationService,
+        session: input.session,
+        roles: input.roles ?? [],
+        permission: "attendance.read",
+        attendanceRecordId: input.attendanceRecordId,
+        correlationId: input.correlationId,
+        now: now()
+      });
+      return attendance.publicAttendanceRecord;
+    },
+
+    async workerRead(input: {
+      session: SessionValidationResult;
+      roles?: readonly AuthorizationRoleKey[];
+      attendanceRecordId: string;
+      correlationId?: string;
+    }) {
+      const workerIdentity = await requireWorkerIdentityForSession(
+        workerOfferRepository,
+        input.session
+      );
+      const attendance = await requireWorkerOwnedAttendance({
+        attendanceRepository,
+        authorizationService,
+        session: input.session,
+        roles: input.roles ?? [],
+        workerIdentity,
+        attendanceRecordId: input.attendanceRecordId,
+        permission: "attendance.worker_read",
+        correlationId: input.correlationId,
+        now: now()
+      });
+      return attendance.publicAttendanceRecord;
+    },
+
+    async workerCheckIn(input: AttendanceEvidenceInput) {
+      const currentTime = now();
+      const workerIdentity = await requireWorkerIdentityForSession(
+        workerOfferRepository,
+        input.session
+      );
+      const attendance = await requireWorkerOwnedAttendance({
+        attendanceRepository,
+        authorizationService,
+        session: input.session,
+        roles: input.roles ?? [],
+        workerIdentity,
+        attendanceRecordId: input.attendanceRecordId,
+        permission: "attendance.worker_check_in",
+        correlationId: input.correlationId,
+        now: currentTime
+      });
+      return checkInAttendance({
+        ...input,
+        attendanceRepository,
+        attendanceRecord: attendance.stored,
+        actorUserId: input.session.user?.id ?? null,
+        now: currentTime
+      });
+    },
+
+    async workerCheckOut(input: AttendanceEvidenceInput) {
+      const currentTime = now();
+      const workerIdentity = await requireWorkerIdentityForSession(
+        workerOfferRepository,
+        input.session
+      );
+      const attendance = await requireWorkerOwnedAttendance({
+        attendanceRepository,
+        authorizationService,
+        session: input.session,
+        roles: input.roles ?? [],
+        workerIdentity,
+        attendanceRecordId: input.attendanceRecordId,
+        permission: "attendance.worker_check_out",
+        correlationId: input.correlationId,
+        now: currentTime
+      });
+      return checkOutAttendance({
+        ...input,
+        attendanceRepository,
+        attendanceRecord: attendance.stored,
+        actorUserId: input.session.user?.id ?? null,
+        now: currentTime
+      });
+    },
+
+    async markCompleted(input: AttendanceTransitionInput) {
+      return transitionAttendanceById({
+        ...input,
+        attendanceRepository,
+        authorizationService,
+        permission: "attendance.override",
+        allowedFrom: ["checked_out"],
+        nextStatus: "completed",
+        action: "attendance.completed",
+        completedAt: true,
+        now: now()
+      });
+    },
+
+    async markMissed(input: AttendanceTransitionInput & { reason: string }) {
+      return transitionAttendanceById({
+        ...input,
+        attendanceRepository,
+        authorizationService,
+        permission: "attendance.override",
+        allowedFrom: ["pending_start"],
+        nextStatus: "missed",
+        action: "attendance.missed",
+        exceptionCategory: input.reason,
+        now: now()
+      });
+    },
+
+    async markException(
+      input: AttendanceTransitionInput & { reason: string; note?: string | null }
+    ) {
+      return transitionAttendanceById({
+        ...input,
+        attendanceRepository,
+        authorizationService,
+        permission: "attendance.override",
+        allowedFrom: ["pending_start", "checked_in", "checked_out"],
+        nextStatus: "exception",
+        action: "attendance.exception",
+        exceptionCategory: input.reason,
+        supervisorNote: input.note ?? null,
+        now: now()
+      });
+    },
+
+    async cancel(input: AttendanceTransitionInput & { reason: string }) {
+      return transitionAttendanceById({
+        ...input,
+        attendanceRepository,
+        authorizationService,
+        permission: "attendance.cancel",
+        allowedFrom: ["pending_start", "checked_in", "exception"],
+        nextStatus: "cancelled",
+        action: "attendance.cancelled",
+        cancelledAt: true,
+        exceptionCategory: input.reason,
+        now: now()
+      });
+    },
+
+    async readAuditSummary(input: {
+      session: SessionValidationResult;
+      roles?: readonly AuthorizationRoleKey[];
+      attendanceRecordId: string;
+      correlationId?: string;
+    }) {
+      const attendance = await requireAuthorizedAttendance({
+        attendanceRepository,
+        authorizationService,
+        session: input.session,
+        roles: input.roles ?? [],
+        permission: "attendance.audit_read",
+        attendanceRecordId: input.attendanceRecordId,
+        correlationId: input.correlationId,
+        now: now()
+      });
+      return {
+        attendanceRecordId: attendance.stored.id,
+        assignmentId: attendance.stored.assignmentId,
+        status: attendance.stored.status,
+        message: "Attendance audit is available through governed audit records."
+      };
+    }
+  };
+}
+
+export type AttendanceService = ReturnType<typeof createAttendanceService>;
+
+interface AttendanceEvidenceInput {
+  session: SessionValidationResult;
+  roles?: readonly AuthorizationRoleKey[];
+  attendanceRecordId: string;
+  expectedVersion: number;
+  method?: string | null;
+  evidenceSummary?: string | null;
+  locationPolicyResult?: string | null;
+  correlationId?: string;
+}
+
+interface AttendanceTransitionInput {
+  session: SessionValidationResult;
+  roles?: readonly AuthorizationRoleKey[];
+  attendanceRecordId: string;
+  expectedVersion: number;
+  reason?: string | null;
+  correlationId?: string;
+}
+
+const attendanceReadyAssignmentStates: readonly AssignmentStatus[] = [
+  "in_attendance_window",
+  "attendance_handoff"
+];
+
+function toPublicAttendanceRecord(
+  attendanceRecord: StoredAttendanceRecord
+): PublicAttendanceRecord {
+  return {
+    ...attendanceRecord,
+    versionToken: attendanceRecord.version,
+    timesheetBoundary: attendanceRecord.status === "completed" ? "handoff_ready" : "not_started",
+    verificationBoundary: "provider_neutral"
+  };
+}
+
+function attendanceDeny(
+  status: Exclude<AttendanceDecisionStatus, "allow">,
+  internalReason: string,
+  attendanceRecord: PublicAttendanceRecord | null,
+  roles: readonly AuthorizationRoleKey[]
+): AttendanceDecision {
+  return {
+    status,
+    allow: false,
+    attendanceRecord,
+    roles,
+    internalReason,
+    externalCode: authorizationDeniedCode,
+    externalMessage: authorizationDeniedMessage
+  };
+}
+
+async function authorizeAttendancePlatformOperation(input: {
+  attendanceRepository: AttendanceRepository;
+  authorizationService: AuthorizationService;
+  session: SessionValidationResult;
+  roles: readonly AuthorizationRoleKey[];
+  permission: AuthorizationPermissionKey;
+  attendanceRecord?: StoredAttendanceRecord | null | undefined;
+  correlationId?: string | undefined;
+  now: Date;
+}): Promise<AttendanceDecision> {
+  const authorizationDecision = await input.authorizationService.decide({
+    session: input.session,
+    roles: input.roles,
+    permission: input.permission,
+    platformContext: { platform: true },
+    ...(input.correlationId ? { correlationId: input.correlationId } : {})
+  });
+  const publicAttendance = input.attendanceRecord
+    ? toPublicAttendanceRecord(input.attendanceRecord)
+    : null;
+
+  if (!authorizationDecision.allow) {
+    const decision = attendanceDeny(
+      "permission_denied",
+      authorizationDecision.internalReason ?? "permission_denied",
+      publicAttendance,
+      input.roles
+    );
+    await recordAttendanceDenial(input.attendanceRepository, {
+      decision,
+      actorUserId: input.session.user?.id ?? null,
+      correlationId: input.correlationId,
+      createdAt: input.now
+    });
+    return decision;
+  }
+
+  return {
+    status: "allow",
+    allow: true,
+    attendanceRecord: publicAttendance,
+    roles: input.roles,
+    internalReason: null,
+    externalCode: null,
+    externalMessage: null
+  };
+}
+
+async function authorizeAttendanceReadOperation(input: {
+  attendanceRepository: AttendanceRepository;
+  authorizationService: AuthorizationService;
+  session: SessionValidationResult;
+  roles: readonly AuthorizationRoleKey[];
+  organizationId: string | null;
+  attendanceRecord?: StoredAttendanceRecord | null | undefined;
+  correlationId?: string | undefined;
+  now: Date;
+}): Promise<AttendanceDecision> {
+  const authorizationDecision = await input.authorizationService.decide({
+    session: input.session,
+    roles: input.roles,
+    permission: "attendance.read",
+    ...(input.organizationId ? { resourceContext: { organizationId: input.organizationId } } : {}),
+    ...(input.correlationId ? { correlationId: input.correlationId } : {})
+  });
+  const publicAttendance = input.attendanceRecord
+    ? toPublicAttendanceRecord(input.attendanceRecord)
+    : null;
+
+  if (!authorizationDecision.allow) {
+    const decision = attendanceDeny(
+      "permission_denied",
+      authorizationDecision.internalReason ?? "permission_denied",
+      publicAttendance,
+      input.roles
+    );
+    await recordAttendanceDenial(input.attendanceRepository, {
+      decision,
+      actorUserId: input.session.user?.id ?? null,
+      correlationId: input.correlationId,
+      createdAt: input.now
+    });
+    return decision;
+  }
+
+  return {
+    status: "allow",
+    allow: true,
+    attendanceRecord: publicAttendance,
+    roles: input.roles,
+    internalReason: null,
+    externalCode: null,
+    externalMessage: null
+  };
+}
+
+async function requireAuthorizedAttendance(input: {
+  attendanceRepository: AttendanceRepository;
+  authorizationService: AuthorizationService;
+  session: SessionValidationResult;
+  roles: readonly AuthorizationRoleKey[];
+  permission: AuthorizationPermissionKey;
+  attendanceRecordId: string;
+  correlationId?: string | undefined;
+  now: Date;
+}) {
+  const attendanceRecord = await input.attendanceRepository.findAttendanceById(
+    input.attendanceRecordId
+  );
+  const decision =
+    input.permission === "attendance.read"
+      ? await authorizeAttendanceReadOperation({
+          attendanceRepository: input.attendanceRepository,
+          authorizationService: input.authorizationService,
+          session: input.session,
+          roles: input.roles,
+          organizationId: attendanceRecord?.organizationId ?? null,
+          attendanceRecord,
+          correlationId: input.correlationId,
+          now: input.now
+        })
+      : await authorizeAttendancePlatformOperation({
+          attendanceRepository: input.attendanceRepository,
+          authorizationService: input.authorizationService,
+          session: input.session,
+          roles: input.roles,
+          permission: input.permission,
+          attendanceRecord,
+          correlationId: input.correlationId,
+          now: input.now
+        });
+
+  if (!attendanceRecord || !decision.allow) {
+    throw new AttendanceError(
+      !attendanceRecord
+        ? attendanceDeny("not_found", "attendance_record_not_found", null, input.roles)
+        : decision
+    );
+  }
+
+  return {
+    stored: attendanceRecord,
+    publicAttendanceRecord: toPublicAttendanceRecord(attendanceRecord)
+  };
+}
+
+async function requireWorkerOwnedAttendance(input: {
+  attendanceRepository: AttendanceRepository;
+  authorizationService: AuthorizationService;
+  session: SessionValidationResult;
+  roles: readonly AuthorizationRoleKey[];
+  workerIdentity: StoredWorkerIdentity;
+  attendanceRecordId: string;
+  permission: AuthorizationPermissionKey;
+  correlationId?: string | undefined;
+  now: Date;
+}) {
+  const authorizationDecision = await input.authorizationService.decide({
+    session: input.session,
+    roles: input.roles,
+    permission: input.permission,
+    ...(input.correlationId ? { correlationId: input.correlationId } : {})
+  });
+  const attendanceRecord = await input.attendanceRepository.findAttendanceById(
+    input.attendanceRecordId
+  );
+  const publicAttendance = attendanceRecord ? toPublicAttendanceRecord(attendanceRecord) : null;
+  if (!attendanceRecord || attendanceRecord.workerIdentityId !== input.workerIdentity.id) {
+    const decision = attendanceDeny(
+      !attendanceRecord ? "not_found" : "permission_denied",
+      !attendanceRecord ? "attendance_record_not_found" : "attendance_not_owned_by_worker",
+      publicAttendance,
+      input.roles
+    );
+    await recordAttendanceDenial(input.attendanceRepository, {
+      decision,
+      actorUserId: input.session.user?.id ?? null,
+      correlationId: input.correlationId,
+      createdAt: input.now
+    });
+    throw new AttendanceError(decision);
+  }
+  if (!authorizationDecision.allow) {
+    const decision = attendanceDeny(
+      "permission_denied",
+      authorizationDecision.internalReason ?? "permission_denied",
+      publicAttendance,
+      input.roles
+    );
+    await recordAttendanceDenial(input.attendanceRepository, {
+      decision,
+      actorUserId: input.session.user?.id ?? null,
+      correlationId: input.correlationId,
+      createdAt: input.now
+    });
+    throw new AttendanceError(decision);
+  }
+  return {
+    stored: attendanceRecord,
+    publicAttendanceRecord: toPublicAttendanceRecord(attendanceRecord)
+  };
+}
+
+async function checkInAttendance(
+  input: AttendanceEvidenceInput & {
+    attendanceRepository: AttendanceRepository;
+    attendanceRecord: StoredAttendanceRecord;
+    actorUserId: string | null;
+    now: Date;
+  }
+) {
+  const attendanceRecord = input.attendanceRecord;
+  await recordAttendanceAudit(input.attendanceRepository, {
+    action: "attendance.check_in_attempted",
+    organizationId: attendanceRecord.organizationId,
+    attendanceRecordId: attendanceRecord.id,
+    assignmentId: attendanceRecord.assignmentId,
+    actorUserId: input.actorUserId,
+    priorState: attendanceRecord.status,
+    newState: "checked_in",
+    reason: input.method ?? "provider_neutral",
+    correlationId: input.correlationId,
+    createdAt: input.now
+  });
+
+  if (attendanceRecord.status !== "pending_start") {
+    throw new AttendanceError(
+      attendanceDeny(
+        attendanceRecord.checkInAt ? "duplicate_check_in" : "invalid_transition",
+        `cannot_check_in_from_${attendanceRecord.status}`,
+        toPublicAttendanceRecord(attendanceRecord),
+        input.roles ?? []
+      )
+    );
+  }
+
+  const updated = await input.attendanceRepository.updateAttendance({
+    attendanceRecordId: attendanceRecord.id,
+    expectedVersion: input.expectedVersion,
+    actorUserId: input.actorUserId,
+    status: "checked_in",
+    checkInAt: input.now,
+    checkedInByUserId: input.actorUserId,
+    checkInMethod: normalizeVerificationMethod(input.method),
+    checkInEvidenceSummary: normalizeOptionalResidenceText(input.evidenceSummary, 240),
+    checkInLocationPolicyResult: normalizeLocationPolicyResult(input.locationPolicyResult),
+    now: input.now
+  });
+  if (!updated) {
+    await recordAttendanceVersionConflict(input.attendanceRepository, attendanceRecord, input);
+    throw new AttendanceError(
+      attendanceDeny(
+        "version_conflict",
+        "stale_version",
+        toPublicAttendanceRecord(attendanceRecord),
+        input.roles ?? []
+      )
+    );
+  }
+
+  await recordAttendanceAudit(input.attendanceRepository, {
+    action: "attendance.checked_in",
+    organizationId: updated.organizationId,
+    attendanceRecordId: updated.id,
+    assignmentId: updated.assignmentId,
+    actorUserId: input.actorUserId,
+    priorState: attendanceRecord.status,
+    newState: updated.status,
+    reason: updated.checkInMethod,
+    correlationId: input.correlationId,
+    createdAt: input.now
+  });
+  return toPublicAttendanceRecord(updated);
+}
+
+async function checkOutAttendance(
+  input: AttendanceEvidenceInput & {
+    attendanceRepository: AttendanceRepository;
+    attendanceRecord: StoredAttendanceRecord;
+    actorUserId: string | null;
+    now: Date;
+  }
+) {
+  const attendanceRecord = input.attendanceRecord;
+  await recordAttendanceAudit(input.attendanceRepository, {
+    action: "attendance.check_out_attempted",
+    organizationId: attendanceRecord.organizationId,
+    attendanceRecordId: attendanceRecord.id,
+    assignmentId: attendanceRecord.assignmentId,
+    actorUserId: input.actorUserId,
+    priorState: attendanceRecord.status,
+    newState: "checked_out",
+    reason: input.method ?? "provider_neutral",
+    correlationId: input.correlationId,
+    createdAt: input.now
+  });
+
+  if (attendanceRecord.status !== "checked_in") {
+    throw new AttendanceError(
+      attendanceDeny(
+        attendanceRecord.checkOutAt ? "duplicate_check_out" : "invalid_transition",
+        `cannot_check_out_from_${attendanceRecord.status}`,
+        toPublicAttendanceRecord(attendanceRecord),
+        input.roles ?? []
+      )
+    );
+  }
+  if (attendanceRecord.checkInAt && input.now < attendanceRecord.checkInAt) {
+    throw new AttendanceError(
+      attendanceDeny(
+        "check_out_before_check_in",
+        "check_out_before_check_in",
+        toPublicAttendanceRecord(attendanceRecord),
+        input.roles ?? []
+      )
+    );
+  }
+
+  const updated = await input.attendanceRepository.updateAttendance({
+    attendanceRecordId: attendanceRecord.id,
+    expectedVersion: input.expectedVersion,
+    actorUserId: input.actorUserId,
+    status: "checked_out",
+    checkOutAt: input.now,
+    checkedOutByUserId: input.actorUserId,
+    checkOutMethod: normalizeVerificationMethod(input.method),
+    checkOutEvidenceSummary: normalizeOptionalResidenceText(input.evidenceSummary, 240),
+    checkOutLocationPolicyResult: normalizeLocationPolicyResult(input.locationPolicyResult),
+    now: input.now
+  });
+  if (!updated) {
+    await recordAttendanceVersionConflict(input.attendanceRepository, attendanceRecord, input);
+    throw new AttendanceError(
+      attendanceDeny(
+        "version_conflict",
+        "stale_version",
+        toPublicAttendanceRecord(attendanceRecord),
+        input.roles ?? []
+      )
+    );
+  }
+
+  await recordAttendanceAudit(input.attendanceRepository, {
+    action: "attendance.checked_out",
+    organizationId: updated.organizationId,
+    attendanceRecordId: updated.id,
+    assignmentId: updated.assignmentId,
+    actorUserId: input.actorUserId,
+    priorState: attendanceRecord.status,
+    newState: updated.status,
+    reason: updated.checkOutMethod,
+    correlationId: input.correlationId,
+    createdAt: input.now
+  });
+  return toPublicAttendanceRecord(updated);
+}
+
+async function transitionAttendanceById(
+  input: AttendanceTransitionInput & {
+    attendanceRepository: AttendanceRepository;
+    authorizationService: AuthorizationService;
+    permission: AuthorizationPermissionKey;
+    allowedFrom: readonly AttendanceStatus[];
+    nextStatus: AttendanceStatus;
+    action: Parameters<AttendanceRepository["recordAttendanceAuditEvent"]>[0]["action"];
+    exceptionCategory?: string | null | undefined;
+    supervisorNote?: string | null | undefined;
+    completedAt?: boolean | undefined;
+    cancelledAt?: boolean | undefined;
+    now: Date;
+  }
+) {
+  const attendance = await requireAuthorizedAttendance({
+    attendanceRepository: input.attendanceRepository,
+    authorizationService: input.authorizationService,
+    session: input.session,
+    roles: input.roles ?? [],
+    permission: input.permission,
+    attendanceRecordId: input.attendanceRecordId,
+    correlationId: input.correlationId,
+    now: input.now
+  });
+  const attendanceRecord = attendance.stored;
+  if (!input.allowedFrom.includes(attendanceRecord.status)) {
+    throw new AttendanceError(
+      attendanceDeny(
+        "invalid_transition",
+        `cannot_transition_from_${attendanceRecord.status}`,
+        toPublicAttendanceRecord(attendanceRecord),
+        input.roles ?? []
+      )
+    );
+  }
+  const updated = await input.attendanceRepository.updateAttendance({
+    attendanceRecordId: attendanceRecord.id,
+    expectedVersion: input.expectedVersion,
+    actorUserId: input.session.user?.id ?? null,
+    status: input.nextStatus,
+    exceptionCategory:
+      input.exceptionCategory === undefined
+        ? undefined
+        : normalizeOptionalResidenceText(input.exceptionCategory, 160),
+    supervisorNote:
+      input.supervisorNote === undefined
+        ? undefined
+        : normalizeOptionalResidenceText(input.supervisorNote, 240),
+    completedAt: input.completedAt ? input.now : undefined,
+    cancelledAt: input.cancelledAt ? input.now : undefined,
+    cancelledByUserId: input.cancelledAt ? (input.session.user?.id ?? null) : undefined,
+    now: input.now
+  });
+  if (!updated) {
+    await recordAttendanceVersionConflict(input.attendanceRepository, attendanceRecord, input);
+    throw new AttendanceError(
+      attendanceDeny(
+        "version_conflict",
+        "stale_version",
+        toPublicAttendanceRecord(attendanceRecord),
+        input.roles ?? []
+      )
+    );
+  }
+  await recordAttendanceAudit(input.attendanceRepository, {
+    action: input.action,
+    organizationId: updated.organizationId,
+    attendanceRecordId: updated.id,
+    assignmentId: updated.assignmentId,
+    actorUserId: input.session.user?.id ?? null,
+    priorState: attendanceRecord.status,
+    newState: updated.status,
+    reason: input.reason ?? input.exceptionCategory ?? null,
+    correlationId: input.correlationId,
+    createdAt: input.now
+  });
+  return toPublicAttendanceRecord(updated);
+}
+
+async function recordAttendanceValidationFailure(input: {
+  attendanceRepository: AttendanceRepository;
+  assignment: StoredAssignment;
+  session: SessionValidationResult;
+  reason: string;
+  correlationId?: string | undefined;
+  now: Date;
+}) {
+  await recordAttendanceAudit(input.attendanceRepository, {
+    action: "attendance.validation_failed",
+    organizationId: input.assignment.organizationId,
+    attendanceRecordId: null,
+    assignmentId: input.assignment.id,
+    actorUserId: input.session.user?.id ?? null,
+    priorState: input.assignment.status,
+    newState: "blocked",
+    reason: input.reason,
+    correlationId: input.correlationId,
+    createdAt: input.now
+  });
+}
+
+async function recordAttendanceVersionConflict(
+  repository: AttendanceRepository,
+  attendanceRecord: StoredAttendanceRecord,
+  input: {
+    session: SessionValidationResult;
+    roles?: readonly AuthorizationRoleKey[];
+    correlationId?: string | undefined;
+    now: Date;
+  }
+) {
+  await recordAttendanceAudit(repository, {
+    action: "attendance.version_conflict",
+    organizationId: attendanceRecord.organizationId,
+    attendanceRecordId: attendanceRecord.id,
+    assignmentId: attendanceRecord.assignmentId,
+    actorUserId: input.session.user?.id ?? null,
+    priorState: attendanceRecord.status,
+    newState: attendanceRecord.status,
+    reason: "stale_version",
+    correlationId: input.correlationId,
+    createdAt: input.now
+  });
+}
+
+async function recordAttendanceDenial(
+  repository: AttendanceRepository,
+  input: {
+    decision: AttendanceDecision;
+    actorUserId: string | null;
+    correlationId?: string | undefined;
+    createdAt: Date;
+  }
+) {
+  await recordAttendanceAudit(repository, {
+    action: "attendance.access_denied",
+    organizationId: input.decision.attendanceRecord?.organizationId ?? null,
+    attendanceRecordId: input.decision.attendanceRecord?.id ?? null,
+    assignmentId: input.decision.attendanceRecord?.assignmentId ?? null,
+    actorUserId: input.actorUserId,
+    priorState: input.decision.attendanceRecord?.status ?? null,
+    newState: "denied",
+    reason: input.decision.internalReason,
+    correlationId: input.correlationId,
+    createdAt: input.createdAt
+  });
+}
+
+async function recordAttendanceAudit(
+  repository: AttendanceRepository,
+  input: Omit<
+    Parameters<AttendanceRepository["recordAttendanceAuditEvent"]>[0],
+    "correlationId"
+  > & {
+    correlationId?: string | undefined;
+  }
+) {
+  await repository.recordAttendanceAuditEvent({
+    ...input,
+    correlationId: input.correlationId ?? createAttendanceCorrelationId()
+  });
+}
+
+function createAttendanceCorrelationId() {
+  return `attendance_${randomBytes(12).toString("base64url")}`;
+}
+
+function normalizeVerificationMethod(value: string | null | undefined) {
+  const normalized = normalizeOptionalResidenceText(value, 64);
+  return normalized ?? "none";
+}
+
+function normalizeLocationPolicyResult(value: string | null | undefined) {
+  return normalizeOptionalResidenceText(value, 120);
 }
 
 const nonTerminalDispatchStates: readonly DispatchReviewStatus[] = [
@@ -10251,6 +11416,171 @@ export function createPrismaAssignmentRepository(prismaClient: unknown): Assignm
   };
 }
 
+type PrismaAttendanceClient = Pick<PrismaAssignmentClient, "auditActorReference" | "auditEvent"> & {
+  attendanceRecord: {
+    create(args: { data: CreateAttendancePrismaData }): Promise<StoredAttendanceRecord>;
+    findUnique(args: {
+      where: { id?: string | undefined; assignmentId?: string | undefined };
+    }): Promise<StoredAttendanceRecord | null>;
+    findMany(args: {
+      where?: {
+        organizationId?: string | undefined;
+        workerIdentityId?: string | undefined;
+        assignmentId?: string | undefined;
+        status?: { in: readonly AttendanceStatus[] } | undefined;
+      };
+      orderBy: [{ updatedAt: "desc" }, { scheduledStartAt: "asc" }];
+    }): Promise<StoredAttendanceRecord[]>;
+    updateMany(args: {
+      where: { id: string; version: number };
+      data: Partial<UpdateAttendancePrismaData>;
+    }): Promise<{ count: number }>;
+  };
+};
+
+type CreateAttendancePrismaData = {
+  assignmentId: string;
+  jobRequestId: string;
+  workerIdentityId: string;
+  organizationId: string;
+  residenceId: string;
+  departmentId: string;
+  workGroupId: string;
+  roleDefinitionId: string;
+  status: AttendanceStatus;
+  scheduledStartAt: Date;
+  scheduledEndAt: Date;
+  timezone: string;
+  assignmentStatusSnapshot: string;
+  verificationMethod: string;
+  createdByUserId: string;
+  createdAt: Date;
+  updatedAt: Date;
+};
+
+type UpdateAttendancePrismaData = {
+  status: AttendanceStatus;
+  checkInAt: Date | null;
+  checkInMethod: string | null;
+  checkInEvidenceSummary: string | null;
+  checkInLocationPolicyResult: string | null;
+  checkOutAt: Date | null;
+  checkOutMethod: string | null;
+  checkOutEvidenceSummary: string | null;
+  checkOutLocationPolicyResult: string | null;
+  exceptionCategory: string | null;
+  supervisorNote: string | null;
+  completedAt: Date | null;
+  cancelledAt: Date | null;
+  updatedByUserId: string | null;
+  checkedInByUserId: string | null;
+  checkedOutByUserId: string | null;
+  cancelledByUserId: string | null;
+  updatedAt: Date;
+  version: { increment: number };
+};
+
+export function createPrismaAttendanceRepository(prismaClient: unknown): AttendanceRepository {
+  const prisma = prismaClient as PrismaAttendanceClient;
+
+  return {
+    createAttendanceFromAssignment(input) {
+      return prisma.attendanceRecord.create({
+        data: {
+          assignmentId: input.assignment.id,
+          jobRequestId: input.assignment.jobRequestId,
+          workerIdentityId: input.assignment.workerIdentityId,
+          organizationId: input.assignment.organizationId,
+          residenceId: input.assignment.residenceId,
+          departmentId: input.assignment.departmentId,
+          workGroupId: input.assignment.workGroupId,
+          roleDefinitionId: input.assignment.roleDefinitionId,
+          status: "pending_start",
+          scheduledStartAt: input.assignment.confirmedStartAt,
+          scheduledEndAt: input.assignment.confirmedEndAt,
+          timezone: input.assignment.timezone,
+          assignmentStatusSnapshot: input.assignment.status,
+          verificationMethod: input.verificationMethod,
+          createdByUserId: input.actorUserId,
+          createdAt: input.now,
+          updatedAt: input.now
+        }
+      });
+    },
+
+    findAttendanceById(attendanceRecordId) {
+      return prisma.attendanceRecord.findUnique({ where: { id: attendanceRecordId } });
+    },
+
+    findAttendanceByAssignmentId(assignmentId) {
+      return prisma.attendanceRecord.findUnique({ where: { assignmentId } });
+    },
+
+    listAttendance(input) {
+      return prisma.attendanceRecord.findMany({
+        where: {
+          ...(input.organizationId ? { organizationId: input.organizationId } : {}),
+          ...(input.workerIdentityId ? { workerIdentityId: input.workerIdentityId } : {}),
+          ...(input.assignmentId ? { assignmentId: input.assignmentId } : {}),
+          ...(input.statuses ? { status: { in: input.statuses } } : {})
+        },
+        orderBy: [{ updatedAt: "desc" }, { scheduledStartAt: "asc" }]
+      });
+    },
+
+    async updateAttendance(input) {
+      const data: Partial<UpdateAttendancePrismaData> = {
+        updatedByUserId: input.actorUserId,
+        updatedAt: input.now,
+        version: { increment: 1 }
+      };
+
+      if (input.status !== undefined) data.status = input.status;
+      if (input.checkInAt !== undefined) data.checkInAt = input.checkInAt;
+      if (input.checkInMethod !== undefined) data.checkInMethod = input.checkInMethod;
+      if (input.checkInEvidenceSummary !== undefined) {
+        data.checkInEvidenceSummary = input.checkInEvidenceSummary;
+      }
+      if (input.checkInLocationPolicyResult !== undefined) {
+        data.checkInLocationPolicyResult = input.checkInLocationPolicyResult;
+      }
+      if (input.checkOutAt !== undefined) data.checkOutAt = input.checkOutAt;
+      if (input.checkOutMethod !== undefined) data.checkOutMethod = input.checkOutMethod;
+      if (input.checkOutEvidenceSummary !== undefined) {
+        data.checkOutEvidenceSummary = input.checkOutEvidenceSummary;
+      }
+      if (input.checkOutLocationPolicyResult !== undefined) {
+        data.checkOutLocationPolicyResult = input.checkOutLocationPolicyResult;
+      }
+      if (input.exceptionCategory !== undefined) data.exceptionCategory = input.exceptionCategory;
+      if (input.supervisorNote !== undefined) data.supervisorNote = input.supervisorNote;
+      if (input.completedAt !== undefined) data.completedAt = input.completedAt;
+      if (input.cancelledAt !== undefined) data.cancelledAt = input.cancelledAt;
+      if (input.checkedInByUserId !== undefined) {
+        data.checkedInByUserId = input.checkedInByUserId;
+      }
+      if (input.checkedOutByUserId !== undefined) {
+        data.checkedOutByUserId = input.checkedOutByUserId;
+      }
+      if (input.cancelledByUserId !== undefined) {
+        data.cancelledByUserId = input.cancelledByUserId;
+      }
+
+      const result = await prisma.attendanceRecord.updateMany({
+        where: { id: input.attendanceRecordId, version: input.expectedVersion },
+        data
+      });
+      if (result.count !== 1) return null;
+
+      return this.findAttendanceById(input.attendanceRecordId);
+    },
+
+    async recordAttendanceAuditEvent(input) {
+      await recordPrismaAttendanceAudit(prisma, input);
+    }
+  };
+}
+
 function resolvePasswordHashOptions(options: PasswordHashOptions) {
   return {
     costFactor:
@@ -10454,7 +11784,8 @@ function isSensitiveAuthorizationDenial(decision: AuthorizationDecision) {
     decision.permission.startsWith("job_request.") ||
     decision.permission.startsWith("dispatch.") ||
     decision.permission.startsWith("worker_offer.") ||
-    decision.permission.startsWith("assignment.")
+    decision.permission.startsWith("assignment.") ||
+    decision.permission.startsWith("attendance.")
   );
 }
 
@@ -12862,6 +14193,38 @@ async function recordPrismaAssignmentAudit(
       source: "api",
       correlationId: input.correlationId,
       policyVersion: "assignment-foundation-v1",
+      createdAt: input.createdAt
+    }
+  });
+}
+
+async function recordPrismaAttendanceAudit(
+  prisma: Pick<PrismaAttendanceClient, "auditActorReference" | "auditEvent">,
+  input: Parameters<AttendanceRepository["recordAttendanceAuditEvent"]>[0]
+) {
+  const actorReference = await prisma.auditActorReference.create({
+    data: {
+      actorType: input.actorUserId ? "user" : "system",
+      ...(input.actorUserId ? { userId: input.actorUserId } : {}),
+      ...(input.organizationId ? { organizationId: input.organizationId } : {}),
+      displayLabel: input.actorUserId ? "Attendance actor" : "Attendance boundary"
+    }
+  });
+
+  await prisma.auditEvent.create({
+    data: {
+      actorReferenceId: actorReference.id,
+      organizationId: input.organizationId,
+      entityType: "attendance_record",
+      entityId: input.attendanceRecordId ?? nilEntityId,
+      entityPublicReference: input.assignmentId,
+      action: input.action,
+      priorState: input.priorState,
+      newState: input.newState,
+      reason: input.reason,
+      source: "api",
+      correlationId: input.correlationId,
+      policyVersion: "attendance-foundation-v1",
       createdAt: input.createdAt
     }
   });
