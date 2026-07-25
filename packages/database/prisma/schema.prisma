@@ -123,6 +123,106 @@ enum AuditSource {
   system
 }
 
+enum DispatchReviewStatus {
+  draft
+  active
+  candidate_review
+  shortlist_ready
+  offer_preparation
+  paused
+  cancelled
+  closed
+}
+
+enum DispatchType {
+  initial
+  replacement_reserved
+}
+
+enum DispatchPriority {
+  normal
+  urgent
+  emergency
+}
+
+enum DispatchCandidateSourceType {
+  internal_worker_profile
+  invited_worker
+  staffing_partner
+  enterprise_employee_pool
+  external_integration
+  imported_record
+  unavailable
+}
+
+enum DispatchMatchState {
+  match
+  partial_match
+  no_match
+  not_evaluated
+}
+
+enum DispatchSummaryState {
+  meets_requirements
+  partially_meets
+  missing_required
+  verification_pending
+  expired
+  not_evaluated
+}
+
+enum DispatchAvailabilityState {
+  available
+  partially_available
+  unavailable
+  not_evaluated
+  source_unavailable
+}
+
+enum DispatchConflictState {
+  conflict_free
+  conflict_detected
+  not_evaluated
+  source_unavailable
+}
+
+enum DispatchServiceAreaState {
+  inside_service_area
+  outside_service_area
+  not_evaluated
+  source_unavailable
+}
+
+enum DispatchTravelState {
+  suitable
+  unsuitable
+  unknown
+  not_evaluated
+  source_unavailable
+}
+
+enum DispatchTransportState {
+  available
+  unavailable
+  unknown
+  not_evaluated
+  source_unavailable
+}
+
+enum DispatchRecommendationState {
+  not_evaluated
+  recommended
+  not_recommended
+  alternative
+  unavailable
+}
+
+enum DispatchShortlistState {
+  not_shortlisted
+  shortlisted
+  removed
+}
+
 model User {
   id              String     @id @default(uuid()) @db.Uuid
   publicId        String     @unique @map("public_id")
@@ -147,6 +247,11 @@ model User {
   createdJobRequests            JobRequest[]             @relation("JobRequestCreator")
   authoredJobRequests           JobRequest[]             @relation("JobRequestCreatedByUser")
   updatedJobRequests            JobRequest[]             @relation("JobRequestUpdatedByUser")
+  ownedDispatchReviews          DispatchReview[]         @relation("DispatchReviewOwner")
+  createdDispatchReviews        DispatchReview[]         @relation("DispatchReviewCreatedByUser")
+  updatedDispatchReviews        DispatchReview[]         @relation("DispatchReviewUpdatedByUser")
+  addedDispatchCandidates       DispatchCandidate[]      @relation("DispatchCandidateAddedByUser")
+  removedDispatchCandidates     DispatchCandidate[]      @relation("DispatchCandidateRemovedByUser")
   auditActorReferences          AuditActorReference[]
 
   @@index([emailNormalized], map: "users_email_normalized_idx")
@@ -214,6 +319,7 @@ model EmployerOrganization {
   residences           Residence[]
   departments          Department[]
   jobRequests          JobRequest[]
+  dispatchReviews      DispatchReview[]
   auditActorReferences AuditActorReference[]
   auditEvents          AuditEvent[]
 
@@ -258,10 +364,11 @@ model Residence {
   updatedAt       DateTime        @updatedAt @map("updated_at") @db.Timestamptz(3)
   archivedAt      DateTime?       @map("archived_at") @db.Timestamptz(3)
 
-  organization EmployerOrganization @relation(fields: [organizationId], references: [id], onDelete: Restrict)
-  createdBy    User?                @relation("ResidenceCreatedByUser", fields: [createdByUserId], references: [id], onDelete: SetNull)
-  departments  Department[]
-  jobRequests  JobRequest[]
+  organization    EmployerOrganization @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  createdBy       User?                @relation("ResidenceCreatedByUser", fields: [createdByUserId], references: [id], onDelete: SetNull)
+  departments     Department[]
+  jobRequests     JobRequest[]
+  dispatchReviews DispatchReview[]
 
   @@unique([organizationId, id], map: "residences_organization_id_id_key")
   @@index([organizationId, status], map: "residences_organization_id_status_idx")
@@ -281,10 +388,11 @@ model Department {
   updatedAt       DateTime         @updatedAt @map("updated_at") @db.Timestamptz(3)
   archivedAt      DateTime?        @map("archived_at") @db.Timestamptz(3)
 
-  organization EmployerOrganization @relation(fields: [organizationId], references: [id], onDelete: Restrict)
-  residence    Residence            @relation(fields: [organizationId, residenceId], references: [organizationId, id], onDelete: Restrict)
-  createdBy    User?                @relation("DepartmentCreatedByUser", fields: [createdByUserId], references: [id], onDelete: SetNull)
-  jobRequests  JobRequest[]
+  organization    EmployerOrganization @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  residence       Residence            @relation(fields: [organizationId, residenceId], references: [organizationId, id], onDelete: Restrict)
+  createdBy       User?                @relation("DepartmentCreatedByUser", fields: [createdByUserId], references: [id], onDelete: SetNull)
+  jobRequests     JobRequest[]
+  dispatchReviews DispatchReview[]
 
   @@unique([organizationId, id], map: "departments_organization_id_id_key")
   @@unique([residenceId, id], map: "departments_residence_id_id_key")
@@ -310,6 +418,7 @@ model WorkGroup {
 
   roleDefinitions RoleDefinition[]
   jobRequests     JobRequest[]
+  dispatchReviews DispatchReview[]
 
   @@index([status, displayOrder], map: "work_groups_status_display_order_idx")
   @@map("work_groups")
@@ -329,8 +438,9 @@ model RoleDefinition {
   createdAt                DateTime        @default(now()) @map("created_at") @db.Timestamptz(3)
   updatedAt                DateTime        @updatedAt @map("updated_at") @db.Timestamptz(3)
 
-  workGroup   WorkGroup    @relation(fields: [workGroupId], references: [id], onDelete: Restrict)
-  jobRequests JobRequest[]
+  workGroup       WorkGroup        @relation(fields: [workGroupId], references: [id], onDelete: Restrict)
+  jobRequests     JobRequest[]
+  dispatchReviews DispatchReview[]
 
   @@unique([workGroupId, id], map: "role_definitions_work_group_id_id_key")
   @@index([workGroupId, status, displayOrder], map: "role_definitions_work_group_id_status_display_order_idx")
@@ -436,14 +546,15 @@ model JobRequest {
   expiredAt          DateTime?         @map("expired_at") @db.Timestamptz(3)
   archivedAt         DateTime?         @map("archived_at") @db.Timestamptz(3)
 
-  organization   EmployerOrganization @relation(fields: [organizationId], references: [id], onDelete: Restrict)
-  residence      Residence            @relation(fields: [organizationId, residenceId], references: [organizationId, id], onDelete: Restrict)
-  department     Department           @relation(fields: [organizationId, residenceId, departmentId], references: [organizationId, residenceId, id], onDelete: Restrict)
-  workGroup      WorkGroup            @relation(fields: [workGroupId], references: [id], onDelete: Restrict)
-  roleDefinition RoleDefinition       @relation(fields: [workGroupId, roleDefinitionId], references: [workGroupId, id], onDelete: Restrict)
-  creator        User                 @relation("JobRequestCreator", fields: [creatorUserId], references: [id], onDelete: Restrict)
-  createdBy      User                 @relation("JobRequestCreatedByUser", fields: [createdByUserId], references: [id], onDelete: Restrict)
-  updatedBy      User?                @relation("JobRequestUpdatedByUser", fields: [updatedByUserId], references: [id], onDelete: SetNull)
+  organization    EmployerOrganization @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  residence       Residence            @relation(fields: [organizationId, residenceId], references: [organizationId, id], onDelete: Restrict)
+  department      Department           @relation(fields: [organizationId, residenceId, departmentId], references: [organizationId, residenceId, id], onDelete: Restrict)
+  workGroup       WorkGroup            @relation(fields: [workGroupId], references: [id], onDelete: Restrict)
+  roleDefinition  RoleDefinition       @relation(fields: [workGroupId, roleDefinitionId], references: [workGroupId, id], onDelete: Restrict)
+  creator         User                 @relation("JobRequestCreator", fields: [creatorUserId], references: [id], onDelete: Restrict)
+  createdBy       User                 @relation("JobRequestCreatedByUser", fields: [createdByUserId], references: [id], onDelete: Restrict)
+  updatedBy       User?                @relation("JobRequestUpdatedByUser", fields: [updatedByUserId], references: [id], onDelete: SetNull)
+  dispatchReviews DispatchReview[]
 
   @@index([jobRequestNumber], map: "job_requests_job_request_number_idx")
   @@index([organizationId, status, createdAt], map: "job_requests_organization_id_status_created_at_idx")
@@ -453,6 +564,89 @@ model JobRequest {
   @@index([status, submittedAt], map: "job_requests_status_submitted_at_idx")
   @@index([createdByUserId, createdAt], map: "job_requests_created_by_user_id_created_at_idx")
   @@map("job_requests")
+}
+
+model DispatchReview {
+  id                        String               @id @default(uuid()) @db.Uuid
+  jobRequestId              String               @map("job_request_id") @db.Uuid
+  organizationId            String               @map("organization_id") @db.Uuid
+  residenceId               String               @map("residence_id") @db.Uuid
+  departmentId              String               @map("department_id") @db.Uuid
+  workGroupId               String               @map("work_group_id") @db.Uuid
+  roleDefinitionId          String               @map("role_definition_id") @db.Uuid
+  dispatchType              DispatchType         @default(initial) @map("dispatch_type")
+  state                     DispatchReviewStatus @default(draft)
+  operationalOwnerUserId    String?              @map("operational_owner_user_id") @db.Uuid
+  priority                  DispatchPriority     @default(normal)
+  urgency                   JobRequestUrgency    @default(normal)
+  requiredWorkerCount       Int                  @map("required_worker_count")
+  shortlistedCandidateCount Int                  @default(0) @map("shortlisted_candidate_count")
+  preparedOfferCount        Int                  @default(0) @map("prepared_offer_count")
+  startedAt                 DateTime?            @map("started_at") @db.Timestamptz(3)
+  pausedAt                  DateTime?            @map("paused_at") @db.Timestamptz(3)
+  cancelledAt               DateTime?            @map("cancelled_at") @db.Timestamptz(3)
+  closedAt                  DateTime?            @map("closed_at") @db.Timestamptz(3)
+  createdByUserId           String               @map("created_by_user_id") @db.Uuid
+  updatedByUserId           String?              @map("updated_by_user_id") @db.Uuid
+  createdAt                 DateTime             @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt                 DateTime             @updatedAt @map("updated_at") @db.Timestamptz(3)
+  version                   Int                  @default(1)
+
+  jobRequest       JobRequest           @relation(fields: [jobRequestId], references: [id], onDelete: Restrict)
+  organization     EmployerOrganization @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  residence        Residence            @relation(fields: [organizationId, residenceId], references: [organizationId, id], onDelete: Restrict)
+  department       Department           @relation(fields: [organizationId, residenceId, departmentId], references: [organizationId, residenceId, id], onDelete: Restrict)
+  workGroup        WorkGroup            @relation(fields: [workGroupId], references: [id], onDelete: Restrict)
+  roleDefinition   RoleDefinition       @relation(fields: [workGroupId, roleDefinitionId], references: [workGroupId, id], onDelete: Restrict)
+  operationalOwner User?                @relation("DispatchReviewOwner", fields: [operationalOwnerUserId], references: [id], onDelete: SetNull)
+  createdBy        User                 @relation("DispatchReviewCreatedByUser", fields: [createdByUserId], references: [id], onDelete: Restrict)
+  updatedBy        User?                @relation("DispatchReviewUpdatedByUser", fields: [updatedByUserId], references: [id], onDelete: SetNull)
+  candidates       DispatchCandidate[]
+
+  @@index([jobRequestId], map: "dispatch_reviews_job_request_id_idx")
+  @@index([organizationId, state, updatedAt], map: "dispatch_reviews_organization_id_state_updated_at_idx")
+  @@index([operationalOwnerUserId, state], map: "dispatch_reviews_operational_owner_user_id_state_idx")
+  @@index([residenceId, state], map: "dispatch_reviews_residence_id_state_idx")
+  @@index([departmentId, state], map: "dispatch_reviews_department_id_state_idx")
+  @@map("dispatch_reviews")
+}
+
+model DispatchCandidate {
+  id                        String                      @id @default(uuid()) @db.Uuid
+  dispatchReviewId          String                      @map("dispatch_review_id") @db.Uuid
+  candidateSourceType       DispatchCandidateSourceType @map("candidate_source_type")
+  candidateSourceReference  String                      @map("candidate_source_reference")
+  approvedDisplayName       String                      @map("approved_display_name")
+  workGroupMatch            DispatchMatchState          @default(not_evaluated) @map("work_group_match")
+  roleDefinitionMatch       DispatchMatchState          @default(not_evaluated) @map("role_definition_match")
+  qualificationSummaryState DispatchSummaryState        @default(not_evaluated) @map("qualification_summary_state")
+  verificationSummaryState  DispatchSummaryState        @default(not_evaluated) @map("verification_summary_state")
+  availabilityState         DispatchAvailabilityState   @default(not_evaluated) @map("availability_state")
+  scheduleConflictState     DispatchConflictState       @default(not_evaluated) @map("schedule_conflict_state")
+  serviceAreaState          DispatchServiceAreaState    @default(not_evaluated) @map("service_area_state")
+  travelSuitabilityState    DispatchTravelState         @default(not_evaluated) @map("travel_suitability_state")
+  transportConstraintState  DispatchTransportState      @default(not_evaluated) @map("transport_constraint_state")
+  recommendationState       DispatchRecommendationState @default(not_evaluated) @map("recommendation_state")
+  shortlistState            DispatchShortlistState      @default(not_shortlisted) @map("shortlist_state")
+  shortlistOrder            Int?                        @map("shortlist_order")
+  sourceFreshnessAt         DateTime?                   @map("source_freshness_at") @db.Timestamptz(3)
+  lastEvaluatedAt           DateTime?                   @map("last_evaluated_at") @db.Timestamptz(3)
+  evaluationVersion         Int                         @default(1) @map("evaluation_version")
+  addedByUserId             String?                     @map("added_by_user_id") @db.Uuid
+  removedByUserId           String?                     @map("removed_by_user_id") @db.Uuid
+  createdAt                 DateTime                    @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt                 DateTime                    @updatedAt @map("updated_at") @db.Timestamptz(3)
+  version                   Int                         @default(1)
+
+  dispatchReview DispatchReview @relation(fields: [dispatchReviewId], references: [id], onDelete: Cascade)
+  addedBy        User?          @relation("DispatchCandidateAddedByUser", fields: [addedByUserId], references: [id], onDelete: SetNull)
+  removedBy      User?          @relation("DispatchCandidateRemovedByUser", fields: [removedByUserId], references: [id], onDelete: SetNull)
+
+  @@unique([dispatchReviewId, candidateSourceReference], map: "dispatch_candidates_review_source_ref_key")
+  @@index([dispatchReviewId, shortlistState], map: "dispatch_candidates_dispatch_review_id_shortlist_state_idx")
+  @@index([dispatchReviewId, sourceFreshnessAt], map: "dispatch_candidates_dispatch_review_id_source_freshness_at_idx")
+  @@index([candidateSourceReference], map: "dispatch_candidates_candidate_source_reference_idx")
+  @@map("dispatch_candidates")
 }
 
 model AuditActorReference {
