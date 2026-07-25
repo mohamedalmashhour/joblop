@@ -23,6 +23,455 @@ export function assertRole(currentRole: PlatformRole, allowedRoles: readonly Pla
   }
 }
 
+export const authorizationDeniedCode = "RWOS_AUTHORIZATION_DENIED";
+export const authorizationDeniedMessage = "Access denied.";
+
+export const authorizationRoleKeys = [
+  "PLATFORM_ADMINISTRATOR",
+  "ORGANIZATION_OWNER",
+  "ORGANIZATION_ADMINISTRATOR",
+  "ORGANIZATION_STAFF",
+  "WORKER_ACCESS",
+  "DISPATCHER"
+] as const;
+
+export type AuthorizationRoleKey = (typeof authorizationRoleKeys)[number];
+
+export const authorizationPermissionKeys = [
+  "organization.read",
+  "organization.update",
+  "residence.read",
+  "residence.create",
+  "residence.update",
+  "department.read",
+  "department.create",
+  "department.update",
+  "work_group.read",
+  "role_definition.read",
+  "job_request.create",
+  "job_request.read",
+  "job_request.update_draft",
+  "job_request.submit",
+  "job_request.cancel",
+  "job_request.admin_review",
+  "job_request.request_information",
+  "job_request.approve_for_dispatch",
+  "audit.read",
+  "platform.supervise"
+] as const;
+
+export type AuthorizationPermissionKey = (typeof authorizationPermissionKeys)[number];
+export type AuthorizationDecisionStatus =
+  | "allow"
+  | "deny"
+  | "context_required"
+  | "permission_missing"
+  | "account_inactive"
+  | "session_invalid";
+export type AuthorizationContextRequirement = "none" | "organization" | "platform";
+export type AuthorizationPermissionLifecycle = "active" | "reserved";
+
+export interface AuthorizationPermissionDefinition {
+  key: AuthorizationPermissionKey;
+  purpose: string;
+  context: AuthorizationContextRequirement;
+  lifecycle: AuthorizationPermissionLifecycle;
+  securityRisk: string;
+  testRequirement: string;
+}
+
+export interface AuthorizationRoleDefinition {
+  key: AuthorizationRoleKey;
+  displayLabel: string;
+  context: AuthorizationContextRequirement;
+  description: string;
+  permissions: readonly AuthorizationPermissionKey[];
+}
+
+export interface AuthorizationResourceContext {
+  organizationId?: string | null;
+}
+
+export interface AuthorizationPlatformContext {
+  platform?: boolean;
+}
+
+export interface AuthorizationDecisionInput {
+  session: SessionValidationResult;
+  roles?: readonly AuthorizationRoleKey[];
+  permission: string;
+  resourceContext?: AuthorizationResourceContext;
+  platformContext?: AuthorizationPlatformContext;
+  correlationId?: string;
+}
+
+export interface AuthorizationDecision {
+  status: AuthorizationDecisionStatus;
+  allow: boolean;
+  externalCode: typeof authorizationDeniedCode | null;
+  externalMessage: typeof authorizationDeniedMessage | null;
+  internalReason: string | null;
+  permission: string;
+  roles: readonly AuthorizationRoleKey[];
+  correlationId: string;
+}
+
+export interface AuthorizationAuditEventInput {
+  action: "authorization.denied" | "authorization.platform_supervision";
+  userId: string | null;
+  permission: string;
+  reason: string;
+  correlationId: string;
+}
+
+export interface AuthorizationAuditSink {
+  recordAuthorizationAuditEvent(input: AuthorizationAuditEventInput): Promise<void>;
+}
+
+export class AuthorizationDeniedError extends Error {
+  code = authorizationDeniedCode;
+  decision: AuthorizationDecision;
+
+  constructor(decision: AuthorizationDecision) {
+    super(authorizationDeniedMessage);
+    this.name = "AuthorizationDeniedError";
+    this.decision = decision;
+  }
+}
+
+export const authorizationPermissionDefinitions = [
+  permission(
+    "organization.read",
+    "Read organization summary records within a future organization context.",
+    "organization",
+    "reserved",
+    "May expose organization information if context is not enforced.",
+    "Deny without organization context; do not activate an organization API yet."
+  ),
+  permission(
+    "organization.update",
+    "Update organization summary records within a future organization context.",
+    "organization",
+    "reserved",
+    "Could alter organization data if granted outside ownership controls.",
+    "Organization Owner only in matrix; no active endpoint."
+  ),
+  permission(
+    "residence.read",
+    "Read residence records within a future organization context.",
+    "organization",
+    "reserved",
+    "May expose location or facility details.",
+    "Deny without organization context; no active residence API."
+  ),
+  permission(
+    "residence.create",
+    "Create residence records within a future organization context.",
+    "organization",
+    "reserved",
+    "Could create operational locations before organization membership exists.",
+    "Mapped only to approved organization roles; no active endpoint."
+  ),
+  permission(
+    "residence.update",
+    "Update residence records within a future organization context.",
+    "organization",
+    "reserved",
+    "Could alter residence operating details.",
+    "Mapped only to approved organization roles; no active endpoint."
+  ),
+  permission(
+    "department.read",
+    "Read department records within a future organization context.",
+    "organization",
+    "reserved",
+    "May expose operating structure.",
+    "Deny without organization context; no active department API."
+  ),
+  permission(
+    "department.create",
+    "Create department records within a future organization context.",
+    "organization",
+    "reserved",
+    "Could create operational units before membership controls exist.",
+    "Mapped only to approved organization roles; no active endpoint."
+  ),
+  permission(
+    "department.update",
+    "Update department records within a future organization context.",
+    "organization",
+    "reserved",
+    "Could alter operating units.",
+    "Mapped only to approved organization roles; no active endpoint."
+  ),
+  permission(
+    "work_group.read",
+    "Read the approved work group catalogue.",
+    "none",
+    "reserved",
+    "Low risk, but catalogue APIs are not active in this phase.",
+    "Role matrix may include it; no active endpoint."
+  ),
+  permission(
+    "role_definition.read",
+    "Read the approved operational role definition catalogue.",
+    "none",
+    "reserved",
+    "Low risk, but catalogue APIs are not active in this phase.",
+    "Role matrix may include it; no active endpoint."
+  ),
+  permission(
+    "job_request.create",
+    "Create future job requests within a future organization context.",
+    "organization",
+    "reserved",
+    "Could create commercial demand if activated too early.",
+    "Reserved until Job Request Foundation."
+  ),
+  permission(
+    "job_request.read",
+    "Read future job requests within a future organization context.",
+    "organization",
+    "reserved",
+    "May expose commercial staffing demand.",
+    "Reserved until Job Request Foundation."
+  ),
+  permission(
+    "job_request.update_draft",
+    "Update future draft job requests within a future organization context.",
+    "organization",
+    "reserved",
+    "Could alter commercial demand.",
+    "Reserved until Job Request Foundation."
+  ),
+  permission(
+    "job_request.submit",
+    "Submit future job requests for admin review.",
+    "organization",
+    "reserved",
+    "Could trigger operational review before workflow exists.",
+    "Reserved until Job Request Foundation."
+  ),
+  permission(
+    "job_request.cancel",
+    "Cancel future job requests within a future organization context.",
+    "organization",
+    "reserved",
+    "Could alter commercial demand.",
+    "Reserved until Job Request Foundation."
+  ),
+  permission(
+    "job_request.admin_review",
+    "Perform future platform job request review.",
+    "platform",
+    "reserved",
+    "Could approve operational dispatch if activated too early.",
+    "Platform Administrator only; reserved until admin intake."
+  ),
+  permission(
+    "job_request.request_information",
+    "Request future job request information from an employer.",
+    "platform",
+    "reserved",
+    "Could affect employer workflow if activated too early.",
+    "Platform Administrator only; reserved until admin intake."
+  ),
+  permission(
+    "job_request.approve_for_dispatch",
+    "Approve future job requests for dispatch.",
+    "platform",
+    "reserved",
+    "Could move staffing demand into dispatch if activated too early.",
+    "Platform Administrator only; reserved until dispatch."
+  ),
+  permission(
+    "audit.read",
+    "Read future audit summaries.",
+    "platform",
+    "reserved",
+    "Could expose sensitive operational history.",
+    "Platform Administrator only; no audit API yet."
+  ),
+  permission(
+    "platform.supervise",
+    "Access explicit platform-supervision capability probes.",
+    "platform",
+    "active",
+    "High privilege and must never be inferred.",
+    "Platform Administrator allowed; organization roles denied."
+  )
+] as const satisfies readonly AuthorizationPermissionDefinition[];
+
+export const authorizationRoleDefinitions = [
+  roleDefinition("PLATFORM_ADMINISTRATOR", "Platform Administrator", "platform", [
+    "platform.supervise",
+    "job_request.admin_review",
+    "job_request.request_information",
+    "job_request.approve_for_dispatch",
+    "audit.read"
+  ]),
+  roleDefinition("ORGANIZATION_OWNER", "Organization Owner", "organization", [
+    "organization.read",
+    "organization.update",
+    "residence.read",
+    "residence.create",
+    "residence.update",
+    "department.read",
+    "department.create",
+    "department.update",
+    "work_group.read",
+    "role_definition.read",
+    "job_request.create",
+    "job_request.read",
+    "job_request.update_draft",
+    "job_request.submit",
+    "job_request.cancel"
+  ]),
+  roleDefinition("ORGANIZATION_ADMINISTRATOR", "Organization Administrator", "organization", [
+    "organization.read",
+    "residence.read",
+    "residence.create",
+    "residence.update",
+    "department.read",
+    "department.create",
+    "department.update",
+    "work_group.read",
+    "role_definition.read",
+    "job_request.create",
+    "job_request.read",
+    "job_request.update_draft",
+    "job_request.submit",
+    "job_request.cancel"
+  ]),
+  roleDefinition("ORGANIZATION_STAFF", "Organization Staff", "organization", [
+    "organization.read",
+    "residence.read",
+    "department.read",
+    "work_group.read",
+    "role_definition.read",
+    "job_request.create",
+    "job_request.read",
+    "job_request.update_draft",
+    "job_request.submit",
+    "job_request.cancel"
+  ]),
+  roleDefinition("WORKER_ACCESS", "Worker Access", "none", []),
+  roleDefinition("DISPATCHER", "Dispatcher", "platform", [])
+] as const satisfies readonly AuthorizationRoleDefinition[];
+
+export function createAuthorizationService(auditSink?: AuthorizationAuditSink) {
+  return {
+    async decide(input: AuthorizationDecisionInput): Promise<AuthorizationDecision> {
+      const decision = createAuthorizationDecision(input);
+
+      if (!decision.allow && isSensitiveAuthorizationDenial(decision)) {
+        await auditSink?.recordAuthorizationAuditEvent({
+          action: "authorization.denied",
+          userId: input.session.user?.id ?? null,
+          permission: input.permission,
+          reason: decision.internalReason ?? "denied",
+          correlationId: decision.correlationId
+        });
+      }
+
+      if (decision.allow && input.permission === "platform.supervise") {
+        await auditSink?.recordAuthorizationAuditEvent({
+          action: "authorization.platform_supervision",
+          userId: input.session.user?.id ?? null,
+          permission: input.permission,
+          reason: "platform_supervision_allowed",
+          correlationId: decision.correlationId
+        });
+      }
+
+      return decision;
+    },
+
+    async assertAllowed(input: AuthorizationDecisionInput) {
+      const decision = await this.decide(input);
+
+      if (!decision.allow) {
+        throw new AuthorizationDeniedError(decision);
+      }
+
+      return decision;
+    },
+
+    rolePermissions(role: AuthorizationRoleKey) {
+      return getAuthorizationRole(role)?.permissions ?? [];
+    }
+  };
+}
+
+export type AuthorizationService = ReturnType<typeof createAuthorizationService>;
+
+export function createAuthorizationDecision(input: AuthorizationDecisionInput): AuthorizationDecision {
+  const roles = sanitizeAuthorizationRoles(input.roles ?? []);
+  const permissionDefinition = getAuthorizationPermission(input.permission);
+  const correlationId = input.correlationId ?? createAuthorizationCorrelationId();
+
+  if (!input.session.authenticated || !input.session.user || !input.session.session) {
+    return deny("session_invalid", "session_invalid", input.permission, roles, correlationId);
+  }
+
+  if (input.session.user.status === "disabled" || input.session.user.status === "closed") {
+    return deny("account_inactive", `account_${input.session.user.status}`, input.permission, roles, correlationId);
+  }
+
+  if (!permissionDefinition) {
+    return deny("permission_missing", "unknown_permission", input.permission, roles, correlationId);
+  }
+
+  if (roles.length === 0) {
+    return deny("permission_missing", "no_role", input.permission, roles, correlationId);
+  }
+
+  if (permissionDefinition.context === "organization" && !input.resourceContext?.organizationId) {
+    return deny("context_required", "organization_context_required", input.permission, roles, correlationId);
+  }
+
+  if (permissionDefinition.context === "platform" && input.platformContext?.platform !== true) {
+    return deny("context_required", "platform_context_required", input.permission, roles, correlationId);
+  }
+
+  const permissions = new Set(
+    roles.flatMap((role) => getAuthorizationRole(role)?.permissions ?? [])
+  );
+
+  if (!permissions.has(permissionDefinition.key)) {
+    return deny("permission_missing", "role_lacks_permission", input.permission, roles, correlationId);
+  }
+
+  if (permissionDefinition.lifecycle === "reserved") {
+    return deny("deny", "permission_reserved_for_future_service", input.permission, roles, correlationId);
+  }
+
+  return {
+    status: "allow",
+    allow: true,
+    externalCode: null,
+    externalMessage: null,
+    internalReason: null,
+    permission: input.permission,
+    roles,
+    correlationId
+  };
+}
+
+export function toSafeAuthorizationResponse(decision: AuthorizationDecision) {
+  if (decision.allow) {
+    return {
+      authorized: true
+    };
+  }
+
+  return {
+    authorized: false,
+    error: authorizationDeniedCode,
+    message: authorizationDeniedMessage
+  };
+}
+
 export const authenticationErrorCode = "RWOS_AUTHENTICATION_FAILED";
 export const authenticationErrorMessage = "Authentication failed.";
 export const authenticationRequiredCode = "RWOS_AUTHENTICATION_REQUIRED";
@@ -821,6 +1270,78 @@ function hashOptionalOperationalValue(value: string | null | undefined) {
   if (!value) return null;
 
   return createHash("sha256").update(value, "utf8").digest("base64url");
+}
+
+function permission(
+  key: AuthorizationPermissionKey,
+  purpose: string,
+  context: AuthorizationContextRequirement,
+  lifecycle: AuthorizationPermissionLifecycle,
+  securityRisk: string,
+  testRequirement: string
+): AuthorizationPermissionDefinition {
+  return {
+    key,
+    purpose,
+    context,
+    lifecycle,
+    securityRisk,
+    testRequirement
+  };
+}
+
+function roleDefinition(
+  key: AuthorizationRoleKey,
+  displayLabel: string,
+  context: AuthorizationContextRequirement,
+  permissions: readonly AuthorizationPermissionKey[]
+): AuthorizationRoleDefinition {
+  return {
+    key,
+    displayLabel,
+    context,
+    description: `${displayLabel} authorization boundary.`,
+    permissions
+  };
+}
+
+function getAuthorizationPermission(permissionKey: string) {
+  return authorizationPermissionDefinitions.find((permissionDefinition) => permissionDefinition.key === permissionKey);
+}
+
+function getAuthorizationRole(roleKey: AuthorizationRoleKey) {
+  return authorizationRoleDefinitions.find((roleDefinition) => roleDefinition.key === roleKey);
+}
+
+function sanitizeAuthorizationRoles(roles: readonly AuthorizationRoleKey[]) {
+  return roles.filter((role, index) => authorizationRoleKeys.includes(role) && roles.indexOf(role) === index);
+}
+
+function deny(
+  status: Exclude<AuthorizationDecisionStatus, "allow">,
+  internalReason: string,
+  permission: string,
+  roles: readonly AuthorizationRoleKey[],
+  correlationId: string
+): AuthorizationDecision {
+  return {
+    status,
+    allow: false,
+    externalCode: authorizationDeniedCode,
+    externalMessage: authorizationDeniedMessage,
+    internalReason,
+    permission,
+    roles,
+    correlationId
+  };
+}
+
+function isSensitiveAuthorizationDenial(decision: AuthorizationDecision) {
+  return decision.permission === "platform.supervise" || decision.permission.startsWith("job_request.");
+}
+
+function createAuthorizationCorrelationId() {
+  return `authz_${randomBytes(12).toString("base64url")}`;
 }
 
 async function scrypt(password: string, salt: Buffer, keyLength: number, options: { N: number; r: number; p: number }) {

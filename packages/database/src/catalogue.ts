@@ -34,28 +34,85 @@ export const phase01PermissionKeys = [
   "job_request.update_draft",
   "job_request.submit",
   "job_request.cancel",
-  "job_request.admin_read",
+  "job_request.admin_review",
   "job_request.request_information",
   "job_request.approve_for_dispatch",
-  "platform.supervise",
-  "audit_actor_reference.read",
-  "audit_event.read"
+  "audit.read",
+  "platform.supervise"
 ] as const;
 
 export const phase01AccessRoles = [
-  { key: "WORKER", scope: "worker", description: "Worker account access boundary." },
-  { key: "EMPLOYER_OWNER", scope: "organization", description: "Employer organization owner." },
-  { key: "EMPLOYER_SCHEDULER", scope: "organization", description: "Employer staffing scheduler." },
-  { key: "DISPATCHER", scope: "platform", description: "Admin dispatch and intake operator." },
+  { key: "PLATFORM_ADMINISTRATOR", scope: "platform", description: "Explicit platform administrator." },
+  { key: "ORGANIZATION_OWNER", scope: "organization", description: "Future organization owner boundary." },
   {
-    key: "COMPLIANCE_REVIEWER",
-    scope: "platform",
-    description: "Admin compliance review operator."
+    key: "ORGANIZATION_ADMINISTRATOR",
+    scope: "organization",
+    description: "Future organization administration boundary."
   },
-  { key: "FINANCE_REVIEWER", scope: "platform", description: "Admin finance review operator." },
-  { key: "SUPPORT_AGENT", scope: "platform", description: "Admin support operator." },
-  { key: "PLATFORM_ADMIN", scope: "platform", description: "Platform administration role." },
-  { key: "READ_ONLY_AUDITOR", scope: "platform", description: "Read-only audit visibility role." }
+  { key: "ORGANIZATION_STAFF", scope: "organization", description: "Future organization staff boundary." },
+  { key: "WORKER_ACCESS", scope: "worker", description: "Worker account access boundary." },
+  {
+    key: "DISPATCHER",
+    scope: "platform",
+    description: "Reserved dispatch role with no active permissions until the dispatch phase."
+  }
+] as const;
+
+export const phase01RolePermissionMappings = [
+  rolePermissions("PLATFORM_ADMINISTRATOR", [
+    "platform.supervise",
+    "job_request.admin_review",
+    "job_request.request_information",
+    "job_request.approve_for_dispatch",
+    "audit.read"
+  ]),
+  rolePermissions("ORGANIZATION_OWNER", [
+    "organization.read",
+    "organization.update",
+    "residence.read",
+    "residence.create",
+    "residence.update",
+    "department.read",
+    "department.create",
+    "department.update",
+    "work_group.read",
+    "role_definition.read",
+    "job_request.create",
+    "job_request.read",
+    "job_request.update_draft",
+    "job_request.submit",
+    "job_request.cancel"
+  ]),
+  rolePermissions("ORGANIZATION_ADMINISTRATOR", [
+    "organization.read",
+    "residence.read",
+    "residence.create",
+    "residence.update",
+    "department.read",
+    "department.create",
+    "department.update",
+    "work_group.read",
+    "role_definition.read",
+    "job_request.create",
+    "job_request.read",
+    "job_request.update_draft",
+    "job_request.submit",
+    "job_request.cancel"
+  ]),
+  rolePermissions("ORGANIZATION_STAFF", [
+    "organization.read",
+    "residence.read",
+    "department.read",
+    "work_group.read",
+    "role_definition.read",
+    "job_request.create",
+    "job_request.read",
+    "job_request.update_draft",
+    "job_request.submit",
+    "job_request.cancel"
+  ]),
+  rolePermissions("WORKER_ACCESS", []),
+  rolePermissions("DISPATCHER", [])
 ] as const;
 
 export const developmentWorkGroups = [
@@ -145,5 +202,12 @@ function role(
     localizedLabelKey: `role.${key}`,
     qualificationSummary,
     safetyRequirementSummary: "Review site safety requirements before dispatch."
+  };
+}
+
+function rolePermissions(accessRoleKey: string, permissionKeys: readonly (typeof phase01PermissionKeys)[number][]) {
+  return {
+    accessRoleKey,
+    permissionKeys
   };
 }

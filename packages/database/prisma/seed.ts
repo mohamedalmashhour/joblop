@@ -1,4 +1,9 @@
-import { developmentWorkGroups, phase01AccessRoles, phase01PermissionKeys } from "../src/catalogue";
+import {
+  developmentWorkGroups,
+  phase01AccessRoles,
+  phase01PermissionKeys,
+  phase01RolePermissionMappings
+} from "../src/catalogue";
 import { createPrismaClient } from "../src/foundation";
 
 const prisma = createPrismaClient();
@@ -90,6 +95,32 @@ export async function seedDevelopmentCatalogue(client = prisma) {
         description: `Phase 01 permission: ${permissionKey}`
       }
     });
+  }
+
+  for (const mapping of phase01RolePermissionMappings) {
+    const accessRole = await client.accessRoleDefinition.findUniqueOrThrow({
+      where: { key: mapping.accessRoleKey }
+    });
+
+    for (const permissionKey of mapping.permissionKeys) {
+      const permission = await client.permissionDefinition.findUniqueOrThrow({
+        where: { key: permissionKey }
+      });
+
+      await client.accessRolePermission.upsert({
+        where: {
+          accessRoleDefinitionId_permissionDefinitionId: {
+            accessRoleDefinitionId: accessRole.id,
+            permissionDefinitionId: permission.id
+          }
+        },
+        create: {
+          accessRoleDefinitionId: accessRole.id,
+          permissionDefinitionId: permission.id
+        },
+        update: {}
+      });
+    }
   }
 }
 

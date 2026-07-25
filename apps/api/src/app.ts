@@ -7,10 +7,16 @@ import {
   authenticationErrorCode,
   authenticationErrorMessage,
   authenticationRequiredCode,
+  authorizationDeniedCode,
+  authorizationDeniedMessage,
   createAuthenticationService,
+  createAuthorizationService,
   createPrismaAuthenticationRepository,
   passwordPolicyErrorCode,
   registrationUnavailableCode,
+  toSafeAuthorizationResponse,
+  type AuthorizationRoleKey,
+  type AuthorizationService,
   type AuthenticationService
 } from "@rwos/auth";
 import { getRuntimeConfig } from "@rwos/config";
@@ -19,6 +25,8 @@ import { createLogger } from "@rwos/observability";
 
 export interface BuildApiOptions {
   authService?: AuthenticationService;
+  authorizationService?: AuthorizationService;
+  resolveAuthorizationRoles?: (userId: string) => Promise<readonly AuthorizationRoleKey[]> | readonly AuthorizationRoleKey[];
 }
 
 export function buildApi(options: BuildApiOptions = {}) {
@@ -30,6 +38,8 @@ export function buildApi(options: BuildApiOptions = {}) {
     createAuthenticationService(createPrismaAuthenticationRepository(prisma!), {
       sessionTtlSeconds: 60 * 60 * 8
     });
+  const authorizationService = options.authorizationService ?? createAuthorizationService();
+  const resolveAuthorizationRoles = options.resolveAuthorizationRoles ?? (() => []);
 
   if (prisma) {
     app.addHook("onClose", async () => {
@@ -145,6 +155,59 @@ export function buildApi(options: BuildApiOptions = {}) {
     });
 
     return reply.code(204).send();
+  });
+
+  app.post("/authz/check", async (request, reply) => {
+    const session = await authService.validateSession(readBearerToken(request.headers.authorization));
+
+    if (!session.authenticated || !session.user) {
+      return reply.code(403).send({
+        error: authorizationDeniedCode,
+        message: authorizationDeniedMessage
+      });
+    }
+
+    const body = asRecord(request.body);
+    const permission = readRequiredString(body, "permission");
+
+    if (!permission) {
+      return reply.code(400).send({
+        error: "RWOS_INVALID_AUTHORIZATION_REQUEST",
+        message: "Invalid authorization request."
+      });
+    }
+
+    const organizationId = readOptionalString(body, "organizationId");
+    const platform = body.platform === true;
+    const decision = await authorizationService.decide({
+      session,
+      roles: await resolveAuthorizationRoles(session.user.id),
+      permission,
+      resourceContext: { organizationId },
+      platformContext: { platform }
+    });
+
+    return reply.code(decision.allow ? 200 : 403).send(toSafeAuthorizationResponse(decision));
+  });
+
+  app.post("/authz/platform-admin/probe", async (request, reply) => {
+    const session = await authService.validateSession(readBearerToken(request.headers.authorization));
+
+    if (!session.authenticated || !session.user) {
+      return reply.code(403).send({
+        error: authorizationDeniedCode,
+        message: authorizationDeniedMessage
+      });
+    }
+
+    const decision = await authorizationService.decide({
+      session,
+      roles: await resolveAuthorizationRoles(session.user.id),
+      permission: "platform.supervise",
+      platformContext: { platform: true }
+    });
+
+    return reply.code(decision.allow ? 200 : 403).send(toSafeAuthorizationResponse(decision));
   });
 
   return app;
