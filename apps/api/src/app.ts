@@ -8,6 +8,7 @@ import {
   PasswordPolicyError,
   ResidenceError,
   RegistrationUnavailableError,
+  WorkGroupError,
   authenticationErrorCode,
   authenticationErrorMessage,
   authenticationRequiredCode,
@@ -19,11 +20,13 @@ import {
   createEmployerOrganizationService,
   createOrganizationMembershipService,
   createResidenceService,
+  createWorkGroupService,
   createPrismaDepartmentRepository,
   createPrismaAuthenticationRepository,
   createPrismaEmployerOrganizationRepository,
   createPrismaOrganizationMembershipRepository,
   createPrismaResidenceRepository,
+  createPrismaWorkGroupRepository,
   passwordPolicyErrorCode,
   registrationUnavailableCode,
   toSafeAuthorizationResponse,
@@ -35,7 +38,8 @@ import {
   type EmployerOrganizationService,
   type OrganizationMembershipService,
   type ResidenceService,
-  type ResidenceStatus
+  type ResidenceStatus,
+  type WorkGroupService
 } from "@rwos/auth";
 import { getRuntimeConfig } from "@rwos/config";
 import { createPrismaClient } from "@rwos/database";
@@ -48,6 +52,7 @@ export interface BuildApiOptions {
   organizationService?: EmployerOrganizationService;
   residenceService?: ResidenceService;
   departmentService?: DepartmentService;
+  workGroupService?: WorkGroupService;
   resolveAuthorizationRoles?: (userId: string) => Promise<readonly AuthorizationRoleKey[]> | readonly AuthorizationRoleKey[];
 }
 
@@ -83,6 +88,7 @@ export function buildApi(options: BuildApiOptions = {}) {
       membershipService,
       authorizationService
     );
+  const workGroupService = options.workGroupService ?? createWorkGroupService(createPrismaWorkGroupRepository(prisma!), authorizationService);
   const resolveAuthorizationRoles = options.resolveAuthorizationRoles ?? (() => []);
 
   if (prisma) {
@@ -106,6 +112,10 @@ export function buildApi(options: BuildApiOptions = {}) {
 
     if (error instanceof DepartmentError) {
       return sendDepartmentDenied(reply);
+    }
+
+    if (error instanceof WorkGroupError) {
+      return sendWorkGroupDenied(reply);
     }
 
     throw error;
@@ -272,6 +282,118 @@ export function buildApi(options: BuildApiOptions = {}) {
     });
 
     return reply.code(decision.allow ? 200 : 403).send(toSafeAuthorizationResponse(decision));
+  });
+
+  app.get("/work-groups", async (request, reply) => {
+    const session = await authService.validateSession(readBearerToken(request.headers.authorization));
+
+    if (!session.authenticated || !session.user) {
+      return sendWorkGroupDenied(reply);
+    }
+
+    const roles = await resolveWorkGroupReadRoles(session.user.id, readOptionalString(asRecord(request.query), "organizationId"));
+    const workGroups = await workGroupService.listActiveWorkGroups({ session, roles });
+
+    return reply.code(200).send({ workGroups: workGroups.map(serializeWorkGroup) });
+  });
+
+  app.get("/work-groups/:slug", async (request, reply) => {
+    const session = await authService.validateSession(readBearerToken(request.headers.authorization));
+
+    if (!session.authenticated || !session.user) {
+      return sendWorkGroupDenied(reply);
+    }
+
+    const roles = await resolveWorkGroupReadRoles(session.user.id, readOptionalString(asRecord(request.query), "organizationId"));
+    const workGroup = await workGroupService.getActiveWorkGroup({
+      session,
+      roles,
+      slug: readRouteParam(request.params, "slug")
+    });
+
+    return reply.code(200).send({ workGroup: serializeWorkGroup(workGroup) });
+  });
+
+  app.get("/platform/work-groups", async (request, reply) => {
+    const session = await authService.validateSession(readBearerToken(request.headers.authorization));
+
+    if (!session.authenticated || !session.user) {
+      return sendWorkGroupDenied(reply);
+    }
+
+    const workGroups = await workGroupService.listAllWorkGroups({
+      session,
+      roles: await resolveAuthorizationRoles(session.user.id)
+    });
+
+    return reply.code(200).send({ workGroups: workGroups.map(serializeWorkGroup) });
+  });
+
+  app.get("/platform/work-groups/:slug", async (request, reply) => {
+    const session = await authService.validateSession(readBearerToken(request.headers.authorization));
+
+    if (!session.authenticated || !session.user) {
+      return sendWorkGroupDenied(reply);
+    }
+
+    const workGroup = await workGroupService.getWorkGroupForManagement({
+      session,
+      roles: await resolveAuthorizationRoles(session.user.id),
+      slug: readRouteParam(request.params, "slug")
+    });
+
+    return reply.code(200).send({ workGroup: serializeWorkGroup(workGroup) });
+  });
+
+  app.patch("/platform/work-groups/:slug", async (request, reply) => {
+    const session = await authService.validateSession(readBearerToken(request.headers.authorization));
+
+    if (!session.authenticated || !session.user) {
+      return sendWorkGroupDenied(reply);
+    }
+
+    const body = asRecord(request.body);
+    const workGroup = await workGroupService.updateWorkGroup({
+      session,
+      roles: await resolveAuthorizationRoles(session.user.id),
+      slug: readRouteParam(request.params, "slug"),
+      expectedVersion: readRequiredString(body, "expectedVersion") ?? "",
+      displayLabel: readOptionalString(body, "displayLabel"),
+      displayOrder: readOptionalNumber(body, "displayOrder"),
+      iconKey: readOptionalString(body, "iconKey")
+    });
+
+    return reply.code(200).send({ workGroup: serializeWorkGroup(workGroup) });
+  });
+
+  app.post("/platform/work-groups/:slug/status", async (request, reply) => {
+    const session = await authService.validateSession(readBearerToken(request.headers.authorization));
+
+    if (!session.authenticated || !session.user) {
+      return sendWorkGroupDenied(reply);
+    }
+
+    const body = asRecord(request.body);
+    const status = readWorkGroupLifecycleStatus(readRequiredString(body, "status"));
+    const reason = readRequiredString(body, "reason");
+
+    if (!status || !reason) {
+      return reply.code(400).send({
+        error: "RWOS_INVALID_WORK_GROUP_REQUEST",
+        message: "Invalid work group request."
+      });
+    }
+
+    const workGroup = await workGroupService.updateWorkGroupStatus({
+      session,
+      roles: await resolveAuthorizationRoles(session.user.id),
+      slug: readRouteParam(request.params, "slug"),
+      expectedVersion: readRequiredString(body, "expectedVersion") ?? "",
+      status,
+      reason
+    });
+
+    return reply.code(200).send({ workGroup: serializeWorkGroup(workGroup) });
   });
 
   app.get("/memberships", async (request, reply) => {
@@ -713,6 +835,16 @@ export function buildApi(options: BuildApiOptions = {}) {
     return reply.code(200).send({ department: serializeDepartment(department) });
   });
 
+  async function resolveWorkGroupReadRoles(userId: string, organizationId: string | null) {
+    if (organizationId) {
+      const decision = await membershipService.selectOrganizationContext({ userId, organizationId });
+
+      return decision.allow ? decision.roles : [];
+    }
+
+    return resolveAuthorizationRoles(userId);
+  }
+
   return app;
 }
 
@@ -728,6 +860,11 @@ function readRequiredString(body: Record<string, unknown>, key: string) {
 function readOptionalString(body: Record<string, unknown>, key: string) {
   const value = body[key];
   return typeof value === "string" && value.trim().length > 0 ? value : null;
+}
+
+function readOptionalNumber(body: Record<string, unknown>, key: string) {
+  const value = body[key];
+  return typeof value === "number" ? value : null;
 }
 
 function readBearerToken(authorization: string | undefined) {
@@ -818,6 +955,13 @@ function sendDepartmentDenied(reply: FastifyReply) {
   });
 }
 
+function sendWorkGroupDenied(reply: FastifyReply) {
+  return reply.code(403).send({
+    error: authorizationDeniedCode,
+    message: authorizationDeniedMessage
+  });
+}
+
 function serializeMemberships(memberships: Awaited<ReturnType<OrganizationMembershipService["listMemberships"]>>) {
   return memberships.map(serializeMembership);
 }
@@ -863,6 +1007,14 @@ function serializeDepartment(department: Awaited<ReturnType<DepartmentService["g
   };
 }
 
+function serializeWorkGroup(workGroup: Awaited<ReturnType<WorkGroupService["getActiveWorkGroup"]>>) {
+  return {
+    ...workGroup,
+    createdAt: workGroup.createdAt.toISOString(),
+    updatedAt: workGroup.updatedAt.toISOString()
+  };
+}
+
 function readResidenceStatus(value: string | null): ResidenceStatus | null {
   return value === "draft" || value === "active" || value === "restricted" || value === "inactive" || value === "closed" ? value : null;
 }
@@ -877,4 +1029,8 @@ function readDepartmentStatus(value: string | null): DepartmentStatus | null {
 
 function readDepartmentLifecycleStatus(value: string | null) {
   return value === "active" || value === "inactive" || value === "closed" ? value : null;
+}
+
+function readWorkGroupLifecycleStatus(value: string | null) {
+  return value === "active" || value === "inactive" ? value : null;
 }

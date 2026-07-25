@@ -6,32 +6,30 @@ import {
 } from "../src/catalogue";
 import { createPrismaClient } from "../src/foundation";
 
-const prisma = createPrismaClient();
-
-export async function seedDevelopmentCatalogue(client = prisma) {
+export async function seedDevelopmentCatalogue(client = createPrismaClient()) {
   for (const workGroup of developmentWorkGroups) {
-    const storedWorkGroup = await client.workGroup.upsert({
-      where: { key: workGroup.key },
-      create: {
-        key: workGroup.key,
-        displayLabel: workGroup.displayLabel,
-        displayOrder: workGroup.displayOrder,
-        iconKey: workGroup.iconKey,
-        qualificationSummary: workGroup.qualificationSummary,
-        safetyRequirementSummary: workGroup.safetyRequirementSummary,
-        defaultTemplateKey: workGroup.defaultTemplateKey,
-        status: "active"
-      },
-      update: {
-        displayLabel: workGroup.displayLabel,
-        displayOrder: workGroup.displayOrder,
-        iconKey: workGroup.iconKey,
-        qualificationSummary: workGroup.qualificationSummary,
-        safetyRequirementSummary: workGroup.safetyRequirementSummary,
-        defaultTemplateKey: workGroup.defaultTemplateKey,
-        status: "active"
-      }
+    const existingWorkGroup = await client.workGroup.findUnique({
+      where: { key: workGroup.key }
     });
+    const storedWorkGroup =
+      existingWorkGroup ??
+      (await client.workGroup.create({
+        data: {
+          key: workGroup.key,
+          displayLabel: workGroup.displayLabel,
+          displayOrder: workGroup.displayOrder,
+          iconKey: workGroup.iconKey,
+          qualificationSummary: workGroup.qualificationSummary,
+          safetyRequirementSummary: workGroup.safetyRequirementSummary,
+          defaultTemplateKey: workGroup.defaultTemplateKey,
+          status: "active"
+        }
+      }));
+    /*
+     * WorkGroup catalogue identity and presentation are owner-governed.
+     * Seeding creates missing foundation records but does not overwrite
+     * existing labels, order, icons, summaries, or inactive lifecycle state.
+     */
 
     for (const roleDefinition of workGroup.roles) {
       await client.roleDefinition.upsert({
@@ -125,6 +123,7 @@ export async function seedDevelopmentCatalogue(client = prisma) {
 }
 
 if (import.meta.url === `file://${process.argv[1]}`) {
-  await seedDevelopmentCatalogue();
+  const prisma = createPrismaClient();
+  await seedDevelopmentCatalogue(prisma);
   await prisma.$disconnect();
 }

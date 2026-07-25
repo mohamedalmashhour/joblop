@@ -660,6 +660,95 @@ export class DepartmentError extends Error {
   }
 }
 
+export type WorkGroupStatus = "active" | "inactive" | "retired";
+export type WorkGroupDecisionStatus =
+  | "allow"
+  | "invalid_input"
+  | "not_found"
+  | "permission_denied"
+  | "version_conflict"
+  | "invalid_transition"
+  | "audit_failed";
+
+export interface StoredWorkGroup {
+  id: string;
+  key: string;
+  displayLabel: string;
+  status: WorkGroupStatus;
+  displayOrder: number;
+  iconKey: string | null;
+  qualificationSummary: string | null;
+  safetyRequirementSummary: string | null;
+  defaultTemplateKey: string | null;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+export interface PublicWorkGroup {
+  id: string;
+  slug: string;
+  displayLabel: string;
+  status: WorkGroupStatus;
+  displayOrder: number;
+  iconKey: string | null;
+  qualificationSummary: string | null;
+  safetyRequirementSummary: string | null;
+  defaultTemplateKey: string | null;
+  createdAt: Date;
+  updatedAt: Date;
+  version: string;
+}
+
+export interface WorkGroupDecision {
+  status: WorkGroupDecisionStatus;
+  allow: boolean;
+  workGroup: PublicWorkGroup | null;
+  roles: readonly AuthorizationRoleKey[];
+  internalReason: string | null;
+  externalCode: typeof authorizationDeniedCode | null;
+  externalMessage: typeof authorizationDeniedMessage | null;
+}
+
+export interface WorkGroupRepository {
+  findWorkGroupById(workGroupId: string): Promise<StoredWorkGroup | null>;
+  findWorkGroupByKey(key: string): Promise<StoredWorkGroup | null>;
+  listWorkGroups(input: { includeInactive: boolean }): Promise<StoredWorkGroup[]>;
+  updateWorkGroup(input: {
+    workGroupId: string;
+    expectedUpdatedAt: Date;
+    displayLabel?: string | undefined;
+    displayOrder?: number | undefined;
+    iconKey?: string | null | undefined;
+    now: Date;
+  }): Promise<StoredWorkGroup | null>;
+  updateWorkGroupStatus(input: {
+    workGroupId: string;
+    expectedUpdatedAt: Date;
+    status: Extract<WorkGroupStatus, "active" | "inactive">;
+    now: Date;
+  }): Promise<StoredWorkGroup | null>;
+  recordWorkGroupAuditEvent(input: {
+    action: "work_group.updated" | "work_group.activated" | "work_group.deactivated" | "work_group.access_denied";
+    workGroupId: string | null;
+    actorUserId: string | null;
+    priorState: string | null;
+    newState: string | null;
+    reason: string | null;
+    correlationId: string;
+    createdAt: Date;
+  }): Promise<void>;
+}
+
+export class WorkGroupError extends Error {
+  decision: WorkGroupDecision;
+
+  constructor(decision: WorkGroupDecision) {
+    super(authorizationDeniedMessage);
+    this.name = "WorkGroupError";
+    this.decision = decision;
+  }
+}
+
 export class AuthorizationDeniedError extends Error {
   code = authorizationDeniedCode;
   decision: AuthorizationDecision;
@@ -740,9 +829,9 @@ export const authorizationPermissionDefinitions = [
     "work_group.read",
     "Read the approved work group catalogue.",
     "none",
-    "reserved",
-    "Low risk, but catalogue APIs are not active in this phase.",
-    "Role matrix may include it; no active endpoint."
+    "active",
+    "Low risk global catalogue read with no tenant-owned data.",
+    "Only active catalogue entries are exposed to ordinary users."
   ),
   permission(
     "role_definition.read",
@@ -2011,6 +2100,249 @@ export function createDepartmentService(
 }
 
 export type DepartmentService = ReturnType<typeof createDepartmentService>;
+
+export function createWorkGroupService(
+  workGroupRepository: WorkGroupRepository,
+  authorizationService: AuthorizationService,
+  options: { now?: () => Date } = {}
+) {
+  const now = options.now ?? (() => new Date());
+
+  return {
+    async listActiveWorkGroups(input: {
+      session: SessionValidationResult;
+      roles?: readonly AuthorizationRoleKey[];
+      correlationId?: string;
+    }) {
+      const decision = await authorizeWorkGroupOperation({
+        workGroupRepository,
+        authorizationService,
+        session: input.session,
+        roles: input.roles ?? [],
+        permission: "work_group.read",
+        correlationId: input.correlationId,
+        now: now()
+      });
+
+      if (!decision.allow) {
+        throw new WorkGroupError(decision);
+      }
+
+      return (await workGroupRepository.listWorkGroups({ includeInactive: false })).map(toPublicWorkGroup);
+    },
+
+    async getActiveWorkGroup(input: {
+      session: SessionValidationResult;
+      roles?: readonly AuthorizationRoleKey[];
+      slug: string;
+      correlationId?: string;
+    }) {
+      const currentTime = now();
+      const workGroup = await workGroupRepository.findWorkGroupByKey(workGroupSlugToKey(input.slug));
+      const decision = await authorizeWorkGroupOperation({
+        workGroupRepository,
+        authorizationService,
+        session: input.session,
+        roles: input.roles ?? [],
+        permission: "work_group.read",
+        workGroup,
+        correlationId: input.correlationId,
+        now: currentTime
+      });
+
+      if (!decision.allow || !decision.workGroup || decision.workGroup.status !== "active") {
+        throw new WorkGroupError(decision.allow ? workGroupDeny("not_found", "work_group_not_found", null, input.roles ?? []) : decision);
+      }
+
+      return decision.workGroup;
+    },
+
+    async listAllWorkGroups(input: {
+      session: SessionValidationResult;
+      roles?: readonly AuthorizationRoleKey[];
+      correlationId?: string;
+    }) {
+      const decision = await authorizeWorkGroupOperation({
+        workGroupRepository,
+        authorizationService,
+        session: input.session,
+        roles: input.roles ?? [],
+        permission: "platform.supervise",
+        platform: true,
+        correlationId: input.correlationId,
+        now: now()
+      });
+
+      if (!decision.allow) {
+        throw new WorkGroupError(decision);
+      }
+
+      return (await workGroupRepository.listWorkGroups({ includeInactive: true })).map(toPublicWorkGroup);
+    },
+
+    async getWorkGroupForManagement(input: {
+      session: SessionValidationResult;
+      roles?: readonly AuthorizationRoleKey[];
+      slug: string;
+      correlationId?: string;
+    }) {
+      const workGroup = await workGroupRepository.findWorkGroupByKey(workGroupSlugToKey(input.slug));
+      const decision = await authorizeWorkGroupOperation({
+        workGroupRepository,
+        authorizationService,
+        session: input.session,
+        roles: input.roles ?? [],
+        permission: "platform.supervise",
+        platform: true,
+        workGroup,
+        correlationId: input.correlationId,
+        now: now()
+      });
+
+      if (!decision.allow || !decision.workGroup) {
+        throw new WorkGroupError(decision.allow ? workGroupDeny("not_found", "work_group_not_found", null, input.roles ?? []) : decision);
+      }
+
+      return decision.workGroup;
+    },
+
+    async updateWorkGroup(input: {
+      session: SessionValidationResult;
+      roles?: readonly AuthorizationRoleKey[];
+      slug: string;
+      expectedVersion: string;
+      displayLabel?: string | null;
+      displayOrder?: number | null;
+      iconKey?: string | null;
+      correlationId?: string;
+    }) {
+      const currentTime = now();
+      const workGroup = await workGroupRepository.findWorkGroupByKey(workGroupSlugToKey(input.slug));
+      const decision = await authorizeWorkGroupOperation({
+        workGroupRepository,
+        authorizationService,
+        session: input.session,
+        roles: input.roles ?? [],
+        permission: "platform.supervise",
+        platform: true,
+        workGroup,
+        correlationId: input.correlationId,
+        now: currentTime
+      });
+
+      if (!decision.allow || !workGroup) {
+        throw new WorkGroupError(decision.allow ? workGroupDeny("not_found", "work_group_not_found", null, input.roles ?? []) : decision);
+      }
+
+      const expectedUpdatedAt = parseWorkGroupVersion(input.expectedVersion);
+      const displayLabel = input.displayLabel == null ? undefined : normalizeCatalogueText(input.displayLabel, 2, 120);
+      const displayOrder = input.displayOrder == null ? undefined : input.displayOrder;
+      const iconKey = input.iconKey === undefined ? undefined : normalizeOptionalResidenceText(input.iconKey, 80);
+
+      if (!expectedUpdatedAt) {
+        throw new WorkGroupError(workGroupDeny("version_conflict", "invalid_version", toPublicWorkGroup(workGroup), input.roles ?? []));
+      }
+
+      if (input.displayLabel != null && !displayLabel) {
+        throw new WorkGroupError(workGroupDeny("invalid_input", "invalid_work_group_label", toPublicWorkGroup(workGroup), input.roles ?? []));
+      }
+
+      if (displayOrder !== undefined && (!Number.isInteger(displayOrder) || displayOrder < 1 || displayOrder > 10_000)) {
+        throw new WorkGroupError(workGroupDeny("invalid_input", "invalid_work_group_display_order", toPublicWorkGroup(workGroup), input.roles ?? []));
+      }
+
+      const updated = await workGroupRepository.updateWorkGroup({
+        workGroupId: workGroup.id,
+        expectedUpdatedAt,
+        displayLabel,
+        displayOrder,
+        iconKey,
+        now: currentTime
+      });
+
+      if (!updated) {
+        throw new WorkGroupError(workGroupDeny("version_conflict", "stale_version", toPublicWorkGroup(workGroup), input.roles ?? []));
+      }
+
+      await recordWorkGroupAudit(workGroupRepository, {
+        action: "work_group.updated",
+        workGroupId: updated.id,
+        actorUserId: input.session.user?.id ?? null,
+        priorState: workGroup.status,
+        newState: updated.status,
+        reason: null,
+        correlationId: input.correlationId,
+        createdAt: currentTime
+      });
+
+      return toPublicWorkGroup(updated);
+    },
+
+    async updateWorkGroupStatus(input: {
+      session: SessionValidationResult;
+      roles?: readonly AuthorizationRoleKey[];
+      slug: string;
+      expectedVersion: string;
+      status: Extract<WorkGroupStatus, "active" | "inactive">;
+      reason: string;
+      correlationId?: string;
+    }) {
+      const currentTime = now();
+      const workGroup = await workGroupRepository.findWorkGroupByKey(workGroupSlugToKey(input.slug));
+      const decision = await authorizeWorkGroupOperation({
+        workGroupRepository,
+        authorizationService,
+        session: input.session,
+        roles: input.roles ?? [],
+        permission: "platform.supervise",
+        platform: true,
+        workGroup,
+        correlationId: input.correlationId,
+        now: currentTime
+      });
+
+      if (!decision.allow || !workGroup) {
+        throw new WorkGroupError(decision.allow ? workGroupDeny("not_found", "work_group_not_found", null, input.roles ?? []) : decision);
+      }
+
+      if (!isAllowedWorkGroupTransition(workGroup.status, input.status)) {
+        throw new WorkGroupError(workGroupDeny("invalid_transition", "invalid_work_group_status_transition", toPublicWorkGroup(workGroup), input.roles ?? []));
+      }
+
+      const expectedUpdatedAt = parseWorkGroupVersion(input.expectedVersion);
+
+      if (!expectedUpdatedAt) {
+        throw new WorkGroupError(workGroupDeny("version_conflict", "invalid_version", toPublicWorkGroup(workGroup), input.roles ?? []));
+      }
+
+      const updated = await workGroupRepository.updateWorkGroupStatus({
+        workGroupId: workGroup.id,
+        expectedUpdatedAt,
+        status: input.status,
+        now: currentTime
+      });
+
+      if (!updated) {
+        throw new WorkGroupError(workGroupDeny("version_conflict", "stale_version", toPublicWorkGroup(workGroup), input.roles ?? []));
+      }
+
+      await recordWorkGroupAudit(workGroupRepository, {
+        action: input.status === "active" ? "work_group.activated" : "work_group.deactivated",
+        workGroupId: updated.id,
+        actorUserId: input.session.user?.id ?? null,
+        priorState: workGroup.status,
+        newState: updated.status,
+        reason: normalizeOptionalResidenceText(input.reason, 240),
+        correlationId: input.correlationId,
+        createdAt: currentTime
+      });
+
+      return toPublicWorkGroup(updated);
+    }
+  };
+}
+
+export type WorkGroupService = ReturnType<typeof createWorkGroupService>;
 
 export const authenticationErrorCode = "RWOS_AUTHENTICATION_FAILED";
 export const authenticationErrorMessage = "Authentication failed.";
@@ -3324,6 +3656,89 @@ export function createPrismaDepartmentRepository(prismaClient: unknown): Departm
 
     async recordDepartmentAuditEvent(input) {
       await recordPrismaDepartmentAudit(prisma, input);
+    }
+  };
+}
+
+type PrismaWorkGroupClient = Pick<PrismaEmployerOrganizationClient, "auditActorReference" | "auditEvent"> & {
+  workGroup: {
+    findUnique(args: { where: { id: string } } | { where: { key: string } }): Promise<StoredWorkGroup | null>;
+    findMany(args: {
+      where?: { status?: WorkGroupStatus | undefined };
+      orderBy: [{ displayOrder: "asc" }, { displayLabel: "asc" }, { key: "asc" }];
+    }): Promise<StoredWorkGroup[]>;
+    updateMany(args: {
+      where: { id: string; updatedAt: Date };
+      data: {
+        displayLabel?: string | undefined;
+        displayOrder?: number | undefined;
+        iconKey?: string | null | undefined;
+        status?: WorkGroupStatus | undefined;
+        updatedAt: Date;
+      };
+    }): Promise<{ count: number }>;
+  };
+};
+
+export function createPrismaWorkGroupRepository(prismaClient: unknown): WorkGroupRepository {
+  const prisma = prismaClient as PrismaWorkGroupClient;
+
+  return {
+    findWorkGroupById(workGroupId) {
+      return prisma.workGroup.findUnique({
+        where: { id: workGroupId }
+      });
+    },
+
+    findWorkGroupByKey(key) {
+      return prisma.workGroup.findUnique({
+        where: { key }
+      });
+    },
+
+    listWorkGroups(input) {
+      return prisma.workGroup.findMany({
+        ...(input.includeInactive ? {} : { where: { status: "active" as const } }),
+        orderBy: [{ displayOrder: "asc" }, { displayLabel: "asc" }, { key: "asc" }]
+      });
+    },
+
+    async updateWorkGroup(input) {
+      const result = await prisma.workGroup.updateMany({
+        where: { id: input.workGroupId, updatedAt: input.expectedUpdatedAt },
+        data: {
+          displayLabel: input.displayLabel,
+          displayOrder: input.displayOrder,
+          iconKey: input.iconKey,
+          updatedAt: input.now
+        }
+      });
+
+      if (result.count !== 1) {
+        return null;
+      }
+
+      return this.findWorkGroupById(input.workGroupId);
+    },
+
+    async updateWorkGroupStatus(input) {
+      const result = await prisma.workGroup.updateMany({
+        where: { id: input.workGroupId, updatedAt: input.expectedUpdatedAt },
+        data: {
+          status: input.status,
+          updatedAt: input.now
+        }
+      });
+
+      if (result.count !== 1) {
+        return null;
+      }
+
+      return this.findWorkGroupById(input.workGroupId);
+    },
+
+    async recordWorkGroupAuditEvent(input) {
+      await recordPrismaWorkGroupAudit(prisma, input);
     }
   };
 }
@@ -4653,6 +5068,182 @@ function createPublicDepartmentId() {
 
 function createDepartmentCorrelationId() {
   return `department_${randomBytes(12).toString("base64url")}`;
+}
+
+function toPublicWorkGroup(workGroup: StoredWorkGroup): PublicWorkGroup {
+  return {
+    id: workGroup.id,
+    slug: workGroupKeyToSlug(workGroup.key),
+    displayLabel: workGroup.displayLabel,
+    status: workGroup.status,
+    displayOrder: workGroup.displayOrder,
+    iconKey: workGroup.iconKey,
+    qualificationSummary: workGroup.qualificationSummary,
+    safetyRequirementSummary: workGroup.safetyRequirementSummary,
+    defaultTemplateKey: workGroup.defaultTemplateKey,
+    createdAt: workGroup.createdAt,
+    updatedAt: workGroup.updatedAt,
+    version: workGroup.updatedAt.toISOString()
+  };
+}
+
+async function authorizeWorkGroupOperation(input: {
+  workGroupRepository: WorkGroupRepository;
+  authorizationService: AuthorizationService;
+  session: SessionValidationResult;
+  roles: readonly AuthorizationRoleKey[];
+  permission: AuthorizationPermissionKey;
+  workGroup?: StoredWorkGroup | null;
+  platform?: boolean | undefined;
+  correlationId?: string | undefined;
+  now: Date;
+}): Promise<WorkGroupDecision> {
+  const decision = await input.authorizationService.decide({
+    session: input.session,
+    roles: input.roles,
+    permission: input.permission,
+    platformContext: { platform: input.platform === true },
+    ...(input.correlationId ? { correlationId: input.correlationId } : {})
+  });
+
+  if (!decision.allow) {
+    const workGroupDecision = workGroupDeny(
+      "permission_denied",
+      decision.internalReason ?? "permission_denied",
+      input.workGroup ? toPublicWorkGroup(input.workGroup) : null,
+      input.roles
+    );
+    await auditWorkGroupDenial(input.workGroupRepository, {
+      decision: workGroupDecision,
+      actorUserId: input.session.user?.id ?? null,
+      correlationId: input.correlationId,
+      createdAt: input.now
+    });
+    return workGroupDecision;
+  }
+
+  return {
+    status: "allow",
+    allow: true,
+    workGroup: input.workGroup ? toPublicWorkGroup(input.workGroup) : null,
+    roles: input.roles,
+    internalReason: null,
+    externalCode: null,
+    externalMessage: null
+  };
+}
+
+function isAllowedWorkGroupTransition(current: WorkGroupStatus, next: Extract<WorkGroupStatus, "active" | "inactive">) {
+  if (current === "retired") return false;
+  if (next === "active") return current === "inactive";
+  if (next === "inactive") return current === "active";
+
+  return false;
+}
+
+function workGroupDeny(
+  status: Exclude<WorkGroupDecisionStatus, "allow">,
+  internalReason: string,
+  workGroup: PublicWorkGroup | null,
+  roles: readonly AuthorizationRoleKey[]
+): WorkGroupDecision {
+  return {
+    status,
+    allow: false,
+    workGroup,
+    roles,
+    internalReason,
+    externalCode: authorizationDeniedCode,
+    externalMessage: authorizationDeniedMessage
+  };
+}
+
+async function auditWorkGroupDenial(
+  repository: WorkGroupRepository,
+  input: {
+    decision: WorkGroupDecision;
+    actorUserId: string | null;
+    correlationId?: string | undefined;
+    createdAt: Date;
+  }
+) {
+  await recordWorkGroupAudit(repository, {
+    action: "work_group.access_denied",
+    workGroupId: input.decision.workGroup?.id ?? null,
+    actorUserId: input.actorUserId,
+    priorState: input.decision.workGroup?.status ?? null,
+    newState: "denied",
+    reason: input.decision.internalReason,
+    correlationId: input.correlationId,
+    createdAt: input.createdAt
+  });
+}
+
+async function recordWorkGroupAudit(
+  repository: WorkGroupRepository,
+  input: Omit<Parameters<WorkGroupRepository["recordWorkGroupAuditEvent"]>[0], "correlationId"> & {
+    correlationId?: string | undefined;
+  }
+) {
+  await repository.recordWorkGroupAuditEvent({
+    ...input,
+    correlationId: input.correlationId ?? createWorkGroupCorrelationId()
+  });
+}
+
+async function recordPrismaWorkGroupAudit(
+  prisma: Pick<PrismaWorkGroupClient, "auditActorReference" | "auditEvent">,
+  input: Parameters<WorkGroupRepository["recordWorkGroupAuditEvent"]>[0]
+) {
+  const actorReference = await prisma.auditActorReference.create({
+    data: {
+      actorType: input.actorUserId ? "user" : "system",
+      ...(input.actorUserId ? { userId: input.actorUserId } : {}),
+      displayLabel: input.actorUserId ? "WorkGroup actor" : "WorkGroup boundary"
+    }
+  });
+
+  await prisma.auditEvent.create({
+    data: {
+      actorReferenceId: actorReference.id,
+      organizationId: null,
+      entityType: "work_group",
+      entityId: input.workGroupId ?? nilEntityId,
+      entityPublicReference: input.workGroupId,
+      action: input.action,
+      priorState: input.priorState,
+      newState: input.newState,
+      reason: input.reason,
+      source: "api",
+      correlationId: input.correlationId,
+      policyVersion: "work-groups-foundation-v1",
+      createdAt: input.createdAt
+    }
+  });
+}
+
+function workGroupKeyToSlug(key: string) {
+  return key.replace(/_/g, "-");
+}
+
+function workGroupSlugToKey(slug: string) {
+  return slug.trim().toLowerCase().replace(/-/g, "_");
+}
+
+function normalizeCatalogueText(value: string, minLength: number, maxLength: number) {
+  const normalized = value.trim().replace(/\s+/g, " ");
+
+  return normalized.length >= minLength && normalized.length <= maxLength ? normalized : "";
+}
+
+function parseWorkGroupVersion(version: string) {
+  const parsed = new Date(version);
+
+  return Number.isNaN(parsed.getTime()) ? null : parsed;
+}
+
+function createWorkGroupCorrelationId() {
+  return `work_group_${randomBytes(12).toString("base64url")}`;
 }
 
 async function scrypt(password: string, salt: Buffer, keyLength: number, options: { N: number; r: number; p: number }) {
