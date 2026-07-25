@@ -104,6 +104,72 @@ describe("Phase 01 development catalogue", () => {
     });
     expect(client.workGroups).toHaveLength(4);
   });
+
+  it("seeds RoleDefinitions idempotently without duplicates and keeps WorkGroup mapping stable", async () => {
+    const client = new FakeCatalogueClient();
+
+    await seedDevelopmentCatalogue(client as never);
+    await seedDevelopmentCatalogue(client as never);
+
+    expect(client.roleDefinitionList()).toHaveLength(17);
+    expect(client.createdRoleDefinitions).toBe(17);
+    expect(client.roleDefinitionList().map((roleDefinition) => roleDefinition.key)).toEqual([
+      "chef",
+      "sous_chef",
+      "cook",
+      "kitchen_helper",
+      "dishwasher",
+      "nurse",
+      "licensed_practical_nurse",
+      "personal_support_worker",
+      "care_aide",
+      "housekeeper",
+      "laundry_worker",
+      "dining_room_aide",
+      "general_support",
+      "general_maintenance",
+      "repair_technician",
+      "facility_support",
+      "emergency_maintenance"
+    ]);
+    expect(client.roleDefinitionList().find((roleDefinition) => roleDefinition.key === "chef")?.workGroupId).toBe("work-group-1");
+  });
+
+  it("preserves owner-edited RoleDefinition presentation, inactive lifecycle, and WorkGroup relationship during seed", async () => {
+    const client = new FakeCatalogueClient();
+    client.workGroups.push({
+      id: "existing-kitchen",
+      key: "kitchen",
+      displayLabel: "Kitchen",
+      displayOrder: 10,
+      iconKey: "utensils",
+      qualificationSummary: null,
+      safetyRequirementSummary: null,
+      defaultTemplateKey: null,
+      status: "active"
+    });
+    client.addRoleDefinition({
+      id: "existing-chef",
+      key: "chef",
+      workGroupId: "legacy-work-group",
+      displayLabel: "Owner Edited Chef",
+      displayOrder: 99,
+      localizedLabelKey: "owner.role.chef",
+      qualificationSummary: "Owner edited qualification",
+      safetyRequirementSummary: "Owner edited safety",
+      adminConfigurable: true,
+      status: "inactive"
+    });
+
+    await seedDevelopmentCatalogue(client as never);
+
+    expect(client.roleDefinitionList().find((roleDefinition) => roleDefinition.key === "chef")).toMatchObject({
+      workGroupId: "legacy-work-group",
+      displayLabel: "Owner Edited Chef",
+      displayOrder: 99,
+      status: "inactive"
+    });
+  });
 });
 
 type FakeWorkGroup = {
@@ -121,7 +187,22 @@ type FakeWorkGroup = {
 class FakeCatalogueClient {
   workGroups: FakeWorkGroup[] = [];
   createdWorkGroups = 0;
-  private roleDefinitions = new Map<string, { id: string; key: string; workGroupId: string }>();
+  createdRoleDefinitions = 0;
+  private roleDefinitions = new Map<
+    string,
+    {
+      id: string;
+      key: string;
+      workGroupId: string;
+      displayLabel: string;
+      displayOrder: number;
+      localizedLabelKey: string | null;
+      qualificationSummary: string | null;
+      safetyRequirementSummary: string | null;
+      adminConfigurable: boolean;
+      status: "active" | "inactive";
+    }
+  >();
   private accessRoles = new Map<string, { id: string; key: string }>();
   private permissions = new Map<string, { id: string; key: string }>();
   private rolePermissions = new Set<string>();
@@ -142,25 +223,39 @@ class FakeCatalogueClient {
   };
 
   roleDefinition = {
-    upsert: async (input: { where: { key: string }; create: { key: string; workGroupId: string }; update: { workGroupId: string } }) => {
-      const existing = this.roleDefinitions.get(input.where.key);
-
-      if (existing) {
-        existing.workGroupId = input.update.workGroupId;
-        return existing;
-      }
-
+    findUnique: async (input: { where: { key: string } }) => this.roleDefinitions.get(input.where.key) ?? null,
+    create: async (input: {
+      data: {
+        key: string;
+        workGroupId: string;
+        displayLabel: string;
+        displayOrder: number;
+        localizedLabelKey: string | null;
+        qualificationSummary: string | null;
+        safetyRequirementSummary: string | null;
+        adminConfigurable: boolean;
+        status: "active";
+      };
+    }) => {
       const roleDefinition = {
         id: `role-definition-${this.roleDefinitions.size + 1}`,
-        key: input.create.key,
-        workGroupId: input.create.workGroupId
+        ...input.data
       };
 
+      this.createdRoleDefinitions += 1;
       this.roleDefinitions.set(roleDefinition.key, roleDefinition);
 
       return roleDefinition;
     }
   };
+
+  addRoleDefinition(roleDefinition: ReturnType<FakeCatalogueClient["roleDefinitionList"]>[number]) {
+    this.roleDefinitions.set(roleDefinition.key, roleDefinition);
+  }
+
+  roleDefinitionList() {
+    return [...this.roleDefinitions.values()];
+  }
 
   accessRoleDefinition = {
     upsert: async (input: { where: { key: string }; create: { key: string } }) => {

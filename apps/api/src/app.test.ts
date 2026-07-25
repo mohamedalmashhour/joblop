@@ -6,6 +6,7 @@ import {
   createEmployerOrganizationService,
   createOrganizationMembershipService,
   createResidenceService,
+  createRoleDefinitionService,
   createWorkGroupService
 } from "@rwos/auth";
 import type {
@@ -25,7 +26,9 @@ import type {
   StoredAuthenticationSession,
   StoredAuthenticationUser,
   StoredDepartment,
+  StoredRoleDefinition,
   StoredWorkGroup,
+  RoleDefinitionRepository,
   UpdateSessionInput,
   WorkGroupRepository
 } from "@rwos/auth";
@@ -864,6 +867,123 @@ describe("api work groups foundation", () => {
   });
 });
 
+describe("api role definitions foundation", () => {
+  it("allows ordinary organization users to list, filter, and read active RoleDefinitions", async () => {
+    const { app } = buildRoleDefinitionApi();
+    const registration = await registerApiUser(app);
+    const organization = await createApiOrganization(app, registration.token, "RoleDefinition API Tenant");
+    const listed = await app.inject({
+      method: "GET",
+      url: `/role-definitions?organizationId=${organization.id}`,
+      headers: { authorization: `Bearer ${registration.token}` }
+    });
+    const kitchen = await app.inject({
+      method: "GET",
+      url: `/role-definitions?organizationId=${organization.id}&workGroup=kitchen`,
+      headers: { authorization: `Bearer ${registration.token}` }
+    });
+    const read = await app.inject({
+      method: "GET",
+      url: `/role-definitions/personal-support-worker?organizationId=${organization.id}`,
+      headers: { authorization: `Bearer ${registration.token}` }
+    });
+
+    expect(listed.statusCode).toBe(200);
+    expect(listed.json().roleDefinitions.map((role: { slug: string }) => role.slug)).toEqual([
+      "chef",
+      "sous-chef",
+      "cook",
+      "kitchen-helper",
+      "dishwasher",
+      "nurse",
+      "licensed-practical-nurse",
+      "personal-support-worker",
+      "care-aide"
+    ]);
+    expect(kitchen.json().roleDefinitions.map((role: { slug: string }) => role.slug)).toEqual([
+      "chef",
+      "sous-chef",
+      "cook",
+      "kitchen-helper",
+      "dishwasher"
+    ]);
+    expect(read.statusCode).toBe(200);
+    expect(read.json().roleDefinition).toMatchObject({
+      code: "PERSONAL_SUPPORT_WORKER",
+      slug: "personal-support-worker",
+      workGroupSlug: "care-nursing"
+    });
+
+    await app.close();
+  });
+
+  it("allows only platform administrators to manage the global RoleDefinition catalogue", async () => {
+    const { app, authRepository, grantPlatformAdmin } = buildRoleDefinitionApi();
+    const ordinary = await registerApiUser(app);
+    const platform = await app.inject({
+      method: "POST",
+      url: "/auth/register",
+      payload: {
+        email: "platform-roledefinition@example.com",
+        password: "ValidPassword123",
+        displayName: "Platform RoleDefinition Admin"
+      }
+    });
+    grantPlatformAdmin(authRepository.lastUserId());
+    const ordinaryOrganization = await createApiOrganization(app, ordinary.token, "Ordinary RoleDefinition Tenant");
+    const denied = await app.inject({
+      method: "PATCH",
+      url: "/platform/role-definitions/chef",
+      headers: { authorization: `Bearer ${ordinary.token}` },
+      payload: {
+        expectedVersion: "2026-07-25T08:00:00.000Z",
+        displayLabel: "Denied Chef"
+      }
+    });
+    const all = await app.inject({
+      method: "GET",
+      url: "/platform/role-definitions?workGroup=kitchen",
+      headers: { authorization: `Bearer ${platform.json().token}` }
+    });
+    const chef = all.json().roleDefinitions.find((role: { slug: string }) => role.slug === "chef");
+    const updated = await app.inject({
+      method: "PATCH",
+      url: "/platform/role-definitions/chef",
+      headers: { authorization: `Bearer ${platform.json().token}` },
+      payload: {
+        expectedVersion: chef.version,
+        displayLabel: "Executive Chef",
+        displayOrder: 12
+      }
+    });
+    const inactive = await app.inject({
+      method: "POST",
+      url: "/platform/role-definitions/chef/status",
+      headers: { authorization: `Bearer ${platform.json().token}` },
+      payload: {
+        expectedVersion: updated.json().roleDefinition.version,
+        status: "inactive",
+        reason: "catalogue pause"
+      }
+    });
+    const ordinaryAfterInactive = await app.inject({
+      method: "GET",
+      url: `/role-definitions/chef?organizationId=${ordinaryOrganization.id}`,
+      headers: { authorization: `Bearer ${ordinary.token}` }
+    });
+
+    expect(denied.statusCode).toBe(403);
+    expect(all.statusCode).toBe(200);
+    expect(updated.statusCode).toBe(200);
+    expect(updated.json().roleDefinition).toMatchObject({ code: "CHEF", slug: "chef", displayLabel: "Executive Chef", displayOrder: 12 });
+    expect(inactive.statusCode).toBe(200);
+    expect(inactive.json().roleDefinition.status).toBe("inactive");
+    expect(ordinaryAfterInactive.statusCode).toBe(403);
+
+    await app.close();
+  });
+});
+
 class ApiMemoryAuthenticationRepository implements AuthenticationRepository {
   private users = new Map<string, StoredAuthenticationUser>();
   private sessions = new Map<string, StoredAuthenticationSession>();
@@ -1394,6 +1514,115 @@ class ApiMemoryWorkGroupRepository implements WorkGroupRepository {
   }
 }
 
+class ApiMemoryRoleDefinitionRepository implements RoleDefinitionRepository {
+  private workGroups = new Map<string, StoredWorkGroup>();
+  private roleDefinitions = new Map<string, StoredRoleDefinition>();
+
+  constructor() {
+    const createdAt = new Date("2026-07-25T08:00:00.000Z");
+    for (const workGroup of [
+      ["api-work-group-1", "kitchen", "Kitchen", 10],
+      ["api-work-group-2", "care_nursing", "Care / Nursing", 20]
+    ] as const) {
+      this.workGroups.set(workGroup[1], {
+        id: workGroup[0],
+        key: workGroup[1],
+        displayLabel: workGroup[2],
+        status: "active",
+        displayOrder: workGroup[3],
+        iconKey: null,
+        qualificationSummary: null,
+        safetyRequirementSummary: null,
+        defaultTemplateKey: null,
+        createdAt,
+        updatedAt: createdAt
+      });
+    }
+
+    for (const role of [
+      ["api-role-1", "kitchen", "chef", "Chef", 10],
+      ["api-role-2", "kitchen", "sous_chef", "Sous-chef", 20],
+      ["api-role-3", "kitchen", "cook", "Cook", 30],
+      ["api-role-4", "kitchen", "kitchen_helper", "Kitchen helper", 40],
+      ["api-role-5", "kitchen", "dishwasher", "Dishwasher", 50],
+      ["api-role-6", "care_nursing", "nurse", "Nurse", 10],
+      ["api-role-7", "care_nursing", "licensed_practical_nurse", "Licensed practical nurse", 20],
+      ["api-role-8", "care_nursing", "personal_support_worker", "Personal support worker", 30],
+      ["api-role-9", "care_nursing", "care_aide", "Care aide", 40]
+    ] as const) {
+      const workGroup = this.workGroups.get(role[1]);
+      if (!workGroup) throw new Error("TEST_WORK_GROUP_NOT_FOUND");
+
+      this.roleDefinitions.set(role[2], {
+        id: role[0],
+        workGroupId: workGroup.id,
+        key: role[2],
+        displayLabel: role[3],
+        status: "active",
+        displayOrder: role[4],
+        localizedLabelKey: `role.${role[2]}`,
+        qualificationSummary: null,
+        safetyRequirementSummary: null,
+        adminConfigurable: false,
+        createdAt,
+        updatedAt: createdAt,
+        workGroup
+      });
+    }
+  }
+
+  async findRoleDefinitionById(roleDefinitionId: string) {
+    return [...this.roleDefinitions.values()].find((roleDefinition) => roleDefinition.id === roleDefinitionId) ?? null;
+  }
+
+  async findRoleDefinitionByKey(key: string) {
+    return this.roleDefinitions.get(key) ?? null;
+  }
+
+  async listRoleDefinitions(input: Parameters<RoleDefinitionRepository["listRoleDefinitions"]>[0]) {
+    return [...this.roleDefinitions.values()]
+      .filter((roleDefinition) => input.includeInactive || roleDefinition.status === "active")
+      .filter((roleDefinition) => !input.workGroupKey || roleDefinition.workGroup.key === input.workGroupKey)
+      .sort(
+        (left, right) =>
+          left.workGroup.displayOrder - right.workGroup.displayOrder ||
+          left.displayOrder - right.displayOrder ||
+          left.displayLabel.localeCompare(right.displayLabel) ||
+          left.key.localeCompare(right.key)
+      );
+  }
+
+  async updateRoleDefinition(input: Parameters<RoleDefinitionRepository["updateRoleDefinition"]>[0]) {
+    const roleDefinition = [...this.roleDefinitions.values()].find((candidate) => candidate.id === input.roleDefinitionId);
+    if (!roleDefinition || roleDefinition.updatedAt.getTime() !== input.expectedUpdatedAt.getTime()) return null;
+
+    if (input.displayLabel !== undefined) roleDefinition.displayLabel = input.displayLabel;
+    if (input.displayOrder !== undefined) roleDefinition.displayOrder = input.displayOrder;
+    if (input.localizedLabelKey !== undefined) roleDefinition.localizedLabelKey = input.localizedLabelKey;
+    if (input.qualificationSummary !== undefined) roleDefinition.qualificationSummary = input.qualificationSummary;
+    if (input.safetyRequirementSummary !== undefined) roleDefinition.safetyRequirementSummary = input.safetyRequirementSummary;
+    roleDefinition.updatedAt = new Date(input.now.getTime() + 1);
+
+    return roleDefinition;
+  }
+
+  async updateRoleDefinitionStatus(input: Parameters<RoleDefinitionRepository["updateRoleDefinitionStatus"]>[0]) {
+    const roleDefinition = [...this.roleDefinitions.values()].find((candidate) => candidate.id === input.roleDefinitionId);
+    if (!roleDefinition || roleDefinition.updatedAt.getTime() !== input.expectedUpdatedAt.getTime()) return null;
+
+    roleDefinition.status = input.status;
+    roleDefinition.updatedAt = new Date(input.now.getTime() + 1);
+
+    return roleDefinition;
+  }
+
+  async recordRoleDefinitionAuditEvent(input: Parameters<RoleDefinitionRepository["recordRoleDefinitionAuditEvent"]>[0]) {
+    void input;
+
+    return undefined;
+  }
+}
+
 function testAuthOptions() {
   let nextToken = 1;
 
@@ -1491,6 +1720,29 @@ function buildWorkGroupApi() {
     membershipService,
     organizationService,
     workGroupService: createWorkGroupService(new ApiMemoryWorkGroupRepository(), authorizationService),
+    resolveAuthorizationRoles: (userId) => (platformAdminUserIds.has(userId) ? ["PLATFORM_ADMINISTRATOR"] : [])
+  });
+
+  return {
+    app,
+    authRepository,
+    grantPlatformAdmin: (userId: string) => platformAdminUserIds.add(userId)
+  };
+}
+
+function buildRoleDefinitionApi() {
+  const authRepository = new ApiMemoryAuthenticationRepository();
+  const membershipRepository = new ApiMemoryOrganizationMembershipRepository();
+  const membershipService = createOrganizationMembershipService(membershipRepository);
+  const authorizationService = createAuthorizationService();
+  const organizationRepository = new ApiMemoryEmployerOrganizationRepository(membershipRepository);
+  const organizationService = createEmployerOrganizationService(organizationRepository, membershipService, authorizationService);
+  const platformAdminUserIds = new Set<string>();
+  const app = buildApi({
+    authService: createAuthenticationService(authRepository, testAuthOptions()),
+    membershipService,
+    organizationService,
+    roleDefinitionService: createRoleDefinitionService(new ApiMemoryRoleDefinitionRepository(), authorizationService),
     resolveAuthorizationRoles: (userId) => (platformAdminUserIds.has(userId) ? ["PLATFORM_ADMINISTRATOR"] : [])
   });
 

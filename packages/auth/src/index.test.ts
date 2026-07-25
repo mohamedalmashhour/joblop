@@ -13,6 +13,7 @@ import {
   createEmployerOrganizationService,
   createOrganizationMembershipService,
   createResidenceService,
+  createRoleDefinitionService,
   createWorkGroupService,
   hashPassword,
   hashSessionToken,
@@ -36,7 +37,9 @@ import type {
   StoredAuthenticationSession,
   StoredAuthenticationUser,
   StoredDepartment,
+  StoredRoleDefinition,
   StoredWorkGroup,
+  RoleDefinitionRepository,
   UpdateSessionInput,
   WorkGroupRepository
 } from "./index";
@@ -1410,6 +1413,205 @@ describe("work groups foundation", () => {
   });
 });
 
+describe("role definitions foundation", () => {
+  it("lists active RoleDefinitions in deterministic WorkGroup and role order with stable codes and slugs", async () => {
+    const { roleDefinitionService } = createRoleDefinitionTestServices();
+    const roles = await roleDefinitionService.listActiveRoleDefinitions({
+      session: activeSession(),
+      roles: ["ORGANIZATION_OWNER"]
+    });
+
+    expect(roles.map((role) => role.code)).toEqual([
+      "CHEF",
+      "SOUS_CHEF",
+      "COOK",
+      "KITCHEN_HELPER",
+      "DISHWASHER",
+      "NURSE",
+      "LICENSED_PRACTICAL_NURSE",
+      "PERSONAL_SUPPORT_WORKER",
+      "CARE_AIDE"
+    ]);
+    expect(roles.map((role) => role.slug)).toEqual([
+      "chef",
+      "sous-chef",
+      "cook",
+      "kitchen-helper",
+      "dishwasher",
+      "nurse",
+      "licensed-practical-nurse",
+      "personal-support-worker",
+      "care-aide"
+    ]);
+  });
+
+  it("filters by WorkGroup and reads active RoleDefinitions by code or slug", async () => {
+    const { roleDefinitionService } = createRoleDefinitionTestServices();
+    const session = activeSession();
+    const kitchenRoles = await roleDefinitionService.listActiveRoleDefinitions({
+      session,
+      roles: ["ORGANIZATION_OWNER"],
+      workGroupSlug: "kitchen"
+    });
+    const byCode = await roleDefinitionService.getActiveRoleDefinition({
+      session,
+      roles: ["ORGANIZATION_OWNER"],
+      identifier: "LICENSED_PRACTICAL_NURSE"
+    });
+    const bySlug = await roleDefinitionService.getActiveRoleDefinition({
+      session,
+      roles: ["ORGANIZATION_OWNER"],
+      identifier: "personal-support-worker"
+    });
+
+    expect(kitchenRoles.map((role) => role.slug)).toEqual(["chef", "sous-chef", "cook", "kitchen-helper", "dishwasher"]);
+    expect(byCode).toMatchObject({ code: "LICENSED_PRACTICAL_NURSE", slug: "licensed-practical-nurse", workGroupSlug: "care-nursing" });
+    expect(bySlug).toMatchObject({ code: "PERSONAL_SUPPORT_WORKER", slug: "personal-support-worker" });
+  });
+
+  it("allows ordinary catalogue reads but denies organization owner management", async () => {
+    const { roleDefinitionService } = createRoleDefinitionTestServices();
+    const session = activeSession();
+    const chef = await roleDefinitionService.getActiveRoleDefinition({
+      session,
+      roles: ["ORGANIZATION_OWNER"],
+      identifier: "chef"
+    });
+
+    await expect(
+      roleDefinitionService.updateRoleDefinition({
+        session,
+        roles: ["ORGANIZATION_OWNER"],
+        identifier: "chef",
+        expectedVersion: chef.version,
+        displayLabel: "Denied Chef"
+      })
+    ).rejects.toMatchObject({ decision: expect.objectContaining({ status: "permission_denied" }) });
+  });
+
+  it("allows platform administrators to update presentation and lifecycle without changing code slug or WorkGroup", async () => {
+    const { roleDefinitionService, roleDefinitionRepository } = createRoleDefinitionTestServices();
+    const session = activeSession();
+    const chef = await roleDefinitionService.getRoleDefinitionForManagement({
+      session,
+      roles: ["PLATFORM_ADMINISTRATOR"],
+      identifier: "chef"
+    });
+    const updated = await roleDefinitionService.updateRoleDefinition({
+      session,
+      roles: ["PLATFORM_ADMINISTRATOR"],
+      identifier: "chef",
+      expectedVersion: chef.version,
+      displayLabel: "Executive Chef",
+      displayOrder: 12,
+      qualificationSummary: "Updated presentation summary"
+    });
+    const inactive = await roleDefinitionService.updateRoleDefinitionStatus({
+      session,
+      roles: ["PLATFORM_ADMINISTRATOR"],
+      identifier: "chef",
+      expectedVersion: updated.version,
+      status: "inactive",
+      reason: "catalogue pause"
+    });
+    const reactivated = await roleDefinitionService.updateRoleDefinitionStatus({
+      session,
+      roles: ["PLATFORM_ADMINISTRATOR"],
+      identifier: "chef",
+      expectedVersion: inactive.version,
+      status: "active",
+      reason: "catalogue ready"
+    });
+
+    expect(updated).toMatchObject({
+      code: "CHEF",
+      slug: "chef",
+      workGroupSlug: "kitchen",
+      displayLabel: "Executive Chef",
+      displayOrder: 12
+    });
+    expect(inactive.status).toBe("inactive");
+    expect(reactivated.status).toBe("active");
+    expect(roleDefinitionRepository.auditActions()).toEqual([
+      "role_definition.updated",
+      "role_definition.deactivated",
+      "role_definition.activated"
+    ]);
+  });
+
+  it("hides inactive roles and roles under inactive WorkGroups from ordinary reads", async () => {
+    const { roleDefinitionService, roleDefinitionRepository } = createRoleDefinitionTestServices();
+    const session = activeSession();
+    roleDefinitionRepository.setWorkGroupStatus("kitchen", "inactive");
+
+    await expect(
+      roleDefinitionService.getActiveRoleDefinition({
+        session,
+        roles: ["ORGANIZATION_OWNER"],
+        identifier: "chef"
+      })
+    ).rejects.toMatchObject({ decision: expect.objectContaining({ status: "not_found" }) });
+    await expect(
+      roleDefinitionService.listAllRoleDefinitions({
+        session,
+        roles: ["PLATFORM_ADMINISTRATOR"],
+        workGroupSlug: "kitchen"
+      })
+    ).resolves.toEqual(expect.arrayContaining([expect.objectContaining({ slug: "chef", workGroupSlug: "kitchen" })]));
+  });
+
+  it("rejects stale updates, unknown identifiers, anonymous reads, and invalid lifecycle transitions safely", async () => {
+    const { roleDefinitionService } = createRoleDefinitionTestServices();
+    const session = activeSession();
+    const chef = await roleDefinitionService.getRoleDefinitionForManagement({
+      session,
+      roles: ["PLATFORM_ADMINISTRATOR"],
+      identifier: "chef"
+    });
+    const inactive = await roleDefinitionService.updateRoleDefinitionStatus({
+      session,
+      roles: ["PLATFORM_ADMINISTRATOR"],
+      identifier: "chef",
+      expectedVersion: chef.version,
+      status: "inactive",
+      reason: "catalogue pause"
+    });
+
+    await expect(
+      roleDefinitionService.updateRoleDefinition({
+        session,
+        roles: ["PLATFORM_ADMINISTRATOR"],
+        identifier: "chef",
+        expectedVersion: chef.version,
+        displayLabel: "Stale Chef"
+      })
+    ).rejects.toMatchObject({ decision: expect.objectContaining({ status: "version_conflict" }) });
+    await expect(
+      roleDefinitionService.getActiveRoleDefinition({
+        session,
+        roles: ["ORGANIZATION_OWNER"],
+        identifier: "unknown-role"
+      })
+    ).rejects.toMatchObject({ decision: expect.objectContaining({ status: "not_found" }) });
+    await expect(
+      roleDefinitionService.listActiveRoleDefinitions({
+        session: { authenticated: false, user: null, session: null },
+        roles: ["ORGANIZATION_OWNER"]
+      })
+    ).rejects.toMatchObject({ decision: expect.objectContaining({ status: "permission_denied" }) });
+    await expect(
+      roleDefinitionService.updateRoleDefinitionStatus({
+        session,
+        roles: ["PLATFORM_ADMINISTRATOR"],
+        identifier: "chef",
+        expectedVersion: inactive.version,
+        status: "inactive",
+        reason: "already inactive"
+      })
+    ).rejects.toMatchObject({ decision: expect.objectContaining({ status: "invalid_transition" }) });
+  });
+});
+
 class MemoryAuthorizationAuditSink {
   events: AuthorizationAuditEventInput[] = [];
 
@@ -1946,6 +2148,124 @@ class MemoryWorkGroupRepository implements WorkGroupRepository {
   }
 }
 
+class MemoryRoleDefinitionRepository implements RoleDefinitionRepository {
+  private workGroups = new Map<string, StoredWorkGroup>();
+  private roleDefinitions = new Map<string, StoredRoleDefinition>();
+  private auditEvents: Parameters<RoleDefinitionRepository["recordRoleDefinitionAuditEvent"]>[0][] = [];
+
+  constructor() {
+    const createdAt = new Date("2026-07-25T08:00:00.000Z");
+    for (const workGroup of [
+      ["work-group-1", "kitchen", "Kitchen", 10],
+      ["work-group-2", "care_nursing", "Care / Nursing", 20]
+    ] as const) {
+      this.workGroups.set(workGroup[1], {
+        id: workGroup[0],
+        key: workGroup[1],
+        displayLabel: workGroup[2],
+        status: "active",
+        displayOrder: workGroup[3],
+        iconKey: null,
+        qualificationSummary: null,
+        safetyRequirementSummary: null,
+        defaultTemplateKey: null,
+        createdAt,
+        updatedAt: createdAt
+      });
+    }
+
+    for (const role of [
+      ["role-1", "kitchen", "chef", "Chef", 10],
+      ["role-2", "kitchen", "sous_chef", "Sous-chef", 20],
+      ["role-3", "kitchen", "cook", "Cook", 30],
+      ["role-4", "kitchen", "kitchen_helper", "Kitchen helper", 40],
+      ["role-5", "kitchen", "dishwasher", "Dishwasher", 50],
+      ["role-6", "care_nursing", "nurse", "Nurse", 10],
+      ["role-7", "care_nursing", "licensed_practical_nurse", "Licensed practical nurse", 20],
+      ["role-8", "care_nursing", "personal_support_worker", "Personal support worker", 30],
+      ["role-9", "care_nursing", "care_aide", "Care aide", 40]
+    ] as const) {
+      const workGroup = this.workGroups.get(role[1]);
+      if (!workGroup) throw new Error("TEST_WORK_GROUP_NOT_FOUND");
+
+      this.roleDefinitions.set(role[2], {
+        id: role[0],
+        workGroupId: workGroup.id,
+        key: role[2],
+        displayLabel: role[3],
+        status: "active",
+        displayOrder: role[4],
+        localizedLabelKey: `role.${role[2]}`,
+        qualificationSummary: "Fixture qualification summary",
+        safetyRequirementSummary: "Fixture safety summary",
+        adminConfigurable: false,
+        createdAt,
+        updatedAt: createdAt,
+        workGroup
+      });
+    }
+  }
+
+  auditActions() {
+    return this.auditEvents.map((event) => event.action);
+  }
+
+  setWorkGroupStatus(workGroupKey: string, status: StoredWorkGroup["status"]) {
+    const workGroup = this.workGroups.get(workGroupKey);
+    if (!workGroup) throw new Error("TEST_WORK_GROUP_NOT_FOUND");
+    workGroup.status = status;
+  }
+
+  async findRoleDefinitionById(roleDefinitionId: string) {
+    return [...this.roleDefinitions.values()].find((roleDefinition) => roleDefinition.id === roleDefinitionId) ?? null;
+  }
+
+  async findRoleDefinitionByKey(key: string) {
+    return this.roleDefinitions.get(key) ?? null;
+  }
+
+  async listRoleDefinitions(input: Parameters<RoleDefinitionRepository["listRoleDefinitions"]>[0]) {
+    return [...this.roleDefinitions.values()]
+      .filter((roleDefinition) => input.includeInactive || roleDefinition.status === "active")
+      .filter((roleDefinition) => !input.workGroupKey || roleDefinition.workGroup.key === input.workGroupKey)
+      .sort(
+        (left, right) =>
+          left.workGroup.displayOrder - right.workGroup.displayOrder ||
+          left.displayOrder - right.displayOrder ||
+          left.displayLabel.localeCompare(right.displayLabel) ||
+          left.key.localeCompare(right.key)
+      );
+  }
+
+  async updateRoleDefinition(input: Parameters<RoleDefinitionRepository["updateRoleDefinition"]>[0]) {
+    const roleDefinition = [...this.roleDefinitions.values()].find((candidate) => candidate.id === input.roleDefinitionId);
+    if (!roleDefinition || roleDefinition.updatedAt.getTime() !== input.expectedUpdatedAt.getTime()) return null;
+
+    if (input.displayLabel !== undefined) roleDefinition.displayLabel = input.displayLabel;
+    if (input.displayOrder !== undefined) roleDefinition.displayOrder = input.displayOrder;
+    if (input.localizedLabelKey !== undefined) roleDefinition.localizedLabelKey = input.localizedLabelKey;
+    if (input.qualificationSummary !== undefined) roleDefinition.qualificationSummary = input.qualificationSummary;
+    if (input.safetyRequirementSummary !== undefined) roleDefinition.safetyRequirementSummary = input.safetyRequirementSummary;
+    roleDefinition.updatedAt = new Date(input.now.getTime() + 1);
+
+    return roleDefinition;
+  }
+
+  async updateRoleDefinitionStatus(input: Parameters<RoleDefinitionRepository["updateRoleDefinitionStatus"]>[0]) {
+    const roleDefinition = [...this.roleDefinitions.values()].find((candidate) => candidate.id === input.roleDefinitionId);
+    if (!roleDefinition || roleDefinition.updatedAt.getTime() !== input.expectedUpdatedAt.getTime()) return null;
+
+    roleDefinition.status = input.status;
+    roleDefinition.updatedAt = new Date(input.now.getTime() + 1);
+
+    return roleDefinition;
+  }
+
+  async recordRoleDefinitionAuditEvent(input: Parameters<RoleDefinitionRepository["recordRoleDefinitionAuditEvent"]>[0]) {
+    this.auditEvents.push(input);
+  }
+}
+
 function createResidenceTestServices() {
   const membershipRepository = new MemoryOrganizationMembershipRepository();
   const organizationRepository = new MemoryEmployerOrganizationRepository(membershipRepository);
@@ -1997,6 +2317,17 @@ function createWorkGroupTestServices() {
   return {
     workGroupService,
     workGroupRepository
+  };
+}
+
+function createRoleDefinitionTestServices() {
+  const roleDefinitionRepository = new MemoryRoleDefinitionRepository();
+  const authorizationService = createAuthorizationService();
+  const roleDefinitionService = createRoleDefinitionService(roleDefinitionRepository, authorizationService);
+
+  return {
+    roleDefinitionService,
+    roleDefinitionRepository
   };
 }
 
