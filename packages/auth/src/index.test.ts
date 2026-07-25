@@ -9,6 +9,7 @@ import {
   authorizationRoleDefinitions,
   createAuthorizationService,
   createAuthenticationService,
+  createOrganizationMembershipService,
   hashPassword,
   hashSessionToken,
   toSafeAuthorizationResponse,
@@ -16,10 +17,13 @@ import {
 } from "./index";
 import type {
   AuthorizationAuditEventInput,
+  InviteMembershipInput,
   AuthenticationRepository,
   CreateLocalUserInput,
   CreateSessionInput,
+  OrganizationMembershipRepository,
   RecordAuthenticationAuditEventInput,
+  StoredOrganizationMembership,
   StoredAuthenticationSession,
   StoredAuthenticationUser,
   UpdateSessionInput
@@ -465,11 +469,226 @@ describe("authorization foundation", () => {
   });
 });
 
+describe("organization membership foundation", () => {
+  it("invites, activates, suspends, revokes, and audits membership lifecycle", async () => {
+    const repository = new MemoryOrganizationMembershipRepository();
+    const service = createOrganizationMembershipService(repository, {
+      now: () => new Date("2026-07-25T10:00:00.000Z")
+    });
+    const invited = await service.inviteMembership(inviteInput());
+
+    expect(invited.status).toBe("invited");
+    expect(invited.roleKeys).toEqual(["ORGANIZATION_OWNER"]);
+
+    const active = await service.activateMembership({
+      userId: invited.userId,
+      membershipId: invited.id,
+      actorUserId: invited.userId
+    });
+    expect(active.status).toBe("active");
+    expect(active.activatedAt?.toISOString()).toBe("2026-07-25T10:00:00.000Z");
+
+    const suspended = await service.suspendMembership({
+      userId: invited.userId,
+      membershipId: invited.id,
+      actorUserId: invited.userId
+    });
+    expect(suspended.status).toBe("suspended");
+
+    const revoked = await service.revokeMembership({
+      userId: invited.userId,
+      membershipId: invited.id,
+      actorUserId: invited.userId
+    });
+    expect(revoked.status).toBe("revoked");
+    expect(repository.auditActions()).toEqual([
+      "membership.invited",
+      "membership.activated",
+      "membership.suspended",
+      "membership.revoked"
+    ]);
+  });
+
+  it("does not authorize invited, suspended, revoked, expired, or missing membership contexts", async () => {
+    const repository = new MemoryOrganizationMembershipRepository();
+    let currentTime = new Date("2026-07-25T10:00:00.000Z");
+    const service = createOrganizationMembershipService(repository, { now: () => currentTime });
+    const invited = await service.inviteMembership({
+      ...inviteInput(),
+      expiresAt: new Date("2026-07-25T11:00:00.000Z")
+    });
+
+    await expect(
+      service.selectOrganizationContext({ userId: invited.userId, organizationId: invited.organizationId })
+    ).resolves.toMatchObject({ allow: false, status: "membership_inactive", internalReason: "membership_invited" });
+
+    await service.activateMembership({ userId: invited.userId, membershipId: invited.id, actorUserId: invited.userId });
+    await expect(
+      service.selectOrganizationContext({ userId: invited.userId, organizationId: invited.organizationId })
+    ).resolves.toMatchObject({ allow: true, roles: ["ORGANIZATION_OWNER"] });
+
+    currentTime = new Date("2026-07-25T11:01:00.000Z");
+    await expect(
+      service.selectOrganizationContext({ userId: invited.userId, organizationId: invited.organizationId })
+    ).resolves.toMatchObject({ allow: false, status: "membership_expired", internalReason: "membership_expired" });
+
+    await expect(
+      service.selectOrganizationContext({ userId: invited.userId, organizationId: "org-missing" })
+    ).resolves.toMatchObject({ allow: false, status: "membership_missing" });
+  });
+
+  it("requires explicit organization context and never infers from one or many memberships", async () => {
+    const repository = new MemoryOrganizationMembershipRepository();
+    const service = createOrganizationMembershipService(repository);
+    const first = await service.inviteMembership(inviteInput());
+    await service.activateMembership({ userId: first.userId, membershipId: first.id, actorUserId: first.userId });
+
+    await expect(service.selectOrganizationContext({ userId: first.userId })).resolves.toMatchObject({
+      allow: false,
+      status: "context_required"
+    });
+
+    const second = await service.inviteMembership({
+      ...inviteInput(),
+      organizationId: "org-2",
+      accessRoleKeys: ["ORGANIZATION_STAFF"]
+    });
+    await service.activateMembership({ userId: second.userId, membershipId: second.id, actorUserId: second.userId });
+
+    await expect(service.selectOrganizationContext({ userId: first.userId })).resolves.toMatchObject({
+      allow: false,
+      status: "context_required"
+    });
+    await expect(service.selectOrganizationContext({ userId: first.userId, organizationId: "org-2" })).resolves.toMatchObject({
+      allow: true,
+      roles: ["ORGANIZATION_STAFF"]
+    });
+  });
+
+  it("prevents duplicate memberships and isolates cross-organization access", async () => {
+    const repository = new MemoryOrganizationMembershipRepository();
+    const service = createOrganizationMembershipService(repository);
+    const membership = await service.inviteMembership(inviteInput());
+
+    await expect(service.inviteMembership(inviteInput())).rejects.toMatchObject({
+      decision: expect.objectContaining({ status: "duplicate_membership" })
+    });
+    await expect(
+      service.getMembership("different-user", membership.id)
+    ).resolves.toBeNull();
+  });
+
+  it("changes access roles without implementing role assignment workflows beyond membership", async () => {
+    const repository = new MemoryOrganizationMembershipRepository();
+    const service = createOrganizationMembershipService(repository);
+    const membership = await service.inviteMembership(inviteInput());
+
+    const changed = await service.changeMembershipRoles({
+      userId: membership.userId,
+      membershipId: membership.id,
+      actorUserId: membership.userId,
+      accessRoleKeys: ["ORGANIZATION_STAFF"]
+    });
+
+    expect(changed.roleKeys).toEqual(["ORGANIZATION_STAFF"]);
+    expect(repository.auditActions()).toContain("membership.access_role_changed");
+  });
+});
+
 class MemoryAuthorizationAuditSink {
   events: AuthorizationAuditEventInput[] = [];
 
   async recordAuthorizationAuditEvent(input: AuthorizationAuditEventInput) {
     this.events.push(input);
+  }
+}
+
+class MemoryOrganizationMembershipRepository implements OrganizationMembershipRepository {
+  private memberships = new Map<string, StoredOrganizationMembership>();
+  private auditEvents: Parameters<OrganizationMembershipRepository["recordMembershipAuditEvent"]>[0][] = [];
+  private nextMembership = 1;
+
+  auditActions() {
+    return this.auditEvents.map((event) => event.action);
+  }
+
+  async listMembershipsForUser(userId: string) {
+    return [...this.memberships.values()].filter((membership) => membership.userId === userId);
+  }
+
+  async findMembershipById(membershipId: string) {
+    return this.memberships.get(membershipId) ?? null;
+  }
+
+  async findMembershipForUserByOrganization(userId: string, organizationId: string) {
+    return (
+      [...this.memberships.values()].find(
+        (membership) => membership.userId === userId && membership.organizationId === organizationId
+      ) ?? null
+    );
+  }
+
+  async createMembership(input: Parameters<OrganizationMembershipRepository["createMembership"]>[0]) {
+    const membership: StoredOrganizationMembership = {
+      id: `membership-${this.nextMembership}`,
+      organizationId: input.organizationId,
+      userId: input.userId,
+      status: "invited",
+      invitedByUserId: input.invitedByUserId,
+      createdAt: input.now,
+      acceptedAt: null,
+      suspendedAt: null,
+      revokedAt: null,
+      expiredAt: input.expiresAt,
+      organization: {
+        id: input.organizationId,
+        publicId: `org_${input.organizationId}`,
+        displayName: `Organization ${input.organizationId}`,
+        status: "active"
+      },
+      membershipRoles: input.accessRoleKeys.map((roleKey) => ({
+        accessRole: {
+          key: roleKey
+        }
+      }))
+    };
+
+    this.nextMembership += 1;
+    this.memberships.set(membership.id, membership);
+
+    return membership;
+  }
+
+  async updateMembershipStatus(input: Parameters<OrganizationMembershipRepository["updateMembershipStatus"]>[0]) {
+    const membership = this.memberships.get(input.membershipId);
+
+    if (!membership) throw new Error("TEST_MEMBERSHIP_NOT_FOUND");
+
+    membership.status = input.status;
+    if (input.status === "active") membership.acceptedAt = input.now;
+    if (input.status === "suspended") membership.suspendedAt = input.now;
+    if (input.status === "revoked") membership.revokedAt = input.now;
+    if (input.status === "expired") membership.expiredAt = input.now;
+
+    return membership;
+  }
+
+  async replaceMembershipRoles(input: Parameters<OrganizationMembershipRepository["replaceMembershipRoles"]>[0]) {
+    const membership = this.memberships.get(input.membershipId);
+
+    if (!membership) throw new Error("TEST_MEMBERSHIP_NOT_FOUND");
+
+    membership.membershipRoles = input.accessRoleKeys.map((roleKey) => ({
+      accessRole: {
+        key: roleKey
+      }
+    }));
+
+    return membership;
+  }
+
+  async recordMembershipAuditEvent(input: Parameters<OrganizationMembershipRepository["recordMembershipAuditEvent"]>[0]) {
+    this.auditEvents.push(input);
   }
 }
 
@@ -488,5 +707,14 @@ function activeSession(input: { userStatus?: StoredAuthenticationUser["status"];
       userId: "00000000-0000-4000-8000-000000000001",
       expiresAt: new Date("2026-07-25T08:00:00.000Z")
     }
+  };
+}
+
+function inviteInput(): InviteMembershipInput {
+  return {
+    organizationId: "org-1",
+    userId: "00000000-0000-4000-8000-000000000001",
+    invitedByUserId: "00000000-0000-4000-8000-000000000002",
+    accessRoleKeys: ["ORGANIZATION_OWNER"]
   };
 }

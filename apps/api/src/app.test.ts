@@ -1,14 +1,18 @@
 import { describe, expect, it } from "vitest";
 import {
   createAuthorizationService,
-  createAuthenticationService
+  createAuthenticationService,
+  createOrganizationMembershipService
 } from "@rwos/auth";
 import type {
   AuthorizationRoleKey,
   AuthenticationRepository,
   CreateLocalUserInput,
   CreateSessionInput,
+  InviteMembershipInput,
+  OrganizationMembershipRepository,
   RecordAuthenticationAuditEventInput,
+  StoredOrganizationMembership,
   StoredAuthenticationSession,
   StoredAuthenticationUser,
   UpdateSessionInput
@@ -221,6 +225,114 @@ describe("api authorization foundation", () => {
   });
 });
 
+describe("api organization membership foundation", () => {
+  it("lists memberships and selects explicit organization context", async () => {
+    const authRepository = new ApiMemoryAuthenticationRepository();
+    const membershipRepository = new ApiMemoryOrganizationMembershipRepository();
+    const membershipService = createOrganizationMembershipService(membershipRepository);
+    const app = buildApi({
+      authService: createAuthenticationService(authRepository, testAuthOptions()),
+      membershipService
+    });
+    const registration = await registerApiUser(app);
+    const userId = authRepository.firstUserId();
+    const membership = await membershipService.inviteMembership(apiInviteInput(userId));
+    await membershipService.activateMembership({ userId, membershipId: membership.id, actorUserId: userId });
+
+    const list = await app.inject({
+      method: "GET",
+      url: "/memberships",
+      headers: { authorization: `Bearer ${registration.token}` }
+    });
+    const selected = await app.inject({
+      method: "POST",
+      url: "/memberships/context/select",
+      headers: { authorization: `Bearer ${registration.token}` },
+      payload: { organizationId: membership.organizationId }
+    });
+
+    expect(list.statusCode).toBe(200);
+    expect(list.json().memberships).toHaveLength(1);
+    expect(selected.statusCode).toBe(200);
+    expect(selected.json()).toMatchObject({
+      organizationContext: {
+        organizationId: membership.organizationId,
+        roles: ["ORGANIZATION_OWNER"]
+      }
+    });
+
+    await app.close();
+  });
+
+  it("denies missing organization context and wrong membership access safely", async () => {
+    const authRepository = new ApiMemoryAuthenticationRepository();
+    const membershipService = createOrganizationMembershipService(new ApiMemoryOrganizationMembershipRepository());
+    const app = buildApi({
+      authService: createAuthenticationService(authRepository, testAuthOptions()),
+      membershipService
+    });
+    const registration = await registerApiUser(app);
+
+    const missingContext = await app.inject({
+      method: "POST",
+      url: "/memberships/context/select",
+      headers: { authorization: `Bearer ${registration.token}` },
+      payload: {}
+    });
+    const missingMembership = await app.inject({
+      method: "GET",
+      url: "/memberships/missing-membership",
+      headers: { authorization: `Bearer ${registration.token}` }
+    });
+
+    expect(missingContext.statusCode).toBe(403);
+    expect(missingContext.json()).toEqual({
+      error: "RWOS_AUTHORIZATION_DENIED",
+      message: "Access denied."
+    });
+    expect(missingMembership.statusCode).toBe(403);
+    expect(missingMembership.json()).toEqual({
+      error: "RWOS_AUTHORIZATION_DENIED",
+      message: "Access denied."
+    });
+
+    await app.close();
+  });
+
+  it("activates, suspends, and revokes membership without changing account state", async () => {
+    const authRepository = new ApiMemoryAuthenticationRepository();
+    const membershipRepository = new ApiMemoryOrganizationMembershipRepository();
+    const membershipService = createOrganizationMembershipService(membershipRepository);
+    const app = buildApi({
+      authService: createAuthenticationService(authRepository, testAuthOptions()),
+      membershipService
+    });
+    const registration = await registerApiUser(app);
+    const userId = authRepository.firstUserId();
+    const membership = await membershipService.inviteMembership(apiInviteInput(userId));
+
+    for (const action of ["activate", "suspend", "revoke"]) {
+      const response = await app.inject({
+        method: "POST",
+        url: `/memberships/${membership.id}/${action}`,
+        headers: { authorization: `Bearer ${registration.token}` }
+      });
+      expect(response.statusCode).toBe(200);
+    }
+
+    const session = await app.inject({
+      method: "GET",
+      url: "/auth/session",
+      headers: { authorization: `Bearer ${registration.token}` }
+    });
+
+    expect(session.statusCode).toBe(200);
+    expect(session.json().user.status).toBe("active");
+
+    await app.close();
+  });
+});
+
 class ApiMemoryAuthenticationRepository implements AuthenticationRepository {
   private users = new Map<string, StoredAuthenticationUser>();
   private sessions = new Map<string, StoredAuthenticationSession>();
@@ -302,6 +414,92 @@ class ApiMemoryAuthenticationRepository implements AuthenticationRepository {
   async recordAuthenticationAuditEvent(input: RecordAuthenticationAuditEventInput) {
     this.auditEvents.push(input);
   }
+
+  firstUserId() {
+    const user = [...this.users.values()][0];
+
+    if (!user) throw new Error("TEST_USER_NOT_FOUND");
+
+    return user.id;
+  }
+}
+
+class ApiMemoryOrganizationMembershipRepository implements OrganizationMembershipRepository {
+  private memberships = new Map<string, StoredOrganizationMembership>();
+  private nextMembership = 1;
+
+  async listMembershipsForUser(userId: string) {
+    return [...this.memberships.values()].filter((membership) => membership.userId === userId);
+  }
+
+  async findMembershipById(membershipId: string) {
+    return this.memberships.get(membershipId) ?? null;
+  }
+
+  async findMembershipForUserByOrganization(userId: string, organizationId: string) {
+    return (
+      [...this.memberships.values()].find(
+        (membership) => membership.userId === userId && membership.organizationId === organizationId
+      ) ?? null
+    );
+  }
+
+  async createMembership(input: Parameters<OrganizationMembershipRepository["createMembership"]>[0]) {
+    const membership: StoredOrganizationMembership = {
+      id: `api-membership-${this.nextMembership}`,
+      organizationId: input.organizationId,
+      userId: input.userId,
+      status: "invited",
+      invitedByUserId: input.invitedByUserId,
+      createdAt: input.now,
+      acceptedAt: null,
+      suspendedAt: null,
+      revokedAt: null,
+      expiredAt: input.expiresAt,
+      organization: {
+        id: input.organizationId,
+        publicId: `org_${input.organizationId}`,
+        displayName: "Test Organization",
+        status: "active"
+      },
+      membershipRoles: input.accessRoleKeys.map((roleKey) => ({
+        accessRole: { key: roleKey }
+      }))
+    };
+
+    this.nextMembership += 1;
+    this.memberships.set(membership.id, membership);
+
+    return membership;
+  }
+
+  async updateMembershipStatus(input: Parameters<OrganizationMembershipRepository["updateMembershipStatus"]>[0]) {
+    const membership = this.memberships.get(input.membershipId);
+
+    if (!membership) throw new Error("TEST_MEMBERSHIP_NOT_FOUND");
+
+    membership.status = input.status;
+    if (input.status === "active") membership.acceptedAt = input.now;
+    if (input.status === "suspended") membership.suspendedAt = input.now;
+    if (input.status === "revoked") membership.revokedAt = input.now;
+    if (input.status === "expired") membership.expiredAt = input.now;
+
+    return membership;
+  }
+
+  async replaceMembershipRoles(input: Parameters<OrganizationMembershipRepository["replaceMembershipRoles"]>[0]) {
+    const membership = this.memberships.get(input.membershipId);
+
+    if (!membership) throw new Error("TEST_MEMBERSHIP_NOT_FOUND");
+
+    membership.membershipRoles = input.accessRoleKeys.map((roleKey) => ({ accessRole: { key: roleKey } }));
+
+    return membership;
+  }
+
+  async recordMembershipAuditEvent() {
+    return undefined;
+  }
 }
 
 function testAuthOptions() {
@@ -329,4 +527,13 @@ async function registerApiUser(app: ReturnType<typeof buildApi>) {
   });
 
   return response.json() as { token: string };
+}
+
+function apiInviteInput(userId: string): InviteMembershipInput {
+  return {
+    organizationId: "org-api-1",
+    userId,
+    invitedByUserId: userId,
+    accessRoleKeys: ["ORGANIZATION_OWNER"]
+  };
 }
