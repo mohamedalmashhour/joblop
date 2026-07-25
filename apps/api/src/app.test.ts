@@ -3,7 +3,8 @@ import {
   createAuthorizationService,
   createAuthenticationService,
   createEmployerOrganizationService,
-  createOrganizationMembershipService
+  createOrganizationMembershipService,
+  createResidenceService
 } from "@rwos/auth";
 import type {
   AuthorizationRoleKey,
@@ -14,8 +15,10 @@ import type {
   InviteMembershipInput,
   OrganizationMembershipRepository,
   RecordAuthenticationAuditEventInput,
+  ResidenceRepository,
   StoredEmployerOrganization,
   StoredOrganizationMembership,
+  StoredResidence,
   StoredAuthenticationSession,
   StoredAuthenticationUser,
   UpdateSessionInput
@@ -519,6 +522,128 @@ describe("api employer organization foundation", () => {
   });
 });
 
+describe("api residence foundation", () => {
+  it("creates, lists, reads, updates, and changes residence status inside organization context", async () => {
+    const { app, authRepository } = buildResidenceApi();
+    const registration = await registerApiUser(app);
+    const organization = await createApiOrganization(app, registration.token, "Residence API Tenant");
+    const created = await app.inject({
+      method: "POST",
+      url: `/organizations/${organization.id}/residences`,
+      headers: { authorization: `Bearer ${registration.token}` },
+      payload: {
+        name: "Sunrise Laval",
+        addressSummary: "100 Main Street",
+        city: "Laval",
+        region: "QC",
+        country: "CA"
+      }
+    });
+    const residence = created.json().residence;
+    const listed = await app.inject({
+      method: "GET",
+      url: `/organizations/${organization.id}/residences`,
+      headers: { authorization: `Bearer ${registration.token}` }
+    });
+    const read = await app.inject({
+      method: "GET",
+      url: `/organizations/${organization.id}/residences/${residence.id}`,
+      headers: { authorization: `Bearer ${registration.token}` }
+    });
+    const updated = await app.inject({
+      method: "PATCH",
+      url: `/organizations/${organization.id}/residences/${residence.id}`,
+      headers: { authorization: `Bearer ${registration.token}` },
+      payload: {
+        expectedVersion: residence.version,
+        name: "Sunrise Laval Updated"
+      }
+    });
+    const inactive = await app.inject({
+      method: "POST",
+      url: `/organizations/${organization.id}/residences/${residence.id}/status`,
+      headers: { authorization: `Bearer ${registration.token}` },
+      payload: {
+        expectedVersion: updated.json().residence.version,
+        status: "inactive",
+        reason: "temporary pause"
+      }
+    });
+
+    expect(authRepository.firstUserId()).toBeTruthy();
+    expect(created.statusCode).toBe(201);
+    expect(listed.statusCode).toBe(200);
+    expect(listed.json().residences).toHaveLength(1);
+    expect(read.statusCode).toBe(200);
+    expect(updated.statusCode).toBe(200);
+    expect(updated.json().residence.name).toBe("Sunrise Laval Updated");
+    expect(inactive.statusCode).toBe(200);
+    expect(inactive.json().residence.status).toBe("inactive");
+
+    await app.close();
+  });
+
+  it("denies anonymous, cross-tenant, guessed residence, and stale update access safely", async () => {
+    const { app } = buildResidenceApi();
+    const first = await registerApiUser(app);
+    const firstOrganization = await createApiOrganization(app, first.token, "Residence Tenant One");
+    const residence = (
+      await app.inject({
+        method: "POST",
+        url: `/organizations/${firstOrganization.id}/residences`,
+        headers: { authorization: `Bearer ${first.token}` },
+        payload: { name: "Tenant One Residence" }
+      })
+    ).json().residence;
+    const second = await app.inject({
+      method: "POST",
+      url: "/auth/register",
+      payload: {
+        email: "residence-second@example.com",
+        password: "ValidPassword123",
+        displayName: "Second Residence Employer"
+      }
+    });
+    const secondOrganization = await createApiOrganization(app, second.json().token, "Residence Tenant Two");
+
+    const anonymous = await app.inject({
+      method: "POST",
+      url: `/organizations/${firstOrganization.id}/residences`,
+      payload: { name: "Anonymous Residence" }
+    });
+    const crossTenantRead = await app.inject({
+      method: "GET",
+      url: `/organizations/${secondOrganization.id}/residences/${residence.id}`,
+      headers: { authorization: `Bearer ${first.token}` }
+    });
+    const guessed = await app.inject({
+      method: "GET",
+      url: `/organizations/${firstOrganization.id}/residences/missing-residence`,
+      headers: { authorization: `Bearer ${first.token}` }
+    });
+    const stale = await app.inject({
+      method: "PATCH",
+      url: `/organizations/${firstOrganization.id}/residences/${residence.id}`,
+      headers: { authorization: `Bearer ${first.token}` },
+      payload: {
+        expectedVersion: "2020-01-01T00:00:00.000Z",
+        name: "Stale Residence"
+      }
+    });
+
+    expect(anonymous.statusCode).toBe(403);
+    expect(crossTenantRead.statusCode).toBe(403);
+    expect(guessed.statusCode).toBe(403);
+    expect(stale.statusCode).toBe(403);
+    expect(crossTenantRead.json()).toEqual({
+      error: "RWOS_AUTHORIZATION_DENIED",
+      message: "Access denied."
+    });
+
+    await app.close();
+  });
+});
+
 class ApiMemoryAuthenticationRepository implements AuthenticationRepository {
   private users = new Map<string, StoredAuthenticationUser>();
   private sessions = new Map<string, StoredAuthenticationSession>();
@@ -789,6 +914,92 @@ class ApiMemoryEmployerOrganizationRepository implements EmployerOrganizationRep
   }
 }
 
+class ApiMemoryResidenceRepository implements ResidenceRepository {
+  private residences = new Map<string, StoredResidence>();
+  private nextResidence = 1;
+
+  async findResidenceById(residenceId: string) {
+    return this.residences.get(residenceId) ?? null;
+  }
+
+  async listResidencesByOrganization(input: Parameters<ResidenceRepository["listResidencesByOrganization"]>[0]) {
+    return [...this.residences.values()]
+      .filter((residence) => residence.organizationId === input.organizationId && (!input.status || residence.status === input.status))
+      .sort((left, right) => left.name.localeCompare(right.name));
+  }
+
+  async createResidence(input: Parameters<ResidenceRepository["createResidence"]>[0]) {
+    const residence: StoredResidence = {
+      id: `api-residence-${this.nextResidence}`,
+      publicId: input.publicId,
+      organizationId: input.organizationId,
+      name: input.name,
+      status: "active",
+      addressSummary: input.addressSummary,
+      city: input.city,
+      region: input.region,
+      country: input.country,
+      createdByUserId: input.actorUserId,
+      createdAt: input.now,
+      updatedAt: input.now,
+      archivedAt: null
+    };
+
+    this.nextResidence += 1;
+    this.residences.set(residence.id, residence);
+    await this.recordResidenceAuditEvent({
+      action: "residence.created",
+      organizationId: residence.organizationId,
+      residenceId: residence.id,
+      actorUserId: input.actorUserId,
+      priorState: null,
+      newState: residence.status,
+      reason: null,
+      correlationId: input.correlationId,
+      createdAt: input.now
+    });
+
+    return residence;
+  }
+
+  async updateResidence(input: Parameters<ResidenceRepository["updateResidence"]>[0]) {
+    const residence = this.residences.get(input.residenceId);
+
+    if (!residence || residence.organizationId !== input.organizationId || residence.updatedAt.getTime() !== input.expectedUpdatedAt.getTime()) {
+      return null;
+    }
+
+    if (input.name !== undefined) residence.name = input.name;
+    if (input.addressSummary !== undefined) residence.addressSummary = input.addressSummary;
+    if (input.city !== undefined) residence.city = input.city;
+    if (input.region !== undefined) residence.region = input.region;
+    if (input.country !== undefined) residence.country = input.country;
+    residence.updatedAt = new Date(input.now.getTime() + 1);
+
+    return residence;
+  }
+
+  async updateResidenceStatus(input: Parameters<ResidenceRepository["updateResidenceStatus"]>[0]) {
+    const residence = this.residences.get(input.residenceId);
+
+    if (!residence || residence.organizationId !== input.organizationId || residence.updatedAt.getTime() !== input.expectedUpdatedAt.getTime()) {
+      return null;
+    }
+
+    residence.status = input.status;
+    residence.archivedAt = input.status === "closed" ? input.now : input.status === "active" ? null : residence.archivedAt;
+    residence.updatedAt = new Date(input.now.getTime() + 1);
+
+    return residence;
+  }
+
+  async recordResidenceAuditEvent(input: Parameters<ResidenceRepository["recordResidenceAuditEvent"]>[0]) {
+    void input;
+
+    return undefined;
+  }
+}
+
 function testAuthOptions() {
   let nextToken = 1;
 
@@ -816,6 +1027,45 @@ async function registerApiUser(app: ReturnType<typeof buildApi>) {
   });
 
   return response.json() as { token: string };
+}
+
+function buildResidenceApi() {
+  const authRepository = new ApiMemoryAuthenticationRepository();
+  const membershipRepository = new ApiMemoryOrganizationMembershipRepository();
+  const membershipService = createOrganizationMembershipService(membershipRepository);
+  const authorizationService = createAuthorizationService();
+  const organizationRepository = new ApiMemoryEmployerOrganizationRepository(membershipRepository);
+  const organizationService = createEmployerOrganizationService(organizationRepository, membershipService, authorizationService);
+  const residenceService = createResidenceService(
+    new ApiMemoryResidenceRepository(),
+    organizationRepository,
+    membershipService,
+    authorizationService
+  );
+  const app = buildApi({
+    authService: createAuthenticationService(authRepository, testAuthOptions()),
+    membershipService,
+    organizationService,
+    residenceService
+  });
+
+  return { app, authRepository };
+}
+
+async function createApiOrganization(app: ReturnType<typeof buildApi>, token: string, legalName: string) {
+  const response = await app.inject({
+    method: "POST",
+    url: "/organizations",
+    headers: { authorization: `Bearer ${token}` },
+    payload: {
+      legalName,
+      displayName: legalName
+    }
+  });
+
+  expect(response.statusCode).toBe(201);
+
+  return response.json().organization as { id: string; version: string };
 }
 
 function apiInviteInput(userId: string): InviteMembershipInput {
