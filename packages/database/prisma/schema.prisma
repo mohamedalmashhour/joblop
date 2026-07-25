@@ -1,0 +1,499 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+enum UserStatus {
+  email_verification_pending
+  active
+  restricted
+  disabled
+  closed
+}
+
+enum IdentityProvider {
+  local_password
+  dev_test
+  future_oauth
+}
+
+enum MfaState {
+  not_configured
+  optional
+  required
+  enrolled
+  locked
+}
+
+enum SessionStatus {
+  active
+  expired
+  revoked
+}
+
+enum EmployerOrganizationStatus {
+  invited
+  pending_review
+  active
+  restricted
+  suspended
+  closed
+}
+
+enum OrganizationMembershipStatus {
+  invited
+  active
+  suspended
+  revoked
+  expired
+}
+
+enum ResidenceStatus {
+  draft
+  active
+  restricted
+  inactive
+  closed
+}
+
+enum DepartmentStatus {
+  draft
+  active
+  restricted
+  inactive
+  closed
+}
+
+enum CatalogueStatus {
+  active
+  inactive
+  retired
+}
+
+enum AccessRoleStatus {
+  draft
+  active
+  restricted
+  retired
+}
+
+enum AccessRoleScope {
+  platform
+  organization
+  worker
+}
+
+enum JobRequestStatus {
+  draft
+  submitted
+  admin_review
+  information_required
+  approved_for_dispatch
+  cancelled
+  expired
+  archived
+}
+
+enum JobRequestUrgency {
+  normal
+  urgent
+  immediate
+}
+
+enum JobRequestType {
+  single_day
+  multi_day
+  recurring_intent
+}
+
+enum AuditActorType {
+  user
+  system
+  service
+}
+
+enum AuditSource {
+  api
+  admin
+  employer
+  worker
+  system
+}
+
+model User {
+  id              String     @id @default(uuid()) @db.Uuid
+  publicId        String     @unique @map("public_id")
+  emailNormalized String     @unique @map("email_normalized")
+  displayName     String?    @map("display_name")
+  status          UserStatus @default(email_verification_pending)
+  primaryLanguage String?    @map("primary_language")
+  createdAt       DateTime   @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt       DateTime   @updatedAt @map("updated_at") @db.Timestamptz(3)
+  disabledAt      DateTime?  @map("disabled_at") @db.Timestamptz(3)
+  closedAt        DateTime?  @map("closed_at") @db.Timestamptz(3)
+
+  identities                    UserIdentity[]
+  sessions                      Session[]
+  createdOrganizations          EmployerOrganization[]   @relation("EmployerOrganizationCreatedByUser")
+  reviewedOrganizations         EmployerOrganization[]   @relation("EmployerOrganizationReviewedByUser")
+  memberships                   OrganizationMembership[] @relation("OrganizationMembershipUser")
+  invitedMemberships            OrganizationMembership[] @relation("OrganizationMembershipInvitedByUser")
+  createdResidences             Residence[]              @relation("ResidenceCreatedByUser")
+  createdDepartments            Department[]             @relation("DepartmentCreatedByUser")
+  assignedMembershipAccessRoles MembershipAccessRole[]   @relation("MembershipAccessRoleAssignedByUser")
+  createdJobRequests            JobRequest[]             @relation("JobRequestCreator")
+  authoredJobRequests           JobRequest[]             @relation("JobRequestCreatedByUser")
+  updatedJobRequests            JobRequest[]             @relation("JobRequestUpdatedByUser")
+  auditActorReferences          AuditActorReference[]
+
+  @@index([emailNormalized], map: "users_email_normalized_idx")
+  @@index([status], map: "users_status_idx")
+  @@map("users")
+}
+
+model UserIdentity {
+  id                String           @id @default(uuid()) @db.Uuid
+  userId            String           @map("user_id") @db.Uuid
+  provider          IdentityProvider
+  providerSubject   String           @map("provider_subject")
+  emailVerifiedAt   DateTime?        @map("email_verified_at") @db.Timestamptz(3)
+  passwordHash      String?          @map("password_hash")
+  passwordUpdatedAt DateTime?        @map("password_updated_at") @db.Timestamptz(3)
+  mfaState          MfaState         @default(not_configured) @map("mfa_state")
+  createdAt         DateTime         @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt         DateTime         @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  user User @relation(fields: [userId], references: [id], onDelete: Restrict)
+
+  @@unique([provider, providerSubject], map: "user_identities_provider_subject_key")
+  @@index([userId], map: "user_identities_user_id_idx")
+  @@index([provider, providerSubject], map: "user_identities_provider_subject_idx")
+  @@map("user_identities")
+}
+
+model Session {
+  id            String        @id @default(uuid()) @db.Uuid
+  userId        String        @map("user_id") @db.Uuid
+  sessionHash   String        @unique @map("session_hash")
+  status        SessionStatus @default(active)
+  createdAt     DateTime      @default(now()) @map("created_at") @db.Timestamptz(3)
+  expiresAt     DateTime      @map("expires_at") @db.Timestamptz(3)
+  lastSeenAt    DateTime?     @map("last_seen_at") @db.Timestamptz(3)
+  revokedAt     DateTime?     @map("revoked_at") @db.Timestamptz(3)
+  ipHash        String?       @map("ip_hash")
+  userAgentHash String?       @map("user_agent_hash")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Restrict)
+
+  @@index([sessionHash], map: "sessions_session_hash_idx")
+  @@index([userId, status], map: "sessions_user_id_status_idx")
+  @@index([expiresAt], map: "sessions_expires_at_idx")
+  @@map("sessions")
+}
+
+model EmployerOrganization {
+  id               String                     @id @default(uuid()) @db.Uuid
+  publicId         String                     @unique @map("public_id")
+  legalName        String                     @map("legal_name")
+  displayName      String                     @map("display_name")
+  status           EmployerOrganizationStatus @default(pending_review)
+  createdByUserId  String?                    @map("created_by_user_id") @db.Uuid
+  reviewedByUserId String?                    @map("reviewed_by_user_id") @db.Uuid
+  createdAt        DateTime                   @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt        DateTime                   @updatedAt @map("updated_at") @db.Timestamptz(3)
+  restrictedAt     DateTime?                  @map("restricted_at") @db.Timestamptz(3)
+  suspendedAt      DateTime?                  @map("suspended_at") @db.Timestamptz(3)
+  closedAt         DateTime?                  @map("closed_at") @db.Timestamptz(3)
+
+  createdBy            User?                    @relation("EmployerOrganizationCreatedByUser", fields: [createdByUserId], references: [id], onDelete: SetNull)
+  reviewedBy           User?                    @relation("EmployerOrganizationReviewedByUser", fields: [reviewedByUserId], references: [id], onDelete: SetNull)
+  memberships          OrganizationMembership[]
+  residences           Residence[]
+  departments          Department[]
+  jobRequests          JobRequest[]
+  auditActorReferences AuditActorReference[]
+  auditEvents          AuditEvent[]
+
+  @@index([status], map: "employer_organizations_status_idx")
+  @@map("employer_organizations")
+}
+
+model OrganizationMembership {
+  id              String                       @id @default(uuid()) @db.Uuid
+  organizationId  String                       @map("organization_id") @db.Uuid
+  userId          String                       @map("user_id") @db.Uuid
+  status          OrganizationMembershipStatus @default(invited)
+  invitedByUserId String?                      @map("invited_by_user_id") @db.Uuid
+  createdAt       DateTime                     @default(now()) @map("created_at") @db.Timestamptz(3)
+  acceptedAt      DateTime?                    @map("accepted_at") @db.Timestamptz(3)
+  suspendedAt     DateTime?                    @map("suspended_at") @db.Timestamptz(3)
+  revokedAt       DateTime?                    @map("revoked_at") @db.Timestamptz(3)
+  expiredAt       DateTime?                    @map("expired_at") @db.Timestamptz(3)
+
+  organization    EmployerOrganization   @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  user            User                   @relation("OrganizationMembershipUser", fields: [userId], references: [id], onDelete: Restrict)
+  invitedBy       User?                  @relation("OrganizationMembershipInvitedByUser", fields: [invitedByUserId], references: [id], onDelete: SetNull)
+  membershipRoles MembershipAccessRole[]
+
+  @@index([organizationId, status], map: "organization_memberships_organization_id_status_idx")
+  @@index([userId, status], map: "organization_memberships_user_id_status_idx")
+  @@map("organization_memberships")
+}
+
+model Residence {
+  id              String          @id @default(uuid()) @db.Uuid
+  publicId        String          @unique @map("public_id")
+  organizationId  String          @map("organization_id") @db.Uuid
+  name            String
+  status          ResidenceStatus @default(draft)
+  addressSummary  String?         @map("address_summary")
+  city            String?
+  region          String?
+  country         String?
+  createdByUserId String?         @map("created_by_user_id") @db.Uuid
+  createdAt       DateTime        @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt       DateTime        @updatedAt @map("updated_at") @db.Timestamptz(3)
+  archivedAt      DateTime?       @map("archived_at") @db.Timestamptz(3)
+
+  organization EmployerOrganization @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  createdBy    User?                @relation("ResidenceCreatedByUser", fields: [createdByUserId], references: [id], onDelete: SetNull)
+  departments  Department[]
+  jobRequests  JobRequest[]
+
+  @@unique([organizationId, id], map: "residences_organization_id_id_key")
+  @@index([organizationId, status], map: "residences_organization_id_status_idx")
+  @@index([organizationId, name], map: "residences_organization_id_name_idx")
+  @@map("residences")
+}
+
+model Department {
+  id              String           @id @default(uuid()) @db.Uuid
+  publicId        String           @unique @map("public_id")
+  organizationId  String           @map("organization_id") @db.Uuid
+  residenceId     String           @map("residence_id") @db.Uuid
+  name            String
+  status          DepartmentStatus @default(draft)
+  createdByUserId String?          @map("created_by_user_id") @db.Uuid
+  createdAt       DateTime         @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt       DateTime         @updatedAt @map("updated_at") @db.Timestamptz(3)
+  archivedAt      DateTime?        @map("archived_at") @db.Timestamptz(3)
+
+  organization EmployerOrganization @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  residence    Residence            @relation(fields: [organizationId, residenceId], references: [organizationId, id], onDelete: Restrict)
+  createdBy    User?                @relation("DepartmentCreatedByUser", fields: [createdByUserId], references: [id], onDelete: SetNull)
+  jobRequests  JobRequest[]
+
+  @@unique([organizationId, id], map: "departments_organization_id_id_key")
+  @@unique([residenceId, id], map: "departments_residence_id_id_key")
+  @@unique([organizationId, residenceId, id], map: "departments_organization_id_residence_id_id_key")
+  @@index([organizationId, status], map: "departments_organization_id_status_idx")
+  @@index([residenceId, status], map: "departments_residence_id_status_idx")
+  @@index([residenceId, name], map: "departments_residence_id_name_idx")
+  @@map("departments")
+}
+
+model WorkGroup {
+  id                       String          @id @default(uuid()) @db.Uuid
+  key                      String          @unique
+  displayLabel             String          @map("display_label")
+  status                   CatalogueStatus @default(active)
+  displayOrder             Int             @map("display_order")
+  iconKey                  String?         @map("icon_key")
+  qualificationSummary     String?         @map("qualification_summary")
+  safetyRequirementSummary String?         @map("safety_requirement_summary")
+  defaultTemplateKey       String?         @map("default_template_key")
+  createdAt                DateTime        @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt                DateTime        @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  roleDefinitions RoleDefinition[]
+  jobRequests     JobRequest[]
+
+  @@index([status, displayOrder], map: "work_groups_status_display_order_idx")
+  @@map("work_groups")
+}
+
+model RoleDefinition {
+  id                       String          @id @default(uuid()) @db.Uuid
+  workGroupId              String          @map("work_group_id") @db.Uuid
+  key                      String          @unique
+  displayLabel             String          @map("display_label")
+  status                   CatalogueStatus @default(active)
+  displayOrder             Int             @map("display_order")
+  localizedLabelKey        String?         @map("localized_label_key")
+  qualificationSummary     String?         @map("qualification_summary")
+  safetyRequirementSummary String?         @map("safety_requirement_summary")
+  adminConfigurable        Boolean         @default(false) @map("admin_configurable")
+  createdAt                DateTime        @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt                DateTime        @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  workGroup   WorkGroup    @relation(fields: [workGroupId], references: [id], onDelete: Restrict)
+  jobRequests JobRequest[]
+
+  @@unique([workGroupId, id], map: "role_definitions_work_group_id_id_key")
+  @@index([workGroupId, status, displayOrder], map: "role_definitions_work_group_id_status_display_order_idx")
+  @@map("role_definitions")
+}
+
+model AccessRoleDefinition {
+  id          String           @id @default(uuid()) @db.Uuid
+  key         String           @unique
+  scope       AccessRoleScope
+  status      AccessRoleStatus @default(active)
+  description String?
+  isSystem    Boolean          @default(true) @map("is_system")
+  createdAt   DateTime         @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt   DateTime         @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  permissions     AccessRolePermission[]
+  membershipRoles MembershipAccessRole[]
+
+  @@map("access_role_definitions")
+}
+
+model PermissionDefinition {
+  id          String   @id @default(uuid()) @db.Uuid
+  key         String   @unique
+  phase       String
+  implemented Boolean  @default(true)
+  description String?
+  createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt   DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  accessRoles AccessRolePermission[]
+
+  @@map("permission_definitions")
+}
+
+model AccessRolePermission {
+  accessRoleDefinitionId String   @map("access_role_definition_id") @db.Uuid
+  permissionDefinitionId String   @map("permission_definition_id") @db.Uuid
+  createdAt              DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  accessRole AccessRoleDefinition @relation(fields: [accessRoleDefinitionId], references: [id], onDelete: Restrict)
+  permission PermissionDefinition @relation(fields: [permissionDefinitionId], references: [id], onDelete: Restrict)
+
+  @@id([accessRoleDefinitionId, permissionDefinitionId], map: "access_role_permissions_pkey")
+  @@index([permissionDefinitionId], map: "access_role_permissions_permission_definition_id_idx")
+  @@map("access_role_permissions")
+}
+
+model MembershipAccessRole {
+  membershipId           String    @map("membership_id") @db.Uuid
+  accessRoleDefinitionId String    @map("access_role_definition_id") @db.Uuid
+  assignedByUserId       String?   @map("assigned_by_user_id") @db.Uuid
+  createdAt              DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+  revokedAt              DateTime? @map("revoked_at") @db.Timestamptz(3)
+
+  membership OrganizationMembership @relation(fields: [membershipId], references: [id], onDelete: Restrict)
+  accessRole AccessRoleDefinition   @relation(fields: [accessRoleDefinitionId], references: [id], onDelete: Restrict)
+  assignedBy User?                  @relation("MembershipAccessRoleAssignedByUser", fields: [assignedByUserId], references: [id], onDelete: SetNull)
+
+  @@id([membershipId, accessRoleDefinitionId], map: "membership_access_roles_pkey")
+  @@index([accessRoleDefinitionId], map: "membership_access_roles_access_role_definition_id_idx")
+  @@map("membership_access_roles")
+}
+
+model JobRequestSequence {
+  scopeYear Int      @id @map("scope_year")
+  lastValue Int      @default(0) @map("last_value")
+  updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  @@index([scopeYear], map: "job_request_sequences_scope_year_idx")
+  @@map("job_request_sequences")
+}
+
+model JobRequest {
+  id                 String            @id @default(uuid()) @db.Uuid
+  jobRequestNumber   String            @unique @map("job_request_number")
+  organizationId     String            @map("organization_id") @db.Uuid
+  residenceId        String            @map("residence_id") @db.Uuid
+  departmentId       String            @map("department_id") @db.Uuid
+  workGroupId        String            @map("work_group_id") @db.Uuid
+  roleDefinitionId   String            @map("role_definition_id") @db.Uuid
+  creatorUserId      String            @map("creator_user_id") @db.Uuid
+  title              String
+  description        String?
+  numberOfWorkers    Int               @default(1) @map("number_of_workers")
+  urgency            JobRequestUrgency @default(normal)
+  requestType        JobRequestType    @map("request_type")
+  timezone           String
+  startAt            DateTime          @map("start_at") @db.Timestamptz(3)
+  endAt              DateTime          @map("end_at") @db.Timestamptz(3)
+  isMultiDay         Boolean           @default(false) @map("is_multi_day")
+  hasRecurringIntent Boolean           @default(false) @map("has_recurring_intent")
+  status             JobRequestStatus  @default(draft)
+  adminReviewReason  String?           @map("admin_review_reason")
+  version            Int               @default(1)
+  createdByUserId    String            @map("created_by_user_id") @db.Uuid
+  updatedByUserId    String?           @map("updated_by_user_id") @db.Uuid
+  createdAt          DateTime          @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt          DateTime          @updatedAt @map("updated_at") @db.Timestamptz(3)
+  submittedAt        DateTime?         @map("submitted_at") @db.Timestamptz(3)
+  cancelledAt        DateTime?         @map("cancelled_at") @db.Timestamptz(3)
+  expiredAt          DateTime?         @map("expired_at") @db.Timestamptz(3)
+  archivedAt         DateTime?         @map("archived_at") @db.Timestamptz(3)
+
+  organization   EmployerOrganization @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  residence      Residence            @relation(fields: [organizationId, residenceId], references: [organizationId, id], onDelete: Restrict)
+  department     Department           @relation(fields: [organizationId, residenceId, departmentId], references: [organizationId, residenceId, id], onDelete: Restrict)
+  workGroup      WorkGroup            @relation(fields: [workGroupId], references: [id], onDelete: Restrict)
+  roleDefinition RoleDefinition       @relation(fields: [workGroupId, roleDefinitionId], references: [workGroupId, id], onDelete: Restrict)
+  creator        User                 @relation("JobRequestCreator", fields: [creatorUserId], references: [id], onDelete: Restrict)
+  createdBy      User                 @relation("JobRequestCreatedByUser", fields: [createdByUserId], references: [id], onDelete: Restrict)
+  updatedBy      User?                @relation("JobRequestUpdatedByUser", fields: [updatedByUserId], references: [id], onDelete: SetNull)
+
+  @@index([jobRequestNumber], map: "job_requests_job_request_number_idx")
+  @@index([organizationId, status, createdAt], map: "job_requests_organization_id_status_created_at_idx")
+  @@index([organizationId, residenceId, status], map: "job_requests_organization_id_residence_id_status_idx")
+  @@index([organizationId, departmentId, status], map: "job_requests_organization_id_department_id_status_idx")
+  @@index([organizationId, startAt], map: "job_requests_organization_id_start_at_idx")
+  @@index([status, submittedAt], map: "job_requests_status_submitted_at_idx")
+  @@index([createdByUserId, createdAt], map: "job_requests_created_by_user_id_created_at_idx")
+  @@map("job_requests")
+}
+
+model AuditActorReference {
+  id             String         @id @default(uuid()) @db.Uuid
+  actorType      AuditActorType @map("actor_type")
+  userId         String?        @map("user_id") @db.Uuid
+  organizationId String?        @map("organization_id") @db.Uuid
+  displayLabel   String         @map("display_label")
+  createdAt      DateTime       @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  user         User?                 @relation(fields: [userId], references: [id], onDelete: SetNull)
+  organization EmployerOrganization? @relation(fields: [organizationId], references: [id], onDelete: SetNull)
+  auditEvents  AuditEvent[]
+
+  @@index([userId], map: "audit_actor_references_user_id_idx")
+  @@index([organizationId], map: "audit_actor_references_organization_id_idx")
+  @@map("audit_actor_references")
+}
+
+model AuditEvent {
+  id                    String      @id @default(uuid()) @db.Uuid
+  actorReferenceId      String      @map("actor_reference_id") @db.Uuid
+  organizationId        String?     @map("organization_id") @db.Uuid
+  entityType            String      @map("entity_type")
+  entityId              String      @map("entity_id") @db.Uuid
+  entityPublicReference String?     @map("entity_public_reference")
+  action                String
+  priorState            String?     @map("prior_state")
+  newState              String?     @map("new_state")
+  reason                String?
+  source                AuditSource
+  correlationId         String      @map("correlation_id")
+  policyVersion         String?     @map("policy_version")
+  createdAt             DateTime    @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  actorReference AuditActorReference   @relation(fields: [actorReferenceId], references: [id], onDelete: Restrict)
+  organization   EmployerOrganization? @relation(fields: [organizationId], references: [id], onDelete: SetNull)
+
+  @@index([organizationId, createdAt], map: "audit_events_organization_id_created_at_idx")
+  @@index([entityType, entityId, createdAt], map: "audit_events_entity_type_entity_id_created_at_idx")
+  @@index([entityPublicReference], map: "audit_events_entity_public_reference_idx")
+  @@index([correlationId], map: "audit_events_correlation_id_idx")
+  @@map("audit_events")
+}

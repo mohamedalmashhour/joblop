@@ -9,11 +9,21 @@
   "scripts": {
     "build": "tsc -p tsconfig.json",
     "lint": "eslint .",
+    "prisma:format": "prisma format --schema prisma/schema.prisma",
+    "prisma:generate": "prisma generate --schema prisma/schema.prisma",
+    "prisma:migrate:deploy": "prisma migrate deploy --schema prisma/schema.prisma",
+    "prisma:seed": "tsx prisma/seed.ts",
+    "prisma:validate": "prisma validate --schema prisma/schema.prisma",
     "typecheck": "tsc --noEmit"
   },
+  "prisma": {
+    "seed": "tsx prisma/seed.ts"
+  },
   "dependencies": {
+    "@prisma/adapter-pg": "^7.9.0",
     "@prisma/client": "^7.9.0",
-    "@rwos/config": "workspace:*"
+    "@rwos/config": "workspace:*",
+    "pg": "^8.16.3"
   },
   "devDependencies": {
     "prisma": "^7.9.0"
