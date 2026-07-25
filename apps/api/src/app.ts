@@ -3,6 +3,7 @@ import {
   AuthenticationError,
   AuthenticationRequiredError,
   DepartmentError,
+  DispatchError,
   EmployerOrganizationError,
   JobRequestError,
   OrganizationMembershipError,
@@ -19,6 +20,7 @@ import {
   createAuthenticationService,
   createAuthorizationService,
   createDepartmentService,
+  createDispatchService,
   createEmployerOrganizationService,
   createJobRequestService,
   createOrganizationMembershipService,
@@ -26,6 +28,7 @@ import {
   createRoleDefinitionService,
   createWorkGroupService,
   createPrismaDepartmentRepository,
+  createPrismaDispatchRepository,
   createPrismaAuthenticationRepository,
   createPrismaEmployerOrganizationRepository,
   createPrismaJobRequestRepository,
@@ -41,6 +44,8 @@ import {
   type AuthenticationService,
   type DepartmentService,
   type DepartmentStatus,
+  type DispatchService,
+  type DispatchPriority,
   type EmployerOrganizationService,
   type JobRequestService,
   type JobRequestType,
@@ -62,6 +67,7 @@ export interface BuildApiOptions {
   organizationService?: EmployerOrganizationService;
   residenceService?: ResidenceService;
   departmentService?: DepartmentService;
+  dispatchService?: DispatchService;
   workGroupService?: WorkGroupService;
   roleDefinitionService?: RoleDefinitionService;
   jobRequestService?: JobRequestService;
@@ -129,6 +135,15 @@ export function buildApi(options: BuildApiOptions = {}) {
       membershipService,
       authorizationService
     );
+  const dispatchService =
+    options.dispatchService ??
+    createDispatchService(
+      createPrismaDispatchRepository(prisma!),
+      createPrismaJobRequestRepository(prisma!),
+      organizationRepository!,
+      membershipService,
+      authorizationService
+    );
   const resolveAuthorizationRoles = options.resolveAuthorizationRoles ?? (() => []);
 
   if (prisma) {
@@ -164,6 +179,10 @@ export function buildApi(options: BuildApiOptions = {}) {
 
     if (error instanceof JobRequestError) {
       return sendJobRequestDenied(reply);
+    }
+
+    if (error instanceof DispatchError) {
+      return sendDispatchDenied(reply);
     }
 
     throw error;
@@ -1408,6 +1427,329 @@ export function buildApi(options: BuildApiOptions = {}) {
     }
   );
 
+  app.post("/platform/dispatches", async (request, reply) => {
+    const session = await authService.validateSession(
+      readBearerToken(request.headers.authorization)
+    );
+    if (!session.authenticated || !session.user) return sendDispatchDenied(reply);
+
+    const body = asRecord(request.body);
+    const priority = readDispatchPriority(readRequiredString(body, "priority"));
+    const dispatchReview = await dispatchService.createDispatch({
+      session,
+      roles: await resolveAuthorizationRoles(session.user.id),
+      jobRequestIdOrNumber: readRequiredString(body, "jobRequestIdOrNumber") ?? "",
+      operationalOwnerUserId: readOptionalString(body, "operationalOwnerUserId"),
+      ...(priority ? { priority } : {})
+    });
+
+    return reply.code(201).send({ dispatchReview: serializeDispatchReview(dispatchReview) });
+  });
+
+  app.get("/platform/dispatches", async (request, reply) => {
+    const session = await authService.validateSession(
+      readBearerToken(request.headers.authorization)
+    );
+    if (!session.authenticated || !session.user) return sendDispatchDenied(reply);
+
+    const query = asRecord(request.query);
+    const dispatches = await dispatchService.listDispatches({
+      session,
+      roles: await resolveAuthorizationRoles(session.user.id),
+      organizationId: readOptionalString(query, "organizationId")
+    });
+
+    return reply
+      .code(200)
+      .send({ dispatches: dispatches.map((item) => serializeDispatchReview(item)) });
+  });
+
+  app.get("/platform/dispatches/:dispatchReviewId", async (request, reply) => {
+    const session = await authService.validateSession(
+      readBearerToken(request.headers.authorization)
+    );
+    if (!session.authenticated || !session.user) return sendDispatchDenied(reply);
+
+    const result = await dispatchService.getDispatch({
+      session,
+      roles: await resolveAuthorizationRoles(session.user.id),
+      dispatchReviewId: readRouteParam(request.params, "dispatchReviewId")
+    });
+
+    return reply.code(200).send({
+      dispatchReview: serializeDispatchReview(result.dispatchReview),
+      candidates: result.candidates.map(serializeDispatchCandidate)
+    });
+  });
+
+  app.post("/platform/dispatches/:dispatchReviewId/owner", async (request, reply) => {
+    const session = await authService.validateSession(
+      readBearerToken(request.headers.authorization)
+    );
+    if (!session.authenticated || !session.user) return sendDispatchDenied(reply);
+
+    const body = asRecord(request.body);
+    const dispatchReview = await dispatchService.assignOperationalOwner({
+      session,
+      roles: await resolveAuthorizationRoles(session.user.id),
+      dispatchReviewId: readRouteParam(request.params, "dispatchReviewId"),
+      operationalOwnerUserId: readOptionalString(body, "operationalOwnerUserId"),
+      expectedVersion: readOptionalNumber(body, "expectedVersion") ?? 0
+    });
+
+    return reply.code(200).send({ dispatchReview: serializeDispatchReview(dispatchReview) });
+  });
+
+  app.post("/platform/dispatches/:dispatchReviewId/candidate-review", async (request, reply) => {
+    const session = await authService.validateSession(
+      readBearerToken(request.headers.authorization)
+    );
+    if (!session.authenticated || !session.user) return sendDispatchDenied(reply);
+
+    const body = asRecord(request.body);
+    const dispatchReview = await dispatchService.startCandidateReview({
+      session,
+      roles: await resolveAuthorizationRoles(session.user.id),
+      dispatchReviewId: readRouteParam(request.params, "dispatchReviewId"),
+      expectedVersion: readOptionalNumber(body, "expectedVersion") ?? 0
+    });
+
+    return reply.code(200).send({ dispatchReview: serializeDispatchReview(dispatchReview) });
+  });
+
+  app.get("/platform/dispatches/:dispatchReviewId/candidates/search", async (request, reply) => {
+    const session = await authService.validateSession(
+      readBearerToken(request.headers.authorization)
+    );
+    if (!session.authenticated || !session.user) return sendDispatchDenied(reply);
+
+    const result = await dispatchService.searchCandidates({
+      session,
+      roles: await resolveAuthorizationRoles(session.user.id),
+      dispatchReviewId: readRouteParam(request.params, "dispatchReviewId")
+    });
+
+    return reply.code(200).send({
+      status: result.status,
+      candidates: result.candidates.map(serializeDispatchCandidate)
+    });
+  });
+
+  app.post("/platform/dispatches/:dispatchReviewId/candidates/evaluate", async (request, reply) => {
+    const session = await authService.validateSession(
+      readBearerToken(request.headers.authorization)
+    );
+    if (!session.authenticated || !session.user) return sendDispatchDenied(reply);
+
+    const body = asRecord(request.body);
+    const result = await dispatchService.evaluateCandidate({
+      session,
+      roles: await resolveAuthorizationRoles(session.user.id),
+      dispatchReviewId: readRouteParam(request.params, "dispatchReviewId"),
+      candidateSourceReference: readRequiredString(body, "candidateSourceReference") ?? ""
+    });
+
+    return reply.code(200).send({
+      status: result.status,
+      candidate: result.candidate ? serializeDispatchCandidate(result.candidate) : null
+    });
+  });
+
+  app.post("/platform/dispatches/:dispatchReviewId/shortlist", async (request, reply) => {
+    const session = await authService.validateSession(
+      readBearerToken(request.headers.authorization)
+    );
+    if (!session.authenticated || !session.user) return sendDispatchDenied(reply);
+
+    const body = asRecord(request.body);
+    const candidate = await dispatchService.addCandidateToShortlist({
+      session,
+      roles: await resolveAuthorizationRoles(session.user.id),
+      dispatchReviewId: readRouteParam(request.params, "dispatchReviewId"),
+      candidateSourceReference: readRequiredString(body, "candidateSourceReference") ?? "",
+      shortlistOrder: readOptionalNumber(body, "shortlistOrder")
+    });
+
+    return reply.code(200).send({ candidate: serializeDispatchCandidate(candidate) });
+  });
+
+  app.delete(
+    "/platform/dispatches/:dispatchReviewId/shortlist/:candidateSourceReference",
+    async (request, reply) => {
+      const session = await authService.validateSession(
+        readBearerToken(request.headers.authorization)
+      );
+      if (!session.authenticated || !session.user) return sendDispatchDenied(reply);
+
+      const candidate = await dispatchService.removeCandidateFromShortlist({
+        session,
+        roles: await resolveAuthorizationRoles(session.user.id),
+        dispatchReviewId: readRouteParam(request.params, "dispatchReviewId"),
+        candidateSourceReference: readRouteParam(request.params, "candidateSourceReference")
+      });
+
+      return reply.code(200).send({ candidate: serializeDispatchCandidate(candidate) });
+    }
+  );
+
+  app.post("/platform/dispatches/:dispatchReviewId/shortlist/reorder", async (request, reply) => {
+    const session = await authService.validateSession(
+      readBearerToken(request.headers.authorization)
+    );
+    if (!session.authenticated || !session.user) return sendDispatchDenied(reply);
+
+    const body = asRecord(request.body);
+    const references = Array.isArray(body.candidateSourceReferences)
+      ? body.candidateSourceReferences.filter((value): value is string => typeof value === "string")
+      : [];
+    const candidates = await dispatchService.reorderShortlist({
+      session,
+      roles: await resolveAuthorizationRoles(session.user.id),
+      dispatchReviewId: readRouteParam(request.params, "dispatchReviewId"),
+      candidateSourceReferences: references
+    });
+
+    return reply.code(200).send({ candidates: candidates.map(serializeDispatchCandidate) });
+  });
+
+  app.post("/platform/dispatches/:dispatchReviewId/shortlist-ready", async (request, reply) => {
+    const session = await authService.validateSession(
+      readBearerToken(request.headers.authorization)
+    );
+    if (!session.authenticated || !session.user) return sendDispatchDenied(reply);
+
+    const body = asRecord(request.body);
+    const dispatchReview = await dispatchService.markShortlistReady({
+      session,
+      roles: await resolveAuthorizationRoles(session.user.id),
+      dispatchReviewId: readRouteParam(request.params, "dispatchReviewId"),
+      expectedVersion: readOptionalNumber(body, "expectedVersion") ?? 0
+    });
+
+    return reply.code(200).send({ dispatchReview: serializeDispatchReview(dispatchReview) });
+  });
+
+  app.post("/platform/dispatches/:dispatchReviewId/offer-preparation", async (request, reply) => {
+    const session = await authService.validateSession(
+      readBearerToken(request.headers.authorization)
+    );
+    if (!session.authenticated || !session.user) return sendDispatchDenied(reply);
+
+    const body = asRecord(request.body);
+    const dispatchReview = await dispatchService.moveToOfferPreparation({
+      session,
+      roles: await resolveAuthorizationRoles(session.user.id),
+      dispatchReviewId: readRouteParam(request.params, "dispatchReviewId"),
+      expectedVersion: readOptionalNumber(body, "expectedVersion") ?? 0
+    });
+
+    return reply.code(200).send({ dispatchReview: serializeDispatchReview(dispatchReview) });
+  });
+
+  app.post("/platform/dispatches/:dispatchReviewId/pause", async (request, reply) => {
+    const session = await authService.validateSession(
+      readBearerToken(request.headers.authorization)
+    );
+    if (!session.authenticated || !session.user) return sendDispatchDenied(reply);
+
+    const body = asRecord(request.body);
+    const dispatchReview = await dispatchService.pause({
+      session,
+      roles: await resolveAuthorizationRoles(session.user.id),
+      dispatchReviewId: readRouteParam(request.params, "dispatchReviewId"),
+      expectedVersion: readOptionalNumber(body, "expectedVersion") ?? 0,
+      reason: readRequiredString(body, "reason") ?? ""
+    });
+
+    return reply.code(200).send({ dispatchReview: serializeDispatchReview(dispatchReview) });
+  });
+
+  app.post("/platform/dispatches/:dispatchReviewId/resume", async (request, reply) => {
+    const session = await authService.validateSession(
+      readBearerToken(request.headers.authorization)
+    );
+    if (!session.authenticated || !session.user) return sendDispatchDenied(reply);
+
+    const body = asRecord(request.body);
+    const dispatchReview = await dispatchService.resume({
+      session,
+      roles: await resolveAuthorizationRoles(session.user.id),
+      dispatchReviewId: readRouteParam(request.params, "dispatchReviewId"),
+      expectedVersion: readOptionalNumber(body, "expectedVersion") ?? 0
+    });
+
+    return reply.code(200).send({ dispatchReview: serializeDispatchReview(dispatchReview) });
+  });
+
+  app.post("/platform/dispatches/:dispatchReviewId/cancel", async (request, reply) => {
+    const session = await authService.validateSession(
+      readBearerToken(request.headers.authorization)
+    );
+    if (!session.authenticated || !session.user) return sendDispatchDenied(reply);
+
+    const body = asRecord(request.body);
+    const dispatchReview = await dispatchService.cancel({
+      session,
+      roles: await resolveAuthorizationRoles(session.user.id),
+      dispatchReviewId: readRouteParam(request.params, "dispatchReviewId"),
+      expectedVersion: readOptionalNumber(body, "expectedVersion") ?? 0,
+      reason: readRequiredString(body, "reason") ?? ""
+    });
+
+    return reply.code(200).send({ dispatchReview: serializeDispatchReview(dispatchReview) });
+  });
+
+  app.post("/platform/dispatches/:dispatchReviewId/close", async (request, reply) => {
+    const session = await authService.validateSession(
+      readBearerToken(request.headers.authorization)
+    );
+    if (!session.authenticated || !session.user) return sendDispatchDenied(reply);
+
+    const body = asRecord(request.body);
+    const dispatchReview = await dispatchService.close({
+      session,
+      roles: await resolveAuthorizationRoles(session.user.id),
+      dispatchReviewId: readRouteParam(request.params, "dispatchReviewId"),
+      expectedVersion: readOptionalNumber(body, "expectedVersion") ?? 0,
+      reason: readRequiredString(body, "reason") ?? ""
+    });
+
+    return reply.code(200).send({ dispatchReview: serializeDispatchReview(dispatchReview) });
+  });
+
+  app.get("/platform/dispatches/:dispatchReviewId/audit", async (request, reply) => {
+    const session = await authService.validateSession(
+      readBearerToken(request.headers.authorization)
+    );
+    if (!session.authenticated || !session.user) return sendDispatchDenied(reply);
+
+    const audit = await dispatchService.readAuditSummary({
+      session,
+      roles: await resolveAuthorizationRoles(session.user.id),
+      dispatchReviewId: readRouteParam(request.params, "dispatchReviewId")
+    });
+
+    return reply.code(200).send({ audit });
+  });
+
+  app.get(
+    "/organizations/:organizationId/job-requests/:jobRequestIdOrNumber/dispatch-status",
+    async (request, reply) => {
+      const session = await authService.validateSession(
+        readBearerToken(request.headers.authorization)
+      );
+      if (!session.authenticated || !session.user) return sendJobRequestDenied(reply);
+
+      const status = await dispatchService.getEmployerDispatchStatus({
+        actorUserId: session.user.id,
+        organizationId: readRouteParam(request.params, "organizationId"),
+        jobRequestIdOrNumber: readRouteParam(request.params, "jobRequestIdOrNumber")
+      });
+
+      return reply.code(200).send({ dispatchStatus: serializeEmployerDispatchStatus(status) });
+    }
+  );
+
   async function resolveCatalogueReadRoles(userId: string, organizationId: string | null) {
     if (organizationId) {
       const decision = await membershipService.selectOrganizationContext({
@@ -1568,6 +1910,13 @@ function sendJobRequestDenied(reply: FastifyReply) {
   });
 }
 
+function sendDispatchDenied(reply: FastifyReply) {
+  return reply.code(403).send({
+    error: authorizationDeniedCode,
+    message: authorizationDeniedMessage
+  });
+}
+
 function serializeMemberships(
   memberships: Awaited<ReturnType<OrganizationMembershipService["listMemberships"]>>
 ) {
@@ -1653,6 +2002,41 @@ function serializeJobRequest(jobRequest: Awaited<ReturnType<JobRequestService["c
   };
 }
 
+function serializeDispatchReview(
+  dispatchReview: Awaited<ReturnType<DispatchService["createDispatch"]>>
+) {
+  return {
+    ...dispatchReview,
+    startedAt: dispatchReview.startedAt?.toISOString() ?? null,
+    pausedAt: dispatchReview.pausedAt?.toISOString() ?? null,
+    cancelledAt: dispatchReview.cancelledAt?.toISOString() ?? null,
+    closedAt: dispatchReview.closedAt?.toISOString() ?? null,
+    createdAt: dispatchReview.createdAt.toISOString(),
+    updatedAt: dispatchReview.updatedAt.toISOString()
+  };
+}
+
+function serializeDispatchCandidate(
+  candidate: Awaited<ReturnType<DispatchService["addCandidateToShortlist"]>>
+) {
+  return {
+    ...candidate,
+    sourceFreshnessAt: candidate.sourceFreshnessAt?.toISOString() ?? null,
+    lastEvaluatedAt: candidate.lastEvaluatedAt?.toISOString() ?? null,
+    createdAt: candidate.createdAt.toISOString(),
+    updatedAt: candidate.updatedAt.toISOString()
+  };
+}
+
+function serializeEmployerDispatchStatus(
+  status: Awaited<ReturnType<DispatchService["getEmployerDispatchStatus"]>>
+) {
+  return {
+    ...status,
+    updatedAt: status.updatedAt?.toISOString() ?? null
+  };
+}
+
 function readResidenceStatus(value: string | null): ResidenceStatus | null {
   return value === "draft" ||
     value === "active" ||
@@ -1697,4 +2081,8 @@ function readJobRequestType(value: string | null): JobRequestType | null {
   return value === "single_day" || value === "multi_day" || value === "recurring_intent"
     ? value
     : null;
+}
+
+function readDispatchPriority(value: string | null): DispatchPriority | null {
+  return value === "normal" || value === "urgent" || value === "emergency" ? value : null;
 }

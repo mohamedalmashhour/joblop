@@ -1047,6 +1047,285 @@ export class JobRequestError extends Error {
   }
 }
 
+export type DispatchReviewStatus =
+  | "draft"
+  | "active"
+  | "candidate_review"
+  | "shortlist_ready"
+  | "offer_preparation"
+  | "paused"
+  | "cancelled"
+  | "closed";
+export type DispatchType = "initial" | "replacement_reserved";
+export type DispatchPriority = "normal" | "urgent" | "emergency";
+export type DispatchCandidateSourceType =
+  | "internal_worker_profile"
+  | "invited_worker"
+  | "staffing_partner"
+  | "enterprise_employee_pool"
+  | "external_integration"
+  | "imported_record"
+  | "unavailable";
+export type DispatchMatchState = "match" | "partial_match" | "no_match" | "not_evaluated";
+export type DispatchSummaryState =
+  | "meets_requirements"
+  | "partially_meets"
+  | "missing_required"
+  | "verification_pending"
+  | "expired"
+  | "not_evaluated";
+export type DispatchAvailabilityState =
+  | "available"
+  | "partially_available"
+  | "unavailable"
+  | "not_evaluated"
+  | "source_unavailable";
+export type DispatchConflictState =
+  | "conflict_free"
+  | "conflict_detected"
+  | "not_evaluated"
+  | "source_unavailable";
+export type DispatchServiceAreaState =
+  | "inside_service_area"
+  | "outside_service_area"
+  | "not_evaluated"
+  | "source_unavailable";
+export type DispatchTravelState =
+  | "suitable"
+  | "unsuitable"
+  | "unknown"
+  | "not_evaluated"
+  | "source_unavailable";
+export type DispatchTransportState =
+  | "available"
+  | "unavailable"
+  | "unknown"
+  | "not_evaluated"
+  | "source_unavailable";
+export type DispatchRecommendationState =
+  | "not_evaluated"
+  | "recommended"
+  | "not_recommended"
+  | "alternative"
+  | "unavailable";
+export type DispatchShortlistState = "not_shortlisted" | "shortlisted" | "removed";
+export type DispatchDecisionStatus =
+  | "allow"
+  | "invalid_input"
+  | "not_found"
+  | "permission_denied"
+  | "job_request_not_ready"
+  | "version_conflict"
+  | "invalid_transition"
+  | "candidate_source_unavailable";
+
+export interface StoredDispatchReview {
+  id: string;
+  jobRequestId: string;
+  organizationId: string;
+  residenceId: string;
+  departmentId: string;
+  workGroupId: string;
+  roleDefinitionId: string;
+  dispatchType: DispatchType;
+  state: DispatchReviewStatus;
+  operationalOwnerUserId: string | null;
+  priority: DispatchPriority;
+  urgency: JobRequestUrgency;
+  requiredWorkerCount: number;
+  shortlistedCandidateCount: number;
+  preparedOfferCount: number;
+  startedAt: Date | null;
+  pausedAt: Date | null;
+  cancelledAt: Date | null;
+  closedAt: Date | null;
+  createdByUserId: string;
+  updatedByUserId: string | null;
+  createdAt: Date;
+  updatedAt: Date;
+  version: number;
+}
+
+export interface StoredDispatchCandidate {
+  id: string;
+  dispatchReviewId: string;
+  candidateSourceType: DispatchCandidateSourceType;
+  candidateSourceReference: string;
+  approvedDisplayName: string;
+  workGroupMatch: DispatchMatchState;
+  roleDefinitionMatch: DispatchMatchState;
+  qualificationSummaryState: DispatchSummaryState;
+  verificationSummaryState: DispatchSummaryState;
+  availabilityState: DispatchAvailabilityState;
+  scheduleConflictState: DispatchConflictState;
+  serviceAreaState: DispatchServiceAreaState;
+  travelSuitabilityState: DispatchTravelState;
+  transportConstraintState: DispatchTransportState;
+  recommendationState: DispatchRecommendationState;
+  shortlistState: DispatchShortlistState;
+  shortlistOrder: number | null;
+  sourceFreshnessAt: Date | null;
+  lastEvaluatedAt: Date | null;
+  evaluationVersion: number;
+  addedByUserId: string | null;
+  removedByUserId: string | null;
+  createdAt: Date;
+  updatedAt: Date;
+  version: number;
+}
+
+export interface PublicDispatchReview extends StoredDispatchReview {
+  remainingWorkerCount: number;
+  versionToken: number;
+}
+
+export interface PublicDispatchCandidate extends StoredDispatchCandidate {
+  versionToken: number;
+}
+
+export interface EmployerDispatchStatus {
+  jobRequestId: string;
+  jobRequestNumber: string;
+  dispatchState: DispatchReviewStatus | "not_started";
+  requiredWorkerCount: number;
+  shortlistedCandidateCount: number;
+  preparedOfferCount: number;
+  remainingWorkerCount: number;
+  updatedAt: Date | null;
+}
+
+export interface DispatchDecision {
+  status: DispatchDecisionStatus;
+  allow: boolean;
+  dispatchReview: PublicDispatchReview | null;
+  roles: readonly AuthorizationRoleKey[];
+  internalReason: string | null;
+  externalCode: typeof authorizationDeniedCode | null;
+  externalMessage: typeof authorizationDeniedMessage | null;
+}
+
+export interface CandidateSourceSearchResult {
+  status: "available" | "candidate_source_unavailable";
+  candidates: readonly PublicDispatchCandidate[];
+}
+
+export interface DispatchCandidateEvaluationInput {
+  dispatchReview: PublicDispatchReview;
+  candidateSourceReference: string;
+}
+
+export interface DispatchCandidateSource {
+  searchCandidates(input: {
+    dispatchReview: PublicDispatchReview;
+    requestedAt: Date;
+  }): Promise<CandidateSourceSearchResult>;
+  evaluateCandidate(
+    input: DispatchCandidateEvaluationInput & { requestedAt: Date }
+  ): Promise<
+    | { status: "available"; candidate: PublicDispatchCandidate }
+    | { status: "candidate_source_unavailable"; candidate: null }
+  >;
+}
+
+export interface DispatchRepository {
+  createDispatchReview(input: {
+    jobRequest: StoredJobRequest;
+    actorUserId: string;
+    operationalOwnerUserId: string | null;
+    priority: DispatchPriority;
+    now: Date;
+  }): Promise<StoredDispatchReview>;
+  findDispatchReviewById(dispatchReviewId: string): Promise<StoredDispatchReview | null>;
+  findActiveDispatchReviewForJobRequest(jobRequestId: string): Promise<StoredDispatchReview | null>;
+  listDispatchReviews(input: {
+    organizationId?: string | undefined;
+    states?: readonly DispatchReviewStatus[] | undefined;
+  }): Promise<StoredDispatchReview[]>;
+  updateDispatchReview(input: {
+    dispatchReviewId: string;
+    expectedVersion: number;
+    actorUserId: string;
+    state?: DispatchReviewStatus | undefined;
+    operationalOwnerUserId?: string | null | undefined;
+    shortlistedCandidateCount?: number | undefined;
+    preparedOfferCount?: number | undefined;
+    startedAt?: Date | null | undefined;
+    pausedAt?: Date | null | undefined;
+    cancelledAt?: Date | null | undefined;
+    closedAt?: Date | null | undefined;
+    now: Date;
+  }): Promise<StoredDispatchReview | null>;
+  listCandidates(dispatchReviewId: string): Promise<StoredDispatchCandidate[]>;
+  upsertCandidate(input: {
+    dispatchReviewId: string;
+    candidate: Omit<
+      StoredDispatchCandidate,
+      | "id"
+      | "dispatchReviewId"
+      | "shortlistState"
+      | "shortlistOrder"
+      | "addedByUserId"
+      | "removedByUserId"
+      | "createdAt"
+      | "updatedAt"
+      | "version"
+    >;
+    actorUserId: string;
+    now: Date;
+  }): Promise<StoredDispatchCandidate>;
+  updateCandidateShortlist(input: {
+    dispatchReviewId: string;
+    candidateSourceReference: string;
+    shortlistState: DispatchShortlistState;
+    shortlistOrder: number | null;
+    actorUserId: string;
+    now: Date;
+  }): Promise<StoredDispatchCandidate | null>;
+  reorderShortlist(input: {
+    dispatchReviewId: string;
+    candidateSourceReferences: readonly string[];
+    actorUserId: string;
+    now: Date;
+  }): Promise<StoredDispatchCandidate[]>;
+  recordDispatchAuditEvent(input: {
+    action:
+      | "dispatch.created"
+      | "dispatch.owner_changed"
+      | "dispatch.candidate_review_started"
+      | "dispatch.candidate_source_unavailable"
+      | "dispatch.candidate_evaluated"
+      | "dispatch.candidate_shortlisted"
+      | "dispatch.candidate_removed"
+      | "dispatch.shortlist_reordered"
+      | "dispatch.shortlist_ready"
+      | "dispatch.offer_preparation"
+      | "dispatch.paused"
+      | "dispatch.resumed"
+      | "dispatch.cancelled"
+      | "dispatch.closed"
+      | "dispatch.access_denied";
+    organizationId: string | null;
+    dispatchReviewId: string | null;
+    jobRequestId: string | null;
+    actorUserId: string | null;
+    priorState: string | null;
+    newState: string | null;
+    reason: string | null;
+    correlationId: string;
+    createdAt: Date;
+  }): Promise<void>;
+}
+
+export class DispatchError extends Error {
+  decision: DispatchDecision;
+
+  constructor(decision: DispatchDecision) {
+    super(authorizationDeniedMessage);
+    this.name = "DispatchError";
+    this.decision = decision;
+  }
+}
+
 export class AuthorizationDeniedError extends Error {
   code = authorizationDeniedCode;
   decision: AuthorizationDecision;
@@ -4013,6 +4292,968 @@ export function createJobRequestService(
 
 export type JobRequestService = ReturnType<typeof createJobRequestService>;
 
+export function createUnavailableCandidateSource(): DispatchCandidateSource {
+  return {
+    async searchCandidates() {
+      return { status: "candidate_source_unavailable", candidates: [] };
+    },
+    async evaluateCandidate() {
+      return { status: "candidate_source_unavailable", candidate: null };
+    }
+  };
+}
+
+export function createDispatchService(
+  dispatchRepository: DispatchRepository,
+  jobRequestRepository: JobRequestRepository,
+  organizationRepository: EmployerOrganizationRepository,
+  membershipService: OrganizationMembershipService,
+  authorizationService: AuthorizationService,
+  candidateSource: DispatchCandidateSource = createUnavailableCandidateSource(),
+  options: { now?: () => Date } = {}
+) {
+  const now = options.now ?? (() => new Date());
+
+  return {
+    async createDispatch(input: {
+      session: SessionValidationResult;
+      roles?: readonly AuthorizationRoleKey[];
+      jobRequestIdOrNumber: string;
+      operationalOwnerUserId?: string | null;
+      priority?: DispatchPriority;
+      correlationId?: string;
+    }) {
+      const currentTime = now();
+      const jobRequest = await findJobRequestByIdOrNumber(
+        jobRequestRepository,
+        input.jobRequestIdOrNumber
+      );
+      const decision = await authorizeDispatchPlatformOperation({
+        dispatchRepository,
+        authorizationService,
+        session: input.session,
+        roles: input.roles ?? [],
+        permission: "dispatch.create",
+        dispatchReview: null,
+        correlationId: input.correlationId,
+        now: currentTime
+      });
+
+      if (!decision.allow) throw new DispatchError(decision);
+      if (!jobRequest) {
+        throw new DispatchError(dispatchDeny("not_found", "job_request_not_found", null, input.roles ?? []));
+      }
+      if (jobRequest.status !== "approved_for_dispatch") {
+        throw new DispatchError(
+          dispatchDeny("job_request_not_ready", "job_request_not_approved_for_dispatch", null, input.roles ?? [])
+        );
+      }
+
+      const existing = await dispatchRepository.findActiveDispatchReviewForJobRequest(jobRequest.id);
+      if (existing) {
+        throw new DispatchError(
+          dispatchDeny(
+            "invalid_transition",
+            "non_terminal_dispatch_already_exists",
+            toPublicDispatchReview(existing),
+            input.roles ?? []
+          )
+        );
+      }
+
+      const dispatchReview = await dispatchRepository.createDispatchReview({
+        jobRequest,
+        actorUserId: input.session.user?.id ?? "system",
+        operationalOwnerUserId: input.operationalOwnerUserId ?? input.session.user?.id ?? null,
+        priority: input.priority ?? urgencyToDispatchPriority(jobRequest.urgency),
+        now: currentTime
+      });
+      await recordDispatchAudit(dispatchRepository, {
+        action: "dispatch.created",
+        organizationId: dispatchReview.organizationId,
+        dispatchReviewId: dispatchReview.id,
+        jobRequestId: dispatchReview.jobRequestId,
+        actorUserId: input.session.user?.id ?? null,
+        priorState: null,
+        newState: dispatchReview.state,
+        reason: null,
+        correlationId: input.correlationId,
+        createdAt: currentTime
+      });
+
+      return toPublicDispatchReview(dispatchReview);
+    },
+
+    async listDispatches(input: {
+      session: SessionValidationResult;
+      roles?: readonly AuthorizationRoleKey[];
+      organizationId?: string | null;
+      states?: readonly DispatchReviewStatus[];
+      correlationId?: string;
+    }) {
+      const decision = await authorizeDispatchPlatformOperation({
+        dispatchRepository,
+        authorizationService,
+        session: input.session,
+        roles: input.roles ?? [],
+        permission: "dispatch.read",
+        dispatchReview: null,
+        correlationId: input.correlationId,
+        now: now()
+      });
+      if (!decision.allow) throw new DispatchError(decision);
+
+      return (
+        await dispatchRepository.listDispatchReviews({
+          organizationId: input.organizationId ?? undefined,
+          states: input.states
+        })
+      ).map(toPublicDispatchReview);
+    },
+
+    async getDispatch(input: {
+      session: SessionValidationResult;
+      roles?: readonly AuthorizationRoleKey[];
+      dispatchReviewId: string;
+      correlationId?: string;
+    }) {
+      const currentTime = now();
+      const dispatchReview = await dispatchRepository.findDispatchReviewById(input.dispatchReviewId);
+      const decision = await authorizeDispatchPlatformOperation({
+        dispatchRepository,
+        authorizationService,
+        session: input.session,
+        roles: input.roles ?? [],
+        permission: "dispatch.read",
+        dispatchReview,
+        correlationId: input.correlationId,
+        now: currentTime
+      });
+      if (!decision.allow || !dispatchReview) {
+        throw new DispatchError(
+          decision.allow
+            ? dispatchDeny("not_found", "dispatch_not_found", null, input.roles ?? [])
+            : decision
+        );
+      }
+
+      return {
+        dispatchReview: toPublicDispatchReview(dispatchReview),
+        candidates: (await dispatchRepository.listCandidates(dispatchReview.id)).map(toPublicDispatchCandidate)
+      };
+    },
+
+    async assignOperationalOwner(input: {
+      session: SessionValidationResult;
+      roles?: readonly AuthorizationRoleKey[];
+      dispatchReviewId: string;
+      operationalOwnerUserId: string | null;
+      expectedVersion: number;
+      correlationId?: string;
+    }) {
+      return updateDispatchBoundary({
+        dispatchRepository,
+        authorizationService,
+        session: input.session,
+        roles: input.roles ?? [],
+        permission: "dispatch.create",
+        dispatchReviewId: input.dispatchReviewId,
+        expectedVersion: input.expectedVersion,
+        transition: "owner",
+        data: { operationalOwnerUserId: input.operationalOwnerUserId },
+        action: "dispatch.owner_changed",
+        reason: null,
+        correlationId: input.correlationId,
+        now: now()
+      });
+    },
+
+    async startCandidateReview(input: DispatchTransitionInput) {
+      return transitionDispatchReview({
+        ...input,
+        dispatchRepository,
+        authorizationService,
+        permission: "dispatch.review_candidates",
+        allowedFrom: ["draft", "active"],
+        nextState: "candidate_review",
+        action: "dispatch.candidate_review_started",
+        startedAt: true,
+        now: now()
+      });
+    },
+
+    async searchCandidates(input: {
+      session: SessionValidationResult;
+      roles?: readonly AuthorizationRoleKey[];
+      dispatchReviewId: string;
+      correlationId?: string;
+    }) {
+      const currentTime = now();
+      const dispatchReview = await requireAuthorizedDispatch({
+        dispatchRepository,
+        authorizationService,
+        session: input.session,
+        roles: input.roles ?? [],
+        permission: "dispatch.review_candidates",
+        dispatchReviewId: input.dispatchReviewId,
+        correlationId: input.correlationId,
+        now: currentTime
+      });
+      const result = await candidateSource.searchCandidates({
+        dispatchReview: dispatchReview.publicDispatch,
+        requestedAt: currentTime
+      });
+      if (result.status === "candidate_source_unavailable") {
+        await recordDispatchAudit(dispatchRepository, {
+          action: "dispatch.candidate_source_unavailable",
+          organizationId: dispatchReview.stored.organizationId,
+          dispatchReviewId: dispatchReview.stored.id,
+          jobRequestId: dispatchReview.stored.jobRequestId,
+          actorUserId: input.session.user?.id ?? null,
+          priorState: dispatchReview.stored.state,
+          newState: dispatchReview.stored.state,
+          reason: "candidate_source_unavailable",
+          correlationId: input.correlationId,
+          createdAt: currentTime
+        });
+      }
+      return result;
+    },
+
+    async evaluateCandidate(input: {
+      session: SessionValidationResult;
+      roles?: readonly AuthorizationRoleKey[];
+      dispatchReviewId: string;
+      candidateSourceReference: string;
+      correlationId?: string;
+    }) {
+      const currentTime = now();
+      const dispatchReview = await requireAuthorizedDispatch({
+        dispatchRepository,
+        authorizationService,
+        session: input.session,
+        roles: input.roles ?? [],
+        permission: "dispatch.review_candidates",
+        dispatchReviewId: input.dispatchReviewId,
+        correlationId: input.correlationId,
+        now: currentTime
+      });
+      const result = await candidateSource.evaluateCandidate({
+        dispatchReview: dispatchReview.publicDispatch,
+        candidateSourceReference: input.candidateSourceReference,
+        requestedAt: currentTime
+      });
+      if (result.status === "candidate_source_unavailable") {
+        await recordDispatchAudit(dispatchRepository, {
+          action: "dispatch.candidate_source_unavailable",
+          organizationId: dispatchReview.stored.organizationId,
+          dispatchReviewId: dispatchReview.stored.id,
+          jobRequestId: dispatchReview.stored.jobRequestId,
+          actorUserId: input.session.user?.id ?? null,
+          priorState: dispatchReview.stored.state,
+          newState: dispatchReview.stored.state,
+          reason: "candidate_source_unavailable",
+          correlationId: input.correlationId,
+          createdAt: currentTime
+        });
+        return result;
+      }
+      const candidate = await dispatchRepository.upsertCandidate({
+        dispatchReviewId: dispatchReview.stored.id,
+        candidate: stripPublicCandidateForUpsert(result.candidate),
+        actorUserId: input.session.user?.id ?? "system",
+        now: currentTime
+      });
+      await recordDispatchAudit(dispatchRepository, {
+        action: "dispatch.candidate_evaluated",
+        organizationId: dispatchReview.stored.organizationId,
+        dispatchReviewId: dispatchReview.stored.id,
+        jobRequestId: dispatchReview.stored.jobRequestId,
+        actorUserId: input.session.user?.id ?? null,
+        priorState: dispatchReview.stored.state,
+        newState: dispatchReview.stored.state,
+        reason: candidate.candidateSourceReference,
+        correlationId: input.correlationId,
+        createdAt: currentTime
+      });
+      return { status: "available" as const, candidate: toPublicDispatchCandidate(candidate) };
+    },
+
+    async addCandidateToShortlist(input: DispatchCandidateShortlistInput) {
+      return updateCandidateShortlistBoundary({
+        ...input,
+        dispatchRepository,
+        authorizationService,
+        shortlistState: "shortlisted",
+        action: "dispatch.candidate_shortlisted",
+        now: now()
+      });
+    },
+
+    async removeCandidateFromShortlist(input: DispatchCandidateShortlistInput) {
+      return updateCandidateShortlistBoundary({
+        ...input,
+        dispatchRepository,
+        authorizationService,
+        shortlistState: "removed",
+        action: "dispatch.candidate_removed",
+        now: now()
+      });
+    },
+
+    async reorderShortlist(input: {
+      session: SessionValidationResult;
+      roles?: readonly AuthorizationRoleKey[];
+      dispatchReviewId: string;
+      candidateSourceReferences: readonly string[];
+      correlationId?: string;
+    }) {
+      const currentTime = now();
+      const dispatchReview = await requireAuthorizedDispatch({
+        dispatchRepository,
+        authorizationService,
+        session: input.session,
+        roles: input.roles ?? [],
+        permission: "dispatch.manage_shortlist",
+        dispatchReviewId: input.dispatchReviewId,
+        correlationId: input.correlationId,
+        now: currentTime
+      });
+      const candidates = await dispatchRepository.reorderShortlist({
+        dispatchReviewId: dispatchReview.stored.id,
+        candidateSourceReferences: input.candidateSourceReferences,
+        actorUserId: input.session.user?.id ?? "system",
+        now: currentTime
+      });
+      await recordDispatchAudit(dispatchRepository, {
+        action: "dispatch.shortlist_reordered",
+        organizationId: dispatchReview.stored.organizationId,
+        dispatchReviewId: dispatchReview.stored.id,
+        jobRequestId: dispatchReview.stored.jobRequestId,
+        actorUserId: input.session.user?.id ?? null,
+        priorState: dispatchReview.stored.state,
+        newState: dispatchReview.stored.state,
+        reason: null,
+        correlationId: input.correlationId,
+        createdAt: currentTime
+      });
+      return candidates.map(toPublicDispatchCandidate);
+    },
+
+    async markShortlistReady(input: DispatchTransitionInput) {
+      return transitionDispatchReview({
+        ...input,
+        dispatchRepository,
+        authorizationService,
+        permission: "dispatch.manage_shortlist",
+        allowedFrom: ["candidate_review", "active"],
+        nextState: "shortlist_ready",
+        action: "dispatch.shortlist_ready",
+        now: now()
+      });
+    },
+
+    async moveToOfferPreparation(input: DispatchTransitionInput) {
+      return transitionDispatchReview({
+        ...input,
+        dispatchRepository,
+        authorizationService,
+        permission: "dispatch.prepare_offer",
+        allowedFrom: ["shortlist_ready"],
+        nextState: "offer_preparation",
+        action: "dispatch.offer_preparation",
+        prepareOfferBoundary: true,
+        now: now()
+      });
+    },
+
+    async pause(input: DispatchTransitionInput & { reason: string }) {
+      return transitionDispatchReview({
+        ...input,
+        dispatchRepository,
+        authorizationService,
+        permission: "dispatch.pause",
+        allowedFrom: ["active", "candidate_review", "shortlist_ready", "offer_preparation"],
+        nextState: "paused",
+        action: "dispatch.paused",
+        pausedAt: true,
+        now: now()
+      });
+    },
+
+    async resume(input: DispatchTransitionInput) {
+      return transitionDispatchReview({
+        ...input,
+        dispatchRepository,
+        authorizationService,
+        permission: "dispatch.resume",
+        allowedFrom: ["paused"],
+        nextState: "active",
+        action: "dispatch.resumed",
+        now: now()
+      });
+    },
+
+    async cancel(input: DispatchTransitionInput & { reason: string }) {
+      return transitionDispatchReview({
+        ...input,
+        dispatchRepository,
+        authorizationService,
+        permission: "dispatch.cancel",
+        allowedFrom: nonTerminalDispatchStates,
+        nextState: "cancelled",
+        action: "dispatch.cancelled",
+        cancelledAt: true,
+        now: now()
+      });
+    },
+
+    async close(input: DispatchTransitionInput & { reason: string }) {
+      return transitionDispatchReview({
+        ...input,
+        dispatchRepository,
+        authorizationService,
+        permission: "dispatch.close",
+        allowedFrom: nonTerminalDispatchStates,
+        nextState: "closed",
+        action: "dispatch.closed",
+        closedAt: true,
+        now: now()
+      });
+    },
+
+    async readAuditSummary(input: {
+      session: SessionValidationResult;
+      roles?: readonly AuthorizationRoleKey[];
+      dispatchReviewId: string;
+      correlationId?: string;
+    }) {
+      const dispatchReview = await requireAuthorizedDispatch({
+        dispatchRepository,
+        authorizationService,
+        session: input.session,
+        roles: input.roles ?? [],
+        permission: "dispatch.audit_read",
+        dispatchReviewId: input.dispatchReviewId,
+        correlationId: input.correlationId,
+        now: now()
+      });
+      return {
+        dispatchReviewId: dispatchReview.stored.id,
+        policyVersion: "dispatch-foundation-v1",
+        auditAvailable: true,
+        message: "Dispatch audit is available through governed audit records."
+      };
+    },
+
+    async getEmployerDispatchStatus(input: {
+      actorUserId: string;
+      organizationId: string;
+      jobRequestIdOrNumber: string;
+      correlationId?: string;
+    }) {
+      const currentTime = now();
+      const jobRequest = await findJobRequestByIdOrNumber(
+        jobRequestRepository,
+        input.jobRequestIdOrNumber
+      );
+      const authorization = await authorizeJobRequestEmployerOperation({
+        organizationRepository,
+        jobRequestRepository,
+        membershipService,
+        authorizationService,
+        actorUserId: input.actorUserId,
+        organizationId: input.organizationId,
+        permission: "job_request.read",
+        jobRequest,
+        correlationId: input.correlationId,
+        now: currentTime
+      });
+      if (!authorization.allow || !jobRequest || jobRequest.organizationId !== input.organizationId) {
+        throw new JobRequestError(
+          authorization.allow
+            ? jobRequestDeny(
+                "not_found",
+                "job_request_not_found",
+                null,
+                authorization.roles,
+                authorization.organization,
+                authorization.membership
+              )
+            : authorization
+        );
+      }
+      const dispatchReview = await dispatchRepository.findActiveDispatchReviewForJobRequest(
+        jobRequest.id
+      );
+      return toEmployerDispatchStatus(jobRequest, dispatchReview);
+    }
+  };
+}
+
+export type DispatchService = ReturnType<typeof createDispatchService>;
+
+const nonTerminalDispatchStates: readonly DispatchReviewStatus[] = [
+  "draft",
+  "active",
+  "candidate_review",
+  "shortlist_ready",
+  "offer_preparation",
+  "paused"
+] as const satisfies readonly DispatchReviewStatus[];
+
+interface DispatchTransitionInput {
+  session: SessionValidationResult;
+  roles?: readonly AuthorizationRoleKey[];
+  dispatchReviewId: string;
+  expectedVersion: number;
+  reason?: string;
+  correlationId?: string;
+}
+
+interface DispatchCandidateShortlistInput {
+  session: SessionValidationResult;
+  roles?: readonly AuthorizationRoleKey[];
+  dispatchReviewId: string;
+  candidateSourceReference: string;
+  shortlistOrder?: number | null;
+  correlationId?: string;
+}
+
+function toPublicDispatchReview(dispatchReview: StoredDispatchReview): PublicDispatchReview {
+  return {
+    ...dispatchReview,
+    remainingWorkerCount: Math.max(
+      0,
+      dispatchReview.requiredWorkerCount - dispatchReview.preparedOfferCount
+    ),
+    versionToken: dispatchReview.version
+  };
+}
+
+function toPublicDispatchCandidate(candidate: StoredDispatchCandidate): PublicDispatchCandidate {
+  return {
+    ...candidate,
+    versionToken: candidate.version
+  };
+}
+
+function toEmployerDispatchStatus(
+  jobRequest: StoredJobRequest,
+  dispatchReview: StoredDispatchReview | null
+): EmployerDispatchStatus {
+  if (!dispatchReview) {
+    return {
+      jobRequestId: jobRequest.id,
+      jobRequestNumber: jobRequest.jobRequestNumber,
+      dispatchState: "not_started",
+      requiredWorkerCount: jobRequest.numberOfWorkers,
+      shortlistedCandidateCount: 0,
+      preparedOfferCount: 0,
+      remainingWorkerCount: jobRequest.numberOfWorkers,
+      updatedAt: null
+    };
+  }
+
+  return {
+    jobRequestId: jobRequest.id,
+    jobRequestNumber: jobRequest.jobRequestNumber,
+    dispatchState: dispatchReview.state,
+    requiredWorkerCount: dispatchReview.requiredWorkerCount,
+    shortlistedCandidateCount: dispatchReview.shortlistedCandidateCount,
+    preparedOfferCount: dispatchReview.preparedOfferCount,
+    remainingWorkerCount: Math.max(
+      0,
+      dispatchReview.requiredWorkerCount - dispatchReview.preparedOfferCount
+    ),
+    updatedAt: dispatchReview.updatedAt
+  };
+}
+
+function dispatchDeny(
+  status: Exclude<DispatchDecisionStatus, "allow">,
+  internalReason: string,
+  dispatchReview: PublicDispatchReview | null,
+  roles: readonly AuthorizationRoleKey[]
+): DispatchDecision {
+  return {
+    status,
+    allow: false,
+    dispatchReview,
+    roles,
+    internalReason,
+    externalCode: authorizationDeniedCode,
+    externalMessage: authorizationDeniedMessage
+  };
+}
+
+async function authorizeDispatchPlatformOperation(input: {
+  dispatchRepository: DispatchRepository;
+  authorizationService: AuthorizationService;
+  session: SessionValidationResult;
+  roles: readonly AuthorizationRoleKey[];
+  permission: AuthorizationPermissionKey;
+  dispatchReview?: StoredDispatchReview | null | undefined;
+  correlationId?: string | undefined;
+  now: Date;
+}): Promise<DispatchDecision> {
+  const authorizationDecision = await input.authorizationService.decide({
+    session: input.session,
+    roles: input.roles,
+    permission: input.permission,
+    platformContext: { platform: true },
+    ...(input.correlationId ? { correlationId: input.correlationId } : {})
+  });
+
+  if (!authorizationDecision.allow) {
+    const decision = dispatchDeny(
+      "permission_denied",
+      authorizationDecision.internalReason ?? "permission_denied",
+      input.dispatchReview ? toPublicDispatchReview(input.dispatchReview) : null,
+      input.roles
+    );
+    await recordDispatchDenial(input.dispatchRepository, {
+      decision,
+      actorUserId: input.session.user?.id ?? null,
+      correlationId: input.correlationId,
+      createdAt: input.now
+    });
+    return decision;
+  }
+
+  return {
+    status: "allow",
+    allow: true,
+    dispatchReview: input.dispatchReview ? toPublicDispatchReview(input.dispatchReview) : null,
+    roles: input.roles,
+    internalReason: null,
+    externalCode: null,
+    externalMessage: null
+  };
+}
+
+async function requireAuthorizedDispatch(input: {
+  dispatchRepository: DispatchRepository;
+  authorizationService: AuthorizationService;
+  session: SessionValidationResult;
+  roles: readonly AuthorizationRoleKey[];
+  permission: AuthorizationPermissionKey;
+  dispatchReviewId: string;
+  correlationId?: string | undefined;
+  now: Date;
+}) {
+  const dispatchReview = await input.dispatchRepository.findDispatchReviewById(
+    input.dispatchReviewId
+  );
+  const decision = await authorizeDispatchPlatformOperation({
+    dispatchRepository: input.dispatchRepository,
+    authorizationService: input.authorizationService,
+    session: input.session,
+    roles: input.roles,
+    permission: input.permission,
+    dispatchReview,
+    correlationId: input.correlationId,
+    now: input.now
+  });
+  if (!decision.allow || !dispatchReview) {
+    throw new DispatchError(
+      decision.allow
+        ? dispatchDeny("not_found", "dispatch_not_found", null, input.roles)
+        : decision
+    );
+  }
+
+  return {
+    stored: dispatchReview,
+    publicDispatch: toPublicDispatchReview(dispatchReview)
+  };
+}
+
+async function updateDispatchBoundary(input: {
+  dispatchRepository: DispatchRepository;
+  authorizationService: AuthorizationService;
+  session: SessionValidationResult;
+  roles: readonly AuthorizationRoleKey[];
+  permission: AuthorizationPermissionKey;
+  dispatchReviewId: string;
+  expectedVersion: number;
+  transition: string;
+  data: Partial<Parameters<DispatchRepository["updateDispatchReview"]>[0]>;
+  action: Parameters<DispatchRepository["recordDispatchAuditEvent"]>[0]["action"];
+  reason: string | null;
+  correlationId?: string | undefined;
+  now: Date;
+}) {
+  const dispatch = await requireAuthorizedDispatch({
+    dispatchRepository: input.dispatchRepository,
+    authorizationService: input.authorizationService,
+    session: input.session,
+    roles: input.roles,
+    permission: input.permission,
+    dispatchReviewId: input.dispatchReviewId,
+    correlationId: input.correlationId,
+    now: input.now
+  });
+  if (!nonTerminalDispatchStates.includes(dispatch.stored.state)) {
+    throw new DispatchError(
+      dispatchDeny(
+        "invalid_transition",
+        `cannot_${input.transition}_from_${dispatch.stored.state}`,
+        dispatch.publicDispatch,
+        input.roles
+      )
+    );
+  }
+  const updated = await input.dispatchRepository.updateDispatchReview({
+    dispatchReviewId: dispatch.stored.id,
+    expectedVersion: input.expectedVersion,
+    actorUserId: input.session.user?.id ?? "system",
+    ...input.data,
+    now: input.now
+  });
+  if (!updated) {
+    throw new DispatchError(
+      dispatchDeny("version_conflict", "stale_version", dispatch.publicDispatch, input.roles)
+    );
+  }
+  await recordDispatchAudit(input.dispatchRepository, {
+    action: input.action,
+    organizationId: updated.organizationId,
+    dispatchReviewId: updated.id,
+    jobRequestId: updated.jobRequestId,
+    actorUserId: input.session.user?.id ?? null,
+    priorState: dispatch.stored.state,
+    newState: updated.state,
+    reason: input.reason,
+    correlationId: input.correlationId,
+    createdAt: input.now
+  });
+  return toPublicDispatchReview(updated);
+}
+
+async function transitionDispatchReview(input: DispatchTransitionInput & {
+  dispatchRepository: DispatchRepository;
+  authorizationService: AuthorizationService;
+  permission: AuthorizationPermissionKey;
+  allowedFrom: readonly DispatchReviewStatus[];
+  nextState: DispatchReviewStatus;
+  action: Parameters<DispatchRepository["recordDispatchAuditEvent"]>[0]["action"];
+  startedAt?: boolean;
+  pausedAt?: boolean;
+  cancelledAt?: boolean;
+  closedAt?: boolean;
+  prepareOfferBoundary?: boolean;
+  now: Date;
+}) {
+  const dispatch = await requireAuthorizedDispatch({
+    dispatchRepository: input.dispatchRepository,
+    authorizationService: input.authorizationService,
+    session: input.session,
+    roles: input.roles ?? [],
+    permission: input.permission,
+    dispatchReviewId: input.dispatchReviewId,
+    correlationId: input.correlationId,
+    now: input.now
+  });
+  if (!input.allowedFrom.includes(dispatch.stored.state)) {
+    throw new DispatchError(
+      dispatchDeny(
+        "invalid_transition",
+        `cannot_transition_from_${dispatch.stored.state}_to_${input.nextState}`,
+        dispatch.publicDispatch,
+        input.roles ?? []
+      )
+    );
+  }
+  const reason =
+    input.reason === undefined ? null : normalizeRequiredJobRequestText(input.reason, 2, 1000);
+  if (input.reason !== undefined && !reason) {
+    throw new DispatchError(
+      dispatchDeny("invalid_input", "transition_reason_required", dispatch.publicDispatch, input.roles ?? [])
+    );
+  }
+  const updated = await input.dispatchRepository.updateDispatchReview({
+    dispatchReviewId: dispatch.stored.id,
+    expectedVersion: input.expectedVersion,
+    actorUserId: input.session.user?.id ?? "system",
+    state: input.nextState,
+    ...(input.startedAt && !dispatch.stored.startedAt ? { startedAt: input.now } : {}),
+    ...(input.pausedAt ? { pausedAt: input.now } : {}),
+    ...(input.cancelledAt ? { cancelledAt: input.now } : {}),
+    ...(input.closedAt ? { closedAt: input.now } : {}),
+    ...(input.prepareOfferBoundary
+      ? {
+          preparedOfferCount: Math.min(
+            dispatch.stored.requiredWorkerCount,
+            dispatch.stored.shortlistedCandidateCount
+          )
+        }
+      : {}),
+    now: input.now
+  });
+  if (!updated) {
+    throw new DispatchError(
+      dispatchDeny("version_conflict", "stale_version", dispatch.publicDispatch, input.roles ?? [])
+    );
+  }
+  await recordDispatchAudit(input.dispatchRepository, {
+    action: input.action,
+    organizationId: updated.organizationId,
+    dispatchReviewId: updated.id,
+    jobRequestId: updated.jobRequestId,
+    actorUserId: input.session.user?.id ?? null,
+    priorState: dispatch.stored.state,
+    newState: updated.state,
+    reason,
+    correlationId: input.correlationId,
+    createdAt: input.now
+  });
+  return toPublicDispatchReview(updated);
+}
+
+async function updateCandidateShortlistBoundary(
+  input: DispatchCandidateShortlistInput & {
+    dispatchRepository: DispatchRepository;
+    authorizationService: AuthorizationService;
+    shortlistState: Extract<DispatchShortlistState, "shortlisted" | "removed">;
+    action: Parameters<DispatchRepository["recordDispatchAuditEvent"]>[0]["action"];
+    now: Date;
+  }
+) {
+  const dispatch = await requireAuthorizedDispatch({
+    dispatchRepository: input.dispatchRepository,
+    authorizationService: input.authorizationService,
+    session: input.session,
+    roles: input.roles ?? [],
+    permission: "dispatch.manage_shortlist",
+    dispatchReviewId: input.dispatchReviewId,
+    correlationId: input.correlationId,
+    now: input.now
+  });
+  if (!["active", "candidate_review", "shortlist_ready"].includes(dispatch.stored.state)) {
+    throw new DispatchError(
+      dispatchDeny(
+        "invalid_transition",
+        `cannot_manage_shortlist_from_${dispatch.stored.state}`,
+        dispatch.publicDispatch,
+        input.roles ?? []
+      )
+    );
+  }
+  const shortlistOrder =
+    input.shortlistState === "shortlisted"
+      ? input.shortlistOrder ?? dispatch.stored.shortlistedCandidateCount + 1
+      : null;
+  const candidate = await input.dispatchRepository.updateCandidateShortlist({
+    dispatchReviewId: dispatch.stored.id,
+    candidateSourceReference: input.candidateSourceReference,
+    shortlistState: input.shortlistState,
+    shortlistOrder,
+    actorUserId: input.session.user?.id ?? "system",
+    now: input.now
+  });
+  if (!candidate) {
+    throw new DispatchError(
+      dispatchDeny("not_found", "candidate_not_found", dispatch.publicDispatch, input.roles ?? [])
+    );
+  }
+  const candidates = await input.dispatchRepository.listCandidates(dispatch.stored.id);
+  const shortlistedCandidateCount = candidates.filter(
+    (item) => item.shortlistState === "shortlisted"
+  ).length;
+  await input.dispatchRepository.updateDispatchReview({
+    dispatchReviewId: dispatch.stored.id,
+    expectedVersion: dispatch.stored.version,
+    actorUserId: input.session.user?.id ?? "system",
+    shortlistedCandidateCount,
+    now: input.now
+  });
+  await recordDispatchAudit(input.dispatchRepository, {
+    action: input.action,
+    organizationId: dispatch.stored.organizationId,
+    dispatchReviewId: dispatch.stored.id,
+    jobRequestId: dispatch.stored.jobRequestId,
+    actorUserId: input.session.user?.id ?? null,
+    priorState: dispatch.stored.state,
+    newState: dispatch.stored.state,
+    reason: candidate.candidateSourceReference,
+    correlationId: input.correlationId,
+    createdAt: input.now
+  });
+  return toPublicDispatchCandidate(candidate);
+}
+
+function stripPublicCandidateForUpsert(
+  candidate: PublicDispatchCandidate
+): Parameters<DispatchRepository["upsertCandidate"]>[0]["candidate"] {
+  return {
+    candidateSourceType: candidate.candidateSourceType,
+    candidateSourceReference: candidate.candidateSourceReference,
+    approvedDisplayName: candidate.approvedDisplayName,
+    workGroupMatch: candidate.workGroupMatch,
+    roleDefinitionMatch: candidate.roleDefinitionMatch,
+    qualificationSummaryState: candidate.qualificationSummaryState,
+    verificationSummaryState: candidate.verificationSummaryState,
+    availabilityState: candidate.availabilityState,
+    scheduleConflictState: candidate.scheduleConflictState,
+    serviceAreaState: candidate.serviceAreaState,
+    travelSuitabilityState: candidate.travelSuitabilityState,
+    transportConstraintState: candidate.transportConstraintState,
+    recommendationState: candidate.recommendationState,
+    sourceFreshnessAt: candidate.sourceFreshnessAt,
+    lastEvaluatedAt: candidate.lastEvaluatedAt,
+    evaluationVersion: candidate.evaluationVersion
+  };
+}
+
+function urgencyToDispatchPriority(urgency: JobRequestUrgency): DispatchPriority {
+  if (urgency === "immediate") return "emergency";
+  if (urgency === "urgent") return "urgent";
+  return "normal";
+}
+
+async function recordDispatchDenial(
+  repository: DispatchRepository,
+  input: {
+    decision: DispatchDecision;
+    actorUserId: string | null;
+    correlationId?: string | undefined;
+    createdAt: Date;
+  }
+) {
+  await recordDispatchAudit(repository, {
+    action: "dispatch.access_denied",
+    organizationId: input.decision.dispatchReview?.organizationId ?? null,
+    dispatchReviewId: input.decision.dispatchReview?.id ?? null,
+    jobRequestId: input.decision.dispatchReview?.jobRequestId ?? null,
+    actorUserId: input.actorUserId,
+    priorState: input.decision.dispatchReview?.state ?? null,
+    newState: "denied",
+    reason: input.decision.internalReason,
+    correlationId: input.correlationId,
+    createdAt: input.createdAt
+  });
+}
+
+async function recordDispatchAudit(
+  repository: DispatchRepository,
+  input: Omit<
+    Parameters<DispatchRepository["recordDispatchAuditEvent"]>[0],
+    "correlationId"
+  > & {
+    correlationId?: string | undefined;
+  }
+) {
+  await repository.recordDispatchAuditEvent({
+    ...input,
+    correlationId: input.correlationId ?? createDispatchCorrelationId()
+  });
+}
+
+function createDispatchCorrelationId() {
+  return `dispatch_${randomBytes(12).toString("base64url")}`;
+}
+
 export const authenticationErrorCode = "RWOS_AUTHENTICATION_FAILED";
 export const authenticationErrorMessage = "Authentication failed.";
 export const authenticationRequiredCode = "RWOS_AUTHENTICATION_REQUIRED";
@@ -5816,6 +7057,258 @@ export function createPrismaJobRequestRepository(prismaClient: unknown): JobRequ
 
     async recordJobRequestAuditEvent(input) {
       await recordPrismaJobRequestAudit(prisma, input);
+    }
+  };
+}
+
+type PrismaDispatchClient = Pick<PrismaJobRequestClient, "auditActorReference" | "auditEvent"> & {
+  dispatchReview: {
+    create(args: { data: CreateDispatchReviewPrismaData }): Promise<StoredDispatchReview>;
+    findUnique(args: { where: { id: string } }): Promise<StoredDispatchReview | null>;
+    findFirst(args: {
+      where: { jobRequestId: string; state: { in: readonly DispatchReviewStatus[] } };
+    }): Promise<StoredDispatchReview | null>;
+    findMany(args: {
+      where?: {
+        organizationId?: string | undefined;
+        state?: { in: readonly DispatchReviewStatus[] } | undefined;
+      };
+      orderBy: [{ updatedAt: "desc" }, { createdAt: "desc" }];
+    }): Promise<StoredDispatchReview[]>;
+    updateMany(args: {
+      where: { id: string; version: number };
+      data: Partial<UpdateDispatchReviewPrismaData>;
+    }): Promise<{ count: number }>;
+  };
+  dispatchCandidate: {
+    upsert(args: {
+      where: {
+        dispatchReviewId_candidateSourceReference: {
+          dispatchReviewId: string;
+          candidateSourceReference: string;
+        };
+      };
+      create: CreateDispatchCandidatePrismaData;
+      update: Partial<CreateDispatchCandidatePrismaData>;
+    }): Promise<StoredDispatchCandidate>;
+    findMany(args: {
+      where: { dispatchReviewId: string; shortlistState?: DispatchShortlistState | undefined };
+      orderBy: [{ shortlistOrder: "asc" }, { updatedAt: "desc" }];
+    }): Promise<StoredDispatchCandidate[]>;
+    updateMany(args: {
+      where: { dispatchReviewId: string; candidateSourceReference: string };
+      data: Partial<UpdateDispatchCandidatePrismaData>;
+    }): Promise<{ count: number }>;
+    findFirst(args: {
+      where: { dispatchReviewId: string; candidateSourceReference: string };
+    }): Promise<StoredDispatchCandidate | null>;
+  };
+};
+
+type CreateDispatchReviewPrismaData = {
+  jobRequestId: string;
+  organizationId: string;
+  residenceId: string;
+  departmentId: string;
+  workGroupId: string;
+  roleDefinitionId: string;
+  dispatchType: DispatchType;
+  state: DispatchReviewStatus;
+  operationalOwnerUserId: string | null;
+  priority: DispatchPriority;
+  urgency: JobRequestUrgency;
+  requiredWorkerCount: number;
+  shortlistedCandidateCount: number;
+  preparedOfferCount: number;
+  createdByUserId: string;
+  createdAt: Date;
+  updatedAt: Date;
+};
+
+type UpdateDispatchReviewPrismaData = {
+  state: DispatchReviewStatus;
+  operationalOwnerUserId: string | null;
+  shortlistedCandidateCount: number;
+  preparedOfferCount: number;
+  startedAt: Date | null;
+  pausedAt: Date | null;
+  cancelledAt: Date | null;
+  closedAt: Date | null;
+  updatedByUserId: string;
+  updatedAt: Date;
+  version: { increment: number };
+};
+
+type CreateDispatchCandidatePrismaData = Omit<
+  StoredDispatchCandidate,
+  "id" | "createdAt" | "updatedAt" | "version"
+> & {
+  createdAt: Date;
+  updatedAt: Date;
+};
+
+type UpdateDispatchCandidatePrismaData = Partial<CreateDispatchCandidatePrismaData> & {
+  updatedAt: Date;
+  version: { increment: number };
+};
+
+export function createPrismaDispatchRepository(prismaClient: unknown): DispatchRepository {
+  const prisma = prismaClient as PrismaDispatchClient;
+
+  return {
+    createDispatchReview(input) {
+      return prisma.dispatchReview.create({
+        data: {
+          jobRequestId: input.jobRequest.id,
+          organizationId: input.jobRequest.organizationId,
+          residenceId: input.jobRequest.residenceId,
+          departmentId: input.jobRequest.departmentId,
+          workGroupId: input.jobRequest.workGroupId,
+          roleDefinitionId: input.jobRequest.roleDefinitionId,
+          dispatchType: "initial",
+          state: "draft",
+          operationalOwnerUserId: input.operationalOwnerUserId,
+          priority: input.priority,
+          urgency: input.jobRequest.urgency,
+          requiredWorkerCount: input.jobRequest.numberOfWorkers,
+          shortlistedCandidateCount: 0,
+          preparedOfferCount: 0,
+          createdByUserId: input.actorUserId,
+          createdAt: input.now,
+          updatedAt: input.now
+        }
+      });
+    },
+
+    findDispatchReviewById(dispatchReviewId) {
+      return prisma.dispatchReview.findUnique({ where: { id: dispatchReviewId } });
+    },
+
+    findActiveDispatchReviewForJobRequest(jobRequestId) {
+      return prisma.dispatchReview.findFirst({
+        where: { jobRequestId, state: { in: nonTerminalDispatchStates } }
+      });
+    },
+
+    listDispatchReviews(input) {
+      return prisma.dispatchReview.findMany({
+        where: {
+          ...(input.organizationId ? { organizationId: input.organizationId } : {}),
+          ...(input.states ? { state: { in: input.states } } : {})
+        },
+        orderBy: [{ updatedAt: "desc" }, { createdAt: "desc" }]
+      });
+    },
+
+    async updateDispatchReview(input) {
+      const data: Partial<UpdateDispatchReviewPrismaData> = {
+        updatedByUserId: input.actorUserId,
+        updatedAt: input.now,
+        version: { increment: 1 }
+      };
+
+      if (input.state !== undefined) data.state = input.state;
+      if (input.operationalOwnerUserId !== undefined)
+        data.operationalOwnerUserId = input.operationalOwnerUserId;
+      if (input.shortlistedCandidateCount !== undefined)
+        data.shortlistedCandidateCount = input.shortlistedCandidateCount;
+      if (input.preparedOfferCount !== undefined) data.preparedOfferCount = input.preparedOfferCount;
+      if (input.startedAt !== undefined) data.startedAt = input.startedAt;
+      if (input.pausedAt !== undefined) data.pausedAt = input.pausedAt;
+      if (input.cancelledAt !== undefined) data.cancelledAt = input.cancelledAt;
+      if (input.closedAt !== undefined) data.closedAt = input.closedAt;
+
+      const result = await prisma.dispatchReview.updateMany({
+        where: { id: input.dispatchReviewId, version: input.expectedVersion },
+        data
+      });
+      if (result.count !== 1) return null;
+
+      return this.findDispatchReviewById(input.dispatchReviewId);
+    },
+
+    listCandidates(dispatchReviewId) {
+      return prisma.dispatchCandidate.findMany({
+        where: { dispatchReviewId },
+        orderBy: [{ shortlistOrder: "asc" }, { updatedAt: "desc" }]
+      });
+    },
+
+    upsertCandidate(input) {
+      return prisma.dispatchCandidate.upsert({
+        where: {
+          dispatchReviewId_candidateSourceReference: {
+            dispatchReviewId: input.dispatchReviewId,
+            candidateSourceReference: input.candidate.candidateSourceReference
+          }
+        },
+        create: {
+          ...input.candidate,
+          dispatchReviewId: input.dispatchReviewId,
+          shortlistState: "not_shortlisted",
+          shortlistOrder: null,
+          addedByUserId: null,
+          removedByUserId: null,
+          createdAt: input.now,
+          updatedAt: input.now
+        },
+        update: {
+          ...input.candidate,
+          updatedAt: input.now
+        }
+      });
+    },
+
+    async updateCandidateShortlist(input) {
+      const result = await prisma.dispatchCandidate.updateMany({
+        where: {
+          dispatchReviewId: input.dispatchReviewId,
+          candidateSourceReference: input.candidateSourceReference
+        },
+        data: {
+          shortlistState: input.shortlistState,
+          shortlistOrder: input.shortlistOrder,
+          ...(input.shortlistState === "shortlisted"
+            ? { addedByUserId: input.actorUserId, removedByUserId: null }
+            : { removedByUserId: input.actorUserId }),
+          updatedAt: input.now,
+          version: { increment: 1 }
+        }
+      });
+      if (result.count !== 1) return null;
+
+      return prisma.dispatchCandidate.findFirst({
+        where: {
+          dispatchReviewId: input.dispatchReviewId,
+          candidateSourceReference: input.candidateSourceReference
+        }
+      });
+    },
+
+    async reorderShortlist(input) {
+      for (const [index, candidateSourceReference] of input.candidateSourceReferences.entries()) {
+        await prisma.dispatchCandidate.updateMany({
+          where: {
+            dispatchReviewId: input.dispatchReviewId,
+            candidateSourceReference
+          },
+          data: {
+            shortlistState: "shortlisted",
+            shortlistOrder: index + 1,
+            updatedAt: input.now,
+            version: { increment: 1 }
+          }
+        });
+      }
+
+      return prisma.dispatchCandidate.findMany({
+        where: { dispatchReviewId: input.dispatchReviewId, shortlistState: "shortlisted" },
+        orderBy: [{ shortlistOrder: "asc" }, { updatedAt: "desc" }]
+      });
+    },
+
+    async recordDispatchAuditEvent(input) {
+      await recordPrismaDispatchAudit(prisma, input);
     }
   };
 }
@@ -8334,6 +9827,37 @@ async function recordPrismaJobRequestAudit(
       source: "api",
       correlationId: input.correlationId,
       policyVersion: "job-request-foundation-v1",
+      createdAt: input.createdAt
+    }
+  });
+}
+
+async function recordPrismaDispatchAudit(
+  prisma: Pick<PrismaDispatchClient, "auditActorReference" | "auditEvent">,
+  input: Parameters<DispatchRepository["recordDispatchAuditEvent"]>[0]
+) {
+  const actorReference = await prisma.auditActorReference.create({
+    data: {
+      actorType: input.actorUserId ? "user" : "system",
+      ...(input.actorUserId ? { userId: input.actorUserId } : {}),
+      displayLabel: input.actorUserId ? "Dispatch actor" : "Dispatch boundary"
+    }
+  });
+
+  await prisma.auditEvent.create({
+    data: {
+      actorReferenceId: actorReference.id,
+      organizationId: input.organizationId,
+      entityType: "dispatch_review",
+      entityId: input.dispatchReviewId ?? nilEntityId,
+      entityPublicReference: input.jobRequestId,
+      action: input.action,
+      priorState: input.priorState,
+      newState: input.newState,
+      reason: input.reason,
+      source: "api",
+      correlationId: input.correlationId,
+      policyVersion: "dispatch-foundation-v1",
       createdAt: input.createdAt
     }
   });
