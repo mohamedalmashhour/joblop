@@ -382,6 +382,152 @@ export class EmployerOrganizationError extends Error {
   }
 }
 
+export type ResidenceStatus = "draft" | "active" | "restricted" | "inactive" | "closed";
+export type ResidenceDecisionStatus =
+  | "allow"
+  | "invalid_input"
+  | "not_found"
+  | "membership_denied"
+  | "permission_denied"
+  | "organization_inactive"
+  | "residence_inactive"
+  | "version_conflict"
+  | "invalid_transition"
+  | "audit_failed";
+
+export interface StoredResidence {
+  id: string;
+  publicId: string;
+  organizationId: string;
+  name: string;
+  status: ResidenceStatus;
+  addressSummary: string | null;
+  city: string | null;
+  region: string | null;
+  country: string | null;
+  createdByUserId: string | null;
+  createdAt: Date;
+  updatedAt: Date;
+  archivedAt: Date | null;
+}
+
+export interface PublicResidence {
+  id: string;
+  publicId: string;
+  organizationId: string;
+  name: string;
+  status: ResidenceStatus;
+  addressSummary: string | null;
+  city: string | null;
+  region: string | null;
+  country: string | null;
+  createdByUserId: string | null;
+  createdAt: Date;
+  updatedAt: Date;
+  archivedAt: Date | null;
+  version: string;
+}
+
+export interface ResidenceDecision {
+  status: ResidenceDecisionStatus;
+  allow: boolean;
+  residence: PublicResidence | null;
+  organization: PublicEmployerOrganization | null;
+  membership: PublicOrganizationMembership | null;
+  roles: readonly AuthorizationRoleKey[];
+  internalReason: string | null;
+  externalCode: typeof authorizationDeniedCode | null;
+  externalMessage: typeof authorizationDeniedMessage | null;
+}
+
+export interface CreateResidenceInput {
+  actorUserId: string;
+  organizationId: string;
+  name: string;
+  addressSummary?: string | null;
+  city?: string | null;
+  region?: string | null;
+  country?: string | null;
+  correlationId?: string;
+}
+
+export interface UpdateResidenceInput {
+  actorUserId: string;
+  organizationId: string;
+  residenceId: string;
+  expectedVersion: string;
+  name?: string | null;
+  addressSummary?: string | null;
+  city?: string | null;
+  region?: string | null;
+  country?: string | null;
+  correlationId?: string;
+}
+
+export interface ResidenceRepository {
+  findResidenceById(residenceId: string): Promise<StoredResidence | null>;
+  listResidencesByOrganization(input: { organizationId: string; status?: ResidenceStatus | null }): Promise<StoredResidence[]>;
+  createResidence(input: {
+    publicId: string;
+    organizationId: string;
+    name: string;
+    addressSummary: string | null;
+    city: string | null;
+    region: string | null;
+    country: string | null;
+    actorUserId: string;
+    correlationId: string;
+    now: Date;
+  }): Promise<StoredResidence>;
+  updateResidence(input: {
+    residenceId: string;
+    organizationId: string;
+    expectedUpdatedAt: Date;
+    name?: string | undefined;
+    addressSummary?: string | null | undefined;
+    city?: string | null | undefined;
+    region?: string | null | undefined;
+    country?: string | null | undefined;
+    actorUserId: string;
+    now: Date;
+  }): Promise<StoredResidence | null>;
+  updateResidenceStatus(input: {
+    residenceId: string;
+    organizationId: string;
+    expectedUpdatedAt: Date;
+    status: Extract<ResidenceStatus, "active" | "inactive" | "closed">;
+    actorUserId: string;
+    now: Date;
+  }): Promise<StoredResidence | null>;
+  recordResidenceAuditEvent(input: {
+    action:
+      | "residence.created"
+      | "residence.updated"
+      | "residence.inactivated"
+      | "residence.reactivated"
+      | "residence.closed"
+      | "residence.access_denied";
+    organizationId: string | null;
+    residenceId: string | null;
+    actorUserId: string | null;
+    priorState: string | null;
+    newState: string | null;
+    reason: string | null;
+    correlationId: string;
+    createdAt: Date;
+  }): Promise<void>;
+}
+
+export class ResidenceError extends Error {
+  decision: ResidenceDecision;
+
+  constructor(decision: ResidenceDecision) {
+    super(authorizationDeniedMessage);
+    this.name = "ResidenceError";
+    this.decision = decision;
+  }
+}
+
 export class AuthorizationDeniedError extends Error {
   code = authorizationDeniedCode;
   decision: AuthorizationDecision;
@@ -412,27 +558,27 @@ export const authorizationPermissionDefinitions = [
   ),
   permission(
     "residence.read",
-    "Read residence records within a future organization context.",
+    "Read residence records within an organization context.",
     "organization",
-    "reserved",
+    "active",
     "May expose location or facility details.",
-    "Deny without organization context; no active residence API."
+    "Deny without organization context."
   ),
   permission(
     "residence.create",
-    "Create residence records within a future organization context.",
+    "Create residence records within an organization context.",
     "organization",
-    "reserved",
+    "active",
     "Could create operational locations before organization membership exists.",
-    "Mapped only to approved organization roles; no active endpoint."
+    "Mapped only to approved organization roles."
   ),
   permission(
     "residence.update",
-    "Update residence records within a future organization context.",
+    "Update residence records within an organization context.",
     "organization",
-    "reserved",
+    "active",
     "Could alter residence operating details.",
-    "Mapped only to approved organization roles; no active endpoint."
+    "Mapped only to approved organization roles."
   ),
   permission(
     "department.read",
@@ -1162,6 +1308,287 @@ export function createEmployerOrganizationService(
 }
 
 export type EmployerOrganizationService = ReturnType<typeof createEmployerOrganizationService>;
+
+export function createResidenceService(
+  residenceRepository: ResidenceRepository,
+  organizationRepository: EmployerOrganizationRepository,
+  membershipService: OrganizationMembershipService,
+  authorizationService: AuthorizationService,
+  options: { now?: () => Date } = {}
+) {
+  const now = options.now ?? (() => new Date());
+
+  return {
+    async createResidence(input: CreateResidenceInput) {
+      const currentTime = now();
+      const correlationId = input.correlationId ?? createResidenceCorrelationId();
+      const name = normalizeResidenceText(input.name, 2, 160);
+      const addressSummary = normalizeOptionalResidenceText(input.addressSummary, 240);
+      const city = normalizeOptionalResidenceText(input.city, 120);
+      const region = normalizeOptionalResidenceText(input.region, 120);
+      const country = normalizeOptionalResidenceText(input.country, 80);
+
+      if (!name) {
+        const decision = residenceDeny("invalid_input", "invalid_residence_name", null, null, null, []);
+        await auditResidenceDenial(residenceRepository, {
+          decision,
+          actorUserId: input.actorUserId,
+          correlationId,
+          createdAt: currentTime
+        });
+        throw new ResidenceError(decision);
+      }
+
+      const authorization = await authorizeResidenceOperation({
+        residenceRepository,
+        organizationRepository,
+        membershipService,
+        authorizationService,
+        actorUserId: input.actorUserId,
+        organizationId: input.organizationId,
+        residence: null,
+        permission: "residence.create",
+        correlationId,
+        now: currentTime
+      });
+
+      if (!authorization.allow) {
+        throw new ResidenceError(authorization);
+      }
+
+      try {
+        const residence = await residenceRepository.createResidence({
+          publicId: createPublicResidenceId(),
+          organizationId: input.organizationId,
+          name,
+          addressSummary,
+          city,
+          region,
+          country,
+          actorUserId: input.actorUserId,
+          correlationId,
+          now: currentTime
+        });
+
+        return toPublicResidence(residence);
+      } catch (error) {
+        const decision = residenceDeny(
+          "audit_failed",
+          error instanceof Error ? error.message : "residence_create_failed",
+          null,
+          authorization.organization,
+          authorization.membership,
+          authorization.roles
+        );
+        await auditResidenceDenial(residenceRepository, {
+          decision,
+          actorUserId: input.actorUserId,
+          correlationId,
+          createdAt: currentTime
+        });
+        throw new ResidenceError(decision);
+      }
+    },
+
+    async getResidence(input: { actorUserId: string; organizationId: string; residenceId: string; correlationId?: string }) {
+      const currentTime = now();
+      const residence = await residenceRepository.findResidenceById(input.residenceId);
+      const authorization = await authorizeResidenceOperation({
+        residenceRepository,
+        organizationRepository,
+        membershipService,
+        authorizationService,
+        actorUserId: input.actorUserId,
+        organizationId: input.organizationId,
+        residence,
+        permission: "residence.read",
+        correlationId: input.correlationId,
+        now: currentTime,
+        allowInactiveResidenceRead: true
+      });
+
+      if (!authorization.allow || !authorization.residence) {
+        throw new ResidenceError(authorization);
+      }
+
+      return authorization.residence;
+    },
+
+    async listResidences(input: { actorUserId: string; organizationId: string; status?: ResidenceStatus | null; correlationId?: string }) {
+      const currentTime = now();
+      const authorization = await authorizeResidenceOperation({
+        residenceRepository,
+        organizationRepository,
+        membershipService,
+        authorizationService,
+        actorUserId: input.actorUserId,
+        organizationId: input.organizationId,
+        residence: null,
+        permission: "residence.read",
+        correlationId: input.correlationId,
+        now: currentTime,
+        allowInactiveResidenceRead: true
+      });
+
+      if (!authorization.allow) {
+        throw new ResidenceError(authorization);
+      }
+
+      const status = input.status && residenceStatuses.includes(input.status) ? input.status : null;
+
+      return (await residenceRepository.listResidencesByOrganization({ organizationId: input.organizationId, status })).map(toPublicResidence);
+    },
+
+    async updateResidence(input: UpdateResidenceInput) {
+      const currentTime = now();
+      const residence = await residenceRepository.findResidenceById(input.residenceId);
+      const authorization = await authorizeResidenceOperation({
+        residenceRepository,
+        organizationRepository,
+        membershipService,
+        authorizationService,
+        actorUserId: input.actorUserId,
+        organizationId: input.organizationId,
+        residence,
+        permission: "residence.update",
+        correlationId: input.correlationId,
+        now: currentTime
+      });
+
+      if (!authorization.allow || !authorization.residence) {
+        throw new ResidenceError(authorization);
+      }
+
+      const name = input.name == null ? undefined : normalizeResidenceText(input.name, 2, 160);
+      const addressSummary = input.addressSummary === undefined ? undefined : normalizeOptionalResidenceText(input.addressSummary, 240);
+      const city = input.city === undefined ? undefined : normalizeOptionalResidenceText(input.city, 120);
+      const region = input.region === undefined ? undefined : normalizeOptionalResidenceText(input.region, 120);
+      const country = input.country === undefined ? undefined : normalizeOptionalResidenceText(input.country, 80);
+
+      if (input.name != null && !name) {
+        throw new ResidenceError(
+          residenceDeny("invalid_input", "invalid_residence_name", authorization.residence, authorization.organization, authorization.membership, authorization.roles)
+        );
+      }
+
+      const expectedUpdatedAt = parseResidenceVersion(input.expectedVersion);
+
+      if (!expectedUpdatedAt) {
+        throw new ResidenceError(
+          residenceDeny("version_conflict", "invalid_version", authorization.residence, authorization.organization, authorization.membership, authorization.roles)
+        );
+      }
+
+      const updated = await residenceRepository.updateResidence({
+        residenceId: input.residenceId,
+        organizationId: input.organizationId,
+        expectedUpdatedAt,
+        name,
+        addressSummary,
+        city,
+        region,
+        country,
+        actorUserId: input.actorUserId,
+        now: currentTime
+      });
+
+      if (!updated) {
+        throw new ResidenceError(
+          residenceDeny("version_conflict", "stale_version", authorization.residence, authorization.organization, authorization.membership, authorization.roles)
+        );
+      }
+
+      await recordResidenceAudit(residenceRepository, {
+        action: "residence.updated",
+        organizationId: input.organizationId,
+        residenceId: updated.id,
+        actorUserId: input.actorUserId,
+        priorState: residence?.status ?? null,
+        newState: updated.status,
+        reason: null,
+        correlationId: input.correlationId,
+        createdAt: currentTime
+      });
+
+      return toPublicResidence(updated);
+    },
+
+    async updateResidenceStatus(input: {
+      actorUserId: string;
+      organizationId: string;
+      residenceId: string;
+      expectedVersion: string;
+      status: Extract<ResidenceStatus, "active" | "inactive" | "closed">;
+      reason: string;
+      correlationId?: string;
+    }) {
+      const currentTime = now();
+      const residence = await residenceRepository.findResidenceById(input.residenceId);
+      const authorization = await authorizeResidenceOperation({
+        residenceRepository,
+        organizationRepository,
+        membershipService,
+        authorizationService,
+        actorUserId: input.actorUserId,
+        organizationId: input.organizationId,
+        residence,
+        permission: "residence.update",
+        correlationId: input.correlationId,
+        now: currentTime,
+        allowInactiveResidenceStatusChange: true
+      });
+
+      if (!authorization.allow || !authorization.residence || !residence) {
+        throw new ResidenceError(authorization);
+      }
+
+      if (!isAllowedResidenceTransition(residence.status, input.status)) {
+        throw new ResidenceError(
+          residenceDeny("invalid_transition", "invalid_residence_status_transition", authorization.residence, authorization.organization, authorization.membership, authorization.roles)
+        );
+      }
+
+      const expectedUpdatedAt = parseResidenceVersion(input.expectedVersion);
+
+      if (!expectedUpdatedAt) {
+        throw new ResidenceError(
+          residenceDeny("version_conflict", "invalid_version", authorization.residence, authorization.organization, authorization.membership, authorization.roles)
+        );
+      }
+
+      const updated = await residenceRepository.updateResidenceStatus({
+        residenceId: input.residenceId,
+        organizationId: input.organizationId,
+        expectedUpdatedAt,
+        status: input.status,
+        actorUserId: input.actorUserId,
+        now: currentTime
+      });
+
+      if (!updated) {
+        throw new ResidenceError(
+          residenceDeny("version_conflict", "stale_version", authorization.residence, authorization.organization, authorization.membership, authorization.roles)
+        );
+      }
+
+      await recordResidenceAudit(residenceRepository, {
+        action: input.status === "inactive" ? "residence.inactivated" : input.status === "closed" ? "residence.closed" : "residence.reactivated",
+        organizationId: input.organizationId,
+        residenceId: updated.id,
+        actorUserId: input.actorUserId,
+        priorState: residence.status,
+        newState: updated.status,
+        reason: normalizeOptionalResidenceText(input.reason, 240),
+        correlationId: input.correlationId,
+        createdAt: currentTime
+      });
+
+      return toPublicResidence(updated);
+    }
+  };
+}
+
+export type ResidenceService = ReturnType<typeof createResidenceService>;
 
 export const authenticationErrorCode = "RWOS_AUTHENTICATION_FAILED";
 export const authenticationErrorMessage = "Authentication failed.";
@@ -2219,6 +2646,142 @@ export function createPrismaEmployerOrganizationRepository(prismaClient: unknown
   };
 }
 
+type PrismaResidenceClient = Pick<PrismaEmployerOrganizationClient, "auditActorReference" | "auditEvent"> & {
+  $transaction<T>(callback: (transaction: PrismaResidenceClient) => Promise<T>): Promise<T>;
+  residence: {
+    findUnique(args: { where: { id: string } }): Promise<StoredResidence | null>;
+    findMany(args: {
+      where: { organizationId: string; status?: ResidenceStatus | undefined };
+      orderBy: { name: "asc" };
+    }): Promise<StoredResidence[]>;
+    create(args: {
+      data: {
+        publicId: string;
+        organizationId: string;
+        name: string;
+        status: "active";
+        addressSummary: string | null;
+        city: string | null;
+        region: string | null;
+        country: string | null;
+        createdByUserId: string;
+        createdAt: Date;
+        updatedAt: Date;
+      };
+    }): Promise<StoredResidence>;
+    updateMany(args: {
+      where: { id: string; organizationId: string; updatedAt: Date };
+      data: {
+        name?: string | undefined;
+        addressSummary?: string | null | undefined;
+        city?: string | null | undefined;
+        region?: string | null | undefined;
+        country?: string | null | undefined;
+        status?: ResidenceStatus | undefined;
+        archivedAt?: Date | null | undefined;
+        updatedAt: Date;
+      };
+    }): Promise<{ count: number }>;
+  };
+};
+
+export function createPrismaResidenceRepository(prismaClient: unknown): ResidenceRepository {
+  const prisma = prismaClient as PrismaResidenceClient;
+
+  return {
+    findResidenceById(residenceId) {
+      return prisma.residence.findUnique({
+        where: { id: residenceId }
+      });
+    },
+
+    listResidencesByOrganization(input) {
+      return prisma.residence.findMany({
+        where: {
+          organizationId: input.organizationId,
+          ...(input.status ? { status: input.status } : {})
+        },
+        orderBy: { name: "asc" }
+      });
+    },
+
+    async createResidence(input) {
+      return prisma.$transaction(async (transaction) => {
+        const residence = await transaction.residence.create({
+          data: {
+            publicId: input.publicId,
+            organizationId: input.organizationId,
+            name: input.name,
+            status: "active",
+            addressSummary: input.addressSummary,
+            city: input.city,
+            region: input.region,
+            country: input.country,
+            createdByUserId: input.actorUserId,
+            createdAt: input.now,
+            updatedAt: input.now
+          }
+        });
+
+        await recordPrismaResidenceAudit(transaction, {
+          action: "residence.created",
+          organizationId: input.organizationId,
+          residenceId: residence.id,
+          actorUserId: input.actorUserId,
+          priorState: null,
+          newState: residence.status,
+          reason: null,
+          correlationId: input.correlationId,
+          createdAt: input.now
+        });
+
+        return residence;
+      });
+    },
+
+    async updateResidence(input) {
+      const result = await prisma.residence.updateMany({
+        where: { id: input.residenceId, organizationId: input.organizationId, updatedAt: input.expectedUpdatedAt },
+        data: {
+          name: input.name,
+          addressSummary: input.addressSummary,
+          city: input.city,
+          region: input.region,
+          country: input.country,
+          updatedAt: input.now
+        }
+      });
+
+      if (result.count !== 1) {
+        return null;
+      }
+
+      return this.findResidenceById(input.residenceId);
+    },
+
+    async updateResidenceStatus(input) {
+      const result = await prisma.residence.updateMany({
+        where: { id: input.residenceId, organizationId: input.organizationId, updatedAt: input.expectedUpdatedAt },
+        data: {
+          status: input.status,
+          archivedAt: input.status === "closed" ? input.now : input.status === "active" ? null : undefined,
+          updatedAt: input.now
+        }
+      });
+
+      if (result.count !== 1) {
+        return null;
+      }
+
+      return this.findResidenceById(input.residenceId);
+    },
+
+    async recordResidenceAuditEvent(input) {
+      await recordPrismaResidenceAudit(prisma, input);
+    }
+  };
+}
+
 function resolvePasswordHashOptions(options: PasswordHashOptions) {
   return {
     costFactor: options.costFactor ?? readPositiveInteger("RWOS_PASSWORD_SCRYPT_N", defaultPasswordOptions.costFactor),
@@ -2888,6 +3451,318 @@ function createPublicOrganizationId() {
 
 function createOrganizationCorrelationId() {
   return `org_${randomBytes(12).toString("base64url")}`;
+}
+
+const residenceStatuses = ["draft", "active", "restricted", "inactive", "closed"] as const satisfies readonly ResidenceStatus[];
+
+function toPublicResidence(residence: StoredResidence): PublicResidence {
+  return {
+    id: residence.id,
+    publicId: residence.publicId,
+    organizationId: residence.organizationId,
+    name: residence.name,
+    status: residence.status,
+    addressSummary: residence.addressSummary,
+    city: residence.city,
+    region: residence.region,
+    country: residence.country,
+    createdByUserId: residence.createdByUserId,
+    createdAt: residence.createdAt,
+    updatedAt: residence.updatedAt,
+    archivedAt: residence.archivedAt,
+    version: residence.updatedAt.toISOString()
+  };
+}
+
+async function authorizeResidenceOperation(input: {
+  residenceRepository: ResidenceRepository;
+  organizationRepository: EmployerOrganizationRepository;
+  membershipService: OrganizationMembershipService;
+  authorizationService: AuthorizationService;
+  actorUserId: string;
+  organizationId: string;
+  residence: StoredResidence | null;
+  permission: AuthorizationPermissionKey;
+  correlationId?: string | undefined;
+  now: Date;
+  allowInactiveResidenceRead?: boolean | undefined;
+  allowInactiveResidenceStatusChange?: boolean | undefined;
+}): Promise<ResidenceDecision> {
+  const organization = await input.organizationRepository.findOrganizationById(input.organizationId);
+
+  if (!organization) {
+    const decision = residenceDeny("not_found", "organization_not_found", null, null, null, []);
+    await auditResidenceDenial(input.residenceRepository, {
+      decision,
+      actorUserId: input.actorUserId,
+      correlationId: input.correlationId,
+      createdAt: input.now
+    });
+    return decision;
+  }
+
+  const organizationPublic = toPublicOrganization(organization);
+  const membershipDecision = await input.membershipService.selectOrganizationContext({
+    userId: input.actorUserId,
+    organizationId: input.organizationId,
+    ...(input.correlationId ? { correlationId: input.correlationId } : {})
+  });
+
+  if (!membershipDecision.allow || !membershipDecision.membership) {
+    const decision = residenceDeny(
+      "membership_denied",
+      membershipDecision.internalReason ?? "membership_denied",
+      input.residence ? toPublicResidence(input.residence) : null,
+      organizationPublic,
+      membershipDecision.membership,
+      membershipDecision.roles
+    );
+    await auditResidenceDenial(input.residenceRepository, {
+      decision,
+      actorUserId: input.actorUserId,
+      correlationId: input.correlationId,
+      createdAt: input.now
+    });
+    return decision;
+  }
+
+  const authorizationDecision = await input.authorizationService.decide({
+    session: {
+      authenticated: true,
+      user: {
+        id: input.actorUserId,
+        publicId: "residence_context_user",
+        emailNormalized: "residence-context@example.invalid",
+        displayName: null,
+        status: "active"
+      },
+      session: {
+        id: "residence-context-session",
+        userId: input.actorUserId,
+        expiresAt: input.now
+      }
+    },
+    roles: membershipDecision.roles,
+    permission: input.permission,
+    resourceContext: { organizationId: input.organizationId },
+    ...(input.correlationId ? { correlationId: input.correlationId } : {})
+  });
+
+  if (!authorizationDecision.allow) {
+    const decision = residenceDeny(
+      "permission_denied",
+      authorizationDecision.internalReason ?? "permission_denied",
+      input.residence ? toPublicResidence(input.residence) : null,
+      organizationPublic,
+      membershipDecision.membership,
+      membershipDecision.roles
+    );
+    await auditResidenceDenial(input.residenceRepository, {
+      decision,
+      actorUserId: input.actorUserId,
+      correlationId: input.correlationId,
+      createdAt: input.now
+    });
+    return decision;
+  }
+
+  if (organizationBlocksOrdinaryOperations(organization.status)) {
+    const decision = residenceDeny(
+      "organization_inactive",
+      `organization_${organization.status}`,
+      input.residence ? toPublicResidence(input.residence) : null,
+      organizationPublic,
+      membershipDecision.membership,
+      membershipDecision.roles
+    );
+    await auditResidenceDenial(input.residenceRepository, {
+      decision,
+      actorUserId: input.actorUserId,
+      correlationId: input.correlationId,
+      createdAt: input.now
+    });
+    return decision;
+  }
+
+  if (input.residence) {
+    if (input.residence.organizationId !== input.organizationId) {
+      const decision = residenceDeny("not_found", "residence_not_found", null, organizationPublic, membershipDecision.membership, membershipDecision.roles);
+      await auditResidenceDenial(input.residenceRepository, {
+        decision,
+        actorUserId: input.actorUserId,
+        correlationId: input.correlationId,
+        createdAt: input.now
+      });
+      return decision;
+    }
+
+    if (residenceBlocksOrdinaryUpdates(input.residence.status) && !input.allowInactiveResidenceRead && !input.allowInactiveResidenceStatusChange) {
+      const decision = residenceDeny(
+        "residence_inactive",
+        `residence_${input.residence.status}`,
+        toPublicResidence(input.residence),
+        organizationPublic,
+        membershipDecision.membership,
+        membershipDecision.roles
+      );
+      await auditResidenceDenial(input.residenceRepository, {
+        decision,
+        actorUserId: input.actorUserId,
+        correlationId: input.correlationId,
+        createdAt: input.now
+      });
+      return decision;
+    }
+  } else if (input.permission !== "residence.create" && input.permission !== "residence.read") {
+    const decision = residenceDeny("not_found", "residence_not_found", null, organizationPublic, membershipDecision.membership, membershipDecision.roles);
+    await auditResidenceDenial(input.residenceRepository, {
+      decision,
+      actorUserId: input.actorUserId,
+      correlationId: input.correlationId,
+      createdAt: input.now
+    });
+    return decision;
+  }
+
+  return {
+    status: "allow",
+    allow: true,
+    residence: input.residence ? toPublicResidence(input.residence) : null,
+    organization: organizationPublic,
+    membership: membershipDecision.membership,
+    roles: membershipDecision.roles,
+    internalReason: null,
+    externalCode: null,
+    externalMessage: null
+  };
+}
+
+function residenceBlocksOrdinaryUpdates(status: ResidenceStatus) {
+  return status === "closed" || status === "inactive" || status === "restricted";
+}
+
+function isAllowedResidenceTransition(current: ResidenceStatus, next: Extract<ResidenceStatus, "active" | "inactive" | "closed">) {
+  if (current === "closed") return false;
+  if (next === "active") return current === "inactive" || current === "draft";
+  if (next === "inactive") return current === "active";
+  if (next === "closed") return current === "active" || current === "inactive" || current === "draft";
+
+  return false;
+}
+
+function residenceDeny(
+  status: Exclude<ResidenceDecisionStatus, "allow">,
+  internalReason: string,
+  residence: PublicResidence | null,
+  organization: PublicEmployerOrganization | null,
+  membership: PublicOrganizationMembership | null,
+  roles: readonly AuthorizationRoleKey[]
+): ResidenceDecision {
+  return {
+    status,
+    allow: false,
+    residence,
+    organization,
+    membership,
+    roles,
+    internalReason,
+    externalCode: authorizationDeniedCode,
+    externalMessage: authorizationDeniedMessage
+  };
+}
+
+async function auditResidenceDenial(
+  repository: ResidenceRepository,
+  input: {
+    decision: ResidenceDecision;
+    actorUserId: string | null;
+    correlationId?: string | undefined;
+    createdAt: Date;
+  }
+) {
+  await recordResidenceAudit(repository, {
+    action: "residence.access_denied",
+    organizationId: input.decision.organization?.id ?? input.decision.residence?.organizationId ?? null,
+    residenceId: input.decision.residence?.id ?? null,
+    actorUserId: input.actorUserId,
+    priorState: input.decision.residence?.status ?? null,
+    newState: "denied",
+    reason: input.decision.internalReason,
+    correlationId: input.correlationId,
+    createdAt: input.createdAt
+  });
+}
+
+async function recordResidenceAudit(
+  repository: ResidenceRepository,
+  input: Omit<Parameters<ResidenceRepository["recordResidenceAuditEvent"]>[0], "correlationId"> & {
+    correlationId?: string | undefined;
+  }
+) {
+  await repository.recordResidenceAuditEvent({
+    ...input,
+    correlationId: input.correlationId ?? createResidenceCorrelationId()
+  });
+}
+
+async function recordPrismaResidenceAudit(
+  prisma: Pick<PrismaResidenceClient, "auditActorReference" | "auditEvent">,
+  input: Parameters<ResidenceRepository["recordResidenceAuditEvent"]>[0]
+) {
+  const actorReference = await prisma.auditActorReference.create({
+    data: {
+      actorType: input.actorUserId ? "user" : "system",
+      ...(input.actorUserId ? { userId: input.actorUserId } : {}),
+      ...(input.organizationId ? { organizationId: input.organizationId } : {}),
+      displayLabel: input.actorUserId ? "Residence actor" : "Residence boundary"
+    }
+  });
+
+  await prisma.auditEvent.create({
+    data: {
+      actorReferenceId: actorReference.id,
+      organizationId: input.organizationId,
+      entityType: "residence",
+      entityId: input.residenceId ?? nilEntityId,
+      entityPublicReference: input.residenceId,
+      action: input.action,
+      priorState: input.priorState,
+      newState: input.newState,
+      reason: input.reason,
+      source: "api",
+      correlationId: input.correlationId,
+      policyVersion: "residence-foundation-v1",
+      createdAt: input.createdAt
+    }
+  });
+}
+
+function normalizeResidenceText(value: string, minLength: number, maxLength: number) {
+  const normalized = value.trim().replace(/\s+/g, " ");
+
+  return normalized.length >= minLength && normalized.length <= maxLength ? normalized : "";
+}
+
+function normalizeOptionalResidenceText(value: string | null | undefined, maxLength: number) {
+  if (value == null) return null;
+
+  const normalized = value.trim().replace(/\s+/g, " ");
+
+  return normalized.length > 0 && normalized.length <= maxLength ? normalized : null;
+}
+
+function parseResidenceVersion(version: string) {
+  const parsed = new Date(version);
+
+  return Number.isNaN(parsed.getTime()) ? null : parsed;
+}
+
+function createPublicResidenceId() {
+  return `res_${randomBytes(12).toString("base64url")}`;
+}
+
+function createResidenceCorrelationId() {
+  return `residence_${randomBytes(12).toString("base64url")}`;
 }
 
 async function scrypt(password: string, salt: Buffer, keyLength: number, options: { N: number; r: number; p: number }) {

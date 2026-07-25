@@ -5,6 +5,7 @@ import {
   EmployerOrganizationError,
   OrganizationMembershipError,
   PasswordPolicyError,
+  ResidenceError,
   RegistrationUnavailableError,
   authenticationErrorCode,
   authenticationErrorMessage,
@@ -15,9 +16,11 @@ import {
   createAuthorizationService,
   createEmployerOrganizationService,
   createOrganizationMembershipService,
+  createResidenceService,
   createPrismaAuthenticationRepository,
   createPrismaEmployerOrganizationRepository,
   createPrismaOrganizationMembershipRepository,
+  createPrismaResidenceRepository,
   passwordPolicyErrorCode,
   registrationUnavailableCode,
   toSafeAuthorizationResponse,
@@ -25,7 +28,9 @@ import {
   type AuthorizationService,
   type AuthenticationService,
   type EmployerOrganizationService,
-  type OrganizationMembershipService
+  type OrganizationMembershipService,
+  type ResidenceService,
+  type ResidenceStatus
 } from "@rwos/auth";
 import { getRuntimeConfig } from "@rwos/config";
 import { createPrismaClient } from "@rwos/database";
@@ -36,6 +41,7 @@ export interface BuildApiOptions {
   authorizationService?: AuthorizationService;
   membershipService?: OrganizationMembershipService;
   organizationService?: EmployerOrganizationService;
+  residenceService?: ResidenceService;
   resolveAuthorizationRoles?: (userId: string) => Promise<readonly AuthorizationRoleKey[]> | readonly AuthorizationRoleKey[];
 }
 
@@ -51,13 +57,17 @@ export function buildApi(options: BuildApiOptions = {}) {
   const authorizationService = options.authorizationService ?? createAuthorizationService();
   const membershipService =
     options.membershipService ?? createOrganizationMembershipService(createPrismaOrganizationMembershipRepository(prisma!));
+  const organizationRepository = prisma ? createPrismaEmployerOrganizationRepository(prisma) : null;
   const organizationService =
     options.organizationService ??
     createEmployerOrganizationService(
-      createPrismaEmployerOrganizationRepository(prisma!),
+      organizationRepository!,
       membershipService,
       authorizationService
     );
+  const residenceService =
+    options.residenceService ??
+    createResidenceService(createPrismaResidenceRepository(prisma!), organizationRepository!, membershipService, authorizationService);
   const resolveAuthorizationRoles = options.resolveAuthorizationRoles ?? (() => []);
 
   if (prisma) {
@@ -73,6 +83,10 @@ export function buildApi(options: BuildApiOptions = {}) {
 
     if (error instanceof EmployerOrganizationError) {
       return sendOrganizationDenied(reply);
+    }
+
+    if (error instanceof ResidenceError) {
+      return sendResidenceDenied(reply);
     }
 
     throw error;
@@ -451,6 +465,122 @@ export function buildApi(options: BuildApiOptions = {}) {
     return reply.code(200).send({ organization: serializeOrganization(organization) });
   });
 
+  app.post("/organizations/:organizationId/residences", async (request, reply) => {
+    const session = await authService.validateSession(readBearerToken(request.headers.authorization));
+
+    if (!session.authenticated || !session.user) {
+      return sendResidenceDenied(reply);
+    }
+
+    const body = asRecord(request.body);
+    const name = readRequiredString(body, "name");
+
+    if (!name) {
+      return reply.code(400).send({
+        error: "RWOS_INVALID_RESIDENCE_REQUEST",
+        message: "Invalid residence request."
+      });
+    }
+
+    const residence = await residenceService.createResidence({
+      actorUserId: session.user.id,
+      organizationId: readRouteParam(request.params, "organizationId"),
+      name,
+      addressSummary: readOptionalString(body, "addressSummary"),
+      city: readOptionalString(body, "city"),
+      region: readOptionalString(body, "region"),
+      country: readOptionalString(body, "country")
+    });
+
+    return reply.code(201).send({ residence: serializeResidence(residence) });
+  });
+
+  app.get("/organizations/:organizationId/residences", async (request, reply) => {
+    const session = await authService.validateSession(readBearerToken(request.headers.authorization));
+
+    if (!session.authenticated || !session.user) {
+      return sendResidenceDenied(reply);
+    }
+
+    const status = readResidenceStatus(readOptionalString(asRecord(request.query), "status"));
+    const residences = await residenceService.listResidences({
+      actorUserId: session.user.id,
+      organizationId: readRouteParam(request.params, "organizationId"),
+      status
+    });
+
+    return reply.code(200).send({ residences: residences.map(serializeResidence) });
+  });
+
+  app.get("/organizations/:organizationId/residences/:residenceId", async (request, reply) => {
+    const session = await authService.validateSession(readBearerToken(request.headers.authorization));
+
+    if (!session.authenticated || !session.user) {
+      return sendResidenceDenied(reply);
+    }
+
+    const residence = await residenceService.getResidence({
+      actorUserId: session.user.id,
+      organizationId: readRouteParam(request.params, "organizationId"),
+      residenceId: readRouteParam(request.params, "residenceId")
+    });
+
+    return reply.code(200).send({ residence: serializeResidence(residence) });
+  });
+
+  app.patch("/organizations/:organizationId/residences/:residenceId", async (request, reply) => {
+    const session = await authService.validateSession(readBearerToken(request.headers.authorization));
+
+    if (!session.authenticated || !session.user) {
+      return sendResidenceDenied(reply);
+    }
+
+    const body = asRecord(request.body);
+    const residence = await residenceService.updateResidence({
+      actorUserId: session.user.id,
+      organizationId: readRouteParam(request.params, "organizationId"),
+      residenceId: readRouteParam(request.params, "residenceId"),
+      expectedVersion: readRequiredString(body, "expectedVersion") ?? "",
+      name: readOptionalString(body, "name"),
+      addressSummary: readOptionalString(body, "addressSummary"),
+      city: readOptionalString(body, "city"),
+      region: readOptionalString(body, "region"),
+      country: readOptionalString(body, "country")
+    });
+
+    return reply.code(200).send({ residence: serializeResidence(residence) });
+  });
+
+  app.post("/organizations/:organizationId/residences/:residenceId/status", async (request, reply) => {
+    const session = await authService.validateSession(readBearerToken(request.headers.authorization));
+
+    if (!session.authenticated || !session.user) {
+      return sendResidenceDenied(reply);
+    }
+
+    const body = asRecord(request.body);
+    const status = readResidenceLifecycleStatus(readRequiredString(body, "status"));
+    const reason = readRequiredString(body, "reason");
+
+    if (!status || !reason) {
+      return reply.code(400).send({
+        error: "RWOS_INVALID_RESIDENCE_REQUEST",
+        message: "Invalid residence request."
+      });
+    }
+
+    const residence = await residenceService.updateResidenceStatus({
+      actorUserId: session.user.id,
+      organizationId: readRouteParam(request.params, "organizationId"),
+      residenceId: readRouteParam(request.params, "residenceId"),
+      expectedVersion: readRequiredString(body, "expectedVersion") ?? "",
+      status,
+      reason
+    });
+
+    return reply.code(200).send({ residence: serializeResidence(residence) });
+  });
+
   return app;
 }
 
@@ -542,6 +672,13 @@ function sendOrganizationDenied(reply: FastifyReply) {
   });
 }
 
+function sendResidenceDenied(reply: FastifyReply) {
+  return reply.code(403).send({
+    error: authorizationDeniedCode,
+    message: authorizationDeniedMessage
+  });
+}
+
 function serializeMemberships(memberships: Awaited<ReturnType<OrganizationMembershipService["listMemberships"]>>) {
   return memberships.map(serializeMembership);
 }
@@ -567,4 +704,21 @@ function serializeOrganization(organization: Awaited<ReturnType<EmployerOrganiza
     suspendedAt: organization.suspendedAt?.toISOString() ?? null,
     closedAt: organization.closedAt?.toISOString() ?? null
   };
+}
+
+function serializeResidence(residence: Awaited<ReturnType<ResidenceService["getResidence"]>>) {
+  return {
+    ...residence,
+    createdAt: residence.createdAt.toISOString(),
+    updatedAt: residence.updatedAt.toISOString(),
+    archivedAt: residence.archivedAt?.toISOString() ?? null
+  };
+}
+
+function readResidenceStatus(value: string | null): ResidenceStatus | null {
+  return value === "draft" || value === "active" || value === "restricted" || value === "inactive" || value === "closed" ? value : null;
+}
+
+function readResidenceLifecycleStatus(value: string | null) {
+  return value === "active" || value === "inactive" || value === "closed" ? value : null;
 }
