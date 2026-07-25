@@ -16,6 +16,7 @@ import type {
   CreateLocalUserInput,
   CreateSessionInput,
   DepartmentRepository,
+  DispatchService,
   EmployerOrganizationRepository,
   InviteMembershipInput,
   JobRequestRepository,
@@ -1159,6 +1160,150 @@ describe("api job request foundation", () => {
     await app.close();
   });
 });
+
+describe("api dispatch foundation", () => {
+  it("routes platform dispatch creation through authorized dispatcher boundary", async () => {
+    const authRepository = new ApiMemoryAuthenticationRepository();
+    const platformUserIds = new Set<string>();
+    const dispatchCalls: string[] = [];
+    const app = buildApi({
+      authService: createAuthenticationService(authRepository, testAuthOptions()),
+      dispatchService: {
+        ...createApiUnavailableDispatchService(),
+        async createDispatch(input) {
+          dispatchCalls.push(input.jobRequestIdOrNumber);
+          return apiDispatchReview();
+        }
+      },
+      resolveAuthorizationRoles: (userId) =>
+        platformUserIds.has(userId) ? ["DISPATCHER"] : []
+    });
+    const dispatcher = await registerApiUser(app);
+    platformUserIds.add(authRepository.lastUserId());
+
+    const response = await app.inject({
+      method: "POST",
+      url: "/platform/dispatches",
+      headers: { authorization: `Bearer ${dispatcher.token}` },
+      payload: {
+        jobRequestIdOrNumber: "JR-2026-000001",
+        priority: "urgent"
+      }
+    });
+
+    expect(response.statusCode).toBe(201);
+    expect(response.json().dispatchReview).toMatchObject({
+      id: "dispatch-api-1",
+      state: "candidate_review",
+      requiredWorkerCount: 2,
+      remainingWorkerCount: 2
+    });
+    expect(dispatchCalls).toEqual(["JR-2026-000001"]);
+    await app.close();
+  });
+
+  it("returns employer dispatch status without candidate or internal details", async () => {
+    const authRepository = new ApiMemoryAuthenticationRepository();
+    const app = buildApi({
+      authService: createAuthenticationService(authRepository, testAuthOptions()),
+      dispatchService: {
+        ...createApiUnavailableDispatchService(),
+        async getEmployerDispatchStatus() {
+          return {
+            jobRequestId: "job-request-api-1",
+            jobRequestNumber: "JR-2026-000001",
+            dispatchState: "candidate_review",
+            requiredWorkerCount: 2,
+            shortlistedCandidateCount: 1,
+            preparedOfferCount: 0,
+            remainingWorkerCount: 2,
+            updatedAt: new Date("2026-07-25T14:00:00.000Z")
+          };
+        }
+      }
+    });
+    const employer = await registerApiUser(app);
+
+    const response = await app.inject({
+      method: "GET",
+      url: "/organizations/org-api-1/job-requests/JR-2026-000001/dispatch-status",
+      headers: { authorization: `Bearer ${employer.token}` }
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json().dispatchStatus).toEqual({
+      jobRequestId: "job-request-api-1",
+      jobRequestNumber: "JR-2026-000001",
+      dispatchState: "candidate_review",
+      requiredWorkerCount: 2,
+      shortlistedCandidateCount: 1,
+      preparedOfferCount: 0,
+      remainingWorkerCount: 2,
+      updatedAt: "2026-07-25T14:00:00.000Z"
+    });
+    expect(JSON.stringify(response.json())).not.toContain("candidateSourceReference");
+    await app.close();
+  });
+});
+
+function createApiUnavailableDispatchService(): DispatchService {
+  const unavailable = async () => {
+    throw new Error("dispatch service unavailable in this API test");
+  };
+
+  return {
+    createDispatch: unavailable,
+    listDispatches: unavailable,
+    getDispatch: unavailable,
+    assignOperationalOwner: unavailable,
+    startCandidateReview: unavailable,
+    searchCandidates: unavailable,
+    evaluateCandidate: unavailable,
+    addCandidateToShortlist: unavailable,
+    removeCandidateFromShortlist: unavailable,
+    reorderShortlist: unavailable,
+    markShortlistReady: unavailable,
+    moveToOfferPreparation: unavailable,
+    pause: unavailable,
+    resume: unavailable,
+    cancel: unavailable,
+    close: unavailable,
+    readAuditSummary: unavailable,
+    getEmployerDispatchStatus: unavailable
+  } as DispatchService;
+}
+
+function apiDispatchReview(): Awaited<ReturnType<DispatchService["createDispatch"]>> {
+  const now = new Date("2026-07-25T14:00:00.000Z");
+  return {
+    id: "dispatch-api-1",
+    jobRequestId: "job-request-api-1",
+    organizationId: "org-api-1",
+    residenceId: "residence-api-1",
+    departmentId: "department-api-1",
+    workGroupId: "work-group-kitchen",
+    roleDefinitionId: "role-chef",
+    dispatchType: "initial",
+    state: "candidate_review",
+    operationalOwnerUserId: "dispatcher-api-1",
+    priority: "urgent",
+    urgency: "urgent",
+    requiredWorkerCount: 2,
+    shortlistedCandidateCount: 0,
+    preparedOfferCount: 0,
+    remainingWorkerCount: 2,
+    startedAt: now,
+    pausedAt: null,
+    cancelledAt: null,
+    closedAt: null,
+    createdByUserId: "dispatcher-api-1",
+    updatedByUserId: null,
+    createdAt: now,
+    updatedAt: now,
+    version: 0,
+    versionToken: 0
+  };
+}
 
 class ApiMemoryAuthenticationRepository implements AuthenticationRepository {
   private users = new Map<string, StoredAuthenticationUser>();

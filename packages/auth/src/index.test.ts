@@ -10,6 +10,7 @@ import {
   createAuthorizationService,
   createAuthenticationService,
   createDepartmentService,
+  createDispatchService,
   createEmployerOrganizationService,
   createJobRequestService,
   createOrganizationMembershipService,
@@ -29,6 +30,8 @@ import type {
   CreateLocalUserInput,
   CreateSessionInput,
   DepartmentRepository,
+  DispatchCandidateSource,
+  DispatchRepository,
   OrganizationMembershipRepository,
   RecordAuthenticationAuditEventInput,
   ResidenceRepository,
@@ -38,6 +41,8 @@ import type {
   StoredAuthenticationSession,
   StoredAuthenticationUser,
   StoredDepartment,
+  StoredDispatchCandidate,
+  StoredDispatchReview,
   StoredRoleDefinition,
   StoredWorkGroup,
   RoleDefinitionRepository,
@@ -2247,6 +2252,178 @@ describe("job request foundation", () => {
   });
 });
 
+describe("dispatch foundation", () => {
+  it("creates one active dispatch review only from an approved Job Request", async () => {
+    const { dispatchService, dispatchRepository, approvedJobRequest, adminSession } =
+      await createApprovedDispatchContext();
+
+    const dispatchReview = await dispatchService.createDispatch({
+      session: adminSession,
+      roles: ["DISPATCHER"],
+      jobRequestIdOrNumber: approvedJobRequest.jobRequestNumber
+    });
+
+    expect(dispatchReview.state).toBe("draft");
+    expect(dispatchReview.requiredWorkerCount).toBe(approvedJobRequest.numberOfWorkers);
+    expect(dispatchReview.remainingWorkerCount).toBe(approvedJobRequest.numberOfWorkers);
+    await expect(
+      dispatchService.createDispatch({
+        session: adminSession,
+        roles: ["DISPATCHER"],
+        jobRequestIdOrNumber: approvedJobRequest.id
+      })
+    ).rejects.toMatchObject({
+      decision: expect.objectContaining({
+        status: "invalid_transition",
+        internalReason: "non_terminal_dispatch_already_exists"
+      })
+    });
+    expect(dispatchRepository.auditActions()).toEqual(["dispatch.created"]);
+  });
+
+  it("keeps candidate source unavailable explicit and does not fabricate candidates", async () => {
+    const { dispatchService, dispatchRepository, approvedJobRequest, adminSession } =
+      await createApprovedDispatchContext();
+    const dispatchReview = await dispatchService.createDispatch({
+      session: adminSession,
+      roles: ["DISPATCHER"],
+      jobRequestIdOrNumber: approvedJobRequest.id
+    });
+    const reviewing = await dispatchService.startCandidateReview({
+      session: adminSession,
+      roles: ["DISPATCHER"],
+      dispatchReviewId: dispatchReview.id,
+      expectedVersion: dispatchReview.versionToken
+    });
+
+    const search = await dispatchService.searchCandidates({
+      session: adminSession,
+      roles: ["DISPATCHER"],
+      dispatchReviewId: reviewing.id
+    });
+    const evaluation = await dispatchService.evaluateCandidate({
+      session: adminSession,
+      roles: ["DISPATCHER"],
+      dispatchReviewId: reviewing.id,
+      candidateSourceReference: "candidate-1"
+    });
+
+    expect(search).toEqual({ status: "candidate_source_unavailable", candidates: [] });
+    expect(evaluation).toEqual({ status: "candidate_source_unavailable", candidate: null });
+    expect(await dispatchRepository.listCandidates(reviewing.id)).toEqual([]);
+    expect(dispatchRepository.auditActions()).toContain("dispatch.candidate_source_unavailable");
+  });
+
+  it("supports human shortlist and offer-preparation boundary without creating assignments", async () => {
+    const { dispatchService, dispatchRepository, approvedJobRequest, adminSession } =
+      await createApprovedDispatchContext({ candidateSource: new FixtureDispatchCandidateSource() });
+    const dispatchReview = await dispatchService.createDispatch({
+      session: adminSession,
+      roles: ["DISPATCHER"],
+      jobRequestIdOrNumber: approvedJobRequest.id
+    });
+    const reviewing = await dispatchService.startCandidateReview({
+      session: adminSession,
+      roles: ["DISPATCHER"],
+      dispatchReviewId: dispatchReview.id,
+      expectedVersion: dispatchReview.versionToken
+    });
+    const evaluation = await dispatchService.evaluateCandidate({
+      session: adminSession,
+      roles: ["DISPATCHER"],
+      dispatchReviewId: reviewing.id,
+      candidateSourceReference: "worker-alpha"
+    });
+
+    expect(evaluation.status).toBe("available");
+    expect(evaluation.candidate).toMatchObject({
+      candidateSourceReference: "worker-alpha",
+      approvedDisplayName: "Approved Worker Alpha",
+      recommendationState: "recommended"
+    });
+    expect(JSON.stringify(evaluation.candidate)).not.toContain("homeAddress");
+    expect(JSON.stringify(evaluation.candidate)).not.toContain("bank");
+    const shortlisted = await dispatchService.addCandidateToShortlist({
+      session: adminSession,
+      roles: ["DISPATCHER"],
+      dispatchReviewId: reviewing.id,
+      candidateSourceReference: "worker-alpha"
+    });
+    expect(shortlisted.shortlistState).toBe("shortlisted");
+    const latest = await dispatchService.getDispatch({
+      session: adminSession,
+      roles: ["DISPATCHER"],
+      dispatchReviewId: reviewing.id
+    });
+
+    const ready = await dispatchService.markShortlistReady({
+      session: adminSession,
+      roles: ["DISPATCHER"],
+      dispatchReviewId: latest.dispatchReview.id,
+      expectedVersion: latest.dispatchReview.versionToken
+    });
+    const offerPreparation = await dispatchService.moveToOfferPreparation({
+      session: adminSession,
+      roles: ["DISPATCHER"],
+      dispatchReviewId: ready.id,
+      expectedVersion: ready.versionToken
+    });
+
+    expect(offerPreparation.state).toBe("offer_preparation");
+    expect(offerPreparation.preparedOfferCount).toBe(1);
+    expect(offerPreparation.remainingWorkerCount).toBe(approvedJobRequest.numberOfWorkers - 1);
+    expect(dispatchRepository.createdAssignments).toBe(0);
+    expect(dispatchRepository.createdWorkerOffers).toBe(0);
+  });
+
+  it("returns employer dispatch status without candidate details", async () => {
+    const { dispatchService, approvedJobRequest, adminSession, ownerId, organization } =
+      await createApprovedDispatchContext({ candidateSource: new FixtureDispatchCandidateSource() });
+    const dispatchReview = await dispatchService.createDispatch({
+      session: adminSession,
+      roles: ["DISPATCHER"],
+      jobRequestIdOrNumber: approvedJobRequest.id
+    });
+
+    const status = await dispatchService.getEmployerDispatchStatus({
+      actorUserId: ownerId,
+      organizationId: organization.organization.id,
+      jobRequestIdOrNumber: approvedJobRequest.id
+    });
+
+    expect(status).toMatchObject({
+      jobRequestId: approvedJobRequest.id,
+      dispatchState: dispatchReview.state,
+      requiredWorkerCount: approvedJobRequest.numberOfWorkers
+    });
+    expect(JSON.stringify(status)).not.toContain("candidate");
+  });
+
+  it("denies organization and worker roles from dispatch authority", async () => {
+    const { dispatchService, approvedJobRequest, adminSession } =
+      await createApprovedDispatchContext();
+
+    await expect(
+      dispatchService.createDispatch({
+        session: adminSession,
+        roles: ["ORGANIZATION_OWNER"],
+        jobRequestIdOrNumber: approvedJobRequest.id
+      })
+    ).rejects.toMatchObject({
+      decision: expect.objectContaining({ status: "permission_denied" })
+    });
+    await expect(
+      dispatchService.createDispatch({
+        session: adminSession,
+        roles: ["WORKER_ACCESS"],
+        jobRequestIdOrNumber: approvedJobRequest.id
+      })
+    ).rejects.toMatchObject({
+      decision: expect.objectContaining({ status: "permission_denied" })
+    });
+  });
+});
+
 class MemoryAuthorizationAuditSink {
   events: AuthorizationAuditEventInput[] = [];
 
@@ -3137,6 +3314,240 @@ class MemoryJobRequestRepository implements JobRequestRepository {
   }
 }
 
+class MemoryDispatchRepository implements DispatchRepository {
+  private dispatchReviews = new Map<string, StoredDispatchReview>();
+  private candidates = new Map<string, StoredDispatchCandidate>();
+  private auditEvents: Parameters<DispatchRepository["recordDispatchAuditEvent"]>[0][] = [];
+  private nextDispatch = 1;
+  private nextCandidate = 1;
+  createdAssignments = 0;
+  createdWorkerOffers = 0;
+
+  auditActions() {
+    return this.auditEvents.map((event) => event.action);
+  }
+
+  async createDispatchReview(input: Parameters<DispatchRepository["createDispatchReview"]>[0]) {
+    const dispatchReview: StoredDispatchReview = {
+      id: `dispatch-${this.nextDispatch}`,
+      jobRequestId: input.jobRequest.id,
+      organizationId: input.jobRequest.organizationId,
+      residenceId: input.jobRequest.residenceId,
+      departmentId: input.jobRequest.departmentId,
+      workGroupId: input.jobRequest.workGroupId,
+      roleDefinitionId: input.jobRequest.roleDefinitionId,
+      dispatchType: "initial",
+      state: "draft",
+      operationalOwnerUserId: input.operationalOwnerUserId,
+      priority: input.priority,
+      urgency: input.jobRequest.urgency,
+      requiredWorkerCount: input.jobRequest.numberOfWorkers,
+      shortlistedCandidateCount: 0,
+      preparedOfferCount: 0,
+      startedAt: null,
+      pausedAt: null,
+      cancelledAt: null,
+      closedAt: null,
+      createdByUserId: input.actorUserId,
+      updatedByUserId: null,
+      createdAt: input.now,
+      updatedAt: input.now,
+      version: 0
+    };
+    this.nextDispatch += 1;
+    this.dispatchReviews.set(dispatchReview.id, dispatchReview);
+    return dispatchReview;
+  }
+
+  async findDispatchReviewById(dispatchReviewId: string) {
+    return this.dispatchReviews.get(dispatchReviewId) ?? null;
+  }
+
+  async findActiveDispatchReviewForJobRequest(jobRequestId: string) {
+    return (
+      [...this.dispatchReviews.values()].find(
+        (dispatchReview) =>
+          dispatchReview.jobRequestId === jobRequestId &&
+          !["cancelled", "closed"].includes(dispatchReview.state)
+      ) ?? null
+    );
+  }
+
+  async listDispatchReviews(input: Parameters<DispatchRepository["listDispatchReviews"]>[0]) {
+    return [...this.dispatchReviews.values()]
+      .filter(
+        (dispatchReview) =>
+          !input.organizationId || dispatchReview.organizationId === input.organizationId
+      )
+      .filter((dispatchReview) => !input.states || input.states.includes(dispatchReview.state))
+      .sort(
+        (left, right) =>
+          right.updatedAt.getTime() - left.updatedAt.getTime() ||
+          right.createdAt.getTime() - left.createdAt.getTime()
+      );
+  }
+
+  async updateDispatchReview(input: Parameters<DispatchRepository["updateDispatchReview"]>[0]) {
+    const dispatchReview = this.dispatchReviews.get(input.dispatchReviewId);
+    if (!dispatchReview || dispatchReview.version !== input.expectedVersion) return null;
+
+    if (input.state !== undefined) dispatchReview.state = input.state;
+    if (input.operationalOwnerUserId !== undefined)
+      dispatchReview.operationalOwnerUserId = input.operationalOwnerUserId;
+    if (input.shortlistedCandidateCount !== undefined)
+      dispatchReview.shortlistedCandidateCount = input.shortlistedCandidateCount;
+    if (input.preparedOfferCount !== undefined)
+      dispatchReview.preparedOfferCount = input.preparedOfferCount;
+    if (input.startedAt !== undefined) dispatchReview.startedAt = input.startedAt;
+    if (input.pausedAt !== undefined) dispatchReview.pausedAt = input.pausedAt;
+    if (input.cancelledAt !== undefined) dispatchReview.cancelledAt = input.cancelledAt;
+    if (input.closedAt !== undefined) dispatchReview.closedAt = input.closedAt;
+    dispatchReview.updatedByUserId = input.actorUserId;
+    dispatchReview.updatedAt = input.now;
+    dispatchReview.version += 1;
+
+    return dispatchReview;
+  }
+
+  async listCandidates(dispatchReviewId: string) {
+    return [...this.candidates.values()]
+      .filter((candidate) => candidate.dispatchReviewId === dispatchReviewId)
+      .sort(
+        (left, right) =>
+          (left.shortlistOrder ?? Number.MAX_SAFE_INTEGER) -
+            (right.shortlistOrder ?? Number.MAX_SAFE_INTEGER) ||
+          right.updatedAt.getTime() - left.updatedAt.getTime()
+      );
+  }
+
+  async upsertCandidate(input: Parameters<DispatchRepository["upsertCandidate"]>[0]) {
+    const existing = [...this.candidates.values()].find(
+      (candidate) =>
+        candidate.dispatchReviewId === input.dispatchReviewId &&
+        candidate.candidateSourceReference === input.candidate.candidateSourceReference
+    );
+    if (existing) {
+      Object.assign(existing, input.candidate, {
+        updatedAt: input.now,
+        version: existing.version + 1
+      });
+      return existing;
+    }
+
+    const candidate: StoredDispatchCandidate = {
+      id: `dispatch-candidate-${this.nextCandidate}`,
+      dispatchReviewId: input.dispatchReviewId,
+      ...input.candidate,
+      shortlistState: "not_shortlisted",
+      shortlistOrder: null,
+      addedByUserId: null,
+      removedByUserId: null,
+      createdAt: input.now,
+      updatedAt: input.now,
+      version: 0
+    };
+    this.nextCandidate += 1;
+    this.candidates.set(candidate.id, candidate);
+    return candidate;
+  }
+
+  async updateCandidateShortlist(
+    input: Parameters<DispatchRepository["updateCandidateShortlist"]>[0]
+  ) {
+    const candidate = [...this.candidates.values()].find(
+      (item) =>
+        item.dispatchReviewId === input.dispatchReviewId &&
+        item.candidateSourceReference === input.candidateSourceReference
+    );
+    if (!candidate) return null;
+
+    candidate.shortlistState = input.shortlistState;
+    candidate.shortlistOrder = input.shortlistOrder;
+    if (input.shortlistState === "shortlisted") {
+      candidate.addedByUserId = input.actorUserId;
+      candidate.removedByUserId = null;
+    } else {
+      candidate.removedByUserId = input.actorUserId;
+    }
+    candidate.updatedAt = input.now;
+    candidate.version += 1;
+    return candidate;
+  }
+
+  async reorderShortlist(input: Parameters<DispatchRepository["reorderShortlist"]>[0]) {
+    input.candidateSourceReferences.forEach((candidateSourceReference, index) => {
+      const candidate = [...this.candidates.values()].find(
+        (item) =>
+          item.dispatchReviewId === input.dispatchReviewId &&
+          item.candidateSourceReference === candidateSourceReference
+      );
+      if (!candidate) return;
+      candidate.shortlistState = "shortlisted";
+      candidate.shortlistOrder = index + 1;
+      candidate.updatedAt = input.now;
+      candidate.version += 1;
+    });
+
+    return this.listCandidates(input.dispatchReviewId);
+  }
+
+  async recordDispatchAuditEvent(
+    input: Parameters<DispatchRepository["recordDispatchAuditEvent"]>[0]
+  ) {
+    this.auditEvents.push(input);
+  }
+}
+
+class FixtureDispatchCandidateSource implements DispatchCandidateSource {
+  async searchCandidates(input: Parameters<DispatchCandidateSource["searchCandidates"]>[0]) {
+    const candidate = await this.evaluateCandidate({
+      dispatchReview: input.dispatchReview,
+      candidateSourceReference: "worker-alpha",
+      requestedAt: input.requestedAt
+    });
+
+    return {
+      status: "available" as const,
+      candidates: candidate.candidate ? [candidate.candidate] : []
+    };
+  }
+
+  async evaluateCandidate(input: Parameters<DispatchCandidateSource["evaluateCandidate"]>[0]) {
+    const now = input.requestedAt;
+    return {
+      status: "available" as const,
+      candidate: {
+        id: `fixture-${input.candidateSourceReference}`,
+        dispatchReviewId: input.dispatchReview.id,
+        candidateSourceType: "internal_worker_profile" as const,
+        candidateSourceReference: input.candidateSourceReference,
+        approvedDisplayName: "Approved Worker Alpha",
+        workGroupMatch: "match" as const,
+        roleDefinitionMatch: "match" as const,
+        qualificationSummaryState: "meets_requirements" as const,
+        verificationSummaryState: "verification_pending" as const,
+        availabilityState: "available" as const,
+        scheduleConflictState: "conflict_free" as const,
+        serviceAreaState: "inside_service_area" as const,
+        travelSuitabilityState: "suitable" as const,
+        transportConstraintState: "available" as const,
+        recommendationState: "recommended" as const,
+        shortlistState: "not_shortlisted" as const,
+        shortlistOrder: null,
+        sourceFreshnessAt: now,
+        lastEvaluatedAt: now,
+        evaluationVersion: 1,
+        addedByUserId: null,
+        removedByUserId: null,
+        createdAt: now,
+        updatedAt: now,
+        version: 0,
+        versionToken: 0
+      }
+    };
+  }
+}
+
 function createResidenceTestServices() {
   const membershipRepository = new MemoryOrganizationMembershipRepository();
   const organizationRepository = new MemoryEmployerOrganizationRepository(membershipRepository);
@@ -3267,7 +3678,94 @@ function createJobRequestTestServices() {
     residenceService,
     departmentService,
     jobRequestService,
-    jobRequestRepository
+    jobRequestRepository,
+    organizationRepository,
+    membershipService,
+    authorizationService
+  };
+}
+
+async function createApprovedDispatchContext(
+  input: { candidateSource?: DispatchCandidateSource } = {}
+) {
+  const {
+    organizationService,
+    residenceService,
+    departmentService,
+    jobRequestService,
+    jobRequestRepository,
+    organizationRepository,
+    membershipService,
+    authorizationService
+  } = createJobRequestTestServices();
+  const dispatchRepository = new MemoryDispatchRepository();
+  const dispatchService = createDispatchService(
+    dispatchRepository,
+    jobRequestRepository,
+    organizationRepository,
+    membershipService,
+    authorizationService,
+    input.candidateSource
+  );
+  const ownerId = "owner-dispatch";
+  const adminSession = activeSession({ emailNormalized: "dispatcher@example.com" });
+  const organization = await organizationService.createOrganization({
+    actorUserId: ownerId,
+    legalName: "Dispatch Org",
+    displayName: "Dispatch Org"
+  });
+  const residence = await residenceService.createResidence({
+    actorUserId: ownerId,
+    organizationId: organization.organization.id,
+    name: "Dispatch Residence"
+  });
+  const department = await departmentService.createDepartment({
+    actorUserId: ownerId,
+    organizationId: organization.organization.id,
+    residenceId: residence.id,
+    name: "Kitchen"
+  });
+  const draft = await jobRequestService.createDraft({
+    actorUserId: ownerId,
+    organizationId: organization.organization.id,
+    residenceId: residence.id,
+    departmentId: department.id,
+    workGroupSlug: "kitchen",
+    roleDefinitionIdentifier: "chef",
+    title: "Dispatch Chef Coverage",
+    numberOfWorkers: 2,
+    urgency: "urgent",
+    requestType: "single_day",
+    timezone: "America/Toronto",
+    startAt: new Date("2026-08-12T12:00:00.000Z"),
+    endAt: new Date("2026-08-12T20:00:00.000Z")
+  });
+  const submitted = await jobRequestService.submit({
+    actorUserId: ownerId,
+    organizationId: organization.organization.id,
+    jobRequestId: draft.id,
+    expectedVersion: draft.versionToken
+  });
+  const review = await jobRequestService.startAdminReview({
+    session: adminSession,
+    roles: ["PLATFORM_ADMINISTRATOR"],
+    jobRequestId: submitted.id,
+    expectedVersion: submitted.versionToken
+  });
+  const approvedJobRequest = await jobRequestService.approveForDispatch({
+    session: adminSession,
+    roles: ["PLATFORM_ADMINISTRATOR"],
+    jobRequestId: review.id,
+    expectedVersion: review.versionToken
+  });
+
+  return {
+    dispatchService,
+    dispatchRepository,
+    approvedJobRequest,
+    adminSession,
+    ownerId,
+    organization
   };
 }
 

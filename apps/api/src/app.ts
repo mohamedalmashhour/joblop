@@ -137,13 +137,15 @@ export function buildApi(options: BuildApiOptions = {}) {
     );
   const dispatchService =
     options.dispatchService ??
-    createDispatchService(
-      createPrismaDispatchRepository(prisma!),
-      createPrismaJobRequestRepository(prisma!),
-      organizationRepository!,
-      membershipService,
-      authorizationService
-    );
+    (prisma
+      ? createDispatchService(
+          createPrismaDispatchRepository(prisma),
+          createPrismaJobRequestRepository(prisma),
+          organizationRepository!,
+          membershipService,
+          authorizationService
+        )
+      : createUnavailableDispatchService());
   const resolveAuthorizationRoles = options.resolveAuthorizationRoles ?? (() => []);
 
   if (prisma) {
@@ -2085,4 +2087,39 @@ function readJobRequestType(value: string | null): JobRequestType | null {
 
 function readDispatchPriority(value: string | null): DispatchPriority | null {
   return value === "normal" || value === "urgent" || value === "emergency" ? value : null;
+}
+
+function createUnavailableDispatchService(): DispatchService {
+  const denied = async () => {
+    throw new DispatchError({
+      status: "permission_denied",
+      allow: false,
+      dispatchReview: null,
+      roles: [],
+      internalReason: "dispatch_service_unavailable",
+      externalCode: authorizationDeniedCode,
+      externalMessage: authorizationDeniedMessage
+    });
+  };
+
+  return {
+    createDispatch: denied,
+    listDispatches: denied,
+    getDispatch: denied,
+    assignOperationalOwner: denied,
+    startCandidateReview: denied,
+    searchCandidates: denied,
+    evaluateCandidate: denied,
+    addCandidateToShortlist: denied,
+    removeCandidateFromShortlist: denied,
+    reorderShortlist: denied,
+    markShortlistReady: denied,
+    moveToOfferPreparation: denied,
+    pause: denied,
+    resume: denied,
+    cancel: denied,
+    close: denied,
+    readAuditSummary: denied,
+    getEmployerDispatchStatus: denied
+  } as DispatchService;
 }
