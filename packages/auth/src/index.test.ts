@@ -13,6 +13,7 @@ import {
   createEmployerOrganizationService,
   createOrganizationMembershipService,
   createResidenceService,
+  createWorkGroupService,
   hashPassword,
   hashSessionToken,
   toSafeAuthorizationResponse,
@@ -35,7 +36,9 @@ import type {
   StoredAuthenticationSession,
   StoredAuthenticationUser,
   StoredDepartment,
-  UpdateSessionInput
+  StoredWorkGroup,
+  UpdateSessionInput,
+  WorkGroupRepository
 } from "./index";
 
 const passwordHashOptions = {
@@ -1246,6 +1249,167 @@ describe("department foundation", () => {
   });
 });
 
+describe("work groups foundation", () => {
+  it("lists active WorkGroups in deterministic order with stable public slugs", async () => {
+    const { workGroupService } = createWorkGroupTestServices();
+    const workGroups = await workGroupService.listActiveWorkGroups({
+      session: activeSession(),
+      roles: ["ORGANIZATION_OWNER"]
+    });
+
+    expect(workGroups.map((workGroup) => workGroup.slug)).toEqual([
+      "kitchen",
+      "care-nursing",
+      "housekeeping-support",
+      "maintenance"
+    ]);
+    expect(workGroups.map((workGroup) => workGroup.displayOrder)).toEqual([10, 20, 30, 40]);
+  });
+
+  it("allows ordinary catalogue reads but denies ordinary catalogue management", async () => {
+    const { workGroupService } = createWorkGroupTestServices();
+    const session = activeSession();
+    const kitchen = await workGroupService.getActiveWorkGroup({
+      session,
+      roles: ["ORGANIZATION_OWNER"],
+      slug: "kitchen"
+    });
+
+    await expect(
+      workGroupService.updateWorkGroup({
+        session,
+        roles: ["ORGANIZATION_OWNER"],
+        slug: "kitchen",
+        expectedVersion: kitchen.version,
+        displayLabel: "Kitchen Updated"
+      })
+    ).rejects.toMatchObject({ decision: expect.objectContaining({ status: "permission_denied" }) });
+  });
+
+  it("allows platform administrators to update presentation fields and lifecycle", async () => {
+    const { workGroupService, workGroupRepository } = createWorkGroupTestServices();
+    const session = activeSession();
+    const kitchen = await workGroupService.getWorkGroupForManagement({
+      session,
+      roles: ["PLATFORM_ADMINISTRATOR"],
+      slug: "kitchen"
+    });
+    const updated = await workGroupService.updateWorkGroup({
+      session,
+      roles: ["PLATFORM_ADMINISTRATOR"],
+      slug: "kitchen",
+      expectedVersion: kitchen.version,
+      displayLabel: "Kitchen Operations",
+      displayOrder: 11,
+      iconKey: "chef-hat"
+    });
+    const inactive = await workGroupService.updateWorkGroupStatus({
+      session,
+      roles: ["PLATFORM_ADMINISTRATOR"],
+      slug: "kitchen",
+      expectedVersion: updated.version,
+      status: "inactive",
+      reason: "catalogue pause"
+    });
+    const reactivated = await workGroupService.updateWorkGroupStatus({
+      session,
+      roles: ["PLATFORM_ADMINISTRATOR"],
+      slug: "kitchen",
+      expectedVersion: inactive.version,
+      status: "active",
+      reason: "catalogue ready"
+    });
+
+    expect(updated).toMatchObject({ slug: "kitchen", displayLabel: "Kitchen Operations", displayOrder: 11, iconKey: "chef-hat" });
+    expect(inactive.status).toBe("inactive");
+    expect(reactivated.status).toBe("active");
+    expect(workGroupRepository.auditActions()).toEqual(["work_group.updated", "work_group.deactivated", "work_group.activated"]);
+  });
+
+  it("hides inactive WorkGroups from ordinary reads while platform admins can see them", async () => {
+    const { workGroupService } = createWorkGroupTestServices();
+    const session = activeSession();
+    const kitchen = await workGroupService.getWorkGroupForManagement({
+      session,
+      roles: ["PLATFORM_ADMINISTRATOR"],
+      slug: "kitchen"
+    });
+    await workGroupService.updateWorkGroupStatus({
+      session,
+      roles: ["PLATFORM_ADMINISTRATOR"],
+      slug: "kitchen",
+      expectedVersion: kitchen.version,
+      status: "inactive",
+      reason: "catalogue pause"
+    });
+
+    await expect(
+      workGroupService.getActiveWorkGroup({
+        session,
+        roles: ["ORGANIZATION_OWNER"],
+        slug: "kitchen"
+      })
+    ).rejects.toMatchObject({ decision: expect.objectContaining({ status: "not_found" }) });
+    await expect(
+      workGroupService.listAllWorkGroups({
+        session,
+        roles: ["PLATFORM_ADMINISTRATOR"]
+      })
+    ).resolves.toEqual(expect.arrayContaining([expect.objectContaining({ slug: "kitchen", status: "inactive" })]));
+  });
+
+  it("rejects stale updates, unknown slugs, anonymous reads, and invalid lifecycle transitions safely", async () => {
+    const { workGroupService } = createWorkGroupTestServices();
+    const session = activeSession();
+    const kitchen = await workGroupService.getWorkGroupForManagement({
+      session,
+      roles: ["PLATFORM_ADMINISTRATOR"],
+      slug: "kitchen"
+    });
+    const inactive = await workGroupService.updateWorkGroupStatus({
+      session,
+      roles: ["PLATFORM_ADMINISTRATOR"],
+      slug: "kitchen",
+      expectedVersion: kitchen.version,
+      status: "inactive",
+      reason: "catalogue pause"
+    });
+
+    await expect(
+      workGroupService.updateWorkGroup({
+        session,
+        roles: ["PLATFORM_ADMINISTRATOR"],
+        slug: "kitchen",
+        expectedVersion: kitchen.version,
+        displayLabel: "Stale Kitchen"
+      })
+    ).rejects.toMatchObject({ decision: expect.objectContaining({ status: "version_conflict" }) });
+    await expect(
+      workGroupService.getActiveWorkGroup({
+        session,
+        roles: ["ORGANIZATION_OWNER"],
+        slug: "unknown"
+      })
+    ).rejects.toMatchObject({ decision: expect.objectContaining({ status: "not_found" }) });
+    await expect(
+      workGroupService.listActiveWorkGroups({
+        session: { authenticated: false, user: null, session: null },
+        roles: ["ORGANIZATION_OWNER"]
+      })
+    ).rejects.toMatchObject({ decision: expect.objectContaining({ status: "permission_denied" }) });
+    await expect(
+      workGroupService.updateWorkGroupStatus({
+        session,
+        roles: ["PLATFORM_ADMINISTRATOR"],
+        slug: "kitchen",
+        expectedVersion: inactive.version,
+        status: "inactive",
+        reason: "already inactive"
+      })
+    ).rejects.toMatchObject({ decision: expect.objectContaining({ status: "invalid_transition" }) });
+  });
+});
+
 class MemoryAuthorizationAuditSink {
   events: AuthorizationAuditEventInput[] = [];
 
@@ -1703,6 +1867,85 @@ class MemoryDepartmentRepository implements DepartmentRepository {
   }
 }
 
+class MemoryWorkGroupRepository implements WorkGroupRepository {
+  private workGroups = new Map<string, StoredWorkGroup>();
+  private auditEvents: Parameters<WorkGroupRepository["recordWorkGroupAuditEvent"]>[0][] = [];
+
+  constructor() {
+    const createdAt = new Date("2026-07-25T08:00:00.000Z");
+    for (const workGroup of [
+      ["work-group-1", "kitchen", "Kitchen", 10, "utensils"],
+      ["work-group-2", "care_nursing", "Care / Nursing", 20, "heart-pulse"],
+      ["work-group-3", "housekeeping_support", "Housekeeping / Support", 30, "sparkles"],
+      ["work-group-4", "maintenance", "Maintenance", 40, "wrench"]
+    ] as const) {
+      this.workGroups.set(workGroup[0], {
+        id: workGroup[0],
+        key: workGroup[1],
+        displayLabel: workGroup[2],
+        status: "active",
+        displayOrder: workGroup[3],
+        iconKey: workGroup[4],
+        qualificationSummary: null,
+        safetyRequirementSummary: null,
+        defaultTemplateKey: null,
+        createdAt,
+        updatedAt: createdAt
+      });
+    }
+  }
+
+  auditActions() {
+    return this.auditEvents.map((event) => event.action);
+  }
+
+  async findWorkGroupById(workGroupId: string) {
+    return this.workGroups.get(workGroupId) ?? null;
+  }
+
+  async findWorkGroupByKey(key: string) {
+    return [...this.workGroups.values()].find((workGroup) => workGroup.key === key) ?? null;
+  }
+
+  async listWorkGroups(input: Parameters<WorkGroupRepository["listWorkGroups"]>[0]) {
+    return [...this.workGroups.values()]
+      .filter((workGroup) => input.includeInactive || workGroup.status === "active")
+      .sort((left, right) => left.displayOrder - right.displayOrder || left.displayLabel.localeCompare(right.displayLabel) || left.key.localeCompare(right.key));
+  }
+
+  async updateWorkGroup(input: Parameters<WorkGroupRepository["updateWorkGroup"]>[0]) {
+    const workGroup = this.workGroups.get(input.workGroupId);
+
+    if (!workGroup || workGroup.updatedAt.getTime() !== input.expectedUpdatedAt.getTime()) {
+      return null;
+    }
+
+    if (input.displayLabel !== undefined) workGroup.displayLabel = input.displayLabel;
+    if (input.displayOrder !== undefined) workGroup.displayOrder = input.displayOrder;
+    if (input.iconKey !== undefined) workGroup.iconKey = input.iconKey;
+    workGroup.updatedAt = new Date(input.now.getTime() + 1);
+
+    return workGroup;
+  }
+
+  async updateWorkGroupStatus(input: Parameters<WorkGroupRepository["updateWorkGroupStatus"]>[0]) {
+    const workGroup = this.workGroups.get(input.workGroupId);
+
+    if (!workGroup || workGroup.updatedAt.getTime() !== input.expectedUpdatedAt.getTime()) {
+      return null;
+    }
+
+    workGroup.status = input.status;
+    workGroup.updatedAt = new Date(input.now.getTime() + 1);
+
+    return workGroup;
+  }
+
+  async recordWorkGroupAuditEvent(input: Parameters<WorkGroupRepository["recordWorkGroupAuditEvent"]>[0]) {
+    this.auditEvents.push(input);
+  }
+}
+
 function createResidenceTestServices() {
   const membershipRepository = new MemoryOrganizationMembershipRepository();
   const organizationRepository = new MemoryEmployerOrganizationRepository(membershipRepository);
@@ -1743,6 +1986,17 @@ function createDepartmentTestServices() {
     residenceService,
     departmentService,
     departmentRepository
+  };
+}
+
+function createWorkGroupTestServices() {
+  const workGroupRepository = new MemoryWorkGroupRepository();
+  const authorizationService = createAuthorizationService();
+  const workGroupService = createWorkGroupService(workGroupRepository, authorizationService);
+
+  return {
+    workGroupService,
+    workGroupRepository
   };
 }
 

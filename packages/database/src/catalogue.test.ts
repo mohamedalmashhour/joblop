@@ -5,6 +5,7 @@ import {
   phase01PermissionKeys,
   phase01RolePermissionMappings
 } from "./catalogue";
+import { seedDevelopmentCatalogue } from "../prisma/seed";
 
 describe("Phase 01 development catalogue", () => {
   it("keeps the approved global WorkGroup catalogue stable", () => {
@@ -61,4 +62,155 @@ describe("Phase 01 development catalogue", () => {
     expect(new Set(roleKeys).size).toBe(roleKeys.length);
     expect(workGroupOrders).toEqual([...workGroupOrders].sort((left, right) => left - right));
   });
+
+  it("seeds WorkGroups idempotently without overwriting owner-edited presentation or inactive state", async () => {
+    const client = new FakeCatalogueClient();
+
+    await seedDevelopmentCatalogue(client as never);
+    await seedDevelopmentCatalogue(client as never);
+
+    expect(client.workGroups).toHaveLength(4);
+    expect(client.workGroups.map((workGroup) => workGroup.key)).toEqual([
+      "kitchen",
+      "care_nursing",
+      "housekeeping_support",
+      "maintenance"
+    ]);
+    expect(client.workGroups.map((workGroup) => workGroup.displayOrder)).toEqual([10, 20, 30, 40]);
+    expect(client.createdWorkGroups).toBe(4);
+  });
+
+  it("preserves existing WorkGroup labels, order, and inactive lifecycle state during seed", async () => {
+    const client = new FakeCatalogueClient();
+    client.workGroups.push({
+      id: "existing-kitchen",
+      key: "kitchen",
+      displayLabel: "Owner Edited Kitchen",
+      displayOrder: 99,
+      iconKey: "custom-icon",
+      qualificationSummary: "Owner edited summary",
+      safetyRequirementSummary: "Owner edited safety",
+      defaultTemplateKey: "owner_template",
+      status: "inactive"
+    });
+
+    await seedDevelopmentCatalogue(client as never);
+
+    expect(client.workGroups.find((workGroup) => workGroup.key === "kitchen")).toMatchObject({
+      displayLabel: "Owner Edited Kitchen",
+      displayOrder: 99,
+      iconKey: "custom-icon",
+      status: "inactive"
+    });
+    expect(client.workGroups).toHaveLength(4);
+  });
 });
+
+type FakeWorkGroup = {
+  id: string;
+  key: string;
+  displayLabel: string;
+  displayOrder: number;
+  iconKey: string | null;
+  qualificationSummary: string | null;
+  safetyRequirementSummary: string | null;
+  defaultTemplateKey: string | null;
+  status: "active" | "inactive";
+};
+
+class FakeCatalogueClient {
+  workGroups: FakeWorkGroup[] = [];
+  createdWorkGroups = 0;
+  private roleDefinitions = new Map<string, { id: string; key: string; workGroupId: string }>();
+  private accessRoles = new Map<string, { id: string; key: string }>();
+  private permissions = new Map<string, { id: string; key: string }>();
+  private rolePermissions = new Set<string>();
+
+  workGroup = {
+    findUnique: async (input: { where: { key: string } }) => this.workGroups.find((workGroup) => workGroup.key === input.where.key) ?? null,
+    create: async (input: { data: Omit<FakeWorkGroup, "id"> }) => {
+      const workGroup = {
+        id: `work-group-${this.workGroups.length + 1}`,
+        ...input.data
+      };
+
+      this.createdWorkGroups += 1;
+      this.workGroups.push(workGroup);
+
+      return workGroup;
+    }
+  };
+
+  roleDefinition = {
+    upsert: async (input: { where: { key: string }; create: { key: string; workGroupId: string }; update: { workGroupId: string } }) => {
+      const existing = this.roleDefinitions.get(input.where.key);
+
+      if (existing) {
+        existing.workGroupId = input.update.workGroupId;
+        return existing;
+      }
+
+      const roleDefinition = {
+        id: `role-definition-${this.roleDefinitions.size + 1}`,
+        key: input.create.key,
+        workGroupId: input.create.workGroupId
+      };
+
+      this.roleDefinitions.set(roleDefinition.key, roleDefinition);
+
+      return roleDefinition;
+    }
+  };
+
+  accessRoleDefinition = {
+    upsert: async (input: { where: { key: string }; create: { key: string } }) => {
+      const existing = this.accessRoles.get(input.where.key);
+
+      if (existing) return existing;
+
+      const accessRole = { id: `access-role-${this.accessRoles.size + 1}`, key: input.create.key };
+      this.accessRoles.set(accessRole.key, accessRole);
+
+      return accessRole;
+    },
+    findUniqueOrThrow: async (input: { where: { key: string } }) => {
+      const accessRole = this.accessRoles.get(input.where.key);
+
+      if (!accessRole) throw new Error("TEST_ACCESS_ROLE_NOT_FOUND");
+
+      return accessRole;
+    }
+  };
+
+  permissionDefinition = {
+    upsert: async (input: { where: { key: string }; create: { key: string } }) => {
+      const existing = this.permissions.get(input.where.key);
+
+      if (existing) return existing;
+
+      const permission = { id: `permission-${this.permissions.size + 1}`, key: input.create.key };
+      this.permissions.set(permission.key, permission);
+
+      return permission;
+    },
+    findUniqueOrThrow: async (input: { where: { key: string } }) => {
+      const permission = this.permissions.get(input.where.key);
+
+      if (!permission) throw new Error("TEST_PERMISSION_NOT_FOUND");
+
+      return permission;
+    }
+  };
+
+  accessRolePermission = {
+    upsert: async (input: {
+      where: { accessRoleDefinitionId_permissionDefinitionId: { accessRoleDefinitionId: string; permissionDefinitionId: string } };
+      create: { accessRoleDefinitionId: string; permissionDefinitionId: string };
+    }) => {
+      const key = `${input.where.accessRoleDefinitionId_permissionDefinitionId.accessRoleDefinitionId}:${input.where.accessRoleDefinitionId_permissionDefinitionId.permissionDefinitionId}`;
+      this.rolePermissions.add(key);
+
+      return input.create;
+    }
+  };
+}

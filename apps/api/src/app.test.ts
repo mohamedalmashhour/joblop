@@ -5,7 +5,8 @@ import {
   createDepartmentService,
   createEmployerOrganizationService,
   createOrganizationMembershipService,
-  createResidenceService
+  createResidenceService,
+  createWorkGroupService
 } from "@rwos/auth";
 import type {
   AuthorizationRoleKey,
@@ -24,7 +25,9 @@ import type {
   StoredAuthenticationSession,
   StoredAuthenticationUser,
   StoredDepartment,
-  UpdateSessionInput
+  StoredWorkGroup,
+  UpdateSessionInput,
+  WorkGroupRepository
 } from "@rwos/auth";
 import { buildApi } from "./app";
 
@@ -765,6 +768,102 @@ describe("api department foundation", () => {
   });
 });
 
+describe("api work groups foundation", () => {
+  it("allows ordinary organization users to list and read active WorkGroups", async () => {
+    const { app } = buildWorkGroupApi();
+    const registration = await registerApiUser(app);
+    const organization = await createApiOrganization(app, registration.token, "WorkGroup API Tenant");
+    const listed = await app.inject({
+      method: "GET",
+      url: `/work-groups?organizationId=${organization.id}`,
+      headers: { authorization: `Bearer ${registration.token}` }
+    });
+    const read = await app.inject({
+      method: "GET",
+      url: `/work-groups/care-nursing?organizationId=${organization.id}`,
+      headers: { authorization: `Bearer ${registration.token}` }
+    });
+
+    expect(listed.statusCode).toBe(200);
+    expect(listed.json().workGroups.map((workGroup: { slug: string }) => workGroup.slug)).toEqual([
+      "kitchen",
+      "care-nursing",
+      "housekeeping-support",
+      "maintenance"
+    ]);
+    expect(read.statusCode).toBe(200);
+    expect(read.json().workGroup).toMatchObject({ slug: "care-nursing", displayLabel: "Care / Nursing" });
+
+    await app.close();
+  });
+
+  it("allows only platform administrators to manage the global catalogue", async () => {
+    const { app, authRepository, grantPlatformAdmin } = buildWorkGroupApi();
+    const ordinary = await registerApiUser(app);
+    const platform = await app.inject({
+      method: "POST",
+      url: "/auth/register",
+      payload: {
+        email: "platform-workgroup@example.com",
+        password: "ValidPassword123",
+        displayName: "Platform WorkGroup Admin"
+      }
+    });
+    grantPlatformAdmin(authRepository.lastUserId());
+    const ordinaryOrganization = await createApiOrganization(app, ordinary.token, "Ordinary WorkGroup Tenant");
+    const denied = await app.inject({
+      method: "PATCH",
+      url: "/platform/work-groups/kitchen",
+      headers: { authorization: `Bearer ${ordinary.token}` },
+      payload: {
+        expectedVersion: "2026-07-25T08:00:00.000Z",
+        displayLabel: "Denied Kitchen"
+      }
+    });
+    const all = await app.inject({
+      method: "GET",
+      url: "/platform/work-groups",
+      headers: { authorization: `Bearer ${platform.json().token}` }
+    });
+    const kitchen = all.json().workGroups.find((workGroup: { slug: string }) => workGroup.slug === "kitchen");
+    const updated = await app.inject({
+      method: "PATCH",
+      url: "/platform/work-groups/kitchen",
+      headers: { authorization: `Bearer ${platform.json().token}` },
+      payload: {
+        expectedVersion: kitchen.version,
+        displayLabel: "Kitchen Operations",
+        displayOrder: 11
+      }
+    });
+    const inactive = await app.inject({
+      method: "POST",
+      url: "/platform/work-groups/kitchen/status",
+      headers: { authorization: `Bearer ${platform.json().token}` },
+      payload: {
+        expectedVersion: updated.json().workGroup.version,
+        status: "inactive",
+        reason: "catalogue pause"
+      }
+    });
+    const ordinaryAfterInactive = await app.inject({
+      method: "GET",
+      url: `/work-groups/kitchen?organizationId=${ordinaryOrganization.id}`,
+      headers: { authorization: `Bearer ${ordinary.token}` }
+    });
+
+    expect(denied.statusCode).toBe(403);
+    expect(all.statusCode).toBe(200);
+    expect(updated.statusCode).toBe(200);
+    expect(updated.json().workGroup).toMatchObject({ slug: "kitchen", displayLabel: "Kitchen Operations", displayOrder: 11 });
+    expect(inactive.statusCode).toBe(200);
+    expect(inactive.json().workGroup.status).toBe("inactive");
+    expect(ordinaryAfterInactive.statusCode).toBe(403);
+
+    await app.close();
+  });
+});
+
 class ApiMemoryAuthenticationRepository implements AuthenticationRepository {
   private users = new Map<string, StoredAuthenticationUser>();
   private sessions = new Map<string, StoredAuthenticationSession>();
@@ -849,6 +948,14 @@ class ApiMemoryAuthenticationRepository implements AuthenticationRepository {
 
   firstUserId() {
     const user = [...this.users.values()][0];
+
+    if (!user) throw new Error("TEST_USER_NOT_FOUND");
+
+    return user.id;
+  }
+
+  lastUserId() {
+    const user = [...this.users.values()].at(-1);
 
     if (!user) throw new Error("TEST_USER_NOT_FOUND");
 
@@ -1211,6 +1318,82 @@ class ApiMemoryDepartmentRepository implements DepartmentRepository {
   }
 }
 
+class ApiMemoryWorkGroupRepository implements WorkGroupRepository {
+  private workGroups = new Map<string, StoredWorkGroup>();
+
+  constructor() {
+    const createdAt = new Date("2026-07-25T08:00:00.000Z");
+    for (const workGroup of [
+      ["api-work-group-1", "kitchen", "Kitchen", 10, "utensils"],
+      ["api-work-group-2", "care_nursing", "Care / Nursing", 20, "heart-pulse"],
+      ["api-work-group-3", "housekeeping_support", "Housekeeping / Support", 30, "sparkles"],
+      ["api-work-group-4", "maintenance", "Maintenance", 40, "wrench"]
+    ] as const) {
+      this.workGroups.set(workGroup[0], {
+        id: workGroup[0],
+        key: workGroup[1],
+        displayLabel: workGroup[2],
+        status: "active",
+        displayOrder: workGroup[3],
+        iconKey: workGroup[4],
+        qualificationSummary: null,
+        safetyRequirementSummary: null,
+        defaultTemplateKey: null,
+        createdAt,
+        updatedAt: createdAt
+      });
+    }
+  }
+
+  async findWorkGroupById(workGroupId: string) {
+    return this.workGroups.get(workGroupId) ?? null;
+  }
+
+  async findWorkGroupByKey(key: string) {
+    return [...this.workGroups.values()].find((workGroup) => workGroup.key === key) ?? null;
+  }
+
+  async listWorkGroups(input: Parameters<WorkGroupRepository["listWorkGroups"]>[0]) {
+    return [...this.workGroups.values()]
+      .filter((workGroup) => input.includeInactive || workGroup.status === "active")
+      .sort((left, right) => left.displayOrder - right.displayOrder || left.displayLabel.localeCompare(right.displayLabel) || left.key.localeCompare(right.key));
+  }
+
+  async updateWorkGroup(input: Parameters<WorkGroupRepository["updateWorkGroup"]>[0]) {
+    const workGroup = this.workGroups.get(input.workGroupId);
+
+    if (!workGroup || workGroup.updatedAt.getTime() !== input.expectedUpdatedAt.getTime()) {
+      return null;
+    }
+
+    if (input.displayLabel !== undefined) workGroup.displayLabel = input.displayLabel;
+    if (input.displayOrder !== undefined) workGroup.displayOrder = input.displayOrder;
+    if (input.iconKey !== undefined) workGroup.iconKey = input.iconKey;
+    workGroup.updatedAt = new Date(input.now.getTime() + 1);
+
+    return workGroup;
+  }
+
+  async updateWorkGroupStatus(input: Parameters<WorkGroupRepository["updateWorkGroupStatus"]>[0]) {
+    const workGroup = this.workGroups.get(input.workGroupId);
+
+    if (!workGroup || workGroup.updatedAt.getTime() !== input.expectedUpdatedAt.getTime()) {
+      return null;
+    }
+
+    workGroup.status = input.status;
+    workGroup.updatedAt = new Date(input.now.getTime() + 1);
+
+    return workGroup;
+  }
+
+  async recordWorkGroupAuditEvent(input: Parameters<WorkGroupRepository["recordWorkGroupAuditEvent"]>[0]) {
+    void input;
+
+    return undefined;
+  }
+}
+
 function testAuthOptions() {
   let nextToken = 1;
 
@@ -1293,6 +1476,29 @@ function buildDepartmentApi() {
   });
 
   return { app, authRepository };
+}
+
+function buildWorkGroupApi() {
+  const authRepository = new ApiMemoryAuthenticationRepository();
+  const membershipRepository = new ApiMemoryOrganizationMembershipRepository();
+  const membershipService = createOrganizationMembershipService(membershipRepository);
+  const authorizationService = createAuthorizationService();
+  const organizationRepository = new ApiMemoryEmployerOrganizationRepository(membershipRepository);
+  const organizationService = createEmployerOrganizationService(organizationRepository, membershipService, authorizationService);
+  const platformAdminUserIds = new Set<string>();
+  const app = buildApi({
+    authService: createAuthenticationService(authRepository, testAuthOptions()),
+    membershipService,
+    organizationService,
+    workGroupService: createWorkGroupService(new ApiMemoryWorkGroupRepository(), authorizationService),
+    resolveAuthorizationRoles: (userId) => (platformAdminUserIds.has(userId) ? ["PLATFORM_ADMINISTRATOR"] : [])
+  });
+
+  return {
+    app,
+    authRepository,
+    grantPlatformAdmin: (userId: string) => platformAdminUserIds.add(userId)
+  };
 }
 
 async function createApiOrganization(app: ReturnType<typeof buildApi>, token: string, legalName: string) {
