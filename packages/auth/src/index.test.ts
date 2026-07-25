@@ -461,15 +461,50 @@ describe("authorization foundation", () => {
     ).resolves.toMatchObject({ allow: false, internalReason: "no_role" });
   });
 
-  it("keeps future dispatch permissions from authorizing unimplemented workflows", async () => {
+  it("grants Dispatcher only approved dispatch authority", async () => {
     const service = createAuthorizationService();
 
-    expect(service.rolePermissions("DISPATCHER")).toEqual([]);
+    expect(service.rolePermissions("DISPATCHER")).toEqual([
+      "dispatch.create",
+      "dispatch.read",
+      "dispatch.review_candidates",
+      "dispatch.manage_shortlist",
+      "dispatch.pause",
+      "dispatch.resume",
+      "dispatch.cancel",
+      "dispatch.close",
+      "dispatch.prepare_offer",
+      "dispatch.audit_read"
+    ]);
+    await expect(
+      service.decide({
+        session: activeSession(),
+        roles: ["DISPATCHER"],
+        permission: "dispatch.read",
+        platformContext: { platform: true }
+      })
+    ).resolves.toMatchObject({
+      status: "allow",
+      allow: true
+    });
     await expect(
       service.decide({
         session: activeSession(),
         roles: ["DISPATCHER"],
         permission: "platform.supervise",
+        platformContext: { platform: true }
+      })
+    ).resolves.toMatchObject({
+      status: "permission_missing",
+      allow: false,
+      internalReason: "role_lacks_permission"
+    });
+
+    await expect(
+      service.decide({
+        session: activeSession(),
+        roles: ["DISPATCHER"],
+        permission: "dispatch.supervise",
         platformContext: { platform: true }
       })
     ).resolves.toMatchObject({
@@ -530,10 +565,10 @@ describe("authorization foundation", () => {
     ]);
   });
 
-  it("declares Dispatcher without active permissions until dispatch implementation", () => {
+  it("declares Dispatcher without reserved supervision authority", () => {
     expect(
       authorizationRoleDefinitions.find((role) => role.key === "DISPATCHER")?.permissions
-    ).toEqual([]);
+    ).not.toContain("dispatch.supervise");
   });
 });
 

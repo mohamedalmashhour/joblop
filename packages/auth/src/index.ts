@@ -54,6 +54,17 @@ export const authorizationPermissionKeys = [
   "job_request.admin_review",
   "job_request.request_information",
   "job_request.approve_for_dispatch",
+  "dispatch.create",
+  "dispatch.read",
+  "dispatch.review_candidates",
+  "dispatch.manage_shortlist",
+  "dispatch.pause",
+  "dispatch.resume",
+  "dispatch.cancel",
+  "dispatch.close",
+  "dispatch.prepare_offer",
+  "dispatch.audit_read",
+  "dispatch.supervise",
   "audit.read",
   "platform.supervise"
 ] as const;
@@ -1193,6 +1204,94 @@ export const authorizationPermissionDefinitions = [
     "Creates only the approved-for-dispatch boundary state."
   ),
   permission(
+    "dispatch.create",
+    "Create a dispatch review for an approved job request.",
+    "platform",
+    "active",
+    "Could open operational staffing review before admin approval.",
+    "Dispatcher and Platform Administrator only; requires approved-for-dispatch Job Request."
+  ),
+  permission(
+    "dispatch.read",
+    "Read dispatch review summaries and governed candidate evaluation summaries.",
+    "platform",
+    "active",
+    "Could expose internal dispatch state or candidate summaries.",
+    "Dispatcher and Platform Administrator only."
+  ),
+  permission(
+    "dispatch.review_candidates",
+    "Start or run governed candidate review.",
+    "platform",
+    "active",
+    "Could imply candidate eligibility if source truthfulness is not preserved.",
+    "Candidate source unavailable must remain explicit."
+  ),
+  permission(
+    "dispatch.manage_shortlist",
+    "Add, remove, or reorder candidates on a manual dispatch shortlist.",
+    "platform",
+    "active",
+    "Could unfairly affect worker opportunity if audit reason is absent.",
+    "Requires explicit human actor and auditable reason."
+  ),
+  permission(
+    "dispatch.pause",
+    "Pause an active dispatch review.",
+    "platform",
+    "active",
+    "Could delay staffing without auditability.",
+    "Requires dispatcher authority and reason."
+  ),
+  permission(
+    "dispatch.resume",
+    "Resume a paused dispatch review.",
+    "platform",
+    "active",
+    "Could resume operational review without human oversight.",
+    "Requires dispatcher authority."
+  ),
+  permission(
+    "dispatch.cancel",
+    "Cancel a dispatch review before offer or assignment authority.",
+    "platform",
+    "active",
+    "Could halt staffing demand without preserving source state.",
+    "Requires dispatcher authority and reason."
+  ),
+  permission(
+    "dispatch.close",
+    "Close a dispatch review without creating worker offers or assignments.",
+    "platform",
+    "active",
+    "Could be confused with completed staffing.",
+    "Closure remains separate from offer, assignment, attendance, and finance."
+  ),
+  permission(
+    "dispatch.prepare_offer",
+    "Move dispatch to the offer-preparation boundary.",
+    "platform",
+    "active",
+    "Could be mistaken for creating a Worker Offer.",
+    "Must not create WorkerOffer, Assignment, notification, or calendar hold."
+  ),
+  permission(
+    "dispatch.audit_read",
+    "Read dispatch audit summaries.",
+    "platform",
+    "active",
+    "Could expose internal staffing review history.",
+    "Dispatcher and Platform Administrator only."
+  ),
+  permission(
+    "dispatch.supervise",
+    "Reserved future dispatch supervision capability.",
+    "platform",
+    "reserved",
+    "Would grant elevated dispatch oversight if activated silently.",
+    "Not assigned to active roles in this foundation."
+  ),
+  permission(
     "audit.read",
     "Read approved audit summaries.",
     "platform",
@@ -1216,6 +1315,16 @@ export const authorizationRoleDefinitions = [
     "job_request.admin_review",
     "job_request.request_information",
     "job_request.approve_for_dispatch",
+    "dispatch.create",
+    "dispatch.read",
+    "dispatch.review_candidates",
+    "dispatch.manage_shortlist",
+    "dispatch.pause",
+    "dispatch.resume",
+    "dispatch.cancel",
+    "dispatch.close",
+    "dispatch.prepare_offer",
+    "dispatch.audit_read",
     "audit.read"
   ]),
   roleDefinition("ORGANIZATION_OWNER", "Organization Owner", "organization", [
@@ -1264,7 +1373,18 @@ export const authorizationRoleDefinitions = [
     "job_request.cancel"
   ]),
   roleDefinition("WORKER_ACCESS", "Worker Access", "none", []),
-  roleDefinition("DISPATCHER", "Dispatcher", "platform", [])
+  roleDefinition("DISPATCHER", "Dispatcher", "platform", [
+    "dispatch.create",
+    "dispatch.read",
+    "dispatch.review_candidates",
+    "dispatch.manage_shortlist",
+    "dispatch.pause",
+    "dispatch.resume",
+    "dispatch.cancel",
+    "dispatch.close",
+    "dispatch.prepare_offer",
+    "dispatch.audit_read"
+  ])
 ] as const satisfies readonly AuthorizationRoleDefinition[];
 
 export function createAuthorizationService(auditSink?: AuthorizationAuditSink) {
@@ -5899,7 +6019,9 @@ function deny(
 
 function isSensitiveAuthorizationDenial(decision: AuthorizationDecision) {
   return (
-    decision.permission === "platform.supervise" || decision.permission.startsWith("job_request.")
+    decision.permission === "platform.supervise" ||
+    decision.permission.startsWith("job_request.") ||
+    decision.permission.startsWith("dispatch.")
   );
 }
 
