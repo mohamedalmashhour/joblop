@@ -279,6 +279,20 @@ enum AttendanceStatus {
   exception
 }
 
+enum TimesheetStatus {
+  draft
+  calculation_pending
+  review_required
+  worker_review
+  employer_review
+  platform_review
+  approved
+  locked
+  rejected
+  correction_required
+  cancelled
+}
+
 model User {
   id              String     @id @default(uuid()) @db.Uuid
   publicId        String     @unique @map("public_id")
@@ -326,6 +340,12 @@ model User {
   checkedInAttendanceRecords    AttendanceRecord[]           @relation("AttendanceCheckedInByUser")
   checkedOutAttendanceRecords   AttendanceRecord[]           @relation("AttendanceCheckedOutByUser")
   cancelledAttendanceRecords    AttendanceRecord[]           @relation("AttendanceCancelledByUser")
+  createdTimesheets             Timesheet[]                  @relation("TimesheetCreatedByUser")
+  updatedTimesheets             Timesheet[]                  @relation("TimesheetUpdatedByUser")
+  workerReviewedTimesheets      Timesheet[]                  @relation("TimesheetWorkerReviewedByUser")
+  employerReviewedTimesheets    Timesheet[]                  @relation("TimesheetEmployerReviewedByUser")
+  platformReviewedTimesheets    Timesheet[]                  @relation("TimesheetPlatformReviewedByUser")
+  lockedTimesheets              Timesheet[]                  @relation("TimesheetLockedByUser")
   auditActorReferences          AuditActorReference[]
 
   @@index([emailNormalized], map: "users_email_normalized_idx")
@@ -397,6 +417,7 @@ model EmployerOrganization {
   workerOffers         WorkerOffer[]
   assignments          Assignment[]
   attendanceRecords    AttendanceRecord[]
+  timesheets           Timesheet[]
   auditActorReferences AuditActorReference[]
   auditEvents          AuditEvent[]
 
@@ -449,6 +470,7 @@ model Residence {
   workerOffers      WorkerOffer[]
   assignments       Assignment[]
   attendanceRecords AttendanceRecord[]
+  timesheets        Timesheet[]
 
   @@unique([organizationId, id], map: "residences_organization_id_id_key")
   @@index([organizationId, status], map: "residences_organization_id_status_idx")
@@ -476,6 +498,7 @@ model Department {
   workerOffers      WorkerOffer[]
   assignments       Assignment[]
   attendanceRecords AttendanceRecord[]
+  timesheets        Timesheet[]
 
   @@unique([organizationId, id], map: "departments_organization_id_id_key")
   @@unique([residenceId, id], map: "departments_residence_id_id_key")
@@ -505,6 +528,7 @@ model WorkGroup {
   workerOfferTerms  WorkerOfferTermsVersion[]
   assignments       Assignment[]
   attendanceRecords AttendanceRecord[]
+  timesheets        Timesheet[]
 
   @@index([status, displayOrder], map: "work_groups_status_display_order_idx")
   @@map("work_groups")
@@ -530,6 +554,7 @@ model RoleDefinition {
   workerOfferTerms  WorkerOfferTermsVersion[]
   assignments       Assignment[]
   attendanceRecords AttendanceRecord[]
+  timesheets        Timesheet[]
 
   @@unique([workGroupId, id], map: "role_definitions_work_group_id_id_key")
   @@index([workGroupId, status, displayOrder], map: "role_definitions_work_group_id_status_display_order_idx")
@@ -647,6 +672,7 @@ model JobRequest {
   workerOffers      WorkerOffer[]
   assignments       Assignment[]
   attendanceRecords AttendanceRecord[]
+  timesheets        Timesheet[]
 
   @@index([jobRequestNumber], map: "job_requests_job_request_number_idx")
   @@index([organizationId, status, createdAt], map: "job_requests_organization_id_status_created_at_idx")
@@ -758,6 +784,7 @@ model WorkerIdentity {
   responses         WorkerOfferResponse[]
   assignments       Assignment[]
   attendanceRecords AttendanceRecord[]
+  timesheets        Timesheet[]
 
   @@index([status], map: "worker_identities_status_idx")
   @@map("worker_identities")
@@ -943,6 +970,7 @@ model Assignment {
   confirmedBy             User?                   @relation("AssignmentConfirmedByUser", fields: [confirmedByUserId], references: [id], onDelete: SetNull)
   cancelledBy             User?                   @relation("AssignmentCancelledByUser", fields: [cancelledByUserId], references: [id], onDelete: SetNull)
   attendanceRecord        AttendanceRecord?
+  timesheet               Timesheet?
 
   @@index([jobRequestId, status], map: "assignments_job_request_id_status_idx")
   @@index([dispatchReviewId, status], map: "assignments_dispatch_review_id_status_idx")
@@ -1002,6 +1030,7 @@ model AttendanceRecord {
   checkedInBy    User?                @relation("AttendanceCheckedInByUser", fields: [checkedInByUserId], references: [id], onDelete: SetNull)
   checkedOutBy   User?                @relation("AttendanceCheckedOutByUser", fields: [checkedOutByUserId], references: [id], onDelete: SetNull)
   cancelledBy    User?                @relation("AttendanceCancelledByUser", fields: [cancelledByUserId], references: [id], onDelete: SetNull)
+  timesheet      Timesheet?
 
   @@index([assignmentId, status], map: "attendance_records_assignment_id_status_idx")
   @@index([organizationId, status, updatedAt], map: "attendance_records_organization_id_status_updated_at_idx")
@@ -1009,6 +1038,115 @@ model AttendanceRecord {
   @@index([residenceId, departmentId, scheduledStartAt], map: "attendance_records_residence_department_start_idx")
   @@index([jobRequestId, status], map: "attendance_records_job_request_id_status_idx")
   @@map("attendance_records")
+}
+
+model Timesheet {
+  id                        String          @id @default(uuid()) @db.Uuid
+  assignmentId              String          @unique @map("assignment_id") @db.Uuid
+  attendanceRecordId        String          @unique @map("attendance_record_id") @db.Uuid
+  jobRequestId              String          @map("job_request_id") @db.Uuid
+  workerIdentityId          String          @map("worker_identity_id") @db.Uuid
+  organizationId            String          @map("organization_id") @db.Uuid
+  residenceId               String          @map("residence_id") @db.Uuid
+  departmentId              String          @map("department_id") @db.Uuid
+  workGroupId               String          @map("work_group_id") @db.Uuid
+  roleDefinitionId          String          @map("role_definition_id") @db.Uuid
+  status                    TimesheetStatus @default(draft)
+  attendanceVersionSnapshot Int             @map("attendance_version_snapshot")
+  assignmentVersionSnapshot Int             @map("assignment_version_snapshot")
+  scheduledStartAt          DateTime        @map("scheduled_start_at") @db.Timestamptz(3)
+  scheduledEndAt            DateTime        @map("scheduled_end_at") @db.Timestamptz(3)
+  actualCheckInAt           DateTime?       @map("actual_check_in_at") @db.Timestamptz(3)
+  actualCheckOutAt          DateTime?       @map("actual_check_out_at") @db.Timestamptz(3)
+  timezone                  String
+  rawElapsedMinutes         Int?            @map("raw_elapsed_minutes")
+  payableMinutes            Int?            @map("payable_minutes")
+  billableMinutes           Int?            @map("billable_minutes")
+  excludedMinutes           Int             @default(0) @map("excluded_minutes")
+  breakMinutes              Int             @default(0) @map("break_minutes")
+  premiumCandidateMinutes   Int             @default(0) @map("premium_candidate_minutes")
+  overtimeCandidateMinutes  Int             @default(0) @map("overtime_candidate_minutes")
+  roundingAdjustmentMinutes Int             @default(0) @map("rounding_adjustment_minutes")
+  exceptionSummary          String?         @map("exception_summary")
+  workerReviewStatus        String          @default("not_started") @map("worker_review_status")
+  workerReviewedAt          DateTime?       @map("worker_reviewed_at") @db.Timestamptz(3)
+  employerReviewStatus      String          @default("not_started") @map("employer_review_status")
+  employerReviewedAt        DateTime?       @map("employer_reviewed_at") @db.Timestamptz(3)
+  platformReviewStatus      String          @default("not_started") @map("platform_review_status")
+  platformReviewedAt        DateTime?       @map("platform_reviewed_at") @db.Timestamptz(3)
+  approvedAt                DateTime?       @map("approved_at") @db.Timestamptz(3)
+  lockedAt                  DateTime?       @map("locked_at") @db.Timestamptz(3)
+  rejectedAt                DateTime?       @map("rejected_at") @db.Timestamptz(3)
+  cancelledAt               DateTime?       @map("cancelled_at") @db.Timestamptz(3)
+  correctionReason          String?         @map("correction_reason")
+  createdByUserId           String          @map("created_by_user_id") @db.Uuid
+  updatedByUserId           String?         @map("updated_by_user_id") @db.Uuid
+  workerReviewedByUserId    String?         @map("worker_reviewed_by_user_id") @db.Uuid
+  employerReviewedByUserId  String?         @map("employer_reviewed_by_user_id") @db.Uuid
+  platformReviewedByUserId  String?         @map("platform_reviewed_by_user_id") @db.Uuid
+  lockedByUserId            String?         @map("locked_by_user_id") @db.Uuid
+  createdAt                 DateTime        @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt                 DateTime        @updatedAt @map("updated_at") @db.Timestamptz(3)
+  version                   Int             @default(1)
+
+  assignment           Assignment                     @relation(fields: [assignmentId], references: [id], onDelete: Restrict)
+  attendanceRecord     AttendanceRecord               @relation(fields: [attendanceRecordId], references: [id], onDelete: Restrict)
+  jobRequest           JobRequest                     @relation(fields: [jobRequestId], references: [id], onDelete: Restrict)
+  workerIdentity       WorkerIdentity                 @relation(fields: [workerIdentityId], references: [id], onDelete: Restrict)
+  organization         EmployerOrganization           @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  residence            Residence                      @relation(fields: [organizationId, residenceId], references: [organizationId, id], onDelete: Restrict)
+  department           Department                     @relation(fields: [organizationId, residenceId, departmentId], references: [organizationId, residenceId, id], onDelete: Restrict)
+  workGroup            WorkGroup                      @relation(fields: [workGroupId], references: [id], onDelete: Restrict)
+  roleDefinition       RoleDefinition                 @relation(fields: [workGroupId, roleDefinitionId], references: [workGroupId, id], onDelete: Restrict)
+  createdBy            User                           @relation("TimesheetCreatedByUser", fields: [createdByUserId], references: [id], onDelete: Restrict)
+  updatedBy            User?                          @relation("TimesheetUpdatedByUser", fields: [updatedByUserId], references: [id], onDelete: SetNull)
+  workerReviewedBy     User?                          @relation("TimesheetWorkerReviewedByUser", fields: [workerReviewedByUserId], references: [id], onDelete: SetNull)
+  employerReviewedBy   User?                          @relation("TimesheetEmployerReviewedByUser", fields: [employerReviewedByUserId], references: [id], onDelete: SetNull)
+  platformReviewedBy   User?                          @relation("TimesheetPlatformReviewedByUser", fields: [platformReviewedByUserId], references: [id], onDelete: SetNull)
+  lockedBy             User?                          @relation("TimesheetLockedByUser", fields: [lockedByUserId], references: [id], onDelete: SetNull)
+  calculationSnapshots TimesheetCalculationSnapshot[]
+
+  @@index([organizationId, status, updatedAt], map: "timesheets_organization_id_status_updated_at_idx")
+  @@index([workerIdentityId, status, scheduledStartAt], map: "timesheets_worker_identity_id_status_start_idx")
+  @@index([residenceId, departmentId, scheduledStartAt], map: "timesheets_residence_department_start_idx")
+  @@index([jobRequestId, status], map: "timesheets_job_request_id_status_idx")
+  @@index([attendanceRecordId, status], map: "timesheets_attendance_record_id_status_idx")
+  @@map("timesheets")
+}
+
+model TimesheetCalculationSnapshot {
+  id                        String   @id @default(uuid()) @db.Uuid
+  timesheetId               String   @map("timesheet_id") @db.Uuid
+  attendanceRecordId        String   @map("attendance_record_id") @db.Uuid
+  attendanceVersionSnapshot Int      @map("attendance_version_snapshot")
+  assignmentId              String   @map("assignment_id") @db.Uuid
+  assignmentVersionSnapshot Int      @map("assignment_version_snapshot")
+  calculationPolicyVersion  String   @map("calculation_policy_version")
+  countryPackVersion        String   @map("country_pack_version")
+  rawCheckInAt              DateTime @map("raw_check_in_at") @db.Timestamptz(3)
+  rawCheckOutAt             DateTime @map("raw_check_out_at") @db.Timestamptz(3)
+  normalizedCheckInAt       DateTime @map("normalized_check_in_at") @db.Timestamptz(3)
+  normalizedCheckOutAt      DateTime @map("normalized_check_out_at") @db.Timestamptz(3)
+  timezone                  String
+  breakRule                 String   @map("break_rule")
+  roundingRule              String   @map("rounding_rule")
+  rawElapsedMinutes         Int      @map("raw_elapsed_minutes")
+  payableMinutes            Int      @map("payable_minutes")
+  billableMinutes           Int      @map("billable_minutes")
+  excludedMinutes           Int      @default(0) @map("excluded_minutes")
+  breakMinutes              Int      @default(0) @map("break_minutes")
+  premiumCandidateMinutes   Int      @default(0) @map("premium_candidate_minutes")
+  overtimeCandidateMinutes  Int      @default(0) @map("overtime_candidate_minutes")
+  roundingAdjustmentMinutes Int      @default(0) @map("rounding_adjustment_minutes")
+  exceptionFlags            String[] @default([]) @map("exception_flags")
+  calculationEngineVersion  String   @map("calculation_engine_version")
+  createdAt                 DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  timesheet Timesheet @relation(fields: [timesheetId], references: [id], onDelete: Restrict)
+
+  @@index([timesheetId, createdAt], map: "timesheet_calculation_snapshots_timesheet_created_idx")
+  @@index([attendanceRecordId, attendanceVersionSnapshot], map: "timesheet_calculation_snapshots_attendance_version_idx")
+  @@map("timesheet_calculation_snapshots")
 }
 
 model AuditActorReference {
