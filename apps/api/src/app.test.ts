@@ -165,6 +165,51 @@ describe("api authentication foundation", () => {
 
     await app.close();
   });
+
+  it("rate-limits repeated sign-in attempts with a fail-closed 429", async () => {
+    const app = buildApi({
+      authService: createAuthenticationService(new ApiMemoryAuthenticationRepository(), {
+        passwordHashOptions: {
+          costFactor: 1_024,
+          blockSize: 8,
+          parallelization: 1,
+          keyLength: 32,
+          saltLength: 8
+        }
+      })
+    });
+
+    for (let attempt = 0; attempt < 5; attempt += 1) {
+      const response = await app.inject({
+        method: "POST",
+        url: "/auth/sign-in",
+        payload: {
+          email: "rate-limit@example.com",
+          password: "WrongPassword123"
+        }
+      });
+
+      expect(response.statusCode).toBe(401);
+    }
+
+    const limited = await app.inject({
+      method: "POST",
+      url: "/auth/sign-in",
+      payload: {
+        email: "rate-limit@example.com",
+        password: "WrongPassword123"
+      }
+    });
+
+    expect(limited.statusCode).toBe(429);
+    expect(limited.headers["retry-after"]).toBeDefined();
+    expect(limited.json()).toEqual({
+      error: "RWOS_AUTH_RATE_LIMITED",
+      message: "Too many authentication attempts. Try again later."
+    });
+
+    await app.close();
+  });
 });
 
 describe("api authorization foundation", () => {

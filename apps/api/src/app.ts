@@ -103,6 +103,7 @@ export interface BuildApiOptions {
 export function buildApi(options: BuildApiOptions = {}) {
   const app = Fastify({ logger: false });
   const logger = createLogger("api");
+  const authRateLimiter = createAuthenticationRateLimiter();
   const prisma = options.authService ? null : createPrismaClient();
   const authService =
     options.authService ??
@@ -297,6 +298,11 @@ export function buildApi(options: BuildApiOptions = {}) {
       });
     }
 
+    const rateLimit = authRateLimiter.consume(`register:${request.ip}:${email.toLowerCase()}`);
+    if (!rateLimit.allowed) {
+      return sendAuthenticationRateLimited(reply, rateLimit.retryAfterSeconds);
+    }
+
     try {
       const result = await authService.register({
         email,
@@ -323,6 +329,11 @@ export function buildApi(options: BuildApiOptions = {}) {
         error: authenticationErrorCode,
         message: authenticationErrorMessage
       });
+    }
+
+    const rateLimit = authRateLimiter.consume(`sign-in:${request.ip}:${email.toLowerCase()}`);
+    if (!rateLimit.allowed) {
+      return sendAuthenticationRateLimited(reply, rateLimit.retryAfterSeconds);
     }
 
     try {
@@ -2796,6 +2807,39 @@ function readRouteParam(params: unknown, key: string) {
   const value = record[key];
 
   return typeof value === "string" ? value : "";
+}
+
+function createAuthenticationRateLimiter(options = { maxAttempts: 5, windowMs: 60_000 }) {
+  const buckets = new Map<string, { count: number; resetAt: number }>();
+
+  return {
+    consume(key: string) {
+      const now = Date.now();
+      const current = buckets.get(key);
+      const bucket =
+        current && current.resetAt > now
+          ? current
+          : { count: 0, resetAt: now + options.windowMs };
+
+      bucket.count += 1;
+      buckets.set(key, bucket);
+
+      return {
+        allowed: bucket.count <= options.maxAttempts,
+        retryAfterSeconds: Math.max(1, Math.ceil((bucket.resetAt - now) / 1000))
+      };
+    }
+  };
+}
+
+function sendAuthenticationRateLimited(reply: FastifyReply, retryAfterSeconds: number) {
+  return reply
+    .code(429)
+    .header("retry-after", String(retryAfterSeconds))
+    .send({
+      error: "RWOS_AUTH_RATE_LIMITED",
+      message: "Too many authentication attempts. Try again later."
+    });
 }
 
 function serializeAuthenticationResult(result: {

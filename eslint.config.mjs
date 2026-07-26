@@ -29,7 +29,14 @@ const nextConfigs = compat.extends("next/core-web-vitals").map((config) => ({
 
 export default [
   {
-    ignores: ["**/.next/**", "**/dist/**", "**/node_modules/**", "**/coverage/**", "pnpm-lock.yaml"]
+    ignores: [
+      "**/.next/**",
+      "**/dist/**",
+      "**/node_modules/**",
+      "**/coverage/**",
+      "contracts/**",
+      "pnpm-lock.yaml"
+    ]
   },
   js.configs.recommended,
   {
