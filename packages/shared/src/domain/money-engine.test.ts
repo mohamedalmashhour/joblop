@@ -10,6 +10,7 @@ import {
 
 describe("shared Money Engine contract adoption", () => {
   it("uses one explicit integer-minor-unit money model", () => {
+    expect(moneyEngineCurrencies).toContain("CAD");
     expect(moneyEngineCurrencies).toEqual(["CAD", "USD"]);
     expect(createContractMoney({ amountMinor: 5000, currency: "CAD" })).toEqual({
       amountMinor: 5000,
@@ -17,7 +18,7 @@ describe("shared Money Engine contract adoption", () => {
     });
 
     expect(() => createContractMoney({ amountMinor: 50.25, currency: "CAD" })).toThrow(
-      "Money Engine amounts must be integer minor units."
+      "Money Engine amounts must be non-negative integer minor units."
     );
     expect(() => createContractMoney({ amountMinor: 5000, currency: "cad" })).toThrow(
       "Money Engine currency is unsupported."

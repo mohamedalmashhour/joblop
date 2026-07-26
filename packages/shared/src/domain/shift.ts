@@ -1,4 +1,4 @@
-import type { Currency, MoneyAmount } from "./money";
+import type { Currency, MoneyAmount } from "./moneyEngine";
 import type { PreferredLanguage } from "./worker";
 
 export const shiftStatuses = [

@@ -1,11 +1,14 @@
 export const moneyEngineCurrencies = ["CAD", "USD"] as const;
+export const currencies = moneyEngineCurrencies;
 
 export type MoneyEngineCurrency = (typeof moneyEngineCurrencies)[number];
+export type Currency = MoneyEngineCurrency;
 
 export type ContractMoney = Readonly<{
   amountMinor: number;
   currency: MoneyEngineCurrency;
 }>;
+export type MoneyAmount = ContractMoney;
 
 export type CreateContractMoneyInput = Readonly<{
   amountMinor: number;
@@ -13,8 +16,8 @@ export type CreateContractMoneyInput = Readonly<{
 }>;
 
 export function createContractMoney(input: CreateContractMoneyInput): ContractMoney {
-  if (!Number.isInteger(input.amountMinor)) {
-    throw new Error("Money Engine amounts must be integer minor units.");
+  if (!Number.isInteger(input.amountMinor) || input.amountMinor < 0) {
+    throw new Error("Money Engine amounts must be non-negative integer minor units.");
   }
 
   if (!Number.isSafeInteger(input.amountMinor)) {

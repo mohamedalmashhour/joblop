@@ -1,15 +1,14 @@
 export * from "./domain";
 
+import type { ContractMoney } from "./domain";
+
 export const rwosProduct = {
   name: "Resident Workforce OS",
   baseline: "Engineering Foundation",
   implementationStatus: "foundation-only"
 } as const;
 
-export type Money = Readonly<{
-  amountMinor: number;
-  currency: "CAD" | "USD";
-}>;
+export type Money = ContractMoney;
 
 export type WorkerSafeShiftSummary = Readonly<{
   id: string;
