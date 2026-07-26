@@ -13,6 +13,7 @@ import {
   ResidenceError,
   RegistrationUnavailableError,
   RoleDefinitionError,
+  TimesheetError,
   WorkerOfferError,
   WorkGroupError,
   authenticationErrorCode,
@@ -31,6 +32,7 @@ import {
   createOrganizationMembershipService,
   createResidenceService,
   createRoleDefinitionService,
+  createTimesheetService,
   createWorkerOfferService,
   createWorkGroupService,
   createPrismaAssignmentRepository,
@@ -43,6 +45,7 @@ import {
   createPrismaOrganizationMembershipRepository,
   createPrismaResidenceRepository,
   createPrismaRoleDefinitionRepository,
+  createPrismaTimesheetRepository,
   createPrismaWorkerOfferRepository,
   createPrismaWorkGroupRepository,
   passwordPolicyErrorCode,
@@ -67,6 +70,8 @@ import {
   type ResidenceService,
   type ResidenceStatus,
   type RoleDefinitionService,
+  type TimesheetService,
+  type TimesheetStatus,
   type WorkerOfferService,
   type WorkerOfferStatus,
   type WorkGroupService
@@ -86,6 +91,7 @@ export interface BuildApiOptions {
   workerOfferService?: WorkerOfferService;
   assignmentService?: AssignmentService;
   attendanceService?: AttendanceService;
+  timesheetService?: TimesheetService;
   workGroupService?: WorkGroupService;
   roleDefinitionService?: RoleDefinitionService;
   jobRequestService?: JobRequestService;
@@ -195,6 +201,17 @@ export function buildApi(options: BuildApiOptions = {}) {
           authorizationService
         )
       : createUnavailableAttendanceService());
+  const timesheetService =
+    options.timesheetService ??
+    (prisma
+      ? createTimesheetService(
+          createPrismaTimesheetRepository(prisma),
+          createPrismaAttendanceRepository(prisma),
+          createPrismaAssignmentRepository(prisma),
+          createPrismaWorkerOfferRepository(prisma),
+          authorizationService
+        )
+      : createUnavailableTimesheetService());
   const resolveAuthorizationRoles = options.resolveAuthorizationRoles ?? (() => []);
 
   if (prisma) {
@@ -246,6 +263,10 @@ export function buildApi(options: BuildApiOptions = {}) {
 
     if (error instanceof AttendanceError) {
       return sendAttendanceDenied(reply);
+    }
+
+    if (error instanceof TimesheetError) {
+      return sendTimesheetDenied(reply);
     }
 
     throw error;
@@ -2452,6 +2473,267 @@ export function buildApi(options: BuildApiOptions = {}) {
     return reply.code(200).send({ attendanceRecord: serializeAttendanceRecord(attendanceRecord) });
   });
 
+  app.post("/platform/timesheets", async (request, reply) => {
+    const session = await authService.validateSession(
+      readBearerToken(request.headers.authorization)
+    );
+    if (!session.authenticated || !session.user) return sendTimesheetDenied(reply);
+
+    const body = asRecord(request.body);
+    const timesheet = await timesheetService.createFromAttendance({
+      session,
+      roles: await resolveAuthorizationRoles(session.user.id),
+      attendanceRecordId: readRequiredString(body, "attendanceRecordId") ?? ""
+    });
+
+    return reply.code(201).send({ timesheet: serializeTimesheet(timesheet) });
+  });
+
+  app.get("/platform/timesheets", async (request, reply) => {
+    const session = await authService.validateSession(
+      readBearerToken(request.headers.authorization)
+    );
+    if (!session.authenticated || !session.user) return sendTimesheetDenied(reply);
+
+    const query = asRecord(request.query);
+    const status = readTimesheetStatus(readOptionalString(query, "status"));
+    const timesheets = await timesheetService.listTimesheets({
+      session,
+      roles: await resolveAuthorizationRoles(session.user.id),
+      organizationId: readOptionalString(query, "organizationId"),
+      assignmentId: readOptionalString(query, "assignmentId"),
+      ...(status ? { statuses: [status] } : {})
+    });
+
+    return reply.code(200).send({ timesheets: timesheets.map((item) => serializeTimesheet(item)) });
+  });
+
+  app.get("/platform/timesheets/:timesheetId", async (request, reply) => {
+    const session = await authService.validateSession(
+      readBearerToken(request.headers.authorization)
+    );
+    if (!session.authenticated || !session.user) return sendTimesheetDenied(reply);
+
+    const timesheet = await timesheetService.readTimesheet({
+      session,
+      roles: await resolveAuthorizationRoles(session.user.id),
+      timesheetId: readRouteParam(request.params, "timesheetId")
+    });
+
+    return reply.code(200).send({ timesheet: serializeTimesheet(timesheet) });
+  });
+
+  app.post("/platform/timesheets/:timesheetId/calculate", async (request, reply) => {
+    const session = await authService.validateSession(
+      readBearerToken(request.headers.authorization)
+    );
+    if (!session.authenticated || !session.user) return sendTimesheetDenied(reply);
+
+    const body = asRecord(request.body);
+    const timesheet = await timesheetService.calculate({
+      session,
+      roles: await resolveAuthorizationRoles(session.user.id),
+      timesheetId: readRouteParam(request.params, "timesheetId"),
+      expectedVersion: readOptionalNumber(body, "expectedVersion") ?? 0
+    });
+
+    return reply.code(200).send({ timesheet: serializeTimesheet(timesheet) });
+  });
+
+  app.post("/platform/timesheets/:timesheetId/request-correction", async (request, reply) => {
+    const session = await authService.validateSession(
+      readBearerToken(request.headers.authorization)
+    );
+    if (!session.authenticated || !session.user) return sendTimesheetDenied(reply);
+
+    const body = asRecord(request.body);
+    const timesheet = await timesheetService.requestCorrection({
+      session,
+      roles: await resolveAuthorizationRoles(session.user.id),
+      timesheetId: readRouteParam(request.params, "timesheetId"),
+      expectedVersion: readOptionalNumber(body, "expectedVersion") ?? 0,
+      reason: readRequiredString(body, "reason") ?? ""
+    });
+
+    return reply.code(200).send({ timesheet: serializeTimesheet(timesheet) });
+  });
+
+  app.post("/platform/timesheets/:timesheetId/approve", async (request, reply) => {
+    const session = await authService.validateSession(
+      readBearerToken(request.headers.authorization)
+    );
+    if (!session.authenticated || !session.user) return sendTimesheetDenied(reply);
+
+    const body = asRecord(request.body);
+    const timesheet = await timesheetService.approve({
+      session,
+      roles: await resolveAuthorizationRoles(session.user.id),
+      timesheetId: readRouteParam(request.params, "timesheetId"),
+      expectedVersion: readOptionalNumber(body, "expectedVersion") ?? 0
+    });
+
+    return reply.code(200).send({ timesheet: serializeTimesheet(timesheet) });
+  });
+
+  app.post("/platform/timesheets/:timesheetId/reject", async (request, reply) => {
+    const session = await authService.validateSession(
+      readBearerToken(request.headers.authorization)
+    );
+    if (!session.authenticated || !session.user) return sendTimesheetDenied(reply);
+
+    const body = asRecord(request.body);
+    const timesheet = await timesheetService.reject({
+      session,
+      roles: await resolveAuthorizationRoles(session.user.id),
+      timesheetId: readRouteParam(request.params, "timesheetId"),
+      expectedVersion: readOptionalNumber(body, "expectedVersion") ?? 0,
+      reason: readRequiredString(body, "reason") ?? ""
+    });
+
+    return reply.code(200).send({ timesheet: serializeTimesheet(timesheet) });
+  });
+
+  app.post("/platform/timesheets/:timesheetId/lock", async (request, reply) => {
+    const session = await authService.validateSession(
+      readBearerToken(request.headers.authorization)
+    );
+    if (!session.authenticated || !session.user) return sendTimesheetDenied(reply);
+
+    const body = asRecord(request.body);
+    const timesheet = await timesheetService.lock({
+      session,
+      roles: await resolveAuthorizationRoles(session.user.id),
+      timesheetId: readRouteParam(request.params, "timesheetId"),
+      expectedVersion: readOptionalNumber(body, "expectedVersion") ?? 0
+    });
+
+    return reply.code(200).send({ timesheet: serializeTimesheet(timesheet) });
+  });
+
+  app.get("/platform/timesheets/:timesheetId/audit", async (request, reply) => {
+    const session = await authService.validateSession(
+      readBearerToken(request.headers.authorization)
+    );
+    if (!session.authenticated || !session.user) return sendTimesheetDenied(reply);
+
+    const audit = await timesheetService.readAuditSummary({
+      session,
+      roles: await resolveAuthorizationRoles(session.user.id),
+      timesheetId: readRouteParam(request.params, "timesheetId")
+    });
+
+    return reply.code(200).send({ audit });
+  });
+
+  app.get("/organizations/:organizationId/timesheets", async (request, reply) => {
+    const session = await authService.validateSession(
+      readBearerToken(request.headers.authorization)
+    );
+    if (!session.authenticated || !session.user) return sendTimesheetDenied(reply);
+
+    const query = asRecord(request.query);
+    const status = readTimesheetStatus(readOptionalString(query, "status"));
+    const timesheets = await timesheetService.listTimesheets({
+      session,
+      roles: await resolveAuthorizationRoles(session.user.id),
+      organizationId: readRouteParam(request.params, "organizationId"),
+      ...(status ? { statuses: [status] } : {})
+    });
+
+    return reply.code(200).send({ timesheets: timesheets.map((item) => serializeTimesheet(item)) });
+  });
+
+  app.post(
+    "/organizations/:organizationId/timesheets/:timesheetId/confirm",
+    async (request, reply) => {
+      const session = await authService.validateSession(
+        readBearerToken(request.headers.authorization)
+      );
+      if (!session.authenticated || !session.user) return sendTimesheetDenied(reply);
+
+      const body = asRecord(request.body);
+      const timesheet = await timesheetService.employerConfirm({
+        session,
+        roles: await resolveAuthorizationRoles(session.user.id),
+        timesheetId: readRouteParam(request.params, "timesheetId"),
+        expectedVersion: readOptionalNumber(body, "expectedVersion") ?? 0
+      });
+
+      return reply.code(200).send({ timesheet: serializeTimesheet(timesheet) });
+    }
+  );
+
+  app.post(
+    "/organizations/:organizationId/timesheets/:timesheetId/dispute",
+    async (request, reply) => {
+      const session = await authService.validateSession(
+        readBearerToken(request.headers.authorization)
+      );
+      if (!session.authenticated || !session.user) return sendTimesheetDenied(reply);
+
+      const body = asRecord(request.body);
+      const timesheet = await timesheetService.employerDispute({
+        session,
+        roles: await resolveAuthorizationRoles(session.user.id),
+        timesheetId: readRouteParam(request.params, "timesheetId"),
+        expectedVersion: readOptionalNumber(body, "expectedVersion") ?? 0,
+        reason: readRequiredString(body, "reason") ?? ""
+      });
+
+      return reply.code(200).send({ timesheet: serializeTimesheet(timesheet) });
+    }
+  );
+
+  app.get("/worker/timesheets/:timesheetId", async (request, reply) => {
+    const session = await authService.validateSession(
+      readBearerToken(request.headers.authorization)
+    );
+    if (!session.authenticated || !session.user) return sendTimesheetDenied(reply);
+
+    const timesheet = await timesheetService.workerRead({
+      session,
+      roles: await resolveAuthorizationRoles(session.user.id),
+      timesheetId: readRouteParam(request.params, "timesheetId")
+    });
+
+    return reply.code(200).send({ timesheet: serializeTimesheet(timesheet) });
+  });
+
+  app.post("/worker/timesheets/:timesheetId/confirm", async (request, reply) => {
+    const session = await authService.validateSession(
+      readBearerToken(request.headers.authorization)
+    );
+    if (!session.authenticated || !session.user) return sendTimesheetDenied(reply);
+
+    const body = asRecord(request.body);
+    const timesheet = await timesheetService.workerConfirm({
+      session,
+      roles: await resolveAuthorizationRoles(session.user.id),
+      timesheetId: readRouteParam(request.params, "timesheetId"),
+      expectedVersion: readOptionalNumber(body, "expectedVersion") ?? 0
+    });
+
+    return reply.code(200).send({ timesheet: serializeTimesheet(timesheet) });
+  });
+
+  app.post("/worker/timesheets/:timesheetId/dispute", async (request, reply) => {
+    const session = await authService.validateSession(
+      readBearerToken(request.headers.authorization)
+    );
+    if (!session.authenticated || !session.user) return sendTimesheetDenied(reply);
+
+    const body = asRecord(request.body);
+    const timesheet = await timesheetService.workerDispute({
+      session,
+      roles: await resolveAuthorizationRoles(session.user.id),
+      timesheetId: readRouteParam(request.params, "timesheetId"),
+      expectedVersion: readOptionalNumber(body, "expectedVersion") ?? 0,
+      reason: readRequiredString(body, "reason") ?? ""
+    });
+
+    return reply.code(200).send({ timesheet: serializeTimesheet(timesheet) });
+  });
+
   async function resolveCatalogueReadRoles(userId: string, organizationId: string | null) {
     if (organizationId) {
       const decision = await membershipService.selectOrganizationContext({
@@ -2634,6 +2916,13 @@ function sendAssignmentDenied(reply: FastifyReply) {
 }
 
 function sendAttendanceDenied(reply: FastifyReply) {
+  return reply.code(403).send({
+    error: authorizationDeniedCode,
+    message: authorizationDeniedMessage
+  });
+}
+
+function sendTimesheetDenied(reply: FastifyReply) {
   return reply.code(403).send({
     error: authorizationDeniedCode,
     message: authorizationDeniedMessage
@@ -2823,6 +3112,27 @@ function serializeAttendanceRecord(
   };
 }
 
+function serializeTimesheet(
+  timesheet: Awaited<ReturnType<TimesheetService["createFromAttendance"]>>
+) {
+  return {
+    ...timesheet,
+    scheduledStartAt: timesheet.scheduledStartAt.toISOString(),
+    scheduledEndAt: timesheet.scheduledEndAt.toISOString(),
+    actualCheckInAt: timesheet.actualCheckInAt?.toISOString() ?? null,
+    actualCheckOutAt: timesheet.actualCheckOutAt?.toISOString() ?? null,
+    workerReviewedAt: timesheet.workerReviewedAt?.toISOString() ?? null,
+    employerReviewedAt: timesheet.employerReviewedAt?.toISOString() ?? null,
+    platformReviewedAt: timesheet.platformReviewedAt?.toISOString() ?? null,
+    approvedAt: timesheet.approvedAt?.toISOString() ?? null,
+    lockedAt: timesheet.lockedAt?.toISOString() ?? null,
+    rejectedAt: timesheet.rejectedAt?.toISOString() ?? null,
+    cancelledAt: timesheet.cancelledAt?.toISOString() ?? null,
+    createdAt: timesheet.createdAt.toISOString(),
+    updatedAt: timesheet.updatedAt.toISOString()
+  };
+}
+
 function readResidenceStatus(value: string | null): ResidenceStatus | null {
   return value === "draft" ||
     value === "active" ||
@@ -2913,6 +3223,22 @@ function readAttendanceStatus(value: string | null): AttendanceStatus | null {
     value === "missed" ||
     value === "cancelled" ||
     value === "exception"
+    ? value
+    : null;
+}
+
+function readTimesheetStatus(value: string | null): TimesheetStatus | null {
+  return value === "draft" ||
+    value === "calculation_pending" ||
+    value === "review_required" ||
+    value === "worker_review" ||
+    value === "employer_review" ||
+    value === "platform_review" ||
+    value === "approved" ||
+    value === "locked" ||
+    value === "rejected" ||
+    value === "correction_required" ||
+    value === "cancelled"
     ? value
     : null;
 }
@@ -3036,4 +3362,35 @@ function createUnavailableAttendanceService(): AttendanceService {
     cancel: denied,
     readAuditSummary: denied
   } as AttendanceService;
+}
+
+function createUnavailableTimesheetService(): TimesheetService {
+  const denied = async () => {
+    throw new TimesheetError({
+      status: "permission_denied",
+      allow: false,
+      timesheet: null,
+      roles: [],
+      internalReason: "timesheet_service_unavailable",
+      externalCode: authorizationDeniedCode,
+      externalMessage: authorizationDeniedMessage
+    });
+  };
+
+  return {
+    createFromAttendance: denied,
+    calculate: denied,
+    listTimesheets: denied,
+    readTimesheet: denied,
+    workerRead: denied,
+    workerConfirm: denied,
+    workerDispute: denied,
+    employerConfirm: denied,
+    employerDispute: denied,
+    requestCorrection: denied,
+    approve: denied,
+    reject: denied,
+    lock: denied,
+    readAuditSummary: denied
+  } as TimesheetService;
 }

@@ -30,7 +30,8 @@ export const authorizationRoleKeys = [
   "ORGANIZATION_ADMINISTRATOR",
   "ORGANIZATION_STAFF",
   "WORKER_ACCESS",
-  "DISPATCHER"
+  "DISPATCHER",
+  "TIMESHEET_REVIEWER"
 ] as const;
 
 export type AuthorizationRoleKey = (typeof authorizationRoleKeys)[number];
@@ -96,6 +97,24 @@ export const authorizationPermissionKeys = [
   "attendance.worker_check_in",
   "attendance.worker_check_out",
   "attendance.supervise",
+  "timesheet.create",
+  "timesheet.read",
+  "timesheet.calculate",
+  "timesheet.recalculate",
+  "timesheet.review",
+  "timesheet.approve",
+  "timesheet.lock",
+  "timesheet.reject",
+  "timesheet.request_correction",
+  "timesheet.adjust",
+  "timesheet.audit_read",
+  "timesheet.worker_read",
+  "timesheet.worker_confirm",
+  "timesheet.worker_dispute",
+  "timesheet.employer_read",
+  "timesheet.employer_confirm",
+  "timesheet.employer_dispute",
+  "timesheet.supervise",
   "audit.read",
   "platform.supervise"
 ] as const;
@@ -1878,6 +1897,230 @@ export class AttendanceError extends Error {
   }
 }
 
+export type TimesheetStatus =
+  | "draft"
+  | "calculation_pending"
+  | "review_required"
+  | "worker_review"
+  | "employer_review"
+  | "platform_review"
+  | "approved"
+  | "locked"
+  | "rejected"
+  | "correction_required"
+  | "cancelled";
+
+export type TimesheetDecisionStatus =
+  | "allow"
+  | "invalid_input"
+  | "not_found"
+  | "permission_denied"
+  | "version_conflict"
+  | "invalid_transition"
+  | "attendance_not_ready"
+  | "timesheet_exists"
+  | "attendance_changed"
+  | "assignment_changed"
+  | "worker_review_required"
+  | "employer_review_required"
+  | "locked_record";
+
+export interface StoredTimesheet {
+  id: string;
+  assignmentId: string;
+  attendanceRecordId: string;
+  jobRequestId: string;
+  workerIdentityId: string;
+  organizationId: string;
+  residenceId: string;
+  departmentId: string;
+  workGroupId: string;
+  roleDefinitionId: string;
+  status: TimesheetStatus;
+  attendanceVersionSnapshot: number;
+  assignmentVersionSnapshot: number;
+  scheduledStartAt: Date;
+  scheduledEndAt: Date;
+  actualCheckInAt: Date | null;
+  actualCheckOutAt: Date | null;
+  timezone: string;
+  rawElapsedMinutes: number | null;
+  payableMinutes: number | null;
+  billableMinutes: number | null;
+  excludedMinutes: number;
+  breakMinutes: number;
+  premiumCandidateMinutes: number;
+  overtimeCandidateMinutes: number;
+  roundingAdjustmentMinutes: number;
+  exceptionSummary: string | null;
+  workerReviewStatus: string;
+  workerReviewedAt: Date | null;
+  employerReviewStatus: string;
+  employerReviewedAt: Date | null;
+  platformReviewStatus: string;
+  platformReviewedAt: Date | null;
+  approvedAt: Date | null;
+  lockedAt: Date | null;
+  rejectedAt: Date | null;
+  cancelledAt: Date | null;
+  correctionReason: string | null;
+  createdByUserId: string;
+  updatedByUserId: string | null;
+  workerReviewedByUserId: string | null;
+  employerReviewedByUserId: string | null;
+  platformReviewedByUserId: string | null;
+  lockedByUserId: string | null;
+  createdAt: Date;
+  updatedAt: Date;
+  version: number;
+}
+
+export interface StoredTimesheetCalculationSnapshot {
+  id: string;
+  timesheetId: string;
+  attendanceRecordId: string;
+  attendanceVersionSnapshot: number;
+  assignmentId: string;
+  assignmentVersionSnapshot: number;
+  calculationPolicyVersion: string;
+  countryPackVersion: string;
+  rawCheckInAt: Date;
+  rawCheckOutAt: Date;
+  normalizedCheckInAt: Date;
+  normalizedCheckOutAt: Date;
+  timezone: string;
+  breakRule: string;
+  roundingRule: string;
+  rawElapsedMinutes: number;
+  payableMinutes: number;
+  billableMinutes: number;
+  excludedMinutes: number;
+  breakMinutes: number;
+  premiumCandidateMinutes: number;
+  overtimeCandidateMinutes: number;
+  roundingAdjustmentMinutes: number;
+  exceptionFlags: string[];
+  calculationEngineVersion: string;
+  createdAt: Date;
+}
+
+export interface PublicTimesheet extends StoredTimesheet {
+  versionToken: number;
+  attendanceBoundary: "preserved";
+  payrollBoundary: "not_started" | "handoff_ready";
+  financeBoundary: "not_started" | "handoff_ready";
+  calculationBoundary: "time_only_no_money";
+}
+
+export interface TimesheetDecision {
+  status: TimesheetDecisionStatus;
+  allow: boolean;
+  timesheet: PublicTimesheet | null;
+  roles: readonly AuthorizationRoleKey[];
+  internalReason: string | null;
+  externalCode: typeof authorizationDeniedCode | null;
+  externalMessage: typeof authorizationDeniedMessage | null;
+}
+
+export interface TimesheetRepository {
+  createTimesheetFromAttendance(input: {
+    attendanceRecord: StoredAttendanceRecord;
+    assignment: StoredAssignment;
+    actorUserId: string;
+    now: Date;
+  }): Promise<StoredTimesheet>;
+  findTimesheetById(timesheetId: string): Promise<StoredTimesheet | null>;
+  findTimesheetByAttendanceRecordId(attendanceRecordId: string): Promise<StoredTimesheet | null>;
+  findTimesheetByAssignmentId(assignmentId: string): Promise<StoredTimesheet | null>;
+  listTimesheets(input: {
+    organizationId?: string | undefined;
+    workerIdentityId?: string | undefined;
+    assignmentId?: string | undefined;
+    statuses?: readonly TimesheetStatus[] | undefined;
+  }): Promise<StoredTimesheet[]>;
+  updateTimesheet(input: {
+    timesheetId: string;
+    expectedVersion: number;
+    actorUserId: string | null;
+    status?: TimesheetStatus | undefined;
+    actualCheckInAt?: Date | null | undefined;
+    actualCheckOutAt?: Date | null | undefined;
+    rawElapsedMinutes?: number | null | undefined;
+    payableMinutes?: number | null | undefined;
+    billableMinutes?: number | null | undefined;
+    excludedMinutes?: number | undefined;
+    breakMinutes?: number | undefined;
+    premiumCandidateMinutes?: number | undefined;
+    overtimeCandidateMinutes?: number | undefined;
+    roundingAdjustmentMinutes?: number | undefined;
+    exceptionSummary?: string | null | undefined;
+    workerReviewStatus?: string | undefined;
+    workerReviewedAt?: Date | null | undefined;
+    employerReviewStatus?: string | undefined;
+    employerReviewedAt?: Date | null | undefined;
+    platformReviewStatus?: string | undefined;
+    platformReviewedAt?: Date | null | undefined;
+    approvedAt?: Date | null | undefined;
+    lockedAt?: Date | null | undefined;
+    rejectedAt?: Date | null | undefined;
+    cancelledAt?: Date | null | undefined;
+    correctionReason?: string | null | undefined;
+    workerReviewedByUserId?: string | null | undefined;
+    employerReviewedByUserId?: string | null | undefined;
+    platformReviewedByUserId?: string | null | undefined;
+    lockedByUserId?: string | null | undefined;
+    now: Date;
+  }): Promise<StoredTimesheet | null>;
+  createCalculationSnapshot(input: {
+    timesheet: StoredTimesheet;
+    attendanceRecord: StoredAttendanceRecord;
+    assignment: StoredAssignment;
+    calculation: TimesheetCalculationResult;
+    now: Date;
+  }): Promise<StoredTimesheetCalculationSnapshot>;
+  listCalculationSnapshots(timesheetId: string): Promise<StoredTimesheetCalculationSnapshot[]>;
+  recordTimesheetAuditEvent(input: {
+    action:
+      | "timesheet.creation_attempted"
+      | "timesheet.validation_failed"
+      | "timesheet.created"
+      | "timesheet.calculation_started"
+      | "timesheet.calculation_completed"
+      | "timesheet.calculation_failed"
+      | "timesheet.worker_confirmed"
+      | "timesheet.worker_disputed"
+      | "timesheet.employer_confirmed"
+      | "timesheet.employer_disputed"
+      | "timesheet.correction_requested"
+      | "timesheet.approved"
+      | "timesheet.rejected"
+      | "timesheet.locked"
+      | "timesheet.cancelled"
+      | "timesheet.access_denied"
+      | "timesheet.version_conflict";
+    organizationId: string | null;
+    timesheetId: string | null;
+    attendanceRecordId: string | null;
+    assignmentId: string | null;
+    actorUserId: string | null;
+    priorState: string | null;
+    newState: string | null;
+    reason: string | null;
+    correlationId: string;
+    createdAt: Date;
+  }): Promise<void>;
+}
+
+export class TimesheetError extends Error {
+  decision: TimesheetDecision;
+
+  constructor(decision: TimesheetDecision) {
+    super(authorizationDeniedMessage);
+    this.name = "TimesheetError";
+    this.decision = decision;
+  }
+}
+
 export class AuthorizationDeniedError extends Error {
   code = authorizationDeniedCode;
   decision: AuthorizationDecision;
@@ -2371,6 +2614,150 @@ export const authorizationPermissionDefinitions = [
     "Not assigned to active roles in this foundation."
   ),
   permission(
+    "timesheet.create",
+    "Create a Timesheet from completed or resolved Attendance evidence.",
+    "platform",
+    "active",
+    "Could convert incomplete attendance evidence into reviewed work time.",
+    "Requires Attendance validation and creates no payroll, finance, invoice, or payment record."
+  ),
+  permission(
+    "timesheet.read",
+    "Read governed Timesheet summaries for authorized platform users.",
+    "platform",
+    "active",
+    "Could expose payable and billable time boundaries beyond least privilege.",
+    "Timesheet Reviewer and Platform Administrator only."
+  ),
+  permission(
+    "timesheet.calculate",
+    "Create a versioned Timesheet calculation snapshot.",
+    "platform",
+    "active",
+    "Could produce unauditable time values if calculation inputs are not versioned.",
+    "Requires Attendance and Assignment input versions."
+  ),
+  permission(
+    "timesheet.recalculate",
+    "Recalculate an unlocked Timesheet through a governed review path.",
+    "platform",
+    "active",
+    "Could silently change reviewed time if previous snapshots are overwritten.",
+    "Creates a new calculation snapshot and preserves prior state."
+  ),
+  permission(
+    "timesheet.review",
+    "Review Timesheet exceptions and correction requests.",
+    "platform",
+    "active",
+    "Could be confused with payroll approval if boundary language is weak.",
+    "Review never creates payroll or invoice records."
+  ),
+  permission(
+    "timesheet.approve",
+    "Approve governed Timesheet time values before locking.",
+    "platform",
+    "active",
+    "Could prematurely authorize downstream payroll or finance if review is incomplete.",
+    "Requires worker and employer review boundaries before platform approval."
+  ),
+  permission(
+    "timesheet.lock",
+    "Lock an approved Timesheet for future Payroll and Finance handoff boundaries.",
+    "platform",
+    "active",
+    "Could prevent fair correction if locked records are overwritten or lack correction paths.",
+    "Locked Timesheets are immutable except through formal correction."
+  ),
+  permission(
+    "timesheet.reject",
+    "Reject an invalid Timesheet with a governed reason.",
+    "platform",
+    "active",
+    "Could unfairly block payable review without evidence and audit.",
+    "Requires reason and audit; creates no disciplinary conclusion."
+  ),
+  permission(
+    "timesheet.request_correction",
+    "Request Timesheet correction before approval or after review exception.",
+    "platform",
+    "active",
+    "Could hide time changes if original values are not preserved.",
+    "Keeps Attendance immutable and requires recalculation or formal adjustment."
+  ),
+  permission(
+    "timesheet.adjust",
+    "Reserved formal adjustment capability for post-lock correction.",
+    "platform",
+    "active",
+    "Could alter financial inputs if used without strict evidence.",
+    "Approved for boundary only; no payroll or finance posting."
+  ),
+  permission(
+    "timesheet.audit_read",
+    "Read Timesheet audit summaries.",
+    "platform",
+    "active",
+    "Could expose review and dispute history beyond least privilege.",
+    "Timesheet Reviewer and Platform Administrator only."
+  ),
+  permission(
+    "timesheet.worker_read",
+    "Allow a worker to read their own Timesheet.",
+    "none",
+    "active",
+    "Could expose another worker's time if ownership is not enforced.",
+    "Requires authenticated WorkerIdentity ownership."
+  ),
+  permission(
+    "timesheet.worker_confirm",
+    "Allow a worker to explicitly confirm their own Timesheet review.",
+    "none",
+    "active",
+    "Could create hidden consent if silence is treated as confirmation.",
+    "Requires explicit worker action; silence never counts."
+  ),
+  permission(
+    "timesheet.worker_dispute",
+    "Allow a worker to dispute their own Timesheet.",
+    "none",
+    "active",
+    "Could expose sensitive dispute information if not scoped.",
+    "Requires worker ownership and audit."
+  ),
+  permission(
+    "timesheet.employer_read",
+    "Allow an employer to read organization-scoped Timesheet status.",
+    "organization",
+    "active",
+    "Could expose worker-payable details or cross-tenant time records.",
+    "Requires organization context and hides confidential commercial/worker data."
+  ),
+  permission(
+    "timesheet.employer_confirm",
+    "Allow an employer to confirm organization-scoped Timesheet review.",
+    "organization",
+    "active",
+    "Could be mistaken for platform approval or payroll execution.",
+    "Employer confirmation does not approve payroll or modify Attendance evidence."
+  ),
+  permission(
+    "timesheet.employer_dispute",
+    "Allow an employer to dispute organization-scoped Timesheet details.",
+    "organization",
+    "active",
+    "Could unfairly alter worker time if treated as evidence rewrite.",
+    "Creates a correction-required review state and preserves Attendance."
+  ),
+  permission(
+    "timesheet.supervise",
+    "Reserved future Timesheet supervision capability.",
+    "platform",
+    "reserved",
+    "Would grant elevated Timesheet oversight if activated silently.",
+    "Not assigned to active roles in this foundation."
+  ),
+  permission(
     "audit.read",
     "Read approved audit summaries.",
     "platform",
@@ -2425,6 +2812,17 @@ export const authorizationRoleDefinitions = [
     "attendance.override",
     "attendance.cancel",
     "attendance.audit_read",
+    "timesheet.create",
+    "timesheet.read",
+    "timesheet.calculate",
+    "timesheet.recalculate",
+    "timesheet.review",
+    "timesheet.approve",
+    "timesheet.lock",
+    "timesheet.reject",
+    "timesheet.request_correction",
+    "timesheet.adjust",
+    "timesheet.audit_read",
     "audit.read"
   ]),
   roleDefinition("ORGANIZATION_OWNER", "Organization Owner", "organization", [
@@ -2444,7 +2842,10 @@ export const authorizationRoleDefinitions = [
     "job_request.submit",
     "job_request.cancel",
     "assignment.read",
-    "attendance.read"
+    "attendance.read",
+    "timesheet.employer_read",
+    "timesheet.employer_confirm",
+    "timesheet.employer_dispute"
   ]),
   roleDefinition("ORGANIZATION_ADMINISTRATOR", "Organization Administrator", "organization", [
     "organization.read",
@@ -2462,7 +2863,10 @@ export const authorizationRoleDefinitions = [
     "job_request.submit",
     "job_request.cancel",
     "assignment.read",
-    "attendance.read"
+    "attendance.read",
+    "timesheet.employer_read",
+    "timesheet.employer_confirm",
+    "timesheet.employer_dispute"
   ]),
   roleDefinition("ORGANIZATION_STAFF", "Organization Staff", "organization", [
     "organization.read",
@@ -2476,7 +2880,10 @@ export const authorizationRoleDefinitions = [
     "job_request.submit",
     "job_request.cancel",
     "assignment.read",
-    "attendance.read"
+    "attendance.read",
+    "timesheet.employer_read",
+    "timesheet.employer_confirm",
+    "timesheet.employer_dispute"
   ]),
   roleDefinition("WORKER_ACCESS", "Worker Access", "none", [
     "worker_offer.respond",
@@ -2485,7 +2892,10 @@ export const authorizationRoleDefinitions = [
     "assignment.worker_withdraw",
     "attendance.worker_read",
     "attendance.worker_check_in",
-    "attendance.worker_check_out"
+    "attendance.worker_check_out",
+    "timesheet.worker_read",
+    "timesheet.worker_confirm",
+    "timesheet.worker_dispute"
   ]),
   roleDefinition("DISPATCHER", "Dispatcher", "platform", [
     "dispatch.create",
@@ -2518,7 +2928,21 @@ export const authorizationRoleDefinitions = [
     "attendance.check_out",
     "attendance.override",
     "attendance.cancel",
-    "attendance.audit_read"
+    "attendance.audit_read",
+    "timesheet.read"
+  ]),
+  roleDefinition("TIMESHEET_REVIEWER", "Timesheet Reviewer", "platform", [
+    "timesheet.create",
+    "timesheet.read",
+    "timesheet.calculate",
+    "timesheet.recalculate",
+    "timesheet.review",
+    "timesheet.approve",
+    "timesheet.lock",
+    "timesheet.reject",
+    "timesheet.request_correction",
+    "timesheet.adjust",
+    "timesheet.audit_read"
   ])
 ] as const satisfies readonly AuthorizationRoleDefinition[];
 
@@ -7787,6 +8211,1179 @@ export function createAttendanceService(
 
 export type AttendanceService = ReturnType<typeof createAttendanceService>;
 
+export function createTimesheetService(
+  timesheetRepository: TimesheetRepository,
+  attendanceRepository: AttendanceRepository,
+  assignmentRepository: AssignmentRepository,
+  workerOfferRepository: WorkerOfferRepository,
+  authorizationService: AuthorizationService,
+  options: { now?: () => Date } = {}
+) {
+  const now = options.now ?? (() => new Date());
+
+  return {
+    async createFromAttendance(input: {
+      session: SessionValidationResult;
+      roles?: readonly AuthorizationRoleKey[];
+      attendanceRecordId: string;
+      correlationId?: string;
+    }) {
+      const currentTime = now();
+      const decision = await authorizeTimesheetPlatformOperation({
+        timesheetRepository,
+        authorizationService,
+        session: input.session,
+        roles: input.roles ?? [],
+        permission: "timesheet.create",
+        timesheet: null,
+        correlationId: input.correlationId,
+        now: currentTime
+      });
+      if (!decision.allow) throw new TimesheetError(decision);
+
+      await recordTimesheetAudit(timesheetRepository, {
+        action: "timesheet.creation_attempted",
+        organizationId: null,
+        timesheetId: null,
+        attendanceRecordId: input.attendanceRecordId,
+        assignmentId: null,
+        actorUserId: input.session.user?.id ?? null,
+        priorState: null,
+        newState: "draft",
+        reason: "create_from_attendance",
+        correlationId: input.correlationId,
+        createdAt: currentTime
+      });
+
+      const attendanceRecord = await attendanceRepository.findAttendanceById(
+        input.attendanceRecordId
+      );
+      if (!attendanceRecord) {
+        throw new TimesheetError(
+          timesheetDeny("not_found", "attendance_record_not_found", null, input.roles ?? [])
+        );
+      }
+      if (!timesheetReadyAttendanceStatuses.includes(attendanceRecord.status)) {
+        await recordTimesheetValidationFailure({
+          timesheetRepository,
+          attendanceRecord,
+          actorUserId: input.session.user?.id ?? null,
+          reason: `attendance_not_ready:${attendanceRecord.status}`,
+          correlationId: input.correlationId,
+          now: currentTime
+        });
+        throw new TimesheetError(
+          timesheetDeny(
+            "attendance_not_ready",
+            `attendance_not_ready:${attendanceRecord.status}`,
+            null,
+            input.roles ?? []
+          )
+        );
+      }
+      if (!attendanceRecord.checkInAt || !attendanceRecord.checkOutAt) {
+        await recordTimesheetValidationFailure({
+          timesheetRepository,
+          attendanceRecord,
+          actorUserId: input.session.user?.id ?? null,
+          reason: "attendance_missing_check_in_or_check_out",
+          correlationId: input.correlationId,
+          now: currentTime
+        });
+        throw new TimesheetError(
+          timesheetDeny(
+            "attendance_not_ready",
+            "attendance_missing_check_in_or_check_out",
+            null,
+            input.roles ?? []
+          )
+        );
+      }
+      const assignment = await assignmentRepository.findAssignmentById(
+        attendanceRecord.assignmentId
+      );
+      if (!assignment) {
+        throw new TimesheetError(
+          timesheetDeny("not_found", "assignment_not_found", null, input.roles ?? [])
+        );
+      }
+      if (await timesheetRepository.findTimesheetByAttendanceRecordId(attendanceRecord.id)) {
+        throw new TimesheetError(
+          timesheetDeny("timesheet_exists", "timesheet_already_exists", null, input.roles ?? [])
+        );
+      }
+
+      const timesheet = await timesheetRepository.createTimesheetFromAttendance({
+        attendanceRecord,
+        assignment,
+        actorUserId: input.session.user?.id ?? "system",
+        now: currentTime
+      });
+      await recordTimesheetAudit(timesheetRepository, {
+        action: "timesheet.created",
+        organizationId: timesheet.organizationId,
+        timesheetId: timesheet.id,
+        attendanceRecordId: timesheet.attendanceRecordId,
+        assignmentId: timesheet.assignmentId,
+        actorUserId: input.session.user?.id ?? null,
+        priorState: null,
+        newState: timesheet.status,
+        reason: "attendance_validated",
+        correlationId: input.correlationId,
+        createdAt: currentTime
+      });
+
+      return toPublicTimesheet(timesheet);
+    },
+
+    async calculate(input: TimesheetTransitionInput) {
+      const currentTime = now();
+      const timesheet = await requireAuthorizedTimesheet({
+        timesheetRepository,
+        authorizationService,
+        session: input.session,
+        roles: input.roles ?? [],
+        permission: "timesheet.calculate",
+        timesheetId: input.timesheetId,
+        correlationId: input.correlationId,
+        now: currentTime
+      });
+      if (
+        !["draft", "calculation_pending", "correction_required"].includes(timesheet.stored.status)
+      ) {
+        throw new TimesheetError(
+          timesheetDeny(
+            "invalid_transition",
+            `cannot_calculate_from_${timesheet.stored.status}`,
+            toPublicTimesheet(timesheet.stored),
+            input.roles ?? []
+          )
+        );
+      }
+      const attendanceRecord = await attendanceRepository.findAttendanceById(
+        timesheet.stored.attendanceRecordId
+      );
+      const assignment = await assignmentRepository.findAssignmentById(
+        timesheet.stored.assignmentId
+      );
+      if (!attendanceRecord || !assignment) {
+        throw new TimesheetError(
+          timesheetDeny(
+            "not_found",
+            "timesheet_input_record_not_found",
+            timesheet.publicTimesheet,
+            input.roles ?? []
+          )
+        );
+      }
+      if (attendanceRecord.version !== timesheet.stored.attendanceVersionSnapshot) {
+        throw new TimesheetError(
+          timesheetDeny(
+            "attendance_changed",
+            "attendance_version_changed",
+            timesheet.publicTimesheet,
+            input.roles ?? []
+          )
+        );
+      }
+      if (assignment.version !== timesheet.stored.assignmentVersionSnapshot) {
+        throw new TimesheetError(
+          timesheetDeny(
+            "assignment_changed",
+            "assignment_version_changed",
+            timesheet.publicTimesheet,
+            input.roles ?? []
+          )
+        );
+      }
+      if (!attendanceRecord.checkInAt || !attendanceRecord.checkOutAt) {
+        throw new TimesheetError(
+          timesheetDeny(
+            "attendance_not_ready",
+            "attendance_missing_check_in_or_check_out",
+            timesheet.publicTimesheet,
+            input.roles ?? []
+          )
+        );
+      }
+
+      await recordTimesheetAudit(timesheetRepository, {
+        action: "timesheet.calculation_started",
+        organizationId: timesheet.stored.organizationId,
+        timesheetId: timesheet.stored.id,
+        attendanceRecordId: timesheet.stored.attendanceRecordId,
+        assignmentId: timesheet.stored.assignmentId,
+        actorUserId: input.session.user?.id ?? null,
+        priorState: timesheet.stored.status,
+        newState: "calculation_pending",
+        reason: "time_only_calculation",
+        correlationId: input.correlationId,
+        createdAt: currentTime
+      });
+
+      const calculation = calculateTimesheetMinutes(attendanceRecord, assignment);
+      const nextStatus: TimesheetStatus =
+        calculation.exceptionFlags.length > 0 ? "review_required" : "worker_review";
+      const updated = await timesheetRepository.updateTimesheet({
+        timesheetId: timesheet.stored.id,
+        expectedVersion: input.expectedVersion,
+        actorUserId: input.session.user?.id ?? null,
+        status: nextStatus,
+        actualCheckInAt: calculation.rawCheckInAt,
+        actualCheckOutAt: calculation.rawCheckOutAt,
+        rawElapsedMinutes: calculation.rawElapsedMinutes,
+        payableMinutes: calculation.payableMinutes,
+        billableMinutes: calculation.billableMinutes,
+        excludedMinutes: calculation.excludedMinutes,
+        breakMinutes: calculation.breakMinutes,
+        premiumCandidateMinutes: calculation.premiumCandidateMinutes,
+        overtimeCandidateMinutes: calculation.overtimeCandidateMinutes,
+        roundingAdjustmentMinutes: calculation.roundingAdjustmentMinutes,
+        exceptionSummary: calculation.exceptionFlags.join(", ") || null,
+        now: currentTime
+      });
+      if (!updated) {
+        await recordTimesheetVersionConflict(timesheetRepository, timesheet.stored, {
+          actorUserId: input.session.user?.id ?? null,
+          correlationId: input.correlationId,
+          roles: input.roles ?? [],
+          now: currentTime
+        });
+        throw new TimesheetError(
+          timesheetDeny(
+            "version_conflict",
+            "stale_version",
+            timesheet.publicTimesheet,
+            input.roles ?? []
+          )
+        );
+      }
+      await timesheetRepository.createCalculationSnapshot({
+        timesheet: updated,
+        attendanceRecord,
+        assignment,
+        calculation,
+        now: currentTime
+      });
+      await recordTimesheetAudit(timesheetRepository, {
+        action: "timesheet.calculation_completed",
+        organizationId: updated.organizationId,
+        timesheetId: updated.id,
+        attendanceRecordId: updated.attendanceRecordId,
+        assignmentId: updated.assignmentId,
+        actorUserId: input.session.user?.id ?? null,
+        priorState: timesheet.stored.status,
+        newState: updated.status,
+        reason:
+          calculation.exceptionFlags.length > 0 ? "exceptions_flagged" : "ready_for_worker_review",
+        correlationId: input.correlationId,
+        createdAt: currentTime
+      });
+
+      return toPublicTimesheet(updated);
+    },
+
+    async listTimesheets(input: {
+      session: SessionValidationResult;
+      roles?: readonly AuthorizationRoleKey[];
+      organizationId?: string | null;
+      assignmentId?: string | null;
+      statuses?: readonly TimesheetStatus[];
+      correlationId?: string;
+    }) {
+      const currentTime = now();
+      const decision =
+        input.organizationId === null || input.organizationId === undefined
+          ? await authorizeTimesheetPlatformOperation({
+              timesheetRepository,
+              authorizationService,
+              session: input.session,
+              roles: input.roles ?? [],
+              permission: "timesheet.read",
+              timesheet: null,
+              correlationId: input.correlationId,
+              now: currentTime
+            })
+          : await authorizeTimesheetReadOperation({
+              timesheetRepository,
+              authorizationService,
+              session: input.session,
+              roles: input.roles ?? [],
+              organizationId: input.organizationId,
+              permission: "timesheet.employer_read",
+              timesheet: null,
+              correlationId: input.correlationId,
+              now: currentTime
+            });
+      if (!decision.allow) throw new TimesheetError(decision);
+
+      return (
+        await timesheetRepository.listTimesheets({
+          organizationId: input.organizationId ?? undefined,
+          assignmentId: input.assignmentId ?? undefined,
+          statuses: input.statuses
+        })
+      ).map(toPublicTimesheet);
+    },
+
+    async readTimesheet(input: TimesheetReadInput) {
+      const timesheet = await requireAuthorizedTimesheet({
+        timesheetRepository,
+        authorizationService,
+        session: input.session,
+        roles: input.roles ?? [],
+        permission: "timesheet.read",
+        timesheetId: input.timesheetId,
+        correlationId: input.correlationId,
+        now: now()
+      });
+      return timesheet.publicTimesheet;
+    },
+
+    async workerRead(input: TimesheetReadInput) {
+      const workerIdentity = await requireWorkerIdentityForSession(
+        workerOfferRepository,
+        input.session
+      );
+      const timesheet = await requireWorkerOwnedTimesheet({
+        timesheetRepository,
+        authorizationService,
+        session: input.session,
+        roles: input.roles ?? [],
+        workerIdentity,
+        timesheetId: input.timesheetId,
+        permission: "timesheet.worker_read",
+        correlationId: input.correlationId,
+        now: now()
+      });
+      return timesheet.publicTimesheet;
+    },
+
+    async workerConfirm(input: TimesheetTransitionInput) {
+      const currentTime = now();
+      const workerIdentity = await requireWorkerIdentityForSession(
+        workerOfferRepository,
+        input.session
+      );
+      const timesheet = await requireWorkerOwnedTimesheet({
+        timesheetRepository,
+        authorizationService,
+        session: input.session,
+        roles: input.roles ?? [],
+        workerIdentity,
+        timesheetId: input.timesheetId,
+        permission: "timesheet.worker_confirm",
+        correlationId: input.correlationId,
+        now: currentTime
+      });
+      return transitionTimesheet({
+        timesheetRepository,
+        timesheet: timesheet.stored,
+        expectedVersion: input.expectedVersion,
+        actorUserId: input.session.user?.id ?? null,
+        roles: input.roles ?? [],
+        allowedFrom: ["worker_review"],
+        nextStatus: "employer_review",
+        action: "timesheet.worker_confirmed",
+        workerReviewStatus: "confirmed",
+        workerReviewedAt: currentTime,
+        workerReviewedByUserId: input.session.user?.id ?? null,
+        reason: "worker_explicit_confirmation",
+        correlationId: input.correlationId,
+        now: currentTime
+      });
+    },
+
+    async workerDispute(input: TimesheetTransitionInput & { reason: string }) {
+      const currentTime = now();
+      const workerIdentity = await requireWorkerIdentityForSession(
+        workerOfferRepository,
+        input.session
+      );
+      const timesheet = await requireWorkerOwnedTimesheet({
+        timesheetRepository,
+        authorizationService,
+        session: input.session,
+        roles: input.roles ?? [],
+        workerIdentity,
+        timesheetId: input.timesheetId,
+        permission: "timesheet.worker_dispute",
+        correlationId: input.correlationId,
+        now: currentTime
+      });
+      return transitionTimesheet({
+        timesheetRepository,
+        timesheet: timesheet.stored,
+        expectedVersion: input.expectedVersion,
+        actorUserId: input.session.user?.id ?? null,
+        roles: input.roles ?? [],
+        allowedFrom: ["worker_review", "employer_review", "platform_review"],
+        nextStatus: "correction_required",
+        action: "timesheet.worker_disputed",
+        workerReviewStatus: "disputed",
+        workerReviewedAt: currentTime,
+        workerReviewedByUserId: input.session.user?.id ?? null,
+        correctionReason: normalizeOptionalResidenceText(input.reason, 240),
+        reason: "worker_dispute",
+        correlationId: input.correlationId,
+        now: currentTime
+      });
+    },
+
+    async employerConfirm(input: TimesheetTransitionInput) {
+      const currentTime = now();
+      const timesheet = await requireEmployerScopedTimesheet({
+        timesheetRepository,
+        authorizationService,
+        session: input.session,
+        roles: input.roles ?? [],
+        timesheetId: input.timesheetId,
+        permission: "timesheet.employer_confirm",
+        correlationId: input.correlationId,
+        now: currentTime
+      });
+      return transitionTimesheet({
+        timesheetRepository,
+        timesheet: timesheet.stored,
+        expectedVersion: input.expectedVersion,
+        actorUserId: input.session.user?.id ?? null,
+        roles: input.roles ?? [],
+        allowedFrom: ["employer_review"],
+        nextStatus: "platform_review",
+        action: "timesheet.employer_confirmed",
+        employerReviewStatus: "confirmed",
+        employerReviewedAt: currentTime,
+        employerReviewedByUserId: input.session.user?.id ?? null,
+        reason: "employer_explicit_confirmation",
+        correlationId: input.correlationId,
+        now: currentTime
+      });
+    },
+
+    async employerDispute(input: TimesheetTransitionInput & { reason: string }) {
+      const currentTime = now();
+      const timesheet = await requireEmployerScopedTimesheet({
+        timesheetRepository,
+        authorizationService,
+        session: input.session,
+        roles: input.roles ?? [],
+        timesheetId: input.timesheetId,
+        permission: "timesheet.employer_dispute",
+        correlationId: input.correlationId,
+        now: currentTime
+      });
+      return transitionTimesheet({
+        timesheetRepository,
+        timesheet: timesheet.stored,
+        expectedVersion: input.expectedVersion,
+        actorUserId: input.session.user?.id ?? null,
+        roles: input.roles ?? [],
+        allowedFrom: ["employer_review", "platform_review"],
+        nextStatus: "correction_required",
+        action: "timesheet.employer_disputed",
+        employerReviewStatus: "disputed",
+        employerReviewedAt: currentTime,
+        employerReviewedByUserId: input.session.user?.id ?? null,
+        correctionReason: normalizeOptionalResidenceText(input.reason, 240),
+        reason: "employer_dispute",
+        correlationId: input.correlationId,
+        now: currentTime
+      });
+    },
+
+    async requestCorrection(input: TimesheetTransitionInput & { reason: string }) {
+      const currentTime = now();
+      const timesheet = await requireAuthorizedTimesheet({
+        timesheetRepository,
+        authorizationService,
+        session: input.session,
+        roles: input.roles ?? [],
+        permission: "timesheet.request_correction",
+        timesheetId: input.timesheetId,
+        correlationId: input.correlationId,
+        now: currentTime
+      });
+      return transitionTimesheet({
+        timesheetRepository,
+        timesheet: timesheet.stored,
+        expectedVersion: input.expectedVersion,
+        actorUserId: input.session.user?.id ?? null,
+        roles: input.roles ?? [],
+        allowedFrom: [
+          "review_required",
+          "worker_review",
+          "employer_review",
+          "platform_review",
+          "approved"
+        ],
+        nextStatus: "correction_required",
+        action: "timesheet.correction_requested",
+        correctionReason: normalizeOptionalResidenceText(input.reason, 240),
+        reason: "correction_requested",
+        correlationId: input.correlationId,
+        now: currentTime
+      });
+    },
+
+    async approve(input: TimesheetTransitionInput) {
+      const currentTime = now();
+      const timesheet = await requireAuthorizedTimesheet({
+        timesheetRepository,
+        authorizationService,
+        session: input.session,
+        roles: input.roles ?? [],
+        permission: "timesheet.approve",
+        timesheetId: input.timesheetId,
+        correlationId: input.correlationId,
+        now: currentTime
+      });
+      if (timesheet.stored.workerReviewStatus !== "confirmed") {
+        throw new TimesheetError(
+          timesheetDeny(
+            "worker_review_required",
+            "worker_review_required",
+            timesheet.publicTimesheet,
+            input.roles ?? []
+          )
+        );
+      }
+      if (timesheet.stored.employerReviewStatus !== "confirmed") {
+        throw new TimesheetError(
+          timesheetDeny(
+            "employer_review_required",
+            "employer_review_required",
+            timesheet.publicTimesheet,
+            input.roles ?? []
+          )
+        );
+      }
+      return transitionTimesheet({
+        timesheetRepository,
+        timesheet: timesheet.stored,
+        expectedVersion: input.expectedVersion,
+        actorUserId: input.session.user?.id ?? null,
+        roles: input.roles ?? [],
+        allowedFrom: ["platform_review"],
+        nextStatus: "approved",
+        action: "timesheet.approved",
+        platformReviewStatus: "approved",
+        platformReviewedAt: currentTime,
+        platformReviewedByUserId: input.session.user?.id ?? null,
+        approvedAt: currentTime,
+        reason: "platform_approved",
+        correlationId: input.correlationId,
+        now: currentTime
+      });
+    },
+
+    async reject(input: TimesheetTransitionInput & { reason: string }) {
+      const currentTime = now();
+      const timesheet = await requireAuthorizedTimesheet({
+        timesheetRepository,
+        authorizationService,
+        session: input.session,
+        roles: input.roles ?? [],
+        permission: "timesheet.reject",
+        timesheetId: input.timesheetId,
+        correlationId: input.correlationId,
+        now: currentTime
+      });
+      return transitionTimesheet({
+        timesheetRepository,
+        timesheet: timesheet.stored,
+        expectedVersion: input.expectedVersion,
+        actorUserId: input.session.user?.id ?? null,
+        roles: input.roles ?? [],
+        allowedFrom: ["review_required", "worker_review", "employer_review", "platform_review"],
+        nextStatus: "rejected",
+        action: "timesheet.rejected",
+        platformReviewStatus: "rejected",
+        platformReviewedAt: currentTime,
+        platformReviewedByUserId: input.session.user?.id ?? null,
+        rejectedAt: currentTime,
+        correctionReason: normalizeOptionalResidenceText(input.reason, 240),
+        reason: "platform_rejected",
+        correlationId: input.correlationId,
+        now: currentTime
+      });
+    },
+
+    async lock(input: TimesheetTransitionInput) {
+      const currentTime = now();
+      const timesheet = await requireAuthorizedTimesheet({
+        timesheetRepository,
+        authorizationService,
+        session: input.session,
+        roles: input.roles ?? [],
+        permission: "timesheet.lock",
+        timesheetId: input.timesheetId,
+        correlationId: input.correlationId,
+        now: currentTime
+      });
+      return transitionTimesheet({
+        timesheetRepository,
+        timesheet: timesheet.stored,
+        expectedVersion: input.expectedVersion,
+        actorUserId: input.session.user?.id ?? null,
+        roles: input.roles ?? [],
+        allowedFrom: ["approved"],
+        nextStatus: "locked",
+        action: "timesheet.locked",
+        lockedAt: currentTime,
+        lockedByUserId: input.session.user?.id ?? null,
+        reason: "locked_for_future_payroll_and_finance_handoff",
+        correlationId: input.correlationId,
+        now: currentTime
+      });
+    },
+
+    async readAuditSummary(input: TimesheetReadInput) {
+      const timesheet = await requireAuthorizedTimesheet({
+        timesheetRepository,
+        authorizationService,
+        session: input.session,
+        roles: input.roles ?? [],
+        permission: "timesheet.audit_read",
+        timesheetId: input.timesheetId,
+        correlationId: input.correlationId,
+        now: now()
+      });
+      const snapshots = await timesheetRepository.listCalculationSnapshots(timesheet.stored.id);
+      return {
+        timesheetId: timesheet.stored.id,
+        attendanceRecordId: timesheet.stored.attendanceRecordId,
+        assignmentId: timesheet.stored.assignmentId,
+        status: timesheet.stored.status,
+        calculationSnapshots: snapshots.length,
+        message: "Timesheet audit is available through governed audit records."
+      };
+    }
+  };
+}
+
+export type TimesheetService = ReturnType<typeof createTimesheetService>;
+
+interface TimesheetReadInput {
+  session: SessionValidationResult;
+  roles?: readonly AuthorizationRoleKey[];
+  timesheetId: string;
+  correlationId?: string;
+}
+
+interface TimesheetTransitionInput extends TimesheetReadInput {
+  expectedVersion: number;
+}
+
+interface TimesheetCalculationResult {
+  rawCheckInAt: Date;
+  rawCheckOutAt: Date;
+  normalizedCheckInAt: Date;
+  normalizedCheckOutAt: Date;
+  rawElapsedMinutes: number;
+  payableMinutes: number;
+  billableMinutes: number;
+  excludedMinutes: number;
+  breakMinutes: number;
+  premiumCandidateMinutes: number;
+  overtimeCandidateMinutes: number;
+  roundingAdjustmentMinutes: number;
+  exceptionFlags: string[];
+  calculationPolicyVersion: string;
+  countryPackVersion: string;
+  breakRule: string;
+  roundingRule: string;
+  calculationEngineVersion: string;
+}
+
+const timesheetReadyAttendanceStatuses: readonly AttendanceStatus[] = ["completed"];
+
+function toPublicTimesheet(timesheet: StoredTimesheet): PublicTimesheet {
+  return {
+    ...timesheet,
+    versionToken: timesheet.version,
+    attendanceBoundary: "preserved",
+    payrollBoundary: timesheet.status === "locked" ? "handoff_ready" : "not_started",
+    financeBoundary: timesheet.status === "locked" ? "handoff_ready" : "not_started",
+    calculationBoundary: "time_only_no_money"
+  };
+}
+
+function timesheetDeny(
+  status: Exclude<TimesheetDecisionStatus, "allow">,
+  internalReason: string,
+  timesheet: PublicTimesheet | null,
+  roles: readonly AuthorizationRoleKey[]
+): TimesheetDecision {
+  return {
+    status,
+    allow: false,
+    timesheet,
+    roles,
+    internalReason,
+    externalCode: authorizationDeniedCode,
+    externalMessage: authorizationDeniedMessage
+  };
+}
+
+async function authorizeTimesheetPlatformOperation(input: {
+  timesheetRepository: TimesheetRepository;
+  authorizationService: AuthorizationService;
+  session: SessionValidationResult;
+  roles: readonly AuthorizationRoleKey[];
+  permission: AuthorizationPermissionKey;
+  timesheet?: StoredTimesheet | null | undefined;
+  correlationId?: string | undefined;
+  now: Date;
+}): Promise<TimesheetDecision> {
+  const authorizationDecision = await input.authorizationService.decide({
+    session: input.session,
+    roles: input.roles,
+    permission: input.permission,
+    platformContext: { platform: true },
+    ...(input.correlationId ? { correlationId: input.correlationId } : {})
+  });
+  const publicTimesheet = input.timesheet ? toPublicTimesheet(input.timesheet) : null;
+
+  if (!authorizationDecision.allow) {
+    const decision = timesheetDeny(
+      "permission_denied",
+      authorizationDecision.internalReason ?? "permission_denied",
+      publicTimesheet,
+      input.roles
+    );
+    await recordTimesheetDenial(input.timesheetRepository, {
+      decision,
+      actorUserId: input.session.user?.id ?? null,
+      correlationId: input.correlationId,
+      createdAt: input.now
+    });
+    return decision;
+  }
+
+  return {
+    status: "allow",
+    allow: true,
+    timesheet: publicTimesheet,
+    roles: input.roles,
+    internalReason: null,
+    externalCode: null,
+    externalMessage: null
+  };
+}
+
+async function authorizeTimesheetReadOperation(input: {
+  timesheetRepository: TimesheetRepository;
+  authorizationService: AuthorizationService;
+  session: SessionValidationResult;
+  roles: readonly AuthorizationRoleKey[];
+  organizationId: string | null;
+  permission: AuthorizationPermissionKey;
+  timesheet?: StoredTimesheet | null | undefined;
+  correlationId?: string | undefined;
+  now: Date;
+}): Promise<TimesheetDecision> {
+  const authorizationDecision = await input.authorizationService.decide({
+    session: input.session,
+    roles: input.roles,
+    permission: input.permission,
+    ...(input.organizationId ? { resourceContext: { organizationId: input.organizationId } } : {}),
+    ...(input.correlationId ? { correlationId: input.correlationId } : {})
+  });
+  const publicTimesheet = input.timesheet ? toPublicTimesheet(input.timesheet) : null;
+
+  if (!authorizationDecision.allow) {
+    const decision = timesheetDeny(
+      "permission_denied",
+      authorizationDecision.internalReason ?? "permission_denied",
+      publicTimesheet,
+      input.roles
+    );
+    await recordTimesheetDenial(input.timesheetRepository, {
+      decision,
+      actorUserId: input.session.user?.id ?? null,
+      correlationId: input.correlationId,
+      createdAt: input.now
+    });
+    return decision;
+  }
+
+  return {
+    status: "allow",
+    allow: true,
+    timesheet: publicTimesheet,
+    roles: input.roles,
+    internalReason: null,
+    externalCode: null,
+    externalMessage: null
+  };
+}
+
+async function requireAuthorizedTimesheet(input: {
+  timesheetRepository: TimesheetRepository;
+  authorizationService: AuthorizationService;
+  session: SessionValidationResult;
+  roles: readonly AuthorizationRoleKey[];
+  permission: AuthorizationPermissionKey;
+  timesheetId: string;
+  correlationId?: string | undefined;
+  now: Date;
+}) {
+  const timesheet = await input.timesheetRepository.findTimesheetById(input.timesheetId);
+  const decision =
+    input.permission === "timesheet.read"
+      ? await authorizeTimesheetPlatformOperation({
+          timesheetRepository: input.timesheetRepository,
+          authorizationService: input.authorizationService,
+          session: input.session,
+          roles: input.roles,
+          permission: input.permission,
+          timesheet,
+          correlationId: input.correlationId,
+          now: input.now
+        })
+      : await authorizeTimesheetPlatformOperation({
+          timesheetRepository: input.timesheetRepository,
+          authorizationService: input.authorizationService,
+          session: input.session,
+          roles: input.roles,
+          permission: input.permission,
+          timesheet,
+          correlationId: input.correlationId,
+          now: input.now
+        });
+
+  if (!timesheet || !decision.allow) {
+    throw new TimesheetError(
+      !timesheet ? timesheetDeny("not_found", "timesheet_not_found", null, input.roles) : decision
+    );
+  }
+
+  return { stored: timesheet, publicTimesheet: toPublicTimesheet(timesheet) };
+}
+
+async function requireWorkerOwnedTimesheet(input: {
+  timesheetRepository: TimesheetRepository;
+  authorizationService: AuthorizationService;
+  session: SessionValidationResult;
+  roles: readonly AuthorizationRoleKey[];
+  workerIdentity: StoredWorkerIdentity;
+  timesheetId: string;
+  permission: AuthorizationPermissionKey;
+  correlationId?: string | undefined;
+  now: Date;
+}) {
+  const authorizationDecision = await input.authorizationService.decide({
+    session: input.session,
+    roles: input.roles,
+    permission: input.permission,
+    ...(input.correlationId ? { correlationId: input.correlationId } : {})
+  });
+  const timesheet = await input.timesheetRepository.findTimesheetById(input.timesheetId);
+  const publicTimesheet = timesheet ? toPublicTimesheet(timesheet) : null;
+  if (!timesheet || timesheet.workerIdentityId !== input.workerIdentity.id) {
+    const decision = timesheetDeny(
+      !timesheet ? "not_found" : "permission_denied",
+      !timesheet ? "timesheet_not_found" : "timesheet_not_owned_by_worker",
+      publicTimesheet,
+      input.roles
+    );
+    await recordTimesheetDenial(input.timesheetRepository, {
+      decision,
+      actorUserId: input.session.user?.id ?? null,
+      correlationId: input.correlationId,
+      createdAt: input.now
+    });
+    throw new TimesheetError(decision);
+  }
+  if (!authorizationDecision.allow) {
+    const decision = timesheetDeny(
+      "permission_denied",
+      authorizationDecision.internalReason ?? "permission_denied",
+      publicTimesheet,
+      input.roles
+    );
+    await recordTimesheetDenial(input.timesheetRepository, {
+      decision,
+      actorUserId: input.session.user?.id ?? null,
+      correlationId: input.correlationId,
+      createdAt: input.now
+    });
+    throw new TimesheetError(decision);
+  }
+  return { stored: timesheet, publicTimesheet: toPublicTimesheet(timesheet) };
+}
+
+async function requireEmployerScopedTimesheet(input: {
+  timesheetRepository: TimesheetRepository;
+  authorizationService: AuthorizationService;
+  session: SessionValidationResult;
+  roles: readonly AuthorizationRoleKey[];
+  timesheetId: string;
+  permission: AuthorizationPermissionKey;
+  correlationId?: string | undefined;
+  now: Date;
+}) {
+  const timesheet = await input.timesheetRepository.findTimesheetById(input.timesheetId);
+  if (!timesheet) {
+    throw new TimesheetError(timesheetDeny("not_found", "timesheet_not_found", null, input.roles));
+  }
+  const decision = await authorizeTimesheetReadOperation({
+    timesheetRepository: input.timesheetRepository,
+    authorizationService: input.authorizationService,
+    session: input.session,
+    roles: input.roles,
+    organizationId: timesheet.organizationId,
+    permission: input.permission,
+    timesheet,
+    correlationId: input.correlationId,
+    now: input.now
+  });
+  if (!decision.allow) throw new TimesheetError(decision);
+
+  return { stored: timesheet, publicTimesheet: toPublicTimesheet(timesheet) };
+}
+
+async function transitionTimesheet(input: {
+  timesheetRepository: TimesheetRepository;
+  timesheet: StoredTimesheet;
+  expectedVersion: number;
+  actorUserId: string | null;
+  roles: readonly AuthorizationRoleKey[];
+  allowedFrom: readonly TimesheetStatus[];
+  nextStatus: TimesheetStatus;
+  action: Parameters<TimesheetRepository["recordTimesheetAuditEvent"]>[0]["action"];
+  workerReviewStatus?: string | undefined;
+  workerReviewedAt?: Date | null | undefined;
+  workerReviewedByUserId?: string | null | undefined;
+  employerReviewStatus?: string | undefined;
+  employerReviewedAt?: Date | null | undefined;
+  employerReviewedByUserId?: string | null | undefined;
+  platformReviewStatus?: string | undefined;
+  platformReviewedAt?: Date | null | undefined;
+  platformReviewedByUserId?: string | null | undefined;
+  approvedAt?: Date | null | undefined;
+  lockedAt?: Date | null | undefined;
+  lockedByUserId?: string | null | undefined;
+  rejectedAt?: Date | null | undefined;
+  cancelledAt?: Date | null | undefined;
+  correctionReason?: string | null | undefined;
+  reason: string;
+  correlationId?: string | undefined;
+  now: Date;
+}) {
+  if (input.timesheet.status === "locked") {
+    throw new TimesheetError(
+      timesheetDeny(
+        "locked_record",
+        "locked_timesheet_requires_formal_correction",
+        toPublicTimesheet(input.timesheet),
+        input.roles
+      )
+    );
+  }
+  if (!input.allowedFrom.includes(input.timesheet.status)) {
+    throw new TimesheetError(
+      timesheetDeny(
+        "invalid_transition",
+        `cannot_transition_from_${input.timesheet.status}`,
+        toPublicTimesheet(input.timesheet),
+        input.roles
+      )
+    );
+  }
+
+  const updated = await input.timesheetRepository.updateTimesheet({
+    timesheetId: input.timesheet.id,
+    expectedVersion: input.expectedVersion,
+    actorUserId: input.actorUserId,
+    status: input.nextStatus,
+    workerReviewStatus: input.workerReviewStatus,
+    workerReviewedAt: input.workerReviewedAt,
+    workerReviewedByUserId: input.workerReviewedByUserId,
+    employerReviewStatus: input.employerReviewStatus,
+    employerReviewedAt: input.employerReviewedAt,
+    employerReviewedByUserId: input.employerReviewedByUserId,
+    platformReviewStatus: input.platformReviewStatus,
+    platformReviewedAt: input.platformReviewedAt,
+    platformReviewedByUserId: input.platformReviewedByUserId,
+    approvedAt: input.approvedAt,
+    lockedAt: input.lockedAt,
+    lockedByUserId: input.lockedByUserId,
+    rejectedAt: input.rejectedAt,
+    cancelledAt: input.cancelledAt,
+    correctionReason: input.correctionReason,
+    now: input.now
+  });
+  if (!updated) {
+    await recordTimesheetVersionConflict(input.timesheetRepository, input.timesheet, {
+      actorUserId: input.actorUserId,
+      correlationId: input.correlationId,
+      roles: input.roles,
+      now: input.now
+    });
+    throw new TimesheetError(
+      timesheetDeny(
+        "version_conflict",
+        "stale_version",
+        toPublicTimesheet(input.timesheet),
+        input.roles
+      )
+    );
+  }
+
+  await recordTimesheetAudit(input.timesheetRepository, {
+    action: input.action,
+    organizationId: updated.organizationId,
+    timesheetId: updated.id,
+    attendanceRecordId: updated.attendanceRecordId,
+    assignmentId: updated.assignmentId,
+    actorUserId: input.actorUserId,
+    priorState: input.timesheet.status,
+    newState: updated.status,
+    reason: input.reason,
+    correlationId: input.correlationId,
+    createdAt: input.now
+  });
+
+  return toPublicTimesheet(updated);
+}
+
+function calculateTimesheetMinutes(
+  attendanceRecord: StoredAttendanceRecord,
+  assignment: StoredAssignment
+): TimesheetCalculationResult {
+  if (!attendanceRecord.checkInAt || !attendanceRecord.checkOutAt) {
+    throw new TimesheetError(
+      timesheetDeny("attendance_not_ready", "attendance_missing_check_in_or_check_out", null, [])
+    );
+  }
+  const rawElapsedMinutes = Math.max(
+    0,
+    Math.floor(
+      (attendanceRecord.checkOutAt.getTime() - attendanceRecord.checkInAt.getTime()) / 60000
+    )
+  );
+  const exceptionFlags: string[] = [];
+  if (attendanceRecord.checkInAt < assignment.confirmedStartAt)
+    exceptionFlags.push("early_arrival");
+  if (attendanceRecord.checkInAt > assignment.confirmedStartAt) exceptionFlags.push("late_arrival");
+  if (attendanceRecord.checkOutAt < assignment.confirmedEndAt)
+    exceptionFlags.push("early_departure");
+  if (attendanceRecord.checkOutAt > assignment.confirmedEndAt)
+    exceptionFlags.push("late_departure");
+  if (attendanceRecord.exceptionCategory)
+    exceptionFlags.push(`attendance_exception:${attendanceRecord.exceptionCategory}`);
+
+  return {
+    rawCheckInAt: attendanceRecord.checkInAt,
+    rawCheckOutAt: attendanceRecord.checkOutAt,
+    normalizedCheckInAt: attendanceRecord.checkInAt,
+    normalizedCheckOutAt: attendanceRecord.checkOutAt,
+    rawElapsedMinutes,
+    payableMinutes: rawElapsedMinutes,
+    billableMinutes: rawElapsedMinutes,
+    excludedMinutes: 0,
+    breakMinutes: 0,
+    premiumCandidateMinutes: 0,
+    overtimeCandidateMinutes: 0,
+    roundingAdjustmentMinutes: 0,
+    exceptionFlags,
+    calculationPolicyVersion: "timesheet-foundation-v1",
+    countryPackVersion: "not_applied",
+    breakRule: "break_evidence_deferred",
+    roundingRule: "no_rounding",
+    calculationEngineVersion: "timesheet-foundation-v1"
+  };
+}
+
+async function recordTimesheetValidationFailure(input: {
+  timesheetRepository: TimesheetRepository;
+  attendanceRecord: StoredAttendanceRecord;
+  actorUserId: string | null;
+  reason: string;
+  correlationId?: string | undefined;
+  now: Date;
+}) {
+  await recordTimesheetAudit(input.timesheetRepository, {
+    action: "timesheet.validation_failed",
+    organizationId: input.attendanceRecord.organizationId,
+    timesheetId: null,
+    attendanceRecordId: input.attendanceRecord.id,
+    assignmentId: input.attendanceRecord.assignmentId,
+    actorUserId: input.actorUserId,
+    priorState: input.attendanceRecord.status,
+    newState: null,
+    reason: input.reason,
+    correlationId: input.correlationId,
+    createdAt: input.now
+  });
+}
+
+async function recordTimesheetVersionConflict(
+  repository: TimesheetRepository,
+  timesheet: StoredTimesheet,
+  input: {
+    actorUserId: string | null;
+    correlationId?: string | undefined;
+    roles: readonly AuthorizationRoleKey[];
+    now: Date;
+  }
+) {
+  await recordTimesheetAudit(repository, {
+    action: "timesheet.version_conflict",
+    organizationId: timesheet.organizationId,
+    timesheetId: timesheet.id,
+    attendanceRecordId: timesheet.attendanceRecordId,
+    assignmentId: timesheet.assignmentId,
+    actorUserId: input.actorUserId,
+    priorState: timesheet.status,
+    newState: timesheet.status,
+    reason: "stale_version",
+    correlationId: input.correlationId,
+    createdAt: input.now
+  });
+}
+
+async function recordTimesheetDenial(
+  repository: TimesheetRepository,
+  input: {
+    decision: TimesheetDecision;
+    actorUserId: string | null;
+    correlationId?: string | undefined;
+    createdAt: Date;
+  }
+) {
+  await recordTimesheetAudit(repository, {
+    action: "timesheet.access_denied",
+    organizationId: input.decision.timesheet?.organizationId ?? null,
+    timesheetId: input.decision.timesheet?.id ?? null,
+    attendanceRecordId: input.decision.timesheet?.attendanceRecordId ?? null,
+    assignmentId: input.decision.timesheet?.assignmentId ?? null,
+    actorUserId: input.actorUserId,
+    priorState: input.decision.timesheet?.status ?? null,
+    newState: input.decision.status,
+    reason: input.decision.internalReason,
+    correlationId: input.correlationId,
+    createdAt: input.createdAt
+  });
+}
+
+async function recordTimesheetAudit(
+  repository: TimesheetRepository,
+  input: Omit<Parameters<TimesheetRepository["recordTimesheetAuditEvent"]>[0], "correlationId"> & {
+    correlationId?: string | undefined;
+  }
+) {
+  await repository.recordTimesheetAuditEvent({
+    ...input,
+    correlationId: input.correlationId ?? createTimesheetCorrelationId()
+  });
+}
+
+function createTimesheetCorrelationId() {
+  return `timesheet_${randomBytes(12).toString("base64url")}`;
+}
+
 interface AttendanceEvidenceInput {
   session: SessionValidationResult;
   roles?: readonly AuthorizationRoleKey[];
@@ -11581,6 +13178,291 @@ export function createPrismaAttendanceRepository(prismaClient: unknown): Attenda
   };
 }
 
+type PrismaTimesheetClient = Pick<PrismaAttendanceClient, "auditActorReference" | "auditEvent"> & {
+  timesheet: {
+    create(args: { data: CreateTimesheetPrismaData }): Promise<StoredTimesheet>;
+    findUnique(args: {
+      where: {
+        id?: string | undefined;
+        assignmentId?: string | undefined;
+        attendanceRecordId?: string | undefined;
+      };
+    }): Promise<StoredTimesheet | null>;
+    findMany(args: {
+      where?: {
+        organizationId?: string | undefined;
+        workerIdentityId?: string | undefined;
+        assignmentId?: string | undefined;
+        status?: { in: readonly TimesheetStatus[] } | undefined;
+      };
+      orderBy: [{ updatedAt: "desc" }, { scheduledStartAt: "asc" }];
+    }): Promise<StoredTimesheet[]>;
+    updateMany(args: {
+      where: { id: string; version: number };
+      data: Partial<UpdateTimesheetPrismaData>;
+    }): Promise<{ count: number }>;
+  };
+  timesheetCalculationSnapshot: {
+    create(args: {
+      data: CreateTimesheetCalculationSnapshotPrismaData;
+    }): Promise<StoredTimesheetCalculationSnapshot>;
+    findMany(args: {
+      where: { timesheetId: string };
+      orderBy: { createdAt: "desc" };
+    }): Promise<StoredTimesheetCalculationSnapshot[]>;
+  };
+};
+
+type CreateTimesheetPrismaData = {
+  assignmentId: string;
+  attendanceRecordId: string;
+  jobRequestId: string;
+  workerIdentityId: string;
+  organizationId: string;
+  residenceId: string;
+  departmentId: string;
+  workGroupId: string;
+  roleDefinitionId: string;
+  status: TimesheetStatus;
+  attendanceVersionSnapshot: number;
+  assignmentVersionSnapshot: number;
+  scheduledStartAt: Date;
+  scheduledEndAt: Date;
+  actualCheckInAt: Date | null;
+  actualCheckOutAt: Date | null;
+  timezone: string;
+  createdByUserId: string;
+  createdAt: Date;
+  updatedAt: Date;
+};
+
+type UpdateTimesheetPrismaData = {
+  status: TimesheetStatus;
+  actualCheckInAt: Date | null;
+  actualCheckOutAt: Date | null;
+  rawElapsedMinutes: number | null;
+  payableMinutes: number | null;
+  billableMinutes: number | null;
+  excludedMinutes: number;
+  breakMinutes: number;
+  premiumCandidateMinutes: number;
+  overtimeCandidateMinutes: number;
+  roundingAdjustmentMinutes: number;
+  exceptionSummary: string | null;
+  workerReviewStatus: string;
+  workerReviewedAt: Date | null;
+  employerReviewStatus: string;
+  employerReviewedAt: Date | null;
+  platformReviewStatus: string;
+  platformReviewedAt: Date | null;
+  approvedAt: Date | null;
+  lockedAt: Date | null;
+  rejectedAt: Date | null;
+  cancelledAt: Date | null;
+  correctionReason: string | null;
+  updatedByUserId: string | null;
+  workerReviewedByUserId: string | null;
+  employerReviewedByUserId: string | null;
+  platformReviewedByUserId: string | null;
+  lockedByUserId: string | null;
+  updatedAt: Date;
+  version: { increment: number };
+};
+
+type CreateTimesheetCalculationSnapshotPrismaData = {
+  timesheetId: string;
+  attendanceRecordId: string;
+  attendanceVersionSnapshot: number;
+  assignmentId: string;
+  assignmentVersionSnapshot: number;
+  calculationPolicyVersion: string;
+  countryPackVersion: string;
+  rawCheckInAt: Date;
+  rawCheckOutAt: Date;
+  normalizedCheckInAt: Date;
+  normalizedCheckOutAt: Date;
+  timezone: string;
+  breakRule: string;
+  roundingRule: string;
+  rawElapsedMinutes: number;
+  payableMinutes: number;
+  billableMinutes: number;
+  excludedMinutes: number;
+  breakMinutes: number;
+  premiumCandidateMinutes: number;
+  overtimeCandidateMinutes: number;
+  roundingAdjustmentMinutes: number;
+  exceptionFlags: string[];
+  calculationEngineVersion: string;
+  createdAt: Date;
+};
+
+export function createPrismaTimesheetRepository(prismaClient: unknown): TimesheetRepository {
+  const prisma = prismaClient as PrismaTimesheetClient;
+
+  return {
+    createTimesheetFromAttendance(input) {
+      return prisma.timesheet.create({
+        data: {
+          assignmentId: input.assignment.id,
+          attendanceRecordId: input.attendanceRecord.id,
+          jobRequestId: input.attendanceRecord.jobRequestId,
+          workerIdentityId: input.attendanceRecord.workerIdentityId,
+          organizationId: input.attendanceRecord.organizationId,
+          residenceId: input.attendanceRecord.residenceId,
+          departmentId: input.attendanceRecord.departmentId,
+          workGroupId: input.attendanceRecord.workGroupId,
+          roleDefinitionId: input.attendanceRecord.roleDefinitionId,
+          status: "draft",
+          attendanceVersionSnapshot: input.attendanceRecord.version,
+          assignmentVersionSnapshot: input.assignment.version,
+          scheduledStartAt: input.attendanceRecord.scheduledStartAt,
+          scheduledEndAt: input.attendanceRecord.scheduledEndAt,
+          actualCheckInAt: null,
+          actualCheckOutAt: null,
+          timezone: input.attendanceRecord.timezone,
+          createdByUserId: input.actorUserId,
+          createdAt: input.now,
+          updatedAt: input.now
+        }
+      });
+    },
+
+    findTimesheetById(timesheetId) {
+      return prisma.timesheet.findUnique({ where: { id: timesheetId } });
+    },
+
+    findTimesheetByAttendanceRecordId(attendanceRecordId) {
+      return prisma.timesheet.findUnique({ where: { attendanceRecordId } });
+    },
+
+    findTimesheetByAssignmentId(assignmentId) {
+      return prisma.timesheet.findUnique({ where: { assignmentId } });
+    },
+
+    listTimesheets(input) {
+      return prisma.timesheet.findMany({
+        where: {
+          ...(input.organizationId ? { organizationId: input.organizationId } : {}),
+          ...(input.workerIdentityId ? { workerIdentityId: input.workerIdentityId } : {}),
+          ...(input.assignmentId ? { assignmentId: input.assignmentId } : {}),
+          ...(input.statuses ? { status: { in: input.statuses } } : {})
+        },
+        orderBy: [{ updatedAt: "desc" }, { scheduledStartAt: "asc" }]
+      });
+    },
+
+    async updateTimesheet(input) {
+      const data: Partial<UpdateTimesheetPrismaData> = {
+        updatedByUserId: input.actorUserId,
+        updatedAt: input.now,
+        version: { increment: 1 }
+      };
+
+      if (input.status !== undefined) data.status = input.status;
+      if (input.actualCheckInAt !== undefined) data.actualCheckInAt = input.actualCheckInAt;
+      if (input.actualCheckOutAt !== undefined) data.actualCheckOutAt = input.actualCheckOutAt;
+      if (input.rawElapsedMinutes !== undefined) data.rawElapsedMinutes = input.rawElapsedMinutes;
+      if (input.payableMinutes !== undefined) data.payableMinutes = input.payableMinutes;
+      if (input.billableMinutes !== undefined) data.billableMinutes = input.billableMinutes;
+      if (input.excludedMinutes !== undefined) data.excludedMinutes = input.excludedMinutes;
+      if (input.breakMinutes !== undefined) data.breakMinutes = input.breakMinutes;
+      if (input.premiumCandidateMinutes !== undefined) {
+        data.premiumCandidateMinutes = input.premiumCandidateMinutes;
+      }
+      if (input.overtimeCandidateMinutes !== undefined) {
+        data.overtimeCandidateMinutes = input.overtimeCandidateMinutes;
+      }
+      if (input.roundingAdjustmentMinutes !== undefined) {
+        data.roundingAdjustmentMinutes = input.roundingAdjustmentMinutes;
+      }
+      if (input.exceptionSummary !== undefined) data.exceptionSummary = input.exceptionSummary;
+      if (input.workerReviewStatus !== undefined) {
+        data.workerReviewStatus = input.workerReviewStatus;
+      }
+      if (input.workerReviewedAt !== undefined) data.workerReviewedAt = input.workerReviewedAt;
+      if (input.employerReviewStatus !== undefined) {
+        data.employerReviewStatus = input.employerReviewStatus;
+      }
+      if (input.employerReviewedAt !== undefined) {
+        data.employerReviewedAt = input.employerReviewedAt;
+      }
+      if (input.platformReviewStatus !== undefined) {
+        data.platformReviewStatus = input.platformReviewStatus;
+      }
+      if (input.platformReviewedAt !== undefined) {
+        data.platformReviewedAt = input.platformReviewedAt;
+      }
+      if (input.approvedAt !== undefined) data.approvedAt = input.approvedAt;
+      if (input.lockedAt !== undefined) data.lockedAt = input.lockedAt;
+      if (input.rejectedAt !== undefined) data.rejectedAt = input.rejectedAt;
+      if (input.cancelledAt !== undefined) data.cancelledAt = input.cancelledAt;
+      if (input.correctionReason !== undefined) data.correctionReason = input.correctionReason;
+      if (input.workerReviewedByUserId !== undefined) {
+        data.workerReviewedByUserId = input.workerReviewedByUserId;
+      }
+      if (input.employerReviewedByUserId !== undefined) {
+        data.employerReviewedByUserId = input.employerReviewedByUserId;
+      }
+      if (input.platformReviewedByUserId !== undefined) {
+        data.platformReviewedByUserId = input.platformReviewedByUserId;
+      }
+      if (input.lockedByUserId !== undefined) data.lockedByUserId = input.lockedByUserId;
+
+      const result = await prisma.timesheet.updateMany({
+        where: { id: input.timesheetId, version: input.expectedVersion },
+        data
+      });
+      if (result.count !== 1) return null;
+
+      return this.findTimesheetById(input.timesheetId);
+    },
+
+    createCalculationSnapshot(input) {
+      return prisma.timesheetCalculationSnapshot.create({
+        data: {
+          timesheetId: input.timesheet.id,
+          attendanceRecordId: input.attendanceRecord.id,
+          attendanceVersionSnapshot: input.attendanceRecord.version,
+          assignmentId: input.assignment.id,
+          assignmentVersionSnapshot: input.assignment.version,
+          calculationPolicyVersion: input.calculation.calculationPolicyVersion,
+          countryPackVersion: input.calculation.countryPackVersion,
+          rawCheckInAt: input.calculation.rawCheckInAt,
+          rawCheckOutAt: input.calculation.rawCheckOutAt,
+          normalizedCheckInAt: input.calculation.normalizedCheckInAt,
+          normalizedCheckOutAt: input.calculation.normalizedCheckOutAt,
+          timezone: input.attendanceRecord.timezone,
+          breakRule: input.calculation.breakRule,
+          roundingRule: input.calculation.roundingRule,
+          rawElapsedMinutes: input.calculation.rawElapsedMinutes,
+          payableMinutes: input.calculation.payableMinutes,
+          billableMinutes: input.calculation.billableMinutes,
+          excludedMinutes: input.calculation.excludedMinutes,
+          breakMinutes: input.calculation.breakMinutes,
+          premiumCandidateMinutes: input.calculation.premiumCandidateMinutes,
+          overtimeCandidateMinutes: input.calculation.overtimeCandidateMinutes,
+          roundingAdjustmentMinutes: input.calculation.roundingAdjustmentMinutes,
+          exceptionFlags: input.calculation.exceptionFlags,
+          calculationEngineVersion: input.calculation.calculationEngineVersion,
+          createdAt: input.now
+        }
+      });
+    },
+
+    listCalculationSnapshots(timesheetId) {
+      return prisma.timesheetCalculationSnapshot.findMany({
+        where: { timesheetId },
+        orderBy: { createdAt: "desc" }
+      });
+    },
+
+    async recordTimesheetAuditEvent(input) {
+      await recordPrismaTimesheetAudit(prisma, input);
+    }
+  };
+}
+
 function resolvePasswordHashOptions(options: PasswordHashOptions) {
   return {
     costFactor:
@@ -11785,7 +13667,8 @@ function isSensitiveAuthorizationDenial(decision: AuthorizationDecision) {
     decision.permission.startsWith("dispatch.") ||
     decision.permission.startsWith("worker_offer.") ||
     decision.permission.startsWith("assignment.") ||
-    decision.permission.startsWith("attendance.")
+    decision.permission.startsWith("attendance.") ||
+    decision.permission.startsWith("timesheet.")
   );
 }
 
@@ -14225,6 +16108,38 @@ async function recordPrismaAttendanceAudit(
       source: "api",
       correlationId: input.correlationId,
       policyVersion: "attendance-foundation-v1",
+      createdAt: input.createdAt
+    }
+  });
+}
+
+async function recordPrismaTimesheetAudit(
+  prisma: Pick<PrismaTimesheetClient, "auditActorReference" | "auditEvent">,
+  input: Parameters<TimesheetRepository["recordTimesheetAuditEvent"]>[0]
+) {
+  const actorReference = await prisma.auditActorReference.create({
+    data: {
+      actorType: input.actorUserId ? "user" : "system",
+      ...(input.actorUserId ? { userId: input.actorUserId } : {}),
+      ...(input.organizationId ? { organizationId: input.organizationId } : {}),
+      displayLabel: input.actorUserId ? "Timesheet actor" : "Timesheet boundary"
+    }
+  });
+
+  await prisma.auditEvent.create({
+    data: {
+      actorReferenceId: actorReference.id,
+      organizationId: input.organizationId,
+      entityType: "timesheet",
+      entityId: input.timesheetId ?? input.attendanceRecordId ?? input.assignmentId ?? nilEntityId,
+      entityPublicReference: input.attendanceRecordId ?? input.assignmentId,
+      action: input.action,
+      priorState: input.priorState,
+      newState: input.newState,
+      reason: input.reason,
+      source: "api",
+      correlationId: input.correlationId,
+      policyVersion: "timesheet-foundation-v1",
       createdAt: input.createdAt
     }
   });
