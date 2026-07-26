@@ -55,14 +55,50 @@ describe("Prisma Phase 01 schema boundary", () => {
       "TimesheetDispute",
       "PayrollHandoffReference",
       "FinanceHandoffReference",
+      "PayrollRun",
+      "PayrollRecord",
+      "PayrollCalculationSnapshot",
+      "PayrollDeduction",
+      "PayrollAdjustment",
+      "WorkerPayObligation",
+      "EmployerFundingObligation",
+      "PlatformRevenueEntitlement",
+      "WorkerClassificationRecord",
+      "JurisdictionEmploymentProfile",
+      "WorkerCompensationTerms",
+      "EmployerCommercialTerms",
       "Invoice",
       "EmployerPayment",
       "WorkerPayable",
+      "PaymentExecutionReference",
+      "SettlementReference",
+      "ReversalReference",
+      "ReconciliationRecord",
+      "EscrowAccount",
+      "HeldFundsLedger",
       "Notification",
       "SupportCase"
     ]) {
       expect(schema).not.toContain(`model ${deferredModel}`);
     }
+  });
+
+  it("keeps Timesheet as the final authoritative engine before the money contract kit", () => {
+    const modelNames = Array.from(schema.matchAll(/^model\s+(\w+)\s+\{/gm)).map(
+      (match) => match[1]
+    );
+
+    expect(modelNames).toContain("Timesheet");
+    expect(modelNames).toContain("TimesheetCalculationSnapshot");
+
+    const timesheetIndex = modelNames.indexOf("Timesheet");
+    const postTimesheetModels = modelNames.slice(timesheetIndex + 1);
+
+    expect(postTimesheetModels).toEqual([
+      "TimesheetCalculationSnapshot",
+      "AuditActorReference",
+      "AuditEvent"
+    ]);
   });
 
   it("preserves Job Request number and ordering constraints", () => {
