@@ -202,7 +202,7 @@ export default function NotificationCenterPage() {
           </div>
           <div style={styles.actionGrid}>
             {protectedActions.map((action) => (
-              <button key={action} type="button" style={styles.actionButton}>
+              <button disabled key={action} type="button" style={styles.actionButton}>
                 {action}
               </button>
             ))}
@@ -301,7 +301,7 @@ function BoundaryList({
 
 const styles: Record<string, CSSProperties> = {
   page: {
-    background: "#eef3f8",
+    background: "#f7faff",
     color: "#0b1f3a",
     fontFamily: "Inter, system-ui, sans-serif",
     minHeight: "100vh",
@@ -339,7 +339,7 @@ const styles: Record<string, CSSProperties> = {
     margin: "8px 0"
   },
   lede: {
-    color: "#dce8e8",
+    color: "#d8e4f5",
     fontSize: 16,
     lineHeight: 1.6,
     margin: 0,
@@ -355,7 +355,7 @@ const styles: Record<string, CSSProperties> = {
   },
   boundaryStrip: {
     background: "#ffffff",
-    border: "1px solid #dce8e8",
+    border: "1px solid #d8e4f5",
     borderRadius: 8,
     display: "grid",
     gap: 16,
@@ -374,8 +374,8 @@ const styles: Record<string, CSSProperties> = {
     gridTemplateColumns: "repeat(auto-fit, minmax(210px, 1fr))"
   },
   boundaryChip: {
-    background: "#f7faf9",
-    border: "1px solid #dce8e8",
+    background: "#f7faff",
+    border: "1px solid #d8e4f5",
     borderRadius: 8,
     color: "#071f4d",
     fontSize: 13,
@@ -385,7 +385,7 @@ const styles: Record<string, CSSProperties> = {
   },
   panel: {
     background: "#ffffff",
-    border: "1px solid #dce8e8",
+    border: "1px solid #d8e4f5",
     borderRadius: 8,
     marginTop: 18,
     padding: 18
@@ -409,8 +409,8 @@ const styles: Record<string, CSSProperties> = {
     margin: 0
   },
   statusBadge: {
-    background: "#eef4ff",
-    border: "1px solid #bfd0f5",
+    background: "#eef5ff",
+    border: "1px solid #c9ddff",
     borderRadius: 8,
     color: "#071f4d",
     fontSize: 12,
@@ -448,7 +448,7 @@ const styles: Record<string, CSSProperties> = {
     gap: 6
   },
   input: {
-    border: "1px solid #bccdce",
+    border: "1px solid #b8c8dc",
     borderRadius: 8,
     color: "#0b1f3a",
     font: "inherit",
@@ -456,7 +456,7 @@ const styles: Record<string, CSSProperties> = {
     padding: "0 12px"
   },
   textarea: {
-    border: "1px solid #bccdce",
+    border: "1px solid #b8c8dc",
     borderRadius: 8,
     color: "#0b1f3a",
     font: "inherit",
@@ -464,7 +464,7 @@ const styles: Record<string, CSSProperties> = {
     resize: "vertical"
   },
   helpText: {
-    color: "#607276",
+    color: "#526782",
     fontSize: 13,
     lineHeight: 1.55,
     margin: "12px 0 0"
@@ -479,7 +479,7 @@ const styles: Record<string, CSSProperties> = {
     gap: 12
   },
   notificationCard: {
-    border: "1px solid #dce8e8",
+    border: "1px solid #d8e4f5",
     borderRadius: 8,
     display: "grid",
     gap: 10,
@@ -491,7 +491,7 @@ const styles: Record<string, CSSProperties> = {
     gap: 8
   },
   muted: {
-    color: "#607276",
+    color: "#526782",
     fontSize: 13,
     margin: "4px 0"
   },
@@ -502,7 +502,7 @@ const styles: Record<string, CSSProperties> = {
     margin: 0
   },
   privacyText: {
-    color: "#607276",
+    color: "#526782",
     fontSize: 13,
     lineHeight: 1.55,
     margin: 0
@@ -513,7 +513,7 @@ const styles: Record<string, CSSProperties> = {
     margin: 0
   },
   summaryRow: {
-    borderTop: "1px solid #e7eeee",
+    borderTop: "1px solid #e5edf8",
     display: "grid",
     gap: 8,
     gridTemplateColumns: "minmax(120px, 0.4fr) minmax(0, 1fr)",
@@ -543,8 +543,8 @@ const styles: Record<string, CSSProperties> = {
     gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))"
   },
   stateCard: {
-    background: "#f7faf9",
-    border: "1px solid #dce8e8",
+    background: "#f7faff",
+    border: "1px solid #d8e4f5",
     borderRadius: 8,
     display: "grid",
     gap: 8,

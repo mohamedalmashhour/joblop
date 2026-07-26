@@ -1,23 +1,23 @@
 export const staffingCategories = [
   {
     name: "Kitchen",
-    roles: "Chef, kitchen aide, dishwasher",
-    detail: "Food service roles with shift requirements and workplace context."
+    roles: "Chef diplômé, Sous-chef, Cuisinier, Aide-cuisinier, Dishwasher",
+    detail: "Food service coverage with shift requirements, food-safety context, and kitchen handoff notes."
   },
   {
     name: "Care / Nurse",
-    roles: "Nurse, PSW, care aide",
-    detail: "Credential-aware staffing requests for supervised care environments."
+    roles: "Préposé(e) aux bénéficiaires, Nurse, care aide",
+    detail: "Credential-aware requests for supervised care environments without exposing resident records."
   },
   {
-    name: "Helper",
-    roles: "Dining, housekeeping, floor support",
-    detail: "Operational support roles for daily residence coverage."
+    name: "Housekeeping & Dining",
+    roles: "Housekeeping, dining support, laundry, cleaner",
+    detail: "Operational support roles for daily residence coverage and urgent absence replacement."
   },
   {
     name: "Maintenance",
-    roles: "Repairs, facility, urgent support",
-    detail: "Facility support with clear access and safety expectations."
+    roles: "Facility support, repairs, porter, urgent support",
+    detail: "Facility requests with clear access limits, safety expectations, and supervisor handoff."
   }
 ] as const;
 

@@ -6,6 +6,7 @@ import {
   createCssVariableBlock,
   cssVariables,
   dataStates,
+  residentJobStatusDefinitions,
   statusColors,
   statusSemantics,
   touch,
@@ -25,6 +26,13 @@ describe("design system colors", () => {
     expect(statusColors.danger.foreground).toBe(colors.danger);
     expect(statusSemantics.warning).toContain("human review");
     expect(statusSemantics.informational).toContain("not an approval");
+  });
+
+  it("defines Resident Job workflow status meanings without crossing boundaries", () => {
+    expect(residentJobStatusDefinitions.invoiceIssued.meaning).toContain("payment is separate");
+    expect(residentJobStatusDefinitions.workerEnRoute.meaning).toContain("attendance has not started");
+    expect(residentJobStatusDefinitions.paid.meaning).toContain("settlement reference");
+    expect(residentJobStatusDefinitions.matching.meaning).toContain("AI remains advisory");
   });
 
   it("exports CSS variables for approved tokens", () => {

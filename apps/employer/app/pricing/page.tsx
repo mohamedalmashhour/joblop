@@ -29,7 +29,7 @@ export default function PricingPage() {
           <a href="/contact" style={styles.navLink}>
             Contact
           </a>
-          <a href="/#sign-in" style={styles.navLink}>
+          <a href="/employer/dashboard" style={styles.navLink}>
             Sign in
           </a>
         </nav>
@@ -247,7 +247,7 @@ const baseButton: CSSProperties = {
 
 const styles: Record<string, CSSProperties> = {
   page: {
-    background: "#f7faf9",
+    background: "#f7faff",
     color: "#0b1f3a",
     fontFamily: "Inter, system-ui, sans-serif",
     minHeight: "100vh"
@@ -255,7 +255,7 @@ const styles: Record<string, CSSProperties> = {
   header: {
     alignItems: "center",
     background: "#ffffff",
-    borderBottom: "1px solid #dce8e8",
+    borderBottom: "1px solid #d8e4f5",
     display: "flex",
     flexWrap: "wrap",
     gap: 16,
@@ -308,7 +308,7 @@ const styles: Record<string, CSSProperties> = {
   secondaryButtonLarge: {
     ...baseButton,
     background: "transparent",
-    border: "1px solid #dce8e8",
+    border: "1px solid #d8e4f5",
     color: "#ffffff",
     minHeight: 52,
     padding: "0 22px"
@@ -343,7 +343,7 @@ const styles: Record<string, CSSProperties> = {
     maxWidth: 920
   },
   lede: {
-    color: "#dce8e8",
+    color: "#d8e4f5",
     fontSize: 18,
     lineHeight: 1.6,
     margin: 0,
@@ -371,8 +371,8 @@ const styles: Record<string, CSSProperties> = {
   },
   whiteSection: {
     background: "#ffffff",
-    borderBottom: "1px solid #dce8e8",
-    borderTop: "1px solid #dce8e8",
+    borderBottom: "1px solid #d8e4f5",
+    borderTop: "1px solid #d8e4f5",
     padding: "48px clamp(16px, 4vw, 40px)"
   },
   sectionHeader: {
@@ -388,7 +388,7 @@ const styles: Record<string, CSSProperties> = {
     margin: 0
   },
   sectionCopy: {
-    color: "#607276",
+    color: "#526782",
     fontSize: 16,
     lineHeight: 1.6,
     margin: 0,
@@ -401,7 +401,7 @@ const styles: Record<string, CSSProperties> = {
   },
   pill: {
     background: "#ffffff",
-    border: "1px solid #dce8e8",
+    border: "1px solid #d8e4f5",
     borderRadius: 8,
     color: "#071f4d",
     fontWeight: 900,
@@ -415,7 +415,7 @@ const styles: Record<string, CSSProperties> = {
   },
   card: {
     background: "#ffffff",
-    border: "1px solid #dce8e8",
+    border: "1px solid #d8e4f5",
     borderRadius: 8,
     padding: 18
   },
@@ -425,7 +425,7 @@ const styles: Record<string, CSSProperties> = {
     margin: 0
   },
   cardText: {
-    color: "#607276",
+    color: "#526782",
     fontSize: 14,
     fontWeight: 700,
     lineHeight: 1.55,
@@ -439,9 +439,9 @@ const styles: Record<string, CSSProperties> = {
     margin: "18px 0 0"
   },
   timelineSection: {
-    background: "#eef4ff",
-    borderBottom: "1px solid #dce8e8",
-    borderTop: "1px solid #dce8e8",
+    background: "#eef5ff",
+    borderBottom: "1px solid #d8e4f5",
+    borderTop: "1px solid #d8e4f5",
     padding: "48px clamp(16px, 4vw, 40px)"
   },
   timeline: {
@@ -454,7 +454,7 @@ const styles: Record<string, CSSProperties> = {
   },
   timelineItem: {
     background: "#ffffff",
-    border: "1px solid #bfd0f5",
+    border: "1px solid #c9ddff",
     borderRadius: 8,
     color: "#071f4d",
     fontWeight: 900,
@@ -462,8 +462,8 @@ const styles: Record<string, CSSProperties> = {
   },
   splitSection: {
     background: "#ffffff",
-    borderBottom: "1px solid #dce8e8",
-    borderTop: "1px solid #dce8e8",
+    borderBottom: "1px solid #d8e4f5",
+    borderTop: "1px solid #d8e4f5",
     display: "grid",
     gap: 28,
     gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))",
@@ -493,18 +493,18 @@ const styles: Record<string, CSSProperties> = {
     gap: 6
   },
   input: {
-    background: "#f7faf9",
-    border: "1px solid #bccdce",
+    background: "#f7faff",
+    border: "1px solid #b8c8dc",
     borderRadius: 8,
-    color: "#607276",
+    color: "#526782",
     font: "inherit",
     minHeight: 44,
     padding: "0 12px"
   },
   aiSection: {
-    background: "#eef4ff",
-    borderBottom: "1px solid #dce8e8",
-    borderTop: "1px solid #dce8e8",
+    background: "#eef5ff",
+    borderBottom: "1px solid #d8e4f5",
+    borderTop: "1px solid #d8e4f5",
     padding: "48px clamp(16px, 4vw, 40px)"
   },
   footer: {
@@ -528,7 +528,7 @@ const styles: Record<string, CSSProperties> = {
     textDecoration: "none"
   },
   footerNote: {
-    color: "#dce8e8",
+    color: "#d8e4f5",
     fontSize: 13
   }
 };

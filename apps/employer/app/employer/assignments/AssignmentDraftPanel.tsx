@@ -39,56 +39,75 @@ export function AssignmentDraftPanel({ mode }: { mode: "manual" | "review" | "co
 
   return (
     <section style={styles.section}>
-      <div style={styles.sectionHeader}>
-        <p style={styles.eyebrowDark}>Fixture-backed assignment draft</p>
-        <h2 style={styles.sectionTitle}>{draft.candidate.displayName}</h2>
-        <p style={styles.sectionCopy}>
-          Assignment state: {draft.assignmentStatus}. This does not contact workers, simulate
-          acceptance, create attendance, or execute backend assignment logic.
-        </p>
-      </div>
-      <div style={styles.cardGrid}>
-        {[
-          ["Candidate", draft.candidate.displayName],
-          ["Availability", draft.candidate.availability],
-          ["Qualifications", draft.candidate.qualifications],
-          ["Decision actor", draft.decisionActor],
-          ["Decision reason", draft.decisionReason],
-          ["Authoritative handoff", draft.authoritativeHandoff]
-        ].map(([label, value]) => (
-          <article key={label} style={styles.card}>
-            <h3 style={styles.cardTitle}>{label}</h3>
-            <p style={styles.cardText}>{value}</p>
-          </article>
-        ))}
-      </div>
-      <div style={styles.pillGrid}>
-        {manualAssignmentLifecycle.map((state) => (
-          <span key={state} style={state === draft.assignmentStatus ? styles.pill : styles.routeCard}>
-            {state}
-          </span>
-        ))}
-      </div>
-      <div style={{ display: "flex", flexWrap: "wrap", gap: 10, marginTop: 18 }}>
-        {mode === "manual" ? (
-          <>
-            <button type="button" onClick={saveProposedAssignment} style={styles.primaryButton}>
-              Select candidate locally
-            </button>
-            <a href="/employer/assignments/review" style={styles.secondaryButton}>Review assignment</a>
-          </>
-        ) : null}
-        {mode === "review" ? (
-          <>
-            <button type="button" onClick={createPendingAssignment} style={styles.primaryButton}>
-              Create pending-response fixture
-            </button>
-            <a href="/employer/assignments/confirmation" style={styles.secondaryButton}>Open confirmation</a>
-          </>
-        ) : null}
-        {mode === "confirmation" ? <a href="/employer/assignments/worker-response" style={styles.secondaryButton}>View worker response state</a> : null}
-        {mode === "response" ? <a href="/employer/assignments/detail" style={styles.secondaryButton}>Open assignment detail</a> : null}
-        {mode === "detail" ? <a href="/employer/attendance" style={styles.secondaryButton}>Attendance handoff</a> : null}
+      <div style={styles.panel}>
+        <div style={styles.sectionHeader}>
+          <p style={styles.eyebrowDark}>Fixture-backed assignment draft</p>
+          <h2 style={styles.sectionTitle}>{draft.candidate.displayName}</h2>
+          <p style={styles.sectionCopy}>
+            Assignment state: {draft.assignmentStatus}. This does not contact workers, simulate
+            acceptance, create attendance, or execute backend assignment logic.
+          </p>
+          <span style={styles.statusBadgeWarning}>Human decision required</span>
+        </div>
+        <div style={styles.cardGrid}>
+          {[
+            ["Candidate", draft.candidate.displayName],
+            ["Availability", draft.candidate.availability],
+            ["Qualifications", draft.candidate.qualifications],
+            ["Decision actor", draft.decisionActor],
+            ["Decision reason", draft.decisionReason],
+            ["Authoritative handoff", draft.authoritativeHandoff]
+          ].map(([label, value]) => (
+            <article key={label} style={styles.card}>
+              <span style={styles.metaLabel}>{label}</span>
+              <p style={styles.cardText}>{value}</p>
+            </article>
+          ))}
+        </div>
+        <div style={styles.pillGrid}>
+          {manualAssignmentLifecycle.map((state) => (
+            <span key={state} style={state === draft.assignmentStatus ? styles.pill : styles.routeCard}>
+              {state}
+            </span>
+          ))}
+        </div>
+        <div style={styles.actionBar}>
+          {mode === "manual" ? (
+            <>
+              <button type="button" onClick={saveProposedAssignment} style={styles.primaryButton}>
+                Select candidate locally
+              </button>
+              <a href="/employer/assignments/review" style={styles.secondaryButton}>
+                Review assignment
+              </a>
+            </>
+          ) : null}
+          {mode === "review" ? (
+            <>
+              <button type="button" onClick={createPendingAssignment} style={styles.primaryButton}>
+                Create pending-response fixture
+              </button>
+              <a href="/employer/assignments/confirmation" style={styles.secondaryButton}>
+                Open confirmation
+              </a>
+            </>
+          ) : null}
+          {mode === "confirmation" ? (
+            <a href="/employer/assignments/worker-response" style={styles.secondaryButton}>
+              View worker response state
+            </a>
+          ) : null}
+          {mode === "response" ? (
+            <a href="/employer/assignments/detail" style={styles.secondaryButton}>
+              Open assignment detail
+            </a>
+          ) : null}
+          {mode === "detail" ? (
+            <a href="/employer/attendance" style={styles.secondaryButton}>
+              Attendance handoff
+            </a>
+          ) : null}
+        </div>
       </div>
       <div style={styles.cardGrid}>
         {assignmentDataStates.map((state) => (

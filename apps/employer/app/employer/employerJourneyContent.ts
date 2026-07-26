@@ -135,38 +135,62 @@ export const departmentBoundaries = [
 
 export const dashboardAttention = [
   {
+    title: "Open requests",
+    state: "7 fixture requests need coverage",
+    route: "Next workflow: Create Shift or Applicants"
+  },
+  {
     title: "Urgent staffing needs",
-    state: "No live source connected",
-    route: "Next workflow: Create Shift"
+    state: "2 same-day fixture requests flagged for dispatcher attention",
+    route: "Route to Urgent Shift"
   },
   {
-    title: "Shifts at risk today",
-    state: "Development fixture only",
-    route: "Future attendance workflow"
+    title: "Shifts today",
+    state: "12 fixture shifts across 3 residences",
+    route: "Route to Attendance Monitoring"
   },
   {
-    title: "Pending approvals",
-    state: "Applications and timesheets route to governed workflows",
-    route: "Future approval queues"
+    title: "Workers on-site",
+    state: "9 checked-in fixture workers",
+    route: "Read-only attendance status"
   },
   {
-    title: "Workers checked in",
-    state: "Summary only",
-    route: "Future attendance monitoring"
+    title: "Timesheet approvals",
+    state: "4 pending employer review",
+    route: "Route to Timesheets"
+  },
+  {
+    title: "Outstanding invoices",
+    state: "$3,840.00 fixture balance",
+    route: "Route to Invoices"
+  },
+  {
+    title: "Monthly staffing cost",
+    state: "$18,420.00 illustrative total",
+    route: "Estimate only; payment authority separate"
   }
 ] as const;
 
 export const dashboardSections = [
   "Today's shifts",
   "Open shifts",
+  "Urgent unfilled requests",
+  "Candidate matches",
+  "Worker profiles and qualifications",
   "Filled shifts",
   "Pending applications",
+  "Punch-in and punch-out status",
+  "Pending timesheet approvals",
+  "Outstanding invoices",
+  "Payment method management",
+  "Residence locations",
+  "Team members and permissions",
   "Active conversations",
   "Unread notifications",
-  "Compliance reminders",
-  "High-level billing summary",
+  "Operational reports",
+  "Settings",
   "Open support requests",
-  "Residence and department summaries"
+  "High-level billing summary"
 ] as const;
 
 export const dashboardBoundaries = [
@@ -184,7 +208,7 @@ export const dashboardAvailableOrdersCalendar = [
     value: "4",
     detail: "Open staffing requests",
     state: "Requested",
-    route: "/employer/shifts"
+    route: "/employer/shifts/published"
   },
   {
     day: "Urgent",
@@ -198,7 +222,7 @@ export const dashboardAvailableOrdersCalendar = [
     value: "3",
     detail: "Published fixture shifts",
     state: "Open",
-    route: "/employer/shifts"
+    route: "/employer/shifts/published"
   },
   {
     day: "This week",
@@ -229,7 +253,7 @@ export const dashboardOrderCalendar = [
     value: "11",
     detail: "Upcoming approved requests",
     state: "Planned",
-    route: "/employer/shifts"
+    route: "/employer/shifts/published"
   },
   {
     day: "Review",

@@ -21,34 +21,37 @@ export function PaymentStatePanel({ mode }: { mode: "overview" | "method" | "aut
 
   return (
     <section style={styles.section}>
-      <div style={styles.sectionHeader}>
-        <p style={styles.eyebrowDark}>Fixture-backed payment state</p>
-        <h2 style={styles.sectionTitle}>{currentState}</h2>
-        <p style={styles.sectionCopy}>
-          Payment state is display-only. No payment provider is selected, no charge is executed,
-          and no worker payment is implied.
-        </p>
-      </div>
-      <div style={styles.cardGrid}>
-        {[
-          ["Invoice", paymentFixture.invoice],
-          ["Amount", paymentFixture.amount],
-          ["Payment method", paymentFixture.methodSummary],
-          ["Masked details", paymentFixture.maskedDetails],
-          ["Authorization", paymentFixture.authorizationStatus],
-          ["Settlement", paymentFixture.settlementStatus],
-          ["Failure reason", paymentFixture.failureReason],
-          ["Retry eligibility", paymentFixture.retryEligibility],
-          ["Receipt reference", paymentFixture.receiptReference],
-          ["Transaction date", paymentFixture.transactionDate],
-          ["Invoice linkage", paymentFixture.invoiceLinkage],
-          ["Worker payable", paymentFixture.workerPayableBoundary]
-        ].map(([label, value]) => (
-          <article key={label} style={styles.card}>
-            <h3 style={styles.cardTitle}>{label}</h3>
-            <p style={styles.cardText}>{value}</p>
-          </article>
-        ))}
+      <div style={styles.panel}>
+        <div style={styles.sectionHeader}>
+          <p style={styles.eyebrowDark}>Fixture-backed payment state</p>
+          <h2 style={styles.sectionTitle}>{currentState}</h2>
+          <p style={styles.sectionCopy}>
+            Payment state is display-only. No payment provider is selected, no charge is executed,
+            and no worker payment is implied.
+          </p>
+          <span style={styles.statusBadgeWarning}>Provider gate required</span>
+        </div>
+        <div style={styles.cardGrid}>
+          {[
+            ["Invoice", paymentFixture.invoice],
+            ["Amount", paymentFixture.amount],
+            ["Payment method", paymentFixture.methodSummary],
+            ["Masked details", paymentFixture.maskedDetails],
+            ["Authorization", paymentFixture.authorizationStatus],
+            ["Settlement", paymentFixture.settlementStatus],
+            ["Failure reason", paymentFixture.failureReason],
+            ["Retry eligibility", paymentFixture.retryEligibility],
+            ["Receipt reference", paymentFixture.receiptReference],
+            ["Transaction date", paymentFixture.transactionDate],
+            ["Invoice linkage", paymentFixture.invoiceLinkage],
+            ["Worker payable", paymentFixture.workerPayableBoundary]
+          ].map(([label, value]) => (
+            <article key={label} style={styles.card}>
+              <span style={styles.metaLabel}>{label}</span>
+              <p style={styles.cardText}>{value}</p>
+            </article>
+          ))}
+        </div>
       </div>
       <section style={{ marginTop: 22 }}>
         <div style={styles.pillGrid}>{employerPaymentStates.map((state) => <span key={state} style={state === currentState ? styles.pill : styles.routeCard}>{state}</span>)}</div>

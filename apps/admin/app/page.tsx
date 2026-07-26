@@ -1,5 +1,15 @@
 import { adminRoles } from "@rwos/auth";
+import { colors, elevation, radii, spacing, statusColors, touch } from "@rwos/design-system";
 import type { CSSProperties } from "react";
+
+const navy = colors.navy;
+const teal = colors.actionTeal;
+const border = colors.border;
+const surface = colors.surface;
+const surfaceRaised = colors.surfaceRaised;
+const surfaceSubtle = colors.surfaceSubtle;
+const text = colors.text;
+const muted = colors.muted;
 
 const kpis = [
   ["Residences", "16", "6 need attention"],
@@ -120,7 +130,7 @@ export default function AdminHome() {
               </div>
               <div style={styles.scoreBox}>
                 <strong>{score}</strong>
-                <button style={styles.actionButton}>Approve</button>
+                <button disabled style={styles.actionButton} type="button">Approve</button>
               </div>
             </div>
           ))}
@@ -234,29 +244,32 @@ function getAdminCalendarHref(title: string, status: string) {
 
 const styles: Record<string, CSSProperties> = {
   page: {
-    background: "#eef3f8",
-    color: "#0b1f3a",
+    background: surface,
+    color: text,
     fontFamily: "Inter, system-ui, sans-serif",
     minHeight: "100vh",
-    padding: 24
+    padding: "clamp(16px, 3vw, 32px)"
   },
   hero: {
     alignItems: "center",
-    background: "#071f4d",
-    borderRadius: 18,
+    background: `linear-gradient(135deg, ${navy} 0%, #082a66 100%)`,
+    border: "1px solid rgba(255,255,255,0.12)",
+    borderRadius: radii.md,
+    boxShadow: elevation.overlay,
     color: "white",
     display: "flex",
+    flexWrap: "wrap",
     gap: 24,
     justifyContent: "space-between",
-    padding: 28
+    padding: "clamp(22px, 4vw, 34px)"
   },
-  eyebrow: { color: "#fff8d8", fontSize: 12, fontWeight: 800, letterSpacing: 0, margin: 0 },
-  title: { fontSize: 36, letterSpacing: 0, margin: "6px 0" },
-  copy: { color: "#dce8e8", lineHeight: 1.5, margin: 0, maxWidth: 760 },
+  eyebrow: { color: colors.cream, fontSize: 12, fontWeight: 900, letterSpacing: 0, margin: 0 },
+  title: { fontSize: "clamp(30px, 4vw, 46px)", letterSpacing: 0, lineHeight: 1.05, margin: "8px 0" },
+  copy: { color: "#d6e5f8", fontSize: 16, lineHeight: 1.58, margin: 0, maxWidth: 820 },
   roleBox: {
     background: "rgba(255,255,255,0.1)",
     border: "1px solid rgba(255,255,255,0.24)",
-    borderRadius: 12,
+    borderRadius: radii.sm,
     display: "grid",
     gap: 6,
     minWidth: 220,
@@ -265,23 +278,41 @@ const styles: Record<string, CSSProperties> = {
   kpiGrid: {
     display: "grid",
     gap: 14,
-    gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))",
+    gridTemplateColumns: "repeat(auto-fit, minmax(190px, 1fr))",
     marginTop: 18
   },
-  card: { background: "white", border: "1px solid #dce8e8", borderRadius: 10, padding: 18 },
-  small: { color: "#607276", fontSize: 13, margin: "4px 0" },
-  big: { display: "block", fontSize: 30, margin: "6px 0" },
-  grid: { display: "grid", gap: 18, gridTemplateColumns: "1.35fr 0.65fr", marginTop: 18 },
-  panel: { background: "white", border: "1px solid #dce8e8", borderRadius: 12, marginTop: 18, padding: 18 },
+  card: {
+    background: surfaceRaised,
+    border: `1px solid ${border}`,
+    borderRadius: radii.sm,
+    boxShadow: elevation.raised,
+    padding: 18
+  },
+  small: { color: muted, fontSize: 13, lineHeight: 1.45, margin: "4px 0" },
+  big: { color: navy, display: "block", fontSize: 30, fontVariantNumeric: "tabular-nums", margin: "6px 0" },
+  grid: {
+    display: "grid",
+    gap: 18,
+    gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 340px), 1fr))",
+    marginTop: 18
+  },
+  panel: {
+    background: surfaceRaised,
+    border: `1px solid ${border}`,
+    borderRadius: radii.sm,
+    boxShadow: elevation.raised,
+    marginTop: 18,
+    padding: 18
+  },
   panelHeader: { alignItems: "center", display: "flex", justifyContent: "space-between" },
-  h2: { fontSize: 20, margin: 0 },
+  h2: { color: navy, fontSize: 20, margin: 0 },
   badge: {
-    background: "#fff8d8",
-    border: "1px solid #e8d782",
+    background: statusColors.informational.background,
+    border: `1px solid ${statusColors.informational.border}`,
     borderRadius: 999,
-    color: "#071f4d",
+    color: statusColors.informational.foreground,
     fontSize: 12,
-    fontWeight: 800,
+    fontWeight: 900,
     padding: "6px 10px"
   },
   matchCard: {
@@ -294,13 +325,13 @@ const styles: Record<string, CSSProperties> = {
   },
   scoreBox: { alignItems: "end", display: "grid", gap: 8 },
   actionButton: {
-    background: "#071f4d",
+    background: teal,
     border: 0,
-    borderRadius: 8,
+    borderRadius: radii.sm,
     color: "white",
     fontWeight: 800,
-    minHeight: 40,
-    padding: "0 14px"
+    minHeight: touch.minimumTarget,
+    padding: `0 ${spacing.lg}px`
   },
   poolRow: {
     borderTop: "1px solid #e7eeee",
@@ -316,16 +347,16 @@ const styles: Record<string, CSSProperties> = {
     marginTop: 14
   },
   groupCell: {
-    background: "#f8fbfb",
-    border: "1px solid #dce8e8",
-    borderRadius: 10,
+    background: surfaceSubtle,
+    border: `1px solid ${border}`,
+    borderRadius: radii.sm,
     display: "grid",
     gap: 8,
     minHeight: 152,
     padding: 14
   },
   groupTitle: {
-    color: "#071f4d",
+    color: navy,
     fontSize: 17
   },
   groupCount: {
@@ -333,13 +364,13 @@ const styles: Record<string, CSSProperties> = {
     fontSize: 22,
     fontWeight: 900
   },
-  status: { color: "#1f6f55", fontSize: 13, fontWeight: 800 },
-  danger: { color: "#c93434", fontSize: 13, fontWeight: 900 },
+  status: { color: colors.success, fontSize: 13, fontWeight: 800 },
+  danger: { color: colors.danger, fontSize: 13, fontWeight: 900 },
   requestRow: {
     borderTop: "1px solid #e7eeee",
     display: "grid",
     gap: 12,
-    gridTemplateColumns: "1.2fr 0.8fr 0.7fr 1fr",
+    gridTemplateColumns: "repeat(auto-fit, minmax(150px, 1fr))",
     padding: "14px 0"
   },
   calendarBoard: {
@@ -349,10 +380,10 @@ const styles: Record<string, CSSProperties> = {
     marginTop: 14
   },
   calendarCell: {
-    background: "#f8fbfb",
-    border: "1px solid #dce8e8",
-    borderRadius: 10,
-    color: "#0b1f3a",
+    background: surfaceSubtle,
+    border: `1px solid ${border}`,
+    borderRadius: radii.sm,
+    color: text,
     display: "grid",
     gap: 8,
     minHeight: 132,
@@ -360,10 +391,10 @@ const styles: Record<string, CSSProperties> = {
     textDecoration: "none"
   },
   calendarHot: {
-    background: "#fff4f4",
-    border: "1px solid #e5a4a4",
-    borderRadius: 10,
-    color: "#0b1f3a",
+    background: statusColors.danger.background,
+    border: `1px solid ${statusColors.danger.border}`,
+    borderRadius: radii.sm,
+    color: text,
     display: "grid",
     gap: 8,
     minHeight: 132,
@@ -371,10 +402,10 @@ const styles: Record<string, CSSProperties> = {
     textDecoration: "none"
   },
   calendarMoney: {
-    background: "#f0fff8",
-    border: "1px solid #9fd8bc",
-    borderRadius: 10,
-    color: "#0b1f3a",
+    background: statusColors.success.background,
+    border: `1px solid ${statusColors.success.border}`,
+    borderRadius: radii.sm,
+    color: text,
     display: "grid",
     gap: 8,
     minHeight: 132,
@@ -382,16 +413,17 @@ const styles: Record<string, CSSProperties> = {
     textDecoration: "none"
   },
   calendarValue: {
-    color: "#071f4d",
+    color: navy,
     fontSize: 28,
     fontWeight: 900
   },
-  time: { color: "#123b78" },
+  time: { color: colors.navyMuted },
   audit: {
-    background: "#071f4d",
-    borderRadius: 12,
+    background: navy,
+    borderRadius: radii.sm,
     color: "white",
     display: "flex",
+    flexWrap: "wrap",
     gap: 12,
     marginTop: 18,
     padding: 18

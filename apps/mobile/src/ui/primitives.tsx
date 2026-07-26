@@ -172,6 +172,7 @@ export const primitiveContract = uiFoundation.primitiveNames;
 
 const styles = StyleSheet.create({
   screen: {
+    backgroundColor: colors.surfaceSubtle,
     flex: 1,
     gap: spacing.lg,
     padding: spacing.lg
@@ -179,7 +180,7 @@ const styles = StyleSheet.create({
   heading: {
     color: colors.text,
     fontSize: typography.heading,
-    fontWeight: "700"
+    fontWeight: "800"
   },
   body: {
     color: colors.text,
@@ -194,18 +195,22 @@ const styles = StyleSheet.create({
   card: {
     backgroundColor: colors.surfaceRaised,
     borderColor: colors.border,
-    borderRadius: radii.lg,
+    borderRadius: radii.sm,
     borderWidth: 1,
     gap: spacing.sm,
-    padding: spacing.lg
+    padding: spacing.lg,
+    shadowColor: colors.text,
+    shadowOffset: { height: 2, width: 0 },
+    shadowOpacity: 0.08,
+    shadowRadius: 14
   },
   section: {
     gap: spacing.sm
   },
   sectionTitle: {
-    color: colors.deepTeal,
+    color: colors.deepTealMuted,
     fontSize: typography.small,
-    fontWeight: "700",
+    fontWeight: "800",
     textTransform: "uppercase"
   },
   divider: {
@@ -249,14 +254,14 @@ const styles = StyleSheet.create({
   },
   button: {
     alignItems: "center",
-    borderRadius: radii.md,
+    borderRadius: radii.sm,
     justifyContent: "center",
     minHeight: touch.comfortableTarget,
     paddingHorizontal: spacing.lg,
     paddingVertical: spacing.md
   },
   primaryButton: {
-    backgroundColor: colors.deepTeal
+    backgroundColor: colors.navy
   },
   secondaryButton: {
     backgroundColor: colors.surfaceRaised,
@@ -288,7 +293,7 @@ const styles = StyleSheet.create({
   input: {
     backgroundColor: colors.surfaceRaised,
     borderColor: colors.border,
-    borderRadius: radii.md,
+    borderRadius: radii.sm,
     borderWidth: 1,
     color: colors.text,
     minHeight: touch.comfortableTarget,

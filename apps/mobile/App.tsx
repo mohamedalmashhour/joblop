@@ -272,10 +272,15 @@ export default function App() {
       <StatusBar style="dark" />
       <View style={styles.app}>
         <View style={styles.header}>
-          <HeaderText variant="title">{productName}</HeaderText>
-          <HeaderText variant="subtitle">
-            Worker app foundation - G02 applications and offers
-          </HeaderText>
+          <View style={styles.brandMark}>
+            <Text style={styles.brandMarkText}>RW</Text>
+          </View>
+          <View style={styles.headerCopy}>
+            <HeaderText variant="title">{productName}</HeaderText>
+            <HeaderText variant="subtitle">
+              Worker app foundation - G02 applications and offers
+            </HeaderText>
+          </View>
         </View>
         <View style={styles.content}>{renderScreen()}</View>
         <View style={styles.tabBar}>
@@ -587,7 +592,13 @@ function PlaceholderScreen({
           <Card>
             <Heading>Account menu</Heading>
             {profileMenuItems.map((item) => (
-              <Pressable accessibilityRole="button" key={item.title} style={styles.profileMenuRow}>
+              <Pressable
+                accessibilityRole="button"
+                accessibilityState={{ disabled: true }}
+                disabled
+                key={item.title}
+                style={[styles.profileMenuRow, styles.disabledMenuRow]}
+              >
                 <View style={styles.profileIconBox}>
                   <Text style={styles.profileIconText}>{item.icon}</Text>
                 </View>
@@ -1033,35 +1044,58 @@ const profileMenuItems = [
 
 const styles = StyleSheet.create({
   safeArea: {
-    backgroundColor: colors.surface,
+    backgroundColor: colors.surfaceSubtle,
     flex: 1,
     minHeight: "100%",
     width: "100%"
   },
   app: {
+    backgroundColor: colors.surfaceSubtle,
     flex: 1,
     alignSelf: "stretch",
     minWidth: "100%",
     width: "100%"
   },
   header: {
+    alignItems: "center",
     alignSelf: "stretch",
-    backgroundColor: colors.deepTeal,
-    gap: spacing.xs,
+    backgroundColor: colors.surfaceRaised,
+    borderBottomColor: colors.border,
+    borderBottomWidth: 1,
+    flexDirection: "row",
+    gap: spacing.md,
     minWidth: "100%",
     padding: spacing.lg,
     width: "100%"
   },
+  brandMark: {
+    alignItems: "center",
+    backgroundColor: colors.navy,
+    borderRadius: radii.sm,
+    height: 42,
+    justifyContent: "center",
+    width: 42
+  },
+  brandMarkText: {
+    color: colors.surfaceRaised,
+    fontSize: typography.micro,
+    fontWeight: "900"
+  },
+  headerCopy: {
+    flex: 1,
+    gap: spacing.xs,
+    minWidth: 0
+  },
   productName: {
-    color: colors.cream,
+    color: colors.navy,
     fontSize: typography.title,
-    fontWeight: "700",
+    fontWeight: "900",
     maxWidth: "100%",
     minWidth: "100%",
     width: "100%"
   },
   headerText: {
-    color: colors.surface,
+    color: colors.muted,
     fontSize: typography.small,
     maxWidth: "100%",
     minWidth: "100%",
@@ -1082,11 +1116,15 @@ const styles = StyleSheet.create({
     gap: spacing.xs,
     justifyContent: "space-around",
     padding: spacing.sm,
+    shadowColor: colors.text,
+    shadowOffset: { height: -2, width: 0 },
+    shadowOpacity: 0.06,
+    shadowRadius: 12,
     width: "100%"
   },
   tabButton: {
     alignItems: "center",
-    borderRadius: radii.pill,
+    borderRadius: radii.sm,
     minHeight: touch.minimumTarget,
     minWidth: 92,
     paddingHorizontal: spacing.sm,
@@ -1101,7 +1139,7 @@ const styles = StyleSheet.create({
     fontWeight: "700"
   },
   activeTabText: {
-    color: colors.cream
+    color: colors.surfaceRaised
   },
   placeholderScroll: {
     flex: 1
@@ -1121,7 +1159,7 @@ const styles = StyleSheet.create({
   metricCard: {
     backgroundColor: colors.surfaceRaised,
     borderColor: colors.border,
-    borderRadius: radii.md,
+    borderRadius: radii.sm,
     borderWidth: 1,
     flexBasis: "47%",
     flexGrow: 1,
@@ -1142,7 +1180,7 @@ const styles = StyleSheet.create({
   },
   readinessChip: {
     alignItems: "center",
-    backgroundColor: colors.surface,
+    backgroundColor: colors.surfaceRaised,
     borderColor: colors.border,
     borderRadius: radii.pill,
     borderWidth: 1,
@@ -1165,7 +1203,7 @@ const styles = StyleSheet.create({
   },
   groupCapsule: {
     alignItems: "center",
-    backgroundColor: colors.surface,
+    backgroundColor: colors.surfaceRaised,
     borderColor: colors.border,
     borderRadius: radii.pill,
     borderWidth: 1,
@@ -1204,7 +1242,7 @@ const styles = StyleSheet.create({
   groupCard: {
     backgroundColor: colors.surface,
     borderColor: colors.border,
-    borderRadius: radii.md,
+    borderRadius: radii.sm,
     borderWidth: 1,
     flexGrow: 1,
     gap: spacing.xs,
@@ -1270,15 +1308,18 @@ const styles = StyleSheet.create({
   },
   profileMenuRow: {
     alignItems: "center",
-    backgroundColor: colors.surface,
+    backgroundColor: colors.surfaceRaised,
     borderColor: colors.border,
-    borderRadius: radii.md,
+    borderRadius: radii.sm,
     borderWidth: 1,
     flexDirection: "row",
     gap: spacing.md,
     minHeight: 78,
     paddingHorizontal: spacing.md,
     paddingVertical: spacing.sm
+  },
+  disabledMenuRow: {
+    opacity: 0.72
   },
   profileIconBox: {
     alignItems: "center",
@@ -1328,7 +1369,7 @@ const styles = StyleSheet.create({
     fontWeight: "800"
   },
   statusPill: {
-    backgroundColor: colors.surface,
+    backgroundColor: colors.surfaceRaised,
     borderColor: colors.border,
     borderRadius: radii.pill,
     borderWidth: 1,
@@ -1363,7 +1404,7 @@ const styles = StyleSheet.create({
     alignItems: "center",
     backgroundColor: colors.surfaceRaised,
     borderColor: colors.border,
-    borderRadius: radii.md,
+    borderRadius: radii.sm,
     borderWidth: 1,
     flexGrow: 1,
     gap: spacing.xs,
@@ -1391,9 +1432,9 @@ const styles = StyleSheet.create({
     marginTop: spacing.sm
   },
   calendarCell: {
-    backgroundColor: colors.surface,
+    backgroundColor: colors.surfaceRaised,
     borderColor: colors.border,
-    borderRadius: radii.md,
+    borderRadius: radii.sm,
     borderWidth: 1,
     flexGrow: 1,
     gap: spacing.xs,

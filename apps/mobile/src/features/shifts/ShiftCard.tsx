@@ -2,7 +2,7 @@ import { Pressable, StyleSheet, View } from "react-native";
 import type { ShiftDiscoveryRecord } from "@rwos/shared";
 import { colors, spacing, touch } from "@rwos/design-system";
 import { Badge, BodyText, Card, Heading, SmallText } from "../../ui/primitives";
-import { formatMoney, formatShiftDate, formatShiftTimeRange } from "./formatters";
+import { formatDurationHours, formatMoney, formatShiftDate, formatShiftTimeRange } from "./formatters";
 
 export function ShiftCard({
   shift,
@@ -40,8 +40,15 @@ export function ShiftCard({
           {formatShiftDate(shift.startAt)} - {formatShiftTimeRange(shift)}
         </SmallText>
         <View style={styles.detailGrid}>
+          <SmallText>Duration: {formatDurationHours(shift)}</SmallText>
           <SmallText>{formatMoney(shift.hourlyRate)}/hr</SmallText>
           <SmallText>{formatMoney(shift.estimatedTotal)} est.</SmallText>
+          <SmallText>
+            Travel:{" "}
+            {shift.distanceKm === null
+              ? "configurable fixture terms"
+              : `${shift.distanceKm.toFixed(1)} km, terms configurable`}
+          </SmallText>
           <SmallText>{shift.requiredExperienceYears}+ yrs</SmallText>
           <SmallText>
             {shift.requiredCertifications.join(", ") || "No certification listed"}

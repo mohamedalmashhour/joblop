@@ -24,17 +24,29 @@ export function ApplicantReviewPanel() {
           notify, or contact workers.
         </p>
       </div>
-      <div style={styles.formGrid}>
+      <div style={styles.controlBar}>
         <label style={styles.fieldLabel}>
           Filter
-          <select value={filter} onChange={(event) => setFilter(event.target.value as typeof filter)} style={styles.input}>
-            {applicantFilters.map((option) => <option key={option}>{option}</option>)}
+          <select
+            value={filter}
+            onChange={(event) => setFilter(event.target.value as typeof filter)}
+            style={styles.input}
+          >
+            {applicantFilters.map((option) => (
+              <option key={option}>{option}</option>
+            ))}
           </select>
         </label>
         <label style={styles.fieldLabel}>
           Sort
-          <select value={sort} onChange={(event) => setSort(event.target.value as typeof sort)} style={styles.input}>
-            {applicantSorts.map((option) => <option key={option}>{option}</option>)}
+          <select
+            value={sort}
+            onChange={(event) => setSort(event.target.value as typeof sort)}
+            style={styles.input}
+          >
+            {applicantSorts.map((option) => (
+              <option key={option}>{option}</option>
+            ))}
           </select>
         </label>
       </div>
@@ -43,9 +55,15 @@ export function ApplicantReviewPanel() {
         {applicants.map((applicant) => (
           <article key={applicant.id} style={styles.card}>
             <h3 style={styles.cardTitle}>{applicant.displayName}</h3>
-            <p style={styles.cardText}>Status: {applicant.status}</p>
-            <p style={styles.cardText}>Role fit: {applicant.roleFit}</p>
-            <p style={styles.cardText}>Availability: {applicant.availability}</p>
+            <span style={styles.statusBadge}>{applicant.status}</span>
+            <p style={styles.cardText}>
+              <span style={styles.metaLabel}>Role fit</span>
+              {applicant.roleFit}
+            </p>
+            <p style={styles.cardText}>
+              <span style={styles.metaLabel}>Availability</span>
+              {applicant.availability}
+            </p>
             <p style={styles.cardText}>{applicant.privacyLevel}</p>
             <a href="/employer/applicants/detail" style={{ ...styles.secondaryButton, marginTop: 12 }}>
               Open applicant detail

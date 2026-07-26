@@ -33,47 +33,66 @@ export function TimesheetReviewPanel({ mode }: { mode: "draft" | "review" | "cla
 
   return (
     <section style={styles.section}>
-      <div style={styles.sectionHeader}>
-        <p style={styles.eyebrowDark}>Fixture-backed timesheet</p>
-        <h2 style={styles.sectionTitle}>{timesheetFixture.shift}</h2>
-        <p style={styles.sectionCopy}>
-          State: {state}. This review does not persist to a server, calculate payroll, pay workers,
-          or generate invoices.
-        </p>
-      </div>
-      <div style={styles.cardGrid}>
-        {[
-          ["Scheduled start", timesheetFixture.scheduledStart],
-          ["Scheduled end", timesheetFixture.scheduledEnd],
-          ["Actual clock-in", timesheetFixture.actualClockIn],
-          ["Actual clock-out", timesheetFixture.actualClockOut],
-          ["Scheduled hours", timesheetFixture.scheduledHours],
-          ["Original worked hours", timesheetFixture.workedHoursOriginal],
-          ["Adjusted worked hours", timesheetFixture.workedHoursAdjusted],
-          ["Break duration", timesheetFixture.breakDuration],
-          ["Overtime", timesheetFixture.overtime],
-          ["Adjustment", timesheetFixture.adjustment],
-          ["Worker note", timesheetFixture.workerNote],
-          ["Employer note", timesheetFixture.employerNote]
-        ].map(([label, value]) => (
-          <article key={label} style={styles.card}>
-            <h3 style={styles.cardTitle}>{label}</h3>
-            <p style={styles.cardText}>{value}</p>
-          </article>
-        ))}
-      </div>
-      <label style={{ ...styles.fieldLabel, marginTop: 18 }}>
-        Adjustment reason
-        <input value={reason} onChange={(event) => setReason(event.target.value)} style={styles.input} />
-      </label>
-      <p style={styles.warning}>
-        Approval available: {canApproveTimesheet(reason) ? "Yes" : "No"}. Adjustment reason is required.
-      </p>
-      <div style={styles.pillGrid}>{timesheetStates.map((item) => <span key={item} style={item === state ? styles.pill : styles.routeCard}>{item}</span>)}</div>
-      <div style={{ display: "flex", flexWrap: "wrap", gap: 10, marginTop: 18 }}>
-        {mode === "review" ? <button type="button" onClick={() => saveState("Clarification Requested")} style={styles.secondaryButton}>Request clarification locally</button> : null}
-        {mode === "corrected" ? <button type="button" onClick={() => saveState("Finance Ready")} style={styles.primaryButton}>Approve fixture timesheet</button> : null}
-        <a href={nextRoute} style={styles.primaryButton}>Continue</a>
+      <div style={styles.panel}>
+        <div style={styles.sectionHeader}>
+          <p style={styles.eyebrowDark}>Fixture-backed timesheet</p>
+          <h2 style={styles.sectionTitle}>{timesheetFixture.shift}</h2>
+          <p style={styles.sectionCopy}>
+            State: {state}. This review does not persist to a server, calculate payroll, pay workers,
+            or generate invoices.
+          </p>
+          <span style={canApproveTimesheet(reason) ? styles.statusBadge : styles.statusBadgeWarning}>
+            Approval available: {canApproveTimesheet(reason) ? "Yes" : "No"}
+          </span>
+        </div>
+        <div style={styles.cardGrid}>
+          {[
+            ["Scheduled start", timesheetFixture.scheduledStart],
+            ["Scheduled end", timesheetFixture.scheduledEnd],
+            ["Actual clock-in", timesheetFixture.actualClockIn],
+            ["Actual clock-out", timesheetFixture.actualClockOut],
+            ["Scheduled hours", timesheetFixture.scheduledHours],
+            ["Original worked hours", timesheetFixture.workedHoursOriginal],
+            ["Adjusted worked hours", timesheetFixture.workedHoursAdjusted],
+            ["Break duration", timesheetFixture.breakDuration],
+            ["Overtime", timesheetFixture.overtime],
+            ["Adjustment", timesheetFixture.adjustment],
+            ["Worker note", timesheetFixture.workerNote],
+            ["Employer note", timesheetFixture.employerNote]
+          ].map(([label, value]) => (
+            <article key={label} style={styles.card}>
+              <span style={styles.metaLabel}>{label}</span>
+              <p style={styles.cardText}>{value}</p>
+            </article>
+          ))}
+        </div>
+        <label style={styles.fieldLabel}>
+          Adjustment reason
+          <input value={reason} onChange={(event) => setReason(event.target.value)} style={styles.input} />
+        </label>
+        <p style={styles.warning}>Adjustment reason is required before local approval can be displayed.</p>
+        <div style={styles.pillGrid}>
+          {timesheetStates.map((item) => (
+            <span key={item} style={item === state ? styles.pill : styles.routeCard}>
+              {item}
+            </span>
+          ))}
+        </div>
+        <div style={styles.actionBar}>
+          {mode === "review" ? (
+            <button type="button" onClick={() => saveState("Clarification Requested")} style={styles.secondaryButton}>
+              Request clarification locally
+            </button>
+          ) : null}
+          {mode === "corrected" ? (
+            <button type="button" onClick={() => saveState("Finance Ready")} style={styles.primaryButton}>
+              Approve fixture timesheet
+            </button>
+          ) : null}
+          <a href={nextRoute} style={styles.primaryButton}>
+            Continue
+          </a>
+        </div>
       </div>
       <section style={{ marginTop: 22 }}>
         <div style={styles.cardGrid}>

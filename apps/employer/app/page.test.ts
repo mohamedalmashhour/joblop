@@ -12,9 +12,11 @@ describe("Page 001 landing content", () => {
     expect(staffingCategories.map((category) => category.name)).toEqual([
       "Kitchen",
       "Care / Nurse",
-      "Helper",
+      "Housekeeping & Dining",
       "Maintenance"
     ]);
+    expect(staffingCategories[0]?.roles).toContain("Chef diplômé");
+    expect(staffingCategories[1]?.roles).toContain("Préposé(e) aux bénéficiaires");
   });
 
   it("separates worker and employer journeys", () => {

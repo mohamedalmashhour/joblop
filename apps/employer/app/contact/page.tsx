@@ -33,7 +33,7 @@ export default function ContactPage() {
           <a href="/faq" style={styles.navLink}>
             FAQ
           </a>
-          <a href="/#sign-in" style={styles.navLink}>
+          <a href="/employer/dashboard" style={styles.navLink}>
             Sign in
           </a>
         </nav>
@@ -180,7 +180,7 @@ export default function ContactPage() {
           Message
           <textarea placeholder="Describe what you need. Do not include passwords or full financial details." style={styles.textarea} />
         </label>
-        <button type="button" style={styles.disabledButton}>
+        <button disabled type="button" style={styles.disabledButton}>
           Submit request placeholder
         </button>
         <p style={styles.guardrail}>No support-ticket integration or live messaging is connected on this page.</p>
@@ -283,8 +283,8 @@ const baseButton: CSSProperties = {
 };
 
 const styles: Record<string, CSSProperties> = {
-  page: { background: "#f7faf9", color: "#0b1f3a", fontFamily: "Inter, system-ui, sans-serif", minHeight: "100vh" },
-  header: { alignItems: "center", background: "#ffffff", borderBottom: "1px solid #dce8e8", display: "flex", flexWrap: "wrap", gap: 16, justifyContent: "space-between", padding: "18px clamp(16px, 4vw, 40px)", position: "sticky", top: 0, zIndex: 1 },
+  page: { background: "#f7faff", color: "#0b1f3a", fontFamily: "Inter, system-ui, sans-serif", minHeight: "100vh" },
+  header: { alignItems: "center", background: "#ffffff", borderBottom: "1px solid #d8e4f5", display: "flex", flexWrap: "wrap", gap: 16, justifyContent: "space-between", padding: "18px clamp(16px, 4vw, 40px)", position: "sticky", top: 0, zIndex: 1 },
   brand: { color: "#071f4d", fontSize: 20, fontWeight: 900, textDecoration: "none" },
   nav: { alignItems: "center", display: "flex", flexWrap: "wrap", gap: 14 },
   navLink: { color: "#0b1f3a", fontSize: 14, fontWeight: 700, textDecoration: "none" },
@@ -296,36 +296,36 @@ const styles: Record<string, CSSProperties> = {
   eyebrow: { color: "#fff8d8", fontSize: 13, fontWeight: 900, letterSpacing: 0, margin: 0, textTransform: "uppercase" },
   eyebrowDark: { color: "#123b78", fontSize: 12, fontWeight: 900, letterSpacing: 0, margin: 0, textTransform: "uppercase" },
   title: { fontSize: "clamp(34px, 5vw, 58px)", lineHeight: 1.04, margin: 0, maxWidth: 920 },
-  lede: { color: "#dce8e8", fontSize: 18, lineHeight: 1.6, margin: 0, maxWidth: 820 },
+  lede: { color: "#d8e4f5", fontSize: 18, lineHeight: 1.6, margin: 0, maxWidth: 820 },
   section: { padding: "48px clamp(16px, 4vw, 40px)" },
-  activeSection: { background: "#eef4ff", borderBottom: "1px solid #dce8e8", borderTop: "1px solid #dce8e8", padding: "48px clamp(16px, 4vw, 40px)" },
-  whiteSection: { background: "#ffffff", borderBottom: "1px solid #dce8e8", borderTop: "1px solid #dce8e8", padding: "48px clamp(16px, 4vw, 40px)" },
-  aiSection: { background: "#eef4ff", borderBottom: "1px solid #dce8e8", borderTop: "1px solid #dce8e8", padding: "48px clamp(16px, 4vw, 40px)" },
+  activeSection: { background: "#eef5ff", borderBottom: "1px solid #d8e4f5", borderTop: "1px solid #d8e4f5", padding: "48px clamp(16px, 4vw, 40px)" },
+  whiteSection: { background: "#ffffff", borderBottom: "1px solid #d8e4f5", borderTop: "1px solid #d8e4f5", padding: "48px clamp(16px, 4vw, 40px)" },
+  aiSection: { background: "#eef5ff", borderBottom: "1px solid #d8e4f5", borderTop: "1px solid #d8e4f5", padding: "48px clamp(16px, 4vw, 40px)" },
   sectionHeader: { display: "grid", gap: 8, marginBottom: 18, maxWidth: 900 },
   sectionTitle: { color: "#071f4d", fontSize: "clamp(26px, 4vw, 42px)", lineHeight: 1.12, margin: 0 },
-  sectionCopy: { color: "#607276", fontSize: 16, lineHeight: 1.6, margin: 0, maxWidth: 780 },
+  sectionCopy: { color: "#526782", fontSize: 16, lineHeight: 1.6, margin: 0, maxWidth: 780 },
   twoColumn: { display: "grid", gap: 16, gridTemplateColumns: "repeat(auto-fit, minmax(260px, 1fr))" },
   splitSection: { display: "grid", gap: 22, gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))" },
-  pathCard: { background: "#ffffff", border: "1px solid #dce8e8", borderRadius: 8, padding: 20 },
-  panel: { background: "#ffffff", border: "1px solid #bfd0f5", borderRadius: 8, padding: 20 },
+  pathCard: { background: "#ffffff", border: "1px solid #d8e4f5", borderRadius: 8, padding: 20 },
+  panel: { background: "#ffffff", border: "1px solid #c9ddff", borderRadius: 8, padding: 20 },
   cardGrid: { display: "grid", gap: 14, gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))" },
-  card: { background: "#ffffff", border: "1px solid #dce8e8", borderRadius: 8, padding: 18 },
+  card: { background: "#ffffff", border: "1px solid #d8e4f5", borderRadius: 8, padding: 18 },
   cardTitle: { color: "#071f4d", fontSize: 18, margin: 0 },
-  cardText: { color: "#607276", fontSize: 14, fontWeight: 700, lineHeight: 1.55, margin: "8px 0 0" },
+  cardText: { color: "#526782", fontSize: 14, fontWeight: 700, lineHeight: 1.55, margin: "8px 0 0" },
   pillGrid: { display: "grid", gap: 10, gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))", marginTop: 14 },
-  pill: { background: "#ffffff", border: "1px solid #dce8e8", borderRadius: 8, color: "#071f4d", fontWeight: 900, padding: 14 },
+  pill: { background: "#ffffff", border: "1px solid #d8e4f5", borderRadius: 8, color: "#071f4d", fontWeight: 900, padding: 14 },
   panelPill: { background: "#fff8d8", border: "1px solid #e7d889", borderRadius: 8, color: "#071f4d", fontWeight: 900, padding: 14 },
   timeline: { display: "grid", gap: 10, gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))", listStyle: "none", margin: 0, padding: 0 },
-  timelineItem: { background: "#ffffff", border: "1px solid #dce8e8", borderRadius: 8, color: "#071f4d", fontWeight: 900, padding: 16 },
+  timelineItem: { background: "#ffffff", border: "1px solid #d8e4f5", borderRadius: 8, color: "#071f4d", fontWeight: 900, padding: 16 },
   formGrid: { display: "grid", gap: 12, gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))" },
   fieldLabel: { color: "#0b1f3a", display: "grid", fontSize: 14, fontWeight: 800, gap: 6 },
   messageLabel: { color: "#0b1f3a", display: "grid", fontSize: 14, fontWeight: 800, gap: 6, marginTop: 12 },
-  input: { border: "1px solid #bccdce", borderRadius: 8, color: "#0b1f3a", font: "inherit", minHeight: 44, padding: "0 12px" },
-  textarea: { border: "1px solid #bccdce", borderRadius: 8, color: "#0b1f3a", font: "inherit", minHeight: 120, padding: 12 },
-  disabledButton: { background: "#dce8e8", border: 0, borderRadius: 8, color: "#071f4d", fontWeight: 900, marginTop: 12, minHeight: 48, padding: "0 16px" },
+  input: { border: "1px solid #b8c8dc", borderRadius: 8, color: "#0b1f3a", font: "inherit", minHeight: 44, padding: "0 12px" },
+  textarea: { border: "1px solid #b8c8dc", borderRadius: 8, color: "#0b1f3a", font: "inherit", minHeight: 120, padding: 12 },
+  disabledButton: { background: "#d8e4f5", border: 0, borderRadius: 8, color: "#071f4d", fontWeight: 900, marginTop: 12, minHeight: 48, padding: "0 16px" },
   guardrail: { color: "#123b78", fontSize: 14, fontWeight: 900, lineHeight: 1.5, margin: "12px 0 0" },
   footer: { alignItems: "center", background: "#071f4d", color: "#ffffff", display: "flex", flexWrap: "wrap", gap: 16, justifyContent: "space-between", padding: "28px clamp(16px, 4vw, 40px)" },
   footerLinks: { display: "flex", flexWrap: "wrap", gap: 12 },
   footerLink: { color: "#ffffff", fontWeight: 700, textDecoration: "none" },
-  footerNote: { color: "#dce8e8", fontSize: 13 }
+  footerNote: { color: "#d8e4f5", fontSize: 13 }
 };

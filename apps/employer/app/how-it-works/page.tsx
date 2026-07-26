@@ -30,12 +30,12 @@ export default function HowItWorksPage() {
           <a href="/contact" style={styles.navLink}>
             Contact
           </a>
-          <a href="/#sign-in" style={styles.navLink}>
+          <a href="/employer/dashboard" style={styles.navLink}>
             Sign in
           </a>
         </nav>
         <div style={styles.headerActions}>
-          <a href="/#worker" style={styles.secondaryButton}>
+          <a href="/#workers" style={styles.secondaryButton}>
             I want shifts
           </a>
           <a href="/signup/employer" style={styles.primaryButton}>
@@ -55,7 +55,7 @@ export default function HowItWorksPage() {
           <a href="/signup/employer" style={styles.primaryButtonLarge}>
             I need staff
           </a>
-          <a href="/#worker" style={styles.secondaryButtonLarge}>
+          <a href="/#workers" style={styles.secondaryButtonLarge}>
             I want shifts
           </a>
         </div>
@@ -138,7 +138,7 @@ export default function HowItWorksPage() {
           </h2>
         </div>
         <div style={styles.ctaActions}>
-          <a href="/#faq" style={styles.primaryButton}>
+          <a href="/faq" style={styles.primaryButton}>
             View FAQ
           </a>
           <a href="/contact" style={styles.secondaryButton}>
@@ -159,7 +159,7 @@ export default function HowItWorksPage() {
           <a href="/how-it-works" style={styles.footerLink}>
             How it works
           </a>
-          <a href="/#privacy" style={styles.footerLink}>
+          <a href="/contact" style={styles.footerLink}>
             Privacy
           </a>
         </nav>
@@ -219,7 +219,7 @@ const baseButton: CSSProperties = {
 
 const styles: Record<string, CSSProperties> = {
   page: {
-    background: "#f7faf9",
+    background: "#f7faff",
     color: "#0b1f3a",
     fontFamily: "Inter, system-ui, sans-serif",
     minHeight: "100vh"
@@ -227,7 +227,7 @@ const styles: Record<string, CSSProperties> = {
   header: {
     alignItems: "center",
     background: "#ffffff",
-    borderBottom: "1px solid #dce8e8",
+    borderBottom: "1px solid #d8e4f5",
     display: "flex",
     flexWrap: "wrap",
     gap: 16,
@@ -280,7 +280,7 @@ const styles: Record<string, CSSProperties> = {
   secondaryButtonLarge: {
     ...baseButton,
     background: "transparent",
-    border: "1px solid #dce8e8",
+    border: "1px solid #d8e4f5",
     color: "#ffffff",
     minHeight: 52,
     padding: "0 22px"
@@ -315,7 +315,7 @@ const styles: Record<string, CSSProperties> = {
     maxWidth: 900
   },
   lede: {
-    color: "#dce8e8",
+    color: "#d8e4f5",
     fontSize: 18,
     lineHeight: 1.6,
     margin: 0,
@@ -349,7 +349,7 @@ const styles: Record<string, CSSProperties> = {
   },
   card: {
     background: "#ffffff",
-    border: "1px solid #dce8e8",
+    border: "1px solid #d8e4f5",
     borderRadius: 8,
     padding: 20
   },
@@ -359,7 +359,7 @@ const styles: Record<string, CSSProperties> = {
     margin: 0
   },
   cardText: {
-    color: "#607276",
+    color: "#526782",
     fontSize: 14,
     lineHeight: 1.55,
     margin: "8px 0 0"
@@ -377,8 +377,8 @@ const styles: Record<string, CSSProperties> = {
   },
   lifecycleSection: {
     background: "#ffffff",
-    borderBottom: "1px solid #dce8e8",
-    borderTop: "1px solid #dce8e8",
+    borderBottom: "1px solid #d8e4f5",
+    borderTop: "1px solid #d8e4f5",
     padding: "48px clamp(16px, 4vw, 40px)"
   },
   phaseGrid: {
@@ -386,8 +386,8 @@ const styles: Record<string, CSSProperties> = {
     gap: 18
   },
   phaseCard: {
-    background: "#f7faf9",
-    border: "1px solid #dce8e8",
+    background: "#f7faff",
+    border: "1px solid #d8e4f5",
     borderRadius: 8,
     padding: 20
   },
@@ -420,7 +420,7 @@ const styles: Record<string, CSSProperties> = {
   },
   ownerBlock: {
     background: "#ffffff",
-    border: "1px solid #dce8e8",
+    border: "1px solid #d8e4f5",
     borderRadius: 8,
     padding: 16
   },
@@ -440,9 +440,9 @@ const styles: Record<string, CSSProperties> = {
     lineHeight: 1.45
   },
   aiSection: {
-    background: "#eef4ff",
-    borderBottom: "1px solid #dce8e8",
-    borderTop: "1px solid #dce8e8",
+    background: "#eef5ff",
+    borderBottom: "1px solid #d8e4f5",
+    borderTop: "1px solid #d8e4f5",
     padding: "48px clamp(16px, 4vw, 40px)"
   },
   aiGrid: {
@@ -452,7 +452,7 @@ const styles: Record<string, CSSProperties> = {
   },
   aiCard: {
     background: "#ffffff",
-    border: "1px solid #bfd0f5",
+    border: "1px solid #c9ddff",
     borderRadius: 8,
     padding: 18
   },
@@ -463,7 +463,7 @@ const styles: Record<string, CSSProperties> = {
   },
   pill: {
     background: "#ffffff",
-    border: "1px solid #dce8e8",
+    border: "1px solid #d8e4f5",
     borderRadius: 8,
     color: "#071f4d",
     fontWeight: 900,
@@ -504,7 +504,7 @@ const styles: Record<string, CSSProperties> = {
     textDecoration: "none"
   },
   footerNote: {
-    color: "#dce8e8",
+    color: "#d8e4f5",
     fontSize: 13
   }
 };

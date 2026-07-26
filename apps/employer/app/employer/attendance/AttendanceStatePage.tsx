@@ -40,22 +40,27 @@ export function AttendanceStatePage({
       actions={<a href={nextRoute} style={styles.primaryButton}>Continue</a>}
     >
       <section style={styles.section}>
-        <div style={styles.sectionHeader}>
-          <p style={styles.eyebrowDark}>Attendance state</p>
-          <h2 style={styles.sectionTitle}>{state}</h2>
-          <p style={styles.sectionCopy}>
-            Assignment: {attendanceFixture.assignment}. Review required: {summary.requiresReview ? "Yes" : "No"}.
-            Timesheet draft possible: {summary.canCreateTimesheetDraft ? "Yes" : "No"}. Payroll ready: No.
-          </p>
-        </div>
-        <div style={styles.cardGrid}>
-          {attendanceEvidenceRows.map((row) => (
-            <article key={row.label} style={styles.card}>
-              <h3 style={styles.cardTitle}>{row.label}</h3>
-              <p style={styles.cardText}>{row.value}</p>
-              <p style={styles.cardText}>Source: {row.source}</p>
-            </article>
-          ))}
+        <div style={styles.panel}>
+          <div style={styles.sectionHeader}>
+            <p style={styles.eyebrowDark}>Attendance state</p>
+            <h2 style={styles.sectionTitle}>{state}</h2>
+            <p style={styles.sectionCopy}>
+              Assignment: {attendanceFixture.assignment}. Review required: {summary.requiresReview ? "Yes" : "No"}.
+              Timesheet draft possible: {summary.canCreateTimesheetDraft ? "Yes" : "No"}. Payroll ready: No.
+            </p>
+            <span style={summary.requiresReview ? styles.statusBadgeWarning : styles.statusBadge}>
+              {summary.requiresReview ? "Review required" : "Evidence visible"}
+            </span>
+          </div>
+          <div style={styles.cardGrid}>
+            {attendanceEvidenceRows.map((row) => (
+              <article key={row.label} style={styles.card}>
+                <span style={styles.metaLabel}>{row.label}</span>
+                <p style={styles.cardText}>{row.value}</p>
+                <p style={styles.cardText}>Source: {row.source}</p>
+              </article>
+            ))}
+          </div>
         </div>
       </section>
       <section style={styles.whiteSection}>

@@ -27,44 +27,62 @@ export function EmployerShell({
 }) {
   return (
     <main style={styles.page}>
-      <header style={styles.header}>
-        <a href="/" style={styles.brand} aria-label="Resident Job home">
-          Resident Job
-        </a>
-        <nav aria-label="Employer navigation" style={styles.nav}>
-          {employerNavigation.map((step) => (
-            <a
-              key={step.route}
-              href={step.route}
-              style={styles.navLink}
-              aria-current={step.route === currentRoute ? "page" : undefined}
-            >
-              {step.title}
-            </a>
-          ))}
-        </nav>
-        {actions}
-      </header>
-      <section style={styles.hero}>
-        <p style={styles.eyebrow}>{eyebrow}</p>
-        <h1 style={styles.title}>{title}</h1>
-        <p style={styles.lede}>{lede}</p>
-      </section>
-      {children}
-      <footer style={styles.footer}>
-        <span>Resident Job Employer Journey</span>
-        <nav aria-label="Employer footer navigation" style={styles.footerLinks}>
-          <a href="/contact" style={styles.footerLink}>
-            Support
+      <div style={styles.appFrame}>
+        <aside style={styles.sidebarShell}>
+          <a href="/" style={styles.brand} aria-label="Resident Job home">
+            <span aria-hidden="true" style={styles.brandMark}>
+              RJ
+            </span>
+            <span>Resident Job</span>
           </a>
-          <a href="/faq" style={styles.footerLink}>
-            FAQ
-          </a>
-          <a href="/pricing" style={styles.footerLink}>
-            Pricing
-          </a>
-        </nav>
-      </footer>
+          <nav aria-label="Employer navigation" style={styles.nav}>
+            {employerNavigation.map((step) => (
+              <a
+                key={step.route}
+                href={step.route}
+                style={step.route === currentRoute ? styles.navLinkActive : styles.navLink}
+                aria-current={step.route === currentRoute ? "page" : undefined}
+              >
+                <span style={styles.navPage}>Page {step.page}</span>
+                <span>{step.title}</span>
+              </a>
+            ))}
+          </nav>
+          <div style={styles.sidebarNote}>
+            <strong>Fixture mode</strong>
+            <span>Visual workflow preview. Authoritative actions remain governed.</span>
+          </div>
+        </aside>
+        <div style={styles.workspace}>
+          <header style={styles.header}>
+            <div>
+              <p style={styles.topbarEyebrow}>Employer workspace</p>
+              <strong style={styles.topbarTitle}>Sunrise of Oak Hill</strong>
+            </div>
+            {actions}
+          </header>
+          <section style={styles.hero}>
+            <p style={styles.eyebrow}>{eyebrow}</p>
+            <h1 style={styles.title}>{title}</h1>
+            <p style={styles.lede}>{lede}</p>
+          </section>
+          {children}
+          <footer style={styles.footer}>
+            <span>Resident Job Employer Journey</span>
+            <nav aria-label="Employer footer navigation" style={styles.footerLinks}>
+              <a href="/contact" style={styles.footerLink}>
+                Support
+              </a>
+              <a href="/faq" style={styles.footerLink}>
+                FAQ
+              </a>
+              <a href="/pricing" style={styles.footerLink}>
+                Pricing
+              </a>
+            </nav>
+          </footer>
+        </div>
+      </div>
     </main>
   );
 }

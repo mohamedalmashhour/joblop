@@ -1,12 +1,18 @@
 export const colors = {
   deepTeal: "#071f4d",
   deepTealMuted: "#123b78",
+  actionTeal: "#0f7f78",
+  actionTealMuted: "#0b655f",
+  navy: "#071f4d",
+  navyMuted: "#123b78",
+  urgent: "#b66b00",
   cream: "#fff8d8",
-  surface: "#f7faf9",
+  surface: "#f7faff",
+  surfaceSubtle: "#eef5ff",
   surfaceRaised: "#ffffff",
-  border: "#dce8e8",
+  border: "#d8e4f5",
   text: "#0b1f3a",
-  muted: "#6b7d80",
+  muted: "#526782",
   warning: "#b66b00",
   danger: "#c93434",
   success: "#1f8f5f",
@@ -22,6 +28,8 @@ export const colorRoles = {
   borderDefault: colors.border,
   actionPrimary: colors.deepTeal,
   actionPrimaryHover: colors.deepTealMuted,
+  actionAccent: colors.actionTeal,
+  actionAccentHover: colors.actionTealMuted,
   actionSecondary: colors.cream,
   focusRing: colors.focus
 } as const;
@@ -240,6 +248,89 @@ export const statusSemantics = {
   disabled: "Unavailable action or inactive control.",
   selected: "Selected option or current navigation item.",
   restricted: "Restricted visibility or permission-limited state."
+} as const;
+
+export const residentJobStatusDefinitions = {
+  draft: {
+    label: "Draft",
+    tone: "neutral",
+    meaning: "Saved but not submitted to an authoritative workflow."
+  },
+  open: {
+    label: "Open",
+    tone: "informational",
+    meaning: "Visible for review or matching; not yet filled."
+  },
+  matching: {
+    label: "Matching",
+    tone: "informational",
+    meaning: "Candidate matching is in progress. AI remains advisory."
+  },
+  workerAssigned: {
+    label: "Worker assigned",
+    tone: "success",
+    meaning: "A governed assignment record exists."
+  },
+  confirmed: {
+    label: "Confirmed",
+    tone: "success",
+    meaning: "The relevant human or authoritative workflow has confirmed the item."
+  },
+  workerEnRoute: {
+    label: "Worker en route",
+    tone: "informational",
+    meaning: "Operational travel status only; attendance has not started."
+  },
+  arrived: {
+    label: "Arrived",
+    tone: "informational",
+    meaning: "Arrival evidence or status exists; punch-in remains separate."
+  },
+  inProgress: {
+    label: "In progress",
+    tone: "informational",
+    meaning: "The shift or workflow is currently active."
+  },
+  completed: {
+    label: "Completed",
+    tone: "success",
+    meaning: "The operational activity has ended; downstream review may still be required."
+  },
+  awaitingApproval: {
+    label: "Awaiting approval",
+    tone: "pending",
+    meaning: "Human review is required before the next authoritative state."
+  },
+  approved: {
+    label: "Approved",
+    tone: "success",
+    meaning: "Human approval is recorded."
+  },
+  invoiceIssued: {
+    label: "Invoice issued",
+    tone: "informational",
+    meaning: "Invoice exists; payment is separate."
+  },
+  paid: {
+    label: "Paid",
+    tone: "success",
+    meaning: "Payment requires a real settlement reference before production use."
+  },
+  paymentFailed: {
+    label: "Payment failed",
+    tone: "danger",
+    meaning: "Payment did not complete; workflow needs review or retry."
+  },
+  cancelled: {
+    label: "Cancelled",
+    tone: "disabled",
+    meaning: "No longer active; historical record remains auditable."
+  },
+  disputed: {
+    label: "Disputed",
+    tone: "warning",
+    meaning: "Human correction or support review is required."
+  }
 } as const;
 
 export const cssVariables = {
