@@ -79,6 +79,24 @@ export const phase01PermissionKeys = [
   "attendance.worker_check_in",
   "attendance.worker_check_out",
   "attendance.supervise",
+  "timesheet.create",
+  "timesheet.read",
+  "timesheet.calculate",
+  "timesheet.recalculate",
+  "timesheet.review",
+  "timesheet.approve",
+  "timesheet.lock",
+  "timesheet.reject",
+  "timesheet.request_correction",
+  "timesheet.adjust",
+  "timesheet.audit_read",
+  "timesheet.worker_read",
+  "timesheet.worker_confirm",
+  "timesheet.worker_dispute",
+  "timesheet.employer_read",
+  "timesheet.employer_confirm",
+  "timesheet.employer_dispute",
+  "timesheet.supervise",
   "audit.read",
   "platform.supervise"
 ] as const;
@@ -109,6 +127,11 @@ export const phase01AccessRoles = [
     key: "DISPATCHER",
     scope: "platform",
     description: "Reserved dispatch role with no active permissions until the dispatch phase."
+  },
+  {
+    key: "TIMESHEET_REVIEWER",
+    scope: "platform",
+    description: "Narrow platform role for governed timesheet review, approval, and locking."
   }
 ] as const;
 
@@ -149,6 +172,17 @@ export const phase01RolePermissionMappings = [
     "attendance.override",
     "attendance.cancel",
     "attendance.audit_read",
+    "timesheet.create",
+    "timesheet.read",
+    "timesheet.calculate",
+    "timesheet.recalculate",
+    "timesheet.review",
+    "timesheet.approve",
+    "timesheet.lock",
+    "timesheet.reject",
+    "timesheet.request_correction",
+    "timesheet.adjust",
+    "timesheet.audit_read",
     "audit.read"
   ]),
   rolePermissions("ORGANIZATION_OWNER", [
@@ -168,7 +202,10 @@ export const phase01RolePermissionMappings = [
     "job_request.submit",
     "job_request.cancel",
     "assignment.read",
-    "attendance.read"
+    "attendance.read",
+    "timesheet.employer_read",
+    "timesheet.employer_confirm",
+    "timesheet.employer_dispute"
   ]),
   rolePermissions("ORGANIZATION_ADMINISTRATOR", [
     "organization.read",
@@ -186,7 +223,10 @@ export const phase01RolePermissionMappings = [
     "job_request.submit",
     "job_request.cancel",
     "assignment.read",
-    "attendance.read"
+    "attendance.read",
+    "timesheet.employer_read",
+    "timesheet.employer_confirm",
+    "timesheet.employer_dispute"
   ]),
   rolePermissions("ORGANIZATION_STAFF", [
     "organization.read",
@@ -200,7 +240,10 @@ export const phase01RolePermissionMappings = [
     "job_request.submit",
     "job_request.cancel",
     "assignment.read",
-    "attendance.read"
+    "attendance.read",
+    "timesheet.employer_read",
+    "timesheet.employer_confirm",
+    "timesheet.employer_dispute"
   ]),
   rolePermissions("WORKER_ACCESS", [
     "worker_offer.respond",
@@ -209,7 +252,10 @@ export const phase01RolePermissionMappings = [
     "assignment.worker_withdraw",
     "attendance.worker_read",
     "attendance.worker_check_in",
-    "attendance.worker_check_out"
+    "attendance.worker_check_out",
+    "timesheet.worker_read",
+    "timesheet.worker_confirm",
+    "timesheet.worker_dispute"
   ]),
   rolePermissions("DISPATCHER", [
     "dispatch.create",
@@ -242,7 +288,21 @@ export const phase01RolePermissionMappings = [
     "attendance.check_out",
     "attendance.override",
     "attendance.cancel",
-    "attendance.audit_read"
+    "attendance.audit_read",
+    "timesheet.read"
+  ]),
+  rolePermissions("TIMESHEET_REVIEWER", [
+    "timesheet.create",
+    "timesheet.read",
+    "timesheet.calculate",
+    "timesheet.recalculate",
+    "timesheet.review",
+    "timesheet.approve",
+    "timesheet.lock",
+    "timesheet.reject",
+    "timesheet.request_correction",
+    "timesheet.adjust",
+    "timesheet.audit_read"
   ])
 ] as const;
 
