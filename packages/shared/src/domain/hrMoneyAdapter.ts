@@ -108,6 +108,89 @@ export type HrMoneyContractInputCandidate = Readonly<{
   };
 }>;
 
+export type HrMoneyWorkerParticipantPayload = Readonly<{
+  audience: "worker";
+  source: {
+    type: "locked_timesheet";
+    timesheetId: string;
+    timesheetVersion: number;
+    assignmentId: string;
+    attendanceRecordId: string;
+  };
+  time: {
+    scheduledStartAt: string;
+    scheduledEndAt: string;
+    actualCheckInAt: string;
+    actualCheckOutAt: string;
+    timezone: string;
+    payableMinutes: number;
+    breakMinutes: number;
+    overtimeCandidateMinutes: number;
+    premiumCandidateMinutes: number;
+  };
+  terms: {
+    workerTermsVersion: string;
+    workerClassification: HrMoneyAdapterWorkerClassification;
+    workerHourlyRate: ContractMoney;
+  };
+  jurisdiction: {
+    country: string;
+    provinceOrTerritory: string;
+    countryPackVersion: string;
+  };
+  boundaries: {
+    payrollExecution: "not_started";
+    paymentExecution: "not_started";
+    outputAuthority: "participant_view_only";
+  };
+}>;
+
+export type HrMoneyEmployerParticipantPayload = Readonly<{
+  audience: "employer";
+  source: {
+    type: "locked_timesheet";
+    timesheetId: string;
+    timesheetVersion: number;
+    assignmentId: string;
+    attendanceRecordId: string;
+    organizationId: string;
+    residenceId: string;
+    departmentId: string;
+    workGroupId: string;
+    roleDefinitionId: string;
+  };
+  time: {
+    scheduledStartAt: string;
+    scheduledEndAt: string;
+    actualCheckInAt: string;
+    actualCheckOutAt: string;
+    timezone: string;
+    billableMinutes: number;
+    breakMinutes: number;
+    overtimeCandidateMinutes: number;
+    premiumCandidateMinutes: number;
+  };
+  terms: {
+    employerTermsVersion: string;
+    employerBillRate: ContractMoney;
+  };
+  jurisdiction: {
+    country: string;
+    provinceOrTerritory: string;
+    countryPackVersion: string;
+  };
+  boundaries: {
+    financeExecution: "not_started";
+    paymentExecution: "not_started";
+    outputAuthority: "participant_view_only";
+  };
+}>;
+
+export type HrMoneyParticipantPayloads = Readonly<{
+  worker: HrMoneyWorkerParticipantPayload;
+  employer: HrMoneyEmployerParticipantPayload;
+}>;
+
 export function createHrMoneyContractInput(
   input: HrMoneyAdapterInput
 ): HrMoneyContractInputCandidate {
@@ -157,6 +240,89 @@ export function createHrMoneyContractInput(
       financeExecution: "not_started",
       paymentExecution: "not_started",
       outputAuthority: "contract_input_candidate_only"
+    }
+  };
+}
+
+export function createHrMoneyParticipantPayloads(
+  candidate: HrMoneyContractInputCandidate
+): HrMoneyParticipantPayloads {
+  return {
+    worker: {
+      audience: "worker",
+      source: {
+        type: candidate.source.type,
+        timesheetId: candidate.source.timesheetId,
+        timesheetVersion: candidate.source.timesheetVersion,
+        assignmentId: candidate.source.assignmentId,
+        attendanceRecordId: candidate.source.attendanceRecordId
+      },
+      time: {
+        scheduledStartAt: candidate.time.scheduledStartAt,
+        scheduledEndAt: candidate.time.scheduledEndAt,
+        actualCheckInAt: candidate.time.actualCheckInAt,
+        actualCheckOutAt: candidate.time.actualCheckOutAt,
+        timezone: candidate.time.timezone,
+        payableMinutes: candidate.time.payableMinutes,
+        breakMinutes: candidate.time.breakMinutes,
+        overtimeCandidateMinutes: candidate.time.overtimeCandidateMinutes,
+        premiumCandidateMinutes: candidate.time.premiumCandidateMinutes
+      },
+      terms: {
+        workerTermsVersion: candidate.terms.workerTermsVersion,
+        workerClassification: candidate.terms.workerClassification,
+        workerHourlyRate: candidate.terms.workerHourlyRate
+      },
+      jurisdiction: {
+        country: candidate.jurisdiction.country,
+        provinceOrTerritory: candidate.jurisdiction.provinceOrTerritory,
+        countryPackVersion: candidate.jurisdiction.countryPackVersion
+      },
+      boundaries: {
+        payrollExecution: candidate.boundaries.payrollExecution,
+        paymentExecution: candidate.boundaries.paymentExecution,
+        outputAuthority: "participant_view_only"
+      }
+    },
+    employer: {
+      audience: "employer",
+      source: {
+        type: candidate.source.type,
+        timesheetId: candidate.source.timesheetId,
+        timesheetVersion: candidate.source.timesheetVersion,
+        assignmentId: candidate.source.assignmentId,
+        attendanceRecordId: candidate.source.attendanceRecordId,
+        organizationId: candidate.source.organizationId,
+        residenceId: candidate.source.residenceId,
+        departmentId: candidate.source.departmentId,
+        workGroupId: candidate.source.workGroupId,
+        roleDefinitionId: candidate.source.roleDefinitionId
+      },
+      time: {
+        scheduledStartAt: candidate.time.scheduledStartAt,
+        scheduledEndAt: candidate.time.scheduledEndAt,
+        actualCheckInAt: candidate.time.actualCheckInAt,
+        actualCheckOutAt: candidate.time.actualCheckOutAt,
+        timezone: candidate.time.timezone,
+        billableMinutes: candidate.time.billableMinutes,
+        breakMinutes: candidate.time.breakMinutes,
+        overtimeCandidateMinutes: candidate.time.overtimeCandidateMinutes,
+        premiumCandidateMinutes: candidate.time.premiumCandidateMinutes
+      },
+      terms: {
+        employerTermsVersion: candidate.terms.employerTermsVersion,
+        employerBillRate: candidate.terms.employerBillRate
+      },
+      jurisdiction: {
+        country: candidate.jurisdiction.country,
+        provinceOrTerritory: candidate.jurisdiction.provinceOrTerritory,
+        countryPackVersion: candidate.jurisdiction.countryPackVersion
+      },
+      boundaries: {
+        financeExecution: candidate.boundaries.financeExecution,
+        paymentExecution: candidate.boundaries.paymentExecution,
+        outputAuthority: "participant_view_only"
+      }
     }
   };
 }

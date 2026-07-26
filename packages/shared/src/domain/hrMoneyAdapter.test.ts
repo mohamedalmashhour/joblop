@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import {
   createContractMoney,
   createHrMoneyContractInput,
+  createHrMoneyParticipantPayloads,
   type HrMoneyAdapterInput
 } from "./index";
 
@@ -151,4 +152,121 @@ describe("Resident Workforce Money Adapter", () => {
       })
     ).toThrow("HR Money Adapter requires worker and employer terms in the same currency.");
   });
+
+  it("maps participant-safe payloads without leaking cross-party economics", () => {
+    const candidate = createHrMoneyContractInput(lockedInput);
+
+    expect(createHrMoneyParticipantPayloads(candidate)).toEqual({
+      worker: {
+        audience: "worker",
+        source: {
+          type: "locked_timesheet",
+          timesheetId: "timesheet_001",
+          timesheetVersion: 7,
+          assignmentId: "assignment_001",
+          attendanceRecordId: "attendance_001"
+        },
+        time: {
+          scheduledStartAt: "2026-07-25T12:00:00.000Z",
+          scheduledEndAt: "2026-07-25T20:00:00.000Z",
+          actualCheckInAt: "2026-07-25T12:00:00.000Z",
+          actualCheckOutAt: "2026-07-25T20:00:00.000Z",
+          timezone: "America/Toronto",
+          payableMinutes: 480,
+          breakMinutes: 0,
+          overtimeCandidateMinutes: 0,
+          premiumCandidateMinutes: 0
+        },
+        terms: {
+          workerTermsVersion: "worker-terms-v1",
+          workerClassification: "employee",
+          workerHourlyRate: { amountMinor: 3000, currency: "CAD" }
+        },
+        jurisdiction: {
+          country: "CA",
+          provinceOrTerritory: "QC",
+          countryPackVersion: "CA-QC-2026-draft"
+        },
+        boundaries: {
+          payrollExecution: "not_started",
+          paymentExecution: "not_started",
+          outputAuthority: "participant_view_only"
+        }
+      },
+      employer: {
+        audience: "employer",
+        source: {
+          type: "locked_timesheet",
+          timesheetId: "timesheet_001",
+          timesheetVersion: 7,
+          assignmentId: "assignment_001",
+          attendanceRecordId: "attendance_001",
+          organizationId: "org_001",
+          residenceId: "residence_001",
+          departmentId: "department_001",
+          workGroupId: "work_group_kitchen",
+          roleDefinitionId: "role_chef"
+        },
+        time: {
+          scheduledStartAt: "2026-07-25T12:00:00.000Z",
+          scheduledEndAt: "2026-07-25T20:00:00.000Z",
+          actualCheckInAt: "2026-07-25T12:00:00.000Z",
+          actualCheckOutAt: "2026-07-25T20:00:00.000Z",
+          timezone: "America/Toronto",
+          billableMinutes: 480,
+          breakMinutes: 0,
+          overtimeCandidateMinutes: 0,
+          premiumCandidateMinutes: 0
+        },
+        terms: {
+          employerTermsVersion: "employer-terms-v1",
+          employerBillRate: { amountMinor: 4500, currency: "CAD" }
+        },
+        jurisdiction: {
+          country: "CA",
+          provinceOrTerritory: "QC",
+          countryPackVersion: "CA-QC-2026-draft"
+        },
+        boundaries: {
+          financeExecution: "not_started",
+          paymentExecution: "not_started",
+          outputAuthority: "participant_view_only"
+        }
+      }
+    });
+
+    const payloads = createHrMoneyParticipantPayloads(candidate);
+
+    expect(findForbiddenKeys(payloads.worker, ["employerBillRate", "platformMargin", "margin"]))
+      .toEqual([]);
+    expect(findForbiddenKeys(payloads.employer, ["workerHourlyRate", "workerPayable", "platformMargin"]))
+      .toEqual([]);
+  });
 });
+
+function findForbiddenKeys(payload: unknown, forbiddenKeys: string[]) {
+  const found = new Set<string>();
+
+  function visit(value: unknown) {
+    if (!value || typeof value !== "object") {
+      return;
+    }
+
+    if (Array.isArray(value)) {
+      for (const item of value) {
+        visit(item);
+      }
+      return;
+    }
+
+    for (const [key, child] of Object.entries(value)) {
+      if (forbiddenKeys.includes(key)) {
+        found.add(key);
+      }
+      visit(child);
+    }
+  }
+
+  visit(payload);
+  return [...found].sort();
+}
