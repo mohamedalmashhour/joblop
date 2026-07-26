@@ -35,6 +35,7 @@ import type {
   StoredWorkGroup,
   StoredJobRequest,
   RoleDefinitionRepository,
+  TimesheetService,
   UpdateSessionInput,
   WorkerOfferService,
   WorkGroupRepository
@@ -1365,10 +1366,9 @@ describe("api assignment foundation", () => {
       payload: { expectedVersion: 1 }
     });
     const timesheet = await app.inject({
-      method: "POST",
-      url: "/platform/timesheets",
-      headers: { authorization: `Bearer ${user.token}` },
-      payload: {}
+      method: "GET",
+      url: "/platform/payroll",
+      headers: { authorization: `Bearer ${user.token}` }
     });
 
     expect(created.statusCode).toBe(201);
@@ -1494,10 +1494,9 @@ describe("api attendance foundation", () => {
       payload: { expectedVersion: 2 }
     });
     const timesheet = await app.inject({
-      method: "POST",
-      url: "/platform/timesheets",
-      headers: { authorization: `Bearer ${user.token}` },
-      payload: {}
+      method: "GET",
+      url: "/platform/payroll",
+      headers: { authorization: `Bearer ${user.token}` }
     });
 
     expect(created.statusCode).toBe(201);
@@ -1523,6 +1522,205 @@ describe("api attendance foundation", () => {
       "list:org-api-1",
       "check-out:attendance-api-1",
       "complete:attendance-api-1"
+    ]);
+    await app.close();
+  });
+});
+
+describe("api timesheet foundation", () => {
+  it("routes Timesheet lifecycle without exposing payroll or finance execution", async () => {
+    const authRepository = new ApiMemoryAuthenticationRepository();
+    const timesheet = apiTimesheet();
+    const calls: string[] = [];
+    const app = buildApi({
+      authService: createAuthenticationService(authRepository, testAuthOptions()),
+      timesheetService: {
+        ...createApiUnavailableTimesheetService(),
+        async createFromAttendance(input) {
+          calls.push(`create:${input.attendanceRecordId}`);
+          return timesheet;
+        },
+        async calculate(input) {
+          calls.push(`calculate:${input.timesheetId}`);
+          return {
+            ...timesheet,
+            status: "worker_review",
+            actualCheckInAt: new Date("2026-08-12T12:00:00.000Z"),
+            actualCheckOutAt: new Date("2026-08-12T20:00:00.000Z"),
+            rawElapsedMinutes: 480,
+            payableMinutes: 480,
+            billableMinutes: 480,
+            version: 1,
+            versionToken: 1
+          };
+        },
+        async workerConfirm(input) {
+          calls.push(`worker-confirm:${input.timesheetId}`);
+          return {
+            ...timesheet,
+            status: "employer_review",
+            workerReviewStatus: "confirmed",
+            workerReviewedAt: new Date("2026-08-12T20:10:00.000Z"),
+            version: 2,
+            versionToken: 2
+          };
+        },
+        async employerConfirm(input) {
+          calls.push(`employer-confirm:${input.timesheetId}`);
+          return {
+            ...timesheet,
+            status: "platform_review",
+            workerReviewStatus: "confirmed",
+            employerReviewStatus: "confirmed",
+            employerReviewedAt: new Date("2026-08-12T20:20:00.000Z"),
+            version: 3,
+            versionToken: 3
+          };
+        },
+        async approve(input) {
+          calls.push(`approve:${input.timesheetId}`);
+          return {
+            ...timesheet,
+            status: "approved",
+            workerReviewStatus: "confirmed",
+            employerReviewStatus: "confirmed",
+            platformReviewStatus: "approved",
+            approvedAt: new Date("2026-08-12T20:30:00.000Z"),
+            version: 4,
+            versionToken: 4
+          };
+        },
+        async lock(input) {
+          calls.push(`lock:${input.timesheetId}`);
+          return {
+            ...timesheet,
+            status: "locked",
+            workerReviewStatus: "confirmed",
+            employerReviewStatus: "confirmed",
+            platformReviewStatus: "approved",
+            lockedAt: new Date("2026-08-12T20:35:00.000Z"),
+            payrollBoundary: "handoff_ready",
+            financeBoundary: "handoff_ready",
+            version: 5,
+            versionToken: 5
+          };
+        },
+        async listTimesheets(input) {
+          calls.push(`list:${input.organizationId ?? "platform"}`);
+          return [timesheet];
+        },
+        async readTimesheet(input) {
+          calls.push(`read:${input.timesheetId}`);
+          return timesheet;
+        },
+        async readAuditSummary(input) {
+          calls.push(`audit:${input.timesheetId}`);
+          return {
+            timesheetId: input.timesheetId,
+            attendanceRecordId: timesheet.attendanceRecordId,
+            assignmentId: timesheet.assignmentId,
+            status: timesheet.status,
+            calculationSnapshots: 1,
+            message: "Timesheet audit is available through governed audit records."
+          };
+        }
+      },
+      resolveAuthorizationRoles: async () => [
+        "TIMESHEET_REVIEWER",
+        "WORKER_ACCESS",
+        "ORGANIZATION_OWNER"
+      ]
+    });
+    const user = await registerApiUser(app);
+
+    const created = await app.inject({
+      method: "POST",
+      url: "/platform/timesheets",
+      headers: { authorization: `Bearer ${user.token}` },
+      payload: { attendanceRecordId: "attendance-api-1" }
+    });
+    const calculated = await app.inject({
+      method: "POST",
+      url: `/platform/timesheets/${timesheet.id}/calculate`,
+      headers: { authorization: `Bearer ${user.token}` },
+      payload: { expectedVersion: 0 }
+    });
+    const workerConfirmed = await app.inject({
+      method: "POST",
+      url: `/worker/timesheets/${timesheet.id}/confirm`,
+      headers: { authorization: `Bearer ${user.token}` },
+      payload: { expectedVersion: 1 }
+    });
+    const employerConfirmed = await app.inject({
+      method: "POST",
+      url: `/organizations/${timesheet.organizationId}/timesheets/${timesheet.id}/confirm`,
+      headers: { authorization: `Bearer ${user.token}` },
+      payload: { expectedVersion: 2 }
+    });
+    const approved = await app.inject({
+      method: "POST",
+      url: `/platform/timesheets/${timesheet.id}/approve`,
+      headers: { authorization: `Bearer ${user.token}` },
+      payload: { expectedVersion: 3 }
+    });
+    const locked = await app.inject({
+      method: "POST",
+      url: `/platform/timesheets/${timesheet.id}/lock`,
+      headers: { authorization: `Bearer ${user.token}` },
+      payload: { expectedVersion: 4 }
+    });
+    const platformList = await app.inject({
+      method: "GET",
+      url: "/platform/timesheets",
+      headers: { authorization: `Bearer ${user.token}` }
+    });
+    const audit = await app.inject({
+      method: "GET",
+      url: `/platform/timesheets/${timesheet.id}/audit`,
+      headers: { authorization: `Bearer ${user.token}` }
+    });
+    const payroll = await app.inject({
+      method: "GET",
+      url: "/platform/payroll",
+      headers: { authorization: `Bearer ${user.token}` }
+    });
+
+    expect(created.statusCode).toBe(201);
+    expect(created.json().timesheet).toMatchObject({
+      status: "draft",
+      attendanceBoundary: "preserved",
+      calculationBoundary: "time_only_no_money",
+      payrollBoundary: "not_started"
+    });
+    expect(calculated.statusCode).toBe(200);
+    expect(calculated.json().timesheet).toMatchObject({
+      status: "worker_review",
+      rawElapsedMinutes: 480,
+      payableMinutes: 480,
+      billableMinutes: 480
+    });
+    expect(workerConfirmed.json().timesheet.status).toBe("employer_review");
+    expect(employerConfirmed.json().timesheet.status).toBe("platform_review");
+    expect(approved.json().timesheet.status).toBe("approved");
+    expect(locked.json().timesheet).toMatchObject({
+      status: "locked",
+      payrollBoundary: "handoff_ready",
+      financeBoundary: "handoff_ready"
+    });
+    expect(platformList.statusCode).toBe(200);
+    expect(platformList.json().timesheets).toHaveLength(1);
+    expect(audit.statusCode).toBe(200);
+    expect(audit.json().audit.calculationSnapshots).toBe(1);
+    expect(payroll.statusCode).toBe(404);
+    expect(calls).toEqual([
+      "create:attendance-api-1",
+      "calculate:timesheet-api-1",
+      "worker-confirm:timesheet-api-1",
+      "employer-confirm:timesheet-api-1",
+      "approve:timesheet-api-1",
+      "lock:timesheet-api-1",
+      "list:platform",
+      "audit:timesheet-api-1"
     ]);
     await app.close();
   });
@@ -1615,6 +1813,29 @@ function createApiUnavailableAttendanceService(): AttendanceService {
     cancel: unavailable,
     readAuditSummary: unavailable
   } as AttendanceService;
+}
+
+function createApiUnavailableTimesheetService(): TimesheetService {
+  const unavailable = async () => {
+    throw new Error("timesheet service unavailable in this API test");
+  };
+
+  return {
+    createFromAttendance: unavailable,
+    calculate: unavailable,
+    listTimesheets: unavailable,
+    readTimesheet: unavailable,
+    workerRead: unavailable,
+    workerConfirm: unavailable,
+    workerDispute: unavailable,
+    employerConfirm: unavailable,
+    employerDispute: unavailable,
+    requestCorrection: unavailable,
+    approve: unavailable,
+    reject: unavailable,
+    lock: unavailable,
+    readAuditSummary: unavailable
+  } as TimesheetService;
 }
 
 function apiDispatchReview(): Awaited<ReturnType<DispatchService["createDispatch"]>> {
@@ -1793,6 +2014,64 @@ function apiAttendanceRecord(): Awaited<ReturnType<AttendanceService["createFrom
     versionToken: 0,
     timesheetBoundary: "not_started",
     verificationBoundary: "provider_neutral"
+  };
+}
+
+function apiTimesheet(): Awaited<ReturnType<TimesheetService["createFromAttendance"]>> {
+  const now = new Date("2026-08-12T20:05:00.000Z");
+  return {
+    id: "timesheet-api-1",
+    assignmentId: "assignment-api-1",
+    attendanceRecordId: "attendance-api-1",
+    jobRequestId: "job-request-api-1",
+    workerIdentityId: "worker-identity-api-1",
+    organizationId: "org-api-1",
+    residenceId: "residence-api-1",
+    departmentId: "department-api-1",
+    workGroupId: "work-group-kitchen",
+    roleDefinitionId: "role-chef",
+    status: "draft",
+    attendanceVersionSnapshot: 3,
+    assignmentVersionSnapshot: 2,
+    scheduledStartAt: new Date("2026-08-12T12:00:00.000Z"),
+    scheduledEndAt: new Date("2026-08-12T20:00:00.000Z"),
+    actualCheckInAt: null,
+    actualCheckOutAt: null,
+    timezone: "America/Toronto",
+    rawElapsedMinutes: null,
+    payableMinutes: null,
+    billableMinutes: null,
+    excludedMinutes: 0,
+    breakMinutes: 0,
+    premiumCandidateMinutes: 0,
+    overtimeCandidateMinutes: 0,
+    roundingAdjustmentMinutes: 0,
+    exceptionSummary: null,
+    workerReviewStatus: "not_started",
+    workerReviewedAt: null,
+    employerReviewStatus: "not_started",
+    employerReviewedAt: null,
+    platformReviewStatus: "not_started",
+    platformReviewedAt: null,
+    approvedAt: null,
+    lockedAt: null,
+    rejectedAt: null,
+    cancelledAt: null,
+    correctionReason: null,
+    createdByUserId: "admin-api-1",
+    updatedByUserId: null,
+    workerReviewedByUserId: null,
+    employerReviewedByUserId: null,
+    platformReviewedByUserId: null,
+    lockedByUserId: null,
+    createdAt: now,
+    updatedAt: now,
+    version: 0,
+    versionToken: 0,
+    attendanceBoundary: "preserved",
+    payrollBoundary: "not_started",
+    financeBoundary: "not_started",
+    calculationBoundary: "time_only_no_money"
   };
 }
 

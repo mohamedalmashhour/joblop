@@ -18,6 +18,7 @@ import {
   createOrganizationMembershipService,
   createResidenceService,
   createRoleDefinitionService,
+  createTimesheetService,
   createWorkerOfferService,
   createWorkGroupService,
   hashPassword,
@@ -62,7 +63,10 @@ import type {
   UpdateSessionInput,
   WorkerOfferRepository,
   WorkGroupRepository,
-  StoredJobRequest
+  StoredJobRequest,
+  StoredTimesheet,
+  StoredTimesheetCalculationSnapshot,
+  TimesheetRepository
 } from "./index";
 
 const passwordHashOptions = {
@@ -462,7 +466,10 @@ describe("authorization foundation", () => {
       "job_request.submit",
       "job_request.cancel",
       "assignment.read",
-      "attendance.read"
+      "attendance.read",
+      "timesheet.employer_read",
+      "timesheet.employer_confirm",
+      "timesheet.employer_dispute"
     ]);
     expect(service.rolePermissions("ORGANIZATION_STAFF")).not.toContain("organization.update");
     expect(service.rolePermissions("ORGANIZATION_STAFF")).not.toContain("platform.supervise");
@@ -515,7 +522,8 @@ describe("authorization foundation", () => {
       "attendance.check_out",
       "attendance.override",
       "attendance.cancel",
-      "attendance.audit_read"
+      "attendance.audit_read",
+      "timesheet.read"
     ]);
     expect(service.rolePermissions("WORKER_ACCESS")).toEqual([
       "worker_offer.respond",
@@ -524,7 +532,10 @@ describe("authorization foundation", () => {
       "assignment.worker_withdraw",
       "attendance.worker_read",
       "attendance.worker_check_in",
-      "attendance.worker_check_out"
+      "attendance.worker_check_out",
+      "timesheet.worker_read",
+      "timesheet.worker_confirm",
+      "timesheet.worker_dispute"
     ]);
     await expect(
       service.decide({
@@ -3063,6 +3074,192 @@ describe("attendance foundation", () => {
   });
 });
 
+describe("timesheet foundation", () => {
+  it("creates a Timesheet only from completed Attendance and preserves upstream evidence", async () => {
+    const { timesheetService, timesheetRepository, attendanceRecord, assignment, adminSession } =
+      await createTimesheetContext();
+    const originalCheckIn = attendanceRecord.checkInAt?.toISOString();
+
+    const timesheet = await timesheetService.createFromAttendance({
+      session: adminSession,
+      roles: ["TIMESHEET_REVIEWER"],
+      attendanceRecordId: attendanceRecord.id
+    });
+
+    expect(timesheet.status).toBe("draft");
+    expect(timesheet.attendanceRecordId).toBe(attendanceRecord.id);
+    expect(timesheet.attendanceVersionSnapshot).toBe(attendanceRecord.version);
+    expect(timesheet.assignmentVersionSnapshot).toBe(assignment.version);
+    expect(timesheet.attendanceBoundary).toBe("preserved");
+    expect(timesheet.calculationBoundary).toBe("time_only_no_money");
+    expect(attendanceRecord.checkInAt?.toISOString()).toBe(originalCheckIn);
+    expect(timesheetRepository.modifiedAttendanceRecords).toBe(0);
+    expect(timesheetRepository.createdPayrollRecords).toBe(0);
+    expect(timesheetRepository.createdFinanceRecords).toBe(0);
+    expect(timesheetRepository.createdInvoices).toBe(0);
+    expect(timesheetRepository.createdPayments).toBe(0);
+    expect(timesheetRepository.auditActions()).toEqual(
+      expect.arrayContaining(["timesheet.creation_attempted", "timesheet.created"])
+    );
+  });
+
+  it("calculates governed time-only values and records calculation snapshots", async () => {
+    const { timesheetService, timesheetRepository, attendanceRecord, adminSession } =
+      await createTimesheetContext();
+    const draft = await timesheetService.createFromAttendance({
+      session: adminSession,
+      roles: ["TIMESHEET_REVIEWER"],
+      attendanceRecordId: attendanceRecord.id
+    });
+    const calculated = await timesheetService.calculate({
+      session: adminSession,
+      roles: ["TIMESHEET_REVIEWER"],
+      timesheetId: draft.id,
+      expectedVersion: draft.versionToken
+    });
+
+    expect(calculated.rawElapsedMinutes).toBe(480);
+    expect(calculated.payableMinutes).toBe(480);
+    expect(calculated.billableMinutes).toBe(480);
+    expect(calculated.payrollBoundary).toBe("not_started");
+    expect(calculated.financeBoundary).toBe("not_started");
+    expect(calculated.status).toBe("worker_review");
+    expect(timesheetRepository.snapshotCount()).toBe(1);
+    expect(timesheetRepository.createdPayrollRecords).toBe(0);
+    expect(timesheetRepository.createdFinanceRecords).toBe(0);
+  });
+
+  it("requires explicit worker and employer review before platform approval and lock", async () => {
+    const { timesheetService, attendanceRecord, adminSession, workerSession } =
+      await createTimesheetContext();
+    const draft = await timesheetService.createFromAttendance({
+      session: adminSession,
+      roles: ["TIMESHEET_REVIEWER"],
+      attendanceRecordId: attendanceRecord.id
+    });
+    const calculated = await timesheetService.calculate({
+      session: adminSession,
+      roles: ["TIMESHEET_REVIEWER"],
+      timesheetId: draft.id,
+      expectedVersion: draft.versionToken
+    });
+
+    await expect(
+      timesheetService.approve({
+        session: adminSession,
+        roles: ["TIMESHEET_REVIEWER"],
+        timesheetId: calculated.id,
+        expectedVersion: calculated.versionToken
+      })
+    ).rejects.toMatchObject({
+      decision: expect.objectContaining({ status: "worker_review_required" })
+    });
+
+    const workerConfirmed = await timesheetService.workerConfirm({
+      session: workerSession,
+      roles: ["WORKER_ACCESS"],
+      timesheetId: calculated.id,
+      expectedVersion: calculated.versionToken
+    });
+    const employerConfirmed = await timesheetService.employerConfirm({
+      session: activeSession(),
+      roles: ["ORGANIZATION_OWNER"],
+      timesheetId: workerConfirmed.id,
+      expectedVersion: workerConfirmed.versionToken
+    });
+    const approved = await timesheetService.approve({
+      session: adminSession,
+      roles: ["TIMESHEET_REVIEWER"],
+      timesheetId: employerConfirmed.id,
+      expectedVersion: employerConfirmed.versionToken
+    });
+    const locked = await timesheetService.lock({
+      session: adminSession,
+      roles: ["TIMESHEET_REVIEWER"],
+      timesheetId: approved.id,
+      expectedVersion: approved.versionToken
+    });
+
+    expect(workerConfirmed.status).toBe("employer_review");
+    expect(employerConfirmed.status).toBe("platform_review");
+    expect(approved.status).toBe("approved");
+    expect(locked.status).toBe("locked");
+    expect(locked.payrollBoundary).toBe("handoff_ready");
+    expect(locked.financeBoundary).toBe("handoff_ready");
+  });
+
+  it("keeps disputes and corrections separate from Attendance evidence", async () => {
+    const { timesheetService, timesheetRepository, attendanceRecord, adminSession, workerSession } =
+      await createTimesheetContext();
+    const draft = await timesheetService.createFromAttendance({
+      session: adminSession,
+      roles: ["TIMESHEET_REVIEWER"],
+      attendanceRecordId: attendanceRecord.id
+    });
+    const calculated = await timesheetService.calculate({
+      session: adminSession,
+      roles: ["TIMESHEET_REVIEWER"],
+      timesheetId: draft.id,
+      expectedVersion: draft.versionToken
+    });
+    const disputed = await timesheetService.workerDispute({
+      session: workerSession,
+      roles: ["WORKER_ACCESS"],
+      timesheetId: calculated.id,
+      expectedVersion: calculated.versionToken,
+      reason: "Check-out requires review."
+    });
+
+    expect(disputed.status).toBe("correction_required");
+    expect(disputed.workerReviewStatus).toBe("disputed");
+    expect(disputed.correctionReason).toBe("Check-out requires review.");
+    expect(attendanceRecord.status).toBe("completed");
+    expect(attendanceRecord.checkOutAt?.toISOString()).toBe("2026-08-12T20:00:00.000Z");
+    expect(timesheetRepository.modifiedAttendanceRecords).toBe(0);
+  });
+
+  it("rejects duplicate timesheets, stale writes, and dispatcher approval", async () => {
+    const { timesheetService, attendanceRecord, adminSession } = await createTimesheetContext();
+    const draft = await timesheetService.createFromAttendance({
+      session: adminSession,
+      roles: ["TIMESHEET_REVIEWER"],
+      attendanceRecordId: attendanceRecord.id
+    });
+
+    await expect(
+      timesheetService.createFromAttendance({
+        session: adminSession,
+        roles: ["TIMESHEET_REVIEWER"],
+        attendanceRecordId: attendanceRecord.id
+      })
+    ).rejects.toMatchObject({
+      decision: expect.objectContaining({ status: "timesheet_exists" })
+    });
+
+    await expect(
+      timesheetService.calculate({
+        session: adminSession,
+        roles: ["TIMESHEET_REVIEWER"],
+        timesheetId: draft.id,
+        expectedVersion: draft.versionToken + 1
+      })
+    ).rejects.toMatchObject({
+      decision: expect.objectContaining({ status: "version_conflict" })
+    });
+
+    await expect(
+      timesheetService.approve({
+        session: adminSession,
+        roles: ["DISPATCHER"],
+        timesheetId: draft.id,
+        expectedVersion: draft.versionToken
+      })
+    ).rejects.toMatchObject({
+      decision: expect.objectContaining({ status: "permission_denied" })
+    });
+  });
+});
+
 class MemoryAuthorizationAuditSink {
   events: AuthorizationAuditEventInput[] = [];
 
@@ -4675,6 +4872,232 @@ class MemoryAttendanceRepository implements AttendanceRepository {
   }
 }
 
+class MemoryTimesheetRepository implements TimesheetRepository {
+  private timesheets = new Map<string, StoredTimesheet>();
+  private snapshots = new Map<string, StoredTimesheetCalculationSnapshot>();
+  private auditEvents: Parameters<TimesheetRepository["recordTimesheetAuditEvent"]>[0][] = [];
+  private nextTimesheet = 1;
+  private nextSnapshot = 1;
+
+  modifiedAttendanceRecords = 0;
+  createdPayrollRecords = 0;
+  createdFinanceRecords = 0;
+  createdInvoices = 0;
+  createdPayments = 0;
+  createdNotifications = 0;
+  createdAiActions = 0;
+
+  auditActions() {
+    return this.auditEvents.map((event) => event.action);
+  }
+
+  snapshotCount() {
+    return this.snapshots.size;
+  }
+
+  async createTimesheetFromAttendance(
+    input: Parameters<TimesheetRepository["createTimesheetFromAttendance"]>[0]
+  ) {
+    const timesheet: StoredTimesheet = {
+      id: `timesheet-${this.nextTimesheet}`,
+      assignmentId: input.assignment.id,
+      attendanceRecordId: input.attendanceRecord.id,
+      jobRequestId: input.attendanceRecord.jobRequestId,
+      workerIdentityId: input.attendanceRecord.workerIdentityId,
+      organizationId: input.attendanceRecord.organizationId,
+      residenceId: input.attendanceRecord.residenceId,
+      departmentId: input.attendanceRecord.departmentId,
+      workGroupId: input.attendanceRecord.workGroupId,
+      roleDefinitionId: input.attendanceRecord.roleDefinitionId,
+      status: "draft",
+      attendanceVersionSnapshot: input.attendanceRecord.version,
+      assignmentVersionSnapshot: input.assignment.version,
+      scheduledStartAt: input.attendanceRecord.scheduledStartAt,
+      scheduledEndAt: input.attendanceRecord.scheduledEndAt,
+      actualCheckInAt: null,
+      actualCheckOutAt: null,
+      timezone: input.attendanceRecord.timezone,
+      rawElapsedMinutes: null,
+      payableMinutes: null,
+      billableMinutes: null,
+      excludedMinutes: 0,
+      breakMinutes: 0,
+      premiumCandidateMinutes: 0,
+      overtimeCandidateMinutes: 0,
+      roundingAdjustmentMinutes: 0,
+      exceptionSummary: null,
+      workerReviewStatus: "not_started",
+      workerReviewedAt: null,
+      employerReviewStatus: "not_started",
+      employerReviewedAt: null,
+      platformReviewStatus: "not_started",
+      platformReviewedAt: null,
+      approvedAt: null,
+      lockedAt: null,
+      rejectedAt: null,
+      cancelledAt: null,
+      correctionReason: null,
+      createdByUserId: input.actorUserId,
+      updatedByUserId: null,
+      workerReviewedByUserId: null,
+      employerReviewedByUserId: null,
+      platformReviewedByUserId: null,
+      lockedByUserId: null,
+      createdAt: input.now,
+      updatedAt: input.now,
+      version: 0
+    };
+    this.nextTimesheet += 1;
+    this.timesheets.set(timesheet.id, timesheet);
+    return timesheet;
+  }
+
+  async findTimesheetById(timesheetId: string) {
+    return this.timesheets.get(timesheetId) ?? null;
+  }
+
+  async findTimesheetByAttendanceRecordId(attendanceRecordId: string) {
+    return (
+      [...this.timesheets.values()].find(
+        (timesheet) => timesheet.attendanceRecordId === attendanceRecordId
+      ) ?? null
+    );
+  }
+
+  async findTimesheetByAssignmentId(assignmentId: string) {
+    return (
+      [...this.timesheets.values()].find((timesheet) => timesheet.assignmentId === assignmentId) ??
+      null
+    );
+  }
+
+  async listTimesheets(input: Parameters<TimesheetRepository["listTimesheets"]>[0]) {
+    return [...this.timesheets.values()]
+      .filter(
+        (timesheet) => !input.organizationId || timesheet.organizationId === input.organizationId
+      )
+      .filter(
+        (timesheet) =>
+          !input.workerIdentityId || timesheet.workerIdentityId === input.workerIdentityId
+      )
+      .filter((timesheet) => !input.assignmentId || timesheet.assignmentId === input.assignmentId)
+      .filter((timesheet) => !input.statuses || input.statuses.includes(timesheet.status))
+      .sort(
+        (left, right) =>
+          right.updatedAt.getTime() - left.updatedAt.getTime() ||
+          left.scheduledStartAt.getTime() - right.scheduledStartAt.getTime()
+      );
+  }
+
+  async updateTimesheet(input: Parameters<TimesheetRepository["updateTimesheet"]>[0]) {
+    const timesheet = this.timesheets.get(input.timesheetId);
+    if (!timesheet || timesheet.version !== input.expectedVersion) return null;
+
+    if (input.status !== undefined) timesheet.status = input.status;
+    if (input.actualCheckInAt !== undefined) timesheet.actualCheckInAt = input.actualCheckInAt;
+    if (input.actualCheckOutAt !== undefined) timesheet.actualCheckOutAt = input.actualCheckOutAt;
+    if (input.rawElapsedMinutes !== undefined)
+      timesheet.rawElapsedMinutes = input.rawElapsedMinutes;
+    if (input.payableMinutes !== undefined) timesheet.payableMinutes = input.payableMinutes;
+    if (input.billableMinutes !== undefined) timesheet.billableMinutes = input.billableMinutes;
+    if (input.excludedMinutes !== undefined) timesheet.excludedMinutes = input.excludedMinutes;
+    if (input.breakMinutes !== undefined) timesheet.breakMinutes = input.breakMinutes;
+    if (input.premiumCandidateMinutes !== undefined) {
+      timesheet.premiumCandidateMinutes = input.premiumCandidateMinutes;
+    }
+    if (input.overtimeCandidateMinutes !== undefined) {
+      timesheet.overtimeCandidateMinutes = input.overtimeCandidateMinutes;
+    }
+    if (input.roundingAdjustmentMinutes !== undefined) {
+      timesheet.roundingAdjustmentMinutes = input.roundingAdjustmentMinutes;
+    }
+    if (input.exceptionSummary !== undefined) timesheet.exceptionSummary = input.exceptionSummary;
+    if (input.workerReviewStatus !== undefined) {
+      timesheet.workerReviewStatus = input.workerReviewStatus;
+    }
+    if (input.workerReviewedAt !== undefined) timesheet.workerReviewedAt = input.workerReviewedAt;
+    if (input.employerReviewStatus !== undefined) {
+      timesheet.employerReviewStatus = input.employerReviewStatus;
+    }
+    if (input.employerReviewedAt !== undefined) {
+      timesheet.employerReviewedAt = input.employerReviewedAt;
+    }
+    if (input.platformReviewStatus !== undefined) {
+      timesheet.platformReviewStatus = input.platformReviewStatus;
+    }
+    if (input.platformReviewedAt !== undefined) {
+      timesheet.platformReviewedAt = input.platformReviewedAt;
+    }
+    if (input.approvedAt !== undefined) timesheet.approvedAt = input.approvedAt;
+    if (input.lockedAt !== undefined) timesheet.lockedAt = input.lockedAt;
+    if (input.rejectedAt !== undefined) timesheet.rejectedAt = input.rejectedAt;
+    if (input.cancelledAt !== undefined) timesheet.cancelledAt = input.cancelledAt;
+    if (input.correctionReason !== undefined) timesheet.correctionReason = input.correctionReason;
+    if (input.workerReviewedByUserId !== undefined) {
+      timesheet.workerReviewedByUserId = input.workerReviewedByUserId;
+    }
+    if (input.employerReviewedByUserId !== undefined) {
+      timesheet.employerReviewedByUserId = input.employerReviewedByUserId;
+    }
+    if (input.platformReviewedByUserId !== undefined) {
+      timesheet.platformReviewedByUserId = input.platformReviewedByUserId;
+    }
+    if (input.lockedByUserId !== undefined) timesheet.lockedByUserId = input.lockedByUserId;
+    timesheet.updatedByUserId = input.actorUserId;
+    timesheet.updatedAt = input.now;
+    timesheet.version += 1;
+    return timesheet;
+  }
+
+  async createCalculationSnapshot(
+    input: Parameters<TimesheetRepository["createCalculationSnapshot"]>[0]
+  ) {
+    const snapshot: StoredTimesheetCalculationSnapshot = {
+      id: `timesheet-snapshot-${this.nextSnapshot}`,
+      timesheetId: input.timesheet.id,
+      attendanceRecordId: input.attendanceRecord.id,
+      attendanceVersionSnapshot: input.attendanceRecord.version,
+      assignmentId: input.assignment.id,
+      assignmentVersionSnapshot: input.assignment.version,
+      calculationPolicyVersion: input.calculation.calculationPolicyVersion,
+      countryPackVersion: input.calculation.countryPackVersion,
+      rawCheckInAt: input.calculation.rawCheckInAt,
+      rawCheckOutAt: input.calculation.rawCheckOutAt,
+      normalizedCheckInAt: input.calculation.normalizedCheckInAt,
+      normalizedCheckOutAt: input.calculation.normalizedCheckOutAt,
+      timezone: input.attendanceRecord.timezone,
+      breakRule: input.calculation.breakRule,
+      roundingRule: input.calculation.roundingRule,
+      rawElapsedMinutes: input.calculation.rawElapsedMinutes,
+      payableMinutes: input.calculation.payableMinutes,
+      billableMinutes: input.calculation.billableMinutes,
+      excludedMinutes: input.calculation.excludedMinutes,
+      breakMinutes: input.calculation.breakMinutes,
+      premiumCandidateMinutes: input.calculation.premiumCandidateMinutes,
+      overtimeCandidateMinutes: input.calculation.overtimeCandidateMinutes,
+      roundingAdjustmentMinutes: input.calculation.roundingAdjustmentMinutes,
+      exceptionFlags: input.calculation.exceptionFlags,
+      calculationEngineVersion: input.calculation.calculationEngineVersion,
+      createdAt: input.now
+    };
+    this.nextSnapshot += 1;
+    this.snapshots.set(snapshot.id, snapshot);
+    return snapshot;
+  }
+
+  async listCalculationSnapshots(timesheetId: string) {
+    return [...this.snapshots.values()]
+      .filter((snapshot) => snapshot.timesheetId === timesheetId)
+      .sort((left, right) => right.createdAt.getTime() - left.createdAt.getTime());
+  }
+
+  async recordTimesheetAuditEvent(
+    input: Parameters<TimesheetRepository["recordTimesheetAuditEvent"]>[0]
+  ) {
+    this.auditEvents.push(input);
+  }
+}
+
 class FixtureDispatchCandidateSource implements DispatchCandidateSource {
   async searchCandidates(input: Parameters<DispatchCandidateSource["searchCandidates"]>[0]) {
     const candidate = await this.evaluateCandidate({
@@ -5120,6 +5543,60 @@ async function createAttendanceContext(input: { assignmentReady?: boolean } = {}
     attendanceService,
     attendanceRepository,
     assignment
+  };
+}
+
+async function createTimesheetContext() {
+  const context = await createAttendanceContext();
+  const timesheetRepository = new MemoryTimesheetRepository();
+  const timesheetService = createTimesheetService(
+    timesheetRepository,
+    context.attendanceRepository,
+    context.assignmentRepository,
+    context.workerOfferRepository,
+    createAuthorizationService()
+  );
+  const created = await context.attendanceService.createFromAssignment({
+    session: context.adminSession,
+    roles: ["DISPATCHER"],
+    assignmentId: context.assignment.id,
+    verificationMethod: "none"
+  });
+  const checkedIn = await context.attendanceService.workerCheckIn({
+    session: context.workerSession,
+    roles: ["WORKER_ACCESS"],
+    attendanceRecordId: created.id,
+    expectedVersion: created.versionToken,
+    method: "secure_pin",
+    evidenceSummary: "Worker submitted secure PIN.",
+    locationPolicyResult: "not_required"
+  });
+  const checkedOut = await context.attendanceService.workerCheckOut({
+    session: context.workerSession,
+    roles: ["WORKER_ACCESS"],
+    attendanceRecordId: checkedIn.id,
+    expectedVersion: checkedIn.versionToken,
+    method: "secure_pin",
+    evidenceSummary: "Worker submitted secure PIN at departure.",
+    locationPolicyResult: "not_required"
+  });
+  const attendanceRecord = await context.attendanceService.markCompleted({
+    session: context.adminSession,
+    roles: ["DISPATCHER"],
+    attendanceRecordId: checkedOut.id,
+    expectedVersion: checkedOut.versionToken
+  });
+  const storedAttendanceRecord =
+    (await context.attendanceRepository.findAttendanceById(attendanceRecord.id)) ??
+    attendanceRecord;
+  storedAttendanceRecord.checkInAt = new Date("2026-08-12T12:00:00.000Z");
+  storedAttendanceRecord.checkOutAt = new Date("2026-08-12T20:00:00.000Z");
+
+  return {
+    ...context,
+    timesheetService,
+    timesheetRepository,
+    attendanceRecord: storedAttendanceRecord
   };
 }
 

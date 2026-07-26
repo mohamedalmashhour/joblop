@@ -39,14 +39,19 @@ describe("Phase 01 development catalogue", () => {
     expect(phase01PermissionKeys).toContain("assignment.worker_acknowledge");
     expect(phase01PermissionKeys).toContain("attendance.create");
     expect(phase01PermissionKeys).toContain("attendance.worker_check_in");
+    expect(phase01PermissionKeys).toContain("timesheet.create");
+    expect(phase01PermissionKeys).toContain("timesheet.worker_confirm");
+    expect(phase01PermissionKeys).toContain("timesheet.employer_confirm");
+    expect(phase01PermissionKeys).toContain("timesheet.approve");
+    expect(phase01PermissionKeys).toContain("timesheet.lock");
     expect(phase01PermissionKeys).toContain("audit.read");
     expect(phase01PermissionKeys).toContain("job_request.admin_review");
     expect(phase01PermissionKeys).not.toContain("job_request.admin_read");
-    expect(phase01PermissionKeys).not.toContain("timesheet.create");
+    expect(phase01PermissionKeys).not.toContain("invoice.create");
     expect(phase01PermissionKeys).not.toContain("payment.execute");
   });
 
-  it("declares explicit role-permission mappings for dispatch and worker offer boundaries", () => {
+  it("declares explicit role-permission mappings for dispatch, attendance, and timesheet boundaries", () => {
     const platformAdmin = phase01RolePermissionMappings.find(
       (mapping) => mapping.accessRoleKey === "PLATFORM_ADMINISTRATOR"
     );
@@ -56,19 +61,37 @@ describe("Phase 01 development catalogue", () => {
     const worker = phase01RolePermissionMappings.find(
       (mapping) => mapping.accessRoleKey === "WORKER_ACCESS"
     );
+    const timesheetReviewer = phase01RolePermissionMappings.find(
+      (mapping) => mapping.accessRoleKey === "TIMESHEET_REVIEWER"
+    );
+    const organizationOwner = phase01RolePermissionMappings.find(
+      (mapping) => mapping.accessRoleKey === "ORGANIZATION_OWNER"
+    );
 
     expect(platformAdmin?.permissionKeys).toContain("platform.supervise");
     expect(platformAdmin?.permissionKeys).toContain("job_request.approve_for_dispatch");
     expect(platformAdmin?.permissionKeys).toContain("worker_offer.approve");
     expect(platformAdmin?.permissionKeys).toContain("assignment.create");
     expect(platformAdmin?.permissionKeys).toContain("attendance.create");
+    expect(platformAdmin?.permissionKeys).toContain("timesheet.approve");
+    expect(platformAdmin?.permissionKeys).toContain("timesheet.lock");
     expect(dispatcher?.permissionKeys).toContain("dispatch.prepare_offer");
     expect(dispatcher?.permissionKeys).toContain("worker_offer.send");
     expect(dispatcher?.permissionKeys).toContain("assignment.attendance_handoff");
     expect(dispatcher?.permissionKeys).toContain("attendance.audit_read");
+    expect(dispatcher?.permissionKeys).toContain("timesheet.read");
     expect(dispatcher?.permissionKeys).not.toContain("worker_offer.supervise");
     expect(dispatcher?.permissionKeys).not.toContain("assignment.supervise");
     expect(dispatcher?.permissionKeys).not.toContain("attendance.supervise");
+    expect(dispatcher?.permissionKeys).not.toContain("timesheet.approve");
+    expect(dispatcher?.permissionKeys).not.toContain("timesheet.lock");
+    expect(organizationOwner?.permissionKeys).toEqual(
+      expect.arrayContaining([
+        "timesheet.employer_read",
+        "timesheet.employer_confirm",
+        "timesheet.employer_dispute"
+      ])
+    );
     expect(worker?.permissionKeys).toEqual([
       "worker_offer.respond",
       "assignment.worker_read",
@@ -76,7 +99,23 @@ describe("Phase 01 development catalogue", () => {
       "assignment.worker_withdraw",
       "attendance.worker_read",
       "attendance.worker_check_in",
-      "attendance.worker_check_out"
+      "attendance.worker_check_out",
+      "timesheet.worker_read",
+      "timesheet.worker_confirm",
+      "timesheet.worker_dispute"
+    ]);
+    expect(timesheetReviewer?.permissionKeys).toEqual([
+      "timesheet.create",
+      "timesheet.read",
+      "timesheet.calculate",
+      "timesheet.recalculate",
+      "timesheet.review",
+      "timesheet.approve",
+      "timesheet.lock",
+      "timesheet.reject",
+      "timesheet.request_correction",
+      "timesheet.adjust",
+      "timesheet.audit_read"
     ]);
   });
 

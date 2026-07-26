@@ -34,6 +34,8 @@ describe("Prisma Phase 01 schema boundary", () => {
       "WorkerOfferResponse",
       "Assignment",
       "AttendanceRecord",
+      "Timesheet",
+      "TimesheetCalculationSnapshot",
       "AuditActorReference",
       "AuditEvent"
     ]) {
@@ -47,7 +49,12 @@ describe("Prisma Phase 01 schema boundary", () => {
       "AttendanceBreak",
       "AttendanceException",
       "AttendanceOfflineSubmission",
-      "Timesheet",
+      "TimesheetLine",
+      "TimesheetAdjustment",
+      "TimesheetApproval",
+      "TimesheetDispute",
+      "PayrollHandoffReference",
+      "FinanceHandoffReference",
       "Invoice",
       "EmployerPayment",
       "WorkerPayable",
