@@ -1,11 +1,12 @@
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
+import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 
 import { createContractMoney } from "./moneyEngine";
 
 const domainRoot = new URL("./", import.meta.url);
-const repositoryRoot = new URL("../../../../", import.meta.url);
+const repositoryRoot = fileURLToPath(new URL("../../../../", import.meta.url));
 const legacyMoneyPath = new URL("./money.ts", domainRoot);
 
 describe("legacy CAD money.ts retirement", () => {
@@ -24,7 +25,7 @@ describe("legacy CAD money.ts retirement", () => {
     ];
 
     for (const file of scannedFiles) {
-      const source = readFileSync(join(repositoryRoot.pathname, file), "utf8");
+      const source = readFileSync(join(repositoryRoot, file), "utf8");
 
       expect(source, `${file} must not import legacy money.ts`).not.toMatch(
         /from\s+["']\.\/money["']|from\s+["']@rwos\/shared\/domain\/money["']/u
