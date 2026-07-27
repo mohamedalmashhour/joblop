@@ -25,6 +25,7 @@ describe("Prisma Phase 01 schema boundary", () => {
       "MembershipAccessRole",
       "JobRequestSequence",
       "JobRequest",
+      "StaffingRequestCalendarProfile",
       "DispatchReview",
       "DispatchCandidate",
       "WorkerIdentity",

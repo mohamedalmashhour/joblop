@@ -109,6 +109,13 @@ enum JobRequestType {
   recurring_intent
 }
 
+enum CalendarVerificationState {
+  pending
+  verified
+  failed
+  unavailable
+}
+
 enum AuditActorType {
   user
   system
@@ -660,14 +667,15 @@ model JobRequest {
   expiredAt          DateTime?         @map("expired_at") @db.Timestamptz(3)
   archivedAt         DateTime?         @map("archived_at") @db.Timestamptz(3)
 
-  organization      EmployerOrganization @relation(fields: [organizationId], references: [id], onDelete: Restrict)
-  residence         Residence            @relation(fields: [organizationId, residenceId], references: [organizationId, id], onDelete: Restrict)
-  department        Department           @relation(fields: [organizationId, residenceId, departmentId], references: [organizationId, residenceId, id], onDelete: Restrict)
-  workGroup         WorkGroup            @relation(fields: [workGroupId], references: [id], onDelete: Restrict)
-  roleDefinition    RoleDefinition       @relation(fields: [workGroupId, roleDefinitionId], references: [workGroupId, id], onDelete: Restrict)
-  creator           User                 @relation("JobRequestCreator", fields: [creatorUserId], references: [id], onDelete: Restrict)
-  createdBy         User                 @relation("JobRequestCreatedByUser", fields: [createdByUserId], references: [id], onDelete: Restrict)
-  updatedBy         User?                @relation("JobRequestUpdatedByUser", fields: [updatedByUserId], references: [id], onDelete: SetNull)
+  organization      EmployerOrganization            @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  residence         Residence                       @relation(fields: [organizationId, residenceId], references: [organizationId, id], onDelete: Restrict)
+  department        Department                      @relation(fields: [organizationId, residenceId, departmentId], references: [organizationId, residenceId, id], onDelete: Restrict)
+  workGroup         WorkGroup                       @relation(fields: [workGroupId], references: [id], onDelete: Restrict)
+  roleDefinition    RoleDefinition                  @relation(fields: [workGroupId, roleDefinitionId], references: [workGroupId, id], onDelete: Restrict)
+  creator           User                            @relation("JobRequestCreator", fields: [creatorUserId], references: [id], onDelete: Restrict)
+  createdBy         User                            @relation("JobRequestCreatedByUser", fields: [createdByUserId], references: [id], onDelete: Restrict)
+  updatedBy         User?                           @relation("JobRequestUpdatedByUser", fields: [updatedByUserId], references: [id], onDelete: SetNull)
+  calendarProfile   StaffingRequestCalendarProfile?
   dispatchReviews   DispatchReview[]
   workerOffers      WorkerOffer[]
   assignments       Assignment[]
@@ -682,6 +690,31 @@ model JobRequest {
   @@index([status, submittedAt], map: "job_requests_status_submitted_at_idx")
   @@index([createdByUserId, createdAt], map: "job_requests_created_by_user_id_created_at_idx")
   @@map("job_requests")
+}
+
+model StaffingRequestCalendarProfile {
+  id                          String                    @id @default(uuid()) @db.Uuid
+  jobRequestId                String                    @unique @map("job_request_id") @db.Uuid
+  organizationId              String                    @map("organization_id") @db.Uuid
+  residenceId                 String                    @map("residence_id") @db.Uuid
+  dutiesSummary               String?                   @map("duties_summary")
+  qualifications              Json
+  addressSummary              String?                   @map("address_summary")
+  specialInstructions         String?                   @map("special_instructions")
+  contractVerificationState   CalendarVerificationState @default(pending) @map("contract_verification_state")
+  paymentMethodReadinessState CalendarVerificationState @default(pending) @map("payment_method_readiness_state")
+  locationVerificationState   CalendarVerificationState @default(pending) @map("location_verification_state")
+  version                     Int                       @default(1)
+  createdByUserId             String                    @map("created_by_user_id") @db.Uuid
+  updatedByUserId             String                    @map("updated_by_user_id") @db.Uuid
+  createdAt                   DateTime                  @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt                   DateTime                  @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  jobRequest JobRequest @relation(fields: [jobRequestId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId, updatedAt], map: "staffing_request_calendar_profiles_org_updated_idx")
+  @@index([residenceId, updatedAt], map: "staffing_request_calendar_profiles_residence_updated_idx")
+  @@map("staffing_request_calendar_profiles")
 }
 
 model DispatchReview {
