@@ -95,3 +95,18 @@ export const adminCalendarBoundaries = [
   "AI cannot approve, publish, assign, reprice, or notify.",
   "The calendar cannot execute payroll or payment."
 ] as const;
+
+export const adminAssignmentVisibility = {
+  assignmentId: "assignment_calendar_001",
+  requestId: adminCalendarEvent.requestId,
+  status: "confirmed",
+  workerDisplayName: "Amina K.",
+  roleLabel: adminCalendarEvent.roleLabel,
+  operationalStatus: "Ready for worker arrival",
+  clientVisibility: "Assigned status and minimum worker display identity",
+  workerVisibility: "Confirmed job, arrival instructions, and attendance handoff",
+  attendance: {
+    authority: "handoff_only",
+    execution: "not_started"
+  }
+} as const;

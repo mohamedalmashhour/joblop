@@ -1,4 +1,8 @@
-import type { WorkerConfirmedCalendarEvent, WorkerOfferCalendarEvent } from "@rwos/shared";
+import type {
+  AttendanceHandoffState,
+  WorkerConfirmedCalendarEvent,
+  WorkerOfferCalendarEvent
+} from "@rwos/shared";
 
 export const workerOfferCalendarFixture = {
   audience: "worker",
@@ -56,3 +60,18 @@ export const workerCalendarPrivacy = [
   "Internal administrator notes are not part of this view.",
   "Acceptance is local fixture state until an authoritative Assignment exists."
 ] as const;
+
+export const workerArrivalInstructions = {
+  meetingPoint: "Report to reception at Sunrise of Oak Hill.",
+  contactRole: "Ask for the duty supervisor.",
+  timing: "Arrive 10 minutes before the scheduled start.",
+  locationBoundary: "Operational location for this confirmed assignment only."
+} as const;
+
+export const workerAttendanceHandoff = {
+  eventType: "attendance_handoff",
+  assignmentId: workerConfirmedCalendarFixture.assignmentId,
+  eligibility: "ready",
+  authority: "handoff_only",
+  attendanceExecution: "not_started"
+} satisfies AttendanceHandoffState;

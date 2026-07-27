@@ -2,6 +2,8 @@ import { describe, expect, it } from "vitest";
 import {
   workerCalendarDisplay,
   workerCalendarPrivacy,
+  workerArrivalInstructions,
+  workerAttendanceHandoff,
   workerConfirmedCalendarFixture,
   workerOfferCalendarFixture
 } from "./workerCalendarContent";
@@ -47,5 +49,20 @@ describe("worker connected calendar fixture", () => {
     expect(workerCalendarPrivacy).toContain(
       "Acceptance is local fixture state until an authoritative Assignment exists."
     );
+  });
+
+  it("provides arrival instructions and an attendance handoff without execution", () => {
+    expect(workerArrivalInstructions).toMatchObject({
+      meetingPoint: expect.any(String),
+      contactRole: expect.any(String),
+      timing: expect.any(String)
+    });
+    expect(workerAttendanceHandoff).toEqual({
+      eventType: "attendance_handoff",
+      assignmentId: "assignment_calendar_001",
+      eligibility: "ready",
+      authority: "handoff_only",
+      attendanceExecution: "not_started"
+    });
   });
 });

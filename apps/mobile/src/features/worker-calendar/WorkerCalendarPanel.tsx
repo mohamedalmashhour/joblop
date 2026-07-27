@@ -5,6 +5,8 @@ import { Badge, BodyText, Button, Card, Divider, Heading, Section, SmallText } f
 import {
   workerCalendarDisplay,
   workerCalendarPrivacy,
+  workerArrivalInstructions,
+  workerAttendanceHandoff,
   workerConfirmedCalendarFixture,
   workerOfferCalendarFixture
 } from "./workerCalendarContent";
@@ -67,6 +69,20 @@ export function WorkerCalendarPanel() {
               <SmallText>{workerConfirmedCalendarFixture.locationSummary}</SmallText>
               <SmallText>
                 Confirmation is a calendar projection of the fixture Assignment.
+              </SmallText>
+              <Divider />
+              <Heading>Arrival instructions</Heading>
+              <BodyText>{workerArrivalInstructions.meetingPoint}</BodyText>
+              <BodyText>{workerArrivalInstructions.contactRole}</BodyText>
+              <SmallText>{workerArrivalInstructions.timing}</SmallText>
+              <SmallText>{workerArrivalInstructions.locationBoundary}</SmallText>
+              <Divider />
+              <Heading>Attendance handoff</Heading>
+              <BodyText>Eligibility: {workerAttendanceHandoff.eligibility}</BodyText>
+              <SmallText>Authority: {workerAttendanceHandoff.authority}</SmallText>
+              <SmallText>Execution: {workerAttendanceHandoff.attendanceExecution}</SmallText>
+              <SmallText>
+                No attendance controls or records are created from this calendar projection.
               </SmallText>
             </Card>
           ) : (

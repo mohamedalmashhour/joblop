@@ -1,4 +1,4 @@
-import type { ClientCalendarEvent } from "@rwos/shared";
+import type { AssignmentCalendarVisibility, ClientCalendarEvent } from "@rwos/shared";
 
 export const clientCalendarWorkflow = [
   {
@@ -21,6 +21,13 @@ export const clientCalendarWorkflow = [
     route: "/employer/calendar/request",
     status: "Client detail",
     boundary: "Status and readiness display only; admin review remains a separate role workflow."
+  },
+  {
+    page: "C04",
+    title: "Assigned Staffing",
+    route: "/employer/calendar/assignment",
+    status: "Authorized assignment",
+    boundary: "Minimum assigned-worker identity only; private worker profile data remains hidden."
   }
 ] as const;
 
@@ -90,5 +97,18 @@ export const clientCalendarPrivacyBoundaries = [
 export const clientCalendarPrimaryLinks = [
   { label: "Create staffing request", from: "/employer/calendar", to: "/employer/calendar/create" },
   { label: "Review fixture request", from: "/employer/calendar/create", to: "/employer/calendar/request" },
-  { label: "Back to request calendar", from: "/employer/calendar/request", to: "/employer/calendar" }
+  { label: "View authorized assignment", from: "/employer/calendar/request", to: "/employer/calendar/assignment" },
+  { label: "Back to request calendar", from: "/employer/calendar/assignment", to: "/employer/calendar" }
 ] as const;
+
+export const clientAssignmentVisibility = {
+  audience: "client",
+  eventType: "assignment_visibility",
+  assignmentId: "assignment_calendar_001",
+  requestId: "request_calendar_001",
+  status: "confirmed",
+  assignedWorker: {
+    displayName: "Amina K.",
+    roleLabel: "Personal Support Worker"
+  }
+} satisfies AssignmentCalendarVisibility;

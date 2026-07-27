@@ -3,6 +3,7 @@ import {
   adminAiRecommendation,
   adminCalendarBoundaries,
   adminCalendarEvent,
+  adminAssignmentVisibility,
   adminCalendarRequests,
   adminReviewActions,
   adminReviewChecks
@@ -52,5 +53,16 @@ describe("admin connected calendar fixture", () => {
     ]);
     expect(adminAiRecommendation.authority).toBe("advisory_only");
     expect(adminCalendarBoundaries).toContain("AI cannot approve, publish, assign, reprice, or notify.");
+  });
+
+  it("shows operational assignment state while attendance remains a handoff", () => {
+    expect(adminAssignmentVisibility).toMatchObject({
+      status: "confirmed",
+      operationalStatus: "Ready for worker arrival",
+      attendance: {
+        authority: "handoff_only",
+        execution: "not_started"
+      }
+    });
   });
 });

@@ -77,6 +77,9 @@ export function AdminReviewPanel() {
               </button>
             ))}
           </div>
+          <a href="/calendar/assignment" style={styles.assignmentLink}>
+            Open operational assignment visibility
+          </a>
         </article>
 
         <article style={styles.advisoryPanel}>
@@ -118,6 +121,7 @@ const styles = {
   actionGrid: { display: "flex", flexWrap: "wrap" as const, gap: 10 },
   actionButton: { background: "#0f7f78", border: 0, borderRadius: 8, color: "#fff", cursor: "pointer", fontWeight: 800, minHeight: 44, padding: "0 16px" },
   secondaryButton: { background: "#fff", borderRadius: 8, color: "#061b41", fontWeight: 800, minHeight: 44, padding: "12px 18px", textDecoration: "none" },
+  assignmentLink: { alignItems: "center", background: "#061b41", borderRadius: 8, color: "#fff", display: "inline-flex", fontWeight: 800, marginTop: 14, minHeight: 44, padding: "0 16px", textDecoration: "none" },
   boundaryGrid: { display: "grid", gap: 12, gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", padding: "24px clamp(18px, 5vw, 64px) 48px" },
   boundaryCard: { background: "#fff", border: "1px solid #dbe4f0", borderRadius: 10, padding: 16 }
 } as const;

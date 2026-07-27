@@ -35,6 +35,9 @@ export default function ClientRequestDetailPage() {
                 </span>
               ))}
             </div>
+            <a href="/employer/calendar/assignment" style={styles.primaryButton}>
+              View authorized assignment
+            </a>
           </article>
           <article style={styles.panel}>
             <h2 style={styles.cardTitle}>Request terms</h2>

@@ -8,7 +8,8 @@ import {
   clientCalendarPrivacyBoundaries,
   clientCalendarRows,
   clientCalendarStatuses,
-  clientRequestDetail
+  clientRequestDetail,
+  clientAssignmentVisibility
 } from "./clientCalendarContent";
 
 describe("client request calendar fixture", () => {
@@ -60,7 +61,24 @@ describe("client request calendar fixture", () => {
         from: "/employer/calendar/create",
         to: "/employer/calendar/request"
       }),
-      expect.objectContaining({ from: "/employer/calendar/request", to: "/employer/calendar" })
+      expect.objectContaining({
+        from: "/employer/calendar/request",
+        to: "/employer/calendar/assignment"
+      }),
+      expect.objectContaining({
+        from: "/employer/calendar/assignment",
+        to: "/employer/calendar"
+      })
     ]);
+  });
+
+  it("limits assigned-worker visibility to authorized display identity", () => {
+    expect(clientAssignmentVisibility.assignedWorker).toEqual({
+      displayName: "Amina K.",
+      roleLabel: "Personal Support Worker"
+    });
+    expect(JSON.stringify(clientAssignmentVisibility)).not.toMatch(
+      /email|phone|address|dateOfBirth|governmentId/iu
+    );
   });
 });
