@@ -4,6 +4,7 @@ const runtimeConfigSchema = z.object({
   NODE_ENV: z.enum(["development", "test", "production"]).default("development"),
   RWOS_ENV: z.enum(["local", "test", "staging", "production"]).default("local"),
   API_PORT: z.coerce.number().int().positive().default(4100),
+  INTERNAL_API_ORIGIN: z.string().url().default("http://127.0.0.1:4100"),
   DATABASE_URL: z.string().optional(),
   SESSION_SECRET: z.string().optional()
 });
@@ -15,6 +16,7 @@ export function getRuntimeConfig(env: NodeJS.ProcessEnv = process.env) {
     nodeEnv: parsed.NODE_ENV,
     rwosEnv: parsed.RWOS_ENV,
     apiPort: parsed.API_PORT,
+    internalApiOrigin: parsed.INTERNAL_API_ORIGIN,
     hasDatabaseUrl: Boolean(parsed.DATABASE_URL),
     hasSessionSecret: Boolean(parsed.SESSION_SECRET)
   } as const;

@@ -8,6 +8,8 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
+    "@rwos/auth": "workspace:*",
+    "@rwos/config": "workspace:*",
     "@rwos/design-system": "workspace:*",
     "@rwos/shared": "workspace:*",
     "next": "^15.4.1",

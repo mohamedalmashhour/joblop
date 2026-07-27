@@ -8,6 +8,13 @@ export {
   type CalendarVerificationState,
   type StoredCalendarRequestProfile
 } from "./calendarRequest";
+export {
+  createFrontendSessionGateway,
+  localFrontendSessionCookieName,
+  secureFrontendSessionCookieName,
+  type FrontendSessionFetch,
+  type FrontendSessionResult
+} from "./frontendSession";
 export const workerRoles = ["WORKER"] as const;
 
 export const employerRoles = ["EMPLOYER_OWNER", "EMPLOYER_SCHEDULER"] as const;

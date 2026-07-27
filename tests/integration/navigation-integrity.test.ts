@@ -19,7 +19,7 @@ const mobileSourceDir = join(workspaceRoot, "apps/mobile");
 function listSourceFiles(directory: string): string[] {
   return readdirSync(directory).flatMap((entry) => {
     const fullPath = join(directory, entry);
-    if (entry === ".next" || entry === "node_modules") {
+    if (entry === ".next" || entry === "node_modules" || entry === "api") {
       return [];
     }
     if (statSync(fullPath).isDirectory()) {
