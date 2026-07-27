@@ -22,6 +22,7 @@ import {
 import { AvailableShiftsScreen, ShiftDetailsScreen } from "./src/features/shifts";
 import { MockShiftDiscoveryRepository } from "./src/features/shifts/mockShiftDiscoveryRepository";
 import { WorkerAttendanceScreen, type WorkerAttendanceStage } from "./src/features/worker-attendance";
+import { WorkerCalendarPanel } from "./src/features/worker-calendar";
 import { WorkerEarningsScreen } from "./src/features/worker-earnings";
 import { WorkerDashboardHandoffScreen, WorkerOnboardingScreen } from "./src/features/worker-onboarding";
 import { WorkerServiceScreen, type WorkerServiceMode } from "./src/features/worker-service";
@@ -253,6 +254,10 @@ export default function App() {
       );
     }
 
+    if (screen.tabId === "calendar") {
+      return <WorkerCalendarPanel />;
+    }
+
     return (
       <PlaceholderScreen
         onOpenAvailable={() => setScreen({ name: "tab", tabId: "available" })}
@@ -341,22 +346,6 @@ function PlaceholderScreen({
   const title = tab?.label ?? "Route";
   const group = workerGroups.find((item) => item.id === selectedWorkerGroup) ?? workerGroups[0]!;
   const groupOffers = workerGroupOffers.filter((offer) => offer.groupId === selectedWorkerGroup);
-  const [rateAdjustments, setRateAdjustments] = useState<Record<string, number>>({});
-  const [selectedCalendarDay, setSelectedCalendarDay] = useState<string>(workerWeek[0]?.day ?? "Mon");
-  const [selectedCalendarTile, setSelectedCalendarTile] = useState<string>("Available Orders Calendar: Today");
-  const adjustedRatePreferences = workerRatePreferenceRules.map((item) => ({
-    ...item,
-    adjustedRate: item.baseRate + (rateAdjustments[item.id] ?? 0)
-  }));
-  const selectedCalendarStatus =
-    workerWeek.find((item) => item.day === selectedCalendarDay)?.status ?? "Calendar selection";
-  const updateRateAdjustment = (preferenceId: string, delta: number) => {
-    setRateAdjustments((current) => {
-      const existing = current[preferenceId] ?? 0;
-      const next = Math.max(-6, Math.min(18, existing + delta));
-      return { ...current, [preferenceId]: next };
-    });
-  };
 
   if (tabId === "home") {
     return (
@@ -478,105 +467,6 @@ function PlaceholderScreen({
 
   if (tabId === "billing") {
     return <WorkerEarningsScreen />;
-  }
-
-  if (tabId === "calendar") {
-    return (
-      <ScrollView style={styles.placeholderScroll}>
-        <View style={styles.screenStack}>
-          <Card>
-            <SmallText>Worker OS</SmallText>
-            <Heading>Calendar & Availability</Heading>
-            <BodyText>View confirmed shifts, offers, on-call blocks, and unavailable time.</BodyText>
-          </Card>
-          <Card>
-            <SmallText>Search work first</SmallText>
-            <Heading>Select Work Capsule</Heading>
-            <BodyText>
-              Choose the kind of work you need before checking the calendar. The selected capsule
-              filters available orders and rate preferences for this worker only.
-            </BodyText>
-            <WorkerGroupCapsules
-              selectedWorkerGroup={selectedWorkerGroup}
-              setSelectedWorkerGroup={setSelectedWorkerGroup}
-            />
-            <SmallText>Current capsule: {group.title}</SmallText>
-          </Card>
-          <View style={styles.calendarStrip}>
-            {workerWeek.map((day) => (
-              <Pressable
-                accessibilityLabel={`Select ${day.day} calendar day`}
-                accessibilityRole="button"
-                accessibilityState={{ selected: selectedCalendarDay === day.day }}
-                key={day.day}
-                onPress={() => setSelectedCalendarDay(day.day)}
-                style={[
-                  styles.dayCard,
-                  day.status === "Emergency" && styles.hotDay,
-                  selectedCalendarDay === day.day && styles.dayCardActive
-                ]}
-              >
-                <SmallText>{day.day}</SmallText>
-                <Text style={styles.dayNumber}>{day.date}</Text>
-                <SmallText>{day.status}</SmallText>
-              </Pressable>
-            ))}
-          </View>
-          <Card>
-            <SmallText>Active calendar focus</SmallText>
-            <Heading>{selectedCalendarDay}</Heading>
-            <BodyText>{selectedCalendarStatus}</BodyText>
-            <SmallText>{selectedCalendarTile}</SmallText>
-          </Card>
-          <Card>
-            <Heading>Today&apos;s Schedule</Heading>
-            {workerCalendar.map((item) => (
-              <View key={item.time} style={styles.timelineRow}>
-                <Text style={styles.timelineTime}>{item.time}</Text>
-                <View style={styles.timelineBody}>
-                  <Text style={styles.timelineTitle}>{item.title}</Text>
-                  <SmallText>{item.place}</SmallText>
-                </View>
-                <Text style={[styles.statusPill, item.status === "Ready" && styles.readyPill]}>
-                  {item.status}
-                </Text>
-              </View>
-            ))}
-          </Card>
-          <Card>
-            <Heading>Availability</Heading>
-            {availabilityBlocks.map((item) => (
-              <View key={item.label} style={styles.checkRow}>
-                <Text style={styles.checkMark}>✓</Text>
-                <BodyText>{item.label}</BodyText>
-              </View>
-            ))}
-          </Card>
-          <CalendarBoard
-            items={workerAvailableOrders}
-            onSelect={setSelectedCalendarTile}
-            selectedKey={selectedCalendarTile}
-            title="Available Orders Calendar"
-          />
-          <CalendarBoard
-            items={workerOrderHistory}
-            onSelect={setSelectedCalendarTile}
-            selectedKey={selectedCalendarTile}
-            title="Past & Future Orders Calendar"
-          />
-          <AdjustableRatePreferences
-            items={adjustedRatePreferences}
-            onAdjust={updateRateAdjustment}
-          />
-          <CalendarBoard
-            items={workerRevenueCalendar}
-            onSelect={setSelectedCalendarTile}
-            selectedKey={selectedCalendarTile}
-            title="Revenue Calendar"
-          />
-        </View>
-      </ScrollView>
-    );
   }
 
   if (tabId === "profile") {
@@ -701,103 +591,6 @@ function WorkerGroupCapsules({
   );
 }
 
-function CalendarBoard({
-  items,
-  onSelect,
-  selectedKey,
-  title
-}: {
-  items: readonly Readonly<{ day: string; value: string; detail: string; tone?: "hot" | "money" }>[];
-  onSelect: (selectedKey: string) => void;
-  selectedKey: string;
-  title: string;
-}) {
-  return (
-    <Card>
-      <Heading>{title}</Heading>
-      <View style={styles.calendarBoard}>
-        {items.map((item) => {
-          const itemKey = `${title}: ${item.day}`;
-          return (
-            <Pressable
-              accessibilityLabel={`Select ${title} ${item.day}`}
-              accessibilityRole="button"
-              accessibilityState={{ selected: selectedKey === itemKey }}
-              key={`${title}-${item.day}-${item.value}`}
-              onPress={() => onSelect(itemKey)}
-              style={[
-                styles.calendarCell,
-                item.tone === "hot" && styles.calendarCellHot,
-                item.tone === "money" && styles.calendarCellMoney,
-                selectedKey === itemKey && styles.calendarCellActive
-              ]}
-            >
-              <SmallText>{item.day}</SmallText>
-              <Text style={styles.calendarValue}>{item.value}</Text>
-              <SmallText>{item.detail}</SmallText>
-            </Pressable>
-          );
-        })}
-      </View>
-    </Card>
-  );
-}
-
-function AdjustableRatePreferences({
-  items,
-  onAdjust
-}: {
-  items: readonly Readonly<{
-    adjustedRate: number;
-    baseRate: number;
-    id: string;
-    need: string;
-    note: string;
-    title: string;
-  }>[];
-  onAdjust: (preferenceId: string, delta: number) => void;
-}) {
-  return (
-    <Card>
-      <SmallText>Worker controlled preferences</SmallText>
-      <Heading>Variable Rate Preferences</Heading>
-      <BodyText>
-        Adjust these preferences to reflect your availability needs. They influence matching only;
-        they are not guaranteed earnings, payroll, or final payment.
-      </BodyText>
-      {items.map((item) => (
-        <View key={item.id} style={styles.ratePreferenceRow}>
-          <View style={styles.timelineBody}>
-            <Text style={styles.timelineTitle}>{item.title}</Text>
-            <SmallText>{item.need}</SmallText>
-            <SmallText>{item.note}</SmallText>
-            <SmallText>Base preference: ${item.baseRate}/hr</SmallText>
-          </View>
-          <View style={styles.rateControl}>
-            <Pressable
-              accessibilityLabel={`Decrease ${item.title} preference`}
-              accessibilityRole="button"
-              onPress={() => onAdjust(item.id, -2)}
-              style={styles.rateButton}
-            >
-              <Text style={styles.rateButtonText}>-</Text>
-            </Pressable>
-            <Text style={styles.rateValue}>${item.adjustedRate}/hr</Text>
-            <Pressable
-              accessibilityLabel={`Increase ${item.title} preference`}
-              accessibilityRole="button"
-              onPress={() => onAdjust(item.id, 2)}
-              style={styles.rateButton}
-            >
-              <Text style={styles.rateButtonText}>+</Text>
-            </Pressable>
-          </View>
-        </View>
-      ))}
-    </Card>
-  );
-}
-
 const workerMetrics = [
   { label: "Confirmed", value: "2", note: "Today" },
   { label: "Open offers", value: "3", note: "1 urgent" },
@@ -916,72 +709,6 @@ const workerCalendar = [
   { time: "08:00", title: "Kitchen Staff", place: "Sunrise Residence", status: "Done" },
   { time: "16:00", title: "Chef - working alone", place: "Laval Residence", status: "Ready" },
   { time: "On call", title: "Emergency kitchen pool", place: "Within 12 km", status: "Open" }
-] as const;
-
-const workerWeek = [
-  { day: "Mon", date: "21", status: "2 shifts" },
-  { day: "Tue", date: "22", status: "Open" },
-  { day: "Wed", date: "23", status: "Emergency" },
-  { day: "Thu", date: "24", status: "Available" },
-  { day: "Fri", date: "25", status: "Confirmed" }
-] as const;
-
-const availabilityBlocks = [
-  { label: "Available for emergency kitchen calls today" },
-  { label: "Can work alone when kitchen has required equipment" },
-  { label: "Unavailable Sunday night after 8:00 PM" }
-] as const;
-
-const workerAvailableOrders = [
-  { day: "Today", value: "3", detail: "Kitchen offers", tone: "hot" },
-  { day: "Tue", value: "2", detail: "Care / kitchen" },
-  { day: "Wed", value: "5", detail: "Open shifts" },
-  { day: "Thu", value: "1", detail: "Maintenance" }
-] as const;
-
-const workerOrderHistory = [
-  { day: "Past", value: "12", detail: "Completed" },
-  { day: "Today", value: "2", detail: "Confirmed" },
-  { day: "Future", value: "4", detail: "Scheduled" },
-  { day: "Pending", value: "1", detail: "Awaiting client" }
-] as const;
-
-const workerRevenueCalendar = [
-  { day: "Mon", value: "$240", detail: "Completed", tone: "money" },
-  { day: "Tue", value: "$360", detail: "Expected", tone: "money" },
-  { day: "Wed", value: "$0", detail: "Open" },
-  { day: "Payout", value: "$1,250", detail: "Next cycle", tone: "money" }
-] as const;
-
-const workerRatePreferenceRules = [
-  {
-    baseRate: 28,
-    id: "standard",
-    need: "Regular accepted shifts",
-    note: "Used as a worker preference signal, not a guaranteed offer.",
-    title: "Standard day"
-  },
-  {
-    baseRate: 34,
-    id: "urgent",
-    need: "Short-notice or urgent availability",
-    note: "Urgency may influence recommendations only.",
-    title: "Urgent coverage"
-  },
-  {
-    baseRate: 32,
-    id: "weekend",
-    need: "Weekend and evening availability",
-    note: "Final compensation still depends on approved shift terms.",
-    title: "Weekend / evening"
-  },
-  {
-    baseRate: 30,
-    id: "travel",
-    need: "Longer travel or distant residence",
-    note: "Travel allowance and reimbursement remain separate governed items.",
-    title: "Travel-sensitive"
-  }
 ] as const;
 
 const profileSections = [
