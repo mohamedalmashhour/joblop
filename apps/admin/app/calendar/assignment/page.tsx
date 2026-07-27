@@ -1,18 +1,31 @@
 import { adminAssignmentVisibility, adminCalendarBoundaries } from "../adminCalendarContent";
 
-export default function AdminCalendarAssignmentPage() {
+export default async function AdminCalendarAssignmentPage({
+  searchParams
+}: Readonly<{ searchParams: Promise<{ request?: string }> }>) {
+  const request = (await searchParams).request ?? null;
   return (
     <main style={styles.page}>
       <header style={styles.hero}>
         <p style={styles.eyebrow}>Connected calendar / Admin assignment</p>
         <h1 style={styles.title}>Operational assignment visibility</h1>
         <p style={styles.lede}>
-          Full fixture operational status for authorized administrators. This projection cannot
-          mutate Assignment or begin Attendance.
+          {request
+            ? `Request ${request} is persisted, but assignment-read persistence is not connected in this phase. No fixture assignment is substituted.`
+            : "Full fixture operational status for authorized administrators. This projection cannot mutate Assignment or begin Attendance."}
         </p>
-        <a href="/calendar/request" style={styles.button}>Back to request review</a>
+        <a href={request ? `/calendar/request?request=${encodeURIComponent(request)}` : "/calendar/request"} style={styles.button}>Back to request review</a>
       </header>
-      <section style={styles.grid}>
+      {request ? <section style={styles.grid}>
+        <article style={styles.card}>
+          <strong>Assignment persistence boundary</strong>
+          <p>Unavailable until a separately authorized role-scoped assignment read endpoint exists.</p>
+        </article>
+        <article style={styles.card}>
+          <strong>Attendance boundary</strong>
+          <p>Handoff only. No attendance, timesheet, payroll, or payment execution is available.</p>
+        </article>
+      </section> : <section style={styles.grid}>
         {Object.entries(adminAssignmentVisibility)
           .filter(([key]) => key !== "attendance")
           .map(([label, value]) => (
@@ -26,12 +39,12 @@ export default function AdminCalendarAssignmentPage() {
           <p>Authority: {adminAssignmentVisibility.attendance.authority}</p>
           <p>Execution: {adminAssignmentVisibility.attendance.execution}</p>
         </article>
-      </section>
-      <section style={styles.grid}>
+      </section>}
+      {!request ? <section style={styles.grid}>
         {adminCalendarBoundaries.map((boundary) => (
           <article key={boundary} style={styles.card}>{boundary}</article>
         ))}
-      </section>
+      </section> : null}
     </main>
   );
 }

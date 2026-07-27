@@ -38,13 +38,18 @@ describe("frontend session transport boundaries", () => {
       join(root, "apps/employer/app/api/sessionBoundary.ts"),
       "utf8"
     );
+    const adminBoundary = readFileSync(
+      join(root, "apps/admin/app/api/sessionBoundary.ts"),
+      "utf8"
+    );
     const mobileBoundary = readFileSync(
       join(root, "apps/mobile/src/auth/secureSession.ts"),
       "utf8"
     );
     expect(employerBoundary).toContain("httpOnly: true");
     expect(employerBoundary).toContain('sameSite: "strict"');
-    expect(employerBoundary).toContain("secureFrontendSessionCookieName");
+    expect(employerBoundary).toContain("secureEmployerSessionCookieName");
+    expect(adminBoundary).toContain("secureAdminSessionCookieName");
     expect(employerBoundary).toContain("isSameOriginMutation");
     expect(mobileBoundary).toContain('from "expo-secure-store"');
     expect(mobileBoundary).toContain("WHEN_UNLOCKED_THIS_DEVICE_ONLY");
@@ -70,12 +75,24 @@ describe("frontend session transport boundaries", () => {
       join(root, "apps/admin/app/api/sessionBoundary.ts"),
       "utf8"
     );
-    expect(admin).toBe(employer);
-    for (const route of ["session/route.ts", "session/sign-in/route.ts", "session/sign-out/route.ts"]) {
+    for (const source of [employer, admin]) {
+      expect(source).toContain("createFrontendSessionGateway");
+      expect(source).toContain("httpOnly: true");
+      expect(source).toContain('sameSite: "strict"');
+      expect(source).toContain("isSameOriginMutation");
+    }
+    for (const route of ["session/route.ts", "session/sign-in/route.ts"]) {
       const employerRoute = readFileSync(join(root, "apps/employer/app/api", route), "utf8");
       const adminRoute = readFileSync(join(root, "apps/admin/app/api", route), "utf8");
       expect(adminRoute).toBe(employerRoute);
     }
+    const employerSignOut = readFileSync(join(root, "apps/employer/app/api/session/sign-out/route.ts"), "utf8");
+    const adminSignOut = readFileSync(join(root, "apps/admin/app/api/session/sign-out/route.ts"), "utf8");
+    for (const route of [employerSignOut, adminSignOut]) {
+      expect(route).toContain("gateway.signOut(token)");
+      expect(route).toContain("maxAge: 0");
+    }
+    expect(employerSignOut).toContain("organizationContextCookieName");
   });
 
   it("keeps list and detail failures generic and cache-private", () => {

@@ -10,7 +10,11 @@ export {
 } from "./calendarRequest";
 export {
   createFrontendSessionGateway,
+  localAdminSessionCookieName,
+  localEmployerSessionCookieName,
   localFrontendSessionCookieName,
+  secureAdminSessionCookieName,
+  secureEmployerSessionCookieName,
   secureFrontendSessionCookieName,
   type FrontendSessionFetch,
   type FrontendSessionResult

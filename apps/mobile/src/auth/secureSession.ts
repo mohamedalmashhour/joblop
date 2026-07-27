@@ -106,6 +106,23 @@ export function createMobileSessionTransport(options: {
   };
 }
 
+export function tryCreateMobileSessionTransport(options: {
+  apiOrigin: string | undefined;
+  vault: SecureSessionVault;
+  fetch?: MobileSessionFetch;
+}) {
+  if (!options.apiOrigin) return null;
+  try {
+    return createMobileSessionTransport({
+      apiOrigin: options.apiOrigin,
+      vault: options.vault,
+      ...(options.fetch ? { fetch: options.fetch } : {})
+    });
+  } catch {
+    return null;
+  }
+}
+
 function trustedMobileApiOrigin(value: string) {
   const url = new URL(value);
   const local = url.hostname === "127.0.0.1" || url.hostname === "localhost";

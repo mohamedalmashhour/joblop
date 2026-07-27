@@ -96,7 +96,7 @@ export const clientCalendarPrivacyBoundaries = [
 
 export const clientCalendarPrimaryLinks = [
   { label: "Create staffing request", from: "/employer/calendar", to: "/employer/calendar/create" },
-  { label: "Review fixture request", from: "/employer/calendar/create", to: "/employer/calendar/request" },
+  { label: "Review fixture request", from: "/employer/calendar/create", to: "/employer/calendar/request?mode=fixture" },
   { label: "View authorized assignment", from: "/employer/calendar/request", to: "/employer/calendar/assignment" },
   { label: "Back to request calendar", from: "/employer/calendar/assignment", to: "/employer/calendar" }
 ] as const;

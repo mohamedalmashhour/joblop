@@ -1,4 +1,5 @@
-import { adminCalendarBoundaries, adminCalendarRequests } from "./adminCalendarContent";
+import { adminCalendarBoundaries } from "./adminCalendarContent";
+import { AdminCalendarPanel } from "./AdminCalendarPanel";
 
 export default function AdminCalendarPage() {
   return (
@@ -7,25 +8,19 @@ export default function AdminCalendarPage() {
         <p style={styles.eyebrow}>Resident Workforce OS / Administration</p>
         <h1 style={styles.title}>Review calendar</h1>
         <p style={styles.lede}>
-          All fixture client requests in one governed review queue. Opening a request does not
+          Authenticated client requests in one governed review queue. Opening a request does not
           approve, publish, assign, notify, or execute payment.
         </p>
+        <a href="/calendar/request" style={styles.previewButton}>
+          Open fixture review-controls preview
+        </a>
       </header>
-      <section style={styles.grid}>
-        {adminCalendarRequests.map((request) => (
-          <article key={request.id} style={styles.card}>
-            <span style={styles.badge}>{request.status}</span>
-            <h2 style={styles.h2}>{request.role}</h2>
-            <p>{request.client}</p>
-            <p>{request.timing}</p>
-            <a href={request.route} style={styles.button}>Open review detail</a>
-          </article>
-        ))}
-      </section>
+      <AdminCalendarPanel />
       <section style={styles.boundaryGrid}>
-        {adminCalendarBoundaries.map((boundary) => (
+        {adminCalendarBoundaries.filter((boundary) => !boundary.includes("fixture")).map((boundary) => (
           <article key={boundary} style={styles.boundaryCard}>{boundary}</article>
         ))}
+        <article style={styles.boundaryCard}>Authenticated request review is read-only in this phase; no fixture review controls are mixed into persisted records.</article>
       </section>
     </main>
   );
@@ -37,6 +32,7 @@ const styles = {
   eyebrow: { color: "#fff1a8", fontSize: 12, fontWeight: 900, textTransform: "uppercase" as const },
   title: { fontSize: "clamp(38px, 5vw, 60px)", margin: "8px 0" },
   lede: { color: "#d6e5f8", fontSize: 18, lineHeight: 1.6, maxWidth: 820 },
+  previewButton: { alignItems: "center", background: "#fff", borderRadius: 8, color: "#061b41", display: "inline-flex", fontWeight: 800, marginTop: 12, minHeight: 44, padding: "0 16px", textDecoration: "none" },
   grid: { display: "grid", gap: 18, gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))", padding: "32px clamp(18px, 5vw, 64px)" },
   card: { background: "#fff", border: "1px solid #dbe4f0", borderRadius: 14, boxShadow: "0 12px 30px rgba(6,27,65,.08)", padding: 22 },
   h2: { color: "#061b41", fontSize: 24 },

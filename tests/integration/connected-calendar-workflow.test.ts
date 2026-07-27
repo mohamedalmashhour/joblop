@@ -89,7 +89,7 @@ describe("Connected Calendar Workflow integrity", () => {
     ]);
     expect(mobileRouteNames.calendar).toBe("rwos://worker/calendar");
     expect(readFileSync(join(root, "apps/mobile/App.tsx"), "utf8")).toContain(
-      "<WorkerCalendarPanel />"
+      "<WorkerCalendarPanel "
     );
   });
 
@@ -98,7 +98,7 @@ describe("Connected Calendar Workflow integrity", () => {
       expect.objectContaining({ from: "/employer/calendar", to: "/employer/calendar/create" }),
       expect.objectContaining({
         from: "/employer/calendar/create",
-        to: "/employer/calendar/request"
+        to: "/employer/calendar/request?mode=fixture"
       }),
       expect.objectContaining({
         from: "/employer/calendar/request",
@@ -162,16 +162,14 @@ describe("Connected Calendar Workflow integrity", () => {
     });
   });
 
-  it("contains no backend, payroll, payment, notification, map, or attendance execution", () => {
+  it("contains only the approved calendar/session integration and no prohibited execution", () => {
     const calendarSources = [
       ...sourceFiles(join(root, "apps/employer/app/employer/calendar")),
       ...sourceFiles(join(root, "apps/admin/app/calendar")),
       ...sourceFiles(join(root, "apps/mobile/src/features/worker-calendar"))
     ];
     const executablePatterns = [
-      /\bfetch\s*\(/u,
       /\bprisma\./u,
-      /\/api\//u,
       /\bstripe\b/iu,
       /\bcalculatePayroll\b/u,
       /\bexecutePayment\b/u,
@@ -189,5 +187,18 @@ describe("Connected Calendar Workflow integrity", () => {
     });
 
     expect(violations).toEqual([]);
+    const calendarClientSource = calendarSources
+      .map((file) => readFileSync(file, "utf8"))
+      .join("\n");
+    expect(calendarClientSource).not.toMatch(/Bearer\s|authorization\s*:/iu);
+    expect(calendarClientSource).not.toMatch(/localStorage|sessionStorage/u);
+    expect(
+      [...calendarClientSource.matchAll(/fetch\(\s*["'`]([^"'`]+)/gu)].map((match) => match[1])
+    ).toEqual(
+      expect.arrayContaining([
+        "/api/calendar/requests",
+        "/api/session/sign-in"
+      ])
+    );
   });
 });

@@ -1,9 +1,9 @@
 import { EmployerShell } from "../EmployerShell";
 import { styles } from "../employerStyles";
 import {
-  clientCalendarPrivacyBoundaries,
-  clientCalendarRows
+  clientCalendarPrivacyBoundaries
 } from "./clientCalendarContent";
+import { ClientCalendarPanel } from "./ClientCalendarPanel";
 
 export default function ClientRequestCalendarPage() {
   return (
@@ -11,10 +11,11 @@ export default function ClientRequestCalendarPage() {
       currentRoute="/employer/calendar"
       eyebrow="Connected calendar / Client"
       title="See every staffing request without crossing worker or platform privacy boundaries."
-      lede="This fixture calendar connects client request states to governed review and assignment visibility. It does not publish offers, assign workers, or execute money."
+      lede="Authenticated request records connect to governed review and assignment visibility without publishing offers, assigning workers, or executing money."
+      mode="authenticated"
       actions={
         <a href="/employer/calendar/create" style={styles.primaryButton}>
-          Create staffing request
+          Preview staffing request
         </a>
       }
     >
@@ -23,27 +24,18 @@ export default function ClientRequestCalendarPage() {
           <p style={styles.eyebrowDark}>Request calendar</p>
           <h2 style={styles.sectionTitle}>Coverage status stays truthful from draft to closure.</h2>
         </div>
-        <div style={styles.cardGrid}>
-          {clientCalendarRows.map((event) => (
-            <article key={event.id} style={styles.card}>
-              <span style={styles.pill}>{event.status.replaceAll("_", " ")}</span>
-              <h3 style={styles.cardTitle}>{event.role}</h3>
-              <p style={styles.cardText}>{event.date}</p>
-              <p style={styles.cardText}>{event.time}</p>
-              <a href={event.route} style={styles.secondaryButton}>
-                Open request detail
-              </a>
-            </article>
-          ))}
-        </div>
+        <ClientCalendarPanel />
       </section>
       <section style={styles.whiteSection}>
         <div style={styles.cardGrid}>
-          {clientCalendarPrivacyBoundaries.map((boundary) => (
+          {clientCalendarPrivacyBoundaries.filter((boundary) => !boundary.includes("fixture")).map((boundary) => (
             <article key={boundary} style={styles.tintedCard}>
               <p style={styles.cardText}>{boundary}</p>
             </article>
           ))}
+          <article style={styles.tintedCard}>
+            <p style={styles.cardText}>Authenticated list and detail states never substitute fixture records for persisted data.</p>
+          </article>
         </div>
       </section>
     </EmployerShell>

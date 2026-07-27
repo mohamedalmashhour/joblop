@@ -1,8 +1,8 @@
 import { cookies } from "next/headers";
 import {
   createFrontendSessionGateway,
-  localFrontendSessionCookieName,
-  secureFrontendSessionCookieName
+  localAdminSessionCookieName,
+  secureAdminSessionCookieName
 } from "@rwos/auth";
 import { getRuntimeConfig } from "@rwos/config";
 
@@ -20,8 +20,8 @@ export async function sessionBoundary() {
 
 export const sessionCookieName =
   process.env.NODE_ENV === "production"
-    ? secureFrontendSessionCookieName
-    : localFrontendSessionCookieName;
+    ? secureAdminSessionCookieName
+    : localAdminSessionCookieName;
 
 export const sessionCookieOptions = {
   httpOnly: true,

@@ -1,6 +1,7 @@
 import { StatusBar } from "expo-status-bar";
-import { createElement, useMemo, useState, type ReactNode } from "react";
+import { createElement, useEffect, useMemo, useState, type ReactNode } from "react";
 import {
+  Linking,
   Platform,
   Pressable,
   SafeAreaView,
@@ -23,6 +24,11 @@ import { AvailableShiftsScreen, ShiftDetailsScreen } from "./src/features/shifts
 import { MockShiftDiscoveryRepository } from "./src/features/shifts/mockShiftDiscoveryRepository";
 import { WorkerAttendanceScreen, type WorkerAttendanceStage } from "./src/features/worker-attendance";
 import { WorkerCalendarPanel } from "./src/features/worker-calendar";
+import {
+  nativeSecureSessionVault,
+  tryCreateMobileSessionTransport
+} from "./src/auth/secureSession";
+import { readWorkerCalendarOfferId } from "./src/features/worker-calendar/deepLink";
 import { WorkerEarningsScreen } from "./src/features/worker-earnings";
 import { WorkerDashboardHandoffScreen, WorkerOnboardingScreen } from "./src/features/worker-onboarding";
 import { WorkerServiceScreen, type WorkerServiceMode } from "./src/features/worker-service";
@@ -55,6 +61,26 @@ export default function App() {
   const [selectedWorkerGroup, setSelectedWorkerGroup] = useState<WorkerGroupId>("kitchen");
   const shiftRepository = useMemo(() => new MockShiftDiscoveryRepository(), []);
   const applicationRepository = useMemo(() => new MockWorkerApplicationRepository(), []);
+  const [calendarOfferId, setCalendarOfferId] = useState<string | null>(null);
+  const calendarTransport = useMemo(
+    () => tryCreateMobileSessionTransport({
+      apiOrigin: process.env.EXPO_PUBLIC_RWOS_API_ORIGIN,
+      vault: nativeSecureSessionVault
+    }),
+    []
+  );
+
+  useEffect(() => {
+    const readOffer = (url: string | null) => {
+      const offer = readWorkerCalendarOfferId(url);
+      if (!offer) return;
+      setCalendarOfferId(offer);
+      setScreen({ name: "tab", tabId: "calendar" });
+    };
+    void Linking.getInitialURL().then(readOffer);
+    const subscription = Linking.addEventListener("url", ({ url }) => readOffer(url));
+    return () => subscription.remove();
+  }, []);
   const activeTabId =
     screen.name === "tab"
       ? screen.tabId
@@ -255,7 +281,7 @@ export default function App() {
     }
 
     if (screen.tabId === "calendar") {
-      return <WorkerCalendarPanel />;
+      return <WorkerCalendarPanel offerId={calendarOfferId} transport={calendarTransport} />;
     }
 
     return (

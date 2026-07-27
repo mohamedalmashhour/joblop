@@ -1,18 +1,22 @@
 import { EmployerShell } from "../../EmployerShell";
 import { styles } from "../../employerStyles";
-import {
-  clientCalendarEvent,
-  clientCalendarStatuses,
-  clientRequestDetail
-} from "../clientCalendarContent";
+import { ClientRequestDetailPanel } from "./ClientRequestDetailPanel";
+import { FixtureClientRequestDetail } from "./FixtureClientRequestDetail";
 
-export default function ClientRequestDetailPage() {
+export default async function ClientRequestDetailPage({
+  searchParams
+}: Readonly<{ searchParams: Promise<{ mode?: string; request?: string }> }>) {
+  const { mode, request } = await searchParams;
+  const fixturePreview = mode === "fixture" && !request;
   return (
     <EmployerShell
       currentRoute="/employer/calendar/request"
       eyebrow="Connected calendar / Request detail"
-      title={`${clientCalendarEvent.roleLabel} request`}
-      lede="Client-authorized request terms, readiness, and coverage status only. Worker compensation and platform economics are intentionally absent."
+      title={fixturePreview ? "Fixture staffing request detail" : "Staffing request detail"}
+      lede={fixturePreview
+        ? "Explicitly non-persistent request preview. No authenticated record, submission, assignment, or backend success is claimed."
+        : "Client-authorized request terms, readiness, and coverage status only. Worker compensation and platform economics are intentionally absent."}
+      mode={fixturePreview ? "fixture" : "authenticated"}
       actions={
         <a href="/employer/calendar" style={styles.secondaryButton}>
           Back to request calendar
@@ -20,37 +24,9 @@ export default function ClientRequestDetailPage() {
       }
     >
       <section style={styles.section}>
-        <div style={styles.twoColumn}>
-          <article style={styles.panel}>
-            <p style={styles.eyebrowDark}>Current state</p>
-            <h2 style={styles.sectionTitle}>Assigned</h2>
-            <p style={styles.sectionCopy}>
-              Assignment status is visible; private worker details remain restricted until explicitly
-              authorized.
-            </p>
-            <div style={styles.pillGrid}>
-              {clientCalendarStatuses.map((status) => (
-                <span key={status} style={styles.pill}>
-                  {status.replaceAll("_", " ")}
-                </span>
-              ))}
-            </div>
-            <a href="/employer/calendar/assignment" style={styles.primaryButton}>
-              View authorized assignment
-            </a>
-          </article>
-          <article style={styles.panel}>
-            <h2 style={styles.cardTitle}>Request terms</h2>
-            {Object.entries(clientRequestDetail).map(([label, value]) => (
-              <div key={label} style={styles.tintedCard}>
-                <strong>{label.replaceAll(/([A-Z])/g, " $1")}</strong>
-                <p style={styles.cardText}>
-                  {Array.isArray(value) ? value.join(", ") : String(value)}
-                </p>
-              </div>
-            ))}
-          </article>
-        </div>
+        {fixturePreview
+          ? <FixtureClientRequestDetail />
+          : <ClientRequestDetailPanel requestId={request ?? null} />}
       </section>
     </EmployerShell>
   );

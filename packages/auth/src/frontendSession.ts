@@ -1,5 +1,9 @@
 export const secureFrontendSessionCookieName = "__Host-rwos_frontend_session";
 export const localFrontendSessionCookieName = "rwos_local_frontend_session";
+export const secureEmployerSessionCookieName = "__Host-rwos_employer_session";
+export const localEmployerSessionCookieName = "rwos_local_employer_session";
+export const secureAdminSessionCookieName = "__Host-rwos_admin_session";
+export const localAdminSessionCookieName = "rwos_local_admin_session";
 
 export type FrontendSessionFetch = (
   input: string,

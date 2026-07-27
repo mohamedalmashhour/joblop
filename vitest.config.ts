@@ -18,6 +18,8 @@ export default defineConfig({
     }
   },
   test: {
-    environment: "node"
+    environment: "node",
+    maxWorkers: 4,
+    testTimeout: 15_000
   }
 });

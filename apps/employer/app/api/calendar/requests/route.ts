@@ -1,17 +1,22 @@
 import { parseClientCalendarList } from "@rwos/shared";
-import { sessionBoundary, sessionFailure } from "../../sessionBoundary";
+import {
+  resolveClientOrganizationId,
+  sessionBoundary,
+  sessionFailure
+} from "../../sessionBoundary";
 
-export async function GET(request: Request) {
-  const organizationId = new URL(request.url).searchParams.get("organizationId");
-  if (!organizationId) {
+export async function GET() {
+  const { gateway, organizationId, token } = await sessionBoundary();
+  const context = await resolveClientOrganizationId(gateway, token, organizationId);
+  if (context.status === "context_required") {
     return Response.json(
-      { status: "unavailable", message: "Calendar context unavailable." },
-      { status: 503, headers: { "cache-control": "private, no-store" } }
+      { status: "organization_required", organizations: context.organizations },
+      { status: 409, headers: { "cache-control": "private, no-store" } }
     );
   }
-  const { gateway, token } = await sessionBoundary();
+  if (context.status !== "ok") return sessionFailure(context.status);
   const result = await gateway.request(
-    `/organizations/${encodeURIComponent(organizationId)}/calendar/requests`,
+    `/organizations/${encodeURIComponent(context.organizationId)}/calendar/requests`,
     "GET",
     token
   );

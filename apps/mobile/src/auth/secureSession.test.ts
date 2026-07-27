@@ -1,5 +1,9 @@
 import { describe, expect, it, vi } from "vitest";
-import { createMobileSessionTransport, type SecureSessionVault } from "./secureSession";
+import {
+  createMobileSessionTransport,
+  tryCreateMobileSessionTransport,
+  type SecureSessionVault
+} from "./secureSession";
 
 vi.mock("expo-secure-store", () => ({
   WHEN_UNLOCKED_THIS_DEVICE_ONLY: "WHEN_UNLOCKED_THIS_DEVICE_ONLY",
@@ -115,5 +119,14 @@ describe("mobile secure session transport", () => {
     });
     expect(await empty.workerOffer("missing")).toEqual({ status: "empty" });
     expect(await stale.workerOffer("stale")).toEqual({ status: "stale" });
+  });
+
+  it("degrades unsafe or missing runtime origins to unavailable transport", () => {
+    const secureVault = vault();
+    expect(tryCreateMobileSessionTransport({ apiOrigin: undefined, vault: secureVault })).toBeNull();
+    expect(tryCreateMobileSessionTransport({ apiOrigin: "not a url", vault: secureVault })).toBeNull();
+    expect(tryCreateMobileSessionTransport({ apiOrigin: "http://api.example.test", vault: secureVault })).toBeNull();
+    expect(tryCreateMobileSessionTransport({ apiOrigin: "https://api.example.test", vault: secureVault })).not.toBeNull();
+    expect(tryCreateMobileSessionTransport({ apiOrigin: "http://localhost:4100", vault: secureVault })).not.toBeNull();
   });
 });

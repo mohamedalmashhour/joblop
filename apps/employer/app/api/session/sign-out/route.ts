@@ -1,5 +1,6 @@
 import {
   isSameOriginMutation,
+  organizationContextCookieName,
   sessionBoundary,
   sessionCookieName,
   sessionCookieOptions,
@@ -11,6 +12,7 @@ export async function POST(request: Request) {
   const { cookieStore, gateway, token } = await sessionBoundary();
   const result = await gateway.signOut(token);
   cookieStore.set(sessionCookieName, "", { ...sessionCookieOptions, maxAge: 0 });
+  cookieStore.set(organizationContextCookieName, "", { ...sessionCookieOptions, maxAge: 0 });
   if (result.status !== "ok") {
     return Response.json(
       { status: "local_session_cleared", remoteRevocation: "unavailable" },

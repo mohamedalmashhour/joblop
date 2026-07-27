@@ -73,6 +73,30 @@ function routeSetFor(appDir: string) {
   return new Set(listSourceFiles(appDir).map((filePath) => routeFromPage(appDir, filePath)).filter(Boolean));
 }
 
+function listApiRoutePatterns(appDir: string) {
+  const apiDir = join(appDir, "api");
+  if (!existsSync(apiDir)) return [];
+  const visit = (directory: string): string[] =>
+    readdirSync(directory).flatMap((entry) => {
+      const fullPath = join(directory, entry);
+      if (statSync(fullPath).isDirectory()) return visit(fullPath);
+      if (entry !== "route.ts") return [];
+      const relativeRoute = relative(appDir, dirname(fullPath)).split(sep).join("/");
+      return [`/${relativeRoute}`];
+    });
+  return visit(apiDir);
+}
+
+function matchesRoutePattern(route: string, pattern: string) {
+  const routeSegments = route.split("/");
+  const patternSegments = pattern.split("/");
+  return routeSegments.length === patternSegments.length &&
+    routeSegments.every((segment, index) => {
+      const expected = patternSegments[index] ?? "";
+      return /^\[.+\]$/u.test(expected) || segment === expected;
+    });
+}
+
 function validateInternalRouteReference({
   appDir,
   routeReference,
@@ -108,9 +132,12 @@ function validateInternalRouteReference({
     return null;
   }
 
-  const [route, anchor] = routeReference.split("#");
-  const routePath = normalizeRoute(route || "/");
-  if (!routes.has(routePath)) {
+  const [routeWithQuery, anchor] = routeReference.split("#");
+  const route = routeWithQuery?.split("?")[0] ?? "/";
+  const routePath = normalizeRoute(route.replaceAll(/\$\{[^}]+\}/gu, "__dynamic__") || "/");
+  const isApiRoute = routePath.startsWith("/api/") &&
+    listApiRoutePatterns(appDir).some((pattern) => matchesRoutePattern(routePath, pattern));
+  if (!routes.has(routePath) && !isApiRoute) {
     return `${relative(workspaceRoot, sourceFile)} points to missing route ${routeReference}`;
   }
 

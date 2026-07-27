@@ -1,7 +1,11 @@
 import { describe, expect, it, vi } from "vitest";
 import {
   createFrontendSessionGateway,
+  localAdminSessionCookieName,
+  localEmployerSessionCookieName,
   localFrontendSessionCookieName,
+  secureAdminSessionCookieName,
+  secureEmployerSessionCookieName,
   secureFrontendSessionCookieName
 } from "./frontendSession";
 
@@ -80,5 +84,11 @@ describe("secure frontend session gateway", () => {
   it("uses a host-prefixed production cookie and a distinct localhost cookie", () => {
     expect(secureFrontendSessionCookieName).toBe("__Host-rwos_frontend_session");
     expect(localFrontendSessionCookieName).toBe("rwos_local_frontend_session");
+    expect(secureEmployerSessionCookieName).toBe("__Host-rwos_employer_session");
+    expect(secureAdminSessionCookieName).toBe("__Host-rwos_admin_session");
+    expect(localEmployerSessionCookieName).toBe("rwos_local_employer_session");
+    expect(localAdminSessionCookieName).toBe("rwos_local_admin_session");
+    expect(secureEmployerSessionCookieName).not.toBe(secureAdminSessionCookieName);
+    expect(localEmployerSessionCookieName).not.toBe(localAdminSessionCookieName);
   });
 });

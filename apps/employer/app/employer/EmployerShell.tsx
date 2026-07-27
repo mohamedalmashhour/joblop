@@ -17,6 +17,7 @@ export function EmployerShell({
   currentRoute,
   eyebrow,
   lede,
+  mode = "fixture",
   title
 }: {
   actions?: ReactNode;
@@ -24,6 +25,7 @@ export function EmployerShell({
   currentRoute: string;
   eyebrow: string;
   lede: string;
+  mode?: "fixture" | "authenticated";
   title: string;
 }) {
   return (
@@ -54,15 +56,15 @@ export function EmployerShell({
             ))}
           </nav>
           <div style={styles.sidebarNote}>
-            <strong>Fixture mode</strong>
-            <span>Visual workflow preview. Authoritative actions remain governed.</span>
+            <strong>{mode === "authenticated" ? "Authenticated boundary" : "Fixture mode"}</strong>
+            <span>{mode === "authenticated" ? "Persisted data is role-scoped. Mutating authority remains governed." : "Visual workflow preview. Authoritative actions remain governed."}</span>
           </div>
         </aside>
         <div className="employer-workspace" style={styles.workspace}>
           <header style={styles.header}>
             <div>
               <p style={styles.topbarEyebrow}>Employer workspace</p>
-              <strong style={styles.topbarTitle}>Sunrise of Oak Hill</strong>
+              <strong style={styles.topbarTitle}>{mode === "authenticated" ? "Authorized employer session" : "Sunrise of Oak Hill"}</strong>
             </div>
             {actions}
           </header>

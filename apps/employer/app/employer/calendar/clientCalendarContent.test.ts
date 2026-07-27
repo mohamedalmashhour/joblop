@@ -59,7 +59,7 @@ describe("client request calendar fixture", () => {
       expect.objectContaining({ from: "/employer/calendar", to: "/employer/calendar/create" }),
       expect.objectContaining({
         from: "/employer/calendar/create",
-        to: "/employer/calendar/request"
+        to: "/employer/calendar/request?mode=fixture"
       }),
       expect.objectContaining({
         from: "/employer/calendar/request",

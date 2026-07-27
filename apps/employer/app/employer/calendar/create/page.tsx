@@ -33,7 +33,7 @@ export default function CreateClientRequestPage() {
             <h2 style={styles.cardTitle}>Location preview</h2>
             <p style={styles.cardText}>{clientRequestDetail.mapPlaceholder}</p>
           </article>
-          <a href="/employer/calendar/request" style={styles.primaryButton}>
+          <a href="/employer/calendar/request?mode=fixture" style={styles.primaryButton}>
             Review fixture request
           </a>
         </div>

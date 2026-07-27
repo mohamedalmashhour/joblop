@@ -1,5 +1,6 @@
 export * from "./application";
 export * from "./authenticatedCalendar";
+export * from "./authenticatedCalendarClient";
 export * from "./connectedCalendar";
 export * from "./hrMoneyAdapter";
 export * from "./moneyEngine";
