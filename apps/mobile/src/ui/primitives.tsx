@@ -17,7 +17,7 @@ export function ScreenContainer({ children, testID }: CommonProps) {
 
 export function Heading({ children, testID }: CommonProps) {
   return (
-    <Text style={styles.heading} testID={testID}>
+    <Text accessibilityRole="header" style={styles.heading} testID={testID}>
       {children}
     </Text>
   );
@@ -50,7 +50,9 @@ export function Card({ children, testID }: CommonProps) {
 export function Section({ title, children }: PropsWithChildren<{ title: string }>) {
   return (
     <View style={styles.section}>
-      <Text style={styles.sectionTitle}>{title}</Text>
+      <Text accessibilityRole="header" style={styles.sectionTitle}>
+        {title}
+      </Text>
       {children}
     </View>
   );
@@ -244,13 +246,13 @@ const styles = StyleSheet.create({
     color: colors.deepTeal
   },
   successBadgeText: {
-    color: colors.success
+    color: "#166534"
   },
   warningBadgeText: {
-    color: colors.warning
+    color: "#7c2d12"
   },
   dangerBadgeText: {
-    color: colors.danger
+    color: "#991b1b"
   },
   button: {
     alignItems: "center",

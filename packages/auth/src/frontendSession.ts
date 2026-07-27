@@ -84,9 +84,16 @@ export function createFrontendSessionGateway(options: {
         return { status: "error" };
       }
     },
-    validate: (token: string | null) => request("/auth/session", "GET", token),
+    async validate(token: string | null) {
+      const result = await request("/auth/session", "GET", token);
+      return result.status === "ok"
+        ? ({ status: "ok", payload: sanitizeSessionPayload(result.payload) } as const)
+        : result;
+    },
     signOut: (token: string | null) =>
-      token ? request("/auth/sign-out", "POST", token) : Promise.resolve({ status: "ok", payload: null } as const),
+      token
+        ? request("/auth/sign-out", "POST", token)
+        : Promise.resolve({ status: "ok", payload: null } as const),
     request
   };
 }
@@ -107,8 +114,31 @@ function readToken(input: unknown) {
 }
 
 function sanitizeSessionPayload(input: unknown) {
-  if (typeof input !== "object" || input === null) return {};
+  const source = asRecord(input);
+  const user = asRecord(source.user);
+  const session = asRecord(source.session);
+  return {
+    authenticated: source.authenticated === true,
+    user: source.user
+      ? pickScalar(user, ["id", "publicId", "emailNormalized", "displayName", "status"])
+      : null,
+    session: source.session ? pickScalar(session, ["id", "userId", "expiresAt"]) : null
+  };
+}
+
+function asRecord(input: unknown): Record<string, unknown> {
+  return typeof input === "object" && input !== null && !Array.isArray(input)
+    ? (input as Record<string, unknown>)
+    : {};
+}
+
+function pickScalar(input: Record<string, unknown>, keys: readonly string[]) {
   return Object.fromEntries(
-    Object.entries(input as Record<string, unknown>).filter(([key]) => key !== "token")
+    keys.flatMap((key) => {
+      const value = input[key];
+      return value === null || ["string", "number", "boolean"].includes(typeof value)
+        ? [[key, value]]
+        : [];
+    })
   );
 }

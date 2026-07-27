@@ -22,7 +22,10 @@ import {
 } from "./src/features/applications";
 import { AvailableShiftsScreen, ShiftDetailsScreen } from "./src/features/shifts";
 import { MockShiftDiscoveryRepository } from "./src/features/shifts/mockShiftDiscoveryRepository";
-import { WorkerAttendanceScreen, type WorkerAttendanceStage } from "./src/features/worker-attendance";
+import {
+  WorkerAttendanceScreen,
+  type WorkerAttendanceStage
+} from "./src/features/worker-attendance";
 import { WorkerCalendarPanel } from "./src/features/worker-calendar";
 import {
   nativeSecureSessionVault,
@@ -30,7 +33,10 @@ import {
 } from "./src/auth/secureSession";
 import { readWorkerCalendarOfferId } from "./src/features/worker-calendar/deepLink";
 import { WorkerEarningsScreen } from "./src/features/worker-earnings";
-import { WorkerDashboardHandoffScreen, WorkerOnboardingScreen } from "./src/features/worker-onboarding";
+import {
+  WorkerDashboardHandoffScreen,
+  WorkerOnboardingScreen
+} from "./src/features/worker-onboarding";
 import { WorkerServiceScreen, type WorkerServiceMode } from "./src/features/worker-service";
 import { WorkerTimesheetScreen, type WorkerTimesheetStage } from "./src/features/worker-timesheets";
 import { mobileTabs, productName, type MobileTabId } from "./src/navigation/routes";
@@ -63,10 +69,11 @@ export default function App() {
   const applicationRepository = useMemo(() => new MockWorkerApplicationRepository(), []);
   const [calendarOfferId, setCalendarOfferId] = useState<string | null>(null);
   const calendarTransport = useMemo(
-    () => tryCreateMobileSessionTransport({
-      apiOrigin: process.env.EXPO_PUBLIC_RWOS_API_ORIGIN,
-      vault: nativeSecureSessionVault
-    }),
+    () =>
+      tryCreateMobileSessionTransport({
+        apiOrigin: process.env.EXPO_PUBLIC_RWOS_API_ORIGIN,
+        vault: nativeSecureSessionVault
+      }),
     []
   );
 
@@ -88,7 +95,7 @@ export default function App() {
         ? "my-shifts"
         : screen.name === "worker-service"
           ? "notifications"
-        : "available";
+          : "available";
 
   const renderScreen = () => {
     if (screen.name === "shift-details") {
@@ -309,7 +316,7 @@ export default function App() {
           <View style={styles.headerCopy}>
             <HeaderText variant="title">{productName}</HeaderText>
             <HeaderText variant="subtitle">
-              Worker app foundation - G02 applications and offers
+              Development fixture preview — G02 applications and offers
             </HeaderText>
           </View>
         </View>
@@ -318,6 +325,7 @@ export default function App() {
           {mobileTabs.map((tab) => (
             <Pressable
               accessibilityRole="button"
+              accessibilityState={{ selected: activeTabId === tab.id }}
               key={tab.id}
               onPress={() => setScreen({ name: "tab", tabId: tab.id })}
               style={[styles.tabButton, activeTabId === tab.id ? styles.activeTabButton : null]}
@@ -338,6 +346,8 @@ function HeaderText({ children, variant }: { children: ReactNode; variant: "titl
     return createElement(
       "div",
       {
+        role: variant === "title" ? "heading" : undefined,
+        "aria-level": variant === "title" ? 1 : undefined,
         style: variant === "title" ? webHeaderTitleStyle : webHeaderSubtitleStyle
       },
       children
@@ -345,7 +355,12 @@ function HeaderText({ children, variant }: { children: ReactNode; variant: "titl
   }
 
   return (
-    <Text style={variant === "title" ? styles.productName : styles.headerText}>{children}</Text>
+    <Text
+      accessibilityRole={variant === "title" ? "header" : undefined}
+      style={variant === "title" ? styles.productName : styles.headerText}
+    >
+      {children}
+    </Text>
   );
 }
 
@@ -462,7 +477,11 @@ function PlaceholderScreen({
                 )}
               </View>
             ))}
-            <Pressable accessibilityRole="button" onPress={onOpenAvailable} style={styles.fullListButton}>
+            <Pressable
+              accessibilityRole="button"
+              onPress={onOpenAvailable}
+              style={styles.fullListButton}
+            >
               <Text style={styles.fullListButtonText}>Open all available offers</Text>
             </Pressable>
           </Card>
@@ -484,7 +503,9 @@ function PlaceholderScreen({
           <Card>
             <Heading>Urgent Offer</Heading>
             <BodyText>Chef working alone - Laval Residence - starts 4:00 PM.</BodyText>
-            <SmallText>AI match evidence: works alone, Rational oven, 7 km, food safety verified.</SmallText>
+            <SmallText>
+              AI match evidence: works alone, Rational oven, 7 km, food safety verified.
+            </SmallText>
           </Card>
         </View>
       </ScrollView>

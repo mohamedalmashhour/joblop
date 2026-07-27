@@ -6,12 +6,17 @@ import type {
 } from "@rwos/shared";
 import { shiftDiscoveryRecordSchema } from "@rwos/validation";
 import { mockShiftDiscoveryRecords } from "../../data/mock/shifts";
+import { isProductionWorkerBuild } from "../../runtime/environment";
 import { normalizeFilters, shiftMatchesFilters } from "./filters";
 
 export class MockShiftDiscoveryRepository implements ShiftDiscoveryRepository {
   private readonly shifts: readonly ShiftDiscoveryRecord[];
 
-  constructor(shifts: readonly ShiftDiscoveryRecord[] = mockShiftDiscoveryRecords) {
+  constructor(
+    shifts: readonly ShiftDiscoveryRecord[] = isProductionWorkerBuild()
+      ? []
+      : mockShiftDiscoveryRecords
+  ) {
     this.shifts = shifts.map((shift) => shiftDiscoveryRecordSchema.parse(shift));
   }
 

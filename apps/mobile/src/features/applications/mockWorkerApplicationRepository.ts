@@ -21,6 +21,7 @@ import {
   workerConfirmationSchema
 } from "@rwos/validation";
 import { mockShiftDiscoveryRecords } from "../../data/mock/shifts";
+import { isProductionWorkerBuild } from "../../runtime/environment";
 import {
   demoWorkerId,
   WorkerApplicationRepositoryError,
@@ -39,8 +40,12 @@ export class MockWorkerApplicationRepository implements WorkerApplicationReposit
   private readonly shifts: readonly ShiftDiscoveryRecord[];
 
   constructor(
-    shifts: readonly ShiftDiscoveryRecord[] = mockShiftDiscoveryRecords,
-    state: WorkerApplicationRepositoryState = createDefaultApplicationState(shifts)
+    shifts: readonly ShiftDiscoveryRecord[] = isProductionWorkerBuild()
+      ? []
+      : mockShiftDiscoveryRecords,
+    state: WorkerApplicationRepositoryState = isProductionWorkerBuild()
+      ? { applications: [], offers: [], confirmations: [] }
+      : createDefaultApplicationState(shifts)
   ) {
     this.shifts = shifts;
     this.applications = state.applications.map((item) => workerApplicationSchema.parse(item));

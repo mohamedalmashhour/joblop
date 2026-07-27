@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import {
   createAuthorizationService,
   createAuthenticationService,
@@ -57,6 +57,117 @@ describe("api health endpoint", () => {
 });
 
 describe("api authentication foundation", () => {
+  it("denies production mutation families before service execution", async () => {
+    const dispatchService = createApiUnavailableDispatchService();
+    const workerOfferService = createApiUnavailableWorkerOfferService();
+    const assignmentService = createApiUnavailableAssignmentService();
+    const attendanceService = createApiUnavailableAttendanceService();
+    const timesheetService = createApiUnavailableTimesheetService();
+    const createDispatch = vi.spyOn(dispatchService, "createDispatch");
+    const acceptOffer = vi.spyOn(workerOfferService, "accept");
+    const declineOffer = vi.spyOn(workerOfferService, "decline");
+    const createAssignment = vi.spyOn(assignmentService, "createFromAcceptedOffer");
+    const checkIn = vi.spyOn(attendanceService, "workerCheckIn");
+    const checkOut = vi.spyOn(attendanceService, "workerCheckOut");
+    const calculate = vi.spyOn(timesheetService, "calculate");
+    const approve = vi.spyOn(timesheetService, "approve");
+    const confirm = vi.spyOn(timesheetService, "workerConfirm");
+    const dispute = vi.spyOn(timesheetService, "workerDispute");
+    const app = buildApi({
+      authService: createAuthenticationService(
+        new ApiMemoryAuthenticationRepository(),
+        testAuthOptions()
+      ),
+      dispatchService,
+      workerOfferService,
+      assignmentService,
+      attendanceService,
+      timesheetService,
+      env: productionEnv()
+    });
+
+    for (const url of [
+      "/platform/dispatches",
+      "/platform/worker-offers",
+      "/worker/offers/offer-1/accept",
+      "/worker/offers/offer-1/decline",
+      "/platform/assignments",
+      "/worker/assignments/assignment-1/acknowledge",
+      "/platform/attendance",
+      "/worker/attendance/attendance-1/check-in",
+      "/worker/attendance/attendance-1/check-out",
+      "/platform/timesheets",
+      "/platform/timesheets/timesheet-1/calculate",
+      "/platform/timesheets/timesheet-1/approve",
+      "/worker/timesheets/timesheet-1/confirm",
+      "/worker/timesheets/timesheet-1/dispute"
+    ]) {
+      const response = await app.inject({ method: "POST", url, payload: {} });
+      expect(response.statusCode).toBe(404);
+      expect(response.json()).toEqual({
+        error: "RWOS_RESOURCE_UNAVAILABLE",
+        message: "Resource unavailable."
+      });
+    }
+    expect(createDispatch).not.toHaveBeenCalled();
+    for (const method of [
+      acceptOffer,
+      declineOffer,
+      createAssignment,
+      checkIn,
+      checkOut,
+      calculate,
+      approve,
+      confirm,
+      dispute
+    ]) {
+      expect(method).not.toHaveBeenCalled();
+    }
+    const calendarRead = await app.inject({
+      method: "GET",
+      url: "/platform/calendar/requests"
+    });
+    expect(calendarRead.statusCode).toBe(403);
+    expect(calendarRead.json()).toMatchObject({ error: "RWOS_AUTHORIZATION_DENIED" });
+    await app.close();
+  });
+
+  it("disables production registration and adds security headers", async () => {
+    const app = buildApi({
+      authService: createAuthenticationService(
+        new ApiMemoryAuthenticationRepository(),
+        testAuthOptions()
+      ),
+      env: productionEnv()
+    });
+    const response = await app.inject({
+      method: "POST",
+      url: "/auth/register",
+      payload: { email: "person@example.com", password: "ValidPassword123" }
+    });
+    expect(response.statusCode).toBe(404);
+    expect(response.json()).toEqual({
+      error: "RWOS_RESOURCE_UNAVAILABLE",
+      message: "Resource unavailable."
+    });
+    expect(response.headers).toMatchObject({
+      "x-content-type-options": "nosniff",
+      "x-frame-options": "DENY",
+      "referrer-policy": "strict-origin-when-cross-origin"
+    });
+    expect(response.headers).not.toHaveProperty("strict-transport-security");
+    const httpsResponse = await app.inject({
+      method: "POST",
+      url: "/auth/register",
+      headers: { "x-forwarded-proto": "https" },
+      payload: { email: "person@example.com", password: "ValidPassword123" }
+    });
+    expect(httpsResponse.headers["strict-transport-security"]).toBe(
+      "max-age=31536000; includeSubDomains"
+    );
+    await app.close();
+  });
+
   it("registers, validates, signs out, and revokes sessions without operational APIs", async () => {
     const repository = new ApiMemoryAuthenticationRepository();
     const app = buildApi({
@@ -3002,6 +3113,15 @@ function testAuthOptions() {
       saltLength: 8
     },
     randomToken: () => `api-session-token-${String(nextToken++).padStart(21, "0")}`
+  };
+}
+
+function productionEnv() {
+  return {
+    RWOS_ENV: "production",
+    NODE_ENV: "production",
+    DATABASE_URL: "postgresql://database.example.test/rwos",
+    INTERNAL_API_ORIGIN: "https://api.example.test"
   };
 }
 

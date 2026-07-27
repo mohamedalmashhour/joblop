@@ -84,6 +84,11 @@ import {
 import { getRuntimeConfig } from "@rwos/config";
 import { createPrismaClient } from "@rwos/database";
 import { createLogger } from "@rwos/observability";
+import {
+  activeMembershipRoleQuery,
+  activeWorkerIdentityQuery,
+  createPrismaAuthorizationRoleResolver
+} from "./authorizationRoles";
 
 export interface BuildApiOptions {
   authService?: AuthenticationService;
@@ -104,13 +109,18 @@ export interface BuildApiOptions {
   resolveAuthorizationRoles?: (
     userId: string
   ) => Promise<readonly AuthorizationRoleKey[]> | readonly AuthorizationRoleKey[];
+  env?: NodeJS.ProcessEnv;
 }
 
 export function buildApi(options: BuildApiOptions = {}) {
-  const app = Fastify({ logger: false });
+  const runtimeConfig = getRuntimeConfig(options.env);
+  const app = Fastify({
+    logger: false,
+    trustProxy: runtimeConfig.rwosEnv === "production" ? "loopback" : false
+  });
   const logger = createLogger("api");
   const authRateLimiter = createAuthenticationRateLimiter();
-  const prisma = options.authService ? null : createPrismaClient();
+  const prisma = options.authService ? null : createPrismaClient(runtimeConfig.databaseUrl);
   const authService =
     options.authService ??
     createAuthenticationService(createPrismaAuthenticationRepository(prisma!), {
@@ -228,7 +238,32 @@ export function buildApi(options: BuildApiOptions = {}) {
           workerOfferAccess: workerOfferService
         })
       : createUnavailableCalendarRequestService());
-  const resolveAuthorizationRoles = options.resolveAuthorizationRoles ?? (() => []);
+  const resolveAuthorizationRoles =
+    options.resolveAuthorizationRoles ??
+    (prisma
+      ? createPrismaAuthorizationRoleResolver({
+          findMemberships: (userId, now) =>
+            prisma.organizationMembership.findMany(activeMembershipRoleQuery(userId, now)),
+          findActiveWorker: (userId) =>
+            prisma.workerIdentity.findFirst(activeWorkerIdentityQuery(userId))
+        })
+      : () => []);
+
+  app.addHook("onRequest", async (request, reply) => {
+    applySecurityHeaders(
+      reply,
+      runtimeConfig.rwosEnv === "production" && request.protocol === "https"
+    );
+    if (
+      runtimeConfig.rwosEnv === "production" &&
+      isProductionDisabledMutation(request.method, request.url)
+    ) {
+      return reply.code(404).send({
+        error: "RWOS_RESOURCE_UNAVAILABLE",
+        message: "Resource unavailable."
+      });
+    }
+  });
 
   if (prisma) {
     app.addHook("onClose", async () => {
@@ -236,7 +271,7 @@ export function buildApi(options: BuildApiOptions = {}) {
     });
   }
 
-  app.setErrorHandler((error, _request, reply) => {
+  app.setErrorHandler((error, request, reply) => {
     if (error instanceof OrganizationMembershipError) {
       return sendMembershipDenied(reply);
     }
@@ -295,7 +330,12 @@ export function buildApi(options: BuildApiOptions = {}) {
       });
     }
 
-    throw error;
+    logger.info(`unhandled-api-error requestId=${request.id}`);
+    return reply.code(500).send({
+      error: "RWOS_INTERNAL_ERROR",
+      message: "Request could not be completed.",
+      requestId: request.id
+    });
   });
 
   app.get("/health", async () => {
@@ -311,6 +351,12 @@ export function buildApi(options: BuildApiOptions = {}) {
   });
 
   app.post("/auth/register", async (request, reply) => {
+    if (runtimeConfig.rwosEnv === "production") {
+      return reply.code(404).send({
+        error: "RWOS_RESOURCE_UNAVAILABLE",
+        message: "Resource unavailable."
+      });
+    }
     const body = asRecord(request.body);
     const email = readRequiredString(body, "email");
     const password = readRequiredString(body, "password");
@@ -390,13 +436,8 @@ export function buildApi(options: BuildApiOptions = {}) {
 
     return reply.code(200).send({
       authenticated: true,
-      user: session.user,
-      session: session.session
-        ? {
-            ...session.session,
-            expiresAt: session.session.expiresAt.toISOString()
-          }
-        : null
+      user: serializeSessionUser(session.user),
+      session: serializeSessionRecord(session.session)
     });
   });
 
@@ -2996,17 +3037,25 @@ function readRouteParam(params: unknown, key: string) {
   return typeof value === "string" ? value : "";
 }
 
-function createAuthenticationRateLimiter(options = { maxAttempts: 5, windowMs: 60_000 }) {
+function createAuthenticationRateLimiter(
+  options = { maxAttempts: 5, windowMs: 60_000, maxBuckets: 10_000 }
+) {
   const buckets = new Map<string, { count: number; resetAt: number }>();
 
   return {
     consume(key: string) {
       const now = Date.now();
+      for (const [bucketKey, candidate] of buckets) {
+        if (candidate.resetAt <= now) buckets.delete(bucketKey);
+      }
+      while (!buckets.has(key) && buckets.size >= options.maxBuckets) {
+        const oldestKey = buckets.keys().next().value as string | undefined;
+        if (!oldestKey) break;
+        buckets.delete(oldestKey);
+      }
       const current = buckets.get(key);
       const bucket =
-        current && current.resetAt > now
-          ? current
-          : { count: 0, resetAt: now + options.windowMs };
+        current && current.resetAt > now ? current : { count: 0, resetAt: now + options.windowMs };
 
       bucket.count += 1;
       buckets.set(key, bucket);
@@ -3019,14 +3068,74 @@ function createAuthenticationRateLimiter(options = { maxAttempts: 5, windowMs: 6
   };
 }
 
+function serializeSessionUser(
+  user: {
+    id: string;
+    publicId: string;
+    emailNormalized: string;
+    displayName: string | null;
+    status: string;
+  } | null
+) {
+  if (!user) return null;
+  return {
+    id: user.id,
+    publicId: user.publicId,
+    emailNormalized: user.emailNormalized,
+    displayName: user.displayName,
+    status: user.status
+  };
+}
+
+function serializeSessionRecord(
+  session: {
+    id: string;
+    userId: string;
+    expiresAt: Date;
+  } | null
+) {
+  return session
+    ? {
+        id: session.id,
+        userId: session.userId,
+        expiresAt: session.expiresAt.toISOString()
+      }
+    : null;
+}
+
+function applySecurityHeaders(reply: FastifyReply, production: boolean) {
+  reply
+    .header("x-content-type-options", "nosniff")
+    .header("x-frame-options", "DENY")
+    .header("content-security-policy", "frame-ancestors 'none'")
+    .header("referrer-policy", "strict-origin-when-cross-origin")
+    .header("permissions-policy", "camera=(), microphone=(), geolocation=(), payment=(), usb=()");
+  if (production) {
+    reply.header("strict-transport-security", "max-age=31536000; includeSubDomains");
+  }
+}
+
+function isProductionDisabledMutation(method: string, url: string) {
+  if (!["POST", "PUT", "PATCH", "DELETE"].includes(method)) return false;
+  const path = url.split("?")[0] ?? url;
+  return (
+    path.startsWith("/platform/dispatches") ||
+    path.startsWith("/platform/worker-offers") ||
+    path.startsWith("/worker/offers") ||
+    path.startsWith("/platform/assignments") ||
+    path.startsWith("/worker/assignments") ||
+    path.startsWith("/platform/attendance") ||
+    path.startsWith("/worker/attendance") ||
+    path.startsWith("/platform/timesheets") ||
+    path.startsWith("/worker/timesheets")
+  );
+}
+
 function sendAuthenticationRateLimited(reply: FastifyReply, retryAfterSeconds: number) {
-  return reply
-    .code(429)
-    .header("retry-after", String(retryAfterSeconds))
-    .send({
-      error: "RWOS_AUTH_RATE_LIMITED",
-      message: "Too many authentication attempts. Try again later."
-    });
+  return reply.code(429).header("retry-after", String(retryAfterSeconds)).send({
+    error: "RWOS_AUTH_RATE_LIMITED",
+    message: "Too many authentication attempts. Try again later."
+  });
 }
 
 function serializeAuthenticationResult(result: {

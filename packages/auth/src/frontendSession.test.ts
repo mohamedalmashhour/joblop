@@ -33,6 +33,53 @@ describe("secure frontend session gateway", () => {
     expect(JSON.stringify(result)).not.toContain("server-session-token");
   });
 
+  it("runtime-whitelists nested session DTOs", async () => {
+    const gateway = createFrontendSessionGateway({
+      apiOrigin: "https://api.example.test",
+      fetch: async () =>
+        apiResponse(200, {
+          authenticated: true,
+          token: "never-return",
+          credentials: { passwordHash: "never-return" },
+          user: {
+            id: "user-1",
+            publicId: "USR-1",
+            emailNormalized: "person@example.test",
+            displayName: "Person",
+            status: "active",
+            passwordHash: "never-return"
+          },
+          session: {
+            id: "session-1",
+            userId: "user-1",
+            expiresAt: "2026-08-01T00:00:00.000Z",
+            sessionHash: "never-return",
+            nested: { secret: "never-return" }
+          }
+        })
+    });
+    const result = await gateway.validate("server-session-token-123456789");
+    expect(result).toEqual({
+      status: "ok",
+      payload: {
+        authenticated: true,
+        user: {
+          id: "user-1",
+          publicId: "USR-1",
+          emailNormalized: "person@example.test",
+          displayName: "Person",
+          status: "active"
+        },
+        session: {
+          id: "session-1",
+          userId: "user-1",
+          expiresAt: "2026-08-01T00:00:00.000Z"
+        }
+      }
+    });
+    expect(JSON.stringify(result)).not.toMatch(/token|password|secret|credentials/i);
+  });
+
   it("uses bearer auth and no-store only inside the server gateway", async () => {
     const fetch = vi.fn(async () => apiResponse(200, { requests: [] }));
     await createFrontendSessionGateway({
@@ -68,8 +115,16 @@ describe("secure frontend session gateway", () => {
       apiOrigin: "https://api.example.test",
       fetch: async () => apiResponse(503, { privateReason: "database offline" })
     });
-    expect(await stale.request("/platform/calendar/requests/one", "PUT", "server-session-token-123456789")).toEqual({ status: "stale" });
-    expect(await unavailable.validate("server-session-token-123456789")).toEqual({ status: "unavailable" });
+    expect(
+      await stale.request(
+        "/platform/calendar/requests/one",
+        "PUT",
+        "server-session-token-123456789"
+      )
+    ).toEqual({ status: "stale" });
+    expect(await unavailable.validate("server-session-token-123456789")).toEqual({
+      status: "unavailable"
+    });
   });
 
   it("rejects insecure non-local origins", () => {

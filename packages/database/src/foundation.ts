@@ -5,9 +5,13 @@ import { PrismaClient } from "@prisma/client";
 export { PrismaClient };
 export type { Prisma } from "@prisma/client";
 
-const localValidationDatabaseUrl = "postgresql://localhost:5432/resident_job_prisma_phase01_validation";
+const localValidationDatabaseUrl =
+  "postgresql://localhost:5432/resident_job_prisma_phase01_validation";
 
 export function getDatabaseConnectionString(env: NodeJS.ProcessEnv = process.env) {
+  if (env.RWOS_ENV === "production" && !env.DATABASE_URL) {
+    throw new Error("RWOS_PRODUCTION_DATABASE_URL_REQUIRED");
+  }
   return env.DATABASE_URL ?? localValidationDatabaseUrl;
 }
 
