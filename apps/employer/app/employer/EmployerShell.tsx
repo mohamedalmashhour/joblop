@@ -1,6 +1,7 @@
 import type { ReactNode } from "react";
 import { assignmentWorkflow } from "./assignmentWorkflowContent";
 import { attendanceWorkflow } from "./attendanceWorkflowContent";
+import { clientCalendarWorkflow } from "./calendar/clientCalendarContent";
 import { employerWorkflow } from "./employerJourneyContent";
 import { styles } from "./employerStyles";
 import { invoiceWorkflow } from "./invoiceWorkflowContent";
@@ -8,7 +9,7 @@ import { paymentWorkflow } from "./paymentWorkflowContent";
 import { shiftWorkflow } from "./shifts/shiftManagementContent";
 import { timesheetWorkflow } from "./timesheetWorkflowContent";
 
-const employerNavigation = [...employerWorkflow, ...shiftWorkflow, ...assignmentWorkflow, ...attendanceWorkflow, ...timesheetWorkflow, ...invoiceWorkflow, ...paymentWorkflow] as const;
+const employerNavigation = [...employerWorkflow, ...clientCalendarWorkflow, ...shiftWorkflow, ...assignmentWorkflow, ...attendanceWorkflow, ...timesheetWorkflow, ...invoiceWorkflow, ...paymentWorkflow] as const;
 
 export function EmployerShell({
   actions,
