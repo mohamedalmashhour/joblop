@@ -1811,6 +1811,7 @@ function createApiUnavailableWorkerOfferService(): WorkerOfferService {
     approve: unavailable,
     send: unavailable,
     workerRead: unavailable,
+    workerCalendarReference: unavailable,
     accept: unavailable,
     decline: unavailable,
     withdraw: unavailable,

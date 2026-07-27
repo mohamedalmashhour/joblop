@@ -1,4 +1,13 @@
 import { createHash, randomBytes, scrypt as scryptCallback, timingSafeEqual } from "node:crypto";
+export {
+  CalendarRequestError,
+  createCalendarRequestService,
+  createPrismaCalendarRequestProfileRepository,
+  type CalendarRequestProfileRepository,
+  type CalendarRequestService,
+  type CalendarVerificationState,
+  type StoredCalendarRequestProfile
+} from "./calendarRequest";
 export const workerRoles = ["WORKER"] as const;
 
 export const employerRoles = ["EMPLOYER_OWNER", "EMPLOYER_SCHEDULER"] as const;
@@ -5215,6 +5224,52 @@ export function createJobRequestService(
       return toPublicJobRequest(jobRequest);
     },
 
+    async authorizeCalendarProfileUpdate(input: {
+      actorUserId: string;
+      organizationId: string;
+      jobRequestIdOrNumber: string;
+      correlationId?: string;
+    }) {
+      const currentTime = now();
+      const jobRequest = await findJobRequestByIdOrNumber(
+        jobRequestRepository,
+        input.jobRequestIdOrNumber
+      );
+      const authorization = await authorizeJobRequestEmployerOperation({
+        organizationRepository,
+        jobRequestRepository,
+        membershipService,
+        authorizationService,
+        actorUserId: input.actorUserId,
+        organizationId: input.organizationId,
+        permission: "job_request.update_draft",
+        jobRequest,
+        correlationId: input.correlationId,
+        now: currentTime
+      });
+
+      if (
+        !authorization.allow ||
+        !jobRequest ||
+        jobRequest.organizationId !== input.organizationId
+      ) {
+        throw new JobRequestError(
+          authorization.allow
+            ? jobRequestDeny(
+                "not_found",
+                "job_request_not_found",
+                null,
+                authorization.roles,
+                authorization.organization,
+                authorization.membership
+              )
+            : authorization
+        );
+      }
+
+      return toPublicJobRequest(jobRequest);
+    },
+
     async updateDraft(input: {
       actorUserId: string;
       organizationId: string;
@@ -6408,6 +6463,29 @@ export function createWorkerOfferService(
           );
         }
       }
+      return offer.publicOffer;
+    },
+
+    async workerCalendarReference(input: {
+      session: SessionValidationResult;
+      roles?: readonly AuthorizationRoleKey[];
+      workerOfferId: string;
+      correlationId?: string;
+    }) {
+      const workerIdentity = await requireWorkerIdentityForSession(
+        workerOfferRepository,
+        input.session
+      );
+      const offer = await requireWorkerOwnedOffer({
+        workerOfferRepository,
+        authorizationService,
+        session: input.session,
+        roles: input.roles ?? [],
+        workerIdentity,
+        workerOfferId: input.workerOfferId,
+        correlationId: input.correlationId,
+        now: now()
+      });
       return offer.publicOffer;
     },
 

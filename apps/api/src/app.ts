@@ -4,6 +4,7 @@ import {
   AuthenticationRequiredError,
   AssignmentError,
   AttendanceError,
+  CalendarRequestError,
   DepartmentError,
   DispatchError,
   EmployerOrganizationError,
@@ -24,6 +25,7 @@ import {
   createAuthenticationService,
   createAssignmentService,
   createAttendanceService,
+  createCalendarRequestService,
   createAuthorizationService,
   createDepartmentService,
   createDispatchService,
@@ -37,6 +39,7 @@ import {
   createWorkGroupService,
   createPrismaAssignmentRepository,
   createPrismaAttendanceRepository,
+  createPrismaCalendarRequestProfileRepository,
   createPrismaDepartmentRepository,
   createPrismaDispatchRepository,
   createPrismaAuthenticationRepository,
@@ -58,6 +61,8 @@ import {
   type AttendanceService,
   type AttendanceStatus,
   type AuthenticationService,
+  type CalendarRequestService,
+  type CalendarVerificationState,
   type DepartmentService,
   type DepartmentStatus,
   type DispatchService,
@@ -92,6 +97,7 @@ export interface BuildApiOptions {
   assignmentService?: AssignmentService;
   attendanceService?: AttendanceService;
   timesheetService?: TimesheetService;
+  calendarRequestService?: CalendarRequestService;
   workGroupService?: WorkGroupService;
   roleDefinitionService?: RoleDefinitionService;
   jobRequestService?: JobRequestService;
@@ -213,6 +219,15 @@ export function buildApi(options: BuildApiOptions = {}) {
           authorizationService
         )
       : createUnavailableTimesheetService());
+  const calendarRequestService =
+    options.calendarRequestService ??
+    (prisma
+      ? createCalendarRequestService({
+          repository: createPrismaCalendarRequestProfileRepository(prisma),
+          jobRequestAccess: jobRequestService,
+          workerOfferAccess: workerOfferService
+        })
+      : createUnavailableCalendarRequestService());
   const resolveAuthorizationRoles = options.resolveAuthorizationRoles ?? (() => []);
 
   if (prisma) {
@@ -268,6 +283,16 @@ export function buildApi(options: BuildApiOptions = {}) {
 
     if (error instanceof TimesheetError) {
       return sendTimesheetDenied(reply);
+    }
+
+    if (error instanceof CalendarRequestError) {
+      const conflict =
+        error.code === "RWOS_CALENDAR_REQUEST_NOT_EDITABLE" ||
+        error.code === "RWOS_CALENDAR_REQUEST_VERSION_CONFLICT";
+      return reply.code(conflict ? 409 : 400).send({
+        error: error.code,
+        message: "Calendar request operation was denied."
+      });
     }
 
     throw error;
@@ -1521,6 +1546,163 @@ export function buildApi(options: BuildApiOptions = {}) {
       return reply.code(200).send({ jobRequest: serializeJobRequest(jobRequest) });
     }
   );
+
+  app.put(
+    "/organizations/:organizationId/calendar/requests/:jobRequestId/profile",
+    async (request, reply) => {
+      const session = await authService.validateSession(
+        readBearerToken(request.headers.authorization)
+      );
+      if (!session.authenticated || !session.user) return sendJobRequestDenied(reply);
+
+      const body = asRecord(request.body);
+      const qualifications = readStringArray(body, "qualifications");
+
+      if (!qualifications) {
+        return reply.code(400).send({
+          error: "RWOS_INVALID_CALENDAR_REQUEST",
+          message: "Invalid calendar request."
+        });
+      }
+
+      const profile = await calendarRequestService.upsertClientProfile({
+        actorUserId: session.user.id,
+        organizationId: readRouteParam(request.params, "organizationId"),
+        jobRequestId: readRouteParam(request.params, "jobRequestId"),
+        dutiesSummary: readOptionalString(body, "dutiesSummary"),
+        qualifications,
+        addressSummary: readOptionalString(body, "addressSummary"),
+        specialInstructions: readOptionalString(body, "specialInstructions"),
+        expectedVersion: readOptionalNumber(body, "expectedVersion")
+      });
+
+      return reply.code(200).send({ profile: serializeCalendarProfile(profile) });
+    }
+  );
+
+  app.get("/organizations/:organizationId/calendar/requests", async (request, reply) => {
+    const session = await authService.validateSession(
+      readBearerToken(request.headers.authorization)
+    );
+    if (!session.authenticated || !session.user) return sendJobRequestDenied(reply);
+
+    const query = asRecord(request.query);
+    const requests = await calendarRequestService.listClientCalendar({
+      actorUserId: session.user.id,
+      organizationId: readRouteParam(request.params, "organizationId"),
+      residenceId: readOptionalString(query, "residenceId"),
+      departmentId: readOptionalString(query, "departmentId")
+    });
+
+    return reply.code(200).send({ requests: requests.map(serializeCalendarRequest) });
+  });
+
+  app.get(
+    "/organizations/:organizationId/calendar/requests/:jobRequestIdOrNumber",
+    async (request, reply) => {
+      const session = await authService.validateSession(
+        readBearerToken(request.headers.authorization)
+      );
+      if (!session.authenticated || !session.user) return sendJobRequestDenied(reply);
+
+      const calendarRequest = await calendarRequestService.getClientCalendarRequest({
+        actorUserId: session.user.id,
+        organizationId: readRouteParam(request.params, "organizationId"),
+        jobRequestIdOrNumber: readRouteParam(request.params, "jobRequestIdOrNumber")
+      });
+
+      return reply.code(200).send({ request: serializeCalendarRequest(calendarRequest) });
+    }
+  );
+
+  app.get("/platform/calendar/requests", async (request, reply) => {
+    const session = await authService.validateSession(
+      readBearerToken(request.headers.authorization)
+    );
+    if (!session.authenticated || !session.user) return sendJobRequestDenied(reply);
+
+    const requests = await calendarRequestService.listAdminCalendar({
+      session,
+      roles: await resolveAuthorizationRoles(session.user.id)
+    });
+
+    return reply.code(200).send({ requests: requests.map(serializeCalendarRequest) });
+  });
+
+  app.get("/platform/calendar/requests/:jobRequestIdOrNumber", async (request, reply) => {
+    const session = await authService.validateSession(
+      readBearerToken(request.headers.authorization)
+    );
+    if (!session.authenticated || !session.user) return sendJobRequestDenied(reply);
+
+    const calendarRequest = await calendarRequestService.getAdminCalendarRequest({
+      session,
+      roles: await resolveAuthorizationRoles(session.user.id),
+      jobRequestIdOrNumber: readRouteParam(request.params, "jobRequestIdOrNumber")
+    });
+
+    return reply.code(200).send({ request: serializeCalendarRequest(calendarRequest) });
+  });
+
+  app.put(
+    "/platform/calendar/requests/:jobRequestIdOrNumber/verification",
+    async (request, reply) => {
+      const session = await authService.validateSession(
+        readBearerToken(request.headers.authorization)
+      );
+      if (!session.authenticated || !session.user) return sendJobRequestDenied(reply);
+
+      const body = asRecord(request.body);
+      const contractVerificationState = readCalendarVerificationState(
+        readRequiredString(body, "contractVerificationState")
+      );
+      const paymentMethodReadinessState = readCalendarVerificationState(
+        readRequiredString(body, "paymentMethodReadinessState")
+      );
+      const locationVerificationState = readCalendarVerificationState(
+        readRequiredString(body, "locationVerificationState")
+      );
+      const expectedVersion = readOptionalNumber(body, "expectedVersion");
+      if (
+        !contractVerificationState ||
+        !paymentMethodReadinessState ||
+        !locationVerificationState ||
+        expectedVersion === null
+      ) {
+        return reply.code(400).send({
+          error: "RWOS_INVALID_CALENDAR_REQUEST",
+          message: "Invalid calendar request."
+        });
+      }
+
+      const profile = await calendarRequestService.updateAdminVerification({
+        session,
+        roles: await resolveAuthorizationRoles(session.user.id),
+        jobRequestIdOrNumber: readRouteParam(request.params, "jobRequestIdOrNumber"),
+        contractVerificationState,
+        paymentMethodReadinessState,
+        locationVerificationState,
+        expectedVersion
+      });
+
+      return reply.code(200).send({ profile: serializeCalendarProfile(profile) });
+    }
+  );
+
+  app.get("/worker/calendar/offers/:workerOfferId", async (request, reply) => {
+    const session = await authService.validateSession(
+      readBearerToken(request.headers.authorization)
+    );
+    if (!session.authenticated || !session.user) return sendWorkerOfferDenied(reply);
+
+    const reference = await calendarRequestService.getWorkerOfferCalendarReference({
+      session,
+      roles: await resolveAuthorizationRoles(session.user.id),
+      workerOfferId: readRouteParam(request.params, "workerOfferId")
+    });
+
+    return reply.code(200).send({ offer: serializeWorkerCalendarReference(reference) });
+  });
 
   app.post("/platform/dispatches", async (request, reply) => {
     const session = await authService.validateSession(
@@ -2782,6 +2964,11 @@ function readOptionalNumber(body: Record<string, unknown>, key: string) {
   return typeof value === "number" ? value : null;
 }
 
+function readStringArray(body: Record<string, unknown>, key: string) {
+  const value = body[key];
+  return Array.isArray(value) && value.every((item) => typeof item === "string") ? value : null;
+}
+
 function readRequiredDate(body: Record<string, unknown>, key: string) {
   const value = body[key];
   if (typeof value !== "string") return null;
@@ -3117,6 +3304,39 @@ function serializeWorkerOffer(workerOffer: Awaited<ReturnType<WorkerOfferService
   };
 }
 
+function serializeCalendarProfile(
+  profile: Awaited<ReturnType<CalendarRequestService["upsertClientProfile"]>>
+) {
+  return {
+    ...profile,
+    createdAt: profile.createdAt.toISOString(),
+    updatedAt: profile.updatedAt.toISOString()
+  };
+}
+
+function serializeCalendarRequest(
+  request: Awaited<ReturnType<CalendarRequestService["getClientCalendarRequest"]>>
+) {
+  return {
+    ...request,
+    startAt: request.startAt.toISOString(),
+    endAt: request.endAt.toISOString(),
+    createdAt: request.createdAt.toISOString(),
+    updatedAt: request.updatedAt.toISOString()
+  };
+}
+
+function serializeWorkerCalendarReference(
+  reference: Awaited<ReturnType<CalendarRequestService["getWorkerOfferCalendarReference"]>>
+) {
+  return {
+    ...reference,
+    expiresAt: reference.expiresAt.toISOString(),
+    startAt: reference.startAt?.toISOString() ?? null,
+    endAt: reference.endAt?.toISOString() ?? null
+  };
+}
+
 function serializeAssignment(
   assignment: Awaited<ReturnType<AssignmentService["createFromAcceptedOffer"]>>
 ) {
@@ -3219,6 +3439,15 @@ function readJobRequestUrgency(value: string | null): JobRequestUrgency | null {
 
 function readJobRequestType(value: string | null): JobRequestType | null {
   return value === "single_day" || value === "multi_day" || value === "recurring_intent"
+    ? value
+    : null;
+}
+
+function readCalendarVerificationState(value: string | null): CalendarVerificationState | null {
+  return value === "pending" ||
+    value === "verified" ||
+    value === "failed" ||
+    value === "unavailable"
     ? value
     : null;
 }
@@ -3343,6 +3572,7 @@ function createUnavailableWorkerOfferService(): WorkerOfferService {
     approve: denied,
     send: denied,
     workerRead: denied,
+    workerCalendarReference: denied,
     accept: denied,
     decline: denied,
     withdraw: denied,
@@ -3437,4 +3667,20 @@ function createUnavailableTimesheetService(): TimesheetService {
     lock: denied,
     readAuditSummary: denied
   } as TimesheetService;
+}
+
+function createUnavailableCalendarRequestService(): CalendarRequestService {
+  const denied = async () => {
+    throw new CalendarRequestError("RWOS_INVALID_CALENDAR_REQUEST");
+  };
+
+  return {
+    upsertClientProfile: denied,
+    updateAdminVerification: denied,
+    listClientCalendar: denied,
+    getClientCalendarRequest: denied,
+    listAdminCalendar: denied,
+    getAdminCalendarRequest: denied,
+    getWorkerOfferCalendarReference: denied
+  } as CalendarRequestService;
 }

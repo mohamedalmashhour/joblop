@@ -2593,6 +2593,57 @@ describe("worker offer foundation", () => {
     );
   });
 
+  it("reads a worker calendar offer reference without changing offer lifecycle state", async () => {
+    const {
+      workerOfferService,
+      workerOfferRepository,
+      dispatchReview,
+      adminSession,
+      workerOne,
+      workerSession,
+      otherWorkerSession
+    } = await createWorkerOfferContext();
+    const draft = await workerOfferService.createOffer({
+      session: adminSession,
+      roles: ["DISPATCHER"],
+      dispatchReviewId: dispatchReview.id,
+      workerIdentityId: workerOne.id,
+      expiresAt: new Date("2026-08-12T10:00:00.000Z")
+    });
+    const approved = await workerOfferService.approve({
+      session: adminSession,
+      roles: ["DISPATCHER"],
+      workerOfferId: draft.id,
+      expectedVersion: draft.versionToken
+    });
+    const sent = await workerOfferService.send({
+      session: adminSession,
+      roles: ["DISPATCHER"],
+      workerOfferId: approved.id,
+      expectedVersion: approved.versionToken
+    });
+    const auditBeforeRead = workerOfferRepository.auditActions();
+
+    const reference = await workerOfferService.workerCalendarReference({
+      session: workerSession,
+      roles: ["WORKER_ACCESS"],
+      workerOfferId: sent.id
+    });
+
+    expect(reference.status).toBe("sent");
+    expect(reference.versionToken).toBe(sent.versionToken);
+    expect(workerOfferRepository.auditActions()).toEqual(auditBeforeRead);
+    await expect(
+      workerOfferService.workerCalendarReference({
+        session: otherWorkerSession,
+        roles: ["WORKER_ACCESS"],
+        workerOfferId: sent.id
+      })
+    ).rejects.toMatchObject({
+      decision: expect.objectContaining({ status: "permission_denied" })
+    });
+  });
+
   it("rejects worker responses for stale terms, expired offers, and non-owned offers", async () => {
     const {
       workerOfferService,
