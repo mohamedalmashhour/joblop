@@ -29,14 +29,18 @@ export function EmployerShell({
   return (
     <main style={styles.page}>
       <div style={styles.appFrame}>
-        <aside style={styles.sidebarShell}>
+        <aside className="employer-sidebar" style={styles.sidebarShell}>
           <a href="/" style={styles.brand} aria-label="Resident Job home">
             <span aria-hidden="true" style={styles.brandMark}>
               RJ
             </span>
             <span>Resident Job</span>
           </a>
-          <nav aria-label="Employer navigation" style={styles.nav}>
+          <nav
+            aria-label="Employer navigation"
+            className="employer-navigation"
+            style={styles.nav}
+          >
             {employerNavigation.map((step) => (
               <a
                 key={step.route}
@@ -54,7 +58,7 @@ export function EmployerShell({
             <span>Visual workflow preview. Authoritative actions remain governed.</span>
           </div>
         </aside>
-        <div style={styles.workspace}>
+        <div className="employer-workspace" style={styles.workspace}>
           <header style={styles.header}>
             <div>
               <p style={styles.topbarEyebrow}>Employer workspace</p>

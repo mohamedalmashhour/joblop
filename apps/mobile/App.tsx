@@ -1227,7 +1227,7 @@ const styles = StyleSheet.create({
 });
 
 const webHeaderTitleStyle = {
-  color: colors.cream,
+  color: colors.navy,
   display: "block",
   fontSize: typography.title,
   fontWeight: 700,
@@ -1237,7 +1237,7 @@ const webHeaderTitleStyle = {
 } as const;
 
 const webHeaderSubtitleStyle = {
-  color: colors.surface,
+  color: colors.muted,
   display: "block",
   fontSize: typography.small,
   lineHeight: "18px",

@@ -1,0 +1,25 @@
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+}
+
+@media (max-width: 720px) {
+  .employer-sidebar {
+    flex-basis: 100% !important;
+    grid-template-rows: auto auto auto !important;
+    min-height: auto !important;
+  }
+
+  .employer-navigation {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    max-height: 300px !important;
+  }
+
+  .employer-workspace {
+    flex-basis: 100% !important;
+  }
+}
