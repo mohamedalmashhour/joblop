@@ -50,10 +50,7 @@ export function parseAdminAssignments(input: unknown, dispatchReviewId: string) 
   return input.map((item) => parseAdminAssignment(item, dispatchReviewId));
 }
 
-function parseAdminWorkerOffer(
-  input: unknown,
-  dispatchReviewId: string
-): AdminWorkerOfferSummary {
+function parseAdminWorkerOffer(input: unknown, dispatchReviewId: string): AdminWorkerOfferSummary {
   const record = asRecord(input);
   const terms = asRecord(record.currentTermsVersion);
   const status = requiredString(record, "status");
@@ -81,10 +78,7 @@ function parseAdminWorkerOffer(
   };
 }
 
-function parseAdminAssignment(
-  input: unknown,
-  dispatchReviewId: string
-): AdminAssignmentSummary {
+function parseAdminAssignment(input: unknown, dispatchReviewId: string): AdminAssignmentSummary {
   const record = asRecord(input);
   const attendanceBoundary = requiredString(record, "attendanceBoundary");
   if (

@@ -15,9 +15,15 @@ vi.mock("expo-secure-store", () => ({
 function vault(): SecureSessionVault & { stored: string | null } {
   return {
     stored: null,
-    async read() { return this.stored; },
-    async write(token) { this.stored = token; },
-    async clear() { this.stored = null; }
+    async read() {
+      return this.stored;
+    },
+    async write(token) {
+      this.stored = token;
+    },
+    async clear() {
+      this.stored = null;
+    }
   };
 }
 
@@ -36,7 +42,10 @@ describe("mobile secure session transport", () => {
       vault: secureVault,
       fetch: vi.fn(async () => response(200, { token: "native-session-token-123456789" }))
     });
-    const result = await transport.signIn({ email: "worker@example.test", password: "correct horse" });
+    const result = await transport.signIn({
+      email: "worker@example.test",
+      password: "correct horse"
+    });
     expect(result).toEqual({ status: "authenticated" });
     expect(JSON.stringify(result)).not.toContain("native-session-token");
     expect(secureVault.stored).toBe("native-session-token-123456789");
@@ -48,25 +57,27 @@ describe("mobile secure session transport", () => {
     const transport = createMobileSessionTransport({
       apiOrigin: "https://api.example.test",
       vault: secureVault,
-      fetch: vi.fn(async () => response(200, {
-        workerOffer: {
-          workerOfferId: "offer-1",
-          jobRequestId: "request-1",
-          status: "sent",
-          expiresAt: "2026-08-02T12:00:00.000Z",
-          title: null,
-          summary: null,
-          startAt: null,
-          endAt: null,
-          timezone: null,
-          compensationSummary: null,
-          policySummary: null,
-          termsVersionId: "terms-1",
-          versionToken: 1,
-          visibility: "worker_authorized_offer_reference",
-          clientBillRate: 4500
-        }
-      }))
+      fetch: vi.fn(async () =>
+        response(200, {
+          workerOffer: {
+            workerOfferId: "offer-1",
+            jobRequestId: "request-1",
+            status: "sent",
+            expiresAt: "2026-08-02T12:00:00.000Z",
+            title: null,
+            summary: null,
+            startAt: null,
+            endAt: null,
+            timezone: null,
+            compensationSummary: null,
+            policySummary: null,
+            termsVersionId: "terms-1",
+            versionToken: 1,
+            visibility: "worker_authorized_offer_reference",
+            clientBillRate: 4500
+          }
+        })
+      )
     });
     const result = await transport.workerOffer("offer-1");
     expect(result.status).toBe("ready");
@@ -79,7 +90,9 @@ describe("mobile secure session transport", () => {
     const transport = createMobileSessionTransport({
       apiOrigin: "https://api.example.test",
       vault: secureVault,
-      fetch: vi.fn(async () => { throw new Error("offline"); })
+      fetch: vi.fn(async () => {
+        throw new Error("offline");
+      })
     });
     await expect(transport.signOut()).resolves.toEqual({
       status: "local_session_cleared",
@@ -136,10 +149,12 @@ describe("mobile secure session transport", () => {
       vault: secureVault,
       fetch: network
     });
-    expect(await transport.signIn({
-      email: "other@example.test",
-      password: "different account"
-    })).toEqual({ status: "sign_out_required" });
+    expect(
+      await transport.signIn({
+        email: "other@example.test",
+        password: "different account"
+      })
+    ).toEqual({ status: "sign_out_required" });
     expect(network).not.toHaveBeenCalled();
     expect(secureVault.stored).toBe("native-session-token-123456789");
   });
@@ -163,10 +178,20 @@ describe("mobile secure session transport", () => {
 
   it("degrades unsafe or missing runtime origins to unavailable transport", () => {
     const secureVault = vault();
-    expect(tryCreateMobileSessionTransport({ apiOrigin: undefined, vault: secureVault })).toBeNull();
-    expect(tryCreateMobileSessionTransport({ apiOrigin: "not a url", vault: secureVault })).toBeNull();
-    expect(tryCreateMobileSessionTransport({ apiOrigin: "http://api.example.test", vault: secureVault })).toBeNull();
-    expect(tryCreateMobileSessionTransport({ apiOrigin: "https://api.example.test", vault: secureVault })).not.toBeNull();
-    expect(tryCreateMobileSessionTransport({ apiOrigin: "http://localhost:4100", vault: secureVault })).not.toBeNull();
+    expect(
+      tryCreateMobileSessionTransport({ apiOrigin: undefined, vault: secureVault })
+    ).toBeNull();
+    expect(
+      tryCreateMobileSessionTransport({ apiOrigin: "not a url", vault: secureVault })
+    ).toBeNull();
+    expect(
+      tryCreateMobileSessionTransport({ apiOrigin: "http://api.example.test", vault: secureVault })
+    ).toBeNull();
+    expect(
+      tryCreateMobileSessionTransport({ apiOrigin: "https://api.example.test", vault: secureVault })
+    ).not.toBeNull();
+    expect(
+      tryCreateMobileSessionTransport({ apiOrigin: "http://localhost:4100", vault: secureVault })
+    ).not.toBeNull();
   });
 });

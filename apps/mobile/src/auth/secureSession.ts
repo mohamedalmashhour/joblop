@@ -1,8 +1,5 @@
 import * as SecureStore from "expo-secure-store";
-import {
-  parseWorkerCalendarDto,
-  type WorkerCalendarDto
-} from "@rwos/shared";
+import { parseWorkerCalendarDto, type WorkerCalendarDto } from "@rwos/shared";
 
 const sessionKey = "rwos.mobile.session";
 
@@ -55,7 +52,9 @@ export function createMobileSessionTransport(options: {
   const request = options.fetch ?? fetch;
 
   return {
-    async signIn(credentials: Readonly<{ email: string; password: string }>): Promise<MobileSessionState> {
+    async signIn(
+      credentials: Readonly<{ email: string; password: string }>
+    ): Promise<MobileSessionState> {
       if (await options.vault.read()) return { status: "sign_out_required" };
       try {
         const response = await request(`${origin}/auth/sign-in`, {
@@ -75,8 +74,8 @@ export function createMobileSessionTransport(options: {
       }
     },
     async signOut(): Promise<
-      Readonly<{ status: "signed_out" }> |
-      Readonly<{ status: "local_session_cleared"; remoteRevocation: "unavailable" }>
+      | Readonly<{ status: "signed_out" }>
+      | Readonly<{ status: "local_session_cleared"; remoteRevocation: "unavailable" }>
     > {
       const token = await options.vault.read();
       try {
@@ -97,27 +96,26 @@ export function createMobileSessionTransport(options: {
         await options.vault.clear();
       }
     },
-    async workerOffer(offerId: string): Promise<
+    async workerOffer(
+      offerId: string
+    ): Promise<
       | Readonly<{ status: "ready"; data: WorkerCalendarDto }>
       | Readonly<{ status: "empty" | "denied" | "error" | "unavailable" | "stale" }>
     > {
       const token = await options.vault.read();
       if (!token) return { status: "denied" };
       try {
-        const response = await request(
-          `${origin}/worker/offers/${encodeURIComponent(offerId)}`,
-          {
-            method: "GET",
-            headers: { accept: "application/json", authorization: `Bearer ${token}` },
-            cache: "no-store"
-          }
-        );
+        const response = await request(`${origin}/worker/offers/${encodeURIComponent(offerId)}`, {
+          method: "GET",
+          headers: { accept: "application/json", authorization: `Bearer ${token}` },
+          cache: "no-store"
+        });
         if (response.status === 401 || response.status === 403) return { status: "denied" };
         if (response.status === 404) return { status: "empty" };
         if (response.status === 409 || response.status === 412) return { status: "stale" };
         if (response.status === 503) return { status: "unavailable" };
         if (!response.ok) return { status: "error" };
-        const payload = await response.json() as { workerOffer?: unknown };
+        const payload = (await response.json()) as { workerOffer?: unknown };
         return { status: "ready", data: parseWorkerCalendarDto(payload.workerOffer) };
       } catch {
         return { status: "error" };
@@ -138,7 +136,7 @@ export function createMobileSessionTransport(options: {
         if (response.status === 401 || response.status === 403) return { status: "denied" };
         if (response.status === 503) return { status: "unavailable" };
         if (!response.ok) return { status: "error" };
-        const payload = await response.json() as { workerOffers?: unknown };
+        const payload = (await response.json()) as { workerOffers?: unknown };
         if (!Array.isArray(payload.workerOffers)) return { status: "error" };
         const workerOffers = payload.workerOffers.map(parseWorkerCalendarDto);
         return workerOffers.length === 0
@@ -163,7 +161,7 @@ export function createMobileSessionTransport(options: {
         if (response.status === 401 || response.status === 403) return { status: "denied" };
         if (response.status === 503) return { status: "unavailable" };
         if (!response.ok) return { status: "error" };
-        const payload = await response.json() as { assignments?: unknown };
+        const payload = (await response.json()) as { assignments?: unknown };
         if (!Array.isArray(payload.assignments)) return { status: "error" };
         const assignments = payload.assignments.map(parseWorkerAssignment);
         return assignments.length === 0
@@ -173,12 +171,14 @@ export function createMobileSessionTransport(options: {
         return { status: "error" };
       }
     },
-    async respondToWorkerOffer(input: Readonly<{
-      offerId: string;
-      decision: "accept" | "decline";
-      expectedVersion: number;
-      expectedTermsVersionId: string;
-    }>): Promise<
+    async respondToWorkerOffer(
+      input: Readonly<{
+        offerId: string;
+        decision: "accept" | "decline";
+        expectedVersion: number;
+        expectedTermsVersionId: string;
+      }>
+    ): Promise<
       | Readonly<{ status: "ready"; data: WorkerCalendarDto }>
       | Readonly<{ status: "denied" | "error" | "unavailable" | "stale" }>
     > {
@@ -206,7 +206,7 @@ export function createMobileSessionTransport(options: {
         if (response.status === 404) return { status: "unavailable" };
         if (response.status === 503) return { status: "unavailable" };
         if (!response.ok) return { status: "error" };
-        const payload = await response.json() as { workerOffer?: unknown };
+        const payload = (await response.json()) as { workerOffer?: unknown };
         return { status: "ready", data: parseWorkerCalendarDto(payload.workerOffer) };
       } catch {
         return { status: "error" };

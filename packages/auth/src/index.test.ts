@@ -5071,9 +5071,7 @@ class MemoryWorkerOfferRepository implements WorkerOfferRepository {
     });
     await this.recordWorkerOfferAuditEvent({
       action:
-        input.nextStatus === "delivered"
-          ? "worker_offer.delivery_succeeded"
-          : "worker_offer.sent",
+        input.nextStatus === "delivered" ? "worker_offer.delivery_succeeded" : "worker_offer.sent",
       organizationId: input.organizationId,
       workerOfferId: input.workerOfferId,
       dispatchReviewId: input.dispatchReviewId,
