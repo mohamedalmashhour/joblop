@@ -51,3 +51,8 @@ Expiry: before the next production release or 2026-08-10, whichever occurs first
 upgrade the Expo/React Native toolchain to a release that removes the legacy
 `chromium-edge-launcher > rimraf > glob > minimatch` branch, rerun the scan, and remove this
 exception. Security approval is external and remains required.
+
+The exception request must record the full 40-character release SHA, installed vulnerable version
+and dependency path, runtime/build relevance, compensating controls, named security approver,
+approval timestamp, expiry and removal owner. An unsigned request, an abbreviated/mutable release
+reference, or an expired approval does not satisfy the gate.

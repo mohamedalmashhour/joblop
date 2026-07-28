@@ -54,7 +54,8 @@ pnpm scan:secrets
 
 Acceptance requires an executed passing C3 case (not merely zero skips), unchanged red probes
 rejecting mixed currencies and invalid precision, explicit review of every other skip,
-producer/consumer compatibility evidence, and a clean full validation run.
+producer/consumer compatibility evidence, a clean full validation run, and evidence bound to the
+full 40-character Resident Workforce OS release SHA.
 
 ## Approval
 

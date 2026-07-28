@@ -53,6 +53,10 @@ describe("database restore rehearsal guardrails", () => {
     },
     {
       ...validInput,
+      targetClusterId: "restore"
+    },
+    {
+      ...validInput,
       targetDatabaseUrl: "postgresql://operator:secret@restore.example.test/rwos_restore_test"
     },
     {

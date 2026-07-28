@@ -9,6 +9,7 @@ Required configuration is supplied by the approved secret manager:
 - `NODE_ENV=production`
 - `RWOS_STAGING_VALIDATION_CONFIRMATION=authorized-staging-validation`
 - `RWOS_RELEASE_SHA` as the full lowercase 40-character release commit
+- `RWOS_STAGING_DATABASE_CLUSTER_ID`, `RWOS_PRODUCTION_DATABASE_CLUSTER_ID`
 - `DATABASE_URL`
 - `INTERNAL_API_ORIGIN`
 - `AUTH_RATE_LIMITER_ORIGIN`, `AUTH_RATE_LIMITER_TOKEN`, `AUTH_RATE_LIMITER_KEY_SECRET`
@@ -21,6 +22,9 @@ Required configuration is supplied by the approved secret manager:
 Execute:
 
 ```sh
+RWOS_RELEASE_SHA="<full-release-commit-sha>" \
+RWOS_STAGING_DATABASE_CLUSTER_ID="<immutable-approved-staging-cluster-id>" \
+RWOS_PRODUCTION_DATABASE_CLUSTER_ID="<immutable-production-cluster-id>" \
 pnpm validate:staging
 RWOS_TEST_DATABASE_URL="<approved-staging-admin-database-url>" \
 RWOS_TEST_DATABASE_CLUSTER_ID="<immutable-approved-staging-cluster-id>" \
@@ -34,7 +38,10 @@ The first command checks repository boundaries, migration integrity, HTTPS depen
 database connectivity, and applied migration state. It rejects localhost, an unlabeled database,
 missing staging authorization, missing providers, insecure URLs, and shared limiter credentials.
 The staging database URL must use `sslmode=require`, `verify-ca`, or `verify-full`. A passing result
-emits the non-secret release SHA. The command performs no schema or business-data mutations.
+emits the non-secret release SHA, provider-qualified staging/production cluster IDs, and TLS mode.
+Cluster IDs must contain at least three stable provider-inventory segments; mutable labels such as
+`current`, `latest`, `unknown`, `placeholder`, or `tbd` are rejected. The command performs no schema
+or business-data mutations.
 
 The PostgreSQL concurrency command is intentionally separate because it creates test records. It
 creates a uniquely named database, applies all migrations, runs the real concurrency suites, and

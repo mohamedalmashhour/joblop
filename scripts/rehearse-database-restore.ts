@@ -83,6 +83,10 @@ async function main() {
         completedAt: completedAt.toISOString(),
         durationSeconds: Math.ceil((completedAt.getTime() - startedAt.getTime()) / 1000),
         releaseSha: process.env.RWOS_RELEASE_SHA,
+        sourceClusterId: process.env.RWOS_REHEARSAL_SOURCE_CLUSTER_ID,
+        targetClusterId: process.env.RWOS_REHEARSAL_TARGET_CLUSTER_ID,
+        sourceTlsMode: source.searchParams.get("sslmode") ?? "local-only",
+        targetTlsMode: target.searchParams.get("sslmode") ?? "local-only",
         targetDatabase: target.pathname.slice(1),
         dumpSha256: createHash("sha256").update(dump).digest("hex")
       })

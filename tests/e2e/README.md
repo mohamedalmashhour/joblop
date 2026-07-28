@@ -4,6 +4,12 @@ Status: **BLOCKED — executable browser runner/configuration is not implemented
 implementation, credentials and staging fixtures remain open. Repository unit/integration fixtures
 must never be presented as target-environment evidence.
 
+The missing runner must use a maintained browser automation framework, define Chrome/Safari-engine/
+Firefox coverage, fail closed without a full release SHA and approved staging inputs, exercise the
+visible UI rather than relabel API requests, retain privacy-reviewed traces/screenshots, and provide
+an exact non-interactive command suitable for CI. Runner implementation alone does not make this
+gate GREEN.
+
 ## Required inputs
 
 - employer, administrator, worker, revoked, expired, inactive and cross-tenant test accounts;

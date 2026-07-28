@@ -70,7 +70,9 @@ pnpm db:restore:rehearse
 ```
 
 The source and target cluster IDs must come independently from the database provider inventory and
-must differ. Remote database URLs must require TLS using `sslmode=require`, `verify-ca`, or
+must differ. They must be stable provider-qualified identities with at least three segments; mutable
+labels such as `current`, `latest`, `unknown`, `placeholder`, or `tbd` are rejected. Remote database
+URLs must require TLS using `sslmode=require`, `verify-ca`, or
 `verify-full`. The command creates a temporary custom-format `pg_dump`, restores it with `pg_restore --clean
 --if-exists` into the disposable target, checks Prisma migration status, verifies completed
 migration rows, emits the release SHA and a SHA-256 evidence record, and removes the temporary dump.
@@ -82,8 +84,8 @@ guard to point at production.
 ## Staging migration rehearsal
 
 1. Restore a recent protected production-like backup into a new isolated database.
-2. Record a non-secret run ID, commit SHA, migration names/checksums, UTC start, and baseline safe
-   counts/invariants.
+2. Record a non-secret run ID, full lowercase 40-character release commit, migration
+   names/checksums, UTC start, and baseline safe counts/invariants.
 3. Run exactly one `prisma migrate deploy` job using a separate migration credential.
 4. Record duration, lock waits, replication/storage effects, and `_prisma_migrations` status.
 5. Run deploy again and prove it is a no-op.

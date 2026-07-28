@@ -1,3 +1,9 @@
+import {
+  isFullReleaseSha,
+  isImmutableExternalIdentity,
+  readApprovedPostgresTlsMode
+} from "./evidence-policy";
+
 export const rehearsalConfirmation = "restore-to-disposable-database";
 
 export function validateDatabaseRehearsalInput(input: {
@@ -17,13 +23,19 @@ export function validateDatabaseRehearsalInput(input: {
   if (!input.sourceClusterId?.trim()) {
     throw new Error("RWOS_DATABASE_REHEARSAL_SOURCE_CLUSTER_ID_REQUIRED");
   }
+  if (!isImmutableExternalIdentity(input.sourceClusterId)) {
+    throw new Error("RWOS_DATABASE_REHEARSAL_SOURCE_CLUSTER_ID_AMBIGUOUS");
+  }
   if (!input.targetClusterId?.trim()) {
     throw new Error("RWOS_DATABASE_REHEARSAL_TARGET_CLUSTER_ID_REQUIRED");
+  }
+  if (!isImmutableExternalIdentity(input.targetClusterId)) {
+    throw new Error("RWOS_DATABASE_REHEARSAL_TARGET_CLUSTER_ID_AMBIGUOUS");
   }
   if (input.sourceClusterId.trim() === input.targetClusterId.trim()) {
     throw new Error("RWOS_DATABASE_REHEARSAL_CLUSTER_IDENTITY_MATCH");
   }
-  if (!input.releaseSha || !/^[a-f0-9]{40}$/.test(input.releaseSha)) {
+  if (!isFullReleaseSha(input.releaseSha)) {
     throw new Error("RWOS_DATABASE_REHEARSAL_RELEASE_SHA_REQUIRED");
   }
   if (source.href === target.href) throw new Error("RWOS_DATABASE_REHEARSAL_TARGET_EQUALS_SOURCE");
@@ -51,8 +63,7 @@ function parsePostgresUrl(value: string | undefined, label: string) {
     throw new Error(`RWOS_DATABASE_REHEARSAL_${label}_URL_INVALID`);
   }
   if (!/^(localhost|127\.0\.0\.1|\[::1\])$/.test(parsed.hostname)) {
-    const sslMode = parsed.searchParams.get("sslmode");
-    if (!["require", "verify-ca", "verify-full"].includes(sslMode ?? "")) {
+    if (!readApprovedPostgresTlsMode(parsed)) {
       throw new Error(`RWOS_DATABASE_REHEARSAL_${label}_TLS_REQUIRED`);
     }
   }

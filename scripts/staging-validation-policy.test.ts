@@ -11,6 +11,8 @@ const validEnvironment = {
   NODE_ENV: "production",
   RWOS_STAGING_VALIDATION_CONFIRMATION: stagingConfirmation,
   RWOS_RELEASE_SHA: "0123456789abcdef0123456789abcdef01234567",
+  RWOS_STAGING_DATABASE_CLUSTER_ID: "provider/staging/cluster-01",
+  RWOS_PRODUCTION_DATABASE_CLUSTER_ID: "provider/production/cluster-01",
   DATABASE_URL: "postgresql://rwos@db.example.test/rwos_staging?sslmode=verify-full",
   INTERNAL_API_ORIGIN: "https://api.staging.example.test",
   AUTH_RATE_LIMITER_ORIGIN: "https://limiter.staging.example.test",
@@ -36,6 +38,7 @@ describe("staging validation policy", () => {
         "RWOS_ENV must be production.",
         "NODE_ENV must be production.",
         "RWOS_RELEASE_SHA is required.",
+        "RWOS_STAGING_DATABASE_CLUSTER_ID is required.",
         "DATABASE_URL is required.",
         "CANDIDATE_SOURCE_ORIGIN is required.",
         "MONITORING_HEALTHCHECK_URL is required."
@@ -59,6 +62,14 @@ describe("staging validation policy", () => {
       { DATABASE_URL: "postgresql://rwos@db.example.test/rwos_staging?sslmode=disable" }
     ],
     ["abbreviated release SHA", { RWOS_RELEASE_SHA: "6727705" }],
+    ["ambiguous cluster identity", { RWOS_STAGING_DATABASE_CLUSTER_ID: "staging" }],
+    [
+      "colliding cluster identities",
+      {
+        RWOS_STAGING_DATABASE_CLUSTER_ID: "provider/production/cluster-01",
+        RWOS_PRODUCTION_DATABASE_CLUSTER_ID: "provider/production/cluster-01"
+      }
+    ],
     ["insecure provider", { OFFER_DELIVERY_ORIGIN: "http://delivery.example.test" }],
     [
       "shared limiter secrets",

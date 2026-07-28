@@ -62,5 +62,14 @@ async function main() {
     process.exit(1);
   }
 
-  process.stdout.write(`STAGING_VALIDATION_PASS releaseSha=${process.env.RWOS_RELEASE_SHA}\n`);
+  const databaseUrl = new URL(process.env.DATABASE_URL!);
+  process.stdout.write(
+    [
+      "STAGING_VALIDATION_PASS",
+      `releaseSha=${process.env.RWOS_RELEASE_SHA}`,
+      `stagingClusterId=${process.env.RWOS_STAGING_DATABASE_CLUSTER_ID}`,
+      `productionClusterId=${process.env.RWOS_PRODUCTION_DATABASE_CLUSTER_ID}`,
+      `databaseTlsMode=${databaseUrl.searchParams.get("sslmode")}`
+    ].join(" ") + "\n"
+  );
 }

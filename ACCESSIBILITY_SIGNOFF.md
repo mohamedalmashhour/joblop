@@ -3,6 +3,17 @@
 Status: **not signed off**. Static semantics and contrast-oriented fixes exist; no real-device or
 assistive-technology evidence is recorded.
 
+Evidence layers are cumulative and non-substitutable:
+
+1. static lint and source semantics;
+2. automated browser accessibility checks on the exact release;
+3. keyboard-only and manual browser checks;
+4. physical-device layout, touch and scaling checks;
+5. VoiceOver/TalkBack/screen-reader execution;
+6. dated acceptance by the named accessibility owner.
+
+Passing an earlier layer never satisfies a later layer.
+
 Required matrix:
 
 | Surface        | Required evidence                                                        | Status |

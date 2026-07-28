@@ -3,6 +3,11 @@
 Status: local production-readiness foundation. External dashboards, paging destinations, and
 on-call ownership must be configured before deployment.
 
+`CONFIGURED` means rules, destinations, thresholds and owners exist. It is not launch evidence.
+`ACTUALLY TESTED` requires an alert to fire, a page to be delivered, primary acknowledgement,
+secondary/escalation behavior, recovery timestamps, an incident record and a post-drill result for
+the exact release SHA. Only the latter can satisfy the launch gate.
+
 ## Probe contract
 
 - `GET /health` is liveness only. A `200` proves the process can serve HTTP; it does not prove the

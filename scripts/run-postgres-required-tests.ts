@@ -44,7 +44,14 @@ async function main() {
       await administrationClient.$executeRawUnsafe(`CREATE DATABASE "${databaseName}"`);
       databaseCreated = true;
       process.stdout.write(
-        `POSTGRES_ISOLATED_DATABASE_CREATED name=${databaseName} releaseSha=${process.env.RWOS_RELEASE_SHA}\n`
+        [
+          "POSTGRES_ISOLATED_DATABASE_CREATED",
+          `name=${databaseName}`,
+          `releaseSha=${process.env.RWOS_RELEASE_SHA}`,
+          `testClusterId=${process.env.RWOS_TEST_DATABASE_CLUSTER_ID}`,
+          `productionClusterId=${process.env.RWOS_PRODUCTION_DATABASE_CLUSTER_ID}`,
+          `databaseTlsMode=${baseUrl.searchParams.get("sslmode") ?? "local-only"}`
+        ].join(" ") + "\n"
       );
     } finally {
       await administrationClient.$disconnect();

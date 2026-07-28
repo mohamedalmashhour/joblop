@@ -1,3 +1,9 @@
+import {
+  isFullReleaseSha,
+  isImmutableExternalIdentity,
+  readApprovedPostgresTlsMode
+} from "./evidence-policy";
+
 export const stagingConfirmation = "authorized-staging-validation";
 
 export type StagingValidationEnvironment = Readonly<Record<string, string | undefined>>;
@@ -27,6 +33,8 @@ export function validateStagingEnvironment(env: StagingValidationEnvironment) {
   const issues: string[] = [];
   const required = [
     "RWOS_RELEASE_SHA",
+    "RWOS_STAGING_DATABASE_CLUSTER_ID",
+    "RWOS_PRODUCTION_DATABASE_CLUSTER_ID",
     "DATABASE_URL",
     "INTERNAL_API_ORIGIN",
     "AUTH_RATE_LIMITER_ORIGIN",
@@ -49,8 +57,22 @@ export function validateStagingEnvironment(env: StagingValidationEnvironment) {
   for (const key of required) {
     if (!env[key]?.trim()) issues.push(`${key} is required.`);
   }
-  if (env.RWOS_RELEASE_SHA && !/^[a-f0-9]{40}$/.test(env.RWOS_RELEASE_SHA)) {
+  if (env.RWOS_RELEASE_SHA && !isFullReleaseSha(env.RWOS_RELEASE_SHA)) {
     issues.push("RWOS_RELEASE_SHA must be a full lowercase 40-character Git commit SHA.");
+  }
+  for (const key of [
+    "RWOS_STAGING_DATABASE_CLUSTER_ID",
+    "RWOS_PRODUCTION_DATABASE_CLUSTER_ID"
+  ] as const) {
+    if (env[key] && !isImmutableExternalIdentity(env[key])) {
+      issues.push(`${key} must be an immutable provider-qualified identity.`);
+    }
+  }
+  if (
+    env.RWOS_STAGING_DATABASE_CLUSTER_ID?.trim() &&
+    env.RWOS_STAGING_DATABASE_CLUSTER_ID.trim() === env.RWOS_PRODUCTION_DATABASE_CLUSTER_ID?.trim()
+  ) {
+    issues.push("The staging and production database cluster identifiers must differ.");
   }
 
   for (const key of [
@@ -79,8 +101,7 @@ export function validateStagingEnvironment(env: StagingValidationEnvironment) {
       if (/^(localhost|127\.0\.0\.1|\[::1\])$/.test(parsed.hostname)) {
         issues.push("DATABASE_URL must not use localhost for target staging validation.");
       }
-      const sslMode = parsed.searchParams.get("sslmode");
-      if (!["require", "verify-ca", "verify-full"].includes(sslMode ?? "")) {
+      if (!readApprovedPostgresTlsMode(parsed)) {
         issues.push(
           "DATABASE_URL must require TLS with sslmode=require, verify-ca, or verify-full."
         );

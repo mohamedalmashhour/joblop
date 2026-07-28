@@ -1,3 +1,9 @@
+import {
+  isFullReleaseSha,
+  isImmutableExternalIdentity,
+  readApprovedPostgresTlsMode
+} from "./evidence-policy";
+
 export const postgresTestConfirmation = "disposable-test-target";
 
 export function buildIsolatedDatabaseUrl(baseDatabaseUrl: string, databaseName: string) {
@@ -22,9 +28,17 @@ export function validatePostgresTestTarget(
     issues.push(`RWOS_TEST_DATABASE_CONFIRMATION must equal ${postgresTestConfirmation}.`);
   }
   if (!testClusterId?.trim()) issues.push("RWOS_TEST_DATABASE_CLUSTER_ID is required.");
+  else if (!isImmutableExternalIdentity(testClusterId)) {
+    issues.push("RWOS_TEST_DATABASE_CLUSTER_ID must be an immutable provider-qualified identity.");
+  }
   if (!productionClusterId?.trim()) issues.push("RWOS_PRODUCTION_DATABASE_CLUSTER_ID is required.");
+  else if (!isImmutableExternalIdentity(productionClusterId)) {
+    issues.push(
+      "RWOS_PRODUCTION_DATABASE_CLUSTER_ID must be an immutable provider-qualified identity."
+    );
+  }
   if (!releaseSha?.trim()) issues.push("RWOS_RELEASE_SHA is required.");
-  if (releaseSha && !/^[a-f0-9]{40}$/.test(releaseSha)) {
+  if (releaseSha && !isFullReleaseSha(releaseSha)) {
     issues.push("RWOS_RELEASE_SHA must be a full lowercase 40-character Git commit SHA.");
   }
   if (testClusterId?.trim() && testClusterId.trim() === productionClusterId?.trim()) {
@@ -43,6 +57,13 @@ export function validatePostgresTestTarget(
       issues.push(
         "RWOS_TEST_DATABASE_URL must name an explicit staging, validation, or test database."
       );
+    }
+    if (!/^(localhost|127\.0\.0\.1|\[::1\])$/.test(parsed.hostname)) {
+      if (!readApprovedPostgresTlsMode(parsed)) {
+        issues.push(
+          "RWOS_TEST_DATABASE_URL must require TLS with sslmode=require, verify-ca, or verify-full."
+        );
+      }
     }
   } catch {
     issues.push("RWOS_TEST_DATABASE_URL must be a valid PostgreSQL URL.");

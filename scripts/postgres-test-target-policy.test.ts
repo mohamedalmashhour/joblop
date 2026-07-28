@@ -7,7 +7,7 @@ import {
 } from "./postgres-test-target-policy";
 
 describe("required PostgreSQL target policy", () => {
-  const testUrl = "postgresql://rwos@db.example.test/rwos_staging";
+  const testUrl = "postgresql://rwos@db.example.test/rwos_staging?sslmode=verify-full";
   const testClusterId = "provider/staging/cluster-01";
   const productionClusterId = "provider/production/cluster-01";
   const releaseSha = "0123456789abcdef0123456789abcdef01234567";
@@ -91,6 +91,31 @@ describe("required PostgreSQL target policy", () => {
         "6727705"
       )
     ).toContain("RWOS_RELEASE_SHA must be a full lowercase 40-character Git commit SHA.");
+  });
+
+  it("rejects ambiguous cluster identities and TLS downgrade", () => {
+    expect(
+      validatePostgresTestTarget(
+        testUrl,
+        postgresTestConfirmation,
+        undefined,
+        "staging",
+        productionClusterId,
+        releaseSha
+      )
+    ).toContain("RWOS_TEST_DATABASE_CLUSTER_ID must be an immutable provider-qualified identity.");
+    expect(
+      validatePostgresTestTarget(
+        "postgresql://rwos@db.example.test/rwos_staging?sslmode=disable",
+        postgresTestConfirmation,
+        undefined,
+        testClusterId,
+        productionClusterId,
+        releaseSha
+      )
+    ).toContain(
+      "RWOS_TEST_DATABASE_URL must require TLS with sslmode=require, verify-ca, or verify-full."
+    );
   });
 
   it("preserves required connection parameters in the isolated database URL", () => {
