@@ -17,7 +17,8 @@ async function main() {
     process.env.RWOS_TEST_DATABASE_CONFIRMATION,
     process.env.DATABASE_URL,
     process.env.RWOS_TEST_DATABASE_CLUSTER_ID,
-    process.env.RWOS_PRODUCTION_DATABASE_CLUSTER_ID
+    process.env.RWOS_PRODUCTION_DATABASE_CLUSTER_ID,
+    process.env.RWOS_RELEASE_SHA
   );
   if (issues.length > 0) {
     for (const issue of issues) process.stderr.write(`${issue}\n`);
@@ -42,7 +43,9 @@ async function main() {
     try {
       await administrationClient.$executeRawUnsafe(`CREATE DATABASE "${databaseName}"`);
       databaseCreated = true;
-      process.stdout.write(`POSTGRES_ISOLATED_DATABASE_CREATED name=${databaseName}\n`);
+      process.stdout.write(
+        `POSTGRES_ISOLATED_DATABASE_CREATED name=${databaseName} releaseSha=${process.env.RWOS_RELEASE_SHA}\n`
+      );
     } finally {
       await administrationClient.$disconnect();
     }
@@ -76,7 +79,9 @@ async function main() {
       }
     }
   }
-  process.stdout.write("POSTGRES_REQUIRED_VALIDATION_PASS\n");
+  process.stdout.write(
+    `POSTGRES_REQUIRED_VALIDATION_PASS releaseSha=${process.env.RWOS_RELEASE_SHA}\n`
+  );
 }
 
 function run(command: string, args: string[], environment: NodeJS.ProcessEnv) {

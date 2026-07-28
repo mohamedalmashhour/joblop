@@ -4,6 +4,9 @@ export function validateDatabaseRehearsalInput(input: {
   sourceDatabaseUrl: string | undefined;
   targetDatabaseUrl: string | undefined;
   targetIdentity: string | undefined;
+  sourceClusterId: string | undefined;
+  targetClusterId: string | undefined;
+  releaseSha: string | undefined;
   confirmation: string | undefined;
 }) {
   if (input.confirmation !== rehearsalConfirmation) {
@@ -11,6 +14,18 @@ export function validateDatabaseRehearsalInput(input: {
   }
   const source = parsePostgresUrl(input.sourceDatabaseUrl, "SOURCE");
   const target = parsePostgresUrl(input.targetDatabaseUrl, "TARGET");
+  if (!input.sourceClusterId?.trim()) {
+    throw new Error("RWOS_DATABASE_REHEARSAL_SOURCE_CLUSTER_ID_REQUIRED");
+  }
+  if (!input.targetClusterId?.trim()) {
+    throw new Error("RWOS_DATABASE_REHEARSAL_TARGET_CLUSTER_ID_REQUIRED");
+  }
+  if (input.sourceClusterId.trim() === input.targetClusterId.trim()) {
+    throw new Error("RWOS_DATABASE_REHEARSAL_CLUSTER_IDENTITY_MATCH");
+  }
+  if (!input.releaseSha || !/^[a-f0-9]{40}$/.test(input.releaseSha)) {
+    throw new Error("RWOS_DATABASE_REHEARSAL_RELEASE_SHA_REQUIRED");
+  }
   if (source.href === target.href) throw new Error("RWOS_DATABASE_REHEARSAL_TARGET_EQUALS_SOURCE");
   const targetDatabase = target.pathname.slice(1).toLowerCase();
   if (!/(?:^|[_-])(rehearsal|restore[_-]?test)(?:$|[_-])/.test(targetDatabase)) {
@@ -34,6 +49,12 @@ function parsePostgresUrl(value: string | undefined, label: string) {
   }
   if (!parsed.hostname || parsed.pathname.length <= 1) {
     throw new Error(`RWOS_DATABASE_REHEARSAL_${label}_URL_INVALID`);
+  }
+  if (!/^(localhost|127\.0\.0\.1|\[::1\])$/.test(parsed.hostname)) {
+    const sslMode = parsed.searchParams.get("sslmode");
+    if (!["require", "verify-ca", "verify-full"].includes(sslMode ?? "")) {
+      throw new Error(`RWOS_DATABASE_REHEARSAL_${label}_TLS_REQUIRED`);
+    }
   }
   return parsed;
 }

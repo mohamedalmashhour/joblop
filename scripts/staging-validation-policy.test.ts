@@ -10,7 +10,8 @@ const validEnvironment = {
   RWOS_ENV: "production",
   NODE_ENV: "production",
   RWOS_STAGING_VALIDATION_CONFIRMATION: stagingConfirmation,
-  DATABASE_URL: "postgresql://rwos@db.example.test/rwos_staging",
+  RWOS_RELEASE_SHA: "0123456789abcdef0123456789abcdef01234567",
+  DATABASE_URL: "postgresql://rwos@db.example.test/rwos_staging?sslmode=verify-full",
   INTERNAL_API_ORIGIN: "https://api.staging.example.test",
   AUTH_RATE_LIMITER_ORIGIN: "https://limiter.staging.example.test",
   AUTH_RATE_LIMITER_TOKEN: "limiter-token-that-is-longer-than-thirty-two-characters",
@@ -34,6 +35,7 @@ describe("staging validation policy", () => {
       expect.arrayContaining([
         "RWOS_ENV must be production.",
         "NODE_ENV must be production.",
+        "RWOS_RELEASE_SHA is required.",
         "DATABASE_URL is required.",
         "CANDIDATE_SOURCE_ORIGIN is required.",
         "MONITORING_HEALTHCHECK_URL is required."
@@ -48,6 +50,15 @@ describe("staging validation policy", () => {
       { DATABASE_URL: "postgresql://rwos@db.example.test/resident_workforce" }
     ],
     ["non-PostgreSQL database", { DATABASE_URL: "https://db.example.test/rwos_staging" }],
+    [
+      "missing database TLS mode",
+      { DATABASE_URL: "postgresql://rwos@db.example.test/rwos_staging" }
+    ],
+    [
+      "disabled database TLS",
+      { DATABASE_URL: "postgresql://rwos@db.example.test/rwos_staging?sslmode=disable" }
+    ],
+    ["abbreviated release SHA", { RWOS_RELEASE_SHA: "6727705" }],
     ["insecure provider", { OFFER_DELIVERY_ORIGIN: "http://delivery.example.test" }],
     [
       "shared limiter secrets",

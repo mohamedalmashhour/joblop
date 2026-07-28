@@ -26,6 +26,7 @@ export function isMigrationStateComplete(
 export function validateStagingEnvironment(env: StagingValidationEnvironment) {
   const issues: string[] = [];
   const required = [
+    "RWOS_RELEASE_SHA",
     "DATABASE_URL",
     "INTERNAL_API_ORIGIN",
     "AUTH_RATE_LIMITER_ORIGIN",
@@ -47,6 +48,9 @@ export function validateStagingEnvironment(env: StagingValidationEnvironment) {
   }
   for (const key of required) {
     if (!env[key]?.trim()) issues.push(`${key} is required.`);
+  }
+  if (env.RWOS_RELEASE_SHA && !/^[a-f0-9]{40}$/.test(env.RWOS_RELEASE_SHA)) {
+    issues.push("RWOS_RELEASE_SHA must be a full lowercase 40-character Git commit SHA.");
   }
 
   for (const key of [
@@ -74,6 +78,12 @@ export function validateStagingEnvironment(env: StagingValidationEnvironment) {
       }
       if (/^(localhost|127\.0\.0\.1|\[::1\])$/.test(parsed.hostname)) {
         issues.push("DATABASE_URL must not use localhost for target staging validation.");
+      }
+      const sslMode = parsed.searchParams.get("sslmode");
+      if (!["require", "verify-ca", "verify-full"].includes(sslMode ?? "")) {
+        issues.push(
+          "DATABASE_URL must require TLS with sslmode=require, verify-ca, or verify-full."
+        );
       }
     } catch {
       issues.push("DATABASE_URL must be a valid PostgreSQL URL.");

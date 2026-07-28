@@ -61,14 +61,19 @@ phrase.
 ```sh
 RWOS_REHEARSAL_SOURCE_DATABASE_URL='<secret source URL>' \
 RWOS_REHEARSAL_TARGET_DATABASE_URL='<secret disposable target URL>' \
+RWOS_REHEARSAL_SOURCE_CLUSTER_ID='<immutable source cluster ID>' \
+RWOS_REHEARSAL_TARGET_CLUSTER_ID='<immutable disposable restore cluster ID>' \
 RWOS_REHEARSAL_TARGET_IDENTITY='<target-host>/<target-account>/<target-database>' \
+RWOS_RELEASE_SHA='<full lowercase 40-character release commit>' \
 RWOS_REHEARSAL_CONFIRM='restore-to-disposable-database' \
 pnpm db:restore:rehearse
 ```
 
-The command creates a temporary custom-format `pg_dump`, restores it with `pg_restore --clean
+The source and target cluster IDs must come independently from the database provider inventory and
+must differ. Remote database URLs must require TLS using `sslmode=require`, `verify-ca`, or
+`verify-full`. The command creates a temporary custom-format `pg_dump`, restores it with `pg_restore --clean
 --if-exists` into the disposable target, checks Prisma migration status, verifies completed
-migration rows, emits a SHA-256 evidence record, and removes the temporary dump.
+migration rows, emits the release SHA and a SHA-256 evidence record, and removes the temporary dump.
 
 Stop if the target identity is unexpected, the target contains data that must be retained, the dump
 or restore fails, migrations are pending/failed, or any invariant check differs. Never modify the

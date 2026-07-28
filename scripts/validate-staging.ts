@@ -62,5 +62,5 @@ async function main() {
     process.exit(1);
   }
 
-  process.stdout.write("STAGING_VALIDATION_PASS\n");
+  process.stdout.write(`STAGING_VALIDATION_PASS releaseSha=${process.env.RWOS_RELEASE_SHA}\n`);
 }

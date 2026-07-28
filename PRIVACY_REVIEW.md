@@ -13,10 +13,19 @@ Status: code-level inventory complete; legal/privacy decisions and operational v
 | Logs                 | request IDs, normalized route, status, duration                        | reliability/security            | restricted operations                            | retention, access, regional storage               |
 | Backups              | encrypted database recovery points                                     | resilience                      | database/security operators                      | retention, deletion propagation, legal hold       |
 
+## Technical evidence
+
 Code-level controls minimize employer staffing progress and worker offer/Assignment DTOs, reject
 cross-tenant access, and filter credential/contact field names from structured logs. These controls
 do not decide lawful basis, notices, consent, residency, records of processing, data-subject request
 timelines, legal holds, or statutory retention.
+
+There is no general-purpose data export, deletion/anonymization, retention scheduler, backup-expiry
+propagation, or legal-hold engine in the current launch scope. Account closure is a governed status
+transition and audit event; it must not be represented as physical deletion. Technical execution of
+an owner-approved policy therefore remains a launch gate.
+
+## Legal/privacy approval required
 
 Before launch, privacy/legal owners must approve collection purpose, lawful basis, notice text,
 retention schedule, deletion/anonymization behavior, export/correction procedure, subprocessor list,

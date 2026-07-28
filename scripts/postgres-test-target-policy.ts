@@ -11,7 +11,8 @@ export function validatePostgresTestTarget(
   confirmation: string | undefined,
   applicationDatabaseUrl: string | undefined,
   testClusterId: string | undefined,
-  productionClusterId: string | undefined
+  productionClusterId: string | undefined,
+  releaseSha: string | undefined
 ) {
   const issues: string[] = [];
   if (!testDatabaseUrl) {
@@ -22,6 +23,10 @@ export function validatePostgresTestTarget(
   }
   if (!testClusterId?.trim()) issues.push("RWOS_TEST_DATABASE_CLUSTER_ID is required.");
   if (!productionClusterId?.trim()) issues.push("RWOS_PRODUCTION_DATABASE_CLUSTER_ID is required.");
+  if (!releaseSha?.trim()) issues.push("RWOS_RELEASE_SHA is required.");
+  if (releaseSha && !/^[a-f0-9]{40}$/.test(releaseSha)) {
+    issues.push("RWOS_RELEASE_SHA must be a full lowercase 40-character Git commit SHA.");
+  }
   if (testClusterId?.trim() && testClusterId.trim() === productionClusterId?.trim()) {
     issues.push("The approved test and production database cluster identifiers must differ.");
   }

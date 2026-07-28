@@ -10,6 +10,7 @@ describe("required PostgreSQL target policy", () => {
   const testUrl = "postgresql://rwos@db.example.test/rwos_staging";
   const testClusterId = "provider/staging/cluster-01";
   const productionClusterId = "provider/production/cluster-01";
+  const releaseSha = "0123456789abcdef0123456789abcdef01234567";
 
   it("accepts an explicit disposable staging target", () => {
     expect(
@@ -18,17 +19,18 @@ describe("required PostgreSQL target policy", () => {
         postgresTestConfirmation,
         undefined,
         testClusterId,
-        productionClusterId
+        productionClusterId,
+        releaseSha
       )
     ).toEqual([]);
   });
 
   it("fails closed without URL or confirmation", () => {
     expect(
-      validatePostgresTestTarget(undefined, undefined, undefined, undefined, undefined)
+      validatePostgresTestTarget(undefined, undefined, undefined, undefined, undefined, undefined)
     ).toEqual(["RWOS_TEST_DATABASE_URL is required for PostgreSQL concurrency validation."]);
     expect(
-      validatePostgresTestTarget(testUrl, undefined, undefined, undefined, undefined)
+      validatePostgresTestTarget(testUrl, undefined, undefined, undefined, undefined, undefined)
     ).not.toEqual([]);
   });
 
@@ -39,7 +41,8 @@ describe("required PostgreSQL target policy", () => {
         postgresTestConfirmation,
         testUrl,
         testClusterId,
-        productionClusterId
+        productionClusterId,
+        releaseSha
       )
     ).not.toEqual([]);
     expect(
@@ -48,7 +51,8 @@ describe("required PostgreSQL target policy", () => {
         postgresTestConfirmation,
         undefined,
         testClusterId,
-        productionClusterId
+        productionClusterId,
+        releaseSha
       )
     ).not.toEqual([]);
   });
@@ -60,9 +64,33 @@ describe("required PostgreSQL target policy", () => {
         postgresTestConfirmation,
         "postgresql://app@production.example.test/resident_workforce",
         productionClusterId,
-        productionClusterId
+        productionClusterId,
+        releaseSha
       )
     ).toContain("The approved test and production database cluster identifiers must differ.");
+  });
+
+  it("rejects a missing or abbreviated release SHA", () => {
+    expect(
+      validatePostgresTestTarget(
+        testUrl,
+        postgresTestConfirmation,
+        undefined,
+        testClusterId,
+        productionClusterId,
+        undefined
+      )
+    ).toContain("RWOS_RELEASE_SHA is required.");
+    expect(
+      validatePostgresTestTarget(
+        testUrl,
+        postgresTestConfirmation,
+        undefined,
+        testClusterId,
+        productionClusterId,
+        "6727705"
+      )
+    ).toContain("RWOS_RELEASE_SHA must be a full lowercase 40-character Git commit SHA.");
   });
 
   it("preserves required connection parameters in the isolated database URL", () => {

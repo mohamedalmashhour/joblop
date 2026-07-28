@@ -25,7 +25,16 @@ Risk disposition: time-bounded build-tool exception, not a production-runtime ac
 
 Reason: forcing `brace-expansion@5.0.8` across legacy `minimatch@3` was tested and broke ESLint with
 `TypeError: expand is not a function`. Shipping that override would make validation unreliable.
-The compatible upstream chain currently has no patched release in Expo SDK 53.
+The compatible upstream chain currently has no patched release in Expo SDK 53. Registry metadata
+confirms Expo SDK 54 uses `@expo/cli@54.0.23`, whose dependency tree removes
+`chromium-edge-launcher` and uses modern `glob`/`minimatch`. SDK 54 is therefore the minimum
+supported remediation path identified in this review.
+
+That remediation is a coordinated Expo/React Native SDK upgrade, not a safe transitive-only patch.
+It requires updating the SDK-aligned React Native and Expo packages, rebuilding signed iOS and
+Android artifacts, and completing the native functional/accessibility device gates. Those external
+device gates are currently unavailable, so the major upgrade is not being merged based only on a
+web export and unit tests.
 
 Controls:
 

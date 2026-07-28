@@ -5,7 +5,14 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { validateDatabaseRehearsalInput } from "./database-rehearsal-policy";
 
-void main();
+void main().catch((error: unknown) => {
+  const code =
+    error instanceof Error && /^RWOS_[A-Z0-9_:.-]+$/.test(error.message)
+      ? error.message
+      : "RWOS_DATABASE_REHEARSAL_FAILED";
+  process.stderr.write(`${code}\n`);
+  process.exitCode = 1;
+});
 
 async function main() {
   const startedAt = new Date();
@@ -13,6 +20,9 @@ async function main() {
     sourceDatabaseUrl: process.env.RWOS_REHEARSAL_SOURCE_DATABASE_URL,
     targetDatabaseUrl: process.env.RWOS_REHEARSAL_TARGET_DATABASE_URL,
     targetIdentity: process.env.RWOS_REHEARSAL_TARGET_IDENTITY,
+    sourceClusterId: process.env.RWOS_REHEARSAL_SOURCE_CLUSTER_ID,
+    targetClusterId: process.env.RWOS_REHEARSAL_TARGET_CLUSTER_ID,
+    releaseSha: process.env.RWOS_RELEASE_SHA,
     confirmation: process.env.RWOS_REHEARSAL_CONFIRM
   });
   const workingDirectory = await mkdtemp(join(tmpdir(), "rwos-restore-rehearsal-"));
@@ -72,6 +82,7 @@ async function main() {
         startedAt: startedAt.toISOString(),
         completedAt: completedAt.toISOString(),
         durationSeconds: Math.ceil((completedAt.getTime() - startedAt.getTime()) / 1000),
+        releaseSha: process.env.RWOS_RELEASE_SHA,
         targetDatabase: target.pathname.slice(1),
         dumpSha256: createHash("sha256").update(dump).digest("hex")
       })

@@ -30,6 +30,8 @@ Exact commands, refusal safeguards, and the evidence template are in
 
 - [ ] Provider, region, encryption policy, schedule, retention and PITR window recorded.
 - [ ] Source recovery-point identifier and isolated target identifier recorded.
+- [ ] Immutable source/target cluster identifiers recorded and proven distinct.
+- [ ] Full release commit SHA recorded.
 - [ ] Restore target confirmed non-production and source-unequal.
 - [ ] Restore start/end and recovery-point timestamps recorded.
 - [ ] Migration checksums and applied history verified.

@@ -7,6 +7,8 @@ RWOS_PRODUCTION_DATABASE_CLUSTER_ID=<production-id>
 RWOS_TEST_DATABASE_CONFIRMATION=disposable-test-target pnpm test:postgres:required` passes
       against the designated PostgreSQL validation database.
 - [ ] `LAUNCH_READINESS.md` has no blocking open gate.
+- [ ] Authoritative read-only production DB baseline proves compatible IDs/FKs, migrations, and
+      schema inventory against the approved development baseline.
 - [ ] Exact commit and immutable build artifacts identified.
 - [ ] Full validation, PostgreSQL, browser, native, accessibility, security, and dependency evidence
       attached.
