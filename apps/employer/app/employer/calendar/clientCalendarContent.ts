@@ -12,8 +12,8 @@ export const clientCalendarWorkflow = [
     page: "C02",
     title: "Create Staffing Request",
     route: "/employer/calendar/create",
-    status: "Fixture entry",
-    boundary: "Fixture-backed request entry only; no API, persistence, publishing, or assignment."
+    status: "Persisted request entry",
+    boundary: "Creates a persisted draft; publishing and assignment remain separate workflows."
   },
   {
     page: "C03",
@@ -24,10 +24,11 @@ export const clientCalendarWorkflow = [
   },
   {
     page: "C04",
-    title: "Assigned Staffing",
+    title: "Staffing Progress",
     route: "/employer/calendar/assignment",
-    status: "Authorized assignment",
-    boundary: "Minimum assigned-worker identity only; private worker profile data remains hidden."
+    status: "Dispatch progress",
+    boundary:
+      "Aggregate dispatch status only; offers, assignments, worker identity, and economics remain separate."
   }
 ] as const;
 
@@ -96,9 +97,21 @@ export const clientCalendarPrivacyBoundaries = [
 
 export const clientCalendarPrimaryLinks = [
   { label: "Create staffing request", from: "/employer/calendar", to: "/employer/calendar/create" },
-  { label: "Review fixture request", from: "/employer/calendar/create", to: "/employer/calendar/request?mode=fixture" },
-  { label: "View authorized assignment", from: "/employer/calendar/request", to: "/employer/calendar/assignment" },
-  { label: "Back to request calendar", from: "/employer/calendar/assignment", to: "/employer/calendar" }
+  {
+    label: "Review fixture request",
+    from: "/employer/calendar/create",
+    to: "/employer/calendar/request?mode=fixture"
+  },
+  {
+    label: "View authorized assignment",
+    from: "/employer/calendar/request",
+    to: "/employer/calendar/assignment"
+  },
+  {
+    label: "Back to request calendar",
+    from: "/employer/calendar/assignment",
+    to: "/employer/calendar"
+  }
 ] as const;
 
 export const clientAssignmentVisibility = {

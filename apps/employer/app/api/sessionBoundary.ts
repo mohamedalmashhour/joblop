@@ -43,7 +43,8 @@ export function isSameOriginMutation(request: Request) {
 }
 
 export function sessionFailure(status: "denied" | "stale" | "unavailable" | "error") {
-  const httpStatus = status === "denied" ? 401 : status === "stale" ? 409 : status === "unavailable" ? 503 : 500;
+  const httpStatus =
+    status === "denied" ? 401 : status === "stale" ? 409 : status === "unavailable" ? 503 : 500;
   return Response.json(
     {
       status,
@@ -68,6 +69,7 @@ export async function resolveClientOrganizationId(
   token: string | null,
   selectedOrganizationId: string | null
 ) {
+  if (!token) return { status: "denied" } as const;
   const membershipResult = await gateway.request("/memberships", "GET", token);
   if (membershipResult.status !== "ok") return membershipResult;
   const organizations = parseOrganizationChoices(membershipResult.payload);
@@ -83,6 +85,15 @@ export async function resolveClientOrganizationId(
     return { status: "context_required", organizations } as const;
   }
 
+  const capability = await gateway.request(
+    `/authz/employer-calendar/session?organizationId=${encodeURIComponent(organizationId)}`,
+    "GET",
+    token
+  );
+  if (capability.status !== "ok") return capability;
+  if (!hasEmployerCalendarCapability(capability.payload, organizationId)) {
+    return { status: "error" } as const;
+  }
   return { status: "ok", organizationId } as const;
 }
 
@@ -91,12 +102,7 @@ export async function selectClientOrganizationId(
   token: string | null,
   organizationId: string
 ) {
-  return gateway.request(
-    "/memberships/context/select",
-    "POST",
-    token,
-    { organizationId }
-  );
+  return gateway.request("/memberships/context/select", "POST", token, { organizationId });
 }
 
 export type EmployerOrganizationChoice = Readonly<{
@@ -120,10 +126,25 @@ export function parseOrganizationChoices(input: unknown): readonly EmployerOrgan
     ) {
       return [];
     }
-    return [{
-      id: record.organizationId,
-      publicId: record.organizationPublicId,
-      displayName: record.organizationDisplayName
-    }];
+    return [
+      {
+        id: record.organizationId,
+        publicId: record.organizationPublicId,
+        displayName: record.organizationDisplayName
+      }
+    ];
   });
+}
+
+function hasEmployerCalendarCapability(input: unknown, expectedOrganizationId: string) {
+  if (typeof input !== "object" || input === null || Array.isArray(input)) return false;
+  const record = input as Record<string, unknown>;
+  if (record.authorized !== true || record.capability !== "employer_calendar_read") return false;
+  const organization = record.organization;
+  return (
+    typeof organization === "object" &&
+    organization !== null &&
+    !Array.isArray(organization) &&
+    (organization as Record<string, unknown>).id === expectedOrganizationId
+  );
 }

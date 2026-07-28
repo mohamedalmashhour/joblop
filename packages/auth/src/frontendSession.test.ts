@@ -97,6 +97,30 @@ describe("secure frontend session gateway", () => {
     );
   });
 
+  it("forwards versioned PATCH mutations through the server-only gateway", async () => {
+    const fetch = vi.fn(async () => apiResponse(200, { jobRequest: { versionToken: 2 } }));
+    await createFrontendSessionGateway({
+      apiOrigin: "https://api.example.test",
+      fetch
+    }).request(
+      "/organizations/org-1/job-requests/request-1",
+      "PATCH",
+      "server-session-token-123456789",
+      { expectedVersion: 1, title: "Updated request" }
+    );
+    expect(fetch).toHaveBeenCalledWith(
+      "https://api.example.test/organizations/org-1/job-requests/request-1",
+      expect.objectContaining({
+        method: "PATCH",
+        body: JSON.stringify({ expectedVersion: 1, title: "Updated request" }),
+        headers: expect.objectContaining({
+          authorization: "Bearer server-session-token-123456789",
+          "content-type": "application/json"
+        })
+      })
+    );
+  });
+
   it("returns generic denied and error states", async () => {
     const gateway = createFrontendSessionGateway({
       apiOrigin: "https://api.example.test",
@@ -125,6 +149,23 @@ describe("secure frontend session gateway", () => {
     expect(await unavailable.validate("server-session-token-123456789")).toEqual({
       status: "unavailable"
     });
+  });
+
+  it("preserves only a bounded retry interval for rate-limited sign-in", async () => {
+    const gateway = createFrontendSessionGateway({
+      apiOrigin: "https://api.example.test",
+      fetch: async () => ({
+        ...apiResponse(429, { privateBucket: "never-return" }),
+        headers: { get: (name: string) => (name === "retry-after" ? "75" : null) }
+      })
+    });
+
+    expect(
+      await gateway.signIn(
+        { email: "person@example.test", password: "not-returned" },
+        () => undefined
+      )
+    ).toEqual({ status: "rate_limited", retryAfterSeconds: 75 });
   });
 
   it("rejects insecure non-local origins", () => {

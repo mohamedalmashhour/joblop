@@ -88,8 +88,8 @@ describe("Connected Calendar Workflow integrity", () => {
       true
     ]);
     expect(mobileRouteNames.calendar).toBe("rwos://worker/calendar");
-    expect(readFileSync(join(root, "apps/mobile/App.tsx"), "utf8")).toContain(
-      "<WorkerCalendarPanel "
+    expect(readFileSync(join(root, "apps/mobile/App.tsx"), "utf8")).toMatch(
+      /<WorkerCalendarPanel\b/
     );
   });
 
@@ -141,9 +141,7 @@ describe("Connected Calendar Workflow integrity", () => {
     ).toEqual([]);
     expect(adminCalendarEvent.clientEconomics).toBeDefined();
     expect(adminCalendarEvent.workerOfferEconomics).toBeDefined();
-    expect(adminCalendarEvent.clientEconomics).not.toBe(
-      adminCalendarEvent.workerOfferEconomics
-    );
+    expect(adminCalendarEvent.clientEconomics).not.toBe(adminCalendarEvent.workerOfferEconomics);
   });
 
   it("limits assignment identity and ends at attendance handoff", () => {
@@ -194,11 +192,6 @@ describe("Connected Calendar Workflow integrity", () => {
     expect(calendarClientSource).not.toMatch(/localStorage|sessionStorage/u);
     expect(
       [...calendarClientSource.matchAll(/fetch\(\s*["'`]([^"'`]+)/gu)].map((match) => match[1])
-    ).toEqual(
-      expect.arrayContaining([
-        "/api/calendar/requests",
-        "/api/session/sign-in"
-      ])
-    );
+    ).toEqual(expect.arrayContaining(["/api/calendar/requests", "/api/session/sign-in"]));
   });
 });

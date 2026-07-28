@@ -1,5 +1,9 @@
 import { describe, expect, it, vi } from "vitest";
 import {
+  AssignmentError,
+  AssignmentTransactionUnavailableError,
+  authorizationDeniedCode,
+  authorizationDeniedMessage,
   createAuthorizationService,
   createAuthenticationService,
   createDepartmentService,
@@ -40,19 +44,40 @@ import type {
   WorkerOfferService,
   WorkGroupRepository
 } from "@rwos/auth";
-import { buildApi } from "./app";
+import { buildApi, createRemoteAuthenticationRateLimiter } from "./app";
 
-describe("api health endpoint", () => {
-  it("returns the foundation health payload", async () => {
-    const app = buildApi();
+describe("api health endpoints", () => {
+  it("keeps liveness independent from dependency readiness", async () => {
+    const app = buildApi({ readinessProbe: async () => false });
     const response = await app.inject({ method: "GET", url: "/health" });
+    const readiness = await app.inject({ method: "GET", url: "/ready" });
 
     expect(response.statusCode).toBe(200);
-    expect(response.json()).toMatchObject({
+    expect(response.json()).toEqual({
       ok: true,
       service: "resident-workforce-os-api",
-      foundationOnly: true
+      check: "liveness"
     });
+    expect(readiness.statusCode).toBe(503);
+    expect(readiness.json()).toEqual({
+      ready: false,
+      service: "resident-workforce-os-api",
+      check: "readiness"
+    });
+    await app.close();
+  });
+
+  it("reports ready only after the dependency probe succeeds", async () => {
+    const app = buildApi({ readinessProbe: async () => true });
+    const response = await app.inject({ method: "GET", url: "/ready" });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toEqual({
+      ready: true,
+      service: "resident-workforce-os-api",
+      check: "readiness"
+    });
+    await app.close();
   });
 });
 
@@ -64,6 +89,7 @@ describe("api authentication foundation", () => {
     const attendanceService = createApiUnavailableAttendanceService();
     const timesheetService = createApiUnavailableTimesheetService();
     const createDispatch = vi.spyOn(dispatchService, "createDispatch");
+    const searchCandidates = vi.spyOn(dispatchService, "searchCandidates");
     const acceptOffer = vi.spyOn(workerOfferService, "accept");
     const declineOffer = vi.spyOn(workerOfferService, "decline");
     const createAssignment = vi.spyOn(assignmentService, "createFromAcceptedOffer");
@@ -110,6 +136,12 @@ describe("api authentication foundation", () => {
       });
     }
     expect(createDispatch).not.toHaveBeenCalled();
+    const candidateSearch = await app.inject({
+      method: "GET",
+      url: "/platform/dispatches/00000000-0000-4000-8000-000000000001/candidates/search"
+    });
+    expect(candidateSearch.statusCode).toBe(404);
+    expect(searchCandidates).not.toHaveBeenCalled();
     for (const method of [
       acceptOffer,
       declineOffer,
@@ -321,6 +353,132 @@ describe("api authentication foundation", () => {
 
     await app.close();
   });
+
+  it("fails authentication closed when the limiter cannot make a decision", async () => {
+    const app = buildApi({
+      authRateLimiter: {
+        async consume() {
+          throw new Error("remote unavailable");
+        }
+      },
+      authService: createAuthenticationService(
+        new ApiMemoryAuthenticationRepository(),
+        testAuthOptions()
+      )
+    });
+
+    const response = await app.inject({
+      method: "POST",
+      url: "/auth/sign-in",
+      payload: {
+        email: "person@example.com",
+        password: "ValidPassword123"
+      }
+    });
+
+    expect(response.statusCode).toBe(503);
+    expect(response.headers["retry-after"]).toBe("5");
+    expect(response.headers["cache-control"]).toBe("no-store");
+    expect(response.json()).toEqual({
+      error: "RWOS_AUTH_UNAVAILABLE",
+      message: "Authentication is temporarily unavailable. Try again later."
+    });
+    await app.close();
+  });
+
+  it("sends only HMAC-derived subjects to the remote atomic limiter", async () => {
+    const remoteFetch = vi.fn().mockResolvedValue({
+      ok: true,
+      async json() {
+        return { allowed: true, retryAfterSeconds: 60 };
+      }
+    });
+    const limiter = createRemoteAuthenticationRateLimiter({
+      origin: "https://rate-limit.example.test",
+      token: "remote-token-that-is-at-least-32-characters",
+      keySecret: "key-secret-that-is-at-least-32-characters",
+      fetch: remoteFetch as unknown as typeof fetch
+    });
+
+    await limiter.consume({
+      action: "sign_in",
+      ip: "203.0.113.10",
+      email: "Person@Example.com"
+    });
+
+    const [, init] = remoteFetch.mock.calls[0]!;
+    const serialized = String(init?.body);
+    expect(serialized).not.toContain("Person@Example.com");
+    expect(serialized).not.toContain("person@example.com");
+    expect(serialized).not.toContain("203.0.113.10");
+    expect(JSON.parse(serialized)).toMatchObject({
+      action: "sign_in",
+      policy: {
+        accountMaxAttempts: 5,
+        networkMaxAttempts: 30,
+        windowSeconds: 60
+      }
+    });
+  });
+
+  it.each([
+    ["non-success", async () => new Response(null, { status: 503 })],
+    [
+      "malformed",
+      async () =>
+        new Response(JSON.stringify({ allowed: "yes", retryAfterSeconds: "later" }), {
+          status: 200
+        })
+    ],
+    [
+      "timeout",
+      async (_url: string | URL | Request, init?: RequestInit) =>
+        new Promise<Response>((_resolve, reject) => {
+          init?.signal?.addEventListener("abort", () => reject(new Error("timeout")));
+        })
+    ]
+  ])("fails closed for remote limiter %s", async (_label, remoteFetch) => {
+    const limiter = createRemoteAuthenticationRateLimiter({
+      origin: "https://rate-limit.example.test",
+      token: "remote-token-that-is-at-least-32-characters",
+      keySecret: "key-secret-that-is-at-least-32-characters",
+      timeoutMs: 5,
+      fetch: remoteFetch
+    });
+
+    await expect(
+      limiter.consume({
+        action: "sign_in",
+        ip: "203.0.113.10",
+        email: "person@example.com"
+      })
+    ).rejects.toThrow();
+  });
+
+  it("rejects insecure or incomplete direct remote limiter configuration", () => {
+    expect(() =>
+      createRemoteAuthenticationRateLimiter({
+        origin: "http://rate-limit.example.test",
+        token: "remote-token-that-is-at-least-32-characters",
+        keySecret: "key-secret-that-is-at-least-32-characters"
+      })
+    ).toThrow("RWOS_AUTH_RATE_LIMITER_CONFIGURATION_INVALID");
+    expect(() =>
+      createRemoteAuthenticationRateLimiter({
+        origin: "https://rate-limit.example.test",
+        token: "short",
+        keySecret: "key-secret-that-is-at-least-32-characters"
+      })
+    ).toThrow("RWOS_AUTH_RATE_LIMITER_CONFIGURATION_INVALID");
+    const shared = "shared-secret-that-is-at-least-32-characters";
+    expect(() =>
+      createRemoteAuthenticationRateLimiter({
+        origin: "https://rate-limit.example.test",
+        token: shared,
+        keySecret: shared
+      })
+    ).toThrow("RWOS_AUTH_RATE_LIMITER_CONFIGURATION_INVALID");
+  });
 });
 
 describe("api authorization foundation", () => {
@@ -368,6 +526,16 @@ describe("api authorization foundation", () => {
 
     expect(allowed.statusCode).toBe(200);
     expect(allowed.json()).toEqual({ authorized: true });
+
+    const sessionCapability = await app.inject({
+      method: "GET",
+      url: "/authz/platform-admin/session",
+      headers: {
+        authorization: `Bearer ${registration.token}`
+      }
+    });
+    expect(sessionCapability.statusCode).toBe(200);
+    expect(sessionCapability.json()).toEqual({ authorized: true });
 
     await app.close();
   });
@@ -563,6 +731,33 @@ describe("api employer organization foundation", () => {
         roles: ["ORGANIZATION_OWNER"]
       }
     });
+    const capability = await app.inject({
+      method: "GET",
+      url: `/authz/employer-calendar/session?organizationId=${created.json().organization.id}`,
+      headers: { authorization: `Bearer ${registration.token}` }
+    });
+    expect(capability.statusCode).toBe(200);
+    expect(capability.json()).toEqual({
+      authorized: true,
+      capability: "employer_calendar_read",
+      organization: {
+        id: created.json().organization.id,
+        publicId: created.json().organization.publicId,
+        displayName: "Sunrise Residence"
+      }
+    });
+    for (const organizationId of ["not-a-uuid", "api-org-1", ""]) {
+      const invalidCapability = await app.inject({
+        method: "GET",
+        url: `/authz/employer-calendar/session?organizationId=${encodeURIComponent(organizationId)}`,
+        headers: { authorization: `Bearer ${registration.token}` }
+      });
+      expect(invalidCapability.statusCode).toBe(400);
+      expect(invalidCapability.json()).toEqual({
+        error: "RWOS_INVALID_ORGANIZATION_CONTEXT",
+        message: "Invalid organization context."
+      });
+    }
 
     await app.close();
   });
@@ -1260,11 +1455,34 @@ describe("api job request foundation", () => {
         endAt: "2026-08-11T02:00:00.000Z"
       }
     });
-    const draft = created.json().jobRequest as {
+    const createdDraft = created.json().jobRequest as {
       id: string;
       jobRequestNumber: string;
       versionToken: number;
     };
+    const patched = await app.inject({
+      method: "PATCH",
+      url: `/organizations/${organization.id}/job-requests/${createdDraft.id}`,
+      headers: { authorization: `Bearer ${employer.token}` },
+      payload: {
+        expectedVersion: createdDraft.versionToken,
+        title: "Updated Dinner Chef Coverage"
+      }
+    });
+    const draft = patched.json().jobRequest as {
+      id: string;
+      jobRequestNumber: string;
+      versionToken: number;
+    };
+    const stalePatch = await app.inject({
+      method: "PATCH",
+      url: `/organizations/${organization.id}/job-requests/${createdDraft.id}`,
+      headers: { authorization: `Bearer ${employer.token}` },
+      payload: {
+        expectedVersion: createdDraft.versionToken,
+        title: "Stale Dinner Chef Coverage"
+      }
+    });
     const listed = await app.inject({
       method: "GET",
       url: `/organizations/${organization.id}/job-requests`,
@@ -1297,19 +1515,66 @@ describe("api job request foundation", () => {
       headers: { authorization: `Bearer ${platform.json().token}` },
       payload: { expectedVersion: submitted.json().jobRequest.versionToken }
     });
+    const informationRequired = await app.inject({
+      method: "POST",
+      url: `/platform/job-requests/intake/${draft.id}/request-information`,
+      headers: { authorization: `Bearer ${platform.json().token}` },
+      payload: {
+        expectedVersion: adminReview.json().jobRequest.versionToken,
+        reason: "Clarify the overnight supervision plan."
+      }
+    });
+    const corrected = await app.inject({
+      method: "PATCH",
+      url: `/organizations/${organization.id}/job-requests/${draft.id}`,
+      headers: { authorization: `Bearer ${employer.token}` },
+      payload: {
+        expectedVersion: informationRequired.json().jobRequest.versionToken,
+        description: "Overnight supervision will be provided by the residence manager."
+      }
+    });
+    const resubmitted = await app.inject({
+      method: "POST",
+      url: `/organizations/${organization.id}/job-requests/${draft.id}/submit`,
+      headers: { authorization: `Bearer ${employer.token}` },
+      payload: { expectedVersion: corrected.json().jobRequest.versionToken }
+    });
+    const secondAdminReview = await app.inject({
+      method: "POST",
+      url: `/platform/job-requests/intake/${draft.id}/admin-review`,
+      headers: { authorization: `Bearer ${platform.json().token}` },
+      payload: { expectedVersion: resubmitted.json().jobRequest.versionToken }
+    });
     const approved = await app.inject({
       method: "POST",
       url: `/platform/job-requests/intake/${draft.id}/approve-for-dispatch`,
       headers: { authorization: `Bearer ${platform.json().token}` },
-      payload: { expectedVersion: adminReview.json().jobRequest.versionToken }
+      payload: { expectedVersion: secondAdminReview.json().jobRequest.versionToken }
     });
 
     expect(created.statusCode).toBe(201);
+    expect(patched.statusCode).toBe(200);
+    expect(stalePatch.statusCode).toBe(409);
+    expect(stalePatch.json()).toEqual({
+      error: "RWOS_JOB_REQUEST_CHANGED",
+      message: "Job request changed. Refresh before trying again."
+    });
     expect(draft.jobRequestNumber).toBe("JR-2026-000001");
     expect(listed.statusCode).toBe(200);
     expect(listed.json().jobRequests).toHaveLength(1);
     expect(submitted.statusCode).toBe(200);
     expect(submitted.json().jobRequest.status).toBe("submitted");
+    expect(adminReview.json().jobRequest.status).toBe("admin_review");
+    expect(informationRequired.json().jobRequest).toMatchObject({
+      status: "information_required",
+      adminReviewReason: "Clarify the overnight supervision plan."
+    });
+    expect(corrected.statusCode).toBe(200);
+    expect(resubmitted.json().jobRequest).toMatchObject({
+      status: "submitted",
+      adminReviewReason: null
+    });
+    expect(secondAdminReview.json().jobRequest.status).toBe("admin_review");
     expect(intake.statusCode).toBe(200);
     expect(intake.json().jobRequests.map((jobRequest: { id: string }) => jobRequest.id)).toContain(
       draft.id
@@ -1421,6 +1686,10 @@ describe("api worker offer foundation", () => {
         async accept(input) {
           calls.push(`accept:${input.expectedTermsVersionId}`);
           return { ...workerOffer, status: "accepted", version: 3, versionToken: 3 };
+        },
+        async listWorkerOffers() {
+          calls.push("list-worker-owned");
+          return [workerOffer];
         }
       },
       resolveAuthorizationRoles: async () => ["DISPATCHER", "WORKER_ACCESS"]
@@ -1445,6 +1714,11 @@ describe("api worker offer foundation", () => {
         expectedTermsVersionId: workerOffer.currentTermsVersion!.id
       }
     });
+    const discovered = await app.inject({
+      method: "GET",
+      url: "/worker/offers",
+      headers: { authorization: `Bearer ${user.token}` }
+    });
 
     expect(created.statusCode).toBe(201);
     expect(created.json().workerOffer).toMatchObject({
@@ -1453,9 +1727,15 @@ describe("api worker offer foundation", () => {
     });
     expect(accepted.statusCode).toBe(200);
     expect(accepted.json().workerOffer.status).toBe("accepted");
+    expect(discovered.statusCode).toBe(200);
+    expect(discovered.json().workerOffers).toHaveLength(1);
+    expect(JSON.stringify(discovered.json())).not.toMatch(
+      /organizationId|residenceId|departmentId|workerIdentityId|createdByUserId|approvedByUserId/u
+    );
     expect(calls).toEqual([
       "create:dispatch-api-1:worker-identity-api-1",
-      `accept:${workerOffer.currentTermsVersion!.id}`
+      `accept:${workerOffer.currentTermsVersion!.id}`,
+      "list-worker-owned"
     ]);
     await app.close();
   });
@@ -1482,6 +1762,10 @@ describe("api assignment foundation", () => {
           calls.push(`list:${input.organizationId ?? "none"}`);
           return [assignment];
         },
+        async listWorkerAssignments() {
+          calls.push("list-worker-assignments");
+          return [assignment];
+        },
         async attendanceHandoff(input) {
           calls.push(`handoff:${input.assignmentId}`);
           return {
@@ -1502,7 +1786,7 @@ describe("api assignment foundation", () => {
       method: "POST",
       url: "/platform/assignments",
       headers: { authorization: `Bearer ${user.token}` },
-      payload: { workerOfferId: "worker-offer-api-1" }
+      payload: { workerOfferId: "00000000-0000-4000-8000-000000000101" }
     });
     const acknowledged = await app.inject({
       method: "POST",
@@ -1513,6 +1797,11 @@ describe("api assignment foundation", () => {
     const employerVisible = await app.inject({
       method: "GET",
       url: `/organizations/${assignment.organizationId}/assignments`,
+      headers: { authorization: `Bearer ${user.token}` }
+    });
+    const workerVisible = await app.inject({
+      method: "GET",
+      url: "/worker/assignments",
       headers: { authorization: `Bearer ${user.token}` }
     });
     const handoff = await app.inject({
@@ -1537,15 +1826,89 @@ describe("api assignment foundation", () => {
     expect(acknowledged.json().assignment.status).toBe("worker_acknowledged");
     expect(employerVisible.statusCode).toBe(200);
     expect(employerVisible.json().assignments).toHaveLength(1);
+    expect(workerVisible.statusCode).toBe(200);
+    expect(workerVisible.json().assignments).toHaveLength(1);
+    expect(JSON.stringify(workerVisible.json())).not.toMatch(
+      /organizationId|residenceId|departmentId|workerIdentityId|validationSnapshot|createdByUserId/u
+    );
     expect(handoff.statusCode).toBe(200);
     expect(handoff.json().assignment.status).toBe("attendance_handoff");
     expect(timesheet.statusCode).toBe(404);
     expect(calls).toEqual([
-      "create:worker-offer-api-1",
+      "create:00000000-0000-4000-8000-000000000101",
       "ack:assignment-api-1",
       "list:org-api-1",
+      "list-worker-assignments",
       "handoff:assignment-api-1"
     ]);
+    await app.close();
+  });
+
+  it("maps Assignment conflicts without exposing capacity or worker details", async () => {
+    const authRepository = new ApiMemoryAuthenticationRepository();
+    const app = buildApi({
+      authService: createAuthenticationService(authRepository, testAuthOptions()),
+      assignmentService: {
+        ...createApiUnavailableAssignmentService(),
+        async createFromAcceptedOffer() {
+          throw new AssignmentError({
+            status: "capacity_exceeded",
+            allow: false,
+            assignment: null,
+            roles: ["DISPATCHER"],
+            internalReason: "job_capacity_reached:worker-private-id",
+            externalCode: authorizationDeniedCode,
+            externalMessage: authorizationDeniedMessage
+          });
+        }
+      },
+      resolveAuthorizationRoles: async () => ["DISPATCHER"]
+    });
+    const user = await registerApiUser(app);
+
+    const response = await app.inject({
+      method: "POST",
+      url: "/platform/assignments",
+      headers: { authorization: `Bearer ${user.token}` },
+      payload: { workerOfferId: "00000000-0000-4000-8000-000000000101" }
+    });
+
+    expect(response.statusCode).toBe(409);
+    expect(response.json()).toEqual({
+      error: "RWOS_ASSIGNMENT_CONFLICT",
+      message: "Assignment could not be created from the current offer state."
+    });
+    expect(JSON.stringify(response.json())).not.toContain("worker-private-id");
+    await app.close();
+  });
+
+  it("returns bounded retry guidance when Assignment serialization retries are exhausted", async () => {
+    const authRepository = new ApiMemoryAuthenticationRepository();
+    const app = buildApi({
+      authService: createAuthenticationService(authRepository, testAuthOptions()),
+      assignmentService: {
+        ...createApiUnavailableAssignmentService(),
+        async createFromAcceptedOffer() {
+          throw new AssignmentTransactionUnavailableError();
+        }
+      },
+      resolveAuthorizationRoles: async () => ["DISPATCHER"]
+    });
+    const user = await registerApiUser(app);
+
+    const response = await app.inject({
+      method: "POST",
+      url: "/platform/assignments",
+      headers: { authorization: `Bearer ${user.token}` },
+      payload: { workerOfferId: "00000000-0000-4000-8000-000000000101" }
+    });
+
+    expect(response.statusCode).toBe(503);
+    expect(response.headers["retry-after"]).toBe("2");
+    expect(response.json()).toEqual({
+      error: "RWOS_ASSIGNMENT_TEMPORARILY_UNAVAILABLE",
+      message: "Assignment processing is temporarily unavailable."
+    });
     await app.close();
   });
 });
@@ -1893,6 +2256,7 @@ function createApiUnavailableDispatchService(): DispatchService {
     getDispatch: unavailable,
     assignOperationalOwner: unavailable,
     startCandidateReview: unavailable,
+    getCandidateSourceStatus: unavailable,
     searchCandidates: unavailable,
     evaluateCandidate: unavailable,
     addCandidateToShortlist: unavailable,
@@ -1921,7 +2285,9 @@ function createApiUnavailableWorkerOfferService(): WorkerOfferService {
     readOffer: unavailable,
     approve: unavailable,
     send: unavailable,
+    retryDelivery: unavailable,
     workerRead: unavailable,
+    listWorkerOffers: unavailable,
     workerCalendarReference: unavailable,
     accept: unavailable,
     decline: unavailable,
@@ -1941,6 +2307,7 @@ function createApiUnavailableAssignmentService(): AssignmentService {
     listAssignments: unavailable,
     readAssignment: unavailable,
     workerRead: unavailable,
+    listWorkerAssignments: unavailable,
     acknowledge: unavailable,
     workerWithdraw: unavailable,
     markReadyForAttendance: unavailable,
@@ -2455,7 +2822,7 @@ class ApiMemoryEmployerOrganizationRepository implements EmployerOrganizationRep
     }
 
     const organization: StoredEmployerOrganization = {
-      id: `api-org-${this.nextOrganization}`,
+      id: `00000000-0000-4000-8000-${String(this.nextOrganization).padStart(12, "0")}`,
       publicId: input.publicId,
       legalName: input.legalName,
       displayName: input.displayName,
@@ -3121,7 +3488,10 @@ function productionEnv() {
     RWOS_ENV: "production",
     NODE_ENV: "production",
     DATABASE_URL: "postgresql://database.example.test/rwos",
-    INTERNAL_API_ORIGIN: "https://api.example.test"
+    INTERNAL_API_ORIGIN: "https://api.example.test",
+    AUTH_RATE_LIMITER_ORIGIN: "https://rate-limit.example.test",
+    AUTH_RATE_LIMITER_TOKEN: "test-rate-limiter-token-at-least-32-characters",
+    AUTH_RATE_LIMITER_KEY_SECRET: "test-key-secret-that-is-at-least-32-characters"
   };
 }
 

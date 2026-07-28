@@ -63,7 +63,12 @@ type CommonCalendarDto = Readonly<{
   versionToken: number;
 }>;
 
-export type ClientCalendarDto = CommonCalendarDto & Readonly<{ audience: "client" }>;
+export type ClientCalendarDto = CommonCalendarDto &
+  Readonly<{
+    audience: "client";
+    actionRequired: "information_required" | null;
+    actionRequiredReason: string | null;
+  }>;
 export type AdminCalendarDto = CommonCalendarDto &
   Readonly<{
     audience: "admin";
@@ -84,6 +89,7 @@ export type WorkerCalendarDto = Readonly<{
   timezone: string | null;
   compensationSummary: string | null;
   policySummary: string | null;
+  termsVersionId: string | null;
   versionToken: number;
   visibility: "worker_authorized_offer_reference";
 }>;
@@ -95,7 +101,26 @@ export class CalendarDtoError extends Error {
 }
 
 export function parseClientCalendarDto(input: unknown): ClientCalendarDto {
-  return { ...parseCommon(input, "client"), audience: "client" };
+  const record = asRecord(input);
+  const actionRequired =
+    record.actionRequired === null
+      ? null
+      : record.actionRequired === "information_required"
+        ? "information_required"
+        : invalidActionRequired();
+  const actionRequiredReason = nullableString(record, "actionRequiredReason");
+  if (
+    (actionRequired === "information_required" && !actionRequiredReason) ||
+    (actionRequired === null && actionRequiredReason !== null)
+  ) {
+    throw new CalendarDtoError();
+  }
+  return {
+    ...parseCommon(record, "client"),
+    audience: "client",
+    actionRequired,
+    actionRequiredReason
+  };
 }
 
 export function parseAdminCalendarDto(input: unknown): AdminCalendarDto {
@@ -128,6 +153,7 @@ export function parseWorkerCalendarDto(input: unknown): WorkerCalendarDto {
     timezone,
     compensationSummary: nullableString(record, "compensationSummary"),
     policySummary: nullableString(record, "policySummary"),
+    termsVersionId: optionalNullableString(record, "termsVersionId"),
     versionToken: nonNegativeInteger(record, "versionToken"),
     visibility: "worker_authorized_offer_reference"
   };
@@ -201,7 +227,8 @@ function parseCommon(input: unknown, audience: "client" | "admin"): CommonCalend
 }
 
 function asRecord(input: unknown): Record<string, unknown> {
-  if (typeof input !== "object" || input === null || Array.isArray(input)) throw new CalendarDtoError();
+  if (typeof input !== "object" || input === null || Array.isArray(input))
+    throw new CalendarDtoError();
   return input as Record<string, unknown>;
 }
 
@@ -216,6 +243,11 @@ function nullableString(record: Record<string, unknown>, key: string) {
   if (value === null) return null;
   if (typeof value !== "string") throw new CalendarDtoError();
   return value;
+}
+
+function optionalNullableString(record: Record<string, unknown>, key: string) {
+  if (!(key in record)) return null;
+  return nullableString(record, key);
 }
 
 function requiredNumber(record: Record<string, unknown>, key: string) {
@@ -233,8 +265,14 @@ function nonNegativeInteger(record: Record<string, unknown>, key: string) {
 function calendarStatus(record: Record<string, unknown>, key: string): ClientCalendarStatus {
   const value = requiredString(record, key);
   const allowed: readonly string[] = [
-    "draft", "submitted", "under_review", "published", "assigned",
-    "in_progress", "completed", "cancelled"
+    "draft",
+    "submitted",
+    "under_review",
+    "published",
+    "assigned",
+    "in_progress",
+    "completed",
+    "cancelled"
   ];
   if (!allowed.includes(value)) throw new CalendarDtoError();
   return value as ClientCalendarStatus;
@@ -251,8 +289,14 @@ function verificationState(record: Record<string, unknown>, key: string): Verifi
 function adminStatus(record: Record<string, unknown>, key: string): AdminAuthoritativeStatus {
   const value = requiredString(record, key);
   const allowed: readonly string[] = [
-    "draft", "submitted", "admin_review", "information_required",
-    "approved_for_dispatch", "cancelled", "expired", "archived"
+    "draft",
+    "submitted",
+    "admin_review",
+    "information_required",
+    "approved_for_dispatch",
+    "cancelled",
+    "expired",
+    "archived"
   ];
   if (!allowed.includes(value)) throw new CalendarDtoError();
   return value as AdminAuthoritativeStatus;
@@ -261,11 +305,23 @@ function adminStatus(record: Record<string, unknown>, key: string): AdminAuthori
 function workerOfferStatus(record: Record<string, unknown>, key: string): WorkerOfferStatus {
   const value = requiredString(record, key);
   const allowed: readonly string[] = [
-    "draft", "approved", "sent", "delivered", "viewed",
-    "accepted", "declined", "expired", "withdrawn", "cancelled"
+    "draft",
+    "approved",
+    "sent",
+    "delivered",
+    "viewed",
+    "accepted",
+    "declined",
+    "expired",
+    "withdrawn",
+    "cancelled"
   ];
   if (!allowed.includes(value)) throw new CalendarDtoError();
   return value as WorkerOfferStatus;
+}
+
+function invalidActionRequired(): never {
+  throw new CalendarDtoError();
 }
 
 function timestamp(record: Record<string, unknown>, key: string) {
@@ -274,7 +330,11 @@ function timestamp(record: Record<string, unknown>, key: string) {
   return value;
 }
 
-function validateOptionalWindow(startAt: string | null, endAt: string | null, timezone: string | null) {
+function validateOptionalWindow(
+  startAt: string | null,
+  endAt: string | null,
+  timezone: string | null
+) {
   if (startAt === null && endAt === null && timezone === null) return;
   if (startAt === null || endAt === null || timezone === null) throw new CalendarDtoError();
   validateWindow(startAt, endAt, timezone);
@@ -283,7 +343,8 @@ function validateOptionalWindow(startAt: string | null, endAt: string | null, ti
 function validateWindow(startAt: string, endAt: string, timezone: string) {
   const start = Date.parse(startAt);
   const end = Date.parse(endAt);
-  if (!Number.isFinite(start) || !Number.isFinite(end) || end <= start) throw new CalendarDtoError();
+  if (!Number.isFinite(start) || !Number.isFinite(end) || end <= start)
+    throw new CalendarDtoError();
   try {
     new Intl.DateTimeFormat("en", { timeZone: timezone }).format(0);
   } catch {
@@ -293,6 +354,7 @@ function validateWindow(startAt: string, endAt: string, timezone: string) {
 
 function stringArray(record: Record<string, unknown>, key: string) {
   const value = record[key];
-  if (!Array.isArray(value) || value.some((item) => typeof item !== "string")) throw new CalendarDtoError();
+  if (!Array.isArray(value) || value.some((item) => typeof item !== "string"))
+    throw new CalendarDtoError();
   return value as readonly string[];
 }

@@ -21,11 +21,11 @@
   },
   "dependencies": {
     "@prisma/adapter-pg": "^7.9.0",
-    "@prisma/client": "^7.9.0",
+    "@prisma/client": "^7.9.1",
     "@rwos/config": "workspace:*",
     "pg": "^8.16.3"
   },
   "devDependencies": {
-    "prisma": "^7.9.0"
+    "prisma": "^7.9.1"
   }
 }

@@ -33,6 +33,8 @@ describe("authenticated calendar DTO and state boundaries", () => {
     const dto = parseClientCalendarDto({
       ...common,
       audience: "client",
+      actionRequired: null,
+      actionRequiredReason: null,
       workerPay: 3000,
       platformMargin: 1500,
       internalAdminNotes: "hidden"
@@ -40,6 +42,28 @@ describe("authenticated calendar DTO and state boundaries", () => {
     expect(dto).not.toHaveProperty("workerPay");
     expect(dto).not.toHaveProperty("platformMargin");
     expect(dto).not.toHaveProperty("internalAdminNotes");
+  });
+
+  it("exposes only an explicit employer information-request reason", () => {
+    const dto = parseClientCalendarDto({
+      ...common,
+      audience: "client",
+      status: "under_review",
+      actionRequired: "information_required",
+      actionRequiredReason: "Clarify overnight supervision.",
+      internalAdminNotes: "never-return"
+    });
+    expect(dto.actionRequired).toBe("information_required");
+    expect(dto.actionRequiredReason).toBe("Clarify overnight supervision.");
+    expect(dto).not.toHaveProperty("internalAdminNotes");
+    expect(() =>
+      parseClientCalendarDto({
+        ...common,
+        audience: "client",
+        actionRequired: null,
+        actionRequiredReason: "orphaned reason"
+      })
+    ).toThrow(CalendarDtoError);
   });
 
   it("keeps admin review fields separated and discards payment secrets", () => {
@@ -76,8 +100,12 @@ describe("authenticated calendar DTO and state boundaries", () => {
   });
 
   it("rejects malformed and cross-audience records with a generic error", () => {
-    expect(() => parseClientCalendarDto({ ...common, audience: "admin" })).toThrow(CalendarDtoError);
-    expect(() => parseWorkerCalendarDto({ visibility: "client" })).toThrow("Calendar response is unavailable.");
+    expect(() => parseClientCalendarDto({ ...common, audience: "admin" })).toThrow(
+      CalendarDtoError
+    );
+    expect(() => parseWorkerCalendarDto({ visibility: "client" })).toThrow(
+      "Calendar response is unavailable."
+    );
   });
 
   it("models loading outcomes without fixture fallback", () => {
@@ -107,40 +135,68 @@ describe("authenticated calendar DTO and state boundaries", () => {
       visibility: "worker_authorized_offer_reference"
     };
     for (const status of [
-      "draft", "approved", "sent", "delivered", "viewed",
-      "accepted", "declined", "expired", "withdrawn", "cancelled"
+      "draft",
+      "approved",
+      "sent",
+      "delivered",
+      "viewed",
+      "accepted",
+      "declined",
+      "expired",
+      "withdrawn",
+      "cancelled"
     ]) {
       expect(parseWorkerCalendarDto({ ...workerBase, status }).status).toBe(status);
     }
-    expect(() => parseWorkerCalendarDto({ ...workerBase, status: "paid" })).toThrow(CalendarDtoError);
-    expect(() => parseAdminCalendarDto({
-      ...common,
-      audience: "admin",
-      authoritativeStatus: "paid",
-      adminReviewReason: null
-    })).toThrow(CalendarDtoError);
+    expect(() => parseWorkerCalendarDto({ ...workerBase, status: "paid" })).toThrow(
+      CalendarDtoError
+    );
+    expect(() =>
+      parseAdminCalendarDto({
+        ...common,
+        audience: "admin",
+        authoritativeStatus: "paid",
+        adminReviewReason: null
+      })
+    ).toThrow(CalendarDtoError);
   });
 
   it("rejects invalid windows, timezone, counts, and versions", () => {
-    expect(() => parseClientCalendarDto({
-      ...common,
-      audience: "client",
-      endAt: common.startAt
-    })).toThrow(CalendarDtoError);
-    expect(() => parseClientCalendarDto({
-      ...common,
-      audience: "client",
-      timezone: "Not/A_Zone"
-    })).toThrow(CalendarDtoError);
-    expect(() => parseClientCalendarDto({
-      ...common,
-      audience: "client",
-      numberOfWorkers: 0
-    })).toThrow(CalendarDtoError);
-    expect(() => parseClientCalendarDto({
-      ...common,
-      audience: "client",
-      versionToken: -1
-    })).toThrow(CalendarDtoError);
+    expect(() =>
+      parseClientCalendarDto({
+        ...common,
+        audience: "client",
+        actionRequired: null,
+        actionRequiredReason: null,
+        endAt: common.startAt
+      })
+    ).toThrow(CalendarDtoError);
+    expect(() =>
+      parseClientCalendarDto({
+        ...common,
+        audience: "client",
+        actionRequired: null,
+        actionRequiredReason: null,
+        timezone: "Not/A_Zone"
+      })
+    ).toThrow(CalendarDtoError);
+    expect(() =>
+      parseClientCalendarDto({
+        ...common,
+        audience: "client",
+        actionRequired: null,
+        actionRequiredReason: null,
+        numberOfWorkers: 0
+      })
+    ).toThrow(CalendarDtoError);
+    expect(() =>
+      parseClientCalendarDto({
+        ...common,
+        audience: "client",
+        actionRequired: null,
+        actionRequiredReason: null,
+        versionToken: -1
+      })
+    ).toThrow(CalendarDtoError);
   });
 });

@@ -7,17 +7,33 @@
     "node": ">=20.20.2 <21",
     "pnpm": "10.33.2"
   },
+  "pnpm": {
+    "overrides": {
+      "brace-expansion@>=5 <6": "5.0.8",
+      "fast-uri@>=3 <4": "3.1.4",
+      "fast-uri@>=4 <5": "4.1.1",
+      "find-my-way@>=9 <10": "9.7.0",
+      "minimatch@>=9 <10": "10.2.5",
+      "postcss@>=8 <9": "8.5.18",
+      "sharp@>=0.34 <0.36": "0.35.0",
+      "tar@>=7 <8": "7.5.21",
+      "uuid@>=7 <12": "11.1.1"
+    }
+  },
   "scripts": {
     "format": "prettier --check .",
     "format:write": "prettier --write .",
     "lint": "eslint .",
     "typecheck": "tsc -b tsconfig.build.json",
     "test": "vitest run",
+    "test:postgres:required": "node --import tsx scripts/require-postgres-test-url.ts && vitest run tests/integration/postgres-worker-offer-capacity.test.ts tests/integration/postgres-assignment-concurrency.test.ts",
     "build": "pnpm -r --if-present build",
     "validate:env": "node --import tsx scripts/validate-env.ts",
     "validate:boundaries": "node --import tsx scripts/validate-boundaries.ts",
+    "validate:migrations": "node --import tsx scripts/validate-migration-integrity.ts",
+    "db:restore:rehearse": "node --import tsx scripts/rehearse-database-restore.ts",
     "scan:secrets": "node --import tsx scripts/scan-secrets.ts",
-    "validate": "pnpm format && pnpm lint && pnpm typecheck && pnpm test && pnpm validate:env && pnpm validate:boundaries && pnpm scan:secrets && pnpm build"
+    "validate": "pnpm format && pnpm lint && pnpm typecheck && pnpm test && pnpm validate:env && pnpm validate:boundaries && pnpm validate:migrations && pnpm scan:secrets && pnpm build"
   },
   "devDependencies": {
     "@eslint/eslintrc": "^3.3.6",

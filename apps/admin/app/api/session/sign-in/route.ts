@@ -20,12 +20,29 @@ export async function POST(request: Request) {
   const result = await gateway.signIn(credentials, (token) => {
     cookieStore.set(sessionCookieName, token, sessionCookieOptions);
   });
+  if (result.status === "rate_limited") {
+    return Response.json(
+      { status: "rate_limited", message: "Sign-in is temporarily limited. Try again later." },
+      {
+        status: 429,
+        headers: {
+          "cache-control": "private, no-store",
+          "retry-after": String(result.retryAfterSeconds)
+        }
+      }
+    );
+  }
   if (result.status !== "ok") return sessionFailure(result.status);
   return Response.json(result.payload, { headers: { "cache-control": "private, no-store" } });
 }
 
 function validCredentials(input: unknown): input is { email: string; password: string } {
-  return typeof input === "object" && input !== null &&
-    "email" in input && typeof input.email === "string" &&
-    "password" in input && typeof input.password === "string";
+  return (
+    typeof input === "object" &&
+    input !== null &&
+    "email" in input &&
+    typeof input.email === "string" &&
+    "password" in input &&
+    typeof input.password === "string"
+  );
 }

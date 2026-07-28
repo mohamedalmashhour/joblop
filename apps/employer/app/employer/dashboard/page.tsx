@@ -17,9 +17,14 @@ export default function EmployerDashboardPage() {
       title="Employer operational home for staffing attention, risks, and governed workflow handoffs."
       lede="The dashboard summarizes employer-side staffing activity. It does not become the source of truth for shifts, workers, payments, messages, notifications, documents, or compliance."
       actions={
-        <a href="/employer/shifts/create" style={styles.primaryButton}>
-          Create Shift next
-        </a>
+        <>
+          <a href="/employer/calendar/create" style={styles.primaryButton}>
+            Create staffing request
+          </a>
+          <a href="/employer/calendar" style={styles.secondaryButton}>
+            Open request calendar
+          </a>
+        </>
       }
     >
       <section style={styles.section}>
@@ -36,7 +41,9 @@ export default function EmployerDashboardPage() {
             <article key={card.title} style={styles.tintedCard}>
               <h3 style={styles.cardTitle}>{card.title}</h3>
               <p style={styles.cardText}>{card.state}</p>
-              <p style={styles.cardText}>{card.route}</p>
+              <a href={card.route} style={styles.secondaryButton}>
+                Open workflow
+              </a>
             </article>
           ))}
         </div>
@@ -45,7 +52,9 @@ export default function EmployerDashboardPage() {
       <section style={styles.whiteSection}>
         <div style={styles.sectionHeader}>
           <p style={styles.eyebrowDark}>Operational workspace</p>
-          <h2 style={styles.sectionTitle}>Staffing, people, communications, finance, and support summaries.</h2>
+          <h2 style={styles.sectionTitle}>
+            Staffing, people, communications, finance, and support summaries.
+          </h2>
         </div>
         <div style={styles.pillGrid}>
           {dashboardSections.map((section) => (
@@ -59,7 +68,9 @@ export default function EmployerDashboardPage() {
       <section style={styles.section}>
         <div style={styles.sectionHeader}>
           <p style={styles.eyebrowDark}>Employer calendars</p>
-          <h2 style={styles.sectionTitle}>Orders and billing are visible without becoming workflow authority.</h2>
+          <h2 style={styles.sectionTitle}>
+            Orders and billing are visible without becoming workflow authority.
+          </h2>
           <p style={styles.sectionCopy}>
             These fixture-backed calendars keep available requests, past and future staffing, and
             revenue timing separate. Estimates route to invoices and payments; they do not confirm

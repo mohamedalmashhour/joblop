@@ -27,6 +27,7 @@ import {
   type WorkerAttendanceStage
 } from "./src/features/worker-attendance";
 import { WorkerCalendarPanel } from "./src/features/worker-calendar";
+import { WorkerCalendarFixturePreview } from "./src/features/worker-calendar/WorkerCalendarFixturePreview";
 import {
   nativeSecureSessionVault,
   tryCreateMobileSessionTransport
@@ -288,7 +289,13 @@ export default function App() {
     }
 
     if (screen.tabId === "calendar") {
-      return <WorkerCalendarPanel offerId={calendarOfferId} transport={calendarTransport} />;
+      return (
+        <WorkerCalendarPanel
+          offerId={calendarOfferId}
+          renderFixturePreview={(onClose) => <WorkerCalendarFixturePreview onClose={onClose} />}
+          transport={calendarTransport}
+        />
+      );
     }
 
     return (

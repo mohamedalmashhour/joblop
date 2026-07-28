@@ -22,11 +22,7 @@ export async function POST(request: Request) {
   const selected = await selectClientOrganizationId(gateway, token, result.organizationId);
   if (selected.status !== "ok") return sessionFailure(selected.status);
 
-  cookieStore.set(
-    organizationContextCookieName,
-    result.organizationId,
-    sessionCookieOptions
-  );
+  cookieStore.set(organizationContextCookieName, result.organizationId, sessionCookieOptions);
   return new Response(null, {
     status: 204,
     headers: { "cache-control": "private, no-store" }
@@ -34,9 +30,20 @@ export async function POST(request: Request) {
 }
 
 function readOrganizationId(input: unknown) {
-  if (typeof input !== "object" || input === null || !("organizationId" in input)) return null;
+  if (
+    typeof input !== "object" ||
+    input === null ||
+    Array.isArray(input) ||
+    Object.keys(input).length !== 1 ||
+    !("organizationId" in input)
+  ) {
+    return null;
+  }
   const organizationId = (input as { organizationId?: unknown }).organizationId;
-  return typeof organizationId === "string" && organizationId.length > 0
+  return typeof organizationId === "string" &&
+    /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(
+      organizationId
+    )
     ? organizationId
     : null;
 }

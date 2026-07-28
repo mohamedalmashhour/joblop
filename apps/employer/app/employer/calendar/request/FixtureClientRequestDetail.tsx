@@ -32,9 +32,7 @@ export function FixtureClientRequestDetail() {
         {Object.entries(clientRequestDetail).map(([label, value]) => (
           <div key={label} style={styles.tintedCard}>
             <strong>{label.replaceAll(/([A-Z])/g, " $1")}</strong>
-            <p style={styles.cardText}>
-              {Array.isArray(value) ? value.join(", ") : String(value)}
-            </p>
+            <p style={styles.cardText}>{Array.isArray(value) ? value.join(", ") : String(value)}</p>
           </div>
         ))}
       </article>

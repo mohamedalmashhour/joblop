@@ -767,6 +767,7 @@ model DispatchReview {
 model DispatchCandidate {
   id                        String                      @id @default(uuid()) @db.Uuid
   dispatchReviewId          String                      @map("dispatch_review_id") @db.Uuid
+  workerIdentityId          String?                     @map("worker_identity_id") @db.Uuid
   candidateSourceType       DispatchCandidateSourceType @map("candidate_source_type")
   candidateSourceReference  String                      @map("candidate_source_reference")
   approvedDisplayName       String                      @map("approved_display_name")
@@ -791,14 +792,16 @@ model DispatchCandidate {
   updatedAt                 DateTime                    @updatedAt @map("updated_at") @db.Timestamptz(3)
   version                   Int                         @default(1)
 
-  dispatchReview DispatchReview @relation(fields: [dispatchReviewId], references: [id], onDelete: Cascade)
-  addedBy        User?          @relation("DispatchCandidateAddedByUser", fields: [addedByUserId], references: [id], onDelete: SetNull)
-  removedBy      User?          @relation("DispatchCandidateRemovedByUser", fields: [removedByUserId], references: [id], onDelete: SetNull)
+  dispatchReview DispatchReview  @relation(fields: [dispatchReviewId], references: [id], onDelete: Cascade)
+  workerIdentity WorkerIdentity? @relation(fields: [workerIdentityId], references: [id], onDelete: Restrict)
+  addedBy        User?           @relation("DispatchCandidateAddedByUser", fields: [addedByUserId], references: [id], onDelete: SetNull)
+  removedBy      User?           @relation("DispatchCandidateRemovedByUser", fields: [removedByUserId], references: [id], onDelete: SetNull)
 
   @@unique([dispatchReviewId, candidateSourceReference], map: "dispatch_candidates_review_source_ref_key")
   @@index([dispatchReviewId, shortlistState], map: "dispatch_candidates_dispatch_review_id_shortlist_state_idx")
   @@index([dispatchReviewId, sourceFreshnessAt], map: "dispatch_candidates_dispatch_review_id_source_freshness_at_idx")
   @@index([candidateSourceReference], map: "dispatch_candidates_candidate_source_reference_idx")
+  @@index([dispatchReviewId, workerIdentityId, shortlistState], map: "dispatch_candidates_review_worker_shortlist_idx")
   @@map("dispatch_candidates")
 }
 
@@ -812,12 +815,13 @@ model WorkerIdentity {
   updatedAt         DateTime             @updatedAt @map("updated_at") @db.Timestamptz(3)
   version           Int                  @default(1)
 
-  user              User                  @relation(fields: [userId], references: [id], onDelete: Restrict)
-  offers            WorkerOffer[]
-  responses         WorkerOfferResponse[]
-  assignments       Assignment[]
-  attendanceRecords AttendanceRecord[]
-  timesheets        Timesheet[]
+  user               User                  @relation(fields: [userId], references: [id], onDelete: Restrict)
+  offers             WorkerOffer[]
+  responses          WorkerOfferResponse[]
+  assignments        Assignment[]
+  attendanceRecords  AttendanceRecord[]
+  timesheets         Timesheet[]
+  dispatchCandidates DispatchCandidate[]
 
   @@index([status], map: "worker_identities_status_idx")
   @@map("worker_identities")

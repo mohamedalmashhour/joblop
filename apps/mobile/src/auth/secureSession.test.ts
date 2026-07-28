@@ -49,7 +49,7 @@ describe("mobile secure session transport", () => {
       apiOrigin: "https://api.example.test",
       vault: secureVault,
       fetch: vi.fn(async () => response(200, {
-        offer: {
+        workerOffer: {
           workerOfferId: "offer-1",
           jobRequestId: "request-1",
           status: "sent",
@@ -61,6 +61,7 @@ describe("mobile secure session transport", () => {
           timezone: null,
           compensationSummary: null,
           policySummary: null,
+          termsVersionId: "terms-1",
           versionToken: 1,
           visibility: "worker_authorized_offer_reference",
           clientBillRate: 4500
@@ -85,6 +86,45 @@ describe("mobile secure session transport", () => {
       remoteRevocation: "unavailable"
     });
     expect(secureVault.stored).toBeNull();
+  });
+
+  it("lists only parsed worker assignment fields", async () => {
+    const secureVault = vault();
+    secureVault.stored = "native-session-token-123456789";
+    const transport = createMobileSessionTransport({
+      apiOrigin: "https://api.example.test",
+      vault: secureVault,
+      fetch: vi.fn(async () =>
+        response(200, {
+          assignments: [
+            {
+              assignmentId: "assignment-1",
+              workerOfferId: "offer-1",
+              status: "confirmed",
+              title: "Dinner Chef Coverage",
+              roleSummary: "Chef",
+              worksiteSummary: "Main residence",
+              departmentSummary: "Kitchen",
+              startAt: "2026-08-02T12:00:00.000Z",
+              endAt: "2026-08-02T16:00:00.000Z",
+              timezone: "America/Toronto",
+              attendanceBoundary: "not_started",
+              versionToken: 0,
+              updatedAt: "2026-07-27T12:00:00.000Z",
+              visibility: "worker_authorized_assignment",
+              validationSnapshot: { conflictCount: 0 },
+              workerIdentityId: "private-worker-id"
+            }
+          ]
+        })
+      )
+    });
+
+    const result = await transport.workerAssignments();
+
+    expect(result.status).toBe("ready");
+    expect(result).not.toHaveProperty("data.0.validationSnapshot");
+    expect(result).not.toHaveProperty("data.0.workerIdentityId");
   });
 
   it("requires sign-out before changing accounts", async () => {

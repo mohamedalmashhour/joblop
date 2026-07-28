@@ -44,38 +44,96 @@ export function ClientCalendarPanel() {
 
   useEffect(() => {
     void load();
-    return () => { requestGeneration.current += 1; };
+    return () => {
+      requestGeneration.current += 1;
+    };
   }, [load]);
 
-  if (state.status === "loading") return <CalendarState title="Loading request calendar" message="Checking your authenticated organization context." />;
+  if (state.status === "loading")
+    return (
+      <CalendarState
+        title="Loading request calendar"
+        message="Checking your authenticated organization context."
+      />
+    );
   if (state.status === "denied") return <ClientSignIn onSignedIn={load} />;
   if (state.status === "organization_required") {
-    return <><SessionAction onSignedOut={load} /><OrganizationPicker organizations={state.organizations} onSelected={load} /></>;
+    return (
+      <>
+        <SessionAction onSignedOut={load} />
+        <OrganizationPicker organizations={state.organizations} onSelected={load} />
+      </>
+    );
   }
-  if (state.status === "empty") return <><SessionAction onSignedOut={load} /><CalendarState title="No persisted requests" message="No governed requests exist for this organization. Request creation remains a non-persistent preview." action="/employer/calendar/create" /></>;
+  if (state.status === "empty")
+    return (
+      <>
+        <SessionAction onSignedOut={load} />
+        <CalendarState
+          title="No persisted requests"
+          message="No governed requests exist for this organization yet."
+          action="/employer/calendar/create"
+        />
+      </>
+    );
   if (state.status !== "ready" && state.status !== "partial") {
-    return <CalendarState title={state.status === "unavailable" ? "Calendar unavailable" : state.status === "stale" ? "Calendar changed" : "Calendar could not be loaded"} message="No fixture records are shown as persisted data. Retry when the service is available." onRetry={load} />;
+    return (
+      <CalendarState
+        title={
+          state.status === "unavailable"
+            ? "Calendar unavailable"
+            : state.status === "stale"
+              ? "Calendar changed"
+              : "Calendar could not be loaded"
+        }
+        message="No fixture records are shown as persisted data. Retry when the service is available."
+        onRetry={load}
+      />
+    );
   }
 
   return (
     <>
       <SessionAction onSignedOut={load} />
-      {state.status === "partial"
-        ? <CalendarState title="Some requests could not be shown" message="The records below passed the client privacy whitelist. Retry to check for the remaining records." onRetry={load} />
-        : null}
+      {state.status === "partial" ? (
+        <CalendarState
+          title="Some requests could not be shown"
+          message="The records below passed the client privacy whitelist. Retry to check for the remaining records."
+          onRetry={load}
+        />
+      ) : null}
       <div style={styles.cardGrid}>
         {state.data.map((request) => (
           <article key={request.id} style={styles.card}>
-            <span style={clientStatusStyle(request.status)}>{request.status.replaceAll("_", " ")}</span>
+            <span style={clientStatusStyle(request.status)}>
+              {request.status.replaceAll("_", " ")}
+            </span>
             <h3 style={styles.cardTitle}>{request.title}</h3>
             <p style={styles.cardText}>{formatWindow(request)}</p>
-            <p style={styles.cardText}>{request.numberOfWorkers} worker{request.numberOfWorkers === 1 ? "" : "s"} requested</p>
+            <p style={styles.cardText}>
+              {request.numberOfWorkers} worker{request.numberOfWorkers === 1 ? "" : "s"} requested
+            </p>
+            {request.actionRequired === "information_required" ? (
+              <p aria-live="polite" style={styles.warning}>
+                Information requested: {request.actionRequiredReason}
+              </p>
+            ) : null}
             <a
               href={`/employer/calendar/request?request=${encodeURIComponent(request.requestNumber)}`}
               style={styles.secondaryButton}
             >
               Open request detail
             </a>
+            {request.status === "draft" || request.actionRequired === "information_required" ? (
+              <a
+                href={`/employer/calendar/request/edit?id=${encodeURIComponent(request.id)}`}
+                style={styles.primaryButton}
+              >
+                {request.actionRequired === "information_required"
+                  ? "Provide requested information"
+                  : "Edit draft"}
+              </a>
+            ) : null}
           </article>
         ))}
       </div>
@@ -99,7 +157,12 @@ function SessionAction({ onSignedOut }: Readonly<{ onSignedOut: () => Promise<vo
   return (
     <div aria-busy={submitting} aria-live="polite" style={{ ...styles.panel, marginBottom: 18 }}>
       <p style={styles.sectionCopy}>{message}</p>
-      <button disabled={submitting} onClick={() => void signOut()} style={{ ...styles.secondaryButton, cursor: "pointer" }} type="button">
+      <button
+        disabled={submitting}
+        onClick={() => void signOut()}
+        style={{ ...styles.secondaryButton, cursor: "pointer" }}
+        type="button"
+      >
         {submitting ? "Signing out…" : "Switch employer account"}
       </button>
     </div>
@@ -109,7 +172,9 @@ function SessionAction({ onSignedOut }: Readonly<{ onSignedOut: () => Promise<vo
 function ClientSignIn({ onSignedIn }: Readonly<{ onSignedIn: () => Promise<void> }>) {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
-  const [message, setMessage] = useState("Sign in to load your organization’s persisted request calendar.");
+  const [message, setMessage] = useState(
+    "Sign in to load your organization’s persisted request calendar."
+  );
   const [needsSignOut, setNeedsSignOut] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const submit = async (event: React.FormEvent) => {
@@ -125,7 +190,9 @@ function ClientSignIn({ onSignedIn }: Readonly<{ onSignedIn: () => Promise<void>
       setPassword("");
       if (!response.ok) {
         setNeedsSignOut(response.status === 409);
-        return setMessage(response.status === 409 ? "Sign out before changing accounts." : "Sign-in failed.");
+        return setMessage(
+          response.status === 409 ? "Sign out before changing accounts." : "Sign-in failed."
+        );
       }
       await onSignedIn();
     } catch {
@@ -148,30 +215,89 @@ function ClientSignIn({ onSignedIn }: Readonly<{ onSignedIn: () => Promise<void>
   return (
     <form aria-busy={submitting} onSubmit={submit} style={styles.panel}>
       <h3 style={styles.cardTitle}>Employer sign-in required</h3>
-      <p aria-live="polite" style={styles.sectionCopy}>{message}</p>
-      <label style={styles.fieldLabel}>Email<input autoComplete="username" disabled={submitting} required type="email" value={email} onChange={(event) => setEmail(event.target.value)} style={styles.input} /></label>
-      <label style={styles.fieldLabel}>Password<input autoComplete="current-password" disabled={submitting} required type="password" value={password} onChange={(event) => setPassword(event.target.value)} style={styles.input} /></label>
-      <button disabled={submitting} type="submit" style={{ ...styles.primaryButton, border: 0, opacity: submitting ? 0.65 : 1 }}>{submitting ? "Checking account…" : "Sign in securely"}</button>
-      {needsSignOut
-        ? <button disabled={submitting} type="button" onClick={() => void signOut()} style={{ ...styles.secondaryButton, cursor: "pointer" }}>Clear prior session</button>
-        : null}
+      <p aria-live="polite" style={styles.sectionCopy}>
+        {message}
+      </p>
+      <label style={styles.fieldLabel}>
+        Email
+        <input
+          autoComplete="username"
+          disabled={submitting}
+          required
+          type="email"
+          value={email}
+          onChange={(event) => setEmail(event.target.value)}
+          style={styles.input}
+        />
+      </label>
+      <label style={styles.fieldLabel}>
+        Password
+        <input
+          autoComplete="current-password"
+          disabled={submitting}
+          required
+          type="password"
+          value={password}
+          onChange={(event) => setPassword(event.target.value)}
+          style={styles.input}
+        />
+      </label>
+      <button
+        disabled={submitting}
+        type="submit"
+        style={{ ...styles.primaryButton, border: 0, opacity: submitting ? 0.65 : 1 }}
+      >
+        {submitting ? "Checking account…" : "Sign in securely"}
+      </button>
+      {needsSignOut ? (
+        <button
+          disabled={submitting}
+          type="button"
+          onClick={() => void signOut()}
+          style={{ ...styles.secondaryButton, cursor: "pointer" }}
+        >
+          Clear prior session
+        </button>
+      ) : null}
     </form>
   );
 }
 
-function CalendarState({ title, message, action, onRetry }: Readonly<{ title: string; message: string; action?: string; onRetry?: () => Promise<void> }>) {
+function CalendarState({
+  title,
+  message,
+  action,
+  onRetry
+}: Readonly<{ title: string; message: string; action?: string; onRetry?: () => Promise<void> }>) {
   return (
     <article style={styles.panel} aria-live="polite">
       <h3 style={styles.cardTitle}>{title}</h3>
       <p style={styles.sectionCopy}>{message}</p>
-      {action ? <a href={action} style={styles.primaryButton}>Preview request creation</a> : null}
-      {onRetry ? <button type="button" onClick={() => void onRetry()} style={{ ...styles.secondaryButton, cursor: "pointer" }}>Retry</button> : null}
+      {action ? (
+        <a href={action} style={styles.primaryButton}>
+          Create staffing request
+        </a>
+      ) : null}
+      {onRetry ? (
+        <button
+          type="button"
+          onClick={() => void onRetry()}
+          style={{ ...styles.secondaryButton, cursor: "pointer" }}
+        >
+          Retry
+        </button>
+      ) : null}
     </article>
   );
 }
 
-function OrganizationPicker({ organizations, onSelected }: Readonly<{ organizations: readonly OrganizationChoice[]; onSelected: () => Promise<void> }>) {
-  const [message, setMessage] = useState("Choose the organization whose persisted calendar you are authorized to access.");
+function OrganizationPicker({
+  organizations,
+  onSelected
+}: Readonly<{ organizations: readonly OrganizationChoice[]; onSelected: () => Promise<void> }>) {
+  const [message, setMessage] = useState(
+    "Choose the organization whose persisted calendar you are authorized to access."
+  );
   const [submitting, setSubmitting] = useState(false);
   const select = async (organizationId: string) => {
     setSubmitting(true);
@@ -198,7 +324,14 @@ function OrganizationPicker({ organizations, onSelected }: Readonly<{ organizati
           disabled={submitting}
           key={organization.id}
           onClick={() => void select(organization.id)}
-          style={{ ...styles.secondaryButton, cursor: "pointer", marginRight: 8, maxWidth: "100%", overflowWrap: "anywhere", whiteSpace: "normal" }}
+          style={{
+            ...styles.secondaryButton,
+            cursor: "pointer",
+            marginRight: 8,
+            maxWidth: "100%",
+            overflowWrap: "anywhere",
+            whiteSpace: "normal"
+          }}
           type="button"
         >
           {organization.displayName} ({organization.publicId})
@@ -208,30 +341,36 @@ function OrganizationPicker({ organizations, onSelected }: Readonly<{ organizati
   );
 }
 
-function parseOrganizationContext(input: unknown): Extract<ClientCalendarState, { status: "organization_required" }> | null {
+function parseOrganizationContext(
+  input: unknown
+): Extract<ClientCalendarState, { status: "organization_required" }> | null {
   if (typeof input !== "object" || input === null) return null;
   const record = input as { status?: unknown; organizations?: unknown };
-  if (record.status !== "organization_required" || !Array.isArray(record.organizations)) return null;
+  if (record.status !== "organization_required" || !Array.isArray(record.organizations))
+    return null;
   const organizations = record.organizations.filter((value): value is OrganizationChoice => {
     if (typeof value !== "object" || value === null) return false;
     const candidate = value as Record<string, unknown>;
-    return typeof candidate.id === "string" &&
+    return (
+      typeof candidate.id === "string" &&
       typeof candidate.publicId === "string" &&
-      typeof candidate.displayName === "string";
+      typeof candidate.displayName === "string"
+    );
   });
   return organizations.length ? { status: "organization_required", organizations } : null;
 }
 
 function clientStatusStyle(status: ClientCalendarDto["status"]) {
-  const tone = status === "cancelled"
-    ? ["#fdecec", "#8a1c1c"]
-    : status === "under_review"
-      ? ["#fff8d8", "#725000"]
-      : status === "assigned" || status === "in_progress" || status === "completed"
-        ? ["#e8f5f3", "#075e58"]
-        : status === "submitted" || status === "published"
-          ? ["#eaf2ff", "#174a8b"]
-          : ["#eef2f7", "#34445b"];
+  const tone =
+    status === "cancelled"
+      ? ["#fdecec", "#8a1c1c"]
+      : status === "under_review"
+        ? ["#fff8d8", "#725000"]
+        : status === "assigned" || status === "in_progress" || status === "completed"
+          ? ["#e8f5f3", "#075e58"]
+          : status === "submitted" || status === "published"
+            ? ["#eaf2ff", "#174a8b"]
+            : ["#eef2f7", "#34445b"];
   return { ...styles.pill, background: tone[0], color: tone[1] };
 }
 
