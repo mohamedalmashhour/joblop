@@ -27,6 +27,7 @@ import {
   type WorkerAttendanceStage
 } from "./src/features/worker-attendance";
 import { WorkerCalendarPanel } from "./src/features/worker-calendar";
+import { WorkerCalendarFixturePreview } from "./src/features/worker-calendar/WorkerCalendarFixturePreview";
 import {
   nativeSecureSessionVault,
   tryCreateMobileSessionTransport
@@ -288,7 +289,13 @@ export default function App() {
     }
 
     if (screen.tabId === "calendar") {
-      return <WorkerCalendarPanel offerId={calendarOfferId} transport={calendarTransport} />;
+      return (
+        <WorkerCalendarPanel
+          offerId={calendarOfferId}
+          renderFixturePreview={(onClose) => <WorkerCalendarFixturePreview onClose={onClose} />}
+          transport={calendarTransport}
+        />
+      );
     }
 
     return (
@@ -890,10 +897,17 @@ const styles = StyleSheet.create({
     gap: spacing.xs,
     justifyContent: "space-around",
     padding: spacing.sm,
-    shadowColor: colors.text,
-    shadowOffset: { height: -2, width: 0 },
-    shadowOpacity: 0.06,
-    shadowRadius: 12,
+    ...Platform.select({
+      default: {
+        shadowColor: colors.text,
+        shadowOffset: { height: -2, width: 0 },
+        shadowOpacity: 0.06,
+        shadowRadius: 12
+      },
+      web: {
+        boxShadow: "0 -2px 12px rgba(11, 31, 58, 0.06)"
+      }
+    }),
     width: "100%"
   },
   tabButton: {

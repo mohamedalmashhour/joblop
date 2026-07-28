@@ -9,7 +9,19 @@ import { paymentWorkflow } from "./paymentWorkflowContent";
 import { shiftWorkflow } from "./shifts/shiftManagementContent";
 import { timesheetWorkflow } from "./timesheetWorkflowContent";
 
-const employerNavigation = [...employerWorkflow, ...clientCalendarWorkflow, ...shiftWorkflow, ...assignmentWorkflow, ...attendanceWorkflow, ...timesheetWorkflow, ...invoiceWorkflow, ...paymentWorkflow] as const;
+const employerNavigation = [
+  ...employerWorkflow,
+  ...clientCalendarWorkflow,
+  ...shiftWorkflow,
+  ...assignmentWorkflow,
+  ...attendanceWorkflow,
+  ...timesheetWorkflow,
+  ...invoiceWorkflow,
+  ...paymentWorkflow
+] as const;
+const persistedEmployerNavigation = clientCalendarWorkflow.filter((step) =>
+  ["/employer/calendar", "/employer/calendar/create"].includes(step.route)
+);
 
 export function EmployerShell({
   actions,
@@ -28,6 +40,10 @@ export function EmployerShell({
   mode?: "fixture" | "authenticated";
   title: string;
 }) {
+  const production = process.env.RWOS_ENV === "production";
+  const effectiveMode = production ? "authenticated" : mode;
+  const navigation =
+    effectiveMode === "authenticated" ? persistedEmployerNavigation : employerNavigation;
   return (
     <main style={styles.page}>
       <div style={styles.appFrame}>
@@ -38,12 +54,8 @@ export function EmployerShell({
             </span>
             <span>Resident Job</span>
           </a>
-          <nav
-            aria-label="Employer navigation"
-            className="employer-navigation"
-            style={styles.nav}
-          >
-            {employerNavigation.map((step) => (
+          <nav aria-label="Employer navigation" className="employer-navigation" style={styles.nav}>
+            {navigation.map((step) => (
               <a
                 key={step.route}
                 href={step.route}
@@ -56,15 +68,25 @@ export function EmployerShell({
             ))}
           </nav>
           <div style={styles.sidebarNote}>
-            <strong>{mode === "authenticated" ? "Authenticated boundary" : "Fixture mode"}</strong>
-            <span>{mode === "authenticated" ? "Persisted data is role-scoped. Mutating authority remains governed." : "Visual workflow preview. Authoritative actions remain governed."}</span>
+            <strong>
+              {effectiveMode === "authenticated" ? "Secure boundary" : "Fixture mode"}
+            </strong>
+            <span>
+              {effectiveMode === "authenticated"
+                ? "Session and organization authority are verified before persisted data is shown."
+                : "Visual workflow preview. Authoritative actions remain governed."}
+            </span>
           </div>
         </aside>
         <div className="employer-workspace" style={styles.workspace}>
           <header style={styles.header}>
             <div>
               <p style={styles.topbarEyebrow}>Employer workspace</p>
-              <strong style={styles.topbarTitle}>{mode === "authenticated" ? "Authorized employer session" : "Sunrise of Oak Hill"}</strong>
+              <strong style={styles.topbarTitle}>
+                {effectiveMode === "authenticated"
+                  ? "Secure employer workspace"
+                  : "Sunrise of Oak Hill"}
+              </strong>
             </div>
             {actions}
           </header>
@@ -95,6 +117,8 @@ export function EmployerShell({
 }
 
 export function WorkflowRoutes({ currentRoute }: { currentRoute: string }) {
+  const navigation =
+    process.env.RWOS_ENV === "production" ? persistedEmployerNavigation : employerNavigation;
   return (
     <section aria-labelledby="workflow-title" style={styles.section}>
       <div style={styles.sectionHeader}>
@@ -104,7 +128,7 @@ export function WorkflowRoutes({ currentRoute }: { currentRoute: string }) {
         </h2>
       </div>
       <div style={styles.routeGrid}>
-        {employerNavigation.map((step) => (
+        {navigation.map((step) => (
           <a key={step.route} href={step.route} style={styles.routeCard}>
             <span style={styles.routeStatus}>
               Page {step.page} {step.route === currentRoute ? "Current" : step.status}

@@ -10,7 +10,9 @@ import {
 import { styles } from "../../employerStyles";
 
 export function ClientRequestDetailPanel({ requestId }: Readonly<{ requestId: string | null }>) {
-  const [state, setState] = useState<AuthenticatedViewState<ClientCalendarDto>>({ status: "loading" });
+  const [state, setState] = useState<AuthenticatedViewState<ClientCalendarDto>>({
+    status: "loading"
+  });
   const [organizationRequired, setOrganizationRequired] = useState(false);
   const requestGeneration = useRef(0);
   const load = useCallback(async () => {
@@ -36,7 +38,7 @@ export function ClientRequestDetailPanel({ requestId }: Readonly<{ requestId: st
         }
       }
       if (!response.ok) return setState(calendarFailureState(response.status));
-      const payload = await response.json() as { request?: unknown };
+      const payload = (await response.json()) as { request?: unknown };
       if (generation !== requestGeneration.current) return;
       setState({ status: "ready", data: parseClientCalendarDto(payload.request) });
     } catch {
@@ -46,7 +48,9 @@ export function ClientRequestDetailPanel({ requestId }: Readonly<{ requestId: st
   }, [requestId]);
   useEffect(() => {
     void load();
-    return () => { requestGeneration.current += 1; };
+    return () => {
+      requestGeneration.current += 1;
+    };
   }, [load]);
 
   if (!requestId) {
@@ -54,7 +58,9 @@ export function ClientRequestDetailPanel({ requestId }: Readonly<{ requestId: st
       <article style={styles.panel} aria-live="polite">
         <h2 style={styles.sectionTitle}>Request reference required</h2>
         <p style={styles.sectionCopy}>Open a persisted request from the authenticated calendar.</p>
-        <a href="/employer/calendar" style={styles.secondaryButton}>Back to request calendar</a>
+        <a href="/employer/calendar" style={styles.secondaryButton}>
+          Back to request calendar
+        </a>
       </article>
     );
   }
@@ -63,30 +69,49 @@ export function ClientRequestDetailPanel({ requestId }: Readonly<{ requestId: st
     return (
       <article style={styles.panel} aria-live="polite">
         <h2 style={styles.sectionTitle}>Organization selection required</h2>
-        <p style={styles.sectionCopy}>Choose an authorized employer organization before opening this persisted request.</p>
-        <a href="/employer/calendar" style={styles.secondaryButton}>Choose organization</a>
+        <p style={styles.sectionCopy}>
+          Choose an authorized employer organization before opening this persisted request.
+        </p>
+        <a href="/employer/calendar" style={styles.secondaryButton}>
+          Choose organization
+        </a>
       </article>
     );
   }
 
   if (state.status !== "ready") {
-    const copy: readonly [string, string] = state.status === "loading"
-      ? ["Loading request detail", "Checking the persisted client-authorized record."]
-      : state.status === "denied"
-        ? ["Authentication required", "Return to the calendar and sign in."]
-        : state.status === "unavailable"
-          ? ["Request service unavailable", "The persisted record could not be reached. No fixture record is substituted."]
-          : state.status === "stale"
-            ? ["Request changed", "Refresh the persisted record before continuing."]
-            : ["Request detail unavailable", "No fixture record is substituted for this persisted request."];
+    const copy: readonly [string, string] =
+      state.status === "loading"
+        ? ["Loading request detail", "Checking the persisted client-authorized record."]
+        : state.status === "denied"
+          ? ["Authentication required", "Return to the calendar and sign in."]
+          : state.status === "unavailable"
+            ? [
+                "Request service unavailable",
+                "The persisted record could not be reached. No fixture record is substituted."
+              ]
+            : state.status === "stale"
+              ? ["Request changed", "Refresh the persisted record before continuing."]
+              : [
+                  "Request detail unavailable",
+                  "No fixture record is substituted for this persisted request."
+                ];
     return (
       <article style={styles.panel} aria-live="polite">
         <h2 style={styles.sectionTitle}>{copy[0]}</h2>
         <p style={styles.sectionCopy}>{copy[1]}</p>
-        <a href="/employer/calendar" style={styles.secondaryButton}>Back to request calendar</a>
-        {state.status === "error" || state.status === "stale" || state.status === "unavailable"
-          ? <button type="button" onClick={() => void load()} style={{ ...styles.secondaryButton, cursor: "pointer" }}>Retry</button>
-          : null}
+        <a href="/employer/calendar" style={styles.secondaryButton}>
+          Back to request calendar
+        </a>
+        {state.status === "error" || state.status === "stale" || state.status === "unavailable" ? (
+          <button
+            type="button"
+            onClick={() => void load()}
+            style={{ ...styles.secondaryButton, cursor: "pointer" }}
+          >
+            Retry
+          </button>
+        ) : null}
       </article>
     );
   }
@@ -98,11 +123,17 @@ export function ClientRequestDetailPanel({ requestId }: Readonly<{ requestId: st
     ["Workers requested", String(request.numberOfWorkers)],
     ["Schedule", formatWindow(request)],
     ["Duties", request.dutiesSummary ?? "Not provided"],
-    ["Qualifications", request.qualifications.length ? request.qualifications.join(", ") : "Not provided"],
+    [
+      "Qualifications",
+      request.qualifications.length ? request.qualifications.join(", ") : "Not provided"
+    ],
     ["Location", request.addressSummary ?? "Restricted or not provided"],
     ["Special instructions", request.specialInstructions ?? "Not provided"],
     ["Contract verification", request.verification.contract],
-    ["Payment readiness", `${request.verification.paymentMethodReadiness} — payment details hidden`],
+    [
+      "Payment readiness",
+      `${request.verification.paymentMethodReadiness} — payment details hidden`
+    ],
     ["Location verification", request.verification.location]
   ] as const;
   return (
@@ -111,12 +142,31 @@ export function ClientRequestDetailPanel({ requestId }: Readonly<{ requestId: st
         <p style={styles.eyebrowDark}>Persisted client request</p>
         <h2 style={styles.sectionTitle}>{request.title}</h2>
         <span style={clientStatusStyle(request.status)}>{request.status.replaceAll("_", " ")}</span>
-        <p style={styles.sectionCopy}>Worker compensation, platform margin, and internal admin information are not included.</p>
+        <p style={styles.sectionCopy}>
+          Worker compensation, platform margin, and internal admin information are not included.
+        </p>
+        {request.actionRequired === "information_required" ? (
+          <p aria-live="polite" style={styles.warning}>
+            Information requested: {request.actionRequiredReason}
+          </p>
+        ) : null}
+        {request.status === "draft" || request.actionRequired === "information_required" ? (
+          <a
+            href={`/employer/calendar/request/edit?id=${encodeURIComponent(request.id)}`}
+            style={styles.primaryButton}
+          >
+            {request.actionRequired === "information_required"
+              ? "Provide requested information"
+              : "Edit persisted draft"}
+          </a>
+        ) : (
+          <p style={styles.cardText}>This request cannot be edited in its current status.</p>
+        )}
         <a
-          href={`/employer/calendar/assignment?request=${encodeURIComponent(request.requestNumber)}`}
+          href={`/employer/calendar/assignment?request=${encodeURIComponent(request.id)}`}
           style={styles.secondaryButton}
         >
-          Check assignment visibility
+          View staffing progress
         </a>
       </article>
       <article style={styles.panel}>
@@ -133,24 +183,28 @@ export function ClientRequestDetailPanel({ requestId }: Readonly<{ requestId: st
 }
 
 function clientStatusStyle(status: ClientCalendarDto["status"]) {
-  const tone = status === "cancelled"
-    ? ["#fdecec", "#8a1c1c"]
-    : status === "under_review"
-      ? ["#fff8d8", "#725000"]
-      : status === "assigned" || status === "in_progress" || status === "completed"
-        ? ["#e8f5f3", "#075e58"]
-        : status === "submitted" || status === "published"
-          ? ["#eaf2ff", "#174a8b"]
-          : ["#eef2f7", "#34445b"];
+  const tone =
+    status === "cancelled"
+      ? ["#fdecec", "#8a1c1c"]
+      : status === "under_review"
+        ? ["#fff8d8", "#725000"]
+        : status === "assigned" || status === "in_progress" || status === "completed"
+          ? ["#e8f5f3", "#075e58"]
+          : status === "submitted" || status === "published"
+            ? ["#eaf2ff", "#174a8b"]
+            : ["#eef2f7", "#34445b"];
   return { ...styles.statusBadge, background: tone[0], color: tone[1] };
 }
 
 function formatWindow(request: ClientCalendarDto) {
   const start = new Intl.DateTimeFormat("en-CA", {
-    dateStyle: "medium", timeStyle: "short", timeZone: request.timezone
+    dateStyle: "medium",
+    timeStyle: "short",
+    timeZone: request.timezone
   }).format(new Date(request.startAt));
   const end = new Intl.DateTimeFormat("en-CA", {
-    timeStyle: "short", timeZone: request.timezone
+    timeStyle: "short",
+    timeZone: request.timezone
   }).format(new Date(request.endAt));
   return `${start}–${end}`;
 }

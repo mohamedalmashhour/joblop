@@ -26,6 +26,23 @@ export type MobileSessionState =
 
 type MobileSessionFetch = typeof fetch;
 
+export type WorkerAssignmentDto = Readonly<{
+  assignmentId: string;
+  workerOfferId: string;
+  status: string;
+  title: string;
+  roleSummary: string | null;
+  worksiteSummary: string | null;
+  departmentSummary: string | null;
+  startAt: string;
+  endAt: string;
+  timezone: string;
+  attendanceBoundary: "not_started" | "handoff_ready" | "handoff_completed";
+  versionToken: number;
+  updatedAt: string;
+  visibility: "worker_authorized_assignment";
+}>;
+
 export function createMobileSessionTransport(options: {
   apiOrigin: string;
   vault: SecureSessionVault;
@@ -35,7 +52,9 @@ export function createMobileSessionTransport(options: {
   const request = options.fetch ?? fetch;
 
   return {
-    async signIn(credentials: Readonly<{ email: string; password: string }>): Promise<MobileSessionState> {
+    async signIn(
+      credentials: Readonly<{ email: string; password: string }>
+    ): Promise<MobileSessionState> {
       if (await options.vault.read()) return { status: "sign_out_required" };
       try {
         const response = await request(`${origin}/auth/sign-in`, {
@@ -55,8 +74,8 @@ export function createMobileSessionTransport(options: {
       }
     },
     async signOut(): Promise<
-      Readonly<{ status: "signed_out" }> |
-      Readonly<{ status: "local_session_cleared"; remoteRevocation: "unavailable" }>
+      | Readonly<{ status: "signed_out" }>
+      | Readonly<{ status: "local_session_cleared"; remoteRevocation: "unavailable" }>
     > {
       const token = await options.vault.read();
       try {
@@ -77,28 +96,118 @@ export function createMobileSessionTransport(options: {
         await options.vault.clear();
       }
     },
-    async workerOffer(offerId: string): Promise<
+    async workerOffer(
+      offerId: string
+    ): Promise<
       | Readonly<{ status: "ready"; data: WorkerCalendarDto }>
       | Readonly<{ status: "empty" | "denied" | "error" | "unavailable" | "stale" }>
     > {
       const token = await options.vault.read();
       if (!token) return { status: "denied" };
       try {
-        const response = await request(
-          `${origin}/worker/calendar/offers/${encodeURIComponent(offerId)}`,
-          {
-            method: "GET",
-            headers: { accept: "application/json", authorization: `Bearer ${token}` },
-            cache: "no-store"
-          }
-        );
+        const response = await request(`${origin}/worker/offers/${encodeURIComponent(offerId)}`, {
+          method: "GET",
+          headers: { accept: "application/json", authorization: `Bearer ${token}` },
+          cache: "no-store"
+        });
         if (response.status === 401 || response.status === 403) return { status: "denied" };
         if (response.status === 404) return { status: "empty" };
         if (response.status === 409 || response.status === 412) return { status: "stale" };
         if (response.status === 503) return { status: "unavailable" };
         if (!response.ok) return { status: "error" };
-        const payload = await response.json() as { offer?: unknown };
-        return { status: "ready", data: parseWorkerCalendarDto(payload.offer) };
+        const payload = (await response.json()) as { workerOffer?: unknown };
+        return { status: "ready", data: parseWorkerCalendarDto(payload.workerOffer) };
+      } catch {
+        return { status: "error" };
+      }
+    },
+    async workerOffers(): Promise<
+      | Readonly<{ status: "ready"; data: readonly WorkerCalendarDto[] }>
+      | Readonly<{ status: "empty" | "denied" | "error" | "unavailable" }>
+    > {
+      const token = await options.vault.read();
+      if (!token) return { status: "denied" };
+      try {
+        const response = await request(`${origin}/worker/offers`, {
+          method: "GET",
+          headers: { accept: "application/json", authorization: `Bearer ${token}` },
+          cache: "no-store"
+        });
+        if (response.status === 401 || response.status === 403) return { status: "denied" };
+        if (response.status === 503) return { status: "unavailable" };
+        if (!response.ok) return { status: "error" };
+        const payload = (await response.json()) as { workerOffers?: unknown };
+        if (!Array.isArray(payload.workerOffers)) return { status: "error" };
+        const workerOffers = payload.workerOffers.map(parseWorkerCalendarDto);
+        return workerOffers.length === 0
+          ? { status: "empty" }
+          : { status: "ready", data: workerOffers };
+      } catch {
+        return { status: "error" };
+      }
+    },
+    async workerAssignments(): Promise<
+      | Readonly<{ status: "ready"; data: readonly WorkerAssignmentDto[] }>
+      | Readonly<{ status: "empty" | "denied" | "error" | "unavailable" }>
+    > {
+      const token = await options.vault.read();
+      if (!token) return { status: "denied" };
+      try {
+        const response = await request(`${origin}/worker/assignments`, {
+          method: "GET",
+          headers: { accept: "application/json", authorization: `Bearer ${token}` },
+          cache: "no-store"
+        });
+        if (response.status === 401 || response.status === 403) return { status: "denied" };
+        if (response.status === 503) return { status: "unavailable" };
+        if (!response.ok) return { status: "error" };
+        const payload = (await response.json()) as { assignments?: unknown };
+        if (!Array.isArray(payload.assignments)) return { status: "error" };
+        const assignments = payload.assignments.map(parseWorkerAssignment);
+        return assignments.length === 0
+          ? { status: "empty" }
+          : { status: "ready", data: assignments };
+      } catch {
+        return { status: "error" };
+      }
+    },
+    async respondToWorkerOffer(
+      input: Readonly<{
+        offerId: string;
+        decision: "accept" | "decline";
+        expectedVersion: number;
+        expectedTermsVersionId: string;
+      }>
+    ): Promise<
+      | Readonly<{ status: "ready"; data: WorkerCalendarDto }>
+      | Readonly<{ status: "denied" | "error" | "unavailable" | "stale" }>
+    > {
+      const token = await options.vault.read();
+      if (!token) return { status: "denied" };
+      try {
+        const response = await request(
+          `${origin}/worker/offers/${encodeURIComponent(input.offerId)}/${input.decision}`,
+          {
+            method: "POST",
+            headers: {
+              accept: "application/json",
+              authorization: `Bearer ${token}`,
+              "content-type": "application/json"
+            },
+            body: JSON.stringify({
+              expectedVersion: input.expectedVersion,
+              expectedTermsVersionId: input.expectedTermsVersionId
+            }),
+            cache: "no-store"
+          }
+        );
+        if (response.status === 401 || response.status === 403) return { status: "denied" };
+        if (response.status === 409 || response.status === 412) return { status: "stale" };
+        if (response.status === 404) return { status: "unavailable" };
+        if (response.status === 503) return { status: "unavailable" };
+        if (!response.ok) return { status: "error" };
+        const payload = (await response.json()) as { workerOffer?: unknown };
+        return { status: "ready", data: parseWorkerCalendarDto(payload.workerOffer) };
       } catch {
         return { status: "error" };
       }
@@ -136,4 +245,47 @@ function readToken(input: unknown) {
   if (typeof input !== "object" || input === null || !("token" in input)) return null;
   const value = (input as { token?: unknown }).token;
   return typeof value === "string" && value.length >= 20 ? value : null;
+}
+
+function parseWorkerAssignment(input: unknown): WorkerAssignmentDto {
+  if (!input || typeof input !== "object") throw new Error("RWOS_INVALID_WORKER_ASSIGNMENT");
+  const value = input as Record<string, unknown>;
+  const required = (key: string) => {
+    const item = value[key];
+    if (typeof item !== "string" || !item) throw new Error("RWOS_INVALID_WORKER_ASSIGNMENT");
+    return item;
+  };
+  const optional = (key: string) => {
+    const item = value[key];
+    if (item === null) return null;
+    if (typeof item !== "string") throw new Error("RWOS_INVALID_WORKER_ASSIGNMENT");
+    return item;
+  };
+  const attendanceBoundary = required("attendanceBoundary");
+  if (!["not_started", "handoff_ready", "handoff_completed"].includes(attendanceBoundary)) {
+    throw new Error("RWOS_INVALID_WORKER_ASSIGNMENT");
+  }
+  const versionToken = value.versionToken;
+  if (!Number.isInteger(versionToken) || (versionToken as number) < 0) {
+    throw new Error("RWOS_INVALID_WORKER_ASSIGNMENT");
+  }
+  if (value.visibility !== "worker_authorized_assignment") {
+    throw new Error("RWOS_INVALID_WORKER_ASSIGNMENT");
+  }
+  return {
+    assignmentId: required("assignmentId"),
+    workerOfferId: required("workerOfferId"),
+    status: required("status"),
+    title: required("title"),
+    roleSummary: optional("roleSummary"),
+    worksiteSummary: optional("worksiteSummary"),
+    departmentSummary: optional("departmentSummary"),
+    startAt: required("startAt"),
+    endAt: required("endAt"),
+    timezone: required("timezone"),
+    attendanceBoundary: attendanceBoundary as WorkerAssignmentDto["attendanceBoundary"],
+    versionToken: versionToken as number,
+    updatedAt: required("updatedAt"),
+    visibility: "worker_authorized_assignment"
+  };
 }

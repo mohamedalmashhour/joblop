@@ -1,8 +1,8 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 import { ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
 import { colors, spacing } from "@rwos/design-system";
 import type { WorkerCalendarDto } from "@rwos/shared";
-import type { createMobileSessionTransport } from "../../auth/secureSession";
+import type { createMobileSessionTransport, WorkerAssignmentDto } from "../../auth/secureSession";
 import {
   Badge,
   BodyText,
@@ -13,24 +13,27 @@ import {
   Section,
   SmallText
 } from "../../ui/primitives";
-import { WorkerCalendarFixturePreview } from "./WorkerCalendarFixturePreview";
 
 type WorkerTransport = ReturnType<typeof createMobileSessionTransport>;
 type WorkerState =
   | { status: "loading" | "empty" | "denied" | "error" | "unavailable" | "stale" }
+  | { status: "list"; data: readonly WorkerCalendarDto[] }
   | { status: "ready"; data: WorkerCalendarDto };
 
 export function WorkerCalendarPanel({
   allowFixturePreview = process.env.EXPO_PUBLIC_RWOS_ENV !== "production",
+  renderFixturePreview,
   offerId,
   transport
 }: Readonly<{
   allowFixturePreview?: boolean;
+  renderFixturePreview?: (onClose: () => void) => ReactNode;
   offerId: string | null;
   transport: WorkerTransport | null;
 }>) {
+  const [selectedOfferId, setSelectedOfferId] = useState(offerId);
   const [state, setState] = useState<WorkerState>(
-    !transport ? { status: "unavailable" } : !offerId ? { status: "empty" } : { status: "loading" }
+    !transport ? { status: "unavailable" } : { status: "loading" }
   );
   const [sessionNotice, setSessionNotice] = useState<string | null>(null);
   const [fixturePreview, setFixturePreview] = useState(false);
@@ -38,11 +41,17 @@ export function WorkerCalendarPanel({
   const load = useCallback(async () => {
     const generation = ++requestGeneration.current;
     if (!transport) return setState({ status: "unavailable" });
-    if (!offerId) return setState({ status: "empty" });
     setState({ status: "loading" });
-    const result = await transport.workerOffer(offerId);
-    if (generation === requestGeneration.current) setState(result);
-  }, [offerId, transport]);
+    if (selectedOfferId) {
+      const result = await transport.workerOffer(selectedOfferId);
+      if (generation === requestGeneration.current) setState(result);
+      return;
+    }
+    const result = await transport.workerOffers();
+    if (generation !== requestGeneration.current) return;
+    setState(result.status === "ready" ? { status: "list", data: result.data } : result);
+  }, [selectedOfferId, transport]);
+  useEffect(() => setSelectedOfferId(offerId), [offerId]);
   useEffect(() => {
     void load();
     return () => {
@@ -50,8 +59,8 @@ export function WorkerCalendarPanel({
     };
   }, [load]);
 
-  if (fixturePreview && !offerId) {
-    return <WorkerCalendarFixturePreview onClose={() => setFixturePreview(false)} />;
+  if (fixturePreview && !offerId && renderFixturePreview) {
+    return renderFixturePreview(() => setFixturePreview(false));
   }
 
   return (
@@ -73,8 +82,8 @@ export function WorkerCalendarPanel({
         ) : null}
         {state.status === "empty" ? (
           <StateCard
-            title="No persisted offer selected"
-            message="Open the worker calendar from an authorized offer link. No fixture offer is substituted as persisted data."
+            title="No persisted offers"
+            message="There are no worker-authorized offers for this account. No fixture offer is substituted as persisted data."
           />
         ) : null}
         {state.status === "unavailable" ? (
@@ -84,6 +93,7 @@ export function WorkerCalendarPanel({
           />
         ) : null}
         {allowFixturePreview &&
+        renderFixturePreview &&
         !offerId &&
         (state.status === "empty" || state.status === "unavailable") ? (
           <Button
@@ -99,7 +109,23 @@ export function WorkerCalendarPanel({
             onRetry={load}
           />
         ) : null}
-        {state.status === "ready" ? <PersistedOffer offer={state.data} /> : null}
+        {state.status === "list" ? (
+          <OfferInbox
+            offers={state.data}
+            onSelect={(workerOfferId) => setSelectedOfferId(workerOfferId)}
+          />
+        ) : null}
+        {state.status === "ready" && transport ? (
+          <PersistedOffer
+            offer={state.data}
+            onUpdated={(data) => setState({ status: "ready", data })}
+            transport={transport}
+            {...(!offerId ? { onBack: () => setSelectedOfferId(null) } : {})}
+          />
+        ) : null}
+        {transport && state.status !== "denied" ? (
+          <WorkerAssignmentList transport={transport} />
+        ) : null}
         {transport &&
         state.status !== "loading" &&
         state.status !== "unavailable" &&
@@ -215,9 +241,92 @@ function WorkerSignIn({
   );
 }
 
-function PersistedOffer({ offer }: Readonly<{ offer: WorkerCalendarDto }>) {
+function OfferInbox({
+  offers,
+  onSelect
+}: Readonly<{
+  offers: readonly WorkerCalendarDto[];
+  onSelect: (workerOfferId: string) => void;
+}>) {
+  return (
+    <Section title="Your offers">
+      {offers.map((offer) => (
+        <Card key={offer.workerOfferId}>
+          <Badge label={offer.status} tone={workerOfferTone(offer.status)} />
+          <Heading>{offer.title ?? "Worker offer"}</Heading>
+          <BodyText>{formatWindow(offer)}</BodyText>
+          <SmallText>Expires {formatExpiry(offer.expiresAt)}.</SmallText>
+          <Button label="Review offer" onPress={() => onSelect(offer.workerOfferId)} />
+        </Card>
+      ))}
+    </Section>
+  );
+}
+
+function PersistedOffer({
+  offer,
+  transport,
+  onUpdated,
+  onBack
+}: Readonly<{
+  offer: WorkerCalendarDto;
+  transport: WorkerTransport;
+  onUpdated: (offer: WorkerCalendarDto) => void;
+  onBack?: () => void;
+}>) {
+  const [confirming, setConfirming] = useState<"accept" | "decline" | null>(null);
+  const [submitting, setSubmitting] = useState(false);
+  const [message, setMessage] = useState<string | null>(null);
+  const actionable = ["sent", "delivered", "viewed"].includes(offer.status);
+  const respond = async (decision: "accept" | "decline") => {
+    if (confirming !== decision) {
+      setConfirming(decision);
+      setMessage(
+        decision === "accept"
+          ? "Confirm acceptance of these exact terms."
+          : "Confirm that you want to decline this offer."
+      );
+      return;
+    }
+    if (!offer.termsVersionId) {
+      setMessage("Current offer terms are unavailable. Refresh before responding.");
+      return;
+    }
+    setSubmitting(true);
+    try {
+      const result = await transport.respondToWorkerOffer({
+        offerId: offer.workerOfferId,
+        decision,
+        expectedVersion: offer.versionToken,
+        expectedTermsVersionId: offer.termsVersionId
+      });
+      if (result.status === "ready") {
+        setConfirming(null);
+        setMessage(
+          decision === "accept"
+            ? "Offer accepted. A confirmed assignment remains a separate step."
+            : "Offer declined."
+        );
+        onUpdated(result.data);
+      } else {
+        setMessage(
+          result.status === "stale"
+            ? "The offer changed. Refresh before responding."
+            : result.status === "unavailable"
+              ? "Offer responses are not enabled in this environment."
+              : "The response could not be confirmed. Refresh before trying again."
+        );
+      }
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
   return (
     <Section title="Authorized offer">
+      {onBack ? (
+        <Button disabled={submitting} label="Back to offers" onPress={onBack} variant="secondary" />
+      ) : null}
       <Card testID="worker-persisted-offer-card">
         <Badge label={offer.status} tone={workerOfferTone(offer.status)} />
         <Heading>{offer.title ?? "Worker offer"}</Heading>
@@ -230,9 +339,26 @@ function PersistedOffer({ offer }: Readonly<{ offer: WorkerCalendarDto }>) {
           {offer.policySummary ?? "No additional worker-visible policy summary."}
         </SmallText>
         <Divider />
-        <SmallText>
-          Accept and decline are unavailable here until an authorized response API is connected.
-        </SmallText>
+        {message ? (
+          <View accessibilityLiveRegion="polite">
+            <SmallText>{message}</SmallText>
+          </View>
+        ) : null}
+        {actionable ? (
+          <>
+            <Button
+              disabled={submitting}
+              label={confirming === "accept" ? "Confirm accept" : "Accept offer"}
+              onPress={() => void respond("accept")}
+            />
+            <Button
+              disabled={submitting}
+              label={confirming === "decline" ? "Confirm decline" : "Decline offer"}
+              onPress={() => void respond("decline")}
+              variant="secondary"
+            />
+          </>
+        ) : null}
         <SmallText>
           {
             "Confirmed assignment and attendance remain separate; this offer reference cannot execute attendance."
@@ -271,6 +397,53 @@ function WorkerSessionAction({
       onPress={() => void signOut()}
       variant="secondary"
     />
+  );
+}
+
+function WorkerAssignmentList({ transport }: Readonly<{ transport: WorkerTransport }>) {
+  const [state, setState] = useState<
+    | { status: "loading" | "empty" | "denied" | "error" | "unavailable" }
+    | { status: "ready"; data: readonly WorkerAssignmentDto[] }
+  >({ status: "loading" });
+  const load = useCallback(async () => setState(await transport.workerAssignments()), [transport]);
+  useEffect(() => {
+    void load();
+  }, [load]);
+  return (
+    <Section title="Confirmed assignments">
+      {state.status === "loading" ? (
+        <SmallText>Loading worker-authorized assignments…</SmallText>
+      ) : null}
+      {state.status === "empty" ? (
+        <SmallText>No confirmed assignments are available for this worker account.</SmallText>
+      ) : null}
+      {state.status === "denied" ? (
+        <SmallText>Sign in with the assigned worker account to view assignments.</SmallText>
+      ) : null}
+      {state.status === "unavailable" || state.status === "error" ? (
+        <Card>
+          <SmallText>
+            {state.status === "unavailable"
+              ? "Assignment discovery is unavailable in this environment."
+              : "Assignments could not be loaded."}
+          </SmallText>
+          <Button label="Retry assignments" onPress={() => void load()} variant="secondary" />
+        </Card>
+      ) : null}
+      {state.status === "ready"
+        ? state.data.map((assignment) => (
+            <Card key={assignment.assignmentId}>
+              <Badge label={assignment.status} tone="success" />
+              <Heading>{assignment.title}</Heading>
+              <BodyText>{formatAssignmentWindow(assignment)}</BodyText>
+              <BodyText>{assignment.worksiteSummary ?? "Worksite details unavailable"}</BodyText>
+              <SmallText>
+                Attendance remains separate: {assignment.attendanceBoundary.replaceAll("_", " ")}.
+              </SmallText>
+            </Card>
+          ))
+        : null}
+    </Section>
   );
 }
 
@@ -326,6 +499,19 @@ function formatExpiry(expiresAt: string) {
     timeStyle: "short",
     timeZone: "UTC"
   }).format(new Date(expiresAt))} UTC`;
+}
+
+function formatAssignmentWindow(assignment: WorkerAssignmentDto) {
+  const start = new Intl.DateTimeFormat("en-CA", {
+    dateStyle: "medium",
+    timeStyle: "short",
+    timeZone: assignment.timezone
+  }).format(new Date(assignment.startAt));
+  const end = new Intl.DateTimeFormat("en-CA", {
+    timeStyle: "short",
+    timeZone: assignment.timezone
+  }).format(new Date(assignment.endAt));
+  return `${start}–${end}`;
 }
 
 const styles = StyleSheet.create({

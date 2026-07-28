@@ -1,8 +1,6 @@
 import { EmployerShell } from "../EmployerShell";
 import { styles } from "../employerStyles";
-import {
-  clientCalendarPrivacyBoundaries
-} from "./clientCalendarContent";
+import { clientCalendarPrivacyBoundaries } from "./clientCalendarContent";
 import { ClientCalendarPanel } from "./ClientCalendarPanel";
 
 export default function ClientRequestCalendarPage() {
@@ -15,7 +13,7 @@ export default function ClientRequestCalendarPage() {
       mode="authenticated"
       actions={
         <a href="/employer/calendar/create" style={styles.primaryButton}>
-          Preview staffing request
+          Create staffing request
         </a>
       }
     >
@@ -28,13 +26,18 @@ export default function ClientRequestCalendarPage() {
       </section>
       <section style={styles.whiteSection}>
         <div style={styles.cardGrid}>
-          {clientCalendarPrivacyBoundaries.filter((boundary) => !boundary.includes("fixture")).map((boundary) => (
-            <article key={boundary} style={styles.tintedCard}>
-              <p style={styles.cardText}>{boundary}</p>
-            </article>
-          ))}
+          {clientCalendarPrivacyBoundaries
+            .filter((boundary) => !boundary.includes("fixture"))
+            .map((boundary) => (
+              <article key={boundary} style={styles.tintedCard}>
+                <p style={styles.cardText}>{boundary}</p>
+              </article>
+            ))}
           <article style={styles.tintedCard}>
-            <p style={styles.cardText}>Authenticated list and detail states never substitute fixture records for persisted data.</p>
+            <p style={styles.cardText}>
+              Authenticated list and detail states never substitute fixture records for persisted
+              data.
+            </p>
           </article>
         </div>
       </section>

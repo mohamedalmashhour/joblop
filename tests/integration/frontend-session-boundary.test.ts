@@ -17,7 +17,9 @@ describe("frontend session transport boundaries", () => {
       ...sources(join(root, "apps/employer/app/employer")),
       ...sources(join(root, "apps/admin/app/calendar")),
       ...sources(join(root, "apps/mobile/src/features"))
-    ].map((file) => readFileSync(file, "utf8")).join("\n");
+    ]
+      .map((file) => readFileSync(file, "utf8"))
+      .join("\n");
     expect(componentSources).not.toMatch(/Bearer\s/iu);
     expect(componentSources).not.toMatch(/SessionCookieName/u);
   });
@@ -27,9 +29,13 @@ describe("frontend session transport boundaries", () => {
       ...sources(join(root, "apps/employer/app/api")),
       ...sources(join(root, "apps/admin/app/api")),
       ...sources(join(root, "apps/mobile/src/auth"))
-    ].map((file) => readFileSync(file, "utf8")).join("\n");
+    ]
+      .map((file) => readFileSync(file, "utf8"))
+      .join("\n");
     expect(sessionSources).not.toMatch(/localStorage|sessionStorage/u);
-    expect(sessionSources).not.toMatch(/searchParams\.(?:get|set)\(\s*["'`](?:token|session|authorization)/iu);
+    expect(sessionSources).not.toMatch(
+      /searchParams\.(?:get|set)\(\s*["'`](?:token|session|authorization)/iu
+    );
     expect(sessionSources).not.toMatch(/console\.(?:log|info|warn|error)/u);
   });
 
@@ -38,10 +44,7 @@ describe("frontend session transport boundaries", () => {
       join(root, "apps/employer/app/api/sessionBoundary.ts"),
       "utf8"
     );
-    const adminBoundary = readFileSync(
-      join(root, "apps/admin/app/api/sessionBoundary.ts"),
-      "utf8"
-    );
+    const adminBoundary = readFileSync(join(root, "apps/admin/app/api/sessionBoundary.ts"), "utf8");
     const mobileBoundary = readFileSync(
       join(root, "apps/mobile/src/auth/secureSession.ts"),
       "utf8"
@@ -67,27 +70,43 @@ describe("frontend session transport boundaries", () => {
   });
 
   it("keeps employer and admin session boundaries symmetric", () => {
-    const employer = readFileSync(
-      join(root, "apps/employer/app/api/sessionBoundary.ts"),
-      "utf8"
-    );
-    const admin = readFileSync(
-      join(root, "apps/admin/app/api/sessionBoundary.ts"),
-      "utf8"
-    );
+    const employer = readFileSync(join(root, "apps/employer/app/api/sessionBoundary.ts"), "utf8");
+    const admin = readFileSync(join(root, "apps/admin/app/api/sessionBoundary.ts"), "utf8");
     for (const source of [employer, admin]) {
       expect(source).toContain("createFrontendSessionGateway");
       expect(source).toContain("httpOnly: true");
       expect(source).toContain('sameSite: "strict"');
       expect(source).toContain("isSameOriginMutation");
     }
-    for (const route of ["session/route.ts", "session/sign-in/route.ts"]) {
+    for (const route of ["session/route.ts"]) {
       const employerRoute = readFileSync(join(root, "apps/employer/app/api", route), "utf8");
       const adminRoute = readFileSync(join(root, "apps/admin/app/api", route), "utf8");
       expect(adminRoute).toBe(employerRoute);
     }
-    const employerSignOut = readFileSync(join(root, "apps/employer/app/api/session/sign-out/route.ts"), "utf8");
-    const adminSignOut = readFileSync(join(root, "apps/admin/app/api/session/sign-out/route.ts"), "utf8");
+    const employerSignIn = readFileSync(
+      join(root, "apps/employer/app/api/session/sign-in/route.ts"),
+      "utf8"
+    );
+    const adminSignIn = readFileSync(
+      join(root, "apps/admin/app/api/session/sign-in/route.ts"),
+      "utf8"
+    );
+    for (const route of [employerSignIn, adminSignIn]) {
+      expect(route).toContain("isSameOriginMutation");
+      expect(route).toContain("sign_out_required");
+      expect(route).toContain("gateway.signIn");
+      expect(route).toContain("sessionCookieOptions");
+    }
+    expect(employerSignIn).toContain("organizationContextCookieName");
+    expect(employerSignIn).toContain("maxAge: 0");
+    const employerSignOut = readFileSync(
+      join(root, "apps/employer/app/api/session/sign-out/route.ts"),
+      "utf8"
+    );
+    const adminSignOut = readFileSync(
+      join(root, "apps/admin/app/api/session/sign-out/route.ts"),
+      "utf8"
+    );
     for (const route of [employerSignOut, adminSignOut]) {
       expect(route).toContain("gateway.signOut(token)");
       expect(route).toContain("maxAge: 0");
@@ -99,11 +118,50 @@ describe("frontend session transport boundaries", () => {
     const apiSources = [
       ...sources(join(root, "apps/employer/app/api")),
       ...sources(join(root, "apps/admin/app/api"))
-    ].map((file) => readFileSync(file, "utf8")).join("\n");
+    ]
+      .map((file) => readFileSync(file, "utf8"))
+      .join("\n");
     expect(apiSources).toContain('"cache-control": "private, no-store"');
     expect(apiSources).toContain('status === "stale" ? 409');
     expect(apiSources).toContain('status === "unavailable" ? 503');
     expect(apiSources).not.toMatch(/privateReason|stack|cause/u);
+  });
+
+  it("protects employer job-request mutations behind the same-origin session boundary", () => {
+    const createRoute = readFileSync(
+      join(root, "apps/employer/app/api/job-requests/route.ts"),
+      "utf8"
+    );
+    const submitRoute = readFileSync(
+      join(root, "apps/employer/app/api/job-requests/[jobRequestId]/submit/route.ts"),
+      "utf8"
+    );
+    const editRoute = readFileSync(
+      join(root, "apps/employer/app/api/job-requests/[jobRequestId]/route.ts"),
+      "utf8"
+    );
+    for (const route of [createRoute, editRoute, submitRoute]) {
+      expect(route).toContain("isSameOriginMutation(request)");
+      expect(route).toContain("resolveClientOrganizationId");
+      expect(route).toContain('"cache-control": "private, no-store"');
+      expect(route).not.toContain("authorization:");
+    }
+    expect(createRoute).toContain("readEmployerJobRequestInput");
+    expect(editRoute).toContain("readEmployerJobRequestUpdate");
+    expect(editRoute).toContain('"PATCH"');
+    expect(submitRoute).toContain("expectedVersion");
+  });
+
+  it("protects admin intake mutations behind the admin same-origin session boundary", () => {
+    const route = readFileSync(
+      join(root, "apps/admin/app/api/intake/[jobRequestId]/[action]/route.ts"),
+      "utf8"
+    );
+    expect(route).toContain("isSameOriginMutation(request)");
+    expect(route).toContain("sessionBoundary()");
+    expect(route).toContain("encodeURIComponent(jobRequestId)");
+    expect(route).toContain('"cache-control": "private, no-store"');
+    expect(route).not.toContain("authorization:");
   });
 
   it("requires sign-out before web or native account switching", () => {
@@ -111,10 +169,7 @@ describe("frontend session transport boundaries", () => {
       join(root, "apps/employer/app/api/session/sign-in/route.ts"),
       "utf8"
     );
-    const nativeSession = readFileSync(
-      join(root, "apps/mobile/src/auth/secureSession.ts"),
-      "utf8"
-    );
+    const nativeSession = readFileSync(join(root, "apps/mobile/src/auth/secureSession.ts"), "utf8");
     expect(webSignIn).toContain('status: "sign_out_required"');
     expect(webSignIn).toContain("if (token)");
     expect(nativeSession).toContain('return { status: "sign_out_required" }');

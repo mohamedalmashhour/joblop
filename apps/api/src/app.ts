@@ -1,8 +1,10 @@
+import { createHmac } from "node:crypto";
 import Fastify, { type FastifyReply } from "fastify";
 import {
   AuthenticationError,
   AuthenticationRequiredError,
   AssignmentError,
+  AssignmentTransactionUnavailableError,
   AttendanceError,
   CalendarRequestError,
   DepartmentError,
@@ -51,6 +53,8 @@ import {
   createPrismaTimesheetRepository,
   createPrismaWorkerOfferRepository,
   createPrismaWorkGroupRepository,
+  createHttpCandidateSource,
+  createHttpWorkerOfferDeliveryProvider,
   passwordPolicyErrorCode,
   registrationUnavailableCode,
   toSafeAuthorizationResponse,
@@ -109,7 +113,26 @@ export interface BuildApiOptions {
   resolveAuthorizationRoles?: (
     userId: string
   ) => Promise<readonly AuthorizationRoleKey[]> | readonly AuthorizationRoleKey[];
+  readinessProbe?: () => Promise<boolean>;
+  authRateLimiter?: AuthenticationRateLimiter;
   env?: NodeJS.ProcessEnv;
+}
+
+export type AuthenticationRateLimitDecision = Readonly<{
+  allowed: boolean;
+  retryAfterSeconds: number;
+}>;
+
+export interface AuthenticationRateLimiter {
+  consume(
+    input: Readonly<{
+      action: "register" | "sign_in";
+      ip: string;
+      email: string;
+    }>
+  ): Promise<AuthenticationRateLimitDecision>;
+  check?(): Promise<boolean>;
+  close?(): Promise<void>;
 }
 
 export function buildApi(options: BuildApiOptions = {}) {
@@ -119,7 +142,16 @@ export function buildApi(options: BuildApiOptions = {}) {
     trustProxy: runtimeConfig.rwosEnv === "production" ? "loopback" : false
   });
   const logger = createLogger("api");
-  const authRateLimiter = createAuthenticationRateLimiter();
+  const requestStartedAt = new WeakMap<object, bigint>();
+  const authRateLimiter =
+    options.authRateLimiter ??
+    (runtimeConfig.rwosEnv === "production"
+      ? createRemoteAuthenticationRateLimiter({
+          origin: runtimeConfig.authRateLimiterOrigin!,
+          token: runtimeConfig.authRateLimiterToken!,
+          keySecret: runtimeConfig.authRateLimiterKeySecret!
+        })
+      : createMemoryAuthenticationRateLimiter());
   const prisma = options.authService ? null : createPrismaClient(runtimeConfig.databaseUrl);
   const authService =
     options.authService ??
@@ -184,7 +216,13 @@ export function buildApi(options: BuildApiOptions = {}) {
           createPrismaJobRequestRepository(prisma),
           organizationRepository!,
           membershipService,
-          authorizationService
+          authorizationService,
+          runtimeConfig.hasCandidateSource
+            ? createHttpCandidateSource({
+                origin: runtimeConfig.candidateSourceOrigin!,
+                token: runtimeConfig.candidateSourceToken!
+              })
+            : undefined
         )
       : createUnavailableDispatchService());
   const workerOfferService =
@@ -194,7 +232,17 @@ export function buildApi(options: BuildApiOptions = {}) {
           createPrismaWorkerOfferRepository(prisma),
           createPrismaDispatchRepository(prisma),
           createPrismaJobRequestRepository(prisma),
-          authorizationService
+          authorizationService,
+          {
+            ...(runtimeConfig.hasOfferDelivery
+              ? {
+                  deliveryProvider: createHttpWorkerOfferDeliveryProvider({
+                    origin: runtimeConfig.offerDeliveryOrigin!,
+                    token: runtimeConfig.offerDeliveryToken!
+                  })
+                }
+              : {})
+          }
         )
       : createUnavailableWorkerOfferService());
   const assignmentService =
@@ -250,13 +298,14 @@ export function buildApi(options: BuildApiOptions = {}) {
       : () => []);
 
   app.addHook("onRequest", async (request, reply) => {
+    requestStartedAt.set(request, process.hrtime.bigint());
     applySecurityHeaders(
       reply,
       runtimeConfig.rwosEnv === "production" && request.protocol === "https"
     );
     if (
       runtimeConfig.rwosEnv === "production" &&
-      isProductionDisabledMutation(request.method, request.url)
+      isProductionDisabledOperation(request.method, request.url)
     ) {
       return reply.code(404).send({
         error: "RWOS_RESOURCE_UNAVAILABLE",
@@ -265,9 +314,29 @@ export function buildApi(options: BuildApiOptions = {}) {
     }
   });
 
+  app.addHook("onResponse", async (request, reply) => {
+    const startedAt = requestStartedAt.get(request);
+    const durationMs = startedAt ? Number(process.hrtime.bigint() - startedAt) / 1_000_000 : 0;
+    const fields = {
+      requestId: request.id,
+      method: request.method,
+      route: request.routeOptions.url ?? "unmatched",
+      statusCode: reply.statusCode,
+      durationMs: Math.round(durationMs * 100) / 100
+    };
+    if (reply.statusCode >= 500) logger.error("api.request.completed", fields);
+    else if (reply.statusCode >= 400) logger.warn("api.request.completed", fields);
+    else logger.info("api.request.completed", fields);
+  });
+
   if (prisma) {
     app.addHook("onClose", async () => {
       await prisma.$disconnect();
+    });
+  }
+  if (authRateLimiter.close) {
+    app.addHook("onClose", async () => {
+      await authRateLimiter.close?.();
     });
   }
 
@@ -297,19 +366,26 @@ export function buildApi(options: BuildApiOptions = {}) {
     }
 
     if (error instanceof JobRequestError) {
-      return sendJobRequestDenied(reply);
+      return sendJobRequestFailure(reply, error);
     }
 
     if (error instanceof DispatchError) {
-      return sendDispatchDenied(reply);
+      return sendDispatchFailure(reply, error);
     }
 
     if (error instanceof WorkerOfferError) {
-      return sendWorkerOfferDenied(reply);
+      return sendWorkerOfferFailure(reply, error);
     }
 
     if (error instanceof AssignmentError) {
-      return sendAssignmentDenied(reply);
+      return sendAssignmentFailure(reply, error);
+    }
+
+    if (error instanceof AssignmentTransactionUnavailableError) {
+      return reply.code(503).header("retry-after", "2").send({
+        error: "RWOS_ASSIGNMENT_TEMPORARILY_UNAVAILABLE",
+        message: "Assignment processing is temporarily unavailable."
+      });
     }
 
     if (error instanceof AttendanceError) {
@@ -330,7 +406,7 @@ export function buildApi(options: BuildApiOptions = {}) {
       });
     }
 
-    logger.info(`unhandled-api-error requestId=${request.id}`);
+    logger.error("api.request.unhandled_error", { requestId: request.id });
     return reply.code(500).send({
       error: "RWOS_INTERNAL_ERROR",
       message: "Request could not be completed.",
@@ -338,16 +414,49 @@ export function buildApi(options: BuildApiOptions = {}) {
     });
   });
 
-  app.get("/health", async () => {
-    const config = getRuntimeConfig();
-    logger.info("health-check");
+  app.get("/health", async (_request, reply) => {
+    logger.info("api.health.checked");
+    reply.header("cache-control", "no-store");
 
     return {
       ok: true,
       service: "resident-workforce-os-api",
-      environment: config.rwosEnv,
-      foundationOnly: true
+      check: "liveness"
     };
+  });
+
+  app.get("/ready", async (_request, reply) => {
+    reply.header("cache-control", "no-store");
+    try {
+      const databaseReady = options.readinessProbe
+        ? await options.readinessProbe()
+        : prisma
+          ? await prisma.$queryRawUnsafe("SELECT 1").then(() => true)
+          : true;
+      const limiterReady = authRateLimiter.check ? await authRateLimiter.check() : true;
+      if (!databaseReady || !limiterReady) {
+        logger.warn("api.readiness.failed", {
+          dependency: !databaseReady ? "database" : "auth_rate_limiter"
+        });
+        return reply.code(503).send({
+          ready: false,
+          service: "resident-workforce-os-api",
+          check: "readiness"
+        });
+      }
+      return reply.code(200).send({
+        ready: true,
+        service: "resident-workforce-os-api",
+        check: "readiness"
+      });
+    } catch {
+      logger.error("api.readiness.failed", { dependency: "database" });
+      return reply.code(503).send({
+        ready: false,
+        service: "resident-workforce-os-api",
+        check: "readiness"
+      });
+    }
   });
 
   app.post("/auth/register", async (request, reply) => {
@@ -369,7 +478,12 @@ export function buildApi(options: BuildApiOptions = {}) {
       });
     }
 
-    const rateLimit = authRateLimiter.consume(`register:${request.ip}:${email.toLowerCase()}`);
+    const rateLimit = await consumeAuthenticationRateLimit(authRateLimiter, {
+      action: "register",
+      ip: request.ip,
+      email
+    });
+    if (!rateLimit) return sendAuthenticationUnavailable(reply);
     if (!rateLimit.allowed) {
       return sendAuthenticationRateLimited(reply, rateLimit.retryAfterSeconds);
     }
@@ -402,7 +516,12 @@ export function buildApi(options: BuildApiOptions = {}) {
       });
     }
 
-    const rateLimit = authRateLimiter.consume(`sign-in:${request.ip}:${email.toLowerCase()}`);
+    const rateLimit = await consumeAuthenticationRateLimit(authRateLimiter, {
+      action: "sign_in",
+      ip: request.ip,
+      email
+    });
+    if (!rateLimit) return sendAuthenticationUnavailable(reply);
     if (!rateLimit.allowed) {
       return sendAuthenticationRateLimited(reply, rateLimit.retryAfterSeconds);
     }
@@ -516,6 +635,34 @@ export function buildApi(options: BuildApiOptions = {}) {
     });
 
     return reply.code(decision.allow ? 200 : 403).send(toSafeAuthorizationResponse(decision));
+  });
+
+  app.get("/authz/platform-admin/session", async (request, reply) => {
+    const session = await authService.validateSession(
+      readBearerToken(request.headers.authorization)
+    );
+
+    if (!session.authenticated || !session.user) {
+      return reply.code(403).send({
+        error: authorizationDeniedCode,
+        message: authorizationDeniedMessage
+      });
+    }
+
+    const decision = await authorizationService.decide({
+      session,
+      roles: await resolveAuthorizationRoles(session.user.id),
+      permission: "platform.supervise",
+      platformContext: { platform: true }
+    });
+
+    return reply
+      .code(decision.allow ? 200 : 403)
+      .send(
+        decision.allow
+          ? { authorized: true }
+          : { error: authorizationDeniedCode, message: authorizationDeniedMessage }
+      );
   });
 
   app.get("/work-groups", async (request, reply) => {
@@ -797,6 +944,33 @@ export function buildApi(options: BuildApiOptions = {}) {
 
     return reply.code(200).send({
       memberships: serializeMemberships(await membershipService.listMemberships(session.user.id))
+    });
+  });
+
+  app.get("/authz/employer-calendar/session", async (request, reply) => {
+    const session = await authService.validateSession(
+      readBearerToken(request.headers.authorization)
+    );
+    if (!session.authenticated || !session.user) return sendOrganizationDenied(reply);
+    const organizationId = readOptionalString(asRecord(request.query), "organizationId");
+    if (!organizationId || !isCanonicalUuid(organizationId)) {
+      return reply.code(400).send({
+        error: "RWOS_INVALID_ORGANIZATION_CONTEXT",
+        message: "Invalid organization context."
+      });
+    }
+    const organization = await organizationService.getOrganization({
+      actorUserId: session.user.id,
+      organizationId
+    });
+    return reply.code(200).send({
+      authorized: true,
+      capability: "employer_calendar_read",
+      organization: {
+        id: organization.id,
+        publicId: organization.publicId,
+        displayName: organization.displayName
+      }
     });
   });
 
@@ -1853,6 +2027,24 @@ export function buildApi(options: BuildApiOptions = {}) {
     });
   });
 
+  app.get(
+    "/platform/dispatches/:dispatchReviewId/candidate-source-status",
+    async (request, reply) => {
+      const session = await authService.validateSession(
+        readBearerToken(request.headers.authorization)
+      );
+      if (!session.authenticated || !session.user) return sendDispatchDenied(reply);
+
+      const result = await dispatchService.getCandidateSourceStatus({
+        session,
+        roles: await resolveAuthorizationRoles(session.user.id),
+        dispatchReviewId: readRouteParam(request.params, "dispatchReviewId")
+      });
+
+      return reply.code(200).send(result);
+    }
+  );
+
   app.post("/platform/dispatches/:dispatchReviewId/candidates/evaluate", async (request, reply) => {
     const session = await authService.validateSession(
       readBearerToken(request.headers.authorization)
@@ -2163,6 +2355,23 @@ export function buildApi(options: BuildApiOptions = {}) {
     return reply.code(200).send({ workerOffer: serializeWorkerOffer(workerOffer) });
   });
 
+  app.post("/platform/worker-offers/:workerOfferId/delivery/retry", async (request, reply) => {
+    const session = await authService.validateSession(
+      readBearerToken(request.headers.authorization)
+    );
+    if (!session.authenticated || !session.user) return sendWorkerOfferDenied(reply);
+
+    const body = asRecord(request.body);
+    const workerOffer = await workerOfferService.retryDelivery({
+      session,
+      roles: await resolveAuthorizationRoles(session.user.id),
+      workerOfferId: readRouteParam(request.params, "workerOfferId"),
+      expectedVersion: readOptionalNumber(body, "expectedVersion") ?? 0
+    });
+
+    return reply.code(200).send({ workerOffer: serializeWorkerOffer(workerOffer) });
+  });
+
   app.post("/platform/worker-offers/:workerOfferId/withdraw", async (request, reply) => {
     const session = await authService.validateSession(
       readBearerToken(request.headers.authorization)
@@ -2226,7 +2435,26 @@ export function buildApi(options: BuildApiOptions = {}) {
       workerOfferId: readRouteParam(request.params, "workerOfferId")
     });
 
-    return reply.code(200).send({ workerOffer: serializeWorkerOffer(workerOffer) });
+    return reply.code(200).send({ workerOffer: serializeWorkerOfferReference(workerOffer) });
+  });
+
+  app.get("/worker/offers", async (request, reply) => {
+    const session = await authService.validateSession(
+      readBearerToken(request.headers.authorization)
+    );
+    if (!session.authenticated || !session.user) return sendWorkerOfferDenied(reply);
+
+    const query = asRecord(request.query);
+    const status = readWorkerOfferStatus(readOptionalString(query, "status"));
+    const workerOffers = await workerOfferService.listWorkerOffers({
+      session,
+      roles: await resolveAuthorizationRoles(session.user.id),
+      ...(status ? { statuses: [status] } : {})
+    });
+
+    return reply.code(200).send({
+      workerOffers: workerOffers.map((workerOffer) => serializeWorkerOfferReference(workerOffer))
+    });
   });
 
   app.post("/worker/offers/:workerOfferId/accept", async (request, reply) => {
@@ -2245,7 +2473,7 @@ export function buildApi(options: BuildApiOptions = {}) {
       reason: readOptionalString(body, "reason")
     });
 
-    return reply.code(200).send({ workerOffer: serializeWorkerOffer(workerOffer) });
+    return reply.code(200).send({ workerOffer: serializeWorkerOfferReference(workerOffer) });
   });
 
   app.post("/worker/offers/:workerOfferId/decline", async (request, reply) => {
@@ -2264,7 +2492,7 @@ export function buildApi(options: BuildApiOptions = {}) {
       reason: readOptionalString(body, "reason")
     });
 
-    return reply.code(200).send({ workerOffer: serializeWorkerOffer(workerOffer) });
+    return reply.code(200).send({ workerOffer: serializeWorkerOfferReference(workerOffer) });
   });
 
   app.post("/platform/assignments", async (request, reply) => {
@@ -2274,10 +2502,17 @@ export function buildApi(options: BuildApiOptions = {}) {
     if (!session.authenticated || !session.user) return sendAssignmentDenied(reply);
 
     const body = asRecord(request.body);
+    const workerOfferId = readRequiredString(body, "workerOfferId");
+    if (!workerOfferId || !isCanonicalUuid(workerOfferId)) {
+      return reply.code(400).send({
+        error: "RWOS_INVALID_ASSIGNMENT_REQUEST",
+        message: "Invalid assignment request."
+      });
+    }
     const assignment = await assignmentService.createFromAcceptedOffer({
       session,
       roles: await resolveAuthorizationRoles(session.user.id),
-      workerOfferId: readRequiredString(body, "workerOfferId") ?? ""
+      workerOfferId
     });
 
     return reply.code(201).send({ assignment: serializeAssignment(assignment) });
@@ -2294,6 +2529,7 @@ export function buildApi(options: BuildApiOptions = {}) {
     const assignments = await assignmentService.listAssignments({
       session,
       roles: await resolveAuthorizationRoles(session.user.id),
+      dispatchReviewId: readOptionalString(query, "dispatchReviewId"),
       organizationId: readOptionalString(query, "organizationId"),
       jobRequestId: readOptionalString(query, "jobRequestId"),
       ...(status ? { statuses: [status] } : {})
@@ -2454,7 +2690,26 @@ export function buildApi(options: BuildApiOptions = {}) {
       assignmentId: readRouteParam(request.params, "assignmentId")
     });
 
-    return reply.code(200).send({ assignment: serializeAssignment(assignment) });
+    return reply.code(200).send({ assignment: serializeWorkerAssignment(assignment) });
+  });
+
+  app.get("/worker/assignments", async (request, reply) => {
+    const session = await authService.validateSession(
+      readBearerToken(request.headers.authorization)
+    );
+    if (!session.authenticated || !session.user) return sendAssignmentDenied(reply);
+
+    const query = asRecord(request.query);
+    const status = readAssignmentStatus(readOptionalString(query, "status"));
+    const assignments = await assignmentService.listWorkerAssignments({
+      session,
+      roles: await resolveAuthorizationRoles(session.user.id),
+      ...(status ? { statuses: [status] } : {})
+    });
+
+    return reply.code(200).send({
+      assignments: assignments.map((assignment) => serializeWorkerAssignment(assignment))
+    });
   });
 
   app.post("/worker/assignments/:assignmentId/acknowledge", async (request, reply) => {
@@ -3000,6 +3255,10 @@ function readOptionalString(body: Record<string, unknown>, key: string) {
   return typeof value === "string" && value.trim().length > 0 ? value : null;
 }
 
+function isCanonicalUuid(value: string) {
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value);
+}
+
 function readOptionalNumber(body: Record<string, unknown>, key: string) {
   const value = body[key];
   return typeof value === "number" ? value : null;
@@ -3037,35 +3296,160 @@ function readRouteParam(params: unknown, key: string) {
   return typeof value === "string" ? value : "";
 }
 
-function createAuthenticationRateLimiter(
-  options = { maxAttempts: 5, windowMs: 60_000, maxBuckets: 10_000 }
-) {
+export function createMemoryAuthenticationRateLimiter(
+  options = {
+    accountMaxAttempts: 5,
+    networkMaxAttempts: 30,
+    windowMs: 60_000,
+    maxBuckets: 20_000,
+    keySecret: "rwos-local-auth-rate-limit-key-secret"
+  }
+): AuthenticationRateLimiter {
   const buckets = new Map<string, { count: number; resetAt: number }>();
 
   return {
-    consume(key: string) {
+    async consume(input) {
       const now = Date.now();
       for (const [bucketKey, candidate] of buckets) {
         if (candidate.resetAt <= now) buckets.delete(bucketKey);
       }
-      while (!buckets.has(key) && buckets.size >= options.maxBuckets) {
-        const oldestKey = buckets.keys().next().value as string | undefined;
-        if (!oldestKey) break;
-        buckets.delete(oldestKey);
-      }
-      const current = buckets.get(key);
-      const bucket =
-        current && current.resetAt > now ? current : { count: 0, resetAt: now + options.windowMs };
-
-      bucket.count += 1;
-      buckets.set(key, bucket);
-
+      const keys = deriveAuthenticationRateLimitKeys(input, options.keySecret);
+      const decisions = [
+        consumeMemoryBucket(keys.accountKey, options.accountMaxAttempts),
+        consumeMemoryBucket(keys.networkKey, options.networkMaxAttempts)
+      ];
+      const denied = decisions.filter((decision) => !decision.allowed);
       return {
-        allowed: bucket.count <= options.maxAttempts,
-        retryAfterSeconds: Math.max(1, Math.ceil((bucket.resetAt - now) / 1000))
+        allowed: denied.length === 0,
+        retryAfterSeconds: Math.max(...decisions.map((decision) => decision.retryAfterSeconds))
+      };
+
+      function consumeMemoryBucket(key: string, maxAttempts: number) {
+        while (!buckets.has(key) && buckets.size >= options.maxBuckets) {
+          const oldestKey = buckets.keys().next().value as string | undefined;
+          if (!oldestKey) break;
+          buckets.delete(oldestKey);
+        }
+        const current = buckets.get(key);
+        const bucket =
+          current && current.resetAt > now
+            ? current
+            : { count: 0, resetAt: now + options.windowMs };
+        bucket.count += 1;
+        buckets.set(key, bucket);
+        return {
+          allowed: bucket.count <= maxAttempts,
+          retryAfterSeconds: clampRetryAfter((bucket.resetAt - now) / 1000)
+        };
+      }
+    }
+  };
+}
+
+export function createRemoteAuthenticationRateLimiter(options: {
+  origin: string;
+  token: string;
+  keySecret: string;
+  fetch?: typeof fetch;
+  timeoutMs?: number;
+}): AuthenticationRateLimiter {
+  const parsedOrigin = new URL(options.origin);
+  if (
+    parsedOrigin.protocol !== "https:" ||
+    options.token.length < 32 ||
+    options.keySecret.length < 32 ||
+    options.token === options.keySecret
+  ) {
+    throw new Error("RWOS_AUTH_RATE_LIMITER_CONFIGURATION_INVALID");
+  }
+  const origin = parsedOrigin.origin;
+  const remoteFetch = options.fetch ?? fetch;
+  const timeoutMs = Math.min(5_000, Math.max(100, options.timeoutMs ?? 300));
+  return {
+    async check() {
+      try {
+        const response = await remoteFetch(`${origin}/health`, {
+          method: "GET",
+          headers: {
+            accept: "application/json",
+            authorization: `Bearer ${options.token}`
+          },
+          signal: AbortSignal.timeout(timeoutMs)
+        });
+        return response.ok;
+      } catch {
+        return false;
+      }
+    },
+    async consume(input) {
+      const keys = deriveAuthenticationRateLimitKeys(input, options.keySecret);
+      const response = await remoteFetch(`${origin}/v1/auth-rate-limit/consume`, {
+        method: "POST",
+        headers: {
+          accept: "application/json",
+          authorization: `Bearer ${options.token}`,
+          "content-type": "application/json"
+        },
+        body: JSON.stringify({
+          action: input.action,
+          accountKey: keys.accountKey,
+          networkKey: keys.networkKey,
+          policy: {
+            accountMaxAttempts: 5,
+            networkMaxAttempts: 30,
+            windowSeconds: 60
+          }
+        }),
+        signal: AbortSignal.timeout(timeoutMs)
+      });
+      if (!response.ok) throw new Error("RWOS_AUTH_RATE_LIMITER_UNAVAILABLE");
+      const payload = (await response.json()) as unknown;
+      if (typeof payload !== "object" || payload === null || Array.isArray(payload)) {
+        throw new Error("RWOS_AUTH_RATE_LIMITER_INVALID_RESPONSE");
+      }
+      const record = payload as Record<string, unknown>;
+      if (
+        typeof record.allowed !== "boolean" ||
+        typeof record.retryAfterSeconds !== "number" ||
+        !Number.isFinite(record.retryAfterSeconds)
+      ) {
+        throw new Error("RWOS_AUTH_RATE_LIMITER_INVALID_RESPONSE");
+      }
+      return {
+        allowed: record.allowed,
+        retryAfterSeconds: clampRetryAfter(record.retryAfterSeconds)
       };
     }
   };
+}
+
+function deriveAuthenticationRateLimitKeys(
+  input: Readonly<{ action: "register" | "sign_in"; ip: string; email: string }>,
+  secret: string
+) {
+  const digest = (kind: "account" | "network", value: string) =>
+    createHmac("sha256", secret)
+      .update(`rwos:auth-rate-limit:v1:${input.action}:${kind}:${value}`)
+      .digest("hex");
+  return {
+    accountKey: `rwos:authrl:v1:${input.action}:account:${digest("account", input.email.trim().toLowerCase())}`,
+    networkKey: `rwos:authrl:v1:${input.action}:network:${digest("network", input.ip.trim().toLowerCase())}`
+  };
+}
+
+async function consumeAuthenticationRateLimit(
+  limiter: AuthenticationRateLimiter,
+  input: Parameters<AuthenticationRateLimiter["consume"]>[0]
+) {
+  try {
+    return await limiter.consume(input);
+  } catch {
+    return null;
+  }
+}
+
+function clampRetryAfter(value: number) {
+  return Math.max(1, Math.min(3600, Math.ceil(value)));
 }
 
 function serializeSessionUser(
@@ -3115,9 +3499,12 @@ function applySecurityHeaders(reply: FastifyReply, production: boolean) {
   }
 }
 
-function isProductionDisabledMutation(method: string, url: string) {
-  if (!["POST", "PUT", "PATCH", "DELETE"].includes(method)) return false;
+function isProductionDisabledOperation(method: string, url: string) {
   const path = url.split("?")[0] ?? url;
+  if (method === "GET" && /\/platform\/dispatches\/[^/]+\/candidates\/search$/.test(path)) {
+    return true;
+  }
+  if (!["POST", "PUT", "PATCH", "DELETE"].includes(method)) return false;
   return (
     path.startsWith("/platform/dispatches") ||
     path.startsWith("/platform/worker-offers") ||
@@ -3132,9 +3519,20 @@ function isProductionDisabledMutation(method: string, url: string) {
 }
 
 function sendAuthenticationRateLimited(reply: FastifyReply, retryAfterSeconds: number) {
-  return reply.code(429).header("retry-after", String(retryAfterSeconds)).send({
-    error: "RWOS_AUTH_RATE_LIMITED",
-    message: "Too many authentication attempts. Try again later."
+  return reply
+    .code(429)
+    .header("cache-control", "no-store")
+    .header("retry-after", String(retryAfterSeconds))
+    .send({
+      error: "RWOS_AUTH_RATE_LIMITED",
+      message: "Too many authentication attempts. Try again later."
+    });
+}
+
+function sendAuthenticationUnavailable(reply: FastifyReply) {
+  return reply.code(503).header("cache-control", "no-store").header("retry-after", "5").send({
+    error: "RWOS_AUTH_UNAVAILABLE",
+    message: "Authentication is temporarily unavailable. Try again later."
   });
 }
 
@@ -3234,11 +3632,53 @@ function sendJobRequestDenied(reply: FastifyReply) {
   });
 }
 
+function sendJobRequestFailure(reply: FastifyReply, error: JobRequestError) {
+  if (error.decision.status === "version_conflict") {
+    return reply.code(409).send({
+      error: "RWOS_JOB_REQUEST_CHANGED",
+      message: "Job request changed. Refresh before trying again."
+    });
+  }
+  if (error.decision.status === "invalid_transition") {
+    return reply.code(409).send({
+      error: "RWOS_JOB_REQUEST_STATE_CHANGED",
+      message: "Job request is not editable in its current state."
+    });
+  }
+  if (error.decision.status === "invalid_input") {
+    return reply.code(400).send({
+      error: "RWOS_INVALID_JOB_REQUEST",
+      message: "Invalid job request."
+    });
+  }
+  return sendJobRequestDenied(reply);
+}
+
 function sendDispatchDenied(reply: FastifyReply) {
   return reply.code(403).send({
     error: authorizationDeniedCode,
     message: authorizationDeniedMessage
   });
+}
+
+function sendDispatchFailure(reply: FastifyReply, error: DispatchError) {
+  if (
+    error.decision.status === "version_conflict" ||
+    error.decision.status === "invalid_transition" ||
+    error.decision.status === "job_request_not_ready"
+  ) {
+    return reply.code(409).send({
+      error: "RWOS_DISPATCH_CHANGED",
+      message: "Dispatch state changed. Refresh before trying again."
+    });
+  }
+  if (error.decision.status === "invalid_input") {
+    return reply.code(400).send({
+      error: "RWOS_INVALID_DISPATCH_REQUEST",
+      message: "Invalid dispatch request."
+    });
+  }
+  return sendDispatchDenied(reply);
 }
 
 function sendWorkerOfferDenied(reply: FastifyReply) {
@@ -3248,11 +3688,58 @@ function sendWorkerOfferDenied(reply: FastifyReply) {
   });
 }
 
+function sendWorkerOfferFailure(reply: FastifyReply, error: WorkerOfferError) {
+  if (
+    error.decision.status === "version_conflict" ||
+    error.decision.status === "invalid_transition" ||
+    error.decision.status === "expired" ||
+    error.decision.status === "duplicate_response" ||
+    error.decision.status === "stale_terms" ||
+    error.decision.status === "capacity_exceeded"
+  ) {
+    return reply.code(409).send({
+      error: "RWOS_WORKER_OFFER_CHANGED",
+      message: "Worker offer state changed. Refresh before trying again."
+    });
+  }
+  if (error.decision.status === "invalid_input") {
+    return reply.code(400).send({
+      error: "RWOS_INVALID_WORKER_OFFER_REQUEST",
+      message: "Invalid worker offer request."
+    });
+  }
+  return sendWorkerOfferDenied(reply);
+}
+
 function sendAssignmentDenied(reply: FastifyReply) {
   return reply.code(403).send({
     error: authorizationDeniedCode,
     message: authorizationDeniedMessage
   });
+}
+
+function sendAssignmentFailure(reply: FastifyReply, error: AssignmentError) {
+  if (
+    error.decision.status === "version_conflict" ||
+    error.decision.status === "invalid_transition" ||
+    error.decision.status === "capacity_exceeded" ||
+    error.decision.status === "worker_offer_not_accepted" ||
+    error.decision.status === "terms_unavailable" ||
+    error.decision.status === "assignment_exists" ||
+    error.decision.status === "conflict_detected"
+  ) {
+    return reply.code(409).send({
+      error: "RWOS_ASSIGNMENT_CONFLICT",
+      message: "Assignment could not be created from the current offer state."
+    });
+  }
+  if (error.decision.status === "invalid_input") {
+    return reply.code(400).send({
+      error: "RWOS_INVALID_ASSIGNMENT_REQUEST",
+      message: "Invalid assignment request."
+    });
+  }
+  return sendAssignmentDenied(reply);
 }
 
 function sendAttendanceDenied(reply: FastifyReply) {
@@ -3413,6 +3900,29 @@ function serializeWorkerOffer(workerOffer: Awaited<ReturnType<WorkerOfferService
   };
 }
 
+function serializeWorkerOfferReference(
+  workerOffer: Awaited<ReturnType<WorkerOfferService["workerRead"]>>
+) {
+  const terms = workerOffer.currentTermsVersion;
+  return {
+    audience: "worker",
+    workerOfferId: workerOffer.id,
+    jobRequestId: workerOffer.jobRequestId,
+    status: workerOffer.status,
+    expiresAt: workerOffer.expiresAt.toISOString(),
+    title: terms?.workerVisibleTitle ?? null,
+    summary: terms?.workerVisibleSummary ?? null,
+    startAt: terms?.startAt.toISOString() ?? null,
+    endAt: terms?.endAt.toISOString() ?? null,
+    timezone: terms?.timezone ?? null,
+    compensationSummary: terms?.compensationSummary ?? null,
+    policySummary: terms?.policySummary ?? null,
+    termsVersionId: terms?.id ?? null,
+    versionToken: workerOffer.versionToken,
+    visibility: "worker_authorized_offer_reference"
+  };
+}
+
 function serializeCalendarProfile(
   profile: Awaited<ReturnType<CalendarRequestService["upsertClientProfile"]>>
 ) {
@@ -3466,6 +3976,31 @@ function serializeAssignment(
     closedAt: assignment.closedAt?.toISOString() ?? null,
     createdAt: assignment.createdAt.toISOString(),
     updatedAt: assignment.updatedAt.toISOString()
+  };
+}
+
+function serializeWorkerAssignment(
+  assignment: Awaited<ReturnType<AssignmentService["workerRead"]>>
+) {
+  return {
+    audience: "worker",
+    assignmentId: assignment.id,
+    workerOfferId: assignment.workerOfferId,
+    status: assignment.status,
+    title: assignment.confirmedTitle,
+    roleSummary: assignment.confirmedRoleSummary,
+    worksiteSummary: assignment.confirmedWorksiteSummary,
+    departmentSummary: assignment.confirmedDepartmentSummary,
+    responsibilitySummary: assignment.confirmedResponsibilitySummary,
+    policySummary: assignment.confirmedPolicySummary,
+    compensationSummary: assignment.confirmedCompensationSummary,
+    startAt: assignment.confirmedStartAt.toISOString(),
+    endAt: assignment.confirmedEndAt.toISOString(),
+    timezone: assignment.timezone,
+    attendanceBoundary: assignment.attendanceBoundary,
+    versionToken: assignment.versionToken,
+    updatedAt: assignment.updatedAt.toISOString(),
+    visibility: "worker_authorized_assignment"
   };
 }
 
@@ -3644,6 +4179,7 @@ function createUnavailableDispatchService(): DispatchService {
     getDispatch: denied,
     assignOperationalOwner: denied,
     startCandidateReview: denied,
+    getCandidateSourceStatus: denied,
     searchCandidates: denied,
     evaluateCandidate: denied,
     addCandidateToShortlist: denied,
@@ -3680,7 +4216,9 @@ function createUnavailableWorkerOfferService(): WorkerOfferService {
     readOffer: denied,
     approve: denied,
     send: denied,
+    retryDelivery: denied,
     workerRead: denied,
+    listWorkerOffers: denied,
     workerCalendarReference: denied,
     accept: denied,
     decline: denied,
@@ -3708,6 +4246,7 @@ function createUnavailableAssignmentService(): AssignmentService {
     listAssignments: denied,
     readAssignment: denied,
     workerRead: denied,
+    listWorkerAssignments: denied,
     acknowledge: denied,
     workerWithdraw: denied,
     markReadyForAttendance: denied,

@@ -7,8 +7,14 @@ import {
 import { mockShiftDiscoveryRecords } from "../../data/mock/shifts";
 
 describe("MockWorkerApplicationRepository", () => {
+  const demoRepository = () =>
+    new MockWorkerApplicationRepository(
+      mockShiftDiscoveryRecords,
+      createDefaultApplicationState(mockShiftDiscoveryRecords)
+    );
+
   it("submits a worker application and writes a local audit event", async () => {
-    const repository = new MockWorkerApplicationRepository();
+    const repository = demoRepository();
 
     const summary = await repository.submitApplication({
       shiftId: "shift_housekeeping_003",
@@ -30,7 +36,7 @@ describe("MockWorkerApplicationRepository", () => {
   });
 
   it("blocks duplicate active applications for the same worker and shift", async () => {
-    const repository = new MockWorkerApplicationRepository();
+    const repository = demoRepository();
 
     await expect(
       repository.submitApplication({
@@ -47,7 +53,7 @@ describe("MockWorkerApplicationRepository", () => {
   });
 
   it("withdraws an application that is still active", async () => {
-    const repository = new MockWorkerApplicationRepository();
+    const repository = demoRepository();
 
     const summary = await repository.withdrawApplication("app_existing_chef_001");
 
@@ -56,7 +62,7 @@ describe("MockWorkerApplicationRepository", () => {
   });
 
   it("accepts an offer and exposes the changed current terms", async () => {
-    const repository = new MockWorkerApplicationRepository();
+    const repository = demoRepository();
 
     const summary = await repository.acceptOffer("offer_care_002");
 
@@ -67,7 +73,7 @@ describe("MockWorkerApplicationRepository", () => {
   });
 
   it("declines an offer into a terminal rejected application state", async () => {
-    const repository = new MockWorkerApplicationRepository();
+    const repository = demoRepository();
 
     const summary = await repository.declineOffer("offer_care_002");
 
@@ -76,7 +82,7 @@ describe("MockWorkerApplicationRepository", () => {
   });
 
   it("records final shift confirmation separately from offer acceptance", async () => {
-    const repository = new MockWorkerApplicationRepository();
+    const repository = demoRepository();
 
     const summary = await repository.confirmShift("confirmation_housekeeping_003");
 
@@ -86,7 +92,7 @@ describe("MockWorkerApplicationRepository", () => {
   });
 
   it("blocks a repeated terminal offer transition", async () => {
-    const repository = new MockWorkerApplicationRepository();
+    const repository = demoRepository();
 
     await repository.acceptOffer("offer_care_002");
 
@@ -108,7 +114,7 @@ describe("MockWorkerApplicationRepository", () => {
   });
 
   it("lists worker application summaries with related offers and confirmations", async () => {
-    const repository = new MockWorkerApplicationRepository();
+    const repository = demoRepository();
 
     const summaries = await repository.listWorkerApplications("worker_demo_001");
 

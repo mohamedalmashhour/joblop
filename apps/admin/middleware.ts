@@ -1,6 +1,36 @@
 import { NextResponse, type NextRequest } from "next/server";
+import { isProductionAdminRouteAllowed } from "./routePolicy";
 
-export function middleware(request: NextRequest) {
+export async function middleware(request: NextRequest) {
+  if (
+    process.env.RWOS_ENV === "production" &&
+    !isProductionAdminRouteAllowed(request.nextUrl.pathname)
+  ) {
+    return new NextResponse("Not Found", {
+      status: 404,
+      headers: { "content-type": "text/plain; charset=utf-8" }
+    });
+  }
+  if (process.env.RWOS_ENV === "production" && isProtectedAdminPage(request.nextUrl.pathname)) {
+    const token = request.cookies.get("__Host-rwos_admin_session")?.value;
+    if (!token) return NextResponse.redirect(new URL("/calendar", request.url));
+    const origin = process.env.INTERNAL_API_ORIGIN;
+    if (!origin) return new NextResponse("Service Unavailable", { status: 503 });
+    try {
+      const authorization = await fetch(`${new URL(origin).origin}/authz/platform-admin/session`, {
+        method: "GET",
+        headers: { accept: "application/json", authorization: `Bearer ${token}` },
+        cache: "no-store"
+      });
+      if (!authorization.ok) {
+        return authorization.status === 401 || authorization.status === 403
+          ? NextResponse.redirect(new URL("/calendar", request.url))
+          : new NextResponse("Service Unavailable", { status: 503 });
+      }
+    } catch {
+      return new NextResponse("Service Unavailable", { status: 503 });
+    }
+  }
   const response = NextResponse.next();
   if (process.env.RWOS_ENV === "production" && request.nextUrl.protocol === "https:") {
     response.headers.set("strict-transport-security", "max-age=31536000; includeSubDomains");
@@ -9,3 +39,11 @@ export function middleware(request: NextRequest) {
 }
 
 export const config = { matcher: "/:path*" };
+
+function isProtectedAdminPage(pathname: string) {
+  return (
+    pathname === "/calendar/request" ||
+    pathname === "/dispatches" ||
+    pathname.startsWith("/dispatches/")
+  );
+}

@@ -1,0 +1,205 @@
+"use client";
+
+import { useEffect, useRef, useState } from "react";
+import type { AdminDispatchReview } from "../../api/dispatches/dispatchBoundary";
+
+export function CandidateReviewPanel({
+  dispatch,
+  onUpdated
+}: Readonly<{
+  dispatch: AdminDispatchReview;
+  onUpdated: (dispatch: AdminDispatchReview) => void;
+}>) {
+  const [confirming, setConfirming] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [message, setMessage] = useState("");
+  const [sourceStatus, setSourceStatus] = useState<
+    "not_checked" | "checking" | "available" | "candidate_source_unavailable" | "error"
+  >("not_checked");
+  const dialog = useRef<HTMLDialogElement>(null);
+  const trigger = useRef<HTMLButtonElement>(null);
+  const guard = useRef(false);
+
+  useEffect(() => {
+    if (confirming && !dialog.current?.open) dialog.current?.showModal();
+    if (!confirming && dialog.current?.open) {
+      dialog.current.close();
+      trigger.current?.focus();
+    }
+  }, [confirming]);
+
+  async function startReview() {
+    if (guard.current) return;
+    guard.current = true;
+    setBusy(true);
+    setMessage("Starting governed candidate review.");
+    try {
+      const response = await fetch(
+        `/api/dispatches/${encodeURIComponent(dispatch.id)}/candidate-review`,
+        {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ expectedVersion: dispatch.versionToken })
+        }
+      );
+      if (!response.ok) {
+        setConfirming(false);
+        setMessage(
+          response.status === 409
+            ? "This dispatch changed. Candidate review was not started; load the latest record."
+            : "Candidate review could not be started. No transition is claimed."
+        );
+        return;
+      }
+      const payload = (await response.json()) as { dispatchReview?: AdminDispatchReview };
+      if (!payload.dispatchReview) throw new Error("RWOS_MISSING_DISPATCH");
+      onUpdated(payload.dispatchReview);
+      setConfirming(false);
+      setMessage("Candidate review started. Candidate availability has not been checked.");
+    } catch {
+      setConfirming(false);
+      setMessage("The transition result is unknown. Load the latest dispatch before trying again.");
+    } finally {
+      guard.current = false;
+      setBusy(false);
+    }
+  }
+
+  async function checkSource() {
+    setSourceStatus("checking");
+    try {
+      const response = await fetch(
+        `/api/dispatches/${encodeURIComponent(dispatch.id)}/candidate-source-status`,
+        { cache: "no-store" }
+      );
+      if (!response.ok) return setSourceStatus("error");
+      const payload = (await response.json()) as { status?: unknown };
+      setSourceStatus(
+        payload.status === "available"
+          ? "available"
+          : payload.status === "candidate_source_unavailable"
+            ? "candidate_source_unavailable"
+            : "error"
+      );
+    } catch {
+      setSourceStatus("error");
+    }
+  }
+
+  const canStart = dispatch.state === "draft" || dispatch.state === "active";
+  return (
+    <section aria-busy={busy || sourceStatus === "checking"}>
+      <h2>Candidate review boundary</h2>
+      <p aria-live="polite" role={message.includes("changed") ? "alert" : "status"}>
+        {message ||
+          "Candidate review and candidate-source availability are separate governed steps."}
+      </p>
+      {canStart ? (
+        <button
+          disabled={busy || confirming}
+          onClick={() => setConfirming(true)}
+          ref={trigger}
+          style={styles.primary}
+          type="button"
+        >
+          Start candidate review
+        </button>
+      ) : null}
+      {dispatch.state === "candidate_review" ? (
+        <>
+          <button
+            disabled={sourceStatus === "checking"}
+            onClick={() => void checkSource()}
+            style={styles.secondary}
+            type="button"
+          >
+            {sourceStatus === "checking" ? "Checking…" : "Check candidate source"}
+          </button>
+          {sourceStatus === "candidate_source_unavailable" ? (
+            <div role="status" style={styles.notice}>
+              <h3>Candidate source unavailable</h3>
+              <p>
+                The authorized candidate source could not provide candidates. No candidate records
+                were returned, and no worker was shortlisted, contacted, offered work, or assigned.
+              </p>
+            </div>
+          ) : sourceStatus === "available" ? (
+            <p role="status">
+              The candidate source is available. Candidate results are not exposed in this admin
+              view.
+            </p>
+          ) : sourceStatus === "error" ? (
+            <p role="alert">Candidate-source status could not be checked. No result is claimed.</p>
+          ) : null}
+        </>
+      ) : null}
+      {confirming ? (
+        <dialog
+          aria-describedby="candidate-review-confirm-copy"
+          aria-labelledby="candidate-review-confirm"
+          onCancel={() => setConfirming(false)}
+          ref={dialog}
+          style={styles.dialog}
+        >
+          <h3 id="candidate-review-confirm">Confirm candidate review</h3>
+          <p id="candidate-review-confirm-copy">
+            Begin governed candidate review for {dispatch.requiredWorkerCount} requested worker(s)
+            at {dispatch.priority} priority. This does not find, shortlist, contact, offer work to,
+            or assign a worker by itself.
+          </p>
+          <div style={styles.actions}>
+            <button
+              autoFocus
+              disabled={busy}
+              onClick={() => setConfirming(false)}
+              style={styles.secondary}
+              type="button"
+            >
+              Cancel
+            </button>
+            <button
+              disabled={busy}
+              onClick={() => void startReview()}
+              style={styles.primary}
+              type="button"
+            >
+              {busy ? "Starting…" : "Confirm candidate review"}
+            </button>
+          </div>
+        </dialog>
+      ) : null}
+    </section>
+  );
+}
+
+const styles = {
+  actions: { display: "flex", flexWrap: "wrap" as const, gap: 10 },
+  dialog: {
+    background: "#fff8d8",
+    border: "1px solid #e8d782",
+    borderRadius: 12,
+    color: "#10233f",
+    maxWidth: 560,
+    padding: 24
+  },
+  notice: { background: "#fff8d8", borderRadius: 10, marginTop: 16, padding: 16 },
+  primary: {
+    background: "#0f7f78",
+    border: 0,
+    borderRadius: 8,
+    color: "#fff",
+    fontWeight: 800,
+    minHeight: 44,
+    padding: "0 18px"
+  },
+  secondary: {
+    background: "#fff",
+    border: "1px solid #91a5bf",
+    borderRadius: 8,
+    color: "#061b41",
+    fontWeight: 800,
+    marginRight: 10,
+    minHeight: 44,
+    padding: "0 18px"
+  }
+} as const;

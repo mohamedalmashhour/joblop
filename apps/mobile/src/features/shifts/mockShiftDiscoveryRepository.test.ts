@@ -1,8 +1,9 @@
 import { describe, expect, it } from "vitest";
 import { MockShiftDiscoveryRepository } from "./mockShiftDiscoveryRepository";
+import { mockShiftDiscoveryRecords } from "../../data/mock/shifts";
 
 describe("MockShiftDiscoveryRepository", () => {
-  const repository = new MockShiftDiscoveryRepository();
+  const repository = new MockShiftDiscoveryRepository(mockShiftDiscoveryRecords);
 
   it("lists only available open shifts", async () => {
     const shifts = await repository.listAvailableShifts();

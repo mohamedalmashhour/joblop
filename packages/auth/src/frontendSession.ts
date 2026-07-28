@@ -8,12 +8,19 @@ export const localAdminSessionCookieName = "rwos_local_admin_session";
 export type FrontendSessionFetch = (
   input: string,
   init: Readonly<{
-    method: "GET" | "POST" | "PUT";
+    method: "GET" | "POST" | "PUT" | "PATCH";
     headers: Readonly<Record<string, string>>;
     body?: string;
     cache: "no-store";
   }>
-) => Promise<Readonly<{ ok: boolean; status: number; json(): Promise<unknown> }>>;
+) => Promise<
+  Readonly<{
+    ok: boolean;
+    status: number;
+    headers?: Readonly<{ get(name: string): string | null }>;
+    json(): Promise<unknown>;
+  }>
+>;
 
 export type FrontendSessionResult =
   | Readonly<{ status: "ok"; payload: unknown }>
@@ -21,6 +28,9 @@ export type FrontendSessionResult =
   | Readonly<{ status: "stale" }>
   | Readonly<{ status: "unavailable" }>
   | Readonly<{ status: "error" }>;
+
+export type FrontendSignInResult =
+  FrontendSessionResult | Readonly<{ status: "rate_limited"; retryAfterSeconds: number }>;
 
 export function createFrontendSessionGateway(options: {
   apiOrigin: string;
@@ -30,7 +40,7 @@ export function createFrontendSessionGateway(options: {
 
   async function request(
     path: string,
-    method: "GET" | "POST" | "PUT",
+    method: "GET" | "POST" | "PUT" | "PATCH",
     sessionToken: string | null,
     body?: unknown
   ): Promise<FrontendSessionResult> {
@@ -62,7 +72,7 @@ export function createFrontendSessionGateway(options: {
     async signIn(
       credentials: Readonly<{ email: string; password: string }>,
       persistToken: (token: string) => void
-    ): Promise<FrontendSessionResult> {
+    ): Promise<FrontendSignInResult> {
       try {
         const response = await options.fetch(`${origin}/auth/sign-in`, {
           method: "POST",
@@ -71,6 +81,12 @@ export function createFrontendSessionGateway(options: {
           cache: "no-store"
         });
         if (response.status === 401 || response.status === 403) return { status: "denied" };
+        if (response.status === 429) {
+          return {
+            status: "rate_limited",
+            retryAfterSeconds: readRetryAfter(response.headers?.get("retry-after"))
+          } as const;
+        }
         if (response.status === 502 || response.status === 503 || response.status === 504) {
           return { status: "unavailable" };
         }
@@ -96,6 +112,11 @@ export function createFrontendSessionGateway(options: {
         : Promise.resolve({ status: "ok", payload: null } as const),
     request
   };
+}
+
+function readRetryAfter(value: string | null | undefined) {
+  const parsed = Number(value);
+  return Number.isInteger(parsed) && parsed >= 1 && parsed <= 3600 ? parsed : 60;
 }
 
 function trustedApiOrigin(value: string) {

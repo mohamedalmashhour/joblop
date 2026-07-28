@@ -453,7 +453,12 @@ function projectCalendarRequest(
           authoritativeStatus: jobRequest.status,
           adminReviewReason: jobRequest.adminReviewReason
         }
-      : {}),
+      : {
+          actionRequired:
+            jobRequest.status === "information_required" ? ("information_required" as const) : null,
+          actionRequiredReason:
+            jobRequest.status === "information_required" ? jobRequest.adminReviewReason : null
+        }),
     dutiesSummary: profile?.dutiesSummary ?? null,
     qualifications: profile?.qualifications ?? [],
     addressSummary: profile?.addressSummary ?? null,

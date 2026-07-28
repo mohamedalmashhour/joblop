@@ -20,27 +20,32 @@ describe("Page 001 landing content", () => {
   });
 
   it("separates worker and employer journeys", () => {
-    expect(workerJourney).toEqual(["Discover shifts", "Apply", "Get approved", "Work", "Get paid"]);
+    expect(workerJourney).toEqual([
+      "Sign in",
+      "Review owned offer",
+      "Accept or decline",
+      "See confirmed assignment",
+      "Continue to attendance handoff"
+    ]);
     expect(employerJourney).toEqual([
-      "Request staff",
-      "AI-assisted matching",
-      "Review candidates",
-      "Confirm assignment",
-      "Track shift",
-      "Approve timesheet"
+      "Create request",
+      "Submit for review",
+      "Correct if requested",
+      "Track staffing progress",
+      "See confirmed assignments"
     ]);
   });
 
   it("shows worker value and trust mechanisms without fake proof", () => {
-    expect(workerBenefits).toContain("Transparent earnings");
-    expect(workerBenefits).toContain("Verified employers");
+    expect(workerBenefits).toContain("Private offer visibility");
+    expect(workerBenefits).toContain("Truthful empty states");
     expect(trustControls).toEqual([
-      "Verified Healthcare Workers",
-      "Credential Verification",
-      "Background Checks",
-      "Compliance Monitoring",
-      "Attendance Verification",
-      "Quality Assurance"
+      "Database-backed roles",
+      "Tenant isolation",
+      "Worker-owned records",
+      "Human dispatch review",
+      "Version conflict checks",
+      "Attendance handoff boundary"
     ]);
   });
 });

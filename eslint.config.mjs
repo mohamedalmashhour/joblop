@@ -1,14 +1,8 @@
-import { FlatCompat } from "@eslint/eslintrc";
 import js from "@eslint/js";
 import nextPlugin from "@next/eslint-plugin-next";
 import tseslint from "typescript-eslint";
 
-const compat = new FlatCompat({
-  baseDirectory: import.meta.dirname
-});
-
-const nextConfigs = compat.extends("next/core-web-vitals").map((config) => ({
-  ...config,
+const nextConfig = {
   files: [
     "apps/admin/**/*.{js,jsx,ts,tsx}",
     "apps/employer/**/*.{js,jsx,ts,tsx}",
@@ -16,16 +10,16 @@ const nextConfigs = compat.extends("next/core-web-vitals").map((config) => ({
     "pages/**/*.{js,jsx,ts,tsx}"
   ],
   settings: {
-    ...config.settings,
     next: {
       rootDir: ["apps/admin/", "apps/employer/"]
     }
   },
   rules: {
-    ...config.rules,
+    ...nextPlugin.configs.recommended.rules,
+    ...nextPlugin.configs["core-web-vitals"].rules,
     "@next/next/no-html-link-for-pages": "off"
   }
-}));
+};
 
 export default [
   {
@@ -58,7 +52,7 @@ export default [
       "@typescript-eslint/consistent-type-imports": "error"
     }
   },
-  ...nextConfigs,
+  nextConfig,
   {
     files: ["**/next-env.d.ts"],
     rules: {

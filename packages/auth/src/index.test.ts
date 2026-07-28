@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   AuthenticationError,
   AuthenticationRequiredError,
+  AssignmentTransactionUnavailableError,
   PasswordPolicyError,
   RegistrationUnavailableError,
   authorizationDeniedCode,
@@ -16,6 +17,7 @@ import {
   createEmployerOrganizationService,
   createJobRequestService,
   createOrganizationMembershipService,
+  createPrismaAssignmentRepository,
   createResidenceService,
   createRoleDefinitionService,
   createTimesheetService,
@@ -28,6 +30,7 @@ import {
 } from "./index";
 import type {
   AuthorizationAuditEventInput,
+  AtomicAssignmentCreateFailure,
   AssignmentRepository,
   AttendanceRepository,
   EmployerOrganizationRepository,
@@ -62,6 +65,7 @@ import type {
   JobRequestRepository,
   UpdateSessionInput,
   WorkerOfferRepository,
+  WorkerOfferDeliveryProvider,
   WorkGroupRepository,
   StoredJobRequest,
   StoredTimesheet,
@@ -2350,6 +2354,67 @@ describe("dispatch foundation", () => {
     expect(dispatchRepository.auditActions()).toEqual(["dispatch.created"]);
   });
 
+  it("maps the database uniqueness race to one governed conflict and one audit", async () => {
+    const { dispatchService, dispatchRepository, approvedJobRequest, adminSession } =
+      await createApprovedDispatchContext();
+    const createPersisted =
+      dispatchRepository.createDispatchReviewWithAudit.bind(dispatchRepository);
+    let createAttempts = 0;
+    dispatchRepository.createDispatchReviewWithAudit = async (input) => {
+      createAttempts += 1;
+      if (createAttempts === 2) {
+        throw Object.assign(new Error("Unique constraint failed"), { code: "P2002" });
+      }
+      return createPersisted(input);
+    };
+
+    const results = await Promise.allSettled([
+      dispatchService.createDispatch({
+        session: adminSession,
+        roles: ["DISPATCHER"],
+        jobRequestIdOrNumber: approvedJobRequest.id
+      }),
+      dispatchService.createDispatch({
+        session: adminSession,
+        roles: ["DISPATCHER"],
+        jobRequestIdOrNumber: approvedJobRequest.id
+      })
+    ]);
+
+    expect(results.filter((result) => result.status === "fulfilled")).toHaveLength(1);
+    const conflict = results.find((result) => result.status === "rejected");
+    expect(conflict).toMatchObject({
+      status: "rejected",
+      reason: {
+        decision: expect.objectContaining({
+          status: "invalid_transition",
+          internalReason: "non_terminal_dispatch_already_exists"
+        })
+      }
+    });
+    expect(
+      await dispatchRepository.findActiveDispatchReviewForJobRequest(approvedJobRequest.id)
+    ).not.toBeNull();
+    expect(dispatchRepository.auditActions()).toEqual(["dispatch.created"]);
+  });
+
+  it("does not misclassify an unrelated unique error when no active review exists", async () => {
+    const { dispatchService, dispatchRepository, approvedJobRequest, adminSession } =
+      await createApprovedDispatchContext();
+    dispatchRepository.createDispatchReviewWithAudit = async () => {
+      throw Object.assign(new Error("Unique constraint failed"), { code: "P2002" });
+    };
+
+    await expect(
+      dispatchService.createDispatch({
+        session: adminSession,
+        roles: ["DISPATCHER"],
+        jobRequestIdOrNumber: approvedJobRequest.id
+      })
+    ).rejects.toMatchObject({ code: "P2002" });
+    expect(dispatchRepository.auditActions()).toEqual([]);
+  });
+
   it("keeps candidate source unavailable explicit and does not fabricate candidates", async () => {
     const { dispatchService, dispatchRepository, approvedJobRequest, adminSession } =
       await createApprovedDispatchContext();
@@ -2364,6 +2429,12 @@ describe("dispatch foundation", () => {
       dispatchReviewId: dispatchReview.id,
       expectedVersion: dispatchReview.versionToken
     });
+    const auditBeforeStatus = dispatchRepository.auditActions();
+    const sourceStatus = await dispatchService.getCandidateSourceStatus({
+      session: adminSession,
+      roles: ["DISPATCHER"],
+      dispatchReviewId: reviewing.id
+    });
 
     const search = await dispatchService.searchCandidates({
       session: adminSession,
@@ -2377,6 +2448,8 @@ describe("dispatch foundation", () => {
       candidateSourceReference: "candidate-1"
     });
 
+    expect(sourceStatus).toEqual({ status: "candidate_source_unavailable" });
+    expect(auditBeforeStatus).toEqual(["dispatch.created", "dispatch.candidate_review_started"]);
     expect(search).toEqual({ status: "candidate_source_unavailable", candidates: [] });
     expect(evaluation).toEqual({ status: "candidate_source_unavailable", candidate: null });
     expect(await dispatchRepository.listCandidates(reviewing.id)).toEqual([]);
@@ -2472,6 +2545,46 @@ describe("dispatch foundation", () => {
     expect(JSON.stringify(status)).not.toContain("candidate");
   });
 
+  it("keeps terminal dispatch status visible and prefers a later active review", async () => {
+    const { dispatchService, approvedJobRequest, adminSession, ownerId, organization } =
+      await createApprovedDispatchContext();
+    const firstDispatch = await dispatchService.createDispatch({
+      session: adminSession,
+      roles: ["DISPATCHER"],
+      jobRequestIdOrNumber: approvedJobRequest.id
+    });
+    const cancelledDispatch = await dispatchService.cancel({
+      session: adminSession,
+      roles: ["DISPATCHER"],
+      dispatchReviewId: firstDispatch.id,
+      expectedVersion: firstDispatch.versionToken,
+      reason: "Employer coverage plan changed."
+    });
+
+    const terminalStatus = await dispatchService.getEmployerDispatchStatus({
+      actorUserId: ownerId,
+      organizationId: organization.organization.id,
+      jobRequestIdOrNumber: approvedJobRequest.id
+    });
+
+    expect(terminalStatus.dispatchState).toBe("cancelled");
+    expect(terminalStatus.updatedAt).toEqual(cancelledDispatch.updatedAt);
+
+    const replacementDispatch = await dispatchService.createDispatch({
+      session: adminSession,
+      roles: ["DISPATCHER"],
+      jobRequestIdOrNumber: approvedJobRequest.id
+    });
+    const activeStatus = await dispatchService.getEmployerDispatchStatus({
+      actorUserId: ownerId,
+      organizationId: organization.organization.id,
+      jobRequestIdOrNumber: approvedJobRequest.id
+    });
+
+    expect(activeStatus.dispatchState).toBe("draft");
+    expect(activeStatus.updatedAt).toEqual(replacementDispatch.updatedAt);
+  });
+
   it("denies organization and worker roles from dispatch authority", async () => {
     const { dispatchService, approvedJobRequest, adminSession } =
       await createApprovedDispatchContext();
@@ -2498,9 +2611,56 @@ describe("dispatch foundation", () => {
 });
 
 describe("worker offer foundation", () => {
+  it("allows only one atomic winner for a final offer-capacity slot", async () => {
+    const { workerOfferRepository, dispatchReview, approvedJobRequest, workerOne } =
+      await createWorkerOfferContext();
+    const workerTwo = await workerOfferRepository.findWorkerIdentityByUserId(
+      "00000000-0000-4000-8000-000000000002"
+    );
+    expect(workerTwo).not.toBeNull();
+    const input = {
+      dispatchReview,
+      jobRequest: approvedJobRequest,
+      expiresAt: new Date("2026-08-12T10:00:00.000Z"),
+      workerVisibleTitle: approvedJobRequest.title,
+      workerVisibleSummary: null,
+      compensationSummary: null,
+      policySummary: null,
+      actorUserId: "00000000-0000-4000-8000-000000000099",
+      capacityLimit: 1,
+      now: new Date("2026-08-11T10:00:00.000Z")
+    };
+    const results = await Promise.all([
+      workerOfferRepository.createWorkerOffer({ ...input, workerIdentity: workerOne }),
+      workerOfferRepository.createWorkerOffer({ ...input, workerIdentity: workerTwo! })
+    ]);
+    expect(results.filter(Boolean)).toHaveLength(1);
+    await expect(
+      workerOfferRepository.countCapacityOffersForDispatch(dispatchReview.id)
+    ).resolves.toBe(1);
+  });
+
   it("creates offers only from offer-preparation dispatch and enforces remaining-worker capacity", async () => {
     const { workerOfferService, workerOfferRepository, dispatchReview, adminSession, workerOne } =
       await createWorkerOfferContext();
+    const unshortlistedWorker = await workerOfferRepository.findWorkerIdentityByUserId(
+      "00000000-0000-4000-8000-000000000002"
+    );
+    expect(unshortlistedWorker).not.toBeNull();
+    await expect(
+      workerOfferService.createOffer({
+        session: adminSession,
+        roles: ["DISPATCHER"],
+        dispatchReviewId: dispatchReview.id,
+        workerIdentityId: unshortlistedWorker!.id,
+        expiresAt: new Date("2026-08-12T10:00:00.000Z")
+      })
+    ).rejects.toMatchObject({
+      decision: expect.objectContaining({
+        status: "invalid_input",
+        internalReason: "worker_not_linked_to_shortlisted_candidate"
+      })
+    });
     const offer = await workerOfferService.createOffer({
       session: adminSession,
       roles: ["DISPATCHER"],
@@ -2578,7 +2738,7 @@ describe("worker offer foundation", () => {
 
     expect(approved.status).toBe("approved");
     expect(sent.status).toBe("sent");
-    expect(viewed.status).toBe("viewed");
+    expect(viewed.status).toBe("sent");
     expect(accepted.status).toBe("accepted");
     expect(dispatchRepository.createdAssignments).toBe(0);
     expect(dispatchRepository.createdWorkerOffers).toBe(0);
@@ -2586,10 +2746,120 @@ describe("worker offer foundation", () => {
       expect.arrayContaining([
         "worker_offer.approved",
         "worker_offer.sent",
-        "worker_offer.delivery_attempted",
-        "worker_offer.viewed",
         "worker_offer.accepted"
       ])
+    );
+  });
+
+  it("records truthful delivery and reuses one idempotency key for retries", async () => {
+    const idempotencyKeys: string[] = [];
+    let attempt = 0;
+    const context = await createWorkerOfferContext({
+      deliveryProvider: {
+        async deliver(input) {
+          idempotencyKeys.push(input.idempotencyKey);
+          attempt += 1;
+          return attempt === 1
+            ? { status: "failed", providerReference: null, retryable: true }
+            : { status: "delivered", providerReference: "provider-accepted", retryable: false };
+        }
+      }
+    });
+    const draft = await context.workerOfferService.createOffer({
+      session: context.adminSession,
+      roles: ["DISPATCHER"],
+      dispatchReviewId: context.dispatchReview.id,
+      workerIdentityId: context.workerOne.id,
+      expiresAt: new Date("2026-08-12T10:00:00.000Z")
+    });
+    const approved = await context.workerOfferService.approve({
+      session: context.adminSession,
+      roles: ["DISPATCHER"],
+      workerOfferId: draft.id,
+      expectedVersion: draft.versionToken
+    });
+    const sent = await context.workerOfferService.send({
+      session: context.adminSession,
+      roles: ["DISPATCHER"],
+      workerOfferId: approved.id,
+      expectedVersion: approved.versionToken
+    });
+    const delivered = await context.workerOfferService.retryDelivery({
+      session: context.adminSession,
+      roles: ["DISPATCHER"],
+      workerOfferId: sent.id,
+      expectedVersion: sent.versionToken
+    });
+
+    expect(sent.status).toBe("approved");
+    expect(delivered.status).toBe("delivered");
+    expect(idempotencyKeys).toHaveLength(2);
+    expect(new Set(idempotencyKeys).size).toBe(1);
+    expect(context.workerOfferRepository.auditActions()).toEqual(
+      expect.arrayContaining(["worker_offer.delivery_failed", "worker_offer.delivery_succeeded"])
+    );
+  });
+
+  it("does not retry delivery before approval", async () => {
+    const context = await createWorkerOfferContext();
+    const draft = await context.workerOfferService.createOffer({
+      session: context.adminSession,
+      roles: ["DISPATCHER"],
+      dispatchReviewId: context.dispatchReview.id,
+      workerIdentityId: context.workerOne.id,
+      expiresAt: new Date("2026-08-12T10:00:00.000Z")
+    });
+
+    await expect(
+      context.workerOfferService.retryDelivery({
+        session: context.adminSession,
+        roles: ["DISPATCHER"],
+        workerOfferId: draft.id,
+        expectedVersion: draft.versionToken
+      })
+    ).rejects.toMatchObject({
+      decision: expect.objectContaining({ status: "invalid_transition" })
+    });
+  });
+
+  it("surfaces provider acceptance that loses the persistence race for reconciliation", async () => {
+    const context = await createWorkerOfferContext({
+      deliveryProvider: {
+        async deliver() {
+          return { status: "delivered", providerReference: "accepted", retryable: false };
+        }
+      }
+    });
+    const draft = await context.workerOfferService.createOffer({
+      session: context.adminSession,
+      roles: ["DISPATCHER"],
+      dispatchReviewId: context.dispatchReview.id,
+      workerIdentityId: context.workerOne.id,
+      expiresAt: new Date("2026-08-12T10:00:00.000Z")
+    });
+    const approved = await context.workerOfferService.approve({
+      session: context.adminSession,
+      roles: ["DISPATCHER"],
+      workerOfferId: draft.id,
+      expectedVersion: draft.versionToken
+    });
+    context.workerOfferRepository.failNextDeliveryFinalization = true;
+
+    await expect(
+      context.workerOfferService.send({
+        session: context.adminSession,
+        roles: ["DISPATCHER"],
+        workerOfferId: approved.id,
+        expectedVersion: approved.versionToken
+      })
+    ).rejects.toMatchObject({
+      decision: expect.objectContaining({
+        status: "version_conflict",
+        internalReason: "worker_offer_delivery_indeterminate_requires_reconciliation"
+      })
+    });
+    expect(context.workerOfferRepository.auditActions()).not.toContain(
+      "worker_offer.delivery_succeeded"
     );
   });
 
@@ -2642,6 +2912,52 @@ describe("worker offer foundation", () => {
     ).rejects.toMatchObject({
       decision: expect.objectContaining({ status: "permission_denied" })
     });
+  });
+
+  it("discovers only worker-owned visible offers without mutating lifecycle state", async () => {
+    const {
+      workerOfferService,
+      workerOfferRepository,
+      dispatchReview,
+      adminSession,
+      workerOne,
+      workerSession,
+      otherWorkerSession
+    } = await createWorkerOfferContext();
+    const draft = await workerOfferService.createOffer({
+      session: adminSession,
+      roles: ["DISPATCHER"],
+      dispatchReviewId: dispatchReview.id,
+      workerIdentityId: workerOne.id,
+      expiresAt: new Date("2026-08-12T10:00:00.000Z")
+    });
+    const approved = await workerOfferService.approve({
+      session: adminSession,
+      roles: ["DISPATCHER"],
+      workerOfferId: draft.id,
+      expectedVersion: draft.versionToken
+    });
+    const sent = await workerOfferService.send({
+      session: adminSession,
+      roles: ["DISPATCHER"],
+      workerOfferId: approved.id,
+      expectedVersion: approved.versionToken
+    });
+    const auditBeforeDiscovery = workerOfferRepository.auditActions();
+
+    const owned = await workerOfferService.listWorkerOffers({
+      session: workerSession,
+      roles: ["WORKER_ACCESS"]
+    });
+    const otherWorker = await workerOfferService.listWorkerOffers({
+      session: otherWorkerSession,
+      roles: ["WORKER_ACCESS"]
+    });
+
+    expect(owned.map((offer) => offer.id)).toEqual([sent.id]);
+    expect(owned[0]?.status).toBe("sent");
+    expect(otherWorker).toEqual([]);
+    expect(workerOfferRepository.auditActions()).toEqual(auditBeforeDiscovery);
   });
 
   it("rejects worker responses for stale terms, expired offers, and non-owned offers", async () => {
@@ -2697,6 +3013,55 @@ describe("worker offer foundation", () => {
     });
     expect(workerOfferRepository.auditActions()).toContain("worker_offer.response_rejected");
   });
+
+  it("commits exactly one response and matching offer status under a response race", async () => {
+    const {
+      workerOfferService,
+      workerOfferRepository,
+      dispatchReview,
+      adminSession,
+      workerOne,
+      workerSession
+    } = await createWorkerOfferContext();
+    const draft = await workerOfferService.createOffer({
+      session: adminSession,
+      roles: ["DISPATCHER"],
+      dispatchReviewId: dispatchReview.id,
+      workerIdentityId: workerOne.id,
+      expiresAt: new Date("2026-08-12T10:00:00.000Z")
+    });
+    const approved = await workerOfferService.approve({
+      session: adminSession,
+      roles: ["DISPATCHER"],
+      workerOfferId: draft.id,
+      expectedVersion: draft.versionToken
+    });
+    const sent = await workerOfferService.send({
+      session: adminSession,
+      roles: ["DISPATCHER"],
+      workerOfferId: approved.id,
+      expectedVersion: approved.versionToken
+    });
+    const responseInput = {
+      session: workerSession,
+      roles: ["WORKER_ACCESS"] as const,
+      workerOfferId: sent.id,
+      expectedVersion: sent.versionToken,
+      expectedTermsVersionId: sent.currentTermsVersion!.id
+    };
+
+    const results = await Promise.allSettled([
+      workerOfferService.accept(responseInput),
+      workerOfferService.decline(responseInput)
+    ]);
+    const persisted = await workerOfferRepository.findWorkerOfferById(sent.id);
+    const response = await workerOfferRepository.findResponseByOfferId(sent.id);
+
+    expect(results.filter((result) => result.status === "fulfilled")).toHaveLength(1);
+    expect(results.filter((result) => result.status === "rejected")).toHaveLength(1);
+    expect(persisted?.status).toBe(response?.responseType);
+    expect(persisted?.respondedAt).not.toBeNull();
+  });
 });
 
 describe("assignment foundation", () => {
@@ -2721,7 +3086,7 @@ describe("assignment foundation", () => {
     expect(assignment.jobRequestId).toBe(approvedJobRequest.id);
     expect(assignment.attendanceBoundary).toBe("not_started");
     expect(assignment.validationSnapshot).toMatchObject({
-      policyVersion: "assignment-foundation-v1",
+      policyVersion: "assignment-foundation-v2",
       workerOfferStatus: "accepted",
       attendanceCreated: false,
       workerCalendarCreated: false,
@@ -2733,23 +3098,72 @@ describe("assignment foundation", () => {
     expect(assignmentRepository.createdPayrollRecords).toBe(0);
     expect(assignmentRepository.createdNotificationProviderMessages).toBe(0);
     expect(assignmentRepository.auditActions()).toEqual(
-      expect.arrayContaining([
-        "assignment.creation_attempted",
-        "assignment.validation_passed",
-        "assignment.confirmed"
-      ])
+      expect.arrayContaining(["assignment.validation_passed", "assignment.confirmed"])
     );
+  });
+
+  it("serializes concurrent creation for the same accepted offer", async () => {
+    const { assignmentService, assignmentRepository, acceptedOffer, adminSession } =
+      await createAcceptedAssignmentContext();
+
+    const results = await Promise.allSettled([
+      assignmentService.createFromAcceptedOffer({
+        session: adminSession,
+        roles: ["DISPATCHER"],
+        workerOfferId: acceptedOffer.id
+      }),
+      assignmentService.createFromAcceptedOffer({
+        session: adminSession,
+        roles: ["DISPATCHER"],
+        workerOfferId: acceptedOffer.id
+      })
+    ]);
+
+    expect(results.filter((result) => result.status === "fulfilled")).toHaveLength(1);
+    expect(results.filter((result) => result.status === "rejected")).toHaveLength(1);
+    expect(
+      await assignmentRepository.findAssignmentByWorkerOfferId(acceptedOffer.id)
+    ).not.toBeNull();
+  });
+
+  it("bounds retries for serializable Assignment transaction conflicts", async () => {
+    let attempts = 0;
+    const repository = createPrismaAssignmentRepository({
+      async $transaction() {
+        attempts += 1;
+        throw Object.assign(new Error("serialization conflict"), { code: "P2034" });
+      }
+    });
+
+    await expect(
+      repository.createAssignmentFromAcceptedOfferAtomically({
+        workerOfferId: "00000000-0000-4000-8000-000000000001",
+        actorUserId: "00000000-0000-4000-8000-000000000002",
+        correlationId: "assignment_retry_test",
+        now: new Date("2026-07-27T12:00:00.000Z")
+      })
+    ).rejects.toBeInstanceOf(AssignmentTransactionUnavailableError);
+    expect(attempts).toBe(3);
   });
 
   it("rejects non-accepted offers, duplicate assignments, capacity overflow, and conflicts", async () => {
     const { assignmentService, assignmentRepository, acceptedOffer, adminSession } =
       await createAcceptedAssignmentContext();
     const draftContext = await createWorkerOfferContext();
+    const draftAssignmentRepository = new MemoryAssignmentRepository();
+    const draftJobRequestRepository = new MemoryJobRequestRepositoryWithSeed(
+      draftContext.approvedJobRequest
+    );
+    draftAssignmentRepository.configureSources({
+      workerOffers: draftContext.workerOfferRepository,
+      dispatches: draftContext.dispatchRepository,
+      jobRequests: draftJobRequestRepository
+    });
     const draftAssignmentService = createAssignmentService(
-      new MemoryAssignmentRepository(),
+      draftAssignmentRepository,
       draftContext.workerOfferRepository,
       draftContext.dispatchRepository,
-      new MemoryJobRequestRepositoryWithSeed(draftContext.approvedJobRequest),
+      draftJobRequestRepository,
       createAuthorizationService()
     );
     const draftOffer = await draftContext.workerOfferService.createOffer({
@@ -4214,7 +4628,9 @@ class MemoryDispatchRepository implements DispatchRepository {
     return this.auditEvents.map((event) => event.action);
   }
 
-  async createDispatchReview(input: Parameters<DispatchRepository["createDispatchReview"]>[0]) {
+  async createDispatchReviewWithAudit(
+    input: Parameters<DispatchRepository["createDispatchReviewWithAudit"]>[0]
+  ) {
     const dispatchReview: StoredDispatchReview = {
       id: `dispatch-${this.nextDispatch}`,
       jobRequestId: input.jobRequest.id,
@@ -4239,10 +4655,22 @@ class MemoryDispatchRepository implements DispatchRepository {
       updatedByUserId: null,
       createdAt: input.now,
       updatedAt: input.now,
-      version: 0
+      version: 1
     };
     this.nextDispatch += 1;
     this.dispatchReviews.set(dispatchReview.id, dispatchReview);
+    this.auditEvents.push({
+      action: "dispatch.created",
+      organizationId: dispatchReview.organizationId,
+      dispatchReviewId: dispatchReview.id,
+      jobRequestId: dispatchReview.jobRequestId,
+      actorUserId: input.actorUserId,
+      priorState: null,
+      newState: dispatchReview.state,
+      reason: null,
+      correlationId: input.correlationId,
+      createdAt: input.now
+    });
     return dispatchReview;
   }
 
@@ -4257,6 +4685,16 @@ class MemoryDispatchRepository implements DispatchRepository {
           dispatchReview.jobRequestId === jobRequestId &&
           !["cancelled", "closed"].includes(dispatchReview.state)
       ) ?? null
+    );
+  }
+
+  async findCurrentDispatchReviewForJobRequest(jobRequestId: string) {
+    return (
+      (await this.findActiveDispatchReviewForJobRequest(jobRequestId)) ??
+      [...this.dispatchReviews.values()]
+        .filter((dispatchReview) => dispatchReview.jobRequestId === jobRequestId)
+        .sort((left, right) => right.updatedAt.getTime() - left.updatedAt.getTime())[0] ??
+      null
     );
   }
 
@@ -4305,6 +4743,20 @@ class MemoryDispatchRepository implements DispatchRepository {
             (right.shortlistOrder ?? Number.MAX_SAFE_INTEGER) ||
           right.updatedAt.getTime() - left.updatedAt.getTime()
       );
+  }
+
+  async findShortlistedCandidateByWorkerIdentity(
+    dispatchReviewId: string,
+    workerIdentityId: string
+  ) {
+    return (
+      [...this.candidates.values()].find(
+        (candidate) =>
+          candidate.dispatchReviewId === dispatchReviewId &&
+          candidate.workerIdentityId === workerIdentityId &&
+          candidate.shortlistState === "shortlisted"
+      ) ?? null
+    );
   }
 
   async upsertCandidate(input: Parameters<DispatchRepository["upsertCandidate"]>[0]) {
@@ -4391,12 +4843,14 @@ class MemoryWorkerOfferRepository implements WorkerOfferRepository {
   private termsVersions = new Map<string, StoredWorkerOfferTermsVersion>();
   private deliveryAttempts = new Map<string, StoredWorkerOfferDeliveryAttempt>();
   private responses = new Map<string, StoredWorkerOfferResponse>();
+  private offerCapacityLocks = new Map<string, Promise<void>>();
   private auditEvents: Parameters<WorkerOfferRepository["recordWorkerOfferAuditEvent"]>[0][] = [];
   private nextWorkerIdentity = 1;
   private nextOffer = 1;
   private nextTerms = 1;
   private nextDelivery = 1;
   private nextResponse = 1;
+  failNextDeliveryFinalization = false;
 
   auditActions() {
     return this.auditEvents.map((event) => event.action);
@@ -4429,6 +4883,25 @@ class MemoryWorkerOfferRepository implements WorkerOfferRepository {
   }
 
   async createWorkerOffer(input: Parameters<WorkerOfferRepository["createWorkerOffer"]>[0]) {
+    const previousLock = this.offerCapacityLocks.get(input.dispatchReview.id) ?? Promise.resolve();
+    let releaseLock!: () => void;
+    const currentLock = new Promise<void>((resolve) => {
+      releaseLock = resolve;
+    });
+    this.offerCapacityLocks.set(
+      input.dispatchReview.id,
+      previousLock.then(() => currentLock)
+    );
+    await previousLock;
+    const activeOfferCount = [...this.workerOffers.values()].filter(
+      (offer) =>
+        offer.dispatchReviewId === input.dispatchReview.id &&
+        ["draft", "approved", "sent", "delivered", "viewed", "accepted"].includes(offer.status)
+    ).length;
+    if (activeOfferCount >= input.capacityLimit) {
+      releaseLock();
+      return null;
+    }
     const offer: StoredWorkerOffer = {
       id: `worker-offer-${this.nextOffer}`,
       dispatchReviewId: input.dispatchReview.id,
@@ -4480,6 +4953,7 @@ class MemoryWorkerOfferRepository implements WorkerOfferRepository {
     this.termsVersions.set(termsVersion.id, termsVersion);
     offer.currentTermsVersionId = termsVersion.id;
     offer.updatedByUserId = input.actorUserId;
+    releaseLock();
     return { offer, termsVersion };
   }
 
@@ -4570,6 +5044,48 @@ class MemoryWorkerOfferRepository implements WorkerOfferRepository {
     return delivery;
   }
 
+  async finalizeAcceptedDelivery(
+    input: Parameters<WorkerOfferRepository["finalizeAcceptedDelivery"]>[0]
+  ) {
+    if (this.failNextDeliveryFinalization) {
+      this.failNextDeliveryFinalization = false;
+      return null;
+    }
+    const updated = await this.updateWorkerOffer({
+      workerOfferId: input.workerOfferId,
+      expectedVersion: input.expectedVersion,
+      actorUserId: input.actorUserId,
+      status: input.nextStatus,
+      sentAt: input.now,
+      deliveredAt: input.nextStatus === "delivered" ? input.now : undefined,
+      now: input.now
+    });
+    if (!updated) return null;
+    await this.createDeliveryAttempt({
+      workerOfferId: input.workerOfferId,
+      status: input.attemptStatus,
+      providerBoundary: "configured_http_v1",
+      reason: input.attemptReason,
+      actorUserId: input.actorUserId,
+      now: input.now
+    });
+    await this.recordWorkerOfferAuditEvent({
+      action:
+        input.nextStatus === "delivered" ? "worker_offer.delivery_succeeded" : "worker_offer.sent",
+      organizationId: input.organizationId,
+      workerOfferId: input.workerOfferId,
+      dispatchReviewId: input.dispatchReviewId,
+      jobRequestId: input.jobRequestId,
+      actorUserId: input.actorUserId,
+      priorState: "approved",
+      newState: input.nextStatus,
+      reason: null,
+      correlationId: input.correlationId,
+      createdAt: input.now
+    });
+    return updated;
+  }
+
   async findResponseByOfferId(workerOfferId: string) {
     return (
       [...this.responses.values()].find((response) => response.workerOfferId === workerOfferId) ??
@@ -4592,6 +5108,36 @@ class MemoryWorkerOfferRepository implements WorkerOfferRepository {
     return response;
   }
 
+  async respondToWorkerOfferAtomically(
+    input: Parameters<WorkerOfferRepository["respondToWorkerOfferAtomically"]>[0]
+  ) {
+    const offer = this.workerOffers.get(input.workerOfferId);
+    if (
+      !offer ||
+      offer.version !== input.expectedVersion ||
+      this.responses.has(input.workerOfferId)
+    ) {
+      return null;
+    }
+    const response: StoredWorkerOfferResponse = {
+      id: `worker-offer-response-${this.nextResponse}`,
+      workerOfferId: input.workerOfferId,
+      workerIdentityId: input.workerIdentityId,
+      termsVersionId: input.termsVersionId,
+      responseType: input.responseType,
+      reason: input.reason,
+      createdAt: input.now
+    };
+    this.nextResponse += 1;
+    this.responses.set(input.workerOfferId, response);
+    offer.status = input.nextStatus;
+    offer.respondedAt = input.now;
+    offer.updatedByUserId = input.actorUserId;
+    offer.updatedAt = input.now;
+    offer.version += 1;
+    return offer;
+  }
+
   async recordWorkerOfferAuditEvent(
     input: Parameters<WorkerOfferRepository["recordWorkerOfferAuditEvent"]>[0]
   ) {
@@ -4603,6 +5149,14 @@ class MemoryAssignmentRepository implements AssignmentRepository {
   private assignments = new Map<string, StoredAssignment>();
   private auditEvents: Parameters<AssignmentRepository["recordAssignmentAuditEvent"]>[0][] = [];
   private nextAssignment = 1;
+  private atomicQueue: Promise<void> = Promise.resolve();
+  private sources:
+    | {
+        workerOffers: MemoryWorkerOfferRepository;
+        dispatches: MemoryDispatchRepository;
+        jobRequests: MemoryJobRequestRepositoryWithSeed;
+      }
+    | undefined;
 
   createdAttendanceRecords = 0;
   createdWorkerCalendarEntries = 0;
@@ -4612,6 +5166,151 @@ class MemoryAssignmentRepository implements AssignmentRepository {
 
   auditActions() {
     return this.auditEvents.map((event) => event.action);
+  }
+
+  configureSources(sources: NonNullable<MemoryAssignmentRepository["sources"]>) {
+    this.sources = sources;
+  }
+
+  async createAssignmentFromAcceptedOfferAtomically(
+    input: Parameters<AssignmentRepository["createAssignmentFromAcceptedOfferAtomically"]>[0]
+  ): Promise<
+    Awaited<ReturnType<AssignmentRepository["createAssignmentFromAcceptedOfferAtomically"]>>
+  > {
+    const prior = this.atomicQueue;
+    let release = () => {};
+    this.atomicQueue = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    await prior;
+    try {
+      if (!this.sources) throw new Error("assignment sources unavailable");
+      const workerOffer = await this.sources.workerOffers.findWorkerOfferById(input.workerOfferId);
+      if (!workerOffer) return { ok: false, reason: "worker_offer_not_found" };
+      const fail = async (reason: AtomicAssignmentCreateFailure) => {
+        await this.recordAssignmentAuditEvent({
+          action: "assignment.validation_failed",
+          organizationId: workerOffer.organizationId,
+          assignmentId: null,
+          workerOfferId: workerOffer.id,
+          jobRequestId: workerOffer.jobRequestId,
+          actorUserId: input.actorUserId,
+          priorState: "pending_validation",
+          newState: "rejected",
+          reason,
+          correlationId: input.correlationId,
+          createdAt: input.now
+        });
+        return { ok: false as const, reason };
+      };
+      if (workerOffer.status !== "accepted") return fail("worker_offer_not_accepted");
+      if (workerOffer.expiresAt <= input.now) return fail("worker_offer_expired");
+      const response = await this.sources.workerOffers.findResponseByOfferId(workerOffer.id);
+      if (
+        !response ||
+        response.responseType !== "accepted" ||
+        response.workerIdentityId !== workerOffer.workerIdentityId
+      ) {
+        return fail("response_not_accepted");
+      }
+      if (await this.findAssignmentByWorkerOfferId(workerOffer.id))
+        return fail("assignment_exists");
+      const [termsVersion, jobRequest, dispatchReview, workerIdentity] = await Promise.all([
+        this.sources.workerOffers.findCurrentTermsVersion(workerOffer.id),
+        this.sources.jobRequests.findJobRequestById(workerOffer.jobRequestId),
+        this.sources.dispatches.findDispatchReviewById(workerOffer.dispatchReviewId),
+        this.sources.workerOffers.findWorkerIdentityById(workerOffer.workerIdentityId)
+      ]);
+      if (
+        !termsVersion ||
+        termsVersion.id !== workerOffer.currentTermsVersionId ||
+        termsVersion.workerOfferId !== workerOffer.id ||
+        response.termsVersionId !== termsVersion.id
+      ) {
+        return fail("current_terms_unavailable");
+      }
+      if (!jobRequest || !dispatchReview || !workerIdentity) return fail("source_chain_mismatch");
+      if (
+        dispatchReview.jobRequestId !== jobRequest.id ||
+        workerOffer.organizationId !== jobRequest.organizationId ||
+        workerOffer.organizationId !== dispatchReview.organizationId ||
+        workerOffer.residenceId !== jobRequest.residenceId ||
+        workerOffer.residenceId !== dispatchReview.residenceId ||
+        workerOffer.departmentId !== jobRequest.departmentId ||
+        workerOffer.departmentId !== dispatchReview.departmentId ||
+        termsVersion.workGroupId !== jobRequest.workGroupId ||
+        termsVersion.roleDefinitionId !== jobRequest.roleDefinitionId
+      ) {
+        return fail("source_chain_mismatch");
+      }
+      if (jobRequest.status !== "approved_for_dispatch") {
+        return fail("job_request_not_dispatchable");
+      }
+      if (dispatchReview.state !== "offer_preparation") {
+        return fail("dispatch_not_assignable");
+      }
+      if (workerIdentity.status !== "active") return fail("worker_identity_inactive");
+      const activeAssignments = await this.countActiveAssignmentsForJobRequest(jobRequest.id);
+      if (activeAssignments >= jobRequest.numberOfWorkers) return fail("job_capacity_reached");
+      const conflictCount = await this.countConflictingAssignments({
+        workerIdentityId: workerIdentity.id,
+        startAt: termsVersion.startAt,
+        endAt: termsVersion.endAt
+      });
+      if (conflictCount > 0) return fail("worker_schedule_conflict");
+      const validationSnapshot = {
+        policyVersion: "assignment-foundation-v2",
+        workerOfferStatus: workerOffer.status,
+        termsVersionId: termsVersion.id,
+        jobRequestStatus: jobRequest.status,
+        dispatchReviewState: dispatchReview.state,
+        activeAssignmentsBeforeCreate: activeAssignments,
+        requiredWorkerCount: jobRequest.numberOfWorkers,
+        conflictCount,
+        attendanceCreated: false,
+        workerCalendarCreated: false,
+        payrollCreated: false
+      };
+      const assignment = await this.createAssignmentFromAcceptedOffer({
+        workerOffer,
+        termsVersion,
+        jobRequest,
+        dispatchReview,
+        workerIdentity,
+        actorUserId: input.actorUserId,
+        validationSnapshot,
+        now: input.now
+      });
+      await this.recordAssignmentAuditEvent({
+        action: "assignment.validation_passed",
+        organizationId: assignment.organizationId,
+        assignmentId: assignment.id,
+        workerOfferId: assignment.workerOfferId,
+        jobRequestId: assignment.jobRequestId,
+        actorUserId: input.actorUserId,
+        priorState: "pending_validation",
+        newState: "confirmed",
+        reason: "final_validation_passed",
+        correlationId: input.correlationId,
+        createdAt: input.now
+      });
+      await this.recordAssignmentAuditEvent({
+        action: "assignment.confirmed",
+        organizationId: assignment.organizationId,
+        assignmentId: assignment.id,
+        workerOfferId: assignment.workerOfferId,
+        jobRequestId: assignment.jobRequestId,
+        actorUserId: input.actorUserId,
+        priorState: "pending_validation",
+        newState: assignment.status,
+        reason: "accepted_worker_offer_confirmed",
+        correlationId: input.correlationId,
+        createdAt: input.now
+      });
+      return { ok: true, assignment };
+    } finally {
+      release();
+    }
   }
 
   async createAssignmentFromAcceptedOffer(
@@ -4680,6 +5379,10 @@ class MemoryAssignmentRepository implements AssignmentRepository {
 
   async listAssignments(input: Parameters<AssignmentRepository["listAssignments"]>[0]) {
     return [...this.assignments.values()]
+      .filter(
+        (assignment) =>
+          !input.dispatchReviewId || assignment.dispatchReviewId === input.dispatchReviewId
+      )
       .filter(
         (assignment) => !input.organizationId || assignment.organizationId === input.organizationId
       )
@@ -5150,10 +5853,15 @@ class MemoryTimesheetRepository implements TimesheetRepository {
 }
 
 class FixtureDispatchCandidateSource implements DispatchCandidateSource {
+  async getStatus() {
+    return { status: "available" as const };
+  }
+
   async searchCandidates(input: Parameters<DispatchCandidateSource["searchCandidates"]>[0]) {
     const candidate = await this.evaluateCandidate({
       dispatchReview: input.dispatchReview,
       candidateSourceReference: "worker-alpha",
+      staffingWindow: input.staffingWindow,
       requestedAt: input.requestedAt
     });
 
@@ -5170,6 +5878,7 @@ class FixtureDispatchCandidateSource implements DispatchCandidateSource {
       candidate: {
         id: `fixture-${input.candidateSourceReference}`,
         dispatchReviewId: input.dispatchReview.id,
+        workerIdentityId: "worker-identity-1",
         candidateSourceType: "internal_worker_profile" as const,
         candidateSourceReference: input.candidateSourceReference,
         approvedDisplayName: "Approved Worker Alpha",
@@ -5420,7 +6129,9 @@ async function createApprovedDispatchContext(
   };
 }
 
-async function createWorkerOfferContext() {
+async function createWorkerOfferContext(
+  input: { deliveryProvider?: WorkerOfferDeliveryProvider } = {}
+) {
   const { dispatchService, dispatchRepository, approvedJobRequest, adminSession, organization } =
     await createApprovedDispatchContext({
       candidateSource: new FixtureDispatchCandidateSource()
@@ -5430,7 +6141,14 @@ async function createWorkerOfferContext() {
     workerOfferRepository,
     dispatchRepository,
     new MemoryJobRequestRepositoryWithSeed(approvedJobRequest),
-    createAuthorizationService()
+    createAuthorizationService(),
+    {
+      deliveryProvider: input.deliveryProvider ?? {
+        async deliver() {
+          return { status: "sent", providerReference: "test-provider", retryable: false };
+        }
+      }
+    }
   );
   const dispatchReview = await dispatchService.createDispatch({
     session: adminSession,
@@ -5509,11 +6227,17 @@ async function createWorkerOfferContext() {
 async function createAcceptedAssignmentContext() {
   const context = await createWorkerOfferContext();
   const assignmentRepository = new MemoryAssignmentRepository();
+  const jobRequestRepository = new MemoryJobRequestRepositoryWithSeed(context.approvedJobRequest);
+  assignmentRepository.configureSources({
+    workerOffers: context.workerOfferRepository,
+    dispatches: context.dispatchRepository,
+    jobRequests: jobRequestRepository
+  });
   const assignmentService = createAssignmentService(
     assignmentRepository,
     context.workerOfferRepository,
     context.dispatchRepository,
-    new MemoryJobRequestRepositoryWithSeed(context.approvedJobRequest),
+    jobRequestRepository,
     createAuthorizationService()
   );
   const draftForAcceptance = await context.workerOfferService.createOffer({

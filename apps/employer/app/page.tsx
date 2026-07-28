@@ -11,11 +11,21 @@ import {
 const platformPillars = [
   {
     label: "For Employers",
-    points: ["Request qualified staff", "Review applicants", "Track attendance", "Approve timesheets"]
+    points: [
+      "Create staffing requests",
+      "Track request review",
+      "See staffing progress",
+      "View confirmed assignments"
+    ]
   },
   {
     label: "For Workers",
-    points: ["Find fitting shifts", "Manage availability", "See payout status", "Keep work history"]
+    points: [
+      "Review owned offers",
+      "Accept or decline",
+      "See assignments",
+      "Use attendance handoff"
+    ]
   },
   {
     label: "For Administrators",
@@ -37,6 +47,7 @@ const operationsRows = [
 ] as const;
 
 export default function LandingPage() {
+  const isProduction = process.env.RWOS_ENV === "production";
   return (
     <main style={styles.page}>
       <header style={styles.header}>
@@ -64,11 +75,11 @@ export default function LandingPage() {
           </a>
         </nav>
         <div style={styles.headerActions}>
-          <a href="/employer/dashboard" style={styles.ghostButton}>
+          <a href="/employer/calendar" style={styles.ghostButton}>
             Sign In
           </a>
-          <a href="/signup/employer" style={styles.primaryButton}>
-            Get Started
+          <a href={isProduction ? "/contact" : "/signup/employer"} style={styles.primaryButton}>
+            {isProduction ? "Request Access" : "Get Started"}
           </a>
         </div>
       </header>
@@ -78,12 +89,15 @@ export default function LandingPage() {
           <p style={styles.eyebrow}>Senior living workforce operations</p>
           <h1 style={styles.title}>The Workforce Operating System for Senior Living Communities</h1>
           <p style={styles.lede}>
-            Hire qualified professionals, dispatch shifts, manage attendance, support compliance,
-            and simplify payroll-ready operations from one AI-assisted platform.
+            Create governed staffing requests, support human dispatch review, and give authorized
+            workers a private offer and assignment reference.
           </p>
           <div style={styles.heroActions}>
-            <a href="/signup/employer" style={styles.primaryButtonLarge}>
-              Request Staff
+            <a
+              href={isProduction ? "/employer/calendar" : "/signup/employer"}
+              style={styles.primaryButtonLarge}
+            >
+              {isProduction ? "Secure Staffing Entry" : "Request Staff"}
             </a>
             <a href="#workers" style={styles.secondaryButtonLarge}>
               Become a Worker
@@ -92,29 +106,31 @@ export default function LandingPage() {
               Book a Demo
             </a>
           </div>
-          <div aria-label="Platform controls" style={styles.trustStrip}>
-            {["Verified Workers", "Smart Scheduling", "Compliance Ready", "Real-time Support"].map(
+          <ul aria-label="Platform controls" style={styles.trustStrip}>
+            {["Governed Access", "Human Dispatch", "Private Worker Views", "Audited Handoffs"].map(
               (label) => (
-                <span key={label} style={styles.trustPill}>
+                <li key={label} style={styles.trustPill}>
                   <span aria-hidden="true" style={styles.smallIcon} />
                   {label}
-                </span>
+                </li>
               )
             )}
-          </div>
+          </ul>
         </div>
 
-        <div aria-label="Care workforce scene" style={styles.heroVisual}>
+        <div aria-hidden="true" style={styles.heroVisual}>
           <div style={styles.photoFrame}>
             <div style={styles.carePortrait}>
               <div style={styles.caregiver} />
               <div style={styles.resident} />
             </div>
           </div>
-          <div style={styles.floatingMetric}>
-            <strong>86</strong>
-            <span>open shifts monitored</span>
-          </div>
+          {!isProduction ? (
+            <div style={styles.floatingMetric}>
+              <strong>Demo</strong>
+              <span>illustrative interface</span>
+            </div>
+          ) : null}
         </div>
       </section>
 
@@ -132,7 +148,10 @@ export default function LandingPage() {
         <div style={styles.capsuleGrid}>
           {staffingCategories.map((category, index) => (
             <article key={category.name} style={styles.capsuleCard}>
-              <span aria-hidden="true" style={categoryIconStyles[index % categoryIconStyles.length]} />
+              <span
+                aria-hidden="true"
+                style={categoryIconStyles[index % categoryIconStyles.length]}
+              />
               <h3 style={styles.cardTitle}>{category.name}</h3>
               <p style={styles.cardText}>{category.roles}</p>
               <p style={styles.cardNote}>{category.detail}</p>
@@ -154,10 +173,7 @@ export default function LandingPage() {
             "Admin Dispatch",
             "Worker Offer",
             "Assignment",
-            "Punch In",
-            "Employer Review",
-            "Invoice",
-            "Worker Pay"
+            "Attendance Handoff"
           ].map((step) => (
             <span key={step} style={styles.timelineStep}>
               {step}
@@ -190,21 +206,24 @@ export default function LandingPage() {
         </div>
       </section>
 
-      <section aria-labelledby="preview-title" style={styles.previewBand}>
-        <div style={styles.previewIntro}>
-          <p style={styles.eyebrowDark}>Platform design preview</p>
-          <h2 id="preview-title" style={styles.sectionTitle}>
-            Quiet dashboards for repeated daily work.
-          </h2>
-          <p style={styles.sectionCopy}>
-            Screens are arranged for scanning, exception handling, and governed handoffs.
-          </p>
-        </div>
-        <div style={styles.previewGrid}>
-          <DashboardPreview />
-          <WorkerPhonePreview />
-        </div>
-      </section>
+      {!isProduction ? (
+        <section aria-labelledby="preview-title" style={styles.previewBand}>
+          <div style={styles.previewIntro}>
+            <p style={styles.eyebrowDark}>Development-only illustrative preview</p>
+            <h2 id="preview-title" style={styles.sectionTitle}>
+              Quiet dashboards for repeated daily work.
+            </h2>
+            <p style={styles.sectionCopy}>
+              Synthetic names, counts, and amounts below are design fixtures, not operational data
+              or available production functionality.
+            </p>
+          </div>
+          <div style={styles.previewGrid}>
+            <DashboardPreview />
+            <WorkerPhonePreview />
+          </div>
+        </section>
+      ) : null}
 
       <section id="workers" aria-labelledby="workers-title" style={styles.section}>
         <div style={styles.centerHeader}>
@@ -230,11 +249,13 @@ export default function LandingPage() {
           </h2>
         </div>
         <div style={styles.aiFlow}>
-          {([
-            ["Recommends", "Qualified matches, gaps, and risks"],
-            ["Explains", "Evidence, uncertainty, and missing data"],
-            ["Waits", "Human review controls final action"]
-          ] as const).map(([title, text]) => (
+          {(
+            [
+              ["Recommends", "Qualified matches, gaps, and risks"],
+              ["Explains", "Evidence, uncertainty, and missing data"],
+              ["Waits", "Human review controls final action"]
+            ] as const
+          ).map(([title, text]) => (
             <FlowStep key={title} title={title} text={text} />
           ))}
         </div>
@@ -287,8 +308,8 @@ export default function LandingPage() {
           <p style={styles.ctaCopy}>Start with a governed staffing request or schedule a demo.</p>
         </div>
         <div style={styles.ctaActions}>
-          <a href="/signup/employer" style={styles.lightButton}>
-            Get Started
+          <a href={isProduction ? "/contact" : "/signup/employer"} style={styles.lightButton}>
+            {isProduction ? "Request Access" : "Get Started"}
           </a>
           <a href="/contact" style={styles.outlineLightButton}>
             Book a Demo
@@ -509,8 +530,7 @@ const styles: Record<string, CSSProperties> = {
   },
   hero: {
     alignItems: "center",
-    background:
-      "linear-gradient(180deg, #ffffff 0%, #f5f9ff 74%, #eef5ff 100%)",
+    background: "linear-gradient(180deg, #ffffff 0%, #f5f9ff 74%, #eef5ff 100%)",
     display: "grid",
     gap: 36,
     gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 360px), 1fr))",

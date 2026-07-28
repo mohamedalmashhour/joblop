@@ -133,6 +133,37 @@ describe("calendar request persistence service", () => {
     expect(admin[0]).toHaveProperty("authoritativeStatus", "draft");
   });
 
+  it("exposes only the employer-facing information request reason", async () => {
+    const informationRequired = {
+      ...request,
+      status: "information_required" as const,
+      adminReviewReason: "Clarify the overnight supervision plan."
+    };
+    const service = createCalendarRequestService({
+      repository: new MemoryCalendarRequestProfileRepository(),
+      jobRequestAccess: {
+        authorizeCalendarProfileUpdate: async () => informationRequired,
+        getForOrganization: async () => informationRequired,
+        listForOrganization: async () => [informationRequired],
+        getForAdmin: async () => informationRequired,
+        listAdminIntake: async () => [informationRequired]
+      },
+      workerOfferAccess: unavailableWorkerOfferAccess
+    });
+
+    const [client] = await service.listClientCalendar({
+      actorUserId: "client-1",
+      organizationId: request.organizationId
+    });
+
+    expect(client).toMatchObject({
+      status: "under_review",
+      actionRequired: "information_required",
+      actionRequiredReason: "Clarify the overnight supervision plan."
+    });
+    expect(client).not.toHaveProperty("adminReviewReason");
+  });
+
   it("rejects profile writes once the request leaves an editable lifecycle state", async () => {
     const service = createCalendarRequestService({
       repository: new MemoryCalendarRequestProfileRepository(),

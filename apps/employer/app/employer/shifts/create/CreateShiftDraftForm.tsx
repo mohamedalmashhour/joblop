@@ -32,7 +32,11 @@ const fields: readonly {
   { key: "timezone", label: "Timezone", placeholder: "Timezone" },
   { key: "workerCount", label: "Required worker count", placeholder: "Worker count" },
   { key: "responsibilities", label: "Responsibilities", placeholder: "Responsibilities" },
-  { key: "qualificationRequirements", label: "Qualification requirements", placeholder: "Requirements" },
+  {
+    key: "qualificationRequirements",
+    label: "Qualification requirements",
+    placeholder: "Requirements"
+  },
   { key: "experienceRequirement", label: "Experience requirement", placeholder: "Experience" },
   { key: "rate", label: "Rate", placeholder: "Rate summary" },
   { key: "urgentPremium", label: "Urgent premium", placeholder: "Premium where governed" },
@@ -133,11 +137,22 @@ export function CreateShiftDraftForm() {
         <button type="button" onClick={saveDraft} style={styles.primaryButton}>
           Validate draft locally
         </button>
-        <a href="/employer/shifts/review" style={styles.secondaryButton}>
-          Review shift
-        </a>
+        {validation.missing.length === 0 ? (
+          <a href="/employer/shifts/review" style={styles.secondaryButton}>
+            Review shift
+          </a>
+        ) : (
+          <span
+            aria-disabled="true"
+            role="link"
+            style={{ ...styles.disabledAction, display: "inline-flex" }}
+            title="Complete every required field before reviewing the shift."
+          >
+            Review shift
+          </span>
+        )}
       </div>
-      <p style={styles.warning}>
+      <p aria-live="polite" style={styles.warning}>
         Local state: {validation.state}. Missing required fields:{" "}
         {validation.missing.length === 0 ? "none" : validation.missing.join(", ")}.
       </p>
@@ -145,7 +160,9 @@ export function CreateShiftDraftForm() {
       <section style={styles.card}>
         <div style={styles.sectionHeader}>
           <p style={styles.eyebrowDark}>Client learning capsules</p>
-          <h3 style={styles.cardTitle}>Add a new job type when the existing capsules do not fit.</h3>
+          <h3 style={styles.cardTitle}>
+            Add a new job type when the existing capsules do not fit.
+          </h3>
           <p style={styles.cardText}>
             These client capsules are saved in browser local storage only. They help capture new
             staffing language for future AI review, but they do not train AI, publish shifts, or
