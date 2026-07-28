@@ -21,7 +21,13 @@ Configure the deployment platform to alert on:
 3. 5xx error-rate or error-budget burn;
 4. p95 and p99 latency above the agreed service objective;
 5. database readiness failure;
-6. abnormal authentication denial or rate-limit volume.
+6. database latency or pool saturation;
+7. candidate-source health/evaluation failures;
+8. offer-delivery failures, retry growth, or reconciliation conflicts;
+9. distributed-limiter health failure or fail-closed 503 growth;
+10. abnormal authentication denial, enumeration probes, or rate-limit volume;
+11. Assignment creation/capacity/conflict failure growth;
+12. migration failure or checksum mismatch.
 
 Thresholds, paging destinations, dashboard URLs, and the named primary/secondary on-call owners are
 deployment inputs. Until they are recorded and tested, monitoring signoff remains open.

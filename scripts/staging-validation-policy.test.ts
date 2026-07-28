@@ -1,0 +1,101 @@
+import { describe, expect, it } from "vitest";
+
+import {
+  isMigrationStateComplete,
+  stagingConfirmation,
+  validateStagingEnvironment
+} from "./staging-validation-policy";
+
+const validEnvironment = {
+  RWOS_ENV: "production",
+  NODE_ENV: "production",
+  RWOS_STAGING_VALIDATION_CONFIRMATION: stagingConfirmation,
+  DATABASE_URL: "postgresql://rwos@db.example.test/rwos_staging",
+  INTERNAL_API_ORIGIN: "https://api.staging.example.test",
+  AUTH_RATE_LIMITER_ORIGIN: "https://limiter.staging.example.test",
+  AUTH_RATE_LIMITER_TOKEN: "limiter-token-that-is-longer-than-thirty-two-characters",
+  AUTH_RATE_LIMITER_KEY_SECRET: "distinct-hmac-secret-longer-than-thirty-two-characters",
+  CANDIDATE_SOURCE_ORIGIN: "https://candidate.staging.example.test",
+  CANDIDATE_SOURCE_TOKEN: "candidate-token-that-is-longer-than-thirty-two-characters",
+  OFFER_DELIVERY_ORIGIN: "https://delivery.staging.example.test",
+  OFFER_DELIVERY_TOKEN: "delivery-token-that-is-longer-than-thirty-two-characters",
+  SECRET_MANAGER_PROVIDER: "approved-provider/reference-only",
+  MONITORING_HEALTHCHECK_URL: "https://monitoring.staging.example.test/health",
+  PAGING_HEALTHCHECK_URL: "https://paging.staging.example.test/health"
+} as const;
+
+describe("staging validation policy", () => {
+  it("accepts an explicit production-boundary staging configuration", () => {
+    expect(validateStagingEnvironment(validEnvironment)).toEqual([]);
+  });
+
+  it("fails closed for absent staging authority and dependencies", () => {
+    expect(validateStagingEnvironment({})).toEqual(
+      expect.arrayContaining([
+        "RWOS_ENV must be production.",
+        "NODE_ENV must be production.",
+        "DATABASE_URL is required.",
+        "CANDIDATE_SOURCE_ORIGIN is required.",
+        "MONITORING_HEALTHCHECK_URL is required."
+      ])
+    );
+  });
+
+  it.each([
+    ["localhost database", { DATABASE_URL: "postgresql://rwos@127.0.0.1/rwos_staging" }],
+    [
+      "unlabelled database",
+      { DATABASE_URL: "postgresql://rwos@db.example.test/resident_workforce" }
+    ],
+    ["non-PostgreSQL database", { DATABASE_URL: "https://db.example.test/rwos_staging" }],
+    ["insecure provider", { OFFER_DELIVERY_ORIGIN: "http://delivery.example.test" }],
+    [
+      "shared limiter secrets",
+      {
+        AUTH_RATE_LIMITER_TOKEN: "shared-secret-that-is-longer-than-thirty-two-characters",
+        AUTH_RATE_LIMITER_KEY_SECRET: "shared-secret-that-is-longer-than-thirty-two-characters"
+      }
+    ]
+  ])("rejects %s", (_label, override) => {
+    expect(validateStagingEnvironment({ ...validEnvironment, ...override })).not.toEqual([]);
+  });
+});
+
+describe("staging migration state", () => {
+  const completed = (migration_name: string) => ({
+    migration_name,
+    finished_at: new Date("2026-01-01T00:00:00Z"),
+    rolled_back_at: null
+  });
+
+  it("accepts exact completed migration equality", () => {
+    expect(
+      isMigrationStateComplete(
+        ["001_init", "002_next"],
+        [completed("001_init"), completed("002_next")]
+      )
+    ).toBe(true);
+  });
+
+  it("rejects a missing local migration", () => {
+    expect(isMigrationStateComplete(["001_init", "002_next"], [completed("001_init")])).toBe(false);
+  });
+
+  it("rejects an unknown applied migration", () => {
+    expect(
+      isMigrationStateComplete(["001_init"], [completed("001_init"), completed("999_unknown")])
+    ).toBe(false);
+  });
+
+  it("rejects an unfinished migration row", () => {
+    expect(
+      isMigrationStateComplete(
+        ["001_init"],
+        [
+          completed("001_init"),
+          { migration_name: "002_failed", finished_at: null, rolled_back_at: null }
+        ]
+      )
+    ).toBe(false);
+  });
+});

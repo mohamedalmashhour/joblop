@@ -90,10 +90,10 @@ deployment is not authorized while the remaining gates below are open.
   token, and distinct HMAC key secret. Authentication sends only domain-separated HMAC account and
   network subjects, fails closed with a generic 503 when no decision can be obtained, preserves
   bounded 429 retry guidance through the frontend BFFs, and includes limiter health in readiness.
-- A fresh network-backed production dependency audit could not be executed in this validation
-  cycle because submission of dependency metadata to the registry was not approved. Historical
-  remediation notes are not treated as current audit evidence; registry-backed re-audit and
-  disposition of every current finding remain launch gates.
+- The authorized registry-backed production dependency audit reports one high
+  `brace-expansion@1.1.16` advisory through Expo CLI development tooling. The incompatible forced
+  upgrade remains rejected because it breaks the legacy `minimatch@3` consumer. The documented
+  time-bounded exception still requires a named security owner’s approval before release.
 - Migration history now has a PostgreSQL provider lock and immutable checksum manifest. Static
   validation blocks edited or newly destructive migrations, and a guarded logical restore command
   refuses source-equal or non-disposable targets. The recovery runbook separates local mechanics

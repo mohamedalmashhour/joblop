@@ -2,12 +2,28 @@
 
 Status: code-level procedure ready; paging destinations and named on-call owners are not configured.
 
+## Required named roles
+
+| Role               | Required name/rotation     | Decision authority                        |
+| ------------------ | -------------------------- | ----------------------------------------- |
+| Primary on-call    | `PENDING OPERATIONS OWNER` | First response and containment            |
+| Secondary on-call  | `PENDING OPERATIONS OWNER` | Escalation and continuity                 |
+| Incident commander | `PENDING OPERATIONS OWNER` | Severity, coordination, communications    |
+| Rollback authority | `PENDING DEPLOYMENT OWNER` | Drain/rollback decision                   |
+| Database owner     | `PENDING DATABASE OWNER`   | Backup, PITR, database containment        |
+| Security owner     | `PENDING SECURITY OWNER`   | Security incident and exception decisions |
+| Deployment owner   | `PENDING DEPLOYMENT OWNER` | Release stop/resume                       |
+
 ## Severity triggers
 
 - Security/privacy: suspected tenant crossover, IDOR, credential exposure, or sensitive logging.
 - Availability: sustained readiness loss, restart loop, database or limiter outage.
 - Integrity: ambiguous offer/Assignment mutation, migration mismatch, or restore discrepancy.
 - Integration: duplicate delivery, false delivery state, or candidate-source provenance failure.
+
+Required alert coverage: API 5xx/error rate and latency; database availability and latency;
+candidate-source, offer-delivery, and distributed-limiter failures; authentication abuse;
+Assignment failures; readiness loss; and migration failure.
 
 ## Procedure
 

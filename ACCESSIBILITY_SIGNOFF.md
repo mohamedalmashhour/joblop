@@ -19,3 +19,20 @@ visibility, loading, empty, stale, unauthorized, and failure states.
 For each run record device, OS, browser/app build, assistive technology/version, tester, date,
 scenario, result, defect, fix commit, and retest. Do not mark this document signed off until a named
 accessibility owner accepts all remaining exceptions.
+
+## Required device record
+
+| Field                | Required evidence                                                              |
+| -------------------- | ------------------------------------------------------------------------------ |
+| Device               | Exact manufacturer/model; identify any simulator, which cannot provide signoff |
+| OS                   | Exact supported iOS/Android version                                            |
+| Browser/WebView      | Exact version                                                                  |
+| Assistive technology | VoiceOver/TalkBack/screen reader and version                                   |
+| Build                | Immutable release commit and signed build identifier                           |
+| Locale/direction     | English LTR and Arabic RTL                                                     |
+| Display              | Default and maximum supported font scaling/dynamic type                        |
+
+Acceptance includes labelled controls, semantic headings, visible keyboard focus, logical tab order,
+form instructions and validation association, loading and live-region announcements, empty/denied/
+stale/error/network/session-expiry states, platform-equivalent 44-by-44 touch targets, zoom/reflow,
+RTL layout, Arabic content integrity, rotation, reduced motion, font scaling, and contrast.

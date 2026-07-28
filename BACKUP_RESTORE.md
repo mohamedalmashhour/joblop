@@ -25,3 +25,18 @@ Before launch, a named operator and witness must:
 
 Exact commands, refusal safeguards, and the evidence template are in
 `docs/runbooks/DATABASE_BACKUP_RESTORE_AND_MIGRATIONS.md`.
+
+## Database-owner evidence checklist
+
+- [ ] Provider, region, encryption policy, schedule, retention and PITR window recorded.
+- [ ] Source recovery-point identifier and isolated target identifier recorded.
+- [ ] Restore target confirmed non-production and source-unequal.
+- [ ] Restore start/end and recovery-point timestamps recorded.
+- [ ] Migration checksums and applied history verified.
+- [ ] Constraints, safe aggregate counts and tenant-isolation canaries verified.
+- [ ] API readiness and authenticated read-only critical-workflow canaries passed.
+- [ ] Recovery point age recorded as measured RPO.
+- [ ] Restore start to verified service readiness recorded as measured RTO.
+- [ ] Monitoring/alerting behavior during restore recorded.
+- [ ] Disposable target destruction and retained non-secret evidence recorded.
+- [ ] Database owner and independent witness sign and date the result.

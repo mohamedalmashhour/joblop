@@ -22,3 +22,13 @@ Before launch, privacy/legal owners must approve collection purpose, lawful basi
 retention schedule, deletion/anonymization behavior, export/correction procedure, subprocessor list,
 cross-border handling, breach procedure, backup expiry, and audit-record exceptions. Operations must
 then test an approved export and deletion workflow without weakening audit or legal-hold duties.
+
+## Approval record
+
+Status: `PENDING HUMAN APPROVAL`
+
+The approval must name the privacy and legal owners, date the decision, identify jurisdiction and
+data residency, attach the retention/deletion schedule, list subprocessors, define worker and
+employer notice/consent requirements, set data-subject request timelines, define audit and
+legal-hold exceptions, define backup deletion expiry, and identify breach-notification authority.
+Engineering evidence cannot substitute for these decisions.

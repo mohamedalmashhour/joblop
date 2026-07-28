@@ -1,0 +1,100 @@
+export const stagingConfirmation = "authorized-staging-validation";
+
+export type StagingValidationEnvironment = Readonly<Record<string, string | undefined>>;
+export type MigrationStateRow = Readonly<{
+  migration_name: string;
+  finished_at: Date | null;
+  rolled_back_at: Date | null;
+}>;
+
+export function isMigrationStateComplete(
+  localMigrations: readonly string[],
+  migrationRows: readonly MigrationStateRow[]
+) {
+  const applied = new Set(
+    migrationRows
+      .filter((row) => row.finished_at && !row.rolled_back_at)
+      .map((row) => row.migration_name)
+  );
+  const local = new Set(localMigrations);
+  const missing = localMigrations.some((migration) => !applied.has(migration));
+  const unknownApplied = [...applied].some((migration) => !local.has(migration));
+  const incomplete = migrationRows.some((row) => !row.finished_at && !row.rolled_back_at);
+  return !missing && !unknownApplied && !incomplete;
+}
+
+export function validateStagingEnvironment(env: StagingValidationEnvironment) {
+  const issues: string[] = [];
+  const required = [
+    "DATABASE_URL",
+    "INTERNAL_API_ORIGIN",
+    "AUTH_RATE_LIMITER_ORIGIN",
+    "AUTH_RATE_LIMITER_TOKEN",
+    "AUTH_RATE_LIMITER_KEY_SECRET",
+    "CANDIDATE_SOURCE_ORIGIN",
+    "CANDIDATE_SOURCE_TOKEN",
+    "OFFER_DELIVERY_ORIGIN",
+    "OFFER_DELIVERY_TOKEN",
+    "SECRET_MANAGER_PROVIDER",
+    "MONITORING_HEALTHCHECK_URL",
+    "PAGING_HEALTHCHECK_URL"
+  ] as const;
+
+  if (env.RWOS_ENV !== "production") issues.push("RWOS_ENV must be production.");
+  if (env.NODE_ENV !== "production") issues.push("NODE_ENV must be production.");
+  if (env.RWOS_STAGING_VALIDATION_CONFIRMATION !== stagingConfirmation) {
+    issues.push(`RWOS_STAGING_VALIDATION_CONFIRMATION must equal ${stagingConfirmation}.`);
+  }
+  for (const key of required) {
+    if (!env[key]?.trim()) issues.push(`${key} is required.`);
+  }
+
+  for (const key of [
+    "INTERNAL_API_ORIGIN",
+    "AUTH_RATE_LIMITER_ORIGIN",
+    "CANDIDATE_SOURCE_ORIGIN",
+    "OFFER_DELIVERY_ORIGIN",
+    "MONITORING_HEALTHCHECK_URL",
+    "PAGING_HEALTHCHECK_URL"
+  ] as const) {
+    const value = env[key];
+    if (value && !isHttps(value)) issues.push(`${key} must use HTTPS.`);
+  }
+
+  const databaseUrl = env.DATABASE_URL;
+  if (databaseUrl) {
+    try {
+      const parsed = new URL(databaseUrl);
+      if (!["postgres:", "postgresql:"].includes(parsed.protocol)) {
+        issues.push("DATABASE_URL must use PostgreSQL.");
+      }
+      const databaseName = parsed.pathname.replace(/^\/+/, "").toLowerCase();
+      if (!/(staging|stage|validation|test)/.test(databaseName)) {
+        issues.push("DATABASE_URL must name an explicit staging, validation, or test database.");
+      }
+      if (/^(localhost|127\.0\.0\.1|\[::1\])$/.test(parsed.hostname)) {
+        issues.push("DATABASE_URL must not use localhost for target staging validation.");
+      }
+    } catch {
+      issues.push("DATABASE_URL must be a valid PostgreSQL URL.");
+    }
+  }
+
+  if (
+    env.AUTH_RATE_LIMITER_TOKEN &&
+    env.AUTH_RATE_LIMITER_KEY_SECRET &&
+    env.AUTH_RATE_LIMITER_TOKEN === env.AUTH_RATE_LIMITER_KEY_SECRET
+  ) {
+    issues.push("AUTH_RATE_LIMITER_TOKEN and AUTH_RATE_LIMITER_KEY_SECRET must be distinct.");
+  }
+
+  return issues;
+}
+
+function isHttps(value: string) {
+  try {
+    return new URL(value).protocol === "https:";
+  } catch {
+    return false;
+  }
+}

@@ -2,8 +2,10 @@
 
 Deployment is not authorized.
 
-- [ ] `pnpm test:postgres:required` passes against the designated disposable PostgreSQL validation
-      database; the command fails closed when `RWOS_TEST_DATABASE_URL` is absent.
+- [ ] `RWOS_TEST_DATABASE_URL=<approved-target> RWOS_TEST_DATABASE_CLUSTER_ID=<staging-id>
+RWOS_PRODUCTION_DATABASE_CLUSTER_ID=<production-id>
+RWOS_TEST_DATABASE_CONFIRMATION=disposable-test-target pnpm test:postgres:required` passes
+      against the designated PostgreSQL validation database.
 - [ ] `LAUNCH_READINESS.md` has no blocking open gate.
 - [ ] Exact commit and immutable build artifacts identified.
 - [ ] Full validation, PostgreSQL, browser, native, accessibility, security, and dependency evidence
