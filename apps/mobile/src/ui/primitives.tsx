@@ -1,5 +1,13 @@
 import type { PropsWithChildren, ReactNode } from "react";
-import { ActivityIndicator, Pressable, StyleSheet, Text, TextInput, View } from "react-native";
+import {
+  ActivityIndicator,
+  Platform,
+  Pressable,
+  StyleSheet,
+  Text,
+  TextInput,
+  View
+} from "react-native";
 import { colors, radii, spacing, touch, typography } from "@rwos/design-system";
 import { uiFoundation } from "@rwos/ui";
 
@@ -201,10 +209,17 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     gap: spacing.sm,
     padding: spacing.lg,
-    shadowColor: colors.text,
-    shadowOffset: { height: 2, width: 0 },
-    shadowOpacity: 0.08,
-    shadowRadius: 14
+    ...Platform.select({
+      default: {
+        shadowColor: colors.text,
+        shadowOffset: { height: 2, width: 0 },
+        shadowOpacity: 0.08,
+        shadowRadius: 14
+      },
+      web: {
+        boxShadow: "0 2px 14px rgba(11, 31, 58, 0.08)"
+      }
+    })
   },
   section: {
     gap: spacing.sm

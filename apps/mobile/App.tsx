@@ -897,10 +897,17 @@ const styles = StyleSheet.create({
     gap: spacing.xs,
     justifyContent: "space-around",
     padding: spacing.sm,
-    shadowColor: colors.text,
-    shadowOffset: { height: -2, width: 0 },
-    shadowOpacity: 0.06,
-    shadowRadius: 12,
+    ...Platform.select({
+      default: {
+        shadowColor: colors.text,
+        shadowOffset: { height: -2, width: 0 },
+        shadowOpacity: 0.06,
+        shadowRadius: 12
+      },
+      web: {
+        boxShadow: "0 -2px 12px rgba(11, 31, 58, 0.06)"
+      }
+    }),
     width: "100%"
   },
   tabButton: {

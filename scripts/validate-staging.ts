@@ -44,7 +44,7 @@ async function main() {
   }
 
   const prisma = createPrismaClient(process.env.DATABASE_URL);
-  let migrationStateComplete = true;
+  let migrationStateComplete: boolean;
   try {
     await prisma.$queryRaw`SELECT 1`;
     const migrationRows = await prisma.$queryRaw<

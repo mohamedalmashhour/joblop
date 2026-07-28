@@ -18,6 +18,9 @@
     },
     "extra": {
       "foundationOnly": true
-    }
+    },
+    "plugins": [
+      "expo-secure-store"
+    ]
   }
 }
