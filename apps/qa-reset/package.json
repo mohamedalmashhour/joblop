@@ -1,0 +1,17 @@
+{
+  "name": "@rwos/qa-reset",
+  "version": "0.1.0-foundation",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "lint": "eslint .",
+    "start": "node --import tsx src/server.ts",
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@rwos/database": "workspace:*",
+    "@rwos/service-auth": "workspace:*"
+  }
+}
