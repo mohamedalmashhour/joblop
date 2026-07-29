@@ -151,6 +151,31 @@ describe("secure frontend session gateway", () => {
     });
   });
 
+  it("preserves a bounded not-found category without exposing upstream details", async () => {
+    const gateway = createFrontendSessionGateway({
+      apiOrigin: "https://api.example.test",
+      fetch: async () =>
+        apiResponse(404, {
+          error: "RWOS_ASSIGNMENT_SOURCE_UNAVAILABLE",
+          privateReason: "source_chain_mismatch:worker-private-id"
+        })
+    });
+
+    const result = await gateway.request(
+      "/platform/assignments",
+      "POST",
+      "server-session-token-123456789",
+      {
+        workerOfferId: "00000000-0000-4000-8000-000000000101",
+        dispatchReviewId: "00000000-0000-4000-8000-000000000102",
+        expectedOfferVersion: 1
+      }
+    );
+
+    expect(result).toEqual({ status: "not_found" });
+    expect(JSON.stringify(result)).not.toContain("worker-private-id");
+  });
+
   it("preserves only a bounded retry interval for rate-limited sign-in", async () => {
     const gateway = createFrontendSessionGateway({
       apiOrigin: "https://api.example.test",

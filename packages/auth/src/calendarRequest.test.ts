@@ -191,6 +191,101 @@ describe("calendar request persistence service", () => {
     ).rejects.toBeInstanceOf(CalendarRequestError);
   });
 
+  it("rejects a cross-organization request returned by the write authorization boundary", async () => {
+    const repository = new MemoryCalendarRequestProfileRepository();
+    const service = createCalendarRequestService({
+      repository,
+      jobRequestAccess: {
+        authorizeCalendarProfileUpdate: async () => ({
+          ...request,
+          organizationId: "organization-2"
+        }),
+        getForOrganization: async () => request,
+        listForOrganization: async () => [],
+        getForAdmin: async () => request,
+        listAdminIntake: async () => []
+      },
+      workerOfferAccess: unavailableWorkerOfferAccess
+    });
+
+    await expect(
+      service.upsertClientProfile({
+        actorUserId: "client-1",
+        organizationId: request.organizationId,
+        jobRequestId: request.id,
+        dutiesSummary: null,
+        qualifications: [],
+        addressSummary: null,
+        specialInstructions: null,
+        expectedVersion: null
+      })
+    ).rejects.toMatchObject({ code: "RWOS_INVALID_CALENDAR_REQUEST" });
+
+    expect(await repository.findByJobRequestId(request.id)).toBeNull();
+  });
+
+  it("does not project profile metadata from another organization or residence", async () => {
+    const crossOrganizationProfile = profileFixture({
+      organizationId: "organization-2",
+      dutiesSummary: "Private Organization B duties"
+    });
+    const crossResidenceProfile = profileFixture({
+      residenceId: "residence-2",
+      dutiesSummary: "Private residence duties"
+    });
+    const profiles = [crossOrganizationProfile, crossResidenceProfile];
+    let profileIndex = 0;
+    const repository: CalendarRequestProfileRepository = {
+      upsert: async () => null,
+      findByJobRequestId: async () => profiles[profileIndex++] ?? null,
+      findByJobRequestIds: async () => [crossOrganizationProfile],
+      updateVerification: async () => null
+    };
+    const service = createCalendarRequestService({
+      repository,
+      jobRequestAccess: {
+        authorizeCalendarProfileUpdate: async () => request,
+        getForOrganization: async () => request,
+        listForOrganization: async () => [request],
+        getForAdmin: async () => request,
+        listAdminIntake: async () => []
+      },
+      workerOfferAccess: unavailableWorkerOfferAccess
+    });
+
+    const [listed] = await service.listClientCalendar({
+      actorUserId: "client-1",
+      organizationId: request.organizationId
+    });
+    const organizationMismatch = await service.getClientCalendarRequest({
+      actorUserId: "client-1",
+      organizationId: request.organizationId,
+      jobRequestIdOrNumber: request.id
+    });
+    const residenceMismatch = await service.getClientCalendarRequest({
+      actorUserId: "client-1",
+      organizationId: request.organizationId,
+      jobRequestIdOrNumber: request.id
+    });
+
+    for (const projection of [listed, organizationMismatch, residenceMismatch]) {
+      expect(projection).toMatchObject({
+        dutiesSummary: null,
+        qualifications: [],
+        addressSummary: null,
+        specialInstructions: null,
+        verification: {
+          contract: "pending",
+          paymentMethodReadiness: "pending",
+          location: "pending"
+        }
+      });
+    }
+    expect(JSON.stringify([listed, organizationMismatch, residenceMismatch])).not.toContain(
+      "Private"
+    );
+  });
+
   it("returns a worker-authorized offer reference without client economics", async () => {
     const service = createCalendarRequestService({
       repository: new MemoryCalendarRequestProfileRepository(),
@@ -293,6 +388,48 @@ describe("calendar request persistence service", () => {
     expect(edited.contractVerificationState).toBe("pending");
     expect(edited.paymentMethodReadinessState).toBe("pending");
     expect(edited.locationVerificationState).toBe("pending");
+  });
+
+  it("scopes admin verification mutations to the authorized organization and residence", async () => {
+    let observedUpdate:
+      | Parameters<CalendarRequestProfileRepository["updateVerification"]>[0]
+      | undefined;
+    const repository: CalendarRequestProfileRepository = {
+      upsert: async () => null,
+      findByJobRequestId: async () => null,
+      findByJobRequestIds: async () => [],
+      updateVerification: async (input) => {
+        observedUpdate = input;
+        return profileFixture();
+      }
+    };
+    const service = createCalendarRequestService({
+      repository,
+      jobRequestAccess: {
+        authorizeCalendarProfileUpdate: async () => request,
+        getForOrganization: async () => request,
+        listForOrganization: async () => [],
+        getForAdmin: async () => request,
+        listAdminIntake: async () => []
+      },
+      workerOfferAccess: unavailableWorkerOfferAccess
+    });
+
+    await service.updateAdminVerification({
+      session: authenticatedSession,
+      roles: ["PLATFORM_ADMINISTRATOR"],
+      jobRequestIdOrNumber: request.id,
+      contractVerificationState: "verified",
+      paymentMethodReadinessState: "verified",
+      locationVerificationState: "verified",
+      expectedVersion: 1
+    });
+
+    expect(observedUpdate).toMatchObject({
+      jobRequestId: request.id,
+      organizationId: request.organizationId,
+      residenceId: request.residenceId
+    });
   });
 
   it("rejects over-limit calendar metadata instead of silently discarding it", async () => {
@@ -432,7 +569,14 @@ class MemoryCalendarRequestProfileRepository implements CalendarRequestProfileRe
     input: Parameters<CalendarRequestProfileRepository["updateVerification"]>[0]
   ) {
     const profile = this.profiles.get(input.jobRequestId);
-    if (!profile || profile.version !== input.expectedVersion) return null;
+    if (
+      !profile ||
+      profile.organizationId !== input.organizationId ||
+      profile.residenceId !== input.residenceId ||
+      profile.version !== input.expectedVersion
+    ) {
+      return null;
+    }
     const updated = {
       ...profile,
       contractVerificationState: input.contractVerificationState,
@@ -445,4 +589,28 @@ class MemoryCalendarRequestProfileRepository implements CalendarRequestProfileRe
     this.profiles.set(input.jobRequestId, updated);
     return updated;
   }
+}
+
+function profileFixture(
+  override: Partial<StoredCalendarRequestProfile> = {}
+): StoredCalendarRequestProfile {
+  return {
+    id: "profile-1",
+    jobRequestId: request.id,
+    organizationId: request.organizationId,
+    residenceId: request.residenceId,
+    dutiesSummary: "Fixture duties",
+    qualifications: ["Fixture qualification"],
+    addressSummary: "Fixture address",
+    specialInstructions: "Fixture instructions",
+    contractVerificationState: "verified",
+    paymentMethodReadinessState: "verified",
+    locationVerificationState: "verified",
+    version: 1,
+    createdByUserId: "client-1",
+    updatedByUserId: "client-1",
+    createdAt: now,
+    updatedAt: now,
+    ...override
+  };
 }

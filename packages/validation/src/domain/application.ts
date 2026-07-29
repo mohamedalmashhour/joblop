@@ -107,6 +107,18 @@ export const shiftOfferSchema = z
         path: ["expiresAt"]
       });
     }
+    for (const [key, snapshot] of [
+      ["originalShiftSnapshot", offer.originalShiftSnapshot],
+      ["currentShiftSnapshot", offer.currentShiftSnapshot]
+    ] as const) {
+      if (snapshot.id !== offer.shiftId || snapshot.employerId !== offer.employerId) {
+        context.addIssue({
+          code: "custom",
+          message: "Offer snapshot ownership must match the offer",
+          path: [key]
+        });
+      }
+    }
   });
 
 export const workerConfirmationSchema = z
@@ -157,7 +169,42 @@ export const workerApplicationSummarySchema = z
     offer: shiftOfferSchema.nullable(),
     confirmation: workerConfirmationSchema.nullable()
   })
-  .readonly();
+  .readonly()
+  .superRefine((summary, context) => {
+    if (summary.application.shiftId !== summary.shift.id) {
+      context.addIssue({
+        code: "custom",
+        message: "Application shift must match the projected shift",
+        path: ["shift"]
+      });
+    }
+    if (
+      summary.offer &&
+      (summary.offer.applicationId !== summary.application.id ||
+        summary.offer.workerId !== summary.application.workerId ||
+        summary.offer.shiftId !== summary.application.shiftId)
+    ) {
+      context.addIssue({
+        code: "custom",
+        message: "Offer ownership must match the application",
+        path: ["offer"]
+      });
+    }
+    if (
+      summary.confirmation &&
+      (!summary.offer ||
+        summary.confirmation.offerId !== summary.offer.id ||
+        summary.confirmation.applicationId !== summary.application.id ||
+        summary.confirmation.workerId !== summary.application.workerId ||
+        summary.confirmation.shiftId !== summary.application.shiftId)
+    ) {
+      context.addIssue({
+        code: "custom",
+        message: "Confirmation ownership must match the application and offer",
+        path: ["confirmation"]
+      });
+    }
+  });
 
 export type WorkerApplicationInput = z.input<typeof workerApplicationSchema>;
 export type ShiftOfferInput = z.input<typeof shiftOfferSchema>;

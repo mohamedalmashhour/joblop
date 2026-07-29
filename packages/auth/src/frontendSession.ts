@@ -25,6 +25,7 @@ export type FrontendSessionFetch = (
 export type FrontendSessionResult =
   | Readonly<{ status: "ok"; payload: unknown }>
   | Readonly<{ status: "denied" }>
+  | Readonly<{ status: "not_found" }>
   | Readonly<{ status: "stale" }>
   | Readonly<{ status: "unavailable" }>
   | Readonly<{ status: "error" }>;
@@ -57,6 +58,7 @@ export function createFrontendSessionGateway(options: {
         cache: "no-store"
       });
       if (response.status === 401 || response.status === 403) return { status: "denied" };
+      if (response.status === 404) return { status: "not_found" };
       if (response.status === 409 || response.status === 412) return { status: "stale" };
       if (response.status === 502 || response.status === 503 || response.status === 504) {
         return { status: "unavailable" };

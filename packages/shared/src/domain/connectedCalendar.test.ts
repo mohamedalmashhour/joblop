@@ -170,4 +170,22 @@ describe("Connected Calendar shared domain", () => {
       /checkIn|checkOut|punch|attendanceRecordId/u
     );
   });
+
+  it("rejects cross-worker assignment binding and invalid request windows", () => {
+    expect(() =>
+      createConnectedCalendarViews({
+        ...fixture,
+        assignment: {
+          ...fixture.assignment,
+          assignedWorker: { ...fixture.assignment.assignedWorker, id: "worker_002" }
+        }
+      })
+    ).toThrow("RWOS_CONNECTED_CALENDAR_WORKER_MISMATCH");
+    expect(() =>
+      createConnectedCalendarViews({
+        ...fixture,
+        request: { ...fixture.request, endsAt: fixture.request.startsAt }
+      })
+    ).toThrow("RWOS_CONNECTED_CALENDAR_REQUEST_INVALID");
+  });
 });

@@ -122,8 +122,10 @@ describe("frontend session transport boundaries", () => {
       .map((file) => readFileSync(file, "utf8"))
       .join("\n");
     expect(apiSources).toContain('"cache-control": "private, no-store"');
-    expect(apiSources).toContain('status === "stale" ? 409');
-    expect(apiSources).toContain('status === "unavailable" ? 503');
+    expect(apiSources).toContain('status === "not_found"');
+    expect(apiSources).toContain("Resource unavailable.");
+    expect(apiSources).toContain('status === "stale"');
+    expect(apiSources).toContain('status === "unavailable"');
     expect(apiSources).not.toMatch(/privateReason|stack|cause/u);
   });
 

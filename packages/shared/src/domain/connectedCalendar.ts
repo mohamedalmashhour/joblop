@@ -174,6 +174,20 @@ export type ConnectedCalendarViews = Readonly<{
 export function createConnectedCalendarViews(
   fixture: ConnectedCalendarFixture
 ): ConnectedCalendarViews {
+  if (fixture.assignment.assignedWorker.id !== fixture.workerResponse.workerId) {
+    throw new Error("RWOS_CONNECTED_CALENDAR_WORKER_MISMATCH");
+  }
+  const startsAt = Date.parse(fixture.request.startsAt);
+  const endsAt = Date.parse(fixture.request.endsAt);
+  if (
+    !Number.isFinite(startsAt) ||
+    !Number.isFinite(endsAt) ||
+    startsAt >= endsAt ||
+    !Number.isInteger(fixture.request.requestedWorkerCount) ||
+    fixture.request.requestedWorkerCount < 1
+  ) {
+    throw new Error("RWOS_CONNECTED_CALENDAR_REQUEST_INVALID");
+  }
   const window = {
     startsAt: fixture.request.startsAt,
     endsAt: fixture.request.endsAt,

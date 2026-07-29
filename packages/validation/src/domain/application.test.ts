@@ -3,6 +3,7 @@ import {
   localAuditEventSchema,
   shiftOfferSchema,
   workerApplicationSchema,
+  workerApplicationSummarySchema,
   workerConfirmationSchema
 } from "./index";
 
@@ -122,5 +123,75 @@ describe("G02 application validation", () => {
         timestamp: "2026-07-13T13:00:00.000Z"
       })
     ).toMatchObject({ action: "application.submitted" });
+  });
+
+  it("rejects cross-worker and cross-shift records in an application summary", () => {
+    const application = {
+      id: "app_001",
+      rejectionReason: null,
+      shiftId: "shift_001",
+      source: "worker_initiated" as const,
+      status: "submitted" as const,
+      submittedAt: "2026-07-13T13:00:00.000Z",
+      updatedAt: "2026-07-13T13:00:00.000Z",
+      withdrawnAt: null,
+      workerId: "worker_001",
+      workerNote: null
+    };
+    const offer = {
+      applicationId: application.id,
+      createdAt: "2026-07-13T13:00:00.000Z",
+      currentShiftSnapshot: shiftSnapshot,
+      employerId: shiftSnapshot.employerId,
+      expiresAt: "2026-07-13T15:00:00.000Z",
+      id: "offer_001",
+      message: null,
+      offeredAt: "2026-07-13T13:00:00.000Z",
+      originalShiftSnapshot: shiftSnapshot,
+      respondedAt: null,
+      shiftId: application.shiftId,
+      status: "pending" as const,
+      updatedAt: "2026-07-13T13:00:00.000Z",
+      workerId: application.workerId
+    };
+    const confirmation = {
+      applicationId: application.id,
+      confirmedAt: null,
+      createdAt: "2026-07-13T13:00:00.000Z",
+      declinedAt: null,
+      expiresAt: "2026-07-13T16:00:00.000Z",
+      id: "confirmation_001",
+      offerId: offer.id,
+      requestedAt: "2026-07-13T14:00:00.000Z",
+      shiftId: application.shiftId,
+      status: "pending" as const,
+      updatedAt: "2026-07-13T14:00:00.000Z",
+      workerId: application.workerId
+    };
+
+    expect(() =>
+      workerApplicationSummarySchema.parse({
+        application,
+        shift: shiftSnapshot,
+        offer: { ...offer, workerId: "worker_002" },
+        confirmation
+      })
+    ).toThrow();
+    expect(() =>
+      workerApplicationSummarySchema.parse({
+        application,
+        shift: { ...shiftSnapshot, id: "shift_002" },
+        offer,
+        confirmation
+      })
+    ).toThrow();
+    expect(() =>
+      workerApplicationSummarySchema.parse({
+        application,
+        shift: shiftSnapshot,
+        offer,
+        confirmation: { ...confirmation, offerId: "offer_002" }
+      })
+    ).toThrow();
   });
 });

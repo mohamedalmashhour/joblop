@@ -48,6 +48,8 @@ export interface CalendarRequestProfileRepository {
   ): Promise<readonly StoredCalendarRequestProfile[]>;
   updateVerification(input: {
     jobRequestId: string;
+    organizationId: string;
+    residenceId: string;
     contractVerificationState: CalendarVerificationState;
     paymentMethodReadinessState: CalendarVerificationState;
     locationVerificationState: CalendarVerificationState;
@@ -112,6 +114,13 @@ export function createCalendarRequestService(input: {
         jobRequestIdOrNumber: profileInput.jobRequestId
       });
 
+      if (
+        jobRequest.organizationId !== profileInput.organizationId ||
+        jobRequest.id !== profileInput.jobRequestId
+      ) {
+        throw new CalendarRequestError("RWOS_INVALID_CALENDAR_REQUEST");
+      }
+
       if (jobRequest.status !== "draft" && jobRequest.status !== "information_required") {
         throw new CalendarRequestError("RWOS_CALENDAR_REQUEST_NOT_EDITABLE");
       }
@@ -153,8 +162,16 @@ export function createCalendarRequestService(input: {
         roles: verificationInput.roles,
         jobRequestIdOrNumber: verificationInput.jobRequestIdOrNumber
       });
+      if (
+        jobRequest.id !== verificationInput.jobRequestIdOrNumber &&
+        jobRequest.jobRequestNumber !== verificationInput.jobRequestIdOrNumber
+      ) {
+        throw new CalendarRequestError("RWOS_INVALID_CALENDAR_REQUEST");
+      }
       const profile = await input.repository.updateVerification({
         jobRequestId: jobRequest.id,
+        organizationId: jobRequest.organizationId,
+        residenceId: jobRequest.residenceId,
         contractVerificationState: verificationInput.contractVerificationState,
         paymentMethodReadinessState: verificationInput.paymentMethodReadinessState,
         locationVerificationState: verificationInput.locationVerificationState,
@@ -164,6 +181,9 @@ export function createCalendarRequestService(input: {
       });
       if (!profile) {
         throw new CalendarRequestError("RWOS_CALENDAR_REQUEST_VERSION_CONFLICT");
+      }
+      if (!profileBelongsToJobRequest(profile, jobRequest)) {
+        throw new CalendarRequestError("RWOS_INVALID_CALENDAR_REQUEST");
       }
       return profile;
     },
@@ -287,9 +307,20 @@ export function createPrismaCalendarRequestProfileRepository(
         }
       }
 
+      if (
+        existing.organizationId !== profileInput.organizationId ||
+        existing.residenceId !== profileInput.residenceId
+      ) {
+        return null;
+      }
       if (profileInput.expectedVersion !== existing.version) return null;
       const result = await prisma.staffingRequestCalendarProfile.updateMany({
-        where: { jobRequestId: profileInput.jobRequestId, version: profileInput.expectedVersion },
+        where: {
+          jobRequestId: profileInput.jobRequestId,
+          organizationId: profileInput.organizationId,
+          residenceId: profileInput.residenceId,
+          version: profileInput.expectedVersion
+        },
         data: {
           dutiesSummary: profileInput.dutiesSummary,
           qualifications: [...profileInput.qualifications],
@@ -330,6 +361,8 @@ export function createPrismaCalendarRequestProfileRepository(
       const result = await prisma.staffingRequestCalendarProfile.updateMany({
         where: {
           jobRequestId: verificationInput.jobRequestId,
+          organizationId: verificationInput.organizationId,
+          residenceId: verificationInput.residenceId,
           version: verificationInput.expectedVersion
         },
         data: {
@@ -424,7 +457,11 @@ function projectCalendarRequests(
 ) {
   const profilesByRequestId = new Map(profiles.map((profile) => [profile.jobRequestId, profile]));
   return jobRequests.map((jobRequest) =>
-    projectCalendarRequest(jobRequest, profilesByRequestId.get(jobRequest.id) ?? null, audience)
+    projectCalendarRequest(
+      jobRequest,
+      matchingProfile(jobRequest, profilesByRequestId.get(jobRequest.id) ?? null),
+      audience
+    )
   );
 }
 
@@ -433,6 +470,7 @@ function projectCalendarRequest(
   profile: StoredCalendarRequestProfile | null,
   audience: "client" | "admin"
 ) {
+  const scopedProfile = matchingProfile(jobRequest, profile);
   return {
     id: jobRequest.id,
     requestNumber: jobRequest.jobRequestNumber,
@@ -459,20 +497,38 @@ function projectCalendarRequest(
           actionRequiredReason:
             jobRequest.status === "information_required" ? jobRequest.adminReviewReason : null
         }),
-    dutiesSummary: profile?.dutiesSummary ?? null,
-    qualifications: profile?.qualifications ?? [],
-    addressSummary: profile?.addressSummary ?? null,
-    specialInstructions: profile?.specialInstructions ?? null,
+    dutiesSummary: scopedProfile?.dutiesSummary ?? null,
+    qualifications: scopedProfile?.qualifications ?? [],
+    addressSummary: scopedProfile?.addressSummary ?? null,
+    specialInstructions: scopedProfile?.specialInstructions ?? null,
     verification: {
-      contract: profile?.contractVerificationState ?? "pending",
-      paymentMethodReadiness: profile?.paymentMethodReadinessState ?? "pending",
-      location: profile?.locationVerificationState ?? "pending"
+      contract: scopedProfile?.contractVerificationState ?? "pending",
+      paymentMethodReadiness: scopedProfile?.paymentMethodReadinessState ?? "pending",
+      location: scopedProfile?.locationVerificationState ?? "pending"
     },
     versionToken: jobRequest.versionToken,
     createdAt: jobRequest.createdAt,
     updatedAt: jobRequest.updatedAt,
     audience
   };
+}
+
+function matchingProfile(
+  jobRequest: CalendarJobRequest,
+  profile: StoredCalendarRequestProfile | null
+) {
+  return profile && profileBelongsToJobRequest(profile, jobRequest) ? profile : null;
+}
+
+function profileBelongsToJobRequest(
+  profile: StoredCalendarRequestProfile,
+  jobRequest: CalendarJobRequest
+) {
+  return (
+    profile.jobRequestId === jobRequest.id &&
+    profile.organizationId === jobRequest.organizationId &&
+    profile.residenceId === jobRequest.residenceId
+  );
 }
 
 function toCalendarStatus(status: CalendarJobRequest["status"]) {
