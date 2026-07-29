@@ -1,0 +1,223 @@
+import { spawnSync } from "node:child_process";
+import { readFileSync } from "node:fs";
+import process from "node:process";
+import { setTimeout } from "node:timers/promises";
+
+const docker = spawnSync("docker", ["version", "--format", "{{.Server.Version}}"], {
+  encoding: "utf8",
+  stdio: ["ignore", "pipe", "pipe"]
+});
+if (docker.error?.code === "ENOENT") {
+  process.stderr.write("CONTAINER_RUNTIME_UNAVAILABLE runtime=docker\n");
+  process.exit(2);
+}
+if (docker.status !== 0) {
+  process.stderr.write("CONTAINER_RUNTIME_UNAVAILABLE runtime=docker-daemon\n");
+  process.exit(2);
+}
+
+const matrix = JSON.parse(readFileSync("container-build-matrix.json", "utf8"));
+const releaseSha = process.env.RWOS_CONTAINER_GIT_SHA;
+const buildTimestamp = process.env.RWOS_CONTAINER_BUILD_TIMESTAMP;
+const sourceRepository = process.env.RWOS_CONTAINER_SOURCE_REPOSITORY;
+const imageVersion = process.env.RWOS_CONTAINER_IMAGE_VERSION;
+if (!/^[a-f0-9]{40}$/.test(releaseSha ?? "")) fail("RWOS_CONTAINER_GIT_SHA_REQUIRED");
+if (!buildTimestamp || !Number.isFinite(Date.parse(buildTimestamp))) {
+  fail("RWOS_CONTAINER_BUILD_TIMESTAMP_REQUIRED");
+}
+if (!sourceRepository) fail("RWOS_CONTAINER_SOURCE_REPOSITORY_REQUIRED");
+if (!imageVersion) fail("RWOS_CONTAINER_IMAGE_VERSION_REQUIRED");
+
+for (const [index, service] of matrix.services.entries()) {
+  const image = `rwos-local/${service.name}:${releaseSha}`;
+  const container = `rwos-local-${service.name}-${process.pid}`;
+  const hostPort = 18_180 + index;
+  run("docker", [
+    "build",
+    "--file",
+    service.dockerfile,
+    "--tag",
+    image,
+    "--build-arg",
+    `RWOS_GIT_SHA=${releaseSha}`,
+    "--build-arg",
+    `RWOS_BUILD_TIMESTAMP=${buildTimestamp}`,
+    "--build-arg",
+    `RWOS_SOURCE_REPOSITORY=${sourceRepository}`,
+    "--build-arg",
+    `RWOS_IMAGE_VERSION=${imageVersion}`,
+    "."
+  ]);
+  try {
+    const environment =
+      service.name === "api"
+        ? ["--env", "RWOS_ENV=staging", "--env", "NODE_ENV=production"]
+        : service.name === "auth-limiter"
+          ? [
+              "--env",
+              "RWOS_ENV=staging",
+              "--env",
+              "AUTH_LIMITER_REDIS_URL=redis://127.0.0.1:1",
+              "--env",
+              "AUTH_LIMITER_SERVICE_TOKEN=local-validation-token-at-least-32-characters",
+              "--env",
+              "AUTH_LIMITER_NAMESPACE=rwos:authrl:staging:v1",
+              "--env",
+              "AUTH_LIMITER_CURRENT_KEY_ID=local-validation"
+            ]
+          : service.name === "candidate-source"
+            ? [
+                "--env",
+                "RWOS_ENV=staging",
+                "--env",
+                `CANDIDATE_ADAPTER_RELEASE_SHA=${releaseSha}`,
+                "--env",
+                "CANDIDATE_ADAPTER_SERVICE_TOKEN=local-validation-token-at-least-32-characters",
+                "--env",
+                "CANDIDATE_ADAPTER_TENANT_A_ID=aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+                "--env",
+                "CANDIDATE_ADAPTER_TENANT_A_WORK_GROUP_ID=aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaa001",
+                "--env",
+                "CANDIDATE_ADAPTER_TENANT_A_ROLE_DEFINITION_ID=aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaa002",
+                "--env",
+                "CANDIDATE_ADAPTER_TENANT_B_ID=bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb",
+                "--env",
+                "CANDIDATE_ADAPTER_TENANT_B_WORK_GROUP_ID=bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbb001",
+                "--env",
+                "CANDIDATE_ADAPTER_TENANT_B_ROLE_DEFINITION_ID=bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbb002"
+              ]
+            : service.name === "offer-delivery"
+              ? [
+                  "--env",
+                  "RWOS_ENV=staging",
+                  "--env",
+                  `OFFER_DELIVERY_ADAPTER_RELEASE_SHA=${releaseSha}`,
+                  "--env",
+                  "OFFER_DELIVERY_ADAPTER_SERVICE_TOKEN=local-validation-token-at-least-32-characters",
+                  "--env",
+                  "OFFER_DELIVERY_ADAPTER_TENANT_A_ID=aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+                  "--env",
+                  "OFFER_DELIVERY_ADAPTER_TENANT_B_ID=bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb"
+                ]
+              : service.name === "qa-reset"
+                ? [
+                    "--env",
+                    "RWOS_ENV=staging",
+                    "--env",
+                    "QA_RESET_AUTH_MODE=dual-required",
+                    "--env",
+                    "QA_RESET_AUDIENCE=https://qa-reset-local-validation.run.app",
+                    "--env",
+                    "QA_RESET_BROWSER_E2E_APP_CREDENTIAL=local-browser-validation-credential-at-least-32-characters",
+                    "--env",
+                    "QA_RESET_BROWSER_E2E_SERVICE_ACCOUNT=browser-e2e@local-validation.invalid",
+                    "--env",
+                    "QA_RESET_BROWSER_E2E_OPERATOR_IDENTITY=gcp/operator/qa-reset-browser-validator-001",
+                    "--env",
+                    "QA_RESET_IOS_E2E_APP_CREDENTIAL=local-ios-validation-credential-at-least-32-characters",
+                    "--env",
+                    "QA_RESET_IOS_E2E_SERVICE_ACCOUNT=ios-e2e@local-validation.invalid",
+                    "--env",
+                    "QA_RESET_IOS_E2E_OPERATOR_IDENTITY=gcp/operator/qa-reset-ios-validator-001",
+                    "--env",
+                    "QA_RESET_ANDROID_E2E_APP_CREDENTIAL=local-android-validation-credential-at-least-32-characters",
+                    "--env",
+                    "QA_RESET_ANDROID_E2E_SERVICE_ACCOUNT=android-e2e@local-validation.invalid",
+                    "--env",
+                    "QA_RESET_ANDROID_E2E_OPERATOR_IDENTITY=gcp/operator/qa-reset-android-validator-001",
+                    "--env",
+                    "QA_RESET_MANUAL_QA_APP_CREDENTIAL=local-manual-qa-validation-credential-at-least-32-characters",
+                    "--env",
+                    "QA_RESET_MANUAL_QA_SERVICE_ACCOUNT=manual-qa@local-validation.invalid",
+                    "--env",
+                    "QA_RESET_MANUAL_QA_OPERATOR_IDENTITY=gcp/operator/qa-reset-manual-validator-001",
+                    "--env",
+                    "QA_RESET_MONITORING_APP_CREDENTIAL=local-monitoring-validation-credential-at-least-32-characters",
+                    "--env",
+                    "QA_RESET_MONITORING_SERVICE_ACCOUNT=monitoring@local-validation.invalid",
+                    "--env",
+                    `QA_RESET_RELEASE_SHA=${releaseSha}`,
+                    "--env",
+                    "QA_RESET_PROJECT_ID=gcp/project/rwos-staging-001",
+                    "--env",
+                    "QA_RESET_CLUSTER_ID=gcp/cluster/rwos-staging-001",
+                    "--env",
+                    "QA_RESET_DATABASE_ID=gcp/database/rwos-staging-001",
+                    "--env",
+                    "QA_RESET_AUTHORITY_ID=gcp/authority/rwos-staging-001",
+                    "--env",
+                    "QA_RESET_TENANT_A_ID=gcp/tenant/rwos-staging-a-001",
+                    "--env",
+                    "QA_RESET_TENANT_B_ID=gcp/tenant/rwos-staging-b-001",
+                    "--env",
+                    "QA_RESET_NAMESPACE=rwos:qa-reset:staging:v1",
+                    "--env",
+                    "QA_RESET_MANIFEST_ID=rwos-qa-reset-manifest-v1",
+                    "--env",
+                    `QA_RESET_MANIFEST_CHECKSUM=${"0".repeat(64)}`,
+                    "--env",
+                    `QA_RESET_MANIFEST_CREATED_AT=${new Date(Date.now() - 86_400_000).toISOString()}`,
+                    "--env",
+                    `QA_RESET_MANIFEST_EXPIRES_AT=${new Date(Date.now() + 7 * 86_400_000).toISOString()}`,
+                    "--env",
+                    "QA_RESET_DRY_RUN_APPROVAL_REFERENCE=gcp/approval/dry-run-001",
+                    "--env",
+                    "QA_RESET_PREPARE_APPROVAL_REFERENCE=gcp/approval/prepare-001",
+                    "--env",
+                    "QA_RESET_CLEANUP_APPROVAL_REFERENCE=gcp/approval/cleanup-001"
+                  ]
+                : service.name === "employer" || service.name === "admin"
+                  ? [
+                      "--env",
+                      "RWOS_ENV=production",
+                      "--env",
+                      "INTERNAL_API_ORIGIN=https://api.invalid"
+                    ]
+                  : [];
+    run("docker", [
+      "run",
+      "--detach",
+      "--name",
+      container,
+      "--publish",
+      `127.0.0.1:${hostPort}:8080`,
+      ...environment,
+      image
+    ]);
+    await waitFor(`http://127.0.0.1:${hostPort}${service.liveness}`, [200]);
+    const readinessStatuses =
+      service.name === "api" || service.name === "auth-limiter" || service.name === "qa-reset"
+        ? [503]
+        : [200];
+    await waitFor(`http://127.0.0.1:${hostPort}${service.readiness}`, readinessStatuses);
+    run("docker", ["stop", "--time", "15", container]);
+    process.stdout.write(`CONTAINER_VALIDATION_PASS service=${service.name} image=${image}\n`);
+  } finally {
+    spawnSync("docker", ["rm", "--force", container], { stdio: "ignore" });
+  }
+}
+
+async function waitFor(url, acceptedStatuses) {
+  for (let attempt = 0; attempt < 40; attempt += 1) {
+    try {
+      const response = await globalThis.fetch(url, {
+        signal: globalThis.AbortSignal.timeout(500)
+      });
+      if (acceptedStatuses.includes(response.status)) return;
+    } catch {
+      // A starting container is expected to refuse connections briefly.
+    }
+    await setTimeout(250);
+  }
+  fail(`CONTAINER_PROBE_FAILED url=${url}`);
+}
+
+function run(command, args) {
+  const result = spawnSync(command, args, { stdio: "inherit" });
+  if (result.status !== 0) fail(`CONTAINER_COMMAND_FAILED command=${command} ${args[0] ?? ""}`);
+}
+
+function fail(message) {
+  process.stderr.write(`${message}\n`);
+  process.exit(1);
+}

@@ -1,0 +1,70 @@
+{
+  "schemaVersion": 1,
+  "context": ".",
+  "services": [
+    {
+      "name": "api",
+      "application": "@rwos/api",
+      "dockerfile": "apps/api/Dockerfile",
+      "port": 8080,
+      "liveness": "/health",
+      "readiness": "/ready"
+    },
+    {
+      "name": "employer",
+      "application": "@rwos/employer",
+      "dockerfile": "apps/employer/Dockerfile",
+      "port": 8080,
+      "liveness": "/health",
+      "readiness": "/ready"
+    },
+    {
+      "name": "admin",
+      "application": "@rwos/admin",
+      "dockerfile": "apps/admin/Dockerfile",
+      "port": 8080,
+      "liveness": "/health",
+      "readiness": "/ready"
+    },
+    {
+      "name": "worker",
+      "application": "@rwos/mobile",
+      "dockerfile": "apps/mobile/Dockerfile",
+      "port": 8080,
+      "liveness": "/health",
+      "readiness": "/ready"
+    },
+    {
+      "name": "auth-limiter",
+      "application": "@rwos/auth-limiter",
+      "dockerfile": "apps/auth-limiter/Dockerfile",
+      "port": 8080,
+      "liveness": "/health",
+      "readiness": "/ready"
+    },
+    {
+      "name": "candidate-source",
+      "application": "@rwos/candidate-source",
+      "dockerfile": "apps/candidate-source/Dockerfile",
+      "port": 8080,
+      "liveness": "/health",
+      "readiness": "/ready"
+    },
+    {
+      "name": "offer-delivery",
+      "application": "@rwos/offer-delivery",
+      "dockerfile": "apps/offer-delivery/Dockerfile",
+      "port": 8080,
+      "liveness": "/health",
+      "readiness": "/ready"
+    },
+    {
+      "name": "qa-reset",
+      "application": "@rwos/qa-reset",
+      "dockerfile": "apps/qa-reset/Dockerfile",
+      "port": 8080,
+      "liveness": "/health",
+      "readiness": "/ready"
+    }
+  ]
+}
