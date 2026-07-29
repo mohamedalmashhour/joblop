@@ -13,9 +13,9 @@ export const colors = {
   border: "#d8e4f5",
   text: "#0b1f3a",
   muted: "#526782",
-  warning: "#b66b00",
-  danger: "#c93434",
-  success: "#1f8f5f",
+  warning: "#8a5100",
+  danger: "#b42323",
+  success: "#176b47",
   focus: "#0d6efd"
 } as const;
 
@@ -85,6 +85,13 @@ export const statusColors = {
 export const touch = {
   minimumTarget: 44,
   comfortableTarget: 56
+} as const;
+
+export const accessibilityThresholds = {
+  normalTextContrast: 4.5,
+  largeTextContrast: 3,
+  nonTextContrast: 3,
+  minimumTouchTarget: touch.minimumTarget
 } as const;
 
 export const spacing = {
@@ -364,4 +371,26 @@ export function createCssVariableBlock() {
   return Object.entries(cssVariables)
     .map(([name, value]) => `${name}: ${value};`)
     .join("\n");
+}
+
+export function contrastRatio(foreground: string, background: string) {
+  const foregroundLuminance = relativeLuminance(foreground);
+  const backgroundLuminance = relativeLuminance(background);
+  const lighter = Math.max(foregroundLuminance, backgroundLuminance);
+  const darker = Math.min(foregroundLuminance, backgroundLuminance);
+  return (lighter + 0.05) / (darker + 0.05);
+}
+
+function relativeLuminance(hexColor: string) {
+  if (!/^#[0-9a-f]{6}$/i.test(hexColor)) {
+    throw new Error("RJDS_CONTRAST_COLOR_INVALID");
+  }
+  const channels = hexColor
+    .slice(1)
+    .match(/.{2}/g)!
+    .map((channel) => Number.parseInt(channel, 16) / 255)
+    .map((channel) =>
+      channel <= 0.03928 ? channel / 12.92 : ((channel + 0.055) / 1.055) ** 2.4
+    );
+  return 0.2126 * channels[0]! + 0.7152 * channels[1]! + 0.0722 * channels[2]!;
 }

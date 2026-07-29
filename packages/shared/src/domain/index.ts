@@ -3,6 +3,7 @@ export * from "./authenticatedCalendar";
 export * from "./authenticatedCalendarClient";
 export * from "./connectedCalendar";
 export * from "./hrMoneyAdapter";
+export * from "./localeFormatting";
 export * from "./moneyEngine";
 export * from "./platformIntegration";
 export * from "./shift";

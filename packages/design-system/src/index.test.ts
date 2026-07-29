@@ -1,8 +1,10 @@
 import { describe, expect, it } from "vitest";
 import {
+  accessibilityThresholds,
   breakpoints,
   colors,
   componentStates,
+  contrastRatio,
   createCssVariableBlock,
   cssVariables,
   dataStates,
@@ -26,6 +28,17 @@ describe("design system colors", () => {
     expect(statusColors.danger.foreground).toBe(colors.danger);
     expect(statusSemantics.warning).toContain("human review");
     expect(statusSemantics.informational).toContain("not an approval");
+  });
+
+  it("keeps status text above the normal-text contrast threshold", () => {
+    for (const tone of Object.values(statusColors)) {
+      expect(contrastRatio(tone.foreground, tone.background)).toBeGreaterThanOrEqual(
+        accessibilityThresholds.normalTextContrast
+      );
+    }
+    expect(() => contrastRatio("transparent", colors.surface)).toThrow(
+      "RJDS_CONTRAST_COLOR_INVALID"
+    );
   });
 
   it("defines Resident Job workflow status meanings without crossing boundaries", () => {

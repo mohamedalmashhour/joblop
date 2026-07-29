@@ -291,7 +291,8 @@ export const dialogRecipes = {
     borderRadius: `${radii.md}px`,
     boxShadow: elevation.overlay,
     maxWidth: `${layout.modalMaxWidth}px`,
-    padding: `${spacing.xl}px`
+    padding: `${spacing.xl}px`,
+    width: `min(100%, ${layout.modalMaxWidth}px)`
   },
   confirmation: {
     requiredElements: ["title", "plainLanguageRisk", "primaryAction", "secondaryAction"],
@@ -300,6 +301,40 @@ export const dialogRecipes = {
   destructiveConfirmation: {
     requiredElements: ["title", "plainLanguageRisk", "typedOrExplicitConfirmation", "cancelAction"],
     highImpactActionsRequireReason: true
+  }
+} as const;
+
+export const accessibilityContracts = {
+  Button: {
+    accessibleNameRequired: true,
+    disabledStateMustBeProgrammatic: true,
+    focusVisibleRequired: true,
+    minimumTargetSize: touch.minimumTarget
+  },
+  FormField: {
+    controlLabelAssociationRequired: true,
+    describedByRequiredForHelperOrError: true,
+    errorStateMustBeProgrammatic: true
+  },
+  IconButton: {
+    accessibleNameRequired: true,
+    decorativeIconHidden: true,
+    minimumTargetSize: touch.minimumTarget
+  },
+  Modal: {
+    accessibleNameRequired: true,
+    focusContainmentRequired: true,
+    initialFocusRequired: true,
+    returnFocusRequired: true
+  },
+  StatusBadge: {
+    textSignalRequired: true,
+    colorOnlySignalForbidden: true
+  },
+  DataTable: {
+    captionOrAccessibleNameRequired: true,
+    headerAssociationRequired: true,
+    responsiveOverflowContainerRequired: true
   }
 } as const;
 

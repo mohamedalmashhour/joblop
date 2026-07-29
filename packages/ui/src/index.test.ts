@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  accessibilityContracts,
   badgeRecipes,
   buttonRecipes,
   componentContracts,
@@ -34,5 +35,8 @@ describe("RJDS UI foundation", () => {
     expect(badgeRecipes.warning.accessibleLabel).toContain("human review");
     expect(stateRecipes["access-denied"].body).toContain("permission");
     expect(stateRecipes.loading.title).toBe("Loading");
+    expect(accessibilityContracts.FormField.controlLabelAssociationRequired).toBe(true);
+    expect(accessibilityContracts.Modal.returnFocusRequired).toBe(true);
+    expect(accessibilityContracts.DataTable.responsiveOverflowContainerRequired).toBe(true);
   });
 });
