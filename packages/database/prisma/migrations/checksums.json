@@ -6,5 +6,8 @@
   "20260725040000_attendance_foundation": "f2dab8f828f5898d15f3bcf44b2b71db0f9947c0d8194de33a06964ce83a7466",
   "20260725050000_timesheet_foundation": "1aef413034be69e2b7e341c9fe7111257947aba3d13ec4e50469b093cce2e072",
   "20260727000000_calendar_request_persistence": "ba4b9b419c19207d80a443cd9db5b243abef55f0fde5e5c60e99894ea89f0b20",
-  "20260727010000_dispatch_candidate_worker_provenance": "b5c9e3dc3e93a39d80b652556f36a69d868b63e9d677557f9f72a49d13a4b801"
+  "20260727010000_dispatch_candidate_worker_provenance": "b5c9e3dc3e93a39d80b652556f36a69d868b63e9d677557f9f72a49d13a4b801",
+  "20260727020000_dispatch_candidate_worker_identity_uniqueness": "7026ef0f80509da255a03f594de2929aa67ce131f5d16263c0f8f70316dbf05c",
+  "20260729000000_qa_reset_and_synthetic_delivery_state": "3d75f6da495d5fcc99567c57b7014879dab343621c77e7fad9c037a1cc966f87",
+  "20260729010000_operational_scope_chain_integrity": "008258991d17c52e2247e7f16929437d6be1841d358d0edfec25bc2ba28a4e35"
 }

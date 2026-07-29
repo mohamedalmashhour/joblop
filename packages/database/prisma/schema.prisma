@@ -130,6 +130,56 @@ enum AuditSource {
   system
 }
 
+enum QaResetManifestStatus {
+  draft
+  approved
+  active
+  expired
+  revoked
+  retired
+}
+
+enum QaResetOwnedRecordStatus {
+  declared
+  prepared
+  verified
+  cleaned
+  blocked
+}
+
+enum QaResetOperation {
+  dry_run
+  prepare
+  cleanup
+}
+
+enum QaResetScope {
+  browser
+  ios
+  android
+  manual_qa
+}
+
+enum QaResetRunStatus {
+  planned
+  running
+  succeeded
+  failed
+  unknown
+  blocked
+  cleanup_completed
+}
+
+enum SyntheticDeliveryStatus {
+  claimed
+  completed
+  retry_pending
+  failed_terminal
+  unknown
+  blocked
+  expired
+}
+
 enum DispatchReviewStatus {
   draft
   active
@@ -689,6 +739,7 @@ model JobRequest {
   @@index([organizationId, startAt], map: "job_requests_organization_id_start_at_idx")
   @@index([status, submittedAt], map: "job_requests_status_submitted_at_idx")
   @@index([createdByUserId, createdAt], map: "job_requests_created_by_user_id_created_at_idx")
+  @@unique([id, organizationId, residenceId, departmentId, workGroupId, roleDefinitionId], map: "job_requests_operational_scope_key")
   @@map("job_requests")
 }
 
@@ -761,6 +812,7 @@ model DispatchReview {
   @@index([operationalOwnerUserId, state], map: "dispatch_reviews_operational_owner_user_id_state_idx")
   @@index([residenceId, state], map: "dispatch_reviews_residence_id_state_idx")
   @@index([departmentId, state], map: "dispatch_reviews_department_id_state_idx")
+  @@unique([id, jobRequestId, organizationId, residenceId, departmentId], map: "dispatch_reviews_operational_scope_key")
   @@map("dispatch_reviews")
 }
 
@@ -878,6 +930,7 @@ model WorkerOffer {
   @@index([organizationId, status, updatedAt], map: "worker_offers_organization_id_status_updated_at_idx")
   @@index([workerIdentityId, status, expiresAt], map: "worker_offers_worker_identity_id_status_expires_at_idx")
   @@index([jobRequestId, status], map: "worker_offers_job_request_id_status_idx")
+  @@unique([id, dispatchReviewId, jobRequestId, organizationId, residenceId, departmentId, workerIdentityId], map: "worker_offers_operational_scope_key")
   @@map("worker_offers")
 }
 
@@ -1014,6 +1067,7 @@ model Assignment {
   @@index([organizationId, status, updatedAt], map: "assignments_organization_id_status_updated_at_idx")
   @@index([workerIdentityId, status, confirmedStartAt], map: "assignments_worker_identity_id_status_start_idx")
   @@index([residenceId, departmentId, confirmedStartAt], map: "assignments_residence_department_start_idx")
+  @@unique([id, jobRequestId, workerIdentityId, organizationId, residenceId, departmentId, workGroupId, roleDefinitionId], map: "assignments_operational_scope_key")
   @@map("assignments")
 }
 
@@ -1074,6 +1128,7 @@ model AttendanceRecord {
   @@index([workerIdentityId, status, scheduledStartAt], map: "attendance_records_worker_identity_id_status_start_idx")
   @@index([residenceId, departmentId, scheduledStartAt], map: "attendance_records_residence_department_start_idx")
   @@index([jobRequestId, status], map: "attendance_records_job_request_id_status_idx")
+  @@unique([id, assignmentId, jobRequestId, workerIdentityId, organizationId, residenceId, departmentId, workGroupId, roleDefinitionId], map: "attendance_records_operational_scope_key")
   @@map("attendance_records")
 }
 
@@ -1227,4 +1282,179 @@ model AuditEvent {
   @@index([entityPublicReference], map: "audit_events_entity_public_reference_idx")
   @@index([correlationId], map: "audit_events_correlation_id_idx")
   @@map("audit_events")
+}
+
+model QaResetManifestOwnership {
+  id                       String                @id @default(uuid()) @db.Uuid
+  manifestReference        String                @unique @map("manifest_reference") @db.VarChar(160)
+  manifestChecksum         String                @unique @map("manifest_checksum") @db.Char(64)
+  namespace                String                @db.VarChar(96)
+  environment              String                @db.VarChar(16)
+  projectId                String                @map("project_id") @db.VarChar(160)
+  clusterId                String                @map("cluster_id") @db.VarChar(160)
+  databaseId               String                @map("database_id") @db.VarChar(160)
+  authorityId              String                @map("authority_id") @db.VarChar(160)
+  releaseSha               String                @map("release_sha") @db.Char(40)
+  status                   QaResetManifestStatus @default(draft)
+  approvedAt               DateTime?             @map("approved_at") @db.Timestamptz(3)
+  expiresAt                DateTime              @map("expires_at") @db.Timestamptz(3)
+  retentionUntil           DateTime              @map("retention_until") @db.Timestamptz(3)
+  approvalReference        String                @map("approval_reference") @db.VarChar(160)
+  retentionOwnerReference  String                @map("retention_owner_reference") @db.VarChar(160)
+  createdByCallerAlias     String                @map("created_by_caller_alias") @db.VarChar(64)
+  createdByPrincipalDigest String                @map("created_by_principal_digest") @db.Char(64)
+  version                  Int                   @default(1)
+  createdAt                DateTime              @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt                DateTime              @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  tenants      QaResetManifestTenant[]
+  ownedRecords QaResetOwnedRecord[]
+  controlRuns  QaResetControlRun[]
+
+  @@unique([namespace, manifestChecksum], map: "qa_reset_manifests_namespace_checksum_key")
+  @@index([status, expiresAt], map: "qa_reset_manifests_status_expires_idx")
+  @@map("qa_reset_manifest_ownership")
+}
+
+model QaResetManifestTenant {
+  id          String   @id @default(uuid()) @db.Uuid
+  manifestId  String   @map("manifest_id") @db.Uuid
+  tenantId    String   @map("tenant_id") @db.Uuid
+  tenantAlias String   @map("tenant_alias") @db.VarChar(16)
+  createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  manifest     QaResetManifestOwnership @relation(fields: [manifestId], references: [id], onDelete: Restrict)
+  ownedRecords QaResetOwnedRecord[]
+
+  @@unique([manifestId, tenantId], map: "qa_reset_manifest_tenants_manifest_tenant_key")
+  @@unique([manifestId, tenantAlias], map: "qa_reset_manifest_tenants_manifest_alias_key")
+  @@map("qa_reset_manifest_tenants")
+}
+
+model QaResetOwnedRecord {
+  id                String                   @id @default(uuid()) @db.Uuid
+  manifestId        String                   @map("manifest_id") @db.Uuid
+  tenantId          String                   @map("tenant_id") @db.Uuid
+  namespace         String                   @db.VarChar(96)
+  entityType        String                   @map("entity_type") @db.VarChar(48)
+  manifestRecordKey String                   @map("manifest_record_key") @db.VarChar(160)
+  targetRecordId    String                   @map("target_record_id") @db.Uuid
+  lifecycleStatus   QaResetOwnedRecordStatus @default(declared) @map("lifecycle_status")
+  preparedAt        DateTime?                @map("prepared_at") @db.Timestamptz(3)
+  verifiedAt        DateTime?                @map("verified_at") @db.Timestamptz(3)
+  cleanedAt         DateTime?                @map("cleaned_at") @db.Timestamptz(3)
+  createdAt         DateTime                 @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt         DateTime                 @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  manifest QaResetManifestOwnership @relation(fields: [manifestId], references: [id], onDelete: Restrict)
+  tenant   QaResetManifestTenant    @relation(fields: [manifestId, tenantId], references: [manifestId, tenantId], onDelete: Restrict)
+
+  @@unique([manifestId, entityType, targetRecordId], map: "qa_reset_owned_records_manifest_entity_target_key")
+  @@unique([manifestId, manifestRecordKey], map: "qa_reset_owned_records_manifest_record_key")
+  @@index([namespace, tenantId, entityType], map: "qa_reset_owned_records_scope_idx")
+  @@map("qa_reset_owned_records")
+}
+
+model QaResetControlRun {
+  id                    String           @id @default(uuid()) @db.Uuid
+  manifestId            String           @map("manifest_id") @db.Uuid
+  operation             QaResetOperation
+  scope                 QaResetScope
+  idempotencyDigest     String           @unique @map("idempotency_digest") @db.Char(64)
+  planChecksum          String           @map("plan_checksum") @db.Char(64)
+  preparationReceipt    String?          @map("preparation_receipt") @db.Char(64)
+  resultReceipt         String?          @map("result_receipt") @db.Char(64)
+  callerAlias           String           @map("caller_alias") @db.VarChar(64)
+  callerPrincipalDigest String           @map("caller_principal_digest") @db.Char(64)
+  approvalReference     String           @map("approval_reference") @db.VarChar(160)
+  correlationId         String           @map("correlation_id") @db.VarChar(96)
+  status                QaResetRunStatus @default(planned)
+  failureCategory       String?          @map("failure_category") @db.VarChar(64)
+  expectedRecordCount   Int              @map("expected_record_count")
+  observedRecordCount   Int?             @map("observed_record_count")
+  startedAt             DateTime?        @map("started_at") @db.Timestamptz(3)
+  completedAt           DateTime?        @map("completed_at") @db.Timestamptz(3)
+  retentionUntil        DateTime         @map("retention_until") @db.Timestamptz(3)
+  version               Int              @default(1)
+  createdAt             DateTime         @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt             DateTime         @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  manifest QaResetManifestOwnership @relation(fields: [manifestId], references: [id], onDelete: Restrict)
+  events   QaResetControlEvent[]
+
+  @@index([status, retentionUntil], map: "qa_reset_control_runs_status_retention_idx")
+  @@map("qa_reset_control_runs")
+}
+
+model QaResetControlEvent {
+  id                    String            @id @default(uuid()) @db.Uuid
+  controlRunId          String            @map("control_run_id") @db.Uuid
+  sequence              Int
+  eventType             String            @map("event_type") @db.VarChar(64)
+  priorStatus           QaResetRunStatus? @map("prior_status")
+  newStatus             QaResetRunStatus  @map("new_status")
+  callerAlias           String            @map("caller_alias") @db.VarChar(64)
+  callerPrincipalDigest String            @map("caller_principal_digest") @db.Char(64)
+  safeCount             Int?              @map("safe_count")
+  reasonCategory        String?           @map("reason_category") @db.VarChar(64)
+  createdAt             DateTime          @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  controlRun QaResetControlRun @relation(fields: [controlRunId], references: [id], onDelete: Restrict)
+
+  @@unique([controlRunId, sequence], map: "qa_reset_control_events_run_sequence_key")
+  @@index([createdAt], map: "qa_reset_control_events_created_idx")
+  @@map("qa_reset_control_events")
+}
+
+model SyntheticDeliveryIdempotency {
+  id                      String                  @id @default(uuid()) @db.Uuid
+  environment             String                  @db.VarChar(16)
+  contractVersion         String                  @map("contract_version") @db.VarChar(32)
+  releaseSha              String                  @map("release_sha") @db.Char(40)
+  manifestChecksum        String                  @map("manifest_checksum") @db.Char(64)
+  tenantId                String                  @map("tenant_id") @db.Uuid
+  callerAlias             String                  @map("caller_alias") @db.VarChar(64)
+  operation               String                  @db.VarChar(64)
+  idempotencyKeyDigest    String                  @map("idempotency_key_digest") @db.Char(64)
+  requestDigest           String                  @map("request_digest") @db.Char(64)
+  workerOfferId           String                  @map("worker_offer_id") @db.Uuid
+  termsVersionId          String                  @map("terms_version_id") @db.Uuid
+  workerIdentityId        String                  @map("worker_identity_id") @db.Uuid
+  status                  SyntheticDeliveryStatus @default(claimed)
+  providerReferenceDigest String?                 @map("provider_reference_digest") @db.Char(64)
+  retryable               Boolean                 @default(false)
+  attemptCount            Int                     @default(0) @map("attempt_count")
+  nextAttemptAt           DateTime?               @map("next_attempt_at") @db.Timestamptz(3)
+  failureCategory         String?                 @map("failure_category") @db.VarChar(64)
+  terminalAt              DateTime?               @map("terminal_at") @db.Timestamptz(3)
+  retentionUntil          DateTime                @map("retention_until") @db.Timestamptz(3)
+  version                 Int                     @default(1)
+  createdAt               DateTime                @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt               DateTime                @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  attempts SyntheticDeliveryAttempt[]
+
+  @@unique([environment, contractVersion, releaseSha, manifestChecksum, tenantId, callerAlias, operation, idempotencyKeyDigest], map: "synthetic_delivery_idempotency_scope_key")
+  @@index([status, retentionUntil], map: "synthetic_delivery_idempotency_status_retention_idx")
+  @@index([tenantId, workerOfferId], map: "synthetic_delivery_idempotency_tenant_offer_idx")
+  @@map("synthetic_delivery_idempotency")
+}
+
+model SyntheticDeliveryAttempt {
+  id                      String   @id @default(uuid()) @db.Uuid
+  idempotencyId           String   @map("idempotency_id") @db.Uuid
+  attemptNumber           Int      @map("attempt_number")
+  eligibleAt              DateTime @map("eligible_at") @db.Timestamptz(3)
+  executedAt              DateTime @map("executed_at") @db.Timestamptz(3)
+  simulationScenario      String   @map("simulation_scenario") @db.VarChar(64)
+  responseStatus          String   @map("response_status") @db.VarChar(32)
+  retryable               Boolean
+  providerReferenceDigest String?  @map("provider_reference_digest") @db.Char(64)
+  resultCategory          String   @map("result_category") @db.VarChar(64)
+  createdAt               DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  idempotency SyntheticDeliveryIdempotency @relation(fields: [idempotencyId], references: [id], onDelete: Restrict)
+
+  @@unique([idempotencyId, attemptNumber], map: "synthetic_delivery_attempts_record_number_key")
+  @@map("synthetic_delivery_attempts")
 }
