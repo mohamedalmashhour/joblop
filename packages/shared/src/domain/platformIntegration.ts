@@ -154,7 +154,12 @@ export const supportCaseStates = [
   "closed",
   "reopened"
 ] as const;
-export const auditEventStates = ["recorded", "restricted", "retained", "retention_expired"] as const;
+export const auditEventStates = [
+  "recorded",
+  "restricted",
+  "retained",
+  "retention_expired"
+] as const;
 
 export type SharedConceptStateMap = Readonly<{
   EmployerOrganization: (typeof employerOrganizationStates)[number];
@@ -326,63 +331,267 @@ export const sharedConceptDefinitions: readonly SharedConceptDefinition[] = [
 ];
 
 export const sharedStateTransitions: readonly SharedTransition[] = [
-  transition("EmployerOrganization", "invited", "pending_review", "employer", "Employer starts onboarding."),
-  transition("EmployerOrganization", "pending_review", "active", "admin", "Human review activates employer."),
-  transition("EmployerOrganization", "active", "restricted", "admin", "Access restriction requires admin authority."),
-  transition("Residence", "draft", "active", "employer", "Residence becomes available for staffing setup."),
-  transition("Department", "draft", "active", "employer", "Department becomes selectable for shifts."),
-  transition("Role", "draft", "active", "admin", "Role becomes available to authorization workflows."),
+  transition(
+    "EmployerOrganization",
+    "invited",
+    "pending_review",
+    "employer",
+    "Employer starts onboarding."
+  ),
+  transition(
+    "EmployerOrganization",
+    "pending_review",
+    "active",
+    "admin",
+    "Human review activates employer."
+  ),
+  transition(
+    "EmployerOrganization",
+    "active",
+    "restricted",
+    "admin",
+    "Access restriction requires admin authority."
+  ),
+  transition(
+    "Residence",
+    "draft",
+    "active",
+    "employer",
+    "Residence becomes available for staffing setup."
+  ),
+  transition(
+    "Department",
+    "draft",
+    "active",
+    "employer",
+    "Department becomes selectable for shifts."
+  ),
+  transition(
+    "Role",
+    "draft",
+    "active",
+    "admin",
+    "Role becomes available to authorization workflows."
+  ),
   transition("Shift", "draft", "published", "employer", "Employer publishes a reviewed shift."),
-  transition("Shift", "published", "open", "employer", "Published shift opens for worker discovery."),
+  transition(
+    "Shift",
+    "published",
+    "open",
+    "employer",
+    "Published shift opens for worker discovery."
+  ),
   transition("Shift", "open", "reserved", "employer", "Worker selection reserves the shift."),
-  transition("Shift", "reserved", "confirmed", "worker", "Worker acceptance confirms assignment terms."),
+  transition(
+    "Shift",
+    "reserved",
+    "confirmed",
+    "worker",
+    "Worker acceptance confirms assignment terms."
+  ),
   transition("Shift", "confirmed", "in_progress", "worker", "Attendance starts the shift."),
   transition("Shift", "in_progress", "completed", "worker", "Attendance closes the shift."),
   transition("Application", "draft", "submitted", "worker", "Worker submits interest."),
-  transition("Application", "submitted", "under_review", "employer", "Employer opens application review."),
+  transition(
+    "Application",
+    "submitted",
+    "under_review",
+    "employer",
+    "Employer opens application review."
+  ),
   transition("Application", "under_review", "offered", "employer", "Employer creates an offer."),
   transition("Application", "offered", "accepted", "worker", "Worker accepts offer."),
   transition("Application", "accepted", "confirmed", "worker", "Worker confirms final assignment."),
-  transition("Recommendation", "generated", "reviewed", "employer", "Human reviews advisory recommendation."),
-  transition("Recommendation", "reviewed", "accepted_by_human", "employer", "Human accepts recommendation."),
-  transition("Recommendation", "reviewed", "declined_by_human", "employer", "Human declines recommendation."),
-  transition("Assignment", "proposed", "pending_worker_response", "employer", "Employer proposes assignment."),
-  transition("Assignment", "pending_worker_response", "accepted", "worker", "Worker accepts assignment."),
-  transition("Assignment", "accepted", "confirmed", "employer", "Assignment enters confirmed state."),
+  transition(
+    "Recommendation",
+    "generated",
+    "reviewed",
+    "employer",
+    "Human reviews advisory recommendation."
+  ),
+  transition(
+    "Recommendation",
+    "reviewed",
+    "accepted_by_human",
+    "employer",
+    "Human accepts recommendation."
+  ),
+  transition(
+    "Recommendation",
+    "reviewed",
+    "declined_by_human",
+    "employer",
+    "Human declines recommendation."
+  ),
+  transition(
+    "Assignment",
+    "proposed",
+    "pending_worker_response",
+    "employer",
+    "Employer proposes assignment."
+  ),
+  transition(
+    "Assignment",
+    "pending_worker_response",
+    "accepted",
+    "worker",
+    "Worker accepts assignment."
+  ),
+  transition(
+    "Assignment",
+    "accepted",
+    "confirmed",
+    "employer",
+    "Assignment enters confirmed state."
+  ),
   transition("Assignment", "confirmed", "active", "worker", "Worker attendance starts."),
   transition("Assignment", "active", "completed", "worker", "Worker attendance closes."),
-  transition("AttendanceRecord", "scheduled", "arrival_window", "worker", "Worker enters arrival window."),
+  transition(
+    "AttendanceRecord",
+    "scheduled",
+    "arrival_window",
+    "worker",
+    "Worker enters arrival window."
+  ),
   transition("AttendanceRecord", "ready_to_clock_in", "clocked_in", "worker", "Worker clocks in."),
   transition("AttendanceRecord", "clocked_in", "in_progress", "worker", "Shift work begins."),
   transition("AttendanceRecord", "in_progress", "on_break", "worker", "Worker records break."),
   transition("AttendanceRecord", "in_progress", "clocked_out", "worker", "Worker clocks out."),
-  transition("AttendanceRecord", "clocked_out", "completed", "worker", "Attendance record is complete."),
-  transition("Timesheet", "draft", "worker_review", "system", "Attendance creates reviewable draft."),
+  transition(
+    "AttendanceRecord",
+    "clocked_out",
+    "completed",
+    "worker",
+    "Attendance record is complete."
+  ),
+  transition(
+    "Timesheet",
+    "draft",
+    "worker_review",
+    "system",
+    "Attendance creates reviewable draft."
+  ),
   transition("Timesheet", "worker_review", "employer_review", "worker", "Worker submits review."),
-  transition("Timesheet", "worker_review", "correction_requested", "worker", "Worker requests correction."),
-  transition("Timesheet", "employer_review", "approved", "employer", "Employer approves reviewed hours."),
-  transition("Timesheet", "approved", "finance_ready", "system", "Approved hours hand off to finance."),
-  transition("Invoice", "draft", "generated", "system", "Approved timesheets generate invoice draft."),
+  transition(
+    "Timesheet",
+    "worker_review",
+    "correction_requested",
+    "worker",
+    "Worker requests correction."
+  ),
+  transition(
+    "Timesheet",
+    "employer_review",
+    "approved",
+    "employer",
+    "Employer approves reviewed hours."
+  ),
+  transition(
+    "Timesheet",
+    "approved",
+    "finance_ready",
+    "system",
+    "Approved hours hand off to finance."
+  ),
+  transition(
+    "Invoice",
+    "draft",
+    "generated",
+    "system",
+    "Approved timesheets generate invoice draft."
+  ),
   transition("Invoice", "generated", "employer_review", "employer", "Employer reviews invoice."),
   transition("Invoice", "employer_review", "issued", "employer", "Invoice is issued after review."),
-  transition("EmployerPayment", "authorized", "scheduled", "employer", "Employer payment method authorized."),
+  transition(
+    "EmployerPayment",
+    "authorized",
+    "scheduled",
+    "employer",
+    "Employer payment method authorized."
+  ),
   transition("EmployerPayment", "scheduled", "processing", "system", "Payment processing begins."),
-  transition("EmployerPayment", "processing", "settlement_pending", "system", "Payment sent for settlement."),
+  transition(
+    "EmployerPayment",
+    "processing",
+    "settlement_pending",
+    "system",
+    "Payment sent for settlement."
+  ),
   transition("EmployerPayment", "settlement_pending", "settled", "system", "Payment settles."),
-  transition("WorkerPayable", "pending_timesheet_approval", "finance_ready", "system", "Approved timesheet reaches finance."),
-  transition("WorkerPayable", "finance_ready", "payable_created", "system", "Payable summary is created."),
-  transition("WorkerPayable", "payable_created", "payment_scheduled", "admin", "Admin schedules worker payment."),
-  transition("WorkerPayable", "payment_scheduled", "processing", "system", "Worker payment processing begins."),
+  transition(
+    "WorkerPayable",
+    "pending_timesheet_approval",
+    "finance_ready",
+    "system",
+    "Approved timesheet reaches finance."
+  ),
+  transition(
+    "WorkerPayable",
+    "finance_ready",
+    "payable_created",
+    "system",
+    "Payable summary is created."
+  ),
+  transition(
+    "WorkerPayable",
+    "payable_created",
+    "payment_scheduled",
+    "admin",
+    "Admin schedules worker payment."
+  ),
+  transition(
+    "WorkerPayable",
+    "payment_scheduled",
+    "processing",
+    "system",
+    "Worker payment processing begins."
+  ),
   transition("WorkerPayable", "processing", "paid", "system", "Worker payment is marked paid."),
-  transition("Notification", "pending", "ready_to_send", "system", "Completed event is ready for notification."),
-  transition("Notification", "ready_to_send", "sent", "system", "Notification send attempted successfully."),
-  transition("Notification", "ready_to_send", "failed", "system", "Notification send failed without changing source state."),
+  transition(
+    "Notification",
+    "pending",
+    "ready_to_send",
+    "system",
+    "Completed event is ready for notification."
+  ),
+  transition(
+    "Notification",
+    "ready_to_send",
+    "sent",
+    "system",
+    "Notification send attempted successfully."
+  ),
+  transition(
+    "Notification",
+    "ready_to_send",
+    "failed",
+    "system",
+    "Notification send failed without changing source state."
+  ),
   transition("MessageThread", "open", "unread", "system", "New message arrives."),
   transition("MessageThread", "reply_draft", "sent", "worker", "Participant sends a message."),
   transition("SupportCase", "question", "support", "worker", "Worker or employer opens support."),
-  transition("SupportCase", "support", "active_shift_support", "human_review", "Support escalates active shift issue."),
-  transition("SupportCase", "active_shift_support", "operational_review", "human_review", "Human review begins."),
-  transition("SupportCase", "operational_review", "closed", "human_review", "Human review closes case."),
+  transition(
+    "SupportCase",
+    "support",
+    "active_shift_support",
+    "human_review",
+    "Support escalates active shift issue."
+  ),
+  transition(
+    "SupportCase",
+    "active_shift_support",
+    "operational_review",
+    "human_review",
+    "Human review begins."
+  ),
+  transition(
+    "SupportCase",
+    "operational_review",
+    "closed",
+    "human_review",
+    "Human review closes case."
+  ),
   transition("AuditEvent", "recorded", "retained", "system", "Audit event enters retention policy.")
 ];
 
@@ -414,27 +623,116 @@ export type ApiIntegrationStatus =
 
 export type ApiIntegrationMapEntry = Readonly<{
   action: string;
-  currentSource: "employer_frontend_fixture" | "worker_frontend_fixture" | "admin_frontend_fixture" | "shared_domain";
+  currentSource:
+    | "employer_frontend_fixture"
+    | "worker_frontend_fixture"
+    | "admin_frontend_fixture"
+    | "persisted_api_boundary"
+    | "shared_domain";
   targetApi: string;
   limitation: string;
   status: ApiIntegrationStatus;
 }>;
 
 export const apiIntegrationStatusMap: readonly ApiIntegrationMapEntry[] = [
-  apiStatus("Employer creates shift", "employer_frontend_fixture", "POST /shifts", "No shift persistence API exists.", "missing_backend"),
-  apiStatus("Worker discovers shift", "worker_frontend_fixture", "GET /shifts", "Mobile uses local fixture repository.", "fixture_backed"),
-  apiStatus("Worker applies", "worker_frontend_fixture", "POST /applications", "Application repository is local only.", "missing_backend"),
-  apiStatus("Employer reviews applicants", "employer_frontend_fixture", "GET /applications", "Employer applicant list is fixture-backed.", "missing_backend"),
-  apiStatus("Employer assigns worker", "employer_frontend_fixture", "POST /assignments", "Assignment engine is not implemented.", "missing_backend"),
-  apiStatus("Worker responds", "worker_frontend_fixture", "POST /assignments/:id/response", "Worker response is local only.", "missing_backend"),
-  apiStatus("Worker records attendance", "worker_frontend_fixture", "POST /attendance-records", "No attendance evidence API exists.", "missing_backend"),
-  apiStatus("Employer reviews timesheet", "employer_frontend_fixture", "POST /timesheets/:id/review", "Timesheet review is fixture-backed.", "missing_backend"),
-  apiStatus("Invoice generated", "employer_frontend_fixture", "POST /invoices", "No invoice API exists.", "missing_backend"),
-  apiStatus("Employer payment state", "employer_frontend_fixture", "POST /employer-payments", "No payment integration exists.", "missing_backend"),
-  apiStatus("Worker payable state", "worker_frontend_fixture", "GET /worker-payables", "No worker payable API exists.", "missing_backend"),
-  apiStatus("Reports updated", "employer_frontend_fixture", "GET /reports", "Reports are static frontend summaries.", "fixture_backed"),
-  apiStatus("Admin supervises workflow", "admin_frontend_fixture", "GET /admin/operations", "Admin surfaces are frontend summaries.", "fixture_backed"),
-  apiStatus("Notifications sent", "shared_domain", "POST /notifications/transactional", "Notification delivery infrastructure is not implemented.", "missing_backend")
+  apiStatus(
+    "Employer creates shift",
+    "employer_frontend_fixture",
+    "POST /shifts",
+    "No shift persistence API exists.",
+    "missing_backend"
+  ),
+  apiStatus(
+    "Worker discovers shift",
+    "worker_frontend_fixture",
+    "GET /shifts",
+    "Mobile uses local fixture repository.",
+    "fixture_backed"
+  ),
+  apiStatus(
+    "Worker applies",
+    "worker_frontend_fixture",
+    "POST /applications",
+    "Application repository is local only.",
+    "missing_backend"
+  ),
+  apiStatus(
+    "Employer reviews applicants",
+    "employer_frontend_fixture",
+    "GET /applications",
+    "Employer applicant list is fixture-backed.",
+    "missing_backend"
+  ),
+  apiStatus(
+    "Employer assigns worker",
+    "persisted_api_boundary",
+    "POST /platform/assignments",
+    "Persisted platform Assignment creation exists, but production mutations remain disabled and the full staging journey is unverified.",
+    "integration_pending"
+  ),
+  apiStatus(
+    "Worker responds",
+    "persisted_api_boundary",
+    "POST /worker/assignments/:assignmentId/acknowledge",
+    "Worker-scoped acknowledgement and withdrawal boundaries exist; fixture-free staging integration remains unverified.",
+    "integration_pending"
+  ),
+  apiStatus(
+    "Worker records attendance",
+    "persisted_api_boundary",
+    "POST /worker/attendance/:attendanceRecordId/check-in",
+    "Time-only check-in/out boundaries exist under attendance handoff; production mutations and real location execution remain disabled.",
+    "integration_pending"
+  ),
+  apiStatus(
+    "Employer reviews timesheet",
+    "persisted_api_boundary",
+    "POST /organizations/:organizationId/timesheets/:timesheetId/confirm",
+    "Organization and worker confirmation/dispute boundaries exist; production mutations and fixture-free staging integration remain disabled.",
+    "integration_pending"
+  ),
+  apiStatus(
+    "Invoice generated",
+    "employer_frontend_fixture",
+    "POST /invoices",
+    "No invoice API exists.",
+    "missing_backend"
+  ),
+  apiStatus(
+    "Employer payment state",
+    "employer_frontend_fixture",
+    "POST /employer-payments",
+    "No payment integration exists.",
+    "missing_backend"
+  ),
+  apiStatus(
+    "Worker payable state",
+    "worker_frontend_fixture",
+    "GET /worker-payables",
+    "No worker payable API exists.",
+    "missing_backend"
+  ),
+  apiStatus(
+    "Reports updated",
+    "employer_frontend_fixture",
+    "GET /reports",
+    "Reports are static frontend summaries.",
+    "fixture_backed"
+  ),
+  apiStatus(
+    "Admin supervises workflow",
+    "admin_frontend_fixture",
+    "GET /admin/operations",
+    "Admin surfaces are frontend summaries.",
+    "fixture_backed"
+  ),
+  apiStatus(
+    "Notifications sent",
+    "shared_domain",
+    "POST /notifications/transactional",
+    "Notification delivery infrastructure is not implemented.",
+    "missing_backend"
+  )
 ];
 
 export type EndToEndStaffingStep = Readonly<{
@@ -445,20 +743,75 @@ export type EndToEndStaffingStep = Readonly<{
 }>;
 
 export const endToEndStaffingScenario: readonly EndToEndStaffingStep[] = [
-  scenarioStep("Employer creates shift", "Shift", "draft", "Employer creates draft; no worker assignment."),
+  scenarioStep(
+    "Employer creates shift",
+    "Shift",
+    "draft",
+    "Employer creates draft; no worker assignment."
+  ),
   scenarioStep("Employer publishes shift", "Shift", "open", "Publication opens discovery only."),
-  scenarioStep("Worker discovers shift", "Shift", "open", "Discovery does not imply eligibility or assignment."),
-  scenarioStep("Worker applies", "Application", "submitted", "Application does not select the worker."),
-  scenarioStep("Employer reviews", "Application", "under_review", "Review does not create assignment."),
-  scenarioStep("Employer assigns", "Assignment", "pending_worker_response", "Assignment requires worker response."),
+  scenarioStep(
+    "Worker discovers shift",
+    "Shift",
+    "open",
+    "Discovery does not imply eligibility or assignment."
+  ),
+  scenarioStep(
+    "Worker applies",
+    "Application",
+    "submitted",
+    "Application does not select the worker."
+  ),
+  scenarioStep(
+    "Employer reviews",
+    "Application",
+    "under_review",
+    "Review does not create assignment."
+  ),
+  scenarioStep(
+    "Employer assigns",
+    "Assignment",
+    "pending_worker_response",
+    "Assignment requires worker response."
+  ),
   scenarioStep("Worker accepts", "Assignment", "accepted", "Acceptance does not prove attendance."),
-  scenarioStep("Attendance starts", "AttendanceRecord", "clocked_in", "Clock-in does not approve hours."),
-  scenarioStep("Attendance closes", "AttendanceRecord", "completed", "Attendance does not create payroll."),
-  scenarioStep("Timesheet approved", "Timesheet", "approved", "Timesheet approval is separate from payroll/payment."),
+  scenarioStep(
+    "Attendance starts",
+    "AttendanceRecord",
+    "clocked_in",
+    "Clock-in does not approve hours."
+  ),
+  scenarioStep(
+    "Attendance closes",
+    "AttendanceRecord",
+    "completed",
+    "Attendance does not create payroll."
+  ),
+  scenarioStep(
+    "Timesheet approved",
+    "Timesheet",
+    "approved",
+    "Timesheet approval is separate from payroll/payment."
+  ),
   scenarioStep("Invoice issued", "Invoice", "issued", "Invoice does not execute employer payment."),
-  scenarioStep("Employer payment settles", "EmployerPayment", "settled", "Employer payment is separate from worker payable."),
-  scenarioStep("Worker payable created", "WorkerPayable", "payable_created", "Payable is not final settlement."),
-  scenarioStep("Reports updated", "AuditEvent", "recorded", "Reports aggregate source records without mutation.")
+  scenarioStep(
+    "Employer payment settles",
+    "EmployerPayment",
+    "settled",
+    "Employer payment is separate from worker payable."
+  ),
+  scenarioStep(
+    "Worker payable created",
+    "WorkerPayable",
+    "payable_created",
+    "Payable is not final settlement."
+  ),
+  scenarioStep(
+    "Reports updated",
+    "AuditEvent",
+    "recorded",
+    "Reports aggregate source records without mutation."
+  )
 ];
 
 export function getSharedConcept(name: SharedConceptName): SharedConceptDefinition {

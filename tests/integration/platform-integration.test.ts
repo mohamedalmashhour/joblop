@@ -41,19 +41,22 @@ describe("Resident Job platform integration readiness", () => {
     expect(canTransitionSharedConcept("Application", "submitted", "under_review").allowed).toBe(
       true
     );
-    expect(canTransitionSharedConcept("Assignment", "proposed", "pending_worker_response").allowed)
-      .toBe(true);
-    expect(canTransitionSharedConcept("Assignment", "pending_worker_response", "accepted").allowed)
-      .toBe(true);
+    expect(
+      canTransitionSharedConcept("Assignment", "proposed", "pending_worker_response").allowed
+    ).toBe(true);
+    expect(
+      canTransitionSharedConcept("Assignment", "pending_worker_response", "accepted").allowed
+    ).toBe(true);
     expect(canTransitionSharedConcept("AttendanceRecord", "clocked_out", "completed").allowed).toBe(
       true
     );
     expect(canTransitionSharedConcept("Invoice", "employer_review", "issued").allowed).toBe(true);
-    expect(canTransitionSharedConcept("WorkerPayable", "finance_ready", "payable_created").allowed)
-      .toBe(true);
+    expect(
+      canTransitionSharedConcept("WorkerPayable", "finance_ready", "payable_created").allowed
+    ).toBe(true);
   });
 
-  it("documents API gaps without inventing endpoints or persistence", () => {
+  it("documents persisted API boundaries without claiming production availability", () => {
     const actions = apiIntegrationStatusMap.map((entry) => entry.action);
 
     expect(actions).toEqual(
@@ -68,8 +71,29 @@ describe("Resident Job platform integration readiness", () => {
     );
     expect(apiIntegrationStatusMap.every((entry) => entry.status !== "available")).toBe(true);
     expect(
-      apiIntegrationStatusMap.filter((entry) => entry.status === "missing_backend").length
-    ).toBeGreaterThan(8);
+      apiIntegrationStatusMap.filter((entry) => entry.currentSource === "persisted_api_boundary")
+    ).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          action: "Employer assigns worker",
+          targetApi: "POST /platform/assignments",
+          status: "integration_pending"
+        }),
+        expect.objectContaining({
+          action: "Worker records attendance",
+          status: "integration_pending"
+        }),
+        expect.objectContaining({
+          action: "Employer reviews timesheet",
+          status: "integration_pending"
+        })
+      ])
+    );
+    expect(
+      apiIntegrationStatusMap
+        .filter((entry) => entry.currentSource === "persisted_api_boundary")
+        .every((entry) => /production mutations|staging integration/u.test(entry.limitation))
+    ).toBe(true);
   });
 
   it("keeps the end-to-end staffing scenario in the approved workflow order", () => {
@@ -94,4 +118,3 @@ describe("Resident Job platform integration readiness", () => {
     });
   });
 });
-

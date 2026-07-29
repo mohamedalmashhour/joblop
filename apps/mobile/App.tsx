@@ -328,10 +328,10 @@ export default function App() {
           </View>
         </View>
         <View style={styles.content}>{renderScreen()}</View>
-        <View style={styles.tabBar}>
+        <View accessibilityRole="tablist" style={styles.tabBar}>
           {mobileTabs.map((tab) => (
             <Pressable
-              accessibilityRole="button"
+              accessibilityRole="tab"
               accessibilityState={{ selected: activeTabId === tab.id }}
               key={tab.id}
               onPress={() => setScreen({ name: "tab", tabId: tab.id })}
