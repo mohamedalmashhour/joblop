@@ -12,6 +12,7 @@
     { "path": "../../packages/auth" },
     { "path": "../../packages/config" },
     { "path": "../../packages/database" },
-    { "path": "../../packages/observability" }
+    { "path": "../../packages/observability" },
+    { "path": "../../packages/service-auth" }
   ]
 }

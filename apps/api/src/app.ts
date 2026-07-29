@@ -89,6 +89,12 @@ import { getRuntimeConfig } from "@rwos/config";
 import { createPrismaClient } from "@rwos/database";
 import { createLogger } from "@rwos/observability";
 import {
+  createTrustedServiceIdentityHeaders,
+  type IdentityTokenProvider,
+  type TrustedAudienceRegistry,
+  type TrustedService
+} from "@rwos/service-auth";
+import {
   activeMembershipRoleQuery,
   activeWorkerIdentityQuery,
   createPrismaAuthorizationRoleResolver
@@ -115,6 +121,12 @@ export interface BuildApiOptions {
   ) => Promise<readonly AuthorizationRoleKey[]> | readonly AuthorizationRoleKey[];
   readinessProbe?: () => Promise<boolean>;
   authRateLimiter?: AuthenticationRateLimiter;
+  trustedServiceIdentity?: Readonly<{
+    provider: IdentityTokenProvider;
+    registry: TrustedAudienceRegistry;
+    environment: "staging";
+    releaseSha: string;
+  }>;
   env?: NodeJS.ProcessEnv;
 }
 
@@ -149,7 +161,17 @@ export function buildApi(options: BuildApiOptions = {}) {
       ? createRemoteAuthenticationRateLimiter({
           origin: runtimeConfig.authRateLimiterOrigin!,
           token: runtimeConfig.authRateLimiterToken!,
-          keySecret: runtimeConfig.authRateLimiterKeySecret!
+          keySecret: runtimeConfig.authRateLimiterKeySecret!,
+          keyId: runtimeConfig.authRateLimiterKeyId!,
+          namespace: runtimeConfig.authRateLimiterNamespace!,
+          ...(options.trustedServiceIdentity
+            ? {
+                trustedIdentityHeaders: trustedIdentityHeaders(
+                  options.trustedServiceIdentity,
+                  "auth-limiter"
+                )
+              }
+            : {})
         })
       : createMemoryAuthenticationRateLimiter());
   const prisma = options.authService ? null : createPrismaClient(runtimeConfig.databaseUrl);
@@ -220,7 +242,15 @@ export function buildApi(options: BuildApiOptions = {}) {
           runtimeConfig.hasCandidateSource
             ? createHttpCandidateSource({
                 origin: runtimeConfig.candidateSourceOrigin!,
-                token: runtimeConfig.candidateSourceToken!
+                token: runtimeConfig.candidateSourceToken!,
+                ...(options.trustedServiceIdentity
+                  ? {
+                      trustedIdentityHeaders: trustedIdentityHeaders(
+                        options.trustedServiceIdentity,
+                        "candidate-source"
+                      )
+                    }
+                  : {})
               })
             : undefined
         )
@@ -238,7 +268,15 @@ export function buildApi(options: BuildApiOptions = {}) {
               ? {
                   deliveryProvider: createHttpWorkerOfferDeliveryProvider({
                     origin: runtimeConfig.offerDeliveryOrigin!,
-                    token: runtimeConfig.offerDeliveryToken!
+                    token: runtimeConfig.offerDeliveryToken!,
+                    ...(options.trustedServiceIdentity
+                      ? {
+                          trustedIdentityHeaders: trustedIdentityHeaders(
+                            options.trustedServiceIdentity,
+                            "offer-delivery"
+                          )
+                        }
+                      : {})
                   })
                 }
               : {})
@@ -431,7 +469,9 @@ export function buildApi(options: BuildApiOptions = {}) {
       const databaseReady = options.readinessProbe
         ? await options.readinessProbe()
         : prisma
-          ? await prisma.$queryRawUnsafe("SELECT 1").then(() => true)
+          ? runtimeConfig.hasDatabaseUrl
+            ? await prisma.$queryRawUnsafe("SELECT 1").then(() => true)
+            : false
           : true;
       const limiterReady = authRateLimiter.check ? await authRateLimiter.check() : true;
       if (!databaseReady || !limiterReady) {
@@ -2503,7 +2543,16 @@ export function buildApi(options: BuildApiOptions = {}) {
 
     const body = asRecord(request.body);
     const workerOfferId = readRequiredString(body, "workerOfferId");
-    if (!workerOfferId || !isCanonicalUuid(workerOfferId)) {
+    const dispatchReviewId = readRequiredString(body, "dispatchReviewId");
+    const expectedOfferVersion = readOptionalNumber(body, "expectedOfferVersion");
+    if (
+      !workerOfferId ||
+      !isCanonicalUuid(workerOfferId) ||
+      !dispatchReviewId ||
+      !isCanonicalUuid(dispatchReviewId) ||
+      !Number.isInteger(expectedOfferVersion) ||
+      (expectedOfferVersion ?? 0) < 1
+    ) {
       return reply.code(400).send({
         error: "RWOS_INVALID_ASSIGNMENT_REQUEST",
         message: "Invalid assignment request."
@@ -2512,7 +2561,9 @@ export function buildApi(options: BuildApiOptions = {}) {
     const assignment = await assignmentService.createFromAcceptedOffer({
       session,
       roles: await resolveAuthorizationRoles(session.user.id),
-      workerOfferId
+      workerOfferId,
+      expectedDispatchReviewId: dispatchReviewId,
+      expectedOfferVersion: expectedOfferVersion as number
     });
 
     return reply.code(201).send({ assignment: serializeAssignment(assignment) });
@@ -2666,16 +2717,20 @@ export function buildApi(options: BuildApiOptions = {}) {
 
     const query = asRecord(request.query);
     const status = readAssignmentStatus(readOptionalString(query, "status"));
+    const organizationId = readRouteParam(request.params, "organizationId");
     const assignments = await assignmentService.listAssignments({
       session,
       roles: await resolveAuthorizationRoles(session.user.id),
-      organizationId: readRouteParam(request.params, "organizationId"),
+      organizationId,
       ...(status ? { statuses: [status] } : {})
     });
+    if (!allBelongToOrganization(assignments, organizationId)) {
+      return sendAssignmentDenied(reply);
+    }
 
     return reply
       .code(200)
-      .send({ assignments: assignments.map((item) => serializeAssignment(item)) });
+      .send({ assignments: assignments.map((item) => serializeEmployerAssignment(item)) });
   });
 
   app.get("/worker/assignments/:assignmentId", async (request, reply) => {
@@ -2726,7 +2781,7 @@ export function buildApi(options: BuildApiOptions = {}) {
       expectedVersion: readOptionalNumber(body, "expectedVersion") ?? 0
     });
 
-    return reply.code(200).send({ assignment: serializeAssignment(assignment) });
+    return reply.code(200).send({ assignment: serializeWorkerAssignment(assignment) });
   });
 
   app.post("/worker/assignments/:assignmentId/withdraw", async (request, reply) => {
@@ -2744,7 +2799,7 @@ export function buildApi(options: BuildApiOptions = {}) {
       reason: readRequiredString(body, "reason") ?? ""
     });
 
-    return reply.code(200).send({ assignment: serializeAssignment(assignment) });
+    return reply.code(200).send({ assignment: serializeWorkerAssignment(assignment) });
   });
 
   app.post("/platform/attendance", async (request, reply) => {
@@ -2895,12 +2950,16 @@ export function buildApi(options: BuildApiOptions = {}) {
 
     const query = asRecord(request.query);
     const status = readAttendanceStatus(readOptionalString(query, "status"));
+    const organizationId = readRouteParam(request.params, "organizationId");
     const attendanceRecords = await attendanceService.listAttendance({
       session,
       roles: await resolveAuthorizationRoles(session.user.id),
-      organizationId: readRouteParam(request.params, "organizationId"),
+      organizationId,
       ...(status ? { statuses: [status] } : {})
     });
+    if (!allBelongToOrganization(attendanceRecords, organizationId)) {
+      return sendAttendanceDenied(reply);
+    }
 
     return reply.code(200).send({
       attendanceRecords: attendanceRecords.map((item) => serializeAttendanceRecord(item))
@@ -3122,12 +3181,16 @@ export function buildApi(options: BuildApiOptions = {}) {
 
     const query = asRecord(request.query);
     const status = readTimesheetStatus(readOptionalString(query, "status"));
+    const organizationId = readRouteParam(request.params, "organizationId");
     const timesheets = await timesheetService.listTimesheets({
       session,
       roles: await resolveAuthorizationRoles(session.user.id),
-      organizationId: readRouteParam(request.params, "organizationId"),
+      organizationId,
       ...(status ? { statuses: [status] } : {})
     });
+    if (!allBelongToOrganization(timesheets, organizationId)) {
+      return sendTimesheetDenied(reply);
+    }
 
     return reply.code(200).send({ timesheets: timesheets.map((item) => serializeTimesheet(item)) });
   });
@@ -3140,13 +3203,31 @@ export function buildApi(options: BuildApiOptions = {}) {
       );
       if (!session.authenticated || !session.user) return sendTimesheetDenied(reply);
 
+      const organizationId = readRouteParam(request.params, "organizationId");
+      const timesheetId = readRouteParam(request.params, "timesheetId");
+      const roles = await resolveAuthorizationRoles(session.user.id);
+      const visibleTimesheets = await timesheetService.listTimesheets({
+        session,
+        roles,
+        organizationId
+      });
+      if (
+        !allBelongToOrganization(visibleTimesheets, organizationId) ||
+        !visibleTimesheets.some((timesheet) => timesheet.id === timesheetId)
+      ) {
+        return sendTimesheetDenied(reply);
+      }
+
       const body = asRecord(request.body);
       const timesheet = await timesheetService.employerConfirm({
         session,
-        roles: await resolveAuthorizationRoles(session.user.id),
-        timesheetId: readRouteParam(request.params, "timesheetId"),
+        roles,
+        timesheetId,
         expectedVersion: readOptionalNumber(body, "expectedVersion") ?? 0
       });
+      if (timesheet.id !== timesheetId || timesheet.organizationId !== organizationId) {
+        return sendTimesheetDenied(reply);
+      }
 
       return reply.code(200).send({ timesheet: serializeTimesheet(timesheet) });
     }
@@ -3160,14 +3241,32 @@ export function buildApi(options: BuildApiOptions = {}) {
       );
       if (!session.authenticated || !session.user) return sendTimesheetDenied(reply);
 
+      const organizationId = readRouteParam(request.params, "organizationId");
+      const timesheetId = readRouteParam(request.params, "timesheetId");
+      const roles = await resolveAuthorizationRoles(session.user.id);
+      const visibleTimesheets = await timesheetService.listTimesheets({
+        session,
+        roles,
+        organizationId
+      });
+      if (
+        !allBelongToOrganization(visibleTimesheets, organizationId) ||
+        !visibleTimesheets.some((timesheet) => timesheet.id === timesheetId)
+      ) {
+        return sendTimesheetDenied(reply);
+      }
+
       const body = asRecord(request.body);
       const timesheet = await timesheetService.employerDispute({
         session,
-        roles: await resolveAuthorizationRoles(session.user.id),
-        timesheetId: readRouteParam(request.params, "timesheetId"),
+        roles,
+        timesheetId,
         expectedVersion: readOptionalNumber(body, "expectedVersion") ?? 0,
         reason: readRequiredString(body, "reason") ?? ""
       });
+      if (timesheet.id !== timesheetId || timesheet.organizationId !== organizationId) {
+        return sendTimesheetDenied(reply);
+      }
 
       return reply.code(200).send({ timesheet: serializeTimesheet(timesheet) });
     }
@@ -3350,15 +3449,20 @@ export function createRemoteAuthenticationRateLimiter(options: {
   origin: string;
   token: string;
   keySecret: string;
+  keyId: string;
+  namespace: string;
   fetch?: typeof fetch;
   timeoutMs?: number;
+  trustedIdentityHeaders?: () => Promise<Readonly<Record<string, string>>>;
 }): AuthenticationRateLimiter {
   const parsedOrigin = new URL(options.origin);
   if (
     parsedOrigin.protocol !== "https:" ||
     options.token.length < 32 ||
     options.keySecret.length < 32 ||
-    options.token === options.keySecret
+    options.token === options.keySecret ||
+    !/^[a-z0-9][a-z0-9_-]{0,31}$/.test(options.keyId) ||
+    !/^rwos:authrl:(?:local|test|staging|production):v1$/.test(options.namespace)
   ) {
     throw new Error("RWOS_AUTH_RATE_LIMITER_CONFIGURATION_INVALID");
   }
@@ -3368,11 +3472,17 @@ export function createRemoteAuthenticationRateLimiter(options: {
   return {
     async check() {
       try {
-        const response = await remoteFetch(`${origin}/health`, {
+        const trustedHeaders = options.trustedIdentityHeaders
+          ? await options.trustedIdentityHeaders()
+          : {};
+        const response = await remoteFetch(`${origin}/ready`, {
           method: "GET",
           headers: {
             accept: "application/json",
-            authorization: `Bearer ${options.token}`
+            ...(options.trustedIdentityHeaders
+              ? { "x-rwos-app-authorization": `Bearer ${options.token}` }
+              : { authorization: `Bearer ${options.token}` }),
+            ...trustedHeaders
           },
           signal: AbortSignal.timeout(timeoutMs)
         });
@@ -3382,16 +3492,31 @@ export function createRemoteAuthenticationRateLimiter(options: {
       }
     },
     async consume(input) {
-      const keys = deriveAuthenticationRateLimitKeys(input, options.keySecret);
+      const trustedHeaders = options.trustedIdentityHeaders
+        ? await options.trustedIdentityHeaders()
+        : {};
+      const keys = deriveAuthenticationRateLimitKeys(
+        input,
+        options.keySecret,
+        options.namespace,
+        options.keyId
+      );
       const response = await remoteFetch(`${origin}/v1/auth-rate-limit/consume`, {
         method: "POST",
         headers: {
           accept: "application/json",
-          authorization: `Bearer ${options.token}`,
-          "content-type": "application/json"
+          ...(options.trustedIdentityHeaders
+            ? { "x-rwos-app-authorization": `Bearer ${options.token}` }
+            : { authorization: `Bearer ${options.token}` }),
+          ...(options.trustedIdentityHeaders
+            ? { "x-rwos-operation": "auth-rate-limit:consume" }
+            : {}),
+          "content-type": "application/json",
+          ...trustedHeaders
         },
         body: JSON.stringify({
           action: input.action,
+          keyId: options.keyId,
           accountKey: keys.accountKey,
           networkKey: keys.networkKey,
           policy: {
@@ -3423,17 +3548,41 @@ export function createRemoteAuthenticationRateLimiter(options: {
   };
 }
 
+function trustedIdentityHeaders(
+  identity: Readonly<{
+    provider: IdentityTokenProvider;
+    registry: TrustedAudienceRegistry;
+    environment: "staging";
+    releaseSha: string;
+  }>,
+  receiver: TrustedService
+) {
+  return () =>
+    createTrustedServiceIdentityHeaders({
+      provider: identity.provider,
+      registry: identity.registry,
+      receiver
+    }).then((headers) => ({
+      ...headers,
+      "x-rwos-service-id": "api",
+      "x-rwos-environment": identity.environment,
+      "x-rwos-release-sha": identity.releaseSha
+    }));
+}
+
 function deriveAuthenticationRateLimitKeys(
   input: Readonly<{ action: "register" | "sign_in"; ip: string; email: string }>,
-  secret: string
+  secret: string,
+  namespace = "rwos:authrl:test:v1",
+  keyId = "memory"
 ) {
   const digest = (kind: "account" | "network", value: string) =>
     createHmac("sha256", secret)
       .update(`rwos:auth-rate-limit:v1:${input.action}:${kind}:${value}`)
       .digest("hex");
   return {
-    accountKey: `rwos:authrl:v1:${input.action}:account:${digest("account", input.email.trim().toLowerCase())}`,
-    networkKey: `rwos:authrl:v1:${input.action}:network:${digest("network", input.ip.trim().toLowerCase())}`
+    accountKey: `${namespace}:${keyId}:${input.action}:account:${digest("account", input.email.trim().toLowerCase())}`,
+    networkKey: `${namespace}:${keyId}:${input.action}:network:${digest("network", input.ip.trim().toLowerCase())}`
   };
 }
 
@@ -3719,6 +3868,12 @@ function sendAssignmentDenied(reply: FastifyReply) {
 }
 
 function sendAssignmentFailure(reply: FastifyReply, error: AssignmentError) {
+  if (error.decision.status === "not_found") {
+    return reply.code(404).send({
+      error: "RWOS_ASSIGNMENT_SOURCE_UNAVAILABLE",
+      message: "Assignment source is unavailable."
+    });
+  }
   if (
     error.decision.status === "version_conflict" ||
     error.decision.status === "invalid_transition" ||
@@ -3754,6 +3909,13 @@ function sendTimesheetDenied(reply: FastifyReply) {
     error: authorizationDeniedCode,
     message: authorizationDeniedMessage
   });
+}
+
+function allBelongToOrganization(
+  records: readonly { organizationId: string }[],
+  organizationId: string
+) {
+  return records.every((record) => record.organizationId === organizationId);
 }
 
 function serializeMemberships(
@@ -4001,6 +4163,27 @@ function serializeWorkerAssignment(
     versionToken: assignment.versionToken,
     updatedAt: assignment.updatedAt.toISOString(),
     visibility: "worker_authorized_assignment"
+  };
+}
+
+function serializeEmployerAssignment(
+  assignment: Awaited<ReturnType<AssignmentService["workerRead"]>>
+) {
+  return {
+    audience: "employer",
+    assignmentId: assignment.id,
+    status: assignment.status,
+    title: assignment.confirmedTitle,
+    roleSummary: assignment.confirmedRoleSummary,
+    worksiteSummary: assignment.confirmedWorksiteSummary,
+    departmentSummary: assignment.confirmedDepartmentSummary,
+    startAt: assignment.confirmedStartAt.toISOString(),
+    endAt: assignment.confirmedEndAt.toISOString(),
+    timezone: assignment.timezone,
+    attendanceBoundary: assignment.attendanceBoundary,
+    versionToken: assignment.versionToken,
+    updatedAt: assignment.updatedAt.toISOString(),
+    visibility: "employer_authorized_assignment"
   };
 }
 

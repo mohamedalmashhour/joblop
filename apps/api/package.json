@@ -7,7 +7,7 @@
     "build": "tsc -p tsconfig.json",
     "dev": "tsx src/server.ts",
     "lint": "eslint .",
-    "start": "node dist/server.js",
+    "start": "node --import tsx src/server.ts",
     "test": "vitest run",
     "typecheck": "tsc --noEmit"
   },
@@ -16,6 +16,7 @@
     "@rwos/config": "workspace:*",
     "@rwos/database": "workspace:*",
     "@rwos/observability": "workspace:*",
+    "@rwos/service-auth": "workspace:*",
     "fastify": "^5.10.0"
   },
   "devDependencies": {}

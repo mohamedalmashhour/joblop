@@ -397,8 +397,21 @@ describe("api authentication foundation", () => {
       origin: "https://rate-limit.example.test",
       token: "remote-token-that-is-at-least-32-characters",
       keySecret: "key-secret-that-is-at-least-32-characters",
+      keyId: "key-current",
+      namespace: "rwos:authrl:test:v1",
+      trustedIdentityHeaders: async () => ({
+        authorization: "Bearer synthetic-google-token",
+        "x-rwos-service-id": "api",
+        "x-rwos-operation": "auth-rate-limit:consume",
+        "x-rwos-environment": "staging",
+        "x-rwos-release-sha": "a31fa96f52247bb684032c6a8d3d379c098c2603"
+      }),
       fetch: remoteFetch as unknown as typeof fetch
     });
+
+    expect(limiter.check).toBeDefined();
+    await expect(limiter.check?.()).resolves.toBe(true);
+    expect(remoteFetch.mock.calls[0]?.[0]).toBe("https://rate-limit.example.test/ready");
 
     await limiter.consume({
       action: "sign_in",
@@ -406,13 +419,19 @@ describe("api authentication foundation", () => {
       email: "Person@Example.com"
     });
 
-    const [, init] = remoteFetch.mock.calls[0]!;
+    const [, init] = remoteFetch.mock.calls[1]!;
+    const headers = new Headers(init?.headers);
+    expect(headers.get("authorization")).toBe("Bearer synthetic-google-token");
+    expect(headers.get("x-rwos-app-authorization")).toBe(
+      "Bearer remote-token-that-is-at-least-32-characters"
+    );
     const serialized = String(init?.body);
     expect(serialized).not.toContain("Person@Example.com");
     expect(serialized).not.toContain("person@example.com");
     expect(serialized).not.toContain("203.0.113.10");
     expect(JSON.parse(serialized)).toMatchObject({
       action: "sign_in",
+      keyId: "key-current",
       policy: {
         accountMaxAttempts: 5,
         networkMaxAttempts: 30,
@@ -442,6 +461,8 @@ describe("api authentication foundation", () => {
       origin: "https://rate-limit.example.test",
       token: "remote-token-that-is-at-least-32-characters",
       keySecret: "key-secret-that-is-at-least-32-characters",
+      keyId: "key-current",
+      namespace: "rwos:authrl:test:v1",
       timeoutMs: 5,
       fetch: remoteFetch
     });
@@ -460,14 +481,18 @@ describe("api authentication foundation", () => {
       createRemoteAuthenticationRateLimiter({
         origin: "http://rate-limit.example.test",
         token: "remote-token-that-is-at-least-32-characters",
-        keySecret: "key-secret-that-is-at-least-32-characters"
+        keySecret: "key-secret-that-is-at-least-32-characters",
+        keyId: "key-current",
+        namespace: "rwos:authrl:test:v1"
       })
     ).toThrow("RWOS_AUTH_RATE_LIMITER_CONFIGURATION_INVALID");
     expect(() =>
       createRemoteAuthenticationRateLimiter({
         origin: "https://rate-limit.example.test",
         token: "short",
-        keySecret: "key-secret-that-is-at-least-32-characters"
+        keySecret: "key-secret-that-is-at-least-32-characters",
+        keyId: "key-current",
+        namespace: "rwos:authrl:test:v1"
       })
     ).toThrow("RWOS_AUTH_RATE_LIMITER_CONFIGURATION_INVALID");
     const shared = "shared-secret-that-is-at-least-32-characters";
@@ -475,7 +500,9 @@ describe("api authentication foundation", () => {
       createRemoteAuthenticationRateLimiter({
         origin: "https://rate-limit.example.test",
         token: shared,
-        keySecret: shared
+        keySecret: shared,
+        keyId: "key-current",
+        namespace: "rwos:authrl:test:v1"
       })
     ).toThrow("RWOS_AUTH_RATE_LIMITER_CONFIGURATION_INVALID");
   });
@@ -1786,7 +1813,11 @@ describe("api assignment foundation", () => {
       method: "POST",
       url: "/platform/assignments",
       headers: { authorization: `Bearer ${user.token}` },
-      payload: { workerOfferId: "00000000-0000-4000-8000-000000000101" }
+      payload: {
+        workerOfferId: "00000000-0000-4000-8000-000000000101",
+        dispatchReviewId: "00000000-0000-4000-8000-000000000102",
+        expectedOfferVersion: 1
+      }
     });
     const acknowledged = await app.inject({
       method: "POST",
@@ -1824,8 +1855,19 @@ describe("api assignment foundation", () => {
     });
     expect(acknowledged.statusCode).toBe(200);
     expect(acknowledged.json().assignment.status).toBe("worker_acknowledged");
+    expect(JSON.stringify(acknowledged.json())).not.toMatch(
+      /organizationId|residenceId|departmentId|workerIdentityId|validationSnapshot|createdByUserId/u
+    );
     expect(employerVisible.statusCode).toBe(200);
     expect(employerVisible.json().assignments).toHaveLength(1);
+    expect(employerVisible.json().assignments[0]).toMatchObject({
+      audience: "employer",
+      assignmentId: assignment.id,
+      visibility: "employer_authorized_assignment"
+    });
+    expect(JSON.stringify(employerVisible.json())).not.toMatch(
+      /workerIdentityId|validationSnapshot|createdByUserId|confirmedCompensationSummary|compensationSummary/u
+    );
     expect(workerVisible.statusCode).toBe(200);
     expect(workerVisible.json().assignments).toHaveLength(1);
     expect(JSON.stringify(workerVisible.json())).not.toMatch(
@@ -1870,13 +1912,59 @@ describe("api assignment foundation", () => {
       method: "POST",
       url: "/platform/assignments",
       headers: { authorization: `Bearer ${user.token}` },
-      payload: { workerOfferId: "00000000-0000-4000-8000-000000000101" }
+      payload: {
+        workerOfferId: "00000000-0000-4000-8000-000000000101",
+        dispatchReviewId: "00000000-0000-4000-8000-000000000102",
+        expectedOfferVersion: 1
+      }
     });
 
     expect(response.statusCode).toBe(409);
     expect(response.json()).toEqual({
       error: "RWOS_ASSIGNMENT_CONFLICT",
       message: "Assignment could not be created from the current offer state."
+    });
+    expect(JSON.stringify(response.json())).not.toContain("worker-private-id");
+    await app.close();
+  });
+
+  it("maps missing or mismatched Assignment sources to one privacy-safe response", async () => {
+    const authRepository = new ApiMemoryAuthenticationRepository();
+    const app = buildApi({
+      authService: createAuthenticationService(authRepository, testAuthOptions()),
+      assignmentService: {
+        ...createApiUnavailableAssignmentService(),
+        async createFromAcceptedOffer() {
+          throw new AssignmentError({
+            status: "not_found",
+            allow: false,
+            assignment: null,
+            roles: ["DISPATCHER"],
+            internalReason: "source_chain_mismatch:worker-private-id",
+            externalCode: authorizationDeniedCode,
+            externalMessage: authorizationDeniedMessage
+          });
+        }
+      },
+      resolveAuthorizationRoles: async () => ["DISPATCHER"]
+    });
+    const user = await registerApiUser(app);
+
+    const response = await app.inject({
+      method: "POST",
+      url: "/platform/assignments",
+      headers: { authorization: `Bearer ${user.token}` },
+      payload: {
+        workerOfferId: "00000000-0000-4000-8000-000000000101",
+        dispatchReviewId: "00000000-0000-4000-8000-000000000102",
+        expectedOfferVersion: 1
+      }
+    });
+
+    expect(response.statusCode).toBe(404);
+    expect(response.json()).toEqual({
+      error: "RWOS_ASSIGNMENT_SOURCE_UNAVAILABLE",
+      message: "Assignment source is unavailable."
     });
     expect(JSON.stringify(response.json())).not.toContain("worker-private-id");
     await app.close();
@@ -1900,7 +1988,11 @@ describe("api assignment foundation", () => {
       method: "POST",
       url: "/platform/assignments",
       headers: { authorization: `Bearer ${user.token}` },
-      payload: { workerOfferId: "00000000-0000-4000-8000-000000000101" }
+      payload: {
+        workerOfferId: "00000000-0000-4000-8000-000000000101",
+        dispatchReviewId: "00000000-0000-4000-8000-000000000102",
+        expectedOfferVersion: 1
+      }
     });
 
     expect(response.statusCode).toBe(503);
@@ -2235,12 +2327,98 @@ describe("api timesheet foundation", () => {
       "create:attendance-api-1",
       "calculate:timesheet-api-1",
       "worker-confirm:timesheet-api-1",
+      "list:org-api-1",
       "employer-confirm:timesheet-api-1",
       "approve:timesheet-api-1",
       "lock:timesheet-api-1",
       "list:platform",
       "audit:timesheet-api-1"
     ]);
+    await app.close();
+  });
+
+  it("fails closed when organization-scoped services return records from another organization", async () => {
+    const authRepository = new ApiMemoryAuthenticationRepository();
+    const otherOrganizationId = "org-api-other";
+    const otherAssignment = { ...apiAssignment(), organizationId: otherOrganizationId };
+    const otherAttendance = { ...apiAttendanceRecord(), organizationId: otherOrganizationId };
+    const otherTimesheet = { ...apiTimesheet(), organizationId: otherOrganizationId };
+    let employerConfirmCalled = false;
+    let employerDisputeCalled = false;
+    const app = buildApi({
+      authService: createAuthenticationService(authRepository, testAuthOptions()),
+      assignmentService: {
+        ...createApiUnavailableAssignmentService(),
+        async listAssignments() {
+          return [otherAssignment];
+        }
+      },
+      attendanceService: {
+        ...createApiUnavailableAttendanceService(),
+        async listAttendance() {
+          return [otherAttendance];
+        }
+      },
+      timesheetService: {
+        ...createApiUnavailableTimesheetService(),
+        async listTimesheets() {
+          return [otherTimesheet];
+        },
+        async employerConfirm() {
+          employerConfirmCalled = true;
+          return otherTimesheet;
+        },
+        async employerDispute() {
+          employerDisputeCalled = true;
+          return otherTimesheet;
+        }
+      },
+      resolveAuthorizationRoles: async () => ["ORGANIZATION_OWNER"]
+    });
+    const user = await registerApiUser(app);
+    const headers = { authorization: `Bearer ${user.token}` };
+
+    const assignments = await app.inject({
+      method: "GET",
+      url: "/organizations/org-api-1/assignments",
+      headers
+    });
+    const attendance = await app.inject({
+      method: "GET",
+      url: "/organizations/org-api-1/attendance",
+      headers
+    });
+    const timesheets = await app.inject({
+      method: "GET",
+      url: "/organizations/org-api-1/timesheets",
+      headers
+    });
+    const confirm = await app.inject({
+      method: "POST",
+      url: `/organizations/org-api-1/timesheets/${otherTimesheet.id}/confirm`,
+      headers,
+      payload: { expectedVersion: otherTimesheet.versionToken }
+    });
+    const dispute = await app.inject({
+      method: "POST",
+      url: `/organizations/org-api-1/timesheets/${otherTimesheet.id}/dispute`,
+      headers,
+      payload: {
+        expectedVersion: otherTimesheet.versionToken,
+        reason: "Synthetic dispute reason."
+      }
+    });
+
+    for (const response of [assignments, attendance, timesheets, confirm, dispute]) {
+      expect(response.statusCode).toBe(403);
+      expect(response.json()).toEqual({
+        error: "RWOS_AUTHORIZATION_DENIED",
+        message: "Access denied."
+      });
+      expect(response.body).not.toContain(otherOrganizationId);
+    }
+    expect(employerConfirmCalled).toBe(false);
+    expect(employerDisputeCalled).toBe(false);
     await app.close();
   });
 });
@@ -3491,7 +3669,9 @@ function productionEnv() {
     INTERNAL_API_ORIGIN: "https://api.example.test",
     AUTH_RATE_LIMITER_ORIGIN: "https://rate-limit.example.test",
     AUTH_RATE_LIMITER_TOKEN: "test-rate-limiter-token-at-least-32-characters",
-    AUTH_RATE_LIMITER_KEY_SECRET: "test-key-secret-that-is-at-least-32-characters"
+    AUTH_RATE_LIMITER_KEY_SECRET: "test-key-secret-that-is-at-least-32-characters",
+    AUTH_RATE_LIMITER_KEY_ID: "key-current",
+    AUTH_RATE_LIMITER_NAMESPACE: "rwos:authrl:production:v1"
   };
 }
 

@@ -22,6 +22,7 @@ export type WorkerOfferDeliveryResult = Readonly<{
 
 export interface WorkerOfferDeliveryProvider {
   deliver(input: {
+    organizationId: string;
     workerOfferId: string;
     workerIdentityId: string;
     idempotencyKey: string;
@@ -33,6 +34,7 @@ type HttpOptions = {
   token: string;
   timeoutMs?: number;
   fetch?: Fetch;
+  trustedIdentityHeaders?: () => Promise<Readonly<Record<string, string>>>;
 };
 
 export function createHttpCandidateSource(
@@ -44,7 +46,7 @@ export function createHttpCandidateSource(
   return {
     async getStatus() {
       try {
-        const response = await boundary("/health", { method: "GET" });
+        const response = await boundary("/ready", { method: "GET" });
         return {
           status: response.ok ? ("available" as const) : ("candidate_source_unavailable" as const)
         };
@@ -68,6 +70,10 @@ export function createHttpCandidateSource(
     async evaluateCandidate(input) {
       const response = await boundary("/v1/candidates/evaluate", {
         method: "POST",
+        headers: candidateAuthorizationHeaders(
+          input.dispatchReview.organizationId,
+          "candidates:evaluate"
+        ),
         body: JSON.stringify({
           dispatchReviewId: input.dispatchReview.id,
           organizationId: input.dispatchReview.organizationId,
@@ -105,8 +111,14 @@ export function createHttpWorkerOfferDeliveryProvider(
       try {
         const response = await boundary("/v1/worker-offers/deliver", {
           method: "POST",
-          headers: { "idempotency-key": input.idempotencyKey },
+          headers: {
+            "idempotency-key": input.idempotencyKey,
+            "x-rwos-service-id": "rwos-api",
+            "x-rwos-tenant-id": input.organizationId,
+            "x-rwos-operation": "worker-offers:deliver"
+          },
           body: JSON.stringify({
+            organizationId: input.organizationId,
             workerOfferId: input.workerOfferId,
             workerIdentityId: input.workerIdentityId
           })
@@ -144,6 +156,10 @@ async function requestCandidates(
 ) {
   const response = await boundary(path, {
     method: "POST",
+    headers: candidateAuthorizationHeaders(
+      input.dispatchReview.organizationId,
+      "candidates:search"
+    ),
     body: JSON.stringify({
       dispatchReviewId: input.dispatchReview.id,
       organizationId: input.dispatchReview.organizationId,
@@ -159,6 +175,17 @@ async function requestCandidates(
   return response.json().catch(() => {
     throw new ProductionIntegrationError();
   });
+}
+
+function candidateAuthorizationHeaders(
+  organizationId: string,
+  operation: "candidates:search" | "candidates:evaluate"
+) {
+  return {
+    "x-rwos-service-id": "rwos-api",
+    "x-rwos-tenant-id": organizationId,
+    "x-rwos-operation": operation
+  };
 }
 
 function parseCandidateList(
@@ -309,14 +336,20 @@ function createHttpBoundary(options: HttpOptions) {
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), timeoutMs);
     try {
+      const trustedIdentityHeaders = options.trustedIdentityHeaders
+        ? await options.trustedIdentityHeaders()
+        : {};
       return await fetcher(new URL(path, origin), {
         ...init,
         signal: controller.signal,
         headers: {
-          authorization: `Bearer ${options.token}`,
+          ...(options.trustedIdentityHeaders
+            ? { "x-rwos-app-authorization": `Bearer ${options.token}` }
+            : { authorization: `Bearer ${options.token}` }),
           "cache-control": "no-store",
           "content-type": "application/json",
-          ...init.headers
+          ...init.headers,
+          ...trustedIdentityHeaders
         }
       });
     } finally {

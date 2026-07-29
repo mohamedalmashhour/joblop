@@ -71,6 +71,26 @@ function jsonResponse(body: unknown, status = 200) {
 }
 
 describe("production candidate-source boundary", () => {
+  it("preserves application authorization while adding trusted identity headers", async () => {
+    const fetch: typeof globalThis.fetch = vi.fn(async (_url, init) => {
+      const headers = new Headers(init?.headers);
+      expect(headers.get("authorization")).toBe("Bearer synthetic-google-token");
+      expect(headers.get("x-rwos-app-authorization")).toBe("Bearer application-token");
+      return jsonResponse({ status: "ready" });
+    });
+    const source = createHttpCandidateSource({
+      origin: "https://candidate.example",
+      token: "application-token",
+      fetch,
+      trustedIdentityHeaders: async () => ({
+        authorization: "Bearer synthetic-google-token"
+      })
+    });
+
+    await expect(source.getStatus()).resolves.toEqual({ status: "available" });
+    expect(fetch).toHaveBeenCalledOnce();
+  });
+
   it("requires HTTPS and never sends a raw tenant name or worker contact data", async () => {
     expect(() =>
       createHttpCandidateSource({ origin: "http://candidate.example", token: "token" })
@@ -99,6 +119,25 @@ describe("production candidate-source boundary", () => {
     expect(String(observedRequest?.body)).toContain(staffingWindow.endAt.toISOString());
     expect(String(observedRequest?.body)).toContain(staffingWindow.timezone);
     expect(String(observedRequest?.body)).not.toMatch(/email|phone|address|displayName/i);
+    expect(observedRequest?.headers).toMatchObject({
+      "x-rwos-service-id": "rwos-api",
+      "x-rwos-tenant-id": dispatchReview.organizationId,
+      "x-rwos-operation": "candidates:search"
+    });
+  });
+
+  it("uses dependency-aware readiness for candidate-source availability", async () => {
+    let observedUrl = "";
+    const source = createHttpCandidateSource({
+      origin: "https://candidate.example",
+      token: "token",
+      fetch: async (url) => {
+        observedUrl = String(url);
+        return jsonResponse({ ready: true });
+      }
+    });
+    await expect(source.getStatus()).resolves.toEqual({ status: "available" });
+    expect(observedUrl).toBe("https://candidate.example/ready");
   });
 
   it.each([
@@ -193,9 +232,11 @@ describe("production offer-delivery boundary", () => {
     });
 
     const first = await provider.deliver({
+      organizationId: "00000000-0000-4000-8000-000000000303",
       workerOfferId: "00000000-0000-4000-8000-000000000301",
       workerIdentityId: "00000000-0000-4000-8000-000000000302",
-      idempotencyKey: "worker-offer:00000000-0000-4000-8000-000000000301:v2"
+      idempotencyKey:
+        "worker-offer:00000000-0000-4000-8000-000000000301:terms:00000000-0000-4000-8000-000000000304"
     });
 
     expect(first).toEqual({
@@ -204,8 +245,15 @@ describe("production offer-delivery boundary", () => {
       retryable: false
     });
     expect(observedRequest?.headers).toMatchObject({
-      "idempotency-key": "worker-offer:00000000-0000-4000-8000-000000000301:v2"
+      "idempotency-key":
+        "worker-offer:00000000-0000-4000-8000-000000000301:terms:00000000-0000-4000-8000-000000000304",
+      "x-rwos-service-id": "rwos-api",
+      "x-rwos-tenant-id": "00000000-0000-4000-8000-000000000303",
+      "x-rwos-operation": "worker-offers:deliver"
     });
+    expect(String(observedRequest?.body)).toContain(
+      '"organizationId":"00000000-0000-4000-8000-000000000303"'
+    );
   });
 
   it.each([
@@ -223,6 +271,7 @@ describe("production offer-delivery boundary", () => {
 
     await expect(
       provider.deliver({
+        organizationId: "00000000-0000-4000-8000-000000000303",
         workerOfferId: "00000000-0000-4000-8000-000000000301",
         workerIdentityId: "00000000-0000-4000-8000-000000000302",
         idempotencyKey: "stable-key"
@@ -247,6 +296,7 @@ describe("production offer-delivery boundary", () => {
       });
       await expect(
         provider.deliver({
+          organizationId: "00000000-0000-4000-8000-000000000303",
           workerOfferId: "00000000-0000-4000-8000-000000000301",
           workerIdentityId: "00000000-0000-4000-8000-000000000302",
           idempotencyKey: "stable-key"

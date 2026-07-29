@@ -3077,7 +3077,9 @@ describe("assignment foundation", () => {
     const assignment = await assignmentService.createFromAcceptedOffer({
       session: adminSession,
       roles: ["DISPATCHER"],
-      workerOfferId: acceptedOffer.id
+      workerOfferId: acceptedOffer.id,
+      expectedDispatchReviewId: acceptedOffer.dispatchReviewId,
+      expectedOfferVersion: acceptedOffer.version
     });
 
     expect(assignment.status).toBe("confirmed");
@@ -3110,12 +3112,16 @@ describe("assignment foundation", () => {
       assignmentService.createFromAcceptedOffer({
         session: adminSession,
         roles: ["DISPATCHER"],
-        workerOfferId: acceptedOffer.id
+        workerOfferId: acceptedOffer.id,
+        expectedDispatchReviewId: acceptedOffer.dispatchReviewId,
+        expectedOfferVersion: acceptedOffer.version
       }),
       assignmentService.createFromAcceptedOffer({
         session: adminSession,
         roles: ["DISPATCHER"],
-        workerOfferId: acceptedOffer.id
+        workerOfferId: acceptedOffer.id,
+        expectedDispatchReviewId: acceptedOffer.dispatchReviewId,
+        expectedOfferVersion: acceptedOffer.version
       })
     ]);
 
@@ -3124,6 +3130,37 @@ describe("assignment foundation", () => {
     expect(
       await assignmentRepository.findAssignmentByWorkerOfferId(acceptedOffer.id)
     ).not.toBeNull();
+  });
+
+  it("binds Assignment creation to the reviewed dispatch and exact accepted-offer version", async () => {
+    const { assignmentService, assignmentRepository, acceptedOffer, adminSession } =
+      await createAcceptedAssignmentContext();
+
+    await expect(
+      assignmentService.createFromAcceptedOffer({
+        session: adminSession,
+        roles: ["DISPATCHER"],
+        workerOfferId: acceptedOffer.id,
+        expectedDispatchReviewId: "00000000-0000-4000-8000-000000000099",
+        expectedOfferVersion: acceptedOffer.version
+      })
+    ).rejects.toMatchObject({
+      decision: expect.objectContaining({ status: "not_found" })
+    });
+    await expect(
+      assignmentService.createFromAcceptedOffer({
+        session: adminSession,
+        roles: ["DISPATCHER"],
+        workerOfferId: acceptedOffer.id,
+        expectedDispatchReviewId: acceptedOffer.dispatchReviewId,
+        expectedOfferVersion: acceptedOffer.version + 1
+      })
+    ).rejects.toMatchObject({
+      decision: expect.objectContaining({ status: "version_conflict" })
+    });
+    await expect(
+      assignmentRepository.findAssignmentByWorkerOfferId(acceptedOffer.id)
+    ).resolves.toBeNull();
   });
 
   it("bounds retries for serializable Assignment transaction conflicts", async () => {
@@ -3138,6 +3175,8 @@ describe("assignment foundation", () => {
     await expect(
       repository.createAssignmentFromAcceptedOfferAtomically({
         workerOfferId: "00000000-0000-4000-8000-000000000001",
+        expectedDispatchReviewId: "00000000-0000-4000-8000-000000000003",
+        expectedOfferVersion: 1,
         actorUserId: "00000000-0000-4000-8000-000000000002",
         correlationId: "assignment_retry_test",
         now: new Date("2026-07-27T12:00:00.000Z")
@@ -3178,7 +3217,9 @@ describe("assignment foundation", () => {
       draftAssignmentService.createFromAcceptedOffer({
         session: draftContext.adminSession,
         roles: ["DISPATCHER"],
-        workerOfferId: draftOffer.id
+        workerOfferId: draftOffer.id,
+        expectedDispatchReviewId: draftOffer.dispatchReviewId,
+        expectedOfferVersion: draftOffer.version
       })
     ).rejects.toMatchObject({
       decision: expect.objectContaining({ status: "worker_offer_not_accepted" })
@@ -3187,14 +3228,18 @@ describe("assignment foundation", () => {
     const assignment = await assignmentService.createFromAcceptedOffer({
       session: adminSession,
       roles: ["DISPATCHER"],
-      workerOfferId: acceptedOffer.id
+      workerOfferId: acceptedOffer.id,
+      expectedDispatchReviewId: acceptedOffer.dispatchReviewId,
+      expectedOfferVersion: acceptedOffer.version
     });
 
     await expect(
       assignmentService.createFromAcceptedOffer({
         session: adminSession,
         roles: ["DISPATCHER"],
-        workerOfferId: acceptedOffer.id
+        workerOfferId: acceptedOffer.id,
+        expectedDispatchReviewId: acceptedOffer.dispatchReviewId,
+        expectedOfferVersion: acceptedOffer.version
       })
     ).rejects.toMatchObject({
       decision: expect.objectContaining({ status: "assignment_exists" })
@@ -3218,7 +3263,9 @@ describe("assignment foundation", () => {
     const confirmed = await assignmentService.createFromAcceptedOffer({
       session: adminSession,
       roles: ["DISPATCHER"],
-      workerOfferId: acceptedOffer.id
+      workerOfferId: acceptedOffer.id,
+      expectedDispatchReviewId: acceptedOffer.dispatchReviewId,
+      expectedOfferVersion: acceptedOffer.version
     });
     const acknowledged = await assignmentService.acknowledge({
       session: workerSession,
@@ -3267,7 +3314,9 @@ describe("assignment foundation", () => {
     const assignment = await assignmentService.createFromAcceptedOffer({
       session: adminSession,
       roles: ["DISPATCHER"],
-      workerOfferId: acceptedOffer.id
+      workerOfferId: acceptedOffer.id,
+      expectedDispatchReviewId: acceptedOffer.dispatchReviewId,
+      expectedOfferVersion: acceptedOffer.version
     });
 
     const employerVisible = await assignmentService.listAssignments({
@@ -3301,7 +3350,9 @@ describe("assignment foundation", () => {
     const assignment = await assignmentService.createFromAcceptedOffer({
       session: adminSession,
       roles: ["DISPATCHER"],
-      workerOfferId: acceptedOffer.id
+      workerOfferId: acceptedOffer.id,
+      expectedDispatchReviewId: acceptedOffer.dispatchReviewId,
+      expectedOfferVersion: acceptedOffer.version
     });
     const withdrawn = await assignmentService.workerWithdraw({
       session: workerSession,
@@ -5187,6 +5238,9 @@ class MemoryAssignmentRepository implements AssignmentRepository {
       if (!this.sources) throw new Error("assignment sources unavailable");
       const workerOffer = await this.sources.workerOffers.findWorkerOfferById(input.workerOfferId);
       if (!workerOffer) return { ok: false, reason: "worker_offer_not_found" };
+      if (workerOffer.dispatchReviewId !== input.expectedDispatchReviewId) {
+        return { ok: false, reason: "source_chain_mismatch" };
+      }
       const fail = async (reason: AtomicAssignmentCreateFailure) => {
         await this.recordAssignmentAuditEvent({
           action: "assignment.validation_failed",
@@ -5204,6 +5258,9 @@ class MemoryAssignmentRepository implements AssignmentRepository {
         return { ok: false as const, reason };
       };
       if (workerOffer.status !== "accepted") return fail("worker_offer_not_accepted");
+      if (workerOffer.version !== input.expectedOfferVersion) {
+        return fail("worker_offer_version_changed");
+      }
       if (workerOffer.expiresAt <= input.now) return fail("worker_offer_expired");
       const response = await this.sources.workerOffers.findResponseByOfferId(workerOffer.id);
       if (
@@ -5271,7 +5328,7 @@ class MemoryAssignmentRepository implements AssignmentRepository {
         workerCalendarCreated: false,
         payrollCreated: false
       };
-      const assignment = await this.createAssignmentFromAcceptedOffer({
+      const assignment = await this.materializeAssignment({
         workerOffer,
         termsVersion,
         jobRequest,
@@ -5313,9 +5370,16 @@ class MemoryAssignmentRepository implements AssignmentRepository {
     }
   }
 
-  async createAssignmentFromAcceptedOffer(
-    input: Parameters<AssignmentRepository["createAssignmentFromAcceptedOffer"]>[0]
-  ) {
+  private async materializeAssignment(input: {
+    workerOffer: StoredWorkerOffer;
+    termsVersion: StoredWorkerOfferTermsVersion;
+    jobRequest: StoredJobRequest;
+    dispatchReview: StoredDispatchReview;
+    workerIdentity: StoredWorkerIdentity;
+    actorUserId: string;
+    validationSnapshot: Record<string, unknown>;
+    now: Date;
+  }) {
     const assignment: StoredAssignment = {
       id: `assignment-${this.nextAssignment}`,
       jobRequestId: input.workerOffer.jobRequestId,
@@ -6292,7 +6356,9 @@ async function createAttendanceContext(input: { assignmentReady?: boolean } = {}
   const confirmed = await context.assignmentService.createFromAcceptedOffer({
     session: context.adminSession,
     roles: ["DISPATCHER"],
-    workerOfferId: context.acceptedOffer.id
+    workerOfferId: context.acceptedOffer.id,
+    expectedDispatchReviewId: context.acceptedOffer.dispatchReviewId,
+    expectedOfferVersion: context.acceptedOffer.version
   });
   const ready =
     input.assignmentReady === false

@@ -1734,6 +1734,7 @@ export interface PublicAssignment extends StoredAssignment {
 
 export type AtomicAssignmentCreateFailure =
   | "worker_offer_not_found"
+  | "worker_offer_version_changed"
   | "worker_offer_not_accepted"
   | "worker_offer_expired"
   | "response_not_accepted"
@@ -1763,20 +1764,12 @@ export interface AssignmentDecision {
 export interface AssignmentRepository {
   createAssignmentFromAcceptedOfferAtomically(input: {
     workerOfferId: string;
+    expectedDispatchReviewId: string;
+    expectedOfferVersion: number;
     actorUserId: string;
     correlationId: string;
     now: Date;
   }): Promise<AtomicAssignmentCreateResult>;
-  createAssignmentFromAcceptedOffer(input: {
-    workerOffer: StoredWorkerOffer;
-    termsVersion: StoredWorkerOfferTermsVersion;
-    jobRequest: StoredJobRequest;
-    dispatchReview: StoredDispatchReview;
-    workerIdentity: StoredWorkerIdentity;
-    actorUserId: string;
-    validationSnapshot: Record<string, unknown>;
-    now: Date;
-  }): Promise<StoredAssignment>;
   findAssignmentById(assignmentId: string): Promise<StoredAssignment | null>;
   findAssignmentByWorkerOfferId(workerOfferId: string): Promise<StoredAssignment | null>;
   listAssignments(input: {
@@ -6821,6 +6814,7 @@ async function deliverWorkerOffer(input: {
   let result: WorkerOfferDeliveryResult;
   try {
     result = await input.deliveryProvider.deliver({
+      organizationId: input.offer.organizationId,
       workerOfferId: input.offer.id,
       workerIdentityId: input.offer.workerIdentityId,
       idempotencyKey: `worker-offer:${input.offer.id}:terms:${termsId}`
@@ -7410,6 +7404,8 @@ export function createAssignmentService(
       session: SessionValidationResult;
       roles?: readonly AuthorizationRoleKey[];
       workerOfferId: string;
+      expectedDispatchReviewId: string;
+      expectedOfferVersion: number;
       correlationId?: string;
     }) {
       const currentTime = now();
@@ -7427,6 +7423,8 @@ export function createAssignmentService(
 
       const result = await assignmentRepository.createAssignmentFromAcceptedOfferAtomically({
         workerOfferId: input.workerOfferId,
+        expectedDispatchReviewId: input.expectedDispatchReviewId,
+        expectedOfferVersion: input.expectedOfferVersion,
         actorUserId: input.session.user?.id ?? "system",
         correlationId: input.correlationId ?? createAssignmentCorrelationId(),
         now: currentTime
@@ -8161,6 +8159,7 @@ function assignmentDecisionStatusForAtomicFailure(
   if (reason === "worker_offer_not_found" || reason === "source_chain_mismatch") {
     return "not_found";
   }
+  if (reason === "worker_offer_version_changed") return "version_conflict";
   if (reason === "worker_offer_not_accepted" || reason === "response_not_accepted") {
     return "worker_offer_not_accepted";
   }
@@ -13337,6 +13336,9 @@ export function createPrismaAssignmentRepository(prismaClient: unknown): Assignm
             if (!workerOffer) {
               return { ok: false as const, reason: "worker_offer_not_found" as const };
             }
+            if (workerOffer.dispatchReviewId !== input.expectedDispatchReviewId) {
+              return { ok: false as const, reason: "source_chain_mismatch" as const };
+            }
             const fail = async (reason: AtomicAssignmentCreateFailure) => {
               await recordPrismaAssignmentAudit(transaction, {
                 action: "assignment.validation_failed",
@@ -13354,6 +13356,9 @@ export function createPrismaAssignmentRepository(prismaClient: unknown): Assignm
               return { ok: false as const, reason };
             };
             if (workerOffer.status !== "accepted") return fail("worker_offer_not_accepted");
+            if (workerOffer.version !== input.expectedOfferVersion) {
+              return fail("worker_offer_version_changed");
+            }
             if (workerOffer.expiresAt <= input.now) return fail("worker_offer_expired");
 
             await transaction.$queryRaw`
@@ -13517,42 +13522,6 @@ export function createPrismaAssignmentRepository(prismaClient: unknown): Assignm
           { isolationLevel: "Serializable", maxWait: 2_000, timeout: 10_000 }
         )
       );
-    },
-
-    createAssignmentFromAcceptedOffer(input) {
-      return prisma.assignment.create({
-        data: {
-          jobRequestId: input.workerOffer.jobRequestId,
-          dispatchReviewId: input.workerOffer.dispatchReviewId,
-          workerOfferId: input.workerOffer.id,
-          workerOfferTermsVersionId: input.termsVersion.id,
-          workerIdentityId: input.workerIdentity.id,
-          organizationId: input.workerOffer.organizationId,
-          residenceId: input.workerOffer.residenceId,
-          departmentId: input.workerOffer.departmentId,
-          workGroupId: input.termsVersion.workGroupId,
-          roleDefinitionId: input.termsVersion.roleDefinitionId,
-          status: "confirmed",
-          confirmedStartAt: input.termsVersion.startAt,
-          confirmedEndAt: input.termsVersion.endAt,
-          timezone: input.termsVersion.timezone,
-          confirmedTitle: input.termsVersion.workerVisibleTitle,
-          confirmedRoleSummary: input.jobRequest.title,
-          confirmedWorksiteSummary: input.dispatchReview.residenceId,
-          confirmedDepartmentSummary: input.dispatchReview.departmentId,
-          confirmedResponsibilitySummary: input.termsVersion.workerVisibleSummary,
-          confirmedPolicySummary: input.termsVersion.policySummary,
-          confirmedCompensationSummary: input.termsVersion.compensationSummary,
-          validationSnapshot: input.validationSnapshot,
-          capacityCheckedAt: input.now,
-          conflictCheckedAt: input.now,
-          confirmedAt: input.now,
-          createdByUserId: input.actorUserId,
-          confirmedByUserId: input.actorUserId,
-          createdAt: input.now,
-          updatedAt: input.now
-        }
-      });
     },
 
     findAssignmentById(assignmentId) {
