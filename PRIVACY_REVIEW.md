@@ -41,3 +41,17 @@ data residency, attach the retention/deletion schedule, list subprocessors, defi
 employer notice/consent requirements, set data-subject request timelines, define audit and
 legal-hold exceptions, define backup deletion expiry, and identify breach-notification authority.
 Engineering evidence cannot substitute for these decisions.
+
+After the named owners approve the policy and operations complete the witnessed export/deletion
+tests, validate the non-secret approval record with:
+
+```sh
+RWOS_EVIDENCE_GATE=privacy_legal \
+RWOS_EVIDENCE_PATH='<approved evidence JSON>' \
+RWOS_RELEASE_SHA='<full lowercase 40-character release SHA>' \
+pnpm validate:evidence
+```
+
+The validator requires named privacy/legal owners, jurisdiction, applicable law, retention,
+deletion, export, legal-hold and backup-expiry decisions, operational-test results, and final owner
+approval. It cannot make those decisions.

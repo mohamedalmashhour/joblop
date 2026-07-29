@@ -47,3 +47,26 @@ Acceptance includes labelled controls, semantic headings, visible keyboard focus
 form instructions and validation association, loading and live-region announcements, empty/denied/
 stale/error/network/session-expiry states, platform-equivalent 44-by-44 touch targets, zoom/reflow,
 RTL layout, Arabic content integrity, rotation, reduced motion, font scaling, and contrast.
+
+The browser runner now includes axe checks across Chromium, Firefox, and WebKit and fails closed
+without exact-release staging inputs:
+
+```sh
+pnpm test:e2e:browser
+```
+
+After all cumulative browser, physical-device, assistive-technology, and human checks are complete,
+validate the non-secret approval record with:
+
+```sh
+RWOS_EVIDENCE_GATE=accessibility \
+RWOS_EVIDENCE_PATH='<approved evidence JSON>' \
+RWOS_RELEASE_SHA='<full lowercase 40-character release SHA>' \
+pnpm validate:evidence
+```
+
+Automated axe results remain only one evidence layer and do not satisfy device, AT, or owner signoff.
+Each of the four surface records must contain the exact immutable build, browser or physical device,
+OS, named tester, dated execution, manual and assistive-technology result, and final result. Web
+records additionally require keyboard and axe results. The top-level record requires a named
+accessibility owner and approval bound to the same release SHA.

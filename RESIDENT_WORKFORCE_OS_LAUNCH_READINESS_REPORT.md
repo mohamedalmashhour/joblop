@@ -58,11 +58,13 @@ deployment is not authorized while the remaining gates below are open.
   revalidates the offer/response/terms/request/dispatch/tenant chain, checks capacity and overlap,
   and commits the Assignment plus validation and confirmation audits atomically. Serializable
   conflicts have bounded retry and a privacy-safe 503 exhaustion response; production mutation
-  kill switches remain unchanged.
+  kill switches remain unchanged. The legacy non-atomic repository write capability has been
+  removed, so the locking command is the sole Assignment creation interface.
 - Worker Offer creation now requires a persisted shortlisted dispatch candidate linked by an
   explicit WorkerIdentity foreign key for that exact dispatch. An arbitrary active worker UUID is
-  rejected. The additive provenance migration is provider-locked, checksummed, Prisma-validated,
-  and covered by schema and service tests.
+  rejected. A partial unique index enforces one canonical linked worker identity per dispatch, so
+  multiple source references must be reconciled before linkage. The additive provenance migrations
+  are provider-locked, checksummed, Prisma-validated, and covered by schema and service tests.
 - Worker Offer capacity validation and creation now execute inside one transaction guarded by a
   per-dispatch PostgreSQL advisory lock. Concurrent final-slot contenders are serialized, capacity
   is recounted under the lock, and the loser receives a privacy-safe capacity denial.
@@ -82,6 +84,11 @@ deployment is not authorized while the remaining gates below are open.
 - The persisted admin dispatch view now reads privacy-minimized authoritative offer and Assignment
   summaries through same-origin BFF routes. It distinguishes sent from delivered, accepted offer
   from confirmed Assignment, and never substitutes fixture state when either read is unavailable.
+  It identifies accepted offers that require Assignment reconciliation. A guarded handoff contract
+  exists for local/test evidence only: it re-reads authoritative records, binds the command to the
+  dispatch and exact offer version inside the atomic transaction, and reconciles unknown outcomes
+  before another attempt. The capability defaults off, production configuration forbids enabling
+  it, and the API-wide production mutation kill switch remains authoritative.
 - The API emits privacy-filtered structured request completion events, separates liveness from
   database-backed readiness, and handles bounded graceful shutdown. A monitoring and incident
   response runbook defines safe triage, containment, recovery, and closure evidence without
@@ -90,16 +97,23 @@ deployment is not authorized while the remaining gates below are open.
   token, and distinct HMAC key secret. Authentication sends only domain-separated HMAC account and
   network subjects, fails closed with a generic 503 when no decision can be obtained, preserves
   bounded 429 retry guidance through the frontend BFFs, and includes limiter health in readiness.
-- The authorized registry-backed production dependency audit reports one high
-  `brace-expansion@1.1.16` advisory through Expo CLI development tooling. The incompatible forced
-  upgrade remains rejected because it breaks the legacy `minimatch@3` consumer. The documented
-  time-bounded exception still requires a named security owner’s approval before release.
+- The latest authorized registry-backed dependency evidence reports zero full and production
+  vulnerabilities, and the resolved dependency tree contains only patched
+  `brace-expansion@5.0.8`. A fresh registry audit remains required for the eventual immutable
+  release because this local completion run prohibited external registry contact.
 - Migration history now has a PostgreSQL provider lock and immutable checksum manifest. Static
   validation blocks edited or newly destructive migrations, and a guarded logical restore command
   refuses source-equal or non-disposable targets. The recovery runbook separates local mechanics
   from provider backup/PITR evidence and forbids automatic destructive production rollback.
 - Heading and selected-tab semantics, WCAG-AA-oriented micro-badge colors, and employer/admin
-  metadata are present without changing the RJDS visual direction.
+  metadata are present without changing the RJDS visual direction. Worker assignment transport
+  rejects unknown lifecycle states, malformed windows and invalid timezones; cancellation and
+  replacement states no longer receive a false success treatment.
+- The latest complete local suite passes 755 tests with 12 explicitly infrastructure-gated tests
+  skipped, plus lint, type checking, environment validation, workspace-boundary validation,
+  migration integrity, static container validation, secret scanning, Prisma validation/generation,
+  diff checks, optimized workspace builds and a 423-artifact public-bundle credential scan. These
+  checks do not replace authenticated browser, device, provider or real-database evidence.
 - Real rendered local employer/admin secure-entry checks verified single main landmarks, ordered
   headings, named form controls, and truthful unauthenticated states. Synthetic employer landing
   previews are development-only, clearly labelled, and omitted when `RWOS_ENV=production`.
