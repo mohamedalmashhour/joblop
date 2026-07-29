@@ -10,6 +10,8 @@ describe("employer production route policy", () => {
       "/faq",
       "/how-it-works",
       "/pricing",
+      "/health",
+      "/ready",
       "/employer/calendar",
       "/employer/calendar/create",
       "/employer/calendar/request",

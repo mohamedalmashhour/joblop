@@ -1,4 +1,13 @@
-const publicRoutes = new Set(["/", "/about", "/contact", "/faq", "/how-it-works", "/pricing"]);
+const publicRoutes = new Set([
+  "/",
+  "/about",
+  "/contact",
+  "/faq",
+  "/health",
+  "/how-it-works",
+  "/pricing",
+  "/ready"
+]);
 const persistedEmployerRoutes = new Set([
   "/employer/calendar",
   "/employer/calendar/create",

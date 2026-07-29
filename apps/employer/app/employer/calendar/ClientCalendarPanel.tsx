@@ -5,6 +5,7 @@ import {
   calendarFailureState,
   calendarListState,
   clearWebCalendarSession,
+  formatRwosDateTime,
   parseClientCalendarList,
   type AuthenticatedViewState,
   type ClientCalendarDto
@@ -375,10 +376,14 @@ function clientStatusStyle(status: ClientCalendarDto["status"]) {
 }
 
 function formatWindow(request: ClientCalendarDto) {
-  const options: Intl.DateTimeFormatOptions = {
+  const start = formatRwosDateTime(request.startAt, {
     dateStyle: "medium",
     timeStyle: "short",
     timeZone: request.timezone
-  };
-  return `${new Intl.DateTimeFormat("en-CA", options).format(new Date(request.startAt))}–${new Intl.DateTimeFormat("en-CA", { timeStyle: "short", timeZone: request.timezone }).format(new Date(request.endAt))}`;
+  });
+  const end = formatRwosDateTime(request.endAt, {
+    timeStyle: "short",
+    timeZone: request.timezone
+  });
+  return start === "Unavailable" || end === "Unavailable" ? "Unavailable" : `${start}–${end}`;
 }

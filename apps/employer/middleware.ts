@@ -60,6 +60,10 @@ export async function middleware(request: NextRequest) {
           ? NextResponse.redirect(new URL("/employer/calendar", request.url))
           : new NextResponse("Service Unavailable", { status: 503 });
       }
+      const capabilityPayload: unknown = await capability.json();
+      if (!hasEmployerCalendarCapability(capabilityPayload, organizationId)) {
+        return new NextResponse("Service Unavailable", { status: 503 });
+      }
     } catch {
       return new NextResponse("Service Unavailable", { status: 503 });
     }
@@ -79,5 +83,19 @@ function isProtectedEmployerPage(pathname: string) {
     pathname === "/employer/calendar/request" ||
     pathname === "/employer/calendar/request/edit" ||
     pathname === "/employer/calendar/assignment"
+  );
+}
+
+export function hasEmployerCalendarCapability(input: unknown, expectedOrganizationId: string) {
+  if (typeof input !== "object" || input === null || Array.isArray(input)) return false;
+  const record = input as Record<string, unknown>;
+  const organization = record.organization;
+  return (
+    record.authorized === true &&
+    record.capability === "employer_calendar_read" &&
+    typeof organization === "object" &&
+    organization !== null &&
+    !Array.isArray(organization) &&
+    (organization as Record<string, unknown>).id === expectedOrganizationId
   );
 }

@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
   calendarFailureState,
+  formatRwosDateTime,
   parseClientCalendarDto,
   type AuthenticatedViewState,
   type ClientCalendarDto
@@ -197,14 +198,14 @@ function clientStatusStyle(status: ClientCalendarDto["status"]) {
 }
 
 function formatWindow(request: ClientCalendarDto) {
-  const start = new Intl.DateTimeFormat("en-CA", {
+  const start = formatRwosDateTime(request.startAt, {
     dateStyle: "medium",
     timeStyle: "short",
     timeZone: request.timezone
-  }).format(new Date(request.startAt));
-  const end = new Intl.DateTimeFormat("en-CA", {
+  });
+  const end = formatRwosDateTime(request.endAt, {
     timeStyle: "short",
     timeZone: request.timezone
-  }).format(new Date(request.endAt));
-  return `${start}–${end}`;
+  });
+  return start === "Unavailable" || end === "Unavailable" ? "Unavailable" : `${start}–${end}`;
 }

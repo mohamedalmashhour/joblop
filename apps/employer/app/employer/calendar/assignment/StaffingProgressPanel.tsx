@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import { formatRwosDateTime } from "@rwos/shared";
 import type { EmployerDispatchStatus } from "../../../api/job-requests/jobRequestBoundary";
 import { styles } from "../../employerStyles";
 
@@ -117,9 +118,13 @@ export function StaffingProgressPanel({ requestId }: Readonly<{ requestId: strin
           <p style={styles.cardText}>
             Updated:{" "}
             <time dateTime={status.updatedAt}>
-              {new Date(status.updatedAt).toLocaleString(undefined, { timeZoneName: "short" })}
+              {formatRwosDateTime(status.updatedAt, {
+                timeZone: "UTC",
+                dateStyle: "medium",
+                timeStyle: "short"
+              })}
             </time>{" "}
-            (your device time)
+            (UTC)
           </p>
         ) : null}
       </article>

@@ -1,6 +1,5 @@
 import { describe, expect, it } from "vitest";
 
-// @ts-expect-error The v1 contract-kit helper is intentionally distributed as JavaScript.
 import { findLeakedEconomicsKeys } from "../../../../../contracts/security/economicsLeak.mjs";
 import {
   clientCalendarEvent,

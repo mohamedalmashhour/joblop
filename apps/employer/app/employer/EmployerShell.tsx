@@ -45,7 +45,10 @@ export function EmployerShell({
   const navigation =
     effectiveMode === "authenticated" ? persistedEmployerNavigation : employerNavigation;
   return (
-    <main style={styles.page}>
+    <div style={styles.page}>
+      <a className="employer-skip-link" href="#employer-main-content">
+        Skip to employer workspace
+      </a>
       <div style={styles.appFrame}>
         <aside className="employer-sidebar" style={styles.sidebarShell}>
           <a href="/" style={styles.brand} aria-label="Resident Job home">
@@ -79,23 +82,25 @@ export function EmployerShell({
           </div>
         </aside>
         <div className="employer-workspace" style={styles.workspace}>
-          <header style={styles.header}>
-            <div>
-              <p style={styles.topbarEyebrow}>Employer workspace</p>
-              <strong style={styles.topbarTitle}>
-                {effectiveMode === "authenticated"
-                  ? "Secure employer workspace"
-                  : "Sunrise of Oak Hill"}
-              </strong>
-            </div>
-            {actions}
-          </header>
-          <section style={styles.hero}>
-            <p style={styles.eyebrow}>{eyebrow}</p>
-            <h1 style={styles.title}>{title}</h1>
-            <p style={styles.lede}>{lede}</p>
-          </section>
-          {children}
+          <main id="employer-main-content" tabIndex={-1}>
+            <header style={styles.header}>
+              <div>
+                <p style={styles.topbarEyebrow}>Employer workspace</p>
+                <strong style={styles.topbarTitle}>
+                  {effectiveMode === "authenticated"
+                    ? "Secure employer workspace"
+                    : "Sunrise of Oak Hill"}
+                </strong>
+              </div>
+              {actions}
+            </header>
+            <section style={styles.hero}>
+              <p style={styles.eyebrow}>{eyebrow}</p>
+              <h1 style={styles.title}>{title}</h1>
+              <p style={styles.lede}>{lede}</p>
+            </section>
+            {children}
+          </main>
           <footer style={styles.footer}>
             <span>Resident Job Employer Journey</span>
             <nav aria-label="Employer footer navigation" style={styles.footerLinks}>
@@ -112,7 +117,7 @@ export function EmployerShell({
           </footer>
         </div>
       </div>
-    </main>
+    </div>
   );
 }
 

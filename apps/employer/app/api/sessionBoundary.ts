@@ -42,20 +42,32 @@ export function isSameOriginMutation(request: Request) {
   return origin === new URL(request.url).origin && fetchSite !== "cross-site";
 }
 
-export function sessionFailure(status: "denied" | "stale" | "unavailable" | "error") {
+export function sessionFailure(
+  status: "denied" | "not_found" | "stale" | "unavailable" | "error"
+) {
   const httpStatus =
-    status === "denied" ? 401 : status === "stale" ? 409 : status === "unavailable" ? 503 : 500;
+    status === "denied"
+      ? 401
+      : status === "not_found"
+        ? 404
+        : status === "stale"
+          ? 409
+          : status === "unavailable"
+            ? 503
+            : 500;
   return Response.json(
     {
       status,
       message:
         status === "denied"
           ? "Authentication required."
-          : status === "stale"
-            ? "Calendar information changed. Refresh and try again."
-            : status === "unavailable"
-              ? "Service unavailable."
-              : "Request could not be completed."
+          : status === "not_found"
+            ? "Resource unavailable."
+            : status === "stale"
+              ? "Calendar information changed. Refresh and try again."
+              : status === "unavailable"
+                ? "Service unavailable."
+                : "Request could not be completed."
     },
     {
       status: httpStatus,
@@ -102,6 +114,7 @@ export async function selectClientOrganizationId(
   token: string | null,
   organizationId: string
 ) {
+  if (!token || !isOrganizationId(organizationId)) return { status: "denied" } as const;
   return gateway.request("/memberships/context/select", "POST", token, { organizationId });
 }
 
@@ -120,9 +133,9 @@ export function parseOrganizationChoices(input: unknown): readonly EmployerOrgan
     const record = membership as Record<string, unknown>;
     if (
       record.status !== "active" ||
-      typeof record.organizationId !== "string" ||
-      typeof record.organizationPublicId !== "string" ||
-      typeof record.organizationDisplayName !== "string"
+      !isOrganizationId(record.organizationId) ||
+      !isDisplayString(record.organizationPublicId) ||
+      !isDisplayString(record.organizationDisplayName)
     ) {
       return [];
     }
@@ -147,4 +160,15 @@ function hasEmployerCalendarCapability(input: unknown, expectedOrganizationId: s
     !Array.isArray(organization) &&
     (organization as Record<string, unknown>).id === expectedOrganizationId
   );
+}
+
+function isOrganizationId(input: unknown): input is string {
+  return (
+    typeof input === "string" &&
+    /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(input)
+  );
+}
+
+function isDisplayString(input: unknown): input is string {
+  return typeof input === "string" && input.trim().length > 0;
 }

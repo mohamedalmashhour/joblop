@@ -49,16 +49,16 @@ describe("employer organization session context", () => {
   it("selects context explicitly only from the same-origin organization mutation", async () => {
     const request = vi.fn().mockResolvedValue({
       status: "ok",
-      payload: { organizationContext: { organizationId: "org-1" } }
+      payload: { organizationContext: { organizationId: organizationOneId } }
     });
     const gateway = { request } as unknown as Parameters<typeof selectClientOrganizationId>[0];
     await expect(
-      selectClientOrganizationId(gateway, "session-token", "org-1")
+      selectClientOrganizationId(gateway, "session-token", organizationOneId)
     ).resolves.toMatchObject({
       status: "ok"
     });
     expect(request).toHaveBeenCalledWith("/memberships/context/select", "POST", "session-token", {
-      organizationId: "org-1"
+      organizationId: organizationOneId
     });
   });
 
@@ -142,5 +142,39 @@ describe("employer organization session context", () => {
       status: "denied"
     });
     expect(request).not.toHaveBeenCalled();
+  });
+
+  it("does not call context selection without a token or a valid organization identifier", async () => {
+    const request = vi.fn();
+    const gateway = { request } as unknown as Parameters<typeof selectClientOrganizationId>[0];
+
+    await expect(
+      selectClientOrganizationId(gateway, null, organizationOneId)
+    ).resolves.toEqual({ status: "denied" });
+    await expect(
+      selectClientOrganizationId(gateway, "session-token", "organization-two")
+    ).resolves.toEqual({ status: "denied" });
+    expect(request).not.toHaveBeenCalled();
+  });
+
+  it("drops malformed active memberships instead of exposing selectable contexts", () => {
+    expect(
+      parseOrganizationChoices({
+        memberships: [
+          {
+            organizationId: "not-an-organization-id",
+            organizationPublicId: "ORG-INVALID",
+            organizationDisplayName: "Invalid",
+            status: "active"
+          },
+          {
+            organizationId: organizationTwoId,
+            organizationPublicId: " ",
+            organizationDisplayName: "Test Employer Organization B",
+            status: "active"
+          }
+        ]
+      })
+    ).toEqual([]);
   });
 });
