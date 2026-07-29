@@ -39,7 +39,9 @@ describe("production runtime configuration", () => {
       INTERNAL_API_ORIGIN: "https://api.example.test",
       AUTH_RATE_LIMITER_ORIGIN: "https://rate-limit.example.test",
       AUTH_RATE_LIMITER_TOKEN: "test-rate-limiter-token-at-least-32-characters",
-      AUTH_RATE_LIMITER_KEY_SECRET: "test-key-secret-that-is-at-least-32-characters"
+      AUTH_RATE_LIMITER_KEY_SECRET: "test-key-secret-that-is-at-least-32-characters",
+      AUTH_RATE_LIMITER_KEY_ID: "key-current",
+      AUTH_RATE_LIMITER_NAMESPACE: "rwos:authrl:production:v1"
     };
     expect(validateRuntimeConfig(env)).toMatchObject({ success: true });
     expect(getRuntimeConfig(env)).toMatchObject({
@@ -66,6 +68,28 @@ describe("production runtime configuration", () => {
     ).toMatchObject({ success: false });
   });
 
+  it("forbids enabling the Assignment handoff in production and defaults it off elsewhere", () => {
+    const production = {
+      RWOS_ENV: "production",
+      NODE_ENV: "production",
+      DATABASE_URL: "postgresql://db.example.test/rwos",
+      INTERNAL_API_ORIGIN: "https://api.example.test",
+      AUTH_RATE_LIMITER_ORIGIN: "https://rate-limit.example.test",
+      AUTH_RATE_LIMITER_TOKEN: "test-rate-limiter-token-at-least-32-characters",
+      AUTH_RATE_LIMITER_KEY_SECRET: "test-key-secret-that-is-at-least-32-characters",
+      AUTH_RATE_LIMITER_KEY_ID: "key-current",
+      AUTH_RATE_LIMITER_NAMESPACE: "rwos:authrl:production:v1",
+      ASSIGNMENT_HANDOFF_ENABLED: "enabled"
+    };
+    expect(validateRuntimeConfig(production)).toMatchObject({ success: false });
+    expect(getRuntimeConfig({ RWOS_ENV: "test" })).toMatchObject({
+      assignmentHandoffEnabled: false
+    });
+    expect(
+      getRuntimeConfig({ RWOS_ENV: "test", ASSIGNMENT_HANDOFF_ENABLED: "enabled" })
+    ).toMatchObject({ assignmentHandoffEnabled: true });
+  });
+
   it.each([
     {
       CANDIDATE_SOURCE_ORIGIN: "http://candidate.example.test",
@@ -87,8 +111,42 @@ describe("production runtime configuration", () => {
         AUTH_RATE_LIMITER_ORIGIN: "https://rate-limit.example.test",
         AUTH_RATE_LIMITER_TOKEN: "test-rate-limiter-token-at-least-32-characters",
         AUTH_RATE_LIMITER_KEY_SECRET: "test-key-secret-that-is-at-least-32-characters",
+        AUTH_RATE_LIMITER_KEY_ID: "key-current",
+        AUTH_RATE_LIMITER_NAMESPACE: "rwos:authrl:production:v1",
         ...integration
       })
     ).toMatchObject({ success: false });
+  });
+
+  it("requires the limiter namespace to match the declared runtime environment", () => {
+    expect(
+      validateRuntimeConfig({
+        RWOS_ENV: "test",
+        AUTH_RATE_LIMITER_NAMESPACE: "rwos:authrl:production:v1"
+      })
+    ).toMatchObject({ success: false });
+    expect(
+      validateRuntimeConfig({
+        RWOS_ENV: "test",
+        AUTH_RATE_LIMITER_NAMESPACE: "rwos:authrl:test:v1"
+      })
+    ).toMatchObject({ success: true });
+  });
+
+  it.each([
+    { CANDIDATE_SOURCE_ORIGIN: "https://candidate.example.test" },
+    {
+      CANDIDATE_SOURCE_ORIGIN: "http://candidate.example.test",
+      CANDIDATE_SOURCE_TOKEN: "x".repeat(32)
+    },
+    { OFFER_DELIVERY_ORIGIN: "https://delivery.example.test" },
+    {
+      OFFER_DELIVERY_ORIGIN: "http://delivery.example.test",
+      OFFER_DELIVERY_TOKEN: "x".repeat(32)
+    }
+  ])("fails closed for a partial or insecure staging integration", (integration) => {
+    expect(validateRuntimeConfig({ RWOS_ENV: "staging", ...integration })).toMatchObject({
+      success: false
+    });
   });
 });

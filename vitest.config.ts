@@ -1,4 +1,4 @@
-import { defineConfig } from "vitest/config";
+import { configDefaults, defineConfig } from "vitest/config";
 import { fileURLToPath } from "node:url";
 
 const root = fileURLToPath(new URL(".", import.meta.url));
@@ -12,6 +12,8 @@ export default defineConfig({
       "@rwos/design-system": `${root}packages/design-system/src/index.ts`,
       "@rwos/notifications": `${root}packages/notifications/src/index.ts`,
       "@rwos/observability": `${root}packages/observability/src/index.ts`,
+      "@rwos/service-auth/testing": `${root}packages/service-auth/src/testing.ts`,
+      "@rwos/service-auth": `${root}packages/service-auth/src/index.ts`,
       "@rwos/shared": `${root}packages/shared/src/index.ts`,
       "@rwos/ui": `${root}packages/ui/src/index.ts`,
       "@rwos/validation": `${root}packages/validation/src/index.ts`
@@ -19,6 +21,7 @@ export default defineConfig({
   },
   test: {
     environment: "node",
+    exclude: [...configDefaults.exclude, "tests/e2e/browser/**"],
     maxWorkers: 4,
     testTimeout: 15_000
   }

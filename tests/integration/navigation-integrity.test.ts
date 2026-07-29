@@ -121,6 +121,10 @@ function validateInternalRouteReference({
       return null;
     }
 
+    if (idsInPage(sourceFile).has(routeReference.slice(1))) {
+      return null;
+    }
+
     const sourceRoute = routeFromPage(appDir, sourceFile) ?? "/";
     const sourcePage = pageForRoute(appDir, sourceRoute);
     return idsInPage(sourcePage).has(routeReference.slice(1))

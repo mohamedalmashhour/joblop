@@ -1,6 +1,10 @@
 {
   "files": [],
   "references": [
+    { "path": "./apps/auth-limiter" },
+    { "path": "./apps/candidate-source" },
+    { "path": "./apps/offer-delivery" },
+    { "path": "./apps/qa-reset" },
     { "path": "./apps/api" },
     { "path": "./apps/mobile" },
     { "path": "./packages/auth" },
@@ -9,6 +13,7 @@
     { "path": "./packages/design-system" },
     { "path": "./packages/notifications" },
     { "path": "./packages/observability" },
+    { "path": "./packages/service-auth" },
     { "path": "./packages/shared" },
     { "path": "./packages/ui" },
     { "path": "./packages/validation" }

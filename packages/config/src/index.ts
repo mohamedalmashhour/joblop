@@ -4,19 +4,53 @@ const runtimeConfigSchema = z
   .object({
     NODE_ENV: z.enum(["development", "test", "production"]).default("development"),
     RWOS_ENV: z.enum(["local", "test", "staging", "production"]).default("local"),
+    PORT: z.coerce.number().int().positive().optional(),
     API_PORT: z.coerce.number().int().positive().default(4100),
     INTERNAL_API_ORIGIN: z.string().url().default("http://127.0.0.1:4100"),
     DATABASE_URL: z.string().min(1).optional(),
     AUTH_RATE_LIMITER_ORIGIN: z.string().url().optional(),
     AUTH_RATE_LIMITER_TOKEN: z.string().min(32).optional(),
     AUTH_RATE_LIMITER_KEY_SECRET: z.string().min(32).optional(),
+    AUTH_RATE_LIMITER_KEY_ID: z
+      .string()
+      .regex(/^[a-z0-9][a-z0-9_-]{0,31}$/)
+      .optional(),
+    AUTH_RATE_LIMITER_NAMESPACE: z
+      .string()
+      .regex(/^rwos:authrl:(?:local|test|staging|production):v1$/)
+      .optional(),
     CANDIDATE_SOURCE_ORIGIN: z.string().url().optional(),
     CANDIDATE_SOURCE_TOKEN: z.string().min(32).optional(),
     OFFER_DELIVERY_ORIGIN: z.string().url().optional(),
     OFFER_DELIVERY_TOKEN: z.string().min(32).optional(),
+    ASSIGNMENT_HANDOFF_ENABLED: z.enum(["disabled", "enabled"]).default("disabled"),
     SESSION_SECRET: z.string().optional()
   })
   .superRefine((config, context) => {
+    if (
+      config.AUTH_RATE_LIMITER_NAMESPACE &&
+      config.AUTH_RATE_LIMITER_NAMESPACE !== `rwos:authrl:${config.RWOS_ENV}:v1`
+    ) {
+      context.addIssue({
+        code: "custom",
+        path: ["AUTH_RATE_LIMITER_NAMESPACE"],
+        message: "AUTH_RATE_LIMITER_NAMESPACE must match RWOS_ENV."
+      });
+    }
+    if (config.RWOS_ENV === "staging" || config.RWOS_ENV === "production") {
+      requirePairedHttpsIntegration(
+        config.CANDIDATE_SOURCE_ORIGIN,
+        config.CANDIDATE_SOURCE_TOKEN,
+        "CANDIDATE_SOURCE",
+        context
+      );
+      requirePairedHttpsIntegration(
+        config.OFFER_DELIVERY_ORIGIN,
+        config.OFFER_DELIVERY_TOKEN,
+        "OFFER_DELIVERY",
+        context
+      );
+    }
     if (config.RWOS_ENV !== "production") return;
     if (config.NODE_ENV !== "production") {
       context.addIssue({
@@ -60,6 +94,27 @@ const runtimeConfigSchema = z
         message: "AUTH_RATE_LIMITER_KEY_SECRET is required when RWOS_ENV is production."
       });
     }
+    if (!config.AUTH_RATE_LIMITER_KEY_ID) {
+      context.addIssue({
+        code: "custom",
+        path: ["AUTH_RATE_LIMITER_KEY_ID"],
+        message: "AUTH_RATE_LIMITER_KEY_ID is required when RWOS_ENV is production."
+      });
+    }
+    if (!config.AUTH_RATE_LIMITER_NAMESPACE) {
+      context.addIssue({
+        code: "custom",
+        path: ["AUTH_RATE_LIMITER_NAMESPACE"],
+        message: "AUTH_RATE_LIMITER_NAMESPACE is required when RWOS_ENV is production."
+      });
+    }
+    if (config.ASSIGNMENT_HANDOFF_ENABLED === "enabled") {
+      context.addIssue({
+        code: "custom",
+        path: ["ASSIGNMENT_HANDOFF_ENABLED"],
+        message: "ASSIGNMENT_HANDOFF_ENABLED cannot be enabled in production."
+      });
+    }
     if (
       config.AUTH_RATE_LIMITER_TOKEN &&
       config.AUTH_RATE_LIMITER_KEY_SECRET &&
@@ -71,18 +126,6 @@ const runtimeConfigSchema = z
         message: "AUTH_RATE_LIMITER_KEY_SECRET must be distinct from AUTH_RATE_LIMITER_TOKEN."
       });
     }
-    requirePairedHttpsIntegration(
-      config.CANDIDATE_SOURCE_ORIGIN,
-      config.CANDIDATE_SOURCE_TOKEN,
-      "CANDIDATE_SOURCE",
-      context
-    );
-    requirePairedHttpsIntegration(
-      config.OFFER_DELIVERY_ORIGIN,
-      config.OFFER_DELIVERY_TOKEN,
-      "OFFER_DELIVERY",
-      context
-    );
   });
 
 function requirePairedHttpsIntegration(
@@ -114,20 +157,26 @@ export function getRuntimeConfig(env: NodeJS.ProcessEnv = process.env) {
   return {
     nodeEnv: parsed.NODE_ENV,
     rwosEnv: parsed.RWOS_ENV,
-    apiPort: parsed.API_PORT,
+    apiPort: parsed.PORT ?? parsed.API_PORT,
     internalApiOrigin: parsed.INTERNAL_API_ORIGIN,
     databaseUrl: parsed.DATABASE_URL,
     authRateLimiterOrigin: parsed.AUTH_RATE_LIMITER_ORIGIN,
     authRateLimiterToken: parsed.AUTH_RATE_LIMITER_TOKEN,
     authRateLimiterKeySecret: parsed.AUTH_RATE_LIMITER_KEY_SECRET,
+    authRateLimiterKeyId: parsed.AUTH_RATE_LIMITER_KEY_ID,
+    authRateLimiterNamespace: parsed.AUTH_RATE_LIMITER_NAMESPACE,
     candidateSourceOrigin: parsed.CANDIDATE_SOURCE_ORIGIN,
     candidateSourceToken: parsed.CANDIDATE_SOURCE_TOKEN,
     offerDeliveryOrigin: parsed.OFFER_DELIVERY_ORIGIN,
     offerDeliveryToken: parsed.OFFER_DELIVERY_TOKEN,
+    assignmentHandoffEnabled:
+      parsed.RWOS_ENV !== "production" && parsed.ASSIGNMENT_HANDOFF_ENABLED === "enabled",
     hasDistributedAuthRateLimiter: Boolean(
       parsed.AUTH_RATE_LIMITER_ORIGIN &&
       parsed.AUTH_RATE_LIMITER_TOKEN &&
-      parsed.AUTH_RATE_LIMITER_KEY_SECRET
+      parsed.AUTH_RATE_LIMITER_KEY_SECRET &&
+      parsed.AUTH_RATE_LIMITER_KEY_ID &&
+      parsed.AUTH_RATE_LIMITER_NAMESPACE
     ),
     hasCandidateSource: Boolean(parsed.CANDIDATE_SOURCE_ORIGIN && parsed.CANDIDATE_SOURCE_TOKEN),
     hasOfferDelivery: Boolean(parsed.OFFER_DELIVERY_ORIGIN && parsed.OFFER_DELIVERY_TOKEN),

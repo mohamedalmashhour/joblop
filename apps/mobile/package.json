@@ -7,6 +7,7 @@
     "build": "EXPO_HOME=.expo EXPO_NO_TELEMETRY=1 expo export --platform web --output-dir dist",
     "typecheck": "tsc --noEmit",
     "lint": "eslint .",
+    "start": "node server.mjs",
     "test": "vitest run"
   },
   "dependencies": {
