@@ -26,10 +26,25 @@ export type MobileSessionState =
 
 type MobileSessionFetch = typeof fetch;
 
+export const workerAssignmentStatuses = [
+  "pending_validation",
+  "confirmed",
+  "worker_acknowledged",
+  "ready_for_attendance",
+  "in_attendance_window",
+  "attendance_handoff",
+  "worker_withdrawn",
+  "employer_cancelled",
+  "platform_cancelled",
+  "replacement_required",
+  "expired_before_start",
+  "closed"
+] as const;
+
 export type WorkerAssignmentDto = Readonly<{
   assignmentId: string;
   workerOfferId: string;
-  status: string;
+  status: (typeof workerAssignmentStatuses)[number];
   title: string;
   roleSummary: string | null;
   worksiteSummary: string | null;
@@ -104,6 +119,7 @@ export function createMobileSessionTransport(options: {
     > {
       const token = await options.vault.read();
       if (!token) return { status: "denied" };
+      if (!isOperationalReference(offerId)) return { status: "error" };
       try {
         const response = await request(`${origin}/worker/offers/${encodeURIComponent(offerId)}`, {
           method: "GET",
@@ -116,7 +132,9 @@ export function createMobileSessionTransport(options: {
         if (response.status === 503) return { status: "unavailable" };
         if (!response.ok) return { status: "error" };
         const payload = (await response.json()) as { workerOffer?: unknown };
-        return { status: "ready", data: parseWorkerCalendarDto(payload.workerOffer) };
+        const workerOffer = parseWorkerCalendarDto(payload.workerOffer);
+        if (workerOffer.workerOfferId !== offerId) return { status: "error" };
+        return { status: "ready", data: workerOffer };
       } catch {
         return { status: "error" };
       }
@@ -184,6 +202,14 @@ export function createMobileSessionTransport(options: {
     > {
       const token = await options.vault.read();
       if (!token) return { status: "denied" };
+      if (
+        !isOperationalReference(input.offerId) ||
+        !Number.isInteger(input.expectedVersion) ||
+        input.expectedVersion < 1 ||
+        !isOperationalReference(input.expectedTermsVersionId)
+      ) {
+        return { status: "error" };
+      }
       try {
         const response = await request(
           `${origin}/worker/offers/${encodeURIComponent(input.offerId)}/${input.decision}`,
@@ -207,7 +233,9 @@ export function createMobileSessionTransport(options: {
         if (response.status === 503) return { status: "unavailable" };
         if (!response.ok) return { status: "error" };
         const payload = (await response.json()) as { workerOffer?: unknown };
-        return { status: "ready", data: parseWorkerCalendarDto(payload.workerOffer) };
+        const workerOffer = parseWorkerCalendarDto(payload.workerOffer);
+        if (workerOffer.workerOfferId !== input.offerId) return { status: "error" };
+        return { status: "ready", data: workerOffer };
       } catch {
         return { status: "error" };
       }
@@ -247,6 +275,10 @@ function readToken(input: unknown) {
   return typeof value === "string" && value.length >= 20 ? value : null;
 }
 
+function isOperationalReference(input: string) {
+  return /^[A-Za-z0-9][A-Za-z0-9_-]{0,127}$/u.test(input);
+}
+
 function parseWorkerAssignment(input: unknown): WorkerAssignmentDto {
   if (!input || typeof input !== "object") throw new Error("RWOS_INVALID_WORKER_ASSIGNMENT");
   const value = input as Record<string, unknown>;
@@ -272,20 +304,43 @@ function parseWorkerAssignment(input: unknown): WorkerAssignmentDto {
   if (value.visibility !== "worker_authorized_assignment") {
     throw new Error("RWOS_INVALID_WORKER_ASSIGNMENT");
   }
+  const status = required("status");
+  if (!workerAssignmentStatuses.includes(status as WorkerAssignmentDto["status"])) {
+    throw new Error("RWOS_INVALID_WORKER_ASSIGNMENT");
+  }
+  const startAt = required("startAt");
+  const endAt = required("endAt");
+  const updatedAt = required("updatedAt");
+  const startTime = Date.parse(startAt);
+  const endTime = Date.parse(endAt);
+  if (
+    !Number.isFinite(startTime) ||
+    !Number.isFinite(endTime) ||
+    !Number.isFinite(Date.parse(updatedAt)) ||
+    startTime >= endTime
+  ) {
+    throw new Error("RWOS_INVALID_WORKER_ASSIGNMENT");
+  }
+  const timezone = required("timezone");
+  try {
+    new Intl.DateTimeFormat("en", { timeZone: timezone }).format(new Date(startTime));
+  } catch {
+    throw new Error("RWOS_INVALID_WORKER_ASSIGNMENT");
+  }
   return {
     assignmentId: required("assignmentId"),
     workerOfferId: required("workerOfferId"),
-    status: required("status"),
+    status: status as WorkerAssignmentDto["status"],
     title: required("title"),
     roleSummary: optional("roleSummary"),
     worksiteSummary: optional("worksiteSummary"),
     departmentSummary: optional("departmentSummary"),
-    startAt: required("startAt"),
-    endAt: required("endAt"),
-    timezone: required("timezone"),
+    startAt,
+    endAt,
+    timezone,
     attendanceBoundary: attendanceBoundary as WorkerAssignmentDto["attendanceBoundary"],
     versionToken: versionToken as number,
-    updatedAt: required("updatedAt"),
+    updatedAt,
     visibility: "worker_authorized_assignment"
   };
 }

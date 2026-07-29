@@ -28,7 +28,12 @@ export default function ProductionApp() {
       <StatusBar style="dark" />
       <View style={styles.app}>
         <View style={styles.header}>
-          <View style={styles.mark}>
+          <View
+            accessibilityElementsHidden
+            accessible={false}
+            importantForAccessibility="no-hide-descendants"
+            style={styles.mark}
+          >
             <Text style={styles.markText}>RW</Text>
           </View>
           <View>

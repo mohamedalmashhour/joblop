@@ -84,6 +84,69 @@ describe("mobile secure session transport", () => {
     expect(result).not.toHaveProperty("data.clientBillRate");
   });
 
+  it("rejects an offer response that does not match the worker-requested reference", async () => {
+    const secureVault = vault();
+    secureVault.stored = "native-session-token-123456789";
+    const transport = createMobileSessionTransport({
+      apiOrigin: "https://api.example.test",
+      vault: secureVault,
+      fetch: vi.fn(async () =>
+        response(200, {
+          workerOffer: workerOfferFixture({ workerOfferId: "offer-for-another-worker" })
+        })
+      )
+    });
+
+    await expect(transport.workerOffer("offer-1")).resolves.toEqual({ status: "error" });
+  });
+
+  it("rejects a mutation response that switches to another worker offer", async () => {
+    const secureVault = vault();
+    secureVault.stored = "native-session-token-123456789";
+    const transport = createMobileSessionTransport({
+      apiOrigin: "https://api.example.test",
+      vault: secureVault,
+      fetch: vi.fn(async () =>
+        response(200, {
+          workerOffer: workerOfferFixture({ workerOfferId: "offer-for-another-worker" })
+        })
+      )
+    });
+
+    await expect(
+      transport.respondToWorkerOffer({
+        offerId: "offer-1",
+        decision: "accept",
+        expectedVersion: 1,
+        expectedTermsVersionId: "terms-1"
+      })
+    ).resolves.toEqual({ status: "error" });
+  });
+
+  it("rejects malformed worker references and stale mutation versions before network access", async () => {
+    const secureVault = vault();
+    secureVault.stored = "native-session-token-123456789";
+    const network = vi.fn();
+    const transport = createMobileSessionTransport({
+      apiOrigin: "https://api.example.test",
+      vault: secureVault,
+      fetch: network
+    });
+
+    await expect(transport.workerOffer("../../another-worker")).resolves.toEqual({
+      status: "error"
+    });
+    await expect(
+      transport.respondToWorkerOffer({
+        offerId: "offer-1",
+        decision: "decline",
+        expectedVersion: 0,
+        expectedTermsVersionId: "terms-1"
+      })
+    ).resolves.toEqual({ status: "error" });
+    expect(network).not.toHaveBeenCalled();
+  });
+
   it("clears the vault even when remote sign-out fails", async () => {
     const secureVault = vault();
     secureVault.stored = "native-session-token-123456789";
@@ -138,6 +201,45 @@ describe("mobile secure session transport", () => {
     expect(result.status).toBe("ready");
     expect(result).not.toHaveProperty("data.0.validationSnapshot");
     expect(result).not.toHaveProperty("data.0.workerIdentityId");
+  });
+
+  it.each([
+    ["unknown status", { status: "mystery" }],
+    ["invalid timezone", { timezone: "Not/A_Timezone" }],
+    ["reversed assignment window", { startAt: "2026-08-02T18:00:00.000Z" }],
+    ["invalid update timestamp", { updatedAt: "not-a-date" }]
+  ])("fails closed for %s in a worker assignment", async (_label, override) => {
+    const secureVault = vault();
+    secureVault.stored = "native-session-token-123456789";
+    const transport = createMobileSessionTransport({
+      apiOrigin: "https://api.example.test",
+      vault: secureVault,
+      fetch: vi.fn(async () =>
+        response(200, {
+          assignments: [
+            {
+              assignmentId: "assignment-1",
+              workerOfferId: "offer-1",
+              status: "confirmed",
+              title: "Dinner Chef Coverage",
+              roleSummary: "Chef",
+              worksiteSummary: "Main residence",
+              departmentSummary: "Kitchen",
+              startAt: "2026-08-02T12:00:00.000Z",
+              endAt: "2026-08-02T16:00:00.000Z",
+              timezone: "America/Toronto",
+              attendanceBoundary: "not_started",
+              versionToken: 0,
+              updatedAt: "2026-07-27T12:00:00.000Z",
+              visibility: "worker_authorized_assignment",
+              ...override
+            }
+          ]
+        })
+      )
+    });
+
+    await expect(transport.workerAssignments()).resolves.toEqual({ status: "error" });
   });
 
   it("requires sign-out before changing accounts", async () => {
@@ -195,3 +297,23 @@ describe("mobile secure session transport", () => {
     ).not.toBeNull();
   });
 });
+
+function workerOfferFixture(override: Record<string, unknown> = {}) {
+  return {
+    workerOfferId: "offer-1",
+    jobRequestId: "request-1",
+    status: "sent",
+    expiresAt: "2026-08-02T12:00:00.000Z",
+    title: null,
+    summary: null,
+    startAt: null,
+    endAt: null,
+    timezone: null,
+    compensationSummary: null,
+    policySummary: null,
+    termsVersionId: "terms-1",
+    versionToken: 1,
+    visibility: "worker_authorized_offer_reference",
+    ...override
+  };
+}

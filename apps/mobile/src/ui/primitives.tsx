@@ -100,6 +100,7 @@ export function Button({
   return (
     <Pressable
       accessibilityRole="button"
+      accessibilityState={{ disabled }}
       disabled={disabled}
       onPress={onPress}
       style={[styles.button, styles[`${variant}Button`], disabled ? styles.disabledButton : null]}
@@ -154,8 +155,15 @@ export function EmptyState({ title, body }: { title: string; body: string }) {
 export function LoadingState({ label = "Loading shifts" }: { label?: string }) {
   return (
     <Card testID="loading-state">
-      <ActivityIndicator color={colors.deepTeal} />
-      <BodyText>{label}</BodyText>
+      <View
+        accessibilityLabel={label}
+        accessibilityLiveRegion="polite"
+        accessibilityRole="progressbar"
+        accessible
+      >
+        <ActivityIndicator color={colors.deepTeal} />
+        <BodyText>{label}</BodyText>
+      </View>
     </Card>
   );
 }

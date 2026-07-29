@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 import { ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
 import { colors, spacing } from "@rwos/design-system";
-import type { WorkerCalendarDto } from "@rwos/shared";
+import { formatRwosDateTime, type WorkerCalendarDto } from "@rwos/shared";
 import type { createMobileSessionTransport, WorkerAssignmentDto } from "../../auth/secureSession";
 import {
   Badge,
@@ -410,12 +410,12 @@ function WorkerAssignmentList({ transport }: Readonly<{ transport: WorkerTranspo
     void load();
   }, [load]);
   return (
-    <Section title="Confirmed assignments">
+    <Section title="Assignments">
       {state.status === "loading" ? (
         <SmallText>Loading worker-authorized assignments…</SmallText>
       ) : null}
       {state.status === "empty" ? (
-        <SmallText>No confirmed assignments are available for this worker account.</SmallText>
+        <SmallText>No assignments are available for this worker account.</SmallText>
       ) : null}
       {state.status === "denied" ? (
         <SmallText>Sign in with the assigned worker account to view assignments.</SmallText>
@@ -433,10 +433,16 @@ function WorkerAssignmentList({ transport }: Readonly<{ transport: WorkerTranspo
       {state.status === "ready"
         ? state.data.map((assignment) => (
             <Card key={assignment.assignmentId}>
-              <Badge label={assignment.status} tone="success" />
+              <Badge
+                label={assignmentStatusLabel(assignment.status)}
+                tone={assignmentStatusTone(assignment.status)}
+              />
               <Heading>{assignment.title}</Heading>
               <BodyText>{formatAssignmentWindow(assignment)}</BodyText>
               <BodyText>{assignment.worksiteSummary ?? "Worksite details unavailable"}</BodyText>
+              <SmallText>
+                Updated {formatAssignmentUpdatedAt(assignment.updatedAt, assignment.timezone)}.
+              </SmallText>
               <SmallText>
                 Attendance remains separate: {assignment.attendanceBoundary.replaceAll("_", " ")}.
               </SmallText>
@@ -461,6 +467,43 @@ function workerOfferTone(status: WorkerCalendarDto["status"]) {
   return "warning" as const;
 }
 
+function assignmentStatusTone(status: WorkerAssignmentDto["status"]) {
+  if (
+    status === "confirmed" ||
+    status === "worker_acknowledged" ||
+    status === "ready_for_attendance" ||
+    status === "in_attendance_window"
+  ) {
+    return "success" as const;
+  }
+  if (
+    status === "worker_withdrawn" ||
+    status === "employer_cancelled" ||
+    status === "platform_cancelled" ||
+    status === "expired_before_start"
+  ) {
+    return "danger" as const;
+  }
+  if (status === "replacement_required") return "warning" as const;
+  return "neutral" as const;
+}
+
+function assignmentStatusLabel(status: WorkerAssignmentDto["status"]) {
+  return status.replaceAll("_", " ");
+}
+
+function formatAssignmentUpdatedAt(updatedAt: string, timezone: string) {
+  return formatRwosDateTime(updatedAt, {
+    year: "numeric",
+    month: "short",
+    day: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+    timeZone: timezone,
+    timeZoneName: "short"
+  });
+}
+
 function StateCard({
   title,
   message,
@@ -481,37 +524,40 @@ function StateCard({
 
 function formatWindow(offer: WorkerCalendarDto) {
   if (!offer.startAt || !offer.endAt || !offer.timezone) return "Schedule unavailable";
-  const start = new Intl.DateTimeFormat("en-CA", {
+  const start = formatRwosDateTime(offer.startAt, {
     dateStyle: "medium",
     timeStyle: "short",
     timeZone: offer.timezone
-  }).format(new Date(offer.startAt));
-  const end = new Intl.DateTimeFormat("en-CA", {
+  });
+  const end = formatRwosDateTime(offer.endAt, {
     timeStyle: "short",
     timeZone: offer.timezone
-  }).format(new Date(offer.endAt));
-  return `${start}–${end}`;
+  });
+  return start === "Unavailable" || end === "Unavailable"
+    ? "Schedule unavailable"
+    : `${start}–${end}`;
 }
 
 function formatExpiry(expiresAt: string) {
-  return `${new Intl.DateTimeFormat("en-CA", {
+  const formatted = formatRwosDateTime(expiresAt, {
     dateStyle: "medium",
     timeStyle: "short",
     timeZone: "UTC"
-  }).format(new Date(expiresAt))} UTC`;
+  });
+  return formatted === "Unavailable" ? formatted : `${formatted} UTC`;
 }
 
 function formatAssignmentWindow(assignment: WorkerAssignmentDto) {
-  const start = new Intl.DateTimeFormat("en-CA", {
+  const start = formatRwosDateTime(assignment.startAt, {
     dateStyle: "medium",
     timeStyle: "short",
     timeZone: assignment.timezone
-  }).format(new Date(assignment.startAt));
-  const end = new Intl.DateTimeFormat("en-CA", {
+  });
+  const end = formatRwosDateTime(assignment.endAt, {
     timeStyle: "short",
     timeZone: assignment.timezone
-  }).format(new Date(assignment.endAt));
-  return `${start}–${end}`;
+  });
+  return start === "Unavailable" || end === "Unavailable" ? "Unavailable" : `${start}–${end}`;
 }
 
 const styles = StyleSheet.create({
