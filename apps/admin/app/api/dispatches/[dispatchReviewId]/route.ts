@@ -16,7 +16,9 @@ export async function GET(
   try {
     const payload = result.payload as { dispatchReview?: unknown };
     return Response.json(
-      { dispatchReview: parseAdminDispatchReview(payload.dispatchReview) },
+      {
+        dispatchReview: parseAdminDispatchReview(payload.dispatchReview, dispatchReviewId)
+      },
       { headers: { "cache-control": "private, no-store" } }
     );
   } catch {

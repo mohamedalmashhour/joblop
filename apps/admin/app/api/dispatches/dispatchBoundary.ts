@@ -56,7 +56,10 @@ export function parseCandidateSourceStatus(input: unknown) {
   };
 }
 
-export function parseAdminDispatchReview(input: unknown): AdminDispatchReview {
+export function parseAdminDispatchReview(
+  input: unknown,
+  expectedDispatchReviewId?: string
+): AdminDispatchReview {
   const record = asRecord(input);
   const states = [
     "draft",
@@ -70,6 +73,7 @@ export function parseAdminDispatchReview(input: unknown): AdminDispatchReview {
   ];
   if (
     !isUuid(record.id) ||
+    (expectedDispatchReviewId !== undefined && record.id !== expectedDispatchReviewId) ||
     !isUuid(record.jobRequestId) ||
     !states.includes(String(record.state)) ||
     !["normal", "urgent", "emergency"].includes(String(record.priority)) ||

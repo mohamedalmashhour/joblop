@@ -15,8 +15,10 @@ export async function GET(
   if (result.status !== "ok") return sessionFailure(result.status);
   try {
     const payload = result.payload as { request?: unknown };
+    const calendarRequest = parseAdminCalendarDto(payload.request);
+    if (calendarRequest.id !== requestId) return sessionFailure("error");
     return Response.json(
-      { request: parseAdminCalendarDto(payload.request) },
+      { request: calendarRequest },
       { headers: { "cache-control": "private, no-store" } }
     );
   } catch {

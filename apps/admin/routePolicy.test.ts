@@ -7,6 +7,8 @@ describe("admin production route policy", () => {
       "/calendar",
       "/calendar/",
       "/calendar/request",
+      "/health",
+      "/ready",
       "/dispatches",
       "/dispatches/11111111-1111-4111-8111-111111111111",
       "/api/session",

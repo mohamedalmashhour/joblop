@@ -25,7 +25,9 @@ export async function POST(
   try {
     const payload = result.payload as { dispatchReview?: unknown };
     return Response.json(
-      { dispatchReview: parseAdminDispatchReview(payload.dispatchReview) },
+      {
+        dispatchReview: parseAdminDispatchReview(payload.dispatchReview, dispatchReviewId)
+      },
       { headers: privateHeaders }
     );
   } catch {

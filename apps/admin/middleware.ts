@@ -27,6 +27,9 @@ export async function middleware(request: NextRequest) {
           ? NextResponse.redirect(new URL("/calendar", request.url))
           : new NextResponse("Service Unavailable", { status: 503 });
       }
+      if (!hasPlatformAdminAuthorization(await authorization.json())) {
+        return new NextResponse("Service Unavailable", { status: 503 });
+      }
     } catch {
       return new NextResponse("Service Unavailable", { status: 503 });
     }
@@ -45,5 +48,14 @@ function isProtectedAdminPage(pathname: string) {
     pathname === "/calendar/request" ||
     pathname === "/dispatches" ||
     pathname.startsWith("/dispatches/")
+  );
+}
+
+export function hasPlatformAdminAuthorization(input: unknown) {
+  return (
+    typeof input === "object" &&
+    input !== null &&
+    !Array.isArray(input) &&
+    (input as Record<string, unknown>).authorized === true
   );
 }

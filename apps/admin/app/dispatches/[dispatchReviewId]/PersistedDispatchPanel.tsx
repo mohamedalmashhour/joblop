@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
+import { formatRwosDateTime } from "@rwos/shared";
 import type { AdminDispatchReview } from "../../api/dispatches/dispatchBoundary";
 import { CandidateReviewPanel } from "./CandidateReviewPanel";
 import { OfferAssignmentStatusPanel } from "./OfferAssignmentStatusPanel";
@@ -18,7 +19,7 @@ export function PersistedDispatchPanel({
         cache: "no-store"
       });
       if (!response.ok) {
-        setStatus(response.status === 401 ? "denied" : "unavailable");
+        setStatus(response.status === 401 || response.status === 403 ? "denied" : "unavailable");
         return;
       }
       const payload = (await response.json()) as { dispatchReview?: AdminDispatchReview };
@@ -37,7 +38,7 @@ export function PersistedDispatchPanel({
   if (status !== "ready" || !dispatch) {
     return (
       <main style={styles.page}>
-        <section aria-live="polite" style={styles.hero}>
+        <section aria-busy={status === "loading"} aria-live="polite" style={styles.hero}>
           <h1>
             {status === "loading" ? "Loading dispatch review" : "Dispatch review unavailable"}
           </h1>
@@ -120,9 +121,11 @@ export function PersistedDispatchPanel({
 }
 
 function formatDate(value: string) {
-  return new Intl.DateTimeFormat("en-CA", { dateStyle: "medium", timeStyle: "short" }).format(
-    new Date(value)
-  );
+  return formatRwosDateTime(value, {
+    dateStyle: "medium",
+    timeStyle: "short",
+    timeZone: "UTC"
+  });
 }
 
 function dispatchStateCopy(state: AdminDispatchReview["state"]) {

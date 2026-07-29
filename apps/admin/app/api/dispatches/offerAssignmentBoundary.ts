@@ -30,7 +30,7 @@ export type AdminAssignmentSummary = Readonly<{
   dispatchReviewId: string;
   workerOfferId: string;
   workerIdentityId: string;
-  status: string;
+  status: (typeof assignmentStatuses)[number];
   title: string;
   startAt: string;
   endAt: string;
@@ -50,7 +50,40 @@ export function parseAdminAssignments(input: unknown, dispatchReviewId: string) 
   return input.map((item) => parseAdminAssignment(item, dispatchReviewId));
 }
 
-function parseAdminWorkerOffer(input: unknown, dispatchReviewId: string): AdminWorkerOfferSummary {
+export function eligibleOffersForAssignment(
+  offers: readonly AdminWorkerOfferSummary[],
+  assignments: readonly AdminAssignmentSummary[]
+) {
+  const assignedOfferIds = new Set(assignments.map((assignment) => assignment.workerOfferId));
+  return offers.filter((offer) => offer.status === "accepted" && !assignedOfferIds.has(offer.id));
+}
+
+export function readAssignmentCreateInput(input: unknown) {
+  let record: Record<string, unknown>;
+  try {
+    record = asRecord(input);
+  } catch {
+    return null;
+  }
+  if (Object.keys(record).length !== 2) return null;
+  try {
+    return {
+      workerOfferId: uuid(record, "workerOfferId"),
+      expectedOfferVersion: positiveInteger(record, "expectedOfferVersion")
+    };
+  } catch {
+    return null;
+  }
+}
+
+export function isCanonicalOperationalId(input: string) {
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/u.test(input);
+}
+
+export function parseAdminWorkerOffer(
+  input: unknown,
+  dispatchReviewId: string
+): AdminWorkerOfferSummary {
   const record = asRecord(input);
   const terms = asRecord(record.currentTermsVersion);
   const status = requiredString(record, "status");
@@ -78,27 +111,38 @@ function parseAdminWorkerOffer(input: unknown, dispatchReviewId: string): AdminW
   };
 }
 
-function parseAdminAssignment(input: unknown, dispatchReviewId: string): AdminAssignmentSummary {
+export function parseAdminAssignment(
+  input: unknown,
+  dispatchReviewId: string
+): AdminAssignmentSummary {
   const record = asRecord(input);
   const attendanceBoundary = requiredString(record, "attendanceBoundary");
+  const status = requiredString(record, "status");
   if (
     requiredString(record, "dispatchReviewId") !== dispatchReviewId ||
-    !["not_started", "handoff_ready", "handoff_completed"].includes(attendanceBoundary)
+    !["not_started", "handoff_ready", "handoff_completed"].includes(attendanceBoundary) ||
+    !assignmentStatuses.some((candidateStatus) => candidateStatus === status)
   ) {
     throw new Error("RWOS_INVALID_ADMIN_ASSIGNMENT");
   }
+  const startAt = isoDate(record, "confirmedStartAt");
+  const endAt = isoDate(record, "confirmedEndAt");
+  if (Date.parse(startAt) >= Date.parse(endAt)) {
+    throw new Error("RWOS_INVALID_ADMIN_ASSIGNMENT_WINDOW");
+  }
+  const timezone = timeZone(record, "timezone");
   return {
     id: uuid(record, "id"),
     dispatchReviewId: uuid(record, "dispatchReviewId"),
     workerOfferId: uuid(record, "workerOfferId"),
     workerIdentityId: uuid(record, "workerIdentityId"),
-    status: requiredString(record, "status"),
+    status: status as AdminAssignmentSummary["status"],
     title: requiredString(record, "confirmedTitle"),
-    startAt: isoDate(record, "confirmedStartAt"),
-    endAt: isoDate(record, "confirmedEndAt"),
-    timezone: requiredString(record, "timezone"),
+    startAt,
+    endAt,
+    timezone,
     attendanceBoundary: attendanceBoundary as AdminAssignmentSummary["attendanceBoundary"],
-    versionToken: nonNegativeInteger(record, "versionToken"),
+    versionToken: positiveInteger(record, "versionToken"),
     updatedAt: isoDate(record, "updatedAt")
   };
 }
@@ -116,6 +160,21 @@ const workerOfferStatuses = [
   "cancelled"
 ] as const;
 
+const assignmentStatuses = [
+  "pending_validation",
+  "confirmed",
+  "worker_acknowledged",
+  "ready_for_attendance",
+  "in_attendance_window",
+  "attendance_handoff",
+  "worker_withdrawn",
+  "employer_cancelled",
+  "platform_cancelled",
+  "replacement_required",
+  "expired_before_start",
+  "closed"
+] as const;
+
 function asRecord(input: unknown): Record<string, unknown> {
   if (!input || typeof input !== "object" || Array.isArray(input)) {
     throw new Error("RWOS_INVALID_ADMIN_OPERATIONAL_RECORD");
@@ -131,7 +190,7 @@ function requiredString(record: Record<string, unknown>, key: string) {
 
 function uuid(record: Record<string, unknown>, key: string) {
   const value = requiredString(record, key);
-  if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/iu.test(value)) {
+  if (!isCanonicalOperationalId(value)) {
     throw new Error("RWOS_INVALID_ADMIN_OPERATIONAL_ID");
   }
   return value;
@@ -157,4 +216,20 @@ function nonNegativeInteger(record: Record<string, unknown>, key: string) {
     throw new Error("RWOS_INVALID_ADMIN_OPERATIONAL_VERSION");
   }
   return value as number;
+}
+
+function positiveInteger(record: Record<string, unknown>, key: string) {
+  const value = nonNegativeInteger(record, key);
+  if (value < 1) throw new Error("RWOS_INVALID_ADMIN_OPERATIONAL_VERSION");
+  return value;
+}
+
+function timeZone(record: Record<string, unknown>, key: string) {
+  const value = requiredString(record, key);
+  try {
+    new Intl.DateTimeFormat("en", { timeZone: value }).format(new Date());
+  } catch {
+    throw new Error("RWOS_INVALID_ADMIN_OPERATIONAL_TIMEZONE");
+  }
+  return value;
 }

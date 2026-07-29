@@ -7,6 +7,8 @@ export function isProductionAdminRouteAllowed(pathname: string) {
   if (path.startsWith("/api/") || path === "/api") return true;
   if (path.startsWith("/_next/") || isStaticAsset(path)) return true;
   return (
+    path === "/health" ||
+    path === "/ready" ||
     path === "/calendar" ||
     path === "/calendar/request" ||
     path === "/dispatches" ||

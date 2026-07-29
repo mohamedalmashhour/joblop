@@ -21,7 +21,7 @@ export async function GET(request: Request) {
   try {
     const payload = result.payload as { dispatches?: unknown };
     const dispatches = Array.isArray(payload.dispatches)
-      ? payload.dispatches.map(parseAdminDispatchReview)
+      ? payload.dispatches.map((dispatch) => parseAdminDispatchReview(dispatch))
       : [];
     const matches = dispatches.filter((dispatch) => dispatch.jobRequestId === jobRequestId);
     if (matches.length > 1) {

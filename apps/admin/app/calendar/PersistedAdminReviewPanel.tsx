@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
   calendarFailureState,
+  formatRwosDateTime,
   parseAdminCalendarDto,
   type AdminCalendarDto,
   type AuthenticatedViewState
@@ -342,16 +343,18 @@ function confirmationCopy(action: "admin-review" | "request-information" | "appr
 }
 
 function formatWindow(request: AdminCalendarDto) {
-  const start = new Intl.DateTimeFormat("en-CA", {
+  const start = formatRwosDateTime(request.startAt, {
     dateStyle: "medium",
     timeStyle: "short",
     timeZone: request.timezone
-  }).format(new Date(request.startAt));
-  const end = new Intl.DateTimeFormat("en-CA", {
+  });
+  const end = formatRwosDateTime(request.endAt, {
     timeStyle: "short",
     timeZone: request.timezone
-  }).format(new Date(request.endAt));
-  return `${start}–${end} (${request.timezone})`;
+  });
+  return start === "Unavailable" || end === "Unavailable"
+    ? "Unavailable"
+    : `${start}–${end} (${request.timezone})`;
 }
 
 function AdminState({

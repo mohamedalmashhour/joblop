@@ -1,7 +1,7 @@
 "use client";
 
 import { usePathname } from "next/navigation";
-import type { ReactNode } from "react";
+import { useEffect, useRef, type ReactNode } from "react";
 
 const navigation = [
   { href: "/calendar", label: "Request calendar" },
@@ -10,9 +10,20 @@ const navigation = [
 
 export function AdminShell({ children }: Readonly<{ children: ReactNode }>) {
   const pathname = usePathname();
+  const contentRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const main = contentRef.current?.querySelector("main");
+    if (!main) return;
+    main.id = "admin-main-content";
+    main.tabIndex = -1;
+  }, [pathname]);
 
   return (
     <div className="admin-app-shell">
+      <a className="admin-skip-link" href="#admin-main-content">
+        Skip to main content
+      </a>
       <header className="admin-topbar">
         <a
           aria-label="Resident Workforce OS administration home"
@@ -46,7 +57,7 @@ export function AdminShell({ children }: Readonly<{ children: ReactNode }>) {
           );
         })}
       </nav>
-      <div>{children}</div>
+      <div ref={contentRef}>{children}</div>
     </div>
   );
 }

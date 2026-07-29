@@ -82,6 +82,27 @@ describe("admin dispatch BFF boundary", () => {
     }
   });
 
+  it("rejects a dispatch record that does not match the requested detail route", () => {
+    expect(() =>
+      parseAdminDispatchReview(
+        {
+          id: dispatchId,
+          jobRequestId,
+          state: "draft",
+          priority: "normal",
+          requiredWorkerCount: 1,
+          shortlistedCandidateCount: 0,
+          preparedOfferCount: 0,
+          remainingWorkerCount: 1,
+          versionToken: 1,
+          createdAt: "2026-07-27T12:00:00.000Z",
+          updatedAt: "2026-07-27T12:00:00.000Z"
+        },
+        "33333333-3333-4333-8333-333333333333"
+      )
+    ).toThrow("RWOS_INVALID_DISPATCH_RESPONSE");
+  });
+
   it("requires a strict positive version for dispatch transitions", () => {
     expect(readDispatchTransitionInput({ expectedVersion: 2 })).toEqual({
       expectedVersion: 2

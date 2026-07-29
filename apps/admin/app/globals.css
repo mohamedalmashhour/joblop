@@ -14,6 +14,26 @@ body {
   min-height: 100vh;
 }
 
+.admin-skip-link {
+  background: #ffffff;
+  border: 3px solid #f3b61f;
+  border-radius: 6px;
+  color: #071d49;
+  font-family: Inter, system-ui, sans-serif;
+  font-weight: 800;
+  left: 12px;
+  padding: 10px 14px;
+  position: fixed;
+  text-decoration: none;
+  top: 12px;
+  transform: translateY(-160%);
+  z-index: 1000;
+}
+
+.admin-skip-link:focus {
+  transform: translateY(0);
+}
+
 .admin-topbar {
   align-items: center;
   background: #071d49;
@@ -93,11 +113,13 @@ body {
 }
 
 .admin-brand:focus-visible,
+.admin-skip-link:focus-visible,
 .admin-nav-link:focus-visible,
 .admin-app-shell main a:focus-visible,
 .admin-app-shell main button:focus-visible,
 .admin-app-shell main input:focus-visible,
-.admin-app-shell main select:focus-visible {
+.admin-app-shell main select:focus-visible,
+.admin-app-shell main textarea:focus-visible {
   outline: 3px solid #f3b61f;
   outline-offset: 3px;
 }

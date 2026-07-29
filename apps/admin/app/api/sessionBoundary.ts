@@ -36,19 +36,32 @@ export function isSameOriginMutation(request: Request) {
   return origin === new URL(request.url).origin && fetchSite !== "cross-site";
 }
 
-export function sessionFailure(status: "denied" | "stale" | "unavailable" | "error") {
-  const httpStatus = status === "denied" ? 401 : status === "stale" ? 409 : status === "unavailable" ? 503 : 500;
+export function sessionFailure(
+  status: "denied" | "not_found" | "stale" | "unavailable" | "error"
+) {
+  const httpStatus =
+    status === "denied"
+      ? 401
+      : status === "not_found"
+        ? 404
+        : status === "stale"
+          ? 409
+          : status === "unavailable"
+            ? 503
+            : 500;
   return Response.json(
     {
       status,
       message:
         status === "denied"
           ? "Authentication required."
-          : status === "stale"
-            ? "Calendar information changed. Refresh and try again."
-            : status === "unavailable"
-              ? "Service unavailable."
-              : "Request could not be completed."
+          : status === "not_found"
+            ? "Resource unavailable."
+            : status === "stale"
+              ? "Calendar information changed. Refresh and try again."
+              : status === "unavailable"
+                ? "Service unavailable."
+                : "Request could not be completed."
     },
     {
       status: httpStatus,
