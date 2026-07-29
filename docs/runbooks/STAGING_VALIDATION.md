@@ -12,9 +12,15 @@ Required configuration is supplied by the approved secret manager:
 - `RWOS_STAGING_DATABASE_CLUSTER_ID`, `RWOS_PRODUCTION_DATABASE_CLUSTER_ID`
 - `DATABASE_URL`
 - `INTERNAL_API_ORIGIN`
-- `AUTH_RATE_LIMITER_ORIGIN`, `AUTH_RATE_LIMITER_TOKEN`, `AUTH_RATE_LIMITER_KEY_SECRET`
+- `AUTH_RATE_LIMITER_ORIGIN`, `AUTH_RATE_LIMITER_TOKEN`, `AUTH_RATE_LIMITER_KEY_SECRET`,
+  `AUTH_RATE_LIMITER_KEY_ID`, `AUTH_RATE_LIMITER_NAMESPACE`
 - `CANDIDATE_SOURCE_ORIGIN`, `CANDIDATE_SOURCE_TOKEN`
 - `OFFER_DELIVERY_ORIGIN`, `OFFER_DELIVERY_TOKEN`
+- `AUTH_LIMITER_AUTH_MODE`, `AUTH_LIMITER_AUDIENCE`, `AUTH_LIMITER_API_SERVICE_ACCOUNT`
+- `CANDIDATE_ADAPTER_AUTH_MODE`, `CANDIDATE_ADAPTER_AUDIENCE`,
+  `CANDIDATE_ADAPTER_API_SERVICE_ACCOUNT`
+- `OFFER_DELIVERY_ADAPTER_AUTH_MODE`, `OFFER_DELIVERY_ADAPTER_AUDIENCE`,
+  `OFFER_DELIVERY_ADAPTER_API_SERVICE_ACCOUNT`
 - `SECRET_MANAGER_PROVIDER`
 - `MONITORING_HEALTHCHECK_URL`
 - `PAGING_HEALTHCHECK_URL`
@@ -37,6 +43,7 @@ pnpm test:postgres:required
 The first command checks repository boundaries, migration integrity, HTTPS dependency health,
 database connectivity, and applied migration state. It rejects localhost, an unlabeled database,
 missing staging authorization, missing providers, insecure URLs, and shared limiter credentials.
+Receiver readiness rejects `legacy-app-only` and a missing injected verifier in staging.
 The staging database URL must use `sslmode=require`, `verify-ca`, or `verify-full`. A passing result
 emits the non-secret release SHA, provider-qualified staging/production cluster IDs, and TLS mode.
 Cluster IDs must contain at least three stable provider-inventory segments; mutable labels such as

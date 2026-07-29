@@ -40,10 +40,21 @@ export function validateStagingEnvironment(env: StagingValidationEnvironment) {
     "AUTH_RATE_LIMITER_ORIGIN",
     "AUTH_RATE_LIMITER_TOKEN",
     "AUTH_RATE_LIMITER_KEY_SECRET",
+    "AUTH_RATE_LIMITER_KEY_ID",
+    "AUTH_RATE_LIMITER_NAMESPACE",
+    "AUTH_LIMITER_AUTH_MODE",
+    "AUTH_LIMITER_AUDIENCE",
+    "AUTH_LIMITER_API_SERVICE_ACCOUNT",
     "CANDIDATE_SOURCE_ORIGIN",
     "CANDIDATE_SOURCE_TOKEN",
+    "CANDIDATE_ADAPTER_AUTH_MODE",
+    "CANDIDATE_ADAPTER_AUDIENCE",
+    "CANDIDATE_ADAPTER_API_SERVICE_ACCOUNT",
     "OFFER_DELIVERY_ORIGIN",
     "OFFER_DELIVERY_TOKEN",
+    "OFFER_DELIVERY_ADAPTER_AUTH_MODE",
+    "OFFER_DELIVERY_ADAPTER_AUDIENCE",
+    "OFFER_DELIVERY_ADAPTER_API_SERVICE_ACCOUNT",
     "SECRET_MANAGER_PROVIDER",
     "MONITORING_HEALTHCHECK_URL",
     "PAGING_HEALTHCHECK_URL"
@@ -117,6 +128,24 @@ export function validateStagingEnvironment(env: StagingValidationEnvironment) {
     env.AUTH_RATE_LIMITER_TOKEN === env.AUTH_RATE_LIMITER_KEY_SECRET
   ) {
     issues.push("AUTH_RATE_LIMITER_TOKEN and AUTH_RATE_LIMITER_KEY_SECRET must be distinct.");
+  }
+  for (const key of [
+    "AUTH_LIMITER_AUTH_MODE",
+    "CANDIDATE_ADAPTER_AUTH_MODE",
+    "OFFER_DELIVERY_ADAPTER_AUTH_MODE"
+  ] as const) {
+    if (env[key] && !["dual-required", "iam-application"].includes(env[key])) {
+      issues.push(`${key} must require IAM and application authorization.`);
+    }
+  }
+  for (const key of [
+    "AUTH_LIMITER_AUDIENCE",
+    "CANDIDATE_ADAPTER_AUDIENCE",
+    "OFFER_DELIVERY_ADAPTER_AUDIENCE"
+  ] as const) {
+    if (env[key] && (!isHttps(env[key]) || !env[key].endsWith(".run.app"))) {
+      issues.push(`${key} must be an exact HTTPS Cloud Run audience.`);
+    }
   }
 
   return issues;

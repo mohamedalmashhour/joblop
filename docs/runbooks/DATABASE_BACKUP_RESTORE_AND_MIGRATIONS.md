@@ -144,3 +144,16 @@ explicit human authorization.
 
 Provider screenshots or a “backup enabled” setting are insufficient. Launch evidence requires a
 witnessed isolated restore/PITR drill and measured recovery results.
+
+Validate the resulting non-secret evidence record with:
+
+```sh
+RWOS_EVIDENCE_GATE=backup_pitr \
+RWOS_EVIDENCE_PATH='<approved evidence JSON>' \
+RWOS_RELEASE_SHA='<full lowercase 40-character release SHA>' \
+pnpm validate:evidence
+```
+
+The validator checks release binding, distinct immutable source/target identities, provider job
+references, operators/reviewer/witness, measured RPO/RTO, verification, and cleanup. It does not
+perform or certify the provider restore itself.

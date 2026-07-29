@@ -1,14 +1,14 @@
 # Target-Environment E2E Contract
 
-Status: **BLOCKED — executable browser runner/configuration is not implemented.** Runner
-implementation, credentials and staging fixtures remain open. Repository unit/integration fixtures
-must never be presented as target-environment evidence.
+Status: **BLOCKED — executable Playwright runner/configuration is implemented; approved staging
+inputs and target-environment evidence are absent.** Repository unit/integration fixtures must
+never be presented as target-environment evidence.
 
-The missing runner must use a maintained browser automation framework, define Chrome/Safari-engine/
-Firefox coverage, fail closed without a full release SHA and approved staging inputs, exercise the
-visible UI rather than relabel API requests, retain privacy-reviewed traces/screenshots, and provide
-an exact non-interactive command suitable for CI. Runner implementation alone does not make this
-gate GREEN.
+The runner uses Playwright with Chromium, WebKit and Firefox projects, fails closed without a full
+release SHA and approved staging inputs, exercises visible sign-in surfaces, retains failure
+traces/screenshots/video for privacy review, includes axe checks, and invokes the QA reset service
+before and after execution. Execute it non-interactively with `pnpm test:e2e:browser`. Runner
+implementation alone does not make this gate GREEN.
 
 ## Required inputs
 
@@ -20,6 +20,15 @@ gate GREEN.
 
 Credentials must enter through the approved test secret store, never source control or command
 history.
+
+Required variable names and validation rules are implemented in
+`tests/e2e/e2e-environment-policy.ts`. `RWOS_E2E_CONFIRMATION` must equal
+`authorized-staging-browser-e2e`. All origins must be remote HTTPS, tenant IDs must differ, and
+`RWOS_RELEASE_SHA` must be the exact full release commit.
+
+The approved reset service must implement authenticated `POST /v1/reset`. The runner sends only the
+action (`prepare` or `cleanup`), the two isolated tenant IDs, release SHA, and confirmation. Any
+non-success response aborts the run. The token is read from the secret store and is never emitted.
 
 ## Employer journey
 

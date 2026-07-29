@@ -73,3 +73,17 @@ Record the timeline, release, safe request IDs, affected route/status counts, co
 impact, recovery verification, corrective tests, owner, and due date. Observability logs are not the
 domain audit ledger and must not be retained indefinitely. Retention duration and access controls
 require privacy/security approval before deployment.
+
+Validate a completed drill’s non-secret evidence record with:
+
+```sh
+RWOS_EVIDENCE_GATE=monitoring_incident \
+RWOS_EVIDENCE_PATH='<approved evidence JSON>' \
+RWOS_RELEASE_SHA='<full lowercase 40-character release SHA>' \
+pnpm validate:evidence
+```
+
+The validator requires immutable paging identity, chronological
+fired/delivered/acknowledged/escalated/resolved timestamps, alert IDs,
+primary/secondary/commander ownership, an incident record, post-drill approval, and explicit
+closure approval. It does not simulate or fabricate alert delivery.

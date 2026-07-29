@@ -25,48 +25,55 @@ suite("PostgreSQL Assignment serialization", () => {
   });
 
   it("repeatedly commits exactly one final-slot Assignment across independent clients", async () => {
-    const repository = createPrismaAssignmentRepository(prisma);
+    const clients = [createPrismaClient(databaseUrl), createPrismaClient(databaseUrl)] as const;
+    const repositories = clients.map(createPrismaAssignmentRepository);
+    try {
+      for (let iteration = 1; iteration <= 5; iteration += 1) {
+        const chain = await seedAcceptedOffers({
+          prisma,
+          foundation,
+          key: `capacity-${iteration}`,
+          workerIdentityIds: foundation.workerIdentityIds,
+          numberOfWorkers: 1,
+          startAt: new Date(`2026-08-${10 + iteration}T12:00:00.000Z`),
+          endAt: new Date(`2026-08-${10 + iteration}T20:00:00.000Z`)
+        });
+        const results = await Promise.all(
+          chain.offerIds.map((workerOfferId, index) =>
+            repositories[index]!.createAssignmentFromAcceptedOfferAtomically({
+              workerOfferId,
+              expectedDispatchReviewId: chain.dispatchReviewId,
+              expectedOfferVersion: 1,
+              actorUserId,
+              correlationId: `pg-capacity-${iteration}-${index}`,
+              now
+            })
+          )
+        );
 
-    for (let iteration = 1; iteration <= 5; iteration += 1) {
-      const chain = await seedAcceptedOffers({
-        prisma,
-        foundation,
-        key: `capacity-${iteration}`,
-        workerIdentityIds: foundation.workerIdentityIds,
-        numberOfWorkers: 1,
-        startAt: new Date(`2026-08-${10 + iteration}T12:00:00.000Z`),
-        endAt: new Date(`2026-08-${10 + iteration}T20:00:00.000Z`)
-      });
-      const results = await Promise.all(
-        chain.offerIds.map((workerOfferId, index) =>
-          repository.createAssignmentFromAcceptedOfferAtomically({
-            workerOfferId,
-            actorUserId,
-            correlationId: `pg-capacity-${iteration}-${index}`,
-            now
-          })
-        )
-      );
-
-      expect(results.filter((result) => result.ok)).toHaveLength(1);
-      expect(results.filter((result) => !result.ok)).toEqual([
-        expect.objectContaining({ reason: "job_capacity_reached" })
-      ]);
-      await expect(
-        repository.countActiveAssignmentsForJobRequest(chain.jobRequestId)
-      ).resolves.toBe(1);
+        expect(results.filter((result) => result.ok)).toHaveLength(1);
+        expect(results.filter((result) => !result.ok)).toEqual([
+          expect.objectContaining({ reason: "job_capacity_reached" })
+        ]);
+        await expect(
+          repositories[0]!.countActiveAssignmentsForJobRequest(chain.jobRequestId)
+        ).resolves.toBe(1);
+      }
+    } finally {
+      await Promise.all(clients.map((client) => client.$disconnect()));
     }
   });
 
   it("repeatedly prevents one worker from receiving overlapping Assignments", async () => {
-    const repository = createPrismaAssignmentRepository(prisma);
+    const clients = [createPrismaClient(databaseUrl), createPrismaClient(databaseUrl)] as const;
+    const repositories = clients.map(createPrismaAssignmentRepository);
     const workerIdentityId = foundation.workerIdentityIds[0];
 
-    for (let iteration = 1; iteration <= 5; iteration += 1) {
-      const startAt = new Date(`2026-09-${10 + iteration}T12:00:00.000Z`);
-      const endAt = new Date(`2026-09-${10 + iteration}T20:00:00.000Z`);
-      const [first, second] = await Promise.all([
-        seedAcceptedOffers({
+    try {
+      for (let iteration = 1; iteration <= 5; iteration += 1) {
+        const startAt = new Date(`2026-09-${10 + iteration}T12:00:00.000Z`);
+        const endAt = new Date(`2026-09-${10 + iteration}T20:00:00.000Z`);
+        const first = await seedAcceptedOffers({
           prisma,
           foundation,
           key: `overlap-a-${iteration}`,
@@ -74,8 +81,8 @@ suite("PostgreSQL Assignment serialization", () => {
           numberOfWorkers: 1,
           startAt,
           endAt
-        }),
-        seedAcceptedOffers({
+        });
+        const second = await seedAcceptedOffers({
           prisma,
           foundation,
           key: `overlap-b-${iteration}`,
@@ -83,34 +90,40 @@ suite("PostgreSQL Assignment serialization", () => {
           numberOfWorkers: 1,
           startAt: new Date(startAt.getTime() + 60 * 60 * 1000),
           endAt: new Date(endAt.getTime() + 60 * 60 * 1000)
-        })
-      ]);
-      const results = await Promise.all([
-        repository.createAssignmentFromAcceptedOfferAtomically({
-          workerOfferId: first.offerIds[0]!,
-          actorUserId,
-          correlationId: `pg-overlap-a-${iteration}`,
-          now
-        }),
-        repository.createAssignmentFromAcceptedOfferAtomically({
-          workerOfferId: second.offerIds[0]!,
-          actorUserId,
-          correlationId: `pg-overlap-b-${iteration}`,
-          now
-        })
-      ]);
+        });
+        const results = await Promise.all([
+          repositories[0]!.createAssignmentFromAcceptedOfferAtomically({
+            workerOfferId: first.offerIds[0]!,
+            expectedDispatchReviewId: first.dispatchReviewId,
+            expectedOfferVersion: 1,
+            actorUserId,
+            correlationId: `pg-overlap-a-${iteration}`,
+            now
+          }),
+          repositories[1]!.createAssignmentFromAcceptedOfferAtomically({
+            workerOfferId: second.offerIds[0]!,
+            expectedDispatchReviewId: second.dispatchReviewId,
+            expectedOfferVersion: 1,
+            actorUserId,
+            correlationId: `pg-overlap-b-${iteration}`,
+            now
+          })
+        ]);
 
-      expect(results.filter((result) => result.ok)).toHaveLength(1);
-      expect(results.filter((result) => !result.ok)).toEqual([
-        expect.objectContaining({ reason: "worker_schedule_conflict" })
-      ]);
-      await expect(
-        repository.countConflictingAssignments({
-          workerIdentityId,
-          startAt,
-          endAt: new Date(endAt.getTime() + 60 * 60 * 1000)
-        })
-      ).resolves.toBe(1);
+        expect(results.filter((result) => result.ok)).toHaveLength(1);
+        expect(results.filter((result) => !result.ok)).toEqual([
+          expect.objectContaining({ reason: "worker_schedule_conflict" })
+        ]);
+        await expect(
+          repositories[0]!.countConflictingAssignments({
+            workerIdentityId,
+            startAt,
+            endAt: new Date(endAt.getTime() + 60 * 60 * 1000)
+          })
+        ).resolves.toBe(1);
+      }
+    } finally {
+      await Promise.all(clients.map((client) => client.$disconnect()));
     }
   });
 });
@@ -238,51 +251,50 @@ async function seedAcceptedOffers(input: {
       createdByUserId: actorUserId
     }
   });
-  const offerIds = await Promise.all(
-    input.workerIdentityIds.map(async (workerIdentityId) => {
-      const offer = await input.prisma.workerOffer.create({
-        data: {
-          dispatchReviewId: dispatch.id,
-          jobRequestId: jobRequest.id,
-          organizationId: input.foundation.organizationId,
-          residenceId: input.foundation.residenceId,
-          departmentId: input.foundation.departmentId,
-          workerIdentityId,
-          status: "accepted",
-          expiresAt: new Date(input.startAt.getTime() - 60 * 60 * 1000),
-          approvedAt: now,
-          sentAt: now,
-          respondedAt: now,
-          createdByUserId: actorUserId
-        }
-      });
-      const terms = await input.prisma.workerOfferTermsVersion.create({
-        data: {
-          workerOfferId: offer.id,
-          versionNumber: 1,
-          workerVisibleTitle: jobRequest.title,
-          timezone: "America/Toronto",
-          startAt: input.startAt,
-          endAt: input.endAt,
-          workGroupId: input.foundation.workGroupId,
-          roleDefinitionId: input.foundation.roleDefinitionId,
-          createdByUserId: actorUserId
-        }
-      });
-      await input.prisma.workerOffer.update({
-        where: { id: offer.id },
-        data: { currentTermsVersionId: terms.id }
-      });
-      await input.prisma.workerOfferResponse.create({
-        data: {
-          workerOfferId: offer.id,
-          workerIdentityId,
-          termsVersionId: terms.id,
-          responseType: "accepted"
-        }
-      });
-      return offer.id;
-    })
-  );
-  return { jobRequestId: jobRequest.id, offerIds };
+  const offerIds: string[] = [];
+  for (const workerIdentityId of input.workerIdentityIds) {
+    const offer = await input.prisma.workerOffer.create({
+      data: {
+        dispatchReviewId: dispatch.id,
+        jobRequestId: jobRequest.id,
+        organizationId: input.foundation.organizationId,
+        residenceId: input.foundation.residenceId,
+        departmentId: input.foundation.departmentId,
+        workerIdentityId,
+        status: "accepted",
+        expiresAt: new Date(input.startAt.getTime() - 60 * 60 * 1000),
+        approvedAt: now,
+        sentAt: now,
+        respondedAt: now,
+        createdByUserId: actorUserId
+      }
+    });
+    const terms = await input.prisma.workerOfferTermsVersion.create({
+      data: {
+        workerOfferId: offer.id,
+        versionNumber: 1,
+        workerVisibleTitle: jobRequest.title,
+        timezone: "America/Toronto",
+        startAt: input.startAt,
+        endAt: input.endAt,
+        workGroupId: input.foundation.workGroupId,
+        roleDefinitionId: input.foundation.roleDefinitionId,
+        createdByUserId: actorUserId
+      }
+    });
+    await input.prisma.workerOffer.update({
+      where: { id: offer.id },
+      data: { currentTermsVersionId: terms.id }
+    });
+    await input.prisma.workerOfferResponse.create({
+      data: {
+        workerOfferId: offer.id,
+        workerIdentityId,
+        termsVersionId: terms.id,
+        responseType: "accepted"
+      }
+    });
+    offerIds.push(offer.id);
+  }
+  return { jobRequestId: jobRequest.id, dispatchReviewId: dispatch.id, offerIds };
 }

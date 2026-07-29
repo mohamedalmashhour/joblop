@@ -18,10 +18,21 @@ const validEnvironment = {
   AUTH_RATE_LIMITER_ORIGIN: "https://limiter.staging.example.test",
   AUTH_RATE_LIMITER_TOKEN: "limiter-token-that-is-longer-than-thirty-two-characters",
   AUTH_RATE_LIMITER_KEY_SECRET: "distinct-hmac-secret-longer-than-thirty-two-characters",
+  AUTH_RATE_LIMITER_KEY_ID: "key-2026-07",
+  AUTH_RATE_LIMITER_NAMESPACE: "rwos:authrl:staging:v1",
+  AUTH_LIMITER_AUTH_MODE: "dual-required",
+  AUTH_LIMITER_AUDIENCE: "https://rwos-limiter-opaque-nn.a.run.app",
+  AUTH_LIMITER_API_SERVICE_ACCOUNT: "rwos-api@staging.invalid",
   CANDIDATE_SOURCE_ORIGIN: "https://candidate.staging.example.test",
   CANDIDATE_SOURCE_TOKEN: "candidate-token-that-is-longer-than-thirty-two-characters",
+  CANDIDATE_ADAPTER_AUTH_MODE: "dual-required",
+  CANDIDATE_ADAPTER_AUDIENCE: "https://rwos-candidate-opaque-nn.a.run.app",
+  CANDIDATE_ADAPTER_API_SERVICE_ACCOUNT: "rwos-api@staging.invalid",
   OFFER_DELIVERY_ORIGIN: "https://delivery.staging.example.test",
   OFFER_DELIVERY_TOKEN: "delivery-token-that-is-longer-than-thirty-two-characters",
+  OFFER_DELIVERY_ADAPTER_AUTH_MODE: "iam-application",
+  OFFER_DELIVERY_ADAPTER_AUDIENCE: "https://rwos-delivery-opaque-nn.a.run.app",
+  OFFER_DELIVERY_ADAPTER_API_SERVICE_ACCOUNT: "rwos-api@staging.invalid",
   SECRET_MANAGER_PROVIDER: "approved-provider/reference-only",
   MONITORING_HEALTHCHECK_URL: "https://monitoring.staging.example.test/health",
   PAGING_HEALTHCHECK_URL: "https://paging.staging.example.test/health"
@@ -71,6 +82,7 @@ describe("staging validation policy", () => {
       }
     ],
     ["insecure provider", { OFFER_DELIVERY_ORIGIN: "http://delivery.example.test" }],
+    ["legacy receiver mode", { AUTH_LIMITER_AUTH_MODE: "legacy-app-only" }],
     [
       "shared limiter secrets",
       {

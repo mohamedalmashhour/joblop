@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import {
   buildIsolatedDatabaseUrl,
+  localPostgresTestMode,
   postgresTestConfirmation,
   validatePostgresTestTarget
 } from "./postgres-test-target-policy";
@@ -127,5 +128,70 @@ describe("required PostgreSQL target policy", () => {
     expect(isolated.pathname).toBe("/rwos_validation_123");
     expect(isolated.searchParams.get("sslmode")).toBe("require");
     expect(isolated.searchParams.get("channel_binding")).toBe("require");
+  });
+
+  it("accepts a confirmed loopback disposable target without external evidence metadata", () => {
+    expect(
+      validatePostgresTestTarget(
+        "postgresql://rwos@127.0.0.1:55432/rwos_validation_admin",
+        postgresTestConfirmation,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        localPostgresTestMode
+      )
+    ).toEqual([]);
+  });
+
+  it("keeps local mode loopback-only and rejects application URL collisions", () => {
+    const localUrl = "postgresql://rwos@localhost:55432/rwos_test_admin";
+    expect(
+      validatePostgresTestTarget(
+        "postgresql://rwos@db.example.test/rwos_validation",
+        postgresTestConfirmation,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        localPostgresTestMode
+      )
+    ).toContain("Local PostgreSQL validation requires a loopback RWOS_TEST_DATABASE_URL.");
+    expect(
+      validatePostgresTestTarget(
+        localUrl,
+        postgresTestConfirmation,
+        "postgresql://other@127.0.0.1:55432/rwos_test_admin?schema=public",
+        undefined,
+        undefined,
+        undefined,
+        localPostgresTestMode
+      )
+    ).toContain("RWOS_TEST_DATABASE_URL must differ from DATABASE_URL.");
+  });
+
+  it("rejects unlabeled local databases and unknown modes", () => {
+    expect(
+      validatePostgresTestTarget(
+        "postgresql://rwos@127.0.0.1:55432/resident_workforce",
+        postgresTestConfirmation,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        localPostgresTestMode
+      )
+    ).toContain("Local RWOS_TEST_DATABASE_URL must name an explicit validation or test database.");
+    expect(
+      validatePostgresTestTarget(
+        testUrl,
+        postgresTestConfirmation,
+        undefined,
+        testClusterId,
+        productionClusterId,
+        releaseSha,
+        "anything"
+      )
+    ).toContain("RWOS_POSTGRES_TEST_MODE must equal staging or local-disposable.");
   });
 });

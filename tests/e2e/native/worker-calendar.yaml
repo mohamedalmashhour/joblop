@@ -1,0 +1,14 @@
+appId: ${RWOS_NATIVE_APP_ID}
+name: Worker calendar authenticated production journey
+---
+- launchApp:
+    clearState: true
+- assertVisible: "Resident Workforce OS"
+- tapOn: "Email"
+- inputText: ${RWOS_NATIVE_WORKER_EMAIL}
+- tapOn: "Password"
+- inputText: ${RWOS_NATIVE_WORKER_PASSWORD}
+- tapOn: "Sign in securely"
+- assertVisible:
+    text: "Worker offers|Worker calendar"
+- assertNotVisible: "Fixture journey"

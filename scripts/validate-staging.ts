@@ -32,7 +32,14 @@ async function main() {
   }
 
   for (const [name, originOrUrl, token, exactUrl] of checks) {
-    const url = exactUrl ? originOrUrl : new URL("/health", originOrUrl).toString();
+    const url = exactUrl
+      ? originOrUrl
+      : new URL(
+          name === "distributed_limiter" || name === "candidate_source" || name === "offer_delivery"
+            ? "/ready"
+            : "/health",
+          originOrUrl
+        ).toString();
     const response = await fetch(url, {
       headers: token ? { authorization: `Bearer ${token}` } : undefined,
       signal: AbortSignal.timeout(timeoutMs)

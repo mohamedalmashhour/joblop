@@ -13,6 +13,10 @@ The contract owner must provide an immutable Platform Contract Kit v1.1 export c
 - producer/consumer fixtures, required and forbidden fields, authorization expectations, privacy
   boundaries, and any declared v1 compatibility rules;
 - artifact checksums and the named contract owner.
+- a verified artifact signature naming its signer and algorithm;
+- immutable issuer/artifact provenance;
+- an executed, passing C3 result artifact;
+- dated contract-owner approval bound to the exact Resident Workforce OS release SHA.
 
 The repository currently contains `contracts/VERSION` at v1. It must not be relabelled or locally
 extended as v1.1.
@@ -44,6 +48,9 @@ silently converting unrelated skipped behavior to green.
 After approved installation:
 
 ```sh
+RWOS_CONTRACT_KIT_MANIFEST='<quarantine manifest path>' \
+RWOS_RELEASE_SHA='<full lowercase 40-character Resident Workforce OS release SHA>' \
+pnpm validate:contract-kit-c3
 pnpm exec vitest run tests/contracts
 pnpm typecheck
 pnpm lint
@@ -62,3 +69,10 @@ full 40-character Resident Workforce OS release SHA.
 Required owner: the named Platform Contract Kit owner. Security and Resident Workforce OS
 engineering must verify provenance and boundary compatibility, but neither may invent or
 self-approve v1.1.
+
+The intake validator requires a v1.1 manifest, full source commit, exact Resident Workforce OS
+release SHA, named contract owner, verified signature, immutable provenance, dated owner approval,
+safe relative paths, SHA-256 for every artifact, and an executed passing C3 result covering
+currency, integer minor units, precision rejection, mixed-currency rejection, and safe errors. It
+recomputes every listed checksum in quarantine and rejects a release-SHA mismatch. The validator
+consumes owner evidence; it cannot create or self-approve that evidence.
