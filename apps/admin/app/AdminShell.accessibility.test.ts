@@ -16,4 +16,16 @@ describe("admin shell accessibility", () => {
     expect(styles).toContain(".admin-app-shell main");
     expect(styles).toContain(":focus-visible");
   });
+
+  it("provides numbered previous and next navigation across admin sections", () => {
+    expect(shell).toContain("aria-label={`${sectionName} page navigation`}");
+    expect(shell).toContain("aria-label={`Previous page: ${previous.label}`}");
+    expect(shell).toContain("aria-label={`Next page: ${next.label}`}");
+    expect(shell).toContain("aria-label={`Page ${index + 1}: ${item.label}`}");
+    expect(shell).toContain('aria-current={active ? "page" : undefined}');
+    expect(shell).toContain('rel="prev"');
+    expect(shell).toContain('rel="next"');
+    expect(styles).toContain("min-height: 44px");
+    expect(styles).toContain(".admin-page-list");
+  });
 });

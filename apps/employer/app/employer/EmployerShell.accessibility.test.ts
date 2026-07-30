@@ -22,4 +22,16 @@ describe("employer shell accessibility", () => {
       /\.employer-navigation\s*\{[^}]*grid-template-columns: minmax\(0, 1fr\)/s
     );
   });
+
+  it("provides numbered previous and next navigation across employer workflow pages", () => {
+    expect(shellSource).toContain('aria-label="Employer workflow page navigation"');
+    expect(shellSource).toContain("aria-label={`Previous page: ${previous.title}`}");
+    expect(shellSource).toContain("aria-label={`Next page: ${next.title}`}");
+    expect(shellSource).toContain("aria-label={`Page ${index + 1}: ${step.title}`}");
+    expect(shellSource).toContain('aria-current={active ? "page" : undefined}');
+    expect(shellSource).toContain('rel="prev"');
+    expect(shellSource).toContain('rel="next"');
+    expect(globalStyles).toContain("min-height: 44px");
+    expect(globalStyles).toContain(".employer-page-list");
+  });
 });

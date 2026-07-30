@@ -2,15 +2,24 @@
 
 import { usePathname } from "next/navigation";
 import { useEffect, useRef, type ReactNode } from "react";
+import { phase01Routes } from "./phase-01-review/phase01ReviewContent";
 
-const navigation = [
+const connectedNavigation = [
   { href: "/calendar", label: "Request calendar" },
   { href: "/dispatches", label: "Dispatch reviews" }
 ] as const;
+const reviewNavigation = phase01Routes.map(({ route, title }) => ({ href: route, label: title }));
 
 export function AdminShell({ children }: Readonly<{ children: ReactNode }>) {
   const pathname = usePathname();
   const contentRef = useRef<HTMLDivElement>(null);
+  const navigation =
+    process.env.NEXT_PUBLIC_RWOS_ENV === "production"
+      ? connectedNavigation
+      : [...connectedNavigation, ...reviewNavigation];
+  const currentIndex = navigation.findIndex(
+    (item) => pathname === item.href || pathname.startsWith(`${item.href}/`)
+  );
 
   useEffect(() => {
     const main = contentRef.current?.querySelector("main");
@@ -57,7 +66,82 @@ export function AdminShell({ children }: Readonly<{ children: ReactNode }>) {
           );
         })}
       </nav>
+      {currentIndex >= 0 ? (
+        <PageNavigator
+          currentIndex={currentIndex}
+          navigation={navigation}
+          sectionName="Administration"
+        />
+      ) : null}
       <div ref={contentRef}>{children}</div>
     </div>
+  );
+}
+
+function PageNavigator({
+  currentIndex,
+  navigation,
+  sectionName
+}: {
+  currentIndex: number;
+  navigation: readonly { href: string; label: string }[];
+  sectionName: string;
+}) {
+  const previous = navigation[currentIndex - 1];
+  const next = navigation[currentIndex + 1];
+
+  return (
+    <nav aria-label={`${sectionName} page navigation`} className="admin-page-navigator">
+      {previous ? (
+        <a
+          aria-label={`Previous page: ${previous.label}`}
+          className="admin-page-arrow"
+          href={previous.href}
+          rel="prev"
+        >
+          <span aria-hidden="true">←</span> Back
+        </a>
+      ) : (
+        <span aria-disabled="true" className="admin-page-arrow admin-page-arrow-disabled">
+          <span aria-hidden="true">←</span> Back
+        </span>
+      )}
+      <div
+        aria-label={`Page ${currentIndex + 1} of ${navigation.length}`}
+        className="admin-page-list"
+      >
+        {navigation.map((item, index) => {
+          const active = index === currentIndex;
+          return (
+            <a
+              aria-current={active ? "page" : undefined}
+              aria-label={`Page ${index + 1}: ${item.label}`}
+              className={
+                active ? "admin-page-number admin-page-number-active" : "admin-page-number"
+              }
+              href={item.href}
+              key={item.href}
+              title={item.label}
+            >
+              {index + 1}
+            </a>
+          );
+        })}
+      </div>
+      {next ? (
+        <a
+          aria-label={`Next page: ${next.label}`}
+          className="admin-page-arrow"
+          href={next.href}
+          rel="next"
+        >
+          Next <span aria-hidden="true">→</span>
+        </a>
+      ) : (
+        <span aria-disabled="true" className="admin-page-arrow admin-page-arrow-disabled">
+          Next <span aria-hidden="true">→</span>
+        </span>
+      )}
+    </nav>
   );
 }

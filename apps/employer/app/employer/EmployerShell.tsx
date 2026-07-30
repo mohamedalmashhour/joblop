@@ -99,6 +99,7 @@ export function EmployerShell({
               <h1 style={styles.title}>{title}</h1>
               <p style={styles.lede}>{lede}</p>
             </section>
+            <EmployerPageNavigator currentRoute={currentRoute} navigation={navigation} />
             {children}
           </main>
           <footer style={styles.footer}>
@@ -118,6 +119,80 @@ export function EmployerShell({
         </div>
       </div>
     </div>
+  );
+}
+
+function EmployerPageNavigator({
+  currentRoute,
+  navigation
+}: {
+  currentRoute: string;
+  navigation: readonly {
+    boundary: string;
+    page: string;
+    route: string;
+    status: string;
+    title: string;
+  }[];
+}) {
+  const currentIndex = navigation.findIndex((step) => step.route === currentRoute);
+  if (currentIndex < 0) return null;
+  const previous = navigation[currentIndex - 1];
+  const next = navigation[currentIndex + 1];
+
+  return (
+    <nav aria-label="Employer workflow page navigation" className="employer-page-navigator">
+      {previous ? (
+        <a
+          aria-label={`Previous page: ${previous.title}`}
+          className="employer-page-arrow"
+          href={previous.route}
+          rel="prev"
+        >
+          <span aria-hidden="true">←</span> Back
+        </a>
+      ) : (
+        <span aria-disabled="true" className="employer-page-arrow employer-page-arrow-disabled">
+          <span aria-hidden="true">←</span> Back
+        </span>
+      )}
+      <div
+        aria-label={`Page ${currentIndex + 1} of ${navigation.length}`}
+        className="employer-page-list"
+      >
+        {navigation.map((step, index) => {
+          const active = index === currentIndex;
+          return (
+            <a
+              aria-current={active ? "page" : undefined}
+              aria-label={`Page ${index + 1}: ${step.title}`}
+              className={
+                active ? "employer-page-number employer-page-number-active" : "employer-page-number"
+              }
+              href={step.route}
+              key={step.route}
+              title={step.title}
+            >
+              {index + 1}
+            </a>
+          );
+        })}
+      </div>
+      {next ? (
+        <a
+          aria-label={`Next page: ${next.title}`}
+          className="employer-page-arrow"
+          href={next.route}
+          rel="next"
+        >
+          Next <span aria-hidden="true">→</span>
+        </a>
+      ) : (
+        <span aria-disabled="true" className="employer-page-arrow employer-page-arrow-disabled">
+          Next <span aria-hidden="true">→</span>
+        </span>
+      )}
+    </nav>
   );
 }
 
