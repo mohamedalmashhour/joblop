@@ -99,9 +99,17 @@ import {
   activeWorkerIdentityQuery,
   createPrismaAuthorizationRoleResolver
 } from "./authorizationRoles";
+import {
+  createEmailVerificationService,
+  emailVerificationFailure,
+  type EmailVerificationService
+} from "./emailVerification";
+import { createEmailSender, type EmailSender } from "./mailer/emailSender";
 
 export interface BuildApiOptions {
   authService?: AuthenticationService;
+  emailVerificationService?: EmailVerificationService;
+  emailSender?: EmailSender;
   authorizationService?: AuthorizationService;
   membershipService?: OrganizationMembershipService;
   organizationService?: EmployerOrganizationService;
@@ -138,7 +146,7 @@ export type AuthenticationRateLimitDecision = Readonly<{
 export interface AuthenticationRateLimiter {
   consume(
     input: Readonly<{
-      action: "register" | "sign_in";
+      action: "register" | "sign_in" | "email_verify_send";
       ip: string;
       email: string;
     }>
@@ -175,11 +183,30 @@ export function buildApi(options: BuildApiOptions = {}) {
         })
       : createMemoryAuthenticationRateLimiter());
   const prisma = options.authService ? null : createPrismaClient(runtimeConfig.databaseUrl);
+  const authenticationRepository = prisma
+    ? createPrismaAuthenticationRepository(prisma)
+    : null;
   const authService =
     options.authService ??
-    createAuthenticationService(createPrismaAuthenticationRepository(prisma!), {
+    createAuthenticationService(authenticationRepository!, {
       sessionTtlSeconds: 60 * 60 * 8
     });
+  const emailVerificationService =
+    options.emailVerificationService ??
+    (authenticationRepository && hasEmailVerificationDelegate(prisma)
+      ? createEmailVerificationService(
+          authenticationRepository,
+          options.emailSender ??
+            createEmailSender({
+              apiKey: runtimeConfig.resendApiKey,
+              from: runtimeConfig.emailFrom
+            }),
+          {
+            exposeLocalCode:
+              runtimeConfig.rwosEnv !== "production" && !runtimeConfig.hasEmailDelivery
+          }
+        )
+      : null);
   const authorizationService = options.authorizationService ?? createAuthorizationService();
   const membershipService =
     options.membershipService ??
@@ -598,6 +625,58 @@ export function buildApi(options: BuildApiOptions = {}) {
       user: serializeSessionUser(session.user),
       session: serializeSessionRecord(session.session)
     });
+  });
+
+  app.post("/auth/email/send-code", async (request, reply) => {
+    const session = await authService.validateSession(
+      readBearerToken(request.headers.authorization)
+    );
+    if (!session.authenticated || !session.user) {
+      return reply.code(401).send({
+        error: authenticationRequiredCode,
+        message: "Authentication required."
+      });
+    }
+    if (!emailVerificationService) return sendAuthenticationUnavailable(reply);
+
+    const rateLimit = await consumeAuthenticationRateLimit(authRateLimiter, {
+      action: "email_verify_send",
+      ip: request.ip,
+      email: session.user.emailNormalized
+    });
+    if (!rateLimit) return sendAuthenticationUnavailable(reply);
+    if (!rateLimit.allowed) {
+      return sendAuthenticationRateLimited(reply, rateLimit.retryAfterSeconds);
+    }
+
+    const result = await emailVerificationService.issue({
+      userId: session.user.id,
+      emailNormalized: session.user.emailNormalized
+    });
+    return reply.code(202).send(result);
+  });
+
+  app.post("/auth/email/verify-code", async (request, reply) => {
+    const session = await authService.validateSession(
+      readBearerToken(request.headers.authorization)
+    );
+    if (!session.authenticated || !session.user) {
+      return reply.code(401).send({
+        error: authenticationRequiredCode,
+        message: "Authentication required."
+      });
+    }
+    if (!emailVerificationService) return sendAuthenticationUnavailable(reply);
+
+    const code = readRequiredString(asRecord(request.body), "code");
+    if (!code || !/^\d{6}$/u.test(code)) {
+      return reply.code(400).send(emailVerificationFailure);
+    }
+    const result = await emailVerificationService.verify({
+      userId: session.user.id,
+      code
+    });
+    return reply.code(result.status === "verified" ? 200 : 400).send(result);
   });
 
   app.post("/auth/sign-out", async (request, reply) => {
@@ -3571,7 +3650,11 @@ function trustedIdentityHeaders(
 }
 
 function deriveAuthenticationRateLimitKeys(
-  input: Readonly<{ action: "register" | "sign_in"; ip: string; email: string }>,
+  input: Readonly<{
+    action: "register" | "sign_in" | "email_verify_send";
+    ip: string;
+    email: string;
+  }>,
   secret: string,
   namespace = "rwos:authrl:test:v1",
   keyId = "memory"
@@ -3584,6 +3667,15 @@ function deriveAuthenticationRateLimitKeys(
     accountKey: `${namespace}:${keyId}:${input.action}:account:${digest("account", input.email.trim().toLowerCase())}`,
     networkKey: `${namespace}:${keyId}:${input.action}:network:${digest("network", input.ip.trim().toLowerCase())}`
   };
+}
+
+function hasEmailVerificationDelegate(prisma: unknown): boolean {
+  return Boolean(
+    prisma &&
+      typeof prisma === "object" &&
+      "emailVerificationCode" in prisma &&
+      (prisma as { emailVerificationCode?: unknown }).emailVerificationCode
+  );
 }
 
 async function consumeAuthenticationRateLimit(
@@ -3608,6 +3700,7 @@ function serializeSessionUser(
     emailNormalized: string;
     displayName: string | null;
     status: string;
+    emailVerified?: boolean;
   } | null
 ) {
   if (!user) return null;
@@ -3616,7 +3709,8 @@ function serializeSessionUser(
     publicId: user.publicId,
     emailNormalized: user.emailNormalized,
     displayName: user.displayName,
-    status: user.status
+    status: user.status,
+    emailVerified: user.emailVerified === true
   };
 }
 

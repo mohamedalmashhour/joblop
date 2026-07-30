@@ -275,6 +275,114 @@ describe("api authentication foundation", () => {
     await app.close();
   });
 
+  it("keeps email verification authenticated, rate-limited, and response-bounded", async () => {
+    const repository = new ApiMemoryAuthenticationRepository();
+    const issue = vi.fn(async () => ({ status: "accepted" as const, code: "123456" }));
+    const verify = vi
+      .fn()
+      .mockResolvedValueOnce({
+        status: "verification_failed" as const,
+        message: "Verification could not be completed."
+      })
+      .mockResolvedValueOnce({ status: "verified" as const });
+    const consume = vi.fn(async () => ({ allowed: true, retryAfterSeconds: 60 }));
+    const app = buildApi({
+      authService: createAuthenticationService(repository, testAuthOptions()),
+      emailVerificationService: { issue, verify },
+      authRateLimiter: { consume }
+    });
+    const registration = await app.inject({
+      method: "POST",
+      url: "/auth/register",
+      payload: {
+        email: "verify@example.test",
+        password: "ValidPassword123",
+        displayName: "Synthetic User"
+      }
+    });
+    const token = registration.json().token as string;
+
+    const anonymous = await app.inject({ method: "POST", url: "/auth/email/send-code" });
+    expect(anonymous.statusCode).toBe(401);
+    expect(issue).not.toHaveBeenCalled();
+
+    const issued = await app.inject({
+      method: "POST",
+      url: "/auth/email/send-code",
+      headers: { authorization: `Bearer ${token}` }
+    });
+    expect(issued.statusCode).toBe(202);
+    expect(issued.json()).toEqual({ status: "accepted", code: "123456" });
+    expect(issue).toHaveBeenCalledWith({
+      userId: repository.firstUserId(),
+      emailNormalized: "verify@example.test"
+    });
+    expect(consume).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        action: "email_verify_send",
+        email: "verify@example.test"
+      })
+    );
+
+    const malformed = await app.inject({
+      method: "POST",
+      url: "/auth/email/verify-code",
+      headers: { authorization: `Bearer ${token}` },
+      payload: { code: "12345" }
+    });
+    expect(malformed.statusCode).toBe(400);
+    expect(malformed.json()).toEqual({
+      status: "verification_failed",
+      message: "Verification could not be completed."
+    });
+    expect(verify).not.toHaveBeenCalled();
+
+    const rejected = await app.inject({
+      method: "POST",
+      url: "/auth/email/verify-code",
+      headers: { authorization: `Bearer ${token}` },
+      payload: { code: "000000" }
+    });
+    expect(rejected.statusCode).toBe(400);
+    expect(rejected.json()).toEqual(malformed.json());
+
+    const accepted = await app.inject({
+      method: "POST",
+      url: "/auth/email/verify-code",
+      headers: { authorization: `Bearer ${token}` },
+      payload: { code: "123456" }
+    });
+    expect(accepted.statusCode).toBe(200);
+    expect(accepted.json()).toEqual({ status: "verified" });
+    await app.close();
+  });
+
+  it("fails email verification closed until its durable repository is available", async () => {
+    const repository = new ApiMemoryAuthenticationRepository();
+    const app = buildApi({
+      authService: createAuthenticationService(repository, testAuthOptions())
+    });
+    const registration = await app.inject({
+      method: "POST",
+      url: "/auth/register",
+      payload: {
+        email: "verify-disabled@example.test",
+        password: "ValidPassword123"
+      }
+    });
+    const response = await app.inject({
+      method: "POST",
+      url: "/auth/email/send-code",
+      headers: { authorization: `Bearer ${registration.json().token}` }
+    });
+    expect(response.statusCode).toBe(503);
+    expect(response.json()).toEqual({
+      error: "RWOS_AUTH_UNAVAILABLE",
+      message: "Authentication is temporarily unavailable. Try again later."
+    });
+    await app.close();
+  });
+
   it("uses safe authentication errors without account enumeration", async () => {
     const app = buildApi({
       authService: createAuthenticationService(new ApiMemoryAuthenticationRepository(), {
@@ -2780,9 +2888,14 @@ function apiTimesheet(): Awaited<ReturnType<TimesheetService["createFromAttendan
 class ApiMemoryAuthenticationRepository implements AuthenticationRepository {
   private users = new Map<string, StoredAuthenticationUser>();
   private sessions = new Map<string, StoredAuthenticationSession>();
+  private emailVerificationCodes = new Map<
+    string,
+    Awaited<ReturnType<AuthenticationRepository["createEmailVerificationCode"]>>
+  >();
   private auditEvents: RecordAuthenticationAuditEventInput[] = [];
   private nextUser = 1;
   private nextSession = 1;
+  private nextEmailVerification = 1;
 
   auditActions() {
     return this.auditEvents.map((event) => event.action);
@@ -2855,6 +2968,70 @@ class ApiMemoryAuthenticationRepository implements AuthenticationRepository {
     if (input.revokedAt !== undefined) session.revokedAt = input.revokedAt;
 
     return session;
+  }
+
+  async createEmailVerificationCode(
+    input: Parameters<AuthenticationRepository["createEmailVerificationCode"]>[0]
+  ) {
+    for (const verification of this.emailVerificationCodes.values()) {
+      if (verification.userId === input.userId && verification.consumedAt === null) {
+        verification.consumedAt = input.now;
+      }
+    }
+    const verification = {
+      id: `api-email-verification-${this.nextEmailVerification++}`,
+      userId: input.userId,
+      codeHash: input.codeHash,
+      attempts: 0,
+      expiresAt: input.expiresAt,
+      consumedAt: null,
+      createdAt: input.now
+    };
+    this.emailVerificationCodes.set(verification.id, verification);
+    return verification;
+  }
+
+  async findActiveEmailVerificationCode(userId: string) {
+    return (
+      [...this.emailVerificationCodes.values()]
+        .filter((verification) => verification.userId === userId && !verification.consumedAt)
+        .sort((left, right) => right.createdAt.getTime() - left.createdAt.getTime())[0] ?? null
+    );
+  }
+
+  async incrementEmailVerificationAttempts(
+    input: Parameters<AuthenticationRepository["incrementEmailVerificationAttempts"]>[0]
+  ) {
+    const verification = this.emailVerificationCodes.get(input.verificationId);
+    if (
+      !verification ||
+      verification.consumedAt ||
+      verification.attempts !== input.expectedAttempts
+    ) {
+      return null;
+    }
+    verification.attempts += 1;
+    return verification;
+  }
+
+  async consumeEmailVerificationCode(
+    input: Parameters<AuthenticationRepository["consumeEmailVerificationCode"]>[0]
+  ) {
+    const verification = this.emailVerificationCodes.get(input.verificationId);
+    if (
+      !verification ||
+      verification.consumedAt ||
+      verification.attempts !== input.expectedAttempts
+    ) {
+      return null;
+    }
+    verification.consumedAt = input.now;
+    return verification;
+  }
+
+  async markEmailVerified(input: Parameters<AuthenticationRepository["markEmailVerified"]>[0]) {
+    const user = [...this.users.values()].find((candidate) => candidate.id === input.userId);
+    return user ?? null;
   }
 
   async recordAuthenticationAuditEvent(input: RecordAuthenticationAuditEventInput) {

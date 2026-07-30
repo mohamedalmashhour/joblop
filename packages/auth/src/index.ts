@@ -10761,6 +10761,7 @@ export interface StoredAuthenticationIdentity {
   provider: AuthenticationIdentityProvider;
   providerSubject: string;
   passwordHash: string | null;
+  emailVerifiedAt?: Date | null;
 }
 
 export interface StoredAuthenticationUser {
@@ -10806,6 +10807,29 @@ export interface UpdateSessionInput {
   revokedAt?: Date | null | undefined;
 }
 
+export interface StoredEmailVerificationCode {
+  id: string;
+  userId: string;
+  codeHash: string;
+  attempts: number;
+  expiresAt: Date;
+  consumedAt: Date | null;
+  createdAt: Date;
+}
+
+export interface CreateEmailVerificationCodeInput {
+  userId: string;
+  codeHash: string;
+  expiresAt: Date;
+  now: Date;
+}
+
+export interface UpdateEmailVerificationCodeInput {
+  verificationId: string;
+  expectedAttempts: number;
+  now: Date;
+}
+
 export type AuthenticationAuditAction =
   | "auth.registration"
   | "auth.login_success"
@@ -10836,6 +10860,17 @@ export interface AuthenticationRepository {
   createSession(input: CreateSessionInput): Promise<StoredAuthenticationSession>;
   findSessionByHash(sessionHash: string): Promise<StoredAuthenticationSession | null>;
   updateSession(input: UpdateSessionInput): Promise<StoredAuthenticationSession | null>;
+  createEmailVerificationCode(
+    input: CreateEmailVerificationCodeInput
+  ): Promise<StoredEmailVerificationCode>;
+  findActiveEmailVerificationCode(userId: string): Promise<StoredEmailVerificationCode | null>;
+  incrementEmailVerificationAttempts(
+    input: UpdateEmailVerificationCodeInput
+  ): Promise<StoredEmailVerificationCode | null>;
+  consumeEmailVerificationCode(
+    input: UpdateEmailVerificationCodeInput
+  ): Promise<StoredEmailVerificationCode | null>;
+  markEmailVerified(input: { userId: string; now: Date }): Promise<StoredAuthenticationUser | null>;
   recordAuthenticationAuditEvent(input: RecordAuthenticationAuditEventInput): Promise<void>;
 }
 
@@ -10845,6 +10880,7 @@ export interface PublicAuthenticationUser {
   emailNormalized: string;
   displayName: string | null;
   status: AuthenticationUserStatus;
+  emailVerified?: boolean;
 }
 
 export interface PublicAuthenticationSession {
@@ -11236,10 +11272,38 @@ export function createAuthenticationService(
 
 export type AuthenticationService = ReturnType<typeof createAuthenticationService>;
 
-type PrismaAuthClient = {
+type PrismaEmailVerificationCodeClient = {
+  updateMany(args: {
+    where: {
+      id?: string;
+      userId?: string;
+      attempts?: number;
+      consumedAt: null;
+    };
+    data: {
+      attempts?: { increment: 1 };
+      consumedAt?: Date;
+    };
+  }): Promise<{ count: number }>;
+  create(args: {
+    data: {
+      userId: string;
+      codeHash: string;
+      expiresAt: Date;
+      createdAt: Date;
+    };
+  }): Promise<StoredEmailVerificationCode>;
+  findFirst(args: {
+    where: { userId: string; consumedAt: null };
+    orderBy: { createdAt: "desc" };
+  }): Promise<StoredEmailVerificationCode | null>;
+  findUnique(args: { where: { id: string } }): Promise<StoredEmailVerificationCode | null>;
+};
+
+type PrismaAuthTransaction = {
   user: {
     findUnique(args: {
-      where: { emailNormalized: string };
+      where: { emailNormalized: string } | { id: string };
       include: { identities: true };
     }): Promise<StoredAuthenticationUser | null>;
     create(args: {
@@ -11260,6 +11324,17 @@ type PrismaAuthClient = {
       include: { identities: true };
     }): Promise<StoredAuthenticationUser>;
   };
+  userIdentity: {
+    updateMany(args: {
+      where: { userId: string; provider: "local_password"; emailVerifiedAt: null };
+      data: { emailVerifiedAt: Date };
+    }): Promise<{ count: number }>;
+  };
+  emailVerificationCode: PrismaEmailVerificationCodeClient;
+};
+
+type PrismaAuthClient = PrismaAuthTransaction & {
+  $transaction<T>(work: (transaction: PrismaAuthTransaction) => Promise<T>): Promise<T>;
   session: {
     create(args: {
       data: {
@@ -11379,6 +11454,64 @@ export function createPrismaAuthenticationRepository(
       });
     },
 
+    createEmailVerificationCode(input) {
+      return prisma.$transaction(async (transaction) => {
+        await transaction.emailVerificationCode.updateMany({
+          where: {
+            userId: input.userId,
+            consumedAt: null
+          },
+          data: {
+            consumedAt: input.now
+          }
+        });
+        return transaction.emailVerificationCode.create({
+          data: {
+            userId: input.userId,
+            codeHash: input.codeHash,
+            expiresAt: input.expiresAt,
+            createdAt: input.now
+          }
+        });
+      });
+    },
+
+    findActiveEmailVerificationCode(userId) {
+      return prisma.emailVerificationCode.findFirst({
+        where: { userId, consumedAt: null },
+        orderBy: { createdAt: "desc" }
+      });
+    },
+
+    incrementEmailVerificationAttempts(input) {
+      return updateEmailVerificationCode(prisma, input, {
+        attempts: { increment: 1 }
+      });
+    },
+
+    consumeEmailVerificationCode(input) {
+      return updateEmailVerificationCode(prisma, input, {
+        consumedAt: input.now
+      });
+    },
+
+    markEmailVerified(input) {
+      return prisma.$transaction(async (transaction) => {
+        await transaction.userIdentity.updateMany({
+          where: {
+            userId: input.userId,
+            provider: "local_password",
+            emailVerifiedAt: null
+          },
+          data: { emailVerifiedAt: input.now }
+        });
+        return transaction.user.findUnique({
+          where: { id: input.userId },
+          include: { identities: true }
+        });
+      });
+    },
+
     async recordAuthenticationAuditEvent(input) {
       const actorReference = await prisma.auditActorReference.create({
         data: {
@@ -11406,6 +11539,30 @@ export function createPrismaAuthenticationRepository(
       });
     }
   };
+}
+
+async function updateEmailVerificationCode(
+  prisma: PrismaAuthClient,
+  input: UpdateEmailVerificationCodeInput,
+  data: {
+    attempts?: { increment: 1 };
+    consumedAt?: Date;
+  }
+) {
+  return prisma.$transaction(async (transaction) => {
+    const updated = await transaction.emailVerificationCode.updateMany({
+      where: {
+        id: input.verificationId,
+        attempts: input.expectedAttempts,
+        consumedAt: null
+      },
+      data
+    });
+    if (updated.count !== 1) return null;
+    return transaction.emailVerificationCode.findUnique({
+      where: { id: input.verificationId }
+    });
+  });
 }
 
 type PrismaMembershipClient = {
@@ -14163,7 +14320,8 @@ function toPublicUser(user: StoredAuthenticationUser): PublicAuthenticationUser 
     publicId: user.publicId,
     emailNormalized: user.emailNormalized,
     displayName: user.displayName,
-    status: user.status
+    status: user.status,
+    emailVerified: user.identities.some((identity) => Boolean(identity.emailVerifiedAt))
   };
 }
 

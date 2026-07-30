@@ -8,7 +8,7 @@ export const fixedPolicy = {
 } as const;
 
 export type ConsumeRequest = Readonly<{
-  action: "register" | "sign_in";
+  action: "register" | "sign_in" | "email_verify_send";
   keyId: string;
   accountKey: string;
   networkKey: string;
@@ -46,7 +46,7 @@ function parseConsumeRequest(config: LimiterConfig, input: unknown, now: Date): 
   }
   const action = record.action;
   const keyId = record.keyId;
-  if (action !== "register" && action !== "sign_in") invalid();
+  if (action !== "register" && action !== "sign_in" && action !== "email_verify_send") invalid();
   if (typeof keyId !== "string" || !isAcceptedKeyId(config, keyId, now)) invalid();
   if (!samePolicy(record.policy)) invalid();
   const accountKey = readKey(config, keyId, action, "account", record.accountKey);

@@ -68,6 +68,13 @@ describe("distributed limiter service policy", () => {
     ).rejects.toThrow("Limiter request invalid.");
   });
 
+  it("accepts the bounded email verification send action", async () => {
+    const service = createLimiterService(config, new MemoryLimiterStore());
+    await expect(
+      service.consume(consumeRequest("email-account", "email-network", "email_verify_send"))
+    ).resolves.toEqual({ allowed: true, retryAfterSeconds: 60 });
+  });
+
   it("rejects reset prefixes outside the exact configured namespace", async () => {
     const store = new MemoryLimiterStore();
     const service = createLimiterService(config, store);
@@ -77,17 +84,25 @@ describe("distributed limiter service policy", () => {
   });
 });
 
-function consumeRequest(account: string, network: string) {
+function consumeRequest(
+  account: string,
+  network: string,
+  action: "register" | "sign_in" | "email_verify_send" = "sign_in"
+) {
   return {
-    action: "sign_in" as const,
+    action,
     keyId: config.currentKeyId,
-    accountKey: key("account", account),
-    networkKey: key("network", network),
+    accountKey: key("account", account, action),
+    networkKey: key("network", network, action),
     policy: fixedPolicy
   };
 }
 
-function key(kind: "account" | "network", seed: string) {
+function key(
+  kind: "account" | "network",
+  seed: string,
+  action: "register" | "sign_in" | "email_verify_send" = "sign_in"
+) {
   const digest = Buffer.from(seed).toString("hex").padEnd(64, "0").slice(0, 64);
-  return `${config.namespace}:${config.currentKeyId}:sign_in:${kind}:${digest}`;
+  return `${config.namespace}:${config.currentKeyId}:${action}:${kind}:${digest}`;
 }

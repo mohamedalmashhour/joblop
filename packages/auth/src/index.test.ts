@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import {
   AuthenticationError,
   AuthenticationRequiredError,
@@ -17,6 +17,7 @@ import {
   createEmployerOrganizationService,
   createJobRequestService,
   createOrganizationMembershipService,
+  createPrismaAuthenticationRepository,
   createPrismaAssignmentRepository,
   createResidenceService,
   createRoleDefinitionService,
@@ -37,6 +38,7 @@ import type {
   InviteMembershipInput,
   AuthenticationRepository,
   CreateLocalUserInput,
+  CreateEmailVerificationCodeInput,
   CreateSessionInput,
   DepartmentRepository,
   DispatchCandidateSource,
@@ -48,6 +50,7 @@ import type {
   StoredOrganizationMembership,
   StoredResidence,
   StoredAuthenticationSession,
+  StoredEmailVerificationCode,
   StoredAssignment,
   StoredAttendanceRecord,
   StoredAuthenticationUser,
@@ -64,6 +67,7 @@ import type {
   RoleDefinitionRepository,
   JobRequestRepository,
   UpdateSessionInput,
+  UpdateEmailVerificationCodeInput,
   WorkerOfferRepository,
   WorkerOfferDeliveryProvider,
   WorkGroupRepository,
@@ -249,10 +253,12 @@ function createTestAuthenticationService(repository: AuthenticationRepository) {
 class MemoryAuthenticationRepository implements AuthenticationRepository {
   private users = new Map<string, StoredAuthenticationUser>();
   private sessions = new Map<string, StoredAuthenticationSession>();
+  private verificationCodes = new Map<string, StoredEmailVerificationCode>();
   private auditEvents: RecordAuthenticationAuditEventInput[] = [];
   private nextUser = 1;
   private nextIdentity = 1;
   private nextSession = 1;
+  private nextVerificationCode = 1;
 
   auditActions() {
     return this.auditEvents.map((event) => event.action);
@@ -337,10 +343,243 @@ class MemoryAuthenticationRepository implements AuthenticationRepository {
     return session;
   }
 
+  async createEmailVerificationCode(input: CreateEmailVerificationCodeInput) {
+    for (const code of this.verificationCodes.values()) {
+      if (code.userId === input.userId && code.consumedAt === null) {
+        code.consumedAt = input.now;
+      }
+    }
+    const code: StoredEmailVerificationCode = {
+      id: `verification-${this.nextVerificationCode}`,
+      userId: input.userId,
+      codeHash: input.codeHash,
+      attempts: 0,
+      expiresAt: input.expiresAt,
+      consumedAt: null,
+      createdAt: input.now
+    };
+    this.nextVerificationCode += 1;
+    this.verificationCodes.set(code.id, code);
+    return code;
+  }
+
+  async findActiveEmailVerificationCode(userId: string) {
+    return (
+      [...this.verificationCodes.values()]
+        .filter((code) => code.userId === userId && code.consumedAt === null)
+        .sort((left, right) => right.createdAt.getTime() - left.createdAt.getTime())[0] ?? null
+    );
+  }
+
+  async incrementEmailVerificationAttempts(input: UpdateEmailVerificationCodeInput) {
+    const code = this.activeVerificationCodeForUpdate(input);
+    if (!code) return null;
+    code.attempts += 1;
+    return code;
+  }
+
+  async consumeEmailVerificationCode(input: UpdateEmailVerificationCodeInput) {
+    const code = this.activeVerificationCodeForUpdate(input);
+    if (!code) return null;
+    code.consumedAt = input.now;
+    return code;
+  }
+
+  async markEmailVerified(input: { userId: string; now: Date }) {
+    const user = [...this.users.values()].find((candidate) => candidate.id === input.userId);
+    return user ?? null;
+  }
+
+  private activeVerificationCodeForUpdate(input: UpdateEmailVerificationCodeInput) {
+    const code = this.verificationCodes.get(input.verificationId);
+    return code && code.attempts === input.expectedAttempts && code.consumedAt === null
+      ? code
+      : null;
+  }
+
   async recordAuthenticationAuditEvent(input: RecordAuthenticationAuditEventInput) {
     this.auditEvents.push(input);
   }
 }
+
+describe("email verification repository contract", () => {
+  it("stores only code hashes and invalidates a prior active code", async () => {
+    const repository = new MemoryAuthenticationRepository();
+    const user = await repository.createLocalUser({
+      publicId: "usr_email_verification",
+      emailNormalized: "verification@example.com",
+      displayName: null,
+      passwordHash: "stored-password-hash",
+      now: new Date("2026-07-30T10:00:00.000Z")
+    });
+    const first = await repository.createEmailVerificationCode({
+      userId: user.id,
+      codeHash: "sha256:first-code",
+      expiresAt: new Date("2026-07-30T10:15:00.000Z"),
+      now: new Date("2026-07-30T10:00:00.000Z")
+    });
+    const second = await repository.createEmailVerificationCode({
+      userId: user.id,
+      codeHash: "sha256:second-code",
+      expiresAt: new Date("2026-07-30T10:16:00.000Z"),
+      now: new Date("2026-07-30T10:01:00.000Z")
+    });
+
+    expect(first.consumedAt).toEqual(new Date("2026-07-30T10:01:00.000Z"));
+    await expect(repository.findActiveEmailVerificationCode(user.id)).resolves.toEqual(second);
+    expect(second.codeHash).toBe("sha256:second-code");
+  });
+
+  it("increments and consumes only the expected active code version", async () => {
+    const repository = new MemoryAuthenticationRepository();
+    const user = await repository.createLocalUser({
+      publicId: "usr_email_attempts",
+      emailNormalized: "attempts@example.com",
+      displayName: null,
+      passwordHash: "stored-password-hash",
+      now: new Date("2026-07-30T11:00:00.000Z")
+    });
+    const code = await repository.createEmailVerificationCode({
+      userId: user.id,
+      codeHash: "sha256:attempt-code",
+      expiresAt: new Date("2026-07-30T11:15:00.000Z"),
+      now: new Date("2026-07-30T11:00:00.000Z")
+    });
+
+    await expect(
+      repository.incrementEmailVerificationAttempts({
+        verificationId: code.id,
+        expectedAttempts: 1,
+        now: new Date("2026-07-30T11:01:00.000Z")
+      })
+    ).resolves.toBeNull();
+    const attempted = await repository.incrementEmailVerificationAttempts({
+      verificationId: code.id,
+      expectedAttempts: 0,
+      now: new Date("2026-07-30T11:01:00.000Z")
+    });
+    expect(attempted?.attempts).toBe(1);
+    const consumed = await repository.consumeEmailVerificationCode({
+      verificationId: code.id,
+      expectedAttempts: 1,
+      now: new Date("2026-07-30T11:02:00.000Z")
+    });
+    expect(consumed?.consumedAt).toEqual(new Date("2026-07-30T11:02:00.000Z"));
+    await expect(repository.findActiveEmailVerificationCode(user.id)).resolves.toBeNull();
+  });
+
+  it("marks the local-password identity verified without changing active registration status", async () => {
+    const repository = new MemoryAuthenticationRepository();
+    const user = await repository.createLocalUser({
+      publicId: "usr_email_pending",
+      emailNormalized: "pending@example.com",
+      displayName: null,
+      passwordHash: "stored-password-hash",
+      now: new Date("2026-07-30T12:00:00.000Z")
+    });
+    await expect(
+      repository.markEmailVerified({
+        userId: user.id,
+        now: new Date("2026-07-30T12:01:00.000Z")
+      })
+    ).resolves.toMatchObject({ status: "active" });
+    await expect(
+      repository.markEmailVerified({
+        userId: user.id,
+        now: new Date("2026-07-30T12:02:00.000Z")
+      })
+    ).resolves.toMatchObject({ status: "active" });
+  });
+
+  it("maps invalidation, optimistic updates, consumption, and verification to Prisma atomically", async () => {
+    const now = new Date("2026-07-30T13:00:00.000Z");
+    const storedCode: StoredEmailVerificationCode = {
+      id: "verification-prisma",
+      userId: "user-prisma",
+      codeHash: "sha256:prisma-code",
+      attempts: 0,
+      expiresAt: new Date("2026-07-30T13:15:00.000Z"),
+      consumedAt: null,
+      createdAt: now
+    };
+    const storedUser: StoredAuthenticationUser = {
+      id: "user-prisma",
+      publicId: "usr_prisma",
+      emailNormalized: "prisma@example.com",
+      displayName: null,
+      status: "active",
+      identities: []
+    };
+    const emailVerificationCode = {
+      updateMany: vi.fn().mockResolvedValue({ count: 1 }),
+      create: vi.fn().mockResolvedValue(storedCode),
+      findFirst: vi.fn().mockResolvedValue(storedCode),
+      findUnique: vi.fn().mockResolvedValue(storedCode)
+    };
+    const user = {
+      findUnique: vi.fn().mockResolvedValue(storedUser)
+    };
+    const userIdentity = {
+      updateMany: vi.fn().mockResolvedValue({ count: 1 })
+    };
+    const transaction = { emailVerificationCode, user, userIdentity };
+    const prisma = {
+      ...transaction,
+      $transaction: vi.fn(async (work: (value: typeof transaction) => Promise<unknown>) =>
+        work(transaction)
+      )
+    };
+    const repository = createPrismaAuthenticationRepository(prisma as never);
+
+    await repository.createEmailVerificationCode({
+      userId: storedCode.userId,
+      codeHash: storedCode.codeHash,
+      expiresAt: storedCode.expiresAt,
+      now
+    });
+    expect(emailVerificationCode.updateMany).toHaveBeenCalledWith({
+      where: { userId: storedCode.userId, consumedAt: null },
+      data: { consumedAt: now }
+    });
+    await repository.incrementEmailVerificationAttempts({
+      verificationId: storedCode.id,
+      expectedAttempts: 0,
+      now
+    });
+    expect(emailVerificationCode.updateMany).toHaveBeenCalledWith({
+      where: {
+        id: storedCode.id,
+        attempts: 0,
+        consumedAt: null
+      },
+      data: { attempts: { increment: 1 } }
+    });
+    await repository.consumeEmailVerificationCode({
+      verificationId: storedCode.id,
+      expectedAttempts: 0,
+      now
+    });
+    expect(emailVerificationCode.updateMany).toHaveBeenCalledWith({
+      where: {
+        id: storedCode.id,
+        attempts: 0,
+        consumedAt: null
+      },
+      data: { consumedAt: now }
+    });
+    await expect(repository.markEmailVerified({ userId: storedUser.id, now })).resolves.toEqual(
+      storedUser
+    );
+    expect(userIdentity.updateMany).toHaveBeenCalledWith({
+      where: {
+        userId: storedUser.id,
+        provider: "local_password",
+        emailVerifiedAt: null
+      },
+      data: { emailVerifiedAt: now }
+    });
+  });
+});
 
 describe("session token hashing", () => {
   it("stores a hash instead of the bearer token", () => {
