@@ -112,11 +112,11 @@ describe("Prisma Phase 01 schema boundary", () => {
       "Notification",
       "SupportCase"
     ]) {
-      expect(schema).not.toContain(`model ${deferredModel}`);
+      expect(schema).not.toMatch(new RegExp(`^model ${deferredModel} \\\\{`, "m"));
     }
   });
 
-  it("keeps Invoice immediately downstream from Timesheet without payment execution models", () => {
+  it("keeps Invoice and authorized local payment orchestration downstream from Timesheet", () => {
     const modelNames = Array.from(schema.matchAll(/^model\s+(\w+)\s+\{/gm)).map(
       (match) => match[1]
     );
@@ -135,6 +135,12 @@ describe("Prisma Phase 01 schema boundary", () => {
       "InvoiceDeliveryReceipt",
       "InvoiceConfigurationVersion",
       "InvoiceNumberSequence",
+      "PaymentPolicyVersion",
+      "EmployerPaymentMethod",
+      "EmployerPaymentAttempt",
+      "EmployerPaymentEvent",
+      "EmployerPaymentAllocation",
+      "EmployerPaymentRefund",
       "AuditActorReference",
       "AuditEvent",
       "QaResetManifestOwnership",

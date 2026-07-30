@@ -377,6 +377,25 @@ enum InvoiceTaxTreatment {
   tax_not_enabled
 }
 
+enum EmployerPaymentState {
+  pending
+  authorized
+  processing
+  succeeded
+  failed
+  cancelled
+  partially_refunded
+  refunded
+  disputed
+}
+
+enum PaymentPolicyMode {
+  invoice_only
+  authorize_before_assignment_capture_after_invoice
+  collect_after_invoice
+  manual_collection
+}
+
 model User {
   id              String     @id @default(uuid()) @db.Uuid
   publicId        String     @unique @map("public_id")
@@ -503,6 +522,9 @@ model EmployerOrganization {
   attendanceRecords    AttendanceRecord[]
   timesheets           Timesheet[]
   invoices             Invoice[]
+  paymentMethods       EmployerPaymentMethod[]
+  paymentAttempts      EmployerPaymentAttempt[]
+  paymentPolicies      PaymentPolicyVersion[]
   auditActorReferences AuditActorReference[]
   auditEvents          AuditEvent[]
 
@@ -1300,10 +1322,11 @@ model Invoice {
   createdAt             DateTime           @default(now()) @map("created_at") @db.Timestamptz(3)
   updatedAt             DateTime           @updatedAt @map("updated_at") @db.Timestamptz(3)
 
-  organization EmployerOrganization     @relation(fields: [organizationId], references: [id], onDelete: Restrict)
-  timesheet    Timesheet                @relation(fields: [timesheetId], references: [id], onDelete: Restrict)
-  creditNotes  InvoiceCreditNote[]
-  deliveries   InvoiceDeliveryReceipt[]
+  organization    EmployerOrganization     @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  timesheet       Timesheet                @relation(fields: [timesheetId], references: [id], onDelete: Restrict)
+  creditNotes     InvoiceCreditNote[]
+  deliveries      InvoiceDeliveryReceipt[]
+  paymentAttempts EmployerPaymentAttempt[]
 
   @@unique([organizationId, invoiceNumber], map: "invoices_organization_number_key")
   @@unique([organizationId, timesheetId], map: "invoices_organization_timesheet_key")
@@ -1386,6 +1409,142 @@ model InvoiceNumberSequence {
 
   @@id([organizationId, scopeYear, prefix], map: "invoice_number_sequences_pkey")
   @@map("invoice_number_sequences")
+}
+
+model PaymentPolicyVersion {
+  id                          String            @id @default(uuid()) @db.Uuid
+  organizationId              String?           @map("organization_id") @db.Uuid
+  version                     String
+  mode                        PaymentPolicyMode
+  provider                    String?
+  merchantIdentityReference   String?           @map("merchant_identity_reference")
+  productionApprovalReference String?           @map("production_approval_reference")
+  employerContractVersion     String            @map("employer_contract_version")
+  marketplaceFeeFixedMinor    BigInt            @default(0) @map("marketplace_fee_fixed_minor")
+  marketplaceFeeRatePpm       Int               @default(0) @map("marketplace_fee_rate_ppm")
+  jurisdiction                String            @default("CA-QC")
+  methodSurchargeEnabled      Boolean           @default(false) @map("method_surcharge_enabled")
+  surchargeRatePpm            Int               @default(0) @map("surcharge_rate_ppm")
+  surchargeLegalApproval      String?           @map("surcharge_legal_approval")
+  surchargeProcessorApproval  String?           @map("surcharge_processor_approval")
+  effectiveFrom               DateTime          @map("effective_from") @db.Timestamptz(3)
+  effectiveUntil              DateTime?         @map("effective_until") @db.Timestamptz(3)
+  createdAt                   DateTime          @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  organization EmployerOrganization? @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+
+  @@unique([organizationId, version], map: "payment_policy_versions_organization_version_key")
+  @@index([organizationId, effectiveFrom, effectiveUntil], map: "payment_policy_versions_effective_idx")
+  @@map("payment_policy_versions")
+}
+
+model EmployerPaymentMethod {
+  id                        String   @id @default(uuid()) @db.Uuid
+  organizationId            String   @map("organization_id") @db.Uuid
+  provider                  String
+  providerCustomerReference String   @map("provider_customer_reference")
+  providerMethodReference   String   @map("provider_method_reference")
+  displayAlias              String   @map("display_alias")
+  reusable                  Boolean  @default(false)
+  status                    String   @default("active")
+  createdAt                 DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt                 DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  organization EmployerOrganization     @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  attempts     EmployerPaymentAttempt[]
+
+  @@unique([id, organizationId], map: "employer_payment_methods_id_organization_key")
+  @@unique([organizationId, provider, providerMethodReference], map: "employer_payment_methods_provider_reference_key")
+  @@index([organizationId, status, updatedAt], map: "employer_payment_methods_organization_status_idx")
+  @@map("employer_payment_methods")
+}
+
+model EmployerPaymentAttempt {
+  id                     String               @id @default(uuid()) @db.Uuid
+  organizationId         String               @map("organization_id") @db.Uuid
+  assignmentId           String               @map("assignment_id") @db.Uuid
+  timesheetId            String               @map("timesheet_id") @db.Uuid
+  invoiceId              String               @map("invoice_id") @db.Uuid
+  paymentMethodId        String?              @map("payment_method_id") @db.Uuid
+  policyVersion          String               @map("policy_version")
+  state                  EmployerPaymentState @default(pending)
+  amountMinor            BigInt               @map("amount_minor")
+  allocatedMinor         BigInt               @default(0) @map("allocated_minor")
+  refundedMinor          BigInt               @default(0) @map("refunded_minor")
+  currency               String               @default("CAD") @db.Char(3)
+  authorizationReference String?              @map("authorization_reference")
+  idempotencyKeyDigest   String               @map("idempotency_key_digest") @db.Char(64)
+  requestDigest          String               @map("request_digest") @db.Char(64)
+  version                Int                  @default(1)
+  createdAt              DateTime             @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt              DateTime             @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  organization  EmployerOrganization        @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  invoice       Invoice                     @relation(fields: [invoiceId, organizationId], references: [id, organizationId], onDelete: Restrict)
+  paymentMethod EmployerPaymentMethod?      @relation(fields: [paymentMethodId, organizationId], references: [id, organizationId], onDelete: Restrict)
+  events        EmployerPaymentEvent[]
+  allocations   EmployerPaymentAllocation[]
+  refunds       EmployerPaymentRefund[]
+
+  @@unique([id, organizationId], map: "employer_payment_attempts_id_organization_key")
+  @@unique([organizationId, idempotencyKeyDigest], map: "employer_payment_attempts_organization_idempotency_key")
+  @@index([organizationId, state, updatedAt], map: "employer_payment_attempts_organization_state_idx")
+  @@index([invoiceId, createdAt], map: "employer_payment_attempts_invoice_created_idx")
+  @@map("employer_payment_attempts")
+}
+
+model EmployerPaymentEvent {
+  id                         String                @id @default(uuid()) @db.Uuid
+  paymentAttemptId           String                @map("payment_attempt_id") @db.Uuid
+  organizationId             String                @map("organization_id") @db.Uuid
+  providerEventReference     String?               @map("provider_event_reference")
+  providerOperationReference String?               @map("provider_operation_reference")
+  eventType                  String                @map("event_type")
+  priorState                 EmployerPaymentState? @map("prior_state")
+  newState                   EmployerPaymentState  @map("new_state")
+  actorType                  String                @map("actor_type")
+  safeReasonCode             String?               @map("safe_reason_code")
+  payloadDigest              String?               @map("payload_digest") @db.Char(64)
+  occurredAt                 DateTime              @map("occurred_at") @db.Timestamptz(3)
+  createdAt                  DateTime              @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  paymentAttempt EmployerPaymentAttempt @relation(fields: [paymentAttemptId, organizationId], references: [id, organizationId], onDelete: Restrict)
+
+  @@unique([organizationId, providerEventReference], map: "employer_payment_events_provider_event_key")
+  @@index([paymentAttemptId, createdAt], map: "employer_payment_events_attempt_created_idx")
+  @@map("employer_payment_events")
+}
+
+model EmployerPaymentAllocation {
+  id               String   @id @default(uuid()) @db.Uuid
+  paymentAttemptId String   @map("payment_attempt_id") @db.Uuid
+  organizationId   String   @map("organization_id") @db.Uuid
+  invoiceId        String   @map("invoice_id") @db.Uuid
+  amountMinor      BigInt   @map("amount_minor")
+  currency         String   @default("CAD") @db.Char(3)
+  createdAt        DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  paymentAttempt EmployerPaymentAttempt @relation(fields: [paymentAttemptId, organizationId], references: [id, organizationId], onDelete: Restrict)
+
+  @@index([invoiceId, createdAt], map: "employer_payment_allocations_invoice_created_idx")
+  @@map("employer_payment_allocations")
+}
+
+model EmployerPaymentRefund {
+  id                         String   @id @default(uuid()) @db.Uuid
+  paymentAttemptId           String   @map("payment_attempt_id") @db.Uuid
+  organizationId             String   @map("organization_id") @db.Uuid
+  amountMinor                BigInt   @map("amount_minor")
+  currency                   String   @default("CAD") @db.Char(3)
+  providerOperationReference String   @map("provider_operation_reference")
+  idempotencyKeyDigest       String   @map("idempotency_key_digest") @db.Char(64)
+  createdAt                  DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  paymentAttempt EmployerPaymentAttempt @relation(fields: [paymentAttemptId, organizationId], references: [id, organizationId], onDelete: Restrict)
+
+  @@unique([organizationId, idempotencyKeyDigest], map: "employer_payment_refunds_organization_idempotency_key")
+  @@index([paymentAttemptId, createdAt], map: "employer_payment_refunds_attempt_created_idx")
+  @@map("employer_payment_refunds")
 }
 
 model AuditActorReference {
