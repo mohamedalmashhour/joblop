@@ -28,6 +28,7 @@ const releaseSha = process.env.RWOS_CONTAINER_GIT_SHA;
 const buildTimestamp = process.env.RWOS_CONTAINER_BUILD_TIMESTAMP;
 const sourceRepository = process.env.RWOS_CONTAINER_SOURCE_REPOSITORY;
 const imageVersion = process.env.RWOS_CONTAINER_IMAGE_VERSION;
+const approvedAdapterRuntimeReleaseSha = "a31fa96f52247bb684032c6a8d3d379c098c2603";
 if (!/^[a-f0-9]{40}$/.test(releaseSha ?? "")) fail("RWOS_CONTAINER_GIT_SHA_REQUIRED");
 if (!buildTimestamp || !Number.isFinite(Date.parse(buildTimestamp))) {
   fail("RWOS_CONTAINER_BUILD_TIMESTAMP_REQUIRED");
@@ -64,6 +65,8 @@ for (const [index, service] of services.entries()) {
               "--env",
               "RWOS_ENV=staging",
               "--env",
+              `AUTH_LIMITER_RELEASE_SHA=${approvedAdapterRuntimeReleaseSha}`,
+              "--env",
               "AUTH_LIMITER_REDIS_URL=redis://127.0.0.1:1",
               "--env",
               "AUTH_LIMITER_SERVICE_TOKEN=local-validation-token-at-least-32-characters",
@@ -77,7 +80,7 @@ for (const [index, service] of services.entries()) {
                 "--env",
                 "RWOS_ENV=staging",
                 "--env",
-                `CANDIDATE_ADAPTER_RELEASE_SHA=${releaseSha}`,
+                `CANDIDATE_ADAPTER_RELEASE_SHA=${approvedAdapterRuntimeReleaseSha}`,
                 "--env",
                 "CANDIDATE_ADAPTER_SERVICE_TOKEN=local-validation-token-at-least-32-characters",
                 "--env",
@@ -98,7 +101,7 @@ for (const [index, service] of services.entries()) {
                   "--env",
                   "RWOS_ENV=staging",
                   "--env",
-                  `OFFER_DELIVERY_ADAPTER_RELEASE_SHA=${releaseSha}`,
+                  `OFFER_DELIVERY_ADAPTER_RELEASE_SHA=${approvedAdapterRuntimeReleaseSha}`,
                   "--env",
                   "OFFER_DELIVERY_ADAPTER_SERVICE_TOKEN=local-validation-token-at-least-32-characters",
                   "--env",
@@ -143,7 +146,7 @@ for (const [index, service] of services.entries()) {
                     "--env",
                     "QA_RESET_MONITORING_SERVICE_ACCOUNT=monitoring@local-validation.invalid",
                     "--env",
-                    `QA_RESET_RELEASE_SHA=${releaseSha}`,
+                    `QA_RESET_RELEASE_SHA=${approvedAdapterRuntimeReleaseSha}`,
                     "--env",
                     "QA_RESET_PROJECT_ID=gcp/project/rwos-staging-001",
                     "--env",

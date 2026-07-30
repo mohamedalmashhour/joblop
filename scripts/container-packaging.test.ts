@@ -60,4 +60,19 @@ describe("Cloud Run application packaging", () => {
     expect(validator).toContain("RWOS_CONTAINER_SERVICE_UNKNOWN");
     expect(validator).toContain("for (const [index, service] of services.entries())");
   });
+
+  it("keeps adapter runtime probes bound to the frozen approved adapter release", () => {
+    const validator = read("scripts/validate-containers.mjs");
+    expect(validator).toContain(
+      'const approvedAdapterRuntimeReleaseSha = "a31fa96f52247bb684032c6a8d3d379c098c2603"'
+    );
+    for (const variable of [
+      "AUTH_LIMITER_RELEASE_SHA",
+      "CANDIDATE_ADAPTER_RELEASE_SHA",
+      "OFFER_DELIVERY_ADAPTER_RELEASE_SHA",
+      "QA_RESET_RELEASE_SHA"
+    ]) {
+      expect(validator).toContain(`${variable}=\${approvedAdapterRuntimeReleaseSha}`);
+    }
+  });
 });
