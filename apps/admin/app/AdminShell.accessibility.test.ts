@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 
 const shell = readFileSync(new URL("./AdminShell.tsx", import.meta.url), "utf8");
 const styles = readFileSync(new URL("./globals.css", import.meta.url), "utf8");
+const packageJson = readFileSync(new URL("../package.json", import.meta.url), "utf8");
 
 describe("admin shell accessibility", () => {
   it("moves the keyboard bypass target onto the existing main landmark", () => {
@@ -27,5 +28,12 @@ describe("admin shell accessibility", () => {
     expect(shell).toContain('rel="next"');
     expect(styles).toContain("min-height: 44px");
     expect(styles).toContain(".admin-page-list");
+  });
+
+  it("builds the client navigation with the same production boundary as middleware", () => {
+    expect(shell).toContain('process.env.NEXT_PUBLIC_RWOS_ENV === "production"');
+    expect(packageJson).toContain(
+      '"build": "RWOS_ENV=production NEXT_PUBLIC_RWOS_ENV=production next build"'
+    );
   });
 });
