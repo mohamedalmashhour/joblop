@@ -6,7 +6,9 @@ const publicRoutes = new Set([
   "/health",
   "/how-it-works",
   "/pricing",
-  "/ready"
+  "/ready",
+  "/signin",
+  "/signup/employer"
 ]);
 const persistedEmployerRoutes = new Set([
   "/employer/calendar",

@@ -1,3 +1,4 @@
+import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import {
   employerJourney,
@@ -6,6 +7,8 @@ import {
   workerBenefits,
   workerJourney
 } from "./landingContent";
+
+const landingSource = readFileSync(new URL("./page.tsx", import.meta.url), "utf8");
 
 describe("Page 001 landing content", () => {
   it("keeps the approved staffing categories visible", () => {
@@ -47,5 +50,11 @@ describe("Page 001 landing content", () => {
       "Version conflict checks",
       "Attendance handoff boundary"
     ]);
+  });
+
+  it("routes public authentication through the sign-in capsule and gates production access", () => {
+    expect(landingSource).toContain('href="/signin"');
+    expect(landingSource).toContain('isProduction ? "/contact" : "/signup/employer"');
+    expect(landingSource).not.toContain('href="/employer/calendar" style={styles.ghostButton}');
   });
 });

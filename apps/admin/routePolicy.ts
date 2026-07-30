@@ -9,6 +9,8 @@ export function isProductionAdminRouteAllowed(pathname: string) {
   return (
     path === "/health" ||
     path === "/ready" ||
+    path === "/signin" ||
+    path === "/signup" ||
     path === "/calendar" ||
     path === "/calendar/request" ||
     path === "/dispatches" ||

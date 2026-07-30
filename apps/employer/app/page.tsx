@@ -75,7 +75,7 @@ export default function LandingPage() {
           </a>
         </nav>
         <div style={styles.headerActions}>
-          <a href="/employer/calendar" style={styles.ghostButton}>
+          <a href="/signin" style={styles.ghostButton}>
             Sign In
           </a>
           <a href={isProduction ? "/contact" : "/signup/employer"} style={styles.primaryButton}>
