@@ -1,3 +1,5 @@
+import type { InvoiceSourceSnapshot } from "./invoice";
+
 export const paymentStates = [
   "pending",
   "authorized",
@@ -39,12 +41,7 @@ export type PaymentMethodReference = Readonly<{
   reusable: boolean;
 }>;
 
-export type PaymentOperation =
-  | "setup"
-  | "authorize"
-  | "capture"
-  | "void"
-  | "refund";
+export type PaymentOperation = "setup" | "authorize" | "capture" | "void" | "refund";
 
 export type FakePaymentScenario =
   | "success"
@@ -73,11 +70,7 @@ export type ProviderPaymentRequest = Readonly<{
 export type ProviderPaymentResult = Readonly<{
   provider: "local_fake";
   providerOperationReference: string;
-  outcome:
-    | "accepted"
-    | "declined"
-    | "authentication_required"
-    | "unknown";
+  outcome: "accepted" | "declined" | "authentication_required" | "unknown";
   reason:
     | "none"
     | "decline"
@@ -153,7 +146,10 @@ export type PaymentWebhook = Readonly<{
 }>;
 
 export type LocalPaymentOrchestrator = Readonly<{
-  registerMethod(method: PaymentMethodReference, authorizedOrganizationId: string): PaymentMethodReference;
+  registerMethod(
+    method: PaymentMethodReference,
+    authorizedOrganizationId: string
+  ): PaymentMethodReference;
   create(input: {
     id: string;
     organizationId: string;
@@ -161,6 +157,7 @@ export type LocalPaymentOrchestrator = Readonly<{
     timesheetId: string;
     invoiceId: string;
     invoiceState: "issued" | "sent" | "viewed" | "overdue";
+    invoiceSource: InvoiceSourceSnapshot;
     policy: PaymentPolicy;
     methodReferenceId: string | null;
     amountMinor: number;
@@ -241,11 +238,16 @@ export function createLocalPaymentOrchestrator(options: {
     },
     create(input) {
       assertEffectivePolicy(input.policy, options.now());
+      assertInvoiceSource(input);
       if (input.policy.mode === "invoice_only") {
         throw new Error("Invoice-only policy does not permit collection.");
       }
-      if (input.invoiceState !== "issued" && input.invoiceState !== "sent" &&
-          input.invoiceState !== "viewed" && input.invoiceState !== "overdue") {
+      if (
+        input.invoiceState !== "issued" &&
+        input.invoiceState !== "sent" &&
+        input.invoiceState !== "viewed" &&
+        input.invoiceState !== "overdue"
+      ) {
         throw new Error("Payment requires an issued invoice.");
       }
       assertMoney(input.amountMinor);
@@ -367,12 +369,41 @@ export function createLocalPaymentOrchestrator(options: {
       return events
         .filter(
           (event) =>
-            event.paymentId === paymentId &&
-            event.organizationId === authorizedOrganizationId
+            event.paymentId === paymentId && event.organizationId === authorizedOrganizationId
         )
         .map((event) => structuredClone(event));
     }
   };
+}
+
+function assertInvoiceSource(input: {
+  organizationId: string;
+  assignmentId: string;
+  timesheetId: string;
+  invoiceSource: InvoiceSourceSnapshot;
+}) {
+  if (input.invoiceSource.organizationId !== input.organizationId) {
+    throw new Error("Payment invoice source is outside the authorized organization.");
+  }
+  if (
+    input.invoiceSource.assignmentId !== input.assignmentId ||
+    input.invoiceSource.timesheetId !== input.timesheetId
+  ) {
+    throw new Error("Payment assignment and timesheet must match the immutable invoice source.");
+  }
+  for (const reference of [
+    input.invoiceSource.assignmentId,
+    input.invoiceSource.timesheetId,
+    input.invoiceSource.attendanceRecordId
+  ]) {
+    assertOpaqueReference(reference);
+  }
+  if (
+    !Number.isInteger(input.invoiceSource.timesheetVersion) ||
+    input.invoiceSource.timesheetVersion < 1
+  ) {
+    throw new Error("Payment invoice source requires a valid timesheet version.");
+  }
 }
 
 export async function signLocalPaymentWebhook(secret: string, webhook: PaymentWebhook) {
@@ -457,10 +488,7 @@ function assertOperation(payment: PaymentRecord, operation: PaymentOperation, am
   if (operation === "authorize" && payment.state !== "pending") {
     throw new Error("Payment authorization requires pending state.");
   }
-  if (
-    operation === "capture" &&
-    !["pending", "authorized", "failed"].includes(payment.state)
-  ) {
+  if (operation === "capture" && !["pending", "authorized", "failed"].includes(payment.state)) {
     throw new Error("Payment capture is not permitted from this state.");
   }
   if (
@@ -507,10 +535,16 @@ function assertEffectivePolicy(policy: PaymentPolicy, occurredAt: string) {
   const instant = Date.parse(occurredAt);
   const start = Date.parse(policy.effectiveFrom);
   const end = policy.effectiveUntil === null ? null : Date.parse(policy.effectiveUntil);
-  if (!policy.version || !Number.isFinite(start) || instant < start || (end !== null && instant >= end)) {
+  if (
+    !policy.version ||
+    !Number.isFinite(start) ||
+    instant < start ||
+    (end !== null && instant >= end)
+  ) {
     throw new Error("Payment policy is not effective.");
   }
-  if (policy.provider !== "local_fake") throw new Error("Local payment provider is not configured.");
+  if (policy.provider !== "local_fake")
+    throw new Error("Local payment provider is not configured.");
   if (!policy.merchantIdentityReference) throw new Error("Payment merchant identity is missing.");
   if (policy.productionApprovalReference !== null) {
     throw new Error("Local payment policy cannot use production approval.");

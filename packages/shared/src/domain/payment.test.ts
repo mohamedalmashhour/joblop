@@ -21,6 +21,14 @@ const policy: PaymentPolicy = {
   merchantIdentityReference: "synthetic-merchant",
   productionApprovalReference: null
 };
+const invoiceSource = {
+  type: "locked_timesheet" as const,
+  timesheetId: "timesheet-a",
+  timesheetVersion: 3,
+  organizationId: "tenantA",
+  assignmentId: "assignment-a",
+  attendanceRecordId: "attendance-a"
+};
 
 function setup() {
   let tick = 0;
@@ -54,6 +62,7 @@ function create(service = setup(), id = "payment-a") {
       timesheetId: "timesheet-a",
       invoiceId: "invoice-a",
       invoiceState: "issued",
+      invoiceSource,
       policy,
       methodReferenceId: "method-a",
       amountMinor: 10_000,
@@ -92,6 +101,50 @@ describe("local payment orchestration", () => {
       "payment_created",
       "provider_capture_accepted"
     ]);
+  });
+
+  it("binds a valid payment to the immutable issued-invoice source chain", () => {
+    const { payment } = create();
+    expect(payment).toMatchObject({
+      organizationId: invoiceSource.organizationId,
+      assignmentId: invoiceSource.assignmentId,
+      timesheetId: invoiceSource.timesheetId,
+      invoiceId: "invoice-a"
+    });
+  });
+
+  it("denies organization, assignment, and timesheet mismatches from the invoice source", () => {
+    const base = {
+      id: "mismatched-payment",
+      organizationId: "tenantA",
+      assignmentId: "assignment-a",
+      timesheetId: "timesheet-a",
+      invoiceId: "invoice-a",
+      invoiceState: "issued" as const,
+      invoiceSource,
+      policy,
+      methodReferenceId: "method-a",
+      amountMinor: 10_000,
+      idempotencyKey: "mismatched-payment"
+    };
+    expect(() =>
+      setup().create({
+        ...base,
+        invoiceSource: { ...invoiceSource, organizationId: "tenantB" }
+      })
+    ).toThrow("Payment invoice source is outside the authorized organization.");
+    expect(() =>
+      setup().create({
+        ...base,
+        assignmentId: "assignment-b"
+      })
+    ).toThrow("Payment assignment and timesheet must match the immutable invoice source.");
+    expect(() =>
+      setup().create({
+        ...base,
+        timesheetId: "timesheet-b"
+      })
+    ).toThrow("Payment assignment and timesheet must match the immutable invoice source.");
   });
 
   it("supports authorization then capture without treating authorization as success", async () => {
@@ -244,18 +297,22 @@ describe("local payment orchestration", () => {
     };
     const signature = await signLocalPaymentWebhook(secret, webhook);
     expect(
-      (await service.processWebhook({
-        webhook,
-        signature,
-        receivedAtEpochSeconds: webhook.occurredAtEpochSeconds + 10
-      })).state
+      (
+        await service.processWebhook({
+          webhook,
+          signature,
+          receivedAtEpochSeconds: webhook.occurredAtEpochSeconds + 10
+        })
+      ).state
     ).toBe("succeeded");
     expect(
-      (await service.processWebhook({
-        webhook,
-        signature,
-        receivedAtEpochSeconds: webhook.occurredAtEpochSeconds + 10
-      })).state
+      (
+        await service.processWebhook({
+          webhook,
+          signature,
+          receivedAtEpochSeconds: webhook.occurredAtEpochSeconds + 10
+        })
+      ).state
     ).toBe("succeeded");
     await expect(
       service.processWebhook({
@@ -308,6 +365,11 @@ describe("local payment orchestration", () => {
         timesheetId: "timesheet",
         invoiceId: "invoice",
         invoiceState: "issued",
+        invoiceSource: {
+          ...invoiceSource,
+          assignmentId: "assignment",
+          timesheetId: "timesheet"
+        },
         policy: { ...policy, provider: null },
         methodReferenceId: "method-a",
         amountMinor: 100,
