@@ -16,6 +16,7 @@ type Delegate = {
   updateMany(input: unknown): Promise<{ count: number }>;
 };
 type Transaction = {
+  invoice: Pick<Delegate, "findFirst">;
   employerPaymentMethod: Delegate;
   employerPaymentAttempt: Delegate;
   employerPaymentEvent: Delegate;
@@ -136,6 +137,19 @@ export function createPrismaPaymentRepository(
             }
           });
           if (!method) throw new Error("Payment method is outside the authorized organization.");
+        }
+        const invoice = await transaction.invoice.findFirst({
+          where: {
+            id: input.invoiceId,
+            organizationId: input.organizationId,
+            timesheetId: input.timesheetId,
+            status: { in: ["issued", "sent", "viewed", "overdue"] }
+          }
+        });
+        if (!invoice) throw new Error("Payment requires an issued organization-scoped invoice.");
+        const invoiceTotalMinor = safeBigInt(invoice, "totalMinor");
+        if (input.amountMinor > invoiceTotalMinor) {
+          throw new Error("Payment amount exceeds the issued invoice total.");
         }
         const created = await transaction.employerPaymentAttempt.create({
           data: {

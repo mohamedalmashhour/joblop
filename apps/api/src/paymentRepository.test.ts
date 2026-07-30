@@ -23,6 +23,15 @@ const row = {
 };
 
 function setup() {
+  const invoice = {
+    findFirst: vi.fn().mockResolvedValue({
+      id: row.invoiceId,
+      organizationId,
+      timesheetId: row.timesheetId,
+      status: "issued",
+      totalMinor: 10_500n
+    })
+  };
   const employerPaymentMethod = {
     findFirst: vi.fn().mockResolvedValue(null),
     findMany: vi.fn().mockResolvedValue([]),
@@ -54,6 +63,7 @@ function setup() {
     updateMany: vi.fn()
   };
   const transaction = {
+    invoice,
     employerPaymentMethod,
     employerPaymentAttempt,
     employerPaymentEvent,
@@ -72,7 +82,8 @@ function setup() {
     ),
     employerPaymentMethod,
     employerPaymentAttempt,
-    employerPaymentEvent
+    employerPaymentEvent,
+    invoice
   };
 }
 
@@ -101,6 +112,13 @@ describe("durable payment repository", () => {
       })
     });
     expect(target.employerPaymentEvent.create).toHaveBeenCalledTimes(1);
+    expect(target.invoice.findFirst).toHaveBeenCalledWith({
+      where: expect.objectContaining({
+        id: row.invoiceId,
+        organizationId,
+        timesheetId: row.timesheetId
+      })
+    });
   });
 
   it("rejects raw card-shaped values in payment method references", async () => {
