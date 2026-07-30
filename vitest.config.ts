@@ -25,6 +25,7 @@ export default defineConfig({
       ...configDefaults.exclude,
       "tests/e2e/browser/**",
       "apps/api/src/firstAdminBootstrap.postgres.test.ts",
+      "apps/api/src/passwordReset.postgres.test.ts",
       "apps/api/src/stripeTestProvider.network.test.ts"
     ],
     maxWorkers: 4,

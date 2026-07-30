@@ -11,14 +11,17 @@ import { SignUpForm } from "./SignUpForm";
  * The governance sections (what happens next / account boundaries) are preserved.
  */
 export default function EmployerSignUpPage() {
-  const registrationOpen = process.env.RWOS_ENV !== "production";
+  const registrationOpen =
+    process.env.RWOS_ENV !== "production" &&
+    process.env.EMPLOYER_SELF_REGISTRATION_ENABLED === "enabled" &&
+    Boolean(process.env.TERMS_VERSION && process.env.PRIVACY_NOTICE_VERSION);
 
   return (
     <EmployerShell
       currentRoute="/signup/employer"
       eyebrow="Employer sign up"
       title="Create an employer account."
-      lede="Creating an account is the first step — organization setup, review, and activation remain separate. Account creation is available in non-production environments."
+      lede="Creating an account is the first step — organization setup, review, and activation remain separate. Self-registration opens only when the approved notice versions are configured."
     >
       <section style={styles.section}>
         <div style={styles.sectionHeader}>
@@ -31,8 +34,8 @@ export default function EmployerSignUpPage() {
         </div>
         <SignUpForm registrationOpen={registrationOpen} />
         <p style={styles.warning}>
-          Terms and Privacy acknowledgements are completed during organization setup. Creating an
-          account does not equal employer approval.
+          Employer self-registration opens only when approved Terms and Privacy Notice versions are
+          configured. Creating an account does not equal employer approval.
         </p>
       </section>
 

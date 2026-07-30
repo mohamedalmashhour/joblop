@@ -357,6 +357,69 @@ describe("api authentication foundation", () => {
     await app.close();
   });
 
+  it("keeps password-reset requests generic and completion response-bounded", async () => {
+    const request = vi.fn(async () => ({
+      status: "accepted",
+      message: "If an account matches that email, password reset instructions will be sent."
+    }) as const);
+    const complete = vi
+      .fn()
+      .mockResolvedValueOnce({ status: "reset" as const })
+      .mockResolvedValueOnce({
+        status: "reset_failed" as const,
+        message: "Password reset could not be completed. Request a new link and try again."
+      });
+    const consume = vi.fn(async () => ({ allowed: true, retryAfterSeconds: 60 }));
+    const app = buildApi({
+      authService: createAuthenticationService(
+        new ApiMemoryAuthenticationRepository(),
+        testAuthOptions()
+      ),
+      passwordResetService: { request, complete },
+      authRateLimiter: { consume },
+      env: {
+        RWOS_ENV: "test",
+        PASSWORD_RESET_PUBLIC_ORIGIN: "http://127.0.0.1:3100"
+      }
+    });
+
+    const requested = await app.inject({
+      method: "POST",
+      url: "/auth/password-reset/request",
+      payload: { email: "synthetic@example.test" }
+    });
+    expect(requested.statusCode).toBe(202);
+    expect(requested.json()).toEqual({
+      status: "accepted",
+      message: "If an account matches that email, password reset instructions will be sent."
+    });
+    expect(request).toHaveBeenCalledWith({
+      email: "synthetic@example.test",
+      resetBaseUrl: "http://127.0.0.1:3100"
+    });
+    expect(consume).toHaveBeenCalledWith(
+      expect.objectContaining({ action: "password_reset_request" })
+    );
+
+    const reset = await app.inject({
+      method: "POST",
+      url: "/auth/password-reset/complete",
+      payload: { token: "a".repeat(43), newPassword: "ReplacementPassword123" }
+    });
+    expect(reset.statusCode).toBe(200);
+    const replay = await app.inject({
+      method: "POST",
+      url: "/auth/password-reset/complete",
+      payload: { token: "a".repeat(43), newPassword: "ReplacementPassword123" }
+    });
+    expect(replay.statusCode).toBe(400);
+    expect(replay.json()).toEqual({
+      status: "reset_failed",
+      message: "Password reset could not be completed. Request a new link and try again."
+    });
+    await app.close();
+  });
+
   it("fails email verification closed until its durable repository is available", async () => {
     const repository = new ApiMemoryAuthenticationRepository();
     const app = buildApi({

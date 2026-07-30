@@ -23,14 +23,17 @@ const allowedServerPrefixes = [
   "ASSIGNMENT_",
   "AUTH_",
   "CANDIDATE_",
+  "EMPLOYER_",
   "INTERNAL_",
   "MONITORING_",
   "OFFER_",
   "PAGING_",
+  "PRIVACY_",
   "QA_RESET_",
   "RWOS_",
   "SECRET_MANAGER_",
-  "STRIPE_"
+  "STRIPE_",
+  "TERMS_"
 ] as const;
 
 export function classifyEnvironmentName(name: string): EnvironmentClass | null {

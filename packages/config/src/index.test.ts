@@ -68,6 +68,23 @@ describe("production runtime configuration", () => {
     ).toMatchObject({ success: false });
   });
 
+  it("rejects an insecure production password-reset origin", () => {
+    expect(
+      validateRuntimeConfig({
+        RWOS_ENV: "production",
+        NODE_ENV: "production",
+        DATABASE_URL: "postgresql://db.example.test/rwos",
+        INTERNAL_API_ORIGIN: "https://api.example.test",
+        AUTH_RATE_LIMITER_ORIGIN: "https://rate-limit.example.test",
+        AUTH_RATE_LIMITER_TOKEN: "test-rate-limiter-token-at-least-32-characters",
+        AUTH_RATE_LIMITER_KEY_SECRET: "test-key-secret-that-is-at-least-32-characters",
+        AUTH_RATE_LIMITER_KEY_ID: "key-current",
+        AUTH_RATE_LIMITER_NAMESPACE: "rwos:authrl:production:v1",
+        PASSWORD_RESET_PUBLIC_ORIGIN: "http://127.0.0.1:3100"
+      })
+    ).toMatchObject({ success: false });
+  });
+
   it("forbids enabling the Assignment handoff in production and defaults it off elsewhere", () => {
     const production = {
       RWOS_ENV: "production",

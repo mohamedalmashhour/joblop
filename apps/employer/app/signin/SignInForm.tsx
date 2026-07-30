@@ -13,6 +13,7 @@ import { styles } from "../employer/employerStyles";
 export function SignInForm() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [showPassword, setShowPassword] = useState(false);
   const [state, setState] = useState<"idle" | "submitting" | "error">("idle");
   const [message, setMessage] = useState("Sign in to your employer workspace.");
   const [needsSignOut, setNeedsSignOut] = useState(false);
@@ -72,13 +73,21 @@ export function SignInForm() {
         Password
         <input
           style={styles.input}
-          type="password"
+          type={showPassword ? "text" : "password"}
           autoComplete="current-password"
           required
           value={password}
           onChange={(event) => setPassword(event.target.value)}
           placeholder="Your password"
         />
+      </label>
+      <label style={{ ...styles.fieldLabel, gridTemplateColumns: "auto 1fr", alignItems: "center" }}>
+        <input
+          type="checkbox"
+          checked={showPassword}
+          onChange={(event) => setShowPassword(event.target.checked)}
+        />
+        Show password
       </label>
       <p
         aria-live="polite"
@@ -100,6 +109,9 @@ export function SignInForm() {
             Create an employer account
           </a>
         )}
+        <a href="/forgot-password" style={styles.secondaryButton}>
+          Forgot password?
+        </a>
       </div>
     </form>
   );

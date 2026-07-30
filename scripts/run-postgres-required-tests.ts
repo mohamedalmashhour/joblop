@@ -79,7 +79,8 @@ async function main() {
         "run",
         "--config",
         "vitest.external.config.ts",
-        "apps/api/src/firstAdminBootstrap.postgres.test.ts"
+        "apps/api/src/firstAdminBootstrap.postgres.test.ts",
+        "apps/api/src/passwordReset.postgres.test.ts"
       ],
       validationEnvironment
     );

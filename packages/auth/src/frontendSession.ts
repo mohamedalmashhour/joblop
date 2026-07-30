@@ -77,6 +77,24 @@ export function createFrontendSessionGateway(options: {
     }
   }
 
+  async function publicRequest(path: string, body: unknown): Promise<FrontendSessionResult> {
+    try {
+      const response = await options.fetch(`${origin}${path}`, {
+        method: "POST",
+        headers: { accept: "application/json", "content-type": "application/json" },
+        body: JSON.stringify(body),
+        cache: "no-store"
+      });
+      if (response.status === 502 || response.status === 503 || response.status === 504) {
+        return { status: "unavailable" };
+      }
+      if (!response.ok) return { status: "error" };
+      return { status: "ok", payload: await response.json() };
+    } catch {
+      return { status: "unavailable" };
+    }
+  }
+
   return {
     async signIn(
       credentials: Readonly<{ email: string; password: string }>,
@@ -155,6 +173,7 @@ export function createFrontendSessionGateway(options: {
       token
         ? request("/auth/sign-out", "POST", token)
         : Promise.resolve({ status: "ok", payload: null } as const),
+    publicRequest,
     request
   };
 }

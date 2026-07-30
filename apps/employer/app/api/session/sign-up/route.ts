@@ -76,12 +76,24 @@ export async function POST(request: Request) {
 
 function validRegistration(
   input: unknown
-): input is { email: string; password: string; displayName?: string | null } {
+): input is {
+  email: string;
+  confirmEmail: string;
+  password: string;
+  confirmPassword: string;
+  acceptedNotices: true;
+  displayName?: string | null;
+} {
   if (typeof input !== "object" || input === null) return false;
   const record = input as Record<string, unknown>;
   return (
     typeof record.email === "string" &&
+    typeof record.confirmEmail === "string" &&
+    record.email.trim().toLowerCase() === record.confirmEmail.trim().toLowerCase() &&
     typeof record.password === "string" &&
+    typeof record.confirmPassword === "string" &&
+    record.password === record.confirmPassword &&
+    record.acceptedNotices === true &&
     (record.displayName === undefined ||
       record.displayName === null ||
       typeof record.displayName === "string")

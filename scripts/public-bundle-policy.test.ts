@@ -96,6 +96,13 @@ describe("public bundle credential policy", () => {
     expect(classifyEnvironmentName("STRIPE_TEST_MODE_ENABLED")).toBe(
       "server-only-non-secret"
     );
+    expect(classifyEnvironmentName("EMPLOYER_SELF_REGISTRATION_ENABLED")).toBe(
+      "server-only-non-secret"
+    );
+    expect(classifyEnvironmentName("TERMS_VERSION")).toBe("server-only-non-secret");
+    expect(classifyEnvironmentName("PRIVACY_NOTICE_VERSION")).toBe(
+      "server-only-non-secret"
+    );
   });
 
   it("fails a repository inventory containing an unclassified environment name", () => {

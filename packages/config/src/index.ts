@@ -30,6 +30,7 @@ const runtimeConfigSchema = z
     // sending). Mirrors the STR gating model — the feature ships dark until the owner provisions keys.
     RESEND_API_KEY: z.string().min(1).optional(),
     EMAIL_FROM: z.string().email().optional(),
+    PASSWORD_RESET_PUBLIC_ORIGIN: z.string().url().optional(),
     STRIPE_TEST_MODE_ENABLED: z.enum(["disabled", "enabled"]).default("disabled"),
     STRIPE_TEST_SECRET_KEY: z.string().min(1).optional(),
     STRIPE_TEST_WEBHOOK_SECRET: z.string().min(1).optional(),
@@ -178,6 +179,16 @@ const runtimeConfigSchema = z
         message: "AUTH_RATE_LIMITER_ORIGIN must use HTTPS when RWOS_ENV is production."
       });
     }
+    if (
+      config.PASSWORD_RESET_PUBLIC_ORIGIN &&
+      !config.PASSWORD_RESET_PUBLIC_ORIGIN.startsWith("https://")
+    ) {
+      context.addIssue({
+        code: "custom",
+        path: ["PASSWORD_RESET_PUBLIC_ORIGIN"],
+        message: "PASSWORD_RESET_PUBLIC_ORIGIN must use HTTPS when RWOS_ENV is production."
+      });
+    }
     if (!config.AUTH_RATE_LIMITER_TOKEN) {
       context.addIssue({
         code: "custom",
@@ -282,6 +293,7 @@ export function getRuntimeConfig(env: NodeJS.ProcessEnv = process.env) {
     hasSessionSecret: Boolean(parsed.SESSION_SECRET),
     resendApiKey: parsed.RESEND_API_KEY,
     emailFrom: parsed.EMAIL_FROM,
+    passwordResetPublicOrigin: parsed.PASSWORD_RESET_PUBLIC_ORIGIN,
     // True only when both are present — the mailer sends real email; otherwise it stays a no-op.
     hasEmailDelivery: Boolean(parsed.RESEND_API_KEY && parsed.EMAIL_FROM),
     stripeTestModeEnabled: parsed.STRIPE_TEST_MODE_ENABLED === "enabled",

@@ -14,7 +14,10 @@ import { VerifyEmailPanel } from "./VerifyEmailPanel";
 export function SignUpForm({ registrationOpen }: { registrationOpen: boolean }) {
   const [fullName, setFullName] = useState("");
   const [email, setEmail] = useState("");
+  const [confirmEmail, setConfirmEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
+  const [acceptedNotices, setAcceptedNotices] = useState(false);
   const [state, setState] = useState<"idle" | "submitting" | "error">("idle");
   const [verifying, setVerifying] = useState(false);
   const [message, setMessage] = useState(
@@ -43,15 +46,35 @@ export function SignUpForm({ registrationOpen }: { registrationOpen: boolean }) 
 
   const submit = async (event: React.FormEvent) => {
     event.preventDefault();
+    if (email.trim().toLowerCase() !== confirmEmail.trim().toLowerCase()) {
+      setState("error");
+      return setMessage("Email addresses do not match.");
+    }
+    if (password !== confirmPassword) {
+      setState("error");
+      return setMessage("Passwords do not match.");
+    }
+    if (!acceptedNotices) {
+      setState("error");
+      return setMessage("Accept the Terms and Privacy Notice before creating an account.");
+    }
     setState("submitting");
     setMessage("Creating your account…");
     try {
       const response = await fetch("/api/session/sign-up", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ email, password, displayName: fullName || null })
+        body: JSON.stringify({
+          email,
+          confirmEmail,
+          password,
+          confirmPassword,
+          acceptedNotices,
+          displayName: fullName || null
+        })
       });
       setPassword("");
+      setConfirmPassword("");
       if (!response.ok) {
         setState("error");
         if (response.status === 404) return setMessage("Account creation is not open yet.");
@@ -86,6 +109,19 @@ export function SignUpForm({ registrationOpen }: { registrationOpen: boolean }) 
           value={email}
           onChange={(event) => setEmail(event.target.value)}
           placeholder="manager@example.org"
+          required
+        />
+      </label>
+      <label style={styles.fieldLabel}>
+        Confirm work email
+        <input
+          style={styles.input}
+          type="email"
+          autoComplete="email"
+          value={confirmEmail}
+          onChange={(event) => setConfirmEmail(event.target.value)}
+          placeholder="manager@example.org"
+          required
         />
       </label>
       <label style={styles.fieldLabel}>
@@ -108,7 +144,33 @@ export function SignUpForm({ registrationOpen }: { registrationOpen: boolean }) 
           value={password}
           onChange={(event) => setPassword(event.target.value)}
           placeholder="Create a password"
+          minLength={12}
+          required
         />
+      </label>
+      <label style={styles.fieldLabel}>
+        Confirm password
+        <input
+          style={styles.input}
+          type="password"
+          autoComplete="new-password"
+          value={confirmPassword}
+          onChange={(event) => setConfirmPassword(event.target.value)}
+          placeholder="Repeat your password"
+          minLength={12}
+          required
+        />
+      </label>
+      <label style={{ ...styles.fieldLabel, gridTemplateColumns: "auto 1fr", alignItems: "start" }}>
+        <input
+          type="checkbox"
+          checked={acceptedNotices}
+          onChange={(event) => setAcceptedNotices(event.target.checked)}
+          required
+        />
+        <span>
+          I accept the <a href="/terms">Terms</a> and <a href="/privacy">Privacy Notice</a>.
+        </span>
       </label>
       <p style={state === "error" ? styles.warning : styles.sectionCopy}>{message}</p>
       <div style={{ display: "flex", gap: "0.75rem", flexWrap: "wrap" }}>

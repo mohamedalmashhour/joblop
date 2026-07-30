@@ -6,7 +6,7 @@
     "worker"
   ],
   "counts": {
-    "working": 290,
+    "working": 303,
     "intentionally_disabled": 59,
     "governed": 39,
     "deferred": 0
@@ -654,6 +654,36 @@
     },
     {
       "app": "admin",
+      "file": "apps/admin/app/forgot-password/PasswordResetRequestForm.tsx",
+      "line": 25,
+      "tag": "input",
+      "label": "setEmail(event.target.value)} /> <div style={authSt",
+      "destination": null,
+      "classification": "working",
+      "evidence": "event_handler"
+    },
+    {
+      "app": "admin",
+      "file": "apps/admin/app/forgot-password/PasswordResetRequestForm.tsx",
+      "line": 38,
+      "tag": "button",
+      "label": "Back to sign in",
+      "destination": null,
+      "classification": "working",
+      "evidence": "event_or_form_submission"
+    },
+    {
+      "app": "admin",
+      "file": "apps/admin/app/forgot-password/PasswordResetRequestForm.tsx",
+      "line": 41,
+      "tag": "a",
+      "label": "Back to sign in ); }",
+      "destination": "/signin",
+      "classification": "working",
+      "evidence": "implemented_application_route"
+    },
+    {
+      "app": "admin",
       "file": "apps/admin/app/notification-center/page.tsx",
       "line": 67,
       "tag": "input",
@@ -804,6 +834,46 @@
     },
     {
       "app": "admin",
+      "file": "apps/admin/app/reset-password/PasswordResetForm.tsx",
+      "line": 36,
+      "tag": "input",
+      "label": "setPassword(event.target.value)} /> Confirm new password <input",
+      "destination": null,
+      "classification": "working",
+      "evidence": "event_handler"
+    },
+    {
+      "app": "admin",
+      "file": "apps/admin/app/reset-password/PasswordResetForm.tsx",
+      "line": 48,
+      "tag": "input",
+      "label": "setConfirmation(event.target.value)} /> ) : null} {m",
+      "destination": null,
+      "classification": "working",
+      "evidence": "event_handler"
+    },
+    {
+      "app": "admin",
+      "file": "apps/admin/app/reset-password/PasswordResetForm.tsx",
+      "line": 64,
+      "tag": "button",
+      "label": ") : ( Sign in",
+      "destination": null,
+      "classification": "working",
+      "evidence": "event_or_form_submission"
+    },
+    {
+      "app": "admin",
+      "file": "apps/admin/app/reset-password/PasswordResetForm.tsx",
+      "line": 68,
+      "tag": "a",
+      "label": "Sign in )} ); }",
+      "destination": "/signin",
+      "classification": "working",
+      "evidence": "implemented_application_route"
+    },
+    {
+      "app": "admin",
       "file": "apps/admin/app/residences/page.tsx",
       "line": 64,
       "tag": "input",
@@ -895,7 +965,7 @@
     {
       "app": "admin",
       "file": "apps/admin/app/signin/SignInForm.tsx",
-      "line": 60,
+      "line": 61,
       "tag": "input",
       "label": "setEmail(event.target.value)} placeholder=\"admin@example.org\" /> Password <input",
       "destination": null,
@@ -905,9 +975,9 @@
     {
       "app": "admin",
       "file": "apps/admin/app/signin/SignInForm.tsx",
-      "line": 72,
+      "line": 73,
       "tag": "input",
-      "label": "setPassword(event.target.value)} placeholder=\"Your password\" /> <p aria-live=\"polite\" role={state ==",
+      "label": "setPassword(event.target.value)} placeholder=\"Your password\" /> <label style={{ ...authStyles.fieldL",
       "destination": null,
       "classification": "working",
       "evidence": "event_handler"
@@ -915,7 +985,17 @@
     {
       "app": "admin",
       "file": "apps/admin/app/signin/SignInForm.tsx",
-      "line": 90,
+      "line": 86,
+      "tag": "input",
+      "label": "setShowPassword(event.target.checked)} /> Show password <p aria-live=\"polite\" role=",
+      "destination": null,
+      "classification": "working",
+      "evidence": "event_handler"
+    },
+    {
+      "app": "admin",
+      "file": "apps/admin/app/signin/SignInForm.tsx",
+      "line": 101,
       "tag": "button",
       "label": "style={authStyles.seco",
       "destination": null,
@@ -925,9 +1005,9 @@
     {
       "app": "admin",
       "file": "apps/admin/app/signin/SignInForm.tsx",
-      "line": 94,
+      "line": 105,
       "tag": "button",
-      "label": "Sign out first ) : ( Create an account )",
+      "label": "Sign out first ) : ( Admin accounts are provisioned—self-registration is closed.",
       "destination": null,
       "classification": "working",
       "evidence": "event_or_form_submission"
@@ -935,112 +1015,22 @@
     {
       "app": "admin",
       "file": "apps/admin/app/signin/SignInForm.tsx",
-      "line": 98,
+      "line": 111,
       "tag": "a",
-      "label": "Create an account )} ); }",
-      "destination": "/signup",
+      "label": "Forgot password? ); }",
+      "destination": "/forgot-password",
       "classification": "working",
       "evidence": "implemented_application_route"
     },
     {
       "app": "admin",
-      "file": "apps/admin/app/signup/SignUpForm.tsx",
-      "line": 36,
+      "file": "apps/admin/app/signup/page.tsx",
+      "line": 17,
       "tag": "a",
-      "label": "Go to sign in ); } const submit = async (event: React.FormEvent) => { event.preventDefault(); setSta",
+      "label": "Return to sign in ); }",
       "destination": "/signin",
       "classification": "working",
       "evidence": "implemented_application_route"
-    },
-    {
-      "app": "admin",
-      "file": "apps/admin/app/signup/SignUpForm.tsx",
-      "line": 81,
-      "tag": "input",
-      "label": "setEmail(event.target.value)} placeholder=\"admin@example.org\" /> Full name <input",
-      "destination": null,
-      "classification": "working",
-      "evidence": "event_handler"
-    },
-    {
-      "app": "admin",
-      "file": "apps/admin/app/signup/SignUpForm.tsx",
-      "line": 92,
-      "tag": "input",
-      "label": "setFullName(event.target.value)} placeholder=\"Authorized contact\" /> Password <input",
-      "destination": null,
-      "classification": "working",
-      "evidence": "event_handler"
-    },
-    {
-      "app": "admin",
-      "file": "apps/admin/app/signup/SignUpForm.tsx",
-      "line": 103,
-      "tag": "input",
-      "label": "setPassword(event.target.value)} placeholder=\"Create a password\" /> {",
-      "destination": null,
-      "classification": "working",
-      "evidence": "event_handler"
-    },
-    {
-      "app": "admin",
-      "file": "apps/admin/app/signup/SignUpForm.tsx",
-      "line": 114,
-      "tag": "button",
-      "label": "I already have an acc",
-      "destination": null,
-      "classification": "working",
-      "evidence": "event_or_form_submission"
-    },
-    {
-      "app": "admin",
-      "file": "apps/admin/app/signup/SignUpForm.tsx",
-      "line": 117,
-      "tag": "a",
-      "label": "I already have an account ); }",
-      "destination": "/signin",
-      "classification": "working",
-      "evidence": "implemented_application_route"
-    },
-    {
-      "app": "admin",
-      "file": "apps/admin/app/signup/VerifyEmailPanel.tsx",
-      "line": 113,
-      "tag": "input",
-      "label": "setCode(event.target.value)} placeholder=\"123456\" /> <button type",
-      "destination": null,
-      "classification": "working",
-      "evidence": "event_handler"
-    },
-    {
-      "app": "admin",
-      "file": "apps/admin/app/signup/VerifyEmailPanel.tsx",
-      "line": 123,
-      "tag": "button",
-      "label": "void verify()} disabled= style= > {phase === \"verifyi",
-      "destination": null,
-      "classification": "working",
-      "evidence": "event_or_form_submission"
-    },
-    {
-      "app": "admin",
-      "file": "apps/admin/app/signup/VerifyEmailPanel.tsx",
-      "line": 131,
-      "tag": "button",
-      "label": "void sendCode()} disabled= style= > {cooldown > 0 ? `Resend",
-      "destination": null,
-      "classification": "working",
-      "evidence": "event_or_form_submission"
-    },
-    {
-      "app": "admin",
-      "file": "apps/admin/app/signup/VerifyEmailPanel.tsx",
-      "line": 143,
-      "tag": "button",
-      "label": "); }",
-      "destination": null,
-      "classification": "working",
-      "evidence": "event_or_form_submission"
     },
     {
       "app": "admin",
@@ -3024,6 +3014,36 @@
     },
     {
       "app": "employer",
+      "file": "apps/employer/app/forgot-password/PasswordResetRequestForm.tsx",
+      "line": 27,
+      "tag": "input",
+      "label": "setEmail(event.target.value)} required />",
+      "destination": null,
+      "classification": "working",
+      "evidence": "event_handler"
+    },
+    {
+      "app": "employer",
+      "file": "apps/employer/app/forgot-password/PasswordResetRequestForm.tsx",
+      "line": 39,
+      "tag": "button",
+      "label": "Back to sign in </f",
+      "destination": null,
+      "classification": "working",
+      "evidence": "event_or_form_submission"
+    },
+    {
+      "app": "employer",
+      "file": "apps/employer/app/forgot-password/PasswordResetRequestForm.tsx",
+      "line": 42,
+      "tag": "a",
+      "label": "Back to sign in ); }",
+      "destination": "/signin",
+      "classification": "working",
+      "evidence": "implemented_application_route"
+    },
+    {
+      "app": "employer",
       "file": "apps/employer/app/how-it-works/page.tsx",
       "line": 17,
       "tag": "a",
@@ -3544,6 +3564,46 @@
     },
     {
       "app": "employer",
+      "file": "apps/employer/app/reset-password/PasswordResetForm.tsx",
+      "line": 38,
+      "tag": "input",
+      "label": "setPassword(event.target.value)} /> Confirm new password <input st",
+      "destination": null,
+      "classification": "working",
+      "evidence": "event_handler"
+    },
+    {
+      "app": "employer",
+      "file": "apps/employer/app/reset-password/PasswordResetForm.tsx",
+      "line": 50,
+      "tag": "input",
+      "label": "setConfirmation(event.target.value)} /> ) : null} {m",
+      "destination": null,
+      "classification": "working",
+      "evidence": "event_handler"
+    },
+    {
+      "app": "employer",
+      "file": "apps/employer/app/reset-password/PasswordResetForm.tsx",
+      "line": 66,
+      "tag": "button",
+      "label": ") : ( Sign in",
+      "destination": null,
+      "classification": "working",
+      "evidence": "event_or_form_submission"
+    },
+    {
+      "app": "employer",
+      "file": "apps/employer/app/reset-password/PasswordResetForm.tsx",
+      "line": 70,
+      "tag": "a",
+      "label": "Sign in )} ); }",
+      "destination": "/signin",
+      "classification": "working",
+      "evidence": "implemented_application_route"
+    },
+    {
+      "app": "employer",
       "file": "apps/employer/app/shared/maps/JobLocationMap.tsx",
       "line": 58,
       "tag": "a",
@@ -3575,7 +3635,7 @@
     {
       "app": "employer",
       "file": "apps/employer/app/signin/SignInForm.tsx",
-      "line": 61,
+      "line": 62,
       "tag": "input",
       "label": "setEmail(event.target.value)} placeholder=\"manager@example.org\" /> Password <input",
       "destination": null,
@@ -3585,9 +3645,9 @@
     {
       "app": "employer",
       "file": "apps/employer/app/signin/SignInForm.tsx",
-      "line": 73,
+      "line": 74,
       "tag": "input",
-      "label": "setPassword(event.target.value)} placeholder=\"Your password\" /> <p aria-live=\"polite\" role={state ==",
+      "label": "setPassword(event.target.value)} placeholder=\"Your password\" /> <label style={{ ...styles.fieldLabel",
       "destination": null,
       "classification": "working",
       "evidence": "event_handler"
@@ -3595,7 +3655,17 @@
     {
       "app": "employer",
       "file": "apps/employer/app/signin/SignInForm.tsx",
-      "line": 91,
+      "line": 85,
+      "tag": "input",
+      "label": "setShowPassword(event.target.checked)} /> Show password <p aria-live=\"polite\" role=",
+      "destination": null,
+      "classification": "working",
+      "evidence": "event_handler"
+    },
+    {
+      "app": "employer",
+      "file": "apps/employer/app/signin/SignInForm.tsx",
+      "line": 100,
       "tag": "button",
       "label": "style={styles.secondar",
       "destination": null,
@@ -3605,7 +3675,7 @@
     {
       "app": "employer",
       "file": "apps/employer/app/signin/SignInForm.tsx",
-      "line": 95,
+      "line": 104,
       "tag": "button",
       "label": "Sign out first ) : ( Create an employer account",
       "destination": null,
@@ -3615,19 +3685,29 @@
     {
       "app": "employer",
       "file": "apps/employer/app/signin/SignInForm.tsx",
-      "line": 99,
+      "line": 108,
       "tag": "a",
-      "label": "Create an employer account )} ); }",
+      "label": "Create an employer account )} Forgot password? <",
       "destination": "/signup/employer",
       "classification": "working",
       "evidence": "implemented_application_route"
     },
     {
       "app": "employer",
-      "file": "apps/employer/app/signup/employer/SignUpForm.tsx",
-      "line": 37,
+      "file": "apps/employer/app/signin/SignInForm.tsx",
+      "line": 112,
       "tag": "a",
-      "label": "Go to sign in ); } const submit = async (event: React.FormEvent) => { event.preventDefault(); setSta",
+      "label": "Forgot password? ); }",
+      "destination": "/forgot-password",
+      "classification": "working",
+      "evidence": "implemented_application_route"
+    },
+    {
+      "app": "employer",
+      "file": "apps/employer/app/signup/employer/SignUpForm.tsx",
+      "line": 40,
+      "tag": "a",
+      "label": "Go to sign in ); } const submit = async (event: React.FormEvent) => { event.preventDefault(); if (em",
       "destination": "/signin",
       "classification": "working",
       "evidence": "implemented_application_route"
@@ -3635,9 +3715,9 @@
     {
       "app": "employer",
       "file": "apps/employer/app/signup/employer/SignUpForm.tsx",
-      "line": 82,
+      "line": 105,
       "tag": "input",
-      "label": "setEmail(event.target.value)} placeholder=\"manager@example.org\" /> Full name <input",
+      "label": "setEmail(event.target.value)} placeholder=\"manager@example.org\" required /> Confirm work",
       "destination": null,
       "classification": "working",
       "evidence": "event_handler"
@@ -3645,7 +3725,17 @@
     {
       "app": "employer",
       "file": "apps/employer/app/signup/employer/SignUpForm.tsx",
-      "line": 93,
+      "line": 117,
+      "tag": "input",
+      "label": "setConfirmEmail(event.target.value)} placeholder=\"manager@example.org\" required /> Full",
+      "destination": null,
+      "classification": "working",
+      "evidence": "event_handler"
+    },
+    {
+      "app": "employer",
+      "file": "apps/employer/app/signup/employer/SignUpForm.tsx",
+      "line": 129,
       "tag": "input",
       "label": "setFullName(event.target.value)} placeholder=\"Authorized contact\" /> Password <input",
       "destination": null,
@@ -3655,9 +3745,9 @@
     {
       "app": "employer",
       "file": "apps/employer/app/signup/employer/SignUpForm.tsx",
-      "line": 104,
+      "line": 140,
       "tag": "input",
-      "label": "setPassword(event.target.value)} placeholder=\"Create a password\" /> {mess",
+      "label": "setPassword(event.target.value)} placeholder=\"Create a password\" minLength= required /> <label style",
       "destination": null,
       "classification": "working",
       "evidence": "event_handler"
@@ -3665,7 +3755,47 @@
     {
       "app": "employer",
       "file": "apps/employer/app/signup/employer/SignUpForm.tsx",
-      "line": 115,
+      "line": 153,
+      "tag": "input",
+      "label": "setConfirmPassword(event.target.value)} placeholder=\"Repeat your password\" minLength= required /> <l",
+      "destination": null,
+      "classification": "working",
+      "evidence": "event_handler"
+    },
+    {
+      "app": "employer",
+      "file": "apps/employer/app/signup/employer/SignUpForm.tsx",
+      "line": 165,
+      "tag": "input",
+      "label": "setAcceptedNotices(event.target.checked)} required /> I accept the Terms and Privacy Notice .",
+      "destination": null,
+      "classification": "working",
+      "evidence": "event_handler"
+    },
+    {
+      "app": "employer",
+      "file": "apps/employer/app/signup/employer/SignUpForm.tsx",
+      "line": 172,
+      "tag": "a",
+      "label": "Terms and Privacy Notice . <di",
+      "destination": "/terms",
+      "classification": "working",
+      "evidence": "implemented_application_route"
+    },
+    {
+      "app": "employer",
+      "file": "apps/employer/app/signup/employer/SignUpForm.tsx",
+      "line": 172,
+      "tag": "a",
+      "label": "Privacy Notice . <div style={{ display: \"flex\", gap:",
+      "destination": "/privacy",
+      "classification": "working",
+      "evidence": "implemented_application_route"
+    },
+    {
+      "app": "employer",
+      "file": "apps/employer/app/signup/employer/SignUpForm.tsx",
+      "line": 177,
       "tag": "button",
       "label": "I already have a",
       "destination": null,
@@ -3675,7 +3805,7 @@
     {
       "app": "employer",
       "file": "apps/employer/app/signup/employer/SignUpForm.tsx",
-      "line": 118,
+      "line": 180,
       "tag": "a",
       "label": "I already have an account ); }",
       "destination": "/signin",

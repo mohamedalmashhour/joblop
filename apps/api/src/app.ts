@@ -108,6 +108,13 @@ import {
 } from "./emailVerification";
 import { createEmailSender, type EmailSender } from "./mailer/emailSender";
 import {
+  createPasswordResetService,
+  passwordResetAccepted,
+  passwordResetFailure,
+  type PasswordResetService
+} from "./passwordReset";
+import { createPrismaPasswordResetRepository } from "./passwordResetRepository";
+import {
   createFakeMalwareScanner,
   createLocalDocumentService,
   createLocalPrivateFileObjectStore,
@@ -130,6 +137,7 @@ import {
 export interface BuildApiOptions {
   authService?: AuthenticationService;
   emailVerificationService?: EmailVerificationService;
+  passwordResetService?: PasswordResetService;
   emailSender?: EmailSender;
   authorizationService?: AuthorizationService;
   membershipService?: OrganizationMembershipService;
@@ -172,7 +180,7 @@ export type AuthenticationRateLimitDecision = Readonly<{
 export interface AuthenticationRateLimiter {
   consume(
     input: Readonly<{
-      action: "register" | "sign_in" | "email_verify_send";
+      action: "register" | "sign_in" | "email_verify_send" | "password_reset_request";
       ip: string;
       email: string;
     }>
@@ -210,6 +218,12 @@ export function buildApi(options: BuildApiOptions = {}) {
       : createMemoryAuthenticationRateLimiter());
   const prisma = options.authService ? null : createPrismaClient(runtimeConfig.databaseUrl);
   const authenticationRepository = prisma ? createPrismaAuthenticationRepository(prisma) : null;
+  const emailSender =
+    options.emailSender ??
+    createEmailSender({
+      apiKey: runtimeConfig.resendApiKey,
+      from: runtimeConfig.emailFrom
+    });
   const authService =
     options.authService ??
     createAuthenticationService(authenticationRepository!, {
@@ -220,16 +234,17 @@ export function buildApi(options: BuildApiOptions = {}) {
     (authenticationRepository && hasEmailVerificationDelegate(prisma)
       ? createEmailVerificationService(
           authenticationRepository,
-          options.emailSender ??
-            createEmailSender({
-              apiKey: runtimeConfig.resendApiKey,
-              from: runtimeConfig.emailFrom
-            }),
+          emailSender,
           {
             exposeLocalCode:
               runtimeConfig.rwosEnv !== "production" && !runtimeConfig.hasEmailDelivery
           }
         )
+      : null);
+  const passwordResetService =
+    options.passwordResetService ??
+    (prisma && "passwordResetToken" in prisma
+      ? createPasswordResetService(createPrismaPasswordResetRepository(prisma), emailSender)
       : null);
   const authorizationService = options.authorizationService ?? createAuthorizationService();
   const membershipService =
@@ -782,6 +797,36 @@ export function buildApi(options: BuildApiOptions = {}) {
     } catch (error) {
       return sendAuthenticationError(reply, error);
     }
+  });
+
+  app.post("/auth/password-reset/request", async (request, reply) => {
+    const email = readRequiredString(asRecord(request.body), "email");
+    if (!email || !passwordResetService || !runtimeConfig.passwordResetPublicOrigin) {
+      return reply.code(202).send(passwordResetAccepted);
+    }
+    const rateLimit = await consumeAuthenticationRateLimit(authRateLimiter, {
+      action: "password_reset_request",
+      ip: request.ip,
+      email
+    });
+    if (!rateLimit || !rateLimit.allowed) {
+      return reply.code(202).send(passwordResetAccepted);
+    }
+    await passwordResetService.request({
+      email,
+      resetBaseUrl: runtimeConfig.passwordResetPublicOrigin
+    });
+    return reply.code(202).send(passwordResetAccepted);
+  });
+
+  app.post("/auth/password-reset/complete", async (request, reply) => {
+    if (!passwordResetService) return reply.code(400).send(passwordResetFailure);
+    const body = asRecord(request.body);
+    const token = readRequiredString(body, "token");
+    const newPassword = readRequiredString(body, "newPassword");
+    if (!token || !newPassword) return reply.code(400).send(passwordResetFailure);
+    const result = await passwordResetService.complete({ token, newPassword });
+    return reply.code(result.status === "reset" ? 200 : 400).send(result);
   });
 
   app.get("/auth/session", async (request, reply) => {
@@ -3827,7 +3872,7 @@ function trustedIdentityHeaders(
 
 function deriveAuthenticationRateLimitKeys(
   input: Readonly<{
-    action: "register" | "sign_in" | "email_verify_send";
+    action: "register" | "sign_in" | "email_verify_send" | "password_reset_request";
     ip: string;
     email: string;
   }>,
