@@ -101,4 +101,16 @@ describe("Cloud Run application packaging", () => {
       "const readinessStatuses = failClosedReadinessServices.has(service.name) ? [503] : [200]"
     );
   });
+
+  it("starts the QA reset image with a synthetic PostgreSQL-only contract", () => {
+    const validator = read("scripts/validate-containers.mjs");
+    expect(validator).toContain("QA_RESET_PERSISTENCE_MODE=postgres");
+    expect(validator).toContain("QA_RESET_TENANT_A_ID=aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa");
+    expect(validator).toContain("QA_RESET_TENANT_B_ID=bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb");
+    expect(validator).toContain("QA_RESET_WORK_GROUP_ID=aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaa001");
+    expect(validator).toContain("QA_RESET_ROLE_DEFINITION_ID=aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaa002");
+    expect(validator).toContain(
+      "QA_RESET_ORGANIZATION_OWNER_ACCESS_ROLE_ID=aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaa003"
+    );
+  });
 });
