@@ -29,7 +29,7 @@ createdb -h 127.0.0.1 -p "$qa_port" rwos_validation_admin
 DATABASE_URL="$qa_url?schema=public" pnpm --filter @rwos/database prisma:migrate:deploy >/dev/null
 
 test "$(psql "$qa_url" -tAc \
-   "SELECT count(*) FROM _prisma_migrations WHERE finished_at IS NOT NULL AND rolled_back_at IS NULL")" = 15
+   "SELECT count(*) FROM _prisma_migrations WHERE finished_at IS NOT NULL AND rolled_back_at IS NULL")" = 16
 test "$(psql "$qa_url" -tAc \
   "SELECT count(*) FROM pg_constraint WHERE conrelid IN ('qa_reset_manifest_ownership'::regclass,'qa_reset_manifest_tenants'::regclass,'qa_reset_owned_records'::regclass,'qa_reset_control_runs'::regclass,'qa_reset_control_events'::regclass)")" = 30
 
@@ -68,4 +68,4 @@ RWOS_TEST_DATABASE_URL="$qa_url" \
 RWOS_TEST_DATABASE_CONFIRMATION=disposable-test-target \
 pnpm test:postgres:required
 
-echo "RWOS_QA_RESET_LOCAL_POSTGRES_VALIDATION_PASSED migrations=15 constraints=30 rollback=atomic advisory_lock=exclusive"
+echo "RWOS_QA_RESET_LOCAL_POSTGRES_VALIDATION_PASSED migrations=16 constraints=30 rollback=atomic advisory_lock=exclusive"

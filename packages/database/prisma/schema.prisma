@@ -1376,6 +1376,7 @@ model Invoice {
   creditNotes     InvoiceCreditNote[]
   deliveries      InvoiceDeliveryReceipt[]
   paymentAttempts EmployerPaymentAttempt[]
+  auditEntries    InvoiceAuditEntry[]
 
   @@unique([organizationId, invoiceNumber], map: "invoices_organization_number_key")
   @@unique([organizationId, timesheetId], map: "invoices_organization_timesheet_key")
@@ -1423,6 +1424,27 @@ model InvoiceDeliveryReceipt {
   @@unique([organizationId, idempotencyKeyDigest], map: "invoice_deliveries_organization_idempotency_key")
   @@index([invoiceId, createdAt], map: "invoice_deliveries_invoice_created_idx")
   @@map("invoice_delivery_receipts")
+}
+
+model InvoiceAuditEntry {
+  id             String         @id @default(uuid()) @db.Uuid
+  invoiceId      String         @map("invoice_id") @db.Uuid
+  organizationId String         @map("organization_id") @db.Uuid
+  sequence       Int
+  action         String
+  actorReference String         @map("actor_reference")
+  actorRole      String         @map("actor_role")
+  priorStatus    InvoiceStatus? @map("prior_status")
+  newStatus      InvoiceStatus  @map("new_status")
+  reason         String?
+  occurredAt     DateTime       @map("occurred_at") @db.Timestamptz(3)
+  createdAt      DateTime       @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  invoice Invoice @relation(fields: [invoiceId, organizationId], references: [id, organizationId], onDelete: Restrict)
+
+  @@unique([invoiceId, sequence], map: "invoice_audit_entries_invoice_sequence_key")
+  @@index([organizationId, occurredAt], map: "invoice_audit_entries_organization_occurred_idx")
+  @@map("invoice_audit_entries")
 }
 
 model InvoiceConfigurationVersion {

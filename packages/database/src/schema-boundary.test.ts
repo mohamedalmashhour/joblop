@@ -140,6 +140,7 @@ describe("Prisma Phase 01 schema boundary", () => {
       "Invoice",
       "InvoiceCreditNote",
       "InvoiceDeliveryReceipt",
+      "InvoiceAuditEntry",
       "InvoiceConfigurationVersion",
       "InvoiceNumberSequence",
       "PaymentPolicyVersion",
