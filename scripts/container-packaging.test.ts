@@ -52,4 +52,12 @@ describe("Cloud Run application packaging", () => {
       );
     }
   });
+
+  it("supports exact per-service CI runtime validation without silently accepting unknown targets", () => {
+    const validator = read("scripts/validate-containers.mjs");
+    expect(validator).toContain("process.env.RWOS_CONTAINER_SERVICE");
+    expect(validator).toContain("services.length !== 1");
+    expect(validator).toContain("RWOS_CONTAINER_SERVICE_UNKNOWN");
+    expect(validator).toContain("for (const [index, service] of services.entries())");
+  });
 });

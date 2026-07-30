@@ -17,6 +17,13 @@ if (docker.status !== 0) {
 }
 
 const matrix = JSON.parse(readFileSync("container-build-matrix.json", "utf8"));
+const requestedService = process.env.RWOS_CONTAINER_SERVICE;
+const services = requestedService
+  ? matrix.services.filter((service) => service.name === requestedService)
+  : matrix.services;
+if (requestedService && services.length !== 1) {
+  fail(`RWOS_CONTAINER_SERVICE_UNKNOWN service=${requestedService}`);
+}
 const releaseSha = process.env.RWOS_CONTAINER_GIT_SHA;
 const buildTimestamp = process.env.RWOS_CONTAINER_BUILD_TIMESTAMP;
 const sourceRepository = process.env.RWOS_CONTAINER_SOURCE_REPOSITORY;
@@ -28,7 +35,7 @@ if (!buildTimestamp || !Number.isFinite(Date.parse(buildTimestamp))) {
 if (!sourceRepository) fail("RWOS_CONTAINER_SOURCE_REPOSITORY_REQUIRED");
 if (!imageVersion) fail("RWOS_CONTAINER_IMAGE_VERSION_REQUIRED");
 
-for (const [index, service] of matrix.services.entries()) {
+for (const [index, service] of services.entries()) {
   const image = `rwos-local/${service.name}:${releaseSha}`;
   const container = `rwos-local-${service.name}-${process.pid}`;
   const hostPort = 18_180 + index;

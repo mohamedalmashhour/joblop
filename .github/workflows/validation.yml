@@ -11,11 +11,11 @@ jobs:
   validate:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: pnpm/action-setup@v4
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+      - uses: pnpm/action-setup@9fd676a19091d4595eefd76e4bd31c97133911f1 # v4.2.0
         with:
           version: 10.33.2
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
           node-version: 20.20.2
           cache: pnpm
@@ -24,3 +24,61 @@ jobs:
         run: pnpm --filter @rwos/database prisma:generate
       - run: pnpm validate
       - run: pnpm validate:containers:static
+
+  terraform-validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+      - uses: hashicorp/setup-terraform@dfe3c3f87815947d99a8997f908cb6525fc44e9e # v4.0.1
+        with:
+          terraform_version: 1.10.5
+          terraform_wrapper: false
+      - name: Terraform format
+        run: terraform -chdir=infrastructure/staging fmt -check -diff
+      - name: Terraform initialize without backend
+        run: terraform -chdir=infrastructure/staging init -backend=false -input=false
+      - name: Terraform validate
+        run: terraform -chdir=infrastructure/staging validate -no-color
+
+  dependency-audit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+      - uses: pnpm/action-setup@9fd676a19091d4595eefd76e4bd31c97133911f1 # v4.2.0
+        with:
+          version: 10.33.2
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: 20.20.2
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - name: Dependency advisory audit
+        run: pnpm audit && pnpm audit --prod
+
+  container-runtime:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        service:
+          - api
+          - employer
+          - admin
+          - worker
+          - auth-limiter
+          - candidate-source
+          - offer-delivery
+          - qa-reset
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+      - name: Capture UTC build timestamp
+        id: metadata
+        run: echo "timestamp=$(date -u +'%Y-%m-%dT%H:%M:%SZ')" >> "$GITHUB_OUTPUT"
+      - name: Build and probe one unpublished container
+        env:
+          RWOS_CONTAINER_SERVICE: ${{ matrix.service }}
+          RWOS_CONTAINER_GIT_SHA: ${{ github.sha }}
+          RWOS_CONTAINER_BUILD_TIMESTAMP: ${{ steps.metadata.outputs.timestamp }}
+          RWOS_CONTAINER_SOURCE_REPOSITORY: "github.com/drmmashhour-ux/resident-workforce-os"
+          RWOS_CONTAINER_IMAGE_VERSION: ${{ github.sha }}
+        run: node scripts/validate-containers.mjs
