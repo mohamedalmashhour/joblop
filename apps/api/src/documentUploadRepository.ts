@@ -4,6 +4,7 @@ export interface DocumentMetadataRepository {
   find(documentId: string, organizationId: string): Promise<StoredDocument | null>;
   findByUploadKey(organizationId: string, uploadKeyDigest: string): Promise<StoredDocument | null>;
   countActive(organizationId: string, ownerId: string): Promise<number>;
+  list(organizationId: string, ownerId?: string): Promise<readonly StoredDocument[]>;
   create(input: {
     document: StoredDocument;
     uploadKeyDigest: string;
@@ -64,6 +65,16 @@ export function createMemoryDocumentMetadataRepository(): DocumentMetadataReposi
           !["replaced", "expired", "deleted"].includes(item.state)
       ).length;
     },
+    async list(organizationId, ownerId) {
+      return [...documents.values()]
+        .filter(
+          (item) =>
+            item.organizationId === organizationId &&
+            (ownerId === undefined || item.ownerId === ownerId)
+        )
+        .sort((left, right) => right.createdAt.localeCompare(left.createdAt) || left.id.localeCompare(right.id))
+        .map((item) => structuredClone(item));
+    },
     async create({ document, uploadKeyDigest, requestDigest, actorId }) {
       const scope = `${document.organizationId}:${uploadKeyDigest}`;
       const existingId = uploadKeys.get(scope);
@@ -122,6 +133,7 @@ type PrismaDocumentClient = {
 type PrismaDocumentTransaction = {
   uploadedDocument: {
     findFirst(input: unknown): Promise<unknown>;
+    findMany(input: unknown): Promise<unknown[]>;
     count(input: unknown): Promise<number>;
     create(input: unknown): Promise<unknown>;
     updateMany(input: unknown): Promise<{ count: number }>;
@@ -161,6 +173,16 @@ export function createPrismaDocumentMetadataRepository(
           state: { notIn: ["replaced", "expired", "deleted"] }
         }
       });
+    },
+    async list(organizationId, ownerId) {
+      const values = await prisma.uploadedDocument.findMany({
+        where: {
+          organizationId,
+          ...(ownerId === undefined ? {} : { ownerUserId: ownerId })
+        },
+        orderBy: [{ createdAt: "desc" }, { id: "asc" }]
+      });
+      return values.map(mapDocument);
     },
     async create({ document, uploadKeyDigest, requestDigest, actorId }) {
       return prisma.$transaction(async (transaction) => {

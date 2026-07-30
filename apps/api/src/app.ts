@@ -106,6 +106,15 @@ import {
   type EmailVerificationService
 } from "./emailVerification";
 import { createEmailSender, type EmailSender } from "./mailer/emailSender";
+import {
+  createFakeMalwareScanner,
+  createLocalDocumentService,
+  createLocalPrivateFileObjectStore,
+  type DocumentUploadService
+} from "./documentUpload";
+import { createDocumentUploadContract } from "./documentUploadContract";
+import { createPrismaDocumentMetadataRepository } from "./documentUploadRepository";
+import { registerDocumentRoutes } from "./documentRoutes";
 
 export interface BuildApiOptions {
   authService?: AuthenticationService;
@@ -137,6 +146,8 @@ export interface BuildApiOptions {
     releaseSha: string;
   }>;
   env?: NodeJS.ProcessEnv;
+  documentService?: DocumentUploadService;
+  documentUploadContract?: ReturnType<typeof createDocumentUploadContract>;
 }
 
 export type AuthenticationRateLimitDecision = Readonly<{
@@ -362,6 +373,84 @@ export function buildApi(options: BuildApiOptions = {}) {
             prisma.platformAccessGrant.findMany(activePlatformGrantQuery(userId))
         })
       : () => []);
+  const documentService =
+    options.documentService ??
+    (runtimeConfig.documentLocalUploadEnabled && prisma
+      ? createLocalDocumentService({
+          store: createLocalPrivateFileObjectStore(runtimeConfig.documentLocalStorageRoot!),
+          scanner: createFakeMalwareScanner("clean"),
+          metadata: createPrismaDocumentMetadataRepository(prisma),
+          now: () => new Date().toISOString(),
+          referenceSecret: runtimeConfig.documentReferenceSecret!
+        })
+      : null);
+  const documentUploadContract =
+    options.documentUploadContract ??
+    (runtimeConfig.documentLocalUploadEnabled
+      ? createDocumentUploadContract({
+          secret: runtimeConfig.documentReferenceSecret!,
+          nowEpochSeconds: () => Math.floor(Date.now() / 1000)
+        })
+      : null);
+
+  if (documentService && documentUploadContract) {
+    registerDocumentRoutes(app, {
+      service: documentService,
+      contract: documentUploadContract,
+      authorize: async (request, input) => {
+        const session = await authService.validateSession(
+          readBearerToken(request.headers.authorization)
+        );
+        if (!session.authenticated || !session.user) return null;
+        const roles = await resolveAuthorizationRoles(session.user.id);
+        if (roles.includes("PLATFORM_ADMINISTRATOR")) {
+          return {
+            actorId: session.user.id,
+            ownerId: input.ownerId ?? session.user.id,
+            role: "platform_admin"
+          };
+        }
+        if (
+          roles.includes("ORGANIZATION_OWNER") ||
+          roles.includes("ORGANIZATION_ADMINISTRATOR")
+        ) {
+          try {
+            await organizationService.getOrganization({
+              actorUserId: session.user.id,
+              organizationId: input.organizationId
+            });
+          } catch {
+            return null;
+          }
+          if (
+            input.type === "worker_certification" &&
+            input.ownerId &&
+            !(await workerHasOrganizationScope(prisma, input.ownerId, input.organizationId))
+          ) {
+            return null;
+          }
+          return {
+            actorId: session.user.id,
+            ownerId: input.ownerId ?? session.user.id,
+            role: "employer_admin"
+          };
+        }
+        if (
+          roles.includes("WORKER_ACCESS") &&
+          (!input.ownerId || input.ownerId === session.user.id) &&
+          (!input.type || input.type === "worker_certification") &&
+          (await workerHasOrganizationScope(prisma, session.user.id, input.organizationId))
+        ) {
+          return {
+            actorId: session.user.id,
+            ownerId: session.user.id,
+            role: "worker"
+          };
+        }
+        return null;
+      }
+    });
+  }
 
   app.addHook("onRequest", async (request, reply) => {
     requestStartedAt.set(request, process.hrtime.bigint());
@@ -3676,6 +3765,29 @@ function hasEmailVerificationDelegate(prisma: unknown): boolean {
     typeof prisma === "object" &&
     "emailVerificationCode" in prisma &&
     (prisma as { emailVerificationCode?: unknown }).emailVerificationCode
+  );
+}
+
+async function workerHasOrganizationScope(
+  prisma: unknown,
+  userId: string,
+  organizationId: string
+) {
+  if (!prisma || typeof prisma !== "object" || !("workerOffer" in prisma)) return false;
+  const delegate = (prisma as {
+    workerOffer?: {
+      findFirst(input: unknown): Promise<unknown>;
+    };
+  }).workerOffer;
+  if (!delegate) return false;
+  return Boolean(
+    await delegate.findFirst({
+      where: {
+        organizationId,
+        workerIdentity: { userId, status: "active" }
+      },
+      select: { id: true }
+    })
   );
 }
 

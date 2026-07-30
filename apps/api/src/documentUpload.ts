@@ -355,6 +355,9 @@ export function createLocalDocumentService(options: {
     async get(documentId: string, organizationId: string) {
       return structuredClone(await requireDocument(documentId, organizationId));
     },
+    async list(organizationId: string, ownerId?: string) {
+      return metadata.list(organizationId, ownerId);
+    },
     async listAudit(documentId: string, organizationId: string) {
       await requireDocument(documentId, organizationId);
       return metadata.listAudit(documentId, organizationId);
@@ -393,6 +396,8 @@ export function createLocalDocumentService(options: {
     }
   };
 }
+
+export type DocumentUploadService = ReturnType<typeof createLocalDocumentService>;
 
 function authorizeUpload(role: DocumentRole, type: DocumentType, actorId: string, ownerId: string) {
   if (role === "worker" && (actorId !== ownerId || type !== "worker_certification")) {

@@ -21,6 +21,7 @@ const persisted = {
 function setup() {
   const uploadedDocument = {
     findFirst: vi.fn().mockResolvedValue(persisted),
+    findMany: vi.fn().mockResolvedValue([persisted]),
     count: vi.fn().mockResolvedValue(1),
     create: vi.fn().mockResolvedValue(persisted),
     updateMany: vi.fn().mockResolvedValue({ count: 1 })
@@ -46,6 +47,7 @@ describe("Prisma document metadata repository", () => {
     await repository.find(persisted.id, persisted.organizationId);
     await repository.findByUploadKey(persisted.organizationId, "b".repeat(64));
     await repository.countActive(persisted.organizationId, persisted.ownerUserId);
+    await repository.list(persisted.organizationId, persisted.ownerUserId);
     expect(uploadedDocument.findFirst).toHaveBeenNthCalledWith(1, {
       where: { id: persisted.id, organizationId: persisted.organizationId }
     });
@@ -61,6 +63,13 @@ describe("Prisma document metadata repository", () => {
         ownerUserId: persisted.ownerUserId,
         state: { notIn: ["replaced", "expired", "deleted"] }
       }
+    });
+    expect(uploadedDocument.findMany).toHaveBeenCalledWith({
+      where: {
+        organizationId: persisted.organizationId,
+        ownerUserId: persisted.ownerUserId
+      },
+      orderBy: [{ createdAt: "desc" }, { id: "asc" }]
     });
   });
 
