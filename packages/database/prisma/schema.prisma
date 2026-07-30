@@ -350,6 +350,33 @@ enum TimesheetStatus {
   cancelled
 }
 
+enum InvoiceStatus {
+  draft
+  approved
+  issued
+  sent
+  viewed
+  partially_paid
+  paid
+  overdue
+  disputed
+  voided
+  refunded
+}
+
+enum InvoiceIssuerModel {
+  platform_principal
+  worker_supplier
+  self_billing_agent
+}
+
+enum InvoiceTaxTreatment {
+  taxable
+  zero_rated
+  exempt
+  tax_not_enabled
+}
+
 model User {
   id              String     @id @default(uuid()) @db.Uuid
   publicId        String     @unique @map("public_id")
@@ -475,6 +502,7 @@ model EmployerOrganization {
   assignments          Assignment[]
   attendanceRecords    AttendanceRecord[]
   timesheets           Timesheet[]
+  invoices             Invoice[]
   auditActorReferences AuditActorReference[]
   auditEvents          AuditEvent[]
 
@@ -732,6 +760,7 @@ model JobRequest {
   attendanceRecords AttendanceRecord[]
   timesheets        Timesheet[]
 
+  @@unique([id, organizationId, residenceId, departmentId, workGroupId, roleDefinitionId], map: "job_requests_operational_scope_key")
   @@index([jobRequestNumber], map: "job_requests_job_request_number_idx")
   @@index([organizationId, status, createdAt], map: "job_requests_organization_id_status_created_at_idx")
   @@index([organizationId, residenceId, status], map: "job_requests_organization_id_residence_id_status_idx")
@@ -739,7 +768,6 @@ model JobRequest {
   @@index([organizationId, startAt], map: "job_requests_organization_id_start_at_idx")
   @@index([status, submittedAt], map: "job_requests_status_submitted_at_idx")
   @@index([createdByUserId, createdAt], map: "job_requests_created_by_user_id_created_at_idx")
-  @@unique([id, organizationId, residenceId, departmentId, workGroupId, roleDefinitionId], map: "job_requests_operational_scope_key")
   @@map("job_requests")
 }
 
@@ -807,12 +835,12 @@ model DispatchReview {
   workerOffers     WorkerOffer[]
   assignments      Assignment[]
 
+  @@unique([id, jobRequestId, organizationId, residenceId, departmentId], map: "dispatch_reviews_operational_scope_key")
   @@index([jobRequestId], map: "dispatch_reviews_job_request_id_idx")
   @@index([organizationId, state, updatedAt], map: "dispatch_reviews_organization_id_state_updated_at_idx")
   @@index([operationalOwnerUserId, state], map: "dispatch_reviews_operational_owner_user_id_state_idx")
   @@index([residenceId, state], map: "dispatch_reviews_residence_id_state_idx")
   @@index([departmentId, state], map: "dispatch_reviews_department_id_state_idx")
-  @@unique([id, jobRequestId, organizationId, residenceId, departmentId], map: "dispatch_reviews_operational_scope_key")
   @@map("dispatch_reviews")
 }
 
@@ -926,11 +954,11 @@ model WorkerOffer {
   cancelledBy         User?                        @relation("WorkerOfferCancelledByUser", fields: [cancelledByUserId], references: [id], onDelete: SetNull)
 
   @@unique([dispatchReviewId, workerIdentityId], map: "worker_offers_dispatch_worker_key")
+  @@unique([id, dispatchReviewId, jobRequestId, organizationId, residenceId, departmentId, workerIdentityId], map: "worker_offers_operational_scope_key")
   @@index([dispatchReviewId, status], map: "worker_offers_dispatch_review_id_status_idx")
   @@index([organizationId, status, updatedAt], map: "worker_offers_organization_id_status_updated_at_idx")
   @@index([workerIdentityId, status, expiresAt], map: "worker_offers_worker_identity_id_status_expires_at_idx")
   @@index([jobRequestId, status], map: "worker_offers_job_request_id_status_idx")
-  @@unique([id, dispatchReviewId, jobRequestId, organizationId, residenceId, departmentId, workerIdentityId], map: "worker_offers_operational_scope_key")
   @@map("worker_offers")
 }
 
@@ -1062,12 +1090,12 @@ model Assignment {
   attendanceRecord        AttendanceRecord?
   timesheet               Timesheet?
 
+  @@unique([id, jobRequestId, workerIdentityId, organizationId, residenceId, departmentId, workGroupId, roleDefinitionId], map: "assignments_operational_scope_key")
   @@index([jobRequestId, status], map: "assignments_job_request_id_status_idx")
   @@index([dispatchReviewId, status], map: "assignments_dispatch_review_id_status_idx")
   @@index([organizationId, status, updatedAt], map: "assignments_organization_id_status_updated_at_idx")
   @@index([workerIdentityId, status, confirmedStartAt], map: "assignments_worker_identity_id_status_start_idx")
   @@index([residenceId, departmentId, confirmedStartAt], map: "assignments_residence_department_start_idx")
-  @@unique([id, jobRequestId, workerIdentityId, organizationId, residenceId, departmentId, workGroupId, roleDefinitionId], map: "assignments_operational_scope_key")
   @@map("assignments")
 }
 
@@ -1123,12 +1151,12 @@ model AttendanceRecord {
   cancelledBy    User?                @relation("AttendanceCancelledByUser", fields: [cancelledByUserId], references: [id], onDelete: SetNull)
   timesheet      Timesheet?
 
+  @@unique([id, assignmentId, jobRequestId, workerIdentityId, organizationId, residenceId, departmentId, workGroupId, roleDefinitionId], map: "attendance_records_operational_scope_key")
   @@index([assignmentId, status], map: "attendance_records_assignment_id_status_idx")
   @@index([organizationId, status, updatedAt], map: "attendance_records_organization_id_status_updated_at_idx")
   @@index([workerIdentityId, status, scheduledStartAt], map: "attendance_records_worker_identity_id_status_start_idx")
   @@index([residenceId, departmentId, scheduledStartAt], map: "attendance_records_residence_department_start_idx")
   @@index([jobRequestId, status], map: "attendance_records_job_request_id_status_idx")
-  @@unique([id, assignmentId, jobRequestId, workerIdentityId, organizationId, residenceId, departmentId, workGroupId, roleDefinitionId], map: "attendance_records_operational_scope_key")
   @@map("attendance_records")
 }
 
@@ -1197,6 +1225,7 @@ model Timesheet {
   platformReviewedBy   User?                          @relation("TimesheetPlatformReviewedByUser", fields: [platformReviewedByUserId], references: [id], onDelete: SetNull)
   lockedBy             User?                          @relation("TimesheetLockedByUser", fields: [lockedByUserId], references: [id], onDelete: SetNull)
   calculationSnapshots TimesheetCalculationSnapshot[]
+  invoices             Invoice[]
 
   @@index([organizationId, status, updatedAt], map: "timesheets_organization_id_status_updated_at_idx")
   @@index([workerIdentityId, status, scheduledStartAt], map: "timesheets_worker_identity_id_status_start_idx")
@@ -1239,6 +1268,124 @@ model TimesheetCalculationSnapshot {
   @@index([timesheetId, createdAt], map: "timesheet_calculation_snapshots_timesheet_created_idx")
   @@index([attendanceRecordId, attendanceVersionSnapshot], map: "timesheet_calculation_snapshots_attendance_version_idx")
   @@map("timesheet_calculation_snapshots")
+}
+
+model Invoice {
+  id                    String             @id @default(uuid()) @db.Uuid
+  organizationId        String             @map("organization_id") @db.Uuid
+  timesheetId           String             @map("timesheet_id") @db.Uuid
+  timesheetVersion      Int                @map("timesheet_version")
+  invoiceNumber         String?            @map("invoice_number")
+  numberScopeYear       Int?               @map("number_scope_year")
+  status                InvoiceStatus      @default(draft)
+  currency              String             @default("CAD") @db.Char(3)
+  issuerModel           InvoiceIssuerModel @map("issuer_model")
+  issuerSnapshot        Json               @map("issuer_snapshot")
+  recipientSnapshot     Json               @map("recipient_snapshot")
+  taxSnapshot           Json               @map("tax_snapshot")
+  configurationSnapshot Json               @map("configuration_snapshot")
+  calculationSnapshot   Json               @map("calculation_snapshot")
+  subtotalMinor         BigInt             @map("subtotal_minor")
+  taxMinor              BigInt             @map("tax_minor")
+  creditMinor           BigInt             @default(0) @map("credit_minor")
+  totalMinor            BigInt             @map("total_minor")
+  idempotencyKeyDigest  String             @map("idempotency_key_digest") @db.Char(64)
+  requestDigest         String             @map("request_digest") @db.Char(64)
+  version               Int                @default(1)
+  approvedAt            DateTime?          @map("approved_at") @db.Timestamptz(3)
+  issuedAt              DateTime?          @map("issued_at") @db.Timestamptz(3)
+  sentAt                DateTime?          @map("sent_at") @db.Timestamptz(3)
+  viewedAt              DateTime?          @map("viewed_at") @db.Timestamptz(3)
+  dueAt                 DateTime?          @map("due_at") @db.Timestamptz(3)
+  createdAt             DateTime           @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt             DateTime           @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  organization EmployerOrganization     @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  timesheet    Timesheet                @relation(fields: [timesheetId], references: [id], onDelete: Restrict)
+  creditNotes  InvoiceCreditNote[]
+  deliveries   InvoiceDeliveryReceipt[]
+
+  @@unique([organizationId, invoiceNumber], map: "invoices_organization_number_key")
+  @@unique([organizationId, timesheetId], map: "invoices_organization_timesheet_key")
+  @@unique([organizationId, idempotencyKeyDigest], map: "invoices_organization_idempotency_key")
+  @@unique([id, organizationId], map: "invoices_id_organization_key")
+  @@index([organizationId, status, updatedAt], map: "invoices_organization_status_updated_idx")
+  @@map("invoices")
+}
+
+model InvoiceCreditNote {
+  id                   String   @id @default(uuid()) @db.Uuid
+  invoiceId            String   @map("invoice_id") @db.Uuid
+  organizationId       String   @map("organization_id") @db.Uuid
+  creditNoteNumber     String   @map("credit_note_number")
+  reason               String
+  calculationSnapshot  Json     @map("calculation_snapshot")
+  amountMinor          BigInt   @map("amount_minor")
+  currency             String   @default("CAD") @db.Char(3)
+  idempotencyKeyDigest String   @map("idempotency_key_digest") @db.Char(64)
+  issuedAt             DateTime @map("issued_at") @db.Timestamptz(3)
+  createdAt            DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  invoice Invoice @relation(fields: [invoiceId, organizationId], references: [id, organizationId], onDelete: Restrict)
+
+  @@unique([organizationId, creditNoteNumber], map: "invoice_credit_notes_organization_number_key")
+  @@unique([organizationId, idempotencyKeyDigest], map: "invoice_credit_notes_organization_idempotency_key")
+  @@index([invoiceId, createdAt], map: "invoice_credit_notes_invoice_created_idx")
+  @@map("invoice_credit_notes")
+}
+
+model InvoiceDeliveryReceipt {
+  id                   String   @id @default(uuid()) @db.Uuid
+  invoiceId            String   @map("invoice_id") @db.Uuid
+  organizationId       String   @map("organization_id") @db.Uuid
+  providerBoundary     String   @default("local_fake") @map("provider_boundary")
+  recipientAlias       String   @map("recipient_alias")
+  documentDigest       String   @map("document_digest") @db.Char(64)
+  idempotencyKeyDigest String   @map("idempotency_key_digest") @db.Char(64)
+  status               String
+  acceptedAt           DateTime @map("accepted_at") @db.Timestamptz(3)
+  createdAt            DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  invoice Invoice @relation(fields: [invoiceId, organizationId], references: [id, organizationId], onDelete: Restrict)
+
+  @@unique([organizationId, idempotencyKeyDigest], map: "invoice_deliveries_organization_idempotency_key")
+  @@index([invoiceId, createdAt], map: "invoice_deliveries_invoice_created_idx")
+  @@map("invoice_delivery_receipts")
+}
+
+model InvoiceConfigurationVersion {
+  id                          String              @id @default(uuid()) @db.Uuid
+  organizationId              String?             @map("organization_id") @db.Uuid
+  version                     String
+  issuerModel                 InvoiceIssuerModel  @map("issuer_model")
+  taxTreatment                InvoiceTaxTreatment @map("tax_treatment")
+  issuerRegisteredForGst      Boolean             @default(false) @map("issuer_registered_for_gst")
+  issuerRegisteredForQst      Boolean             @default(false) @map("issuer_registered_for_qst")
+  gstRatePartsPerMillion      Int                 @default(0) @map("gst_rate_parts_per_million")
+  qstRatePartsPerMillion      Int                 @default(0) @map("qst_rate_parts_per_million")
+  supplyClassification        String              @map("supply_classification")
+  placeOfSupplyPolicyVersion  String              @map("place_of_supply_policy_version")
+  paymentTermsVersion         String              @map("payment_terms_version")
+  numberingPolicyVersion      String              @map("numbering_policy_version")
+  productionApprovalReference String?             @map("production_approval_reference")
+  effectiveFrom               DateTime            @map("effective_from") @db.Timestamptz(3)
+  effectiveUntil              DateTime?           @map("effective_until") @db.Timestamptz(3)
+  createdAt                   DateTime            @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  @@unique([organizationId, version], map: "invoice_configurations_organization_version_key")
+  @@index([organizationId, effectiveFrom, effectiveUntil], map: "invoice_configurations_effective_idx")
+  @@map("invoice_configuration_versions")
+}
+
+model InvoiceNumberSequence {
+  organizationId String   @map("organization_id") @db.Uuid
+  scopeYear      Int      @map("scope_year")
+  prefix         String
+  lastValue      Int      @default(0) @map("last_value")
+  updatedAt      DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  @@id([organizationId, scopeYear, prefix], map: "invoice_number_sequences_pkey")
+  @@map("invoice_number_sequences")
 }
 
 model AuditActorReference {

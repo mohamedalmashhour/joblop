@@ -9,6 +9,13 @@ const migration = readFileSync(
   ),
   "utf8"
 );
+const calendarProfileSchema = schema.match(
+  /model StaffingRequestCalendarProfile \{[\s\S]*?\n\}/
+)?.[0];
+
+if (!calendarProfileSchema) {
+  throw new Error("StaffingRequestCalendarProfile schema block is missing.");
+}
 
 describe("calendar request persistence boundary", () => {
   it("adds one calendar profile to the authoritative JobRequest lifecycle", () => {
@@ -30,7 +37,7 @@ describe("calendar request persistence boundary", () => {
       "locationVerificationState",
       "version"
     ]) {
-      expect(schema).toContain(approvedField);
+      expect(calendarProfileSchema).toContain(approvedField);
     }
 
     for (const forbiddenField of [
@@ -44,7 +51,7 @@ describe("calendar request persistence boundary", () => {
       "notificationId",
       "attendanceExecution"
     ]) {
-      expect(schema).not.toContain(forbiddenField);
+      expect(calendarProfileSchema).not.toContain(forbiddenField);
       expect(migration).not.toContain(forbiddenField);
     }
   });

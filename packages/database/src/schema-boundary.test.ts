@@ -101,7 +101,6 @@ describe("Prisma Phase 01 schema boundary", () => {
       "JurisdictionEmploymentProfile",
       "WorkerCompensationTerms",
       "EmployerCommercialTerms",
-      "Invoice",
       "EmployerPayment",
       "WorkerPayable",
       "PaymentExecutionReference",
@@ -117,19 +116,25 @@ describe("Prisma Phase 01 schema boundary", () => {
     }
   });
 
-  it("keeps Timesheet as the final authoritative engine before the money contract kit", () => {
+  it("keeps Invoice immediately downstream from Timesheet without payment execution models", () => {
     const modelNames = Array.from(schema.matchAll(/^model\s+(\w+)\s+\{/gm)).map(
       (match) => match[1]
     );
 
     expect(modelNames).toContain("Timesheet");
     expect(modelNames).toContain("TimesheetCalculationSnapshot");
+    expect(modelNames).toContain("Invoice");
 
     const timesheetIndex = modelNames.indexOf("Timesheet");
     const postTimesheetModels = modelNames.slice(timesheetIndex + 1);
 
     expect(postTimesheetModels).toEqual([
       "TimesheetCalculationSnapshot",
+      "Invoice",
+      "InvoiceCreditNote",
+      "InvoiceDeliveryReceipt",
+      "InvoiceConfigurationVersion",
+      "InvoiceNumberSequence",
       "AuditActorReference",
       "AuditEvent",
       "QaResetManifestOwnership",
