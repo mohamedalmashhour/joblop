@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import {
+  isSameOriginMutation,
   parseOrganizationChoices,
   resolveClientOrganizationId,
   selectClientOrganizationId
@@ -17,6 +18,59 @@ const memberships = {
     }
   ]
 };
+
+describe("employer session mutation origin boundary", () => {
+  it("accepts the exact request origin", () => {
+    const request = new Request("http://localhost:3000/api/session/sign-up", {
+      headers: {
+        origin: "http://localhost:3000",
+        "sec-fetch-site": "same-origin"
+      }
+    });
+    expect(isSameOriginMutation(request)).toBe(true);
+  });
+
+  it("accepts a browser-facing host when the framework normalized the request URL", () => {
+    const request = new Request("http://localhost:3000/api/session/sign-up", {
+      headers: {
+        host: "127.0.0.1:3000",
+        origin: "http://127.0.0.1:3000",
+        "sec-fetch-site": "same-origin"
+      }
+    });
+    expect(isSameOriginMutation(request)).toBe(true);
+  });
+
+  it("fails closed for cross-site, mismatched, missing, or malformed origins", () => {
+    const makeRequest = (headers: HeadersInit) =>
+      new Request("http://localhost:3000/api/session/sign-up", { headers });
+
+    expect(
+      isSameOriginMutation(
+        makeRequest({
+          host: "localhost:3000",
+          origin: "https://attacker.example",
+          "sec-fetch-site": "cross-site"
+        })
+      )
+    ).toBe(false);
+    expect(
+      isSameOriginMutation(
+        makeRequest({
+          host: "localhost:3000",
+          origin: "https://attacker.example",
+          "sec-fetch-site": "same-origin"
+        })
+      )
+    ).toBe(false);
+    expect(isSameOriginMutation(makeRequest({ "sec-fetch-site": "same-origin" }))).toBe(false);
+    expect(
+      isSameOriginMutation(
+        makeRequest({ origin: "not a valid origin", "sec-fetch-site": "same-origin" })
+      )
+    ).toBe(false);
+  });
+});
 
 describe("employer organization session context", () => {
   it("discovers the only active membership without mutating context during a read", async () => {

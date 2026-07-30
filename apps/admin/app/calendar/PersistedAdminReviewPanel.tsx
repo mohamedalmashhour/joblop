@@ -9,6 +9,7 @@ import {
   type AuthenticatedViewState
 } from "@rwos/shared";
 import { DispatchHandoffPanel } from "./DispatchHandoffPanel";
+import { JobLocationMap } from "../shared/maps";
 
 export function PersistedAdminReviewPanel({ requestId }: Readonly<{ requestId: string | null }>) {
   const [state, setState] = useState<AuthenticatedViewState<AdminCalendarDto>>({
@@ -193,6 +194,7 @@ export function PersistedAdminReviewPanel({ requestId }: Readonly<{ requestId: s
               <span>{value}</span>
             </div>
           ))}
+          <JobLocationMap address={request.addressSummary} />
         </article>
         <article style={styles.panel}>
           <h2 style={styles.h2}>Economics separation</h2>

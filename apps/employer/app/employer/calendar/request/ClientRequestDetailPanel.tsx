@@ -9,6 +9,7 @@ import {
   type ClientCalendarDto
 } from "@rwos/shared";
 import { styles } from "../../employerStyles";
+import { JobLocationMap } from "../../../shared/maps";
 
 export function ClientRequestDetailPanel({ requestId }: Readonly<{ requestId: string | null }>) {
   const [state, setState] = useState<AuthenticatedViewState<ClientCalendarDto>>({
@@ -178,6 +179,7 @@ export function ClientRequestDetailPanel({ requestId }: Readonly<{ requestId: st
             <p style={styles.cardText}>{value}</p>
           </div>
         ))}
+        <JobLocationMap address={request.addressSummary} />
       </article>
     </div>
   );

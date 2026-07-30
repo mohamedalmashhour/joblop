@@ -2,59 +2,37 @@ import { EmployerShell, WorkflowRoutes } from "../../employer/EmployerShell";
 import { accountBoundaries, accountTypeOutcomes } from "../../employer/employerJourneyContent";
 import { styles } from "../../employer/employerStyles";
 
+import { SignUpForm } from "./SignUpForm";
+
+/**
+ * Employer sign-up capsule (server page). Wraps the interactive form in the shared EmployerShell and
+ * passes the registration gate down from the environment: backend registration returns 404 in
+ * production, so we surface an honest "not open" state there rather than a form that cannot succeed.
+ * The governance sections (what happens next / account boundaries) are preserved.
+ */
 export default function EmployerSignUpPage() {
+  const registrationOpen = process.env.RWOS_ENV !== "production";
+
   return (
     <EmployerShell
       currentRoute="/signup/employer"
-      eyebrow="Page 012 - Employer sign up"
-      title="Create an employer account without implying approval."
-      lede="This screen starts employer account creation only. Email verification, organization setup, review, and activation remain separate."
-      actions={
-        <a href="/employer/onboarding/company" style={styles.primaryButton}>
-          Continue to organization
-        </a>
-      }
+      eyebrow="Employer sign up"
+      title="Create an employer account."
+      lede="Creating an account is the first step — organization setup, review, and activation remain separate. Account creation is available in non-production environments."
     >
       <section style={styles.section}>
         <div style={styles.sectionHeader}>
           <p style={styles.eyebrowDark}>Account type</p>
           <h2 style={styles.sectionTitle}>Employer: I want to request staffing support.</h2>
           <p style={styles.sectionCopy}>
-            The form below is a development surface for the approved employer account journey. It
-            does not create a real account, authentication record, permission grant, API request, or
-            database row.
+            This creates your employer login. Verification, organization setup, and approval to
+            request workers are handled as their own steps after the account exists.
           </p>
         </div>
-        <div style={styles.formGrid}>
-          <label style={styles.fieldLabel}>
-            Work email
-            <input placeholder="manager@example.org" style={styles.input} />
-          </label>
-          <label style={styles.fieldLabel}>
-            Full name
-            <input placeholder="Authorized contact" style={styles.input} />
-          </label>
-          <label style={styles.fieldLabel}>
-            Role
-            <select defaultValue="" style={styles.input}>
-              <option value="" disabled>
-                Select role
-              </option>
-              <option>Residence owner</option>
-              <option>Residence manager</option>
-              <option>Scheduler</option>
-              <option>Finance contact</option>
-              <option>Authorized staffing coordinator</option>
-            </select>
-          </label>
-          <label style={styles.fieldLabel}>
-            Password
-            <input placeholder="Password requirements placeholder" type="password" style={styles.input} />
-          </label>
-        </div>
+        <SignUpForm registrationOpen={registrationOpen} />
         <p style={styles.warning}>
-          Terms and Privacy acknowledgements remain separate. Final legal wording is not finalized
-          on this implementation surface.
+          Terms and Privacy acknowledgements are completed during organization setup. Creating an
+          account does not equal employer approval.
         </p>
       </section>
 
@@ -86,4 +64,3 @@ export default function EmployerSignUpPage() {
     </EmployerShell>
   );
 }
-

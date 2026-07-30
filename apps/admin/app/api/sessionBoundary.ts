@@ -33,7 +33,24 @@ export const sessionCookieOptions = {
 export function isSameOriginMutation(request: Request) {
   const origin = request.headers.get("origin");
   const fetchSite = request.headers.get("sec-fetch-site");
-  return origin === new URL(request.url).origin && fetchSite !== "cross-site";
+  if (!origin || fetchSite === "cross-site") return false;
+
+  let originUrl: URL;
+  try {
+    originUrl = new URL(origin);
+  } catch {
+    return false;
+  }
+
+  const requestUrl = new URL(request.url);
+  if (originUrl.origin === requestUrl.origin) return true;
+
+  // Next can normalize the request URL host while preserving the public Host
+  // header. Require an exact browser Origin/Host and protocol match.
+  const host = request.headers.get("host");
+  const forwardedProtocol = request.headers.get("x-forwarded-proto");
+  const expectedProtocol = forwardedProtocol ? `${forwardedProtocol}:` : requestUrl.protocol;
+  return host !== null && originUrl.host === host && originUrl.protocol === expectedProtocol;
 }
 
 export function sessionFailure(
