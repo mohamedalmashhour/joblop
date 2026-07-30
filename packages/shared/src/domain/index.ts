@@ -4,6 +4,8 @@ export * from "./authenticatedCalendarClient";
 export * from "./connectedCalendar";
 export * from "./hrMoneyAdapter";
 export * from "./invoice";
+export * from "./invoiceDelivery";
+export * from "./invoiceService";
 export * from "./localeFormatting";
 export * from "./moneyEngine";
 export * from "./platformIntegration";
