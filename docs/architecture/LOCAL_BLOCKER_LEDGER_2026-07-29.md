@@ -61,6 +61,9 @@ passed all four required PostgreSQL tests, including the 24-entity QA-reset life
 
 ## Current local completion checkpoint
 
+- Reconciliation checkpoint `070284f1528988373c5479a0b6c0fbaeec0ab1f8` retains the reviewed worker
+  tab semantics and records the existing assignment, worker-response, attendance and timesheet API
+  boundaries without claiming external availability.
 - Full workspace tests: 925 passed; 13 environment-gated; zero failed.
 - Static container packaging and health/readiness contracts: 20/20 passed.
 - Lint, typecheck, production builds, environment validation and workspace boundaries: passed.
@@ -70,6 +73,34 @@ passed all four required PostgreSQL tests, including the 24-entity QA-reset life
   system software is outside the local authorization.
 - Evidence validators correctly require a named external gate and exact external evidence inputs;
   their absent inputs are external blockers, not local product failures.
+
+### 2026-07-30 local validation record
+
+Validation completed at `2026-07-30T00:01:07Z` against reconciliation checkpoint `070284f`:
+
+| Command                                                                              | Result                                                                                                                               |
+| ------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------ |
+| `pnpm validate`                                                                      | PASS — lint, typecheck, 925 tests passed/13 skipped, environment/boundary/migration/secret checks, all builds and public-bundle scan |
+| `pnpm validate:containers:static`                                                    | PASS — 20/20 tests                                                                                                                   |
+| `pnpm qa-reset:postgres:validate`                                                    | PASS — 11 migrations, 30 constraints, atomic rollback and exclusive advisory lock                                                    |
+| `pnpm test:postgres:required` with a loopback-only temporary administration database | PASS — QA lifecycle 1/1, worker-offer capacity 1/1, assignment concurrency 2/2 and cleanup                                           |
+
+The required PostgreSQL runner created and dropped a random child database inside a temporary
+`/tmp` cluster. It used synthetic data only and emitted `evidence=none`; this is local validation,
+not staging evidence.
+
+## Preserved-file disposition
+
+| File                                                     | Classification                                       | Evidence and disposition                                                                                                                                                                                                                                       |
+| -------------------------------------------------------- | ---------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `apps/mobile/App.tsx`                                    | Clearly compatible and owned                         | Tab-list/tab roles match the existing accessibility contract; retained, tested and committed in `070284f`                                                                                                                                                      |
+| `packages/shared/src/domain/platformIntegration.ts`      | Clearly compatible and owned                         | Updated entries name API routes that exist in `apps/api/src/app.ts` while keeping status `integration_pending`; retained, tested and committed in `070284f`                                                                                                    |
+| `tests/integration/platform-integration.test.ts`         | Clearly compatible and owned                         | Verifies truthful persisted-boundary status without claiming availability; retained, tested and committed in `070284f`                                                                                                                                         |
+| `docs/security/DEPENDENCY_ADVISORY_REVIEW_2026-07-27.md` | Genuinely ambiguous and unsupported for this release | Uncommitted edit claims current clean registry audits and CI audit execution; no current-release registry evidence exists and Group 13 intentionally removed automatic CI audits. Preserve unchanged pending Security Owner review or a fresh authorized audit |
+
+`RO-04 / OD-02` remains a genuine architecture decision. Both safe alternatives and their shared
+invariants are documented in `docs/architecture/WORKER_INGRESS_DECISION_PACKAGE.md`; no ingress
+choice or external configuration was invented.
 
 ## Intentional exclusions
 

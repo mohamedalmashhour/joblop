@@ -5,6 +5,11 @@ Status: **BLOCKED**
 The authoritative status remains `LAUNCH_READINESS.md`. Local tests are not substitutes for these
 external records.
 
+Latest local-only validation (`2026-07-30T00:01:07Z`, checkpoint `070284f`) passed the complete
+offline suite, static container contracts, QA-reset migration/constraint/rollback/lock validation,
+and the required disposable PostgreSQL lifecycle/capacity/concurrency suite. The temporary
+loopback cluster and child database were removed. These results do not change any external gate.
+
 | Gate                | Required external evidence                                                   | Current local evidence                                           | Missing authority/input                                 |
 | ------------------- | ---------------------------------------------------------------------------- | ---------------------------------------------------------------- | ------------------------------------------------------- |
 | Production DB       | Read-only schema, FK, migration and object inventory bound to release        | Guarded diagnostic policy only                                   | Production read-only authorization and immutable target |
