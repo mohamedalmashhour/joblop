@@ -186,4 +186,35 @@ describe("production runtime configuration", () => {
   ])("rejects incomplete or non-test Stripe configuration", (env) => {
     expect(validateRuntimeConfig(env)).toMatchObject({ success: false });
   });
+
+  it("keeps local document upload disabled by default and requires its complete local boundary", () => {
+    expect(getRuntimeConfig({ RWOS_ENV: "local" })).toMatchObject({
+      documentLocalUploadEnabled: false
+    });
+    const enabled = {
+      RWOS_ENV: "local",
+      DATABASE_URL: "postgresql://localhost/rwos_document_test",
+      DOCUMENT_LOCAL_UPLOAD_ENABLED: "enabled",
+      DOCUMENT_LOCAL_STORAGE_ROOT: "/tmp/rwos-private-documents",
+      DOCUMENT_REFERENCE_SECRET: "synthetic-document-secret-at-least-32-characters"
+    };
+    expect(validateRuntimeConfig(enabled)).toMatchObject({ success: true });
+    expect(getRuntimeConfig(enabled)).toMatchObject({
+      documentLocalUploadEnabled: true,
+      documentLocalStorageRoot: "/tmp/rwos-private-documents"
+    });
+  });
+
+  it.each([
+    { RWOS_ENV: "local", DOCUMENT_LOCAL_UPLOAD_ENABLED: "enabled" },
+    {
+      RWOS_ENV: "staging",
+      DATABASE_URL: "postgresql://db.example.test/rwos",
+      DOCUMENT_LOCAL_UPLOAD_ENABLED: "enabled",
+      DOCUMENT_LOCAL_STORAGE_ROOT: "/tmp/rwos-private-documents",
+      DOCUMENT_REFERENCE_SECRET: "synthetic-document-secret-at-least-32-characters"
+    }
+  ])("fails closed for incomplete or external local-document configuration", (env) => {
+    expect(validateRuntimeConfig(env)).toMatchObject({ success: false });
+  });
 });

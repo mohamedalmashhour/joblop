@@ -34,7 +34,10 @@ const runtimeConfigSchema = z
     STRIPE_TEST_SECRET_KEY: z.string().min(1).optional(),
     STRIPE_TEST_WEBHOOK_SECRET: z.string().min(1).optional(),
     STRIPE_TEST_ACCOUNT_REFERENCE: z.string().min(1).optional(),
-    STRIPE_ACSS_DEBIT_ENABLED: z.enum(["disabled", "enabled"]).default("disabled")
+    STRIPE_ACSS_DEBIT_ENABLED: z.enum(["disabled", "enabled"]).default("disabled"),
+    DOCUMENT_LOCAL_UPLOAD_ENABLED: z.enum(["disabled", "enabled"]).default("disabled"),
+    DOCUMENT_LOCAL_STORAGE_ROOT: z.string().min(1).optional(),
+    DOCUMENT_REFERENCE_SECRET: z.string().min(32).optional()
   })
   .superRefine((config, context) => {
     if (config.STRIPE_TEST_MODE_ENABLED === "enabled") {
@@ -76,6 +79,36 @@ const runtimeConfigSchema = z
         path: ["AUTH_RATE_LIMITER_NAMESPACE"],
         message: "AUTH_RATE_LIMITER_NAMESPACE must match RWOS_ENV."
       });
+    }
+    if (config.DOCUMENT_LOCAL_UPLOAD_ENABLED === "enabled") {
+      if (config.RWOS_ENV !== "local" && config.RWOS_ENV !== "test") {
+        context.addIssue({
+          code: "custom",
+          path: ["DOCUMENT_LOCAL_UPLOAD_ENABLED"],
+          message: "Local document upload is allowed only in local or test environments."
+        });
+      }
+      if (!config.DATABASE_URL) {
+        context.addIssue({
+          code: "custom",
+          path: ["DATABASE_URL"],
+          message: "Local document upload requires durable PostgreSQL metadata."
+        });
+      }
+      if (!config.DOCUMENT_LOCAL_STORAGE_ROOT) {
+        context.addIssue({
+          code: "custom",
+          path: ["DOCUMENT_LOCAL_STORAGE_ROOT"],
+          message: "Local document upload requires a private storage root."
+        });
+      }
+      if (!config.DOCUMENT_REFERENCE_SECRET) {
+        context.addIssue({
+          code: "custom",
+          path: ["DOCUMENT_REFERENCE_SECRET"],
+          message: "Local document upload requires a reference-signing secret."
+        });
+      }
     }
     if (config.RWOS_ENV === "staging" || config.RWOS_ENV === "production") {
       requirePairedHttpsIntegration(
@@ -230,7 +263,10 @@ export function getRuntimeConfig(env: NodeJS.ProcessEnv = process.env) {
     stripeTestSecretKey: parsed.STRIPE_TEST_SECRET_KEY,
     stripeTestWebhookSecret: parsed.STRIPE_TEST_WEBHOOK_SECRET,
     stripeTestAccountReference: parsed.STRIPE_TEST_ACCOUNT_REFERENCE,
-    stripeAcssDebitEnabled: parsed.STRIPE_ACSS_DEBIT_ENABLED === "enabled"
+    stripeAcssDebitEnabled: parsed.STRIPE_ACSS_DEBIT_ENABLED === "enabled",
+    documentLocalUploadEnabled: parsed.DOCUMENT_LOCAL_UPLOAD_ENABLED === "enabled",
+    documentLocalStorageRoot: parsed.DOCUMENT_LOCAL_STORAGE_ROOT,
+    documentReferenceSecret: parsed.DOCUMENT_REFERENCE_SECRET
   } as const;
 }
 
