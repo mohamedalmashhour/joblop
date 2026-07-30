@@ -132,4 +132,37 @@ describe("Prisma document metadata repository", () => {
       })
     ).rejects.toThrow("version conflict");
   });
+
+  it("appends read audit evidence without mutating document state", async () => {
+    const { repository, uploadedDocument, uploadedDocumentAudit } = setup();
+    await repository.appendAudit({
+      document: {
+        id: persisted.id,
+        organizationId: persisted.organizationId,
+        ownerId: persisted.ownerUserId,
+        type: "worker_certification",
+        originalFilename: persisted.originalFilename,
+        objectKey: persisted.objectKey,
+        contentType: persisted.contentType,
+        size: persisted.sizeBytes,
+        digest: persisted.contentDigest,
+        state: "approved",
+        version: 3,
+        replacementForId: null,
+        createdAt: persisted.createdAt.toISOString(),
+        expiresAt: null
+      },
+      action: "download",
+      actorId: persisted.ownerUserId,
+      occurredAt: "2026-07-30T12:05:00.000Z"
+    });
+    expect(uploadedDocument.updateMany).not.toHaveBeenCalled();
+    expect(uploadedDocumentAudit.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        action: "download",
+        priorState: "approved",
+        newState: "approved"
+      })
+    });
+  });
 });

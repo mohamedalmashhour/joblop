@@ -1,7 +1,11 @@
 import { describe, expect, it } from "vitest";
+import { mkdtemp, readFile, rm, stat, symlink } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import {
   createFakeMalwareScanner,
   createLocalDocumentService,
+  createLocalPrivateFileObjectStore,
   createMemoryPrivateObjectStore
 } from "./documentUpload";
 
@@ -59,7 +63,7 @@ describe("local document upload boundary", () => {
     });
     expect(approved.state).toBe("approved");
     expect(result.bytes).toEqual(pdf);
-    expect(target.listAudit(document.id, "tenantA").map((entry) => entry.action)).toEqual([
+    expect((await target.listAudit(document.id, "tenantA")).map((entry) => entry.action)).toEqual([
       "upload",
       "scan_clean",
       "approve",
@@ -106,8 +110,8 @@ describe("local document upload boundary", () => {
 
   it("denies every cross-organization read, scan, decision, download and audit path", async () => {
     const { target, document } = await upload();
-    expect(() => target.get(document.id, "tenantB")).toThrow("outside");
-    expect(() => target.listAudit(document.id, "tenantB")).toThrow("outside");
+    await expect(target.get(document.id, "tenantB")).rejects.toThrow("outside");
+    await expect(target.listAudit(document.id, "tenantB")).rejects.toThrow("outside");
     await expect(target.scan({ documentId: document.id, organizationId: "tenantB", actorId: "system", expectedVersion: 1 })).rejects.toThrow("outside");
     await expect(target.decide({ documentId: document.id, organizationId: "tenantB", actorId: "admin-b", role: "platform_admin", decision: "reject", expectedVersion: 1 })).rejects.toThrow("outside");
     await expect(target.download({ documentId: document.id, organizationId: "tenantB", actorId: "admin-b", role: "platform_admin", ownerId: "worker-a" })).rejects.toThrow("outside");
@@ -146,18 +150,18 @@ describe("local document upload boundary", () => {
     const { target, document } = await upload();
     const clean = await target.scan({ documentId: document.id, organizationId: "tenantA", actorId: "system", expectedVersion: 1 });
     await target.decide({ documentId: document.id, organizationId: "tenantA", actorId: "admin-a", role: "platform_admin", decision: "approve", expectedVersion: clean.version });
-    const reference = target.createDownloadReference({
+    const reference = await target.createDownloadReference({
       documentId: document.id,
       organizationId: "tenantA",
       expiresAtEpochSeconds: 1785412920
     });
     expect(reference).not.toContain("synthetic-certificate");
     expect(reference.split(".")).toHaveLength(4);
-    expect(target.verifyDownloadReference(reference)).toEqual({
+    await expect(target.verifyDownloadReference(reference)).resolves.toEqual({
       documentId: document.id,
       organizationId: "tenantA"
     });
-    expect(() => target.verifyDownloadReference(`${reference}tampered`)).toThrow("invalid");
+    await expect(target.verifyDownloadReference(`${reference}tampered`)).rejects.toThrow("invalid");
   });
 
   it("replaces, expires and deletes only through authorized state transitions", async () => {
@@ -204,5 +208,27 @@ describe("local document upload boundary", () => {
       expectedVersion: expired.version
     });
     expect(removed.state).toBe("deleted");
+  });
+
+  it("stores local objects as private regular files and rejects unsafe keys and symlinks", async () => {
+    const root = await mkdtemp(join(tmpdir(), "rwos-documents-"));
+    try {
+      const store = createLocalPrivateFileObjectStore(root);
+      const key = "quarantine/tenantA/00000000-0000-4000-8000-000000000001";
+      await store.put({ key, bytes: pdf });
+      expect(await store.get(key)).toEqual(pdf);
+      expect((await stat(join(root, key))).mode & 0o777).toBe(0o600);
+      await expect(
+        store.put({ key: "quarantine/../../secret", bytes: pdf })
+      ).rejects.toThrow("invalid");
+      const linkKey = "quarantine/tenantA/00000000-0000-4000-8000-000000000002";
+      await symlink(join(root, key), join(root, linkKey));
+      await expect(store.get(linkKey)).rejects.toThrow("private regular file");
+      await store.delete(key);
+      expect(await store.get(key)).toBeNull();
+      await expect(readFile(join(root, key))).rejects.toMatchObject({ code: "ENOENT" });
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
   });
 });

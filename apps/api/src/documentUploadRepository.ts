@@ -20,7 +20,97 @@ export interface DocumentMetadataRepository {
     actorId: string;
     occurredAt: string;
   }): Promise<StoredDocument>;
+  appendAudit(input: {
+    document: StoredDocument;
+    action: string;
+    actorId: string;
+    occurredAt: string;
+  }): Promise<void>;
   listAudit(documentId: string, organizationId: string): Promise<readonly DocumentAudit[]>;
+}
+
+export function createMemoryDocumentMetadataRepository(): DocumentMetadataRepository {
+  const documents = new Map<string, StoredDocument>();
+  const uploadKeys = new Map<string, string>();
+  const requestDigests = new Map<string, string>();
+  const audits: DocumentAudit[] = [];
+  const append = (document: StoredDocument, action: string, actorId: string, from: DocumentState | null, occurredAt: string) => {
+    audits.push({
+      sequence: audits.filter((entry) => entry.documentId === document.id).length + 1,
+      documentId: document.id,
+      organizationId: document.organizationId,
+      action,
+      actorId,
+      fromState: from,
+      toState: document.state,
+      occurredAt
+    });
+  };
+  return {
+    async find(documentId, organizationId) {
+      const value = documents.get(documentId);
+      return value?.organizationId === organizationId ? structuredClone(value) : null;
+    },
+    async findByUploadKey(organizationId, uploadKeyDigest) {
+      const id = uploadKeys.get(`${organizationId}:${uploadKeyDigest}`);
+      const value = id ? documents.get(id) : null;
+      return value?.organizationId === organizationId ? structuredClone(value) : null;
+    },
+    async countActive(organizationId, ownerId) {
+      return [...documents.values()].filter(
+        (item) =>
+          item.organizationId === organizationId &&
+          item.ownerId === ownerId &&
+          !["replaced", "expired", "deleted"].includes(item.state)
+      ).length;
+    },
+    async create({ document, uploadKeyDigest, requestDigest, actorId }) {
+      const scope = `${document.organizationId}:${uploadKeyDigest}`;
+      const existingId = uploadKeys.get(scope);
+      if (existingId) {
+        if (requestDigests.get(scope) !== requestDigest) {
+          throw new Error("Document upload idempotency conflict.");
+        }
+        return structuredClone(documents.get(existingId)!);
+      }
+      if (documents.has(document.id)) throw new Error("Document identifier already exists.");
+      documents.set(document.id, structuredClone(document));
+      uploadKeys.set(scope, document.id);
+      requestDigests.set(scope, requestDigest);
+      append(document, "upload", actorId, null, document.createdAt);
+      return structuredClone(document);
+    },
+    async transition(input) {
+      const current = documents.get(input.documentId);
+      if (!current || current.organizationId !== input.organizationId) {
+        throw new Error("Document is outside the authorized organization.");
+      }
+      if (current.version !== input.expectedVersion) throw new Error("Document version conflict.");
+      if (!input.fromStates.includes(current.state)) {
+        throw new Error("Document transition is not permitted from its current state.");
+      }
+      const updated = { ...current, state: input.toState, version: current.version + 1 };
+      documents.set(updated.id, updated);
+      append(updated, input.action, input.actorId, current.state, input.occurredAt);
+      return structuredClone(updated);
+    },
+    async appendAudit({ document, action, actorId, occurredAt }) {
+      const current = documents.get(document.id);
+      if (!current || current.organizationId !== document.organizationId) {
+        throw new Error("Document is outside the authorized organization.");
+      }
+      append(current, action, actorId, current.state, occurredAt);
+    },
+    async listAudit(documentId, organizationId) {
+      const value = documents.get(documentId);
+      if (!value || value.organizationId !== organizationId) {
+        throw new Error("Document is outside the authorized organization.");
+      }
+      return audits
+        .filter((entry) => entry.documentId === documentId && entry.organizationId === organizationId)
+        .map((entry) => structuredClone(entry));
+    }
+  };
 }
 
 type PrismaDocumentClient = {
@@ -150,6 +240,30 @@ export function createPrismaDocumentMetadataRepository(
         });
         if (!updated) throw new Error("Document persistence failed.");
         return mapDocument(updated);
+      });
+    },
+    async appendAudit({ document, action, actorId, occurredAt }) {
+      await prisma.$transaction(async (transaction) => {
+        const current = await transaction.uploadedDocument.findFirst({
+          where: { id: document.id, organizationId: document.organizationId }
+        });
+        if (!current) throw new Error("Document is outside the authorized organization.");
+        const sequence = await transaction.uploadedDocumentAudit.aggregate({
+          where: { documentId: document.id },
+          _max: { sequence: true }
+        });
+        await transaction.uploadedDocumentAudit.create({
+          data: {
+            documentId: document.id,
+            organizationId: document.organizationId,
+            sequence: (sequence._max.sequence ?? 0) + 1,
+            action,
+            actorUserId: actorId,
+            priorState: document.state,
+            newState: document.state,
+            occurredAt: new Date(occurredAt)
+          }
+        });
       });
     },
     async listAudit(documentId, organizationId) {

@@ -1,4 +1,10 @@
 import { createHash, randomUUID } from "node:crypto";
+import { lstat, mkdir, open, readFile, unlink } from "node:fs/promises";
+import { resolve, sep } from "node:path";
+import {
+  createMemoryDocumentMetadataRepository,
+  type DocumentMetadataRepository
+} from "./documentUploadRepository";
 
 export const documentStates = [
   "quarantined",
@@ -70,6 +76,55 @@ export function createMemoryPrivateObjectStore(): PrivateObjectStore {
   };
 }
 
+export function createLocalPrivateFileObjectStore(rootDirectory: string): PrivateObjectStore {
+  const root = resolve(rootDirectory);
+  const objectPath = (key: string) => {
+    if (!/^quarantine\/[A-Za-z0-9-]{1,64}\/[A-Za-z0-9-]{1,64}$/u.test(key)) {
+      throw new Error("Document object key is invalid.");
+    }
+    const target = resolve(root, key);
+    if (!target.startsWith(`${root}${sep}`)) throw new Error("Document object key escapes storage root.");
+    return target;
+  };
+  return {
+    async put({ key, bytes }) {
+      const target = objectPath(key);
+      await mkdir(resolve(target, ".."), { recursive: true, mode: 0o700 });
+      const handle = await open(target, "wx", 0o600);
+      try {
+        await handle.writeFile(bytes);
+      } finally {
+        await handle.close();
+      }
+    },
+    async get(key) {
+      const target = objectPath(key);
+      try {
+        const metadata = await lstat(target);
+        if (!metadata.isFile() || metadata.isSymbolicLink()) {
+          throw new Error("Document object is not a private regular file.");
+        }
+        return new Uint8Array(await readFile(target));
+      } catch (error) {
+        if (isMissingFile(error)) return null;
+        throw error;
+      }
+    },
+    async delete(key) {
+      const target = objectPath(key);
+      try {
+        const metadata = await lstat(target);
+        if (!metadata.isFile() || metadata.isSymbolicLink()) {
+          throw new Error("Document object is not a private regular file.");
+        }
+        await unlink(target);
+      } catch (error) {
+        if (!isMissingFile(error)) throw error;
+      }
+    }
+  };
+}
+
 export function createFakeMalwareScanner(
   result: "clean" | "infected" | "error" = "clean"
 ): MalwareScanner {
@@ -83,33 +138,19 @@ export function createLocalDocumentService(options: {
   referenceSecret: string;
   maxBytes?: number;
   maxDocumentsPerOwner?: number;
+  metadata?: DocumentMetadataRepository;
 }) {
   if (options.referenceSecret.length < 16) throw new Error("Document reference secret is required.");
   const maxBytes = options.maxBytes ?? 10 * 1024 * 1024;
   const maxDocumentsPerOwner = options.maxDocumentsPerOwner ?? 20;
-  const documents = new Map<string, StoredDocument>();
-  const requestKeys = new Map<string, { digest: string; documentId: string }>();
-  const audits: DocumentAudit[] = [];
+  const metadata = options.metadata ?? createMemoryDocumentMetadataRepository();
 
-  function requireDocument(id: string, organizationId: string) {
-    const document = documents.get(id);
-    if (!document || document.organizationId !== organizationId) {
+  async function requireDocument(id: string, organizationId: string) {
+    const document = await metadata.find(id, organizationId);
+    if (!document) {
       throw new Error("Document is outside the authorized organization.");
     }
     return document;
-  }
-
-  function record(document: StoredDocument, action: string, actorId: string, from: DocumentState | null) {
-    audits.push({
-      sequence: audits.length + 1,
-      documentId: document.id,
-      organizationId: document.organizationId,
-      action,
-      actorId,
-      fromState: from,
-      toState: document.state,
-      occurredAt: options.now()
-    });
   }
 
   async function update(
@@ -119,11 +160,16 @@ export function createLocalDocumentService(options: {
     action: string,
     actorId: string
   ) {
-    if (document.version !== expectedVersion) throw new Error("Document version conflict.");
-    const updated = { ...document, state, version: document.version + 1 };
-    documents.set(document.id, updated);
-    record(updated, action, actorId, document.state);
-    return structuredClone(updated);
+    return metadata.transition({
+      documentId: document.id,
+      organizationId: document.organizationId,
+      expectedVersion,
+      fromStates: [document.state],
+      toState: state,
+      action,
+      actorId,
+      occurredAt: options.now()
+    });
   }
 
   return {
@@ -148,24 +194,27 @@ export function createLocalDocumentService(options: {
       if (!detected || detected.contentType !== input.declaredContentType || !detected.extensions.has(extension(filename))) {
         throw new Error("Document content does not match an allowed file type.");
       }
-      const activeCount = [...documents.values()].filter(
-        (item) =>
-          item.organizationId === input.organizationId &&
-          item.ownerId === input.ownerId &&
-          !["replaced", "expired", "deleted"].includes(item.state)
-      ).length;
+      const activeCount = await metadata.countActive(input.organizationId, input.ownerId);
       if (activeCount >= maxDocumentsPerOwner) throw new Error("Document count limit reached.");
-      if (input.replacementForId) requireDocument(input.replacementForId, input.organizationId);
+      if (input.replacementForId) await requireDocument(input.replacementForId, input.organizationId);
 
       const digest = sha256(input.bytes);
-      const requestScope = `${input.organizationId}:${input.idempotencyKey}`;
+      const uploadKeyDigest = sha256Text(input.idempotencyKey);
       const requestDigest = sha256Text(
         [input.ownerId, input.type, filename, digest, input.replacementForId ?? ""].join(":")
       );
-      const replay = requestKeys.get(requestScope);
+      const replay = await metadata.findByUploadKey(input.organizationId, uploadKeyDigest);
       if (replay) {
-        if (replay.digest !== requestDigest) throw new Error("Document upload idempotency conflict.");
-        return structuredClone(requireDocument(replay.documentId, input.organizationId));
+        if (
+          replay.ownerId !== input.ownerId ||
+          replay.type !== input.type ||
+          replay.originalFilename !== filename ||
+          replay.digest !== digest ||
+          replay.replacementForId !== (input.replacementForId ?? null)
+        ) {
+          throw new Error("Document upload idempotency conflict.");
+        }
+        return structuredClone(replay);
       }
 
       const id = randomUUID();
@@ -187,13 +236,20 @@ export function createLocalDocumentService(options: {
         createdAt: options.now(),
         expiresAt: null
       };
-      documents.set(id, document);
-      requestKeys.set(requestScope, { digest: requestDigest, documentId: id });
-      record(document, "upload", input.actorId, null);
-      return structuredClone(document);
+      try {
+        return await metadata.create({
+          document,
+          uploadKeyDigest,
+          requestDigest,
+          actorId: input.actorId
+        });
+      } catch (error) {
+        await options.store.delete(objectKey);
+        throw error;
+      }
     },
     async scan(input: { documentId: string; organizationId: string; actorId: string; expectedVersion: number }) {
-      const document = requireDocument(input.documentId, input.organizationId);
+      const document = await requireDocument(input.documentId, input.organizationId);
       if (document.state !== "quarantined" && document.state !== "scan_error") {
         throw new Error("Document is not awaiting a malware scan.");
       }
@@ -219,7 +275,7 @@ export function createLocalDocumentService(options: {
       if (input.role !== "platform_admin" && input.role !== "employer_admin") {
         throw new Error("Document decision is not authorized.");
       }
-      const document = requireDocument(input.documentId, input.organizationId);
+      const document = await requireDocument(input.documentId, input.organizationId);
       if (input.decision === "approve" && document.state !== "clean") {
         throw new Error("Only a clean document can be approved.");
       }
@@ -235,12 +291,17 @@ export function createLocalDocumentService(options: {
       role: DocumentRole;
       ownerId: string;
     }) {
-      const document = requireDocument(input.documentId, input.organizationId);
+      const document = await requireDocument(input.documentId, input.organizationId);
       if (document.state !== "approved") throw new Error("Document is not available for download.");
       authorizeRead(input.role, input.actorId, input.ownerId, document.ownerId);
       const bytes = await options.store.get(document.objectKey);
       if (!bytes || sha256(bytes) !== document.digest) throw new Error("Document object integrity check failed.");
-      record(document, "download", input.actorId, document.state);
+      await metadata.appendAudit({
+        document,
+        action: "download",
+        actorId: input.actorId,
+        occurredAt: options.now()
+      });
       return { document: structuredClone(document), bytes };
     },
     async remove(input: {
@@ -251,9 +312,10 @@ export function createLocalDocumentService(options: {
       expectedVersion: number;
     }) {
       if (input.role !== "platform_admin") throw new Error("Document deletion is not authorized.");
-      const document = requireDocument(input.documentId, input.organizationId);
+      const document = await requireDocument(input.documentId, input.organizationId);
+      const deleted = await update(document, "deleted", input.expectedVersion, "delete", input.actorId);
       await options.store.delete(document.objectKey);
-      return update(document, "deleted", input.expectedVersion, "delete", input.actorId);
+      return deleted;
     },
     async markReplaced(input: {
       documentId: string;
@@ -266,8 +328,8 @@ export function createLocalDocumentService(options: {
       if (input.role !== "platform_admin" && input.role !== "employer_admin") {
         throw new Error("Document replacement is not authorized.");
       }
-      const document = requireDocument(input.documentId, input.organizationId);
-      const replacement = requireDocument(input.replacementDocumentId, input.organizationId);
+      const document = await requireDocument(input.documentId, input.organizationId);
+      const replacement = await requireDocument(input.replacementDocumentId, input.organizationId);
       if (
         replacement.replacementForId !== document.id ||
         replacement.ownerId !== document.ownerId ||
@@ -286,21 +348,19 @@ export function createLocalDocumentService(options: {
       expectedVersion: number;
     }) {
       if (input.role !== "platform_admin") throw new Error("Document expiry is not authorized.");
-      const document = requireDocument(input.documentId, input.organizationId);
+      const document = await requireDocument(input.documentId, input.organizationId);
       if (document.state !== "approved") throw new Error("Only an approved document can expire.");
       return update(document, "expired", input.expectedVersion, "expire", input.actorId);
     },
-    get(documentId: string, organizationId: string) {
-      return structuredClone(requireDocument(documentId, organizationId));
+    async get(documentId: string, organizationId: string) {
+      return structuredClone(await requireDocument(documentId, organizationId));
     },
-    listAudit(documentId: string, organizationId: string) {
-      requireDocument(documentId, organizationId);
-      return audits
-        .filter((entry) => entry.documentId === documentId && entry.organizationId === organizationId)
-        .map((entry) => structuredClone(entry));
+    async listAudit(documentId: string, organizationId: string) {
+      await requireDocument(documentId, organizationId);
+      return metadata.listAudit(documentId, organizationId);
     },
-    createDownloadReference(input: { documentId: string; organizationId: string; expiresAtEpochSeconds: number }) {
-      const document = requireDocument(input.documentId, input.organizationId);
+    async createDownloadReference(input: { documentId: string; organizationId: string; expiresAtEpochSeconds: number }) {
+      const document = await requireDocument(input.documentId, input.organizationId);
       if (document.state !== "approved") throw new Error("Document is not available for download.");
       const now = Math.floor(new Date(options.now()).getTime() / 1000);
       if (input.expiresAtEpochSeconds <= now || input.expiresAtEpochSeconds > now + 300) {
@@ -309,7 +369,7 @@ export function createLocalDocumentService(options: {
       const payload = `${document.id}.${document.organizationId}.${input.expiresAtEpochSeconds}`;
       return `${payload}.${createHash("sha256").update(`${options.referenceSecret}:${payload}`).digest("hex")}`;
     },
-    verifyDownloadReference(reference: string) {
+    async verifyDownloadReference(reference: string) {
       const parts = reference.split(".");
       if (parts.length !== 4) throw new Error("Document reference is invalid.");
       const [documentId, organizationId, expiryText, signature] = parts as [
@@ -327,7 +387,7 @@ export function createLocalDocumentService(options: {
       if (signature !== expected || !Number.isSafeInteger(expiresAt) || expiresAt <= now) {
         throw new Error("Document reference is invalid or expired.");
       }
-      const document = requireDocument(documentId, organizationId);
+      const document = await requireDocument(documentId, organizationId);
       if (document.state !== "approved") throw new Error("Document is not available for download.");
       return { documentId, organizationId };
     }
@@ -388,4 +448,13 @@ function sha256(bytes: Uint8Array) {
 
 function sha256Text(value: string) {
   return createHash("sha256").update(value).digest("hex");
+}
+
+function isMissingFile(error: unknown) {
+  return Boolean(
+    error &&
+    typeof error === "object" &&
+    "code" in error &&
+    (error as { code?: unknown }).code === "ENOENT"
+  );
 }
