@@ -8,6 +8,8 @@ export * from "./invoiceDelivery";
 export * from "./invoiceService";
 export * from "./localeFormatting";
 export * from "./moneyEngine";
+export * from "./payment";
+export * from "./paymentPricing";
 export * from "./platformIntegration";
 export * from "./shift";
 export * from "./worker";
