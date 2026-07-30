@@ -24,16 +24,17 @@ export const payrollRecords = [
     id: "PAY-5102",
     title: "Current payroll cycle",
     scope: "Organization / Residence",
-    lifecycle: "Payroll ready",
+    lifecycle: "Payroll status unavailable",
     approvedHours: "Approved-hours handoff received",
-    earningReadiness: "Worker earning readiness summary",
-    payrollState: "Ready for governed payroll review",
-    paymentState: "Not paid by this page",
+    earningReadiness: "Fixture readiness summary only",
+    payrollState: "Payroll engine unavailable — no calculation",
+    paymentState: "Payment provider unavailable — no verified settlement",
     hold: "No active hold",
     exportState: "Export request available by permission",
-    amount: "Masked payable summary",
+    amount: "Masked estimate only — not net pay or a guaranteed payout",
     freshness: "Current",
-    privacy: "No SIN, bank, tax, protected payroll, or identity details displayed"
+    privacy:
+      "No SIN, bank account, tax identifier, deductions, net pay, or protected identity values displayed"
   },
   {
     id: "PAY-5288",
@@ -41,14 +42,14 @@ export const payrollRecords = [
     scope: "Residence / Department",
     lifecycle: "Under review",
     approvedHours: "Approved-hours reference partial",
-    earningReadiness: "Missing earning readiness detail",
-    payrollState: "Exception requires human review",
-    paymentState: "Payment execution out of scope",
+    earningReadiness: "Missing fixture readiness detail",
+    payrollState: "Payroll engine unavailable — exception not calculated",
+    paymentState: "Payment provider unavailable — settlement not verified",
     hold: "Neutral payroll hold, not worker fault",
     exportState: "Export blocked until owner workflow resolves exception",
-    amount: "Masked exception amount",
+    amount: "Masked estimate only — not deductions, net pay, or guaranteed payout",
     freshness: "Partial",
-    privacy: "Exception reason summarized without protected details"
+    privacy: "Exception summary contains no bank, SIN, tax identifier, or deduction values"
   },
   {
     id: "PAY-5360",
@@ -56,14 +57,15 @@ export const payrollRecords = [
     scope: "Authorized payroll scope",
     lifecycle: "Restricted",
     approvedHours: "Source unavailable",
-    earningReadiness: "Delayed aggregation",
-    payrollState: "Summary stale",
-    paymentState: "Funds transfer not represented",
+    earningReadiness: "Delayed fixture summary",
+    payrollState: "Payroll engine unavailable — status not calculated",
+    paymentState: "Payment provider unavailable — funds transfer not represented",
     hold: "Payroll hold summary restricted",
     exportState: "Export unavailable",
-    amount: "Masked restricted summary",
+    amount: "Masked estimate unavailable — no net pay or payout claim",
     freshness: "Stale",
-    privacy: "Banking, tax identifiers, investigations, and unrelated personal details hidden"
+    privacy:
+      "Bank account, SIN, tax identifier, deduction, investigation, and unrelated personal values hidden"
   }
 ] as const;
 
@@ -123,7 +125,7 @@ export const statusPanels = [
   },
   {
     title: "Unavailable state",
-    text: "A source workflow is unavailable. The page must not infer missing payroll state."
+    text: "Payroll engine and payment provider are unavailable. The page must not infer payroll, net pay, payout, or settlement state."
   },
   {
     title: "Delayed state",

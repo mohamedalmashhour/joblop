@@ -1,14 +1,9 @@
 export const workerEarningsStatusModel = [
-  "Pending Timesheet Approval",
-  "Finance Ready",
-  "Payable Created",
-  "Payment Scheduled",
-  "Processing",
-  "Paid",
-  "Failed",
-  "On Hold",
-  "Disputed",
-  "Reconciled"
+  "Estimated amount — fixture only",
+  "Approved-hours handoff — fixture only",
+  "Payroll status unavailable",
+  "Payment provider unavailable",
+  "Verified settlement unavailable"
 ] as const;
 
 export const workerEarningsRows = [
@@ -29,23 +24,25 @@ export const workerEarningsRows = [
   },
   {
     amount: "$108.50",
-    label: "Estimated payable",
-    note: "Not a final payment or settlement"
+    label: "Estimated worker-facing amount",
+    note: "Not net pay, a guaranteed payout, or verified settlement"
   }
 ] as const;
 
 export const workerEarningsBoundaries = [
   "Earnings estimate != final payable",
-  "Payable created != payroll paid",
-  "Payment scheduled != payment sent",
-  "Payment sent != settled",
+  "Approved-hours handoff != payroll calculation",
+  "Payroll status unavailable != paid",
+  "Payment provider unavailable != settlement",
   "Worker payable != employer invoice"
 ] as const;
 
 export const workerEarningsPrivacyRules = [
   "No employer billing or platform margin is shown",
-  "No full bank details are displayed",
-  "No tax, payroll or payment-provider secrets are exposed",
+  "No bank account or payment destination values are displayed",
+  "No SIN or tax identifier values are displayed",
+  "No deductions or net pay are calculated or displayed",
+  "No payroll or payment-provider secrets are exposed",
   "Sensitive payment destination data remains masked"
 ] as const;
 
@@ -54,7 +51,7 @@ export function getWorkerEarningsFixtureDisclosure() {
     "Fixture-backed earnings only",
     "No payroll engine is connected",
     "No payment provider is connected",
-    "No payout is simulated"
+    "No payout is simulated or guaranteed",
+    "No verified settlement evidence is available"
   ] as const;
 }
-

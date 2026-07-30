@@ -24,9 +24,31 @@ describe("Page 068 Payroll governance content", () => {
 
   it("keeps payroll summaries masked and separate from calculations, tax, and payments", () => {
     expect(payrollRecords.every((record) => record.amount.includes("Masked"))).toBe(true);
-    expect(payrollRecords.some((record) => record.paymentState.includes("Not paid"))).toBe(true);
+    expect(
+      payrollRecords.every((record) => record.payrollState.includes("Payroll engine unavailable"))
+    ).toBe(true);
+    expect(
+      payrollRecords.every((record) => record.paymentState.includes("Payment provider unavailable"))
+    ).toBe(true);
     expect(payrollRecords.some((record) => record.hold.includes("not worker fault"))).toBe(true);
     expect(payrollRecords.some((record) => record.privacy.includes("SIN"))).toBe(true);
+  });
+
+  it("does not present estimates as deductions, net pay, guaranteed payout, or settlement", () => {
+    const records = JSON.stringify(payrollRecords).toLowerCase();
+    expect(records).toContain("not net pay");
+    expect(records).toContain("guaranteed payout");
+    expect(records).toContain("settlement");
+    expect(records).not.toContain("settlement verified");
+    expect(
+      payrollRecords.every(
+        (record) =>
+          record.privacy.includes("SIN") ||
+          record.privacy.includes("bank") ||
+          record.privacy.includes("tax identifier")
+      )
+    ).toBe(true);
+    expect(payrollRecords.every((record) => !record.amount.startsWith("Net pay"))).toBe(true);
   });
 
   it("uses governed handoffs instead of direct payroll, payment, banking, or tax execution", () => {
@@ -62,5 +84,8 @@ describe("Page 068 Payroll governance content", () => {
       "Delayed state",
       "Restricted state"
     ]);
+    expect(statusPanels.find((panel) => panel.title === "Unavailable state")?.text).toContain(
+      "Payroll engine and payment provider are unavailable"
+    );
   });
 });
