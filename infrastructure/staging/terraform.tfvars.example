@@ -1,0 +1,27 @@
+environment                        = "staging"
+region                             = "northamerica-northeast2"
+project_id                         = "replace-with-approved-staging-project-id"
+project_number                     = "000000000000"
+deployment_authorization_reference = "replace-with-approved-record"
+maximum_monthly_budget_amount      = 0
+budget_currency                    = "CAD"
+network_cidr                       = "10.80.0.0/24"
+private_service_prefix_length      = 24
+github_repository                  = "drmmashhour-ux/resident-workforce-os"
+backup_retention_count             = 7
+
+image_digests = {
+  api              = "replace-with-image@sha256:..."
+  employer         = "replace-with-image@sha256:..."
+  admin            = "replace-with-image@sha256:..."
+  worker           = "replace-with-image@sha256:..."
+  auth-limiter     = "replace-with-image@sha256:..."
+  candidate-source = "replace-with-image@sha256:..."
+  offer-delivery   = "replace-with-image@sha256:..."
+  qa-reset         = "replace-with-image@sha256:..."
+}
+
+secret_names = [
+  "rwos-staging-database-url",
+  "rwos-staging-session-secret"
+]

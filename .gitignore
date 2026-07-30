@@ -18,3 +18,8 @@ tmp/
 *.dump
 *.backup
 *.bak
+.terraform/
+*.tfstate
+*.tfstate.*
+*.tfplan
+.terraform.lock.hcl

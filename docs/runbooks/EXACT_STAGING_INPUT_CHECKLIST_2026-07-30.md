@@ -4,6 +4,30 @@ Status: **INPUTS NOT PROVIDED — DEPLOYMENT NOT AUTHORIZED — LOCAL READY**
 
 Record references and identifiers only in approved systems. Never record secret values here.
 
+## Exact external-action input table
+
+No external command may run until every mandatory row is completed and reviewed.
+
+| Input | Required value/evidence | Owner | Current state |
+| --- | --- | --- | --- |
+| GCP project | Exact project ID and immutable project number | Infrastructure owner | Missing |
+| Billing | Billing-account reference; approved attachment operator | Billing owner | Missing |
+| Spending | Maximum monthly amount/currency and maximum one-time provisioning amount/currency | Mohamed + Billing owner | Missing |
+| Region | Explicit `northamerica-northeast2` approval | Mohamed + Infrastructure owner | Missing |
+| Release | Full release SHA and eight immutable image digests | Release owner | SHA local; digests missing |
+| D1–D9 | Selected options, owners, policy versions and evidence from the decision form | Named owners/professional reviewers | Missing |
+| Stripe test | Test account/merchant reference, webhook hostname, Mastercard vectors and ACSS choice | Payment owner + Security | Missing |
+| Synthetic email | Provider/account reference, verified test sender/domain and synthetic-recipient policy | Messaging owner + Privacy | Missing |
+| Secret Manager | Approved secret resource names only; per-service accessor matrix | Security owner | Missing |
+| Domain/DNS/TLS | Employer, Admin, Worker and API staging hostnames; DNS owner; certificate/TLS plan | Domain + Security owners | Missing |
+| Monitoring | Primary/secondary owners, paging destination and test acknowledgement evidence | Monitoring/on-call owner | Missing |
+| Database | Cloud SQL owner, migration operator/reviewer and QA-reset authorization | Database owner | Missing |
+| Release authority | Deployer, release approver, rollback owner and incident commander | Release owner | Missing |
+| Privacy/retention | Data inventory, log/evidence/document retention, deletion and legal-hold decisions | Privacy/Legal + Security | Missing |
+| Backup/recovery | PITR window, retention, RPO/RTO, restore target and cleanup owner | Database + Incident owners | Missing |
+| Network | Approved Cloud Run subnet and private-service CIDRs | Network/Security owner | Missing |
+| WIF/IAM | GitHub environment/principal mapping, runtime identities and denied-access evidence | Security owner | Missing |
+
 ## Owner-provided inputs
 
 - [ ] Exact GCP project ID: __________
