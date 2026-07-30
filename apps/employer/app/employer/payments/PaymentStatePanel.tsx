@@ -8,12 +8,12 @@ import {
 import { styles } from "../employerStyles";
 
 const modeState: Record<string, EmployerPaymentState> = {
-  overview: "Not Started",
-  method: "Method Required",
-  authorization: "Authorization Pending",
+  overview: "Pending",
+  method: "Pending",
+  authorization: "Pending",
   settlement: "Processing",
-  receipt: "Settled",
-  exceptions: "Retry Required"
+  receipt: "Succeeded",
+  exceptions: "Failed"
 };
 
 export function PaymentStatePanel({ mode }: { mode: "overview" | "method" | "authorization" | "settlement" | "receipt" | "exceptions" }) {
@@ -23,19 +23,26 @@ export function PaymentStatePanel({ mode }: { mode: "overview" | "method" | "aut
     <section style={styles.section}>
       <div style={styles.panel}>
         <div style={styles.sectionHeader}>
-          <p style={styles.eyebrowDark}>Fixture-backed payment state</p>
+          <p style={styles.eyebrowDark}>Synthetic local payment orchestration</p>
           <h2 style={styles.sectionTitle}>{currentState}</h2>
           <p style={styles.sectionCopy}>
-            Payment state is display-only. No payment provider is selected, no charge is executed,
-            and no worker payment is implied.
+            Mastercard through Stripe is the intended default and ACSS debit is the alternative.
+            This screen uses a local fake provider only; no real charge or worker payment is implied.
           </p>
           <span style={styles.statusBadgeWarning}>Provider gate required</span>
         </div>
         <div style={styles.cardGrid}>
           {[
             ["Invoice", paymentFixture.invoice],
-            ["Amount", paymentFixture.amount],
+            ["Employer", paymentFixture.employerOrganization],
+            ["Estimated labour", paymentFixture.labourEstimate],
+            ["Approved travel", paymentFixture.travelEstimate],
+            ["Mileage", paymentFixture.mileageEstimate],
+            ["Marketplace service fee", paymentFixture.marketplaceFee],
+            ["Estimated taxes", paymentFixture.taxes],
+            ["Authorization total", paymentFixture.authorizationTotal],
             ["Payment method", paymentFixture.methodSummary],
+            ["Alternative method", paymentFixture.alternativeMethod],
             ["Masked details", paymentFixture.maskedDetails],
             ["Authorization", paymentFixture.authorizationStatus],
             ["Settlement", paymentFixture.settlementStatus],

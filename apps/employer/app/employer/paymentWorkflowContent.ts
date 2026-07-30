@@ -1,12 +1,11 @@
 export type EmployerPaymentState =
-  | "Not Started"
-  | "Method Required"
-  | "Authorization Pending"
+  | "Pending"
   | "Authorized"
   | "Processing"
-  | "Settled"
+  | "Succeeded"
   | "Failed"
-  | "Retry Required"
+  | "Cancelled"
+  | "Partially Refunded"
   | "Refunded"
   | "Disputed";
 
@@ -63,27 +62,33 @@ export const paymentWorkflow = [
 ] as const;
 
 export const employerPaymentStates: EmployerPaymentState[] = [
-  "Not Started",
-  "Method Required",
-  "Authorization Pending",
+  "Pending",
   "Authorized",
   "Processing",
-  "Settled",
+  "Succeeded",
   "Failed",
-  "Retry Required",
+  "Cancelled",
+  "Partially Refunded",
   "Refunded",
   "Disputed"
 ];
 
 export const paymentFixture = {
-  invoice: "INV-FIXTURE-050",
-  amount: "$253.44 fixture",
-  methodSummary: "Card ending 4242 fixture",
-  maskedDetails: "**** **** **** 4242",
-  authorizationStatus: "Authorization Pending" as EmployerPaymentState,
-  settlementStatus: "Not Started" as EmployerPaymentState,
+  invoice: "SYN-A-2026-000050",
+  employerOrganization: "Test Employer Organization A",
+  labourEstimate: "CAD $200.00 synthetic",
+  travelEstimate: "CAD $10.00 synthetic",
+  mileageEstimate: "CAD $5.00 synthetic",
+  marketplaceFee: "CAD $26.50 synthetic — contract fee, independent of payment method",
+  taxes: "CAD $30.00 synthetic",
+  authorizationTotal: "CAD $271.50 synthetic",
+  methodSummary: "Mastercard via Stripe — intended default; local fake provider active",
+  alternativeMethod: "Canadian ACSS debit — secondary alternative",
+  maskedDetails: "Synthetic provider token alias only",
+  authorizationStatus: "Pending" as EmployerPaymentState,
+  settlementStatus: "Pending" as EmployerPaymentState,
   failureReason: "None fixture",
-  retryEligibility: "Eligible only after real integration returns retry rules",
+  retryEligibility: "Governed fake-provider recovery only",
   receiptReference: "Pending fixture",
   transactionDate: "Pending fixture",
   invoiceLinkage: "Linked to invoice fixture, not provider transaction",
@@ -92,27 +97,28 @@ export const paymentFixture = {
 
 export const paymentBoundaries = [
   "Payment Method != Authorization",
-  "Authorized != Settled",
-  "Settled employer payment != Worker paid",
+  "Authorized != Succeeded",
+  "Succeeded employer payment != Worker paid",
   "Payment failure != Invoice voided",
-  "Retry eligible != Retry executed",
-  "Receipt reference != Provider settlement proof"
+  "Unknown outcome != Failed",
+  "Marketplace service fee != Card or Stripe surcharge"
 ] as const;
 
 export const paymentDataTruth = [
-  "Fixture-backed payment state",
-  "No payment provider selected",
+  "Synthetic Test Employer Organization A payment state",
+  "Stripe is intended but not connected; local fake provider active",
+  "Mastercard first; ACSS alternative",
+  "No Québec payment-method surcharge",
   "No real charge execution",
-  "No settlement simulation",
-  "No full payment credentials exposed",
+  "No raw card or bank credentials collected",
   "Worker payable remains separate"
 ] as const;
 
 export function getPaymentStateSummary(state: EmployerPaymentState) {
   return {
     state,
-    requiresEmployerAction: ["Method Required", "Failed", "Retry Required", "Disputed"].includes(state),
-    isSettled: state === "Settled",
+    requiresEmployerAction: ["Pending", "Failed", "Disputed"].includes(state),
+    isSettled: state === "Succeeded",
     providerIntegrated: false
   };
 }

@@ -5,7 +5,7 @@ Status: **BLOCKED**
 The authoritative status remains `LAUNCH_READINESS.md`. Local tests are not substitutes for these
 external records.
 
-Latest local-only validation (`2026-07-30T00:29:45Z`, based on checkpoint `2c623553`) passed the complete
+Latest local-only validation (`2026-07-30T03:12:49Z`, based on checkpoint `c378f549`) passed the complete
 offline suite, static container contracts, QA-reset migration/constraint/rollback/lock validation,
 and the required disposable PostgreSQL lifecycle/capacity/concurrency suite. The temporary
 loopback cluster and child database were removed. These results do not change any external gate.
@@ -24,6 +24,7 @@ loopback cluster and child database were removed. These results do not change an
 | Privacy/legal       | Approved policies and exercised export/deletion/hold behavior                | Technical inventory/boundaries                                   | Named legal/privacy decisions                           |
 | Dependency security | Current registry audit or approved exception                                 | Frozen pnpm lock verification; current-release audit unavailable | Run authorized audits against the reviewed lockfile     |
 | Invoice legal/tax   | Approved legal issuer, contract chain, registrations, tax/place-of-supply policy, numbering and terms | Synthetic effective-dated engine, PDF and fake delivery only | Legal/accounting owners and approved production configuration |
+| Employer payments  | Approved merchant, Stripe account, payment policies, PCI scope, webhook/secret controls and reconciliation | Provider-neutral engine, fake provider, synthetic Mastercard/ACSS presentation and signed local events | Finance, Legal, Security and provider integration approval |
 
 Local readiness remains **0 of 11 gates GREEN (0%)**. Completing B5.1–B5.6 does not manufacture
 provider, device, legal, database, recovery, monitoring or human evidence.

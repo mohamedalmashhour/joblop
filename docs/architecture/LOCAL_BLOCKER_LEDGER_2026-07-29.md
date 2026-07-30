@@ -43,6 +43,7 @@ These items remain eligible whenever repository inspection shows unfinished work
 | Staffing, dispatch, offers and assignments | Complete schema-derived repositories, state transitions, concurrency and rollback tests                      |
 | Scheduling, attendance and timesheets      | Complete boundary-only implementation without payroll or payment execution                                   |
 | Invoicing                                  | Complete synthetic calculation, lifecycle, PDF, fake delivery and isolation; keep production legal/tax activation fail-closed |
+| Employer payment orchestration             | Complete provider-neutral local/fake authorization, collection, refund, reconciliation and denial controls; keep Stripe external |
 | QA reset                                   | Complete deterministic fixtures and denial coverage for Test Employer Organization A/B                       |
 | PostgreSQL and migrations                  | Prepare unapplied migrations and test them against isolated disposable local PostgreSQL using synthetic data |
 | Redis behavior                             | Implement and test fake/local atomicity, outage, recovery and isolation behavior                             |
@@ -51,13 +52,13 @@ These items remain eligible whenever repository inspection shows unfinished work
 | Validation and evidence                    | Run focused tests, lint, typecheck, builds, migration checks and truthful documentation updates              |
 
 Local PostgreSQL is not presently a blocker: repository evidence records a successful isolated
-`/tmp` cluster run applying all 12 migrations, checking 30 QA-reset constraints, proving atomic
+`/tmp` cluster run applying all 13 migrations, checking 30 QA-reset constraints, proving atomic
 rollback and advisory-lock exclusion, then stopping and removing the disposable cluster. The
 reproducible command is `npm run qa-reset:postgres:validate`.
 
 The required repository/concurrency suite also supports an explicitly local-only mode. It accepts
 only a loopback administration database, rejects collisions with `DATABASE_URL`, creates and drops
-a random child database, applies all 12 migrations and emits no staging evidence. The latest run
+a random child database, applies all 13 migrations and emits no staging evidence. The latest run
 passed all four required PostgreSQL tests, including the 24-entity QA-reset lifecycle.
 
 ## Current local completion checkpoint
@@ -111,6 +112,12 @@ is permitted only under ACR-0001 with synthetic, effective-dated policies and al
 models disabled pending professional approval. Do not use real credentials, organizations,
 workers, registration numbers or personal information.
 
+ACR-0002 additionally permits employer payment orchestration through a deterministic local fake
+provider. Mastercard through Stripe is the intended default and ACSS debit the alternative, but
+neither external rail is connected. Québec payment-method surcharges remain disabled. The
+effective-dated marketplace service fee is contractual and independent of the selected method or
+actual processor cost.
+
 ## Invoice milestone local record — 2026-07-30
 
 Validation completed at `2026-07-30T00:29:45Z` from base checkpoint `2c623553`:
@@ -130,6 +137,26 @@ organization-scoped numbering, optimistic concurrency, immutable snapshots, cred
 append-only audit, fake email receipts, bilingual synthetic PDF evidence and employer/admin
 fixture presentation. The legal issuer, registration/tax policy, payment terms, number policy,
 contract chain and T4A payer remain external accounting/legal decisions.
+
+## Payment orchestration local record — 2026-07-30
+
+Validation completed at `2026-07-30T03:12:49Z` from base checkpoint `c378f549`:
+
+| Command | Result |
+| --- | --- |
+| `pnpm test` | PASS — 964 passed, 13 intentionally environment-gated, zero failed |
+| `pnpm lint` / `pnpm typecheck` | PASS |
+| environment, boundary, migration-integrity and secret checks | PASS |
+| all workspace builds / public-bundle scan | PASS — 446 artifacts and 141 classified environment names |
+| `pnpm validate:containers:static` | PASS — 20/20 |
+| `pnpm qa-reset:postgres:validate` | PASS — 13 migrations, 30 constraints, atomic rollback and exclusive advisory lock |
+
+Implemented locally: four effective-dated collection policies, opaque payment methods, fake
+provider scenarios, preauthorization assignment gate, issued-invoice collection, partial
+allocations/refunds, optimistic concurrency, replay protection, signed webhook recovery,
+append-only events, cross-organization denial, Mastercard-first/ACSS-alternative presentation,
+contractual marketplace-fee estimates and a fail-closed Québec surcharge gate. Stripe remains
+unconnected and no provider credentials or real financial data were used.
 
 ## Continuation rule
 

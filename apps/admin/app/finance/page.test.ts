@@ -34,6 +34,8 @@ describe("Page 067 Finance governance content", () => {
   it("uses governed handoffs instead of direct invoice, payment, payroll, or refund execution", () => {
     expect(protectedActions).toContain("Open invoice owner workflow");
     expect(protectedActions).toContain("Open payment owner workflow");
+    expect(protectedActions).toContain("Review failed or unknown fake-provider attempt");
+    expect(protectedActions).toContain("Request governed fake-provider retry or refund");
     expect(protectedActions).toContain("Request governed export");
     expect(aiProhibited).toContain("Approve invoices");
     expect(aiProhibited).toContain("Initiate payments");

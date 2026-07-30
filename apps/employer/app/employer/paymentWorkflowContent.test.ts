@@ -23,34 +23,35 @@ describe("Employer payment state workflow content", () => {
 
   it("includes required employer payment states", () => {
     expect(employerPaymentStates).toEqual([
-      "Not Started",
-      "Method Required",
-      "Authorization Pending",
+      "Pending",
       "Authorized",
       "Processing",
-      "Settled",
+      "Succeeded",
       "Failed",
-      "Retry Required",
+      "Cancelled",
+      "Partially Refunded",
       "Refunded",
       "Disputed"
     ]);
   });
 
   it("keeps authorization, settlement, and worker payable separate", () => {
-    expect(paymentBoundaries).toContain("Authorized != Settled");
-    expect(paymentBoundaries).toContain("Settled employer payment != Worker paid");
+    expect(paymentBoundaries).toContain("Authorized != Succeeded");
+    expect(paymentBoundaries).toContain("Succeeded employer payment != Worker paid");
     expect(paymentFixture.workerPayableBoundary).toContain("does not confirm worker payable");
   });
 
-  it("does not claim provider integration or expose credentials", () => {
-    expect(paymentDataTruth).toContain("No payment provider selected");
+  it("shows intended methods without claiming integration or exposing credentials", () => {
+    expect(paymentDataTruth).toContain("Stripe is intended but not connected; local fake provider active");
+    expect(paymentDataTruth).toContain("No Québec payment-method surcharge");
     expect(paymentDataTruth).toContain("No real charge execution");
-    expect(paymentDataTruth).toContain("No full payment credentials exposed");
-    expect(paymentFixture.maskedDetails).toBe("**** **** **** 4242");
+    expect(paymentFixture.maskedDetails).toBe("Synthetic provider token alias only");
+    expect(paymentFixture.methodSummary).toContain("Mastercard");
+    expect(paymentFixture.alternativeMethod).toContain("ACSS");
   });
 
-  it("marks retry-required as employer action without provider integration", () => {
-    const summary = getPaymentStateSummary("Retry Required");
+  it("marks failed payment as employer action without provider integration", () => {
+    const summary = getPaymentStateSummary("Failed");
     expect(summary.requiresEmployerAction).toBe(true);
     expect(summary.providerIntegrated).toBe(false);
   });
