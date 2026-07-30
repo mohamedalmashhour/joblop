@@ -1,4 +1,5 @@
-import { readFileSync, readdirSync, statSync } from "node:fs";
+import { execFileSync } from "node:child_process";
+import { readFileSync } from "node:fs";
 import { join } from "node:path";
 
 const root = process.cwd();
@@ -14,19 +15,20 @@ const patterns = [
   { pattern: /RESEND_API_KEY\s*=\s*[^<\s][^\s]+/ }
 ];
 
-function walk(directory: string): string[] {
-  return readdirSync(directory).flatMap((entry) => {
-    const path = join(directory, entry);
-    const stat = statSync(path);
-    if (stat.isDirectory()) {
-      if (["node_modules", ".git", ".next", "dist", "coverage"].includes(entry)) return [];
-      return walk(path);
-    }
-    return [path];
-  });
-}
-
-const files = walk(root).filter((file) => !file.endsWith("pnpm-lock.yaml"));
+const releaseFiles = execFileSync(
+  "git",
+  ["ls-files", "--cached", "--others", "--exclude-standard", "-z"],
+  {
+    cwd: root,
+    encoding: "utf8",
+    maxBuffer: 16 * 1024 * 1024
+  }
+);
+const files = releaseFiles
+  .split("\0")
+  .filter(Boolean)
+  .map((file) => join(root, file))
+  .filter((file) => !file.endsWith("pnpm-lock.yaml"));
 const findings = files.flatMap((file) => {
   const text = readFileSync(file, "utf8");
   return patterns
@@ -45,8 +47,5 @@ if (findings.length > 0) {
 console.log("SECRET_SCAN_PASS");
 
 function isSyntheticCredentialFixture(file: string) {
-  return (
-    file.endsWith(".env.example") ||
-    /\.(?:test|spec)\.[cm]?[jt]sx?$/.test(file)
-  );
+  return file.endsWith(".env.example") || /\.(?:test|spec)\.[cm]?[jt]sx?$/.test(file);
 }

@@ -34,4 +34,16 @@ describe("employer shell accessibility", () => {
     expect(globalStyles).toContain("min-height: 44px");
     expect(globalStyles).toContain(".employer-page-list");
   });
+
+  it("deduplicates logical handoffs that share one implemented route", () => {
+    expect(shellSource).toContain("deduplicateNavigationByRoute");
+    expect(shellSource).toContain("uniqueEmployerNavigation");
+    expect(shellSource).toContain("unique.set(step.route, step)");
+  });
+
+  it("keeps one continuous local journey while production stays route-restricted", () => {
+    expect(shellSource).toContain(
+      "const navigation = production ? persistedEmployerNavigation : uniqueEmployerNavigation"
+    );
+  });
 });

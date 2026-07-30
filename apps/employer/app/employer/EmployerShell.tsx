@@ -19,8 +19,11 @@ const employerNavigation = [
   ...invoiceWorkflow,
   ...paymentWorkflow
 ] as const;
-const persistedEmployerNavigation = clientCalendarWorkflow.filter((step) =>
-  ["/employer/calendar", "/employer/calendar/create"].includes(step.route)
+const uniqueEmployerNavigation = deduplicateNavigationByRoute(employerNavigation);
+const persistedEmployerNavigation = deduplicateNavigationByRoute(
+  clientCalendarWorkflow.filter((step) =>
+    ["/employer/calendar", "/employer/calendar/create"].includes(step.route)
+  )
 );
 
 export function EmployerShell({
@@ -42,8 +45,7 @@ export function EmployerShell({
 }) {
   const production = process.env.RWOS_ENV === "production";
   const effectiveMode = production ? "authenticated" : mode;
-  const navigation =
-    effectiveMode === "authenticated" ? persistedEmployerNavigation : employerNavigation;
+  const navigation = production ? persistedEmployerNavigation : uniqueEmployerNavigation;
   return (
     <div style={styles.page}>
       <a className="employer-skip-link" href="#employer-main-content">
@@ -198,7 +200,7 @@ function EmployerPageNavigator({
 
 export function WorkflowRoutes({ currentRoute }: { currentRoute: string }) {
   const navigation =
-    process.env.RWOS_ENV === "production" ? persistedEmployerNavigation : employerNavigation;
+    process.env.RWOS_ENV === "production" ? persistedEmployerNavigation : uniqueEmployerNavigation;
   return (
     <section aria-labelledby="workflow-title" style={styles.section}>
       <div style={styles.sectionHeader}>
@@ -220,4 +222,14 @@ export function WorkflowRoutes({ currentRoute }: { currentRoute: string }) {
       </div>
     </section>
   );
+}
+
+function deduplicateNavigationByRoute<T extends { route: string }>(
+  navigation: readonly T[]
+): readonly T[] {
+  const unique = new Map<string, T>();
+  for (const step of navigation) {
+    unique.set(step.route, step);
+  }
+  return [...unique.values()];
 }
