@@ -1,6 +1,7 @@
 import type { IdentityTokenVerifier } from "@rwos/service-auth";
 import { composeQaResetServer, type QaResetPostgresFactory } from "./composition";
 import { readQaResetConfig } from "./config";
+import { startQaResetFailClosedServer } from "./failClosedServer";
 import { createQaResetLogger } from "./logger";
 import { createResetManifest } from "./manifest";
 
@@ -49,6 +50,14 @@ export function startQaResetServer(options: {
   return server;
 }
 
-// The packaged entry point intentionally has no implicit memory or credential-bearing fallback.
-// A deployment composition root must inject the approved PostgreSQL and identity-verifier ports.
-startQaResetServer({});
+// The packaged entry point has no implicit memory or credential-bearing persistence fallback.
+// Until a deployment composition root injects PostgreSQL and identity-verifier ports, expose only
+// liveness and fail every readiness or operation request closed.
+try {
+  startQaResetServer({});
+} catch (error) {
+  if (!(error instanceof Error) || error.message !== "QA_RESET_POSTGRES_FACTORY_REQUIRED") {
+    throw error;
+  }
+  startQaResetFailClosedServer(Number(process.env.PORT ?? "8080"));
+}
