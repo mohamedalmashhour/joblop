@@ -33,7 +33,7 @@ export default function ContactPage() {
           <a href="/faq" style={styles.navLink}>
             FAQ
           </a>
-          <a href="/employer/dashboard" style={styles.navLink}>
+          <a href="/signin" style={styles.navLink}>
             Sign in
           </a>
         </nav>

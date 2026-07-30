@@ -2,11 +2,11 @@ import { describe, expect, it } from "vitest";
 import {
   aiAllowed,
   aiProhibited,
-  financeRecords,
   page067BoundaryStatements,
   protectedActions,
   statusPanels
 } from "./financeContent";
+import { governedMutationLabels } from "./FinanceDataPanel";
 
 describe("Page 067 Finance governance content", () => {
   it("preserves the approved finance boundary statements", () => {
@@ -22,13 +22,11 @@ describe("Page 067 Finance governance content", () => {
     ]);
   });
 
-  it("keeps finance summaries masked and separate from authoritative finance records", () => {
-    expect(financeRecords.every((record) => record.amount.includes("Masked"))).toBe(true);
-    expect(financeRecords.some((record) => record.invoice.includes("not editable"))).toBe(true);
-    expect(
-      financeRecords.some((record) => record.payment.includes("settlement not confirmed"))
-    ).toBe(true);
-    expect(financeRecords.some((record) => record.privacy.includes("bank"))).toBe(true);
+  it("keeps governed mutations explicitly disabled in the durable read integration", () => {
+    expect(governedMutationLabels).toContain("Approve or issue invoice");
+    expect(governedMutationLabels).toContain("Create or capture payment");
+    expect(governedMutationLabels).toContain("Void or refund payment");
+    expect(governedMutationLabels).toContain("Mark settlement or reconciliation complete");
   });
 
   it("uses governed handoffs instead of direct invoice, payment, payroll, or refund execution", () => {

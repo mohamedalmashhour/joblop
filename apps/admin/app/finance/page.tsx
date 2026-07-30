@@ -3,16 +3,14 @@ import {
   aiAllowed,
   aiProhibited,
   financeFilters,
-  financeRecords,
   governanceDetails,
   page067BoundaryStatements,
   protectedActions,
   statusPanels
 } from "./financeContent";
+import { FinanceDataPanel } from "./FinanceDataPanel";
 
 export default function FinancePage() {
-  const selectedRecord = financeRecords[0];
-
   return (
     <main style={styles.page}>
       <header style={styles.header}>
@@ -78,86 +76,7 @@ export default function FinancePage() {
         </p>
       </section>
 
-      <section style={styles.workspace} aria-label="Finance management workspace">
-        <article aria-labelledby="finance-list-title" style={styles.panel}>
-          <div style={styles.panelHeader}>
-            <h2 id="finance-list-title" style={styles.h2}>
-              Governed Finance Queue
-            </h2>
-            <span style={styles.statusBadge}>Development fixture</span>
-          </div>
-          <div style={styles.list}>
-            {financeRecords.map((record) => (
-              <article key={record.id} style={styles.financeCard}>
-                <div>
-                  <strong>{record.title}</strong>
-                  <p style={styles.muted}>{record.id}</p>
-                  <p style={styles.muted}>
-                    {record.employer} / {record.scope}
-                  </p>
-                </div>
-                <div style={styles.cardStatuses}>
-                  <span style={styles.lifecycleBadge}>{record.lifecycle}</span>
-                  <span
-                    style={
-                      record.freshness === "Stale" || record.freshness === "Partial"
-                        ? styles.warningBadge
-                        : styles.statusBadge
-                    }
-                  >
-                    {record.freshness}
-                  </span>
-                </div>
-                <p style={styles.cardText}>{record.billing}</p>
-                <p style={styles.privacyText}>{record.privacy}</p>
-              </article>
-            ))}
-          </div>
-        </article>
-
-        <article aria-labelledby="selected-finance-title" style={styles.panel}>
-          <div style={styles.panelHeader}>
-            <h2 id="selected-finance-title" style={styles.h2}>
-              Selected Finance Summary
-            </h2>
-            <span style={styles.statusBadge}>Summary only</span>
-          </div>
-          <dl style={styles.summaryList}>
-            <div style={styles.summaryRow}>
-              <dt>Status</dt>
-              <dd>{selectedRecord.lifecycle}</dd>
-            </div>
-            <div style={styles.summaryRow}>
-              <dt>Client billing</dt>
-              <dd>{selectedRecord.billing}</dd>
-            </div>
-            <div style={styles.summaryRow}>
-              <dt>Invoice state</dt>
-              <dd>{selectedRecord.invoice}</dd>
-            </div>
-            <div style={styles.summaryRow}>
-              <dt>Payment state</dt>
-              <dd>{selectedRecord.payment}</dd>
-            </div>
-            <div style={styles.summaryRow}>
-              <dt>Worker payable</dt>
-              <dd>{selectedRecord.payable}</dd>
-            </div>
-            <div style={styles.summaryRow}>
-              <dt>Amount</dt>
-              <dd>{selectedRecord.amount}</dd>
-            </div>
-            <div style={styles.summaryRow}>
-              <dt>Reconciliation</dt>
-              <dd>{selectedRecord.reconciliation}</dd>
-            </div>
-          </dl>
-          <p style={styles.helpText}>
-            Finance summaries are not authoritative ledger, payroll, payment, invoice, refund, tax,
-            banking, or reconciliation records. Open the owner workflow before any protected action.
-          </p>
-        </article>
-      </section>
+      <FinanceDataPanel />
 
       <section style={styles.workspace} aria-label="Governance details and handoffs">
         <article aria-labelledby="governance-title" style={styles.panel}>

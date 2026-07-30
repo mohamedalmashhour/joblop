@@ -62,6 +62,7 @@ export function SignInForm() {
           style={styles.input}
           type="email"
           autoComplete="email"
+          required
           value={email}
           onChange={(event) => setEmail(event.target.value)}
           placeholder="manager@example.org"
@@ -73,12 +74,19 @@ export function SignInForm() {
           style={styles.input}
           type="password"
           autoComplete="current-password"
+          required
           value={password}
           onChange={(event) => setPassword(event.target.value)}
           placeholder="Your password"
         />
       </label>
-      <p style={state === "error" ? styles.warning : styles.sectionCopy}>{message}</p>
+      <p
+        aria-live="polite"
+        role={state === "error" ? "alert" : "status"}
+        style={state === "error" ? styles.warning : styles.sectionCopy}
+      >
+        {message}
+      </p>
       <div style={{ display: "flex", gap: "0.75rem", flexWrap: "wrap" }}>
         <button type="submit" disabled={state === "submitting"} style={styles.primaryButton}>
           {state === "submitting" ? "Signing in…" : "Sign in"}

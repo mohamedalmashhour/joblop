@@ -61,6 +61,7 @@ export function SignInForm() {
           style={authStyles.input}
           type="email"
           autoComplete="email"
+          required
           value={email}
           onChange={(event) => setEmail(event.target.value)}
           placeholder="admin@example.org"
@@ -72,12 +73,19 @@ export function SignInForm() {
           style={authStyles.input}
           type="password"
           autoComplete="current-password"
+          required
           value={password}
           onChange={(event) => setPassword(event.target.value)}
           placeholder="Your password"
         />
       </label>
-      <p style={state === "error" ? authStyles.warning : authStyles.message}>{message}</p>
+      <p
+        aria-live="polite"
+        role={state === "error" ? "alert" : "status"}
+        style={state === "error" ? authStyles.warning : authStyles.message}
+      >
+        {message}
+      </p>
       <div style={authStyles.actions}>
         <button type="submit" disabled={state === "submitting"} style={authStyles.primaryButton}>
           {state === "submitting" ? "Signing in…" : "Sign in"}

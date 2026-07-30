@@ -30,7 +30,7 @@ export default function HowItWorksPage() {
           <a href="/contact" style={styles.navLink}>
             Contact
           </a>
-          <a href="/employer/dashboard" style={styles.navLink}>
+          <a href="/signin" style={styles.navLink}>
             Sign in
           </a>
         </nav>

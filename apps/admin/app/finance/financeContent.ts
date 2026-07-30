@@ -19,54 +19,6 @@ export const financeFilters = [
   "Exception"
 ] as const;
 
-export const financeRecords = [
-  {
-    id: "FIN-4102",
-    title: "Employer billing review",
-    employer: "Test Employer Organization A",
-    scope: "Organization / Work site",
-    lifecycle: "Under review",
-    billing: "Client billing summary only",
-    invoice: "Invoice reference visible, not editable",
-    payment: "Local fake-provider attempt succeeded; external settlement not confirmed",
-    payable: "Worker payable summary referenced only",
-    reconciliation: "Reconciliation status current",
-    amount: "Masked amount summary",
-    freshness: "Current",
-    privacy: "No bank, card, tax, payroll, or worker identity details displayed"
-  },
-  {
-    id: "FIN-4276",
-    title: "Adjustment request queue",
-    employer: "Test Employer Organization B",
-    scope: "Organization / Department",
-    lifecycle: "Pending approval",
-    billing: "Adjustment request awaiting human review",
-    invoice: "Related invoice owner workflow required",
-    payment: "Synthetic insufficient-funds failure; governed retry review available",
-    payable: "Payroll impact unknown until owner workflows confirm",
-    reconciliation: "Partial source data",
-    amount: "Masked adjustment range",
-    freshness: "Partial",
-    privacy: "Sensitive reason and dispute detail restricted"
-  },
-  {
-    id: "FIN-4384",
-    title: "Refund governance reference",
-    employer: "Test Employer Organization A",
-    scope: "Authorized finance scope",
-    lifecycle: "Restricted",
-    billing: "Credit and refund governance summary",
-    invoice: "Invoice source unavailable",
-    payment: "Synthetic unknown outcome; signed-event reconciliation required",
-    payable: "Worker payment execution out of scope",
-    reconciliation: "Delayed aggregation",
-    amount: "Masked refund reference",
-    freshness: "Stale",
-    privacy: "Provider identifiers and internal fraud signals hidden"
-  }
-] as const;
-
 export const governanceDetails = [
   {
     label: "Primary source boundary",
