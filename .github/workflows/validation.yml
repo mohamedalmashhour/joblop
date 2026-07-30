@@ -20,5 +20,7 @@ jobs:
           node-version: 20.20.2
           cache: pnpm
       - run: pnpm install --frozen-lockfile
+      - name: Generate Prisma Client
+        run: pnpm --filter @rwos/database prisma:generate
       - run: pnpm validate
       - run: pnpm validate:containers:static
