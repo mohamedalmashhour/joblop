@@ -4,6 +4,7 @@ import type {
   PaymentOperation,
   PaymentProviderPort,
   PaymentRecord,
+  PaymentEvent,
   PaymentState,
   PaymentMethodReference,
   PaymentPolicyMode
@@ -30,6 +31,7 @@ type Client = Transaction & {
 export interface PaymentRepository {
   registerMethod(method: PaymentMethodReference): Promise<PaymentMethodReference>;
   listMethods(organizationId: string): Promise<readonly PaymentMethodReference[]>;
+  listAttempts(organizationId: string): Promise<readonly PaymentRecord[]>;
   createAttempt(input: {
     id: string;
     organizationId: string;
@@ -43,6 +45,17 @@ export interface PaymentRepository {
     idempotencyKey: string;
   }): Promise<PaymentRecord>;
   get(paymentId: string, organizationId: string): Promise<PaymentRecord | null>;
+  listEvents(paymentId: string, organizationId: string): Promise<readonly PaymentEvent[]>;
+  processProviderEvent(input: {
+    eventId: string;
+    paymentId: string;
+    organizationId: string;
+    expectedVersion: number;
+    newState: Extract<PaymentState, "succeeded" | "failed" | "disputed">;
+    amountMinor: number;
+    payloadDigest: string;
+    occurredAt: Date;
+  }): Promise<PaymentRecord>;
   execute(input: {
     paymentId: string;
     organizationId: string;
@@ -97,6 +110,7 @@ export function createPrismaPaymentRepository(
             id: method.id,
             organizationId: method.organizationId,
             provider: method.provider,
+            methodKind: method.methodKind,
             providerCustomerReference: method.providerCustomerReference,
             providerMethodReference: method.providerMethodReference,
             displayAlias: method.displayAlias,
@@ -111,7 +125,22 @@ export function createPrismaPaymentRepository(
         where: { organizationId, status: "active" },
         orderBy: [{ createdAt: "desc" }, { id: "asc" }]
       });
-      return values.map(mapMethod);
+      return values
+        .map(mapMethod)
+        .sort((left, right) =>
+          left.methodKind === right.methodKind
+            ? left.id.localeCompare(right.id)
+            : left.methodKind === "mastercard"
+              ? -1
+              : 1
+        );
+    },
+    async listAttempts(organizationId) {
+      const values = await prisma.employerPaymentAttempt.findMany({
+        where: { organizationId },
+        orderBy: [{ createdAt: "desc" }, { id: "asc" }]
+      });
+      return values.map(mapPayment);
     },
     async createAttempt(input) {
       assertMoney(input.amountMinor);
@@ -175,6 +204,102 @@ export function createPrismaPaymentRepository(
       });
     },
     get,
+    async listEvents(paymentId, organizationId) {
+      if (!(await get(paymentId, organizationId))) {
+        throw new Error("Payment is outside the authorized organization.");
+      }
+      const values = await prisma.employerPaymentEvent.findMany({
+        where: { paymentAttemptId: paymentId, organizationId },
+        orderBy: [{ occurredAt: "asc" }, { id: "asc" }]
+      });
+      return values.map((value, index) => mapEvent(value, index + 1));
+    },
+    async processProviderEvent(input) {
+      assertMoney(input.amountMinor);
+      if (!/^[a-f0-9]{64}$/u.test(input.payloadDigest)) {
+        throw new Error("Payment provider event digest is invalid.");
+      }
+      return prisma.$transaction(async (transaction) => {
+        const priorEvent = await transaction.employerPaymentEvent.findFirst({
+          where: {
+            organizationId: input.organizationId,
+            providerEventReference: input.eventId
+          }
+        });
+        if (priorEvent) {
+          if (
+            text(priorEvent, "paymentAttemptId") !== input.paymentId ||
+            nullableText(priorEvent, "payloadDigest") !== input.payloadDigest
+          ) {
+            throw new Error("Payment provider event replay conflict.");
+          }
+          const replay = await transaction.employerPaymentAttempt.findFirst({
+            where: { id: input.paymentId, organizationId: input.organizationId }
+          });
+          if (!replay) throw new Error("Payment is outside the authorized organization.");
+          return mapPayment(replay);
+        }
+        const currentValue = await transaction.employerPaymentAttempt.findFirst({
+          where: { id: input.paymentId, organizationId: input.organizationId }
+        });
+        if (!currentValue) throw new Error("Payment is outside the authorized organization.");
+        const current = mapPayment(currentValue);
+        if (current.version !== input.expectedVersion) throw new Error("Payment version conflict.");
+        if (!["processing", "authorized", "succeeded"].includes(current.state)) {
+          throw new Error("Payment provider event is invalid for the current state.");
+        }
+        if (input.amountMinor !== current.amountMinor) {
+          throw new Error("Payment provider event amount does not match the attempt.");
+        }
+        const updated = await transaction.employerPaymentAttempt.updateMany({
+          where: {
+            id: input.paymentId,
+            organizationId: input.organizationId,
+            version: input.expectedVersion,
+            state: current.state
+          },
+          data: {
+            state: input.newState,
+            version: { increment: 1 },
+            ...(input.newState === "succeeded" && current.allocatedMinor === 0
+              ? { allocatedMinor: BigInt(input.amountMinor) }
+              : {})
+          }
+        });
+        if (updated.count !== 1) throw new Error("Payment provider event concurrency conflict.");
+        await transaction.employerPaymentEvent.create({
+          data: {
+            ...eventData(
+              input.paymentId,
+              input.organizationId,
+              "provider_webhook",
+              current.state,
+              input.newState,
+              "provider"
+            ),
+            providerEventReference: input.eventId,
+            payloadDigest: input.payloadDigest,
+            occurredAt: input.occurredAt
+          }
+        });
+        if (input.newState === "succeeded" && current.allocatedMinor === 0) {
+          await transaction.employerPaymentAllocation.create({
+            data: {
+              paymentAttemptId: current.id,
+              organizationId: current.organizationId,
+              invoiceId: current.invoiceId,
+              amountMinor: BigInt(input.amountMinor),
+              currency: "CAD"
+            }
+          });
+        }
+        const result = await transaction.employerPaymentAttempt.findFirst({
+          where: { id: input.paymentId, organizationId: input.organizationId }
+        });
+        if (!result) throw new Error("Payment persistence failed.");
+        return mapPayment(result);
+      });
+    },
     async execute(input) {
       assertMoney(input.amountMinor);
       const current = await get(input.paymentId, input.organizationId);
@@ -339,6 +464,7 @@ function mapMethod(value: unknown): PaymentMethodReference {
     id: text(value, "id"),
     organizationId: text(value, "organizationId"),
     provider: approvedProvider(text(value, "provider")),
+    methodKind: paymentMethodKind(text(value, "methodKind")),
     providerCustomerReference: text(value, "providerCustomerReference"),
     providerMethodReference: text(value, "providerMethodReference"),
     displayAlias: text(value, "displayAlias"),
@@ -363,6 +489,22 @@ function mapPayment(value: unknown): PaymentRecord {
     currency: "CAD",
     authorizationReference: nullableText(value, "authorizationReference"),
     version: integer(value, "version")
+  };
+}
+
+function mapEvent(value: unknown, sequence: number): PaymentEvent {
+  const prior = nullableText(value, "priorState");
+  return {
+    sequence,
+    organizationId: text(value, "organizationId"),
+    paymentId: text(value, "paymentAttemptId"),
+    type: text(value, "eventType"),
+    actor: paymentActor(text(value, "actorType")),
+    fromState: prior === null ? null : paymentState(prior),
+    toState: paymentState(text(value, "newState")),
+    amountMinor: 0,
+    providerReference: nullableText(value, "providerOperationReference"),
+    occurredAt: date(value, "occurredAt")
   };
 }
 
@@ -399,6 +541,13 @@ function safeBigInt(value: unknown, key: string) {
   }
   return number as number;
 }
+function date(value: unknown, key: string) {
+  const item = row(value)[key];
+  if (!(item instanceof Date) || Number.isNaN(item.valueOf())) {
+    throw new Error("Invalid persisted payment.");
+  }
+  return item.toISOString();
+}
 function approvedProvider(value: string) {
   if (value !== "local_fake" && value !== "stripe_test") throw new Error("Invalid payment provider.");
   return value;
@@ -422,6 +571,18 @@ function paymentPolicyMode(value: string): PaymentPolicyMode {
     ].includes(value)
   ) throw new Error("Invalid payment policy mode.");
   return value as PaymentPolicyMode;
+}
+function paymentMethodKind(value: string) {
+  if (value !== "mastercard" && value !== "acss_debit") {
+    throw new Error("Invalid payment method kind.");
+  }
+  return value;
+}
+function paymentActor(value: string): PaymentEvent["actor"] {
+  if (!["employer", "admin", "system", "provider"].includes(value)) {
+    throw new Error("Invalid payment actor.");
+  }
+  return value as PaymentEvent["actor"];
 }
 function assertMoney(value: number) {
   if (!Number.isSafeInteger(value) || value <= 0) throw new Error("Payment requires positive CAD minor units.");

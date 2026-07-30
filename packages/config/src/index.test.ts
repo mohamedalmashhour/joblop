@@ -217,4 +217,32 @@ describe("production runtime configuration", () => {
   ])("fails closed for incomplete or external local-document configuration", (env) => {
     expect(validateRuntimeConfig(env)).toMatchObject({ success: false });
   });
+
+  it("keeps local payment disabled by default and requires an isolated signed boundary", () => {
+    expect(getRuntimeConfig({ RWOS_ENV: "local" })).toMatchObject({
+      localPaymentEnabled: false
+    });
+    const enabled = {
+      RWOS_ENV: "test",
+      DATABASE_URL: "postgresql://127.0.0.1/rwos_payment_disposable_test",
+      LOCAL_PAYMENT_ENABLED: "enabled",
+      LOCAL_PAYMENT_WEBHOOK_SECRET: "synthetic-local-payment-secret-at-least-32-characters"
+    };
+    expect(validateRuntimeConfig(enabled)).toMatchObject({ success: true });
+    expect(getRuntimeConfig(enabled)).toMatchObject({
+      localPaymentEnabled: true
+    });
+  });
+
+  it.each([
+    { RWOS_ENV: "local", LOCAL_PAYMENT_ENABLED: "enabled" },
+    {
+      RWOS_ENV: "staging",
+      DATABASE_URL: "postgresql://db.example.test/rwos",
+      LOCAL_PAYMENT_ENABLED: "enabled",
+      LOCAL_PAYMENT_WEBHOOK_SECRET: "synthetic-local-payment-secret-at-least-32-characters"
+    }
+  ])("fails closed for incomplete or non-local payment configuration", (env) => {
+    expect(validateRuntimeConfig(env)).toMatchObject({ success: false });
+  });
 });

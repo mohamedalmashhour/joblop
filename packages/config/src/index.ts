@@ -35,6 +35,8 @@ const runtimeConfigSchema = z
     STRIPE_TEST_WEBHOOK_SECRET: z.string().min(1).optional(),
     STRIPE_TEST_ACCOUNT_REFERENCE: z.string().min(1).optional(),
     STRIPE_ACSS_DEBIT_ENABLED: z.enum(["disabled", "enabled"]).default("disabled"),
+    LOCAL_PAYMENT_ENABLED: z.enum(["disabled", "enabled"]).default("disabled"),
+    LOCAL_PAYMENT_WEBHOOK_SECRET: z.string().min(32).optional(),
     DOCUMENT_LOCAL_UPLOAD_ENABLED: z.enum(["disabled", "enabled"]).default("disabled"),
     DOCUMENT_LOCAL_STORAGE_ROOT: z.string().min(1).optional(),
     DOCUMENT_REFERENCE_SECRET: z.string().min(32).optional()
@@ -107,6 +109,29 @@ const runtimeConfigSchema = z
           code: "custom",
           path: ["DOCUMENT_REFERENCE_SECRET"],
           message: "Local document upload requires a reference-signing secret."
+        });
+      }
+    }
+    if (config.LOCAL_PAYMENT_ENABLED === "enabled") {
+      if (config.RWOS_ENV !== "local" && config.RWOS_ENV !== "test") {
+        context.addIssue({
+          code: "custom",
+          path: ["LOCAL_PAYMENT_ENABLED"],
+          message: "Local payment orchestration is allowed only in local or test environments."
+        });
+      }
+      if (!config.DATABASE_URL) {
+        context.addIssue({
+          code: "custom",
+          path: ["DATABASE_URL"],
+          message: "Local payment orchestration requires durable PostgreSQL."
+        });
+      }
+      if (!config.LOCAL_PAYMENT_WEBHOOK_SECRET) {
+        context.addIssue({
+          code: "custom",
+          path: ["LOCAL_PAYMENT_WEBHOOK_SECRET"],
+          message: "Local payment orchestration requires a webhook signing secret."
         });
       }
     }
@@ -264,6 +289,8 @@ export function getRuntimeConfig(env: NodeJS.ProcessEnv = process.env) {
     stripeTestWebhookSecret: parsed.STRIPE_TEST_WEBHOOK_SECRET,
     stripeTestAccountReference: parsed.STRIPE_TEST_ACCOUNT_REFERENCE,
     stripeAcssDebitEnabled: parsed.STRIPE_ACSS_DEBIT_ENABLED === "enabled",
+    localPaymentEnabled: parsed.LOCAL_PAYMENT_ENABLED === "enabled",
+    localPaymentWebhookSecret: parsed.LOCAL_PAYMENT_WEBHOOK_SECRET,
     documentLocalUploadEnabled: parsed.DOCUMENT_LOCAL_UPLOAD_ENABLED === "enabled",
     documentLocalStorageRoot: parsed.DOCUMENT_LOCAL_STORAGE_ROOT,
     documentReferenceSecret: parsed.DOCUMENT_REFERENCE_SECRET

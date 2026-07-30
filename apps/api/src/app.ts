@@ -88,6 +88,7 @@ import {
 import { getRuntimeConfig } from "@rwos/config";
 import { createPrismaClient } from "@rwos/database";
 import { createLogger } from "@rwos/observability";
+import { createLocalFakePaymentProvider } from "@rwos/shared";
 import {
   createTrustedServiceIdentityHeaders,
   type IdentityTokenProvider,
@@ -120,6 +121,11 @@ import {
   createPrismaInvoiceRepository,
   type InvoiceRepository
 } from "./invoiceRepository";
+import { registerPaymentRoutes } from "./paymentRoutes";
+import {
+  createPrismaPaymentRepository,
+  type PaymentRepository
+} from "./paymentRepository";
 
 export interface BuildApiOptions {
   authService?: AuthenticationService;
@@ -154,6 +160,8 @@ export interface BuildApiOptions {
   documentService?: DocumentUploadService;
   documentUploadContract?: ReturnType<typeof createDocumentUploadContract>;
   invoiceRepository?: InvoiceRepository;
+  paymentRepository?: PaymentRepository;
+  localPaymentWebhookSecret?: string;
 }
 
 export type AuthenticationRateLimitDecision = Readonly<{
@@ -400,6 +408,11 @@ export function buildApi(options: BuildApiOptions = {}) {
       : null);
   const invoiceRepository =
     options.invoiceRepository ?? (prisma ? createPrismaInvoiceRepository(prisma) : null);
+  const paymentRepository =
+    options.paymentRepository ??
+    (prisma && runtimeConfig.localPaymentEnabled
+      ? createPrismaPaymentRepository(prisma, createLocalFakePaymentProvider())
+      : null);
 
   if (invoiceRepository) {
     registerInvoiceRoutes(app, {
@@ -423,6 +436,40 @@ export function buildApi(options: BuildApiOptions = {}) {
               organizationId
             });
             return { actorId: session.user.id, role: "finance_reviewer" };
+          } catch {
+            return null;
+          }
+        }
+        return null;
+      }
+    });
+  }
+
+  const localPaymentWebhookSecret =
+    options.localPaymentWebhookSecret ?? runtimeConfig.localPaymentWebhookSecret;
+  if (paymentRepository && localPaymentWebhookSecret) {
+    registerPaymentRoutes(app, {
+      repository: paymentRepository,
+      localWebhookSecret: localPaymentWebhookSecret,
+      authorize: async (request, organizationId) => {
+        const session = await authService.validateSession(
+          readBearerToken(request.headers.authorization)
+        );
+        if (!session.authenticated || !session.user) return null;
+        const roles = await resolveAuthorizationRoles(session.user.id);
+        if (roles.includes("PLATFORM_ADMINISTRATOR")) {
+          return { actorId: session.user.id, role: "admin" };
+        }
+        if (
+          roles.includes("ORGANIZATION_OWNER") ||
+          roles.includes("ORGANIZATION_ADMINISTRATOR")
+        ) {
+          try {
+            await organizationService.getOrganization({
+              actorUserId: session.user.id,
+              organizationId
+            });
+            return { actorId: session.user.id, role: "employer" };
           } catch {
             return null;
           }

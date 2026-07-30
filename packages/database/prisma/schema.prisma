@@ -1513,6 +1513,7 @@ model EmployerPaymentMethod {
   id                        String   @id @default(uuid()) @db.Uuid
   organizationId            String   @map("organization_id") @db.Uuid
   provider                  String
+  methodKind                String   @default("mastercard") @map("method_kind")
   providerCustomerReference String   @map("provider_customer_reference")
   providerMethodReference   String   @map("provider_method_reference")
   displayAlias              String   @map("display_alias")

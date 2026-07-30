@@ -1,4 +1,5 @@
 import type { InvoiceSourceSnapshot } from "./invoice";
+import type { EmployerPaymentMethodKind } from "./paymentPricing";
 
 export const paymentStates = [
   "pending",
@@ -35,6 +36,7 @@ export type PaymentMethodReference = Readonly<{
   id: string;
   organizationId: string;
   provider: "local_fake" | "stripe_test";
+  methodKind: EmployerPaymentMethodKind;
   providerCustomerReference: string;
   providerMethodReference: string;
   displayAlias: string;
@@ -229,6 +231,9 @@ export function createLocalPaymentOrchestrator(options: {
       }
       assertOpaqueReference(method.providerCustomerReference);
       assertOpaqueReference(method.providerMethodReference);
+      if (!["mastercard", "acss_debit"].includes(method.methodKind)) {
+        throw new Error("Payment method kind is not supported.");
+      }
       const existing = methods.get(method.id);
       if (existing && JSON.stringify(existing) !== JSON.stringify(method)) {
         throw new Error("Payment method reference conflict.");

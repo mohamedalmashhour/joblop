@@ -128,6 +128,7 @@ describe("durable payment repository", () => {
         id: "method-a",
         organizationId,
         provider: "local_fake",
+        methodKind: "mastercard",
         providerCustomerReference: "customer-a",
         providerMethodReference: "5555 5555 5555 4444",
         displayAlias: "Mastercard test",
@@ -146,6 +147,42 @@ describe("durable payment repository", () => {
       where: {
         id: row.id,
         organizationId: "00000000-0000-4000-8000-00000000000b"
+      }
+    });
+  });
+
+  it("persists a signed provider success once with allocation and optimistic versioning", async () => {
+    const target = setup();
+    target.employerPaymentAttempt.findFirst
+      .mockResolvedValueOnce({ ...row, state: "processing", version: 2 })
+      .mockResolvedValueOnce({
+        ...row,
+        state: "succeeded",
+        allocatedMinor: row.amountMinor,
+        version: 3
+      });
+    const result = await target.repository.processProviderEvent({
+      eventId: "evt_synthetic_success",
+      paymentId: row.id,
+      organizationId,
+      expectedVersion: 2,
+      amountMinor: 10_500,
+      newState: "succeeded",
+      payloadDigest: "a".repeat(64),
+      occurredAt: new Date("2026-07-30T12:30:00.000Z")
+    });
+    expect(result.state).toBe("succeeded");
+    expect(target.employerPaymentAttempt.updateMany).toHaveBeenCalledWith({
+      where: {
+        id: row.id,
+        organizationId,
+        version: 2,
+        state: "processing"
+      },
+      data: {
+        state: "succeeded",
+        version: { increment: 1 },
+        allocatedMinor: row.amountMinor
       }
     });
   });
