@@ -13,8 +13,9 @@ Current boundaries:
 - Production mutations for dispatch, offers, assignments, attendance, and timesheets are disabled.
 - Production worker entry is limited to the authenticated calendar/offer reference.
 - Fixture journeys remain development/test-only.
-- No payroll, payment execution, invoices, tax, notifications, real maps, AI execution, or worker
-  payout is authorized.
+- No payroll, payment execution, tax calculation, real notifications, real maps, AI execution, or
+  worker payout is authorized. Local invoice-foundation work is governed by
+  `docs/architecture/ACR-0001-INVOICE-MILESTONE.md`.
 - See `RESIDENT_WORKFORCE_OS_LAUNCH_READINESS_REPORT.md` for completed controls and open gates.
 
 ## Applications
