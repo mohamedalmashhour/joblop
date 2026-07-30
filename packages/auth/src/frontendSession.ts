@@ -33,6 +33,13 @@ export type FrontendSessionResult =
 export type FrontendSignInResult =
   FrontendSessionResult | Readonly<{ status: "rate_limited"; retryAfterSeconds: number }>;
 
+export type FrontendRegisterResult =
+  | FrontendSessionResult
+  | Readonly<{ status: "rate_limited"; retryAfterSeconds: number }>
+  | Readonly<{ status: "registration_closed" }>
+  | Readonly<{ status: "conflict" }>
+  | Readonly<{ status: "invalid" }>;
+
 export function createFrontendSessionGateway(options: {
   apiOrigin: string;
   fetch: FrontendSessionFetch;
@@ -66,7 +73,7 @@ export function createFrontendSessionGateway(options: {
       if (!response.ok) return { status: "error" };
       return { status: "ok", payload: response.status === 204 ? null : await response.json() };
     } catch {
-      return { status: "error" };
+      return { status: "unavailable" };
     }
   }
 
@@ -99,7 +106,43 @@ export function createFrontendSessionGateway(options: {
         persistToken(token);
         return { status: "ok", payload: sanitizeSessionPayload(payload) };
       } catch {
-        return { status: "error" };
+        return { status: "unavailable" };
+      }
+    },
+    async register(
+      input: Readonly<{ email: string; password: string; displayName?: string | null }>,
+      persistToken: (token: string) => void
+    ): Promise<FrontendRegisterResult> {
+      try {
+        const response = await options.fetch(`${origin}/auth/register`, {
+          method: "POST",
+          headers: { accept: "application/json", "content-type": "application/json" },
+          body: JSON.stringify(input),
+          cache: "no-store"
+        });
+        // The API gates registration to non-production (404), rejects a taken email (409) and a weak
+        // password (400), and rate-limits (429). Map each so the route can speak plainly to the user.
+        if (response.status === 404) return { status: "registration_closed" } as const;
+        if (response.status === 409) return { status: "conflict" } as const;
+        if (response.status === 400) return { status: "invalid" } as const;
+        if (response.status === 401 || response.status === 403) return { status: "denied" };
+        if (response.status === 429) {
+          return {
+            status: "rate_limited",
+            retryAfterSeconds: readRetryAfter(response.headers?.get("retry-after"))
+          } as const;
+        }
+        if (response.status === 502 || response.status === 503 || response.status === 504) {
+          return { status: "unavailable" };
+        }
+        if (!response.ok) return { status: "error" };
+        const payload = await response.json();
+        const token = readToken(payload);
+        if (!token) return { status: "error" };
+        persistToken(token);
+        return { status: "ok", payload: sanitizeSessionPayload(payload) };
+      } catch {
+        return { status: "unavailable" };
       }
     },
     async validate(token: string | null) {

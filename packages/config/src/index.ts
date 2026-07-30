@@ -24,7 +24,12 @@ const runtimeConfigSchema = z
     OFFER_DELIVERY_ORIGIN: z.string().url().optional(),
     OFFER_DELIVERY_TOKEN: z.string().min(32).optional(),
     ASSIGNMENT_HANDOFF_ENABLED: z.enum(["disabled", "enabled"]).default("disabled"),
-    SESSION_SECRET: z.string().optional()
+    SESSION_SECRET: z.string().optional(),
+    // Transactional email (Resend) for email-verification / resend-code. Optional and inert until
+    // both are set: without them the mailer is a no-op (dev surfaces the code locally instead of
+    // sending). Mirrors the STR gating model — the feature ships dark until the owner provisions keys.
+    RESEND_API_KEY: z.string().min(1).optional(),
+    EMAIL_FROM: z.string().email().optional()
   })
   .superRefine((config, context) => {
     if (
@@ -181,7 +186,11 @@ export function getRuntimeConfig(env: NodeJS.ProcessEnv = process.env) {
     hasCandidateSource: Boolean(parsed.CANDIDATE_SOURCE_ORIGIN && parsed.CANDIDATE_SOURCE_TOKEN),
     hasOfferDelivery: Boolean(parsed.OFFER_DELIVERY_ORIGIN && parsed.OFFER_DELIVERY_TOKEN),
     hasDatabaseUrl: Boolean(parsed.DATABASE_URL),
-    hasSessionSecret: Boolean(parsed.SESSION_SECRET)
+    hasSessionSecret: Boolean(parsed.SESSION_SECRET),
+    resendApiKey: parsed.RESEND_API_KEY,
+    emailFrom: parsed.EMAIL_FROM,
+    // True only when both are present — the mailer sends real email; otherwise it stays a no-op.
+    hasEmailDelivery: Boolean(parsed.RESEND_API_KEY && parsed.EMAIL_FROM)
   } as const;
 }
 

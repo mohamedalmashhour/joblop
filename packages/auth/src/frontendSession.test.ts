@@ -151,6 +151,24 @@ describe("secure frontend session gateway", () => {
     });
   });
 
+  it("classifies network failures as unavailable across session operations", async () => {
+    const gateway = createFrontendSessionGateway({
+      apiOrigin: "https://api.example.test",
+      fetch: async () => {
+        throw new TypeError("synthetic network failure");
+      }
+    });
+
+    await expect(gateway.validate("server-session-token-123456789")).resolves.toEqual({
+      status: "unavailable"
+    });
+    await expect(gateway.signIn({ email: "user@example.test", password: "synthetic" }, vi.fn()))
+      .resolves.toEqual({ status: "unavailable" });
+    await expect(
+      gateway.register({ email: "user@example.test", password: "synthetic" }, vi.fn())
+    ).resolves.toEqual({ status: "unavailable" });
+  });
+
   it("preserves a bounded not-found category without exposing upstream details", async () => {
     const gateway = createFrontendSessionGateway({
       apiOrigin: "https://api.example.test",
@@ -191,6 +209,52 @@ describe("secure frontend session gateway", () => {
         () => undefined
       )
     ).toEqual({ status: "rate_limited", retryAfterSeconds: 75 });
+  });
+
+  it("registers, persisting the token server-side without returning it to the frontend", async () => {
+    const fetch = vi.fn(async () =>
+      apiResponse(201, {
+        token: "server-session-token-register-1",
+        user: { id: "user-2" },
+        session: { expiresAt: "2026-08-01T00:00:00.000Z" }
+      })
+    );
+    const persistToken = vi.fn();
+    const result = await createFrontendSessionGateway({
+      apiOrigin: "https://api.example.test",
+      fetch
+    }).register(
+      { email: "owner@example.test", password: "correct horse battery", displayName: "Owner" },
+      persistToken
+    );
+    expect(fetch).toHaveBeenCalledWith(
+      "https://api.example.test/auth/register",
+      expect.objectContaining({ method: "POST" })
+    );
+    expect(persistToken).toHaveBeenCalledWith("server-session-token-register-1");
+    expect(result.status).toBe("ok");
+    expect(JSON.stringify(result)).not.toContain("server-session-token");
+  });
+
+  it("maps the registration gate and rejection states to bounded categories", async () => {
+    const gatewayFor = (status: number, retryAfter?: string) =>
+      createFrontendSessionGateway({
+        apiOrigin: "https://api.example.test",
+        fetch: async () => ({
+          ...apiResponse(status, { privateReason: "never-return" }),
+          headers: { get: (name: string) => (name === "retry-after" ? retryAfter ?? null : null) }
+        })
+      });
+    const register = (status: number, retryAfter?: string) =>
+      gatewayFor(status, retryAfter).register(
+        { email: "person@example.test", password: "not-returned" },
+        () => undefined
+      );
+
+    expect(await register(404)).toEqual({ status: "registration_closed" });
+    expect(await register(409)).toEqual({ status: "conflict" });
+    expect(await register(400)).toEqual({ status: "invalid" });
+    expect(await register(429, "75")).toEqual({ status: "rate_limited", retryAfterSeconds: 75 });
   });
 
   it("rejects insecure non-local origins", () => {
