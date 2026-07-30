@@ -84,13 +84,13 @@ resource "google_sql_database" "application" {
 }
 
 resource "google_redis_instance" "limiter" {
-  name               = "${local.prefix}-redis"
-  region             = var.region
-  tier               = "BASIC"
-  memory_size_gb     = var.redis_memory_size_gb
-  authorized_network = google_compute_network.staging.id
-  connect_mode       = "PRIVATE_SERVICE_ACCESS"
-  redis_version      = "REDIS_7_2"
+  name                    = "${local.prefix}-redis"
+  region                  = var.region
+  tier                    = "BASIC"
+  memory_size_gb          = var.redis_memory_size_gb
+  authorized_network      = google_compute_network.staging.id
+  connect_mode            = "PRIVATE_SERVICE_ACCESS"
+  redis_version           = "REDIS_7_2"
   transit_encryption_mode = "SERVER_AUTHENTICATION"
 }
 
@@ -186,5 +186,5 @@ resource "google_service_account" "deployer" {
 resource "google_service_account_iam_member" "github_deployer" {
   service_account_id = google_service_account.deployer.name
   role               = "roles/iam.workloadIdentityUser"
-  member = "principalSet://iam.googleapis.com/projects/${var.project_number}/locations/global/workloadIdentityPools/${google_iam_workload_identity_pool.github.workload_identity_pool_id}/attribute.repository/${var.github_repository}"
+  member             = "principalSet://iam.googleapis.com/projects/${var.project_number}/locations/global/workloadIdentityPools/${google_iam_workload_identity_pool.github.workload_identity_pool_id}/attribute.repository/${var.github_repository}"
 }

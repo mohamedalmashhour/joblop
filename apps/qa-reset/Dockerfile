@@ -3,8 +3,14 @@ WORKDIR /workspace
 RUN corepack enable && corepack prepare pnpm@10.33.2 --activate
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml tsconfig*.json ./
 COPY apps/qa-reset/package.json apps/qa-reset/package.json
+COPY packages/config/package.json packages/config/package.json
+COPY packages/database/package.json packages/database/package.json
+COPY packages/service-auth/package.json packages/service-auth/package.json
 RUN pnpm install --frozen-lockfile
 COPY apps/qa-reset apps/qa-reset
+COPY packages/config packages/config
+COPY packages/database packages/database
+COPY packages/service-auth packages/service-auth
 RUN pnpm --filter @rwos/qa-reset build
 
 FROM node:20.20.2-bookworm-slim AS runtime

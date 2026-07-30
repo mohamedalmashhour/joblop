@@ -3,8 +3,10 @@ WORKDIR /workspace
 RUN corepack enable && corepack prepare pnpm@10.33.2 --activate
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml tsconfig*.json ./
 COPY apps/offer-delivery/package.json apps/offer-delivery/package.json
+COPY packages/service-auth/package.json packages/service-auth/package.json
 RUN pnpm install --frozen-lockfile
 COPY apps/offer-delivery apps/offer-delivery
+COPY packages/service-auth packages/service-auth
 RUN pnpm --filter @rwos/offer-delivery build
 
 FROM node:20.20.2-bookworm-slim AS runtime

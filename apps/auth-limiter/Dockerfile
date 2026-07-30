@@ -3,8 +3,10 @@ WORKDIR /workspace
 RUN corepack enable && corepack prepare pnpm@10.33.2 --activate
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml tsconfig*.json ./
 COPY apps/auth-limiter/package.json apps/auth-limiter/package.json
+COPY packages/service-auth/package.json packages/service-auth/package.json
 RUN pnpm install --frozen-lockfile
 COPY apps/auth-limiter apps/auth-limiter
+COPY packages/service-auth packages/service-auth
 RUN pnpm --filter @rwos/auth-limiter build
 
 FROM node:20.20.2-bookworm-slim AS runtime
