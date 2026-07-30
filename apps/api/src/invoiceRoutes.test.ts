@@ -104,6 +104,7 @@ function repository(): InvoiceRepository {
     }),
     listDeliveries: vi.fn().mockResolvedValue([]),
     createCreditNote: vi.fn(),
+    transitionCreditNote: vi.fn(),
     listCreditNotes: vi.fn().mockResolvedValue([])
   };
 }

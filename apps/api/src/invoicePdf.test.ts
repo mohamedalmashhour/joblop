@@ -1,7 +1,10 @@
 import { calculateInvoiceSnapshot, type InvoiceCalculationInput } from "@rwos/shared";
 import { describe, expect, it } from "vitest";
-import { renderBilingualSyntheticInvoicePdf } from "./invoicePdf";
-import type { DurableInvoice } from "./invoiceRepository";
+import {
+  renderBilingualSyntheticCreditNotePdf,
+  renderBilingualSyntheticInvoicePdf
+} from "./invoicePdf";
+import type { DurableCreditNote, DurableInvoice } from "./invoiceRepository";
 
 const cad = (amountMinor: number) => ({ amountMinor, currency: "CAD" as const });
 const calculation = calculateInvoiceSnapshot({
@@ -103,5 +106,28 @@ describe("bilingual synthetic invoice PDF", () => {
         issuedAt: null
       })
     ).toThrow("issued");
+  });
+
+  it("renders an issued bilingual credit note linked to its original invoice", () => {
+    const creditNote: DurableCreditNote = {
+      id: "credit-synthetic",
+      invoiceId: invoice.id,
+      organizationId: invoice.organizationId,
+      creditNoteNumber: "CN-SYN-A-2026-000001-001",
+      status: "issued",
+      version: 3,
+      reason: "Synthetic correction",
+      amountMinor: 500,
+      currency: "CAD",
+      approvedAt: "2026-07-30T01:00:00.000Z",
+      rejectedAt: null,
+      rejectedReason: null,
+      issuedAt: "2026-07-30T02:00:00.000Z"
+    };
+    const rendered = renderBilingualSyntheticCreditNotePdf(invoice, creditNote);
+    const text = Buffer.from(rendered.bytes).toString("latin1");
+    expect(text).toContain("CREDIT NOTE / NOTE DE CRÉDIT");
+    expect(text).toContain(invoice.invoiceNumber);
+    expect(rendered.filename).toBe("CN-SYN-A-2026-000001-001.pdf");
   });
 });

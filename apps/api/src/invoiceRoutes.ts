@@ -1,7 +1,10 @@
 import { createHash, randomUUID } from "node:crypto";
 import type { FastifyInstance, FastifyRequest } from "fastify";
 import type { InvoiceActorRole, InvoiceStatus } from "@rwos/shared";
-import { renderBilingualSyntheticInvoicePdf } from "./invoicePdf";
+import {
+  renderBilingualSyntheticCreditNotePdf,
+  renderBilingualSyntheticInvoicePdf
+} from "./invoicePdf";
 import type { InvoiceRepository } from "./invoiceRepository";
 
 export type InvoiceRouteAuthorization = Readonly<{
@@ -128,6 +131,60 @@ export function registerInvoiceRoutes(
       return invoiceFailure(reply, error);
     }
   });
+
+  app.get(
+    "/organizations/:organizationId/invoices/:invoiceId/credit-notes/:creditNoteId/pdf",
+    async (request, reply) => {
+      const scope = await authorizedInvoice(request, options);
+      if (!scope) return unavailable(reply);
+      const notes = await options.repository.listCreditNotes(
+        scope.invoice.id,
+        scope.invoice.organizationId
+      );
+      const creditNote = notes.find(
+        (note) => note.id === routeParam(request.params, "creditNoteId")
+      );
+      if (!creditNote) return unavailable(reply);
+      try {
+        const rendered = renderBilingualSyntheticCreditNotePdf(scope.invoice, creditNote);
+        return reply
+          .type("application/pdf")
+          .header("content-disposition", `attachment; filename="${rendered.filename}"`)
+          .send(rendered.bytes);
+      } catch {
+        return conflict(reply, "Credit-note PDF is unavailable until issuance.");
+      }
+    }
+  );
+
+  for (const action of ["approve", "reject", "issue"] as const) {
+    app.post(
+      `/organizations/:organizationId/invoices/:invoiceId/credit-notes/:creditNoteId/${action}`,
+      async (request, reply) => {
+        const scope = await authorizedInvoice(request, options);
+        if (!scope) return unavailable(reply);
+        const body = record(request.body);
+        const expectedVersion = positiveInteger(body.expectedVersion);
+        const reason = text(body.reason) ?? undefined;
+        if (expectedVersion === null || (action === "reject" && !reason)) return invalid(reply);
+        try {
+          const creditNote = await options.repository.transitionCreditNote({
+            creditNoteId: routeParam(request.params, "creditNoteId"),
+            invoiceId: scope.invoice.id,
+            organizationId: scope.invoice.organizationId,
+            expectedVersion,
+            action,
+            ...(reason ? { reason } : {}),
+            actorReference: scope.authorization.actorId,
+            actorRole: scope.authorization.role
+          });
+          return reply.send({ creditNote });
+        } catch (error) {
+          return invoiceFailure(reply, error);
+        }
+      }
+    );
+  }
 }
 
 async function authorizedInvoice(

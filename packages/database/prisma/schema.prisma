@@ -1391,13 +1391,19 @@ model InvoiceCreditNote {
   invoiceId            String   @map("invoice_id") @db.Uuid
   organizationId       String   @map("organization_id") @db.Uuid
   creditNoteNumber     String   @map("credit_note_number")
+  status               String   @default("draft")
+  version              Int      @default(1)
   reason               String
   calculationSnapshot  Json     @map("calculation_snapshot")
   amountMinor          BigInt   @map("amount_minor")
   currency             String   @default("CAD") @db.Char(3)
   idempotencyKeyDigest String   @map("idempotency_key_digest") @db.Char(64)
+  approvedAt           DateTime? @map("approved_at") @db.Timestamptz(3)
+  rejectedAt           DateTime? @map("rejected_at") @db.Timestamptz(3)
+  rejectedReason       String?   @map("rejected_reason")
   issuedAt             DateTime @map("issued_at") @db.Timestamptz(3)
   createdAt            DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt            DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
 
   invoice Invoice @relation(fields: [invoiceId, organizationId], references: [id, organizationId], onDelete: Restrict)
 

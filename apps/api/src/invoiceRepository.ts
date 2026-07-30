@@ -54,9 +54,14 @@ export type DurableCreditNote = Readonly<{
   invoiceId: string;
   organizationId: string;
   creditNoteNumber: string;
+  status: "draft" | "approved" | "rejected" | "issued";
+  version: number;
   reason: string;
   amountMinor: number;
   currency: "CAD";
+  approvedAt: string | null;
+  rejectedAt: string | null;
+  rejectedReason: string | null;
   issuedAt: string;
 }>;
 
@@ -101,6 +106,16 @@ export interface InvoiceRepository {
     amountMinor: number;
     reason: string;
     idempotencyKey: string;
+    actorReference: string;
+    actorRole: InvoiceActorRole;
+  }): Promise<DurableCreditNote>;
+  transitionCreditNote(input: {
+    creditNoteId: string;
+    invoiceId: string;
+    organizationId: string;
+    expectedVersion: number;
+    action: "approve" | "reject" | "issue";
+    reason?: string;
     actorReference: string;
     actorRole: InvoiceActorRole;
   }): Promise<DurableCreditNote>;
@@ -425,7 +440,11 @@ export function createPrismaInvoiceRepository(prismaClient: unknown): InvoiceRep
           throw new Error("Credit notes require an issued invoice.");
         }
         const totals = await transaction.invoiceCreditNote.aggregate({
-          where: { invoiceId: input.invoiceId, organizationId: input.organizationId },
+          where: {
+            invoiceId: input.invoiceId,
+            organizationId: input.organizationId,
+            status: { in: ["draft", "approved", "issued"] }
+          },
           _sum: { amountMinor: true }
         });
         const credited = safeBigInt(totals._sum.amountMinor ?? 0n);
@@ -438,6 +457,7 @@ export function createPrismaInvoiceRepository(prismaClient: unknown): InvoiceRep
             invoiceId: input.invoiceId,
             organizationId: input.organizationId,
             creditNoteNumber: `CN-${invoice.invoiceNumber}-${idempotencyKeyDigest.slice(0, 10).toUpperCase()}`,
+            status: "draft",
             reason: input.reason,
             calculationSnapshot: {
               originalInvoiceNumber: invoice.invoiceNumber,
@@ -459,9 +479,85 @@ export function createPrismaInvoiceRepository(prismaClient: unknown): InvoiceRep
           actorRole: input.actorRole,
           priorStatus: invoice.status,
           newStatus: invoice.status,
-          reason: input.reason
+          ...(input.reason ? { reason: input.reason } : {})
         });
         return mapCreditNote(noteValue);
+      });
+    },
+    async transitionCreditNote(input) {
+      assertAuthorized(
+        input.actorRole,
+        input.action === "issue" ? "issue" : "approve"
+      );
+      if (input.action === "reject" && !input.reason?.trim()) {
+        throw new Error("Credit note rejection reason is required.");
+      }
+      return prisma.$transaction(async (transaction) => {
+        const noteValue = await transaction.invoiceCreditNote.findFirst({
+          where: {
+            id: input.creditNoteId,
+            invoiceId: input.invoiceId,
+            organizationId: input.organizationId
+          }
+        });
+        if (!noteValue) throw new Error("Credit note is outside the authorized organization.");
+        const note = mapCreditNote(noteValue);
+        if (note.version !== input.expectedVersion) throw new Error("Credit note version conflict.");
+        const valid =
+          (input.action === "approve" && note.status === "draft") ||
+          (input.action === "reject" && ["draft", "approved"].includes(note.status)) ||
+          (input.action === "issue" && note.status === "approved");
+        if (!valid) throw new Error("Credit note transition is invalid.");
+        const invoiceValue = await transaction.invoice.findFirst({
+          where: { id: input.invoiceId, organizationId: input.organizationId }
+        });
+        if (!invoiceValue) throw new Error("Invoice is outside the authorized organization.");
+        const invoice = mapInvoice(invoiceValue);
+        if (!invoice.invoiceNumber) throw new Error("Credit note requires an issued invoice.");
+        const now = new Date();
+        const nextStatus =
+          input.action === "approve"
+            ? "approved"
+            : input.action === "reject"
+              ? "rejected"
+              : "issued";
+        const updated = await transaction.invoiceCreditNote.updateMany({
+          where: {
+            id: note.id,
+            invoiceId: note.invoiceId,
+            organizationId: note.organizationId,
+            version: input.expectedVersion,
+            status: note.status
+          },
+          data: {
+            status: nextStatus,
+            version: { increment: 1 },
+            ...(input.action === "approve" ? { approvedAt: now } : {}),
+            ...(input.action === "reject"
+              ? { rejectedAt: now, rejectedReason: input.reason!.trim() }
+              : {})
+          }
+        });
+        if (updated.count !== 1) throw new Error("Credit note concurrency conflict.");
+        await appendAudit(transaction, {
+          invoiceId: input.invoiceId,
+          organizationId: input.organizationId,
+          action: `credit_note_${input.action}`,
+          actorReference: input.actorReference,
+          actorRole: input.actorRole,
+          priorStatus: invoice.status,
+          newStatus: invoice.status,
+          ...(input.reason ? { reason: input.reason } : {})
+        });
+        const result = await transaction.invoiceCreditNote.findFirst({
+          where: {
+            id: input.creditNoteId,
+            invoiceId: input.invoiceId,
+            organizationId: input.organizationId
+          }
+        });
+        if (!result) throw new Error("Credit note persistence failed.");
+        return mapCreditNote(result);
       });
     },
     async listCreditNotes(invoiceId, organizationId) {
@@ -470,7 +566,7 @@ export function createPrismaInvoiceRepository(prismaClient: unknown): InvoiceRep
       }
       const values = await prisma.invoiceCreditNote.findMany({
         where: { invoiceId, organizationId },
-        orderBy: [{ issuedAt: "desc" }, { id: "asc" }]
+        orderBy: [{ createdAt: "desc" }, { id: "asc" }]
       });
       return values.map(mapCreditNote);
     }
@@ -567,9 +663,14 @@ function mapCreditNote(value: unknown): DurableCreditNote {
     invoiceId: text(row.invoiceId),
     organizationId: text(row.organizationId),
     creditNoteNumber: text(row.creditNoteNumber),
+    status: creditNoteStatus(row.status),
+    version: positiveInteger(row.version),
     reason: text(row.reason),
     amountMinor: safeBigInt(row.amountMinor),
     currency: "CAD",
+    approvedAt: nullableDate(row.approvedAt),
+    rejectedAt: nullableDate(row.rejectedAt),
+    rejectedReason: nullableText(row.rejectedReason),
     issuedAt: date(row.issuedAt).toISOString()
   };
 }
@@ -641,6 +742,18 @@ function integer(value: unknown) {
     throw new Error("Invalid persisted invoice.");
   }
   return value;
+}
+function positiveInteger(value: unknown) {
+  const result = integer(value);
+  if (result < 1) throw new Error("Invalid persisted invoice.");
+  return result;
+}
+
+function creditNoteStatus(value: unknown): DurableCreditNote["status"] {
+  if (!["draft", "approved", "rejected", "issued"].includes(value as string)) {
+    throw new Error("Invalid persisted credit note.");
+  }
+  return value as DurableCreditNote["status"];
 }
 
 function safeBigInt(value: unknown) {

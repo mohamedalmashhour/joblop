@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import type { DurableInvoice } from "./invoiceRepository";
+import type { DurableCreditNote, DurableInvoice } from "./invoiceRepository";
 
 export type RenderedInvoicePdf = Readonly<{
   bytes: Uint8Array;
@@ -32,6 +32,41 @@ export function renderBilingualSyntheticInvoicePdf(invoice: DurableInvoice): Ren
     "SYNTHETIC LOCAL TEST DOCUMENT / DOCUMENT D’ESSAI LOCAL SYNTHÉTIQUE",
     "Not approved for production or tax filing / Non approuvé pour production ou déclaration fiscale"
   ];
+  return renderDocument(lines, invoice.invoiceNumber);
+}
+
+export function renderBilingualSyntheticCreditNotePdf(
+  invoice: DurableInvoice,
+  creditNote: DurableCreditNote
+): RenderedInvoicePdf {
+  if (
+    creditNote.invoiceId !== invoice.id ||
+    creditNote.organizationId !== invoice.organizationId ||
+    creditNote.status !== "issued" ||
+    !creditNote.creditNoteNumber ||
+    !creditNote.issuedAt ||
+    !invoice.invoiceNumber
+  ) {
+    throw new Error("Only an issued organization-scoped credit note can be rendered.");
+  }
+  return renderDocument(
+    [
+      "CREDIT NOTE / NOTE DE CRÉDIT",
+      `Number / Numéro: ${creditNote.creditNoteNumber}`,
+      `Original invoice / Facture originale: ${invoice.invoiceNumber}`,
+      `Issued / Émise: ${creditNote.issuedAt.slice(0, 10)}`,
+      `Reason / Motif: ${creditNote.reason}`,
+      `Credit / Crédit: ${formatCad(creditNote.amountMinor)}`,
+      `Currency / Devise: ${creditNote.currency}`,
+      "",
+      "SYNTHETIC LOCAL TEST DOCUMENT / DOCUMENT D’ESSAI LOCAL SYNTHÉTIQUE",
+      "Not approved for production or tax filing / Non approuvé pour production ou déclaration fiscale"
+    ],
+    creditNote.creditNoteNumber
+  );
+}
+
+function renderDocument(lines: readonly string[], documentNumber: string): RenderedInvoicePdf {
   const content = pdfTextStream(lines);
   const objects = [
     "<< /Type /Catalog /Pages 2 0 R >>",
@@ -61,7 +96,7 @@ export function renderBilingualSyntheticInvoicePdf(invoice: DurableInvoice): Ren
   return {
     bytes,
     digest: createHash("sha256").update(bytes).digest("hex"),
-    filename: `${safeFilename(invoice.invoiceNumber)}.pdf`,
+    filename: `${safeFilename(documentNumber)}.pdf`,
     contentType: "application/pdf"
   };
 }

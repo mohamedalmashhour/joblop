@@ -110,7 +110,7 @@ function setup() {
     findFirst: vi.fn().mockResolvedValue(null),
     findMany: vi.fn().mockResolvedValue([]),
     create: vi.fn(),
-    updateMany: vi.fn(),
+    updateMany: vi.fn().mockResolvedValue({ count: 1 }),
     aggregate: vi.fn().mockResolvedValue({ _sum: { amountMinor: 0n } })
   };
   const transaction = {
@@ -278,5 +278,61 @@ describe("durable invoice repository", () => {
       })
     ).rejects.toThrow("exceeds");
     expect(target.invoiceCreditNote.create).not.toHaveBeenCalled();
+  });
+
+  it("issues an approved credit note with optimistic concurrency and immutable numbering", async () => {
+    const target = setup();
+    const approved = {
+      id: "00000000-0000-4000-8000-000000000030",
+      invoiceId: invoiceRow.id,
+      organizationId: invoiceRow.organizationId,
+      creditNoteNumber: "CN-SYN-2026-000001-RESERVED",
+      status: "approved",
+      version: 2,
+      reason: "Synthetic correction",
+      amountMinor: 500n,
+      currency: "CAD",
+      approvedAt: new Date(),
+      rejectedAt: null,
+      rejectedReason: null,
+      issuedAt: new Date()
+    };
+    target.invoiceCreditNote.findFirst
+      .mockResolvedValueOnce(approved)
+      .mockResolvedValueOnce({
+        ...approved,
+        status: "issued",
+        version: 3,
+        creditNoteNumber: approved.creditNoteNumber
+      });
+    target.invoice.findFirst.mockResolvedValueOnce({
+      ...invoiceRow,
+      status: "issued",
+      invoiceNumber: "SYN-2026-000001",
+      issuedAt: new Date()
+    });
+    const result = await target.repository.transitionCreditNote({
+      creditNoteId: approved.id,
+      invoiceId: approved.invoiceId,
+      organizationId: approved.organizationId,
+      expectedVersion: 2,
+      action: "issue",
+      actorReference: "finance-a",
+      actorRole: "finance_reviewer"
+    });
+    expect(result.status).toBe("issued");
+    expect(target.invoiceCreditNote.updateMany).toHaveBeenCalledWith({
+      where: {
+        id: approved.id,
+        invoiceId: approved.invoiceId,
+        organizationId: approved.organizationId,
+        version: 2,
+        status: "approved"
+      },
+      data: expect.objectContaining({
+        status: "issued",
+        version: { increment: 1 }
+      })
+    });
   });
 });
