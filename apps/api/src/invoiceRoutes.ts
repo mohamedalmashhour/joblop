@@ -1,6 +1,12 @@
 import { createHash, randomUUID } from "node:crypto";
 import type { FastifyInstance, FastifyRequest } from "fastify";
-import type { InvoiceActorRole, InvoiceStatus } from "@rwos/shared";
+import {
+  calculateInvoiceSnapshot,
+  type InvoiceActorRole,
+  type InvoiceCalculationInput,
+  type InvoiceNumberingConfiguration,
+  type InvoiceStatus
+} from "@rwos/shared";
 import {
   renderBilingualSyntheticCreditNotePdf,
   renderBilingualSyntheticInvoicePdf
@@ -22,6 +28,29 @@ export function registerInvoiceRoutes(
     ): Promise<InvoiceRouteAuthorization | null>;
   }
 ) {
+  app.post("/organizations/:organizationId/invoices", async (request, reply) => {
+    const organizationId = routeParam(request.params, "organizationId");
+    const authorization = await options.authorize(request, organizationId);
+    if (!authorization) return unavailable(reply);
+    const body = record(request.body);
+    const idempotencyKey = text(body.idempotencyKey);
+    const calculationInput = invoiceCalculationInput(body.calculation, organizationId);
+    if (!idempotencyKey || !calculationInput) return invalid(reply);
+    try {
+      const invoice = await options.repository.createFromLockedTimesheet({
+        id: randomUUID(),
+        organizationId,
+        calculation: calculateInvoiceSnapshot(calculationInput),
+        actorReference: authorization.actorId,
+        actorRole: authorization.role,
+        idempotencyKey
+      });
+      return reply.code(201).send({ invoice });
+    } catch (error) {
+      return invoiceFailure(reply, error);
+    }
+  });
+
   app.get("/organizations/:organizationId/invoices", async (request, reply) => {
     const organizationId = routeParam(request.params, "organizationId");
     if (!(await options.authorize(request, organizationId))) return unavailable(reply);
@@ -57,6 +86,45 @@ export function registerInvoiceRoutes(
       audit: await options.repository.listAudit(scope.invoice.id, scope.invoice.organizationId)
     });
   });
+
+  for (const action of ["approve", "issue", "view", "overdue", "dispute", "void"] as const) {
+    app.post(
+      `/organizations/:organizationId/invoices/:invoiceId/${action}`,
+      async (request, reply) => {
+        const scope = await authorizedInvoice(request, options);
+        if (!scope) return unavailable(reply);
+        const body = record(request.body);
+        const expectedVersion = positiveInteger(body.expectedVersion);
+        const reason = text(body.reason) ?? undefined;
+        const numbering =
+          action === "issue"
+            ? invoiceNumberingConfiguration(body.numbering, scope.invoice.organizationId)
+            : undefined;
+        if (
+          expectedVersion === null ||
+          (action === "issue" && !numbering) ||
+          (["dispute", "void"].includes(action) && !reason)
+        ) {
+          return invalid(reply);
+        }
+        try {
+          const invoice = await options.repository.transition({
+            invoiceId: scope.invoice.id,
+            organizationId: scope.invoice.organizationId,
+            expectedVersion,
+            toStatus: invoiceActionStatus(action),
+            actorReference: scope.authorization.actorId,
+            actorRole: scope.authorization.role,
+            ...(reason ? { reason } : {}),
+            ...(numbering ? { numbering } : {})
+          });
+          return reply.send({ invoice });
+        } catch (error) {
+          return invoiceFailure(reply, error);
+        }
+      }
+    );
+  }
 
   app.get("/organizations/:organizationId/invoices/:invoiceId/deliveries", async (request, reply) => {
     const scope = await authorizedInvoice(request, options);
@@ -230,6 +298,76 @@ function positiveInteger(value: unknown) {
 
 function routeParam(value: unknown, key: string) {
   return text(record(value)[key]) ?? "";
+}
+
+function invoiceActionStatus(
+  action: "approve" | "issue" | "view" | "overdue" | "dispute" | "void"
+): InvoiceStatus {
+  return action === "approve"
+    ? "approved"
+    : action === "issue"
+      ? "issued"
+      : action === "view"
+        ? "viewed"
+        : action === "overdue"
+          ? "overdue"
+          : action === "dispute"
+            ? "disputed"
+            : "voided";
+}
+
+function invoiceCalculationInput(
+  value: unknown,
+  organizationId: string
+): InvoiceCalculationInput | null {
+  const input = record(value);
+  const source = record(input.source);
+  if (
+    source.type !== "locked_timesheet" ||
+    text(source.organizationId) !== organizationId ||
+    !text(source.timesheetId) ||
+    positiveInteger(source.timesheetVersion) === null ||
+    !text(source.assignmentId) ||
+    !text(source.attendanceRecordId)
+  ) {
+    return null;
+  }
+  // The shared calculation engine is the authoritative validator for all
+  // effective-dated configuration, money, tax, and rounding fields.
+  return input as InvoiceCalculationInput;
+}
+
+function invoiceNumberingConfiguration(
+  value: unknown,
+  organizationId: string
+): InvoiceNumberingConfiguration | null {
+  const input = record(value);
+  const scopeYear = positiveInteger(input.scopeYear);
+  const prefix = text(input.prefix);
+  const version = text(input.version);
+  const effectiveFrom = text(input.effectiveFrom);
+  const effectiveUntil =
+    input.effectiveUntil === null ? null : text(input.effectiveUntil);
+  if (
+    text(input.organizationId) !== organizationId ||
+    scopeYear === null ||
+    !prefix ||
+    prefix.length > 24 ||
+    !/^[A-Z0-9-]+$/u.test(prefix) ||
+    !version ||
+    !effectiveFrom ||
+    (input.effectiveUntil !== null && !effectiveUntil)
+  ) {
+    return null;
+  }
+  return {
+    version,
+    organizationId,
+    prefix,
+    scopeYear,
+    effectiveFrom,
+    effectiveUntil
+  };
 }
 
 function unavailable(reply: { code(status: number): { send(value: unknown): unknown } }) {

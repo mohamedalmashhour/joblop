@@ -110,6 +110,137 @@ function repository(): InvoiceRepository {
 }
 
 describe("authenticated invoice routes", () => {
+  it("creates a persistent draft from a locked-timesheet calculation through the authorized scope", async () => {
+    const app = Fastify();
+    const target = repository();
+    vi.mocked(target.createFromLockedTimesheet).mockResolvedValue({
+      ...invoice,
+      status: "draft",
+      invoiceNumber: null,
+      version: 1,
+      issuedAt: null
+    });
+    registerInvoiceRoutes(app, {
+      repository: target,
+      authorize: async () => ({ actorId: "synthetic-finance", role: "finance_reviewer" })
+    });
+    const response = await app.inject({
+      method: "POST",
+      url: `/organizations/${organizationId}/invoices`,
+      payload: {
+        idempotencyKey: "synthetic-invoice-create",
+        calculation: {
+          source: calculation.source,
+          issuer: calculation.issuer,
+          tax: calculation.tax,
+          rules: calculation.rules,
+          occurredAt: calculation.calculatedAt,
+          regularLabour: cad(10_000),
+          urgentLabour: cad(0),
+          approvedTravelTime: cad(0),
+          mileage: cad(0),
+          adjustments: cad(0),
+          marketplaceFees: cad(500),
+          credits: cad(0),
+          lineRuleVersions: {
+            regular_labour: "synthetic",
+            urgent_labour: "synthetic",
+            approved_travel_time: "synthetic",
+            mileage: "synthetic",
+            adjustment: "synthetic",
+            marketplace_fee: "synthetic",
+            credit: "synthetic"
+          }
+        }
+      }
+    });
+    expect(response.statusCode).toBe(201);
+    expect(target.createFromLockedTimesheet).toHaveBeenCalledWith(
+      expect.objectContaining({
+        organizationId,
+        actorReference: "synthetic-finance",
+        actorRole: "finance_reviewer",
+        idempotencyKey: "synthetic-invoice-create",
+        calculation: expect.objectContaining({
+          source: expect.objectContaining({ organizationId }),
+          total: cad(10_500)
+        })
+      })
+    );
+  });
+
+  it("rejects a create request whose calculation crosses the organization boundary", async () => {
+    const app = Fastify();
+    const target = repository();
+    registerInvoiceRoutes(app, {
+      repository: target,
+      authorize: async () => ({ actorId: "synthetic-finance", role: "finance_reviewer" })
+    });
+    const response = await app.inject({
+      method: "POST",
+      url: `/organizations/${organizationId}/invoices`,
+      payload: {
+        idempotencyKey: "cross-organization-create",
+        calculation: {
+          source: { ...calculation.source, organizationId: "other-organization" }
+        }
+      }
+    });
+    expect(response.statusCode).toBe(400);
+    expect(target.createFromLockedTimesheet).not.toHaveBeenCalled();
+  });
+
+  it("issues through the durable transition with scoped numbering and optimistic concurrency", async () => {
+    const app = Fastify();
+    const target = repository();
+    vi.mocked(target.transition).mockResolvedValue(invoice);
+    registerInvoiceRoutes(app, {
+      repository: target,
+      authorize: async () => ({ actorId: "synthetic-admin", role: "platform_admin" })
+    });
+    const response = await app.inject({
+      method: "POST",
+      url: `/organizations/${organizationId}/invoices/${invoice.id}/issue`,
+      payload: {
+        expectedVersion: 2,
+        numbering: {
+          version: "synthetic-numbering-v1",
+          organizationId,
+          prefix: "SYN",
+          scopeYear: 2026,
+          effectiveFrom: "2026-01-01T00:00:00.000Z",
+          effectiveUntil: null
+        }
+      }
+    });
+    expect(response.statusCode).toBe(200);
+    expect(target.transition).toHaveBeenCalledWith({
+      invoiceId: invoice.id,
+      organizationId,
+      expectedVersion: 2,
+      toStatus: "issued",
+      actorReference: "synthetic-admin",
+      actorRole: "platform_admin",
+      numbering: expect.objectContaining({ organizationId, prefix: "SYN" })
+    });
+  });
+
+  it("requires a reason for dispute and void transitions", async () => {
+    const app = Fastify();
+    const target = repository();
+    registerInvoiceRoutes(app, {
+      repository: target,
+      authorize: async () => ({ actorId: "synthetic-admin", role: "platform_admin" })
+    });
+    const response = await app.inject({
+      method: "POST",
+      url: `/organizations/${organizationId}/invoices/${invoice.id}/void`,
+      payload: { expectedVersion: 3 }
+    });
+    expect(response.statusCode).toBe(400);
+    expect(target.transition).not.toHaveBeenCalled();
+  });
+
   it("returns indistinguishable not-found for denied organization access", async () => {
     const app = Fastify();
     registerInvoiceRoutes(app, {
