@@ -7,7 +7,7 @@ COPY packages/service-auth/package.json packages/service-auth/package.json
 RUN pnpm install --frozen-lockfile
 COPY apps/auth-limiter apps/auth-limiter
 COPY packages/service-auth packages/service-auth
-RUN pnpm --filter @rwos/auth-limiter build
+RUN pnpm --filter @rwos/auth-limiter... build
 
 FROM node:20.20.2-bookworm-slim AS runtime
 ARG RWOS_GIT_SHA=unknown

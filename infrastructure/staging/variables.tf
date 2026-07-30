@@ -85,11 +85,17 @@ variable "github_repository" {
 variable "image_digests" {
   type = map(string)
   validation {
-    condition = setequals(
-      toset(keys(var.image_digests)),
-      toset(["api", "employer", "admin", "worker", "auth-limiter", "candidate-source", "offer-delivery", "qa-reset"])
-      ) && alltrue([
-        for image in values(var.image_digests) : can(regex("@sha256:[a-f0-9]{64}$", image))
+    condition = toset(keys(var.image_digests)) == toset([
+      "api",
+      "employer",
+      "admin",
+      "worker",
+      "auth-limiter",
+      "candidate-source",
+      "offer-delivery",
+      "qa-reset"
+      ]) && alltrue([
+      for image in values(var.image_digests) : can(regex("@sha256:[a-f0-9]{64}$", image))
     ])
     error_message = "Provide all eight immutable image references by sha256 digest."
   }

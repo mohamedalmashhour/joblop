@@ -17,7 +17,7 @@ COPY packages/database packages/database
 COPY packages/observability packages/observability
 COPY packages/service-auth packages/service-auth
 COPY packages/shared packages/shared
-RUN pnpm --filter @rwos/database prisma:generate && pnpm --filter @rwos/api build
+RUN pnpm --filter @rwos/database prisma:generate && pnpm --filter @rwos/api... build
 
 FROM node:20.20.2-bookworm-slim AS runtime
 ARG RWOS_GIT_SHA=unknown

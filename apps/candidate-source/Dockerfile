@@ -7,7 +7,7 @@ COPY packages/service-auth/package.json packages/service-auth/package.json
 RUN pnpm install --frozen-lockfile
 COPY apps/candidate-source apps/candidate-source
 COPY packages/service-auth packages/service-auth
-RUN pnpm --filter @rwos/candidate-source build
+RUN pnpm --filter @rwos/candidate-source... build
 
 FROM node:20.20.2-bookworm-slim AS runtime
 ARG RWOS_GIT_SHA=a31fa96f52247bb684032c6a8d3d379c098c2603
