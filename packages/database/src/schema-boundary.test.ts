@@ -38,6 +38,13 @@ const operationalScopeMigration = readFileSync(
   ),
   "utf8"
 );
+const secureDocumentMigration = readFileSync(
+  new URL(
+    "../prisma/migrations/20260730030000_secure_document_upload/migration.sql",
+    import.meta.url
+  ),
+  "utf8"
+);
 const assignmentRuntime = readFileSync(new URL("../../auth/src/index.ts", import.meta.url), "utf8");
 
 describe("Prisma Phase 01 schema boundary", () => {
@@ -141,6 +148,8 @@ describe("Prisma Phase 01 schema boundary", () => {
       "EmployerPaymentEvent",
       "EmployerPaymentAllocation",
       "EmployerPaymentRefund",
+      "UploadedDocument",
+      "UploadedDocumentAudit",
       "AuditActorReference",
       "AuditEvent",
       "QaResetManifestOwnership",
@@ -151,6 +160,19 @@ describe("Prisma Phase 01 schema boundary", () => {
       "SyntheticDeliveryIdempotency",
       "SyntheticDeliveryAttempt"
     ]);
+  });
+
+  it("keeps uploaded document bytes private and metadata organization-scoped", () => {
+    expect(schema).toContain("model UploadedDocument");
+    expect(schema).toContain("model UploadedDocumentAudit");
+    expect(secureDocumentMigration).toContain("uploaded_documents_replacement_scope_fkey");
+    expect(secureDocumentMigration).toContain("uploaded_document_audits_document_scope_fkey");
+    expect(secureDocumentMigration).toContain("uploaded_documents_content_type_check");
+    expect(secureDocumentMigration).toContain("uploaded_documents_size_check");
+    expect(secureDocumentMigration).toContain("ON DELETE RESTRICT");
+    expect(secureDocumentMigration).not.toMatch(
+      /document_body|document_content|public_url|ON DELETE CASCADE|TRUNCATE|DROP TABLE/
+    );
   });
 
   it("keeps local QA reset and synthetic delivery state staging-only and bounded", () => {

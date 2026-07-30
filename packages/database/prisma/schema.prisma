@@ -396,6 +396,18 @@ enum PaymentPolicyMode {
   manual_collection
 }
 
+enum UploadedDocumentState {
+  quarantined
+  scan_error
+  infected
+  clean
+  approved
+  rejected
+  replaced
+  expired
+  deleted
+}
+
 model User {
   id              String     @id @default(uuid()) @db.Uuid
   publicId        String     @unique @map("public_id")
@@ -452,6 +464,7 @@ model User {
   auditActorReferences          AuditActorReference[]
   platformAccessGrants          PlatformAccessGrant[]
   completedAdminBootstraps      InitialAdminBootstrap[]      @relation("InitialAdminBootstrapCreatedUser")
+  ownedUploadedDocuments        UploadedDocument[]           @relation("UploadedDocumentOwner")
 
   @@index([emailNormalized], map: "users_email_normalized_idx")
   @@index([status], map: "users_status_idx")
@@ -527,6 +540,7 @@ model EmployerOrganization {
   paymentMethods       EmployerPaymentMethod[]
   paymentAttempts      EmployerPaymentAttempt[]
   paymentPolicies      PaymentPolicyVersion[]
+  uploadedDocuments    UploadedDocument[]
   auditActorReferences AuditActorReference[]
   auditEvents          AuditEvent[]
 
@@ -1580,6 +1594,57 @@ model EmployerPaymentRefund {
   @@unique([organizationId, idempotencyKeyDigest], map: "employer_payment_refunds_organization_idempotency_key")
   @@index([paymentAttemptId, createdAt], map: "employer_payment_refunds_attempt_created_idx")
   @@map("employer_payment_refunds")
+}
+
+model UploadedDocument {
+  id                   String                @id @default(uuid()) @db.Uuid
+  organizationId       String                @map("organization_id") @db.Uuid
+  ownerUserId          String                @map("owner_user_id") @db.Uuid
+  documentType         String                @map("document_type")
+  originalFilename     String                @map("original_filename") @db.VarChar(120)
+  objectKey            String                @unique @map("object_key")
+  contentType          String                @map("content_type")
+  sizeBytes            Int                   @map("size_bytes")
+  contentDigest        String                @map("content_digest") @db.Char(64)
+  state                UploadedDocumentState @default(quarantined)
+  version              Int                   @default(1)
+  replacementForId     String?               @map("replacement_for_id") @db.Uuid
+  uploadIdempotencyKey String                @map("upload_idempotency_key") @db.Char(64)
+  requestDigest        String                @map("request_digest") @db.Char(64)
+  createdAt            DateTime              @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt            DateTime              @updatedAt @map("updated_at") @db.Timestamptz(3)
+  expiresAt            DateTime?             @map("expires_at") @db.Timestamptz(3)
+
+  organization   EmployerOrganization    @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  owner          User                    @relation("UploadedDocumentOwner", fields: [ownerUserId], references: [id], onDelete: Restrict)
+  replacementFor UploadedDocument?       @relation("UploadedDocumentReplacement", fields: [replacementForId, organizationId], references: [id, organizationId], onDelete: Restrict)
+  replacements   UploadedDocument[]      @relation("UploadedDocumentReplacement")
+  auditEvents    UploadedDocumentAudit[]
+
+  @@unique([id, organizationId], map: "uploaded_documents_id_organization_key")
+  @@unique([organizationId, uploadIdempotencyKey], map: "uploaded_documents_organization_idempotency_key")
+  @@index([organizationId, ownerUserId, documentType, state], map: "uploaded_documents_owner_type_state_idx")
+  @@index([replacementForId], map: "uploaded_documents_replacement_for_idx")
+  @@map("uploaded_documents")
+}
+
+model UploadedDocumentAudit {
+  id             String                 @id @default(uuid()) @db.Uuid
+  documentId     String                 @map("document_id") @db.Uuid
+  organizationId String                 @map("organization_id") @db.Uuid
+  sequence       Int
+  action         String
+  actorUserId    String                 @map("actor_user_id") @db.Uuid
+  priorState     UploadedDocumentState? @map("prior_state")
+  newState       UploadedDocumentState  @map("new_state")
+  occurredAt     DateTime               @map("occurred_at") @db.Timestamptz(3)
+  createdAt      DateTime               @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  document UploadedDocument @relation(fields: [documentId, organizationId], references: [id, organizationId], onDelete: Restrict)
+
+  @@unique([documentId, sequence], map: "uploaded_document_audits_document_sequence_key")
+  @@index([organizationId, occurredAt], map: "uploaded_document_audits_organization_occurred_idx")
+  @@map("uploaded_document_audits")
 }
 
 model AuditActorReference {
