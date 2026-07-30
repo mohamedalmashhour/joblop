@@ -29,9 +29,44 @@ const runtimeConfigSchema = z
     // both are set: without them the mailer is a no-op (dev surfaces the code locally instead of
     // sending). Mirrors the STR gating model — the feature ships dark until the owner provisions keys.
     RESEND_API_KEY: z.string().min(1).optional(),
-    EMAIL_FROM: z.string().email().optional()
+    EMAIL_FROM: z.string().email().optional(),
+    STRIPE_TEST_MODE_ENABLED: z.enum(["disabled", "enabled"]).default("disabled"),
+    STRIPE_TEST_SECRET_KEY: z.string().min(1).optional(),
+    STRIPE_TEST_WEBHOOK_SECRET: z.string().min(1).optional(),
+    STRIPE_TEST_ACCOUNT_REFERENCE: z.string().min(1).optional(),
+    STRIPE_ACSS_DEBIT_ENABLED: z.enum(["disabled", "enabled"]).default("disabled")
   })
   .superRefine((config, context) => {
+    if (config.STRIPE_TEST_MODE_ENABLED === "enabled") {
+      if (config.RWOS_ENV !== "test" && config.RWOS_ENV !== "staging") {
+        context.addIssue({
+          code: "custom",
+          path: ["STRIPE_TEST_MODE_ENABLED"],
+          message: "Stripe test mode is allowed only in test or staging."
+        });
+      }
+      if (!config.STRIPE_TEST_SECRET_KEY?.startsWith("sk_test_")) {
+        context.addIssue({
+          code: "custom",
+          path: ["STRIPE_TEST_SECRET_KEY"],
+          message: "Stripe test mode requires a test secret reference."
+        });
+      }
+      if (!config.STRIPE_TEST_WEBHOOK_SECRET?.startsWith("whsec_")) {
+        context.addIssue({
+          code: "custom",
+          path: ["STRIPE_TEST_WEBHOOK_SECRET"],
+          message: "Stripe test mode requires a webhook secret reference."
+        });
+      }
+      if (!config.STRIPE_TEST_ACCOUNT_REFERENCE) {
+        context.addIssue({
+          code: "custom",
+          path: ["STRIPE_TEST_ACCOUNT_REFERENCE"],
+          message: "Stripe test mode requires an approved account reference."
+        });
+      }
+    }
     if (
       config.AUTH_RATE_LIMITER_NAMESPACE &&
       config.AUTH_RATE_LIMITER_NAMESPACE !== `rwos:authrl:${config.RWOS_ENV}:v1`
@@ -190,7 +225,12 @@ export function getRuntimeConfig(env: NodeJS.ProcessEnv = process.env) {
     resendApiKey: parsed.RESEND_API_KEY,
     emailFrom: parsed.EMAIL_FROM,
     // True only when both are present — the mailer sends real email; otherwise it stays a no-op.
-    hasEmailDelivery: Boolean(parsed.RESEND_API_KEY && parsed.EMAIL_FROM)
+    hasEmailDelivery: Boolean(parsed.RESEND_API_KEY && parsed.EMAIL_FROM),
+    stripeTestModeEnabled: parsed.STRIPE_TEST_MODE_ENABLED === "enabled",
+    stripeTestSecretKey: parsed.STRIPE_TEST_SECRET_KEY,
+    stripeTestWebhookSecret: parsed.STRIPE_TEST_WEBHOOK_SECRET,
+    stripeTestAccountReference: parsed.STRIPE_TEST_ACCOUNT_REFERENCE,
+    stripeAcssDebitEnabled: parsed.STRIPE_ACSS_DEBIT_ENABLED === "enabled"
   } as const;
 }
 

@@ -96,6 +96,7 @@ import {
 } from "@rwos/service-auth";
 import {
   activeMembershipRoleQuery,
+  activePlatformGrantQuery,
   activeWorkerIdentityQuery,
   createPrismaAuthorizationRoleResolver
 } from "./authorizationRoles";
@@ -183,9 +184,7 @@ export function buildApi(options: BuildApiOptions = {}) {
         })
       : createMemoryAuthenticationRateLimiter());
   const prisma = options.authService ? null : createPrismaClient(runtimeConfig.databaseUrl);
-  const authenticationRepository = prisma
-    ? createPrismaAuthenticationRepository(prisma)
-    : null;
+  const authenticationRepository = prisma ? createPrismaAuthenticationRepository(prisma) : null;
   const authService =
     options.authService ??
     createAuthenticationService(authenticationRepository!, {
@@ -358,7 +357,9 @@ export function buildApi(options: BuildApiOptions = {}) {
           findMemberships: (userId, now) =>
             prisma.organizationMembership.findMany(activeMembershipRoleQuery(userId, now)),
           findActiveWorker: (userId) =>
-            prisma.workerIdentity.findFirst(activeWorkerIdentityQuery(userId))
+            prisma.workerIdentity.findFirst(activeWorkerIdentityQuery(userId)),
+          findPlatformGrants: (userId) =>
+            prisma.platformAccessGrant.findMany(activePlatformGrantQuery(userId))
         })
       : () => []);
 
@@ -3672,9 +3673,9 @@ function deriveAuthenticationRateLimitKeys(
 function hasEmailVerificationDelegate(prisma: unknown): boolean {
   return Boolean(
     prisma &&
-      typeof prisma === "object" &&
-      "emailVerificationCode" in prisma &&
-      (prisma as { emailVerificationCode?: unknown }).emailVerificationCode
+    typeof prisma === "object" &&
+    "emailVerificationCode" in prisma &&
+    (prisma as { emailVerificationCode?: unknown }).emailVerificationCode
   );
 }
 

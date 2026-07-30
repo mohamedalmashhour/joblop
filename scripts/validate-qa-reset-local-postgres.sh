@@ -9,7 +9,7 @@ done
 qa_tmp="$(mktemp -d /tmp/rwos-qa-pg.XXXXXX)"
 qa_data="$qa_tmp/data"
 qa_port="$((55000 + ($$ % 1000)))"
-qa_url="postgresql://${USER}@127.0.0.1:${qa_port}/rwos_qa_reset"
+qa_url="postgresql://${USER}@127.0.0.1:${qa_port}/rwos_validation_admin"
 qa_started=0
 qa_holder_pid=""
 
@@ -24,12 +24,12 @@ initdb -D "$qa_data" --no-locale --encoding=UTF8 --auth-local=trust --auth-host=
 pg_ctl -D "$qa_data" -l "$qa_tmp/postgres.log" \
   -o "-h 127.0.0.1 -p $qa_port -k $qa_tmp" start >/dev/null
 qa_started=1
-createdb -h 127.0.0.1 -p "$qa_port" rwos_qa_reset
+createdb -h 127.0.0.1 -p "$qa_port" rwos_validation_admin
 
 DATABASE_URL="$qa_url?schema=public" pnpm --filter @rwos/database prisma:migrate:deploy >/dev/null
 
 test "$(psql "$qa_url" -tAc \
-  "SELECT count(*) FROM _prisma_migrations WHERE finished_at IS NOT NULL AND rolled_back_at IS NULL")" = 13
+   "SELECT count(*) FROM _prisma_migrations WHERE finished_at IS NOT NULL AND rolled_back_at IS NULL")" = 14
 test "$(psql "$qa_url" -tAc \
   "SELECT count(*) FROM pg_constraint WHERE conrelid IN ('qa_reset_manifest_ownership'::regclass,'qa_reset_manifest_tenants'::regclass,'qa_reset_owned_records'::regclass,'qa_reset_control_runs'::regclass,'qa_reset_control_events'::regclass)")" = 30
 
@@ -63,4 +63,9 @@ for _ in 1 2 3 4 5; do
 done
 test "$lock_result" = f
 
-echo "RWOS_QA_RESET_LOCAL_POSTGRES_VALIDATION_PASSED migrations=13 constraints=30 rollback=atomic advisory_lock=exclusive"
+RWOS_POSTGRES_TEST_MODE=local-disposable \
+RWOS_TEST_DATABASE_URL="$qa_url" \
+RWOS_TEST_DATABASE_CONFIRMATION=disposable-test-target \
+pnpm test:postgres:required
+
+echo "RWOS_QA_RESET_LOCAL_POSTGRES_VALIDATION_PASSED migrations=14 constraints=30 rollback=atomic advisory_lock=exclusive"

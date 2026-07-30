@@ -26,7 +26,7 @@ export type PaymentPolicy = Readonly<{
   mode: PaymentPolicyMode;
   effectiveFrom: string;
   effectiveUntil: string | null;
-  provider: "local_fake" | null;
+  provider: "local_fake" | "stripe_test" | null;
   merchantIdentityReference: string | null;
   productionApprovalReference: string | null;
 }>;
@@ -34,7 +34,7 @@ export type PaymentPolicy = Readonly<{
 export type PaymentMethodReference = Readonly<{
   id: string;
   organizationId: string;
-  provider: "local_fake";
+  provider: "local_fake" | "stripe_test";
   providerCustomerReference: string;
   providerMethodReference: string;
   displayAlias: string;
@@ -68,7 +68,7 @@ export type ProviderPaymentRequest = Readonly<{
 }>;
 
 export type ProviderPaymentResult = Readonly<{
-  provider: "local_fake";
+  provider: "local_fake" | "stripe_test";
   providerOperationReference: string;
   outcome: "accepted" | "declined" | "authentication_required" | "unknown";
   reason:

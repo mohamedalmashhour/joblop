@@ -149,4 +149,41 @@ describe("production runtime configuration", () => {
       success: false
     });
   });
+
+  it("keeps Stripe disabled by default and accepts only complete test-mode staging configuration", () => {
+    expect(getRuntimeConfig({ RWOS_ENV: "test" })).toMatchObject({
+      stripeTestModeEnabled: false,
+      stripeAcssDebitEnabled: false
+    });
+    const staging = {
+      RWOS_ENV: "staging",
+      STRIPE_TEST_MODE_ENABLED: "enabled",
+      STRIPE_TEST_SECRET_KEY: "sk_test_synthetic_reference",
+      STRIPE_TEST_WEBHOOK_SECRET: "whsec_synthetic_reference",
+      STRIPE_TEST_ACCOUNT_REFERENCE: "acct_test_synthetic"
+    };
+    expect(validateRuntimeConfig(staging)).toMatchObject({ success: true });
+    expect(getRuntimeConfig(staging)).toMatchObject({
+      stripeTestModeEnabled: true,
+      stripeTestAccountReference: "acct_test_synthetic"
+    });
+  });
+
+  it.each([
+    { RWOS_ENV: "production", STRIPE_TEST_MODE_ENABLED: "enabled" },
+    {
+      RWOS_ENV: "staging",
+      STRIPE_TEST_MODE_ENABLED: "enabled",
+      STRIPE_TEST_SECRET_KEY: "sk_live_forbidden",
+      STRIPE_TEST_WEBHOOK_SECRET: "whsec_synthetic",
+      STRIPE_TEST_ACCOUNT_REFERENCE: "acct_test_synthetic"
+    },
+    {
+      RWOS_ENV: "staging",
+      STRIPE_TEST_MODE_ENABLED: "enabled",
+      STRIPE_TEST_SECRET_KEY: "sk_test_synthetic"
+    }
+  ])("rejects incomplete or non-test Stripe configuration", (env) => {
+    expect(validateRuntimeConfig(env)).toMatchObject({ success: false });
+  });
 });

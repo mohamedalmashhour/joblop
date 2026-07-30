@@ -90,6 +90,12 @@ describe("public bundle credential policy", () => {
     expect(classifyEnvironmentName("QA_RESET_IOS_E2E_APP_CREDENTIAL")).toBe(
       "prohibited-from-bundles-and-logs"
     );
+    expect(classifyEnvironmentName("STRIPE_TEST_SECRET_KEY")).toBe(
+      "prohibited-from-bundles-and-logs"
+    );
+    expect(classifyEnvironmentName("STRIPE_TEST_MODE_ENABLED")).toBe(
+      "server-only-non-secret"
+    );
   });
 
   it("fails a repository inventory containing an unclassified environment name", () => {

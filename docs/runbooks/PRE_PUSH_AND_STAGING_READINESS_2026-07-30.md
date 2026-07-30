@@ -93,9 +93,10 @@ Region: `northamerica-northeast2` (Toronto). Project ID and budget remain unreso
    validation database for destructive concurrency checks.
 10. Cloud Logging, Monitoring, an evidence bucket, alerts, and a witnessed restore target retain
     external validation evidence.
-11. Stripe remains disconnected during the first infrastructure deployment. The existing payment
-    orchestration uses its fake provider. A later, separately approved revision may connect Stripe
-    test mode after merchant, PCI, webhook, reconciliation, and secret-injection review.
+11. Stripe remains disconnected during the first infrastructure deployment. The official SDK and
+    test-mode adapter are present but disabled; the existing payment orchestration continues to use
+    its fake provider. Network activation still requires merchant, PCI, webhook, reconciliation,
+    durable replay storage, and secret-injection review.
 
 ### Deployment sequence
 
@@ -259,17 +260,16 @@ Worker public variables are embedded at build time and must contain only public 
 
 ### Stripe test mode
 
-No Stripe environment-variable contract or SDK exists at this checkpoint. Do not invent names or
-inject keys into the current services. The Stripe implementation change must first define:
+The disabled test-mode foundation defines:
 
-- server-side secret-key reference;
-- publishable-key delivery boundary, if a hosted client component requires it;
-- webhook signing-secret reference;
-- Connect/merchant account identity model, if applicable;
-- test-mode webhook endpoint and event allowlist;
-- reconciliation source and idempotency contract.
+- `STRIPE_TEST_MODE_ENABLED`;
+- `STRIPE_TEST_SECRET_KEY`;
+- `STRIPE_TEST_WEBHOOK_SECRET`;
+- `STRIPE_TEST_ACCOUNT_REFERENCE`;
+- `STRIPE_ACSS_DEBIT_ENABLED`.
 
-Only names approved in that reviewed implementation may be added to Secret Manager.
+The adapter rejects live keys and live objects, but no account, webhook route, or network test is
+active. Values may be added to Secret Manager only after the separate Stripe owner approvals.
 
 ## 5. Production origin boundary
 
@@ -312,10 +312,11 @@ Rollback:
 
 Never automatically down-migrate, edit `_prisma_migrations`, or overwrite a database.
 
-No safe first-platform-admin bootstrap command is implemented at this checkpoint. Do not seed an
-administrator through source code, a default password, or an unaudited database edit. Staging
-requires a reviewed one-time bootstrap procedure specifying the named administrator, identity
-verification, least-privilege role, expiry/rotation, audit record, and second-person confirmation.
+A staging-only first-platform-admin command is implemented and disabled by default. It uses an
+expiring injected secret, the repository scrypt policy, a PostgreSQL advisory transaction lock,
+direct platform grant, verification-pending status, MFA requirement, and secret-free audit event.
+Execution still requires the named administrator, identity verification, secret references, and
+second-person approval described in `FIRST_PLATFORM_ADMIN_BOOTSTRAP.md`.
 
 ## 7. External test and launch gates
 
@@ -326,9 +327,10 @@ The local suite currently reports 13 intentional skips:
 - 1 PostgreSQL worker-offer-capacity case;
 - 1 QA-reset PostgreSQL lifecycle case.
 
-The four PostgreSQL cases must run through `pnpm test:postgres:required` against the approved
-disposable staging validation target. The nine HR/money cases need their documented legal,
-accounting, provider, and evidence prerequisites; they must not be mislabeled as PostgreSQL tests.
+The four PostgreSQL cases can run through the guarded local disposable runner and must run again
+against the approved staging validation target. The nine HR/money cases need their documented
+legal, accounting, provider, and evidence prerequisites; they must not be mislabeled as PostgreSQL
+tests. See `SKIPPED_TEST_CLASSIFICATION_2026-07-30.md`.
 
 Remaining staging gates include immutable topology and identities, Cloud SQL TLS/migration state,
 Redis multi-replica/outage recovery, backup/PITR, browser and native E2E, monitoring/paging,

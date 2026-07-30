@@ -450,6 +450,8 @@ model User {
   platformReviewedTimesheets    Timesheet[]                  @relation("TimesheetPlatformReviewedByUser")
   lockedTimesheets              Timesheet[]                  @relation("TimesheetLockedByUser")
   auditActorReferences          AuditActorReference[]
+  platformAccessGrants          PlatformAccessGrant[]
+  completedAdminBootstraps      InitialAdminBootstrap[]      @relation("InitialAdminBootstrapCreatedUser")
 
   @@index([emailNormalized], map: "users_email_normalized_idx")
   @@index([status], map: "users_status_idx")
@@ -680,8 +682,41 @@ model AccessRoleDefinition {
 
   permissions     AccessRolePermission[]
   membershipRoles MembershipAccessRole[]
+  platformGrants  PlatformAccessGrant[]
 
   @@map("access_role_definitions")
+}
+
+model PlatformAccessGrant {
+  userId                 String   @map("user_id") @db.Uuid
+  accessRoleDefinitionId String   @map("access_role_definition_id") @db.Uuid
+  grantedAt              DateTime @default(now()) @map("granted_at") @db.Timestamptz(3)
+  releaseSha             String   @map("release_sha") @db.Char(40)
+
+  user       User                 @relation(fields: [userId], references: [id], onDelete: Restrict)
+  accessRole AccessRoleDefinition @relation(fields: [accessRoleDefinitionId], references: [id], onDelete: Restrict)
+
+  @@id([userId, accessRoleDefinitionId], map: "platform_access_grants_pkey")
+  @@index([accessRoleDefinitionId], map: "platform_access_grants_role_idx")
+  @@map("platform_access_grants")
+}
+
+model InitialAdminBootstrap {
+  key           String    @id @db.VarChar(64)
+  secretDigest  String    @map("secret_digest") @db.Char(64)
+  expiresAt     DateTime  @map("expires_at") @db.Timestamptz(3)
+  usedAt        DateTime? @map("used_at") @db.Timestamptz(3)
+  createdUserId String?   @map("created_user_id") @db.Uuid
+  environment   String    @db.VarChar(16)
+  releaseSha    String    @map("release_sha") @db.Char(40)
+  outcome       String    @db.VarChar(32)
+  createdAt     DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt     DateTime  @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  createdUser User? @relation("InitialAdminBootstrapCreatedUser", fields: [createdUserId], references: [id], onDelete: Restrict)
+
+  @@index([usedAt], map: "initial_admin_bootstrap_used_at_idx")
+  @@map("initial_admin_bootstrap")
 }
 
 model PermissionDefinition {

@@ -4,7 +4,13 @@
     "noEmit": true,
     "types": ["node", "vitest/globals"]
   },
-  "include": ["scripts/**/*.ts", "tests/**/*.ts", "eslint.config.mjs", "vitest.config.ts"],
+  "include": [
+    "scripts/**/*.ts",
+    "tests/**/*.ts",
+    "eslint.config.mjs",
+    "vitest.config.ts",
+    "vitest.external.config.ts"
+  ],
   "files": [],
   "references": [
     { "path": "./apps/auth-limiter" },

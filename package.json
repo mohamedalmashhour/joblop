@@ -29,6 +29,7 @@
     "test:postgres:required": "node --import tsx scripts/run-postgres-required-tests.ts",
     "test:e2e:browser": "node --import tsx scripts/validate-browser-e2e-inputs.ts && playwright test --config tests/e2e/playwright.config.mjs",
     "test:e2e:native": "node --import tsx scripts/run-native-e2e.ts",
+    "test:stripe:network": "vitest run --config vitest.external.config.ts apps/api/src/stripeTestProvider.network.test.ts",
     "build": "pnpm -r --if-present build",
     "audit:dependencies": "pnpm audit && pnpm audit --prod",
     "diagnose:production-db": "node --import tsx scripts/diagnose-production-database.ts",
@@ -42,6 +43,7 @@
     "validate:staging": "pnpm validate:env && pnpm validate:boundaries && pnpm validate:migrations && node --import tsx scripts/validate-staging.ts",
     "db:restore:rehearse": "node --import tsx scripts/rehearse-database-restore.ts",
     "qa-reset:postgres:validate": "bash scripts/validate-qa-reset-local-postgres.sh",
+    "bootstrap:first-admin": "node --import tsx scripts/bootstrap-first-platform-admin.ts",
     "scan:secrets": "node --import tsx scripts/scan-secrets.ts",
     "scan:public-bundles": "node --import tsx scripts/validate-public-bundles.ts",
     "validate": "pnpm lint && pnpm typecheck && pnpm test && pnpm validate:env && pnpm validate:boundaries && pnpm validate:migrations && pnpm scan:secrets && pnpm build && pnpm scan:public-bundles"

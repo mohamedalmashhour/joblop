@@ -17,7 +17,8 @@
     "@rwos/database": "workspace:*",
     "@rwos/observability": "workspace:*",
     "@rwos/service-auth": "workspace:*",
-    "fastify": "^5.10.0"
-  },
-  "devDependencies": {}
+    "@rwos/shared": "workspace:*",
+    "fastify": "^5.10.0",
+    "stripe": "^22.4.0"
+  }
 }

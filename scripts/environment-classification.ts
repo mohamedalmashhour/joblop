@@ -29,7 +29,8 @@ const allowedServerPrefixes = [
   "PAGING_",
   "QA_RESET_",
   "RWOS_",
-  "SECRET_MANAGER_"
+  "SECRET_MANAGER_",
+  "STRIPE_"
 ] as const;
 
 export function classifyEnvironmentName(name: string): EnvironmentClass | null {
@@ -37,7 +38,7 @@ export function classifyEnvironmentName(name: string): EnvironmentClass | null {
   if (buildTimePublic.has(name)) return "build-time-public";
   if (serverOnlySecret.has(name)) return "server-only-secret";
   if (
-    /(?:^|_)(?:TOKEN|SECRET|PASSWORD|CREDENTIAL|PRIVATE_KEY|KEY_SECRET|DATABASE_URL|REDIS_URL|EMAIL)$/.test(
+    /(?:^|_)(?:TOKEN|SECRET|PASSWORD|CREDENTIAL|PRIVATE_KEY|SECRET_KEY|KEY_SECRET|DATABASE_URL|REDIS_URL|EMAIL)$/.test(
       name
     ) ||
     /(?:SERVICE_ACCOUNT|SERVICE_IDENTITY|OPERATOR_IDENTITY|GOOGLE_APPLICATION_CREDENTIALS)/.test(

@@ -77,6 +77,18 @@ async function main() {
         "exec",
         "vitest",
         "run",
+        "--config",
+        "vitest.external.config.ts",
+        "apps/api/src/firstAdminBootstrap.postgres.test.ts"
+      ],
+      validationEnvironment
+    );
+    run(
+      "pnpm",
+      [
+        "exec",
+        "vitest",
+        "run",
         "tests/integration/postgres-worker-offer-capacity.test.ts",
         "tests/integration/postgres-assignment-concurrency.test.ts"
       ],
