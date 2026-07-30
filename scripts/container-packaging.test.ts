@@ -74,5 +74,15 @@ describe("Cloud Run application packaging", () => {
     ]) {
       expect(validator).toContain(`${variable}=\${approvedAdapterRuntimeReleaseSha}`);
     }
+    for (const prefix of [
+      "AUTH_LIMITER",
+      "CANDIDATE_ADAPTER",
+      "OFFER_DELIVERY_ADAPTER",
+      "QA_RESET"
+    ]) {
+      expect(validator).toContain(`${prefix}_AUTH_MODE=dual-required`);
+      expect(validator).toContain(`${prefix}_AUDIENCE=https://`);
+      expect(validator).toContain(`${prefix}_API_SERVICE_ACCOUNT=api@local-validation.invalid`);
+    }
   });
 });
