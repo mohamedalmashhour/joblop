@@ -1,0 +1,3897 @@
+{
+  "schemaVersion": 1,
+  "scope": [
+    "employer",
+    "admin",
+    "worker"
+  ],
+  "counts": {
+    "working": 290,
+    "intentionally_disabled": 59,
+    "governed": 39,
+    "deferred": 0
+  },
+  "controls": [
+    {
+      "app": "admin",
+      "file": "apps/admin/app/AdminShell.tsx",
+      "line": 33,
+      "tag": "a",
+      "label": "Skip to main content <a aria-label=\"Resident Workforce OS administration home\" className=\"ad",
+      "destination": "#admin-main-content",
+      "classification": "working",
+      "evidence": "external_or_page_anchor_destination"
+    },
+    {
+      "app": "admin",
+      "file": "apps/admin/app/AdminShell.tsx",
+      "line": 37,
+      "tag": "a",
+      "label": "Resident Workforce OS administration home",
+      "destination": "/calendar",
+      "classification": "working",
+      "evidence": "implemented_application_route"
+    },
+    {
+      "app": "admin",
+      "file": "apps/admin/app/AdminShell.tsx",
+      "line": 58,
+      "tag": "a",
+      "label": "); })}",
+      "destination": null,
+      "classification": "governed",
+      "evidence": "runtime_destination"
+    },
+    {
+      "app": "admin",
+      "file": "apps/admin/app/AdminShell.tsx",
+      "line": 96,
+      "tag": "a",
+      "label": "← Back ) : ( <spa",
+      "destination": null,
+      "classification": "governed",
+      "evidence": "runtime_destination"
+    },
+    {
+      "app": "admin",
+      "file": "apps/admin/app/AdminShell.tsx",
+      "line": 116,
+      "tag": "a",
+      "label": "); })} `} className=\"",
+      "destination": null,
+      "classification": "governed",
+      "evidence": "runtime_destination"
+    },
+    {
+      "app": "admin",
+      "file": "apps/admin/app/AdminShell.tsx",
+      "line": 132,
+      "tag": "a",
+      "label": "Next → ) : ( Next",
+      "destination": null,
+      "classification": "governed",
+      "evidence": "runtime_destination"
+    },
+    {
+      "app": "admin",
+      "file": "apps/admin/app/ai-control-center/page.tsx",
+      "line": 67,
+      "tag": "input",
+      "label": "))} Filters never reveal restricted AI records or allow inference of hidden users, work",
+      "destination": null,
+      "classification": "intentionally_disabled",
+      "evidence": "explicit_disabled_state"
+    },
+    {
+      "app": "admin",
+      "file": "apps/admin/app/ai-control-center/page.tsx",
+      "line": 204,
+      "tag": "button",
+      "label": "))} Protected action reason <text",
+      "destination": null,
+      "classification": "intentionally_disabled",
+      "evidence": "explicit_disabled_state"
+    },
+    {
+      "app": "admin",
+      "file": "apps/admin/app/ai-control-center/page.tsx",
+      "line": 211,
+      "tag": "textarea",
+      "label": "Action controls are UI placeholders. They do not execute AI actions, change AI models, alter promp",
+      "destination": null,
+      "classification": "intentionally_disabled",
+      "evidence": "explicit_disabled_state"
+    },
+    {
+      "app": "admin",
+      "file": "apps/admin/app/audit-log/page.tsx",
+      "line": 65,
+      "tag": "input",
+      "label": "))} Filters never reveal restricted audit records or allow inference of hidden users, w",
+      "destination": null,
+      "classification": "intentionally_disabled",
+      "evidence": "explicit_disabled_state"
+    },
+    {
+      "app": "admin",
+      "file": "apps/admin/app/audit-log/page.tsx",
+      "line": 198,
+      "tag": "button",
+      "label": "))} Protected action reason <text",
+      "destination": null,
+      "classification": "intentionally_disabled",
+      "evidence": "explicit_disabled_state"
+    },
+    {
+      "app": "admin",
+      "file": "apps/admin/app/audit-log/page.tsx",
+      "line": 205,
+      "tag": "textarea",
+      "label": "Action controls are UI placeholders. They do not edit audit history, delete audit events, replay a",
+      "destination": null,
+      "classification": "intentionally_disabled",
+      "evidence": "explicit_disabled_state"
+    },
+    {
+      "app": "admin",
+      "file": "apps/admin/app/calendar/AdminCalendarPanel.tsx",
+      "line": 81,
+      "tag": "a",
+      "label": "Open review detail ))} ); } function SessionAction( : Readonly<{ onSignedOut:",
+      "destination": null,
+      "classification": "governed",
+      "evidence": "runtime_destination"
+    },
+    {
+      "app": "admin",
+      "file": "apps/admin/app/calendar/AdminCalendarPanel.tsx",
+      "line": 110,
+      "tag": "button",
+      "label": "void signOut()} style= type=\"button\" >",
+      "destination": null,
+      "classification": "working",
+      "evidence": "event_or_form_submission"
+    },
+    {
+      "app": "admin",
+      "file": "apps/admin/app/calendar/AdminCalendarPanel.tsx",
+      "line": 169,
+      "tag": "input",
+      "label": "setEmail(event.target.value)} style= /> Password <input autoComplete=\"c",
+      "destination": null,
+      "classification": "intentionally_disabled",
+      "evidence": "explicit_disabled_state"
+    },
+    {
+      "app": "admin",
+      "file": "apps/admin/app/calendar/AdminCalendarPanel.tsx",
+      "line": 181,
+      "tag": "input",
+      "label": "setPassword(event.target.value)} style= /> <button disabled= type=\"submit\" style={{ ...sty",
+      "destination": null,
+      "classification": "intentionally_disabled",
+      "evidence": "explicit_disabled_state"
+    },
+    {
+      "app": "admin",
+      "file": "apps/admin/app/calendar/AdminCalendarPanel.tsx",
+      "line": 191,
+      "tag": "button",
+      "label": "type=\"button\"",
+      "destination": null,
+      "classification": "working",
+      "evidence": "event_or_form_submission"
+    },
+    {
+      "app": "admin",
+      "file": "apps/admin/app/calendar/AdminCalendarPanel.tsx",
+      "line": 199,
+      "tag": "button",
+      "label": "void signOut()} style= > Clear prior session ) : null} ); } function StateCard({ title, messag",
+      "destination": null,
+      "classification": "working",
+      "evidence": "event_or_form_submission"
+    },
+    {
+      "app": "admin",
+      "file": "apps/admin/app/calendar/AdminCalendarPanel.tsx",
+      "line": 222,
+      "tag": "button",
+      "label": "void onRetry()} style= > Retry ) : null} ); } function formatWindow(request: AdminCalendarDto) { ret",
+      "destination": null,
+      "classification": "working",
+      "evidence": "event_or_form_submission"
+    },
+    {
+      "app": "admin",
+      "file": "apps/admin/app/calendar/AdminReviewPanel.tsx",
+      "line": 25,
+      "tag": "a",
+      "label": "Back to admin calendar R",
+      "destination": "/calendar",
+      "classification": "working",
+      "evidence": "implemented_application_route"
+    },
+    {
+      "app": "admin",
+      "file": "apps/admin/app/calendar/AdminReviewPanel.tsx",
+      "line": 68,
+      "tag": "button",
+      "label": "setLocalDecision(`$ selected locally — not saved, published, or executed`) } style=",
+      "destination": null,
+      "classification": "working",
+      "evidence": "event_or_form_submission"
+    },
+    {
+      "app": "admin",
+      "file": "apps/admin/app/calendar/AdminReviewPanel.tsx",
+      "line": 80,
+      "tag": "a",
+      "label": "Open operational assignment visibility AI adv",
+      "destination": "/calendar/assignment",
+      "classification": "working",
+      "evidence": "implemented_application_route"
+    },
+    {
+      "app": "admin",
+      "file": "apps/admin/app/calendar/assignment/page.tsx",
+      "line": 17,
+      "tag": "a",
+      "label": "Back to request review {request ? Assignment persistence boundary</s",
+      "destination": null,
+      "classification": "governed",
+      "evidence": "runtime_destination"
+    },
+    {
+      "app": "admin",
+      "file": "apps/admin/app/calendar/DispatchHandoffPanel.tsx",
+      "line": 120,
+      "tag": "button",
+      "label": "void load()} style= type=\"button\"> Retry dispatch check ); } if (state.dispatch) { return ( <> <p",
+      "destination": null,
+      "classification": "working",
+      "evidence": "event_or_form_submission"
+    },
+    {
+      "app": "admin",
+      "file": "apps/admin/app/calendar/DispatchHandoffPanel.tsx",
+      "line": 138,
+      "tag": "a",
+      "label": "Open dispatch review ); } return ( <> {message || \"No dispatch review exists. Creating",
+      "destination": null,
+      "classification": "governed",
+      "evidence": "runtime_destination"
+    },
+    {
+      "app": "admin",
+      "file": "apps/admin/app/calendar/DispatchHandoffPanel.tsx",
+      "line": 153,
+      "tag": "select",
+      "label": "setPriority(event.target.value as AdminDispatchReview[\"priority\"])} style= value= > Normal</o",
+      "destination": null,
+      "classification": "intentionally_disabled",
+      "evidence": "explicit_disabled_state"
+    },
+    {
+      "app": "admin",
+      "file": "apps/admin/app/calendar/DispatchHandoffPanel.tsx",
+      "line": 164,
+      "tag": "button",
+      "label": "setConfirming(true)} ref= style= type=\"button\" > Create dispatch review {confirming ? (",
+      "destination": null,
+      "classification": "working",
+      "evidence": "event_or_form_submission"
+    },
+    {
+      "app": "admin",
+      "file": "apps/admin/app/calendar/DispatchHandoffPanel.tsx",
+      "line": 187,
+      "tag": "button",
+      "label": "setConfirming(false)} style= type=\"button\" > Cancel <button",
+      "destination": null,
+      "classification": "working",
+      "evidence": "event_or_form_submission"
+    },
+    {
+      "app": "admin",
+      "file": "apps/admin/app/calendar/DispatchHandoffPanel.tsx",
+      "line": 196,
+      "tag": "button",
+      "label": "void createDispatch()} style= type=\"button\" > </but",
+      "destination": null,
+      "classification": "working",
+      "evidence": "event_or_form_submission"
+    },
+    {
+      "app": "admin",
+      "file": "apps/admin/app/calendar/PersistedAdminReviewPanel.tsx",
+      "line": 161,
+      "tag": "a",
+      "label": "Back to admin calendar Assignment records are not connected in this admin view. </",
+      "destination": "/calendar",
+      "classification": "working",
+      "evidence": "implemented_application_route"
+    },
+    {
+      "app": "admin",
+      "file": "apps/admin/app/calendar/PersistedAdminReviewPanel.tsx",
+      "line": 217,
+      "tag": "button",
+      "label": "} style=",
+      "destination": null,
+      "classification": "working",
+      "evidence": "event_or_form_submission"
+    },
+    {
+      "app": "admin",
+      "file": "apps/admin/app/calendar/PersistedAdminReviewPanel.tsx",
+      "line": 233,
+      "tag": "textarea",
+      "label": "setReason(event.target.value)} rows= style= value= />",
+      "destination": null,
+      "classification": "intentionally_disabled",
+      "evidence": "explicit_disabled_state"
+    },
+    {
+      "app": "admin",
+      "file": "apps/admin/app/calendar/PersistedAdminReviewPanel.tsx",
+      "line": 243,
+      "tag": "button",
+      "label": "} style=",
+      "destination": null,
+      "classification": "working",
+      "evidence": "event_or_form_submission"
+    },
+    {
+      "app": "admin",
+      "file": "apps/admin/app/calendar/PersistedAdminReviewPanel.tsx",
+      "line": 254,
+      "tag": "button",
+      "label": "} style",
+      "destination": null,
+      "classification": "working",
+      "evidence": "event_or_form_submission"
+    },
+    {
+      "app": "admin",
+      "file": "apps/admin/app/calendar/PersistedAdminReviewPanel.tsx",
+      "line": 284,
+      "tag": "button",
+      "label": "setConfirmAction(null)} style= type=\"button\" > Cancel",
+      "destination": null,
+      "classification": "working",
+      "evidence": "event_or_form_submission"
+    },
+    {
+      "app": "admin",
+      "file": "apps/admin/app/calendar/PersistedAdminReviewPanel.tsx",
+      "line": 293,
+      "tag": "button",
+      "label": "void performAction(confirmAction)} style= type=\"button\" > {actionBusy ? \"Applying…\" : \"",
+      "destination": null,
+      "classification": "working",
+      "evidence": "event_or_form_submission"
+    },
+    {
+      "app": "admin",
+      "file": "apps/admin/app/calendar/PersistedAdminReviewPanel.tsx",
+      "line": 305,
+      "tag": "button",
+      "label": "void load()} style= type=\"button\"> Load latest review ) : null} {request.authorita",
+      "destination": null,
+      "classification": "working",
+      "evidence": "event_or_form_submission"
+    },
+    {
+      "app": "admin",
+      "file": "apps/admin/app/calendar/PersistedAdminReviewPanel.tsx",
+      "line": 373,
+      "tag": "a",
+      "label": "Back to admin calendar style= type=\"button\">",
+      "destination": "/calendar",
+      "classification": "working",
+      "evidence": "implemented_application_route"
+    },
+    {
+      "app": "admin",
+      "file": "apps/admin/app/calendar/PersistedAdminReviewPanel.tsx",
+      "line": 377,
+      "tag": "button",
+      "label": "void onRetry()} style= type=\"button\"> Retry ) : null} ); } const st",
+      "destination": null,
+      "classification": "working",
+      "evidence": "event_or_form_submission"
+    },
+    {
+      "app": "admin",
+      "file": "apps/admin/app/calendar/request/page.tsx",
+      "line": 20,
+      "tag": "a",
+      "label": "Back to review calendar ); }",
+      "destination": "/calendar",
+      "classification": "working",
+      "evidence": "implemented_application_route"
+    },
+    {
+      "app": "admin",
+      "file": "apps/admin/app/compliance/page.tsx",
+      "line": 66,
+      "tag": "input",
+      "label": "))} Filters never reveal restricted records or allow inference of hidden users, workers",
+      "destination": null,
+      "classification": "intentionally_disabled",
+      "evidence": "explicit_disabled_state"
+    },
+    {
+      "app": "admin",
+      "file": "apps/admin/app/compliance/page.tsx",
+      "line": 189,
+      "tag": "button",
+      "label": "))} Protected action reason <text",
+      "destination": null,
+      "classification": "intentionally_disabled",
+      "evidence": "explicit_disabled_state"
+    },
+    {
+      "app": "admin",
+      "file": "apps/admin/app/compliance/page.tsx",
+      "line": 196,
+      "tag": "textarea",
+      "label": "Action controls are UI placeholders. They do not verify credentials, approve compliance, suspend w",
+      "destination": null,
+      "classification": "intentionally_disabled",
+      "evidence": "explicit_disabled_state"
+    },
+    {
+      "app": "admin",
+      "file": "apps/admin/app/dispatches/[dispatchReviewId]/CandidateReviewPanel.tsx",
+      "line": 98,
+      "tag": "button",
+      "label": "setConfirming(true)} ref= style= type=\"button\" > Start candidate review ) : null}",
+      "destination": null,
+      "classification": "working",
+      "evidence": "event_or_form_submission"
+    },
+    {
+      "app": "admin",
+      "file": "apps/admin/app/dispatches/[dispatchReviewId]/CandidateReviewPanel.tsx",
+      "line": 110,
+      "tag": "button",
+      "label": "void checkSource()} style= type=\"button\" >",
+      "destination": null,
+      "classification": "working",
+      "evidence": "event_or_form_submission"
+    },
+    {
+      "app": "admin",
+      "file": "apps/admin/app/dispatches/[dispatchReviewId]/CandidateReviewPanel.tsx",
+      "line": 151,
+      "tag": "button",
+      "label": "setConfirming(false)} style= type=\"button\" > Cancel <button",
+      "destination": null,
+      "classification": "working",
+      "evidence": "event_or_form_submission"
+    },
+    {
+      "app": "admin",
+      "file": "apps/admin/app/dispatches/[dispatchReviewId]/CandidateReviewPanel.tsx",
+      "line": 160,
+      "tag": "button",
+      "label": "void startReview()} style= type=\"button\" > </bu",
+      "destination": null,
+      "classification": "working",
+      "evidence": "event_or_form_submission"
+    },
+    {
+      "app": "admin",
+      "file": "apps/admin/app/dispatches/[dispatchReviewId]/OfferAssignmentStatusPanel.tsx",
+      "line": 156,
+      "tag": "button",
+      "label": "void load()} style= type=\"button\"> Retry status ) : null} ); } const assignedOfferIds = new Set(st",
+      "destination": null,
+      "classification": "working",
+      "evidence": "event_or_form_submission"
+    },
+    {
+      "app": "admin",
+      "file": "apps/admin/app/dispatches/[dispatchReviewId]/OfferAssignmentStatusPanel.tsx",
+      "line": 207,
+      "tag": "button",
+      "label": "setSelectedOfferId(null)} style= type=\"button\" > Cancel",
+      "destination": null,
+      "classification": "working",
+      "evidence": "event_or_form_submission"
+    },
+    {
+      "app": "admin",
+      "file": "apps/admin/app/dispatches/[dispatchReviewId]/OfferAssignmentStatusPanel.tsx",
+      "line": 215,
+      "tag": "button",
+      "label": "void createAssignment(offer)} style= type=\"button\" > {submittin",
+      "destination": null,
+      "classification": "working",
+      "evidence": "event_or_form_submission"
+    },
+    {
+      "app": "admin",
+      "file": "apps/admin/app/dispatches/[dispatchReviewId]/OfferAssignmentStatusPanel.tsx",
+      "line": 226,
+      "tag": "button",
+      "label": "setSelectedOfferId(offer.id)} style= type=\"button\" > Review Assignment creation",
+      "destination": null,
+      "classification": "working",
+      "evidence": "event_or_form_submission"
+    },
+    {
+      "app": "admin",
+      "file": "apps/admin/app/dispatches/[dispatchReviewId]/OfferAssignmentStatusPanel.tsx",
+      "line": 242,
+      "tag": "button",
+      "label": "void load()} style= type=\"button\"> Refresh offer and assignment records )}",
+      "destination": null,
+      "classification": "working",
+      "evidence": "event_or_form_submission"
+    },
+    {
+      "app": "admin",
+      "file": "apps/admin/app/dispatches/[dispatchReviewId]/PersistedDispatchPanel.tsx",
+      "line": 51,
+      "tag": "button",
+      "label": "void load()} style= type=\"button\"> Retry ) : null} ); } return ( <main s",
+      "destination": null,
+      "classification": "working",
+      "evidence": "event_or_form_submission"
+    },
+    {
+      "app": "admin",
+      "file": "apps/admin/app/dispatches/[dispatchReviewId]/PersistedDispatchPanel.tsx",
+      "line": 70,
+      "tag": "a",
+      "label": "Open source request Persisted review state",
+      "destination": null,
+      "classification": "governed",
+      "evidence": "runtime_destination"
+    },
+    {
+      "app": "admin",
+      "file": "apps/admin/app/dispatches/page.tsx",
+      "line": 9,
+      "tag": "a",
+      "label": "Open request calendar ); }",
+      "destination": "/calendar",
+      "classification": "working",
+      "evidence": "implemented_application_route"
+    },
+    {
+      "app": "admin",
+      "file": "apps/admin/app/employers/page.tsx",
+      "line": 64,
+      "tag": "input",
+      "label": "))} Filters never reveal restricted organizations or allow inference of hidden users, w",
+      "destination": null,
+      "classification": "intentionally_disabled",
+      "evidence": "explicit_disabled_state"
+    },
+    {
+      "app": "admin",
+      "file": "apps/admin/app/employers/page.tsx",
+      "line": 175,
+      "tag": "button",
+      "label": "))} Protected action reason <text",
+      "destination": null,
+      "classification": "intentionally_disabled",
+      "evidence": "explicit_disabled_state"
+    },
+    {
+      "app": "admin",
+      "file": "apps/admin/app/employers/page.tsx",
+      "line": 182,
+      "tag": "textarea",
+      "label": "Action controls are UI placeholders. They do not mutate user, residence, scheduling, assignment, i",
+      "destination": null,
+      "classification": "intentionally_disabled",
+      "evidence": "explicit_disabled_state"
+    },
+    {
+      "app": "admin",
+      "file": "apps/admin/app/finance/FinanceDataPanel.tsx",
+      "line": 83,
+      "tag": "input",
+      "label": "Organization reference",
+      "destination": null,
+      "classification": "working",
+      "evidence": "event_handler"
+    },
+    {
+      "app": "admin",
+      "file": "apps/admin/app/finance/FinanceDataPanel.tsx",
+      "line": 92,
+      "tag": "button",
+      "label": "{state.status === \"idle\" ?",
+      "destination": null,
+      "classification": "working",
+      "evidence": "event_or_form_submission"
+    },
+    {
+      "app": "admin",
+      "file": "apps/admin/app/finance/FinanceDataPanel.tsx",
+      "line": 122,
+      "tag": "button",
+      "label": "))} These actions require their separately governed owner workflows. This read integration",
+      "destination": null,
+      "classification": "intentionally_disabled",
+      "evidence": "explicit_disabled_state"
+    },
+    {
+      "app": "admin",
+      "file": "apps/admin/app/finance/page.tsx",
+      "line": 63,
+      "tag": "input",
+      "label": "))} Filters never reveal restricted records or allow inference of hidden financial reco",
+      "destination": null,
+      "classification": "intentionally_disabled",
+      "evidence": "explicit_disabled_state"
+    },
+    {
+      "app": "admin",
+      "file": "apps/admin/app/finance/page.tsx",
+      "line": 108,
+      "tag": "button",
+      "label": "))} Protected action reason <text",
+      "destination": null,
+      "classification": "intentionally_disabled",
+      "evidence": "explicit_disabled_state"
+    },
+    {
+      "app": "admin",
+      "file": "apps/admin/app/finance/page.tsx",
+      "line": 115,
+      "tag": "textarea",
+      "label": "Action controls are UI placeholders. They do not approve invoices, initiate payments, calculate pa",
+      "destination": null,
+      "classification": "intentionally_disabled",
+      "evidence": "explicit_disabled_state"
+    },
+    {
+      "app": "admin",
+      "file": "apps/admin/app/notification-center/page.tsx",
+      "line": 67,
+      "tag": "input",
+      "label": "))} Filters never reveal restricted notifications or allow inference of hidden users, w",
+      "destination": null,
+      "classification": "intentionally_disabled",
+      "evidence": "explicit_disabled_state"
+    },
+    {
+      "app": "admin",
+      "file": "apps/admin/app/notification-center/page.tsx",
+      "line": 205,
+      "tag": "button",
+      "label": "))} Protected action reason <text",
+      "destination": null,
+      "classification": "intentionally_disabled",
+      "evidence": "explicit_disabled_state"
+    },
+    {
+      "app": "admin",
+      "file": "apps/admin/app/notification-center/page.tsx",
+      "line": 212,
+      "tag": "textarea",
+      "label": "Action controls are UI placeholders. They do not send notifications, trigger email, SMS, or push d",
+      "destination": null,
+      "classification": "intentionally_disabled",
+      "evidence": "explicit_disabled_state"
+    },
+    {
+      "app": "admin",
+      "file": "apps/admin/app/page.tsx",
+      "line": 133,
+      "tag": "button",
+      "label": "Approve ))}",
+      "destination": null,
+      "classification": "intentionally_disabled",
+      "evidence": "explicit_disabled_state"
+    },
+    {
+      "app": "admin",
+      "file": "apps/admin/app/page.tsx",
+      "line": 206,
+      "tag": "a",
+      "label": "<span style=",
+      "destination": null,
+      "classification": "governed",
+      "evidence": "runtime_destination"
+    },
+    {
+      "app": "admin",
+      "file": "apps/admin/app/payroll/page.tsx",
+      "line": 65,
+      "tag": "input",
+      "label": "))} Filters never reveal restricted records or allow inference of hidden workers, payro",
+      "destination": null,
+      "classification": "intentionally_disabled",
+      "evidence": "explicit_disabled_state"
+    },
+    {
+      "app": "admin",
+      "file": "apps/admin/app/payroll/page.tsx",
+      "line": 192,
+      "tag": "button",
+      "label": "))} Protected action reason <text",
+      "destination": null,
+      "classification": "intentionally_disabled",
+      "evidence": "explicit_disabled_state"
+    },
+    {
+      "app": "admin",
+      "file": "apps/admin/app/payroll/page.tsx",
+      "line": 199,
+      "tag": "textarea",
+      "label": "Action controls are UI placeholders. They do not calculate payroll, approve payroll, approve atten",
+      "destination": null,
+      "classification": "intentionally_disabled",
+      "evidence": "explicit_disabled_state"
+    },
+    {
+      "app": "admin",
+      "file": "apps/admin/app/phase-01-review/page.tsx",
+      "line": 47,
+      "tag": "a",
+      "label": "Page <span st",
+      "destination": null,
+      "classification": "governed",
+      "evidence": "runtime_destination"
+    },
+    {
+      "app": "admin",
+      "file": "apps/admin/app/platform-analytics/page.tsx",
+      "line": 67,
+      "tag": "input",
+      "label": "))} Filters never reveal restricted analytics or allow inference of hidden users, worke",
+      "destination": null,
+      "classification": "intentionally_disabled",
+      "evidence": "explicit_disabled_state"
+    },
+    {
+      "app": "admin",
+      "file": "apps/admin/app/platform-analytics/page.tsx",
+      "line": 204,
+      "tag": "button",
+      "label": "))} Protected action reason <text",
+      "destination": null,
+      "classification": "intentionally_disabled",
+      "evidence": "explicit_disabled_state"
+    },
+    {
+      "app": "admin",
+      "file": "apps/admin/app/platform-analytics/page.tsx",
+      "line": 211,
+      "tag": "textarea",
+      "label": "Action controls are UI placeholders. They do not edit source records, run workflows, approve finan",
+      "destination": null,
+      "classification": "intentionally_disabled",
+      "evidence": "explicit_disabled_state"
+    },
+    {
+      "app": "admin",
+      "file": "apps/admin/app/reports/page.tsx",
+      "line": 66,
+      "tag": "input",
+      "label": "))} Filters never reveal restricted reports or allow inference of hidden users, workers",
+      "destination": null,
+      "classification": "intentionally_disabled",
+      "evidence": "explicit_disabled_state"
+    },
+    {
+      "app": "admin",
+      "file": "apps/admin/app/reports/page.tsx",
+      "line": 191,
+      "tag": "button",
+      "label": "))} Protected action purpose <tex",
+      "destination": null,
+      "classification": "intentionally_disabled",
+      "evidence": "explicit_disabled_state"
+    },
+    {
+      "app": "admin",
+      "file": "apps/admin/app/reports/page.tsx",
+      "line": 198,
+      "tag": "textarea",
+      "label": "Action controls are UI placeholders. They do not modify source records, approve operational action",
+      "destination": null,
+      "classification": "intentionally_disabled",
+      "evidence": "explicit_disabled_state"
+    },
+    {
+      "app": "admin",
+      "file": "apps/admin/app/residences/page.tsx",
+      "line": 64,
+      "tag": "input",
+      "label": "))} Filters never reveal restricted residences or allow inference of hidden users, work",
+      "destination": null,
+      "classification": "intentionally_disabled",
+      "evidence": "explicit_disabled_state"
+    },
+    {
+      "app": "admin",
+      "file": "apps/admin/app/residences/page.tsx",
+      "line": 177,
+      "tag": "button",
+      "label": "))} Protected action reason <text",
+      "destination": null,
+      "classification": "intentionally_disabled",
+      "evidence": "explicit_disabled_state"
+    },
+    {
+      "app": "admin",
+      "file": "apps/admin/app/residences/page.tsx",
+      "line": 184,
+      "tag": "textarea",
+      "label": "Action controls are UI placeholders. They do not mutate employer ownership, department details, sh",
+      "destination": null,
+      "classification": "intentionally_disabled",
+      "evidence": "explicit_disabled_state"
+    },
+    {
+      "app": "admin",
+      "file": "apps/admin/app/shared/maps/JobLocationMap.tsx",
+      "line": 58,
+      "tag": "a",
+      "label": "search it on OpenStreetMap . ) : null} {status === \"ready\" && geo ? ( <> <LocationMap lat={geo.lat",
+      "destination": null,
+      "classification": "governed",
+      "evidence": "runtime_destination"
+    },
+    {
+      "app": "admin",
+      "file": "apps/admin/app/shared/maps/JobLocationMap.tsx",
+      "line": 73,
+      "tag": "a",
+      "label": "Get directions Open larger map",
+      "destination": null,
+      "classification": "governed",
+      "evidence": "runtime_destination"
+    },
+    {
+      "app": "admin",
+      "file": "apps/admin/app/shared/maps/JobLocationMap.tsx",
+      "line": 81,
+      "tag": "a",
+      "label": "Open larger map Approximate location from t",
+      "destination": null,
+      "classification": "governed",
+      "evidence": "runtime_destination"
+    },
+    {
+      "app": "admin",
+      "file": "apps/admin/app/shifts/page.tsx",
+      "line": 64,
+      "tag": "input",
+      "label": "))} Filters never reveal restricted shifts or allow inference of hidden users, workers,",
+      "destination": null,
+      "classification": "intentionally_disabled",
+      "evidence": "explicit_disabled_state"
+    },
+    {
+      "app": "admin",
+      "file": "apps/admin/app/shifts/page.tsx",
+      "line": 180,
+      "tag": "button",
+      "label": "))} Protected action reason <text",
+      "destination": null,
+      "classification": "intentionally_disabled",
+      "evidence": "explicit_disabled_state"
+    },
+    {
+      "app": "admin",
+      "file": "apps/admin/app/shifts/page.tsx",
+      "line": 187,
+      "tag": "textarea",
+      "label": "Action controls are UI placeholders. They do not create shifts, assign workers, approve attendance",
+      "destination": null,
+      "classification": "intentionally_disabled",
+      "evidence": "explicit_disabled_state"
+    },
+    {
+      "app": "admin",
+      "file": "apps/admin/app/signin/SignInForm.tsx",
+      "line": 60,
+      "tag": "input",
+      "label": "setEmail(event.target.value)} placeholder=\"admin@example.org\" /> Password <input",
+      "destination": null,
+      "classification": "working",
+      "evidence": "event_handler"
+    },
+    {
+      "app": "admin",
+      "file": "apps/admin/app/signin/SignInForm.tsx",
+      "line": 72,
+      "tag": "input",
+      "label": "setPassword(event.target.value)} placeholder=\"Your password\" /> <p aria-live=\"polite\" role={state ==",
+      "destination": null,
+      "classification": "working",
+      "evidence": "event_handler"
+    },
+    {
+      "app": "admin",
+      "file": "apps/admin/app/signin/SignInForm.tsx",
+      "line": 90,
+      "tag": "button",
+      "label": "style={authStyles.seco",
+      "destination": null,
+      "classification": "working",
+      "evidence": "event_or_form_submission"
+    },
+    {
+      "app": "admin",
+      "file": "apps/admin/app/signin/SignInForm.tsx",
+      "line": 94,
+      "tag": "button",
+      "label": "Sign out first ) : ( Create an account )",
+      "destination": null,
+      "classification": "working",
+      "evidence": "event_or_form_submission"
+    },
+    {
+      "app": "admin",
+      "file": "apps/admin/app/signin/SignInForm.tsx",
+      "line": 98,
+      "tag": "a",
+      "label": "Create an account )} ); }",
+      "destination": "/signup",
+      "classification": "working",
+      "evidence": "implemented_application_route"
+    },
+    {
+      "app": "admin",
+      "file": "apps/admin/app/signup/SignUpForm.tsx",
+      "line": 36,
+      "tag": "a",
+      "label": "Go to sign in ); } const submit = async (event: React.FormEvent) => { event.preventDefault(); setSta",
+      "destination": "/signin",
+      "classification": "working",
+      "evidence": "implemented_application_route"
+    },
+    {
+      "app": "admin",
+      "file": "apps/admin/app/signup/SignUpForm.tsx",
+      "line": 81,
+      "tag": "input",
+      "label": "setEmail(event.target.value)} placeholder=\"admin@example.org\" /> Full name <input",
+      "destination": null,
+      "classification": "working",
+      "evidence": "event_handler"
+    },
+    {
+      "app": "admin",
+      "file": "apps/admin/app/signup/SignUpForm.tsx",
+      "line": 92,
+      "tag": "input",
+      "label": "setFullName(event.target.value)} placeholder=\"Authorized contact\" /> Password <input",
+      "destination": null,
+      "classification": "working",
+      "evidence": "event_handler"
+    },
+    {
+      "app": "admin",
+      "file": "apps/admin/app/signup/SignUpForm.tsx",
+      "line": 103,
+      "tag": "input",
+      "label": "setPassword(event.target.value)} placeholder=\"Create a password\" /> {",
+      "destination": null,
+      "classification": "working",
+      "evidence": "event_handler"
+    },
+    {
+      "app": "admin",
+      "file": "apps/admin/app/signup/SignUpForm.tsx",
+      "line": 114,
+      "tag": "button",
+      "label": "I already have an acc",
+      "destination": null,
+      "classification": "working",
+      "evidence": "event_or_form_submission"
+    },
+    {
+      "app": "admin",
+      "file": "apps/admin/app/signup/SignUpForm.tsx",
+      "line": 117,
+      "tag": "a",
+      "label": "I already have an account ); }",
+      "destination": "/signin",
+      "classification": "working",
+      "evidence": "implemented_application_route"
+    },
+    {
+      "app": "admin",
+      "file": "apps/admin/app/signup/VerifyEmailPanel.tsx",
+      "line": 113,
+      "tag": "input",
+      "label": "setCode(event.target.value)} placeholder=\"123456\" /> <button type",
+      "destination": null,
+      "classification": "working",
+      "evidence": "event_handler"
+    },
+    {
+      "app": "admin",
+      "file": "apps/admin/app/signup/VerifyEmailPanel.tsx",
+      "line": 123,
+      "tag": "button",
+      "label": "void verify()} disabled= style= > {phase === \"verifyi",
+      "destination": null,
+      "classification": "working",
+      "evidence": "event_or_form_submission"
+    },
+    {
+      "app": "admin",
+      "file": "apps/admin/app/signup/VerifyEmailPanel.tsx",
+      "line": 131,
+      "tag": "button",
+      "label": "void sendCode()} disabled= style= > {cooldown > 0 ? `Resend",
+      "destination": null,
+      "classification": "working",
+      "evidence": "event_or_form_submission"
+    },
+    {
+      "app": "admin",
+      "file": "apps/admin/app/signup/VerifyEmailPanel.tsx",
+      "line": 143,
+      "tag": "button",
+      "label": "); }",
+      "destination": null,
+      "classification": "working",
+      "evidence": "event_or_form_submission"
+    },
+    {
+      "app": "admin",
+      "file": "apps/admin/app/system-settings/page.tsx",
+      "line": 65,
+      "tag": "input",
+      "label": "))} Filters never reveal restricted settings or allow inference of hidden users, worker",
+      "destination": null,
+      "classification": "intentionally_disabled",
+      "evidence": "explicit_disabled_state"
+    },
+    {
+      "app": "admin",
+      "file": "apps/admin/app/system-settings/page.tsx",
+      "line": 194,
+      "tag": "button",
+      "label": "))} Protected action reason <text",
+      "destination": null,
+      "classification": "intentionally_disabled",
+      "evidence": "explicit_disabled_state"
+    },
+    {
+      "app": "admin",
+      "file": "apps/admin/app/system-settings/page.tsx",
+      "line": 201,
+      "tag": "textarea",
+      "label": "Action controls are UI placeholders. They do not activate settings, modify configuration, grant pe",
+      "destination": null,
+      "classification": "intentionally_disabled",
+      "evidence": "explicit_disabled_state"
+    },
+    {
+      "app": "admin",
+      "file": "apps/admin/app/workers/page.tsx",
+      "line": 63,
+      "tag": "input",
+      "label": "))} Filters never reveal restricted records or allow inference of hidden users, workers",
+      "destination": null,
+      "classification": "intentionally_disabled",
+      "evidence": "explicit_disabled_state"
+    },
+    {
+      "app": "admin",
+      "file": "apps/admin/app/workers/page.tsx",
+      "line": 172,
+      "tag": "button",
+      "label": "))} Protected action reason <text",
+      "destination": null,
+      "classification": "intentionally_disabled",
+      "evidence": "explicit_disabled_state"
+    },
+    {
+      "app": "admin",
+      "file": "apps/admin/app/workers/page.tsx",
+      "line": 179,
+      "tag": "textarea",
+      "label": "Action controls are UI placeholders. They do not mutate worker, user, assignment, scheduling, payr",
+      "destination": null,
+      "classification": "intentionally_disabled",
+      "evidence": "explicit_disabled_state"
+    },
+    {
+      "app": "employer",
+      "file": "apps/employer/app/about/page.tsx",
+      "line": 15,
+      "tag": "a",
+      "label": "Resident Job home",
+      "destination": "/",
+      "classification": "working",
+      "evidence": "implemented_application_route"
+    },
+    {
+      "app": "employer",
+      "file": "apps/employer/app/about/page.tsx",
+      "line": 19,
+      "tag": "a",
+      "label": "About How it works <a href=\"/pricing\" style={styles.navLi",
+      "destination": "/about",
+      "classification": "working",
+      "evidence": "implemented_application_route"
+    },
+    {
+      "app": "employer",
+      "file": "apps/employer/app/about/page.tsx",
+      "line": 22,
+      "tag": "a",
+      "label": "How it works Pricing",
+      "destination": "/how-it-works",
+      "classification": "working",
+      "evidence": "implemented_application_route"
+    },
+    {
+      "app": "employer",
+      "file": "apps/employer/app/about/page.tsx",
+      "line": 25,
+      "tag": "a",
+      "label": "Pricing FAQ",
+      "destination": "/pricing",
+      "classification": "working",
+      "evidence": "implemented_application_route"
+    },
+    {
+      "app": "employer",
+      "file": "apps/employer/app/about/page.tsx",
+      "line": 28,
+      "tag": "a",
+      "label": "FAQ Sign in",
+      "destination": "/faq",
+      "classification": "working",
+      "evidence": "implemented_application_route"
+    },
+    {
+      "app": "employer",
+      "file": "apps/employer/app/about/page.tsx",
+      "line": 31,
+      "tag": "a",
+      "label": "Sign in Become worke",
+      "destination": "/signin",
+      "classification": "working",
+      "evidence": "implemented_application_route"
+    },
+    {
+      "app": "employer",
+      "file": "apps/employer/app/about/page.tsx",
+      "line": 36,
+      "tag": "a",
+      "label": "Become worker Request staff",
+      "destination": "/#workers",
+      "classification": "working",
+      "evidence": "implemented_application_route"
+    },
+    {
+      "app": "employer",
+      "file": "apps/employer/app/about/page.tsx",
+      "line": 39,
+      "tag": "a",
+      "label": "Request staff <p style={styles.eyebr",
+      "destination": "/signup/employer",
+      "classification": "working",
+      "evidence": "implemented_application_route"
+    },
+    {
+      "app": "employer",
+      "file": "apps/employer/app/about/page.tsx",
+      "line": 56,
+      "tag": "a",
+      "label": "Request staff Become a worker",
+      "destination": "/signup/employer",
+      "classification": "working",
+      "evidence": "implemented_application_route"
+    },
+    {
+      "app": "employer",
+      "file": "apps/employer/app/about/page.tsx",
+      "line": 59,
+      "tag": "a",
+      "label": "Become a worker",
+      "destination": "/#workers",
+      "classification": "working",
+      "evidence": "implemented_application_route"
+    },
+    {
+      "app": "employer",
+      "file": "apps/employer/app/about/page.tsx",
+      "line": 184,
+      "tag": "a",
+      "label": "Request staff Become a worker <a href=\"/contact\" styl",
+      "destination": "/signup/employer",
+      "classification": "working",
+      "evidence": "implemented_application_route"
+    },
+    {
+      "app": "employer",
+      "file": "apps/employer/app/about/page.tsx",
+      "line": 187,
+      "tag": "a",
+      "label": "Become a worker Contact us",
+      "destination": "/#workers",
+      "classification": "working",
+      "evidence": "implemented_application_route"
+    },
+    {
+      "app": "employer",
+      "file": "apps/employer/app/about/page.tsx",
+      "line": 190,
+      "tag": "a",
+      "label": "Contact us Resident Job <nav aria-label=\"Footer navig",
+      "destination": "/contact",
+      "classification": "working",
+      "evidence": "implemented_application_route"
+    },
+    {
+      "app": "employer",
+      "file": "apps/employer/app/about/page.tsx",
+      "line": 199,
+      "tag": "a",
+      "label": "Home About",
+      "destination": "/",
+      "classification": "working",
+      "evidence": "implemented_application_route"
+    },
+    {
+      "app": "employer",
+      "file": "apps/employer/app/about/page.tsx",
+      "line": 202,
+      "tag": "a",
+      "label": "About Privacy",
+      "destination": "/about",
+      "classification": "working",
+      "evidence": "implemented_application_route"
+    },
+    {
+      "app": "employer",
+      "file": "apps/employer/app/about/page.tsx",
+      "line": 205,
+      "tag": "a",
+      "label": "Privacy Terms Lang",
+      "destination": "/contact",
+      "classification": "working",
+      "evidence": "implemented_application_route"
+    },
+    {
+      "app": "employer",
+      "file": "apps/employer/app/about/page.tsx",
+      "line": 208,
+      "tag": "a",
+      "label": "Terms Language and region selector reserved for localization.",
+      "destination": "/faq",
+      "classification": "working",
+      "evidence": "implemented_application_route"
+    },
+    {
+      "app": "employer",
+      "file": "apps/employer/app/contact/page.tsx",
+      "line": 17,
+      "tag": "a",
+      "label": "Resident Job home",
+      "destination": "/",
+      "classification": "working",
+      "evidence": "implemented_application_route"
+    },
+    {
+      "app": "employer",
+      "file": "apps/employer/app/contact/page.tsx",
+      "line": 21,
+      "tag": "a",
+      "label": "About How it works <a href=\"/pricing\" style={styles.navLi",
+      "destination": "/about",
+      "classification": "working",
+      "evidence": "implemented_application_route"
+    },
+    {
+      "app": "employer",
+      "file": "apps/employer/app/contact/page.tsx",
+      "line": 24,
+      "tag": "a",
+      "label": "How it works Pricing <a href=\"/contact\" style=",
+      "destination": "/how-it-works",
+      "classification": "working",
+      "evidence": "implemented_application_route"
+    },
+    {
+      "app": "employer",
+      "file": "apps/employer/app/contact/page.tsx",
+      "line": 27,
+      "tag": "a",
+      "label": "Pricing Contact <a href=\"/faq\" style={styl",
+      "destination": "/pricing",
+      "classification": "working",
+      "evidence": "implemented_application_route"
+    },
+    {
+      "app": "employer",
+      "file": "apps/employer/app/contact/page.tsx",
+      "line": 30,
+      "tag": "a",
+      "label": "Contact FAQ",
+      "destination": "/contact",
+      "classification": "working",
+      "evidence": "implemented_application_route"
+    },
+    {
+      "app": "employer",
+      "file": "apps/employer/app/contact/page.tsx",
+      "line": 33,
+      "tag": "a",
+      "label": "FAQ Sign in",
+      "destination": "/faq",
+      "classification": "working",
+      "evidence": "implemented_application_route"
+    },
+    {
+      "app": "employer",
+      "file": "apps/employer/app/contact/page.tsx",
+      "line": 36,
+      "tag": "a",
+      "label": "Sign in Active-shi",
+      "destination": "/signin",
+      "classification": "working",
+      "evidence": "implemented_application_route"
+    },
+    {
+      "app": "employer",
+      "file": "apps/employer/app/contact/page.tsx",
+      "line": 41,
+      "tag": "a",
+      "label": "Active-shift help General contact <",
+      "destination": "#active-shift",
+      "classification": "working",
+      "evidence": "external_or_page_anchor_destination"
+    },
+    {
+      "app": "employer",
+      "file": "apps/employer/app/contact/page.tsx",
+      "line": 44,
+      "tag": "a",
+      "label": "General contact Contact Resident Job <",
+      "destination": "#general-contact",
+      "classification": "working",
+      "evidence": "external_or_page_anchor_destination"
+    },
+    {
+      "app": "employer",
+      "file": "apps/employer/app/contact/page.tsx",
+      "line": 71,
+      "tag": "a",
+      "label": "))}",
+      "destination": null,
+      "classification": "governed",
+      "evidence": "runtime_destination"
+    },
+    {
+      "app": "employer",
+      "file": "apps/employer/app/contact/page.tsx",
+      "line": 147,
+      "tag": "select",
+      "label": "Select a reason {generalReasons.map((reason) => ( <option key={reaso",
+      "destination": null,
+      "classification": "working",
+      "evidence": "enabled_form_control"
+    },
+    {
+      "app": "employer",
+      "file": "apps/employer/app/contact/page.tsx",
+      "line": 158,
+      "tag": "select",
+      "label": "Select user type Worker Employer",
+      "destination": null,
+      "classification": "working",
+      "evidence": "enabled_form_control"
+    },
+    {
+      "app": "employer",
+      "file": "apps/employer/app/contact/page.tsx",
+      "line": 172,
+      "tag": "input",
+      "label": "Preferred response method <input placeholder=\"Email or secure in-app message when available\"",
+      "destination": null,
+      "classification": "working",
+      "evidence": "enabled_form_control"
+    },
+    {
+      "app": "employer",
+      "file": "apps/employer/app/contact/page.tsx",
+      "line": 176,
+      "tag": "input",
+      "label": "Message <textarea placeholder=\"Describe what you need. Do not include passwords o",
+      "destination": null,
+      "classification": "working",
+      "evidence": "enabled_form_control"
+    },
+    {
+      "app": "employer",
+      "file": "apps/employer/app/contact/page.tsx",
+      "line": 181,
+      "tag": "textarea",
+      "label": "Submit request placeholder N",
+      "destination": null,
+      "classification": "working",
+      "evidence": "enabled_form_control"
+    },
+    {
+      "app": "employer",
+      "file": "apps/employer/app/contact/page.tsx",
+      "line": 183,
+      "tag": "button",
+      "label": "Submit request placeholder No support-ticket integration or live messaging is connected on this page",
+      "destination": null,
+      "classification": "intentionally_disabled",
+      "evidence": "explicit_disabled_state"
+    },
+    {
+      "app": "employer",
+      "file": "apps/employer/app/contact/page.tsx",
+      "line": 254,
+      "tag": "a",
+      "label": "Home About",
+      "destination": "/",
+      "classification": "working",
+      "evidence": "implemented_application_route"
+    },
+    {
+      "app": "employer",
+      "file": "apps/employer/app/contact/page.tsx",
+      "line": 257,
+      "tag": "a",
+      "label": "About Pricing",
+      "destination": "/about",
+      "classification": "working",
+      "evidence": "implemented_application_route"
+    },
+    {
+      "app": "employer",
+      "file": "apps/employer/app/contact/page.tsx",
+      "line": 260,
+      "tag": "a",
+      "label": "Pricing Contact <span style={styles.footerNote",
+      "destination": "/pricing",
+      "classification": "working",
+      "evidence": "implemented_application_route"
+    },
+    {
+      "app": "employer",
+      "file": "apps/employer/app/contact/page.tsx",
+      "line": 263,
+      "tag": "a",
+      "label": "Contact No fabricated phone numbers, emails, hours, or response promises.",
+      "destination": "/contact",
+      "classification": "working",
+      "evidence": "implemented_application_route"
+    },
+    {
+      "app": "employer",
+      "file": "apps/employer/app/employer/applicants/ApplicantReviewPanel.tsx",
+      "line": 30,
+      "tag": "select",
+      "label": "setFilter(event.target.value as typeof filter)} style= > {applicantFilters.map((option) => ( {op",
+      "destination": null,
+      "classification": "working",
+      "evidence": "event_handler"
+    },
+    {
+      "app": "employer",
+      "file": "apps/employer/app/employer/applicants/ApplicantReviewPanel.tsx",
+      "line": 42,
+      "tag": "select",
+      "label": "setSort(event.target.value as typeof sort)} style= > <",
+      "destination": null,
+      "classification": "working",
+      "evidence": "event_handler"
+    },
+    {
+      "app": "employer",
+      "file": "apps/employer/app/employer/applicants/ApplicantReviewPanel.tsx",
+      "line": 68,
+      "tag": "a",
+      "label": "Open applicant detail ))} ); }",
+      "destination": "/employer/applicants/detail",
+      "classification": "working",
+      "evidence": "implemented_application_route"
+    },
+    {
+      "app": "employer",
+      "file": "apps/employer/app/employer/applicants/compare/page.tsx",
+      "line": 16,
+      "tag": "a",
+      "label": "Manual assignment } > Comparison table",
+      "destination": "/employer/assignments/manual",
+      "classification": "working",
+      "evidence": "implemented_application_route"
+    },
+    {
+      "app": "employer",
+      "file": "apps/employer/app/employer/applicants/detail/page.tsx",
+      "line": 18,
+      "tag": "a",
+      "label": "Review AI recommendations } > Applicant summary",
+      "destination": "/employer/shifts/ai-suggestions",
+      "classification": "working",
+      "evidence": "implemented_application_route"
+    },
+    {
+      "app": "employer",
+      "file": "apps/employer/app/employer/applicants/detail/page.tsx",
+      "line": 48,
+      "tag": "a",
+      "label": "Compare candidates Not shown to employer <div style",
+      "destination": "/employer/applicants/compare",
+      "classification": "working",
+      "evidence": "implemented_application_route"
+    },
+    {
+      "app": "employer",
+      "file": "apps/employer/app/employer/applicants/page.tsx",
+      "line": 17,
+      "tag": "a",
+      "label": "Open applicant detail } > <p style={styles.e",
+      "destination": "/employer/applicants/detail",
+      "classification": "working",
+      "evidence": "implemented_application_route"
+    },
+    {
+      "app": "employer",
+      "file": "apps/employer/app/employer/assignments/AssignmentDraftPanel.tsx",
+      "line": 77,
+      "tag": "button",
+      "label": "Select candidate locally Review assign",
+      "destination": null,
+      "classification": "working",
+      "evidence": "event_or_form_submission"
+    },
+    {
+      "app": "employer",
+      "file": "apps/employer/app/employer/assignments/AssignmentDraftPanel.tsx",
+      "line": 80,
+      "tag": "a",
+      "label": "Review assignment ) : null} {mode === \"review\" ? ( <> <button type=\"button\" onClic",
+      "destination": "/employer/assignments/review",
+      "classification": "working",
+      "evidence": "implemented_application_route"
+    },
+    {
+      "app": "employer",
+      "file": "apps/employer/app/employer/assignments/AssignmentDraftPanel.tsx",
+      "line": 87,
+      "tag": "button",
+      "label": "Create pending-response fixture",
+      "destination": null,
+      "classification": "working",
+      "evidence": "event_or_form_submission"
+    },
+    {
+      "app": "employer",
+      "file": "apps/employer/app/employer/assignments/AssignmentDraftPanel.tsx",
+      "line": 90,
+      "tag": "a",
+      "label": "Open confirmation ) : null} {mode === \"confirmation\" ? ( <a href=\"/employer/assignments/worker-r",
+      "destination": "/employer/assignments/confirmation",
+      "classification": "working",
+      "evidence": "implemented_application_route"
+    },
+    {
+      "app": "employer",
+      "file": "apps/employer/app/employer/assignments/AssignmentDraftPanel.tsx",
+      "line": 96,
+      "tag": "a",
+      "label": "View worker response state ) : null} {mode === \"response\" ? ( <a href=\"/employer/assignments/detail\"",
+      "destination": "/employer/assignments/worker-response",
+      "classification": "working",
+      "evidence": "implemented_application_route"
+    },
+    {
+      "app": "employer",
+      "file": "apps/employer/app/employer/assignments/AssignmentDraftPanel.tsx",
+      "line": 101,
+      "tag": "a",
+      "label": "Open assignment detail ) : null} {mode === \"detail\" ? ( <a href=\"/employer/attendance\" style={styles",
+      "destination": "/employer/assignments/detail",
+      "classification": "working",
+      "evidence": "implemented_application_route"
+    },
+    {
+      "app": "employer",
+      "file": "apps/employer/app/employer/assignments/AssignmentDraftPanel.tsx",
+      "line": 106,
+      "tag": "a",
+      "label": "Attendance handoff ) : null} {assignmentDataStates.map((state) =>",
+      "destination": "/employer/attendance",
+      "classification": "working",
+      "evidence": "implemented_application_route"
+    },
+    {
+      "app": "employer",
+      "file": "apps/employer/app/employer/assignments/confirmation/page.tsx",
+      "line": 13,
+      "tag": "a",
+      "label": "Worker response state } > {ass",
+      "destination": "/employer/assignments/worker-response",
+      "classification": "working",
+      "evidence": "implemented_application_route"
+    },
+    {
+      "app": "employer",
+      "file": "apps/employer/app/employer/assignments/detail/page.tsx",
+      "line": 13,
+      "tag": "a",
+      "label": "Attendance handoff } > {assignmentBo",
+      "destination": "/employer/attendance",
+      "classification": "working",
+      "evidence": "implemented_application_route"
+    },
+    {
+      "app": "employer",
+      "file": "apps/employer/app/employer/assignments/manual/page.tsx",
+      "line": 16,
+      "tag": "a",
+      "label": "Back to comparison } > <p styl",
+      "destination": "/employer/applicants/compare",
+      "classification": "working",
+      "evidence": "implemented_application_route"
+    },
+    {
+      "app": "employer",
+      "file": "apps/employer/app/employer/assignments/review/page.tsx",
+      "line": 13,
+      "tag": "a",
+      "label": "Back to manual selection } > {assign",
+      "destination": "/employer/assignments/manual",
+      "classification": "working",
+      "evidence": "implemented_application_route"
+    },
+    {
+      "app": "employer",
+      "file": "apps/employer/app/employer/assignments/worker-response/page.tsx",
+      "line": 13,
+      "tag": "a",
+      "label": "Assignment detail } > <p styl",
+      "destination": "/employer/assignments/detail",
+      "classification": "working",
+      "evidence": "implemented_application_route"
+    },
+    {
+      "app": "employer",
+      "file": "apps/employer/app/employer/attendance/AttendanceStatePage.tsx",
+      "line": 40,
+      "tag": "a",
+      "label": "Continue } > <p style=",
+      "destination": null,
+      "classification": "governed",
+      "evidence": "runtime_destination"
+    },
+    {
+      "app": "employer",
+      "file": "apps/employer/app/employer/attendance/page.tsx",
+      "line": 18,
+      "tag": "a",
+      "label": "Arrival state } > Assignment context",
+      "destination": "/employer/attendance/arrival",
+      "classification": "working",
+      "evidence": "implemented_application_route"
+    },
+    {
+      "app": "employer",
+      "file": "apps/employer/app/employer/calendar/assignment/page.tsx",
+      "line": 17,
+      "tag": "a",
+      "label": "Back to request calendar } > </E",
+      "destination": "/employer/calendar",
+      "classification": "working",
+      "evidence": "implemented_application_route"
+    },
+    {
+      "app": "employer",
+      "file": "apps/employer/app/employer/calendar/assignment/StaffingProgressPanel.tsx",
+      "line": 84,
+      "tag": "button",
+      "label": "void load()} style= type=\"button\"> Try again ) : null} {view !== \"loading\" ? ( <a href=\"/employer",
+      "destination": null,
+      "classification": "working",
+      "evidence": "event_or_form_submission"
+    },
+    {
+      "app": "employer",
+      "file": "apps/employer/app/employer/calendar/assignment/StaffingProgressPanel.tsx",
+      "line": 89,
+      "tag": "a",
+      "label": ") : null} ); } const copy = st",
+      "destination": "/employer/calendar",
+      "classification": "working",
+      "evidence": "implemented_application_route"
+    },
+    {
+      "app": "employer",
+      "file": "apps/employer/app/employer/calendar/ClientCalendarPanel.tsx",
+      "line": 122,
+      "tag": "a",
+      "label": "Open request detail {request.status === \"draft\" || request.actionRequired === \"information_required\"",
+      "destination": null,
+      "classification": "governed",
+      "evidence": "runtime_destination"
+    },
+    {
+      "app": "employer",
+      "file": "apps/employer/app/employer/calendar/ClientCalendarPanel.tsx",
+      "line": 129,
+      "tag": "a",
+      "label": "",
+      "destination": null,
+      "classification": "governed",
+      "evidence": "runtime_destination"
+    },
+    {
+      "app": "employer",
+      "file": "apps/employer/app/employer/calendar/ClientCalendarPanel.tsx",
+      "line": 161,
+      "tag": "button",
+      "label": "void signOut()} style= } type=\"button\" >",
+      "destination": null,
+      "classification": "working",
+      "evidence": "event_or_form_submission"
+    },
+    {
+      "app": "employer",
+      "file": "apps/employer/app/employer/calendar/ClientCalendarPanel.tsx",
+      "line": 224,
+      "tag": "input",
+      "label": "setEmail(event.target.value)} style= /> Password <input autoComple",
+      "destination": null,
+      "classification": "intentionally_disabled",
+      "evidence": "explicit_disabled_state"
+    },
+    {
+      "app": "employer",
+      "file": "apps/employer/app/employer/calendar/ClientCalendarPanel.tsx",
+      "line": 236,
+      "tag": "input",
+      "label": "setPassword(event.target.value)} style= /> <button disabled= type=\"submit\" style={{ ...sty",
+      "destination": null,
+      "classification": "intentionally_disabled",
+      "evidence": "explicit_disabled_state"
+    },
+    {
+      "app": "employer",
+      "file": "apps/employer/app/employer/calendar/ClientCalendarPanel.tsx",
+      "line": 246,
+      "tag": "button",
+      "label": "type=\"button\"",
+      "destination": null,
+      "classification": "working",
+      "evidence": "event_or_form_submission"
+    },
+    {
+      "app": "employer",
+      "file": "apps/employer/app/employer/calendar/ClientCalendarPanel.tsx",
+      "line": 254,
+      "tag": "button",
+      "label": "void signOut()} style= } > Clear prior session ) : null} ); } fu",
+      "destination": null,
+      "classification": "working",
+      "evidence": "event_or_form_submission"
+    },
+    {
+      "app": "employer",
+      "file": "apps/employer/app/employer/calendar/ClientCalendarPanel.tsx",
+      "line": 278,
+      "tag": "a",
+      "label": "Create staffing request ) : null} style=",
+      "destination": null,
+      "classification": "governed",
+      "evidence": "runtime_destination"
+    },
+    {
+      "app": "employer",
+      "file": "apps/employer/app/employer/calendar/ClientCalendarPanel.tsx",
+      "line": 283,
+      "tag": "button",
+      "label": "void onRetry()} style= } > Retry ) : null} ); } function Orga",
+      "destination": null,
+      "classification": "working",
+      "evidence": "event_or_form_submission"
+    },
+    {
+      "app": "employer",
+      "file": "apps/employer/app/employer/calendar/ClientCalendarPanel.tsx",
+      "line": 324,
+      "tag": "button",
+      "label": "void select(organization.id)} style={{ ...styles.secondaryButton, cursor: \"pointer\", marginRight: 8,",
+      "destination": null,
+      "classification": "working",
+      "evidence": "event_or_form_submission"
+    },
+    {
+      "app": "employer",
+      "file": "apps/employer/app/employer/calendar/create/CreatePersistedRequestPanel.tsx",
+      "line": 290,
+      "tag": "textarea",
+      "label": "update(\"description\", event.target.value)} rows= style= value= />",
+      "destination": null,
+      "classification": "intentionally_disabled",
+      "evidence": "explicit_disabled_state"
+    },
+    {
+      "app": "employer",
+      "file": "apps/employer/app/employer/calendar/create/CreatePersistedRequestPanel.tsx",
+      "line": 302,
+      "tag": "button",
+      "label": "0} style= type=\"submit\" > Save persisted draft",
+      "destination": null,
+      "classification": "intentionally_disabled",
+      "evidence": "explicit_disabled_state"
+    },
+    {
+      "app": "employer",
+      "file": "apps/employer/app/employer/calendar/create/CreatePersistedRequestPanel.tsx",
+      "line": 311,
+      "tag": "button",
+      "label": "void submitDraft()} style= type=\"button\"> Submit for review ) : null} {draft ? ( <> {st",
+      "destination": null,
+      "classification": "working",
+      "evidence": "event_or_form_submission"
+    },
+    {
+      "app": "employer",
+      "file": "apps/employer/app/employer/calendar/create/CreatePersistedRequestPanel.tsx",
+      "line": 318,
+      "tag": "a",
+      "label": "Edit persisted draft ) : null} <a href={`/employer/calendar/request?request=${encodeURIComponent(dra",
+      "destination": null,
+      "classification": "governed",
+      "evidence": "runtime_destination"
+    },
+    {
+      "app": "employer",
+      "file": "apps/employer/app/employer/calendar/create/CreatePersistedRequestPanel.tsx",
+      "line": 325,
+      "tag": "a",
+      "label": "Open persisted request ) : null} Back to calend",
+      "destination": null,
+      "classification": "governed",
+      "evidence": "runtime_destination"
+    },
+    {
+      "app": "employer",
+      "file": "apps/employer/app/employer/calendar/create/CreatePersistedRequestPanel.tsx",
+      "line": 333,
+      "tag": "a",
+      "label": "Back to calendar ); } function validate(form: FormState) { const missing = [ [\"residence\", form.resi",
+      "destination": "/employer/calendar",
+      "classification": "working",
+      "evidence": "implemented_application_route"
+    },
+    {
+      "app": "employer",
+      "file": "apps/employer/app/employer/calendar/create/CreatePersistedRequestPanel.tsx",
+      "line": 377,
+      "tag": "select",
+      "label": "onChange(event.target.value)} required style= value= > Select {o",
+      "destination": null,
+      "classification": "intentionally_disabled",
+      "evidence": "explicit_disabled_state"
+    },
+    {
+      "app": "employer",
+      "file": "apps/employer/app/employer/calendar/create/CreatePersistedRequestPanel.tsx",
+      "line": 415,
+      "tag": "input",
+      "label": "onChange(event.target.value)} required style= type= value= /> ); } function StateCard({ action,",
+      "destination": null,
+      "classification": "intentionally_disabled",
+      "evidence": "explicit_disabled_state"
+    },
+    {
+      "app": "employer",
+      "file": "apps/employer/app/employer/calendar/create/CreatePersistedRequestPanel.tsx",
+      "line": 447,
+      "tag": "a",
+      "label": "Continue ) : null} {onRetry ? ( Retry </button",
+      "destination": null,
+      "classification": "governed",
+      "evidence": "runtime_destination"
+    },
+    {
+      "app": "employer",
+      "file": "apps/employer/app/employer/calendar/create/CreatePersistedRequestPanel.tsx",
+      "line": 452,
+      "tag": "button",
+      "label": "Retry ) : null} ); }",
+      "destination": null,
+      "classification": "working",
+      "evidence": "event_or_form_submission"
+    },
+    {
+      "app": "employer",
+      "file": "apps/employer/app/employer/calendar/create/page.tsx",
+      "line": 14,
+      "tag": "a",
+      "label": "Back to request calendar } >",
+      "destination": "/employer/calendar",
+      "classification": "working",
+      "evidence": "implemented_application_route"
+    },
+    {
+      "app": "employer",
+      "file": "apps/employer/app/employer/calendar/page.tsx",
+      "line": 15,
+      "tag": "a",
+      "label": "Create staffing request } > <p style={styles.eyebrowDa",
+      "destination": "/employer/calendar/create",
+      "classification": "working",
+      "evidence": "implemented_application_route"
+    },
+    {
+      "app": "employer",
+      "file": "apps/employer/app/employer/calendar/request/ClientRequestDetailPanel.tsx",
+      "line": 63,
+      "tag": "a",
+      "label": "Back to request calendar ); } if (organizationRequired) { return (",
+      "destination": "/employer/calendar",
+      "classification": "working",
+      "evidence": "implemented_application_route"
+    },
+    {
+      "app": "employer",
+      "file": "apps/employer/app/employer/calendar/request/ClientRequestDetailPanel.tsx",
+      "line": 77,
+      "tag": "a",
+      "label": "Choose organization ); } if (state.status !== \"ready\") { const copy: readonly [string, string] = sta",
+      "destination": "/employer/calendar",
+      "classification": "working",
+      "evidence": "implemented_application_route"
+    },
+    {
+      "app": "employer",
+      "file": "apps/employer/app/employer/calendar/request/ClientRequestDetailPanel.tsx",
+      "line": 105,
+      "tag": "a",
+      "label": "Back to request calendar {state.status === \"error\" || state.status === \"stale\" || state.status === \"",
+      "destination": "/employer/calendar",
+      "classification": "working",
+      "evidence": "implemented_application_route"
+    },
+    {
+      "app": "employer",
+      "file": "apps/employer/app/employer/calendar/request/ClientRequestDetailPanel.tsx",
+      "line": 109,
+      "tag": "button",
+      "label": "void load()} style= } > Retry ) : null} ); }",
+      "destination": null,
+      "classification": "working",
+      "evidence": "event_or_form_submission"
+    },
+    {
+      "app": "employer",
+      "file": "apps/employer/app/employer/calendar/request/ClientRequestDetailPanel.tsx",
+      "line": 156,
+      "tag": "a",
+      "label": ") : (",
+      "destination": null,
+      "classification": "governed",
+      "evidence": "runtime_destination"
+    },
+    {
+      "app": "employer",
+      "file": "apps/employer/app/employer/calendar/request/ClientRequestDetailPanel.tsx",
+      "line": 167,
+      "tag": "a",
+      "label": "View staffing progress Request details {fields.map((",
+      "destination": null,
+      "classification": "governed",
+      "evidence": "runtime_destination"
+    },
+    {
+      "app": "employer",
+      "file": "apps/employer/app/employer/calendar/request/edit/EditPersistedRequestPanel.tsx",
+      "line": 158,
+      "tag": "input",
+      "label": "setFields( )} required style= value= /> <",
+      "destination": null,
+      "classification": "intentionally_disabled",
+      "evidence": "explicit_disabled_state"
+    },
+    {
+      "app": "employer",
+      "file": "apps/employer/app/employer/calendar/request/edit/EditPersistedRequestPanel.tsx",
+      "line": 169,
+      "tag": "input",
+      "label": "setFields( )} required style= type=\"number\" value={fields.numberOfWo",
+      "destination": null,
+      "classification": "intentionally_disabled",
+      "evidence": "explicit_disabled_state"
+    },
+    {
+      "app": "employer",
+      "file": "apps/employer/app/employer/calendar/request/edit/EditPersistedRequestPanel.tsx",
+      "line": 181,
+      "tag": "select",
+      "label": "setFields( ) } style= value=",
+      "destination": null,
+      "classification": "intentionally_disabled",
+      "evidence": "explicit_disabled_state"
+    },
+    {
+      "app": "employer",
+      "file": "apps/employer/app/employer/calendar/request/edit/EditPersistedRequestPanel.tsx",
+      "line": 196,
+      "tag": "textarea",
+      "label": "setFields( )} rows= style= value= /> </labe",
+      "destination": null,
+      "classification": "intentionally_disabled",
+      "evidence": "explicit_disabled_state"
+    },
+    {
+      "app": "employer",
+      "file": "apps/employer/app/employer/calendar/request/edit/EditPersistedRequestPanel.tsx",
+      "line": 208,
+      "tag": "button",
+      "label": ") : null} {snapshot.status === \"information_required\" && status === \"saved\"",
+      "destination": null,
+      "classification": "working",
+      "evidence": "event_or_form_submission"
+    },
+    {
+      "app": "employer",
+      "file": "apps/employer/app/employer/calendar/request/edit/EditPersistedRequestPanel.tsx",
+      "line": 213,
+      "tag": "button",
+      "label": "void resubmit()} style= type=\"button\"> Resubmit for admin review ) : null} {status === \"stale\" ? (",
+      "destination": null,
+      "classification": "working",
+      "evidence": "event_or_form_submission"
+    },
+    {
+      "app": "employer",
+      "file": "apps/employer/app/employer/calendar/request/edit/EditPersistedRequestPanel.tsx",
+      "line": 218,
+      "tag": "button",
+      "label": "void load()} style= type=\"button\"> Load latest version ) : null} <a href=\"/employer/calendar\" style=",
+      "destination": null,
+      "classification": "working",
+      "evidence": "event_or_form_submission"
+    },
+    {
+      "app": "employer",
+      "file": "apps/employer/app/employer/calendar/request/edit/EditPersistedRequestPanel.tsx",
+      "line": 222,
+      "tag": "a",
+      "label": "Back to calendar ); } function isEditable(status: string)",
+      "destination": "/employer/calendar",
+      "classification": "working",
+      "evidence": "implemented_application_route"
+    },
+    {
+      "app": "employer",
+      "file": "apps/employer/app/employer/calendar/request/edit/EditPersistedRequestPanel.tsx",
+      "line": 268,
+      "tag": "button",
+      "label": "Retry ) : null} {action ? ( Back to calendar ) : null",
+      "destination": null,
+      "classification": "working",
+      "evidence": "event_or_form_submission"
+    },
+    {
+      "app": "employer",
+      "file": "apps/employer/app/employer/calendar/request/edit/EditPersistedRequestPanel.tsx",
+      "line": 273,
+      "tag": "a",
+      "label": "Back to calendar ) : null} ); }",
+      "destination": null,
+      "classification": "governed",
+      "evidence": "runtime_destination"
+    },
+    {
+      "app": "employer",
+      "file": "apps/employer/app/employer/calendar/request/edit/page.tsx",
+      "line": 17,
+      "tag": "a",
+      "label": "Back to request calendar } >",
+      "destination": "/employer/calendar",
+      "classification": "working",
+      "evidence": "implemented_application_route"
+    },
+    {
+      "app": "employer",
+      "file": "apps/employer/app/employer/calendar/request/FixtureClientRequestDetail.tsx",
+      "line": 25,
+      "tag": "a",
+      "label": "View fixture assignment preview Fixture request <h2",
+      "destination": "/employer/calendar/assignment",
+      "classification": "working",
+      "evidence": "implemented_application_route"
+    },
+    {
+      "app": "employer",
+      "file": "apps/employer/app/employer/calendar/request/page.tsx",
+      "line": 23,
+      "tag": "a",
+      "label": "Back to request calendar } > {fixturePreview ? ( )",
+      "destination": "/employer/calendar",
+      "classification": "working",
+      "evidence": "implemented_application_route"
+    },
+    {
+      "app": "employer",
+      "file": "apps/employer/app/employer/dashboard/page.tsx",
+      "line": 21,
+      "tag": "a",
+      "label": "Create staffing request Open request calendar",
+      "destination": "/employer/calendar/create",
+      "classification": "working",
+      "evidence": "implemented_application_route"
+    },
+    {
+      "app": "employer",
+      "file": "apps/employer/app/employer/dashboard/page.tsx",
+      "line": 24,
+      "tag": "a",
+      "label": "Open request calendar } > <p style={st",
+      "destination": "/employer/calendar",
+      "classification": "working",
+      "evidence": "implemented_application_route"
+    },
+    {
+      "app": "employer",
+      "file": "apps/employer/app/employer/dashboard/page.tsx",
+      "line": 44,
+      "tag": "a",
+      "label": "Open workflow ))} <div sty",
+      "destination": null,
+      "classification": "governed",
+      "evidence": "runtime_destination"
+    },
+    {
+      "app": "employer",
+      "file": "apps/employer/app/employer/dashboard/page.tsx",
+      "line": 136,
+      "tag": "a",
+      "label": "{item",
+      "destination": null,
+      "classification": "governed",
+      "evidence": "runtime_destination"
+    },
+    {
+      "app": "employer",
+      "file": "apps/employer/app/employer/EmployerShell.tsx",
+      "line": 51,
+      "tag": "a",
+      "label": "Skip to employer workspace <a href=\"/\" st",
+      "destination": "#employer-main-content",
+      "classification": "working",
+      "evidence": "external_or_page_anchor_destination"
+    },
+    {
+      "app": "employer",
+      "file": "apps/employer/app/employer/EmployerShell.tsx",
+      "line": 56,
+      "tag": "a",
+      "label": "Resident Job home",
+      "destination": "/",
+      "classification": "working",
+      "evidence": "implemented_application_route"
+    },
+    {
+      "app": "employer",
+      "file": "apps/employer/app/employer/EmployerShell.tsx",
+      "line": 64,
+      "tag": "a",
+      "label": "Page ))} <div s",
+      "destination": null,
+      "classification": "governed",
+      "evidence": "runtime_destination"
+    },
+    {
+      "app": "employer",
+      "file": "apps/employer/app/employer/EmployerShell.tsx",
+      "line": 110,
+      "tag": "a",
+      "label": "Support FAQ <a href=\"/pricing\" style={s",
+      "destination": "/contact",
+      "classification": "working",
+      "evidence": "implemented_application_route"
+    },
+    {
+      "app": "employer",
+      "file": "apps/employer/app/employer/EmployerShell.tsx",
+      "line": 113,
+      "tag": "a",
+      "label": "FAQ Pricing </footer",
+      "destination": "/faq",
+      "classification": "working",
+      "evidence": "implemented_application_route"
+    },
+    {
+      "app": "employer",
+      "file": "apps/employer/app/employer/EmployerShell.tsx",
+      "line": 116,
+      "tag": "a",
+      "label": "Pricing ); } function EmployerPageNavigator({ currentRoute,",
+      "destination": "/pricing",
+      "classification": "working",
+      "evidence": "implemented_application_route"
+    },
+    {
+      "app": "employer",
+      "file": "apps/employer/app/employer/EmployerShell.tsx",
+      "line": 148,
+      "tag": "a",
+      "label": "← Back ) : (",
+      "destination": null,
+      "classification": "governed",
+      "evidence": "runtime_destination"
+    },
+    {
+      "app": "employer",
+      "file": "apps/employer/app/employer/EmployerShell.tsx",
+      "line": 168,
+      "tag": "a",
+      "label": "); })} `} className=\"",
+      "destination": null,
+      "classification": "governed",
+      "evidence": "runtime_destination"
+    },
+    {
+      "app": "employer",
+      "file": "apps/employer/app/employer/EmployerShell.tsx",
+      "line": 184,
+      "tag": "a",
+      "label": "Next → ) : (",
+      "destination": null,
+      "classification": "governed",
+      "evidence": "runtime_destination"
+    },
+    {
+      "app": "employer",
+      "file": "apps/employer/app/employer/EmployerShell.tsx",
+      "line": 214,
+      "tag": "a",
+      "label": "Page <strong style=",
+      "destination": null,
+      "classification": "governed",
+      "evidence": "runtime_destination"
+    },
+    {
+      "app": "employer",
+      "file": "apps/employer/app/employer/invoices/breakdown/page.tsx",
+      "line": 12,
+      "tag": "a",
+      "label": "Payment handoff } > ); }",
+      "destination": "/employer/payments",
+      "classification": "working",
+      "evidence": "implemented_application_route"
+    },
+    {
+      "app": "employer",
+      "file": "apps/employer/app/employer/invoices/detail/page.tsx",
+      "line": 12,
+      "tag": "a",
+      "label": "Charge breakdown } > ); }",
+      "destination": "/employer/invoices/breakdown",
+      "classification": "working",
+      "evidence": "implemented_application_route"
+    },
+    {
+      "app": "employer",
+      "file": "apps/employer/app/employer/invoices/InvoiceReviewPanel.tsx",
+      "line": 96,
+      "tag": "a",
+      "label": "Open detail ))} ) : selected ? (",
+      "destination": "/employer/invoices/detail",
+      "classification": "working",
+      "evidence": "implemented_application_route"
+    },
+    {
+      "app": "employer",
+      "file": "apps/employer/app/employer/invoices/page.tsx",
+      "line": 12,
+      "tag": "a",
+      "label": "Invoice detail } > ); }",
+      "destination": "/employer/invoices/detail",
+      "classification": "working",
+      "evidence": "implemented_application_route"
+    },
+    {
+      "app": "employer",
+      "file": "apps/employer/app/employer/onboarding/company/page.tsx",
+      "line": 17,
+      "tag": "a",
+      "label": "Continue to residences } > <p style={styles.eyebrowDar",
+      "destination": "/employer/onboarding/residences",
+      "classification": "working",
+      "evidence": "implemented_application_route"
+    },
+    {
+      "app": "employer",
+      "file": "apps/employer/app/employer/onboarding/company/page.tsx",
+      "line": 30,
+      "tag": "input",
+      "label": "Legal organization name",
+      "destination": null,
+      "classification": "working",
+      "evidence": "enabled_form_control"
+    },
+    {
+      "app": "employer",
+      "file": "apps/employer/app/employer/onboarding/company/page.tsx",
+      "line": 34,
+      "tag": "input",
+      "label": "Authorized representative <input placeholder=\"Representative placeholder\" style={styles.inpu",
+      "destination": null,
+      "classification": "working",
+      "evidence": "enabled_form_control"
+    },
+    {
+      "app": "employer",
+      "file": "apps/employer/app/employer/onboarding/company/page.tsx",
+      "line": 38,
+      "tag": "input",
+      "label": "Primary operational contact <input placeholder=\"Scheduling or operations contact\" style={sty",
+      "destination": null,
+      "classification": "working",
+      "evidence": "enabled_form_control"
+    },
+    {
+      "app": "employer",
+      "file": "apps/employer/app/employer/onboarding/company/page.tsx",
+      "line": 42,
+      "tag": "input",
+      "label": "This is a development fixture surface. It does not verify legal identity, upload documents,",
+      "destination": null,
+      "classification": "working",
+      "evidence": "enabled_form_control"
+    },
+    {
+      "app": "employer",
+      "file": "apps/employer/app/employer/onboarding/departments/page.tsx",
+      "line": 13,
+      "tag": "a",
+      "label": "Open dashboard } > Depar",
+      "destination": "/employer/dashboard",
+      "classification": "working",
+      "evidence": "implemented_application_route"
+    },
+    {
+      "app": "employer",
+      "file": "apps/employer/app/employer/onboarding/departments/page.tsx",
+      "line": 40,
+      "tag": "input",
+      "label": "Parent residence",
+      "destination": null,
+      "classification": "working",
+      "evidence": "enabled_form_control"
+    },
+    {
+      "app": "employer",
+      "file": "apps/employer/app/employer/onboarding/departments/page.tsx",
+      "line": 44,
+      "tag": "input",
+      "label": "Department manager role <input placeholder=\"Role, not private contact details\" style={styles",
+      "destination": null,
+      "classification": "working",
+      "evidence": "enabled_form_control"
+    },
+    {
+      "app": "employer",
+      "file": "apps/employer/app/employer/onboarding/departments/page.tsx",
+      "line": 48,
+      "tag": "input",
+      "label": "Worker-facing label <input placeholder=\"Approved assignment-visible label\" style={styles.inp",
+      "destination": null,
+      "classification": "working",
+      "evidence": "enabled_form_control"
+    },
+    {
+      "app": "employer",
+      "file": "apps/employer/app/employer/onboarding/departments/page.tsx",
+      "line": 52,
+      "tag": "input",
+      "label": "{departmentBoundaries.map((boundary) =>",
+      "destination": null,
+      "classification": "working",
+      "evidence": "enabled_form_control"
+    },
+    {
+      "app": "employer",
+      "file": "apps/employer/app/employer/onboarding/residences/page.tsx",
+      "line": 17,
+      "tag": "a",
+      "label": "Continue to departments } > <p style={styles.eyebrowDa",
+      "destination": "/employer/onboarding/departments",
+      "classification": "working",
+      "evidence": "implemented_application_route"
+    },
+    {
+      "app": "employer",
+      "file": "apps/employer/app/employer/payments/authorization/page.tsx",
+      "line": 12,
+      "tag": "a",
+      "label": "Settlement state } > ); }",
+      "destination": "/employer/payments/settlement",
+      "classification": "working",
+      "evidence": "implemented_application_route"
+    },
+    {
+      "app": "employer",
+      "file": "apps/employer/app/employer/payments/exceptions/page.tsx",
+      "line": 12,
+      "tag": "a",
+      "label": "Reports handoff } > ); }",
+      "destination": "/employer/reports",
+      "classification": "working",
+      "evidence": "implemented_application_route"
+    },
+    {
+      "app": "employer",
+      "file": "apps/employer/app/employer/payments/method/page.tsx",
+      "line": 12,
+      "tag": "a",
+      "label": "Authorization state } > ); }",
+      "destination": "/employer/payments/authorization",
+      "classification": "working",
+      "evidence": "implemented_application_route"
+    },
+    {
+      "app": "employer",
+      "file": "apps/employer/app/employer/payments/page.tsx",
+      "line": 12,
+      "tag": "a",
+      "label": "Payment method } > ); }",
+      "destination": "/employer/payments/method",
+      "classification": "working",
+      "evidence": "implemented_application_route"
+    },
+    {
+      "app": "employer",
+      "file": "apps/employer/app/employer/payments/PaymentStatePanel.tsx",
+      "line": 108,
+      "tag": "button",
+      "label": "Governed payment action unavailable ) : null}",
+      "destination": null,
+      "classification": "intentionally_disabled",
+      "evidence": "explicit_disabled_state"
+    },
+    {
+      "app": "employer",
+      "file": "apps/employer/app/employer/payments/receipt/page.tsx",
+      "line": 12,
+      "tag": "a",
+      "label": "Payment exceptions } > ); }",
+      "destination": "/employer/payments/exceptions",
+      "classification": "working",
+      "evidence": "implemented_application_route"
+    },
+    {
+      "app": "employer",
+      "file": "apps/employer/app/employer/payments/settlement/page.tsx",
+      "line": 12,
+      "tag": "a",
+      "label": "Receipt state } > ); }",
+      "destination": "/employer/payments/receipt",
+      "classification": "working",
+      "evidence": "implemented_application_route"
+    },
+    {
+      "app": "employer",
+      "file": "apps/employer/app/employer/reports/page.tsx",
+      "line": 16,
+      "tag": "a",
+      "label": "Back to dashboard } > Fixture-backed report metrics",
+      "destination": "/employer/dashboard",
+      "classification": "working",
+      "evidence": "implemented_application_route"
+    },
+    {
+      "app": "employer",
+      "file": "apps/employer/app/employer/reports/page.tsx",
+      "line": 33,
+      "tag": "a",
+      "label": "Open source ))} <a",
+      "destination": null,
+      "classification": "governed",
+      "evidence": "runtime_destination"
+    },
+    {
+      "app": "employer",
+      "file": "apps/employer/app/employer/shifts/ai-suggestions/page.tsx",
+      "line": 12,
+      "tag": "a",
+      "label": "Compare candidates } > Suggestion inputs <h2 style={styles.",
+      "destination": "/employer/applicants/compare",
+      "classification": "working",
+      "evidence": "implemented_application_route"
+    },
+    {
+      "app": "employer",
+      "file": "apps/employer/app/employer/shifts/ai-suggestions/page.tsx",
+      "line": 27,
+      "tag": "a",
+      "label": "Compare with applicants {aiSuggestionBoundaries.map((boundary)",
+      "destination": "/employer/applicants/compare",
+      "classification": "working",
+      "evidence": "implemented_application_route"
+    },
+    {
+      "app": "employer",
+      "file": "apps/employer/app/employer/shifts/create/CreateShiftDraftForm.tsx",
+      "line": 115,
+      "tag": "input",
+      "label": "updateField(field.key, event.target.value)} style= /> ))} Sh",
+      "destination": null,
+      "classification": "working",
+      "evidence": "event_handler"
+    },
+    {
+      "app": "employer",
+      "file": "apps/employer/app/employer/shifts/create/CreateShiftDraftForm.tsx",
+      "line": 125,
+      "tag": "select",
+      "label": "updateField(\"shiftType\", event.target.value)} style= > Normal Recurring <",
+      "destination": null,
+      "classification": "working",
+      "evidence": "event_handler"
+    },
+    {
+      "app": "employer",
+      "file": "apps/employer/app/employer/shifts/create/CreateShiftDraftForm.tsx",
+      "line": 137,
+      "tag": "button",
+      "label": "Validate draft locally {validation.missing.length === 0 ? (",
+      "destination": null,
+      "classification": "working",
+      "evidence": "event_or_form_submission"
+    },
+    {
+      "app": "employer",
+      "file": "apps/employer/app/employer/shifts/create/CreateShiftDraftForm.tsx",
+      "line": 141,
+      "tag": "a",
+      "label": "Review shift ) : ( <span aria-disabled=\"true\" role=\"link\" style={{ ...styles.disabledAction, displ",
+      "destination": "/employer/shifts/review",
+      "classification": "working",
+      "evidence": "implemented_application_route"
+    },
+    {
+      "app": "employer",
+      "file": "apps/employer/app/employer/shifts/create/CreateShiftDraftForm.tsx",
+      "line": 175,
+      "tag": "input",
+      "label": "setLearningTitle(event.target.value)} placeholder=\"Example: pastry cook, evening server, HVAC helper",
+      "destination": null,
+      "classification": "working",
+      "evidence": "event_handler"
+    },
+    {
+      "app": "employer",
+      "file": "apps/employer/app/employer/shifts/create/CreateShiftDraftForm.tsx",
+      "line": 184,
+      "tag": "input",
+      "label": "setLearningDescription(event.target.value)} placeholder=\"What work does the client need?\" style= val",
+      "destination": null,
+      "classification": "working",
+      "evidence": "event_handler"
+    },
+    {
+      "app": "employer",
+      "file": "apps/employer/app/employer/shifts/create/CreateShiftDraftForm.tsx",
+      "line": 193,
+      "tag": "input",
+      "label": "setLearningExperience(event.target.value)} placeholder=\"Experience, tools, language, site context\" s",
+      "destination": null,
+      "classification": "working",
+      "evidence": "event_handler"
+    },
+    {
+      "app": "employer",
+      "file": "apps/employer/app/employer/shifts/create/CreateShiftDraftForm.tsx",
+      "line": 201,
+      "tag": "button",
+      "label": "Save client capsule locally {learningCapsules.map((capsule) => ( <article key={`${capsule.t",
+      "destination": null,
+      "classification": "working",
+      "evidence": "event_or_form_submission"
+    },
+    {
+      "app": "employer",
+      "file": "apps/employer/app/employer/shifts/create/page.tsx",
+      "line": 20,
+      "tag": "a",
+      "label": "Recurring shift } > <p style={styles.eyebrow",
+      "destination": "/employer/shifts/recurring",
+      "classification": "working",
+      "evidence": "implemented_application_route"
+    },
+    {
+      "app": "employer",
+      "file": "apps/employer/app/employer/shifts/detail/page.tsx",
+      "line": 13,
+      "tag": "a",
+      "label": "Published shifts } > <p style={st",
+      "destination": "/employer/shifts/published",
+      "classification": "working",
+      "evidence": "implemented_application_route"
+    },
+    {
+      "app": "employer",
+      "file": "apps/employer/app/employer/shifts/publish/page.tsx",
+      "line": 13,
+      "tag": "a",
+      "label": "Back to review } > <p style={sty",
+      "destination": "/employer/shifts/review",
+      "classification": "working",
+      "evidence": "implemented_application_route"
+    },
+    {
+      "app": "employer",
+      "file": "apps/employer/app/employer/shifts/published/page.tsx",
+      "line": 12,
+      "tag": "a",
+      "label": "AI suggestions } > Published shifts <h2 style={styles.secti",
+      "destination": "/employer/shifts/ai-suggestions",
+      "classification": "working",
+      "evidence": "implemented_application_route"
+    },
+    {
+      "app": "employer",
+      "file": "apps/employer/app/employer/shifts/published/page.tsx",
+      "line": 16,
+      "tag": "a",
+      "label": "Open detail )} {shiftBoundaries.map((boundary) => <article key=",
+      "destination": "/employer/shifts/detail",
+      "classification": "working",
+      "evidence": "implemented_application_route"
+    },
+    {
+      "app": "employer",
+      "file": "apps/employer/app/employer/shifts/recurring/page.tsx",
+      "line": 12,
+      "tag": "a",
+      "label": "Urgent shift } > Template setup <h2 s",
+      "destination": "/employer/shifts/urgent",
+      "classification": "working",
+      "evidence": "implemented_application_route"
+    },
+    {
+      "app": "employer",
+      "file": "apps/employer/app/employer/shifts/recurring/page.tsx",
+      "line": 20,
+      "tag": "input",
+      "label": "Recurrence rule Select rule Daily",
+      "destination": null,
+      "classification": "working",
+      "evidence": "enabled_form_control"
+    },
+    {
+      "app": "employer",
+      "file": "apps/employer/app/employer/shifts/recurring/page.tsx",
+      "line": 21,
+      "tag": "select",
+      "label": "Select rule Daily Weekly Bi-weekly Monthly Custom interval </selec",
+      "destination": null,
+      "classification": "working",
+      "evidence": "enabled_form_control"
+    },
+    {
+      "app": "employer",
+      "file": "apps/employer/app/employer/shifts/recurring/page.tsx",
+      "line": 22,
+      "tag": "input",
+      "label": "Authorization status </",
+      "destination": null,
+      "classification": "working",
+      "evidence": "enabled_form_control"
+    },
+    {
+      "app": "employer",
+      "file": "apps/employer/app/employer/shifts/recurring/page.tsx",
+      "line": 23,
+      "tag": "input",
+      "label": "Independent lifecycles",
+      "destination": null,
+      "classification": "working",
+      "evidence": "enabled_form_control"
+    },
+    {
+      "app": "employer",
+      "file": "apps/employer/app/employer/shifts/review/page.tsx",
+      "line": 14,
+      "tag": "a",
+      "label": "Edit draft } > <p style={styles.e",
+      "destination": "/employer/shifts/create",
+      "classification": "working",
+      "evidence": "implemented_application_route"
+    },
+    {
+      "app": "employer",
+      "file": "apps/employer/app/employer/shifts/ShiftDraftSummary.tsx",
+      "line": 83,
+      "tag": "button",
+      "label": "Mark publication requested locally ) : null} {mode === \"publish\" ? ( <button type=\"button\" onClick={",
+      "destination": null,
+      "classification": "working",
+      "evidence": "event_or_form_submission"
+    },
+    {
+      "app": "employer",
+      "file": "apps/employer/app/employer/shifts/ShiftDraftSummary.tsx",
+      "line": 88,
+      "tag": "button",
+      "label": "Mark published fixture locally ) : null} {mode === \"review\" ? ( <a href=\"/employer/shifts/publish\" s",
+      "destination": null,
+      "classification": "working",
+      "evidence": "event_or_form_submission"
+    },
+    {
+      "app": "employer",
+      "file": "apps/employer/app/employer/shifts/ShiftDraftSummary.tsx",
+      "line": 93,
+      "tag": "a",
+      "label": "Go to publish ) : null} {mode === \"publish\" ? (",
+      "destination": "/employer/shifts/publish",
+      "classification": "working",
+      "evidence": "implemented_application_route"
+    },
+    {
+      "app": "employer",
+      "file": "apps/employer/app/employer/shifts/ShiftDraftSummary.tsx",
+      "line": 98,
+      "tag": "a",
+      "label": "Open shift detail ) : null} {mode === \"detail\" ? (",
+      "destination": "/employer/shifts/detail",
+      "classification": "working",
+      "evidence": "implemented_application_route"
+    },
+    {
+      "app": "employer",
+      "file": "apps/employer/app/employer/shifts/ShiftDraftSummary.tsx",
+      "line": 103,
+      "tag": "a",
+      "label": "View applicants ) : null} ); }",
+      "destination": "/employer/applicants",
+      "classification": "working",
+      "evidence": "implemented_application_route"
+    },
+    {
+      "app": "employer",
+      "file": "apps/employer/app/employer/shifts/urgent/page.tsx",
+      "line": 12,
+      "tag": "a",
+      "label": "Published shifts } > Urgency classification <h2 style={styl",
+      "destination": "/employer/shifts/published",
+      "classification": "working",
+      "evidence": "implemented_application_route"
+    },
+    {
+      "app": "employer",
+      "file": "apps/employer/app/employer/shifts/urgent/page.tsx",
+      "line": 22,
+      "tag": "input",
+      "label": "Requested start time <label style={styles.",
+      "destination": null,
+      "classification": "working",
+      "evidence": "enabled_form_control"
+    },
+    {
+      "app": "employer",
+      "file": "apps/employer/app/employer/shifts/urgent/page.tsx",
+      "line": 23,
+      "tag": "input",
+      "label": "Urgency reason <label style=",
+      "destination": null,
+      "classification": "working",
+      "evidence": "enabled_form_control"
+    },
+    {
+      "app": "employer",
+      "file": "apps/employer/app/employer/shifts/urgent/page.tsx",
+      "line": 24,
+      "tag": "input",
+      "label": "Urgent premium summary",
+      "destination": null,
+      "classification": "working",
+      "evidence": "enabled_form_control"
+    },
+    {
+      "app": "employer",
+      "file": "apps/employer/app/employer/shifts/urgent/page.tsx",
+      "line": 25,
+      "tag": "input",
+      "label": "<h3 style={styl",
+      "destination": null,
+      "classification": "working",
+      "evidence": "enabled_form_control"
+    },
+    {
+      "app": "employer",
+      "file": "apps/employer/app/employer/timesheets/approved/page.tsx",
+      "line": 12,
+      "tag": "a",
+      "label": "Invoice handoff } > ); }",
+      "destination": "/employer/invoices",
+      "classification": "working",
+      "evidence": "implemented_application_route"
+    },
+    {
+      "app": "employer",
+      "file": "apps/employer/app/employer/timesheets/clarification/page.tsx",
+      "line": 12,
+      "tag": "a",
+      "label": "Corrected version } > )",
+      "destination": "/employer/timesheets/corrected",
+      "classification": "working",
+      "evidence": "implemented_application_route"
+    },
+    {
+      "app": "employer",
+      "file": "apps/employer/app/employer/timesheets/corrected/page.tsx",
+      "line": 12,
+      "tag": "a",
+      "label": "Approved timesheet } > ); }",
+      "destination": "/employer/timesheets/approved",
+      "classification": "working",
+      "evidence": "implemented_application_route"
+    },
+    {
+      "app": "employer",
+      "file": "apps/employer/app/employer/timesheets/page.tsx",
+      "line": 12,
+      "tag": "a",
+      "label": "Employer review } > ); }",
+      "destination": "/employer/timesheets/review",
+      "classification": "working",
+      "evidence": "implemented_application_route"
+    },
+    {
+      "app": "employer",
+      "file": "apps/employer/app/employer/timesheets/review/page.tsx",
+      "line": 12,
+      "tag": "a",
+      "label": "Back to draft } > ); }",
+      "destination": "/employer/timesheets",
+      "classification": "working",
+      "evidence": "implemented_application_route"
+    },
+    {
+      "app": "employer",
+      "file": "apps/employer/app/employer/timesheets/TimesheetReviewPanel.tsx",
+      "line": 71,
+      "tag": "input",
+      "label": "setReason(event.target.value)} style= /> Adjustment reason is required before local approval can be ",
+      "destination": null,
+      "classification": "working",
+      "evidence": "event_handler"
+    },
+    {
+      "app": "employer",
+      "file": "apps/employer/app/employer/timesheets/TimesheetReviewPanel.tsx",
+      "line": 83,
+      "tag": "button",
+      "label": "saveState(\"Clarification Requested\")} style= > Request clarification locally ) : null} {mode === \"co",
+      "destination": null,
+      "classification": "working",
+      "evidence": "event_or_form_submission"
+    },
+    {
+      "app": "employer",
+      "file": "apps/employer/app/employer/timesheets/TimesheetReviewPanel.tsx",
+      "line": 88,
+      "tag": "button",
+      "label": "saveState(\"Finance Ready\")} style= > Approve fixture timesheet ) : null} <a href= style={st",
+      "destination": null,
+      "classification": "working",
+      "evidence": "event_or_form_submission"
+    },
+    {
+      "app": "employer",
+      "file": "apps/employer/app/employer/timesheets/TimesheetReviewPanel.tsx",
+      "line": 92,
+      "tag": "a",
+      "label": "Continue {timesheetVersionHistory.",
+      "destination": null,
+      "classification": "governed",
+      "evidence": "runtime_destination"
+    },
+    {
+      "app": "employer",
+      "file": "apps/employer/app/faq/page.tsx",
+      "line": 8,
+      "tag": "a",
+      "label": "Resident Job home",
+      "destination": "/",
+      "classification": "working",
+      "evidence": "implemented_application_route"
+    },
+    {
+      "app": "employer",
+      "file": "apps/employer/app/faq/page.tsx",
+      "line": 12,
+      "tag": "a",
+      "label": "About How it works <a href=\"/pricing\" style={styles.navLi",
+      "destination": "/about",
+      "classification": "working",
+      "evidence": "implemented_application_route"
+    },
+    {
+      "app": "employer",
+      "file": "apps/employer/app/faq/page.tsx",
+      "line": 15,
+      "tag": "a",
+      "label": "How it works Pricing <a href=\"/faq\" style= ari",
+      "destination": "/how-it-works",
+      "classification": "working",
+      "evidence": "implemented_application_route"
+    },
+    {
+      "app": "employer",
+      "file": "apps/employer/app/faq/page.tsx",
+      "line": 18,
+      "tag": "a",
+      "label": "Pricing FAQ <a href=\"/contact\" style={styles.n",
+      "destination": "/pricing",
+      "classification": "working",
+      "evidence": "implemented_application_route"
+    },
+    {
+      "app": "employer",
+      "file": "apps/employer/app/faq/page.tsx",
+      "line": 21,
+      "tag": "a",
+      "label": "FAQ Contact <section style={styles",
+      "destination": "/faq",
+      "classification": "working",
+      "evidence": "implemented_application_route"
+    },
+    {
+      "app": "employer",
+      "file": "apps/employer/app/faq/page.tsx",
+      "line": 24,
+      "tag": "a",
+      "label": "Contact Help center and FAQ <h1 style=",
+      "destination": "/contact",
+      "classification": "working",
+      "evidence": "implemented_application_route"
+    },
+    {
+      "app": "employer",
+      "file": "apps/employer/app/faq/page.tsx",
+      "line": 39,
+      "tag": "input",
+      "label": "<p style={styles.ey",
+      "destination": null,
+      "classification": "working",
+      "evidence": "enabled_form_control"
+    },
+    {
+      "app": "employer",
+      "file": "apps/employer/app/faq/page.tsx",
+      "line": 57,
+      "tag": "a",
+      "label": "Open Active-Shift Support <div style={styles.sectionHe",
+      "destination": "/contact#active-shift",
+      "classification": "working",
+      "evidence": "implemented_application_route"
+    },
+    {
+      "app": "employer",
+      "file": "apps/employer/app/faq/page.tsx",
+      "line": 129,
+      "tag": "a",
+      "label": "Home Contact",
+      "destination": "/",
+      "classification": "working",
+      "evidence": "implemented_application_route"
+    },
+    {
+      "app": "employer",
+      "file": "apps/employer/app/faq/page.tsx",
+      "line": 132,
+      "tag": "a",
+      "label": "Contact Pricing",
+      "destination": "/contact",
+      "classification": "working",
+      "evidence": "implemented_application_route"
+    },
+    {
+      "app": "employer",
+      "file": "apps/employer/app/faq/page.tsx",
+      "line": 135,
+      "tag": "a",
+      "label": "Pricing FAQ No sea",
+      "destination": "/pricing",
+      "classification": "working",
+      "evidence": "implemented_application_route"
+    },
+    {
+      "app": "employer",
+      "file": "apps/employer/app/faq/page.tsx",
+      "line": 138,
+      "tag": "a",
+      "label": "FAQ No search engine or knowledge-base backend is connected.",
+      "destination": "/faq",
+      "classification": "working",
+      "evidence": "implemented_application_route"
+    },
+    {
+      "app": "employer",
+      "file": "apps/employer/app/how-it-works/page.tsx",
+      "line": 17,
+      "tag": "a",
+      "label": "Resident Job home",
+      "destination": "/",
+      "classification": "working",
+      "evidence": "implemented_application_route"
+    },
+    {
+      "app": "employer",
+      "file": "apps/employer/app/how-it-works/page.tsx",
+      "line": 21,
+      "tag": "a",
+      "label": "About How it works <a href=\"/pricing\"",
+      "destination": "/about",
+      "classification": "working",
+      "evidence": "implemented_application_route"
+    },
+    {
+      "app": "employer",
+      "file": "apps/employer/app/how-it-works/page.tsx",
+      "line": 24,
+      "tag": "a",
+      "label": "How it works Pricing <a href=\"/contact\" style=",
+      "destination": "/how-it-works",
+      "classification": "working",
+      "evidence": "implemented_application_route"
+    },
+    {
+      "app": "employer",
+      "file": "apps/employer/app/how-it-works/page.tsx",
+      "line": 27,
+      "tag": "a",
+      "label": "Pricing Contact",
+      "destination": "/pricing",
+      "classification": "working",
+      "evidence": "implemented_application_route"
+    },
+    {
+      "app": "employer",
+      "file": "apps/employer/app/how-it-works/page.tsx",
+      "line": 30,
+      "tag": "a",
+      "label": "Contact Sign in",
+      "destination": "/contact",
+      "classification": "working",
+      "evidence": "implemented_application_route"
+    },
+    {
+      "app": "employer",
+      "file": "apps/employer/app/how-it-works/page.tsx",
+      "line": 33,
+      "tag": "a",
+      "label": "Sign in I want shift",
+      "destination": "/signin",
+      "classification": "working",
+      "evidence": "implemented_application_route"
+    },
+    {
+      "app": "employer",
+      "file": "apps/employer/app/how-it-works/page.tsx",
+      "line": 38,
+      "tag": "a",
+      "label": "I want shifts I need staff",
+      "destination": "/#workers",
+      "classification": "working",
+      "evidence": "implemented_application_route"
+    },
+    {
+      "app": "employer",
+      "file": "apps/employer/app/how-it-works/page.tsx",
+      "line": 41,
+      "tag": "a",
+      "label": "I need staff How Resident Job works <h",
+      "destination": "/signup/employer",
+      "classification": "working",
+      "evidence": "implemented_application_route"
+    },
+    {
+      "app": "employer",
+      "file": "apps/employer/app/how-it-works/page.tsx",
+      "line": 55,
+      "tag": "a",
+      "label": "I need staff I want shifts",
+      "destination": "/signup/employer",
+      "classification": "working",
+      "evidence": "implemented_application_route"
+    },
+    {
+      "app": "employer",
+      "file": "apps/employer/app/how-it-works/page.tsx",
+      "line": 58,
+      "tag": "a",
+      "label": "I want shifts <div style={styles.sectio",
+      "destination": "/#workers",
+      "classification": "working",
+      "evidence": "implemented_application_route"
+    },
+    {
+      "app": "employer",
+      "file": "apps/employer/app/how-it-works/page.tsx",
+      "line": 141,
+      "tag": "a",
+      "label": "View FAQ Contact us <foot",
+      "destination": "/faq",
+      "classification": "working",
+      "evidence": "implemented_application_route"
+    },
+    {
+      "app": "employer",
+      "file": "apps/employer/app/how-it-works/page.tsx",
+      "line": 144,
+      "tag": "a",
+      "label": "Contact us Resident Job <nav aria-label=\"Footer navig",
+      "destination": "/contact",
+      "classification": "working",
+      "evidence": "implemented_application_route"
+    },
+    {
+      "app": "employer",
+      "file": "apps/employer/app/how-it-works/page.tsx",
+      "line": 153,
+      "tag": "a",
+      "label": "Home About",
+      "destination": "/",
+      "classification": "working",
+      "evidence": "implemented_application_route"
+    },
+    {
+      "app": "employer",
+      "file": "apps/employer/app/how-it-works/page.tsx",
+      "line": 156,
+      "tag": "a",
+      "label": "About How it works <a href=\"/contact\" style={styles.fo",
+      "destination": "/about",
+      "classification": "working",
+      "evidence": "implemented_application_route"
+    },
+    {
+      "app": "employer",
+      "file": "apps/employer/app/how-it-works/page.tsx",
+      "line": 159,
+      "tag": "a",
+      "label": "How it works Privacy <span style={styles.foote",
+      "destination": "/how-it-works",
+      "classification": "working",
+      "evidence": "implemented_application_route"
+    },
+    {
+      "app": "employer",
+      "file": "apps/employer/app/how-it-works/page.tsx",
+      "line": 162,
+      "tag": "a",
+      "label": "Privacy Language and region selector reserved for localization. </main",
+      "destination": "/contact",
+      "classification": "working",
+      "evidence": "implemented_application_route"
+    },
+    {
+      "app": "employer",
+      "file": "apps/employer/app/page.tsx",
+      "line": 54,
+      "tag": "a",
+      "label": "Resident Workforce OS home",
+      "destination": "/",
+      "classification": "working",
+      "evidence": "implemented_application_route"
+    },
+    {
+      "app": "employer",
+      "file": "apps/employer/app/page.tsx",
+      "line": 61,
+      "tag": "a",
+      "label": "How It Works Employers <a href=\"#workers\" style={styles.navL",
+      "destination": "/how-it-works",
+      "classification": "working",
+      "evidence": "implemented_application_route"
+    },
+    {
+      "app": "employer",
+      "file": "apps/employer/app/page.tsx",
+      "line": 64,
+      "tag": "a",
+      "label": "Employers Workers",
+      "destination": "#employers",
+      "classification": "working",
+      "evidence": "external_or_page_anchor_destination"
+    },
+    {
+      "app": "employer",
+      "file": "apps/employer/app/page.tsx",
+      "line": 67,
+      "tag": "a",
+      "label": "Workers Pricing",
+      "destination": "#workers",
+      "classification": "working",
+      "evidence": "external_or_page_anchor_destination"
+    },
+    {
+      "app": "employer",
+      "file": "apps/employer/app/page.tsx",
+      "line": 70,
+      "tag": "a",
+      "label": "Pricing About",
+      "destination": "/pricing",
+      "classification": "working",
+      "evidence": "implemented_application_route"
+    },
+    {
+      "app": "employer",
+      "file": "apps/employer/app/page.tsx",
+      "line": 73,
+      "tag": "a",
+      "label": "About Sign In </",
+      "destination": "/about",
+      "classification": "working",
+      "evidence": "implemented_application_route"
+    },
+    {
+      "app": "employer",
+      "file": "apps/employer/app/page.tsx",
+      "line": 78,
+      "tag": "a",
+      "label": "Sign In {isProduction ? \"Request Access\" :",
+      "destination": "/signin",
+      "classification": "working",
+      "evidence": "implemented_application_route"
+    },
+    {
+      "app": "employer",
+      "file": "apps/employer/app/page.tsx",
+      "line": 81,
+      "tag": "a",
+      "label": "<div style={styles.heroCop",
+      "destination": null,
+      "classification": "governed",
+      "evidence": "runtime_destination"
+    },
+    {
+      "app": "employer",
+      "file": "apps/employer/app/page.tsx",
+      "line": 96,
+      "tag": "a",
+      "label": "Become",
+      "destination": null,
+      "classification": "governed",
+      "evidence": "runtime_destination"
+    },
+    {
+      "app": "employer",
+      "file": "apps/employer/app/page.tsx",
+      "line": 102,
+      "tag": "a",
+      "label": "Become a Worker Book a Demo",
+      "destination": "#workers",
+      "classification": "working",
+      "evidence": "external_or_page_anchor_destination"
+    },
+    {
+      "app": "employer",
+      "file": "apps/employer/app/page.tsx",
+      "line": 105,
+      "tag": "a",
+      "label": "Book a Demo {[\"Governed Access\", \"Human Dispatc",
+      "destination": "/contact",
+      "classification": "working",
+      "evidence": "implemented_application_route"
+    },
+    {
+      "app": "employer",
+      "file": "apps/employer/app/page.tsx",
+      "line": 311,
+      "tag": "a",
+      "label": "Book a Demo",
+      "destination": null,
+      "classification": "governed",
+      "evidence": "runtime_destination"
+    },
+    {
+      "app": "employer",
+      "file": "apps/employer/app/page.tsx",
+      "line": 314,
+      "tag": "a",
+      "label": "Book a Demo Resident Wor",
+      "destination": "/contact",
+      "classification": "working",
+      "evidence": "implemented_application_route"
+    },
+    {
+      "app": "employer",
+      "file": "apps/employer/app/page.tsx",
+      "line": 321,
+      "tag": "a",
+      "label": "Resident Workforce OS",
+      "destination": "/",
+      "classification": "working",
+      "evidence": "implemented_application_route"
+    },
+    {
+      "app": "employer",
+      "file": "apps/employer/app/page.tsx",
+      "line": 325,
+      "tag": "a",
+      "label": "Employers Workers <a href=\"/how-it-works\" style={styles.foo",
+      "destination": "#employers",
+      "classification": "working",
+      "evidence": "external_or_page_anchor_destination"
+    },
+    {
+      "app": "employer",
+      "file": "apps/employer/app/page.tsx",
+      "line": 328,
+      "tag": "a",
+      "label": "Workers How It Works <a href=\"/pricing\" style={styles.",
+      "destination": "#workers",
+      "classification": "working",
+      "evidence": "external_or_page_anchor_destination"
+    },
+    {
+      "app": "employer",
+      "file": "apps/employer/app/page.tsx",
+      "line": 331,
+      "tag": "a",
+      "label": "How It Works Pricing <a href=\"/contact\" style={styles.foote",
+      "destination": "/how-it-works",
+      "classification": "working",
+      "evidence": "implemented_application_route"
+    },
+    {
+      "app": "employer",
+      "file": "apps/employer/app/page.tsx",
+      "line": 334,
+      "tag": "a",
+      "label": "Pricing Contact ); } fu",
+      "destination": "/pricing",
+      "classification": "working",
+      "evidence": "implemented_application_route"
+    },
+    {
+      "app": "employer",
+      "file": "apps/employer/app/page.tsx",
+      "line": 337,
+      "tag": "a",
+      "label": "Contact ); } function DashboardPreview() aria-la",
+      "destination": "/contact",
+      "classification": "working",
+      "evidence": "implemented_application_route"
+    },
+    {
+      "app": "employer",
+      "file": "apps/employer/app/page.tsx",
+      "line": 363,
+      "tag": "a",
+      "label": "Post a Shift s",
+      "destination": "/employer/shifts/create",
+      "classification": "working",
+      "evidence": "implemented_application_route"
+    },
+    {
+      "app": "employer",
+      "file": "apps/employer/app/pricing/page.tsx",
+      "line": 16,
+      "tag": "a",
+      "label": "Resident Job home",
+      "destination": "/",
+      "classification": "working",
+      "evidence": "implemented_application_route"
+    },
+    {
+      "app": "employer",
+      "file": "apps/employer/app/pricing/page.tsx",
+      "line": 20,
+      "tag": "a",
+      "label": "About How it works <a href=\"/pricing\" style={styles.navLi",
+      "destination": "/about",
+      "classification": "working",
+      "evidence": "implemented_application_route"
+    },
+    {
+      "app": "employer",
+      "file": "apps/employer/app/pricing/page.tsx",
+      "line": 23,
+      "tag": "a",
+      "label": "How it works Pricing <a href=\"/contact\" st",
+      "destination": "/how-it-works",
+      "classification": "working",
+      "evidence": "implemented_application_route"
+    },
+    {
+      "app": "employer",
+      "file": "apps/employer/app/pricing/page.tsx",
+      "line": 26,
+      "tag": "a",
+      "label": "Pricing Contact",
+      "destination": "/pricing",
+      "classification": "working",
+      "evidence": "implemented_application_route"
+    },
+    {
+      "app": "employer",
+      "file": "apps/employer/app/pricing/page.tsx",
+      "line": 29,
+      "tag": "a",
+      "label": "Contact Sign in",
+      "destination": "/contact",
+      "classification": "working",
+      "evidence": "implemented_application_route"
+    },
+    {
+      "app": "employer",
+      "file": "apps/employer/app/pricing/page.tsx",
+      "line": 32,
+      "tag": "a",
+      "label": "Sign in Request",
+      "destination": "/signin",
+      "classification": "working",
+      "evidence": "implemented_application_route"
+    },
+    {
+      "app": "employer",
+      "file": "apps/employer/app/pricing/page.tsx",
+      "line": 37,
+      "tag": "a",
+      "label": "Request staff Get an estimate",
+      "destination": "/signup/employer",
+      "classification": "working",
+      "evidence": "implemented_application_route"
+    },
+    {
+      "app": "employer",
+      "file": "apps/employer/app/pricing/page.tsx",
+      "line": 40,
+      "tag": "a",
+      "label": "Get an estimate Pricing <h1 style={sty",
+      "destination": "#estimate",
+      "classification": "working",
+      "evidence": "external_or_page_anchor_destination"
+    },
+    {
+      "app": "employer",
+      "file": "apps/employer/app/pricing/page.tsx",
+      "line": 58,
+      "tag": "a",
+      "label": "Request staff Get an estimate </secti",
+      "destination": "/signup/employer",
+      "classification": "working",
+      "evidence": "implemented_application_route"
+    },
+    {
+      "app": "employer",
+      "file": "apps/employer/app/pricing/page.tsx",
+      "line": 61,
+      "tag": "a",
+      "label": "Get an estimate <div style={styles.sectio",
+      "destination": "#estimate",
+      "classification": "working",
+      "evidence": "external_or_page_anchor_destination"
+    },
+    {
+      "app": "employer",
+      "file": "apps/employer/app/pricing/page.tsx",
+      "line": 185,
+      "tag": "input",
+      "label": "))} Output: estimate only. Final amount depends on verified time, employer timesheet r",
+      "destination": null,
+      "classification": "intentionally_disabled",
+      "evidence": "explicit_disabled_state"
+    },
+    {
+      "app": "employer",
+      "file": "apps/employer/app/pricing/page.tsx",
+      "line": 214,
+      "tag": "a",
+      "label": "Home About",
+      "destination": "/",
+      "classification": "working",
+      "evidence": "implemented_application_route"
+    },
+    {
+      "app": "employer",
+      "file": "apps/employer/app/pricing/page.tsx",
+      "line": 217,
+      "tag": "a",
+      "label": "About How it works <a href=\"/pricing\" style={styles.fo",
+      "destination": "/about",
+      "classification": "working",
+      "evidence": "implemented_application_route"
+    },
+    {
+      "app": "employer",
+      "file": "apps/employer/app/pricing/page.tsx",
+      "line": 220,
+      "tag": "a",
+      "label": "How it works Pricing <a href=\"/faq\" style={styles.footerLin",
+      "destination": "/how-it-works",
+      "classification": "working",
+      "evidence": "implemented_application_route"
+    },
+    {
+      "app": "employer",
+      "file": "apps/employer/app/pricing/page.tsx",
+      "line": 223,
+      "tag": "a",
+      "label": "Pricing FAQ Paymen",
+      "destination": "/pricing",
+      "classification": "working",
+      "evidence": "implemented_application_route"
+    },
+    {
+      "app": "employer",
+      "file": "apps/employer/app/pricing/page.tsx",
+      "line": 226,
+      "tag": "a",
+      "label": "FAQ Payment integration is not part of this public page. );",
+      "destination": "/faq",
+      "classification": "working",
+      "evidence": "implemented_application_route"
+    },
+    {
+      "app": "employer",
+      "file": "apps/employer/app/shared/maps/JobLocationMap.tsx",
+      "line": 58,
+      "tag": "a",
+      "label": "search it on OpenStreetMap . ) : null} {status === \"ready\" && geo ? ( <> <LocationMap lat={geo.lat",
+      "destination": null,
+      "classification": "governed",
+      "evidence": "runtime_destination"
+    },
+    {
+      "app": "employer",
+      "file": "apps/employer/app/shared/maps/JobLocationMap.tsx",
+      "line": 80,
+      "tag": "a",
+      "label": "Get directions Open larger map",
+      "destination": null,
+      "classification": "governed",
+      "evidence": "runtime_destination"
+    },
+    {
+      "app": "employer",
+      "file": "apps/employer/app/shared/maps/JobLocationMap.tsx",
+      "line": 88,
+      "tag": "a",
+      "label": "Open larger map Approximate location",
+      "destination": null,
+      "classification": "governed",
+      "evidence": "runtime_destination"
+    },
+    {
+      "app": "employer",
+      "file": "apps/employer/app/signin/SignInForm.tsx",
+      "line": 61,
+      "tag": "input",
+      "label": "setEmail(event.target.value)} placeholder=\"manager@example.org\" /> Password <input",
+      "destination": null,
+      "classification": "working",
+      "evidence": "event_handler"
+    },
+    {
+      "app": "employer",
+      "file": "apps/employer/app/signin/SignInForm.tsx",
+      "line": 73,
+      "tag": "input",
+      "label": "setPassword(event.target.value)} placeholder=\"Your password\" /> <p aria-live=\"polite\" role={state ==",
+      "destination": null,
+      "classification": "working",
+      "evidence": "event_handler"
+    },
+    {
+      "app": "employer",
+      "file": "apps/employer/app/signin/SignInForm.tsx",
+      "line": 91,
+      "tag": "button",
+      "label": "style={styles.secondar",
+      "destination": null,
+      "classification": "working",
+      "evidence": "event_or_form_submission"
+    },
+    {
+      "app": "employer",
+      "file": "apps/employer/app/signin/SignInForm.tsx",
+      "line": 95,
+      "tag": "button",
+      "label": "Sign out first ) : ( Create an employer account",
+      "destination": null,
+      "classification": "working",
+      "evidence": "event_or_form_submission"
+    },
+    {
+      "app": "employer",
+      "file": "apps/employer/app/signin/SignInForm.tsx",
+      "line": 99,
+      "tag": "a",
+      "label": "Create an employer account )} ); }",
+      "destination": "/signup/employer",
+      "classification": "working",
+      "evidence": "implemented_application_route"
+    },
+    {
+      "app": "employer",
+      "file": "apps/employer/app/signup/employer/SignUpForm.tsx",
+      "line": 37,
+      "tag": "a",
+      "label": "Go to sign in ); } const submit = async (event: React.FormEvent) => { event.preventDefault(); setSta",
+      "destination": "/signin",
+      "classification": "working",
+      "evidence": "implemented_application_route"
+    },
+    {
+      "app": "employer",
+      "file": "apps/employer/app/signup/employer/SignUpForm.tsx",
+      "line": 82,
+      "tag": "input",
+      "label": "setEmail(event.target.value)} placeholder=\"manager@example.org\" /> Full name <input",
+      "destination": null,
+      "classification": "working",
+      "evidence": "event_handler"
+    },
+    {
+      "app": "employer",
+      "file": "apps/employer/app/signup/employer/SignUpForm.tsx",
+      "line": 93,
+      "tag": "input",
+      "label": "setFullName(event.target.value)} placeholder=\"Authorized contact\" /> Password <input",
+      "destination": null,
+      "classification": "working",
+      "evidence": "event_handler"
+    },
+    {
+      "app": "employer",
+      "file": "apps/employer/app/signup/employer/SignUpForm.tsx",
+      "line": 104,
+      "tag": "input",
+      "label": "setPassword(event.target.value)} placeholder=\"Create a password\" /> {mess",
+      "destination": null,
+      "classification": "working",
+      "evidence": "event_handler"
+    },
+    {
+      "app": "employer",
+      "file": "apps/employer/app/signup/employer/SignUpForm.tsx",
+      "line": 115,
+      "tag": "button",
+      "label": "I already have a",
+      "destination": null,
+      "classification": "working",
+      "evidence": "event_or_form_submission"
+    },
+    {
+      "app": "employer",
+      "file": "apps/employer/app/signup/employer/SignUpForm.tsx",
+      "line": 118,
+      "tag": "a",
+      "label": "I already have an account ); }",
+      "destination": "/signin",
+      "classification": "working",
+      "evidence": "implemented_application_route"
+    },
+    {
+      "app": "employer",
+      "file": "apps/employer/app/signup/employer/VerifyEmailPanel.tsx",
+      "line": 117,
+      "tag": "input",
+      "label": "setCode(event.target.value)} placeholder=\"123456\" />",
+      "destination": null,
+      "classification": "working",
+      "evidence": "event_handler"
+    },
+    {
+      "app": "employer",
+      "file": "apps/employer/app/signup/employer/VerifyEmailPanel.tsx",
+      "line": 127,
+      "tag": "button",
+      "label": "void verify()} disabled= style= > {phase === \"verifying\"",
+      "destination": null,
+      "classification": "working",
+      "evidence": "event_or_form_submission"
+    },
+    {
+      "app": "employer",
+      "file": "apps/employer/app/signup/employer/VerifyEmailPanel.tsx",
+      "line": 135,
+      "tag": "button",
+      "label": "void sendCode()} disabled= style= > {cooldown > 0 ? `Resend code",
+      "destination": null,
+      "classification": "working",
+      "evidence": "event_or_form_submission"
+    },
+    {
+      "app": "employer",
+      "file": "apps/employer/app/signup/employer/VerifyEmailPanel.tsx",
+      "line": 148,
+      "tag": "button",
+      "label": "); }",
+      "destination": null,
+      "classification": "working",
+      "evidence": "event_or_form_submission"
+    },
+    {
+      "app": "worker",
+      "file": "apps/mobile/App.tsx",
+      "line": 348,
+      "tag": "Pressable",
+      "label": "setScreen( )} style= > <Text style",
+      "destination": null,
+      "classification": "working",
+      "evidence": "event_handler"
+    },
+    {
+      "app": "worker",
+      "file": "apps/mobile/App.tsx",
+      "line": 442,
+      "tag": "Pressable",
+      "label": "Sign in or create account <Pressable accessibilityRole=\"button\"",
+      "destination": null,
+      "classification": "working",
+      "evidence": "event_handler"
+    },
+    {
+      "app": "worker",
+      "file": "apps/mobile/App.tsx",
+      "line": 449,
+      "tag": "Pressable",
+      "label": "Start worker onboarding <Pressable accessibilityRole=\"button\"",
+      "destination": null,
+      "classification": "working",
+      "evidence": "event_handler"
+    },
+    {
+      "app": "worker",
+      "file": "apps/mobile/App.tsx",
+      "line": 456,
+      "tag": "Pressable",
+      "label": "Open worker owner review",
+      "destination": null,
+      "classification": "working",
+      "evidence": "event_handler"
+    },
+    {
+      "app": "worker",
+      "file": "apps/mobile/App.tsx",
+      "line": 498,
+      "tag": "Pressable",
+      "label": "} style= >",
+      "destination": null,
+      "classification": "working",
+      "evidence": "event_handler"
+    },
+    {
+      "app": "worker",
+      "file": "apps/mobile/App.tsx",
+      "line": 512,
+      "tag": "Pressable",
+      "label": "Open all available offers Worker Cale",
+      "destination": null,
+      "classification": "working",
+      "evidence": "event_handler"
+    },
+    {
+      "app": "worker",
+      "file": "apps/mobile/App.tsx",
+      "line": 564,
+      "tag": "Pressable",
+      "label": "<View style=",
+      "destination": null,
+      "classification": "intentionally_disabled",
+      "evidence": "explicit_disabled_state"
+    },
+    {
+      "app": "worker",
+      "file": "apps/mobile/App.tsx",
+      "line": 640,
+      "tag": "Pressable",
+      "label": "setSelectedWorkerGroup(item.id)} style=",
+      "destination": null,
+      "classification": "working",
+      "evidence": "event_handler"
+    },
+    {
+      "app": "worker",
+      "file": "apps/mobile/src/features/maps/JobLocationLink.tsx",
+      "line": 20,
+      "tag": "Pressable",
+      "label": "void Linking.openURL(directionsUrl(trimmed))} style= > Get directions </Pre",
+      "destination": null,
+      "classification": "working",
+      "evidence": "event_handler"
+    },
+    {
+      "app": "worker",
+      "file": "apps/mobile/src/features/maps/JobLocationLink.tsx",
+      "line": 28,
+      "tag": "Pressable",
+      "label": "void Linking.openURL(mapSearchUrl(trimmed))} style= > View on map </",
+      "destination": null,
+      "classification": "working",
+      "evidence": "event_handler"
+    },
+    {
+      "app": "worker",
+      "file": "apps/mobile/src/features/shifts/AvailableShiftsScreen.tsx",
+      "line": 489,
+      "tag": "Pressable",
+      "label": "selectCapsule(capsule)} style= > <Text",
+      "destination": null,
+      "classification": "working",
+      "evidence": "event_handler"
+    },
+    {
+      "app": "worker",
+      "file": "apps/mobile/src/features/shifts/AvailableShiftsScreen.tsx",
+      "line": 539,
+      "tag": "Pressable",
+      "label": "selectSpecialty(specialty)} style= > <Text",
+      "destination": null,
+      "classification": "working",
+      "evidence": "event_handler"
+    },
+    {
+      "app": "worker",
+      "file": "apps/mobile/src/features/shifts/ShiftCard.tsx",
+      "line": 18,
+      "tag": "Pressable",
+      "label": "onPress(shift.id)} style= testID= `} > <View style={styles.",
+      "destination": null,
+      "classification": "working",
+      "evidence": "event_handler"
+    },
+    {
+      "app": "worker",
+      "file": "apps/mobile/src/features/worker-calendar/WorkerCalendarPanel.tsx",
+      "line": 204,
+      "tag": "TextInput",
+      "label": "Password <TextInput accessibilityLabel=\"Password\" autoComplete=\"current-password\" editable={!submit",
+      "destination": null,
+      "classification": "working",
+      "evidence": "event_handler"
+    },
+    {
+      "app": "worker",
+      "file": "apps/mobile/src/features/worker-calendar/WorkerCalendarPanel.tsx",
+      "line": 216,
+      "tag": "TextInput",
+      "label": "void signIn()} />",
+      "destination": null,
+      "classification": "working",
+      "evidence": "event_handler"
+    },
+    {
+      "app": "worker",
+      "file": "apps/mobile/src/ui/primitives.tsx",
+      "line": 101,
+      "tag": "Pressable",
+      "label": "); } export",
+      "destination": null,
+      "classification": "working",
+      "evidence": "event_handler"
+    },
+    {
+      "app": "worker",
+      "file": "apps/mobile/src/ui/primitives.tsx",
+      "line": 134,
+      "tag": "TextInput",
+      "label": "); } export function EmptyState( : )",
+      "destination": null,
+      "classification": "working",
+      "evidence": "event_handler"
+    }
+  ],
+  "defects": []
+}
