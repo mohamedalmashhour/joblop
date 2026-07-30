@@ -215,10 +215,14 @@ for (const [index, service] of services.entries()) {
       image
     ]);
     await waitFor(`http://127.0.0.1:${hostPort}${service.liveness}`, [200]);
-    const readinessStatuses =
-      service.name === "api" || service.name === "auth-limiter" || service.name === "qa-reset"
-        ? [503]
-        : [200];
+    const failClosedReadinessServices = new Set([
+      "api",
+      "auth-limiter",
+      "candidate-source",
+      "offer-delivery",
+      "qa-reset"
+    ]);
+    const readinessStatuses = failClosedReadinessServices.has(service.name) ? [503] : [200];
     await waitFor(`http://127.0.0.1:${hostPort}${service.readiness}`, readinessStatuses);
     run("docker", ["stop", "--time", "15", container]);
     process.stdout.write(`CONTAINER_VALIDATION_PASS service=${service.name} image=${image}\n`);

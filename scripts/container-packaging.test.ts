@@ -85,4 +85,20 @@ describe("Cloud Run application packaging", () => {
       expect(validator).toContain(`${prefix}_API_SERVICE_ACCOUNT=api@local-validation.invalid`);
     }
   });
+
+  it("requires durable-service readiness to fail closed without external dependencies", () => {
+    const validator = read("scripts/validate-containers.mjs");
+    for (const service of [
+      "api",
+      "auth-limiter",
+      "candidate-source",
+      "offer-delivery",
+      "qa-reset"
+    ]) {
+      expect(validator).toContain(`"${service}"`);
+    }
+    expect(validator).toContain(
+      "const readinessStatuses = failClosedReadinessServices.has(service.name) ? [503] : [200]"
+    );
+  });
 });
