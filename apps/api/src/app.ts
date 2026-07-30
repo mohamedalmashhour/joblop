@@ -115,6 +115,11 @@ import {
 import { createDocumentUploadContract } from "./documentUploadContract";
 import { createPrismaDocumentMetadataRepository } from "./documentUploadRepository";
 import { registerDocumentRoutes } from "./documentRoutes";
+import { registerInvoiceRoutes } from "./invoiceRoutes";
+import {
+  createPrismaInvoiceRepository,
+  type InvoiceRepository
+} from "./invoiceRepository";
 
 export interface BuildApiOptions {
   authService?: AuthenticationService;
@@ -148,6 +153,7 @@ export interface BuildApiOptions {
   env?: NodeJS.ProcessEnv;
   documentService?: DocumentUploadService;
   documentUploadContract?: ReturnType<typeof createDocumentUploadContract>;
+  invoiceRepository?: InvoiceRepository;
 }
 
 export type AuthenticationRateLimitDecision = Readonly<{
@@ -392,6 +398,39 @@ export function buildApi(options: BuildApiOptions = {}) {
           nowEpochSeconds: () => Math.floor(Date.now() / 1000)
         })
       : null);
+  const invoiceRepository =
+    options.invoiceRepository ?? (prisma ? createPrismaInvoiceRepository(prisma) : null);
+
+  if (invoiceRepository) {
+    registerInvoiceRoutes(app, {
+      repository: invoiceRepository,
+      authorize: async (request, organizationId) => {
+        const session = await authService.validateSession(
+          readBearerToken(request.headers.authorization)
+        );
+        if (!session.authenticated || !session.user) return null;
+        const roles = await resolveAuthorizationRoles(session.user.id);
+        if (roles.includes("PLATFORM_ADMINISTRATOR")) {
+          return { actorId: session.user.id, role: "platform_admin" };
+        }
+        if (
+          roles.includes("ORGANIZATION_OWNER") ||
+          roles.includes("ORGANIZATION_ADMINISTRATOR")
+        ) {
+          try {
+            await organizationService.getOrganization({
+              actorUserId: session.user.id,
+              organizationId
+            });
+            return { actorId: session.user.id, role: "finance_reviewer" };
+          } catch {
+            return null;
+          }
+        }
+        return null;
+      }
+    });
+  }
 
   if (documentService && documentUploadContract) {
     registerDocumentRoutes(app, {
