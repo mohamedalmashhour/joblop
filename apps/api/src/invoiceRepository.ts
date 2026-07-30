@@ -40,6 +40,25 @@ export type DurableInvoiceAudit = Readonly<{
   reason: string | null;
   occurredAt: string;
 }>;
+export type DurableInvoiceDelivery = Readonly<{
+  id: string;
+  invoiceId: string;
+  organizationId: string;
+  recipientAlias: string;
+  documentDigest: string;
+  status: string;
+  acceptedAt: string;
+}>;
+export type DurableCreditNote = Readonly<{
+  id: string;
+  invoiceId: string;
+  organizationId: string;
+  creditNoteNumber: string;
+  reason: string;
+  amountMinor: number;
+  currency: "CAD";
+  issuedAt: string;
+}>;
 
 export interface InvoiceRepository {
   createFromLockedTimesheet(input: {
@@ -63,6 +82,29 @@ export interface InvoiceRepository {
     numbering?: InvoiceNumberingConfiguration;
   }): Promise<DurableInvoice>;
   listAudit(invoiceId: string, organizationId: string): Promise<readonly DurableInvoiceAudit[]>;
+  recordFakeDelivery(input: {
+    id: string;
+    invoiceId: string;
+    organizationId: string;
+    expectedVersion: number;
+    recipientAlias: string;
+    documentDigest: string;
+    idempotencyKey: string;
+    actorReference: string;
+    actorRole: InvoiceActorRole;
+  }): Promise<{ invoice: DurableInvoice; receipt: DurableInvoiceDelivery }>;
+  listDeliveries(invoiceId: string, organizationId: string): Promise<readonly DurableInvoiceDelivery[]>;
+  createCreditNote(input: {
+    id: string;
+    invoiceId: string;
+    organizationId: string;
+    amountMinor: number;
+    reason: string;
+    idempotencyKey: string;
+    actorReference: string;
+    actorRole: InvoiceActorRole;
+  }): Promise<DurableCreditNote>;
+  listCreditNotes(invoiceId: string, organizationId: string): Promise<readonly DurableCreditNote[]>;
 }
 
 type Delegate = {
@@ -79,6 +121,10 @@ type Transaction = {
   };
   invoiceNumberSequence: {
     upsert(input: unknown): Promise<{ lastValue: number }>;
+  };
+  invoiceDeliveryReceipt: Delegate;
+  invoiceCreditNote: Delegate & {
+    aggregate(input: unknown): Promise<{ _sum: { amountMinor: bigint | null } }>;
   };
 };
 type Client = Transaction & {
@@ -258,8 +304,209 @@ export function createPrismaInvoiceRepository(prismaClient: unknown): InvoiceRep
         orderBy: { sequence: "asc" }
       });
       return values.map(mapAudit);
+    },
+    async recordFakeDelivery(input) {
+      assertAuthorized(input.actorRole, "send");
+      if (!/^[a-f0-9]{64}$/u.test(input.documentDigest)) {
+        throw new Error("Invoice document digest is invalid.");
+      }
+      if (!input.recipientAlias.trim() || input.recipientAlias.length > 200) {
+        throw new Error("Invoice delivery recipient alias is invalid.");
+      }
+      const idempotencyKeyDigest = digest(input.idempotencyKey);
+      return prisma.$transaction(async (transaction) => {
+        const existing = await transaction.invoiceDeliveryReceipt.findFirst({
+          where: { organizationId: input.organizationId, idempotencyKeyDigest }
+        });
+        if (existing) {
+          const receipt = mapDelivery(existing);
+          if (
+            receipt.invoiceId !== input.invoiceId ||
+            receipt.documentDigest !== input.documentDigest ||
+            receipt.recipientAlias !== input.recipientAlias
+          ) {
+            throw new Error("Invoice delivery idempotency conflict.");
+          }
+          const invoice = await transaction.invoice.findFirst({
+            where: { id: input.invoiceId, organizationId: input.organizationId }
+          });
+          if (!invoice) throw new Error("Invoice is outside the authorized organization.");
+          return { invoice: mapInvoice(invoice), receipt };
+        }
+        const value = await transaction.invoice.findFirst({
+          where: { id: input.invoiceId, organizationId: input.organizationId }
+        });
+        if (!value) throw new Error("Invoice is outside the authorized organization.");
+        const current = mapInvoice(value);
+        if (current.status !== "issued") throw new Error("Invoice delivery requires issued state.");
+        const acceptedAt = new Date();
+        const receiptValue = await transaction.invoiceDeliveryReceipt.create({
+          data: {
+            id: input.id,
+            invoiceId: input.invoiceId,
+            organizationId: input.organizationId,
+            providerBoundary: "local_fake",
+            recipientAlias: input.recipientAlias,
+            documentDigest: input.documentDigest,
+            idempotencyKeyDigest,
+            status: "accepted",
+            acceptedAt
+          }
+        });
+        const updated = await transaction.invoice.updateMany({
+          where: {
+            id: input.invoiceId,
+            organizationId: input.organizationId,
+            version: input.expectedVersion,
+            status: "issued"
+          },
+          data: { status: "sent", sentAt: acceptedAt, version: { increment: 1 } }
+        });
+        if (updated.count !== 1) throw new Error("Invoice version conflict.");
+        await appendAudit(transaction, {
+          invoiceId: input.invoiceId,
+          organizationId: input.organizationId,
+          action: "send",
+          actorReference: input.actorReference,
+          actorRole: input.actorRole,
+          priorStatus: "issued",
+          newStatus: "sent"
+        });
+        const invoice = await transaction.invoice.findFirst({
+          where: { id: input.invoiceId, organizationId: input.organizationId }
+        });
+        if (!invoice) throw new Error("Invoice persistence failed.");
+        return { invoice: mapInvoice(invoice), receipt: mapDelivery(receiptValue) };
+      });
+    },
+    async listDeliveries(invoiceId, organizationId) {
+      if (!(await get(invoiceId, organizationId))) {
+        throw new Error("Invoice is outside the authorized organization.");
+      }
+      const values = await prisma.invoiceDeliveryReceipt.findMany({
+        where: { invoiceId, organizationId },
+        orderBy: [{ acceptedAt: "desc" }, { id: "asc" }]
+      });
+      return values.map(mapDelivery);
+    },
+    async createCreditNote(input) {
+      assertAuthorized(input.actorRole, "create_credit_note");
+      if (!Number.isSafeInteger(input.amountMinor) || input.amountMinor <= 0) {
+        throw new Error("Credit note amount is invalid.");
+      }
+      if (!input.reason.trim()) throw new Error("Credit note reason is required.");
+      const idempotencyKeyDigest = digest(input.idempotencyKey);
+      return prisma.$transaction(async (transaction) => {
+        const existing = await transaction.invoiceCreditNote.findFirst({
+          where: { organizationId: input.organizationId, idempotencyKeyDigest }
+        });
+        if (existing) {
+          const note = mapCreditNote(existing);
+          if (
+            note.invoiceId !== input.invoiceId ||
+            note.amountMinor !== input.amountMinor ||
+            note.reason !== input.reason
+          ) {
+            throw new Error("Credit note idempotency conflict.");
+          }
+          return note;
+        }
+        const value = await transaction.invoice.findFirst({
+          where: { id: input.invoiceId, organizationId: input.organizationId }
+        });
+        if (!value) throw new Error("Invoice is outside the authorized organization.");
+        const invoice = mapInvoice(value);
+        if (
+          !["issued", "sent", "viewed", "partially_paid", "paid", "overdue", "disputed"].includes(
+            invoice.status
+          ) ||
+          !invoice.invoiceNumber
+        ) {
+          throw new Error("Credit notes require an issued invoice.");
+        }
+        const totals = await transaction.invoiceCreditNote.aggregate({
+          where: { invoiceId: input.invoiceId, organizationId: input.organizationId },
+          _sum: { amountMinor: true }
+        });
+        const credited = safeBigInt(totals._sum.amountMinor ?? 0n);
+        if (credited + input.amountMinor > invoice.totalMinor) {
+          throw new Error("Credit note exceeds the eligible invoice balance.");
+        }
+        const noteValue = await transaction.invoiceCreditNote.create({
+          data: {
+            id: input.id,
+            invoiceId: input.invoiceId,
+            organizationId: input.organizationId,
+            creditNoteNumber: `CN-${invoice.invoiceNumber}-${idempotencyKeyDigest.slice(0, 10).toUpperCase()}`,
+            reason: input.reason,
+            calculationSnapshot: {
+              originalInvoiceNumber: invoice.invoiceNumber,
+              originalTotalMinor: invoice.totalMinor,
+              priorCreditedMinor: credited,
+              creditMinor: input.amountMinor
+            },
+            amountMinor: BigInt(input.amountMinor),
+            currency: "CAD",
+            idempotencyKeyDigest,
+            issuedAt: new Date()
+          }
+        });
+        await appendAudit(transaction, {
+          invoiceId: input.invoiceId,
+          organizationId: input.organizationId,
+          action: "create_credit_note",
+          actorReference: input.actorReference,
+          actorRole: input.actorRole,
+          priorStatus: invoice.status,
+          newStatus: invoice.status,
+          reason: input.reason
+        });
+        return mapCreditNote(noteValue);
+      });
+    },
+    async listCreditNotes(invoiceId, organizationId) {
+      if (!(await get(invoiceId, organizationId))) {
+        throw new Error("Invoice is outside the authorized organization.");
+      }
+      const values = await prisma.invoiceCreditNote.findMany({
+        where: { invoiceId, organizationId },
+        orderBy: [{ issuedAt: "desc" }, { id: "asc" }]
+      });
+      return values.map(mapCreditNote);
     }
   };
+}
+
+async function appendAudit(
+  transaction: Transaction,
+  input: {
+    invoiceId: string;
+    organizationId: string;
+    action: string;
+    actorReference: string;
+    actorRole: string;
+    priorStatus: InvoiceStatus;
+    newStatus: InvoiceStatus;
+    reason?: string;
+  }
+) {
+  const sequence = await transaction.invoiceAuditEntry.aggregate({
+    where: { invoiceId: input.invoiceId },
+    _max: { sequence: true }
+  });
+  await transaction.invoiceAuditEntry.create({
+    data: auditData(
+      input.invoiceId,
+      input.organizationId,
+      (sequence._max.sequence ?? 0) + 1,
+      input.action,
+      input.actorReference,
+      input.actorRole,
+      input.priorStatus,
+      input.newStatus,
+      input.reason
+    )
+  });
 }
 
 function mapInvoice(value: unknown): DurableInvoice {
@@ -297,6 +544,33 @@ function mapAudit(value: unknown): DurableInvoiceAudit {
     newStatus: text(row.newStatus) as InvoiceStatus,
     reason: nullableText(row.reason),
     occurredAt: date(row.occurredAt).toISOString()
+  };
+}
+
+function mapDelivery(value: unknown): DurableInvoiceDelivery {
+  const row = value as Record<string, unknown>;
+  return {
+    id: text(row.id),
+    invoiceId: text(row.invoiceId),
+    organizationId: text(row.organizationId),
+    recipientAlias: text(row.recipientAlias),
+    documentDigest: text(row.documentDigest),
+    status: text(row.status),
+    acceptedAt: date(row.acceptedAt).toISOString()
+  };
+}
+
+function mapCreditNote(value: unknown): DurableCreditNote {
+  const row = value as Record<string, unknown>;
+  return {
+    id: text(row.id),
+    invoiceId: text(row.invoiceId),
+    organizationId: text(row.organizationId),
+    creditNoteNumber: text(row.creditNoteNumber),
+    reason: text(row.reason),
+    amountMinor: safeBigInt(row.amountMinor),
+    currency: "CAD",
+    issuedAt: date(row.issuedAt).toISOString()
   };
 }
 

@@ -100,7 +100,27 @@ function setup() {
   const invoiceNumberSequence = {
     upsert: vi.fn().mockResolvedValue({ lastValue: 1 })
   };
-  const transaction = { timesheet, invoice, invoiceAuditEntry, invoiceNumberSequence };
+  const invoiceDeliveryReceipt = {
+    findFirst: vi.fn().mockResolvedValue(null),
+    findMany: vi.fn().mockResolvedValue([]),
+    create: vi.fn(),
+    updateMany: vi.fn()
+  };
+  const invoiceCreditNote = {
+    findFirst: vi.fn().mockResolvedValue(null),
+    findMany: vi.fn().mockResolvedValue([]),
+    create: vi.fn(),
+    updateMany: vi.fn(),
+    aggregate: vi.fn().mockResolvedValue({ _sum: { amountMinor: 0n } })
+  };
+  const transaction = {
+    timesheet,
+    invoice,
+    invoiceAuditEntry,
+    invoiceNumberSequence,
+    invoiceDeliveryReceipt,
+    invoiceCreditNote
+  };
   const client = {
     ...transaction,
     $transaction: vi.fn(async (callback: (value: unknown) => Promise<unknown>) =>
@@ -112,7 +132,9 @@ function setup() {
     timesheet,
     invoice,
     invoiceAuditEntry,
-    invoiceNumberSequence
+    invoiceNumberSequence,
+    invoiceDeliveryReceipt,
+    invoiceCreditNote
   };
 }
 
@@ -199,5 +221,62 @@ describe("durable invoice repository", () => {
       },
       data: { status: "approved", version: { increment: 1 } }
     });
+  });
+
+  it("records fake delivery and sent transition atomically", async () => {
+    const target = setup();
+    const issued = { ...invoiceRow, status: "issued", invoiceNumber: "SYN-2026-000001", version: 3, issuedAt: new Date() };
+    const receipt = {
+      id: "delivery-a",
+      invoiceId: invoiceRow.id,
+      organizationId: invoiceRow.organizationId,
+      recipientAlias: "synthetic-recipient",
+      documentDigest: "a".repeat(64),
+      status: "accepted",
+      acceptedAt: new Date()
+    };
+    target.invoice.findFirst.mockResolvedValueOnce(issued).mockResolvedValueOnce({ ...issued, status: "sent", version: 4 });
+    target.invoiceDeliveryReceipt.create.mockResolvedValueOnce(receipt);
+    const result = await target.repository.recordFakeDelivery({
+      id: receipt.id,
+      invoiceId: invoiceRow.id,
+      organizationId: invoiceRow.organizationId,
+      expectedVersion: 3,
+      recipientAlias: receipt.recipientAlias,
+      documentDigest: receipt.documentDigest,
+      idempotencyKey: "delivery-key",
+      actorReference: "finance-a",
+      actorRole: "finance_reviewer"
+    });
+    expect(result.invoice.status).toBe("sent");
+    expect(target.invoice.updateMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({ organizationId: invoiceRow.organizationId, version: 3, status: "issued" })
+      })
+    );
+  });
+
+  it("prevents credit notes from exceeding the eligible invoice balance", async () => {
+    const target = setup();
+    target.invoice.findFirst.mockResolvedValueOnce({
+      ...invoiceRow,
+      status: "issued",
+      invoiceNumber: "SYN-2026-000001",
+      issuedAt: new Date()
+    });
+    target.invoiceCreditNote.aggregate.mockResolvedValueOnce({ _sum: { amountMinor: 10_000n } });
+    await expect(
+      target.repository.createCreditNote({
+        id: "credit-a",
+        invoiceId: invoiceRow.id,
+        organizationId: invoiceRow.organizationId,
+        amountMinor: 501,
+        reason: "Synthetic correction",
+        idempotencyKey: "credit-key",
+        actorReference: "finance-a",
+        actorRole: "finance_reviewer"
+      })
+    ).rejects.toThrow("exceeds");
+    expect(target.invoiceCreditNote.create).not.toHaveBeenCalled();
   });
 });
