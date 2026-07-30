@@ -23,8 +23,8 @@ export const financeRecords = [
   {
     id: "FIN-4102",
     title: "Employer billing review",
-    employer: "A. Residence Group",
-    scope: "Organization / Residence",
+    employer: "Test Employer Organization A",
+    scope: "Organization / Work site",
     lifecycle: "Under review",
     billing: "Client billing summary only",
     invoice: "Invoice reference visible, not editable",
@@ -38,8 +38,8 @@ export const financeRecords = [
   {
     id: "FIN-4276",
     title: "Adjustment request queue",
-    employer: "B. Care Network",
-    scope: "Residence / Department",
+    employer: "Test Employer Organization B",
+    scope: "Organization / Department",
     lifecycle: "Pending approval",
     billing: "Adjustment request awaiting human review",
     invoice: "Related invoice owner workflow required",
@@ -53,7 +53,7 @@ export const financeRecords = [
   {
     id: "FIN-4384",
     title: "Refund governance reference",
-    employer: "C. Senior Living",
+    employer: "Test Employer Organization A",
     scope: "Authorized finance scope",
     lifecycle: "Restricted",
     billing: "Credit and refund governance summary",

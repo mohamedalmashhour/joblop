@@ -1,14 +1,15 @@
 export type InvoiceState =
-  | "Pending Generation"
   | "Draft"
+  | "Approved"
   | "Issued"
-  | "Due"
+  | "Sent"
+  | "Viewed"
   | "Partially Paid"
   | "Paid"
-  | "Failed"
   | "Overdue"
   | "Disputed"
-  | "Voided";
+  | "Voided"
+  | "Refunded";
 
 export const invoiceWorkflow = [
   {
@@ -42,23 +43,24 @@ export const invoiceWorkflow = [
 ] as const;
 
 export const invoiceStates: InvoiceState[] = [
-  "Pending Generation",
   "Draft",
+  "Approved",
   "Issued",
-  "Due",
+  "Sent",
+  "Viewed",
   "Partially Paid",
   "Paid",
-  "Failed",
   "Overdue",
   "Disputed",
-  "Voided"
+  "Voided",
+  "Refunded"
 ];
 
 export const invoiceFixture = {
-  invoiceNumber: "INV-FIXTURE-050",
+  invoiceNumber: "SYN-A-2026-000050",
   shiftReference: "Kitchen evening support",
-  workerReference: "Assigned worker fixture",
-  residence: "Maple Residence",
+  workerReference: "Synthetic Worker A",
+  employerOrganization: "Test Employer Organization A",
   department: "Kitchen",
   approvedHours: "8.00",
   baseRate: "$28.00/hr fixture",
@@ -78,18 +80,18 @@ export const invoiceFixture = {
 
 export const invoiceRows = [
   {
-    invoiceNumber: "INV-FIXTURE-050",
+    invoiceNumber: "SYN-A-2026-000050",
     shift: "Kitchen evening support",
     state: "Draft" as InvoiceState,
     paymentState: "Not Started",
     boundary: "Draft != Issued"
   },
   {
-    invoiceNumber: "INV-FIXTURE-051",
+    invoiceNumber: "SYN-A-2026-000051",
     shift: "Care aide morning",
-    state: "Due" as InvoiceState,
+    state: "Sent" as InvoiceState,
     paymentState: "Authorization Pending",
-    boundary: "Due != Paid"
+    boundary: "Sent != Paid"
   }
 ] as const;
 
@@ -116,18 +118,18 @@ export const invoiceBoundaries = [
 ] as const;
 
 export const invoiceDataTruth = [
-  "Fixture-backed invoice data",
+  "Synthetic Test Employer Organization A data",
   "No payment provider",
   "No financial settlement",
   "No accounting ledger",
-  "No tax engine",
-  "Payment integration pending"
+  "Versioned synthetic tax policy only",
+  "Legal issuer model not approved for production"
 ] as const;
 
 export function getInvoiceStateSummary(state: InvoiceState) {
   return {
     state,
-    canPay: ["Issued", "Due", "Partially Paid", "Overdue"].includes(state),
+    canPay: ["Issued", "Sent", "Viewed", "Partially Paid", "Overdue"].includes(state),
     isSettled: state === "Paid",
     isAccountingPosted: false
   };

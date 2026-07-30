@@ -21,16 +21,17 @@ describe("Employer invoice review workflow content", () => {
 
   it("includes required invoice states", () => {
     expect(invoiceStates).toEqual([
-      "Pending Generation",
       "Draft",
+      "Approved",
       "Issued",
-      "Due",
+      "Sent",
+      "Viewed",
       "Partially Paid",
       "Paid",
-      "Failed",
       "Overdue",
       "Disputed",
-      "Voided"
+      "Voided",
+      "Refunded"
     ]);
   });
 
@@ -41,16 +42,16 @@ describe("Employer invoice review workflow content", () => {
     expect(invoiceDataTruth).toContain("No financial settlement");
   });
 
-  it("shows line items without creating accounting or tax engines", () => {
+  it("shows line items without creating an accounting ledger or approved production tax policy", () => {
     expect(chargeBreakdownRows.map(([label]) => label)).toContain("Platform fee");
     expect(chargeBreakdownRows.map(([label]) => label)).toContain("Taxes");
     expect(invoiceDataTruth).toContain("No accounting ledger");
-    expect(invoiceDataTruth).toContain("No tax engine");
+    expect(invoiceDataTruth).toContain("Versioned synthetic tax policy only");
   });
 
   it("marks payable invoice states without posting accounting", () => {
     expect(invoiceRows[0].boundary).toBe("Draft != Issued");
-    const summary = getInvoiceStateSummary("Due");
+    const summary = getInvoiceStateSummary("Sent");
     expect(summary.canPay).toBe(true);
     expect(summary.isAccountingPosted).toBe(false);
   });

@@ -44,7 +44,7 @@ export function InvoiceReviewPanel({ mode }: { mode: "list" | "detail" | "breakd
             {[
               ["Shift reference", invoiceFixture.shiftReference],
               ["Worker reference", invoiceFixture.workerReference],
-              ["Residence", invoiceFixture.residence],
+              ["Employer organization", invoiceFixture.employerOrganization],
               ["Department", invoiceFixture.department],
               ["Generated date", invoiceFixture.generatedDate],
               ["Due date", invoiceFixture.dueDate],

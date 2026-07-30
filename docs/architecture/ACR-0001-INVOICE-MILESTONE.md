@@ -6,7 +6,7 @@ Decision date: 2026-07-30
 
 Approval source: product-owner instruction in the Resident Workforce OS development record.
 
-Base checkpoint: `2d098e0a7e7ee5ecb46c37dfe428eac0b258dd74`
+Base checkpoint: `2c623553d7351cc96c05e41bbc3944cab0ee3be3`
 
 ## Context
 
@@ -33,8 +33,8 @@ money, proves settlement or sends a real email.
 
 The milestone must represent, where applicable:
 
-`draft`, `review_required`, `issued`, `sent`, `viewed`, `paid`, `overdue`, `disputed`, `voided`,
-and `refunded`.
+`draft`, `approved`, `issued`, `sent`, `viewed`, `partially_paid`, `paid`, `overdue`,
+`disputed`, `voided`, and `refunded`.
 
 An issued invoice is immutable. Corrections use a new credit note or replacement record linked to
 the original; they never rewrite the issued calculation snapshot or audit history.
@@ -51,9 +51,12 @@ The future versioned calculation must be capable of representing:
 - adjustments;
 - subtotal and total.
 
-This ACR does not define any rate, formula, rounding rule, tax treatment, payment term, numbering
-sequence or approval authority. Calculations and issuance fail closed until the applicable
-versioned policies are supplied and approved.
+The local milestone uses versioned, effective-dated synthetic policies. CAD is the only initially
+supported currency and every monetary value stores integer minor units. GST and QST are rounded
+independently to the nearest minor unit using integer half-up arithmetic. A configured rate alone
+does not activate tax: registration status, supply classification, place-of-supply policy,
+treatment and effective date must all permit it. Production calculation and issuance fail closed
+until the applicable legal policies are supplied and approved.
 
 All monetary values use integer minor units with explicit currency through the existing Money
 Engine. Mixed-currency arithmetic and floating-point money calculations remain prohibited.
@@ -101,9 +104,9 @@ legal payer/reporting entity, recipient eligibility, box mapping, annual thresho
 amendment/cancellation rules, identifier handling, Québec information-return interaction and
 retention policy are approved.
 
-## Preconditions for calculation and issuance
+## Preconditions for production issuance
 
-Before calculation rules or an invoice-number generator can be activated, owners must approve:
+Before a production issuer model or invoice-number generator can be activated, owners must approve:
 
 1. Québec and other jurisdictional GST/HST/QST applicability and rounding;
 2. supported currency and precision policy;
@@ -118,8 +121,9 @@ Before calculation rules or an invoice-number generator can be activated, owners
 
 ## Consequences
 
-- Invoice foundation work can proceed locally with synthetic data.
-- Schema/migration work may proceed only after the foundation model and unresolved database
-  ownership decisions are reviewed.
+- Invoice domain, schema, migration, local numbering, PDF and fake-delivery work can proceed with
+  synthetic Test Employer Organization A/B data.
+- Supported issuer models are `platform_principal`, `worker_supplier`, and `self_billing_agent`;
+  all remain disabled in production pending legal approval.
 - Payment execution remains a separate future Architecture Change Record.
 - External launch gates remain unchanged.

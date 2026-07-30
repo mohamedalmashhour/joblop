@@ -41,7 +41,8 @@ These items remain eligible whenever repository inspection shows unfinished work
 | Employer, admin and worker applications    | Complete contract-derived journeys, responsive behavior, truthful dependency states and accessibility tests  |
 | Authentication and authorization           | Strengthen fail-closed local boundaries, role/organization isolation and synthetic tests                     |
 | Staffing, dispatch, offers and assignments | Complete schema-derived repositories, state transitions, concurrency and rollback tests                      |
-| Scheduling, attendance and timesheets      | Complete boundary-only implementation without payroll, payments, invoicing or taxes                          |
+| Scheduling, attendance and timesheets      | Complete boundary-only implementation without payroll or payment execution                                   |
+| Invoicing                                  | Complete synthetic calculation, lifecycle, PDF, fake delivery and isolation; keep production legal/tax activation fail-closed |
 | QA reset                                   | Complete deterministic fixtures and denial coverage for Test Employer Organization A/B                       |
 | PostgreSQL and migrations                  | Prepare unapplied migrations and test them against isolated disposable local PostgreSQL using synthetic data |
 | Redis behavior                             | Implement and test fake/local atomicity, outage, recovery and isolation behavior                             |
@@ -50,13 +51,13 @@ These items remain eligible whenever repository inspection shows unfinished work
 | Validation and evidence                    | Run focused tests, lint, typecheck, builds, migration checks and truthful documentation updates              |
 
 Local PostgreSQL is not presently a blocker: repository evidence records a successful isolated
-`/tmp` cluster run applying all 11 migrations, checking 30 QA-reset constraints, proving atomic
+`/tmp` cluster run applying all 12 migrations, checking 30 QA-reset constraints, proving atomic
 rollback and advisory-lock exclusion, then stopping and removing the disposable cluster. The
 reproducible command is `npm run qa-reset:postgres:validate`.
 
 The required repository/concurrency suite also supports an explicitly local-only mode. It accepts
 only a loopback administration database, rejects collisions with `DATABASE_URL`, creates and drops
-a random child database, applies all 11 migrations and emits no staging evidence. The latest run
+a random child database, applies all 12 migrations and emits no staging evidence. The latest run
 passed all four required PostgreSQL tests, including the 24-entity QA-reset lifecycle.
 
 ## Current local completion checkpoint
@@ -104,9 +105,31 @@ choice or external configuration was invented.
 
 ## Intentional exclusions
 
-Do not implement payroll or worker payments, employer invoicing, taxes, real notifications,
-automated AI employment decisions or real location tracking. Do not use real credentials,
-organizations, workers or personal information.
+Do not implement payroll or worker payments, automatic payment collection, real notifications,
+tax filing/remittance, automated AI employment decisions or real location tracking. Invoice work
+is permitted only under ACR-0001 with synthetic, effective-dated policies and all production issuer
+models disabled pending professional approval. Do not use real credentials, organizations,
+workers, registration numbers or personal information.
+
+## Invoice milestone local record — 2026-07-30
+
+Validation completed at `2026-07-30T00:29:45Z` from base checkpoint `2c623553`:
+
+| Command | Result |
+| --- | --- |
+| `pnpm test` | PASS — 943 passed, 13 intentionally environment-gated, zero failed |
+| `pnpm lint` / `pnpm typecheck` | PASS |
+| environment, boundary, migration-integrity and secret checks | PASS |
+| `pnpm build` / public-bundle credential scan | PASS — all builds; 446 artifacts and 141 classified environment names |
+| `pnpm validate:containers:static` | PASS — 20/20 |
+| `pnpm qa-reset:postgres:validate` | PASS — 12 migrations, 30 constraints, atomic rollback and exclusive advisory lock |
+
+Implemented locally: locked-timesheet invoice source, versioned CAD minor-unit calculation,
+separate GST/QST treatment, three configurable issuer models, production fail-closed gates,
+organization-scoped numbering, optimistic concurrency, immutable snapshots, credit notes,
+append-only audit, fake email receipts, bilingual synthetic PDF evidence and employer/admin
+fixture presentation. The legal issuer, registration/tax policy, payment terms, number policy,
+contract chain and T4A payer remain external accounting/legal decisions.
 
 ## Continuation rule
 
