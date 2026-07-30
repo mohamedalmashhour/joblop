@@ -40,6 +40,8 @@ import {
 } from "./src/features/worker-onboarding";
 import { WorkerServiceScreen, type WorkerServiceMode } from "./src/features/worker-service";
 import { WorkerTimesheetScreen, type WorkerTimesheetStage } from "./src/features/worker-timesheets";
+import { WorkerAuthScreen } from "./src/features/worker-auth";
+import { JobLocationLink } from "./src/features/maps";
 import { mobileTabs, productName, type MobileTabId } from "./src/navigation/routes";
 import { BodyText, Card, Heading, SmallText } from "./src/ui/primitives";
 
@@ -51,6 +53,7 @@ type MobileScreen =
   | Readonly<{ name: "application-details"; applicationId: string }>
   | Readonly<{ name: "offer-details"; offerId: string }>
   | Readonly<{ name: "confirmation-details"; confirmationId: string }>
+  | Readonly<{ name: "worker-auth"; mode: "sign-in" | "sign-up" }>
   | Readonly<{ name: "worker-signup" }>
   | Readonly<{ name: "worker-profile-setup" }>
   | Readonly<{ name: "worker-qualifications-setup" }>
@@ -163,6 +166,17 @@ export default function App() {
           onBack={() => setScreen({ name: "tab", tabId: "my-shifts" })}
           onDone={() => setScreen({ name: "tab", tabId: "my-shifts" })}
           onOpenAttendance={() => setScreen({ name: "worker-attendance", stage: "overview" })}
+        />
+      );
+    }
+
+    if (screen.name === "worker-auth") {
+      return (
+        <WorkerAuthScreen
+          initialMode={screen.mode}
+          onAuthenticated={() => setScreen({ name: "worker-dashboard" })}
+          onBack={() => setScreen({ name: "tab", tabId: "home" })}
+          transport={calendarTransport}
         />
       );
     }
@@ -300,6 +314,7 @@ export default function App() {
 
     return (
       <PlaceholderScreen
+        onOpenAuth={() => setScreen({ name: "worker-auth", mode: "sign-in" })}
         onOpenAvailable={() => setScreen({ name: "tab", tabId: "available" })}
         onOpenOnboarding={() => setScreen({ name: "worker-signup" })}
         onOpenOwnerReview={() => setScreen({ name: "worker-service", mode: "ownerReview" })}
@@ -372,6 +387,7 @@ function HeaderText({ children, variant }: { children: ReactNode; variant: "titl
 }
 
 function PlaceholderScreen({
+  onOpenAuth,
   onOpenAvailable,
   onOpenOnboarding,
   onOpenOwnerReview,
@@ -381,6 +397,7 @@ function PlaceholderScreen({
   setSelectedWorkerGroup,
   tabId
 }: {
+  onOpenAuth: () => void;
   onOpenAvailable: () => void;
   onOpenOnboarding: () => void;
   onOpenOwnerReview: () => void;
@@ -422,6 +439,13 @@ function PlaceholderScreen({
                 </View>
               ))}
             </View>
+            <Pressable
+              accessibilityRole="button"
+              onPress={onOpenAuth}
+              style={styles.fullListButton}
+            >
+              <Text style={styles.fullListButtonText}>Sign in or create account</Text>
+            </Pressable>
             <Pressable
               accessibilityRole="button"
               onPress={onOpenOnboarding}
@@ -468,6 +492,7 @@ function PlaceholderScreen({
                   <Text style={styles.timelineTitle}>{offer.title}</Text>
                   <SmallText>{offer.place}</SmallText>
                   <SmallText>{offer.details}</SmallText>
+                  <JobLocationLink address={offer.place} />
                 </View>
                 {offer.shiftId ? (
                   <Pressable

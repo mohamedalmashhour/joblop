@@ -24,6 +24,23 @@ export type MobileSessionState =
   | Readonly<{ status: "denied" }>
   | Readonly<{ status: "error" }>;
 
+export type MobileRegisterState =
+  | Readonly<{ status: "authenticated" }>
+  | Readonly<{ status: "sign_out_required" }>
+  | Readonly<{ status: "registration_closed" }>
+  | Readonly<{ status: "conflict" }>
+  | Readonly<{ status: "invalid" }>
+  | Readonly<{ status: "rate_limited"; retryAfterSeconds: number }>
+  | Readonly<{ status: "denied" }>
+  | Readonly<{ status: "error" }>;
+
+export type MobileEmailCodeState =
+  | Readonly<{ status: "sent"; devCode?: string }>
+  | Readonly<{ status: "denied" }>
+  | Readonly<{ status: "unavailable" }>
+  | Readonly<{ status: "rate_limited"; retryAfterSeconds: number }>
+  | Readonly<{ status: "error" }>;
+
 type MobileSessionFetch = typeof fetch;
 
 export const workerAssignmentStatuses = [
@@ -84,6 +101,92 @@ export function createMobileSessionTransport(options: {
         if (!token) return { status: "error" };
         await options.vault.write(token);
         return { status: "authenticated" };
+      } catch {
+        return { status: "error" };
+      }
+    },
+    async signUp(
+      input: Readonly<{ email: string; password: string; displayName?: string | null }>
+    ): Promise<MobileRegisterState> {
+      if (await options.vault.read()) return { status: "sign_out_required" };
+      try {
+        const response = await request(`${origin}/auth/register`, {
+          method: "POST",
+          headers: { accept: "application/json", "content-type": "application/json" },
+          body: JSON.stringify(input),
+          cache: "no-store"
+        });
+        // The API gates registration to non-production (404), rejects a taken email (409) and a weak
+        // password (400), and rate-limits (429). Surface each so the screen can speak plainly.
+        if (response.status === 404) return { status: "registration_closed" };
+        if (response.status === 409) return { status: "conflict" };
+        if (response.status === 400) return { status: "invalid" };
+        if (response.status === 401 || response.status === 403) return { status: "denied" };
+        if (response.status === 429) {
+          return {
+            status: "rate_limited",
+            retryAfterSeconds: readRetryAfter(response.headers.get("retry-after"))
+          };
+        }
+        if (!response.ok) return { status: "error" };
+        const token = readToken(await response.json());
+        if (!token) return { status: "error" };
+        await options.vault.write(token);
+        return { status: "authenticated" };
+      } catch {
+        return { status: "error" };
+      }
+    },
+    async sendEmailCode(): Promise<MobileEmailCodeState> {
+      const token = await options.vault.read();
+      if (!token) return { status: "denied" };
+      try {
+        const response = await request(`${origin}/auth/email/send-code`, {
+          method: "POST",
+          headers: { accept: "application/json", authorization: `Bearer ${token}` },
+          cache: "no-store"
+        });
+        if (response.status === 401 || response.status === 403) return { status: "denied" };
+        if ([404, 502, 503, 504].includes(response.status)) return { status: "unavailable" };
+        if (response.status === 429) {
+          return {
+            status: "rate_limited",
+            retryAfterSeconds: readRetryAfter(response.headers.get("retry-after"))
+          };
+        }
+        if (!response.ok) return { status: "error" };
+        // In development the backend may return the code so it can be surfaced without a live mailer.
+        const payload = (await response.json().catch(() => ({}))) as { code?: unknown };
+        return typeof payload.code === "string"
+          ? { status: "sent", devCode: payload.code }
+          : { status: "sent" };
+      } catch {
+        return { status: "error" };
+      }
+    },
+    async verifyEmailCode(
+      code: string
+    ): Promise<
+      Readonly<{ status: "verified" | "denied" | "invalid" | "unavailable" | "error" }>
+    > {
+      const token = await options.vault.read();
+      if (!token) return { status: "denied" };
+      if (!/^\d{6}$/.test(code.trim())) return { status: "invalid" };
+      try {
+        const response = await request(`${origin}/auth/email/verify-code`, {
+          method: "POST",
+          headers: {
+            accept: "application/json",
+            authorization: `Bearer ${token}`,
+            "content-type": "application/json"
+          },
+          body: JSON.stringify({ code: code.trim() }),
+          cache: "no-store"
+        });
+        if (response.status === 401 || response.status === 403) return { status: "denied" };
+        if ([404, 502, 503, 504].includes(response.status)) return { status: "unavailable" };
+        if (response.ok) return { status: "verified" };
+        return { status: "invalid" };
       } catch {
         return { status: "error" };
       }
@@ -243,6 +346,8 @@ export function createMobileSessionTransport(options: {
   };
 }
 
+export type MobileSessionTransport = ReturnType<typeof createMobileSessionTransport>;
+
 export function tryCreateMobileSessionTransport(options: {
   apiOrigin: string | undefined;
   vault: SecureSessionVault;
@@ -267,6 +372,11 @@ function trustedMobileApiOrigin(value: string) {
     throw new Error("RWOS_UNTRUSTED_MOBILE_API_ORIGIN");
   }
   return url.origin;
+}
+
+function readRetryAfter(value: string | null | undefined) {
+  const parsed = Number(value);
+  return Number.isInteger(parsed) && parsed >= 1 && parsed <= 3600 ? parsed : 60;
 }
 
 function readToken(input: unknown) {

@@ -296,6 +296,124 @@ describe("mobile secure session transport", () => {
       tryCreateMobileSessionTransport({ apiOrigin: "http://localhost:4100", vault: secureVault })
     ).not.toBeNull();
   });
+
+  it("registers, writing the session only to the secure vault and returning no token", async () => {
+    const secureVault = vault();
+    const transport = createMobileSessionTransport({
+      apiOrigin: "https://api.example.test",
+      vault: secureVault,
+      fetch: vi.fn(async () => response(201, { token: "native-register-token-123456789" }))
+    });
+    const result = await transport.signUp({
+      email: "worker@example.test",
+      password: "correct horse battery",
+      displayName: "Worker"
+    });
+    expect(result).toEqual({ status: "authenticated" });
+    expect(JSON.stringify(result)).not.toContain("native-register-token");
+    expect(secureVault.stored).toBe("native-register-token-123456789");
+  });
+
+  it("maps the registration gate and rejection states to bounded categories", async () => {
+    const secureVault = vault();
+    const transportFor = (status: number, retryAfter?: string) =>
+      createMobileSessionTransport({
+        apiOrigin: "https://api.example.test",
+        vault: vault(),
+        fetch: vi.fn(
+          async () =>
+            new Response(JSON.stringify({}), {
+              status,
+              headers: retryAfter
+                ? { "content-type": "application/json", "retry-after": retryAfter }
+                : { "content-type": "application/json" }
+            })
+        )
+      });
+    const signUp = (status: number, retryAfter?: string) =>
+      transportFor(status, retryAfter).signUp({
+        email: "person@example.test",
+        password: "not-returned"
+      });
+
+    expect(await signUp(404)).toEqual({ status: "registration_closed" });
+    expect(await signUp(409)).toEqual({ status: "conflict" });
+    expect(await signUp(400)).toEqual({ status: "invalid" });
+    expect(await signUp(429, "75")).toEqual({ status: "rate_limited", retryAfterSeconds: 75 });
+    expect(secureVault.stored).toBeNull();
+  });
+
+  it("sends an email code, surfacing a dev code and mapping the not-enabled state", async () => {
+    const secureVault = vault();
+    secureVault.stored = "native-session-token-123456789";
+    const sent = createMobileSessionTransport({
+      apiOrigin: "https://api.example.test",
+      vault: secureVault,
+      fetch: vi.fn(async () => response(200, { code: "482913" }))
+    });
+    expect(await sent.sendEmailCode()).toEqual({ status: "sent", devCode: "482913" });
+
+    const notEnabled = createMobileSessionTransport({
+      apiOrigin: "https://api.example.test",
+      vault: secureVault,
+      fetch: vi.fn(async () => response(404, {}))
+    });
+    expect(await notEnabled.sendEmailCode()).toEqual({ status: "unavailable" });
+
+    const durableStoreUnavailable = createMobileSessionTransport({
+      apiOrigin: "https://api.example.test",
+      vault: secureVault,
+      fetch: vi.fn(async () => response(503, {}))
+    });
+    expect(await durableStoreUnavailable.sendEmailCode()).toEqual({ status: "unavailable" });
+  });
+
+  it("verifies an email code and rejects a malformed one before the network", async () => {
+    const secureVault = vault();
+    secureVault.stored = "native-session-token-123456789";
+    const network = vi.fn(async () => response(200, {}));
+    const transport = createMobileSessionTransport({
+      apiOrigin: "https://api.example.test",
+      vault: secureVault,
+      fetch: network
+    });
+    expect(await transport.verifyEmailCode("123456")).toEqual({ status: "verified" });
+    expect(await transport.verifyEmailCode("nope")).toEqual({ status: "invalid" });
+    expect(network).toHaveBeenCalledTimes(1);
+
+    const unavailable = createMobileSessionTransport({
+      apiOrigin: "https://api.example.test",
+      vault: secureVault,
+      fetch: vi.fn(async () => response(503, {}))
+    });
+    expect(await unavailable.verifyEmailCode("123456")).toEqual({ status: "unavailable" });
+  });
+
+  it("denies email-code operations with no stored session", async () => {
+    const transport = createMobileSessionTransport({
+      apiOrigin: "https://api.example.test",
+      vault: vault(),
+      fetch: vi.fn()
+    });
+    expect(await transport.sendEmailCode()).toEqual({ status: "denied" });
+    expect(await transport.verifyEmailCode("123456")).toEqual({ status: "denied" });
+  });
+
+  it("requires sign-out before registering another account", async () => {
+    const secureVault = vault();
+    secureVault.stored = "native-session-token-123456789";
+    const network = vi.fn(async () => response(201, { token: "different-token-1234567890" }));
+    const transport = createMobileSessionTransport({
+      apiOrigin: "https://api.example.test",
+      vault: secureVault,
+      fetch: network
+    });
+    expect(
+      await transport.signUp({ email: "other@example.test", password: "different account" })
+    ).toEqual({ status: "sign_out_required" });
+    expect(network).not.toHaveBeenCalled();
+    expect(secureVault.stored).toBe("native-session-token-123456789");
+  });
 });
 
 function workerOfferFixture(override: Record<string, unknown> = {}) {
