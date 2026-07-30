@@ -1,32 +1,50 @@
-import { existsSync, readFileSync, statSync } from "node:fs";
-import { spawnSync } from "node:child_process";
-import { extname, relative, resolve } from "node:path";
+import { readFileSync, statSync } from "node:fs";
+import { extname, resolve } from "node:path";
 import { findPublicCredentialLeaks } from "./public-bundle-policy";
 import { validateEnvironmentInventory } from "./environment-classification";
+import { discoverFiles } from "./filesystem-discovery";
 
 const root = resolve(import.meta.dirname, "..");
-const buildRoots = [
-  "apps/mobile/dist",
-  "apps/employer/.next/static",
-  "apps/admin/.next/static"
-].filter((path) => existsSync(resolve(root, path)));
-const publicManifestFiles = filesFromRg(["apps/employer/.next", "apps/admin/.next"]).filter(
+const buildRoots = ["apps/mobile/dist", "apps/employer/.next/static", "apps/admin/.next/static"];
+const ignoredSourceDirectories = new Set([
+  ".expo",
+  ".next",
+  ".turbo",
+  "coverage",
+  "dist",
+  "node_modules",
+  "output",
+  "test-results",
+  "tmp"
+]);
+const publicManifestFiles = filesFromFilesystem(
+  ["apps/employer/.next", "apps/admin/.next"],
+  "public-manifest-roots",
+  true
+).filter(
   (path) =>
     /(?:^|\/)(?:BUILD_ID|[^/]*manifest[^/]*)\.(?:json|js)$/.test(path) &&
     !path.includes("/.next/server/")
 );
 const sourceFiles = [
-  ...filesFromRg(["apps/mobile", "apps/employer", "apps/admin"]),
-  ...filesFromRg(buildRoots),
+  ...filesFromFilesystem(
+    ["apps/mobile", "apps/employer", "apps/admin"],
+    "public-source-roots",
+    true,
+    ignoredSourceDirectories
+  ),
+  ...filesFromFilesystem(buildRoots, "public-build-roots", true),
   ...publicManifestFiles
 ];
-const inventoryFiles = [...filesFromRg(["apps", "packages", "scripts"]), ".env.example"].filter(
-  (path) =>
-    existsSync(resolve(root, path)) &&
-    !/\.(?:test|spec)\.[cm]?[jt]sx?$/.test(path) &&
-    !path.includes("/dist/") &&
-    !path.includes("/.next/")
-);
+const inventoryFiles = [
+  ...filesFromFilesystem(
+    ["apps", "packages", "scripts"],
+    "environment-inventory-roots",
+    true,
+    ignoredSourceDirectories
+  ),
+  ".env.example"
+].filter((path) => !/\.(?:test|spec)\.[cm]?[jt]sx?$/.test(path));
 const allowedExtensions = new Set([
   ".js",
   ".mjs",
@@ -68,17 +86,17 @@ process.stdout.write(
   `PUBLIC_BUNDLE_CREDENTIAL_SCAN_PASS artifacts=${artifacts.length} classified_environment_names=${environmentInventory.classified.size}\n`
 );
 
-function filesFromRg(paths: readonly string[]) {
-  if (!paths.length) return [];
-  const result = spawnSync("rg", ["--files", ...paths], {
-    cwd: root,
-    encoding: "utf8"
+function filesFromFilesystem(
+  paths: readonly string[],
+  label: string,
+  requireFiles: boolean,
+  excludedDirectoryNames?: ReadonlySet<string>
+) {
+  return discoverFiles({
+    repositoryRoot: root,
+    roots: paths,
+    excludedDirectoryNames,
+    requireFiles,
+    label
   });
-  if (result.status !== 0 && result.status !== 1) {
-    throw new Error("PUBLIC_BUNDLE_FILE_DISCOVERY_FAILED");
-  }
-  return result.stdout
-    .split("\n")
-    .filter(Boolean)
-    .map((path) => relative(root, resolve(root, path)));
 }
