@@ -1538,6 +1538,7 @@ model EmployerPaymentAttempt {
   invoiceId              String               @map("invoice_id") @db.Uuid
   paymentMethodId        String?              @map("payment_method_id") @db.Uuid
   policyVersion          String               @map("policy_version")
+  policyMode             String               @default("manual_collection") @map("policy_mode")
   state                  EmployerPaymentState @default(pending)
   amountMinor            BigInt               @map("amount_minor")
   allocatedMinor         BigInt               @default(0) @map("allocated_minor")
