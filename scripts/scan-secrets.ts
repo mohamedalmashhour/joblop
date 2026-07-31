@@ -6,6 +6,7 @@ const root = process.cwd();
 const patterns = [
   { pattern: /sk-[A-Za-z0-9]{20,}/ },
   { pattern: /AKIA[0-9A-Z]{16}/ },
+  { pattern: /AIza[0-9A-Za-z_-]{35}/ },
   { pattern: /-----BEGIN (RSA |EC |OPENSSH |)PRIVATE KEY-----/ },
   {
     pattern: /postgres(?:ql)?:\/\/[^:\s]+:[^@\s]+@/,

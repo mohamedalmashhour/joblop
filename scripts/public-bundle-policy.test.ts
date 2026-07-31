@@ -56,6 +56,20 @@ describe("public bundle credential policy", () => {
     expect(issues).toHaveLength(4);
   });
 
+  it("rejects Google API key material from public bundles", () => {
+    const syntheticGoogleKey = `AIza${"A".repeat(35)}`;
+    expect(
+      findPublicCredentialLeaks([
+        {
+          path: "apps/employer/.next/static/chunks/maps.js",
+          content: `window.mapsKey = "${syntheticGoogleKey}";`
+        }
+      ])
+    ).toEqual([
+      "apps/employer/.next/static/chunks/maps.js: forbidden server authentication material"
+    ]);
+  });
+
   it.each([
     "@rwos/database",
     "@rwos/config",
@@ -93,16 +107,12 @@ describe("public bundle credential policy", () => {
     expect(classifyEnvironmentName("STRIPE_TEST_SECRET_KEY")).toBe(
       "prohibited-from-bundles-and-logs"
     );
-    expect(classifyEnvironmentName("STRIPE_TEST_MODE_ENABLED")).toBe(
-      "server-only-non-secret"
-    );
+    expect(classifyEnvironmentName("STRIPE_TEST_MODE_ENABLED")).toBe("server-only-non-secret");
     expect(classifyEnvironmentName("EMPLOYER_SELF_REGISTRATION_ENABLED")).toBe(
       "server-only-non-secret"
     );
     expect(classifyEnvironmentName("TERMS_VERSION")).toBe("server-only-non-secret");
-    expect(classifyEnvironmentName("PRIVACY_NOTICE_VERSION")).toBe(
-      "server-only-non-secret"
-    );
+    expect(classifyEnvironmentName("PRIVACY_NOTICE_VERSION")).toBe("server-only-non-secret");
   });
 
   it("fails a repository inventory containing an unclassified environment name", () => {

@@ -9,6 +9,7 @@ export type PublicArtifact = Readonly<{ path: string; content: string }>;
 const forbiddenPublicEnvironment =
   /EXPO_PUBLIC_[A-Z0-9_]*(?:TOKEN|SECRET|CREDENTIAL|DATABASE|REDIS|RESET|SERVICE_ACCOUNT|PRIVATE_KEY)/;
 const forbiddenServerMaterial = [
+  /AIza[0-9A-Za-z_-]{35}/,
   /GOOGLE_APPLICATION_CREDENTIALS/,
   /metadata\.google\.internal/,
   /-----BEGIN (?:RSA |EC |OPENSSH )?PRIVATE KEY-----/,

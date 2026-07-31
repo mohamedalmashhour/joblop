@@ -9,4 +9,8 @@ describe("secret scan release-surface policy", () => {
     expect(source).not.toContain("readdirSync");
     expect(source).not.toContain("statSync");
   });
+
+  it("rejects Google API key material from the release surface", () => {
+    expect(source).toContain("/AIza[0-9A-Za-z_-]{35}/");
+  });
 });
