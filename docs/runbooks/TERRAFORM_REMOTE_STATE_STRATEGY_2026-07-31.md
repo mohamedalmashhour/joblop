@@ -1,17 +1,19 @@
 # Terraform Remote-State Strategy
 
-Status: **PLANNING ONLY — PLAN 0, PLAN A AND X1 NOT AUTHORIZED**
+Status: **PLAN 0 APPLIED AND REMOTE-STATE VERIFIED — PLAN A, PLAN B AND X1 NOT AUTHORIZED**
 
 Release checkpoint: `fb209790522bbc366bf14c99d78880c613a67835`
 
 ## Current state
 
-The staging Terraform packages previously omitted a backend block, so Terraform used the local
-backend by default. No `terraform.tfstate`, state backup, saved plan or `.terraform/` content is
-tracked by Git. Repository ignore rules cover `.terraform/`, `*.tfstate`, `*.tfstate.*` and
-`*.tfplan`.
+Plan 0 now uses the GCS backend at the reviewed `terraform/state-bootstrap` prefix. Plan A and Plan
+B declare GCS backends but remain uninitialized and unapplied. No `terraform.tfstate`, state backup,
+saved plan or `.terraform/` content is tracked by Git. Repository ignore rules cover `.terraform/`,
+`*.tfstate`, `*.tfstate.*` and `*.tfplan`.
 
-No infrastructure has been applied. The existing local saved plans contain no applied state and
+The two approved Plan 0 resources were applied from the exact reviewed saved plan. The temporary
+local state and its recovery copy were removed only after the remote state, two object generations,
+locking, lock release and a zero-drift plan were verified. Protected saved-plan and evidence files
 remain ignored with mode `600`.
 
 ## Plan 0 — remote-state bootstrap

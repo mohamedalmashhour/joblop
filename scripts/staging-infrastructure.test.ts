@@ -47,10 +47,10 @@ describe("split staging infrastructure packages", () => {
 
   it("keeps Plan 0 limited to protected remote state", async () => {
     const main = await read("state-bootstrap", "main.tf");
-    const localBackend = await read("state-bootstrap", "backend.tf");
+    const activeBackend = await read("state-bootstrap", "backend.tf");
     const remoteBackend = await read("state-bootstrap", "backend.gcs.tf.example");
-    expect(localBackend).toContain('backend "local"');
-    expect(localBackend).toContain(".staging-inputs/terraform-plan0-bootstrap.tfstate");
+    expect(activeBackend).toContain('backend "gcs"');
+    expect(activeBackend).not.toContain('backend "local"');
     expect(remoteBackend).toContain('backend "gcs"');
     expect(main).toContain('public_access_prevention    = "enforced"');
     expect(main).toContain("uniform_bucket_level_access = true");
