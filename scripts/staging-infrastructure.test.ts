@@ -6,7 +6,12 @@ const read = (name: string) => readFile(`${root}/${name}`, "utf8");
 
 describe("staging infrastructure package", () => {
   it("is complete, staging-only, Toronto-bound and input-gated", async () => {
-    expect((await readdir(root)).sort()).toEqual([
+    const files = (await readdir(root, { withFileTypes: true }))
+      .filter((entry) => entry.isFile())
+      .map((entry) => entry.name)
+      .sort();
+    expect(files).toEqual([
+      ".terraform.lock.hcl",
       "main.tf",
       "outputs.tf",
       "terraform.tfvars.example",
