@@ -2,7 +2,7 @@
 
 Status: **UNSIGNED — RECOMMENDATIONS ONLY — NO DEPLOYMENT OR SPENDING AUTHORIZED**
 
-Release SHA: `570458d4ec35c419a96575d0c0bd01e8c98921a4`
+Release SHA: `4a3f4acc48f2c85a87daf3ec86bff1ca7962e1f3`
 Package generated: `2026-07-30T22:25:38Z`
 Recommended approval expiry: `2026-08-13T22:25:38Z` (14 days)
 
@@ -19,7 +19,7 @@ unbounded spending. Every row requires one of `APPROVE`, `REJECT` or `MODIFY`; s
 - Alternatives: broader reviewed disclosure; keep all economics blocked.
 - Consequences: safest privacy boundary; adds maintenance when fields change.
 - Exact approval wording: **“APPROVE D1: use explicit versioned response allowlists and deny
-  non-allowlisted economic fields for release `570458d…21a4`.”**
+  non-allowlisted economic fields for release `4a3f4ac…1e1f3`.”**
 - Review: Privacy/Legal and Contract owner required.
 - Selection: APPROVE ☐ REJECT ☐ MODIFY ☐ Modification: __________
 
@@ -387,7 +387,7 @@ invoice/refund/accessibility/monitoring/restore/rollback tests; stop on any fail
 
 Exact approval wording for the later change window:
 
-**“APPROVE X1 staging-only deployment of release `570458d4ec35c419a96575d0c0bd01e8c98921a4`
+**“APPROVE X1 staging-only deployment of release `4a3f4acc48f2c85a87daf3ec86bff1ca7962e1f3`
 within approved project/budget, using synthetic data only and the reviewed plan. Production,
 live payments, real email and DNS changes remain prohibited.”**
 
@@ -416,7 +416,7 @@ Owner title/authority: ____________________
 Signature: ____________________
 Signed UTC timestamp: ____________________
 Approval expiry UTC (recommended no later than `2026-08-13T22:25:38Z`): ____________________
-Release SHA: `570458d4ec35c419a96575d0c0bd01e8c98921a4`
+Release SHA: `4a3f4acc48f2c85a87daf3ec86bff1ca7962e1f3`
 
 Security reviewer: ____________________ Timestamp: __________
 Billing owner: ____________________ Timestamp: __________
@@ -425,7 +425,7 @@ Legal/accounting reviewers and evidence references: ____________________
 ## 15. Compact response template
 
 ```text
-Release SHA: 570458d4ec35c419a96575d0c0bd01e8c98921a4
+Release SHA: 4a3f4acc48f2c85a87daf3ec86bff1ca7962e1f3
 Approval expiry UTC:
 
 D1: APPROVE / REJECT / MODIFY —
