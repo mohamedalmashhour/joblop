@@ -12,6 +12,7 @@ export default defineConfig({
       "@rwos/design-system": `${root}packages/design-system/src/index.ts`,
       "@rwos/notifications": `${root}packages/notifications/src/index.ts`,
       "@rwos/observability": `${root}packages/observability/src/index.ts`,
+      "@rwos/service-auth/google": `${root}packages/service-auth/src/google.ts`,
       "@rwos/service-auth/testing": `${root}packages/service-auth/src/testing.ts`,
       "@rwos/service-auth": `${root}packages/service-auth/src/index.ts`,
       "@rwos/shared": `${root}packages/shared/src/index.ts`,

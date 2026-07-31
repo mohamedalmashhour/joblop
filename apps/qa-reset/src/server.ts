@@ -4,10 +4,12 @@ import { readQaResetConfig } from "./config";
 import { startQaResetFailClosedServer } from "./failClosedServer";
 import { createQaResetLogger } from "./logger";
 import { createResetManifest } from "./manifest";
+import { createQaResetRuntimeComposition } from "./runtimeComposition";
 
 export function startQaResetServer(options: {
   postgresFactory?: QaResetPostgresFactory;
   identityVerifier?: IdentityTokenVerifier;
+  closeDependencies?: () => Promise<void>;
 }) {
   const config = readQaResetConfig();
   const manifest = createResetManifest(config);
@@ -36,11 +38,18 @@ export function startQaResetServer(options: {
     logger.info("qa_reset.shutdown_started");
     const timeout = setTimeout(() => process.exit(1), 10_000);
     timeout.unref();
-    server.close((error) => {
-      clearTimeout(timeout);
+    server.close(async (error) => {
       if (error) {
         logger.error("qa_reset.shutdown_failed");
         process.exitCode = 1;
+      }
+      try {
+        await options.closeDependencies?.();
+      } catch {
+        logger.error("qa_reset.shutdown_failed");
+        process.exitCode = 1;
+      } finally {
+        clearTimeout(timeout);
       }
     });
   };
@@ -51,13 +60,17 @@ export function startQaResetServer(options: {
 }
 
 // The packaged entry point has no implicit memory or credential-bearing persistence fallback.
-// Until a deployment composition root injects PostgreSQL and identity-verifier ports, expose only
-// liveness and fail every readiness or operation request closed.
+// Any missing or invalid staging composition exposes only liveness and fails readiness and every
+// operation closed.
 try {
-  startQaResetServer({});
-} catch (error) {
-  if (!(error instanceof Error) || error.message !== "QA_RESET_POSTGRES_FACTORY_REQUIRED") {
-    throw error;
-  }
+  const config = readQaResetConfig();
+  const manifest = createResetManifest(config);
+  const runtime = createQaResetRuntimeComposition({ config, manifest });
+  startQaResetServer({
+    postgresFactory: runtime.postgresFactory,
+    identityVerifier: runtime.identityVerifier,
+    closeDependencies: runtime.close
+  });
+} catch {
   startQaResetFailClosedServer(Number(process.env.PORT ?? "8080"));
 }

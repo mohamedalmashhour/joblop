@@ -1,7 +1,9 @@
 import { randomUUID } from "node:crypto";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { createPrismaClient } from "@rwos/database";
-import { createFixedPostgresQaResetRepository } from "./composition";
+import { createFakeIdentityTokenVerifier } from "@rwos/service-auth/testing";
+import type { QaResetPersistencePort } from "./composition";
+import { createQaResetRuntimeComposition } from "./runtimeComposition";
 import { approvedTableForEntity, exactMutationPlanChecksum } from "./mutationPlan";
 import {
   deriveQaResetIdempotencyDigest,
@@ -14,22 +16,37 @@ import { testConfig, testManifest } from "./testFixture";
 const databaseUrl = process.env.RWOS_TEST_DATABASE_URL;
 const suite = databaseUrl ? describe : describe.skip;
 const manifestOwnershipId = randomUUID();
-const now = new Date("2026-07-29T12:00:00.000Z");
-
 suite("QA-reset durable PostgreSQL lifecycle", () => {
-  const prisma = createPrismaClient(databaseUrl);
-  const repository = createFixedPostgresQaResetRepository(prisma, () => now);
+  let prisma: ReturnType<typeof createPrismaClient>;
+  let runtime: ReturnType<typeof createQaResetRuntimeComposition>;
+  let persistence: QaResetPersistencePort;
+  let repository: QaResetPersistencePort["durableRepository"];
 
   beforeAll(async () => {
+    prisma = createPrismaClient(databaseUrl);
+    runtime = createQaResetRuntimeComposition({
+      config: testConfig,
+      manifest: testManifest,
+      env: {
+        RWOS_ENV: "staging",
+        NODE_ENV: "test",
+        DATABASE_URL: databaseUrl
+      },
+      createClient: () => prisma,
+      identityVerifier: createFakeIdentityTokenVerifier({ identities: {} })
+    });
+    persistence = runtime.postgresFactory(testConfig, testManifest);
+    repository = persistence.durableRepository;
     await seedControlEnvelope();
   });
 
   afterAll(async () => {
     await removeControlEnvelope();
-    await prisma.$disconnect();
+    await runtime.close();
   });
 
   it("prepares, inspects and cleans the complete 24-entity fixture in FK-safe order", async () => {
+    await expect(persistence.ready()).resolves.toBe(true);
     await proveRollbackIsolation();
     await expect(repository.inspect(testManifest)).resolves.toEqual({
       manifestOwnedIds: [],

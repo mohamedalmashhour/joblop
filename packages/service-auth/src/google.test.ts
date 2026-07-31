@@ -1,6 +1,11 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { createTrustedAudienceRegistry, createTrustedServiceIdentityHeaders } from "./index";
-import { createGoogleIdentityTokenProvider, type GoogleIdTokenClientFactory } from "./google";
+import {
+  createGoogleIdentityTokenProvider,
+  createGoogleIdentityTokenVerifier,
+  type GoogleIdTokenClientFactory,
+  type GoogleIdentityVerificationClient
+} from "./google";
 
 const limiterAudience = "https://rwos-limiter-opaquehash-nn.a.run.app";
 const candidateAudience = "https://rwos-candidate-opaquehash-nn.a.run.app";
@@ -177,3 +182,67 @@ describe("Google trusted-service identity-token acquisition", () => {
     expect(errorSpy).not.toHaveBeenCalled();
   });
 });
+
+describe("Google trusted-service identity-token verification", () => {
+  const payload = {
+    aud: limiterAudience,
+    sub: "synthetic-service-subject",
+    email: "rwos-stg-browser-e2e@local-test.invalid",
+    email_verified: true,
+    iat: Math.floor(now.getTime() / 1_000) - 30,
+    exp: Math.floor(now.getTime() / 1_000) + 300
+  };
+
+  it("returns only the verified identity bound to the exact audience", async () => {
+    const calls: Array<{ idToken: string; audience: string }> = [];
+    const verifier = createGoogleIdentityTokenVerifier({
+      runtimeEnvironment: "test",
+      client: verificationClient(payload, calls),
+      now: () => now
+    });
+    await expect(
+      verifier.verify({ token: syntheticToken, audience: limiterAudience })
+    ).resolves.toEqual({
+      subject: payload.sub,
+      serviceAccountEmail: payload.email,
+      audience: limiterAudience,
+      issuedAt: new Date(payload.iat * 1_000),
+      expiresAt: new Date(payload.exp * 1_000)
+    });
+    expect(calls).toEqual([{ idToken: syntheticToken, audience: limiterAudience }]);
+  });
+
+  it.each([
+    ["wrong audience", { ...payload, aud: candidateAudience }],
+    ["unverified email", { ...payload, email_verified: false }],
+    ["expired", { ...payload, exp: Math.floor(now.getTime() / 1_000) }],
+    ["future-issued", { ...payload, iat: Math.floor(now.getTime() / 1_000) + 61 }]
+  ])("fails closed for %s", async (_label, invalidPayload) => {
+    const verifier = createGoogleIdentityTokenVerifier({
+      runtimeEnvironment: "test",
+      client: verificationClient(invalidPayload),
+      now: () => now
+    });
+    await expect(
+      verifier.verify({ token: syntheticToken, audience: limiterAudience })
+    ).rejects.toThrow("RWOS_GOOGLE_IDENTITY_TOKEN_INVALID");
+  });
+
+  it("does not allow implicit external verification in local tests", () => {
+    expect(() => createGoogleIdentityTokenVerifier({ runtimeEnvironment: "test" })).toThrow(
+      "RWOS_GOOGLE_IDENTITY_VERIFICATION_CLIENT_REQUIRED"
+    );
+  });
+});
+
+function verificationClient(
+  payload: Record<string, unknown>,
+  calls: Array<{ idToken: string; audience: string }> = []
+): GoogleIdentityVerificationClient {
+  return {
+    async verifyIdToken(input) {
+      calls.push(input);
+      return { getPayload: () => payload as never };
+    }
+  };
+}

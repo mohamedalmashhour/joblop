@@ -167,7 +167,7 @@ requirements.
 
 ### QA reset service
 
-Classification: **Code-level deployment composition required; real database behavior blocked**
+Classification: **Locally compatible; external staging validation required**
 
 B4 adds a staging-only Node HTTP policy service with dry-run, prepare and cleanup endpoints,
 manifest/release/authority checks, exact Test Employer Organization A/B scope, operation receipts,
@@ -180,11 +180,18 @@ unapplied QA-reset control migration. Local fake-adapter and repository tests co
 rollback, replay and unknown-commit behavior. A separately authorized disposable PostgreSQL test is
 still required before claiming real database behavior.
 
-The packaged entry point deliberately has no implicit memory or credential-bearing fallback. It
-starts fail closed because no deployment composition root currently constructs and injects the
-PostgreSQL and identity-verifier ports. Consequently, configuration alone cannot make `/ready` or
-reset mutations available. That composition root, least-privilege staging identity, migration
-application, immutable staging identifiers and external database evidence remain blocked work.
+The packaged entry point deliberately has no implicit memory or credential-bearing fallback. Its
+staging-only composition root now constructs and explicitly injects the Prisma PostgreSQL port and
+the official Google identity-token verifier, binds the exact project, cluster, database, authority,
+organization IDs, namespace, manifest checksum and release SHA, and disconnects PostgreSQL during
+graceful shutdown. Configuration or dependency failure falls back to liveness-only behavior;
+`/ready` and every reset operation remain unavailable.
+
+An isolated disposable PostgreSQL 17 cluster validated the composition, all 20 migrations, the
+complete 24-entity prepare/inspect/cleanup lifecycle, rollback atomicity and advisory-lock
+exclusion, followed by verified database deletion. This is local integration evidence only. A
+least-privilege staging identity, provider database, immutable staging identifiers, migration
+application and external staging evidence remain blocked.
 
 ## 2. Service-to-service authentication
 
