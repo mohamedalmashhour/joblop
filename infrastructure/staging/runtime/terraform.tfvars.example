@@ -1,0 +1,47 @@
+project_id                          = "replace-with-dedicated-staging-project"
+project_number                      = "000000000000"
+region                              = "northamerica-northeast2"
+network_cidr                        = "10.80.0.0/24"
+deployer_service_account_email      = "sa-rwos-stg-deployer@replace.iam.gserviceaccount.com"
+images_published_approval_reference = "PLAN-B-NOT-YET"
+monitoring_notification_channels    = ["replace-with-approved-channel-resource-name"]
+
+image_digests = {
+  api              = "northamerica-northeast2-docker.pkg.dev/project/repository/api@sha256:..."
+  employer         = "northamerica-northeast2-docker.pkg.dev/project/repository/employer@sha256:..."
+  admin            = "northamerica-northeast2-docker.pkg.dev/project/repository/admin@sha256:..."
+  worker           = "northamerica-northeast2-docker.pkg.dev/project/repository/worker@sha256:..."
+  auth-limiter     = "northamerica-northeast2-docker.pkg.dev/project/repository/auth-limiter@sha256:..."
+  candidate-source = "northamerica-northeast2-docker.pkg.dev/project/repository/candidate-source@sha256:..."
+  offer-delivery   = "northamerica-northeast2-docker.pkg.dev/project/repository/offer-delivery@sha256:..."
+  qa-reset         = "northamerica-northeast2-docker.pkg.dev/project/repository/qa-reset@sha256:..."
+}
+
+# Values are non-secret. Stripe, email and self-registration remain fail-closed.
+service_environment = {
+  api = {
+    RWOS_ENV                        = "staging"
+    NODE_ENV                        = "production"
+    STRIPE_TEST_MODE_ENABLED        = "disabled"
+    EMPLOYER_SELF_REGISTRATION_ENABLED = "disabled"
+  }
+  employer         = { RWOS_ENV = "production", NODE_ENV = "production" }
+  admin            = { RWOS_ENV = "production", NODE_ENV = "production" }
+  worker           = { RWOS_ENV = "staging", NODE_ENV = "production" }
+  auth-limiter     = { RWOS_ENV = "staging" }
+  candidate-source = { RWOS_ENV = "staging" }
+  offer-delivery   = { RWOS_ENV = "staging" }
+  qa-reset         = { RWOS_ENV = "staging", QA_RESET_PERSISTENCE_MODE = "postgres" }
+}
+
+# Map environment names to Secret Manager names; values are references, never payloads.
+service_secret_environment = {
+  api              = { DATABASE_URL = "rwos-staging-database-url", SESSION_SECRET = "rwos-staging-session-secret" }
+  employer         = {}
+  admin            = {}
+  worker           = {}
+  auth-limiter     = { AUTH_LIMITER_SERVICE_TOKEN = "rwos-staging-limiter-token", AUTH_LIMITER_HMAC_SECRET = "rwos-staging-limiter-hmac-key" }
+  candidate-source = { CANDIDATE_ADAPTER_SERVICE_TOKEN = "rwos-staging-candidate-source-token" }
+  offer-delivery   = { OFFER_DELIVERY_ADAPTER_SERVICE_TOKEN = "rwos-staging-offer-delivery-token" }
+  qa-reset         = { DATABASE_URL = "rwos-staging-database-url", QA_RESET_APP_CREDENTIAL = "rwos-staging-qa-reset-browser-token" }
+}

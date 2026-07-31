@@ -1,5 +1,5 @@
 import { execFileSync } from "node:child_process";
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 
 const root = process.cwd();
@@ -29,6 +29,7 @@ const files = releaseFiles
   .split("\0")
   .filter(Boolean)
   .map((file) => join(root, file))
+  .filter((file) => existsSync(file))
   .filter((file) => !file.endsWith("pnpm-lock.yaml"));
 const findings = files.flatMap((file) => {
   const text = readFileSync(file, "utf8");

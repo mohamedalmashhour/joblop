@@ -28,6 +28,7 @@ export default [
       "**/dist/**",
       "**/node_modules/**",
       "**/coverage/**",
+      ".staging-inputs/**",
       "contracts/**",
       "pnpm-lock.yaml"
     ]
