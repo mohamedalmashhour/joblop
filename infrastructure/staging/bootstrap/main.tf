@@ -30,11 +30,13 @@ resource "google_iam_workload_identity_pool_provider" "github" {
   display_name                       = "GitHub Actions"
   attribute_mapping = {
     "google.subject"             = "assertion.sub"
+    "attribute.environment"      = "assertion.environment"
     "attribute.repository"       = "assertion.repository"
     "attribute.ref"              = "assertion.ref"
     "attribute.repository_owner" = "assertion.repository_owner"
+    "attribute.sha"              = "assertion.sha"
   }
-  attribute_condition = "assertion.repository == '${var.github_repository}' && assertion.ref == 'refs/heads/main'"
+  attribute_condition = "assertion.repository == '${var.github_repository}' && assertion.ref == 'refs/heads/main' && assertion.environment == '${var.github_environment}' && assertion.sha == '${var.approved_release_sha}'"
   oidc { issuer_uri = "https://token.actions.githubusercontent.com" }
 }
 
@@ -82,21 +84,34 @@ resource "google_project_iam_member" "deployer_run_developer" {
 
 resource "google_billing_budget" "staging" {
   billing_account = var.billing_account
-  display_name    = "RWOS staging USD ${var.monthly_budget_usd} alert"
+  display_name    = "RWOS staging CAD ${var.monthly_budget_cad} alert"
   budget_filter {
     projects = ["projects/${var.project_number}"]
   }
   amount {
     specified_amount {
-      currency_code = "USD"
-      units         = tostring(var.monthly_budget_usd)
+      currency_code = "CAD"
+      units         = tostring(var.monthly_budget_cad)
     }
   }
-  threshold_rules { threshold_percent = 0.5 }
-  threshold_rules { threshold_percent = 0.8 }
+  threshold_rules { threshold_percent = 0.33 }
+  threshold_rules { threshold_percent = 0.67 }
+  threshold_rules { threshold_percent = 0.9 }
   threshold_rules { threshold_percent = 1.0 }
-  threshold_rules {
-    threshold_percent = 1.0
-    spend_basis       = "FORECASTED_SPEND"
+
+  all_updates_rule {
+    monitoring_notification_channels = [
+      google_monitoring_notification_channel.budget_owner.name,
+    ]
+    disable_default_iam_recipients = false
   }
+}
+
+resource "google_monitoring_notification_channel" "budget_owner" {
+  display_name = "RWOS staging project owner budget alerts"
+  type         = "email"
+  labels = {
+    email_address = var.budget_notification_email
+  }
+  force_delete = false
 }

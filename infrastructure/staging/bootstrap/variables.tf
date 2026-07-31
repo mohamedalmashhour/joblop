@@ -32,18 +32,48 @@ variable "billing_account" {
   }
 }
 
-variable "monthly_budget_usd" {
+variable "monthly_budget_cad" {
   type    = number
-  default = 300
+  default = 500
   validation {
-    condition     = var.monthly_budget_usd > 0 && var.monthly_budget_usd <= 300
-    error_message = "The staging budget may not exceed the approved USD 300 planning ceiling."
+    condition     = var.monthly_budget_cad > 0 && var.monthly_budget_cad <= 500
+    error_message = "The staging budget may not exceed the proposed CAD 500 ceiling."
   }
 }
 
 variable "github_repository" {
   type    = string
   default = "drmmashhour-ux/resident-workforce-os"
+  validation {
+    condition     = var.github_repository == "drmmashhour-ux/resident-workforce-os"
+    error_message = "Plan A is restricted to the approved private GitHub repository."
+  }
+}
+
+variable "github_environment" {
+  type    = string
+  default = "staging"
+  validation {
+    condition     = var.github_environment == "staging"
+    error_message = "Plan A workload identity is restricted to the staging environment."
+  }
+}
+
+variable "approved_release_sha" {
+  type = string
+  validation {
+    condition     = can(regex("^[0-9a-f]{40}$", var.approved_release_sha))
+    error_message = "Provide the exact approved 40-character release SHA."
+  }
+}
+
+variable "budget_notification_email" {
+  type      = string
+  sensitive = true
+  validation {
+    condition     = can(regex("^[^@[:space:]]+@[^@[:space:]]+\\.[^@[:space:]]+$", var.budget_notification_email))
+    error_message = "Provide the verified project-owner email through ignored local input only."
+  }
 }
 
 variable "approval_reference" {

@@ -28,13 +28,20 @@ describe("split staging infrastructure packages", () => {
       "google_iam_workload_identity_pool",
       "google_iam_workload_identity_pool_provider",
       "google_service_account",
-      "google_billing_budget"
+      "google_billing_budget",
+      "google_monitoring_notification_channel"
     ]) {
       expect(main).toContain(`resource "${resource}"`);
     }
     expect(main).toContain("roles/artifactregistry.writer");
     expect(main).toContain("roles/run.developer");
-    expect(main).toContain("threshold_percent = 0.5");
+    for (const threshold of ["0.33", "0.67", "0.9", "1.0"]) {
+      expect(main).toContain(`threshold_percent = ${threshold}`);
+    }
+    expect(main).toContain('currency_code = "CAD"');
+    expect(main).toContain("assertion.environment == '${var.github_environment}'");
+    expect(main).toContain("assertion.sha == '${var.approved_release_sha}'");
+    expect(main).toContain("disable_default_iam_recipients = false");
     expect(main).not.toMatch(/google_cloud_run|google_sql|google_redis|google_secret_manager/u);
   });
 

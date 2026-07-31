@@ -2,7 +2,7 @@
 
 Status: **PLANNING ONLY — X1 NOT AUTHORIZED**
 
-Release checkpoint: `9f62b8a377800d5cf843083b5cbab30f70412fdb`
+Release checkpoint: `19f0da08b08d6e5e0fa6bb9bce8ccea1f9794bdc`
 
 The rejected combined plan digest
 `e60186c5b865c089214d4fb6e1ea852eb95112d243220d5a9f6ca58f4d7005b1`
@@ -11,9 +11,16 @@ must never be applied.
 ## Plan A — bootstrap
 
 Plan A creates only the Toronto Artifact Registry repository, GitHub workload-identity federation,
-separate publisher and deployer identities, their narrow repository/deployment roles, and a USD 300
-monthly budget with 50%, 80%, 100%, and forecasted-100% alerts. Budget alerts are notifications,
-not a hard spending cutoff.
+separate publisher and deployer identities, their narrow repository/deployment roles, and a
+proposed CAD 500 monthly budget replacing the earlier USD 300 planning ceiling. Alerts occur at
+33%, 67%, 90% and 100%. A dedicated Monitoring email channel sends the alerts to the verified
+project owner while default eligible IAM recipients remain enabled. Budget alerts are
+notifications, not a hard spending cutoff.
+
+The billing account reports CAD as its immutable currency. The Bank of Canada daily USD/CAD rate
+published for 2026-07-30 was 1.4014, making USD 300 equal to CAD 420.42. The proposed CAD 500 ceiling
+rounds upward and retains approximately 19% exchange-rate headroom. It is a recommendation, not an
+authorization.
 
 Plan A does not create application runtime resources. Images remain unpublished until Plan A
 receives its own approval.
@@ -57,29 +64,29 @@ No default resource is modified by Plan A or Plan B.
 
 ## IAM matrix
 
-| Principal | Scope | Role | Purpose |
-| --- | --- | --- | --- |
-| GitHub `main` WIF subject | Publisher service account | `roles/iam.workloadIdentityUser` | Short-lived image publication identity |
-| GitHub `main` WIF subject | Deployer service account | `roles/iam.workloadIdentityUser` | Short-lived staging deployment identity |
-| Publisher service account | Named Artifact Registry repository | `roles/artifactregistry.writer` | Push reviewed immutable images only |
-| Deployer service account | Named Artifact Registry repository | `roles/artifactregistry.reader` | Resolve reviewed digests |
-| Deployer service account | Staging project | `roles/run.developer` | Manage Cloud Run without project administration |
-| Deployer service account | Each runtime service account | `roles/iam.serviceAccountUser` | Attach only the eight named identities |
-| Employer/Admin/Worker identities | API Cloud Run service | `roles/run.invoker` | Exact web-to-API invocation |
-| API identity | Limiter/Candidate/Delivery services | `roles/run.invoker` | Exact internal invocation |
-| Each runtime identity | Only its referenced secrets | `roles/secretmanager.secretAccessor` | No project-wide secret access |
+| Principal                                                                                   | Scope                               | Role                                 | Purpose                                         |
+| ------------------------------------------------------------------------------------------- | ----------------------------------- | ------------------------------------ | ----------------------------------------------- |
+| GitHub private-repository, `main`, `staging` environment and exact approved-SHA WIF subject | Publisher service account           | `roles/iam.workloadIdentityUser`     | Short-lived image publication identity          |
+| GitHub private-repository, `main`, `staging` environment and exact approved-SHA WIF subject | Deployer service account            | `roles/iam.workloadIdentityUser`     | Short-lived staging deployment identity         |
+| Publisher service account                                                                   | Named Artifact Registry repository  | `roles/artifactregistry.writer`      | Push reviewed immutable images only             |
+| Deployer service account                                                                    | Named Artifact Registry repository  | `roles/artifactregistry.reader`      | Resolve reviewed digests                        |
+| Deployer service account                                                                    | Staging project                     | `roles/run.developer`                | Manage Cloud Run without project administration |
+| Deployer service account                                                                    | Each runtime service account        | `roles/iam.serviceAccountUser`       | Attach only the eight named identities          |
+| Employer/Admin/Worker identities                                                            | API Cloud Run service               | `roles/run.invoker`                  | Exact web-to-API invocation                     |
+| API identity                                                                                | Limiter/Candidate/Delivery services | `roles/run.invoker`                  | Exact internal invocation                       |
+| Each runtime identity                                                                       | Only its referenced secrets         | `roles/secretmanager.secretAccessor` | No project-wide secret access                   |
 
 ## Environment and secret matrix
 
-| Service | Required non-secret groups | Secret references |
-| --- | --- | --- |
-| API | environment, internal/public origins, limiter/candidate/delivery origins and key IDs; Stripe and registration disabled | database, session, limiter token/HMAC, candidate token, delivery token |
-| Employer/Admin | production-mode runtime and non-local API origin | none |
-| Worker | staging runtime and public API origin | none |
-| Auth limiter | dual-required auth, audience, caller, release, namespace and Redis endpoint | service token and HMAC |
-| Candidate source | dual-required auth, audience, caller and release | service token |
-| Offer delivery | dual-required auth, audience, caller and release | service token |
-| QA reset | PostgreSQL-only persistence, dual-required auth, audience, caller and release | database and staging-only reset credential |
+| Service          | Required non-secret groups                                                                                             | Secret references                                                      |
+| ---------------- | ---------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------- |
+| API              | environment, internal/public origins, limiter/candidate/delivery origins and key IDs; Stripe and registration disabled | database, session, limiter token/HMAC, candidate token, delivery token |
+| Employer/Admin   | production-mode runtime and non-local API origin                                                                       | none                                                                   |
+| Worker           | staging runtime and public API origin                                                                                  | none                                                                   |
+| Auth limiter     | dual-required auth, audience, caller, release, namespace and Redis endpoint                                            | service token and HMAC                                                 |
+| Candidate source | dual-required auth, audience, caller and release                                                                       | service token                                                          |
+| Offer delivery   | dual-required auth, audience, caller and release                                                                       | service token                                                          |
+| QA reset         | PostgreSQL-only persistence, dual-required auth, audience, caller and release                                          | database and staging-only reset credential                             |
 
 Terraform validates the required keys. Secret values are never Terraform variables; Plan B creates
 only secret containers and least-privilege bindings. An authorized human must add versions through
@@ -94,22 +101,28 @@ Secret Manager before Plan B can become executable.
 - Application logs: dedicated Toronto bucket, 14-day retention.
 - Artifact Registry: untagged images older than seven days are removed.
 
-Plan A has no continuously running compute/database/cache. Expected baseline is approximately
-USD 0–5/month, driven by stored image bytes and registry operations after publication. Plan B's
+Plan A has no runtime compute, Cloud Run service, database, Redis or application secret. Applying
+Plan A before publishing images is expected to have CAD 0 initial resource-usage cost. Artifact
+Registry storage and operations can incur usage cost only after separately authorized image
+publication. Plan B's
 low-traffic planning range is approximately USD 90–130/month before unusual egress, log volume or
-Cloud Run load. USD 300 is an alert ceiling, not a guaranteed cutoff. Sustained requests can exceed
-it even with one instance per service, so Plan B still requires an official calculator estimate,
-approved workload assumptions and the emergency procedure before authorization.
+Cloud Run load and remains a draft estimate requiring CAD conversion and final workload evidence.
+CAD 500 is an alert ceiling, not a guaranteed cutoff. Sustained requests can exceed it even with
+one instance per service, so Plan B still requires an official calculator estimate, approved
+workload assumptions and the emergency procedure before authorization.
 
 ## Separate approval wording
 
 Plan A:
 
 > I authorize only Plan A bootstrap for project `resident-workforce-os-staging`, Toronto region,
-> release SHA and exact plan digest stated in the final review, with USD 300 monthly and USD 75
-> one-time ceilings. This authorizes the listed bootstrap resources only. It does not authorize
-> Plan B, runtime resources, image publication beyond the reviewed workflow, DNS, production, live
-> payments or real data.
+> exact release SHA and exact Plan A digest stated in the final review, with a CAD 500 monthly
+> notification ceiling and CAD 0 expected initial resource-usage cost before image publication.
+> I authorize only the listed Artifact Registry repository, GitHub WIF pool/provider, publisher
+> and deployer service accounts, least-privilege IAM grants, budget and verified project-owner
+> notification channel. This does not authorize Plan B, image publication, Cloud Run, Cloud SQL,
+> Redis, application secrets, DNS, production, live payments, real email or real data. Budget
+> alerts are not a hard spending cutoff.
 
 Plan B:
 

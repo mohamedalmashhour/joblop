@@ -3,6 +3,9 @@ output "plan_identity" {
     plan               = "A-bootstrap"
     project_id         = var.project_id
     region             = var.region
+    budget_currency    = "CAD"
+    monthly_budget     = var.monthly_budget_cad
+    approved_release   = var.approved_release_sha
     approval_reference = var.approval_reference
   }
 }
