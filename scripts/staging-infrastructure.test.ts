@@ -39,7 +39,7 @@ describe("split staging infrastructure packages", () => {
         "versions.tf"
       ];
       if (plan === "state-bootstrap") {
-        expected.push("backend.tf.example");
+        expected.push("backend.gcs.tf.example", "backend.tf");
       }
       expect(files).toEqual(expected.sort());
     }
@@ -47,7 +47,10 @@ describe("split staging infrastructure packages", () => {
 
   it("keeps Plan 0 limited to protected remote state", async () => {
     const main = await read("state-bootstrap", "main.tf");
-    const remoteBackend = await read("state-bootstrap", "backend.tf.example");
+    const localBackend = await read("state-bootstrap", "backend.tf");
+    const remoteBackend = await read("state-bootstrap", "backend.gcs.tf.example");
+    expect(localBackend).toContain('backend "local"');
+    expect(localBackend).toContain(".staging-inputs/terraform-plan0-bootstrap.tfstate");
     expect(remoteBackend).toContain('backend "gcs"');
     expect(main).toContain('public_access_prevention    = "enforced"');
     expect(main).toContain("uniform_bucket_level_access = true");

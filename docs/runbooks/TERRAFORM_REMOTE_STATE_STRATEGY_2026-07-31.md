@@ -20,9 +20,12 @@ Plan 0 is a separately reviewed configuration under `infrastructure/staging/stat
 It proposes one dedicated Standard-class GCS bucket in `northamerica-northeast2` and one
 bucket-scoped operator binding.
 
-Plan 0 intentionally retains the local backend for its first approved apply because its destination
-bucket does not exist yet. `backend.tf.example` is copied to `backend.tf` only after the bucket
-controls are verified; the resulting change is reviewed before `terraform init -migrate-state`.
+Plan 0 intentionally retains an explicit local backend for its first approved apply because its
+destination bucket does not exist yet. Its temporary path is
+`.staging-inputs/terraform-plan0-bootstrap.tfstate`, outside the Terraform package and protected by
+the repository-wide ignored local-input directory. `backend.tf` is replaced with the reviewed
+`backend.gcs.tf.example` content only after the bucket controls are verified; the resulting change
+is reviewed before `terraform init -migrate-state`.
 
 Controls:
 
@@ -70,12 +73,15 @@ Never add access tokens, service-account keys or credential paths to backend con
 ## Safe bootstrap sequence
 
 1. Review and explicitly approve the exact Plan 0 release SHA and plan digest.
-2. Back up any local Plan 0 state to an encrypted, mode-`600`, Git-ignored recovery location.
-3. Initialize Plan 0 with `terraform init -backend=false`; apply only the exact approved saved Plan 0. This is the sole local-state bootstrap operation.
+2. Confirm the explicit local-backend path is under `.staging-inputs`, mode `600` when created, and
+   Git-ignored. Back up any pre-existing Plan 0 state to an encrypted recovery location.
+3. Initialize Plan 0 with `terraform init -reconfigure`; apply only the exact approved saved Plan 0.
+   This is the sole local-state bootstrap operation.
 4. Verify bucket location, public-access prevention, uniform access, versioning, soft delete,
    lifecycle and the exact IAM member.
-5. Run `terraform init -migrate-state -backend-config=...` for Plan 0. Confirm the prompt references
-   only the approved bucket and prefix.
+5. Replace the reviewed local backend block with the reviewed GCS backend block. Run
+   `terraform init -migrate-state -backend-config=...` for Plan 0. Confirm the prompt references only
+   the approved local state, bucket and prefix.
 6. Verify the remote state lineage and serial using metadata-only commands. Do not print state.
 7. Securely destroy the temporary local state only after remote verification and a recoverable
    object generation exist.
