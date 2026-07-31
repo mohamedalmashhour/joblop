@@ -29,14 +29,15 @@ resource "google_iam_workload_identity_pool_provider" "github" {
   workload_identity_pool_provider_id = "github"
   display_name                       = "GitHub Actions"
   attribute_mapping = {
-    "google.subject"             = "assertion.sub"
-    "attribute.environment"      = "assertion.environment"
-    "attribute.repository"       = "assertion.repository"
-    "attribute.ref"              = "assertion.ref"
-    "attribute.repository_owner" = "assertion.repository_owner"
-    "attribute.sha"              = "assertion.sha"
+    "google.subject"                  = "assertion.sub"
+    "attribute.environment"           = "assertion.environment"
+    "attribute.repository"            = "assertion.repository"
+    "attribute.ref"                   = "assertion.ref"
+    "attribute.repository_owner"      = "assertion.repository_owner"
+    "attribute.repository_visibility" = "assertion.repository_visibility"
+    "attribute.sha"                   = "assertion.sha"
   }
-  attribute_condition = "assertion.repository == '${var.github_repository}' && assertion.ref == 'refs/heads/main' && assertion.environment == '${var.github_environment}' && assertion.sha == '${var.approved_release_sha}'"
+  attribute_condition = "assertion.repository == '${var.github_repository}' && assertion.repository_visibility == 'private' && assertion.ref == 'refs/heads/main' && assertion.environment == '${var.github_environment}' && assertion.sha == '${var.approved_release_sha}'"
   oidc { issuer_uri = "https://token.actions.githubusercontent.com" }
 }
 
@@ -86,6 +87,11 @@ resource "google_storage_bucket_iam_member" "deployer_state" {
   bucket = var.state_bucket_name
   role   = "roles/storage.objectAdmin"
   member = google_service_account.deployer.member
+  condition {
+    title       = "rwos_staging_deployment_state_only"
+    description = "Restrict the deployer to the reviewed Plan A and Plan B state prefixes."
+    expression  = "resource.name.startsWith('projects/_/buckets/${var.state_bucket_name}/objects/terraform/plan-a-bootstrap/') || resource.name.startsWith('projects/_/buckets/${var.state_bucket_name}/objects/terraform/plan-b-runtime/')"
+  }
 }
 
 resource "google_billing_budget" "staging" {
@@ -109,7 +115,8 @@ resource "google_billing_budget" "staging" {
     monitoring_notification_channels = [
       google_monitoring_notification_channel.budget_owner.name,
     ]
-    disable_default_iam_recipients = false
+    disable_default_iam_recipients  = false
+    enable_project_level_recipients = true
   }
 }
 

@@ -81,7 +81,12 @@ describe("split staging infrastructure packages", () => {
     expect(main).toContain('currency_code = "CAD"');
     expect(main).toContain("assertion.environment == '${var.github_environment}'");
     expect(main).toContain("assertion.sha == '${var.approved_release_sha}'");
-    expect(main).toContain("disable_default_iam_recipients = false");
+    expect(main).toContain("assertion.repository_visibility == 'private'");
+    expect(main).toContain("rwos_staging_deployment_state_only");
+    expect(main).toContain("objects/terraform/plan-a-bootstrap/");
+    expect(main).toContain("objects/terraform/plan-b-runtime/");
+    expect(main).toContain("disable_default_iam_recipients  = false");
+    expect(main).toContain("enable_project_level_recipients = true");
     expect(main).toContain('role   = "roles/storage.objectAdmin"');
     expect(main).not.toMatch(/google_cloud_run|google_sql|google_redis|google_secret_manager/u);
   });
