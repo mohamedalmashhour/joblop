@@ -103,6 +103,33 @@ describe("Prisma QA-reset SQL executor", () => {
     ).resolves.toEqual({ rows: [], rowCount: 1 });
     await expect(
       executor.query(
+        `/* qa-reset:owned-record-authorize */
+         SELECT owned.lifecycle_status
+           FROM qa_reset_owned_records AS owned
+           JOIN qa_reset_manifest_ownership AS manifest ON manifest.id = owned.manifest_id
+          WHERE owned.manifest_id = $1 AND owned.tenant_id = $2 AND owned.namespace = $3
+            AND owned.entity_type = $4 AND owned.target_record_id = $5
+            AND owned.manifest_record_key = $6 AND manifest.manifest_reference = $7
+            AND manifest.manifest_checksum = $8 AND manifest.release_sha = $9
+            AND manifest.environment = 'staging' AND manifest.status IN ('approved', 'active')
+            AND manifest.expires_at > $10
+          FOR UPDATE`,
+        [
+          "manifest",
+          "tenant",
+          "namespace",
+          "assignment",
+          "record",
+          "key",
+          "reference",
+          "checksum",
+          "sha",
+          new Date()
+        ]
+      )
+    ).resolves.toEqual({ rows: [], rowCount: 0 });
+    await expect(
+      executor.query(
         `/* qa-reset:event */
          INSERT INTO qa_reset_control_events
            (id, control_run_id, sequence, event_type, prior_status, new_status,

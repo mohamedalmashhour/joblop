@@ -40,6 +40,29 @@ describe("staging QA reset manifest template", () => {
       "syn:tenant-a:employer_organization:01",
       "syn:tenant-b:employer_organization:01"
     ]);
+
+    const humanFacingKeys = new Set([
+      "legalName",
+      "displayName",
+      "displayLabel",
+      "name",
+      "title",
+      "dutiesSummary",
+      "approvedDisplayName",
+      "workerVisibleTitle",
+      "workerVisibleSummary",
+      "policySummary",
+      "confirmedTitle"
+    ]);
+    const labels = testManifest.records.flatMap(({ payload }) =>
+      Object.entries(payload)
+        .filter(([key, value]) => humanFacingKeys.has(key) && typeof value === "string")
+        .map(([, value]) => value as string)
+    );
+    expect(labels).not.toHaveLength(0);
+    expect(labels.every((label) => !/\b(?:tenant|resident|apartment|company)\b/i.test(label))).toBe(
+      true
+    );
   });
 
   it("uses only verified synthetic identities and minimum application roles", () => {

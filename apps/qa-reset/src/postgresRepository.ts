@@ -228,6 +228,7 @@ export class PostgresQaResetRepository {
         );
         let affectedCount = 0;
         for (const record of scopedRecords(request)) {
+          await authorizeOwnedRecord(connection, ownership.id, request, record, transactionTime);
           const affected =
             request.operation === "prepare"
               ? await this.mutator.prepare(connection, record)
@@ -277,6 +278,43 @@ export class PostgresQaResetRepository {
       throw new QaResetUnknownOutcomeError();
     }
   }
+}
+
+async function authorizeOwnedRecord(
+  connection: SqlConnection,
+  manifestId: string,
+  request: DurableResetRequest,
+  record: ManifestRecord,
+  transactionTime: Date
+) {
+  const result = await connection.query<{ lifecycle_status: string }>(
+    `/* qa-reset:owned-record-authorize */
+     SELECT owned.lifecycle_status
+       FROM qa_reset_owned_records AS owned
+       JOIN qa_reset_manifest_ownership AS manifest ON manifest.id = owned.manifest_id
+      WHERE owned.manifest_id = $1 AND owned.tenant_id = $2 AND owned.namespace = $3
+        AND owned.entity_type = $4 AND owned.target_record_id = $5
+        AND owned.manifest_record_key = $6 AND manifest.manifest_reference = $7
+        AND manifest.manifest_checksum = $8 AND manifest.release_sha = $9
+        AND manifest.environment = 'staging' AND manifest.status IN ('approved', 'active')
+        AND manifest.expires_at > $10
+      FOR UPDATE`,
+    [
+      manifestId,
+      record.tenantId,
+      record.namespace,
+      record.entityType,
+      record.recordId,
+      record.manifestRecordKey,
+      request.manifest.manifestId,
+      request.manifest.checksum,
+      request.manifest.releaseSha,
+      transactionTime
+    ]
+  );
+  const lifecycle = result.rows[0]?.lifecycle_status;
+  const allowed = ["declared", "prepared", "verified"].includes(lifecycle ?? "");
+  if (result.rowCount !== 1 || !allowed) throw new QaResetPersistenceConflictError();
 }
 
 async function inspectOwnedRecords(connection: SqlConnection, manifestId: string) {

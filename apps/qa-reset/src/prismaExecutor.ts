@@ -97,6 +97,7 @@ function statementClassAllowed(tag: string, statementClass: string) {
     "qa-reset:create-control": "INSERT",
     "qa-reset:complete-control": "UPDATE",
     "qa-reset:owned-record": "UPDATE",
+    "qa-reset:owned-record-authorize": "SELECT",
     "qa-reset:owned-records-inspect": "SELECT",
     "qa-reset:event": "INSERT"
   };
@@ -245,6 +246,7 @@ const fixedPolicyTags = new Set([
   "qa-reset:create-control",
   "qa-reset:complete-control",
   "qa-reset:owned-record",
+  "qa-reset:owned-record-authorize",
   "qa-reset:owned-records-inspect",
   "qa-reset:event"
 ]);
@@ -267,6 +269,7 @@ function tablesAllowedForTag(sql: string, tag: string) {
     "qa-reset:create-control": ["qa_reset_control_runs"],
     "qa-reset:complete-control": ["qa_reset_control_runs"],
     "qa-reset:owned-record": ["qa_reset_owned_records"],
+    "qa-reset:owned-record-authorize": ["qa_reset_owned_records", "qa_reset_manifest_ownership"],
     "qa-reset:owned-records-inspect": ["qa_reset_owned_records"],
     "qa-reset:event": ["qa_reset_control_events"]
   };

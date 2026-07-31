@@ -167,18 +167,24 @@ requirements.
 
 ### QA reset service
 
-Classification: **Configuration required locally; real database behavior blocked**
+Classification: **Code-level deployment composition required; real database behavior blocked**
 
 B4 adds a staging-only Node HTTP policy service with dry-run, prepare and cleanup endpoints,
-manifest/release/authority checks, exact Tenant A/B scope, operation receipts, an abstract lock and
-repository, safe audit controls, probes and a non-root container. Browser and native runners now
-perform dry-run and pass the resulting checksum/receipt while retaining their existing body shapes.
+manifest/release/authority checks, exact Test Employer Organization A/B scope, operation receipts,
+safe audit controls, probes and a non-root container. Browser and native runners perform dry-run and
+pass the resulting checksum/receipt while retaining their existing body shapes.
 
-Only the in-memory repository and lock exist. The package has no database client, URL, SQL or
-migration and cannot reset a real database. A future PostgreSQL repository, advisory-lock behavior,
-least-privilege role, transaction evidence, immutable staging identities and independent database
-witness remain mandatory external work. Scale to zero loses local controls and is not safe for a
-real mutation service until persistence is approved.
+The package now contains a PostgreSQL transaction repository, transaction-scoped advisory locking,
+manifest-owned record controls, a fixed 24-entity mutator, Prisma SQL policy enforcement and the
+unapplied QA-reset control migration. Local fake-adapter and repository tests cover ownership,
+rollback, replay and unknown-commit behavior. A separately authorized disposable PostgreSQL test is
+still required before claiming real database behavior.
+
+The packaged entry point deliberately has no implicit memory or credential-bearing fallback. It
+starts fail closed because no deployment composition root currently constructs and injects the
+PostgreSQL and identity-verifier ports. Consequently, configuration alone cannot make `/ready` or
+reset mutations available. That composition root, least-privilege staging identity, migration
+application, immutable staging identifiers and external database evidence remain blocked work.
 
 ## 2. Service-to-service authentication
 

@@ -170,7 +170,7 @@ describe("PostgreSQL QA-reset repository contract", () => {
     ).toEqual(now);
     expect(
       fixture.database.calls
-        .find((call) => call.sql.includes("qa-reset:owned-record"))
+        .find((call) => call.sql.includes("qa-reset:owned-record */"))
         ?.params.at(-1)
     ).toEqual(now);
   });
@@ -256,6 +256,32 @@ describe("PostgreSQL QA-reset repository contract", () => {
     fixture.database.manifest.namespace = "rwos:qa-reset:staging:foreign";
     await expect(fixture.repository.execute(fixture.request)).rejects.toBeInstanceOf(
       QaResetPersistenceConflictError
+    );
+  });
+
+  it("denies all entity paths when the exact manifest ownership record is absent", async () => {
+    for (const operation of ["prepare", "cleanup"] as const) {
+      for (const entityType of ownedEntityTypes) {
+        const database = new FakeDatabase(testManifest);
+        database.deniedEntityType = entityType;
+        const mutator = new FakeMutator(1);
+        const repository = new PostgresQaResetRepository(
+          database,
+          createExactRecordMutator(mutator, ownedEntityTypes),
+          () => now
+        );
+        await expect(
+          repository.execute(durableRequest(testManifest, operation))
+        ).rejects.toBeInstanceOf(QaResetPersistenceConflictError);
+        const deniedIds = testManifest.records
+          .filter((record) => record.entityType === entityType)
+          .map((record) => record.recordId);
+        const mutatedIds = operation === "prepare" ? mutator.prepared : mutator.cleaned;
+        expect(mutatedIds).not.toEqual(expect.arrayContaining(deniedIds));
+      }
+    }
+    expect(new Set(testManifest.records.map(({ entityType }) => entityType))).toEqual(
+      new Set(ownedEntityTypes)
     );
   });
 
@@ -430,6 +456,7 @@ class FakeMutator {
 
 class FakeDatabase implements SqlTransactionExecutor {
   available = true;
+  deniedEntityType: (typeof ownedEntityTypes)[number] | null = null;
   unknownCommit: "before-commit" | "after-commit" | null = null;
   control: {
     id: string;
@@ -540,6 +567,11 @@ class FakeDatabase implements SqlTransactionExecutor {
         digest: String(params[4])
       };
       return result([], 1);
+    }
+    if (sql.includes("qa-reset:owned-record-authorize")) {
+      return (params[3] !== this.deniedEntityType
+        ? result([{ lifecycle_status: "declared" }], 1)
+        : result([], 0)) as unknown as SqlResult<Row>;
     }
     if (sql.includes("qa-reset:owned-record")) return result([], 1);
     if (sql.includes("qa-reset:complete-control")) {
