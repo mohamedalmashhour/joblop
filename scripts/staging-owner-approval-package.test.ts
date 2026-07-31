@@ -6,7 +6,7 @@ const path = "docs/runbooks/STAGING_OWNER_APPROVAL_PACKAGE_2026-07-30.md";
 describe("staging owner approval package", () => {
   it("binds the package to the release without authorizing external action", async () => {
     const body = await readFile(path, "utf8");
-    expect(body).toContain("570458d4ec35c419a96575d0c0bd01e8c98921a4");
+    expect(body).toContain("4a3f4acc48f2c85a87daf3ec86bff1ca7962e1f3");
     expect(body).toContain("UNSIGNED — RECOMMENDATIONS ONLY");
     expect(body).toContain("APPROVE ☐ REJECT ☐ MODIFY ☐");
     expect(body).toContain("production remains separate and excluded");
