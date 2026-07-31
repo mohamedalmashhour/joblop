@@ -76,6 +76,14 @@ variable "budget_notification_email" {
   }
 }
 
+variable "state_bucket_name" {
+  type = string
+  validation {
+    condition     = var.state_bucket_name == "${var.project_id}-tfstate-${var.project_number}"
+    error_message = "Use the dedicated Plan 0 staging state bucket."
+  }
+}
+
 variable "approval_reference" {
   type = string
   validation {

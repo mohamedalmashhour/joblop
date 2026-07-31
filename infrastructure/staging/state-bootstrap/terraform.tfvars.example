@@ -1,0 +1,7 @@
+project_id                = "replace-with-dedicated-staging-project"
+project_number            = "000000000000"
+region                    = "northamerica-northeast2"
+state_bucket_name         = "replace-with-dedicated-staging-project-tfstate-000000000000"
+terraform_operator_member = "user:LOCAL-IGNORED-TERRAFORM-OPERATOR"
+approved_release_sha      = "0000000000000000000000000000000000000000"
+approval_reference        = "PLAN-0-NOT-YET"

@@ -1,0 +1,2 @@
+bucket = "replace-with-dedicated-staging-state-bucket"
+prefix = "terraform/plan-a-bootstrap"

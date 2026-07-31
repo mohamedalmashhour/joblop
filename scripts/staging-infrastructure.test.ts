@@ -2,23 +2,60 @@ import { readFile, readdir } from "node:fs/promises";
 import { describe, expect, it } from "vitest";
 
 const root = "infrastructure/staging";
-const read = (plan: "bootstrap" | "runtime", name: string) =>
+const read = (plan: "state-bootstrap" | "bootstrap" | "runtime", name: string) =>
   readFile(`${root}/${plan}/${name}`, "utf8");
 
 describe("split staging infrastructure packages", () => {
-  it.each(["bootstrap", "runtime"] as const)("keeps %s independently reviewable", async (plan) => {
-    const files = (await readdir(`${root}/${plan}`, { withFileTypes: true }))
-      .filter((entry) => entry.isFile())
-      .map((entry) => entry.name)
-      .filter((name) => name !== ".terraform.lock.hcl")
-      .sort();
-    expect(files).toEqual([
-      "main.tf",
-      "outputs.tf",
-      "terraform.tfvars.example",
-      "variables.tf",
-      "versions.tf"
-    ]);
+  it("keeps Terraform state, plans, backend inputs, and crash logs out of Git", async () => {
+    const ignore = await readFile(".gitignore", "utf8");
+    for (const pattern of [
+      ".terraform/",
+      "*.tfstate",
+      "*.tfstate.*",
+      "*.tfplan",
+      "*.tfbackend",
+      ".terraform.tfstate.lock.info",
+      "crash.log",
+      "crash.*.log"
+    ]) {
+      expect(ignore).toContain(pattern);
+    }
+  });
+
+  it.each(["state-bootstrap", "bootstrap", "runtime"] as const)(
+    "keeps %s independently reviewable",
+    async (plan) => {
+      const files = (await readdir(`${root}/${plan}`, { withFileTypes: true }))
+        .filter((entry) => entry.isFile())
+        .map((entry) => entry.name)
+        .filter((name) => name !== ".terraform.lock.hcl")
+        .sort();
+      const expected = [
+        "backend.gcs.tfbackend.example",
+        "main.tf",
+        "outputs.tf",
+        "terraform.tfvars.example",
+        "variables.tf",
+        "versions.tf"
+      ];
+      if (plan === "state-bootstrap") {
+        expected.push("backend.tf.example");
+      }
+      expect(files).toEqual(expected.sort());
+    }
+  );
+
+  it("keeps Plan 0 limited to protected remote state", async () => {
+    const main = await read("state-bootstrap", "main.tf");
+    const remoteBackend = await read("state-bootstrap", "backend.tf.example");
+    expect(remoteBackend).toContain('backend "gcs"');
+    expect(main).toContain('public_access_prevention    = "enforced"');
+    expect(main).toContain("uniform_bucket_level_access = true");
+    expect(main).toContain("versioning {");
+    expect(main).toContain("soft_delete_policy");
+    expect(main).toContain("days_since_noncurrent_time = 90");
+    expect(main).toContain('role   = "roles/storage.objectAdmin"');
+    expect(main).not.toMatch(/google_cloud_run|google_sql|google_redis|google_secret_manager/u);
   });
 
   it("limits Plan A to bootstrap, identity and cost controls", async () => {
@@ -42,6 +79,7 @@ describe("split staging infrastructure packages", () => {
     expect(main).toContain("assertion.environment == '${var.github_environment}'");
     expect(main).toContain("assertion.sha == '${var.approved_release_sha}'");
     expect(main).toContain("disable_default_iam_recipients = false");
+    expect(main).toContain('role   = "roles/storage.objectAdmin"');
     expect(main).not.toMatch(/google_cloud_run|google_sql|google_redis|google_secret_manager/u);
   });
 

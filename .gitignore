@@ -22,4 +22,8 @@ tmp/
 *.tfstate
 *.tfstate.*
 *.tfplan
+*.tfbackend
+.terraform.tfstate.lock.info
+crash.log
+crash.*.log
 .staging-inputs/

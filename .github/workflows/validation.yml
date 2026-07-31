@@ -30,6 +30,7 @@ jobs:
     strategy:
       matrix:
         package:
+          - state-bootstrap
           - bootstrap
           - runtime
     steps:

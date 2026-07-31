@@ -82,6 +82,12 @@ resource "google_project_iam_member" "deployer_run_developer" {
   member  = google_service_account.deployer.member
 }
 
+resource "google_storage_bucket_iam_member" "deployer_state" {
+  bucket = var.state_bucket_name
+  role   = "roles/storage.objectAdmin"
+  member = google_service_account.deployer.member
+}
+
 resource "google_billing_budget" "staging" {
   billing_account = var.billing_account
   display_name    = "RWOS staging CAD ${var.monthly_budget_cad} alert"
