@@ -56,6 +56,10 @@ for (const [index, service] of services.entries()) {
     `RWOS_IMAGE_VERSION=${imageVersion}`,
     "."
   ]);
+  const imageDigest = capture("docker", ["image", "inspect", "--format", "{{.Id}}", image]);
+  if (!/^sha256:[a-f0-9]{64}$/.test(imageDigest)) {
+    fail(`CONTAINER_IMAGE_DIGEST_INVALID service=${service.name}`);
+  }
   try {
     const environment =
       service.name === "api"
@@ -233,7 +237,9 @@ for (const [index, service] of services.entries()) {
     const readinessStatuses = failClosedReadinessServices.has(service.name) ? [503] : [200];
     await waitFor(`http://127.0.0.1:${hostPort}${service.readiness}`, readinessStatuses);
     run("docker", ["stop", "--time", "15", container]);
-    process.stdout.write(`CONTAINER_VALIDATION_PASS service=${service.name} image=${image}\n`);
+    process.stdout.write(
+      `CONTAINER_VALIDATION_PASS service=${service.name} image=${image} digest=${imageDigest}\n`
+    );
   } finally {
     spawnSync("docker", ["rm", "--force", container], { stdio: "ignore" });
   }
@@ -257,6 +263,18 @@ async function waitFor(url, acceptedStatuses) {
 function run(command, args) {
   const result = spawnSync(command, args, { stdio: "inherit" });
   if (result.status !== 0) fail(`CONTAINER_COMMAND_FAILED command=${command} ${args[0] ?? ""}`);
+}
+
+function capture(command, args) {
+  const result = spawnSync(command, args, {
+    encoding: "utf8",
+    stdio: ["ignore", "pipe", "pipe"]
+  });
+  if (result.error || result.status !== 0) {
+    const detail = (result.stderr || result.error?.message || "unknown error").trim();
+    fail(`COMMAND_FAILED command=${command} detail=${detail}`);
+  }
+  return result.stdout.trim();
 }
 
 function fail(message) {

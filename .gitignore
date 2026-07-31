@@ -22,5 +22,4 @@ tmp/
 *.tfstate
 *.tfstate.*
 *.tfplan
-.terraform.lock.hcl
 .staging-inputs/

@@ -59,6 +59,9 @@ describe("Cloud Run application packaging", () => {
     expect(validator).toContain("services.length !== 1");
     expect(validator).toContain("RWOS_CONTAINER_SERVICE_UNKNOWN");
     expect(validator).toContain("for (const [index, service] of services.entries())");
+    expect(validator).toContain('"docker", ["image", "inspect", "--format", "{{.Id}}", image]');
+    expect(validator).toContain("CONTAINER_IMAGE_DIGEST_INVALID");
+    expect(validator).toContain("digest=${imageDigest}");
   });
 
   it("keeps adapter runtime probes bound to the frozen approved adapter release", () => {
