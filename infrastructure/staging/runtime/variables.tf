@@ -50,6 +50,18 @@ variable "artifact_repository_id" {
   default = "rwos-stg-ca-tor-containers"
 }
 
+variable "deploy_runtime_services" {
+  type        = bool
+  default     = false
+  description = "Fail-closed gate: create Cloud Run services only after secret versions and runtime inputs are ready."
+}
+
+variable "deploy_monitoring_alerts" {
+  type        = bool
+  default     = false
+  description = "Fail-closed gate: create notification-backed alerts only after an approved channel exists."
+}
+
 variable "images_published_approval_reference" {
   type = string
   validation {
@@ -75,7 +87,7 @@ variable "image_digests" {
 variable "service_environment" {
   type = map(map(string))
   validation {
-    condition = toset(keys(var.service_environment)) == toset([
+    condition = !var.deploy_runtime_services || (toset(keys(var.service_environment)) == toset([
       "api", "employer", "admin", "worker", "auth-limiter",
       "candidate-source", "offer-delivery", "qa-reset"
       ]) && alltrue([
@@ -89,7 +101,7 @@ variable "service_environment" {
         offer-delivery   = ["RWOS_ENV", "OFFER_DELIVERY_ADAPTER_AUTH_MODE", "OFFER_DELIVERY_ADAPTER_AUDIENCE", "OFFER_DELIVERY_ADAPTER_API_SERVICE_ACCOUNT", "OFFER_DELIVERY_ADAPTER_RELEASE_SHA", "OFFER_DELIVERY_ADAPTER_TENANT_A_ID", "OFFER_DELIVERY_ADAPTER_TENANT_B_ID"]
         qa-reset         = ["RWOS_ENV", "QA_RESET_PERSISTENCE_MODE", "QA_RESET_AUTH_MODE", "QA_RESET_AUDIENCE", "QA_RESET_RELEASE_SHA", "QA_RESET_PROJECT_ID", "QA_RESET_CLUSTER_ID", "QA_RESET_DATABASE_ID", "QA_RESET_AUTHORITY_ID", "QA_RESET_TENANT_A_ID", "QA_RESET_TENANT_B_ID", "QA_RESET_WORK_GROUP_ID", "QA_RESET_ROLE_DEFINITION_ID", "QA_RESET_ORGANIZATION_OWNER_ACCESS_ROLE_ID", "QA_RESET_NAMESPACE", "QA_RESET_MANIFEST_ID", "QA_RESET_MANIFEST_CHECKSUM", "QA_RESET_MANIFEST_CREATED_AT", "QA_RESET_MANIFEST_EXPIRES_AT", "QA_RESET_DRY_RUN_APPROVAL_REFERENCE", "QA_RESET_PREPARE_APPROVAL_REFERENCE", "QA_RESET_CLEANUP_APPROVAL_REFERENCE", "QA_RESET_BROWSER_E2E_SERVICE_ACCOUNT", "QA_RESET_IOS_E2E_SERVICE_ACCOUNT", "QA_RESET_ANDROID_E2E_SERVICE_ACCOUNT", "QA_RESET_MANUAL_QA_SERVICE_ACCOUNT", "QA_RESET_MONITORING_SERVICE_ACCOUNT", "QA_RESET_BROWSER_E2E_OPERATOR_IDENTITY", "QA_RESET_IOS_E2E_OPERATOR_IDENTITY", "QA_RESET_ANDROID_E2E_OPERATOR_IDENTITY", "QA_RESET_MANUAL_QA_OPERATOR_IDENTITY"]
       } : alltrue([for name in required : contains(keys(var.service_environment[service]), name)])
-    ])
+    ]))
     error_message = "Provide every required non-secret environment contract field for every service."
   }
 }
@@ -97,7 +109,7 @@ variable "service_environment" {
 variable "service_secret_environment" {
   type = map(map(string))
   validation {
-    condition = toset(keys(var.service_secret_environment)) == toset([
+    condition = !var.deploy_runtime_services || (toset(keys(var.service_secret_environment)) == toset([
       "api", "employer", "admin", "worker", "auth-limiter",
       "candidate-source", "offer-delivery", "qa-reset"
       ]) && alltrue([
@@ -108,7 +120,7 @@ variable "service_secret_environment" {
         offer-delivery   = ["OFFER_DELIVERY_ADAPTER_SERVICE_TOKEN"]
         qa-reset         = ["DATABASE_URL", "QA_RESET_BROWSER_E2E_APP_CREDENTIAL", "QA_RESET_IOS_E2E_APP_CREDENTIAL", "QA_RESET_ANDROID_E2E_APP_CREDENTIAL", "QA_RESET_MANUAL_QA_APP_CREDENTIAL", "QA_RESET_MONITORING_APP_CREDENTIAL"]
       } : alltrue([for name in required : contains(keys(var.service_secret_environment[service]), name)])
-    ])
+    ]))
     error_message = "Provide every required least-privilege secret contract field."
   }
 }
@@ -116,7 +128,7 @@ variable "service_secret_environment" {
 variable "monitoring_notification_channels" {
   type = set(string)
   validation {
-    condition     = length(var.monitoring_notification_channels) > 0
+    condition     = !var.deploy_monitoring_alerts || length(var.monitoring_notification_channels) > 0
     error_message = "Plan B requires an approved monitoring owner and notification channel."
   }
 }

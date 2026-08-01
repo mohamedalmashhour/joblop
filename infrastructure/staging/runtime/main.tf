@@ -11,7 +11,15 @@ locals {
     offer-delivery   = { cpu = "0.5", memory = "512Mi", concurrency = 1, image = "offer-delivery", config = "offer-delivery" }
     qa-reset         = { cpu = "0.5", memory = "512Mi", concurrency = 1, image = "qa-reset", config = "qa-reset" }
   }
-  effective_secret_environment = merge(var.service_secret_environment, { worker-api = var.service_secret_environment.api })
+  deployed_services = var.deploy_runtime_services ? local.services : {}
+  effective_secret_environment = merge(var.service_secret_environment, {
+    worker-api = {
+      DATABASE_URL                 = var.service_secret_environment.api.DATABASE_URL
+      SESSION_SECRET               = var.service_secret_environment.api.SESSION_SECRET
+      AUTH_RATE_LIMITER_TOKEN      = var.service_secret_environment.api.AUTH_RATE_LIMITER_TOKEN
+      AUTH_RATE_LIMITER_KEY_SECRET = var.service_secret_environment.api.AUTH_RATE_LIMITER_KEY_SECRET
+    }
+  })
   secret_names = toset(flatten([
     for environment_map in values(local.effective_secret_environment) : values(environment_map)
   ]))
@@ -145,7 +153,7 @@ resource "google_service_account_iam_member" "deployer_act_as" {
 }
 
 resource "google_cloud_run_v2_service" "service" {
-  for_each = local.services
+  for_each = local.deployed_services
   name     = "rwos-stg-${each.key}"
   location = var.region
   ingress  = contains(["employer", "admin", "worker", "worker-api"], each.key) ? "INGRESS_TRAFFIC_ALL" : "INGRESS_TRAFFIC_INTERNAL_LOAD_BALANCER"
@@ -210,7 +218,7 @@ resource "google_cloud_run_v2_service" "service" {
 }
 
 resource "google_cloud_run_v2_service_iam_member" "web_to_api" {
-  for_each = toset(["employer", "admin"])
+  for_each = var.deploy_runtime_services ? toset(["employer", "admin"]) : toset([])
   project  = var.project_id
   location = var.region
   name     = google_cloud_run_v2_service.service["api"].name
@@ -219,6 +227,7 @@ resource "google_cloud_run_v2_service_iam_member" "web_to_api" {
 }
 
 resource "google_cloud_run_v2_service_iam_member" "public_worker_api" {
+  count    = var.deploy_runtime_services ? 1 : 0
   project  = var.project_id
   location = var.region
   name     = google_cloud_run_v2_service.service["worker-api"].name
@@ -227,7 +236,7 @@ resource "google_cloud_run_v2_service_iam_member" "public_worker_api" {
 }
 
 resource "google_cloud_run_v2_service_iam_member" "api_to_adapters" {
-  for_each = toset(["auth-limiter", "candidate-source", "offer-delivery"])
+  for_each = var.deploy_runtime_services ? toset(["auth-limiter", "candidate-source", "offer-delivery"]) : toset([])
   project  = var.project_id
   location = var.region
   name     = google_cloud_run_v2_service.service[each.key].name
@@ -250,6 +259,7 @@ resource "google_logging_project_sink" "application" {
 }
 
 resource "google_monitoring_alert_policy" "cloud_sql_cpu" {
+  count        = var.deploy_monitoring_alerts ? 1 : 0
   display_name = "RWOS staging Cloud SQL CPU"
   combiner     = "OR"
   conditions {
