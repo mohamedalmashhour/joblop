@@ -109,6 +109,14 @@ describe("split staging infrastructure packages", () => {
     expect(main).toContain('member   = "allUsers"');
     expect(main).toContain('RWOS_PUBLIC_WORKER_INGRESS_ONLY = "enabled"');
     expect(main).toContain("var.deploy_runtime_services ? local.services : {}");
+    expect(main).toContain('resource "google_cloud_run_v2_job" "migration"');
+    expect(main).toContain("count               = var.deploy_migration_job ? 1 : 0");
+    expect(main).toContain('account_id   = "sa-rwos-stg-migration"');
+    expect(main).toContain('secret_id = var.migration_database_secret_name');
+    expect(main).toContain('args        = ["--filter", "@rwos/database", "prisma:migrate:deploy"]');
+    expect(main).toContain("max_retries     = 0");
+    expect(main).toContain("task_count  = 1");
+    expect(main).toContain("parallelism = 1");
     expect(main).toContain("var.deploy_monitoring_alerts ? 1 : 0");
     expect(main).toContain("worker-api = {");
     expect(main).not.toContain("worker-api = var.service_secret_environment.api");

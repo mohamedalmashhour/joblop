@@ -65,6 +65,21 @@ variable "deploy_runtime_services" {
   description = "Fail-closed gate: create Cloud Run services only after secret versions and runtime inputs are ready."
 }
 
+variable "deploy_migration_job" {
+  type        = bool
+  default     = false
+  description = "Fail-closed gate: create the singleton migration job only after its database secret version is ready."
+}
+
+variable "migration_database_secret_name" {
+  type    = string
+  default = "rwos-staging-migration-database-url"
+  validation {
+    condition     = var.migration_database_secret_name == "rwos-staging-migration-database-url"
+    error_message = "Use the dedicated staging migration database secret."
+  }
+}
+
 variable "deploy_monitoring_alerts" {
   type        = bool
   default     = false

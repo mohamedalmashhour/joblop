@@ -145,10 +145,84 @@ resource "google_secret_manager_secret" "runtime" {
   }
 }
 
+resource "google_secret_manager_secret" "migration_database" {
+  secret_id = var.migration_database_secret_name
+  replication {
+    user_managed {
+      replicas { location = var.region }
+    }
+  }
+}
+
 resource "google_service_account" "runtime" {
   for_each     = local.services
   account_id   = substr("sa-rwos-stg-${each.key}", 0, 30)
   display_name = "RWOS staging ${each.key}"
+}
+
+resource "google_service_account" "migration" {
+  account_id   = "sa-rwos-stg-migration"
+  display_name = "RWOS staging singleton migration"
+}
+
+resource "google_secret_manager_secret_iam_member" "migration_database" {
+  secret_id = google_secret_manager_secret.migration_database.id
+  role      = "roles/secretmanager.secretAccessor"
+  member    = google_service_account.migration.member
+}
+
+resource "google_service_account_iam_member" "deployer_act_as_migration" {
+  service_account_id = google_service_account.migration.name
+  role               = "roles/iam.serviceAccountUser"
+  member             = "serviceAccount:${var.deployer_service_account_email}"
+}
+
+resource "google_cloud_run_v2_job" "migration" {
+  count               = var.deploy_migration_job ? 1 : 0
+  name                = "rwos-stg-migration"
+  location            = var.region
+  deletion_protection = true
+
+  template {
+    task_count  = 1
+    parallelism = 1
+    template {
+      service_account = google_service_account.migration.email
+      max_retries     = 0
+      timeout         = "600s"
+      containers {
+        image       = var.image_digests["api"]
+        command     = ["pnpm"]
+        args        = ["--filter", "@rwos/database", "prisma:migrate:deploy"]
+        working_dir = "/workspace"
+        env {
+          name = "DATABASE_URL"
+          value_source {
+            secret_key_ref {
+              secret  = google_secret_manager_secret.migration_database.secret_id
+              version = "latest"
+            }
+          }
+        }
+        resources {
+          limits = { cpu = "1", memory = "512Mi" }
+        }
+      }
+      vpc_access {
+        network_interfaces {
+          network    = google_compute_network.staging.name
+          subnetwork = google_compute_subnetwork.cloud_run.name
+        }
+        egress = "PRIVATE_RANGES_ONLY"
+      }
+    }
+  }
+
+  depends_on = [
+    google_secret_manager_secret_iam_member.migration_database,
+    google_service_account_iam_member.deployer_act_as_migration,
+    google_sql_database.application,
+  ]
 }
 
 resource "google_secret_manager_secret_iam_member" "runtime" {
