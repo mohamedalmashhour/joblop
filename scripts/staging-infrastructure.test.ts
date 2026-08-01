@@ -107,6 +107,7 @@ describe("split staging infrastructure packages", () => {
     expect(main).toContain("roles/iam.serviceAccountUser");
     expect(main).toContain("roles/run.invoker");
     expect(main).toContain('google_cloud_run_v2_service_iam_member" "public_worker_api');
+    expect(main).toContain('google_cloud_run_v2_service_iam_member" "public_staging_api');
     expect(main).toContain('google_cloud_run_v2_service_iam_member" "public_web');
     expect(main).toContain('toset(["employer", "admin", "worker"])');
     expect(main).toContain('google_cloud_run_v2_service_iam_member" "qa_reset_callers');

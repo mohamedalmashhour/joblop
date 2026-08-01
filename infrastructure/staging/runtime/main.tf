@@ -18,6 +18,8 @@ locals {
       SESSION_SECRET               = var.service_secret_environment.api.SESSION_SECRET
       AUTH_RATE_LIMITER_TOKEN      = var.service_secret_environment.api.AUTH_RATE_LIMITER_TOKEN
       AUTH_RATE_LIMITER_KEY_SECRET = var.service_secret_environment.api.AUTH_RATE_LIMITER_KEY_SECRET
+      CANDIDATE_SOURCE_TOKEN       = var.service_secret_environment.api.CANDIDATE_SOURCE_TOKEN
+      OFFER_DELIVERY_TOKEN         = var.service_secret_environment.api.OFFER_DELIVERY_TOKEN
     }
   })
   secret_names = toset(flatten([
@@ -321,6 +323,18 @@ resource "google_cloud_run_v2_service_iam_member" "public_worker_api" {
   project  = var.project_id
   location = var.region
   name     = google_cloud_run_v2_service.service["worker-api"].name
+  role     = "roles/run.invoker"
+  member   = "allUsers"
+}
+
+# Employer/Admin BFF routes forward application session bearer tokens to this
+# staging API. Cloud Run invocation must therefore be public while every
+# business route remains protected by the API's own authentication/authorization.
+resource "google_cloud_run_v2_service_iam_member" "public_staging_api" {
+  count    = var.deploy_runtime_services ? 1 : 0
+  project  = var.project_id
+  location = var.region
+  name     = google_cloud_run_v2_service.service["api"].name
   role     = "roles/run.invoker"
   member   = "allUsers"
 }
