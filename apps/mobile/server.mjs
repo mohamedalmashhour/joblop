@@ -22,12 +22,16 @@ const contentTypes = new Map([
   [".woff2", "font/woff2"]
 ]);
 
+/**
+ * @param {{ root?: string; productionHttps?: boolean; apiOrigin?: string }} [options]
+ */
 export function createWorkerWebServer(options = {}) {
   const root = resolve(options.root ?? join(fileURLToPath(new URL(".", import.meta.url)), "dist"));
   const entry = join(root, "index.html");
+  const apiOrigin = options.apiOrigin ? trustedApiOrigin(options.apiOrigin) : null;
 
   return createServer((request, response) => {
-    applySecurityHeaders(response, options.productionHttps === true);
+    applySecurityHeaders(response, options.productionHttps === true, apiOrigin);
     const pathname = safePathname(request.url);
     if (pathname === null) return sendText(response, 400, "Bad Request");
     if (pathname === "/health") {
@@ -90,8 +94,12 @@ function isApprovedStaticFile(root, file) {
   }
 }
 
-function applySecurityHeaders(response, productionHttps) {
-  response.setHeader("content-security-policy", "default-src 'self'; frame-ancestors 'none'");
+function applySecurityHeaders(response, productionHttps, apiOrigin) {
+  const connectSources = apiOrigin ? `'self' ${apiOrigin}` : "'self'";
+  response.setHeader(
+    "content-security-policy",
+    `default-src 'self'; connect-src ${connectSources}; font-src 'self' data:; frame-ancestors 'none'; img-src 'self' data:; style-src 'self' 'unsafe-inline'`
+  );
   response.setHeader("permissions-policy", "camera=(), geolocation=(), microphone=(), payment=()");
   response.setHeader("referrer-policy", "strict-origin-when-cross-origin");
   response.setHeader("x-content-type-options", "nosniff");
@@ -126,13 +134,24 @@ function sendText(response, status, body) {
 
 if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
   const port = readPort(process.env.PORT);
-  const server = createWorkerWebServer();
+  const server = createWorkerWebServer({
+    apiOrigin: process.env.WORKER_API_ORIGIN,
+    productionHttps: process.env.RWOS_WORKER_HTTPS_BOUNDARY === "enabled"
+  });
   const shutdown = () => server.close(() => process.exit(0));
   process.once("SIGTERM", shutdown);
   process.once("SIGINT", shutdown);
   server.listen(port, "0.0.0.0", () => {
     process.stdout.write(`worker-web.started port=${port}\n`);
   });
+}
+
+function trustedApiOrigin(value) {
+  const url = new URL(value);
+  if (url.protocol !== "https:" || url.origin !== value || url.pathname !== "/") {
+    throw new Error("RWOS_WORKER_API_ORIGIN_INVALID");
+  }
+  return url.origin;
 }
 
 function readPort(value) {

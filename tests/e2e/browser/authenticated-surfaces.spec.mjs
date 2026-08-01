@@ -8,7 +8,12 @@ async function signIn(
   signInOrigin,
   email,
   password,
-  { destination = signInOrigin, destinationApiPath, expectedStatus = 200 } = {}
+  {
+    destination = signInOrigin,
+    destinationApiPath,
+    expectedStatus = 200,
+    signInApiPath = "/api/session/sign-in"
+  } = {}
 ) {
   await page.goto(signInOrigin);
   await page.getByLabel(/email/i).fill(email);
@@ -16,7 +21,7 @@ async function signIn(
   const signInResponse = page.waitForResponse(
     (response) =>
       response.request().method() === "POST" &&
-      new URL(response.url()).pathname === "/api/session/sign-in"
+      new URL(response.url()).pathname === signInApiPath
   );
   await page.getByRole("button", { name: /^sign in(?: securely)?$/i }).click();
   expect((await signInResponse).status()).toBe(expectedStatus);
@@ -72,7 +77,8 @@ test("worker production entry authenticates without fixture content", async ({ p
     page,
     process.env.RWOS_E2E_WORKER_ORIGIN,
     process.env.RWOS_E2E_WORKER_EMAIL,
-    process.env.RWOS_E2E_WORKER_PASSWORD
+    process.env.RWOS_E2E_WORKER_PASSWORD,
+    { signInApiPath: "/auth/sign-in" }
   );
   await expect(page.getByText(/worker offers|worker calendar/i).first()).toBeVisible();
   await expect(page.getByText(/fixture|synthetic worker/i)).toHaveCount(0);

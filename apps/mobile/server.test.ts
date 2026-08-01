@@ -89,7 +89,8 @@ describe("worker web production server", () => {
 
   it("adds HSTS only when an explicitly trusted production HTTPS boundary is supplied", async () => {
     const root = createFixture();
-    const server = createWorkerWebServer({ root, productionHttps: true });
+    const apiOrigin = "https://worker-api.staging.example.test";
+    const server = createWorkerWebServer({ root, productionHttps: true, apiOrigin });
     await listen(server);
     const address = server.address();
     const port = typeof address === "object" && address ? address.port : 0;
@@ -99,10 +100,26 @@ describe("worker web production server", () => {
     expect(response.headers.get("strict-transport-security")).toBe(
       "max-age=31536000; includeSubDomains"
     );
+    expect(response.headers.get("content-security-policy")).toContain(
+      `connect-src 'self' ${apiOrigin}`
+    );
+    expect(response.headers.get("content-security-policy")).toContain(
+      "style-src 'self' 'unsafe-inline'"
+    );
 
     await new Promise<void>((resolve, reject) =>
       server.close((error?: Error) => (error ? reject(error) : resolve()))
     );
+  });
+
+  it("rejects an unsafe or non-origin worker API value", () => {
+    const root = createFixture();
+    expect(() => createWorkerWebServer({ root, apiOrigin: "http://api.example.test" })).toThrow(
+      "RWOS_WORKER_API_ORIGIN_INVALID"
+    );
+    expect(() =>
+      createWorkerWebServer({ root, apiOrigin: "https://api.example.test/path" })
+    ).toThrow("RWOS_WORKER_API_ORIGIN_INVALID");
   });
 });
 

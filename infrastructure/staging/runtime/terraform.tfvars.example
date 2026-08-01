@@ -49,6 +49,8 @@ service_environment = {
     RWOS_ENV                    = "staging"
     NODE_ENV                    = "production"
     EXPO_PUBLIC_RWOS_API_ORIGIN = "https://replace-after-OD-02-worker-ingress-decision"
+    WORKER_API_ORIGIN           = "https://replace-after-OD-02-worker-ingress-decision"
+    RWOS_WORKER_HTTPS_BOUNDARY  = "enabled"
   }
   auth-limiter = {
     RWOS_ENV                         = "staging"
