@@ -98,6 +98,10 @@ describe("split staging infrastructure packages", () => {
     expect(main).toContain("max_instance_count = 1");
     expect(main).toContain("disk_autoresize_limit");
     expect(main).toContain('edition               = "ENTERPRISE"');
+    expect(main).toContain('resource "google_compute_global_address" "sql_private_services"');
+    expect(main).toContain("address       = var.sql_private_service_address");
+    expect(main).toContain("google_compute_global_address.sql_private_services.name");
+    expect(variables).toContain('default = "10.85.251.0"');
     expect(main).toContain("roles/secretmanager.secretAccessor");
     expect(main).toContain("roles/iam.serviceAccountUser");
     expect(main).toContain("roles/run.invoker");

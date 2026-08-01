@@ -37,6 +37,15 @@ variable "private_service_prefix_length" {
   default = 24
 }
 
+variable "sql_private_service_address" {
+  type    = string
+  default = "10.85.251.0"
+  validation {
+    condition     = var.sql_private_service_address == "10.85.251.0"
+    error_message = "Use the reviewed dedicated Cloud SQL private-service range."
+  }
+}
+
 variable "deployer_service_account_email" {
   type = string
   validation {
