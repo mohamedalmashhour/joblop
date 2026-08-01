@@ -79,6 +79,7 @@ describe("public worker ingress boundary", () => {
   it("returns a generic 404 before blocked routes execute", async () => {
     const app = buildApi({
       publicWorkerIngressOnly: true,
+      publicWorkerWebOrigin: "https://worker.staging.example.test",
       readinessProbe: async () => true,
       env: { RWOS_ENV: "staging", NODE_ENV: "production" }
     });
@@ -102,8 +103,69 @@ describe("public worker ingress boundary", () => {
 
   it("cannot be enabled outside staging", () => {
     expect(() =>
-      buildApi({ publicWorkerIngressOnly: true, env: { RWOS_ENV: "production" } })
+      buildApi({
+        publicWorkerIngressOnly: true,
+        publicWorkerWebOrigin: "https://worker.staging.example.test",
+        env: { RWOS_ENV: "production" }
+      })
     ).toThrow("RWOS_PUBLIC_WORKER_INGRESS_STAGING_ONLY");
+  });
+
+  it("allows exact-origin browser preflight and rejects other origins", async () => {
+    const workerOrigin = "https://worker.staging.example.test";
+    const app = buildApi({
+      publicWorkerIngressOnly: true,
+      publicWorkerWebOrigin: workerOrigin,
+      readinessProbe: async () => true,
+      env: { RWOS_ENV: "staging", NODE_ENV: "production" }
+    });
+
+    const allowed = await app.inject({
+      method: "OPTIONS",
+      url: "/auth/sign-in",
+      headers: {
+        origin: workerOrigin,
+        "access-control-request-method": "POST",
+        "access-control-request-headers": "content-type"
+      }
+    });
+    const denied = await app.inject({
+      method: "OPTIONS",
+      url: "/auth/sign-in",
+      headers: {
+        origin: "https://unexpected.example.test",
+        "access-control-request-method": "POST"
+      }
+    });
+    const blockedPath = await app.inject({
+      method: "OPTIONS",
+      url: "/platform/dispatches",
+      headers: {
+        origin: workerOrigin,
+        "access-control-request-method": "POST"
+      }
+    });
+
+    expect(allowed.statusCode).toBe(204);
+    expect(allowed.headers["access-control-allow-origin"]).toBe(workerOrigin);
+    expect(allowed.headers["access-control-allow-methods"]).toBe("GET, POST, OPTIONS");
+    expect(denied.statusCode).toBe(403);
+    expect(denied.headers["access-control-allow-origin"]).toBeUndefined();
+    expect(blockedPath.statusCode).toBe(403);
+    await app.close();
+  });
+
+  it("fails closed when the staging worker web origin is missing or unsafe", () => {
+    expect(() =>
+      buildApi({ publicWorkerIngressOnly: true, env: { RWOS_ENV: "staging" } })
+    ).toThrow("RWOS_PUBLIC_WORKER_WEB_ORIGIN_REQUIRED");
+    expect(() =>
+      buildApi({
+        publicWorkerIngressOnly: true,
+        publicWorkerWebOrigin: "http://worker.staging.example.test",
+        env: { RWOS_ENV: "staging" }
+      })
+    ).toThrow("RWOS_PUBLIC_WORKER_WEB_ORIGIN_INVALID");
   });
 });
 

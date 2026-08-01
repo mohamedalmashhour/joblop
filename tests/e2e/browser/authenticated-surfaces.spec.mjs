@@ -1,13 +1,36 @@
 import AxeBuilder from "@axe-core/playwright";
 import { expect, test } from "@playwright/test";
 import process from "node:process";
+import { URL } from "node:url";
 
-async function signIn(page, signInOrigin, email, password, destination = signInOrigin) {
+async function signIn(
+  page,
+  signInOrigin,
+  email,
+  password,
+  { destination = signInOrigin, destinationApiPath, expectedStatus = 200 } = {}
+) {
   await page.goto(signInOrigin);
   await page.getByLabel(/email/i).fill(email);
   await page.getByLabel(/^password$/i).fill(password);
+  const signInResponse = page.waitForResponse(
+    (response) =>
+      response.request().method() === "POST" &&
+      new URL(response.url()).pathname === "/api/session/sign-in"
+  );
   await page.getByRole("button", { name: /^sign in(?: securely)?$/i }).click();
-  if (destination !== signInOrigin) await page.goto(destination);
+  expect((await signInResponse).status()).toBe(expectedStatus);
+  if (destination !== signInOrigin) {
+    const destinationResponse = destinationApiPath
+      ? page.waitForResponse(
+          (response) =>
+            response.request().method() === "GET" &&
+            new URL(response.url()).pathname === destinationApiPath
+        )
+      : null;
+    await page.goto(destination);
+    if (destinationResponse) expect((await destinationResponse).status()).toBe(200);
+  }
 }
 
 test("employer authenticated calendar is accessible", async ({ page }) => {
@@ -16,7 +39,10 @@ test("employer authenticated calendar is accessible", async ({ page }) => {
     `${process.env.RWOS_E2E_EMPLOYER_ORIGIN}/signin`,
     process.env.RWOS_E2E_EMPLOYER_EMAIL,
     process.env.RWOS_E2E_EMPLOYER_PASSWORD,
-    `${process.env.RWOS_E2E_EMPLOYER_ORIGIN}/employer/calendar`
+    {
+      destination: `${process.env.RWOS_E2E_EMPLOYER_ORIGIN}/employer/calendar`,
+      destinationApiPath: "/api/calendar/requests"
+    }
   );
   await expect(
     page.getByText(/persisted request calendar|staffing request/i).first()
@@ -31,7 +57,10 @@ test("administrator authenticated calendar is accessible", async ({ page }) => {
     `${process.env.RWOS_E2E_ADMIN_ORIGIN}/signin`,
     process.env.RWOS_E2E_ADMIN_EMAIL,
     process.env.RWOS_E2E_ADMIN_PASSWORD,
-    `${process.env.RWOS_E2E_ADMIN_ORIGIN}/calendar`
+    {
+      destination: `${process.env.RWOS_E2E_ADMIN_ORIGIN}/calendar`,
+      destinationApiPath: "/api/calendar/requests"
+    }
   );
   await expect(page.getByText(/administrator|review/i).first()).toBeVisible();
   const results = await new AxeBuilder({ page }).analyze();
@@ -54,7 +83,8 @@ test("revoked account receives a generic denial", async ({ page }) => {
     page,
     `${process.env.RWOS_E2E_EMPLOYER_ORIGIN}/signin`,
     process.env.RWOS_E2E_REVOKED_EMAIL,
-    process.env.RWOS_E2E_REVOKED_PASSWORD
+    process.env.RWOS_E2E_REVOKED_PASSWORD,
+    { expectedStatus: 401 }
   );
   await expect(page.getByText(/unable|unavailable|not authorized|sign in/i).first()).toBeVisible();
   await expect(page.getByText(/revoked|membership expired|account exists/i)).toHaveCount(0);

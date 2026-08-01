@@ -165,6 +165,7 @@ export interface BuildApiOptions {
   paymentRepository?: PaymentRepository;
   localPaymentWebhookSecret?: string;
   publicWorkerIngressOnly?: boolean;
+  publicWorkerWebOrigin?: string;
 }
 
 export type AuthenticationRateLimitDecision = Readonly<{
@@ -191,6 +192,9 @@ export function buildApi(options: BuildApiOptions = {}) {
   if (publicWorkerIngressOnly && environment.RWOS_ENV !== "staging") {
     throw new Error("RWOS_PUBLIC_WORKER_INGRESS_STAGING_ONLY");
   }
+  const publicWorkerWebOrigin = publicWorkerIngressOnly
+    ? trustedWorkerWebOrigin(options.publicWorkerWebOrigin ?? environment.WORKER_WEB_ORIGIN)
+    : null;
   const runtimeConfig = getRuntimeConfig(environment);
   const app = Fastify({
     logger: false,
@@ -200,6 +204,36 @@ export function buildApi(options: BuildApiOptions = {}) {
 
   if (publicWorkerIngressOnly) {
     app.addHook("onRequest", async (request, reply) => {
+      const requestOrigin = request.headers.origin;
+      if (requestOrigin && requestOrigin !== publicWorkerWebOrigin) {
+        return reply.code(403).send({
+          error: "RWOS_AUTHORIZATION_DENIED",
+          message: "Access denied."
+        });
+      }
+      if (requestOrigin === publicWorkerWebOrigin) {
+        reply.header("access-control-allow-origin", publicWorkerWebOrigin);
+        reply.header("vary", "Origin");
+      }
+      if (request.method === "OPTIONS") {
+        const requestedMethod = request.headers["access-control-request-method"];
+        if (
+          requestOrigin !== publicWorkerWebOrigin ||
+          !isPublicWorkerIngressPath(request.url) ||
+          (requestedMethod !== "GET" && requestedMethod !== "POST")
+        ) {
+          return reply.code(403).send({
+            error: "RWOS_AUTHORIZATION_DENIED",
+            message: "Access denied."
+          });
+        }
+        return reply
+          .header("access-control-allow-methods", "GET, POST, OPTIONS")
+          .header("access-control-allow-headers", "Accept, Authorization, Content-Type")
+          .header("access-control-max-age", "600")
+          .code(204)
+          .send();
+      }
       if (!isPublicWorkerIngressPath(request.url)) {
         return reply.code(404).send({
           error: "RWOS_RESOURCE_UNAVAILABLE",
@@ -3650,6 +3684,15 @@ export function isPublicWorkerIngressPath(rawUrl: string) {
     path === "/auth/password-reset/complete" ||
     path.startsWith("/worker/")
   );
+}
+
+function trustedWorkerWebOrigin(value: string | undefined) {
+  if (!value) throw new Error("RWOS_PUBLIC_WORKER_WEB_ORIGIN_REQUIRED");
+  const url = new URL(value);
+  if (url.protocol !== "https:" || url.origin !== value || url.pathname !== "/") {
+    throw new Error("RWOS_PUBLIC_WORKER_WEB_ORIGIN_INVALID");
+  }
+  return url.origin;
 }
 
 function asRecord(value: unknown): Record<string, unknown> {
