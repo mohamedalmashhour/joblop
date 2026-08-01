@@ -77,6 +77,7 @@ async function resetRequest(
       method: "POST",
       headers: {
         authorization: `Bearer ${process.env.RWOS_NATIVE_RESET_TOKEN}`,
+        "x-rwos-app-authorization": `Bearer ${process.env.RWOS_NATIVE_RESET_APP_CREDENTIAL}`,
         "content-type": "application/json",
         "cache-control": "no-store",
         "x-rwos-service-id": process.env.RWOS_NATIVE_RESET_SERVICE_IDENTITY!,

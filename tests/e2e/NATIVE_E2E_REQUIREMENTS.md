@@ -30,6 +30,7 @@ RWOS_NATIVE_APP_ID='<signed-application-id>' \
 RWOS_NATIVE_API_ORIGIN='<HTTPS staging API origin>' \
 RWOS_NATIVE_RESET_AUTHORITY_ID='<provider/qa/immutable-reset-authority>' \
 RWOS_NATIVE_RESET_ORIGIN='<HTTPS QA reset service origin>' \
+RWOS_NATIVE_RESET_APP_CREDENTIAL='<server-side application credential>' \
 RWOS_NATIVE_TENANT_ID='<isolated staging tenant>' \
 RWOS_NATIVE_DEVICE_MODEL='<physical device manufacturer/model>' \
 RWOS_NATIVE_OS_VERSION='<exact device OS version>' \
@@ -40,7 +41,8 @@ pnpm test:e2e:native
 ```
 
 Worker credentials must also be injected as `RWOS_NATIVE_WORKER_EMAIL` and
-`RWOS_NATIVE_WORKER_PASSWORD`, and the QA reset token as `RWOS_NATIVE_RESET_TOKEN`; never place them
+`RWOS_NATIVE_WORKER_PASSWORD`, the Google identity token as `RWOS_NATIVE_RESET_TOKEN`, and the
+server-side application credential as `RWOS_NATIVE_RESET_APP_CREDENTIAL`; never place them
 in command history or source control. The reset service must accept authenticated `POST /v1/reset`
 for `prepare` and `cleanup`. The runner writes JUnit output into the declared artifact directory.
 Run once on a signed iOS build and once on a signed Android build, then validate the combined

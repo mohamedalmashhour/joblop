@@ -32,6 +32,7 @@ async function request(operation, action, extra) {
       method: "POST",
       headers: {
         authorization: `Bearer ${process.env.RWOS_E2E_RESET_TOKEN}`,
+        "x-rwos-app-authorization": `Bearer ${process.env.RWOS_E2E_RESET_APP_CREDENTIAL}`,
         "content-type": "application/json",
         "cache-control": "no-store",
         "x-rwos-service-id": process.env.RWOS_E2E_RESET_SERVICE_IDENTITY,
