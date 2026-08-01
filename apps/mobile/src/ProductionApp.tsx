@@ -1,8 +1,12 @@
 import { StatusBar } from "expo-status-bar";
 import { useEffect, useMemo, useState } from "react";
-import { Linking, SafeAreaView, StyleSheet, Text, View } from "react-native";
+import { Linking, Platform, SafeAreaView, StyleSheet, Text, View } from "react-native";
 import { colors, spacing, typography } from "@rwos/design-system";
-import { nativeSecureSessionVault, tryCreateMobileSessionTransport } from "./auth/secureSession";
+import {
+  createVolatileSessionVault,
+  nativeSecureSessionVault,
+  tryCreateMobileSessionTransport
+} from "./auth/secureSession";
 import { readWorkerCalendarOfferId } from "./features/worker-calendar/deepLink";
 import { WorkerCalendarPanel } from "./features/worker-calendar";
 import { productName } from "./navigation/routes";
@@ -13,7 +17,7 @@ export default function ProductionApp() {
     () =>
       tryCreateMobileSessionTransport({
         apiOrigin: process.env.EXPO_PUBLIC_RWOS_API_ORIGIN,
-        vault: nativeSecureSessionVault
+        vault: Platform.OS === "web" ? createVolatileSessionVault() : nativeSecureSessionVault
       }),
     []
   );

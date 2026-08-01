@@ -18,6 +18,24 @@ export const nativeSecureSessionVault: SecureSessionVault = {
   clear: () => SecureStore.deleteItemAsync(sessionKey)
 };
 
+/**
+ * Browser staging uses a tab-scoped, memory-only session. The token is never
+ * written to localStorage, sessionStorage, cookies, or another durable browser
+ * surface. Native builds continue to use the platform secure store above.
+ */
+export function createVolatileSessionVault(): SecureSessionVault {
+  let token: string | null = null;
+  return {
+    read: async () => token,
+    write: async (nextToken) => {
+      token = nextToken;
+    },
+    clear: async () => {
+      token = null;
+    }
+  };
+}
+
 export type MobileSessionState =
   | Readonly<{ status: "authenticated" }>
   | Readonly<{ status: "sign_out_required" }>

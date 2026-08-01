@@ -1,9 +1,24 @@
 import { describe, expect, it, vi } from "vitest";
 import {
+  createVolatileSessionVault,
   createMobileSessionTransport,
   tryCreateMobileSessionTransport,
   type SecureSessionVault
 } from "./secureSession";
+
+describe("volatile browser session vault", () => {
+  it("retains a token only inside one vault instance and clears it", async () => {
+    const first = createVolatileSessionVault();
+    const second = createVolatileSessionVault();
+
+    await first.write("synthetic-session-token");
+    expect(await first.read()).toBe("synthetic-session-token");
+    expect(await second.read()).toBeNull();
+
+    await first.clear();
+    expect(await first.read()).toBeNull();
+  });
+});
 
 vi.mock("expo-secure-store", () => ({
   WHEN_UNLOCKED_THIS_DEVICE_ONLY: "WHEN_UNLOCKED_THIS_DEVICE_ONLY",
