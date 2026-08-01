@@ -97,6 +97,7 @@ describe("split staging infrastructure packages", () => {
     expect(main).toContain("min_instance_count = 0");
     expect(main).toContain("max_instance_count = 1");
     expect(main).toContain("disk_autoresize_limit");
+    expect(main).toContain('edition               = "ENTERPRISE"');
     expect(main).toContain("roles/secretmanager.secretAccessor");
     expect(main).toContain("roles/iam.serviceAccountUser");
     expect(main).toContain("roles/run.invoker");
