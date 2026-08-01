@@ -56,6 +56,9 @@ export function validateBrowserE2eEnvironment(env: NodeJS.ProcessEnv) {
   if (env.RWOS_E2E_TENANT_A_ID && env.RWOS_E2E_TENANT_A_ID === env.RWOS_E2E_TENANT_B_ID) {
     issues.push("RWOS_E2E_TENANT_A_ID and RWOS_E2E_TENANT_B_ID must differ.");
   }
+  if (env.RWOS_E2E_RESET_SERVICE_IDENTITY !== "browser-e2e") {
+    issues.push("RWOS_E2E_RESET_SERVICE_IDENTITY must equal browser-e2e.");
+  }
   validateResetAuthorityInputs(env, "RWOS_E2E_RESET", issues);
   return issues;
 }
@@ -115,6 +118,15 @@ export function validateNativeE2eEnvironment(env: NodeJS.ProcessEnv) {
   if (env.RWOS_NATIVE_PHYSICAL_DEVICE !== "true") {
     issues.push("RWOS_NATIVE_PHYSICAL_DEVICE must equal true.");
   }
+  const expectedNativeCaller =
+    env.RWOS_NATIVE_PLATFORM === "ios"
+      ? "ios-e2e"
+      : env.RWOS_NATIVE_PLATFORM === "android"
+        ? "android-e2e"
+        : null;
+  if (expectedNativeCaller && env.RWOS_NATIVE_RESET_SERVICE_IDENTITY !== expectedNativeCaller) {
+    issues.push(`RWOS_NATIVE_RESET_SERVICE_IDENTITY must equal ${expectedNativeCaller}.`);
+  }
   for (const key of ["RWOS_NATIVE_BUILD_ID", "RWOS_NATIVE_RESET_AUTHORITY_ID"] as const) {
     if (env[key] && !isImmutableExternalIdentity(env[key])) {
       issues.push(`${key} must be an immutable provider-qualified identity.`);
@@ -130,7 +142,6 @@ function validateResetAuthorityInputs(
   issues: string[]
 ) {
   for (const suffix of [
-    "SERVICE_IDENTITY",
     "OPERATOR_IDENTITY",
     "PROJECT_ID",
     "CLUSTER_ID",

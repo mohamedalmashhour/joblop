@@ -83,6 +83,7 @@ async function resetRequest(
         "x-rwos-service-id": process.env.RWOS_NATIVE_RESET_SERVICE_IDENTITY!,
         "x-rwos-operator-id": process.env.RWOS_NATIVE_RESET_OPERATOR_IDENTITY!,
         "x-rwos-operation": `qa-reset:${operation}`,
+        "x-rwos-environment": "staging",
         "x-rwos-project-id": process.env.RWOS_NATIVE_RESET_PROJECT_ID!,
         "x-rwos-cluster-id": process.env.RWOS_NATIVE_RESET_CLUSTER_ID!,
         "x-rwos-database-id": process.env.RWOS_NATIVE_RESET_DATABASE_ID!,
