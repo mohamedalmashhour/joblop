@@ -25,6 +25,7 @@ pg_ctl -D "$qa_data" -l "$qa_tmp/postgres.log" \
   -o "-h 127.0.0.1 -p $qa_port -k $qa_tmp" start >/dev/null
 qa_started=1
 createdb -h 127.0.0.1 -p "$qa_port" rwos_validation_admin
+psql "$qa_url" -v ON_ERROR_STOP=1 -c "CREATE ROLE rwos_app NOLOGIN" >/dev/null
 
 DATABASE_URL="$qa_url?schema=public" pnpm --filter @rwos/database prisma:migrate:deploy >/dev/null
 
