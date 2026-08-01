@@ -244,7 +244,9 @@ resource "google_cloud_run_v2_service" "service" {
   for_each = local.deployed_services
   name     = "rwos-stg-${each.key}"
   location = var.region
-  ingress  = contains(["employer", "admin", "worker", "worker-api"], each.key) ? "INGRESS_TRAFFIC_ALL" : "INGRESS_TRAFFIC_INTERNAL_LOAD_BALANCER"
+  # Service-to-service calls use Google-signed identity tokens against the exact
+  # run.app audience. IAM remains the access boundary for non-public services.
+  ingress = "INGRESS_TRAFFIC_ALL"
 
   deletion_protection = true
   template {
@@ -323,6 +325,15 @@ resource "google_cloud_run_v2_service_iam_member" "public_worker_api" {
   member   = "allUsers"
 }
 
+resource "google_cloud_run_v2_service_iam_member" "public_web" {
+  for_each = var.deploy_runtime_services ? toset(["employer", "admin", "worker"]) : toset([])
+  project  = var.project_id
+  location = var.region
+  name     = google_cloud_run_v2_service.service[each.key].name
+  role     = "roles/run.invoker"
+  member   = "allUsers"
+}
+
 resource "google_cloud_run_v2_service_iam_member" "api_to_adapters" {
   for_each = var.deploy_runtime_services ? toset(["auth-limiter", "candidate-source", "offer-delivery"]) : toset([])
   project  = var.project_id
@@ -330,6 +341,21 @@ resource "google_cloud_run_v2_service_iam_member" "api_to_adapters" {
   name     = google_cloud_run_v2_service.service[each.key].name
   role     = "roles/run.invoker"
   member   = google_service_account.runtime["api"].member
+}
+
+resource "google_cloud_run_v2_service_iam_member" "qa_reset_callers" {
+  for_each = var.deploy_runtime_services ? {
+    browser-e2e = "employer"
+    ios-e2e     = "worker"
+    android-e2e = "worker-api"
+    manual-qa   = "admin"
+    monitoring  = "auth-limiter"
+  } : {}
+  project  = var.project_id
+  location = var.region
+  name     = google_cloud_run_v2_service.service["qa-reset"].name
+  role     = "roles/run.invoker"
+  member   = google_service_account.runtime[each.value].member
 }
 
 resource "google_logging_project_bucket_config" "application" {
