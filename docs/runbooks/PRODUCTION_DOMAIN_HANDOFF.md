@@ -9,7 +9,7 @@ Status: configuration preparation only. This document does not authorize DNS cha
 | Employers/clients searching for workers | `joblop.com`    | Employer web application |
 | Workers searching for jobs              | `rezekme.com`   | Worker web application   |
 
-The canonical public origins are therefore proposed as:
+The canonical public origins are:
 
 - `https://joblop.com`
 - `https://rezekme.com`
@@ -17,23 +17,35 @@ The canonical public origins are therefore proposed as:
 Both `www.joblop.com` and `www.rezekme.com` require an explicit canonical redirect decision before
 DNS or certificates are configured.
 
-## Separate service origins requiring final owner approval
+These domains are separate product boundaries:
 
-To avoid mixing privileged and public surfaces, use separate hostnames:
+- `joblop.com` must not host or redirect to the Worker application.
+- `rezekme.com` must not host or redirect to the Employer application.
+- Authentication redirects and cookies must not create an unintended shared-domain boundary between
+  the two products.
 
-| Service        | Proposed origin            | Exposure                                              |
-| -------------- | -------------------------- | ----------------------------------------------------- |
-| Platform Admin | `https://admin.joblop.com` | Restricted authenticated web surface                  |
-| API            | `https://api.joblop.com`   | Public entry only for explicitly supported API routes |
+## Shared Platform Admin and API origins remain unassigned
+
+One shared Platform Admin application manages both product surfaces. It is not duplicated per
+domain. The Admin and API origins remain external inputs:
+
+| Service        | Approved origin  | Exposure                                              |
+| -------------- | ---------------- | ----------------------------------------------------- |
+| Platform Admin | Not yet supplied | Restricted authenticated web surface                  |
+| API            | Not yet supplied | Public entry only for explicitly supported API routes |
+
+The shared Admin must preserve role authorization, audit attribution and organization isolation.
+Managing both product surfaces does not grant an employer access to worker-only records or one
+employer organization access to another organization.
 
 Internal services—including authentication limiter, candidate source, offer delivery and QA reset—
 must not receive public custom domains. They remain private service-to-service origins protected by
 the approved identity and audience contracts.
 
-## Runtime mapping
+## Runtime mapping pending the separate API origin
 
-- Employer and Admin: `INTERNAL_API_ORIGIN=https://api.joblop.com`
-- Worker production build: `EXPO_PUBLIC_RWOS_API_ORIGIN=https://api.joblop.com`
+- Employer and Admin: `INTERNAL_API_ORIGIN=<approved-separate-api-origin>`
+- Worker production build: `EXPO_PUBLIC_RWOS_API_ORIGIN=<approved-separate-api-origin>`
 - Worker production build: `EXPO_PUBLIC_RWOS_ENV=production`
 - Employer/Admin production runtime: `RWOS_ENV=production`
 - Admin public environment: `NEXT_PUBLIC_RWOS_ENV=production`
@@ -50,7 +62,8 @@ the reviewed Node.js 20 patch release until a separate Node 24 compatibility cha
 ## Required external checks before activation
 
 - Confirm ownership and registrar access for both apex domains.
-- Approve or modify `admin.joblop.com` and `api.joblop.com`.
+- Supply the shared Platform Admin origin and the API origin, or approve private provider-generated
+  origins for them.
 - Select the canonical `www` redirect behavior for both public domains.
 - Verify DNS records, TLS issuance and renewal without exposing registrar credentials.
 - Restrict CORS, authentication redirects, password-reset links and email links to the exact approved
