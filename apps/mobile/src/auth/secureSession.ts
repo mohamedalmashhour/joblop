@@ -20,8 +20,8 @@ export const nativeSecureSessionVault: SecureSessionVault = {
 
 /**
  * Browser staging uses a tab-scoped, memory-only session. The token is never
- * written to localStorage, sessionStorage, cookies, or another durable browser
- * surface. Native builds continue to use the platform secure store above.
+ * written to cookies or any durable browser storage surface. Native builds
+ * continue to use the platform secure store above.
  */
 export function createVolatileSessionVault(): SecureSessionVault {
   let token: string | null = null;
