@@ -6,7 +6,7 @@ locals {
     employer         = { cpu = "1", memory = "512Mi", concurrency = 40, image = "employer", config = "employer" }
     admin            = { cpu = "1", memory = "512Mi", concurrency = 40, image = "admin", config = "admin" }
     worker           = { cpu = "1", memory = "512Mi", concurrency = 40, image = "worker", config = "worker" }
-    auth-limiter     = { cpu = "1", memory = "256Mi", concurrency = 40, image = "auth-limiter", config = "auth-limiter" }
+    auth-limiter     = { cpu = "1", memory = "512Mi", concurrency = 40, image = "auth-limiter", config = "auth-limiter" }
     candidate-source = { cpu = "1", memory = "512Mi", concurrency = 1, image = "candidate-source", config = "candidate-source" }
     offer-delivery   = { cpu = "1", memory = "512Mi", concurrency = 1, image = "offer-delivery", config = "offer-delivery" }
     qa-reset         = { cpu = "1", memory = "512Mi", concurrency = 1, image = "qa-reset", config = "qa-reset" }

@@ -107,6 +107,7 @@ describe("split staging infrastructure packages", () => {
     expect(main).toContain("roles/iam.serviceAccountUser");
     expect(main).toContain("roles/run.invoker");
     expect(main).toContain("invoker_iam_disabled = contains");
+    expect(main).toContain('auth-limiter     = { cpu = "1", memory = "512Mi"');
     expect(main).toContain('["api", "employer", "admin", "worker", "worker-api"]');
     expect(main).not.toContain('member   = "allUsers"');
     expect(main).toContain('google_cloud_run_v2_service_iam_member" "qa_reset_callers');
