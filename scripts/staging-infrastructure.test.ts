@@ -106,14 +106,12 @@ describe("split staging infrastructure packages", () => {
     expect(main).toContain("roles/secretmanager.secretAccessor");
     expect(main).toContain("roles/iam.serviceAccountUser");
     expect(main).toContain("roles/run.invoker");
-    expect(main).toContain('google_cloud_run_v2_service_iam_member" "public_worker_api');
-    expect(main).toContain('google_cloud_run_v2_service_iam_member" "public_staging_api');
-    expect(main).toContain('google_cloud_run_v2_service_iam_member" "public_web');
-    expect(main).toContain('toset(["employer", "admin", "worker"])');
+    expect(main).toContain("invoker_iam_disabled = contains");
+    expect(main).toContain('["api", "employer", "admin", "worker", "worker-api"]');
+    expect(main).not.toContain('member   = "allUsers"');
     expect(main).toContain('google_cloud_run_v2_service_iam_member" "qa_reset_callers');
     expect(main).toContain('ingress = "INGRESS_TRAFFIC_ALL"');
     expect(main).not.toContain("INGRESS_TRAFFIC_INTERNAL_LOAD_BALANCER");
-    expect(main).toContain('member   = "allUsers"');
     expect(main).toContain('RWOS_PUBLIC_WORKER_INGRESS_ONLY = "enabled"');
     expect(main).toContain("var.deploy_runtime_services ? local.services : {}");
     expect(main).toContain('resource "google_cloud_run_v2_job" "migration"');

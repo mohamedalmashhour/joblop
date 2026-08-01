@@ -6,10 +6,10 @@ locals {
     employer         = { cpu = "1", memory = "512Mi", concurrency = 40, image = "employer", config = "employer" }
     admin            = { cpu = "1", memory = "512Mi", concurrency = 40, image = "admin", config = "admin" }
     worker           = { cpu = "1", memory = "512Mi", concurrency = 40, image = "worker", config = "worker" }
-    auth-limiter     = { cpu = "0.5", memory = "256Mi", concurrency = 40, image = "auth-limiter", config = "auth-limiter" }
-    candidate-source = { cpu = "0.5", memory = "512Mi", concurrency = 1, image = "candidate-source", config = "candidate-source" }
-    offer-delivery   = { cpu = "0.5", memory = "512Mi", concurrency = 1, image = "offer-delivery", config = "offer-delivery" }
-    qa-reset         = { cpu = "0.5", memory = "512Mi", concurrency = 1, image = "qa-reset", config = "qa-reset" }
+    auth-limiter     = { cpu = "1", memory = "256Mi", concurrency = 40, image = "auth-limiter", config = "auth-limiter" }
+    candidate-source = { cpu = "1", memory = "512Mi", concurrency = 1, image = "candidate-source", config = "candidate-source" }
+    offer-delivery   = { cpu = "1", memory = "512Mi", concurrency = 1, image = "offer-delivery", config = "offer-delivery" }
+    qa-reset         = { cpu = "1", memory = "512Mi", concurrency = 1, image = "qa-reset", config = "qa-reset" }
   }
   deployed_services = var.deploy_runtime_services ? local.services : {}
   effective_secret_environment = merge(var.service_secret_environment, {
@@ -250,6 +250,10 @@ resource "google_cloud_run_v2_service" "service" {
   # run.app audience. IAM remains the access boundary for non-public services.
   ingress = "INGRESS_TRAFFIC_ALL"
 
+  # Public staging endpoints use Cloud Run's dedicated invoker-check setting.
+  # This avoids weakening the organization's domain-restricted IAM policy.
+  invoker_iam_disabled = contains(["api", "employer", "admin", "worker", "worker-api"], each.key)
+
   deletion_protection = true
   template {
     service_account                  = google_service_account.runtime[each.key].email
@@ -316,36 +320,6 @@ resource "google_cloud_run_v2_service_iam_member" "web_to_api" {
   name     = google_cloud_run_v2_service.service["api"].name
   role     = "roles/run.invoker"
   member   = google_service_account.runtime[each.key].member
-}
-
-resource "google_cloud_run_v2_service_iam_member" "public_worker_api" {
-  count    = var.deploy_runtime_services ? 1 : 0
-  project  = var.project_id
-  location = var.region
-  name     = google_cloud_run_v2_service.service["worker-api"].name
-  role     = "roles/run.invoker"
-  member   = "allUsers"
-}
-
-# Employer/Admin BFF routes forward application session bearer tokens to this
-# staging API. Cloud Run invocation must therefore be public while every
-# business route remains protected by the API's own authentication/authorization.
-resource "google_cloud_run_v2_service_iam_member" "public_staging_api" {
-  count    = var.deploy_runtime_services ? 1 : 0
-  project  = var.project_id
-  location = var.region
-  name     = google_cloud_run_v2_service.service["api"].name
-  role     = "roles/run.invoker"
-  member   = "allUsers"
-}
-
-resource "google_cloud_run_v2_service_iam_member" "public_web" {
-  for_each = var.deploy_runtime_services ? toset(["employer", "admin", "worker"]) : toset([])
-  project  = var.project_id
-  location = var.region
-  name     = google_cloud_run_v2_service.service[each.key].name
-  role     = "roles/run.invoker"
-  member   = "allUsers"
 }
 
 resource "google_cloud_run_v2_service_iam_member" "api_to_adapters" {
