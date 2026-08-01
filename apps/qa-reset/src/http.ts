@@ -14,7 +14,10 @@ import type { ResetManifest } from "./manifest";
 import type { ResetLock, ResetRepository } from "./repository";
 import { createQaResetService } from "./service";
 import { checksumValue } from "./manifest";
-import type { PostgresQaResetRepository } from "./postgresRepository";
+import {
+  QaResetRecordMutationError,
+  type PostgresQaResetRepository
+} from "./postgresRepository";
 
 const paths: Record<string, ResetOperation> = {
   "/v1/qa-reset/dry-run": "dry-run",
@@ -140,7 +143,10 @@ export function buildQaResetHttpServer(options: {
         operation,
         scope,
         result: "blocked",
-        status: 503
+        status: 503,
+        ...(error instanceof QaResetRecordMutationError
+          ? { failedOperation: error.operation, failedEntityType: error.entityType }
+          : {})
       });
       return sendError(response, 503, "RWOS_QA_RESET_UNAVAILABLE");
     } finally {

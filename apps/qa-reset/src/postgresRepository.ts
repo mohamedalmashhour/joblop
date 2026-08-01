@@ -119,6 +119,15 @@ export class QaResetPersistenceConflictError extends Error {
   }
 }
 
+export class QaResetRecordMutationError extends Error {
+  constructor(
+    readonly operation: DurableResetOperation,
+    readonly entityType: OwnedEntityType
+  ) {
+    super("RWOS_QA_RESET_RECORD_MUTATION_FAILED");
+  }
+}
+
 export class QaResetUnknownOutcomeError extends Error {
   constructor() {
     super("RWOS_QA_RESET_UNKNOWN_OUTCOME");
@@ -229,10 +238,15 @@ export class PostgresQaResetRepository {
         let affectedCount = 0;
         for (const record of scopedRecords(request)) {
           await authorizeOwnedRecord(connection, ownership.id, request, record, transactionTime);
-          const affected =
-            request.operation === "prepare"
-              ? await this.mutator.prepare(connection, record)
-              : await this.mutator.cleanup(connection, record);
+          let affected: number;
+          try {
+            affected =
+              request.operation === "prepare"
+                ? await this.mutator.prepare(connection, record)
+                : await this.mutator.cleanup(connection, record);
+          } catch {
+            throw new QaResetRecordMutationError(request.operation, record.entityType);
+          }
           if (affected !== 1) throw new QaResetPersistenceConflictError();
           affectedCount += affected;
           await updateOwnedRecord(connection, ownership.id, request, record, transactionTime);
