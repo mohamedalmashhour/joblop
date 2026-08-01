@@ -108,12 +108,12 @@ export function createQaResetService(options: {
     prepare(command: ResetCommand, caller?: DurableCallerContext) {
       validateReadyAndControl(options, now());
       requireDryRun(options.control, command, "prepare");
-      const plan = buildPlan(options.manifest, options.repository, command);
-      if (plan.planChecksum !== command.dryRunChecksum) throw conflict();
       if (caller) {
         if (!options.durableRepository) throw conflict();
-        return executeDurable(options, command, caller, plan.planChecksum, now());
+        return executeDurable(options, command, caller, command.dryRunChecksum!, now());
       }
+      const plan = buildPlan(options.manifest, options.repository, command);
+      if (plan.planChecksum !== command.dryRunChecksum) throw conflict();
       const scoped = scopedManifest(options.manifest, command.tenantIds, "prepare");
       const lockKey = `${options.config.clusterId}:${options.manifest.manifestId}`;
       if (!options.lock.acquire(lockKey)) throw conflict();
@@ -156,12 +156,12 @@ export function createQaResetService(options: {
       ) {
         throw conflict();
       }
-      const plan = buildPlan(options.manifest, options.repository, command);
-      if (plan.planChecksum !== command.dryRunChecksum) throw conflict();
       if (caller) {
         if (!options.durableRepository) throw conflict();
-        return executeDurable(options, command, caller, plan.planChecksum, now());
+        return executeDurable(options, command, caller, command.dryRunChecksum!, now());
       }
+      const plan = buildPlan(options.manifest, options.repository, command);
+      if (plan.planChecksum !== command.dryRunChecksum) throw conflict();
       const scoped = scopedManifest(options.manifest, command.tenantIds, "cleanup");
       const lockKey = `${options.config.clusterId}:${options.manifest.manifestId}`;
       if (!options.lock.acquire(lockKey)) throw conflict();

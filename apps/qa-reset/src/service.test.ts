@@ -192,16 +192,24 @@ describe("QA reset dry-run, prepare and cleanup", () => {
       repository,
       lock: new MemoryResetLock(),
       control,
-      durableRepository: { execute } as never,
+      durableRepository: {
+        inspect: vi.fn().mockResolvedValue({
+          manifestOwnedIds: [],
+          foreignIdsInNamespace: [],
+          unrelatedIds: []
+        }),
+        execute
+      } as never,
       now: () => new Date("2026-07-28T12:00:00.000Z")
     });
-    const plan = service.dryRun(browserCommand("prepare"));
+    const caller = {
+      callerAlias: "browser-e2e",
+      callerPrincipalDigest: "b".repeat(64),
+      correlationId: "request-123"
+    };
+    const plan = await service.dryRun(browserCommand("prepare"), caller);
     await expect(
-      service.prepare(browserCommand("prepare", { dryRunChecksum: plan.planChecksum }), {
-        callerAlias: "browser-e2e",
-        callerPrincipalDigest: "b".repeat(64),
-        correlationId: "request-123"
-      })
+      service.prepare(browserCommand("prepare", { dryRunChecksum: plan.planChecksum }), caller)
     ).resolves.toMatchObject({
       prepared: true,
       receipt: "a".repeat(64),
