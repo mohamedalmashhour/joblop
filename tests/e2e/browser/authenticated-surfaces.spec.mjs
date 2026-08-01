@@ -2,19 +2,21 @@ import AxeBuilder from "@axe-core/playwright";
 import { expect, test } from "@playwright/test";
 import process from "node:process";
 
-async function signIn(page, origin, email, password) {
-  await page.goto(origin);
+async function signIn(page, signInOrigin, email, password, destination = signInOrigin) {
+  await page.goto(signInOrigin);
   await page.getByLabel(/email/i).fill(email);
-  await page.getByLabel(/password/i).fill(password);
-  await page.getByRole("button", { name: /sign in securely/i }).click();
+  await page.getByLabel(/^password$/i).fill(password);
+  await page.getByRole("button", { name: /^sign in(?: securely)?$/i }).click();
+  if (destination !== signInOrigin) await page.goto(destination);
 }
 
 test("employer authenticated calendar is accessible", async ({ page }) => {
   await signIn(
     page,
-    `${process.env.RWOS_E2E_EMPLOYER_ORIGIN}/employer/calendar`,
+    `${process.env.RWOS_E2E_EMPLOYER_ORIGIN}/signin`,
     process.env.RWOS_E2E_EMPLOYER_EMAIL,
-    process.env.RWOS_E2E_EMPLOYER_PASSWORD
+    process.env.RWOS_E2E_EMPLOYER_PASSWORD,
+    `${process.env.RWOS_E2E_EMPLOYER_ORIGIN}/employer/calendar`
   );
   await expect(
     page.getByText(/persisted request calendar|staffing request/i).first()
@@ -26,9 +28,10 @@ test("employer authenticated calendar is accessible", async ({ page }) => {
 test("administrator authenticated calendar is accessible", async ({ page }) => {
   await signIn(
     page,
-    `${process.env.RWOS_E2E_ADMIN_ORIGIN}/calendar`,
+    `${process.env.RWOS_E2E_ADMIN_ORIGIN}/signin`,
     process.env.RWOS_E2E_ADMIN_EMAIL,
-    process.env.RWOS_E2E_ADMIN_PASSWORD
+    process.env.RWOS_E2E_ADMIN_PASSWORD,
+    `${process.env.RWOS_E2E_ADMIN_ORIGIN}/calendar`
   );
   await expect(page.getByText(/administrator|review/i).first()).toBeVisible();
   const results = await new AxeBuilder({ page }).analyze();
@@ -49,7 +52,7 @@ test("worker production entry authenticates without fixture content", async ({ p
 test("revoked account receives a generic denial", async ({ page }) => {
   await signIn(
     page,
-    `${process.env.RWOS_E2E_EMPLOYER_ORIGIN}/employer/calendar`,
+    `${process.env.RWOS_E2E_EMPLOYER_ORIGIN}/signin`,
     process.env.RWOS_E2E_REVOKED_EMAIL,
     process.env.RWOS_E2E_REVOKED_PASSWORD
   );
