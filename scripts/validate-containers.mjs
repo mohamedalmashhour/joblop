@@ -1,7 +1,6 @@
 import { spawnSync } from "node:child_process";
 import { readFileSync } from "node:fs";
 import process from "node:process";
-import { setTimeout } from "node:timers/promises";
 
 const docker = spawnSync("docker", ["version", "--format", "{{.Server.Version}}"], {
   encoding: "utf8",
@@ -226,7 +225,7 @@ for (const [index, service] of services.entries()) {
       ...environment,
       image
     ]);
-    await waitFor(`http://127.0.0.1:${hostPort}${service.liveness}`, [200]);
+    waitFor(`http://127.0.0.1:${hostPort}${service.liveness}`, [200]);
     const failClosedReadinessServices = new Set([
       "api",
       "auth-limiter",
@@ -235,7 +234,7 @@ for (const [index, service] of services.entries()) {
       "qa-reset"
     ]);
     const readinessStatuses = failClosedReadinessServices.has(service.name) ? [503] : [200];
-    await waitFor(`http://127.0.0.1:${hostPort}${service.readiness}`, readinessStatuses);
+    waitFor(`http://127.0.0.1:${hostPort}${service.readiness}`, readinessStatuses);
     run("docker", ["stop", "--time", "15", container]);
     process.stdout.write(
       `CONTAINER_VALIDATION_PASS service=${service.name} image=${image} digest=${imageDigest}\n`
@@ -245,19 +244,20 @@ for (const [index, service] of services.entries()) {
   }
 }
 
-async function waitFor(url, acceptedStatuses) {
-  for (let attempt = 0; attempt < 40; attempt += 1) {
-    try {
-      const response = await globalThis.fetch(url, {
-        signal: globalThis.AbortSignal.timeout(500)
-      });
-      if (acceptedStatuses.includes(response.status)) return;
-    } catch {
-      // A starting container is expected to refuse connections briefly.
-    }
-    await setTimeout(250);
+function waitFor(url, acceptedStatuses) {
+  // Keep probing synchronous so Node cannot abandon an unresolved top-level
+  // promise while a cold container initializes Corepack and pnpm.
+  for (let attempt = 0; attempt < 240; attempt += 1) {
+    const probe = spawnSync(
+      "curl",
+      ["--silent", "--output", "/dev/null", "--write-out", "%{http_code}", "--max-time", "1", url],
+      { encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] }
+    );
+    const status = Number.parseInt(probe.stdout.trim(), 10);
+    if (probe.status === 0 && acceptedStatuses.includes(status)) return;
+    Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 250);
   }
-  fail(`CONTAINER_PROBE_FAILED url=${url}`);
+  throw new Error(`CONTAINER_PROBE_FAILED url=${url}`);
 }
 
 function run(command, args) {

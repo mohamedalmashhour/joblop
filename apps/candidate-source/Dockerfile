@@ -19,9 +19,9 @@ LABEL org.opencontainers.image.title="resident-workforce-os-candidate-source" \
       org.opencontainers.image.created="$RWOS_BUILD_TIMESTAMP" \
       org.opencontainers.image.source="$RWOS_SOURCE_REPOSITORY" \
       org.opencontainers.image.version="$RWOS_IMAGE_VERSION"
-ENV NODE_ENV=production PORT=8080
+ENV NODE_ENV=production PORT=8080 COREPACK_HOME=/opt/corepack
 WORKDIR /workspace
-RUN corepack enable && corepack prepare pnpm@10.33.2 --activate
+RUN corepack enable && corepack prepare pnpm@10.33.2 --activate && chmod -R a+rX "$COREPACK_HOME"
 COPY --from=builder --chown=node:node /workspace /workspace
 USER node
 EXPOSE 8080

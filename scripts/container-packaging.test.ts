@@ -32,6 +32,40 @@ describe("Cloud Run application packaging", () => {
     expect(dockerignore).toContain("external-validation-evidence");
   });
 
+  it.each(["employer", "admin"])(
+    "copies the shared ESLint configuration into the %s build context",
+    (application) => {
+      expect(read(`apps/${application}/Dockerfile`)).toContain(
+        "tsconfig*.json eslint.config.mjs ./"
+      );
+    }
+  );
+
+  it.each(["api", "qa-reset"])(
+    "installs the Prisma OpenSSL runtime dependency in both %s stages",
+    (application) => {
+      const dockerfile = read(`apps/${application}/Dockerfile`);
+      expect(
+        dockerfile.match(/apt-get install --yes --no-install-recommends openssl/g)
+      ).toHaveLength(2);
+      expect(dockerfile.match(/rm -rf \/var\/lib\/apt\/lists\/\*/g)).toHaveLength(2);
+    }
+  );
+
+  it.each([
+    "api",
+    "employer",
+    "admin",
+    "auth-limiter",
+    "candidate-source",
+    "offer-delivery",
+    "qa-reset"
+  ])("shares the pinned Corepack cache with the non-root %s runtime", (application) => {
+    const dockerfile = read(`apps/${application}/Dockerfile`);
+    expect(dockerfile).toContain("COREPACK_HOME=/opt/corepack");
+    expect(dockerfile).toContain('chmod -R a+rX "$COREPACK_HOME"');
+  });
+
   it("defines the local build targets", () => {
     const matrix = JSON.parse(read("container-build-matrix.json")) as {
       services: Array<{ name: string; dockerfile: string }>;
@@ -103,6 +137,15 @@ describe("Cloud Run application packaging", () => {
     expect(validator).toContain(
       "const readinessStatuses = failClosedReadinessServices.has(service.name) ? [503] : [200]"
     );
+  });
+
+  it("keeps cold-start polling alive long enough to clean up its container", () => {
+    const validator = read("scripts/validate-containers.mjs");
+    expect(validator).toContain("attempt < 240");
+    expect(validator).toContain('"--write-out", "%{http_code}"');
+    expect(validator).toContain("Atomics.wait(new Int32Array(new SharedArrayBuffer(4))");
+    expect(validator).toContain("throw new Error(`CONTAINER_PROBE_FAILED url=${url}`)");
+    expect(validator).toContain('spawnSync("docker", ["rm", "--force", container]');
   });
 
   it("starts the QA reset image with a synthetic PostgreSQL-only contract", () => {
