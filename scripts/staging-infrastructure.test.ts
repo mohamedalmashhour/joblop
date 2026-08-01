@@ -111,8 +111,22 @@ describe("split staging infrastructure packages", () => {
 
   it("keeps Stripe, email and registration fail closed in the runtime example", async () => {
     const example = await read("runtime", "terraform.tfvars.example");
-    expect(example).toContain('STRIPE_TEST_MODE_ENABLED        = "disabled"');
-    expect(example).toContain('EMPLOYER_SELF_REGISTRATION_ENABLED = "disabled"');
-    expect(example).not.toMatch(/sk_test_|whsec_|password|api[_-]?key\s*=/iu);
+    expect(example).toMatch(/^\s*STRIPE_TEST_MODE_ENABLED\s*=\s*"disabled"/mu);
+    expect(example).toMatch(/^\s*EMPLOYER_SELF_REGISTRATION_ENABLED\s*=\s*"disabled"/mu);
+    expect(example).not.toMatch(/sk_test_|whsec_|^\s*password\s*=|api[_-]?key\s*=/imu);
+  });
+
+  it("keeps the Plan B example aligned with every required runtime contract field", async () => {
+    const variables = await read("runtime", "variables.tf");
+    const example = await read("runtime", "terraform.tfvars.example");
+    const requiredFields = [...variables.matchAll(/"([A-Z][A-Z0-9_]+)"/gu)].map(
+      (match) => match[1]
+    );
+
+    for (const field of new Set(requiredFields)) {
+      expect(example, `missing Plan B example field ${field}`).toMatch(
+        new RegExp(`\\b${field}\\s*=`, "u")
+      );
+    }
   });
 });

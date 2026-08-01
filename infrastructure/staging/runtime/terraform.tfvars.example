@@ -20,28 +20,121 @@ image_digests = {
 # Values are non-secret. Stripe, email and self-registration remain fail-closed.
 service_environment = {
   api = {
-    RWOS_ENV                        = "staging"
-    NODE_ENV                        = "production"
-    STRIPE_TEST_MODE_ENABLED        = "disabled"
+    RWOS_ENV                            = "staging"
+    NODE_ENV                            = "production"
+    INTERNAL_API_ORIGIN                 = "https://replace-with-private-api-origin"
+    PASSWORD_RESET_PUBLIC_ORIGIN        = "https://joblop.com"
+    AUTH_RATE_LIMITER_ORIGIN            = "https://replace-with-auth-limiter-origin"
+    AUTH_RATE_LIMITER_KEY_ID            = "replace-with-reviewed-key-id"
+    AUTH_RATE_LIMITER_NAMESPACE         = "rwos:authrl:staging:v1"
+    CANDIDATE_SOURCE_ORIGIN             = "https://replace-with-candidate-source-origin"
+    OFFER_DELIVERY_ORIGIN               = "https://replace-with-offer-delivery-origin"
+    STRIPE_TEST_MODE_ENABLED            = "disabled"
     EMPLOYER_SELF_REGISTRATION_ENABLED = "disabled"
   }
-  employer         = { RWOS_ENV = "production", NODE_ENV = "production" }
-  admin            = { RWOS_ENV = "production", NODE_ENV = "production" }
-  worker           = { RWOS_ENV = "staging", NODE_ENV = "production" }
-  auth-limiter     = { RWOS_ENV = "staging" }
-  candidate-source = { RWOS_ENV = "staging" }
-  offer-delivery   = { RWOS_ENV = "staging" }
-  qa-reset         = { RWOS_ENV = "staging", QA_RESET_PERSISTENCE_MODE = "postgres" }
+  employer = {
+    RWOS_ENV           = "staging"
+    NODE_ENV           = "production"
+    INTERNAL_API_ORIGIN = "https://replace-with-private-api-origin"
+  }
+  admin = {
+    RWOS_ENV           = "staging"
+    NODE_ENV           = "production"
+    INTERNAL_API_ORIGIN = "https://replace-with-private-api-origin"
+  }
+  worker = {
+    RWOS_ENV                    = "staging"
+    NODE_ENV                    = "production"
+    EXPO_PUBLIC_RWOS_API_ORIGIN = "https://replace-after-OD-02-worker-ingress-decision"
+  }
+  auth-limiter = {
+    RWOS_ENV                         = "staging"
+    AUTH_LIMITER_NAMESPACE           = "rwos:authrl:staging:v1"
+    AUTH_LIMITER_CURRENT_KEY_ID      = "replace-with-reviewed-key-id"
+    AUTH_LIMITER_AUTH_MODE           = "dual-required"
+    AUTH_LIMITER_AUDIENCE            = "https://replace-with-auth-limiter-origin"
+    AUTH_LIMITER_API_SERVICE_ACCOUNT = "replace-with-api-service-account"
+    AUTH_LIMITER_RELEASE_SHA         = "replace-with-exact-approved-release-sha"
+  }
+  candidate-source = {
+    RWOS_ENV                                           = "staging"
+    CANDIDATE_ADAPTER_AUTH_MODE                        = "dual-required"
+    CANDIDATE_ADAPTER_AUDIENCE                         = "https://replace-with-candidate-source-origin"
+    CANDIDATE_ADAPTER_API_SERVICE_ACCOUNT               = "replace-with-api-service-account"
+    CANDIDATE_ADAPTER_RELEASE_SHA                       = "replace-with-exact-approved-release-sha"
+    CANDIDATE_ADAPTER_TENANT_A_ID                       = "replace-with-synthetic-organization-a-id"
+    CANDIDATE_ADAPTER_TENANT_A_WORK_GROUP_ID            = "replace-with-synthetic-work-group-a-id"
+    CANDIDATE_ADAPTER_TENANT_A_ROLE_DEFINITION_ID       = "replace-with-synthetic-role-a-id"
+    CANDIDATE_ADAPTER_TENANT_B_ID                       = "replace-with-synthetic-organization-b-id"
+    CANDIDATE_ADAPTER_TENANT_B_WORK_GROUP_ID            = "replace-with-synthetic-work-group-b-id"
+    CANDIDATE_ADAPTER_TENANT_B_ROLE_DEFINITION_ID       = "replace-with-synthetic-role-b-id"
+  }
+  offer-delivery = {
+    RWOS_ENV                                      = "staging"
+    OFFER_DELIVERY_ADAPTER_AUTH_MODE              = "dual-required"
+    OFFER_DELIVERY_ADAPTER_AUDIENCE               = "https://replace-with-offer-delivery-origin"
+    OFFER_DELIVERY_ADAPTER_API_SERVICE_ACCOUNT    = "replace-with-api-service-account"
+    OFFER_DELIVERY_ADAPTER_RELEASE_SHA            = "replace-with-exact-approved-release-sha"
+    OFFER_DELIVERY_ADAPTER_TENANT_A_ID            = "replace-with-synthetic-organization-a-id"
+    OFFER_DELIVERY_ADAPTER_TENANT_B_ID            = "replace-with-synthetic-organization-b-id"
+  }
+  qa-reset = {
+    RWOS_ENV                                     = "staging"
+    QA_RESET_PERSISTENCE_MODE                    = "postgres"
+    QA_RESET_AUTH_MODE                           = "dual-required"
+    QA_RESET_AUDIENCE                            = "https://replace-with-qa-reset-origin"
+    QA_RESET_RELEASE_SHA                         = "replace-with-exact-approved-release-sha"
+    QA_RESET_PROJECT_ID                          = "gcp/projects/replace-staging-project"
+    QA_RESET_CLUSTER_ID                          = "gcp/cloudsql/replace-staging-cluster"
+    QA_RESET_DATABASE_ID                         = "gcp/databases/replace-staging-database"
+    QA_RESET_AUTHORITY_ID                        = "gcp/authorities/replace-staging-authority"
+    QA_RESET_TENANT_A_ID                         = "replace-with-synthetic-organization-a-id"
+    QA_RESET_TENANT_B_ID                         = "replace-with-synthetic-organization-b-id"
+    QA_RESET_WORK_GROUP_ID                       = "replace-with-synthetic-work-group-id"
+    QA_RESET_ROLE_DEFINITION_ID                  = "replace-with-synthetic-role-id"
+    QA_RESET_ORGANIZATION_OWNER_ACCESS_ROLE_ID   = "replace-with-synthetic-owner-role-id"
+    QA_RESET_NAMESPACE                           = "rwos:qa-reset:staging:v1"
+    QA_RESET_MANIFEST_ID                         = "replace-with-reviewed-manifest-id"
+    QA_RESET_MANIFEST_CHECKSUM                   = "replace-with-reviewed-manifest-sha256"
+    QA_RESET_MANIFEST_CREATED_AT                 = "replace-with-reviewed-utc-timestamp"
+    QA_RESET_MANIFEST_EXPIRES_AT                 = "replace-with-reviewed-utc-timestamp"
+    QA_RESET_DRY_RUN_APPROVAL_REFERENCE          = "approval/replace-dry-run"
+    QA_RESET_PREPARE_APPROVAL_REFERENCE          = "approval/replace-prepare"
+    QA_RESET_CLEANUP_APPROVAL_REFERENCE          = "approval/replace-cleanup"
+    QA_RESET_BROWSER_E2E_SERVICE_ACCOUNT         = "replace-with-browser-e2e-service-account"
+    QA_RESET_IOS_E2E_SERVICE_ACCOUNT             = "replace-with-ios-e2e-service-account"
+    QA_RESET_ANDROID_E2E_SERVICE_ACCOUNT         = "replace-with-android-e2e-service-account"
+    QA_RESET_MANUAL_QA_SERVICE_ACCOUNT           = "replace-with-manual-qa-service-account"
+    QA_RESET_MONITORING_SERVICE_ACCOUNT          = "replace-with-monitoring-service-account"
+    QA_RESET_BROWSER_E2E_OPERATOR_IDENTITY       = "operators/replace-browser-e2e"
+    QA_RESET_IOS_E2E_OPERATOR_IDENTITY           = "operators/replace-ios-e2e"
+    QA_RESET_ANDROID_E2E_OPERATOR_IDENTITY       = "operators/replace-android-e2e"
+    QA_RESET_MANUAL_QA_OPERATOR_IDENTITY         = "operators/replace-manual-qa"
+  }
 }
 
 # Map environment names to Secret Manager names; values are references, never payloads.
 service_secret_environment = {
-  api              = { DATABASE_URL = "rwos-staging-database-url", SESSION_SECRET = "rwos-staging-session-secret" }
+  api = {
+    DATABASE_URL                 = "rwos-staging-database-url"
+    SESSION_SECRET               = "rwos-staging-session-secret"
+    AUTH_RATE_LIMITER_TOKEN      = "rwos-staging-limiter-token"
+    AUTH_RATE_LIMITER_KEY_SECRET = "rwos-staging-limiter-hmac-key"
+    CANDIDATE_SOURCE_TOKEN       = "rwos-staging-candidate-source-token"
+    OFFER_DELIVERY_TOKEN         = "rwos-staging-offer-delivery-token"
+  }
   employer         = {}
   admin            = {}
   worker           = {}
   auth-limiter     = { AUTH_LIMITER_SERVICE_TOKEN = "rwos-staging-limiter-token", AUTH_LIMITER_HMAC_SECRET = "rwos-staging-limiter-hmac-key" }
   candidate-source = { CANDIDATE_ADAPTER_SERVICE_TOKEN = "rwos-staging-candidate-source-token" }
   offer-delivery   = { OFFER_DELIVERY_ADAPTER_SERVICE_TOKEN = "rwos-staging-offer-delivery-token" }
-  qa-reset         = { DATABASE_URL = "rwos-staging-database-url", QA_RESET_APP_CREDENTIAL = "rwos-staging-qa-reset-browser-token" }
+  qa-reset = {
+    DATABASE_URL                            = "rwos-staging-database-url"
+    QA_RESET_BROWSER_E2E_APP_CREDENTIAL     = "rwos-staging-qa-reset-browser-token"
+    QA_RESET_IOS_E2E_APP_CREDENTIAL         = "rwos-staging-qa-reset-ios-token"
+    QA_RESET_ANDROID_E2E_APP_CREDENTIAL     = "rwos-staging-qa-reset-android-token"
+    QA_RESET_MANUAL_QA_APP_CREDENTIAL       = "rwos-staging-qa-reset-manual-token"
+    QA_RESET_MONITORING_APP_CREDENTIAL      = "rwos-staging-qa-reset-monitoring-token"
+  }
 }
