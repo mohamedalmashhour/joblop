@@ -1,21 +1,23 @@
 locals {
   prefix = "rwos-stg-ca-tor"
   services = {
-    api              = { cpu = "1", memory = "512Mi", concurrency = 20 }
-    employer         = { cpu = "1", memory = "512Mi", concurrency = 40 }
-    admin            = { cpu = "1", memory = "512Mi", concurrency = 40 }
-    worker           = { cpu = "1", memory = "512Mi", concurrency = 40 }
-    auth-limiter     = { cpu = "0.5", memory = "256Mi", concurrency = 40 }
-    candidate-source = { cpu = "0.5", memory = "512Mi", concurrency = 1 }
-    offer-delivery   = { cpu = "0.5", memory = "512Mi", concurrency = 1 }
-    qa-reset         = { cpu = "0.5", memory = "512Mi", concurrency = 1 }
+    api              = { cpu = "1", memory = "512Mi", concurrency = 20, image = "api", config = "api" }
+    worker-api       = { cpu = "1", memory = "512Mi", concurrency = 20, image = "api", config = "api" }
+    employer         = { cpu = "1", memory = "512Mi", concurrency = 40, image = "employer", config = "employer" }
+    admin            = { cpu = "1", memory = "512Mi", concurrency = 40, image = "admin", config = "admin" }
+    worker           = { cpu = "1", memory = "512Mi", concurrency = 40, image = "worker", config = "worker" }
+    auth-limiter     = { cpu = "0.5", memory = "256Mi", concurrency = 40, image = "auth-limiter", config = "auth-limiter" }
+    candidate-source = { cpu = "0.5", memory = "512Mi", concurrency = 1, image = "candidate-source", config = "candidate-source" }
+    offer-delivery   = { cpu = "0.5", memory = "512Mi", concurrency = 1, image = "offer-delivery", config = "offer-delivery" }
+    qa-reset         = { cpu = "0.5", memory = "512Mi", concurrency = 1, image = "qa-reset", config = "qa-reset" }
   }
+  effective_secret_environment = merge(var.service_secret_environment, { worker-api = var.service_secret_environment.api })
   secret_names = toset(flatten([
-    for environment_map in values(var.service_secret_environment) : values(environment_map)
+    for environment_map in values(local.effective_secret_environment) : values(environment_map)
   ]))
   service_secret_pairs = {
     for pair in flatten([
-      for service, values in var.service_secret_environment : [
+      for service, values in local.effective_secret_environment : [
         for environment_name, secret_name in values : {
           key              = "${service}:${environment_name}"
           service          = service
@@ -27,6 +29,7 @@ locals {
   }
   derived_environment = {
     api              = {}
+    worker-api       = { RWOS_PUBLIC_WORKER_INGRESS_ONLY = "enabled" }
     employer         = {}
     admin            = {}
     worker           = {}
@@ -145,7 +148,7 @@ resource "google_cloud_run_v2_service" "service" {
   for_each = local.services
   name     = "rwos-stg-${each.key}"
   location = var.region
-  ingress  = contains(["employer", "admin", "worker"], each.key) ? "INGRESS_TRAFFIC_ALL" : "INGRESS_TRAFFIC_INTERNAL_LOAD_BALANCER"
+  ingress  = contains(["employer", "admin", "worker", "worker-api"], each.key) ? "INGRESS_TRAFFIC_ALL" : "INGRESS_TRAFFIC_INTERNAL_LOAD_BALANCER"
 
   deletion_protection = true
   template {
@@ -157,16 +160,16 @@ resource "google_cloud_run_v2_service" "service" {
       max_instance_count = 1
     }
     containers {
-      image = var.image_digests[each.key]
+      image = var.image_digests[each.value.image]
       dynamic "env" {
-        for_each = merge(var.service_environment[each.key], local.derived_environment[each.key])
+        for_each = merge(var.service_environment[each.value.config], local.derived_environment[each.key])
         content {
           name  = env.key
           value = env.value
         }
       }
       dynamic "env" {
-        for_each = var.service_secret_environment[each.key]
+        for_each = local.effective_secret_environment[each.key]
         content {
           name = env.key
           value_source {
@@ -207,12 +210,20 @@ resource "google_cloud_run_v2_service" "service" {
 }
 
 resource "google_cloud_run_v2_service_iam_member" "web_to_api" {
-  for_each = toset(["employer", "admin", "worker"])
+  for_each = toset(["employer", "admin"])
   project  = var.project_id
   location = var.region
   name     = google_cloud_run_v2_service.service["api"].name
   role     = "roles/run.invoker"
   member   = google_service_account.runtime[each.key].member
+}
+
+resource "google_cloud_run_v2_service_iam_member" "public_worker_api" {
+  project  = var.project_id
+  location = var.region
+  name     = google_cloud_run_v2_service.service["worker-api"].name
+  role     = "roles/run.invoker"
+  member   = "allUsers"
 }
 
 resource "google_cloud_run_v2_service_iam_member" "api_to_adapters" {

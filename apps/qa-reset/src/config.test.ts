@@ -91,6 +91,7 @@ export function environment(overrides: Record<string, string | undefined> = {}):
         ];
       })
     ),
+    RWOS_IMAGE_RELEASE_SHA: testConfig.releaseSha,
     QA_RESET_RELEASE_SHA: testConfig.releaseSha,
     QA_RESET_PROJECT_ID: testConfig.projectId,
     QA_RESET_CLUSTER_ID: testConfig.clusterId,

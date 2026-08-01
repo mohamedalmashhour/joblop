@@ -44,7 +44,68 @@ import type {
   WorkerOfferService,
   WorkGroupRepository
 } from "@rwos/auth";
-import { buildApi, createRemoteAuthenticationRateLimiter } from "./app";
+import { buildApi, createRemoteAuthenticationRateLimiter, isPublicWorkerIngressPath } from "./app";
+
+describe("public worker ingress boundary", () => {
+  it("allows only health, worker authentication and worker workflow routes", () => {
+    for (const path of [
+      "/health",
+      "/ready",
+      "/auth/sign-in",
+      "/auth/session",
+      "/auth/sign-out",
+      "/auth/email/send-code",
+      "/auth/email/verify-code",
+      "/auth/password-reset/request",
+      "/auth/password-reset/complete",
+      "/worker/offers",
+      "/worker/assignments/id?version=1"
+    ]) {
+      expect(isPublicWorkerIngressPath(path)).toBe(true);
+    }
+    for (const path of [
+      "/auth/register",
+      "/authz/check",
+      "/memberships",
+      "/organizations/current",
+      "/platform/dispatches",
+      "/organizations/id/invoices",
+      "/workerish/offers"
+    ]) {
+      expect(isPublicWorkerIngressPath(path)).toBe(false);
+    }
+  });
+
+  it("returns a generic 404 before blocked routes execute", async () => {
+    const app = buildApi({
+      publicWorkerIngressOnly: true,
+      readinessProbe: async () => true,
+      env: { RWOS_ENV: "staging", NODE_ENV: "production" }
+    });
+    const blocked = await app.inject({ method: "GET", url: "/platform/dispatches" });
+    const registration = await app.inject({
+      method: "POST",
+      url: "/auth/register",
+      payload: { email: "worker@example.test", password: "SyntheticOnly123!" }
+    });
+    const health = await app.inject({ method: "GET", url: "/health" });
+
+    expect(blocked.statusCode).toBe(404);
+    expect(registration.statusCode).toBe(404);
+    expect(blocked.json()).toEqual({
+      error: "RWOS_RESOURCE_UNAVAILABLE",
+      message: "Resource unavailable."
+    });
+    expect(health.statusCode).toBe(200);
+    await app.close();
+  });
+
+  it("cannot be enabled outside staging", () => {
+    expect(() =>
+      buildApi({ publicWorkerIngressOnly: true, env: { RWOS_ENV: "production" } })
+    ).toThrow("RWOS_PUBLIC_WORKER_INGRESS_STAGING_ONLY");
+  });
+});
 
 describe("api health endpoints", () => {
   it("keeps liveness independent from dependency readiness", async () => {
@@ -358,10 +419,13 @@ describe("api authentication foundation", () => {
   });
 
   it("keeps password-reset requests generic and completion response-bounded", async () => {
-    const request = vi.fn(async () => ({
-      status: "accepted",
-      message: "If an account matches that email, password reset instructions will be sent."
-    }) as const);
+    const request = vi.fn(
+      async () =>
+        ({
+          status: "accepted",
+          message: "If an account matches that email, password reset instructions will be sent."
+        }) as const
+    );
     const complete = vi
       .fn()
       .mockResolvedValueOnce({ status: "reset" as const })

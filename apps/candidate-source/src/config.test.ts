@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { approvedReleaseSha, readCandidateSourceConfig } from "./config";
+import { readCandidateSourceConfig } from "./config";
 import { serviceToken, tenantA, tenantB } from "./testFixture";
 
 describe("candidate source configuration", () => {
@@ -32,13 +32,15 @@ describe("candidate source configuration", () => {
 });
 
 function environment(overrides: Record<string, string | undefined> = {}): NodeJS.ProcessEnv {
+  const releaseSha = "a31fa96f52247bb684032c6a8d3d379c098c2603";
   return {
     RWOS_ENV: "staging",
     CANDIDATE_ADAPTER_AUTH_MODE: "dual-required",
     CANDIDATE_ADAPTER_AUDIENCE: "https://rwos-candidate-opaque-nn.a.run.app",
     CANDIDATE_ADAPTER_API_SERVICE_ACCOUNT: "rwos-api@staging.invalid",
     PORT: "8080",
-    CANDIDATE_ADAPTER_RELEASE_SHA: approvedReleaseSha,
+    RWOS_IMAGE_RELEASE_SHA: releaseSha,
+    CANDIDATE_ADAPTER_RELEASE_SHA: releaseSha,
     CANDIDATE_ADAPTER_SERVICE_TOKEN: serviceToken,
     CANDIDATE_ADAPTER_TENANT_A_ID: tenantA.organizationId,
     CANDIDATE_ADAPTER_TENANT_A_WORK_GROUP_ID: tenantA.workGroupId,

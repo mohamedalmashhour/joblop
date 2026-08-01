@@ -3,7 +3,6 @@ import {
   type TrustedReceiverAuthorization
 } from "@rwos/service-auth";
 
-export const approvedReleaseSha = "a31fa96f52247bb684032c6a8d3d379c098c2603";
 export const retentionDays = 30;
 export const retryScheduleSeconds = [1, 5] as const;
 export const maximumAttempts = 3;
@@ -29,7 +28,11 @@ export function readOfferDeliveryConfig(env: NodeJS.ProcessEnv = process.env): O
     throw new Error("OFFER_DELIVERY_STAGING_ONLY");
   }
   const releaseSha = required(env.OFFER_DELIVERY_ADAPTER_RELEASE_SHA, "RELEASE_SHA");
-  if (releaseSha !== approvedReleaseSha) throw new Error("OFFER_DELIVERY_RELEASE_MISMATCH");
+  const imageReleaseSha = required(env.RWOS_IMAGE_RELEASE_SHA, "IMAGE_RELEASE_SHA");
+  if (!/^[a-f0-9]{40}$/.test(imageReleaseSha)) {
+    throw new Error("OFFER_DELIVERY_IMAGE_RELEASE_SHA_INVALID");
+  }
+  if (releaseSha !== imageReleaseSha) throw new Error("OFFER_DELIVERY_RELEASE_MISMATCH");
   const tenants: [DeliveryTenant, DeliveryTenant] = [
     {
       label: "tenant-a",

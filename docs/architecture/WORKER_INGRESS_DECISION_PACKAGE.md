@@ -1,8 +1,15 @@
 # Worker Ingress Decision Package — RO-04 / OD-02
 
-Status: **OWNER DECISION REQUIRED — NO EXTERNAL INGRESS AUTHORIZED**
+Status: **ALTERNATIVE A APPROVED FOR STAGING IMPLEMENTATION — EXTERNAL DEPLOYMENT EVIDENCE PENDING**
 
 Local implementation checkpoint reviewed: `070284f`
+
+Owner decision recorded 2026-08-01: Mohamed Almashhour approved Alternative A for controlled
+staging. Production remains prohibited. The implementation uses a separate public `worker-api`
+Cloud Run service backed by the same immutable API image; it does not make the private platform API
+public. A fail-closed application boundary permits only health/readiness, worker authentication and
+`/worker/*` workflow routes. Worker self-registration, employer, platform, finance and organization
+routes return the same generic unavailable response before route execution.
 
 ## Decision
 
@@ -58,9 +65,9 @@ refresh, downstream audience registry, request/response mapping and rollback.
   is added.
 - Production and external staging remain disabled until separately authorized.
 
-## Required owner record
+## Staging implementation record
 
-Architecture Authority, Security Owner and Release Owner must record:
+The Release Owner selected Alternative A. Security and Release evidence must still record:
 
 - selected alternative and rejected alternative;
 - exact release SHA and scope;

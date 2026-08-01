@@ -1,4 +1,3 @@
-export const approvedReleaseSha = "a31fa96f52247bb684032c6a8d3d379c098c2603";
 export const browserConfirmation = "authorized-staging-browser-e2e";
 export const nativeConfirmation = "authorized-staging-native-e2e";
 export const resetNamespace = "rwos:qa-reset:staging:v1";
@@ -58,7 +57,11 @@ export function readQaResetConfig(
     throw new Error("QA_RESET_POSTGRES_REQUIRED");
   }
   const releaseSha = required(env.QA_RESET_RELEASE_SHA, "RELEASE_SHA");
-  if (releaseSha !== approvedReleaseSha) throw new Error("QA_RESET_RELEASE_MISMATCH");
+  const imageReleaseSha = required(env.RWOS_IMAGE_RELEASE_SHA, "IMAGE_RELEASE_SHA");
+  if (!/^[a-f0-9]{40}$/.test(imageReleaseSha)) {
+    throw new Error("QA_RESET_IMAGE_RELEASE_SHA_INVALID");
+  }
+  if (releaseSha !== imageReleaseSha) throw new Error("QA_RESET_RELEASE_MISMATCH");
   const manifestCreatedAt = timestamp(env.QA_RESET_MANIFEST_CREATED_AT, "MANIFEST_CREATED_AT");
   const manifestExpiresAt = timestamp(env.QA_RESET_MANIFEST_EXPIRES_AT, "MANIFEST_EXPIRES_AT");
   if (

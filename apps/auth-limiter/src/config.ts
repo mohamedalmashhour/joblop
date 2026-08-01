@@ -5,7 +5,6 @@ import {
 
 export const previousKeyMaximumOverlapSeconds = 65;
 export const stagingResetConfirmation = "authorized-staging-limiter-reset";
-export const approvedReleaseSha = "a31fa96f52247bb684032c6a8d3d379c098c2603";
 
 export type LimiterConfig = Readonly<{
   port: number;
@@ -34,7 +33,10 @@ export function readLimiterConfig(
   const serviceToken = requiredSecret(env.AUTH_LIMITER_SERVICE_TOKEN, "AUTH_LIMITER_SERVICE_TOKEN");
   const releaseSha = env.AUTH_LIMITER_RELEASE_SHA;
   if (!releaseSha) throw new Error("AUTH_LIMITER_RELEASE_SHA_REQUIRED");
-  if (releaseSha !== approvedReleaseSha) throw new Error("AUTH_LIMITER_RELEASE_MISMATCH");
+  if (!/^[a-f0-9]{40}$/.test(env.RWOS_IMAGE_RELEASE_SHA ?? "")) {
+    throw new Error("AUTH_LIMITER_IMAGE_RELEASE_SHA_REQUIRED");
+  }
+  if (releaseSha !== env.RWOS_IMAGE_RELEASE_SHA) throw new Error("AUTH_LIMITER_RELEASE_MISMATCH");
   const trustedAuthorization = readTrustedReceiverAuthorization({
     env,
     prefix: "AUTH_LIMITER",

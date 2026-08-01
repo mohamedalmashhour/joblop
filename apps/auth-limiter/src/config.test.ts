@@ -7,6 +7,7 @@ const base = {
   RWOS_ENV: "staging",
   AUTH_LIMITER_REDIS_URL: "redis://127.0.0.1:6379",
   AUTH_LIMITER_SERVICE_TOKEN: "service-token-at-least-thirty-two-characters",
+  RWOS_IMAGE_RELEASE_SHA: "a31fa96f52247bb684032c6a8d3d379c098c2603",
   AUTH_LIMITER_RELEASE_SHA: "a31fa96f52247bb684032c6a8d3d379c098c2603",
   AUTH_LIMITER_AUTH_MODE: "dual-required",
   AUTH_LIMITER_AUDIENCE: "https://rwos-auth-limiter-opaque-nn.a.run.app",

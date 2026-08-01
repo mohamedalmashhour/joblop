@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { approvedReleaseSha, readOfferDeliveryConfig } from "./config";
+import { readOfferDeliveryConfig } from "./config";
 import { serviceToken, tenantA, tenantB } from "./testFixture";
 
 describe("offer delivery configuration", () => {
@@ -33,13 +33,15 @@ describe("offer delivery configuration", () => {
 });
 
 function environment(overrides: Record<string, string | undefined> = {}): NodeJS.ProcessEnv {
+  const releaseSha = "a31fa96f52247bb684032c6a8d3d379c098c2603";
   return {
     RWOS_ENV: "staging",
     OFFER_DELIVERY_ADAPTER_AUTH_MODE: "dual-required",
     OFFER_DELIVERY_ADAPTER_AUDIENCE: "https://rwos-delivery-opaque-nn.a.run.app",
     OFFER_DELIVERY_ADAPTER_API_SERVICE_ACCOUNT: "rwos-api@staging.invalid",
     PORT: "8080",
-    OFFER_DELIVERY_ADAPTER_RELEASE_SHA: approvedReleaseSha,
+    RWOS_IMAGE_RELEASE_SHA: releaseSha,
+    OFFER_DELIVERY_ADAPTER_RELEASE_SHA: releaseSha,
     OFFER_DELIVERY_ADAPTER_SERVICE_TOKEN: serviceToken,
     OFFER_DELIVERY_ADAPTER_TENANT_A_ID: tenantA.organizationId,
     OFFER_DELIVERY_ADAPTER_TENANT_B_ID: tenantB.organizationId,

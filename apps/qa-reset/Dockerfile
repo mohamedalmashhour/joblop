@@ -26,7 +26,7 @@ LABEL org.opencontainers.image.title="resident-workforce-os-qa-reset" \
       org.opencontainers.image.created="$RWOS_BUILD_TIMESTAMP" \
       org.opencontainers.image.source="$RWOS_SOURCE_REPOSITORY" \
       org.opencontainers.image.version="$RWOS_IMAGE_VERSION"
-ENV NODE_ENV=production PORT=8080 COREPACK_HOME=/opt/corepack
+ENV NODE_ENV=production PORT=8080 COREPACK_HOME=/opt/corepack RWOS_IMAGE_RELEASE_SHA=$RWOS_GIT_SHA
 WORKDIR /workspace
 RUN apt-get update \
     && apt-get install --yes --no-install-recommends openssl \

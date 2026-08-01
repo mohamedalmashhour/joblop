@@ -3,8 +3,6 @@ import {
   type TrustedReceiverAuthorization
 } from "@rwos/service-auth";
 
-export const approvedReleaseSha = "a31fa96f52247bb684032c6a8d3d379c098c2603";
-
 export type TenantConfig = Readonly<{
   label: "tenant-a" | "tenant-b";
   organizationId: string;
@@ -30,7 +28,11 @@ export function readCandidateSourceConfig(env: NodeJS.ProcessEnv = process.env) 
     throw new Error("CANDIDATE_ADAPTER_STAGING_ONLY");
   }
   const releaseSha = required(env.CANDIDATE_ADAPTER_RELEASE_SHA, "RELEASE_SHA");
-  if (releaseSha !== approvedReleaseSha) throw new Error("CANDIDATE_ADAPTER_RELEASE_MISMATCH");
+  const imageReleaseSha = required(env.RWOS_IMAGE_RELEASE_SHA, "IMAGE_RELEASE_SHA");
+  if (!/^[a-f0-9]{40}$/.test(imageReleaseSha)) {
+    throw new Error("CANDIDATE_ADAPTER_IMAGE_RELEASE_SHA_INVALID");
+  }
+  if (releaseSha !== imageReleaseSha) throw new Error("CANDIDATE_ADAPTER_RELEASE_MISMATCH");
 
   const config: CandidateSourceConfig = {
     port: boundedInteger(env.PORT ?? "8080", 1, 65_535, "PORT"),

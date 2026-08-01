@@ -124,15 +124,9 @@ import { createDocumentUploadContract } from "./documentUploadContract";
 import { createPrismaDocumentMetadataRepository } from "./documentUploadRepository";
 import { registerDocumentRoutes } from "./documentRoutes";
 import { registerInvoiceRoutes } from "./invoiceRoutes";
-import {
-  createPrismaInvoiceRepository,
-  type InvoiceRepository
-} from "./invoiceRepository";
+import { createPrismaInvoiceRepository, type InvoiceRepository } from "./invoiceRepository";
 import { registerPaymentRoutes } from "./paymentRoutes";
-import {
-  createPrismaPaymentRepository,
-  type PaymentRepository
-} from "./paymentRepository";
+import { createPrismaPaymentRepository, type PaymentRepository } from "./paymentRepository";
 
 export interface BuildApiOptions {
   authService?: AuthenticationService;
@@ -170,6 +164,7 @@ export interface BuildApiOptions {
   invoiceRepository?: InvoiceRepository;
   paymentRepository?: PaymentRepository;
   localPaymentWebhookSecret?: string;
+  publicWorkerIngressOnly?: boolean;
 }
 
 export type AuthenticationRateLimitDecision = Readonly<{
@@ -190,12 +185,29 @@ export interface AuthenticationRateLimiter {
 }
 
 export function buildApi(options: BuildApiOptions = {}) {
-  const runtimeConfig = getRuntimeConfig(options.env);
+  const environment = options.env ?? process.env;
+  const publicWorkerIngressOnly =
+    options.publicWorkerIngressOnly ?? environment.RWOS_PUBLIC_WORKER_INGRESS_ONLY === "enabled";
+  if (publicWorkerIngressOnly && environment.RWOS_ENV !== "staging") {
+    throw new Error("RWOS_PUBLIC_WORKER_INGRESS_STAGING_ONLY");
+  }
+  const runtimeConfig = getRuntimeConfig(environment);
   const app = Fastify({
     logger: false,
     trustProxy: runtimeConfig.rwosEnv === "production" ? "loopback" : false
   });
   const logger = createLogger("api");
+
+  if (publicWorkerIngressOnly) {
+    app.addHook("onRequest", async (request, reply) => {
+      if (!isPublicWorkerIngressPath(request.url)) {
+        return reply.code(404).send({
+          error: "RWOS_RESOURCE_UNAVAILABLE",
+          message: "Resource unavailable."
+        });
+      }
+    });
+  }
   const requestStartedAt = new WeakMap<object, bigint>();
   const authRateLimiter =
     options.authRateLimiter ??
@@ -232,14 +244,9 @@ export function buildApi(options: BuildApiOptions = {}) {
   const emailVerificationService =
     options.emailVerificationService ??
     (authenticationRepository && hasEmailVerificationDelegate(prisma)
-      ? createEmailVerificationService(
-          authenticationRepository,
-          emailSender,
-          {
-            exposeLocalCode:
-              runtimeConfig.rwosEnv !== "production" && !runtimeConfig.hasEmailDelivery
-          }
-        )
+      ? createEmailVerificationService(authenticationRepository, emailSender, {
+          exposeLocalCode: runtimeConfig.rwosEnv !== "production" && !runtimeConfig.hasEmailDelivery
+        })
       : null);
   const passwordResetService =
     options.passwordResetService ??
@@ -441,10 +448,7 @@ export function buildApi(options: BuildApiOptions = {}) {
         if (roles.includes("PLATFORM_ADMINISTRATOR")) {
           return { actorId: session.user.id, role: "platform_admin" };
         }
-        if (
-          roles.includes("ORGANIZATION_OWNER") ||
-          roles.includes("ORGANIZATION_ADMINISTRATOR")
-        ) {
+        if (roles.includes("ORGANIZATION_OWNER") || roles.includes("ORGANIZATION_ADMINISTRATOR")) {
           try {
             await organizationService.getOrganization({
               actorUserId: session.user.id,
@@ -475,10 +479,7 @@ export function buildApi(options: BuildApiOptions = {}) {
         if (roles.includes("PLATFORM_ADMINISTRATOR")) {
           return { actorId: session.user.id, role: "admin" };
         }
-        if (
-          roles.includes("ORGANIZATION_OWNER") ||
-          roles.includes("ORGANIZATION_ADMINISTRATOR")
-        ) {
+        if (roles.includes("ORGANIZATION_OWNER") || roles.includes("ORGANIZATION_ADMINISTRATOR")) {
           try {
             await organizationService.getOrganization({
               actorUserId: session.user.id,
@@ -511,10 +512,7 @@ export function buildApi(options: BuildApiOptions = {}) {
             role: "platform_admin"
           };
         }
-        if (
-          roles.includes("ORGANIZATION_OWNER") ||
-          roles.includes("ORGANIZATION_ADMINISTRATOR")
-        ) {
+        if (roles.includes("ORGANIZATION_OWNER") || roles.includes("ORGANIZATION_ADMINISTRATOR")) {
           try {
             await organizationService.getOrganization({
               actorUserId: session.user.id,
@@ -3638,6 +3636,22 @@ export function buildApi(options: BuildApiOptions = {}) {
   return app;
 }
 
+export function isPublicWorkerIngressPath(rawUrl: string) {
+  const path = rawUrl.split("?", 1)[0] ?? "";
+  return (
+    path === "/health" ||
+    path === "/ready" ||
+    path === "/auth/sign-in" ||
+    path === "/auth/session" ||
+    path === "/auth/sign-out" ||
+    path === "/auth/email/send-code" ||
+    path === "/auth/email/verify-code" ||
+    path === "/auth/password-reset/request" ||
+    path === "/auth/password-reset/complete" ||
+    path.startsWith("/worker/")
+  );
+}
+
 function asRecord(value: unknown): Record<string, unknown> {
   return value && typeof value === "object" && !Array.isArray(value)
     ? (value as Record<string, unknown>)
@@ -3899,17 +3913,15 @@ function hasEmailVerificationDelegate(prisma: unknown): boolean {
   );
 }
 
-async function workerHasOrganizationScope(
-  prisma: unknown,
-  userId: string,
-  organizationId: string
-) {
+async function workerHasOrganizationScope(prisma: unknown, userId: string, organizationId: string) {
   if (!prisma || typeof prisma !== "object" || !("workerOffer" in prisma)) return false;
-  const delegate = (prisma as {
-    workerOffer?: {
-      findFirst(input: unknown): Promise<unknown>;
-    };
-  }).workerOffer;
+  const delegate = (
+    prisma as {
+      workerOffer?: {
+        findFirst(input: unknown): Promise<unknown>;
+      };
+    }
+  ).workerOffer;
   if (!delegate) return false;
   return Boolean(
     await delegate.findFirst({

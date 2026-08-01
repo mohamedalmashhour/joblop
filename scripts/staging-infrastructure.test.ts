@@ -100,6 +100,9 @@ describe("split staging infrastructure packages", () => {
     expect(main).toContain("roles/secretmanager.secretAccessor");
     expect(main).toContain("roles/iam.serviceAccountUser");
     expect(main).toContain("roles/run.invoker");
+    expect(main).toContain('google_cloud_run_v2_service_iam_member" "public_worker_api');
+    expect(main).toContain('member   = "allUsers"');
+    expect(main).toContain('RWOS_PUBLIC_WORKER_INGRESS_ONLY = "enabled"');
     expect(main).toContain("depends_on = [");
     expect(main).toContain("google_logging_project_bucket_config");
     expect(main).toContain("google_monitoring_alert_policy");
