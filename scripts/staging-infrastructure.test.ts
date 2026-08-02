@@ -170,6 +170,20 @@ describe("split staging infrastructure packages", () => {
     expect(example).not.toMatch(/sk_test_|whsec_|^\s*password\s*=|api[_-]?key\s*=/imu);
   });
 
+  it("keeps production-reserved product domains out of staging configuration", async () => {
+    const example = await read("runtime", "terraform.tfvars.example");
+    const main = await read("runtime", "main.tf");
+    const variables = await read("runtime", "variables.tf");
+
+    for (const source of [example, main, variables]) {
+      expect(source).not.toMatch(/(?:^|["'/:.])(?:www\.)?joblop\.com(?:["'/:]|$)/imu);
+      expect(source).not.toMatch(/(?:^|["'/:.])(?:www\.)?rezekme\.com(?:["'/:]|$)/imu);
+    }
+    expect(example).toMatch(
+      /^\s*PASSWORD_RESET_PUBLIC_ORIGIN\s*=\s*"https:\/\/employer\.staging\.sybnb\.app"/mu
+    );
+  });
+
   it("keeps the Plan B example aligned with every required runtime contract field", async () => {
     const variables = await read("runtime", "variables.tf");
     const example = await read("runtime", "terraform.tfvars.example");
