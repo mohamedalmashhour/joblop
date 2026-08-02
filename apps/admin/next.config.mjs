@@ -17,6 +17,12 @@ function securityHeaders() {
       value: "camera=(), microphone=(), geolocation=(), payment=(), usb=()"
     }
   ];
+  if (process.env.RWOS_ENV === "production") {
+    headers.push({
+      key: "Strict-Transport-Security",
+      value: "max-age=31536000; includeSubDomains"
+    });
+  }
   return headers;
 }
 

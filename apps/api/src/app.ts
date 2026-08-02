@@ -589,7 +589,7 @@ export function buildApi(options: BuildApiOptions = {}) {
     requestStartedAt.set(request, process.hrtime.bigint());
     applySecurityHeaders(
       reply,
-      runtimeConfig.rwosEnv === "production" && request.protocol === "https"
+      runtimeConfig.rwosEnv === "production"
     );
     if (
       runtimeConfig.rwosEnv === "production" &&

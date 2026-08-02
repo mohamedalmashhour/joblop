@@ -310,7 +310,9 @@ describe("api authentication foundation", () => {
       "x-frame-options": "DENY",
       "referrer-policy": "strict-origin-when-cross-origin"
     });
-    expect(response.headers).not.toHaveProperty("strict-transport-security");
+    expect(response.headers["strict-transport-security"]).toBe(
+      "max-age=31536000; includeSubDomains"
+    );
     const httpsResponse = await app.inject({
       method: "POST",
       url: "/auth/register",

@@ -69,7 +69,7 @@ export async function middleware(request: NextRequest) {
     }
   }
   const response = NextResponse.next();
-  if (process.env.RWOS_ENV === "production" && request.nextUrl.protocol === "https:") {
+  if (process.env.RWOS_ENV === "production") {
     response.headers.set("strict-transport-security", "max-age=31536000; includeSubDomains");
   }
   return response;
