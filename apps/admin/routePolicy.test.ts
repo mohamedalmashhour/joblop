@@ -9,6 +9,8 @@ describe("admin production route policy", () => {
       "/calendar/request",
       "/health",
       "/ready",
+      "/forgot-password",
+      "/reset-password",
       "/signin",
       "/signup",
       "/dispatches",
