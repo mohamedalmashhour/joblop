@@ -5,8 +5,8 @@ export default function FAQPage() {
   return (
     <main style={styles.page}>
       <header style={styles.header}>
-        <a href="/" style={styles.brand} aria-label="Resident Job home">
-          Resident Job
+        <a href="/" style={styles.brand} aria-label="JobLop home">
+          JobLop
         </a>
         <nav aria-label="Primary navigation" style={styles.nav}>
           <a href="/about" style={styles.navLink}>
@@ -124,7 +124,7 @@ export default function FAQPage() {
       </section>
 
       <footer style={styles.footer}>
-        <span>Resident Job</span>
+        <span>JobLop</span>
         <nav aria-label="Footer navigation" style={styles.footerLinks}>
           <a href="/" style={styles.footerLink}>
             Home
@@ -194,4 +194,3 @@ const styles: Record<string, CSSProperties> = {
   footerLink: { color: "#ffffff", fontWeight: 700, textDecoration: "none" },
   footerNote: { color: "#d8e4f5", fontSize: 13 }
 };
-

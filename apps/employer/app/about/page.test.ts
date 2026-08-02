@@ -43,9 +43,19 @@ describe("Page 002 about content", () => {
     expect(pageCopy).not.toMatch(/Canada|Syria|HIPAA|PIPEDA|province|state law/i);
   });
 
+  it("covers the approved JobLop Phase 1 employer sectors", () => {
+    expect(servedOrganizations).toEqual([
+      "Hospitals",
+      "Senior residences",
+      "Hotels",
+      "Restaurants",
+      "Factories",
+      "Temporary staffing agencies"
+    ]);
+  });
+
   it("keeps billing and worker compensation separated at the about-page level", () => {
     expect(operatingPhilosophy).toContain("Separate billing from compensation");
     expect(platformCapabilities).toContain("Billing and worker-pay separation");
   });
 });
-

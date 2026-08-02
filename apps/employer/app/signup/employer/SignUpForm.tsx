@@ -35,7 +35,7 @@ export function SignUpForm({ registrationOpen }: { registrationOpen: boolean }) 
       <div style={styles.formGrid}>
         <p style={styles.warning}>
           Account creation is not open in this environment yet. Employer accounts are provisioned by
-          the RWOS team during onboarding.
+          the JobLop team during onboarding.
         </p>
         <a href="/signin" style={styles.primaryButton}>
           Go to sign in

@@ -53,11 +53,11 @@ export function EmployerShell({
       </a>
       <div style={styles.appFrame}>
         <aside className="employer-sidebar" style={styles.sidebarShell}>
-          <a href="/" style={styles.brand} aria-label="Resident Job home">
+          <a href="/" style={styles.brand} aria-label="JobLop home">
             <span aria-hidden="true" style={styles.brandMark}>
-              RJ
+              JL
             </span>
-            <span>Resident Job</span>
+            <span>JobLop</span>
           </a>
           <nav aria-label="Employer navigation" className="employer-navigation" style={styles.nav}>
             {navigation.map((step) => (
@@ -105,7 +105,7 @@ export function EmployerShell({
             {children}
           </main>
           <footer style={styles.footer}>
-            <span>Resident Job Employer Journey</span>
+            <span>JobLop Employer Journey</span>
             <nav aria-label="Employer footer navigation" style={styles.footerLinks}>
               <a href="/contact" style={styles.footerLink}>
                 Support

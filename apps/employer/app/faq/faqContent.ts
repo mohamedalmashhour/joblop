@@ -41,7 +41,7 @@ export const faqAnswers = [
     question: "What happens if a worker is late or absent?",
     summary: "Use Active-Shift Support for current shift issues such as late arrival, no-show, or replacement support.",
     detail:
-      "Resident Job can route the issue, capture shift context, and prepare a support case. Replacement availability is not guaranteed. A person or authorized employer confirms final assignment decisions.",
+      "JobLop can route the issue, capture shift context, and prepare a support case. Replacement availability is not guaranteed. A person or authorized employer confirms final assignment decisions.",
     action: "Open Active-Shift Support",
     governance: {
       owner: "Support",
@@ -112,4 +112,3 @@ export const sensitiveSearchWarning = [
   "Do not include banking credentials.",
   "Do not include unnecessary health records."
 ] as const;
-

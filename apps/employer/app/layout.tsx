@@ -3,8 +3,8 @@ import type { ReactNode } from "react";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "Resident Workforce OS Employer",
-  description: "Authorized Resident Workforce OS employer calendar workspace."
+  title: "JobLop — Workforce & Staffing",
+  description: "JobLop employer workforce, staffing, scheduling and operations workspace."
 };
 
 export default function RootLayout({ children }: Readonly<{ children: ReactNode }>) {

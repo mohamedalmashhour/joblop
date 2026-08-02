@@ -1,7 +1,18 @@
+import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
-import { mobileRouteNames, mobileTabs } from "./routes";
+import { mobileRouteNames, mobileTabs, productName } from "./routes";
+
+const appConfig = JSON.parse(
+  readFileSync(new URL("../../app.json", import.meta.url), "utf8")
+) as { expo: { name: string; scheme: string } };
 
 describe("mobile foundation navigation", () => {
+  it("presents the Phase 1 worker experience as RezekMe", () => {
+    expect(productName).toBe("RezekMe");
+    expect(appConfig.expo.name).toBe("RezekMe");
+    expect(appConfig.expo.scheme).toBe("rwos");
+  });
+
   it("preserves the approved worker mobile tabs", () => {
     expect(mobileTabs.map((tab) => tab.id)).toEqual([
       "home",

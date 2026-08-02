@@ -43,12 +43,12 @@ export const operatingPhilosophy = [
 ] as const;
 
 export const servedOrganizations = [
+  "Hospitals",
   "Senior residences",
-  "Healthcare facilities",
-  "Retirement homes",
-  "Clinics",
-  "Long-term care organizations",
-  "Staffing agencies"
+  "Hotels",
+  "Restaurants",
+  "Factories",
+  "Temporary staffing agencies"
 ] as const;
 
 export const platformCapabilities = [
@@ -80,4 +80,3 @@ export const aiBoundary = [
   "AI cannot approve compliance decisions.",
   "AI cannot approve pay or final operational decisions."
 ] as const;
-

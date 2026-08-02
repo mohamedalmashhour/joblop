@@ -51,11 +51,11 @@ export default function LandingPage() {
   return (
     <main style={styles.page}>
       <header style={styles.header}>
-        <a href="/" style={styles.brand} aria-label="Resident Workforce OS home">
+        <a href="/" style={styles.brand} aria-label="JobLop home">
           <span aria-hidden="true" style={styles.brandMark}>
-            RW
+            JL
           </span>
-          <span>Resident Workforce OS</span>
+          <span>JobLop</span>
         </a>
         <nav aria-label="Primary navigation" style={styles.nav}>
           <a href="/how-it-works" style={styles.navLink}>
@@ -86,11 +86,12 @@ export default function LandingPage() {
 
       <section style={styles.hero}>
         <div style={styles.heroCopy}>
-          <p style={styles.eyebrow}>Senior living workforce operations</p>
-          <h1 style={styles.title}>The Workforce Operating System for Senior Living Communities</h1>
+          <p style={styles.eyebrow}>Workforce and staffing for operational teams</p>
+          <h1 style={styles.title}>Find, schedule, and manage the right workers with JobLop</h1>
           <p style={styles.lede}>
-            Create governed staffing requests, support human dispatch review, and give authorized
-            workers a private offer and assignment reference.
+            Create governed staffing requests, support human dispatch review, and coordinate
+            authorized workers across healthcare, hospitality, food service, manufacturing, and
+            temporary staffing operations.
           </p>
           <div style={styles.heroActions}>
             <a
@@ -319,7 +320,7 @@ export default function LandingPage() {
 
       <footer style={styles.footer}>
         <a href="/" style={styles.footerBrand}>
-          Resident Workforce OS
+          JobLop
         </a>
         <nav aria-label="Footer navigation" style={styles.footerLinks}>
           <a href="#employers" style={styles.footerLink}>
@@ -347,7 +348,7 @@ function DashboardPreview() {
   return (
     <article style={styles.dashboardPreview} aria-label="Employer dashboard preview">
       <div style={styles.sidebar}>
-        <strong>RWOS</strong>
+        <strong>JobLop</strong>
         {["Dashboard", "Workers", "Jobs", "Compliance", "Reports"].map((item, index) => (
           <span key={item} style={index === 0 ? styles.sidebarActive : styles.sidebarItem}>
             {item}

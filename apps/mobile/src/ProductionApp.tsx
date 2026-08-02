@@ -38,13 +38,13 @@ export default function ProductionApp() {
             importantForAccessibility="no-hide-descendants"
             style={styles.mark}
           >
-            <Text style={styles.markText}>RW</Text>
+            <Text style={styles.markText}>RZ</Text>
           </View>
           <View>
             <Text accessibilityRole="header" style={styles.title}>
               {productName}
             </Text>
-            <Text style={styles.subtitle}>Secure worker calendar</Text>
+            <Text style={styles.subtitle}>Workforce marketplace · Phase 1</Text>
           </View>
         </View>
         <View style={styles.content}>

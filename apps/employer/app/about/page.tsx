@@ -12,8 +12,8 @@ export default function AboutPage() {
   return (
     <main style={styles.page}>
       <header style={styles.header}>
-        <a href="/" style={styles.brand} aria-label="Resident Job home">
-          Resident Job
+        <a href="/" style={styles.brand} aria-label="JobLop home">
+          JobLop
         </a>
         <nav aria-label="Primary navigation" style={styles.nav}>
           <a href="/about" style={styles.navLink} aria-current="page">
@@ -44,12 +44,12 @@ export default function AboutPage() {
 
       <section style={styles.hero}>
         <div style={styles.heroCopy}>
-          <p style={styles.eyebrow}>About Resident Job</p>
+          <p style={styles.eyebrow}>About JobLop</p>
           <h1 style={styles.title}>
-            Staffing operations for healthcare and senior-living teams that need clear records.
+            Staffing operations for organizations that need reliable workers and clear records.
           </h1>
           <p style={styles.lede}>
-            Resident Job helps organizations manage workforce requests with verified workflows,
+            JobLop helps organizations manage workforce requests with verified workflows,
             human approval, attendance evidence, and privacy-aware records.
           </p>
           <div style={styles.heroActions}>
@@ -74,7 +74,7 @@ export default function AboutPage() {
 
       <section aria-labelledby="trust-title" style={styles.section}>
         <div style={styles.sectionHeader}>
-          <p style={styles.eyebrowDark}>Why trust Resident Job</p>
+          <p style={styles.eyebrowDark}>Why trust JobLop</p>
           <h2 id="trust-title" style={styles.sectionTitle}>
             Trust is built through controlled workflows, clear records, and human review.
           </h2>
@@ -160,7 +160,7 @@ export default function AboutPage() {
             AI recommendation, human review, final decision.
           </h2>
           <p style={styles.sectionCopy}>
-            Resident Job uses AI as decision support. Operational authority remains with approved
+            JobLop uses AI as decision support. Operational authority remains with approved
             human workflows.
           </p>
         </div>
@@ -194,7 +194,7 @@ export default function AboutPage() {
       </section>
 
       <footer style={styles.footer}>
-        <span>Resident Job</span>
+        <span>JobLop</span>
         <nav aria-label="Footer navigation" style={styles.footerLinks}>
           <a href="/" style={styles.footerLink}>
             Home

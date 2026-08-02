@@ -14,8 +14,8 @@ export default function HowItWorksPage() {
   return (
     <main style={styles.page}>
       <header style={styles.header}>
-        <a href="/" style={styles.brand} aria-label="Resident Job home">
-          Resident Job
+        <a href="/" style={styles.brand} aria-label="JobLop home">
+          JobLop
         </a>
         <nav aria-label="Primary navigation" style={styles.nav}>
           <a href="/about" style={styles.navLink}>
@@ -45,7 +45,7 @@ export default function HowItWorksPage() {
       </header>
 
       <section style={styles.hero}>
-        <p style={styles.eyebrow}>How Resident Job works</p>
+        <p style={styles.eyebrow}>How JobLop works</p>
         <h1 style={styles.title}>A clear staffing workflow for workers, employers, and operations.</h1>
         <p style={styles.lede}>
           This public page explains the process. It does not confirm availability, dispatch,
@@ -148,7 +148,7 @@ export default function HowItWorksPage() {
       </section>
 
       <footer style={styles.footer}>
-        <span>Resident Job</span>
+        <span>JobLop</span>
         <nav aria-label="Footer navigation" style={styles.footerLinks}>
           <a href="/" style={styles.footerLink}>
             Home

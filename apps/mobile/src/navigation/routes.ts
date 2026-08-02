@@ -1,4 +1,4 @@
-export const productName = "Resident Workforce OS";
+export const productName = "RezekMe";
 
 export const mobileRouteNames = {
   home: "rwos://worker/home",
