@@ -255,6 +255,11 @@ resource "google_cloud_run_v2_service" "service" {
   invoker_iam_disabled = contains(["api", "employer", "admin", "worker", "worker-api"], each.key)
 
   deletion_protection = true
+  scaling {
+    scaling_mode          = "AUTOMATIC"
+    min_instance_count    = 0
+    manual_instance_count = 0
+  }
   template {
     service_account                  = google_service_account.runtime[each.key].email
     max_instance_request_concurrency = each.value.concurrency

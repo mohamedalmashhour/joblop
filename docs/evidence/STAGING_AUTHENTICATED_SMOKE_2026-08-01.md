@@ -23,8 +23,8 @@ listed below are closed.
 | rwos-stg-employer         | rwos-stg-employer-00003-dt2         | `sha256:75d7d3ccfaf77d70b049e1d18cab57946f2728340065e35cdd9b05bcd85d432d` |
 | rwos-stg-admin            | rwos-stg-admin-00003-vbl            | `sha256:af8dc857df7304cb02aea26718106181d3ddef77a0b3b5b22d84dcaeb8f31414` |
 | rwos-stg-worker           | rwos-stg-worker-00004-klt           | `sha256:756ea94cce0f9c16bb0021cb6de48a385f521e56d292531a65499f37472337e6` |
-| rwos-stg-api              | rwos-stg-api-00004-tpx              | `sha256:66eb89e4665e598836b5f2305faf823ecd1295153d6d48c6e5b2631a2e560534` |
-| rwos-stg-worker-api       | rwos-stg-worker-api-00004-f6r       | `sha256:66eb89e4665e598836b5f2305faf823ecd1295153d6d48c6e5b2631a2e560534` |
+| rwos-stg-api              | rwos-stg-api-00005-wg7              | `sha256:66eb89e4665e598836b5f2305faf823ecd1295153d6d48c6e5b2631a2e560534` |
+| rwos-stg-worker-api       | rwos-stg-worker-api-00005-8qk       | `sha256:66eb89e4665e598836b5f2305faf823ecd1295153d6d48c6e5b2631a2e560534` |
 | rwos-stg-auth-limiter     | rwos-stg-auth-limiter-00001-sc8     | `sha256:caaba66628acc27cf9df50562f8e2670e85a1deeff30acf4812fa07e283b1a33` |
 | rwos-stg-candidate-source | rwos-stg-candidate-source-00001-kpn | `sha256:5669c009a54e2f62dcf842037055d4d06c09f4a7888f20b83e2c94356e0e44f0` |
 | rwos-stg-offer-delivery   | rwos-stg-offer-delivery-00001-ms9   | `sha256:545e077a07e66e1fff34230fbf434cdfc5e328317f318d60fc7e4a9625aced99` |
@@ -52,6 +52,28 @@ The run exposed and corrected two deployment defects before becoming green:
 2. Worker browser ingress required both exact-origin CORS on Worker API and an exact HTTPS
    `connect-src` CSP allowance on Worker web. Other browser origins remain denied.
 
+The post-reconciliation rerun used the database-verified synthetic aliases under
+`rwos-staging.invalid`. It passed all four journeys. An earlier rerun used nonexistent `.test`
+aliases and correctly received generic `401` responses; a read-only private-database inventory
+proved that this was test-input mismatch rather than an application regression. No credential or
+password hash was logged.
+
+## Terraform reconciliation evidence
+
+- Runtime reconciliation saved-plan digest:
+  `b397d2f27a453723f73ef59d6f0445da131f0ea7614aa7e042ef6c0bb93de11e`.
+- Applied scope: `0` additions, `10` in-place changes, `0` deletions. The changes updated the
+  existing migration-job image definition, corrected verified Worker/password-reset origins, and
+  reconciled the nine existing Cloud Run service definitions.
+- Cloud Run scaling-normalization saved-plan digest:
+  `e27803ad8b0b8b24b2127486b6bb833867473c04bf2739779a320636004f3a41`.
+- Applied scope: `0` additions, `9` in-place changes, `0` deletions. Each change set only the
+  existing service-level scaling mode to `AUTOMATIC`; minimum instances remain zero and the
+  per-revision maximum remains one.
+- Final locked Terraform plan: `No changes. Your infrastructure matches the configuration.`
+- Final strict authenticated Chromium smoke after zero-drift normalization: 4/4 PASS.
+- Cloud Run `severity>=ERROR` entries after the final smoke: zero.
+
 ## Managed database recovery evidence
 
 - Source: `rwos-stg-ca-tor-pg`, PostgreSQL 16, private IP, Toronto.
@@ -74,6 +96,8 @@ No production or customer database was accessed.
   run `30721399753`.
 - Foundation Validation for `7119ed88bc561a74e51aaa4800e8e337fd7b02fa`: PASS,
   run `30721858640`.
+- Foundation Validation for evidence checkpoint `9180013ec162d074286e7d41ffd58c1ea2b69f0a`:
+  PASS, run `30722101202`.
 - Focused API ingress tests: 49 passed.
 - Focused Worker server tests: 5 passed.
 - API and Worker lint/typecheck: PASS.
@@ -89,8 +113,6 @@ No production or customer database was accessed.
   owner approvals exist.
 - Resolve D1–D9 and Terms, Privacy, Québec tax, contract, retention/legal-hold, and specialist-owner
   approvals before production or governed financial activation.
-- Reconcile the remaining Terraform metadata drift before the next infrastructure apply. The latest
-  read-only plan proposed zero additions and zero deletions; no plan was applied.
 
 Live Stripe, ACSS, real email, real data, production DNS, `joblop.com`, `rezekme.com`, and production
 deployment remain prohibited.
