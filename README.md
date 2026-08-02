@@ -2,6 +2,19 @@
 
 Controlled engineering implementation for Resident Workforce OS.
 
+## Product Portfolio
+
+Phase 1 implements a shared three-product portfolio:
+
+- **Resident Workforce OS** — the multi-organization B2B SaaS foundation for HR, scheduling,
+  attendance, payroll preparation, human-supervised AI, reporting and compliance.
+- **JobLop** — the employer-facing workforce and staffing product for organizations searching for
+  and managing workers.
+- **RezekMe** — the marketplace product, with Phase 1 limited to its worker/job vertical.
+
+The approved scope and future-phase boundaries are recorded in
+`docs/architecture/ACR-0004-PHASE-1-PRODUCT-PORTFOLIO.md`.
+
 ## Status
 
 Phase foundations and fixture-backed review journeys are implemented. The launch safety foundation
@@ -13,16 +26,16 @@ Current boundaries:
 - Production mutations for dispatch, offers, assignments, attendance, and timesheets are disabled.
 - Production worker entry is limited to the authenticated calendar/offer reference.
 - Fixture journeys remain development/test-only.
-- No payroll, payment execution, tax calculation, real notifications, real maps, AI execution, or
-  worker payout is authorized. Local invoice-foundation work is governed by
-  `docs/architecture/ACR-0001-INVOICE-MILESTONE.md`.
+- No statutory payroll execution, live payment execution, tax filing, real notifications,
+  autonomous AI employment decisions, or worker payout is authorized. Local invoice-foundation
+  work is governed by `docs/architecture/ACR-0001-INVOICE-MILESTONE.md`.
 - See `RESIDENT_WORKFORCE_OS_LAUNCH_READINESS_REPORT.md` for completed controls and open gates.
 
 ## Applications
 
-- `apps/mobile` - Expo worker mobile shell
-- `apps/employer` - Next.js employer portal shell
-- `apps/admin` - Next.js administration shell
+- `apps/mobile` - RezekMe workforce mobile application
+- `apps/employer` - JobLop employer portal
+- `apps/admin` - Resident Workforce OS shared administration portal
 - `apps/api` - TypeScript API shell with health endpoint
 
 ## Packages
