@@ -325,6 +325,25 @@ describe("api authentication foundation", () => {
     await app.close();
   });
 
+  it("adds HSTS for staging traffic terminated by the external load balancer", async () => {
+    const app = buildApi({
+      authService: createAuthenticationService(
+        new ApiMemoryAuthenticationRepository(),
+        testAuthOptions()
+      ),
+      env: {
+        ...productionEnv(),
+        RWOS_ENV: "staging",
+        AUTH_RATE_LIMITER_NAMESPACE: "rwos:authrl:staging:v1"
+      }
+    });
+    const response = await app.inject({ method: "GET", url: "/health" });
+    expect(response.headers["strict-transport-security"]).toBe(
+      "max-age=31536000; includeSubDomains"
+    );
+    await app.close();
+  });
+
   it("registers, validates, signs out, and revokes sessions without operational APIs", async () => {
     const repository = new ApiMemoryAuthenticationRepository();
     const app = buildApi({
