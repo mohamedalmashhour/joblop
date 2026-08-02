@@ -19,6 +19,10 @@ locals {
     api      = "api"
   }
   deployed_public_domain_services = var.deploy_staging_domains ? local.public_domain_services : {}
+  public_origin_environment = var.deploy_staging_domains ? {
+    WORKER_WEB_ORIGIN            = "https://${var.staging_domain_names.worker}"
+    PASSWORD_RESET_PUBLIC_ORIGIN = "https://${var.staging_domain_names.employer}"
+  } : {}
   effective_secret_environment = merge(var.service_secret_environment, {
     worker-api = {
       DATABASE_URL                 = var.service_secret_environment.api.DATABASE_URL
@@ -45,8 +49,8 @@ locals {
     ]) : pair.key => pair
   }
   derived_environment = {
-    api              = {}
-    worker-api       = { RWOS_PUBLIC_WORKER_INGRESS_ONLY = "enabled" }
+    api              = local.public_origin_environment
+    worker-api       = merge({ RWOS_PUBLIC_WORKER_INGRESS_ONLY = "enabled" }, local.public_origin_environment)
     employer         = {}
     admin            = {}
     worker           = {}

@@ -140,6 +140,13 @@ describe("split staging infrastructure packages", () => {
     expect(main).toContain('resource "google_compute_global_forwarding_rule" "public_https"');
     expect(main).toContain('load_balancing_scheme = "EXTERNAL_MANAGED"');
     expect(main).toContain("var.deploy_staging_domains ? local.public_domain_services : {}");
+    expect(main).toContain('WORKER_WEB_ORIGIN            = "https://${var.staging_domain_names.worker}"');
+    expect(main).toContain(
+      'PASSWORD_RESET_PUBLIC_ORIGIN = "https://${var.staging_domain_names.employer}"'
+    );
+    expect(main).toContain(
+      'worker-api       = merge({ RWOS_PUBLIC_WORKER_INGRESS_ONLY = "enabled" }, local.public_origin_environment)'
+    );
     expect(main).toContain("https_redirect = true");
     expect(main).not.toContain("google_compute_network.default");
     expect(variables).toContain('var.network_cidr == "10.80.0.0/24"');
