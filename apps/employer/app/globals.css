@@ -7,6 +7,15 @@ body {
   margin: 0;
 }
 
+header > a,
+header nav a,
+footer > a,
+footer nav a {
+  align-items: center;
+  display: inline-flex;
+  min-height: 44px;
+}
+
 .employer-skip-link {
   background: #ffd44a;
   color: #0b1f3a;

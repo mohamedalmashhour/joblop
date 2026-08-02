@@ -22,6 +22,10 @@ describe("employer shell accessibility", () => {
 
     expect(styleSource).toContain('display: "inline-flex"');
     expect(styleSource).toContain("minHeight: 44");
+    expect(globalStyles).toContain("header > a");
+    expect(globalStyles).toContain("header nav a");
+    expect(globalStyles).toContain("footer > a");
+    expect(globalStyles).toContain("footer nav a");
   });
 
   it("uses a single workflow-navigation column on narrow screens", () => {

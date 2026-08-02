@@ -1049,10 +1049,12 @@ const styles: Record<string, CSSProperties> = {
     margin: 0
   },
   textLink: {
+    alignItems: "center",
     color: "#0b5fc6",
-    display: "inline-block",
+    display: "inline-flex",
     fontWeight: 800,
-    marginTop: 12
+    marginTop: 12,
+    minHeight: 44
   },
   ctaBand: {
     alignItems: "center",
