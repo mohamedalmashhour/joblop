@@ -376,7 +376,6 @@ resource "google_compute_backend_service" "public_service" {
   name                  = "${local.prefix}-${each.key}-backend"
   protocol              = "HTTP"
   load_balancing_scheme = "EXTERNAL_MANAGED"
-  timeout_sec           = 60
   backend {
     group = google_compute_region_network_endpoint_group.public_service[each.key].id
   }

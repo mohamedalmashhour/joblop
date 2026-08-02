@@ -131,6 +131,11 @@ describe("split staging infrastructure packages", () => {
     expect(main).toContain("google_monitoring_alert_policy");
     expect(main).toContain('resource "google_compute_region_network_endpoint_group" "public_service"');
     expect(main).toContain('network_endpoint_type = "SERVERLESS"');
+    const publicBackend = main.match(
+      /resource "google_compute_backend_service" "public_service" \{(?<body>[\s\S]*?)\n\}/u
+    )?.groups?.body;
+    expect(publicBackend).toBeDefined();
+    expect(publicBackend).not.toContain("timeout_sec");
     expect(main).toContain('resource "google_compute_managed_ssl_certificate" "staging"');
     expect(main).toContain('resource "google_compute_global_forwarding_rule" "public_https"');
     expect(main).toContain('load_balancing_scheme = "EXTERNAL_MANAGED"');
