@@ -12,6 +12,13 @@ locals {
     qa-reset         = { cpu = "1", memory = "512Mi", concurrency = 1, image = "qa-reset", config = "qa-reset" }
   }
   deployed_services = var.deploy_runtime_services ? local.services : {}
+  public_domain_services = {
+    employer = "employer"
+    admin    = "admin"
+    worker   = "worker"
+    api      = "api"
+  }
+  deployed_public_domain_services = var.deploy_staging_domains ? local.public_domain_services : {}
   effective_secret_environment = merge(var.service_secret_environment, {
     worker-api = {
       DATABASE_URL                 = var.service_secret_environment.api.DATABASE_URL
@@ -349,6 +356,109 @@ resource "google_cloud_run_v2_service_iam_member" "qa_reset_callers" {
   name     = google_cloud_run_v2_service.service["qa-reset"].name
   role     = "roles/run.invoker"
   member   = google_service_account.runtime[each.value].member
+}
+
+# The staging custom domains terminate at one global external HTTPS load balancer.
+# Host-based routing keeps each public surface on its dedicated Cloud Run service.
+# This gate defaults to false so ordinary plans cannot create public ingress.
+resource "google_compute_region_network_endpoint_group" "public_service" {
+  for_each              = local.deployed_public_domain_services
+  name                  = "${local.prefix}-${each.key}-neg"
+  region                = var.region
+  network_endpoint_type = "SERVERLESS"
+  cloud_run {
+    service = google_cloud_run_v2_service.service[each.value].name
+  }
+}
+
+resource "google_compute_backend_service" "public_service" {
+  for_each              = local.deployed_public_domain_services
+  name                  = "${local.prefix}-${each.key}-backend"
+  protocol              = "HTTP"
+  load_balancing_scheme = "EXTERNAL_MANAGED"
+  timeout_sec           = 60
+  backend {
+    group = google_compute_region_network_endpoint_group.public_service[each.key].id
+  }
+  log_config {
+    enable      = true
+    sample_rate = 1.0
+  }
+}
+
+resource "google_compute_global_address" "public_https" {
+  count = var.deploy_staging_domains ? 1 : 0
+  name  = "${local.prefix}-public-https"
+}
+
+resource "google_compute_managed_ssl_certificate" "staging" {
+  count = var.deploy_staging_domains ? 1 : 0
+  name  = "${local.prefix}-staging-domains"
+  managed {
+    domains = sort(values(var.staging_domain_names))
+  }
+}
+
+resource "google_compute_url_map" "public_https" {
+  count           = var.deploy_staging_domains ? 1 : 0
+  name            = "${local.prefix}-public-https"
+  default_service = google_compute_backend_service.public_service["employer"].id
+
+  dynamic "host_rule" {
+    for_each = var.staging_domain_names
+    content {
+      hosts        = [host_rule.value]
+      path_matcher = host_rule.key
+    }
+  }
+
+  dynamic "path_matcher" {
+    for_each = var.staging_domain_names
+    content {
+      name            = path_matcher.key
+      default_service = google_compute_backend_service.public_service[path_matcher.key].id
+    }
+  }
+}
+
+resource "google_compute_target_https_proxy" "public" {
+  count            = var.deploy_staging_domains ? 1 : 0
+  name             = "${local.prefix}-public"
+  url_map          = google_compute_url_map.public_https[0].id
+  ssl_certificates = [google_compute_managed_ssl_certificate.staging[0].id]
+}
+
+resource "google_compute_global_forwarding_rule" "public_https" {
+  count                 = var.deploy_staging_domains ? 1 : 0
+  name                  = "${local.prefix}-public-https"
+  ip_address            = google_compute_global_address.public_https[0].address
+  port_range            = "443"
+  target                = google_compute_target_https_proxy.public[0].id
+  load_balancing_scheme = "EXTERNAL_MANAGED"
+}
+
+resource "google_compute_url_map" "http_redirect" {
+  count = var.deploy_staging_domains ? 1 : 0
+  name  = "${local.prefix}-http-redirect"
+  default_url_redirect {
+    https_redirect = true
+    strip_query    = false
+  }
+}
+
+resource "google_compute_target_http_proxy" "redirect" {
+  count   = var.deploy_staging_domains ? 1 : 0
+  name    = "${local.prefix}-http-redirect"
+  url_map = google_compute_url_map.http_redirect[0].id
+}
+
+resource "google_compute_global_forwarding_rule" "public_http" {
+  count                 = var.deploy_staging_domains ? 1 : 0
+  name                  = "${local.prefix}-public-http"
+  ip_address            = google_compute_global_address.public_https[0].address
+  port_range            = "80"
+  target                = google_compute_target_http_proxy.redirect[0].id
+  load_balancing_scheme = "EXTERNAL_MANAGED"
 }
 
 resource "google_logging_project_bucket_config" "application" {

@@ -10,3 +10,10 @@ output "plan_identity" {
 output "service_names" {
   value = { for name, service in google_cloud_run_v2_service.service : name => service.name }
 }
+
+output "staging_public_ingress" {
+  value = var.deploy_staging_domains ? {
+    ipv4    = google_compute_global_address.public_https[0].address
+    domains = var.staging_domain_names
+  } : null
+}

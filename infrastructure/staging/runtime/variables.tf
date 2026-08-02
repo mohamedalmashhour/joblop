@@ -86,6 +86,31 @@ variable "deploy_monitoring_alerts" {
   description = "Fail-closed gate: create notification-backed alerts only after an approved channel exists."
 }
 
+variable "deploy_staging_domains" {
+  type        = bool
+  default     = false
+  description = "Fail-closed gate for the reviewed staging-only HTTPS load balancer and TLS certificate."
+}
+
+variable "staging_domain_names" {
+  type = map(string)
+  default = {
+    employer = "employer.staging.sybnb.app"
+    admin    = "admin.staging.sybnb.app"
+    worker   = "worker.staging.sybnb.app"
+    api      = "api.staging.sybnb.app"
+  }
+  validation {
+    condition = toset(keys(var.staging_domain_names)) == toset([
+      "employer", "admin", "worker", "api"
+      ]) && alltrue([
+      for domain in values(var.staging_domain_names) :
+      can(regex("^[a-z0-9-]+\\.staging\\.sybnb\\.app$", domain))
+    ])
+    error_message = "Only the four reviewed staging.sybnb.app public hostnames are permitted."
+  }
+}
+
 variable "images_published_approval_reference" {
   type = string
   validation {

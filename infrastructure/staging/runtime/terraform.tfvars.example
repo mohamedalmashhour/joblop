@@ -4,9 +4,17 @@ region                              = "northamerica-northeast2"
 network_cidr                        = "10.80.0.0/24"
 deploy_runtime_services             = false
 deploy_monitoring_alerts            = false
+deploy_staging_domains              = false
 deployer_service_account_email      = "sa-rwos-stg-deployer@replace.iam.gserviceaccount.com"
 images_published_approval_reference = "PLAN-B-NOT-YET"
 monitoring_notification_channels    = ["replace-with-approved-channel-resource-name"]
+
+staging_domain_names = {
+  employer = "employer.staging.sybnb.app"
+  admin    = "admin.staging.sybnb.app"
+  worker   = "worker.staging.sybnb.app"
+  api      = "api.staging.sybnb.app"
+}
 
 image_digests = {
   api              = "northamerica-northeast2-docker.pkg.dev/project/repository/api@sha256:..."

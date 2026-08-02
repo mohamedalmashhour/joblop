@@ -129,10 +129,26 @@ describe("split staging infrastructure packages", () => {
     expect(main).toContain("depends_on = [");
     expect(main).toContain("google_logging_project_bucket_config");
     expect(main).toContain("google_monitoring_alert_policy");
+    expect(main).toContain('resource "google_compute_region_network_endpoint_group" "public_service"');
+    expect(main).toContain('network_endpoint_type = "SERVERLESS"');
+    expect(main).toContain('resource "google_compute_managed_ssl_certificate" "staging"');
+    expect(main).toContain('resource "google_compute_global_forwarding_rule" "public_https"');
+    expect(main).toContain('load_balancing_scheme = "EXTERNAL_MANAGED"');
+    expect(main).toContain("var.deploy_staging_domains ? local.public_domain_services : {}");
+    expect(main).toContain("https_redirect = true");
     expect(main).not.toContain("google_compute_network.default");
     expect(variables).toContain('var.network_cidr == "10.80.0.0/24"');
     expect(variables).toContain("images_published_approval_reference");
     expect(variables).toContain("monitoring_notification_channels");
+    expect(variables).toContain('default     = false\n  description = "Fail-closed gate for the reviewed staging-only HTTPS load balancer');
+    for (const domain of [
+      "employer.staging.sybnb.app",
+      "admin.staging.sybnb.app",
+      "worker.staging.sybnb.app",
+      "api.staging.sybnb.app"
+    ]) {
+      expect(variables).toContain(domain);
+    }
   });
 
   it("keeps Stripe, email and registration fail closed in the runtime example", async () => {
