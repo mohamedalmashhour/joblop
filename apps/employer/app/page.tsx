@@ -297,7 +297,10 @@ export default function LandingPage() {
           {faqPreview.map((question) => (
             <article key={question} style={styles.faqItem}>
               <h3 style={styles.faqQuestion}>{question}</h3>
-              <p style={styles.cardText}>Answer preview links to the governed FAQ page.</p>
+              <p style={styles.cardText}>Read the governed answer before choosing a path.</p>
+              <a href="/faq" style={styles.textLink}>
+                Read answer in FAQ
+              </a>
             </article>
           ))}
         </div>
@@ -1044,6 +1047,12 @@ const styles: Record<string, CSSProperties> = {
     color: "#081f49",
     fontSize: 17,
     margin: 0
+  },
+  textLink: {
+    color: "#0b5fc6",
+    display: "inline-block",
+    fontWeight: 800,
+    marginTop: 12
   },
   ctaBand: {
     alignItems: "center",

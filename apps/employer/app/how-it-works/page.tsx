@@ -92,7 +92,10 @@ export default function HowItWorksPage() {
                   </span>
                 ))}
               </div>
-              <ResponsibilityList groups={phase.responsibilities} />
+              <ResponsibilityList
+                groups={phase.responsibilities}
+                idPrefix={phase.title.toLowerCase().replaceAll(" ", "-")}
+              />
             </article>
           ))}
         </div>
@@ -184,23 +187,32 @@ function JourneyCard({ steps, title }: { steps: readonly string[]; title: string
   );
 }
 
-function ResponsibilityList({ groups }: { groups: ResponsibilityGroup }) {
+function ResponsibilityList({
+  groups,
+  idPrefix
+}: {
+  groups: ResponsibilityGroup;
+  idPrefix: string;
+}) {
   return (
     <div style={styles.responsibilityGrid}>
-      {responsibilityOwners.map((owner) => (
-        <section key={owner} aria-labelledby={`${owner}-responsibilities`} style={styles.ownerBlock}>
-          <h4 id={`${owner}-responsibilities`} style={styles.ownerTitle}>
-            {owner}
-          </h4>
-          <ul style={styles.itemList}>
-            {groups[owner].map((item) => (
-              <li key={item} style={styles.item}>
-                {item}
-              </li>
-            ))}
-          </ul>
-        </section>
-      ))}
+      {responsibilityOwners.map((owner) => {
+        const headingId = `${idPrefix}-${owner.toLowerCase()}-responsibilities`;
+        return (
+          <section key={owner} aria-labelledby={headingId} style={styles.ownerBlock}>
+            <h4 id={headingId} style={styles.ownerTitle}>
+              {owner}
+            </h4>
+            <ul style={styles.itemList}>
+              {groups[owner].map((item) => (
+                <li key={item} style={styles.item}>
+                  {item}
+                </li>
+              ))}
+            </ul>
+          </section>
+        );
+      })}
     </div>
   );
 }

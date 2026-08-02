@@ -13,6 +13,7 @@ import {
   Section,
   SmallText
 } from "../../ui/primitives";
+import { validateWorkerSignInInput } from "./signInValidation";
 
 type WorkerTransport = ReturnType<typeof createMobileSessionTransport>;
 type WorkerState =
@@ -160,10 +161,16 @@ function WorkerSignIn({
   const [needsSignOut, setNeedsSignOut] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const signIn = async () => {
+    const validationMessage = validateWorkerSignInInput(email, password);
+    if (validationMessage) {
+      setNeedsSignOut(false);
+      setMessage(validationMessage);
+      return;
+    }
     setSubmitting(true);
     setNeedsSignOut(false);
     try {
-      const result = await transport.signIn({ email, password });
+      const result = await transport.signIn({ email: email.trim(), password });
       setPassword("");
       if (result.status !== "authenticated") {
         setNeedsSignOut(result.status === "sign_out_required");

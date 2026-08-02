@@ -64,4 +64,9 @@ describe("Page 001 landing content", () => {
     expect(landingSource).not.toContain("Resident Job");
     expect(landingSource).not.toContain("Resident Workforce OS home");
   });
+
+  it("provides a real FAQ destination for every preview", () => {
+    expect(landingSource).toContain('href="/faq" style={styles.textLink}');
+    expect(landingSource).not.toContain("Answer preview links to the governed FAQ page.");
+  });
 });

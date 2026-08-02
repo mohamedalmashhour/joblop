@@ -1,3 +1,4 @@
+import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import {
   aiAssistance,
@@ -6,6 +7,8 @@ import {
   trustLayer,
   workerJourney
 } from "./howItWorksContent";
+
+const pageSource = readFileSync(new URL("./page.tsx", import.meta.url), "utf8");
 
 describe("Page 003 how it works content", () => {
   it("keeps worker and employer journeys separate", () => {
@@ -40,5 +43,10 @@ describe("Page 003 how it works content", () => {
     expect(trustLayer).toContain("Attendance evidence");
     expect(copy).not.toMatch(/Canada|Syria|HIPAA|PIPEDA|guaranteed dispatch/i);
   });
-});
 
+  it("scopes responsibility heading ids to their lifecycle phase", () => {
+    expect(pageSource).toContain('idPrefix={phase.title.toLowerCase().replaceAll(" ", "-")}');
+    expect(pageSource).toContain("`${idPrefix}-${owner.toLowerCase()}-responsibilities`");
+    expect(pageSource).not.toContain('aria-labelledby={`${owner}-responsibilities`}');
+  });
+});
