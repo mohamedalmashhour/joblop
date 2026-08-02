@@ -460,8 +460,12 @@ export const styles: Record<string, CSSProperties> = {
     gap: 12
   },
   footerLink: {
+    alignItems: "center",
     color: "#ffffff",
+    display: "inline-flex",
     fontWeight: 700,
+    minHeight: 44,
+    padding: "0 4px",
     textDecoration: "none"
   }
 };

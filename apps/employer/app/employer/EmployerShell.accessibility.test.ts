@@ -17,6 +17,13 @@ describe("employer shell accessibility", () => {
     expect(globalStyles).toContain("outline: 3px solid #ffd44a");
   });
 
+  it("keeps footer links large enough for touch interaction", () => {
+    const styleSource = readFileSync(new URL("./employerStyles.ts", import.meta.url), "utf8");
+
+    expect(styleSource).toContain('display: "inline-flex"');
+    expect(styleSource).toContain("minHeight: 44");
+  });
+
   it("uses a single workflow-navigation column on narrow screens", () => {
     expect(globalStyles).toMatch(
       /\.employer-navigation\s*\{[^}]*grid-template-columns: minmax\(0, 1fr\)/s
