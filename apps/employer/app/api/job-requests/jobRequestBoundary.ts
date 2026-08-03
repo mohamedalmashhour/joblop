@@ -239,6 +239,31 @@ export function readEmployerJobRequestInput(input: unknown) {
   };
 }
 
+export function readEmployerCalendarProfileInput(input: unknown) {
+  const record = asRecord(input);
+  const qualifications = Array.isArray(record.qualifications)
+    ? record.qualifications.filter((value): value is string => typeof value === "string")
+    : null;
+  if (
+    !qualifications ||
+    qualifications.length > 20 ||
+    qualifications.some((value) => !validOptionalText(value, 160)) ||
+    !validNullableText(record.dutiesSummary, 2000) ||
+    !validNullableText(record.addressSummary, 500) ||
+    !validNullableText(record.specialInstructions, 2000) ||
+    !(record.expectedVersion === null || nonNegativeInteger(record.expectedVersion))
+  ) {
+    return null;
+  }
+  return {
+    dutiesSummary: normalizeNullableText(record.dutiesSummary),
+    qualifications: qualifications.map((value) => value.trim().replace(/\s+/g, " ")),
+    addressSummary: normalizeNullableText(record.addressSummary),
+    specialInstructions: normalizeNullableText(record.specialInstructions),
+    expectedVersion: record.expectedVersion as number | null
+  };
+}
+
 function parseList(input: unknown, key: string) {
   const value = asRecord(input)[key];
   return Array.isArray(value) ? value : [];
@@ -260,4 +285,18 @@ function validDate(input: unknown) {
 
 function nonNegativeInteger(input: unknown) {
   return Number.isInteger(input) && (input as number) >= 0;
+}
+
+function normalizeNullableText(input: unknown) {
+  return typeof input === "string" && input.trim() ? input.trim().replace(/\s+/g, " ") : null;
+}
+
+function validNullableText(input: unknown, maximum: number) {
+  return input === null || input === undefined || validOptionalText(input, maximum);
+}
+
+function validOptionalText(input: unknown, maximum: number) {
+  if (typeof input !== "string") return false;
+  const normalized = input.trim().replace(/\s+/g, " ");
+  return normalized.length > 0 && normalized.length <= maximum;
 }
