@@ -14,10 +14,12 @@ export function AdminShell({ children }: Readonly<{ children: ReactNode }>) {
   const pathname = usePathname();
   const contentRef = useRef<HTMLDivElement>(null);
   const isStaging = process.env.NEXT_PUBLIC_RWOS_ENV === "staging";
-  const navigation =
-    process.env.NEXT_PUBLIC_RWOS_ENV === "production"
-      ? connectedNavigation
-      : [...connectedNavigation, ...reviewNavigation];
+  const connectedEnvironment = ["production", "staging"].includes(
+    process.env.NEXT_PUBLIC_RWOS_ENV ?? ""
+  );
+  const navigation = connectedEnvironment
+    ? connectedNavigation
+    : [...connectedNavigation, ...reviewNavigation];
   const currentIndex = navigation.findIndex(
     (item) => pathname === item.href || pathname.startsWith(`${item.href}/`)
   );

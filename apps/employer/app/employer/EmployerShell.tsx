@@ -45,8 +45,9 @@ export function EmployerShell({
 }) {
   const production = process.env.RWOS_ENV === "production";
   const staging = process.env.RWOS_ENV === "staging";
-  const effectiveMode = production ? "authenticated" : mode;
-  const navigation = production ? persistedEmployerNavigation : uniqueEmployerNavigation;
+  const connectedEnvironment = production || staging;
+  const effectiveMode = connectedEnvironment ? "authenticated" : mode;
+  const navigation = connectedEnvironment ? persistedEmployerNavigation : uniqueEmployerNavigation;
   return (
     <div style={styles.page}>
       <a className="employer-skip-link" href="#employer-main-content">

@@ -30,8 +30,8 @@ describe("admin shell accessibility", () => {
     expect(styles).toContain(".admin-page-list");
   });
 
-  it("builds the client navigation with the same production boundary as middleware", () => {
-    expect(shell).toContain('process.env.NEXT_PUBLIC_RWOS_ENV === "production"');
+  it("builds the client navigation with the same connected boundary as middleware", () => {
+    expect(shell).toContain('["production", "staging"].includes');
     expect(packageJson).toContain(
       '"build": "RWOS_ENV=production NEXT_PUBLIC_RWOS_ENV=production next build"'
     );
@@ -44,5 +44,8 @@ describe("admin shell accessibility", () => {
     expect(shell).toContain("NO REAL PAYMENT");
     expect(shell).toContain("NO PRODUCTION CUSTOMER DATA");
     expect(styles).toContain(".admin-staging-banner");
+    expect(shell).toContain('["production", "staging"].includes');
+    expect(shell).toContain("const navigation = connectedEnvironment");
+    expect(shell).toContain("? connectedNavigation");
   });
 });

@@ -3,7 +3,7 @@ import { isProductionEmployerRouteAllowed } from "./routePolicy";
 
 export async function middleware(request: NextRequest) {
   if (
-    process.env.RWOS_ENV === "production" &&
+    isConnectedRuntimeEnvironment() &&
     !isProductionEmployerRouteAllowed(request.nextUrl.pathname)
   ) {
     return new NextResponse("Not Found", {
@@ -11,7 +11,7 @@ export async function middleware(request: NextRequest) {
       headers: { "content-type": "text/plain; charset=utf-8" }
     });
   }
-  if (process.env.RWOS_ENV === "production" && isProtectedEmployerPage(request.nextUrl.pathname)) {
+  if (isConnectedRuntimeEnvironment() && isProtectedEmployerPage(request.nextUrl.pathname)) {
     const token = request.cookies.get("__Host-rwos_employer_session")?.value;
     if (!token) return NextResponse.redirect(new URL("/employer/calendar", request.url));
     const origin = process.env.INTERNAL_API_ORIGIN;
@@ -73,6 +73,10 @@ export async function middleware(request: NextRequest) {
     response.headers.set("strict-transport-security", "max-age=31536000; includeSubDomains");
   }
   return response;
+}
+
+export function isConnectedRuntimeEnvironment(value = process.env.RWOS_ENV) {
+  return value === "staging" || value === "production";
 }
 
 export const config = { matcher: "/:path*" };
