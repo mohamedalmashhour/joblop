@@ -44,6 +44,7 @@ export function EmployerShell({
   title: string;
 }) {
   const production = process.env.RWOS_ENV === "production";
+  const staging = process.env.RWOS_ENV === "staging";
   const effectiveMode = production ? "authenticated" : mode;
   const navigation = production ? persistedEmployerNavigation : uniqueEmployerNavigation;
   return (
@@ -85,6 +86,7 @@ export function EmployerShell({
         </aside>
         <div className="employer-workspace" style={styles.workspace}>
           <main id="employer-main-content" tabIndex={-1}>
+            {staging ? <StagingSafetyBanner /> : null}
             <header style={styles.header}>
               <div>
                 <p style={styles.topbarEyebrow}>Employer workspace</p>
@@ -121,6 +123,17 @@ export function EmployerShell({
         </div>
       </div>
     </div>
+  );
+}
+
+function StagingSafetyBanner() {
+  return (
+    <aside aria-label="Staging safety status" role="status" style={styles.stagingBanner}>
+      <strong>STAGING</strong>
+      <span>SYNTHETIC DATA</span>
+      <span>NO REAL PAYMENT</span>
+      <span>NO PRODUCTION CUSTOMER DATA</span>
+    </aside>
   );
 }
 

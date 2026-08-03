@@ -49,6 +49,21 @@ export const styles: Record<string, CSSProperties> = {
     flex: "1 1 680px",
     minWidth: 0
   },
+  stagingBanner: {
+    alignItems: "center",
+    background: "#fff8d8",
+    borderBottom: "2px solid #e8d782",
+    color: "#5f4000",
+    display: "flex",
+    flexWrap: "wrap",
+    fontSize: 12,
+    fontWeight: 900,
+    gap: 12,
+    justifyContent: "center",
+    letterSpacing: 0.3,
+    minHeight: 44,
+    padding: "8px clamp(16px, 4vw, 40px)"
+  },
   header: {
     alignItems: "center",
     background: "rgba(255, 255, 255, 0.97)",

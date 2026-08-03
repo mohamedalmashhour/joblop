@@ -57,4 +57,13 @@ describe("employer shell accessibility", () => {
       "const navigation = production ? persistedEmployerNavigation : uniqueEmployerNavigation"
     );
   });
+
+  it("shows permanent safety labels in the staging employer workspace", () => {
+    expect(shellSource).toContain('process.env.RWOS_ENV === "staging"');
+    expect(shellSource).toContain("STAGING");
+    expect(shellSource).toContain("SYNTHETIC DATA");
+    expect(shellSource).toContain("NO REAL PAYMENT");
+    expect(shellSource).toContain("NO PRODUCTION CUSTOMER DATA");
+    expect(shellSource).toContain('aria-label="Staging safety status"');
+  });
 });

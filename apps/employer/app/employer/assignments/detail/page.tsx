@@ -9,8 +9,12 @@ export default function AssignmentDetailPage() {
       currentRoute="/employer/assignments/detail"
       eyebrow="Page 046 - Assignment Detail"
       title="Review assignment state before the attendance handoff."
-      lede="Assignment detail summarizes the assignment and response state. Attendance, timesheets, payroll, invoices, and payments remain separate future workflows."
-      actions={<a href="/employer/attendance" style={styles.primaryButton}>Attendance handoff</a>}
+      lede="Assignment detail summarizes the assignment and response state. Attendance, timesheets, invoices, and payment presentation remain separate governed workflows; no payroll or payment execution occurs here."
+      actions={
+        <a href="/employer/attendance" style={styles.primaryButton}>
+          Attendance handoff
+        </a>
+      }
     >
       <AssignmentDraftPanel mode="detail" />
       <section style={styles.whiteSection}>

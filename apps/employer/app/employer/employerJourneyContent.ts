@@ -4,14 +4,16 @@ export const employerWorkflow = [
     title: "Employer Sign Up",
     route: "/signup/employer",
     status: "Current entry",
-    boundary: "Account creation only. It does not approve the employer or guarantee staffing access."
+    boundary:
+      "Account creation only. It does not approve the employer or guarantee staffing access."
   },
   {
     page: "038",
     title: "Company Profile",
     route: "/employer/onboarding/company",
     status: "Organization setup",
-    boundary: "Organization identity is separate from verification, billing, and operational approval."
+    boundary:
+      "Organization identity is separate from verification, billing, and operational approval."
   },
   {
     page: "039",
@@ -25,7 +27,8 @@ export const employerWorkflow = [
     title: "Departments",
     route: "/employer/onboarding/departments",
     status: "Department setup",
-    boundary: "Department is an operating work area. It is not a shift, worker group, or cost center."
+    boundary:
+      "Department is an operating work area. It is not a shift, worker group, or cost center."
   },
   {
     page: "037",
@@ -137,37 +140,37 @@ export const dashboardAttention = [
   {
     title: "Open requests",
     state: "7 fixture requests need coverage",
-    route: "Next workflow: Create Shift or Applicants"
+    route: "/employer/calendar"
   },
   {
     title: "Urgent staffing needs",
     state: "2 same-day fixture requests flagged for dispatcher attention",
-    route: "Route to Urgent Shift"
+    route: "/employer/shifts/urgent"
   },
   {
     title: "Shifts today",
     state: "12 fixture shifts across 3 residences",
-    route: "Route to Attendance Monitoring"
+    route: "/employer/attendance"
   },
   {
     title: "Workers on-site",
     state: "9 checked-in fixture workers",
-    route: "Read-only attendance status"
+    route: "/employer/attendance"
   },
   {
     title: "Timesheet approvals",
     state: "4 pending employer review",
-    route: "Route to Timesheets"
+    route: "/employer/timesheets"
   },
   {
     title: "Outstanding invoices",
     state: "$3,840.00 fixture balance",
-    route: "Route to Invoices"
+    route: "/employer/invoices"
   },
   {
     title: "Monthly staffing cost",
     state: "$18,420.00 illustrative total",
-    route: "Estimate only; payment authority separate"
+    route: "/employer/payments"
   }
 ] as const;
 
