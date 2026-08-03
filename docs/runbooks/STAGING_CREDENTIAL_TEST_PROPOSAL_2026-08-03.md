@@ -32,10 +32,12 @@ If any review is incomplete, the test remains **NO-GO**.
 | Credential persistence        | None; no key file, token file, shell history value or logged token           |
 | Attempts                      | One; no retry after an unexpected authorization result                       |
 
-The token lifetime must be the shortest supported by the approved minting method and no longer
-than ten minutes. If the chosen Google interface cannot enforce that bound, stop before granting
-IAM and obtain a revised approval. Token contents may be checked only through non-secret metadata
-(issuer, audience, subject and expiry); the encoded token must never be printed or retained.
+The Google-issued service-account OIDC identity token has a provider-controlled lifetime; the
+approved test must accept at most one token whose observed `exp - iat` is no greater than 3,600
+seconds. The test must not request a second token to shorten or refresh that lifetime. If the
+provider returns a longer lifetime, stop immediately and treat the test as failed. Token contents
+may be checked only through non-secret metadata (issuer, audience, subject and expiry); the encoded
+token must never be printed or retained.
 
 ## Minimum IAM boundary
 

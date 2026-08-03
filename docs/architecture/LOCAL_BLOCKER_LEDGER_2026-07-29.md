@@ -46,6 +46,13 @@ Required evidence:
    service-account impersonation path.
 4. Written authorization for exactly one narrowly scoped staging credential test.
 
+That written authorization must bind the staging project, human principal, individual target
+service account, exact Cloud Run audience, minimum service-account-scoped IAM role, provider-
+controlled token lifetime limit, attempt count and exact release SHA. Before execution, the
+operator must also have approved pre-test IAM snapshots, bounded audit-log queries, finally-style
+cleanup, semantic post-test IAM comparison and strict pass/fail criteria. The complete mandatory
+procedure is the proposed runbook referenced below.
+
 The diagnostic checkpoint is recorded in
 `docs/evidence/STAGING_IAM_DIAGNOSTIC_CHECKPOINT_2026-08-03.md`. The proposed non-executable test
 procedure is recorded in `docs/runbooks/STAGING_CREDENTIAL_TEST_PROPOSAL_2026-08-03.md`. The staging
