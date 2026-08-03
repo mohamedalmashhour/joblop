@@ -238,9 +238,10 @@ The first sandboxed test attempt could not bind local loopback test servers and 
 the unchanged suite was rerun with local listener permission and passed. This was an execution
 environment restriction, not a product correction. No external resource or staging state changed.
 
-## 9. Independent review decision
+## 9. Decision submitted for independent review
 
-**Workstream A: NO-GO / BLOCKED before execution.**
+Preliminary decision: **Workstream A is NO-GO / BLOCKED before execution.** No independent reviewer
+has accepted this checkpoint yet.
 
 Required unblock evidence:
 
