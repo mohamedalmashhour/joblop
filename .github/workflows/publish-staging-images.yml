@@ -1,0 +1,198 @@
+name: Publish Staging Images
+
+on:
+  workflow_dispatch:
+    inputs:
+      release_sha:
+        description: Exact 40-character main-branch release SHA authorized for publication
+        required: true
+        type: string
+      approval_reference:
+        description: Named, dated, scope-limited owner approval reference
+        required: true
+        type: string
+      confirmation:
+        description: Enter PUBLISH_EIGHT_IMAGES_NO_DEPLOY
+        required: true
+        type: string
+
+permissions:
+  contents: read
+  id-token: write
+
+concurrency:
+  group: staging-image-publication
+  cancel-in-progress: false
+
+env:
+  GCP_PROJECT_ID: resident-workforce-os-staging
+  GCP_REGION: northamerica-northeast2
+  ARTIFACT_REPOSITORY: rwos-stg-ca-tor-containers
+  WIF_PROVIDER: projects/800188428439/locations/global/workloadIdentityPools/rwos-staging-github/providers/github
+  PUBLISHER_SERVICE_ACCOUNT: sa-rwos-stg-publisher@resident-workforce-os-staging.iam.gserviceaccount.com
+
+jobs:
+  authorize:
+    name: Verify immutable publication authorization
+    runs-on: ubuntu-latest
+    environment: staging
+    outputs:
+      release_sha: ${{ steps.release.outputs.sha }}
+      build_timestamp: ${{ steps.release.outputs.timestamp }}
+    steps:
+      - name: Reject an invalid authorization envelope
+        env:
+          RELEASE_SHA: ${{ inputs.release_sha }}
+          APPROVAL_REFERENCE: ${{ inputs.approval_reference }}
+          CONFIRMATION: ${{ inputs.confirmation }}
+        run: |
+          set -euo pipefail
+          [[ "$RELEASE_SHA" =~ ^[a-f0-9]{40}$ ]]
+          [[ "$APPROVAL_REFERENCE" =~ ^RWOS-IMAGE-PUBLISH-[0-9]{4}-[0-9]{2}-[0-9]{2}-[0-9]{3}$ ]]
+          [[ "$CONFIRMATION" == "PUBLISH_EIGHT_IMAGES_NO_DEPLOY" ]]
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+        with:
+          ref: ${{ inputs.release_sha }}
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Bind publication to the exact main-branch commit
+        id: release
+        env:
+          RELEASE_SHA: ${{ inputs.release_sha }}
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$RELEASE_SHA"
+          git fetch --no-tags origin main
+          git merge-base --is-ancestor "$RELEASE_SHA" origin/main
+          test "$(jq -r '.services | length' container-build-matrix.json)" = "8"
+          test "$(jq -r '[.services[].name] | unique | length' container-build-matrix.json)" = "8"
+          echo "sha=$RELEASE_SHA" >> "$GITHUB_OUTPUT"
+          echo "timestamp=$(date -u +'%Y-%m-%dT%H:%M:%SZ')" >> "$GITHUB_OUTPUT"
+
+  publish:
+    name: Publish ${{ matrix.service }}
+    needs: authorize
+    runs-on: ubuntu-latest
+    environment: staging
+    strategy:
+      fail-fast: true
+      matrix:
+        include:
+          - service: api
+            dockerfile: apps/api/Dockerfile
+          - service: employer
+            dockerfile: apps/employer/Dockerfile
+          - service: admin
+            dockerfile: apps/admin/Dockerfile
+          - service: worker
+            dockerfile: apps/mobile/Dockerfile
+          - service: auth-limiter
+            dockerfile: apps/auth-limiter/Dockerfile
+          - service: candidate-source
+            dockerfile: apps/candidate-source/Dockerfile
+          - service: offer-delivery
+            dockerfile: apps/offer-delivery/Dockerfile
+          - service: qa-reset
+            dockerfile: apps/qa-reset/Dockerfile
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+        with:
+          ref: ${{ needs.authorize.outputs.release_sha }}
+          persist-credentials: false
+      - id: google-auth
+        name: Acquire short-lived publisher credentials
+        uses: google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093 # v3
+        with:
+          workload_identity_provider: ${{ env.WIF_PROVIDER }}
+          service_account: ${{ env.PUBLISHER_SERVICE_ACCOUNT }}
+          token_format: access_token
+          create_credentials_file: true
+          export_environment_variables: true
+      - name: Install Google Cloud CLI
+        uses: google-github-actions/setup-gcloud@aa5489c8933f4cc7a4f7d45035b3b1440c9c10db # v3
+        with:
+          project_id: ${{ env.GCP_PROJECT_ID }}
+      - name: Configure Artifact Registry authentication
+        run: gcloud auth configure-docker "${GCP_REGION}-docker.pkg.dev" --quiet
+      - name: Build and publish one exact-SHA image
+        env:
+          RELEASE_SHA: ${{ needs.authorize.outputs.release_sha }}
+          BUILD_TIMESTAMP: ${{ needs.authorize.outputs.build_timestamp }}
+          SERVICE: ${{ matrix.service }}
+          DOCKERFILE: ${{ matrix.dockerfile }}
+        run: |
+          set -euo pipefail
+          image="${GCP_REGION}-docker.pkg.dev/${GCP_PROJECT_ID}/${ARTIFACT_REPOSITORY}/${SERVICE}:${RELEASE_SHA}"
+          docker build \
+            --file "$DOCKERFILE" \
+            --tag "$image" \
+            --label "org.opencontainers.image.revision=${RELEASE_SHA}" \
+            --label "org.opencontainers.image.created=${BUILD_TIMESTAMP}" \
+            --label "org.opencontainers.image.source=https://github.com/${GITHUB_REPOSITORY}" \
+            --label "org.opencontainers.image.title=${SERVICE}" \
+            --label "org.opencontainers.image.version=${RELEASE_SHA}" \
+            --build-arg "RWOS_GIT_SHA=${RELEASE_SHA}" \
+            --build-arg "RWOS_BUILD_TIMESTAMP=${BUILD_TIMESTAMP}" \
+            --build-arg "RWOS_SOURCE_REPOSITORY=github.com/${GITHUB_REPOSITORY}" \
+            --build-arg "RWOS_IMAGE_VERSION=${RELEASE_SHA}" \
+            .
+          docker push "$image"
+          digest="$(gcloud artifacts docker images describe "$image" --format='value(image_summary.digest)')"
+          [[ "$digest" =~ ^sha256:[a-f0-9]{64}$ ]]
+          immutable="${GCP_REGION}-docker.pkg.dev/${GCP_PROJECT_ID}/${ARTIFACT_REPOSITORY}/${SERVICE}@${digest}"
+          printf '%s=%s\n' "$SERVICE" "$immutable" > digest.txt
+          printf 'PUBLISHED_IMAGE service=%s digest=%s\n' "$SERVICE" "$immutable"
+      - name: Preserve immutable digest evidence
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: staging-image-digest-${{ matrix.service }}
+          path: digest.txt
+          if-no-files-found: error
+          retention-days: 30
+
+  manifest:
+    name: Assemble publication manifest
+    needs:
+      - authorize
+      - publish
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Download all digest evidence
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          pattern: staging-image-digest-*
+          path: digest-evidence
+      - name: Validate and assemble the eight-image manifest
+        env:
+          RELEASE_SHA: ${{ needs.authorize.outputs.release_sha }}
+          APPROVAL_REFERENCE: ${{ inputs.approval_reference }}
+          BUILD_TIMESTAMP: ${{ needs.authorize.outputs.build_timestamp }}
+        run: |
+          set -euo pipefail
+          mapfile -t digest_files < <(find digest-evidence -name digest.txt -type f | sort)
+          test "${#digest_files[@]}" = "8"
+          cat "${digest_files[@]}" | sort > image-digests.env
+          test "$(cut -d= -f1 image-digests.env | sort -u | wc -l | tr -d ' ')" = "8"
+          while IFS='=' read -r service image; do
+            [[ "$service" =~ ^(api|employer|admin|worker|auth-limiter|candidate-source|offer-delivery|qa-reset)$ ]]
+            [[ "$image" =~ ^northamerica-northeast2-docker\.pkg\.dev/resident-workforce-os-staging/rwos-stg-ca-tor-containers/${service}@sha256:[a-f0-9]{64}$ ]]
+          done < image-digests.env
+          jq -n \
+            --arg releaseSha "$RELEASE_SHA" \
+            --arg approvalReference "$APPROVAL_REFERENCE" \
+            --arg buildTimestamp "$BUILD_TIMESTAMP" \
+            --rawfile digests image-digests.env \
+            '{schemaVersion: 1, releaseSha: $releaseSha, approvalReference: $approvalReference, buildTimestamp: $buildTimestamp, deployed: false, digests: ($digests | split("\n") | map(select(length > 0) | split("=") | {(.[0]): .[1]}) | add)}' \
+            > staging-image-publication-manifest.json
+          jq -e '.deployed == false and (.digests | length) == 8' staging-image-publication-manifest.json >/dev/null
+      - name: Preserve publication manifest
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: staging-image-publication-manifest-${{ needs.authorize.outputs.release_sha }}
+          path: |
+            image-digests.env
+            staging-image-publication-manifest.json
+          if-no-files-found: error
+          retention-days: 30
