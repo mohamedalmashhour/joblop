@@ -13,6 +13,7 @@ const reviewNavigation = phase01Routes.map(({ route, title }) => ({ href: route,
 export function AdminShell({ children }: Readonly<{ children: ReactNode }>) {
   const pathname = usePathname();
   const contentRef = useRef<HTMLDivElement>(null);
+  const isStaging = process.env.NEXT_PUBLIC_RWOS_ENV === "staging";
   const navigation =
     process.env.NEXT_PUBLIC_RWOS_ENV === "production"
       ? connectedNavigation
@@ -33,6 +34,14 @@ export function AdminShell({ children }: Readonly<{ children: ReactNode }>) {
       <a className="admin-skip-link" href="#admin-main-content">
         Skip to main content
       </a>
+      {isStaging ? (
+        <aside aria-label="Staging environment notice" className="admin-staging-banner">
+          <strong>STAGING</strong>
+          <span>SYNTHETIC DATA</span>
+          <span>NO REAL PAYMENT</span>
+          <span>NO PRODUCTION CUSTOMER DATA</span>
+        </aside>
+      ) : null}
       <header className="admin-topbar">
         <a
           aria-label="Resident Workforce OS administration home"

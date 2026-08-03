@@ -14,6 +14,21 @@ body {
   min-height: 100vh;
 }
 
+.admin-staging-banner {
+  align-items: center;
+  background: #fff4d6;
+  border-bottom: 1px solid #d49b00;
+  color: #684b00;
+  display: flex;
+  flex-wrap: wrap;
+  font:
+    700 0.78rem/1.4 Inter,
+    system-ui,
+    sans-serif;
+  gap: 8px 18px;
+  padding: 8px clamp(16px, 3vw, 32px);
+}
+
 .admin-skip-link {
   background: #ffffff;
   border: 3px solid #f3b61f;

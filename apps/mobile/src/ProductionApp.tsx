@@ -13,6 +13,7 @@ import { productName } from "./navigation/routes";
 
 export default function ProductionApp() {
   const [offerId, setOfferId] = useState<string | null>(null);
+  const isStaging = process.env.EXPO_PUBLIC_RWOS_ENV === "staging";
   const transport = useMemo(
     () =>
       tryCreateMobileSessionTransport({
@@ -31,6 +32,12 @@ export default function ProductionApp() {
     <SafeAreaView style={styles.safeArea}>
       <StatusBar style="dark" />
       <View style={styles.app}>
+        {isStaging ? (
+          <View accessibilityRole="alert" style={styles.stagingBanner}>
+            <Text style={styles.stagingTitle}>STAGING · SYNTHETIC DATA</Text>
+            <Text style={styles.stagingText}>NO REAL PAYMENT · NO PRODUCTION CUSTOMER DATA</Text>
+          </View>
+        ) : null}
         <View style={styles.header}>
           <View
             accessibilityElementsHidden
@@ -62,6 +69,15 @@ export default function ProductionApp() {
 const styles = StyleSheet.create({
   safeArea: { backgroundColor: colors.surfaceSubtle, flex: 1 },
   app: { backgroundColor: colors.surfaceSubtle, flex: 1 },
+  stagingBanner: {
+    backgroundColor: "#FFF4D6",
+    borderBottomColor: "#D49B00",
+    borderBottomWidth: 1,
+    paddingHorizontal: spacing.lg,
+    paddingVertical: spacing.sm
+  },
+  stagingTitle: { color: "#684B00", fontSize: typography.small, fontWeight: "800" },
+  stagingText: { color: "#684B00", fontSize: typography.small, fontWeight: "700" },
   header: {
     alignItems: "center",
     backgroundColor: colors.surface,

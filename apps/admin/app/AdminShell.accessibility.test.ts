@@ -36,4 +36,13 @@ describe("admin shell accessibility", () => {
       '"build": "RWOS_ENV=production NEXT_PUBLIC_RWOS_ENV=production next build"'
     );
   });
+
+  it("labels staging without weakening the production navigation boundary", () => {
+    expect(shell).toContain('process.env.NEXT_PUBLIC_RWOS_ENV === "staging"');
+    expect(shell).toContain("STAGING");
+    expect(shell).toContain("SYNTHETIC DATA");
+    expect(shell).toContain("NO REAL PAYMENT");
+    expect(shell).toContain("NO PRODUCTION CUSTOMER DATA");
+    expect(styles).toContain(".admin-staging-banner");
+  });
 });
