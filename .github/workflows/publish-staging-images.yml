@@ -52,7 +52,7 @@ jobs:
           [[ "$CONFIRMATION" == "PUBLISH_EIGHT_IMAGES_NO_DEPLOY" ]]
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
         with:
-          ref: ${{ inputs.release_sha }}
+          ref: main
           fetch-depth: 0
           persist-credentials: false
       - name: Bind publication to the exact main-branch commit
@@ -61,9 +61,10 @@ jobs:
           RELEASE_SHA: ${{ inputs.release_sha }}
         run: |
           set -euo pipefail
+          git cat-file -e "${RELEASE_SHA}^{commit}"
+          git merge-base --is-ancestor "$RELEASE_SHA" HEAD
+          git checkout --detach "$RELEASE_SHA"
           test "$(git rev-parse HEAD)" = "$RELEASE_SHA"
-          git fetch --no-tags origin main
-          git merge-base --is-ancestor "$RELEASE_SHA" origin/main
           test "$(jq -r '.services | length' container-build-matrix.json)" = "8"
           test "$(jq -r '[.services[].name] | unique | length' container-build-matrix.json)" = "8"
           echo "sha=$RELEASE_SHA" >> "$GITHUB_OUTPUT"

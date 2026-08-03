@@ -38,8 +38,11 @@ describe("staging image publication workflow policy", () => {
   });
 
   it("binds builds and evidence to the exact authorized SHA", () => {
+    expect(workflow).toContain('git cat-file -e "${RELEASE_SHA}^{commit}"');
+    expect(workflow).toContain('git merge-base --is-ancestor "$RELEASE_SHA" HEAD');
+    expect(workflow).toContain('git checkout --detach "$RELEASE_SHA"');
     expect(workflow).toContain('test "$(git rev-parse HEAD)" = "$RELEASE_SHA"');
-    expect(workflow).toContain('git merge-base --is-ancestor "$RELEASE_SHA" origin/main');
+    expect(workflow).not.toContain("git fetch --no-tags origin main");
     expect(workflow).toContain("org.opencontainers.image.revision=${RELEASE_SHA}");
     expect(workflow).toContain("approvalReference: $approvalReference");
   });
