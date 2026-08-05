@@ -19,6 +19,7 @@ describe("staging browser E2E workflow", () => {
     expect(workflow).toContain('git merge-base --is-ancestor "$RELEASE_SHA" HEAD');
     expect(workflow).toContain('git checkout --detach "$RELEASE_SHA"');
     expect(workflow).toContain("git rev-parse HEAD");
+    expect(workflow).toContain("ref: ${{ github.sha }}");
     expect(workflow).not.toContain("serviceAccountTokenCreator");
     expect(workflow).not.toContain("gcloud auth");
     expect(workflow).not.toContain("private_key");
