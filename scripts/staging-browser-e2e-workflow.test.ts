@@ -6,6 +6,7 @@ const workflowPath = ".github/workflows/staging-browser-e2e.yml";
 describe("staging browser E2E workflow", () => {
   it("uses one exact-release keyless staging identity without persistent credentials", async () => {
     const workflow = await readFile(workflowPath, "utf8");
+    const packageManifest = await readFile("package.json", "utf8");
 
     expect(workflow.match(/id-token: write/gu)).toHaveLength(1);
     expect(workflow).toContain("environment: staging");
@@ -20,6 +21,7 @@ describe("staging browser E2E workflow", () => {
     expect(workflow).toContain('git checkout --detach "$RELEASE_SHA"');
     expect(workflow).toContain("git rev-parse HEAD");
     expect(workflow).toContain("ref: ${{ github.sha }}");
+    expect(packageManifest).toContain("playwright test --tsconfig tsconfig.base.json");
     expect(workflow).not.toContain("serviceAccountTokenCreator");
     expect(workflow).not.toContain("gcloud auth");
     expect(workflow).not.toContain("private_key");
