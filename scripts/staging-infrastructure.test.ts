@@ -111,6 +111,17 @@ describe("split staging infrastructure packages", () => {
     expect(main).toContain('["api", "employer", "admin", "worker", "worker-api"]');
     expect(main).not.toContain('member   = "allUsers"');
     expect(main).toContain('google_cloud_run_v2_service_iam_member" "qa_reset_callers');
+    expect(main).toContain('resource "google_service_account" "browser_e2e"');
+    expect(main).toContain('account_id   = "sa-rwos-stg-browser-e2e"');
+    expect(main).toContain('resource "google_service_account_iam_member" "github_browser_e2e"');
+    expect(main).toContain('role               = "roles/iam.workloadIdentityUser"');
+    expect(main).toContain('resource "google_cloud_run_v2_service_iam_member" "qa_reset_browser_e2e"');
+    expect(main).toContain('member   = google_service_account.browser_e2e.member');
+    expect(main).toContain('QA_RESET_BROWSER_E2E_SERVICE_ACCOUNT = google_service_account.browser_e2e.email');
+    expect(main).not.toContain('browser-e2e = "employer"');
+    expect(variables).toContain('var.github_repository == "drmmashhour-ux/resident-workforce-os"');
+    expect(variables).toContain('var.github_wif_pool_id == "rwos-staging-github"');
+    expect(main).not.toContain("roles/iam.serviceAccountTokenCreator");
     expect(main).toContain('ingress = "INGRESS_TRAFFIC_ALL"');
     expect(main).not.toContain("INGRESS_TRAFFIC_INTERNAL_LOAD_BALANCER");
     expect(main).toContain('RWOS_PUBLIC_WORKER_INGRESS_ONLY = "enabled"');

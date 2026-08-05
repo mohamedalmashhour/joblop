@@ -54,6 +54,24 @@ variable "deployer_service_account_email" {
   }
 }
 
+variable "github_repository" {
+  type    = string
+  default = "drmmashhour-ux/resident-workforce-os"
+  validation {
+    condition     = var.github_repository == "drmmashhour-ux/resident-workforce-os"
+    error_message = "Browser E2E federation is restricted to the private RWOS repository."
+  }
+}
+
+variable "github_wif_pool_id" {
+  type    = string
+  default = "rwos-staging-github"
+  validation {
+    condition     = var.github_wif_pool_id == "rwos-staging-github"
+    error_message = "Use the reviewed staging-only GitHub WIF pool."
+  }
+}
+
 variable "artifact_repository_id" {
   type    = string
   default = "rwos-stg-ca-tor-containers"

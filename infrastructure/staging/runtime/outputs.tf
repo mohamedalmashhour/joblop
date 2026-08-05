@@ -11,6 +11,14 @@ output "service_names" {
   value = { for name, service in google_cloud_run_v2_service.service : name => service.name }
 }
 
+output "browser_e2e_identity" {
+  value = {
+    service_account = google_service_account.browser_e2e.email
+    qa_reset_role   = "roles/run.invoker"
+    keyless_only    = true
+  }
+}
+
 output "staging_public_ingress" {
   value = var.deploy_staging_domains ? {
     ipv4    = google_compute_global_address.public_https[0].address
