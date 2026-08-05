@@ -65,6 +65,15 @@ describe("Page 001 landing content", () => {
     expect(landingSource).not.toContain("Resident Workforce OS home");
   });
 
+  it("labels the public staging landing page without changing production access", () => {
+    expect(landingSource).toContain('process.env.RWOS_ENV === "staging"');
+    expect(landingSource).toContain('process.env.NEXT_PUBLIC_RWOS_DEPLOYMENT_TIER === "staging"');
+    expect(landingSource).toContain("STAGING");
+    expect(landingSource).toContain("SYNTHETIC DATA");
+    expect(landingSource).toContain("NO REAL PAYMENT");
+    expect(landingSource).toContain("NO PRODUCTION CUSTOMER DATA");
+  });
+
   it("provides a real FAQ destination for every preview", () => {
     expect(landingSource).toContain('href="/faq" style={styles.textLink}');
     expect(landingSource).not.toContain("Answer preview links to the governed FAQ page.");

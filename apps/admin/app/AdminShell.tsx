@@ -10,13 +10,17 @@ const connectedNavigation = [
 ] as const;
 const reviewNavigation = phase01Routes.map(({ route, title }) => ({ href: route, label: title }));
 
-export function AdminShell({ children }: Readonly<{ children: ReactNode }>) {
+export function AdminShell({
+  children,
+  staging
+}: Readonly<{ children: ReactNode; staging: boolean }>) {
   const pathname = usePathname();
   const contentRef = useRef<HTMLDivElement>(null);
-  const isStaging = process.env.NEXT_PUBLIC_RWOS_ENV === "staging";
-  const connectedEnvironment = ["production", "staging"].includes(
-    process.env.NEXT_PUBLIC_RWOS_ENV ?? ""
-  );
+  const compiledStaging = process.env.NEXT_PUBLIC_RWOS_DEPLOYMENT_TIER === "staging";
+  const connectedEnvironment =
+    ["production", "staging"].includes(process.env.NEXT_PUBLIC_RWOS_ENV ?? "") ||
+    compiledStaging ||
+    staging;
   const navigation = connectedEnvironment
     ? connectedNavigation
     : [...connectedNavigation, ...reviewNavigation];
@@ -36,7 +40,7 @@ export function AdminShell({ children }: Readonly<{ children: ReactNode }>) {
       <a className="admin-skip-link" href="#admin-main-content">
         Skip to main content
       </a>
-      {isStaging ? (
+      {staging || compiledStaging ? (
         <aside aria-label="Staging environment notice" className="admin-staging-banner">
           <strong>STAGING</strong>
           <span>SYNTHETIC DATA</span>

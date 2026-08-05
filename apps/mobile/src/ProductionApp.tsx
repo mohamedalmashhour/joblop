@@ -13,7 +13,7 @@ import { productName } from "./navigation/routes";
 
 export default function ProductionApp() {
   const [offerId, setOfferId] = useState<string | null>(null);
-  const isStaging = process.env.EXPO_PUBLIC_RWOS_ENV === "staging";
+  const isStaging = process.env.EXPO_PUBLIC_RWOS_DEPLOYMENT_TIER === "staging";
   const transport = useMemo(
     () =>
       tryCreateMobileSessionTransport({

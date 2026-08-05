@@ -4,6 +4,7 @@ import { describe, expect, it } from "vitest";
 const shell = readFileSync(new URL("./AdminShell.tsx", import.meta.url), "utf8");
 const styles = readFileSync(new URL("./globals.css", import.meta.url), "utf8");
 const packageJson = readFileSync(new URL("../package.json", import.meta.url), "utf8");
+const layout = readFileSync(new URL("./layout.tsx", import.meta.url), "utf8");
 
 describe("admin shell accessibility", () => {
   it("moves the keyboard bypass target onto the existing main landmark", () => {
@@ -38,7 +39,10 @@ describe("admin shell accessibility", () => {
   });
 
   it("labels staging without weakening the production navigation boundary", () => {
-    expect(shell).toContain('process.env.NEXT_PUBLIC_RWOS_ENV === "staging"');
+    expect(layout).toContain('process.env.RWOS_ENV === "staging"');
+    expect(layout).toContain("<AdminShell staging={staging}>");
+    expect(shell).toContain("staging: boolean");
+    expect(shell).toContain('process.env.NEXT_PUBLIC_RWOS_DEPLOYMENT_TIER === "staging"');
     expect(shell).toContain("STAGING");
     expect(shell).toContain("SYNTHETIC DATA");
     expect(shell).toContain("NO REAL PAYMENT");

@@ -13,7 +13,8 @@ COPY packages/auth packages/auth
 COPY packages/config packages/config
 COPY packages/design-system packages/design-system
 COPY packages/shared packages/shared
-RUN RWOS_ENV=production INTERNAL_API_ORIGIN=https://api.invalid pnpm --filter @rwos/admin build
+ARG RWOS_PUBLIC_DEPLOYMENT_TIER=production
+RUN RWOS_ENV=production NEXT_PUBLIC_RWOS_DEPLOYMENT_TIER=$RWOS_PUBLIC_DEPLOYMENT_TIER INTERNAL_API_ORIGIN=https://api.invalid pnpm --filter @rwos/admin build
 
 FROM node:20.20.2-bookworm-slim AS runtime
 ARG RWOS_GIT_SHA=unknown

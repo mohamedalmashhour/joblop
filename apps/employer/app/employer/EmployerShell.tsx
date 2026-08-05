@@ -44,7 +44,9 @@ export function EmployerShell({
   title: string;
 }) {
   const production = process.env.RWOS_ENV === "production";
-  const staging = process.env.RWOS_ENV === "staging";
+  const staging =
+    process.env.RWOS_ENV === "staging" ||
+    process.env.NEXT_PUBLIC_RWOS_DEPLOYMENT_TIER === "staging";
   const connectedEnvironment = production || staging;
   const effectiveMode = connectedEnvironment ? "authenticated" : mode;
   const navigation = connectedEnvironment ? persistedEmployerNavigation : uniqueEmployerNavigation;

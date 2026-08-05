@@ -15,7 +15,7 @@ describe("worker production fixture gate", () => {
 describe("worker staging identity", () => {
   it("labels staging as synthetic and non-production without enabling fixtures", () => {
     const source = readFileSync(new URL("../ProductionApp.tsx", import.meta.url), "utf8");
-    expect(source).toContain('process.env.EXPO_PUBLIC_RWOS_ENV === "staging"');
+    expect(source).toContain('process.env.EXPO_PUBLIC_RWOS_DEPLOYMENT_TIER === "staging"');
     expect(source).toContain("STAGING · SYNTHETIC DATA");
     expect(source).toContain("NO REAL PAYMENT · NO PRODUCTION CUSTOMER DATA");
     expect(source).toContain("allowFixturePreview={false}");
