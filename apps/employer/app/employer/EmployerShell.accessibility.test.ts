@@ -52,9 +52,19 @@ describe("employer shell accessibility", () => {
     expect(shellSource).toContain("unique.set(step.route, step)");
   });
 
-  it("keeps one continuous local journey while production stays route-restricted", () => {
+  it("keeps one continuous local journey while connected environments stay route-restricted", () => {
     expect(shellSource).toContain(
-      "const navigation = production ? persistedEmployerNavigation : uniqueEmployerNavigation"
+      "const navigation = connectedEnvironment ? persistedEmployerNavigation : uniqueEmployerNavigation"
     );
+    expect(shellSource).toContain("const connectedEnvironment = production || staging");
+  });
+
+  it("shows permanent safety labels in the staging employer workspace", () => {
+    expect(shellSource).toContain('process.env.RWOS_ENV === "staging"');
+    expect(shellSource).toContain("STAGING");
+    expect(shellSource).toContain("SYNTHETIC DATA");
+    expect(shellSource).toContain("NO REAL PAYMENT");
+    expect(shellSource).toContain("NO PRODUCTION CUSTOMER DATA");
+    expect(shellSource).toContain('aria-label="Staging safety status"');
   });
 });

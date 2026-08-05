@@ -14,7 +14,8 @@ COPY packages/shared packages/shared
 COPY packages/ui packages/ui
 COPY packages/validation packages/validation
 ARG EXPO_PUBLIC_RWOS_API_ORIGIN=https://api.invalid
-RUN EXPO_PUBLIC_RWOS_ENV=production EXPO_PUBLIC_RWOS_API_ORIGIN=$EXPO_PUBLIC_RWOS_API_ORIGIN pnpm --filter @rwos/mobile build
+ARG RWOS_PUBLIC_DEPLOYMENT_TIER=production
+RUN EXPO_PUBLIC_RWOS_ENV=production EXPO_PUBLIC_RWOS_DEPLOYMENT_TIER=$RWOS_PUBLIC_DEPLOYMENT_TIER EXPO_PUBLIC_RWOS_API_ORIGIN=$EXPO_PUBLIC_RWOS_API_ORIGIN pnpm --filter @rwos/mobile build
 
 FROM node:20.20.2-bookworm-slim AS runtime
 ARG RWOS_GIT_SHA=unknown

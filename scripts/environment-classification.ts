@@ -9,13 +9,18 @@ export const environmentClasses = [
 
 export type EnvironmentClass = (typeof environmentClasses)[number];
 
-const publicSafe = new Set(["EXPO_PUBLIC_RWOS_ENV", "EXPO_PUBLIC_RWOS_DEMO_MODE"]);
+const publicSafe = new Set([
+  "EXPO_PUBLIC_RWOS_ENV",
+  "EXPO_PUBLIC_RWOS_DEMO_MODE",
+  "EXPO_PUBLIC_RWOS_DEPLOYMENT_TIER"
+]);
 const buildTimePublic = new Set([
   "NODE_ENV",
   "EXPO_PUBLIC_API_BASE_URL",
   "EXPO_PUBLIC_API_ORIGIN",
   "EXPO_PUBLIC_RWOS_API_ORIGIN",
-  "NEXT_PUBLIC_RWOS_ENV"
+  "NEXT_PUBLIC_RWOS_ENV",
+  "NEXT_PUBLIC_RWOS_DEPLOYMENT_TIER"
 ]);
 const serverOnlySecret = new Set(["SESSION_SECRET"]);
 const allowedServerPrefixes = [

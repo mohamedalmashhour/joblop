@@ -9,10 +9,11 @@ export const metadata: Metadata = {
 };
 
 export default function RootLayout({ children }: Readonly<{ children: ReactNode }>) {
+  const staging = process.env.RWOS_ENV === "staging";
   return (
     <html lang="en">
       <body>
-        <AdminShell>{children}</AdminShell>
+        <AdminShell staging={staging}>{children}</AdminShell>
       </body>
     </html>
   );

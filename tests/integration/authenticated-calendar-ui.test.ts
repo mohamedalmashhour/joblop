@@ -259,6 +259,11 @@ describe("authenticated calendar UI integration", () => {
     expect(createPage).toContain("<CreatePersistedRequestPanel />");
     expect(createPage).toContain('mode="authenticated"');
     expect(createPanel).toContain('fetch("/api/job-requests"');
+    expect(createPanel).toContain("Review staffing request");
+    expect(createPanel).toContain("Review request");
+    expect(createPanel).toContain('method: "PUT"');
+    expect(createPanel).toContain("Retry staffing details");
+    expect(createPanel).toContain("This request step does not collect or invent worker economics");
     expect(createPanel).toContain("/submit");
     expect(createPanel).not.toContain("mode=fixture");
     expect(clientRequestPage).toContain('mode === "fixture" && !request');

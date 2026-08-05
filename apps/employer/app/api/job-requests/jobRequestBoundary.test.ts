@@ -3,6 +3,7 @@ import {
   parseEmployerJobRequest,
   parseEmployerDispatchStatus,
   parseEmployerRequestContext,
+  readEmployerCalendarProfileInput,
   readEmployerJobRequestInput,
   readEmployerJobRequestUpdate
 } from "./jobRequestBoundary";
@@ -94,6 +95,35 @@ describe("employer job request BFF boundary", () => {
     expect(readEmployerJobRequestInput({ ...valid, numberOfWorkers: 0 })).toBeNull();
     expect(readEmployerJobRequestInput({ ...valid, urgency: "emergency" })).toBeNull();
     expect(readEmployerJobRequestInput({ ...valid, endAt: valid.startAt })).toBeNull();
+  });
+
+  it("allowlists durable employer calendar-profile details without economics", () => {
+    expect(
+      readEmployerCalendarProfileInput({
+        dutiesSummary: "  Prepare dinner service.  ",
+        qualifications: [" Food safety ", "Chef certification"],
+        addressSummary: "Synthetic Laval site",
+        specialInstructions: "Report to reception.",
+        expectedVersion: null,
+        hourlyRate: "never-forward",
+        transportationAllowance: "never-forward"
+      })
+    ).toEqual({
+      dutiesSummary: "Prepare dinner service.",
+      qualifications: ["Food safety", "Chef certification"],
+      addressSummary: "Synthetic Laval site",
+      specialInstructions: "Report to reception.",
+      expectedVersion: null
+    });
+    expect(
+      readEmployerCalendarProfileInput({
+        dutiesSummary: null,
+        qualifications: Array.from({ length: 21 }, (_, index) => `Item ${index}`),
+        addressSummary: null,
+        specialInstructions: null,
+        expectedVersion: null
+      })
+    ).toBeNull();
   });
 
   it("returns only the client fields needed for create and submit handoffs", () => {

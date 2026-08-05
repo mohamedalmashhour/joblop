@@ -49,6 +49,7 @@ describe("Employer journey milestone content", () => {
 
   it("keeps dashboard summaries advisory and routed to authoritative workflows", () => {
     expect(dashboardAttention.map((card) => card.title)).toContain("Urgent staffing needs");
+    expect(dashboardAttention.every((card) => card.route.startsWith("/employer/"))).toBe(true);
     expect(dashboardBoundaries).toContain("Billing summary does not equal final invoice.");
     expect(dashboardBoundaries.join(" ")).toContain("AI suggestions are advisory");
   });

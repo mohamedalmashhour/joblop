@@ -14,6 +14,10 @@ type FormState = {
   roleDefinition: string;
   title: string;
   description: string;
+  dutiesSummary: string;
+  qualifications: string;
+  addressSummary: string;
+  specialInstructions: string;
   numberOfWorkers: string;
   urgency: "normal" | "urgent" | "immediate";
   requestType: "single_day" | "multi_day" | "recurring_intent";
@@ -29,6 +33,10 @@ const initialForm: FormState = {
   roleDefinition: "",
   title: "",
   description: "",
+  dutiesSummary: "",
+  qualifications: "",
+  addressSummary: "",
+  specialInstructions: "",
   numberOfWorkers: "1",
   urgency: "normal",
   requestType: "single_day",
@@ -41,10 +49,19 @@ export function CreatePersistedRequestPanel() {
   const [context, setContext] = useState<EmployerRequestContext | null>(null);
   const [form, setForm] = useState<FormState>(initialForm);
   const [status, setStatus] = useState<
-    "loading" | "editing" | "saving" | "draft" | "submitting" | "submitted" | "denied" | "error"
+    | "loading"
+    | "editing"
+    | "review"
+    | "saving"
+    | "draft"
+    | "submitting"
+    | "submitted"
+    | "denied"
+    | "error"
   >("loading");
   const [message, setMessage] = useState("Loading authorized request choices.");
   const [draft, setDraft] = useState<EmployerJobRequestDraft | null>(null);
+  const [profileSaved, setProfileSaved] = useState(false);
 
   async function loadContext(residenceId = "") {
     setStatus("loading");
@@ -98,12 +115,17 @@ export function CreatePersistedRequestPanel() {
     if (residenceId) await loadContext(residenceId);
   }
 
-  async function createDraft(event: React.FormEvent) {
+  function prepareReview(event: React.FormEvent) {
     event.preventDefault();
     if (validation.length) {
       setMessage(`Complete: ${validation.join(", ")}.`);
       return;
     }
+    setStatus("review");
+    setMessage("Review every staffing detail before saving the persisted draft.");
+  }
+
+  async function createDraft() {
     setStatus("saving");
     setMessage("Saving persisted draft.");
     try {
@@ -111,7 +133,15 @@ export function CreatePersistedRequestPanel() {
         method: "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({
-          ...form,
+          residenceId: form.residenceId,
+          departmentId: form.departmentId,
+          workGroup: form.workGroup,
+          roleDefinition: form.roleDefinition,
+          title: form.title,
+          description: form.description,
+          urgency: form.urgency,
+          requestType: form.requestType,
+          timezone: form.timezone,
           numberOfWorkers: Number(form.numberOfWorkers),
           startAt: new Date(form.startAt).toISOString(),
           endAt: new Date(form.endAt).toISOString()
@@ -127,12 +157,47 @@ export function CreatePersistedRequestPanel() {
       }
       const payload = (await response.json()) as { jobRequest: EmployerJobRequestDraft };
       setDraft(payload.jobRequest);
+      const saved = await saveProfile(payload.jobRequest);
+      setProfileSaved(saved);
       setStatus("draft");
-      setMessage(`Draft ${payload.jobRequest.jobRequestNumber} was saved.`);
+      setMessage(
+        saved
+          ? `Draft ${payload.jobRequest.jobRequestNumber} and its staffing details were saved.`
+          : `Draft ${payload.jobRequest.jobRequestNumber} was saved, but its staffing details were not. Retry before submission.`
+      );
     } catch {
       setStatus("editing");
       setMessage("Draft service is unavailable. Your entered values remain on this page.");
     }
+  }
+
+  async function saveProfile(request: EmployerJobRequestDraft) {
+    try {
+      const response = await fetch(`/api/calendar/requests/${encodeURIComponent(request.id)}`, {
+        method: "PUT",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          dutiesSummary: form.dutiesSummary.trim() || null,
+          qualifications: splitQualifications(form.qualifications),
+          addressSummary: form.addressSummary.trim() || null,
+          specialInstructions: form.specialInstructions.trim() || null,
+          expectedVersion: null
+        })
+      });
+      return response.ok;
+    } catch {
+      return false;
+    }
+  }
+
+  async function retryProfile() {
+    if (!draft) return;
+    setStatus("saving");
+    setMessage("Saving staffing details.");
+    const saved = await saveProfile(draft);
+    setProfileSaved(saved);
+    setStatus("draft");
+    setMessage(saved ? "Staffing details saved." : "Staffing details remain unsaved. Try again.");
   }
 
   async function submitDraft() {
@@ -190,7 +255,7 @@ export function CreatePersistedRequestPanel() {
   }
 
   return (
-    <form aria-busy={status === "saving" || status === "submitting"} onSubmit={createDraft}>
+    <form aria-busy={status === "saving" || status === "submitting"} onSubmit={prepareReview}>
       <div aria-live="polite" role="status" style={styles.warning}>
         {message}
       </div>
@@ -285,6 +350,20 @@ export function CreatePersistedRequestPanel() {
           onChange={(value) => update("timezone", value)}
           value={form.timezone}
         />
+        <TextField
+          disabled={status !== "editing"}
+          label="Synthetic site address"
+          maxLength={500}
+          onChange={(value) => update("addressSummary", value)}
+          value={form.addressSummary}
+        />
+        <TextField
+          disabled={status !== "editing"}
+          label="Required certifications (comma separated)"
+          maxLength={2000}
+          onChange={(value) => update("qualifications", value)}
+          value={form.qualifications}
+        />
         <label style={styles.fieldLabel}>
           Description
           <textarea
@@ -296,7 +375,34 @@ export function CreatePersistedRequestPanel() {
             value={form.description}
           />
         </label>
+        <label style={styles.fieldLabel}>
+          Duties summary
+          <textarea
+            disabled={status !== "editing"}
+            maxLength={2000}
+            onChange={(event) => update("dutiesSummary", event.target.value)}
+            rows={4}
+            style={styles.input}
+            value={form.dutiesSummary}
+          />
+        </label>
+        <label style={styles.fieldLabel}>
+          Special instructions
+          <textarea
+            disabled={status !== "editing"}
+            maxLength={2000}
+            onChange={(event) => update("specialInstructions", event.target.value)}
+            rows={4}
+            style={styles.input}
+            value={form.specialInstructions}
+          />
+        </label>
       </div>
+      {status === "review" ? <RequestReview form={form} /> : null}
+      <p style={styles.cardText}>
+        Hourly rate and transportation compensation are governed by the approved contract and offer
+        terms. This request step does not collect or invent worker economics.
+      </p>
       <div style={{ display: "flex", flexWrap: "wrap", gap: 10, marginTop: 18 }}>
         {status === "editing" ? (
           <button
@@ -304,12 +410,39 @@ export function CreatePersistedRequestPanel() {
             style={validation.length ? styles.disabledAction : styles.primaryButton}
             type="submit"
           >
-            Save persisted draft
+            Review request
           </button>
         ) : null}
+        {status === "review" ? (
+          <>
+            <button onClick={() => void createDraft()} style={styles.primaryButton} type="button">
+              Save persisted draft
+            </button>
+            <button
+              onClick={() => {
+                setStatus("editing");
+                setMessage("Update the request, then review it again.");
+              }}
+              style={styles.secondaryButton}
+              type="button"
+            >
+              Back to edit
+            </button>
+          </>
+        ) : null}
         {status === "draft" ? (
-          <button onClick={() => void submitDraft()} style={styles.primaryButton} type="button">
+          <button
+            disabled={!profileSaved}
+            onClick={() => void submitDraft()}
+            style={profileSaved ? styles.primaryButton : styles.disabledAction}
+            type="button"
+          >
             Submit for review
+          </button>
+        ) : null}
+        {status === "draft" && !profileSaved ? (
+          <button onClick={() => void retryProfile()} style={styles.secondaryButton} type="button">
+            Retry staffing details
           </button>
         ) : null}
         {draft ? (
@@ -336,6 +469,43 @@ export function CreatePersistedRequestPanel() {
       </div>
     </form>
   );
+}
+
+function RequestReview({ form }: Readonly<{ form: FormState }>) {
+  const rows = [
+    ["Role", form.roleDefinition],
+    ["Request type", form.requestType.replaceAll("_", " ")],
+    ["Urgency", form.urgency],
+    ["Workers", form.numberOfWorkers],
+    ["Schedule", `${form.startAt} to ${form.endAt} (${form.timezone})`],
+    ["Address", form.addressSummary || "Not provided"],
+    ["Certifications", splitQualifications(form.qualifications).join(", ") || "Not provided"],
+    ["Duties", form.dutiesSummary || "Not provided"],
+    ["Special instructions", form.specialInstructions || "Not provided"]
+  ] as const;
+  return (
+    <section aria-labelledby="request-review-title" style={styles.panel}>
+      <h2 id="request-review-title" style={styles.sectionTitle}>
+        Review staffing request
+      </h2>
+      <dl style={styles.cardGrid}>
+        {rows.map(([label, value]) => (
+          <div key={label} style={styles.tintedCard}>
+            <dt style={styles.metaLabel}>{label}</dt>
+            <dd style={{ margin: 0 }}>{value}</dd>
+          </div>
+        ))}
+      </dl>
+    </section>
+  );
+}
+
+function splitQualifications(value: string) {
+  return value
+    .split(",")
+    .map((item) => item.trim())
+    .filter(Boolean)
+    .slice(0, 20);
 }
 
 function validate(form: FormState) {

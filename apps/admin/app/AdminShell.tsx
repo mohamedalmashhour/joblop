@@ -10,13 +10,20 @@ const connectedNavigation = [
 ] as const;
 const reviewNavigation = phase01Routes.map(({ route, title }) => ({ href: route, label: title }));
 
-export function AdminShell({ children }: Readonly<{ children: ReactNode }>) {
+export function AdminShell({
+  children,
+  staging
+}: Readonly<{ children: ReactNode; staging: boolean }>) {
   const pathname = usePathname();
   const contentRef = useRef<HTMLDivElement>(null);
-  const navigation =
-    process.env.NEXT_PUBLIC_RWOS_ENV === "production"
-      ? connectedNavigation
-      : [...connectedNavigation, ...reviewNavigation];
+  const compiledStaging = process.env.NEXT_PUBLIC_RWOS_DEPLOYMENT_TIER === "staging";
+  const connectedEnvironment =
+    ["production", "staging"].includes(process.env.NEXT_PUBLIC_RWOS_ENV ?? "") ||
+    compiledStaging ||
+    staging;
+  const navigation = connectedEnvironment
+    ? connectedNavigation
+    : [...connectedNavigation, ...reviewNavigation];
   const currentIndex = navigation.findIndex(
     (item) => pathname === item.href || pathname.startsWith(`${item.href}/`)
   );
@@ -33,6 +40,14 @@ export function AdminShell({ children }: Readonly<{ children: ReactNode }>) {
       <a className="admin-skip-link" href="#admin-main-content">
         Skip to main content
       </a>
+      {staging || compiledStaging ? (
+        <aside aria-label="Staging environment notice" className="admin-staging-banner">
+          <strong>STAGING</strong>
+          <span>SYNTHETIC DATA</span>
+          <span>NO REAL PAYMENT</span>
+          <span>NO PRODUCTION CUSTOMER DATA</span>
+        </aside>
+      ) : null}
       <header className="admin-topbar">
         <a
           aria-label="Resident Workforce OS administration home"

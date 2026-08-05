@@ -44,6 +44,7 @@ describe("staging image publication workflow policy", () => {
     expect(workflow).toContain('test "$(git rev-parse HEAD)" = "$RELEASE_SHA"');
     expect(workflow).not.toContain("git fetch --no-tags origin main");
     expect(workflow).toContain("org.opencontainers.image.revision=${RELEASE_SHA}");
+    expect(workflow).toContain("RWOS_PUBLIC_DEPLOYMENT_TIER=staging");
     expect(workflow).toContain("approvalReference: $approvalReference");
   });
 });

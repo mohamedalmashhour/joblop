@@ -1,7 +1,13 @@
 import { describe, expect, it } from "vitest";
-import { hasPlatformAdminAuthorization } from "./middleware";
+import { hasPlatformAdminAuthorization, isConnectedRuntimeEnvironment } from "./middleware";
 
 describe("admin middleware authorization boundary", () => {
+  it("uses persisted authenticated boundaries in staging and production only", () => {
+    expect(isConnectedRuntimeEnvironment("staging")).toBe(true);
+    expect(isConnectedRuntimeEnvironment("production")).toBe(true);
+    expect(isConnectedRuntimeEnvironment("development")).toBe(false);
+  });
+
   it("accepts the explicit platform-admin authorization contract", () => {
     expect(hasPlatformAdminAuthorization({ authorized: true })).toBe(true);
   });

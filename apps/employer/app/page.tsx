@@ -48,8 +48,19 @@ const operationsRows = [
 
 export default function LandingPage() {
   const isProduction = process.env.RWOS_ENV === "production";
+  const isStaging =
+    process.env.RWOS_ENV === "staging" ||
+    process.env.NEXT_PUBLIC_RWOS_DEPLOYMENT_TIER === "staging";
   return (
     <main style={styles.page}>
+      {isStaging ? (
+        <aside aria-label="Staging environment notice" role="status" style={styles.stagingBanner}>
+          <strong>STAGING</strong>
+          <span>SYNTHETIC DATA</span>
+          <span>NO REAL PAYMENT</span>
+          <span>NO PRODUCTION CUSTOMER DATA</span>
+        </aside>
+      ) : null}
       <header style={styles.header}>
         <a href="/" style={styles.brand} aria-label="JobLop home">
           <span aria-hidden="true" style={styles.brandMark}>
@@ -469,6 +480,18 @@ const styles: Record<string, CSSProperties> = {
     fontFamily:
       'Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif',
     minHeight: "100vh"
+  },
+  stagingBanner: {
+    alignItems: "center",
+    background: "#fff4d6",
+    borderBottom: "1px solid #d49b00",
+    color: "#684b00",
+    display: "flex",
+    flexWrap: "wrap",
+    fontSize: 12,
+    fontWeight: 800,
+    gap: "8px 18px",
+    padding: "8px clamp(20px, 5vw, 72px)"
   },
   header: {
     alignItems: "center",

@@ -136,6 +136,7 @@ jobs:
             --build-arg "RWOS_BUILD_TIMESTAMP=${BUILD_TIMESTAMP}" \
             --build-arg "RWOS_SOURCE_REPOSITORY=github.com/${GITHUB_REPOSITORY}" \
             --build-arg "RWOS_IMAGE_VERSION=${RELEASE_SHA}" \
+            --build-arg "RWOS_PUBLIC_DEPLOYMENT_TIER=staging" \
             .
           docker push "$image"
           digest="$(gcloud artifacts docker images describe "$image" --format='value(image_summary.digest)')"

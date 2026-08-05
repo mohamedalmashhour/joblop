@@ -1,10 +1,16 @@
 import { describe, expect, it } from "vitest";
-import { hasEmployerCalendarCapability } from "./middleware";
+import { hasEmployerCalendarCapability, isConnectedRuntimeEnvironment } from "./middleware";
 
 const organizationA = "11111111-1111-4111-8111-111111111111";
 const organizationB = "22222222-2222-4222-8222-222222222222";
 
 describe("employer middleware organization capability boundary", () => {
+  it("uses persisted authenticated boundaries in staging and production only", () => {
+    expect(isConnectedRuntimeEnvironment("staging")).toBe(true);
+    expect(isConnectedRuntimeEnvironment("production")).toBe(true);
+    expect(isConnectedRuntimeEnvironment("development")).toBe(false);
+  });
+
   it("accepts only the exact employer capability for the selected organization", () => {
     expect(
       hasEmployerCalendarCapability(

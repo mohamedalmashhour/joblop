@@ -2,16 +2,13 @@ import { NextResponse, type NextRequest } from "next/server";
 import { isProductionAdminRouteAllowed } from "./routePolicy";
 
 export async function middleware(request: NextRequest) {
-  if (
-    process.env.RWOS_ENV === "production" &&
-    !isProductionAdminRouteAllowed(request.nextUrl.pathname)
-  ) {
+  if (isConnectedRuntimeEnvironment() && !isProductionAdminRouteAllowed(request.nextUrl.pathname)) {
     return new NextResponse("Not Found", {
       status: 404,
       headers: { "content-type": "text/plain; charset=utf-8" }
     });
   }
-  if (process.env.RWOS_ENV === "production" && isProtectedAdminPage(request.nextUrl.pathname)) {
+  if (isConnectedRuntimeEnvironment() && isProtectedAdminPage(request.nextUrl.pathname)) {
     const token = request.cookies.get("__Host-rwos_admin_session")?.value;
     if (!token) return NextResponse.redirect(new URL("/calendar", request.url));
     const origin = process.env.INTERNAL_API_ORIGIN;
@@ -39,6 +36,10 @@ export async function middleware(request: NextRequest) {
     response.headers.set("strict-transport-security", "max-age=31536000; includeSubDomains");
   }
   return response;
+}
+
+export function isConnectedRuntimeEnvironment(value = process.env.RWOS_ENV) {
+  return value === "staging" || value === "production";
 }
 
 export const config = { matcher: "/:path*" };
