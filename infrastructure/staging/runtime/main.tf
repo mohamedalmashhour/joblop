@@ -1,5 +1,6 @@
 locals {
-  prefix = "rwos-stg-ca-tor"
+  prefix                       = "rwos-stg-ca-tor"
+  github_browser_e2e_principal = "principalSet://iam.googleapis.com/projects/${var.project_number}/locations/global/workloadIdentityPools/${var.github_wif_pool_id}/attribute.repository/${var.github_repository}"
   services = {
     api              = { cpu = "1", memory = "512Mi", concurrency = 20, image = "api", config = "api" }
     worker-api       = { cpu = "1", memory = "512Mi", concurrency = 20, image = "api", config = "api" }
@@ -57,7 +58,9 @@ locals {
     auth-limiter     = { AUTH_LIMITER_REDIS_URL = "rediss://${google_redis_instance.limiter.host}:${google_redis_instance.limiter.port}" }
     candidate-source = {}
     offer-delivery   = {}
-    qa-reset         = {}
+    qa-reset = {
+      QA_RESET_BROWSER_E2E_SERVICE_ACCOUNT = google_service_account.browser_e2e.email
+    }
   }
 }
 
@@ -177,6 +180,18 @@ resource "google_service_account" "runtime" {
 resource "google_service_account" "migration" {
   account_id   = "sa-rwos-stg-migration"
   display_name = "RWOS staging singleton migration"
+}
+
+resource "google_service_account" "browser_e2e" {
+  account_id   = "sa-rwos-stg-browser-e2e"
+  display_name = "RWOS staging browser E2E"
+  description  = "Keyless GitHub Actions identity restricted to invoking the staging QA Reset service."
+}
+
+resource "google_service_account_iam_member" "github_browser_e2e" {
+  service_account_id = google_service_account.browser_e2e.name
+  role               = "roles/iam.workloadIdentityUser"
+  member             = local.github_browser_e2e_principal
 }
 
 resource "google_secret_manager_secret_iam_member" "migration_database" {
@@ -349,7 +364,6 @@ resource "google_cloud_run_v2_service_iam_member" "api_to_adapters" {
 
 resource "google_cloud_run_v2_service_iam_member" "qa_reset_callers" {
   for_each = var.deploy_runtime_services ? {
-    browser-e2e = "employer"
     ios-e2e     = "worker"
     android-e2e = "worker-api"
     manual-qa   = "admin"
@@ -360,6 +374,15 @@ resource "google_cloud_run_v2_service_iam_member" "qa_reset_callers" {
   name     = google_cloud_run_v2_service.service["qa-reset"].name
   role     = "roles/run.invoker"
   member   = google_service_account.runtime[each.value].member
+}
+
+resource "google_cloud_run_v2_service_iam_member" "qa_reset_browser_e2e" {
+  count    = var.deploy_runtime_services ? 1 : 0
+  project  = var.project_id
+  location = var.region
+  name     = google_cloud_run_v2_service.service["qa-reset"].name
+  role     = "roles/run.invoker"
+  member   = google_service_account.browser_e2e.member
 }
 
 # The staging custom domains terminate at one global external HTTPS load balancer.

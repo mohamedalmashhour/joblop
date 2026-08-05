@@ -1,0 +1,167 @@
+name: Staging Browser E2E
+
+on:
+  workflow_dispatch:
+    inputs:
+      release_sha:
+        description: Exact 40-character main-branch staging release SHA
+        required: true
+        type: string
+      approval_reference:
+        description: Named, dated, single-run owner approval reference
+        required: true
+        type: string
+      reset_manifest_id:
+        description: Current approved synthetic QA-reset manifest ID
+        required: true
+        type: string
+      reset_manifest_checksum:
+        description: Current approved lowercase SHA-256 manifest checksum
+        required: true
+        type: string
+      dry_run_approval_reference:
+        description: Current immutable QA-reset dry-run approval reference
+        required: true
+        type: string
+      prepare_approval_reference:
+        description: Current immutable QA-reset prepare approval reference
+        required: true
+        type: string
+      cleanup_approval_reference:
+        description: Current immutable QA-reset cleanup approval reference
+        required: true
+        type: string
+      confirmation:
+        description: Enter RUN_STAGING_BROWSER_E2E_ONCE
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: rwos-staging-browser-e2e
+  cancel-in-progress: false
+
+env:
+  WIF_PROVIDER: projects/800188428439/locations/global/workloadIdentityPools/rwos-staging-github/providers/github
+  BROWSER_E2E_SERVICE_ACCOUNT: sa-rwos-stg-browser-e2e@resident-workforce-os-staging.iam.gserviceaccount.com
+  QA_RESET_AUDIENCE: https://rwos-stg-qa-reset-7gmjfugnma-pd.a.run.app
+
+jobs:
+  authorize:
+    name: Verify one-run staging authorization
+    runs-on: ubuntu-latest
+    environment: staging
+    outputs:
+      release_sha: ${{ steps.release.outputs.sha }}
+    steps:
+      - name: Reject an invalid authorization envelope
+        env:
+          RELEASE_SHA: ${{ inputs.release_sha }}
+          APPROVAL_REFERENCE: ${{ inputs.approval_reference }}
+          RESET_MANIFEST_ID: ${{ inputs.reset_manifest_id }}
+          RESET_MANIFEST_CHECKSUM: ${{ inputs.reset_manifest_checksum }}
+          DRY_RUN_APPROVAL_REFERENCE: ${{ inputs.dry_run_approval_reference }}
+          PREPARE_APPROVAL_REFERENCE: ${{ inputs.prepare_approval_reference }}
+          CLEANUP_APPROVAL_REFERENCE: ${{ inputs.cleanup_approval_reference }}
+          CONFIRMATION: ${{ inputs.confirmation }}
+        run: |
+          set -euo pipefail
+          [[ "$RELEASE_SHA" =~ ^[a-f0-9]{40}$ ]]
+          [[ "$APPROVAL_REFERENCE" =~ ^RWOS-BROWSER-E2E-[0-9]{4}-[0-9]{2}-[0-9]{2}-[0-9]{3}$ ]]
+          [[ "$RESET_MANIFEST_ID" =~ ^[A-Za-z0-9._:/-]{12,160}$ ]]
+          [[ "$RESET_MANIFEST_CHECKSUM" =~ ^[a-f0-9]{64}$ ]]
+          [[ "$DRY_RUN_APPROVAL_REFERENCE" =~ ^gcp/approvals/[A-Za-z0-9._/-]{8,120}$ ]]
+          [[ "$PREPARE_APPROVAL_REFERENCE" =~ ^gcp/approvals/[A-Za-z0-9._/-]{8,120}$ ]]
+          [[ "$CLEANUP_APPROVAL_REFERENCE" =~ ^gcp/approvals/[A-Za-z0-9._/-]{8,120}$ ]]
+          [[ "$DRY_RUN_APPROVAL_REFERENCE" != "$PREPARE_APPROVAL_REFERENCE" ]]
+          [[ "$DRY_RUN_APPROVAL_REFERENCE" != "$CLEANUP_APPROVAL_REFERENCE" ]]
+          [[ "$PREPARE_APPROVAL_REFERENCE" != "$CLEANUP_APPROVAL_REFERENCE" ]]
+          [[ "$CONFIRMATION" == "RUN_STAGING_BROWSER_E2E_ONCE" ]]
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+        with:
+          ref: main
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Bind execution to the exact main-branch release
+        id: release
+        env:
+          RELEASE_SHA: ${{ inputs.release_sha }}
+        run: |
+          set -euo pipefail
+          git cat-file -e "${RELEASE_SHA}^{commit}"
+          git merge-base --is-ancestor "$RELEASE_SHA" HEAD
+          git checkout --detach "$RELEASE_SHA"
+          test "$(git rev-parse HEAD)" = "$RELEASE_SHA"
+          echo "sha=$RELEASE_SHA" >> "$GITHUB_OUTPUT"
+
+  browser-e2e:
+    name: Keyless synthetic browser E2E
+    needs: authorize
+    runs-on: ubuntu-latest
+    environment: staging
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+        with:
+          ref: ${{ needs.authorize.outputs.release_sha }}
+          persist-credentials: false
+      - uses: pnpm/action-setup@9fd676a19091d4595eefd76e4bd31c97133911f1 # v4.2.0
+        with:
+          version: 10.33.2
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: 20.20.2
+          cache: pnpm
+      - name: Install exact dependencies and browser engines
+        run: |
+          pnpm install --frozen-lockfile
+          pnpm --filter @rwos/database prisma:generate
+          pnpm exec playwright install --with-deps chromium firefox webkit
+      - id: google-auth
+        name: Acquire one short-lived QA Reset identity token
+        uses: google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093 # v3
+        with:
+          workload_identity_provider: ${{ env.WIF_PROVIDER }}
+          service_account: ${{ env.BROWSER_E2E_SERVICE_ACCOUNT }}
+          token_format: id_token
+          id_token_audience: ${{ env.QA_RESET_AUDIENCE }}
+          id_token_include_email: true
+          create_credentials_file: false
+          export_environment_variables: false
+      - name: Run exact-release synthetic browser E2E
+        env:
+          RWOS_RELEASE_SHA: ${{ needs.authorize.outputs.release_sha }}
+          RWOS_E2E_CONFIRMATION: authorized-staging-browser-e2e
+          RWOS_E2E_EMPLOYER_ORIGIN: https://employer.staging.sybnb.app
+          RWOS_E2E_ADMIN_ORIGIN: https://admin.staging.sybnb.app
+          RWOS_E2E_WORKER_ORIGIN: https://worker.staging.sybnb.app
+          RWOS_E2E_EMPLOYER_EMAIL: ${{ secrets.RWOS_E2E_EMPLOYER_EMAIL }}
+          RWOS_E2E_EMPLOYER_PASSWORD: ${{ secrets.RWOS_E2E_EMPLOYER_PASSWORD }}
+          RWOS_E2E_ADMIN_EMAIL: ${{ secrets.RWOS_E2E_ADMIN_EMAIL }}
+          RWOS_E2E_ADMIN_PASSWORD: ${{ secrets.RWOS_E2E_ADMIN_PASSWORD }}
+          RWOS_E2E_WORKER_EMAIL: ${{ secrets.RWOS_E2E_WORKER_EMAIL }}
+          RWOS_E2E_WORKER_PASSWORD: ${{ secrets.RWOS_E2E_WORKER_PASSWORD }}
+          RWOS_E2E_REVOKED_EMAIL: ${{ secrets.RWOS_E2E_REVOKED_EMAIL }}
+          RWOS_E2E_REVOKED_PASSWORD: ${{ secrets.RWOS_E2E_REVOKED_PASSWORD }}
+          RWOS_E2E_RESET_ORIGIN: ${{ env.QA_RESET_AUDIENCE }}
+          RWOS_E2E_RESET_TOKEN: ${{ steps.google-auth.outputs.id_token }}
+          RWOS_E2E_RESET_APP_CREDENTIAL: ${{ secrets.RWOS_E2E_RESET_APP_CREDENTIAL }}
+          RWOS_E2E_RESET_SERVICE_IDENTITY: browser-e2e
+          RWOS_E2E_RESET_OPERATOR_IDENTITY: gcp/operators/browser-e2e-owner-001
+          RWOS_E2E_RESET_PROJECT_ID: gcp/projects/resident-workforce-os-staging
+          RWOS_E2E_RESET_CLUSTER_ID: gcp/cloudsql/rwos-stg-ca-tor-pg
+          RWOS_E2E_RESET_DATABASE_ID: gcp/cloudsql/rwos-stg-ca-tor-pg/rwos_staging
+          RWOS_E2E_RESET_AUTHORITY_ID: gcp/qa-reset/authorities/rwos-staging-001
+          RWOS_E2E_RESET_NAMESPACE: rwos:qa-reset:staging:v1
+          RWOS_E2E_RESET_MANIFEST_ID: ${{ inputs.reset_manifest_id }}
+          RWOS_E2E_RESET_MANIFEST_CHECKSUM: ${{ inputs.reset_manifest_checksum }}
+          RWOS_E2E_RESET_DRY_RUN_APPROVAL_REFERENCE: ${{ inputs.dry_run_approval_reference }}
+          RWOS_E2E_RESET_PREPARE_APPROVAL_REFERENCE: ${{ inputs.prepare_approval_reference }}
+          RWOS_E2E_RESET_CLEANUP_APPROVAL_REFERENCE: ${{ inputs.cleanup_approval_reference }}
+          RWOS_E2E_TENANT_A_ID: aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa
+          RWOS_E2E_TENANT_B_ID: bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb
+        run: pnpm test:e2e:browser

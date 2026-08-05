@@ -6,6 +6,8 @@ deploy_runtime_services             = false
 deploy_monitoring_alerts            = false
 deploy_staging_domains              = false
 deployer_service_account_email      = "sa-rwos-stg-deployer@replace.iam.gserviceaccount.com"
+github_repository                   = "drmmashhour-ux/resident-workforce-os"
+github_wif_pool_id                  = "rwos-staging-github"
 images_published_approval_reference = "PLAN-B-NOT-YET"
 monitoring_notification_channels    = ["replace-with-approved-channel-resource-name"]
 
