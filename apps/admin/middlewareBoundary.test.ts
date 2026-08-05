@@ -1,5 +1,9 @@
 import { describe, expect, it } from "vitest";
-import { hasPlatformAdminAuthorization, isConnectedRuntimeEnvironment } from "./middleware";
+import {
+  hasPlatformAdminAuthorization,
+  isConnectedAdminEntry,
+  isConnectedRuntimeEnvironment
+} from "./middleware";
 
 describe("admin middleware authorization boundary", () => {
   it("uses persisted authenticated boundaries in staging and production only", () => {
@@ -10,6 +14,12 @@ describe("admin middleware authorization boundary", () => {
 
   it("accepts the explicit platform-admin authorization contract", () => {
     expect(hasPlatformAdminAuthorization({ authorized: true })).toBe(true);
+  });
+
+  it("redirects only the connected root entry to sign-in", () => {
+    expect(isConnectedAdminEntry("/")).toBe(true);
+    expect(isConnectedAdminEntry("/calendar")).toBe(false);
+    expect(isConnectedAdminEntry("/finance")).toBe(false);
   });
 
   it.each([

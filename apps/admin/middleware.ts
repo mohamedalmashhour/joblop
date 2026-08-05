@@ -2,6 +2,9 @@ import { NextResponse, type NextRequest } from "next/server";
 import { isProductionAdminRouteAllowed } from "./routePolicy";
 
 export async function middleware(request: NextRequest) {
+  if (isConnectedRuntimeEnvironment() && isConnectedAdminEntry(request.nextUrl.pathname)) {
+    return NextResponse.redirect(new URL("/signin", request.url));
+  }
   if (isConnectedRuntimeEnvironment() && !isProductionAdminRouteAllowed(request.nextUrl.pathname)) {
     return new NextResponse("Not Found", {
       status: 404,
@@ -40,6 +43,10 @@ export async function middleware(request: NextRequest) {
 
 export function isConnectedRuntimeEnvironment(value = process.env.RWOS_ENV) {
   return value === "staging" || value === "production";
+}
+
+export function isConnectedAdminEntry(pathname: string) {
+  return pathname === "/";
 }
 
 export const config = { matcher: "/:path*" };
