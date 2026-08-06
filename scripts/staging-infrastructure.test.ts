@@ -131,6 +131,18 @@ describe("split staging infrastructure packages", () => {
     expect(main).toContain('account_id   = "sa-rwos-stg-migration"');
     expect(main).toContain('secret_id = var.migration_database_secret_name');
     expect(main).toContain('args        = ["--filter", "@rwos/database", "prisma:migrate:deploy"]');
+    expect(main).toContain('resource "google_cloud_run_v2_job" "qa_manifest_supersession"');
+    expect(main).toContain("count               = var.deploy_qa_manifest_supersession_job ? 1 : 0");
+    expect(main).toContain('name                = "rwos-stg-qa-manifest-supersession"');
+    expect(main).toContain('service_account = google_service_account.runtime["qa-reset"].email');
+    expect(main).toContain('image   = var.image_digests["qa-reset"]');
+    expect(main).toContain('QA_RESET_MANIFEST_SUPERSESSION_CONFIRMATION = "supersede-approved-synthetic-staging-manifest"');
+    expect(main).toContain('var.service_environment["qa-reset"]["QA_RESET_MANIFEST_ID"] == "rwos-qa-reset-manifest-v2"');
+    expect(main).toContain('throw new Error("QA_RESET_MANIFEST_SUPERSESSION_CONFLICT")');
+    expect(main).toContain("supersedeApprovedStagingManifest(");
+    expect(main).not.toContain("QA_RESET_MANIFEST_SUPERSESSION_EXPECTED_CHECKSUM=");
+    expect(variables).toContain('variable "deploy_qa_manifest_supersession_job"');
+    expect(variables).toContain("temporary, staging-only QA manifest supersession job");
     expect(main).toContain("max_retries     = 0");
     expect(main).toContain("task_count  = 1");
     expect(main).toContain("parallelism = 1");
