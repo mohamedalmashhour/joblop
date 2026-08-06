@@ -1,0 +1,207 @@
+import { randomUUID } from "node:crypto";
+import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { createPrismaClient } from "@rwos/database";
+import { createFakeIdentityTokenVerifier } from "@rwos/service-auth/testing";
+import type { QaResetPersistencePort } from "./composition";
+import { createQaResetRuntimeComposition } from "./runtimeComposition";
+import { approvedTableForEntity, exactMutationPlanChecksum } from "./mutationPlan";
+import {
+  deriveQaResetIdempotencyDigest,
+  type DurableResetOperation,
+  type DurableResetRequest
+} from "./postgresRepository";
+import { createResetManifest } from "./manifest";
+import { supersedeApprovedStagingManifest } from "./manifestRegistration";
+import { testConfig, testManifest } from "./testFixture";
+
+const databaseUrl = process.env.RWOS_TEST_DATABASE_URL;
+const suite = databaseUrl ? describe : describe.skip;
+const ownershipId = randomUUID();
+
+// Manifest that supersedes the fixture manifest (distinct id => distinct checksum + entity ids).
+const nextManifest = createResetManifest({
+  ...testConfig,
+  manifestId: "rwos-qa-reset-manifest-next"
+});
+
+suite("QA-reset supersession reconciles stranded materializations", () => {
+  let prisma: ReturnType<typeof createPrismaClient>;
+  let runtime: ReturnType<typeof createQaResetRuntimeComposition>;
+  let persistence: QaResetPersistencePort;
+
+  beforeAll(async () => {
+    prisma = createPrismaClient(databaseUrl);
+    runtime = createQaResetRuntimeComposition({
+      config: testConfig,
+      manifest: testManifest,
+      env: { RWOS_ENV: "staging", NODE_ENV: "test", DATABASE_URL: databaseUrl },
+      createClient: () => prisma,
+      identityVerifier: createFakeIdentityTokenVerifier({ identities: {} })
+    });
+    persistence = runtime.postgresFactory(testConfig, testManifest);
+    await seedEnvelope();
+  });
+
+  afterAll(async () => {
+    await cleanup();
+    await runtime.close();
+  });
+
+  it("clears the outgoing manifest's materialized fixture (incl. the deferred worker_offer FK)", async () => {
+    // Materialize the full 24-entity fixture, leaving owned records in `prepared`.
+    const prepared = await persistence.durableRepository.execute(
+      request("prepare", "c".repeat(64))
+    );
+    expect(prepared).toMatchObject({ status: "succeeded", idempotent: false });
+    expect(await countDeletableResidue()).toBeGreaterThan(0);
+
+    // Supersede the fixture manifest -> next manifest. The fixed reconcile must clear the
+    // outgoing manifest's materialized rows in FK-safe order without violating any constraint.
+    process.env.RWOS_ENV = "staging";
+    process.env.QA_RESET_MANIFEST_SUPERSESSION_CONFIRMATION =
+      "supersede-approved-synthetic-staging-manifest";
+    const result = await supersedeApprovedStagingManifest(
+      prisma,
+      nextManifest,
+      testConfig.organizationOwnerAccessRoleId,
+      testManifest.checksum
+    );
+
+    expect(result).toMatchObject({ superseded: true });
+    expect(result.reconciledForeignRecords).toBeGreaterThan(0);
+
+    // Every deletable synthetic entity from the outgoing manifest is gone.
+    expect(await countDeletableResidue()).toBe(0);
+    // membership_access_roles has a composite PK (no id) — verify the table is empty separately.
+    const macRows = await prisma.$queryRawUnsafe<Array<{ count: bigint }>>(
+      `SELECT count(*)::bigint AS count FROM membership_access_roles`
+    );
+    expect(Number(macRows[0]!.count)).toBe(0);
+
+    // The outgoing manifest's durable owned records are marked cleaned; it is retired.
+    const stillMaterialized = await prisma.$queryRawUnsafe<Array<{ count: bigint }>>(
+      `SELECT count(*)::bigint AS count FROM qa_reset_owned_records
+        WHERE manifest_id = $1 AND lifecycle_status IN ('prepared', 'verified')`,
+      ownershipId
+    );
+    expect(Number(stillMaterialized[0]!.count)).toBe(0);
+
+    const active = await prisma.$queryRawUnsafe<Array<{ manifest_reference: string }>>(
+      `SELECT manifest_reference FROM qa_reset_manifest_ownership
+        WHERE namespace = $1 AND status IN ('approved', 'active')`,
+      testManifest.namespace
+    );
+    expect(active.map((row) => row.manifest_reference)).toEqual([nextManifest.manifestId]);
+  }, 60_000);
+
+  async function countDeletableResidue() {
+    // membership_access_role has a composite PK (no id column); it is checked separately.
+    const retained = new Set([
+      "access_role_definition",
+      "audit_actor_reference",
+      "audit_event",
+      "membership_access_role"
+    ]);
+    let count = 0;
+    for (const record of testManifest.records.filter(
+      ({ entityType }) => !retained.has(entityType)
+    )) {
+      const rows = await prisma.$queryRawUnsafe<Array<{ count: bigint }>>(
+        `SELECT count(*)::bigint AS count FROM ${approvedTableForEntity(record.entityType)} WHERE id = $1`,
+        record.recordId
+      );
+      count += Number(rows[0]!.count);
+    }
+    return count;
+  }
+
+  async function seedEnvelope() {
+    await prisma.$executeRawUnsafe(
+      `INSERT INTO access_role_definitions (id, key, scope, status, is_system, created_at, updated_at)
+       VALUES ($1, 'ORGANIZATION_OWNER', 'organization', 'active', true, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)`,
+      testConfig.organizationOwnerAccessRoleId
+    );
+    await prisma.$executeRawUnsafe(
+      `INSERT INTO qa_reset_manifest_ownership
+         (id, manifest_reference, manifest_checksum, namespace, environment, project_id,
+          cluster_id, database_id, authority_id, release_sha, status, approved_at, expires_at,
+          retention_until, approval_reference, retention_owner_reference,
+          created_by_caller_alias, created_by_principal_digest, updated_at)
+       VALUES ($1, $2, $3, $4, 'staging', $5, $6, $7, $8, $9, 'active',
+               CURRENT_TIMESTAMP, $10, $11, $12, $13, 'local-test', $14, CURRENT_TIMESTAMP)`,
+      ownershipId,
+      testManifest.manifestId,
+      testManifest.checksum,
+      testManifest.namespace,
+      testManifest.projectId,
+      testManifest.clusterId,
+      testManifest.databaseId,
+      testManifest.authorityId,
+      testManifest.releaseSha,
+      new Date(testManifest.expiresAt),
+      new Date(testManifest.retentionUntil),
+      testManifest.approvalReferences.prepare,
+      "local-retention",
+      "a".repeat(64)
+    );
+    for (const [index, tenantId] of testManifest.tenantIds.entries()) {
+      await prisma.$executeRawUnsafe(
+        `INSERT INTO qa_reset_manifest_tenants (id, manifest_id, tenant_id, tenant_alias)
+         VALUES ($1, $2, $3, $4)`,
+        randomUUID(),
+        ownershipId,
+        tenantId,
+        index === 0 ? "tenant-a" : "tenant-b"
+      );
+    }
+    for (const record of testManifest.records) {
+      await prisma.$executeRawUnsafe(
+        `INSERT INTO qa_reset_owned_records
+           (id, manifest_id, tenant_id, namespace, entity_type, manifest_record_key,
+            target_record_id, lifecycle_status, updated_at)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, 'declared', CURRENT_TIMESTAMP)`,
+        randomUUID(),
+        ownershipId,
+        record.tenantId,
+        record.namespace,
+        record.entityType,
+        record.manifestRecordKey,
+        record.recordId
+      );
+    }
+  }
+
+  async function cleanup() {
+    for (const table of [
+      "qa_reset_control_events",
+      "qa_reset_control_runs",
+      "qa_reset_owned_records",
+      "qa_reset_manifest_tenants",
+      "qa_reset_manifest_ownership",
+      "access_role_definitions"
+    ]) {
+      await prisma.$executeRawUnsafe(`DELETE FROM ${table}`);
+    }
+  }
+
+  function request(operation: DurableResetOperation, planChecksum: string): DurableResetRequest {
+    const unsigned: Omit<DurableResetRequest, "idempotencyDigest"> = {
+      operation,
+      scope: "browser",
+      manifest: testManifest,
+      tenantIds: testManifest.tenantIds,
+      callerAlias: "browser-e2e",
+      callerPrincipalDigest: "b".repeat(64),
+      approvalReference: testManifest.approvalReferences[operation],
+      correlationId: `supersession-reconcile-${operation}`,
+      planChecksum,
+      mutationPlanChecksum: exactMutationPlanChecksum(
+        testManifest,
+        operation,
+        testManifest.tenantIds
+      ),
+      retentionUntil: new Date(testManifest.retentionUntil)
+    };
+    return { ...unsigned, idempotencyDigest: deriveQaResetIdempotencyDigest(unsigned) };
+  }
+});

@@ -141,6 +141,17 @@ async function reconcileForeignMaterializedRecords(
     idsByEntity.set(entityType, ids);
   }
 
+  // Break the only deferred/circular FK in the graph (worker_offers.current_terms_version_id ->
+  // worker_offer_terms_versions.id) before deleting either, mirroring the cleanup mutator. Without
+  // this, deleting worker_offer_terms_versions violates worker_offers_current_terms_version_id_fkey.
+  const workerOfferIds = idsByEntity.get("worker_offer");
+  if (workerOfferIds && workerOfferIds.length > 0) {
+    await transaction.$executeRawUnsafe(
+      `UPDATE worker_offers SET current_terms_version_id = NULL WHERE id = ANY($1::uuid[])`,
+      workerOfferIds
+    );
+  }
+
   for (const entityType of cleanupOrder) {
     const ids = idsByEntity.get(entityType);
     if (!ids || ids.length === 0) continue;
