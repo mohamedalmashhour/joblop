@@ -89,6 +89,12 @@ variable "deploy_migration_job" {
   description = "Fail-closed gate: create the singleton migration job only after its database secret version is ready."
 }
 
+variable "deploy_qa_manifest_supersession_job" {
+  type        = bool
+  default     = false
+  description = "Fail-closed gate for the temporary, staging-only QA manifest supersession job. The job is created only for a separately approved one-time execution and is removed afterward."
+}
+
 variable "migration_database_secret_name" {
   type    = string
   default = "rwos-staging-migration-database-url"

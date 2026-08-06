@@ -254,6 +254,112 @@ resource "google_cloud_run_v2_job" "migration" {
   ]
 }
 
+resource "google_cloud_run_v2_job" "qa_manifest_supersession" {
+  count               = var.deploy_qa_manifest_supersession_job ? 1 : 0
+  name                = "rwos-stg-qa-manifest-supersession"
+  location            = var.region
+  deletion_protection = false
+
+  template {
+    task_count  = 1
+    parallelism = 1
+    template {
+      service_account = google_service_account.runtime["qa-reset"].email
+      max_retries     = 0
+      timeout         = "300s"
+      containers {
+        image   = var.image_digests["qa-reset"]
+        command = ["node"]
+        args = [
+          "--import",
+          "tsx",
+          "--input-type=module",
+          "--eval",
+          <<-EOT
+            const [{ createPrismaClient }, { readQaResetConfig }, { createResetManifest }, { supersedeApprovedStagingManifest }] = await Promise.all([
+              import("@rwos/database"),
+              import("./apps/qa-reset/src/config.ts"),
+              import("./apps/qa-reset/src/manifest.ts"),
+              import("./apps/qa-reset/src/manifestRegistration.ts")
+            ]);
+            const config = readQaResetConfig();
+            const manifest = createResetManifest(config);
+            if (manifest.checksum !== config.manifestChecksum) throw new Error("QA_RESET_MANIFEST_CHECKSUM_MISMATCH");
+            const client = createPrismaClient(process.env.DATABASE_URL);
+            try {
+              const active = await client.$queryRawUnsafe(
+                "SELECT manifest_checksum FROM qa_reset_manifest_ownership WHERE namespace = $1 AND status IN ('approved', 'active')",
+                config.namespace
+              );
+              if (active.length !== 1) throw new Error("QA_RESET_MANIFEST_SUPERSESSION_CONFLICT");
+              const result = await supersedeApprovedStagingManifest(
+                client,
+                manifest,
+                config.organizationOwnerAccessRoleId,
+                active[0].manifest_checksum
+              );
+              process.stdout.write("QA_RESET_MANIFEST_SUPERSEDED records=" + manifest.records.length + " idempotent=" + String(result.idempotent) + "\n");
+            } finally {
+              await client.$disconnect();
+            }
+          EOT
+        ]
+        working_dir = "/workspace"
+
+        dynamic "env" {
+          for_each = merge(
+            var.service_environment["qa-reset"],
+            local.derived_environment["qa-reset"],
+            { QA_RESET_MANIFEST_SUPERSESSION_CONFIRMATION = "supersede-approved-synthetic-staging-manifest" }
+          )
+          content {
+            name  = env.key
+            value = env.value
+          }
+        }
+        dynamic "env" {
+          for_each = var.service_secret_environment["qa-reset"]
+          content {
+            name = env.key
+            value_source {
+              secret_key_ref {
+                secret  = google_secret_manager_secret.runtime[env.value].secret_id
+                version = "latest"
+              }
+            }
+          }
+        }
+        resources {
+          limits = { cpu = "1", memory = "512Mi" }
+        }
+      }
+      vpc_access {
+        network_interfaces {
+          network    = google_compute_network.staging.name
+          subnetwork = google_compute_subnetwork.cloud_run.name
+        }
+        egress = "PRIVATE_RANGES_ONLY"
+      }
+    }
+  }
+
+  lifecycle {
+    precondition {
+      condition = (
+        var.deploy_runtime_services &&
+        var.service_environment["qa-reset"]["RWOS_ENV"] == "staging" &&
+        var.service_environment["qa-reset"]["QA_RESET_MANIFEST_ID"] == "rwos-qa-reset-manifest-v2"
+      )
+      error_message = "The temporary supersession job requires the deployed staging runtime and the reviewed v2 manifest."
+    }
+  }
+
+  depends_on = [
+    google_secret_manager_secret_iam_member.runtime,
+    google_sql_database.application,
+  ]
+}
+
 resource "google_secret_manager_secret_iam_member" "runtime" {
   for_each  = local.service_secret_pairs
   secret_id = google_secret_manager_secret.runtime[each.value.secret_name].id
