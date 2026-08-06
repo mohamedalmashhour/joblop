@@ -1,6 +1,7 @@
 import { createHash } from "node:crypto";
 import type { PrismaClient } from "@rwos/database";
-import type { ResetManifest } from "./manifest";
+import type { OwnedEntityType, ResetManifest } from "./manifest";
+import { approvedCleanupStrategyForEntity, approvedTableForEntity } from "./mutationPlan";
 
 type RegistrationClient = Pick<PrismaClient, "$transaction">;
 type RegistrationTransaction = Parameters<Parameters<RegistrationClient["$transaction"]>[0]>[0];
@@ -87,12 +88,94 @@ export async function supersedeApprovedStagingManifest(
     );
     if (retired !== 1) throw new Error("QA_RESET_MANIFEST_SUPERSESSION_CONFLICT");
     const inserted = await insertManifest(transaction, manifest);
+    // Self-heal: a superseded manifest must not leave its (or any earlier manifest's) synthetic
+    // entities materialized in the namespace. Otherwise inspect() reports them as
+    // foreignIdsInNamespace and every later dry-run/prepare fail-closes with a persistence
+    // conflict. Reconcile clears all non-current materialized records via the approved cleanup
+    // strategy, in FK-safe cleanup order.
+    const reconciledForeignRecords = await reconcileForeignMaterializedRecords(
+      transaction,
+      manifest.namespace,
+      inserted.ownershipId,
+      manifest.cleanupOrder
+    );
     return {
       ...inserted,
       superseded: true as const,
-      previousOwnershipId: active[0].id
+      previousOwnershipId: active[0].id,
+      reconciledForeignRecords
     };
   });
+}
+
+// Removes every synthetic entity materialized by a manifest other than `keepOwnershipId` and marks
+// those durable owned-record rows `cleaned`. Read-committed and executed inside the caller's
+// transaction. Deletes only entities whose approved cleanup strategy is `delete_exact`; reference
+// and evidence rows are preserved. `membership_access_roles` has a composite PK (no `id`), so it is
+// removed via its owning membership, which is itself being cleaned in the same pass.
+async function reconcileForeignMaterializedRecords(
+  transaction: RegistrationTransaction,
+  namespace: string,
+  keepOwnershipId: string,
+  cleanupOrder: readonly OwnedEntityType[]
+): Promise<number> {
+  const foreign = await transaction.$queryRawUnsafe<
+    Array<{ entity_type: string; target_record_id: string }>
+  >(
+    `SELECT entity_type::text AS entity_type, target_record_id::text AS target_record_id
+       FROM qa_reset_owned_records
+      WHERE namespace = $1
+        AND manifest_id <> $2::uuid
+        AND lifecycle_status IN ('prepared', 'verified')
+      FOR UPDATE`,
+    namespace,
+    keepOwnershipId
+  );
+  if (foreign.length === 0) return 0;
+
+  const idsByEntity = new Map<OwnedEntityType, string[]>();
+  for (const row of foreign) {
+    const entityType = row.entity_type as OwnedEntityType;
+    const ids = idsByEntity.get(entityType) ?? [];
+    ids.push(row.target_record_id);
+    idsByEntity.set(entityType, ids);
+  }
+
+  for (const entityType of cleanupOrder) {
+    const ids = idsByEntity.get(entityType);
+    if (!ids || ids.length === 0) continue;
+    if (approvedCleanupStrategyForEntity(entityType) !== "delete_exact") continue;
+    if (entityType === "membership_access_role") {
+      await transaction.$executeRawUnsafe(
+        `DELETE FROM membership_access_roles
+          WHERE membership_id IN (
+            SELECT target_record_id::uuid
+              FROM qa_reset_owned_records
+             WHERE namespace = $1
+               AND manifest_id <> $2::uuid
+               AND entity_type = 'membership'
+               AND lifecycle_status IN ('prepared', 'verified'))`,
+        namespace,
+        keepOwnershipId
+      );
+      continue;
+    }
+    await transaction.$executeRawUnsafe(
+      `DELETE FROM ${approvedTableForEntity(entityType)} WHERE id = ANY($1::uuid[])`,
+      ids
+    );
+  }
+
+  const cleaned = await transaction.$executeRawUnsafe(
+    `UPDATE qa_reset_owned_records
+        SET lifecycle_status = 'cleaned', cleaned_at = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP
+      WHERE namespace = $1
+        AND manifest_id <> $2::uuid
+        AND lifecycle_status IN ('prepared', 'verified')`,
+    namespace,
+    keepOwnershipId
+  );
+  return Number(cleaned);
 }
 
 const terminalRunStatuses = new Set(["succeeded", "failed", "blocked", "cleanup_completed"]);

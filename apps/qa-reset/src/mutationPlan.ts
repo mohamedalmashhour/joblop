@@ -108,6 +108,12 @@ export function approvedTableForEntity(entityType: OwnedEntityType) {
   return approvedMutationTargets[entityType].table;
 }
 
+export function approvedCleanupStrategyForEntity(
+  entityType: OwnedEntityType
+): ApprovedMutationTarget["cleanup"] {
+  return approvedMutationTargets[entityType].cleanup;
+}
+
 export function approvedIdentityColumnsForEntity(entityType: OwnedEntityType): readonly string[] {
   return entityType === "membership_access_role"
     ? ["membership_id", "access_role_definition_id"]

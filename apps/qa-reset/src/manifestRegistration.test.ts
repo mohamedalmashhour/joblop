@@ -63,6 +63,7 @@ describe("staging QA manifest registration", () => {
           status: "active"
         }
       ])
+      .mockResolvedValueOnce([])
       .mockResolvedValueOnce([]);
     const execute = vi.fn().mockResolvedValue(1);
     const transaction = vi.fn(async (operation) =>
@@ -111,7 +112,8 @@ describe("staging QA manifest registration", () => {
         { status: "cleanup_completed", completed_at: "2026-08-05T01:00:00Z" },
         { status: "failed", completed_at: new Date("2026-08-05T02:00:00Z") },
         { status: "blocked", completed_at: new Date("2026-08-05T03:00:00Z") }
-      ]);
+      ])
+      .mockResolvedValueOnce([]);
     const execute = vi.fn().mockResolvedValue(1);
     const transaction = vi.fn(async (operation) =>
       operation({
@@ -177,5 +179,60 @@ describe("staging QA manifest registration", () => {
       )
     ).rejects.toThrow("QA_RESET_MANIFEST_SUPERSESSION_RUNS_NOT_TERMINAL");
     expect(execute).not.toHaveBeenCalled();
+  });
+
+  it("reconciles foreign materialized records left by an earlier manifest during supersession", async () => {
+    process.env.RWOS_ENV = "staging";
+    process.env.QA_RESET_MANIFEST_SUPERSESSION_CONFIRMATION =
+      "supersede-approved-synthetic-staging-manifest";
+    const previousChecksum = "f".repeat(64);
+    const replacement = { ...testManifest, manifestId: "rwos-qa-reset-manifest-v2" };
+    const query = vi
+      .fn()
+      .mockResolvedValueOnce([{ locked: "1" }])
+      .mockResolvedValueOnce([{ id: testConfig.organizationOwnerAccessRoleId }])
+      .mockResolvedValueOnce([
+        {
+          id: "00000000-0000-4000-8000-000000000900",
+          manifest_reference: "rwos-qa-reset-manifest-v1",
+          manifest_checksum: previousChecksum,
+          release_sha: "0".repeat(40),
+          status: "active"
+        }
+      ])
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([
+        { entity_type: "synthetic_user", target_record_id: "00000000-0000-4000-8000-0000000000a1" },
+        {
+          entity_type: "membership_access_role",
+          target_record_id: "00000000-0000-4000-8000-0000000000a2"
+        }
+      ]);
+    const execute = vi.fn().mockResolvedValue(1);
+    const transaction = vi.fn(async (operation) =>
+      operation({ $queryRawUnsafe: query, $executeRawUnsafe: execute })
+    );
+
+    const result = await supersedeApprovedStagingManifest(
+      { $transaction: transaction } as never,
+      replacement,
+      testConfig.organizationOwnerAccessRoleId,
+      previousChecksum
+    );
+
+    expect(result).toMatchObject({ superseded: true, reconciledForeignRecords: 1 });
+    const statements = execute.mock.calls.map((call) => String(call[0]));
+    expect(statements.some((sql) => sql.includes("DELETE FROM users WHERE id = ANY"))).toBe(true);
+    // composite-PK table removed via its owning membership, not a synthetic target id
+    expect(
+      statements.some(
+        (sql) => sql.includes("DELETE FROM membership_access_roles") && sql.includes("membership_id")
+      )
+    ).toBe(true);
+    expect(
+      statements.some(
+        (sql) => sql.includes("UPDATE qa_reset_owned_records") && sql.includes("'cleaned'")
+      )
+    ).toBe(true);
   });
 });
