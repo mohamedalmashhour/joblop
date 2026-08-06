@@ -41,7 +41,7 @@ describe("staging QA manifest registration", () => {
     expect(transaction).not.toHaveBeenCalled();
   });
 
-  it("atomically retires one unused active manifest before registering a different manifest", async () => {
+  it("atomically retires one active manifest with no run history before registering a replacement", async () => {
     process.env.RWOS_ENV = "staging";
     process.env.QA_RESET_MANIFEST_SUPERSESSION_CONFIRMATION =
       "supersede-approved-synthetic-staging-manifest";
@@ -63,7 +63,7 @@ describe("staging QA manifest registration", () => {
           status: "active"
         }
       ])
-      .mockResolvedValueOnce([{ count: 0n }]);
+      .mockResolvedValueOnce([]);
     const execute = vi.fn().mockResolvedValue(1);
     const transaction = vi.fn(async (operation) =>
       operation({
@@ -87,7 +87,61 @@ describe("staging QA manifest registration", () => {
     );
   });
 
-  it("fails closed without retiring when the previous manifest has any durable run", async () => {
+  it("preserves terminal run history while atomically registering a replacement", async () => {
+    process.env.RWOS_ENV = "staging";
+    process.env.QA_RESET_MANIFEST_SUPERSESSION_CONFIRMATION =
+      "supersede-approved-synthetic-staging-manifest";
+    const previousChecksum = "f".repeat(64);
+    const replacement = { ...testManifest, manifestId: "rwos-qa-reset-manifest-v2" };
+    const query = vi
+      .fn()
+      .mockResolvedValueOnce([{ locked: "1" }])
+      .mockResolvedValueOnce([{ id: testConfig.organizationOwnerAccessRoleId }])
+      .mockResolvedValueOnce([
+        {
+          id: "00000000-0000-4000-8000-000000000900",
+          manifest_reference: "rwos-qa-reset-manifest-v1",
+          manifest_checksum: previousChecksum,
+          release_sha: "0".repeat(40),
+          status: "active"
+        }
+      ])
+      .mockResolvedValueOnce([
+        { status: "succeeded", completed_at: new Date("2026-08-05T00:00:00Z") },
+        { status: "cleanup_completed", completed_at: "2026-08-05T01:00:00Z" },
+        { status: "failed", completed_at: new Date("2026-08-05T02:00:00Z") },
+        { status: "blocked", completed_at: new Date("2026-08-05T03:00:00Z") }
+      ]);
+    const execute = vi.fn().mockResolvedValue(1);
+    const transaction = vi.fn(async (operation) =>
+      operation({
+        $queryRawUnsafe: query,
+        $executeRawUnsafe: execute
+      })
+    );
+
+    await expect(
+      supersedeApprovedStagingManifest(
+        { $transaction: transaction } as never,
+        replacement,
+        testConfig.organizationOwnerAccessRoleId,
+        previousChecksum
+      )
+    ).resolves.toMatchObject({ registered: true, superseded: true });
+    expect(query.mock.calls[3]?.[0]).toContain("FOR UPDATE");
+    expect(execute.mock.calls[0]?.[0]).toContain("SET status = 'retired'");
+    expect(execute).toHaveBeenCalledTimes(
+      1 + 1 + replacement.tenantIds.length + replacement.records.length
+    );
+  });
+
+  it.each([
+    ["planned", null],
+    ["running", null],
+    ["unknown", new Date("2026-08-05T00:00:00Z")],
+    ["succeeded", null],
+    ["future_status", new Date("2026-08-05T00:00:00Z")]
+  ])("fails closed without retiring for nonterminal run status %s", async (status, completedAt) => {
     process.env.RWOS_ENV = "staging";
     process.env.QA_RESET_MANIFEST_SUPERSESSION_CONFIRMATION =
       "supersede-approved-synthetic-staging-manifest";
@@ -105,7 +159,7 @@ describe("staging QA manifest registration", () => {
           status: "active"
         }
       ])
-      .mockResolvedValueOnce([{ count: 1n }]);
+      .mockResolvedValueOnce([{ status, completed_at: completedAt }]);
     const execute = vi.fn();
     const transaction = vi.fn(async (operation) =>
       operation({
@@ -121,7 +175,7 @@ describe("staging QA manifest registration", () => {
         testConfig.organizationOwnerAccessRoleId,
         previousChecksum
       )
-    ).rejects.toThrow("QA_RESET_MANIFEST_SUPERSESSION_RUNS_PRESENT");
+    ).rejects.toThrow("QA_RESET_MANIFEST_SUPERSESSION_RUNS_NOT_TERMINAL");
     expect(execute).not.toHaveBeenCalled();
   });
 });

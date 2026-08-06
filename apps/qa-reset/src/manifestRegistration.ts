@@ -66,12 +66,18 @@ export async function supersedeApprovedStagingManifest(
     ) {
       throw new Error("QA_RESET_MANIFEST_SUPERSESSION_CONFLICT");
     }
-    const runs = await transaction.$queryRawUnsafe<Array<{ count: bigint }>>(
-      `SELECT count(*)::bigint AS count FROM qa_reset_control_runs WHERE manifest_id = $1::uuid`,
+    const runs = await transaction.$queryRawUnsafe<
+      Array<{ status: string; completed_at: Date | string | null }>
+    >(
+      `SELECT status::text, completed_at
+         FROM qa_reset_control_runs
+        WHERE manifest_id = $1::uuid
+        ORDER BY created_at, id
+        FOR UPDATE`,
       active[0].id
     );
-    if (Number(runs[0]?.count ?? -1) !== 0) {
-      throw new Error("QA_RESET_MANIFEST_SUPERSESSION_RUNS_PRESENT");
+    if (!runs.every(isConclusivelyTerminalRun)) {
+      throw new Error("QA_RESET_MANIFEST_SUPERSESSION_RUNS_NOT_TERMINAL");
     }
     const retired = await transaction.$executeRawUnsafe(
       `UPDATE qa_reset_manifest_ownership
@@ -87,6 +93,12 @@ export async function supersedeApprovedStagingManifest(
       previousOwnershipId: active[0].id
     };
   });
+}
+
+const terminalRunStatuses = new Set(["succeeded", "failed", "blocked", "cleanup_completed"]);
+
+function isConclusivelyTerminalRun(run: { status: string; completed_at: Date | string | null }) {
+  return terminalRunStatuses.has(run.status) && run.completed_at !== null;
 }
 
 type ManifestRow = {
