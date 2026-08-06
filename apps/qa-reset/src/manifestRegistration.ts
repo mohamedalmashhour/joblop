@@ -152,6 +152,25 @@ async function reconcileForeignMaterializedRecords(
     );
   }
 
+  // Login/auth flows create rows in these RESTRICT-FK tables for the synthetic users that the
+  // manifest does not track (extra identities, sessions, verification codes, reset tokens). Clear
+  // them all by user reference before deleting the users, otherwise the untracked rows block the
+  // users delete with their own foreign-key constraints.
+  const syntheticUserIds = idsByEntity.get("synthetic_user");
+  if (syntheticUserIds && syntheticUserIds.length > 0) {
+    for (const table of [
+      "user_identities",
+      "sessions",
+      "email_verification_codes",
+      "password_reset_tokens"
+    ]) {
+      await transaction.$executeRawUnsafe(
+        `DELETE FROM ${table} WHERE user_id = ANY($1::uuid[])`,
+        syntheticUserIds
+      );
+    }
+  }
+
   for (const entityType of cleanupOrder) {
     const ids = idsByEntity.get(entityType);
     if (!ids || ids.length === 0) continue;

@@ -55,6 +55,27 @@ suite("QA-reset supersession reconciles stranded materializations", () => {
     expect(prepared).toMatchObject({ status: "succeeded", idempotent: false });
     expect(await countDeletableResidue()).toBeGreaterThan(0);
 
+    // Simulate the login residue browser-E2E leaves behind: untracked auth rows referencing the
+    // synthetic users (extra identities + sessions) that the manifest does not know about. This is
+    // the exact case that broke the reconcile in staging (users -> user_identities RESTRICT FK).
+    const syntheticUserIds = testManifest.records
+      .filter((r) => r.entityType === "synthetic_user")
+      .map((r) => r.recordId);
+    for (const [i, userId] of syntheticUserIds.entries()) {
+      await prisma.$executeRawUnsafe(
+        `INSERT INTO user_identities (id, user_id, provider, provider_subject, updated_at)
+         VALUES (gen_random_uuid(), $1::uuid, 'dev_test', $2, CURRENT_TIMESTAMP)`,
+        userId,
+        `orphan-identity-${i}`
+      );
+      await prisma.$executeRawUnsafe(
+        `INSERT INTO sessions (id, user_id, session_hash, expires_at)
+         VALUES (gen_random_uuid(), $1::uuid, $2, CURRENT_TIMESTAMP + interval '1 day')`,
+        userId,
+        `orphan-session-${i}`
+      );
+    }
+
     // Supersede the fixture manifest -> next manifest. The fixed reconcile must clear the
     // outgoing manifest's materialized rows in FK-safe order without violating any constraint.
     process.env.RWOS_ENV = "staging";
@@ -77,6 +98,15 @@ suite("QA-reset supersession reconciles stranded materializations", () => {
       `SELECT count(*)::bigint AS count FROM membership_access_roles`
     );
     expect(Number(macRows[0]!.count)).toBe(0);
+
+    // The untracked login residue (extra identities + sessions) for the synthetic users is cleared.
+    for (const table of ["user_identities", "sessions"]) {
+      const rows = await prisma.$queryRawUnsafe<Array<{ count: bigint }>>(
+        `SELECT count(*)::bigint AS count FROM ${table} WHERE user_id = ANY($1::uuid[])`,
+        syntheticUserIds
+      );
+      expect(Number(rows[0]!.count)).toBe(0);
+    }
 
     // The outgoing manifest's durable owned records are marked cleaned; it is retired.
     const stillMaterialized = await prisma.$queryRawUnsafe<Array<{ count: bigint }>>(
