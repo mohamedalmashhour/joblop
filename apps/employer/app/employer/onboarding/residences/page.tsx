@@ -1,10 +1,10 @@
 import { EmployerShell, WorkflowRoutes } from "../../EmployerShell";
 import {
   residenceBoundaries,
-  residenceExamples,
   residenceLifecycle
 } from "../../employerJourneyContent";
 import { styles } from "../../employerStyles";
+import { EmployerResidencesPanel } from "./EmployerResidencesPanel";
 
 export default function ResidencesPage() {
   return (
@@ -22,18 +22,9 @@ export default function ResidencesPage() {
       <section style={styles.section}>
         <div style={styles.sectionHeader}>
           <p style={styles.eyebrowDark}>Residence records</p>
-          <h2 style={styles.sectionTitle}>Development fixtures are labelled and non-authoritative.</h2>
+          <h2 style={styles.sectionTitle}>Your organization&rsquo;s authoritative residences.</h2>
         </div>
-        <div style={styles.cardGrid}>
-          {residenceExamples.map((residence) => (
-            <article key={residence.name} style={styles.card}>
-              <h3 style={styles.cardTitle}>{residence.name}</h3>
-              <p style={styles.cardText}>Operational state: {residence.state}</p>
-              <p style={styles.cardText}>Visibility: {residence.visibility}</p>
-              <p style={styles.cardText}>Next step: {residence.nextStep}</p>
-            </article>
-          ))}
-        </div>
+        <EmployerResidencesPanel />
       </section>
 
       <section style={styles.whiteSection}>
