@@ -9,6 +9,7 @@ import {
   parseClientCalendarDto,
   parseEmployerAssignmentList,
   parseEmployerAttendanceList,
+  parseEmployerTimesheetList,
   parseWorkerCalendarDto
 } from "./authenticatedCalendar";
 
@@ -284,6 +285,64 @@ describe("authenticated calendar DTO and state boundaries", () => {
     expect(() =>
       parseEmployerAttendanceList({
         attendanceRecords: [{ id: "attendance-1", status: "checked_out", version: -1 }]
+      })
+    ).toThrow(CalendarDtoError);
+  });
+
+  it("parses org-scoped timesheets, allows nullable totals, and drops reviewer identity", () => {
+    const timesheets = parseEmployerTimesheetList({
+      timesheets: [
+        {
+          id: "timesheet-1",
+          assignmentId: "assignment-1",
+          status: "employer_review",
+          scheduledStartAt: "2026-08-10T22:00:00.000Z",
+          scheduledEndAt: "2026-08-11T06:00:00.000Z",
+          actualCheckInAt: "2026-08-10T22:03:00.000Z",
+          actualCheckOutAt: "2026-08-11T06:01:00.000Z",
+          timezone: "America/Toronto",
+          payableMinutes: 480,
+          billableMinutes: null,
+          breakMinutes: 30,
+          excludedMinutes: 0,
+          exceptionSummary: null,
+          workerReviewStatus: "approved",
+          employerReviewStatus: "not_started",
+          platformReviewStatus: "not_started",
+          employerReviewedAt: null,
+          approvedAt: null,
+          lockedAt: null,
+          rejectedAt: null,
+          cancelledAt: null,
+          version: 2,
+          updatedAt: "2026-08-06T12:00:00.000Z",
+          // sensitive fields the serializer also spreads — must be dropped by the whitelist
+          workerIdentityId: "worker-secret",
+          employerReviewedByUserId: "user-secret",
+          correctionReason: "internal note",
+          premiumCandidateMinutes: 15
+        }
+      ]
+    });
+    expect(timesheets).toHaveLength(1);
+    const [first] = timesheets;
+    if (!first) throw new Error("expected one timesheet");
+    expect(first.timesheetId).toBe("timesheet-1");
+    expect(first.payableMinutes).toBe(480);
+    expect(first.billableMinutes).toBeNull();
+    expect(first.visibility).toBe("employer_authorized_timesheet");
+    const keys = Object.keys(first);
+    expect(keys).not.toContain("workerIdentityId");
+    expect(keys).not.toContain("employerReviewedByUserId");
+    expect(keys).not.toContain("correctionReason");
+    expect(keys).not.toContain("premiumCandidateMinutes");
+  });
+
+  it("rejects a non-array timesheet envelope and malformed timesheet records", () => {
+    expect(() => parseEmployerTimesheetList({ timesheets: null })).toThrow(CalendarDtoError);
+    expect(() =>
+      parseEmployerTimesheetList({
+        timesheets: [{ id: "timesheet-1", status: "draft", breakMinutes: -1 }]
       })
     ).toThrow(CalendarDtoError);
   });
