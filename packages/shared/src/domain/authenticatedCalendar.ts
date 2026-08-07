@@ -167,6 +167,171 @@ export function parseAdminCalendarList(input: unknown) {
   return parseList(input, parseAdminCalendarDto);
 }
 
+// Employer-authorized assignment reference (GET /organizations/:id/assignments →
+// serializeEmployerAssignment). A persisted, org-scoped read — never a fixture.
+export type EmployerAssignmentDto = Readonly<{
+  audience: "employer";
+  assignmentId: string;
+  status: string;
+  title: string | null;
+  roleSummary: string | null;
+  worksiteSummary: string | null;
+  departmentSummary: string | null;
+  startAt: string;
+  endAt: string;
+  timezone: string;
+  attendanceBoundary: string | null;
+  versionToken: number;
+  updatedAt: string;
+  visibility: "employer_authorized_assignment";
+}>;
+
+export function parseEmployerAssignmentList(input: unknown): readonly EmployerAssignmentDto[] {
+  const record = asRecord(input);
+  if (!Array.isArray(record.assignments)) throw new CalendarDtoError();
+  return record.assignments.map(parseEmployerAssignmentDto);
+}
+
+function parseEmployerAssignmentDto(input: unknown): EmployerAssignmentDto {
+  const record = asRecord(input);
+  return {
+    audience: "employer",
+    assignmentId: requiredString(record, "assignmentId"),
+    status: requiredString(record, "status"),
+    title: nullableString(record, "title"),
+    roleSummary: nullableString(record, "roleSummary"),
+    worksiteSummary: nullableString(record, "worksiteSummary"),
+    departmentSummary: nullableString(record, "departmentSummary"),
+    startAt: requiredString(record, "startAt"),
+    endAt: requiredString(record, "endAt"),
+    timezone: requiredString(record, "timezone"),
+    attendanceBoundary: nullableString(record, "attendanceBoundary"),
+    versionToken: nonNegativeInteger(record, "versionToken"),
+    updatedAt: requiredString(record, "updatedAt"),
+    visibility: "employer_authorized_assignment"
+  };
+}
+
+// Employer-authorized attendance reference (GET /organizations/:id/attendance →
+// serializeAttendanceRecord). Whitelists scheduling + presence status only — no
+// worker identity, no evidence/location detail, no supervisor notes, no user ids.
+export type EmployerAttendanceDto = Readonly<{
+  audience: "employer";
+  attendanceRecordId: string;
+  assignmentId: string;
+  status: string;
+  scheduledStartAt: string;
+  scheduledEndAt: string;
+  timezone: string;
+  verificationMethod: string;
+  checkInAt: string | null;
+  checkOutAt: string | null;
+  exceptionCategory: string | null;
+  completedAt: string | null;
+  cancelledAt: string | null;
+  versionToken: number;
+  updatedAt: string;
+  visibility: "employer_authorized_attendance";
+}>;
+
+export function parseEmployerAttendanceList(input: unknown): readonly EmployerAttendanceDto[] {
+  const record = asRecord(input);
+  if (!Array.isArray(record.attendanceRecords)) throw new CalendarDtoError();
+  return record.attendanceRecords.map(parseEmployerAttendanceDto);
+}
+
+function parseEmployerAttendanceDto(input: unknown): EmployerAttendanceDto {
+  const record = asRecord(input);
+  return {
+    audience: "employer",
+    attendanceRecordId: requiredString(record, "id"),
+    assignmentId: requiredString(record, "assignmentId"),
+    status: requiredString(record, "status"),
+    scheduledStartAt: requiredString(record, "scheduledStartAt"),
+    scheduledEndAt: requiredString(record, "scheduledEndAt"),
+    timezone: requiredString(record, "timezone"),
+    verificationMethod: requiredString(record, "verificationMethod"),
+    checkInAt: nullableString(record, "checkInAt"),
+    checkOutAt: nullableString(record, "checkOutAt"),
+    exceptionCategory: nullableString(record, "exceptionCategory"),
+    completedAt: nullableString(record, "completedAt"),
+    cancelledAt: nullableString(record, "cancelledAt"),
+    versionToken: nonNegativeInteger(record, "version"),
+    updatedAt: requiredString(record, "updatedAt"),
+    visibility: "employer_authorized_attendance"
+  };
+}
+
+// Employer-authorized timesheet reference (GET /organizations/:id/timesheets →
+// serializeTimesheet). The serializer spreads the full timesheet; the parser
+// whitelists the employer review surface (status, window, reviewed totals, review
+// states) and DROPS worker identity, per-user reviewer ids, internal candidate
+// minute breakdowns, and correction notes.
+export type EmployerTimesheetDto = Readonly<{
+  audience: "employer";
+  timesheetId: string;
+  assignmentId: string;
+  status: string;
+  scheduledStartAt: string;
+  scheduledEndAt: string;
+  actualCheckInAt: string | null;
+  actualCheckOutAt: string | null;
+  timezone: string;
+  payableMinutes: number | null;
+  billableMinutes: number | null;
+  breakMinutes: number;
+  excludedMinutes: number;
+  exceptionSummary: string | null;
+  workerReviewStatus: string;
+  employerReviewStatus: string;
+  platformReviewStatus: string;
+  employerReviewedAt: string | null;
+  approvedAt: string | null;
+  lockedAt: string | null;
+  rejectedAt: string | null;
+  cancelledAt: string | null;
+  versionToken: number;
+  updatedAt: string;
+  visibility: "employer_authorized_timesheet";
+}>;
+
+export function parseEmployerTimesheetList(input: unknown): readonly EmployerTimesheetDto[] {
+  const record = asRecord(input);
+  if (!Array.isArray(record.timesheets)) throw new CalendarDtoError();
+  return record.timesheets.map(parseEmployerTimesheetDto);
+}
+
+function parseEmployerTimesheetDto(input: unknown): EmployerTimesheetDto {
+  const record = asRecord(input);
+  return {
+    audience: "employer",
+    timesheetId: requiredString(record, "id"),
+    assignmentId: requiredString(record, "assignmentId"),
+    status: requiredString(record, "status"),
+    scheduledStartAt: requiredString(record, "scheduledStartAt"),
+    scheduledEndAt: requiredString(record, "scheduledEndAt"),
+    actualCheckInAt: nullableString(record, "actualCheckInAt"),
+    actualCheckOutAt: nullableString(record, "actualCheckOutAt"),
+    timezone: requiredString(record, "timezone"),
+    payableMinutes: nullableNonNegativeInteger(record, "payableMinutes"),
+    billableMinutes: nullableNonNegativeInteger(record, "billableMinutes"),
+    breakMinutes: nonNegativeInteger(record, "breakMinutes"),
+    excludedMinutes: nonNegativeInteger(record, "excludedMinutes"),
+    exceptionSummary: nullableString(record, "exceptionSummary"),
+    workerReviewStatus: requiredString(record, "workerReviewStatus"),
+    employerReviewStatus: requiredString(record, "employerReviewStatus"),
+    platformReviewStatus: requiredString(record, "platformReviewStatus"),
+    employerReviewedAt: nullableString(record, "employerReviewedAt"),
+    approvedAt: nullableString(record, "approvedAt"),
+    lockedAt: nullableString(record, "lockedAt"),
+    rejectedAt: nullableString(record, "rejectedAt"),
+    cancelledAt: nullableString(record, "cancelledAt"),
+    versionToken: nonNegativeInteger(record, "version"),
+    updatedAt: requiredString(record, "updatedAt"),
+    visibility: "employer_authorized_timesheet"
+  };
+}
+
 export function calendarListState<T>(items: readonly T[]): AuthenticatedViewState<readonly T[]> {
   return items.length === 0 ? { status: "empty" } : { status: "ready", data: items };
 }
@@ -260,6 +425,11 @@ function nonNegativeInteger(record: Record<string, unknown>, key: string) {
   const value = requiredNumber(record, key);
   if (!Number.isInteger(value) || value < 0) throw new CalendarDtoError();
   return value;
+}
+
+function nullableNonNegativeInteger(record: Record<string, unknown>, key: string) {
+  if (record[key] === null) return null;
+  return nonNegativeInteger(record, key);
 }
 
 function calendarStatus(record: Record<string, unknown>, key: string): ClientCalendarStatus {

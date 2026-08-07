@@ -1,18 +1,28 @@
-import { EmployerShell, WorkflowRoutes } from "../EmployerShell";
+import { EmployerShell } from "../EmployerShell";
 import { styles } from "../employerStyles";
-import { TimesheetReviewPanel } from "./TimesheetReviewPanel";
+import { EmployerTimesheetsPanel } from "./EmployerTimesheetsPanel";
 
-export default function TimesheetsPage() {
+export default function EmployerTimesheetsPage() {
   return (
     <EmployerShell
       currentRoute="/employer/timesheets"
-      eyebrow="Page 049 - Timesheets"
-      title="Review draft timesheets from attendance evidence."
-      lede="Timesheets distinguish scheduled, actual, original, adjusted, disputed, and approved values. They do not calculate payroll or execute payment."
-      actions={<a href="/employer/timesheets/review" style={styles.primaryButton}>Employer review</a>}
+      eyebrow="Connected timesheets / Client"
+      title="Review the timesheets for your organization's completed shifts."
+      lede="Authenticated, org-scoped timesheet records connect directly to the platform — persisted data only, never fixture substitutes."
+      mode="authenticated"
+      actions={
+        <a href="/employer/attendance" style={styles.primaryButton}>
+          Back to attendance
+        </a>
+      }
     >
-      <TimesheetReviewPanel mode="draft" />
-      <WorkflowRoutes currentRoute="/employer/timesheets" />
+      <section style={styles.section}>
+        <div style={styles.sectionHeader}>
+          <p style={styles.eyebrowDark}>Timesheets</p>
+          <h2 style={styles.sectionTitle}>Payable hours stay truthful from review to approval.</h2>
+        </div>
+        <EmployerTimesheetsPanel />
+      </section>
     </EmployerShell>
   );
 }

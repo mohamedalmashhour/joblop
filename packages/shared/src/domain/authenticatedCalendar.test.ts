@@ -7,6 +7,9 @@ import {
   calendarPartialState,
   parseAdminCalendarDto,
   parseClientCalendarDto,
+  parseEmployerAssignmentList,
+  parseEmployerAttendanceList,
+  parseEmployerTimesheetList,
   parseWorkerCalendarDto
 } from "./authenticatedCalendar";
 
@@ -196,6 +199,150 @@ describe("authenticated calendar DTO and state boundaries", () => {
         actionRequired: null,
         actionRequiredReason: null,
         versionToken: -1
+      })
+    ).toThrow(CalendarDtoError);
+  });
+
+  it("parses an org-scoped employer assignment list and preserves the visibility boundary", () => {
+    const assignments = parseEmployerAssignmentList({
+      assignments: [
+        {
+          audience: "employer",
+          assignmentId: "assignment-1",
+          status: "confirmed",
+          title: "Overnight cleaning cover",
+          roleSummary: "Housekeeping",
+          worksiteSummary: "Tower A",
+          departmentSummary: null,
+          startAt: "2026-08-10T22:00:00.000Z",
+          endAt: "2026-08-11T06:00:00.000Z",
+          timezone: "America/Toronto",
+          attendanceBoundary: null,
+          versionToken: 3,
+          updatedAt: "2026-08-06T12:00:00.000Z",
+          visibility: "employer_authorized_assignment"
+        }
+      ]
+    });
+    expect(assignments).toHaveLength(1);
+    const [first] = assignments;
+    if (!first) throw new Error("expected one assignment");
+    expect(first.assignmentId).toBe("assignment-1");
+    expect(first.departmentSummary).toBeNull();
+    expect(first.versionToken).toBe(3);
+    expect(first.visibility).toBe("employer_authorized_assignment");
+  });
+
+  it("rejects a non-array assignments envelope and malformed assignment records", () => {
+    expect(() => parseEmployerAssignmentList({ requests: [] })).toThrow(CalendarDtoError);
+    expect(() =>
+      parseEmployerAssignmentList({
+        assignments: [{ assignmentId: "assignment-1", status: "confirmed", versionToken: -1 }]
+      })
+    ).toThrow(CalendarDtoError);
+  });
+
+  it("parses org-scoped attendance and whitelists to scheduling + presence only", () => {
+    const records = parseEmployerAttendanceList({
+      attendanceRecords: [
+        {
+          id: "attendance-1",
+          assignmentId: "assignment-1",
+          status: "checked_out",
+          scheduledStartAt: "2026-08-10T22:00:00.000Z",
+          scheduledEndAt: "2026-08-11T06:00:00.000Z",
+          timezone: "America/Toronto",
+          verificationMethod: "geofence",
+          checkInAt: "2026-08-10T22:03:00.000Z",
+          checkOutAt: null,
+          exceptionCategory: null,
+          completedAt: null,
+          cancelledAt: null,
+          version: 4,
+          updatedAt: "2026-08-06T12:00:00.000Z",
+          // sensitive fields the serializer also spreads — must be dropped by the whitelist
+          workerIdentityId: "worker-secret",
+          checkInEvidenceSummary: "photo-blob",
+          supervisorNote: "private note",
+          createdByUserId: "user-secret"
+        }
+      ]
+    });
+    expect(records).toHaveLength(1);
+    const [first] = records;
+    if (!first) throw new Error("expected one attendance record");
+    expect(first.attendanceRecordId).toBe("attendance-1");
+    expect(first.versionToken).toBe(4);
+    expect(first.checkOutAt).toBeNull();
+    expect(first.visibility).toBe("employer_authorized_attendance");
+    const keys = Object.keys(first);
+    expect(keys).not.toContain("workerIdentityId");
+    expect(keys).not.toContain("supervisorNote");
+  });
+
+  it("rejects a non-array attendance envelope and malformed attendance records", () => {
+    expect(() => parseEmployerAttendanceList({ attendanceRecords: {} })).toThrow(CalendarDtoError);
+    expect(() =>
+      parseEmployerAttendanceList({
+        attendanceRecords: [{ id: "attendance-1", status: "checked_out", version: -1 }]
+      })
+    ).toThrow(CalendarDtoError);
+  });
+
+  it("parses org-scoped timesheets, allows nullable totals, and drops reviewer identity", () => {
+    const timesheets = parseEmployerTimesheetList({
+      timesheets: [
+        {
+          id: "timesheet-1",
+          assignmentId: "assignment-1",
+          status: "employer_review",
+          scheduledStartAt: "2026-08-10T22:00:00.000Z",
+          scheduledEndAt: "2026-08-11T06:00:00.000Z",
+          actualCheckInAt: "2026-08-10T22:03:00.000Z",
+          actualCheckOutAt: "2026-08-11T06:01:00.000Z",
+          timezone: "America/Toronto",
+          payableMinutes: 480,
+          billableMinutes: null,
+          breakMinutes: 30,
+          excludedMinutes: 0,
+          exceptionSummary: null,
+          workerReviewStatus: "approved",
+          employerReviewStatus: "not_started",
+          platformReviewStatus: "not_started",
+          employerReviewedAt: null,
+          approvedAt: null,
+          lockedAt: null,
+          rejectedAt: null,
+          cancelledAt: null,
+          version: 2,
+          updatedAt: "2026-08-06T12:00:00.000Z",
+          // sensitive fields the serializer also spreads — must be dropped by the whitelist
+          workerIdentityId: "worker-secret",
+          employerReviewedByUserId: "user-secret",
+          correctionReason: "internal note",
+          premiumCandidateMinutes: 15
+        }
+      ]
+    });
+    expect(timesheets).toHaveLength(1);
+    const [first] = timesheets;
+    if (!first) throw new Error("expected one timesheet");
+    expect(first.timesheetId).toBe("timesheet-1");
+    expect(first.payableMinutes).toBe(480);
+    expect(first.billableMinutes).toBeNull();
+    expect(first.visibility).toBe("employer_authorized_timesheet");
+    const keys = Object.keys(first);
+    expect(keys).not.toContain("workerIdentityId");
+    expect(keys).not.toContain("employerReviewedByUserId");
+    expect(keys).not.toContain("correctionReason");
+    expect(keys).not.toContain("premiumCandidateMinutes");
+  });
+
+  it("rejects a non-array timesheet envelope and malformed timesheet records", () => {
+    expect(() => parseEmployerTimesheetList({ timesheets: null })).toThrow(CalendarDtoError);
+    expect(() =>
+      parseEmployerTimesheetList({
+        timesheets: [{ id: "timesheet-1", status: "draft", breakMinutes: -1 }]
       })
     ).toThrow(CalendarDtoError);
   });
