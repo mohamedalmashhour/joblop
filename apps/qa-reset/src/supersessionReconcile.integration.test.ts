@@ -76,6 +76,20 @@ suite("QA-reset supersession reconciles stranded materializations", () => {
       );
     }
 
+    // Inject an audit_event referencing a synthetic org, as the E2E does. audit_events are
+    // append-only, so with the old SetNull FK this made deleting the org impossible (the third
+    // staging failure). With the FK dropped, the org reference is an immutable snapshot and the
+    // org deletes cleanly while the audit row survives untouched.
+    const actorRef = testManifest.records.find((r) => r.entityType === "audit_actor_reference")!;
+    const org = testManifest.records.find((r) => r.entityType === "employer_organization")!;
+    await prisma.$executeRawUnsafe(
+      `INSERT INTO audit_events
+         (id, actor_reference_id, organization_id, entity_type, entity_id, action, source, correlation_id, created_at)
+       VALUES (gen_random_uuid(), $1::uuid, $2::uuid, 'employer_organization', $2::uuid, 'test.audit', 'api', 'reconcile-audit-probe', CURRENT_TIMESTAMP)`,
+      actorRef.recordId,
+      org.recordId
+    );
+
     // Supersede the fixture manifest -> next manifest. The fixed reconcile must clear the
     // outgoing manifest's materialized rows in FK-safe order without violating any constraint.
     process.env.RWOS_ENV = "staging";
@@ -107,6 +121,12 @@ suite("QA-reset supersession reconciles stranded materializations", () => {
       );
       expect(Number(rows[0]!.count)).toBe(0);
     }
+
+    // The append-only audit event survives untouched, keeping its (now-dangling) org snapshot.
+    const auditRows = await prisma.$queryRawUnsafe<Array<{ count: bigint }>>(
+      `SELECT count(*)::bigint AS count FROM audit_events WHERE correlation_id = 'reconcile-audit-probe'`
+    );
+    expect(Number(auditRows[0]!.count)).toBe(1);
 
     // The outgoing manifest's durable owned records are marked cleaned; it is retired.
     const stillMaterialized = await prisma.$queryRawUnsafe<Array<{ count: bigint }>>(
