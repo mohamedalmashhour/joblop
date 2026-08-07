@@ -121,9 +121,19 @@ jobs:
           BUILD_TIMESTAMP: ${{ needs.authorize.outputs.build_timestamp }}
           SERVICE: ${{ matrix.service }}
           DOCKERFILE: ${{ matrix.dockerfile }}
+          # The worker web bundle bakes its API origin at BUILD time (Metro inlines
+          # EXPO_PUBLIC_*). Without this, the bundle ships the Dockerfile default
+          # https://api.invalid and every sign-in fails. The value is the staging worker-api
+          # Cloud Run origin (stable per project/region), also mirrored at runtime as
+          # WORKER_API_ORIGIN for the worker web server's CSP connect-src allow-list.
+          WORKER_API_ORIGIN: https://rwos-stg-worker-api-7gmjfugnma-pd.a.run.app
         run: |
           set -euo pipefail
           image="${GCP_REGION}-docker.pkg.dev/${GCP_PROJECT_ID}/${ARTIFACT_REPOSITORY}/${SERVICE}:${RELEASE_SHA}"
+          service_build_args=()
+          if [[ "$SERVICE" == "worker" ]]; then
+            service_build_args+=(--build-arg "EXPO_PUBLIC_RWOS_API_ORIGIN=${WORKER_API_ORIGIN}")
+          fi
           docker build \
             --file "$DOCKERFILE" \
             --tag "$image" \
@@ -137,6 +147,7 @@ jobs:
             --build-arg "RWOS_SOURCE_REPOSITORY=github.com/${GITHUB_REPOSITORY}" \
             --build-arg "RWOS_IMAGE_VERSION=${RELEASE_SHA}" \
             --build-arg "RWOS_PUBLIC_DEPLOYMENT_TIER=staging" \
+            ${service_build_args[@]+"${service_build_args[@]}"} \
             .
           docker push "$image"
           digest="$(gcloud artifacts docker images describe "$image" --format='value(image_summary.digest)')"
