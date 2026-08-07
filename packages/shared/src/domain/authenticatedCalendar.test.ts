@@ -9,6 +9,7 @@ import {
   parseClientCalendarDto,
   parseEmployerAssignmentList,
   parseEmployerAttendanceList,
+  parseEmployerResidenceList,
   parseEmployerTimesheetDto,
   parseEmployerTimesheetList,
   parseWorkerCalendarDto
@@ -378,5 +379,43 @@ describe("authenticated calendar DTO and state boundaries", () => {
     expect(timesheet.employerReviewStatus).toBe("confirmed");
     expect(timesheet.versionToken).toBe(3);
     expect(() => parseEmployerTimesheetDto(undefined)).toThrow(CalendarDtoError);
+  });
+
+  it("parses org-scoped residences and drops the creator and organization ids", () => {
+    const residences = parseEmployerResidenceList({
+      residences: [
+        {
+          id: "residence-1",
+          publicId: "RES-001",
+          name: "Cedar House",
+          status: "active",
+          addressSummary: "12 Elm St",
+          city: "Toronto",
+          region: "ON",
+          country: "CA",
+          archivedAt: null,
+          updatedAt: "2026-08-06T12:00:00.000Z",
+          // sensitive fields the serializer also spreads — must be dropped
+          organizationId: "org-secret",
+          createdByUserId: "user-secret"
+        }
+      ]
+    });
+    expect(residences).toHaveLength(1);
+    const [first] = residences;
+    if (!first) throw new Error("expected one residence");
+    expect(first.residenceId).toBe("residence-1");
+    expect(first.publicId).toBe("RES-001");
+    expect(first.visibility).toBe("employer_authorized_residence");
+    const keys = Object.keys(first);
+    expect(keys).not.toContain("organizationId");
+    expect(keys).not.toContain("createdByUserId");
+  });
+
+  it("rejects a non-array residence envelope and malformed residence records", () => {
+    expect(() => parseEmployerResidenceList({ residences: "nope" })).toThrow(CalendarDtoError);
+    expect(() =>
+      parseEmployerResidenceList({ residences: [{ id: "residence-1", name: "Cedar House" }] })
+    ).toThrow(CalendarDtoError);
   });
 });

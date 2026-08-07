@@ -332,6 +332,49 @@ export function parseEmployerTimesheetDto(input: unknown): EmployerTimesheetDto 
   };
 }
 
+// Employer-authorized residence reference (GET /organizations/:id/residences →
+// serializeResidence). The serializer spreads the full record; the parser
+// whitelists the operating-site fields an employer sees and DROPS the creator
+// user id and organization id.
+export type EmployerResidenceDto = Readonly<{
+  audience: "employer";
+  residenceId: string;
+  publicId: string;
+  name: string;
+  status: string;
+  addressSummary: string | null;
+  city: string | null;
+  region: string | null;
+  country: string | null;
+  archivedAt: string | null;
+  updatedAt: string;
+  visibility: "employer_authorized_residence";
+}>;
+
+export function parseEmployerResidenceList(input: unknown): readonly EmployerResidenceDto[] {
+  const record = asRecord(input);
+  if (!Array.isArray(record.residences)) throw new CalendarDtoError();
+  return record.residences.map(parseEmployerResidenceDto);
+}
+
+function parseEmployerResidenceDto(input: unknown): EmployerResidenceDto {
+  const record = asRecord(input);
+  return {
+    audience: "employer",
+    residenceId: requiredString(record, "id"),
+    publicId: requiredString(record, "publicId"),
+    name: requiredString(record, "name"),
+    status: requiredString(record, "status"),
+    addressSummary: nullableString(record, "addressSummary"),
+    city: nullableString(record, "city"),
+    region: nullableString(record, "region"),
+    country: nullableString(record, "country"),
+    archivedAt: nullableString(record, "archivedAt"),
+    updatedAt: requiredString(record, "updatedAt"),
+    visibility: "employer_authorized_residence"
+  };
+}
+
 export function calendarListState<T>(items: readonly T[]): AuthenticatedViewState<readonly T[]> {
   return items.length === 0 ? { status: "empty" } : { status: "ready", data: items };
 }
