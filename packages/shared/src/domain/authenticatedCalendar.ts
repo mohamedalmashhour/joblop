@@ -301,7 +301,7 @@ export function parseEmployerTimesheetList(input: unknown): readonly EmployerTim
   return record.timesheets.map(parseEmployerTimesheetDto);
 }
 
-function parseEmployerTimesheetDto(input: unknown): EmployerTimesheetDto {
+export function parseEmployerTimesheetDto(input: unknown): EmployerTimesheetDto {
   const record = asRecord(input);
   return {
     audience: "employer",

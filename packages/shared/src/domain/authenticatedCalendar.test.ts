@@ -9,6 +9,7 @@ import {
   parseClientCalendarDto,
   parseEmployerAssignmentList,
   parseEmployerAttendanceList,
+  parseEmployerTimesheetDto,
   parseEmployerTimesheetList,
   parseWorkerCalendarDto
 } from "./authenticatedCalendar";
@@ -345,5 +346,37 @@ describe("authenticated calendar DTO and state boundaries", () => {
         timesheets: [{ id: "timesheet-1", status: "draft", breakMinutes: -1 }]
       })
     ).toThrow(CalendarDtoError);
+  });
+
+  it("parses a single timesheet (confirm/dispute mutation response) and rejects a missing envelope", () => {
+    const timesheet = parseEmployerTimesheetDto({
+      id: "timesheet-1",
+      assignmentId: "assignment-1",
+      status: "platform_review",
+      scheduledStartAt: "2026-08-10T22:00:00.000Z",
+      scheduledEndAt: "2026-08-11T06:00:00.000Z",
+      actualCheckInAt: null,
+      actualCheckOutAt: null,
+      timezone: "America/Toronto",
+      payableMinutes: null,
+      billableMinutes: null,
+      breakMinutes: 0,
+      excludedMinutes: 0,
+      exceptionSummary: null,
+      workerReviewStatus: "approved",
+      employerReviewStatus: "confirmed",
+      platformReviewStatus: "not_started",
+      employerReviewedAt: "2026-08-06T12:05:00.000Z",
+      approvedAt: null,
+      lockedAt: null,
+      rejectedAt: null,
+      cancelledAt: null,
+      version: 3,
+      updatedAt: "2026-08-06T12:05:00.000Z"
+    });
+    expect(timesheet.status).toBe("platform_review");
+    expect(timesheet.employerReviewStatus).toBe("confirmed");
+    expect(timesheet.versionToken).toBe(3);
+    expect(() => parseEmployerTimesheetDto(undefined)).toThrow(CalendarDtoError);
   });
 });
