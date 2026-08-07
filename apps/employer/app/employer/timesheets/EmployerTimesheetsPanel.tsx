@@ -147,14 +147,18 @@ function TimesheetActions({
       setMode("submitting");
       setError(null);
       try {
-        const response = await fetch(
-          `/api/timesheets/${encodeURIComponent(timesheet.timesheetId)}/${action}`,
-          {
-            method: "POST",
-            headers: { "content-type": "application/json" },
-            body: JSON.stringify({ expectedVersion: timesheet.versionToken, ...extra })
-          }
-        );
+        const id = encodeURIComponent(timesheet.timesheetId);
+        // Literal action segment keeps each URL statically resolvable to its
+        // implemented route (/api/timesheets/[timesheetId]/confirm|dispute).
+        const endpoint =
+          action === "confirm"
+            ? `/api/timesheets/${id}/confirm`
+            : `/api/timesheets/${id}/dispute`;
+        const response = await fetch(endpoint, {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ expectedVersion: timesheet.versionToken, ...extra })
+        });
         if (response.status === 409) {
           setError("This timesheet changed. Reloading the latest version.");
           await onDone();
@@ -185,6 +189,7 @@ function TimesheetActions({
           </label>
           <textarea
             id={`dispute-${timesheet.timesheetId}`}
+            aria-label="Reason for dispute"
             value={reason}
             onChange={(event) => setReason(event.target.value)}
             maxLength={1000}
