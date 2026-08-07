@@ -8,6 +8,7 @@ import {
   parseAdminCalendarDto,
   parseClientCalendarDto,
   parseEmployerAssignmentList,
+  parseEmployerAttendanceList,
   parseWorkerCalendarDto
 } from "./authenticatedCalendar";
 
@@ -223,10 +224,12 @@ describe("authenticated calendar DTO and state boundaries", () => {
       ]
     });
     expect(assignments).toHaveLength(1);
-    expect(assignments[0].assignmentId).toBe("assignment-1");
-    expect(assignments[0].departmentSummary).toBeNull();
-    expect(assignments[0].versionToken).toBe(3);
-    expect(assignments[0].visibility).toBe("employer_authorized_assignment");
+    const [first] = assignments;
+    if (!first) throw new Error("expected one assignment");
+    expect(first.assignmentId).toBe("assignment-1");
+    expect(first.departmentSummary).toBeNull();
+    expect(first.versionToken).toBe(3);
+    expect(first.visibility).toBe("employer_authorized_assignment");
   });
 
   it("rejects a non-array assignments envelope and malformed assignment records", () => {
@@ -234,6 +237,53 @@ describe("authenticated calendar DTO and state boundaries", () => {
     expect(() =>
       parseEmployerAssignmentList({
         assignments: [{ assignmentId: "assignment-1", status: "confirmed", versionToken: -1 }]
+      })
+    ).toThrow(CalendarDtoError);
+  });
+
+  it("parses org-scoped attendance and whitelists to scheduling + presence only", () => {
+    const records = parseEmployerAttendanceList({
+      attendanceRecords: [
+        {
+          id: "attendance-1",
+          assignmentId: "assignment-1",
+          status: "checked_out",
+          scheduledStartAt: "2026-08-10T22:00:00.000Z",
+          scheduledEndAt: "2026-08-11T06:00:00.000Z",
+          timezone: "America/Toronto",
+          verificationMethod: "geofence",
+          checkInAt: "2026-08-10T22:03:00.000Z",
+          checkOutAt: null,
+          exceptionCategory: null,
+          completedAt: null,
+          cancelledAt: null,
+          version: 4,
+          updatedAt: "2026-08-06T12:00:00.000Z",
+          // sensitive fields the serializer also spreads — must be dropped by the whitelist
+          workerIdentityId: "worker-secret",
+          checkInEvidenceSummary: "photo-blob",
+          supervisorNote: "private note",
+          createdByUserId: "user-secret"
+        }
+      ]
+    });
+    expect(records).toHaveLength(1);
+    const [first] = records;
+    if (!first) throw new Error("expected one attendance record");
+    expect(first.attendanceRecordId).toBe("attendance-1");
+    expect(first.versionToken).toBe(4);
+    expect(first.checkOutAt).toBeNull();
+    expect(first.visibility).toBe("employer_authorized_attendance");
+    const keys = Object.keys(first);
+    expect(keys).not.toContain("workerIdentityId");
+    expect(keys).not.toContain("supervisorNote");
+  });
+
+  it("rejects a non-array attendance envelope and malformed attendance records", () => {
+    expect(() => parseEmployerAttendanceList({ attendanceRecords: {} })).toThrow(CalendarDtoError);
+    expect(() =>
+      parseEmployerAttendanceList({
+        attendanceRecords: [{ id: "attendance-1", status: "checked_out", version: -1 }]
       })
     ).toThrow(CalendarDtoError);
   });

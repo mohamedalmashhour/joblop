@@ -212,6 +212,56 @@ function parseEmployerAssignmentDto(input: unknown): EmployerAssignmentDto {
   };
 }
 
+// Employer-authorized attendance reference (GET /organizations/:id/attendance →
+// serializeAttendanceRecord). Whitelists scheduling + presence status only — no
+// worker identity, no evidence/location detail, no supervisor notes, no user ids.
+export type EmployerAttendanceDto = Readonly<{
+  audience: "employer";
+  attendanceRecordId: string;
+  assignmentId: string;
+  status: string;
+  scheduledStartAt: string;
+  scheduledEndAt: string;
+  timezone: string;
+  verificationMethod: string;
+  checkInAt: string | null;
+  checkOutAt: string | null;
+  exceptionCategory: string | null;
+  completedAt: string | null;
+  cancelledAt: string | null;
+  versionToken: number;
+  updatedAt: string;
+  visibility: "employer_authorized_attendance";
+}>;
+
+export function parseEmployerAttendanceList(input: unknown): readonly EmployerAttendanceDto[] {
+  const record = asRecord(input);
+  if (!Array.isArray(record.attendanceRecords)) throw new CalendarDtoError();
+  return record.attendanceRecords.map(parseEmployerAttendanceDto);
+}
+
+function parseEmployerAttendanceDto(input: unknown): EmployerAttendanceDto {
+  const record = asRecord(input);
+  return {
+    audience: "employer",
+    attendanceRecordId: requiredString(record, "id"),
+    assignmentId: requiredString(record, "assignmentId"),
+    status: requiredString(record, "status"),
+    scheduledStartAt: requiredString(record, "scheduledStartAt"),
+    scheduledEndAt: requiredString(record, "scheduledEndAt"),
+    timezone: requiredString(record, "timezone"),
+    verificationMethod: requiredString(record, "verificationMethod"),
+    checkInAt: nullableString(record, "checkInAt"),
+    checkOutAt: nullableString(record, "checkOutAt"),
+    exceptionCategory: nullableString(record, "exceptionCategory"),
+    completedAt: nullableString(record, "completedAt"),
+    cancelledAt: nullableString(record, "cancelledAt"),
+    versionToken: nonNegativeInteger(record, "version"),
+    updatedAt: requiredString(record, "updatedAt"),
+    visibility: "employer_authorized_attendance"
+  };
+}
+
 export function calendarListState<T>(items: readonly T[]): AuthenticatedViewState<readonly T[]> {
   return items.length === 0 ? { status: "empty" } : { status: "ready", data: items };
 }
