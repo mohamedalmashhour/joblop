@@ -121,8 +121,127 @@ export function EmployerTimesheetsPanel() {
           >
             Open assignment detail
           </a>
+          {timesheet.status === "employer_review" ? (
+            <TimesheetActions timesheet={timesheet} onDone={load} />
+          ) : null}
         </article>
       ))}
+    </div>
+  );
+}
+
+type ActionMode = "idle" | "disputing" | "submitting";
+
+// Employer review actions, shown only while status === "employer_review".
+// Optimistic-concurrency guarded via versionToken; a 409 (stale) reloads the list.
+function TimesheetActions({
+  timesheet,
+  onDone
+}: Readonly<{ timesheet: EmployerTimesheetDto; onDone: () => void | Promise<void> }>) {
+  const [mode, setMode] = useState<ActionMode>("idle");
+  const [reason, setReason] = useState("");
+  const [error, setError] = useState<string | null>(null);
+
+  const submit = useCallback(
+    async (action: "confirm" | "dispute", extra?: Readonly<{ reason: string }>) => {
+      setMode("submitting");
+      setError(null);
+      try {
+        const response = await fetch(
+          `/api/timesheets/${encodeURIComponent(timesheet.timesheetId)}/${action}`,
+          {
+            method: "POST",
+            headers: { "content-type": "application/json" },
+            body: JSON.stringify({ expectedVersion: timesheet.versionToken, ...extra })
+          }
+        );
+        if (response.status === 409) {
+          setError("This timesheet changed. Reloading the latest version.");
+          await onDone();
+          return;
+        }
+        if (!response.ok) {
+          setError("That action could not be completed. Please try again.");
+          setMode(action === "dispute" ? "disputing" : "idle");
+          return;
+        }
+        await onDone();
+      } catch {
+        setError("That action could not be completed. Please try again.");
+        setMode(action === "dispute" ? "disputing" : "idle");
+      }
+    },
+    [onDone, timesheet.timesheetId, timesheet.versionToken]
+  );
+
+  const busy = mode === "submitting";
+
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: "0.5rem" }}>
+      {mode === "disputing" ? (
+        <>
+          <label style={styles.cardText} htmlFor={`dispute-${timesheet.timesheetId}`}>
+            Reason for dispute
+          </label>
+          <textarea
+            id={`dispute-${timesheet.timesheetId}`}
+            value={reason}
+            onChange={(event) => setReason(event.target.value)}
+            maxLength={1000}
+            rows={3}
+            disabled={busy}
+            style={styles.cardText}
+          />
+          <div style={{ display: "flex", gap: "0.5rem" }}>
+            <button
+              type="button"
+              disabled={busy || reason.trim().length === 0}
+              onClick={() => void submit("dispute", { reason: reason.trim() })}
+              style={{ ...styles.primaryButton, cursor: busy ? "wait" : "pointer" }}
+            >
+              {busy ? "Submitting…" : "Submit dispute"}
+            </button>
+            <button
+              type="button"
+              disabled={busy}
+              onClick={() => {
+                setMode("idle");
+                setError(null);
+              }}
+              style={{ ...styles.secondaryButton, cursor: "pointer" }}
+            >
+              Cancel
+            </button>
+          </div>
+        </>
+      ) : (
+        <div style={{ display: "flex", gap: "0.5rem" }}>
+          <button
+            type="button"
+            disabled={busy}
+            onClick={() => void submit("confirm")}
+            style={{ ...styles.primaryButton, cursor: busy ? "wait" : "pointer" }}
+          >
+            {busy ? "Confirming…" : "Confirm timesheet"}
+          </button>
+          <button
+            type="button"
+            disabled={busy}
+            onClick={() => {
+              setMode("disputing");
+              setError(null);
+            }}
+            style={{ ...styles.secondaryButton, cursor: "pointer" }}
+          >
+            Dispute
+          </button>
+        </div>
+      )}
+      {error ? (
+        <p aria-live="polite" style={styles.cardText}>
+          {error}
+        </p>
+      ) : null}
     </div>
   );
 }
