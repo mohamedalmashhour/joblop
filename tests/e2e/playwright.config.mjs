@@ -3,8 +3,8 @@ import { defineConfig, devices } from "@playwright/test";
 export default defineConfig({
   testDir: ".",
   testMatch: ["browser/**/*.spec.mjs"],
-  globalSetup: "./browser/global-setup.mjs",
-  globalTeardown: "./browser/global-teardown.mjs",
+  // prepare/cleanup are driven by tests/e2e/browser/reset-cli.mjs as explicit CI steps so the
+  // in-VPC credential-bootstrap job can run between prepare and the sign-in tests.
   fullyParallel: false,
   retries: 0,
   reporter: [["list"], ["html", { outputFolder: "artifacts/playwright-report", open: "never" }]],

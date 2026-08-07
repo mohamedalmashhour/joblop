@@ -104,6 +104,37 @@ jobs:
     permissions:
       contents: read
       id-token: write
+    env:
+      RWOS_RELEASE_SHA: ${{ needs.authorize.outputs.release_sha }}
+      RWOS_E2E_CONFIRMATION: authorized-staging-browser-e2e
+      RWOS_E2E_EMPLOYER_ORIGIN: https://employer.staging.sybnb.app
+      RWOS_E2E_ADMIN_ORIGIN: https://admin.staging.sybnb.app
+      RWOS_E2E_WORKER_ORIGIN: https://worker.staging.sybnb.app
+      RWOS_E2E_EMPLOYER_EMAIL: ${{ secrets.RWOS_E2E_EMPLOYER_EMAIL }}
+      RWOS_E2E_EMPLOYER_PASSWORD: ${{ secrets.RWOS_E2E_EMPLOYER_PASSWORD }}
+      RWOS_E2E_ADMIN_EMAIL: ${{ secrets.RWOS_E2E_ADMIN_EMAIL }}
+      RWOS_E2E_ADMIN_PASSWORD: ${{ secrets.RWOS_E2E_ADMIN_PASSWORD }}
+      RWOS_E2E_WORKER_EMAIL: ${{ secrets.RWOS_E2E_WORKER_EMAIL }}
+      RWOS_E2E_WORKER_PASSWORD: ${{ secrets.RWOS_E2E_WORKER_PASSWORD }}
+      RWOS_E2E_REVOKED_EMAIL: ${{ secrets.RWOS_E2E_REVOKED_EMAIL }}
+      RWOS_E2E_REVOKED_PASSWORD: ${{ secrets.RWOS_E2E_REVOKED_PASSWORD }}
+      RWOS_E2E_RESET_ORIGIN: https://rwos-stg-qa-reset-7gmjfugnma-pd.a.run.app
+      RWOS_E2E_RESET_APP_CREDENTIAL: ${{ secrets.RWOS_E2E_RESET_APP_CREDENTIAL }}
+      RWOS_E2E_RESET_SERVICE_IDENTITY: browser-e2e
+      RWOS_E2E_RESET_OPERATOR_IDENTITY: gcp/operators/browser-e2e-owner-001
+      RWOS_E2E_RESET_PROJECT_ID: gcp/projects/resident-workforce-os-staging
+      RWOS_E2E_RESET_CLUSTER_ID: gcp/cloudsql/rwos-stg-ca-tor-pg
+      RWOS_E2E_RESET_DATABASE_ID: gcp/cloudsql/rwos-stg-ca-tor-pg/rwos_staging
+      RWOS_E2E_RESET_AUTHORITY_ID: gcp/qa-reset/authorities/rwos-staging-001
+      RWOS_E2E_RESET_NAMESPACE: rwos:qa-reset:staging:v1
+      RWOS_E2E_RESET_MANIFEST_ID: ${{ inputs.reset_manifest_id }}
+      RWOS_E2E_RESET_MANIFEST_CHECKSUM: ${{ inputs.reset_manifest_checksum }}
+      RWOS_E2E_RESET_DRY_RUN_APPROVAL_REFERENCE: ${{ inputs.dry_run_approval_reference }}
+      RWOS_E2E_RESET_PREPARE_APPROVAL_REFERENCE: ${{ inputs.prepare_approval_reference }}
+      RWOS_E2E_RESET_CLEANUP_APPROVAL_REFERENCE: ${{ inputs.cleanup_approval_reference }}
+      RWOS_E2E_TENANT_A_ID: aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa
+      RWOS_E2E_TENANT_B_ID: bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb
+      RWOS_E2E_RECEIPT_FILE: /tmp/rwos-e2e-receipt.txt
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
         with:
@@ -134,36 +165,34 @@ jobs:
           id_token_include_email: true
           create_credentials_file: false
           export_environment_variables: false
+      - name: Prepare synthetic environment
+        env:
+          RWOS_E2E_RESET_TOKEN: ${{ steps.google-auth.outputs.id_token }}
+        run: pnpm e2e:browser:prepare
+      - id: google-auth-access
+        name: Acquire a short-lived job-execution access token
+        uses: google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093 # v3
+        with:
+          workload_identity_provider: ${{ env.WIF_PROVIDER }}
+          service_account: ${{ env.BROWSER_E2E_SERVICE_ACCOUNT }}
+          token_format: access_token
+          create_credentials_file: false
+          export_environment_variables: false
+      - name: Bootstrap synthetic sign-in passwords (in-VPC job)
+        env:
+          CLOUDSDK_AUTH_ACCESS_TOKEN: ${{ steps.google-auth-access.outputs.access_token }}
+        run: |
+          set -euo pipefail
+          gcloud run jobs execute rwos-stg-e2e-credential-bootstrap \
+            --project resident-workforce-os-staging \
+            --region northamerica-northeast2 \
+            --wait
       - name: Run exact-release synthetic browser E2E
         env:
-          RWOS_RELEASE_SHA: ${{ needs.authorize.outputs.release_sha }}
-          RWOS_E2E_CONFIRMATION: authorized-staging-browser-e2e
-          RWOS_E2E_EMPLOYER_ORIGIN: https://employer.staging.sybnb.app
-          RWOS_E2E_ADMIN_ORIGIN: https://admin.staging.sybnb.app
-          RWOS_E2E_WORKER_ORIGIN: https://worker.staging.sybnb.app
-          RWOS_E2E_EMPLOYER_EMAIL: ${{ secrets.RWOS_E2E_EMPLOYER_EMAIL }}
-          RWOS_E2E_EMPLOYER_PASSWORD: ${{ secrets.RWOS_E2E_EMPLOYER_PASSWORD }}
-          RWOS_E2E_ADMIN_EMAIL: ${{ secrets.RWOS_E2E_ADMIN_EMAIL }}
-          RWOS_E2E_ADMIN_PASSWORD: ${{ secrets.RWOS_E2E_ADMIN_PASSWORD }}
-          RWOS_E2E_WORKER_EMAIL: ${{ secrets.RWOS_E2E_WORKER_EMAIL }}
-          RWOS_E2E_WORKER_PASSWORD: ${{ secrets.RWOS_E2E_WORKER_PASSWORD }}
-          RWOS_E2E_REVOKED_EMAIL: ${{ secrets.RWOS_E2E_REVOKED_EMAIL }}
-          RWOS_E2E_REVOKED_PASSWORD: ${{ secrets.RWOS_E2E_REVOKED_PASSWORD }}
-          RWOS_E2E_RESET_ORIGIN: ${{ env.QA_RESET_AUDIENCE }}
           RWOS_E2E_RESET_TOKEN: ${{ steps.google-auth.outputs.id_token }}
-          RWOS_E2E_RESET_APP_CREDENTIAL: ${{ secrets.RWOS_E2E_RESET_APP_CREDENTIAL }}
-          RWOS_E2E_RESET_SERVICE_IDENTITY: browser-e2e
-          RWOS_E2E_RESET_OPERATOR_IDENTITY: gcp/operators/browser-e2e-owner-001
-          RWOS_E2E_RESET_PROJECT_ID: gcp/projects/resident-workforce-os-staging
-          RWOS_E2E_RESET_CLUSTER_ID: gcp/cloudsql/rwos-stg-ca-tor-pg
-          RWOS_E2E_RESET_DATABASE_ID: gcp/cloudsql/rwos-stg-ca-tor-pg/rwos_staging
-          RWOS_E2E_RESET_AUTHORITY_ID: gcp/qa-reset/authorities/rwos-staging-001
-          RWOS_E2E_RESET_NAMESPACE: rwos:qa-reset:staging:v1
-          RWOS_E2E_RESET_MANIFEST_ID: ${{ inputs.reset_manifest_id }}
-          RWOS_E2E_RESET_MANIFEST_CHECKSUM: ${{ inputs.reset_manifest_checksum }}
-          RWOS_E2E_RESET_DRY_RUN_APPROVAL_REFERENCE: ${{ inputs.dry_run_approval_reference }}
-          RWOS_E2E_RESET_PREPARE_APPROVAL_REFERENCE: ${{ inputs.prepare_approval_reference }}
-          RWOS_E2E_RESET_CLEANUP_APPROVAL_REFERENCE: ${{ inputs.cleanup_approval_reference }}
-          RWOS_E2E_TENANT_A_ID: aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa
-          RWOS_E2E_TENANT_B_ID: bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb
         run: pnpm test:e2e:browser
+      - name: Cleanup synthetic environment
+        if: always()
+        env:
+          RWOS_E2E_RESET_TOKEN: ${{ steps.google-auth.outputs.id_token }}
+        run: pnpm e2e:browser:cleanup

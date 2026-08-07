@@ -95,6 +95,12 @@ variable "deploy_qa_manifest_supersession_job" {
   description = "Fail-closed gate for the temporary, staging-only QA manifest supersession job. The job is created only for a separately approved one-time execution and is removed afterward."
 }
 
+variable "deploy_e2e_credential_bootstrap_job" {
+  type        = bool
+  default     = false
+  description = "Fail-closed gate for the temporary, staging-only synthetic credential bootstrap job. It sets local_password identities for the two synthetic browser-E2E sign-in users (employer + worker) after QA-reset prepare, and is created only for a separately approved one-time execution."
+}
+
 variable "migration_database_secret_name" {
   type    = string
   default = "rwos-staging-migration-database-url"

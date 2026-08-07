@@ -6,6 +6,7 @@
   "scripts": {
     "build": "tsc -p tsconfig.json",
     "dev": "tsx src/server.ts",
+    "e2e:bootstrap-passwords": "node --import tsx src/stagingE2eSyntheticPasswordBootstrap.ts",
     "lint": "eslint .",
     "start": "node --import tsx src/server.ts",
     "test": "vitest run",

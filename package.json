@@ -28,6 +28,8 @@
     "test": "vitest run",
     "test:postgres:required": "node --import tsx scripts/run-postgres-required-tests.ts",
     "test:e2e:browser": "node --import tsx scripts/validate-browser-e2e-inputs.ts && playwright test --tsconfig tsconfig.base.json --config tests/e2e/playwright.config.mjs",
+    "e2e:browser:prepare": "node --import tsx scripts/validate-browser-e2e-inputs.ts && node tests/e2e/browser/reset-cli.mjs prepare",
+    "e2e:browser:cleanup": "node tests/e2e/browser/reset-cli.mjs cleanup",
     "test:e2e:native": "node --import tsx scripts/run-native-e2e.ts",
     "test:stripe:network": "vitest run --config vitest.external.config.ts apps/api/src/stripeTestProvider.network.test.ts",
     "build": "pnpm -r --if-present build",

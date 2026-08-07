@@ -1,4 +1,5 @@
 import process from "node:process";
+import { readFileSync, writeFileSync } from "node:fs";
 import { URL } from "node:url";
 
 let preparationReceipt = null;
@@ -10,13 +11,32 @@ export async function resetBrowserEnvironment(action) {
       dryRunChecksum: dryRun.planChecksum
     });
     preparationReceipt = prepared.receipt;
+    persistReceipt(prepared.receipt);
     return;
   }
-  if (!preparationReceipt) throw new Error("BROWSER_E2E_RESET_PREPARATION_RECEIPT_MISSING");
+  // prepare and cleanup run as separate CI steps (separate processes), so the receipt is handed
+  // across via RWOS_E2E_RECEIPT_FILE; the in-process value is the fallback for a single-process run.
+  const receipt = preparationReceipt ?? loadReceipt();
+  if (!receipt) throw new Error("BROWSER_E2E_RESET_PREPARATION_RECEIPT_MISSING");
   await request("cleanup", action, {
     dryRunChecksum: dryRun.planChecksum,
-    preparationReceipt
+    preparationReceipt: receipt
   });
+}
+
+function persistReceipt(receipt) {
+  const file = process.env.RWOS_E2E_RECEIPT_FILE;
+  if (file) writeFileSync(file, receipt, { encoding: "utf8", mode: 0o600 });
+}
+
+function loadReceipt() {
+  const file = process.env.RWOS_E2E_RECEIPT_FILE;
+  if (!file) return null;
+  try {
+    return readFileSync(file, "utf8").trim() || null;
+  } catch {
+    return null;
+  }
 }
 
 async function request(operation, action, extra) {

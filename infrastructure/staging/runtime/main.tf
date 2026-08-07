@@ -367,6 +367,130 @@ resource "google_secret_manager_secret_iam_member" "runtime" {
   member    = google_service_account.runtime[each.value.service].member
 }
 
+# Externally provisioned synthetic-only sign-in passwords for the two browser-E2E users. Read only
+# to wire the temporary bootstrap job; the values never enter Terraform state.
+data "google_secret_manager_secret" "e2e_employer_password" {
+  count     = var.deploy_e2e_credential_bootstrap_job ? 1 : 0
+  secret_id = "rwos-staging-e2e-employer-password"
+}
+
+data "google_secret_manager_secret" "e2e_worker_password" {
+  count     = var.deploy_e2e_credential_bootstrap_job ? 1 : 0
+  secret_id = "rwos-staging-e2e-worker-password"
+}
+
+# The bootstrap job runs as the api runtime SA (which already has DML on the app tables); grant it
+# read on the two synthetic password secrets it mounts.
+resource "google_secret_manager_secret_iam_member" "e2e_credential_bootstrap" {
+  for_each = var.deploy_e2e_credential_bootstrap_job ? {
+    employer = data.google_secret_manager_secret.e2e_employer_password[0].id
+    worker   = data.google_secret_manager_secret.e2e_worker_password[0].id
+  } : {}
+  secret_id = each.value
+  role      = "roles/secretmanager.secretAccessor"
+  member    = google_service_account.runtime["api"].member
+}
+
+# The browser-E2E GitHub identity executes (only) this one job, between QA-reset prepare and the
+# sign-in tests. Resource-scoped so it cannot run any other Cloud Run job.
+resource "google_cloud_run_v2_job_iam_member" "e2e_credential_bootstrap_runner" {
+  count    = var.deploy_e2e_credential_bootstrap_job ? 1 : 0
+  project  = var.project_id
+  location = var.region
+  name     = google_cloud_run_v2_job.e2e_credential_bootstrap[0].name
+  role     = "roles/run.developer"
+  member   = google_service_account.browser_e2e.member
+}
+
+resource "google_cloud_run_v2_job" "e2e_credential_bootstrap" {
+  count               = var.deploy_e2e_credential_bootstrap_job ? 1 : 0
+  name                = "rwos-stg-e2e-credential-bootstrap"
+  location            = var.region
+  deletion_protection = false
+
+  template {
+    task_count  = 1
+    parallelism = 1
+    template {
+      service_account = google_service_account.runtime["api"].email
+      max_retries     = 0
+      timeout         = "300s"
+      containers {
+        image       = var.image_digests["api"]
+        command     = ["pnpm"]
+        args        = ["--filter", "@rwos/api", "e2e:bootstrap-passwords"]
+        working_dir = "/workspace"
+        env {
+          name  = "RWOS_ENV"
+          value = "staging"
+        }
+        env {
+          name  = "RWOS_RELEASE_SHA"
+          value = var.service_environment["qa-reset"]["QA_RESET_RELEASE_SHA"]
+        }
+        env {
+          name  = "RWOS_E2E_CREDENTIAL_APPROVAL_REFERENCE"
+          value = "gcp/approvals/e2e-credential-bootstrap-001"
+        }
+        env {
+          name = "DATABASE_URL"
+          value_source {
+            secret_key_ref {
+              secret  = google_secret_manager_secret.runtime[var.service_secret_environment["api"]["DATABASE_URL"]].secret_id
+              version = "latest"
+            }
+          }
+        }
+        env {
+          name = "RWOS_E2E_EMPLOYER_PASSWORD"
+          value_source {
+            secret_key_ref {
+              secret  = data.google_secret_manager_secret.e2e_employer_password[0].secret_id
+              version = "latest"
+            }
+          }
+        }
+        env {
+          name = "RWOS_E2E_WORKER_PASSWORD"
+          value_source {
+            secret_key_ref {
+              secret  = data.google_secret_manager_secret.e2e_worker_password[0].secret_id
+              version = "latest"
+            }
+          }
+        }
+        resources {
+          limits = { cpu = "1", memory = "512Mi" }
+        }
+      }
+      vpc_access {
+        network_interfaces {
+          network    = google_compute_network.staging.name
+          subnetwork = google_compute_subnetwork.cloud_run.name
+        }
+        egress = "PRIVATE_RANGES_ONLY"
+      }
+    }
+  }
+
+  lifecycle {
+    precondition {
+      condition = (
+        var.deploy_runtime_services &&
+        var.service_environment["api"]["RWOS_ENV"] == "staging"
+      )
+      error_message = "The synthetic credential bootstrap job requires the deployed staging runtime."
+    }
+  }
+
+  depends_on = [
+    google_secret_manager_secret_iam_member.runtime,
+    google_secret_manager_secret_iam_member.e2e_credential_bootstrap,
+    google_service_account_iam_member.deployer_act_as,
+    google_sql_database.application,
+  ]
+}
+
 resource "google_service_account_iam_member" "deployer_act_as" {
   for_each           = google_service_account.runtime
   service_account_id = each.value.name
