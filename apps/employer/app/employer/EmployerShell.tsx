@@ -130,13 +130,15 @@ export function EmployerShell({
 }
 
 function StagingSafetyBanner() {
+  // role="status" is a live region; it must sit on a generic element — an <aside> has an implicit
+  // role of complementary, which disallows the override (axe aria-allowed-role).
   return (
-    <aside aria-label="Staging safety status" role="status" style={styles.stagingBanner}>
+    <div aria-label="Staging safety status" role="status" style={styles.stagingBanner}>
       <strong>STAGING</strong>
       <span>SYNTHETIC DATA</span>
       <span>NO REAL PAYMENT</span>
       <span>NO PRODUCTION CUSTOMER DATA</span>
-    </aside>
+    </div>
   );
 }
 
