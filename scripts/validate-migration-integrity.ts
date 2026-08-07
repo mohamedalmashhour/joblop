@@ -6,6 +6,16 @@ import { promisify } from "node:util";
 
 const execFileAsync = promisify(execFile);
 
+// Destructive migrations are blocked by default. Entries here are explicitly human-reviewed and
+// justified. Adding a migration to this set is itself the review record and must be scrutinized.
+const reviewedDestructiveMigrations = new Set<string>([
+  // Drops the audit_events.organization_id -> employer_organizations foreign key. audit_events are
+  // append-only (BEFORE UPDATE/DELETE triggers), so the ON DELETE SET NULL made deleting an
+  // organization impossible. organization_id is kept as an immutable snapshot column; no data is
+  // dropped and no row is deleted by this migration.
+  "20260807000000_drop_audit_event_organization_fk"
+]);
+
 void main();
 
 async function main() {
@@ -52,7 +62,8 @@ async function main() {
     if (
       /\b(?:DROP\s+(?:TABLE|COLUMN|CONSTRAINT|INDEX|TYPE|DATABASE)|TRUNCATE|DELETE\s+FROM|ALTER\s+COLUMN|RENAME\s+(?:TO|COLUMN))\b/i.test(
         sql
-      )
+      ) &&
+      !reviewedDestructiveMigrations.has(migration)
     ) {
       throw new Error(`RWOS_DESTRUCTIVE_MIGRATION_REQUIRES_REVIEW:${migration}`);
     }

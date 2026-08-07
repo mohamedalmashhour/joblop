@@ -575,7 +575,6 @@ model EmployerOrganization {
   paymentPolicies      PaymentPolicyVersion[]
   uploadedDocuments    UploadedDocument[]
   auditActorReferences AuditActorReference[]
-  auditEvents          AuditEvent[]
 
   @@index([status], map: "employer_organizations_status_idx")
   @@map("employer_organizations")
@@ -1744,7 +1743,9 @@ model AuditEvent {
   createdAt             DateTime    @default(now()) @map("created_at") @db.Timestamptz(3)
 
   actorReference AuditActorReference   @relation(fields: [actorReferenceId], references: [id], onDelete: Restrict)
-  organization   EmployerOrganization? @relation(fields: [organizationId], references: [id], onDelete: SetNull)
+  // organizationId is an immutable historical snapshot, not a live reference: audit_events are
+  // append-only (BEFORE UPDATE/DELETE triggers), so a SetNull FK made org deletion impossible.
+  // Kept as a plain column with no FK; the org reference is preserved even after the org is gone.
 
   @@index([organizationId, createdAt], map: "audit_events_organization_id_created_at_idx")
   @@index([entityType, entityId, createdAt], map: "audit_events_entity_type_entity_id_created_at_idx")
