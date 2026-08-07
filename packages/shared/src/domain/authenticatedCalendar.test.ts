@@ -7,6 +7,7 @@ import {
   calendarPartialState,
   parseAdminCalendarDto,
   parseClientCalendarDto,
+  parseEmployerAssignmentList,
   parseWorkerCalendarDto
 } from "./authenticatedCalendar";
 
@@ -196,6 +197,43 @@ describe("authenticated calendar DTO and state boundaries", () => {
         actionRequired: null,
         actionRequiredReason: null,
         versionToken: -1
+      })
+    ).toThrow(CalendarDtoError);
+  });
+
+  it("parses an org-scoped employer assignment list and preserves the visibility boundary", () => {
+    const assignments = parseEmployerAssignmentList({
+      assignments: [
+        {
+          audience: "employer",
+          assignmentId: "assignment-1",
+          status: "confirmed",
+          title: "Overnight cleaning cover",
+          roleSummary: "Housekeeping",
+          worksiteSummary: "Tower A",
+          departmentSummary: null,
+          startAt: "2026-08-10T22:00:00.000Z",
+          endAt: "2026-08-11T06:00:00.000Z",
+          timezone: "America/Toronto",
+          attendanceBoundary: null,
+          versionToken: 3,
+          updatedAt: "2026-08-06T12:00:00.000Z",
+          visibility: "employer_authorized_assignment"
+        }
+      ]
+    });
+    expect(assignments).toHaveLength(1);
+    expect(assignments[0].assignmentId).toBe("assignment-1");
+    expect(assignments[0].departmentSummary).toBeNull();
+    expect(assignments[0].versionToken).toBe(3);
+    expect(assignments[0].visibility).toBe("employer_authorized_assignment");
+  });
+
+  it("rejects a non-array assignments envelope and malformed assignment records", () => {
+    expect(() => parseEmployerAssignmentList({ requests: [] })).toThrow(CalendarDtoError);
+    expect(() =>
+      parseEmployerAssignmentList({
+        assignments: [{ assignmentId: "assignment-1", status: "confirmed", versionToken: -1 }]
       })
     ).toThrow(CalendarDtoError);
   });

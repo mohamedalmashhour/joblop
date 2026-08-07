@@ -167,6 +167,51 @@ export function parseAdminCalendarList(input: unknown) {
   return parseList(input, parseAdminCalendarDto);
 }
 
+// Employer-authorized assignment reference (GET /organizations/:id/assignments →
+// serializeEmployerAssignment). A persisted, org-scoped read — never a fixture.
+export type EmployerAssignmentDto = Readonly<{
+  audience: "employer";
+  assignmentId: string;
+  status: string;
+  title: string | null;
+  roleSummary: string | null;
+  worksiteSummary: string | null;
+  departmentSummary: string | null;
+  startAt: string;
+  endAt: string;
+  timezone: string;
+  attendanceBoundary: string | null;
+  versionToken: number;
+  updatedAt: string;
+  visibility: "employer_authorized_assignment";
+}>;
+
+export function parseEmployerAssignmentList(input: unknown): readonly EmployerAssignmentDto[] {
+  const record = asRecord(input);
+  if (!Array.isArray(record.assignments)) throw new CalendarDtoError();
+  return record.assignments.map(parseEmployerAssignmentDto);
+}
+
+function parseEmployerAssignmentDto(input: unknown): EmployerAssignmentDto {
+  const record = asRecord(input);
+  return {
+    audience: "employer",
+    assignmentId: requiredString(record, "assignmentId"),
+    status: requiredString(record, "status"),
+    title: nullableString(record, "title"),
+    roleSummary: nullableString(record, "roleSummary"),
+    worksiteSummary: nullableString(record, "worksiteSummary"),
+    departmentSummary: nullableString(record, "departmentSummary"),
+    startAt: requiredString(record, "startAt"),
+    endAt: requiredString(record, "endAt"),
+    timezone: requiredString(record, "timezone"),
+    attendanceBoundary: nullableString(record, "attendanceBoundary"),
+    versionToken: nonNegativeInteger(record, "versionToken"),
+    updatedAt: requiredString(record, "updatedAt"),
+    visibility: "employer_authorized_assignment"
+  };
+}
+
 export function calendarListState<T>(items: readonly T[]): AuthenticatedViewState<readonly T[]> {
   return items.length === 0 ? { status: "empty" } : { status: "ready", data: items };
 }
