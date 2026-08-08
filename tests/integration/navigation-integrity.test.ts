@@ -136,6 +136,16 @@ function validateInternalRouteReference({
     return null;
   }
 
+  // Static public asset (image, video, font, etc.): valid when the file exists
+  // under the app's public/ directory; a typo'd asset path is still flagged.
+  const assetPath = routeReference.split("#")[0]?.split("?")[0] ?? "";
+  if (/\.[a-z0-9]+$/iu.test(assetPath)) {
+    const publicFile = join(appDir, "..", "public", assetPath);
+    return existsSync(publicFile)
+      ? null
+      : `${relative(workspaceRoot, sourceFile)} points to missing asset ${routeReference}`;
+  }
+
   const [routeWithQuery, anchor] = routeReference.split("#");
   const route = routeWithQuery?.split("?")[0] ?? "/";
   const routePath = normalizeRoute(route.replaceAll(/\$\{[^}]+\}/gu, "__dynamic__") || "/");

@@ -7,6 +7,9 @@ import {
   workerBenefits,
   workerJourney
 } from "./landingContent";
+import { LogoIntro } from "./LogoIntro";
+import { JobLopLogo } from "./JobLopLogo";
+import { HeaderNav } from "./HeaderNav";
 
 const platformPillars = [
   {
@@ -46,6 +49,34 @@ const operationsRows = [
   ["Dining assistant", "Open"]
 ] as const;
 
+function CheckTile({ size = 34 }: { size?: number }) {
+  return (
+    <span
+      aria-hidden="true"
+      style={{
+        alignItems: "center",
+        background: "#e8f1ff",
+        borderRadius: 9,
+        display: "inline-flex",
+        flex: "none",
+        height: size,
+        justifyContent: "center",
+        width: size
+      }}
+    >
+      <svg width={size * 0.56} height={size * 0.56} viewBox="0 0 24 24" fill="none">
+        <path
+          d="M5 12.5l4.2 4.2L19 6.7"
+          stroke="#173a86"
+          strokeWidth="2.6"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+        />
+      </svg>
+    </span>
+  );
+}
+
 export default function LandingPage() {
   const isProduction = process.env.RWOS_ENV === "production";
   const isStaging =
@@ -53,6 +84,7 @@ export default function LandingPage() {
     process.env.NEXT_PUBLIC_RWOS_DEPLOYMENT_TIER === "staging";
   return (
     <main style={styles.page}>
+      <LogoIntro />
       {isStaging ? (
         <aside aria-label="Staging environment notice" role="status" style={styles.stagingBanner}>
           <strong>STAGING</strong>
@@ -61,38 +93,14 @@ export default function LandingPage() {
           <span>NO PRODUCTION CUSTOMER DATA</span>
         </aside>
       ) : null}
-      <header style={styles.header}>
+      <header style={{ ...styles.header, position: "relative" }}>
         <a href="/" style={styles.brand} aria-label="JobLop home">
-          <span aria-hidden="true" style={styles.brandMark}>
-            JL
-          </span>
-          <span>JobLop</span>
+          <JobLopLogo height={30} />
         </a>
-        <nav aria-label="Primary navigation" style={styles.nav}>
-          <a href="/how-it-works" style={styles.navLink}>
-            How It Works
-          </a>
-          <a href="#employers" style={styles.navLink}>
-            Employers
-          </a>
-          <a href="#workers" style={styles.navLink}>
-            Workers
-          </a>
-          <a href="/pricing" style={styles.navLink}>
-            Pricing
-          </a>
-          <a href="/about" style={styles.navLink}>
-            About
-          </a>
-        </nav>
-        <div style={styles.headerActions}>
-          <a href="/signin" style={styles.ghostButton}>
-            Sign In
-          </a>
-          <a href={isProduction ? "/contact" : "/signup/employer"} style={styles.primaryButton}>
-            {isProduction ? "Request Access" : "Get Started"}
-          </a>
-        </div>
+        <HeaderNav
+          ctaHref={isProduction ? "/contact" : "/signup/employer"}
+          ctaLabel={isProduction ? "Request Access" : "Get Started"}
+        />
       </header>
 
       <section style={styles.hero}>
@@ -122,7 +130,7 @@ export default function LandingPage() {
             {["Governed Access", "Human Dispatch", "Private Worker Views", "Audited Handoffs"].map(
               (label) => (
                 <li key={label} style={styles.trustPill}>
-                  <span aria-hidden="true" style={styles.smallIcon} />
+                  <CheckTile size={30} />
                   {label}
                 </li>
               )
@@ -130,19 +138,18 @@ export default function LandingPage() {
           </ul>
         </div>
 
-        <div aria-hidden="true" style={styles.heroVisual}>
+        <div style={styles.heroVisual}>
           <div style={styles.photoFrame}>
-            <div style={styles.carePortrait}>
-              <div style={styles.caregiver} />
-              <div style={styles.resident} />
-            </div>
+            <img
+              src="/images/hero-care-2.jpg"
+              alt="A care professional holding a patient's hands during a consultation"
+              style={styles.heroPhoto}
+            />
           </div>
-          {!isProduction ? (
-            <div style={styles.floatingMetric}>
-              <strong>Demo</strong>
-              <span>illustrative interface</span>
-            </div>
-          ) : null}
+          <div style={styles.floatingMetric}>
+            <strong>Verified workers</strong>
+            <span>Screened &amp; credential-aware</span>
+          </div>
         </div>
       </section>
 
@@ -158,15 +165,18 @@ export default function LandingPage() {
           </p>
         </div>
         <div style={styles.capsuleGrid}>
-          {staffingCategories.map((category, index) => (
+          {staffingCategories.map((category) => (
             <article key={category.name} style={styles.capsuleCard}>
-              <span
-                aria-hidden="true"
-                style={categoryIconStyles[index % categoryIconStyles.length]}
+              <img
+                src={capsulePhotos[category.name]}
+                alt={`${category.name} staffing`}
+                style={styles.capsulePhoto}
               />
-              <h3 style={styles.cardTitle}>{category.name}</h3>
-              <p style={styles.cardText}>{category.roles}</p>
-              <p style={styles.cardNote}>{category.detail}</p>
+              <div style={styles.capsuleBody}>
+                <h3 style={styles.cardTitle}>{category.name}</h3>
+                <p style={styles.cardText}>{category.roles}</p>
+                <p style={styles.cardNote}>{category.detail}</p>
+              </div>
             </article>
           ))}
         </div>
@@ -202,9 +212,13 @@ export default function LandingPage() {
           </h2>
         </div>
         <div style={styles.experienceGrid}>
-          {platformPillars.map((pillar, index) => (
+          {platformPillars.map((pillar) => (
             <article key={pillar.label} style={styles.experienceCard}>
-              <div aria-hidden="true" style={portraitStyles[index]} />
+              <img
+                src={pillarPhotos[pillar.label]}
+                alt={`${pillar.label} experience`}
+                style={styles.experiencePhoto}
+              />
               <div style={styles.experienceBody}>
                 <h3 style={styles.cardTitle}>{pillar.label}</h3>
                 <ul style={styles.cleanList}>
@@ -221,13 +235,13 @@ export default function LandingPage() {
       {!isProduction ? (
         <section aria-labelledby="preview-title" style={styles.previewBand}>
           <div style={styles.previewIntro}>
-            <p style={styles.eyebrowDark}>Development-only illustrative preview</p>
+            <p style={styles.eyebrowDark}>Inside the workspace</p>
             <h2 id="preview-title" style={styles.sectionTitle}>
               Quiet dashboards for repeated daily work.
             </h2>
             <p style={styles.sectionCopy}>
-              Synthetic names, counts, and amounts below are design fixtures, not operational data
-              or available production functionality.
+              A preview of the JobLop workspace — clear staffing status, requests, and coverage at a
+              glance. Sample data shown for illustration.
             </p>
           </div>
           <div style={styles.previewGrid}>
@@ -283,7 +297,7 @@ export default function LandingPage() {
         <div style={styles.controlGrid}>
           {trustControls.map((control) => (
             <article key={control} style={styles.controlCard}>
-              <span aria-hidden="true" style={styles.controlIcon} />
+              <CheckTile size={44} />
               <h3 style={styles.smallTitle}>{control}</h3>
             </article>
           ))}
@@ -517,14 +531,15 @@ const styles: Record<string, CSSProperties> = {
   },
   brandMark: {
     alignItems: "center",
-    background: "#0b4aa2",
-    borderRadius: 8,
-    color: "#ffffff",
     display: "inline-flex",
-    fontSize: 11,
     height: 34,
     justifyContent: "center",
     width: 34
+  },
+  brandWord: {
+    fontSize: 18,
+    fontWeight: 800,
+    letterSpacing: "-0.01em"
   },
   nav: {
     alignItems: "center",
@@ -666,6 +681,13 @@ const styles: Record<string, CSSProperties> = {
     position: "relative",
     width: "100%"
   },
+  heroPhoto: {
+    display: "block",
+    height: "100%",
+    objectFit: "cover",
+    objectPosition: "62% 44%",
+    width: "100%"
+  },
   carePortrait: {
     background:
       "radial-gradient(circle at 52% 34%, #ffffff 0 16%, transparent 17%), linear-gradient(135deg, #cfe3ff, #ffffff)",
@@ -736,10 +758,20 @@ const styles: Record<string, CSSProperties> = {
   capsuleCard: {
     background: "#ffffff",
     border: "1px solid #e1eaf6",
-    borderRadius: 8,
+    borderRadius: 12,
     boxShadow: "0 18px 50px rgba(8, 31, 73, 0.07)",
     minHeight: 210,
-    padding: 22
+    overflow: "hidden",
+    padding: 0
+  },
+  capsulePhoto: {
+    display: "block",
+    height: 132,
+    objectFit: "cover",
+    width: "100%"
+  },
+  capsuleBody: {
+    padding: 20
   },
   cardTitle: {
     color: "#081f49",
@@ -791,6 +823,12 @@ const styles: Record<string, CSSProperties> = {
     borderRadius: 8,
     boxShadow: "0 18px 50px rgba(8, 31, 73, 0.07)",
     overflow: "hidden"
+  },
+  experiencePhoto: {
+    display: "block",
+    height: 168,
+    objectFit: "cover",
+    width: "100%"
   },
   experienceBody: {
     padding: 22
@@ -1147,27 +1185,16 @@ const styles: Record<string, CSSProperties> = {
   }
 };
 
-const categoryIconStyles: CSSProperties[] = [
-  { background: "#e8f1ff", borderRadius: 8, display: "block", height: 44, width: 44 },
-  { background: "#e7f8ef", borderRadius: 8, display: "block", height: 44, width: 44 },
-  { background: "#fff5df", borderRadius: 8, display: "block", height: 44, width: 44 },
-  { background: "#f0ebff", borderRadius: 8, display: "block", height: 44, width: 44 }
-];
+const capsulePhotos: Record<string, string> = {
+  Kitchen: "/images/cap-kitchen.jpg",
+  "Care / Nurse": "/images/cap-care.jpg",
+  "Housekeeping & Dining": "/images/cap-housekeeping.jpg",
+  Maintenance: "/images/cap-maintenance.jpg"
+};
 
-const portraitStyles: CSSProperties[] = [
-  {
-    background:
-      "linear-gradient(135deg, #e8f1ff, #ffffff 52%, #cdddf3), radial-gradient(circle at 28% 35%, #082a66 0 12%, transparent 13%)",
-    height: 160
-  },
-  {
-    background:
-      "linear-gradient(135deg, #e7f8ef, #ffffff 52%, #cbeede), radial-gradient(circle at 48% 32%, #0f7f56 0 12%, transparent 13%)",
-    height: 160
-  },
-  {
-    background:
-      "linear-gradient(135deg, #eef5ff, #ffffff 52%, #d8e4f5), radial-gradient(circle at 62% 34%, #243b60 0 12%, transparent 13%)",
-    height: 160
-  }
-];
+
+const pillarPhotos: Record<string, string> = {
+  "For Employers": "/images/exp-employers.jpg",
+  "For Workers": "/images/exp-workers.jpg",
+  "For Administrators": "/images/exp-admins.jpg"
+};
