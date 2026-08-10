@@ -576,6 +576,8 @@ model EmployerOrganization {
   contracts            EmployerContract[]       @relation("EmployerOrganizationContracts")
   uploadedDocuments    UploadedDocument[]
   auditActorReferences AuditActorReference[]
+  requestCancellations EmployerRequestCancellation[]
+  cancellationObligations EmployerCancellationObligation[]
 
   @@index([status], map: "employer_organizations_status_idx")
   @@map("employer_organizations")
@@ -624,6 +626,88 @@ model ContractRoleRate {
 
   @@unique([contractId, roleDefinitionId], map: "contract_role_rates_contract_role_key")
   @@map("contract_role_rates")
+}
+
+enum EmployerCancellationCause {
+  EMPLOYER_CANCELLED
+  WORKER_CANCELLED
+  WORKER_NO_SHOW
+  PLATFORM_UNABLE_TO_FILL
+  PLATFORM_CANCELLED
+  MUTUALLY_CANCELLED
+}
+
+enum EmployerRequestCancellationStatus {
+  requested
+  assignment_cancellation_pending
+  completed
+  failed
+  requires_reconciliation
+}
+
+enum EmployerCancellationObligationStatus {
+  RECORDED
+  VOIDED
+  ADJUSTED
+}
+
+// Governed two-step employer cancellation (Option A) — the employer-facing
+// lifecycle record. Confirmed-assignment state stays platform-governed; this
+// record tracks the intent + the platform handoff outcome. One per job request.
+model EmployerRequestCancellation {
+  id                       String                            @id @default(uuid()) @db.Uuid
+  organizationId           String                            @map("organization_id") @db.Uuid
+  jobRequestId             String                            @unique @map("job_request_id") @db.Uuid
+  cause                    EmployerCancellationCause
+  status                   EmployerRequestCancellationStatus @default(requested)
+  affectedConfirmedWorkers Int                               @map("affected_confirmed_workers")
+  idempotencyKey           String                            @unique @map("idempotency_key")
+  initiatedByUserId        String                            @map("initiated_by_user_id") @db.Uuid
+  initiatedAt              DateTime                          @default(now()) @map("initiated_at") @db.Timestamptz(3)
+  handoffAttempts          Int                               @default(0) @map("handoff_attempts")
+  lastHandoffAt            DateTime?                         @map("last_handoff_at") @db.Timestamptz(3)
+  reconciliationNote       String?                           @map("reconciliation_note")
+  version                  Int                               @default(1)
+  createdAt                DateTime                          @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt                DateTime                          @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  organization EmployerOrganization            @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  jobRequest   JobRequest                      @relation(fields: [jobRequestId], references: [id], onDelete: Cascade)
+  obligation   EmployerCancellationObligation?
+
+  @@index([organizationId, status], map: "employer_request_cancellations_org_status_idx")
+  @@map("employer_request_cancellations")
+}
+
+// The employer <-> JobLop COMMERCIAL cancellation obligation — an auditable
+// financial-intent snapshot. NEVER a payment; there is no PAID state. Immutable
+// inputs snapshot (rate, rule hours, contract version) so it reproduces later.
+model EmployerCancellationObligation {
+  id                   String                               @id @default(uuid()) @db.Uuid
+  cancellationId       String                               @unique @map("cancellation_id") @db.Uuid
+  organizationId       String                               @map("organization_id") @db.Uuid
+  jobRequestId         String                               @map("job_request_id") @db.Uuid
+  cause                EmployerCancellationCause
+  confirmedWorkerCount Int                                  @map("confirmed_worker_count")
+  governedRateMinor    Int                                  @map("governed_rate_minor")
+  currency             String                               @default("CAD")
+  minimumShiftHours    Int                                  @map("minimum_shift_hours")
+  cutoffHours          Int                                  @map("cutoff_hours")
+  contractId           String?                              @map("contract_id") @db.Uuid
+  contractVersion      String?                              @map("contract_version")
+  amountMinor          Int                                  @map("amount_minor")
+  status               EmployerCancellationObligationStatus @default(RECORDED)
+  computedByUserId     String                               @map("computed_by_user_id") @db.Uuid
+  computedAt           DateTime                             @default(now()) @map("computed_at") @db.Timestamptz(3)
+  createdAt            DateTime                             @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt            DateTime                             @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  cancellation EmployerRequestCancellation @relation(fields: [cancellationId], references: [id], onDelete: Cascade)
+  organization EmployerOrganization       @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  jobRequest   JobRequest                 @relation(fields: [jobRequestId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId, status], map: "employer_cancellation_obligations_org_status_idx")
+  @@map("employer_cancellation_obligations")
 }
 
 model OrganizationMembership {
@@ -908,6 +992,8 @@ model JobRequest {
   assignments       Assignment[]
   attendanceRecords AttendanceRecord[]
   timesheets        Timesheet[]
+  cancellation      EmployerRequestCancellation?
+  cancellationObligations EmployerCancellationObligation[]
 
   @@unique([id, organizationId, residenceId, departmentId, workGroupId, roleDefinitionId], map: "job_requests_operational_scope_key")
   @@index([jobRequestNumber], map: "job_requests_job_request_number_idx")
