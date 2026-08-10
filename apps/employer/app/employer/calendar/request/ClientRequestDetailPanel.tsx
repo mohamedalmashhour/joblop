@@ -10,6 +10,7 @@ import {
 } from "@rwos/shared";
 import { styles } from "../../employerStyles";
 import { JobLocationMap } from "../../../shared/maps";
+import { CancelRequestPanel } from "./CancelRequestPanel";
 
 export function ClientRequestDetailPanel({ requestId }: Readonly<{ requestId: string | null }>) {
   const [state, setState] = useState<AuthenticatedViewState<ClientCalendarDto>>({
@@ -170,6 +171,11 @@ export function ClientRequestDetailPanel({ requestId }: Readonly<{ requestId: st
         >
           View staffing progress
         </a>
+        {request.status !== "cancelled" && request.status !== "completed" ? (
+          <div style={{ marginTop: 14 }}>
+            <CancelRequestPanel requestId={request.id} />
+          </div>
+        ) : null}
       </article>
       <article style={styles.panel}>
         <h2 style={styles.cardTitle}>Request details</h2>
