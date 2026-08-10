@@ -9,6 +9,7 @@ import type {
   WorkerOfferDeliveryProvider,
   WorkerOfferDeliveryResult
 } from "./productionIntegrations";
+export * from "./employerContract";
 export {
   CalendarRequestError,
   createCalendarRequestService,

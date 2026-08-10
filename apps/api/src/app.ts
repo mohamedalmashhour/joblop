@@ -31,6 +31,9 @@ import {
   createAuthorizationService,
   createDepartmentService,
   createDispatchService,
+  createEmployerContractService,
+  createPrismaEmployerContractRepository,
+  EmployerContractError,
   createEmployerOrganizationService,
   createJobRequestService,
   createOrganizationMembershipService,
@@ -69,8 +72,10 @@ import {
   type CalendarVerificationState,
   type DepartmentService,
   type DepartmentStatus,
+  type ContractRoleRateInput,
   type DispatchService,
   type DispatchPriority,
+  type EmployerContractService,
   type EmployerOrganizationService,
   type JobRequestService,
   type JobRequestType,
@@ -136,6 +141,7 @@ export interface BuildApiOptions {
   authorizationService?: AuthorizationService;
   membershipService?: OrganizationMembershipService;
   organizationService?: EmployerOrganizationService;
+  employerContractService?: EmployerContractService;
   residenceService?: ResidenceService;
   departmentService?: DepartmentService;
   dispatchService?: DispatchService;
@@ -298,6 +304,12 @@ export function buildApi(options: BuildApiOptions = {}) {
       organizationRepository!,
       membershipService,
       authorizationService
+    );
+  const employerContractService =
+    options.employerContractService ??
+    createEmployerContractService(
+      createPrismaEmployerContractRepository(prisma!),
+      membershipService
     );
   const residenceService =
     options.residenceService ??
@@ -1615,6 +1627,47 @@ export function buildApi(options: BuildApiOptions = {}) {
     });
 
     return reply.code(200).send({ residences: residences.map(serializeResidence) });
+  });
+
+  app.get("/organizations/:organizationId/contract", async (request, reply) => {
+    const session = await authService.validateSession(
+      readBearerToken(request.headers.authorization)
+    );
+    if (!session.authenticated || !session.user) {
+      return sendContractDenied(reply);
+    }
+    try {
+      const contract = await employerContractService.getActiveContract({
+        actorUserId: session.user.id,
+        organizationId: readRouteParam(request.params, "organizationId")
+      });
+      return reply.code(200).send({ contract });
+    } catch (error) {
+      return sendContractError(reply, error);
+    }
+  });
+
+  app.post("/organizations/:organizationId/contract", async (request, reply) => {
+    const session = await authService.validateSession(
+      readBearerToken(request.headers.authorization)
+    );
+    if (!session.authenticated || !session.user) {
+      return sendContractDenied(reply);
+    }
+    const body = asRecord(request.body);
+    const currency = readOptionalString(body, "currency");
+    try {
+      const contract = await employerContractService.signContract({
+        actorUserId: session.user.id,
+        organizationId: readRouteParam(request.params, "organizationId"),
+        version: readRequiredString(body, "version") ?? "",
+        ...(currency ? { currency } : {}),
+        roleRates: readContractRoleRates(body)
+      });
+      return reply.code(201).send({ contract });
+    } catch (error) {
+      return sendContractError(reply, error);
+    }
   });
 
   app.get("/organizations/:organizationId/residences/:residenceId", async (request, reply) => {
@@ -4143,6 +4196,42 @@ function sendResidenceDenied(reply: FastifyReply) {
   return reply.code(403).send({
     error: authorizationDeniedCode,
     message: authorizationDeniedMessage
+  });
+}
+
+function sendContractDenied(reply: FastifyReply) {
+  return reply.code(401).send({
+    error: "RWOS_CONTRACT_DENIED",
+    message: "Authentication is required to manage the contract."
+  });
+}
+
+function sendContractError(reply: FastifyReply, error: unknown) {
+  if (error instanceof EmployerContractError) {
+    const httpStatus = error.code === "denied" ? 403 : error.code === "conflict" ? 409 : 400;
+    return reply.code(httpStatus).send({
+      error: `RWOS_CONTRACT_${error.code.toUpperCase()}`,
+      message: error.message
+    });
+  }
+  return reply.code(500).send({
+    error: "RWOS_CONTRACT_ERROR",
+    message: "The contract could not be processed."
+  });
+}
+
+function readContractRoleRates(body: Record<string, unknown>): ContractRoleRateInput[] {
+  const raw = body.roleRates;
+  if (!Array.isArray(raw)) return [];
+  return raw.flatMap((item) => {
+    const record = asRecord(item);
+    const workGroupId = readRequiredString(record, "workGroupId");
+    const roleDefinitionId = readRequiredString(record, "roleDefinitionId");
+    const hourlyRateMinor = readOptionalNumber(record, "hourlyRateMinor");
+    if (!workGroupId || !roleDefinitionId || hourlyRateMinor === null) {
+      return [];
+    }
+    return [{ workGroupId, roleDefinitionId, hourlyRateMinor }];
   });
 }
 
