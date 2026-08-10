@@ -28,19 +28,54 @@ describe("employer job request BFF boundary", () => {
         roleDefinitions: {
           roleDefinitions: [
             {
+              id: "role-chef",
               slug: "chef",
               displayLabel: "Chef",
               workGroupId: "wg-1",
               qualificationSummary: "hidden"
+            },
+            {
+              id: "role-aide",
+              slug: "aide",
+              displayLabel: "Aide",
+              workGroupId: "wg-2",
+              qualificationSummary: "hidden"
             }
           ]
+        },
+        contract: {
+          contract: {
+            version: "v1",
+            currency: "CAD",
+            roleRates: [
+              { roleDefinitionId: "role-chef", hourlyRateMinor: 2800, currency: "CAD" },
+              { roleDefinitionId: "role-secret", hourlyRateMinor: 9999, currency: "CAD" }
+            ]
+          }
         }
       })
     ).toEqual({
       residences: [{ id: "res-1", name: "Sunrise" }],
       departments: [{ id: "dep-1", residenceId: "res-1", name: "Kitchen" }],
       workGroups: [{ id: "wg-1", slug: "kitchen", displayLabel: "Kitchen" }],
-      roleDefinitions: [{ slug: "chef", displayLabel: "Chef", workGroupId: "wg-1" }]
+      roleDefinitions: [
+        {
+          slug: "chef",
+          displayLabel: "Chef",
+          workGroupId: "wg-1",
+          roleDefinitionId: "role-chef",
+          hourlyRateMinor: 2800,
+          currency: "CAD"
+        },
+        {
+          slug: "aide",
+          displayLabel: "Aide",
+          workGroupId: "wg-2",
+          roleDefinitionId: "role-aide",
+          hourlyRateMinor: null,
+          currency: null
+        }
+      ]
     });
   });
 

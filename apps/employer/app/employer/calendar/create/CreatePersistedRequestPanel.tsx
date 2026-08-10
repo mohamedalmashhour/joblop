@@ -7,6 +7,7 @@ import type {
 } from "../../../api/job-requests/jobRequestBoundary";
 import { styles } from "../../employerStyles";
 import { JobLocationMap } from "../../../shared/maps";
+import { estimateRequestCost, formatHourlyRate, formatMoney, hoursBetween } from "@rwos/shared";
 
 type FormState = {
   residenceId: string;
@@ -100,6 +101,13 @@ export function CreatePersistedRequestPanel() {
     [context, selectedWorkGroup]
   );
   const validation = validate(form);
+  const selectedRole = roles.find((role) => role.slug === form.roleDefinition);
+  const rateCurrency: "CAD" | "USD" = selectedRole?.currency === "USD" ? "USD" : "CAD";
+  const scheduledHours = hoursBetween(form.startAt, form.endAt);
+  const workerCount =
+    Number.isInteger(Number(form.numberOfWorkers)) && Number(form.numberOfWorkers) > 0
+      ? Number(form.numberOfWorkers)
+      : 1;
 
   function update<K extends keyof FormState>(key: K, value: FormState[K]) {
     setForm((current) => ({
@@ -399,6 +407,47 @@ export function CreatePersistedRequestPanel() {
           />
         </label>
       </div>
+      {selectedRole ? (
+        <div style={{ marginTop: 18 }}>
+          <p style={styles.metaLabel}>Governed pay rate</p>
+          {selectedRole.hourlyRateMinor !== null ? (
+            <div style={styles.tintedCard}>
+              <strong>
+                {formatHourlyRate({
+                  amountMinor: selectedRole.hourlyRateMinor,
+                  currency: rateCurrency
+                })}
+              </strong>
+              {scheduledHours > 0 ? (
+                <span>
+                  {" "}
+                  · Estimated total{" "}
+                  {formatMoney(
+                    estimateRequestCost({
+                      hourlyRate: {
+                        amountMinor: selectedRole.hourlyRateMinor,
+                        currency: rateCurrency
+                      },
+                      hours: scheduledHours,
+                      workers: workerCount
+                    })
+                  )}{" "}
+                  ({scheduledHours}h × {workerCount})
+                </span>
+              ) : null}
+              <p style={styles.cardText}>
+                Read from your organization&rsquo;s active contract. This request applies the
+                governed rate — it does not set the price.
+              </p>
+            </div>
+          ) : (
+            <div style={styles.warning}>
+              Your active contract does not price this role yet. Sign a contract rate card for it
+              before submitting.
+            </div>
+          )}
+        </div>
+      ) : null}
       {form.addressSummary.trim().length > 1 ? (
         <div style={{ marginTop: 18 }}>
           <p style={styles.metaLabel}>Site location</p>

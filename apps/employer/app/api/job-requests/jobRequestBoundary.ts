@@ -6,6 +6,11 @@ export type EmployerRequestContext = Readonly<{
     slug: string;
     displayLabel: string;
     workGroupId: string;
+    // Governed pay rate, read from the organization's active contract rate card
+    // (never invented here). null when the active contract does not price the role.
+    roleDefinitionId: string;
+    hourlyRateMinor: number | null;
+    currency: string | null;
   }>[];
 }>;
 
@@ -94,7 +99,9 @@ export function parseEmployerRequestContext(input: {
   departments: unknown;
   workGroups: unknown;
   roleDefinitions: unknown;
+  contract?: unknown;
 }): EmployerRequestContext {
+  const rateByRole = contractRateMap(input.contract);
   return {
     residences: parseList(input.residences, "residences").flatMap((value) => {
       const record = asRecord(value);
@@ -116,17 +123,52 @@ export function parseEmployerRequestContext(input: {
     }),
     roleDefinitions: parseList(input.roleDefinitions, "roleDefinitions").flatMap((value) => {
       const record = asRecord(value);
-      return isString(record.slug) && isString(record.displayLabel) && isString(record.workGroupId)
-        ? [
-            {
-              slug: record.slug,
-              displayLabel: record.displayLabel,
-              workGroupId: record.workGroupId
-            }
-          ]
-        : [];
+      if (
+        !isString(record.slug) ||
+        !isString(record.displayLabel) ||
+        !isString(record.workGroupId)
+      ) {
+        return [];
+      }
+      const roleDefinitionId = isString(record.id) ? record.id : "";
+      const rate = roleDefinitionId ? rateByRole.get(roleDefinitionId) : undefined;
+      return [
+        {
+          slug: record.slug,
+          displayLabel: record.displayLabel,
+          workGroupId: record.workGroupId,
+          roleDefinitionId,
+          hourlyRateMinor: rate ? rate.hourlyRateMinor : null,
+          currency: rate ? rate.currency : null
+        }
+      ];
     })
   };
+}
+
+// Reads the active contract payload ({ contract: { roleRates: [...] } }) into a
+// roleDefinitionId -> governed hourly rate lookup. Empty when no active contract.
+function contractRateMap(
+  contract: unknown
+): Map<string, { hourlyRateMinor: number; currency: string }> {
+  const map = new Map<string, { hourlyRateMinor: number; currency: string }>();
+  const active = asRecord(asRecord(contract).contract);
+  const rates = active.roleRates;
+  if (!Array.isArray(rates)) return map;
+  for (const item of rates) {
+    const record = asRecord(item);
+    if (
+      isString(record.roleDefinitionId) &&
+      typeof record.hourlyRateMinor === "number" &&
+      isString(record.currency)
+    ) {
+      map.set(record.roleDefinitionId, {
+        hourlyRateMinor: record.hourlyRateMinor,
+        currency: record.currency
+      });
+    }
+  }
+  return map;
 }
 
 export function parseEmployerJobRequest(input: unknown): EmployerJobRequestDraft {

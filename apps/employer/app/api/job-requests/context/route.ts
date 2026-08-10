@@ -18,7 +18,7 @@ export async function GET(request: Request) {
 
   const residenceId = new URL(request.url).searchParams.get("residenceId");
   const organizationQuery = `organizationId=${encodeURIComponent(context.organizationId)}`;
-  const [residences, workGroups, roleDefinitions, departments] = await Promise.all([
+  const [residences, workGroups, roleDefinitions, departments, contract] = await Promise.all([
     gateway.request(
       `/organizations/${encodeURIComponent(context.organizationId)}/residences?status=active`,
       "GET",
@@ -32,9 +32,16 @@ export async function GET(request: Request) {
           "GET",
           token
         )
-      : Promise.resolve({ status: "ok", payload: { departments: [] } } as const)
+      : Promise.resolve({ status: "ok", payload: { departments: [] } } as const),
+    gateway.request(
+      `/organizations/${encodeURIComponent(context.organizationId)}/contract`,
+      "GET",
+      token
+    )
   ]);
 
+  // The core context fields must resolve; the contract is optional (an org may
+  // not have signed one yet), so a contract failure just yields unpriced roles.
   const results = [residences, workGroups, roleDefinitions, departments];
   const failure = results.find((result) => result.status !== "ok");
   if (failure) return sessionFailure(failure.status);
@@ -45,7 +52,8 @@ export async function GET(request: Request) {
         residences: residences.status === "ok" ? residences.payload : null,
         workGroups: workGroups.status === "ok" ? workGroups.payload : null,
         roleDefinitions: roleDefinitions.status === "ok" ? roleDefinitions.payload : null,
-        departments: departments.status === "ok" ? departments.payload : null
+        departments: departments.status === "ok" ? departments.payload : null,
+        contract: contract.status === "ok" ? contract.payload : null
       }),
       { headers: privateHeaders }
     );
