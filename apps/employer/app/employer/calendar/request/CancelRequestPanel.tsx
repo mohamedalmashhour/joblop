@@ -153,20 +153,24 @@ function CancellationResult({ result }: Readonly<{ result: CancellationConfirmat
       ? money(cancellation.obligationAmountMinor, cancellation.obligationCurrency)
       : null;
 
+  const completed = cancellation.status === "completed";
   return (
     <div style={styles.panel} aria-live="polite">
-      <h3 style={styles.cardTitle}>Cancellation recorded</h3>
+      <h3 style={styles.cardTitle}>{completed ? "Request cancelled" : "Cancellation recorded"}</h3>
       {amount ? <p style={styles.cardText}>Commercial cancellation obligation: <strong>{amount}</strong></p> : null}
       {cancellation.status === "assignment_cancellation_pending" ? (
         <p style={styles.cardText}>
-          JobLop is completing the governed cancellation of the confirmed worker assignments. This request
-          is not fully cancelled until that completes.
+          <strong>Cancellation processing.</strong> JobLop is completing the governed cancellation of the
+          confirmed worker assignments. This request is not fully cancelled until that completes.
         </p>
       ) : cancellation.status === "requires_reconciliation" ? (
         <p style={styles.warning}>
-          Your cancellation and obligation are recorded, but the assignment cancellation needs review by
-          JobLop. Our team will complete it — this request is not yet fully cancelled.
+          <strong>Requires JobLop review.</strong> Your cancellation and obligation are recorded, but the
+          assignment cancellation needs review by JobLop. Our team will complete it — this request is not
+          yet fully cancelled.
         </p>
+      ) : completed ? (
+        <p style={styles.cardText}>This request has been cancelled.</p>
       ) : (
         <p style={styles.cardText}>Your cancellation has been recorded.</p>
       )}
