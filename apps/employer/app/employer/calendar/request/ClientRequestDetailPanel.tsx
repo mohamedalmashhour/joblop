@@ -13,6 +13,7 @@ import { JobLocationMap } from "../../../shared/maps";
 import { AddWorkersPanel } from "./AddWorkersPanel";
 import { CancelRequestPanel } from "./CancelRequestPanel";
 import { DuplicateRequestButton } from "./DuplicateRequestButton";
+import { ReduceWorkersPanel } from "./ReduceWorkersPanel";
 
 export function ClientRequestDetailPanel({ requestId }: Readonly<{ requestId: string | null }>) {
   const [state, setState] = useState<AuthenticatedViewState<ClientCalendarDto>>({
@@ -185,6 +186,15 @@ export function ClientRequestDetailPanel({ requestId }: Readonly<{ requestId: st
                 versionToken={request.versionToken}
               />
             </div>
+            {request.numberOfWorkers > 1 ? (
+              <div style={{ marginTop: 14 }}>
+                <ReduceWorkersPanel
+                  requestId={request.id}
+                  currentWorkers={request.numberOfWorkers}
+                  versionToken={request.versionToken}
+                />
+              </div>
+            ) : null}
             <div style={{ marginTop: 14 }}>
               <CancelRequestPanel requestId={request.id} />
             </div>
