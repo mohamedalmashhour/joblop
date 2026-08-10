@@ -33,6 +33,12 @@ import {
   createDispatchService,
   createEmployerContractService,
   createEmployerCancellationService,
+  createEmployerReduceService,
+  createPrismaReduceJobRequestReader,
+  createPrismaConfirmedAssignmentLister,
+  createPrismaReduceContractRateReader,
+  createPrismaReduceStore,
+  EmployerReduceError,
   createPrismaCancellationJobRequestReader,
   createPrismaConfirmedAssignmentReader,
   createPrismaContractRateReader,
@@ -84,6 +90,8 @@ import {
   type DispatchPriority,
   type EmployerContractService,
   type AssignmentCancelPort,
+  type SelectedAssignmentCancelPort,
+  type EmployerReduceService,
   type EmployerOrganizationService,
   type JobRequestService,
   type JobRequestType,
@@ -363,6 +371,51 @@ export function buildApi(options: BuildApiOptions = {}) {
         } catch {
           return false;
         }
+      }
+    }
+  });
+  // Employer Reduce Workers (governed capacity reduction with partial cancellation).
+  // The selected-assignment handoff is platform-authorized (injected by the platform
+  // endpoint). The capacity setter changes numberOfWorkers under employer authority,
+  // reading the current version for optimistic concurrency.
+  const reduceJobRequestRepository = createPrismaJobRequestRepository(prisma!);
+  const employerReduceService = createEmployerReduceService({
+    membershipReader: membershipService,
+    jobRequestReader: createPrismaReduceJobRequestReader(prisma!),
+    confirmedAssignmentLister: createPrismaConfirmedAssignmentLister(prisma!),
+    contractRateReader: createPrismaReduceContractRateReader(prisma!),
+    store: createPrismaReduceStore(prisma!),
+    assignmentCancelPort: {
+      async cancelSelectedAssignments() {
+        throw new Error("A platform-authorized selected-assignment cancel port must be provided.");
+      }
+    },
+    capacitySetter: {
+      async setRequestedCapacity({ actorUserId, jobRequestId, newTarget }) {
+        const jobRequest = await reduceJobRequestRepository.findJobRequestById(jobRequestId);
+        if (!jobRequest) return false;
+        const now = new Date();
+        const updated = await reduceJobRequestRepository.updateDraft({
+          jobRequestId,
+          expectedVersion: jobRequest.version,
+          actorUserId,
+          numberOfWorkers: newTarget,
+          now
+        });
+        if (!updated) return false;
+        await reduceJobRequestRepository.recordJobRequestAuditEvent({
+          action: "job_request.updated",
+          organizationId: jobRequest.organizationId,
+          jobRequestId: jobRequest.id,
+          jobRequestNumber: jobRequest.jobRequestNumber,
+          actorUserId,
+          priorState: `numberOfWorkers=${jobRequest.numberOfWorkers}`,
+          newState: `numberOfWorkers=${newTarget}`,
+          reason: "capacity_reduced",
+          correlationId: `capacity_reduced_${jobRequest.id}`,
+          createdAt: now
+        });
+        return true;
       }
     }
   });
@@ -2249,6 +2302,126 @@ export function buildApi(options: BuildApiOptions = {}) {
       }
     }
   );
+
+  // Reduce Workers — authoritative preview (server derives requested/confirmed/
+  // unfilled/eligible assignments + obligation). Browser supplies only newTarget.
+  app.post(
+    "/organizations/:organizationId/job-requests/:jobRequestId/reduce/preview",
+    async (request, reply) => {
+      const session = await authService.validateSession(readBearerToken(request.headers.authorization));
+      if (!session.authenticated || !session.user) return sendCancellationDenied(reply);
+      const body = asRecord(request.body);
+      const newTarget = readOptionalNumber(body, "newTarget");
+      if (newTarget === null || newTarget === undefined) {
+        return reply.code(400).send({ error: "RWOS_INVALID_REDUCE", message: "A new target is required." });
+      }
+      try {
+        const preview = await employerReduceService.reducePreview({
+          actorUserId: session.user.id,
+          organizationId: readRouteParam(request.params, "organizationId"),
+          jobRequestId: readRouteParam(request.params, "jobRequestId"),
+          newTarget
+        });
+        return reply.code(200).send({ preview });
+      } catch (error) {
+        return sendReduceError(reply, error);
+      }
+    }
+  );
+
+  // Reduce Workers — confirm. Body: newTarget + selectedAssignmentIds + expectedVersion
+  // + idempotencyKey. Never an authoritative rate/amount/count/cutoff.
+  app.post(
+    "/organizations/:organizationId/job-requests/:jobRequestId/reduce/confirm",
+    async (request, reply) => {
+      const session = await authService.validateSession(readBearerToken(request.headers.authorization));
+      if (!session.authenticated || !session.user) return sendCancellationDenied(reply);
+      const body = asRecord(request.body);
+      const newTarget = readOptionalNumber(body, "newTarget");
+      const expectedVersion = readOptionalNumber(body, "expectedVersion");
+      const idempotencyKey = readRequiredString(body, "idempotencyKey") ?? "";
+      const selectedAssignmentIds = Array.isArray(body.selectedAssignmentIds)
+        ? body.selectedAssignmentIds.filter((v): v is string => typeof v === "string")
+        : [];
+      if (newTarget === null || newTarget === undefined || expectedVersion === null || expectedVersion === undefined) {
+        return reply.code(400).send({ error: "RWOS_INVALID_REDUCE", message: "A new target and current version are required." });
+      }
+      try {
+        const result = await employerReduceService.reduceConfirm({
+          actorUserId: session.user.id,
+          organizationId: readRouteParam(request.params, "organizationId"),
+          jobRequestId: readRouteParam(request.params, "jobRequestId"),
+          newTarget,
+          selectedAssignmentIds,
+          expectedVersion,
+          idempotencyKey
+        });
+        return reply.code(200).send(result);
+      } catch (error) {
+        return sendReduceError(reply, error);
+      }
+    }
+  );
+
+  // Platform-only: complete a reduction's selected-assignment handoff — cancels ONLY
+  // the specific selected assignments, then the reduce service sets the new target.
+  app.post("/platform/capacity-reductions/:reductionId/complete", async (request, reply) => {
+    const session = await authService.validateSession(readBearerToken(request.headers.authorization));
+    if (!session.authenticated || !session.user) return sendCancellationDenied(reply);
+    const roles = await resolveAuthorizationRoles(session.user.id);
+    if (!roles.includes("PLATFORM_ADMINISTRATOR")) {
+      return reply.code(403).send({ error: "RWOS_REDUCE_DENIED", message: "Platform authority is required." });
+    }
+    const port: SelectedAssignmentCancelPort = {
+      async cancelSelectedAssignments({ organizationId, jobRequestId, assignmentIds, reason }) {
+        const active = await assignmentService.listAssignments({
+          session,
+          roles,
+          organizationId,
+          jobRequestId,
+          statuses: [...CONFIRMED_ASSIGNMENT_STATUSES] as AssignmentStatus[]
+        });
+        const selectable = new Map(active.map((a) => [a.id, a.versionToken] as const));
+        let cancelled = 0;
+        let failed = 0;
+        for (const id of assignmentIds) {
+          const version = selectable.get(id);
+          if (version === undefined) {
+            failed += 1; // no longer an eligible confirmed assignment of this request
+            continue;
+          }
+          try {
+            await assignmentService.cancel({ session, roles, assignmentId: id, expectedVersion: version, reason, status: "employer_cancelled" });
+            cancelled += 1;
+          } catch {
+            failed += 1;
+          }
+        }
+        return { attempted: assignmentIds.length, cancelled, failed };
+      }
+    };
+    try {
+      const result = await employerReduceService.completeReduction({
+        reductionId: readRouteParam(request.params, "reductionId"),
+        assignmentCancelPort: port
+      });
+      return reply.code(200).send(result);
+    } catch (error) {
+      return sendReduceError(reply, error);
+    }
+  });
+
+  // Platform-only reconciliation queue for reductions.
+  app.get("/platform/capacity-reductions", async (request, reply) => {
+    const session = await authService.validateSession(readBearerToken(request.headers.authorization));
+    if (!session.authenticated || !session.user) return sendCancellationDenied(reply);
+    const roles = await resolveAuthorizationRoles(session.user.id);
+    if (!roles.includes("PLATFORM_ADMINISTRATOR")) {
+      return reply.code(403).send({ error: "RWOS_REDUCE_DENIED", message: "Platform authority is required." });
+    }
+    const reductions = await employerReduceService.listReconciliation();
+    return reply.code(200).send({ reductions });
+  });
 
   app.get("/organizations/:organizationId/job-requests", async (request, reply) => {
     const session = await authService.validateSession(
@@ -4587,6 +4760,15 @@ function sendCapacityError(reply: FastifyReply, error: unknown) {
     });
   }
   throw error;
+}
+
+function sendReduceError(reply: FastifyReply, error: unknown) {
+  if (error instanceof EmployerReduceError) {
+    const httpStatus =
+      error.code === "denied" ? 403 : error.code === "not_found" ? 404 : error.code === "conflict" ? 409 : 400;
+    return reply.code(httpStatus).send({ error: `RWOS_REDUCE_${error.code.toUpperCase()}`, message: error.message });
+  }
+  return reply.code(500).send({ error: "RWOS_REDUCE_ERROR", message: "The reduction could not be processed." });
 }
 
 function readContractRoleRates(body: Record<string, unknown>): ContractRoleRateInput[] {
