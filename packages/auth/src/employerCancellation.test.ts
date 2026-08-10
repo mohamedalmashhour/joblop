@@ -1,0 +1,246 @@
+import { describe, expect, it } from "vitest";
+import {
+  EmployerCancellationError,
+  createEmployerCancellationService,
+  type AssignmentCancelPort,
+  type AssignmentCancelResult,
+  type CancellationJobRequest,
+  type CancellationMembershipReader,
+  type ContractRateReader,
+  type EmployerCancellationCause,
+  type GovernedRate,
+  type StoredCancellation
+} from "./employerCancellation";
+
+const ORG = "org-1";
+const REQ = "req-1";
+const shiftStart = new Date("2026-08-15T13:00:00.000Z");
+const nowAtHoursBefore = (h: number) => new Date(shiftStart.getTime() - h * 3_600_000);
+
+function membership(roleKeys: readonly string[], status = "active"): CancellationMembershipReader {
+  return { async listMemberships() { return [{ organizationId: ORG, status, roleKeys }]; } };
+}
+const OWNER = membership(["ORGANIZATION_OWNER"]);
+
+function jobRequestReader(status = "approved_for_dispatch"): {
+  findJobRequest: (o: string, j: string) => Promise<CancellationJobRequest | null>;
+} {
+  return {
+    async findJobRequest(o, j) {
+      if (o !== ORG || j !== REQ) return null;
+      return { id: REQ, organizationId: ORG, roleDefinitionId: "role-chef", startAt: shiftStart, status };
+    }
+  };
+}
+
+function rateReader(rate: GovernedRate | null): ContractRateReader {
+  return { async getGovernedRate() { return rate; } };
+}
+const RATE_30: GovernedRate = { rateMinor: 3000, currency: "CAD", contractId: "c1", contractVersion: "2026-Q3" };
+
+// In-memory store honoring idempotency by (jobRequestId) and by idempotencyKey.
+function makeStore() {
+  const rows: Array<StoredCancellation & { idempotencyKey: string; obligationAmount: number | null }> = [];
+  let seq = 0;
+  const store = {
+    async createCancellation(input: Parameters<import("./employerCancellation").CancellationStore["createCancellation"]>[0]) {
+      const existing = rows.find(
+        (r) => r.jobRequestId === input.jobRequestId || r.idempotencyKey === input.idempotencyKey
+      );
+      if (existing) return { created: false, cancellation: existing };
+      const row = {
+        id: `cx-${++seq}`,
+        organizationId: input.organizationId,
+        jobRequestId: input.jobRequestId,
+        cause: input.cause,
+        status: input.initialStatus,
+        affectedConfirmedWorkers: input.affectedConfirmedWorkers,
+        idempotencyKey: input.idempotencyKey,
+        obligationAmount: input.obligation ? input.obligation.amountMinor : null,
+        obligation: input.obligation
+          ? { id: `ob-${seq}`, amountMinor: input.obligation.amountMinor, currency: input.obligation.currency, status: "RECORDED" as const }
+          : null
+      };
+      rows.push(row);
+      return { created: true, cancellation: row };
+    },
+    async updateStatus(id: string, status: StoredCancellation["status"]) {
+      const row = rows.find((r) => r.id === id);
+      if (!row) throw new Error("not found");
+      (row as { status: StoredCancellation["status"] }).status = status;
+      return row;
+    }
+  };
+  return { store, rows };
+}
+
+function assignmentPort(result: AssignmentCancelResult | (() => Promise<AssignmentCancelResult>)): {
+  port: AssignmentCancelPort;
+  calls: number;
+} {
+  const state = { calls: 0 };
+  const port: AssignmentCancelPort = {
+    async cancelConfirmedAssignments() {
+      state.calls += 1;
+      return typeof result === "function" ? result() : result;
+    }
+  };
+  return { port, get calls() { return state.calls; } } as { port: AssignmentCancelPort; calls: number };
+}
+
+function service(opts: {
+  confirmed: number;
+  rate?: GovernedRate | null;
+  membershipReader?: CancellationMembershipReader;
+  now?: () => Date;
+  port?: AssignmentCancelPort;
+  requestStatus?: string;
+}) {
+  const { store, rows } = makeStore();
+  const svc = createEmployerCancellationService({
+    membershipReader: opts.membershipReader ?? OWNER,
+    jobRequestReader: jobRequestReader(opts.requestStatus),
+    confirmedAssignmentReader: { async countConfirmedAssignments() { return opts.confirmed; } },
+    contractRateReader: rateReader(opts.rate === undefined ? RATE_30 : opts.rate),
+    store,
+    assignmentCancelPort:
+      opts.port ?? { async cancelConfirmedAssignments() { return { attempted: opts.confirmed, cancelled: opts.confirmed, failed: 0 }; } },
+    now: opts.now ?? (() => nowAtHoursBefore(1))
+  });
+  return { svc, rows };
+}
+
+describe("employer cancellation — preview (authoritative consequence)", () => {
+  it("charges nothing at exactly 48h before start", async () => {
+    const { svc } = service({ confirmed: 2, now: () => nowAtHoursBefore(48) });
+    const p = await svc.previewCancellation({ actorUserId: "u1", organizationId: ORG, jobRequestId: REQ });
+    expect(p.obligationApplies).toBe(false);
+    expect(p.obligationAmountMinor).toBe(0);
+    expect(p.requiresPlatformHandoff).toBe(true); // confirmed workers still need transition
+  });
+
+  it("charges 6h × rate × workers at 47h59m", async () => {
+    const { svc } = service({ confirmed: 2, now: () => nowAtHoursBefore(47 + 59 / 60) });
+    const p = await svc.previewCancellation({ actorUserId: "u1", organizationId: ORG, jobRequestId: REQ });
+    expect(p.obligationApplies).toBe(true);
+    expect(p.obligationAmountMinor).toBe(36000); // 6×3000×2 = $360
+    expect(p.affectedConfirmedWorkers).toBe(2);
+  });
+
+  it("zero confirmed workers → $0 and no handoff", async () => {
+    const { svc } = service({ confirmed: 0, now: () => nowAtHoursBefore(1) });
+    const p = await svc.previewCancellation({ actorUserId: "u1", organizationId: ORG, jobRequestId: REQ });
+    expect(p.obligationApplies).toBe(false);
+    expect(p.requiresPlatformHandoff).toBe(false);
+  });
+
+  it("denies a non-owner and a cross-org request", async () => {
+    const staff = service({ confirmed: 1, membershipReader: membership(["ORGANIZATION_STAFF"]) });
+    await expect(
+      staff.svc.previewCancellation({ actorUserId: "u1", organizationId: ORG, jobRequestId: REQ })
+    ).rejects.toMatchObject({ code: "denied" });
+
+    const { svc } = service({ confirmed: 1 });
+    await expect(
+      svc.previewCancellation({ actorUserId: "u1", organizationId: ORG, jobRequestId: "other-req" })
+    ).rejects.toMatchObject({ code: "not_found" });
+  });
+});
+
+describe("employer cancellation — confirm (record + handoff)", () => {
+  it("records obligation + completes after a successful platform handoff", async () => {
+    const { svc, rows } = service({ confirmed: 2, now: () => nowAtHoursBefore(1) });
+    const { cancellation, preview } = await svc.confirmCancellation({
+      actorUserId: "u1", organizationId: ORG, jobRequestId: REQ, idempotencyKey: "k1"
+    });
+    expect(preview.obligationAmountMinor).toBe(36000);
+    expect(cancellation.status).toBe("completed");
+    expect(cancellation.obligation).toMatchObject({ amountMinor: 36000, currency: "CAD", status: "RECORDED" });
+    expect(rows).toHaveLength(1);
+  });
+
+  it("is idempotent — repeated confirm creates ONE record and one handoff", async () => {
+    const p = assignmentPort({ attempted: 2, cancelled: 2, failed: 0 });
+    const { svc, rows } = service({ confirmed: 2, port: p.port, now: () => nowAtHoursBefore(1) });
+    const a = await svc.confirmCancellation({ actorUserId: "u1", organizationId: ORG, jobRequestId: REQ, idempotencyKey: "k1" });
+    const b = await svc.confirmCancellation({ actorUserId: "u1", organizationId: ORG, jobRequestId: REQ, idempotencyKey: "k1" });
+    expect(rows).toHaveLength(1);
+    expect(a.cancellation.id).toBe(b.cancellation.id);
+    expect(p.calls).toBe(1); // second call short-circuits, no duplicate handoff
+  });
+
+  it("zero confirmed workers → completes directly with $0 and no handoff", async () => {
+    const p = assignmentPort({ attempted: 0, cancelled: 0, failed: 0 });
+    const { svc } = service({ confirmed: 0, port: p.port, now: () => nowAtHoursBefore(1) });
+    const { cancellation } = await svc.confirmCancellation({
+      actorUserId: "u1", organizationId: ORG, jobRequestId: REQ, idempotencyKey: "k0"
+    });
+    expect(cancellation.status).toBe("completed");
+    expect(cancellation.obligation).toBeNull();
+    expect(p.calls).toBe(0);
+  });
+
+  it("marks requires_reconciliation on partial platform failure — never fakes success", async () => {
+    const p = assignmentPort({ attempted: 3, cancelled: 2, failed: 1 });
+    const { svc } = service({ confirmed: 3, port: p.port, now: () => nowAtHoursBefore(1) });
+    const { cancellation } = await svc.confirmCancellation({
+      actorUserId: "u1", organizationId: ORG, jobRequestId: REQ, idempotencyKey: "kx"
+    });
+    expect(cancellation.status).toBe("requires_reconciliation");
+    // obligation is still recorded truthfully
+    expect(cancellation.obligation?.amountMinor).toBe(6 * 3000 * 3);
+  });
+
+  it("marks requires_reconciliation when the platform handoff throws", async () => {
+    const throwingPort: AssignmentCancelPort = {
+      async cancelConfirmedAssignments() { throw new Error("dispatch unavailable"); }
+    };
+    const { svc } = service({ confirmed: 2, port: throwingPort, now: () => nowAtHoursBefore(1) });
+    const { cancellation } = await svc.confirmCancellation({
+      actorUserId: "u1", organizationId: ORG, jobRequestId: REQ, idempotencyKey: "kt"
+    });
+    expect(cancellation.status).toBe("requires_reconciliation");
+  });
+
+  it("re-derives the obligation at confirm time (ignores any stale/browser value)", async () => {
+    // Worker count changes between preview and confirm; confirm uses the live count.
+    const { svc } = service({ confirmed: 4, now: () => nowAtHoursBefore(2) });
+    const { preview } = await svc.confirmCancellation({
+      actorUserId: "u1", organizationId: ORG, jobRequestId: REQ, idempotencyKey: "kd"
+    });
+    expect(preview.affectedConfirmedWorkers).toBe(4);
+    expect(preview.obligationAmountMinor).toBe(6 * 3000 * 4);
+  });
+
+  it("applies NO obligation for non-employer causes", async () => {
+    const causes: EmployerCancellationCause[] = [
+      "MUTUALLY_CANCELLED", "WORKER_CANCELLED", "WORKER_NO_SHOW", "PLATFORM_UNABLE_TO_FILL", "PLATFORM_CANCELLED"
+    ];
+    for (const cause of causes) {
+      const { svc } = service({ confirmed: 2, now: () => nowAtHoursBefore(1) });
+      const { preview } = await svc.confirmCancellation({
+        actorUserId: "u1", organizationId: ORG, jobRequestId: REQ, idempotencyKey: `kc-${cause}`, cause
+      });
+      expect(preview.obligationApplies).toBe(false);
+      expect(preview.obligationAmountMinor).toBe(0);
+    }
+  });
+
+  it("requires an idempotency key", async () => {
+    const { svc } = service({ confirmed: 1 });
+    await expect(
+      svc.confirmCancellation({ actorUserId: "u1", organizationId: ORG, jobRequestId: REQ, idempotencyKey: "  " })
+    ).rejects.toBeInstanceOf(EmployerCancellationError);
+  });
+
+  it("uses $0 obligation when the role has no governed rate (unpriced)", async () => {
+    const { svc } = service({ confirmed: 2, rate: null, now: () => nowAtHoursBefore(1) });
+    const { preview, cancellation } = await svc.confirmCancellation({
+      actorUserId: "u1", organizationId: ORG, jobRequestId: REQ, idempotencyKey: "kn"
+    });
+    expect(preview.obligationApplies).toBe(false);
+    expect(cancellation.obligation).toBeNull();
+    // still needs the platform handoff for the confirmed workers
+    expect(cancellation.status).toBe("completed");
+  });
+});
