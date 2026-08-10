@@ -105,7 +105,9 @@ export type ReduceStore = Readonly<{
     } | null;
     now: Date;
   }): Promise<{ created: boolean; reduction: StoredReduction }>;
+  findById(reductionId: string): Promise<StoredReduction | null>;
   updateStatus(reductionId: string, status: StoredReduction["status"], now: Date): Promise<StoredReduction>;
+  listByStatus(statuses: readonly StoredReduction["status"][], limit: number): Promise<readonly StoredReduction[]>;
 }>;
 
 export type SelectedAssignmentCancelResult = Readonly<{ attempted: number; cancelled: number; failed: number }>;
@@ -119,14 +121,15 @@ export type SelectedAssignmentCancelPort = Readonly<{
 }>;
 
 export type CapacitySetterPort = Readonly<{
-  // Sets the request's target worker count under employer authority (optimistic
-  // concurrency). Returns false on version conflict/failure.
+  // Sets the request's target worker count under employer authority. Reads the
+  // current request version internally (optimistic concurrency) so it is safe in the
+  // deferred completion path where the version may have advanced. Returns false on
+  // conflict/failure.
   setRequestedCapacity(input: {
     actorUserId: string;
     organizationId: string;
     jobRequestId: string;
     newTarget: number;
-    expectedVersion: number;
   }): Promise<boolean>;
 }>;
 
@@ -312,48 +315,267 @@ export function createEmployerReduceService(deps: {
       });
       if (!created) return { reduction, preview }; // idempotent replay
 
-      // No confirmed impact → just set the new target now (unfilled-only reduction).
+      // No confirmed impact (unfilled-only) → set the new target now under employer
+      // authority; no platform handoff needed.
       if (!requiresHandoff) {
         const ok = await deps.capacitySetter.setRequestedCapacity({
           actorUserId: input.actorUserId,
           organizationId: input.organizationId,
           jobRequestId: input.jobRequestId,
-          newTarget: input.newTarget,
-          expectedVersion: input.expectedVersion
+          newTarget: input.newTarget
         });
         const finalized = await deps.store.updateStatus(reduction.id, ok ? "completed" : "requires_reconciliation", now());
         return { reduction: finalized, preview };
       }
 
-      // Confirmed impact → platform cancels ONLY the selected assignments.
+      // Confirmed impact → the employer step records intent only. The platform-
+      // governed handoff (cancel the selected assignments) + the target change happen
+      // in completeReduction(); no assignment mutation under employer authority.
+      return { reduction, preview };
+    },
+
+    // Platform-authorized completion: cancels ONLY the selected assignments, then —
+    // if all succeed — sets the new target under the INITIATING employer's authority.
+    // The request STAYS ACTIVE at the new target. Partial/failed handoff or a failed
+    // target change → requires_reconciliation (target unchanged; obligation intact).
+    // Idempotent + retryable.
+    async completeReduction(input: {
+      reductionId: string;
+      assignmentCancelPort?: SelectedAssignmentCancelPort;
+    }): Promise<{ reduction: StoredReduction; result: SelectedAssignmentCancelResult | null }> {
+      const port = input.assignmentCancelPort ?? deps.assignmentCancelPort;
+      const reduction = await deps.store.findById(input.reductionId);
+      if (!reduction) throw new EmployerReduceError("not_found", "The reduction was not found.");
+      if (reduction.status === "completed") return { reduction, result: null };
+
       let result: SelectedAssignmentCancelResult;
       try {
-        result = await deps.assignmentCancelPort.cancelSelectedAssignments({
-          organizationId: input.organizationId,
-          jobRequestId: input.jobRequestId,
-          assignmentIds: selected,
+        result = await port.cancelSelectedAssignments({
+          organizationId: reduction.organizationId,
+          jobRequestId: reduction.jobRequestId,
+          assignmentIds: reduction.selectedAssignmentIds,
           reason: "employer_reduced_capacity"
         });
       } catch {
         const r = await deps.store.updateStatus(reduction.id, "requires_reconciliation", now());
-        return { reduction: r, preview };
+        return { reduction: r, result: null };
       }
       if (result.failed !== 0 || result.cancelled < result.attempted) {
         const r = await deps.store.updateStatus(reduction.id, "requires_reconciliation", now());
-        return { reduction: r, preview };
+        return { reduction: r, result };
       }
-      // All selected assignments cancelled → set the new target. Request stays ACTIVE.
+      // Selected assignments cancelled → set the new target (initiating employer).
       const ok = await deps.capacitySetter.setRequestedCapacity({
-        actorUserId: input.actorUserId,
-        organizationId: input.organizationId,
-        jobRequestId: input.jobRequestId,
-        newTarget: input.newTarget,
-        expectedVersion: input.expectedVersion
+        actorUserId: reduction.initiatedByUserId,
+        organizationId: reduction.organizationId,
+        jobRequestId: reduction.jobRequestId,
+        newTarget: reduction.newTarget
       });
       const finalized = await deps.store.updateStatus(reduction.id, ok ? "completed" : "requires_reconciliation", now());
-      return { reduction: finalized, preview };
+      return { reduction: finalized, result };
+    },
+
+    async listReconciliation(input?: {
+      statuses?: readonly StoredReduction["status"][];
+      limit?: number;
+    }): Promise<readonly StoredReduction[]> {
+      return deps.store.listByStatus(input?.statuses ?? ["requires_reconciliation"], input?.limit ?? 100);
     }
   };
 }
 
 export type EmployerReduceService = ReturnType<typeof createEmployerReduceService>;
+
+// ── Prisma adapters ──────────────────────────────────────────────────────────
+
+import { CONFIRMED_ASSIGNMENT_STATUSES } from "./employerCancellation";
+
+type PrismaReduceClient = {
+  jobRequest: {
+    findFirst(args: unknown): Promise<
+      | { id: string; organizationId: string; roleDefinitionId: string; numberOfWorkers: number; startAt: Date; status: string; version: number }
+      | null
+    >;
+  };
+  assignment: {
+    findMany(args: unknown): Promise<
+      readonly { id: string; status: string; confirmedStartAt: Date; confirmedEndAt: Date }[]
+    >;
+  };
+  employerContract: {
+    findFirst(args: unknown): Promise<
+      | { id: string; version: string; currency: string; roleRates: readonly { roleDefinitionId: string; hourlyRateMinor: number }[] }
+      | null
+    >;
+  };
+  employerCapacityReduction: {
+    findFirst(args: unknown): Promise<ReduceRow | null>;
+    findMany(args: unknown): Promise<readonly ReduceRow[]>;
+    create(args: unknown): Promise<ReduceRow>;
+    update(args: unknown): Promise<ReduceRow>;
+  };
+};
+
+type ReduceRow = {
+  id: string;
+  organizationId: string;
+  jobRequestId: string;
+  status: StoredReduction["status"];
+  previousTarget: number;
+  newTarget: number;
+  affectedConfirmedCount: number;
+  selectedAssignmentIds: unknown;
+  idempotencyKey: string;
+  initiatedByUserId: string;
+  obligationAmountMinor: number | null;
+  currency: string;
+};
+
+function reduceRowToStored(row: ReduceRow): StoredReduction {
+  return {
+    id: row.id,
+    organizationId: row.organizationId,
+    jobRequestId: row.jobRequestId,
+    status: row.status,
+    previousTarget: row.previousTarget,
+    newTarget: row.newTarget,
+    affectedConfirmed: row.affectedConfirmedCount,
+    selectedAssignmentIds: Array.isArray(row.selectedAssignmentIds)
+      ? row.selectedAssignmentIds.filter((v): v is string => typeof v === "string")
+      : [],
+    idempotencyKey: row.idempotencyKey,
+    initiatedByUserId: row.initiatedByUserId,
+    obligationAmountMinor: row.obligationAmountMinor,
+    obligationCurrency: row.obligationAmountMinor === null ? null : row.currency
+  };
+}
+
+export function createPrismaReduceJobRequestReader(prismaClient: unknown): ReduceJobRequestReader {
+  const prisma = prismaClient as PrismaReduceClient;
+  return {
+    async findJobRequest(organizationId, jobRequestId) {
+      const jr = await prisma.jobRequest.findFirst({
+        where: { id: jobRequestId, organizationId },
+        select: { id: true, organizationId: true, roleDefinitionId: true, numberOfWorkers: true, startAt: true, status: true, version: true }
+      });
+      if (!jr) return null;
+      return {
+        id: jr.id,
+        organizationId: jr.organizationId,
+        roleDefinitionId: jr.roleDefinitionId,
+        numberOfWorkers: jr.numberOfWorkers,
+        startAt: jr.startAt,
+        status: jr.status,
+        versionToken: jr.version
+      };
+    }
+  };
+}
+
+export function createPrismaConfirmedAssignmentLister(prismaClient: unknown): ConfirmedAssignmentLister {
+  const prisma = prismaClient as PrismaReduceClient;
+  return {
+    async listConfirmedAssignments(organizationId, jobRequestId) {
+      const rows = await prisma.assignment.findMany({
+        where: { organizationId, jobRequestId, status: { in: [...CONFIRMED_ASSIGNMENT_STATUSES] } },
+        select: { id: true, status: true, confirmedStartAt: true, confirmedEndAt: true },
+        orderBy: { confirmedStartAt: "asc" }
+      });
+      // Worker identity is intentionally NOT exposed; the employer selects by
+      // assignment schedule/status. (Privacy boundary.)
+      return rows.map((r) => ({
+        id: r.id,
+        status: r.status,
+        workerDisplay: null,
+        startAt: r.confirmedStartAt.toISOString(),
+        endAt: r.confirmedEndAt.toISOString()
+      }));
+    }
+  };
+}
+
+export function createPrismaReduceContractRateReader(prismaClient: unknown): ReduceContractRateReader {
+  const prisma = prismaClient as PrismaReduceClient;
+  return {
+    async getGovernedRate(organizationId, roleDefinitionId) {
+      const contract = await prisma.employerContract.findFirst({
+        where: { organizationId, status: "active" },
+        orderBy: { activatedAt: "desc" },
+        select: { id: true, version: true, currency: true, roleRates: { where: { roleDefinitionId }, select: { roleDefinitionId: true, hourlyRateMinor: true } } }
+      });
+      const rate = contract?.roleRates.find((r) => r.roleDefinitionId === roleDefinitionId);
+      if (!contract || !rate) return null;
+      return { rateMinor: rate.hourlyRateMinor, currency: contract.currency, contractId: contract.id, contractVersion: contract.version };
+    }
+  };
+}
+
+export function createPrismaReduceStore(prismaClient: unknown): ReduceStore {
+  const prisma = prismaClient as PrismaReduceClient;
+  return {
+    async createReduction(input) {
+      try {
+        const existing = await prisma.employerCapacityReduction.findFirst({ where: { idempotencyKey: input.idempotencyKey } });
+        if (existing) return { created: false, reduction: reduceRowToStored(existing) };
+        const created = await prisma.employerCapacityReduction.create({
+          data: {
+            organizationId: input.organizationId,
+            jobRequestId: input.jobRequestId,
+            initiatedByUserId: input.initiatedByUserId,
+            status: input.initialStatus,
+            previousTarget: input.previousTarget,
+            newTarget: input.newTarget,
+            removedUnfilledCapacity: Math.max(0, input.previousTarget - input.newTarget - input.affectedConfirmed),
+            affectedConfirmedCount: input.affectedConfirmed,
+            selectedAssignmentIds: [...input.selectedAssignmentIds],
+            expectedRequestVersion: 0,
+            idempotencyKey: input.idempotencyKey,
+            ...(input.obligation
+              ? {
+                  obligationAmountMinor: input.obligation.amountMinor,
+                  governedRateMinor: input.obligation.governedRateMinor,
+                  currency: input.obligation.currency,
+                  minimumShiftHours: input.obligation.minimumShiftHours,
+                  cutoffHours: input.obligation.cutoffHours,
+                  contractId: input.obligation.contractId,
+                  contractVersion: input.obligation.contractVersion
+                }
+              : {}),
+            createdAt: input.now,
+            updatedAt: input.now
+          }
+        });
+        return { created: true, reduction: reduceRowToStored(created) };
+      } catch (error) {
+        if (isReduceUniqueViolation(error)) {
+          const existing = await prisma.employerCapacityReduction.findFirst({ where: { idempotencyKey: input.idempotencyKey } });
+          if (existing) return { created: false, reduction: reduceRowToStored(existing) };
+        }
+        throw error;
+      }
+    },
+    async findById(reductionId) {
+      const row = await prisma.employerCapacityReduction.findFirst({ where: { id: reductionId } });
+      return row ? reduceRowToStored(row) : null;
+    },
+    async updateStatus(reductionId, status, nowDate) {
+      const updated = await prisma.employerCapacityReduction.update({
+        where: { id: reductionId },
+        data: { status, lastHandoffAt: nowDate, handoffAttempts: { increment: 1 }, updatedAt: nowDate }
+      });
+      return reduceRowToStored(updated);
+    },
+    async listByStatus(statuses, limit) {
+      const rows = await prisma.employerCapacityReduction.findMany({
+        where: { status: { in: [...statuses] } },
+        orderBy: { createdAt: "desc" },
+        take: limit
+      });
+      return rows.map(reduceRowToStored);
+    }
+  };
+}
+
+function isReduceUniqueViolation(error: unknown): boolean {
+  return typeof error === "object" && error !== null && "code" in error && (error as { code?: unknown }).code === "P2002";
+}

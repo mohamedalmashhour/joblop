@@ -48,11 +48,17 @@ function makeStore() {
       rows.push(row);
       return { created: true, reduction: row };
     },
+    async findById(id: string) {
+      return rows.find((r) => r.id === id) ?? null;
+    },
     async updateStatus(id: string, status: StoredReduction["status"]) {
       const row = rows.find((r) => r.id === id);
       if (!row) throw new Error("not found");
       (row as { status: StoredReduction["status"] }).status = status;
       return row;
+    },
+    async listByStatus(statuses: readonly StoredReduction["status"][], limit: number) {
+      return rows.filter((r) => statuses.includes(r.status)).slice(0, limit);
     }
   };
   return { store, rows };
@@ -132,15 +138,22 @@ describe("employer reduce — confirm (partial cancellation)", () => {
     expect(setterCalls).toEqual([4]);
   });
 
-  it("confirmed-affecting reduction cancels ONLY the selected assignment then sets target; request stays active", async () => {
+  it("confirmed-affecting: confirm records pending; completeReduction cancels ONLY the selected assignment then sets target (request stays active)", async () => {
     const { svc, rows, cancelCalls, setterCalls } = service({ requested: 5, confirmed: three() });
     const { reduction } = await svc.reduceConfirm({
       actorUserId: "u1", organizationId: ORG, jobRequestId: REQ, newTarget: 2, selectedAssignmentIds: ["b"], expectedVersion: 1, idempotencyKey: "k2"
     });
-    expect(reduction.status).toBe("completed");
+    // Employer step records intent only — no assignment mutation, no target change yet.
+    expect(reduction.status).toBe("assignment_cancellation_pending");
     expect(reduction.obligationAmountMinor).toBe(18000);
+    expect(cancelCalls).toHaveLength(0);
+    expect(setterCalls).toHaveLength(0);
+
+    // Platform completes.
+    const done = await svc.completeReduction({ reductionId: reduction.id });
+    expect(done.reduction.status).toBe("completed");
     expect(cancelCalls).toEqual([["b"]]); // only the selected assignment
-    expect(setterCalls).toEqual([2]); // new target
+    expect(setterCalls).toEqual([2]); // new target set after handoff
     expect(rows).toHaveLength(1);
   });
 
@@ -158,22 +171,27 @@ describe("employer reduce — confirm (partial cancellation)", () => {
     ).rejects.toMatchObject({ code: "invalid" });
   });
 
-  it("partial handoff failure → requires_reconciliation, target NOT changed", async () => {
+  it("completeReduction partial handoff failure → requires_reconciliation, target NOT changed", async () => {
     const { svc, setterCalls } = service({ requested: 5, confirmed: three(), cancelResult: { attempted: 1, cancelled: 0, failed: 1 } });
     const { reduction } = await svc.reduceConfirm({
       actorUserId: "u1", organizationId: ORG, jobRequestId: REQ, newTarget: 2, selectedAssignmentIds: ["c"], expectedVersion: 1, idempotencyKey: "k5"
     });
-    expect(reduction.status).toBe("requires_reconciliation");
-    expect(setterCalls).toHaveLength(0); // target not changed on failure
+    const done = await svc.completeReduction({ reductionId: reduction.id });
+    expect(done.reduction.status).toBe("requires_reconciliation");
+    expect(setterCalls).toHaveLength(0); // target NOT changed on failure
   });
 
-  it("is idempotent — repeated confirm returns the same reduction, one handoff", async () => {
-    const { svc, rows, cancelCalls } = service({ requested: 5, confirmed: three() });
+  it("is idempotent — repeated confirm = one record; repeated completeReduction = one handoff", async () => {
+    const { svc, rows, cancelCalls, setterCalls } = service({ requested: 5, confirmed: three() });
     const a = await svc.reduceConfirm({ actorUserId: "u1", organizationId: ORG, jobRequestId: REQ, newTarget: 2, selectedAssignmentIds: ["a"], expectedVersion: 1, idempotencyKey: "kdup" });
     const b = await svc.reduceConfirm({ actorUserId: "u1", organizationId: ORG, jobRequestId: REQ, newTarget: 2, selectedAssignmentIds: ["a"], expectedVersion: 1, idempotencyKey: "kdup" });
     expect(rows).toHaveLength(1);
     expect(a.reduction.id).toBe(b.reduction.id);
-    expect(cancelCalls).toHaveLength(1);
+    await svc.completeReduction({ reductionId: a.reduction.id });
+    const second = await svc.completeReduction({ reductionId: a.reduction.id });
+    expect(second.reduction.status).toBe("completed");
+    expect(cancelCalls).toHaveLength(1); // already completed → no second handoff
+    expect(setterCalls).toEqual([2]);
   });
 
   it("rejects reduce-to-zero (use whole-request Cancel) and non-reductions", async () => {

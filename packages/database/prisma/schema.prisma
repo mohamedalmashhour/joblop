@@ -578,6 +578,7 @@ model EmployerOrganization {
   auditActorReferences AuditActorReference[]
   requestCancellations EmployerRequestCancellation[]
   cancellationObligations EmployerCancellationObligation[]
+  capacityReductions EmployerCapacityReduction[]
 
   @@index([status], map: "employer_organizations_status_idx")
   @@map("employer_organizations")
@@ -708,6 +709,55 @@ model EmployerCancellationObligation {
 
   @@index([organizationId, status], map: "employer_cancellation_obligations_org_status_idx")
   @@map("employer_cancellation_obligations")
+}
+
+enum EmployerCapacityReductionStatus {
+  requested
+  assignment_cancellation_pending
+  completed
+  requires_reconciliation
+  failed
+}
+
+// Employer Reduce Workers — a governed capacity reduction with PARTIAL cancellation.
+// NOT whole-request Cancel: the request stays active at the new target. Multiple
+// reductions may occur over a request's lifetime, so this is NOT unique per request
+// (idempotency is by idempotency_key). Holds an embedded commercial-obligation
+// snapshot for the affected confirmed assignments (never PAID; no worker-facing money).
+model EmployerCapacityReduction {
+  id                       String                          @id @default(uuid()) @db.Uuid
+  organizationId           String                          @map("organization_id") @db.Uuid
+  jobRequestId             String                          @map("job_request_id") @db.Uuid
+  initiatedByUserId        String                          @map("initiated_by_user_id") @db.Uuid
+  cause                    EmployerCancellationCause       @default(EMPLOYER_CANCELLED)
+  status                   EmployerCapacityReductionStatus @default(requested)
+  previousTarget           Int                             @map("previous_target")
+  newTarget                Int                             @map("new_target")
+  removedUnfilledCapacity  Int                             @map("removed_unfilled_capacity")
+  affectedConfirmedCount   Int                             @map("affected_confirmed_count")
+  selectedAssignmentIds    Json                            @map("selected_assignment_ids")
+  expectedRequestVersion   Int                             @map("expected_request_version")
+  obligationAmountMinor    Int?                            @map("obligation_amount_minor")
+  governedRateMinor        Int?                            @map("governed_rate_minor")
+  currency                 String                          @default("CAD")
+  minimumShiftHours        Int?                            @map("minimum_shift_hours")
+  cutoffHours              Int?                            @map("cutoff_hours")
+  contractId               String?                         @map("contract_id") @db.Uuid
+  contractVersion          String?                         @map("contract_version")
+  idempotencyKey           String                          @unique @map("idempotency_key")
+  handoffAttempts          Int                             @default(0) @map("handoff_attempts")
+  lastHandoffAt            DateTime?                        @map("last_handoff_at") @db.Timestamptz(3)
+  reconciliationNote       String?                         @map("reconciliation_note")
+  version                  Int                             @default(1)
+  createdAt                DateTime                        @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt                DateTime                        @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  organization EmployerOrganization @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  jobRequest   JobRequest           @relation(fields: [jobRequestId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId, status], map: "employer_capacity_reductions_org_status_idx")
+  @@index([jobRequestId], map: "employer_capacity_reductions_job_request_id_idx")
+  @@map("employer_capacity_reductions")
 }
 
 model OrganizationMembership {
@@ -994,6 +1044,7 @@ model JobRequest {
   timesheets        Timesheet[]
   cancellation      EmployerRequestCancellation?
   cancellationObligations EmployerCancellationObligation[]
+  capacityReductions EmployerCapacityReduction[]
 
   @@unique([id, organizationId, residenceId, departmentId, workGroupId, roleDefinitionId], map: "job_requests_operational_scope_key")
   @@index([jobRequestNumber], map: "job_requests_job_request_number_idx")
