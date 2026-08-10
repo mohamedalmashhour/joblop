@@ -72,6 +72,14 @@ export type ContractMembershipReader = Readonly<{
   >;
 }>;
 
+// Platform-admin authority — the ONLY authority allowed to publish/modify a
+// governed rate card. This is a platform grant, never an organization membership
+// role (the role resolver strips PLATFORM_ADMINISTRATOR from membership roles), so
+// an Organization Owner/Administrator can never satisfy it.
+export type ContractPlatformAuthority = Readonly<{
+  isPlatformAdmin(userId: string): Promise<boolean>;
+}>;
+
 export type EmployerContractErrorCode = "denied" | "invalid" | "conflict";
 
 export class EmployerContractError extends Error {
@@ -122,6 +130,7 @@ function toPublicContract(contract: StoredEmployerContract): PublicEmployerContr
   };
 }
 
+// View/acknowledge authority: an active organization OWNER/ADMINISTRATOR member.
 async function assertContractManager(
   membershipReader: ContractMembershipReader,
   actorUserId: string,
@@ -137,7 +146,21 @@ async function assertContractManager(
   if (!allowed) {
     throw new EmployerContractError(
       "denied",
-      "An active organization owner or administrator is required to manage the contract."
+      "An active organization owner or administrator is required to view or sign the contract."
+    );
+  }
+}
+
+// Rate-card authority: platform admin only. Fails closed if no authority is wired.
+async function assertPlatformAdmin(
+  platformAuthority: ContractPlatformAuthority | undefined,
+  actorUserId: string
+) {
+  const allowed = platformAuthority ? await platformAuthority.isPlatformAdmin(actorUserId) : false;
+  if (!allowed) {
+    throw new EmployerContractError(
+      "denied",
+      "Only a platform administrator may publish or modify governed rates."
     );
   }
 }
@@ -145,6 +168,7 @@ async function assertContractManager(
 export function createEmployerContractService(
   repository: EmployerContractRepository,
   membershipReader: ContractMembershipReader,
+  platformAuthority: ContractPlatformAuthority,
   options: { now?: () => Date } = {}
 ) {
   const now = options.now ?? (() => new Date());
@@ -156,6 +180,9 @@ export function createEmployerContractService(
       return contract ? toPublicContract(contract) : null;
     },
 
+    // Publish/replace the governed rate card. Platform-admin authority ONLY — an
+    // organization owner/administrator is denied here, so a client cannot create,
+    // publish, modify, or override governed rates.
     async signContract(input: {
       actorUserId: string;
       organizationId: string;
@@ -163,7 +190,7 @@ export function createEmployerContractService(
       currency?: string;
       roleRates: readonly ContractRoleRateInput[];
     }) {
-      await assertContractManager(membershipReader, input.actorUserId, input.organizationId);
+      await assertPlatformAdmin(platformAuthority, input.actorUserId);
 
       const version = input.version.trim();
       if (version.length < 1 || version.length > 40) {

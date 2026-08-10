@@ -309,7 +309,15 @@ export function buildApi(options: BuildApiOptions = {}) {
     options.employerContractService ??
     createEmployerContractService(
       createPrismaEmployerContractRepository(prisma!),
-      membershipService
+      membershipService,
+      {
+        // Publishing/modifying governed rates requires a PLATFORM_ADMINISTRATOR
+        // platform grant. The role resolver strips PLATFORM_ADMINISTRATOR from
+        // membership roles, so an org owner/administrator can never satisfy this.
+        // Evaluated per-request; resolveAuthorizationRoles is defined below.
+        isPlatformAdmin: async (userId: string) =>
+          (await resolveAuthorizationRoles(userId)).includes("PLATFORM_ADMINISTRATOR")
+      }
     );
   const residenceService =
     options.residenceService ??
@@ -1647,6 +1655,10 @@ export function buildApi(options: BuildApiOptions = {}) {
     }
   });
 
+  // Publish/replace the governed rate card. PLATFORM-ADMIN ONLY — the service
+  // (signContract → assertPlatformAdmin) denies any organization owner/administrator,
+  // so an employer cannot create, publish, modify, or override governed rates even by
+  // calling this endpoint directly. The employer app does not proxy this route.
   app.post("/organizations/:organizationId/contract", async (request, reply) => {
     const session = await authService.validateSession(
       readBearerToken(request.headers.authorization)
