@@ -14,6 +14,7 @@ export * from "./moneyEngine";
 export * from "./payment";
 export * from "./paymentPricing";
 export * from "./platformIntegration";
+export * from "./requestEdit";
 export * from "./shift";
 export * from "./shiftRules";
 export * from "./worker";
