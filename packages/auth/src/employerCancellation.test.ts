@@ -6,6 +6,7 @@ import {
   type AssignmentCancelResult,
   type CancellationJobRequest,
   type CancellationMembershipReader,
+  type CancellationStore,
   type ContractRateReader,
   type EmployerCancellationCause,
   type GovernedRate,
@@ -43,7 +44,7 @@ function makeStore() {
   const rows: Array<StoredCancellation & { idempotencyKey: string; obligationAmount: number | null }> = [];
   let seq = 0;
   const store = {
-    async createCancellation(input: Parameters<import("./employerCancellation").CancellationStore["createCancellation"]>[0]) {
+    async createCancellation(input: Parameters<CancellationStore["createCancellation"]>[0]) {
       const existing = rows.find(
         (r) => r.jobRequestId === input.jobRequestId || r.idempotencyKey === input.idempotencyKey
       );
