@@ -2,6 +2,7 @@ export * from "./application";
 export * from "./authenticatedCalendar";
 export * from "./authenticatedCalendarClient";
 export * from "./connectedCalendar";
+export * from "./contractPricing";
 export * from "./hrMoneyAdapter";
 export * from "./invoice";
 export * from "./invoiceDelivery";
