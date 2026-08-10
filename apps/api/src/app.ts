@@ -340,6 +340,30 @@ export function buildApi(options: BuildApiOptions = {}) {
       async cancelConfirmedAssignments() {
         throw new Error("A platform-authorized assignment-cancel port must be provided.");
       }
+    },
+    // Transitions job_requests.status → cancelled under EMPLOYER authority (the
+    // request owner). Evaluated per-request; jobRequestService is defined below.
+    requestCancellerPort: {
+      async cancelJobRequest({ actorUserId, organizationId, jobRequestId }) {
+        try {
+          const jobRequest = await jobRequestService.getForOrganization({
+            actorUserId,
+            organizationId,
+            jobRequestIdOrNumber: jobRequestId
+          });
+          if (jobRequest.status === "cancelled") return true; // idempotent
+          await jobRequestService.cancel({
+            actorUserId,
+            organizationId,
+            jobRequestId,
+            expectedVersion: jobRequest.versionToken,
+            reason: "employer_cancelled"
+          });
+          return true;
+        } catch {
+          return false;
+        }
+      }
     }
   });
   const residenceService =
@@ -1831,6 +1855,26 @@ export function buildApi(options: BuildApiOptions = {}) {
       }
     }
   );
+
+  // Platform-only reconciliation queue: cancellations needing operator attention.
+  app.get("/platform/request-cancellations", async (request, reply) => {
+    const session = await authService.validateSession(
+      readBearerToken(request.headers.authorization)
+    );
+    if (!session.authenticated || !session.user) return sendCancellationDenied(reply);
+    const roles = await resolveAuthorizationRoles(session.user.id);
+    if (!roles.includes("PLATFORM_ADMINISTRATOR")) {
+      return reply
+        .code(403)
+        .send({ error: "RWOS_CANCELLATION_DENIED", message: "Platform authority is required." });
+    }
+    const statusFilter = readOptionalString(asRecord(request.query), "status");
+    const statuses = statusFilter === "all"
+      ? (["requested", "assignment_cancellation_pending", "completed", "failed", "requires_reconciliation"] as const)
+      : (["requires_reconciliation"] as const);
+    const cancellations = await employerCancellationService.listReconciliation({ statuses: [...statuses] });
+    return reply.code(200).send({ cancellations });
+  });
 
   app.get("/organizations/:organizationId/residences/:residenceId", async (request, reply) => {
     const session = await authService.validateSession(

@@ -57,6 +57,7 @@ function makeStore() {
         status: input.initialStatus,
         affectedConfirmedWorkers: input.affectedConfirmedWorkers,
         idempotencyKey: input.idempotencyKey,
+        initiatedByUserId: input.initiatedByUserId,
         obligationAmount: input.obligation ? input.obligation.amountMinor : null,
         obligation: input.obligation
           ? { id: `ob-${seq}`, amountMinor: input.obligation.amountMinor, currency: input.obligation.currency, status: "RECORDED" as const }
@@ -73,6 +74,25 @@ function makeStore() {
       if (!row) throw new Error("not found");
       (row as { status: StoredCancellation["status"] }).status = status;
       return row;
+    },
+    async listByStatus(statuses: readonly StoredCancellation["status"][], limit: number) {
+      return rows
+        .filter((r) => statuses.includes(r.status))
+        .slice(0, limit)
+        .map((r) => ({
+          id: r.id,
+          organizationId: r.organizationId,
+          jobRequestId: r.jobRequestId,
+          cause: r.cause,
+          status: r.status,
+          affectedConfirmedWorkers: r.affectedConfirmedWorkers,
+          initiatedByUserId: r.initiatedByUserId,
+          initiatedAt: "2026-08-10T00:00:00.000Z",
+          handoffAttempts: 0,
+          reconciliationNote: null,
+          obligationAmountMinor: r.obligation ? r.obligation.amountMinor : null,
+          obligationCurrency: r.obligation ? r.obligation.currency : null
+        }));
     }
   };
   return { store, rows };
@@ -99,8 +119,10 @@ function service(opts: {
   now?: () => Date;
   port?: AssignmentCancelPort;
   requestStatus?: string;
+  requestCancelOk?: boolean; // whether the job-request cancel succeeds (default true)
 }) {
   const { store, rows } = makeStore();
+  const requestCancels: string[] = [];
   const svc = createEmployerCancellationService({
     membershipReader: opts.membershipReader ?? OWNER,
     jobRequestReader: jobRequestReader(opts.requestStatus),
@@ -109,9 +131,15 @@ function service(opts: {
     store,
     assignmentCancelPort:
       opts.port ?? { async cancelConfirmedAssignments() { return { attempted: opts.confirmed, cancelled: opts.confirmed, failed: 0 }; } },
+    requestCancellerPort: {
+      async cancelJobRequest({ actorUserId }) {
+        requestCancels.push(actorUserId);
+        return opts.requestCancelOk ?? true;
+      }
+    },
     now: opts.now ?? (() => nowAtHoursBefore(1))
   });
-  return { svc, rows };
+  return { svc, rows, requestCancels };
 }
 
 describe("employer cancellation — preview (authoritative consequence)", () => {
@@ -152,28 +180,68 @@ describe("employer cancellation — preview (authoritative consequence)", () => 
 });
 
 describe("employer cancellation — confirm (record intent) + completeHandoff (platform)", () => {
-  it("confirm records obligation + pending intent; completeHandoff completes after success", async () => {
+  it("confirm records intent; completeHandoff cancels assignments then the request", async () => {
     const p = assignmentPort({ attempted: 2, cancelled: 2, failed: 0 });
-    const { svc, rows } = service({ confirmed: 2, port: p.port, now: () => nowAtHoursBefore(1) });
+    const { svc, rows, requestCancels } = service({ confirmed: 2, port: p.port, now: () => nowAtHoursBefore(1) });
     const { cancellation, preview } = await svc.confirmCancellation({
       actorUserId: "u1", organizationId: ORG, jobRequestId: REQ, idempotencyKey: "k1"
     });
     expect(preview.obligationAmountMinor).toBe(36000);
-    // Employer step records only — confirmed assignments are not yet transitioned.
+    // Employer step records only — assignments not transitioned, request not cancelled.
     expect(cancellation.status).toBe("assignment_cancellation_pending");
     expect(cancellation.obligation).toMatchObject({ amountMinor: 36000, currency: "CAD", status: "RECORDED" });
-    expect(p.calls).toBe(0); // no employer-authority assignment mutation
+    expect(p.calls).toBe(0);
+    expect(requestCancels).toHaveLength(0);
 
-    // Platform completes the handoff.
+    // Platform completes: assignments cancelled, THEN request cancelled (initiator).
     const done = await svc.completeHandoff({ cancellationId: cancellation.id });
     expect(done.cancellation.status).toBe("completed");
     expect(p.calls).toBe(1);
+    expect(requestCancels).toEqual(["u1"]); // request cancelled under the initiator's authority
     expect(rows).toHaveLength(1);
+  });
+
+  it("does NOT cancel the request when an assignment fails (reconciliation, obligation intact)", async () => {
+    const p = assignmentPort({ attempted: 3, cancelled: 2, failed: 1 });
+    const { svc, requestCancels } = service({ confirmed: 3, port: p.port, now: () => nowAtHoursBefore(1) });
+    const { cancellation } = await svc.confirmCancellation({
+      actorUserId: "u1", organizationId: ORG, jobRequestId: REQ, idempotencyKey: "kf"
+    });
+    const done = await svc.completeHandoff({ cancellationId: cancellation.id });
+    expect(done.cancellation.status).toBe("requires_reconciliation");
+    expect(requestCancels).toHaveLength(0); // request stays active until assignments resolve
+    expect(done.cancellation.obligation?.amountMinor).toBe(6 * 3000 * 3); // obligation preserved
+  });
+
+  it("assignments succeed but request cancel fails → requires_reconciliation", async () => {
+    const p = assignmentPort({ attempted: 2, cancelled: 2, failed: 0 });
+    const { svc } = service({ confirmed: 2, port: p.port, requestCancelOk: false, now: () => nowAtHoursBefore(1) });
+    const { cancellation } = await svc.confirmCancellation({
+      actorUserId: "u1", organizationId: ORG, jobRequestId: REQ, idempotencyKey: "kr"
+    });
+    const done = await svc.completeHandoff({ cancellationId: cancellation.id });
+    expect(done.cancellation.status).toBe("requires_reconciliation");
+  });
+
+  it("surfaces requires_reconciliation to the admin reconciliation queue", async () => {
+    const p = assignmentPort({ attempted: 3, cancelled: 2, failed: 1 });
+    const { svc } = service({ confirmed: 3, port: p.port, now: () => nowAtHoursBefore(1) });
+    const { cancellation } = await svc.confirmCancellation({
+      actorUserId: "u1", organizationId: ORG, jobRequestId: REQ, idempotencyKey: "kq"
+    });
+    await svc.completeHandoff({ cancellationId: cancellation.id });
+    const queue = await svc.listReconciliation();
+    expect(queue).toHaveLength(1);
+    expect(queue[0]).toMatchObject({
+      status: "requires_reconciliation",
+      obligationAmountMinor: 6 * 3000 * 3,
+      affectedConfirmedWorkers: 3
+    });
   });
 
   it("is idempotent — repeated confirm = ONE record; repeated completeHandoff = ONE transition", async () => {
     const p = assignmentPort({ attempted: 2, cancelled: 2, failed: 0 });
-    const { svc, rows } = service({ confirmed: 2, port: p.port, now: () => nowAtHoursBefore(1) });
+    const { svc, rows, requestCancels } = service({ confirmed: 2, port: p.port, now: () => nowAtHoursBefore(1) });
     const a = await svc.confirmCancellation({ actorUserId: "u1", organizationId: ORG, jobRequestId: REQ, idempotencyKey: "k1" });
     const b = await svc.confirmCancellation({ actorUserId: "u1", organizationId: ORG, jobRequestId: REQ, idempotencyKey: "k1" });
     expect(rows).toHaveLength(1);
@@ -181,18 +249,28 @@ describe("employer cancellation — confirm (record intent) + completeHandoff (p
     await svc.completeHandoff({ cancellationId: a.cancellation.id });
     const second = await svc.completeHandoff({ cancellationId: a.cancellation.id });
     expect(second.cancellation.status).toBe("completed");
-    expect(p.calls).toBe(1); // already completed → no second transition
+    expect(p.calls).toBe(1); // already completed → no second assignment transition
+    expect(requestCancels).toEqual(["u1"]); // request cancelled exactly once
   });
 
-  it("zero confirmed workers → confirm completes directly with $0 and no handoff", async () => {
+  it("zero confirmed workers → confirm cancels the request directly ($0, no handoff)", async () => {
     const p = assignmentPort({ attempted: 0, cancelled: 0, failed: 0 });
-    const { svc } = service({ confirmed: 0, port: p.port, now: () => nowAtHoursBefore(1) });
+    const { svc, requestCancels } = service({ confirmed: 0, port: p.port, now: () => nowAtHoursBefore(1) });
     const { cancellation } = await svc.confirmCancellation({
       actorUserId: "u1", organizationId: ORG, jobRequestId: REQ, idempotencyKey: "k0"
     });
     expect(cancellation.status).toBe("completed");
     expect(cancellation.obligation).toBeNull();
     expect(p.calls).toBe(0);
+    expect(requestCancels).toEqual(["u1"]); // request cancelled under the confirming employer
+  });
+
+  it("zero-worker request-cancel failure → requires_reconciliation", async () => {
+    const { svc } = service({ confirmed: 0, requestCancelOk: false, now: () => nowAtHoursBefore(1) });
+    const { cancellation } = await svc.confirmCancellation({
+      actorUserId: "u1", organizationId: ORG, jobRequestId: REQ, idempotencyKey: "kz"
+    });
+    expect(cancellation.status).toBe("requires_reconciliation");
   });
 
   it("completeHandoff marks requires_reconciliation on partial failure — never fakes success", async () => {

@@ -97,6 +97,9 @@ export type StoredCancellation = Readonly<{
     | "requires_reconciliation";
   affectedConfirmedWorkers: number;
   idempotencyKey: string;
+  // The employer who initiated the cancellation. Used to transition the job
+  // request under employer authority when the platform later completes the handoff.
+  initiatedByUserId: string;
   obligation: StoredObligation | null;
 }>;
 
@@ -136,6 +139,26 @@ export type CancellationStore = Readonly<{
     status: StoredCancellation["status"],
     now: Date
   ): Promise<StoredCancellation>;
+  listByStatus(
+    statuses: readonly StoredCancellation["status"][],
+    limit: number
+  ): Promise<readonly CancellationSummary[]>;
+}>;
+
+// Admin/reconciliation summary row (platform visibility).
+export type CancellationSummary = Readonly<{
+  id: string;
+  organizationId: string;
+  jobRequestId: string;
+  cause: EmployerCancellationCause;
+  status: StoredCancellation["status"];
+  affectedConfirmedWorkers: number;
+  initiatedByUserId: string;
+  initiatedAt: string;
+  handoffAttempts: number;
+  reconciliationNote: string | null;
+  obligationAmountMinor: number | null;
+  obligationCurrency: string | null;
 }>;
 
 export type AssignmentCancelResult = Readonly<{
@@ -153,6 +176,17 @@ export type AssignmentCancelPort = Readonly<{
     jobRequestId: string;
     reason: string;
   }): Promise<AssignmentCancelResult>;
+}>;
+
+// Transitions the job request itself to `cancelled` under EMPLOYER authority
+// (job_request.cancel is employer-scoped). Idempotent: an already-cancelled request
+// returns true. Returns false on failure (→ requires_reconciliation).
+export type RequestCancellerPort = Readonly<{
+  cancelJobRequest(input: {
+    actorUserId: string;
+    organizationId: string;
+    jobRequestId: string;
+  }): Promise<boolean>;
 }>;
 
 // ── Preview + confirm DTOs ──
@@ -224,6 +258,7 @@ export function createEmployerCancellationService(deps: {
   contractRateReader: ContractRateReader;
   store: CancellationStore;
   assignmentCancelPort: AssignmentCancelPort;
+  requestCancellerPort: RequestCancellerPort;
   now?: () => Date;
 }) {
   const now = deps.now ?? (() => new Date());
@@ -274,6 +309,30 @@ export function createEmployerCancellationService(deps: {
     };
   }
 
+  // Transition the job request to `cancelled` under the given employer's authority,
+  // then move the cancellation lifecycle to `completed` (or `requires_reconciliation`
+  // if the request transition fails). The commercial obligation is never touched.
+  async function finalizeRequestCancellation(
+    cancellation: StoredCancellation,
+    actorUserId: string
+  ): Promise<StoredCancellation> {
+    let ok: boolean;
+    try {
+      ok = await deps.requestCancellerPort.cancelJobRequest({
+        actorUserId,
+        organizationId: cancellation.organizationId,
+        jobRequestId: cancellation.jobRequestId
+      });
+    } catch {
+      ok = false;
+    }
+    return deps.store.updateStatus(
+      cancellation.id,
+      ok ? "completed" : "requires_reconciliation",
+      now()
+    );
+  }
+
   return {
     // READ-ONLY authoritative consequence. The browser supplies no amount/rate/count.
     async previewCancellation(input: {
@@ -313,13 +372,14 @@ export function createEmployerCancellationService(deps: {
       const preview = toPreview(jobRequest, cause, confirmedWorkers, rate, hoursBeforeStart);
       const currentTime = now();
 
-      // Zero confirmed workers → no platform handoff needed; completes directly.
+      // Zero confirmed workers → no platform handoff; the request is cancelled
+      // directly under employer authority below. Start `requested`, finalize after.
       const requiresHandoff = confirmedWorkers > 0;
       const initialStatus: StoredCancellation["status"] = requiresHandoff
         ? "assignment_cancellation_pending"
-        : "completed";
+        : "requested";
 
-      const { cancellation } = await deps.store.createCancellation({
+      const { created, cancellation } = await deps.store.createCancellation({
         organizationId: input.organizationId,
         jobRequestId: input.jobRequestId,
         cause,
@@ -342,12 +402,16 @@ export function createEmployerCancellationService(deps: {
         now: currentTime
       });
 
-      // Governed two-step: the employer step ONLY records intent + obligation. The
-      // status is already `assignment_cancellation_pending` (confirmed workers) or
-      // `completed` (zero workers) from createCancellation. No assignment mutation
-      // happens under employer authority — the platform completes the handoff via
-      // completeHandoff(). Idempotent replay returns the existing record unchanged.
-      return { cancellation, preview };
+      // Idempotent replay: an existing record is returned unchanged.
+      if (!created) return { cancellation, preview };
+
+      // Confirmed workers: the employer step records intent only — no assignment
+      // mutation under employer authority. The platform completes via completeHandoff.
+      if (requiresHandoff) return { cancellation, preview };
+
+      // Zero confirmed workers: cancel the request now under employer authority.
+      const finalized = await finalizeRequestCancellation(cancellation, input.actorUserId);
+      return { cancellation: finalized, preview };
     },
 
     // Platform-authorized step: transitions the confirmed assignments to
@@ -370,8 +434,12 @@ export function createEmployerCancellationService(deps: {
         return { cancellation, result: null };
       }
       if (cancellation.affectedConfirmedWorkers <= 0) {
-        const completed = await deps.store.updateStatus(cancellation.id, "completed", now());
-        return { cancellation: completed, result: { attempted: 0, cancelled: 0, failed: 0 } };
+        // No assignments to transition — just cancel the request (initiating employer).
+        const finalized = await finalizeRequestCancellation(
+          cancellation,
+          cancellation.initiatedByUserId
+        );
+        return { cancellation: finalized, result: { attempted: 0, cancelled: 0, failed: 0 } };
       }
 
       let result: AssignmentCancelResult;
@@ -390,12 +458,36 @@ export function createEmployerCancellationService(deps: {
         return { cancellation: reconciled, result: null };
       }
 
-      const nextStatus: StoredCancellation["status"] =
-        result.failed === 0 && result.cancelled >= result.attempted
-          ? "completed"
-          : "requires_reconciliation";
-      const updated = await deps.store.updateStatus(cancellation.id, nextStatus, now());
-      return { cancellation: updated, result };
+      // Any failed/unresolved assignment → reconciliation; do NOT cancel the request.
+      if (result.failed !== 0 || result.cancelled < result.attempted) {
+        const reconciled = await deps.store.updateStatus(
+          cancellation.id,
+          "requires_reconciliation",
+          now()
+        );
+        return { cancellation: reconciled, result };
+      }
+
+      // Assignments safely resolved → cancel the request under the INITIATING
+      // employer's authority (they own the request). Success → completed; failure →
+      // requires_reconciliation (assignments stay cancelled; obligation intact).
+      const finalized = await finalizeRequestCancellation(
+        cancellation,
+        cancellation.initiatedByUserId
+      );
+      return { cancellation: finalized, result };
+    },
+
+    // Platform reconciliation visibility. Defaults to the requires_reconciliation
+    // queue. The caller (platform-gated endpoint) enforces authority.
+    async listReconciliation(input?: {
+      statuses?: readonly StoredCancellation["status"][];
+      limit?: number;
+    }): Promise<readonly CancellationSummary[]> {
+      return deps.store.listByStatus(
+        input?.statuses ?? ["requires_reconciliation"],
+        input?.limit ?? 100
+      );
     }
   };
 }
@@ -436,6 +528,7 @@ type PrismaCancellationClient = {
     findFirst(args: unknown): Promise<StoredCancellationRow | null>;
     findUnique(args: unknown): Promise<StoredCancellationRow | null>;
     update(args: unknown): Promise<StoredCancellationRow>;
+    findMany(args: unknown): Promise<readonly SummaryRow[]>;
   };
   $transaction<T>(fn: (tx: PrismaCancellationTx) => Promise<T>): Promise<T>;
 };
@@ -456,8 +549,40 @@ type StoredCancellationRow = {
   status: StoredCancellation["status"];
   affectedConfirmedWorkers: number;
   idempotencyKey: string;
+  initiatedByUserId: string;
   obligation: { id: string; amountMinor: number; currency: string; status: StoredObligation["status"] } | null;
 };
+
+type SummaryRow = {
+  id: string;
+  organizationId: string;
+  jobRequestId: string;
+  cause: EmployerCancellationCause;
+  status: StoredCancellation["status"];
+  affectedConfirmedWorkers: number;
+  initiatedByUserId: string;
+  initiatedAt: Date;
+  handoffAttempts: number;
+  reconciliationNote: string | null;
+  obligation: { amountMinor: number; currency: string } | null;
+};
+
+function rowToSummary(row: SummaryRow): CancellationSummary {
+  return {
+    id: row.id,
+    organizationId: row.organizationId,
+    jobRequestId: row.jobRequestId,
+    cause: row.cause,
+    status: row.status,
+    affectedConfirmedWorkers: row.affectedConfirmedWorkers,
+    initiatedByUserId: row.initiatedByUserId,
+    initiatedAt: row.initiatedAt.toISOString(),
+    handoffAttempts: row.handoffAttempts,
+    reconciliationNote: row.reconciliationNote,
+    obligationAmountMinor: row.obligation?.amountMinor ?? null,
+    obligationCurrency: row.obligation?.currency ?? null
+  };
+}
 
 function rowToCancellation(row: StoredCancellationRow): StoredCancellation {
   return {
@@ -468,6 +593,7 @@ function rowToCancellation(row: StoredCancellationRow): StoredCancellation {
     status: row.status,
     affectedConfirmedWorkers: row.affectedConfirmedWorkers,
     idempotencyKey: row.idempotencyKey,
+    initiatedByUserId: row.initiatedByUserId,
     obligation: row.obligation
   };
 }
@@ -616,6 +742,15 @@ export function createPrismaCancellationStore(prismaClient: unknown): Cancellati
         include: CANCELLATION_INCLUDE
       });
       return rowToCancellation(updated);
+    },
+    async listByStatus(statuses, limit) {
+      const rows = await prisma.employerRequestCancellation.findMany({
+        where: { status: { in: [...statuses] } },
+        include: { obligation: { select: { amountMinor: true, currency: true } } },
+        orderBy: { initiatedAt: "desc" },
+        take: limit
+      });
+      return rows.map(rowToSummary);
     }
   };
 }
