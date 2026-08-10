@@ -1,3 +1,7 @@
+// ── Contract Capsule ── core pricing domain (portable). Isolated, reusable feature
+// unit: employer<->platform contract rate card + governed request pricing. Lift into
+// the next platform as-is; depends only on the money engine.
+// See docs/capsules/CONTRACT_CAPSULE.md.
 import { createContractMoney, type Currency, type MoneyAmount } from "./moneyEngine";
 
 // A single role's governed hourly rate, taken from an active employer<->platform

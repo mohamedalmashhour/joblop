@@ -1,3 +1,6 @@
+// ── Contract Capsule ── service + Prisma repository. Isolated, reusable feature unit;
+// see docs/capsules/CONTRACT_CAPSULE.md for the public surface + lift instructions.
+//
 // Employer<->platform contract service. The contract holds the authoritative
 // per-role hourly rate a job request reads — the request never invents a price.
 // Only an active OWNER/ADMINISTRATOR member of the organization may read or sign it.
