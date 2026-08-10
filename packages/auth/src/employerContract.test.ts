@@ -28,8 +28,9 @@ function fakeRepository() {
         version: input.version,
         status: "active",
         currency: input.currency,
-        signedByUserId: input.signedByUserId,
-        signedAt: input.now,
+        // Rate card is authoritative but not yet accepted by the owner.
+        signedByUserId: null,
+        signedAt: null,
         activatedAt: input.now,
         effectiveFrom: input.now,
         createdAt: input.now,
@@ -41,6 +42,13 @@ function fakeRepository() {
         }))
       };
       contracts.push(contract);
+      return contract;
+    },
+    async recordOwnerSignature(contractId, signedByUserId, nowDate) {
+      const contract = contracts.find((c) => c.id === contractId);
+      if (!contract) throw new Error("not found");
+      (contract as { signedByUserId: string | null }).signedByUserId = signedByUserId;
+      (contract as { signedAt: Date | null }).signedAt = nowDate;
       return contract;
     }
   };
@@ -125,5 +133,38 @@ describe("employer contract service", () => {
       })
     ).rejects.toThrow();
     await expect(service.signContract({ ...base, version: "", roleRates: rates })).rejects.toThrow();
+  });
+
+  it("lets an owner sign (accept) the active rate card, once, without sending rates", async () => {
+    const { repository, contracts } = fakeRepository();
+    const service = createEmployerContractService(repository, OWNER);
+    await service.signContract({ actorUserId: "platform", organizationId: "org-1", version: "v1", roleRates: rates });
+
+    // Before signing: active but unsigned.
+    const before = await service.getActiveContract({ actorUserId: "u1", organizationId: "org-1" });
+    expect(before?.signedAt).toBeNull();
+
+    const signed = await service.acknowledgeContract({ actorUserId: "u1", organizationId: "org-1" });
+    expect(signed.signedAt).not.toBeNull();
+    expect(contracts[0]?.signedByUserId).toBe("u1");
+
+    // Second attempt is a conflict — already signed.
+    await expect(
+      service.acknowledgeContract({ actorUserId: "u1", organizationId: "org-1" })
+    ).rejects.toMatchObject({ code: "conflict" });
+  });
+
+  it("cannot sign when no active contract exists, and denies a non-owner", async () => {
+    const { repository } = fakeRepository();
+    const service = createEmployerContractService(repository, OWNER);
+    await expect(
+      service.acknowledgeContract({ actorUserId: "u1", organizationId: "org-1" })
+    ).rejects.toMatchObject({ code: "invalid" });
+
+    await service.signContract({ actorUserId: "platform", organizationId: "org-1", version: "v1", roleRates: rates });
+    const staff = createEmployerContractService(repository, membershipReader(["ORGANIZATION_STAFF"]));
+    await expect(
+      staff.acknowledgeContract({ actorUserId: "u1", organizationId: "org-1" })
+    ).rejects.toBeInstanceOf(EmployerContractError);
   });
 });

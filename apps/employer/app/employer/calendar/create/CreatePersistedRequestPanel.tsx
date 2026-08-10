@@ -442,7 +442,10 @@ export function CreatePersistedRequestPanel() {
             </div>
           ) : (
             <div style={styles.warning}>
-              Your active contract does not price this role yet. Sign a contract rate card for it
+              Your active contract does not price this role yet.{" "}
+              <a href="/employer/contract" style={{ textDecoration: "underline", color: "inherit" }}>
+                Review and sign your contract
+              </a>{" "}
               before submitting.
             </div>
           )}

@@ -42,6 +42,8 @@ export type StoredEmployerContract = Readonly<{
 export type EmployerContractRepository = Readonly<{
   findActiveContract(organizationId: string): Promise<StoredEmployerContract | null>;
   supersedeActiveContracts(organizationId: string, now: Date): Promise<void>;
+  // Establishes the authoritative rate card (platform/admin authority). Rates are
+  // server-side from here on; the employer never re-supplies them.
   createSignedContract(input: {
     organizationId: string;
     version: string;
@@ -50,6 +52,13 @@ export type EmployerContractRepository = Readonly<{
     roleRates: readonly ContractRoleRateInput[];
     now: Date;
   }): Promise<StoredEmployerContract>;
+  // Records the organization owner's signature on the active contract. Carries no
+  // rates — it only marks the governed rate card as accepted.
+  recordOwnerSignature(
+    contractId: string,
+    signedByUserId: string,
+    now: Date
+  ): Promise<StoredEmployerContract>;
 }>;
 
 // Minimal structural view of the membership service (avoids a circular import).
@@ -192,6 +201,32 @@ export function createEmployerContractService(
         now: currentTime
       });
       return toPublicContract(contract);
+    },
+
+    // The employer owner accepts the governed rate card. Security: this action
+    // carries NO rates — the browser cannot set or alter a price. It only records
+    // the owner's signature on the server-authoritative active contract.
+    async acknowledgeContract(input: { actorUserId: string; organizationId: string }) {
+      await assertContractManager(membershipReader, input.actorUserId, input.organizationId);
+      const contract = await repository.findActiveContract(input.organizationId);
+      if (!contract) {
+        throw new EmployerContractError(
+          "invalid",
+          "There is no active contract to sign. The platform must publish a rate card first."
+        );
+      }
+      if (contract.signedAt !== null) {
+        throw new EmployerContractError(
+          "conflict",
+          "This contract has already been signed."
+        );
+      }
+      const signed = await repository.recordOwnerSignature(
+        contract.id,
+        input.actorUserId,
+        now()
+      );
+      return toPublicContract(signed);
     }
   };
 }
@@ -204,6 +239,7 @@ type PrismaEmployerContractClient = {
     findFirst(args: unknown): Promise<StoredEmployerContract | null>;
     updateMany(args: unknown): Promise<unknown>;
     create(args: unknown): Promise<StoredEmployerContract>;
+    update(args: unknown): Promise<StoredEmployerContract>;
   };
 };
 
@@ -227,14 +263,16 @@ export function createPrismaEmployerContractRepository(
       });
     },
     createSignedContract(input) {
+      // The rate card is authoritative from creation, but the owner has not yet
+      // accepted it: signedByUserId/signedAt stay null until recordOwnerSignature.
       return prisma.employerContract.create({
         data: {
           organizationId: input.organizationId,
           version: input.version,
           status: "active",
           currency: input.currency,
-          signedByUserId: input.signedByUserId,
-          signedAt: input.now,
+          signedByUserId: null,
+          signedAt: null,
           activatedAt: input.now,
           effectiveFrom: input.now,
           createdByUserId: input.signedByUserId,
@@ -246,6 +284,13 @@ export function createPrismaEmployerContractRepository(
             }))
           }
         },
+        include: { roleRates: true }
+      });
+    },
+    recordOwnerSignature(contractId, signedByUserId, nowDate) {
+      return prisma.employerContract.update({
+        where: { id: contractId },
+        data: { signedByUserId, signedAt: nowDate, updatedAt: nowDate },
         include: { roleRates: true }
       });
     }

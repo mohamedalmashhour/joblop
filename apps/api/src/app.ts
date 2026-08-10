@@ -1670,6 +1670,26 @@ export function buildApi(options: BuildApiOptions = {}) {
     }
   });
 
+  // Employer owner signs (accepts) the governed rate card. No rates are read from
+  // the request body — the price cannot be set or altered client-side here.
+  app.post("/organizations/:organizationId/contract/sign", async (request, reply) => {
+    const session = await authService.validateSession(
+      readBearerToken(request.headers.authorization)
+    );
+    if (!session.authenticated || !session.user) {
+      return sendContractDenied(reply);
+    }
+    try {
+      const contract = await employerContractService.acknowledgeContract({
+        actorUserId: session.user.id,
+        organizationId: readRouteParam(request.params, "organizationId")
+      });
+      return reply.code(200).send({ contract });
+    } catch (error) {
+      return sendContractError(reply, error);
+    }
+  });
+
   app.get("/organizations/:organizationId/residences/:residenceId", async (request, reply) => {
     const session = await authService.validateSession(
       readBearerToken(request.headers.authorization)
