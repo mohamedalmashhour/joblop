@@ -65,6 +65,9 @@ function makeStore() {
       rows.push(row);
       return { created: true, cancellation: row };
     },
+    async findById(id: string) {
+      return rows.find((r) => r.id === id) ?? null;
+    },
     async updateStatus(id: string, status: StoredCancellation["status"]) {
       const row = rows.find((r) => r.id === id);
       if (!row) throw new Error("not found");
@@ -148,29 +151,40 @@ describe("employer cancellation — preview (authoritative consequence)", () => 
   });
 });
 
-describe("employer cancellation — confirm (record + handoff)", () => {
-  it("records obligation + completes after a successful platform handoff", async () => {
-    const { svc, rows } = service({ confirmed: 2, now: () => nowAtHoursBefore(1) });
+describe("employer cancellation — confirm (record intent) + completeHandoff (platform)", () => {
+  it("confirm records obligation + pending intent; completeHandoff completes after success", async () => {
+    const p = assignmentPort({ attempted: 2, cancelled: 2, failed: 0 });
+    const { svc, rows } = service({ confirmed: 2, port: p.port, now: () => nowAtHoursBefore(1) });
     const { cancellation, preview } = await svc.confirmCancellation({
       actorUserId: "u1", organizationId: ORG, jobRequestId: REQ, idempotencyKey: "k1"
     });
     expect(preview.obligationAmountMinor).toBe(36000);
-    expect(cancellation.status).toBe("completed");
+    // Employer step records only — confirmed assignments are not yet transitioned.
+    expect(cancellation.status).toBe("assignment_cancellation_pending");
     expect(cancellation.obligation).toMatchObject({ amountMinor: 36000, currency: "CAD", status: "RECORDED" });
+    expect(p.calls).toBe(0); // no employer-authority assignment mutation
+
+    // Platform completes the handoff.
+    const done = await svc.completeHandoff({ cancellationId: cancellation.id });
+    expect(done.cancellation.status).toBe("completed");
+    expect(p.calls).toBe(1);
     expect(rows).toHaveLength(1);
   });
 
-  it("is idempotent — repeated confirm creates ONE record and one handoff", async () => {
+  it("is idempotent — repeated confirm = ONE record; repeated completeHandoff = ONE transition", async () => {
     const p = assignmentPort({ attempted: 2, cancelled: 2, failed: 0 });
     const { svc, rows } = service({ confirmed: 2, port: p.port, now: () => nowAtHoursBefore(1) });
     const a = await svc.confirmCancellation({ actorUserId: "u1", organizationId: ORG, jobRequestId: REQ, idempotencyKey: "k1" });
     const b = await svc.confirmCancellation({ actorUserId: "u1", organizationId: ORG, jobRequestId: REQ, idempotencyKey: "k1" });
     expect(rows).toHaveLength(1);
     expect(a.cancellation.id).toBe(b.cancellation.id);
-    expect(p.calls).toBe(1); // second call short-circuits, no duplicate handoff
+    await svc.completeHandoff({ cancellationId: a.cancellation.id });
+    const second = await svc.completeHandoff({ cancellationId: a.cancellation.id });
+    expect(second.cancellation.status).toBe("completed");
+    expect(p.calls).toBe(1); // already completed → no second transition
   });
 
-  it("zero confirmed workers → completes directly with $0 and no handoff", async () => {
+  it("zero confirmed workers → confirm completes directly with $0 and no handoff", async () => {
     const p = assignmentPort({ attempted: 0, cancelled: 0, failed: 0 });
     const { svc } = service({ confirmed: 0, port: p.port, now: () => nowAtHoursBefore(1) });
     const { cancellation } = await svc.confirmCancellation({
@@ -181,18 +195,18 @@ describe("employer cancellation — confirm (record + handoff)", () => {
     expect(p.calls).toBe(0);
   });
 
-  it("marks requires_reconciliation on partial platform failure — never fakes success", async () => {
+  it("completeHandoff marks requires_reconciliation on partial failure — never fakes success", async () => {
     const p = assignmentPort({ attempted: 3, cancelled: 2, failed: 1 });
     const { svc } = service({ confirmed: 3, port: p.port, now: () => nowAtHoursBefore(1) });
     const { cancellation } = await svc.confirmCancellation({
       actorUserId: "u1", organizationId: ORG, jobRequestId: REQ, idempotencyKey: "kx"
     });
-    expect(cancellation.status).toBe("requires_reconciliation");
-    // obligation is still recorded truthfully
-    expect(cancellation.obligation?.amountMinor).toBe(6 * 3000 * 3);
+    expect(cancellation.obligation?.amountMinor).toBe(6 * 3000 * 3); // recorded truthfully
+    const done = await svc.completeHandoff({ cancellationId: cancellation.id });
+    expect(done.cancellation.status).toBe("requires_reconciliation");
   });
 
-  it("marks requires_reconciliation when the platform handoff throws", async () => {
+  it("completeHandoff marks requires_reconciliation when the platform handoff throws", async () => {
     const throwingPort: AssignmentCancelPort = {
       async cancelConfirmedAssignments() { throw new Error("dispatch unavailable"); }
     };
@@ -200,7 +214,8 @@ describe("employer cancellation — confirm (record + handoff)", () => {
     const { cancellation } = await svc.confirmCancellation({
       actorUserId: "u1", organizationId: ORG, jobRequestId: REQ, idempotencyKey: "kt"
     });
-    expect(cancellation.status).toBe("requires_reconciliation");
+    const done = await svc.completeHandoff({ cancellationId: cancellation.id });
+    expect(done.cancellation.status).toBe("requires_reconciliation");
   });
 
   it("re-derives the obligation at confirm time (ignores any stale/browser value)", async () => {
@@ -242,6 +257,6 @@ describe("employer cancellation — confirm (record + handoff)", () => {
     expect(preview.obligationApplies).toBe(false);
     expect(cancellation.obligation).toBeNull();
     // still needs the platform handoff for the confirmed workers
-    expect(cancellation.status).toBe("completed");
+    expect(cancellation.status).toBe("assignment_cancellation_pending");
   });
 });

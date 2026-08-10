@@ -130,6 +130,7 @@ export type CancellationStore = Readonly<{
     } | null;
     now: Date;
   }): Promise<{ created: boolean; cancellation: StoredCancellation }>;
+  findById(cancellationId: string): Promise<StoredCancellation | null>;
   updateStatus(
     cancellationId: string,
     status: StoredCancellation["status"],
@@ -318,7 +319,7 @@ export function createEmployerCancellationService(deps: {
         ? "assignment_cancellation_pending"
         : "completed";
 
-      const { created, cancellation } = await deps.store.createCancellation({
+      const { cancellation } = await deps.store.createCancellation({
         organizationId: input.organizationId,
         jobRequestId: input.jobRequestId,
         cause,
@@ -341,21 +342,43 @@ export function createEmployerCancellationService(deps: {
         now: currentTime
       });
 
-      // Idempotent replay: an existing record is returned unchanged (no duplicate
-      // obligation, no second handoff).
-      if (!created) {
-        return { cancellation, preview };
+      // Governed two-step: the employer step ONLY records intent + obligation. The
+      // status is already `assignment_cancellation_pending` (confirmed workers) or
+      // `completed` (zero workers) from createCancellation. No assignment mutation
+      // happens under employer authority — the platform completes the handoff via
+      // completeHandoff(). Idempotent replay returns the existing record unchanged.
+      return { cancellation, preview };
+    },
+
+    // Platform-authorized step: transitions the confirmed assignments to
+    // employer_cancelled via the injected platform assignment.cancel port, then
+    // reconciles the cancellation lifecycle. Idempotent + retryable: a cancellation
+    // already `completed` is returned unchanged; a `requires_reconciliation` one can
+    // be retried. Employer-facing code never calls this.
+    async completeHandoff(input: {
+      cancellationId: string;
+      // The platform-gated endpoint injects a port bound to its authorized actor;
+      // tests/default use the port from deps.
+      assignmentCancelPort?: AssignmentCancelPort;
+    }): Promise<{ cancellation: StoredCancellation; result: AssignmentCancelResult | null }> {
+      const port = input.assignmentCancelPort ?? deps.assignmentCancelPort;
+      const cancellation = await deps.store.findById(input.cancellationId);
+      if (!cancellation) {
+        throw new EmployerCancellationError("not_found", "The cancellation was not found.");
       }
-      if (!requiresHandoff) {
-        return { cancellation, preview };
+      if (cancellation.status === "completed") {
+        return { cancellation, result: null };
+      }
+      if (cancellation.affectedConfirmedWorkers <= 0) {
+        const completed = await deps.store.updateStatus(cancellation.id, "completed", now());
+        return { cancellation: completed, result: { attempted: 0, cancelled: 0, failed: 0 } };
       }
 
-      // Platform-authorized handoff. Never mutate assignments in employer code.
       let result: AssignmentCancelResult;
       try {
-        result = await deps.assignmentCancelPort.cancelConfirmedAssignments({
-          organizationId: input.organizationId,
-          jobRequestId: input.jobRequestId,
+        result = await port.cancelConfirmedAssignments({
+          organizationId: cancellation.organizationId,
+          jobRequestId: cancellation.jobRequestId,
           reason: "employer_cancelled"
         });
       } catch {
@@ -364,15 +387,244 @@ export function createEmployerCancellationService(deps: {
           "requires_reconciliation",
           now()
         );
-        return { cancellation: reconciled, preview };
+        return { cancellation: reconciled, result: null };
       }
 
       const nextStatus: StoredCancellation["status"] =
-        result.failed === 0 && result.cancelled >= result.attempted ? "completed" : "requires_reconciliation";
+        result.failed === 0 && result.cancelled >= result.attempted
+          ? "completed"
+          : "requires_reconciliation";
       const updated = await deps.store.updateStatus(cancellation.id, nextStatus, now());
-      return { cancellation: updated, preview };
+      return { cancellation: updated, result };
     }
   };
 }
 
 export type EmployerCancellationService = ReturnType<typeof createEmployerCancellationService>;
+
+// ── Prisma adapters ──────────────────────────────────────────────────────────
+
+// Assignment statuses that count as an affected "confirmed worker" — exactly the
+// states the platform assignment.cancel path can transition to employer_cancelled.
+export const CONFIRMED_ASSIGNMENT_STATUSES: readonly string[] = [
+  "confirmed",
+  "worker_acknowledged",
+  "ready_for_attendance",
+  "in_attendance_window"
+];
+
+type PrismaCancellationClient = {
+  jobRequest: {
+    findFirst(args: unknown): Promise<
+      | { id: string; organizationId: string; roleDefinitionId: string; startAt: Date; status: string }
+      | null
+    >;
+  };
+  assignment: { count(args: unknown): Promise<number> };
+  employerContract: {
+    findFirst(args: unknown): Promise<
+      | {
+          id: string;
+          version: string;
+          currency: string;
+          roleRates: readonly { roleDefinitionId: string; hourlyRateMinor: number }[];
+        }
+      | null
+    >;
+  };
+  employerRequestCancellation: {
+    findFirst(args: unknown): Promise<StoredCancellationRow | null>;
+    findUnique(args: unknown): Promise<StoredCancellationRow | null>;
+    update(args: unknown): Promise<StoredCancellationRow>;
+  };
+  $transaction<T>(fn: (tx: PrismaCancellationTx) => Promise<T>): Promise<T>;
+};
+
+type PrismaCancellationTx = {
+  employerRequestCancellation: {
+    findFirst(args: unknown): Promise<StoredCancellationRow | null>;
+    create(args: unknown): Promise<StoredCancellationRow>;
+  };
+  employerCancellationObligation: { create(args: unknown): Promise<unknown> };
+};
+
+type StoredCancellationRow = {
+  id: string;
+  organizationId: string;
+  jobRequestId: string;
+  cause: EmployerCancellationCause;
+  status: StoredCancellation["status"];
+  affectedConfirmedWorkers: number;
+  idempotencyKey: string;
+  obligation: { id: string; amountMinor: number; currency: string; status: StoredObligation["status"] } | null;
+};
+
+function rowToCancellation(row: StoredCancellationRow): StoredCancellation {
+  return {
+    id: row.id,
+    organizationId: row.organizationId,
+    jobRequestId: row.jobRequestId,
+    cause: row.cause,
+    status: row.status,
+    affectedConfirmedWorkers: row.affectedConfirmedWorkers,
+    idempotencyKey: row.idempotencyKey,
+    obligation: row.obligation
+  };
+}
+
+const CANCELLATION_INCLUDE = {
+  obligation: { select: { id: true, amountMinor: true, currency: true, status: true } }
+};
+
+export function createPrismaCancellationJobRequestReader(
+  prismaClient: unknown
+): CancellationJobRequestReader {
+  const prisma = prismaClient as PrismaCancellationClient;
+  return {
+    async findJobRequest(organizationId, jobRequestId) {
+      const jobRequest = await prisma.jobRequest.findFirst({
+        where: { id: jobRequestId, organizationId },
+        select: { id: true, organizationId: true, roleDefinitionId: true, startAt: true, status: true }
+      });
+      return jobRequest ?? null;
+    }
+  };
+}
+
+export function createPrismaConfirmedAssignmentReader(
+  prismaClient: unknown
+): ConfirmedAssignmentReader {
+  const prisma = prismaClient as PrismaCancellationClient;
+  return {
+    async countConfirmedAssignments(organizationId, jobRequestId) {
+      return prisma.assignment.count({
+        where: {
+          organizationId,
+          jobRequestId,
+          status: { in: [...CONFIRMED_ASSIGNMENT_STATUSES] }
+        }
+      });
+    }
+  };
+}
+
+export function createPrismaContractRateReader(prismaClient: unknown): ContractRateReader {
+  const prisma = prismaClient as PrismaCancellationClient;
+  return {
+    async getGovernedRate(organizationId, roleDefinitionId) {
+      const contract = await prisma.employerContract.findFirst({
+        where: { organizationId, status: "active" },
+        orderBy: { activatedAt: "desc" },
+        select: {
+          id: true,
+          version: true,
+          currency: true,
+          roleRates: {
+            where: { roleDefinitionId },
+            select: { roleDefinitionId: true, hourlyRateMinor: true }
+          }
+        }
+      });
+      const rate = contract?.roleRates.find((r) => r.roleDefinitionId === roleDefinitionId);
+      if (!contract || !rate) return null;
+      return {
+        rateMinor: rate.hourlyRateMinor,
+        currency: contract.currency,
+        contractId: contract.id,
+        contractVersion: contract.version
+      };
+    }
+  };
+}
+
+export function createPrismaCancellationStore(prismaClient: unknown): CancellationStore {
+  const prisma = prismaClient as PrismaCancellationClient;
+  return {
+    async createCancellation(input) {
+      try {
+        return await prisma.$transaction(async (tx) => {
+          const existing = await tx.employerRequestCancellation.findFirst({
+            where: {
+              OR: [{ jobRequestId: input.jobRequestId }, { idempotencyKey: input.idempotencyKey }]
+            },
+            include: CANCELLATION_INCLUDE
+          });
+          if (existing) return { created: false, cancellation: rowToCancellation(existing) };
+
+          const created = await tx.employerRequestCancellation.create({
+            data: {
+              organizationId: input.organizationId,
+              jobRequestId: input.jobRequestId,
+              cause: input.cause,
+              status: input.initialStatus,
+              affectedConfirmedWorkers: input.affectedConfirmedWorkers,
+              idempotencyKey: input.idempotencyKey,
+              initiatedByUserId: input.initiatedByUserId,
+              initiatedAt: input.now,
+              ...(input.obligation
+                ? {
+                    obligation: {
+                      create: {
+                        organizationId: input.organizationId,
+                        jobRequestId: input.jobRequestId,
+                        cause: input.cause,
+                        confirmedWorkerCount: input.obligation.confirmedWorkerCount,
+                        governedRateMinor: input.obligation.governedRateMinor,
+                        currency: input.obligation.currency,
+                        minimumShiftHours: input.obligation.minimumShiftHours,
+                        cutoffHours: input.obligation.cutoffHours,
+                        contractId: input.obligation.contractId,
+                        contractVersion: input.obligation.contractVersion,
+                        amountMinor: input.obligation.amountMinor,
+                        computedByUserId: input.initiatedByUserId,
+                        computedAt: input.now
+                      }
+                    }
+                  }
+                : {})
+            },
+            include: CANCELLATION_INCLUDE
+          });
+          return { created: true, cancellation: rowToCancellation(created) };
+        });
+      } catch (error) {
+        // Unique-constraint race (job_request_id / idempotency_key) → the other
+        // writer won; return the authoritative existing record.
+        if (isUniqueViolation(error)) {
+          const existing = await prisma.employerRequestCancellation.findFirst({
+            where: {
+              OR: [{ jobRequestId: input.jobRequestId }, { idempotencyKey: input.idempotencyKey }]
+            },
+            include: CANCELLATION_INCLUDE
+          });
+          if (existing) return { created: false, cancellation: rowToCancellation(existing) };
+        }
+        throw error;
+      }
+    },
+    async findById(cancellationId) {
+      const row = await prisma.employerRequestCancellation.findUnique({
+        where: { id: cancellationId },
+        include: CANCELLATION_INCLUDE
+      });
+      return row ? rowToCancellation(row) : null;
+    },
+    async updateStatus(cancellationId, status, nowDate) {
+      const updated = await prisma.employerRequestCancellation.update({
+        where: { id: cancellationId },
+        data: { status, lastHandoffAt: nowDate, handoffAttempts: { increment: 1 }, updatedAt: nowDate },
+        include: CANCELLATION_INCLUDE
+      });
+      return rowToCancellation(updated);
+    }
+  };
+}
+
+function isUniqueViolation(error: unknown): boolean {
+  return (
+    typeof error === "object" &&
+    error !== null &&
+    "code" in error &&
+    (error as { code?: unknown }).code === "P2002"
+  );
+}
