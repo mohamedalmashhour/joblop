@@ -2217,6 +2217,39 @@ export function buildApi(options: BuildApiOptions = {}) {
     }
   );
 
+  // Add Workers — live capacity increase. Body carries the desired addition +
+  // expected version only; never an authoritative rate/amount. Existing assignments
+  // are untouched.
+  app.post(
+    "/organizations/:organizationId/job-requests/:jobRequestId/add-workers",
+    async (request, reply) => {
+      const session = await authService.validateSession(
+        readBearerToken(request.headers.authorization)
+      );
+      if (!session.authenticated || !session.user) return sendJobRequestDenied(reply);
+      const body = asRecord(request.body);
+      const additionalWorkers = readOptionalNumber(body, "additionalWorkers") ?? 0;
+      const expectedVersion = readOptionalNumber(body, "expectedVersion");
+      if (expectedVersion === null || expectedVersion === undefined) {
+        return reply
+          .code(400)
+          .send({ error: "RWOS_INVALID_JOB_REQUEST", message: "A current request version is required." });
+      }
+      try {
+        const result = await jobRequestService.increaseRequestedCapacity({
+          actorUserId: session.user.id,
+          organizationId: readRouteParam(request.params, "organizationId"),
+          jobRequestId: readRouteParam(request.params, "jobRequestId"),
+          additionalWorkers,
+          expectedVersion
+        });
+        return reply.code(200).send(result);
+      } catch (error) {
+        return sendCapacityError(reply, error);
+      }
+    }
+  );
+
   app.get("/organizations/:organizationId/job-requests", async (request, reply) => {
     const session = await authService.validateSession(
       readBearerToken(request.headers.authorization)
@@ -4535,6 +4568,25 @@ function sendCancellationError(reply: FastifyReply, error: unknown) {
     error: "RWOS_CANCELLATION_ERROR",
     message: "The cancellation could not be processed."
   });
+}
+
+function sendCapacityError(reply: FastifyReply, error: unknown) {
+  if (error instanceof JobRequestError) {
+    const status = error.decision.status;
+    const httpStatus =
+      status === "version_conflict"
+        ? 409
+        : status === "invalid_input"
+          ? 400
+          : status === "not_found"
+            ? 404
+            : 403;
+    return reply.code(httpStatus).send({
+      error: "RWOS_CAPACITY_DENIED",
+      message: "The staffing capacity change could not be completed."
+    });
+  }
+  throw error;
 }
 
 function readContractRoleRates(body: Record<string, unknown>): ContractRoleRateInput[] {

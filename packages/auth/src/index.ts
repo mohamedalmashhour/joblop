@@ -5612,6 +5612,79 @@ export function createJobRequestService(
       });
     },
 
+    // Live capacity INCREASE (Add Workers). A dedicated governed operation — NOT the
+    // draft-only edit path. Existing offers/assignments/attendance are untouched; only
+    // the required-worker target grows, and the extra capacity flows through dispatch.
+    // Optimistic-concurrency guarded; audited old→new target.
+    async increaseRequestedCapacity(input: {
+      actorUserId: string;
+      organizationId: string;
+      jobRequestId: string;
+      additionalWorkers: number;
+      expectedVersion: number;
+      correlationId?: string;
+    }) {
+      const currentTime = now();
+      const jobRequest = await jobRequestRepository.findJobRequestById(input.jobRequestId);
+      const authorization = await authorizeJobRequestEmployerOperation({
+        organizationRepository,
+        jobRequestRepository,
+        membershipService,
+        authorizationService,
+        actorUserId: input.actorUserId,
+        organizationId: input.organizationId,
+        permission: "job_request.update_draft",
+        jobRequest,
+        correlationId: input.correlationId,
+        now: currentTime
+      });
+      if (!authorization.allow || !jobRequest || jobRequest.organizationId !== input.organizationId) {
+        throw new JobRequestError(
+          authorization.allow
+            ? jobRequestDeny("not_found", "job_request_not_found", null, authorization.roles, authorization.organization, authorization.membership)
+            : authorization
+        );
+      }
+      if (!LIVE_CAPACITY_STATUSES.includes(jobRequest.status)) {
+        throw new JobRequestError(
+          jobRequestDeny("invalid_input", "job_request_not_capacity_mutable", toPublicJobRequest(jobRequest), authorization.roles, authorization.organization, authorization.membership)
+        );
+      }
+      const additional = normalizeWorkerCount(input.additionalWorkers);
+      if (additional < 1) {
+        throw new JobRequestError(
+          jobRequestDeny("invalid_input", "invalid_added_capacity", toPublicJobRequest(jobRequest), authorization.roles, authorization.organization, authorization.membership)
+        );
+      }
+      const previousTarget = jobRequest.numberOfWorkers;
+      const newTarget = previousTarget + additional;
+      const updated = await jobRequestRepository.updateDraft({
+        jobRequestId: jobRequest.id,
+        expectedVersion: input.expectedVersion,
+        actorUserId: input.actorUserId,
+        numberOfWorkers: newTarget,
+        now: currentTime
+      });
+      if (!updated) {
+        throw new JobRequestError(
+          jobRequestDeny("version_conflict", "job_request_version_conflict", toPublicJobRequest(jobRequest), authorization.roles, authorization.organization, authorization.membership)
+        );
+      }
+      await jobRequestRepository.recordJobRequestAuditEvent({
+        action: "job_request.updated",
+        organizationId: jobRequest.organizationId,
+        jobRequestId: jobRequest.id,
+        jobRequestNumber: jobRequest.jobRequestNumber,
+        actorUserId: input.actorUserId,
+        priorState: `numberOfWorkers=${previousTarget}`,
+        newState: `numberOfWorkers=${newTarget}`,
+        reason: "capacity_increased",
+        correlationId: input.correlationId ?? createJobRequestCorrelationId(),
+        createdAt: currentTime
+      });
+      return { jobRequest: toPublicJobRequest(updated), previousTarget, addedCapacity: additional, newTarget };
+    },
+
     async listAdminIntake(input: {
       session: SessionValidationResult;
       roles?: readonly AuthorizationRoleKey[];
@@ -16715,6 +16788,17 @@ function isValidJobRequestTiming(startAt: Date, endAt: Date) {
 // 6 hours per worker. Enforced server-side on create and edit. Mirrors the shared
 // constant MINIMUM_SHIFT_MINUTES (@rwos/shared) used by employer-facing UI copy.
 export const MINIMUM_STAFFING_SHIFT_MINUTES = 360;
+
+// Non-terminal statuses on which employer live-capacity mutations (Add/Reduce) are
+// permitted. Terminal states (cancelled/expired/archived) and post-work states are
+// excluded.
+const LIVE_CAPACITY_STATUSES: readonly JobRequestStatus[] = [
+  "draft",
+  "submitted",
+  "admin_review",
+  "information_required",
+  "approved_for_dispatch"
+];
 
 function meetsMinimumShiftDuration(startAt: Date, endAt: Date) {
   const durationMinutes = (endAt.getTime() - startAt.getTime()) / 60000;

@@ -10,6 +10,7 @@ import {
 } from "@rwos/shared";
 import { styles } from "../../employerStyles";
 import { JobLocationMap } from "../../../shared/maps";
+import { AddWorkersPanel } from "./AddWorkersPanel";
 import { CancelRequestPanel } from "./CancelRequestPanel";
 import { DuplicateRequestButton } from "./DuplicateRequestButton";
 
@@ -176,9 +177,18 @@ export function ClientRequestDetailPanel({ requestId }: Readonly<{ requestId: st
           <DuplicateRequestButton requestId={request.id} />
         </div>
         {request.status !== "cancelled" && request.status !== "completed" ? (
-          <div style={{ marginTop: 14 }}>
-            <CancelRequestPanel requestId={request.id} />
-          </div>
+          <>
+            <div style={{ marginTop: 14 }}>
+              <AddWorkersPanel
+                requestId={request.id}
+                currentWorkers={request.numberOfWorkers}
+                versionToken={request.versionToken}
+              />
+            </div>
+            <div style={{ marginTop: 14 }}>
+              <CancelRequestPanel requestId={request.id} />
+            </div>
+          </>
         ) : null}
       </article>
       <article style={styles.panel}>

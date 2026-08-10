@@ -2397,6 +2397,87 @@ describe("job request foundation", () => {
     });
   });
 
+  it("Add Workers: increases live capacity, preserves version discipline + rejects stale/terminal/invalid", async () => {
+    const { organizationService, residenceService, departmentService, jobRequestService } =
+      createJobRequestTestServices();
+    const ownerId = "owner-add-workers";
+    const organization = await organizationService.createOrganization({
+      actorUserId: ownerId,
+      legalName: "Add Workers Org",
+      displayName: "Add Workers Org"
+    });
+    const residence = await residenceService.createResidence({
+      actorUserId: ownerId,
+      organizationId: organization.organization.id,
+      name: "Add Workers Residence"
+    });
+    const department = await departmentService.createDepartment({
+      actorUserId: ownerId,
+      organizationId: organization.organization.id,
+      residenceId: residence.id,
+      name: "Kitchen"
+    });
+    const draft = await jobRequestService.createDraft({
+      actorUserId: ownerId,
+      organizationId: organization.organization.id,
+      residenceId: residence.id,
+      departmentId: department.id,
+      workGroupSlug: "kitchen",
+      roleDefinitionIdentifier: "chef",
+      title: "Add Workers Coverage",
+      numberOfWorkers: 3,
+      urgency: "normal",
+      requestType: "single_day",
+      timezone: "America/Toronto",
+      startAt: new Date("2026-08-01T20:00:00.000Z"),
+      endAt: new Date("2026-08-02T04:00:00.000Z")
+    });
+
+    const added = await jobRequestService.increaseRequestedCapacity({
+      actorUserId: ownerId,
+      organizationId: organization.organization.id,
+      jobRequestId: draft.id,
+      additionalWorkers: 2,
+      expectedVersion: draft.versionToken
+    });
+    expect(added).toMatchObject({ previousTarget: 3, addedCapacity: 2, newTarget: 5 });
+    expect(added.jobRequest.numberOfWorkers).toBe(5);
+    expect(added.jobRequest.versionToken).toBeGreaterThan(draft.versionToken);
+
+    // Stale version → optimistic-concurrency conflict.
+    await expect(
+      jobRequestService.increaseRequestedCapacity({
+        actorUserId: ownerId,
+        organizationId: organization.organization.id,
+        jobRequestId: draft.id,
+        additionalWorkers: 1,
+        expectedVersion: draft.versionToken
+      })
+    ).rejects.toMatchObject({ decision: expect.objectContaining({ internalReason: "job_request_version_conflict" }) });
+
+    // additional < 1 → invalid.
+    await expect(
+      jobRequestService.increaseRequestedCapacity({
+        actorUserId: ownerId,
+        organizationId: organization.organization.id,
+        jobRequestId: draft.id,
+        additionalWorkers: 0,
+        expectedVersion: added.jobRequest.versionToken
+      })
+    ).rejects.toMatchObject({ decision: expect.objectContaining({ internalReason: "invalid_added_capacity" }) });
+
+    // Cross-org actor → denied/not-found.
+    await expect(
+      jobRequestService.increaseRequestedCapacity({
+        actorUserId: "stranger",
+        organizationId: organization.organization.id,
+        jobRequestId: draft.id,
+        additionalWorkers: 1,
+        expectedVersion: added.jobRequest.versionToken
+      })
+    ).rejects.toBeInstanceOf(Error);
+  });
+
   it("enforces parent ownership, tenant isolation, state transitions, and optimistic concurrency", async () => {
     const {
       organizationService,
