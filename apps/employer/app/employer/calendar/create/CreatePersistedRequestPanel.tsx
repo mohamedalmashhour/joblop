@@ -6,6 +6,7 @@ import type {
   EmployerRequestContext
 } from "../../../api/job-requests/jobRequestBoundary";
 import { styles } from "../../employerStyles";
+import { JobLocationMap } from "../../../shared/maps";
 
 type FormState = {
   residenceId: string;
@@ -398,6 +399,12 @@ export function CreatePersistedRequestPanel() {
           />
         </label>
       </div>
+      {form.addressSummary.trim().length > 1 ? (
+        <div style={{ marginTop: 18 }}>
+          <p style={styles.metaLabel}>Site location</p>
+          <JobLocationMap address={form.addressSummary} height={260} />
+        </div>
+      ) : null}
       {status === "review" ? <RequestReview form={form} /> : null}
       <p style={styles.cardText}>
         Hourly rate and transportation compensation are governed by the approved contract and offer

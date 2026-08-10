@@ -573,11 +573,57 @@ model EmployerOrganization {
   paymentMethods       EmployerPaymentMethod[]
   paymentAttempts      EmployerPaymentAttempt[]
   paymentPolicies      PaymentPolicyVersion[]
+  contracts            EmployerContract[]       @relation("EmployerOrganizationContracts")
   uploadedDocuments    UploadedDocument[]
   auditActorReferences AuditActorReference[]
 
   @@index([status], map: "employer_organizations_status_idx")
   @@map("employer_organizations")
+}
+
+// Governed employer<->platform contract. Holds the authoritative per-role hourly
+// pay rate an active request reads from — the request never invents a price.
+enum EmployerContractStatus {
+  draft
+  signed
+  active
+  superseded
+}
+
+model EmployerContract {
+  id              String                 @id @default(uuid()) @db.Uuid
+  organizationId  String                 @map("organization_id") @db.Uuid
+  version         String
+  status          EmployerContractStatus @default(draft)
+  currency        String                 @default("CAD")
+  signedByUserId  String?                @map("signed_by_user_id") @db.Uuid
+  signedAt        DateTime?              @map("signed_at") @db.Timestamptz(3)
+  activatedAt     DateTime?              @map("activated_at") @db.Timestamptz(3)
+  effectiveFrom   DateTime?              @map("effective_from") @db.Timestamptz(3)
+  createdByUserId String                 @map("created_by_user_id") @db.Uuid
+  createdAt       DateTime               @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt       DateTime               @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  organization EmployerOrganization @relation("EmployerOrganizationContracts", fields: [organizationId], references: [id], onDelete: Restrict)
+  roleRates    ContractRoleRate[]
+
+  @@unique([organizationId, version], map: "employer_contracts_organization_version_key")
+  @@index([organizationId, status], map: "employer_contracts_organization_status_idx")
+  @@map("employer_contracts")
+}
+
+model ContractRoleRate {
+  id               String   @id @default(uuid()) @db.Uuid
+  contractId       String   @map("contract_id") @db.Uuid
+  workGroupId      String   @map("work_group_id") @db.Uuid
+  roleDefinitionId String   @map("role_definition_id") @db.Uuid
+  hourlyRateMinor  Int      @map("hourly_rate_minor")
+  createdAt        DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  contract EmployerContract @relation(fields: [contractId], references: [id], onDelete: Cascade)
+
+  @@unique([contractId, roleDefinitionId], map: "contract_role_rates_contract_role_key")
+  @@map("contract_role_rates")
 }
 
 model OrganizationMembership {
