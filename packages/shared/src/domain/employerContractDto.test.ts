@@ -15,7 +15,13 @@ const validContract = {
   activatedAt: "2026-08-01T00:00:00.000Z",
   effectiveFrom: "2026-08-01T00:00:00.000Z",
   roleRates: [
-    { workGroupId: "wg-1", roleDefinitionId: "role-chef", hourlyRateMinor: 3000, currency: "CAD" }
+    {
+      workGroupId: "wg-1",
+      roleDefinitionId: "role-chef",
+      hourlyRateMinor: 3000,
+      currency: "CAD",
+      roleLabel: null
+    }
   ]
 };
 

@@ -7,7 +7,15 @@ import type {
 } from "../../../api/job-requests/jobRequestBoundary";
 import { styles } from "../../employerStyles";
 import { JobLocationMap } from "../../../shared/maps";
-import { estimateRequestCost, formatHourlyRate, formatMoney, hoursBetween } from "@rwos/shared";
+import {
+  MINIMUM_SHIFT_HOURS,
+  MINIMUM_SHIFT_MESSAGE,
+  estimateRequestCost,
+  formatHourlyRate,
+  formatMoney,
+  hoursBetween,
+  meetsMinimumShiftDuration
+} from "@rwos/shared";
 
 type FormState = {
   residenceId: string;
@@ -331,6 +339,19 @@ export function CreatePersistedRequestPanel() {
           type="datetime-local"
           value={form.endAt}
         />
+        <div style={{ gridColumn: "1 / -1" }} aria-live="polite">
+          {form.startAt &&
+          form.endAt &&
+          new Date(form.endAt) > new Date(form.startAt) &&
+          !meetsMinimumShiftDuration(form.startAt, form.endAt) ? (
+            <div style={styles.warning} role="alert">
+              {MINIMUM_SHIFT_MESSAGE} This shift is {scheduledHours.toFixed(1)} hours — extend the end
+              time to at least {MINIMUM_SHIFT_HOURS} hours.
+            </div>
+          ) : (
+            <p style={styles.cardText}>{MINIMUM_SHIFT_MESSAGE}</p>
+          )}
+        </div>
         <SelectField
           disabled={status !== "editing"}
           label="Urgency"
@@ -583,6 +604,14 @@ function validate(form: FormState) {
   }
   if (form.startAt && form.endAt && new Date(form.endAt) <= new Date(form.startAt)) {
     missing.push("an end time after the start time");
+  }
+  if (
+    form.startAt &&
+    form.endAt &&
+    new Date(form.endAt) > new Date(form.startAt) &&
+    !meetsMinimumShiftDuration(form.startAt, form.endAt)
+  ) {
+    missing.push(`a shift of at least ${MINIMUM_SHIFT_HOURS} hours`);
   }
   return missing;
 }

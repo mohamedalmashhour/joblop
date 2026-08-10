@@ -102,7 +102,7 @@ describe("employer contract sign BFF route", () => {
     expect((await response.json()).contract.signedAt).not.toBeNull();
 
     expect(gatewayRequest).toHaveBeenCalledTimes(1);
-    const [path, method, token, forwardedBody] = gatewayRequest.mock.calls[0];
+    const [path, method, token, forwardedBody] = gatewayRequest.mock.calls[0] ?? [];
     expect(path).toBe("/organizations/org-1/contract/sign");
     expect(method).toBe("POST");
     expect(token).toBe("session-token");

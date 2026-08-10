@@ -269,7 +269,7 @@ function RateCardTable({ contract }: Readonly<{ contract: EmployerContractDto }>
           {contract.roleRates.map((rate) => (
             <tr key={rate.roleDefinitionId}>
               <th scope="row" style={{ ...cellStyle(false), fontWeight: 400 }}>
-                {rate.roleDefinitionId}
+                {rate.roleLabel ?? "Role"}
               </th>
               <td style={{ ...cellStyle(false), textAlign: "right", fontVariantNumeric: "tabular-nums" }}>
                 {formatHourlyRate({

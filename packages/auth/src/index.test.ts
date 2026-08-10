@@ -2334,6 +2334,69 @@ describe("job request foundation", () => {
     ]);
   });
 
+  it("enforces the authoritative 6-hour minimum shift on create and edit", async () => {
+    const { organizationService, residenceService, departmentService, jobRequestService } =
+      createJobRequestTestServices();
+    const ownerId = "owner-min-shift";
+    const organization = await organizationService.createOrganization({
+      actorUserId: ownerId,
+      legalName: "Min Shift Org",
+      displayName: "Min Shift Org"
+    });
+    const residence = await residenceService.createResidence({
+      actorUserId: ownerId,
+      organizationId: organization.organization.id,
+      name: "Min Shift Residence"
+    });
+    const department = await departmentService.createDepartment({
+      actorUserId: ownerId,
+      organizationId: organization.organization.id,
+      residenceId: residence.id,
+      name: "Kitchen"
+    });
+    const base = {
+      actorUserId: ownerId,
+      organizationId: organization.organization.id,
+      residenceId: residence.id,
+      departmentId: department.id,
+      workGroupSlug: "kitchen",
+      roleDefinitionIdentifier: "chef",
+      title: "Minimum Shift Coverage",
+      numberOfWorkers: 1,
+      urgency: "normal" as const,
+      requestType: "single_day" as const,
+      timezone: "America/Toronto",
+      startAt: new Date("2026-08-01T12:00:00.000Z")
+    };
+
+    // 5h59m — below the 6-hour minimum — is rejected server-side.
+    await expect(
+      jobRequestService.createDraft({ ...base, endAt: new Date("2026-08-01T17:59:00.000Z") })
+    ).rejects.toMatchObject({
+      decision: expect.objectContaining({ internalReason: "job_request_below_minimum_shift" })
+    });
+
+    // Exactly 6 hours is accepted (inclusive boundary).
+    const draft = await jobRequestService.createDraft({
+      ...base,
+      endAt: new Date("2026-08-01T18:00:00.000Z")
+    });
+    expect(draft.status).toBe("draft");
+
+    // Editing it down below 6 hours is also rejected.
+    await expect(
+      jobRequestService.updateDraft({
+        actorUserId: ownerId,
+        organizationId: organization.organization.id,
+        jobRequestId: draft.id,
+        expectedVersion: draft.versionToken,
+        endAt: new Date("2026-08-01T15:30:00.000Z")
+      })
+    ).rejects.toMatchObject({
+      decision: expect.objectContaining({ internalReason: "job_request_below_minimum_shift" })
+    });
+  });
+
   it("enforces parent ownership, tenant isolation, state transitions, and optimistic concurrency", async () => {
     const {
       organizationService,

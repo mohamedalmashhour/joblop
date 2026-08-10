@@ -14,4 +14,5 @@ export * from "./payment";
 export * from "./paymentPricing";
 export * from "./platformIntegration";
 export * from "./shift";
+export * from "./shiftRules";
 export * from "./worker";

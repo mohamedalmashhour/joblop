@@ -5217,6 +5217,20 @@ export function createJobRequestService(
         );
       }
 
+      // Authoritative 6-hour minimum shift rule (server-side, not UI-only).
+      if (!meetsMinimumShiftDuration(input.startAt, input.endAt)) {
+        throw new JobRequestError(
+          jobRequestDeny(
+            "invalid_input",
+            "job_request_below_minimum_shift",
+            null,
+            authorization.roles,
+            authorization.organization,
+            authorization.membership
+          )
+        );
+      }
+
       const draft = await jobRequestRepository.createDraft({
         organizationId: input.organizationId,
         residenceId: input.residenceId,
@@ -5465,6 +5479,20 @@ export function createJobRequestService(
           jobRequestDeny(
             "invalid_input",
             "invalid_job_request_timing",
+            toPublicJobRequest(jobRequest),
+            authorization.roles,
+            authorization.organization,
+            authorization.membership
+          )
+        );
+      }
+
+      // Authoritative 6-hour minimum shift rule also applies to edits.
+      if (!meetsMinimumShiftDuration(startAt, endAt)) {
+        throw new JobRequestError(
+          jobRequestDeny(
+            "invalid_input",
+            "job_request_below_minimum_shift",
             toPublicJobRequest(jobRequest),
             authorization.roles,
             authorization.organization,
@@ -16680,6 +16708,16 @@ function isValidJobRequestTiming(startAt: Date, endAt: Date) {
     !Number.isNaN(endAt.getTime()) &&
     endAt.getTime() > startAt.getTime()
   );
+}
+
+// Authoritative platform business rule: a staffing request shift must be at least
+// 6 hours per worker. Enforced server-side on create and edit. Mirrors the shared
+// constant MINIMUM_SHIFT_MINUTES (@rwos/shared) used by employer-facing UI copy.
+export const MINIMUM_STAFFING_SHIFT_MINUTES = 360;
+
+function meetsMinimumShiftDuration(startAt: Date, endAt: Date) {
+  const durationMinutes = (endAt.getTime() - startAt.getTime()) / 60000;
+  return durationMinutes >= MINIMUM_STAFFING_SHIFT_MINUTES;
 }
 
 function isMultiDayRange(startAt: Date, endAt: Date) {

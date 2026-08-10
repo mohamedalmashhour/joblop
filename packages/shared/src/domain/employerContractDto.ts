@@ -14,6 +14,9 @@ export type EmployerContractRoleRateDto = Readonly<{
   roleDefinitionId: string;
   hourlyRateMinor: number;
   currency: string;
+  // Human-readable role name for display. Null until enriched by the BFF from the
+  // role-definition catalogue — the internal roleDefinitionId is always retained.
+  roleLabel: string | null;
 }>;
 
 export type EmployerContractDto = Readonly<{
@@ -62,7 +65,8 @@ function parseRoleRates(input: unknown, contractCurrency: string): readonly Empl
       roleDefinitionId: requiredString(rate, "roleDefinitionId"),
       hourlyRateMinor: nonNegativeInteger(rate, "hourlyRateMinor"),
       // A role rate must never carry a currency different from its contract.
-      currency: typeof rate.currency === "string" && rate.currency ? rate.currency : contractCurrency
+      currency: typeof rate.currency === "string" && rate.currency ? rate.currency : contractCurrency,
+      roleLabel: typeof rate.roleLabel === "string" && rate.roleLabel ? rate.roleLabel : null
     };
   });
 }
