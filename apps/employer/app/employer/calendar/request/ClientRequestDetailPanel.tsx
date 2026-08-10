@@ -11,6 +11,7 @@ import {
 import { styles } from "../../employerStyles";
 import { JobLocationMap } from "../../../shared/maps";
 import { CancelRequestPanel } from "./CancelRequestPanel";
+import { DuplicateRequestButton } from "./DuplicateRequestButton";
 
 export function ClientRequestDetailPanel({ requestId }: Readonly<{ requestId: string | null }>) {
   const [state, setState] = useState<AuthenticatedViewState<ClientCalendarDto>>({
@@ -171,6 +172,9 @@ export function ClientRequestDetailPanel({ requestId }: Readonly<{ requestId: st
         >
           View staffing progress
         </a>
+        <div style={{ marginTop: 14 }}>
+          <DuplicateRequestButton requestId={request.id} />
+        </div>
         {request.status !== "cancelled" && request.status !== "completed" ? (
           <div style={{ marginTop: 14 }}>
             <CancelRequestPanel requestId={request.id} />

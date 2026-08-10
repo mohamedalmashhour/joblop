@@ -2134,6 +2134,89 @@ export function buildApi(options: BuildApiOptions = {}) {
     return reply.code(201).send({ jobRequest: serializeJobRequest(jobRequest) });
   });
 
+  // Duplicate a request into a NEW DRAFT only. Copies governed fields + duties/
+  // qualifications/notes from the source; NEVER copies status, assignments, offers,
+  // attendance, cancellations, or old rate/estimate. createDraft revalidates the
+  // active site/role + current contract and enforces the 6-hour minimum; pricing is
+  // never stored, so the duplicate is inherently repriced from the current contract.
+  app.post(
+    "/organizations/:organizationId/job-requests/:jobRequestId/duplicate",
+    async (request, reply) => {
+      const session = await authService.validateSession(
+        readBearerToken(request.headers.authorization)
+      );
+      if (!session.authenticated || !session.user) return sendJobRequestDenied(reply);
+      const actorUserId = session.user.id;
+      const organizationId = readRouteParam(request.params, "organizationId");
+      const jobRequestIdOrNumber = readRouteParam(request.params, "jobRequestId");
+      try {
+        const source = await jobRequestService.getForOrganization({
+          actorUserId,
+          organizationId,
+          jobRequestIdOrNumber
+        });
+        const [workGroup, roleDefinition, sourceProfile] = await Promise.all([
+          createPrismaWorkGroupRepository(prisma!).findWorkGroupById(source.workGroupId),
+          createPrismaRoleDefinitionRepository(prisma!).findRoleDefinitionById(source.roleDefinitionId),
+          calendarRequestService.getClientCalendarRequest({
+            actorUserId,
+            organizationId,
+            jobRequestIdOrNumber
+          })
+        ]);
+        if (!workGroup || !roleDefinition) {
+          return reply.code(409).send({
+            error: "RWOS_DUPLICATE_SOURCE_UNAVAILABLE",
+            message: "The work group or role for this request is no longer available."
+          });
+        }
+        const draft = await jobRequestService.createDraft({
+          actorUserId,
+          organizationId,
+          residenceId: source.residenceId,
+          departmentId: source.departmentId,
+          workGroupSlug: workGroup.key,
+          roleDefinitionIdentifier: roleDefinition.key,
+          title: source.title,
+          description: source.description ?? null,
+          numberOfWorkers: source.numberOfWorkers,
+          urgency: source.urgency,
+          requestType: source.requestType,
+          timezone: source.timezone,
+          startAt: source.startAt,
+          endAt: source.endAt
+        });
+        // Copy the duties / qualifications / arrival notes (best-effort).
+        try {
+          await calendarRequestService.upsertClientProfile({
+            actorUserId,
+            organizationId,
+            jobRequestId: draft.id,
+            dutiesSummary: sourceProfile.dutiesSummary,
+            qualifications: sourceProfile.qualifications,
+            addressSummary: sourceProfile.addressSummary,
+            specialInstructions: sourceProfile.specialInstructions,
+            expectedVersion: null
+          });
+        } catch {
+          // The draft still exists; the employer can fill duties/qualifications.
+        }
+        return reply.code(201).send({
+          jobRequest: serializeJobRequest(draft),
+          duplicatedFromRequestNumber: source.jobRequestNumber,
+          repricedFrom: "current_active_contract"
+        });
+      } catch (error) {
+        if (error instanceof JobRequestError) {
+          return reply
+            .code(409)
+            .send({ error: "RWOS_DUPLICATE_DENIED", message: "This request could not be duplicated." });
+        }
+        throw error;
+      }
+    }
+  );
+
   app.get("/organizations/:organizationId/job-requests", async (request, reply) => {
     const session = await authService.validateSession(
       readBearerToken(request.headers.authorization)
