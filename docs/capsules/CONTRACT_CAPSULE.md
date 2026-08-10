@@ -27,12 +27,18 @@ Status: **complete + verified** (schema, domain, service, API, request integrati
 - **Service** — `packages/auth/src/employerContract.ts`
   - `createEmployerContractService(repository, membershipReader, { now? })`
     - `getActiveContract({ actorUserId, organizationId })` → `PublicEmployerContract | null`.
-    - `signContract({ actorUserId, organizationId, version, currency?, roleRates })` → activates a new contract, superseding the prior active one.
+    - `signContract({ actorUserId, organizationId, version, currency?, roleRates })` → **publishes the rate card** (platform authority): creates an active-but-**unsigned** contract (`signedAt` null), superseding the prior active one.
+    - `acknowledgeContract({ actorUserId, organizationId })` → the **employer owner signs** (accepts) the active rate card. **Carries no rates** — records only the signature. Errors: `invalid` (nothing to sign) / `conflict` (already signed).
   - Authz: an **active `ORGANIZATION_OWNER`/`ORGANIZATION_ADMINISTRATOR`** member (via a structural `ContractMembershipReader`).
   - Validation: versioned label, non-empty card, non-negative integer minor rates, unique roles.
   - `createPrismaEmployerContractRepository(prismaClient)` — the Prisma-backed repo.
   - `EmployerContractError` (`denied` | `invalid` | `conflict`); `PublicEmployerContract` DTO.
-  - Tests: `employerContract.test.ts` (4).
+  - Tests: `employerContract.test.ts` (6).
+
+- **Signing model (security)** — rates are **server-authoritative**. Publishing the rate
+  card (`signContract`, platform authority — to become admin-only once the admin app
+  exists) is separate from the employer **accepting** it (`acknowledgeContract`), which
+  transmits **no rates**. This prevents client-side manipulation of governed rates.
 
 ### Data (copy schema + migration)
 
@@ -43,10 +49,14 @@ Status: **complete + verified** (schema, domain, service, API, request integrati
 
 - **API** — `apps/api/src/app.ts`
   - `GET  /organizations/:organizationId/contract` → `{ contract }`.
-  - `POST /organizations/:organizationId/contract` → sign; `{ contract }` (201).
-  - Service constructed in `buildApi` (`employerContractService`); errors mapped (`denied` 401/403, `invalid` 400).
+  - `POST /organizations/:organizationId/contract` → publish rate card; `{ contract }` (201).
+  - `POST /organizations/:organizationId/contract/sign` → employer accepts (no body rates); `{ contract }` (200).
+  - Service constructed in `buildApi` (`employerContractService`); errors mapped (`denied` 403, `conflict` 409, `invalid` 400).
 - **Request-context BFF** — `apps/employer/app/api/job-requests/context/route.ts` fetches the active contract; `parseEmployerRequestContext(..., { contract })` (`jobRequestBoundary.ts`) joins each role to its rate by `roleDefinitionId`.
-- **UI** — `apps/employer/app/employer/calendar/create/CreatePersistedRequestPanel.tsx` shows the selected role's governed rate + estimated total, or a "not priced yet — sign a contract" notice.
+- **Contract BFF** — `apps/employer/app/api/contract/route.ts` (GET) + `contract/sign/route.ts` (POST, same-origin CSRF, forwards `{}` — no rates). Whitelisted via `parseEmployerContractEnvelope` (`packages/shared/src/domain/employerContractDto.ts`), dropping `createdByUserId` / `signedByUserId`. Tests: `contractRoutes.test.ts` (6), `employerContractDto.test.ts` (4).
+- **UI** —
+  - `apps/employer/app/employer/contract/` — `page.tsx` + `ContractSignPanel.tsx`: review the governed rate card (read-only), explicit acknowledgment, sign; full state set (loading / denied / organization-required / no-contract / signable / signed / unavailable / stale / error); accessible table + labelled checkbox + keyboarded form + aria-live status.
+  - `apps/employer/app/employer/calendar/create/CreatePersistedRequestPanel.tsx` shows the selected role's governed rate + estimated total, or a "not priced yet" notice linking to the contract page.
 
 ---
 
@@ -60,6 +70,10 @@ import { resolveRoleHourlyRate, estimateRequestCost, formatHourlyRate,
 // from @rwos/auth
 import { createEmployerContractService, createPrismaEmployerContractRepository,
          EmployerContractError, type PublicEmployerContract } from "@rwos/auth";
+//   service: getActiveContract / signContract (publish) / acknowledgeContract (sign)
+
+// from @rwos/shared (employer-app boundary parser)
+import { parseEmployerContractEnvelope, type EmployerContractDto } from "@rwos/shared";
 ```
 
 ## Dependencies
