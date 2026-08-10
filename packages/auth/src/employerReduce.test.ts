@@ -5,6 +5,7 @@ import {
   type ConfirmedAssignment,
   type ReduceGovernedRate,
   type ReduceMembershipReader,
+  type ReduceStore,
   type SelectedAssignmentCancelResult,
   type StoredReduction
 } from "./employerReduce";
@@ -27,7 +28,7 @@ function makeStore() {
   const rows: StoredReduction[] = [];
   let seq = 0;
   const store = {
-    async createReduction(input: Parameters<import("./employerReduce").ReduceStore["createReduction"]>[0]) {
+    async createReduction(input: Parameters<ReduceStore["createReduction"]>[0]) {
       const existing = rows.find((r) => r.idempotencyKey === input.idempotencyKey);
       if (existing) return { created: false, reduction: existing };
       const row: StoredReduction = {
