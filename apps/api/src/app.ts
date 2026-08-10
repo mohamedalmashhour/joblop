@@ -32,6 +32,13 @@ import {
   createDepartmentService,
   createDispatchService,
   createEmployerContractService,
+  createEmployerCancellationService,
+  createPrismaCancellationJobRequestReader,
+  createPrismaConfirmedAssignmentReader,
+  createPrismaContractRateReader,
+  createPrismaCancellationStore,
+  CONFIRMED_ASSIGNMENT_STATUSES,
+  EmployerCancellationError,
   createPrismaEmployerContractRepository,
   EmployerContractError,
   createEmployerOrganizationService,
@@ -76,6 +83,7 @@ import {
   type DispatchService,
   type DispatchPriority,
   type EmployerContractService,
+  type AssignmentCancelPort,
   type EmployerOrganizationService,
   type JobRequestService,
   type JobRequestType,
@@ -319,6 +327,21 @@ export function buildApi(options: BuildApiOptions = {}) {
           (await resolveAuthorizationRoles(userId)).includes("PLATFORM_ADMINISTRATOR")
       }
     );
+  // Governed two-step employer cancellation. The default assignment-cancel port
+  // fails closed — the confirmed-assignment handoff is only ever performed via the
+  // platform-gated endpoint, which injects a port bound to its authorized actor.
+  const employerCancellationService = createEmployerCancellationService({
+    membershipReader: membershipService,
+    jobRequestReader: createPrismaCancellationJobRequestReader(prisma!),
+    confirmedAssignmentReader: createPrismaConfirmedAssignmentReader(prisma!),
+    contractRateReader: createPrismaContractRateReader(prisma!),
+    store: createPrismaCancellationStore(prisma!),
+    assignmentCancelPort: {
+      async cancelConfirmedAssignments() {
+        throw new Error("A platform-authorized assignment-cancel port must be provided.");
+      }
+    }
+  });
   const residenceService =
     options.residenceService ??
     createResidenceService(
@@ -1701,6 +1724,113 @@ export function buildApi(options: BuildApiOptions = {}) {
       return sendContractError(reply, error);
     }
   });
+
+  // Employer: read-only authoritative cancellation consequence. No amount/rate/count
+  // from the browser — everything is derived server-side.
+  app.post(
+    "/organizations/:organizationId/job-requests/:jobRequestId/cancel/preview",
+    async (request, reply) => {
+      const session = await authService.validateSession(
+        readBearerToken(request.headers.authorization)
+      );
+      if (!session.authenticated || !session.user) return sendCancellationDenied(reply);
+      try {
+        const preview = await employerCancellationService.previewCancellation({
+          actorUserId: session.user.id,
+          organizationId: readRouteParam(request.params, "organizationId"),
+          jobRequestId: readRouteParam(request.params, "jobRequestId")
+        });
+        return reply.code(200).send({ preview });
+      } catch (error) {
+        return sendCancellationError(reply, error);
+      }
+    }
+  );
+
+  // Employer: confirm cancellation. Body carries only intent (idempotencyKey +
+  // acknowledgement); rate/amount/count/cutoff are recalculated at confirm time.
+  app.post(
+    "/organizations/:organizationId/job-requests/:jobRequestId/cancel/confirm",
+    async (request, reply) => {
+      const session = await authService.validateSession(
+        readBearerToken(request.headers.authorization)
+      );
+      if (!session.authenticated || !session.user) return sendCancellationDenied(reply);
+      const body = asRecord(request.body);
+      const idempotencyKey = readRequiredString(body, "idempotencyKey") ?? "";
+      try {
+        const result = await employerCancellationService.confirmCancellation({
+          actorUserId: session.user.id,
+          organizationId: readRouteParam(request.params, "organizationId"),
+          jobRequestId: readRouteParam(request.params, "jobRequestId"),
+          idempotencyKey
+        });
+        return reply.code(200).send(result);
+      } catch (error) {
+        return sendCancellationError(reply, error);
+      }
+    }
+  );
+
+  // Platform-only: complete the governed assignment handoff for a recorded
+  // cancellation. Wraps the platform-authorized assignmentService.cancel; employer
+  // code never reaches this.
+  app.post(
+    "/platform/request-cancellations/:cancellationId/complete-handoff",
+    async (request, reply) => {
+      const session = await authService.validateSession(
+        readBearerToken(request.headers.authorization)
+      );
+      if (!session.authenticated || !session.user) return sendCancellationDenied(reply);
+      const roles = await resolveAuthorizationRoles(session.user.id);
+      if (!roles.includes("PLATFORM_ADMINISTRATOR")) {
+        return reply
+          .code(403)
+          .send({ error: "RWOS_CANCELLATION_DENIED", message: "Platform authority is required." });
+      }
+      // Port bound to THIS platform actor: list still-confirmed assignments for the
+      // request and cancel each via the governed path. Idempotent — already-cancelled
+      // assignments drop out of the active-status list, so re-runs converge.
+      const port: AssignmentCancelPort = {
+        async cancelConfirmedAssignments({ organizationId, jobRequestId, reason }) {
+          const assignments = await assignmentService.listAssignments({
+            session,
+            roles,
+            organizationId,
+            jobRequestId,
+            statuses: [...CONFIRMED_ASSIGNMENT_STATUSES] as AssignmentStatus[]
+          });
+          let cancelled = 0;
+          let failed = 0;
+          for (const assignment of assignments) {
+            try {
+              await assignmentService.cancel({
+                session,
+                roles,
+                assignmentId: assignment.id,
+                expectedVersion: assignment.versionToken,
+                reason,
+                status: "employer_cancelled"
+              });
+              cancelled += 1;
+            } catch {
+              failed += 1;
+            }
+          }
+          return { attempted: assignments.length, cancelled, failed };
+        }
+      };
+      try {
+        const result = await employerCancellationService.completeHandoff({
+          cancellationId: readRouteParam(request.params, "cancellationId"),
+          assignmentCancelPort: port
+        });
+        return reply.code(200).send(result);
+      } catch (error) {
+        return sendCancellationError(reply, error);
+      }
+    }
+  );
 
   app.get("/organizations/:organizationId/residences/:residenceId", async (request, reply) => {
     const session = await authService.validateSession(
@@ -4249,6 +4379,34 @@ function sendContractError(reply: FastifyReply, error: unknown) {
   return reply.code(500).send({
     error: "RWOS_CONTRACT_ERROR",
     message: "The contract could not be processed."
+  });
+}
+
+function sendCancellationDenied(reply: FastifyReply) {
+  return reply.code(401).send({
+    error: "RWOS_CANCELLATION_DENIED",
+    message: "Authentication is required to manage a cancellation."
+  });
+}
+
+function sendCancellationError(reply: FastifyReply, error: unknown) {
+  if (error instanceof EmployerCancellationError) {
+    const httpStatus =
+      error.code === "denied"
+        ? 403
+        : error.code === "not_found"
+          ? 404
+          : error.code === "conflict"
+            ? 409
+            : 400;
+    return reply.code(httpStatus).send({
+      error: `RWOS_CANCELLATION_${error.code.toUpperCase()}`,
+      message: error.message
+    });
+  }
+  return reply.code(500).send({
+    error: "RWOS_CANCELLATION_ERROR",
+    message: "The cancellation could not be processed."
   });
 }
 
