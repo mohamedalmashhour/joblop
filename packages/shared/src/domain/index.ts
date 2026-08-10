@@ -2,6 +2,7 @@ export * from "./application";
 export * from "./authenticatedCalendar";
 export * from "./authenticatedCalendarClient";
 export * from "./cancellationObligation";
+export * from "./capacityReduction";
 export * from "./connectedCalendar";
 export * from "./contractPricing";
 export * from "./employerContractDto";
