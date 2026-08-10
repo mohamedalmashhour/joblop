@@ -168,7 +168,7 @@ function CancellationResult({ result }: Readonly<{ result: CancellationConfirmat
           JobLop. Our team will complete it — this request is not yet fully cancelled.
         </p>
       ) : (
-        <p style={styles.cardText}>This request has been cancelled.</p>
+        <p style={styles.cardText}>Your cancellation has been recorded.</p>
       )}
     </div>
   );
