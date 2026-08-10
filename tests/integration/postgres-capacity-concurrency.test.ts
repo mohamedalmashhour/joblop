@@ -1,6 +1,6 @@
 import { afterAll, describe, expect, it } from "vitest";
 import { randomUUID } from "node:crypto";
-import { createPrismaJobRequestRepository } from "@rwos/auth";
+import { createPrismaJobRequestRepository, createPrismaReduceStore } from "@rwos/auth";
 import { createPrismaClient } from "@rwos/database";
 
 const databaseUrl = process.env.RWOS_TEST_DATABASE_URL;
@@ -49,7 +49,7 @@ suite("PostgreSQL live capacity concurrency", () => {
         createdByUserId: userId
       }
     });
-    return { jobRequestId: request.id, userId, version: request.version };
+    return { jobRequestId: request.id, organizationId: org.id, userId, version: request.version };
   }
 
   afterAll(async () => {
@@ -76,6 +76,33 @@ suite("PostgreSQL live capacity concurrency", () => {
     // The version advanced exactly once, and the count is the single winner's value.
     expect(final.version).toBe(expectedVersion + 1);
     expect([5, 7]).toContain(final.numberOfWorkers);
+  });
+
+  it("Reduce store: two concurrent confirms (same key) → exactly one reduction record", async () => {
+    const seed = await seedRequest(5);
+    const stores = [
+      createPrismaReduceStore(createPrismaClient(databaseUrl!)),
+      createPrismaReduceStore(createPrismaClient(databaseUrl!)),
+      createPrismaReduceStore(createPrismaClient(databaseUrl!))
+    ];
+    const input = {
+      organizationId: seed.organizationId,
+      jobRequestId: seed.jobRequestId,
+      initialStatus: "assignment_cancellation_pending" as const,
+      previousTarget: 5,
+      newTarget: 2,
+      affectedConfirmed: 1,
+      selectedAssignmentIds: [randomUUID()],
+      idempotencyKey: `reduce-${seed.jobRequestId}`,
+      initiatedByUserId: seed.userId,
+      obligation: { amountMinor: 18000, currency: "CAD", governedRateMinor: 3000, minimumShiftHours: 6, cutoffHours: 48, contractId: null, contractVersion: "2026-Q3" },
+      now: new Date()
+    };
+    const results = await Promise.all(stores.map((s) => s.createReduction(input)));
+    expect(results.filter((r) => r.created)).toHaveLength(1);
+    expect(new Set(results.map((r) => r.reduction.id)).size).toBe(1);
+    const count = await prisma.employerCapacityReduction.count({ where: { jobRequestId: seed.jobRequestId } });
+    expect(count).toBe(1);
   });
 
   it("a stale expected version never applies", async () => {
