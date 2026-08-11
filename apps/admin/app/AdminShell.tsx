@@ -10,6 +10,41 @@ const connectedNavigation = [
 ] as const;
 const reviewNavigation = phase01Routes.map(({ route, title }) => ({ href: route, label: title }));
 
+type NavItem = { href: string; label: string };
+
+// Platform sections organized into named groups (capsules), mirroring the SYBNB grouped-nav
+// pattern — every route belongs to a section so the workspace reads as coherent groups
+// instead of one long flat list.
+const NAV_GROUPS: readonly { group: string; hrefs: readonly string[] }[] = [
+  { group: "Operations", hrefs: ["/calendar", "/dispatches", "/shifts"] },
+  { group: "Directory", hrefs: ["/workers", "/employers", "/residences"] },
+  { group: "Finance & payroll", hrefs: ["/finance", "/payroll"] },
+  { group: "Governance & compliance", hrefs: ["/compliance", "/audit-log", "/reports"] },
+  { group: "Platform", hrefs: ["/system-settings", "/platform-analytics", "/notification-center", "/ai-control-center"] }
+];
+
+// Bucket the active navigation into ordered groups, preserving each group's declared order.
+// Any route not assigned to a group falls into a trailing "More" group so nothing is dropped.
+function groupNavigation(navigation: readonly NavItem[]): { group: string; items: NavItem[] }[] {
+  const byHref = new Map(navigation.map((item) => [item.href, item]));
+  const used = new Set<string>();
+  const groups: { group: string; items: NavItem[] }[] = [];
+  for (const { group, hrefs } of NAV_GROUPS) {
+    const items: NavItem[] = [];
+    for (const href of hrefs) {
+      const item = byHref.get(href);
+      if (item) {
+        items.push(item);
+        used.add(href);
+      }
+    }
+    if (items.length > 0) groups.push({ group, items });
+  }
+  const leftovers = navigation.filter((item) => !used.has(item.href));
+  if (leftovers.length > 0) groups.push({ group: "More", items: [...leftovers] });
+  return groups;
+}
+
 export function AdminShell({
   children,
   staging
@@ -67,19 +102,26 @@ export function AdminShell({
         </p>
       </header>
       <nav aria-label="Administration navigation" className="admin-navigation">
-        {navigation.map((item) => {
-          const active = pathname === item.href || pathname.startsWith(`${item.href}/`);
-          return (
-            <a
-              aria-current={active ? "page" : undefined}
-              className={active ? "admin-nav-link admin-nav-link-active" : "admin-nav-link"}
-              href={item.href}
-              key={item.href}
-            >
-              {item.label}
-            </a>
-          );
-        })}
+        {groupNavigation(navigation).map(({ group, items }) => (
+          <div aria-label={group} className="admin-nav-group" key={group} role="group">
+            <span className="admin-nav-group-label">{group}</span>
+            <div className="admin-nav-group-links">
+              {items.map((item) => {
+                const active = pathname === item.href || pathname.startsWith(`${item.href}/`);
+                return (
+                  <a
+                    aria-current={active ? "page" : undefined}
+                    className={active ? "admin-nav-link admin-nav-link-active" : "admin-nav-link"}
+                    href={item.href}
+                    key={item.href}
+                  >
+                    {item.label}
+                  </a>
+                );
+              })}
+            </div>
+          </div>
+        ))}
       </nav>
       {currentIndex >= 0 ? (
         <PageNavigator
