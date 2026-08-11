@@ -21,9 +21,15 @@ const CASE_NEXT: Record2 = {
 };
 type Record2 = { [k: string]: string[] };
 
+type DocRow = { id: string; documentType: string; jurisdiction: string | null; expiresAt: string | null; effectiveStatus: string; reviewReason: string | null; supersededById: string | null };
+type Compliance = { result: string; reasons: { requirementKey: string; requiredType: string; kind: string; satisfied: boolean; detail: string }[] };
+
 export function HrWorkerPanel({ workerIdentityId }: { workerIdentityId: string }) {
   const [record, setRecord] = useState<Record | null>(null);
   const [events, setEvents] = useState<Event[]>([]);
+  const [documents, setDocuments] = useState<DocRow[]>([]);
+  const [compliance, setCompliance] = useState<Compliance | null>(null);
+  const [jurisdiction, setJurisdiction] = useState("CA-QC");
   const [status, setStatus] = useState<"loading" | "ready" | "denied" | "unavailable">("loading");
   const [notice, setNotice] = useState<{ tone: "ok" | "err"; msg: string } | null>(null);
   const [busy, setBusy] = useState(false);
@@ -40,18 +46,35 @@ export function HrWorkerPanel({ workerIdentityId }: { workerIdentityId: string }
 
   const load = useCallback(async () => {
     try {
-      const [rec, ev] = await Promise.all([
+      const [rec, ev, docs, comp] = await Promise.all([
         fetch(`/api/hr/workers/${encodeURIComponent(workerIdentityId)}`, { cache: "no-store" }),
-        fetch(`/api/hr/workers/${encodeURIComponent(workerIdentityId)}/events?limit=50`, { cache: "no-store" })
+        fetch(`/api/hr/workers/${encodeURIComponent(workerIdentityId)}/events?limit=50`, { cache: "no-store" }),
+        fetch(`/api/hr/workers/${encodeURIComponent(workerIdentityId)}/documents`, { cache: "no-store" }),
+        fetch(`/api/hr/workers/${encodeURIComponent(workerIdentityId)}/compliance?jurisdiction=${encodeURIComponent(jurisdiction)}`, { cache: "no-store" })
       ]);
       if (!rec.ok) return setStatus(rec.status === 401 || rec.status === 403 ? "denied" : "unavailable");
       setRecord((await rec.json()) as Record);
       if (ev.ok) setEvents(((await ev.json()).items ?? []) as Event[]);
+      if (docs.ok) setDocuments(((await docs.json()).documents ?? []) as DocRow[]);
+      if (comp.ok) setCompliance((await comp.json()).compliance as Compliance);
       setStatus("ready");
     } catch {
       setStatus("unavailable");
     }
-  }, [workerIdentityId]);
+  }, [workerIdentityId, jurisdiction]);
+
+  const docAction = useCallback(async (documentId: string, action: "accept" | "reject" | "revoke", reason?: string) => {
+    setBusy(true);
+    setNotice(null);
+    try {
+      const r = await fetch(`/api/hr/documents/${encodeURIComponent(documentId)}/${action}`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(reason ? { reason } : {}) });
+      if (!r.ok) { setNotice({ tone: "err", msg: r.status === 409 ? "That document is no longer reviewable." : "Action failed." }); return; }
+      setNotice({ tone: "ok", msg: `Document ${action}ed.` });
+      await load();
+    } finally {
+      setBusy(false);
+    }
+  }, [load]);
 
   useEffect(() => { void load(); }, [load]);
 
@@ -170,6 +193,54 @@ export function HrWorkerPanel({ workerIdentityId }: { workerIdentityId: string }
           </div>
         </section>
 
+        {/* Documents */}
+        <section style={styles.card}>
+          <h2 style={styles.h2}>Documents</h2>
+          <ul style={styles.plainList}>
+            {documents.filter((d) => d.effectiveStatus !== "superseded").length === 0 ? <li style={styles.dim}>No documents.</li> : documents.filter((d) => d.effectiveStatus !== "superseded").map((d) => (
+              <li key={d.id} style={styles.credItem}>
+                <div>
+                  <strong>{d.documentType}</strong> <span style={docBadge(d.effectiveStatus)}>{d.effectiveStatus.replaceAll("_", " ")}</span>
+                  {d.jurisdiction ? <span style={styles.dim}> · {d.jurisdiction}</span> : null}
+                  <div style={styles.dim}>{d.expiresAt ? `expires ${new Date(d.expiresAt).toLocaleDateString()}` : "no expiry"}{d.reviewReason ? ` · ${d.reviewReason}` : ""}</div>
+                </div>
+                <div style={styles.rowBtns}>
+                  {["submitted", "under_review"].includes(d.effectiveStatus) ? (
+                    <>
+                      <button type="button" style={styles.btnSm} disabled={busy} onClick={() => void docAction(d.id, "accept")}>Accept</button>
+                      <button type="button" style={styles.btnGhostSm} disabled={busy} onClick={() => { const r = window.prompt("Reason for rejection?"); if (r) void docAction(d.id, "reject", r); }}>Reject</button>
+                    </>
+                  ) : null}
+                  {d.effectiveStatus === "accepted" ? <button type="button" style={styles.btnGhostSm} disabled={busy} onClick={() => { const r = window.prompt("Reason to revoke?"); if (r) void docAction(d.id, "revoke", r); }}>Revoke</button> : null}
+                </div>
+              </li>
+            ))}
+          </ul>
+          <p style={styles.note}>File contents live behind the secure storage provider — HR reviews via a short-lived signed URL, never a raw blob.</p>
+        </section>
+
+        {/* Compliance */}
+        <section style={styles.card}>
+          <h2 style={styles.h2}>Compliance</h2>
+          <div style={styles.formRow}>
+            <input aria-label="Jurisdiction" value={jurisdiction} onChange={(e) => setJurisdiction(e.target.value)} style={styles.input} placeholder="e.g. CA-QC" />
+            <button type="button" style={styles.btnSm} onClick={() => void load()}>Re-evaluate</button>
+          </div>
+          {compliance ? (
+            <>
+              <p><span style={complianceBadge(compliance.result)}>{compliance.result.replaceAll("_", " ")}</span></p>
+              <ul style={styles.plainList}>
+                {compliance.reasons.length === 0 ? <li style={styles.dim}>No requirements for this jurisdiction.</li> : compliance.reasons.map((r, i) => (
+                  <li key={i} style={styles.timelineItem}>
+                    <strong>{r.requiredType}</strong> ({r.kind}) — {r.satisfied ? "satisfied" : "not satisfied"} · <span style={styles.dim}>{r.detail}</span>
+                  </li>
+                ))}
+              </ul>
+              <p style={styles.note}>Evaluation + visibility only — compliance does not block marketplace/dispatch (gating centralized + currently off). No AI decides legal compliance.</p>
+            </>
+          ) : <p style={styles.dim}>No evaluation.</p>}
+        </section>
+
         {/* Timeline */}
         <section style={styles.card}>
           <h2 style={styles.h2}>Audit timeline</h2>
@@ -192,6 +263,17 @@ function credBadge(status: string): React.CSSProperties {
   if (status === "expiring") return { ...styles.badge, background: "#fef3c7", color: "#92400e" };
   if (status === "replaced") return { ...styles.badge, background: "#e2e8f0", color: "#475569" };
   return { ...styles.badge, background: "#dcfce7", color: "#15803d" };
+}
+function docBadge(status: string): React.CSSProperties {
+  if (status === "accepted") return { ...styles.badge, background: "#dcfce7", color: "#15803d" };
+  if (status === "expiring" || status === "submitted" || status === "under_review") return { ...styles.badge, background: "#fef3c7", color: "#92400e" };
+  if (status === "expired" || status === "rejected" || status === "revoked") return { ...styles.badge, background: "#fee2e2", color: "#b91c1c" };
+  return { ...styles.badge, background: "#e2e8f0", color: "#475569" };
+}
+function complianceBadge(result: string): React.CSSProperties {
+  if (result === "compliant") return { ...styles.badge, background: "#dcfce7", color: "#15803d" };
+  if (result === "expiring_soon" || result === "review_required") return { ...styles.badge, background: "#fef3c7", color: "#92400e" };
+  return { ...styles.badge, background: "#fee2e2", color: "#b91c1c" };
 }
 
 const styles: Record2Style = {

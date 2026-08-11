@@ -2,11 +2,12 @@
 
 import { useCallback, useEffect, useState } from "react";
 
-type Tab = "review" | "expiring" | "restricted" | "search";
+type Tab = "review" | "documents" | "expiring" | "restricted" | "search";
 
 type CaseRow = { id: string; workerIdentityId: string; caseType: string; status: string; createdAt: string };
 type CredRow = { id: string; workerIdentityId: string; credentialType: string; expiresAt: string | null; effectiveStatus: string };
 type WorkerRow = { workerIdentityId: string; displayName: string | null; standing: string; updatedAt: string };
+type DocRow = { id: string; workerIdentityId: string; documentType: string; expiresAt: string | null; effectiveStatus: string };
 
 export function HrConsolePanel() {
   const [tab, setTab] = useState<Tab>("review");
@@ -20,6 +21,7 @@ export function HrConsolePanel() {
     setStatus("loading");
     const url =
       t === "review" ? "/api/hr/queues/review?limit=25"
+      : t === "documents" ? "/api/hr/documents/queue?kind=review&limit=25"
       : t === "expiring" ? "/api/hr/queues/expiring?limit=25&withinDays=45"
       : t === "restricted" ? "/api/hr/queues/standing?standings=restricted,suspended,inactive&limit=25"
       : `/api/hr/search?limit=25${q.trim() ? `&q=${encodeURIComponent(q.trim())}` : ""}${searchStanding ? `&standing=${searchStanding}` : ""}${searchCredStatus ? `&credentialStatus=${searchCredStatus}` : ""}`;
@@ -46,9 +48,9 @@ export function HrConsolePanel() {
         <p style={styles.lede}>Governed HR operations for HR administrators. HR consumes verification and eligibility — it never mutates marketplace, dispatch, or payroll. Every decision is audited.</p>
       </header>
       <div style={styles.tabs} role="tablist" aria-label="HR views">
-        {(["review", "expiring", "restricted", "search"] as Tab[]).map((t) => (
+        {(["review", "documents", "expiring", "restricted", "search"] as Tab[]).map((t) => (
           <button key={t} type="button" role="tab" aria-selected={tab === t} style={tab === t ? styles.tabActive : styles.tab} onClick={() => setTab(t)}>
-            {t === "review" ? "Review queue" : t === "expiring" ? "Expiring credentials" : t === "restricted" ? "Restricted / suspended" : "Search"}
+            {t === "review" ? "Case review" : t === "documents" ? "Documents to review" : t === "expiring" ? "Expiring credentials" : t === "restricted" ? "Restricted / suspended" : "Search"}
           </button>
         ))}
       </div>
@@ -80,6 +82,7 @@ export function HrConsolePanel() {
           {rows.map((row, i) => (
             <li key={i} style={styles.item}>
               {tab === "review" ? <ReviewRow r={row as CaseRow} />
+              : tab === "documents" ? <DocumentRow r={row as DocRow} />
               : tab === "expiring" ? <ExpiringRow r={row as CredRow} />
               : <WorkerSummaryRow r={row as WorkerRow} />}
             </li>
@@ -106,6 +109,14 @@ function ExpiringRow({ r }: { r: CredRow }) {
   return (
     <a href={link(r.workerIdentityId)} style={styles.rowLink}>
       <span><strong>{r.credentialType}</strong> <span style={r.effectiveStatus === "expired" ? styles.badgeBad : styles.badgeWarn}>{r.effectiveStatus}</span></span>
+      <span style={styles.dim}>{r.workerIdentityId.slice(0, 8)}{r.expiresAt ? ` · expires ${new Date(r.expiresAt).toLocaleDateString()}` : ""}</span>
+    </a>
+  );
+}
+function DocumentRow({ r }: { r: DocRow }) {
+  return (
+    <a href={link(r.workerIdentityId)} style={styles.rowLink}>
+      <span><strong>Doc · {r.documentType}</strong> <span style={styles.badgeWarn}>{r.effectiveStatus.replaceAll("_", " ")}</span></span>
       <span style={styles.dim}>{r.workerIdentityId.slice(0, 8)}{r.expiresAt ? ` · expires ${new Date(r.expiresAt).toLocaleDateString()}` : ""}</span>
     </a>
   );
