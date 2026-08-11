@@ -610,15 +610,20 @@ export function createPrismaVerificationStore(prisma: VPrisma): VerificationStor
     },
 
     async listQueue({ statuses }) {
+      // Each table's status column is its own enum — filter by only the statuses valid for
+      // that table (a mixed list would fail enum validation). An empty intersection when a
+      // filter WAS supplied means "none from this table".
+      const workerStatusSet: readonly WorkerVerificationStatus[] = ["unverified", "pending", "verified", "review", "expired", "rejected"];
+      const employerStatusSet: readonly EmployerVerificationStatus[] = ["unverified", "pending", "business_verified", "review_required", "suspended", "expired"];
+      const workerStatuses = statuses ? statuses.filter((s): s is WorkerVerificationStatus => (workerStatusSet as readonly string[]).includes(s)) : null;
+      const employerStatuses = statuses ? statuses.filter((s): s is EmployerVerificationStatus => (employerStatusSet as readonly string[]).includes(s)) : null;
       const [workers, employers] = await Promise.all([
-        prisma.workerVerification.findMany({
-          ...(statuses && statuses.length ? { where: { status: { in: statuses } } } : {}),
-          orderBy: { updatedAt: "desc" }
-        } as unknown),
-        prisma.employerVerification.findMany({
-          ...(statuses && statuses.length ? { where: { status: { in: statuses } } } : {}),
-          orderBy: { updatedAt: "desc" }
-        } as unknown)
+        workerStatuses && workerStatuses.length === 0
+          ? Promise.resolve([] as WVRow[])
+          : (prisma.workerVerification.findMany({ ...(workerStatuses ? { where: { status: { in: workerStatuses } } } : {}), orderBy: { updatedAt: "desc" } } as unknown) as Promise<WVRow[]>),
+        employerStatuses && employerStatuses.length === 0
+          ? Promise.resolve([] as EVRow[])
+          : (prisma.employerVerification.findMany({ ...(employerStatuses ? { where: { status: { in: employerStatuses } } } : {}), orderBy: { updatedAt: "desc" } } as unknown) as Promise<EVRow[]>)
       ]);
       const workerEntries: VerificationQueueEntry[] = workers.map((r) => ({
         subjectType: "worker", id: r.id, subjectId: r.workerIdentityId, verificationType: r.verificationType, status: r.status, provider: r.provider, requestedAt: r.requestedAt?.toISOString() ?? null, expiresAt: r.expiresAt?.toISOString() ?? null
