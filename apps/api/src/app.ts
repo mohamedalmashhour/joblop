@@ -39,6 +39,10 @@ import {
   createPrismaReduceContractRateReader,
   createPrismaReduceStore,
   EmployerReduceError,
+  createEmployerRequestEditService,
+  createPrismaProfileWriter,
+  createPrismaProposalStore,
+  EmployerRequestEditError,
   createPrismaCancellationJobRequestReader,
   createPrismaConfirmedAssignmentReader,
   createPrismaContractRateReader,
@@ -108,7 +112,7 @@ import {
 import { getRuntimeConfig } from "@rwos/config";
 import { createPrismaClient } from "@rwos/database";
 import { createLogger } from "@rwos/observability";
-import { createLocalFakePaymentProvider } from "@rwos/shared";
+import { createLocalFakePaymentProvider, classifyRequestEdit, type RequestEditState } from "@rwos/shared";
 import {
   createTrustedServiceIdentityHeaders,
   type IdentityTokenProvider,
@@ -417,6 +421,14 @@ export function buildApi(options: BuildApiOptions = {}) {
         return true;
       }
     }
+  });
+  // Employer Material Edit / Reconfirmation. The classifier runs in the endpoint
+  // (server-side, @rwos/shared); this service applies non-material edits directly and
+  // records material edits as governed proposals without mutating accepted terms.
+  const employerRequestEditService = createEmployerRequestEditService({
+    membershipReader: membershipService,
+    profileWriter: createPrismaProfileWriter(prisma!),
+    proposalStore: createPrismaProposalStore(prisma!)
   });
   const residenceService =
     options.residenceService ??
@@ -2302,6 +2314,107 @@ export function buildApi(options: BuildApiOptions = {}) {
     }
   );
 
+  // Material Edit / Reconfirmation. The employer submits PROPOSED values only. The
+  // server reads the current request (before), classifies the change (@rwos/shared,
+  // server-authoritative), then: NON_MATERIAL → apply directly; MATERIAL → record a
+  // governed proposal WITHOUT mutating accepted worker terms.
+  app.post("/organizations/:organizationId/job-requests/:jobRequestId/edit", async (request, reply) => {
+    const session = await authService.validateSession(readBearerToken(request.headers.authorization));
+    if (!session.authenticated || !session.user) return sendCancellationDenied(reply);
+    const actorUserId = session.user.id;
+    const organizationId = readRouteParam(request.params, "organizationId");
+    const jobRequestIdOrNumber = readRouteParam(request.params, "jobRequestId");
+    const body = asRecord(request.body);
+    const proposed = asRecord(body.proposed);
+    const expectedVersion = readOptionalNumber(body, "expectedVersion");
+    try {
+      const [source, profile, confirmed] = await Promise.all([
+        jobRequestService.getForOrganization({ actorUserId, organizationId, jobRequestIdOrNumber }),
+        calendarRequestService.getClientCalendarRequest({ actorUserId, organizationId, jobRequestIdOrNumber }),
+        createPrismaConfirmedAssignmentLister(prisma!).listConfirmedAssignments(organizationId, jobRequestIdOrNumber)
+      ]);
+      if (expectedVersion !== null && expectedVersion !== undefined && expectedVersion !== source.versionToken) {
+        return reply.code(409).send({ error: "RWOS_EDIT_STALE", message: "This request changed. Refresh and try again." });
+      }
+      if (source.status === "cancelled" || source.status === "archived" || source.status === "expired") {
+        return reply.code(409).send({ error: "RWOS_EDIT_NOT_EDITABLE", message: "This request can no longer be edited." });
+      }
+      const before: RequestEditState = {
+        roleDefinitionId: source.roleDefinitionId,
+        workGroupId: source.workGroupId,
+        residenceId: source.residenceId,
+        departmentId: source.departmentId,
+        startAt: source.startAt.toISOString(),
+        endAt: source.endAt.toISOString(),
+        timezone: source.timezone,
+        numberOfWorkers: source.numberOfWorkers,
+        qualifications: profile.qualifications
+      };
+      const after: RequestEditState = {
+        roleDefinitionId: readOptionalString(proposed, "roleDefinitionId") ?? before.roleDefinitionId,
+        workGroupId: readOptionalString(proposed, "workGroupId") ?? before.workGroupId,
+        residenceId: readOptionalString(proposed, "residenceId") ?? before.residenceId,
+        departmentId: readOptionalString(proposed, "departmentId") ?? before.departmentId,
+        startAt: readOptionalString(proposed, "startAt") ?? before.startAt,
+        endAt: readOptionalString(proposed, "endAt") ?? before.endAt,
+        timezone: readOptionalString(proposed, "timezone") ?? before.timezone,
+        numberOfWorkers: readOptionalNumber(proposed, "numberOfWorkers") ?? before.numberOfWorkers,
+        qualifications: Array.isArray(proposed.qualifications)
+          ? proposed.qualifications.filter((v): v is string => typeof v === "string")
+          : before.qualifications
+      };
+      const classification = classifyRequestEdit(before, after, { confirmedWorkers: confirmed.length });
+
+      if (classification.classification === "NON_MATERIAL") {
+        const duties = readOptionalString(proposed, "dutiesSummary");
+        const instructions = readOptionalString(proposed, "specialInstructions");
+        const address = readOptionalString(proposed, "addressSummary");
+        await employerRequestEditService.applyNonMaterialEdit({
+          actorUserId,
+          organizationId,
+          jobRequestId: source.id,
+          fields: {
+            ...("dutiesSummary" in proposed ? { dutiesSummary: duties } : {}),
+            ...("specialInstructions" in proposed ? { specialInstructions: instructions } : {}),
+            ...("addressSummary" in proposed ? { addressSummary: address } : {})
+          }
+        });
+        return reply.code(200).send({ classification: "NON_MATERIAL", applied: true, materialFields: [] });
+      }
+
+      // Material — re-read the current governed rate if the role changed.
+      let governedRateMinor: number | null = null;
+      let currency: string | null = null;
+      if (classification.materialFields.includes("role")) {
+        const rate = await createPrismaReduceContractRateReader(prisma!).getGovernedRate(organizationId, after.roleDefinitionId);
+        governedRateMinor = rate?.rateMinor ?? null;
+        currency = rate?.currency ?? null;
+      }
+      const { proposal } = await employerRequestEditService.proposeMaterialChange({
+        actorUserId,
+        organizationId,
+        jobRequestId: source.id,
+        baseRequestVersion: source.versionToken,
+        materialFields: classification.materialFields,
+        proposedValues: proposed,
+        affectedAssignmentIds: confirmed.map((a) => a.id),
+        governedRateMinor,
+        currency,
+        reason: readOptionalString(body, "reason")
+      });
+      return reply.code(200).send({
+        classification: "MATERIAL",
+        materialFields: classification.materialFields,
+        requiresReconfirmation: classification.requiresReconfirmation,
+        proposal
+      });
+    } catch (error) {
+      if (error instanceof EmployerRequestEditError) return sendEditError(reply, error);
+      if (error instanceof JobRequestError) return reply.code(404).send({ error: "RWOS_EDIT_NOT_FOUND", message: "The request was not found." });
+      throw error;
+    }
+  });
+
   // Reduce Workers — authoritative preview (server derives requested/confirmed/
   // unfilled/eligible assignments + obligation). Browser supplies only newTarget.
   app.post(
@@ -2408,6 +2521,44 @@ export function buildApi(options: BuildApiOptions = {}) {
     } catch (error) {
       return sendReduceError(reply, error);
     }
+  });
+
+  // Platform-only: record a change proposal's reconfirmation outcome. The worker-offer
+  // reconfirmation flow (revised offers + accept/decline) drives `outcome`; accepted →
+  // completed, declined → rejected (original accepted terms preserved).
+  app.post("/platform/change-proposals/:proposalId/reconfirmation", async (request, reply) => {
+    const session = await authService.validateSession(readBearerToken(request.headers.authorization));
+    if (!session.authenticated || !session.user) return sendCancellationDenied(reply);
+    const roles = await resolveAuthorizationRoles(session.user.id);
+    if (!roles.includes("PLATFORM_ADMINISTRATOR")) {
+      return reply.code(403).send({ error: "RWOS_EDIT_DENIED", message: "Platform authority is required." });
+    }
+    const body = asRecord(request.body);
+    const outcome = readOptionalString(body, "outcome");
+    if (outcome !== "accepted" && outcome !== "declined") {
+      return reply.code(400).send({ error: "RWOS_EDIT_INVALID", message: "outcome must be accepted or declined." });
+    }
+    try {
+      const result = await employerRequestEditService.completeReconfirmation({
+        proposalId: readRouteParam(request.params, "proposalId"),
+        outcome
+      });
+      return reply.code(200).send(result);
+    } catch (error) {
+      return sendEditError(reply, error);
+    }
+  });
+
+  // Platform-only change-proposal reconciliation queue.
+  app.get("/platform/change-proposals", async (request, reply) => {
+    const session = await authService.validateSession(readBearerToken(request.headers.authorization));
+    if (!session.authenticated || !session.user) return sendCancellationDenied(reply);
+    const roles = await resolveAuthorizationRoles(session.user.id);
+    if (!roles.includes("PLATFORM_ADMINISTRATOR")) {
+      return reply.code(403).send({ error: "RWOS_EDIT_DENIED", message: "Platform authority is required." });
+    }
+    const proposals = await employerRequestEditService.listReconciliation();
+    return reply.code(200).send({ proposals });
   });
 
   // Platform-only reconciliation queue for reductions.
@@ -4759,6 +4910,15 @@ function sendCapacityError(reply: FastifyReply, error: unknown) {
     });
   }
   throw error;
+}
+
+function sendEditError(reply: FastifyReply, error: unknown) {
+  if (error instanceof EmployerRequestEditError) {
+    const httpStatus =
+      error.code === "denied" ? 403 : error.code === "not_found" ? 404 : error.code === "conflict" ? 409 : 400;
+    return reply.code(httpStatus).send({ error: `RWOS_EDIT_${error.code.toUpperCase()}`, message: error.message });
+  }
+  return reply.code(500).send({ error: "RWOS_EDIT_ERROR", message: "The edit could not be processed." });
 }
 
 function sendReduceError(reply: FastifyReply, error: unknown) {
