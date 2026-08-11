@@ -14,6 +14,7 @@ export * from "./employerContract";
 export * from "./employerReduce";
 export * from "./employerRequestEdit";
 export * from "./workerSavedJobs";
+export * from "./workerJobInterest";
 export {
   CalendarRequestError,
   createCalendarRequestService,
