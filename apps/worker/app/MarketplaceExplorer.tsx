@@ -105,6 +105,9 @@ function SearchPanel({ onSignedOut }: { onSignedOut: () => void }) {
   const [radiusKm, setRadiusKm] = useState<number>(25);
   const [role, setRole] = useState("");
   const [sort, setSort] = useState<string>("nearest");
+  const [dateFrom, setDateFrom] = useState("");
+  const [minOpenings, setMinOpenings] = useState("");
+  const [verifiedOnly, setVerifiedOnly] = useState(false);
   const [status, setStatus] = useState<"idle" | "searching" | "done" | "error" | "empty">("idle");
   const [origin, setOrigin] = useState<SearchResponse["origin"] | null>(null);
   const [jobs, setJobs] = useState<JobResult[]>([]);
@@ -125,12 +128,15 @@ function SearchPanel({ onSignedOut }: { onSignedOut: () => void }) {
           radiusKm,
           sort,
           ...(role.trim() ? { role: role.trim() } : {}),
+          ...(dateFrom ? { dateFrom: new Date(dateFrom).toISOString() } : {}),
+          ...(minOpenings && Number(minOpenings) > 0 ? { minOpenings: Number(minOpenings) } : {}),
+          ...(verifiedOnly ? { verifiedOnly: true } : {}),
           ...(cursor !== null ? { cursor } : {})
         })
       });
       return response;
     },
-    [postalCode, radiusKm, role, sort]
+    [postalCode, radiusKm, role, sort, dateFrom, minOpenings, verifiedOnly]
   );
 
   const runSearch = useCallback(
@@ -271,6 +277,30 @@ function SearchPanel({ onSignedOut }: { onSignedOut: () => void }) {
           {status === "searching" ? "Searching…" : "Search jobs"}
         </button>
       </form>
+
+      <div className="filters">
+        <div className="field">
+          <label htmlFor="dateFrom">From date</label>
+          <input id="dateFrom" type="date" value={dateFrom} onChange={(e) => setDateFrom(e.target.value)} />
+        </div>
+        <div className="field">
+          <label htmlFor="minOpenings">Min openings</label>
+          <input id="minOpenings" type="number" min={1} inputMode="numeric" value={minOpenings} onChange={(e) => setMinOpenings(e.target.value)} placeholder="Any" />
+        </div>
+        <label className="checkfield" htmlFor="verifiedOnly">
+          <input id="verifiedOnly" type="checkbox" checked={verifiedOnly} onChange={(e) => setVerifiedOnly(e.target.checked)} />
+          Verified employers only
+        </label>
+        {(dateFrom || minOpenings || verifiedOnly || role.trim()) ? (
+          <button
+            type="button"
+            className="btn ghost"
+            onClick={() => { setDateFrom(""); setMinOpenings(""); setVerifiedOnly(false); setRole(""); }}
+          >
+            Clear filters
+          </button>
+        ) : null}
+      </div>
 
       {status === "done" || status === "empty" ? (
         <div className="resultbar">
