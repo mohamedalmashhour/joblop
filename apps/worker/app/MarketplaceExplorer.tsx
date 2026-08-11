@@ -237,6 +237,9 @@ function SearchPanel({ onSignedOut }: { onSignedOut: () => void }) {
             <a className="btn ghost" href="/verification">
               Verification
             </a>
+            <a className="btn ghost" href="/hr">
+              My HR
+            </a>
             <a className="btn ghost" href="/my-interests">
               My interests
             </a>
