@@ -12,6 +12,7 @@ import { styles } from "../../employerStyles";
 import { JobLocationMap } from "../../../shared/maps";
 import { AddWorkersPanel } from "./AddWorkersPanel";
 import { CancelRequestPanel } from "./CancelRequestPanel";
+import { EditRequestPanel } from "./EditRequestPanel";
 import { DuplicateRequestButton } from "./DuplicateRequestButton";
 import { ReduceWorkersPanel } from "./ReduceWorkersPanel";
 
@@ -179,6 +180,9 @@ export function ClientRequestDetailPanel({ requestId }: Readonly<{ requestId: st
         </div>
         {request.status !== "cancelled" && request.status !== "completed" ? (
           <>
+            <div style={{ marginTop: 14 }}>
+              <EditRequestPanel requestId={request.id} versionToken={request.versionToken} />
+            </div>
             <div style={{ marginTop: 14 }}>
               <AddWorkersPanel
                 requestId={request.id}
