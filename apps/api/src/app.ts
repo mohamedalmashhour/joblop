@@ -63,6 +63,10 @@ import {
   createHmacCallbackVerifier,
   normalizeFixtureCallback,
   VerificationError,
+  createHrService,
+  createPrismaHrStore,
+  createPrismaHrWorkerResolver,
+  HrError,
   createPrismaCancellationJobRequestReader,
   createPrismaConfirmedAssignmentReader,
   createPrismaContractRateReader,
@@ -500,6 +504,12 @@ export function buildApi(options: BuildApiOptions = {}) {
     businessProvider: createFixtureBusinessProvider()
   });
   const verificationCallbackVerifier = createHmacCallbackVerifier(runtimeConfig.verificationCallbackSecret ?? "");
+  // HR — governed HR domain (HR-1). Owns profile/credentials/standing/cases; CONSUMES
+  // verification (never owns it). HR standing is independent of verification.
+  const hrService = createHrService({
+    workers: createPrismaHrWorkerResolver(prisma!),
+    store: createPrismaHrStore(prisma!)
+  });
   // Geocoding provider (provider-neutral seam). Default: a deterministic fixture over
   // major Canadian FSAs — no network, safe for local/CI. Production swaps in the OSM
   // (or Google) provider via options.geocodingProvider. Resolutions are persisted on
@@ -3171,6 +3181,171 @@ export function buildApi(options: BuildApiOptions = {}) {
     }
   });
 
+  // ── HR domain (HR-1) ──
+  const sendHrError = (reply: FastifyReply, error: unknown) => {
+    if (error instanceof HrError) {
+      const code = error.code === "denied" ? 403 : error.code === "not_found" ? 404 : error.code === "conflict" ? 409 : 400;
+      return reply.code(code).send({ error: `RWOS_HR_${error.code.toUpperCase()}`, message: error.message });
+    }
+    throw error;
+  };
+  // HR governed decisions require the distinct HR authority (or platform admin). A worker or
+  // employer can NEVER make HR decisions.
+  const requireHrAuthority = async (request: FastifyRequest, reply: FastifyReply): Promise<string | null> => {
+    const session = await authService.validateSession(readBearerToken(request.headers.authorization));
+    if (!session.authenticated || !session.user) {
+      reply.code(401).send({ error: "RWOS_HR_DENIED", message: "Authentication is required." });
+      return null;
+    }
+    const roles = await resolveAuthorizationRoles(session.user.id);
+    if (!roles.includes("HR_ADMINISTRATOR") && !roles.includes("PLATFORM_ADMINISTRATOR")) {
+      reply.code(403).send({ error: "RWOS_HR_DENIED", message: "HR authority is required." });
+      return null;
+    }
+    return session.user.id;
+  };
+
+  // Worker: my own HR profile (standing + credentials only — never HR case notes).
+  app.get("/hr/worker", async (request, reply) => {
+    const session = await authService.validateSession(readBearerToken(request.headers.authorization));
+    if (!session.authenticated || !session.user) {
+      return reply.code(401).send({ error: "RWOS_HR_DENIED", message: "Authentication is required." });
+    }
+    try {
+      const view = await hrService.getWorkerSelfView({ userId: session.user.id });
+      return reply.code(200).send(view);
+    } catch (error) {
+      return sendHrError(reply, error);
+    }
+  });
+
+  // HR authority: full worker HR record (profile + credentials + cases).
+  app.get("/platform/hr/workers/:workerIdentityId", async (request, reply) => {
+    const actor = await requireHrAuthority(request, reply);
+    if (!actor) return;
+    const workerIdentityId = readRouteParam(request.params, "workerIdentityId");
+    if (!isCanonicalUuid(workerIdentityId)) return reply.code(404).send({ error: "RWOS_HR_NOT_FOUND", message: "That worker was not found." });
+    const record = await hrService.getWorkerHrRecord(workerIdentityId);
+    return reply.code(200).send(record);
+  });
+
+  // HR authority: governed standing decision (independent of verification, audited).
+  app.post("/platform/hr/workers/:workerIdentityId/standing", async (request, reply) => {
+    const actor = await requireHrAuthority(request, reply);
+    if (!actor) return;
+    const workerIdentityId = readRouteParam(request.params, "workerIdentityId");
+    const body = asRecord(request.body);
+    const standing = readOptionalString(body, "standing");
+    if (!isCanonicalUuid(workerIdentityId) || !standing) return reply.code(400).send({ error: "RWOS_HR_INVALID", message: "workerIdentityId and standing are required." });
+    try {
+      const profile = await hrService.setStanding({ actorUserId: actor, workerIdentityId, standing, reason: readOptionalString(body, "reason") });
+      return reply.code(200).send({ standing: profile.standing });
+    } catch (error) {
+      return sendHrError(reply, error);
+    }
+  });
+
+  // HR authority: add / renew / revoke credentials.
+  app.post("/platform/hr/workers/:workerIdentityId/credentials", async (request, reply) => {
+    const actor = await requireHrAuthority(request, reply);
+    if (!actor) return;
+    const workerIdentityId = readRouteParam(request.params, "workerIdentityId");
+    const body = asRecord(request.body);
+    const credentialType = readOptionalString(body, "credentialType");
+    if (!isCanonicalUuid(workerIdentityId) || !credentialType) return reply.code(400).send({ error: "RWOS_HR_INVALID", message: "workerIdentityId and credentialType are required." });
+    try {
+      const cred = await hrService.addCredential({
+        actorUserId: actor, workerIdentityId, credentialType,
+        issuer: readOptionalString(body, "issuer"), issuedAt: readOptionalString(body, "issuedAt"), expiresAt: readOptionalString(body, "expiresAt"),
+        verificationReference: readOptionalString(body, "verificationReference")
+      });
+      return reply.code(201).send({ id: cred.id, effectiveStatus: cred.effectiveStatus });
+    } catch (error) {
+      return sendHrError(reply, error);
+    }
+  });
+
+  app.post("/platform/hr/credentials/:credentialId/renew", async (request, reply) => {
+    const actor = await requireHrAuthority(request, reply);
+    if (!actor) return;
+    const credentialId = readRouteParam(request.params, "credentialId");
+    if (!isCanonicalUuid(credentialId)) return reply.code(404).send({ error: "RWOS_HR_NOT_FOUND", message: "That credential was not found." });
+    try {
+      const result = await hrService.renewCredential({ actorUserId: actor, credentialId, expiresAt: readOptionalString(asRecord(request.body), "expiresAt") });
+      return reply.code(200).send({ oldStatus: result.old.status, renewedId: result.renewed.id });
+    } catch (error) {
+      return sendHrError(reply, error);
+    }
+  });
+
+  app.post("/platform/hr/credentials/:credentialId/revoke", async (request, reply) => {
+    const actor = await requireHrAuthority(request, reply);
+    if (!actor) return;
+    const credentialId = readRouteParam(request.params, "credentialId");
+    if (!isCanonicalUuid(credentialId)) return reply.code(404).send({ error: "RWOS_HR_NOT_FOUND", message: "That credential was not found." });
+    try {
+      const cred = await hrService.revokeCredential({ actorUserId: actor, credentialId, reason: readOptionalString(asRecord(request.body), "reason") });
+      return reply.code(200).send({ status: cred.status });
+    } catch (error) {
+      return sendHrError(reply, error);
+    }
+  });
+
+  // HR authority: cases (governed lifecycle, audited).
+  app.post("/platform/hr/workers/:workerIdentityId/cases", async (request, reply) => {
+    const actor = await requireHrAuthority(request, reply);
+    if (!actor) return;
+    const workerIdentityId = readRouteParam(request.params, "workerIdentityId");
+    const body = asRecord(request.body);
+    const caseType = readOptionalString(body, "caseType");
+    if (!isCanonicalUuid(workerIdentityId) || !caseType) return reply.code(400).send({ error: "RWOS_HR_INVALID", message: "workerIdentityId and caseType are required." });
+    try {
+      const created = await hrService.openCase({ actorUserId: actor, workerIdentityId, caseType, reason: readOptionalString(body, "reason") });
+      return reply.code(201).send({ id: created.id, status: created.status });
+    } catch (error) {
+      return sendHrError(reply, error);
+    }
+  });
+
+  app.post("/platform/hr/cases/:caseId/transition", async (request, reply) => {
+    const actor = await requireHrAuthority(request, reply);
+    if (!actor) return;
+    const caseId = readRouteParam(request.params, "caseId");
+    const to = readOptionalString(asRecord(request.body), "to");
+    const valid = ["opened", "under_review", "action_required", "resolved", "closed"];
+    if (!isCanonicalUuid(caseId) || !to || !valid.includes(to)) return reply.code(400).send({ error: "RWOS_HR_INVALID", message: "A valid target status is required." });
+    try {
+      const updated = await hrService.transitionCase({ actorUserId: actor, caseId, to: to as never, reason: readOptionalString(asRecord(request.body), "reason") });
+      return reply.code(200).send({ status: updated.status });
+    } catch (error) {
+      return sendHrError(reply, error);
+    }
+  });
+
+  // HR authority: bounded, paginated operational queues (never list-all).
+  app.get("/platform/hr/queues/expiring", async (request, reply) => {
+    const actor = await requireHrAuthority(request, reply);
+    if (!actor) return;
+    const query = asRecord(request.query);
+    const limit = parseQueryInt(readOptionalString(query, "limit"));
+    const withinDays = parseQueryInt(readOptionalString(query, "withinDays"));
+    const page = await hrService.pageExpiringCredentials({
+      cursor: readOptionalString(query, "cursor"),
+      ...(limit !== null ? { limit } : {}),
+      ...(withinDays !== null ? { withinDays } : {})
+    });
+    return reply.code(200).send(page);
+  });
+
+  app.get("/platform/hr/queues/review", async (request, reply) => {
+    const actor = await requireHrAuthority(request, reply);
+    if (!actor) return;
+    const query = asRecord(request.query);
+    const limit = parseQueryInt(readOptionalString(query, "limit"));
+    const page = await hrService.pageReviewCases({ cursor: readOptionalString(query, "cursor"), ...(limit !== null ? { limit } : {}) });
+    return reply.code(200).send(page);
+  });
+
   // Job DETAIL — the worker-facing job page. Privacy-safe: approximate location + map
   // point only; NEVER exact coords, street address, residence internal name, or rates
   // beyond the policy-gated worker rate. 404 for any job that is not marketplace-visible
@@ -5423,6 +5598,13 @@ function isCanonicalUuid(value: string) {
 function readOptionalNumber(body: Record<string, unknown>, key: string) {
   const value = body[key];
   return typeof value === "number" ? value : null;
+}
+
+// Parse a positive integer from a string query param (query values arrive as strings).
+function parseQueryInt(value: string | null): number | null {
+  if (!value) return null;
+  const n = Number(value);
+  return Number.isInteger(n) && n > 0 ? n : null;
 }
 
 // Coerce a stored qualifications JSON value into a clean string[] for the marketplace
