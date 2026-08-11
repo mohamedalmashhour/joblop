@@ -23,9 +23,23 @@ type JobDetailData = Readonly<{
   saved: boolean;
 }>;
 
+type InterestState = Readonly<{
+  interest: { status: string } | null;
+  eligibility: { eligible: boolean; reasons: string[] };
+}>;
+
+const INELIGIBLE_COPY: Record<string, string> = {
+  already_assigned: "You're already assigned to this job.",
+  active_offer_exists: "You already have an active offer for this job.",
+  job_not_open: "This job is no longer open.",
+  job_not_found: "This job is no longer available."
+};
+
 export function JobDetail({ id, postalCode }: { id: string; postalCode: string | null }) {
   const [status, setStatus] = useState<"loading" | "ready" | "not_found" | "error">("loading");
   const [job, setJob] = useState<JobDetailData | null>(null);
+  const [interest, setInterest] = useState<InterestState | null>(null);
+  const [interestBusy, setInterestBusy] = useState(false);
 
   useEffect(() => {
     let active = true;
@@ -40,10 +54,44 @@ export function JobDetail({ id, postalCode }: { id: string; postalCode: string |
         setStatus("ready");
       })
       .catch(() => active && setStatus("error"));
+    // Interest + eligibility state (independent of the detail fetch).
+    fetch(`/api/jobs/${encodeURIComponent(id)}/interest`, { cache: "no-store" })
+      .then(async (r) => {
+        if (!active || !r.ok) return;
+        setInterest((await r.json()) as InterestState);
+      })
+      .catch(() => undefined);
     return () => {
       active = false;
     };
   }, [id, postalCode]);
+
+  const expressInterest = useCallback(async () => {
+    setInterestBusy(true);
+    try {
+      const r = await fetch(`/api/jobs/${encodeURIComponent(id)}/interest`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify(postalCode ? { postalCode } : {})
+      });
+      if (r.ok) {
+        const body = (await r.json()) as { interest: { status: string } };
+        setInterest((prev) => ({ interest: body.interest, eligibility: prev?.eligibility ?? { eligible: true, reasons: [] } }));
+      }
+    } finally {
+      setInterestBusy(false);
+    }
+  }, [id, postalCode]);
+
+  const withdrawInterest = useCallback(async () => {
+    setInterestBusy(true);
+    try {
+      const r = await fetch(`/api/jobs/${encodeURIComponent(id)}/interest`, { method: "DELETE" });
+      if (r.ok) setInterest((prev) => ({ interest: null, eligibility: prev?.eligibility ?? { eligible: true, reasons: [] } }));
+    } finally {
+      setInterestBusy(false);
+    }
+  }, [id]);
 
   const toggleSaved = useCallback(async () => {
     if (!job) return;
@@ -134,15 +182,78 @@ export function JobDetail({ id, postalCode }: { id: string; postalCode: string |
         </Section>
       ) : null}
 
+      <InterestPanel state={interest} busy={interestBusy} onExpress={expressInterest} onWithdraw={withdrawInterest} />
+
       <div className="detail-cta">
-        <button className="btn" type="button" aria-pressed={job.saved} onClick={toggleSaved}>
+        <button className="btn ghost" type="button" aria-pressed={job.saved} onClick={toggleSaved}>
           {job.saved ? "★ Saved" : "☆ Save job"}
         </button>
         <a className="btn ghost" href={`/employers/${encodeURIComponent(job.employer.id)}`}>
           View employer
         </a>
+        <a className="btn ghost" href="/my-interests">
+          My interests
+        </a>
       </div>
     </article>
+  );
+}
+
+// The governed Express-Interest CTA. Interest is intent only — the copy never implies the
+// worker "got the job". If a governed offer later exists, that lives in the offer flow.
+function InterestPanel({
+  state,
+  busy,
+  onExpress,
+  onWithdraw
+}: {
+  state: InterestState | null;
+  busy: boolean;
+  onExpress: () => void;
+  onWithdraw: () => void;
+}) {
+  const current = state?.interest?.status ?? null;
+  const eligible = state?.eligibility?.eligible ?? true;
+  const reasons = state?.eligibility?.reasons ?? [];
+
+  // Already expressed (pre-offer): show submitted state + withdraw.
+  if (current && ["submitted", "under_review", "shortlisted"].includes(current)) {
+    return (
+      <section className="detail-section interest submitted">
+        <h2>Interest submitted ✓</h2>
+        <p>JobLop will review your profile and the staffing need. If you&apos;re selected, you&apos;ll receive a private offer.</p>
+        <button className="btn ghost" type="button" onClick={onWithdraw} disabled={busy}>
+          Withdraw interest
+        </button>
+      </section>
+    );
+  }
+
+  // An offer has been created/accepted through the governed flow — direct the worker there.
+  if (current && ["offer_created", "offer_accepted"].includes(current)) {
+    return (
+      <section className="detail-section interest">
+        <h2>You have an offer</h2>
+        <p>JobLop has issued you a private offer for this job. Check your offers to respond.</p>
+      </section>
+    );
+  }
+
+  // Not yet interested. Gate on server eligibility.
+  return (
+    <section className="detail-section interest">
+      <h2>Interested in this shift?</h2>
+      {eligible ? (
+        <>
+          <p>Let JobLop know you&apos;re interested. Platform dispatch reviews interest before any offer is made — expressing interest is free and never guarantees the job.</p>
+          <button className="btn" type="button" onClick={onExpress} disabled={busy}>
+            {busy ? "Submitting…" : "Express interest"}
+          </button>
+        </>
+      ) : (
+        <p className="muted">{INELIGIBLE_COPY[reasons[0] ?? ""] ?? "You can't express interest in this job right now."}</p>
+      )}
+    </section>
   );
 }
 

@@ -605,6 +605,39 @@ a {
   opacity: 0.7;
 }
 
+/* Interest CTA */
+.detail-section.interest.submitted {
+  border-color: var(--accent);
+}
+
+.detail-section.interest h2 {
+  font-size: 16px;
+}
+
+.chip.status-shortlisted,
+.chip.status-offer_created,
+.chip.status-offer_accepted {
+  background: var(--brand-soft);
+  color: var(--brand);
+  border-color: transparent;
+}
+
+.chip.status-submitted,
+.chip.status-under_review {
+  background: var(--surface-2);
+}
+
+.chip.status-not_selected,
+.chip.status-withdrawn {
+  color: var(--text-muted);
+}
+
+.chip.offer {
+  background: var(--accent);
+  color: #fff;
+  border-color: transparent;
+}
+
 a.card.cardlink {
   text-decoration: none;
   color: inherit;

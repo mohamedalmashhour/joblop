@@ -234,6 +234,9 @@ function SearchPanel({ onSignedOut }: { onSignedOut: () => void }) {
             <p>Search open shifts, see how far they are, and save the ones you like.</p>
           </div>
           <div className="hero-actions">
+            <a className="btn ghost" href="/my-interests">
+              My interests
+            </a>
             <a className="btn ghost" href="/saved-jobs">
               Saved jobs
             </a>
