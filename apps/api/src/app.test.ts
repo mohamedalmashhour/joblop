@@ -12,7 +12,8 @@ import {
   createOrganizationMembershipService,
   createResidenceService,
   createRoleDefinitionService,
-  createWorkGroupService
+  createWorkGroupService,
+  TimesheetError
 } from "@rwos/auth";
 import type {
   AuthorizationRoleKey,
@@ -2739,7 +2740,83 @@ describe("api timesheet foundation", () => {
     expect(employerDisputeCalled).toBe(false);
     await app.close();
   });
+
+  // HR-5.0 — Timesheet HTTP status mapping. A stale/locked timesheet is a CONCURRENCY conflict
+  // (409), an unauthenticated request is an AUTHENTICATION failure (401), and a forbidden one is
+  // 403 — never all collapsed to 403 (the pre-HR-5 defect, mirroring the HR-4.1 attendance fix).
+  it("maps TimesheetError to the correct HTTP status (401/403/404/409/400), never a blanket 403", async () => {
+    const authRepository = new ApiMemoryAuthenticationRepository();
+    const timesheetId = apiTimesheet().id;
+    const tsError = (status: Parameters<typeof makeTimesheetDecision>[0]) =>
+      async () => {
+        throw new TimesheetError(makeTimesheetDecision(status));
+      };
+    const app = buildApi({
+      authService: createAuthenticationService(authRepository, testAuthOptions()),
+      timesheetService: {
+        ...createApiUnavailableTimesheetService(),
+        calculate: tsError("version_conflict"),
+        approve: tsError("locked_record"),
+        lock: tsError("invalid_input"),
+        readTimesheet: tsError("not_found"),
+        reject: tsError("permission_denied")
+      },
+      resolveAuthorizationRoles: async () => ["TIMESHEET_REVIEWER", "WORKER_ACCESS", "ORGANIZATION_OWNER"]
+    });
+    const user = await registerApiUser(app);
+    const headers = { authorization: `Bearer ${user.token}` };
+    const base = `/platform/timesheets/${timesheetId}`;
+
+    // authentication failure (no bearer) -> 401, NOT 403
+    const unauth = await app.inject({ method: "POST", url: `${base}/calculate`, payload: { expectedVersion: 0 } });
+    expect(unauth.statusCode).toBe(401);
+
+    // stale expectedVersion -> 409 version conflict
+    const stale = await app.inject({ method: "POST", url: `${base}/calculate`, headers, payload: { expectedVersion: 0 } });
+    expect(stale.statusCode).toBe(409);
+    expect(stale.json().error).toBe("RWOS_TIMESHEET_VERSION_CONFLICT");
+
+    // acting on a locked record -> 409 state conflict
+    const locked = await app.inject({ method: "POST", url: `${base}/approve`, headers, payload: { expectedVersion: 4 } });
+    expect(locked.statusCode).toBe(409);
+    expect(locked.json().error).toBe("RWOS_TIMESHEET_STATE_CONFLICT");
+
+    // malformed input -> 400
+    const invalid = await app.inject({ method: "POST", url: `${base}/lock`, headers, payload: { expectedVersion: 4 } });
+    expect(invalid.statusCode).toBe(400);
+
+    // missing timesheet -> 404 (opaque body, no existence leak)
+    const missing = await app.inject({ method: "GET", url: base, headers });
+    expect(missing.statusCode).toBe(404);
+
+    // authorized-but-forbidden -> 403
+    const forbidden = await app.inject({ method: "POST", url: `${base}/reject`, headers, payload: { expectedVersion: 4, reason: "x" } });
+    expect(forbidden.statusCode).toBe(403);
+
+    await app.close();
+  });
 });
+
+// Build a minimal TimesheetDecision carrying a given status, for exercising the API's
+// TimesheetError -> HTTP mapping (HR-5.0).
+function makeTimesheetDecision(
+  status:
+    | "invalid_input"
+    | "not_found"
+    | "permission_denied"
+    | "version_conflict"
+    | "locked_record"
+) {
+  return {
+    status,
+    allow: false,
+    timesheet: null,
+    roles: [] as const,
+    internalReason: status,
+    externalCode: null,
+    externalMessage: null
+  };
+}
 
 function createApiUnavailableDispatchService(): DispatchService {
   const unavailable = async () => {

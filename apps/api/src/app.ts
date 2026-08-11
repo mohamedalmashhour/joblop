@@ -931,7 +931,7 @@ export function buildApi(options: BuildApiOptions = {}) {
     }
 
     if (error instanceof TimesheetError) {
-      return sendTimesheetDenied(reply);
+      return sendTimesheetFailure(reply, error);
     }
 
     if (error instanceof CalendarRequestError) {
@@ -5533,7 +5533,7 @@ export function buildApi(options: BuildApiOptions = {}) {
     const session = await authService.validateSession(
       readBearerToken(request.headers.authorization)
     );
-    if (!session.authenticated || !session.user) return sendTimesheetDenied(reply);
+    if (!session.authenticated || !session.user) return sendTimesheetUnauthenticated(reply);
 
     const body = asRecord(request.body);
     const timesheet = await timesheetService.createFromAttendance({
@@ -5549,7 +5549,7 @@ export function buildApi(options: BuildApiOptions = {}) {
     const session = await authService.validateSession(
       readBearerToken(request.headers.authorization)
     );
-    if (!session.authenticated || !session.user) return sendTimesheetDenied(reply);
+    if (!session.authenticated || !session.user) return sendTimesheetUnauthenticated(reply);
 
     const query = asRecord(request.query);
     const status = readTimesheetStatus(readOptionalString(query, "status"));
@@ -5568,7 +5568,7 @@ export function buildApi(options: BuildApiOptions = {}) {
     const session = await authService.validateSession(
       readBearerToken(request.headers.authorization)
     );
-    if (!session.authenticated || !session.user) return sendTimesheetDenied(reply);
+    if (!session.authenticated || !session.user) return sendTimesheetUnauthenticated(reply);
 
     const timesheet = await timesheetService.readTimesheet({
       session,
@@ -5583,7 +5583,7 @@ export function buildApi(options: BuildApiOptions = {}) {
     const session = await authService.validateSession(
       readBearerToken(request.headers.authorization)
     );
-    if (!session.authenticated || !session.user) return sendTimesheetDenied(reply);
+    if (!session.authenticated || !session.user) return sendTimesheetUnauthenticated(reply);
 
     const body = asRecord(request.body);
     const timesheet = await timesheetService.calculate({
@@ -5600,7 +5600,7 @@ export function buildApi(options: BuildApiOptions = {}) {
     const session = await authService.validateSession(
       readBearerToken(request.headers.authorization)
     );
-    if (!session.authenticated || !session.user) return sendTimesheetDenied(reply);
+    if (!session.authenticated || !session.user) return sendTimesheetUnauthenticated(reply);
 
     const body = asRecord(request.body);
     const timesheet = await timesheetService.requestCorrection({
@@ -5618,7 +5618,7 @@ export function buildApi(options: BuildApiOptions = {}) {
     const session = await authService.validateSession(
       readBearerToken(request.headers.authorization)
     );
-    if (!session.authenticated || !session.user) return sendTimesheetDenied(reply);
+    if (!session.authenticated || !session.user) return sendTimesheetUnauthenticated(reply);
 
     const body = asRecord(request.body);
     const timesheet = await timesheetService.approve({
@@ -5635,7 +5635,7 @@ export function buildApi(options: BuildApiOptions = {}) {
     const session = await authService.validateSession(
       readBearerToken(request.headers.authorization)
     );
-    if (!session.authenticated || !session.user) return sendTimesheetDenied(reply);
+    if (!session.authenticated || !session.user) return sendTimesheetUnauthenticated(reply);
 
     const body = asRecord(request.body);
     const timesheet = await timesheetService.reject({
@@ -5653,7 +5653,7 @@ export function buildApi(options: BuildApiOptions = {}) {
     const session = await authService.validateSession(
       readBearerToken(request.headers.authorization)
     );
-    if (!session.authenticated || !session.user) return sendTimesheetDenied(reply);
+    if (!session.authenticated || !session.user) return sendTimesheetUnauthenticated(reply);
 
     const body = asRecord(request.body);
     const timesheet = await timesheetService.lock({
@@ -5670,7 +5670,7 @@ export function buildApi(options: BuildApiOptions = {}) {
     const session = await authService.validateSession(
       readBearerToken(request.headers.authorization)
     );
-    if (!session.authenticated || !session.user) return sendTimesheetDenied(reply);
+    if (!session.authenticated || !session.user) return sendTimesheetUnauthenticated(reply);
 
     const audit = await timesheetService.readAuditSummary({
       session,
@@ -5685,7 +5685,7 @@ export function buildApi(options: BuildApiOptions = {}) {
     const session = await authService.validateSession(
       readBearerToken(request.headers.authorization)
     );
-    if (!session.authenticated || !session.user) return sendTimesheetDenied(reply);
+    if (!session.authenticated || !session.user) return sendTimesheetUnauthenticated(reply);
 
     const query = asRecord(request.query);
     const status = readTimesheetStatus(readOptionalString(query, "status"));
@@ -5709,7 +5709,7 @@ export function buildApi(options: BuildApiOptions = {}) {
       const session = await authService.validateSession(
         readBearerToken(request.headers.authorization)
       );
-      if (!session.authenticated || !session.user) return sendTimesheetDenied(reply);
+      if (!session.authenticated || !session.user) return sendTimesheetUnauthenticated(reply);
 
       const organizationId = readRouteParam(request.params, "organizationId");
       const timesheetId = readRouteParam(request.params, "timesheetId");
@@ -5747,7 +5747,7 @@ export function buildApi(options: BuildApiOptions = {}) {
       const session = await authService.validateSession(
         readBearerToken(request.headers.authorization)
       );
-      if (!session.authenticated || !session.user) return sendTimesheetDenied(reply);
+      if (!session.authenticated || !session.user) return sendTimesheetUnauthenticated(reply);
 
       const organizationId = readRouteParam(request.params, "organizationId");
       const timesheetId = readRouteParam(request.params, "timesheetId");
@@ -5784,7 +5784,7 @@ export function buildApi(options: BuildApiOptions = {}) {
     const session = await authService.validateSession(
       readBearerToken(request.headers.authorization)
     );
-    if (!session.authenticated || !session.user) return sendTimesheetDenied(reply);
+    if (!session.authenticated || !session.user) return sendTimesheetUnauthenticated(reply);
 
     const timesheet = await timesheetService.workerRead({
       session,
@@ -5799,7 +5799,7 @@ export function buildApi(options: BuildApiOptions = {}) {
     const session = await authService.validateSession(
       readBearerToken(request.headers.authorization)
     );
-    if (!session.authenticated || !session.user) return sendTimesheetDenied(reply);
+    if (!session.authenticated || !session.user) return sendTimesheetUnauthenticated(reply);
 
     const body = asRecord(request.body);
     const timesheet = await timesheetService.workerConfirm({
@@ -5816,7 +5816,7 @@ export function buildApi(options: BuildApiOptions = {}) {
     const session = await authService.validateSession(
       readBearerToken(request.headers.authorization)
     );
-    if (!session.authenticated || !session.user) return sendTimesheetDenied(reply);
+    if (!session.authenticated || !session.user) return sendTimesheetUnauthenticated(reply);
 
     const body = asRecord(request.body);
     const timesheet = await timesheetService.workerDispute({
@@ -6649,6 +6649,55 @@ function sendTimesheetDenied(reply: FastifyReply) {
     error: authorizationDeniedCode,
     message: authorizationDeniedMessage
   });
+}
+
+// An unauthenticated request is an AUTHENTICATION failure (401), distinct from an
+// authorized-but-forbidden request (403). Mirrors the attendance mapping (HR-4.1).
+function sendTimesheetUnauthenticated(reply: FastifyReply) {
+  return reply.code(401).send({
+    error: authorizationDeniedCode,
+    message: authorizationDeniedMessage
+  });
+}
+
+// Map a TimesheetError to the correct HTTP status by its decision.status. A stale
+// expectedVersion (or a record that has moved past the requested transition) is a CONCURRENCY
+// conflict (409), never an authentication failure. Preserves the underlying version-guard /
+// lifecycle semantics — only fixes how the outcome is reported (HR-5.0, mirrors HR-4.1).
+function sendTimesheetFailure(reply: FastifyReply, error: TimesheetError) {
+  switch (error.decision.status) {
+    case "invalid_input":
+      return reply.code(400).send({
+        error: "RWOS_TIMESHEET_INVALID_INPUT",
+        message: "Timesheet request was invalid."
+      });
+    case "not_found":
+      return reply.code(404).send({
+        error: authorizationDeniedCode,
+        message: authorizationDeniedMessage
+      });
+    case "permission_denied":
+      return sendTimesheetDenied(reply);
+    case "version_conflict":
+      return reply.code(409).send({
+        error: "RWOS_TIMESHEET_VERSION_CONFLICT",
+        message: "Timesheet changed since it was loaded. Reload and try again."
+      });
+    case "invalid_transition":
+    case "attendance_not_ready":
+    case "timesheet_exists":
+    case "attendance_changed":
+    case "assignment_changed":
+    case "worker_review_required":
+    case "employer_review_required":
+    case "locked_record":
+      return reply.code(409).send({
+        error: "RWOS_TIMESHEET_STATE_CONFLICT",
+        message: "Timesheet state does not allow this action."
+      });
+    default:
+      return sendTimesheetDenied(reply);
+  }
 }
 
 function allBelongToOrganization(
