@@ -238,6 +238,10 @@ export function createWorkerJobInterestService(deps: WorkerJobInterestDeps) {
       return deps.store.listForJob(jobRequestId);
     },
 
+    async getById(interestId: string): Promise<InterestRecord | null> {
+      return deps.store.getById(interestId);
+    },
+
     async markUnderReview(interestId: string): Promise<InterestRecord> {
       return deps.store.setStatus({ id: interestId, status: "under_review" });
     },

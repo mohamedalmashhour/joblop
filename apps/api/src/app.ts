@@ -1,5 +1,5 @@
 import { createHmac } from "node:crypto";
-import Fastify, { type FastifyReply } from "fastify";
+import Fastify, { type FastifyReply, type FastifyRequest } from "fastify";
 import {
   AuthenticationError,
   AuthenticationRequiredError,
@@ -2820,6 +2820,109 @@ export function buildApi(options: BuildApiOptions = {}) {
         };
       });
       return reply.code(200).send({ count: items.length, interests: items });
+    } catch (error) {
+      return sendInterestError(reply, error);
+    }
+  });
+
+  // ── Platform / dispatch view of marketplace interest ──
+  // These are PLATFORM_ADMINISTRATOR-only. Interest is a dispatch SIGNAL — it never forces
+  // selection, and none of these endpoints create an offer or assignment. Governed offers
+  // are still created through the existing worker-offer service; link-offer only records the
+  // link after such an offer exists and is validated to belong to this worker + job.
+  const requirePlatformInterest = async (request: FastifyRequest, reply: FastifyReply): Promise<string | null> => {
+    const session = await authService.validateSession(readBearerToken(request.headers.authorization));
+    if (!session.authenticated || !session.user) {
+      reply.code(401).send({ error: "RWOS_MARKETPLACE_DENIED", message: "Authentication is required." });
+      return null;
+    }
+    const roles = await resolveAuthorizationRoles(session.user.id);
+    if (!roles.includes("PLATFORM_ADMINISTRATOR")) {
+      reply.code(403).send({ error: "RWOS_INTEREST_DENIED", message: "Platform authority is required." });
+      return null;
+    }
+    return session.user.id;
+  };
+
+  // Interested workers for a job request — a review signal for dispatch (approved display
+  // name + interest status + distance-at-interest). Never auto-selects anyone.
+  app.get("/platform/job-requests/:jobRequestId/interested-workers", async (request, reply) => {
+    const actor = await requirePlatformInterest(request, reply);
+    if (!actor) return;
+    const jobRequestId = readRouteParam(request.params, "jobRequestId");
+    if (!isCanonicalUuid(jobRequestId)) {
+      return reply.code(404).send({ error: "RWOS_INTEREST_NOT_FOUND", message: "That job is not available." });
+    }
+    const interests = await workerJobInterestService.listInterestedForJob(jobRequestId);
+    const workerIds = [...new Set(interests.map((i) => i.workerIdentityId))];
+    const workers = workerIds.length
+      ? await prisma!.workerIdentity.findMany({ where: { id: { in: workerIds } }, select: { id: true, displayName: true } })
+      : [];
+    const nameById = new Map(workers.map((w) => [w.id, w.displayName]));
+    return reply.code(200).send({
+      count: interests.length,
+      interested: interests.map((i) => ({
+        interestId: i.id,
+        workerIdentityId: i.workerIdentityId,
+        displayName: nameById.get(i.workerIdentityId) ?? null,
+        status: i.status,
+        distanceKmAtInterest: i.distanceKmAtInterest,
+        workerOfferId: i.workerOfferId,
+        createdAt: i.createdAt
+      }))
+    });
+  });
+
+  // Dispatch status transitions (marketplace intent only — never the offer/assignment SM).
+  const interestTransition = (
+    path: string,
+    apply: (interestId: string) => Promise<unknown>
+  ) =>
+    app.post(path, async (request, reply) => {
+      const actor = await requirePlatformInterest(request, reply);
+      if (!actor) return;
+      const interestId = readRouteParam(request.params, "interestId");
+      if (!isCanonicalUuid(interestId)) {
+        return reply.code(404).send({ error: "RWOS_INTEREST_NOT_FOUND", message: "That interest was not found." });
+      }
+      try {
+        const interest = await apply(interestId);
+        return reply.code(200).send({ interest });
+      } catch (error) {
+        return sendInterestError(reply, error);
+      }
+    });
+
+  interestTransition("/platform/job-interests/:interestId/review", (id) => workerJobInterestService.markUnderReview(id));
+  interestTransition("/platform/job-interests/:interestId/shortlist", (id) => workerJobInterestService.shortlist(id));
+  interestTransition("/platform/job-interests/:interestId/not-selected", (id) => workerJobInterestService.markNotSelected(id));
+  interestTransition("/platform/job-interests/:interestId/offer-accepted", (id) => workerJobInterestService.markOfferAccepted(id));
+
+  // Link a governed offer (created via the worker-offer service) to an interest. Validates
+  // the offer genuinely belongs to this interest's worker + job before linking. Does NOT
+  // create the offer.
+  app.post("/platform/job-interests/:interestId/link-offer", async (request, reply) => {
+    const actor = await requirePlatformInterest(request, reply);
+    if (!actor) return;
+    const interestId = readRouteParam(request.params, "interestId");
+    const workerOfferId = readOptionalString(asRecord(request.body), "workerOfferId");
+    if (!isCanonicalUuid(interestId) || !workerOfferId || !isCanonicalUuid(workerOfferId)) {
+      return reply.code(400).send({ error: "RWOS_INTEREST_INVALID", message: "A valid interestId and workerOfferId are required." });
+    }
+    const interest = await workerJobInterestService.getById(interestId);
+    if (!interest) {
+      return reply.code(404).send({ error: "RWOS_INTEREST_NOT_FOUND", message: "That interest was not found." });
+    }
+    const offer = await prisma!.workerOffer.findUnique({
+      where: { id: workerOfferId },
+      select: { id: true, jobRequestId: true, workerIdentityId: true }
+    });
+    if (!offer || offer.jobRequestId !== interest.jobRequestId || offer.workerIdentityId !== interest.workerIdentityId) {
+      return reply.code(409).send({ error: "RWOS_INTEREST_OFFER_MISMATCH", message: "That offer does not match this worker and job." });
+    }
+    try {
+      const linked = await workerJobInterestService.linkOffer({ interestId, workerOfferId });
+      return reply.code(200).send({ interest: linked });
     } catch (error) {
       return sendInterestError(reply, error);
     }
