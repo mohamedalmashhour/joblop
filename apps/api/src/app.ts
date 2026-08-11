@@ -112,7 +112,21 @@ import {
 import { getRuntimeConfig } from "@rwos/config";
 import { createPrismaClient } from "@rwos/database";
 import { createLogger } from "@rwos/observability";
-import { createLocalFakePaymentProvider, classifyRequestEdit, type RequestEditState } from "@rwos/shared";
+import {
+  createLocalFakePaymentProvider,
+  classifyRequestEdit,
+  createFixtureGeocodingProvider,
+  searchNearbyJobs,
+  normalizeCanadianPostalCode,
+  boundingBoxKm,
+  isProvinceCode,
+  isValidCoordinate,
+  isWithinCanadaBounds,
+  type RequestEditState,
+  type GeocodingProvider,
+  type MarketplaceJobCandidate,
+  type ProvinceCode
+} from "@rwos/shared";
 import {
   createTrustedServiceIdentityHeaders,
   type IdentityTokenProvider,
@@ -169,6 +183,7 @@ export interface BuildApiOptions {
   attendanceService?: AttendanceService;
   timesheetService?: TimesheetService;
   calendarRequestService?: CalendarRequestService;
+  geocodingProvider?: GeocodingProvider;
   workGroupService?: WorkGroupService;
   roleDefinitionService?: RoleDefinitionService;
   jobRequestService?: JobRequestService;
@@ -430,6 +445,20 @@ export function buildApi(options: BuildApiOptions = {}) {
     profileWriter: createPrismaProfileWriter(prisma!),
     proposalStore: createPrismaProposalStore(prisma!)
   });
+  // Geocoding provider (provider-neutral seam). Default: a deterministic fixture over
+  // major Canadian FSAs — no network, safe for local/CI. Production swaps in the OSM
+  // (or Google) provider via options.geocodingProvider. Resolutions are persisted on
+  // the residence (the cache), so providers are not called per render.
+  const geocodingProvider: GeocodingProvider =
+    options.geocodingProvider ??
+    createFixtureGeocodingProvider({
+      "H7V": { province: "QC", city: "Laval", latitude: 45.5701, longitude: -73.7527 },
+      "H2X": { province: "QC", city: "Montreal", latitude: 45.5088, longitude: -73.5678 },
+      "M5V": { province: "ON", city: "Toronto", latitude: 43.6426, longitude: -79.3871 },
+      "K1P": { province: "ON", city: "Ottawa", latitude: 45.4215, longitude: -75.6972 },
+      "V6B": { province: "BC", city: "Vancouver", latitude: 49.2807, longitude: -123.1088 },
+      "T2P": { province: "AB", city: "Calgary", latitude: 51.0486, longitude: -114.0708 }
+    });
   const residenceService =
     options.residenceService ??
     createResidenceService(
@@ -2313,6 +2342,142 @@ export function buildApi(options: BuildApiOptions = {}) {
       }
     }
   );
+
+  // Employer worksite geocoding. Resolves a Canadian postal code/address via the
+  // configured provider, validates Canada + confidence, and persists the normalized
+  // authoritative location on the residence. Browser-supplied lat/lng is never trusted.
+  app.post("/organizations/:organizationId/residences/:residenceId/geocode", async (request, reply) => {
+    const session = await authService.validateSession(readBearerToken(request.headers.authorization));
+    if (!session.authenticated || !session.user) return sendResidenceDenied(reply);
+    const organizationId = readRouteParam(request.params, "organizationId");
+    const residenceId = readRouteParam(request.params, "residenceId");
+    const body = asRecord(request.body);
+    const postalCode = readOptionalString(body, "postalCode");
+    const address = readOptionalString(body, "address");
+    // Authorize + confirm the residence belongs to this org.
+    let residence: Awaited<ReturnType<typeof residenceService.getResidence>>;
+    try {
+      residence = await residenceService.getResidence({ actorUserId: session.user.id, organizationId, residenceId });
+    } catch {
+      return sendResidenceDenied(reply);
+    }
+    const normalizedPostal = postalCode ? normalizeCanadianPostalCode(postalCode) : null;
+    if (!normalizedPostal && !address) {
+      return reply.code(400).send({ error: "RWOS_INVALID_POSTAL", message: "A valid Canadian postal code or address is required." });
+    }
+    const result = await geocodingProvider.geocode({
+      countryRestriction: "CA",
+      ...(normalizedPostal ? { postalCode: normalizedPostal } : {}),
+      ...(address ? { address } : {})
+    });
+    if (result.status !== "ok") {
+      const code =
+        result.status === "ambiguous" ? "RWOS_AMBIGUOUS_LOCATION" :
+        result.status === "outside_canada" ? "RWOS_LOCATION_OUTSIDE_CANADA" :
+        result.status === "provider_unavailable" ? "RWOS_GEOCODER_UNAVAILABLE" :
+        result.status === "low_confidence" ? "RWOS_LOCATION_LOW_CONFIDENCE" : "RWOS_LOCATION_NOT_FOUND";
+      const http = result.status === "provider_unavailable" ? 503 : result.status === "ambiguous" ? 409 : 422;
+      return reply.code(http).send({ error: code, status: result.status, message: "The worksite location could not be confidently resolved." });
+    }
+    const loc = result.location;
+    if (!isValidCoordinate(loc.latitude, loc.longitude) || !isWithinCanadaBounds(loc.latitude, loc.longitude)) {
+      return reply.code(422).send({ error: "RWOS_LOCATION_OUTSIDE_CANADA", message: "The resolved location is not within Canada." });
+    }
+    await prisma!.residence.updateMany({
+      where: { id: residence.id, organizationId },
+      data: {
+        province: loc.province,
+        postalCode: loc.postalCode,
+        addressLine1: address ?? null,
+        city: loc.city,
+        country: "CA",
+        latitude: loc.latitude,
+        longitude: loc.longitude,
+        geocodePrecision: loc.precision,
+        geocodeProvider: loc.provider,
+        geocodeProviderRef: loc.providerReference,
+        geocodeResolvedAt: new Date()
+      }
+    });
+    return reply.code(200).send({
+      location: { province: loc.province, city: loc.city, postalCode: loc.postalCode, precision: loc.precision, provider: loc.provider },
+      // Employer worksite preview may show the exact point to the owner.
+      mapPreview: { latitude: loc.latitude, longitude: loc.longitude }
+    });
+  });
+
+  // Worker marketplace job search. Cross-org, privacy-safe. Worker origin is a Canadian
+  // postal code; the server geocodes it, does a bounding-box pre-filter, computes exact
+  // geodesic distance, applies the radius, and returns area-level results (no exact
+  // address/coords). Distance is authoritative server-side; the browser supplies none.
+  app.post("/marketplace/jobs/search", async (request, reply) => {
+    const session = await authService.validateSession(readBearerToken(request.headers.authorization));
+    if (!session.authenticated || !session.user) {
+      return reply.code(401).send({ error: "RWOS_MARKETPLACE_DENIED", message: "Authentication is required." });
+    }
+    const body = asRecord(request.body);
+    const postalCode = readOptionalString(body, "postalCode");
+    const normalizedPostal = postalCode ? normalizeCanadianPostalCode(postalCode) : null;
+    if (!normalizedPostal) {
+      return reply.code(400).send({ error: "RWOS_INVALID_POSTAL", message: "A valid Canadian postal code is required." });
+    }
+    const radiusRaw = readOptionalNumber(body, "radiusKm");
+    const radiusKm = radiusRaw && radiusRaw > 0 ? radiusRaw : undefined; // omit → any distance
+    const roleFilter = readOptionalString(body, "role");
+
+    const origin = await geocodingProvider.geocode({ countryRestriction: "CA", postalCode: normalizedPostal });
+    if (origin.status !== "ok") {
+      return reply.code(422).send({ error: "RWOS_ORIGIN_UNRESOLVED", status: origin.status, message: "Your search location could not be resolved." });
+    }
+    const box = boundingBoxKm({ latitude: origin.location.latitude, longitude: origin.location.longitude }, radiusKm ?? 500);
+    const rows = await prisma!.jobRequest.findMany({
+      where: {
+        status: { in: ["submitted", "approved_for_dispatch"] },
+        ...(roleFilter ? { roleDefinition: { key: roleFilter } } : {}),
+        residence: {
+          status: "active",
+          latitude: { gte: box.minLat, lte: box.maxLat },
+          longitude: { gte: box.minLng, lte: box.maxLng }
+        }
+      },
+      select: {
+        id: true,
+        numberOfWorkers: true,
+        startAt: true,
+        endAt: true,
+        roleDefinition: { select: { displayLabel: true } },
+        organization: { select: { displayName: true } },
+        residence: { select: { city: true, province: true, latitude: true, longitude: true } }
+      },
+      take: 200
+    });
+    const candidates: MarketplaceJobCandidate[] = [];
+    for (const r of rows) {
+      const province = r.residence.province;
+      if (!isProvinceCode(province) || r.residence.latitude === null || r.residence.longitude === null) continue;
+      candidates.push({
+        jobRequestId: r.id,
+        role: r.roleDefinition.displayLabel,
+        employerName: r.organization.displayName,
+        verifiedEmployer: false, // employer verification is a later phase
+        city: r.residence.city,
+        province: province as ProvinceCode,
+        latitude: r.residence.latitude,
+        longitude: r.residence.longitude,
+        startAt: r.startAt.toISOString(),
+        endAt: r.endAt.toISOString(),
+        openings: r.numberOfWorkers,
+        workerRateMinor: null, // worker-facing rate disclosure is policy-gated (later)
+        currency: "CAD"
+      });
+    }
+    const results = searchNearbyJobs({
+      origin: { latitude: origin.location.latitude, longitude: origin.location.longitude },
+      ...(radiusKm !== undefined ? { radiusKm } : {}),
+      candidates
+    });
+    return reply.code(200).send({ origin: { province: origin.location.province, city: origin.location.city, postalCode: normalizedPostal }, count: results.length, jobs: results });
+  });
 
   // Material Edit / Reconfirmation. The employer submits PROPOSED values only. The
   // server reads the current request (before), classifies the change (@rwos/shared,
