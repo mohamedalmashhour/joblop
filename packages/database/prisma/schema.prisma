@@ -581,6 +581,7 @@ model EmployerOrganization {
   capacityReductions EmployerCapacityReduction[]
   changeProposals EmployerRequestChangeProposal[]
   workerInterests WorkerJobInterest[]
+  verification EmployerVerification?
 
   @@index([status], map: "employer_organizations_status_idx")
   @@map("employer_organizations")
@@ -1249,6 +1250,7 @@ model WorkerIdentity {
 
   savedJobs          WorkerSavedJob[]
   jobInterests       WorkerJobInterest[]
+  verifications      WorkerVerification[]
 
   @@index([status], map: "worker_identities_status_idx")
   @@map("worker_identities")
@@ -1268,6 +1270,108 @@ model WorkerSavedJob {
   @@unique([workerIdentityId, jobRequestId], map: "worker_saved_jobs_worker_job_key")
   @@index([workerIdentityId, savedAt], map: "worker_saved_jobs_worker_saved_at_idx")
   @@map("worker_saved_jobs")
+}
+
+// ── Verification (provider-neutral trust states) ──
+// Real, server-authoritative trust states that drive marketplace badges, dispatch
+// eligibility, HR review, and admin supervision. Badges are NEVER inferred from an active
+// account, a signed contract, payment, or job postings — only from these records.
+
+enum WorkerVerificationType {
+  identity
+  background_check
+}
+
+// Normalized per-record status. Provider-specific statuses are mapped into these at the
+// callback boundary; JobLop core never stores raw vendor status strings as truth.
+enum WorkerVerificationStatus {
+  unverified
+  pending
+  verified
+  review
+  expired
+  rejected
+}
+
+enum EmployerVerificationStatus {
+  unverified
+  pending
+  business_verified
+  review_required
+  suspended
+  expired
+}
+
+// A worker's verification record for a given type (identity / background_check). One active
+// record per (worker, type); re-verification transitions the same record + emits events.
+model WorkerVerification {
+  id               String                   @id @default(uuid()) @db.Uuid
+  workerIdentityId String                   @map("worker_identity_id") @db.Uuid
+  verificationType WorkerVerificationType   @map("verification_type")
+  status           WorkerVerificationStatus @default(unverified)
+  provider         String?
+  providerReference String?                 @map("provider_reference")
+  requestedAt      DateTime?                @map("requested_at") @db.Timestamptz(3)
+  completedAt      DateTime?                @map("completed_at") @db.Timestamptz(3)
+  expiresAt        DateTime?                @map("expires_at") @db.Timestamptz(3)
+  reviewedByUserId String?                  @map("reviewed_by_user_id") @db.Uuid
+  // Safe result metadata ONLY (normalized summary). Never raw identity documents.
+  resultMetadata   Json?                    @map("result_metadata")
+  createdAt        DateTime                 @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt        DateTime                 @updatedAt @map("updated_at") @db.Timestamptz(3)
+  version          Int                      @default(1)
+
+  worker WorkerIdentity @relation(fields: [workerIdentityId], references: [id], onDelete: Cascade)
+
+  @@unique([workerIdentityId, verificationType], map: "worker_verifications_worker_type_key")
+  @@index([status], map: "worker_verifications_status_idx")
+  @@index([providerReference], map: "worker_verifications_provider_reference_idx")
+  @@map("worker_verifications")
+}
+
+// An organization's business-verification lifecycle. One per organization; the org itself is
+// verified, not merely the user account.
+model EmployerVerification {
+  id               String                     @id @default(uuid()) @db.Uuid
+  organizationId   String                     @unique @map("organization_id") @db.Uuid
+  status           EmployerVerificationStatus @default(unverified)
+  provider         String?
+  providerReference String?                   @map("provider_reference")
+  requestedAt      DateTime?                  @map("requested_at") @db.Timestamptz(3)
+  completedAt      DateTime?                  @map("completed_at") @db.Timestamptz(3)
+  expiresAt        DateTime?                  @map("expires_at") @db.Timestamptz(3)
+  reviewedByUserId String?                    @map("reviewed_by_user_id") @db.Uuid
+  resultMetadata   Json?                      @map("result_metadata")
+  createdAt        DateTime                   @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt        DateTime                   @updatedAt @map("updated_at") @db.Timestamptz(3)
+  version          Int                        @default(1)
+
+  organization EmployerOrganization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@index([status], map: "employer_verifications_status_idx")
+  @@index([providerReference], map: "employer_verifications_provider_reference_idx")
+  @@map("employer_verifications")
+}
+
+// Append-only audit of every verification state transition (requested → provider result →
+// review → verified/rejected → expiry/reverification). Actor, timestamp, source/provider,
+// prior/new state.
+model VerificationEvent {
+  id               String   @id @default(uuid()) @db.Uuid
+  subjectType      String   @map("subject_type") // "worker" | "employer"
+  subjectId        String   @map("subject_id") @db.Uuid
+  verificationType String?  @map("verification_type")
+  source           String // "worker" | "employer" | "admin" | "provider" | "system"
+  priorStatus      String?  @map("prior_status")
+  newStatus        String   @map("new_status")
+  provider         String?
+  providerReference String? @map("provider_reference")
+  actorUserId      String?  @map("actor_user_id") @db.Uuid
+  detail           Json?
+  createdAt        DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  @@index([subjectType, subjectId, createdAt], map: "verification_events_subject_idx")
+  @@map("verification_events")
 }
 
 // Marketplace source of an interest record. Kept as an enum so future intake channels
