@@ -119,11 +119,56 @@ suite("HR-1 security + governance (endpoint level)", () => {
 
   it("concurrent HR standing decisions are all audited (no silent overwrite of history)", async () => {
     const before = await prisma.hrEvent.count({ where: { workerIdentityId: workerBId, eventType: "standing_changed" } });
-    await Promise.all([setStanding(hrToken, workerBId, "restricted"), setStanding(hrToken, workerBId, "suspended")]);
+    const restrictReq = { method: "POST" as const, url: `/platform/hr/workers/${workerBId}/standing`, headers: auth(hrToken) };
+    await Promise.all([
+      app.inject({ ...restrictReq, payload: { standing: "restricted", reason: "reviewer A" } }),
+      app.inject({ ...restrictReq, payload: { standing: "suspended", reason: "reviewer B" } })
+    ]);
     const after = await prisma.hrEvent.count({ where: { workerIdentityId: workerBId, eventType: "standing_changed" } });
     expect(after - before).toBe(2); // both decisions recorded, neither silently dropped
     const final = (await prisma.hrProfile.findUniqueOrThrow({ where: { workerIdentityId: workerBId } })).standing;
     expect(["restricted", "suspended"]).toContain(final);
+  });
+
+  it("restrictive standing requires an explicit reason (no silent restrict/suspend)", async () => {
+    const noReason = await app.inject({ method: "POST", url: `/platform/hr/workers/${workerAId}/standing`, headers: auth(hrToken), payload: { standing: "suspended" } });
+    expect(noReason.statusCode).toBe(400);
+    const withReason = await setStanding(hrToken, workerAId, "review_required"); // non-restrictive, reason optional
+    expect(withReason.statusCode).toBe(200);
+    const suspended = await app.inject({ method: "POST", url: `/platform/hr/workers/${workerAId}/standing`, headers: auth(hrToken), payload: { standing: "suspended", reason: "policy breach" } });
+    expect(suspended.statusCode).toBe(200);
+  });
+
+  it("worker record includes verification indicators + eligibility impact (HR consumes, never mutates)", async () => {
+    const record = await app.inject({ method: "GET", url: `/platform/hr/workers/${workerAId}`, headers: auth(hrToken) });
+    const body = record.json();
+    expect(body.verification).toHaveProperty("identity");
+    expect(body.verification).toHaveProperty("backgroundCheck");
+    // default policy is permissive → eligibility allowed even when unverified
+    expect(body.eligibility.expressInterest.allowed).toBe(true);
+    expect(body.eligibility.receiveOffer.allowed).toBe(true);
+  });
+
+  it("HR search is indexed + bounded (filter by standing / credential status)", async () => {
+    // workerA is suspended (from the restrictive test); search should find them by standing
+    const byStanding = await app.inject({ method: "GET", url: `/platform/hr/search?standing=suspended&limit=10`, headers: auth(hrToken) });
+    expect(byStanding.statusCode).toBe(200);
+    expect(byStanding.json().items.some((w: { workerIdentityId: string }) => w.workerIdentityId === workerAId)).toBe(true);
+    // workerA has an expired credential → search by credentialStatus=expired finds them
+    const byCred = await app.inject({ method: "GET", url: `/platform/hr/search?credentialStatus=expired&limit=10`, headers: auth(hrToken) });
+    expect(byCred.statusCode).toBe(200);
+    // outsider cannot search
+    expect((await app.inject({ method: "GET", url: `/platform/hr/search`, headers: auth(outsiderToken) })).statusCode).toBe(403);
+  });
+
+  it("standing queue lists restricted/suspended workers (paginated); event timeline is bounded", async () => {
+    const queue = await app.inject({ method: "GET", url: `/platform/hr/queues/standing?standings=suspended&limit=25`, headers: auth(hrToken) });
+    expect(queue.statusCode).toBe(200);
+    expect(queue.json().items.every((w: { standing: string }) => w.standing === "suspended")).toBe(true);
+    const events = await app.inject({ method: "GET", url: `/platform/hr/workers/${workerAId}/events?limit=5`, headers: auth(hrToken) });
+    expect(events.statusCode).toBe(200);
+    expect(Array.isArray(events.json().items)).toBe(true);
+    expect(events.json().items.length).toBeLessThanOrEqual(5);
   });
 
   it("the review queue is bounded + cursor-paginated (no list-all)", async () => {

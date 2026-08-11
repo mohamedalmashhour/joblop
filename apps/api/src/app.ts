@@ -67,6 +67,10 @@ import {
   createPrismaHrStore,
   createPrismaHrWorkerResolver,
   HrError,
+  canWorkerExpressInterest,
+  canWorkerReceiveOffer,
+  DEFAULT_VERIFICATION_POLICY,
+  type HrStanding,
   createPrismaCancellationJobRequestReader,
   createPrismaConfirmedAssignmentReader,
   createPrismaContractRateReader,
@@ -3226,7 +3230,68 @@ export function buildApi(options: BuildApiOptions = {}) {
     const workerIdentityId = readRouteParam(request.params, "workerIdentityId");
     if (!isCanonicalUuid(workerIdentityId)) return reply.code(404).send({ error: "RWOS_HR_NOT_FOUND", message: "That worker was not found." });
     const record = await hrService.getWorkerHrRecord(workerIdentityId);
-    return reply.code(200).send(record);
+    // HR CONSUMES verification (read-only) to show trust indicators + the current eligibility
+    // impact. HR never mutates verification, marketplace, or dispatch. Eligibility stays in
+    // the centralized policy (default permissive) — shown here for visibility only.
+    const trust = await verificationService.workerTrust(workerIdentityId);
+    const hrStanding = record.profile.standing as HrStanding;
+    const eligibility = {
+      expressInterest: canWorkerExpressInterest({ trust, hrStanding, policy: DEFAULT_VERIFICATION_POLICY }),
+      receiveOffer: canWorkerReceiveOffer({ trust, hrStanding, policy: DEFAULT_VERIFICATION_POLICY })
+    };
+    return reply.code(200).send({ ...record, verification: trust, eligibility });
+  });
+
+  // HR authority: worker HR event timeline (bounded, paginated).
+  app.get("/platform/hr/workers/:workerIdentityId/events", async (request, reply) => {
+    const actor = await requireHrAuthority(request, reply);
+    if (!actor) return;
+    const workerIdentityId = readRouteParam(request.params, "workerIdentityId");
+    if (!isCanonicalUuid(workerIdentityId)) return reply.code(404).send({ error: "RWOS_HR_NOT_FOUND", message: "That worker was not found." });
+    const query = asRecord(request.query);
+    const limit = parseQueryInt(readOptionalString(query, "limit"));
+    const page = await hrService.listWorkerEvents({ workerIdentityId, cursor: readOptionalString(query, "cursor"), ...(limit !== null ? { limit } : {}) });
+    return reply.code(200).send(page);
+  });
+
+  // HR authority: standing queue (e.g. restricted/suspended) — bounded, paginated.
+  app.get("/platform/hr/queues/standing", async (request, reply) => {
+    const actor = await requireHrAuthority(request, reply);
+    if (!actor) return;
+    const query = asRecord(request.query);
+    const requested = (readOptionalString(query, "standings") ?? "restricted,suspended").split(",").map((s) => s.trim());
+    const valid: readonly HrStanding[] = ["active", "review_required", "restricted", "suspended", "inactive"];
+    const standings = requested.filter((s): s is HrStanding => (valid as readonly string[]).includes(s));
+    if (standings.length === 0) return reply.code(400).send({ error: "RWOS_HR_INVALID", message: "A valid standings filter is required." });
+    const limit = parseQueryInt(readOptionalString(query, "limit"));
+    const page = await hrService.pageByStanding({ standings, cursor: readOptionalString(query, "cursor"), ...(limit !== null ? { limit } : {}) });
+    return reply.code(200).send(page);
+  });
+
+  // HR authority: indexed, bounded HR search (never full-table scan).
+  app.get("/platform/hr/search", async (request, reply) => {
+    const actor = await requireHrAuthority(request, reply);
+    if (!actor) return;
+    const query = asRecord(request.query);
+    const validStanding = ["active", "review_required", "restricted", "suspended", "inactive"];
+    const validCredStatus = ["valid", "expiring", "expired", "renewed", "replaced", "revoked"];
+    const validCaseStatus = ["opened", "under_review", "action_required", "resolved", "closed"];
+    const standing = readOptionalString(query, "standing");
+    const credentialStatus = readOptionalString(query, "credentialStatus");
+    const caseStatus = readOptionalString(query, "caseStatus");
+    const limit = parseQueryInt(readOptionalString(query, "limit"));
+    const page = await hrService.searchWorkers({
+      filters: {
+        query: readOptionalString(query, "q"),
+        standing: standing && validStanding.includes(standing) ? (standing as HrStanding) : null,
+        credentialType: readOptionalString(query, "credentialType"),
+        credentialStatus: credentialStatus && validCredStatus.includes(credentialStatus) ? (credentialStatus as never) : null,
+        caseStatus: caseStatus && validCaseStatus.includes(caseStatus) ? (caseStatus as never) : null
+      },
+      cursor: readOptionalString(query, "cursor"),
+      ...(limit !== null ? { limit } : {})
+    });
+    return reply.code(200).send(page);
   });
 
   // HR authority: governed standing decision (independent of verification, audited).

@@ -33,6 +33,9 @@ function makeStore() {
     async getCase(id) { const k = cases.find((x) => x.id === id); return k ? { ...k } : null; },
     async setCaseStatus({ id, status }) { const k = cases.find((x) => x.id === id)!; k.status = status; return { ...k }; },
     async listCasesForWorker(w) { return cases.filter((c) => c.workerIdentityId === w).map((c) => ({ ...c })); },
+    async listWorkerEvents({ workerIdentityId, limit }) { return { items: events.filter((e) => e.workerIdentityId === workerIdentityId).slice(0, limit).map((e, i) => ({ id: `ev-${i}`, subjectType: e.subjectType, subjectId: e.subjectId, eventType: e.eventType, priorState: e.priorState ?? null, newState: e.newState, reason: e.reason ?? null, source: e.source, actorUserId: e.actorUserId ?? null, correlationId: e.correlationId ?? null, createdAt: iso() })), nextCursor: null }; },
+    async pageByStanding({ standings, limit }) { return { items: profiles.filter((p) => standings.includes(p.standing)).slice(0, limit).map((p) => ({ workerIdentityId: p.workerIdentityId, displayName: null, standing: p.standing, updatedAt: p.updatedAt })), nextCursor: null }; },
+    async searchWorkers({ limit }) { return { items: profiles.slice(0, limit).map((p) => ({ workerIdentityId: p.workerIdentityId, displayName: null, standing: p.standing, updatedAt: p.updatedAt })), nextCursor: null }; },
     async pageExpiringCredentials({ limit }): Promise<Page<StoredCred>> { return { items: creds.slice(0, limit).map((c) => ({ ...c })), nextCursor: null }; },
     async pageReviewCases({ limit, statuses }): Promise<Page<HrCaseRecord>> { return { items: cases.filter((c) => statuses.includes(c.status)).slice(0, limit).map((c) => ({ ...c })), nextCursor: null }; },
     async appendEvent(e) { events.push(e); }

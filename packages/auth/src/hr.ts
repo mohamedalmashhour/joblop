@@ -77,6 +77,40 @@ export type HrEventInput = Readonly<{
 
 export type Page<T> = Readonly<{ items: readonly T[]; nextCursor: string | null }>;
 
+// Restrictive standings require an explicit reason (governance): you cannot silently
+// restrict/suspend/deactivate a worker.
+export const RESTRICTIVE_STANDINGS: readonly HrStanding[] = ["restricted", "suspended", "inactive"];
+
+export type HrEventRecord = Readonly<{
+  id: string;
+  subjectType: string;
+  subjectId: string;
+  eventType: string;
+  priorState: string | null;
+  newState: string;
+  reason: string | null;
+  source: string;
+  actorUserId: string | null;
+  correlationId: string | null;
+  createdAt: string;
+}>;
+
+// A bounded worker summary for queues/search (never a full-table dump).
+export type HrWorkerSummary = Readonly<{
+  workerIdentityId: string;
+  displayName: string | null;
+  standing: HrStanding;
+  updatedAt: string;
+}>;
+
+export type HrSearchFilters = Readonly<{
+  query?: string | null;
+  standing?: HrStanding | null;
+  credentialType?: string | null;
+  credentialStatus?: HrCredentialStatus | null;
+  caseStatus?: HrCaseStatus | null;
+}>;
+
 // ── Ports ──
 
 export type HrWorkerResolver = Readonly<{
@@ -100,6 +134,10 @@ export type HrStore = Readonly<{
     safeMetadata: Record<string, unknown> | null;
   }): Promise<Omit<HrCredentialRecord, "effectiveStatus">>;
   setCredentialStatus(input: { id: string; status: HrCredentialStatus; supersededById?: string | null }): Promise<Omit<HrCredentialRecord, "effectiveStatus">>;
+
+  listWorkerEvents(input: { workerIdentityId: string; cursor: string | null; limit: number }): Promise<Page<HrEventRecord>>;
+  pageByStanding(input: { standings: readonly HrStanding[]; cursor: string | null; limit: number }): Promise<Page<HrWorkerSummary>>;
+  searchWorkers(input: { filters: HrSearchFilters; cursor: string | null; limit: number }): Promise<Page<HrWorkerSummary>>;
 
   createCase(input: { workerIdentityId: string; caseType: string; reason: string | null; openedByUserId: string }): Promise<HrCaseRecord>;
   getCase(id: string): Promise<HrCaseRecord | null>;
@@ -159,6 +197,10 @@ export function createHrService(deps: HrDeps) {
     // Governed standing decision. Independent of verification; audited.
     async setStanding(input: { actorUserId: string; workerIdentityId: string; standing: string; reason?: string | null; source?: "hr_admin" | "platform_admin" }): Promise<HrProfileRecord> {
       if (!isValidStanding(input.standing)) throw new HrError("invalid", "Unknown HR standing.");
+      // Restrictive states require an explicit reason — no silent restrict/suspend/deactivate.
+      if (RESTRICTIVE_STANDINGS.includes(input.standing) && !input.reason?.trim()) {
+        throw new HrError("invalid", "A reason is required to restrict, suspend, or deactivate a worker.");
+      }
       const profile = await ensureProfile(input.workerIdentityId);
       const updated = await deps.store.setStanding({ workerIdentityId: input.workerIdentityId, standing: input.standing, reason: input.reason ?? null });
       await deps.store.appendEvent({
@@ -238,6 +280,24 @@ export function createHrService(deps: HrDeps) {
     async pageReviewCases(input: { cursor?: string | null; limit?: number }): Promise<Page<HrCaseRecord>> {
       const limit = Math.min(Math.max(input.limit ?? 25, 1), MAX_PAGE);
       return deps.store.pageReviewCases({ cursor: input.cursor ?? null, limit, statuses: ["opened", "under_review", "action_required"] });
+    },
+
+    // Full HR event timeline for a worker (bounded, paginated).
+    async listWorkerEvents(input: { workerIdentityId: string; cursor?: string | null; limit?: number }): Promise<Page<HrEventRecord>> {
+      const limit = Math.min(Math.max(input.limit ?? 50, 1), MAX_PAGE);
+      return deps.store.listWorkerEvents({ workerIdentityId: input.workerIdentityId, cursor: input.cursor ?? null, limit });
+    },
+
+    // Restricted / suspended (or any-standing) worker queue — bounded, paginated.
+    async pageByStanding(input: { standings: readonly HrStanding[]; cursor?: string | null; limit?: number }): Promise<Page<HrWorkerSummary>> {
+      const limit = Math.min(Math.max(input.limit ?? 25, 1), MAX_PAGE);
+      return deps.store.pageByStanding({ standings: input.standings, cursor: input.cursor ?? null, limit });
+    },
+
+    // Indexed, bounded HR search — never a full-table scan.
+    async searchWorkers(input: { filters: HrSearchFilters; cursor?: string | null; limit?: number }): Promise<Page<HrWorkerSummary>> {
+      const limit = Math.min(Math.max(input.limit ?? 25, 1), MAX_PAGE);
+      return deps.store.searchWorkers({ filters: input.filters, cursor: input.cursor ?? null, limit });
     }
   };
 }
@@ -248,9 +308,11 @@ type HrPrisma = {
   workerIdentity: { findUnique(args: unknown): Promise<{ id: string } | null> };
   hrProfile: {
     findUnique(args: unknown): Promise<ProfileRow | null>;
+    findMany(args: unknown): Promise<unknown[]>;
     create(args: unknown): Promise<ProfileRow>;
     update(args: unknown): Promise<ProfileRow>;
   };
+  hrEvent: { create(args: unknown): Promise<unknown>; findMany(args: unknown): Promise<unknown[]> };
   hrCredential: {
     findUnique(args: unknown): Promise<CredentialRow | null>;
     findMany(args: unknown): Promise<CredentialRow[]>;
@@ -263,10 +325,11 @@ type HrPrisma = {
     create(args: unknown): Promise<CaseRow>;
     update(args: unknown): Promise<CaseRow>;
   };
-  hrEvent: { create(args: unknown): Promise<unknown> };
 };
 
 type ProfileRow = { id: string; workerIdentityId: string; standing: HrStanding; standingReason: string | null; updatedAt: Date };
+type ProfileWithWorkerRow = ProfileRow & { worker: { displayName: string | null } };
+type EventRow = { id: string; subjectType: string; subjectId: string; eventType: string; priorState: string | null; newState: string; reason: string | null; source: string; actorUserId: string | null; correlationId: string | null; createdAt: Date };
 type CredentialRow = { id: string; workerIdentityId: string; credentialType: string; issuer: string | null; issuedAt: Date | null; expiresAt: Date | null; status: HrCredentialStatus; verificationReference: string | null; supersededById: string | null; updatedAt: Date };
 type CaseRow = { id: string; workerIdentityId: string; caseType: string; status: HrCaseStatus; reason: string | null; openedByUserId: string; createdAt: Date; updatedAt: Date };
 
@@ -308,6 +371,48 @@ export function createPrismaHrStore(prisma: HrPrisma): HrStore {
     },
     async setCredentialStatus({ id, status, supersededById }) {
       return toCred(await prisma.hrCredential.update({ where: { id }, data: { status, ...(supersededById !== undefined ? { supersededById } : {}) } }));
+    },
+    async listWorkerEvents({ workerIdentityId, cursor, limit }) {
+      const rows = (await prisma.hrEvent.findMany({
+        where: { workerIdentityId },
+        orderBy: [{ createdAt: "desc" }, { id: "desc" }],
+        take: limit + 1,
+        ...(cursor ? { cursor: { id: cursor }, skip: 1 } : {})
+      })) as EventRow[];
+      const hasMore = rows.length > limit;
+      const items: HrEventRecord[] = rows.slice(0, limit).map((r) => ({ id: r.id, subjectType: r.subjectType, subjectId: r.subjectId, eventType: r.eventType, priorState: r.priorState, newState: r.newState, reason: r.reason, source: r.source, actorUserId: r.actorUserId, correlationId: r.correlationId, createdAt: r.createdAt.toISOString() }));
+      return { items, nextCursor: hasMore ? (rows[limit - 1]?.id ?? null) : null };
+    },
+    async pageByStanding({ standings, cursor, limit }) {
+      const rows = (await prisma.hrProfile.findMany({
+        where: { standing: { in: [...standings] } },
+        include: { worker: { select: { displayName: true } } },
+        orderBy: [{ updatedAt: "desc" }, { id: "desc" }],
+        take: limit + 1,
+        ...(cursor ? { cursor: { id: cursor }, skip: 1 } : {})
+      })) as ProfileWithWorkerRow[];
+      const hasMore = rows.length > limit;
+      const items: HrWorkerSummary[] = rows.slice(0, limit).map((r) => ({ workerIdentityId: r.workerIdentityId, displayName: r.worker.displayName, standing: r.standing, updatedAt: r.updatedAt.toISOString() }));
+      return { items, nextCursor: hasMore ? (rows[limit - 1]?.id ?? null) : null };
+    },
+    async searchWorkers({ filters, cursor, limit }) {
+      // Indexed, bounded relation-filter query — never an unrestricted full-table scan.
+      const workerWhere: Record<string, unknown> = {};
+      if (filters.query && filters.query.trim()) workerWhere.displayName = { contains: filters.query.trim(), mode: "insensitive" };
+      if (filters.credentialType || filters.credentialStatus) {
+        workerWhere.hrCredentials = { some: { ...(filters.credentialType ? { credentialType: filters.credentialType } : {}), ...(filters.credentialStatus ? { status: filters.credentialStatus } : {}) } };
+      }
+      if (filters.caseStatus) workerWhere.hrCases = { some: { status: filters.caseStatus } };
+      const rows = (await prisma.hrProfile.findMany({
+        where: { ...(filters.standing ? { standing: filters.standing } : {}), ...(Object.keys(workerWhere).length ? { worker: workerWhere } : {}) },
+        include: { worker: { select: { displayName: true } } },
+        orderBy: [{ updatedAt: "desc" }, { id: "desc" }],
+        take: limit + 1,
+        ...(cursor ? { cursor: { id: cursor }, skip: 1 } : {})
+      })) as ProfileWithWorkerRow[];
+      const hasMore = rows.length > limit;
+      const items: HrWorkerSummary[] = rows.slice(0, limit).map((r) => ({ workerIdentityId: r.workerIdentityId, displayName: r.worker.displayName, standing: r.standing, updatedAt: r.updatedAt.toISOString() }));
+      return { items, nextCursor: hasMore ? (rows[limit - 1]?.id ?? null) : null };
     },
     async createCase(input) {
       return toCase(await prisma.hrCase.create({ data: input }));
