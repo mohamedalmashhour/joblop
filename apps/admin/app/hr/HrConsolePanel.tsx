@@ -1,0 +1,142 @@
+"use client";
+
+import { useCallback, useEffect, useState } from "react";
+
+type Tab = "review" | "expiring" | "restricted" | "search";
+
+type CaseRow = { id: string; workerIdentityId: string; caseType: string; status: string; createdAt: string };
+type CredRow = { id: string; workerIdentityId: string; credentialType: string; expiresAt: string | null; effectiveStatus: string };
+type WorkerRow = { workerIdentityId: string; displayName: string | null; standing: string; updatedAt: string };
+
+export function HrConsolePanel() {
+  const [tab, setTab] = useState<Tab>("review");
+  const [rows, setRows] = useState<unknown[]>([]);
+  const [status, setStatus] = useState<"loading" | "ready" | "denied" | "unavailable">("loading");
+  const [q, setQ] = useState("");
+  const [searchStanding, setSearchStanding] = useState("");
+  const [searchCredStatus, setSearchCredStatus] = useState("");
+
+  const load = useCallback(async (t: Tab) => {
+    setStatus("loading");
+    const url =
+      t === "review" ? "/api/hr/queues/review?limit=25"
+      : t === "expiring" ? "/api/hr/queues/expiring?limit=25&withinDays=45"
+      : t === "restricted" ? "/api/hr/queues/standing?standings=restricted,suspended,inactive&limit=25"
+      : `/api/hr/search?limit=25${q.trim() ? `&q=${encodeURIComponent(q.trim())}` : ""}${searchStanding ? `&standing=${searchStanding}` : ""}${searchCredStatus ? `&credentialStatus=${searchCredStatus}` : ""}`;
+    try {
+      const r = await fetch(url, { cache: "no-store" });
+      if (!r.ok) return setStatus(r.status === 401 || r.status === 403 ? "denied" : "unavailable");
+      const payload = await r.json();
+      setRows(payload.items ?? []);
+      setStatus("ready");
+    } catch {
+      setStatus("unavailable");
+    }
+  }, [q, searchStanding, searchCredStatus]);
+
+  useEffect(() => {
+    if (tab !== "search") void load(tab);
+  }, [tab, load]);
+
+  return (
+    <main style={styles.page}>
+      <header style={styles.hero}>
+        <p style={styles.eyebrow}>Resident Workforce OS / HR</p>
+        <h1 style={styles.title}>HR console</h1>
+        <p style={styles.lede}>Governed HR operations for HR administrators. HR consumes verification and eligibility — it never mutates marketplace, dispatch, or payroll. Every decision is audited.</p>
+      </header>
+      <div style={styles.tabs} role="tablist" aria-label="HR views">
+        {(["review", "expiring", "restricted", "search"] as Tab[]).map((t) => (
+          <button key={t} type="button" role="tab" aria-selected={tab === t} style={tab === t ? styles.tabActive : styles.tab} onClick={() => setTab(t)}>
+            {t === "review" ? "Review queue" : t === "expiring" ? "Expiring credentials" : t === "restricted" ? "Restricted / suspended" : "Search"}
+          </button>
+        ))}
+      </div>
+
+      {tab === "search" ? (
+        <form
+          style={styles.searchBar}
+          onSubmit={(e) => { e.preventDefault(); void load("search"); }}
+        >
+          <input aria-label="Search name" placeholder="Worker name…" value={q} onChange={(e) => setQ(e.target.value)} style={styles.input} />
+          <select aria-label="Standing" value={searchStanding} onChange={(e) => setSearchStanding(e.target.value)} style={styles.input}>
+            <option value="">Any standing</option>
+            {["active", "review_required", "restricted", "suspended", "inactive"].map((s) => <option key={s} value={s}>{s.replaceAll("_", " ")}</option>)}
+          </select>
+          <select aria-label="Credential status" value={searchCredStatus} onChange={(e) => setSearchCredStatus(e.target.value)} style={styles.input}>
+            <option value="">Any credential status</option>
+            {["valid", "expiring", "expired", "replaced", "revoked"].map((s) => <option key={s} value={s}>{s}</option>)}
+          </select>
+          <button type="submit" style={styles.button}>Search</button>
+        </form>
+      ) : null}
+
+      {status === "loading" ? <p aria-live="polite">Loading…</p>
+      : status === "denied" ? <p>HR administrator authorization is required.</p>
+      : status === "unavailable" ? <p>HR data is unavailable. <button type="button" style={styles.button} onClick={() => void load(tab)}>Retry</button></p>
+      : rows.length === 0 ? <p style={styles.muted}>Nothing in this view.</p>
+      : (
+        <ul style={styles.list}>
+          {rows.map((row, i) => (
+            <li key={i} style={styles.item}>
+              {tab === "review" ? <ReviewRow r={row as CaseRow} />
+              : tab === "expiring" ? <ExpiringRow r={row as CredRow} />
+              : <WorkerSummaryRow r={row as WorkerRow} />}
+            </li>
+          ))}
+        </ul>
+      )}
+    </main>
+  );
+}
+
+function link(workerIdentityId: string) {
+  return `/hr/workers/${encodeURIComponent(workerIdentityId)}`;
+}
+
+function ReviewRow({ r }: { r: CaseRow }) {
+  return (
+    <a href={link(r.workerIdentityId)} style={styles.rowLink}>
+      <span><strong>Case · {r.caseType}</strong> <span style={styles.badge}>{r.status.replaceAll("_", " ")}</span></span>
+      <span style={styles.dim}>{r.workerIdentityId.slice(0, 8)} · opened {new Date(r.createdAt).toLocaleDateString()}</span>
+    </a>
+  );
+}
+function ExpiringRow({ r }: { r: CredRow }) {
+  return (
+    <a href={link(r.workerIdentityId)} style={styles.rowLink}>
+      <span><strong>{r.credentialType}</strong> <span style={r.effectiveStatus === "expired" ? styles.badgeBad : styles.badgeWarn}>{r.effectiveStatus}</span></span>
+      <span style={styles.dim}>{r.workerIdentityId.slice(0, 8)}{r.expiresAt ? ` · expires ${new Date(r.expiresAt).toLocaleDateString()}` : ""}</span>
+    </a>
+  );
+}
+function WorkerSummaryRow({ r }: { r: WorkerRow }) {
+  return (
+    <a href={link(r.workerIdentityId)} style={styles.rowLink}>
+      <span><strong>{r.displayName ?? "Worker"}</strong> <span style={styles.badge}>{r.standing.replaceAll("_", " ")}</span></span>
+      <span style={styles.dim}>{r.workerIdentityId.slice(0, 8)}</span>
+    </a>
+  );
+}
+
+const styles: Record<string, React.CSSProperties> = {
+  page: { padding: "clamp(16px, 3vw, 32px)", fontFamily: "Inter, system-ui, sans-serif", color: "#1e293b" },
+  hero: { marginBottom: 16 },
+  eyebrow: { color: "#0f766e", fontWeight: 700, fontSize: 12, letterSpacing: "0.06em", textTransform: "uppercase", margin: 0 },
+  title: { fontSize: "clamp(24px, 4vw, 34px)", margin: "4px 0" },
+  lede: { color: "#475569", maxWidth: 760, margin: 0 },
+  tabs: { display: "flex", flexWrap: "wrap", gap: 8, margin: "12px 0" },
+  tab: { border: "1px solid #cbd5e1", background: "transparent", color: "#334155", borderRadius: 999, padding: "6px 14px", fontSize: 13, fontWeight: 600, cursor: "pointer" },
+  tabActive: { border: "1px solid #0f766e", background: "#0f766e", color: "#fff", borderRadius: 999, padding: "6px 14px", fontSize: 13, fontWeight: 700, cursor: "pointer" },
+  searchBar: { display: "flex", flexWrap: "wrap", gap: 8, marginBottom: 12 },
+  input: { border: "1px solid #cbd5e1", borderRadius: 8, padding: "8px 10px", fontSize: 14, minHeight: 38 },
+  list: { listStyle: "none", margin: 0, padding: 0, display: "flex", flexDirection: "column", gap: 8 },
+  item: { border: "1px solid #e2e8f0", borderRadius: 10, background: "#fff" },
+  rowLink: { display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8, padding: "12px 14px", textDecoration: "none", color: "inherit" },
+  badge: { background: "#f1f5f9", color: "#334155", borderRadius: 999, padding: "2px 9px", fontSize: 12, fontWeight: 700 },
+  badgeWarn: { background: "#fef3c7", color: "#92400e", borderRadius: 999, padding: "2px 9px", fontSize: 12, fontWeight: 700 },
+  badgeBad: { background: "#fee2e2", color: "#b91c1c", borderRadius: 999, padding: "2px 9px", fontSize: 12, fontWeight: 700 },
+  dim: { color: "#94a3b8", fontSize: 12 },
+  muted: { color: "#64748b" },
+  button: { border: "1px solid #0f766e", background: "#0f766e", color: "#fff", borderRadius: 8, padding: "8px 14px", fontSize: 13, fontWeight: 600, cursor: "pointer" }
+};
