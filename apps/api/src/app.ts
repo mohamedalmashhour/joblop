@@ -71,6 +71,15 @@ import {
   canWorkerReceiveOffer,
   DEFAULT_VERIFICATION_POLICY,
   type HrStanding,
+  createHrDocumentService,
+  createPrismaHrDocumentStore,
+  createPrismaHrDocWorkerResolver,
+  createFixtureDocumentStorageProvider,
+  HrDocumentError,
+  createComplianceEvaluator,
+  createPrismaComplianceRequirementResolver,
+  createPrismaComplianceEvidenceReader,
+  type HrDocumentStatus,
   createPrismaCancellationJobRequestReader,
   createPrismaConfirmedAssignmentReader,
   createPrismaContractRateReader,
@@ -513,6 +522,18 @@ export function buildApi(options: BuildApiOptions = {}) {
   const hrService = createHrService({
     workers: createPrismaHrWorkerResolver(prisma!),
     store: createPrismaHrStore(prisma!)
+  });
+  // HR-3 Documents & Compliance. Provider-neutral storage (fixture in dev); file contents
+  // never touch core. Compliance evaluator is centralized + explainable; requirements are
+  // jurisdiction/role data, not hard-coded rules.
+  const hrDocumentService = createHrDocumentService({
+    workers: createPrismaHrDocWorkerResolver(prisma!),
+    store: createPrismaHrDocumentStore(prisma!),
+    storage: createFixtureDocumentStorageProvider()
+  });
+  const complianceEvaluator = createComplianceEvaluator({
+    requirements: createPrismaComplianceRequirementResolver(prisma!),
+    evidence: createPrismaComplianceEvidenceReader(prisma!)
   });
   // Geocoding provider (provider-neutral seam). Default: a deterministic fixture over
   // major Canadian FSAs — no network, safe for local/CI. Production swaps in the OSM
@@ -3292,6 +3313,153 @@ export function buildApi(options: BuildApiOptions = {}) {
       ...(limit !== null ? { limit } : {})
     });
     return reply.code(200).send(page);
+  });
+
+  // ── HR-3 Documents & Compliance ──
+  const sendHrDocError = (reply: FastifyReply, error: unknown) => {
+    if (error instanceof HrDocumentError) {
+      const code = error.code === "denied" ? 403 : error.code === "not_found" ? 404 : error.code === "conflict" ? 409 : 400;
+      return reply.code(code).send({ error: `RWOS_HR_DOC_${error.code.toUpperCase()}`, message: error.message });
+    }
+    throw error;
+  };
+  const requireWorkerSession = async (request: FastifyRequest, reply: FastifyReply): Promise<string | null> => {
+    const session = await authService.validateSession(readBearerToken(request.headers.authorization));
+    if (!session.authenticated || !session.user) {
+      reply.code(401).send({ error: "RWOS_HR_DOC_DENIED", message: "Authentication is required." });
+      return null;
+    }
+    return session.user.id;
+  };
+
+  // Worker: request a storage upload reference (they upload to the provider, not to JobLop).
+  app.post("/hr/documents/upload-reference", async (request, reply) => {
+    const userId = await requireWorkerSession(request, reply);
+    if (!userId) return;
+    const documentType = readOptionalString(asRecord(request.body), "documentType");
+    if (!documentType) return reply.code(400).send({ error: "RWOS_HR_DOC_INVALID", message: "A documentType is required." });
+    try {
+      return reply.code(200).send(await hrDocumentService.requestUploadReference({ userId, documentType }));
+    } catch (error) {
+      return sendHrDocError(reply, error);
+    }
+  });
+
+  // Worker: submit / replace a document (verified reference; never self-accept).
+  app.post("/hr/documents", async (request, reply) => {
+    const userId = await requireWorkerSession(request, reply);
+    if (!userId) return;
+    const body = asRecord(request.body);
+    const documentType = readOptionalString(body, "documentType");
+    const storageReference = readOptionalString(body, "storageReference");
+    if (!documentType || !storageReference) return reply.code(400).send({ error: "RWOS_HR_DOC_INVALID", message: "documentType and storageReference are required." });
+    try {
+      const view = await hrDocumentService.submitDocument({
+        userId, documentType, storageReference,
+        checksum: readOptionalString(body, "checksum"), issuingAuthority: readOptionalString(body, "issuingAuthority"),
+        jurisdiction: readOptionalString(body, "jurisdiction"), issuedAt: readOptionalString(body, "issuedAt"), expiresAt: readOptionalString(body, "expiresAt")
+      });
+      return reply.code(201).send({ document: view });
+    } catch (error) {
+      return sendHrDocError(reply, error);
+    }
+  });
+
+  app.post("/hr/documents/replace", async (request, reply) => {
+    const userId = await requireWorkerSession(request, reply);
+    if (!userId) return;
+    const body = asRecord(request.body);
+    const documentType = readOptionalString(body, "documentType");
+    const storageReference = readOptionalString(body, "storageReference");
+    if (!documentType || !storageReference) return reply.code(400).send({ error: "RWOS_HR_DOC_INVALID", message: "documentType and storageReference are required." });
+    try {
+      const view = await hrDocumentService.replaceDocument({ userId, documentType, storageReference, expiresAt: readOptionalString(body, "expiresAt") });
+      return reply.code(201).send({ document: view });
+    } catch (error) {
+      return sendHrDocError(reply, error);
+    }
+  });
+
+  // Worker: my documents (no internal review notes / storage references).
+  app.get("/hr/documents", async (request, reply) => {
+    const userId = await requireWorkerSession(request, reply);
+    if (!userId) return;
+    try {
+      const documents = await hrDocumentService.listMyDocuments({ userId });
+      return reply.code(200).send({ documents });
+    } catch (error) {
+      return sendHrDocError(reply, error);
+    }
+  });
+
+  // HR authority: document review queues + a worker's documents + governed decisions.
+  app.get("/platform/hr/documents/queue", async (request, reply) => {
+    const actor = await requireHrAuthority(request, reply);
+    if (!actor) return;
+    const query = asRecord(request.query);
+    const kind = readOptionalString(query, "kind") ?? "review";
+    const limit = parseQueryInt(readOptionalString(query, "limit"));
+    const cursor = readOptionalString(query, "cursor");
+    const page =
+      kind === "expiring" ? await hrDocumentService.pageExpiring({ cursor, ...(limit !== null ? { limit } : {}) })
+      : kind === "rejected" ? await hrDocumentService.pageRejected({ cursor, ...(limit !== null ? { limit } : {}) })
+      : await hrDocumentService.pageReviewQueue({ cursor, ...(limit !== null ? { limit } : {}) });
+    // Strip internal storage references from the queue payload (HR reviews via a signed URL).
+    return reply.code(200).send({ items: page.items.map((d) => ({ id: d.id, workerIdentityId: d.workerIdentityId, documentType: d.documentType, jurisdiction: d.jurisdiction, expiresAt: d.expiresAt, effectiveStatus: d.effectiveStatus, reviewReason: d.reviewReason })), nextCursor: page.nextCursor });
+  });
+
+  app.get("/platform/hr/workers/:workerIdentityId/documents", async (request, reply) => {
+    const actor = await requireHrAuthority(request, reply);
+    if (!actor) return;
+    const workerIdentityId = readRouteParam(request.params, "workerIdentityId");
+    if (!isCanonicalUuid(workerIdentityId)) return reply.code(404).send({ error: "RWOS_HR_DOC_NOT_FOUND", message: "That worker was not found." });
+    const documents = await hrDocumentService.listWorkerDocuments(workerIdentityId);
+    return reply.code(200).send({ documents: documents.map((d) => ({ id: d.id, documentType: d.documentType, jurisdiction: d.jurisdiction, expiresAt: d.expiresAt, effectiveStatus: d.effectiveStatus, reviewReason: d.reviewReason, supersededById: d.supersededById })) });
+  });
+
+  // HR authority: resolve a short-lived download URL (delegated to the storage provider).
+  app.get("/platform/hr/documents/:documentId/download", async (request, reply) => {
+    const actor = await requireHrAuthority(request, reply);
+    if (!actor) return;
+    const documentId = readRouteParam(request.params, "documentId");
+    if (!isCanonicalUuid(documentId)) return reply.code(404).send({ error: "RWOS_HR_DOC_NOT_FOUND", message: "That document was not found." });
+    const url = await hrDocumentService.resolveDownloadUrl(documentId);
+    if (!url) return reply.code(404).send({ error: "RWOS_HR_DOC_NOT_FOUND", message: "That document has no downloadable reference." });
+    return reply.code(200).send(url);
+  });
+
+  const hrDocDecision = (path: string, apply: (actor: string, id: string, body: Record<string, unknown>) => Promise<{ status: HrDocumentStatus }>) =>
+    app.post(path, async (request, reply) => {
+      const actor = await requireHrAuthority(request, reply);
+      if (!actor) return;
+      const documentId = readRouteParam(request.params, "documentId");
+      if (!isCanonicalUuid(documentId)) return reply.code(404).send({ error: "RWOS_HR_DOC_NOT_FOUND", message: "That document was not found." });
+      try {
+        const updated = await apply(actor, documentId, asRecord(request.body));
+        return reply.code(200).send({ status: updated.status });
+      } catch (error) {
+        return sendHrDocError(reply, error);
+      }
+    });
+
+  hrDocDecision("/platform/hr/documents/:documentId/accept", (actor, id) => hrDocumentService.accept({ actorUserId: actor, documentId: id }));
+  hrDocDecision("/platform/hr/documents/:documentId/reject", (actor, id, body) => hrDocumentService.reject({ actorUserId: actor, documentId: id, reason: readOptionalString(body, "reason") ?? "" }));
+  hrDocDecision("/platform/hr/documents/:documentId/revoke", (actor, id, body) => hrDocumentService.revoke({ actorUserId: actor, documentId: id, reason: readOptionalString(body, "reason") }));
+
+  // HR authority: centralized, explainable compliance evaluation for a worker.
+  app.get("/platform/hr/workers/:workerIdentityId/compliance", async (request, reply) => {
+    const actor = await requireHrAuthority(request, reply);
+    if (!actor) return;
+    const workerIdentityId = readRouteParam(request.params, "workerIdentityId");
+    if (!isCanonicalUuid(workerIdentityId)) return reply.code(404).send({ error: "RWOS_HR_DOC_NOT_FOUND", message: "That worker was not found." });
+    const query = asRecord(request.query);
+    const jurisdiction = readOptionalString(query, "jurisdiction");
+    if (!jurisdiction) return reply.code(400).send({ error: "RWOS_HR_DOC_INVALID", message: "A jurisdiction is required." });
+    const evaluation = await complianceEvaluator.evaluateWorkerCompliance({
+      workerIdentityId, jurisdiction,
+      roleCategory: readOptionalString(query, "roleCategory"), worksiteRef: readOptionalString(query, "worksiteRef")
+    });
+    return reply.code(200).send({ compliance: evaluation });
   });
 
   // HR authority: governed standing decision (independent of verification, audited).
