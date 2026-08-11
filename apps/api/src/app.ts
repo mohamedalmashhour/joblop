@@ -79,6 +79,9 @@ import {
   createComplianceEvaluator,
   createPrismaComplianceRequirementResolver,
   createPrismaComplianceEvidenceReader,
+  createPayrollService,
+  createSyntheticPayrollRuleProvider,
+  PayrollError,
   type HrDocumentStatus,
   createPrismaCancellationJobRequestReader,
   createPrismaConfirmedAssignmentReader,
@@ -205,6 +208,7 @@ import { createPrismaDocumentMetadataRepository } from "./documentUploadReposito
 import { registerDocumentRoutes } from "./documentRoutes";
 import { registerInvoiceRoutes } from "./invoiceRoutes";
 import { createPrismaInvoiceRepository, type InvoiceRepository } from "./invoiceRepository";
+import { createPrismaPayrollRepository, createFixturePayrollRateResolver } from "./payrollRepository";
 import { registerPaymentRoutes } from "./paymentRoutes";
 import { createPrismaPaymentRepository, type PaymentRepository } from "./paymentRepository";
 
@@ -534,6 +538,13 @@ export function buildApi(options: BuildApiOptions = {}) {
   const complianceEvaluator = createComplianceEvaluator({
     requirements: createPrismaComplianceRequirementResolver(prisma!),
     evidence: createPrismaComplianceEvidenceReader(prisma!)
+  });
+  // HR-5 Payroll / Finance FOUNDATION (TEST / SYNTHETIC — no execution). Consumes approved/locked
+  // worked time only; jurisdiction rules live behind the provider seam (synthetic fixture here).
+  const payrollService = createPayrollService({
+    repository: createPrismaPayrollRepository(prisma!),
+    ruleProviders: [createSyntheticPayrollRuleProvider()],
+    rateResolver: createFixturePayrollRateResolver()
   });
   // Geocoding provider (provider-neutral seam). Default: a deterministic fixture over
   // major Canadian FSAs — no network, safe for local/CI. Production swaps in the OSM
@@ -3230,6 +3241,23 @@ export function buildApi(options: BuildApiOptions = {}) {
     return session.user.id;
   };
 
+  // HR-5: payroll governed decisions require the distinct PAYROLL authority (or platform admin).
+  // Payroll authority is NOT implied by generic platform admin alone in spirit, but PLATFORM_ADMIN
+  // remains a superuser; a worker or employer can never make payroll decisions here.
+  const requirePayrollAuthority = async (request: FastifyRequest, reply: FastifyReply): Promise<string | null> => {
+    const session = await authService.validateSession(readBearerToken(request.headers.authorization));
+    if (!session.authenticated || !session.user) {
+      reply.code(401).send({ error: "RWOS_PAYROLL_DENIED", message: "Authentication is required." });
+      return null;
+    }
+    const roles = await resolveAuthorizationRoles(session.user.id);
+    if (!roles.includes("PAYROLL_ADMINISTRATOR") && !roles.includes("PLATFORM_ADMINISTRATOR")) {
+      reply.code(403).send({ error: "RWOS_PAYROLL_DENIED", message: "Payroll authority is required." });
+      return null;
+    }
+    return session.user.id;
+  };
+
   // Worker: my own HR profile (standing + credentials only — never HR case notes).
   app.get("/hr/worker", async (request, reply) => {
     const session = await authService.validateSession(readBearerToken(request.headers.authorization));
@@ -5529,6 +5557,224 @@ export function buildApi(options: BuildApiOptions = {}) {
     return reply.code(200).send({ items, nextCursor: hasMore ? (rows[limit - 1]?.id ?? null) : null, seam: "ApprovedWorkedTime" });
   });
 
+  // ── HR-5 Payroll / Finance FOUNDATION (TEST / SYNTHETIC — no money execution). Payroll turns
+  // approved/locked worked time into a governed calculation snapshot. No `paid` state, no banking,
+  // no remittance. Every response is explicitly labelled synthetic. ──
+  const PAYROLL_SYNTHETIC_NOTICE = "SYNTHETIC / TEST PAYROLL — a governed calculation only. No money moves; this is not a real pay statement.";
+
+  // Payroll authority: create a governed pay period for an org + jurisdiction.
+  app.post("/platform/payroll/periods", async (request, reply) => {
+    const actor = await requirePayrollAuthority(request, reply);
+    if (!actor) return;
+    const body = asRecord(request.body);
+    const organizationId = readOptionalString(body, "organizationId");
+    const country = readOptionalString(body, "jurisdictionCountry");
+    const region = readOptionalString(body, "jurisdictionRegion");
+    const periodStart = readOptionalString(body, "periodStart");
+    const periodEnd = readOptionalString(body, "periodEnd");
+    const timezone = readOptionalString(body, "timezone") ?? "America/Toronto";
+    const currency = readOptionalString(body, "currency") ?? "CAD";
+    if (!organizationId || !isCanonicalUuid(organizationId) || !country || !region || !periodStart || !periodEnd) {
+      return reply.code(400).send({ error: "RWOS_PAYROLL_INVALID_INPUT", message: "organizationId, jurisdiction, and period window are required." });
+    }
+    const start = new Date(periodStart);
+    const end = new Date(periodEnd);
+    if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime()) || end <= start) {
+      return reply.code(400).send({ error: "RWOS_PAYROLL_INVALID_INPUT", message: "period_end must be after period_start." });
+    }
+    let provider;
+    try {
+      provider = payrollService.resolveProvider({ country, region });
+    } catch (error) {
+      return sendPayrollFailure(reply, error);
+    }
+    try {
+      const created = await prisma!.payrollPeriod.create({
+        data: {
+          organizationId, jurisdictionCountry: country, jurisdictionRegion: region,
+          periodStart: start, periodEnd: end, timezone, currency,
+          ruleProviderKey: provider.key, ruleProviderVersion: provider.version, createdByUserId: actor
+        }
+      });
+      return reply.code(201).send({ period: serializePayrollPeriod(created), synthetic: true, notice: PAYROLL_SYNTHETIC_NOTICE });
+    } catch {
+      return reply.code(409).send({ error: "RWOS_PAYROLL_PERIOD_CONFLICT", message: "A pay period for this org, jurisdiction, and window already exists." });
+    }
+  });
+
+  app.post("/platform/payroll/periods/:periodId/transition", async (request, reply) => {
+    const actor = await requirePayrollAuthority(request, reply);
+    if (!actor) return;
+    const body = asRecord(request.body);
+    const nextStatus = readOptionalString(body, "nextStatus");
+    const allowed = ["open", "calculating", "review", "approved", "locked"];
+    if (!nextStatus || !allowed.includes(nextStatus)) {
+      return reply.code(400).send({ error: "RWOS_PAYROLL_INVALID_INPUT", message: "A valid nextStatus is required." });
+    }
+    try {
+      const period = await payrollService.transitionPeriod({
+        actorUserId: actor, payrollPeriodId: readRouteParam(request.params, "periodId"),
+        expectedVersion: readOptionalNumber(body, "expectedVersion") ?? -1,
+        nextStatus: nextStatus as "open" | "calculating" | "review" | "approved" | "locked",
+        correlationId: request.id
+      });
+      return reply.code(200).send({ period: serializePayrollPeriod(period), synthetic: true });
+    } catch (error) {
+      return sendPayrollFailure(reply, error);
+    }
+  });
+
+  // Calculate (or recalculate) a worker's payroll for a period — creates a NEW governed revision.
+  app.post("/platform/payroll/calculations", async (request, reply) => {
+    const actor = await requirePayrollAuthority(request, reply);
+    if (!actor) return;
+    const body = asRecord(request.body);
+    const payrollPeriodId = readOptionalString(body, "payrollPeriodId");
+    const workerIdentityId = readOptionalString(body, "workerIdentityId");
+    if (!payrollPeriodId || !isCanonicalUuid(payrollPeriodId) || !workerIdentityId || !isCanonicalUuid(workerIdentityId)) {
+      return reply.code(400).send({ error: "RWOS_PAYROLL_INVALID_INPUT", message: "payrollPeriodId and workerIdentityId are required." });
+    }
+    try {
+      const calc = await payrollService.calculate({ actorUserId: actor, payrollPeriodId, workerIdentityId, correlationId: request.id });
+      return reply.code(201).send({ calculation: serializePayrollCalculation(calc), synthetic: true, notice: PAYROLL_SYNTHETIC_NOTICE });
+    } catch (error) {
+      return sendPayrollFailure(reply, error);
+    }
+  });
+
+  app.post("/platform/payroll/calculations/:calculationId/transition", async (request, reply) => {
+    const actor = await requirePayrollAuthority(request, reply);
+    if (!actor) return;
+    const body = asRecord(request.body);
+    const action = readOptionalString(body, "action");
+    if (!action || !["review", "approve", "reject", "lock"].includes(action)) {
+      return reply.code(400).send({ error: "RWOS_PAYROLL_INVALID_INPUT", message: "action must be review|approve|reject|lock." });
+    }
+    try {
+      const calc = await payrollService.transitionCalculation({
+        actorUserId: actor, calculationId: readRouteParam(request.params, "calculationId"),
+        expectedVersion: readOptionalNumber(body, "expectedVersion") ?? -1,
+        action: action as "review" | "approve" | "reject" | "lock",
+        note: readOptionalString(body, "note"), correlationId: request.id
+      });
+      return reply.code(200).send({ calculation: serializePayrollCalculation(calc), synthetic: true });
+    } catch (error) {
+      return sendPayrollFailure(reply, error);
+    }
+  });
+
+  app.get("/platform/payroll/periods/:periodId/calculations", async (request, reply) => {
+    const actor = await requirePayrollAuthority(request, reply);
+    if (!actor) return;
+    const query = asRecord(request.query);
+    const limit = Math.min(Math.max(parseQueryInt(readOptionalString(query, "limit")) ?? 25, 1), 100);
+    const cursor = readOptionalString(query, "cursor");
+    const rows = await prisma!.payrollCalculation.findMany({
+      where: { payrollPeriodId: readRouteParam(request.params, "periodId") },
+      orderBy: [{ workerIdentityId: "asc" }, { revision: "desc" }, { id: "asc" }],
+      take: limit + 1,
+      ...(cursor && isCanonicalUuid(cursor) ? { cursor: { id: cursor }, skip: 1 } : {})
+    });
+    const hasMore = rows.length > limit;
+    return reply.code(200).send({ items: rows.slice(0, limit).map((c) => serializePayrollCalculation(c)), nextCursor: hasMore ? (rows[limit - 1]?.id ?? null) : null, synthetic: true });
+  });
+
+  app.get("/platform/payroll/calculations/:calculationId", async (request, reply) => {
+    const actor = await requirePayrollAuthority(request, reply);
+    if (!actor) return;
+    const detail = await loadPayrollCalculationDetail(readRouteParam(request.params, "calculationId"));
+    if (!detail) return reply.code(404).send({ error: "RWOS_PAYROLL_DENIED", message: "Payroll calculation unavailable." });
+    return reply.code(200).send({ calculation: detail, synthetic: true, notice: PAYROLL_SYNTHETIC_NOTICE });
+  });
+
+  // Employer review: an employer sees payroll for THEIR org only, and may FLAG a discrepancy.
+  // Employers can never rewrite financial lines or approve/reject here.
+  app.get("/organizations/:organizationId/payroll/calculations", async (request, reply) => {
+    const session = await authService.validateSession(readBearerToken(request.headers.authorization));
+    if (!session.authenticated || !session.user) return reply.code(401).send({ error: "RWOS_PAYROLL_DENIED", message: "Authentication is required." });
+    const organizationId = readRouteParam(request.params, "organizationId");
+    if (!(await userHasOrganizationAccess(session.user.id, organizationId))) {
+      return reply.code(403).send({ error: "RWOS_PAYROLL_DENIED", message: "Payroll access for this organization is denied." });
+    }
+    const query = asRecord(request.query);
+    const limit = Math.min(Math.max(parseQueryInt(readOptionalString(query, "limit")) ?? 25, 1), 100);
+    const cursor = readOptionalString(query, "cursor");
+    const rows = await prisma!.payrollCalculation.findMany({
+      where: { organizationId },
+      orderBy: [{ calculatedAt: "desc" }, { id: "desc" }],
+      take: limit + 1,
+      ...(cursor && isCanonicalUuid(cursor) ? { cursor: { id: cursor }, skip: 1 } : {})
+    });
+    const hasMore = rows.length > limit;
+    return reply.code(200).send({ items: rows.slice(0, limit).map((c) => serializePayrollCalculation(c)), nextCursor: hasMore ? (rows[limit - 1]?.id ?? null) : null, synthetic: true });
+  });
+
+  app.post("/organizations/:organizationId/payroll/calculations/:calculationId/flag", async (request, reply) => {
+    const session = await authService.validateSession(readBearerToken(request.headers.authorization));
+    if (!session.authenticated || !session.user) return reply.code(401).send({ error: "RWOS_PAYROLL_DENIED", message: "Authentication is required." });
+    const organizationId = readRouteParam(request.params, "organizationId");
+    const calculationId = readRouteParam(request.params, "calculationId");
+    if (!(await userHasOrganizationAccess(session.user.id, organizationId))) {
+      return reply.code(403).send({ error: "RWOS_PAYROLL_DENIED", message: "Payroll access for this organization is denied." });
+    }
+    const calc = await prisma!.payrollCalculation.findUnique({ where: { id: calculationId } });
+    if (!calc || calc.organizationId !== organizationId) {
+      return reply.code(404).send({ error: "RWOS_PAYROLL_DENIED", message: "Payroll calculation unavailable." });
+    }
+    const note = readOptionalString(asRecord(request.body), "note") ?? "discrepancy_flagged";
+    // A flag is an append-only audit signal only — it does NOT mutate any financial line.
+    const audit = createPrismaPayrollRepository(prisma!);
+    await audit.recordAudit({ entityType: "payroll_calculation", entityId: calc.id, entityPublicReference: calc.payrollPeriodId, organizationId, action: "payroll.employer_flagged", priorState: null, newState: "flagged", reason: note.slice(0, 240), actorUserId: session.user.id, correlationId: request.id, now: new Date() });
+    return reply.code(202).send({ status: "flagged", synthetic: true });
+  });
+
+  // Worker: my own synthetic pay statement (safe fields only — no employer-cost internals).
+  app.get("/worker/payroll/statement", async (request, reply) => {
+    const session = await authService.validateSession(readBearerToken(request.headers.authorization));
+    if (!session.authenticated || !session.user) return reply.code(401).send({ error: "RWOS_PAYROLL_DENIED", message: "Authentication is required." });
+    const identity = await prisma!.workerIdentity.findFirst({ where: { userId: session.user.id }, select: { id: true } });
+    if (!identity) return reply.code(200).send({ items: [], synthetic: true, notice: PAYROLL_SYNTHETIC_NOTICE });
+    const query = asRecord(request.query);
+    const limit = Math.min(Math.max(parseQueryInt(readOptionalString(query, "limit")) ?? 25, 1), 100);
+    const cursor = readOptionalString(query, "cursor");
+    const rows = await prisma!.payrollCalculation.findMany({
+      where: { workerIdentityId: identity.id, status: { in: ["approved", "locked"] } },
+      include: { deductionLines: true, payrollPeriod: { select: { periodStart: true, periodEnd: true, timezone: true } } },
+      orderBy: [{ calculatedAt: "desc" }, { id: "desc" }],
+      take: limit + 1,
+      ...(cursor && isCanonicalUuid(cursor) ? { cursor: { id: cursor }, skip: 1 } : {})
+    });
+    const hasMore = rows.length > limit;
+    const items = rows.slice(0, limit).map((c) => ({
+      calculationId: c.id, revision: c.revision, status: c.status,
+      periodStart: c.payrollPeriod.periodStart.toISOString(), periodEnd: c.payrollPeriod.periodEnd.toISOString(), timezone: c.payrollPeriod.timezone,
+      jurisdiction: { country: c.jurisdictionCountry, region: c.jurisdictionRegion },
+      currency: c.currency, grossPayMinor: c.grossPayMinor, totalDeductionsMinor: c.totalDeductionsMinor, netPayMinor: c.netPayMinor,
+      deductions: c.deductionLines.map((d) => ({ category: d.category, code: d.code, description: d.description, amountMinor: d.amountMinor, currency: d.currency }))
+    }));
+    return reply.code(200).send({ items, nextCursor: hasMore ? (rows[limit - 1]?.id ?? null) : null, synthetic: true, notice: PAYROLL_SYNTHETIC_NOTICE });
+  });
+
+  async function userHasOrganizationAccess(userId: string, organizationId: string): Promise<boolean> {
+    const memberships = await membershipService.listMemberships(userId);
+    return memberships.some((m) => m.organizationId === organizationId && m.status === "active");
+  }
+
+  async function loadPayrollCalculationDetail(calculationId: string) {
+    const c = await prisma!.payrollCalculation.findUnique({
+      where: { id: calculationId },
+      include: { earningLines: { orderBy: { sortOrder: "asc" } }, deductionLines: { orderBy: { sortOrder: "asc" } }, employerCostLines: { orderBy: { sortOrder: "asc" } }, workedTimeRefs: true }
+    });
+    if (!c) return null;
+    return {
+      ...serializePayrollCalculation(c),
+      earningLines: c.earningLines.map((e) => ({ classification: e.classification, description: e.description, quantityMinutes: e.quantityMinutes, rateMinor: e.rateMinor, amountMinor: e.amountMinor, currency: e.currency })),
+      deductionLines: c.deductionLines.map((d) => ({ category: d.category, code: d.code, description: d.description, amountMinor: d.amountMinor, currency: d.currency })),
+      employerCostLines: c.employerCostLines.map((x) => ({ category: x.category, code: x.code, description: x.description, amountMinor: x.amountMinor, currency: x.currency })),
+      workedTimeRefs: c.workedTimeRefs.map((w) => ({ timesheetId: w.timesheetId, timesheetVersion: w.timesheetVersion, timesheetStatus: w.timesheetStatus, payableMinutes: w.payableMinutes, billableMinutes: w.billableMinutes }))
+    };
+  }
+
   app.post("/platform/timesheets", async (request, reply) => {
     const session = await authService.validateSession(
       readBearerToken(request.headers.authorization)
@@ -6698,6 +6944,50 @@ function sendTimesheetFailure(reply: FastifyReply, error: TimesheetError) {
     default:
       return sendTimesheetDenied(reply);
   }
+}
+
+// Map a PayrollError to HTTP by its code (mirrors the attendance/timesheet mapping). A concurrency
+// conflict is 409, never a blanket 403.
+function sendPayrollFailure(reply: FastifyReply, error: unknown) {
+  if (error instanceof PayrollError) {
+    const status = error.code === "not_found" ? 404 : error.code === "invalid" ? 400 : error.code === "conflict" ? 409 : 403;
+    const code = error.code === "not_found" ? "RWOS_PAYROLL_DENIED" : error.code === "invalid" ? "RWOS_PAYROLL_INVALID_INPUT" : error.code === "conflict" ? "RWOS_PAYROLL_CONFLICT" : "RWOS_PAYROLL_DENIED";
+    return reply.code(status).send({ error: code, message: "Payroll request could not be completed.", reason: error.reason });
+  }
+  return reply.code(500).send({ error: "RWOS_INTERNAL_ERROR", message: "Request could not be completed." });
+}
+
+type PayrollPeriodRow = {
+  id: string; organizationId: string; jurisdictionCountry: string; jurisdictionRegion: string;
+  periodStart: Date; periodEnd: Date; timezone: string; status: string; currency: string;
+  ruleProviderKey: string; ruleProviderVersion: string; synthetic?: boolean; version: number;
+};
+function serializePayrollPeriod(row: PayrollPeriodRow) {
+  return {
+    id: row.id, organizationId: row.organizationId,
+    jurisdiction: { country: row.jurisdictionCountry, region: row.jurisdictionRegion },
+    periodStart: row.periodStart.toISOString(), periodEnd: row.periodEnd.toISOString(), timezone: row.timezone,
+    status: row.status, currency: row.currency, ruleProvider: { key: row.ruleProviderKey, version: row.ruleProviderVersion },
+    synthetic: row.synthetic ?? true, version: row.version
+  };
+}
+
+type PayrollCalculationRow = {
+  id: string; payrollPeriodId: string; organizationId: string; workerIdentityId: string; revision: number;
+  status: string; jurisdictionCountry: string; jurisdictionRegion: string; ruleProviderKey: string;
+  ruleProviderVersion: string; calculationPolicyVersion: string; currency: string; grossPayMinor: number;
+  totalDeductionsMinor: number; netPayMinor: number; totalEmployerCostMinor: number; synthetic: boolean;
+  calculatedAt: Date; supersededById: string | null; version: number;
+};
+function serializePayrollCalculation(row: PayrollCalculationRow) {
+  return {
+    id: row.id, payrollPeriodId: row.payrollPeriodId, organizationId: row.organizationId, workerIdentityId: row.workerIdentityId,
+    revision: row.revision, status: row.status, jurisdiction: { country: row.jurisdictionCountry, region: row.jurisdictionRegion },
+    ruleProvider: { key: row.ruleProviderKey, version: row.ruleProviderVersion }, calculationPolicyVersion: row.calculationPolicyVersion,
+    currency: row.currency, grossPayMinor: row.grossPayMinor, totalDeductionsMinor: row.totalDeductionsMinor,
+    netPayMinor: row.netPayMinor, totalEmployerCostMinor: row.totalEmployerCostMinor, synthetic: row.synthetic,
+    calculatedAt: row.calculatedAt.toISOString(), supersededById: row.supersededById, version: row.version
+  };
 }
 
 function allBelongToOrganization(

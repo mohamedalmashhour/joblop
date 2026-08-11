@@ -1,13 +1,27 @@
 import type { PrismaClient } from "@rwos/database";
+import { createContractMoney } from "@rwos/shared";
 import type {
   CreatePayrollCalculationInput,
   PayrollCalculationStatus,
   PayrollPeriodStatus,
   PayrollRepository,
   PayrollWorkedTimeLine,
+  PayrollWorkedTimeRateResolver,
   StoredPayrollCalculation,
   StoredPayrollPeriod
 } from "@rwos/auth";
+
+// SYNTHETIC / TEST rate resolver. A real system reads a governed worker-terms rate snapshot;
+// this fixture returns a fixed CAD hourly rate + classification so the payroll foundation is
+// exercisable without wiring worker contracts. Currency deliberately CAD — a USD period will
+// (correctly) be rejected as a currency mismatch.
+export function createFixturePayrollRateResolver(): PayrollWorkedTimeRateResolver {
+  return {
+    async resolve() {
+      return { rate: { hourlyRate: createContractMoney({ amountMinor: 3000, currency: "CAD" }) }, workerClassification: "employee" as const };
+    }
+  };
+}
 
 // HR-5 Prisma-backed payroll repository. The atomic supersede+insert is the concurrency crux:
 // creating a new revision version-guards the prior active revision, and the unique
