@@ -17,6 +17,8 @@ export * from "./workerSavedJobs";
 export * from "./workerJobInterest";
 export * from "./verification";
 export * from "./eligibilityPolicy";
+export * from "./hrDomain";
+export * from "./hr";
 export {
   CalendarRequestError,
   createCalendarRequestService,
@@ -76,7 +78,8 @@ export const authorizationRoleKeys = [
   "ORGANIZATION_STAFF",
   "WORKER_ACCESS",
   "DISPATCHER",
-  "TIMESHEET_REVIEWER"
+  "TIMESHEET_REVIEWER",
+  "HR_ADMINISTRATOR"
 ] as const;
 
 export type AuthorizationRoleKey = (typeof authorizationRoleKeys)[number];

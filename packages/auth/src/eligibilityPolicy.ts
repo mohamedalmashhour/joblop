@@ -6,27 +6,35 @@
 // browser or per-component decision.
 
 import type { WorkerVerificationStatus, EmployerVerificationStatus } from "./verification";
+import { isGoodStanding, type HrStanding } from "./hrDomain";
 
 export type VerificationPolicy = Readonly<{
   requireIdentityForInterest: boolean;
   requireIdentityForOffer: boolean;
   requireBackgroundCheckForOffer: boolean;
   requireEmployerVerifiedToPublish: boolean;
+  // HR standing may CONTRIBUTE to eligibility (HR-1 keeps this OFF — HR authority is
+  // established first; enforcement is a later, deliberate decision).
+  requireGoodHrStandingForInterest: boolean;
+  requireGoodHrStandingForOffer: boolean;
 }>;
 
-// Default: nothing is gated on verification yet (permissive). Trust states are still recorded
-// and surfaced; turning a switch on here is how JobLop later enforces a rule everywhere.
+// Default: nothing is gated on verification OR HR standing yet (permissive). States are
+// recorded + surfaced; turning a switch on here is how JobLop later enforces a rule everywhere.
 export const DEFAULT_VERIFICATION_POLICY: VerificationPolicy = {
   requireIdentityForInterest: false,
   requireIdentityForOffer: false,
   requireBackgroundCheckForOffer: false,
-  requireEmployerVerifiedToPublish: false
+  requireEmployerVerifiedToPublish: false,
+  requireGoodHrStandingForInterest: false,
+  requireGoodHrStandingForOffer: false
 };
 
 export type EligibilityPolicyReason =
   | "identity_required"
   | "background_check_required"
-  | "employer_verification_required";
+  | "employer_verification_required"
+  | "hr_standing_required";
 
 export type EligibilityDecision = Readonly<{ allowed: boolean; reasons: readonly EligibilityPolicyReason[] }>;
 
@@ -36,18 +44,20 @@ function decide(reasons: EligibilityPolicyReason[]): EligibilityDecision {
   return { allowed: reasons.length === 0, reasons };
 }
 
-export function canWorkerExpressInterest(input: { trust: WorkerTrust; policy?: VerificationPolicy }): EligibilityDecision {
+export function canWorkerExpressInterest(input: { trust: WorkerTrust; hrStanding?: HrStanding; policy?: VerificationPolicy }): EligibilityDecision {
   const policy = input.policy ?? DEFAULT_VERIFICATION_POLICY;
   const reasons: EligibilityPolicyReason[] = [];
   if (policy.requireIdentityForInterest && input.trust.identity !== "verified") reasons.push("identity_required");
+  if (policy.requireGoodHrStandingForInterest && input.hrStanding && !isGoodStanding(input.hrStanding)) reasons.push("hr_standing_required");
   return decide(reasons);
 }
 
-export function canWorkerReceiveOffer(input: { trust: WorkerTrust; policy?: VerificationPolicy }): EligibilityDecision {
+export function canWorkerReceiveOffer(input: { trust: WorkerTrust; hrStanding?: HrStanding; policy?: VerificationPolicy }): EligibilityDecision {
   const policy = input.policy ?? DEFAULT_VERIFICATION_POLICY;
   const reasons: EligibilityPolicyReason[] = [];
   if (policy.requireIdentityForOffer && input.trust.identity !== "verified") reasons.push("identity_required");
   if (policy.requireBackgroundCheckForOffer && input.trust.backgroundCheck !== "verified") reasons.push("background_check_required");
+  if (policy.requireGoodHrStandingForOffer && input.hrStanding && !isGoodStanding(input.hrStanding)) reasons.push("hr_standing_required");
   return decide(reasons);
 }
 

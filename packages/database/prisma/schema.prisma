@@ -1251,6 +1251,9 @@ model WorkerIdentity {
   savedJobs          WorkerSavedJob[]
   jobInterests       WorkerJobInterest[]
   verifications      WorkerVerification[]
+  hrProfile          HrProfile?
+  hrCredentials      HrCredential[]
+  hrCases            HrCase[]
 
   @@index([status], map: "worker_identities_status_idx")
   @@map("worker_identities")
@@ -1372,6 +1375,129 @@ model VerificationEvent {
 
   @@index([subjectType, subjectId, createdAt], map: "verification_events_subject_idx")
   @@map("verification_events")
+}
+
+// ── HR domain (HR-1 foundation) ──
+// HR is a GOVERNED domain. It owns the worker HR/employment profile, credentials, standing,
+// and cases. It CONSUMES authoritative verification state (built separately) — it never owns
+// identity/background-check provider integrations, marketplace, dispatch, offers, assignments,
+// payroll, or payments. HR standing is NORMALIZED and independent from verification: an
+// identity-verified worker is NOT automatically ACTIVE.
+
+enum HrStanding {
+  active
+  review_required
+  restricted
+  suspended
+  inactive
+}
+
+// Credential status. Expiry is first-class: a once-valid credential is never permanently
+// valid. "expiring" is derived at read (within the warning window); history is preserved via
+// the renewal chain (supersededById), not by mutating the old record's identity.
+enum HrCredentialStatus {
+  valid
+  expiring
+  expired
+  renewed
+  replaced
+  revoked
+}
+
+enum HrCaseStatus {
+  opened
+  under_review
+  action_required
+  resolved
+  closed
+}
+
+// One authoritative HR profile per worker identity (no duplicate worker accounts). Standing
+// lives here; every change is audited via HrEvent.
+model HrProfile {
+  id               String     @id @default(uuid()) @db.Uuid
+  workerIdentityId String     @unique @map("worker_identity_id") @db.Uuid
+  standing         HrStanding @default(active)
+  standingReason   String?    @map("standing_reason")
+  createdAt        DateTime   @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt        DateTime   @updatedAt @map("updated_at") @db.Timestamptz(3)
+  version          Int        @default(1)
+
+  worker WorkerIdentity @relation(fields: [workerIdentityId], references: [id], onDelete: Cascade)
+
+  @@index([standing, updatedAt], map: "hr_profiles_standing_updated_at_idx")
+  @@map("hr_profiles")
+}
+
+// A worker credential/qualification. Multiple per worker. Renewal creates a NEW record and
+// links the old one via supersededById (history preserved).
+model HrCredential {
+  id                 String             @id @default(uuid()) @db.Uuid
+  workerIdentityId   String             @map("worker_identity_id") @db.Uuid
+  credentialType     String             @map("credential_type")
+  issuer             String?
+  issuedAt           DateTime?          @map("issued_at") @db.Timestamptz(3)
+  expiresAt          DateTime?          @map("expires_at") @db.Timestamptz(3)
+  status             HrCredentialStatus @default(valid)
+  // Reference to an authoritative verification (HR does not own verification). Never a raw
+  // document — a pointer + safe metadata only.
+  verificationReference String?         @map("verification_reference")
+  safeMetadata       Json?              @map("safe_metadata")
+  supersededById     String?            @unique @map("superseded_by_id") @db.Uuid
+  createdAt          DateTime           @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt          DateTime           @updatedAt @map("updated_at") @db.Timestamptz(3)
+  version            Int                @default(1)
+
+  worker       WorkerIdentity @relation(fields: [workerIdentityId], references: [id], onDelete: Cascade)
+  supersededBy HrCredential?  @relation("HrCredentialRenewal", fields: [supersededById], references: [id], onDelete: SetNull)
+  supersedes   HrCredential?  @relation("HrCredentialRenewal")
+
+  @@index([workerIdentityId, credentialType], map: "hr_credentials_worker_type_idx")
+  // Expiry/review queue: index by (status, expires_at) so it can be processed in bounded batches.
+  @@index([status, expiresAt], map: "hr_credentials_status_expires_at_idx")
+  @@map("hr_credentials")
+}
+
+// A governed HR case. The row holds current state; every transition is an append-only
+// HrEvent (actor, prior→new, reason). Material history is never silently overwritten.
+model HrCase {
+  id               String       @id @default(uuid()) @db.Uuid
+  workerIdentityId String       @map("worker_identity_id") @db.Uuid
+  caseType         String       @map("case_type")
+  status           HrCaseStatus @default(opened)
+  reason           String?
+  openedByUserId   String       @map("opened_by_user_id") @db.Uuid
+  createdAt        DateTime     @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt        DateTime     @updatedAt @map("updated_at") @db.Timestamptz(3)
+  version          Int          @default(1)
+
+  worker WorkerIdentity @relation(fields: [workerIdentityId], references: [id], onDelete: Cascade)
+
+  @@index([workerIdentityId, createdAt], map: "hr_cases_worker_created_at_idx")
+  // Review queue: index by (status, updated_at) for bounded, paginated processing.
+  @@index([status, updatedAt], map: "hr_cases_status_updated_at_idx")
+  @@map("hr_cases")
+}
+
+// Append-only audit for every governed HR transition (standing / credential / case).
+model HrEvent {
+  id               String   @id @default(uuid()) @db.Uuid
+  subjectType      String   @map("subject_type") // "profile" | "credential" | "case"
+  subjectId        String   @map("subject_id") @db.Uuid
+  workerIdentityId String   @map("worker_identity_id") @db.Uuid
+  eventType        String   @map("event_type")
+  priorState       String?  @map("prior_state")
+  newState         String   @map("new_state")
+  reason           String?
+  source           String // "worker" | "hr_admin" | "platform_admin" | "system"
+  actorUserId      String?  @map("actor_user_id") @db.Uuid
+  correlationId    String?  @map("correlation_id")
+  detail           Json?
+  createdAt        DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  @@index([workerIdentityId, createdAt], map: "hr_events_worker_created_at_idx")
+  @@index([subjectType, subjectId, createdAt], map: "hr_events_subject_idx")
+  @@map("hr_events")
 }
 
 // Marketplace source of an interest record. Kept as an enum so future intake channels
