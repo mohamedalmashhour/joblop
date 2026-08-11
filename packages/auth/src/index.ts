@@ -21,6 +21,7 @@ export * from "./hrDomain";
 export * from "./hr";
 export * from "./hrDocuments";
 export * from "./hrCompliance";
+export * from "./payroll";
 export {
   CalendarRequestError,
   createCalendarRequestService,
