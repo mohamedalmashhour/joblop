@@ -63,6 +63,16 @@ function makeStore() {
       (r as { status: string }).status = status;
       if (workerOfferId !== undefined) (r as { workerOfferId: string | null }).workerOfferId = workerOfferId;
       return r;
+    },
+    async markAcceptedByOffer(workerOfferId) {
+      let count = 0;
+      for (const r of rows) {
+        if (r.workerOfferId === workerOfferId && r.status === "offer_created") {
+          (r as { status: string }).status = "offer_accepted";
+          count++;
+        }
+      }
+      return { count };
     }
   };
   return { store, rows };

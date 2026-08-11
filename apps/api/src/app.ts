@@ -4351,6 +4351,15 @@ export function buildApi(options: BuildApiOptions = {}) {
       expectedOfferVersion: expectedOfferVersion as number
     });
 
+    // Mirror the authoritative assignment onto any linked marketplace interest (best-effort;
+    // never affects the assignment result). This is the ONLY place interest reaches
+    // offer_accepted — driven by the governed assignment, never by a marketplace action.
+    try {
+      await workerJobInterestService.markOfferAcceptedByOffer(workerOfferId);
+    } catch {
+      /* interest mirror is best-effort; the governed assignment already succeeded */
+    }
+
     return reply.code(201).send({ assignment: serializeAssignment(assignment) });
   });
 

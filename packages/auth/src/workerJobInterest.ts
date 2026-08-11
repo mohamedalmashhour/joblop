@@ -118,6 +118,9 @@ export type InterestStore = Readonly<{
   listForJob(jobRequestId: string): Promise<readonly InterestRecord[]>;
   getById(id: string): Promise<InterestRecord | null>;
   setStatus(input: { id: string; status: InterestStatus; workerOfferId?: string | null }): Promise<InterestRecord>;
+  // Mark the interest linked to a governed offer as accepted — driven by the authoritative
+  // assignment/offer state, not by any marketplace action.
+  markAcceptedByOffer(workerOfferId: string): Promise<{ count: number }>;
 }>;
 
 export type WorkerJobInterestDeps = Readonly<{
@@ -259,6 +262,13 @@ export function createWorkerJobInterestService(deps: WorkerJobInterestDeps) {
     },
     async markOfferAccepted(interestId: string): Promise<InterestRecord> {
       return deps.store.setStatus({ id: interestId, status: "offer_accepted" });
+    },
+
+    // Called AFTER the authoritative assignment is created from an accepted offer. Marks the
+    // linked interest offer_accepted so intent mirrors authoritative state. Best-effort +
+    // idempotent (no-op if no linked interest / already accepted).
+    async markOfferAcceptedByOffer(workerOfferId: string): Promise<{ count: number }> {
+      return deps.store.markAcceptedByOffer(workerOfferId);
     }
   };
 }
@@ -412,6 +422,12 @@ export function createPrismaInterestStore(prisma: PrismaLike): InterestStore {
         data: { status, ...(workerOfferId !== undefined ? { workerOfferId } : {}) }
       });
       return toRecord(row);
+    },
+    async markAcceptedByOffer(workerOfferId) {
+      return prisma.workerJobInterest.updateMany({
+        where: { workerOfferId, status: "offer_created" },
+        data: { status: "offer_accepted" }
+      });
     }
   };
 }
