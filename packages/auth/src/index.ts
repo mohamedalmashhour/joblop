@@ -19,6 +19,8 @@ export * from "./verification";
 export * from "./eligibilityPolicy";
 export * from "./hrDomain";
 export * from "./hr";
+export * from "./hrDocuments";
+export * from "./hrCompliance";
 export {
   CalendarRequestError,
   createCalendarRequestService,

@@ -1254,6 +1254,7 @@ model WorkerIdentity {
   hrProfile          HrProfile?
   hrCredentials      HrCredential[]
   hrCases            HrCase[]
+  hrDocuments        HrDocument[]
 
   @@index([status], map: "worker_identities_status_idx")
   @@map("worker_identities")
@@ -1498,6 +1499,99 @@ model HrEvent {
   @@index([workerIdentityId, createdAt], map: "hr_events_worker_created_at_idx")
   @@index([subjectType, subjectId, createdAt], map: "hr_events_subject_idx")
   @@map("hr_events")
+}
+
+// ── HR-3: Documents & Compliance ──
+// Governed HR document metadata. File CONTENTS are NEVER stored here — only a provider
+// storageReference + checksum. The document-storage provider is provider-neutral (fixture in
+// dev; a real encrypted-at-rest, signed-URL, malware-scanned provider swaps in behind the
+// same seam). Compliance requirements are DATA keyed by jurisdiction/role/effective-date —
+// no country's rules are hard-coded into the core model.
+
+enum HrDocumentStatus {
+  required
+  submitted
+  under_review
+  accepted
+  rejected
+  expiring
+  expired
+  superseded
+  revoked
+}
+
+model HrDocument {
+  id                   String           @id @default(uuid()) @db.Uuid
+  workerIdentityId     String           @map("worker_identity_id") @db.Uuid
+  documentType         String           @map("document_type")
+  issuingAuthority     String?          @map("issuing_authority")
+  jurisdiction         String?          // e.g. "CA-QC" (ISO-ish); never a hard-coded rule
+  issuedAt             DateTime?        @map("issued_at") @db.Timestamptz(3)
+  expiresAt            DateTime?        @map("expires_at") @db.Timestamptz(3)
+  status               HrDocumentStatus @default(submitted)
+  // A pointer into the secure document-storage provider — NEVER file bytes.
+  storageReference     String?          @map("storage_reference")
+  checksum             String?          // integrity hash (validation is a provider concern)
+  verificationReference String?         @map("verification_reference")
+  source               String           @default("worker") // worker | hr_admin | employer | system
+  reviewedByUserId     String?          @map("reviewed_by_user_id") @db.Uuid
+  reviewedAt           DateTime?        @map("reviewed_at") @db.Timestamptz(3)
+  reviewReason         String?          @map("review_reason")
+  supersededById       String?          @unique @map("superseded_by_id") @db.Uuid
+  createdAt            DateTime         @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt            DateTime         @updatedAt @map("updated_at") @db.Timestamptz(3)
+  version              Int              @default(1)
+
+  worker       WorkerIdentity @relation(fields: [workerIdentityId], references: [id], onDelete: Cascade)
+  supersededBy HrDocument?    @relation("HrDocumentReplacement", fields: [supersededById], references: [id], onDelete: SetNull)
+  supersedes   HrDocument?    @relation("HrDocumentReplacement")
+
+  @@index([workerIdentityId, documentType], map: "hr_documents_worker_type_idx")
+  // Review + expiry queues (bounded, indexed): (status, updated_at) and (status, expires_at).
+  @@index([status, updatedAt], map: "hr_documents_status_updated_at_idx")
+  @@index([status, expiresAt], map: "hr_documents_status_expires_at_idx")
+  @@map("hr_documents")
+}
+
+// A compliance requirement as DATA (adapter mechanism, not hard-coded law). The resolver
+// selects requirements matching (jurisdiction, roleCategory, worksiteRef, effective date).
+model ComplianceRequirement {
+  id                    String    @id @default(uuid()) @db.Uuid
+  key                   String    @unique
+  description           String?
+  jurisdiction          String    // e.g. "CA-QC" — data, not a universal rule
+  roleCategory          String?   @map("role_category")
+  employerPolicyRef     String?   @map("employer_policy_ref")
+  worksiteRef           String?   @map("worksite_ref")
+  requiredDocumentType  String?   @map("required_document_type")
+  requiredCredentialType String?  @map("required_credential_type")
+  effectiveFrom         DateTime  @map("effective_from") @db.Timestamptz(3)
+  effectiveTo           DateTime? @map("effective_to") @db.Timestamptz(3)
+  active                Boolean   @default(true)
+  createdAt             DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt             DateTime  @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  @@index([jurisdiction, roleCategory, active], map: "compliance_requirements_jurisdiction_role_idx")
+  @@map("compliance_requirements")
+}
+
+// Append-only audit for governed document transitions.
+model HrDocumentEvent {
+  id               String   @id @default(uuid()) @db.Uuid
+  documentId       String   @map("document_id") @db.Uuid
+  workerIdentityId String   @map("worker_identity_id") @db.Uuid
+  eventType        String   @map("event_type")
+  priorState       String?  @map("prior_state")
+  newState         String   @map("new_state")
+  reason           String?
+  source           String
+  actorUserId      String?  @map("actor_user_id") @db.Uuid
+  documentReference String? @map("document_reference")
+  createdAt        DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  @@index([workerIdentityId, createdAt], map: "hr_document_events_worker_created_at_idx")
+  @@index([documentId, createdAt], map: "hr_document_events_document_idx")
+  @@map("hr_document_events")
 }
 
 // Marketplace source of an interest record. Kept as an enum so future intake channels

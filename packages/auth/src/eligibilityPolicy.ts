@@ -17,6 +17,9 @@ export type VerificationPolicy = Readonly<{
   // established first; enforcement is a later, deliberate decision).
   requireGoodHrStandingForInterest: boolean;
   requireGoodHrStandingForOffer: boolean;
+  // Compliance MAY become an input to offer eligibility (HR-3 keeps this OFF — prove
+  // evaluation + visibility first; a missing document must not silently block access yet).
+  requireComplianceForOffer: boolean;
 }>;
 
 // Default: nothing is gated on verification OR HR standing yet (permissive). States are
@@ -27,14 +30,18 @@ export const DEFAULT_VERIFICATION_POLICY: VerificationPolicy = {
   requireBackgroundCheckForOffer: false,
   requireEmployerVerifiedToPublish: false,
   requireGoodHrStandingForInterest: false,
-  requireGoodHrStandingForOffer: false
+  requireGoodHrStandingForOffer: false,
+  requireComplianceForOffer: false
 };
 
 export type EligibilityPolicyReason =
   | "identity_required"
   | "background_check_required"
   | "employer_verification_required"
-  | "hr_standing_required";
+  | "hr_standing_required"
+  | "compliance_required";
+
+export type ComplianceStatus = "compliant" | "action_required" | "expiring_soon" | "non_compliant" | "review_required";
 
 export type EligibilityDecision = Readonly<{ allowed: boolean; reasons: readonly EligibilityPolicyReason[] }>;
 
@@ -52,12 +59,13 @@ export function canWorkerExpressInterest(input: { trust: WorkerTrust; hrStanding
   return decide(reasons);
 }
 
-export function canWorkerReceiveOffer(input: { trust: WorkerTrust; hrStanding?: HrStanding; policy?: VerificationPolicy }): EligibilityDecision {
+export function canWorkerReceiveOffer(input: { trust: WorkerTrust; hrStanding?: HrStanding; complianceStatus?: ComplianceStatus; policy?: VerificationPolicy }): EligibilityDecision {
   const policy = input.policy ?? DEFAULT_VERIFICATION_POLICY;
   const reasons: EligibilityPolicyReason[] = [];
   if (policy.requireIdentityForOffer && input.trust.identity !== "verified") reasons.push("identity_required");
   if (policy.requireBackgroundCheckForOffer && input.trust.backgroundCheck !== "verified") reasons.push("background_check_required");
   if (policy.requireGoodHrStandingForOffer && input.hrStanding && !isGoodStanding(input.hrStanding)) reasons.push("hr_standing_required");
+  if (policy.requireComplianceForOffer && input.complianceStatus && input.complianceStatus !== "compliant") reasons.push("compliance_required");
   return decide(reasons);
 }
 
