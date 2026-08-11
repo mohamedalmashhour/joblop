@@ -294,3 +294,193 @@ a {
   color: var(--text-muted);
   margin-top: 4px;
 }
+
+.hero-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+}
+
+.hero-actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+/* View toggle (list/map) */
+.viewtoggle {
+  display: inline-flex;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  overflow: hidden;
+  background: var(--surface);
+}
+
+.viewtoggle button {
+  appearance: none;
+  border: none;
+  background: transparent;
+  color: var(--text-muted);
+  font-weight: 600;
+  font-size: 13px;
+  padding: 7px 16px;
+  cursor: pointer;
+}
+
+.viewtoggle button.active {
+  background: var(--brand);
+  color: var(--brand-ink);
+}
+
+/* Explorer: list + map two-pane (desktop) */
+.explorer {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 18px;
+  padding-bottom: 48px;
+  align-items: start;
+}
+
+.results {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  min-width: 0;
+}
+
+.mapcol {
+  min-width: 0;
+}
+
+.mapsticky {
+  position: sticky;
+  top: 76px;
+}
+
+.map-svg {
+  width: 100%;
+  height: auto;
+  aspect-ratio: 1 / 1;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+  display: block;
+}
+
+.map-empty {
+  aspect-ratio: 1 / 1;
+  border: 1px dashed var(--border);
+  border-radius: var(--radius);
+  display: grid;
+  place-items: center;
+  color: var(--text-muted);
+  text-align: center;
+  padding: 24px;
+}
+
+.map-bg {
+  fill: var(--surface-2);
+}
+
+.map-ring {
+  fill: none;
+  stroke: var(--border);
+  stroke-width: 1.5;
+}
+
+.map-ring-label {
+  fill: var(--text-muted);
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.map-origin {
+  fill: var(--accent);
+  stroke: var(--surface);
+  stroke-width: 2;
+}
+
+.map-origin-label {
+  fill: var(--text-muted);
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.map-pin {
+  cursor: pointer;
+}
+
+.map-pin-dot {
+  fill: var(--brand);
+  stroke: var(--surface);
+  stroke-width: 2;
+  transition: r 0.1s ease;
+}
+
+.map-pin.selected .map-pin-dot {
+  fill: var(--danger);
+}
+
+.map-pin:focus {
+  outline: none;
+}
+
+.map-pin:focus .map-pin-dot {
+  stroke: var(--brand);
+  stroke-width: 3;
+}
+
+.map-pin-star {
+  fill: #ffd233;
+  font-size: 11px;
+  pointer-events: none;
+}
+
+/* Card additions */
+.card.selected {
+  outline: 2px solid var(--brand);
+  outline-offset: 0;
+}
+
+.card .cardlink {
+  color: var(--text);
+}
+
+.card .cardlink:hover {
+  color: var(--brand);
+}
+
+.detaillink {
+  font-size: 13.5px;
+  font-weight: 600;
+  margin-top: 2px;
+}
+
+.loadmore {
+  align-self: center;
+  margin-top: 6px;
+}
+
+/* Mobile: single column, list/map toggle decides which pane shows */
+@media (max-width: 860px) {
+  .explorer {
+    grid-template-columns: 1fr;
+  }
+  .mapsticky {
+    position: static;
+  }
+  .explorer.view-list .mapcol {
+    display: none;
+  }
+  .explorer.view-map .results {
+    display: none;
+  }
+}
+
+@media (min-width: 861px) {
+  /* On desktop both panes always show; the toggle only matters on mobile. */
+  .viewtoggle {
+    display: none;
+  }
+}
