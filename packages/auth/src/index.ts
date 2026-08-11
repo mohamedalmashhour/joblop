@@ -81,7 +81,8 @@ export const authorizationRoleKeys = [
   "WORKER_ACCESS",
   "DISPATCHER",
   "TIMESHEET_REVIEWER",
-  "HR_ADMINISTRATOR"
+  "HR_ADMINISTRATOR",
+  "PAYROLL_ADMINISTRATOR"
 ] as const;
 
 export type AuthorizationRoleKey = (typeof authorizationRoleKeys)[number];

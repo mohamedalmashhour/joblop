@@ -2006,6 +2006,190 @@ model TimesheetCalculationSnapshot {
   @@map("timesheet_calculation_snapshots")
 }
 
+// ── HR-5: Payroll / Finance FOUNDATION (TEST / SYNTHETIC — no execution) ─────────────────────
+// Payroll CONSUMES approved/locked worked time (ApprovedWorkedTime) and turns it into a governed
+// calculation snapshot. It never recomputes attendance and never moves money. There is deliberately
+// NO `paid` state and no banking/remittance model here. Jurisdiction is modelled explicitly by
+// country + region (province/state); a rule provider + version is recorded on every snapshot so a
+// calculation is reproducible and never silently re-based. Money is stored as integer minor units
+// with an explicit currency (see @rwos/shared Money) — no floating-point columns.
+
+// Governed pay-period lifecycle. No `paid` — execution is a separately-approved future gate.
+enum PayrollPeriodStatus {
+  open
+  calculating
+  review
+  approved
+  locked
+}
+
+// A calculation snapshot's own lifecycle. Recalculation supersedes a prior revision; an approved
+// revision is never overwritten.
+enum PayrollCalculationStatus {
+  calculated
+  in_review
+  approved
+  rejected
+  superseded
+  locked
+}
+
+// Deduction lines are classified generically. Real statutory remittance logic is NOT implemented
+// in HR-5 — categories are governed data the rule provider populates.
+enum PayrollDeductionCategory {
+  statutory
+  benefit
+  voluntary
+  garnishment
+  other
+}
+
+model PayrollPeriod {
+  id                 String              @id @default(uuid()) @db.Uuid
+  organizationId     String              @map("organization_id") @db.Uuid
+  jurisdictionCountry String             @map("jurisdiction_country")
+  jurisdictionRegion String              @map("jurisdiction_region")
+  periodStart        DateTime            @map("period_start") @db.Timestamptz(3)
+  periodEnd          DateTime            @map("period_end") @db.Timestamptz(3)
+  timezone           String
+  status             PayrollPeriodStatus @default(open)
+  currency           String
+  ruleProviderKey    String              @map("rule_provider_key")
+  ruleProviderVersion String             @map("rule_provider_version")
+  synthetic          Boolean             @default(true)
+  createdByUserId    String              @map("created_by_user_id") @db.Uuid
+  reviewedByUserId   String?             @map("reviewed_by_user_id") @db.Uuid
+  approvedByUserId   String?             @map("approved_by_user_id") @db.Uuid
+  lockedByUserId     String?             @map("locked_by_user_id") @db.Uuid
+  approvedAt         DateTime?           @map("approved_at") @db.Timestamptz(3)
+  lockedAt           DateTime?           @map("locked_at") @db.Timestamptz(3)
+  version            Int                 @default(1)
+  createdAt          DateTime            @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt          DateTime            @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  calculations       PayrollCalculation[]
+
+  @@unique([organizationId, jurisdictionCountry, jurisdictionRegion, periodStart, periodEnd], map: "payroll_periods_org_jurisdiction_window_key")
+  @@index([organizationId, status, periodStart], map: "payroll_periods_org_status_start_idx")
+  @@index([jurisdictionCountry, jurisdictionRegion, status], map: "payroll_periods_jurisdiction_status_idx")
+  @@index([status, periodStart], map: "payroll_periods_status_start_idx")
+  @@map("payroll_periods")
+}
+
+model PayrollCalculation {
+  id                  String                   @id @default(uuid()) @db.Uuid
+  payrollPeriodId     String                   @map("payroll_period_id") @db.Uuid
+  organizationId      String                   @map("organization_id") @db.Uuid
+  workerIdentityId    String                   @map("worker_identity_id") @db.Uuid
+  revision            Int
+  status              PayrollCalculationStatus @default(calculated)
+  jurisdictionCountry String                   @map("jurisdiction_country")
+  jurisdictionRegion  String                   @map("jurisdiction_region")
+  ruleProviderKey     String                   @map("rule_provider_key")
+  ruleProviderVersion String                   @map("rule_provider_version")
+  calculationPolicyVersion String              @map("calculation_policy_version")
+  currency            String
+  grossPayMinor       Int                      @map("gross_pay_minor")
+  totalDeductionsMinor Int                     @map("total_deductions_minor")
+  netPayMinor         Int                      @map("net_pay_minor")
+  totalEmployerCostMinor Int                   @map("total_employer_cost_minor")
+  synthetic           Boolean                  @default(true)
+  calculatedAt        DateTime                 @map("calculated_at") @db.Timestamptz(3)
+  createdByUserId     String                   @map("created_by_user_id") @db.Uuid
+  reviewedByUserId    String?                  @map("reviewed_by_user_id") @db.Uuid
+  approvedByUserId    String?                  @map("approved_by_user_id") @db.Uuid
+  rejectedByUserId    String?                  @map("rejected_by_user_id") @db.Uuid
+  approvedAt          DateTime?                @map("approved_at") @db.Timestamptz(3)
+  rejectedAt          DateTime?                @map("rejected_at") @db.Timestamptz(3)
+  supersededById      String?                  @map("superseded_by_id") @db.Uuid
+  reviewNote          String?                  @map("review_note")
+  version             Int                      @default(1)
+  createdAt           DateTime                 @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt           DateTime                 @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  payrollPeriod       PayrollPeriod            @relation(fields: [payrollPeriodId], references: [id], onDelete: Restrict)
+  workedTimeRefs      PayrollWorkedTimeReference[]
+  earningLines        PayrollEarningLine[]
+  deductionLines      PayrollDeductionLine[]
+  employerCostLines   PayrollEmployerCostLine[]
+
+  @@unique([payrollPeriodId, workerIdentityId, revision], map: "payroll_calculations_period_worker_revision_key")
+  @@index([organizationId, payrollPeriodId], map: "payroll_calculations_org_period_idx")
+  @@index([workerIdentityId, payrollPeriodId], map: "payroll_calculations_worker_period_idx")
+  @@index([payrollPeriodId, status], map: "payroll_calculations_period_status_idx")
+  @@index([jurisdictionCountry, jurisdictionRegion], map: "payroll_calculations_jurisdiction_idx")
+  @@map("payroll_calculations")
+}
+
+// The exact approved worked-time that fed a calculation, snapshotted with its version so a later
+// attendance/timesheet change cannot silently re-base an existing calculation.
+model PayrollWorkedTimeReference {
+  id                  String             @id @default(uuid()) @db.Uuid
+  payrollCalculationId String            @map("payroll_calculation_id") @db.Uuid
+  timesheetId         String             @map("timesheet_id") @db.Uuid
+  timesheetVersion    Int                @map("timesheet_version")
+  timesheetStatus     String             @map("timesheet_status")
+  payableMinutes      Int                @map("payable_minutes")
+  billableMinutes     Int                @map("billable_minutes")
+
+  payrollCalculation  PayrollCalculation @relation(fields: [payrollCalculationId], references: [id], onDelete: Cascade)
+
+  @@index([payrollCalculationId], map: "payroll_worked_time_refs_calculation_idx")
+  @@index([timesheetId], map: "payroll_worked_time_refs_timesheet_idx")
+  @@map("payroll_worked_time_references")
+}
+
+model PayrollEarningLine {
+  id                  String             @id @default(uuid()) @db.Uuid
+  payrollCalculationId String            @map("payroll_calculation_id") @db.Uuid
+  classification      String
+  description         String
+  quantityMinutes     Int?               @map("quantity_minutes")
+  rateMinor           Int?               @map("rate_minor")
+  amountMinor         Int                @map("amount_minor")
+  currency            String
+  sortOrder           Int                @default(0) @map("sort_order")
+
+  payrollCalculation  PayrollCalculation @relation(fields: [payrollCalculationId], references: [id], onDelete: Cascade)
+
+  @@index([payrollCalculationId], map: "payroll_earning_lines_calculation_idx")
+  @@map("payroll_earning_lines")
+}
+
+model PayrollDeductionLine {
+  id                  String                   @id @default(uuid()) @db.Uuid
+  payrollCalculationId String                  @map("payroll_calculation_id") @db.Uuid
+  category            PayrollDeductionCategory
+  code                String
+  description         String
+  amountMinor         Int                      @map("amount_minor")
+  currency            String
+  sortOrder           Int                      @default(0) @map("sort_order")
+
+  payrollCalculation  PayrollCalculation       @relation(fields: [payrollCalculationId], references: [id], onDelete: Cascade)
+
+  @@index([payrollCalculationId], map: "payroll_deduction_lines_calculation_idx")
+  @@map("payroll_deduction_lines")
+}
+
+// Employer cost lines are kept STRICTLY separate from worker deduction lines — employer burden is
+// never inferred from a worker's net pay.
+model PayrollEmployerCostLine {
+  id                  String             @id @default(uuid()) @db.Uuid
+  payrollCalculationId String            @map("payroll_calculation_id") @db.Uuid
+  category            String
+  code                String
+  description         String
+  amountMinor         Int                @map("amount_minor")
+  currency            String
+  sortOrder           Int                @default(0) @map("sort_order")
+
+  payrollCalculation  PayrollCalculation @relation(fields: [payrollCalculationId], references: [id], onDelete: Cascade)
+
+  @@index([payrollCalculationId], map: "payroll_employer_cost_lines_calculation_idx")
+  @@map("payroll_employer_cost_lines")
+}
+
 model Invoice {
   id                    String             @id @default(uuid()) @db.Uuid
   organizationId        String             @map("organization_id") @db.Uuid

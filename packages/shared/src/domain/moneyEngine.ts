@@ -56,6 +56,33 @@ export function sumMoney(amounts: readonly ContractMoney[]): ContractMoney {
   });
 }
 
+// Subtract right from left in the same currency. The Money invariant forbids negative amounts,
+// so an over-subtraction (e.g. deductions exceeding gross) is rejected rather than silently
+// producing a negative balance.
+export function subtractMoney(left: ContractMoney, right: ContractMoney): ContractMoney {
+  assertSameCurrency([left, right]);
+
+  const amountMinor = left.amountMinor - right.amountMinor;
+  if (amountMinor < 0) {
+    throw new Error("Money Engine cannot produce a negative amount. Result would be below zero.");
+  }
+
+  return createContractMoney({ amountMinor, currency: left.currency });
+}
+
+// Pro-rate an hourly rate over a number of worked minutes, in governed integer minor units:
+// floor(rateMinorPerHour * minutes / 60). No floating-point path — the division is integer.
+export function proRateMinutesAtHourlyRate(hourlyRate: ContractMoney, minutes: number): ContractMoney {
+  if (!Number.isInteger(minutes) || minutes < 0) {
+    throw new Error("Money Engine pro-rate requires non-negative integer minutes.");
+  }
+
+  return createContractMoney({
+    amountMinor: Math.floor((hourlyRate.amountMinor * minutes) / 60),
+    currency: hourlyRate.currency
+  });
+}
+
 export function allocateMoney(total: ContractMoney, weights: readonly number[]): readonly ContractMoney[] {
   if (weights.length === 0) {
     throw new Error("Money Engine allocation requires at least one weight.");
