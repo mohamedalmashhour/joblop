@@ -43,6 +43,11 @@ import {
   createPrismaProfileWriter,
   createPrismaProposalStore,
   EmployerRequestEditError,
+  createWorkerSavedJobsService,
+  createPrismaWorkerIdentityResolver,
+  createPrismaSavedJobVisibilityReader,
+  createPrismaSavedJobStore,
+  WorkerSavedJobError,
   createPrismaCancellationJobRequestReader,
   createPrismaConfirmedAssignmentReader,
   createPrismaContractRateReader,
@@ -444,6 +449,13 @@ export function buildApi(options: BuildApiOptions = {}) {
     membershipReader: membershipService,
     profileWriter: createPrismaProfileWriter(prisma!),
     proposalStore: createPrismaProposalStore(prisma!)
+  });
+  // Worker Saved Jobs — user(worker)-scoped bookmarks of open marketplace jobs. Free,
+  // idempotent, no money. Visibility is server-authoritative (only open jobs saveable).
+  const workerSavedJobsService = createWorkerSavedJobsService({
+    identities: createPrismaWorkerIdentityResolver(prisma!),
+    visibility: createPrismaSavedJobVisibilityReader(prisma!),
+    store: createPrismaSavedJobStore(prisma!)
   });
   // Geocoding provider (provider-neutral seam). Default: a deterministic fixture over
   // major Canadian FSAs — no network, safe for local/CI. Production swaps in the OSM
@@ -2476,7 +2488,76 @@ export function buildApi(options: BuildApiOptions = {}) {
       ...(radiusKm !== undefined ? { radiusKm } : {}),
       candidates
     });
-    return reply.code(200).send({ origin: { province: origin.location.province, city: origin.location.city, postalCode: normalizedPostal }, count: results.length, jobs: results });
+    // Hydrate the worker's saved-state for the returned page (best-effort: non-workers
+    // simply get no saved flags). This powers the List view's save toggle without a
+    // second round-trip. savedIdsAmong short-circuits + is denied-safe for non-workers.
+    let savedIds: readonly string[] = [];
+    try {
+      savedIds = await workerSavedJobsService.savedIdsAmong({
+        userId: session.user.id,
+        jobRequestIds: results.map((r) => r.jobRequestId)
+      });
+    } catch {
+      savedIds = []; // not a worker → no saved flags; never fail the search
+    }
+    const savedSet = new Set(savedIds);
+    const jobs = results.map((r) => ({ ...r, saved: savedSet.has(r.jobRequestId) }));
+    return reply.code(200).send({ origin: { province: origin.location.province, city: origin.location.city, postalCode: normalizedPostal }, count: jobs.length, jobs });
+  });
+
+  // Worker Saved Jobs — bookmark/unbookmark open marketplace jobs, and list them. All
+  // user(worker)-scoped and idempotent. No money; saving is free.
+  const sendSavedJobError = (reply: FastifyReply, error: unknown) => {
+    if (error instanceof WorkerSavedJobError) {
+      const code = error.code === "denied" ? 403 : error.code === "not_found" ? 404 : 400;
+      return reply.code(code).send({ error: `RWOS_SAVED_JOB_${error.code.toUpperCase()}`, message: error.message });
+    }
+    throw error;
+  };
+
+  app.post("/marketplace/saved-jobs", async (request, reply) => {
+    const session = await authService.validateSession(readBearerToken(request.headers.authorization));
+    if (!session.authenticated || !session.user) {
+      return reply.code(401).send({ error: "RWOS_MARKETPLACE_DENIED", message: "Authentication is required." });
+    }
+    const body = asRecord(request.body);
+    const jobRequestId = readOptionalString(body, "jobRequestId");
+    if (!jobRequestId) {
+      return reply.code(400).send({ error: "RWOS_SAVED_JOB_INVALID", message: "A jobRequestId is required." });
+    }
+    try {
+      const result = await workerSavedJobsService.save({ userId: session.user.id, jobRequestId });
+      return reply.code(200).send(result);
+    } catch (error) {
+      return sendSavedJobError(reply, error);
+    }
+  });
+
+  app.delete("/marketplace/saved-jobs/:jobRequestId", async (request, reply) => {
+    const session = await authService.validateSession(readBearerToken(request.headers.authorization));
+    if (!session.authenticated || !session.user) {
+      return reply.code(401).send({ error: "RWOS_MARKETPLACE_DENIED", message: "Authentication is required." });
+    }
+    const jobRequestId = readRouteParam(request.params, "jobRequestId");
+    try {
+      const result = await workerSavedJobsService.unsave({ userId: session.user.id, jobRequestId });
+      return reply.code(200).send(result);
+    } catch (error) {
+      return sendSavedJobError(reply, error);
+    }
+  });
+
+  app.get("/marketplace/saved-jobs", async (request, reply) => {
+    const session = await authService.validateSession(readBearerToken(request.headers.authorization));
+    if (!session.authenticated || !session.user) {
+      return reply.code(401).send({ error: "RWOS_MARKETPLACE_DENIED", message: "Authentication is required." });
+    }
+    try {
+      const saved = await workerSavedJobsService.list({ userId: session.user.id });
+      return reply.code(200).send({ count: saved.length, saved });
+    } catch (error) {
+      return sendSavedJobError(reply, error);
+    }
   });
 
   // Material Edit / Reconfirmation. The employer submits PROPOSED values only. The

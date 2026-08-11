@@ -77,6 +77,214 @@ function CheckTile({ size = 34 }: { size?: number }) {
   );
 }
 
+function StoreBadge({ kind }: { kind: "apple" | "google" }) {
+  return (
+    <a href="#" style={hx.badge} aria-label={kind === "apple" ? "Download on the App Store" : "Get it on Google Play"}>
+      <span aria-hidden="true" style={{ display: "inline-flex", lineHeight: 1 }}>
+        {kind === "apple" ? (
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="#fff">
+            <path d="M17.05 20.28c-.98.95-2.05.8-3.08.35-1.09-.46-2.09-.48-3.24 0-1.44.62-2.2.44-3.06-.35C2.79 15.25 3.51 7.59 9.05 7.31c1.35.07 2.29.74 3.08.8 1.18-.24 2.31-.93 3.57-.84 1.51.12 2.65.72 3.4 1.8-3.12 1.87-2.38 5.98.48 7.13-.57 1.5-1.31 2.99-2.54 4.09zM12.03 7.25c-.15-2.23 1.66-4.07 3.74-4.25.29 2.58-2.34 4.5-3.74 4.25z" />
+          </svg>
+        ) : (
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="#fff">
+            <path d="M4 3.5v17l9-8.5-9-8.5z" />
+          </svg>
+        )}
+      </span>
+      <span style={{ display: "grid", lineHeight: 1.1 }}>
+        <span style={{ fontSize: 9, opacity: 0.85 }}>
+          {kind === "apple" ? "Download on the" : "GET IT ON"}
+        </span>
+        <strong style={{ fontSize: 15 }}>{kind === "apple" ? "App Store" : "Google Play"}</strong>
+      </span>
+    </a>
+  );
+}
+
+function PhoneMockup() {
+  return (
+    <div aria-hidden="true" style={hx.phone}>
+      <div style={{ fontSize: 13, color: "#6b7a90" }}>Hello, Ahmed</div>
+      <div style={{ fontSize: 18, fontWeight: 800, color: "#0b1f3f", margin: "2px 0 16px" }}>
+        What are you looking for today?
+      </div>
+      <div style={{ display: "grid", gap: 12 }}>
+        <div style={{ background: "#2563eb", color: "#fff", borderRadius: 14, padding: 16 }}>
+          <strong>Find Work</strong>
+          <div style={{ fontSize: 12, opacity: 0.85 }}>Find jobs near you</div>
+        </div>
+        <div style={{ background: "#0b1f3f", color: "#fff", borderRadius: 14, padding: 16 }}>
+          <strong>Find People</strong>
+          <div style={{ fontSize: 12, opacity: 0.85 }}>Hire people you can count on</div>
+        </div>
+      </div>
+      <div style={{ marginTop: 16, fontSize: 13, fontWeight: 700, color: "#0b1f3f" }}>
+        Popular Near You
+      </div>
+      <div style={hx.phoneJob}>
+        <div>
+          <strong style={{ fontSize: 13 }}>Kitchen Helper</strong>
+          <div style={{ fontSize: 11, color: "#6b7a90" }}>Restaurant · Laval, QC</div>
+        </div>
+        <div style={{ fontWeight: 800, fontSize: 13 }}>$18/hr</div>
+      </div>
+    </div>
+  );
+}
+
+const hx: Record<string, CSSProperties> = {
+  hero: {
+    display: "grid",
+    gridTemplateColumns: "repeat(auto-fit, minmax(300px, 1fr))",
+    gap: 44,
+    alignItems: "center",
+    maxWidth: 1200,
+    margin: "0 auto",
+    padding: "32px clamp(20px, 5vw, 64px) 56px"
+  },
+  heroCopy: { minWidth: 0 },
+  h1: {
+    fontSize: "clamp(40px, 6vw, 66px)",
+    lineHeight: 1.03,
+    letterSpacing: "-0.03em",
+    fontWeight: 800,
+    color: "#0b1f3f",
+    margin: 0
+  },
+  lede: { fontSize: 18, color: "#5b6b83", margin: "22px 0 0", maxWidth: 440, lineHeight: 1.6 },
+  chips: {
+    display: "flex",
+    gap: 22,
+    flexWrap: "wrap",
+    listStyle: "none",
+    padding: 0,
+    margin: "22px 0 0"
+  },
+  chip: {
+    display: "inline-flex",
+    alignItems: "center",
+    gap: 8,
+    fontWeight: 700,
+    color: "#1a2b47",
+    fontSize: 15
+  },
+  chipDot: {
+    width: 22,
+    height: 22,
+    borderRadius: 999,
+    background: "#2563eb",
+    display: "inline-flex",
+    alignItems: "center",
+    justifyContent: "center",
+    flex: "none"
+  },
+  ctaRow: { display: "flex", gap: 14, margin: "28px 0 0", flexWrap: "wrap" },
+  ctaPrimary: {
+    background: "#2563eb",
+    color: "#ffffff",
+    padding: "15px 26px",
+    borderRadius: 12,
+    fontWeight: 700,
+    fontSize: 16,
+    textDecoration: "none",
+    display: "inline-flex",
+    alignItems: "center",
+    gap: 10,
+    boxShadow: "0 14px 30px rgba(37,99,235,0.28)"
+  },
+  ctaOutline: {
+    background: "#ffffff",
+    color: "#16203a",
+    border: "1.5px solid #d3ddee",
+    padding: "15px 26px",
+    borderRadius: 12,
+    fontWeight: 700,
+    fontSize: 16,
+    textDecoration: "none",
+    display: "inline-flex",
+    alignItems: "center",
+    gap: 10
+  },
+  storeWrap: { margin: "28px 0 0" },
+  storeLabel: {
+    fontSize: 12,
+    letterSpacing: "0.1em",
+    textTransform: "uppercase",
+    color: "#93a0b5",
+    fontWeight: 700,
+    margin: "0 0 10px"
+  },
+  storeRow: { display: "flex", gap: 12, flexWrap: "wrap" },
+  badge: {
+    display: "inline-flex",
+    alignItems: "center",
+    gap: 10,
+    background: "#0b1f3f",
+    color: "#ffffff",
+    borderRadius: 11,
+    padding: "9px 18px",
+    textDecoration: "none"
+  },
+  heroVisual: {
+    position: "relative",
+    display: "flex",
+    justifyContent: "center",
+    alignItems: "center",
+    minHeight: 460
+  },
+  phone: {
+    width: 300,
+    maxWidth: "100%",
+    background: "#ffffff",
+    borderRadius: 34,
+    border: "10px solid #0b1f3f",
+    boxShadow: "0 34px 80px rgba(11,31,63,0.28)",
+    padding: "20px 16px 24px"
+  },
+  phoneJob: {
+    display: "flex",
+    justifyContent: "space-between",
+    alignItems: "center",
+    marginTop: 8,
+    padding: "10px 12px",
+    border: "1px solid #eef2f8",
+    borderRadius: 12
+  },
+  oppCard: {
+    position: "absolute",
+    bottom: 20,
+    right: 0,
+    background: "#ffffff",
+    borderRadius: 14,
+    boxShadow: "0 18px 45px rgba(11,31,63,0.16)",
+    border: "1px solid #eef2f8",
+    padding: "12px 16px",
+    display: "flex",
+    alignItems: "center",
+    gap: 16
+  },
+  avatars: { display: "flex", alignItems: "center" },
+  avatar: {
+    width: 30,
+    height: 30,
+    borderRadius: 999,
+    border: "2px solid #ffffff",
+    display: "inline-block"
+  },
+  avatarMore: {
+    background: "#0b1f3f",
+    color: "#ffffff",
+    fontSize: 11,
+    fontWeight: 700,
+    display: "inline-flex",
+    alignItems: "center",
+    justifyContent: "center",
+    width: "auto",
+    padding: "0 8px",
+    height: 30
+  }
+};
+
 export default function LandingPage() {
   const isProduction = process.env.RWOS_ENV === "production";
   const isStaging =
@@ -103,52 +311,69 @@ export default function LandingPage() {
         />
       </header>
 
-      <section style={styles.hero}>
-        <div style={styles.heroCopy}>
-          <p style={styles.eyebrow}>Workforce and staffing for operational teams</p>
-          <h1 style={styles.title}>Find, schedule, and manage the right workers with JobLop</h1>
-          <p style={styles.lede}>
-            Create governed staffing requests, support human dispatch review, and coordinate
-            authorized workers across healthcare, hospitality, food service, manufacturing, and
-            temporary staffing operations.
+      <section style={hx.hero}>
+        <div style={hx.heroCopy}>
+          <h1 style={hx.h1}>
+            Find work.
+            <br />
+            Find people.
+            <br />
+            <span style={{ color: "#2563eb" }}>Move forward.</span>
+          </h1>
+          <p style={hx.lede}>
+            JobLop connects local workers with people and businesses that need help. Fast. Simple.
+            Reliable.
           </p>
-          <div style={styles.heroActions}>
-            <a
-              href={isProduction ? "/employer/calendar" : "/signup/employer"}
-              style={styles.primaryButtonLarge}
-            >
-              {isProduction ? "Secure Staffing Entry" : "Request Staff"}
+          <ul style={hx.chips} aria-label="Why JobLop">
+            {["Quick Matches", "Verified Users", "Secure &amp; Trusted"].map((label) => (
+              <li key={label} style={hx.chip}>
+                <span aria-hidden="true" style={hx.chipDot}>
+                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none">
+                    <path
+                      d="M5 12.5l4.2 4.2L19 6.7"
+                      stroke="#fff"
+                      strokeWidth="3"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                    />
+                  </svg>
+                </span>
+                {label === "Secure &amp; Trusted" ? "Secure & Trusted" : label}
+              </li>
+            ))}
+          </ul>
+          <div style={hx.ctaRow}>
+            <a href={isProduction ? "/signin" : "/signup/employer"} style={hx.ctaPrimary}>
+              I&rsquo;m Looking for Work <span aria-hidden="true">→</span>
             </a>
-            <a href="#workers" style={styles.secondaryButtonLarge}>
-              Become a Worker
-            </a>
-            <a href="/contact" style={styles.ghostButtonLarge}>
-              Book a Demo
+            <a href={isProduction ? "/contact" : "/signup/employer"} style={hx.ctaOutline}>
+              I Need to Hire <span aria-hidden="true">→</span>
             </a>
           </div>
-          <ul aria-label="Platform controls" style={styles.trustStrip}>
-            {["Governed Access", "Human Dispatch", "Private Worker Views", "Audited Handoffs"].map(
-              (label) => (
-                <li key={label} style={styles.trustPill}>
-                  <CheckTile size={30} />
-                  {label}
-                </li>
-              )
-            )}
-          </ul>
+          <div style={hx.storeWrap}>
+            <p style={hx.storeLabel}>Available on</p>
+            <div style={hx.storeRow}>
+              <StoreBadge kind="apple" />
+              <StoreBadge kind="google" />
+            </div>
+          </div>
         </div>
 
-        <div style={styles.heroVisual}>
-          <div style={styles.photoFrame}>
-            <img
-              src="/images/hero-care-2.jpg"
-              alt="A care professional holding a patient's hands during a consultation"
-              style={styles.heroPhoto}
-            />
-          </div>
-          <div style={styles.floatingMetric}>
-            <strong>Verified workers</strong>
-            <span>Screened &amp; credential-aware</span>
+        <div style={hx.heroVisual}>
+          <PhoneMockup />
+          <div style={hx.oppCard}>
+            <div>
+              <strong style={{ display: "block", fontSize: 14, color: "#0b1f3f" }}>
+                Opportunities
+              </strong>
+              <span style={{ fontSize: 13, color: "#6b7a90" }}>around you</span>
+            </div>
+            <div style={hx.avatars}>
+              {["#7ca6f5", "#f5a97c", "#8fd4a8", "#c79cf0"].map((c, i) => (
+                <span key={c} style={{ ...hx.avatar, background: c, marginLeft: i ? -10 : 0 }} />
+              ))}
+              <span style={{ ...hx.avatar, ...hx.avatarMore, marginLeft: -10 }}>+2K</span>
+            </div>
           </div>
         </div>
       </section>

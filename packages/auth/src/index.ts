@@ -13,6 +13,7 @@ export * from "./employerCancellation";
 export * from "./employerContract";
 export * from "./employerReduce";
 export * from "./employerRequestEdit";
+export * from "./workerSavedJobs";
 export {
   CalendarRequestError,
   createCalendarRequestService,

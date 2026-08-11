@@ -1,0 +1,6 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    { "name": "employer-local", "runtimeExecutable": "bash", "runtimeArgs": ["/private/tmp/claude-501/-Users-mohamedalmashhour/3dd36502-82f4-49fe-8581-10dbe64f1a64/scratchpad/run-employer.sh"], "port": 3100 }
+  ]
+}

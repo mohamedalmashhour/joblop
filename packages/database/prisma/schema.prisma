@@ -1100,6 +1100,7 @@ model JobRequest {
   cancellationObligations EmployerCancellationObligation[]
   capacityReductions EmployerCapacityReduction[]
   changeProposals EmployerRequestChangeProposal[]
+  savedByWorkers WorkerSavedJob[]
 
   @@unique([id, organizationId, residenceId, departmentId, workGroupId, roleDefinitionId], map: "job_requests_operational_scope_key")
   @@index([jobRequestNumber], map: "job_requests_job_request_number_idx")
@@ -1244,8 +1245,26 @@ model WorkerIdentity {
   timesheets         Timesheet[]
   dispatchCandidates DispatchCandidate[]
 
+  savedJobs          WorkerSavedJob[]
+
   @@index([status], map: "worker_identities_status_idx")
   @@map("worker_identities")
+}
+
+// Worker-saved marketplace jobs. User-scoped (a worker saves opportunities to revisit).
+// Idempotent: one save per (worker, job) via the unique constraint.
+model WorkerSavedJob {
+  id               String   @id @default(uuid()) @db.Uuid
+  workerIdentityId String   @map("worker_identity_id") @db.Uuid
+  jobRequestId     String   @map("job_request_id") @db.Uuid
+  savedAt          DateTime @default(now()) @map("saved_at") @db.Timestamptz(3)
+
+  worker     WorkerIdentity @relation(fields: [workerIdentityId], references: [id], onDelete: Cascade)
+  jobRequest JobRequest     @relation(fields: [jobRequestId], references: [id], onDelete: Cascade)
+
+  @@unique([workerIdentityId, jobRequestId], map: "worker_saved_jobs_worker_job_key")
+  @@index([workerIdentityId, savedAt], map: "worker_saved_jobs_worker_saved_at_idx")
+  @@map("worker_saved_jobs")
 }
 
 model WorkerOffer {
