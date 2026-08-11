@@ -40,7 +40,10 @@ const runtimeConfigSchema = z
     LOCAL_PAYMENT_WEBHOOK_SECRET: z.string().min(32).optional(),
     DOCUMENT_LOCAL_UPLOAD_ENABLED: z.enum(["disabled", "enabled"]).default("disabled"),
     DOCUMENT_LOCAL_STORAGE_ROOT: z.string().min(1).optional(),
-    DOCUMENT_REFERENCE_SECRET: z.string().min(32).optional()
+    DOCUMENT_REFERENCE_SECRET: z.string().min(32).optional(),
+    // HMAC secret verifying provider verification callbacks. Inert until set: without it the
+    // callback endpoint rejects every request (no unsigned/unverifiable callback is trusted).
+    VERIFICATION_CALLBACK_SECRET: z.string().min(32).optional()
   })
   .superRefine((config, context) => {
     if (config.STRIPE_TEST_MODE_ENABLED === "enabled") {
@@ -269,6 +272,7 @@ export function getRuntimeConfig(env: NodeJS.ProcessEnv = process.env) {
     apiPort: parsed.PORT ?? parsed.API_PORT,
     internalApiOrigin: parsed.INTERNAL_API_ORIGIN,
     databaseUrl: parsed.DATABASE_URL,
+    verificationCallbackSecret: parsed.VERIFICATION_CALLBACK_SECRET,
     authRateLimiterOrigin: parsed.AUTH_RATE_LIMITER_ORIGIN,
     authRateLimiterToken: parsed.AUTH_RATE_LIMITER_TOKEN,
     authRateLimiterKeySecret: parsed.AUTH_RATE_LIMITER_KEY_SECRET,

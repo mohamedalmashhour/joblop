@@ -54,6 +54,15 @@ import {
   createPrismaInterestEngagementReader,
   createPrismaInterestStore,
   WorkerJobInterestError,
+  createVerificationService,
+  createPrismaVerificationStore,
+  createPrismaVerificationWorkerResolver,
+  createFixtureIdentityProvider,
+  createFixtureBackgroundCheckProvider,
+  createFixtureBusinessProvider,
+  createHmacCallbackVerifier,
+  normalizeFixtureCallback,
+  VerificationError,
   createPrismaCancellationJobRequestReader,
   createPrismaConfirmedAssignmentReader,
   createPrismaContractRateReader,
@@ -480,6 +489,17 @@ export function buildApi(options: BuildApiOptions = {}) {
     engagement: createPrismaInterestEngagementReader(prisma!),
     store: createPrismaInterestStore(prisma!)
   });
+  // Verification — provider-neutral trust states. Fixture providers by default (no vendor
+  // lock, no network); production swaps real adapters behind the same interfaces. Callbacks
+  // are HMAC-verified; the secret is inert until provisioned (unsigned callbacks rejected).
+  const verificationService = createVerificationService({
+    workers: createPrismaVerificationWorkerResolver(prisma!),
+    store: createPrismaVerificationStore(prisma!),
+    identityProvider: createFixtureIdentityProvider(),
+    backgroundCheckProvider: createFixtureBackgroundCheckProvider(),
+    businessProvider: createFixtureBusinessProvider()
+  });
+  const verificationCallbackVerifier = createHmacCallbackVerifier(runtimeConfig.verificationCallbackSecret ?? "");
   // Geocoding provider (provider-neutral seam). Default: a deterministic fixture over
   // major Canadian FSAs — no network, safe for local/CI. Production swaps in the OSM
   // (or Google) provider via options.geocodingProvider. Resolutions are persisted on
@@ -2504,18 +2524,28 @@ export function buildApi(options: BuildApiOptions = {}) {
     if (rows.length === MARKETPLACE_CANDIDATE_CAP) {
       logger.warn("marketplace.search.candidate_cap_hit", { cap: MARKETPLACE_CANDIDATE_CAP, postalCode: normalizedPostal });
     }
+    // Authoritative Verified-Employer state for the orgs on this result set. Read from the
+    // employer_verifications record only (business_verified + not expired). Never inferred.
+    const orgIds = [...new Set(rows.map((r) => r.organization.id))];
+    const verifiedOrgIds = new Set<string>();
+    if (orgIds.length > 0) {
+      const verifiedRows = await prisma!.employerVerification.findMany({
+        where: { organizationId: { in: orgIds }, status: "business_verified", OR: [{ expiresAt: null }, { expiresAt: { gt: new Date() } }] },
+        select: { organizationId: true }
+      });
+      for (const v of verifiedRows) verifiedOrgIds.add(v.organizationId);
+    }
     const candidates: MarketplaceJobCandidate[] = [];
     for (const r of rows) {
       const province = r.residence.province;
       if (!isProvinceCode(province) || r.residence.latitude === null || r.residence.longitude === null) continue;
-      // verifiedEmployer is ALWAYS false: no server-authoritative employer-verification
-      // state exists yet. We never infer it from an active account/contract.
-      if (verifiedOnly) continue; // no employer is verified → verified-only yields none
+      const isVerifiedEmployer = verifiedOrgIds.has(r.organization.id);
+      if (verifiedOnly && !isVerifiedEmployer) continue; // verified-only narrows to real verified orgs
       candidates.push({
         jobRequestId: r.id,
         role: r.roleDefinition.displayLabel,
         employerName: r.organization.displayName,
-        verifiedEmployer: false,
+        verifiedEmployer: isVerifiedEmployer,
         city: r.residence.city,
         province: province as ProvinceCode,
         latitude: r.residence.latitude,
@@ -2992,6 +3022,155 @@ export function buildApi(options: BuildApiOptions = {}) {
     });
   });
 
+  // ── Verification (provider-neutral trust states) ──
+  const sendVerificationError = (reply: FastifyReply, error: unknown) => {
+    if (error instanceof VerificationError) {
+      const code = error.code === "denied" ? 403 : error.code === "not_found" ? 404 : error.code === "conflict" ? 409 : 400;
+      return reply.code(code).send({ error: `RWOS_VERIFICATION_${error.code.toUpperCase()}`, message: error.message });
+    }
+    throw error;
+  };
+  const readWorkerVerificationType = (value: unknown): "identity" | "background_check" | null =>
+    value === "identity" || value === "background_check" ? value : null;
+
+  // Active org membership (optionally role-gated) for employer verification endpoints.
+  async function requireActiveOrgMembership(userId: string, organizationId: string, roles?: readonly string[]) {
+    const memberships = await membershipService.listMemberships(userId);
+    const membership = memberships.find((m) => m.organizationId === organizationId && m.status === "active");
+    if (!membership) return null;
+    if (roles && !membership.roleKeys.some((key) => roles.includes(key))) return null;
+    return membership;
+  }
+
+  // Worker: view my verification state.
+  app.get("/verification/worker", async (request, reply) => {
+    const session = await authService.validateSession(readBearerToken(request.headers.authorization));
+    if (!session.authenticated || !session.user) {
+      return reply.code(401).send({ error: "RWOS_VERIFICATION_DENIED", message: "Authentication is required." });
+    }
+    try {
+      const state = await verificationService.getWorkerVerification({ userId: session.user.id });
+      return reply.code(200).send({
+        identity: { status: state.identityStatus, requestedAt: state.identity?.requestedAt ?? null, completedAt: state.identity?.completedAt ?? null, expiresAt: state.identity?.expiresAt ?? null, provider: state.identity?.provider ?? null },
+        backgroundCheck: { status: state.backgroundCheckStatus, requestedAt: state.backgroundCheck?.requestedAt ?? null, completedAt: state.backgroundCheck?.completedAt ?? null, expiresAt: state.backgroundCheck?.expiresAt ?? null, provider: state.backgroundCheck?.provider ?? null }
+      });
+    } catch (error) {
+      return sendVerificationError(reply, error);
+    }
+  });
+
+  // Worker: request a verification (identity | background_check). Server starts the provider
+  // flow → pending. The worker can NEVER mark themselves verified.
+  app.post("/verification/worker/request", async (request, reply) => {
+    const session = await authService.validateSession(readBearerToken(request.headers.authorization));
+    if (!session.authenticated || !session.user) {
+      return reply.code(401).send({ error: "RWOS_VERIFICATION_DENIED", message: "Authentication is required." });
+    }
+    const verificationType = readWorkerVerificationType(asRecord(request.body).verificationType);
+    if (!verificationType) {
+      return reply.code(400).send({ error: "RWOS_VERIFICATION_INVALID", message: "A valid verificationType is required." });
+    }
+    try {
+      const record = await verificationService.requestWorkerVerification({ userId: session.user.id, verificationType });
+      return reply.code(200).send({ verificationType, status: record.status });
+    } catch (error) {
+      return sendVerificationError(reply, error);
+    }
+  });
+
+  // Employer: view my organization's verification state (any active member).
+  app.get("/organizations/:organizationId/verification", async (request, reply) => {
+    const session = await authService.validateSession(readBearerToken(request.headers.authorization));
+    if (!session.authenticated || !session.user) {
+      return reply.code(401).send({ error: "RWOS_VERIFICATION_DENIED", message: "Authentication is required." });
+    }
+    const organizationId = readRouteParam(request.params, "organizationId");
+    if (!isCanonicalUuid(organizationId) || !(await requireActiveOrgMembership(session.user.id, organizationId))) {
+      return reply.code(403).send({ error: "RWOS_VERIFICATION_DENIED", message: "Organization membership is required." });
+    }
+    const { record, status } = await verificationService.getEmployerVerification(organizationId);
+    return reply.code(200).send({ status, requestedAt: record?.requestedAt ?? null, completedAt: record?.completedAt ?? null, expiresAt: record?.expiresAt ?? null, provider: record?.provider ?? null });
+  });
+
+  // Employer: request organization verification (owner/administrator only).
+  app.post("/organizations/:organizationId/verification/request", async (request, reply) => {
+    const session = await authService.validateSession(readBearerToken(request.headers.authorization));
+    if (!session.authenticated || !session.user) {
+      return reply.code(401).send({ error: "RWOS_VERIFICATION_DENIED", message: "Authentication is required." });
+    }
+    const organizationId = readRouteParam(request.params, "organizationId");
+    if (!isCanonicalUuid(organizationId) || !(await requireActiveOrgMembership(session.user.id, organizationId, ["ORGANIZATION_OWNER", "ORGANIZATION_ADMINISTRATOR"]))) {
+      return reply.code(403).send({ error: "RWOS_VERIFICATION_DENIED", message: "Organization owner or administrator authority is required." });
+    }
+    const record = await verificationService.requestEmployerVerification({ organizationId });
+    return reply.code(200).send({ status: record.status });
+  });
+
+  // Provider callback / webhook — HMAC-verified, idempotent, normalized. Never trusts an
+  // unsigned/unverifiable callback. Routes to worker or employer by provider reference.
+  app.post("/verification/callback", async (request, reply) => {
+    if (!runtimeConfig.verificationCallbackSecret) {
+      return reply.code(503).send({ error: "RWOS_VERIFICATION_CALLBACK_DISABLED", message: "Verification callbacks are not enabled." });
+    }
+    const signatureHeader = request.headers["x-verification-signature"];
+    const signature = typeof signatureHeader === "string" ? signatureHeader : null;
+    const rawBody = JSON.stringify(request.body ?? {});
+    if (!verificationCallbackVerifier.verify({ rawBody, signature })) {
+      return reply.code(401).send({ error: "RWOS_VERIFICATION_CALLBACK_UNAUTHENTICATED", message: "Invalid callback signature." });
+    }
+    const normalized = normalizeFixtureCallback(request.body);
+    if (!normalized) {
+      return reply.code(400).send({ error: "RWOS_VERIFICATION_CALLBACK_INVALID", message: "Invalid callback body." });
+    }
+    const workerResult = await verificationService.ingestWorkerResult(normalized);
+    if (workerResult.record) return reply.code(200).send({ subject: "worker", applied: workerResult.applied });
+    const employerResult = await verificationService.ingestEmployerResult(normalized);
+    if (employerResult.record) return reply.code(200).send({ subject: "employer", applied: employerResult.applied });
+    return reply.code(202).send({ applied: false, message: "No matching verification for that reference." });
+  });
+
+  // Admin: verification operations queue + governed review decisions (PLATFORM_ADMINISTRATOR).
+  app.get("/platform/verification/queue", async (request, reply) => {
+    const actor = await requirePlatformInterest(request, reply);
+    if (!actor) return;
+    const statusFilter = readOptionalString(asRecord(request.query), "status");
+    const statuses = statusFilter && statusFilter !== "all" ? statusFilter.split(",").map((s) => s.trim()).filter(Boolean) : undefined;
+    const queue = await verificationService.listQueue(statuses ? { statuses } : {});
+    return reply.code(200).send({ count: queue.length, queue });
+  });
+
+  app.post("/platform/verification/workers/:verificationId/review", async (request, reply) => {
+    const actor = await requirePlatformInterest(request, reply);
+    if (!actor) return;
+    const verificationId = readRouteParam(request.params, "verificationId");
+    const decision = asRecord(request.body).decision;
+    if (!isCanonicalUuid(verificationId) || (decision !== "verified" && decision !== "rejected" && decision !== "review")) {
+      return reply.code(400).send({ error: "RWOS_VERIFICATION_INVALID", message: "A valid decision is required." });
+    }
+    try {
+      const record = await verificationService.adminReviewWorker({ reviewerUserId: actor, workerVerificationId: verificationId, decision });
+      return reply.code(200).send({ status: record.status });
+    } catch (error) {
+      return sendVerificationError(reply, error);
+    }
+  });
+
+  app.post("/platform/verification/employers/:verificationId/review", async (request, reply) => {
+    const actor = await requirePlatformInterest(request, reply);
+    if (!actor) return;
+    const verificationId = readRouteParam(request.params, "verificationId");
+    const decision = asRecord(request.body).decision;
+    if (!isCanonicalUuid(verificationId) || (decision !== "business_verified" && decision !== "review_required" && decision !== "suspended")) {
+      return reply.code(400).send({ error: "RWOS_VERIFICATION_INVALID", message: "A valid decision is required." });
+    }
+    try {
+      const record = await verificationService.adminReviewEmployer({ reviewerUserId: actor, employerVerificationId: verificationId, decision });
+      return reply.code(200).send({ status: record.status });
+    } catch (error) {
+      return sendVerificationError(reply, error);
+    }
+  });
+
   // Job DETAIL — the worker-facing job page. Privacy-safe: approximate location + map
   // point only; NEVER exact coords, street address, residence internal name, or rates
   // beyond the policy-gated worker rate. 404 for any job that is not marketplace-visible
@@ -3048,7 +3227,7 @@ export function buildApi(options: BuildApiOptions = {}) {
       title: row.title,
       employerId: row.organization.id,
       employerName: row.organization.displayName,
-      verifiedEmployer: false, // no real verification state exists yet; never inferred
+      verifiedEmployer: await verificationService.isEmployerVerified(row.organization.id), // authoritative
       city: row.residence.city,
       province: row.residence.province as ProvinceCode,
       latitude: row.residence.latitude,
@@ -3113,7 +3292,7 @@ export function buildApi(options: BuildApiOptions = {}) {
     const candidate: MarketplaceEmployerProfileCandidate = {
       id: org.id,
       name: org.displayName,
-      verified: false, // real verification state only; none exists yet
+      verified: await verificationService.isEmployerVerified(org.id), // authoritative
       opportunities: jobRows.flatMap((j) =>
         isProvinceCode(j.residence.province)
           ? [
