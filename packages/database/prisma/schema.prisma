@@ -834,6 +834,16 @@ model Residence {
   city            String?
   region          String?
   country         String?
+  province           String?   @db.Char(2)
+  postalCode         String?   @map("postal_code")
+  addressLine1       String?   @map("address_line1")
+  addressLine2       String?   @map("address_line2")
+  latitude           Float?
+  longitude          Float?
+  geocodePrecision   String?   @map("geocode_precision")
+  geocodeProvider    String?   @map("geocode_provider")
+  geocodeProviderRef String?   @map("geocode_provider_ref")
+  geocodeResolvedAt  DateTime? @map("geocode_resolved_at") @db.Timestamptz(3)
   createdByUserId String?         @map("created_by_user_id") @db.Uuid
   createdAt       DateTime        @default(now()) @map("created_at") @db.Timestamptz(3)
   updatedAt       DateTime        @updatedAt @map("updated_at") @db.Timestamptz(3)
@@ -852,6 +862,8 @@ model Residence {
   @@unique([organizationId, id], map: "residences_organization_id_id_key")
   @@index([organizationId, status], map: "residences_organization_id_status_idx")
   @@index([organizationId, name], map: "residences_organization_id_name_idx")
+  @@index([latitude, longitude], map: "residences_latitude_longitude_idx")
+  @@index([province], map: "residences_province_idx")
   @@map("residences")
 }
 

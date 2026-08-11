@@ -99,6 +99,25 @@ export function toPublicMarketplaceLocation(location: CanadianLocation): PublicM
   return { country: "CA", province: location.province, city: location.city, areaLabel };
 }
 
+// MAP PRIVACY (locked): public marketplace map pins use APPROXIMATE coordinates —
+// latitude/longitude rounded to 2 decimal places (~1.1 km), NOT the exact worksite.
+// Exact coordinates stay server-side and unlock only at the offer/assignment stage.
+export const PUBLIC_MAP_PRECISION_DP = 2;
+
+export type PublicMapPoint = Readonly<{ latitude: number; longitude: number; approximate: true }>;
+
+export function toPublicMapPoint(
+  point: Readonly<{ latitude: number; longitude: number }>,
+  decimalPlaces: number = PUBLIC_MAP_PRECISION_DP
+): PublicMapPoint {
+  const factor = 10 ** decimalPlaces;
+  return {
+    latitude: Math.round(point.latitude * factor) / factor,
+    longitude: Math.round(point.longitude * factor) / factor,
+    approximate: true
+  };
+}
+
 // A privacy-safe worker search origin — never the worker's street address.
 export type WorkerSearchOrigin = Readonly<{
   province: ProvinceCode | null;

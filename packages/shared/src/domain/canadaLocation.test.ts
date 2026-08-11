@@ -13,6 +13,7 @@ import {
   isWithinRadiusKm,
   normalizeCanadianPostalCode,
   provinceHintFromPostalCode,
+  toPublicMapPoint,
   toPublicMarketplaceLocation,
   type CanadianLocation
 } from "./canadaLocation";
@@ -142,5 +143,10 @@ describe("privacy-safe public location", () => {
     expect(JSON.stringify(pub)).not.toContain("Chomedey");
     expect(pub).not.toHaveProperty("addressLines");
     expect(pub).not.toHaveProperty("latitude");
+  });
+
+  it("public map point rounds coordinates (~1km) and never exposes the exact site", () => {
+    const p = toPublicMapPoint({ latitude: 45.60663, longitude: -73.71249 });
+    expect(p).toEqual({ latitude: 45.61, longitude: -73.71, approximate: true });
   });
 });
