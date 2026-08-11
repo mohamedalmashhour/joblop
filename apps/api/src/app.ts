@@ -48,6 +48,12 @@ import {
   createPrismaSavedJobVisibilityReader,
   createPrismaSavedJobStore,
   WorkerSavedJobError,
+  createWorkerJobInterestService,
+  createPrismaInterestWorkerIdentityResolver,
+  createPrismaInterestJobReader,
+  createPrismaInterestEngagementReader,
+  createPrismaInterestStore,
+  WorkerJobInterestError,
   createPrismaCancellationJobRequestReader,
   createPrismaConfirmedAssignmentReader,
   createPrismaContractRateReader,
@@ -124,6 +130,7 @@ import {
   searchNearbyJobs,
   normalizeCanadianPostalCode,
   boundingBoxKm,
+  geodesicDistanceKm,
   isProvinceCode,
   isValidCoordinate,
   isWithinCanadaBounds,
@@ -464,6 +471,14 @@ export function buildApi(options: BuildApiOptions = {}) {
     identities: createPrismaWorkerIdentityResolver(prisma!),
     visibility: createPrismaSavedJobVisibilityReader(prisma!),
     store: createPrismaSavedJobStore(prisma!)
+  });
+  // Worker Job Interest — governed marketplace intent. Records interest ONLY; never creates
+  // an offer or assignment (platform dispatch + the worker-offer service stay authoritative).
+  const workerJobInterestService = createWorkerJobInterestService({
+    identities: createPrismaInterestWorkerIdentityResolver(prisma!),
+    jobs: createPrismaInterestJobReader(prisma!),
+    engagement: createPrismaInterestEngagementReader(prisma!),
+    store: createPrismaInterestStore(prisma!)
   });
   // Geocoding provider (provider-neutral seam). Default: a deterministic fixture over
   // major Canadian FSAs — no network, safe for local/CI. Production swaps in the OSM
@@ -2648,6 +2663,165 @@ export function buildApi(options: BuildApiOptions = {}) {
       return reply.code(200).send({ count: saved.length, saved });
     } catch (error) {
       return sendSavedJobError(reply, error);
+    }
+  });
+
+  // ── Worker Job Interest (governed marketplace intent) ──
+  // Express interest records intent ONLY. It never creates a worker offer or an assignment;
+  // platform dispatch reviews interest and issues a governed offer via the worker-offer
+  // service. Eligibility is server-authoritative; the browser cannot declare itself eligible.
+  const sendInterestError = (reply: FastifyReply, error: unknown) => {
+    if (error instanceof WorkerJobInterestError) {
+      const code =
+        error.code === "denied" ? 403 : error.code === "not_found" ? 404 : error.code === "conflict" ? 409 : error.code === "ineligible" ? 422 : 400;
+      return reply.code(code).send({ error: `RWOS_INTEREST_${error.code.toUpperCase()}`, message: error.message, reasons: error.reasons });
+    }
+    throw error;
+  };
+
+  // Server-authoritative distance-at-interest (audit datum). Never trusts a browser value.
+  async function computeInterestDistanceKm(jobRequestId: string, postalCode: string | null): Promise<number | null> {
+    if (!postalCode) return null;
+    const normalized = normalizeCanadianPostalCode(postalCode);
+    if (!normalized) return null;
+    const [geo, job] = await Promise.all([
+      geocodingProvider.geocode({ countryRestriction: "CA", postalCode: normalized }),
+      prisma!.jobRequest.findUnique({ where: { id: jobRequestId }, select: { residence: { select: { latitude: true, longitude: true } } } })
+    ]);
+    if (geo.status !== "ok" || !job || job.residence.latitude === null || job.residence.longitude === null) return null;
+    return Math.round(
+      geodesicDistanceKm(
+        { latitude: geo.location.latitude, longitude: geo.location.longitude },
+        { latitude: job.residence.latitude, longitude: job.residence.longitude }
+      ) * 10
+    ) / 10;
+  }
+
+  // Express interest in a job (idempotent). Optional postalCode → server-computed distance.
+  app.post("/marketplace/jobs/:jobRequestId/interest", async (request, reply) => {
+    const session = await authService.validateSession(readBearerToken(request.headers.authorization));
+    if (!session.authenticated || !session.user) {
+      return reply.code(401).send({ error: "RWOS_MARKETPLACE_DENIED", message: "Authentication is required." });
+    }
+    const jobRequestId = readRouteParam(request.params, "jobRequestId");
+    if (!isCanonicalUuid(jobRequestId)) {
+      return reply.code(404).send({ error: "RWOS_INTEREST_NOT_FOUND", message: "That job is not available." });
+    }
+    // Privacy parity with the detail endpoint: a non-visible (hidden/cancelled/expired or
+    // inactive-residence) job must 404, never reveal itself via an eligibility reason.
+    const visible = await prisma!.jobRequest.findFirst({
+      where: { id: jobRequestId, status: { in: ["submitted", "approved_for_dispatch"] }, residence: { status: "active" } },
+      select: { id: true }
+    });
+    if (!visible) {
+      return reply.code(404).send({ error: "RWOS_INTEREST_NOT_FOUND", message: "That job is not available." });
+    }
+    const postalCode = readOptionalString(asRecord(request.body), "postalCode");
+    try {
+      const distanceKmAtInterest = await computeInterestDistanceKm(jobRequestId, postalCode);
+      const result = await workerJobInterestService.expressInterest({ userId: session.user.id, jobRequestId, distanceKmAtInterest });
+      return reply.code(200).send({
+        interest: { status: result.interest.status, jobRequestId, createdAt: result.interest.createdAt },
+        alreadyInterested: result.alreadyInterested
+      });
+    } catch (error) {
+      return sendInterestError(reply, error);
+    }
+  });
+
+  // Withdraw active interest (idempotent; never undoes a governed offer/assignment).
+  app.delete("/marketplace/jobs/:jobRequestId/interest", async (request, reply) => {
+    const session = await authService.validateSession(readBearerToken(request.headers.authorization));
+    if (!session.authenticated || !session.user) {
+      return reply.code(401).send({ error: "RWOS_MARKETPLACE_DENIED", message: "Authentication is required." });
+    }
+    const jobRequestId = readRouteParam(request.params, "jobRequestId");
+    try {
+      const result = await workerJobInterestService.withdraw({ userId: session.user.id, jobRequestId });
+      return reply.code(200).send(result);
+    } catch (error) {
+      return sendInterestError(reply, error);
+    }
+  });
+
+  // Current interest + eligibility state for the details-page CTA.
+  app.get("/marketplace/jobs/:jobRequestId/interest", async (request, reply) => {
+    const session = await authService.validateSession(readBearerToken(request.headers.authorization));
+    if (!session.authenticated || !session.user) {
+      return reply.code(401).send({ error: "RWOS_MARKETPLACE_DENIED", message: "Authentication is required." });
+    }
+    const jobRequestId = readRouteParam(request.params, "jobRequestId");
+    if (!isCanonicalUuid(jobRequestId)) {
+      return reply.code(404).send({ error: "RWOS_INTEREST_NOT_FOUND", message: "That job is not available." });
+    }
+    try {
+      const [active, eligibility] = await Promise.all([
+        workerJobInterestService.getActive({ userId: session.user.id, jobRequestId }),
+        workerJobInterestService.checkEligibility({ userId: session.user.id, jobRequestId })
+      ]);
+      return reply.code(200).send({
+        interest: active ? { status: active.status } : null,
+        eligibility
+      });
+    } catch (error) {
+      return sendInterestError(reply, error);
+    }
+  });
+
+  // The worker's applications ("My Interests"), enriched with a privacy-safe job summary +
+  // the linked governed-offer status when one exists.
+  app.get("/marketplace/my-interests", async (request, reply) => {
+    const session = await authService.validateSession(readBearerToken(request.headers.authorization));
+    if (!session.authenticated || !session.user) {
+      return reply.code(401).send({ error: "RWOS_MARKETPLACE_DENIED", message: "Authentication is required." });
+    }
+    try {
+      const interests = await workerJobInterestService.listForWorker({ userId: session.user.id });
+      const jobIds = [...new Set(interests.map((i) => i.jobRequestId))];
+      const offerIds = interests.map((i) => i.workerOfferId).filter((v): v is string => !!v);
+      const [jobRows, offerRows] = await Promise.all([
+        jobIds.length
+          ? prisma!.jobRequest.findMany({
+              where: { id: { in: jobIds } },
+              select: {
+                id: true,
+                title: true,
+                startAt: true,
+                endAt: true,
+                roleDefinition: { select: { displayLabel: true } },
+                organization: { select: { id: true, displayName: true } },
+                residence: { select: { city: true, province: true } }
+              }
+            })
+          : Promise.resolve([]),
+        offerIds.length
+          ? prisma!.workerOffer.findMany({ where: { id: { in: offerIds } }, select: { id: true, status: true } })
+          : Promise.resolve([])
+      ]);
+      const jobById = new Map(jobRows.map((j) => [j.id, j]));
+      const offerById = new Map(offerRows.map((o) => [o.id, o]));
+      const items = interests.map((i) => {
+        const j = jobById.get(i.jobRequestId);
+        return {
+          jobRequestId: i.jobRequestId,
+          status: i.status,
+          createdAt: i.createdAt,
+          offerStatus: i.workerOfferId ? offerById.get(i.workerOfferId)?.status ?? null : null,
+          summary: j
+            ? {
+                role: j.roleDefinition.displayLabel,
+                title: j.title,
+                employer: { id: j.organization.id, name: j.organization.displayName },
+                areaLabel: j.residence.city && isProvinceCode(j.residence.province) ? `${j.residence.city}, ${j.residence.province}` : null,
+                startAt: j.startAt.toISOString(),
+                endAt: j.endAt.toISOString()
+              }
+            : null
+        };
+      });
+      return reply.code(200).send({ count: items.length, interests: items });
+    } catch (error) {
+      return sendInterestError(reply, error);
     }
   });
 
