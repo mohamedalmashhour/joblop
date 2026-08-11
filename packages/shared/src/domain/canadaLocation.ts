@@ -201,3 +201,49 @@ export const geodesicDistanceProvider: DistanceProvider = {
     return geodesicDistanceKm(a, b);
   }
 };
+
+// ── Bounding box + distance ranking (marketplace search) ─────────────────────
+
+export type BoundingBox = Readonly<{ minLat: number; maxLat: number; minLng: number; maxLng: number }>;
+
+const KM_PER_DEGREE_LAT = 111.045;
+
+// A lat/lng window guaranteed to CONTAIN every point within radiusKm of the origin.
+// Used as a cheap indexed SQL pre-filter (WHERE lat BETWEEN … AND lng BETWEEN …);
+// exact geodesic distance then culls the small candidate set. Slightly over-covers on
+// purpose (never under-covers). Longitude degrees shrink toward the poles.
+export function boundingBoxKm(
+  origin: Readonly<{ latitude: number; longitude: number }>,
+  radiusKm: number
+): BoundingBox {
+  const latDelta = radiusKm / KM_PER_DEGREE_LAT;
+  const cos = Math.max(0.01, Math.cos(toRad(origin.latitude)));
+  const lngDelta = radiusKm / (KM_PER_DEGREE_LAT * cos);
+  return {
+    minLat: origin.latitude - latDelta,
+    maxLat: origin.latitude + latDelta,
+    minLng: origin.longitude - lngDelta,
+    maxLng: origin.longitude + lngDelta
+  };
+}
+
+// Rank candidate items by geodesic distance from an origin; optionally drop items
+// beyond radiusKm. Each item's distance is computed server-side — never trusted from a
+// client. Returns items with their distanceKm, ascending. Stable for equal distances.
+export function rankByDistanceKm<T extends { latitude: number; longitude: number }>(
+  origin: Readonly<{ latitude: number; longitude: number }>,
+  items: readonly T[],
+  radiusKm?: number
+): readonly (T & { distanceKm: number })[] {
+  const withDistance = items.map((item, index) => ({
+    ...item,
+    distanceKm: geodesicDistanceKm(origin, item),
+    _index: index
+  }));
+  const filtered = radiusKm === undefined ? withDistance : withDistance.filter((i) => i.distanceKm <= radiusKm);
+  filtered.sort((a, b) => (a.distanceKm - b.distanceKm) || (a._index - b._index));
+  return filtered.map(({ _index, ...rest }) => {
+    void _index;
+    return rest as T & { distanceKm: number };
+  });
+}

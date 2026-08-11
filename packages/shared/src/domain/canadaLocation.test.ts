@@ -2,6 +2,8 @@ import { describe, expect, it } from "vitest";
 import {
   CANADA_PROVINCE_TERRITORY_CODES,
   PROVINCE_TERRITORY_NAMES,
+  boundingBoxKm,
+  rankByDistanceKm,
   formatDistanceKm,
   geodesicDistanceKm,
   isCanadianPostalCodeFormat,
@@ -89,6 +91,42 @@ describe("geodesic distance + radius", () => {
   it("formats distance in km", () => {
     expect(formatDistanceKm(3.24)).toBe("3.2 km away");
     expect(formatDistanceKm(11.4)).toBe("11 km away");
+  });
+});
+
+describe("bounding box + ranking (search)", () => {
+  const montreal = { latitude: 45.5019, longitude: -73.5674 };
+  const laval = { latitude: 45.6066, longitude: -73.7124 };
+  const toronto = { latitude: 43.6532, longitude: -79.3832 };
+
+  it("bounding box CONTAINS every point within the radius (never under-covers)", () => {
+    const box = boundingBoxKm(montreal, 25);
+    // Laval (~11km) is inside the box.
+    expect(laval.latitude).toBeGreaterThanOrEqual(box.minLat);
+    expect(laval.latitude).toBeLessThanOrEqual(box.maxLat);
+    expect(laval.longitude).toBeGreaterThanOrEqual(box.minLng);
+    expect(laval.longitude).toBeLessThanOrEqual(box.maxLng);
+    // Toronto (~500km) is outside a 25km box.
+    expect(toronto.longitude < box.minLng).toBe(true);
+  });
+
+  it("ranks candidates by distance ascending and filters by radius", () => {
+    const items = [
+      { id: "far", ...toronto },
+      { id: "near", ...laval },
+      { id: "here", ...montreal }
+    ];
+    const ranked = rankByDistanceKm(montreal, items, 25);
+    expect(ranked.map((r) => r.id)).toEqual(["here", "near"]); // toronto filtered out
+    expect(ranked[0]!.distanceKm).toBeLessThan(ranked[1]!.distanceKm);
+    // no radius → all, still sorted
+    expect(rankByDistanceKm(montreal, items).map((r) => r.id)).toEqual(["here", "near", "far"]);
+  });
+
+  it("is stable for equal distances (deterministic)", () => {
+    const a = { id: "a", ...laval };
+    const b = { id: "b", ...laval };
+    expect(rankByDistanceKm(montreal, [a, b]).map((r) => r.id)).toEqual(["a", "b"]);
   });
 });
 
