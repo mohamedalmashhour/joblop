@@ -2928,6 +2928,70 @@ export function buildApi(options: BuildApiOptions = {}) {
     }
   });
 
+  // Admin worksite + day-by-day schedule for a dispatch review's job. PLATFORM_ADMINISTRATOR
+  // only — this is the AUTHORITATIVE internal view, so it may include the exact worksite. The
+  // day-by-day map shows, per day, the worksite where each assigned worker is scheduled — it
+  // NEVER exposes worker home/personal locations (worker pin = the contract worksite for that
+  // day). Data comes from governed assignments + the job's residence.
+  app.get("/platform/dispatches/:dispatchReviewId/worksite-schedule", async (request, reply) => {
+    const actor = await requirePlatformInterest(request, reply);
+    if (!actor) return;
+    const dispatchReviewId = readRouteParam(request.params, "dispatchReviewId");
+    if (!isCanonicalUuid(dispatchReviewId)) {
+      return reply.code(404).send({ error: "RWOS_INTEREST_NOT_FOUND", message: "That dispatch review was not found." });
+    }
+    const review = await prisma!.dispatchReview.findUnique({ where: { id: dispatchReviewId }, select: { jobRequestId: true } });
+    if (!review) {
+      return reply.code(404).send({ error: "RWOS_INTEREST_NOT_FOUND", message: "That dispatch review was not found." });
+    }
+    const job = await prisma!.jobRequest.findUnique({
+      where: { id: review.jobRequestId },
+      select: {
+        title: true,
+        startAt: true,
+        endAt: true,
+        timezone: true,
+        residence: { select: { name: true, city: true, province: true, addressLine1: true, latitude: true, longitude: true } }
+      }
+    });
+    if (!job) {
+      return reply.code(404).send({ error: "RWOS_INTEREST_NOT_FOUND", message: "That job was not found." });
+    }
+    const worksite = {
+      label: job.residence.name,
+      city: job.residence.city,
+      province: isProvinceCode(job.residence.province) ? job.residence.province : null,
+      addressLine1: job.residence.addressLine1, // exact — admin-authoritative view only
+      latitude: job.residence.latitude,
+      longitude: job.residence.longitude
+    };
+    const assignments = await prisma!.assignment.findMany({
+      where: { jobRequestId: review.jobRequestId },
+      select: {
+        status: true,
+        confirmedStartAt: true,
+        confirmedEndAt: true,
+        workerIdentity: { select: { displayName: true } }
+      },
+      orderBy: { confirmedStartAt: "asc" }
+    });
+    // Group the assigned workers by the DAY they are scheduled at this worksite.
+    const byDay = new Map<string, Array<{ displayName: string | null; status: string; startAt: string; endAt: string }>>();
+    for (const a of assignments) {
+      const date = a.confirmedStartAt.toISOString().slice(0, 10);
+      const list = byDay.get(date) ?? [];
+      list.push({ displayName: a.workerIdentity.displayName, status: a.status, startAt: a.confirmedStartAt.toISOString(), endAt: a.confirmedEndAt.toISOString() });
+      byDay.set(date, list);
+    }
+    const days = [...byDay.entries()]
+      .sort(([a], [b]) => a.localeCompare(b))
+      .map(([date, workers]) => ({ date, worksite: { label: worksite.label, latitude: worksite.latitude, longitude: worksite.longitude }, workers }));
+    return reply.code(200).send({
+      contract: { jobTitle: job.title, timezone: job.timezone, startAt: job.startAt.toISOString(), endAt: job.endAt.toISOString(), worksite },
+      days
+    });
+  });
+
   // Job DETAIL — the worker-facing job page. Privacy-safe: approximate location + map
   // point only; NEVER exact coords, street address, residence internal name, or rates
   // beyond the policy-gated worker rate. 404 for any job that is not marketplace-visible

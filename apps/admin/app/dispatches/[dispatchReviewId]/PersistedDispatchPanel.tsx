@@ -6,6 +6,7 @@ import type { AdminDispatchReview } from "../../api/dispatches/dispatchBoundary"
 import { CandidateReviewPanel } from "./CandidateReviewPanel";
 import { OfferAssignmentStatusPanel } from "./OfferAssignmentStatusPanel";
 import { InterestedWorkersPanel } from "./InterestedWorkersPanel";
+import { WorksiteMapsPanel } from "./WorksiteMapsPanel";
 
 export function PersistedDispatchPanel({
   dispatchReviewId
@@ -118,6 +119,9 @@ export function PersistedDispatchPanel({
         </article>
         <article style={styles.panel}>
           <InterestedWorkersPanel dispatchReviewId={dispatch.id} jobRequestId={dispatch.jobRequestId} />
+        </article>
+        <article style={{ ...styles.panel, gridColumn: "1 / -1" }}>
+          <WorksiteMapsPanel dispatchReviewId={dispatch.id} />
         </article>
       </section>
     </main>
