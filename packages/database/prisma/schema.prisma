@@ -579,6 +579,7 @@ model EmployerOrganization {
   requestCancellations EmployerRequestCancellation[]
   cancellationObligations EmployerCancellationObligation[]
   capacityReductions EmployerCapacityReduction[]
+  changeProposals EmployerRequestChangeProposal[]
 
   @@index([status], map: "employer_organizations_status_idx")
   @@map("employer_organizations")
@@ -758,6 +759,47 @@ model EmployerCapacityReduction {
   @@index([organizationId, status], map: "employer_capacity_reductions_org_status_idx")
   @@index([jobRequestId], map: "employer_capacity_reductions_job_request_id_idx")
   @@map("employer_capacity_reductions")
+}
+
+enum EmployerRequestChangeProposalStatus {
+  proposed
+  reconfirmation_pending
+  completed
+  rejected
+  requires_reconciliation
+  cancelled
+}
+
+// Employer Material Edit — a governed change proposal. A MATERIAL live edit must NOT
+// overwrite accepted worker terms: it is recorded here (proposed → reconfirmation),
+// the original accepted terms are preserved, and the request revision finalizes only
+// after the governed reconfirmation completes. Non-material edits are applied directly
+// and are NOT recorded here.
+model EmployerRequestChangeProposal {
+  id                    String                              @id @default(uuid()) @db.Uuid
+  organizationId        String                              @map("organization_id") @db.Uuid
+  jobRequestId          String                              @map("job_request_id") @db.Uuid
+  actorUserId           String                              @map("actor_user_id") @db.Uuid
+  baseRequestVersion    Int                                 @map("base_request_version")
+  status                EmployerRequestChangeProposalStatus @default(proposed)
+  materialFields        Json                                @map("material_fields")
+  proposedValues        Json                                @map("proposed_values")
+  affectedAssignmentIds Json                                @map("affected_assignment_ids")
+  originalTermsVersion  Int                                 @map("original_terms_version")
+  proposedTermsVersion  Int                                 @map("proposed_terms_version")
+  governedRateMinor     Int?                                @map("governed_rate_minor")
+  currency              String?
+  reason                String?
+  version               Int                                 @default(1)
+  createdAt             DateTime                            @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt             DateTime                            @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  organization EmployerOrganization @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  jobRequest   JobRequest           @relation(fields: [jobRequestId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId, status], map: "employer_request_change_proposals_org_status_idx")
+  @@index([jobRequestId], map: "employer_request_change_proposals_job_request_id_idx")
+  @@map("employer_request_change_proposals")
 }
 
 model OrganizationMembership {
@@ -1045,6 +1087,7 @@ model JobRequest {
   cancellation      EmployerRequestCancellation?
   cancellationObligations EmployerCancellationObligation[]
   capacityReductions EmployerCapacityReduction[]
+  changeProposals EmployerRequestChangeProposal[]
 
   @@unique([id, organizationId, residenceId, departmentId, workGroupId, roleDefinitionId], map: "job_requests_operational_scope_key")
   @@index([jobRequestNumber], map: "job_requests_job_request_number_idx")
