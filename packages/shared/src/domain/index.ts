@@ -1,6 +1,7 @@
 export * from "./application";
 export * from "./authenticatedCalendar";
 export * from "./authenticatedCalendarClient";
+export * from "./canadaLocation";
 export * from "./cancellationObligation";
 export * from "./capacityReduction";
 export * from "./connectedCalendar";
