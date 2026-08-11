@@ -130,6 +130,10 @@ import {
   type RequestEditState,
   type GeocodingProvider,
   type MarketplaceJobCandidate,
+  toMarketplaceJobDetail,
+  toMarketplaceEmployerProfile,
+  type MarketplaceJobDetailCandidate,
+  type MarketplaceEmployerProfileCandidate,
   type ProvinceCode
 } from "@rwos/shared";
 import {
@@ -246,6 +250,10 @@ export function buildApi(options: BuildApiOptions = {}) {
     trustProxy: runtimeConfig.rwosEnv === "production" ? "loopback" : false
   });
   const logger = createLogger("api");
+  // Marketplace bounds: never return "all of Canada" to the browser. We rank at most
+  // CANDIDATE_CAP matched jobs server-side, then page the result set.
+  const MARKETPLACE_PAGE_MAX = 50;
+  const MARKETPLACE_CANDIDATE_CAP = 500;
 
   if (publicWorkerIngressOnly) {
     app.addHook("onRequest", async (request, reply) => {
@@ -2436,6 +2444,19 @@ export function buildApi(options: BuildApiOptions = {}) {
     const radiusRaw = readOptionalNumber(body, "radiusKm");
     const radiusKm = radiusRaw && radiusRaw > 0 ? radiusRaw : undefined; // omit → any distance
     const roleFilter = readOptionalString(body, "role");
+    // Additional server-authoritative filters. All optional; the browser can only NARROW.
+    const dateFrom = parseIsoDate(readOptionalString(body, "dateFrom"));
+    const dateTo = parseIsoDate(readOptionalString(body, "dateTo"));
+    const minOpeningsRaw = readOptionalNumber(body, "minOpenings");
+    const minOpenings = minOpeningsRaw && minOpeningsRaw > 0 ? Math.floor(minOpeningsRaw) : undefined;
+    const verifiedOnly = body.verifiedOnly === true;
+    const sort = readOptionalString(body, "sort"); // "nearest" | "soonest" | "highest_rate"
+    // Pagination (bounded — we never return "all of Canada"). Cursor is a simple opaque
+    // offset; limit is clamped so map pins + list stay bounded to a page.
+    const limitRaw = readOptionalNumber(body, "limit");
+    const limit = Math.min(Math.max(limitRaw ? Math.floor(limitRaw) : 20, 1), MARKETPLACE_PAGE_MAX);
+    const cursorRaw = readOptionalNumber(body, "cursor");
+    const offset = cursorRaw && cursorRaw > 0 ? Math.floor(cursorRaw) : 0;
 
     const origin = await geocodingProvider.geocode({ countryRestriction: "CA", postalCode: normalizedPostal });
     if (origin.status !== "ok") {
@@ -2446,6 +2467,8 @@ export function buildApi(options: BuildApiOptions = {}) {
       where: {
         status: { in: ["submitted", "approved_for_dispatch"] },
         ...(roleFilter ? { roleDefinition: { key: roleFilter } } : {}),
+        ...(minOpenings ? { numberOfWorkers: { gte: minOpenings } } : {}),
+        ...(dateFrom || dateTo ? { startAt: { ...(dateFrom ? { gte: dateFrom } : {}), ...(dateTo ? { lte: dateTo } : {}) } } : {}),
         residence: {
           status: "active",
           latitude: { gte: box.minLat, lte: box.maxLat },
@@ -2458,20 +2481,26 @@ export function buildApi(options: BuildApiOptions = {}) {
         startAt: true,
         endAt: true,
         roleDefinition: { select: { displayLabel: true } },
-        organization: { select: { displayName: true } },
+        organization: { select: { id: true, displayName: true } },
         residence: { select: { city: true, province: true, latitude: true, longitude: true } }
       },
-      take: 200
+      take: MARKETPLACE_CANDIDATE_CAP
     });
+    if (rows.length === MARKETPLACE_CANDIDATE_CAP) {
+      logger.warn("marketplace.search.candidate_cap_hit", { cap: MARKETPLACE_CANDIDATE_CAP, postalCode: normalizedPostal });
+    }
     const candidates: MarketplaceJobCandidate[] = [];
     for (const r of rows) {
       const province = r.residence.province;
       if (!isProvinceCode(province) || r.residence.latitude === null || r.residence.longitude === null) continue;
+      // verifiedEmployer is ALWAYS false: no server-authoritative employer-verification
+      // state exists yet. We never infer it from an active account/contract.
+      if (verifiedOnly) continue; // no employer is verified → verified-only yields none
       candidates.push({
         jobRequestId: r.id,
         role: r.roleDefinition.displayLabel,
         employerName: r.organization.displayName,
-        verifiedEmployer: false, // employer verification is a later phase
+        verifiedEmployer: false,
         city: r.residence.city,
         province: province as ProvinceCode,
         latitude: r.residence.latitude,
@@ -2483,26 +2512,41 @@ export function buildApi(options: BuildApiOptions = {}) {
         currency: "CAD"
       });
     }
-    const results = searchNearbyJobs({
+    // Distance ranking is authoritative + always computed first (radius applied here).
+    const ranked = searchNearbyJobs({
       origin: { latitude: origin.location.latitude, longitude: origin.location.longitude },
       ...(radiusKm !== undefined ? { radiusKm } : {}),
       candidates
     });
-    // Hydrate the worker's saved-state for the returned page (best-effort: non-workers
-    // simply get no saved flags). This powers the List view's save toggle without a
-    // second round-trip. savedIdsAmong short-circuits + is denied-safe for non-workers.
-    let savedIds: readonly string[] = [];
+    // Server-authoritative sort (never trusts browser-supplied distances/rates).
+    const sorted = [...ranked];
+    if (sort === "soonest") sorted.sort((a, b) => a.startAt.localeCompare(b.startAt));
+    else if (sort === "highest_rate") sorted.sort((a, b) => (b.workerRateMinor ?? -1) - (a.workerRateMinor ?? -1));
+    // else "nearest" — already distance-ordered.
+
+    const total = sorted.length;
+    const page = sorted.slice(offset, offset + limit);
+    const nextCursor = offset + limit < total ? offset + limit : null;
+
+    // Hydrate saved-state for THIS page (best-effort; non-workers get no flags).
+    let savedIds: readonly string[];
     try {
       savedIds = await workerSavedJobsService.savedIdsAmong({
         userId: session.user.id,
-        jobRequestIds: results.map((r) => r.jobRequestId)
+        jobRequestIds: page.map((r) => r.jobRequestId)
       });
     } catch {
       savedIds = []; // not a worker → no saved flags; never fail the search
     }
     const savedSet = new Set(savedIds);
-    const jobs = results.map((r) => ({ ...r, saved: savedSet.has(r.jobRequestId) }));
-    return reply.code(200).send({ origin: { province: origin.location.province, city: origin.location.city, postalCode: normalizedPostal }, count: jobs.length, jobs });
+    const jobs = page.map((r) => ({ ...r, saved: savedSet.has(r.jobRequestId) }));
+    return reply.code(200).send({
+      origin: { province: origin.location.province, city: origin.location.city, postalCode: normalizedPostal },
+      count: jobs.length,
+      total,
+      nextCursor,
+      jobs
+    });
   });
 
   // Worker Saved Jobs — bookmark/unbookmark open marketplace jobs, and list them. All
@@ -2553,11 +2597,199 @@ export function buildApi(options: BuildApiOptions = {}) {
       return reply.code(401).send({ error: "RWOS_MARKETPLACE_DENIED", message: "Authentication is required." });
     }
     try {
-      const saved = await workerSavedJobsService.list({ userId: session.user.id });
+      const savedRecords = await workerSavedJobsService.list({ userId: session.user.id });
+      // Enrich with privacy-safe summaries + an availability flag. A saved job that is no
+      // longer marketplace-visible (hidden/cancelled/expired, or its residence deactivated)
+      // is returned as unavailable rather than dropped, so the worker understands why.
+      const ids = savedRecords.map((s) => s.jobRequestId);
+      const rows = ids.length
+        ? await prisma!.jobRequest.findMany({
+            where: { id: { in: ids } },
+            select: {
+              id: true,
+              title: true,
+              status: true,
+              numberOfWorkers: true,
+              startAt: true,
+              endAt: true,
+              roleDefinition: { select: { displayLabel: true } },
+              organization: { select: { id: true, displayName: true } },
+              residence: { select: { city: true, province: true, status: true } }
+            }
+          })
+        : [];
+      const byId = new Map(rows.map((r) => [r.id, r]));
+      const saved = savedRecords.map((rec) => {
+        const r = byId.get(rec.jobRequestId);
+        const available =
+          !!r &&
+          (r.status === "submitted" || r.status === "approved_for_dispatch") &&
+          r.residence.status === "active";
+        return {
+          jobRequestId: rec.jobRequestId,
+          savedAt: rec.savedAt,
+          available,
+          summary: r
+            ? {
+                role: r.roleDefinition.displayLabel,
+                title: r.title,
+                employer: { id: r.organization.id, name: r.organization.displayName, verified: false },
+                areaLabel:
+                  r.residence.city && isProvinceCode(r.residence.province)
+                    ? `${r.residence.city}, ${r.residence.province}`
+                    : null,
+                startAt: r.startAt.toISOString(),
+                endAt: r.endAt.toISOString(),
+                openings: r.numberOfWorkers
+              }
+            : null
+        };
+      });
       return reply.code(200).send({ count: saved.length, saved });
     } catch (error) {
       return sendSavedJobError(reply, error);
     }
+  });
+
+  // Job DETAIL — the worker-facing job page. Privacy-safe: approximate location + map
+  // point only; NEVER exact coords, street address, residence internal name, or rates
+  // beyond the policy-gated worker rate. 404 for any job that is not marketplace-visible
+  // (hidden/cancelled/expired, or residence inactive) so hidden jobs can't be probed.
+  app.get("/marketplace/jobs/:jobRequestId", async (request, reply) => {
+    const session = await authService.validateSession(readBearerToken(request.headers.authorization));
+    if (!session.authenticated || !session.user) {
+      return reply.code(401).send({ error: "RWOS_MARKETPLACE_DENIED", message: "Authentication is required." });
+    }
+    const jobRequestId = readRouteParam(request.params, "jobRequestId");
+    if (!isCanonicalUuid(jobRequestId)) {
+      return reply.code(404).send({ error: "RWOS_MARKETPLACE_JOB_NOT_FOUND", message: "That job is not available." });
+    }
+    const postalCode = readOptionalString(asRecord(request.query), "postalCode");
+    const normalizedPostal = postalCode ? normalizeCanadianPostalCode(postalCode) : null;
+
+    const row = await prisma!.jobRequest.findFirst({
+      where: {
+        id: jobRequestId,
+        status: { in: ["submitted", "approved_for_dispatch"] },
+        residence: { status: "active" }
+      },
+      select: {
+        id: true,
+        title: true,
+        description: true,
+        numberOfWorkers: true,
+        startAt: true,
+        endAt: true,
+        roleDefinition: { select: { displayLabel: true } },
+        organization: { select: { id: true, displayName: true } },
+        residence: { select: { city: true, province: true, latitude: true, longitude: true } },
+        calendarProfile: { select: { dutiesSummary: true, qualifications: true } }
+      }
+    });
+    if (
+      !row ||
+      !isProvinceCode(row.residence.province) ||
+      row.residence.latitude === null ||
+      row.residence.longitude === null
+    ) {
+      return reply.code(404).send({ error: "RWOS_MARKETPLACE_JOB_NOT_FOUND", message: "That job is not available." });
+    }
+
+    let origin: { latitude: number; longitude: number } | null = null;
+    if (normalizedPostal) {
+      const geo = await geocodingProvider.geocode({ countryRestriction: "CA", postalCode: normalizedPostal });
+      if (geo.status === "ok") origin = { latitude: geo.location.latitude, longitude: geo.location.longitude };
+    }
+
+    const candidate: MarketplaceJobDetailCandidate = {
+      jobRequestId: row.id,
+      role: row.roleDefinition.displayLabel,
+      title: row.title,
+      employerId: row.organization.id,
+      employerName: row.organization.displayName,
+      verifiedEmployer: false, // no real verification state exists yet; never inferred
+      city: row.residence.city,
+      province: row.residence.province as ProvinceCode,
+      latitude: row.residence.latitude,
+      longitude: row.residence.longitude,
+      startAt: row.startAt.toISOString(),
+      endAt: row.endAt.toISOString(),
+      openings: row.numberOfWorkers,
+      workerRateMinor: null, // policy-gated
+      currency: "CAD",
+      description: row.description,
+      duties: row.calendarProfile?.dutiesSummary ?? null,
+      qualifications: coerceQualifications(row.calendarProfile?.qualifications)
+    };
+    const detail = toMarketplaceJobDetail({ candidate, origin });
+
+    let saved: boolean;
+    try {
+      const savedIds = await workerSavedJobsService.savedIdsAmong({ userId: session.user.id, jobRequestIds: [row.id] });
+      saved = savedIds.includes(row.id);
+    } catch {
+      saved = false; // not a worker → not saved
+    }
+    return reply.code(200).send({ job: { ...detail, saved } });
+  });
+
+  // Employer PUBLIC PROFILE — only approved public info: public display name, real
+  // verification state, general areas + active opportunities. NEVER legal name, owner/
+  // internal users, contract rates, billing, or internal residence addresses.
+  app.get("/marketplace/employers/:organizationId", async (request, reply) => {
+    const session = await authService.validateSession(readBearerToken(request.headers.authorization));
+    if (!session.authenticated || !session.user) {
+      return reply.code(401).send({ error: "RWOS_MARKETPLACE_DENIED", message: "Authentication is required." });
+    }
+    const organizationId = readRouteParam(request.params, "organizationId");
+    if (!isCanonicalUuid(organizationId)) {
+      return reply.code(404).send({ error: "RWOS_MARKETPLACE_EMPLOYER_NOT_FOUND", message: "That employer is not available." });
+    }
+    const org = await prisma!.employerOrganization.findFirst({
+      where: { id: organizationId, status: "active" },
+      select: { id: true, displayName: true }
+    });
+    if (!org) {
+      return reply.code(404).send({ error: "RWOS_MARKETPLACE_EMPLOYER_NOT_FOUND", message: "That employer is not available." });
+    }
+    const jobRows = await prisma!.jobRequest.findMany({
+      where: {
+        organizationId: org.id,
+        status: { in: ["submitted", "approved_for_dispatch"] },
+        residence: { status: "active" }
+      },
+      select: {
+        id: true,
+        startAt: true,
+        endAt: true,
+        numberOfWorkers: true,
+        roleDefinition: { select: { displayLabel: true } },
+        residence: { select: { city: true, province: true } }
+      },
+      orderBy: { startAt: "asc" },
+      take: MARKETPLACE_PAGE_MAX
+    });
+    const candidate: MarketplaceEmployerProfileCandidate = {
+      id: org.id,
+      name: org.displayName,
+      verified: false, // real verification state only; none exists yet
+      opportunities: jobRows.flatMap((j) =>
+        isProvinceCode(j.residence.province)
+          ? [
+              {
+                jobRequestId: j.id,
+                role: j.roleDefinition.displayLabel,
+                city: j.residence.city,
+                province: j.residence.province as ProvinceCode,
+                startAt: j.startAt.toISOString(),
+                endAt: j.endAt.toISOString(),
+                openings: j.numberOfWorkers
+              }
+            ]
+          : []
+      )
+    };
+    return reply.code(200).send({ employer: toMarketplaceEmployerProfile(candidate) });
   });
 
   // Material Edit / Reconfirmation. The employer submits PROPOSED values only. The
@@ -4662,6 +4894,21 @@ function isCanonicalUuid(value: string) {
 function readOptionalNumber(body: Record<string, unknown>, key: string) {
   const value = body[key];
   return typeof value === "number" ? value : null;
+}
+
+// Coerce a stored qualifications JSON value into a clean string[] for the marketplace
+// detail (drops anything non-string; never throws).
+function coerceQualifications(value: unknown): string[] {
+  if (!Array.isArray(value)) return [];
+  return value.filter((item): item is string => typeof item === "string" && item.trim().length > 0);
+}
+
+// Parse an ISO date/datetime string into a Date, or null if absent/invalid. Used for
+// marketplace date-range filters (server-authoritative).
+function parseIsoDate(value: string | null): Date | null {
+  if (!value) return null;
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? null : date;
 }
 
 function readStringArray(body: Record<string, unknown>, key: string) {

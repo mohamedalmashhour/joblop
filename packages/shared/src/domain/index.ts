@@ -4,6 +4,7 @@ export * from "./authenticatedCalendarClient";
 export * from "./canadaLocation";
 export * from "./geocodingProviders";
 export * from "./marketplaceJobSearch";
+export * from "./marketplaceJobDetail";
 export * from "./cancellationObligation";
 export * from "./capacityReduction";
 export * from "./connectedCalendar";
