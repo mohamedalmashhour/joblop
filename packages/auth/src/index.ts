@@ -8454,54 +8454,62 @@ export function createAttendanceService(
     },
 
     async workerCheckIn(input: AttendanceEvidenceInput) {
-      const currentTime = now();
-      const workerIdentity = await requireWorkerIdentityForSession(
-        workerOfferRepository,
-        input.session
-      );
-      const attendance = await requireWorkerOwnedAttendance({
-        attendanceRepository,
-        authorizationService,
-        session: input.session,
-        roles: input.roles ?? [],
-        workerIdentity,
-        attendanceRecordId: input.attendanceRecordId,
-        permission: "attendance.worker_check_in",
-        correlationId: input.correlationId,
-        now: currentTime
-      });
-      return checkInAttendance({
-        ...input,
-        attendanceRepository,
-        attendanceRecord: attendance.stored,
-        actorUserId: input.session.user?.id ?? null,
-        now: currentTime
+      // Retry only on transient DB write-conflicts (40001/40P01/P2034). Each retry re-fetches
+      // the record fresh, so a two-writer race converges deterministically: the loser re-reads
+      // the now-committed record and is rejected as a version/state conflict (409). This does
+      // NOT alter the exactly-once/version-guard semantics — only how a racing loser is reported.
+      return runAtomicAssignmentWithRetry(async () => {
+        const currentTime = now();
+        const workerIdentity = await requireWorkerIdentityForSession(
+          workerOfferRepository,
+          input.session
+        );
+        const attendance = await requireWorkerOwnedAttendance({
+          attendanceRepository,
+          authorizationService,
+          session: input.session,
+          roles: input.roles ?? [],
+          workerIdentity,
+          attendanceRecordId: input.attendanceRecordId,
+          permission: "attendance.worker_check_in",
+          correlationId: input.correlationId,
+          now: currentTime
+        });
+        return checkInAttendance({
+          ...input,
+          attendanceRepository,
+          attendanceRecord: attendance.stored,
+          actorUserId: input.session.user?.id ?? null,
+          now: currentTime
+        });
       });
     },
 
     async workerCheckOut(input: AttendanceEvidenceInput) {
-      const currentTime = now();
-      const workerIdentity = await requireWorkerIdentityForSession(
-        workerOfferRepository,
-        input.session
-      );
-      const attendance = await requireWorkerOwnedAttendance({
-        attendanceRepository,
-        authorizationService,
-        session: input.session,
-        roles: input.roles ?? [],
-        workerIdentity,
-        attendanceRecordId: input.attendanceRecordId,
-        permission: "attendance.worker_check_out",
-        correlationId: input.correlationId,
-        now: currentTime
-      });
-      return checkOutAttendance({
-        ...input,
-        attendanceRepository,
-        attendanceRecord: attendance.stored,
-        actorUserId: input.session.user?.id ?? null,
-        now: currentTime
+      return runAtomicAssignmentWithRetry(async () => {
+        const currentTime = now();
+        const workerIdentity = await requireWorkerIdentityForSession(
+          workerOfferRepository,
+          input.session
+        );
+        const attendance = await requireWorkerOwnedAttendance({
+          attendanceRepository,
+          authorizationService,
+          session: input.session,
+          roles: input.roles ?? [],
+          workerIdentity,
+          attendanceRecordId: input.attendanceRecordId,
+          permission: "attendance.worker_check_out",
+          correlationId: input.correlationId,
+          now: currentTime
+        });
+        return checkOutAttendance({
+          ...input,
+          attendanceRepository,
+          attendanceRecord: attendance.stored,
+          actorUserId: input.session.user?.id ?? null,
+          now: currentTime
+        });
       });
     },
 
@@ -14053,10 +14061,22 @@ export function createPrismaAttendanceRepository(prismaClient: unknown): Attenda
         data.cancelledByUserId = input.cancelledByUserId;
       }
 
-      const result = await prisma.attendanceRecord.updateMany({
-        where: { id: input.attendanceRecordId, version: input.expectedVersion },
-        data
-      });
+      // The version guard (WHERE version = expectedVersion) is the source of truth for
+      // exactly-once. Under a true two-writer race the pg adapter may raise a retryable
+      // write-conflict (40001/40P01/P2034) on the guarded row instead of committing 0 rows —
+      // that is the same "someone else won" outcome, so we classify it as the loser losing
+      // (null) rather than a 500. This does NOT change the guard's semantics: at most one
+      // writer ever commits; the loser is surfaced upstream as a version_conflict (409).
+      let result: { count: number };
+      try {
+        result = await prisma.attendanceRecord.updateMany({
+          where: { id: input.attendanceRecordId, version: input.expectedVersion },
+          data
+        });
+      } catch (error) {
+        if (isRetryableAssignmentTransactionError(error)) return null;
+        throw error;
+      }
       if (result.count !== 1) return null;
 
       return this.findAttendanceById(input.attendanceRecordId);

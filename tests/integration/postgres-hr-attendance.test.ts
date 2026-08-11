@@ -35,7 +35,10 @@ suite("HR-4 scheduling & attendance", () => {
   const auth = (t: string) => ({ authorization: `Bearer ${t}` });
 
   beforeAll(async () => {
-    app = buildApi({ env: { ...process.env, DATABASE_URL: databaseUrl, RWOS_ENV: "local", NODE_ENV: "test" }, resolveAuthorizationRoles: async (u: string) => (u === hrUserId ? ["HR_ADMINISTRATOR", "PLATFORM_ADMINISTRATOR"] : []) });
+    // Non-HR users carry the WORKER role (as the real app derives from a WorkerIdentity) so the
+    // worker check-in actually reaches the version-guard — otherwise exactly-once would pass
+    // vacuously with zero successes.
+    app = buildApi({ env: { ...process.env, DATABASE_URL: databaseUrl, RWOS_ENV: "local", NODE_ENV: "test" }, resolveAuthorizationRoles: async (u: string) => (u === hrUserId ? ["HR_ADMINISTRATOR", "PLATFORM_ADMINISTRATOR"] : ["WORKER_ACCESS"]) });
     await app.ready();
     const hr = await register(`att-hr-${randomUUID()}@e2e.local`);
     hrUserId = hr.user.id; hrToken = hr.token;

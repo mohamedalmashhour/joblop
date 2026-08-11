@@ -927,7 +927,7 @@ export function buildApi(options: BuildApiOptions = {}) {
     }
 
     if (error instanceof AttendanceError) {
-      return sendAttendanceDenied(reply);
+      return sendAttendanceFailure(reply, error);
     }
 
     if (error instanceof TimesheetError) {
@@ -5251,7 +5251,7 @@ export function buildApi(options: BuildApiOptions = {}) {
     const session = await authService.validateSession(
       readBearerToken(request.headers.authorization)
     );
-    if (!session.authenticated || !session.user) return sendAttendanceDenied(reply);
+    if (!session.authenticated || !session.user) return sendAttendanceUnauthenticated(reply);
 
     const body = asRecord(request.body);
     const attendanceRecord = await attendanceService.createFromAssignment({
@@ -5268,7 +5268,7 @@ export function buildApi(options: BuildApiOptions = {}) {
     const session = await authService.validateSession(
       readBearerToken(request.headers.authorization)
     );
-    if (!session.authenticated || !session.user) return sendAttendanceDenied(reply);
+    if (!session.authenticated || !session.user) return sendAttendanceUnauthenticated(reply);
 
     const query = asRecord(request.query);
     const status = readAttendanceStatus(readOptionalString(query, "status"));
@@ -5289,7 +5289,7 @@ export function buildApi(options: BuildApiOptions = {}) {
     const session = await authService.validateSession(
       readBearerToken(request.headers.authorization)
     );
-    if (!session.authenticated || !session.user) return sendAttendanceDenied(reply);
+    if (!session.authenticated || !session.user) return sendAttendanceUnauthenticated(reply);
 
     const attendanceRecord = await attendanceService.readAttendance({
       session,
@@ -5304,7 +5304,7 @@ export function buildApi(options: BuildApiOptions = {}) {
     const session = await authService.validateSession(
       readBearerToken(request.headers.authorization)
     );
-    if (!session.authenticated || !session.user) return sendAttendanceDenied(reply);
+    if (!session.authenticated || !session.user) return sendAttendanceUnauthenticated(reply);
 
     const body = asRecord(request.body);
     const attendanceRecord = await attendanceService.markCompleted({
@@ -5321,7 +5321,7 @@ export function buildApi(options: BuildApiOptions = {}) {
     const session = await authService.validateSession(
       readBearerToken(request.headers.authorization)
     );
-    if (!session.authenticated || !session.user) return sendAttendanceDenied(reply);
+    if (!session.authenticated || !session.user) return sendAttendanceUnauthenticated(reply);
 
     const body = asRecord(request.body);
     const attendanceRecord = await attendanceService.markMissed({
@@ -5339,7 +5339,7 @@ export function buildApi(options: BuildApiOptions = {}) {
     const session = await authService.validateSession(
       readBearerToken(request.headers.authorization)
     );
-    if (!session.authenticated || !session.user) return sendAttendanceDenied(reply);
+    if (!session.authenticated || !session.user) return sendAttendanceUnauthenticated(reply);
 
     const body = asRecord(request.body);
     const attendanceRecord = await attendanceService.markException({
@@ -5358,7 +5358,7 @@ export function buildApi(options: BuildApiOptions = {}) {
     const session = await authService.validateSession(
       readBearerToken(request.headers.authorization)
     );
-    if (!session.authenticated || !session.user) return sendAttendanceDenied(reply);
+    if (!session.authenticated || !session.user) return sendAttendanceUnauthenticated(reply);
 
     const body = asRecord(request.body);
     const attendanceRecord = await attendanceService.cancel({
@@ -5376,7 +5376,7 @@ export function buildApi(options: BuildApiOptions = {}) {
     const session = await authService.validateSession(
       readBearerToken(request.headers.authorization)
     );
-    if (!session.authenticated || !session.user) return sendAttendanceDenied(reply);
+    if (!session.authenticated || !session.user) return sendAttendanceUnauthenticated(reply);
 
     const audit = await attendanceService.readAuditSummary({
       session,
@@ -5391,7 +5391,7 @@ export function buildApi(options: BuildApiOptions = {}) {
     const session = await authService.validateSession(
       readBearerToken(request.headers.authorization)
     );
-    if (!session.authenticated || !session.user) return sendAttendanceDenied(reply);
+    if (!session.authenticated || !session.user) return sendAttendanceUnauthenticated(reply);
 
     const query = asRecord(request.query);
     const status = readAttendanceStatus(readOptionalString(query, "status"));
@@ -5415,7 +5415,7 @@ export function buildApi(options: BuildApiOptions = {}) {
     const session = await authService.validateSession(
       readBearerToken(request.headers.authorization)
     );
-    if (!session.authenticated || !session.user) return sendAttendanceDenied(reply);
+    if (!session.authenticated || !session.user) return sendAttendanceUnauthenticated(reply);
 
     const attendanceRecord = await attendanceService.workerRead({
       session,
@@ -5430,7 +5430,7 @@ export function buildApi(options: BuildApiOptions = {}) {
     const session = await authService.validateSession(
       readBearerToken(request.headers.authorization)
     );
-    if (!session.authenticated || !session.user) return sendAttendanceDenied(reply);
+    if (!session.authenticated || !session.user) return sendAttendanceUnauthenticated(reply);
 
     const body = asRecord(request.body);
     const attendanceRecord = await attendanceService.workerCheckIn({
@@ -5450,7 +5450,7 @@ export function buildApi(options: BuildApiOptions = {}) {
     const session = await authService.validateSession(
       readBearerToken(request.headers.authorization)
     );
-    if (!session.authenticated || !session.user) return sendAttendanceDenied(reply);
+    if (!session.authenticated || !session.user) return sendAttendanceUnauthenticated(reply);
 
     const body = asRecord(request.body);
     const attendanceRecord = await attendanceService.workerCheckOut({
@@ -5471,7 +5471,7 @@ export function buildApi(options: BuildApiOptions = {}) {
   // worker data, no home location. ──
   app.get("/worker/attendance", async (request, reply) => {
     const session = await authService.validateSession(readBearerToken(request.headers.authorization));
-    if (!session.authenticated || !session.user) return sendAttendanceDenied(reply);
+    if (!session.authenticated || !session.user) return sendAttendanceUnauthenticated(reply);
     const identity = await prisma!.workerIdentity.findUnique({ where: { userId: session.user.id }, select: { id: true } });
     if (!identity) return reply.code(403).send({ error: "RWOS_ATTENDANCE_DENIED", message: "Only a worker can view their schedule." });
     const query = asRecord(request.query);
@@ -6594,6 +6594,54 @@ function sendAttendanceDenied(reply: FastifyReply) {
     error: authorizationDeniedCode,
     message: authorizationDeniedMessage
   });
+}
+
+// An unauthenticated request is an AUTHENTICATION failure (401), distinct from an
+// authorized-but-forbidden request (403). Keeps the status table honest for attendance.
+function sendAttendanceUnauthenticated(reply: FastifyReply) {
+  return reply.code(401).send({
+    error: authorizationDeniedCode,
+    message: authorizationDeniedMessage
+  });
+}
+
+// Map an AttendanceError to the correct HTTP status by its decision.status. A stale
+// expectedVersion is a concurrency conflict (409), NOT an authentication failure. This
+// preserves the exactly-once/version-guard semantics unchanged — it only fixes how the
+// outcome is reported. Denials stay opaque (generic code/message) so we never leak whether
+// another worker's record exists; conflicts get an actionable code so the client can reload.
+function sendAttendanceFailure(reply: FastifyReply, error: AttendanceError) {
+  switch (error.decision.status) {
+    case "invalid_input":
+      return reply.code(400).send({
+        error: "RWOS_ATTENDANCE_INVALID_INPUT",
+        message: "Attendance request was invalid."
+      });
+    case "not_found":
+      return reply.code(404).send({
+        error: authorizationDeniedCode,
+        message: authorizationDeniedMessage
+      });
+    case "permission_denied":
+      return sendAttendanceDenied(reply);
+    case "version_conflict":
+      return reply.code(409).send({
+        error: "RWOS_ATTENDANCE_VERSION_CONFLICT",
+        message: "Attendance changed since it was loaded. Reload and try again."
+      });
+    case "invalid_transition":
+    case "assignment_not_ready":
+    case "attendance_exists":
+    case "duplicate_check_in":
+    case "duplicate_check_out":
+    case "check_out_before_check_in":
+      return reply.code(409).send({
+        error: "RWOS_ATTENDANCE_STATE_CONFLICT",
+        message: "Attendance state does not allow this action."
+      });
+    default:
+      return sendAttendanceDenied(reply);
+  }
 }
 
 function sendTimesheetDenied(reply: FastifyReply) {
