@@ -165,7 +165,7 @@ export function createPrismaPayrollRepository(prisma: PrismaClient): PayrollRepo
     },
 
     async updateCalculationStatus(input) {
-      const data: Record<string, unknown> = { status: input.nextStatus, version: { increment: 1 }, updatedByUserId: input.actorUserId };
+      const data: Record<string, unknown> = { status: input.nextStatus, version: { increment: 1 } };
       if (input.note !== null) data.reviewNote = input.note;
       if (input.nextStatus === "in_review") data.reviewedByUserId = input.actorUserId;
       if (input.nextStatus === "approved") { data.approvedByUserId = input.actorUserId; data.approvedAt = input.now; }
