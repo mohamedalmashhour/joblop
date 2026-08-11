@@ -638,6 +638,28 @@ a {
   border-color: transparent;
 }
 
+/* Verification status chips */
+.chip.status-verified {
+  background: #dcfce7;
+  color: #15803d;
+  border-color: transparent;
+}
+.chip.status-pending,
+.chip.status-review {
+  background: var(--brand-soft);
+  color: var(--brand);
+  border-color: transparent;
+}
+.chip.status-expired,
+.chip.status-rejected {
+  background: #fee2e2;
+  color: var(--danger);
+  border-color: transparent;
+}
+.chip.status-unverified {
+  background: var(--surface-2);
+}
+
 a.card.cardlink {
   text-decoration: none;
   color: inherit;

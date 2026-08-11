@@ -9,6 +9,8 @@ const connectedNavigation = [
   { href: "/dispatches", label: "Dispatch reviews" }
 ] as const;
 const reviewNavigation = phase01Routes.map(({ route, title }) => ({ href: route, label: title }));
+// Platform operations surfaces not in the phase-01 review set.
+const operationsNavigation = [{ href: "/verification", label: "Verification" }] as const;
 
 type NavItem = { href: string; label: string };
 
@@ -19,7 +21,7 @@ const NAV_GROUPS: readonly { group: string; hrefs: readonly string[] }[] = [
   { group: "Operations", hrefs: ["/calendar", "/dispatches", "/shifts"] },
   { group: "Directory", hrefs: ["/workers", "/employers", "/residences"] },
   { group: "Finance & payroll", hrefs: ["/finance", "/payroll"] },
-  { group: "Governance & compliance", hrefs: ["/compliance", "/audit-log", "/reports"] },
+  { group: "Governance & compliance", hrefs: ["/verification", "/compliance", "/audit-log", "/reports"] },
   { group: "Platform", hrefs: ["/system-settings", "/platform-analytics", "/notification-center", "/ai-control-center"] }
 ];
 
@@ -58,7 +60,7 @@ export function AdminShell({
     staging;
   const navigation = connectedEnvironment
     ? connectedNavigation
-    : [...connectedNavigation, ...reviewNavigation];
+    : [...connectedNavigation, ...operationsNavigation, ...reviewNavigation];
   const currentIndex = navigation.findIndex(
     (item) => pathname === item.href || pathname.startsWith(`${item.href}/`)
   );
