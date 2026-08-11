@@ -1,0 +1,24 @@
+{
+  "name": "@rwos/worker",
+  "version": "0.1.0-foundation",
+  "private": true,
+  "scripts": {
+    "build": "RWOS_ENV=production next build",
+    "lint": "eslint .",
+    "start": "next start --hostname 0.0.0.0 --port ${PORT:-8090}",
+    "dev": "next dev --hostname 0.0.0.0 --port ${PORT:-8090}",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@rwos/auth": "workspace:*",
+    "@rwos/config": "workspace:*",
+    "@rwos/shared": "workspace:*",
+    "next": "^15.5.22",
+    "react": "^19.1.0",
+    "react-dom": "^19.1.0"
+  },
+  "devDependencies": {
+    "@types/react": "^19.1.8",
+    "@types/react-dom": "^19.1.6"
+  }
+}

@@ -8,7 +8,7 @@ export const localAdminSessionCookieName = "rwos_local_admin_session";
 export type FrontendSessionFetch = (
   input: string,
   init: Readonly<{
-    method: "GET" | "POST" | "PUT" | "PATCH";
+    method: "GET" | "POST" | "PUT" | "PATCH" | "DELETE";
     headers: Readonly<Record<string, string>>;
     body?: string;
     cache: "no-store";
@@ -48,7 +48,7 @@ export function createFrontendSessionGateway(options: {
 
   async function request(
     path: string,
-    method: "GET" | "POST" | "PUT" | "PATCH",
+    method: "GET" | "POST" | "PUT" | "PATCH" | "DELETE",
     sessionToken: string | null,
     body?: unknown
   ): Promise<FrontendSessionResult> {
