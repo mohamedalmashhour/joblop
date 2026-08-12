@@ -137,6 +137,19 @@ suite("HR-6 AI review endpoint (advisory, read-only)", () => {
     expect(after).toEqual(before);
   });
 
+  it("CONCURRENT identical reviews: deterministic, no mutation, no revision creation", async () => {
+    const beforeTotal = await prisma.payrollCalculation.count();
+    const before = await prisma.payrollCalculation.findUnique({ where: { id: calcFlagged } });
+    const responses = await Promise.all(Array.from({ length: 8 }, () => getReview(app, payrollToken, calcFlagged)));
+    expect(responses.every((r) => r.statusCode === 200)).toBe(true);
+    // synthetic provider is deterministic → every concurrent response is byte-identical
+    const bodies = responses.map((r) => JSON.stringify(r.json().review));
+    expect(new Set(bodies).size).toBe(1);
+    const after = await prisma.payrollCalculation.findUnique({ where: { id: calcFlagged } });
+    expect(after).toEqual(before); // no lock contention, no new revision, no mutation
+    expect(await prisma.payrollCalculation.count()).toBe(beforeTotal);
+  });
+
   it("performs no authoritative write (row + line snapshots and total count unchanged)", async () => {
     const snap = async () => ({
       calc: await prisma.payrollCalculation.findUnique({ where: { id: calcFlagged } }),
