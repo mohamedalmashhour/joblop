@@ -27,3 +27,6 @@ tmp/
 crash.log
 crash.*.log
 .staging-inputs/
+
+# Local browser E2E (Playwright) run artifacts — never committed
+tests/e2e/artifacts/

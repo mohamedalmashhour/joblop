@@ -78,7 +78,9 @@ test("worker production entry authenticates without fixture content", async ({ p
     process.env.RWOS_E2E_WORKER_ORIGIN,
     process.env.RWOS_E2E_WORKER_EMAIL,
     process.env.RWOS_E2E_WORKER_PASSWORD,
-    { signInApiPath: "/auth/sign-in" }
+    // The worker BFF sign-in route is /api/session/sign-in (there is no /auth/sign-in in the worker
+    // app). Watch the ACTUAL request so the assertion fails if the real endpoint changes.
+    { signInApiPath: "/api/session/sign-in" }
   );
   await expect(page.getByText(/worker offers|worker calendar/i).first()).toBeVisible();
   await expect(page.getByText(/fixture|synthetic worker/i)).toHaveCount(0);
