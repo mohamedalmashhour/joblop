@@ -5603,6 +5603,26 @@ export function buildApi(options: BuildApiOptions = {}) {
     }
   });
 
+  // Bounded list of governed pay periods for the admin console (payroll authority).
+  app.get("/platform/payroll/periods", async (request, reply) => {
+    const actor = await requirePayrollAuthority(request, reply);
+    if (!actor) return;
+    const query = asRecord(request.query);
+    const organizationId = readOptionalString(query, "organizationId");
+    const limit = Math.min(Math.max(parseQueryInt(readOptionalString(query, "limit")) ?? 25, 1), 100);
+    const cursor = readOptionalString(query, "cursor");
+    const rows = await prisma!.payrollPeriod.findMany({
+      where: { ...(organizationId && isCanonicalUuid(organizationId) ? { organizationId } : {}) },
+      orderBy: [{ periodStart: "desc" }, { id: "desc" }],
+      take: limit + 1,
+      ...(cursor && isCanonicalUuid(cursor) ? { cursor: { id: cursor }, skip: 1 } : {}),
+      include: { _count: { select: { calculations: true } } }
+    });
+    const hasMore = rows.length > limit;
+    const items = rows.slice(0, limit).map((p) => ({ ...serializePayrollPeriod(p), calculationCount: p._count.calculations }));
+    return reply.code(200).send({ items, nextCursor: hasMore ? (rows[limit - 1]?.id ?? null) : null, synthetic: true });
+  });
+
   app.post("/platform/payroll/periods/:periodId/transition", async (request, reply) => {
     const actor = await requirePayrollAuthority(request, reply);
     if (!actor) return;

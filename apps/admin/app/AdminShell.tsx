@@ -12,7 +12,8 @@ const reviewNavigation = phase01Routes.map(({ route, title }) => ({ href: route,
 // Platform operations surfaces not in the phase-01 review set.
 const operationsNavigation = [
   { href: "/verification", label: "Verification" },
-  { href: "/hr", label: "HR" }
+  { href: "/hr", label: "HR" },
+  { href: "/payroll", label: "Payroll" }
 ] as const;
 
 type NavItem = { href: string; label: string };
