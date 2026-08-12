@@ -97,7 +97,8 @@ async function main() {
         "tests/integration/postgres-payroll-period-review.test.ts",
         "tests/integration/postgres-payroll-period-review-paths.test.ts",
         "tests/integration/postgres-payroll-provenance.test.ts",
-        "tests/integration/postgres-payroll-ai-egress.test.ts"
+        "tests/integration/postgres-payroll-ai-egress.test.ts",
+        "tests/integration/postgres-payroll-telemetry.test.ts"
       ],
       validationEnvironment
     );

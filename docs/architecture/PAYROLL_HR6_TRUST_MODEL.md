@@ -268,3 +268,46 @@ no prompt, context, evidence, provenance, PII, secret, or raw provider response 
 An envelope for calculation A is built solely from A's own sanitized context, so it carries no other
 calculation/worker/organization identifiers or cross-family/period evidence (proven by unit and live
 PG tests with a recording provider). **No live external AI is configured in this gate.**
+
+## HR-6.1 Chunk 4 — content-free advisory observability
+
+`payrollReviewTelemetry.ts` adds operational observability around the four advisory surfaces
+(review-context, ai-review, provenance, period review). It is **content-free**, **best-effort**, and
+**persists nothing**.
+
+### Telemetry schema (`PayrollReviewTelemetryEvent`) — allowed fields
+`operation` (controlled enum), `status` (controlled enum), `providerMode` (synthetic|external),
+`providerKey`/`providerVersion`/`promptVersion`/`contractVersion` (safe-charset ids, ≤64),
+`flagCount`, `evidenceCount`, `provenanceFactCount`, `payloadBytes`, `durationMs` (bounded ints),
+`timeout`, `truncated` (booleans), `failureReason` (controlled enum), `correlationId` (safe id).
+No arbitrary-metadata map, no free-form string. Counts/durations are clamped; ids are charset-
+restricted (free-form text is dropped, never carried).
+
+### Controlled reason codes
+`provider_timeout`, `provider_failure`, `invalid_provider_output`, `unsafe_egress`,
+`oversize_egress`, `evidence_unbound`, `unknown_number`, `capability_disabled`,
+`missing_provenance`, `explanation_unavailable`. Raw internal reasons are mapped to these via
+`mapTelemetryFailureReason`; an exception message / stack / raw provider error is **never** emitted.
+
+### Forbidden (structurally impossible)
+prompt text, review-context body, correction reason, raw user text, evidence body, provenance
+narrative, AI/model response body, egress-envelope body, calculation/worker/org/tenant/contract
+identifiers, names, emails, phones, addresses, DOB, SIN, tax ids, bank/account/routing, payment
+credentials, card/PAN, passwords, tokens, secrets, API keys, and **all financial values**
+(hourly rate, gross, net, deductions, employer cost, earning-line amounts). Financial values are
+never telemetry fields.
+
+### No-persistence policy
+No telemetry/AI-review/prompt/response history table; no migration. Observability is operational
+only — metrics/log-shape via the existing structured logger (`createLoggerTelemetrySink`), which
+additionally drops any sensitive-named key. No OpenTelemetry/Prometheus/Datadog/Sentry dependency.
+
+### Failure isolation
+`emitPayrollReviewTelemetry` is best-effort: it validates then records inside try/catch; a
+throwing/unavailable/invalid sink is swallowed and **never** propagates. Telemetry can never become
+payroll authority — payroll state, review response behavior, and financial calculations are
+unaffected by telemetry failure (proven by a throwing-sink live PG test).
+
+### Metrics limitations
+Only low-cardinality operational signals (counts/status/mode/latency/size). No high-cardinality
+labels — never labelled by calculation, worker, tenant, organization, email, or contract id.

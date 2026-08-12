@@ -98,6 +98,10 @@ import {
   PAYROLL_REVIEW_OUTPUT_CONTRACT_VERSION,
   PAYROLL_REVIEW_DEFAULT_TIMEOUT_MS,
   type PayrollReviewExternalProvider,
+  emitPayrollReviewTelemetry,
+  createLoggerTelemetrySink,
+  mapTelemetryFailureReason,
+  type PayrollReviewTelemetrySink,
   PayrollError,
   type HrDocumentStatus,
   createPrismaCancellationJobRequestReader,
@@ -277,6 +281,8 @@ export interface BuildApiOptions {
   // (non-production) AND this is injected; it receives a validated, byte-scanned egress envelope —
   // never the raw context. Default absent → synthetic offline provider, no egress possible.
   payrollExternalReviewProvider?: PayrollReviewExternalProvider;
+  // HR-6.1 Chunk 4: content-free telemetry sink (default: the structured logger). Best-effort.
+  payrollTelemetrySink?: PayrollReviewTelemetrySink;
 }
 
 export type AuthenticationRateLimitDecision = Readonly<{
@@ -592,6 +598,9 @@ export function buildApi(options: BuildApiOptions = {}) {
           PAYROLL_REVIEW_DEFAULT_TIMEOUT_MS
         )
       : syntheticPayrollReviewProvider;
+  // HR-6.1 Chunk 4: content-free observability sink. Default = the existing structured logger.
+  // Best-effort: emission failures never affect payroll behavior; no content/financials/PII/persist.
+  const payrollTelemetrySink = options.payrollTelemetrySink ?? createLoggerTelemetrySink(logger);
   // Geocoding provider (provider-neutral seam). Default: a deterministic fixture over
   // major Canadian FSAs — no network, safe for local/CI. Production swaps in the OSM
   // (or Google) provider via options.geocodingProvider. Resolutions are persisted on
@@ -5817,6 +5826,7 @@ export function buildApi(options: BuildApiOptions = {}) {
   // bounded context + deterministic review flags for a governed calculation. NO model call, NO
   // write, NO persistence. This is the trust-model input a FUTURE advisory provider will explain.
   app.get("/platform/payroll/calculations/:calculationId/review-context", async (request, reply) => {
+    const startedAt = Date.now();
     const actor = await requirePayrollAuthority(request, reply);
     if (!actor) return;
     const calculationId = readRouteParam(request.params, "calculationId");
@@ -5846,6 +5856,7 @@ export function buildApi(options: BuildApiOptions = {}) {
       family: familyRows.map((f) => ({ id: f.id, revision: f.revision, grossPayMinor: f.grossPayMinor, netPayMinor: f.netPayMinor, status: f.status })),
       verification
     });
+    emitPayrollReviewTelemetry(payrollTelemetrySink, { operation: "payroll_review_context", status: "success", flagCount: context.flags.length, evidenceCount: Object.keys(context.evidence).length, truncated: context.bounds.workedTimeTruncated, durationMs: Date.now() - startedAt, correlationId: request.id });
     return reply.code(200).send({ context, synthetic: true, advisory: true, notice: "Deterministic review context + flags. No AI model was called; no payroll data was modified." });
   });
 
@@ -5855,6 +5866,7 @@ export function buildApi(options: BuildApiOptions = {}) {
   // endpoint performs NO write and records NO audit row — it returns advisory assistance only and
   // can never approve/lock/correct/pay or alter any payroll state.
   app.get("/platform/payroll/calculations/:calculationId/ai-review", async (request, reply) => {
+    const startedAt = Date.now();
     const actor = await requirePayrollAuthority(request, reply);
     if (!actor) return;
     const calculationId = readRouteParam(request.params, "calculationId");
@@ -5883,6 +5895,16 @@ export function buildApi(options: BuildApiOptions = {}) {
       verification
     });
     const review = await runPayrollReview({ context, provider: payrollReviewProvider });
+    emitPayrollReviewTelemetry(payrollTelemetrySink, {
+      operation: "payroll_ai_review",
+      status: review.status === "ready" ? "success" : "review_unavailable",
+      providerMode: payrollReviewEgressMode === "external" ? "external" : "synthetic",
+      providerKey: review.versioning.providerKey, providerVersion: review.versioning.providerVersion, promptVersion: review.versioning.promptVersion,
+      flagCount: review.deterministicFlags.length,
+      timeout: review.unavailableReason === "payroll_review_timeout",
+      failureReason: mapTelemetryFailureReason(review.unavailableReason),
+      durationMs: Date.now() - startedAt, correlationId: request.id
+    });
     return reply.code(200).send({ review, advisory: true, notice: "Advisory AI review assistance only. AI cannot approve, lock, correct, or pay. No payroll data was modified." });
   });
 
@@ -5891,6 +5913,7 @@ export function buildApi(options: BuildApiOptions = {}) {
   // nothing, invents no value, calls no model, and performs no write. Descriptive only — never
   // authoritative.
   app.get("/platform/payroll/calculations/:calculationId/provenance", async (request, reply) => {
+    const startedAt = Date.now();
     const actor = await requirePayrollAuthority(request, reply);
     if (!actor) return;
     const calculationId = readRouteParam(request.params, "calculationId");
@@ -5928,6 +5951,14 @@ export function buildApi(options: BuildApiOptions = {}) {
       verification,
       flags
     });
+    emitPayrollReviewTelemetry(payrollTelemetrySink, {
+      operation: "payroll_provenance",
+      status: provenance.status === "ready" ? "success" : "review_unavailable",
+      provenanceFactCount: provenance.rateSegments.length, evidenceCount: Object.keys(provenance.evidence).length,
+      truncated: provenance.bounds.workedTimeTruncated || provenance.bounds.earningLinesTruncated,
+      failureReason: provenance.status === "ready" ? undefined : "explanation_unavailable",
+      durationMs: Date.now() - startedAt, correlationId: request.id
+    });
     return reply.code(200).send({ provenance, descriptive: true, advisory: true, notice: "Deterministic provenance from immutable stored evidence. Descriptive only, never authoritative. No AI model was called; no payroll data was modified." });
   });
 
@@ -5937,6 +5968,7 @@ export function buildApi(options: BuildApiOptions = {}) {
   // resolvers the calculation engine consults (never the write path), invents no financial value,
   // and performs no write.
   app.get("/platform/payroll/periods/:periodId/review-context", async (request, reply) => {
+    const startedAt = Date.now();
     const actor = await requirePayrollAuthority(request, reply);
     if (!actor) return;
     const periodId = readRouteParam(request.params, "periodId");
@@ -5989,6 +6021,11 @@ export function buildApi(options: BuildApiOptions = {}) {
     const context = assemblePayrollPeriodReviewContext({
       period: { id: period.id, organizationId: period.organizationId, jurisdiction: { country: period.jurisdictionCountry, region: period.jurisdictionRegion }, provider: { key: period.ruleProviderKey, version: period.ruleProviderVersion }, status: period.status },
       providerSupported, jurisdictionSupportedByProvider, workers
+    });
+    emitPayrollReviewTelemetry(payrollTelemetrySink, {
+      operation: "payroll_period_review", status: "success",
+      flagCount: context.periodFlags.length, evidenceCount: context.workers.length,
+      truncated: context.bounds.workersTruncated, durationMs: Date.now() - startedAt, correlationId: request.id
     });
     return reply.code(200).send({ context, synthetic: true, advisory: true, notice: "Deterministic period review — explains why a governed calculation does not yet exist. No AI model was called; no payroll data was modified." });
   });
