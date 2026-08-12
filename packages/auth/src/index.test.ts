@@ -3023,6 +3023,32 @@ describe("worker offer foundation", () => {
     ).resolves.toBe(1);
   });
 
+  it("still enforces offer expiry against the fixed service clock (past fails, boundary fails, future succeeds)", async () => {
+    const { workerOfferService, dispatchReview, adminSession, workerOne } =
+      await createWorkerOfferContext();
+    const base = {
+      session: adminSession,
+      roles: ["DISPATCHER"] as const,
+      dispatchReviewId: dispatchReview.id,
+      workerIdentityId: workerOne.id
+    };
+    // The fixed test clock is 2026-08-11T10:00:00Z. A past expiry must be rejected.
+    await expect(
+      workerOfferService.createOffer({ ...base, expiresAt: new Date("2026-08-10T10:00:00.000Z") })
+    ).rejects.toMatchObject({
+      decision: expect.objectContaining({ status: "invalid_input", internalReason: "offer_expiry_must_be_future" })
+    });
+    // Boundary: expiry exactly at "now" is not in the future (validation is `<= now`).
+    await expect(
+      workerOfferService.createOffer({ ...base, expiresAt: new Date("2026-08-11T10:00:00.000Z") })
+    ).rejects.toMatchObject({
+      decision: expect.objectContaining({ status: "invalid_input", internalReason: "offer_expiry_must_be_future" })
+    });
+    // A genuinely future expiry succeeds.
+    const offer = await workerOfferService.createOffer({ ...base, expiresAt: new Date("2026-08-12T10:00:00.000Z") });
+    expect(offer.status).toBe("draft");
+  });
+
   it("creates offers only from offer-preparation dispatch and enforces remaining-worker capacity", async () => {
     const { workerOfferService, workerOfferRepository, dispatchReview, adminSession, workerOne } =
       await createWorkerOfferContext();
@@ -6576,8 +6602,14 @@ async function createApprovedDispatchContext(
   };
 }
 
+// Fixed reference instant for worker-offer tests. Offer creation validates expiry against the
+// service clock; pinning it makes every fixture's expiry (e.g. 2026-08-12) deterministically in the
+// future regardless of the real calendar date. Chosen to match the reference the fixtures already
+// assume (the atomic-capacity test uses now = 2026-08-11T10:00Z). No production behavior changes.
+const WORKER_OFFER_TEST_NOW = new Date("2026-08-11T10:00:00.000Z");
+
 async function createWorkerOfferContext(
-  input: { deliveryProvider?: WorkerOfferDeliveryProvider } = {}
+  input: { deliveryProvider?: WorkerOfferDeliveryProvider; now?: () => Date } = {}
 ) {
   const { dispatchService, dispatchRepository, approvedJobRequest, adminSession, organization } =
     await createApprovedDispatchContext({
@@ -6590,6 +6622,7 @@ async function createWorkerOfferContext(
     new MemoryJobRequestRepositoryWithSeed(approvedJobRequest),
     createAuthorizationService(),
     {
+      now: input.now ?? (() => WORKER_OFFER_TEST_NOW),
       deliveryProvider: input.deliveryProvider ?? {
         async deliver() {
           return { status: "sent", providerReference: "test-provider", retryable: false };
@@ -6685,7 +6718,8 @@ async function createAcceptedAssignmentContext() {
     context.workerOfferRepository,
     context.dispatchRepository,
     jobRequestRepository,
-    createAuthorizationService()
+    createAuthorizationService(),
+    { now: () => WORKER_OFFER_TEST_NOW }
   );
   const draftForAcceptance = await context.workerOfferService.createOffer({
     session: context.adminSession,
@@ -6734,7 +6768,8 @@ async function createAttendanceContext(input: { assignmentReady?: boolean } = {}
     attendanceRepository,
     context.assignmentRepository,
     context.workerOfferRepository,
-    createAuthorizationService()
+    createAuthorizationService(),
+    { now: () => WORKER_OFFER_TEST_NOW }
   );
   const confirmed = await context.assignmentService.createFromAcceptedOffer({
     session: context.adminSession,
@@ -6778,7 +6813,8 @@ async function createTimesheetContext() {
     context.attendanceRepository,
     context.assignmentRepository,
     context.workerOfferRepository,
-    createAuthorizationService()
+    createAuthorizationService(),
+    { now: () => WORKER_OFFER_TEST_NOW }
   );
   const created = await context.attendanceService.createFromAssignment({
     session: context.adminSession,
