@@ -1,8 +1,11 @@
-# HR-6 — AI Payroll Review Trust Model (Chunk 1)
+# HR-6 — AI Payroll Review Trust Model (Chunks 1–2)
 
-Status: **Chunk 1 only** — trust model + sanitized read-only context + deterministic review
-flags. No AI/LLM provider is integrated. No model is called. Nothing is persisted. The frozen
-HR-5.1 payroll engine (baseline `c525028`) is unchanged.
+Status: **Chunk 1** — trust model + sanitized read-only context + deterministic review flags —
+plus **Chunk 2** — provider-neutral AI abstraction with a deterministic synthetic provider,
+output validation, evidence-binding, hallucination containment, prompt-injection defense,
+timeout/fail-closed handling, model/prompt versioning, and audit metadata. No live external AI
+provider is integrated, no admin UI exists, nothing is persisted. The frozen HR-5.1 payroll
+engine (baseline `c525028`) is unchanged.
 
 ## The one hard boundary
 
@@ -78,3 +81,25 @@ lookup, reads only within that calculation's own family/period, and returns **on
 sanitized context. It performs no write and records no audit event (there is no AI call yet).
 A source-level proof (`payrollReviewContextEndpoint.test.ts`) asserts the handler contains no
 `create/update/upsert/delete/executeRaw/$transaction/recordAudit`.
+
+## Chunk 2 — provider seam (`payrollReviewProvider.ts`, advisory only)
+
+The provider seam sits strictly downstream of the sanitized context; it never gains authoritative
+services or write access. Only a **deterministic synthetic provider** ships — no network, no
+vendor. A future external model would plug into the same `PayrollReviewProvider` port and inherit
+every guard below unchanged:
+
+- **Trusted/untrusted separation.** `buildPayrollReviewRequest` hands the provider a fixed,
+  trusted `instruction` plus the context and an explicit `untrusted` slot (worker/correction
+  text). The instruction is a constant that carries no payroll numbers; hostile text in the
+  untrusted slot can never reach it (prompt-injection defense).
+- **Output is untrusted.** `validatePayrollReviewOutput` enforces shape + length bounds, requires
+  every finding's `evidenceRef` to resolve into `context.evidence`, rejects any finding asserting
+  a flag the deterministic engine did not produce (containment), and rejects any text that
+  introduces a number not already present in the context (hallucination containment).
+- **Fail-closed.** `runPayrollReview` wraps the call in a timeout; any throw, timeout, or invalid
+  output yields `status: "review_unavailable"` that surfaces the deterministic flags only and
+  fabricates nothing. AI can never block, approve, lock, correct, or pay.
+- **Governance.** Results carry provider key/version, model, prompt version, flag-engine version,
+  and output-contract version. `buildPayrollReviewAudit` returns audit metadata (including the
+  standing invariant `aiMutatedAuthoritativePayroll: false`) as a value — not yet persisted.
