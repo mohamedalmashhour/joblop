@@ -231,12 +231,18 @@ export type StoredPayrollPeriod = Readonly<{
   ruleProviderKey: string; ruleProviderVersion: string; version: number;
 }>;
 
+export type PayrollCorrectionType = "pre_lock_revision" | "post_lock_adjustment";
+export type PayrollDeltaDirection = "credit" | "debit";
+
 export type StoredPayrollCalculation = Readonly<{
   id: string; payrollPeriodId: string; organizationId: string; workerIdentityId: string; revision: number;
   status: PayrollCalculationStatus; jurisdictionCountry: string; jurisdictionRegion: string;
   ruleProviderKey: string; ruleProviderVersion: string; calculationPolicyVersion: string; workerClassification: string; currency: string;
   grossPayMinor: number; totalDeductionsMinor: number; netPayMinor: number; totalEmployerCostMinor: number;
   calculationFingerprint: string; synthetic: boolean; calculatedAt: Date; supersededById: string | null; version: number;
+  familyRootId: string; previousCalculationId: string | null; previousFingerprint: string | null;
+  correctionType: PayrollCorrectionType | null; correctionReason: string | null; correlationKey: string | null;
+  adjustsCalculationId: string | null; adjustmentNetDirection: PayrollDeltaDirection | null; adjustmentNetDeltaMinor: number | null;
 }>;
 
 // Everything needed to REPLAY a calculation from its own immutable snapshot (no live re-reads).
@@ -262,8 +268,18 @@ export type PayrollWorkedTimeSnapshot = PayrollWorkedTimeLine & Readonly<{
   sourceEffectiveInstant: Date;
 }>;
 
+export type PayrollAdjustmentDelta = Readonly<{
+  netDirection: PayrollDeltaDirection; netDeltaMinor: number;
+  grossDirection: PayrollDeltaDirection; grossDeltaMinor: number;
+  deductionsDirection: PayrollDeltaDirection; deductionsDeltaMinor: number;
+  employerCostDirection: PayrollDeltaDirection; employerCostDeltaMinor: number;
+}>;
+
 export type CreatePayrollCalculationInput = Readonly<{
-  payrollPeriodId: string; organizationId: string; workerIdentityId: string; revision: number;
+  id: string; payrollPeriodId: string; organizationId: string; workerIdentityId: string; revision: number;
+  familyRootId: string; previousCalculationId: string | null; previousFingerprint: string | null;
+  correctionType: PayrollCorrectionType | null; correctionReason: string | null; correlationKey: string | null;
+  adjustsCalculationId: string | null; adjustmentDelta: PayrollAdjustmentDelta | null;
   jurisdictionCountry: string; jurisdictionRegion: string; ruleProviderKey: string; ruleProviderVersion: string;
   calculationPolicyVersion: string; workerClassification: string; currency: string;
   grossPayMinor: number; totalDeductionsMinor: number; netPayMinor: number; totalEmployerCostMinor: number;
@@ -280,6 +296,8 @@ export interface PayrollRepository {
   findPeriodById(id: string): Promise<StoredPayrollPeriod | null>;
   listApprovedWorkedTime(input: { organizationId: string; workerIdentityId: string; from: Date; to: Date }): Promise<readonly PayrollWorkedTimeLine[]>;
   findActiveCalculation(payrollPeriodId: string, workerIdentityId: string): Promise<StoredPayrollCalculation | null>;
+  findCalculationById(calculationId: string): Promise<StoredPayrollCalculation | null>;
+  findByCorrelationKey(familyRootId: string, correlationKey: string): Promise<StoredPayrollCalculation | null>;
   getCalculationForReplay(calculationId: string): Promise<PayrollReplaySnapshot | null>;
   // Atomically supersede the prior active revision (version-guarded) and insert the new one.
   // Returns null if the prior revision was concurrently changed (optimistic-concurrency miss).
@@ -384,34 +402,117 @@ export function createPayrollService(deps: PayrollDeps) {
     return { jurisdiction, provider, currency, workerClassification, snapshots, result, totals, fingerprint };
   }
 
-  // Calculate (or recalculate) a worker's payroll for a period. Always creates a NEW revision and
-  // supersedes the prior active one — an approved calculation is never overwritten.
+  type ResolvedCalc = Awaited<ReturnType<typeof resolveCalculation>>;
+
+  // Persist a governed revision (or post-lock adjustment). The prior active revision is version-
+  // guarded superseded for the pre-lock chain; a post-lock adjustment does NOT supersede the locked
+  // original (it stays authoritative for what was locked) — it links to it and supersedes any prior
+  // adjustment. Returns null on an optimistic-concurrency miss (reported as a conflict upstream).
+  async function persistRevision(args: {
+    period: StoredPayrollPeriod; resolved: ResolvedCalc; actorUserId: string; correlationId: string; workerIdentityId: string;
+    prior: StoredPayrollCalculation | null; correctionType: PayrollCorrectionType | null; correctionReason: string | null;
+    correlationKey: string | null; adjustsCalculationId: string | null; adjustmentDelta: PayrollAdjustmentDelta | null;
+    supersedePriorId: string | null; expectedPriorVersion: number | null; action: string;
+  }): Promise<StoredPayrollCalculation | null> {
+    const { period, resolved, prior } = args;
+    const id = newPayrollId();
+    const familyRootId = prior?.familyRootId ?? id;
+    const revision = (prior?.revision ?? 0) + 1;
+    const at = now();
+    const created = await deps.repository.createCalculationAtomically({
+      id, payrollPeriodId: period.id, organizationId: period.organizationId, workerIdentityId: args.workerIdentityId, revision,
+      familyRootId, previousCalculationId: prior?.id ?? null, previousFingerprint: prior?.calculationFingerprint ?? null,
+      correctionType: args.correctionType, correctionReason: args.correctionReason, correlationKey: args.correlationKey,
+      adjustsCalculationId: args.adjustsCalculationId, adjustmentDelta: args.adjustmentDelta,
+      jurisdictionCountry: resolved.jurisdiction.country, jurisdictionRegion: resolved.jurisdiction.region,
+      ruleProviderKey: resolved.provider.key, ruleProviderVersion: resolved.provider.version, calculationPolicyVersion: policyVersion, workerClassification: resolved.workerClassification, currency: resolved.currency,
+      grossPayMinor: resolved.totals.gross.amountMinor, totalDeductionsMinor: resolved.totals.totalDeductions.amountMinor, netPayMinor: resolved.totals.net.amountMinor, totalEmployerCostMinor: resolved.totals.totalEmployerCost.amountMinor,
+      calculationFingerprint: resolved.fingerprint,
+      calculatedAt: at, createdByUserId: args.actorUserId,
+      workedTimeRefs: resolved.snapshots, earnings: resolved.result.earnings, deductions: resolved.result.deductions, employerCosts: resolved.result.employerCosts,
+      supersedePriorId: args.supersedePriorId, expectedPriorVersion: args.expectedPriorVersion
+    });
+    if (created) {
+      await deps.repository.recordAudit({ entityType: "payroll_calculation", entityId: created.id, entityPublicReference: familyRootId, organizationId: period.organizationId, action: args.action, priorState: prior ? `revision:${prior.revision}:${prior.status}` : null, newState: `revision:${revision}:${args.correctionType ?? "calculated"}`, reason: args.correctionReason ?? `synthetic:${resolved.provider.key}@${resolved.provider.version}`, actorUserId: args.actorUserId, correlationId: args.correlationId, now: at });
+    }
+    return created;
+  }
+
+  // Calculate (or recalculate) a worker's payroll for a period. Creates a NEW revision superseding
+  // the prior active one. Refuses once the active revision is LOCKED — a post-lock change must go
+  // through requestCorrection (a governed adjustment), never a silent recalc.
   async function calculate(input: { actorUserId: string; payrollPeriodId: string; workerIdentityId: string; correlationId: string }): Promise<StoredPayrollCalculation> {
     const period = await deps.repository.findPeriodById(input.payrollPeriodId);
     if (!period) throw new PayrollError("not_found", "payroll_period_not_found");
     if (period.status === "approved" || period.status === "locked") {
       throw new PayrollError("conflict", `period_not_open_for_calculation:${period.status}`);
     }
-
     const resolved = await resolveCalculation(period, input.workerIdentityId);
     const prior = await deps.repository.findActiveCalculation(period.id, input.workerIdentityId);
-    const revision = (prior?.revision ?? 0) + 1;
-    const at = now();
+    if (prior?.status === "locked") throw new PayrollError("conflict", "calculation_locked_use_correction");
+    // Idempotency: identical authoritative inputs (same fingerprint) do not create a new revision.
+    if (prior && prior.calculationFingerprint === resolved.fingerprint) return prior;
 
-    const created = await deps.repository.createCalculationAtomically({
-      payrollPeriodId: period.id, organizationId: period.organizationId, workerIdentityId: input.workerIdentityId, revision,
-      jurisdictionCountry: resolved.jurisdiction.country, jurisdictionRegion: resolved.jurisdiction.region,
-      ruleProviderKey: resolved.provider.key, ruleProviderVersion: resolved.provider.version, calculationPolicyVersion: policyVersion, workerClassification: resolved.workerClassification, currency: resolved.currency,
-      grossPayMinor: resolved.totals.gross.amountMinor, totalDeductionsMinor: resolved.totals.totalDeductions.amountMinor, netPayMinor: resolved.totals.net.amountMinor, totalEmployerCostMinor: resolved.totals.totalEmployerCost.amountMinor,
-      calculationFingerprint: resolved.fingerprint,
-      calculatedAt: at, createdByUserId: input.actorUserId,
-      workedTimeRefs: resolved.snapshots, earnings: resolved.result.earnings, deductions: resolved.result.deductions, employerCosts: resolved.result.employerCosts,
-      supersedePriorId: prior?.id ?? null, expectedPriorVersion: prior?.version ?? null
+    const created = await persistRevision({
+      period, resolved, actorUserId: input.actorUserId, correlationId: input.correlationId, workerIdentityId: input.workerIdentityId,
+      prior, correctionType: null, correctionReason: null, correlationKey: null, adjustsCalculationId: null, adjustmentDelta: null,
+      supersedePriorId: prior?.id ?? null, expectedPriorVersion: prior?.version ?? null, action: prior ? "payroll.recalculated" : "payroll.calculated"
     });
     if (!created) throw new PayrollError("conflict", "calculation_superseded_concurrently");
-
-    await deps.repository.recordAudit({ entityType: "payroll_calculation", entityId: created.id, entityPublicReference: period.id, organizationId: period.organizationId, action: prior ? "payroll.recalculated" : "payroll.calculated", priorState: prior ? `revision:${prior.revision}` : null, newState: `revision:${revision}`, reason: `synthetic:${resolved.provider.key}@${resolved.provider.version}`, actorUserId: input.actorUserId, correlationId: input.correlationId, now: at });
     return created;
+  }
+
+  // A governed correction. It NEVER accepts financial amounts — it recomputes from the current
+  // authoritative inputs (approved worked time + committed contract rates + worksite jurisdiction).
+  // Pre-lock → a new revision; post-lock → an explicit linked adjustment with a signed delta.
+  async function requestCorrection(input: { actorUserId: string; calculationId: string; expectedVersion: number; reason: string; correlationKey?: string | null; correlationId: string }): Promise<{ outcome: "created" | "no_change" | "duplicate"; calculation: StoredPayrollCalculation }> {
+    if (!input.reason || input.reason.trim().length === 0) throw new PayrollError("invalid", "correction_reason_required");
+    const target = await deps.repository.findCalculationById(input.calculationId);
+    if (!target) throw new PayrollError("not_found", "correction_target_not_found");
+    // Idempotency FIRST: a repeated correction submission with the same key returns the existing
+    // result — even though the original target is now superseded and its version has moved on.
+    if (input.correlationKey) {
+      const existing = await deps.repository.findByCorrelationKey(target.familyRootId, input.correlationKey);
+      if (existing) return { outcome: "duplicate", calculation: existing };
+    }
+    // The reviewer must be acting on the exact revision they loaded.
+    if (target.version !== input.expectedVersion) throw new PayrollError("conflict", "stale_expected_revision");
+    if (target.status === "superseded" || target.status === "rejected") throw new PayrollError("conflict", `correction_target_not_current:${target.status}`);
+
+    const period = await deps.repository.findPeriodById(target.payrollPeriodId);
+    if (!period) throw new PayrollError("not_found", "payroll_period_not_found");
+    const resolved = await resolveCalculation(period, target.workerIdentityId);
+
+    const isPostLock = target.status === "locked" || target.correctionType === "post_lock_adjustment";
+    // No-change: recomputed inputs identical to the target → governed NO_CHANGE, no new revision.
+    if (!isPostLock && resolved.fingerprint === target.calculationFingerprint) return { outcome: "no_change", calculation: target };
+
+    if (isPostLock) {
+      const original = target.status === "locked" ? target : (await deps.repository.findCalculationById(target.adjustsCalculationId!))!;
+      const delta = computeAdjustmentDelta(original, resolved.totals);
+      // A recomputation identical to the locked original is a zero-delta no-op.
+      if (delta.netDeltaMinor === 0 && delta.grossDeltaMinor === 0 && delta.deductionsDeltaMinor === 0 && delta.employerCostDeltaMinor === 0 && target.status === "locked") {
+        return { outcome: "no_change", calculation: target };
+      }
+      const created = await persistRevision({
+        period, resolved, actorUserId: input.actorUserId, correlationId: input.correlationId, workerIdentityId: target.workerIdentityId,
+        prior: target, correctionType: "post_lock_adjustment", correctionReason: input.reason, correlationKey: input.correlationKey ?? null,
+        adjustsCalculationId: original.id, adjustmentDelta: delta,
+        // adjustments supersede a prior adjustment (version-guarded), but never the locked original
+        supersedePriorId: target.status === "locked" ? null : target.id, expectedPriorVersion: target.status === "locked" ? null : target.version,
+        action: "payroll.post_lock_adjustment_created"
+      });
+      if (!created) throw new PayrollError("conflict", "correction_superseded_concurrently");
+      return { outcome: "created", calculation: created };
+    }
+
+    const created = await persistRevision({
+      period, resolved, actorUserId: input.actorUserId, correlationId: input.correlationId, workerIdentityId: target.workerIdentityId,
+      prior: target, correctionType: "pre_lock_revision", correctionReason: input.reason, correlationKey: input.correlationKey ?? null,
+      adjustsCalculationId: null, adjustmentDelta: null, supersedePriorId: target.id, expectedPriorVersion: target.version, action: "payroll.correction_created"
+    });
+    if (!created) throw new PayrollError("conflict", "correction_superseded_concurrently");
+    return { outcome: "created", calculation: created };
   }
 
   // Deterministic VERIFY replay. Recomputes the result FROM THE STORED IMMUTABLE SNAPSHOT (worked-time
@@ -470,7 +571,31 @@ export function createPayrollService(deps: PayrollDeps) {
     return updated;
   }
 
-  return { calculate, recalculate: calculate, verifyCalculation, transitionCalculation, transitionPeriod, resolveProvider: resolveProviderForCalc };
+  return { calculate, recalculate: calculate, requestCorrection, verifyCalculation, transitionCalculation, transitionPeriod, resolveProvider: resolveProviderForCalc };
+}
+
+// A signed delta (corrected - original) expressed as DIRECTION + non-negative absolute minor units —
+// never negative Money. credit = corrected is higher; debit = corrected is lower. Proven algebraically:
+// original + governed(directional delta) = corrected.
+function computeAdjustmentDelta(original: StoredPayrollCalculation, corrected: PayrollTotals): PayrollAdjustmentDelta {
+  const dir = (o: number, c: number): { direction: PayrollDeltaDirection; deltaMinor: number } =>
+    c >= o ? { direction: "credit", deltaMinor: c - o } : { direction: "debit", deltaMinor: o - c };
+  const net = dir(original.netPayMinor, corrected.net.amountMinor);
+  const gross = dir(original.grossPayMinor, corrected.gross.amountMinor);
+  const ded = dir(original.totalDeductionsMinor, corrected.totalDeductions.amountMinor);
+  const emp = dir(original.totalEmployerCostMinor, corrected.totalEmployerCost.amountMinor);
+  return {
+    netDirection: net.direction, netDeltaMinor: net.deltaMinor,
+    grossDirection: gross.direction, grossDeltaMinor: gross.deltaMinor,
+    deductionsDirection: ded.direction, deductionsDeltaMinor: ded.deltaMinor,
+    employerCostDirection: emp.direction, employerCostDeltaMinor: emp.deltaMinor
+  };
+}
+
+// Apply a governed directional delta back onto an original amount — used to PROVE reconstruction:
+// applyDelta(original, direction, delta) === corrected.
+export function applyPayrollDelta(originalMinor: number, direction: PayrollDeltaDirection, deltaMinor: number): number {
+  return direction === "credit" ? originalMinor + deltaMinor : originalMinor - deltaMinor;
 }
 
 // ── Deterministic fingerprint ──

@@ -2107,6 +2107,27 @@ model PayrollCalculation {
   // Deterministic fingerprint over the immutable inputs + outputs — detects accidental drift and
   // proves a replay reproduced the same result. Not a cryptographic financial signature.
   calculationFingerprint String                @default("") @map("calculation_fingerprint")
+  // ── HR-5.1 Chunk 3: governed revision / correction lineage ──
+  // familyRootId groups every revision + adjustment for one (period, worker) line. correctionType
+  // distinguishes an ordinary pre-lock revision from an explicit post-lock adjustment. Deltas are
+  // signed by DIRECTION (credit/debit) + non-negative absolute Money — never negative Money.
+  familyRootId        String                   @default("00000000-0000-0000-0000-000000000000") @map("family_root_id") @db.Uuid
+  previousCalculationId String?                @map("previous_calculation_id") @db.Uuid
+  previousFingerprint String?                  @map("previous_fingerprint")
+  correctionType      String?                  @map("correction_type")
+  correctionReason    String?                  @map("correction_reason")
+  correctedByUserId   String?                  @map("corrected_by_user_id") @db.Uuid
+  correctedAt         DateTime?                @map("corrected_at") @db.Timestamptz(3)
+  correlationKey      String?                  @map("correlation_key")
+  adjustsCalculationId String?                 @map("adjusts_calculation_id") @db.Uuid
+  adjustmentNetDirection String?               @map("adjustment_net_direction")
+  adjustmentNetDeltaMinor Int?                 @map("adjustment_net_delta_minor")
+  adjustmentGrossDirection String?             @map("adjustment_gross_direction")
+  adjustmentGrossDeltaMinor Int?               @map("adjustment_gross_delta_minor")
+  adjustmentDeductionsDirection String?        @map("adjustment_deductions_direction")
+  adjustmentDeductionsDeltaMinor Int?          @map("adjustment_deductions_delta_minor")
+  adjustmentEmployerCostDirection String?      @map("adjustment_employer_cost_direction")
+  adjustmentEmployerCostDeltaMinor Int?        @map("adjustment_employer_cost_delta_minor")
   version             Int                      @default(1)
   createdAt           DateTime                 @default(now()) @map("created_at") @db.Timestamptz(3)
   updatedAt           DateTime                 @updatedAt @map("updated_at") @db.Timestamptz(3)
@@ -2122,6 +2143,8 @@ model PayrollCalculation {
   @@index([workerIdentityId, payrollPeriodId], map: "payroll_calculations_worker_period_idx")
   @@index([payrollPeriodId, status], map: "payroll_calculations_period_status_idx")
   @@index([jurisdictionCountry, jurisdictionRegion], map: "payroll_calculations_jurisdiction_idx")
+  @@index([familyRootId, revision], map: "payroll_calculations_family_revision_idx")
+  @@index([adjustsCalculationId], map: "payroll_calculations_adjusts_idx")
   @@map("payroll_calculations")
 }
 

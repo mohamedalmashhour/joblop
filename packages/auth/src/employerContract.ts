@@ -289,8 +289,10 @@ export function createPrismaEmployerContractRepository(
       });
     },
     findContractEffectiveAt(organizationId, instant) {
-      // active + superseded contracts whose effectiveFrom <= instant, newest effective first.
-      // draft contracts are never rate authority. This is the committed contract timeline.
+      // active + superseded contracts whose effectiveFrom <= instant, newest effective first. Ties
+      // on effectiveFrom are broken deterministically by activation recency (a later-activated
+      // contract for the same effective date is the authoritative correction). draft contracts are
+      // never rate authority. This is the committed contract timeline.
       return prisma.employerContract.findFirst({
         where: {
           organizationId,
@@ -298,7 +300,7 @@ export function createPrismaEmployerContractRepository(
           effectiveFrom: { not: null, lte: instant }
         },
         include: { roleRates: true },
-        orderBy: { effectiveFrom: "desc" }
+        orderBy: [{ effectiveFrom: "desc" }, { activatedAt: "desc" }, { createdAt: "desc" }]
       });
     },
     async supersedeActiveContracts(organizationId, nowDate) {

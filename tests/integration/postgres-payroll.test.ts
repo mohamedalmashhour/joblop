@@ -169,21 +169,22 @@ suite("HR-5 payroll foundation", () => {
     expect(ref.payableMinutes).toBe(480);
   });
 
-  it("recalculate creates revision 2 and supersedes revision 1 (an approved calc is never overwritten)", async () => {
+  it("recalculate with identical authoritative inputs is idempotent — no new revision (Chunk 3 idempotency)", async () => {
     const period = await createPeriod(payrollToken, "QC", "2026-08-02T00:00:00Z", "2026-08-16T06:00:00Z");
     const periodId = period.json().period.id;
     const first = await calculate(payrollToken, periodId);
     const firstId = first.json().calculation.id;
     const approve = await app.inject({ method: "POST", url: `/platform/payroll/calculations/${firstId}/transition`, headers: auth(payrollToken), payload: { action: "approve", expectedVersion: first.json().calculation.version } });
     expect(approve.statusCode).toBe(200);
-    expect(approve.json().calculation.status).toBe("approved");
 
+    // identical inputs -> the same calculation is returned, NOT a churned new revision. New revisions
+    // come only from a governed correction with a changed authoritative input (see corrections suite).
     const second = await calculate(payrollToken, periodId);
     expect(second.statusCode).toBe(201);
-    expect(second.json().calculation.revision).toBe(2);
-    // the approved revision 1 is preserved as superseded, not overwritten
+    expect(second.json().calculation.id).toBe(firstId);
+    expect(second.json().calculation.revision).toBe(1);
     const rev1 = await app.inject({ method: "GET", url: `/platform/payroll/calculations/${firstId}`, headers: auth(payrollToken) });
-    expect(rev1.json().calculation.status).toBe("superseded");
+    expect(rev1.json().calculation.status).toBe("approved"); // untouched
   });
 
   it("two concurrent calculate requests are deterministic — no duplicate revision, exactly one active, no silent overwrite", async () => {

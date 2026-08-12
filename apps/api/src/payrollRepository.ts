@@ -72,6 +72,9 @@ type CalcRow = {
   ruleProviderVersion: string; calculationPolicyVersion: string; workerClassification: string; currency: string; grossPayMinor: number;
   totalDeductionsMinor: number; netPayMinor: number; totalEmployerCostMinor: number; calculationFingerprint: string; synthetic: boolean;
   calculatedAt: Date; supersededById: string | null; version: number;
+  familyRootId: string; previousCalculationId: string | null; previousFingerprint: string | null;
+  correctionType: string | null; correctionReason: string | null; correlationKey: string | null;
+  adjustsCalculationId: string | null; adjustmentNetDirection: string | null; adjustmentNetDeltaMinor: number | null;
 };
 function mapCalc(row: CalcRow): StoredPayrollCalculation {
   return {
@@ -82,7 +85,10 @@ function mapCalc(row: CalcRow): StoredPayrollCalculation {
     calculationPolicyVersion: row.calculationPolicyVersion, workerClassification: row.workerClassification, currency: row.currency,
     grossPayMinor: row.grossPayMinor, totalDeductionsMinor: row.totalDeductionsMinor,
     netPayMinor: row.netPayMinor, totalEmployerCostMinor: row.totalEmployerCostMinor,
-    calculationFingerprint: row.calculationFingerprint, synthetic: row.synthetic, calculatedAt: row.calculatedAt, supersededById: row.supersededById, version: row.version
+    calculationFingerprint: row.calculationFingerprint, synthetic: row.synthetic, calculatedAt: row.calculatedAt, supersededById: row.supersededById, version: row.version,
+    familyRootId: row.familyRootId, previousCalculationId: row.previousCalculationId, previousFingerprint: row.previousFingerprint,
+    correctionType: row.correctionType as StoredPayrollCalculation["correctionType"], correctionReason: row.correctionReason, correlationKey: row.correlationKey,
+    adjustsCalculationId: row.adjustsCalculationId, adjustmentNetDirection: row.adjustmentNetDirection as StoredPayrollCalculation["adjustmentNetDirection"], adjustmentNetDeltaMinor: row.adjustmentNetDeltaMinor
   };
 }
 type PeriodRow = {
@@ -154,6 +160,16 @@ export function createPrismaPayrollRepository(prisma: PrismaClient): PayrollRepo
       return row ? mapCalc(row) : null;
     },
 
+    async findCalculationById(calculationId) {
+      const row = await prisma.payrollCalculation.findUnique({ where: { id: calculationId } });
+      return row ? mapCalc(row) : null;
+    },
+
+    async findByCorrelationKey(familyRootId, correlationKey) {
+      const row = await prisma.payrollCalculation.findFirst({ where: { familyRootId, correlationKey } });
+      return row ? mapCalc(row) : null;
+    },
+
     async createCalculationAtomically(input: CreatePayrollCalculationInput) {
       try {
         return await prisma.$transaction(async (tx) => {
@@ -168,8 +184,15 @@ export function createPrismaPayrollRepository(prisma: PrismaClient): PayrollRepo
           }
           const created = await tx.payrollCalculation.create({
             data: {
-              payrollPeriodId: input.payrollPeriodId, organizationId: input.organizationId,
+              id: input.id, payrollPeriodId: input.payrollPeriodId, organizationId: input.organizationId,
               workerIdentityId: input.workerIdentityId, revision: input.revision,
+              familyRootId: input.familyRootId, previousCalculationId: input.previousCalculationId, previousFingerprint: input.previousFingerprint,
+              correctionType: input.correctionType, correctionReason: input.correctionReason, correlationKey: input.correlationKey,
+              adjustsCalculationId: input.adjustsCalculationId,
+              adjustmentNetDirection: input.adjustmentDelta?.netDirection ?? null, adjustmentNetDeltaMinor: input.adjustmentDelta?.netDeltaMinor ?? null,
+              adjustmentGrossDirection: input.adjustmentDelta?.grossDirection ?? null, adjustmentGrossDeltaMinor: input.adjustmentDelta?.grossDeltaMinor ?? null,
+              adjustmentDeductionsDirection: input.adjustmentDelta?.deductionsDirection ?? null, adjustmentDeductionsDeltaMinor: input.adjustmentDelta?.deductionsDeltaMinor ?? null,
+              adjustmentEmployerCostDirection: input.adjustmentDelta?.employerCostDirection ?? null, adjustmentEmployerCostDeltaMinor: input.adjustmentDelta?.employerCostDeltaMinor ?? null,
               jurisdictionCountry: input.jurisdictionCountry, jurisdictionRegion: input.jurisdictionRegion,
               ruleProviderKey: input.ruleProviderKey, ruleProviderVersion: input.ruleProviderVersion,
               calculationPolicyVersion: input.calculationPolicyVersion, workerClassification: input.workerClassification, currency: input.currency,

@@ -1,10 +1,10 @@
 import { describe, expect, it } from "vitest";
 import { createContractMoney } from "@rwos/shared";
 import {
+  applyPayrollDelta,
   computePayrollTotals,
   createPayrollService,
   createSyntheticPayrollRuleProvider,
-  PayrollError,
   payrollJurisdictionKey,
   type CreatePayrollCalculationInput,
   type PayrollJurisdiction,
@@ -84,21 +84,29 @@ class FakePayrollRepository implements PayrollRepository {
   async findActiveCalculation(periodId: string, workerId: string) {
     return this.calcs.filter((c) => c.payrollPeriodId === periodId && c.workerIdentityId === workerId && c.status !== "superseded").sort((a, b) => b.revision - a.revision)[0] ?? null;
   }
+  async findCalculationById(id: string) { return this.calcs.find((c) => c.id === id) ?? null; }
+  async findByCorrelationKey(familyRootId: string, correlationKey: string) { return this.calcs.find((c) => c.familyRootId === familyRootId && c.correlationKey === correlationKey) ?? null; }
   async getCalculationForReplay(id: string) { return this.replay.get(id) ?? null; }
   async createCalculationAtomically(input: CreatePayrollCalculationInput) {
+    // idempotency unique (family, correlationKey)
+    if (input.correlationKey && this.calcs.some((c) => c.familyRootId === input.familyRootId && c.correlationKey === input.correlationKey)) return null;
     if (input.supersedePriorId && input.expectedPriorVersion !== null) {
       const prior = this.calcs.find((c) => c.id === input.supersedePriorId);
       if (!prior || prior.version !== input.expectedPriorVersion || prior.status === "superseded") return null;
+      if (prior.status === "locked") throw new Error("locked immutable");
       this.calcs = this.calcs.map((c) => (c.id === prior.id ? { ...c, status: "superseded", version: c.version + 1 } : c));
     }
     if (this.calcs.some((c) => c.payrollPeriodId === input.payrollPeriodId && c.workerIdentityId === input.workerIdentityId && c.revision === input.revision)) return null;
-    const id = `calc-${++this.seq}`;
+    const id = input.id;
     const created: StoredPayrollCalculation = {
       id, payrollPeriodId: input.payrollPeriodId, organizationId: input.organizationId, workerIdentityId: input.workerIdentityId, revision: input.revision, status: "calculated",
       jurisdictionCountry: input.jurisdictionCountry, jurisdictionRegion: input.jurisdictionRegion, ruleProviderKey: input.ruleProviderKey, ruleProviderVersion: input.ruleProviderVersion,
       calculationPolicyVersion: input.calculationPolicyVersion, workerClassification: input.workerClassification, currency: input.currency,
       grossPayMinor: input.grossPayMinor, totalDeductionsMinor: input.totalDeductionsMinor, netPayMinor: input.netPayMinor, totalEmployerCostMinor: input.totalEmployerCostMinor,
-      calculationFingerprint: input.calculationFingerprint, synthetic: true, calculatedAt: input.calculatedAt, supersededById: null, version: 1
+      calculationFingerprint: input.calculationFingerprint, synthetic: true, calculatedAt: input.calculatedAt, supersededById: null, version: 1,
+      familyRootId: input.familyRootId, previousCalculationId: input.previousCalculationId, previousFingerprint: input.previousFingerprint,
+      correctionType: input.correctionType, correctionReason: input.correctionReason, correlationKey: input.correlationKey,
+      adjustsCalculationId: input.adjustsCalculationId, adjustmentNetDirection: input.adjustmentDelta?.netDirection ?? null, adjustmentNetDeltaMinor: input.adjustmentDelta?.netDeltaMinor ?? null
     };
     this.calcs.push(created);
     this.replay.set(id, {
@@ -223,14 +231,139 @@ describe("payroll service — rate authority + jurisdiction + segmentation", () 
     expect(repo.replay.get(calc.id)!.grossPayMinor).toBe(grossBefore);
   });
 
-  it("recalculate creates revision 2 superseding revision 1 (approved calc never overwritten)", async () => {
+  it("recalculate after a changed input creates revision 2 superseding revision 1 (never overwritten)", async () => {
     const contracts: FakeContract[] = [{ contractId: "c4", version: "v4", effectiveFrom: new Date("2026-08-01T00:00:00Z"), rateMinor: 3000 }];
     const repo = new FakePayrollRepository(makePeriod(), [{ timesheetId: "t1", scheduledStartAt: aug10, scheduledEndAt: aug10End, payableMinutes: 480, residenceId: "res-qc" }]);
     const svc = service(repo, contracts);
     const first = await svc.calculate({ actorUserId: "u", payrollPeriodId: "period-1", workerIdentityId: "w", correlationId: "c1" });
+    contracts[0]!.rateMinor = 3200; // a changed authoritative input
     const second = await svc.recalculate({ actorUserId: "u", payrollPeriodId: "period-1", workerIdentityId: "w", correlationId: "c2" });
     expect(second.revision).toBe(2);
     expect(repo.calcs.find((c) => c.id === first.id)!.status).toBe("superseded");
+  });
+});
+
+describe("payroll corrections, adjustments & idempotency (Chunk 3)", () => {
+  // one contract, mutable rate so a governed rate change alters the recomputed result
+  function setup(rateMinor = 3000) {
+    const contracts: FakeContract[] = [{ contractId: "c1", version: "v1", effectiveFrom: new Date("2026-08-01T00:00:00Z"), rateMinor }];
+    const repo = new FakePayrollRepository(makePeriod(), [{ timesheetId: "t1", scheduledStartAt: aug10, scheduledEndAt: aug10End, payableMinutes: 480, residenceId: "res-qc" }]);
+    const svc = service(repo, contracts);
+    return { contracts, repo, svc };
+  }
+  const correct = (svc: ReturnType<typeof service>, id: string, version: number, reason: string, key?: string) =>
+    svc.requestCorrection({ actorUserId: "u", calculationId: id, expectedVersion: version, reason, correlationKey: key ?? null, correlationId: "c" });
+
+  it("(A,B,C,E) pre-lock correction (changed rate) creates revision 2; rev1 unchanged; rev2 authoritative", async () => {
+    const { contracts, repo, svc } = setup(3000);
+    const rev1 = await svc.calculate({ actorUserId: "u", payrollPeriodId: "period-1", workerIdentityId: "w", correlationId: "c" });
+    const grossRev1 = rev1.grossPayMinor;
+    contracts[0]!.rateMinor = 3500; // governed rate correction upstream
+    const res = await correct(svc, rev1.id, rev1.version, "rate corrected");
+    expect(res.outcome).toBe("created");
+    expect(res.calculation.revision).toBe(2);
+    expect(res.calculation.correctionType).toBe("pre_lock_revision");
+    expect(repo.calcs.find((c) => c.id === rev1.id)!.grossPayMinor).toBe(grossRev1); // rev1 immutable
+    expect(repo.calcs.find((c) => c.id === rev1.id)!.status).toBe("superseded");
+    expect((await repo.findActiveCalculation("period-1", "w"))!.id).toBe(res.calculation.id); // rev2 authoritative
+    expect(res.calculation.grossPayMinor).toBeGreaterThan(grossRev1);
+  });
+
+  it("(D) identical correction (no input change) returns no_change, no new revision", async () => {
+    const { repo, svc } = setup(3000);
+    const rev1 = await svc.calculate({ actorUserId: "u", payrollPeriodId: "period-1", workerIdentityId: "w", correlationId: "c" });
+    const res = await correct(svc, rev1.id, rev1.version, "no real change");
+    expect(res.outcome).toBe("no_change");
+    expect(repo.calcs.filter((c) => c.familyRootId === rev1.familyRootId)).toHaveLength(1);
+  });
+
+  it("(F,P) after correction, replay of the OLD revision still verifies; fingerprints differ", async () => {
+    const { contracts, svc } = setup(3000);
+    const rev1 = await svc.calculate({ actorUserId: "u", payrollPeriodId: "period-1", workerIdentityId: "w", correlationId: "c" });
+    const fp1 = rev1.calculationFingerprint;
+    contracts[0]!.rateMinor = 3500;
+    const rev2 = (await correct(svc, rev1.id, rev1.version, "rate corrected")).calculation;
+    const v1 = await svc.verifyCalculation({ calculationId: rev1.id });
+    expect(v1.ok).toBe(true); // historical revision still reproduces
+    expect(rev2.calculationFingerprint).not.toBe(fp1);
+    expect(rev2.previousFingerprint).toBe(fp1); // fingerprint chain
+  });
+
+  it("(G,H,I) post-lock correction with higher rate creates a linked CREDIT adjustment; locked original unchanged", async () => {
+    const { contracts, repo, svc } = setup(3000);
+    const rev1 = await svc.calculate({ actorUserId: "u", payrollPeriodId: "period-1", workerIdentityId: "w", correlationId: "c" });
+    const approved = await svc.transitionCalculation({ actorUserId: "u", calculationId: rev1.id, expectedVersion: rev1.version, action: "approve", correlationId: "c" });
+    await svc.transitionCalculation({ actorUserId: "u", calculationId: rev1.id, expectedVersion: approved.version, action: "lock", correlationId: "c" });
+    const lockedGross = repo.calcs.find((c) => c.id === rev1.id)!.grossPayMinor;
+    contracts[0]!.rateMinor = 3500; // upstream correction after lock
+    const locked = repo.calcs.find((c) => c.id === rev1.id)!;
+    const res = await correct(svc, locked.id, locked.version, "post-lock rate correction");
+    expect(res.outcome).toBe("created");
+    expect(res.calculation.correctionType).toBe("post_lock_adjustment");
+    expect(res.calculation.adjustsCalculationId).toBe(rev1.id);
+    expect(res.calculation.adjustmentNetDirection).toBe("credit"); // corrected net higher
+    expect(res.calculation.adjustmentNetDeltaMinor).toBeGreaterThan(0);
+    expect(repo.calcs.find((c) => c.id === rev1.id)!.grossPayMinor).toBe(lockedGross); // locked original untouched
+    expect(repo.calcs.find((c) => c.id === rev1.id)!.status).toBe("locked");
+  });
+
+  it("(J,K) post-lock correction with lower rate is a DEBIT adjustment; delta is a non-negative absolute", async () => {
+    const { contracts, repo, svc } = setup(3500);
+    const rev1 = await svc.calculate({ actorUserId: "u", payrollPeriodId: "period-1", workerIdentityId: "w", correlationId: "c" });
+    const approved = await svc.transitionCalculation({ actorUserId: "u", calculationId: rev1.id, expectedVersion: rev1.version, action: "approve", correlationId: "c" });
+    await svc.transitionCalculation({ actorUserId: "u", calculationId: rev1.id, expectedVersion: approved.version, action: "lock", correlationId: "c" });
+    contracts[0]!.rateMinor = 3000;
+    const locked = repo.calcs.find((c) => c.id === rev1.id)!;
+    const res = await correct(svc, locked.id, locked.version, "post-lock reduction");
+    expect(res.calculation.adjustmentNetDirection).toBe("debit");
+    expect(res.calculation.adjustmentNetDeltaMinor).toBeGreaterThanOrEqual(0); // absolute, never negative
+    // algebra: locked net + governed(debit delta) == corrected net
+    expect(applyPayrollDelta(locked.netPayMinor, "debit", res.calculation.adjustmentNetDeltaMinor!)).toBe(res.calculation.netPayMinor);
+  });
+
+  it("(L) stale expected revision is rejected with a conflict", async () => {
+    const { svc } = setup();
+    const rev1 = await svc.calculate({ actorUserId: "u", payrollPeriodId: "period-1", workerIdentityId: "w", correlationId: "c" });
+    await expect(correct(svc, rev1.id, rev1.version + 5, "x")).rejects.toMatchObject({ code: "conflict", reason: "stale_expected_revision" });
+  });
+
+  it("(M) correction without a reason is rejected", async () => {
+    const { svc } = setup();
+    const rev1 = await svc.calculate({ actorUserId: "u", payrollPeriodId: "period-1", workerIdentityId: "w", correlationId: "c" });
+    await expect(correct(svc, rev1.id, rev1.version, "  ")).rejects.toMatchObject({ code: "invalid", reason: "correction_reason_required" });
+  });
+
+  it("(N) verify fails closed when the exact historical provider version is unavailable", async () => {
+    const contracts: FakeContract[] = [{ contractId: "c1", version: "v1", effectiveFrom: new Date("2026-08-01T00:00:00Z"), rateMinor: 3000 }];
+    const repo = new FakePayrollRepository(makePeriod(), [{ timesheetId: "t1", scheduledStartAt: aug10, scheduledEndAt: aug10End, payableMinutes: 480, residenceId: "res-qc" }]);
+    const svc = service(repo, contracts);
+    const rev1 = await svc.calculate({ actorUserId: "u", payrollPeriodId: "period-1", workerIdentityId: "w", correlationId: "c" });
+    // a service whose provider registry lacks the historical version must NOT silently use latest
+    const svcNoProvider = createPayrollService({ repository: repo, ruleProviders: [], rateResolver: new FakeRateResolver(contracts), jurisdictionResolver: new FakeJurisdictionResolver(QC) });
+    await expect(svcNoProvider.verifyCalculation({ calculationId: rev1.id })).rejects.toMatchObject({ code: "invalid" });
+  });
+
+  it("(O) duplicate correction submission with the same correlation key is idempotent", async () => {
+    const { contracts, repo, svc } = setup(3000);
+    const rev1 = await svc.calculate({ actorUserId: "u", payrollPeriodId: "period-1", workerIdentityId: "w", correlationId: "c" });
+    contracts[0]!.rateMinor = 3500;
+    const first = await correct(svc, rev1.id, rev1.version, "rate corrected", "idem-key-1");
+    expect(first.outcome).toBe("created");
+    // a retry of the same correction against the (now superseded) target with the same key: the key
+    // already committed -> duplicate, no second revision.
+    const retry = await correct(svc, rev1.id, rev1.version, "rate corrected", "idem-key-1");
+    expect(retry.outcome).toBe("duplicate");
+    expect(retry.calculation.id).toBe(first.calculation.id);
+    expect(repo.calcs.filter((c) => c.familyRootId === rev1.familyRootId)).toHaveLength(2); // rev1 + rev2 only
+  });
+
+  it("plain calculate() refuses once the active revision is LOCKED (must use correction)", async () => {
+    const { svc, repo } = setup();
+    const rev1 = await svc.calculate({ actorUserId: "u", payrollPeriodId: "period-1", workerIdentityId: "w", correlationId: "c" });
+    const approved = await svc.transitionCalculation({ actorUserId: "u", calculationId: rev1.id, expectedVersion: rev1.version, action: "approve", correlationId: "c" });
+    await svc.transitionCalculation({ actorUserId: "u", calculationId: rev1.id, expectedVersion: approved.version, action: "lock", correlationId: "c" });
+    void repo;
+    await expect(svc.calculate({ actorUserId: "u", payrollPeriodId: "period-1", workerIdentityId: "w", correlationId: "c" })).rejects.toMatchObject({ code: "conflict", reason: "calculation_locked_use_correction" });
   });
 });
 

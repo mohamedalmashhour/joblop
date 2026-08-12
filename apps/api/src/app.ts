@@ -5701,6 +5701,36 @@ export function buildApi(options: BuildApiOptions = {}) {
     }
   });
 
+  // Governed correction against an EXACT calculation revision. Never accepts financial amounts — it
+  // recomputes from authoritative inputs. Pre-lock => new revision; post-lock => linked adjustment.
+  app.post("/platform/payroll/calculations/:calculationId/correct", async (request, reply) => {
+    const actor = await requirePayrollAuthority(request, reply);
+    if (!actor) return;
+    const body = asRecord(request.body);
+    const reason = readOptionalString(body, "reason");
+    if (!reason) return reply.code(400).send({ error: "RWOS_PAYROLL_INVALID_INPUT", message: "A correction reason is required." });
+    try {
+      const result = await payrollService.requestCorrection({
+        actorUserId: actor, calculationId: readRouteParam(request.params, "calculationId"),
+        expectedVersion: readOptionalNumber(body, "expectedVersion") ?? -1,
+        reason, correlationKey: readOptionalString(body, "correlationKey"), correlationId: request.id
+      });
+      return reply.code(result.outcome === "created" ? 201 : 200).send({ outcome: result.outcome, calculation: serializePayrollCalculation(result.calculation), synthetic: true, notice: PAYROLL_SYNTHETIC_NOTICE });
+    } catch (error) {
+      return sendPayrollFailure(reply, error);
+    }
+  });
+
+  // Revision + correction history for a calculation's family (bounded).
+  app.get("/platform/payroll/calculations/:calculationId/family", async (request, reply) => {
+    const actor = await requirePayrollAuthority(request, reply);
+    if (!actor) return;
+    const target = await prisma!.payrollCalculation.findUnique({ where: { id: readRouteParam(request.params, "calculationId") }, select: { familyRootId: true } });
+    if (!target) return reply.code(404).send({ error: "RWOS_PAYROLL_DENIED", message: "Payroll calculation unavailable." });
+    const rows = await prisma!.payrollCalculation.findMany({ where: { familyRootId: target.familyRootId }, orderBy: [{ revision: "asc" }], take: 200 });
+    return reply.code(200).send({ familyRootId: target.familyRootId, items: rows.map((c) => serializePayrollCalculation(c)), synthetic: true });
+  });
+
   // Employer review: an employer sees payroll for THEIR org only, and may FLAG a discrepancy.
   // Employers can never rewrite financial lines or approve/reject here.
   app.get("/organizations/:organizationId/payroll/calculations", async (request, reply) => {
@@ -6992,6 +7022,9 @@ type PayrollCalculationRow = {
   ruleProviderVersion: string; calculationPolicyVersion: string; workerClassification?: string; currency: string; grossPayMinor: number;
   totalDeductionsMinor: number; netPayMinor: number; totalEmployerCostMinor: number; calculationFingerprint?: string; synthetic: boolean;
   calculatedAt: Date; supersededById: string | null; version: number;
+  familyRootId?: string; previousCalculationId?: string | null; previousFingerprint?: string | null;
+  correctionType?: string | null; correctionReason?: string | null;
+  adjustsCalculationId?: string | null; adjustmentNetDirection?: string | null; adjustmentNetDeltaMinor?: number | null;
 };
 function serializePayrollCalculation(row: PayrollCalculationRow) {
   return {
@@ -7000,7 +7033,11 @@ function serializePayrollCalculation(row: PayrollCalculationRow) {
     ruleProvider: { key: row.ruleProviderKey, version: row.ruleProviderVersion }, calculationPolicyVersion: row.calculationPolicyVersion,
     workerClassification: row.workerClassification ?? "employee", currency: row.currency, grossPayMinor: row.grossPayMinor, totalDeductionsMinor: row.totalDeductionsMinor,
     netPayMinor: row.netPayMinor, totalEmployerCostMinor: row.totalEmployerCostMinor, calculationFingerprint: row.calculationFingerprint ?? "", synthetic: row.synthetic,
-    calculatedAt: row.calculatedAt.toISOString(), supersededById: row.supersededById, version: row.version
+    calculatedAt: row.calculatedAt.toISOString(), supersededById: row.supersededById, version: row.version,
+    familyRootId: row.familyRootId ?? row.id, previousCalculationId: row.previousCalculationId ?? null, previousFingerprint: row.previousFingerprint ?? null,
+    correctionType: row.correctionType ?? null, correctionReason: row.correctionReason ?? null,
+    adjustsCalculationId: row.adjustsCalculationId ?? null,
+    adjustment: row.adjustmentNetDirection ? { netDirection: row.adjustmentNetDirection, netDeltaMinor: row.adjustmentNetDeltaMinor ?? 0 } : null
   };
 }
 
