@@ -24,6 +24,7 @@ export * from "./hrCompliance";
 export * from "./payroll";
 export * from "./payrollReview";
 export * from "./payrollReviewProvider";
+export * from "./payrollPeriodReview";
 export {
   CalendarRequestError,
   createCalendarRequestService,

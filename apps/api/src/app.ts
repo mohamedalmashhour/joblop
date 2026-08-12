@@ -85,6 +85,9 @@ import {
   createSyntheticPayrollReviewProvider,
   runPayrollReview,
   type PayrollReviewProvider,
+  assemblePayrollPeriodReviewContext,
+  type RawPeriodReviewWorker,
+  PAYROLL_PERIOD_REVIEW_MAX_WORKERS,
   PayrollError,
   type HrDocumentStatus,
   createPrismaCancellationJobRequestReader,
@@ -549,11 +552,17 @@ export function buildApi(options: BuildApiOptions = {}) {
   });
   // HR-5 Payroll / Finance FOUNDATION (TEST / SYNTHETIC — no execution). Consumes approved/locked
   // worked time only; jurisdiction rules live behind the provider seam (synthetic fixture here).
+  // Shared READ-ONLY payroll resolvers — reused by the calculation service and by the HR-6.1
+  // period review endpoint so the advisory "why no calc yet" flags mirror EXACTLY the resolvers
+  // the governed engine consults (no business-logic re-derivation).
+  const payrollRepositoryRead = createPrismaPayrollRepository(prisma!);
+  const payrollRateResolver = createPrismaPayrollRateResolver(prisma!);
+  const payrollJurisdictionResolver = createPrismaPayrollJurisdictionResolver(prisma!);
   const payrollService = createPayrollService({
-    repository: createPrismaPayrollRepository(prisma!),
+    repository: payrollRepositoryRead,
     ruleProviders: [createSyntheticPayrollRuleProvider()],
-    rateResolver: createPrismaPayrollRateResolver(prisma!),
-    jurisdictionResolver: createPrismaPayrollJurisdictionResolver(prisma!)
+    rateResolver: payrollRateResolver,
+    jurisdictionResolver: payrollJurisdictionResolver
   });
   // HR-6 advisory AI review provider (offline synthetic by default). Advisory only — it consumes
   // the sanitized review context and cannot approve/lock/correct/pay or touch payroll state.
@@ -5850,6 +5859,68 @@ export function buildApi(options: BuildApiOptions = {}) {
     });
     const review = await runPayrollReview({ context, provider: payrollReviewProvider });
     return reply.code(200).send({ review, advisory: true, notice: "Advisory AI review assistance only. AI cannot approve, lock, correct, or pay. No payroll data was modified." });
+  });
+
+  // HR-6.1: PERIOD-LEVEL review (READ-ONLY, ADVISORY). Explains why a governed PayrollCalculation
+  // does NOT yet exist for eligible workers — missing worked time / rate, ambiguous or unsupported
+  // jurisdiction, unsupported provider, intra-shift rate boundary. It calls only the SAME read-only
+  // resolvers the calculation engine consults (never the write path), invents no financial value,
+  // and performs no write.
+  app.get("/platform/payroll/periods/:periodId/review-context", async (request, reply) => {
+    const actor = await requirePayrollAuthority(request, reply);
+    if (!actor) return;
+    const periodId = readRouteParam(request.params, "periodId");
+    const period = await payrollRepositoryRead.findPeriodById(periodId);
+    if (!period) return reply.code(404).send({ error: "RWOS_PAYROLL_DENIED", message: "Payroll period unavailable." });
+
+    // Provider / jurisdiction support — resolveProvider throws when the jurisdiction is unsupported.
+    let providerSupported = false;
+    let jurisdictionSupportedByProvider = false;
+    try {
+      const prov = payrollService.resolveProvider({ country: period.jurisdictionCountry, region: period.jurisdictionRegion });
+      jurisdictionSupportedByProvider = true;
+      providerSupported = prov.key === period.ruleProviderKey && prov.version === period.ruleProviderVersion;
+    } catch { /* unsupported jurisdiction → both remain false */ }
+
+    const ids = await payrollRepositoryRead.listEligibleWorkerIds({ organizationId: period.organizationId, from: period.periodStart, to: period.periodEnd, limit: PAYROLL_PERIOD_REVIEW_MAX_WORKERS + 1, cursor: null });
+    const workers: RawPeriodReviewWorker[] = [];
+    for (const workerIdentityId of ids.slice(0, PAYROLL_PERIOD_REVIEW_MAX_WORKERS)) {
+      const [existing, workedTime] = await Promise.all([
+        payrollRepositoryRead.findActiveCalculation(period.id, workerIdentityId),
+        payrollRepositoryRead.listApprovedWorkedTime({ organizationId: period.organizationId, workerIdentityId, from: period.periodStart, to: period.periodEnd })
+      ]);
+      const approvedWorkedMinutes = workedTime.reduce((sum, w) => sum + w.payableMinutes, 0);
+      // Jurisdiction candidates from the distinct worksites (Residences) — same authority the engine uses.
+      const residenceIds = [...new Set(workedTime.map((w) => w.residenceId))];
+      const provinces = new Set<string>();
+      let residenceProvinceResolved = residenceIds.length > 0;
+      for (const residenceId of residenceIds) {
+        const j = await payrollJurisdictionResolver.resolve({ residenceId });
+        if (!j) { residenceProvinceResolved = false; continue; }
+        provinces.add(j.region);
+      }
+      let workerJurisdictionSupported = false;
+      if (residenceProvinceResolved && provinces.size === 1) {
+        try { payrollService.resolveProvider({ country: period.jurisdictionCountry, region: [...provinces][0]! }); workerJurisdictionSupported = true; } catch { workerJurisdictionSupported = false; }
+      }
+      // Rate effectivity + intra-shift boundary — the EXACT resolver calls calculate() makes.
+      let hasEffectiveContractRate = workedTime.length > 0;
+      let intraShiftRateBoundary = false;
+      for (const w of workedTime) {
+        const scope = { organizationId: period.organizationId, workGroupId: w.workGroupId, roleDefinitionId: w.roleDefinitionId };
+        const startRate = await payrollRateResolver.resolveAt({ ...scope, instant: w.scheduledStartAt });
+        if (!startRate) { hasEffectiveContractRate = false; continue; }
+        const endRate = await payrollRateResolver.resolveAt({ ...scope, instant: w.scheduledEndAt });
+        if (endRate && endRate.contractId !== startRate.contractId) intraShiftRateBoundary = true;
+      }
+      workers.push({ workerIdentityId, existingCalculationId: existing?.id ?? null, hasApprovedWorkedTime: workedTime.length > 0, approvedWorkedMinutes, residenceProvinceResolved, residenceProvinceCandidates: [...provinces], workerJurisdictionSupported, hasEffectiveContractRate, intraShiftRateBoundary });
+    }
+
+    const context = assemblePayrollPeriodReviewContext({
+      period: { id: period.id, organizationId: period.organizationId, jurisdiction: { country: period.jurisdictionCountry, region: period.jurisdictionRegion }, provider: { key: period.ruleProviderKey, version: period.ruleProviderVersion }, status: period.status },
+      providerSupported, jurisdictionSupportedByProvider, workers
+    });
+    return reply.code(200).send({ context, synthetic: true, advisory: true, notice: "Deterministic period review — explains why a governed calculation does not yet exist. No AI model was called; no payroll data was modified." });
   });
 
   // Employer review: an employer sees payroll for THEIR org only, and may FLAG a discrepancy.

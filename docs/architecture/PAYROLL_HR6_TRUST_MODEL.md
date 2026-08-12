@@ -165,3 +165,26 @@ Any future persistence of advisory output requires separate authorization. The v
 - No money execution, no PAID state, no banking/remittance — HR-6 adds none.
 - A real external model would require: authorized provider integration, data-egress review,
   cost/rate governance, and an audit-persistence decision — none of which are in scope here.
+
+## HR-6.1 Chunk 1 — period-level / calc-time review flags (read-only, advisory)
+
+HR-6 could only review a calculation that already exists. HR-6.1 Chunk 1 adds the
+complementary surface: **why is there no governed calculation yet** for eligible workers in a
+period. It changes nothing about the trust model above — it is read-only, advisory, synthetic,
+no-persistence, admin-only, and invents no financial value.
+
+- **Domain** (`payrollPeriodReview.ts`, pure, Prisma-free): deterministic per-worker and
+  period-level flags — `MISSING_AUTHORITATIVE_INPUT`, `AMBIGUOUS_JURISDICTION`,
+  `UNSUPPORTED_JURISDICTION`, `UNSUPPORTED_PROVIDER`, `INTRA_SHIFT_RATE_BOUNDARY`, plus
+  informational `READY_TO_CALCULATE` / `ALREADY_CALCULATED`. Opaque worker refs, bounded to
+  `PAYROLL_PERIOD_REVIEW_MAX_WORKERS = 500` with truncation metadata, sensitive-field guard.
+- **Endpoint** `GET /platform/payroll/periods/:id/review-context` (behind `requirePayrollAuthority`,
+  read-only). It derives each worker's facts by calling the **same read-only resolvers the
+  calculation engine consults** (`listApprovedWorkedTime`, `findActiveCalculation`,
+  `rateResolver.resolveAt`, `jurisdictionResolver.resolve`, `resolveProvider`) — so the flags
+  mirror exactly why `calculate()` would fail, with no business-logic re-derivation and no write.
+- **Proofs**: 14 domain unit tests; a source-level zero-write proof
+  (`payrollPeriodReviewEndpoint.test.ts` — no create/update/calculate/transition/correction/audit);
+  and a guarded PG suite (`postgres-payroll-period-review.test.ts`: authz 401/403/200/404,
+  period-level unsupported flags, bounded empty-worker context, zero writes). No admin UI, no
+  provider/model, no persistence.
