@@ -296,6 +296,8 @@ export interface PayrollRepository {
   findPeriodById(id: string): Promise<StoredPayrollPeriod | null>;
   listApprovedWorkedTime(input: { organizationId: string; workerIdentityId: string; from: Date; to: Date }): Promise<readonly PayrollWorkedTimeLine[]>;
   findActiveCalculation(payrollPeriodId: string, workerIdentityId: string): Promise<StoredPayrollCalculation | null>;
+  // Bounded keyset selection of workers with approved/locked worked time in the period window.
+  listEligibleWorkerIds(input: { organizationId: string; from: Date; to: Date; limit: number; cursor: string | null }): Promise<readonly string[]>;
   findCalculationById(calculationId: string): Promise<StoredPayrollCalculation | null>;
   findByCorrelationKey(familyRootId: string, correlationKey: string): Promise<StoredPayrollCalculation | null>;
   getCalculationForReplay(calculationId: string): Promise<PayrollReplaySnapshot | null>;
@@ -571,7 +573,53 @@ export function createPayrollService(deps: PayrollDeps) {
     return updated;
   }
 
-  return { calculate, recalculate: calculate, requestCorrection, verifyCalculation, transitionCalculation, transitionPeriod, resolveProvider: resolveProviderForCalc };
+  // Bounded BULK calculation for a period. Calculation-only — never approves/locks/pays. Selects
+  // eligible workers by keyset (bounded page), calls the SAME single-worker engine with per-worker
+  // failure isolation and small bounded concurrency, and returns a bounded summary. Idempotent:
+  // a worker whose inputs are unchanged returns no_change (no duplicate revision).
+  async function calculatePeriodBulk(input: { actorUserId: string; payrollPeriodId: string; limit: number; cursor: string | null; correlationId: string }): Promise<{
+    attempted: number; calculated: number; noChange: number; failed: number; conflicts: number; nextCursor: string | null;
+    results: readonly { workerIdentityId: string; outcome: "calculated" | "no_change" | "conflict" | "failed"; reason?: string; calculationId?: string; revision?: number }[];
+  }> {
+    const period = await deps.repository.findPeriodById(input.payrollPeriodId);
+    if (!period) throw new PayrollError("not_found", "payroll_period_not_found");
+    if (period.status === "approved" || period.status === "locked") throw new PayrollError("conflict", `period_not_open_for_calculation:${period.status}`);
+    const limit = Math.min(Math.max(input.limit, 1), 500);
+    const ids = await deps.repository.listEligibleWorkerIds({ organizationId: period.organizationId, from: period.periodStart, to: period.periodEnd, limit: limit + 1, cursor: input.cursor });
+    const hasMore = ids.length > limit;
+    const batch = ids.slice(0, limit);
+
+    const results: { workerIdentityId: string; outcome: "calculated" | "no_change" | "conflict" | "failed"; reason?: string; calculationId?: string; revision?: number }[] = [];
+    const POOL = 4; // bounded concurrency — never an unbounded Promise.all over the population
+    for (let i = 0; i < batch.length; i += POOL) {
+      const slice = batch.slice(i, i + POOL);
+      const settled = await Promise.all(slice.map(async (workerIdentityId) => {
+        // Independent workers can still collide on shared serializable resources (audit rows) under
+        // pooled concurrency, surfacing as a transient conflict. Retry those a bounded number of
+        // times — each worker's row is distinct, so a retry converges. A genuine domain failure
+        // (missing rate, unsupported jurisdiction, …) is NOT retried.
+        for (let attempt = 0; ; attempt += 1) {
+          try {
+            const prior = await deps.repository.findActiveCalculation(period.id, workerIdentityId);
+            const calc = await calculate({ actorUserId: input.actorUserId, payrollPeriodId: period.id, workerIdentityId, correlationId: input.correlationId });
+            const outcome = prior && prior.id === calc.id ? ("no_change" as const) : ("calculated" as const);
+            return { workerIdentityId, outcome, calculationId: calc.id, revision: calc.revision };
+          } catch (error) {
+            const retryable = (error instanceof PayrollError && error.code === "conflict") || !(error instanceof PayrollError);
+            if (retryable && attempt < 8) { await new Promise((r) => setTimeout(r, 5 * (attempt + 1))); continue; }
+            if (error instanceof PayrollError) return { workerIdentityId, outcome: error.code === "conflict" ? ("conflict" as const) : ("failed" as const), reason: error.reason };
+            return { workerIdentityId, outcome: "failed" as const, reason: "unexpected_error" };
+          }
+        }
+      }));
+      results.push(...settled);
+    }
+    const tally = (o: string) => results.filter((r) => r.outcome === o).length;
+    await deps.repository.recordAudit({ entityType: "payroll_period", entityId: period.id, entityPublicReference: null, organizationId: period.organizationId, action: "payroll.bulk_calculated", priorState: null, newState: `attempted:${results.length}`, reason: `calculated:${tally("calculated")},no_change:${tally("no_change")},failed:${tally("failed")},conflicts:${tally("conflict")}`, actorUserId: input.actorUserId, correlationId: input.correlationId, now: now() });
+    return { attempted: results.length, calculated: tally("calculated"), noChange: tally("no_change"), failed: tally("failed"), conflicts: tally("conflict"), nextCursor: hasMore ? (batch[batch.length - 1] ?? null) : null, results };
+  }
+
+  return { calculate, recalculate: calculate, calculatePeriodBulk, requestCorrection, verifyCalculation, transitionCalculation, transitionPeriod, resolveProvider: resolveProviderForCalc };
 }
 
 // A signed delta (corrected - original) expressed as DIRECTION + non-negative absolute minor units —

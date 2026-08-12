@@ -160,6 +160,19 @@ export function createPrismaPayrollRepository(prisma: PrismaClient): PayrollRepo
       return row ? mapCalc(row) : null;
     },
 
+    async listEligibleWorkerIds(input): Promise<readonly string[]> {
+      // bounded keyset over DISTINCT workers with approved/locked worked time in the window.
+      const rows = await prisma.$queryRawUnsafe<Array<{ worker_identity_id: string }>>(
+        `SELECT DISTINCT worker_identity_id FROM timesheets
+         WHERE organization_id = $1::uuid AND status IN ('approved','locked')
+           AND scheduled_start_at >= $2 AND scheduled_start_at < $3
+           AND ($4::uuid IS NULL OR worker_identity_id > $4::uuid)
+         ORDER BY worker_identity_id ASC LIMIT $5`,
+        input.organizationId, input.from, input.to, input.cursor, input.limit
+      );
+      return rows.map((r) => r.worker_identity_id);
+    },
+
     async findCalculationById(calculationId) {
       const row = await prisma.payrollCalculation.findUnique({ where: { id: calculationId } });
       return row ? mapCalc(row) : null;

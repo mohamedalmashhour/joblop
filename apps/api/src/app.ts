@@ -5663,6 +5663,23 @@ export function buildApi(options: BuildApiOptions = {}) {
     }
   });
 
+  // Bounded BULK calculation for a period (payroll authority). Calculation-only — no approve/lock/
+  // pay. Returns a bounded per-worker summary + a keyset cursor for the next page.
+  app.post("/platform/payroll/periods/:periodId/bulk-calculate", async (request, reply) => {
+    const actor = await requirePayrollAuthority(request, reply);
+    if (!actor) return;
+    const body = asRecord(request.body);
+    try {
+      const result = await payrollService.calculatePeriodBulk({
+        actorUserId: actor, payrollPeriodId: readRouteParam(request.params, "periodId"),
+        limit: readOptionalNumber(body, "limit") ?? 100, cursor: readOptionalString(body, "cursor") ?? null, correlationId: request.id
+      });
+      return reply.code(200).send({ ...result, synthetic: true, notice: PAYROLL_SYNTHETIC_NOTICE });
+    } catch (error) {
+      return sendPayrollFailure(reply, error);
+    }
+  });
+
   app.post("/platform/payroll/calculations/:calculationId/transition", async (request, reply) => {
     const actor = await requirePayrollAuthority(request, reply);
     if (!actor) return;

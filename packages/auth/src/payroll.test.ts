@@ -84,6 +84,11 @@ class FakePayrollRepository implements PayrollRepository {
   async findActiveCalculation(periodId: string, workerId: string) {
     return this.calcs.filter((c) => c.payrollPeriodId === periodId && c.workerIdentityId === workerId && c.status !== "superseded").sort((a, b) => b.revision - a.revision)[0] ?? null;
   }
+  async listEligibleWorkerIds(input: { limit: number; cursor: string | null }) {
+    const ids = [...new Set(this.workedTime.map(() => this.workerId))].filter((w) => !input.cursor || w > input.cursor).sort().slice(0, input.limit);
+    return ids;
+  }
+  workerId = "w";
   async findCalculationById(id: string) { return this.calcs.find((c) => c.id === id) ?? null; }
   async findByCorrelationKey(familyRootId: string, correlationKey: string) { return this.calcs.find((c) => c.familyRootId === familyRootId && c.correlationKey === correlationKey) ?? null; }
   async getCalculationForReplay(id: string) { return this.replay.get(id) ?? null; }
@@ -364,6 +369,36 @@ describe("payroll corrections, adjustments & idempotency (Chunk 3)", () => {
     await svc.transitionCalculation({ actorUserId: "u", calculationId: rev1.id, expectedVersion: approved.version, action: "lock", correlationId: "c" });
     void repo;
     await expect(svc.calculate({ actorUserId: "u", payrollPeriodId: "period-1", workerIdentityId: "w", correlationId: "c" })).rejects.toMatchObject({ code: "conflict", reason: "calculation_locked_use_correction" });
+  });
+});
+
+describe("payroll bulk calculation (Chunk 5)", () => {
+  it("bulk calculate uses the same engine, is bounded, and is idempotent on re-run (no duplicate revisions)", async () => {
+    const contracts: FakeContract[] = [{ contractId: "c1", version: "v1", effectiveFrom: new Date("2026-08-01T00:00:00Z"), rateMinor: 3000 }];
+    const repo = new FakePayrollRepository(makePeriod(), [{ timesheetId: "t1", scheduledStartAt: aug10, scheduledEndAt: aug10End, payableMinutes: 480, residenceId: "res-qc" }]);
+    const svc = service(repo, contracts);
+    const first = await svc.calculatePeriodBulk({ actorUserId: "u", payrollPeriodId: "period-1", limit: 100, cursor: null, correlationId: "b1" });
+    expect(first.attempted).toBe(1);
+    expect(first.calculated).toBe(1);
+    expect(first.failed).toBe(0);
+    // re-run with unchanged inputs -> no_change, no duplicate revision
+    const second = await svc.calculatePeriodBulk({ actorUserId: "u", payrollPeriodId: "period-1", limit: 100, cursor: null, correlationId: "b2" });
+    expect(second.noChange).toBe(1);
+    expect(second.calculated).toBe(0);
+    expect(repo.calcs.filter((c) => c.status !== "superseded")).toHaveLength(1); // one authoritative revision
+  });
+
+  it("bulk calculate isolates a failing worker (governed reason) without corrupting the period", async () => {
+    const repo = new FakePayrollRepository(makePeriod(), []); // no worked time -> the worker fails governed
+    repo.workedTime = []; // eligible list empty -> attempted 0; simulate a failing worker instead
+    const contracts: FakeContract[] = [{ contractId: "c1", version: "v1", effectiveFrom: new Date("2026-08-01T00:00:00Z"), rateMinor: 3000 }];
+    // force one eligible worker whose calculate() fails (no worked time -> no_approved_worked_time)
+    repo.listEligibleWorkerIds = async () => ["wX"];
+    const svc = service(repo, contracts);
+    const res = await svc.calculatePeriodBulk({ actorUserId: "u", payrollPeriodId: "period-1", limit: 100, cursor: null, correlationId: "b3" });
+    expect(res.attempted).toBe(1);
+    expect(res.failed).toBe(1);
+    expect(res.results[0]!.reason).toBe("no_approved_worked_time");
   });
 });
 
