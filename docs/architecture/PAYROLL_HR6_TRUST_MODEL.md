@@ -186,5 +186,33 @@ no-persistence, admin-only, and invents no financial value.
 - **Proofs**: 14 domain unit tests; a source-level zero-write proof
   (`payrollPeriodReviewEndpoint.test.ts` — no create/update/calculate/transition/correction/audit);
   and a guarded PG suite (`postgres-payroll-period-review.test.ts`: authz 401/403/200/404,
-  period-level unsupported flags, bounded empty-worker context, zero writes). No admin UI, no
-  provider/model, no persistence.
+  period-level unsupported flags, bounded empty-worker context, zero writes), plus a live
+  per-worker failure-path + parity suite (`postgres-payroll-period-review-paths.test.ts`). No admin
+  UI, no provider/model, no persistence.
+
+## HR-6.1 Chunk 2 — deterministic provenance / explainability (read-only, descriptive)
+
+Explains **why an existing governed calculation is what it is**, from its immutable stored
+evidence only. Descriptive — **never authoritative**. It recomputes nothing, invents no value,
+infers no rate/jurisdiction, calls no model, persists nothing, and performs no write.
+
+- **Domain** (`payrollProvenance.ts`, pure, Prisma-free): assembles a sanitized provenance model —
+  calculation identity + revision, fingerprint, provider key/version, opaque worker ref, period,
+  jurisdiction + derivation source (`worksite_residence`), per-shift worked-time provenance,
+  per-segment contract/rate provenance (contract version + effective instant + applied rate),
+  earning-line provenance, correction/revision lineage, replay/verification status, and the
+  relevant HR-6 deterministic flags. Every explanation item carries an `evidenceRef` that must
+  resolve into the supplied evidence.
+- **Evidence-binding & fail-closed**: a worked-time ref lacking committed rate provenance yields a
+  `missing_provenance` item (no guessed rate, no invented segment); missing identity/fingerprint →
+  overall `explanation_unavailable`. Raw user text (`correctionReason`) is **never surfaced**.
+  Bounded (100 worked-time / 50 segments / 100 earning lines) with truncation metadata.
+- **Endpoint** `GET /platform/payroll/calculations/:id/provenance` (behind `requirePayrollAuthority`,
+  read-only): loads one exact calculation/revision, computes the deterministic flags with the same
+  engine as review-context, and returns only the provenance model — no write, no audit row.
+- **Proofs**: 12 domain unit tests (determinism, evidence-binding, multi-segment, historical
+  version, correction lineage, missing evidence fail-closed, no invented number, no raw PII,
+  bounded, purity); source-level zero-write proof (`payrollProvenanceEndpoint.test.ts`); guarded PG
+  suite (`postgres-payroll-provenance.test.ts`: authz, historical v1/v2 multi-segment provenance,
+  parity with the calculation detail, correction-lineage across revisions, immutability + zero
+  writes). Descriptive only; no persistence, no model, no admin UI in this chunk.

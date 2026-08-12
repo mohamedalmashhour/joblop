@@ -88,6 +88,9 @@ import {
   assemblePayrollPeriodReviewContext,
   type RawPeriodReviewWorker,
   PAYROLL_PERIOD_REVIEW_MAX_WORKERS,
+  assemblePayrollProvenance,
+  computePayrollReviewFlags,
+  DEFAULT_PAYROLL_REVIEW_THRESHOLDS,
   PayrollError,
   type HrDocumentStatus,
   createPrismaCancellationJobRequestReader,
@@ -5859,6 +5862,51 @@ export function buildApi(options: BuildApiOptions = {}) {
     });
     const review = await runPayrollReview({ context, provider: payrollReviewProvider });
     return reply.code(200).send({ review, advisory: true, notice: "Advisory AI review assistance only. AI cannot approve, lock, correct, or pay. No payroll data was modified." });
+  });
+
+  // HR-6.1 Chunk 2: PROVENANCE / EXPLAINABILITY (READ-ONLY, DESCRIPTIVE). Explains WHY an existing
+  // governed calculation is what it is, using only its immutable stored evidence. It recomputes
+  // nothing, invents no value, calls no model, and performs no write. Descriptive only — never
+  // authoritative.
+  app.get("/platform/payroll/calculations/:calculationId/provenance", async (request, reply) => {
+    const actor = await requirePayrollAuthority(request, reply);
+    if (!actor) return;
+    const calculationId = readRouteParam(request.params, "calculationId");
+    const detail = await loadPayrollCalculationDetail(calculationId);
+    if (!detail) return reply.code(404).send({ error: "RWOS_PAYROLL_DENIED", message: "Payroll calculation unavailable." });
+    const period = await prisma!.payrollPeriod.findUnique({ where: { id: detail.payrollPeriodId }, select: { periodStart: true, periodEnd: true, timezone: true } });
+    if (!period) return reply.code(404).send({ error: "RWOS_PAYROLL_DENIED", message: "Payroll period unavailable." });
+    const familyRows = await prisma!.payrollCalculation.findMany({ where: { familyRootId: detail.familyRootId }, orderBy: [{ revision: "asc" }], take: 200, select: { id: true, revision: true, grossPayMinor: true, netPayMinor: true, status: true } });
+    let verification: { ok: boolean; totalsMatch: boolean } | null;
+    try { const v = await payrollService.verifyCalculation({ calculationId }); verification = { ok: v.ok, totalsMatch: v.totalsMatch }; } catch { verification = null; }
+
+    // Deterministic advisory flags relevant to the explanation (same engine as review-context).
+    const priorRows = familyRows.filter((f) => f.revision < detail.revision).sort((a, b) => b.revision - a.revision);
+    const priorRevision = priorRows[0] ? { revision: priorRows[0].revision, gross: priorRows[0].grossPayMinor, net: priorRows[0].netPayMinor } : null;
+    const flags = computePayrollReviewFlags({
+      workedTime: detail.workedTimeRefs.map((w) => ({ ref: `ts-${w.timesheetId.slice(0, 8)}`, payableMinutes: w.payableMinutes, contractVersion: w.contractVersion, appliedHourlyRateMinor: w.appliedHourlyRateMinor, scheduledStartAt: w.scheduledStartAt })),
+      netPayMinor: detail.netPayMinor,
+      correctionType: detail.correctionType,
+      verification: verification ?? { ok: false, totalsMatch: false },
+      priorRevision,
+      thresholds: DEFAULT_PAYROLL_REVIEW_THRESHOLDS
+    });
+
+    const provenance = assemblePayrollProvenance({
+      calculation: {
+        id: detail.id, organizationId: detail.organizationId, workerIdentityId: detail.workerIdentityId, revision: detail.revision, status: detail.status,
+        jurisdiction: detail.jurisdiction, currency: detail.currency, calculationFingerprint: detail.calculationFingerprint,
+        ruleProvider: detail.ruleProvider, previousCalculationId: detail.previousCalculationId, correctionType: detail.correctionType, correctionReason: detail.correctionReason,
+        adjustsCalculationId: detail.adjustsCalculationId,
+        workedTimeRefs: detail.workedTimeRefs.map((w) => ({ timesheetId: w.timesheetId, payableMinutes: w.payableMinutes, contractId: w.contractId, contractVersion: w.contractVersion, contractEffectiveFrom: w.contractEffectiveFrom, appliedHourlyRateMinor: w.appliedHourlyRateMinor, scheduledStartAt: w.scheduledStartAt })),
+        earningLines: detail.earningLines.map((e) => ({ classification: e.classification, amountMinor: e.amountMinor }))
+      },
+      period: { periodStart: period.periodStart.toISOString(), periodEnd: period.periodEnd.toISOString(), timezone: period.timezone },
+      revisions: familyRows.map((f) => ({ id: f.id, revision: f.revision, status: f.status })),
+      verification,
+      flags
+    });
+    return reply.code(200).send({ provenance, descriptive: true, advisory: true, notice: "Deterministic provenance from immutable stored evidence. Descriptive only, never authoritative. No AI model was called; no payroll data was modified." });
   });
 
   // HR-6.1: PERIOD-LEVEL review (READ-ONLY, ADVISORY). Explains why a governed PayrollCalculation
