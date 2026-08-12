@@ -81,6 +81,7 @@ import {
   createPrismaComplianceEvidenceReader,
   createPayrollService,
   createSyntheticPayrollRuleProvider,
+  assemblePayrollReviewContext,
   PayrollError,
   type HrDocumentStatus,
   createPrismaCancellationJobRequestReader,
@@ -5766,6 +5767,42 @@ export function buildApi(options: BuildApiOptions = {}) {
     if (!target) return reply.code(404).send({ error: "RWOS_PAYROLL_DENIED", message: "Payroll calculation unavailable." });
     const rows = await prisma!.payrollCalculation.findMany({ where: { familyRootId: target.familyRootId }, orderBy: [{ revision: "asc" }], take: 200 });
     return reply.code(200).send({ familyRootId: target.familyRootId, items: rows.map((c) => serializePayrollCalculation(c)), synthetic: true });
+  });
+
+  // HR-6 Chunk 1 — deterministic, READ-ONLY AI review context. Builds a sanitized, minimized,
+  // bounded context + deterministic review flags for a governed calculation. NO model call, NO
+  // write, NO persistence. This is the trust-model input a FUTURE advisory provider will explain.
+  app.get("/platform/payroll/calculations/:calculationId/review-context", async (request, reply) => {
+    const actor = await requirePayrollAuthority(request, reply);
+    if (!actor) return;
+    const calculationId = readRouteParam(request.params, "calculationId");
+    const detail = await loadPayrollCalculationDetail(calculationId);
+    if (!detail) return reply.code(404).send({ error: "RWOS_PAYROLL_DENIED", message: "Payroll calculation unavailable." });
+    // Read-only supporting facts (all within the calculation's own family/period — no cross-tenant fetch).
+    const period = await prisma!.payrollPeriod.findUnique({ where: { id: detail.payrollPeriodId }, select: { periodStart: true, periodEnd: true, timezone: true } });
+    if (!period) return reply.code(404).send({ error: "RWOS_PAYROLL_DENIED", message: "Payroll period unavailable." });
+    const familyRows = await prisma!.payrollCalculation.findMany({ where: { familyRootId: detail.familyRootId }, orderBy: [{ revision: "asc" }], take: 200, select: { id: true, revision: true, grossPayMinor: true, netPayMinor: true, status: true } });
+    // Deterministic replay verification (creates no revision).
+    let verification = { ok: false, totalsMatch: false };
+    try { const v = await payrollService.verifyCalculation({ calculationId }); verification = { ok: v.ok, totalsMatch: v.totalsMatch }; } catch { verification = { ok: false, totalsMatch: false }; }
+
+    const context = assemblePayrollReviewContext({
+      calculation: {
+        id: detail.id, organizationId: detail.organizationId, workerIdentityId: detail.workerIdentityId, revision: detail.revision, status: detail.status,
+        jurisdiction: detail.jurisdiction, currency: detail.currency,
+        grossPayMinor: detail.grossPayMinor, totalDeductionsMinor: detail.totalDeductionsMinor, netPayMinor: detail.netPayMinor, totalEmployerCostMinor: detail.totalEmployerCostMinor,
+        ruleProvider: detail.ruleProvider, calculationFingerprint: detail.calculationFingerprint,
+        previousCalculationId: detail.previousCalculationId, correctionType: detail.correctionType, correctionReason: detail.correctionReason,
+        adjustsCalculationId: detail.adjustsCalculationId, adjustment: detail.adjustment,
+        earningLines: detail.earningLines.map((e) => ({ classification: e.classification, amountMinor: e.amountMinor, contractVersion: null })),
+        deductionLines: detail.deductionLines.map((d) => ({ category: d.category, code: d.code, amountMinor: d.amountMinor })),
+        workedTimeRefs: detail.workedTimeRefs.map((w) => ({ timesheetId: w.timesheetId, payableMinutes: w.payableMinutes, contractVersion: w.contractVersion, appliedHourlyRateMinor: w.appliedHourlyRateMinor, scheduledStartAt: w.scheduledStartAt }))
+      },
+      period: { periodStart: period.periodStart.toISOString(), periodEnd: period.periodEnd.toISOString(), timezone: period.timezone },
+      family: familyRows.map((f) => ({ id: f.id, revision: f.revision, grossPayMinor: f.grossPayMinor, netPayMinor: f.netPayMinor, status: f.status })),
+      verification
+    });
+    return reply.code(200).send({ context, synthetic: true, advisory: true, notice: "Deterministic review context + flags. No AI model was called; no payroll data was modified." });
   });
 
   // Employer review: an employer sees payroll for THEIR org only, and may FLAG a discrepancy.
