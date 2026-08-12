@@ -1,24 +1,52 @@
 import type { PrismaClient } from "@rwos/database";
 import { createContractMoney } from "@rwos/shared";
+import { createPrismaEmployerContractRepository } from "@rwos/auth";
 import type {
   CreatePayrollCalculationInput,
   PayrollCalculationStatus,
+  PayrollJurisdiction,
+  PayrollJurisdictionResolver,
   PayrollPeriodStatus,
+  PayrollRateResolver,
+  PayrollReplaySnapshot,
   PayrollRepository,
   PayrollWorkedTimeLine,
-  PayrollWorkedTimeRateResolver,
   StoredPayrollCalculation,
   StoredPayrollPeriod
 } from "@rwos/auth";
 
-// SYNTHETIC / TEST rate resolver. A real system reads a governed worker-terms rate snapshot;
-// this fixture returns a fixed CAD hourly rate + classification so the payroll foundation is
-// exercisable without wiring worker contracts. Currency deliberately CAD — a USD period will
-// (correctly) be rejected as a currency mismatch.
-export function createFixturePayrollRateResolver(): PayrollWorkedTimeRateResolver {
+// AUTHORITATIVE rate resolver (HR-5.1) — reads the governed EmployerContract that was in force at
+// the shift's instant (active OR superseded), and picks the per-role rate. Historical work reads
+// the committed rate that governed then, never the current rate. Payroll invents no rate.
+export function createPrismaPayrollRateResolver(prisma: PrismaClient): PayrollRateResolver {
+  const contracts = createPrismaEmployerContractRepository(prisma);
   return {
-    async resolve() {
-      return { rate: { hourlyRate: createContractMoney({ amountMinor: 3000, currency: "CAD" }) }, workerClassification: "employee" as const };
+    async resolveAt(input) {
+      const contract = await contracts.findContractEffectiveAt(input.organizationId, input.instant);
+      if (!contract) return null;
+      const roleRate = contract.roleRates.find((r) => r.workGroupId === input.workGroupId && r.roleDefinitionId === input.roleDefinitionId);
+      if (!roleRate || contract.effectiveFrom === null) return null;
+      const currency = contract.currency === "USD" ? "USD" : "CAD";
+      return {
+        contractId: contract.id,
+        contractVersion: contract.version,
+        contractEffectiveFrom: contract.effectiveFrom,
+        hourlyRate: createContractMoney({ amountMinor: roleRate.hourlyRateMinor, currency }),
+        compensationType: "hourly" as const
+      };
+    }
+  };
+}
+
+// AUTHORITATIVE jurisdiction resolver — derives country + region from the worksite Residence, never
+// from caller input. Country falls back to CA only where Residence.country is null (documented CA
+// domain assumption); region comes from the reliably-populated Residence.province.
+export function createPrismaPayrollJurisdictionResolver(prisma: PrismaClient): PayrollJurisdictionResolver {
+  return {
+    async resolve(input): Promise<PayrollJurisdiction | null> {
+      const residence = await prisma.residence.findUnique({ where: { id: input.residenceId }, select: { country: true, province: true } });
+      if (!residence || !residence.province) return null;
+      return { country: (residence.country ?? "CA").toUpperCase(), region: residence.province.toUpperCase() };
     }
   };
 }
@@ -41,8 +69,8 @@ function isUniqueViolation(error: unknown): boolean {
 type CalcRow = {
   id: string; payrollPeriodId: string; organizationId: string; workerIdentityId: string; revision: number;
   status: string; jurisdictionCountry: string; jurisdictionRegion: string; ruleProviderKey: string;
-  ruleProviderVersion: string; calculationPolicyVersion: string; currency: string; grossPayMinor: number;
-  totalDeductionsMinor: number; netPayMinor: number; totalEmployerCostMinor: number; synthetic: boolean;
+  ruleProviderVersion: string; calculationPolicyVersion: string; workerClassification: string; currency: string; grossPayMinor: number;
+  totalDeductionsMinor: number; netPayMinor: number; totalEmployerCostMinor: number; calculationFingerprint: string; synthetic: boolean;
   calculatedAt: Date; supersededById: string | null; version: number;
 };
 function mapCalc(row: CalcRow): StoredPayrollCalculation {
@@ -51,10 +79,10 @@ function mapCalc(row: CalcRow): StoredPayrollCalculation {
     workerIdentityId: row.workerIdentityId, revision: row.revision, status: row.status as PayrollCalculationStatus,
     jurisdictionCountry: row.jurisdictionCountry, jurisdictionRegion: row.jurisdictionRegion,
     ruleProviderKey: row.ruleProviderKey, ruleProviderVersion: row.ruleProviderVersion,
-    calculationPolicyVersion: row.calculationPolicyVersion, currency: row.currency,
+    calculationPolicyVersion: row.calculationPolicyVersion, workerClassification: row.workerClassification, currency: row.currency,
     grossPayMinor: row.grossPayMinor, totalDeductionsMinor: row.totalDeductionsMinor,
     netPayMinor: row.netPayMinor, totalEmployerCostMinor: row.totalEmployerCostMinor,
-    synthetic: row.synthetic, calculatedAt: row.calculatedAt, supersededById: row.supersededById, version: row.version
+    calculationFingerprint: row.calculationFingerprint, synthetic: row.synthetic, calculatedAt: row.calculatedAt, supersededById: row.supersededById, version: row.version
   };
 }
 type PeriodRow = {
@@ -79,6 +107,8 @@ export function createPrismaPayrollRepository(prisma: PrismaClient): PayrollRepo
     },
 
     async listApprovedWorkedTime(input): Promise<readonly PayrollWorkedTimeLine[]> {
+      // Reads approved/locked timesheets ONLY (never raw attendance) and carries the shift window +
+      // role/worksite scope so payroll can attribute each shift to the effective contract rate.
       const rows = await prisma.timesheet.findMany({
         where: {
           organizationId: input.organizationId,
@@ -86,12 +116,34 @@ export function createPrismaPayrollRepository(prisma: PrismaClient): PayrollRepo
           status: { in: ["approved", "locked"] },
           scheduledStartAt: { gte: input.from, lt: input.to }
         },
-        orderBy: [{ scheduledStartAt: "asc" }, { id: "asc" }]
+        orderBy: [{ scheduledStartAt: "asc" }, { id: "asc" }],
+        select: { id: true, version: true, status: true, payableMinutes: true, billableMinutes: true, scheduledStartAt: true, scheduledEndAt: true, assignmentId: true, workGroupId: true, roleDefinitionId: true, residenceId: true }
       });
       return rows.map((r) => ({
         timesheetId: r.id, timesheetVersion: r.version, timesheetStatus: r.status,
-        payableMinutes: r.payableMinutes ?? 0, billableMinutes: r.billableMinutes ?? 0
+        payableMinutes: r.payableMinutes ?? 0, billableMinutes: r.billableMinutes ?? 0,
+        scheduledStartAt: r.scheduledStartAt, scheduledEndAt: r.scheduledEndAt,
+        assignmentId: r.assignmentId, workGroupId: r.workGroupId, roleDefinitionId: r.roleDefinitionId, residenceId: r.residenceId
       }));
+    },
+
+    async getCalculationForReplay(calculationId): Promise<PayrollReplaySnapshot | null> {
+      const c = await prisma.payrollCalculation.findUnique({
+        where: { id: calculationId },
+        include: { workedTimeRefs: true, earningLines: { orderBy: { sortOrder: "asc" } }, deductionLines: { orderBy: { sortOrder: "asc" } }, employerCostLines: { orderBy: { sortOrder: "asc" } } }
+      });
+      if (!c) return null;
+      return {
+        id: c.id, payrollPeriodId: c.payrollPeriodId, organizationId: c.organizationId, workerIdentityId: c.workerIdentityId,
+        jurisdiction: { country: c.jurisdictionCountry, region: c.jurisdictionRegion },
+        ruleProviderKey: c.ruleProviderKey, ruleProviderVersion: c.ruleProviderVersion, calculationPolicyVersion: c.calculationPolicyVersion,
+        workerClassification: c.workerClassification as PayrollReplaySnapshot["workerClassification"], currency: c.currency, calculationFingerprint: c.calculationFingerprint,
+        workedTime: c.workedTimeRefs.map((w) => ({ timesheetId: w.timesheetId, timesheetVersion: w.timesheetVersion, payableMinutes: w.payableMinutes, contractId: w.contractId, contractVersion: w.contractVersion, appliedHourlyRateMinor: w.appliedHourlyRateMinor, contractEffectiveFrom: w.contractEffectiveFrom, sourceEffectiveInstant: w.sourceEffectiveInstant })),
+        earnings: c.earningLines.map((e) => ({ classification: e.classification, amountMinor: e.amountMinor, sourceContractVersion: e.sourceContractVersion })),
+        deductions: c.deductionLines.map((d) => ({ category: d.category, code: d.code, amountMinor: d.amountMinor })),
+        employerCosts: c.employerCostLines.map((x) => ({ category: x.category, code: x.code, amountMinor: x.amountMinor })),
+        grossPayMinor: c.grossPayMinor, totalDeductionsMinor: c.totalDeductionsMinor, netPayMinor: c.netPayMinor, totalEmployerCostMinor: c.totalEmployerCostMinor
+      };
     },
 
     async findActiveCalculation(payrollPeriodId, workerIdentityId) {
@@ -120,21 +172,28 @@ export function createPrismaPayrollRepository(prisma: PrismaClient): PayrollRepo
               workerIdentityId: input.workerIdentityId, revision: input.revision,
               jurisdictionCountry: input.jurisdictionCountry, jurisdictionRegion: input.jurisdictionRegion,
               ruleProviderKey: input.ruleProviderKey, ruleProviderVersion: input.ruleProviderVersion,
-              calculationPolicyVersion: input.calculationPolicyVersion, currency: input.currency,
+              calculationPolicyVersion: input.calculationPolicyVersion, workerClassification: input.workerClassification, currency: input.currency,
               grossPayMinor: input.grossPayMinor, totalDeductionsMinor: input.totalDeductionsMinor,
               netPayMinor: input.netPayMinor, totalEmployerCostMinor: input.totalEmployerCostMinor,
+              calculationFingerprint: input.calculationFingerprint,
               calculatedAt: input.calculatedAt, createdByUserId: input.createdByUserId,
               workedTimeRefs: {
                 create: input.workedTimeRefs.map((w) => ({
                   timesheetId: w.timesheetId, timesheetVersion: w.timesheetVersion,
-                  timesheetStatus: w.timesheetStatus, payableMinutes: w.payableMinutes, billableMinutes: w.billableMinutes
+                  timesheetStatus: w.timesheetStatus, payableMinutes: w.payableMinutes, billableMinutes: w.billableMinutes,
+                  scheduledStartAt: w.scheduledStartAt, scheduledEndAt: w.scheduledEndAt,
+                  assignmentId: w.assignmentId, workGroupId: w.workGroupId, roleDefinitionId: w.roleDefinitionId, residenceId: w.residenceId,
+                  compensationType: w.compensationType, contractId: w.contractId, contractVersion: w.contractVersion,
+                  contractEffectiveFrom: w.contractEffectiveFrom, appliedHourlyRateMinor: w.appliedHourlyRateMinor,
+                  currency: w.currency, sourceEffectiveInstant: w.sourceEffectiveInstant
                 }))
               },
               earningLines: {
                 create: input.earnings.map((e, i) => ({
                   classification: e.classification, description: e.description,
                   quantityMinutes: e.quantityMinutes, rateMinor: e.rate?.amountMinor ?? null,
-                  amountMinor: e.amount.amountMinor, currency: e.amount.currency, sortOrder: i
+                  amountMinor: e.amount.amountMinor, currency: e.amount.currency,
+                  sourceContractId: e.sourceContractId, sourceContractVersion: e.sourceContractVersion, sortOrder: i
                 }))
               },
               deductionLines: {

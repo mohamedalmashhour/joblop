@@ -208,7 +208,7 @@ import { createPrismaDocumentMetadataRepository } from "./documentUploadReposito
 import { registerDocumentRoutes } from "./documentRoutes";
 import { registerInvoiceRoutes } from "./invoiceRoutes";
 import { createPrismaInvoiceRepository, type InvoiceRepository } from "./invoiceRepository";
-import { createPrismaPayrollRepository, createFixturePayrollRateResolver } from "./payrollRepository";
+import { createPrismaPayrollRepository, createPrismaPayrollRateResolver, createPrismaPayrollJurisdictionResolver } from "./payrollRepository";
 import { registerPaymentRoutes } from "./paymentRoutes";
 import { createPrismaPaymentRepository, type PaymentRepository } from "./paymentRepository";
 
@@ -544,7 +544,8 @@ export function buildApi(options: BuildApiOptions = {}) {
   const payrollService = createPayrollService({
     repository: createPrismaPayrollRepository(prisma!),
     ruleProviders: [createSyntheticPayrollRuleProvider()],
-    rateResolver: createFixturePayrollRateResolver()
+    rateResolver: createPrismaPayrollRateResolver(prisma!),
+    jurisdictionResolver: createPrismaPayrollJurisdictionResolver(prisma!)
   });
   // Geocoding provider (provider-neutral seam). Default: a deterministic fixture over
   // major Canadian FSAs — no network, safe for local/CI. Production swaps in the OSM
@@ -5687,6 +5688,19 @@ export function buildApi(options: BuildApiOptions = {}) {
     return reply.code(200).send({ calculation: detail, synthetic: true, notice: PAYROLL_SYNTHETIC_NOTICE });
   });
 
+  // Deterministic replay/verify: recompute from the stored immutable snapshot + exact historical
+  // provider version and confirm it reproduces byte-for-byte. Creates NO revision.
+  app.post("/platform/payroll/calculations/:calculationId/verify", async (request, reply) => {
+    const actor = await requirePayrollAuthority(request, reply);
+    if (!actor) return;
+    try {
+      const result = await payrollService.verifyCalculation({ calculationId: readRouteParam(request.params, "calculationId") });
+      return reply.code(200).send({ ...result, synthetic: true });
+    } catch (error) {
+      return sendPayrollFailure(reply, error);
+    }
+  });
+
   // Employer review: an employer sees payroll for THEIR org only, and may FLAG a discrepancy.
   // Employers can never rewrite financial lines or approve/reject here.
   app.get("/organizations/:organizationId/payroll/calculations", async (request, reply) => {
@@ -5771,7 +5785,7 @@ export function buildApi(options: BuildApiOptions = {}) {
       earningLines: c.earningLines.map((e) => ({ classification: e.classification, description: e.description, quantityMinutes: e.quantityMinutes, rateMinor: e.rateMinor, amountMinor: e.amountMinor, currency: e.currency })),
       deductionLines: c.deductionLines.map((d) => ({ category: d.category, code: d.code, description: d.description, amountMinor: d.amountMinor, currency: d.currency })),
       employerCostLines: c.employerCostLines.map((x) => ({ category: x.category, code: x.code, description: x.description, amountMinor: x.amountMinor, currency: x.currency })),
-      workedTimeRefs: c.workedTimeRefs.map((w) => ({ timesheetId: w.timesheetId, timesheetVersion: w.timesheetVersion, timesheetStatus: w.timesheetStatus, payableMinutes: w.payableMinutes, billableMinutes: w.billableMinutes }))
+      workedTimeRefs: c.workedTimeRefs.map((w) => ({ timesheetId: w.timesheetId, timesheetVersion: w.timesheetVersion, timesheetStatus: w.timesheetStatus, payableMinutes: w.payableMinutes, billableMinutes: w.billableMinutes, scheduledStartAt: w.scheduledStartAt.toISOString(), scheduledEndAt: w.scheduledEndAt.toISOString(), contractId: w.contractId, contractVersion: w.contractVersion, contractEffectiveFrom: w.contractEffectiveFrom.toISOString(), appliedHourlyRateMinor: w.appliedHourlyRateMinor, currency: w.currency }))
     };
   }
 
@@ -6975,8 +6989,8 @@ function serializePayrollPeriod(row: PayrollPeriodRow) {
 type PayrollCalculationRow = {
   id: string; payrollPeriodId: string; organizationId: string; workerIdentityId: string; revision: number;
   status: string; jurisdictionCountry: string; jurisdictionRegion: string; ruleProviderKey: string;
-  ruleProviderVersion: string; calculationPolicyVersion: string; currency: string; grossPayMinor: number;
-  totalDeductionsMinor: number; netPayMinor: number; totalEmployerCostMinor: number; synthetic: boolean;
+  ruleProviderVersion: string; calculationPolicyVersion: string; workerClassification?: string; currency: string; grossPayMinor: number;
+  totalDeductionsMinor: number; netPayMinor: number; totalEmployerCostMinor: number; calculationFingerprint?: string; synthetic: boolean;
   calculatedAt: Date; supersededById: string | null; version: number;
 };
 function serializePayrollCalculation(row: PayrollCalculationRow) {
@@ -6984,8 +6998,8 @@ function serializePayrollCalculation(row: PayrollCalculationRow) {
     id: row.id, payrollPeriodId: row.payrollPeriodId, organizationId: row.organizationId, workerIdentityId: row.workerIdentityId,
     revision: row.revision, status: row.status, jurisdiction: { country: row.jurisdictionCountry, region: row.jurisdictionRegion },
     ruleProvider: { key: row.ruleProviderKey, version: row.ruleProviderVersion }, calculationPolicyVersion: row.calculationPolicyVersion,
-    currency: row.currency, grossPayMinor: row.grossPayMinor, totalDeductionsMinor: row.totalDeductionsMinor,
-    netPayMinor: row.netPayMinor, totalEmployerCostMinor: row.totalEmployerCostMinor, synthetic: row.synthetic,
+    workerClassification: row.workerClassification ?? "employee", currency: row.currency, grossPayMinor: row.grossPayMinor, totalDeductionsMinor: row.totalDeductionsMinor,
+    netPayMinor: row.netPayMinor, totalEmployerCostMinor: row.totalEmployerCostMinor, calculationFingerprint: row.calculationFingerprint ?? "", synthetic: row.synthetic,
     calculatedAt: row.calculatedAt.toISOString(), supersededById: row.supersededById, version: row.version
   };
 }

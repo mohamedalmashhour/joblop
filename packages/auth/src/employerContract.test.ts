@@ -15,6 +15,13 @@ function fakeRepository() {
     async findActiveContract(organizationId) {
       return contracts.find((c) => c.organizationId === organizationId && c.status === "active") ?? null;
     },
+    async findContractEffectiveAt(organizationId, instant) {
+      return (
+        contracts
+          .filter((c) => c.organizationId === organizationId && (c.status === "active" || c.status === "superseded") && c.effectiveFrom !== null && c.effectiveFrom.getTime() <= instant.getTime())
+          .sort((a, b) => (b.effectiveFrom!.getTime() - a.effectiveFrom!.getTime()))[0] ?? null
+      );
+    },
     async supersedeActiveContracts(organizationId) {
       for (const c of contracts) {
         if (c.organizationId === organizationId && c.status === "active") {

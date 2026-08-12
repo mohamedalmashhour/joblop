@@ -55,6 +55,7 @@ suite("HR-5 payroll foundation", () => {
 
   let augScope: Record<string, string> = {};
   let sepScope: Record<string, string> = {};
+  let baseScope: { organizationId: string; residenceId: string; departmentId: string; workGroupId: string; roleDefinitionId: string };
   let ownerId = "";
   let augTimesheetId = "";
   const augStart = new Date("2026-08-05T13:00:00Z");
@@ -92,10 +93,23 @@ suite("HR-5 payroll foundation", () => {
     const role = await prisma.roleDefinition.findFirstOrThrow({ where: { workGroupId: wg.id } });
     const dept = await prisma.department.create({ data: { publicId: `DEP-PR-${randomUUID().slice(0, 8)}`, organizationId: org.id, residenceId: res.id, name: "D", status: "active", createdByUserId: ownerId } });
     const scope = { organizationId: org.id, residenceId: res.id, departmentId: dept.id, workGroupId: wg.id, roleDefinitionId: role.id };
+    baseScope = scope;
 
     // active memberships: employer -> org (own), otherEmployer -> otherOrg (no access to org)
     await prisma.organizationMembership.create({ data: { organizationId: org.id, userId: employerUserId, status: "active", acceptedAt: NOW } });
     await prisma.organizationMembership.create({ data: { organizationId: otherOrg.id, userId: otherEmployerUserId, status: "active", acceptedAt: NOW } });
+
+    // Governed AUTHORITATIVE rate history: contract v1 ($30/h) effective Jul 1; contract v2 ($35/h)
+    // effective Aug 20 00:00Z (supersedes v1). Aug 5 work reads v1; Sep 5 work reads v2 — historical
+    // rate. Seeded via raw SQL so the effective instant is exact (a typed prisma Date write shifts
+    // Timestamptz by the local offset in this pg-adapter setup, which would blur the boundary test).
+    async function seedContract(version: string, status: string, effFromIso: string, rateMinor: number) {
+      const cid = randomUUID(); const n = NOW.toISOString();
+      await prisma.$executeRawUnsafe(`INSERT INTO employer_contracts (id, organization_id, version, status, currency, activated_at, effective_from, created_by_user_id, created_at, updated_at) VALUES ($1,$2,$3,$4,'CAD',$5,$5,$6,$7,$7)`, cid, org.id, version, status, effFromIso, ownerId, n);
+      await prisma.$executeRawUnsafe(`INSERT INTO contract_role_rates (id, contract_id, work_group_id, role_definition_id, hourly_rate_minor, created_at) VALUES (gen_random_uuid(),$1,$2,$3,$4,$5)`, cid, wg.id, role.id, rateMinor, n);
+    }
+    await seedContract("v1", "superseded", "2026-07-01T00:00:00Z", 3000);
+    await seedContract("v2", "active", "2026-08-20T00:00:00Z", 3500);
 
     const aug = await makeAssignment(ownerId, scope, augStart, augEnd);
     augScope = { ...scope, assignmentId: aug.assignmentId };
@@ -139,13 +153,20 @@ suite("HR-5 payroll foundation", () => {
     expect(c.totalEmployerCostMinor).toBeGreaterThan(0);
     expect(calc.json().synthetic).toBe(true);
 
+    // gross derived from the AUTHORITATIVE contract v1 rate ($30/h) x 480min = $240.00 regular
+    expect(c.grossPayMinor).toBeGreaterThanOrEqual(24000);
+    expect(c.calculationFingerprint).toMatch(/^[0-9a-f]{64}$/); // deterministic fingerprint present
+
     const detail = await app.inject({ method: "GET", url: `/platform/payroll/calculations/${c.id}`, headers: auth(payrollToken) });
     const d = detail.json().calculation;
     expect(d.earningLines.length).toBeGreaterThanOrEqual(1);
     expect(d.deductionLines.length).toBeGreaterThanOrEqual(1);
     expect(d.employerCostLines.length).toBeGreaterThanOrEqual(1);
-    // the exact approved timesheet + version fed the calc (snapshot of the input)
-    expect(d.workedTimeRefs.some((r: { timesheetId: string; timesheetStatus: string }) => r.timesheetId === augTimesheetId && r.timesheetStatus === "approved")).toBe(true);
+    // the exact approved timesheet + its applied contract RATE snapshot fed the calc (immutable)
+    const ref = d.workedTimeRefs.find((r: { timesheetId: string }) => r.timesheetId === augTimesheetId);
+    expect(ref.timesheetStatus).toBe("approved");
+    expect(ref.contractVersion).toBe("v1");
+    expect(ref.payableMinutes).toBe(480);
   });
 
   it("recalculate creates revision 2 and supersedes revision 1 (an approved calc is never overwritten)", async () => {
@@ -207,12 +228,44 @@ suite("HR-5 payroll foundation", () => {
     await prisma.$executeRawUnsafe(`UPDATE timesheets SET payable_minutes = 480, version = version + 1 WHERE id = $1`, augTimesheetId);
   });
 
-  it("jurisdiction genuinely diverges — CA/ON net differs from CA/QC for the same worked time", async () => {
-    const qc = await createPeriod(payrollToken, "QC", "2026-08-05T00:00:00Z", "2026-08-16T20:00:00Z");
-    const on = await createPeriod(payrollToken, "ON", "2026-08-05T00:00:00Z", "2026-08-16T20:00:00Z");
-    const qcCalc = (await calculate(payrollToken, qc.json().period.id)).json().calculation;
-    const onCalc = (await calculate(payrollToken, on.json().period.id)).json().calculation;
-    expect(qcCalc.netPayMinor).not.toBe(onCalc.netPayMinor); // separate governed configs, not one Canada formula
+  it("historical rate: Aug 5 work reads contract v1 ($30); Sep 5 work reads contract v2 ($35) — never 'current' rate", async () => {
+    const augP = await createPeriod(payrollToken, "QC", "2026-08-01T00:00:00Z", "2026-08-10T00:00:00Z");
+    const sepP = await createPeriod(payrollToken, "QC", "2026-09-01T00:00:00Z", "2026-09-10T00:00:00Z");
+    const augCalc = (await calculate(payrollToken, augP.json().period.id)).json().calculation;
+    const sepCalc = (await calculate(payrollToken, sepP.json().period.id)).json().calculation;
+    const augDetail = (await app.inject({ method: "GET", url: `/platform/payroll/calculations/${augCalc.id}`, headers: auth(payrollToken) })).json().calculation;
+    const sepDetail = (await app.inject({ method: "GET", url: `/platform/payroll/calculations/${sepCalc.id}`, headers: auth(payrollToken) })).json().calculation;
+    expect(augDetail.workedTimeRefs[0].contractVersion).toBe("v1");
+    expect(augDetail.workedTimeRefs[0].appliedHourlyRateMinor).toBe(3000);
+    expect(sepDetail.workedTimeRefs[0].contractVersion).toBe("v2");
+    expect(sepDetail.workedTimeRefs[0].appliedHourlyRateMinor).toBe(3500);
+    expect(sepCalc.grossPayMinor).toBeGreaterThan(augCalc.grossPayMinor); // $35 > $30 for the same hours
+  });
+
+  it("a shift straddling a contract rate boundary is detected and fails with a governed reason", async () => {
+    // shift Aug 19 22:00 -> Aug 20 02:00 crosses contract v2's effective instant (Aug 20 00:00)
+    const crossAssignment = await makeAssignment(ownerId, baseScope, new Date("2026-08-19T22:00:00Z"), new Date("2026-08-20T02:00:00Z"));
+    const crossScope = { ...baseScope, assignmentId: crossAssignment.assignmentId };
+    await seedApprovedTimesheet(crossScope, crossAssignment.jobId, ownerId, new Date("2026-08-19T22:00:00Z"), new Date("2026-08-20T02:00:00Z"), 240);
+    const p = await createPeriod(payrollToken, "QC", "2026-08-19T12:00:00Z", "2026-08-20T12:00:00Z");
+    const res = await calculate(payrollToken, p.json().period.id);
+    expect(res.statusCode).toBe(400);
+    expect(res.json().reason).toMatch(/rate_boundary_inside_approved_shift/);
+  });
+
+  it("replay/verify recomputes the stored snapshot byte-for-byte; a later rate change does not alter it", async () => {
+    const period = await createPeriod(payrollToken, "QC", "2026-08-04T00:00:00Z", "2026-08-07T00:00:00Z");
+    const calc = (await calculate(payrollToken, period.json().period.id)).json().calculation;
+    const verify1 = await app.inject({ method: "POST", url: `/platform/payroll/calculations/${calc.id}/verify`, headers: auth(payrollToken) });
+    expect(verify1.statusCode).toBe(200);
+    expect(verify1.json().ok).toBe(true);
+    expect(verify1.json().totalsMatch).toBe(true);
+
+    // activate a NEW contract later — the stored calculation and its replay stay identical
+    await prisma.employerContract.updateMany({ where: { organizationId: orgId, status: "active" }, data: { status: "superseded" } });
+    await prisma.employerContract.create({ data: { organizationId: orgId, version: "v99", status: "active", currency: "CAD", activatedAt: new Date("2026-08-25T00:00:00Z"), effectiveFrom: new Date("2026-08-25T00:00:00Z"), createdByUserId: ownerId, roleRates: { create: [{ workGroupId: (await prisma.workGroup.findFirstOrThrow()).id, roleDefinitionId: (await prisma.roleDefinition.findFirstOrThrow()).id, hourlyRateMinor: 99999 }] } } });
+    const verify2 = await app.inject({ method: "POST", url: `/platform/payroll/calculations/${calc.id}/verify`, headers: auth(payrollToken) });
+    expect(verify2.json().ok).toBe(true);
   });
 
   it("employer sees only its OWN org payroll; a cross-org employer is denied (403); worker sees own statement", async () => {
@@ -232,12 +285,7 @@ suite("HR-5 payroll foundation", () => {
     }
   });
 
-  it("payroll_calculations period query uses an index at volume (scale evidence)", async () => {
-    const period = await createPeriod(payrollToken, "QC", "2026-10-01T00:00:00Z", "2026-10-16T00:00:00Z");
-    const plan = await prisma.$queryRawUnsafe<Array<{ "QUERY PLAN": string }>>(
-      `EXPLAIN SELECT * FROM payroll_calculations WHERE payroll_period_id = '${period.json().period.id}' AND status = 'calculated'`
-    );
-    const text = plan.map((r) => r["QUERY PLAN"]).join("\n");
-    expect(/Index/.test(text)).toBe(true);
-  });
+  // Scale / EXPLAIN ANALYZE index evidence at meaningful volume is proven in the dedicated
+  // HR-5.1 scale suite (postgres-payroll-scale.test.ts) — a tiny-table EXPLAIN here would be a
+  // planner flake (Seq Scan is genuinely cheaper on a few rows).
 });

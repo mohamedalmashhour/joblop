@@ -2088,6 +2088,7 @@ model PayrollCalculation {
   ruleProviderKey     String                   @map("rule_provider_key")
   ruleProviderVersion String                   @map("rule_provider_version")
   calculationPolicyVersion String              @map("calculation_policy_version")
+  workerClassification String                  @default("employee") @map("worker_classification")
   currency            String
   grossPayMinor       Int                      @map("gross_pay_minor")
   totalDeductionsMinor Int                     @map("total_deductions_minor")
@@ -2103,6 +2104,9 @@ model PayrollCalculation {
   rejectedAt          DateTime?                @map("rejected_at") @db.Timestamptz(3)
   supersededById      String?                  @map("superseded_by_id") @db.Uuid
   reviewNote          String?                  @map("review_note")
+  // Deterministic fingerprint over the immutable inputs + outputs — detects accidental drift and
+  // proves a replay reproduced the same result. Not a cryptographic financial signature.
+  calculationFingerprint String                @default("") @map("calculation_fingerprint")
   version             Int                      @default(1)
   createdAt           DateTime                 @default(now()) @map("created_at") @db.Timestamptz(3)
   updatedAt           DateTime                 @updatedAt @map("updated_at") @db.Timestamptz(3)
@@ -2123,6 +2127,10 @@ model PayrollCalculation {
 
 // The exact approved worked-time that fed a calculation, snapshotted with its version so a later
 // attendance/timesheet change cannot silently re-base an existing calculation.
+// Immutable time + RATE snapshot per approved timesheet that fed a calculation. Captures the exact
+// shift window, role scope, and the governed EmployerContract rate effective at the shift's start
+// instant — so a later contract/rate change can never re-base an existing calculation, and the
+// calculation is historically reproducible from its own snapshot.
 model PayrollWorkedTimeReference {
   id                  String             @id @default(uuid()) @db.Uuid
   payrollCalculationId String            @map("payroll_calculation_id") @db.Uuid
@@ -2131,6 +2139,20 @@ model PayrollWorkedTimeReference {
   timesheetStatus     String             @map("timesheet_status")
   payableMinutes      Int                @map("payable_minutes")
   billableMinutes     Int                @map("billable_minutes")
+  scheduledStartAt    DateTime           @map("scheduled_start_at") @db.Timestamptz(3)
+  scheduledEndAt      DateTime           @map("scheduled_end_at") @db.Timestamptz(3)
+  assignmentId        String             @map("assignment_id") @db.Uuid
+  workGroupId         String             @map("work_group_id") @db.Uuid
+  roleDefinitionId    String             @map("role_definition_id") @db.Uuid
+  residenceId         String             @map("residence_id") @db.Uuid
+  // rate snapshot (the committed EmployerContract rate that governed this shift)
+  compensationType    String             @default("hourly") @map("compensation_type")
+  contractId          String             @map("contract_id") @db.Uuid
+  contractVersion     String             @map("contract_version")
+  contractEffectiveFrom DateTime         @map("contract_effective_from") @db.Timestamptz(3)
+  appliedHourlyRateMinor Int             @map("applied_hourly_rate_minor")
+  currency            String
+  sourceEffectiveInstant DateTime        @map("source_effective_instant") @db.Timestamptz(3)
 
   payrollCalculation  PayrollCalculation @relation(fields: [payrollCalculationId], references: [id], onDelete: Cascade)
 
@@ -2148,6 +2170,10 @@ model PayrollEarningLine {
   rateMinor           Int?               @map("rate_minor")
   amountMinor         Int                @map("amount_minor")
   currency            String
+  // Provenance: which governed contract version + source shift produced this earning (null for
+  // derived earnings like vacation-pay accrual that are computed on the segment total).
+  sourceContractId    String?            @map("source_contract_id") @db.Uuid
+  sourceContractVersion String?          @map("source_contract_version")
   sortOrder           Int                @default(0) @map("sort_order")
 
   payrollCalculation  PayrollCalculation @relation(fields: [payrollCalculationId], references: [id], onDelete: Cascade)

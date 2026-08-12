@@ -41,6 +41,11 @@ export type StoredEmployerContract = Readonly<{
 
 export type EmployerContractRepository = Readonly<{
   findActiveContract(organizationId: string): Promise<StoredEmployerContract | null>;
+  // Historical rate authority for payroll: the governed contract in force at `instant` — the
+  // most recent contract (active OR superseded) whose effectiveFrom <= instant. Superseded
+  // contracts are retained, so a calculation over past work always reads the committed rate that
+  // governed then, never the "current" rate. Read-only over existing committed contract history.
+  findContractEffectiveAt(organizationId: string, instant: Date): Promise<StoredEmployerContract | null>;
   supersedeActiveContracts(organizationId: string, now: Date): Promise<void>;
   // Establishes the authoritative rate card (platform/admin authority). Rates are
   // server-side from here on; the employer never re-supplies them.
@@ -281,6 +286,19 @@ export function createPrismaEmployerContractRepository(
         where: { organizationId, status: "active" },
         include: { roleRates: true },
         orderBy: { activatedAt: "desc" }
+      });
+    },
+    findContractEffectiveAt(organizationId, instant) {
+      // active + superseded contracts whose effectiveFrom <= instant, newest effective first.
+      // draft contracts are never rate authority. This is the committed contract timeline.
+      return prisma.employerContract.findFirst({
+        where: {
+          organizationId,
+          status: { in: ["active", "superseded"] },
+          effectiveFrom: { not: null, lte: instant }
+        },
+        include: { roleRates: true },
+        orderBy: { effectiveFrom: "desc" }
       });
     },
     async supersedeActiveContracts(organizationId, nowDate) {

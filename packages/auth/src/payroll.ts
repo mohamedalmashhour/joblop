@@ -11,9 +11,8 @@
 //     supersedes the prior one — an approved calculation is never overwritten.
 //   - HR-5 stops at ApprovedPayrollCalculation. No `paid` state, no banking, no remittance.
 
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import {
-  addMoney,
   createContractMoney,
   proRateMinutesAtHourlyRate,
   subtractMoney,
@@ -34,26 +33,61 @@ export const payrollJurisdictionKey = (j: PayrollJurisdiction) => `${j.country}/
 
 // The approved worked-time a calculation consumes — snapshotted with its version so a later
 // attendance/timesheet change can never silently re-base an existing calculation.
+// One approved timesheet (shift) — carries the shift window + governed role/worksite scope so
+// payroll can attribute it to the rate effective at its start instant. Read from approved/locked
+// timesheets only (never raw attendance).
 export type PayrollWorkedTimeLine = Readonly<{
   timesheetId: string;
   timesheetVersion: number;
   timesheetStatus: string;
   payableMinutes: number;
   billableMinutes: number;
+  scheduledStartAt: Date;
+  scheduledEndAt: Date;
+  assignmentId: string;
+  workGroupId: string;
+  roleDefinitionId: string;
+  residenceId: string;
 }>;
 
-// A governed rate snapshot handed to payroll (payroll does not invent rates).
-export type PayrollRateSnapshot = Readonly<{ hourlyRate: ContractMoney }>;
+// The governed EmployerContract rate resolved as effective at a specific instant for a role scope.
+// This is the immutable compensation snapshot payroll captures — payroll never invents a rate.
+export type PayrollRateResolution = Readonly<{
+  contractId: string;
+  contractVersion: string;
+  contractEffectiveFrom: Date;
+  hourlyRate: ContractMoney;
+  compensationType: "hourly";
+}>;
 
-export type PayrollEarningDraft = Readonly<{ classification: string; description: string; quantityMinutes: number | null; rate: ContractMoney | null; amount: ContractMoney }>;
+// Resolves the committed contract rate in force at `instant`. Historical work always reads the
+// rate that governed then (active OR superseded contract), never the current rate.
+export type PayrollRateResolver = Readonly<{
+  resolveAt(input: { organizationId: string; workGroupId: string; roleDefinitionId: string; instant: Date }): Promise<PayrollRateResolution | null>;
+}>;
+
+// Derives the authoritative payroll jurisdiction from the worksite (Residence), never caller input.
+export type PayrollJurisdictionResolver = Readonly<{
+  resolve(input: { residenceId: string }): Promise<PayrollJurisdiction | null>;
+}>;
+
+export type PayrollEarningDraft = Readonly<{ classification: string; description: string; quantityMinutes: number | null; rate: ContractMoney | null; amount: ContractMoney; sourceContractId: string | null; sourceContractVersion: string | null }>;
 export type PayrollDeductionDraft = Readonly<{ category: PayrollDeductionCategory; code: string; description: string; amount: ContractMoney }>;
 export type PayrollEmployerCostDraft = Readonly<{ category: string; code: string; description: string; amount: ContractMoney }>;
+
+// A worked-time SEGMENT: contiguous minutes attributed to one committed contract-version rate. The
+// service produces one segment per distinct contract version applied within the period.
+export type PayrollRuleSegment = Readonly<{
+  contractId: string;
+  contractVersion: string;
+  hourlyRate: ContractMoney;
+  payableMinutes: number;
+}>;
 
 export type PayrollRuleInput = Readonly<{
   jurisdiction: PayrollJurisdiction;
   currency: MoneyEngineCurrency;
-  rate: PayrollRateSnapshot;
-  workedTime: readonly PayrollWorkedTimeLine[];
+  segments: readonly PayrollRuleSegment[];
   workerClassification: PayrollWorkerClassification;
 }>;
 
@@ -137,27 +171,38 @@ export function createSyntheticPayrollRuleProvider(): PayrollRuleProvider {
         throw new PayrollError("invalid", `unsupported_jurisdiction:${payrollJurisdictionKey(input.jurisdiction)}`);
       }
       const currency = input.currency;
-      if (input.rate.hourlyRate.currency !== currency) {
+      if (input.segments.some((s) => s.hourlyRate.currency !== currency)) {
         throw new PayrollError("invalid", "currency_mismatch:rate");
       }
-      const totalMinutes = input.workedTime.reduce((sum, w) => sum + w.payableMinutes, 0);
-      const regularMinutes = Math.min(totalMinutes, cfg.overtimeThresholdMinutes);
-      const overtimeMinutes = Math.max(0, totalMinutes - cfg.overtimeThresholdMinutes);
-
-      const regularAmount = proRateMinutesAtHourlyRate(input.rate.hourlyRate, regularMinutes);
-      const overtimeRate = createContractMoney({ amountMinor: Math.floor((input.rate.hourlyRate.amountMinor * cfg.overtimeMultiplierBps) / 10000), currency });
-      const overtimeAmount = proRateMinutesAtHourlyRate(overtimeRate, overtimeMinutes);
-
-      const workedEarnings = addMoney(regularAmount, overtimeAmount);
-      const vacationAmount = percentOfBps(workedEarnings, cfg.vacationPayBps);
-
-      const earnings: PayrollEarningDraft[] = [
-        { classification: "regular", description: "Regular worked time (synthetic)", quantityMinutes: regularMinutes, rate: input.rate.hourlyRate, amount: regularAmount }
-      ];
-      if (overtimeMinutes > 0) {
-        earnings.push({ classification: "overtime", description: "Overtime worked time (synthetic)", quantityMinutes: overtimeMinutes, rate: overtimeRate, amount: overtimeAmount });
+      if (input.segments.length === 0) {
+        throw new PayrollError("invalid", "no_worked_time_segments");
       }
-      earnings.push({ classification: "vacation_pay", description: "Vacation pay accrual (synthetic)", quantityMinutes: null, rate: null, amount: vacationAmount });
+      // One REGULAR earning line per contract-version segment, at that committed rate — this is the
+      // explainable per-rate provenance when a rate change splits a period across contract versions.
+      const earnings: PayrollEarningDraft[] = input.segments.map((s) => ({
+        classification: "regular",
+        description: `Regular worked time (synthetic) @ contract ${s.contractVersion}`,
+        quantityMinutes: s.payableMinutes,
+        rate: s.hourlyRate,
+        amount: proRateMinutesAtHourlyRate(s.hourlyRate, s.payableMinutes),
+        sourceContractId: s.contractId,
+        sourceContractVersion: s.contractVersion
+      }));
+
+      // Overtime premium (synthetic): minutes over the jurisdiction threshold earn an extra 0.5x, at
+      // the rate of the LAST segment (by effective order). Documented synthetic rule; base hours are
+      // already in the regular lines above.
+      const totalMinutes = input.segments.reduce((sum, s) => sum + s.payableMinutes, 0);
+      const overtimeMinutes = Math.max(0, totalMinutes - cfg.overtimeThresholdMinutes);
+      if (overtimeMinutes > 0) {
+        const lastRate = input.segments[input.segments.length - 1]!.hourlyRate;
+        const premiumRate = createContractMoney({ amountMinor: Math.floor((lastRate.amountMinor * (cfg.overtimeMultiplierBps - 10000)) / 10000), currency });
+        earnings.push({ classification: "overtime_premium", description: "Overtime premium (synthetic)", quantityMinutes: overtimeMinutes, rate: premiumRate, amount: proRateMinutesAtHourlyRate(premiumRate, overtimeMinutes), sourceContractId: null, sourceContractVersion: null });
+      }
+
+      const workedEarnings = sumMoney(earnings.map((e) => e.amount));
+      const vacationAmount = percentOfBps(workedEarnings, cfg.vacationPayBps);
+      earnings.push({ classification: "vacation_pay", description: "Vacation pay accrual (synthetic)", quantityMinutes: null, rate: null, amount: vacationAmount, sourceContractId: null, sourceContractVersion: null });
 
       const gross = sumMoney(earnings.map((e) => e.amount));
 
@@ -189,32 +234,53 @@ export type StoredPayrollPeriod = Readonly<{
 export type StoredPayrollCalculation = Readonly<{
   id: string; payrollPeriodId: string; organizationId: string; workerIdentityId: string; revision: number;
   status: PayrollCalculationStatus; jurisdictionCountry: string; jurisdictionRegion: string;
-  ruleProviderKey: string; ruleProviderVersion: string; calculationPolicyVersion: string; currency: string;
+  ruleProviderKey: string; ruleProviderVersion: string; calculationPolicyVersion: string; workerClassification: string; currency: string;
   grossPayMinor: number; totalDeductionsMinor: number; netPayMinor: number; totalEmployerCostMinor: number;
-  synthetic: boolean; calculatedAt: Date; supersededById: string | null; version: number;
+  calculationFingerprint: string; synthetic: boolean; calculatedAt: Date; supersededById: string | null; version: number;
+}>;
+
+// Everything needed to REPLAY a calculation from its own immutable snapshot (no live re-reads).
+export type PayrollReplaySnapshot = Readonly<{
+  id: string; payrollPeriodId: string; organizationId: string; workerIdentityId: string;
+  jurisdiction: PayrollJurisdiction; ruleProviderKey: string; ruleProviderVersion: string; calculationPolicyVersion: string;
+  workerClassification: PayrollWorkerClassification; currency: string; calculationFingerprint: string;
+  workedTime: readonly Readonly<{ timesheetId: string; timesheetVersion: number; payableMinutes: number; contractId: string; contractVersion: string; appliedHourlyRateMinor: number; contractEffectiveFrom: Date; sourceEffectiveInstant: Date }>[];
+  earnings: readonly Readonly<{ classification: string; amountMinor: number; sourceContractVersion: string | null }>[];
+  deductions: readonly Readonly<{ category: string; code: string; amountMinor: number }>[];
+  employerCosts: readonly Readonly<{ category: string; code: string; amountMinor: number }>[];
+  grossPayMinor: number; totalDeductionsMinor: number; netPayMinor: number; totalEmployerCostMinor: number;
+}>;
+
+// An immutable per-timesheet time+rate snapshot persisted with the calculation.
+export type PayrollWorkedTimeSnapshot = PayrollWorkedTimeLine & Readonly<{
+  compensationType: "hourly";
+  contractId: string;
+  contractVersion: string;
+  contractEffectiveFrom: Date;
+  appliedHourlyRateMinor: number;
+  currency: string;
+  sourceEffectiveInstant: Date;
 }>;
 
 export type CreatePayrollCalculationInput = Readonly<{
   payrollPeriodId: string; organizationId: string; workerIdentityId: string; revision: number;
   jurisdictionCountry: string; jurisdictionRegion: string; ruleProviderKey: string; ruleProviderVersion: string;
-  calculationPolicyVersion: string; currency: string;
+  calculationPolicyVersion: string; workerClassification: string; currency: string;
   grossPayMinor: number; totalDeductionsMinor: number; netPayMinor: number; totalEmployerCostMinor: number;
+  calculationFingerprint: string;
   calculatedAt: Date; createdByUserId: string;
-  workedTimeRefs: readonly PayrollWorkedTimeLine[];
+  workedTimeRefs: readonly PayrollWorkedTimeSnapshot[];
   earnings: readonly PayrollEarningDraft[];
   deductions: readonly PayrollDeductionDraft[];
   employerCosts: readonly PayrollEmployerCostDraft[];
   supersedePriorId: string | null; expectedPriorVersion: number | null;
 }>;
 
-export type PayrollWorkedTimeRateResolver = Readonly<{
-  resolve(input: { organizationId: string; workerIdentityId: string; jurisdiction: PayrollJurisdiction }): Promise<{ rate: PayrollRateSnapshot; workerClassification: PayrollWorkerClassification }>;
-}>;
-
 export interface PayrollRepository {
   findPeriodById(id: string): Promise<StoredPayrollPeriod | null>;
   listApprovedWorkedTime(input: { organizationId: string; workerIdentityId: string; from: Date; to: Date }): Promise<readonly PayrollWorkedTimeLine[]>;
   findActiveCalculation(payrollPeriodId: string, workerIdentityId: string): Promise<StoredPayrollCalculation | null>;
+  getCalculationForReplay(calculationId: string): Promise<PayrollReplaySnapshot | null>;
   // Atomically supersede the prior active revision (version-guarded) and insert the new one.
   // Returns null if the prior revision was concurrently changed (optimistic-concurrency miss).
   createCalculationAtomically(input: CreatePayrollCalculationInput): Promise<StoredPayrollCalculation | null>;
@@ -228,7 +294,9 @@ export interface PayrollRepository {
 export type PayrollDeps = Readonly<{
   repository: PayrollRepository;
   ruleProviders: readonly PayrollRuleProvider[];
-  rateResolver: PayrollWorkedTimeRateResolver;
+  rateResolver: PayrollRateResolver;
+  jurisdictionResolver: PayrollJurisdictionResolver;
+  classificationResolver?: Readonly<{ resolve(workerIdentityId: string): Promise<PayrollWorkerClassification> }>;
   calculationPolicyVersion?: string;
   now?: () => Date;
 }>;
@@ -245,10 +313,75 @@ export function createPayrollService(deps: PayrollDeps) {
   const now = deps.now ?? (() => new Date());
   const policyVersion = deps.calculationPolicyVersion ?? "payroll-foundation-v1";
 
-  function resolveProvider(jurisdiction: PayrollJurisdiction): PayrollRuleProvider {
+  function resolveProviderForCalc(jurisdiction: PayrollJurisdiction): PayrollRuleProvider {
     const provider = deps.ruleProviders.find((p) => p.supports(jurisdiction));
-    if (!provider) throw new PayrollError("invalid", `unsupported_jurisdiction:${payrollJurisdictionKey(jurisdiction)}`);
+    if (!provider) throw new PayrollError("invalid", `unsupported_payroll_jurisdiction:${payrollJurisdictionKey(jurisdiction)}`);
     return provider;
+  }
+
+  // Resolve the whole calculation deterministically from AUTHORITATIVE inputs: approved worked time
+  // + jurisdiction derived from the worksite + the committed contract rate effective at each shift.
+  // Pure of persistence — used by both calculate() and replay/verify().
+  async function resolveCalculation(period: StoredPayrollPeriod, workerIdentityId: string): Promise<{
+    jurisdiction: PayrollJurisdiction; provider: PayrollRuleProvider; currency: MoneyEngineCurrency; workerClassification: PayrollWorkerClassification;
+    snapshots: readonly PayrollWorkedTimeSnapshot[]; result: PayrollRuleResult; totals: PayrollTotals; fingerprint: string;
+  }> {
+    if (!isSupportedCurrency(period.currency)) throw new PayrollError("invalid", `unsupported_currency:${period.currency}`);
+    const currency = period.currency as MoneyEngineCurrency;
+
+    const workedTime = await deps.repository.listApprovedWorkedTime({ organizationId: period.organizationId, workerIdentityId, from: period.periodStart, to: period.periodEnd });
+    if (workedTime.length === 0) throw new PayrollError("invalid", "no_approved_worked_time");
+
+    // Jurisdiction is DERIVED from the worksite (Residence), never trusted from the caller. Work
+    // spanning multiple jurisdictions fails safely rather than guessing one.
+    const derived = new Map<string, PayrollJurisdiction>();
+    for (const wt of workedTime) {
+      const j = await deps.jurisdictionResolver.resolve({ residenceId: wt.residenceId });
+      if (!j) throw new PayrollError("invalid", `unsupported_payroll_jurisdiction:worksite:${wt.residenceId}`);
+      derived.set(payrollJurisdictionKey(j), j);
+    }
+    if (derived.size > 1) throw new PayrollError("invalid", `ambiguous_multi_jurisdiction:${[...derived.keys()].sort().join(",")}`);
+    const jurisdiction = [...derived.values()][0]!;
+    // A caller cannot pick a jurisdiction that disagrees with the authoritative worksite.
+    if (jurisdiction.country !== period.jurisdictionCountry || jurisdiction.region !== period.jurisdictionRegion) {
+      throw new PayrollError("invalid", `jurisdiction_mismatch_period_vs_worksite:period=${period.jurisdictionCountry}/${period.jurisdictionRegion},worksite=${payrollJurisdictionKey(jurisdiction)}`);
+    }
+    const provider = resolveProviderForCalc(jurisdiction);
+
+    // Per-timesheet rate resolution + intra-shift boundary detection.
+    const snapshots: PayrollWorkedTimeSnapshot[] = [];
+    for (const wt of workedTime) {
+      const scope = { organizationId: period.organizationId, workGroupId: wt.workGroupId, roleDefinitionId: wt.roleDefinitionId };
+      const startRate = await deps.rateResolver.resolveAt({ ...scope, instant: wt.scheduledStartAt });
+      if (!startRate) throw new PayrollError("invalid", `missing_rate:${wt.timesheetId}`);
+      const endRate = await deps.rateResolver.resolveAt({ ...scope, instant: wt.scheduledEndAt });
+      if (!endRate) throw new PayrollError("invalid", `missing_rate:${wt.timesheetId}`);
+      // A rate/contract boundary strictly inside an approved shift cannot be split — ApprovedWorkedTime
+      // has only aggregate minutes. Fail with governed provenance rather than guessing the split.
+      if (endRate.contractId !== startRate.contractId) {
+        throw new PayrollError("invalid", `rate_boundary_inside_approved_shift:${JSON.stringify({ timesheetId: wt.timesheetId, assignmentId: wt.assignmentId, shiftStart: wt.scheduledStartAt.toISOString(), shiftEnd: wt.scheduledEndAt.toISOString(), oldContractId: startRate.contractId, oldContractVersion: startRate.contractVersion, newContractId: endRate.contractId, newContractVersion: endRate.contractVersion, boundaryAt: endRate.contractEffectiveFrom.toISOString() })}`);
+      }
+      if (startRate.hourlyRate.currency !== currency) throw new PayrollError("invalid", "currency_mismatch:rate_vs_period");
+      snapshots.push({ ...wt, compensationType: "hourly", contractId: startRate.contractId, contractVersion: startRate.contractVersion, contractEffectiveFrom: startRate.contractEffectiveFrom, appliedHourlyRateMinor: startRate.hourlyRate.amountMinor, currency, sourceEffectiveInstant: wt.scheduledStartAt });
+    }
+
+    // Segment by committed contract version (ordered by effectiveFrom) — one earning segment per rate.
+    const bySegment = new Map<string, { contractId: string; contractVersion: string; effectiveFrom: Date; hourlyRateMinor: number; payableMinutes: number }>();
+    for (const s of snapshots) {
+      const seg = bySegment.get(s.contractId) ?? { contractId: s.contractId, contractVersion: s.contractVersion, effectiveFrom: s.contractEffectiveFrom, hourlyRateMinor: s.appliedHourlyRateMinor, payableMinutes: 0 };
+      seg.payableMinutes += s.payableMinutes;
+      bySegment.set(s.contractId, seg);
+    }
+    const segments: PayrollRuleSegment[] = [...bySegment.values()]
+      .sort((a, b) => a.effectiveFrom.getTime() - b.effectiveFrom.getTime())
+      .map((seg) => ({ contractId: seg.contractId, contractVersion: seg.contractVersion, hourlyRate: createContractMoney({ amountMinor: seg.hourlyRateMinor, currency }), payableMinutes: seg.payableMinutes }));
+
+    const workerClassification = deps.classificationResolver ? await deps.classificationResolver.resolve(workerIdentityId) : "employee";
+    const result = provider.evaluate({ jurisdiction, currency, segments, workerClassification });
+    assertResultCurrency(result, currency);
+    const totals = computePayrollTotals(result, currency);
+    const fingerprint = buildCalculationFingerprint({ period, workerIdentityId, jurisdiction, provider, policyVersion, workerClassification, snapshots, result, totals });
+    return { jurisdiction, provider, currency, workerClassification, snapshots, result, totals, fingerprint };
   }
 
   // Calculate (or recalculate) a worker's payroll for a period. Always creates a NEW revision and
@@ -260,38 +393,63 @@ export function createPayrollService(deps: PayrollDeps) {
       throw new PayrollError("conflict", `period_not_open_for_calculation:${period.status}`);
     }
 
-    const jurisdiction: PayrollJurisdiction = { country: period.jurisdictionCountry, region: period.jurisdictionRegion };
-    const provider = resolveProvider(jurisdiction);
-    if (!isSupportedCurrency(period.currency)) throw new PayrollError("invalid", `unsupported_currency:${period.currency}`);
-    const currency = period.currency as MoneyEngineCurrency;
-
-    const workedTime = await deps.repository.listApprovedWorkedTime({ organizationId: period.organizationId, workerIdentityId: input.workerIdentityId, from: period.periodStart, to: period.periodEnd });
-    if (workedTime.length === 0) throw new PayrollError("invalid", "no_approved_worked_time");
-
-    const { rate, workerClassification } = await deps.rateResolver.resolve({ organizationId: period.organizationId, workerIdentityId: input.workerIdentityId, jurisdiction });
-    if (rate.hourlyRate.currency !== currency) throw new PayrollError("invalid", "currency_mismatch:rate_vs_period");
-
-    const result = provider.evaluate({ jurisdiction, currency, rate, workedTime, workerClassification });
-    assertResultCurrency(result, currency);
-    const totals = computePayrollTotals(result, currency);
-
+    const resolved = await resolveCalculation(period, input.workerIdentityId);
     const prior = await deps.repository.findActiveCalculation(period.id, input.workerIdentityId);
     const revision = (prior?.revision ?? 0) + 1;
     const at = now();
 
     const created = await deps.repository.createCalculationAtomically({
       payrollPeriodId: period.id, organizationId: period.organizationId, workerIdentityId: input.workerIdentityId, revision,
-      jurisdictionCountry: period.jurisdictionCountry, jurisdictionRegion: period.jurisdictionRegion,
-      ruleProviderKey: provider.key, ruleProviderVersion: provider.version, calculationPolicyVersion: policyVersion, currency,
-      grossPayMinor: totals.gross.amountMinor, totalDeductionsMinor: totals.totalDeductions.amountMinor, netPayMinor: totals.net.amountMinor, totalEmployerCostMinor: totals.totalEmployerCost.amountMinor,
+      jurisdictionCountry: resolved.jurisdiction.country, jurisdictionRegion: resolved.jurisdiction.region,
+      ruleProviderKey: resolved.provider.key, ruleProviderVersion: resolved.provider.version, calculationPolicyVersion: policyVersion, workerClassification: resolved.workerClassification, currency: resolved.currency,
+      grossPayMinor: resolved.totals.gross.amountMinor, totalDeductionsMinor: resolved.totals.totalDeductions.amountMinor, netPayMinor: resolved.totals.net.amountMinor, totalEmployerCostMinor: resolved.totals.totalEmployerCost.amountMinor,
+      calculationFingerprint: resolved.fingerprint,
       calculatedAt: at, createdByUserId: input.actorUserId,
-      workedTimeRefs: workedTime, earnings: result.earnings, deductions: result.deductions, employerCosts: result.employerCosts,
+      workedTimeRefs: resolved.snapshots, earnings: resolved.result.earnings, deductions: resolved.result.deductions, employerCosts: resolved.result.employerCosts,
       supersedePriorId: prior?.id ?? null, expectedPriorVersion: prior?.version ?? null
     });
     if (!created) throw new PayrollError("conflict", "calculation_superseded_concurrently");
 
-    await deps.repository.recordAudit({ entityType: "payroll_calculation", entityId: created.id, entityPublicReference: period.id, organizationId: period.organizationId, action: prior ? "payroll.recalculated" : "payroll.calculated", priorState: prior ? `revision:${prior.revision}` : null, newState: `revision:${revision}`, reason: `synthetic:${provider.key}@${provider.version}`, actorUserId: input.actorUserId, correlationId: input.correlationId, now: at });
+    await deps.repository.recordAudit({ entityType: "payroll_calculation", entityId: created.id, entityPublicReference: period.id, organizationId: period.organizationId, action: prior ? "payroll.recalculated" : "payroll.calculated", priorState: prior ? `revision:${prior.revision}` : null, newState: `revision:${revision}`, reason: `synthetic:${resolved.provider.key}@${resolved.provider.version}`, actorUserId: input.actorUserId, correlationId: input.correlationId, now: at });
     return created;
+  }
+
+  // Deterministic VERIFY replay. Recomputes the result FROM THE STORED IMMUTABLE SNAPSHOT (worked-time
+  // refs + applied rates + exact historical provider version), NOT from live re-reads, and compares
+  // it byte-for-byte to what was stored. Creates NO revision. Proves the calculation is reproducible
+  // and has not drifted.
+  async function verifyCalculation(input: { calculationId: string }): Promise<{ ok: boolean; storedFingerprint: string; recomputedFingerprint: string; totalsMatch: boolean }> {
+    const s = await deps.repository.getCalculationForReplay(input.calculationId);
+    if (!s) throw new PayrollError("not_found", "payroll_calculation_not_found");
+    // Resolve the EXACT historical provider version — never "latest".
+    const provider = deps.ruleProviders.find((p) => p.key === s.ruleProviderKey && p.version === s.ruleProviderVersion);
+    if (!provider) throw new PayrollError("invalid", `unavailable_historical_provider_version:${s.ruleProviderKey}@${s.ruleProviderVersion}`);
+    if (!isSupportedCurrency(s.currency)) throw new PayrollError("invalid", `unsupported_currency:${s.currency}`);
+    const currency = s.currency as MoneyEngineCurrency;
+
+    // Rebuild segments from the stored per-timesheet snapshots, ordered by effective instant.
+    const bySeg = new Map<string, { contractId: string; contractVersion: string; effectiveFrom: Date; rateMinor: number; minutes: number }>();
+    for (const w of s.workedTime) {
+      const seg = bySeg.get(w.contractId) ?? { contractId: w.contractId, contractVersion: w.contractVersion, effectiveFrom: w.contractEffectiveFrom, rateMinor: w.appliedHourlyRateMinor, minutes: 0 };
+      seg.minutes += w.payableMinutes;
+      bySeg.set(w.contractId, seg);
+    }
+    const segments: PayrollRuleSegment[] = [...bySeg.values()].sort((a, b) => a.effectiveFrom.getTime() - b.effectiveFrom.getTime()).map((seg) => ({ contractId: seg.contractId, contractVersion: seg.contractVersion, hourlyRate: createContractMoney({ amountMinor: seg.rateMinor, currency }), payableMinutes: seg.minutes }));
+
+    const result = provider.evaluate({ jurisdiction: s.jurisdiction, currency, segments, workerClassification: s.workerClassification });
+    const totals = computePayrollTotals(result, currency);
+    const totalsMatch = totals.gross.amountMinor === s.grossPayMinor && totals.totalDeductions.amountMinor === s.totalDeductionsMinor && totals.net.amountMinor === s.netPayMinor && totals.totalEmployerCost.amountMinor === s.totalEmployerCostMinor;
+    const recomputedFingerprint = canonicalFingerprint({
+      periodId: s.payrollPeriodId, workerIdentityId: s.workerIdentityId, jurisdiction: s.jurisdiction,
+      providerKey: s.ruleProviderKey, providerVersion: s.ruleProviderVersion, policyVersion: s.calculationPolicyVersion,
+      workerClassification: s.workerClassification, currency: s.currency,
+      workedTime: s.workedTime.map((w) => ({ timesheetId: w.timesheetId, timesheetVersion: w.timesheetVersion, payableMinutes: w.payableMinutes, contractId: w.contractId, contractVersion: w.contractVersion, appliedHourlyRateMinor: w.appliedHourlyRateMinor, sourceEffectiveInstant: w.sourceEffectiveInstant.toISOString() })),
+      earnings: result.earnings.map((e) => ({ classification: e.classification, amountMinor: e.amount.amountMinor, sourceContractVersion: e.sourceContractVersion })),
+      deductions: result.deductions.map((d) => ({ category: d.category, code: d.code, amountMinor: d.amount.amountMinor })),
+      employerCosts: result.employerCosts.map((c) => ({ category: c.category, code: c.code, amountMinor: c.amount.amountMinor })),
+      totals: { grossPayMinor: totals.gross.amountMinor, totalDeductionsMinor: totals.totalDeductions.amountMinor, netPayMinor: totals.net.amountMinor, totalEmployerCostMinor: totals.totalEmployerCost.amountMinor }
+    });
+    return { ok: totalsMatch && recomputedFingerprint === s.calculationFingerprint, storedFingerprint: s.calculationFingerprint, recomputedFingerprint, totalsMatch };
   }
 
   async function transitionCalculation(input: { actorUserId: string; calculationId: string; expectedVersion: number; action: "review" | "approve" | "reject" | "lock"; note?: string | null; correlationId: string }): Promise<StoredPayrollCalculation> {
@@ -312,7 +470,58 @@ export function createPayrollService(deps: PayrollDeps) {
     return updated;
   }
 
-  return { calculate, recalculate: calculate, transitionCalculation, transitionPeriod, resolveProvider };
+  return { calculate, recalculate: calculate, verifyCalculation, transitionCalculation, transitionPeriod, resolveProvider: resolveProviderForCalc };
+}
+
+// ── Deterministic fingerprint ──
+//
+// A stable SHA-256 over the canonical immutable inputs + outputs. Detects accidental drift and
+// proves a replay reproduced the same result. Excludes unstable fields (ids, timestamps, request
+// ids). NOT a cryptographic financial signature.
+type FingerprintArgs = Readonly<{
+  periodId: string; workerIdentityId: string; jurisdiction: PayrollJurisdiction;
+  providerKey: string; providerVersion: string; policyVersion: string; workerClassification: string; currency: string;
+  workedTime: readonly Readonly<{ timesheetId: string; timesheetVersion: number; payableMinutes: number; contractId: string; contractVersion: string; appliedHourlyRateMinor: number; sourceEffectiveInstant: string }>[];
+  earnings: readonly Readonly<{ classification: string; amountMinor: number; sourceContractVersion: string | null }>[];
+  deductions: readonly Readonly<{ category: string; code: string; amountMinor: number }>[];
+  employerCosts: readonly Readonly<{ category: string; code: string; amountMinor: number }>[];
+  totals: Readonly<{ grossPayMinor: number; totalDeductionsMinor: number; netPayMinor: number; totalEmployerCostMinor: number }>;
+}>;
+
+function canonicalFingerprint(args: FingerprintArgs): string {
+  const canonical = {
+    v: 1,
+    period: args.periodId,
+    worker: args.workerIdentityId,
+    jurisdiction: `${args.jurisdiction.country}/${args.jurisdiction.region}`,
+    provider: `${args.providerKey}@${args.providerVersion}`,
+    policy: args.policyVersion,
+    classification: args.workerClassification,
+    currency: args.currency,
+    // worked-time sorted by timesheetId for stability
+    workedTime: [...args.workedTime].sort((a, b) => a.timesheetId.localeCompare(b.timesheetId)).map((w) => [w.timesheetId, w.timesheetVersion, w.payableMinutes, w.contractId, w.contractVersion, w.appliedHourlyRateMinor, w.sourceEffectiveInstant]),
+    earnings: args.earnings.map((e) => [e.classification, e.amountMinor, e.sourceContractVersion]),
+    deductions: args.deductions.map((d) => [d.category, d.code, d.amountMinor]),
+    employerCosts: args.employerCosts.map((c) => [c.category, c.code, c.amountMinor]),
+    totals: [args.totals.grossPayMinor, args.totals.totalDeductionsMinor, args.totals.netPayMinor, args.totals.totalEmployerCostMinor]
+  };
+  return createHash("sha256").update(JSON.stringify(canonical)).digest("hex");
+}
+
+function buildCalculationFingerprint(input: {
+  period: StoredPayrollPeriod; workerIdentityId: string; jurisdiction: PayrollJurisdiction; provider: PayrollRuleProvider;
+  policyVersion: string; workerClassification: string; snapshots: readonly PayrollWorkedTimeSnapshot[]; result: PayrollRuleResult; totals: PayrollTotals;
+}): string {
+  return canonicalFingerprint({
+    periodId: input.period.id, workerIdentityId: input.workerIdentityId, jurisdiction: input.jurisdiction,
+    providerKey: input.provider.key, providerVersion: input.provider.version, policyVersion: input.policyVersion,
+    workerClassification: input.workerClassification, currency: input.period.currency,
+    workedTime: input.snapshots.map((w) => ({ timesheetId: w.timesheetId, timesheetVersion: w.timesheetVersion, payableMinutes: w.payableMinutes, contractId: w.contractId, contractVersion: w.contractVersion, appliedHourlyRateMinor: w.appliedHourlyRateMinor, sourceEffectiveInstant: w.sourceEffectiveInstant.toISOString() })),
+    earnings: input.result.earnings.map((e) => ({ classification: e.classification, amountMinor: e.amount.amountMinor, sourceContractVersion: e.sourceContractVersion })),
+    deductions: input.result.deductions.map((d) => ({ category: d.category, code: d.code, amountMinor: d.amount.amountMinor })),
+    employerCosts: input.result.employerCosts.map((c) => ({ category: c.category, code: c.code, amountMinor: c.amount.amountMinor })),
+    totals: { grossPayMinor: input.totals.gross.amountMinor, totalDeductionsMinor: input.totals.totalDeductions.amountMinor, netPayMinor: input.totals.net.amountMinor, totalEmployerCostMinor: input.totals.totalEmployerCost.amountMinor }
+  });
 }
 
 function isSupportedCurrency(currency: string): currency is MoneyEngineCurrency {
