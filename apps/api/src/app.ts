@@ -82,6 +82,9 @@ import {
   createPayrollService,
   createSyntheticPayrollRuleProvider,
   assemblePayrollReviewContext,
+  createSyntheticPayrollReviewProvider,
+  runPayrollReview,
+  type PayrollReviewProvider,
   PayrollError,
   type HrDocumentStatus,
   createPrismaCancellationJobRequestReader,
@@ -253,6 +256,10 @@ export interface BuildApiOptions {
   localPaymentWebhookSecret?: string;
   publicWorkerIngressOnly?: boolean;
   publicWorkerWebOrigin?: string;
+  // HR-6: advisory AI review provider. Defaults to the deterministic synthetic provider — no
+  // network, no vendor. A future external model would be injected here and inherit every guard
+  // (validation, evidence-binding, containment, fail-closed). Advisory only; never authoritative.
+  payrollReviewProvider?: PayrollReviewProvider;
 }
 
 export type AuthenticationRateLimitDecision = Readonly<{
@@ -548,6 +555,9 @@ export function buildApi(options: BuildApiOptions = {}) {
     rateResolver: createPrismaPayrollRateResolver(prisma!),
     jurisdictionResolver: createPrismaPayrollJurisdictionResolver(prisma!)
   });
+  // HR-6 advisory AI review provider (offline synthetic by default). Advisory only — it consumes
+  // the sanitized review context and cannot approve/lock/correct/pay or touch payroll state.
+  const payrollReviewProvider = options.payrollReviewProvider ?? createSyntheticPayrollReviewProvider();
   // Geocoding provider (provider-neutral seam). Default: a deterministic fixture over
   // major Canadian FSAs — no network, safe for local/CI. Production swaps in the OSM
   // (or Google) provider via options.geocodingProvider. Resolutions are persisted on
@@ -5783,7 +5793,7 @@ export function buildApi(options: BuildApiOptions = {}) {
     if (!period) return reply.code(404).send({ error: "RWOS_PAYROLL_DENIED", message: "Payroll period unavailable." });
     const familyRows = await prisma!.payrollCalculation.findMany({ where: { familyRootId: detail.familyRootId }, orderBy: [{ revision: "asc" }], take: 200, select: { id: true, revision: true, grossPayMinor: true, netPayMinor: true, status: true } });
     // Deterministic replay verification (creates no revision).
-    let verification = { ok: false, totalsMatch: false };
+    let verification: { ok: boolean; totalsMatch: boolean };
     try { const v = await payrollService.verifyCalculation({ calculationId }); verification = { ok: v.ok, totalsMatch: v.totalsMatch }; } catch { verification = { ok: false, totalsMatch: false }; }
 
     const context = assemblePayrollReviewContext({
@@ -5803,6 +5813,43 @@ export function buildApi(options: BuildApiOptions = {}) {
       verification
     });
     return reply.code(200).send({ context, synthetic: true, advisory: true, notice: "Deterministic review context + flags. No AI model was called; no payroll data was modified." });
+  });
+
+  // HR-6: ADVISORY AI review. Builds the same sanitized, read-only context (after authz + exact
+  // lookup) and runs the injected review provider (synthetic by default). The provider output is
+  // validated, evidence-bound, containment-checked and fails closed to `review_unavailable`. This
+  // endpoint performs NO write and records NO audit row — it returns advisory assistance only and
+  // can never approve/lock/correct/pay or alter any payroll state.
+  app.get("/platform/payroll/calculations/:calculationId/ai-review", async (request, reply) => {
+    const actor = await requirePayrollAuthority(request, reply);
+    if (!actor) return;
+    const calculationId = readRouteParam(request.params, "calculationId");
+    const detail = await loadPayrollCalculationDetail(calculationId);
+    if (!detail) return reply.code(404).send({ error: "RWOS_PAYROLL_DENIED", message: "Payroll calculation unavailable." });
+    const period = await prisma!.payrollPeriod.findUnique({ where: { id: detail.payrollPeriodId }, select: { periodStart: true, periodEnd: true, timezone: true } });
+    if (!period) return reply.code(404).send({ error: "RWOS_PAYROLL_DENIED", message: "Payroll period unavailable." });
+    const familyRows = await prisma!.payrollCalculation.findMany({ where: { familyRootId: detail.familyRootId }, orderBy: [{ revision: "asc" }], take: 200, select: { id: true, revision: true, grossPayMinor: true, netPayMinor: true, status: true } });
+    let verification: { ok: boolean; totalsMatch: boolean };
+    try { const v = await payrollService.verifyCalculation({ calculationId }); verification = { ok: v.ok, totalsMatch: v.totalsMatch }; } catch { verification = { ok: false, totalsMatch: false }; }
+
+    const context = assemblePayrollReviewContext({
+      calculation: {
+        id: detail.id, organizationId: detail.organizationId, workerIdentityId: detail.workerIdentityId, revision: detail.revision, status: detail.status,
+        jurisdiction: detail.jurisdiction, currency: detail.currency,
+        grossPayMinor: detail.grossPayMinor, totalDeductionsMinor: detail.totalDeductionsMinor, netPayMinor: detail.netPayMinor, totalEmployerCostMinor: detail.totalEmployerCostMinor,
+        ruleProvider: detail.ruleProvider, calculationFingerprint: detail.calculationFingerprint,
+        previousCalculationId: detail.previousCalculationId, correctionType: detail.correctionType, correctionReason: detail.correctionReason,
+        adjustsCalculationId: detail.adjustsCalculationId, adjustment: detail.adjustment,
+        earningLines: detail.earningLines.map((e) => ({ classification: e.classification, amountMinor: e.amountMinor, contractVersion: null })),
+        deductionLines: detail.deductionLines.map((d) => ({ category: d.category, code: d.code, amountMinor: d.amountMinor })),
+        workedTimeRefs: detail.workedTimeRefs.map((w) => ({ timesheetId: w.timesheetId, payableMinutes: w.payableMinutes, contractVersion: w.contractVersion, appliedHourlyRateMinor: w.appliedHourlyRateMinor, scheduledStartAt: w.scheduledStartAt }))
+      },
+      period: { periodStart: period.periodStart.toISOString(), periodEnd: period.periodEnd.toISOString(), timezone: period.timezone },
+      family: familyRows.map((f) => ({ id: f.id, revision: f.revision, grossPayMinor: f.grossPayMinor, netPayMinor: f.netPayMinor, status: f.status })),
+      verification
+    });
+    const review = await runPayrollReview({ context, provider: payrollReviewProvider });
+    return reply.code(200).send({ review, advisory: true, notice: "Advisory AI review assistance only. AI cannot approve, lock, correct, or pay. No payroll data was modified." });
   });
 
   // Employer review: an employer sees payroll for THEIR org only, and may FLAG a discrepancy.

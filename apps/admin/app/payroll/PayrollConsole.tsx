@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState, type CSSProperties } from "react";
+import { aiReviewDisclaimer, aiReviewHeading, aiReviewUnavailableText } from "./payrollContent";
 
 // ── Types (mirror the payroll API serializers) ──
 type Period = Readonly<{ id: string; organizationId: string; jurisdiction: { country: string; region: string }; periodStart: string; periodEnd: string; status: string; currency: string; calculationCount?: number }>;
@@ -14,6 +15,8 @@ type Calc = Readonly<{
 type Line = Readonly<{ classification?: string; category?: string; code?: string; description: string; amountMinor: number; currency: string; contractVersion?: string; quantityMinutes?: number | null }>;
 type WorkedRef = Readonly<{ timesheetId: string; timesheetVersion: number; timesheetStatus: string; payableMinutes: number; scheduledStartAt: string; scheduledEndAt: string; contractVersion: string; contractEffectiveFrom: string; appliedHourlyRateMinor: number; currency: string }>;
 type Detail = Calc & Readonly<{ earningLines: Line[]; deductionLines: Line[]; employerCostLines: Line[]; workedTimeRefs: WorkedRef[] }>;
+type AiFinding = Readonly<{ code: string; title: string; explanation: string; severity: string; evidenceRef: string }>;
+type AiReview = Readonly<{ status: "ready" | "review_unavailable"; summary: string; findings: AiFinding[]; versioning: { model: string; promptVersion: string; providerKey: string; providerVersion: string }; synthetic: boolean }>;
 
 const money = (minor: number, currency: string) => new Intl.NumberFormat(undefined, { style: "currency", currency }).format(minor / 100);
 const day = (iso: string, tz = "UTC") => new Date(iso).toLocaleString(undefined, { month: "short", day: "numeric", year: "numeric", hour: "2-digit", minute: "2-digit", timeZone: tz });
@@ -29,6 +32,7 @@ export function PayrollConsole() {
   const [periodId, setPeriodId] = useState<string | null>(null);
   const [calcs, setCalcs] = useState<Calc[] | null>(null);
   const [detail, setDetail] = useState<Detail | null>(null);
+  const [aiReview, setAiReview] = useState<AiReview | null>(null);
   const [family, setFamily] = useState<Calc[] | null>(null);
   const [notice, setNotice] = useState<{ tone: "info" | "error"; text: string } | null>(null);
   const [reason, setReason] = useState("");
@@ -43,10 +47,13 @@ export function PayrollConsole() {
   }, []);
 
   const openCalc = useCallback(async (id: string) => {
-    setNotice(null);
+    setNotice(null); setAiReview(null);
     const [d, f] = await Promise.all([api(`calculations/${id}`), api(`calculations/${id}/family`)]);
     setDetail(d.ok ? (d.data.calculation as Detail) : null);
     setFamily(f.ok ? (f.data.items as Calc[]) : null);
+    // Advisory AI review — read-only; failures degrade silently (payroll is unaffected).
+    const r = await api(`calculations/${id}/ai-review`);
+    setAiReview(r.ok ? (r.data.review as AiReview) : null);
   }, []);
 
   const refresh = useCallback(async () => { if (detail) await openCalc(detail.id); if (periodId) { const r = await api(`periods/${periodId}/calculations?limit=100`); setCalcs(r.ok ? (r.data.items as Calc[]) : []); } }, [detail, periodId, openCalc]);
@@ -172,6 +179,35 @@ export function PayrollConsole() {
             </div>
           ) : null}
 
+          {/* AI review — ADVISORY assistance only; never authoritative payroll state. */}
+          <section aria-labelledby="ai-review-h" style={s.aiPanel} role="note">
+            <div style={s.aiHead}>
+              <h3 id="ai-review-h" style={s.h3}>{aiReviewHeading}</h3>
+              <span style={s.aiBadge}>ADVISORY · not payroll state</span>
+            </div>
+            <p style={s.aiDisclaimer}>{aiReviewDisclaimer}</p>
+            {aiReview === null ? (
+              <p style={s.muted}>Loading advisory review…</p>
+            ) : aiReview.status === "review_unavailable" ? (
+              <p role="status" style={s.aiUnavailable}>{aiReviewUnavailableText}</p>
+            ) : (
+              <>
+                <p style={s.aiSummary}>{aiReview.summary}</p>
+                {aiReview.findings.length > 0 ? (
+                  <ul style={s.aiList}>
+                    {aiReview.findings.map((f, i) => (
+                      <li key={i} style={s.aiFinding}>
+                        <span style={{ ...s.aiSeverity, ...severityStyle(f.severity) }}>{f.severity}</span>
+                        <span><strong>{f.title}</strong> <span style={s.muted}>({f.code})</span><br />{f.explanation}</span>
+                      </li>
+                    ))}
+                  </ul>
+                ) : <p style={s.muted}>No advisory findings for this revision.</p>}
+                <p style={s.aiMeta}>{aiReview.synthetic ? "Synthetic (offline) reviewer" : "Reviewer"} · {aiReview.versioning.model} · prompt {aiReview.versioning.promptVersion}</p>
+              </>
+            )}
+          </section>
+
           {/* Actions */}
           <div style={s.actions}>
             <button type="button" disabled={busy} style={s.btn} onClick={() => act("Verify", `calculations/${detail.id}/verify`, {}, (d) => (d.ok ? "VERIFIED — recomputed from the stored snapshot + exact provider version; identical." : `MISMATCH — recomputed ${String(d.recomputedFingerprint).slice(0, 12)} ≠ stored.`))}>Verify / replay</button>
@@ -230,6 +266,10 @@ function LineTable({ title, lines, currency }: { title: string; lines: Line[]; c
     </table>
   );
 }
+function severityStyle(severity: string): CSSProperties {
+  const tone = severity === "high" ? "#8a2f20" : severity === "medium" ? "#8a5340" : severity === "low" ? "#155e9c" : "#555";
+  return { color: tone, borderColor: tone };
+}
 function statusChip(status: string) {
   const tone = status === "locked" ? "#1f6f43" : status === "approved" ? "#155e9c" : status === "superseded" || status === "rejected" ? "#8a5340" : "#555";
   return <span style={{ ...s.chip, color: tone, borderColor: tone }}>{status}</span>;
@@ -276,5 +316,16 @@ const s: Record<string, CSSProperties> = {
   historyItem: { fontSize: 13 },
   historyActive: { fontSize: 13, fontWeight: 700 },
   historyBtn: { background: "none", border: "none", padding: 0, cursor: "pointer", textAlign: "left", color: "#1a1a1a" },
-  mono: { fontFamily: "ui-monospace, monospace" }
+  mono: { fontFamily: "ui-monospace, monospace" },
+  // AI advisory panel — visually distinct (purple/note), clearly not an authoritative control.
+  aiPanel: { background: "#faf7ff", border: "1px solid #b9a3e0", borderRadius: 8, padding: 14, margin: "16px 0" },
+  aiHead: { display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, flexWrap: "wrap" },
+  aiBadge: { background: "#efe6fb", color: "#5a3a8a", border: "1px solid #b9a3e0", borderRadius: 999, padding: "2px 10px", fontSize: 11, fontWeight: 700 },
+  aiDisclaimer: { color: "#5a3a8a", fontSize: 12, margin: "4px 0 10px" },
+  aiSummary: { fontSize: 14, margin: "6px 0" },
+  aiList: { listStyle: "none", padding: 0, margin: "8px 0 0", display: "flex", flexDirection: "column", gap: 8 },
+  aiFinding: { display: "flex", gap: 10, alignItems: "flex-start", fontSize: 13 },
+  aiSeverity: { border: "1px solid", borderRadius: 999, padding: "1px 8px", fontSize: 11, whiteSpace: "nowrap", height: "fit-content" },
+  aiUnavailable: { background: "#f3f0f8", border: "1px solid #b9a3e0", color: "#5a3a8a", borderRadius: 6, padding: "8px 10px", fontSize: 13 },
+  aiMeta: { color: "#888", fontSize: 11, marginTop: 10 }
 };

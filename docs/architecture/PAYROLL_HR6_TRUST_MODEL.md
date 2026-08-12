@@ -103,3 +103,20 @@ every guard below unchanged:
 - **Governance.** Results carry provider key/version, model, prompt version, flag-engine version,
   and output-contract version. `buildPayrollReviewAudit` returns audit metadata (including the
   standing invariant `aiMutatedAuthoritativePayroll: false`) as a value — not yet persisted.
+
+## Chunk 3 — advisory API endpoint + admin panel (still read-only)
+
+- **Endpoint.** `GET /platform/payroll/calculations/:id/ai-review` (behind `requirePayrollAuthority`)
+  builds the same sanitized context as `review-context`, runs the injected provider (synthetic by
+  default, swappable via `BuildApiOptions.payrollReviewProvider`), and returns the advisory result.
+  It performs **no write** and records **no audit row**; a failing provider yields
+  `review_unavailable` at HTTP 200 (never an error that could block payroll).
+- **Admin panel.** The payroll console renders an "AI review (advisory)" note styled distinctly from
+  authoritative controls, with an explicit disclaimer that the findings are review assistance, not
+  payroll state, and that AI cannot approve/lock/correct/pay. The authoritative actions
+  (Verify/Approve/Reject/Lock/Correct) remain exclusively human. Governance copy lives in
+  `payrollContent.ts` and is asserted by `payroll/page.test.ts`.
+- **Adversarial proof.** `tests/integration/postgres-payroll-ai-review.test.ts` proves over a real
+  database: authz (401/403/200), advisory evidence-bound output, injected correction text never
+  becoming an instruction or action, a failing provider degrading to `review_unavailable`, and zero
+  authoritative writes before/after.

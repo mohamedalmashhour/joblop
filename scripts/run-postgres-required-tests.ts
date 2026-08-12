@@ -92,7 +92,8 @@ async function main() {
         "run",
         "tests/integration/postgres-worker-offer-capacity.test.ts",
         "tests/integration/postgres-assignment-concurrency.test.ts",
-        "tests/integration/postgres-payroll-review-context.test.ts"
+        "tests/integration/postgres-payroll-review-context.test.ts",
+        "tests/integration/postgres-payroll-ai-review.test.ts"
       ],
       validationEnvironment
     );
