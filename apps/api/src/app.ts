@@ -91,6 +91,13 @@ import {
   assemblePayrollProvenance,
   computePayrollReviewFlags,
   DEFAULT_PAYROLL_REVIEW_THRESHOLDS,
+  resolveEgressMode,
+  createEgressGatedProvider,
+  PAYROLL_REVIEW_PROMPT_VERSION,
+  PAYROLL_REVIEW_FLAG_ENGINE_VERSION,
+  PAYROLL_REVIEW_OUTPUT_CONTRACT_VERSION,
+  PAYROLL_REVIEW_DEFAULT_TIMEOUT_MS,
+  type PayrollReviewExternalProvider,
   PayrollError,
   type HrDocumentStatus,
   createPrismaCancellationJobRequestReader,
@@ -266,6 +273,10 @@ export interface BuildApiOptions {
   // network, no vendor. A future external model would be injected here and inherit every guard
   // (validation, evidence-binding, containment, fail-closed). Advisory only; never authoritative.
   payrollReviewProvider?: PayrollReviewProvider;
+  // HR-6.1 Chunk 3: a FUTURE external AI provider. Used ONLY when PAYROLL_AI_EXTERNAL_ENABLED is on
+  // (non-production) AND this is injected; it receives a validated, byte-scanned egress envelope —
+  // never the raw context. Default absent → synthetic offline provider, no egress possible.
+  payrollExternalReviewProvider?: PayrollReviewExternalProvider;
 }
 
 export type AuthenticationRateLimitDecision = Readonly<{
@@ -569,7 +580,18 @@ export function buildApi(options: BuildApiOptions = {}) {
   });
   // HR-6 advisory AI review provider (offline synthetic by default). Advisory only — it consumes
   // the sanitized review context and cannot approve/lock/correct/pay or touch payroll state.
-  const payrollReviewProvider = options.payrollReviewProvider ?? createSyntheticPayrollReviewProvider();
+  const syntheticPayrollReviewProvider = options.payrollReviewProvider ?? createSyntheticPayrollReviewProvider();
+  // HR-6.1 Chunk 3 capability gate: external egress is impossible unless BOTH the non-production
+  // config flag is enabled AND an external provider is injected. Default → synthetic (offline).
+  const payrollReviewEgressMode = resolveEgressMode({ externalEnabled: runtimeConfig.payrollAiExternalEnabled, externalProvider: options.payrollExternalReviewProvider });
+  const payrollReviewProvider =
+    payrollReviewEgressMode === "external"
+      ? createEgressGatedProvider(
+          options.payrollExternalReviewProvider!,
+          { providerKey: options.payrollExternalReviewProvider!.key, providerVersion: options.payrollExternalReviewProvider!.version, promptVersion: PAYROLL_REVIEW_PROMPT_VERSION, flagEngineVersion: PAYROLL_REVIEW_FLAG_ENGINE_VERSION, outputContractVersion: PAYROLL_REVIEW_OUTPUT_CONTRACT_VERSION },
+          PAYROLL_REVIEW_DEFAULT_TIMEOUT_MS
+        )
+      : syntheticPayrollReviewProvider;
   // Geocoding provider (provider-neutral seam). Default: a deterministic fixture over
   // major Canadian FSAs — no network, safe for local/CI. Production swaps in the OSM
   // (or Google) provider via options.geocodingProvider. Resolutions are persisted on

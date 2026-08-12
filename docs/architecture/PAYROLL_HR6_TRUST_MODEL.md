@@ -216,3 +216,55 @@ infers no rate/jurisdiction, calls no model, persists nothing, and performs no w
   suite (`postgres-payroll-provenance.test.ts`: authz, historical v1/v2 multi-segment provenance,
   parity with the calculation detail, correction-lineage across revisions, immutability + zero
   writes). Descriptive only; no persistence, no model, no admin UI in this chunk.
+
+## HR-6.1 Chunk 3 — egress-safety hardening for a future external AI provider
+
+**No live external AI exists or is configured.** This layer (`payrollReviewEgress.ts`) proves that if
+one were ever authorized, only a strictly minimized, allowlisted, byte-validated payload could leave
+the system.
+
+### Egress trust boundary
+A future external provider is adapted into the existing `PayrollReviewProvider` port via
+`createEgressGatedProvider`, which inserts the gate BEFORE any external call. The external provider
+receives **only** a `PayrollReviewEgressEnvelope` — never the raw context, Prisma rows, calculation
+detail, or any repository/write-capable service. Structurally, authority creep is impossible.
+
+### Exact allowlisted fields (the entire outbound schema)
+`schemaVersion`, opaque `calculationRef`, opaque `workerRef`, opaque `organizationRef`,
+`period{start,end,timezone}`, `jurisdiction{country,region}`, `flags[]{code,severity,detail,evidenceRef}`
+(detail is system-generated, never user text), `evidenceRefs[]` (keys only, no bodies),
+`provenanceFacts[]{contractVersion,payableMinutes,appliedHourlyRateMinor}`,
+`financials{currency,grossMinor,deductionsMinor,netMinor,employerCostMinor}` (the calculation's OWN
+authorized totals — the only financial numbers permitted to egress), `versioning{…}`, `notice`.
+The envelope is built field-by-field from an allowlist — **never** serialize-then-redact.
+
+### Prohibited fields (never leave the system)
+name, personal email, phone, address, DOB, SIN, tax identifiers, bank/routing/account data, payment
+credentials, identity documents, raw correction/user text, passwords, secrets, tokens, raw Prisma
+rows, and any other tenant's data.
+
+### Byte-level validation + size limits
+`validatePayrollReviewEgressEnvelope` enforces a strict schema (unknown top-level and nested fields
+rejected; bounded arrays/strings). `scanPayrollReviewEgressBytes` inspects the exact serialized
+outbound string and fails closed on email/phone/SIN/tax-id/card/bank/bearer-token/secret patterns or
+oversize. `egressNumbersAreContextBound` rejects any number not present in the source context.
+Hard caps: payload ≤ 16 384 bytes, ≤ 50 flags, ≤ 300 evidence refs, ≤ 100 provenance facts,
+statement/metadata ≤ 240/120 chars.
+
+### Capability gate + synthetic default
+`resolveEgressMode` returns `external` only when the non-production config flag
+`PAYROLL_AI_EXTERNAL_ENABLED` is enabled AND an external provider is injected; otherwise `synthetic`.
+`PAYROLL_AI_EXTERNAL_ENABLED` cannot be enabled in production (config `superRefine`). Default runtime
+behavior is unchanged: the offline synthetic provider, no network, no egress.
+
+### Fail-closed + logging policy
+On unsafe payload / malformed envelope / oversize / missing capability / provider missing / throw /
+timeout / malformed response / unbound evidence / introduced number, the result is
+`review_unavailable`, the external provider is **not called**, deterministic flags still surface, and
+authoritative payroll is unchanged (HTTP stays 200 per HR-6). The `/ai-review` handler logs nothing —
+no prompt, context, evidence, provenance, PII, secret, or raw provider response is logged.
+
+### Tenant isolation
+An envelope for calculation A is built solely from A's own sanitized context, so it carries no other
+calculation/worker/organization identifiers or cross-family/period evidence (proven by unit and live
+PG tests with a recording provider). **No live external AI is configured in this gate.**

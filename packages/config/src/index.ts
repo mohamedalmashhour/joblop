@@ -24,6 +24,9 @@ const runtimeConfigSchema = z
     OFFER_DELIVERY_ORIGIN: z.string().url().optional(),
     OFFER_DELIVERY_TOKEN: z.string().min(32).optional(),
     ASSIGNMENT_HANDOFF_ENABLED: z.enum(["disabled", "enabled"]).default("disabled"),
+    // HR-6.1 Chunk 3: capability gate for a FUTURE external AI review provider. Default disabled;
+    // never permitted in production. Even when enabled it does nothing unless a provider is injected.
+    PAYROLL_AI_EXTERNAL_ENABLED: z.enum(["disabled", "enabled"]).default("disabled"),
     SESSION_SECRET: z.string().optional(),
     // Transactional email (Resend) for email-verification / resend-code. Optional and inert until
     // both are set: without them the mailer is a no-op (dev surfaces the code locally instead of
@@ -227,6 +230,13 @@ const runtimeConfigSchema = z
         message: "ASSIGNMENT_HANDOFF_ENABLED cannot be enabled in production."
       });
     }
+    if (config.PAYROLL_AI_EXTERNAL_ENABLED === "enabled") {
+      context.addIssue({
+        code: "custom",
+        path: ["PAYROLL_AI_EXTERNAL_ENABLED"],
+        message: "PAYROLL_AI_EXTERNAL_ENABLED cannot be enabled in production."
+      });
+    }
     if (
       config.AUTH_RATE_LIMITER_TOKEN &&
       config.AUTH_RATE_LIMITER_KEY_SECRET &&
@@ -284,6 +294,9 @@ export function getRuntimeConfig(env: NodeJS.ProcessEnv = process.env) {
     offerDeliveryToken: parsed.OFFER_DELIVERY_TOKEN,
     assignmentHandoffEnabled:
       parsed.RWOS_ENV !== "production" && parsed.ASSIGNMENT_HANDOFF_ENABLED === "enabled",
+    // Capability gate for a future external AI review provider. Non-production only, default off.
+    payrollAiExternalEnabled:
+      parsed.RWOS_ENV !== "production" && parsed.PAYROLL_AI_EXTERNAL_ENABLED === "enabled",
     hasDistributedAuthRateLimiter: Boolean(
       parsed.AUTH_RATE_LIMITER_ORIGIN &&
       parsed.AUTH_RATE_LIMITER_TOKEN &&
