@@ -22,10 +22,12 @@ export const LOCAL_E2E_USERS = {
   revoked: "revoked@local-e2e.invalid"
 } as const;
 
-// FAIL-CLOSED guard. Local-E2E seeding is impossible unless explicitly enabled AND not production.
+// FAIL-CLOSED guard. Local-E2E seeding is impossible unless explicitly enabled AND the runtime env
+// is local|test — it can NEVER run in staging or production (not just production).
 export function assertLocalE2eEnabled(env: NodeJS.ProcessEnv): void {
-  if ((env.RWOS_ENV ?? "local") === "production") {
-    throw new Error("LOCAL_E2E_FORBIDDEN_IN_PRODUCTION");
+  const rwosEnv = env.RWOS_ENV ?? "local";
+  if (rwosEnv !== "local" && rwosEnv !== "test") {
+    throw new Error("LOCAL_E2E_ONLY_LOCAL_OR_TEST");
   }
   if (env.RWOS_LOCAL_E2E !== "enabled") {
     throw new Error("LOCAL_E2E_NOT_ENABLED");

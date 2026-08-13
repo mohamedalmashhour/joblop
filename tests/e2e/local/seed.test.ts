@@ -15,8 +15,9 @@ describe("local-E2E seam safety", () => {
     expect(() => assertLocalE2eEnabled({ RWOS_LOCAL_E2E: "disabled" })).toThrow(/LOCAL_E2E_NOT_ENABLED/);
   });
 
-  it("is impossible in production even if the flag is set", () => {
-    expect(() => assertLocalE2eEnabled({ RWOS_LOCAL_E2E: "enabled", RWOS_ENV: "production" })).toThrow(/LOCAL_E2E_FORBIDDEN_IN_PRODUCTION/);
+  it("is impossible in production OR staging even if the flag is set (local/test only)", () => {
+    expect(() => assertLocalE2eEnabled({ RWOS_LOCAL_E2E: "enabled", RWOS_ENV: "production" })).toThrow(/LOCAL_E2E_ONLY_LOCAL_OR_TEST/);
+    expect(() => assertLocalE2eEnabled({ RWOS_LOCAL_E2E: "enabled", RWOS_ENV: "staging" })).toThrow(/LOCAL_E2E_ONLY_LOCAL_OR_TEST/);
   });
 
   it("uses only synthetic .invalid identities and a synthetic password", () => {
