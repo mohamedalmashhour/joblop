@@ -30,3 +30,4 @@ crash.*.log
 
 # Local browser E2E (Playwright) run artifacts — never committed
 tests/e2e/artifacts/
+tests/performance/.actors.json

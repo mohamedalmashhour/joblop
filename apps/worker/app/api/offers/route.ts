@@ -1,4 +1,4 @@
-import { sessionBoundary, sessionFailure } from "../../sessionBoundary";
+import { sessionBoundary, sessionFailure } from "../sessionBoundary";
 
 // Worker's own governed offers. Read-only proxy to `GET /worker/offers` (optional ?status=).
 // The API serializes a worker-safe reference only (no employer internals).
