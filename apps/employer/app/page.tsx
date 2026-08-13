@@ -78,8 +78,14 @@ function CheckTile({ size = 34 }: { size?: number }) {
 }
 
 function StoreBadge({ kind }: { kind: "apple" | "google" }) {
+  // The native apps are not published yet, so these badges are presentational only —
+  // rendered as a non-interactive element (not a dead placeholder link) to keep the UI honest.
   return (
-    <a href="#" style={hx.badge} aria-label={kind === "apple" ? "Download on the App Store" : "Get it on Google Play"}>
+    <span
+      role="img"
+      aria-label={kind === "apple" ? "App Store — coming soon" : "Google Play — coming soon"}
+      style={{ ...hx.badge, cursor: "default" }}
+    >
       <span aria-hidden="true" style={{ display: "inline-flex", lineHeight: 1 }}>
         {kind === "apple" ? (
           <svg width="20" height="20" viewBox="0 0 24 24" fill="#fff">
@@ -97,7 +103,7 @@ function StoreBadge({ kind }: { kind: "apple" | "google" }) {
         </span>
         <strong style={{ fontSize: 15 }}>{kind === "apple" ? "App Store" : "Google Play"}</strong>
       </span>
-    </a>
+    </span>
   );
 }
 

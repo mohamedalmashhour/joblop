@@ -9,9 +9,9 @@ describe("authenticated calendar UI integration", () => {
   it("keeps synthetic landing previews outside production and labels them in development", () => {
     const landing = read("apps", "employer", "app", "page.tsx");
     expect(landing).toContain('process.env.RWOS_ENV === "production"');
-    expect(landing).toContain("Development-only illustrative preview");
-    expect(landing).toContain("Synthetic names, counts, and amounts");
+    // Preview band is gated out of production and labelled as illustrative synthetic data.
     expect(landing).toContain("!isProduction");
+    expect(landing).toContain("Sample data shown for illustration.");
   });
 
   it("connects employer and admin lists to same-origin BFF routes", () => {

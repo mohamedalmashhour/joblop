@@ -69,8 +69,20 @@ function idsInPage(filePath: string) {
   return new Set([...source.matchAll(/\bid\s*=\s*"([^"]+)"/g)].map((match) => match[1]));
 }
 
+// Normalize Next.js dynamic page segments (`[workerIdentityId]`, `[...segments]`) to the
+// same `__dynamic__` token that route-like source literals use after `${…}` substitution,
+// so a link built with an interpolated id matches its dynamic page route.
+function normalizeDynamicSegments(route: string) {
+  return route.replaceAll(/\[(?:\.\.\.)?[^\]]+\]/gu, "__dynamic__");
+}
+
 function routeSetFor(appDir: string) {
-  return new Set(listSourceFiles(appDir).map((filePath) => routeFromPage(appDir, filePath)).filter(Boolean));
+  return new Set(
+    listSourceFiles(appDir)
+      .map((filePath) => routeFromPage(appDir, filePath))
+      .filter((route): route is string => Boolean(route))
+      .map(normalizeDynamicSegments)
+  );
 }
 
 function listApiRoutePatterns(appDir: string) {
@@ -90,11 +102,20 @@ function listApiRoutePatterns(appDir: string) {
 function matchesRoutePattern(route: string, pattern: string) {
   const routeSegments = route.split("/");
   const patternSegments = pattern.split("/");
-  return routeSegments.length === patternSegments.length &&
-    routeSegments.every((segment, index) => {
-      const expected = patternSegments[index] ?? "";
-      return /^\[.+\]$/u.test(expected) || segment === expected;
-    });
+  for (let index = 0; index < patternSegments.length; index += 1) {
+    const expected = patternSegments[index] ?? "";
+    // Catch-all segment (`[...segments]`) absorbs this segment and every remaining one.
+    if (/^\[\.\.\..+\]$/u.test(expected)) {
+      return routeSegments.length >= patternSegments.length;
+    }
+    // Single dynamic segment (`[id]`) matches exactly one present segment.
+    if (/^\[.+\]$/u.test(expected)) {
+      if (routeSegments[index] === undefined) return false;
+      continue;
+    }
+    if (routeSegments[index] !== expected) return false;
+  }
+  return routeSegments.length === patternSegments.length;
 }
 
 function validateInternalRouteReference({
@@ -230,7 +251,14 @@ describe("implemented page navigation integrity", () => {
             attrs: match[1],
             file: relative(workspaceRoot, filePath)
           }))
-          .filter((button) => !/onClick=/.test(button.attrs) && !/\bdisabled\b/.test(button.attrs));
+          // A `type="submit"` button is active through its enclosing <form onSubmit>; a
+          // handler-bound (`onClick`) or explicitly `disabled` button is likewise fine.
+          .filter(
+            (button) =>
+              !/onClick=/.test(button.attrs) &&
+              !/\bdisabled\b/.test(button.attrs) &&
+              !/type\s*=\s*"submit"/.test(button.attrs)
+          );
       })
     );
 

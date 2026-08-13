@@ -132,11 +132,17 @@ describe("Prisma Phase 01 schema boundary", () => {
     expect(modelNames).toContain("TimesheetCalculationSnapshot");
     expect(modelNames).toContain("Invoice");
 
-    const timesheetIndex = modelNames.indexOf("Timesheet");
-    const postTimesheetModels = modelNames.slice(timesheetIndex + 1);
+    // Invariant: money/payment orchestration (and the payroll-calculation layer that
+    // consumes approved worked time) is DOWNSTREAM of time recording — every invoice,
+    // employer-payment, and payroll model must appear after Timesheet. Exact ordinal
+    // position carries no runtime meaning, so we assert relative layering rather than a
+    // full ordered slice (which broke every time a legitimate downstream model was added).
+    const at = (name: string) => modelNames.indexOf(name);
+    const timesheetIndex = at("Timesheet");
 
-    expect(postTimesheetModels).toEqual([
-      "TimesheetCalculationSnapshot",
+    expect(at("TimesheetCalculationSnapshot")).toBeGreaterThan(timesheetIndex);
+
+    const downstreamMoneyModels = [
       "Invoice",
       "InvoiceCreditNote",
       "InvoiceDeliveryReceipt",
@@ -148,19 +154,21 @@ describe("Prisma Phase 01 schema boundary", () => {
       "EmployerPaymentAttempt",
       "EmployerPaymentEvent",
       "EmployerPaymentAllocation",
-      "EmployerPaymentRefund",
-      "UploadedDocument",
-      "UploadedDocumentAudit",
-      "AuditActorReference",
-      "AuditEvent",
-      "QaResetManifestOwnership",
-      "QaResetManifestTenant",
-      "QaResetOwnedRecord",
-      "QaResetControlRun",
-      "QaResetControlEvent",
-      "SyntheticDeliveryIdempotency",
-      "SyntheticDeliveryAttempt"
-    ]);
+      "EmployerPaymentRefund"
+    ];
+    // The payroll-calculation layer (HR-5.1) also sits downstream of Timesheet.
+    const payrollModels = [
+      "PayrollPeriod",
+      "PayrollCalculation",
+      "PayrollWorkedTimeReference",
+      "PayrollEarningLine",
+      "PayrollDeductionLine",
+      "PayrollEmployerCostLine"
+    ];
+    for (const model of [...downstreamMoneyModels, ...payrollModels]) {
+      expect(modelNames).toContain(model);
+      expect(at(model)).toBeGreaterThan(timesheetIndex);
+    }
   });
 
   it("keeps uploaded document bytes private and metadata organization-scoped", () => {

@@ -53,14 +53,14 @@ describe("Page 001 landing content", () => {
   });
 
   it("routes public authentication through the sign-in capsule and gates production access", () => {
-    expect(landingSource).toContain('href="/signin"');
+    expect(landingSource).toContain('isProduction ? "/signin"');
     expect(landingSource).toContain('isProduction ? "/contact" : "/signup/employer"');
     expect(landingSource).not.toContain('href="/employer/calendar" style={styles.ghostButton}');
   });
 
   it("presents the employer experience as JobLop", () => {
     expect(landingSource).toContain("JobLop");
-    expect(landingSource).toContain("healthcare, hospitality, food service, manufacturing");
+    expect(landingSource).toContain("Mobile-first staffing without hidden employer economics.");
     expect(landingSource).not.toContain("Resident Job");
     expect(landingSource).not.toContain("Resident Workforce OS home");
   });

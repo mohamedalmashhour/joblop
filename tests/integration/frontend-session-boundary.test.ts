@@ -126,7 +126,10 @@ describe("frontend session transport boundaries", () => {
     expect(apiSources).toContain("Resource unavailable.");
     expect(apiSources).toContain('status === "stale"');
     expect(apiSources).toContain('status === "unavailable"');
-    expect(apiSources).not.toMatch(/privateReason|stack|cause/u);
+    // Guard against leaking server error internals to clients. Target the actual leak
+    // vectors (`privateReason`, an error `.stack`, error-chaining `error.cause`) rather than
+    // the bare word `cause`, which is now a legitimate domain field (cancellation cause).
+    expect(apiSources).not.toMatch(/privateReason|\.stack\b|error\.cause\b/u);
   });
 
   it("protects employer job-request mutations behind the same-origin session boundary", () => {

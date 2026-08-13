@@ -22,6 +22,15 @@ function hasWrappingLabel(source: string, controlIndex: number) {
   return source.lastIndexOf("<label", controlIndex) > source.lastIndexOf("</label>", controlIndex);
 }
 
+// A control with `id="x"` paired with a `<label htmlFor="x">` elsewhere in the file has a
+// valid accessible name (the standard React association), even without a wrapping label.
+function hasAssociatedLabel(source: string, attributes: string) {
+  const id = attributes.match(/\bid\s*=\s*"([^"]+)"/)?.[1];
+  if (!id) return false;
+  const escaped = id.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  return new RegExp(`htmlFor\\s*=\\s*"${escaped}"`).test(source);
+}
+
 describe("local accessibility contracts", () => {
   it("provides an employer keyboard bypass and visible focus treatment", () => {
     expect(employerShell).toContain('href="#employer-main-content"');
@@ -62,6 +71,7 @@ describe("local accessibility contracts", () => {
             const index = match.index ?? 0;
             return (
               !hasWrappingLabel(source, index) &&
+              !hasAssociatedLabel(source, attributes) &&
               !/\baria-label\s*=/.test(attributes) &&
               !/\baria-labelledby\s*=/.test(attributes)
             );
