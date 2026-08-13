@@ -38,7 +38,11 @@ export default defineConfig({
     video: "off",
     ignoreHTTPSErrors: false
   },
-  projects: [{ name: "chromium", use: { ...devices["Desktop Chrome"] } }],
+  projects: [
+    { name: "chromium", use: { ...devices["Desktop Chrome"] } },
+    // WebKit runs the critical subset only (invoke with --project=webkit browser-local/auth.spec.mjs).
+    { name: "webkit", use: { ...devices["Desktop Safari"] } }
+  ],
   webServer: [
     {
       command: "pnpm --filter @rwos/api run dev",

@@ -32,7 +32,7 @@ export function assertLocalE2eEnabled(env: NodeJS.ProcessEnv): void {
   }
 }
 
-export type LocalE2eSeedResult = Readonly<{ orgAId: string; orgBId: string }>;
+export type LocalE2eSeedResult = Readonly<{ orgAId: string; orgBId: string; workerAId: string; workerBId: string; payrollPeriodId: string; payrollCalculationId: string }>;
 
 export async function seedLocalE2e(databaseUrl: string, env: NodeJS.ProcessEnv = process.env): Promise<LocalE2eSeedResult> {
   assertLocalE2eEnabled(env);
@@ -74,14 +74,22 @@ export async function seedLocalE2e(databaseUrl: string, env: NodeJS.ProcessEnv =
     await prisma.membershipAccessRole.create({ data: { membershipId: memB.id, accessRoleDefinitionId: ownerRole.id } });
 
     const workerA = await mkUser(LOCAL_E2E_USERS.workerA);
-    await prisma.workerIdentity.create({ data: { userId: workerA.id, displayName: "Worker A", status: "active" } });
+    const workerAIdentity = await prisma.workerIdentity.create({ data: { userId: workerA.id, displayName: "Worker A", status: "active" } });
     const workerB = await mkUser(LOCAL_E2E_USERS.workerB);
-    await prisma.workerIdentity.create({ data: { userId: workerB.id, displayName: "Worker B", status: "active" } });
+    const workerBIdentity = await prisma.workerIdentity.create({ data: { userId: workerB.id, displayName: "Worker B", status: "active" } });
 
     // Revoked/disabled user — the real sign-in must deny it generically.
     await mkUser(LOCAL_E2E_USERS.revoked, "disabled");
 
-    return { orgAId: orgA.id, orgBId: orgB.id };
+    // A governed payroll calculation for Worker A in Org A so the admin payroll journey renders a
+    // real calculation + the HR-6.1 advisory panel. Seeded directly (synthetic, TEST — no money).
+    const period = await prisma.payrollPeriod.create({ data: { organizationId: orgA.id, jurisdictionCountry: "CA", jurisdictionRegion: "QC", periodStart: new Date("2026-08-01T00:00:00Z"), periodEnd: new Date("2026-09-01T00:00:00Z"), timezone: "America/Toronto", currency: "CAD", ruleProviderKey: "synthetic-fixture", ruleProviderVersion: "synthetic-2026.08", createdByUserId: platformAdmin.id } });
+    const calc = await prisma.payrollCalculation.create({ data: { payrollPeriodId: period.id, organizationId: orgA.id, workerIdentityId: workerAIdentity.id, revision: 1, status: "calculated", jurisdictionCountry: "CA", jurisdictionRegion: "QC", ruleProviderKey: "synthetic-fixture", ruleProviderVersion: "synthetic-2026.08", calculationPolicyVersion: "hr5.1", currency: "CAD", grossPayMinor: 25440, totalDeductionsMinor: 8903, netPayMinor: 16537, totalEmployerCostMinor: 3561, calculatedAt: new Date("2026-08-12T00:00:00Z"), createdByUserId: platformAdmin.id, calculationFingerprint: `fp-${randomUUID().slice(0, 12)}` } });
+    await prisma.payrollCalculation.update({ where: { id: calc.id }, data: { familyRootId: calc.id } });
+    await prisma.payrollEarningLine.create({ data: { payrollCalculationId: calc.id, classification: "regular", description: "Regular", amountMinor: 25440, currency: "CAD" } });
+    await prisma.payrollWorkedTimeReference.create({ data: { payrollCalculationId: calc.id, timesheetId: randomUUID(), timesheetVersion: 1, timesheetStatus: "approved", payableMinutes: 480, billableMinutes: 480, scheduledStartAt: new Date("2026-08-05T13:00:00Z"), scheduledEndAt: new Date("2026-08-05T21:00:00Z"), assignmentId: randomUUID(), workGroupId: randomUUID(), roleDefinitionId: randomUUID(), residenceId: randomUUID(), contractId: randomUUID(), contractVersion: "v1", contractEffectiveFrom: new Date("2026-07-01T00:00:00Z"), appliedHourlyRateMinor: 3000, currency: "CAD", sourceEffectiveInstant: new Date("2026-08-05T13:00:00Z") } });
+
+    return { orgAId: orgA.id, orgBId: orgB.id, workerAId: workerAIdentity.id, workerBId: workerBIdentity.id, payrollPeriodId: period.id, payrollCalculationId: calc.id };
   } finally {
     await prisma.$disconnect();
   }

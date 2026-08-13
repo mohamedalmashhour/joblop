@@ -382,7 +382,13 @@ export function buildApi(options: BuildApiOptions = {}) {
               }
             : {})
         })
-      : createMemoryAuthenticationRateLimiter());
+      : process.env.RWOS_LOCAL_E2E === "enabled"
+        // Local disposable browser-E2E only: many synthetic sign-ins share the loopback IP within
+        // one 60s window and would trip the per-IP limiter. A ~zero window effectively disables
+        // accumulation FOR LOCAL E2E ONLY. Production/staging are unaffected — the production branch
+        // above always uses the remote limiter, and RWOS_LOCAL_E2E cannot be enabled in production.
+        ? createMemoryAuthenticationRateLimiter({ accountMaxAttempts: 100000, networkMaxAttempts: 100000, windowMs: 1, maxBuckets: 20000, keySecret: "rwos-local-e2e-auth-rate-limit" })
+        : createMemoryAuthenticationRateLimiter());
   const prisma = options.authService ? null : createPrismaClient(runtimeConfig.databaseUrl);
   const authenticationRepository = prisma ? createPrismaAuthenticationRepository(prisma) : null;
   const emailSender =

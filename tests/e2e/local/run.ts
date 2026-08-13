@@ -24,7 +24,7 @@ async function main() {
   sh("createdb", ["-h", host, "-p", pgPort, dbName]);
   try {
     sh("pnpm", ["--filter", "@rwos/database", "exec", "prisma", "migrate", "deploy"], { DATABASE_URL: databaseUrl });
-    await seedLocalE2e(databaseUrl, process.env);
+    const seeded = await seedLocalE2e(databaseUrl, process.env);
 
     const env: NodeJS.ProcessEnv = {
       DATABASE_URL: databaseUrl,
@@ -35,7 +35,14 @@ async function main() {
       RWOS_LOCAL_E2E_API_PORT: "4100",
       RWOS_LOCAL_E2E_WORKER_PORT: "8090",
       RWOS_LOCAL_E2E_EMPLOYER_PORT: "8081",
-      RWOS_LOCAL_E2E_ADMIN_PORT: "8082"
+      RWOS_LOCAL_E2E_ADMIN_PORT: "8082",
+      // Seeded ids for the journey specs (discovered here, not hard-coded in the specs).
+      RWOS_LOCAL_E2E_ORG_A: seeded.orgAId,
+      RWOS_LOCAL_E2E_ORG_B: seeded.orgBId,
+      RWOS_LOCAL_E2E_WORKER_A_ID: seeded.workerAId,
+      RWOS_LOCAL_E2E_WORKER_B_ID: seeded.workerBId,
+      RWOS_LOCAL_E2E_PERIOD_ID: seeded.payrollPeriodId,
+      RWOS_LOCAL_E2E_CALC_ID: seeded.payrollCalculationId
     };
     const extra = process.argv.slice(2);
     // --tsconfig tsconfig.base.json avoids Playwright choking on the root tsconfig's project
