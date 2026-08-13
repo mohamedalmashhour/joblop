@@ -60,13 +60,20 @@ function isPredicateLiteral(source: string, matchIndex = 0) {
   return /startsWith\(\s*$/.test(source.slice(Math.max(0, matchIndex - 24), matchIndex));
 }
 
-function idsInPage(filePath: string) {
-  if (!existsSync(filePath)) {
-    return new Set<string>();
-  }
+// These lookups are invoked once per route-like source literal (thousands of times). Each does a
+// filesystem walk or file read, so memoize by path — the source tree is static within a test run.
+const idsCache = new Map<string, Set<string>>();
+const routeSetCache = new Map<string, Set<string>>();
+const apiPatternsCache = new Map<string, string[]>();
 
-  const source = readFileSync(filePath, "utf8");
-  return new Set([...source.matchAll(/\bid\s*=\s*"([^"]+)"/g)].map((match) => match[1]));
+function idsInPage(filePath: string) {
+  const cached = idsCache.get(filePath);
+  if (cached) return cached;
+  const ids = existsSync(filePath)
+    ? new Set([...readFileSync(filePath, "utf8").matchAll(/\bid\s*=\s*"([^"]+)"/g)].map((match) => match[1]))
+    : new Set<string>();
+  idsCache.set(filePath, ids);
+  return ids;
 }
 
 // Normalize Next.js dynamic page segments (`[workerIdentityId]`, `[...segments]`) to the
@@ -77,17 +84,26 @@ function normalizeDynamicSegments(route: string) {
 }
 
 function routeSetFor(appDir: string) {
-  return new Set(
+  const cached = routeSetCache.get(appDir);
+  if (cached) return cached;
+  const routes = new Set(
     listSourceFiles(appDir)
       .map((filePath) => routeFromPage(appDir, filePath))
       .filter((route): route is string => Boolean(route))
       .map(normalizeDynamicSegments)
   );
+  routeSetCache.set(appDir, routes);
+  return routes;
 }
 
 function listApiRoutePatterns(appDir: string) {
+  const cached = apiPatternsCache.get(appDir);
+  if (cached) return cached;
   const apiDir = join(appDir, "api");
-  if (!existsSync(apiDir)) return [];
+  if (!existsSync(apiDir)) {
+    apiPatternsCache.set(appDir, []);
+    return [];
+  }
   const visit = (directory: string): string[] =>
     readdirSync(directory).flatMap((entry) => {
       const fullPath = join(directory, entry);
@@ -96,7 +112,9 @@ function listApiRoutePatterns(appDir: string) {
       const relativeRoute = relative(appDir, dirname(fullPath)).split(sep).join("/");
       return [`/${relativeRoute}`];
     });
-  return visit(apiDir);
+  const patterns = visit(apiDir);
+  apiPatternsCache.set(appDir, patterns);
+  return patterns;
 }
 
 function matchesRoutePattern(route: string, pattern: string) {
