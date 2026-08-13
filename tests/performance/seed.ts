@@ -97,7 +97,7 @@ async function main() {
 
     // Worker actors → worker_identity + a 'sent' offer (accept/decline targets), org round-robin.
     const workerUsers = await createActorUsers("wkr", WORKER_ACTORS);
-    await prisma.workerIdentity.createMany({ data: workerUsers.map((u, i) => ({ id: undefined as unknown as string, userId: u.id, displayName: `Worker ${i}`, status: "active" })).map(({ id, ...rest }) => rest), skipDuplicates: true });
+    await prisma.workerIdentity.createMany({ data: workerUsers.map((u, i) => ({ userId: u.id, displayName: `Worker ${i}`, status: "active" as const })), skipDuplicates: true });
     const workerIdents = await prisma.workerIdentity.findMany({ where: { userId: { in: workerUsers.map((u) => u.id) } }, select: { id: true, userId: true } });
     const identByUser = new Map(workerIdents.map((w) => [w.userId, w.id]));
     const workers: PerfActors["workers"] = workerUsers.map((u, i) => ({ email: u.email, workerIdentityId: identByUser.get(u.id)!, orgId: orgs[i % ORGS].id }));

@@ -14,7 +14,6 @@ suite("HR-3 documents & compliance (endpoint level)", () => {
   let hrUserId = "";
   let hrToken = "";
   let aToken = "";
-  let workerAId = "";
   let bToken = "";
   let workerBId = "";
   let outsiderToken = "";
@@ -39,7 +38,7 @@ suite("HR-3 documents & compliance (endpoint level)", () => {
     const hr = await register(`hd-hr-${randomUUID()}@e2e.local`);
     hrUserId = hr.user.id; hrToken = hr.token;
     const a = await register(`hd-a-${randomUUID()}@e2e.local`);
-    aToken = a.token; workerAId = (await prisma.workerIdentity.create({ data: { userId: a.user.id, displayName: "A", status: "active" } })).id;
+    aToken = a.token; await prisma.workerIdentity.create({ data: { userId: a.user.id, displayName: "A", status: "active" } });
     const b = await register(`hd-b-${randomUUID()}@e2e.local`);
     bToken = b.token; workerBId = (await prisma.workerIdentity.create({ data: { userId: b.user.id, displayName: "B", status: "active" } })).id;
     outsiderToken = (await register(`hd-out-${randomUUID()}@e2e.local`)).token;

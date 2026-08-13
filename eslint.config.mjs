@@ -53,6 +53,31 @@ export default [
       "@typescript-eslint/consistent-type-imports": "error"
     }
   },
+  {
+    // Node-runtime test script/config files (Playwright configs, browser-E2E origin helpers).
+    // These are plain `.mjs` under tests/ (not covered by typescript-eslint's no-undef handling)
+    // and use Node + web globals at runtime without importing them. next.config.mjs et al. import
+    // `process` themselves, so this override is scoped to tests/ to avoid a no-redeclare conflict.
+    files: ["tests/**/*.mjs"],
+    languageOptions: {
+      globals: {
+        process: "readonly",
+        console: "readonly",
+        fetch: "readonly",
+        URL: "readonly",
+        setTimeout: "readonly",
+        clearTimeout: "readonly",
+        setInterval: "readonly",
+        clearInterval: "readonly",
+        AbortController: "readonly",
+        AbortSignal: "readonly",
+        performance: "readonly",
+        Buffer: "readonly",
+        __dirname: "readonly",
+        __filename: "readonly"
+      }
+    }
+  },
   nextConfig,
   {
     files: ["**/next-env.d.ts"],
