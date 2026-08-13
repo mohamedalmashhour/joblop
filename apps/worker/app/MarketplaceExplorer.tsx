@@ -252,6 +252,9 @@ function SearchPanel({ onSignedOut }: { onSignedOut: () => void }) {
             <a className="btn ghost" href="/my-interests">
               My interests
             </a>
+            <a className="btn ghost" href="/offers">
+              My offers
+            </a>
             <a className="btn ghost" href="/saved-jobs">
               Saved jobs
             </a>

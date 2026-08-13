@@ -234,7 +234,8 @@ function InterestPanel({
     return (
       <section className="detail-section interest">
         <h2>You have an offer</h2>
-        <p>JobLop has issued you a private offer for this job. Check your offers to respond.</p>
+        <p>JobLop has issued you a private offer for this job. Review and respond on your offers page.</p>
+        <a className="btn" href="/offers">Go to my offers</a>
       </section>
     );
   }
