@@ -25,7 +25,29 @@ describe("Canada reference profile — preserves current master defaults", () =>
 });
 
 describe("Canada address adapter — byte-identical delegation to existing functions", () => {
-  const postalSamples = ["H7V 1A1", "h7v1a1", "K1A0B1", "M5V 2T6", "not-a-code", "12345", ""];
+  const postalSamples = [
+    // valid + canonicalization (spacing/case)
+    "H7V 1A1",
+    "h7v1a1",
+    "K1A0B1",
+    "M5V 2T6",
+    "  m5v2t6  ",
+    // format boundaries: excluded letters D/F/I/O/Q/U everywhere; W/Z forbidden in first position
+    "D1A 1A1",
+    "F1A 1A1",
+    "W1A 1A1",
+    "Z1A 1A1",
+    "A1D 1A1",
+    "A1A 1O1",
+    // length boundaries
+    "A1A 1A",
+    "A1A 1A11",
+    "A1A1A1",
+    // non-codes
+    "not-a-code",
+    "12345",
+    ""
+  ];
 
   it("normalizePostalCode matches normalizeCanadianPostalCode for all samples", () => {
     for (const s of postalSamples) {
@@ -54,8 +76,14 @@ describe("Canada address adapter — byte-identical delegation to existing funct
     }
     const coords: Array<[number, number]> = [
       [45.5, -73.6], // Montreal (in bounds)
-      [40.7, -74.0], // NYC (out of bounds)
-      [0, 0]
+      [43.65, -79.38], // Toronto (in bounds)
+      [40.7, -74.0], // NYC (out of bounds, south)
+      [83.5, -70.0], // far north edge
+      [41.0, -95.0], // south-central US (out)
+      [60.0, -141.0], // Yukon/Alaska border longitude edge
+      [0, 0],
+      [90, 180],
+      [-90, -180]
     ];
     for (const [lat, lng] of coords) {
       expect(canadaAddressAdapter.isWithinCountryBounds(lat, lng)).toBe(isWithinCanadaBounds(lat, lng));
