@@ -1,4 +1,5 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { canadaAddressAdapter } from "@rwos/country-canada";
 import { randomUUID } from "node:crypto";
 import { buildApi } from "../../apps/api/src/app";
 import { createPrismaClient } from "@rwos/database";
@@ -38,7 +39,7 @@ suite("marketplace security + privacy (endpoint level)", () => {
   }
 
   beforeAll(async () => {
-    app = buildApi({ env: { ...process.env, DATABASE_URL: databaseUrl, RWOS_ENV: "local", NODE_ENV: "test" } });
+    app = buildApi({ countryAddress: canadaAddressAdapter, env: { ...process.env, DATABASE_URL: databaseUrl, RWOS_ENV: "local", NODE_ENV: "test" } });
     await app.ready();
 
     const a = await register(`sec-a-${randomUUID()}@e2e.local`);

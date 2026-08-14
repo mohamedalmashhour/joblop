@@ -1,4 +1,5 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { canadaAddressAdapter } from "@rwos/country-canada";
 import { randomUUID } from "node:crypto";
 import { buildApi } from "../../apps/api/src/app";
 import { createPrismaClient } from "@rwos/database";
@@ -32,6 +33,7 @@ suite("marketplace interest governance + concurrency", () => {
   beforeAll(async () => {
     // Inject a role resolver that grants PLATFORM_ADMINISTRATOR only to the admin user.
     app = buildApi({
+      countryAddress: canadaAddressAdapter,
       env: { ...process.env, DATABASE_URL: databaseUrl, RWOS_ENV: "local", NODE_ENV: "test" },
       resolveAuthorizationRoles: async (userId: string) => (userId === adminUserId ? ["PLATFORM_ADMINISTRATOR"] : [])
     });

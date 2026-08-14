@@ -18,6 +18,10 @@ describe("Canada reference profile — preserves current master defaults", () =>
     expect(canadaCountryProfile.phoneCountryCode).toBe("+1");
   });
 
+  it("address adapter carries the Canadian geocode restriction", () => {
+    expect(canadaAddressAdapter.geocodeCountryRestriction).toBe("CA");
+  });
+
   it("is a reference only — NOT activatable (gate closed)", () => {
     expect(canadaCountryProfile.activationGate).toBe("closed");
     expect(isCountryProfileActivatable(canadaCountryProfile)).toBe(false);

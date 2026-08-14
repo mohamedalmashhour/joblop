@@ -189,8 +189,10 @@ export function formatDistanceKm(distanceKm: number): string {
 export type GeocodeQuery = Readonly<{
   postalCode?: string;
   address?: string;
-  // Canada-restricted resolution for the launch configuration.
-  countryRestriction: "CA";
+  // ISO country restriction supplied by the selected country's address adapter (Phase 2b.2b-i).
+  // Loosened from the literal "CA" to a string so the restriction is injected, not hardcoded at the
+  // call site. The fixture provider still validates the value (that internal check is Phase 2b.2b-ii).
+  countryRestriction: string;
 }>;
 
 export type GeocodeResult =

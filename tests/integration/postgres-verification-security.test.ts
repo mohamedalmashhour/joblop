@@ -1,4 +1,5 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { canadaAddressAdapter } from "@rwos/country-canada";
 import { randomUUID, createHmac } from "node:crypto";
 import { buildApi } from "../../apps/api/src/app";
 import { createPrismaClient } from "@rwos/database";
@@ -34,6 +35,7 @@ suite("verification security (endpoint level)", () => {
 
   beforeAll(async () => {
     app = buildApi({
+      countryAddress: canadaAddressAdapter,
       env: { ...process.env, DATABASE_URL: databaseUrl, RWOS_ENV: "local", NODE_ENV: "test", VERIFICATION_CALLBACK_SECRET: CALLBACK_SECRET },
       resolveAuthorizationRoles: async (userId: string) => (userId === adminUserId ? ["PLATFORM_ADMINISTRATOR"] : [])
     });

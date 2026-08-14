@@ -170,7 +170,7 @@ import {
   type WorkerOfferStatus,
   type WorkGroupService
 } from "@rwos/auth";
-import { getRuntimeConfig } from "@rwos/config";
+import { getRuntimeConfig, type CountryAddressPort } from "@rwos/config";
 import { createPrismaClient } from "@rwos/database";
 import { createLogger } from "@rwos/observability";
 import {
@@ -178,12 +178,10 @@ import {
   classifyRequestEdit,
   createFixtureGeocodingProvider,
   searchNearbyJobs,
-  normalizeCanadianPostalCode,
   boundingBoxKm,
   geodesicDistanceKm,
   isProvinceCode,
   isValidCoordinate,
-  isWithinCanadaBounds,
   type RequestEditState,
   type GeocodingProvider,
   type MarketplaceJobCandidate,
@@ -289,6 +287,11 @@ export interface BuildApiOptions {
   // no fallback → the request must supply `timezone` or is rejected (fail-closed). Composition roots
   // inject this (server.ts from the resolved country); tests inject countries/canada's value.
   countryTimezone?: string | undefined;
+  // Phase 2b.2b-i: neutral address port injected from the SELECTED country (never implicit Canada).
+  // Master routes postal normalization, geographic-bounds checks, and the geocode country
+  // restriction through this port. Absent → address operations fail closed. Composition roots inject
+  // the selected country's adapter; the affected PostgreSQL suites inject countries/canada's adapter.
+  countryAddress?: CountryAddressPort | undefined;
 }
 
 export type AuthenticationRateLimitDecision = Readonly<{
@@ -2530,12 +2533,16 @@ export function buildApi(options: BuildApiOptions = {}) {
     } catch {
       return sendResidenceDenied(reply);
     }
-    const normalizedPostal = postalCode ? normalizeCanadianPostalCode(postalCode) : null;
+    const countryAddress = options.countryAddress;
+    if (!countryAddress) {
+      return reply.code(400).send({ error: "RWOS_COUNTRY_ADDRESS_UNAVAILABLE", message: "Address resolution is not configured for the selected country." });
+    }
+    const normalizedPostal = postalCode ? countryAddress.normalizePostalCode(postalCode) : null;
     if (!normalizedPostal && !address) {
       return reply.code(400).send({ error: "RWOS_INVALID_POSTAL", message: "A valid Canadian postal code or address is required." });
     }
     const result = await geocodingProvider.geocode({
-      countryRestriction: "CA",
+      countryRestriction: countryAddress.geocodeCountryRestriction,
       ...(normalizedPostal ? { postalCode: normalizedPostal } : {}),
       ...(address ? { address } : {})
     });
@@ -2549,7 +2556,7 @@ export function buildApi(options: BuildApiOptions = {}) {
       return reply.code(http).send({ error: code, status: result.status, message: "The worksite location could not be confidently resolved." });
     }
     const loc = result.location;
-    if (!isValidCoordinate(loc.latitude, loc.longitude) || !isWithinCanadaBounds(loc.latitude, loc.longitude)) {
+    if (!isValidCoordinate(loc.latitude, loc.longitude) || !countryAddress.isWithinCountryBounds(loc.latitude, loc.longitude)) {
       return reply.code(422).send({ error: "RWOS_LOCATION_OUTSIDE_CANADA", message: "The resolved location is not within Canada." });
     }
     await prisma!.residence.updateMany({
@@ -2586,7 +2593,11 @@ export function buildApi(options: BuildApiOptions = {}) {
     }
     const body = asRecord(request.body);
     const postalCode = readOptionalString(body, "postalCode");
-    const normalizedPostal = postalCode ? normalizeCanadianPostalCode(postalCode) : null;
+    const countryAddress = options.countryAddress;
+    if (!countryAddress) {
+      return reply.code(400).send({ error: "RWOS_COUNTRY_ADDRESS_UNAVAILABLE", message: "Address resolution is not configured for the selected country." });
+    }
+    const normalizedPostal = postalCode ? countryAddress.normalizePostalCode(postalCode) : null;
     if (!normalizedPostal) {
       return reply.code(400).send({ error: "RWOS_INVALID_POSTAL", message: "A valid Canadian postal code is required." });
     }
@@ -2607,7 +2618,7 @@ export function buildApi(options: BuildApiOptions = {}) {
     const cursorRaw = readOptionalNumber(body, "cursor");
     const offset = cursorRaw && cursorRaw > 0 ? Math.floor(cursorRaw) : 0;
 
-    const origin = await geocodingProvider.geocode({ countryRestriction: "CA", postalCode: normalizedPostal });
+    const origin = await geocodingProvider.geocode({ countryRestriction: countryAddress.geocodeCountryRestriction, postalCode: normalizedPostal });
     if (origin.status !== "ok") {
       return reply.code(422).send({ error: "RWOS_ORIGIN_UNRESOLVED", status: origin.status, message: "Your search location could not be resolved." });
     }
@@ -2826,10 +2837,12 @@ export function buildApi(options: BuildApiOptions = {}) {
   // Server-authoritative distance-at-interest (audit datum). Never trusts a browser value.
   async function computeInterestDistanceKm(jobRequestId: string, postalCode: string | null): Promise<number | null> {
     if (!postalCode) return null;
-    const normalized = normalizeCanadianPostalCode(postalCode);
+    const countryAddress = options.countryAddress;
+    if (!countryAddress) return null;
+    const normalized = countryAddress.normalizePostalCode(postalCode);
     if (!normalized) return null;
     const [geo, job] = await Promise.all([
-      geocodingProvider.geocode({ countryRestriction: "CA", postalCode: normalized }),
+      geocodingProvider.geocode({ countryRestriction: countryAddress.geocodeCountryRestriction, postalCode: normalized }),
       prisma!.jobRequest.findUnique({ where: { id: jobRequestId }, select: { residence: { select: { latitude: true, longitude: true } } } })
     ]);
     if (geo.status !== "ok" || !job || job.residence.latitude === null || job.residence.longitude === null) return null;
@@ -3689,7 +3702,8 @@ export function buildApi(options: BuildApiOptions = {}) {
       return reply.code(404).send({ error: "RWOS_MARKETPLACE_JOB_NOT_FOUND", message: "That job is not available." });
     }
     const postalCode = readOptionalString(asRecord(request.query), "postalCode");
-    const normalizedPostal = postalCode ? normalizeCanadianPostalCode(postalCode) : null;
+    const countryAddress = options.countryAddress;
+    const normalizedPostal = postalCode && countryAddress ? countryAddress.normalizePostalCode(postalCode) : null;
 
     const row = await prisma!.jobRequest.findFirst({
       where: {
@@ -3720,8 +3734,8 @@ export function buildApi(options: BuildApiOptions = {}) {
     }
 
     let origin: { latitude: number; longitude: number } | null = null;
-    if (normalizedPostal) {
-      const geo = await geocodingProvider.geocode({ countryRestriction: "CA", postalCode: normalizedPostal });
+    if (normalizedPostal && countryAddress) {
+      const geo = await geocodingProvider.geocode({ countryRestriction: countryAddress.geocodeCountryRestriction, postalCode: normalizedPostal });
       if (geo.status === "ok") origin = { latitude: geo.location.latitude, longitude: geo.location.longitude };
     }
 

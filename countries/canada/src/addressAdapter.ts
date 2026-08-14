@@ -19,5 +19,6 @@ export const canadaAddressAdapter: CountryAddressPort = {
   isPostalCodeFormat: (input) => isCanadianPostalCodeFormat(input),
   regionNameFromCode: (code) => (isProvinceCode(code) ? PROVINCE_TERRITORY_NAMES[code] : null),
   regionHintFromPostalCode: (postalCode) => provinceHintFromPostalCode(postalCode),
-  isWithinCountryBounds: (latitude, longitude) => isWithinCanadaBounds(latitude, longitude)
+  isWithinCountryBounds: (latitude, longitude) => isWithinCanadaBounds(latitude, longitude),
+  geocodeCountryRestriction: "CA"
 };

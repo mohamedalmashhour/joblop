@@ -51,6 +51,8 @@ export interface CountryAddressPort {
   regionHintFromPostalCode(postalCode: string): string | null;
   /** Whether a coordinate falls within this country's geographic bounds. */
   isWithinCountryBounds(latitude: number, longitude: number): boolean;
+  /** ISO country restriction passed to the geocoding provider (e.g. "CA"). */
+  readonly geocodeCountryRestriction: string;
 }
 
 export const COUNTRY_CONFIG_ERRORS = {
