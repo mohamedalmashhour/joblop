@@ -34,6 +34,25 @@ export interface CountryProfile {
   readonly isNeutralFixture?: boolean;
 }
 
+/**
+ * Neutral master port for country-specific address/region behavior. A country implementation
+ * supplies an adapter; master code depends only on this interface (no country specifics). Terms are
+ * generic: "postal code", "region" (province/state/governorate), "bounds". Behavior-preserving
+ * repoints (Phase 2b.2+) route today's inline Canadian calls through an injected adapter.
+ */
+export interface CountryAddressPort {
+  /** Canonicalize a postal code, or null if invalid for this country. */
+  normalizePostalCode(input: string): string | null;
+  /** Whether the input matches this country's postal-code format. */
+  isPostalCodeFormat(input: string): boolean;
+  /** Human name for a region (province/state/…) code, or null if unknown. */
+  regionNameFromCode(code: string): string | null;
+  /** Best-effort region code inferred from a postal code, or null. */
+  regionHintFromPostalCode(postalCode: string): string | null;
+  /** Whether a coordinate falls within this country's geographic bounds. */
+  isWithinCountryBounds(latitude: number, longitude: number): boolean;
+}
+
 export const COUNTRY_CONFIG_ERRORS = {
   MISSING: "RWOS_COUNTRY_REQUIRED",
   UNSUPPORTED: "RWOS_COUNTRY_UNSUPPORTED",
