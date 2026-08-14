@@ -44,25 +44,36 @@ Canada-shaped**, and there is **no first-class country/market selector**.
 | Phone | `+1` NANP (13) | `+963` Syrian numbering |
 | Payroll rules/tax | GST/QST/CNESST/CPP/EI provider (360) | Syrian statutory model — **qualified counsel**; DO NOT reuse Canadian semantics |
 | Legal/privacy copy | drafts (PIPEDA-neutral) | Syrian-law DRAFT — **qualified counsel**; keep DRAFT |
-| SMS provider | (port) | Syria-viable provider — **sanctions-cleared** |
-| Payment provider | Stripe **test-only** | Syria-viable path — **sanctions/legal**; likely NOT SUPPORTED |
-| Geocoding/maps | provider port | Syria-viable provider — sanctions-cleared |
-| Data region | GCP `northamerica-northeast2` | Syrian data-sovereignty + provider availability — **sanctions** |
+| SMS provider | (port) | Syria-viable provider — **provider Syria-policy verified** + targeted screening |
+| Payment provider | Stripe **test-only** | Syria-viable path — **provider policy + legal review**; disabled until confirmed |
+| Geocoding/maps | provider port | Syria-viable provider — **provider Syria-policy verified** |
+| Data region | GCP `northamerica-northeast2` | Syrian data-sovereignty + **provider Syria-availability** (verify directly) |
 | Deployment/secrets/DB/storage | single staging env | isolated per-country env, secrets, DB, storage, release evidence |
 | Language | English only | Arabic + RTL (new i18n layer) |
 
 ### B3. FUTURE countries → excluded from this task (no Québec/other build here).
 
-## C. ⚠️ Foundational blocker — SANCTIONS / PROVIDER / DATA-REGION (qualified counsel required)
-Syria is subject to comprehensive international sanctions (e.g. US OFAC, EU). This has first-order
-consequences that **no code change can resolve**:
-- Major providers (GCP, Stripe, Twilio, mapping/geocoding, email/SMS) generally **restrict or
-  prohibit** serving Syria. The current GCP staging project + all provider ports may be unusable for
-  a Syria market without explicit legal clearance and provider confirmation.
-- Payment/money movement into/out of Syria is a legal question, not a feature. Live payments must
-  stay **disabled**.
-This is the top NO-GO item. **Do not claim Syria compliance without qualified legal and per-provider
-written confirmation.** This document explicitly makes no such claim.
+## C. Legal / sanctions / provider / data-region posture (qualified counsel + per-provider check)
+**Sanctions status (as of the owner's 2025 guidance — verify current before relying):** the broad
+U.S. Syria sanctions program was **revoked effective 2025-07-01** (Executive Order), and the EU
+**lifted its economic sanctions on Syria in May 2025** — both while **retaining targeted sanctions**
+against specified persons/entities and security-related measures. So Syria is **NOT** under a
+comprehensive U.S./EU embargo. Sources: whitehouse.gov EO (2025-06); OFAC Syria-related sanctions
+page; EU Council (2025-05-28).
+
+Consequences for launch (none resolved by code alone):
+- **Targeted-sanctions screening is still required** (screen specified persons/entities/activities)
+  plus **qualified legal review** for Syrian employment/tax/privacy/consumer law.
+- **Provider policy must be verified directly with each provider** (GCP, payment, SMS, maps/
+  geocoding, email): a provider's *commercial* Syria policy may differ from — and be more
+  restrictive than — the current *legal* sanctions position. Do not assume availability either way.
+- Live payments/money movement stays **disabled** until a Syria-viable, provider-confirmed, legally
+  reviewed path exists.
+
+**Do not claim Syria compliance without qualified legal review, targeted-sanctions screening, and
+written per-provider confirmation.** This document makes no compliance claim. Note: the Syria NO-GO
+is driven by the **unfinished country implementation** (§B/§H), **not** by a presumed comprehensive
+embargo.
 
 ## D. Fail-closed country selection (DESIGN — to implement under governed approval, not now)
 Proposed additive, master-side mechanism (no per-country logic in master):
@@ -132,11 +143,12 @@ not Syria-market readiness. See verdict below.
 ## H. GO / NO-GO
 - **Technical (Canada-modeled) candidate `43bc784`:** CI-green, locally certified, fail-closed money/
   storage — unchanged and preserved.
-- **Syria market launch:** **NO-GO.** The platform is country-neutral at the engine level but
-  Canada-configured, has no Syria profile, no Arabic/RTL, no Syrian legal/tax/address/currency/
-  provider adapters, and — decisively — **unresolved sanctions/provider/data-region legality that
-  requires qualified counsel + per-provider confirmation.** Live payments disabled, legal DRAFT,
-  deployment blocked, public access closed — all held.
+- **Syria market launch:** **NO-GO — because the Syria country implementation is unfinished**, not
+  because of a presumed embargo. Missing: Syria country profile, Arabic/RTL, Syrian address/currency/
+  phone, Syrian legal/tax adapters + DRAFT legal, provider bindings, and isolated deployment. Still
+  required: **targeted-sanctions screening, qualified legal review, and direct per-provider Syria-
+  policy verification** (broad U.S./EU sanctions were lifted in 2025; targeted measures remain —
+  §C). Live payments disabled, legal DRAFT, deployment blocked, public access closed — all held.
 - **Country-folder architecture:** **PLAN READY, not executed.** Awaiting owner approval of Phase 1
   before any file changes. `43bc784` preserved as the verified candidate until the country
   architecture passes its own governed certification.

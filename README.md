@@ -1,5 +1,10 @@
 # Resident Workforce OS
 
+> **READ FIRST — [PERMANENT MULTI-COUNTRY PLATFORM POLICY](MULTI_COUNTRY_PLATFORM_POLICY.md).**
+> This repository is a reusable, country-neutral master platform. Country launches live in isolated
+> `countries/<country>/` implementations (first `countries/syria/`). Every agent/contributor must
+> read and follow that policy before planning, editing, testing, migrating, packaging, or deploying.
+
 Controlled engineering implementation for Resident Workforce OS.
 
 ## Product Portfolio

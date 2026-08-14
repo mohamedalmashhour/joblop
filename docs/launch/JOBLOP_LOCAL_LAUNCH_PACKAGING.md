@@ -3,8 +3,10 @@
 > **MARKET VERDICT SUPERSEDED.** This document certifies the **Canada-modeled technical** readiness
 > of `43bc784`. Per the owner's market decision (Syria-only, country-neutral master +
 > `countries/<country>`), the **market** GO/NO-GO is now governed by
-> `JOBLOP_COUNTRY_ARCHITECTURE_AUDIT_AND_MIGRATION_PLAN.md` → **Syria launch = NO-GO** (sanctions/
-> provider/legal/currency/language/data-region unresolved). The technical facts below stand; the
+> `JOBLOP_COUNTRY_ARCHITECTURE_AUDIT_AND_MIGRATION_PLAN.md` → **Syria launch = NO-GO** (Syria country
+> implementation unfinished: profile/currency/language/address/legal/providers/deployment — plus
+> targeted-sanctions screening, legal review, and per-provider verification still required; broad
+> U.S./EU sanctions were lifted in 2025). The technical facts below stand; the
 > "CONDITIONAL GO for staging" applies only to the Canada-modeled build, not to a Syria launch.
 
 **Candidate (deployable code SHA):** `43bc784ddd094f19427a8c847d6946d29858fd9f` (`43bc784`).
