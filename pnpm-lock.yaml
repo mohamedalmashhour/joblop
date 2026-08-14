@@ -242,6 +242,12 @@ importers:
         specifier: ^19.1.6
         version: 19.2.3(@types/react@19.2.17)
 
+  countries/syria:
+    dependencies:
+      '@rwos/config':
+        specifier: workspace:*
+        version: link:../../packages/config
+
   packages/auth:
     dependencies:
       '@rwos/shared':

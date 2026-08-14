@@ -1,3 +1,4 @@
+import { createServer } from "node:http";
 import { buildApi } from "./app";
 import { getRuntimeConfig, resolveCountryConfig } from "@rwos/config";
 import { createLogger } from "@rwos/observability";
@@ -5,66 +6,87 @@ import { createLogger } from "@rwos/observability";
 const logger = createLogger("api");
 const config = getRuntimeConfig();
 
-// Fail-closed country selection (MULTI_COUNTRY_PLATFORM_POLICY.md). Refuse to start when the country
-// profile is missing (staging/production), unsupported, or incomplete. Country profiles live in
-// isolated countries/<country>/ implementations and are injected via `registry`; Phase 1 wires no
-// country into the API runtime yet, so any explicit RWOS_COUNTRY is UNSUPPORTED here and local/test
-// fall back to the non-market neutral fixture. Production deploys must come from a certified country
-// implementation (see the phased migration plan), never directly from this master image.
-try {
-  const country = resolveCountryConfig({
-    rwosEnv: config.rwosEnv,
-    country: process.env.RWOS_COUNTRY,
-    registry: {}
-  });
-  logger.info("api.country.selected", {
-    country: country.country,
-    activatable: country.activationGate === "open"
-  });
-} catch (error) {
-  logger.error("api.country.refused", {
-    environment: config.rwosEnv,
-    reason: error instanceof Error ? error.message : "unknown"
-  });
-  process.exit(1);
+// Fail-closed country selection (MULTI_COUNTRY_PLATFORM_POLICY.md). The application refuses to serve
+// when the country profile is missing (staging/production), unsupported, or incomplete. Country
+// profiles live in isolated countries/<country>/ implementations and are injected via `registry`;
+// Phase 1 wires NO country into the API runtime yet, so any explicit RWOS_COUNTRY is UNSUPPORTED
+// here and local/test fall back to the non-market neutral fixture. Production deploys must come from
+// a certified country implementation (see the phased migration plan), never directly from this
+// master image. On refusal we do NOT serve the app — we start a liveness-only fail-closed server
+// (mirrors apps/qa-reset/src/failClosedServer.ts): /health reports the process is alive but NOT
+// ready, and every other path (including /ready) returns 503, so no real traffic is served.
+function resolveSelectedCountry(): { ok: true; country: string } | { ok: false; reason: string } {
+  try {
+    const country = resolveCountryConfig({
+      rwosEnv: config.rwosEnv,
+      country: process.env.RWOS_COUNTRY,
+      registry: {}
+    });
+    return { ok: true, country: country.country };
+  } catch (error) {
+    return { ok: false, reason: error instanceof Error ? error.message : "unknown" };
+  }
 }
 
-const app = buildApi();
-let shuttingDown = false;
+function startFailClosedLiveness(reason: string) {
+  logger.error("api.country.fail_closed_liveness_only", {
+    environment: config.rwosEnv,
+    port: config.apiPort,
+    reason
+  });
+  createServer((request, response) => {
+    if (request.method === "GET" && request.url === "/health") {
+      response
+        .writeHead(200, { "content-type": "application/json" })
+        .end('{"status":"alive","ready":false,"reason":"country_profile_unavailable"}');
+      return;
+    }
+    response
+      .writeHead(503, { "content-type": "application/json" })
+      .end('{"status":"unavailable","reason":"country_profile_unavailable"}');
+  }).listen(config.apiPort, "0.0.0.0");
+}
 
-async function shutdown(signal: string) {
-  if (shuttingDown) return;
-  shuttingDown = true;
-  logger.warn("api.shutdown.started", { signal });
-  const deadline = setTimeout(() => {
-    logger.error("api.shutdown.deadline_exceeded", { signal });
-    process.exit(1);
-  }, 10_000);
-  deadline.unref();
+async function startApi() {
+  const app = buildApi();
+  let shuttingDown = false;
+
+  async function shutdown(signal: string) {
+    if (shuttingDown) return;
+    shuttingDown = true;
+    logger.warn("api.shutdown.started", { signal });
+    const deadline = setTimeout(() => {
+      logger.error("api.shutdown.deadline_exceeded", { signal });
+      process.exit(1);
+    }, 10_000);
+    deadline.unref();
+    try {
+      await app.close();
+      clearTimeout(deadline);
+      logger.info("api.shutdown.completed", { signal });
+    } catch {
+      clearTimeout(deadline);
+      logger.error("api.shutdown.failed", { signal });
+      process.exitCode = 1;
+    }
+  }
+
+  process.once("SIGTERM", () => void shutdown("SIGTERM"));
+  process.once("SIGINT", () => void shutdown("SIGINT"));
+
   try {
-    await app.close();
-    clearTimeout(deadline);
-    logger.info("api.shutdown.completed", { signal });
+    await app.listen({ host: "0.0.0.0", port: config.apiPort });
+    logger.info("api.started", { environment: config.rwosEnv, port: config.apiPort });
   } catch {
-    clearTimeout(deadline);
-    logger.error("api.shutdown.failed", { signal });
+    logger.error("api.startup.failed", { environment: config.rwosEnv, port: config.apiPort });
     process.exitCode = 1;
   }
 }
 
-process.once("SIGTERM", () => void shutdown("SIGTERM"));
-process.once("SIGINT", () => void shutdown("SIGINT"));
-
-try {
-  await app.listen({ host: "0.0.0.0", port: config.apiPort });
-  logger.info("api.started", {
-    environment: config.rwosEnv,
-    port: config.apiPort
-  });
-} catch {
-  logger.error("api.startup.failed", {
-    environment: config.rwosEnv,
-    port: config.apiPort
-  });
-  process.exitCode = 1;
+const selected = resolveSelectedCountry();
+if (selected.ok) {
+  logger.info("api.country.selected", { country: selected.country });
+  await startApi();
+} else {
+  startFailClosedLiveness(selected.reason);
 }
