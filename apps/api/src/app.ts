@@ -630,7 +630,7 @@ export function buildApi(options: BuildApiOptions = {}) {
       "K1P": { province: "ON", city: "Ottawa", latitude: 45.4215, longitude: -75.6972 },
       "V6B": { province: "BC", city: "Vancouver", latitude: 49.2807, longitude: -123.1088 },
       "T2P": { province: "AB", city: "Calgary", latitude: 51.0486, longitude: -114.0708 }
-    });
+    }, { countryAddress: options.countryAddress });
   const residenceService =
     options.residenceService ??
     createResidenceService(

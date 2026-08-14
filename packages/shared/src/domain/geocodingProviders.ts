@@ -1,13 +1,17 @@
 // Concrete geocoding providers behind the provider-neutral GeocodingProvider seam.
 // The JobLop core depends on GeocodingProvider, never on a specific vendor. Add a
 // Google provider later the same way — it must map its DTOs into CanadianLocation.
+//
+// Phase 2b.2b-ii: the Canada-specific address behavior (postal normalization, geographic bounds,
+// region hint, and the country restriction) is no longer imported directly. It is injected via a
+// neutral GeocodingAddressCapability (a structural subset of CountryAddressPort) supplied at the
+// composition boundary. There is NO implicit Canada fallback here — an absent capability fails
+// closed. Canada behavior comes from countries/canada's canadaAddressAdapter. The CanadianLocation
+// result type and ProvinceCode are intentionally unchanged (reserved).
 
 import {
   isProvinceCode,
   isValidCoordinate,
-  isWithinCanadaBounds,
-  normalizeCanadianPostalCode,
-  provinceHintFromPostalCode,
   type CanadianLocation,
   type GeocodeQuery,
   type GeocodeResult,
@@ -16,9 +20,21 @@ import {
   type ProvinceCode
 } from "./canadaLocation";
 
+/**
+ * The address behavior a geocoding provider needs from the selected country, injected explicitly.
+ * Structurally a subset of @rwos/config's CountryAddressPort, declared locally so this shared
+ * package takes no dependency on config (and no build cycle via countries/*).
+ */
+export interface GeocodingAddressCapability {
+  normalizePostalCode(input: string): string | null;
+  isWithinCountryBounds(latitude: number, longitude: number): boolean;
+  regionHintFromPostalCode(postalCode: string): string | null;
+  readonly geocodeCountryRestriction: string;
+}
+
 // ── Fixture provider (deterministic; no network) ─────────────────────────────
 // For tests + local development. Resolves a normalized postal code to a known
-// Canadian location. Never calls out; never a hidden dependency.
+// location. Never calls out; never a hidden dependency.
 
 export type GeocodeFixture = Readonly<{
   province: ProvinceCode;
@@ -30,18 +46,20 @@ export type GeocodeFixture = Readonly<{
 
 export function createFixtureGeocodingProvider(
   fixtures: Readonly<Record<string, GeocodeFixture>>,
-  options: { now?: () => Date } = {}
+  options: { countryAddress?: GeocodingAddressCapability | undefined; now?: () => Date } = {}
 ): GeocodingProvider {
   const now = options.now ?? (() => new Date());
+  const countryAddress = options.countryAddress;
   return {
     name: "fixture",
     async geocode(query: GeocodeQuery): Promise<GeocodeResult> {
-      if (query.countryRestriction !== "CA") return { status: "outside_canada" };
-      const postal = query.postalCode ? normalizeCanadianPostalCode(query.postalCode) : null;
+      if (!countryAddress) return { status: "provider_unavailable" };
+      if (query.countryRestriction !== countryAddress.geocodeCountryRestriction) return { status: "outside_canada" };
+      const postal = query.postalCode ? countryAddress.normalizePostalCode(query.postalCode) : null;
       if (!postal) return { status: "not_found" };
       const fixture = fixtures[postal] ?? fixtures[postal.slice(0, 3)];
       if (!fixture) return { status: "not_found" };
-      if (!isWithinCanadaBounds(fixture.latitude, fixture.longitude)) return { status: "outside_canada" };
+      if (!countryAddress.isWithinCountryBounds(fixture.latitude, fixture.longitude)) return { status: "outside_canada" };
       const location: CanadianLocation = {
         country: "CA",
         province: fixture.province,
@@ -83,22 +101,26 @@ export function createOsmGeocodingProvider(deps: {
   userAgent: string;
   baseUrl?: string;
   now?: () => Date;
+  countryAddress?: GeocodingAddressCapability | undefined;
 }): GeocodingProvider {
   const baseUrl = deps.baseUrl ?? "https://nominatim.openstreetmap.org";
   const now = deps.now ?? (() => new Date());
+  const countryAddress = deps.countryAddress;
   return {
     name: "osm",
     async geocode(query: GeocodeQuery): Promise<GeocodeResult> {
-      if (query.countryRestriction !== "CA") return { status: "outside_canada" };
+      if (!countryAddress) return { status: "provider_unavailable" };
+      const restriction = countryAddress.geocodeCountryRestriction;
+      if (query.countryRestriction !== restriction) return { status: "outside_canada" };
       const q = query.postalCode ?? query.address;
       if (!q || !q.trim()) return { status: "not_found" };
-      const normalizedPostal = query.postalCode ? normalizeCanadianPostalCode(query.postalCode) : null;
-      if (query.postalCode && !normalizedPostal) return { status: "not_found" }; // invalid CA format
+      const normalizedPostal = query.postalCode ? countryAddress.normalizePostalCode(query.postalCode) : null;
+      if (query.postalCode && !normalizedPostal) return { status: "not_found" }; // invalid postal format
 
       const url = new URL(`${baseUrl}/search`);
       url.searchParams.set("q", normalizedPostal ?? q);
       url.searchParams.set("format", "jsonv2");
-      url.searchParams.set("countrycodes", "ca");
+      url.searchParams.set("countrycodes", restriction.toLowerCase());
       url.searchParams.set("addressdetails", "1");
       url.searchParams.set("limit", "2");
 
@@ -115,24 +137,24 @@ export function createOsmGeocodingProvider(deps: {
       if (results.length > 1) return { status: "ambiguous" };
 
       const first = results[0]!;
-      if (first.address?.country_code && first.address.country_code.toLowerCase() !== "ca") {
+      if (first.address?.country_code && first.address.country_code.toLowerCase() !== restriction.toLowerCase()) {
         return { status: "outside_canada" };
       }
       const latitude = Number(first.lat);
       const longitude = Number(first.lon);
-      if (!isValidCoordinate(latitude, longitude) || !isWithinCanadaBounds(latitude, longitude)) {
+      if (!isValidCoordinate(latitude, longitude) || !countryAddress.isWithinCountryBounds(latitude, longitude)) {
         return { status: "outside_canada" };
       }
       const province =
         (first.address?.state && PROVINCE_NAME_TO_CODE[first.address.state.trim().toLowerCase()]) ||
-        (normalizedPostal ? provinceHintFromPostalCode(normalizedPostal) : null);
+        (normalizedPostal ? countryAddress.regionHintFromPostalCode(normalizedPostal) : null);
       if (!province || !isProvinceCode(province)) return { status: "low_confidence" };
 
       const location: CanadianLocation = {
         country: "CA",
         province,
         city: first.address?.city ?? first.address?.town ?? first.address?.village ?? null,
-        postalCode: normalizedPostal ?? (first.address?.postcode ? normalizeCanadianPostalCode(first.address.postcode) : null),
+        postalCode: normalizedPostal ?? (first.address?.postcode ? countryAddress.normalizePostalCode(first.address.postcode) : null),
         addressLines: [],
         latitude,
         longitude,

@@ -1,5 +1,25 @@
 import { describe, expect, it } from "vitest";
-import { createFixtureGeocodingProvider, createOsmGeocodingProvider, type GeocodeFixture } from "./geocodingProviders";
+import {
+  createFixtureGeocodingProvider,
+  createOsmGeocodingProvider,
+  type GeocodeFixture,
+  type GeocodingAddressCapability
+} from "./geocodingProviders";
+import {
+  isWithinCanadaBounds,
+  normalizeCanadianPostalCode,
+  provinceHintFromPostalCode
+} from "./canadaLocation";
+
+// Canada address capability built from the existing functions (mirrors countries/canada's
+// canadaAddressAdapter without importing it — that would create a shared↔country build cycle).
+// Preserves the exact previous behavior for these tests.
+const canadaCapability: GeocodingAddressCapability = {
+  normalizePostalCode: normalizeCanadianPostalCode,
+  isWithinCountryBounds: isWithinCanadaBounds,
+  regionHintFromPostalCode: provinceHintFromPostalCode,
+  geocodeCountryRestriction: "CA"
+};
 
 const fixtures: Record<string, GeocodeFixture> = {
   "H7V": { province: "QC", city: "Laval", latitude: 45.6066, longitude: -73.7124 },
@@ -7,7 +27,7 @@ const fixtures: Record<string, GeocodeFixture> = {
 };
 
 describe("fixture geocoding provider", () => {
-  const provider = createFixtureGeocodingProvider(fixtures);
+  const provider = createFixtureGeocodingProvider(fixtures, { countryAddress: canadaCapability });
 
   it("resolves a known postal code (FSA or full) to a Canadian location", async () => {
     const r = await provider.geocode({ postalCode: "h7v0b1", countryRestriction: "CA" });
@@ -26,7 +46,7 @@ describe("fixture geocoding provider", () => {
 });
 
 describe("OSM geocoding provider", () => {
-  const make = (fetchImpl: typeof fetch) => createOsmGeocodingProvider({ fetch: fetchImpl, userAgent: "JobLop-test/1.0" });
+  const make = (fetchImpl: typeof fetch) => createOsmGeocodingProvider({ fetch: fetchImpl, userAgent: "JobLop-test/1.0", countryAddress: canadaCapability });
   const ok = (body: unknown): typeof fetch =>
     (async () => new Response(JSON.stringify(body), { status: 200, headers: { "content-type": "application/json" } })) as unknown as typeof fetch;
 
