@@ -16,6 +16,7 @@
     { "path": "./packages/service-auth" },
     { "path": "./packages/shared" },
     { "path": "./packages/ui" },
-    { "path": "./packages/validation" }
+    { "path": "./packages/validation" },
+    { "path": "./countries/syria" }
   ]
 }

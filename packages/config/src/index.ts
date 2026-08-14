@@ -329,3 +329,7 @@ export function getRuntimeConfig(env: NodeJS.ProcessEnv = process.env) {
 export function validateRuntimeConfig(env: NodeJS.ProcessEnv = process.env) {
   return runtimeConfigSchema.safeParse(env);
 }
+
+// Country-neutral country selection (see country.ts). Country profiles themselves live in isolated
+// countries/<country>/ implementations, never in this master package.
+export * from "./country";

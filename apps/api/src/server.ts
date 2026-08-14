@@ -1,9 +1,34 @@
 import { buildApi } from "./app";
-import { getRuntimeConfig } from "@rwos/config";
+import { getRuntimeConfig, resolveCountryConfig } from "@rwos/config";
 import { createLogger } from "@rwos/observability";
 
 const logger = createLogger("api");
 const config = getRuntimeConfig();
+
+// Fail-closed country selection (MULTI_COUNTRY_PLATFORM_POLICY.md). Refuse to start when the country
+// profile is missing (staging/production), unsupported, or incomplete. Country profiles live in
+// isolated countries/<country>/ implementations and are injected via `registry`; Phase 1 wires no
+// country into the API runtime yet, so any explicit RWOS_COUNTRY is UNSUPPORTED here and local/test
+// fall back to the non-market neutral fixture. Production deploys must come from a certified country
+// implementation (see the phased migration plan), never directly from this master image.
+try {
+  const country = resolveCountryConfig({
+    rwosEnv: config.rwosEnv,
+    country: process.env.RWOS_COUNTRY,
+    registry: {}
+  });
+  logger.info("api.country.selected", {
+    country: country.country,
+    activatable: country.activationGate === "open"
+  });
+} catch (error) {
+  logger.error("api.country.refused", {
+    environment: config.rwosEnv,
+    reason: error instanceof Error ? error.message : "unknown"
+  });
+  process.exit(1);
+}
+
 const app = buildApi();
 let shuttingDown = false;
 

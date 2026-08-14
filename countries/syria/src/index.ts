@@ -1,0 +1,1 @@
+export { syriaCountryProfile } from "./profile";
