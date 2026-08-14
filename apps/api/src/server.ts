@@ -2,15 +2,17 @@ import { createServer } from "node:http";
 import { buildApi } from "./app";
 import { getRuntimeConfig, resolveCountryConfig } from "@rwos/config";
 import { createLogger } from "@rwos/observability";
+import { apiCountryRegistry } from "./countryRegistry";
 
 const logger = createLogger("api");
 const config = getRuntimeConfig();
 
 // Fail-closed country selection (MULTI_COUNTRY_PLATFORM_POLICY.md). The application refuses to serve
 // when the country profile is missing (staging/production), unsupported, or incomplete. Country
-// profiles live in isolated countries/<country>/ implementations and are injected via `registry`;
-// Phase 1 wires NO country into the API runtime yet, so any explicit RWOS_COUNTRY is UNSUPPORTED
-// here and local/test fall back to the non-market neutral fixture. Production deploys must come from
+// profiles live in isolated countries/<country>/ implementations and are injected via the API
+// composition-root registry (apiCountryRegistry). Phase 2a wires Syria in as RECOGNIZED, but its
+// gate is CLOSED and its profile INCOMPLETE, so selecting it still fail-closes; local/test with no
+// RWOS_COUNTRY fall back to the non-market neutral fixture. Production deploys must come from
 // a certified country implementation (see the phased migration plan), never directly from this
 // master image. On refusal we do NOT serve the app — we start a liveness-only fail-closed server
 // (mirrors apps/qa-reset/src/failClosedServer.ts): /health reports the process is alive but NOT
@@ -20,7 +22,7 @@ function resolveSelectedCountry(): { ok: true; country: string } | { ok: false; 
     const country = resolveCountryConfig({
       rwosEnv: config.rwosEnv,
       country: process.env.RWOS_COUNTRY,
-      registry: {}
+      registry: apiCountryRegistry
     });
     return { ok: true, country: country.country };
   } catch (error) {

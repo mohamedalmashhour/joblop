@@ -94,6 +94,9 @@ importers:
       '@rwos/config':
         specifier: workspace:*
         version: link:../../packages/config
+      '@rwos/country-syria':
+        specifier: workspace:*
+        version: link:../../countries/syria
       '@rwos/database':
         specifier: workspace:*
         version: link:../../packages/database

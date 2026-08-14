@@ -12,6 +12,7 @@ COPY packages/database/package.json packages/database/package.json
 COPY packages/observability/package.json packages/observability/package.json
 COPY packages/service-auth/package.json packages/service-auth/package.json
 COPY packages/shared/package.json packages/shared/package.json
+COPY countries/syria/package.json countries/syria/package.json
 RUN pnpm install --frozen-lockfile
 COPY apps/api apps/api
 COPY packages/auth packages/auth
@@ -20,6 +21,7 @@ COPY packages/database packages/database
 COPY packages/observability packages/observability
 COPY packages/service-auth packages/service-auth
 COPY packages/shared packages/shared
+COPY countries/syria countries/syria
 RUN pnpm --filter @rwos/database prisma:generate && pnpm --filter @rwos/api... build
 
 FROM node:20.20.2-bookworm-slim AS runtime

@@ -8,6 +8,7 @@ export default defineConfig({
     alias: {
       "@rwos/auth": `${root}packages/auth/src/index.ts`,
       "@rwos/config": `${root}packages/config/src/index.ts`,
+      "@rwos/country-syria": `${root}countries/syria/src/index.ts`,
       "@rwos/database": `${root}packages/database/src/index.ts`,
       "@rwos/design-system": `${root}packages/design-system/src/index.ts`,
       "@rwos/notifications": `${root}packages/notifications/src/index.ts`,
