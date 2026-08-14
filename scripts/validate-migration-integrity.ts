@@ -13,7 +13,16 @@ const reviewedDestructiveMigrations = new Set<string>([
   // append-only (BEFORE UPDATE/DELETE triggers), so the ON DELETE SET NULL made deleting an
   // organization impossible. organization_id is kept as an immutable snapshot column; no data is
   // dropped and no row is deleted by this migration.
-  "20260807000000_drop_audit_event_organization_fk"
+  "20260807000000_drop_audit_event_organization_fk",
+  // ALTER COLUMN ... DROP DEFAULT only, on payroll_worked_time_references columns (HR-5.1). This is
+  // the standard "add NOT NULL column with a temporary default -> backfill existing rows -> drop the
+  // default so future inserts must supply the value" pattern. No column is dropped, no row is
+  // deleted, no existing data is altered — only the column's future-insert default is removed.
+  "20260811140000_payroll_rate_snapshots",
+  // ALTER COLUMN "family_root_id" DROP DEFAULT on payroll_calculations (HR-5.1 corrections). Same
+  // backfill-then-drop-default pattern; the zero-UUID default is removed after each calculation's
+  // family root is set. No data loss, no column/table drop, no row deletion.
+  "20260811150000_payroll_corrections"
 ]);
 
 void main();
