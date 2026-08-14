@@ -1,6 +1,6 @@
 import { createServer } from "node:http";
 import { buildApi } from "./app";
-import { getRuntimeConfig, resolveCountryConfig } from "@rwos/config";
+import { getRuntimeConfig, resolveCountryConfig, type CountryProfile } from "@rwos/config";
 import { createLogger } from "@rwos/observability";
 import { apiCountryRegistry } from "./countryRegistry";
 
@@ -17,14 +17,14 @@ const config = getRuntimeConfig();
 // master image. On refusal we do NOT serve the app — we start a liveness-only fail-closed server
 // (mirrors apps/qa-reset/src/failClosedServer.ts): /health reports the process is alive but NOT
 // ready, and every other path (including /ready) returns 503, so no real traffic is served.
-function resolveSelectedCountry(): { ok: true; country: string } | { ok: false; reason: string } {
+function resolveSelectedCountry(): { ok: true; profile: CountryProfile } | { ok: false; reason: string } {
   try {
-    const country = resolveCountryConfig({
+    const profile = resolveCountryConfig({
       rwosEnv: config.rwosEnv,
       country: process.env.RWOS_COUNTRY,
       registry: apiCountryRegistry
     });
-    return { ok: true, country: country.country };
+    return { ok: true, profile };
   } catch (error) {
     return { ok: false, reason: error instanceof Error ? error.message : "unknown" };
   }
@@ -49,8 +49,11 @@ function startFailClosedLiveness(reason: string) {
   }).listen(config.apiPort, "0.0.0.0");
 }
 
-async function startApi() {
-  const app = buildApi();
+async function startApi(profile: CountryProfile) {
+  // Inject the SELECTED country's timezone (never an implicit Canada default). The neutral fixture
+  // has no timezone (null), so local/test runs supply `timezone` per request; an activatable country
+  // provides it. Absent → payroll-period creation without an explicit timezone fails closed.
+  const app = buildApi({ countryTimezone: profile.timezone ?? undefined });
   let shuttingDown = false;
 
   async function shutdown(signal: string) {
@@ -87,8 +90,11 @@ async function startApi() {
 
 const selected = resolveSelectedCountry();
 if (selected.ok) {
-  logger.info("api.country.selected", { country: selected.country });
-  await startApi();
+  logger.info("api.country.selected", {
+    country: selected.profile.country,
+    timezone: selected.profile.timezone
+  });
+  await startApi(selected.profile);
 } else {
   startFailClosedLiveness(selected.reason);
 }

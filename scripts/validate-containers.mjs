@@ -90,6 +90,8 @@ for (const [index, service] of services.entries()) {
                 "--env",
                 `CANDIDATE_ADAPTER_RELEASE_SHA=${releaseSha}`,
                 "--env",
+                "CANDIDATE_ADAPTER_ALLOWED_TIMEZONES=America/Toronto",
+                "--env",
                 "CANDIDATE_ADAPTER_AUTH_MODE=dual-required",
                 "--env",
                 "CANDIDATE_ADAPTER_AUDIENCE=https://candidate-source-local-validation.run.app",

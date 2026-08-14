@@ -10,6 +10,12 @@ describe("candidate source configuration", () => {
     expect(config.allowedTimezones).toEqual(["America/Toronto"]);
   });
 
+  it("fails closed when allowed timezones are not supplied (no implicit Canada default)", () => {
+    expect(() =>
+      readCandidateSourceConfig(environment({ CANDIDATE_ADAPTER_ALLOWED_TIMEZONES: undefined }))
+    ).toThrow("CANDIDATE_ADAPTER_TIMEZONES_REQUIRED");
+  });
+
   it.each(["production", "local", undefined])("rejects non-staging environment %s", (value) => {
     expect(() => readCandidateSourceConfig(environment({ RWOS_ENV: value }))).toThrow(
       "CANDIDATE_ADAPTER_STAGING_ONLY"
@@ -48,6 +54,9 @@ function environment(overrides: Record<string, string | undefined> = {}): NodeJS
     CANDIDATE_ADAPTER_TENANT_B_ID: tenantB.organizationId,
     CANDIDATE_ADAPTER_TENANT_B_WORK_GROUP_ID: tenantB.workGroupId,
     CANDIDATE_ADAPTER_TENANT_B_ROLE_DEFINITION_ID: tenantB.roleDefinitionId,
+    // Phase 2b.2a: allowed timezones are now supplied explicitly (no implicit Canada default).
+    // "America/Toronto" is the countries/canada reference value — injected here to preserve behavior.
+    CANDIDATE_ADAPTER_ALLOWED_TIMEZONES: "America/Toronto",
     ...overrides
   };
 }

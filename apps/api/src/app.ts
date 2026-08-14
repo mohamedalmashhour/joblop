@@ -225,6 +225,7 @@ import {
   type DocumentUploadService
 } from "./documentUpload";
 import { createDocumentUploadContract } from "./documentUploadContract";
+import { resolvePayrollPeriodTimezone } from "./payrollPeriodTimezone";
 import { createPrismaDocumentMetadataRepository } from "./documentUploadRepository";
 import { registerDocumentRoutes } from "./documentRoutes";
 import { registerInvoiceRoutes } from "./invoiceRoutes";
@@ -283,6 +284,11 @@ export interface BuildApiOptions {
   payrollExternalReviewProvider?: PayrollReviewExternalProvider;
   // HR-6.1 Chunk 4: content-free telemetry sink (default: the structured logger). Best-effort.
   payrollTelemetrySink?: PayrollReviewTelemetrySink;
+  // Phase 2b.2a: neutral timezone injected from the SELECTED country profile (never an implicit
+  // Canada default). Used as the payroll-period fallback when a request omits `timezone`. Absent →
+  // no fallback → the request must supply `timezone` or is rejected (fail-closed). Composition roots
+  // inject this (server.ts from the resolved country); tests inject countries/canada's value.
+  countryTimezone?: string | undefined;
 }
 
 export type AuthenticationRateLimitDecision = Readonly<{
@@ -5634,10 +5640,10 @@ export function buildApi(options: BuildApiOptions = {}) {
     const region = readOptionalString(body, "jurisdictionRegion");
     const periodStart = readOptionalString(body, "periodStart");
     const periodEnd = readOptionalString(body, "periodEnd");
-    const timezone = readOptionalString(body, "timezone") ?? "America/Toronto";
+    const timezone = resolvePayrollPeriodTimezone(readOptionalString(body, "timezone"), options.countryTimezone);
     const currency = readOptionalString(body, "currency") ?? "CAD";
-    if (!organizationId || !isCanonicalUuid(organizationId) || !country || !region || !periodStart || !periodEnd) {
-      return reply.code(400).send({ error: "RWOS_PAYROLL_INVALID_INPUT", message: "organizationId, jurisdiction, and period window are required." });
+    if (!organizationId || !isCanonicalUuid(organizationId) || !country || !region || !periodStart || !periodEnd || !timezone) {
+      return reply.code(400).send({ error: "RWOS_PAYROLL_INVALID_INPUT", message: "organizationId, jurisdiction, period window, and timezone are required." });
     }
     const start = new Date(periodStart);
     const end = new Date(periodEnd);

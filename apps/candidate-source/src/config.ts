@@ -87,7 +87,12 @@ function readTenant(
 }
 
 function readTimezones(value: string | undefined) {
-  const timezones = (value ?? "America/Toronto").split(",").map((item) => item.trim());
+  // Phase 2b.2a: no implicit Canada default. Allowed timezones must be supplied explicitly by the
+  // deployment's country configuration (CANDIDATE_ADAPTER_ALLOWED_TIMEZONES); absent → fail closed.
+  if (value === undefined || value.trim() === "") {
+    throw new Error("CANDIDATE_ADAPTER_TIMEZONES_REQUIRED");
+  }
+  const timezones = value.split(",").map((item) => item.trim());
   if (
     timezones.length < 1 ||
     timezones.length > 10 ||
