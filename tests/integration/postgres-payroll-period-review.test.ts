@@ -40,7 +40,7 @@ suite("HR-6.1 period review endpoint (advisory, read-only)", () => {
 
   beforeAll(async () => {
     const roles = async (u: string) => (u === payrollAdminId ? ["PAYROLL_ADMINISTRATOR"] : u === platformAdminId ? ["PLATFORM_ADMINISTRATOR"] : ["WORKER_ACCESS"]);
-    app = buildApi({ env: { ...process.env, DATABASE_URL: databaseUrl, RWOS_ENV: "local", NODE_ENV: "test" }, resolveAuthorizationRoles: roles });
+    app = buildApi({ countryCurrency: "CAD", env: { ...process.env, DATABASE_URL: databaseUrl, RWOS_ENV: "local", NODE_ENV: "test" }, resolveAuthorizationRoles: roles });
     await app.ready();
     const admin = await register(`pr-admin-${randomUUID()}@e2e.local`); payrollAdminId = admin.user.id; payrollToken = admin.token;
     const plat = await register(`pr-plat-${randomUUID()}@e2e.local`); platformAdminId = plat.user.id; platformToken = plat.token;

@@ -74,7 +74,7 @@ suite("HR-5.1 payroll corrections & concurrency", () => {
   }
 
   beforeAll(async () => {
-    app = buildApi({ env: { ...process.env, DATABASE_URL: databaseUrl, RWOS_ENV: "local", NODE_ENV: "test" }, resolveAuthorizationRoles: async (u: string) => (u === payrollAdminId ? ["PAYROLL_ADMINISTRATOR"] : u === employerUserId ? ["ORGANIZATION_OWNER"] : ["WORKER_ACCESS"]) });
+    app = buildApi({ countryCurrency: "CAD", env: { ...process.env, DATABASE_URL: databaseUrl, RWOS_ENV: "local", NODE_ENV: "test" }, resolveAuthorizationRoles: async (u: string) => (u === payrollAdminId ? ["PAYROLL_ADMINISTRATOR"] : u === employerUserId ? ["ORGANIZATION_OWNER"] : ["WORKER_ACCESS"]) });
     await app.ready();
     const admin = await register(`cx-admin-${randomUUID()}@e2e.local`); payrollAdminId = admin.user.id; payrollToken = admin.token;
     const w = await register(`cx-w-${randomUUID()}@e2e.local`); workerToken = w.token;

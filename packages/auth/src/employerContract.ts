@@ -174,7 +174,10 @@ export function createEmployerContractService(
   repository: EmployerContractRepository,
   membershipReader: ContractMembershipReader,
   platformAuthority: ContractPlatformAuthority,
-  options: { now?: () => Date } = {}
+  // Stage 2b.3b-3: `countryCurrency` is the active country's currency (from CountryProfile.currency),
+  // threaded from the API composition root. Single active currency per country: a signed contract's
+  // currency MUST equal it. Absent → fail closed (never an implicit CAD default).
+  options: { now?: () => Date; countryCurrency?: string | undefined } = {}
 ) {
   const now = options.now ?? (() => new Date());
 
@@ -201,7 +204,15 @@ export function createEmployerContractService(
       if (version.length < 1 || version.length > 40) {
         throw new EmployerContractError("invalid", "A contract version label (1-40 chars) is required.");
       }
-      const currency = input.currency === "USD" ? "USD" : "CAD";
+      // Single active currency per country (no silent invalid→CAD coercion, no arbitrary USD).
+      const countryCurrency = options.countryCurrency;
+      if (countryCurrency === undefined) {
+        throw new EmployerContractError("invalid", "Currency is not configured for the selected country.");
+      }
+      if (input.currency !== undefined && input.currency !== countryCurrency) {
+        throw new EmployerContractError("invalid", `Contract currency must match the active country currency (${countryCurrency}).`);
+      }
+      const currency = countryCurrency;
       if (!input.roleRates.length) {
         throw new EmployerContractError("invalid", "At least one role rate is required to sign.");
       }

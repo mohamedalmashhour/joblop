@@ -455,7 +455,8 @@ export function buildApi(options: BuildApiOptions = {}) {
         // Evaluated per-request; resolveAuthorizationRoles is defined below.
         isPlatformAdmin: async (userId: string) =>
           (await resolveAuthorizationRoles(userId)).includes("PLATFORM_ADMINISTRATOR")
-      }
+      },
+      { countryCurrency: options.countryCurrency } // Stage 2b.3b-3: active-country currency (fail-closed; never CAD default)
     );
   // Governed two-step employer cancellation. The default assignment-cancel port
   // fails closed — the confirmed-assignment handoff is only ever performed via the
@@ -5687,7 +5688,19 @@ export function buildApi(options: BuildApiOptions = {}) {
     const periodStart = readOptionalString(body, "periodStart");
     const periodEnd = readOptionalString(body, "periodEnd");
     const timezone = resolvePayrollPeriodTimezone(readOptionalString(body, "timezone"), options.countryTimezone);
-    const currency = readOptionalString(body, "currency") ?? "CAD";
+    // Stage 2b.3b-3: single active currency per country. Omitted → active countryCurrency; an explicit
+    // currency must equal it, else reject BEFORE persistence (zero writes). Absent country currency →
+    // fail closed. Never silently substitute CAD; never allow USD merely because the Money Engine
+    // technically supports it.
+    const requestedCurrency = readOptionalString(body, "currency");
+    const countryCurrency = options.countryCurrency;
+    if (!countryCurrency) {
+      return reply.code(400).send({ error: "RWOS_COUNTRY_CURRENCY_UNAVAILABLE", message: "Currency is not configured for the selected country." });
+    }
+    if (requestedCurrency !== null && requestedCurrency !== countryCurrency) {
+      return reply.code(400).send({ error: "RWOS_PAYROLL_CURRENCY_MISMATCH", message: `Payroll currency must match the active country currency (${countryCurrency}).` });
+    }
+    const currency = countryCurrency;
     if (!organizationId || !isCanonicalUuid(organizationId) || !country || !region || !periodStart || !periodEnd || !timezone) {
       return reply.code(400).send({ error: "RWOS_PAYROLL_INVALID_INPUT", message: "organizationId, jurisdiction, period window, and timezone are required." });
     }

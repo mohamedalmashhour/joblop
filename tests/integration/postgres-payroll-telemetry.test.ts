@@ -49,9 +49,9 @@ suite("HR-6.1 payroll review telemetry (live PG)", () => {
   beforeAll(async () => {
     const env = { ...process.env, DATABASE_URL: databaseUrl, RWOS_ENV: "local", NODE_ENV: "test" };
     const roles = async (u: string) => (u === ownerId ? ["PAYROLL_ADMINISTRATOR"] : ["WORKER_ACCESS"]);
-    recApp = buildApi({ env, resolveAuthorizationRoles: roles, payrollTelemetrySink: sink });
-    throwApp = buildApi({ env, resolveAuthorizationRoles: roles, payrollTelemetrySink: throwingSink });
-    failApp = buildApi({ env: { ...env, PAYROLL_AI_EXTERNAL_ENABLED: "enabled" }, resolveAuthorizationRoles: roles, payrollTelemetrySink: sink, payrollExternalReviewProvider: failingProvider });
+    recApp = buildApi({ countryCurrency: "CAD", env, resolveAuthorizationRoles: roles, payrollTelemetrySink: sink });
+    throwApp = buildApi({ countryCurrency: "CAD", env, resolveAuthorizationRoles: roles, payrollTelemetrySink: throwingSink });
+    failApp = buildApi({ countryCurrency: "CAD", env: { ...env, PAYROLL_AI_EXTERNAL_ENABLED: "enabled" }, resolveAuthorizationRoles: roles, payrollTelemetrySink: sink, payrollExternalReviewProvider: failingProvider });
     await recApp.ready(); await throwApp.ready(); await failApp.ready();
     const admin = await register(`tel-admin-${randomUUID()}@e2e.local`); ownerId = admin.user.id; payrollToken = admin.token;
     const wk = await register(`tel-wk-${randomUUID()}@e2e.local`); workerToken = wk.token;

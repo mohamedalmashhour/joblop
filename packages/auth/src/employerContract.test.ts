@@ -84,12 +84,13 @@ const rates = [{ workGroupId: "wg-1", roleDefinitionId: "role-1", hourlyRateMino
 // so a test must opt in to platform-admin rate publishing explicitly.
 function makeService(
   repository: EmployerContractRepository,
-  opts: { membership?: ContractMembershipReader; platform?: ContractPlatformAuthority } = {}
+  opts: { membership?: ContractMembershipReader; platform?: ContractPlatformAuthority; countryCurrency?: string | undefined } = {}
 ) {
   return createEmployerContractService(
     repository,
     opts.membership ?? OWNER,
-    opts.platform ?? NOT_PLATFORM
+    opts.platform ?? NOT_PLATFORM,
+    { countryCurrency: "countryCurrency" in opts ? opts.countryCurrency : "CAD" }
   );
 }
 
@@ -211,27 +212,37 @@ describe("employer contract service", () => {
     ).rejects.toMatchObject({ code: "conflict" });
   });
 
-  // CHARACTERIZATION (Stage 2b.3b-A): documents the EXISTING `input.currency === "USD" ? "USD" : "CAD"`
-  // coercion at employerContract.ts:204 before any later refactor. This is a contract/persistence input
-  // (persisted to EmployerContract.currency, read back by the payroll rate resolver). NOTE: an invalid
-  // currency is SILENTLY coerced to "CAD" today — captured here, not fixed in this stage.
-  it("[characterization] coerces contract currency: USD preserved, missing → CAD, invalid → CAD (silent)", async () => {
+  // Stage 2b.3b-3: single active currency per country. The old `input.currency === "USD" ? "USD" : "CAD"`
+  // coercion is REMOVED. Omitted currency uses the active country currency; an explicit currency must
+  // equal it, else the contract is rejected (fail-closed, no write); an unsupported currency (e.g. SYP)
+  // is no longer silently coerced to CAD. For Canada the active currency is CAD, so omitted/explicit-CAD
+  // both persist "CAD" (byte-identical to before for Canada).
+  it("[currency] omitted → active CAD; explicit CAD accepted; explicit USD/SYP rejected before write", async () => {
     const { repository, contracts } = fakeRepository();
-    const service = makeService(repository, { platform: PLATFORM });
+    const service = makeService(repository, { platform: PLATFORM }); // countryCurrency defaults to "CAD"
     const base = { actorUserId: "platform-1", organizationId: "org-1", roleRates: rates };
 
-    const usd = await service.signContract({ ...base, version: "v-usd", currency: "USD" });
-    expect(usd.currency).toBe("USD");
-    expect(usd.roleRates[0]).toMatchObject({ currency: "USD" });
+    const omitted = await service.signContract({ ...base, version: "v-omitted" });
+    expect(omitted.currency).toBe("CAD"); // omitted → active country currency (CAD)
+    expect(omitted.roleRates[0]).toMatchObject({ currency: "CAD" });
 
-    const missing = await service.signContract({ ...base, version: "v-missing" });
-    expect(missing.currency).toBe("CAD"); // no currency supplied → CAD default
+    const cad = await service.signContract({ ...base, version: "v-cad", currency: "CAD" });
+    expect(cad.currency).toBe("CAD"); // explicit CAD equals active currency → accepted
 
-    const invalid = await service.signContract({ ...base, version: "v-invalid", currency: "SYP" });
-    expect(invalid.currency).toBe("CAD"); // SILENT coercion of an unsupported currency to CAD (current behavior)
+    await expect(service.signContract({ ...base, version: "v-usd", currency: "USD" })).rejects.toMatchObject({ code: "invalid" });
+    await expect(service.signContract({ ...base, version: "v-syp", currency: "SYP" })).rejects.toMatchObject({ code: "invalid" });
 
-    // All three persisted their coerced currency verbatim into the contract store.
-    expect(contracts.map((c) => c.currency)).toEqual(["USD", "CAD", "CAD"]);
+    // Only the two accepted (CAD) contracts were written; the USD/SYP mismatches created NO rows.
+    expect(contracts.map((c) => c.currency)).toEqual(["CAD", "CAD"]);
+  });
+
+  it("[currency] fails closed when no active country currency is configured (never defaults to CAD)", async () => {
+    const { repository, contracts } = fakeRepository();
+    const service = makeService(repository, { platform: PLATFORM, countryCurrency: undefined });
+    await expect(
+      service.signContract({ actorUserId: "platform-1", organizationId: "org-1", version: "v1", roleRates: rates })
+    ).rejects.toMatchObject({ code: "invalid" });
+    expect(contracts).toHaveLength(0); // fail-closed, zero writes
   });
 
   it("cannot acknowledge when no active contract exists, and denies a non-owner", async () => {

@@ -84,7 +84,7 @@ suite("HR-6.1 period review — per-worker failure paths (live PG)", () => {
   const S = { ready: { period: "", worker: "" }, missing: { period: "", worker: "" }, ambiguous: { period: "", worker: "" }, boundary: { period: "", worker: "" } };
 
   beforeAll(async () => {
-    app = buildApi({ env: { ...process.env, DATABASE_URL: databaseUrl, RWOS_ENV: "local", NODE_ENV: "test" }, resolveAuthorizationRoles: async (u: string) => (u === ownerId ? ["PAYROLL_ADMINISTRATOR"] : ["WORKER_ACCESS"]) });
+    app = buildApi({ countryCurrency: "CAD", env: { ...process.env, DATABASE_URL: databaseUrl, RWOS_ENV: "local", NODE_ENV: "test" }, resolveAuthorizationRoles: async (u: string) => (u === ownerId ? ["PAYROLL_ADMINISTRATOR"] : ["WORKER_ACCESS"]) });
     await app.ready();
     const admin = await register(`prp-admin-${randomUUID()}@e2e.local`); ownerId = admin.user.id; payrollToken = admin.token;
     const ord = () => 100000 + Math.floor(Math.random() * 800000); // avoid unique display_order clashes

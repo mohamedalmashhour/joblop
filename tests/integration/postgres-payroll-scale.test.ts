@@ -29,7 +29,7 @@ suite(`HR-5.1 payroll scale (${N} synthetic workers)`, () => {
   }
 
   beforeAll(async () => {
-    app = buildApi({ env: { ...process.env, DATABASE_URL: databaseUrl, RWOS_ENV: "local", NODE_ENV: "test" }, resolveAuthorizationRoles: async (u: string) => (u === payrollAdminId ? ["PAYROLL_ADMINISTRATOR"] : []) });
+    app = buildApi({ countryCurrency: "CAD", env: { ...process.env, DATABASE_URL: databaseUrl, RWOS_ENV: "local", NODE_ENV: "test" }, resolveAuthorizationRoles: async (u: string) => (u === payrollAdminId ? ["PAYROLL_ADMINISTRATOR"] : []) });
     await app.ready();
     const admin = await register(`scale-admin-${tag}@e2e.local`); payrollAdminId = admin.user.id; payrollToken = admin.token;
     const org = await prisma.employerOrganization.create({ data: { publicId: `ORG-SC-${tag}`, legalName: "L", displayName: "ScaleCare", status: "active", createdByUserId: payrollAdminId } });

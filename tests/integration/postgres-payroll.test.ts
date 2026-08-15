@@ -77,7 +77,7 @@ suite("HR-5 payroll foundation", () => {
   }
 
   beforeAll(async () => {
-    app = buildApi({ env: { ...process.env, DATABASE_URL: databaseUrl, RWOS_ENV: "local", NODE_ENV: "test" }, resolveAuthorizationRoles: async (u: string) => (u === payrollAdminId ? ["PAYROLL_ADMINISTRATOR"] : u === employerUserId || u === otherEmployerUserId ? ["ORGANIZATION_OWNER"] : ["WORKER_ACCESS"]) });
+    app = buildApi({ countryCurrency: "CAD", env: { ...process.env, DATABASE_URL: databaseUrl, RWOS_ENV: "local", NODE_ENV: "test" }, resolveAuthorizationRoles: async (u: string) => (u === payrollAdminId ? ["PAYROLL_ADMINISTRATOR"] : u === employerUserId || u === otherEmployerUserId ? ["ORGANIZATION_OWNER"] : ["WORKER_ACCESS"]) });
     await app.ready();
     const admin = await register(`pr-admin-${randomUUID()}@e2e.local`); payrollAdminId = admin.user.id; payrollToken = admin.token; ownerId = admin.user.id;
     const w = await register(`pr-w-${randomUUID()}@e2e.local`); workerToken = w.token;
@@ -127,6 +127,44 @@ suite("HR-5 payroll foundation", () => {
     app.inject({ method: "POST", url: "/platform/payroll/periods", headers: auth(token), payload: { organizationId: orgId, jurisdictionCountry: "CA", jurisdictionRegion: region, periodStart: start, periodEnd: end, currency: "CAD", timezone: "America/Toronto" } });
   const calculate = (token: string, periodId: string) =>
     app.inject({ method: "POST", url: "/platform/payroll/calculations", headers: auth(token), payload: { payrollPeriodId: periodId, workerIdentityId: workerId } });
+
+  // Stage 2b.3b-3: single active currency per country (buildApi injects countryCurrency: "CAD").
+  // Omitted → active CAD (accepted + persisted CAD); an explicit currency must equal CAD, else the
+  // request is rejected BEFORE persistence (zero writes). Never silently coerced; USD is rejected even
+  // though the Money Engine technically supports it.
+  it("[currency] payroll-period enforces the active country currency (CAD); USD/SYP rejected with zero writes", async () => {
+    const period = (currency?: string) =>
+      app.inject({
+        method: "POST", url: "/platform/payroll/periods", headers: auth(payrollToken),
+        payload: {
+          organizationId: orgId, jurisdictionCountry: "CA", jurisdictionRegion: "QC",
+          periodStart: "2027-01-01T00:00:00Z", periodEnd: "2027-01-15T00:00:00Z", timezone: "America/Toronto",
+          ...(currency !== undefined ? { currency } : {})
+        }
+      });
+    const before = await prisma.payrollPeriod.count({ where: { organizationId: orgId } });
+
+    const omitted = await period(); // omitted → active CAD
+    expect(omitted.statusCode).toBe(201);
+
+    expect(omitted.json().period.currency).toBe("CAD");
+
+    const usd = await period("USD"); // explicit mismatch → rejected before persistence
+    expect(usd.statusCode).toBe(400);
+    expect(usd.json().error).toBe("RWOS_PAYROLL_CURRENCY_MISMATCH");
+
+    const syp = await period("SYP"); // unsupported mismatch → rejected (never coerced to CAD)
+    expect(syp.statusCode).toBe(400);
+    expect(syp.json().error).toBe("RWOS_PAYROLL_CURRENCY_MISMATCH");
+
+    const cad = await period("CAD"); // explicit CAD equals active currency → conflict on the same window (already created), not a currency error
+    expect([201, 409]).toContain(cad.statusCode);
+    expect(cad.json().error).not.toBe("RWOS_PAYROLL_CURRENCY_MISMATCH");
+
+    // Exactly one new period row was written (the omitted/CAD one); USD and SYP wrote nothing.
+    const after = await prisma.payrollPeriod.count({ where: { organizationId: orgId } });
+    expect(after - before).toBe(1);
+  });
 
   it("payroll authority is required — worker/employer forbidden (403), unauthenticated (401)", async () => {
     const period = await createPeriod(payrollToken, "QC", "2026-08-01T00:00:00Z", "2026-08-15T00:00:00Z");

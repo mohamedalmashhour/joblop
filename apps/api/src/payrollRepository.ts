@@ -26,7 +26,11 @@ export function createPrismaPayrollRateResolver(prisma: PrismaClient): PayrollRa
       if (!contract) return null;
       const roleRate = contract.roleRates.find((r) => r.workGroupId === input.workGroupId && r.roleDefinitionId === input.roleDefinitionId);
       if (!roleRate || contract.effectiveFrom === null) return null;
-      const currency = contract.currency === "USD" ? "USD" : "CAD";
+      // Stage 2b.3b-3: use the governed contract currency as-is (set under the active-country-currency
+      // policy at signing). No silent invalid→CAD coercion and no Canada inference here — the resolver
+      // does not decide country policy. createContractMoney validates it and fails closed on an
+      // unsupported currency (the contract would violate the supported invariant).
+      const currency = contract.currency;
       return {
         contractId: contract.id,
         contractVersion: contract.version,
