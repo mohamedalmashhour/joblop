@@ -466,6 +466,7 @@ export function buildApi(options: BuildApiOptions = {}) {
     confirmedAssignmentReader: createPrismaConfirmedAssignmentReader(prisma!),
     contractRateReader: createPrismaContractRateReader(prisma!),
     store: createPrismaCancellationStore(prisma!),
+    countryCurrency: options.countryCurrency, // Stage 2b.3b-2: no-rate preview label (fail-closed; never CAD default)
     assignmentCancelPort: {
       async cancelConfirmedAssignments() {
         throw new Error("A platform-authorized assignment-cancel port must be provided.");
@@ -507,6 +508,7 @@ export function buildApi(options: BuildApiOptions = {}) {
     confirmedAssignmentLister: createPrismaConfirmedAssignmentLister(prisma!),
     contractRateReader: createPrismaReduceContractRateReader(prisma!),
     store: createPrismaReduceStore(prisma!),
+    countryCurrency: options.countryCurrency, // Stage 2b.3b-2: no-rate preview label (fail-closed; never CAD default)
     assignmentCancelPort: {
       async cancelSelectedAssignments() {
         throw new Error("A platform-authorized selected-assignment cancel port must be provided.");

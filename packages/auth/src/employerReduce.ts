@@ -168,9 +168,22 @@ export function createEmployerReduceService(deps: {
   store: ReduceStore;
   assignmentCancelPort: SelectedAssignmentCancelPort;
   capacitySetter: CapacitySetterPort;
+  // Stage 2b.3b-2: the selected country's currency, threaded from CountryProfile.currency at the API
+  // composition root. Used ONLY as the preview-label currency when there is NO governed rate (a
+  // non-applying, zero-amount obligation that is never persisted). Never an implicit "CAD" default;
+  // absent → fail closed (see resolveDisplayCurrency). When a rate exists, its currency wins (that is
+  // the value that gets persisted), so this is display-only and byte-identical for Canada.
+  countryCurrency?: string | undefined;
   now?: () => Date;
 }) {
   const now = deps.now ?? (() => new Date());
+  // Fail-closed resolver: only reached when there is no governed rate. Never substitutes CAD.
+  const resolveDisplayCurrency = (): string => {
+    if (deps.countryCurrency === undefined) {
+      throw new EmployerReduceError("invalid", "Currency is not configured for the selected country.");
+    }
+    return deps.countryCurrency;
+  };
 
   async function derive(actorUserId: string, organizationId: string, jobRequestId: string) {
     await assertManager(deps.membershipReader, actorUserId, organizationId);
@@ -232,7 +245,7 @@ export function createEmployerReduceService(deps: {
         eligibleAssignments: confirmed,
         withinCutoff: ob.withinCutoff,
         governedRateMinor: rate?.rateMinor ?? null,
-        currency: rate?.currency ?? "CAD",
+        currency: rate?.currency ?? resolveDisplayCurrency(),
         obligationApplies: ob.applies,
         obligationAmountMinor: ob.amountMinor
       };
@@ -285,7 +298,7 @@ export function createEmployerReduceService(deps: {
         eligibleAssignments: confirmed,
         withinCutoff: ob.withinCutoff,
         governedRateMinor: rate?.rateMinor ?? null,
-        currency: rate?.currency ?? "CAD",
+        currency: rate?.currency ?? resolveDisplayCurrency(),
         obligationApplies: ob.applies,
         obligationAmountMinor: ob.amountMinor
       };

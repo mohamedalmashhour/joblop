@@ -259,9 +259,22 @@ export function createEmployerCancellationService(deps: {
   store: CancellationStore;
   assignmentCancelPort: AssignmentCancelPort;
   requestCancellerPort: RequestCancellerPort;
+  // Stage 2b.3b-2: the selected country's currency, threaded from CountryProfile.currency at the API
+  // composition root. Used ONLY as the preview-label currency when there is NO governed rate (a
+  // non-applying, zero-amount obligation that is never persisted). Never an implicit "CAD" default;
+  // absent → fail closed. When a rate exists, its currency wins (that is the value that gets
+  // persisted), so this is display-only and byte-identical for Canada.
+  countryCurrency?: string | undefined;
   now?: () => Date;
 }) {
   const now = deps.now ?? (() => new Date());
+  // Fail-closed resolver: only reached when there is no governed rate. Never substitutes CAD.
+  const resolveDisplayCurrency = (): string => {
+    if (deps.countryCurrency === undefined) {
+      throw new EmployerCancellationError("invalid", "Currency is not configured for the selected country.");
+    }
+    return deps.countryCurrency;
+  };
 
   async function derive(actorUserId: string, organizationId: string, jobRequestId: string) {
     await assertManager(deps.membershipReader, actorUserId, organizationId);
@@ -300,7 +313,7 @@ export function createEmployerCancellationService(deps: {
       withinCutoff: hoursBeforeStart < LATE_CANCELLATION_CUTOFF_HOURS,
       affectedConfirmedWorkers: confirmedWorkers,
       governedRateMinor,
-      currency: rate?.currency ?? "CAD",
+      currency: rate?.currency ?? resolveDisplayCurrency(),
       minimumShiftHours: LATE_CANCELLATION_CHARGE_HOURS,
       cutoffHours: LATE_CANCELLATION_CUTOFF_HOURS,
       obligationApplies: applies,

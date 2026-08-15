@@ -129,6 +129,7 @@ function service(opts: {
     confirmedAssignmentReader: { async countConfirmedAssignments() { return opts.confirmed; } },
     contractRateReader: rateReader(opts.rate === undefined ? RATE_30 : opts.rate),
     store,
+    countryCurrency: "CAD", // Stage 2b.3b-2: Canada value; keeps null-rate preview label byte-identical
     assignmentCancelPort:
       opts.port ?? { async cancelConfirmedAssignments() { return { attempted: opts.confirmed, cancelled: opts.confirmed, failed: 0 }; } },
     requestCancellerPort: {

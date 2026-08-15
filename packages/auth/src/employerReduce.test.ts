@@ -85,6 +85,7 @@ function service(opts: {
     },
     confirmedAssignmentLister: { async listConfirmedAssignments() { return opts.confirmed; } },
     contractRateReader: { async getGovernedRate() { return opts.rate === undefined ? RATE : opts.rate; } },
+    countryCurrency: "CAD", // Stage 2b.3b-2: Canada value; keeps null-rate preview label byte-identical
     store,
     assignmentCancelPort: {
       async cancelSelectedAssignments({ assignmentIds }) {

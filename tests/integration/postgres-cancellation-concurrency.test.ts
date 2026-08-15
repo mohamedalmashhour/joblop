@@ -141,4 +141,32 @@ suite("PostgreSQL employer cancellation concurrency", () => {
     expect(again.cancellation.id).toBe(first.cancellation.id);
     expect((await countRows(seed.jobRequestId)).cancellations).toBe(1);
   });
+
+  // CHARACTERIZATION (Stage 2b.3b-2 Phase A): what EmployerCancellationObligation actually PERSISTS
+  // for currency. Proves the obligation row stores exactly the currency the service passes (the
+  // governed rate currency): CAD persists "CAD", USD persists "USD" (no CAD-forcing, no DB CHECK).
+  // A cancellation with NO obligation writes no obligation row at all — the service `?? "CAD"` fallback
+  // never reaches the DB.
+  it("[characterization] obligation row persists the given currency verbatim (CAD, USD); none when no obligation", async () => {
+    const store = createPrismaCancellationStore(prisma);
+    const ob = (currency: string) => ({
+      confirmedWorkerCount: 2, governedRateMinor: 3000, currency,
+      minimumShiftHours: 6, cutoffHours: 48, contractId: null, contractVersion: "2026-Q3", amountMinor: 36000
+    });
+
+    const cadSeed = await seedRequest();
+    await store.createCancellation({ ...createInput(cadSeed, `cad-${cadSeed.jobRequestId}`), affectedConfirmedWorkers: 2, obligation: ob("CAD") });
+    const cadOb = await prisma.employerCancellationObligation.findFirstOrThrow({ where: { jobRequestId: cadSeed.jobRequestId } });
+    expect(cadOb.currency).toBe("CAD");
+    expect(cadOb.amountMinor).toBe(36000);
+
+    const usdSeed = await seedRequest();
+    await store.createCancellation({ ...createInput(usdSeed, `usd-${usdSeed.jobRequestId}`), affectedConfirmedWorkers: 2, obligation: ob("USD") });
+    const usdOb = await prisma.employerCancellationObligation.findFirstOrThrow({ where: { jobRequestId: usdSeed.jobRequestId } });
+    expect(usdOb.currency).toBe("USD"); // no CAD-forcing, no DB CHECK rejecting USD
+
+    const noObSeed = await seedRequest();
+    await store.createCancellation(createInput(noObSeed, `noob-${noObSeed.jobRequestId}`)); // obligation: null
+    expect((await countRows(noObSeed.jobRequestId)).obligations).toBe(0); // no obligation row → fallback never persists
+  });
 });
