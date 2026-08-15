@@ -8,10 +8,21 @@ import {
   formatDistanceKm,
   rankByDistanceKm,
   toPublicMapPoint,
-  PROVINCE_TERRITORY_NAMES,
   type ProvinceCode,
   type PublicMapPoint
 } from "./canadaLocation";
+
+/**
+ * The region display-name behavior the neutral marketplace serializers need from the selected
+ * country, injected explicitly. Structurally a subset of @rwos/config's CountryAddressPort
+ * (`regionNameFromCode`), declared locally so this shared package takes no dependency on config
+ * (and no build cycle via countries/*). There is NO implicit Canada default here — the capability
+ * is supplied at the API composition boundary (canadaAddressAdapter today).
+ */
+export interface MarketplaceRegionNames {
+  /** Human display name for a region (province/state/…) code, or null if unknown. */
+  regionNameFromCode(code: string): string | null;
+}
 
 // A candidate row from the DB bounding-box query (worksite already resolved).
 export type MarketplaceJobCandidate = Readonly<{
@@ -47,8 +58,8 @@ export type MarketplaceJobResult = Readonly<{
   currency: string;
 }>;
 
-function areaLabel(city: string | null, province: ProvinceCode): string {
-  return city ? `${city}, ${province}` : PROVINCE_TERRITORY_NAMES[province];
+function areaLabel(city: string | null, province: ProvinceCode, regionNames: MarketplaceRegionNames): string {
+  return city ? `${city}, ${province}` : (regionNames.regionNameFromCode(province) ?? province);
 }
 
 // Rank the candidates by distance from the worker origin, apply the radius, and return
@@ -57,6 +68,7 @@ export function searchNearbyJobs(input: {
   origin: Readonly<{ latitude: number; longitude: number }>;
   radiusKm?: number; // undefined = "any distance"
   candidates: readonly MarketplaceJobCandidate[];
+  regionNames: MarketplaceRegionNames; // injected country display-name capability (no implicit default)
 }): readonly MarketplaceJobResult[] {
   const ranked = rankByDistanceKm(input.origin, input.candidates, input.radiusKm);
   return ranked.map((c) => ({
@@ -64,7 +76,7 @@ export function searchNearbyJobs(input: {
     role: c.role,
     employerName: c.employerName,
     verifiedEmployer: c.verifiedEmployer,
-    areaLabel: areaLabel(c.city, c.province),
+    areaLabel: areaLabel(c.city, c.province, input.regionNames),
     distanceKm: Math.round(c.distanceKm * 10) / 10,
     distanceLabel: formatDistanceKm(c.distanceKm),
     mapPoint: toPublicMapPoint({ latitude: c.latitude, longitude: c.longitude }),

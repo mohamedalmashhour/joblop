@@ -11,10 +11,10 @@ import {
   formatDistanceKm,
   geodesicDistanceKm,
   toPublicMapPoint,
-  PROVINCE_TERRITORY_NAMES,
   type ProvinceCode,
   type PublicMapPoint
 } from "./canadaLocation";
+import type { MarketplaceRegionNames } from "./marketplaceJobSearch";
 
 // A fully-resolved candidate row (server-side only — carries exact coords the caller must
 // never serialize directly).
@@ -65,13 +65,14 @@ export type MarketplaceEmployerRef = Readonly<{
   verified: boolean;
 }>;
 
-function areaLabel(city: string | null, province: ProvinceCode): string {
-  return city ? `${city}, ${province}` : PROVINCE_TERRITORY_NAMES[province];
+function areaLabel(city: string | null, province: ProvinceCode, regionNames: MarketplaceRegionNames): string {
+  return city ? `${city}, ${province}` : (regionNames.regionNameFromCode(province) ?? province);
 }
 
 export function toMarketplaceJobDetail(input: {
   candidate: MarketplaceJobDetailCandidate;
   origin?: Readonly<{ latitude: number; longitude: number }> | null;
+  regionNames: MarketplaceRegionNames; // injected country display-name capability (no implicit default)
 }): MarketplaceJobDetail {
   const c = input.candidate;
   const distanceKm = input.origin
@@ -82,7 +83,7 @@ export function toMarketplaceJobDetail(input: {
     role: c.role,
     title: c.title,
     employer: { id: c.employerId, name: c.employerName, verified: c.verifiedEmployer },
-    areaLabel: areaLabel(c.city, c.province),
+    areaLabel: areaLabel(c.city, c.province, input.regionNames),
     distanceKm,
     distanceLabel:
       input.origin != null
@@ -136,12 +137,13 @@ export type MarketplaceEmployerProfileCandidate = Readonly<{
 }>;
 
 export function toMarketplaceEmployerProfile(
-  candidate: MarketplaceEmployerProfileCandidate
+  candidate: MarketplaceEmployerProfileCandidate,
+  regionNames: MarketplaceRegionNames // injected country display-name capability (no implicit default)
 ): MarketplaceEmployerProfile {
   const opportunities = candidate.opportunities.map((o) => ({
     jobRequestId: o.jobRequestId,
     role: o.role,
-    areaLabel: areaLabel(o.city, o.province),
+    areaLabel: areaLabel(o.city, o.province, regionNames),
     startAt: o.startAt,
     endAt: o.endAt,
     openings: o.openings

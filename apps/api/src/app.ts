@@ -2686,7 +2686,8 @@ export function buildApi(options: BuildApiOptions = {}) {
     const ranked = searchNearbyJobs({
       origin: { latitude: origin.location.latitude, longitude: origin.location.longitude },
       ...(radiusKm !== undefined ? { radiusKm } : {}),
-      candidates
+      candidates,
+      regionNames: countryAddress // display-name capability from the selected country (already guarded above)
     });
     // Server-authoritative sort (never trusts browser-supplied distances/rates).
     const sorted = [...ranked];
@@ -3759,7 +3760,10 @@ export function buildApi(options: BuildApiOptions = {}) {
       duties: row.calendarProfile?.dutiesSummary ?? null,
       qualifications: coerceQualifications(row.calendarProfile?.qualifications)
     };
-    const detail = toMarketplaceJobDetail({ candidate, origin });
+    if (!countryAddress) {
+      return reply.code(400).send({ error: "RWOS_COUNTRY_ADDRESS_UNAVAILABLE", message: "Address resolution is not configured for the selected country." });
+    }
+    const detail = toMarketplaceJobDetail({ candidate, origin, regionNames: countryAddress });
 
     let saved: boolean;
     try {
@@ -3827,7 +3831,11 @@ export function buildApi(options: BuildApiOptions = {}) {
           : []
       )
     };
-    return reply.code(200).send({ employer: toMarketplaceEmployerProfile(candidate) });
+    const countryAddress = options.countryAddress;
+    if (!countryAddress) {
+      return reply.code(400).send({ error: "RWOS_COUNTRY_ADDRESS_UNAVAILABLE", message: "Address resolution is not configured for the selected country." });
+    }
+    return reply.code(200).send({ employer: toMarketplaceEmployerProfile(candidate, countryAddress) });
   });
 
   // Material Edit / Reconfirmation. The employer submits PROPOSED values only. The

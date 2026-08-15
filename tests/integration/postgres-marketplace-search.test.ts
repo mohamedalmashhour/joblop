@@ -1,6 +1,7 @@
 import { afterAll, describe, expect, it } from "vitest";
 import { randomUUID } from "node:crypto";
 import { boundingBoxKm, searchNearbyJobs, type MarketplaceJobCandidate } from "@rwos/shared";
+import { canadaAddressAdapter } from "@rwos/country-canada";
 import { createPrismaClient } from "@rwos/database";
 
 const databaseUrl = process.env.RWOS_TEST_DATABASE_URL;
@@ -75,7 +76,7 @@ suite("PostgreSQL marketplace bounding-box search", () => {
       city: r.residence.city, province: "QC", latitude: r.residence.latitude!, longitude: r.residence.longitude!,
       startAt: r.startAt.toISOString(), endAt: r.endAt.toISOString(), openings: r.numberOfWorkers, workerRateMinor: null, currency: "CAD"
     }));
-    const results = searchNearbyJobs({ origin: laval, radiusKm: 25, candidates });
+    const results = searchNearbyJobs({ origin: laval, radiusKm: 25, candidates, regionNames: canadaAddressAdapter });
     expect(results.map((x) => x.jobRequestId)).toContain(jobNearId);
     // privacy: no exact coordinates leak
     expect(JSON.stringify(results)).not.toContain("45.5701");
