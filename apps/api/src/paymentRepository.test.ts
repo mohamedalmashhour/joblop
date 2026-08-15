@@ -1,4 +1,4 @@
-import { createLocalFakePaymentProvider } from "@rwos/shared";
+import { createLocalFakePaymentProvider, type PaymentProviderPort, type ProviderPaymentResult } from "@rwos/shared";
 import { describe, expect, it, vi } from "vitest";
 import { createPrismaPaymentRepository } from "./paymentRepository";
 
@@ -22,7 +22,7 @@ const row = {
   requestDigest: ""
 };
 
-function setup() {
+function setup(provider: PaymentProviderPort = createLocalFakePaymentProvider()) {
   const invoice = {
     findFirst: vi.fn().mockResolvedValue({
       id: row.invoiceId,
@@ -78,11 +78,12 @@ function setup() {
           callback(transaction)
         )
       },
-      createLocalFakePaymentProvider()
+      provider
     ),
     employerPaymentMethod,
     employerPaymentAttempt,
     employerPaymentEvent,
+    employerPaymentAllocation,
     invoice
   };
 }
@@ -185,5 +186,73 @@ describe("durable payment repository", () => {
         allocatedMinor: row.amountMinor
       }
     });
+  });
+});
+
+// Stage 2b.4-B — READ-ONLY characterization of the payment-attempt `processing` stranding seam.
+// These prove existing behavior only; no runtime change. execute() claims the attempt to `processing`
+// (a committed write) BEFORE calling the provider, then finalizes in a separate transaction.
+describe("payment execute() resilience characterization (Stage 2b.4-B, read-only)", () => {
+  const pending = { ...row, state: "pending", version: 1 };
+  const execInput = {
+    paymentId: row.id,
+    organizationId,
+    operation: "authorize" as const,
+    amountMinor: 10_500,
+    expectedVersion: 1,
+    idempotencyKey: "exec-key",
+    scenario: "success" as const
+  };
+
+  it("provider THROW after the claim → attempt is left in `processing` with NO finalize event (event-less strand)", async () => {
+    const throwing: PaymentProviderPort = { async execute() { throw new Error("network transport failure"); } };
+    const target = setup(throwing);
+    target.employerPaymentAttempt.findFirst.mockResolvedValue(pending);
+
+    await expect(target.repository.execute(execInput)).rejects.toThrow();
+    // The claim to `processing` (version+1) is committed BEFORE the provider call...
+    expect(target.employerPaymentAttempt.updateMany).toHaveBeenCalledTimes(1);
+    expect(target.employerPaymentAttempt.updateMany).toHaveBeenCalledWith(
+      expect.objectContaining({ data: expect.objectContaining({ state: "processing", version: { increment: 1 } }) })
+    );
+    // ...but the finalize transaction never runs → no event, no allocation. The row is stranded.
+    expect(target.employerPaymentEvent.create).not.toHaveBeenCalled();
+    expect(target.employerPaymentAllocation.create).not.toHaveBeenCalled();
+  });
+
+  it("provider UNKNOWN result → attempt lands in `processing` WITH a finalize event (designed indeterminate path)", async () => {
+    const unknown: PaymentProviderPort = {
+      async execute(): Promise<ProviderPaymentResult> {
+        return { provider: "local_fake", providerOperationReference: "op-ref-unknown", outcome: "unknown", reason: "none", webhookExpected: true };
+      }
+    };
+    const target = setup(unknown);
+    target.employerPaymentAttempt.findFirst
+      .mockResolvedValueOnce(pending)
+      .mockResolvedValueOnce({ ...row, state: "processing", version: 2 });
+
+    const result = await target.repository.execute(execInput);
+    expect(result.state).toBe("processing");
+    // Claim + finalize both run; a finalize event IS recorded (unlike the throw path) — recoverable via webhook.
+    expect(target.employerPaymentAttempt.updateMany).toHaveBeenCalledTimes(2);
+    expect(target.employerPaymentEvent.create).toHaveBeenCalledTimes(1);
+    expect(target.employerPaymentAllocation.create).not.toHaveBeenCalled();
+  });
+
+  it("SAFETY INVARIANT: a stranded `processing` attempt cannot be re-executed → no second provider charge", async () => {
+    const providerCalls = vi.fn();
+    const throwing: PaymentProviderPort = { async execute() { providerCalls(); throw new Error("network transport failure"); } };
+    const target = setup(throwing);
+
+    // First execute strands the attempt (provider throws after the `processing` claim).
+    target.employerPaymentAttempt.findFirst.mockResolvedValueOnce(pending);
+    await expect(target.repository.execute(execInput)).rejects.toThrow();
+    expect(providerCalls).toHaveBeenCalledTimes(1);
+
+    // A naive retry now sees the attempt in `processing` (version 2). assertOperationState rejects
+    // `processing` for every operation, so execute() throws BEFORE calling the provider again.
+    target.employerPaymentAttempt.findFirst.mockResolvedValueOnce({ ...row, state: "processing", version: 2 });
+    await expect(target.repository.execute({ ...execInput, expectedVersion: 2 })).rejects.toThrow();
+    expect(providerCalls).toHaveBeenCalledTimes(1); // provider was NOT charged a second time
   });
 });
