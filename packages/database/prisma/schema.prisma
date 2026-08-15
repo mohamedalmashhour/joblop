@@ -742,7 +742,7 @@ model EmployerCapacityReduction {
   expectedRequestVersion   Int                             @map("expected_request_version")
   obligationAmountMinor    Int?                            @map("obligation_amount_minor")
   governedRateMinor        Int?                            @map("governed_rate_minor")
-  currency                 String                          @default("CAD")
+  currency                 String
   minimumShiftHours        Int?                            @map("minimum_shift_hours")
   cutoffHours              Int?                            @map("cutoff_hours")
   contractId               String?                         @map("contract_id") @db.Uuid

@@ -95,6 +95,7 @@ suite("PostgreSQL live capacity concurrency", () => {
       selectedAssignmentIds: [randomUUID()],
       idempotencyKey: `reduce-${seed.jobRequestId}`,
       initiatedByUserId: seed.userId,
+      currency: "CAD",
       obligation: { amountMinor: 18000, currency: "CAD", governedRateMinor: 3000, minimumShiftHours: 6, cutoffHours: 48, contractId: null, contractVersion: "2026-Q3" },
       now: new Date()
     };
@@ -105,12 +106,12 @@ suite("PostgreSQL live capacity concurrency", () => {
     expect(count).toBe(1);
   });
 
-  // CHARACTERIZATION (Stage 2b.3b-2 Phase A): what the store actually PERSISTS for obligation currency.
-  // Proves (1) the persisted currency is exactly what the service passes (the governed rate currency),
-  // (2) a USD obligation persists "USD" — no CAD-forcing, no DB CHECK rejecting it, and (3) a reduction
-  // with NO obligation persists the DB DEFAULT 'CAD' (a Canada-specific column default, out of scope
-  // for this stage) — NOT the service `?? "CAD"` fallback, which never reaches the DB.
-  it("[characterization] persists the given obligation currency verbatim (CAD, USD); no-obligation row takes the DB default", async () => {
+  // CHARACTERIZATION (Stage 2b.3c-C): the store now persists the EXPLICIT top-level currency the caller
+  // supplies (the service passes the governed rate currency when an obligation applies, else the active
+  // countryCurrency). Proves CAD→"CAD", USD→"USD" (no CAD-forcing, no DB CHECK), and — crucially — a
+  // NO-obligation reduction persists the writer-supplied currency (here "CAD"), NOT a DB default. The
+  // legacy DEFAULT 'CAD' on this column is removed in this stage; the writer no longer relies on it.
+  it("[characterization] persists the explicit caller currency (CAD, USD); no-obligation row uses the writer-supplied currency", async () => {
     const store = createPrismaReduceStore(createPrismaClient(databaseUrl!));
     const base = (over: Record<string, unknown>) => ({
       initialStatus: "assignment_cancellation_pending" as const,
@@ -120,22 +121,22 @@ suite("PostgreSQL live capacity concurrency", () => {
 
     const cadSeed = await seedRequest(5);
     await store.createReduction(base({ organizationId: cadSeed.organizationId, jobRequestId: cadSeed.jobRequestId, initiatedByUserId: cadSeed.userId, idempotencyKey: `cad-${cadSeed.jobRequestId}`,
-      obligation: { amountMinor: 18000, currency: "CAD", governedRateMinor: 3000, minimumShiftHours: 6, cutoffHours: 48, contractId: null, contractVersion: "2026-Q3" } }));
+      currency: "CAD", obligation: { amountMinor: 18000, currency: "CAD", governedRateMinor: 3000, minimumShiftHours: 6, cutoffHours: 48, contractId: null, contractVersion: "2026-Q3" } }));
     const cadRow = await prisma.employerCapacityReduction.findFirstOrThrow({ where: { jobRequestId: cadSeed.jobRequestId } });
     expect(cadRow.currency).toBe("CAD");
     expect(cadRow.obligationAmountMinor).toBe(18000);
 
     const usdSeed = await seedRequest(5);
     await store.createReduction(base({ organizationId: usdSeed.organizationId, jobRequestId: usdSeed.jobRequestId, initiatedByUserId: usdSeed.userId, idempotencyKey: `usd-${usdSeed.jobRequestId}`,
-      obligation: { amountMinor: 18000, currency: "USD", governedRateMinor: 3000, minimumShiftHours: 6, cutoffHours: 48, contractId: null, contractVersion: "2026-Q3" } }));
+      currency: "USD", obligation: { amountMinor: 18000, currency: "USD", governedRateMinor: 3000, minimumShiftHours: 6, cutoffHours: 48, contractId: null, contractVersion: "2026-Q3" } }));
     const usdRow = await prisma.employerCapacityReduction.findFirstOrThrow({ where: { jobRequestId: usdSeed.jobRequestId } });
     expect(usdRow.currency).toBe("USD"); // no CAD-forcing, no DB CHECK rejecting USD
 
     const noObSeed = await seedRequest(5);
     await store.createReduction(base({ organizationId: noObSeed.organizationId, jobRequestId: noObSeed.jobRequestId, initiatedByUserId: noObSeed.userId, idempotencyKey: `noob-${noObSeed.jobRequestId}`,
-      initialStatus: "requested" as const, affectedConfirmed: 0 }));
+      currency: "CAD", initialStatus: "requested" as const, affectedConfirmed: 0 }));
     const noObRow = await prisma.employerCapacityReduction.findFirstOrThrow({ where: { jobRequestId: noObSeed.jobRequestId } });
-    expect(noObRow.currency).toBe("CAD"); // DB column default 'CAD' (not the service fallback; out of scope)
+    expect(noObRow.currency).toBe("CAD"); // writer-supplied (active countryCurrency), NOT a DB default
     expect(noObRow.obligationAmountMinor).toBeNull();
   });
 

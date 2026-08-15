@@ -71,6 +71,7 @@ function service(opts: {
   cancelResult?: SelectedAssignmentCancelResult;
   setterOk?: boolean;
   rate?: ReduceGovernedRate | null; // characterization override; defaults to the CAD RATE fixture
+  countryCurrency?: string | undefined; // override; defaults to "CAD"
 }) {
   const { store, rows } = makeStore();
   const cancelCalls: string[][] = [];
@@ -85,7 +86,7 @@ function service(opts: {
     },
     confirmedAssignmentLister: { async listConfirmedAssignments() { return opts.confirmed; } },
     contractRateReader: { async getGovernedRate() { return opts.rate === undefined ? RATE : opts.rate; } },
-    countryCurrency: "CAD", // Stage 2b.3b-2: Canada value; keeps null-rate preview label byte-identical
+    countryCurrency: "countryCurrency" in opts ? opts.countryCurrency : "CAD", // default Canada; override for fail-closed tests
     store,
     assignmentCancelPort: {
       async cancelSelectedAssignments({ assignmentIds }) {
@@ -154,6 +155,17 @@ describe("employer reduce — confirm (partial cancellation)", () => {
     expect(reduction.obligationAmountMinor).toBeNull();
     expect(cancelCalls).toHaveLength(0);
     expect(setterCalls).toEqual([4]);
+  });
+
+  // Stage 2b.3c-C: the reduction row's currency is always explicit. When there is no governed rate,
+  // the no-obligation preview currency comes from the active countryCurrency; if that is unavailable
+  // the operation fails closed BEFORE any persistence (no `?? "CAD"`, no row written).
+  it("[currency] fails closed with zero rows when there is no governed rate and no active country currency", async () => {
+    const { svc, rows } = service({ requested: 5, confirmed: three(), rate: null, countryCurrency: undefined });
+    await expect(
+      svc.reduceConfirm({ actorUserId: "u1", organizationId: ORG, jobRequestId: REQ, newTarget: 4, selectedAssignmentIds: [], expectedVersion: 1, idempotencyKey: "kfc" })
+    ).rejects.toBeInstanceOf(EmployerReduceError);
+    expect(rows).toHaveLength(0); // fail-closed before persistence
   });
 
   it("confirmed-affecting: confirm records pending; completeReduction cancels ONLY the selected assignment then sets target (request stays active)", async () => {

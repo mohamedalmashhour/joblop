@@ -28,7 +28,12 @@ const reviewedDestructiveMigrations = new Set<string>([
   // legacy DEFAULT 'CAD' now that the governed runtime always supplies an explicit currency
   // (active-country-currency policy). Columns stay NOT NULL; no replacement default; no column/table
   // drop, no row deletion, no existing data altered — only the future-insert default is removed.
-  "20260812000000_drop_legacy_cad_defaults"
+  "20260812000000_drop_legacy_cad_defaults",
+  // Stage 2b.3c-C: ALTER COLUMN "currency" DROP DEFAULT on employer_capacity_reductions. The writer
+  // now always supplies an explicit currency (governed rate currency or active countryCurrency), so
+  // the last non-payment legacy DEFAULT 'CAD' is removed. Column stays NOT NULL; no replacement
+  // default; no column/table drop, no row deletion, no existing data altered.
+  "20260812010000_drop_capacity_reduction_cad_default"
 ]);
 
 void main();

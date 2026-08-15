@@ -94,6 +94,9 @@ export type ReduceStore = Readonly<{
     selectedAssignmentIds: readonly string[];
     idempotencyKey: string;
     initiatedByUserId: string;
+    // Stage 2b.3c-C: the reduction row's currency is ALWAYS supplied explicitly (governed rate currency
+    // when an obligation applies, else the active countryCurrency) — never left to a DB default.
+    currency: string;
     obligation: {
       amountMinor: number;
       currency: string;
@@ -313,6 +316,7 @@ export function createEmployerReduceService(deps: {
         selectedAssignmentIds: selected,
         idempotencyKey: input.idempotencyKey,
         initiatedByUserId: input.actorUserId,
+        currency: preview.currency, // rate currency when the obligation applies, else active countryCurrency
         obligation: ob.applies
           ? {
               amountMinor: ob.amountMinor,
@@ -543,11 +547,11 @@ export function createPrismaReduceStore(prismaClient: unknown): ReduceStore {
             selectedAssignmentIds: [...input.selectedAssignmentIds],
             expectedRequestVersion: 0,
             idempotencyKey: input.idempotencyKey,
+            currency: input.currency, // Stage 2b.3c-C: always explicit (no reliance on the DB default)
             ...(input.obligation
               ? {
                   obligationAmountMinor: input.obligation.amountMinor,
                   governedRateMinor: input.obligation.governedRateMinor,
-                  currency: input.obligation.currency,
                   minimumShiftHours: input.obligation.minimumShiftHours,
                   cutoffHours: input.obligation.cutoffHours,
                   contractId: input.obligation.contractId,

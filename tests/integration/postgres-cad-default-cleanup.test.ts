@@ -23,18 +23,14 @@ suite("CAD DB default cleanup (Stage 2b.3c-B)", () => {
     return rows[0]!;
   };
 
-  it("the three cleaned columns are NOT NULL with NO default → an omitted currency is rejected", async () => {
-    for (const table of ["employer_contracts", "employer_cancellation_obligations", "payroll_worked_time_references"]) {
+  it("all four cleaned columns are NOT NULL with NO default → an omitted currency is rejected", async () => {
+    // Stage 2b.3c-C added employer_capacity_reductions once its writer became explicit. No non-payment
+    // currency column now carries a DB default.
+    for (const table of ["employer_contracts", "employer_cancellation_obligations", "payroll_worked_time_references", "employer_capacity_reductions"]) {
       const col = await defaultOf(table);
       expect(col.column_default).toBeNull(); // default removed
       expect(col.is_nullable).toBe("NO"); // still NOT NULL → omitting currency fails
     }
-  });
-
-  it("employer_capacity_reductions.currency is UNTOUCHED (still DEFAULT 'CAD')", async () => {
-    const col = await defaultOf("employer_capacity_reductions");
-    expect(col.column_default).toContain("CAD");
-    expect(col.is_nullable).toBe("NO");
   });
 
   it("employer_contracts: omitted currency now fails; explicit CAD and USD still persist verbatim", async () => {
