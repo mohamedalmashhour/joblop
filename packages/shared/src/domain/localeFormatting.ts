@@ -94,16 +94,22 @@ export function formatRwosNumber(
 export function formatRwosCurrency(
   value: number,
   currency: string,
-  options: Readonly<{ locale?: string | null; fallback?: string }> = {}
+  options: Readonly<{ locale?: string | null; fractionDigits?: number; fallback?: string }> = {}
 ) {
   const fallback = options.fallback ?? invalidFormatFallback;
   if (!Number.isFinite(value) || !/^[A-Z]{3}$/.test(currency)) return fallback;
   try {
+    // Fraction digits are a per-CURRENCY presentation property, NOT a universal "2". When the caller
+    // does not supply an explicit country/currency-specific value, defer to Intl's own ISO 4217
+    // minor-unit exponent for `currency` (CAD → 2, JPY → 0, …). For CAD this is byte-identical to the
+    // previous hard-coded 2/2. This decouples display from the earlier Canada-only 2-decimal assumption
+    // without reinterpreting stored minor units (formatting only).
     return new Intl.NumberFormat(resolveRwosLocale(options.locale), {
       style: "currency",
       currency,
-      minimumFractionDigits: 2,
-      maximumFractionDigits: 2
+      ...(options.fractionDigits === undefined
+        ? {}
+        : { minimumFractionDigits: options.fractionDigits, maximumFractionDigits: options.fractionDigits })
     }).format(value);
   } catch {
     return fallback;

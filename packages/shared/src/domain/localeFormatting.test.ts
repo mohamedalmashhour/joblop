@@ -42,4 +42,25 @@ describe("locale-ready formatting", () => {
     expect(formatRwosNumber(Number.NaN)).toBe(invalidFormatFallback);
     expect(formatRwosCurrency(10, "invalid")).toBe(invalidFormatFallback);
   });
+
+  // CHARACTERIZATION (Stage 2b.3a): Canadian CAD display must stay byte-identical after the display
+  // decoupling. These are the ACTUAL current-behavior strings for en-CA/CAD (captured, not invented):
+  // zero, one cent, a normal rate, a thousands-separated amount, a negative value, and a large amount.
+  it("renders CAD amounts byte-identically (en-CA)", () => {
+    expect(formatRwosCurrency(0, "CAD")).toBe("$0.00");
+    expect(formatRwosCurrency(0.01, "CAD")).toBe("$0.01");
+    expect(formatRwosCurrency(30, "CAD")).toBe("$30.00");
+    expect(formatRwosCurrency(1234.56, "CAD")).toBe("$1,234.56");
+    expect(formatRwosCurrency(-12.5, "CAD")).toBe("-$12.50");
+    expect(formatRwosCurrency(1000000.99, "CAD")).toBe("$1,000,000.99");
+  });
+
+  // Fraction digits are per-CURRENCY (ISO 4217 exponent), NOT a universal 2. Removing the old
+  // hard-coded 2/2 override must not silently render every currency with two decimals.
+  it("uses each currency's own minor-unit exponent, not a universal 2", () => {
+    expect(formatRwosCurrency(1000, "JPY")).toBe("JP¥1,000"); // 0-decimal currency → no fraction part
+    expect(formatRwosCurrency(30, "USD")).toBe("US$30.00"); // 2-decimal currency → unchanged
+    // an explicit country/currency-specific override is still honored when supplied
+    expect(formatRwosCurrency(1000, "JPY", { fractionDigits: 2 })).toBe("JP¥1,000.00");
+  });
 });

@@ -1,6 +1,7 @@
 import { createServer } from "node:http";
 import { buildApi } from "./app";
 import { getRuntimeConfig, resolveCountryConfig, type CountryProfile } from "@rwos/config";
+import { moneyEngineCurrencies } from "@rwos/shared";
 import { createLogger } from "@rwos/observability";
 import { apiCountryRegistry } from "./countryRegistry";
 
@@ -50,10 +51,16 @@ function startFailClosedLiveness(reason: string) {
 }
 
 async function startApi(profile: CountryProfile) {
-  // Inject the SELECTED country's timezone (never an implicit Canada default). The neutral fixture
-  // has no timezone (null), so local/test runs supply `timezone` per request; an activatable country
-  // provides it. Absent → payroll-period creation without an explicit timezone fails closed.
-  const app = buildApi({ countryTimezone: profile.timezone ?? undefined });
+  // Inject the SELECTED country's timezone + currency (never an implicit Canada default). The neutral
+  // fixture has no timezone/currency (null), so local/test runs supply `timezone` per request; an
+  // activatable country provides them. Absent timezone → payroll-period creation without an explicit
+  // timezone fails closed. The currency is threaded from the existing CountryProfile.currency so the
+  // country profile is authoritative at the composition boundary; it is NOT yet consumed by any money
+  // path (Stage 2b.3a scope) — the fail-closed currency gate is enforced before startApi() runs.
+  const app = buildApi({
+    countryTimezone: profile.timezone ?? undefined,
+    countryCurrency: profile.currency ?? undefined
+  });
   let shuttingDown = false;
 
   async function shutdown(signal: string) {
@@ -88,13 +95,26 @@ async function startApi(profile: CountryProfile) {
   }
 }
 
+// Fail-closed currency gate (Stage 2b.3a): if the selected country declares a currency the existing
+// money subsystem cannot execute (i.e. not in moneyEngineCurrencies), we refuse to serve rather than
+// silently proceeding or falling back to CAD. The neutral fixture (currency null) is exempt — it has
+// no country currency to assert. This does NOT widen what any money path accepts; it only makes the
+// profile currency authoritative and fail-closed at the composition boundary.
+function countryCurrencyIsExecutable(profile: CountryProfile): boolean {
+  if (profile.currency === null) return true;
+  return (moneyEngineCurrencies as readonly string[]).includes(profile.currency);
+}
+
 const selected = resolveSelectedCountry();
-if (selected.ok) {
+if (!selected.ok) {
+  startFailClosedLiveness(selected.reason);
+} else if (!countryCurrencyIsExecutable(selected.profile)) {
+  startFailClosedLiveness(`country_currency_unsupported:${selected.profile.currency}`);
+} else {
   logger.info("api.country.selected", {
     country: selected.profile.country,
-    timezone: selected.profile.timezone
+    timezone: selected.profile.timezone,
+    currency: selected.profile.currency
   });
   await startApi(selected.profile);
-} else {
-  startFailClosedLiveness(selected.reason);
 }

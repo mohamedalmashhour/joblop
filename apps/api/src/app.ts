@@ -292,6 +292,13 @@ export interface BuildApiOptions {
   // restriction through this port. Absent → address operations fail closed. Composition roots inject
   // the selected country's adapter; the affected PostgreSQL suites inject countries/canada's adapter.
   countryAddress?: CountryAddressPort | undefined;
+  // Phase 2b.3a: the SELECTED country's ISO 4217 currency, threaded from the existing
+  // CountryProfile.currency (never an implicit Canada default; no `?? "CAD"`). This makes the country
+  // profile authoritative for currency at the composition boundary. It is NOT yet consumed by any
+  // money-computation or persistence path (those remain hard-coded CAD and are out of scope for this
+  // stage); the composition root is responsible for fail-closing on a currency the money subsystem
+  // cannot execute (see server.ts). Absent → no country currency asserted (local/test neutral fixture).
+  countryCurrency?: string | undefined;
 }
 
 export type AuthenticationRateLimitDecision = Readonly<{
