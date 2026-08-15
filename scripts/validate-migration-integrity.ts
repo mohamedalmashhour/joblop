@@ -22,7 +22,13 @@ const reviewedDestructiveMigrations = new Set<string>([
   // ALTER COLUMN "family_root_id" DROP DEFAULT on payroll_calculations (HR-5.1 corrections). Same
   // backfill-then-drop-default pattern; the zero-UUID default is removed after each calculation's
   // family root is set. No data loss, no column/table drop, no row deletion.
-  "20260811150000_payroll_corrections"
+  "20260811150000_payroll_corrections",
+  // Stage 2b.3c-B: ALTER COLUMN "currency" DROP DEFAULT on employer_contracts,
+  // employer_cancellation_obligations, and payroll_worked_time_references. Removes the redundant
+  // legacy DEFAULT 'CAD' now that the governed runtime always supplies an explicit currency
+  // (active-country-currency policy). Columns stay NOT NULL; no replacement default; no column/table
+  // drop, no row deletion, no existing data altered — only the future-insert default is removed.
+  "20260812000000_drop_legacy_cad_defaults"
 ]);
 
 void main();

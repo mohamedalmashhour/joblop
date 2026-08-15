@@ -601,7 +601,7 @@ model EmployerContract {
   organizationId  String                 @map("organization_id") @db.Uuid
   version         String
   status          EmployerContractStatus @default(draft)
-  currency        String                 @default("CAD")
+  currency        String
   signedByUserId  String?                @map("signed_by_user_id") @db.Uuid
   signedAt        DateTime?              @map("signed_at") @db.Timestamptz(3)
   activatedAt     DateTime?              @map("activated_at") @db.Timestamptz(3)
@@ -694,7 +694,7 @@ model EmployerCancellationObligation {
   cause                EmployerCancellationCause
   confirmedWorkerCount Int                                  @map("confirmed_worker_count")
   governedRateMinor    Int                                  @map("governed_rate_minor")
-  currency             String                               @default("CAD")
+  currency             String
   minimumShiftHours    Int                                  @map("minimum_shift_hours")
   cutoffHours          Int                                  @map("cutoff_hours")
   contractId           String?                              @map("contract_id") @db.Uuid
