@@ -2604,6 +2604,13 @@ export function buildApi(options: BuildApiOptions = {}) {
     if (!countryAddress) {
       return reply.code(400).send({ error: "RWOS_COUNTRY_ADDRESS_UNAVAILABLE", message: "Address resolution is not configured for the selected country." });
     }
+    // Stage 2b.3b-1: the (display-only, decorative) result currency is driven by the selected country's
+    // currency, never a hard-coded "CAD". Absent → fail closed, never silently substitute CAD. Byte-
+    // identical for Canada (countryCurrency === "CAD"). workerRateMinor stays null (policy-gated).
+    const countryCurrency = options.countryCurrency;
+    if (!countryCurrency) {
+      return reply.code(400).send({ error: "RWOS_COUNTRY_CURRENCY_UNAVAILABLE", message: "Currency is not configured for the selected country." });
+    }
     const normalizedPostal = postalCode ? countryAddress.normalizePostalCode(postalCode) : null;
     if (!normalizedPostal) {
       return reply.code(400).send({ error: "RWOS_INVALID_POSTAL", message: "A valid Canadian postal code is required." });
@@ -2686,7 +2693,7 @@ export function buildApi(options: BuildApiOptions = {}) {
         endAt: r.endAt.toISOString(),
         openings: r.numberOfWorkers,
         workerRateMinor: null, // worker-facing rate disclosure is policy-gated (later)
-        currency: "CAD"
+        currency: countryCurrency // display-only; driven by the selected country (CAD for Canada)
       });
     }
     // Distance ranking is authoritative + always computed first (radius applied here).
@@ -3711,6 +3718,7 @@ export function buildApi(options: BuildApiOptions = {}) {
     }
     const postalCode = readOptionalString(asRecord(request.query), "postalCode");
     const countryAddress = options.countryAddress;
+    const countryCurrency = options.countryCurrency; // Stage 2b.3b-1: display-only result currency
     const normalizedPostal = postalCode && countryAddress ? countryAddress.normalizePostalCode(postalCode) : null;
 
     const row = await prisma!.jobRequest.findFirst({
@@ -3747,6 +3755,13 @@ export function buildApi(options: BuildApiOptions = {}) {
       if (geo.status === "ok") origin = { latitude: geo.location.latitude, longitude: geo.location.longitude };
     }
 
+    // Fail closed on an unavailable country currency — never silently substitute CAD. Byte-identical
+    // for Canada (countryCurrency === "CAD"). Placed before candidate construction so the decorative
+    // display currency is the selected country's, and before the address guard's own 400 below.
+    if (!countryCurrency) {
+      return reply.code(400).send({ error: "RWOS_COUNTRY_CURRENCY_UNAVAILABLE", message: "Currency is not configured for the selected country." });
+    }
+
     const candidate: MarketplaceJobDetailCandidate = {
       jobRequestId: row.id,
       role: row.roleDefinition.displayLabel,
@@ -3762,7 +3777,7 @@ export function buildApi(options: BuildApiOptions = {}) {
       endAt: row.endAt.toISOString(),
       openings: row.numberOfWorkers,
       workerRateMinor: null, // policy-gated
-      currency: "CAD",
+      currency: countryCurrency, // display-only; driven by the selected country (CAD for Canada)
       description: row.description,
       duties: row.calendarProfile?.dutiesSummary ?? null,
       qualifications: coerceQualifications(row.calendarProfile?.qualifications)

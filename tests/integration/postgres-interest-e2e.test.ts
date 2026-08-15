@@ -44,6 +44,7 @@ suite("marketplace interest → governed dispatch handoff (full E2E + DB proof)"
   beforeAll(async () => {
     app = buildApi({
       countryAddress: canadaAddressAdapter,
+      countryCurrency: "CAD",
       env: { ...process.env, DATABASE_URL: databaseUrl, RWOS_ENV: "local", NODE_ENV: "test" },
       resolveAuthorizationRoles: async (userId: string) => (userId === adminUserId ? ["PLATFORM_ADMINISTRATOR"] : [])
     });

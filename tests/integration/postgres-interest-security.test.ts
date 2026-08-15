@@ -33,7 +33,7 @@ suite("marketplace interest security + governance (endpoint level)", () => {
   }
 
   beforeAll(async () => {
-    app = buildApi({ countryAddress: canadaAddressAdapter, env: { ...process.env, DATABASE_URL: databaseUrl, RWOS_ENV: "local", NODE_ENV: "test" } });
+    app = buildApi({ countryAddress: canadaAddressAdapter, countryCurrency: "CAD", env: { ...process.env, DATABASE_URL: databaseUrl, RWOS_ENV: "local", NODE_ENV: "test" } });
     await app.ready();
     const a = await register(`int-a-${randomUUID()}@e2e.local`);
     const b = await register(`int-b-${randomUUID()}@e2e.local`);

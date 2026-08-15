@@ -36,6 +36,7 @@ suite("verification security (endpoint level)", () => {
   beforeAll(async () => {
     app = buildApi({
       countryAddress: canadaAddressAdapter,
+      countryCurrency: "CAD",
       env: { ...process.env, DATABASE_URL: databaseUrl, RWOS_ENV: "local", NODE_ENV: "test", VERIFICATION_CALLBACK_SECRET: CALLBACK_SECRET },
       resolveAuthorizationRoles: async (userId: string) => (userId === adminUserId ? ["PLATFORM_ADMINISTRATOR"] : [])
     });

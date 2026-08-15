@@ -39,7 +39,7 @@ suite("marketplace security + privacy (endpoint level)", () => {
   }
 
   beforeAll(async () => {
-    app = buildApi({ countryAddress: canadaAddressAdapter, env: { ...process.env, DATABASE_URL: databaseUrl, RWOS_ENV: "local", NODE_ENV: "test" } });
+    app = buildApi({ countryAddress: canadaAddressAdapter, countryCurrency: "CAD", env: { ...process.env, DATABASE_URL: databaseUrl, RWOS_ENV: "local", NODE_ENV: "test" } });
     await app.ready();
 
     const a = await register(`sec-a-${randomUUID()}@e2e.local`);
@@ -100,6 +100,7 @@ suite("marketplace security + privacy (endpoint level)", () => {
     const job = res.json().jobs.find((j: { jobRequestId: string }) => j.jobRequestId === visibleJobId);
     expect(job.mapPoint.approximate).toBe(true);
     expect(job.verifiedEmployer).toBe(false); // never inferred
+    expect(job.currency).toBe("CAD"); // Stage 2b.3b-1: display currency driven by countryCurrency, byte-identical for Canada
   });
 
   it("detail never leaks exact coordinates / address and reports verified=false", async () => {
@@ -110,6 +111,7 @@ suite("marketplace security + privacy (endpoint level)", () => {
     expect(raw).not.toContain(String(exactLng));
     expect(raw).not.toContain(streetAddress);
     expect(res.json().job.employer.verified).toBe(false);
+    expect(res.json().job.currency).toBe("CAD"); // Stage 2b.3b-1: display currency driven by countryCurrency, byte-identical for Canada
   });
 
   it("hidden (draft) job detail returns 404 — cannot be probed by id", async () => {

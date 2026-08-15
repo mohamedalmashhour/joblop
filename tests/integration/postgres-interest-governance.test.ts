@@ -34,6 +34,7 @@ suite("marketplace interest governance + concurrency", () => {
     // Inject a role resolver that grants PLATFORM_ADMINISTRATOR only to the admin user.
     app = buildApi({
       countryAddress: canadaAddressAdapter,
+      countryCurrency: "CAD",
       env: { ...process.env, DATABASE_URL: databaseUrl, RWOS_ENV: "local", NODE_ENV: "test" },
       resolveAuthorizationRoles: async (userId: string) => (userId === adminUserId ? ["PLATFORM_ADMINISTRATOR"] : [])
     });
