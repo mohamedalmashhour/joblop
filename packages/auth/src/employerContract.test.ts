@@ -211,6 +211,29 @@ describe("employer contract service", () => {
     ).rejects.toMatchObject({ code: "conflict" });
   });
 
+  // CHARACTERIZATION (Stage 2b.3b-A): documents the EXISTING `input.currency === "USD" ? "USD" : "CAD"`
+  // coercion at employerContract.ts:204 before any later refactor. This is a contract/persistence input
+  // (persisted to EmployerContract.currency, read back by the payroll rate resolver). NOTE: an invalid
+  // currency is SILENTLY coerced to "CAD" today — captured here, not fixed in this stage.
+  it("[characterization] coerces contract currency: USD preserved, missing → CAD, invalid → CAD (silent)", async () => {
+    const { repository, contracts } = fakeRepository();
+    const service = makeService(repository, { platform: PLATFORM });
+    const base = { actorUserId: "platform-1", organizationId: "org-1", roleRates: rates };
+
+    const usd = await service.signContract({ ...base, version: "v-usd", currency: "USD" });
+    expect(usd.currency).toBe("USD");
+    expect(usd.roleRates[0]).toMatchObject({ currency: "USD" });
+
+    const missing = await service.signContract({ ...base, version: "v-missing" });
+    expect(missing.currency).toBe("CAD"); // no currency supplied → CAD default
+
+    const invalid = await service.signContract({ ...base, version: "v-invalid", currency: "SYP" });
+    expect(invalid.currency).toBe("CAD"); // SILENT coercion of an unsupported currency to CAD (current behavior)
+
+    // All three persisted their coerced currency verbatim into the contract store.
+    expect(contracts.map((c) => c.currency)).toEqual(["USD", "CAD", "CAD"]);
+  });
+
   it("cannot acknowledge when no active contract exists, and denies a non-owner", async () => {
     const { repository } = fakeRepository();
     const owner = makeService(repository);

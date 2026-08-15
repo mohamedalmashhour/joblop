@@ -166,6 +166,25 @@ describe("employer cancellation — preview (authoritative consequence)", () => 
     expect(p.requiresPlatformHandoff).toBe(false);
   });
 
+  // CHARACTERIZATION (Stage 2b.3b-A): the `rate?.currency ?? "CAD"` at employerCancellation.ts:303.
+  // Obligation AMOUNT is pure integer math (governedRateMinor only); currency only LABELS it and,
+  // on confirm, is persisted to EmployerCancellationObligation.currency (no DB CHECK). Documents that
+  // a USD governed rate persists its currency and that the CAD fallback only labels a non-applying one.
+  it("[characterization] obligation currency follows the governed rate (USD persists), CAD fallback only when no rate", async () => {
+    const usd: GovernedRate = { rateMinor: 3000, currency: "USD", contractId: "c1", contractVersion: "2026-Q3" };
+    const { svc } = service({ confirmed: 2, rate: usd, now: () => nowAtHoursBefore(1) });
+    const { cancellation, preview } = await svc.confirmCancellation({
+      actorUserId: "u1", organizationId: ORG, jobRequestId: REQ, idempotencyKey: "k-usd"
+    });
+    expect(preview.currency).toBe("USD");
+    expect(cancellation.obligation).toMatchObject({ amountMinor: 36000, currency: "USD", status: "RECORDED" }); // amount unchanged; persisted label = USD
+
+    const { svc: svcNull } = service({ confirmed: 2, rate: null, now: () => nowAtHoursBefore(1) });
+    const pNull = await svcNull.previewCancellation({ actorUserId: "u1", organizationId: ORG, jobRequestId: REQ });
+    expect(pNull.obligationApplies).toBe(false); // no governed rate → obligation cannot apply
+    expect(pNull.currency).toBe("CAD"); // the CAD fallback labels a non-applying obligation only
+  });
+
   it("denies a non-owner and a cross-org request", async () => {
     const staff = service({ confirmed: 1, membershipReader: membership(["ORGANIZATION_STAFF"]) });
     await expect(

@@ -70,6 +70,7 @@ function service(opts: {
   now?: () => Date;
   cancelResult?: SelectedAssignmentCancelResult;
   setterOk?: boolean;
+  rate?: ReduceGovernedRate | null; // characterization override; defaults to the CAD RATE fixture
 }) {
   const { store, rows } = makeStore();
   const cancelCalls: string[][] = [];
@@ -83,7 +84,7 @@ function service(opts: {
       }
     },
     confirmedAssignmentLister: { async listConfirmedAssignments() { return opts.confirmed; } },
-    contractRateReader: { async getGovernedRate() { return RATE; } },
+    contractRateReader: { async getGovernedRate() { return opts.rate === undefined ? RATE : opts.rate; } },
     store,
     assignmentCancelPort: {
       async cancelSelectedAssignments({ assignmentIds }) {
@@ -121,6 +122,22 @@ describe("employer reduce — preview", () => {
     const p = await svc.reducePreview({ actorUserId: "u1", organizationId: ORG, jobRequestId: REQ, newTarget: 2 });
     expect(p.affectedConfirmed).toBe(1);
     expect(p.obligationApplies).toBe(false);
+  });
+
+  // CHARACTERIZATION (Stage 2b.3b-A): the `rate?.currency ?? "CAD"` at employerReduce.ts:235.
+  // The obligation AMOUNT never consumes currency (pure integer minor-unit math); currency only
+  // LABELS the preview. Documents that a governed USD rate propagates its currency, and that the
+  // "CAD" fallback only ever labels a preview whose obligation does NOT apply (rate null).
+  it("[characterization] preview currency follows the governed rate (USD), falls back to CAD only when no rate", async () => {
+    const usd: ReduceGovernedRate = { rateMinor: 3000, currency: "USD", contractId: "c1", contractVersion: "2026-Q3" };
+    const { svc: svcUsd } = service({ requested: 5, confirmed: [assignment("a"), assignment("b"), assignment("c")], rate: usd });
+    const pUsd = await svcUsd.reducePreview({ actorUserId: "u1", organizationId: ORG, jobRequestId: REQ, newTarget: 2 });
+    expect(pUsd).toMatchObject({ obligationApplies: true, obligationAmountMinor: 18000, currency: "USD" }); // amount unchanged, label = USD
+
+    const { svc: svcNull } = service({ requested: 5, confirmed: [assignment("a"), assignment("b"), assignment("c")], rate: null });
+    const pNull = await svcNull.reducePreview({ actorUserId: "u1", organizationId: ORG, jobRequestId: REQ, newTarget: 2 });
+    expect(pNull.obligationApplies).toBe(false); // no governed rate → obligation cannot apply
+    expect(pNull.currency).toBe("CAD"); // the CAD fallback labels a non-applying obligation only
   });
 });
 
