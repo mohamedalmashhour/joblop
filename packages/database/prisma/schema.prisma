@@ -2802,3 +2802,30 @@ model SyntheticDeliveryAttempt {
   @@unique([idempotencyId, attemptNumber], map: "synthetic_delivery_attempts_record_number_key")
   @@map("synthetic_delivery_attempts")
 }
+
+// Stage 2b.4-C3-F4 (G-a): durable cross-instance lease for the aged-processing reconciliation sweeper.
+// A single logical lease row per lock name is claimed atomically (INSERT ... ON CONFLICT). The
+// fencingToken increments on every acquisition so a stalled prior owner can never release or write
+// after ownership changed. This lease is DEFENSE-IN-DEPTH only: per-payment correctness remains the
+// existing optimistic version/state guard inside reconcile(); the lease never moves money.
+model PaymentSweepLease {
+  name         String    @id
+  owner        String?
+  fencingToken BigInt    @default(0) @map("fencing_token")
+  acquiredAt   DateTime? @map("acquired_at") @db.Timestamptz(3)
+  expiresAt    DateTime? @map("expires_at") @db.Timestamptz(3)
+  updatedAt    DateTime  @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  @@map("payment_sweep_lease")
+}
+
+// Stage 2b.4-C3-F4 (G-a): durable, fail-closed kill switch for the sweeper. Default OFF (enabled =
+// false); a MISSING row is also treated as OFF. Changeable without an application deployment (operator
+// updates this row). Checked before candidate selection / reconciliation.
+model PaymentSweepControl {
+  name      String   @id
+  enabled   Boolean  @default(false)
+  updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  @@map("payment_sweep_control")
+}

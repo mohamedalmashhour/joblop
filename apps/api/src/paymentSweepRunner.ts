@@ -16,7 +16,7 @@ export const DEFAULT_SWEEP_MAX_BATCH_SIZE = 25; // small explicit cap
 const MIN_ALLOWED_MIN_AGE_MS = 10 * 60_000; // policy floor: never sweep attempts younger than 10 minutes
 const MAX_ALLOWED_BATCH_SIZE = 100; // never sweep an unbounded batch
 
-export type ScheduledSweepStatus = "completed" | "skipped_locked" | "failed";
+export type ScheduledSweepStatus = "completed" | "skipped_locked" | "failed" | "disabled";
 
 // SAFE aggregate metrics only — no ids, errors, keys, or payment detail.
 export type ScheduledSweepMetrics = Readonly<{
@@ -28,10 +28,17 @@ export type ScheduledSweepMetrics = Readonly<{
   durationMs: number;
 }>;
 
-// Non-overlap control. The default is an in-process guard; a distributed lock can be injected later.
+// Non-overlap control. The default is an in-process guard; a durable cross-instance lease can be
+// injected via createLeaseBackedLock (Stage 2b.4-C3-F4). tryAcquire/release may be sync or async.
 export interface SweepRunLock {
-  tryAcquire(): boolean;
-  release(): void;
+  tryAcquire(): boolean | Promise<boolean>;
+  release(): void | Promise<void>;
+}
+
+// Fail-closed kill switch. isEnabled() must default OFF (missing/unknown → false). Checked BEFORE
+// any candidate selection or reconciliation. Injected via createPostgresSweepKillSwitch (F4).
+export interface SweepKillSwitchPort {
+  isEnabled(): boolean | Promise<boolean>;
 }
 
 export interface ScheduledSweepRunner {
@@ -43,6 +50,7 @@ export function createScheduledSweepRunner(deps: {
   minAgeMs?: number;
   maxBatchSize?: number;
   lock?: SweepRunLock;
+  killSwitch?: SweepKillSwitchPort;
   now?: () => Date;
   emitMetrics?: (metrics: ScheduledSweepMetrics) => void;
 }): ScheduledSweepRunner {
@@ -67,8 +75,13 @@ export function createScheduledSweepRunner(deps: {
   return {
     async runOnce() {
       const startedAt = now().getTime();
+      // Kill switch FIRST — fail closed. Checked BEFORE any lease acquisition, candidate selection, or
+      // reconciliation. If disabled (or the flag cannot be read), nothing is selected and nothing runs.
+      if (deps.killSwitch && !(await deps.killSwitch.isEnabled())) {
+        return { status: "disabled", selected: 0, resolved: 0, stillProcessing: 0, errored: 0, durationMs: 0 };
+      }
       // Non-overlap: a concurrent invocation is skipped (not queued, not retried).
-      if (!lock.tryAcquire()) {
+      if (!(await lock.tryAcquire())) {
         return { status: "skipped_locked", selected: 0, resolved: 0, stillProcessing: 0, errored: 0, durationMs: 0 };
       }
       try {
@@ -94,7 +107,7 @@ export function createScheduledSweepRunner(deps: {
         deps.emitMetrics?.(metrics);
         return metrics;
       } finally {
-        lock.release(); // always release — a failure never leaves a permanent lock
+        await lock.release(); // always release — a failure never leaves a permanent lock
       }
     }
   };
