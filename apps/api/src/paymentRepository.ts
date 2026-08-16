@@ -68,6 +68,9 @@ export interface PaymentRepository {
     idempotencyKey: string;
     scenario: FakePaymentScenario;
   }): Promise<PaymentRecord>;
+  // Stage 2b.4-C3-E: non-money-moving recovery. Queries the provider for the in-flight operation's true
+  // status and applies a VERIFIED result to the attempt. Never authorize/capture/refund/void/charge.
+  reconcile(input: { paymentId: string; organizationId: string }): Promise<PaymentRecord>;
 }
 
 // Stage 2b.4-C2: a provider call that does not settle within this bound is treated as INDETERMINATE
@@ -450,8 +453,108 @@ export function createPrismaPaymentRepository(
         if (!value) throw new Error("Payment persistence failed.");
         return mapPayment(value);
       });
+    },
+    // Stage 2b.4-C3-E: apply a VERIFIED provider status to an indeterminate (`processing`) attempt.
+    // Query-only: it calls provider.reconcile() and NEVER execute/authorize/capture/refund/void/charge.
+    async reconcile(input) {
+      const current = await get(input.paymentId, input.organizationId);
+      if (!current) throw new Error("Payment is outside the authorized organization."); // wrong tenant/payment → fail closed
+      if (current.state !== "processing") return current; // already-terminal (or never in-flight) → no-op
+      if (!provider.reconcile) throw new Error("Payment provider does not support reconciliation."); // fail closed, no writes
+
+      // Reconstruct the exact in-flight operation from the latest committed provider_call_started event.
+      const startEvent = await prisma.employerPaymentEvent.findFirst({
+        where: { paymentAttemptId: current.id, organizationId: current.organizationId, eventType: "provider_call_started" },
+        orderBy: { occurredAt: "desc" }
+      });
+      if (!startEvent) throw new Error("No in-flight provider call to reconcile.");
+      const startEventId = text(startEvent, "id");
+      const operation = paymentReconcileOperation(text(startEvent, "operation"));
+      const operationAmountMinor = safeBigInt(startEvent, "operationAmountMinor");
+
+      // Re-derive the provider-operation key from persisted data only, and QUERY the provider.
+      const providerOperationKey = deriveProviderOperationKey({
+        startEventId, organizationId: current.organizationId, paymentAttemptId: current.id, operation
+      });
+      const reconciled = await provider.reconcile({
+        providerOperationKey,
+        paymentId: current.id,
+        organizationId: current.organizationId,
+        operation,
+        amountMinor: operationAmountMinor,
+        providerOperationReference: current.authorizationReference
+      });
+
+      // Indeterminate → remain `processing`, no writes, no terminalization.
+      if (reconciled.outcome === "authentication_required" || reconciled.outcome === "unknown") {
+        return current;
+      }
+      // "not_found" is, by the provider contract, PROVEN non-execution → treat as declined → failed.
+      const outcome: "accepted" | "declined" = reconciled.outcome === "not_found" ? "declined" : reconciled.outcome;
+      const next = nextState(current, operation, operationAmountMinor, outcome);
+      const providerEventReference = `reconcile:${startEventId}`;
+
+      return prisma.$transaction(async (transaction) => {
+        // Idempotency: a prior reconcile with this deterministic reference → replay no-op.
+        const prior = await transaction.employerPaymentEvent.findFirst({
+          where: { organizationId: current.organizationId, providerEventReference }
+        });
+        if (prior) {
+          const existing = await transaction.employerPaymentAttempt.findFirst({ where: { id: current.id, organizationId: current.organizationId } });
+          if (!existing) throw new Error("Payment persistence failed.");
+          return mapPayment(existing);
+        }
+        // Version + state guard — a concurrent webhook/reconcile makes this a no-op (no double-apply).
+        const updated = await transaction.employerPaymentAttempt.updateMany({
+          where: { id: current.id, organizationId: current.organizationId, version: current.version, state: "processing" },
+          data: {
+            state: next.state,
+            version: { increment: 1 },
+            ...(operation === "authorize" && outcome === "accepted" ? { authorizationReference: reconciled.providerOperationReference } : {}),
+            ...(operation === "capture" && outcome === "accepted" ? { allocatedMinor: { increment: BigInt(operationAmountMinor) } } : {}),
+            ...(operation === "refund" && outcome === "accepted" ? { refundedMinor: { increment: BigInt(operationAmountMinor) } } : {})
+          }
+        });
+        if (updated.count !== 1) {
+          const existing = await transaction.employerPaymentAttempt.findFirst({ where: { id: current.id, organizationId: current.organizationId } });
+          if (!existing) throw new Error("Payment persistence failed.");
+          return mapPayment(existing); // lost the race → the winner's state stands
+        }
+        await transaction.employerPaymentEvent.create({
+          data: {
+            ...eventData(current.id, current.organizationId, "provider_reconciled", "processing", next.state, "system"),
+            providerEventReference,
+            providerOperationReference: reconciled.providerOperationReference,
+            safeReasonCode: reconciled.reason
+          }
+        });
+        // Money-record writes happen in the SAME transaction as the state transition, exactly once.
+        if (operation === "capture" && outcome === "accepted") {
+          await transaction.employerPaymentAllocation.create({
+            data: { paymentAttemptId: current.id, organizationId: current.organizationId, invoiceId: current.invoiceId, amountMinor: BigInt(operationAmountMinor), currency: "CAD" }
+          });
+        }
+        if (operation === "refund" && outcome === "accepted") {
+          await transaction.employerPaymentRefund.create({
+            data: {
+              paymentAttemptId: current.id, organizationId: current.organizationId, amountMinor: BigInt(operationAmountMinor), currency: "CAD",
+              providerOperationReference: reconciled.providerOperationReference ?? "", idempotencyKeyDigest: digest(providerEventReference)
+            }
+          });
+        }
+        const value = await transaction.employerPaymentAttempt.findFirst({ where: { id: current.id, organizationId: current.organizationId } });
+        if (!value) throw new Error("Payment persistence failed.");
+        return mapPayment(value);
+      });
     }
   };
+}
+
+function paymentReconcileOperation(value: string): Exclude<PaymentOperation, "setup"> {
+  if (!["authorize", "capture", "void", "refund"].includes(value)) {
+    throw new Error("Invalid persisted payment operation.");
+  }
+  return value as Exclude<PaymentOperation, "setup">;
 }
 
 // Stage 2b.4-C2 — bounded execution + failure classification.

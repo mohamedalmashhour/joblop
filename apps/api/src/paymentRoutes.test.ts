@@ -38,7 +38,8 @@ function repository(): PaymentRepository {
       allocatedMinor: payment.amountMinor,
       version: 3
     }),
-    execute: vi.fn().mockResolvedValue(payment)
+    execute: vi.fn().mockResolvedValue(payment),
+    reconcile: vi.fn().mockResolvedValue(payment)
   };
 }
 

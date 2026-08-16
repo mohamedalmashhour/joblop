@@ -1,4 +1,4 @@
-import { createLocalFakePaymentProvider, PaymentProviderPreflightError, type PaymentProviderPort, type ProviderPaymentResult } from "@rwos/shared";
+import { createLocalFakePaymentProvider, PaymentProviderPreflightError, type PaymentProviderPort, type ProviderPaymentResult, type ProviderReconcileResult } from "@rwos/shared";
 import { createHash } from "node:crypto";
 import { describe, expect, it, vi } from "vitest";
 import { createPrismaPaymentRepository } from "./paymentRepository";
@@ -87,6 +87,7 @@ function setup(provider: PaymentProviderPort = createLocalFakePaymentProvider(),
     employerPaymentAttempt,
     employerPaymentEvent,
     employerPaymentAllocation,
+    employerPaymentRefund,
     invoice
   };
 }
@@ -355,5 +356,135 @@ describe("payment execute() ↔ reconcile provider-operation key (Stage 2b.4-C3-
     // A different operation (different start-event id) → not found → distinct key.
     const otherKey = deriveProviderOperationKey({ startEventId: "other-event", organizationId: orgOp, paymentAttemptId: payId, operation: "authorize" });
     expect((await lf.reconcile!(query(otherKey))).outcome).toBe("not_found");
+  });
+});
+
+// Stage 2b.4-C3-E — application-level reconcile FINALIZE. Reconcile queries the provider (never
+// execute/charge) and applies a VERIFIED result to an indeterminate (`processing`) attempt via the
+// nextState-driven finalize, with a deterministic reconcile event reference + version/state guard.
+describe("payment reconcile() application finalize (Stage 2b.4-C3-E)", () => {
+  const startEvent = (operation: string, amt: bigint) => ({ id: `E-${operation}`, operation, operationAmountMinor: amt });
+  const rec = (over: Partial<ProviderReconcileResult>): ProviderReconcileResult =>
+    ({ provider: "local_fake", outcome: "accepted", providerOperationReference: "op-ref", reason: "none", ...over });
+
+  function harness(o: {
+    attempt: Record<string, unknown>;
+    startEvent?: Record<string, unknown>;
+    finalAttempt?: Record<string, unknown>;
+    reconcileResult?: ProviderReconcileResult;
+    priorEvent?: Record<string, unknown> | null;
+    updateCount?: number;
+    hasReconcile?: boolean;
+  }) {
+    const executeSpy = vi.fn(async () => { throw new Error("execute must NOT be called during reconcile"); });
+    const reconcileSpy = vi.fn(async () => o.reconcileResult as ProviderReconcileResult);
+    const provider = (o.hasReconcile === false
+      ? { id: "local_fake", execute: executeSpy }
+      : { id: "local_fake", execute: executeSpy, reconcile: reconcileSpy }) as unknown as PaymentProviderPort;
+    const target = setup(provider);
+    target.employerPaymentAttempt.findFirst.mockReset();
+    target.employerPaymentAttempt.findFirst
+      .mockResolvedValueOnce(o.attempt)                 // get()
+      .mockResolvedValue(o.finalAttempt ?? o.attempt);  // final / race / prior reads
+    target.employerPaymentAttempt.updateMany.mockResolvedValue({ count: o.updateCount ?? 1 });
+    target.employerPaymentEvent.findFirst.mockImplementation(async (args: unknown) => {
+      const where = (args as { where: { eventType?: string; providerEventReference?: string } }).where;
+      if (where?.eventType === "provider_call_started") return o.startEvent ?? null;
+      if (where?.providerEventReference) return o.priorEvent ?? null;
+      return null;
+    });
+    return { target, executeSpy, reconcileSpy };
+  }
+  const processing = (over: Record<string, unknown> = {}) => ({ ...row, state: "processing", version: 2, ...over });
+
+  it("[1] indeterminate authorize → reconcile accepted → authorized", async () => {
+    const h = harness({ attempt: processing(), startEvent: startEvent("authorize", 10_500n), reconcileResult: rec({}), finalAttempt: processing({ state: "authorized", version: 3 }) });
+    expect((await h.target.repository.reconcile({ paymentId: row.id, organizationId })).state).toBe("authorized");
+    expect(h.target.employerPaymentAllocation.create).not.toHaveBeenCalled();
+  });
+
+  it("[2] indeterminate capture → reconcile accepted → succeeded + exactly one allocation", async () => {
+    const h = harness({ attempt: processing({ state: "processing", allocatedMinor: 0n }), startEvent: startEvent("capture", 10_500n), reconcileResult: rec({}), finalAttempt: processing({ state: "succeeded", version: 3, allocatedMinor: 10_500n }) });
+    const result = await h.target.repository.reconcile({ paymentId: row.id, organizationId });
+    expect(result.state).toBe("succeeded");
+    expect(h.target.employerPaymentAllocation.create).toHaveBeenCalledTimes(1);
+    expect(h.target.employerPaymentAllocation.create).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({ amountMinor: 10_500n, currency: "CAD" }) }));
+  });
+
+  it("[3] indeterminate PARTIAL refund → reconcile accepted → partially_refunded + exactly one refund row of the partial amount", async () => {
+    const h = harness({ attempt: processing({ allocatedMinor: 10_500n, refundedMinor: 0n }), startEvent: startEvent("refund", 4_000n), reconcileResult: rec({}), finalAttempt: processing({ state: "partially_refunded", version: 3, allocatedMinor: 10_500n, refundedMinor: 4_000n }) });
+    const result = await h.target.repository.reconcile({ paymentId: row.id, organizationId });
+    expect(result.state).toBe("partially_refunded");
+    expect(h.target.employerPaymentRefund.create).toHaveBeenCalledTimes(1);
+    expect(h.target.employerPaymentRefund.create).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({ amountMinor: 4_000n }) }));
+    expect(h.target.employerPaymentAllocation.create).not.toHaveBeenCalled();
+  });
+
+  it("[4] not_found → failed, zero allocation/refund", async () => {
+    const h = harness({ attempt: processing(), startEvent: startEvent("capture", 10_500n), reconcileResult: rec({ outcome: "not_found", providerOperationReference: null }), finalAttempt: processing({ state: "failed", version: 3 }) });
+    expect((await h.target.repository.reconcile({ paymentId: row.id, organizationId })).state).toBe("failed");
+    expect(h.target.employerPaymentAllocation.create).not.toHaveBeenCalled();
+    expect(h.target.employerPaymentRefund.create).not.toHaveBeenCalled();
+  });
+
+  it("[5] unknown → stays processing, zero money-record writes (no terminalization)", async () => {
+    const h = harness({ attempt: processing(), startEvent: startEvent("authorize", 10_500n), reconcileResult: rec({ outcome: "unknown", providerOperationReference: null }) });
+    expect((await h.target.repository.reconcile({ paymentId: row.id, organizationId })).state).toBe("processing");
+    expect(h.target.employerPaymentAttempt.updateMany).not.toHaveBeenCalled();
+    expect(h.target.employerPaymentEvent.create).not.toHaveBeenCalled();
+    expect(h.target.employerPaymentAllocation.create).not.toHaveBeenCalled();
+    expect(h.target.employerPaymentRefund.create).not.toHaveBeenCalled();
+  });
+
+  it("[6] repeated reconcile (already-terminal on the 2nd call) → no duplicate state/event/allocation/refund", async () => {
+    const h = harness({ attempt: processing({ state: "succeeded", version: 3 }), startEvent: startEvent("capture", 10_500n), reconcileResult: rec({}) });
+    // The attempt is already terminal (a prior reconcile/webhook resolved it) → no-op.
+    const result = await h.target.repository.reconcile({ paymentId: row.id, organizationId });
+    expect(result.state).toBe("succeeded");
+    expect(h.target.employerPaymentAttempt.updateMany).not.toHaveBeenCalled();
+    expect(h.target.employerPaymentEvent.create).not.toHaveBeenCalled();
+    expect(h.target.employerPaymentAllocation.create).not.toHaveBeenCalled();
+  });
+
+  it("[7] webhook wins the race → reconcile is a no-op/conflict (updateMany count 0)", async () => {
+    const h = harness({ attempt: processing(), startEvent: startEvent("capture", 10_500n), reconcileResult: rec({}), updateCount: 0, finalAttempt: processing({ state: "succeeded", version: 3, allocatedMinor: 10_500n }) });
+    const result = await h.target.repository.reconcile({ paymentId: row.id, organizationId });
+    expect(result.state).toBe("succeeded"); // the webhook's state stands
+    expect(h.target.employerPaymentAllocation.create).not.toHaveBeenCalled(); // reconcile did not double-apply
+  });
+
+  it("[8] reconcile wins the race; a later webhook cannot double-apply (version guard on processProviderEvent)", async () => {
+    // reconcile finalizes to succeeded @v3.
+    const h = harness({ attempt: processing(), startEvent: startEvent("capture", 10_500n), reconcileResult: rec({}), finalAttempt: processing({ state: "succeeded", version: 3, allocatedMinor: 10_500n }) });
+    await h.target.repository.reconcile({ paymentId: row.id, organizationId });
+    // A stale webhook (expectedVersion 2) now arrives: processProviderEvent's version guard rejects it.
+    h.target.employerPaymentAttempt.findFirst.mockReset();
+    h.target.employerPaymentAttempt.findFirst.mockResolvedValue({ ...row, state: "succeeded", version: 3 });
+    h.target.employerPaymentEvent.findFirst.mockResolvedValue(null);
+    await expect(h.target.repository.processProviderEvent({ eventId: "evt_late", paymentId: row.id, organizationId, expectedVersion: 2, amountMinor: 10_500, newState: "succeeded", payloadDigest: "a".repeat(64), occurredAt: new Date() })).rejects.toThrow(/version/);
+  });
+
+  it("[9] wrong tenant / wrong payment → fail closed, no writes", async () => {
+    const h = harness({ attempt: processing(), startEvent: startEvent("authorize", 10_500n), reconcileResult: rec({}) });
+    h.target.employerPaymentAttempt.findFirst.mockReset();
+    h.target.employerPaymentAttempt.findFirst.mockResolvedValue(null); // not found for this org
+    await expect(h.target.repository.reconcile({ paymentId: row.id, organizationId: "00000000-0000-4000-8000-00000000000b" })).rejects.toThrow();
+    expect(h.reconcileSpy).not.toHaveBeenCalled();
+    expect(h.target.employerPaymentAttempt.updateMany).not.toHaveBeenCalled();
+  });
+
+  it("[10] provider WITHOUT reconcile() → fail closed, no writes, provider.execute never called", async () => {
+    const h = harness({ attempt: processing(), startEvent: startEvent("authorize", 10_500n), hasReconcile: false });
+    await expect(h.target.repository.reconcile({ paymentId: row.id, organizationId })).rejects.toThrow(/does not support reconciliation/);
+    expect(h.executeSpy).not.toHaveBeenCalled();
+    expect(h.target.employerPaymentAttempt.updateMany).not.toHaveBeenCalled();
+    expect(h.target.employerPaymentEvent.create).not.toHaveBeenCalled();
+  });
+
+  it("[11] reconcile NEVER invokes provider execute (authorize/capture/refund/void)", async () => {
+    const h = harness({ attempt: processing(), startEvent: startEvent("capture", 10_500n), reconcileResult: rec({}), finalAttempt: processing({ state: "succeeded", version: 3, allocatedMinor: 10_500n }) });
+    await h.target.repository.reconcile({ paymentId: row.id, organizationId });
+    expect(h.executeSpy).not.toHaveBeenCalled(); // query-only: no money movement
+    expect(h.reconcileSpy).toHaveBeenCalledTimes(1);
   });
 });
