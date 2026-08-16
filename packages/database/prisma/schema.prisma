@@ -2482,6 +2482,14 @@ model EmployerPaymentEvent {
   actorType                  String                @map("actor_type")
   safeReasonCode             String?               @map("safe_reason_code")
   payloadDigest              String?               @map("payload_digest") @db.Char(64)
+  // Stage 2b.4-C1: audit/reconciliation fields for the `provider_call_started` event (nullable; other
+  // event types leave them null). operationAmountMinor is the REQUESTED in-flight amount (partial-refund
+  // safe); idempotencyKeyDigest is the DIGEST of the outbound key (raw key never persisted).
+  operation                  String?               @map("operation")
+  operationAmountMinor       BigInt?               @map("operation_amount_minor")
+  operationCurrency          String?               @map("operation_currency") @db.Char(3)
+  provider                   String?               @map("provider")
+  idempotencyKeyDigest       String?               @map("idempotency_key_digest") @db.Char(64)
   occurredAt                 DateTime              @map("occurred_at") @db.Timestamptz(3)
   createdAt                  DateTime              @default(now()) @map("created_at") @db.Timestamptz(3)
 

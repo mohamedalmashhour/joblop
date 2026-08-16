@@ -85,12 +85,15 @@ export type ProviderPaymentResult = Readonly<{
 }>;
 
 export interface PaymentProviderPort {
+  // Stable identity of the bound provider (audit only — recorded on the provider_call_started event).
+  readonly id: "local_fake" | "stripe_test";
   execute(request: ProviderPaymentRequest): Promise<ProviderPaymentResult>;
 }
 
 export function createLocalFakePaymentProvider(): PaymentProviderPort {
   const results = new Map<string, { digest: string; result: ProviderPaymentResult }>();
   return {
+    id: "local_fake",
     async execute(request) {
       assertProviderRequest(request);
       const scope = `${request.organizationId}:${request.idempotencyKey}`;

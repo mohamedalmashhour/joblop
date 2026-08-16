@@ -306,16 +306,32 @@ export function createPrismaPaymentRepository(
       if (!current) throw new Error("Payment is outside the authorized organization.");
       if (current.version !== input.expectedVersion) throw new Error("Payment version conflict.");
       assertOperationState(current, input.operation, input.amountMinor);
-      const claimed = await prisma.employerPaymentAttempt.updateMany({
-        where: {
-          id: current.id,
-          organizationId: current.organizationId,
-          version: current.version,
-          state: current.state
-        },
-        data: { state: "processing", version: { increment: 1 } }
+      // Stage 2b.4-C1: the transition to `processing` and its `provider_call_started` audit event
+      // commit ATOMICALLY — there is no longer a committed `processing` claim without its start event.
+      // The event records the exact in-flight operation for later deterministic reconciliation. The
+      // provider call happens only AFTER this transaction commits (below).
+      await prisma.$transaction(async (transaction) => {
+        const claimed = await transaction.employerPaymentAttempt.updateMany({
+          where: {
+            id: current.id,
+            organizationId: current.organizationId,
+            version: current.version,
+            state: current.state
+          },
+          data: { state: "processing", version: { increment: 1 } }
+        });
+        if (claimed.count !== 1) throw new Error("Payment concurrency conflict.");
+        await transaction.employerPaymentEvent.create({
+          data: {
+            ...eventData(current.id, current.organizationId, "provider_call_started", current.state, "processing", "system"),
+            operation: input.operation,
+            operationAmountMinor: BigInt(input.amountMinor), // REQUESTED in-flight amount (partial-refund safe)
+            operationCurrency: "CAD",
+            provider: provider.id,
+            idempotencyKeyDigest: digest(input.idempotencyKey) // digest only — raw key is never persisted
+          }
+        });
       });
-      if (claimed.count !== 1) throw new Error("Payment concurrency conflict.");
 
       const method = current.methodReferenceId
         ? await prisma.employerPaymentMethod.findFirst({

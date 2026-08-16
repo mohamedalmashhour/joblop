@@ -75,6 +75,7 @@ export function createStripeTestPaymentProvider(
   const now = options.now ?? (() => new Date());
 
   return {
+    id: "stripe_test" as const,
     async createCustomer(input) {
       const customer = await options.client.customers.create(
         {
