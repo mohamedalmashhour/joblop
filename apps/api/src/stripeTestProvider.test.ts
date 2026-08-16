@@ -123,12 +123,31 @@ describe("Stripe test-mode provider foundation", () => {
     await expect(adapter.verifyWebhook(raw, "synthetic-signature")).rejects.toThrow(/replay/);
   });
 
-  it("reconciles unknown outcomes from the provider source of truth", async () => {
+  it("reconciles (query-only) by PaymentIntent id from the provider source of truth", async () => {
     const { provider: adapter } = provider();
-    await expect(adapter.reconcile("pi_test")).resolves.toMatchObject({
-      provider: "stripe_test",
-      outcome: "accepted",
-      providerOperationReference: "pi_test"
-    });
+    await expect(
+      adapter.reconcile!({
+        providerOperationKey: "rwos_op_x",
+        paymentId: "00000000-0000-4000-8000-000000000040",
+        organizationId: "00000000-0000-4000-8000-00000000000a",
+        operation: "authorize",
+        amountMinor: 10_500,
+        providerOperationReference: "pi_test"
+      })
+    ).resolves.toMatchObject({ provider: "stripe_test", outcome: "accepted", providerOperationReference: "pi_test" });
+  });
+
+  it("reconcile with no PaymentIntent id → not_found (Stripe has no read-only lookup for an indeterminate op)", async () => {
+    const { provider: adapter } = provider();
+    await expect(
+      adapter.reconcile!({
+        providerOperationKey: "rwos_op_x",
+        paymentId: "00000000-0000-4000-8000-000000000040",
+        organizationId: "00000000-0000-4000-8000-00000000000a",
+        operation: "authorize",
+        amountMinor: 10_500,
+        providerOperationReference: null
+      })
+    ).resolves.toMatchObject({ provider: "stripe_test", outcome: "not_found" });
   });
 });

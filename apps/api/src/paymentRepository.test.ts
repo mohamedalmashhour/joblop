@@ -2,6 +2,7 @@ import { createLocalFakePaymentProvider, PaymentProviderPreflightError, type Pay
 import { createHash } from "node:crypto";
 import { describe, expect, it, vi } from "vitest";
 import { createPrismaPaymentRepository } from "./paymentRepository";
+import { deriveProviderOperationKey } from "./paymentProviderOperationKey";
 
 const organizationId = "00000000-0000-4000-8000-00000000000a";
 const row = {
@@ -48,7 +49,7 @@ function setup(provider: PaymentProviderPort = createLocalFakePaymentProvider(),
   const employerPaymentEvent = {
     findFirst: vi.fn(),
     findMany: vi.fn(),
-    create: vi.fn().mockResolvedValue({}),
+    create: vi.fn().mockResolvedValue({ id: "start-event-id" }), // C3-D: execute captures the start-event id
     updateMany: vi.fn()
   };
   const employerPaymentAllocation = {
@@ -318,5 +319,41 @@ describe("payment execute() bounded execution + failure classification (Stage 2b
     target.employerPaymentAttempt.findFirst.mockResolvedValueOnce(processingV2);
     await expect(target.repository.execute({ ...execInput, expectedVersion: 2 })).rejects.toThrow();
     expect(providerCalls).toHaveBeenCalledTimes(1);
+  });
+});
+
+// Stage 2b.4-C3-D — execute() and reconcile() derive the SAME provider-operation key; local_fake reconcile
+// is a read-only lookup (never authorize/capture/refund/charge). No application-level finalize here (C3-E).
+describe("payment execute() ↔ reconcile provider-operation key (Stage 2b.4-C3-D)", () => {
+  // Opaque, letter-bearing ids — the mock's all-digit UUIDs would trip the provider's card-number
+  // opaqueness heuristic (a 13–19 digit run). Real org/payment ids are UUIDs (with a–f), so this reflects
+  // production and lets the real local_fake accept the request.
+  const orgOp = "org-op-a1";
+  const payId = "pay-op-authorize-a1";
+  const rowP = { ...row, id: payId, organizationId: orgOp };
+  const pending = { ...rowP, state: "pending", version: 1 };
+  const authorizedV2 = { ...rowP, state: "authorized", version: 2, authorizationReference: "op-ref" };
+  const execInput = {
+    paymentId: payId, organizationId: orgOp, operation: "authorize" as const,
+    amountMinor: 10_500, expectedVersion: 1, idempotencyKey: "exec-key", scenario: "success" as const
+  };
+
+  it("execute() stores the operation under the key reconcile() reconstructs from the persisted start-event id", async () => {
+    const lf = createLocalFakePaymentProvider();
+    const target = setup(lf);
+    target.employerPaymentAttempt.findFirst.mockResolvedValueOnce(pending).mockResolvedValueOnce(authorizedV2);
+    await target.repository.execute(execInput); // start event id "start-event-id" → key derived + threaded
+
+    const query = (providerOperationKey: string) => ({
+      providerOperationKey, paymentId: payId, organizationId: orgOp, operation: "authorize" as const, amountMinor: 10_500, providerOperationReference: null
+    });
+    // Reconstruct the key exactly as a later reconcile would — from persisted fields only.
+    const key = deriveProviderOperationKey({ startEventId: "start-event-id", organizationId: orgOp, paymentAttemptId: payId, operation: "authorize" });
+    const reconciled = await lf.reconcile!(query(key));
+    expect(reconciled).toMatchObject({ provider: "local_fake", outcome: "accepted" }); // FOUND under the same key
+
+    // A different operation (different start-event id) → not found → distinct key.
+    const otherKey = deriveProviderOperationKey({ startEventId: "other-event", organizationId: orgOp, paymentAttemptId: payId, operation: "authorize" });
+    expect((await lf.reconcile!(query(otherKey))).outcome).toBe("not_found");
   });
 });

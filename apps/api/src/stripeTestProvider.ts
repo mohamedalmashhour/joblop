@@ -69,7 +69,6 @@ export function createStripeTestPaymentProvider(
     }>
   ): Promise<Readonly<{ id: string; clientSecret: string | null }>>;
   verifyWebhook(rawBody: Buffer, signature: string): Promise<Stripe.Event>;
-  reconcile(paymentIntentId: string): Promise<ProviderPaymentResult>;
 } {
   if (!options.webhookSecret) throw new Error("Stripe webhook secret is required.");
   const now = options.now ?? (() => new Date());
@@ -188,9 +187,17 @@ export function createStripeTestPaymentProvider(
       }
       return event;
     },
-    async reconcile(paymentIntentId) {
-      const intent = await options.client.paymentIntents.retrieve(opaqueRequired(paymentIntentId));
-      return paymentIntentResult(intent, true);
+    // Stage 2b.4-C3-D: query-only reconcile. Stripe can retrieve a PaymentIntent ONLY by its id. For an
+    // indeterminate operation that returned NO PaymentIntent id, there is no read-only lookup — reported
+    // as a provider-specific limitation (C3-C): we return "not_found" rather than re-POSTing a charge.
+    // This is unmounted at runtime; it exists to conform to the port and preserve the query-only invariant.
+    async reconcile(query) {
+      if (!query.providerOperationReference) {
+        return { provider: "stripe_test", outcome: "not_found", providerOperationReference: null, reason: "none" };
+      }
+      const intent = await options.client.paymentIntents.retrieve(opaqueRequired(query.providerOperationReference));
+      const result = paymentIntentResult(intent, true);
+      return { provider: "stripe_test", outcome: result.outcome, providerOperationReference: result.providerOperationReference, reason: result.reason };
     }
   };
 }

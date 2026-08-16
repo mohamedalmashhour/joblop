@@ -1,5 +1,6 @@
 import { createHash } from "node:crypto";
 import { PaymentProviderPreflightError } from "@rwos/shared";
+import { deriveProviderOperationKey } from "./paymentProviderOperationKey";
 import type {
   FakePaymentScenario,
   PaymentOperation,
@@ -318,7 +319,7 @@ export function createPrismaPaymentRepository(
       // commit ATOMICALLY — there is no longer a committed `processing` claim without its start event.
       // The event records the exact in-flight operation for later deterministic reconciliation. The
       // provider call happens only AFTER this transaction commits (below).
-      await prisma.$transaction(async (transaction) => {
+      const startEventId = await prisma.$transaction(async (transaction) => {
         const claimed = await transaction.employerPaymentAttempt.updateMany({
           where: {
             id: current.id,
@@ -329,7 +330,7 @@ export function createPrismaPaymentRepository(
           data: { state: "processing", version: { increment: 1 } }
         });
         if (claimed.count !== 1) throw new Error("Payment concurrency conflict.");
-        await transaction.employerPaymentEvent.create({
+        const started = await transaction.employerPaymentEvent.create({
           data: {
             ...eventData(current.id, current.organizationId, "provider_call_started", current.state, "processing", "system"),
             operation: input.operation,
@@ -339,6 +340,17 @@ export function createPrismaPaymentRepository(
             idempotencyKeyDigest: digest(input.idempotencyKey) // digest only — raw key is never persisted
           }
         });
+        return text(started, "id");
+      });
+
+      // Stage 2b.4-C3-D: derive the durable provider-operation key from the just-committed start-event id
+      // (never the amount) and thread it into the provider call. A later reconcile() reconstructs the same
+      // key purely from the persisted start event. No application-level reconcile runs here (C3-E).
+      const providerOperationKey = deriveProviderOperationKey({
+        startEventId,
+        organizationId: current.organizationId,
+        paymentAttemptId: current.id,
+        operation: input.operation
       });
 
       const method = current.methodReferenceId
@@ -360,7 +372,8 @@ export function createPrismaPaymentRepository(
         methodReference: method ? text(method, "providerMethodReference") : null,
         authorizationReference: current.authorizationReference,
         idempotencyKey: input.idempotencyKey,
-        scenario: input.scenario
+        scenario: input.scenario,
+        providerOperationKey
       });
       // If the call loses the timeout race and later rejects, do not surface an unhandled rejection.
       void providerCall.catch(() => undefined);

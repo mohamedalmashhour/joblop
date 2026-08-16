@@ -67,6 +67,10 @@ export type ProviderPaymentRequest = Readonly<{
   authorizationReference: string | null;
   idempotencyKey: string;
   scenario: FakePaymentScenario;
+  // Stage 2b.4-C3-D: the internal provider-operation key, derived from the durable provider_call_started
+  // event id (never from the amount). One operation = one key; a replay reconstructs the same key. This
+  // is what a later reconcile() looks up by. The caller's raw idempotencyKey remains request-dedup only.
+  providerOperationKey?: string;
 }>;
 
 export type ProviderPaymentResult = Readonly<{
@@ -84,10 +88,30 @@ export type ProviderPaymentResult = Readonly<{
   webhookExpected: boolean;
 }>;
 
+// Stage 2b.4-C3-D: a NON-money-moving status query for an indeterminate operation, keyed by the durable
+// provider-operation key. Implementations MUST NOT call authorize/capture/refund/charge — query only.
+export type ProviderReconcileQuery = Readonly<{
+  providerOperationKey: string;
+  paymentId: string;
+  organizationId: string;
+  operation: PaymentOperation;
+  amountMinor: number;
+  providerOperationReference: string | null; // present only if the original call ever returned one
+}>;
+export type ProviderReconcileResult = Readonly<{
+  provider: "local_fake" | "stripe_test";
+  // "not_found" = the provider has no record of this operation → it definitively did not execute.
+  outcome: "accepted" | "declined" | "authentication_required" | "unknown" | "not_found";
+  providerOperationReference: string | null;
+  reason: ProviderPaymentResult["reason"];
+}>;
+
 export interface PaymentProviderPort {
   // Stable identity of the bound provider (audit only — recorded on the provider_call_started event).
   readonly id: "local_fake" | "stripe_test";
   execute(request: ProviderPaymentRequest): Promise<ProviderPaymentResult>;
+  // Query-only recovery lookup. Optional so unrelated test fakes need not implement it.
+  reconcile?(query: ProviderReconcileQuery): Promise<ProviderReconcileResult>;
 }
 
 // Stage 2b.4-C2: a provider throws this ONLY when it can PROVE the operation had no external side
@@ -105,11 +129,15 @@ export class PaymentProviderPreflightError extends Error {
 
 export function createLocalFakePaymentProvider(): PaymentProviderPort {
   const results = new Map<string, { digest: string; result: ProviderPaymentResult }>();
+  // Stage 2b.4-C3-D: key stored results by the durable provider-operation key when supplied (so a later
+  // reconcile can look the same operation up), falling back to org:idempotencyKey for legacy callers.
+  const keyOf = (request: ProviderPaymentRequest) =>
+    request.providerOperationKey ?? `${request.organizationId}:${request.idempotencyKey}`;
   return {
     id: "local_fake",
     async execute(request) {
       assertProviderRequest(request);
-      const scope = `${request.organizationId}:${request.idempotencyKey}`;
+      const scope = keyOf(request);
       const digest = JSON.stringify(request);
       const existing = results.get(scope);
       if (existing) {
@@ -119,6 +147,21 @@ export function createLocalFakePaymentProvider(): PaymentProviderPort {
       const result = fakeResult(request);
       results.set(scope, { digest, result });
       return result;
+    },
+    // READ-ONLY. Looks up the recorded result by the provider-operation key. It NEVER executes/charges:
+    // it does not call fakeResult and never writes to `results`. Unknown key → "not_found" (definitively
+    // did not execute), leaving the caller to keep the attempt `processing` or safely fail per policy.
+    async reconcile(query) {
+      const existing = results.get(query.providerOperationKey);
+      if (!existing) {
+        return { provider: "local_fake", outcome: "not_found", providerOperationReference: null, reason: "none" };
+      }
+      return {
+        provider: "local_fake",
+        outcome: existing.result.outcome,
+        providerOperationReference: existing.result.providerOperationReference,
+        reason: existing.result.reason
+      };
     }
   };
 }

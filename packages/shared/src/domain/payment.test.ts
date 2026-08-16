@@ -420,3 +420,26 @@ describe("local payment orchestration", () => {
     ).rejects.toThrow("Payment version conflict.");
   });
 });
+
+describe("local_fake reconcile is read-only (Stage 2b.4-C3-D)", () => {
+  const baseReq = {
+    operation: "authorize" as const, organizationId: "org-1", paymentId: "pay-1", amountMinor: 10_500,
+    currency: "CAD" as const, methodReference: null, authorizationReference: null,
+    idempotencyKey: "k1", scenario: "success" as FakePaymentScenario
+  };
+
+  it("returns the recorded result for an executed operation key, without re-charging", async () => {
+    const lf = createLocalFakePaymentProvider();
+    const executed = await lf.execute({ ...baseReq, providerOperationKey: "rwos_op_K1" });
+    const reconciled = await lf.reconcile!({ providerOperationKey: "rwos_op_K1", paymentId: "pay-1", organizationId: "org-1", operation: "authorize", amountMinor: 10_500, providerOperationReference: null });
+    expect(reconciled.outcome).toBe(executed.outcome);
+    expect(reconciled.providerOperationReference).toBe(executed.providerOperationReference);
+  });
+
+  it("returns not_found for an unknown key and creates NO charge (no side effect on repeat)", async () => {
+    const lf = createLocalFakePaymentProvider();
+    const q = { providerOperationKey: "rwos_op_unknown", paymentId: "pay-1", organizationId: "org-1", operation: "authorize" as const, amountMinor: 10_500, providerOperationReference: null };
+    expect((await lf.reconcile!(q)).outcome).toBe("not_found");
+    expect((await lf.reconcile!(q)).outcome).toBe("not_found"); // reconcile never executed/charged anything
+  });
+});
