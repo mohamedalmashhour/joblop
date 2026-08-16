@@ -1,6 +1,7 @@
 import { createHash } from "node:crypto";
 import { PaymentProviderPreflightError } from "@rwos/shared";
 import { deriveProviderOperationKey } from "./paymentProviderOperationKey";
+import { reconcilePolicyFor, resolveReconcileDisposition } from "./paymentProviderReconcilePolicy";
 import type {
   FakePaymentScenario,
   PaymentOperation,
@@ -485,12 +486,29 @@ export function createPrismaPaymentRepository(
         providerOperationReference: current.authorizationReference
       });
 
+      // Stage 2b.4-C3-G-c3: `not_found` is NOT a universal payment fact — it is a provider capability.
+      // The provider-specific policy decides the disposition. Only an authoritative accepted/declined may
+      // terminalize; every ambiguous/indeterminate outcome (unknown, auth-required, and — for any provider
+      // whose absence does NOT prove non-execution, e.g. Stripe — not_found) keeps the attempt `processing`.
+      const disposition = resolveReconcileDisposition({
+        policy: reconcilePolicyFor(provider.id),
+        outcome: reconciled.outcome,
+        hasDurableReference: current.authorizationReference !== null
+      });
+
       // Indeterminate → remain `processing`, no writes, no terminalization.
-      if (reconciled.outcome === "authentication_required" || reconciled.outcome === "unknown") {
+      if (disposition === "remain_processing") {
         return current;
       }
-      // "not_found" is, by the provider contract, PROVEN non-execution → treat as declined → failed.
-      const outcome: "accepted" | "declined" = reconciled.outcome === "not_found" ? "declined" : reconciled.outcome;
+      // No durable provider reference and absence is not authoritative → cannot be resolved by a
+      // query-only reconcile. Stay `processing` and record an OBSERVABLE, non-sensitive signal that this
+      // attempt needs manual/webhook resolution (idempotent; no state/version change, no money write).
+      if (disposition === "manual_or_webhook_required") {
+        await recordManualResolutionRequired(prisma, current, startEventId);
+        return current;
+      }
+      // Only authoritative accepted/declined reach here.
+      const outcome: "accepted" | "declined" = disposition === "terminal_accepted" ? "accepted" : "declined";
       const next = nextState(current, operation, operationAmountMinor, outcome);
       const providerEventReference = `reconcile:${startEventId}`;
 
@@ -628,6 +646,30 @@ function assertOperationState(
       ["succeeded", "partially_refunded"].includes(payment.state) &&
       payment.refundedMinor + amountMinor <= payment.allocatedMinor);
   if (!valid) throw new Error("Payment operation is invalid for the current state.");
+}
+
+// Stage 2b.4-C3-G-c3: observable, NON-SENSITIVE signal that an indeterminate attempt cannot be resolved
+// by query-only reconcile and needs manual/webhook resolution. Uses the existing event mechanism (no
+// schema change). Distinct from the terminal `reconcile:` reference so it never blocks a later
+// terminalizing reconcile; idempotent via the (organizationId, providerEventReference) unique index.
+// It NEVER changes attempt state/version and NEVER writes money; the only detail is a safe reason code.
+async function recordManualResolutionRequired(
+  prisma: { employerPaymentEvent: { create(input: unknown): Promise<unknown> } },
+  current: PaymentRecord,
+  startEventId: string
+): Promise<void> {
+  try {
+    await prisma.employerPaymentEvent.create({
+      data: {
+        ...eventData(current.id, current.organizationId, "reconcile_manual_required", "processing", "processing", "system"),
+        providerEventReference: `reconcile-manual:${startEventId}`,
+        safeReasonCode: "manual_or_webhook_required"
+      }
+    });
+  } catch (error) {
+    // Already signalled for this in-flight operation → idempotent no-op. Any other error propagates.
+    if ((error as { code?: string }).code !== "P2002") throw error;
+  }
 }
 
 function eventData(

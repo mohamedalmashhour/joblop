@@ -375,12 +375,14 @@ describe("payment reconcile() application finalize (Stage 2b.4-C3-E)", () => {
     priorEvent?: Record<string, unknown> | null;
     updateCount?: number;
     hasReconcile?: boolean;
+    providerId?: string;
   }) {
+    const providerId = o.providerId ?? "local_fake";
     const executeSpy = vi.fn(async () => { throw new Error("execute must NOT be called during reconcile"); });
     const reconcileSpy = vi.fn(async () => o.reconcileResult as ProviderReconcileResult);
     const provider = (o.hasReconcile === false
-      ? { id: "local_fake", execute: executeSpy }
-      : { id: "local_fake", execute: executeSpy, reconcile: reconcileSpy }) as unknown as PaymentProviderPort;
+      ? { id: providerId, execute: executeSpy }
+      : { id: providerId, execute: executeSpy, reconcile: reconcileSpy }) as unknown as PaymentProviderPort;
     const target = setup(provider);
     target.employerPaymentAttempt.findFirst.mockReset();
     target.employerPaymentAttempt.findFirst
@@ -486,5 +488,74 @@ describe("payment reconcile() application finalize (Stage 2b.4-C3-E)", () => {
     await h.target.repository.reconcile({ paymentId: row.id, organizationId });
     expect(h.executeSpy).not.toHaveBeenCalled(); // query-only: no money movement
     expect(h.reconcileSpy).toHaveBeenCalledTimes(1);
+  });
+
+  // ── Stage 2b.4-C3-G-c3: provider-specific `not_found` policy wired into runtime reconcile() ──
+  const recStripe = (over: Partial<ProviderReconcileResult>): ProviderReconcileResult =>
+    ({ provider: "stripe_test", outcome: "accepted", providerOperationReference: "op-ref", reason: "none", ...over });
+
+  it("[gc3-1] local_fake + not_found STILL terminalizes to failed (authoritative absence preserved)", async () => {
+    const h = harness({ providerId: "local_fake", attempt: processing(), startEvent: startEvent("capture", 10_500n), reconcileResult: rec({ outcome: "not_found", providerOperationReference: null }), finalAttempt: processing({ state: "failed", version: 3 }) });
+    expect((await h.target.repository.reconcile({ paymentId: row.id, organizationId })).state).toBe("failed");
+  });
+
+  it("[gc3-2] stripe + not_found + NO durable reference → stays processing + manual signal, never failed", async () => {
+    const h = harness({ providerId: "stripe_test", attempt: processing({ authorizationReference: null }), startEvent: startEvent("authorize", 10_500n), reconcileResult: recStripe({ outcome: "not_found", providerOperationReference: null }) });
+    const result = await h.target.repository.reconcile({ paymentId: row.id, organizationId });
+    expect(result.state).toBe("processing"); // NOT failed
+    expect(h.target.employerPaymentAttempt.updateMany).not.toHaveBeenCalled(); // no terminalization
+    expect(h.target.employerPaymentAllocation.create).not.toHaveBeenCalled();
+    expect(h.target.employerPaymentRefund.create).not.toHaveBeenCalled();
+    // Observable, non-sensitive manual/webhook signal recorded once.
+    expect(h.target.employerPaymentEvent.create).toHaveBeenCalledTimes(1);
+    const data = h.target.employerPaymentEvent.create.mock.calls[0]![0].data as Record<string, unknown>;
+    expect(data.eventType).toBe("reconcile_manual_required");
+    expect(data.newState).toBe("processing");
+    expect(data.safeReasonCode).toBe("manual_or_webhook_required");
+    expect(data.providerEventReference).toBe("reconcile-manual:E-authorize");
+    expect(h.executeSpy).not.toHaveBeenCalled(); // query-only
+  });
+
+  it("[gc3-3] stripe + not_found + durable reference (ambiguous 404) → stays processing, never failed, no manual duplicate", async () => {
+    const h = harness({ providerId: "stripe_test", attempt: processing({ authorizationReference: "auth-ref-x" }), startEvent: startEvent("capture", 10_500n), reconcileResult: recStripe({ outcome: "not_found", providerOperationReference: "auth-ref-x" }) });
+    const result = await h.target.repository.reconcile({ paymentId: row.id, organizationId });
+    expect(result.state).toBe("processing"); // NOT failed
+    expect(h.target.employerPaymentAttempt.updateMany).not.toHaveBeenCalled();
+    expect(h.target.employerPaymentEvent.create).not.toHaveBeenCalled(); // remain_processing, no manual event
+  });
+
+  it("[gc3-4] unknown/new provider fails closed: not_found never terminalizes", async () => {
+    // providerId (the PORT id) is the unknown/new provider; the result's `provider` label is cosmetic
+    // and not read by the disposition (which keys off provider.id via reconcilePolicyFor).
+    const noRef = harness({ providerId: "acme_unknown", attempt: processing({ authorizationReference: null }), startEvent: startEvent("authorize", 10_500n), reconcileResult: { provider: "stripe_test", outcome: "not_found", providerOperationReference: null, reason: "none" } as ProviderReconcileResult });
+    expect((await noRef.target.repository.reconcile({ paymentId: row.id, organizationId })).state).toBe("processing");
+    expect(noRef.target.employerPaymentAttempt.updateMany).not.toHaveBeenCalled(); // never failed
+    expect(noRef.target.employerPaymentEvent.create).toHaveBeenCalledTimes(1); // manual signal (no durable ref)
+  });
+
+  it("[gc3-5] stripe ambiguous/indeterminate outcomes stay processing (unknown + authentication_required)", async () => {
+    for (const outcome of ["unknown", "authentication_required"] as const) {
+      const h = harness({ providerId: "stripe_test", attempt: processing(), startEvent: startEvent("authorize", 10_500n), reconcileResult: recStripe({ outcome, providerOperationReference: null }) });
+      expect((await h.target.repository.reconcile({ paymentId: row.id, organizationId })).state).toBe("processing");
+      expect(h.target.employerPaymentAttempt.updateMany).not.toHaveBeenCalled();
+      expect(h.target.employerPaymentEvent.create).not.toHaveBeenCalled(); // indeterminate ≠ manual-required
+    }
+  });
+
+  it("[gc3-6] authoritative accepted/declined STILL terminalize for stripe (positive signals)", async () => {
+    const acc = harness({ providerId: "stripe_test", attempt: processing({ authorizationReference: "auth-ref-x" }), startEvent: startEvent("authorize", 10_500n), reconcileResult: recStripe({ outcome: "accepted" }), finalAttempt: processing({ state: "authorized", version: 3 }) });
+    expect((await acc.target.repository.reconcile({ paymentId: row.id, organizationId })).state).toBe("authorized");
+    expect(acc.target.employerPaymentAttempt.updateMany).toHaveBeenCalledTimes(1);
+
+    const dec = harness({ providerId: "stripe_test", attempt: processing({ authorizationReference: "auth-ref-x" }), startEvent: startEvent("capture", 10_500n), reconcileResult: recStripe({ outcome: "declined" }), finalAttempt: processing({ state: "failed", version: 3 }) });
+    expect((await dec.target.repository.reconcile({ paymentId: row.id, organizationId })).state).toBe("failed");
+  });
+
+  it("[gc3-10] the manual signal carries NO provider error / PAN / secret / raw idempotency data", async () => {
+    const h = harness({ providerId: "stripe_test", attempt: processing({ authorizationReference: null }), startEvent: startEvent("authorize", 10_500n), reconcileResult: recStripe({ outcome: "not_found", providerOperationReference: null, reason: "unknown_outcome" }) });
+    await h.target.repository.reconcile({ paymentId: row.id, organizationId });
+    const serialized = JSON.stringify(h.target.employerPaymentEvent.create.mock.calls[0]![0].data);
+    expect(serialized).not.toMatch(/sk_(test|live)|pan|4111|idempotency|secret|op-ref/i);
+    expect(serialized).toContain("manual_or_webhook_required"); // only the safe classification
   });
 });

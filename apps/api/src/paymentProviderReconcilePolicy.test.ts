@@ -76,13 +76,13 @@ describe("provider-specific reconciliation policy (Stage 2b.4-C3-G-c2)", () => {
     expect(resolveReconcileDisposition.length).toBe(1);
   });
 
-  it("[9] the runtime reconcile() version/state + webhook-race guards are UNCHANGED by this stage", () => {
-    // Characterization: prove this design stage did not alter the frozen runtime path. The optimistic
-    // guard and deterministic webhook-race reference must still be present verbatim in paymentRepository.
+  it("[9] runtime reconcile() keeps its version/state + webhook-race guards AND the policy is now wired (G-c3)", () => {
+    // The optimistic guard and deterministic webhook-race reference remain intact; and the provider-
+    // AGNOSTIC `not_found → declined` branch has been REPLACED by the provider-specific policy.
     const repo = readFileSync(fileURLToPath(new URL("./paymentRepository.ts", import.meta.url)), "utf8");
     expect(repo).toContain('version: current.version, state: "processing"'); // optimistic version+state guard
     expect(repo).toContain("reconcile:${startEventId}"); // deterministic webhook-vs-reconcile reference
-    // And the provider-AGNOSTIC not_found→declined line still exists here (this stage did NOT rewire it).
-    expect(repo).toContain('reconciled.outcome === "not_found" ? "declined"');
+    expect(repo).not.toContain('reconciled.outcome === "not_found" ? "declined"'); // old universal branch GONE
+    expect(repo).toContain("resolveReconcileDisposition"); // provider-specific policy wired in
   });
 });
