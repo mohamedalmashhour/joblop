@@ -1,8 +1,10 @@
 import { createHash } from "node:crypto";
+import { PaymentProviderPreflightError } from "@rwos/shared";
 import type {
   FakePaymentScenario,
   PaymentOperation,
   PaymentProviderPort,
+  ProviderPaymentResult,
   PaymentRecord,
   PaymentEvent,
   PaymentState,
@@ -67,11 +69,17 @@ export interface PaymentRepository {
   }): Promise<PaymentRecord>;
 }
 
+// Stage 2b.4-C2: a provider call that does not settle within this bound is treated as INDETERMINATE
+// (never as a definitive failure) — non-execution has not been proven. Injectable for deterministic tests.
+const DEFAULT_PROVIDER_EXECUTE_TIMEOUT_MS = 30_000;
+
 export function createPrismaPaymentRepository(
   prismaClient: unknown,
-  provider: PaymentProviderPort
+  provider: PaymentProviderPort,
+  options?: { providerExecuteTimeoutMs?: number }
 ): PaymentRepository {
   const prisma = prismaClient as Client;
+  const providerExecuteTimeoutMs = options?.providerExecuteTimeoutMs ?? DEFAULT_PROVIDER_EXECUTE_TIMEOUT_MS;
 
   async function get(paymentId: string, organizationId: string) {
     const value = await prisma.employerPaymentAttempt.findFirst({
@@ -338,7 +346,12 @@ export function createPrismaPaymentRepository(
             where: { id: current.methodReferenceId, organizationId: current.organizationId }
           })
         : null;
-      const result = await provider.execute({
+      // Stage 2b.4-C2: bound the provider call and CLASSIFY every failure. A provable-non-execution
+      // error (PaymentProviderPreflightError) fails safely; ANY other throw or a timeout is treated as
+      // INDETERMINATE (outcome "unknown" → the attempt stays `processing`) and is NEVER re-executed
+      // automatically. This makes execute() total over the provider's failure surface, so a throw/
+      // timeout is now finalized into a recorded outcome instead of leaving the request unhandled.
+      const providerCall = provider.execute({
         operation: input.operation,
         organizationId: current.organizationId,
         paymentId: current.id,
@@ -349,6 +362,14 @@ export function createPrismaPaymentRepository(
         idempotencyKey: input.idempotencyKey,
         scenario: input.scenario
       });
+      // If the call loses the timeout race and later rejects, do not surface an unhandled rejection.
+      void providerCall.catch(() => undefined);
+      let result: ProviderPaymentResult;
+      try {
+        result = await withProviderTimeout(providerCall, providerExecuteTimeoutMs);
+      } catch (error) {
+        result = classifyProviderFailure(error, provider.id);
+      }
       const next = nextState(current, input.operation, input.amountMinor, result.outcome);
       return prisma.$transaction(async (transaction) => {
         const updated = await transaction.employerPaymentAttempt.updateMany({
@@ -418,6 +439,43 @@ export function createPrismaPaymentRepository(
       });
     }
   };
+}
+
+// Stage 2b.4-C2 — bounded execution + failure classification.
+class ProviderTimeoutError extends Error {}
+
+async function withProviderTimeout<T>(promise: Promise<T>, timeoutMs: number): Promise<T> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const timeout = new Promise<never>((_, reject) => {
+    timer = setTimeout(() => reject(new ProviderTimeoutError("Payment provider call timed out.")), timeoutMs);
+  });
+  try {
+    return await Promise.race([promise, timeout]);
+  } finally {
+    if (timer) clearTimeout(timer);
+  }
+}
+
+// Maps a failed provider call to a ProviderPaymentResult. The ONLY safe-fail path is a proven
+// non-execution (PaymentProviderPreflightError → "declined" → nextState "failed"). A timeout or any
+// other throw is INDETERMINATE ("unknown" → nextState "processing"): non-execution is not proven, so
+// the attempt must stay processing and must never be automatically re-charged. Only safe reason codes
+// are surfaced — raw error details are never persisted.
+function classifyProviderFailure(
+  error: unknown,
+  providerId: PaymentProviderPort["id"]
+): ProviderPaymentResult {
+  // Robust across module/transpile boundaries: a subclass `instanceof` on Error can be unreliable, so
+  // also accept the branded name. safeReason is read from the instance either way.
+  const isPreflight =
+    error instanceof PaymentProviderPreflightError ||
+    (error instanceof Error && error.name === "PaymentProviderPreflightError");
+  if (isPreflight) {
+    const safeReason = (error as PaymentProviderPreflightError).safeReason ?? "decline";
+    return { provider: providerId, providerOperationReference: "", outcome: "declined", reason: safeReason, webhookExpected: false };
+  }
+  const timedOut = error instanceof ProviderTimeoutError;
+  return { provider: providerId, providerOperationReference: "", outcome: "unknown", reason: timedOut ? "timeout" : "unknown_outcome", webhookExpected: true };
 }
 
 function nextState(

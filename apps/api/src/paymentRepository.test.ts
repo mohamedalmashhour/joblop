@@ -1,4 +1,4 @@
-import { createLocalFakePaymentProvider, type PaymentProviderPort, type ProviderPaymentResult } from "@rwos/shared";
+import { createLocalFakePaymentProvider, PaymentProviderPreflightError, type PaymentProviderPort, type ProviderPaymentResult } from "@rwos/shared";
 import { createHash } from "node:crypto";
 import { describe, expect, it, vi } from "vitest";
 import { createPrismaPaymentRepository } from "./paymentRepository";
@@ -23,7 +23,7 @@ const row = {
   requestDigest: ""
 };
 
-function setup(provider: PaymentProviderPort = createLocalFakePaymentProvider()) {
+function setup(provider: PaymentProviderPort = createLocalFakePaymentProvider(), options?: { providerExecuteTimeoutMs?: number }) {
   const invoice = {
     findFirst: vi.fn().mockResolvedValue({
       id: row.invoiceId,
@@ -79,7 +79,8 @@ function setup(provider: PaymentProviderPort = createLocalFakePaymentProvider())
           callback(transaction)
         )
       },
-      provider
+      provider,
+      options
     ),
     employerPaymentMethod,
     employerPaymentAttempt,
@@ -190,116 +191,132 @@ describe("durable payment repository", () => {
   });
 });
 
-// Stage 2b.4-C1 — the `processing` claim and its `provider_call_started` audit event now commit in ONE
-// transaction (no event-less strand). The event records the exact in-flight operation for later
-// deterministic reconciliation. Audit/reconciliation record only — no change to amounts, state rules,
-// provider execution, retry, or idempotency semantics.
-describe("payment execute() atomic claim + provider_call_started (Stage 2b.4-C1)", () => {
+// Stage 2b.4-C2 — bounded provider execution + failure classification (on the C1 atomic claim/start
+// event). A provable non-execution fails safely (`failed`); a timeout or any other throw is INDETERMINATE
+// (outcome "unknown" → stays `processing`) and is NEVER auto-re-executed. success/decline are unchanged.
+describe("payment execute() bounded execution + failure classification (Stage 2b.4-C2)", () => {
   const pending = { ...row, state: "pending", version: 1 };
+  const processingV2 = { ...row, state: "processing", version: 2 };
+  const failedV2 = { ...row, state: "failed", version: 2 };
+  const authorizedV2 = { ...row, state: "authorized", version: 2, authorizationReference: "op-ref" };
   const execInput = {
-    paymentId: row.id,
-    organizationId,
-    operation: "authorize" as const,
-    amountMinor: 10_500,
-    expectedVersion: 1,
-    idempotencyKey: "exec-key",
-    scenario: "success" as const
+    paymentId: row.id, organizationId, operation: "authorize" as const,
+    amountMinor: 10_500, expectedVersion: 1, idempotencyKey: "exec-key", scenario: "success" as const
   };
-  const throwing: PaymentProviderPort = { id: "local_fake", async execute() { throw new Error("network transport failure"); } };
-  const startEventOf = (target: ReturnType<typeof setup>) =>
-    target.employerPaymentEvent.create.mock.calls
-      .map((c) => (c[0] as { data: Record<string, unknown> }).data)
-      .find((d) => d.eventType === "provider_call_started");
+  const accepted: PaymentProviderPort = {
+    id: "local_fake",
+    async execute(): Promise<ProviderPaymentResult> {
+      return { provider: "local_fake", providerOperationReference: "op-ref", outcome: "accepted", reason: "none", webhookExpected: false };
+    }
+  };
+  const declined: PaymentProviderPort = {
+    id: "local_fake",
+    async execute(): Promise<ProviderPaymentResult> {
+      return { provider: "local_fake", providerOperationReference: "op-ref", outcome: "declined", reason: "decline", webhookExpected: false };
+    }
+  };
+  const genericThrow: PaymentProviderPort = { id: "local_fake", async execute() { throw new Error("network transport failure"); } };
+  const hanging: PaymentProviderPort = { id: "local_fake", execute: () => new Promise<ProviderPaymentResult>(() => undefined) };
+  const preflight: PaymentProviderPort = {
+    id: "local_fake",
+    async execute() { throw new PaymentProviderPreflightError("request rejected before any charge", "decline"); }
+  };
+  const eventsOf = (t: ReturnType<typeof setup>) => t.employerPaymentEvent.create.mock.calls.map((c) => (c[0] as { data: Record<string, unknown> }).data);
+  const startEventOf = (t: ReturnType<typeof setup>) => eventsOf(t).find((d) => d.eventType === "provider_call_started");
+  const finalizeEventOf = (t: ReturnType<typeof setup>) => eventsOf(t).find((d) => d.eventType !== "provider_call_started");
 
-  it("[C1 #1/#4/#6/#7] claim + start event commit together; the event carries operation, amount, CAD currency, provider, and the KEY DIGEST (never the raw key)", async () => {
-    const target = setup(throwing); // throwing → we observe exactly the start event, then the provider fails
-    target.employerPaymentAttempt.findFirst.mockResolvedValue(pending);
-    await expect(target.repository.execute(execInput)).rejects.toThrow();
+  it("[C2] generic provider THROW → INDETERMINATE: attempt stays `processing`, start+finalize events, no allocation, execute does NOT reject", async () => {
+    const target = setup(genericThrow);
+    target.employerPaymentAttempt.findFirst.mockResolvedValueOnce(pending).mockResolvedValueOnce(processingV2);
+    const result = await target.repository.execute(execInput);
+    expect(result.state).toBe("processing"); // never a definitive failure
+    expect(target.employerPaymentEvent.create).toHaveBeenCalledTimes(2); // start + finalize (no longer event-less)
+    expect(finalizeEventOf(target)?.safeReasonCode).toBe("unknown_outcome");
+    expect(target.employerPaymentAllocation.create).not.toHaveBeenCalled();
+  });
 
+  it("[C2] provable non-execution (PaymentProviderPreflightError) → SAFE FAIL: state `failed`", async () => {
+    const target = setup(preflight);
+    target.employerPaymentAttempt.findFirst.mockResolvedValueOnce(pending).mockResolvedValueOnce(failedV2);
+    const result = await target.repository.execute(execInput);
+    expect(result.state).toBe("failed"); // proven not executed → safe to fail
+    expect(finalizeEventOf(target)?.safeReasonCode).toBe("decline");
+    expect(target.employerPaymentAllocation.create).not.toHaveBeenCalled();
+  });
+
+  it("[C2] TIMEOUT → INDETERMINATE: state `processing`, finalize reason `timeout`", async () => {
+    const target = setup(hanging, { providerExecuteTimeoutMs: 20 });
+    target.employerPaymentAttempt.findFirst.mockResolvedValueOnce(pending).mockResolvedValueOnce(processingV2);
+    const result = await target.repository.execute(execInput);
+    expect(result.state).toBe("processing"); // hung call cannot prove non-execution
+    expect(finalizeEventOf(target)?.safeReasonCode).toBe("timeout");
+  });
+
+  it("[C2] provider DECLINE result → state `failed` (unchanged)", async () => {
+    const target = setup(declined);
+    target.employerPaymentAttempt.findFirst.mockResolvedValueOnce(pending).mockResolvedValueOnce(failedV2);
+    expect((await target.repository.execute(execInput)).state).toBe("failed");
+  });
+
+  it("[C2] provider SUCCESS (accepted) → state `authorized` (unchanged)", async () => {
+    const target = setup(accepted);
+    target.employerPaymentAttempt.findFirst.mockResolvedValueOnce(pending).mockResolvedValueOnce(authorizedV2);
+    expect((await target.repository.execute(execInput)).state).toBe("authorized");
+  });
+
+  it("[C2] the C1 start event still carries operation/amount/CAD/provider/key-digest and never the raw key", async () => {
+    const target = setup(accepted);
+    target.employerPaymentAttempt.findFirst.mockResolvedValueOnce(pending).mockResolvedValueOnce(authorizedV2);
+    await target.repository.execute(execInput);
     const start = startEventOf(target);
-    expect(start).toBeDefined();
     expect(start).toMatchObject({
-      paymentAttemptId: row.id,
-      priorState: "pending",
-      newState: "processing",
-      operation: "authorize",
-      operationAmountMinor: 10_500n,
-      operationCurrency: "CAD",
-      provider: "local_fake",
-      idempotencyKeyDigest: createHash("sha256").update("exec-key").digest("hex")
+      paymentAttemptId: row.id, priorState: "pending", newState: "processing",
+      operation: "authorize", operationAmountMinor: 10_500n, operationCurrency: "CAD",
+      provider: "local_fake", idempotencyKeyDigest: createHash("sha256").update("exec-key").digest("hex")
     });
-    // The raw idempotency key is NEVER persisted (only its digest).
     expect(JSON.stringify(start, (_k, v) => (typeof v === "bigint" ? v.toString() : v))).not.toContain("exec-key");
-    // The claim was committed (state → processing) in the same step as the start event.
-    expect(target.employerPaymentAttempt.updateMany).toHaveBeenCalledWith(
-      expect.objectContaining({ data: expect.objectContaining({ state: "processing", version: { increment: 1 } }) })
-    );
   });
 
-  it("[C1 #5] operation amount is the REQUESTED in-flight amount, including a PARTIAL refund", async () => {
-    const target = setup(throwing);
-    target.employerPaymentAttempt.findFirst.mockResolvedValue({ ...row, state: "succeeded", version: 1, allocatedMinor: 10_500n, refundedMinor: 0n });
-    await expect(
-      target.repository.execute({ ...execInput, operation: "refund", amountMinor: 4_000 })
-    ).rejects.toThrow();
-    expect(startEventOf(target)).toMatchObject({ operation: "refund", operationAmountMinor: 4_000n }); // partial, not the full 10_500
+  it("[C2] partial refund → the start event records the REQUESTED partial amount", async () => {
+    const target = setup(genericThrow);
+    target.employerPaymentAttempt.findFirst
+      .mockResolvedValueOnce({ ...row, state: "succeeded", version: 1, allocatedMinor: 10_500n, refundedMinor: 0n })
+      .mockResolvedValueOnce({ ...row, state: "processing", version: 2 });
+    await target.repository.execute({ ...execInput, operation: "refund", amountMinor: 4_000 });
+    expect(startEventOf(target)).toMatchObject({ operation: "refund", operationAmountMinor: 4_000n });
   });
 
-  it("[C1 #2] a claim/version conflict writes NO start event", async () => {
-    const target = setup(throwing);
+  it("[C2] claim/version conflict → NO start event and NO provider call", async () => {
+    const providerCalls = vi.fn();
+    const spy: PaymentProviderPort = { id: "local_fake", async execute() { providerCalls(); return { provider: "local_fake", providerOperationReference: "", outcome: "accepted", reason: "none", webhookExpected: false }; } };
+    const target = setup(spy);
     target.employerPaymentAttempt.findFirst.mockResolvedValue(pending);
-    target.employerPaymentAttempt.updateMany.mockResolvedValueOnce({ count: 0 }); // lost the optimistic claim
+    target.employerPaymentAttempt.updateMany.mockResolvedValueOnce({ count: 0 });
     await expect(target.repository.execute(execInput)).rejects.toThrow();
-    expect(target.employerPaymentEvent.create).not.toHaveBeenCalled(); // throw happens before the event write
+    expect(target.employerPaymentEvent.create).not.toHaveBeenCalled();
+    expect(providerCalls).not.toHaveBeenCalled();
   });
 
-  it("[C1 #3] if the start-event write fails, execute() rejects and claim+event were co-transactional (Postgres rolls back the claim)", async () => {
-    const target = setup(throwing);
+  it("[C2] start-event write failure → execute rejects and claim+event were co-transactional (Postgres rolls back)", async () => {
+    const target = setup(accepted);
     target.employerPaymentAttempt.findFirst.mockResolvedValue(pending);
     target.employerPaymentEvent.create.mockRejectedValueOnce(new Error("event write failed"));
     await expect(target.repository.execute(execInput)).rejects.toThrow("event write failed");
-    // Both the claim and the failing start event ran inside the SAME $transaction callback, so a real
-    // Postgres transaction rolls the claim back together with the event — no committed `processing`.
-    expect(target.employerPaymentEvent.create).toHaveBeenCalledTimes(1);
   });
 
-  it("[C1 characterization] provider THROW → attempt is `processing` WITH a start event (no longer event-less), no finalize/allocation", async () => {
-    const target = setup(throwing);
-    target.employerPaymentAttempt.findFirst.mockResolvedValue(pending);
-    await expect(target.repository.execute(execInput)).rejects.toThrow();
-    expect(target.employerPaymentEvent.create).toHaveBeenCalledTimes(1); // the start event exists (auditable)
-    expect(startEventOf(target)?.eventType).toBe("provider_call_started");
-    expect(target.employerPaymentAllocation.create).not.toHaveBeenCalled();
-  });
-
-  it("[C1 #8] provider UNKNOWN → start event + finalize event; attempt lands in `processing` (behavior unchanged)", async () => {
-    const unknown: PaymentProviderPort = {
-      id: "local_fake",
-      async execute(): Promise<ProviderPaymentResult> {
-        return { provider: "local_fake", providerOperationReference: "op-ref-unknown", outcome: "unknown", reason: "none", webhookExpected: true };
-      }
-    };
-    const target = setup(unknown);
-    target.employerPaymentAttempt.findFirst
-      .mockResolvedValueOnce(pending)
-      .mockResolvedValueOnce({ ...row, state: "processing", version: 2 });
-    const result = await target.repository.execute(execInput);
-    expect(result.state).toBe("processing");
-    expect(target.employerPaymentEvent.create).toHaveBeenCalledTimes(2); // start + finalize
-    expect(target.employerPaymentAllocation.create).not.toHaveBeenCalled();
-  });
-
-  it("[C1 #8] SAFETY INVARIANT preserved: a stranded `processing` attempt cannot be re-executed → no second provider charge", async () => {
+  it("[C2] NO-DOUBLE-CHARGE INVARIANT: an indeterminate attempt stays `processing`; a retry is blocked → provider called once", async () => {
     const providerCalls = vi.fn();
     const throwSpy: PaymentProviderPort = { id: "local_fake", async execute() { providerCalls(); throw new Error("network transport failure"); } };
     const target = setup(throwSpy);
-    target.employerPaymentAttempt.findFirst.mockResolvedValueOnce(pending);
-    await expect(target.repository.execute(execInput)).rejects.toThrow();
+    target.employerPaymentAttempt.findFirst.mockResolvedValueOnce(pending).mockResolvedValueOnce(processingV2);
+
+    // First execute → INDETERMINATE (resolves `processing`, does not reject), provider called once.
+    expect((await target.repository.execute(execInput)).state).toBe("processing");
     expect(providerCalls).toHaveBeenCalledTimes(1);
 
-    // Retry sees `processing` (version 2); assertOperationState rejects it before the provider call.
-    target.employerPaymentAttempt.findFirst.mockResolvedValueOnce({ ...row, state: "processing", version: 2 });
+    // Retry sees `processing`; assertOperationState rejects it BEFORE the provider call → no second charge.
+    target.employerPaymentAttempt.findFirst.mockResolvedValueOnce(processingV2);
     await expect(target.repository.execute({ ...execInput, expectedVersion: 2 })).rejects.toThrow();
-    expect(providerCalls).toHaveBeenCalledTimes(1); // provider was NOT charged a second time
+    expect(providerCalls).toHaveBeenCalledTimes(1);
   });
 });

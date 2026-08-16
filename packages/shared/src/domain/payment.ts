@@ -90,6 +90,19 @@ export interface PaymentProviderPort {
   execute(request: ProviderPaymentRequest): Promise<ProviderPaymentResult>;
 }
 
+// Stage 2b.4-C2: a provider throws this ONLY when it can PROVE the operation had no external side
+// effect (e.g. a pre-flight validation that rejects before any charge attempt). It is the single
+// signal that an operation is safe to fail. ANY other throw or a timeout is treated as INDETERMINATE
+// (outcome "unknown" → the attempt stays `processing`) and is never automatically re-executed.
+export class PaymentProviderPreflightError extends Error {
+  readonly safeReason: ProviderPaymentResult["reason"];
+  constructor(message: string, safeReason: ProviderPaymentResult["reason"] = "decline") {
+    super(message);
+    this.name = "PaymentProviderPreflightError";
+    this.safeReason = safeReason;
+  }
+}
+
 export function createLocalFakePaymentProvider(): PaymentProviderPort {
   const results = new Map<string, { digest: string; result: ProviderPaymentResult }>();
   return {
