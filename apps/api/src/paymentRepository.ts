@@ -55,10 +55,15 @@ export interface PaymentRepository {
     paymentId: string;
     organizationId: string;
     expectedVersion: number;
-    newState: Extract<PaymentState, "succeeded" | "failed" | "disputed">;
+    // Stage 2b.4-C3-G-e3: "authorized" added so an authoritative Stripe manual-capture authorization
+    // (requires_capture) can resolve an indeterminate `processing` attempt WITHOUT capturing money.
+    newState: Extract<PaymentState, "succeeded" | "failed" | "disputed" | "authorized">;
     amountMinor: number;
     payloadDigest: string;
     occurredAt: Date;
+    // Persisted ONLY on the authorized transition — the provider authorization reference (Stripe
+    // PaymentIntent id) so a later capture/void can act on the held authorization. No money is moved.
+    authorizationReference?: string;
   }): Promise<PaymentRecord>;
   execute(input: {
     paymentId: string;
@@ -276,6 +281,11 @@ export function createPrismaPaymentRepository(
             version: { increment: 1 },
             ...(input.newState === "succeeded" && current.allocatedMinor === 0
               ? { allocatedMinor: BigInt(input.amountMinor) }
+              : {}),
+            // Authorized (no money captured) → persist the provider authorization reference for a later
+            // capture/void. NOT set for succeeded/failed/disputed.
+            ...(input.newState === "authorized" && input.authorizationReference
+              ? { authorizationReference: input.authorizationReference }
               : {})
           }
         });

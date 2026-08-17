@@ -40,6 +40,7 @@ function inMemoryPrisma(initialState: string) {
         attempt.state = data.state;
         attempt.version = (attempt.version as number) + 1;
         if ((data as { allocatedMinor?: unknown }).allocatedMinor !== undefined) attempt.allocatedMinor = (data as { allocatedMinor: bigint }).allocatedMinor;
+        if ((data as { authorizationReference?: unknown }).authorizationReference !== undefined) attempt.authorizationReference = (data as { authorizationReference: string }).authorizationReference;
         return { count: 1 };
       }
     },
@@ -169,11 +170,10 @@ describe("Stripe webhook-first recovery (Stage 2b.4-C3-G-d1)", () => {
     }
   });
 
-  it("[9] processing / requires_action / requires_capture leave the attempt processing", async () => {
+  it("[9] processing / requires_action leave the attempt processing", async () => {
     for (const [type, status] of [
       ["payment_intent.processing", "processing"],
-      ["payment_intent.requires_action", "requires_action"],
-      ["payment_intent.amount_capturable_updated", "requires_capture"]
+      ["payment_intent.requires_action", "requires_action"]
     ] as const) {
       const { mem, repository } = setup("processing");
       const event = piEvent({ type, status });
@@ -181,6 +181,23 @@ describe("Stripe webhook-first recovery (Stage 2b.4-C3-G-d1)", () => {
       expect((await rec.resolve(raw(event), "good-signature")).status).toBe("processing_unchanged");
       expect(mem.attempt.state).toBe("processing"); // not terminalized
     }
+  });
+
+  it("[gc3e3-authorize] a manual-capture authorization (requires_capture) → authorized + PI id persisted, NO money captured", async () => {
+    const { mem, repository } = setup("processing");
+    const event = piEvent({ id: "evt_auth", type: "payment_intent.amount_capturable_updated", status: "requires_capture" });
+    // attach the PaymentIntent id to the event object (recovery persists it as authorizationReference)
+    (event.data.object as { id?: string }).id = "pi_manualcap_123";
+    const rec = createStripeWebhookRecovery({ verifyWebhook: verifierFor(event), repository });
+    const result = await rec.resolve(raw(event), "good-signature");
+    expect(result).toMatchObject({ status: "terminalized", newState: "authorized" });
+    expect(mem.attempt.state).toBe("authorized");
+    expect(mem.attempt.authorizationReference).toBe("pi_manualcap_123"); // capture/void can now reference it
+    expect(mem.attempt.allocatedMinor).toBe(0n); // NO money captured on authorization
+    // idempotent: a duplicate authorization event is a no-op (already resolved out of processing)
+    const second = await rec.resolve(raw(event), "good-signature");
+    expect(second.status).toBe("already_resolved");
+    expect(mem.attempt.version).toBe(3); // bumped exactly once
   });
 
   it("[10] a webhook arriving AFTER a manual reconcile already terminalized stays race-safe (no reopen)", async () => {

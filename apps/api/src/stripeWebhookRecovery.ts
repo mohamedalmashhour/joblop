@@ -17,7 +17,7 @@ export type StripeEventLike = Readonly<{
   type: string;
   created: number;
   livemode?: boolean;
-  data: { object: Readonly<{ status?: string; amount?: number; currency?: string; metadata?: Record<string, string> | null }> };
+  data: { object: Readonly<{ id?: string; status?: string; amount?: number; currency?: string; metadata?: Record<string, string> | null }> };
 }>;
 
 export type StripeWebhookRecoveryResult = Readonly<{
@@ -39,9 +39,10 @@ export class StripeWebhookRejection extends Error {
   }
 }
 
-// Authoritative SETTLED terminals only. requires_capture (authorization succeeded) and every pending /
-// action / created state are deliberately NON-terminal here — they keep the attempt `processing`.
-function classify(event: StripeEventLike): { kind: "terminal"; newState: "succeeded" | "failed" } | { kind: "processing" } | { kind: "ignored" } {
+// Authoritative terminals: settled outcomes (succeeded/failed) PLUS an authoritative manual-capture
+// AUTHORIZATION (requires_capture → `authorized`), which resolves the indeterminate attempt WITHOUT
+// capturing money. Pending / action / created states stay `processing`.
+function classify(event: StripeEventLike): { kind: "terminal"; newState: "succeeded" | "failed" | "authorized" } | { kind: "processing" } | { kind: "ignored" } {
   const status = event.data.object.status;
   switch (event.type) {
     case "payment_intent.succeeded":
@@ -50,9 +51,12 @@ function classify(event: StripeEventLike): { kind: "terminal"; newState: "succee
       return status === "requires_payment_method" ? { kind: "terminal", newState: "failed" } : { kind: "processing" };
     case "payment_intent.canceled":
       return status === "canceled" ? { kind: "terminal", newState: "failed" } : { kind: "processing" };
+    case "payment_intent.amount_capturable_updated":
+      // Manual-capture authorization succeeded (funds held, NOT captured). Resolve to `authorized`; a
+      // later capture/void acts on this held authorization (its id is persisted as authorizationReference).
+      return status === "requires_capture" ? { kind: "terminal", newState: "authorized" } : { kind: "processing" };
     case "payment_intent.processing":
     case "payment_intent.requires_action":
-    case "payment_intent.amount_capturable_updated": // requires_capture = authorized, but NOT settled → stay processing
     case "payment_intent.created":
       return { kind: "processing" };
     default:
@@ -109,7 +113,10 @@ export function createStripeWebhookRecovery(deps: {
         newState: classification.newState,
         amountMinor: current.amountMinor,
         payloadDigest,
-        occurredAt: new Date(event.created * 1000)
+        occurredAt: new Date(event.created * 1000),
+        // On an authorization, persist the Stripe PaymentIntent id so a later capture/void can reference
+        // the held authorization. Opaque provider id — no PAN/secret.
+        ...(classification.newState === "authorized" && intent.id ? { authorizationReference: intent.id } : {})
       });
       return { status: "terminalized", eventType: event.type, paymentId, newState: result.state };
     }

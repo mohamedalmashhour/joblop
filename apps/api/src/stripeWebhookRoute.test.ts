@@ -36,6 +36,7 @@ function inMemoryPrisma(initialState: string) {
         if (!(m(where) && attempt.version === where.version && attempt.state === where.state)) return { count: 0 };
         attempt.state = data.state; attempt.version = (attempt.version as number) + 1;
         if ((data as { allocatedMinor?: unknown }).allocatedMinor !== undefined) attempt.allocatedMinor = (data as { allocatedMinor: bigint }).allocatedMinor;
+        if ((data as { authorizationReference?: unknown }).authorizationReference !== undefined) attempt.authorizationReference = (data as { authorizationReference: string }).authorizationReference;
         return { count: 1 };
       }
     },
@@ -119,6 +120,17 @@ describe("Stripe webhook route — test-mode SDK-signature conformance (Stage 2b
       expect(res.json().status).toBe("processing_unchanged");
       expect(mem.attempt.state).toBe("processing");
     }
+  });
+
+  it("[4b] a manual-capture authorization (requires_capture) → authorized + PI id persisted, no capture", async () => {
+    const { app, mem } = await buildRoute({ initialState: "processing" });
+    const { payload, header } = sign(pi({ id: "evt_auth_route", type: "payment_intent.amount_capturable_updated", status: "requires_capture" }));
+    const res = await post(app, payload, header);
+    expect(res.statusCode).toBe(200);
+    expect(res.json()).toMatchObject({ status: "terminalized" });
+    expect(mem.attempt.state).toBe("authorized");
+    expect(mem.attempt.authorizationReference).toBe("pi_3TestConformance"); // held authorization referenceable
+    expect(mem.attempt.allocatedMinor).toBe(0n); // no money captured
   });
 
   it("[5] duplicate event delivery is idempotent (no double-apply)", async () => {
