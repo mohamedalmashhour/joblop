@@ -230,6 +230,7 @@ import { registerInvoiceRoutes } from "./invoiceRoutes";
 import { createPrismaInvoiceRepository, type InvoiceRepository } from "./invoiceRepository";
 import { createPrismaPayrollRepository, createPrismaPayrollRateResolver, createPrismaPayrollJurisdictionResolver } from "./payrollRepository";
 import { registerPaymentRoutes } from "./paymentRoutes";
+import { registerStripeWebhookRoute } from "./stripeWebhookRoute";
 import { createPrismaPaymentRepository, type PaymentRepository } from "./paymentRepository";
 
 export interface BuildApiOptions {
@@ -270,6 +271,10 @@ export interface BuildApiOptions {
   invoiceRepository?: InvoiceRepository;
   paymentRepository?: PaymentRepository;
   localPaymentWebhookSecret?: string;
+  // Stage 2b.4-C3-G-e1: OPTIONAL Stripe test-mode webhook recovery. Mounted only when a recovery is
+  // injected (Stripe test env enabled by the caller). Default undefined → route NOT mounted, no live
+  // binding, no scheduler. Never enabled in production without separate owner authorization.
+  stripeWebhookRecovery?: { resolve(rawBody: Buffer, signature: string): Promise<{ status: string; eventType: string; paymentId?: string; newState?: string }> };
   publicWorkerIngressOnly?: boolean;
   publicWorkerWebOrigin?: string;
   // HR-6: advisory AI review provider. Defaults to the deterministic synthetic provider — no
@@ -869,6 +874,13 @@ export function buildApi(options: BuildApiOptions = {}) {
         return null;
       }
     });
+  }
+
+  // Stage 2b.4-C3-G-e1: mount the Stripe test-mode webhook recovery endpoint ONLY when a recovery is
+  // injected. Inert by default (no Stripe env, no live keys, no scheduler). The route is public (Stripe
+  // presents no user session); correlation + safety live entirely inside the injected recovery handler.
+  if (options.stripeWebhookRecovery) {
+    registerStripeWebhookRoute(app, { recovery: options.stripeWebhookRecovery });
   }
 
   if (documentService && documentUploadContract) {
