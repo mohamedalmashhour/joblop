@@ -140,7 +140,7 @@ export function PayrollConsole() {
               </dl>
               <table style={s.table}>
                 <caption style={s.caption}>Approved worked-time + applied contract rate snapshots</caption>
-                <thead><tr><th style={s.th}>Timesheet</th><th style={s.th}>Shift</th><th style={s.th}>Min</th><th style={s.th}>Contract</th><th style={s.th}>Rate</th></tr></thead>
+                <thead><tr><th scope="col" style={s.th}>Timesheet</th><th scope="col" style={s.th}>Shift</th><th scope="col" style={s.th}>Minutes</th><th scope="col" style={s.th}>Contract</th><th scope="col" style={s.th}>Rate</th></tr></thead>
                 <tbody>
                   {detail.workedTimeRefs.map((w) => (
                     <tr key={w.timesheetId}>

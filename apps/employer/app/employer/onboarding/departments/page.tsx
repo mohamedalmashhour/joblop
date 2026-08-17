@@ -6,7 +6,7 @@ export default function DepartmentsPage() {
   return (
     <EmployerShell
       currentRoute="/employer/onboarding/departments"
-      eyebrow="Page 040 - Departments"
+      eyebrow="Departments"
       title="Define departments as operating work areas, not shifts or worker groups."
       lede="Departments sit inside residences and prepare the organization for shift creation. They do not own staffing, assignment, attendance, payroll, or compliance decisions."
       actions={

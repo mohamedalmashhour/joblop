@@ -65,12 +65,12 @@ export default function Phase01ReviewPage() {
           <table style={styles.table}>
             <thead>
               <tr>
-                <th style={styles.th}>Page</th>
-                <th style={styles.th}>Route</th>
-                <th style={styles.th}>Title</th>
-                <th style={styles.th}>Ownership</th>
-                <th style={styles.th}>Implementation</th>
-                <th style={styles.th}>Navigation</th>
+                <th scope="col" style={styles.th}>Page</th>
+                <th scope="col" style={styles.th}>Route</th>
+                <th scope="col" style={styles.th}>Title</th>
+                <th scope="col" style={styles.th}>Ownership</th>
+                <th scope="col" style={styles.th}>Implementation</th>
+                <th scope="col" style={styles.th}>Navigation</th>
               </tr>
             </thead>
             <tbody>

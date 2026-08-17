@@ -180,10 +180,10 @@ export default function ContactPage() {
           Message
           <textarea placeholder="Describe what you need. Do not include passwords or full financial details." style={styles.textarea} />
         </label>
-        <button disabled type="button" style={styles.disabledButton}>
-          Submit request placeholder
-        </button>
-        <p style={styles.guardrail}>No support-ticket integration or live messaging is connected on this page.</p>
+        <a href="mailto:support@joblop.ca?subject=JobLop%20support%20request" style={styles.primaryButton}>
+          Email JobLop support
+        </a>
+        <p style={styles.guardrail}>This opens your email app to reach JobLop support directly. Don&apos;t include passwords or full financial details.</p>
       </section>
 
       <section aria-labelledby="guardrails-title" style={styles.section}>

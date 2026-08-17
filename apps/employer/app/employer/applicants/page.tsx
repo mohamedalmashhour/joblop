@@ -11,7 +11,7 @@ export default function ApplicantsPage() {
   return (
     <EmployerShell
       currentRoute="/employer/applicants"
-      eyebrow="Page 045 - Applicants"
+      eyebrow="Applicants"
       title="Review applicants for a published shift without creating an assignment."
       lede="Applicants supports human review, filtering, qualification summaries, availability review, and comparison handoff. Assignment happens later."
       actions={<a href="/employer/applicants/detail" style={styles.primaryButton}>Open applicant detail</a>}

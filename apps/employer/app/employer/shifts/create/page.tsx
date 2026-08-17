@@ -14,7 +14,7 @@ export default function CreateShiftPage() {
   return (
     <EmployerShell
       currentRoute="/employer/shifts/create"
-      eyebrow="Page 041 - Create Shift"
+      eyebrow="Create Shift"
       title="Create a governed single shift without assigning workers or calculating payroll."
       lede="This page owns scheduled terms and staffing requirements only. Publication, assignment, attendance, payroll, invoice, and payment remain separate workflows."
       actions={<a href="/employer/shifts/recurring" style={styles.primaryButton}>Recurring shift</a>}

@@ -6,7 +6,7 @@ export default function AuthorizationStatePage() {
   return (
     <EmployerShell
       currentRoute="/employer/payments/authorization"
-      eyebrow="Page 051 - Authorization State"
+      eyebrow="Authorization State"
       title="Review authorization state without claiming settlement."
       lede="Authorization pending or authorized does not mean funds are settled, refunded, or paid to workers."
       actions={<a href="/employer/payments/settlement" style={styles.primaryButton}>Settlement state</a>}

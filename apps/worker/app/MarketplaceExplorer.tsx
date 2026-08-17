@@ -85,17 +85,17 @@ function SignInPanel({ onSignedIn }: { onSignedIn: () => void }) {
       <form className="searchbar" onSubmit={submit} style={{ marginTop: 20 }}>
         <div className="field grow">
           <label htmlFor="email">Email</label>
-          <input id="email" type="email" autoComplete="username" value={email} onChange={(e) => setEmail(e.target.value)} required />
+          <input id="email" type="email" autoComplete="username" value={email} onChange={(e) => setEmail(e.target.value)} required aria-invalid={error ? true : undefined} aria-describedby={error ? "signin-error" : undefined} />
         </div>
         <div className="field grow">
           <label htmlFor="password">Password</label>
-          <input id="password" type="password" autoComplete="current-password" value={password} onChange={(e) => setPassword(e.target.value)} required />
+          <input id="password" type="password" autoComplete="current-password" value={password} onChange={(e) => setPassword(e.target.value)} required aria-invalid={error ? true : undefined} aria-describedby={error ? "signin-error" : undefined} />
         </div>
         <button className="btn" type="submit" disabled={busy}>
           {busy ? "Signing in…" : "Sign in"}
         </button>
       </form>
-      {error ? <p className="notice" style={{ color: "var(--danger)" }}>{error}</p> : null}
+      {error ? <p id="signin-error" className="notice" role="alert" style={{ color: "var(--danger)" }}>{error}</p> : null}
     </section>
   );
 }

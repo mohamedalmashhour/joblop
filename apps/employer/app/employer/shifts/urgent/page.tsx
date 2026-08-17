@@ -6,7 +6,7 @@ export default function UrgentShiftPage() {
   return (
     <EmployerShell
       currentRoute="/employer/shifts/urgent"
-      eyebrow="Page 043 - Urgent Shift"
+      eyebrow="Urgent Shift"
       title="Prioritize urgent staffing without bypassing qualification, pricing, or human review."
       lede="Urgency means governed priority. It does not create an emergency-service obligation, guarantee coverage, or override eligibility."
       actions={<a href="/employer/shifts/published" style={styles.primaryButton}>Published shifts</a>}

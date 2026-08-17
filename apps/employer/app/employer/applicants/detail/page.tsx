@@ -12,7 +12,7 @@ export default function ApplicantDetailPage() {
   return (
     <EmployerShell
       currentRoute="/employer/applicants/detail"
-      eyebrow="Page 045 - Applicant Detail"
+      eyebrow="Applicant Detail"
       title="Review one applicant using minimum necessary staffing information."
       lede="This page displays role fit, qualification summaries, availability, experience, and AI explanation. It does not expose sensitive personal information or assign the worker."
       actions={<a href="/employer/shifts/ai-suggestions" style={styles.primaryButton}>Review AI recommendations</a>}

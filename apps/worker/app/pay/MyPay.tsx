@@ -74,7 +74,7 @@ export function MyPay() {
               <div className="when">Deductions: −{money(s.totalDeductionsMinor, s.currency)}</div>
               <div className="when" style={{ fontSize: 18 }}>Net pay: <strong>{money(s.netPayMinor, s.currency)}</strong></div>
               {s.deductions.length > 0 ? (
-                <ul style={{ margin: "6px 0 0", paddingLeft: 18, fontSize: 13, color: "var(--muted)" }}>
+                <ul style={{ margin: "6px 0 0", paddingLeft: 18, fontSize: 13, color: "var(--text-muted)" }}>
                   {s.deductions.map((d) => (
                     <li key={d.code}>{d.description}: −{money(d.amountMinor, d.currency)} <span style={{ opacity: 0.7 }}>({d.category})</span></li>
                   ))}

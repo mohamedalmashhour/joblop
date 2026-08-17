@@ -6,7 +6,7 @@ export default function ChargeBreakdownPage() {
   return (
     <EmployerShell
       currentRoute="/employer/invoices/breakdown"
-      eyebrow="Page 050 - Charge Breakdown"
+      eyebrow="Charge Breakdown"
       title="Review charge breakdown before payment-state handoff."
       lede="Charge breakdown explains fixture totals. It does not provide tax advice, post accounting, or execute charges."
       actions={<a href="/employer/payments" style={styles.primaryButton}>Payment handoff</a>}

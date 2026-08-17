@@ -6,7 +6,7 @@ export default function RecurringShiftPage() {
   return (
     <EmployerShell
       currentRoute="/employer/shifts/recurring"
-      eyebrow="Page 042 - Recurring Shift"
+      eyebrow="Recurring Shift"
       title="Define recurring shift templates without pretending every occurrence is staffed."
       lede="A recurring template is not a generated occurrence, published shift, assignment, worked shift, payroll approval, or invoice."
       actions={<a href="/employer/shifts/urgent" style={styles.primaryButton}>Urgent shift</a>}

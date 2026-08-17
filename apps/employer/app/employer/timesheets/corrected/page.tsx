@@ -6,7 +6,7 @@ export default function CorrectedTimesheetPage() {
   return (
     <EmployerShell
       currentRoute="/employer/timesheets/corrected"
-      eyebrow="Page 049 - Corrected Timesheet"
+      eyebrow="Corrected Timesheet"
       title="Review the corrected version with original values preserved."
       lede="Corrections keep original value, adjusted value, actor, timestamp, and reason visible."
       actions={<a href="/employer/timesheets/approved" style={styles.primaryButton}>Approved timesheet</a>}

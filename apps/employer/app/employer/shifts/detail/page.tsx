@@ -7,7 +7,7 @@ export default function ShiftDetailPage() {
   return (
     <EmployerShell
       currentRoute="/employer/shifts/detail"
-      eyebrow="Page 041 - Shift Detail"
+      eyebrow="Shift Detail"
       title="Inspect the published shift without absorbing applicant, assignment, or attendance work."
       lede="This detail screen is a governed handoff surface. It summarizes the shift and points to applicants as the next workflow boundary."
       actions={<a href="/employer/shifts/published" style={styles.secondaryButton}>Published shifts</a>}

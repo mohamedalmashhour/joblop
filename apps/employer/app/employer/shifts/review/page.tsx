@@ -8,7 +8,7 @@ export default function ShiftReviewPage() {
   return (
     <EmployerShell
       currentRoute="/employer/shifts/review"
-      eyebrow="Page 041 - Shift Review"
+      eyebrow="Shift Review"
       title="Review the shift draft before any publication request."
       lede="This step verifies planned shift terms only. It does not publish, assign, notify workers, confirm attendance, or calculate finance."
       actions={<a href="/employer/shifts/create" style={styles.secondaryButton}>Edit draft</a>}

@@ -4,7 +4,7 @@ export default function ArrivalStatePage() {
   return (
     <AttendanceStatePage
       currentRoute="/employer/attendance/arrival"
-      eyebrow="Page 047 - Arrival State"
+      eyebrow="Arrival State"
       state="Arrived"
       title="Review arrival state without treating arrival as clock-in."
     />

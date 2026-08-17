@@ -7,7 +7,7 @@ export default function ShiftPublishPage() {
   return (
     <EmployerShell
       currentRoute="/employer/shifts/publish"
-      eyebrow="Page 041 - Publish Shift"
+      eyebrow="Publish Shift"
       title="Publish a validated fixture shift without changing staffing authority."
       lede="Publication opens the shift for staffing activity. It does not fill the shift, assign workers, start attendance, or create invoices."
       actions={<a href="/employer/shifts/review" style={styles.secondaryButton}>Back to review</a>}

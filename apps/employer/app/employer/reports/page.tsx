@@ -10,7 +10,7 @@ export default function EmployerReportsPage() {
   return (
     <EmployerShell
       currentRoute="/employer/reports"
-      eyebrow="Page 052 - Reports"
+      eyebrow="Reports"
       title="Review source-labelled employer workflow summaries."
       lede="Reports summarize the completed employer journey. They do not own shifts, applicants, assignments, attendance, timesheets, invoices, payments, or live analytics automation."
       actions={<a href="/employer/dashboard" style={styles.secondaryButton}>Back to dashboard</a>}

@@ -7,7 +7,7 @@ export default function WorkerResponseStatePage() {
   return (
     <EmployerShell
       currentRoute="/employer/assignments/worker-response"
-      eyebrow="Page 046 - Worker Response State"
+      eyebrow="Worker Response State"
       title="Track truthful assignment response states without simulating acceptance."
       lede="The system can show proposed, pending, accepted, declined, expired, or cancelled states. This milestone stops at pending response and does not act as the worker."
       actions={<a href="/employer/assignments/detail" style={styles.primaryButton}>Assignment detail</a>}

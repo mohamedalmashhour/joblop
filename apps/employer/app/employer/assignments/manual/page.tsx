@@ -10,7 +10,7 @@ export default function ManualAssignmentPage() {
   return (
     <EmployerShell
       currentRoute="/employer/assignments/manual"
-      eyebrow="Page 058 - Manual Assignment"
+      eyebrow="Manual Assignment"
       title="Select a candidate manually after human review."
       lede="Manual assignment is the human decision surface. It cannot bypass eligibility, waive qualifications, alter shift terms, or simulate worker acceptance."
       actions={<a href="/employer/applicants/compare" style={styles.secondaryButton}>Back to comparison</a>}

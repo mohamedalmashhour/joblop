@@ -620,7 +620,7 @@ function DashboardPreview() {
             <h3 style={styles.dashboardTitle}>Welcome, Sarah Johnson</h3>
             <p style={styles.dashboardSub}>Sunrise of Oak Hill</p>
           </div>
-          <a href="/employer/shifts/create" style={styles.miniButton}>
+          <a href="/employer/calendar/create" style={styles.miniButton}>
             Post a Shift
           </a>
         </div>

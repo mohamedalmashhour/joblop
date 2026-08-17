@@ -6,7 +6,7 @@ export default function PaymentsPage() {
   return (
     <EmployerShell
       currentRoute="/employer/payments"
-      eyebrow="Page 051 - Payments"
+      eyebrow="Payments"
       title="Review employer payment state without executing charges."
       lede="Payment state separates method, authorization, settlement, receipt, and exceptions. It does not choose a provider or move money."
       actions={<a href="/employer/payments/method" style={styles.primaryButton}>Payment method</a>}

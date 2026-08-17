@@ -6,7 +6,7 @@ export default function PaymentMethodPage() {
   return (
     <EmployerShell
       currentRoute="/employer/payments/method"
-      eyebrow="Page 051 - Payment Method State"
+      eyebrow="Payment Method State"
       title="Show masked payment method state without storing credentials here."
       lede="Full payment credentials are never exposed. Method state is fixture-backed and integration-pending."
       actions={<a href="/employer/payments/authorization" style={styles.primaryButton}>Authorization state</a>}

@@ -7,7 +7,7 @@ export default function AssignmentReviewPage() {
   return (
     <EmployerShell
       currentRoute="/employer/assignments/review"
-      eyebrow="Page 058 - Assignment Review"
+      eyebrow="Assignment Review"
       title="Review the human assignment decision before creating a pending response."
       lede="This review records the selected candidate and reason. It does not notify workers, guarantee acceptance, start attendance, or approve hours."
       actions={<a href="/employer/assignments/manual" style={styles.secondaryButton}>Back to manual selection</a>}

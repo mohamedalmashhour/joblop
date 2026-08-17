@@ -10,7 +10,7 @@ export default function CandidateComparisonPage() {
   return (
     <EmployerShell
       currentRoute="/employer/applicants/compare"
-      eyebrow="Page 045 - Candidate Comparison"
+      eyebrow="Candidate Comparison"
       title="Compare candidates for human review without hidden ranking."
       lede="Comparison supports an employer decision. It does not assign, reject, notify, or score workers using protected characteristics."
       actions={<a href="/employer/assignments/manual" style={styles.primaryButton}>Manual assignment</a>}

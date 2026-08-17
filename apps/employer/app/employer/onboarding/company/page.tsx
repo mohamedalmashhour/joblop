@@ -10,7 +10,7 @@ export default function CompanyProfilePage() {
   return (
     <EmployerShell
       currentRoute="/employer/onboarding/company"
-      eyebrow="Page 038 - Company Profile"
+      eyebrow="Company Profile"
       title="Set up the organization without mixing public, legal, verified, and operational identity."
       lede="Company Profile owns organization identity visibility. It does not implement verification, billing, role management, tax, compliance adjudication, or legal approval."
       actions={

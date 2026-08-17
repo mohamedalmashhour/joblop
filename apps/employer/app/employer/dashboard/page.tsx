@@ -13,7 +13,7 @@ export default function EmployerDashboardPage() {
   return (
     <EmployerShell
       currentRoute="/employer/dashboard"
-      eyebrow="Page 037 - Employer Dashboard"
+      eyebrow="Employer Dashboard"
       title="Employer operational home for staffing attention, risks, and governed workflow handoffs."
       lede="The dashboard summarizes employer-side staffing activity. It does not become the source of truth for shifts, workers, payments, messages, notifications, documents, or compliance."
       actions={

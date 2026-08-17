@@ -10,7 +10,7 @@ export default function ResidencesPage() {
   return (
     <EmployerShell
       currentRoute="/employer/onboarding/residences"
-      eyebrow="Page 039 - Residences"
+      eyebrow="Residences"
       title="Create governed residence records without absorbing department or clinical data."
       lede="Residences are operating sites inside an organization. They are not departments, patient records, clinical records, or staffing engines."
       actions={

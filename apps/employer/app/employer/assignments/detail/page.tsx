@@ -7,7 +7,7 @@ export default function AssignmentDetailPage() {
   return (
     <EmployerShell
       currentRoute="/employer/assignments/detail"
-      eyebrow="Page 046 - Assignment Detail"
+      eyebrow="Assignment Detail"
       title="Review assignment state before the attendance handoff."
       lede="Assignment detail summarizes the assignment and response state. Attendance, timesheets, invoices, and payment presentation remain separate governed workflows; no payroll or payment execution occurs here."
       actions={

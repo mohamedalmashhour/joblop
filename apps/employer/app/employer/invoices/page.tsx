@@ -6,7 +6,7 @@ export default function InvoicesPage() {
   return (
     <EmployerShell
       currentRoute="/employer/invoices"
-      eyebrow="Page 050 - Invoices"
+      eyebrow="Invoices"
       title="Review invoices generated from approved timesheet state."
       lede="Invoices are lifecycle records, not payment execution, settlement, payroll, accounting, or tax engines."
       actions={<a href="/employer/invoices/detail" style={styles.primaryButton}>Invoice detail</a>}

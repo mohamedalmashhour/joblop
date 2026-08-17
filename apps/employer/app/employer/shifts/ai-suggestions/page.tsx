@@ -6,7 +6,7 @@ export default function AIWorkerSuggestionsPage() {
   return (
     <EmployerShell
       currentRoute="/employer/shifts/ai-suggestions"
-      eyebrow="Page 044 - AI Worker Suggestions"
+      eyebrow="AI Worker Suggestions"
       title="Review advisory worker suggestions without hidden ranking or automatic assignment."
       lede="AI suggestions explain compatibility and missing information. Employers still use human review, Applicants, and assignment workflows for decisions."
       actions={<a href="/employer/applicants/compare" style={styles.primaryButton}>Compare candidates</a>}

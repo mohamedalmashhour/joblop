@@ -134,8 +134,8 @@ export function Offers() {
                 {o.summary ? <p className="muted" style={{ margin: "6px 0" }}>{o.summary}</p> : null}
                 <div className="when">{when(o.startAt, o.endAt, o.timezone)}</div>
                 {o.compensationSummary ? <div className="when">Compensation: {o.compensationSummary}</div> : null}
-                {o.policySummary ? <div className="when" style={{ fontSize: 13, color: "var(--muted)" }}>{o.policySummary}</div> : null}
-                <div className="when" style={{ fontSize: 13, color: "var(--muted)" }}>{expiry(o.expiresAt)}</div>
+                {o.policySummary ? <div className="when" style={{ fontSize: 13, color: "var(--text-muted)" }}>{o.policySummary}</div> : null}
+                <div className="when" style={{ fontSize: 13, color: "var(--text-muted)" }}>{expiry(o.expiresAt)}</div>
                 {respondable ? (
                   <div style={{ display: "flex", gap: 8, marginTop: 12 }}>
                     <button className="btn" type="button" disabled={busy} onClick={() => void respond(o, "accept")}>
