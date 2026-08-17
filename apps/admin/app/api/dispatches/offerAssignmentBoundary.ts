@@ -76,6 +76,53 @@ export function readAssignmentCreateInput(input: unknown) {
   }
 }
 
+// Round 2b: validate an offer-CREATE payload (dispatchReviewId comes from the URL, never the body).
+export function readOfferCreateInput(input: unknown) {
+  let record: Record<string, unknown>;
+  try {
+    record = asRecord(input);
+  } catch {
+    return null;
+  }
+  try {
+    const workerIdentityId = uuid(record, "workerIdentityId");
+    const expiresAt = isoDate(record, "expiresAt");
+    if (Date.parse(expiresAt) <= Date.now()) return null; // must be in the future
+    const optionalString = (key: string): string | undefined => {
+      const value = record[key];
+      if (value === undefined || value === null) return undefined;
+      if (typeof value !== "string" || value.length > 500) throw new Error("RWOS_INVALID_ADMIN_OFFER_FIELD");
+      return value;
+    };
+    return {
+      workerIdentityId,
+      expiresAt,
+      workerVisibleTitle: optionalString("workerVisibleTitle"),
+      workerVisibleSummary: optionalString("workerVisibleSummary"),
+      compensationSummary: optionalString("compensationSummary"),
+      policySummary: optionalString("policySummary")
+    };
+  } catch {
+    return null;
+  }
+}
+
+// Round 2b: validate an offer approve/send action payload (workerOfferId comes from the URL).
+export function readOfferActionInput(input: unknown) {
+  let record: Record<string, unknown>;
+  try {
+    record = asRecord(input);
+  } catch {
+    return null;
+  }
+  if (Object.keys(record).length !== 1) return null;
+  try {
+    return { expectedVersion: positiveInteger(record, "expectedVersion") };
+  } catch {
+    return null;
+  }
+}
+
 export function isCanonicalOperationalId(input: string) {
   return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/u.test(input);
 }

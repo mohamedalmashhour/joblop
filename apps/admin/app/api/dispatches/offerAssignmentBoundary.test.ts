@@ -5,11 +5,37 @@ import {
   parseAdminAssignments,
   parseAdminWorkerOffers,
   readAssignmentCreateInput,
+  readOfferActionInput,
+  readOfferCreateInput,
   type AdminAssignmentSummary,
   type AdminWorkerOfferSummary
 } from "./offerAssignmentBoundary";
 
 const dispatchReviewId = "00000000-0000-4000-8000-000000000001";
+const workerIdentityId = "00000000-0000-4000-8000-0000000000aa";
+const future = new Date(Date.now() + 86_400_000).toISOString();
+
+describe("admin offer create/action input boundary (Round 2b)", () => {
+  it("accepts a valid future-dated offer-create payload and passes optional visible fields", () => {
+    expect(readOfferCreateInput({ workerIdentityId, expiresAt: future, workerVisibleTitle: "Kitchen helper" })).toEqual({
+      workerIdentityId, expiresAt: future, workerVisibleTitle: "Kitchen helper",
+      workerVisibleSummary: undefined, compensationSummary: undefined, policySummary: undefined
+    });
+  });
+  it("rejects a past/non-future expiry, a non-uuid worker id, a body-supplied dispatchReviewId injection, and junk", () => {
+    expect(readOfferCreateInput({ workerIdentityId, expiresAt: new Date(Date.now() - 1000).toISOString() })).toBeNull();
+    expect(readOfferCreateInput({ workerIdentityId: "not-a-uuid", expiresAt: future })).toBeNull();
+    expect(readOfferCreateInput({ workerIdentityId, expiresAt: future, workerVisibleTitle: "x".repeat(600) })).toBeNull();
+    expect(readOfferCreateInput(null)).toBeNull();
+    expect(readOfferCreateInput("nope")).toBeNull();
+  });
+  it("accepts an approve/send action payload of exactly {expectedVersion} and rejects extras/invalid", () => {
+    expect(readOfferActionInput({ expectedVersion: 3 })).toEqual({ expectedVersion: 3 });
+    expect(readOfferActionInput({ expectedVersion: 0 })).toBeNull();
+    expect(readOfferActionInput({ expectedVersion: 1, extra: "x" })).toBeNull();
+    expect(readOfferActionInput({})).toBeNull();
+  });
+});
 
 describe("admin offer and Assignment read boundary", () => {
   it("allowlists persisted offer fields and rejects cross-dispatch records", () => {
