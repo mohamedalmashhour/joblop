@@ -13,8 +13,20 @@ import {
   createResidenceService,
   createRoleDefinitionService,
   createWorkGroupService,
-  TimesheetError
+  TimesheetError,
+  type OrganizationMembershipService
 } from "@rwos/auth";
+
+// Tenant-isolation fix: the employer read/write routes now require an ACTIVE membership of the URL org.
+// The service-stubbed foundation tests below query org-api-1, so grant that membership explicitly.
+const activeOrgApi1Membership = {
+  listMemberships: async () => [{ organizationId: "org-api-1", status: "active" }]
+} as unknown as OrganizationMembershipService;
+// A member of a DIFFERENT org — used to prove cross-tenant IDOR denial (member of org-api-other must
+// NOT reach org-api-1's assignments/attendance/timesheets).
+const activeOtherOrgMembership = {
+  listMemberships: async () => [{ organizationId: "org-api-other", status: "active" }]
+} as unknown as OrganizationMembershipService;
 import type {
   AuthorizationRoleKey,
   AssignmentService,
@@ -2124,6 +2136,7 @@ describe("api assignment foundation", () => {
           };
         }
       },
+      membershipService: activeOrgApi1Membership,
       resolveAuthorizationRoles: async () => ["DISPATCHER", "ORGANIZATION_OWNER", "WORKER_ACCESS"]
     });
     const user = await registerApiUser(app);
@@ -2380,6 +2393,7 @@ describe("api attendance foundation", () => {
           };
         }
       },
+      membershipService: activeOrgApi1Membership,
       resolveAuthorizationRoles: async () => ["DISPATCHER", "ORGANIZATION_OWNER", "WORKER_ACCESS"]
     });
     const user = await registerApiUser(app);
@@ -2555,6 +2569,7 @@ describe("api timesheet foundation", () => {
           };
         }
       },
+      membershipService: activeOrgApi1Membership,
       resolveAuthorizationRoles: async () => [
         "TIMESHEET_REVIEWER",
         "WORKER_ACCESS",
@@ -2692,6 +2707,7 @@ describe("api timesheet foundation", () => {
           return otherTimesheet;
         }
       },
+      membershipService: activeOtherOrgMembership,
       resolveAuthorizationRoles: async () => ["ORGANIZATION_OWNER"]
     });
     const user = await registerApiUser(app);

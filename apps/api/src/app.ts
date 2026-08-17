@@ -5318,6 +5318,11 @@ export function buildApi(options: BuildApiOptions = {}) {
     const query = asRecord(request.query);
     const status = readAssignmentStatus(readOptionalString(query, "status"));
     const organizationId = readRouteParam(request.params, "organizationId");
+    // Stage: tenant-isolation fix — bind the caller to an ACTIVE membership of THIS org before listing
+    // (global roles alone let one org read another org's assignments by changing the URL id).
+    if (!(await userHasOrganizationAccess(session.user.id, organizationId))) {
+      return sendAssignmentDenied(reply);
+    }
     const assignments = await assignmentService.listAssignments({
       session,
       roles: await resolveAuthorizationRoles(session.user.id),
@@ -5551,6 +5556,10 @@ export function buildApi(options: BuildApiOptions = {}) {
     const query = asRecord(request.query);
     const status = readAttendanceStatus(readOptionalString(query, "status"));
     const organizationId = readRouteParam(request.params, "organizationId");
+    // Stage: tenant-isolation fix — require active membership of THIS org before listing attendance.
+    if (!(await userHasOrganizationAccess(session.user.id, organizationId))) {
+      return sendAttendanceDenied(reply);
+    }
     const attendanceRecords = await attendanceService.listAttendance({
       session,
       roles: await resolveAuthorizationRoles(session.user.id),
@@ -6363,6 +6372,10 @@ export function buildApi(options: BuildApiOptions = {}) {
     const query = asRecord(request.query);
     const status = readTimesheetStatus(readOptionalString(query, "status"));
     const organizationId = readRouteParam(request.params, "organizationId");
+    // Stage: tenant-isolation fix — require active membership of THIS org before listing timesheets.
+    if (!(await userHasOrganizationAccess(session.user.id, organizationId))) {
+      return sendTimesheetDenied(reply);
+    }
     const timesheets = await timesheetService.listTimesheets({
       session,
       roles: await resolveAuthorizationRoles(session.user.id),
@@ -6386,6 +6399,11 @@ export function buildApi(options: BuildApiOptions = {}) {
 
       const organizationId = readRouteParam(request.params, "organizationId");
       const timesheetId = readRouteParam(request.params, "timesheetId");
+      // Stage: tenant-isolation fix — require active membership of THIS org before any cross-org
+      // timesheet write (the visibleTimesheets ownership check below leaks cross-org rows on its own).
+      if (!(await userHasOrganizationAccess(session.user.id, organizationId))) {
+        return sendTimesheetDenied(reply);
+      }
       const roles = await resolveAuthorizationRoles(session.user.id);
       const visibleTimesheets = await timesheetService.listTimesheets({
         session,
@@ -6424,6 +6442,11 @@ export function buildApi(options: BuildApiOptions = {}) {
 
       const organizationId = readRouteParam(request.params, "organizationId");
       const timesheetId = readRouteParam(request.params, "timesheetId");
+      // Stage: tenant-isolation fix — require active membership of THIS org before any cross-org
+      // timesheet write (the visibleTimesheets ownership check below leaks cross-org rows on its own).
+      if (!(await userHasOrganizationAccess(session.user.id, organizationId))) {
+        return sendTimesheetDenied(reply);
+      }
       const roles = await resolveAuthorizationRoles(session.user.id);
       const visibleTimesheets = await timesheetService.listTimesheets({
         session,
