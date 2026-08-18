@@ -139,6 +139,66 @@ export function OfferAssignmentStatusPanel({
     [dispatchReviewId, submitting]
   );
 
+  // Round 2b: advance a draft/approved offer (approve → send). Same rigor as assignment creation:
+  // re-read the latest persisted offer, version-guard, POST, reconcile, and VERIFY the persisted
+  // transition after reload — a button press is never treated as proof of the state change.
+  const advanceOffer = useCallback(
+    async (offer: AdminWorkerOfferSummary, action: "approve" | "send") => {
+      if (submitting) return;
+      setSubmitting(true);
+      setNotice({ tone: "status", message: `Checking the latest offer record before ${action}.` });
+      try {
+        const before = await fetchOperationalState(dispatchReviewId);
+        setState(before);
+        const current =
+          before.status === "ready" ? before.offers.find((candidate) => candidate.id === offer.id) : undefined;
+        const requiredPrev = action === "approve" ? "draft" : "approved";
+        if (!current || current.status !== requiredPrev || current.versionToken !== offer.versionToken) {
+          setNotice({
+            tone: "alert",
+            message: "The offer changed before the action. Review the latest persisted status."
+          });
+          return;
+        }
+        const response = await fetch(
+          `/api/dispatches/${encodeURIComponent(dispatchReviewId)}/offers/${encodeURIComponent(offer.id)}/${action}`,
+          {
+            method: "POST",
+            cache: "no-store",
+            headers: { "content-type": "application/json" },
+            body: JSON.stringify({ expectedVersion: current.versionToken })
+          }
+        );
+        const reconciled = await fetchOperationalState(dispatchReviewId);
+        setState(reconciled);
+        const persisted =
+          reconciled.status === "ready" ? reconciled.offers.find((candidate) => candidate.id === offer.id) : undefined;
+        const expectedNext = action === "approve" ? "approved" : "sent";
+        if (persisted?.status === expectedNext) {
+          setNotice({
+            tone: "status",
+            message:
+              action === "approve"
+                ? "Offer approved and verified in persisted records."
+                : "Offer sent to the worker and verified. Delivery confirmation is separate."
+          });
+        } else if (response.status === 409 || response.status === 412) {
+          setNotice({ tone: "alert", message: "The offer state changed. Review the refreshed persisted records." });
+        } else {
+          setNotice({
+            tone: "alert",
+            message: "The action result could not be confirmed. Records were reconciled; review before retrying."
+          });
+        }
+      } catch {
+        setNotice({ tone: "alert", message: "The action result is unknown. Reconcile persisted offers before retrying." });
+      } finally {
+        setSubmitting(false);
+      }
+    },
+    [dispatchReviewId, submitting]
+  );
+
   if (state.status !== "ready") {
     return (
       <section aria-busy={state.status === "loading"} aria-live="polite">
@@ -189,6 +249,28 @@ export function OfferAssignmentStatusPanel({
             {formatWindow(offer.startAt, offer.endAt, offer.timezone)} · version{" "}
             {offer.versionToken}
           </small>
+          {offer.status === "draft" ? (
+            <button
+              aria-label={`Approve offer for ${offer.title}`}
+              disabled={submitting}
+              onClick={() => void advanceOffer(offer, "approve")}
+              style={styles.primaryButton}
+              type="button"
+            >
+              {submitting ? "Working…" : "Approve offer"}
+            </button>
+          ) : null}
+          {offer.status === "approved" ? (
+            <button
+              aria-label={`Send offer to worker for ${offer.title}`}
+              disabled={submitting}
+              onClick={() => void advanceOffer(offer, "send")}
+              style={styles.primaryButton}
+              type="button"
+            >
+              {submitting ? "Working…" : "Send offer to worker"}
+            </button>
+          ) : null}
           {offer.status === "sent" && !offer.deliveredAt ? (
             <small>Delivery is not confirmed; only the persisted sent state is known.</small>
           ) : null}

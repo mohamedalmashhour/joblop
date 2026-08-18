@@ -118,6 +118,42 @@ export function InterestedWorkersPanel({
     [busyId, dispatchReviewId, load]
   );
 
+  // Round 2b: create a governed DRAFT offer for a shortlisted worker (reuses the offers BFF →
+  // worker-offer service). After creation, re-read authoritative state so the offer appears; it is
+  // then approved/sent in the offers panel. A default 7-day expiry is applied.
+  const createOffer = useCallback(
+    async (worker: InterestedWorker) => {
+      if (!worker.interestId || !worker.workerIdentityId || busyId) return;
+      setBusyId(worker.interestId);
+      setNotice(undefined);
+      try {
+        const expiresAt = new Date(Date.now() + 7 * 86_400_000).toISOString();
+        const res = await fetch(`/api/dispatches/${encodeURIComponent(dispatchReviewId)}/offers`, {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ workerIdentityId: worker.workerIdentityId, expiresAt })
+        });
+        if (!res.ok) {
+          setNotice({
+            tone: "alert",
+            message:
+              res.status === 401 || res.status === 403
+                ? "Administrator authorization is required."
+                : "The governed offer could not be created. Refresh and try again."
+          });
+          return;
+        }
+        setNotice({ tone: "status", message: "Governed draft offer created. Approve and send it in the offers panel." });
+        await load();
+      } catch {
+        setNotice({ tone: "alert", message: "Something went wrong. Please try again." });
+      } finally {
+        setBusyId(null);
+      }
+    },
+    [busyId, dispatchReviewId, load]
+  );
+
   if (state.status !== "ready") {
     return (
       <div>
@@ -162,6 +198,7 @@ export function InterestedWorkersPanel({
             const canShortlist = w.status === "submitted" || w.status === "under_review";
             const canDismiss = ["submitted", "under_review", "shortlisted"].includes(w.status ?? "");
             const canLink = !!w.governedOffer?.workerOfferId && w.status !== "offer_created" && w.status !== "offer_accepted";
+            const canCreateOffer = w.status === "shortlisted" && !w.governedOffer?.workerOfferId && !!w.workerIdentityId;
             return (
               <li key={w.interestId ?? w.workerIdentityId} style={styles.item}>
                 <div style={styles.itemHead}>
@@ -190,6 +227,11 @@ export function InterestedWorkersPanel({
                   {canDismiss ? (
                     <button type="button" style={styles.buttonGhost} disabled={busyId === w.interestId} onClick={() => void act(w, "not_selected")}>
                       Not selected
+                    </button>
+                  ) : null}
+                  {canCreateOffer ? (
+                    <button type="button" style={styles.button} disabled={busyId === w.interestId} onClick={() => void createOffer(w)}>
+                      Create offer
                     </button>
                   ) : null}
                   {canLink ? (
