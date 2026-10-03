@@ -1,6 +1,8 @@
 import { createHash, randomUUID } from "node:crypto";
 import type { FastifyInstance, FastifyRequest } from "fastify";
 import {
+  PLATFORM_INVOICE_ISSUER,
+  PLATFORM_INVOICE_TAX,
   calculateInvoiceSnapshot,
   type InvoiceActorRole,
   type InvoiceCalculationInput,
@@ -334,7 +336,17 @@ function invoiceCalculationInput(
   }
   // The shared calculation engine is the authoritative validator for all
   // effective-dated configuration, money, tax, and rounding fields.
-  return input as InvoiceCalculationInput;
+  //
+  // Platform-agency model: JobLop invoices every client under the single platform issuer
+  // (9375-7649 Québec Inc. + Québec GST/QST). The issuer and tax configuration are supplied
+  // server-side from @rwos/shared when the caller omits them, so a client can never spoof the
+  // issuer identity on a tax invoice. A caller MAY still supply them (tests, self-billing).
+  const withPlatformDefaults = {
+    ...input,
+    issuer: input.issuer ?? PLATFORM_INVOICE_ISSUER,
+    tax: input.tax ?? PLATFORM_INVOICE_TAX
+  };
+  return withPlatformDefaults as InvoiceCalculationInput;
 }
 
 function invoiceNumberingConfiguration(
