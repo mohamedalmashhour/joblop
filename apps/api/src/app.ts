@@ -231,7 +231,7 @@ import { createPrismaRequestPricingSnapshotCapture } from "./requestPricingSnaps
 import { materializeAndListWorkerPayouts } from "./workerPayoutRepository";
 import { isWorkerDisputeCategory, normalizeWorkerDisputeReason } from "@rwos/shared";
 import { raiseWorkerDispute, listWorkerDisputes, withdrawWorkerDispute } from "./workerDisputeRepository";
-import { createEmployerOrderWithChildren, listEmployerOrders, getEmployerOrder, submitEmployerOrder } from "./employerOrderRepository";
+import { createEmployerOrderWithChildren, listEmployerOrders, getEmployerOrder, submitEmployerOrder, cancelEmployerOrder } from "./employerOrderRepository";
 import { listMarketWagesForResidence } from "./marketWageRepository";
 import { workerAllowances } from "./workerAllowances";
 import { createPrismaInvoiceRepository, type InvoiceRepository } from "./invoiceRepository";
@@ -2506,6 +2506,28 @@ export function buildApi(options: BuildApiOptions = {}) {
     if (!result.ok) {
       const code = result.reason === "not_found" ? 404 : 422;
       return reply.code(code).send({ error: `RWOS_ORDER_${result.reason.toUpperCase()}`, message: "The order could not be submitted." });
+    }
+    return reply.code(200).send({ order: result.order });
+  });
+
+  // Cancel the whole order (every still-cancellable child role line). A reason is required.
+  app.post("/organizations/:organizationId/orders/:orderId/cancel", async (request, reply) => {
+    const session = await authService.validateSession(readBearerToken(request.headers.authorization));
+    if (!session.authenticated || !session.user) return sendJobRequestDenied(reply);
+    const organizationId = readRouteParam(request.params, "organizationId");
+    if (!(await userHasOrganizationAccess(session.user.id, organizationId))) return sendJobRequestDenied(reply);
+    const reason = readRequiredString(asRecord(request.body), "reason");
+    if (!reason) return reply.code(400).send({ error: "RWOS_ORDER_REASON_REQUIRED", message: "A cancellation reason is required." });
+    const result = await cancelEmployerOrder(prisma!, jobRequestService, {
+      actorUserId: session.user.id,
+      organizationId,
+      orderId: readRouteParam(request.params, "orderId"),
+      reason,
+      now: new Date()
+    });
+    if (!result.ok) {
+      const code = result.reason === "not_found" ? 404 : 422;
+      return reply.code(code).send({ error: `RWOS_ORDER_${result.reason.toUpperCase()}`, message: "The order could not be cancelled." });
     }
     return reply.code(200).send({ order: result.order });
   });

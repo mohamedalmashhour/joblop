@@ -10,7 +10,7 @@ import {
 // Only the governed job-request operations the order service reuses. Each child role line is created
 // and submitted through these, so every child keeps its contract-rate, site/role and 6-hour checks,
 // its number sequence and its audit trail. The order layer never bypasses them.
-type OrderJobRequestService = Pick<JobRequestService, "createDraft" | "submit">;
+type OrderJobRequestService = Pick<JobRequestService, "createDraft" | "submit" | "cancel">;
 
 export type EmployerOrderChildView = Readonly<{
   jobRequestId: string;
@@ -249,6 +249,47 @@ export async function submitEmployerOrder(
   const updated = await prisma.employerOrder.update({
     where: { id: order.id },
     data: { status: rolled, submittedAt: order.submittedAt ?? input.now }
+  });
+  return { ok: true, order: orderView(updated, refreshed) };
+}
+
+
+// Cancel the whole order: cancel every child role line that is still cancellable (draft, submitted,
+// information_required or approved_for_dispatch) through the governed cancel transition (optimistic-
+// concurrency per child, with a reason), then stamp the order cancelled and roll its status up.
+export async function cancelEmployerOrder(
+  prisma: PrismaClient,
+  jobRequestService: OrderJobRequestService,
+  input: { actorUserId: string; organizationId: string; orderId: string; reason: string; now: Date }
+): Promise<{ ok: true; order: EmployerOrderView } | { ok: false; reason: "not_found" | "cancel_failed" }> {
+  const order = await prisma.employerOrder.findFirst({ where: { id: input.orderId, organizationId: input.organizationId } });
+  if (!order) return { ok: false, reason: "not_found" };
+
+  const cancellable = new Set(["draft", "submitted", "information_required", "approved_for_dispatch"]);
+  const children = await prisma.jobRequest.findMany({
+    where: { orderId: order.id },
+    select: { id: true, status: true, version: true }
+  });
+  for (const child of children) {
+    if (!cancellable.has(child.status)) continue;
+    try {
+      await jobRequestService.cancel({
+        actorUserId: input.actorUserId,
+        organizationId: input.organizationId,
+        jobRequestId: child.id,
+        expectedVersion: child.version,
+        reason: input.reason
+      });
+    } catch {
+      return { ok: false, reason: "cancel_failed" };
+    }
+  }
+
+  const refreshed = await prisma.jobRequest.findMany({ where: { orderId: order.id }, select: CHILD_SELECT, orderBy: { createdAt: "asc" } });
+  const rolled = rollupEmployerOrderStatus(refreshed.map((c) => c.status as ChildRequestStatus));
+  const updated = await prisma.employerOrder.update({
+    where: { id: order.id },
+    data: { status: rolled, cancelledAt: order.cancelledAt ?? input.now }
   });
   return { ok: true, order: orderView(updated, refreshed) };
 }

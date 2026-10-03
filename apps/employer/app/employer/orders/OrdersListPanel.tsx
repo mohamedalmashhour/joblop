@@ -70,6 +70,7 @@ export function OrdersListPanel() {
                 <span style={styles.metaLabel}>{t(ORDER_STATUS_KEY[order.status] ?? "order.statusDraft")}</span>
               </div>
               <p style={styles.metaLabel}>{order.orderNumber}</p>
+              <a href={`/employer/orders/${encodeURIComponent(order.id)}`} style={styles.footerLink}>{t("order.open")}</a>
               <ul>
                 {order.children.map((child) => (
                   <li key={child.jobRequestId} style={styles.cardText}>

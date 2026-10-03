@@ -219,6 +219,17 @@ export const en = {
   "order.marketBelow": "below market",
   "order.marketAt": "at market",
   "order.marketAbove": "above market",
+  "order.detailTitle": "Order detail",
+  "order.detailLoadError": "We couldn't load this order.",
+  "order.schedule": "Schedule",
+  "order.cancel": "Cancel order",
+  "order.cancelReason": "Reason for cancelling",
+  "order.cancelReasonPlaceholder": "Tell us why you're cancelling\u2026",
+  "order.confirmCancel": "Confirm cancellation",
+  "order.cancelling": "Cancelling the order.",
+  "order.cancelled": "Order {num} was cancelled.",
+  "order.cancelFailed": "The order could not be cancelled. Try again.",
+  "order.keepOrder": "Keep order",
 } as const;
 
 export type MessageKey = keyof typeof en;
@@ -441,6 +452,17 @@ export const fr: Messages = {
   "order.marketBelow": "sous le march\u00e9",
   "order.marketAt": "dans le march\u00e9",
   "order.marketAbove": "au-dessus du march\u00e9",
+  "order.detailTitle": "D\u00e9tail de la commande",
+  "order.detailLoadError": "Impossible de charger cette commande.",
+  "order.schedule": "Horaire",
+  "order.cancel": "Annuler la commande",
+  "order.cancelReason": "Motif de l'annulation",
+  "order.cancelReasonPlaceholder": "Dites-nous pourquoi vous annulez\u2026",
+  "order.confirmCancel": "Confirmer l'annulation",
+  "order.cancelling": "Annulation de la commande.",
+  "order.cancelled": "La commande {num} a \u00e9t\u00e9 annul\u00e9e.",
+  "order.cancelFailed": "La commande n'a pas pu \u00eatre annul\u00e9e. R\u00e9essayez.",
+  "order.keepOrder": "Conserver la commande",
 };
 
 export const dictionaries: Readonly<Record<RwosLocale, Messages>> = {
