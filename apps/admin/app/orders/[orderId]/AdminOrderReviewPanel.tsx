@@ -11,6 +11,9 @@ type Child = Readonly<{
   status: string;
   version: number;
   adminReviewReason: string | null;
+  recommendation: "approve" | "escalate";
+  suggestedMarginPpm: number;
+  reasonCodes: readonly string[];
 }>;
 type Order = Readonly<{
   id: string;
@@ -26,7 +29,12 @@ type Order = Readonly<{
 type State = { status: "loading" } | { status: "denied" } | { status: "error" } | { status: "ready"; order: Order };
 type Action = "admin-review" | "request-information" | "approve-for-dispatch";
 
-const DEFAULT_MARGIN_PCT = "20";
+const REASON_TEXT: Record<string, string> = {
+  standard: "Standard role",
+  urgent_premium: "Urgent \u2014 +$5/hr premium applies",
+  immediate_urgency: "Emergency (immediate) \u2014 owner review",
+  high_headcount: "Large headcount \u2014 owner review"
+};
 
 export function AdminOrderReviewPanel({ orderId }: Readonly<{ orderId: string }>) {
   const [state, setState] = useState<State>({ status: "loading" });
@@ -49,12 +57,12 @@ export function AdminOrderReviewPanel({ orderId }: Readonly<{ orderId: string }>
 
   useEffect(() => { void load(); }, [load]);
 
-  const inputFor = (id: string) => inputs[id] ?? { margin: DEFAULT_MARGIN_PCT, reason: "" };
-  const setInput = (id: string, patch: Partial<{ margin: string; reason: string }>) =>
-    setInputs((cur) => ({ ...cur, [id]: { ...inputFor(id), ...patch } }));
+  const cfgFor = (child: Child) => inputs[child.jobRequestId] ?? { margin: String(child.suggestedMarginPpm / 10_000), reason: "" };
+  const setInput = (child: Child, patch: Partial<{ margin: string; reason: string }>) =>
+    setInputs((cur) => ({ ...cur, [child.jobRequestId]: { ...cfgFor(child), ...patch } }));
 
   const act = useCallback(async (child: Child, action: Action) => {
-    const cfg = inputFor(child.jobRequestId);
+    const cfg = cfgFor(child);
     if (action === "request-information" && cfg.reason.trim().length < 4) {
       setMessage("Enter a clear reason of at least four characters.");
       return;
@@ -105,7 +113,7 @@ export function AdminOrderReviewPanel({ orderId }: Readonly<{ orderId: string }>
       {message ? <p style={styles.notice} role="status">{message}</p> : null}
 
       {order.children.map((child) => {
-        const cfg = inputFor(child.jobRequestId);
+        const cfg = cfgFor(child);
         const busyThis = busy === child.jobRequestId;
         return (
           <article key={child.jobRequestId} style={styles.card}>
@@ -114,6 +122,11 @@ export function AdminOrderReviewPanel({ orderId }: Readonly<{ orderId: string }>
               <span style={styles.badge}>{child.status.replaceAll("_", " ")}</span>
             </div>
             <p style={styles.meta}>{child.jobRequestNumber}</p>
+            <p style={child.recommendation === "escalate" ? styles.recEscalate : styles.recApprove}>
+              {child.recommendation === "escalate" ? "AI manager: escalate to owners" : "AI manager: approve"}
+              {" \u00b7 "}
+              {child.reasonCodes.map((code) => REASON_TEXT[code] ?? code).join(", ")}
+            </p>
             {child.adminReviewReason ? <p style={styles.meta}>Info requested: {child.adminReviewReason}</p> : null}
 
             {child.status === "submitted" ? (
@@ -123,11 +136,11 @@ export function AdminOrderReviewPanel({ orderId }: Readonly<{ orderId: string }>
             {child.status === "admin_review" ? (
               <div style={styles.actions}>
                 <label style={styles.label}>Margin %
-                  <input style={styles.input} type="number" min={0} max={90} value={cfg.margin} onChange={(e) => setInput(child.jobRequestId, { margin: e.target.value })} />
+                  <input style={styles.input} type="number" min={0} max={90} value={cfg.margin} onChange={(e) => setInput(child, { margin: e.target.value })} />
                 </label>
                 <button type="button" style={styles.button} disabled={busyThis} onClick={() => void act(child, "approve-for-dispatch")}>Approve for dispatch</button>
                 <label style={styles.label}>Reason (to request info)
-                  <input style={styles.input} value={cfg.reason} onChange={(e) => setInput(child.jobRequestId, { reason: e.target.value })} />
+                  <input style={styles.input} value={cfg.reason} onChange={(e) => setInput(child, { reason: e.target.value })} />
                 </label>
                 <button type="button" style={styles.buttonAlt} disabled={busyThis} onClick={() => void act(child, "request-information")}>Request information</button>
               </div>
@@ -155,5 +168,7 @@ const styles = {
   label: { color: "#10233f", display: "flex", flexDirection: "column" as const, fontSize: 13, fontWeight: 700, gap: 4 },
   input: { border: "1px solid #c3d0e4", borderRadius: 8, minHeight: 40, padding: "0 10px" },
   button: { alignItems: "center", background: "#0f7f78", borderRadius: 8, border: "none", color: "#fff", cursor: "pointer", display: "inline-flex", fontWeight: 800, minHeight: 44, padding: "0 16px", textDecoration: "none" },
-  buttonAlt: { alignItems: "center", background: "#b4541f", borderRadius: 8, border: "none", color: "#fff", cursor: "pointer", display: "inline-flex", fontWeight: 800, minHeight: 44, padding: "0 16px" }
+  buttonAlt: { alignItems: "center", background: "#b4541f", borderRadius: 8, border: "none", color: "#fff", cursor: "pointer", display: "inline-flex", fontWeight: 800, minHeight: 44, padding: "0 16px" },
+  recApprove: { color: "#075e58", fontSize: 13, fontWeight: 800 },
+  recEscalate: { color: "#b4541f", fontSize: 13, fontWeight: 800 }
 } as const;

@@ -1,5 +1,5 @@
 import type { PrismaClient } from "@rwos/database";
-import { rollupEmployerOrderStatus, type ChildRequestStatus, type EmployerOrderStatus } from "@rwos/shared";
+import { rollupEmployerOrderStatus, recommendOrderRole, type AiManagerRecommendation, type AiManagerReasonCode, type ChildRequestStatus, type EmployerOrderStatus } from "@rwos/shared";
 
 const REVIEW_STATES = ["submitted", "admin_review", "information_required"] as const;
 
@@ -12,6 +12,9 @@ export type AdminOrderChildView = Readonly<{
   status: string;
   version: number;
   adminReviewReason: string | null;
+  recommendation: AiManagerRecommendation;
+  suggestedMarginPpm: number;
+  reasonCodes: readonly AiManagerReasonCode[];
 }>;
 
 export type AdminOrderView = Readonly<{
@@ -89,16 +92,22 @@ function view(order: OrderRow, children: readonly ChildRow[]): AdminOrderView {
     status: rollupEmployerOrderStatus(children.map((c) => c.status as ChildRequestStatus)),
     createdAt: order.createdAt.toISOString(),
     submittedAt: order.submittedAt ? order.submittedAt.toISOString() : null,
-    children: children.map((c) => ({
-      jobRequestId: c.id,
-      jobRequestNumber: c.jobRequestNumber,
-      roleDefinitionId: c.roleDefinitionId,
-      title: c.title,
-      numberOfWorkers: c.numberOfWorkers,
-      status: c.status,
-      version: c.version,
-      adminReviewReason: c.adminReviewReason
-    }))
+    children: children.map((c) => {
+      const triage = recommendOrderRole({ urgency: order.urgency, numberOfWorkers: c.numberOfWorkers });
+      return {
+        jobRequestId: c.id,
+        jobRequestNumber: c.jobRequestNumber,
+        roleDefinitionId: c.roleDefinitionId,
+        title: c.title,
+        numberOfWorkers: c.numberOfWorkers,
+        status: c.status,
+        version: c.version,
+        adminReviewReason: c.adminReviewReason,
+        recommendation: triage.recommendation,
+        suggestedMarginPpm: triage.suggestedMarginPpm,
+        reasonCodes: triage.reasonCodes
+      };
+    })
   };
 }
 
