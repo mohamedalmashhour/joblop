@@ -107,6 +107,7 @@ export function createStripeTestPaymentProvider(
             {
               amount: request.amountMinor,
               currency: "cad",
+              payment_method_types: ["card"],
               capture_method: "manual",
               confirm: true,
               payment_method: opaqueRequired(request.methodReference),
