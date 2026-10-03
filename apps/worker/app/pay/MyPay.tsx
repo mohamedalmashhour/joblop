@@ -46,7 +46,20 @@ type PayoutsState =
   | { status: "error" }
   | { status: "ready"; toPay: readonly Payout[]; paid: readonly Payout[]; summary: PayoutSummary };
 
-type Tab = "earnings" | "topay" | "paid" | "calendar";
+type Dispute = Readonly<{
+  id: string;
+  payrollCalculationId: string;
+  organizationId: string;
+  status: string;
+  category: string;
+  reason: string;
+  resolution: string | null;
+  resolvedAt: string | null;
+  createdAt: string;
+}>;
+type DisputesState = { status: "loading" } | { status: "error" } | { status: "ready"; items: readonly Dispute[] };
+
+type Tab = "earnings" | "topay" | "paid" | "calendar" | "disputes";
 
 const PAYOUT_STATUS_KEY: Record<string, MessageKey> = {
   pending: "pay.statusPending",
@@ -54,6 +67,18 @@ const PAYOUT_STATUS_KEY: Record<string, MessageKey> = {
   held: "pay.statusHeld",
   paid: "pay.statusPaid"
 };
+const DISPUTE_STATUS_KEY: Record<string, MessageKey> = {
+  open: "pay.disputeStatusOpen",
+  resolved: "pay.disputeStatusResolved",
+  withdrawn: "pay.disputeStatusWithdrawn"
+};
+const DISPUTE_CATEGORY_KEY: Record<string, MessageKey> = {
+  hours: "pay.disputeCatHours",
+  pay_amount: "pay.disputeCatPay",
+  conditions: "pay.disputeCatConditions",
+  other: "pay.disputeCatOther"
+};
+const DISPUTE_CATEGORIES = ["hours", "pay_amount", "conditions", "other"] as const;
 
 function money(minor: number, currency: string, locale: RwosLocale): string {
   return new Intl.NumberFormat(locale, { style: "currency", currency }).format(minor / 100);
@@ -88,7 +113,9 @@ export function MyPay() {
   const locale = useLocale();
   const [state, setState] = useState<PayState>({ status: "loading" });
   const [payouts, setPayouts] = useState<PayoutsState>({ status: "loading" });
+  const [disputes, setDisputes] = useState<DisputesState>({ status: "loading" });
   const [tab, setTab] = useState<Tab>("earnings");
+  const [actionNotice, setActionNotice] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     try {
@@ -113,6 +140,17 @@ export function MyPay() {
     }
   }, []);
 
+  const loadDisputes = useCallback(async () => {
+    try {
+      const r = await fetch("/api/disputes", { cache: "no-store" });
+      if (!r.ok) return setDisputes({ status: "error" });
+      const payload = (await r.json()) as { items: Dispute[] };
+      setDisputes({ status: "ready", items: payload.items ?? [] });
+    } catch {
+      setDisputes({ status: "error" });
+    }
+  }, []);
+
   const choose = useCallback(async (classification: "employee" | "contractor") => {
     try {
       const r = await fetch("/api/profile/classification", {
@@ -126,13 +164,55 @@ export function MyPay() {
     }
   }, [load]);
 
-  useEffect(() => { void load(); void loadPayouts(); }, [load, loadPayouts]);
+  const raiseDispute = useCallback(async (payrollCalculationId: string, category: string, reason: string): Promise<boolean> => {
+    setActionNotice(null);
+    try {
+      const r = await fetch("/api/disputes", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ payrollCalculationId, category, reason })
+      });
+      if (!r.ok) {
+        setActionNotice(t("pay.disputeError"));
+        return false;
+      }
+      setActionNotice(t("pay.disputeRaised"));
+      await Promise.all([loadPayouts(), loadDisputes()]);
+      return true;
+    } catch {
+      setActionNotice(t("pay.disputeError"));
+      return false;
+    }
+  }, [t, loadPayouts, loadDisputes]);
+
+  const withdrawDispute = useCallback(async (disputeId: string) => {
+    setActionNotice(null);
+    try {
+      const r = await fetch(`/api/disputes/${encodeURIComponent(disputeId)}/withdraw`, {
+        method: "POST",
+        headers: { "content-type": "application/json" }
+      });
+      if (!r.ok) {
+        setActionNotice(t("pay.disputeError"));
+        return;
+      }
+      setActionNotice(t("pay.disputeWithdrawn"));
+      await Promise.all([loadPayouts(), loadDisputes()]);
+    } catch {
+      setActionNotice(t("pay.disputeError"));
+    }
+  }, [t, loadPayouts, loadDisputes]);
+
+  useEffect(() => { void load(); void loadPayouts(); void loadDisputes(); }, [load, loadPayouts, loadDisputes]);
 
   if (state.status === "loading") return <div className="state">{t("common.loading")}</div>;
   if (state.status === "signed_out") return <div className="state">{t("pay.signInPrompt")}<div style={{ marginTop: 12 }}><a className="btn" href="/">{t("common.goToSearch")}</a></div></div>;
   if (state.status === "error") return <div className="state error" role="alert">{t("pay.loadError")}</div>;
 
   const allPayouts: readonly Payout[] = payouts.status === "ready" ? [...payouts.toPay, ...payouts.paid] : [];
+  const openDisputedCalcIds = new Set(
+    disputes.status === "ready" ? disputes.items.filter((d) => d.status === "open").map((d) => d.payrollCalculationId) : []
+  );
 
   return (
     <>
@@ -149,12 +229,16 @@ export function MyPay() {
         <button type="button" className={`chip ${tab === "topay" ? "status-verified" : ""}`} onClick={() => setTab("topay")}>{t("pay.tabToPay")}</button>
         <button type="button" className={`chip ${tab === "paid" ? "status-verified" : ""}`} onClick={() => setTab("paid")}>{t("pay.tabPaid")}</button>
         <button type="button" className={`chip ${tab === "calendar" ? "status-verified" : ""}`} onClick={() => setTab("calendar")}>{t("pay.tabCalendar")}</button>
+        <button type="button" className={`chip ${tab === "disputes" ? "status-verified" : ""}`} onClick={() => setTab("disputes")}>{t("pay.tabDisputes")}</button>
       </div>
 
+      {actionNotice ? <p className="notice" style={{ color: "var(--accent)" }}>{actionNotice}</p> : null}
+
       {tab === "earnings" ? <EarningsTab state={state} choose={choose} t={t} locale={locale} /> : null}
-      {tab === "topay" ? <ToPayTab payouts={payouts} t={t} locale={locale} /> : null}
-      {tab === "paid" ? <PaidTab payouts={payouts} t={t} locale={locale} /> : null}
-      {tab === "calendar" ? <PaymentsCalendar payouts={payouts} items={allPayouts} t={t} locale={locale} /> : null}
+      {tab === "topay" ? <ToPayTab payouts={payouts} openDisputed={openDisputedCalcIds} onRaise={raiseDispute} t={t} locale={locale} /> : null}
+      {tab === "paid" ? <PaidTab payouts={payouts} openDisputed={openDisputedCalcIds} onRaise={raiseDispute} t={t} locale={locale} /> : null}
+      {tab === "calendar" ? <PaymentsCalendar payouts={payouts} items={allPayouts} openDisputed={openDisputedCalcIds} onRaise={raiseDispute} t={t} locale={locale} /> : null}
+      {tab === "disputes" ? <DisputesTab disputes={disputes} onWithdraw={withdrawDispute} t={t} locale={locale} /> : null}
 
       <p className="notice">{t("pay.footer")}</p>
     </>
@@ -236,24 +320,62 @@ function EarningsTab({ state, choose, t, locale }: { state: Extract<PayState, { 
   );
 }
 
-function PaymentCard({ p, t, locale }: { p: Payout; t: Translate; locale: RwosLocale }) {
+function PaymentCard({ p, openDisputed, onRaise, t, locale }: { p: Payout; openDisputed: ReadonlySet<string>; onRaise: (calcId: string, category: string, reason: string) => Promise<boolean>; t: Translate; locale: RwosLocale }) {
+  const [formOpen, setFormOpen] = useState(false);
+  const [category, setCategory] = useState<string>("hours");
+  const [reason, setReason] = useState("");
+  const [busy, setBusy] = useState(false);
+  const isDisputed = openDisputed.has(p.payrollCalculationId) || p.status === "held";
+  const canDispute = !isDisputed && (p.status === "pending" || p.status === "released");
   const dateLine = p.status === "paid" && p.paidAt
     ? t("pay.paidOn", { date: shortDate(p.paidAt, locale) })
     : t("pay.expectedDate", { date: shortDate(p.holdUntil, locale) });
+
+  const submit = async () => {
+    if (reason.trim().length === 0) return;
+    setBusy(true);
+    const ok = await onRaise(p.payrollCalculationId, category, reason.trim());
+    setBusy(false);
+    if (ok) { setFormOpen(false); setReason(""); }
+  };
+
   return (
     <article className="card">
       <div className="when" style={{ fontSize: 20 }}><strong>{money(p.amountMinor, p.currency, locale)}</strong></div>
       <div className="chips">
         <span className={`chip status-${payoutBadge(p.status)}`}>{t(PAYOUT_STATUS_KEY[p.status] ?? "pay.statusPending")}</span>
+        {isDisputed ? <span className="chip status-rejected">{t("pay.disputedChip")}</span> : null}
       </div>
       <div className="when">{t("pay.forPeriod", { period: shortPeriod(p.periodStart, p.periodEnd, locale) })}</div>
       <div className="when">{dateLine}</div>
       {p.status === "held" && p.heldReason ? <div className="when" style={{ color: "var(--text-muted)" }}>{t("pay.heldReason", { reason: p.heldReason })}</div> : null}
+
+      {canDispute && !formOpen ? (
+        <button type="button" className="btn" style={{ alignSelf: "flex-start", marginTop: 6 }} onClick={() => setFormOpen(true)}>{t("pay.disputeRaise")}</button>
+      ) : null}
+
+      {formOpen ? (
+        <div style={{ marginTop: 8, display: "flex", flexDirection: "column", gap: 8 }}>
+          <div className="role">{t("pay.disputeForPayment", { period: shortPeriod(p.periodStart, p.periodEnd, locale) })}</div>
+          <label className="when">{t("pay.disputeCategory")}
+            <select value={category} onChange={(e) => setCategory(e.target.value)} style={{ display: "block", marginTop: 4, width: "100%", padding: 6 }}>
+              {DISPUTE_CATEGORIES.map((c) => <option key={c} value={c}>{t(DISPUTE_CATEGORY_KEY[c] ?? "pay.disputeCatOther")}</option>)}
+            </select>
+          </label>
+          <label className="when">{t("pay.disputeReason")}
+            <textarea value={reason} onChange={(e) => setReason(e.target.value)} placeholder={t("pay.disputeReasonPlaceholder")} rows={3} style={{ display: "block", marginTop: 4, width: "100%", padding: 6 }} />
+          </label>
+          <div className="chips">
+            <button type="button" className="btn" disabled={busy || reason.trim().length === 0} onClick={() => void submit()}>{busy ? "…" : t("pay.disputeSubmit")}</button>
+            <button type="button" className="chip" onClick={() => { setFormOpen(false); setReason(""); }}>{t("pay.disputeCancel")}</button>
+          </div>
+        </div>
+      ) : null}
     </article>
   );
 }
 
-function ToPayTab({ payouts, t, locale }: { payouts: PayoutsState; t: Translate; locale: RwosLocale }) {
+function ToPayTab({ payouts, openDisputed, onRaise, t, locale }: { payouts: PayoutsState; openDisputed: ReadonlySet<string>; onRaise: (calcId: string, category: string, reason: string) => Promise<boolean>; t: Translate; locale: RwosLocale }) {
   if (payouts.status === "loading") return <div className="state">{t("common.loading")}</div>;
   if (payouts.status === "error") return <div className="state error" role="alert">{t("pay.paymentsLoadError")}</div>;
   return (
@@ -267,14 +389,14 @@ function ToPayTab({ payouts, t, locale }: { payouts: PayoutsState; t: Translate;
         <div className="state">{t("pay.toPayNone")}</div>
       ) : (
         <div className="results" style={{ paddingBottom: 48 }}>
-          {payouts.toPay.map((p) => <PaymentCard key={p.id} p={p} t={t} locale={locale} />)}
+          {payouts.toPay.map((p) => <PaymentCard key={p.id} p={p} openDisputed={openDisputed} onRaise={onRaise} t={t} locale={locale} />)}
         </div>
       )}
     </>
   );
 }
 
-function PaidTab({ payouts, t, locale }: { payouts: PayoutsState; t: Translate; locale: RwosLocale }) {
+function PaidTab({ payouts, openDisputed, onRaise, t, locale }: { payouts: PayoutsState; openDisputed: ReadonlySet<string>; onRaise: (calcId: string, category: string, reason: string) => Promise<boolean>; t: Translate; locale: RwosLocale }) {
   if (payouts.status === "loading") return <div className="state">{t("common.loading")}</div>;
   if (payouts.status === "error") return <div className="state error" role="alert">{t("pay.paymentsLoadError")}</div>;
   return (
@@ -287,10 +409,34 @@ function PaidTab({ payouts, t, locale }: { payouts: PayoutsState; t: Translate; 
         <div className="state">{t("pay.paidNone")}</div>
       ) : (
         <div className="results" style={{ paddingBottom: 48 }}>
-          {payouts.paid.map((p) => <PaymentCard key={p.id} p={p} t={t} locale={locale} />)}
+          {payouts.paid.map((p) => <PaymentCard key={p.id} p={p} openDisputed={openDisputed} onRaise={onRaise} t={t} locale={locale} />)}
         </div>
       )}
     </>
+  );
+}
+
+function DisputesTab({ disputes, onWithdraw, t, locale }: { disputes: DisputesState; onWithdraw: (id: string) => void; t: Translate; locale: RwosLocale }) {
+  if (disputes.status === "loading") return <div className="state">{t("common.loading")}</div>;
+  if (disputes.status === "error") return <div className="state error" role="alert">{t("pay.disputesLoadError")}</div>;
+  if (disputes.items.length === 0) return <div className="state">{t("pay.disputesNone")}</div>;
+  return (
+    <div className="results" style={{ paddingBottom: 48 }}>
+      {disputes.items.map((d) => (
+        <article className="card" key={d.id}>
+          <div className="chips">
+            <span className={`chip status-${d.status === "open" ? "pending" : d.status === "resolved" ? "verified" : "unverified"}`}>{t(DISPUTE_STATUS_KEY[d.status] ?? "pay.disputeStatusOpen")}</span>
+            <span className="chip">{t(DISPUTE_CATEGORY_KEY[d.category] ?? "pay.disputeCatOther")}</span>
+          </div>
+          <div className="when">{d.reason}</div>
+          <div className="when" style={{ color: "var(--text-muted)" }}>{shortDate(d.createdAt, locale)}</div>
+          {d.resolution ? <div className="when" style={{ color: "var(--text-muted)" }}>{d.resolution}</div> : null}
+          {d.status === "open" ? (
+            <button type="button" className="chip" style={{ alignSelf: "flex-start" }} onClick={() => onWithdraw(d.id)}>{t("pay.disputeWithdraw")}</button>
+          ) : null}
+        </article>
+      ))}
+    </div>
   );
 }
 
@@ -298,7 +444,7 @@ function dayKey(d: Date): string {
   return `${d.getFullYear()}-${d.getMonth()}-${d.getDate()}`;
 }
 
-function PaymentsCalendar({ payouts, items, t, locale }: { payouts: PayoutsState; items: readonly Payout[]; t: Translate; locale: RwosLocale }) {
+function PaymentsCalendar({ payouts, items, openDisputed, onRaise, t, locale }: { payouts: PayoutsState; items: readonly Payout[]; openDisputed: ReadonlySet<string>; onRaise: (calcId: string, category: string, reason: string) => Promise<boolean>; t: Translate; locale: RwosLocale }) {
   const [month, setMonth] = useState(() => { const d = new Date(); return new Date(d.getFullYear(), d.getMonth(), 1); });
   const [selected, setSelected] = useState<string | null>(null);
 
@@ -371,7 +517,7 @@ function PaymentsCalendar({ payouts, items, t, locale }: { payouts: PayoutsState
       {selected ? (
         dayPayouts.length > 0 ? (
           <div className="results" style={{ paddingBottom: 48 }}>
-            {dayPayouts.map((p) => <PaymentCard key={p.id} p={p} t={t} locale={locale} />)}
+            {dayPayouts.map((p) => <PaymentCard key={p.id} p={p} openDisputed={openDisputed} onRaise={onRaise} t={t} locale={locale} />)}
           </div>
         ) : (
           <div className="state">{t("pay.calNoneDay")}</div>
