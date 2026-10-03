@@ -3,6 +3,9 @@
 import { useEffect, useState } from "react";
 import { invoiceBoundaries, invoiceDataTruth, invoiceStates } from "../invoiceWorkflowContent";
 import { styles } from "../employerStyles";
+import { LanguageSwitcher } from "../../i18n/LanguageSwitcher";
+import { useLocale, useT } from "../../i18n/LocaleProvider";
+import type { RwosLocale } from "../../i18n/config";
 
 type InvoiceSummary = Readonly<{
   id: string;
@@ -24,6 +27,8 @@ type LoadState =
   | { status: "error"; message: string };
 
 export function InvoiceReviewPanel({ mode }: { mode: "list" | "detail" | "breakdown" }) {
+  const t = useT();
+  const locale = useLocale();
   const [state, setState] = useState<LoadState>({ status: "loading" });
 
   useEffect(() => {
@@ -38,10 +43,7 @@ export function InvoiceReviewPanel({ mode }: { mode: "list" | "detail" | "breakd
         if (!response.ok) {
           setState({
             status: "error",
-            message:
-              response.status === 401
-                ? "Sign in to review invoices."
-                : "Invoice records are currently unavailable."
+            message: response.status === 401 ? t("inv.signIn") : t("inv.unavailable")
           });
           return;
         }
@@ -50,7 +52,7 @@ export function InvoiceReviewPanel({ mode }: { mode: "list" | "detail" | "breakd
         setState({ status: "ready", invoices: payload.invoices as InvoiceSummary[] });
       } catch {
         if (!controller.signal.aborted) {
-          setState({ status: "error", message: "Invoice records could not be loaded." });
+          setState({ status: "error", message: t("inv.loadError") });
         }
       }
     }
@@ -62,42 +64,35 @@ export function InvoiceReviewPanel({ mode }: { mode: "list" | "detail" | "breakd
   const selected = invoices[0] ?? null;
   return (
     <section style={styles.section}>
+      <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: 8 }}>
+        <LanguageSwitcher />
+      </div>
       <div style={styles.panel}>
         <div style={styles.sectionHeader}>
-          <p style={styles.eyebrowDark}>Authenticated invoice records</p>
+          <p style={styles.eyebrowDark}>{t("inv.eyebrow")}</p>
           <h2 style={styles.sectionTitle}>
-            {mode === "list" ? "Invoice list" : (selected?.invoiceNumber ?? "Invoice detail")}
+            {mode === "list" ? t("inv.listTitle") : (selected?.invoiceNumber ?? t("inv.detailTitle"))}
           </h2>
-          <p style={styles.sectionCopy}>
-            Invoice issuance and employer payment remain separate. This view cannot charge a payment
-            method, mark an invoice paid, or post accounting entries.
-          </p>
-          <span style={styles.statusBadgeWarning}>Read-only governed view</span>
+          <p style={styles.sectionCopy}>{t("inv.copy")}</p>
+          <span style={styles.statusBadgeWarning}>{t("inv.readOnly")}</span>
         </div>
 
         {state.status === "loading" ? (
-          <p aria-live="polite" style={styles.cardText}>
-            Loading invoice records…
-          </p>
+          <p aria-live="polite" style={styles.cardText}>{t("inv.loading")}</p>
         ) : state.status === "error" ? (
-          <p role="alert" style={styles.cardText}>
-            {state.message}
-          </p>
+          <p role="alert" style={styles.cardText}>{state.message}</p>
         ) : invoices.length === 0 ? (
-          <p style={styles.cardText}>No invoices are available for this organization.</p>
+          <p style={styles.cardText}>{t("inv.none")}</p>
         ) : mode === "list" ? (
           <div style={styles.cardGrid}>
             {invoices.map((invoice) => (
               <article key={invoice.id} style={styles.card}>
-                <h3 style={styles.cardTitle}>{invoice.invoiceNumber ?? "Draft invoice"}</h3>
-                <p style={styles.cardText}>Invoice state: {invoice.status}</p>
-                <p style={styles.cardText}>Total: {formatCad(invoice.totalMinor)}</p>
-                <p style={styles.cardText}>Due: {formatDate(invoice.dueAt)}</p>
-                <a
-                  href="/employer/invoices/detail"
-                  style={{ ...styles.secondaryButton, marginTop: 12 }}
-                >
-                  Open detail
+                <h3 style={styles.cardTitle}>{invoice.invoiceNumber ?? t("inv.draft")}</h3>
+                <p style={styles.cardText}>{t("inv.stateLine", { state: invoice.status })}</p>
+                <p style={styles.cardText}>{t("inv.total", { amount: formatCad(invoice.totalMinor, locale) })}</p>
+                <p style={styles.cardText}>{t("inv.due", { date: formatDate(invoice.dueAt, locale, t) })}</p>
+                <a href="/employer/invoices/detail" style={{ ...styles.secondaryButton, marginTop: 12 }}>
+                  {t("inv.openDetail")}
                 </a>
               </article>
             ))}
@@ -106,18 +101,18 @@ export function InvoiceReviewPanel({ mode }: { mode: "list" | "detail" | "breakd
           <div style={styles.cardGrid}>
             {(mode === "breakdown"
               ? [
-                  ["Subtotal", formatCad(selected.subtotalMinor)],
-                  ["Tax", formatCad(selected.taxMinor)],
-                  ["Credits", formatCad(selected.creditMinor)],
-                  ["Total", formatCad(selected.totalMinor)]
+                  [t("inv.subtotal"), formatCad(selected.subtotalMinor, locale)],
+                  [t("inv.tax"), formatCad(selected.taxMinor, locale)],
+                  [t("inv.credits"), formatCad(selected.creditMinor, locale)],
+                  [t("inv.totalLabel"), formatCad(selected.totalMinor, locale)]
                 ]
               : [
-                  ["Invoice number", selected.invoiceNumber ?? "Not issued"],
-                  ["Invoice state", selected.status],
-                  ["Issued", formatDate(selected.issuedAt)],
-                  ["Due", formatDate(selected.dueAt)],
-                  ["Created", formatDate(selected.createdAt)],
-                  ["Total", formatCad(selected.totalMinor)]
+                  [t("inv.number"), selected.invoiceNumber ?? t("inv.notIssued")],
+                  [t("inv.stateLabel"), selected.status],
+                  [t("inv.issued"), formatDate(selected.issuedAt, locale, t)],
+                  [t("inv.dueLabel"), formatDate(selected.dueAt, locale, t)],
+                  [t("inv.created"), formatDate(selected.createdAt, locale, t)],
+                  [t("inv.totalLabel"), formatCad(selected.totalMinor, locale)]
                 ]
             ).map(([label, value]) => (
               <article key={label} style={styles.card}>
@@ -131,9 +126,7 @@ export function InvoiceReviewPanel({ mode }: { mode: "list" | "detail" | "breakd
       <section style={{ marginTop: 22 }}>
         <div style={styles.pillGrid}>
           {invoiceStates.map((item) => (
-            <span key={item} style={styles.pill}>
-              {item}
-            </span>
+            <span key={item} style={styles.pill}>{item}</span>
           ))}
         </div>
       </section>
@@ -150,14 +143,12 @@ export function InvoiceReviewPanel({ mode }: { mode: "list" | "detail" | "breakd
   );
 }
 
-function formatCad(amountMinor: number) {
-  return new Intl.NumberFormat("en-CA", { style: "currency", currency: "CAD" }).format(
-    amountMinor / 100
-  );
+function formatCad(amountMinor: number, locale: RwosLocale) {
+  return new Intl.NumberFormat(locale, { style: "currency", currency: "CAD" }).format(amountMinor / 100);
 }
 
-function formatDate(value: string | null) {
+function formatDate(value: string | null, locale: RwosLocale, t: (key: "inv.notSet") => string) {
   return value
-    ? new Intl.DateTimeFormat("en-CA", { dateStyle: "medium" }).format(new Date(value))
-    : "Not set";
+    ? new Intl.DateTimeFormat(locale, { dateStyle: "medium" }).format(new Date(value))
+    : t("inv.notSet");
 }
