@@ -5,6 +5,7 @@ import { clientCalendarWorkflow } from "./calendar/clientCalendarContent";
 import { employerWorkflow } from "./employerJourneyContent";
 import { styles } from "./employerStyles";
 import { invoiceWorkflow } from "./invoiceWorkflowContent";
+import { ordersWorkflow } from "./orders/ordersContent";
 import { paymentWorkflow } from "./paymentWorkflowContent";
 import { shiftWorkflow } from "./shifts/shiftManagementContent";
 import { timesheetWorkflow } from "./timesheetWorkflowContent";
@@ -12,6 +13,7 @@ import { timesheetWorkflow } from "./timesheetWorkflowContent";
 const employerNavigation = [
   ...employerWorkflow,
   ...clientCalendarWorkflow,
+  ...ordersWorkflow,
   ...shiftWorkflow,
   ...assignmentWorkflow,
   ...attendanceWorkflow,
@@ -20,11 +22,12 @@ const employerNavigation = [
   ...paymentWorkflow
 ] as const;
 const uniqueEmployerNavigation = deduplicateNavigationByRoute(employerNavigation);
-const persistedEmployerNavigation = deduplicateNavigationByRoute(
-  clientCalendarWorkflow.filter((step) =>
+const persistedEmployerNavigation = deduplicateNavigationByRoute([
+  ...clientCalendarWorkflow.filter((step) =>
     ["/employer/calendar", "/employer/calendar/create"].includes(step.route)
-  )
-);
+  ),
+  ...ordersWorkflow
+]);
 
 export function EmployerShell({
   actions,
