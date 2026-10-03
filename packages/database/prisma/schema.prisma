@@ -97,6 +97,17 @@ enum JobRequestStatus {
   archived
 }
 
+// Multi-role employer order status, rolled up from its child job requests (one per role line).
+enum EmployerOrderStatus {
+  draft
+  submitted
+  admin_review
+  partially_approved
+  approved
+  cancelled
+  expired
+}
+
 enum JobRequestUrgency {
   normal
   urgent
@@ -583,6 +594,8 @@ model EmployerOrganization {
   workerInterests WorkerJobInterest[]
   verification EmployerVerification?
 
+  orders EmployerOrder[]
+
   @@index([status], map: "employer_organizations_status_idx")
   @@map("employer_organizations")
 }
@@ -1053,6 +1066,52 @@ model JobRequestSequence {
   @@map("job_request_sequences")
 }
 
+model EmployerOrderSequence {
+  scopeYear Int      @id @map("scope_year")
+  lastValue Int      @default(0) @map("last_value")
+  updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  @@index([scopeYear], map: "employer_order_sequences_scope_year_idx")
+  @@map("employer_order_sequences")
+}
+
+// A multi-role staffing order: one employer submission that groups several job requests (one per
+// role line, e.g. 2 chefs + 1 aid + 3 dishwashers), sharing a worksite and time window. Each child
+// job request keeps its own governed pricing snapshot, admin approval, dispatch and payroll; the
+// order is the grouping + a single submit/cancel + a combined view. Shared-context columns
+// (residence/department/creator) are app-validated against the org (children hold the enforced FKs);
+// only organization_id and the job_requests.order_id link carry DB foreign keys.
+model EmployerOrder {
+  id              String              @id @default(uuid()) @db.Uuid
+  orderNumber     String              @unique @map("order_number")
+  organizationId  String              @map("organization_id") @db.Uuid
+  residenceId     String              @map("residence_id") @db.Uuid
+  departmentId    String              @map("department_id") @db.Uuid
+  creatorUserId   String              @map("creator_user_id") @db.Uuid
+  title           String
+  note            String?
+  requestType     JobRequestType      @map("request_type")
+  urgency         JobRequestUrgency   @default(normal)
+  timezone        String
+  startAt         DateTime            @map("start_at") @db.Timestamptz(3)
+  endAt           DateTime            @map("end_at") @db.Timestamptz(3)
+  status          EmployerOrderStatus @default(draft)
+  version         Int                 @default(1)
+  createdByUserId String              @map("created_by_user_id") @db.Uuid
+  updatedByUserId String?             @map("updated_by_user_id") @db.Uuid
+  createdAt       DateTime            @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt       DateTime            @updatedAt @map("updated_at") @db.Timestamptz(3)
+  submittedAt     DateTime?           @map("submitted_at") @db.Timestamptz(3)
+  cancelledAt     DateTime?           @map("cancelled_at") @db.Timestamptz(3)
+
+  organization EmployerOrganization @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  jobRequests  JobRequest[]
+
+  @@index([organizationId, status, createdAt], map: "employer_orders_org_status_created_idx")
+  @@index([organizationId, residenceId, status], map: "employer_orders_org_residence_status_idx")
+  @@map("employer_orders")
+}
+
 model JobRequest {
   id                 String            @id @default(uuid()) @db.Uuid
   jobRequestNumber   String            @unique @map("job_request_number")
@@ -1061,6 +1120,7 @@ model JobRequest {
   departmentId       String            @map("department_id") @db.Uuid
   workGroupId        String            @map("work_group_id") @db.Uuid
   roleDefinitionId   String            @map("role_definition_id") @db.Uuid
+  orderId            String?           @map("order_id") @db.Uuid
   creatorUserId      String            @map("creator_user_id") @db.Uuid
   title              String
   description        String?
@@ -1094,6 +1154,7 @@ model JobRequest {
   updatedBy         User?                           @relation("JobRequestUpdatedByUser", fields: [updatedByUserId], references: [id], onDelete: SetNull)
   calendarProfile   StaffingRequestCalendarProfile?
   pricingSnapshot   RequestPricingSnapshot?
+  order             EmployerOrder?                  @relation(fields: [orderId], references: [id], onDelete: SetNull)
   dispatchReviews   DispatchReview[]
   workerOffers      WorkerOffer[]
   assignments       Assignment[]
@@ -1114,6 +1175,7 @@ model JobRequest {
   @@index([organizationId, startAt], map: "job_requests_organization_id_start_at_idx")
   @@index([status, submittedAt], map: "job_requests_status_submitted_at_idx")
   @@index([createdByUserId, createdAt], map: "job_requests_created_by_user_id_created_at_idx")
+  @@index([orderId, createdAt], map: "job_requests_order_id_created_at_idx")
   @@map("job_requests")
 }
 
