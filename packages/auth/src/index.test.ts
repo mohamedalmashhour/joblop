@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
+import type { RequestPricingSnapshotCapture } from "./index";
 import {
   AuthenticationError,
   AuthenticationRequiredError,
@@ -6467,7 +6468,9 @@ function createRoleDefinitionTestServices() {
   };
 }
 
-function createJobRequestTestServices() {
+function createJobRequestTestServices(
+  pricingSnapshotCapture?: RequestPricingSnapshotCapture
+) {
   const membershipRepository = new MemoryOrganizationMembershipRepository();
   const organizationRepository = new MemoryEmployerOrganizationRepository(membershipRepository);
   const residenceRepository = new MemoryResidenceRepository();
@@ -6503,7 +6506,8 @@ function createJobRequestTestServices() {
     workGroupRepository,
     roleDefinitionRepository,
     membershipService,
-    authorizationService
+    authorizationService,
+    pricingSnapshotCapture ? { pricingSnapshotCapture } : {}
   );
 
   return {
@@ -6904,3 +6908,131 @@ function inviteInput(): InviteMembershipInput {
     accessRoleKeys: ["ORGANIZATION_OWNER"]
   };
 }
+
+describe("job request approval — pricing snapshot capture (slice 4C)", () => {
+  function fakeResolved(jobRequestId: string, marginPpm: number | null) {
+    return {
+      jobRequestId,
+      organizationId: "org",
+      contractId: "contract",
+      contractVersion: "v1",
+      currency: "CAD" as const,
+      snapshot: {
+        marginPpm: marginPpm ?? 200_000,
+        employerHourlyRateMinor: 3000,
+        workerHourlyRateMinor: 2250,
+        platformHourlyMarginMinor: 750,
+        transport: { employerMinor: 0, workerMinor: 0, platformMarginMinor: 0 },
+        meal: { employerMinor: 0, workerMinor: 0, platformMarginMinor: 0 },
+        lodging: { employerMinor: 0, workerMinor: 0, platformMarginMinor: 0 }
+      }
+    };
+  }
+
+  async function driveToAdminReview(capture: RequestPricingSnapshotCapture, tag: string) {
+    const services = createJobRequestTestServices(capture);
+    const { organizationService, residenceService, departmentService, jobRequestService } = services;
+    const ownerId = `owner-${tag}`;
+    const adminSession = activeSession({ emailNormalized: `${tag}-admin@example.com` });
+    const organization = await organizationService.createOrganization({
+      actorUserId: ownerId,
+      legalName: `${tag} Org`,
+      displayName: `${tag} Org`
+    });
+    const residence = await residenceService.createResidence({
+      actorUserId: ownerId,
+      organizationId: organization.organization.id,
+      name: `${tag} Residence`
+    });
+    const department = await departmentService.createDepartment({
+      actorUserId: ownerId,
+      organizationId: organization.organization.id,
+      residenceId: residence.id,
+      name: "Kitchen"
+    });
+    const draft = await jobRequestService.createDraft({
+      actorUserId: ownerId,
+      organizationId: organization.organization.id,
+      residenceId: residence.id,
+      departmentId: department.id,
+      workGroupSlug: "kitchen",
+      roleDefinitionIdentifier: "chef",
+      title: `${tag} Chef`,
+      numberOfWorkers: 1,
+      urgency: "normal",
+      requestType: "single_day",
+      timezone: "America/Toronto",
+      startAt: new Date("2026-08-12T12:00:00.000Z"),
+      endAt: new Date("2026-08-12T20:00:00.000Z")
+    });
+    const submitted = await jobRequestService.submit({
+      actorUserId: ownerId,
+      organizationId: organization.organization.id,
+      jobRequestId: draft.id,
+      expectedVersion: draft.versionToken
+    });
+    const review = await jobRequestService.startAdminReview({
+      session: adminSession,
+      roles: ["PLATFORM_ADMINISTRATOR"],
+      jobRequestId: submitted.id,
+      expectedVersion: submitted.versionToken
+    });
+    return { jobRequestService, adminSession, review };
+  }
+
+  it("resolves pricing before the flip, persists after, and passes the admin margin", async () => {
+    const order: string[] = [];
+    let seenMargin: number | null = -1;
+    let seenJobRequestId = "";
+    const capture: RequestPricingSnapshotCapture = {
+      async resolveAtApproval(input) {
+        order.push("resolve");
+        seenMargin = input.marginPpm;
+        seenJobRequestId = input.jobRequestId;
+        return fakeResolved(input.jobRequestId, input.marginPpm);
+      },
+      async persist() {
+        order.push("persist");
+      }
+    };
+    const { jobRequestService, adminSession, review } = await driveToAdminReview(capture, "priced");
+    const approved = await jobRequestService.approveForDispatch({
+      session: adminSession,
+      roles: ["PLATFORM_ADMINISTRATOR"],
+      jobRequestId: review.id,
+      expectedVersion: review.versionToken,
+      marginPpm: 250_000
+    });
+    expect(approved.status).toBe("approved_for_dispatch");
+    expect(order).toEqual(["resolve", "persist"]);
+    expect(seenMargin).toBe(250_000);
+    expect(seenJobRequestId).toBe(review.id);
+  });
+
+  it("blocks approval with no status change when pricing cannot be resolved", async () => {
+    const capture: RequestPricingSnapshotCapture = {
+      async resolveAtApproval() {
+        throw new Error("no effective priced contract");
+      },
+      async persist() {
+        throw new Error("persist must not be reached for an unpriced request");
+      }
+    };
+    const { jobRequestService, adminSession, review } = await driveToAdminReview(capture, "unpriced");
+    await expect(
+      jobRequestService.approveForDispatch({
+        session: adminSession,
+        roles: ["PLATFORM_ADMINISTRATOR"],
+        jobRequestId: review.id,
+        expectedVersion: review.versionToken,
+        marginPpm: 200_000
+      })
+    ).rejects.toThrow(/no effective priced contract/);
+    // Still in admin intake -> status never flipped to approved_for_dispatch.
+    const intake = await jobRequestService.listAdminIntake({
+      session: adminSession,
+      roles: ["PLATFORM_ADMINISTRATOR"]
+    });
+    expect(intake.map((request) => request.id)).toContain(review.id);
+  });
+});

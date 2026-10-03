@@ -5,6 +5,7 @@ import {
   scrypt as scryptCallback,
   timingSafeEqual
 } from "node:crypto";
+import type { RequestPricingSnapshot } from "@rwos/shared";
 import type {
   WorkerOfferDeliveryProvider,
   WorkerOfferDeliveryResult
@@ -5149,6 +5150,30 @@ export function createRoleDefinitionService(
 
 export type RoleDefinitionService = ReturnType<typeof createRoleDefinitionService>;
 
+export type ResolvedRequestPricing = Readonly<{
+  jobRequestId: string;
+  organizationId: string;
+  contractId: string;
+  contractVersion: string;
+  currency: string;
+  snapshot: RequestPricingSnapshot;
+}>;
+
+// Port that derives the immutable worker/platform split from the employer rate (E) and the admin
+// margin at approval. resolveAtApproval is read-only and MUST throw when the request has no effective
+// priced contract, so an unpriced request can never be approved. persist writes the snapshot (upsert).
+export interface RequestPricingSnapshotCapture {
+  resolveAtApproval(input: {
+    jobRequestId: string;
+    marginPpm: number | null;
+  }): Promise<ResolvedRequestPricing>;
+  persist(input: {
+    resolved: ResolvedRequestPricing;
+    capturedByUserId: string;
+    occurredAt: Date;
+  }): Promise<void>;
+}
+
 export function createJobRequestService(
   jobRequestRepository: JobRequestRepository,
   organizationRepository: EmployerOrganizationRepository,
@@ -5158,7 +5183,7 @@ export function createJobRequestService(
   roleDefinitionRepository: RoleDefinitionRepository,
   membershipService: OrganizationMembershipService,
   authorizationService: AuthorizationService,
-  options: { now?: () => Date } = {}
+  options: { now?: () => Date; pricingSnapshotCapture?: RequestPricingSnapshotCapture } = {}
 ) {
   const now = options.now ?? (() => new Date());
 
@@ -5820,9 +5845,21 @@ export function createJobRequestService(
       roles?: readonly AuthorizationRoleKey[];
       jobRequestId: string;
       expectedVersion: number;
+      marginPpm?: number | null;
       correlationId?: string;
     }) {
-      return transitionPlatformJobRequest({
+      const capture = options.pricingSnapshotCapture;
+      const occurredAt = currentTimeFrom(now);
+      // Resolve the worker/platform pricing BEFORE the status flip. resolveAtApproval throws when the
+      // request has no effective priced contract, so an unpriced request is rejected without ever
+      // changing status — approval always implies a known worker rate.
+      const resolved = capture
+        ? await capture.resolveAtApproval({
+            jobRequestId: input.jobRequestId,
+            marginPpm: input.marginPpm ?? null
+          })
+        : null;
+      const result = await transitionPlatformJobRequest({
         jobRequestRepository,
         authorizationService,
         session: input.session,
@@ -5834,8 +5871,18 @@ export function createJobRequestService(
         nextStatus: "approved_for_dispatch",
         action: "job_request.approved_for_dispatch",
         correlationId: input.correlationId,
-        now: currentTimeFrom(now)
+        now: occurredAt
       });
+      // Persist the immutable snapshot once the flip succeeds (the same sequential model the audit
+      // write uses). An unpriced request already failed above, so an approved request has a snapshot.
+      if (capture && resolved) {
+        await capture.persist({
+          resolved,
+          capturedByUserId: input.session.user?.id ?? "system",
+          occurredAt
+        });
+      }
+      return result;
     }
   };
 }
