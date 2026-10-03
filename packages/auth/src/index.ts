@@ -1461,6 +1461,7 @@ export interface StoredWorkerIdentity {
   displayName: string | null;
   preferredLanguage: string | null;
   status: WorkerIdentityStatus;
+  classification: string;
   createdAt: Date;
   updatedAt: Date;
   version: number;
@@ -1559,6 +1560,11 @@ export interface WorkerOfferRepository {
     preferredLanguage?: string | null;
     now: Date;
   }): Promise<StoredWorkerIdentity>;
+  setWorkerClassification(input: {
+    userId: string;
+    classification: string;
+    now: Date;
+  }): Promise<StoredWorkerIdentity | null>;
   createWorkerOffer(input: {
     dispatchReview: StoredDispatchReview;
     jobRequest: StoredJobRequest;
@@ -6487,6 +6493,27 @@ export function createWorkerOfferService(
         userId: input.userId,
         displayName: normalizeOptionalResidenceText(input.displayName ?? null, 160),
         preferredLanguage: normalizeOptionalResidenceText(input.preferredLanguage ?? null, 40),
+        now: now()
+      });
+    },
+
+    // The worker's self-declared tax classification. Only the two worker-facing types are selectable
+    // here (employee or travailleur autonome = contractor); the identity is ensured first so a brand-
+    // new worker can set it at sign-up. Drives payroll (deductions / T4 vs no deductions / T4A).
+    async setClassification(input: { userId: string; classification: string }) {
+      const normalized = input.classification === "contractor" ? "contractor" : "employee";
+      const existing = await workerOfferRepository.findWorkerIdentityByUserId(input.userId);
+      if (!existing) {
+        await workerOfferRepository.createWorkerIdentity({
+          userId: input.userId,
+          displayName: null,
+          preferredLanguage: null,
+          now: now()
+        });
+      }
+      return workerOfferRepository.setWorkerClassification({
+        userId: input.userId,
+        classification: normalized,
         now: now()
       });
     },
@@ -13167,6 +13194,10 @@ type PrismaWorkerOfferClient = Pick<PrismaDispatchClient, "auditActorReference" 
         updatedAt: Date;
       };
     }): Promise<StoredWorkerIdentity>;
+    updateMany(args: {
+      where: { userId?: string | undefined };
+      data: { classification?: string | undefined; updatedAt?: Date | undefined };
+    }): Promise<{ count: number }>;
   };
   workerOffer: {
     create(args: { data: CreateWorkerOfferPrismaData }): Promise<StoredWorkerOffer>;
@@ -13305,6 +13336,14 @@ export function createPrismaWorkerOfferRepository(prismaClient: unknown): Worker
           updatedAt: input.now
         }
       });
+    },
+    async setWorkerClassification(input) {
+      const updated = await prisma.workerIdentity.updateMany({
+        where: { userId: input.userId },
+        data: { classification: input.classification, updatedAt: input.now }
+      });
+      if (updated.count === 0) return null;
+      return prisma.workerIdentity.findUnique({ where: { userId: input.userId } });
     },
 
     createWorkerOffer(input) {

@@ -5334,6 +5334,7 @@ class MemoryWorkerOfferRepository implements WorkerOfferRepository {
       displayName: input.displayName ?? null,
       preferredLanguage: input.preferredLanguage ?? null,
       status: "active",
+      classification: "employee",
       createdAt: input.now,
       updatedAt: input.now,
       version: 0
@@ -5341,6 +5342,17 @@ class MemoryWorkerOfferRepository implements WorkerOfferRepository {
     this.nextWorkerIdentity += 1;
     this.workerIdentities.set(identity.id, identity);
     return identity;
+  }
+
+  async setWorkerClassification(input: Parameters<WorkerOfferRepository["setWorkerClassification"]>[0]) {
+    for (const identity of this.workerIdentities.values()) {
+      if (identity.userId === input.userId) {
+        const updated = { ...identity, classification: input.classification, updatedAt: input.now };
+        this.workerIdentities.set(identity.id, updated);
+        return updated;
+      }
+    }
+    return null;
   }
 
   async createWorkerOffer(input: Parameters<WorkerOfferRepository["createWorkerOffer"]>[0]) {

@@ -2869,6 +2869,7 @@ function createApiUnavailableWorkerOfferService(): WorkerOfferService {
 
   return {
     ensureWorkerIdentity: unavailable,
+    setClassification: unavailable,
     createOffer: unavailable,
     listOffers: unavailable,
     readOffer: unavailable,

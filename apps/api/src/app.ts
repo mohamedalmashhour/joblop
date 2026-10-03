@@ -6197,8 +6197,8 @@ export function buildApi(options: BuildApiOptions = {}) {
   app.get("/worker/payroll/statement", async (request, reply) => {
     const session = await authService.validateSession(readBearerToken(request.headers.authorization));
     if (!session.authenticated || !session.user) return reply.code(401).send({ error: "RWOS_PAYROLL_DENIED", message: "Authentication is required." });
-    const identity = await prisma!.workerIdentity.findFirst({ where: { userId: session.user.id }, select: { id: true } });
-    if (!identity) return reply.code(200).send({ items: [], synthetic: true, notice: PAYROLL_SYNTHETIC_NOTICE });
+    const identity = await prisma!.workerIdentity.findFirst({ where: { userId: session.user.id }, select: { id: true, classification: true } });
+    if (!identity) return reply.code(200).send({ items: [], summary: null, workerClassification: "employee", synthetic: true, notice: PAYROLL_SYNTHETIC_NOTICE });
     const query = asRecord(request.query);
     const limit = Math.min(Math.max(parseQueryInt(readOptionalString(query, "limit")) ?? 25, 1), 100);
     const cursor = readOptionalString(query, "cursor");
@@ -6233,7 +6233,26 @@ export function buildApi(options: BuildApiOptions = {}) {
       totalNetMinor: totals._sum.netPayMinor ?? 0,
       currency: items[0]?.currency ?? "CAD"
     };
-    return reply.code(200).send({ items, summary, nextCursor: hasMore ? (rows[limit - 1]?.id ?? null) : null, synthetic: true, notice: PAYROLL_SYNTHETIC_NOTICE });
+    return reply.code(200).send({ items, summary, workerClassification: identity.classification, nextCursor: hasMore ? (rows[limit - 1]?.id ?? null) : null, synthetic: true, notice: PAYROLL_SYNTHETIC_NOTICE });
+  });
+
+  // The worker declares their tax type (employee or travailleur autonome = contractor). This drives
+  // payroll: employee -> source deductions + T4; contractor -> paid gross, no deductions, T4A.
+  app.put("/worker/profile/classification", async (request, reply) => {
+    const session = await authService.validateSession(readBearerToken(request.headers.authorization));
+    if (!session.authenticated || !session.user) {
+      return reply.code(401).send({ error: "RWOS_WORKER_DENIED", message: "Authentication is required." });
+    }
+    const body = asRecord(request.body);
+    const classification = readOptionalString(body, "classification");
+    if (classification !== "employee" && classification !== "contractor") {
+      return reply.code(400).send({ error: "RWOS_INVALID_CLASSIFICATION", message: "Classification must be employee or contractor." });
+    }
+    const updated = await workerOfferService.setClassification({ userId: session.user.id, classification });
+    if (!updated) {
+      return reply.code(500).send({ error: "RWOS_WORKER_CLASSIFICATION_FAILED", message: "Could not update classification." });
+    }
+    return reply.code(200).send({ classification: updated.classification });
   });
 
   async function userHasOrganizationAccess(userId: string, organizationId: string): Promise<boolean> {
@@ -7993,6 +8012,7 @@ function createUnavailableWorkerOfferService(): WorkerOfferService {
 
   return {
     ensureWorkerIdentity: denied,
+    setClassification: denied,
     createOffer: denied,
     listOffers: denied,
     readOffer: denied,

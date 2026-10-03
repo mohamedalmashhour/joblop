@@ -197,6 +197,13 @@ export const en = {
   "pay.earningsTitle": "Earnings",
   "pay.hours": "{hours} h",
   "pay.rateHr": "{rate}/h",
+  "pay.workTypeTitle": "Your work type",
+  "pay.typeEmployee": "Employee",
+  "pay.typeAutonomous": "Self-employed",
+  "pay.typeEmployeeDesc": "Payroll with deductions — T4 at year-end",
+  "pay.typeAutonomousDesc": "Paid gross, no deductions — T4A at year-end",
+  "pay.slipType": "Year-end slip: {slip}",
+  "pay.typeSaveError": "Couldn't update your work type.",
 
   // Common (shared, more)
   "common.aJob": "job",
@@ -587,6 +594,13 @@ export const fr: Messages = {
   "pay.earningsTitle": "Gains",
   "pay.hours": "{hours} h",
   "pay.rateHr": "{rate}/h",
+  "pay.workTypeTitle": "Votre type de travail",
+  "pay.typeEmployee": "Employé",
+  "pay.typeAutonomous": "Travailleur autonome",
+  "pay.typeEmployeeDesc": "Paie avec retenues — T4 en fin d'année",
+  "pay.typeAutonomousDesc": "Payé brut, sans retenues — T4A en fin d'année",
+  "pay.slipType": "Relevé de fin d'année : {slip}",
+  "pay.typeSaveError": "Impossible de mettre à jour votre type de travail.",
 
   // Commun (partagé, suite)
   "common.aJob": "emploi",

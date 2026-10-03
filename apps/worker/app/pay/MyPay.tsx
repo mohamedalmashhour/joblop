@@ -22,7 +22,7 @@ type Statement = Readonly<{
   deductions: readonly Deduction[];
 }>;
 type Summary = Readonly<{ statementCount: number; totalGrossMinor: number; totalDeductionsMinor: number; totalNetMinor: number; currency: string }>;
-type State = { status: "loading" } | { status: "signed_out" } | { status: "error" } | { status: "ready"; items: readonly Statement[]; summary: Summary | null; notice: string };
+type State = { status: "loading" } | { status: "signed_out" } | { status: "error" } | { status: "ready"; items: readonly Statement[]; summary: Summary | null; workerClassification: string; notice: string };
 
 function money(minor: number, currency: string, locale: RwosLocale): string {
   return new Intl.NumberFormat(locale, { style: "currency", currency }).format(minor / 100);
@@ -45,12 +45,25 @@ export function MyPay() {
       const r = await fetch("/api/payroll?limit=25", { cache: "no-store" });
       if (r.status === 401 || r.status === 403) return setState({ status: r.status === 401 ? "signed_out" : "error" });
       if (!r.ok) return setState({ status: "error" });
-      const payload = (await r.json()) as { items: Statement[]; summary?: Summary; notice?: string };
-      setState({ status: "ready", items: payload.items, summary: payload.summary ?? null, notice: payload.notice ?? "" });
+      const payload = (await r.json()) as { items: Statement[]; summary?: Summary; workerClassification?: string; notice?: string };
+      setState({ status: "ready", items: payload.items, summary: payload.summary ?? null, workerClassification: payload.workerClassification ?? "employee", notice: payload.notice ?? "" });
     } catch {
       setState({ status: "error" });
     }
   }, []);
+
+  const choose = useCallback(async (classification: "employee" | "contractor") => {
+    try {
+      const r = await fetch("/api/profile/classification", {
+        method: "PUT",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ classification })
+      });
+      if (r.ok) void load();
+    } catch {
+      // keep the current value on failure
+    }
+  }, [load]);
 
   useEffect(() => { void load(); }, [load]);
 
@@ -77,6 +90,28 @@ export function MyPay() {
           <div className="when">{t("pay.statementCount")}: {state.summary.statementCount}</div>
         </section>
       ) : null}
+
+      <section className="card" style={{ marginBottom: 16 }}>
+        <div className="role">{t("pay.workTypeTitle")}</div>
+        <div className="chips" style={{ marginTop: 6 }}>
+          <button
+            type="button"
+            className={`chip ${state.workerClassification !== "contractor" ? "status-verified" : ""}`}
+            onClick={() => void choose("employee")}
+          >
+            {t("pay.typeEmployee")}
+          </button>
+          <button
+            type="button"
+            className={`chip ${state.workerClassification === "contractor" ? "status-verified" : ""}`}
+            onClick={() => void choose("contractor")}
+          >
+            {t("pay.typeAutonomous")}
+          </button>
+        </div>
+        <div className="when">{state.workerClassification === "contractor" ? t("pay.typeAutonomousDesc") : t("pay.typeEmployeeDesc")}</div>
+        <div className="when">{t("pay.slipType", { slip: state.workerClassification === "contractor" ? "T4A" : "T4" })}</div>
+      </section>
 
       {state.items.length === 0 ? (
         <div className="state">{t("pay.none")}</div>
