@@ -23,7 +23,7 @@ export const PLATFORM_INVOICE_ISSUER: InvoiceIssuerConfiguration = {
   issuerModel: "platform_principal",
   productionApprovalReference: null, // set only when live (non-test) billing is approved
   legalName: "9375-7649 Québec Inc.",
-  enterpriseIdentifier: "NEQ-TO-CONFIRM", // Québec NEQ — awaiting the exact number from the owner
+  enterpriseIdentifier: "1173544397", // Québec NEQ
   gstRegistrationReference: "762614485RT0001", // GST / TPS
   qstRegistrationReference: "1225519125TQ0002", // QST / TVQ
   effectiveFrom: PLATFORM_ISSUER_EFFECTIVE_FROM,
