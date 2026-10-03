@@ -228,6 +228,7 @@ import { createPrismaDocumentMetadataRepository } from "./documentUploadReposito
 import { registerDocumentRoutes } from "./documentRoutes";
 import { registerInvoiceRoutes } from "./invoiceRoutes";
 import { createPrismaRequestPricingSnapshotCapture } from "./requestPricingSnapshot";
+import { materializeAndListWorkerPayouts } from "./workerPayoutRepository";
 import { workerAllowances } from "./workerAllowances";
 import { createPrismaInvoiceRepository, type InvoiceRepository } from "./invoiceRepository";
 import { createPrismaPayrollRepository, createPrismaPayrollRateResolver, createPrismaPayrollJurisdictionResolver, createPrismaPayrollClassificationResolver } from "./payrollRepository";
@@ -6253,6 +6254,27 @@ export function buildApi(options: BuildApiOptions = {}) {
       return reply.code(500).send({ error: "RWOS_WORKER_CLASSIFICATION_FAILED", message: "Could not update classification." });
     }
     return reply.code(200).send({ classification: updated.classification });
+  });
+
+  // The worker's payout ledger: what they are owed (To pay) and what has been sent (Paid). Reading it
+  // materializes a pending payout per locked payroll calculation and auto-releases any whose two-week
+  // hold has elapsed. Worker-scoped; no money is moved here.
+  app.get("/worker/payouts", async (request, reply) => {
+    const session = await authService.validateSession(readBearerToken(request.headers.authorization));
+    if (!session.authenticated || !session.user) {
+      return reply.code(401).send({ error: "RWOS_WORKER_DENIED", message: "Authentication is required." });
+    }
+    const identity = await prisma!.workerIdentity.findFirst({ where: { userId: session.user.id }, select: { id: true } });
+    if (!identity) {
+      return reply.code(200).send({ toPay: [], paid: [], summary: { currency: "CAD", toPayMinor: 0, paidMinor: 0 }, synthetic: true });
+    }
+    const payouts = await materializeAndListWorkerPayouts(prisma!, identity.id, new Date());
+    const toPay = payouts.filter((p) => p.status === "pending" || p.status === "held" || p.status === "released");
+    const paid = payouts.filter((p) => p.status === "paid");
+    const currency = payouts[0]?.currency ?? "CAD";
+    const toPayMinor = toPay.reduce((sum, p) => sum + p.amountMinor, 0);
+    const paidMinor = paid.reduce((sum, p) => sum + p.amountMinor, 0);
+    return reply.code(200).send({ toPay, paid, summary: { currency, toPayMinor, paidMinor }, synthetic: true });
   });
 
   async function userHasOrganizationAccess(userId: string, organizationId: string): Promise<boolean> {
