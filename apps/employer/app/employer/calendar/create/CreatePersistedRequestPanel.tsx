@@ -152,6 +152,7 @@ export function CreatePersistedRequestPanel() {
   const validation = validate(form, t);
   const selectedRole = roles.find((role) => role.slug === form.roleDefinition);
   const rateCurrency: "CAD" | "USD" = selectedRole?.currency === "USD" ? "USD" : "CAD";
+  const rateUnpriced = Boolean(selectedRole && selectedRole.hourlyRateMinor === null);
   const scheduledHours = hoursBetween(form.startAt, form.endAt);
   const workerCount =
     Number.isInteger(Number(form.numberOfWorkers)) && Number(form.numberOfWorkers) > 0
@@ -175,6 +176,10 @@ export function CreatePersistedRequestPanel() {
 
   function prepareReview(event: React.FormEvent) {
     event.preventDefault();
+    if (rateUnpriced) {
+      setMessage(t("create.gateUnpriced"));
+      return;
+    }
     if (validation.length) {
       setMessage(t("create.msgCompleteList", { fields: validation.join(", ") }));
       return;
@@ -395,7 +400,7 @@ export function CreatePersistedRequestPanel() {
       <p style={styles.cardText}>{t("create.economicsNote")}</p>
       <div style={{ display: "flex", flexWrap: "wrap", gap: 10, marginTop: 18 }}>
         {status === "editing" ? (
-          <button disabled={validation.length > 0} style={validation.length ? styles.disabledAction : styles.primaryButton} type="submit">{t("create.reviewRequest")}</button>
+          <button disabled={validation.length > 0 || rateUnpriced} style={validation.length || rateUnpriced ? styles.disabledAction : styles.primaryButton} type="submit">{t("create.reviewRequest")}</button>
         ) : null}
         {status === "review" ? (
           <>
