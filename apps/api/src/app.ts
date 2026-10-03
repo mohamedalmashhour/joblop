@@ -232,6 +232,7 @@ import { materializeAndListWorkerPayouts } from "./workerPayoutRepository";
 import { isWorkerDisputeCategory, normalizeWorkerDisputeReason } from "@rwos/shared";
 import { raiseWorkerDispute, listWorkerDisputes, withdrawWorkerDispute } from "./workerDisputeRepository";
 import { createEmployerOrderWithChildren, listEmployerOrders, getEmployerOrder, submitEmployerOrder } from "./employerOrderRepository";
+import { listMarketWagesForResidence } from "./marketWageRepository";
 import { workerAllowances } from "./workerAllowances";
 import { createPrismaInvoiceRepository, type InvoiceRepository } from "./invoiceRepository";
 import { createPrismaPayrollRepository, createPrismaPayrollRateResolver, createPrismaPayrollJurisdictionResolver, createPrismaPayrollClassificationResolver } from "./payrollRepository";
@@ -2507,6 +2508,19 @@ export function buildApi(options: BuildApiOptions = {}) {
       return reply.code(code).send({ error: `RWOS_ORDER_${result.reason.toUpperCase()}`, message: "The order could not be submitted." });
     }
     return reply.code(200).send({ order: result.order });
+  });
+
+  // Admin-maintained market-wage references for the roles at a residence's province — advisory only,
+  // shown to the employer beside their own contract rate. Never used to price, pay, or bill.
+  app.get("/organizations/:organizationId/market-wages", async (request, reply) => {
+    const session = await authService.validateSession(readBearerToken(request.headers.authorization));
+    if (!session.authenticated || !session.user) return sendJobRequestDenied(reply);
+    const organizationId = readRouteParam(request.params, "organizationId");
+    if (!(await userHasOrganizationAccess(session.user.id, organizationId))) return sendJobRequestDenied(reply);
+    const residenceId = readOptionalString(asRecord(request.query), "residenceId");
+    if (!residenceId) return reply.code(200).send({ marketWages: [] });
+    const marketWages = await listMarketWagesForResidence(prisma!, organizationId, residenceId);
+    return reply.code(200).send({ marketWages });
   });
 
   // Duplicate a request into a NEW DRAFT only. Copies governed fields + duties/

@@ -28,3 +28,4 @@ export * from "./platformInvoiceIssuer";
 export * from "./workerPayout";
 export * from "./workerDispute";
 export * from "./employerOrder";
+export * from "./marketWage";

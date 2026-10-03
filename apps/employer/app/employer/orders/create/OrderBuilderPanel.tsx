@@ -10,7 +10,8 @@ import {
   formatMoney,
   hoursBetween,
   meetsMinimumShiftDuration,
-  urgencyPremiumMinor
+  urgencyPremiumMinor,
+  compareToMarket
 } from "@rwos/shared";
 import { LanguageSwitcher } from "../../../i18n/LanguageSwitcher";
 import { useT } from "../../../i18n/LocaleProvider";
@@ -69,6 +70,7 @@ export function OrderBuilderPanel() {
   >("loading");
   const [message, setMessage] = useState("");
   const [created, setCreated] = useState<CreatedOrder | null>(null);
+  const [marketWages, setMarketWages] = useState<Record<string, { medianHourlyRateMinor: number; currency: string }>>({});
 
   async function loadContext(residenceId = "") {
     setStatus("loading");
@@ -99,9 +101,22 @@ export function OrderBuilderPanel() {
     setShared((cur) => ({ ...cur, [key]: value, ...(key === "residenceId" ? { departmentId: "" } : {}) }));
   }
 
+  async function loadMarketWages(residenceId: string) {
+    try {
+      const response = await fetch(`/api/market-wages?residenceId=${encodeURIComponent(residenceId)}`, { cache: "no-store" });
+      if (!response.ok) return setMarketWages({});
+      const payload = (await response.json()) as { marketWages: { roleDefinitionId: string; medianHourlyRateMinor: number; currency: string }[] };
+      const map: Record<string, { medianHourlyRateMinor: number; currency: string }> = {};
+      for (const m of payload.marketWages ?? []) map[m.roleDefinitionId] = { medianHourlyRateMinor: m.medianHourlyRateMinor, currency: m.currency };
+      setMarketWages(map);
+    } catch {
+      setMarketWages({});
+    }
+  }
+
   async function selectResidence(residenceId: string) {
     updateShared("residenceId", residenceId);
-    if (residenceId) await loadContext(residenceId);
+    if (residenceId) { await loadContext(residenceId); await loadMarketWages(residenceId); }
   }
 
   function updateLine(key: string, patch: Partial<Line>) {
@@ -328,6 +343,18 @@ export function OrderBuilderPanel() {
                     {est ? ` · ${t("order.lineEstimate", { amount: formatMoney(createContractMoney({ amountMinor: est.minor, currency: est.currency })), hours: String(hours), workers: line.numberOfWorkers })}` : ""}
                   </p>
                 ) : null}
+                {(() => {
+                  const market = role ? marketWages[role.roleDefinitionId] : undefined;
+                  if (!role || role.hourlyRateMinor === null || !market) return null;
+                  const cmp = compareToMarket(role.hourlyRateMinor, market.medianHourlyRateMinor);
+                  const cmpLabel = cmp === "below" ? t("order.marketBelow") : cmp === "above" ? t("order.marketAbove") : t("order.marketAt");
+                  return (
+                    <p style={styles.metaLabel}>
+                      {t("order.marketRef")}: {formatHourlyRate(createContractMoney({ amountMinor: market.medianHourlyRateMinor, currency: market.currency }))}
+                      {cmp !== "unknown" ? ` · ${cmpLabel}` : ""}
+                    </p>
+                  );
+                })()}
                 {unpriced ? <p style={styles.cardText}>{t("order.lineUnpriced")}</p> : null}
                 {lines.length > 1 ? (
                   <button type="button" style={styles.footerLink} onClick={() => setLines((cur) => cur.filter((l) => l.key !== line.key))}>{t("order.removeRole")}</button>

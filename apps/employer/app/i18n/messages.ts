@@ -215,6 +215,10 @@ export const en = {
   "order.statusExpired": "Expired",
   "order.backToList": "Back to orders",
   "order.urgentPremium": "Urgent premium of +$5/hr is included — paid to the worker and billed to you.",
+  "order.marketRef": "Market reference",
+  "order.marketBelow": "below market",
+  "order.marketAt": "at market",
+  "order.marketAbove": "above market",
 } as const;
 
 export type MessageKey = keyof typeof en;
@@ -433,6 +437,10 @@ export const fr: Messages = {
   "order.statusExpired": "Expirée",
   "order.backToList": "Retour aux commandes",
   "order.urgentPremium": "Une prime d'urgence de +5\u00a0$/h est incluse\u202f: vers\u00e9e au travailleur et factur\u00e9e \u00e0 vous.",
+  "order.marketRef": "R\u00e9f\u00e9rence du march\u00e9",
+  "order.marketBelow": "sous le march\u00e9",
+  "order.marketAt": "dans le march\u00e9",
+  "order.marketAbove": "au-dessus du march\u00e9",
 };
 
 export const dictionaries: Readonly<Record<RwosLocale, Messages>> = {

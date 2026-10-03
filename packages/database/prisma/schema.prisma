@@ -1284,6 +1284,26 @@ model WorkerDispute {
   @@map("worker_disputes")
 }
 
+// Admin-maintained market-wage reference: an indicative market hourly rate for a role in a province,
+// shown to employers beside their own contract rate so they can judge how competitive it is. Reference
+// data ONLY — it never feeds pricing, payroll or invoices. One row per (role, province).
+model MarketWageReference {
+  id                    String    @id @default(uuid()) @db.Uuid
+  roleDefinitionId      String    @map("role_definition_id") @db.Uuid
+  province              String
+  medianHourlyRateMinor Int       @map("median_hourly_rate_minor")
+  currency              String
+  source                String?
+  effectiveFrom         DateTime? @map("effective_from") @db.Timestamptz(3)
+  updatedByUserId       String?   @map("updated_by_user_id") @db.Uuid
+  createdAt             DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt             DateTime  @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  @@unique([roleDefinitionId, province], map: "market_wage_references_role_province_key")
+  @@index([province], map: "market_wage_references_province_idx")
+  @@map("market_wage_references")
+}
+
 // Immutable per-request hidden-markup record, captured when an admin approves a request for dispatch.
 // Stores the employer rate (E), the admin-chosen margin, the derived worker rate (W), and the
 // per-allowance employer/worker splits. Payroll pays W from here; each audience view reads only its
