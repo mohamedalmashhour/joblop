@@ -9,13 +9,16 @@ import { styles } from "../../employerStyles";
 import { JobLocationMap } from "../../../shared/maps";
 import {
   MINIMUM_SHIFT_HOURS,
-  MINIMUM_SHIFT_MESSAGE,
   estimateRequestCost,
   formatHourlyRate,
   formatMoney,
   hoursBetween,
   meetsMinimumShiftDuration
 } from "@rwos/shared";
+import { LanguageSwitcher } from "../../../i18n/LanguageSwitcher";
+import { useT, type Translate } from "../../../i18n/LocaleProvider";
+
+type Provision = "none" | "provided" | "allowance";
 
 type FormState = {
   residenceId: string;
@@ -34,6 +37,15 @@ type FormState = {
   timezone: string;
   startAt: string;
   endAt: string;
+  transportProvision: Provision;
+  transportAmount: string;
+  transportNote: string;
+  mealProvision: Provision;
+  mealAmount: string;
+  mealNote: string;
+  lodgingProvision: Provision;
+  lodgingAmount: string;
+  lodgingNote: string;
 };
 
 const initialForm: FormState = {
@@ -52,10 +64,33 @@ const initialForm: FormState = {
   requestType: "single_day",
   timezone: "America/Toronto",
   startAt: "",
-  endAt: ""
+  endAt: "",
+  transportProvision: "none",
+  transportAmount: "",
+  transportNote: "",
+  mealProvision: "none",
+  mealAmount: "",
+  mealNote: "",
+  lodgingProvision: "none",
+  lodgingAmount: "",
+  lodgingNote: ""
 };
 
+function toMinor(value: string): number | null {
+  const n = Number(value);
+  return Number.isInteger(n) && n >= 0 ? n : null;
+}
+
+function allowancesPayload(form: FormState) {
+  return {
+    transport: { provision: form.transportProvision, amountMinor: toMinor(form.transportAmount), note: form.transportNote.trim() || null },
+    meal: { provision: form.mealProvision, amountMinor: toMinor(form.mealAmount), note: form.mealNote.trim() || null },
+    lodging: { provision: form.lodgingProvision, amountMinor: toMinor(form.lodgingAmount), note: form.lodgingNote.trim() || null }
+  };
+}
+
 export function CreatePersistedRequestPanel() {
+  const t = useT();
   const [context, setContext] = useState<EmployerRequestContext | null>(null);
   const [form, setForm] = useState<FormState>(initialForm);
   const [status, setStatus] = useState<
@@ -69,37 +104,43 @@ export function CreatePersistedRequestPanel() {
     | "denied"
     | "error"
   >("loading");
-  const [message, setMessage] = useState("Loading authorized request choices.");
+  const [message, setMessage] = useState(() => "");
   const [draft, setDraft] = useState<EmployerJobRequestDraft | null>(null);
   const [profileSaved, setProfileSaved] = useState(false);
 
+  useEffect(() => {
+    setMessage(t("create.msgLoadingChoices"));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   async function loadContext(residenceId = "") {
     setStatus("loading");
-    setMessage("Loading authorized request choices.");
+    setMessage(t("create.msgLoadingChoices"));
     try {
       const contextUrl = new URL("/api/job-requests/context", window.location.origin);
       if (residenceId) contextUrl.searchParams.set("residenceId", residenceId);
       const response = await fetch(contextUrl.toString(), { cache: "no-store" });
       if (response.status === 401) {
         setStatus("denied");
-        return setMessage("Sign in and select an employer organization from the request calendar.");
+        return setMessage(t("create.msgSignInSelectOrg"));
       }
       if (response.status === 409) {
         setStatus("denied");
-        return setMessage("Select an employer organization from the request calendar first.");
+        return setMessage(t("create.msgSelectOrgFirst"));
       }
       if (!response.ok) throw new Error("context");
       setContext(await response.json());
       setStatus("editing");
-      setMessage("Complete the governed fields to save a persisted draft.");
+      setMessage(t("create.msgCompleteFields"));
     } catch {
       setStatus("error");
-      setMessage("Request choices are unavailable. Your form has not been submitted.");
+      setMessage(t("create.msgChoicesUnavailable"));
     }
   }
 
   useEffect(() => {
     void loadContext();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const selectedWorkGroup = context?.workGroups.find((item) => item.slug === form.workGroup);
@@ -108,7 +149,7 @@ export function CreatePersistedRequestPanel() {
       context?.roleDefinitions.filter((role) => role.workGroupId === selectedWorkGroup?.id) ?? [],
     [context, selectedWorkGroup]
   );
-  const validation = validate(form);
+  const validation = validate(form, t);
   const selectedRole = roles.find((role) => role.slug === form.roleDefinition);
   const rateCurrency: "CAD" | "USD" = selectedRole?.currency === "USD" ? "USD" : "CAD";
   const scheduledHours = hoursBetween(form.startAt, form.endAt);
@@ -124,7 +165,7 @@ export function CreatePersistedRequestPanel() {
       ...(key === "residenceId" ? { departmentId: "" } : {}),
       ...(key === "workGroup" ? { roleDefinition: "" } : {})
     }));
-    setMessage("Complete the governed fields to save a persisted draft.");
+    setMessage(t("create.msgCompleteFields"));
   }
 
   async function selectResidence(residenceId: string) {
@@ -135,16 +176,16 @@ export function CreatePersistedRequestPanel() {
   function prepareReview(event: React.FormEvent) {
     event.preventDefault();
     if (validation.length) {
-      setMessage(`Complete: ${validation.join(", ")}.`);
+      setMessage(t("create.msgCompleteList", { fields: validation.join(", ") }));
       return;
     }
     setStatus("review");
-    setMessage("Review every staffing detail before saving the persisted draft.");
+    setMessage(t("create.msgReviewBeforeSave"));
   }
 
   async function createDraft() {
     setStatus("saving");
-    setMessage("Saving persisted draft.");
+    setMessage(t("create.msgSavingDraft"));
     try {
       const response = await fetch("/api/job-requests", {
         method: "POST",
@@ -167,9 +208,7 @@ export function CreatePersistedRequestPanel() {
       if (!response.ok) {
         setStatus(response.status === 401 ? "denied" : "editing");
         return setMessage(
-          response.status === 409
-            ? "Organization context changed. Return to the calendar and select it again."
-            : "Draft could not be saved. Review the fields and try again."
+          response.status === 409 ? t("create.msgOrgChanged") : t("create.msgDraftNotSaved")
         );
       }
       const payload = (await response.json()) as { jobRequest: EmployerJobRequestDraft };
@@ -179,12 +218,12 @@ export function CreatePersistedRequestPanel() {
       setStatus("draft");
       setMessage(
         saved
-          ? `Draft ${payload.jobRequest.jobRequestNumber} and its staffing details were saved.`
-          : `Draft ${payload.jobRequest.jobRequestNumber} was saved, but its staffing details were not. Retry before submission.`
+          ? t("create.msgDraftSaved", { num: payload.jobRequest.jobRequestNumber })
+          : t("create.msgDraftSavedNoDetails", { num: payload.jobRequest.jobRequestNumber })
       );
     } catch {
       setStatus("editing");
-      setMessage("Draft service is unavailable. Your entered values remain on this page.");
+      setMessage(t("create.msgDraftServiceDown"));
     }
   }
 
@@ -198,6 +237,7 @@ export function CreatePersistedRequestPanel() {
           qualifications: splitQualifications(form.qualifications),
           addressSummary: form.addressSummary.trim() || null,
           specialInstructions: form.specialInstructions.trim() || null,
+          allowances: allowancesPayload(form),
           expectedVersion: null
         })
       });
@@ -210,17 +250,17 @@ export function CreatePersistedRequestPanel() {
   async function retryProfile() {
     if (!draft) return;
     setStatus("saving");
-    setMessage("Saving staffing details.");
+    setMessage(t("create.msgSavingDraft"));
     const saved = await saveProfile(draft);
     setProfileSaved(saved);
     setStatus("draft");
-    setMessage(saved ? "Staffing details saved." : "Staffing details remain unsaved. Try again.");
+    setMessage(saved ? t("create.msgDetailsSaved") : t("create.msgDetailsUnsaved"));
   }
 
   async function submitDraft() {
     if (!draft) return;
     setStatus("submitting");
-    setMessage("Submitting the persisted draft for platform review.");
+    setMessage(t("create.msgSubmitting"));
     try {
       const response = await fetch(`/api/job-requests/${encodeURIComponent(draft.id)}/submit`, {
         method: "POST",
@@ -230,344 +270,229 @@ export function CreatePersistedRequestPanel() {
       if (!response.ok) {
         setStatus("draft");
         return setMessage(
-          response.status === 409
-            ? "This draft changed. Open the latest request before submitting again."
-            : "The draft was saved but could not be submitted."
+          response.status === 409 ? t("create.msgDraftChanged") : t("create.msgSavedNotSubmitted")
         );
       }
       const payload = (await response.json()) as { jobRequest: EmployerJobRequestDraft };
       setDraft(payload.jobRequest);
       setStatus("submitted");
-      setMessage(`Request ${payload.jobRequest.jobRequestNumber} was submitted for review.`);
+      setMessage(t("create.msgSubmitted", { num: payload.jobRequest.jobRequestNumber }));
     } catch {
       setStatus("draft");
-      setMessage("The draft remains saved. Submission is temporarily unavailable.");
+      setMessage(t("create.msgSubmitUnavailable"));
     }
   }
 
   if (status === "loading") {
-    return <StateCard busy message={message} title="Preparing staffing request" />;
+    return <StateCard busy message={message} title={t("create.statePreparing")} t={t} />;
   }
   if (status === "denied") {
-    return (
-      <StateCard action="/employer/calendar" message={message} title="Employer context required" />
-    );
+    return <StateCard action="/employer/calendar" message={message} title={t("create.stateContextRequired")} t={t} />;
   }
   if (status === "error" || !context) {
     return (
       <StateCard
         message={message}
         onRetry={() => void loadContext(form.residenceId)}
-        title="Request setup unavailable"
+        title={t("create.stateSetupUnavailable")}
+        t={t}
       />
     );
   }
   if (!context.residences.length || !context.workGroups.length) {
-    return (
-      <StateCard
-        message="An active residence and work group are required before a staffing request can be created. Ask an authorized administrator to complete persisted organization setup."
-        title="Request setup incomplete"
-      />
-    );
+    return <StateCard message={t("create.stateSetupIncompleteMsg")} title={t("create.stateSetupIncomplete")} t={t} />;
   }
+
+  const editing = status === "editing";
 
   return (
     <form aria-busy={status === "saving" || status === "submitting"} onSubmit={prepareReview}>
+      <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: 8 }}>
+        <LanguageSwitcher />
+      </div>
       <div aria-live="polite" role="status" style={styles.warning}>
         {message}
       </div>
       <div style={styles.formGrid}>
-        <SelectField
-          disabled={status !== "editing"}
-          label="Residence"
-          onChange={(value) => void selectResidence(value)}
-          options={context.residences.map((item) => ({ label: item.name, value: item.id }))}
-          value={form.residenceId}
-        />
-        <SelectField
-          disabled={status !== "editing" || !form.residenceId}
-          label="Department"
-          onChange={(value) => update("departmentId", value)}
-          options={context.departments
-            .filter((item) => item.residenceId === form.residenceId)
-            .map((item) => ({ label: item.name, value: item.id }))}
-          value={form.departmentId}
-        />
-        <SelectField
-          disabled={status !== "editing"}
-          label="Work group"
-          onChange={(value) => update("workGroup", value)}
-          options={context.workGroups.map((item) => ({
-            label: item.displayLabel,
-            value: item.slug
-          }))}
-          value={form.workGroup}
-        />
-        <SelectField
-          disabled={status !== "editing" || !form.workGroup}
-          label="Role"
-          onChange={(value) => update("roleDefinition", value)}
-          options={roles.map((item) => ({ label: item.displayLabel, value: item.slug }))}
-          value={form.roleDefinition}
-        />
-        <TextField
-          disabled={status !== "editing"}
-          label="Request title"
-          maxLength={160}
-          onChange={(value) => update("title", value)}
-          value={form.title}
-        />
-        <TextField
-          disabled={status !== "editing"}
-          label="Workers required"
-          min="1"
-          onChange={(value) => update("numberOfWorkers", value)}
-          type="number"
-          value={form.numberOfWorkers}
-        />
-        <TextField
-          disabled={status !== "editing"}
-          label="Starts"
-          onChange={(value) => update("startAt", value)}
-          type="datetime-local"
-          value={form.startAt}
-        />
-        <TextField
-          disabled={status !== "editing"}
-          label="Ends"
-          onChange={(value) => update("endAt", value)}
-          type="datetime-local"
-          value={form.endAt}
-        />
+        <SelectField disabled={!editing} label={t("create.residence")} onChange={(v) => void selectResidence(v)} options={context.residences.map((i) => ({ label: i.name, value: i.id }))} value={form.residenceId} t={t} />
+        <SelectField disabled={!editing || !form.residenceId} label={t("create.department")} onChange={(v) => update("departmentId", v)} options={context.departments.filter((i) => i.residenceId === form.residenceId).map((i) => ({ label: i.name, value: i.id }))} value={form.departmentId} t={t} />
+        <SelectField disabled={!editing} label={t("create.workGroup")} onChange={(v) => update("workGroup", v)} options={context.workGroups.map((i) => ({ label: i.displayLabel, value: i.slug }))} value={form.workGroup} t={t} />
+        <SelectField disabled={!editing || !form.workGroup} label={t("create.role")} onChange={(v) => update("roleDefinition", v)} options={roles.map((i) => ({ label: i.displayLabel, value: i.slug }))} value={form.roleDefinition} t={t} />
+        <TextField disabled={!editing} label={t("create.title")} maxLength={160} onChange={(v) => update("title", v)} value={form.title} />
+        <TextField disabled={!editing} label={t("create.workersRequired")} min="1" onChange={(v) => update("numberOfWorkers", v)} type="number" value={form.numberOfWorkers} />
+        <TextField disabled={!editing} label={t("create.starts")} onChange={(v) => update("startAt", v)} type="datetime-local" value={form.startAt} />
+        <TextField disabled={!editing} label={t("create.ends")} onChange={(v) => update("endAt", v)} type="datetime-local" value={form.endAt} />
         <div style={{ gridColumn: "1 / -1" }} aria-live="polite">
-          {form.startAt &&
-          form.endAt &&
-          new Date(form.endAt) > new Date(form.startAt) &&
-          !meetsMinimumShiftDuration(form.startAt, form.endAt) ? (
+          {form.startAt && form.endAt && new Date(form.endAt) > new Date(form.startAt) && !meetsMinimumShiftDuration(form.startAt, form.endAt) ? (
             <div style={styles.warning} role="alert">
-              {MINIMUM_SHIFT_MESSAGE} This shift is {scheduledHours.toFixed(1)} hours — extend the end
-              time to at least {MINIMUM_SHIFT_HOURS} hours.
+              {t("create.minShiftMsg")} {t("create.minShiftWarn", { hours: scheduledHours.toFixed(1), min: MINIMUM_SHIFT_HOURS })}
             </div>
           ) : (
-            <p style={styles.cardText}>{MINIMUM_SHIFT_MESSAGE}</p>
+            <p style={styles.cardText}>{t("create.minShiftMsg")}</p>
           )}
         </div>
-        <SelectField
-          disabled={status !== "editing"}
-          label="Urgency"
-          onChange={(value) => update("urgency", value as FormState["urgency"])}
-          options={[
-            { label: "Normal", value: "normal" },
-            { label: "Urgent", value: "urgent" },
-            { label: "Immediate", value: "immediate" }
-          ]}
-          value={form.urgency}
-        />
-        <SelectField
-          disabled={status !== "editing"}
-          label="Request type"
-          onChange={(value) => update("requestType", value as FormState["requestType"])}
-          options={[
-            { label: "Single day", value: "single_day" },
-            { label: "Multi-day", value: "multi_day" },
-            { label: "Recurring intent", value: "recurring_intent" }
-          ]}
-          value={form.requestType}
-        />
-        <TextField
-          disabled={status !== "editing"}
-          label="Timezone"
-          onChange={(value) => update("timezone", value)}
-          value={form.timezone}
-        />
-        <TextField
-          disabled={status !== "editing"}
-          label="Synthetic site address"
-          maxLength={500}
-          onChange={(value) => update("addressSummary", value)}
-          value={form.addressSummary}
-        />
-        <TextField
-          disabled={status !== "editing"}
-          label="Required certifications (comma separated)"
-          maxLength={2000}
-          onChange={(value) => update("qualifications", value)}
-          value={form.qualifications}
-        />
+        <SelectField disabled={!editing} label={t("create.urgency")} onChange={(v) => update("urgency", v as FormState["urgency"])} options={[{ label: t("create.urgencyNormal"), value: "normal" }, { label: t("create.urgencyUrgent"), value: "urgent" }, { label: t("create.urgencyImmediate"), value: "immediate" }]} value={form.urgency} t={t} />
+        <SelectField disabled={!editing} label={t("create.requestType")} onChange={(v) => update("requestType", v as FormState["requestType"])} options={[{ label: t("create.typeSingle"), value: "single_day" }, { label: t("create.typeMulti"), value: "multi_day" }, { label: t("create.typeRecurring"), value: "recurring_intent" }]} value={form.requestType} t={t} />
+        <TextField disabled={!editing} label={t("create.timezone")} onChange={(v) => update("timezone", v)} value={form.timezone} />
+        <TextField disabled={!editing} label={t("create.siteAddress")} maxLength={500} onChange={(v) => update("addressSummary", v)} value={form.addressSummary} />
+        <TextField disabled={!editing} label={t("create.certifications")} maxLength={2000} onChange={(v) => update("qualifications", v)} value={form.qualifications} />
         <label style={styles.fieldLabel}>
-          Description
-          <textarea
-            disabled={status !== "editing"}
-            maxLength={2000}
-            onChange={(event) => update("description", event.target.value)}
-            rows={4}
-            style={styles.input}
-            value={form.description}
-          />
+          {t("create.description")}
+          <textarea disabled={!editing} maxLength={2000} onChange={(e) => update("description", e.target.value)} rows={4} style={styles.input} value={form.description} />
         </label>
         <label style={styles.fieldLabel}>
-          Duties summary
-          <textarea
-            disabled={status !== "editing"}
-            maxLength={2000}
-            onChange={(event) => update("dutiesSummary", event.target.value)}
-            rows={4}
-            style={styles.input}
-            value={form.dutiesSummary}
-          />
+          {t("create.duties")}
+          <textarea disabled={!editing} maxLength={2000} onChange={(e) => update("dutiesSummary", e.target.value)} rows={4} style={styles.input} value={form.dutiesSummary} />
+          <span style={styles.cardText}>{t("create.dutiesScopeNote")}</span>
         </label>
         <label style={styles.fieldLabel}>
-          Special instructions
-          <textarea
-            disabled={status !== "editing"}
-            maxLength={2000}
-            onChange={(event) => update("specialInstructions", event.target.value)}
-            rows={4}
-            style={styles.input}
-            value={form.specialInstructions}
-          />
+          {t("create.safety")}
+          <textarea disabled={!editing} maxLength={2000} onChange={(e) => update("specialInstructions", e.target.value)} rows={4} style={styles.input} value={form.specialInstructions} />
+          <span style={styles.cardText}>{t("create.safetyNote")}</span>
         </label>
       </div>
+
+      <section style={{ marginTop: 18 }}>
+        <p style={styles.metaLabel}>{t("create.allowancesTitle")}</p>
+        <p style={styles.cardText}>{t("create.allowancesNote")}</p>
+        <div style={styles.formGrid}>
+          <AllowanceFields label={t("create.allowanceTransport")} disabled={!editing} provision={form.transportProvision} amount={form.transportAmount} note={form.transportNote} onProvision={(v) => update("transportProvision", v)} onAmount={(v) => update("transportAmount", v)} onNote={(v) => update("transportNote", v)} t={t} />
+          <AllowanceFields label={t("create.allowanceMeal")} disabled={!editing} provision={form.mealProvision} amount={form.mealAmount} note={form.mealNote} onProvision={(v) => update("mealProvision", v)} onAmount={(v) => update("mealAmount", v)} onNote={(v) => update("mealNote", v)} t={t} />
+          <AllowanceFields label={t("create.allowanceLodging")} disabled={!editing} provision={form.lodgingProvision} amount={form.lodgingAmount} note={form.lodgingNote} onProvision={(v) => update("lodgingProvision", v)} onAmount={(v) => update("lodgingAmount", v)} onNote={(v) => update("lodgingNote", v)} t={t} />
+        </div>
+      </section>
+
       {selectedRole ? (
         <div style={{ marginTop: 18 }}>
-          <p style={styles.metaLabel}>Governed pay rate</p>
+          <p style={styles.metaLabel}>{t("create.rateYouPay")}</p>
           {selectedRole.hourlyRateMinor !== null ? (
             <div style={styles.tintedCard}>
-              <strong>
-                {formatHourlyRate({
-                  amountMinor: selectedRole.hourlyRateMinor,
-                  currency: rateCurrency
-                })}
-              </strong>
+              <strong>{formatHourlyRate({ amountMinor: selectedRole.hourlyRateMinor, currency: rateCurrency })}</strong>
               {scheduledHours > 0 ? (
-                <span>
-                  {" "}
-                  · Estimated total{" "}
-                  {formatMoney(
-                    estimateRequestCost({
-                      hourlyRate: {
-                        amountMinor: selectedRole.hourlyRateMinor,
-                        currency: rateCurrency
-                      },
-                      hours: scheduledHours,
-                      workers: workerCount
-                    })
-                  )}{" "}
-                  ({scheduledHours}h × {workerCount})
-                </span>
+                <span> · {t("create.estimatedTotal", { amount: formatMoney(estimateRequestCost({ hourlyRate: { amountMinor: selectedRole.hourlyRateMinor, currency: rateCurrency }, hours: scheduledHours, workers: workerCount })), hours: scheduledHours, workers: workerCount })}</span>
               ) : null}
-              <p style={styles.cardText}>
-                Read from your organization&rsquo;s active contract. This request applies the
-                governed rate — it does not set the price.
-              </p>
+              <p style={styles.cardText}>{t("create.rateFromContract")}</p>
             </div>
           ) : (
             <div style={styles.warning}>
-              Your active contract does not price this role yet.{" "}
-              <a href="/employer/contract" style={{ textDecoration: "underline", color: "inherit" }}>
-                Review and sign your contract
-              </a>{" "}
-              before submitting.
+              {t("create.rateNotPriced")}{" "}
+              <a href="/employer/contract" style={{ textDecoration: "underline", color: "inherit" }}>{t("create.reviewSignContract")}</a>{" "}
+              {t("create.beforeSubmitting")}
             </div>
           )}
         </div>
       ) : null}
       {form.addressSummary.trim().length > 1 ? (
         <div style={{ marginTop: 18 }}>
-          <p style={styles.metaLabel}>Site location</p>
+          <p style={styles.metaLabel}>{t("create.siteLocation")}</p>
           <JobLocationMap address={form.addressSummary} height={260} />
         </div>
       ) : null}
-      {status === "review" ? <RequestReview form={form} /> : null}
-      <p style={styles.cardText}>
-        Hourly rate and transportation compensation are governed by the approved contract and offer
-        terms. This request step does not collect or invent worker economics.
-      </p>
+
+      <AgreementClauses t={t} />
+
+      {status === "review" ? <RequestReview form={form} t={t} /> : null}
+      <p style={styles.cardText}>{t("create.economicsNote")}</p>
       <div style={{ display: "flex", flexWrap: "wrap", gap: 10, marginTop: 18 }}>
         {status === "editing" ? (
-          <button
-            disabled={validation.length > 0}
-            style={validation.length ? styles.disabledAction : styles.primaryButton}
-            type="submit"
-          >
-            Review request
-          </button>
+          <button disabled={validation.length > 0} style={validation.length ? styles.disabledAction : styles.primaryButton} type="submit">{t("create.reviewRequest")}</button>
         ) : null}
         {status === "review" ? (
           <>
-            <button onClick={() => void createDraft()} style={styles.primaryButton} type="button">
-              Save persisted draft
-            </button>
-            <button
-              onClick={() => {
-                setStatus("editing");
-                setMessage("Update the request, then review it again.");
-              }}
-              style={styles.secondaryButton}
-              type="button"
-            >
-              Back to edit
-            </button>
+            <button onClick={() => void createDraft()} style={styles.primaryButton} type="button">{t("create.saveDraft")}</button>
+            <button onClick={() => { setStatus("editing"); setMessage(t("create.msgUpdateThenReview")); }} style={styles.secondaryButton} type="button">{t("create.backToEdit")}</button>
           </>
         ) : null}
         {status === "draft" ? (
-          <button
-            disabled={!profileSaved}
-            onClick={() => void submitDraft()}
-            style={profileSaved ? styles.primaryButton : styles.disabledAction}
-            type="button"
-          >
-            Submit for review
-          </button>
+          <button disabled={!profileSaved} onClick={() => void submitDraft()} style={profileSaved ? styles.primaryButton : styles.disabledAction} type="button">{t("create.submitForReview")}</button>
         ) : null}
         {status === "draft" && !profileSaved ? (
-          <button onClick={() => void retryProfile()} style={styles.secondaryButton} type="button">
-            Retry staffing details
-          </button>
+          <button onClick={() => void retryProfile()} style={styles.secondaryButton} type="button">{t("create.retryDetails")}</button>
         ) : null}
         {draft ? (
           <>
             {status === "draft" ? (
-              <a
-                href={`/employer/calendar/request/edit?id=${encodeURIComponent(draft.id)}`}
-                style={styles.secondaryButton}
-              >
-                Edit persisted draft
-              </a>
+              <a href={`/employer/calendar/request/edit?id=${encodeURIComponent(draft.id)}`} style={styles.secondaryButton}>{t("create.editDraft")}</a>
             ) : null}
-            <a
-              href={`/employer/calendar/request?request=${encodeURIComponent(draft.jobRequestNumber)}`}
-              style={styles.secondaryButton}
-            >
-              Open persisted request
-            </a>
+            <a href={`/employer/calendar/request?request=${encodeURIComponent(draft.jobRequestNumber)}`} style={styles.secondaryButton}>{t("create.openRequest")}</a>
           </>
         ) : null}
-        <a href="/employer/calendar" style={styles.secondaryButton}>
-          Back to calendar
-        </a>
+        <a href="/employer/calendar" style={styles.secondaryButton}>{t("create.backToCalendar")}</a>
       </div>
     </form>
   );
 }
 
-function RequestReview({ form }: Readonly<{ form: FormState }>) {
+function AllowanceFields({
+  label, disabled, provision, amount, note, onProvision, onAmount, onNote, t
+}: {
+  label: string; disabled: boolean; provision: Provision; amount: string; note: string;
+  onProvision: (v: Provision) => void; onAmount: (v: string) => void; onNote: (v: string) => void; t: Translate;
+}) {
+  return (
+    <div style={styles.tintedCard}>
+      <p style={styles.metaLabel}>{label}</p>
+      <label style={styles.fieldLabel}>
+        <select disabled={disabled} onChange={(e) => onProvision(e.target.value as Provision)} style={styles.input} value={provision}>
+          <option value="none">{t("create.provisionNone")}</option>
+          <option value="provided">{t("create.provisionProvided")}</option>
+          <option value="allowance">{t("create.provisionAllowance")}</option>
+        </select>
+      </label>
+      {provision === "allowance" ? (
+        <label style={styles.fieldLabel}>
+          {t("create.allowanceAmount")}
+          <input disabled={disabled} inputMode="numeric" onChange={(e) => onAmount(e.target.value)} style={styles.input} type="number" min="0" value={amount} />
+        </label>
+      ) : null}
+      {provision !== "none" ? (
+        <label style={styles.fieldLabel}>
+          {t("create.allowanceNoteField")}
+          <input disabled={disabled} maxLength={500} onChange={(e) => onNote(e.target.value)} style={styles.input} value={note} />
+        </label>
+      ) : null}
+    </div>
+  );
+}
+
+function AgreementClauses({ t }: { t: Translate }) {
+  const clauses = [
+    t("create.clause6h"),
+    t("create.clauseTermination"),
+    t("create.clauseScope"),
+    t("create.clauseRespect"),
+    t("create.clauseExtraHours"),
+    t("create.clauseSafety")
+  ];
+  return (
+    <section aria-labelledby="agreement-title" style={{ ...styles.panel, marginTop: 18 }}>
+      <h2 id="agreement-title" style={styles.sectionTitle}>{t("create.agreementTitle")}</h2>
+      <p style={styles.cardText}>{t("create.clausesHeading")}</p>
+      <ul style={{ margin: "8px 0 0", paddingLeft: 20 }}>
+        {clauses.map((c) => (
+          <li key={c} style={{ ...styles.cardText, margin: "4px 0" }}>{c}</li>
+        ))}
+      </ul>
+    </section>
+  );
+}
+
+function RequestReview({ form, t }: Readonly<{ form: FormState; t: Translate }>) {
+  const np = t("create.notProvided");
   const rows = [
-    ["Role", form.roleDefinition],
-    ["Request type", form.requestType.replaceAll("_", " ")],
-    ["Urgency", form.urgency],
-    ["Workers", form.numberOfWorkers],
-    ["Schedule", `${form.startAt} to ${form.endAt} (${form.timezone})`],
-    ["Address", form.addressSummary || "Not provided"],
-    ["Certifications", splitQualifications(form.qualifications).join(", ") || "Not provided"],
-    ["Duties", form.dutiesSummary || "Not provided"],
-    ["Special instructions", form.specialInstructions || "Not provided"]
+    [t("create.role"), form.roleDefinition],
+    [t("create.requestType"), form.requestType.replaceAll("_", " ")],
+    [t("create.urgency"), form.urgency],
+    [t("create.workersRequired"), form.numberOfWorkers],
+    [t("create.reviewSchedule"), t("create.scheduleValue", { start: form.startAt, end: form.endAt, tz: form.timezone })],
+    [t("create.siteAddress"), form.addressSummary || np],
+    [t("create.certifications"), splitQualifications(form.qualifications).join(", ") || np],
+    [t("create.duties"), form.dutiesSummary || np],
+    [t("create.safety"), form.specialInstructions || np]
   ] as const;
   return (
     <section aria-labelledby="request-review-title" style={styles.panel}>
-      <h2 id="request-review-title" style={styles.sectionTitle}>
-        Review staffing request
-      </h2>
+      <h2 id="request-review-title" style={styles.sectionTitle}>{t("create.reviewTitle")}</h2>
       <dl style={styles.cardGrid}>
         {rows.map(([label, value]) => (
           <div key={label} style={styles.tintedCard}>
@@ -581,29 +506,25 @@ function RequestReview({ form }: Readonly<{ form: FormState }>) {
 }
 
 function splitQualifications(value: string) {
-  return value
-    .split(",")
-    .map((item) => item.trim())
-    .filter(Boolean)
-    .slice(0, 20);
+  return value.split(",").map((item) => item.trim()).filter(Boolean).slice(0, 20);
 }
 
-function validate(form: FormState) {
+function validate(form: FormState, t: Translate) {
   const missing = [
-    ["residence", form.residenceId],
-    ["department", form.departmentId],
-    ["work group", form.workGroup],
-    ["role", form.roleDefinition],
-    ["title", form.title.trim().length >= 4 ? form.title : ""],
-    ["start time", form.startAt],
-    ["end time", form.endAt],
-    ["timezone", form.timezone]
+    [t("create.residence"), form.residenceId],
+    [t("create.department"), form.departmentId],
+    [t("create.workGroup"), form.workGroup],
+    [t("create.role"), form.roleDefinition],
+    [t("create.title"), form.title.trim().length >= 4 ? form.title : ""],
+    [t("create.starts"), form.startAt],
+    [t("create.ends"), form.endAt],
+    [t("create.timezone"), form.timezone]
   ].flatMap(([label, value]) => (value ? [] : [label]));
   if (!Number.isInteger(Number(form.numberOfWorkers)) || Number(form.numberOfWorkers) < 1) {
-    missing.push("valid worker count");
+    missing.push(t("create.workersRequired"));
   }
   if (form.startAt && form.endAt && new Date(form.endAt) <= new Date(form.startAt)) {
-    missing.push("an end time after the start time");
+    missing.push(t("create.ends"));
   }
   if (
     form.startAt &&
@@ -611,39 +532,24 @@ function validate(form: FormState) {
     new Date(form.endAt) > new Date(form.startAt) &&
     !meetsMinimumShiftDuration(form.startAt, form.endAt)
   ) {
-    missing.push(`a shift of at least ${MINIMUM_SHIFT_HOURS} hours`);
+    missing.push(t("create.minShiftWarn", { hours: hoursBetween(form.startAt, form.endAt).toFixed(1), min: MINIMUM_SHIFT_HOURS }));
   }
   return missing;
 }
 
 function SelectField({
-  disabled,
-  label,
-  onChange,
-  options,
-  value
+  disabled, label, onChange, options, value, t
 }: {
-  disabled: boolean;
-  label: string;
-  onChange: (value: string) => void;
-  options: readonly { label: string; value: string }[];
-  value: string;
+  disabled: boolean; label: string; onChange: (value: string) => void;
+  options: readonly { label: string; value: string }[]; value: string; t: Translate;
 }) {
   return (
     <label style={styles.fieldLabel}>
       {label}
-      <select
-        disabled={disabled}
-        onChange={(event) => onChange(event.target.value)}
-        required
-        style={styles.input}
-        value={value}
-      >
-        <option value="">Select {label.toLowerCase()}</option>
+      <select disabled={disabled} onChange={(event) => onChange(event.target.value)} required style={styles.input} value={value}>
+        <option value="">{t("create.selectPlaceholder", { label })}</option>
         {options.map((option) => (
-          <option key={option.value} value={option.value}>
-            {option.label}
-          </option>
+          <option key={option.value} value={option.value}>{option.label}</option>
         ))}
       </select>
     </label>
@@ -651,66 +557,30 @@ function SelectField({
 }
 
 function TextField({
-  disabled,
-  label,
-  maxLength,
-  min,
-  onChange,
-  type = "text",
-  value
+  disabled, label, maxLength, min, onChange, type = "text", value
 }: {
-  disabled: boolean;
-  label: string;
-  maxLength?: number;
-  min?: string;
-  onChange: (value: string) => void;
-  type?: string;
-  value: string;
+  disabled: boolean; label: string; maxLength?: number; min?: string;
+  onChange: (value: string) => void; type?: string; value: string;
 }) {
   return (
     <label style={styles.fieldLabel}>
       {label}
-      <input
-        disabled={disabled}
-        maxLength={maxLength}
-        min={min}
-        onChange={(event) => onChange(event.target.value)}
-        required
-        style={styles.input}
-        type={type}
-        value={value}
-      />
+      <input disabled={disabled} maxLength={maxLength} min={min} onChange={(event) => onChange(event.target.value)} required style={styles.input} type={type} value={value} />
     </label>
   );
 }
 
 function StateCard({
-  action,
-  busy = false,
-  message,
-  onRetry,
-  title
+  action, busy = false, message, onRetry, title, t
 }: {
-  action?: string;
-  busy?: boolean;
-  message: string;
-  onRetry?: () => void;
-  title: string;
+  action?: string; busy?: boolean; message: string; onRetry?: () => void; title: string; t: Translate;
 }) {
   return (
     <article aria-busy={busy} aria-live="polite" style={styles.panel}>
       <h2 style={styles.cardTitle}>{title}</h2>
       <p style={styles.sectionCopy}>{message}</p>
-      {action ? (
-        <a href={action} style={styles.primaryButton}>
-          Continue
-        </a>
-      ) : null}
-      {onRetry ? (
-        <button onClick={onRetry} style={styles.secondaryButton} type="button">
-          Retry
-        </button>
-      ) : null}
+      {action ? <a href={action} style={styles.primaryButton}>{t("create.continue")}</a> : null}
+      {onRetry ? <button onClick={onRetry} style={styles.secondaryButton} type="button">{t("common.retry")}</button> : null}
     </article>
   );
 }
