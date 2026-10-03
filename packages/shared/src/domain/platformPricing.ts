@@ -113,3 +113,45 @@ export function splitTransferFeeMinor(feeMinor: number): Readonly<{ employerMino
   const platformMinor = Math.floor(total / 2);
   return { employerMinor: total - platformMinor, platformMinor };
 }
+
+// ── Payment transfer-fee surcharge (upfront, set-rate) ───────────────────────────────────────────
+// Confirmed owner model:
+//  - CREDIT CARD: the processing fee is estimated at a fixed published rate and split 50/50; the
+//    EMPLOYER's half is added to the invoice UPFRONT as a visible surcharge line (no later
+//    reconciliation against Stripe's actual fee).
+//  - INTERAC: the platform absorbs the full transfer fee — the employer is charged NOTHING extra.
+// The rate below is the standard Stripe Canada domestic-card rate; admin configuration may supersede
+// it later. Taxability of the surcharge is decided by the invoice engine (it is placed in the taxed
+// subtotal), pending Québec tax human review before production.
+
+/** Card processing rate: 2.9% of the charged amount (parts-per-million). */
+export const CARD_TRANSFER_FEE_PERCENT_PPM = 29_000;
+/** Card processing fixed component: C$0.30 per transaction, in minor units (cents). */
+export const CARD_TRANSFER_FEE_FIXED_MINOR = 30;
+
+export type PaymentMethodKind = "card" | "interac";
+
+/**
+ * Estimated card processing fee for a charged amount, at the published set rate
+ * (percent · amount, half-up, plus the fixed component). Returns 0 for non-positive amounts.
+ */
+export function computeCardTransferFeeMinor(amountMinor: number): number {
+  if (!Number.isFinite(amountMinor) || amountMinor <= 0) return 0;
+  const base = Math.trunc(amountMinor);
+  const percentComponent = roundHalfUp((base * CARD_TRANSFER_FEE_PERCENT_PPM) / PPM);
+  return percentComponent + CARD_TRANSFER_FEE_FIXED_MINOR;
+}
+
+/**
+ * The surcharge added to the employer's invoice for the chosen payment method.
+ *  - "card":   the employer's 50% share of the estimated card processing fee (odd cent to employer).
+ *  - "interac": 0 — the platform absorbs the full Interac fee.
+ */
+export function employerTransferSurchargeMinor(input: {
+  amountMinor: number;
+  method: PaymentMethodKind;
+}): number {
+  if (input.method === "interac") return 0;
+  const fee = computeCardTransferFeeMinor(input.amountMinor);
+  return splitTransferFeeMinor(fee).employerMinor;
+}

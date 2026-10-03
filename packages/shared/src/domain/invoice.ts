@@ -116,6 +116,7 @@ export type InvoiceLineKind =
   | "mileage"
   | "adjustment"
   | "marketplace_fee"
+  | "transfer_fee"
   | "gst"
   | "qst"
   | "credit";
@@ -162,6 +163,8 @@ export type InvoiceCalculationInput = Readonly<{
   mileage: ContractMoney;
   adjustments: ContractMoney;
   marketplaceFees: ContractMoney;
+  /** Optional upfront card payment surcharge (employer's share). Omitted/zero -> no surcharge line. */
+  transferFee?: ContractMoney;
   credits: ContractMoney;
   lineRuleVersions: Readonly<
     Record<
@@ -173,7 +176,8 @@ export type InvoiceCalculationInput = Readonly<{
       | "marketplace_fee"
       | "credit",
       string
-    >
+    > &
+      Partial<Record<"transfer_fee", string>>
   >;
 }>;
 
@@ -212,7 +216,7 @@ export function calculateInvoiceSnapshot(
   assertEffective(input.tax, input.occurredAt, "tax");
   assertLocalIssuer(input.issuer);
 
-  const untaxedLines = [
+  const untaxedLines: InvoiceLineSnapshot[] = [
     line(
       "regular_labour",
       "Regular labour",
@@ -239,7 +243,19 @@ export function calculateInvoiceSnapshot(
       input.marketplaceFees,
       input.lineRuleVersions.marketplace_fee
     )
-  ] as const;
+  ];
+  // Card payment surcharge (upfront set-rate). Present only for card payments; Interac absorbs the
+  // fee so no line is passed. Placed in the taxed subtotal (GST/QST apply), pending QC tax review.
+  if (input.transferFee && input.transferFee.amountMinor > 0) {
+    untaxedLines.push(
+      line(
+        "transfer_fee",
+        "Payment processing surcharge",
+        input.transferFee,
+        input.lineRuleVersions.transfer_fee ?? "transfer-fee-v1"
+      )
+    );
+  }
   const subtotal = sumInvoiceMoney(untaxedLines.map((item) => item.amount));
   const gst = taxAmount(subtotal, input.tax, "gst");
   const qst = taxAmount(subtotal, input.tax, "qst");

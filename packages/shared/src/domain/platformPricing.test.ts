@@ -1,10 +1,14 @@
 import { describe, expect, it } from "vitest";
 import {
+  CARD_TRANSFER_FEE_FIXED_MINOR,
+  CARD_TRANSFER_FEE_PERCENT_PPM,
   DEFAULT_PLATFORM_MARGIN_PPM,
   MAX_PLATFORM_MARGIN_PPM,
   MINIMUM_BILLABLE_SHIFT_HOURS,
   billableHours,
+  computeCardTransferFeeMinor,
   computeShiftPricing,
+  employerTransferSurchargeMinor,
   platformMarginMinor,
   resolveMarginPpm,
   splitTransferFeeMinor,
@@ -79,5 +83,35 @@ describe("platform pricing — transfer fee split", () => {
     expect(splitTransferFeeMinor(100)).toEqual({ employerMinor: 50, platformMinor: 50 });
     expect(splitTransferFeeMinor(101)).toEqual({ employerMinor: 51, platformMinor: 50 });
     expect(splitTransferFeeMinor(0)).toEqual({ employerMinor: 0, platformMinor: 0 });
+  });
+});
+
+
+describe("platform pricing — card transfer-fee surcharge (upfront set-rate)", () => {
+  it("estimates the card fee at 2.9% + $0.30", () => {
+    // $100.00 charged -> 290c (2.9%) + 30c fixed = 320c
+    expect(computeCardTransferFeeMinor(10_000)).toBe(320);
+  });
+
+  it("uses the published rate constants", () => {
+    expect(CARD_TRANSFER_FEE_PERCENT_PPM).toBe(29_000);
+    expect(CARD_TRANSFER_FEE_FIXED_MINOR).toBe(30);
+  });
+
+  it("returns 0 for a non-positive amount", () => {
+    expect(computeCardTransferFeeMinor(0)).toBe(0);
+    expect(computeCardTransferFeeMinor(-500)).toBe(0);
+  });
+
+  it("charges the employer half of the card fee, odd cent to the employer", () => {
+    // fee 320 -> employer 160, platform 160
+    expect(employerTransferSurchargeMinor({ amountMinor: 10_000, method: "card" })).toBe(160);
+    // $100.50 -> 291c + 30c = 321c -> employer 161, platform 160
+    expect(employerTransferSurchargeMinor({ amountMinor: 10_050, method: "card" })).toBe(161);
+  });
+
+  it("charges the employer nothing for Interac (platform absorbs the full fee)", () => {
+    expect(employerTransferSurchargeMinor({ amountMinor: 10_000, method: "interac" })).toBe(0);
+    expect(employerTransferSurchargeMinor({ amountMinor: 999_999, method: "interac" })).toBe(0);
   });
 });
