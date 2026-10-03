@@ -5,6 +5,7 @@ import { invoiceBoundaries, invoiceDataTruth, invoiceStates } from "../invoiceWo
 import { styles } from "../employerStyles";
 import { LanguageSwitcher } from "../../i18n/LanguageSwitcher";
 import { useLocale, useT } from "../../i18n/LocaleProvider";
+import { previewInvoicePaymentOptions } from "./invoicePaymentPreview";
 import type { RwosLocale } from "../../i18n/config";
 
 type InvoiceSummary = Readonly<{
@@ -62,6 +63,7 @@ export function InvoiceReviewPanel({ mode }: { mode: "list" | "detail" | "breakd
 
   const invoices = state.status === "ready" ? state.invoices : [];
   const selected = invoices[0] ?? null;
+  const paymentPreview = selected ? previewInvoicePaymentOptions(selected) : null;
   return (
     <section style={styles.section}>
       <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: 8 }}>
@@ -98,6 +100,7 @@ export function InvoiceReviewPanel({ mode }: { mode: "list" | "detail" | "breakd
             ))}
           </div>
         ) : selected ? (
+          <>
           <div style={styles.cardGrid}>
             {(mode === "breakdown"
               ? [
@@ -121,6 +124,41 @@ export function InvoiceReviewPanel({ mode }: { mode: "list" | "detail" | "breakd
               </article>
             ))}
           </div>
+          {paymentPreview ? (
+            <section style={{ marginTop: 18 }}>
+              <p style={styles.eyebrowDark}>{t("inv.payTitle")}</p>
+              <p style={styles.sectionCopy}>{t("inv.payNote")}</p>
+              <div style={styles.cardGrid}>
+                <article style={styles.card}>
+                  <span style={styles.metaLabel}>{t("inv.payInterac")}</span>
+                  <p style={styles.cardText}>{t("inv.payNoSurcharge")}</p>
+                  <p style={styles.cardText}>
+                    {t("inv.payTotalToPay", {
+                      amount: formatCad(paymentPreview.interac.totalMinor, locale)
+                    })}
+                  </p>
+                </article>
+                <article style={styles.card}>
+                  <span style={styles.metaLabel}>{t("inv.payCard")}</span>
+                  <p style={styles.cardText}>
+                    {t("inv.paySurcharge", {
+                      amount: formatCad(
+                        paymentPreview.card.surchargeMinor + paymentPreview.card.taxDeltaMinor,
+                        locale
+                      )
+                    })}
+                  </p>
+                  <p style={styles.cardText}>
+                    {t("inv.payTotalToPay", {
+                      amount: formatCad(paymentPreview.card.totalMinor, locale)
+                    })}
+                  </p>
+                </article>
+              </div>
+              <p style={styles.cardText}>{t("inv.payEstimate")}</p>
+            </section>
+          ) : null}
+          </>
         ) : null}
       </div>
       <section style={{ marginTop: 22 }}>
