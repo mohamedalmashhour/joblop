@@ -7,6 +7,29 @@ import type {
 
 export type CalendarVerificationState = "pending" | "verified" | "failed" | "unavailable";
 
+export type AllowanceProvision = "none" | "provided" | "allowance";
+export interface AllowanceEntryInput {
+  provision?: string | null;
+  amountMinor?: number | null;
+  note?: string | null;
+}
+export interface AllowancesInput {
+  transport?: AllowanceEntryInput | null;
+  meal?: AllowanceEntryInput | null;
+  lodging?: AllowanceEntryInput | null;
+}
+interface NormalizedAllowances {
+  transportProvision: AllowanceProvision;
+  transportAmountMinor: number | null;
+  transportNote: string | null;
+  mealProvision: AllowanceProvision;
+  mealAmountMinor: number | null;
+  mealNote: string | null;
+  lodgingProvision: AllowanceProvision;
+  lodgingAmountMinor: number | null;
+  lodgingNote: string | null;
+}
+
 export interface StoredCalendarRequestProfile {
   id: string;
   jobRequestId: string;
@@ -16,6 +39,15 @@ export interface StoredCalendarRequestProfile {
   qualifications: readonly string[];
   addressSummary: string | null;
   specialInstructions: string | null;
+  transportProvision: AllowanceProvision;
+  transportAmountMinor: number | null;
+  transportNote: string | null;
+  mealProvision: AllowanceProvision;
+  mealAmountMinor: number | null;
+  mealNote: string | null;
+  lodgingProvision: AllowanceProvision;
+  lodgingAmountMinor: number | null;
+  lodgingNote: string | null;
   contractVerificationState: CalendarVerificationState;
   paymentMethodReadinessState: CalendarVerificationState;
   locationVerificationState: CalendarVerificationState;
@@ -35,6 +67,15 @@ export interface CalendarRequestProfileRepository {
     qualifications: readonly string[];
     addressSummary: string | null;
     specialInstructions: string | null;
+    transportProvision: AllowanceProvision;
+    transportAmountMinor: number | null;
+    transportNote: string | null;
+    mealProvision: AllowanceProvision;
+    mealAmountMinor: number | null;
+    mealNote: string | null;
+    lodgingProvision: AllowanceProvision;
+    lodgingAmountMinor: number | null;
+    lodgingNote: string | null;
     contractVerificationState: CalendarVerificationState;
     paymentMethodReadinessState: CalendarVerificationState;
     locationVerificationState: CalendarVerificationState;
@@ -106,6 +147,7 @@ export function createCalendarRequestService(input: {
       qualifications: readonly string[];
       addressSummary: string | null;
       specialInstructions: string | null;
+      allowances?: AllowancesInput | null;
       expectedVersion: number | null;
     }) {
       const jobRequest = await input.jobRequestAccess.authorizeCalendarProfileUpdate({
@@ -291,6 +333,15 @@ export function createPrismaCalendarRequestProfileRepository(
               qualifications: [...profileInput.qualifications],
               addressSummary: profileInput.addressSummary,
               specialInstructions: profileInput.specialInstructions,
+              transportProvision: profileInput.transportProvision,
+              transportAmountMinor: profileInput.transportAmountMinor,
+              transportNote: profileInput.transportNote,
+              mealProvision: profileInput.mealProvision,
+              mealAmountMinor: profileInput.mealAmountMinor,
+              mealNote: profileInput.mealNote,
+              lodgingProvision: profileInput.lodgingProvision,
+              lodgingAmountMinor: profileInput.lodgingAmountMinor,
+              lodgingNote: profileInput.lodgingNote,
               contractVerificationState: profileInput.contractVerificationState,
               paymentMethodReadinessState: profileInput.paymentMethodReadinessState,
               locationVerificationState: profileInput.locationVerificationState,
@@ -326,6 +377,15 @@ export function createPrismaCalendarRequestProfileRepository(
           qualifications: [...profileInput.qualifications],
           addressSummary: profileInput.addressSummary,
           specialInstructions: profileInput.specialInstructions,
+          transportProvision: profileInput.transportProvision,
+          transportAmountMinor: profileInput.transportAmountMinor,
+          transportNote: profileInput.transportNote,
+          mealProvision: profileInput.mealProvision,
+          mealAmountMinor: profileInput.mealAmountMinor,
+          mealNote: profileInput.mealNote,
+          lodgingProvision: profileInput.lodgingProvision,
+          lodgingAmountMinor: profileInput.lodgingAmountMinor,
+          lodgingNote: profileInput.lodgingNote,
           contractVerificationState: "pending",
           paymentMethodReadinessState: "pending",
           locationVerificationState: "pending",
@@ -404,6 +464,7 @@ function normalizeCalendarProfile(input: {
   qualifications: readonly string[];
   addressSummary: string | null;
   specialInstructions: string | null;
+  allowances?: AllowancesInput | null;
 }) {
   if (
     hasInvalidText(input.dutiesSummary, 2000) ||
@@ -424,7 +485,46 @@ function normalizeCalendarProfile(input: {
     dutiesSummary: normalizeText(input.dutiesSummary, 2000),
     qualifications,
     addressSummary: normalizeText(input.addressSummary, 500),
-    specialInstructions: normalizeText(input.specialInstructions, 2000)
+    specialInstructions: normalizeText(input.specialInstructions, 2000),
+    ...normalizeAllowances(input.allowances)
+  };
+}
+
+function normalizeAllowanceEntry(entry: AllowanceEntryInput | null | undefined): {
+  provision: AllowanceProvision;
+  amountMinor: number | null;
+  note: string | null;
+} {
+  const raw = entry?.provision;
+  const provision: AllowanceProvision =
+    raw === "provided" || raw === "allowance" ? raw : "none";
+  const amount = entry?.amountMinor;
+  const amountMinor =
+    provision === "allowance" &&
+    typeof amount === "number" &&
+    Number.isInteger(amount) &&
+    amount >= 0 &&
+    amount <= 100_000_000
+      ? amount
+      : null;
+  const note = provision === "none" ? null : normalizeText(entry?.note ?? null, 500);
+  return { provision, amountMinor, note };
+}
+
+function normalizeAllowances(allowances: AllowancesInput | null | undefined): NormalizedAllowances {
+  const transport = normalizeAllowanceEntry(allowances?.transport);
+  const meal = normalizeAllowanceEntry(allowances?.meal);
+  const lodging = normalizeAllowanceEntry(allowances?.lodging);
+  return {
+    transportProvision: transport.provision,
+    transportAmountMinor: transport.amountMinor,
+    transportNote: transport.note,
+    mealProvision: meal.provision,
+    mealAmountMinor: meal.amountMinor,
+    mealNote: meal.note,
+    lodgingProvision: lodging.provision,
+    lodgingAmountMinor: lodging.amountMinor,
+    lodgingNote: lodging.note
   };
 }
 

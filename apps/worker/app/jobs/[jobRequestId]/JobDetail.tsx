@@ -2,6 +2,8 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { formatWhen, formatRate } from "../../MarketplaceExplorer";
+import { useLocale, useT } from "../../i18n/LocaleProvider";
+import type { MessageKey } from "../../i18n/messages";
 
 type JobDetailData = Readonly<{
   jobRequestId: string;
@@ -20,7 +22,15 @@ type JobDetailData = Readonly<{
   description: string | null;
   duties: string | null;
   qualifications: readonly string[];
+  allowances?: AllowancesData;
   saved: boolean;
+}>;
+
+type AllowanceLine = Readonly<{ provision: string; amountMinor: number | null; note: string | null }>;
+type AllowancesData = Readonly<{
+  transport: AllowanceLine | null;
+  meal: AllowanceLine | null;
+  lodging: AllowanceLine | null;
 }>;
 
 type InterestState = Readonly<{
@@ -28,14 +38,17 @@ type InterestState = Readonly<{
   eligibility: { eligible: boolean; reasons: string[] };
 }>;
 
-const INELIGIBLE_COPY: Record<string, string> = {
-  already_assigned: "You're already assigned to this job.",
-  active_offer_exists: "You already have an active offer for this job.",
-  job_not_open: "This job is no longer open.",
-  job_not_found: "This job is no longer available."
+// Maps a server eligibility reason code to a translation key (never raw server text to the UI).
+const INELIGIBLE_KEY: Record<string, MessageKey> = {
+  already_assigned: "job.inelAlreadyAssigned",
+  active_offer_exists: "job.inelActiveOffer",
+  job_not_open: "job.inelNotOpen",
+  job_not_found: "job.inelNotFound"
 };
 
 export function JobDetail({ id, postalCode }: { id: string; postalCode: string | null }) {
+  const t = useT();
+  const locale = useLocale();
   const [status, setStatus] = useState<"loading" | "ready" | "not_found" | "error">("loading");
   const [job, setJob] = useState<JobDetailData | null>(null);
   const [interest, setInterest] = useState<InterestState | null>(null);
@@ -54,7 +67,6 @@ export function JobDetail({ id, postalCode }: { id: string; postalCode: string |
         setStatus("ready");
       })
       .catch(() => active && setStatus("error"));
-    // Interest + eligibility state (independent of the detail fetch).
     fetch(`/api/jobs/${encodeURIComponent(id)}/interest`, { cache: "no-store" })
       .then(async (r) => {
         if (!active || !r.ok) return;
@@ -111,22 +123,20 @@ export function JobDetail({ id, postalCode }: { id: string; postalCode: string |
     }
   }, [job]);
 
-  if (status === "loading") return <div className="state">Loading…</div>;
+  if (status === "loading") return <div className="state">{t("common.loading")}</div>;
   if (status === "not_found")
     return (
       <div className="state">
-        This job is no longer available.
+        {t("job.noLongerAvailable")}
         <div style={{ marginTop: 12 }}>
-          <a className="btn" href="/">
-            Return to search
-          </a>
+          <a className="btn" href="/">{t("job.returnToSearch")}</a>
         </div>
       </div>
     );
   if (status === "error" || !job)
     return (
       <div className="state error" role="alert">
-        We couldn&apos;t load this job. Please try again.
+        {t("job.loadError")}
       </div>
     );
 
@@ -138,42 +148,35 @@ export function JobDetail({ id, postalCode }: { id: string; postalCode: string |
           <p className="detail-title">{job.title}</p>
           <p className="employer">
             <a href={`/employers/${encodeURIComponent(job.employer.id)}`}>{job.employer.name}</a>
-            {job.employer.verified ? <span className="chip verified" style={{ marginLeft: 8 }}>✓ Verified</span> : null}
+            {job.employer.verified ? <span className="chip verified" style={{ marginLeft: 8 }}>{t("job.verified")}</span> : null}
           </p>
         </div>
-        <button
-          className="btn"
-          type="button"
-          aria-pressed={job.saved}
-          onClick={toggleSaved}
-        >
-          {job.saved ? "★ Saved" : "☆ Save job"}
+        <button className="btn" type="button" aria-pressed={job.saved} onClick={toggleSaved}>
+          {job.saved ? t("job.saved") : t("job.saveJob")}
         </button>
       </div>
 
       <div className="detail-facts">
-        <Fact label="Location">{job.areaLabel}{job.distanceLabel ? ` · ${job.distanceLabel}` : ""}</Fact>
-        <Fact label="When">{formatWhen(job.startAt, job.endAt)}</Fact>
-        <Fact label="Openings">{job.openings}</Fact>
-        {job.workerRateMinor !== null ? <Fact label="Pay">{formatRate(job.workerRateMinor, job.currency)}</Fact> : null}
+        <Fact label={t("job.factLocation")}>{job.areaLabel}{job.distanceLabel ? ` · ${job.distanceLabel}` : ""}</Fact>
+        <Fact label={t("job.factWhen")}>{formatWhen(job.startAt, job.endAt, locale)}</Fact>
+        <Fact label={t("job.factOpenings")}>{job.openings}</Fact>
+        {job.workerRateMinor !== null ? <Fact label={t("job.factPay")}>{formatRate(job.workerRateMinor, job.currency, locale)}</Fact> : null}
       </div>
 
-      <p className="notice">
-        The map location is approximate. The exact worksite address is shared only once you&apos;re assigned.
-      </p>
+      <p className="notice">{t("job.mapApproxNotice")}</p>
 
       {job.description ? (
-        <Section title="About this shift">
+        <Section title={t("job.aboutShift")}>
           <p>{job.description}</p>
         </Section>
       ) : null}
       {job.duties ? (
-        <Section title="Duties">
+        <Section title={t("job.duties")}>
           <p>{job.duties}</p>
         </Section>
       ) : null}
       {job.qualifications.length > 0 ? (
-        <Section title="Qualifications">
+        <Section title={t("job.qualifications")}>
           <ul className="quals">
             {job.qualifications.map((q, i) => (
               <li key={i}>{q}</li>
@@ -182,20 +185,53 @@ export function JobDetail({ id, postalCode }: { id: string; postalCode: string |
         </Section>
       ) : null}
 
+      <AllowancesSection allowances={job.allowances} currency={job.currency} locale={locale} />
+
       <InterestPanel state={interest} busy={interestBusy} onExpress={expressInterest} onWithdraw={withdrawInterest} />
 
       <div className="detail-cta">
         <button className="btn ghost" type="button" aria-pressed={job.saved} onClick={toggleSaved}>
-          {job.saved ? "★ Saved" : "☆ Save job"}
+          {job.saved ? t("job.saved") : t("job.saveJob")}
         </button>
-        <a className="btn ghost" href={`/employers/${encodeURIComponent(job.employer.id)}`}>
-          View employer
-        </a>
-        <a className="btn ghost" href="/my-interests">
-          My interests
-        </a>
+        <a className="btn ghost" href={`/employers/${encodeURIComponent(job.employer.id)}`}>{t("job.viewEmployer")}</a>
+        <a className="btn ghost" href="/my-interests">{t("nav.interests")}</a>
       </div>
     </article>
+  );
+}
+
+function AllowancesSection({ allowances, currency, locale }: { allowances: AllowancesData | undefined; currency: string; locale: string }) {
+  const t = useT();
+  const rows: { label: string; line: AllowanceLine }[] = [];
+  if (allowances?.transport) rows.push({ label: t("job.allowanceTransport"), line: allowances.transport });
+  if (allowances?.meal) rows.push({ label: t("job.allowanceMeal"), line: allowances.meal });
+  if (allowances?.lodging) rows.push({ label: t("job.allowanceLodging"), line: allowances.lodging });
+
+  function describe(line: AllowanceLine): string {
+    if (line.provision === "provided") return t("job.allowanceProvided");
+    if (line.provision === "allowance") {
+      return line.amountMinor !== null
+        ? t("job.allowanceAmount", { amount: (line.amountMinor / 100).toLocaleString(locale, { style: "currency", currency }) })
+        : t("job.allowanceGeneric");
+    }
+    return t("job.allowanceGeneric");
+  }
+
+  return (
+    <Section title={t("job.allowancesTitle")}>
+      {rows.length === 0 ? (
+        <p className="muted">{t("job.allowancesNone")}</p>
+      ) : (
+        <ul className="quals">
+          {rows.map((row) => (
+            <li key={row.label}>
+              <strong>{row.label}:</strong> {describe(row.line)}
+              {row.line.note ? <span className="muted"> — {row.line.note}</span> : null}
+            </li>
+          ))}
+        </ul>
+      )}
+    </Section>
   );
 }
 
@@ -212,47 +248,45 @@ function InterestPanel({
   onExpress: () => void;
   onWithdraw: () => void;
 }) {
+  const t = useT();
   const current = state?.interest?.status ?? null;
   const eligible = state?.eligibility?.eligible ?? true;
   const reasons = state?.eligibility?.reasons ?? [];
 
-  // Already expressed (pre-offer): show submitted state + withdraw.
   if (current && ["submitted", "under_review", "shortlisted"].includes(current)) {
     return (
       <section className="detail-section interest submitted">
-        <h2>Interest submitted ✓</h2>
-        <p>JobLop will review your profile and the staffing need. If you&apos;re selected, you&apos;ll receive a private offer.</p>
+        <h2>{t("job.interestSubmittedTitle")}</h2>
+        <p>{t("job.interestSubmittedBody")}</p>
         <button className="btn ghost" type="button" onClick={onWithdraw} disabled={busy}>
-          Withdraw interest
+          {t("job.withdrawInterest")}
         </button>
       </section>
     );
   }
 
-  // An offer has been created/accepted through the governed flow — direct the worker there.
   if (current && ["offer_created", "offer_accepted"].includes(current)) {
     return (
       <section className="detail-section interest">
-        <h2>You have an offer</h2>
-        <p>JobLop has issued you a private offer for this job. Review and respond on your offers page.</p>
-        <a className="btn" href="/offers">Go to my offers</a>
+        <h2>{t("job.offerTitle")}</h2>
+        <p>{t("job.offerBody")}</p>
+        <a className="btn" href="/offers">{t("job.goToOffers")}</a>
       </section>
     );
   }
 
-  // Not yet interested. Gate on server eligibility.
   return (
     <section className="detail-section interest">
-      <h2>Interested in this shift?</h2>
+      <h2>{t("job.interestedTitle")}</h2>
       {eligible ? (
         <>
-          <p>Let JobLop know you&apos;re interested. Platform dispatch reviews interest before any offer is made — expressing interest is free and never guarantees the job.</p>
+          <p>{t("job.interestedBody")}</p>
           <button className="btn" type="button" onClick={onExpress} disabled={busy}>
-            {busy ? "Submitting…" : "Express interest"}
+            {busy ? t("job.submitting") : t("job.expressInterest")}
           </button>
         </>
       ) : (
-        <p className="muted">{INELIGIBLE_COPY[reasons[0] ?? ""] ?? "You can't express interest in this job right now."}</p>
+        <p className="muted">{t(INELIGIBLE_KEY[reasons[0] ?? ""] ?? "job.inelDefault")}</p>
       )}
     </section>
   );

@@ -41,6 +41,18 @@ const request = {
   archivedAt: null
 };
 
+const noAllowances = {
+  transportProvision: "none",
+  transportAmountMinor: null,
+  transportNote: null,
+  mealProvision: "none",
+  mealAmountMinor: null,
+  mealNote: null,
+  lodgingProvision: "none",
+  lodgingAmountMinor: null,
+  lodgingNote: null
+} as const;
+
 describe("calendar request persistence service", () => {
   it("persists calendar metadata only after organization-scoped request authorization", async () => {
     const repository = new MemoryCalendarRequestProfileRepository();
@@ -90,6 +102,7 @@ describe("calendar request persistence service", () => {
       qualifications: ["PSW certificate"],
       addressSummary: "Toronto",
       specialInstructions: null,
+      ...noAllowances,
       contractVerificationState: "verified",
       paymentMethodReadinessState: "pending",
       locationVerificationState: "verified",
@@ -339,6 +352,7 @@ describe("calendar request persistence service", () => {
       qualifications: [],
       addressSummary: null,
       specialInstructions: null,
+      ...noAllowances,
       contractVerificationState: "pending",
       paymentMethodReadinessState: "pending",
       locationVerificationState: "pending",
@@ -541,6 +555,7 @@ class MemoryCalendarRequestProfileRepository implements CalendarRequestProfileRe
       qualifications: [...input.qualifications],
       addressSummary: input.addressSummary,
       specialInstructions: input.specialInstructions,
+      ...noAllowances,
       contractVerificationState: existing ? "pending" : input.contractVerificationState,
       paymentMethodReadinessState: existing ? "pending" : input.paymentMethodReadinessState,
       locationVerificationState: existing ? "pending" : input.locationVerificationState,
@@ -603,6 +618,7 @@ function profileFixture(
     qualifications: ["Fixture qualification"],
     addressSummary: "Fixture address",
     specialInstructions: "Fixture instructions",
+    ...noAllowances,
     contractVerificationState: "verified",
     paymentMethodReadinessState: "verified",
     locationVerificationState: "verified",

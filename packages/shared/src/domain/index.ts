@@ -23,3 +23,4 @@ export * from "./requestEdit";
 export * from "./shift";
 export * from "./shiftRules";
 export * from "./worker";
+export * from "./platformPricing";

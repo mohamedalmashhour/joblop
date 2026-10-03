@@ -3752,7 +3752,21 @@ export function buildApi(options: BuildApiOptions = {}) {
         roleDefinition: { select: { displayLabel: true } },
         organization: { select: { id: true, displayName: true } },
         residence: { select: { city: true, province: true, latitude: true, longitude: true } },
-        calendarProfile: { select: { dutiesSummary: true, qualifications: true } }
+        calendarProfile: {
+          select: {
+            dutiesSummary: true,
+            qualifications: true,
+            transportProvision: true,
+            transportAmountMinor: true,
+            transportNote: true,
+            mealProvision: true,
+            mealAmountMinor: true,
+            mealNote: true,
+            lodgingProvision: true,
+            lodgingAmountMinor: true,
+            lodgingNote: true
+          }
+        }
       }
     });
     if (
@@ -3809,7 +3823,7 @@ export function buildApi(options: BuildApiOptions = {}) {
     } catch {
       saved = false; // not a worker → not saved
     }
-    return reply.code(200).send({ job: { ...detail, saved } });
+    return reply.code(200).send({ job: { ...detail, saved, allowances: workerAllowances(row.calendarProfile) } });
   });
 
   // Employer PUBLIC PROFILE — only approved public info: public display name, real
@@ -4419,6 +4433,7 @@ export function buildApi(options: BuildApiOptions = {}) {
         qualifications,
         addressSummary: readOptionalString(body, "addressSummary"),
         specialInstructions: readOptionalString(body, "specialInstructions"),
+        allowances: readAllowancesInput(body),
         expectedVersion: readOptionalNumber(body, "expectedVersion")
       });
 
@@ -6604,6 +6619,50 @@ function parseQueryInt(value: string | null): number | null {
 function coerceQualifications(value: unknown): string[] {
   if (!Array.isArray(value)) return [];
   return value.filter((item): item is string => typeof item === "string" && item.trim().length > 0);
+}
+
+// --- Structured per-shift allowances (transport / meal / lodging) ---
+function readAllowanceEntryInput(source: Record<string, unknown>, key: string) {
+  const entry = asRecord(source[key]);
+  return {
+    provision: readOptionalString(entry, "provision"),
+    amountMinor: readOptionalNumber(entry, "amountMinor"),
+    note: readOptionalString(entry, "note")
+  };
+}
+function readAllowancesInput(body: Record<string, unknown>) {
+  const allowances = asRecord(body.allowances);
+  return {
+    transport: readAllowanceEntryInput(allowances, "transport"),
+    meal: readAllowanceEntryInput(allowances, "meal"),
+    lodging: readAllowanceEntryInput(allowances, "lodging")
+  };
+}
+function workerAllowances(
+  profile:
+    | {
+        transportProvision?: string | null;
+        transportAmountMinor?: number | null;
+        transportNote?: string | null;
+        mealProvision?: string | null;
+        mealAmountMinor?: number | null;
+        mealNote?: string | null;
+        lodgingProvision?: string | null;
+        lodgingAmountMinor?: number | null;
+        lodgingNote?: string | null;
+      }
+    | null
+    | undefined
+) {
+  const entry = (provision?: string | null, amountMinor?: number | null, note?: string | null) =>
+    provision && provision !== "none"
+      ? { provision, amountMinor: amountMinor ?? null, note: note ?? null }
+      : null;
+  return {
+    transport: entry(profile?.transportProvision, profile?.transportAmountMinor, profile?.transportNote),
+    meal: entry(profile?.mealProvision, profile?.mealAmountMinor, profile?.mealNote),
+    lodging: entry(profile?.lodgingProvision, profile?.lodgingAmountMinor, profile?.lodgingNote)
+  };
 }
 
 // Parse an ISO date/datetime string into a Date, or null if absent/invalid. Used for

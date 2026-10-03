@@ -1,4 +1,4 @@
-export const supportedRwosLocales = ["en-CA"] as const;
+export const supportedRwosLocales = ["en-CA", "fr-CA"] as const;
 export type RwosLocale = (typeof supportedRwosLocales)[number];
 export const defaultRwosLocale: RwosLocale = "en-CA";
 export const invalidFormatFallback = "Unavailable";

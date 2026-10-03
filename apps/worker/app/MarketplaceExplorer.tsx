@@ -2,6 +2,9 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { MarketplaceMap, type MapPin } from "./MarketplaceMap";
+import { useLocale, useT } from "./i18n/LocaleProvider";
+import { LandingPanel } from "./LandingPanel";
+import type { RwosLocale } from "./i18n/config";
 
 export type JobResult = Readonly<{
   jobRequestId: string;
@@ -29,13 +32,10 @@ type SearchResponse = Readonly<{
 }>;
 
 const RADII = [5, 10, 25, 50, 100] as const;
-const SORTS = [
-  { value: "nearest", label: "Nearest" },
-  { value: "soonest", label: "Soonest" },
-  { value: "highest_rate", label: "Highest rate" }
-] as const;
+const SORT_VALUES = ["nearest", "soonest", "highest_rate"] as const;
 
 export function MarketplaceExplorer() {
+  const t = useT();
   const [authState, setAuthState] = useState<"loading" | "signed_out" | "signed_in">("loading");
 
   useEffect(() => {
@@ -48,59 +48,14 @@ export function MarketplaceExplorer() {
     };
   }, []);
 
-  if (authState === "loading") return <div className="state">Loading…</div>;
-  if (authState === "signed_out") return <SignInPanel onSignedIn={() => setAuthState("signed_in")} />;
+  if (authState === "loading") return <div className="state">{t("common.loading")}</div>;
+  if (authState === "signed_out") return <LandingPanel onSignedIn={() => setAuthState("signed_in")} />;
   return <SearchPanel onSignedOut={() => setAuthState("signed_out")} />;
 }
 
-function SignInPanel({ onSignedIn }: { onSignedIn: () => void }) {
-  const [email, setEmail] = useState("");
-  const [password, setPassword] = useState("");
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-
-  async function submit(event: React.FormEvent) {
-    event.preventDefault();
-    setBusy(true);
-    setError(null);
-    try {
-      const response = await fetch("/api/session/sign-in", {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ email, password })
-      });
-      if (response.ok) return onSignedIn();
-      setError(response.status === 429 ? "Too many attempts. Try again shortly." : "Sign in failed. Check your email and password.");
-    } catch {
-      setError("Something went wrong. Please try again.");
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  return (
-    <section className="hero">
-      <h1>Find work near you</h1>
-      <p>Sign in to search open shifts, see how far they are, and save the ones you like.</p>
-      <form className="searchbar" onSubmit={submit} style={{ marginTop: 20 }}>
-        <div className="field grow">
-          <label htmlFor="email">Email</label>
-          <input id="email" type="email" autoComplete="username" value={email} onChange={(e) => setEmail(e.target.value)} required aria-invalid={error ? true : undefined} aria-describedby={error ? "signin-error" : undefined} />
-        </div>
-        <div className="field grow">
-          <label htmlFor="password">Password</label>
-          <input id="password" type="password" autoComplete="current-password" value={password} onChange={(e) => setPassword(e.target.value)} required aria-invalid={error ? true : undefined} aria-describedby={error ? "signin-error" : undefined} />
-        </div>
-        <button className="btn" type="submit" disabled={busy}>
-          {busy ? "Signing in…" : "Sign in"}
-        </button>
-      </form>
-      {error ? <p id="signin-error" className="notice" role="alert" style={{ color: "var(--danger)" }}>{error}</p> : null}
-    </section>
-  );
-}
-
 function SearchPanel({ onSignedOut }: { onSignedOut: () => void }) {
+  const t = useT();
+  const locale = useLocale();
   const [postalCode, setPostalCode] = useState("H7V 1A1");
   const [radiusKm, setRadiusKm] = useState<number>(25);
   const [role, setRole] = useState("");
@@ -114,9 +69,12 @@ function SearchPanel({ onSignedOut }: { onSignedOut: () => void }) {
   const [total, setTotal] = useState(0);
   const [nextCursor, setNextCursor] = useState<number | null>(null);
   const [selectedId, setSelectedId] = useState<string | null>(null);
-  const [mobileView, setMobileView] = useState<"list" | "map">("list");
+  const [view, setView] = useState<"list" | "agenda" | "map">("list");
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const listRef = useRef<HTMLDivElement | null>(null);
+
+  const sortLabel = (value: string) =>
+    value === "soonest" ? t("mk.sortSoonest") : value === "highest_rate" ? t("mk.sortHighestRate") : t("mk.sortNearest");
 
   const fetchPage = useCallback(
     async (cursor: number | null) => {
@@ -150,7 +108,7 @@ function SearchPanel({ onSignedOut }: { onSignedOut: () => void }) {
         if (response.status === 401) return onSignedOut();
         if (!response.ok) {
           const payload = await response.json().catch(() => null);
-          setErrorMessage(payload?.message ?? "We couldn't run that search. Check your postal code.");
+          setErrorMessage(payload?.message ?? t("mk.searchError"));
           setStatus("error");
           return;
         }
@@ -161,11 +119,11 @@ function SearchPanel({ onSignedOut }: { onSignedOut: () => void }) {
         setNextCursor(payload.nextCursor);
         setStatus(payload.total === 0 ? "empty" : "done");
       } catch {
-        setErrorMessage("Something went wrong. Please try again.");
+        setErrorMessage(t("common.somethingWrong"));
         setStatus("error");
       }
     },
-    [fetchPage, onSignedOut]
+    [fetchPage, onSignedOut, t]
   );
 
   const loadMore = useCallback(async () => {
@@ -198,10 +156,9 @@ function SearchPanel({ onSignedOut }: { onSignedOut: () => void }) {
     }
   }, []);
 
-  // When a pin selects a job, scroll its card into view in the list.
   const selectFromMap = useCallback((jobRequestId: string) => {
     setSelectedId(jobRequestId);
-    setMobileView("list");
+    setView("list");
     requestAnimationFrame(() => {
       document.getElementById(`card-${jobRequestId}`)?.scrollIntoView({ behavior: "smooth", block: "center" });
     });
@@ -225,116 +182,93 @@ function SearchPanel({ onSignedOut }: { onSignedOut: () => void }) {
   const detailHref = (id: string) =>
     `/jobs/${encodeURIComponent(id)}${origin ? `?postalCode=${encodeURIComponent(origin.postalCode)}` : ""}`;
 
+  const hasFilters = Boolean(role.trim() || dateFrom || minOpenings || verifiedOnly);
+  const place = origin ? `${origin.city ?? origin.postalCode}${origin.province ? `, ${origin.province}` : ""}` : "";
+
   return (
     <>
       <section className="hero">
         <div className="hero-row">
           <div>
-            <h1>Find work near you</h1>
-            <p>Search open shifts, see how far they are, and save the ones you like.</p>
+            <h1>{t("mk.heroTitle")}</h1>
+            <p>{t("mk.heroIntro")}</p>
           </div>
           <div className="hero-actions">
-            <a className="btn ghost" href="/verification">
-              Verification
-            </a>
-            <a className="btn ghost" href="/hr">
-              My HR
-            </a>
-            <a className="btn ghost" href="/documents">
-              Documents
-            </a>
-            <a className="btn ghost" href="/schedule">
-              My schedule
-            </a>
-            <a className="btn ghost" href="/pay">
-              My pay
-            </a>
-            <a className="btn ghost" href="/my-interests">
-              My interests
-            </a>
-            <a className="btn ghost" href="/offers">
-              My offers
-            </a>
-            <a className="btn ghost" href="/saved-jobs">
-              Saved jobs
-            </a>
-            <button className="btn ghost" type="button" onClick={signOut}>
-              Sign out
-            </button>
+            <a className="btn ghost" href="/verification">{t("nav.verification")}</a>
+            <a className="btn ghost" href="/hr">{t("nav.hr")}</a>
+            <a className="btn ghost" href="/documents">{t("nav.documents")}</a>
+            <a className="btn ghost" href="/schedule">{t("nav.schedule")}</a>
+            <a className="btn ghost" href="/pay">{t("nav.pay")}</a>
+            <a className="btn ghost" href="/my-interests">{t("nav.interests")}</a>
+            <a className="btn ghost" href="/offers">{t("nav.offers")}</a>
+            <a className="btn ghost" href="/saved-jobs">{t("nav.savedJobs")}</a>
+            <button className="btn ghost" type="button" onClick={signOut}>{t("nav.signOut")}</button>
           </div>
         </div>
       </section>
 
       <form className="searchbar" onSubmit={runSearch}>
         <div className="field grow">
-          <label htmlFor="postal">Postal code</label>
-          <input id="postal" value={postalCode} onChange={(e) => setPostalCode(e.target.value)} placeholder="e.g. H7V 1A1" />
+          <label htmlFor="postal">{t("mk.postalCode")}</label>
+          <input id="postal" value={postalCode} onChange={(e) => setPostalCode(e.target.value)} placeholder={t("mk.postalPlaceholder")} />
         </div>
         <div className="field">
-          <label htmlFor="radius">Within</label>
+          <label htmlFor="radius">{t("mk.within")}</label>
           <select id="radius" value={radiusKm} onChange={(e) => setRadiusKm(Number(e.target.value))}>
             {RADII.map((r) => (
-              <option key={r} value={r}>
-                {r} km
-              </option>
+              <option key={r} value={r}>{t("mk.kmUnit", { km: r })}</option>
             ))}
           </select>
         </div>
         <div className="field grow">
-          <label htmlFor="role">Role (optional)</label>
-          <input id="role" value={role} onChange={(e) => setRole(e.target.value)} placeholder="Any role" />
+          <label htmlFor="role">{t("mk.role")}</label>
+          <input id="role" value={role} onChange={(e) => setRole(e.target.value)} placeholder={t("mk.anyRole")} />
         </div>
         <div className="field">
-          <label htmlFor="sort">Sort by</label>
+          <label htmlFor="sort">{t("mk.sortBy")}</label>
           <select id="sort" value={sort} onChange={(e) => setSort(e.target.value)}>
-            {SORTS.map((s) => (
-              <option key={s.value} value={s.value}>
-                {s.label}
-              </option>
+            {SORT_VALUES.map((value) => (
+              <option key={value} value={value}>{sortLabel(value)}</option>
             ))}
           </select>
         </div>
         <button className="btn" type="submit" disabled={status === "searching"}>
-          {status === "searching" ? "Searching…" : "Search jobs"}
+          {status === "searching" ? t("mk.searching") : t("mk.searchJobs")}
         </button>
       </form>
 
       <div className="filters">
         <div className="field">
-          <label htmlFor="dateFrom">From date</label>
+          <label htmlFor="dateFrom">{t("mk.fromDate")}</label>
           <input id="dateFrom" type="date" value={dateFrom} onChange={(e) => setDateFrom(e.target.value)} />
         </div>
         <div className="field">
-          <label htmlFor="minOpenings">Min openings</label>
-          <input id="minOpenings" type="number" min={1} inputMode="numeric" value={minOpenings} onChange={(e) => setMinOpenings(e.target.value)} placeholder="Any" />
+          <label htmlFor="minOpenings">{t("mk.minOpenings")}</label>
+          <input id="minOpenings" type="number" min={1} inputMode="numeric" value={minOpenings} onChange={(e) => setMinOpenings(e.target.value)} placeholder={t("mk.any")} />
         </div>
         <label className="checkfield" htmlFor="verifiedOnly">
           <input id="verifiedOnly" type="checkbox" checked={verifiedOnly} onChange={(e) => setVerifiedOnly(e.target.checked)} />
-          Verified employers only
+          {t("mk.verifiedOnly")}
         </label>
-        {(dateFrom || minOpenings || verifiedOnly || role.trim()) ? (
-          <button
-            type="button"
-            className="btn ghost"
-            onClick={() => { setDateFrom(""); setMinOpenings(""); setVerifiedOnly(false); setRole(""); }}
-          >
-            Clear filters
+        {hasFilters ? (
+          <button type="button" className="btn ghost" onClick={() => { setDateFrom(""); setMinOpenings(""); setVerifiedOnly(false); setRole(""); }}>
+            {t("mk.clearFilters")}
           </button>
         ) : null}
       </div>
 
       {status === "done" || status === "empty" ? (
         <div className="resultbar">
-          <h2>
-            {total} {total === 1 ? "job" : "jobs"} near {origin?.city ?? origin?.postalCode}
-            {origin?.province ? `, ${origin.province}` : ""}
-          </h2>
-          <div className="viewtoggle" role="tablist" aria-label="List or map view">
-            <button role="tab" aria-selected={mobileView === "list"} className={mobileView === "list" ? "active" : ""} onClick={() => setMobileView("list")} type="button">
-              List
+          <h2>{total === 1 ? t("mk.resultsOne", { count: total, place }) : t("mk.resultsMany", { count: total, place })}</h2>
+          <div className="viewtoggle" role="tablist" aria-label={t("mk.viewToggleLabel")}>
+            <button role="tab" aria-selected={view === "list"} className={view === "list" ? "active" : ""} onClick={() => setView("list")} type="button">
+              {t("mk.viewList")}
             </button>
-            <button role="tab" aria-selected={mobileView === "map"} className={mobileView === "map" ? "active" : ""} onClick={() => setMobileView("map")} type="button">
-              Map
+            <button role="tab" aria-selected={view === "agenda"} className={view === "agenda" ? "active" : ""} onClick={() => setView("agenda")} type="button">
+              {t("mk.viewAgenda")}
+            </button>
+            <button role="tab" aria-selected={view === "map"} className={view === "map" ? "active" : ""} onClick={() => setView("map")} type="button">
+              {t("mk.viewMap")}
             </button>
           </div>
         </div>
@@ -344,38 +278,39 @@ function SearchPanel({ onSignedOut }: { onSignedOut: () => void }) {
         <div className="state error" role="alert">
           {errorMessage}
           <div style={{ marginTop: 12 }}>
-            <button className="btn" type="button" onClick={() => runSearch()}>
-              Retry
-            </button>
+            <button className="btn" type="button" onClick={() => runSearch()}>{t("common.retry")}</button>
           </div>
         </div>
       ) : null}
 
       {status === "empty" ? (
         <div className="state">
-          No open jobs {role.trim() ? "matching these filters " : ""}in this area yet.
+          {hasFilters ? t("mk.emptyFiltered") : t("mk.empty")}
           <div style={{ marginTop: 12, display: "flex", gap: 8, justifyContent: "center" }}>
             {radiusKm < 100 ? (
               <button className="btn" type="button" onClick={() => { setRadiusKm(radiusKm < 25 ? 25 : 100); }}>
-                Widen to {radiusKm < 25 ? "25" : "100"} km
+                {t("mk.widenTo", { km: radiusKm < 25 ? 25 : 100 })}
               </button>
             ) : null}
             {role.trim() ? (
-              <button className="btn ghost" type="button" onClick={() => setRole("")}>
-                Clear role filter
-              </button>
+              <button className="btn ghost" type="button" onClick={() => setRole("")}>{t("mk.clearRoleFilter")}</button>
             ) : null}
           </div>
         </div>
       ) : null}
 
-      {status === "done" ? (
-        <div className={`explorer view-${mobileView}`}>
+      {status === "done" && view === "agenda" ? (
+        <AgendaView jobs={jobs} locale={locale} detailHref={detailHref} onToggleSaved={toggleSaved} />
+      ) : null}
+
+      {status === "done" && view !== "agenda" ? (
+        <div className={`explorer view-${view}`}>
           <div className="results" ref={listRef}>
             {jobs.map((job) => (
               <JobCard
                 key={job.jobRequestId}
                 job={job}
+                locale={locale}
                 selected={job.jobRequestId === selectedId}
                 href={detailHref(job.jobRequestId)}
                 onSelect={() => setSelectedId(job.jobRequestId)}
@@ -384,18 +319,18 @@ function SearchPanel({ onSignedOut }: { onSignedOut: () => void }) {
             ))}
             {nextCursor !== null ? (
               <button className="btn ghost loadmore" type="button" onClick={loadMore}>
-                Load more ({jobs.length} of {total})
+                {t("mk.loadMore", { shown: jobs.length, total })}
               </button>
             ) : (
-              <p className="notice" style={{ textAlign: "center" }}>Showing all {total} jobs</p>
+              <p className="notice" style={{ textAlign: "center" }}>
+                {total === 1 ? t("mk.showingAllOne") : t("mk.showingAll", { total })}
+              </p>
             )}
           </div>
           <div className="mapcol">
             <div className="mapsticky">
               <MarketplaceMap origin={mapOrigin} pins={pins} selectedId={selectedId} onSelect={selectFromMap} radiusKm={radiusKm} />
-              <p className="notice" style={{ textAlign: "center" }}>
-                Pins are approximate — exact worksite is shared only once you're assigned.
-              </p>
+              <p className="notice" style={{ textAlign: "center" }}>{t("mk.pinsApproximate")}</p>
             </div>
           </div>
         </div>
@@ -406,60 +341,106 @@ function SearchPanel({ onSignedOut }: { onSignedOut: () => void }) {
 
 function JobCard({
   job,
+  locale,
   selected,
   href,
   onSelect,
   onToggleSaved
 }: {
   job: JobResult;
+  locale: RwosLocale;
   selected: boolean;
   href: string;
   onSelect: () => void;
   onToggleSaved: (job: JobResult) => void;
 }) {
+  const t = useT();
   return (
     <article id={`card-${job.jobRequestId}`} className={`card${selected ? " selected" : ""}`} onMouseEnter={onSelect} onFocus={onSelect}>
       <button
         className="save"
         type="button"
         aria-pressed={job.saved}
-        aria-label={job.saved ? `Remove ${job.role} from saved` : `Save ${job.role}`}
-        title={job.saved ? "Saved" : "Save"}
+        aria-label={job.saved ? t("mk.removeSavedAria", { role: job.role }) : t("mk.saveAria", { role: job.role })}
+        title={job.saved ? t("mk.saved") : t("mk.save")}
         onClick={() => onToggleSaved(job)}
       >
         {job.saved ? "★" : "☆"}
       </button>
-      <a className="role cardlink" href={href}>
-        {job.role}
-      </a>
+      <a className="role cardlink" href={href}>{job.role}</a>
       <div className="employer">
         {job.employerName}
-        {job.verifiedEmployer ? " · ✓ Verified" : ""}
+        {job.verifiedEmployer ? t("mk.verifiedSuffix") : ""}
       </div>
       <div className="chips">
         <span className="chip dist">{job.distanceLabel}</span>
         <span className="chip">{job.areaLabel}</span>
         <span className="chip">
-          {job.openings} {job.openings === 1 ? "opening" : "openings"}
+          {job.openings === 1 ? t("mk.openingOne", { count: job.openings }) : t("mk.openingMany", { count: job.openings })}
         </span>
-        {job.workerRateMinor !== null ? <span className="chip">{formatRate(job.workerRateMinor, job.currency)}</span> : null}
+        {job.workerRateMinor !== null ? <span className="chip">{formatRate(job.workerRateMinor, job.currency, locale)}</span> : null}
       </div>
-      <div className="when">{formatWhen(job.startAt, job.endAt)}</div>
-      <a className="detaillink" href={href}>
-        View details →
-      </a>
+      <div className="when">{formatWhen(job.startAt, job.endAt, locale)}</div>
+      <a className="detaillink" href={href}>{t("mk.viewDetails")}</a>
     </article>
   );
 }
 
-export function formatWhen(startAt: string, endAt: string): string {
-  const start = new Date(startAt);
-  const end = new Date(endAt);
-  const day = start.toLocaleDateString(undefined, { weekday: "short", month: "short", day: "numeric" });
-  const t = (d: Date) => d.toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" });
-  return `${day} · ${t(start)} – ${t(end)}`;
+function AgendaView({
+  jobs,
+  locale,
+  detailHref,
+  onToggleSaved
+}: {
+  jobs: readonly JobResult[];
+  locale: RwosLocale;
+  detailHref: (id: string) => string;
+  onToggleSaved: (job: JobResult) => void;
+}) {
+  const groups: { key: string; label: string; items: JobResult[] }[] = [];
+  for (const job of jobs) {
+    const d = new Date(job.startAt);
+    const key = d.toLocaleDateString(locale, { year: "numeric", month: "2-digit", day: "2-digit" });
+    const label = d.toLocaleDateString(locale, { weekday: "long", month: "long", day: "numeric" });
+    let group = groups.find((g) => g.key === key);
+    if (!group) {
+      group = { key, label, items: [] };
+      groups.push(group);
+    }
+    group.items.push(job);
+  }
+  return (
+    <div className="agenda">
+      {groups.map((group) => (
+        <section key={group.key} className="agenda-day">
+          <h3 className="agenda-date">{group.label}</h3>
+          <div className="results">
+            {group.items.map((job) => (
+              <JobCard
+                key={job.jobRequestId}
+                job={job}
+                locale={locale}
+                selected={false}
+                href={detailHref(job.jobRequestId)}
+                onSelect={() => undefined}
+                onToggleSaved={onToggleSaved}
+              />
+            ))}
+          </div>
+        </section>
+      ))}
+    </div>
+  );
 }
 
-export function formatRate(minor: number, currency: string): string {
-  return `${(minor / 100).toLocaleString(undefined, { style: "currency", currency })}/h`;
+export function formatWhen(startAt: string, endAt: string, locale?: RwosLocale): string {
+  const start = new Date(startAt);
+  const end = new Date(endAt);
+  const day = start.toLocaleDateString(locale, { weekday: "short", month: "short", day: "numeric" });
+  const time = (d: Date) => d.toLocaleTimeString(locale, { hour: "numeric", minute: "2-digit" });
+  return `${day} · ${time(start)} – ${time(end)}`;
+}
+
+export function formatRate(minor: number, currency: string, locale?: RwosLocale): string {
+  return `${(minor / 100).toLocaleString(locale, { style: "currency", currency })}/h`;
 }

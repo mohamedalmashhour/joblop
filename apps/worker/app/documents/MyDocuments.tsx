@@ -1,6 +1,8 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
+import { useLocale, useT } from "../i18n/LocaleProvider";
+import type { MessageKey } from "../i18n/messages";
 
 type Doc = Readonly<{ id: string; documentType: string; jurisdiction: string | null; expiresAt: string | null; effectiveStatus: string; supersededById: string | null }>;
 type State =
@@ -9,30 +11,35 @@ type State =
   | { status: "error" }
   | { status: "ready"; documents: readonly Doc[] };
 
-const STATUS_COPY: Record<string, string> = {
-  submitted: "Submitted — awaiting review",
-  under_review: "Under review",
-  accepted: "Accepted ✓",
-  rejected: "Not accepted — please resubmit",
-  expiring: "Expiring soon — please replace",
-  expired: "Expired — action needed",
-  superseded: "Replaced",
-  revoked: "Revoked",
-  required: "Required"
+const STATUS_KEY: Record<string, MessageKey> = {
+  submitted: "doc.statusSubmitted",
+  under_review: "doc.statusUnderReview",
+  accepted: "doc.statusAccepted",
+  rejected: "doc.statusRejected",
+  expiring: "doc.statusExpiring",
+  expired: "doc.statusExpired",
+  superseded: "doc.statusSuperseded",
+  revoked: "doc.statusRevoked",
+  required: "doc.statusRequired"
 };
 
-// Controlled, human-labelled document choices (values match the compliance requirement types).
-const DOCUMENT_TYPES: ReadonlyArray<{ value: string; label: string }> = [
-  { value: "work_authorization", label: "Work authorization (permit / status)" },
-  { value: "identity", label: "Government photo ID" },
-  { value: "licence", label: "Driver's licence" },
-  { value: "first_aid", label: "First-aid certificate" },
-  { value: "qc_healthcare_doc", label: "Québec healthcare document" },
-  { value: "sin", label: "Social Insurance Number document" },
-  { value: "void_cheque", label: "Void cheque / direct-deposit form" }
+// Controlled document choices (values match the compliance requirement types); labels are keyed.
+const DOCUMENT_TYPES: ReadonlyArray<{ value: string; labelKey: MessageKey }> = [
+  { value: "work_authorization", labelKey: "doc.typeWorkAuth" },
+  { value: "identity", labelKey: "doc.typeIdentity" },
+  { value: "licence", labelKey: "doc.typeLicence" },
+  { value: "first_aid", labelKey: "doc.typeFirstAid" },
+  { value: "qc_healthcare_doc", labelKey: "doc.typeQcHealth" },
+  { value: "sin", labelKey: "doc.typeSin" },
+  { value: "void_cheque", labelKey: "doc.typeVoidCheque" }
 ];
+const DOC_TYPE_LABEL_KEY: Record<string, MessageKey> = Object.fromEntries(
+  DOCUMENT_TYPES.map((d) => [d.value, d.labelKey])
+) as Record<string, MessageKey>;
 
 export function MyDocuments() {
+  const t = useT();
+  const locale = useLocale();
   const [state, setState] = useState<State>({ status: "loading" });
   const [docType, setDocType] = useState("");
   const [file, setFile] = useState<File | null>(null);
@@ -59,28 +66,27 @@ export function MyDocuments() {
   // provider, then submit the metadata. The file bytes go to the storage provider, never through JobLop.
   const submit = useCallback(async (documentType: string, replace: boolean, chosen: File | null) => {
     if (!documentType.trim()) return;
-    if (!chosen) { setError("Choose a file to upload before submitting."); return; }
+    if (!chosen) { setError(t("doc.chooseFileFirst")); return; }
     setBusy(true);
     setNotice(null);
     setError(null);
     try {
       const refRes = await fetch("/api/documents/upload-reference", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ documentType: documentType.trim() }) });
-      if (!refRes.ok) { setError("Could not start a document submission. Please try again."); return; }
+      if (!refRes.ok) { setError(t("doc.startFailed")); return; }
       const { storageReference, uploadUrl } = (await refRes.json()) as { storageReference: string; uploadUrl?: string };
-      // Upload the file bytes to the provider's signed URL (skipped only when replacing without a new file).
       if (chosen && uploadUrl) {
         try {
           const put = await fetch(uploadUrl, { method: "PUT", headers: { "content-type": chosen.type || "application/octet-stream" }, body: chosen });
-          if (!put.ok) { setError("Your file could not be uploaded to secure storage. Please try again."); return; }
+          if (!put.ok) { setError(t("doc.uploadFailed")); return; }
         } catch {
-          setError("Your file could not be uploaded (storage unreachable in this environment). Please try again later.");
+          setError(t("doc.uploadUnreachable"));
           return;
         }
       }
       const endpoint = replace ? "/api/documents/replace" : "/api/documents";
       const res = await fetch(endpoint, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ documentType: documentType.trim(), storageReference }) });
-      if (!res.ok) { setError("Submission failed. Please try again."); return; }
-      setNotice(replace ? "Replacement uploaded and submitted for review." : "Document uploaded and submitted for review.");
+      if (!res.ok) { setError(t("doc.submitFailed")); return; }
+      setNotice(replace ? t("doc.replacementSubmitted") : t("doc.submitted"));
       setDocType("");
       setFile(null);
       setReplacing(false);
@@ -88,19 +94,19 @@ export function MyDocuments() {
     } finally {
       setBusy(false);
     }
-  }, [load]);
+  }, [load, t]);
 
-  if (state.status === "loading") return <div className="state">Loading…</div>;
-  if (state.status === "signed_out") return <div className="state">Please sign in to see your documents.<div style={{ marginTop: 12 }}><a className="btn" href="/">Go to search</a></div></div>;
-  if (state.status === "error") return <div className="state error" role="alert">We couldn&apos;t load your documents.</div>;
+  if (state.status === "loading") return <div className="state">{t("common.loading")}</div>;
+  if (state.status === "signed_out") return <div className="state">{t("doc.signInPrompt")}<div style={{ marginTop: 12 }}><a className="btn" href="/">{t("common.goToSearch")}</a></div></div>;
+  if (state.status === "error") return <div className="state error" role="alert">{t("doc.loadError")}</div>;
 
   const active = state.documents.filter((d) => d.effectiveStatus !== "superseded");
 
   return (
     <>
       <section className="hero">
-        <h1>My documents</h1>
-        <p>Submit and track your employment + compliance documents. JobLop reviews them — you can&apos;t approve your own.</p>
+        <h1>{t("doc.title")}</h1>
+        <p>{t("doc.intro")}</p>
       </section>
 
       {notice ? <p className="notice" role="status" style={{ color: "var(--accent)" }}>{notice}</p> : null}
@@ -108,41 +114,44 @@ export function MyDocuments() {
 
       <form className="searchbar" onSubmit={(e) => { e.preventDefault(); void submit(docType, replacing, file); }}>
         <div className="field grow">
-          <label htmlFor="doctype">Document type</label>
+          <label htmlFor="doctype">{t("doc.documentType")}</label>
           <select id="doctype" value={docType} onChange={(e) => setDocType(e.target.value)} aria-describedby="doctype-help">
-            <option value="">Choose a document type…</option>
-            {DOCUMENT_TYPES.map((t) => <option key={t.value} value={t.value}>{t.label}</option>)}
+            <option value="">{t("doc.chooseType")}</option>
+            {DOCUMENT_TYPES.map((d) => <option key={d.value} value={d.value}>{t(d.labelKey)}</option>)}
           </select>
         </div>
         <div className="field grow">
-          <label htmlFor="docfile">File</label>
+          <label htmlFor="docfile">{t("doc.file")}</label>
           <input id="docfile" type="file" accept="image/*,application/pdf" onChange={(e) => setFile(e.target.files?.[0] ?? null)} aria-describedby="doctype-help" />
         </div>
-        <button className="btn" type="submit" disabled={busy || !docType.trim() || !file}>{busy ? "Uploading…" : "Upload document"}</button>
+        <button className="btn" type="submit" disabled={busy || !docType.trim() || !file}>{busy ? t("doc.uploading") : t("doc.uploadDocument")}</button>
       </form>
-      <p id="doctype-help" className="notice">Choose the document type and the file (PDF or image). JobLop reviews every submission.</p>
+      <p id="doctype-help" className="notice">{t("doc.formHelp")}</p>
 
       <div className="results" style={{ paddingBottom: 48 }}>
         {active.length === 0 ? (
-          <div className="state">No documents yet. Submit one above.</div>
+          <div className="state">{t("doc.none")}</div>
         ) : (
-          active.map((d) => (
+          active.map((d) => {
+            const labelKey = DOC_TYPE_LABEL_KEY[d.documentType];
+            return (
             <article key={d.id} className="card">
-              <div className="role">{d.documentType}</div>
+              <div className="role">{labelKey ? t(labelKey) : d.documentType}</div>
               <div className="chips">
-                <span className={`chip status-${badgeClass(d.effectiveStatus)}`}>{STATUS_COPY[d.effectiveStatus] ?? d.effectiveStatus}</span>
-                {d.expiresAt ? <span className="chip">Expires {new Date(d.expiresAt).toLocaleDateString()}</span> : null}
+                <span className={`chip status-${badgeClass(d.effectiveStatus)}`}>{t(STATUS_KEY[d.effectiveStatus] ?? "doc.statusRequired")}</span>
+                {d.expiresAt ? <span className="chip">{t("common.expires", { date: new Date(d.expiresAt).toLocaleDateString(locale) })}</span> : null}
                 {d.jurisdiction ? <span className="chip">{d.jurisdiction}</span> : null}
               </div>
               {["accepted", "expiring", "expired", "rejected"].includes(d.effectiveStatus) ? (
-                <button className="btn ghost" type="button" style={{ alignSelf: "flex-start" }} disabled={busy} onClick={() => { setReplacing(true); setDocType(d.documentType); setFile(null); setError(null); setNotice("Choose a new file above, then Upload document to replace this one."); }}>Replace</button>
+                <button className="btn ghost" type="button" style={{ alignSelf: "flex-start" }} disabled={busy} onClick={() => { setReplacing(true); setDocType(d.documentType); setFile(null); setError(null); setNotice(t("doc.chooseNewToReplace")); }}>{t("doc.replace")}</button>
               ) : null}
             </article>
-          ))
+          );
+          })
         )}
       </div>
 
-      <p className="notice">JobLop reviews your documents. You cannot approve your own document or change its review status.</p>
+      <p className="notice">{t("doc.footer")}</p>
     </>
   );
 }

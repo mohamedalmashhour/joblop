@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { formatWhen } from "../../MarketplaceExplorer";
+import { useLocale, useT } from "../../i18n/LocaleProvider";
 
 type Opportunity = Readonly<{
   jobRequestId: string;
@@ -22,6 +23,8 @@ type Profile = Readonly<{
 }>;
 
 export function EmployerProfile({ id }: { id: string }) {
+  const t = useT();
+  const locale = useLocale();
   const [status, setStatus] = useState<"loading" | "ready" | "not_found" | "error">("loading");
   const [profile, setProfile] = useState<Profile | null>(null);
 
@@ -42,18 +45,18 @@ export function EmployerProfile({ id }: { id: string }) {
     };
   }, [id]);
 
-  if (status === "loading") return <div className="state">Loading…</div>;
+  if (status === "loading") return <div className="state">{t("common.loading")}</div>;
   if (status === "not_found")
     return (
       <div className="state">
-        This employer is not available.
+        {t("emp.notAvailable")}
         <div style={{ marginTop: 12 }}>
-          <a className="btn" href="/">Return to search</a>
+          <a className="btn" href="/">{t("job.returnToSearch")}</a>
         </div>
       </div>
     );
   if (status === "error" || !profile)
-    return <div className="state error" role="alert">We couldn&apos;t load this employer.</div>;
+    return <div className="state error" role="alert">{t("emp.loadError")}</div>;
 
   return (
     <article className="detail">
@@ -62,21 +65,23 @@ export function EmployerProfile({ id }: { id: string }) {
           <h1>{profile.name}</h1>
           <p className="employer">
             {profile.verified ? (
-              <span className="chip verified">✓ Verified employer</span>
+              <span className="chip verified">{t("emp.verified")}</span>
             ) : (
-              <span className="chip">Employer on JobLop</span>
+              <span className="chip">{t("emp.onJoblop")}</span>
             )}
           </p>
-          {profile.areas.length > 0 ? <p className="muted">Hiring in {profile.areas.join(" · ")}</p> : null}
+          {profile.areas.length > 0 ? <p className="muted">{t("emp.hiringIn", { areas: profile.areas.join(" · ") })}</p> : null}
         </div>
       </div>
 
       <section className="detail-section">
         <h2>
-          {profile.activeOpportunityCount} open {profile.activeOpportunityCount === 1 ? "opportunity" : "opportunities"}
+          {profile.activeOpportunityCount === 1
+            ? t("emp.openOppsOne", { count: profile.activeOpportunityCount })
+            : t("emp.openOppsMany", { count: profile.activeOpportunityCount })}
         </h2>
         {profile.opportunities.length === 0 ? (
-          <p className="muted">No open opportunities right now.</p>
+          <p className="muted">{t("emp.noOpps")}</p>
         ) : (
           <div className="results" style={{ marginTop: 12 }}>
             {profile.opportunities.map((o) => (
@@ -85,10 +90,10 @@ export function EmployerProfile({ id }: { id: string }) {
                 <div className="chips">
                   <span className="chip">{o.areaLabel}</span>
                   <span className="chip">
-                    {o.openings} {o.openings === 1 ? "opening" : "openings"}
+                    {o.openings === 1 ? t("mk.openingOne", { count: o.openings }) : t("mk.openingMany", { count: o.openings })}
                   </span>
                 </div>
-                <div className="when">{formatWhen(o.startAt, o.endAt)}</div>
+                <div className="when">{formatWhen(o.startAt, o.endAt, locale)}</div>
               </a>
             ))}
           </div>

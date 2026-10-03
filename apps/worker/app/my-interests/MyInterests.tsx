@@ -2,6 +2,8 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { formatWhen } from "../MarketplaceExplorer";
+import { useLocale, useT } from "../i18n/LocaleProvider";
+import type { MessageKey } from "../i18n/messages";
 
 type InterestItem = Readonly<{
   jobRequestId: string;
@@ -18,18 +20,20 @@ type InterestItem = Readonly<{
   } | null;
 }>;
 
-// Marketplace-intent status → worker-facing label. Kept visually distinct from offer state.
-const INTEREST_LABEL: Record<string, string> = {
-  submitted: "Interest submitted",
-  under_review: "Under review",
-  shortlisted: "Shortlisted",
-  not_selected: "Not selected",
-  withdrawn: "Withdrawn",
-  offer_created: "Offer received",
-  offer_accepted: "Offer accepted"
+// Marketplace-intent status → worker-facing label key. Kept visually distinct from offer state.
+const INTEREST_LABEL_KEY: Record<string, MessageKey> = {
+  submitted: "interests.submitted",
+  under_review: "interests.underReview",
+  shortlisted: "interests.shortlisted",
+  not_selected: "interests.notSelected",
+  withdrawn: "interests.withdrawn",
+  offer_created: "interests.offerCreated",
+  offer_accepted: "interests.offerAccepted"
 };
 
 export function MyInterests() {
+  const t = useT();
+  const locale = useLocale();
   const [status, setStatus] = useState<"loading" | "ready" | "signed_out" | "error">("loading");
   const [items, setItems] = useState<InterestItem[]>([]);
 
@@ -50,32 +54,32 @@ export function MyInterests() {
     void load();
   }, [load]);
 
-  if (status === "loading") return <div className="state">Loading…</div>;
+  if (status === "loading") return <div className="state">{t("common.loading")}</div>;
   if (status === "signed_out")
     return (
       <div className="state">
-        Please sign in to see your interests.
+        {t("interests.signInPrompt")}
         <div style={{ marginTop: 12 }}>
-          <a className="btn" href="/">Go to search</a>
+          <a className="btn" href="/">{t("common.goToSearch")}</a>
         </div>
       </div>
     );
-  if (status === "error") return <div className="state error" role="alert">We couldn&apos;t load your interests.</div>;
+  if (status === "error") return <div className="state error" role="alert">{t("interests.loadError")}</div>;
 
   const activeCount = items.filter((i) => !["withdrawn", "not_selected"].includes(i.status)).length;
 
   return (
     <>
       <section className="hero">
-        <h1>My interests</h1>
-        <p>{items.length === 0 ? "You haven't expressed interest in any jobs yet." : `${activeCount} active`}</p>
+        <h1>{t("nav.interests")}</h1>
+        <p>{items.length === 0 ? t("interests.none") : t("interests.countActive", { count: activeCount })}</p>
       </section>
 
       {items.length === 0 ? (
         <div className="state">
-          Jobs you express interest in appear here.
+          {t("interests.appearHere")}
           <div style={{ marginTop: 12 }}>
-            <a className="btn" href="/">Find jobs</a>
+            <a className="btn" href="/">{t("common.findJobs")}</a>
           </div>
         </div>
       ) : (
@@ -89,14 +93,14 @@ export function MyInterests() {
                   </a>
                   <div className="employer">{i.summary.employer.name}</div>
                   <div className="chips">
-                    <span className={`chip status-${i.status}`}>{INTEREST_LABEL[i.status] ?? i.status}</span>
-                    {i.offerStatus ? <span className="chip offer">Offer: {i.offerStatus}</span> : null}
+                    <span className={`chip status-${i.status}`}>{t(INTEREST_LABEL_KEY[i.status] ?? "interests.submitted")}</span>
+                    {i.offerStatus ? <span className="chip offer">{t("interests.offerChip", { status: i.offerStatus })}</span> : null}
                     {i.summary.areaLabel ? <span className="chip">{i.summary.areaLabel}</span> : null}
                   </div>
-                  <div className="when">{formatWhen(i.summary.startAt, i.summary.endAt)}</div>
+                  <div className="when">{formatWhen(i.summary.startAt, i.summary.endAt, locale)}</div>
                 </>
               ) : (
-                <div className="role muted">This job is no longer available</div>
+                <div className="role muted">{t("job.noLongerAvailable")}</div>
               )}
             </article>
           ))}

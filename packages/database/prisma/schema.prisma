@@ -1116,6 +1116,12 @@ model JobRequest {
   @@map("job_requests")
 }
 
+enum AllowanceProvision {
+  none
+  provided
+  allowance
+}
+
 model StaffingRequestCalendarProfile {
   id                          String                    @id @default(uuid()) @db.Uuid
   jobRequestId                String                    @unique @map("job_request_id") @db.Uuid
@@ -1125,6 +1131,15 @@ model StaffingRequestCalendarProfile {
   qualifications              Json
   addressSummary              String?                   @map("address_summary")
   specialInstructions         String?                   @map("special_instructions")
+  transportProvision          AllowanceProvision        @default(none) @map("transport_provision")
+  transportAmountMinor        Int?                      @map("transport_amount_minor")
+  transportNote               String?                   @map("transport_note")
+  mealProvision               AllowanceProvision        @default(none) @map("meal_provision")
+  mealAmountMinor             Int?                      @map("meal_amount_minor")
+  mealNote                    String?                   @map("meal_note")
+  lodgingProvision            AllowanceProvision        @default(none) @map("lodging_provision")
+  lodgingAmountMinor          Int?                      @map("lodging_amount_minor")
+  lodgingNote                 String?                   @map("lodging_note")
   contractVerificationState   CalendarVerificationState @default(pending) @map("contract_verification_state")
   paymentMethodReadinessState CalendarVerificationState @default(pending) @map("payment_method_readiness_state")
   locationVerificationState   CalendarVerificationState @default(pending) @map("location_verification_state")

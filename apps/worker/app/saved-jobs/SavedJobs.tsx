@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { formatWhen } from "../MarketplaceExplorer";
+import { useLocale, useT } from "../i18n/LocaleProvider";
 
 type SavedEntry = Readonly<{
   jobRequestId: string;
@@ -19,6 +20,8 @@ type SavedEntry = Readonly<{
 }>;
 
 export function SavedJobs() {
+  const t = useT();
+  const locale = useLocale();
   const [status, setStatus] = useState<"loading" | "ready" | "signed_out" | "error">("loading");
   const [entries, setEntries] = useState<SavedEntry[]>([]);
 
@@ -50,30 +53,30 @@ export function SavedJobs() {
     }
   }, [entries]);
 
-  if (status === "loading") return <div className="state">Loading…</div>;
+  if (status === "loading") return <div className="state">{t("common.loading")}</div>;
   if (status === "signed_out")
     return (
       <div className="state">
-        Please sign in to see your saved jobs.
+        {t("saved.signInPrompt")}
         <div style={{ marginTop: 12 }}>
-          <a className="btn" href="/">Go to search</a>
+          <a className="btn" href="/">{t("common.goToSearch")}</a>
         </div>
       </div>
     );
-  if (status === "error") return <div className="state error" role="alert">We couldn&apos;t load your saved jobs.</div>;
+  if (status === "error") return <div className="state error" role="alert">{t("saved.loadError")}</div>;
 
   return (
     <>
       <section className="hero">
-        <h1>Saved jobs</h1>
-        <p>{entries.length === 0 ? "You haven't saved any jobs yet." : `${entries.length} saved`}</p>
+        <h1>{t("nav.savedJobs")}</h1>
+        <p>{entries.length === 0 ? t("saved.none") : t("saved.countSaved", { count: entries.length })}</p>
       </section>
 
       {entries.length === 0 ? (
         <div className="state">
-          Jobs you save appear here.
+          {t("saved.appearHere")}
           <div style={{ marginTop: 12 }}>
-            <a className="btn" href="/">Find jobs</a>
+            <a className="btn" href="/">{t("common.findJobs")}</a>
           </div>
         </div>
       ) : (
@@ -84,8 +87,8 @@ export function SavedJobs() {
                 className="save"
                 type="button"
                 aria-pressed
-                aria-label={`Remove ${e.summary?.role ?? "job"} from saved`}
-                title="Remove"
+                aria-label={t("mk.removeSavedAria", { role: e.summary?.role ?? t("common.aJob") })}
+                title={t("saved.remove")}
                 onClick={() => remove(e.jobRequestId)}
               >
                 ★
@@ -103,14 +106,14 @@ export function SavedJobs() {
                   <div className="chips">
                     {e.summary.areaLabel ? <span className="chip">{e.summary.areaLabel}</span> : null}
                     <span className="chip">
-                      {e.summary.openings} {e.summary.openings === 1 ? "opening" : "openings"}
+                      {e.summary.openings === 1 ? t("mk.openingOne", { count: e.summary.openings }) : t("mk.openingMany", { count: e.summary.openings })}
                     </span>
                   </div>
-                  <div className="when">{formatWhen(e.summary.startAt, e.summary.endAt)}</div>
-                  {!e.available ? <div className="chip" style={{ color: "var(--danger)" }}>No longer available</div> : null}
+                  <div className="when">{formatWhen(e.summary.startAt, e.summary.endAt, locale)}</div>
+                  {!e.available ? <div className="chip" style={{ color: "var(--danger)" }}>{t("saved.noLongerAvailableChip")}</div> : null}
                 </>
               ) : (
-                <div className="role muted">This job is no longer available</div>
+                <div className="role muted">{t("job.noLongerAvailable")}</div>
               )}
             </article>
           ))}

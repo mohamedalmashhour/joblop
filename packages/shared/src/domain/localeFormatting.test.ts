@@ -12,9 +12,10 @@ import {
 
 describe("locale-ready formatting", () => {
   it("supports only the explicitly approved default locale", () => {
-    expect(supportedRwosLocales).toEqual(["en-CA"]);
+    expect(supportedRwosLocales).toEqual(["en-CA", "fr-CA"]);
     expect(defaultRwosLocale).toBe("en-CA");
     expect(resolveRwosLocale("en-CA")).toBe("en-CA");
+    expect(resolveRwosLocale("fr-CA")).toBe("fr-CA");
     expect(resolveRwosLocale("ar")).toBe("en-CA");
   });
 

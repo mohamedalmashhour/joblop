@@ -8,6 +8,7 @@
 // coordinates or addresses — there is nothing more precise than the approximate point here.
 
 import { useMemo } from "react";
+import { useT } from "./i18n/LocaleProvider";
 
 export type MapPin = Readonly<{
   jobRequestId: string;
@@ -38,6 +39,7 @@ function toKm(origin: { latitude: number; longitude: number }, p: { latitude: nu
 }
 
 export function MarketplaceMap({ origin, pins, selectedId, onSelect, radiusKm }: Props) {
+  const t = useT();
   const layout = useMemo(() => {
     if (!origin) return null;
     const km = pins.map((pin) => ({ pin, ...toKm(origin, pin) }));
@@ -55,8 +57,8 @@ export function MarketplaceMap({ origin, pins, selectedId, onSelect, radiusKm }:
 
   if (!origin || !layout) {
     return (
-      <div className="map-empty" role="img" aria-label="Map unavailable until you run a search">
-        Run a search to see jobs on the map.
+      <div className="map-empty" role="img" aria-label={t("map.unavailableAria")}>
+        {t("map.runSearch")}
       </div>
     );
   }
@@ -66,7 +68,7 @@ export function MarketplaceMap({ origin, pins, selectedId, onSelect, radiusKm }:
       className="map-svg"
       viewBox={`0 0 ${SIZE} ${SIZE}`}
       role="img"
-      aria-label={`Approximate map of ${pins.length} ${pins.length === 1 ? "job" : "jobs"} near your search location. The list beside the map has the same jobs.`}
+      aria-label={pins.length === 1 ? t("map.summaryOne") : t("map.summaryMany", { count: pins.length })}
     >
       <rect x="0" y="0" width={SIZE} height={SIZE} className="map-bg" />
       {/* distance rings */}
@@ -74,14 +76,14 @@ export function MarketplaceMap({ origin, pins, selectedId, onSelect, radiusKm }:
         <g key={i}>
           <circle cx={CENTER} cy={CENTER} r={r * layout.scale} className="map-ring" />
           <text x={CENTER} y={CENTER - r * layout.scale - 4} className="map-ring-label" textAnchor="middle">
-            {Math.round(r)} km
+            {t("mk.kmUnit", { km: Math.round(r) })}
           </text>
         </g>
       ))}
       {/* origin ("you") */}
       <circle cx={CENTER} cy={CENTER} r={6} className="map-origin" />
       <text x={CENTER} y={CENTER + 20} className="map-origin-label" textAnchor="middle">
-        You
+        {t("map.you")}
       </text>
       {/* job pins */}
       {layout.placed.map(({ pin, x, y }) => {
@@ -94,7 +96,7 @@ export function MarketplaceMap({ origin, pins, selectedId, onSelect, radiusKm }:
             onClick={() => onSelect(pin.jobRequestId)}
             role="button"
             tabIndex={0}
-            aria-label={`${pin.label}${pin.saved ? " (saved)" : ""} — select to highlight in the list`}
+            aria-label={t("map.pinAria", { label: pin.label, saved: pin.saved ? t("map.savedSuffix") : "" })}
             aria-pressed={isSelected}
             onKeyDown={(e) => {
               if (e.key === "Enter" || e.key === " ") {
