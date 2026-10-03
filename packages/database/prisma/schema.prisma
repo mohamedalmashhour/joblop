@@ -1093,6 +1093,7 @@ model JobRequest {
   createdBy         User                            @relation("JobRequestCreatedByUser", fields: [createdByUserId], references: [id], onDelete: Restrict)
   updatedBy         User?                           @relation("JobRequestUpdatedByUser", fields: [updatedByUserId], references: [id], onDelete: SetNull)
   calendarProfile   StaffingRequestCalendarProfile?
+  pricingSnapshot   RequestPricingSnapshot?
   dispatchReviews   DispatchReview[]
   workerOffers      WorkerOffer[]
   assignments       Assignment[]
@@ -1154,6 +1155,37 @@ model StaffingRequestCalendarProfile {
   @@index([organizationId, updatedAt], map: "staffing_request_calendar_profiles_org_updated_idx")
   @@index([residenceId, updatedAt], map: "staffing_request_calendar_profiles_residence_updated_idx")
   @@map("staffing_request_calendar_profiles")
+}
+
+// Immutable per-request hidden-markup record, captured when an admin approves a request for dispatch.
+// Stores the employer rate (E), the admin-chosen margin, the derived worker rate (W), and the
+// per-allowance employer/worker splits. Payroll pays W from here; each audience view reads only its
+// own side (worker = W, employer = E); the platform margin is the difference. One snapshot per request.
+model RequestPricingSnapshot {
+  id                        String   @id @default(uuid()) @db.Uuid
+  jobRequestId              String   @unique @map("job_request_id") @db.Uuid
+  organizationId            String   @map("organization_id") @db.Uuid
+  contractId                String   @map("contract_id") @db.Uuid
+  contractVersion           String   @map("contract_version")
+  currency                  String
+  marginPpm                 Int      @map("margin_ppm")
+  employerHourlyRateMinor   Int      @map("employer_hourly_rate_minor")
+  workerHourlyRateMinor     Int      @map("worker_hourly_rate_minor")
+  platformHourlyMarginMinor Int      @map("platform_hourly_margin_minor")
+  transportEmployerMinor    Int      @default(0) @map("transport_employer_minor")
+  transportWorkerMinor      Int      @default(0) @map("transport_worker_minor")
+  mealEmployerMinor         Int      @default(0) @map("meal_employer_minor")
+  mealWorkerMinor           Int      @default(0) @map("meal_worker_minor")
+  lodgingEmployerMinor      Int      @default(0) @map("lodging_employer_minor")
+  lodgingWorkerMinor        Int      @default(0) @map("lodging_worker_minor")
+  capturedByUserId          String   @map("captured_by_user_id") @db.Uuid
+  capturedAt                DateTime @default(now()) @map("captured_at") @db.Timestamptz(3)
+
+  jobRequest JobRequest @relation(fields: [jobRequestId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId, capturedAt], map: "request_pricing_snapshots_org_captured_idx")
+  @@index([contractId, contractVersion], map: "request_pricing_snapshots_contract_idx")
+  @@map("request_pricing_snapshots")
 }
 
 model DispatchReview {
