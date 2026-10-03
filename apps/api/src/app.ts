@@ -228,6 +228,7 @@ import { createPrismaDocumentMetadataRepository } from "./documentUploadReposito
 import { registerDocumentRoutes } from "./documentRoutes";
 import { registerInvoiceRoutes } from "./invoiceRoutes";
 import { createPrismaRequestPricingSnapshotCapture } from "./requestPricingSnapshot";
+import { workerAllowances } from "./workerAllowances";
 import { createPrismaInvoiceRepository, type InvoiceRepository } from "./invoiceRepository";
 import { createPrismaPayrollRepository, createPrismaPayrollRateResolver, createPrismaPayrollJurisdictionResolver } from "./payrollRepository";
 import { registerPaymentRoutes } from "./paymentRoutes";
@@ -2673,7 +2674,8 @@ export function buildApi(options: BuildApiOptions = {}) {
         endAt: true,
         roleDefinition: { select: { displayLabel: true } },
         organization: { select: { id: true, displayName: true } },
-        residence: { select: { city: true, province: true, latitude: true, longitude: true } }
+        residence: { select: { city: true, province: true, latitude: true, longitude: true } },
+        pricingSnapshot: { select: { workerHourlyRateMinor: true } }
       },
       take: MARKETPLACE_CANDIDATE_CAP
     });
@@ -2709,7 +2711,7 @@ export function buildApi(options: BuildApiOptions = {}) {
         startAt: r.startAt.toISOString(),
         endAt: r.endAt.toISOString(),
         openings: r.numberOfWorkers,
-        workerRateMinor: null, // worker-facing rate disclosure is policy-gated (later)
+        workerRateMinor: r.pricingSnapshot?.workerHourlyRateMinor ?? null, // W from the immutable approval snapshot (null until approved); the employer rate E is never exposed here
         currency: countryCurrency // display-only; driven by the selected country (CAD for Canada)
       });
     }
@@ -3768,6 +3770,14 @@ export function buildApi(options: BuildApiOptions = {}) {
             lodgingAmountMinor: true,
             lodgingNote: true
           }
+        },
+        pricingSnapshot: {
+          select: {
+            workerHourlyRateMinor: true,
+            transportWorkerMinor: true,
+            mealWorkerMinor: true,
+            lodgingWorkerMinor: true
+          }
         }
       }
     });
@@ -3807,7 +3817,7 @@ export function buildApi(options: BuildApiOptions = {}) {
       startAt: row.startAt.toISOString(),
       endAt: row.endAt.toISOString(),
       openings: row.numberOfWorkers,
-      workerRateMinor: null, // policy-gated
+      workerRateMinor: row.pricingSnapshot?.workerHourlyRateMinor ?? null, // W from the approval snapshot; employer rate E never exposed
       currency: countryCurrency, // display-only; driven by the selected country (CAD for Canada)
       description: row.description,
       duties: row.calendarProfile?.dutiesSummary ?? null,
@@ -3825,7 +3835,7 @@ export function buildApi(options: BuildApiOptions = {}) {
     } catch {
       saved = false; // not a worker → not saved
     }
-    return reply.code(200).send({ job: { ...detail, saved, allowances: workerAllowances(row.calendarProfile) } });
+    return reply.code(200).send({ job: { ...detail, saved, allowances: workerAllowances(row.calendarProfile, row.pricingSnapshot) } });
   });
 
   // Employer PUBLIC PROFILE — only approved public info: public display name, real
@@ -6639,32 +6649,6 @@ function readAllowancesInput(body: Record<string, unknown>) {
     transport: readAllowanceEntryInput(allowances, "transport"),
     meal: readAllowanceEntryInput(allowances, "meal"),
     lodging: readAllowanceEntryInput(allowances, "lodging")
-  };
-}
-function workerAllowances(
-  profile:
-    | {
-        transportProvision?: string | null;
-        transportAmountMinor?: number | null;
-        transportNote?: string | null;
-        mealProvision?: string | null;
-        mealAmountMinor?: number | null;
-        mealNote?: string | null;
-        lodgingProvision?: string | null;
-        lodgingAmountMinor?: number | null;
-        lodgingNote?: string | null;
-      }
-    | null
-    | undefined
-) {
-  const entry = (provision?: string | null, amountMinor?: number | null, note?: string | null) =>
-    provision && provision !== "none"
-      ? { provision, amountMinor: amountMinor ?? null, note: note ?? null }
-      : null;
-  return {
-    transport: entry(profile?.transportProvision, profile?.transportAmountMinor, profile?.transportNote),
-    meal: entry(profile?.mealProvision, profile?.mealAmountMinor, profile?.mealNote),
-    lodging: entry(profile?.lodgingProvision, profile?.lodgingAmountMinor, profile?.lodgingNote)
   };
 }
 
