@@ -3,6 +3,8 @@
 import { useCallback, useEffect, useState } from "react";
 import { useLocale, useT } from "../i18n/LocaleProvider";
 import type { RwosLocale } from "../i18n/config";
+import type { MessageKey } from "../i18n/messages";
+import type { Translate } from "../i18n/LocaleProvider";
 
 type Deduction = Readonly<{ category: string; code: string; description: string; amountMinor: number; currency: string }>;
 type Earning = Readonly<{ classification: string; description: string; quantityMinutes: number; rateMinor: number; amountMinor: number; currency: string }>;
@@ -22,7 +24,36 @@ type Statement = Readonly<{
   deductions: readonly Deduction[];
 }>;
 type Summary = Readonly<{ statementCount: number; totalGrossMinor: number; totalDeductionsMinor: number; totalNetMinor: number; currency: string }>;
-type State = { status: "loading" } | { status: "signed_out" } | { status: "error" } | { status: "ready"; items: readonly Statement[]; summary: Summary | null; workerClassification: string; notice: string };
+type PayState = { status: "loading" } | { status: "signed_out" } | { status: "error" } | { status: "ready"; items: readonly Statement[]; summary: Summary | null; workerClassification: string; notice: string };
+
+type Payout = Readonly<{
+  id: string;
+  payrollCalculationId: string;
+  organizationId: string;
+  currency: string;
+  amountMinor: number;
+  status: string;
+  holdUntil: string;
+  releasedAt: string | null;
+  paidAt: string | null;
+  heldReason: string | null;
+  periodStart: string;
+  periodEnd: string;
+}>;
+type PayoutSummary = Readonly<{ currency: string; toPayMinor: number; paidMinor: number }>;
+type PayoutsState =
+  | { status: "loading" }
+  | { status: "error" }
+  | { status: "ready"; toPay: readonly Payout[]; paid: readonly Payout[]; summary: PayoutSummary };
+
+type Tab = "earnings" | "topay" | "paid" | "calendar";
+
+const PAYOUT_STATUS_KEY: Record<string, MessageKey> = {
+  pending: "pay.statusPending",
+  released: "pay.statusReleased",
+  held: "pay.statusHeld",
+  paid: "pay.statusPaid"
+};
 
 function money(minor: number, currency: string, locale: RwosLocale): string {
   return new Intl.NumberFormat(locale, { style: "currency", currency }).format(minor / 100);
@@ -31,14 +62,33 @@ function period(startAt: string, endAt: string, tz: string, locale: RwosLocale):
   const opts: Intl.DateTimeFormatOptions = { month: "short", day: "numeric", year: "numeric", timeZone: tz };
   return `${new Date(startAt).toLocaleDateString(locale, opts)} – ${new Date(endAt).toLocaleDateString(locale, opts)}`;
 }
+function shortPeriod(startAt: string, endAt: string, locale: RwosLocale): string {
+  const opts: Intl.DateTimeFormatOptions = { month: "short", day: "numeric" };
+  return `${new Date(startAt).toLocaleDateString(locale, opts)} – ${new Date(endAt).toLocaleDateString(locale, opts)}`;
+}
+function shortDate(iso: string, locale: RwosLocale): string {
+  return new Date(iso).toLocaleDateString(locale, { month: "short", day: "numeric", year: "numeric" });
+}
 function hours(minutes: number): string {
   return (minutes / 60).toFixed(2);
+}
+function payoutBadge(status: string): string {
+  if (status === "released" || status === "paid") return "verified";
+  if (status === "pending") return "pending";
+  if (status === "held") return "rejected";
+  return "unverified";
+}
+// The date a payment lands on the calendar: when it was sent, else when it is expected to release.
+function payoutAnchor(p: Payout): string {
+  return p.paidAt ?? p.holdUntil;
 }
 
 export function MyPay() {
   const t = useT();
   const locale = useLocale();
-  const [state, setState] = useState<State>({ status: "loading" });
+  const [state, setState] = useState<PayState>({ status: "loading" });
+  const [payouts, setPayouts] = useState<PayoutsState>({ status: "loading" });
+  const [tab, setTab] = useState<Tab>("earnings");
 
   const load = useCallback(async () => {
     try {
@@ -49,6 +99,17 @@ export function MyPay() {
       setState({ status: "ready", items: payload.items, summary: payload.summary ?? null, workerClassification: payload.workerClassification ?? "employee", notice: payload.notice ?? "" });
     } catch {
       setState({ status: "error" });
+    }
+  }, []);
+
+  const loadPayouts = useCallback(async () => {
+    try {
+      const r = await fetch("/api/payments", { cache: "no-store" });
+      if (!r.ok) return setPayouts({ status: "error" });
+      const payload = (await r.json()) as { toPay: Payout[]; paid: Payout[]; summary: PayoutSummary };
+      setPayouts({ status: "ready", toPay: payload.toPay ?? [], paid: payload.paid ?? [], summary: payload.summary ?? { currency: "CAD", toPayMinor: 0, paidMinor: 0 } });
+    } catch {
+      setPayouts({ status: "error" });
     }
   }, []);
 
@@ -65,11 +126,13 @@ export function MyPay() {
     }
   }, [load]);
 
-  useEffect(() => { void load(); }, [load]);
+  useEffect(() => { void load(); void loadPayouts(); }, [load, loadPayouts]);
 
   if (state.status === "loading") return <div className="state">{t("common.loading")}</div>;
   if (state.status === "signed_out") return <div className="state">{t("pay.signInPrompt")}<div style={{ marginTop: 12 }}><a className="btn" href="/">{t("common.goToSearch")}</a></div></div>;
   if (state.status === "error") return <div className="state error" role="alert">{t("pay.loadError")}</div>;
+
+  const allPayouts: readonly Payout[] = payouts.status === "ready" ? [...payouts.toPay, ...payouts.paid] : [];
 
   return (
     <>
@@ -81,6 +144,26 @@ export function MyPay() {
         <span className="chip status-rejected">{t("pay.syntheticChip")}</span>
       </div>
 
+      <div className="chips" style={{ marginBottom: 16 }}>
+        <button type="button" className={`chip ${tab === "earnings" ? "status-verified" : ""}`} onClick={() => setTab("earnings")}>{t("pay.tabEarnings")}</button>
+        <button type="button" className={`chip ${tab === "topay" ? "status-verified" : ""}`} onClick={() => setTab("topay")}>{t("pay.tabToPay")}</button>
+        <button type="button" className={`chip ${tab === "paid" ? "status-verified" : ""}`} onClick={() => setTab("paid")}>{t("pay.tabPaid")}</button>
+        <button type="button" className={`chip ${tab === "calendar" ? "status-verified" : ""}`} onClick={() => setTab("calendar")}>{t("pay.tabCalendar")}</button>
+      </div>
+
+      {tab === "earnings" ? <EarningsTab state={state} choose={choose} t={t} locale={locale} /> : null}
+      {tab === "topay" ? <ToPayTab payouts={payouts} t={t} locale={locale} /> : null}
+      {tab === "paid" ? <PaidTab payouts={payouts} t={t} locale={locale} /> : null}
+      {tab === "calendar" ? <PaymentsCalendar payouts={payouts} items={allPayouts} t={t} locale={locale} /> : null}
+
+      <p className="notice">{t("pay.footer")}</p>
+    </>
+  );
+}
+
+function EarningsTab({ state, choose, t, locale }: { state: Extract<PayState, { status: "ready" }>; choose: (c: "employee" | "contractor") => void; t: Translate; locale: RwosLocale }) {
+  return (
+    <>
       {state.summary ? (
         <section className="card" style={{ marginBottom: 16 }}>
           <div className="role">{t("pay.summaryTitle")}</div>
@@ -149,7 +232,153 @@ export function MyPay() {
           ))}
         </div>
       )}
-      <p className="notice">{t("pay.footer")}</p>
+    </>
+  );
+}
+
+function PaymentCard({ p, t, locale }: { p: Payout; t: Translate; locale: RwosLocale }) {
+  const dateLine = p.status === "paid" && p.paidAt
+    ? t("pay.paidOn", { date: shortDate(p.paidAt, locale) })
+    : t("pay.expectedDate", { date: shortDate(p.holdUntil, locale) });
+  return (
+    <article className="card">
+      <div className="when" style={{ fontSize: 20 }}><strong>{money(p.amountMinor, p.currency, locale)}</strong></div>
+      <div className="chips">
+        <span className={`chip status-${payoutBadge(p.status)}`}>{t(PAYOUT_STATUS_KEY[p.status] ?? "pay.statusPending")}</span>
+      </div>
+      <div className="when">{t("pay.forPeriod", { period: shortPeriod(p.periodStart, p.periodEnd, locale) })}</div>
+      <div className="when">{dateLine}</div>
+      {p.status === "held" && p.heldReason ? <div className="when" style={{ color: "var(--text-muted)" }}>{t("pay.heldReason", { reason: p.heldReason })}</div> : null}
+    </article>
+  );
+}
+
+function ToPayTab({ payouts, t, locale }: { payouts: PayoutsState; t: Translate; locale: RwosLocale }) {
+  if (payouts.status === "loading") return <div className="state">{t("common.loading")}</div>;
+  if (payouts.status === "error") return <div className="state error" role="alert">{t("pay.paymentsLoadError")}</div>;
+  return (
+    <>
+      <section className="card" style={{ marginBottom: 16 }}>
+        <div className="role">{t("pay.toPayTitle")}</div>
+        <div className="when" style={{ fontSize: 18 }}>{t("pay.toPayTotal")}: <strong>{money(payouts.summary.toPayMinor, payouts.summary.currency, locale)}</strong></div>
+        <div className="when" style={{ color: "var(--text-muted)" }}>{t("pay.holdExplain")}</div>
+      </section>
+      {payouts.toPay.length === 0 ? (
+        <div className="state">{t("pay.toPayNone")}</div>
+      ) : (
+        <div className="results" style={{ paddingBottom: 48 }}>
+          {payouts.toPay.map((p) => <PaymentCard key={p.id} p={p} t={t} locale={locale} />)}
+        </div>
+      )}
+    </>
+  );
+}
+
+function PaidTab({ payouts, t, locale }: { payouts: PayoutsState; t: Translate; locale: RwosLocale }) {
+  if (payouts.status === "loading") return <div className="state">{t("common.loading")}</div>;
+  if (payouts.status === "error") return <div className="state error" role="alert">{t("pay.paymentsLoadError")}</div>;
+  return (
+    <>
+      <section className="card" style={{ marginBottom: 16 }}>
+        <div className="role">{t("pay.paidTotalTitle")}</div>
+        <div className="when" style={{ fontSize: 18 }}>{t("pay.paidTotal")}: <strong>{money(payouts.summary.paidMinor, payouts.summary.currency, locale)}</strong></div>
+      </section>
+      {payouts.paid.length === 0 ? (
+        <div className="state">{t("pay.paidNone")}</div>
+      ) : (
+        <div className="results" style={{ paddingBottom: 48 }}>
+          {payouts.paid.map((p) => <PaymentCard key={p.id} p={p} t={t} locale={locale} />)}
+        </div>
+      )}
+    </>
+  );
+}
+
+function dayKey(d: Date): string {
+  return `${d.getFullYear()}-${d.getMonth()}-${d.getDate()}`;
+}
+
+function PaymentsCalendar({ payouts, items, t, locale }: { payouts: PayoutsState; items: readonly Payout[]; t: Translate; locale: RwosLocale }) {
+  const [month, setMonth] = useState(() => { const d = new Date(); return new Date(d.getFullYear(), d.getMonth(), 1); });
+  const [selected, setSelected] = useState<string | null>(null);
+
+  if (payouts.status === "loading") return <div className="state">{t("common.loading")}</div>;
+  if (payouts.status === "error") return <div className="state error" role="alert">{t("pay.paymentsLoadError")}</div>;
+
+  const year = month.getFullYear();
+  const m = month.getMonth();
+  const startWeekday = new Date(year, m, 1).getDay();
+  const daysInMonth = new Date(year, m + 1, 0).getDate();
+  const counts = new Map<string, number>();
+  for (const p of items) {
+    const d = new Date(payoutAnchor(p));
+    if (d.getFullYear() === year && d.getMonth() === m) {
+      const k = dayKey(d);
+      counts.set(k, (counts.get(k) ?? 0) + 1);
+    }
+  }
+  const monthLabel = new Date(year, m, 1).toLocaleDateString(locale, { month: "long", year: "numeric" });
+  const weekdays = Array.from({ length: 7 }, (_, i) => new Date(2023, 0, 1 + i).toLocaleDateString(locale, { weekday: "narrow" }));
+  const cells: (number | null)[] = [...Array<null>(startWeekday).fill(null), ...Array.from({ length: daysInMonth }, (_, i) => i + 1)];
+  const todayKey = dayKey(new Date());
+  const dayPayouts = selected ? items.filter((p) => dayKey(new Date(payoutAnchor(p))) === selected) : [];
+
+  return (
+    <>
+      <section className="card" style={{ marginBottom: 16 }}>
+        <div className="chips" style={{ justifyContent: "space-between", alignItems: "center" }}>
+          <button type="button" className="chip" onClick={() => setMonth(new Date(year, m - 1, 1))} aria-label={t("sched.prevMonth")}>&#8249;</button>
+          <div className="role">{monthLabel}</div>
+          <button type="button" className="chip" onClick={() => setMonth(new Date(year, m + 1, 1))} aria-label={t("sched.nextMonth")}>&#8250;</button>
+        </div>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(7, 1fr)", gap: 4, marginTop: 10 }}>
+          {weekdays.map((w, i) => (
+            <div key={`wd-${i}`} style={{ textAlign: "center", fontSize: 12, opacity: 0.7 }}>{w}</div>
+          ))}
+          {cells.map((day, i) => {
+            if (day === null) return <div key={`b-${i}`} />;
+            const k = `${year}-${m}-${day}`;
+            const count = counts.get(k) ?? 0;
+            const isToday = k === todayKey;
+            const isSel = k === selected;
+            return (
+              <button
+                key={`d-${day}`}
+                type="button"
+                onClick={() => setSelected(isSel ? null : k)}
+                style={{
+                  aspectRatio: "1 / 1",
+                  borderRadius: 8,
+                  border: isToday ? "2px solid var(--accent)" : "1px solid var(--border, rgba(127,127,127,0.3))",
+                  background: isSel ? "var(--accent)" : count > 0 ? "var(--accent-soft, rgba(127,127,127,0.12))" : "transparent",
+                  color: isSel ? "#fff" : "inherit",
+                  cursor: "pointer",
+                  display: "flex",
+                  flexDirection: "column",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  fontSize: 13
+                }}
+              >
+                <span>{day}</span>
+                {count > 0 ? <span style={{ fontSize: 10, marginTop: 2 }}>&#9679;{count > 1 ? ` ${count}` : ""}</span> : null}
+              </button>
+            );
+          })}
+        </div>
+        <div className="when" style={{ marginTop: 8, fontSize: 12, opacity: 0.7 }}>{t("pay.calLegend")}</div>
+      </section>
+      {selected ? (
+        dayPayouts.length > 0 ? (
+          <div className="results" style={{ paddingBottom: 48 }}>
+            {dayPayouts.map((p) => <PaymentCard key={p.id} p={p} t={t} locale={locale} />)}
+          </div>
+        ) : (
+          <div className="state">{t("pay.calNoneDay")}</div>
+        )
+      ) : (
+        <p className="notice">{t("pay.calPickDay")}</p>
+      )}
     </>
   );
 }
