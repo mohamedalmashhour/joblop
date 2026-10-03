@@ -189,6 +189,14 @@ export const en = {
   "pay.net": "Net pay:",
   "pay.rev": "rev {n}",
   "pay.footer": "Only your own pay appears here. Figures are synthetic (test rules) and no money is moved by JobLop.",
+  "pay.summaryTitle": "Your earnings summary",
+  "pay.totalNet": "Total net earned",
+  "pay.totalGross": "Total gross",
+  "pay.totalDeductions": "Total deductions",
+  "pay.statementCount": "Statements",
+  "pay.earningsTitle": "Earnings",
+  "pay.hours": "{hours} h",
+  "pay.rateHr": "{rate}/h",
 
   // Common (shared, more)
   "common.aJob": "job",
@@ -571,6 +579,14 @@ export const fr: Messages = {
   "pay.net": "Paie nette :",
   "pay.rev": "rév. {n}",
   "pay.footer": "Seule votre propre paie apparaît ici. Les montants sont synthétiques (règles de test) et aucun argent n'est transféré par JobLop.",
+  "pay.summaryTitle": "Résumé de vos gains",
+  "pay.totalNet": "Total net gagné",
+  "pay.totalGross": "Total brut",
+  "pay.totalDeductions": "Total des retenues",
+  "pay.statementCount": "Bulletins",
+  "pay.earningsTitle": "Gains",
+  "pay.hours": "{hours} h",
+  "pay.rateHr": "{rate}/h",
 
   // Commun (partagé, suite)
   "common.aJob": "emploi",

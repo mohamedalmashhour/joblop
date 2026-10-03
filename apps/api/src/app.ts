@@ -6203,7 +6203,7 @@ export function buildApi(options: BuildApiOptions = {}) {
     const cursor = readOptionalString(query, "cursor");
     const rows = await prisma!.payrollCalculation.findMany({
       where: { workerIdentityId: identity.id, status: { in: ["approved", "locked"] } },
-      include: { deductionLines: true, payrollPeriod: { select: { periodStart: true, periodEnd: true, timezone: true } } },
+      include: { deductionLines: true, earningLines: true, payrollPeriod: { select: { periodStart: true, periodEnd: true, timezone: true } } },
       orderBy: [{ calculatedAt: "desc" }, { id: "desc" }],
       take: limit + 1,
       ...(cursor && isCanonicalUuid(cursor) ? { cursor: { id: cursor }, skip: 1 } : {})
@@ -6214,9 +6214,25 @@ export function buildApi(options: BuildApiOptions = {}) {
       periodStart: c.payrollPeriod.periodStart.toISOString(), periodEnd: c.payrollPeriod.periodEnd.toISOString(), timezone: c.payrollPeriod.timezone,
       jurisdiction: { country: c.jurisdictionCountry, region: c.jurisdictionRegion },
       currency: c.currency, grossPayMinor: c.grossPayMinor, totalDeductionsMinor: c.totalDeductionsMinor, netPayMinor: c.netPayMinor,
+      // Earning lines are the worker's own W-based breakdown (rate × minutes). rateMinor is the WORKER
+      // rate paid for this work; no employer rate is ever exposed to the worker.
+      earningLines: c.earningLines.map((e) => ({ classification: e.classification, description: e.description, quantityMinutes: e.quantityMinutes, rateMinor: e.rateMinor, amountMinor: e.amountMinor, currency: e.currency })),
       deductions: c.deductionLines.map((d) => ({ category: d.category, code: d.code, description: d.description, amountMinor: d.amountMinor, currency: d.currency }))
     }));
-    return reply.code(200).send({ items, nextCursor: hasMore ? (rows[limit - 1]?.id ?? null) : null, synthetic: true, notice: PAYROLL_SYNTHETIC_NOTICE });
+    // Accurate to-date totals across ALL the worker's approved/locked statements (not just this page).
+    const totals = await prisma!.payrollCalculation.aggregate({
+      where: { workerIdentityId: identity.id, status: { in: ["approved", "locked"] } },
+      _sum: { grossPayMinor: true, totalDeductionsMinor: true, netPayMinor: true },
+      _count: true
+    });
+    const summary = {
+      statementCount: totals._count,
+      totalGrossMinor: totals._sum.grossPayMinor ?? 0,
+      totalDeductionsMinor: totals._sum.totalDeductionsMinor ?? 0,
+      totalNetMinor: totals._sum.netPayMinor ?? 0,
+      currency: items[0]?.currency ?? "CAD"
+    };
+    return reply.code(200).send({ items, summary, nextCursor: hasMore ? (rows[limit - 1]?.id ?? null) : null, synthetic: true, notice: PAYROLL_SYNTHETIC_NOTICE });
   });
 
   async function userHasOrganizationAccess(userId: string, organizationId: string): Promise<boolean> {
