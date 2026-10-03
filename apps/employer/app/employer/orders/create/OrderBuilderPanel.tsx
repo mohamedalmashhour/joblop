@@ -9,7 +9,8 @@ import {
   formatHourlyRate,
   formatMoney,
   hoursBetween,
-  meetsMinimumShiftDuration
+  meetsMinimumShiftDuration,
+  urgencyPremiumMinor
 } from "@rwos/shared";
 import { LanguageSwitcher } from "../../../i18n/LanguageSwitcher";
 import { useT } from "../../../i18n/LocaleProvider";
@@ -117,13 +118,14 @@ export function OrderBuilderPanel() {
   }
 
   const hours = hoursBetween(shared.startAt, shared.endAt);
+  const premiumMinor = urgencyPremiumMinor(shared.urgency);
 
   function lineEstimateMinor(line: Line): { minor: number; currency: string } | null {
     const role = lineRole(line);
     if (!role || role.hourlyRateMinor === null || role.currency === null) return null;
     const workers = Number.parseInt(line.numberOfWorkers, 10);
     if (!Number.isInteger(workers) || workers < 1 || hours <= 0) return null;
-    const est = estimateRequestCost({ hourlyRate: createContractMoney({ amountMinor: role.hourlyRateMinor, currency: role.currency }), hours, workers });
+    const est = estimateRequestCost({ hourlyRate: createContractMoney({ amountMinor: role.hourlyRateMinor + premiumMinor, currency: role.currency }), hours, workers });
     return { minor: est.amountMinor, currency: est.currency };
   }
 
@@ -289,6 +291,7 @@ export function OrderBuilderPanel() {
           </div>
 
           <h2 style={styles.cardTitle}>{t("order.roleLines")}</h2>
+          {premiumMinor > 0 ? <p style={styles.cardText}>{t("order.urgentPremium")}</p> : null}
           {lines.map((line) => {
             const roles = rolesForWorkGroup(line.workGroup);
             const role = lineRole(line);
@@ -321,7 +324,7 @@ export function OrderBuilderPanel() {
                 </div>
                 {role && role.hourlyRateMinor !== null && role.currency ? (
                   <p style={styles.cardText}>
-                    {t("order.lineRate")}: {formatHourlyRate(createContractMoney({ amountMinor: role.hourlyRateMinor, currency: role.currency }))}
+                    {t("order.lineRate")}: {formatHourlyRate(createContractMoney({ amountMinor: role.hourlyRateMinor + premiumMinor, currency: role.currency }))}
                     {est ? ` · ${t("order.lineEstimate", { amount: formatMoney(createContractMoney({ amountMinor: est.minor, currency: est.currency })), hours: String(hours), workers: line.numberOfWorkers })}` : ""}
                   </p>
                 ) : null}

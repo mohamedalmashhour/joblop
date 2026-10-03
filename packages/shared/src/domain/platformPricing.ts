@@ -25,6 +25,20 @@ export const DEFAULT_PLATFORM_MARGIN_PPM = 200_000;
 export const MIN_PLATFORM_MARGIN_PPM = 0;
 export const MAX_PLATFORM_MARGIN_PPM = 900_000; // 90% — a worker must always receive something.
 
+/**
+ * Urgent/emergency hourly premium: $5.00/hr. For an urgent or immediate request the premium is added
+ * flat to BOTH the employer rate (E) and the worker rate (W) — the worker is paid more to take the
+ * urgent shift and the employer pays more for it, so it passes straight through and the platform
+ * margin (E − W) is unchanged. It is folded into the hourly rates, so the employer invoice taxes it
+ * like the rest of the rate.
+ */
+export const URGENT_HOURLY_PREMIUM_MINOR = 500;
+
+/** The hourly premium for a request's urgency: $5.00/hr for urgent or immediate, otherwise nothing. */
+export function urgencyPremiumMinor(urgency: string | null | undefined): number {
+  return urgency === "urgent" || urgency === "immediate" ? URGENT_HOURLY_PREMIUM_MINOR : 0;
+}
+
 const PPM = 1_000_000;
 
 function roundHalfUp(value: number): number {
@@ -204,13 +218,19 @@ export function splitAllowanceMinor(
 export function computeRequestPricingSnapshot(input: {
   employerHourlyRateMinor: number;
   marginPpm?: number | null;
+  urgencyPremiumMinor?: number | null;
   transportAllowanceMinor?: number | null;
   mealAllowanceMinor?: number | null;
   lodgingAllowanceMinor?: number | null;
 }): RequestPricingSnapshot {
   const marginPpm = resolveMarginPpm(input.marginPpm);
-  const employerHourlyRateMinor = Math.max(0, Math.trunc(input.employerHourlyRateMinor));
-  const workerHourlyRateMinor = workerAmountMinor(employerHourlyRateMinor, marginPpm);
+  const baseEmployerHourlyRateMinor = Math.max(0, Math.trunc(input.employerHourlyRateMinor));
+  const baseWorkerHourlyRateMinor = workerAmountMinor(baseEmployerHourlyRateMinor, marginPpm);
+  // The urgent premium is added flat to BOTH sides AFTER the margin split, so the worker and the
+  // employer each gain exactly the premium and the platform margin (E − W) is unchanged.
+  const premium = Math.max(0, Math.trunc(input.urgencyPremiumMinor ?? 0));
+  const employerHourlyRateMinor = baseEmployerHourlyRateMinor + premium;
+  const workerHourlyRateMinor = baseWorkerHourlyRateMinor + premium;
   return {
     marginPpm,
     employerHourlyRateMinor,

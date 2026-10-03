@@ -8,6 +8,8 @@ import {
   billableHours,
   computeCardTransferFeeMinor,
   computeRequestPricingSnapshot,
+  URGENT_HOURLY_PREMIUM_MINOR,
+  urgencyPremiumMinor,
   computeShiftPricing,
   employerTransferSurchargeMinor,
   splitAllowanceMinor,
@@ -171,5 +173,38 @@ describe("platform pricing — request pricing snapshot (hidden markup)", () => 
   it("treats missing or negative allowances as zero", () => {
     expect(splitAllowanceMinor(undefined, 200_000)).toEqual({ employerMinor: 0, workerMinor: 0, platformMarginMinor: 0 });
     expect(splitAllowanceMinor(-50, 200_000)).toEqual({ employerMinor: 0, workerMinor: 0, platformMarginMinor: 0 });
+  });
+});
+
+
+describe("urgent/emergency hourly premium", () => {
+  it("resolves the premium only for urgent or immediate", () => {
+    expect(urgencyPremiumMinor("normal")).toBe(0);
+    expect(urgencyPremiumMinor("urgent")).toBe(URGENT_HOURLY_PREMIUM_MINOR);
+    expect(urgencyPremiumMinor("immediate")).toBe(URGENT_HOURLY_PREMIUM_MINOR);
+    expect(urgencyPremiumMinor(null)).toBe(0);
+    expect(urgencyPremiumMinor(undefined)).toBe(0);
+  });
+
+  it("adds the premium to BOTH E and W and leaves the platform margin unchanged", () => {
+    const base = computeRequestPricingSnapshot({ employerHourlyRateMinor: 3000, marginPpm: 200_000 });
+    const urgent = computeRequestPricingSnapshot({ employerHourlyRateMinor: 3000, marginPpm: 200_000, urgencyPremiumMinor: URGENT_HOURLY_PREMIUM_MINOR });
+    expect(urgent.employerHourlyRateMinor).toBe(base.employerHourlyRateMinor + 500);
+    expect(urgent.workerHourlyRateMinor).toBe(base.workerHourlyRateMinor + 500);
+    // The whole point: the hidden margin (E − W) is identical urgent vs normal.
+    expect(urgent.platformHourlyMarginMinor).toBe(base.platformHourlyMarginMinor);
+    expect(urgent.employerHourlyRateMinor - urgent.workerHourlyRateMinor).toBe(urgent.platformHourlyMarginMinor);
+  });
+
+  it("does not apply the premium to allowances", () => {
+    const urgent = computeRequestPricingSnapshot({ employerHourlyRateMinor: 3000, marginPpm: 200_000, urgencyPremiumMinor: 500, transportAllowanceMinor: 1000 });
+    const plain = computeRequestPricingSnapshot({ employerHourlyRateMinor: 3000, marginPpm: 200_000, transportAllowanceMinor: 1000 });
+    expect(urgent.transport).toEqual(plain.transport);
+  });
+
+  it("treats a zero or missing premium as a normal snapshot", () => {
+    const plain = computeRequestPricingSnapshot({ employerHourlyRateMinor: 3000, marginPpm: 200_000 });
+    const zero = computeRequestPricingSnapshot({ employerHourlyRateMinor: 3000, marginPpm: 200_000, urgencyPremiumMinor: 0 });
+    expect(zero).toEqual(plain);
   });
 });

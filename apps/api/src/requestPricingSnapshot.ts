@@ -1,5 +1,5 @@
 import type { PrismaClient } from "@rwos/database";
-import { computeRequestPricingSnapshot } from "@rwos/shared";
+import { computeRequestPricingSnapshot, urgencyPremiumMinor } from "@rwos/shared";
 import {
   createPrismaEmployerContractRepository,
   type RequestPricingSnapshotCapture
@@ -26,6 +26,7 @@ export function createPrismaRequestPricingSnapshotCapture(
           organizationId: true,
           workGroupId: true,
           roleDefinitionId: true,
+          urgency: true,
           startAt: true,
           calendarProfile: {
             select: {
@@ -66,6 +67,7 @@ export function createPrismaRequestPricingSnapshotCapture(
       const snapshot = computeRequestPricingSnapshot({
         employerHourlyRateMinor: roleRate.hourlyRateMinor,
         marginPpm: input.marginPpm,
+        urgencyPremiumMinor: urgencyPremiumMinor(jobRequest.urgency),
         transportAllowanceMinor: funded(profile?.transportProvision, profile?.transportAmountMinor),
         mealAllowanceMinor: funded(profile?.mealProvision, profile?.mealAmountMinor),
         lodgingAllowanceMinor: funded(profile?.lodgingProvision, profile?.lodgingAmountMinor)
