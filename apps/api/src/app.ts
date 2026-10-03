@@ -229,6 +229,8 @@ import { registerDocumentRoutes } from "./documentRoutes";
 import { registerInvoiceRoutes } from "./invoiceRoutes";
 import { createPrismaRequestPricingSnapshotCapture } from "./requestPricingSnapshot";
 import { materializeAndListWorkerPayouts } from "./workerPayoutRepository";
+import { isWorkerDisputeCategory, normalizeWorkerDisputeReason } from "@rwos/shared";
+import { raiseWorkerDispute, listWorkerDisputes, withdrawWorkerDispute } from "./workerDisputeRepository";
 import { workerAllowances } from "./workerAllowances";
 import { createPrismaInvoiceRepository, type InvoiceRepository } from "./invoiceRepository";
 import { createPrismaPayrollRepository, createPrismaPayrollRateResolver, createPrismaPayrollJurisdictionResolver, createPrismaPayrollClassificationResolver } from "./payrollRepository";
@@ -6275,6 +6277,65 @@ export function buildApi(options: BuildApiOptions = {}) {
     const toPayMinor = toPay.reduce((sum, p) => sum + p.amountMinor, 0);
     const paidMinor = paid.reduce((sum, p) => sum + p.amountMinor, 0);
     return reply.code(200).send({ toPay, paid, summary: { currency, toPayMinor, paidMinor }, synthetic: true });
+  });
+
+  // The worker raises a dispute on what they are owed for a finished shift (its payout, by payroll
+  // calculation). An open dispute PAUSES that payout (held) until it is resolved or withdrawn.
+  app.post("/worker/disputes", async (request, reply) => {
+    const session = await authService.validateSession(readBearerToken(request.headers.authorization));
+    if (!session.authenticated || !session.user) {
+      return reply.code(401).send({ error: "RWOS_WORKER_DENIED", message: "Authentication is required." });
+    }
+    const identity = await prisma!.workerIdentity.findFirst({ where: { userId: session.user.id }, select: { id: true } });
+    if (!identity) {
+      return reply.code(404).send({ error: "RWOS_WORKER_NOT_FOUND", message: "No worker profile." });
+    }
+    const body = asRecord(request.body);
+    const payrollCalculationId = readOptionalString(body, "payrollCalculationId");
+    const category = readOptionalString(body, "category");
+    const reason = normalizeWorkerDisputeReason(body.reason);
+    if (!payrollCalculationId || !isWorkerDisputeCategory(category) || !reason) {
+      return reply.code(400).send({ error: "RWOS_INVALID_DISPUTE", message: "A payout, a category and a reason are required." });
+    }
+    const result = await raiseWorkerDispute(prisma!, { workerIdentityId: identity.id, payrollCalculationId, category, reason, now: new Date() });
+    if (!result.ok) {
+      const code = result.reason === "not_found" ? 404 : 409;
+      return reply.code(code).send({ error: `RWOS_DISPUTE_${result.reason.toUpperCase()}`, message: "This payout cannot be disputed." });
+    }
+    return reply.code(201).send({ dispute: result.dispute, synthetic: true });
+  });
+
+  // The worker's own disputes (most recent first).
+  app.get("/worker/disputes", async (request, reply) => {
+    const session = await authService.validateSession(readBearerToken(request.headers.authorization));
+    if (!session.authenticated || !session.user) {
+      return reply.code(401).send({ error: "RWOS_WORKER_DENIED", message: "Authentication is required." });
+    }
+    const identity = await prisma!.workerIdentity.findFirst({ where: { userId: session.user.id }, select: { id: true } });
+    if (!identity) {
+      return reply.code(200).send({ items: [], synthetic: true });
+    }
+    const items = await listWorkerDisputes(prisma!, identity.id);
+    return reply.code(200).send({ items, synthetic: true });
+  });
+
+  // The worker withdraws their own still-open dispute; its paused payout returns to the normal flow.
+  app.post("/worker/disputes/:disputeId/withdraw", async (request, reply) => {
+    const session = await authService.validateSession(readBearerToken(request.headers.authorization));
+    if (!session.authenticated || !session.user) {
+      return reply.code(401).send({ error: "RWOS_WORKER_DENIED", message: "Authentication is required." });
+    }
+    const identity = await prisma!.workerIdentity.findFirst({ where: { userId: session.user.id }, select: { id: true } });
+    if (!identity) {
+      return reply.code(404).send({ error: "RWOS_WORKER_NOT_FOUND", message: "No worker profile." });
+    }
+    const disputeId = (request.params as { disputeId?: string }).disputeId ?? "";
+    const result = await withdrawWorkerDispute(prisma!, { workerIdentityId: identity.id, disputeId, now: new Date() });
+    if (!result.ok) {
+      const code = result.reason === "not_found" ? 404 : 409;
+      return reply.code(code).send({ error: `RWOS_DISPUTE_${result.reason.toUpperCase()}`, message: "This dispute cannot be withdrawn." });
+    }
+    return reply.code(200).send({ dispute: result.dispute, synthetic: true });
   });
 
   async function userHasOrganizationAccess(userId: string, organizationId: string): Promise<boolean> {

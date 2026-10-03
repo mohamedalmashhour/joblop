@@ -1,5 +1,5 @@
 import type { PrismaClient } from "@rwos/database";
-import { canReleaseWorkerPayout, workerPayoutHoldUntilMs } from "@rwos/shared";
+import { nextWorkerPayoutStatus, workerPayoutHoldUntilMs, type WorkerPayoutStatus } from "@rwos/shared";
 
 export type WorkerPayoutView = Readonly<{
   id: string;
@@ -17,9 +17,10 @@ export type WorkerPayoutView = Readonly<{
 }>;
 
 // Materialize a pending payout for each of the worker's LOCKED payroll calculations that has none,
-// then auto-release any pending payout whose hold has elapsed. Dispute support is not wired yet, so
-// hasOpenDispute is false here (the disputes slice flips this). Reporting-only: it creates/releases
-// ledger rows; the external Interac/EFT send ("paid") is a provider integration handled separately.
+// then move each payout to the status the world dictates (pure nextWorkerPayoutStatus): an open
+// dispute on its calculation holds it; a resolved/withdrawn dispute un-holds it; a pending payout
+// past its two-week hold with no dispute is released automatically. Reporting/ledger only: it
+// creates/updates ledger rows; the external Interac/EFT send ("paid") is a provider integration.
 export async function materializeAndListWorkerPayouts(
   prisma: PrismaClient,
   workerIdentityId: string,
@@ -62,22 +63,35 @@ export async function materializeAndListWorkerPayouts(
     where: { workerIdentityId },
     orderBy: { createdAt: "desc" }
   });
+
+  // Which of these payouts' calculations currently carry an OPEN dispute.
+  const openDisputes = await prisma.workerDispute.findMany({
+    where: {
+      workerIdentityId,
+      status: "open",
+      payrollCalculationId: { in: payouts.map((p) => p.payrollCalculationId) }
+    },
+    select: { payrollCalculationId: true }
+  });
+  const disputed = new Set(openDisputes.map((d) => d.payrollCalculationId));
+
   for (const p of payouts) {
-    if (
-      canReleaseWorkerPayout({
-        status: p.status,
-        holdUntilMs: p.holdUntil.getTime(),
-        nowMs: now.getTime(),
-        hasOpenDispute: false
-      })
-    ) {
-      await prisma.workerPayout.updateMany({
-        where: { id: p.id, status: "pending" },
-        data: { status: "released", releasedAt: now }
-      });
-      p.status = "released";
-      p.releasedAt = now;
-    }
+    const next = nextWorkerPayoutStatus({
+      status: p.status as WorkerPayoutStatus,
+      holdUntilMs: p.holdUntil.getTime(),
+      nowMs: now.getTime(),
+      hasOpenDispute: disputed.has(p.payrollCalculationId)
+    });
+    if (next === p.status) continue;
+    const data: { status: WorkerPayoutStatus; releasedAt?: Date; heldReason?: string | null } = { status: next };
+    if (next === "released") data.releasedAt = now;
+    if (next === "held") data.heldReason = "dispute";
+    if (next === "pending") data.heldReason = null;
+    await prisma.workerPayout.updateMany({ where: { id: p.id, status: p.status }, data });
+    p.status = next;
+    if (next === "released") p.releasedAt = now;
+    if (next === "held") p.heldReason = "dispute";
+    if (next === "pending") p.heldReason = null;
   }
 
   const periodByCalc = new Map(lockedCalcs.map((c) => [c.id, c.payrollPeriod]));
