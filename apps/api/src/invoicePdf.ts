@@ -1,4 +1,5 @@
 import { createHash } from "node:crypto";
+import { PLATFORM_INVOICE_CONTACT } from "@rwos/shared";
 import type { DurableCreditNote, DurableInvoice } from "./invoiceRepository";
 
 export type RenderedInvoicePdf = Readonly<{
@@ -12,7 +13,22 @@ export function renderBilingualSyntheticInvoicePdf(invoice: DurableInvoice): Ren
   if (!invoice.invoiceNumber || !invoice.issuedAt) {
     throw new Error("Only an issued invoice can be rendered.");
   }
+  const issuer = invoice.calculationSnapshot.issuer;
+  const header = [
+    issuer.legalName,
+    `NEQ: ${issuer.enterpriseIdentifier}`,
+    ...(issuer.issuerModel === "platform_principal"
+      ? [
+          `${PLATFORM_INVOICE_CONTACT.addressLine1}, ${PLATFORM_INVOICE_CONTACT.city} (${PLATFORM_INVOICE_CONTACT.province}) ${PLATFORM_INVOICE_CONTACT.postalCode}`,
+          `Tel / Tél: ${PLATFORM_INVOICE_CONTACT.phone}   ${PLATFORM_INVOICE_CONTACT.email}`
+        ]
+      : []),
+    ...(issuer.gstRegistrationReference ? [`GST/TPS: ${issuer.gstRegistrationReference}`] : []),
+    ...(issuer.qstRegistrationReference ? [`QST/TVQ: ${issuer.qstRegistrationReference}`] : []),
+    ""
+  ];
   const lines = [
+    ...header,
     "INVOICE / FACTURE",
     `Number / Numéro: ${invoice.invoiceNumber}`,
     `Issued / Émise: ${invoice.issuedAt.slice(0, 10)}`,
