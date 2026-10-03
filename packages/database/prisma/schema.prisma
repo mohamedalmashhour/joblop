@@ -1192,6 +1192,36 @@ model WorkerPayout {
   @@map("worker_payouts")
 }
 
+// Worker dispute: a worker contests what they are owed for a finished shift (its payroll calculation /
+// payout). While a dispute is open it PAUSES that payout — the payout moves to `held` and is never
+// released until the dispute is resolved or withdrawn. Linked by payroll_calculation_id (1:1 with a
+// worker_payouts row). Admin resolution is handled separately.
+enum WorkerDisputeStatus {
+  open
+  resolved
+  withdrawn
+}
+
+model WorkerDispute {
+  id                   String              @id @default(uuid()) @db.Uuid
+  workerIdentityId     String              @map("worker_identity_id") @db.Uuid
+  payrollCalculationId String              @map("payroll_calculation_id") @db.Uuid
+  organizationId       String              @map("organization_id") @db.Uuid
+  status               WorkerDisputeStatus @default(open)
+  category             String
+  reason               String
+  resolution           String?
+  resolvedAt           DateTime?           @map("resolved_at") @db.Timestamptz(3)
+  createdAt            DateTime            @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt            DateTime            @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  workerIdentity WorkerIdentity @relation(fields: [workerIdentityId], references: [id], onDelete: Restrict)
+
+  @@index([workerIdentityId, status], map: "worker_disputes_worker_status_idx")
+  @@index([payrollCalculationId, status], map: "worker_disputes_calc_status_idx")
+  @@map("worker_disputes")
+}
+
 // Immutable per-request hidden-markup record, captured when an admin approves a request for dispatch.
 // Stores the employer rate (E), the admin-chosen margin, the derived worker rate (W), and the
 // per-allowance employer/worker splits. Payroll pays W from here; each audience view reads only its
@@ -1334,6 +1364,7 @@ model WorkerIdentity {
   savedJobs          WorkerSavedJob[]
   jobInterests       WorkerJobInterest[]
   payouts            WorkerPayout[]
+  disputes           WorkerDispute[]
   verifications      WorkerVerification[]
   hrProfile          HrProfile?
   hrCredentials      HrCredential[]

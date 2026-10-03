@@ -26,3 +26,4 @@ export * from "./worker";
 export * from "./platformPricing";
 export * from "./platformInvoiceIssuer";
 export * from "./workerPayout";
+export * from "./workerDispute";
