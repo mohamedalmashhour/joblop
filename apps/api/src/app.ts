@@ -230,7 +230,7 @@ import { registerInvoiceRoutes } from "./invoiceRoutes";
 import { createPrismaRequestPricingSnapshotCapture } from "./requestPricingSnapshot";
 import { workerAllowances } from "./workerAllowances";
 import { createPrismaInvoiceRepository, type InvoiceRepository } from "./invoiceRepository";
-import { createPrismaPayrollRepository, createPrismaPayrollRateResolver, createPrismaPayrollJurisdictionResolver } from "./payrollRepository";
+import { createPrismaPayrollRepository, createPrismaPayrollRateResolver, createPrismaPayrollJurisdictionResolver, createPrismaPayrollClassificationResolver } from "./payrollRepository";
 import { registerPaymentRoutes } from "./paymentRoutes";
 import { registerStripeWebhookRoute } from "./stripeWebhookRoute";
 import { createPrismaPaymentRepository, type PaymentRepository } from "./paymentRepository";
@@ -615,7 +615,8 @@ export function buildApi(options: BuildApiOptions = {}) {
     repository: payrollRepositoryRead,
     ruleProviders: [createSyntheticPayrollRuleProvider()],
     rateResolver: payrollRateResolver,
-    jurisdictionResolver: payrollJurisdictionResolver
+    jurisdictionResolver: payrollJurisdictionResolver,
+    classificationResolver: createPrismaPayrollClassificationResolver(prisma!)
   });
   // HR-6 advisory AI review provider (offline synthetic by default). Advisory only — it consumes
   // the sanitized review context and cannot approve/lock/correct/pay or touch payroll state.

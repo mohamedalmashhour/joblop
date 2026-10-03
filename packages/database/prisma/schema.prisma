@@ -1283,6 +1283,7 @@ model WorkerIdentity {
   displayName       String?              @map("display_name")
   preferredLanguage String?              @map("preferred_language")
   status            WorkerIdentityStatus @default(active)
+  classification    String               @default("employee") @map("classification")
   createdAt         DateTime             @default(now()) @map("created_at") @db.Timestamptz(3)
   updatedAt         DateTime             @updatedAt @map("updated_at") @db.Timestamptz(3)
   version           Int                  @default(1)

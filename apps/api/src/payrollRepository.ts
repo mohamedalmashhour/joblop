@@ -7,6 +7,7 @@ import type {
   PayrollJurisdictionResolver,
   PayrollPeriodStatus,
   PayrollRateResolver,
+  PayrollWorkerClassification,
   PayrollReplaySnapshot,
   PayrollRepository,
   PayrollWorkedTimeLine,
@@ -68,6 +69,26 @@ export function createPrismaPayrollJurisdictionResolver(prisma: PrismaClient): P
       const residence = await prisma.residence.findUnique({ where: { id: input.residenceId }, select: { country: true, province: true } });
       if (!residence || !residence.province) return null;
       return { country: (residence.country ?? "CA").toUpperCase(), region: residence.province.toUpperCase() };
+    }
+  };
+}
+
+// AUTHORITATIVE worker classification resolver — reads the worker's self-declared tax status set at
+// sign-up. employee -> payroll runs full source deductions + employer costs (T4); contractor
+// (travailleur autonome) -> payroll runs NO deductions and NO employer costs (paid gross, T4A). An
+// unknown or missing value fails safe to employee. The payroll engine already branches on this value.
+export function createPrismaPayrollClassificationResolver(
+  prisma: PrismaClient
+): { resolve(workerIdentityId: string): Promise<PayrollWorkerClassification> } {
+  return {
+    async resolve(workerIdentityId) {
+      const worker = await prisma.workerIdentity.findUnique({
+        where: { id: workerIdentityId },
+        select: { classification: true }
+      });
+      const value = worker?.classification;
+      if (value === "contractor" || value === "temporary_worker") return value;
+      return "employee";
     }
   };
 }
