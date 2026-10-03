@@ -6,7 +6,17 @@ export function readAdminIntakeMutation(input: unknown, needsReason: boolean) {
   if (!Number.isInteger(record.expectedVersion) || (record.expectedVersion as number) < 0) {
     return null;
   }
-  if (!needsReason) return { expectedVersion: record.expectedVersion as number };
+  // Optional per-role margin for approve-for-dispatch (parts-per-million, 0..900000). Forwarded to
+  // the API, which uses it only on approval to derive the worker/platform split in the snapshot.
+  const marginPpm =
+    Number.isInteger(record.marginPpm) && (record.marginPpm as number) >= 0 && (record.marginPpm as number) <= 900_000
+      ? (record.marginPpm as number)
+      : undefined;
+  if (!needsReason) {
+    return marginPpm === undefined
+      ? { expectedVersion: record.expectedVersion as number }
+      : { expectedVersion: record.expectedVersion as number, marginPpm };
+  }
   if (
     typeof record.reason !== "string" ||
     record.reason.trim().length < 4 ||
@@ -14,10 +24,9 @@ export function readAdminIntakeMutation(input: unknown, needsReason: boolean) {
   ) {
     return null;
   }
-  return {
-    expectedVersion: record.expectedVersion as number,
-    reason: record.reason.trim()
-  };
+  return marginPpm === undefined
+    ? { expectedVersion: record.expectedVersion as number, reason: record.reason.trim() }
+    : { expectedVersion: record.expectedVersion as number, reason: record.reason.trim(), marginPpm };
 }
 
 export function parseAdminIntakeMutationResult(input: unknown) {
