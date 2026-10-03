@@ -4,6 +4,7 @@ import {
   PLATFORM_INVOICE_ISSUER,
   PLATFORM_INVOICE_TAX,
   calculateInvoiceSnapshot,
+  employerTransferSurchargeMinor,
   type InvoiceActorRole,
   type InvoiceCalculationInput,
   type InvoiceNumberingConfiguration,
@@ -346,7 +347,41 @@ function invoiceCalculationInput(
     issuer: input.issuer ?? PLATFORM_INVOICE_ISSUER,
     tax: input.tax ?? PLATFORM_INVOICE_TAX
   };
-  return withPlatformDefaults as InvoiceCalculationInput;
+
+  // Server-authoritative payment transfer-fee surcharge. The employer picks the payment method when
+  // the invoice is generated (calculation.paymentMethodKind); the surcharge is derived HERE from the
+  // validated base total so a client can never set it directly or dodge it. Any client-supplied
+  // transferFee is discarded. Card => employer's 50% share added as a line; Interac/bank-debit and
+  // "method not chosen" => no surcharge line (the platform absorbs the Interac fee).
+  const method = surchargeMethod(input.paymentMethodKind);
+  if (method === "invalid") return null;
+  const base: Record<string, unknown> = { ...withPlatformDefaults };
+  delete base.transferFee;
+  delete base.paymentMethodKind;
+  const baseInput = base as unknown as InvoiceCalculationInput;
+  if (method !== "card") return baseInput;
+  try {
+    const baseTotalMinor = calculateInvoiceSnapshot(baseInput).total.amountMinor;
+    const surchargeMinor = employerTransferSurchargeMinor({ amountMinor: baseTotalMinor, method });
+    if (surchargeMinor > 0) {
+      return {
+        ...baseInput,
+        transferFee: { amountMinor: surchargeMinor, currency: "CAD" }
+      } as InvoiceCalculationInput;
+    }
+    return baseInput;
+  } catch {
+    // Base configuration is invalid; let the route's calculateInvoiceSnapshot surface the real error.
+    return baseInput;
+  }
+}
+
+function surchargeMethod(value: unknown): "card" | "interac" | null | "invalid" {
+  if (value === undefined || value === null) return null;
+  const kind = text(value);
+  if (kind === "mastercard" || kind === "card") return "card";
+  if (kind === "acss_debit" || kind === "interac") return "interac";
+  return "invalid";
 }
 
 function invoiceNumberingConfiguration(

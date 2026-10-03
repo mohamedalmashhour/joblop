@@ -169,6 +169,162 @@ describe("authenticated invoice routes", () => {
     );
   });
 
+  it("adds a server-computed card surcharge line when the employer pays by card", async () => {
+    const app = Fastify();
+    const target = repository();
+    vi.mocked(target.createFromLockedTimesheet).mockResolvedValue({
+      ...invoice,
+      status: "draft",
+      invoiceNumber: null,
+      version: 1,
+      issuedAt: null
+    });
+    registerInvoiceRoutes(app, {
+      repository: target,
+      authorize: async () => ({ actorId: "synthetic-finance", role: "finance_reviewer" })
+    });
+    const response = await app.inject({
+      method: "POST",
+      url: `/organizations/${organizationId}/invoices`,
+      payload: {
+        idempotencyKey: "surcharge-card",
+        calculation: {
+          source: calculation.source,
+          issuer: calculation.issuer,
+          tax: calculation.tax,
+          rules: calculation.rules,
+          occurredAt: calculation.calculatedAt,
+          regularLabour: cad(10_000),
+          urgentLabour: cad(0),
+          approvedTravelTime: cad(0),
+          mileage: cad(0),
+          adjustments: cad(0),
+          marketplaceFees: cad(500),
+          credits: cad(0),
+          paymentMethodKind: "mastercard",
+          lineRuleVersions: {
+            regular_labour: "synthetic",
+            urgent_labour: "synthetic",
+            approved_travel_time: "synthetic",
+            mileage: "synthetic",
+            adjustment: "synthetic",
+            marketplace_fee: "synthetic",
+            credit: "synthetic"
+          }
+        }
+      }
+    });
+    expect(response.statusCode).toBe(201);
+    const arg = vi.mocked(target.createFromLockedTimesheet).mock.calls[0]![0];
+    // base 10_500 (labour 10_000 + marketplace 500), tax not enabled -> card fee 335 -> employer half 168 -> total 10_668
+    expect(arg.calculation.total).toEqual(cad(10_668));
+    const surchargeLine = arg.calculation.lines.find((entry) => entry.kind === "transfer_fee");
+    expect(surchargeLine?.amount).toEqual(cad(168));
+  });
+
+  it("adds no surcharge when the employer pays by Interac / bank debit (platform absorbs the fee)", async () => {
+    const app = Fastify();
+    const target = repository();
+    vi.mocked(target.createFromLockedTimesheet).mockResolvedValue({
+      ...invoice,
+      status: "draft",
+      invoiceNumber: null,
+      version: 1,
+      issuedAt: null
+    });
+    registerInvoiceRoutes(app, {
+      repository: target,
+      authorize: async () => ({ actorId: "synthetic-finance", role: "finance_reviewer" })
+    });
+    const response = await app.inject({
+      method: "POST",
+      url: `/organizations/${organizationId}/invoices`,
+      payload: {
+        idempotencyKey: "surcharge-interac",
+        calculation: {
+          source: calculation.source,
+          issuer: calculation.issuer,
+          tax: calculation.tax,
+          rules: calculation.rules,
+          occurredAt: calculation.calculatedAt,
+          regularLabour: cad(10_000),
+          urgentLabour: cad(0),
+          approvedTravelTime: cad(0),
+          mileage: cad(0),
+          adjustments: cad(0),
+          marketplaceFees: cad(500),
+          credits: cad(0),
+          paymentMethodKind: "acss_debit",
+          lineRuleVersions: {
+            regular_labour: "synthetic",
+            urgent_labour: "synthetic",
+            approved_travel_time: "synthetic",
+            mileage: "synthetic",
+            adjustment: "synthetic",
+            marketplace_fee: "synthetic",
+            credit: "synthetic"
+          }
+        }
+      }
+    });
+    expect(response.statusCode).toBe(201);
+    const arg = vi.mocked(target.createFromLockedTimesheet).mock.calls[0]![0];
+    expect(arg.calculation.total).toEqual(cad(10_500));
+    expect(arg.calculation.lines.find((entry) => entry.kind === "transfer_fee")).toBeUndefined();
+  });
+
+  it("discards a client-supplied transferFee so the surcharge can never be spoofed or dodged", async () => {
+    const app = Fastify();
+    const target = repository();
+    vi.mocked(target.createFromLockedTimesheet).mockResolvedValue({
+      ...invoice,
+      status: "draft",
+      invoiceNumber: null,
+      version: 1,
+      issuedAt: null
+    });
+    registerInvoiceRoutes(app, {
+      repository: target,
+      authorize: async () => ({ actorId: "synthetic-finance", role: "finance_reviewer" })
+    });
+    const response = await app.inject({
+      method: "POST",
+      url: `/organizations/${organizationId}/invoices`,
+      payload: {
+        idempotencyKey: "surcharge-spoof",
+        calculation: {
+          source: calculation.source,
+          issuer: calculation.issuer,
+          tax: calculation.tax,
+          rules: calculation.rules,
+          occurredAt: calculation.calculatedAt,
+          regularLabour: cad(10_000),
+          urgentLabour: cad(0),
+          approvedTravelTime: cad(0),
+          mileage: cad(0),
+          adjustments: cad(0),
+          marketplaceFees: cad(500),
+          credits: cad(0),
+          transferFee: cad(99_999),
+          lineRuleVersions: {
+            regular_labour: "synthetic",
+            urgent_labour: "synthetic",
+            approved_travel_time: "synthetic",
+            mileage: "synthetic",
+            adjustment: "synthetic",
+            marketplace_fee: "synthetic",
+            credit: "synthetic"
+          }
+        }
+      }
+    });
+    expect(response.statusCode).toBe(201);
+    const arg = vi.mocked(target.createFromLockedTimesheet).mock.calls[0]![0];
+    // no method chosen + client transferFee discarded -> plain base, no surcharge line
+    expect(arg.calculation.total).toEqual(cad(10_500));
+    expect(arg.calculation.lines.find((entry) => entry.kind === "transfer_fee")).toBeUndefined();
+  });
+
   it("rejects a create request whose calculation crosses the organization boundary", async () => {
     const app = Fastify();
     const target = repository();
