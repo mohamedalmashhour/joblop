@@ -38,6 +38,9 @@ export function MySchedule() {
   const [state, setState] = useState<State>({ status: "loading" });
   const [busy, setBusy] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
+  const [view, setView] = useState<"list" | "calendar">("list");
+  const [month, setMonth] = useState(() => { const d = new Date(); return new Date(d.getFullYear(), d.getMonth(), 1); });
+  const [selectedDay, setSelectedDay] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     try {
@@ -88,8 +91,28 @@ export function MySchedule() {
       </section>
       {notice ? <p className="notice" style={{ color: "var(--accent)" }}>{notice}</p> : null}
 
+      {state.items.length > 0 ? (
+        <div className="chips" style={{ marginBottom: 12 }}>
+          <button type="button" className={`chip ${view === "list" ? "status-verified" : ""}`} onClick={() => setView("list")}>{t("sched.viewList")}</button>
+          <button type="button" className={`chip ${view === "calendar" ? "status-verified" : ""}`} onClick={() => setView("calendar")}>{t("sched.viewCalendar")}</button>
+        </div>
+      ) : null}
+
       {state.items.length === 0 ? (
         <div className="state">{t("sched.none")}</div>
+      ) : view === "calendar" ? (
+        <CalendarView
+          items={state.items}
+          month={month}
+          onPrev={() => setMonth((mo) => new Date(mo.getFullYear(), mo.getMonth() - 1, 1))}
+          onNext={() => setMonth((mo) => new Date(mo.getFullYear(), mo.getMonth() + 1, 1))}
+          selected={selectedDay}
+          onSelect={setSelectedDay}
+          busy={busy}
+          onAct={act}
+          locale={locale}
+          t={t}
+        />
       ) : (
         <>
           {upcoming.length > 0 ? <div className="role" style={{ marginBottom: 6 }}>{t("sched.upcoming")}</div> : null}
@@ -152,4 +175,99 @@ function formatShift(startAt: string, endAt: string, tz: string, locale: RwosLoc
   const start = new Date(startAt).toLocaleString(locale, opts);
   const end = new Date(endAt).toLocaleTimeString(locale, { hour: "numeric", minute: "2-digit", timeZone: tz });
   return `${start} – ${end} (${tz})`;
+}
+
+
+function dayKey(d: Date): string {
+  return `${d.getFullYear()}-${d.getMonth()}-${d.getDate()}`;
+}
+
+function CalendarView({ items, month, onPrev, onNext, selected, onSelect, busy, onAct, locale, t }: {
+  items: readonly Shift[];
+  month: Date;
+  onPrev: () => void;
+  onNext: () => void;
+  selected: string | null;
+  onSelect: (k: string | null) => void;
+  busy: string | null;
+  onAct: (s: Shift, a: "check-in" | "check-out") => void;
+  locale: RwosLocale;
+  t: Translate;
+}) {
+  const year = month.getFullYear();
+  const m = month.getMonth();
+  const startWeekday = new Date(year, m, 1).getDay();
+  const daysInMonth = new Date(year, m + 1, 0).getDate();
+  const counts = new Map<string, number>();
+  for (const s of items) {
+    const d = new Date(s.scheduledStartAt);
+    if (d.getFullYear() === year && d.getMonth() === m) {
+      const k = dayKey(d);
+      counts.set(k, (counts.get(k) ?? 0) + 1);
+    }
+  }
+  const monthLabel = new Date(year, m, 1).toLocaleDateString(locale, { month: "long", year: "numeric" });
+  const weekdays = Array.from({ length: 7 }, (_, i) => new Date(2023, 0, 1 + i).toLocaleDateString(locale, { weekday: "narrow" }));
+  const cells: (number | null)[] = [...Array<null>(startWeekday).fill(null), ...Array.from({ length: daysInMonth }, (_, i) => i + 1)];
+  const todayKey = dayKey(new Date());
+  const dayShifts = selected ? items.filter((s) => dayKey(new Date(s.scheduledStartAt)) === selected) : [];
+  return (
+    <>
+      <section className="card" style={{ marginBottom: 16 }}>
+        <div className="chips" style={{ justifyContent: "space-between", alignItems: "center" }}>
+          <button type="button" className="chip" onClick={onPrev} aria-label={t("sched.prevMonth")}>&#8249;</button>
+          <div className="role">{monthLabel}</div>
+          <button type="button" className="chip" onClick={onNext} aria-label={t("sched.nextMonth")}>&#8250;</button>
+        </div>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(7, 1fr)", gap: 4, marginTop: 10 }}>
+          {weekdays.map((w, i) => (
+            <div key={`wd-${i}`} style={{ textAlign: "center", fontSize: 12, opacity: 0.7 }}>{w}</div>
+          ))}
+          {cells.map((day, i) => {
+            if (day === null) return <div key={`b-${i}`} />;
+            const k = `${year}-${m}-${day}`;
+            const count = counts.get(k) ?? 0;
+            const isToday = k === todayKey;
+            const isSel = k === selected;
+            return (
+              <button
+                key={`d-${day}`}
+                type="button"
+                onClick={() => onSelect(isSel ? null : k)}
+                style={{
+                  aspectRatio: "1 / 1",
+                  borderRadius: 8,
+                  border: isToday ? "2px solid var(--accent)" : "1px solid var(--border, rgba(127,127,127,0.3))",
+                  background: isSel ? "var(--accent)" : count > 0 ? "var(--accent-soft, rgba(127,127,127,0.12))" : "transparent",
+                  color: isSel ? "#fff" : "inherit",
+                  cursor: "pointer",
+                  display: "flex",
+                  flexDirection: "column",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  fontSize: 13
+                }}
+              >
+                <span>{day}</span>
+                {count > 0 ? <span style={{ fontSize: 10, marginTop: 2 }}>&#9679;{count > 1 ? ` ${count}` : ""}</span> : null}
+              </button>
+            );
+          })}
+        </div>
+      </section>
+      {selected ? (
+        dayShifts.length > 0 ? (
+          <div className="results" style={{ paddingBottom: 48 }}>
+            {dayShifts.map((s) => (
+              <ShiftCard key={s.attendanceRecordId} s={s} busy={busy === s.attendanceRecordId} onAct={onAct} t={t} locale={locale} />
+            ))}
+          </div>
+        ) : (
+          <div className="state">{t("sched.noShiftsDay")}</div>
+        )
+      ) : (
+        <p className="notice">{t("sched.pickDay")}</p>
+      )}
+    </>
+  );
 }

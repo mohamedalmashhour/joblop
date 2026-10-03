@@ -177,6 +177,12 @@ export const en = {
   "sched.checkIn": "Check in",
   "sched.checkOut": "Check out",
   "sched.footer": "Only your own shifts appear here. Your check-in/out times are set by JobLop's server, not your device.",
+  "sched.viewList": "List",
+  "sched.viewCalendar": "Calendar",
+  "sched.prevMonth": "Previous month",
+  "sched.nextMonth": "Next month",
+  "sched.noShiftsDay": "No shifts on this day.",
+  "sched.pickDay": "Pick a day to see its shifts.",
 
   // Pay
   "pay.defaultNotice": "A governed calculation only — not a real pay statement.",
@@ -574,6 +580,12 @@ export const fr: Messages = {
   "sched.checkIn": "Pointer l'arrivée",
   "sched.checkOut": "Pointer le départ",
   "sched.footer": "Seuls vos propres quarts apparaissent ici. Vos heures de pointage sont fixées par le serveur de JobLop, pas par votre appareil.",
+  "sched.viewList": "Liste",
+  "sched.viewCalendar": "Calendrier",
+  "sched.prevMonth": "Mois précédent",
+  "sched.nextMonth": "Mois suivant",
+  "sched.noShiftsDay": "Aucun quart ce jour-là.",
+  "sched.pickDay": "Choisissez un jour pour voir ses quarts.",
 
   // Paie
   "pay.defaultNotice": "Un calcul encadré seulement — pas un vrai bulletin de paie.",
