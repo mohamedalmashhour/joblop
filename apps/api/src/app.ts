@@ -227,6 +227,7 @@ import { resolvePayrollPeriodTimezone } from "./payrollPeriodTimezone";
 import { createPrismaDocumentMetadataRepository } from "./documentUploadRepository";
 import { registerDocumentRoutes } from "./documentRoutes";
 import { registerInvoiceRoutes } from "./invoiceRoutes";
+import { createPrismaRequestPricingSnapshotCapture } from "./requestPricingSnapshot";
 import { createPrismaInvoiceRepository, type InvoiceRepository } from "./invoiceRepository";
 import { createPrismaPayrollRepository, createPrismaPayrollRateResolver, createPrismaPayrollJurisdictionResolver } from "./payrollRepository";
 import { registerPaymentRoutes } from "./paymentRoutes";
@@ -682,7 +683,8 @@ export function buildApi(options: BuildApiOptions = {}) {
       createPrismaWorkGroupRepository(prisma!),
       createPrismaRoleDefinitionRepository(prisma!),
       membershipService,
-      authorizationService
+      authorizationService,
+      { pricingSnapshotCapture: createPrismaRequestPricingSnapshotCapture(prisma!) }
     );
   const dispatchService =
     options.dispatchService ??
@@ -4400,7 +4402,8 @@ export function buildApi(options: BuildApiOptions = {}) {
         session,
         roles: await resolveAuthorizationRoles(session.user.id),
         jobRequestId: readRouteParam(request.params, "jobRequestId"),
-        expectedVersion: readOptionalNumber(body, "expectedVersion") ?? 0
+        expectedVersion: readOptionalNumber(body, "expectedVersion") ?? 0,
+        marginPpm: readOptionalNumber(body, "marginPpm") ?? null
       });
 
       return reply.code(200).send({ jobRequest: serializeJobRequest(jobRequest) });
