@@ -1,6 +1,5 @@
 import type { PrismaClient } from "@rwos/database";
 import { createContractMoney } from "@rwos/shared";
-import { createPrismaEmployerContractRepository } from "@rwos/auth";
 import type {
   CreatePayrollCalculationInput,
   PayrollCalculationStatus,
@@ -15,27 +14,45 @@ import type {
   StoredPayrollPeriod
 } from "@rwos/auth";
 
-// AUTHORITATIVE rate resolver (HR-5.1) — reads the governed EmployerContract that was in force at
-// the shift's instant (active OR superseded), and picks the per-role rate. Historical work reads
-// the committed rate that governed then, never the current rate. Payroll invents no rate.
+// AUTHORITATIVE rate resolver (slice 4D) — payroll pays the WORKER rate (W) from the immutable
+// request pricing snapshot captured at admin approval, NOT the employer contract rate (E). The
+// hidden markup (E -> W) is frozen per request, so W never changes mid-shift: the start and end
+// resolutions return the same W and contract id, and the engine's intra-shift boundary logic never
+// splits. Resolution path: assignment -> job request -> request_pricing_snapshot. A request with no
+// snapshot (e.g. approved before snapshots existed) resolves to null -> governed missing_rate. The
+// snapshot carries the governed contract id/version/currency captured at approval; payroll invents
+// no rate and applies no margin here (the margin was already applied when the snapshot was captured).
 export function createPrismaPayrollRateResolver(prisma: PrismaClient): PayrollRateResolver {
-  const contracts = createPrismaEmployerContractRepository(prisma);
   return {
     async resolveAt(input) {
-      const contract = await contracts.findContractEffectiveAt(input.organizationId, input.instant);
-      if (!contract) return null;
-      const roleRate = contract.roleRates.find((r) => r.workGroupId === input.workGroupId && r.roleDefinitionId === input.roleDefinitionId);
-      if (!roleRate || contract.effectiveFrom === null) return null;
-      // Stage 2b.3b-3: use the governed contract currency as-is (set under the active-country-currency
-      // policy at signing). No silent invalid→CAD coercion and no Canada inference here — the resolver
-      // does not decide country policy. createContractMoney validates it and fails closed on an
-      // unsupported currency (the contract would violate the supported invariant).
-      const currency = contract.currency;
+      const assignment = await prisma.assignment.findUnique({
+        where: { id: input.assignmentId },
+        select: { jobRequestId: true }
+      });
+      if (!assignment) return null;
+      const snapshot = await prisma.requestPricingSnapshot.findUnique({
+        where: { jobRequestId: assignment.jobRequestId },
+        select: {
+          workerHourlyRateMinor: true,
+          currency: true,
+          contractId: true,
+          contractVersion: true
+        }
+      });
+      if (!snapshot) return null;
+      const contract = await prisma.employerContract.findUnique({
+        where: { id: snapshot.contractId },
+        select: { effectiveFrom: true }
+      });
+      if (!contract || contract.effectiveFrom === null) return null;
       return {
-        contractId: contract.id,
-        contractVersion: contract.version,
+        contractId: snapshot.contractId,
+        contractVersion: snapshot.contractVersion,
         contractEffectiveFrom: contract.effectiveFrom,
-        hourlyRate: createContractMoney({ amountMinor: roleRate.hourlyRateMinor, currency }),
+        hourlyRate: createContractMoney({
+          amountMinor: snapshot.workerHourlyRateMinor,
+          currency: snapshot.currency
+        }),
         compensationType: "hourly" as const
       };
     }

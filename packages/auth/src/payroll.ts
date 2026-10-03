@@ -63,7 +63,7 @@ export type PayrollRateResolution = Readonly<{
 // Resolves the committed contract rate in force at `instant`. Historical work always reads the
 // rate that governed then (active OR superseded contract), never the current rate.
 export type PayrollRateResolver = Readonly<{
-  resolveAt(input: { organizationId: string; workGroupId: string; roleDefinitionId: string; instant: Date }): Promise<PayrollRateResolution | null>;
+  resolveAt(input: { organizationId: string; workGroupId: string; roleDefinitionId: string; assignmentId: string; instant: Date }): Promise<PayrollRateResolution | null>;
 }>;
 
 // Derives the authoritative payroll jurisdiction from the worksite (Residence), never caller input.
@@ -371,7 +371,7 @@ export function createPayrollService(deps: PayrollDeps) {
     // Per-timesheet rate resolution + intra-shift boundary detection.
     const snapshots: PayrollWorkedTimeSnapshot[] = [];
     for (const wt of workedTime) {
-      const scope = { organizationId: period.organizationId, workGroupId: wt.workGroupId, roleDefinitionId: wt.roleDefinitionId };
+      const scope = { organizationId: period.organizationId, workGroupId: wt.workGroupId, roleDefinitionId: wt.roleDefinitionId, assignmentId: wt.assignmentId };
       const startRate = await deps.rateResolver.resolveAt({ ...scope, instant: wt.scheduledStartAt });
       if (!startRate) throw new PayrollError("invalid", `missing_rate:${wt.timesheetId}`);
       const endRate = await deps.rateResolver.resolveAt({ ...scope, instant: wt.scheduledEndAt });

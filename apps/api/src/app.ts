@@ -6120,7 +6120,7 @@ export function buildApi(options: BuildApiOptions = {}) {
       let hasEffectiveContractRate = workedTime.length > 0;
       let intraShiftRateBoundary = false;
       for (const w of workedTime) {
-        const scope = { organizationId: period.organizationId, workGroupId: w.workGroupId, roleDefinitionId: w.roleDefinitionId };
+        const scope = { organizationId: period.organizationId, workGroupId: w.workGroupId, roleDefinitionId: w.roleDefinitionId, assignmentId: w.assignmentId };
         const startRate = await payrollRateResolver.resolveAt({ ...scope, instant: w.scheduledStartAt });
         if (!startRate) { hasEffectiveContractRate = false; continue; }
         const endRate = await payrollRateResolver.resolveAt({ ...scope, instant: w.scheduledEndAt });
