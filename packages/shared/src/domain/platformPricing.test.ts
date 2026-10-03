@@ -7,8 +7,10 @@ import {
   MINIMUM_BILLABLE_SHIFT_HOURS,
   billableHours,
   computeCardTransferFeeMinor,
+  computeRequestPricingSnapshot,
   computeShiftPricing,
   employerTransferSurchargeMinor,
+  splitAllowanceMinor,
   platformMarginMinor,
   resolveMarginPpm,
   splitTransferFeeMinor,
@@ -113,5 +115,61 @@ describe("platform pricing — card transfer-fee surcharge (upfront set-rate)", 
   it("charges the employer nothing for Interac (platform absorbs the full fee)", () => {
     expect(employerTransferSurchargeMinor({ amountMinor: 10_000, method: "interac" })).toBe(0);
     expect(employerTransferSurchargeMinor({ amountMinor: 999_999, method: "interac" })).toBe(0);
+  });
+});
+
+
+describe("platform pricing — request pricing snapshot (hidden markup)", () => {
+  it("derives worker hourly rate and allowance splits at the default 20% margin", () => {
+    const snap = computeRequestPricingSnapshot({
+      employerHourlyRateMinor: 3000,
+      transportAllowanceMinor: 1000,
+      mealAllowanceMinor: 0,
+      lodgingAllowanceMinor: 5000
+    });
+    expect(snap.marginPpm).toBe(200_000);
+    expect(snap.employerHourlyRateMinor).toBe(3000);
+    expect(snap.workerHourlyRateMinor).toBe(2400);
+    expect(snap.platformHourlyMarginMinor).toBe(600);
+    expect(snap.transport).toEqual({ employerMinor: 1000, workerMinor: 800, platformMarginMinor: 200 });
+    expect(snap.meal).toEqual({ employerMinor: 0, workerMinor: 0, platformMarginMinor: 0 });
+    expect(snap.lodging).toEqual({ employerMinor: 5000, workerMinor: 4000, platformMarginMinor: 1000 });
+  });
+
+  it("applies an admin margin override to the rate and allowances", () => {
+    const snap = computeRequestPricingSnapshot({
+      employerHourlyRateMinor: 3000,
+      marginPpm: 300_000,
+      transportAllowanceMinor: 1000
+    });
+    expect(snap.marginPpm).toBe(300_000);
+    expect(snap.workerHourlyRateMinor).toBe(2100);
+    expect(snap.transport).toEqual({ employerMinor: 1000, workerMinor: 700, platformMarginMinor: 300 });
+  });
+
+  it("reconciles exactly: employer = worker + platform margin for rate and every allowance", () => {
+    const snap = computeRequestPricingSnapshot({
+      employerHourlyRateMinor: 4237,
+      marginPpm: 175_000,
+      transportAllowanceMinor: 1733,
+      mealAllowanceMinor: 999,
+      lodgingAllowanceMinor: 2501
+    });
+    expect(snap.workerHourlyRateMinor + snap.platformHourlyMarginMinor).toBe(snap.employerHourlyRateMinor);
+    for (const part of [snap.transport, snap.meal, snap.lodging]) {
+      expect(part.workerMinor + part.platformMarginMinor).toBe(part.employerMinor);
+    }
+  });
+
+  it("clamps an out-of-range margin and never pays the worker more than the employer", () => {
+    const snap = computeRequestPricingSnapshot({ employerHourlyRateMinor: 3000, marginPpm: 5_000_000 });
+    expect(snap.marginPpm).toBe(900_000); // clamped to MAX
+    expect(snap.workerHourlyRateMinor).toBeLessThanOrEqual(snap.employerHourlyRateMinor);
+    expect(snap.workerHourlyRateMinor).toBeGreaterThanOrEqual(0);
+  });
+
+  it("treats missing or negative allowances as zero", () => {
+    expect(splitAllowanceMinor(undefined, 200_000)).toEqual({ employerMinor: 0, workerMinor: 0, platformMarginMinor: 0 });
+    expect(splitAllowanceMinor(-50, 200_000)).toEqual({ employerMinor: 0, workerMinor: 0, platformMarginMinor: 0 });
   });
 });

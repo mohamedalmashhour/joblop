@@ -155,3 +155,69 @@ export function employerTransferSurchargeMinor(input: {
   const fee = computeCardTransferFeeMinor(input.amountMinor);
   return splitTransferFeeMinor(fee).employerMinor;
 }
+
+// ── Per-request pricing snapshot (hidden markup, captured at admin approval) ─────────────────────
+// At approval the admin picks the margin; the platform derives the worker's numbers from the
+// employer's (E) and keeps the difference. This produces the single immutable record that payroll
+// pays from and that each audience view reads — the worker sees only their W numbers, the employer
+// only their E numbers, and neither sees the platform margin. The margin applies to the hourly rate
+// AND to each funded allowance (transport / meal / lodging), per the owner-confirmed model.
+
+export type AllowanceSplit = Readonly<{
+  /** What the employer funds for this allowance (minor units). */
+  employerMinor: number;
+  /** What the worker receives (employer amount − margin). */
+  workerMinor: number;
+  /** Platform's cut of this allowance. */
+  platformMarginMinor: number;
+}>;
+
+export type RequestPricingSnapshot = Readonly<{
+  marginPpm: number;
+  employerHourlyRateMinor: number;
+  workerHourlyRateMinor: number;
+  platformHourlyMarginMinor: number;
+  transport: AllowanceSplit;
+  meal: AllowanceSplit;
+  lodging: AllowanceSplit;
+}>;
+
+/** Split one funded allowance amount into employer / worker / platform parts at the given margin. */
+export function splitAllowanceMinor(
+  employerAllowanceMinor: number | null | undefined,
+  marginPpm?: number | null
+): AllowanceSplit {
+  const employerMinor =
+    Number.isFinite(employerAllowanceMinor as number) && (employerAllowanceMinor as number) > 0
+      ? Math.trunc(employerAllowanceMinor as number)
+      : 0;
+  const workerMinor = workerAmountMinor(employerMinor, marginPpm);
+  return { employerMinor, workerMinor, platformMarginMinor: employerMinor - workerMinor };
+}
+
+/**
+ * Derive the full worker/employer/platform breakdown for a request from the employer hourly rate (E),
+ * the admin-chosen margin, and the funded allowance amounts. Pure and deterministic — the caller
+ * persists the result as the immutable snapshot. Hourly worker rate and each allowance reconcile:
+ * employer = worker + platform margin, exactly.
+ */
+export function computeRequestPricingSnapshot(input: {
+  employerHourlyRateMinor: number;
+  marginPpm?: number | null;
+  transportAllowanceMinor?: number | null;
+  mealAllowanceMinor?: number | null;
+  lodgingAllowanceMinor?: number | null;
+}): RequestPricingSnapshot {
+  const marginPpm = resolveMarginPpm(input.marginPpm);
+  const employerHourlyRateMinor = Math.max(0, Math.trunc(input.employerHourlyRateMinor));
+  const workerHourlyRateMinor = workerAmountMinor(employerHourlyRateMinor, marginPpm);
+  return {
+    marginPpm,
+    employerHourlyRateMinor,
+    workerHourlyRateMinor,
+    platformHourlyMarginMinor: employerHourlyRateMinor - workerHourlyRateMinor,
+    transport: splitAllowanceMinor(input.transportAllowanceMinor, marginPpm),
+    meal: splitAllowanceMinor(input.mealAllowanceMinor, marginPpm),
+    lodging: splitAllowanceMinor(input.lodgingAllowanceMinor, marginPpm)
+  };
+}
