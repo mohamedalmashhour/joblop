@@ -25,3 +25,4 @@ export * from "./shiftRules";
 export * from "./worker";
 export * from "./platformPricing";
 export * from "./platformInvoiceIssuer";
+export * from "./workerPayout";
