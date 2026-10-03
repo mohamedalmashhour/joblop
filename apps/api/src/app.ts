@@ -233,6 +233,7 @@ import { isWorkerDisputeCategory, normalizeWorkerDisputeReason } from "@rwos/sha
 import { raiseWorkerDispute, listWorkerDisputes, withdrawWorkerDispute } from "./workerDisputeRepository";
 import { createEmployerOrderWithChildren, listEmployerOrders, getEmployerOrder, submitEmployerOrder, cancelEmployerOrder } from "./employerOrderRepository";
 import { listMarketWagesForResidence } from "./marketWageRepository";
+import { listPlatformOrdersInReview, getPlatformOrder } from "./adminOrderRepository";
 import { workerAllowances } from "./workerAllowances";
 import { createPrismaInvoiceRepository, type InvoiceRepository } from "./invoiceRepository";
 import { createPrismaPayrollRepository, createPrismaPayrollRateResolver, createPrismaPayrollJurisdictionResolver, createPrismaPayrollClassificationResolver } from "./payrollRepository";
@@ -4540,6 +4541,26 @@ export function buildApi(options: BuildApiOptions = {}) {
       return reply.code(200).send({ jobRequest: serializeJobRequest(jobRequest) });
     }
   );
+
+  // Admin review queue, grouped by order: every order with at least one role line still awaiting
+  // review. Authorized through the same governed admin gate as the per-request intake queue; the
+  // per-role review actions remain the existing intake endpoints.
+  app.get("/platform/orders", async (request, reply) => {
+    const session = await authService.validateSession(readBearerToken(request.headers.authorization));
+    if (!session.authenticated || !session.user) return sendJobRequestDenied(reply);
+    await jobRequestService.listAdminIntake({ session, roles: await resolveAuthorizationRoles(session.user.id) });
+    const orders = await listPlatformOrdersInReview(prisma!);
+    return reply.code(200).send({ orders });
+  });
+
+  app.get("/platform/orders/:orderId", async (request, reply) => {
+    const session = await authService.validateSession(readBearerToken(request.headers.authorization));
+    if (!session.authenticated || !session.user) return sendJobRequestDenied(reply);
+    await jobRequestService.listAdminIntake({ session, roles: await resolveAuthorizationRoles(session.user.id) });
+    const order = await getPlatformOrder(prisma!, readRouteParam(request.params, "orderId"));
+    if (!order) return reply.code(404).send({ error: "RWOS_ORDER_NOT_FOUND", message: "Order not found." });
+    return reply.code(200).send({ order });
+  });
 
   app.put(
     "/organizations/:organizationId/calendar/requests/:jobRequestId/profile",
