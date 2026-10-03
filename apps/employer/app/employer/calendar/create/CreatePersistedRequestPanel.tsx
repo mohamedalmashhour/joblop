@@ -110,7 +110,6 @@ export function CreatePersistedRequestPanel() {
 
   useEffect(() => {
     setMessage(t("create.msgLoadingChoices"));
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   async function loadContext(residenceId = "") {
@@ -140,7 +139,6 @@ export function CreatePersistedRequestPanel() {
 
   useEffect(() => {
     void loadContext();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const selectedWorkGroup = context?.workGroups.find((item) => item.slug === form.workGroup);
