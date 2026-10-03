@@ -231,6 +231,7 @@ import { createPrismaRequestPricingSnapshotCapture } from "./requestPricingSnaps
 import { materializeAndListWorkerPayouts } from "./workerPayoutRepository";
 import { isWorkerDisputeCategory, normalizeWorkerDisputeReason } from "@rwos/shared";
 import { raiseWorkerDispute, listWorkerDisputes, withdrawWorkerDispute } from "./workerDisputeRepository";
+import { createEmployerOrderWithChildren, listEmployerOrders, getEmployerOrder, submitEmployerOrder } from "./employerOrderRepository";
 import { workerAllowances } from "./workerAllowances";
 import { createPrismaInvoiceRepository, type InvoiceRepository } from "./invoiceRepository";
 import { createPrismaPayrollRepository, createPrismaPayrollRateResolver, createPrismaPayrollJurisdictionResolver, createPrismaPayrollClassificationResolver } from "./payrollRepository";
@@ -2426,6 +2427,86 @@ export function buildApi(options: BuildApiOptions = {}) {
     });
 
     return reply.code(201).send({ jobRequest: serializeJobRequest(jobRequest) });
+  });
+
+  // Create a multi-role order: one submission grouping several role lines (role + quantity +
+  // conditions), each becoming a governed child job request. Shared worksite + time window live on
+  // the order. No pricing is set here — each child is priced by admin at approval, as today.
+  app.post("/organizations/:organizationId/orders", async (request, reply) => {
+    const session = await authService.validateSession(readBearerToken(request.headers.authorization));
+    if (!session.authenticated || !session.user) return sendJobRequestDenied(reply);
+    const organizationId = readRouteParam(request.params, "organizationId");
+    const body = asRecord(request.body);
+    const urgency = readJobRequestUrgency(readRequiredString(body, "urgency"));
+    const requestType = readJobRequestType(readRequiredString(body, "requestType"));
+    const startAt = readRequiredDate(body, "startAt");
+    const endAt = readRequiredDate(body, "endAt");
+    const residenceId = readRequiredString(body, "residenceId") ?? "";
+    const departmentId = readRequiredString(body, "departmentId") ?? "";
+    const title = readRequiredString(body, "title") ?? "";
+    const timezone = readRequiredString(body, "timezone") ?? "";
+    if (!urgency || !requestType || !startAt || !endAt || !residenceId || !departmentId || !title || !timezone) {
+      return reply.code(400).send({ error: "RWOS_INVALID_ORDER", message: "Invalid order." });
+    }
+    const result = await createEmployerOrderWithChildren(prisma!, jobRequestService, {
+      actorUserId: session.user.id,
+      organizationId,
+      residenceId,
+      departmentId,
+      title,
+      note: readOptionalString(body, "note") ?? null,
+      urgency,
+      requestType,
+      timezone,
+      startAt,
+      endAt,
+      lines: body.lines
+    });
+    if (!result.ok) {
+      const code = result.reason === "child_create_failed" ? 422 : 400;
+      return reply.code(code).send({ error: `RWOS_ORDER_${result.reason.toUpperCase()}`, message: "The order could not be created." });
+    }
+    return reply.code(201).send({ order: result.order });
+  });
+
+  // The organization's orders (most recent first).
+  app.get("/organizations/:organizationId/orders", async (request, reply) => {
+    const session = await authService.validateSession(readBearerToken(request.headers.authorization));
+    if (!session.authenticated || !session.user) return sendJobRequestDenied(reply);
+    const organizationId = readRouteParam(request.params, "organizationId");
+    if (!(await userHasOrganizationAccess(session.user.id, organizationId))) return sendJobRequestDenied(reply);
+    const orders = await listEmployerOrders(prisma!, organizationId);
+    return reply.code(200).send({ orders });
+  });
+
+  // One order with its child role lines.
+  app.get("/organizations/:organizationId/orders/:orderId", async (request, reply) => {
+    const session = await authService.validateSession(readBearerToken(request.headers.authorization));
+    if (!session.authenticated || !session.user) return sendJobRequestDenied(reply);
+    const organizationId = readRouteParam(request.params, "organizationId");
+    if (!(await userHasOrganizationAccess(session.user.id, organizationId))) return sendJobRequestDenied(reply);
+    const order = await getEmployerOrder(prisma!, organizationId, readRouteParam(request.params, "orderId"));
+    if (!order) return reply.code(404).send({ error: "RWOS_ORDER_NOT_FOUND", message: "Order not found." });
+    return reply.code(200).send({ order });
+  });
+
+  // Submit the whole order: every still-draft child role line is submitted for admin review.
+  app.post("/organizations/:organizationId/orders/:orderId/submit", async (request, reply) => {
+    const session = await authService.validateSession(readBearerToken(request.headers.authorization));
+    if (!session.authenticated || !session.user) return sendJobRequestDenied(reply);
+    const organizationId = readRouteParam(request.params, "organizationId");
+    if (!(await userHasOrganizationAccess(session.user.id, organizationId))) return sendJobRequestDenied(reply);
+    const result = await submitEmployerOrder(prisma!, jobRequestService, {
+      actorUserId: session.user.id,
+      organizationId,
+      orderId: readRouteParam(request.params, "orderId"),
+      now: new Date()
+    });
+    if (!result.ok) {
+      const code = result.reason === "not_found" ? 404 : 422;
+      return reply.code(code).send({ error: `RWOS_ORDER_${result.reason.toUpperCase()}`, message: "The order could not be submitted." });
+    }
+    return reply.code(200).send({ order: result.order });
   });
 
   // Duplicate a request into a NEW DRAFT only. Copies governed fields + duties/
