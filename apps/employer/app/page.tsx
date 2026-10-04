@@ -296,6 +296,9 @@ export default function LandingPage() {
   const isStaging =
     process.env.RWOS_ENV === "staging" ||
     process.env.NEXT_PUBLIC_RWOS_DEPLOYMENT_TIER === "staging";
+  // The worker side is a separate app; "Find work" leaves the employer app for the worker front door.
+  const workerAppUrl = process.env.NEXT_PUBLIC_WORKER_APP_URL ?? "http://localhost:8090";
+  const hireHref = isProduction ? "/contact" : "/signup/employer";
   return (
     <main style={styles.page}>
       <LogoIntro />
@@ -349,10 +352,10 @@ export default function LandingPage() {
             ))}
           </ul>
           <div style={hx.ctaRow}>
-            <a href={isProduction ? "/signin" : "/signup/employer"} style={hx.ctaPrimary}>
+            <a href={workerAppUrl} style={hx.ctaPrimary}>
               I&rsquo;m Looking for Work <span aria-hidden="true">→</span>
             </a>
-            <a href={isProduction ? "/contact" : "/signup/employer"} style={hx.ctaOutline}>
+            <a href={hireHref} style={hx.ctaOutline}>
               I Need to Hire <span aria-hidden="true">→</span>
             </a>
           </div>
@@ -568,11 +571,11 @@ export default function LandingPage() {
           <p style={styles.ctaCopy}>Start with a governed staffing request or schedule a demo.</p>
         </div>
         <div style={styles.ctaActions}>
-          <a href={isProduction ? "/contact" : "/signup/employer"} style={styles.lightButton}>
-            {isProduction ? "Request Access" : "Get Started"}
+          <a href={hireHref} style={styles.lightButton}>
+            {isProduction ? "Request Access" : "Hire staff"}
           </a>
-          <a href="/contact" style={styles.outlineLightButton}>
-            Book a Demo
+          <a href={workerAppUrl} style={styles.outlineLightButton}>
+            Find work
           </a>
         </div>
       </section>
