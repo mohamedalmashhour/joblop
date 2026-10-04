@@ -162,10 +162,10 @@ suite("QA-reset durable PostgreSQL lifecycle", () => {
          (id, manifest_reference, manifest_checksum, namespace, environment, project_id,
           cluster_id, database_id, authority_id, release_sha, status, approved_at, expires_at,
           retention_until, approval_reference, retention_owner_reference,
-          created_by_caller_alias, created_by_principal_digest, updated_at)
+          created_by_caller_alias, created_by_principal_digest, updated_at, created_at)
        VALUES ($1, $2, $3, $4, 'staging', $5, $6, $7, $8, $9, 'active',
                CURRENT_TIMESTAMP, $10, $11, $12, $13, 'local-postgres-test', $14,
-               CURRENT_TIMESTAMP)`,
+               CURRENT_TIMESTAMP, $15)`,
       manifestOwnershipId,
       testManifest.manifestId,
       testManifest.checksum,
@@ -179,7 +179,8 @@ suite("QA-reset durable PostgreSQL lifecycle", () => {
       new Date(testManifest.retentionUntil),
       testManifest.approvalReferences.prepare,
       "local-retention-test",
-      "a".repeat(64)
+      "a".repeat(64),
+      new Date(testManifest.createdAt)
     );
     for (const [index, tenantId] of testManifest.tenantIds.entries()) {
       await prisma.$executeRawUnsafe(
