@@ -20,6 +20,7 @@ type Order = Readonly<{
   orderNumber: string;
   organizationId: string;
   title: string;
+  perks: string | null;
   status: string;
   timezone: string;
   startAt: string;
@@ -148,6 +149,7 @@ export function AdminOrderReviewPanel({ orderId }: Readonly<{ orderId: string }>
         <span style={styles.badge}>{order.status.replaceAll("_", " ")}</span>
       </div>
       {message ? <p style={styles.notice} role="status">{message}</p> : null}
+      {order.perks ? <p style={styles.meta}>Perks: {order.perks}</p> : null}
 
       <button type="button" style={styles.button} disabled={busy !== null} onClick={() => void approveAll()}>Approve all recommended roles</button>
 

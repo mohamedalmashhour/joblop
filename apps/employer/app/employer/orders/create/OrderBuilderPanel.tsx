@@ -29,6 +29,7 @@ type Shared = {
   requestType: RequestType;
   title: string;
   note: string;
+  perks: string;
 };
 
 type Line = {
@@ -51,7 +52,8 @@ const initialShared: Shared = {
   urgency: "normal",
   requestType: "single_day",
   title: "",
-  note: ""
+  note: "",
+  perks: ""
 };
 
 let lineCounter = 0;
@@ -188,6 +190,7 @@ export function OrderBuilderPanel() {
           departmentId: shared.departmentId,
           title: shared.title.trim(),
           note: shared.note.trim() || null,
+          perks: premiumMinor > 0 ? (shared.perks.trim() || null) : null,
           urgency: shared.urgency,
           requestType: shared.requestType,
           timezone: shared.timezone,
@@ -303,6 +306,11 @@ export function OrderBuilderPanel() {
             <label style={styles.fieldLabel}>{t("order.note")}
               <input style={styles.input} value={shared.note} onChange={(e) => updateShared("note", e.target.value)} maxLength={2000} />
             </label>
+            {premiumMinor > 0 ? (
+              <label style={styles.fieldLabel}>{t("order.perks")}
+                <input style={styles.input} value={shared.perks} onChange={(e) => updateShared("perks", e.target.value)} maxLength={500} placeholder={t("order.perksPlaceholder")} />
+              </label>
+            ) : null}
           </div>
 
           <h2 style={styles.cardTitle}>{t("order.roleLines")}</h2>

@@ -1090,6 +1090,7 @@ model EmployerOrder {
   creatorUserId   String              @map("creator_user_id") @db.Uuid
   title           String
   note            String?
+  perks           String?
   requestType     JobRequestType      @map("request_type")
   urgency         JobRequestUrgency   @default(normal)
   timezone        String

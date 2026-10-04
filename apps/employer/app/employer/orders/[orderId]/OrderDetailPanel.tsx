@@ -11,6 +11,7 @@ type Order = Readonly<{
   orderNumber: string;
   title: string;
   note: string | null;
+  perks: string | null;
   urgency: string;
   requestType: string;
   timezone: string;
@@ -106,6 +107,7 @@ export function OrderDetailPanel({ orderId }: { orderId: string }) {
 
       <p style={styles.cardText}>{t("order.schedule")}: {schedule}</p>
       {order.note ? <p style={styles.cardText}>{order.note}</p> : null}
+      {order.perks ? <p style={styles.cardText}>{t("order.perks")}: {order.perks}</p> : null}
 
       <h2 style={styles.cardTitle}>{t("order.roleLines")}</h2>
       <ul>

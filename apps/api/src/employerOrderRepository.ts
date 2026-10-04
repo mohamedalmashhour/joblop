@@ -29,6 +29,7 @@ export type EmployerOrderView = Readonly<{
   departmentId: string;
   title: string;
   note: string | null;
+  perks: string | null;
   requestType: string;
   urgency: string;
   timezone: string;
@@ -56,6 +57,7 @@ export type CreateEmployerOrderInput = Readonly<{
   departmentId: string;
   title: string;
   note: string | null;
+  perks: string | null;
   urgency: JobRequestUrgency;
   requestType: JobRequestType;
   timezone: string;
@@ -101,6 +103,7 @@ function orderView(
     departmentId: string;
     title: string;
     note: string | null;
+    perks: string | null;
     requestType: string;
     urgency: string;
     timezone: string;
@@ -120,6 +123,7 @@ function orderView(
     departmentId: order.departmentId,
     title: order.title,
     note: order.note,
+    perks: order.perks,
     requestType: order.requestType,
     urgency: order.urgency,
     timezone: order.timezone,
@@ -188,6 +192,7 @@ export async function createEmployerOrderWithChildren(
         createdByUserId: input.actorUserId,
         title: input.title,
         note: input.note,
+        perks: input.perks,
         requestType: input.requestType,
         urgency: input.urgency,
         timezone: input.timezone,

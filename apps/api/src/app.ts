@@ -2459,6 +2459,7 @@ export function buildApi(options: BuildApiOptions = {}) {
       departmentId,
       title,
       note: readOptionalString(body, "note") ?? null,
+      perks: readOptionalString(body, "perks") ?? null,
       urgency,
       requestType,
       timezone,

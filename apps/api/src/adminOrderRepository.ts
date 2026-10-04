@@ -25,6 +25,7 @@ export type AdminOrderView = Readonly<{
   departmentId: string;
   title: string;
   note: string | null;
+  perks: string | null;
   urgency: string;
   requestType: string;
   timezone: string;
@@ -55,6 +56,7 @@ type OrderRow = {
   departmentId: string;
   title: string;
   note: string | null;
+  perks: string | null;
   urgency: string;
   requestType: string;
   timezone: string;
@@ -84,6 +86,7 @@ function view(order: OrderRow, children: readonly ChildRow[]): AdminOrderView {
     departmentId: order.departmentId,
     title: order.title,
     note: order.note,
+    perks: order.perks,
     urgency: order.urgency,
     requestType: order.requestType,
     timezone: order.timezone,
