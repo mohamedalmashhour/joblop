@@ -230,10 +230,12 @@ import { registerInvoiceRoutes } from "./invoiceRoutes";
 import { createPrismaRequestPricingSnapshotCapture } from "./requestPricingSnapshot";
 import { materializeAndListWorkerPayouts } from "./workerPayoutRepository";
 import { isWorkerDisputeCategory, normalizeWorkerDisputeReason } from "@rwos/shared";
+import { normalizeEscalationReason } from "@rwos/shared";
 import { raiseWorkerDispute, listWorkerDisputes, withdrawWorkerDispute } from "./workerDisputeRepository";
 import { createEmployerOrderWithChildren, listEmployerOrders, getEmployerOrder, submitEmployerOrder, cancelEmployerOrder } from "./employerOrderRepository";
 import { listMarketWagesForResidence, listAllMarketWages, upsertMarketWage } from "./marketWageRepository";
 import { listPlatformOrdersInReview, getPlatformOrder } from "./adminOrderRepository";
+import { raiseEscalation, listOpenEscalations, closeEscalation } from "./escalationRepository";
 import { workerAllowances } from "./workerAllowances";
 import { createPrismaInvoiceRepository, type InvoiceRepository } from "./invoiceRepository";
 import { createPrismaPayrollRepository, createPrismaPayrollRateResolver, createPrismaPayrollJurisdictionResolver, createPrismaPayrollClassificationResolver } from "./payrollRepository";
@@ -4541,6 +4543,50 @@ export function buildApi(options: BuildApiOptions = {}) {
       return reply.code(200).send({ jobRequest: serializeJobRequest(jobRequest) });
     }
   );
+
+  // Raise an owner escalation for one role line (admin or AI-manager-driven). At most one open at a time.
+  app.post("/platform/orders/:orderId/roles/:jobRequestId/escalate", async (request, reply) => {
+    const session = await authService.validateSession(readBearerToken(request.headers.authorization));
+    if (!session.authenticated || !session.user) return sendJobRequestDenied(reply);
+    await jobRequestService.listAdminIntake({ session, roles: await resolveAuthorizationRoles(session.user.id) });
+    const reason = normalizeEscalationReason(asRecord(request.body).reason);
+    if (!reason) return reply.code(400).send({ error: "RWOS_INVALID_ESCALATION", message: "A reason of at least four characters is required." });
+    const jobRequestId = readRouteParam(request.params, "jobRequestId");
+    const jr = await prisma!.jobRequest.findUnique({ where: { id: jobRequestId }, select: { organizationId: true, orderId: true } });
+    if (!jr) return reply.code(404).send({ error: "RWOS_JOB_REQUEST_NOT_FOUND", message: "Role not found." });
+    const result = await raiseEscalation(prisma!, { jobRequestId, orderId: jr.orderId, organizationId: jr.organizationId, reason, raisedByUserId: session.user.id });
+    if (!result.ok) return reply.code(409).send({ error: "RWOS_ESCALATION_ALREADY_OPEN", message: "This role already has an open escalation." });
+    return reply.code(201).send({ escalationId: result.escalationId });
+  });
+
+  // The open owner-escalation queue.
+  app.get("/platform/escalations", async (request, reply) => {
+    const session = await authService.validateSession(readBearerToken(request.headers.authorization));
+    if (!session.authenticated || !session.user) return sendJobRequestDenied(reply);
+    await jobRequestService.listAdminIntake({ session, roles: await resolveAuthorizationRoles(session.user.id) });
+    const escalations = await listOpenEscalations(prisma!);
+    return reply.code(200).send({ escalations });
+  });
+
+  // Owner closes an escalation: resolve (handled) or dismiss (no action needed).
+  app.post("/platform/escalations/:escalationId/resolve", async (request, reply) => {
+    const session = await authService.validateSession(readBearerToken(request.headers.authorization));
+    if (!session.authenticated || !session.user) return sendJobRequestDenied(reply);
+    await jobRequestService.listAdminIntake({ session, roles: await resolveAuthorizationRoles(session.user.id) });
+    const body = asRecord(request.body);
+    const result = await closeEscalation(prisma!, {
+      escalationId: readRouteParam(request.params, "escalationId"),
+      resolvedByUserId: session.user.id,
+      resolution: readOptionalString(body, "resolution") ?? null,
+      dismiss: body.dismiss === true,
+      now: new Date()
+    });
+    if (!result.ok) {
+      const code = result.reason === "not_found" ? 404 : 409;
+      return reply.code(code).send({ error: `RWOS_ESCALATION_${result.reason.toUpperCase()}`, message: "This escalation cannot be closed." });
+    }
+    return reply.code(200).send({ ok: true });
+  });
 
   // Admin-maintained market-wage references. List every reference, and upsert one per (role, province).
   // Reference data only — never used to price, pay, or bill. Admin-gated.

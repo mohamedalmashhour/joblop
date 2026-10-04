@@ -112,6 +112,25 @@ export function AdminOrderReviewPanel({ orderId }: Readonly<{ orderId: string }>
     }
   }, [orderId, load]);
 
+  const escalate = useCallback(async (child: Child) => {
+    const cfg = cfgFor(child);
+    if (cfg.reason.trim().length < 4) { setMessage("Enter a reason (4+ characters) to escalate."); return; }
+    setBusy(child.jobRequestId);
+    setMessage("Raising an owner escalation.");
+    try {
+      const response = await fetch(`/api/orders/${encodeURIComponent(orderId)}/roles/${encodeURIComponent(child.jobRequestId)}/escalate`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ reason: cfg.reason.trim() })
+      });
+      if (!response.ok) { setMessage(response.status === 409 ? "This role already has an open escalation." : "The escalation could not be raised."); return; }
+      setMessage("Escalation raised for the owners.");
+      await load();
+    } finally {
+      setBusy(null);
+    }
+  }, [orderId, inputs, load]);
+
   if (state.status === "loading") return <p style={styles.text}>Loading the order.</p>;
   if (state.status === "denied") return <p style={styles.text}>Administrator access required.</p>;
   if (state.status === "error") return <p style={styles.text}>This order could not be reached.</p>;
@@ -163,6 +182,7 @@ export function AdminOrderReviewPanel({ orderId }: Readonly<{ orderId: string }>
                   <input style={styles.input} value={cfg.reason} onChange={(e) => setInput(child, { reason: e.target.value })} />
                 </label>
                 <button type="button" style={styles.buttonAlt} disabled={busyThis} onClick={() => void act(child, "request-information")}>Request information</button>
+                <button type="button" style={styles.buttonAlt} disabled={busyThis} onClick={() => void escalate(child)}>Escalate to owner</button>
               </div>
             ) : null}
           </article>

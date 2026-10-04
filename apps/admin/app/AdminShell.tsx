@@ -8,7 +8,8 @@ const connectedNavigation = [
   { href: "/calendar", label: "Request calendar" },
   { href: "/orders", label: "Order review" },
   { href: "/dispatches", label: "Dispatch reviews" },
-  { href: "/market-wages", label: "Market wages" }
+  { href: "/market-wages", label: "Market wages" },
+  { href: "/escalations", label: "Owner escalations" }
 ] as const;
 const reviewNavigation = phase01Routes.map(({ route, title }) => ({ href: route, label: title }));
 // Platform operations surfaces not in the phase-01 review set.
@@ -28,7 +29,7 @@ const NAV_GROUPS: readonly { group: string; hrefs: readonly string[] }[] = [
   { group: "Directory", hrefs: ["/workers", "/employers", "/residences"] },
   { group: "Finance & payroll", hrefs: ["/finance", "/payroll", "/market-wages"] },
   { group: "People & trust", hrefs: ["/verification", "/hr"] },
-  { group: "Governance & compliance", hrefs: ["/compliance", "/audit-log", "/reports"] },
+  { group: "Governance & compliance", hrefs: ["/escalations", "/compliance", "/audit-log", "/reports"] },
   { group: "Platform", hrefs: ["/system-settings", "/platform-analytics", "/notification-center", "/ai-control-center"] }
 ];
 
