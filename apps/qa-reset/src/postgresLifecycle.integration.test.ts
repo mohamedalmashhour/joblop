@@ -33,7 +33,8 @@ suite("QA-reset durable PostgreSQL lifecycle", () => {
         DATABASE_URL: databaseUrl
       },
       createClient: () => prisma,
-      identityVerifier: createFakeIdentityTokenVerifier({ identities: {} })
+      identityVerifier: createFakeIdentityTokenVerifier({ identities: {} }),
+      now: () => new Date("2026-07-28T12:00:00.000Z")
     });
     persistence = runtime.postgresFactory(testConfig, testManifest);
     repository = persistence.durableRepository;

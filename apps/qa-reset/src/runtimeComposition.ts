@@ -28,6 +28,7 @@ export function createQaResetRuntimeComposition(options: {
   createClient?: (databaseUrl: string) => QaResetPrismaClient;
   identityVerifier?: IdentityTokenVerifier;
   googleVerificationClient?: GoogleIdentityVerificationClient;
+  now?: () => Date;
 }): QaResetRuntimeComposition {
   const env = options.env ?? process.env;
   if (options.config.environment !== "staging" || env.RWOS_ENV !== "staging") {
@@ -42,7 +43,7 @@ export function createQaResetRuntimeComposition(options: {
       runtimeEnvironment: "staging",
       ...(options.googleVerificationClient ? { client: options.googleVerificationClient } : {})
     });
-  const durableRepository = createFixedPostgresQaResetRepository(client);
+  const durableRepository = createFixedPostgresQaResetRepository(client, options.now);
   const postgresFactory: QaResetPostgresFactory = (config, manifest) => {
     assertExactBinding(config, manifest);
     if (
