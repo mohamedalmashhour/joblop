@@ -6,7 +6,9 @@ import { phase01Routes } from "./phase-01-review/phase01ReviewContent";
 
 const connectedNavigation = [
   { href: "/calendar", label: "Request calendar" },
-  { href: "/dispatches", label: "Dispatch reviews" }
+  { href: "/orders", label: "Order review" },
+  { href: "/dispatches", label: "Dispatch reviews" },
+  { href: "/market-wages", label: "Market wages" }
 ] as const;
 const reviewNavigation = phase01Routes.map(({ route, title }) => ({ href: route, label: title }));
 // Platform operations surfaces not in the phase-01 review set.
@@ -22,9 +24,9 @@ type NavItem = { href: string; label: string };
 // pattern — every route belongs to a section so the workspace reads as coherent groups
 // instead of one long flat list.
 const NAV_GROUPS: readonly { group: string; hrefs: readonly string[] }[] = [
-  { group: "Operations", hrefs: ["/calendar", "/dispatches", "/shifts"] },
+  { group: "Operations", hrefs: ["/calendar", "/orders", "/dispatches", "/shifts"] },
   { group: "Directory", hrefs: ["/workers", "/employers", "/residences"] },
-  { group: "Finance & payroll", hrefs: ["/finance", "/payroll"] },
+  { group: "Finance & payroll", hrefs: ["/finance", "/payroll", "/market-wages"] },
   { group: "People & trust", hrefs: ["/verification", "/hr"] },
   { group: "Governance & compliance", hrefs: ["/compliance", "/audit-log", "/reports"] },
   { group: "Platform", hrefs: ["/system-settings", "/platform-analytics", "/notification-center", "/ai-control-center"] }
