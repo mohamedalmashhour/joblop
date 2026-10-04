@@ -30,3 +30,4 @@ export * from "./workerDispute";
 export * from "./employerOrder";
 export * from "./marketWage";
 export * from "./aiManager";
+export * from "./requestEscalation";

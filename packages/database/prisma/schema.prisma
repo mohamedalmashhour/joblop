@@ -1284,6 +1284,36 @@ model WorkerDispute {
   @@map("worker_disputes")
 }
 
+// Owner-escalation of a role line: when the AI manager or an admin flags a role as needing the
+// platform owners' judgement (an emergency, an unusually large ask, or anything non-standard), an
+// open escalation is recorded here for the owner queue. Resolving it is a human decision; the actual
+// approval still flows through the governed intake transition. One OPEN escalation per role at a time
+// (enforced in the app). Reference/workflow state only — it never prices, pays, or bills.
+enum RequestEscalationStatus {
+  open
+  resolved
+  dismissed
+}
+
+model RequestEscalation {
+  id               String                  @id @default(uuid()) @db.Uuid
+  jobRequestId     String                  @map("job_request_id") @db.Uuid
+  orderId          String?                 @map("order_id") @db.Uuid
+  organizationId   String                  @map("organization_id") @db.Uuid
+  reason           String
+  status           RequestEscalationStatus @default(open)
+  raisedByUserId   String                  @map("raised_by_user_id") @db.Uuid
+  resolvedByUserId String?                 @map("resolved_by_user_id") @db.Uuid
+  resolution       String?
+  createdAt        DateTime                @default(now()) @map("created_at") @db.Timestamptz(3)
+  resolvedAt       DateTime?               @map("resolved_at") @db.Timestamptz(3)
+  updatedAt        DateTime                @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  @@index([status, createdAt], map: "request_escalations_status_created_idx")
+  @@index([jobRequestId, status], map: "request_escalations_request_status_idx")
+  @@map("request_escalations")
+}
+
 // Admin-maintained market-wage reference: an indicative market hourly rate for a role in a province,
 // shown to employers beside their own contract rate so they can judge how competitive it is. Reference
 // data ONLY — it never feeds pricing, payroll or invoices. One row per (role, province).
