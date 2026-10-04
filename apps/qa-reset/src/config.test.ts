@@ -53,14 +53,14 @@ describe("QA reset configuration", () => {
 
   it("requires distinct browser, iOS, Android, manual-QA and monitoring credentials and identities", () => {
     expect(() =>
-      readQaResetConfig(
+      readConfig(
         environment({
           QA_RESET_IOS_E2E_APP_CREDENTIAL: testConfig.callers["browser-e2e"].applicationCredential
         })
       )
     ).toThrow("QA_RESET_CALLER_IDENTITIES_MUST_DIFFER");
     expect(() =>
-      readQaResetConfig(
+      readConfig(
         environment({
           QA_RESET_ANDROID_E2E_SERVICE_ACCOUNT: testConfig.callers["ios-e2e"].serviceAccountEmail
         })
