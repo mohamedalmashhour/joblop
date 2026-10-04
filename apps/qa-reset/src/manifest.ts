@@ -189,6 +189,7 @@ export type SyntheticFixturePayload =
       workerIdentityId: string;
       currentTermsVersionId: string;
       status: "accepted";
+      createdAt: string;
       expiresAt: string;
       createdByUserId: string;
     }>
@@ -669,6 +670,10 @@ function tenantTemplate(
       workerIdentityId,
       currentTermsVersionId: termsVersionId,
       status: "accepted",
+      // created_at is anchored to the manifest window (not the DB default now()) so the
+      // worker_offers_expires_after_created_check (expires_at > created_at) holds regardless
+      // of the current date — the fixture expiry (2026-08-23) stays after this created_at.
+      createdAt,
       expiresAt: "2026-08-23T23:59:00-04:00",
       createdByUserId: employerUserId
     }),
