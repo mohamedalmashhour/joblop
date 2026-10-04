@@ -2,16 +2,25 @@
 
 import { useState } from "react";
 
-const LINKS = [
-  { href: "/how-it-works", label: "How It Works" },
-  { href: "#employers", label: "Employers" },
-  { href: "#workers", label: "Workers" },
-  { href: "/pricing", label: "Pricing" },
-  { href: "/about", label: "About" }
-];
+const HREFS = ["/how-it-works", "#employers", "#workers", "/pricing", "/about"] as const;
 
 // Responsive primary navigation: inline on desktop, hamburger + dropdown on mobile.
-export function HeaderNav({ ctaHref, ctaLabel }: { ctaHref: string; ctaLabel: string }) {
+// Labels (and the CTA / Sign In / menu text) are localized by the parent via props.
+export function HeaderNav({
+  ctaHref,
+  ctaLabel,
+  links,
+  openLabel,
+  closeLabel,
+  signIn
+}: {
+  ctaHref: string;
+  ctaLabel: string;
+  links: readonly string[];
+  openLabel: string;
+  closeLabel: string;
+  signIn: string;
+}) {
   const [open, setOpen] = useState(false);
   const close = () => setOpen(false);
 
@@ -47,7 +56,7 @@ export function HeaderNav({ ctaHref, ctaLabel }: { ctaHref: string; ctaLabel: st
       <button
         type="button"
         className="jl-burger"
-        aria-label={open ? "Close menu" : "Open menu"}
+        aria-label={open ? closeLabel : openLabel}
         aria-expanded={open}
         onClick={() => setOpen((v) => !v)}
       >
@@ -58,15 +67,15 @@ export function HeaderNav({ ctaHref, ctaLabel }: { ctaHref: string; ctaLabel: st
 
       <div className="jl-panel">
         <nav aria-label="Primary navigation" className="jl-links">
-          {LINKS.map((link) => (
-            <a key={link.href} href={link.href} className="jl-link" onClick={close}>
-              {link.label}
+          {HREFS.map((href, index) => (
+            <a key={href} href={href} className="jl-link" onClick={close}>
+              {links[index]}
             </a>
           ))}
         </nav>
         <div className="jl-actions">
           <a href="/signin" className="jl-ghost" onClick={close}>
-            Sign In
+            {signIn}
           </a>
           <a href={ctaHref} className="jl-primary" onClick={close}>
             {ctaLabel}

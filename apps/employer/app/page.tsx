@@ -1,53 +1,16 @@
 import type { CSSProperties } from "react";
-import {
-  employerJourney,
-  faqPreview,
-  staffingCategories,
-  trustControls,
-  workerBenefits,
-  workerJourney
-} from "./landingContent";
+import { cookies } from "next/headers";
+import { LOCALE_COOKIE, resolveRwosLocale } from "./i18n/config";
+import { getLandingContent, type LandingContent } from "./landingContent";
 import { LogoIntro } from "./LogoIntro";
 import { JobLopLogo } from "./JobLopLogo";
 import { HeaderNav } from "./HeaderNav";
+import { LanguageSwitcher } from "./i18n/LanguageSwitcher";
 
-const platformPillars = [
-  {
-    label: "For Employers",
-    points: [
-      "Create staffing requests",
-      "Track request review",
-      "See staffing progress",
-      "View confirmed assignments"
-    ]
-  },
-  {
-    label: "For Workers",
-    points: [
-      "Review owned offers",
-      "Accept or decline",
-      "See assignments",
-      "Use attendance handoff"
-    ]
-  },
-  {
-    label: "For Administrators",
-    points: ["Control dispatch", "Review compliance", "Monitor exceptions", "Maintain audit trails"]
-  }
-] as const;
-
-const dashboardMetrics = [
-  ["Open shifts", "12"],
-  ["Scheduled today", "24"],
-  ["Workers active", "48"],
-  ["Hours this week", "320"]
-] as const;
-
-const operationsRows = [
-  ["CNA evening shift", "Filled"],
-  ["Housekeeping", "Partial"],
-  ["Dining assistant", "Open"]
-] as const;
+async function resolveLocale() {
+  const store = await cookies();
+  return resolveRwosLocale(store.get(LOCALE_COOKIE)?.value);
+}
 
 function CheckTile({ size = 34 }: { size?: number }) {
   return (
@@ -77,13 +40,13 @@ function CheckTile({ size = 34 }: { size?: number }) {
   );
 }
 
-function StoreBadge({ kind }: { kind: "apple" | "google" }) {
+function StoreBadge({ kind, store }: { kind: "apple" | "google"; store: LandingContent["store"] }) {
   // The native apps are not published yet, so these badges are presentational only —
   // rendered as a non-interactive element (not a dead placeholder link) to keep the UI honest.
   return (
     <span
       role="img"
-      aria-label={kind === "apple" ? "App Store — coming soon" : "Google Play — coming soon"}
+      aria-label={kind === "apple" ? store.apple.aria : store.google.aria}
       style={{ ...hx.badge, cursor: "default" }}
     >
       <span aria-hidden="true" style={{ display: "inline-flex", lineHeight: 1 }}>
@@ -99,40 +62,40 @@ function StoreBadge({ kind }: { kind: "apple" | "google" }) {
       </span>
       <span style={{ display: "grid", lineHeight: 1.1 }}>
         <span style={{ fontSize: 9, opacity: 0.85 }}>
-          {kind === "apple" ? "Download on the" : "GET IT ON"}
+          {kind === "apple" ? store.apple.line : store.google.line}
         </span>
-        <strong style={{ fontSize: 15 }}>{kind === "apple" ? "App Store" : "Google Play"}</strong>
+        <strong style={{ fontSize: 15 }}>{kind === "apple" ? store.apple.name : store.google.name}</strong>
       </span>
     </span>
   );
 }
 
-function PhoneMockup() {
+function PhoneMockup({ p }: { p: LandingContent["heroPhone"] }) {
   return (
     <div aria-hidden="true" style={hx.phone}>
-      <div style={{ fontSize: 13, color: "#6b7a90" }}>Hello, Ahmed</div>
+      <div style={{ fontSize: 13, color: "#6b7a90" }}>{p.greeting}</div>
       <div style={{ fontSize: 18, fontWeight: 800, color: "#0b1f3f", margin: "2px 0 16px" }}>
-        What are you looking for today?
+        {p.prompt}
       </div>
       <div style={{ display: "grid", gap: 12 }}>
         <div style={{ background: "#2563eb", color: "#fff", borderRadius: 14, padding: 16 }}>
-          <strong>Find Work</strong>
-          <div style={{ fontSize: 12, opacity: 0.85 }}>Find jobs near you</div>
+          <strong>{p.findWork}</strong>
+          <div style={{ fontSize: 12, opacity: 0.85 }}>{p.findWorkSub}</div>
         </div>
         <div style={{ background: "#0b1f3f", color: "#fff", borderRadius: 14, padding: 16 }}>
-          <strong>Find People</strong>
-          <div style={{ fontSize: 12, opacity: 0.85 }}>Hire people you can count on</div>
+          <strong>{p.findPeople}</strong>
+          <div style={{ fontSize: 12, opacity: 0.85 }}>{p.findPeopleSub}</div>
         </div>
       </div>
       <div style={{ marginTop: 16, fontSize: 13, fontWeight: 700, color: "#0b1f3f" }}>
-        Popular Near You
+        {p.popular}
       </div>
       <div style={hx.phoneJob}>
         <div>
-          <strong style={{ fontSize: 13 }}>Kitchen Helper</strong>
-          <div style={{ fontSize: 11, color: "#6b7a90" }}>Restaurant · Laval, QC</div>
+          <strong style={{ fontSize: 13 }}>{p.jobTitle}</strong>
+          <div style={{ fontSize: 11, color: "#6b7a90" }}>{p.jobMeta}</div>
         </div>
-        <div style={{ fontWeight: 800, fontSize: 13 }}>$18/hr</div>
+        <div style={{ fontWeight: 800, fontSize: 13 }}>{p.jobPay}</div>
       </div>
     </div>
   );
@@ -291,7 +254,9 @@ const hx: Record<string, CSSProperties> = {
   }
 };
 
-export default function LandingPage() {
+export default async function LandingPage() {
+  const locale = await resolveLocale();
+  const c = getLandingContent(locale);
   const isProduction = process.env.RWOS_ENV === "production";
   const isStaging =
     process.env.RWOS_ENV === "staging" ||
@@ -304,37 +269,41 @@ export default function LandingPage() {
       <LogoIntro />
       {isStaging ? (
         <aside aria-label="Staging environment notice" role="status" style={styles.stagingBanner}>
-          <strong>STAGING</strong>
-          <span>SYNTHETIC DATA</span>
-          <span>NO REAL PAYMENT</span>
-          <span>NO PRODUCTION CUSTOMER DATA</span>
+          <strong>{c.staging.label}</strong>
+          <span>{c.staging.synthetic}</span>
+          <span>{c.staging.noPayment}</span>
+          <span>{c.staging.noProdData}</span>
         </aside>
       ) : null}
       <header style={{ ...styles.header, position: "relative" }}>
         <a href="/" style={styles.brand} aria-label="JobLop home">
           <JobLopLogo height={30} />
         </a>
-        <HeaderNav
-          ctaHref={isProduction ? "/contact" : "/signup/employer"}
-          ctaLabel={isProduction ? "Request Access" : "Get Started"}
-        />
+        <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
+          <LanguageSwitcher />
+          <HeaderNav
+            ctaHref={isProduction ? "/contact" : "/signup/employer"}
+            ctaLabel={isProduction ? c.header.ctaRequestAccess : c.header.ctaGetStarted}
+            links={c.header.navLinks}
+            openLabel={c.header.openMenu}
+            closeLabel={c.header.closeMenu}
+            signIn={c.header.signIn}
+          />
+        </div>
       </header>
 
       <section style={hx.hero}>
         <div style={hx.heroCopy}>
           <h1 style={hx.h1}>
-            Find work.
+            {c.hero.line1}
             <br />
-            Find people.
+            {c.hero.line2}
             <br />
-            <span style={{ color: "#2563eb" }}>Move forward.</span>
+            <span style={{ color: "#2563eb" }}>{c.hero.line3}</span>
           </h1>
-          <p style={hx.lede}>
-            JobLop connects local workers with people and businesses that need help. Fast. Simple.
-            Reliable.
-          </p>
+          <p style={hx.lede}>{c.hero.lede}</p>
           <ul style={hx.chips} aria-label="Why JobLop">
-            {["Quick Matches", "Verified Users", "Secure &amp; Trusted"].map((label) => (
+            {c.hero.chips.map((label) => (
               <li key={label} style={hx.chip}>
                 <span aria-hidden="true" style={hx.chipDot}>
                   <svg width="12" height="12" viewBox="0 0 24 24" fill="none">
@@ -347,35 +316,35 @@ export default function LandingPage() {
                     />
                   </svg>
                 </span>
-                {label === "Secure &amp; Trusted" ? "Secure & Trusted" : label}
+                {label}
               </li>
             ))}
           </ul>
           <div style={hx.ctaRow}>
             <a href={workerAppUrl} style={hx.ctaPrimary}>
-              I&rsquo;m Looking for Work <span aria-hidden="true">→</span>
+              {c.hero.ctaWork} <span aria-hidden="true">→</span>
             </a>
             <a href={hireHref} style={hx.ctaOutline}>
-              I Need to Hire <span aria-hidden="true">→</span>
+              {c.hero.ctaHire} <span aria-hidden="true">→</span>
             </a>
           </div>
           <div style={hx.storeWrap}>
-            <p style={hx.storeLabel}>Available on</p>
+            <p style={hx.storeLabel}>{c.hero.availableOn}</p>
             <div style={hx.storeRow}>
-              <StoreBadge kind="apple" />
-              <StoreBadge kind="google" />
+              <StoreBadge kind="apple" store={c.store} />
+              <StoreBadge kind="google" store={c.store} />
             </div>
           </div>
         </div>
 
         <div style={hx.heroVisual}>
-          <PhoneMockup />
+          <PhoneMockup p={c.heroPhone} />
           <div style={hx.oppCard}>
             <div>
               <strong style={{ display: "block", fontSize: 14, color: "#0b1f3f" }}>
-                Opportunities
+                {c.hero.oppTitle}
               </strong>
-              <span style={{ fontSize: 13, color: "#6b7a90" }}>around you</span>
+              <span style={{ fontSize: 13, color: "#6b7a90" }}>{c.hero.oppAround}</span>
             </div>
             <div style={hx.avatars}>
               {["#7ca6f5", "#f5a97c", "#8fd4a8", "#c79cf0"].map((c, i) => (
@@ -389,20 +358,17 @@ export default function LandingPage() {
 
       <section aria-labelledby="categories-title" style={styles.section}>
         <div style={styles.centerHeader}>
-          <p style={styles.eyebrowDark}>Work group capsules</p>
+          <p style={styles.eyebrowDark}>{c.categories.eyebrow}</p>
           <h2 id="categories-title" style={styles.sectionTitle}>
-            Start with the right group, then narrow the request.
+            {c.categories.title}
           </h2>
-          <p style={styles.sectionCopy}>
-            Capsules keep job requests easy to scan while leaving space for new roles that clients
-            and workers add over time.
-          </p>
+          <p style={styles.sectionCopy}>{c.categories.copy}</p>
         </div>
         <div style={styles.capsuleGrid}>
-          {staffingCategories.map((category) => (
-            <article key={category.name} style={styles.capsuleCard}>
+          {c.categories.items.map((category) => (
+            <article key={category.key} style={styles.capsuleCard}>
               <img
-                src={capsulePhotos[category.name]}
+                src={capsulePhotos[category.key]}
                 alt={`${category.name} staffing`}
                 style={styles.capsulePhoto}
               />
@@ -418,19 +384,13 @@ export default function LandingPage() {
 
       <section id="how-it-works" aria-labelledby="workflow-title" style={styles.workflowBand}>
         <div style={styles.centerHeader}>
-          <p style={styles.eyebrowDark}>Managed staffing flow</p>
+          <p style={styles.eyebrowDark}>{c.workflow.eyebrow}</p>
           <h2 id="workflow-title" style={styles.sectionTitle}>
-            Built around operations, not just job posting.
+            {c.workflow.title}
           </h2>
         </div>
         <div style={styles.timeline}>
-          {[
-            "Job Request",
-            "Admin Dispatch",
-            "Worker Offer",
-            "Assignment",
-            "Attendance Handoff"
-          ].map((step) => (
+          {c.workflow.steps.map((step) => (
             <span key={step} style={styles.timelineStep}>
               {step}
             </span>
@@ -440,16 +400,16 @@ export default function LandingPage() {
 
       <section id="employers" aria-labelledby="experiences-title" style={styles.section}>
         <div style={styles.centerHeader}>
-          <p style={styles.eyebrowDark}>One platform, three experiences</p>
+          <p style={styles.eyebrowDark}>{c.experiences.eyebrow}</p>
           <h2 id="experiences-title" style={styles.sectionTitle}>
-            Focused tools for every workforce role.
+            {c.experiences.title}
           </h2>
         </div>
         <div style={styles.experienceGrid}>
-          {platformPillars.map((pillar) => (
-            <article key={pillar.label} style={styles.experienceCard}>
+          {c.experiences.pillars.map((pillar) => (
+            <article key={pillar.key} style={styles.experienceCard}>
               <img
-                src={pillarPhotos[pillar.label]}
+                src={pillarPhotos[pillar.key]}
                 alt={`${pillar.label} experience`}
                 style={styles.experiencePhoto}
               />
@@ -469,31 +429,28 @@ export default function LandingPage() {
       {!isProduction ? (
         <section aria-labelledby="preview-title" style={styles.previewBand}>
           <div style={styles.previewIntro}>
-            <p style={styles.eyebrowDark}>Inside the workspace</p>
+            <p style={styles.eyebrowDark}>{c.preview.eyebrow}</p>
             <h2 id="preview-title" style={styles.sectionTitle}>
-              Quiet dashboards for repeated daily work.
+              {c.preview.title}
             </h2>
-            <p style={styles.sectionCopy}>
-              A preview of the JobLop workspace — clear staffing status, requests, and coverage at a
-              glance. Sample data shown for illustration.
-            </p>
+            <p style={styles.sectionCopy}>{c.preview.copy}</p>
           </div>
           <div style={styles.previewGrid}>
-            <DashboardPreview />
-            <WorkerPhonePreview />
+            <DashboardPreview d={c.dashboard} />
+            <WorkerPhonePreview rows={c.workerPhone} />
           </div>
         </section>
       ) : null}
 
       <section id="workers" aria-labelledby="workers-title" style={styles.section}>
         <div style={styles.centerHeader}>
-          <p style={styles.eyebrowDark}>For workers</p>
+          <p style={styles.eyebrowDark}>{c.workers.eyebrow}</p>
           <h2 id="workers-title" style={styles.sectionTitle}>
-            Mobile-first staffing without hidden employer economics.
+            {c.workers.title}
           </h2>
         </div>
         <div style={styles.benefitGrid}>
-          {workerBenefits.map((benefit) => (
+          {c.workers.benefits.map((benefit) => (
             <span key={benefit} style={styles.benefit}>
               {benefit}
             </span>
@@ -503,19 +460,13 @@ export default function LandingPage() {
 
       <section aria-labelledby="ai-title" style={styles.aiSection}>
         <div>
-          <p style={styles.eyebrowDark}>AI brain boundary</p>
+          <p style={styles.eyebrowDark}>{c.ai.eyebrow}</p>
           <h2 id="ai-title" style={styles.sectionTitle}>
-            AI assists decisions. People remain in control.
+            {c.ai.title}
           </h2>
         </div>
         <div style={styles.aiFlow}>
-          {(
-            [
-              ["Recommends", "Qualified matches, gaps, and risks"],
-              ["Explains", "Evidence, uncertainty, and missing data"],
-              ["Waits", "Human review controls final action"]
-            ] as const
-          ).map(([title, text]) => (
+          {c.ai.flow.map(([title, text]) => (
             <FlowStep key={title} title={title} text={text} />
           ))}
         </div>
@@ -523,13 +474,13 @@ export default function LandingPage() {
 
       <section aria-labelledby="trust-title" style={styles.section}>
         <div style={styles.centerHeader}>
-          <p style={styles.eyebrowDark}>Trust controls</p>
+          <p style={styles.eyebrowDark}>{c.trust.eyebrow}</p>
           <h2 id="trust-title" style={styles.sectionTitle}>
-            Governance stays visible across the journey.
+            {c.trust.title}
           </h2>
         </div>
         <div style={styles.controlGrid}>
-          {trustControls.map((control) => (
+          {c.trust.controls.map((control) => (
             <article key={control} style={styles.controlCard}>
               <CheckTile size={44} />
               <h3 style={styles.smallTitle}>{control}</h3>
@@ -540,25 +491,25 @@ export default function LandingPage() {
 
       <section aria-labelledby="journeys-title" style={styles.section}>
         <div style={styles.twoColumn}>
-          <JourneyCard title="Worker Journey" steps={workerJourney} />
-          <JourneyCard title="Employer Journey" steps={employerJourney} />
+          <JourneyCard title={c.journeys.workerTitle} steps={c.journeys.worker} />
+          <JourneyCard title={c.journeys.employerTitle} steps={c.journeys.employer} />
         </div>
       </section>
 
       <section id="faq" aria-labelledby="faq-title" style={styles.section}>
         <div style={styles.centerHeader}>
-          <p style={styles.eyebrowDark}>FAQ preview</p>
+          <p style={styles.eyebrowDark}>{c.faq.eyebrow}</p>
           <h2 id="faq-title" style={styles.sectionTitle}>
-            Clear answers before users choose a path.
+            {c.faq.title}
           </h2>
         </div>
         <div style={styles.faqGrid}>
-          {faqPreview.map((question) => (
+          {c.faq.questions.map((question) => (
             <article key={question} style={styles.faqItem}>
               <h3 style={styles.faqQuestion}>{question}</h3>
-              <p style={styles.cardText}>Read the governed answer before choosing a path.</p>
+              <p style={styles.cardText}>{c.faq.readNote}</p>
               <a href="/faq" style={styles.textLink}>
-                Read answer in FAQ
+                {c.faq.readLink}
               </a>
             </article>
           ))}
@@ -567,15 +518,15 @@ export default function LandingPage() {
 
       <section style={styles.ctaBand}>
         <div>
-          <h2 style={styles.ctaTitle}>Ready to transform your workforce?</h2>
-          <p style={styles.ctaCopy}>Start with a governed staffing request or schedule a demo.</p>
+          <h2 style={styles.ctaTitle}>{c.cta.title}</h2>
+          <p style={styles.ctaCopy}>{c.cta.copy}</p>
         </div>
         <div style={styles.ctaActions}>
           <a href={hireHref} style={styles.lightButton}>
-            {isProduction ? "Request Access" : "Hire staff"}
+            {isProduction ? c.cta.requestAccess : c.cta.hire}
           </a>
           <a href={workerAppUrl} style={styles.outlineLightButton}>
-            Find work
+            {c.cta.findWork}
           </a>
         </div>
       </section>
@@ -606,12 +557,12 @@ export default function LandingPage() {
   );
 }
 
-function DashboardPreview() {
+function DashboardPreview({ d }: { d: LandingContent["dashboard"] }) {
   return (
     <article style={styles.dashboardPreview} aria-label="Employer dashboard preview">
       <div style={styles.sidebar}>
         <strong>JobLop</strong>
-        {["Dashboard", "Workers", "Jobs", "Compliance", "Reports"].map((item, index) => (
+        {d.nav.map((item, index) => (
           <span key={item} style={index === 0 ? styles.sidebarActive : styles.sidebarItem}>
             {item}
           </span>
@@ -620,15 +571,15 @@ function DashboardPreview() {
       <div style={styles.dashboardCanvas}>
         <div style={styles.dashboardTop}>
           <div>
-            <h3 style={styles.dashboardTitle}>Welcome, Sarah Johnson</h3>
-            <p style={styles.dashboardSub}>Sunrise of Oak Hill</p>
+            <h3 style={styles.dashboardTitle}>{d.welcome}</h3>
+            <p style={styles.dashboardSub}>{d.org}</p>
           </div>
           <a href="/employer/calendar/create" style={styles.miniButton}>
-            Post a Shift
+            {d.postShift}
           </a>
         </div>
         <div style={styles.metricGrid}>
-          {dashboardMetrics.map(([label, value]) => (
+          {d.metrics.map(([label, value]) => (
             <div key={label} style={styles.metricTile}>
               <span>{label}</span>
               <strong>{value}</strong>
@@ -637,19 +588,19 @@ function DashboardPreview() {
         </div>
         <div style={styles.dashboardColumns}>
           <div style={styles.previewPanel}>
-            <h4 style={styles.panelHeading}>Upcoming shifts</h4>
-            {operationsRows.map(([role, status]) => (
-              <div key={role} style={styles.shiftRow}>
-                <span>{role}</span>
-                <strong style={status === "Filled" ? styles.statusGreen : styles.statusAmber}>
-                  {status}
+            <h4 style={styles.panelHeading}>{d.upcoming}</h4>
+            {d.operations.map((op) => (
+              <div key={op.role} style={styles.shiftRow}>
+                <span>{op.role}</span>
+                <strong style={op.filled ? styles.statusGreen : styles.statusAmber}>
+                  {op.status}
                 </strong>
               </div>
             ))}
           </div>
           <div style={styles.previewPanel}>
-            <h4 style={styles.panelHeading}>Recent activity</h4>
-            {["Worker accepted shift", "Shift filled", "New application"].map((item) => (
+            <h4 style={styles.panelHeading}>{d.recentActivity}</h4>
+            {d.activity.map((item) => (
               <p key={item} style={styles.activityLine}>
                 {item}
               </p>
@@ -661,14 +612,10 @@ function DashboardPreview() {
   );
 }
 
-function WorkerPhonePreview() {
+function WorkerPhonePreview({ rows }: { rows: LandingContent["workerPhone"] }) {
   return (
     <article style={styles.phoneCluster} aria-label="Worker mobile app preview">
-      {[
-        ["Upcoming", "CNA evening shift", "$96.00"],
-        ["Schedule", "May 2026", "3 shifts"],
-        ["Earnings", "$560.00", "pending"]
-      ].map(([heading, detail, meta]) => (
+      {rows.map(([heading, detail, meta]) => (
         <div key={heading} style={styles.phone}>
           <div style={styles.phoneTop} />
           <h3 style={styles.phoneTitle}>{heading}</h3>
@@ -1420,15 +1367,15 @@ const styles: Record<string, CSSProperties> = {
 };
 
 const capsulePhotos: Record<string, string> = {
-  Kitchen: "/images/cap-kitchen.jpg",
-  "Care / Nurse": "/images/cap-care.jpg",
-  "Housekeeping & Dining": "/images/cap-housekeeping.jpg",
-  Maintenance: "/images/cap-maintenance.jpg"
+  kitchen: "/images/cap-kitchen.jpg",
+  care: "/images/cap-care.jpg",
+  housekeeping: "/images/cap-housekeeping.jpg",
+  maintenance: "/images/cap-maintenance.jpg"
 };
 
 
 const pillarPhotos: Record<string, string> = {
-  "For Employers": "/images/exp-employers.jpg",
-  "For Workers": "/images/exp-workers.jpg",
-  "For Administrators": "/images/exp-admins.jpg"
+  employers: "/images/exp-employers.jpg",
+  workers: "/images/exp-workers.jpg",
+  admins: "/images/exp-admins.jpg"
 };
