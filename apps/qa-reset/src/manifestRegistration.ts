@@ -278,11 +278,11 @@ async function insertManifest(transaction: RegistrationTransaction, manifest: Re
         (id, manifest_reference, manifest_checksum, namespace, environment, project_id,
          cluster_id, database_id, authority_id, release_sha, status, approved_at, expires_at,
          retention_until, approval_reference, retention_owner_reference,
-         created_by_caller_alias, created_by_principal_digest, updated_at)
+         created_by_caller_alias, created_by_principal_digest, created_at, updated_at)
        VALUES ($1::uuid, $2, $3, $4, 'staging', $5, $6, $7, $8, $9, 'active',
                CURRENT_TIMESTAMP, $10::timestamptz, $11::timestamptz, $12,
                'gcp/owners/database/mohamed-almashhour-001', 'manifest-registration', $13,
-               CURRENT_TIMESTAMP)`,
+               $14::timestamptz, CURRENT_TIMESTAMP)`,
     ownershipId,
     manifest.manifestId,
     manifest.checksum,
@@ -295,7 +295,12 @@ async function insertManifest(transaction: RegistrationTransaction, manifest: Re
     manifest.expiresAt,
     manifest.retentionUntil,
     manifest.approvalReferences.prepare,
-    principalDigest
+    principalDigest,
+    // created_at is anchored to the manifest's own createdAt (not the DB default now())
+    // so qa_reset_manifests_expiry_check (expires_at > created_at) holds even when a
+    // fixture manifest carries frozen past dates; in production createdAt is the real
+    // registration instant, strictly before the future expiry.
+    manifest.createdAt
   );
   for (const [index, tenantId] of manifest.tenantIds.entries()) {
     await transaction.$executeRawUnsafe(
