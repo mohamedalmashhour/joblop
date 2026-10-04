@@ -1,0 +1,26 @@
+import { AdminMarketWagesPanel } from "./AdminMarketWagesPanel";
+
+export default function AdminMarketWagesPage() {
+  return (
+    <main style={styles.page}>
+      <header style={styles.hero}>
+        <p style={styles.eyebrow}>Resident Workforce OS / Administration</p>
+        <h1 style={styles.title}>Market-wage references</h1>
+        <p style={styles.lede}>
+          Set the indicative market hourly rate for a role in a province. Employers see it beside
+          their own contract rate when ordering. Reference data only — it never prices a request,
+          pays a worker, or bills an employer.
+        </p>
+      </header>
+      <AdminMarketWagesPanel />
+    </main>
+  );
+}
+
+const styles = {
+  page: { background: "#f4f7fb", color: "#10233f", fontFamily: "Inter, system-ui, sans-serif", minHeight: "100vh" },
+  hero: { background: "#061b41", color: "#fff", padding: "48px clamp(18px, 5vw, 64px)" },
+  eyebrow: { color: "#fff1a8", fontSize: 12, fontWeight: 900, textTransform: "uppercase" as const },
+  title: { fontSize: "clamp(38px, 5vw, 60px)", margin: "8px 0" },
+  lede: { color: "#d6e5f8", fontSize: 18, lineHeight: 1.6, maxWidth: 820 }
+} as const;

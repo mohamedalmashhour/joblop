@@ -232,7 +232,7 @@ import { materializeAndListWorkerPayouts } from "./workerPayoutRepository";
 import { isWorkerDisputeCategory, normalizeWorkerDisputeReason } from "@rwos/shared";
 import { raiseWorkerDispute, listWorkerDisputes, withdrawWorkerDispute } from "./workerDisputeRepository";
 import { createEmployerOrderWithChildren, listEmployerOrders, getEmployerOrder, submitEmployerOrder, cancelEmployerOrder } from "./employerOrderRepository";
-import { listMarketWagesForResidence } from "./marketWageRepository";
+import { listMarketWagesForResidence, listAllMarketWages, upsertMarketWage } from "./marketWageRepository";
 import { listPlatformOrdersInReview, getPlatformOrder } from "./adminOrderRepository";
 import { workerAllowances } from "./workerAllowances";
 import { createPrismaInvoiceRepository, type InvoiceRepository } from "./invoiceRepository";
@@ -4541,6 +4541,39 @@ export function buildApi(options: BuildApiOptions = {}) {
       return reply.code(200).send({ jobRequest: serializeJobRequest(jobRequest) });
     }
   );
+
+  // Admin-maintained market-wage references. List every reference, and upsert one per (role, province).
+  // Reference data only — never used to price, pay, or bill. Admin-gated.
+  app.get("/platform/market-wages", async (request, reply) => {
+    const session = await authService.validateSession(readBearerToken(request.headers.authorization));
+    if (!session.authenticated || !session.user) return sendJobRequestDenied(reply);
+    await jobRequestService.listAdminIntake({ session, roles: await resolveAuthorizationRoles(session.user.id) });
+    const marketWages = await listAllMarketWages(prisma!);
+    return reply.code(200).send({ marketWages });
+  });
+
+  app.post("/platform/market-wages", async (request, reply) => {
+    const session = await authService.validateSession(readBearerToken(request.headers.authorization));
+    if (!session.authenticated || !session.user) return sendJobRequestDenied(reply);
+    await jobRequestService.listAdminIntake({ session, roles: await resolveAuthorizationRoles(session.user.id) });
+    const body = asRecord(request.body);
+    const roleDefinitionId = readRequiredString(body, "roleDefinitionId");
+    const province = readRequiredString(body, "province");
+    const medianHourlyRateMinor = readOptionalNumber(body, "medianHourlyRateMinor");
+    const currency = readRequiredString(body, "currency") ?? "CAD";
+    if (!roleDefinitionId || !province || province.length > 8 || medianHourlyRateMinor === null || !Number.isInteger(medianHourlyRateMinor) || medianHourlyRateMinor < 0) {
+      return reply.code(400).send({ error: "RWOS_INVALID_MARKET_WAGE", message: "A role, province and non-negative rate are required." });
+    }
+    const marketWage = await upsertMarketWage(prisma!, {
+      roleDefinitionId,
+      province: province.toUpperCase(),
+      medianHourlyRateMinor,
+      currency,
+      source: readOptionalString(body, "source") ?? null,
+      updatedByUserId: session.user.id
+    });
+    return reply.code(200).send({ marketWage });
+  });
 
   // Admin review queue, grouped by order: every order with at least one role line still awaiting
   // review. Authorized through the same governed admin gate as the per-request intake queue; the
