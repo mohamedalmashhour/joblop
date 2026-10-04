@@ -94,6 +94,24 @@ export function AdminOrderReviewPanel({ orderId }: Readonly<{ orderId: string }>
     }
   }, [inputs, load]);
 
+  const approveAll = useCallback(async () => {
+    setBusy("__all__");
+    setMessage("Approving the AI-recommended roles.");
+    try {
+      const response = await fetch(`/api/orders/${encodeURIComponent(orderId)}/approve-standard`, {
+        method: "POST",
+        headers: { "content-type": "application/json" }
+      });
+      if (!response.ok) { setMessage("The batch approval could not be applied."); return; }
+      const payload = (await response.json()) as { summary?: { approved: number; escalated: number; skipped: number } };
+      const sm = payload.summary;
+      setMessage(sm ? `Approved ${sm.approved}, escalated ${sm.escalated}, skipped ${sm.skipped}.` : "");
+      await load();
+    } finally {
+      setBusy(null);
+    }
+  }, [orderId, load]);
+
   if (state.status === "loading") return <p style={styles.text}>Loading the order.</p>;
   if (state.status === "denied") return <p style={styles.text}>Administrator access required.</p>;
   if (state.status === "error") return <p style={styles.text}>This order could not be reached.</p>;
@@ -111,6 +129,8 @@ export function AdminOrderReviewPanel({ orderId }: Readonly<{ orderId: string }>
         <span style={styles.badge}>{order.status.replaceAll("_", " ")}</span>
       </div>
       {message ? <p style={styles.notice} role="status">{message}</p> : null}
+
+      <button type="button" style={styles.button} disabled={busy !== null} onClick={() => void approveAll()}>Approve all recommended roles</button>
 
       {order.children.map((child) => {
         const cfg = cfgFor(child);

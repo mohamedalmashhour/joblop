@@ -4562,6 +4562,44 @@ export function buildApi(options: BuildApiOptions = {}) {
     return reply.code(200).send({ order });
   });
 
+  // Approve every AI-recommended role line in one order (the AI manager's "approve" recommendations),
+  // running the governed begin-review -> approve-for-dispatch per role at its suggested margin.
+  // Roles the AI manager escalates are left untouched for individual (owner) handling.
+  app.post("/platform/orders/:orderId/approve-standard", async (request, reply) => {
+    const session = await authService.validateSession(readBearerToken(request.headers.authorization));
+    if (!session.authenticated || !session.user) return sendJobRequestDenied(reply);
+    const roles = await resolveAuthorizationRoles(session.user.id);
+    await jobRequestService.listAdminIntake({ session, roles });
+    const order = await getPlatformOrder(prisma!, readRouteParam(request.params, "orderId"));
+    if (!order) return reply.code(404).send({ error: "RWOS_ORDER_NOT_FOUND", message: "Order not found." });
+
+    let approved = 0;
+    let escalated = 0;
+    let skipped = 0;
+    for (const child of order.children) {
+      if (child.recommendation === "escalate") { escalated += 1; continue; }
+      let version = child.version;
+      let status = child.status;
+      try {
+        if (status === "submitted") {
+          const reviewed = await jobRequestService.startAdminReview({ session, roles, jobRequestId: child.jobRequestId, expectedVersion: version });
+          version = reviewed.version;
+          status = "admin_review";
+        }
+        if (status === "admin_review") {
+          await jobRequestService.approveForDispatch({ session, roles, jobRequestId: child.jobRequestId, expectedVersion: version, marginPpm: child.suggestedMarginPpm });
+          approved += 1;
+        } else {
+          skipped += 1;
+        }
+      } catch {
+        skipped += 1;
+      }
+    }
+    const updated = await getPlatformOrder(prisma!, readRouteParam(request.params, "orderId"));
+    return reply.code(200).send({ order: updated, summary: { approved, escalated, skipped } });
+  });
+
   app.put(
     "/organizations/:organizationId/calendar/requests/:jobRequestId/profile",
     async (request, reply) => {
