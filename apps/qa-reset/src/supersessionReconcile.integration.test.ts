@@ -226,6 +226,21 @@ suite("QA-reset supersession reconciles stranded materializations", () => {
   }
 
   async function cleanup() {
+    // Remove every materialized fixture entity (manifest-owned) in FK-safe cleanup
+    // order, including the append-only "retained" rows (audit_event /
+    // audit_actor_reference) that the reset itself never clears. Without this they
+    // survive with their fixed ids and collide with the next suite or run (23505).
+    for (const entityType of testManifest.cleanupOrder) {
+      if (entityType === "membership_access_role") continue; // removed below via access_role_definition_id
+      const ids = testManifest.records
+        .filter((r) => r.entityType === entityType && r.ownership === "manifest_owned")
+        .map((r) => r.recordId);
+      if (ids.length === 0) continue;
+      await prisma.$executeRawUnsafe(
+        `DELETE FROM ${approvedTableForEntity(entityType)} WHERE id = ANY($1::uuid[])`,
+        ids
+      );
+    }
     // qa_reset_* tables are owned exclusively by this utility, so a full wipe is
     // safe and also clears residue from any prior aborted run (ids differ per run).
     for (const table of [
