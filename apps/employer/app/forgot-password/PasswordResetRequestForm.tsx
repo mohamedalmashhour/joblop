@@ -2,11 +2,13 @@
 
 import { useState } from "react";
 import { styles } from "../employer/employerStyles";
+import { useT } from "../i18n/LocaleProvider";
 
 export function PasswordResetRequestForm() {
+  const t = useT();
   const [email, setEmail] = useState("");
   const [submitting, setSubmitting] = useState(false);
-  const [message, setMessage] = useState("Enter the email used for your account.");
+  const [message, setMessage] = useState(() => t("auth.resetIntro"));
 
   const submit = async (event: React.FormEvent) => {
     event.preventDefault();
@@ -17,13 +19,13 @@ export function PasswordResetRequestForm() {
       body: JSON.stringify({ email })
     }).catch(() => undefined);
     setSubmitting(false);
-    setMessage("If an account matches that email, password reset instructions will be sent.");
+    setMessage(t("auth.resetSent"));
   };
 
   return (
     <form style={styles.formGrid} onSubmit={submit}>
       <label style={styles.fieldLabel}>
-        Work email
+        {t("auth.workEmail")}
         <input
           style={styles.input}
           type="email"
@@ -37,10 +39,10 @@ export function PasswordResetRequestForm() {
         {message}
       </p>
       <button type="submit" disabled={submitting} style={styles.primaryButton}>
-        {submitting ? "Requesting…" : "Send reset instructions"}
+        {submitting ? t("auth.requesting") : t("auth.sendReset")}
       </button>
       <a href="/signin" style={styles.secondaryButton}>
-        Back to sign in
+        {t("auth.backToSignIn")}
       </a>
     </form>
   );

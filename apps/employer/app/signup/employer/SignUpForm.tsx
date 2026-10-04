@@ -3,15 +3,17 @@
 import { useState } from "react";
 
 import { styles } from "../../employer/employerStyles";
+import { useT } from "../../i18n/LocaleProvider";
 import { VerifyEmailPanel } from "./VerifyEmailPanel";
 
 /**
  * Employer sign-up capsule (client). Posts to `/api/session/sign-up`, which delegates to the backend
- * the backend registration endpoint. Registration is gated to non-production, so when it is closed this
- * renders an honest "not open" state instead of a form that can't succeed. On success the account
- * exists and a session cookie is set, so we advance into organization onboarding.
+ * registration endpoint. Registration is gated to non-production, so when it is closed this renders an
+ * honest "not open" state instead of a form that can't succeed. On success the account exists and a
+ * session cookie is set, so we advance into organization onboarding. All copy is localized (en/fr).
  */
 export function SignUpForm({ registrationOpen }: { registrationOpen: boolean }) {
+  const t = useT();
   const [fullName, setFullName] = useState("");
   const [email, setEmail] = useState("");
   const [confirmEmail, setConfirmEmail] = useState("");
@@ -20,9 +22,7 @@ export function SignUpForm({ registrationOpen }: { registrationOpen: boolean }) 
   const [acceptedNotices, setAcceptedNotices] = useState(false);
   const [state, setState] = useState<"idle" | "submitting" | "error">("idle");
   const [verifying, setVerifying] = useState(false);
-  const [message, setMessage] = useState(
-    "Create your employer account to begin organization setup."
-  );
+  const [message, setMessage] = useState(() => t("auth.signUpIntro"));
 
   const continueToOnboarding = () => window.location.assign("/employer/onboarding/company");
 
@@ -33,12 +33,9 @@ export function SignUpForm({ registrationOpen }: { registrationOpen: boolean }) 
   if (!registrationOpen) {
     return (
       <div style={styles.formGrid}>
-        <p style={styles.warning}>
-          Account creation is not open in this environment yet. Employer accounts are provisioned by
-          the JobLop team during onboarding.
-        </p>
+        <p style={styles.warning}>{t("auth.regClosed")}</p>
         <a href="/signin" style={styles.primaryButton}>
-          Go to sign in
+          {t("auth.goToSignIn")}
         </a>
       </div>
     );
@@ -48,18 +45,18 @@ export function SignUpForm({ registrationOpen }: { registrationOpen: boolean }) 
     event.preventDefault();
     if (email.trim().toLowerCase() !== confirmEmail.trim().toLowerCase()) {
       setState("error");
-      return setMessage("Email addresses do not match.");
+      return setMessage(t("auth.emailMismatch"));
     }
     if (password !== confirmPassword) {
       setState("error");
-      return setMessage("Passwords do not match.");
+      return setMessage(t("auth.passwordMismatch"));
     }
     if (!acceptedNotices) {
       setState("error");
-      return setMessage("Accept the Terms and Privacy Notice before creating an account.");
+      return setMessage(t("auth.acceptNotices"));
     }
     setState("submitting");
-    setMessage("Creating your account…");
+    setMessage(t("auth.creatingAccount"));
     try {
       const response = await fetch("/api/session/sign-up", {
         method: "POST",
@@ -77,86 +74,80 @@ export function SignUpForm({ registrationOpen }: { registrationOpen: boolean }) 
       setConfirmPassword("");
       if (!response.ok) {
         setState("error");
-        if (response.status === 404) return setMessage("Account creation is not open yet.");
-        if (response.status === 409) {
-          return setMessage("That email is already registered — try signing in instead.");
-        }
-        if (response.status === 400) return setMessage("Choose a stronger password and try again.");
-        if (response.status === 429) {
-          return setMessage("Too many attempts. Please wait a moment and try again.");
-        }
-        if (response.status === 503) {
-          return setMessage("Sign-up service is unavailable. Try again.");
-        }
-        return setMessage("Could not create the account. Check your details and try again.");
+        if (response.status === 404) return setMessage(t("auth.regNotOpen"));
+        if (response.status === 409) return setMessage(t("auth.emailRegistered"));
+        if (response.status === 400) return setMessage(t("auth.strongerPassword"));
+        if (response.status === 429) return setMessage(t("auth.tooManyAttempts"));
+        if (response.status === 503) return setMessage(t("auth.signUpUnavailable"));
+        return setMessage(t("auth.createFailed"));
       }
       setState("idle");
       setVerifying(true);
     } catch {
       setState("error");
-      setMessage("Sign-up service is unavailable. Try again.");
+      setMessage(t("auth.signUpUnavailable"));
     }
   };
 
   return (
     <form style={styles.formGrid} onSubmit={submit}>
       <label style={styles.fieldLabel}>
-        Work email
+        {t("auth.workEmail")}
         <input
           style={styles.input}
           type="email"
           autoComplete="email"
           value={email}
           onChange={(event) => setEmail(event.target.value)}
-          placeholder="manager@example.org"
+          placeholder={t("auth.emailPlaceholder")}
           required
         />
       </label>
       <label style={styles.fieldLabel}>
-        Confirm work email
+        {t("auth.confirmEmail")}
         <input
           style={styles.input}
           type="email"
           autoComplete="email"
           value={confirmEmail}
           onChange={(event) => setConfirmEmail(event.target.value)}
-          placeholder="manager@example.org"
+          placeholder={t("auth.emailPlaceholder")}
           required
         />
       </label>
       <label style={styles.fieldLabel}>
-        Full name
+        {t("auth.fullName")}
         <input
           style={styles.input}
           type="text"
           autoComplete="name"
           value={fullName}
           onChange={(event) => setFullName(event.target.value)}
-          placeholder="Authorized contact"
+          placeholder={t("auth.fullNamePlaceholder")}
         />
       </label>
       <label style={styles.fieldLabel}>
-        Password
+        {t("auth.password")}
         <input
           style={styles.input}
           type="password"
           autoComplete="new-password"
           value={password}
           onChange={(event) => setPassword(event.target.value)}
-          placeholder="Create a password"
+          placeholder={t("auth.createPassword")}
           minLength={12}
           required
         />
       </label>
       <label style={styles.fieldLabel}>
-        Confirm password
+        {t("auth.confirmPassword")}
         <input
           style={styles.input}
           type="password"
           autoComplete="new-password"
           value={confirmPassword}
           onChange={(event) => setConfirmPassword(event.target.value)}
-          placeholder="Repeat your password"
+          placeholder={t("auth.repeatPassword")}
           minLength={12}
           required
         />
@@ -169,16 +160,20 @@ export function SignUpForm({ registrationOpen }: { registrationOpen: boolean }) 
           required
         />
         <span>
-          I accept the <a href="/terms">Terms</a> and <a href="/privacy">Privacy Notice</a>.
+          {t("auth.acceptPre")}
+          <a href="/terms">{t("auth.terms")}</a>
+          {t("auth.acceptMid")}
+          <a href="/privacy">{t("auth.privacy")}</a>
+          {t("auth.acceptPost")}
         </span>
       </label>
       <p style={state === "error" ? styles.warning : styles.sectionCopy}>{message}</p>
       <div style={{ display: "flex", gap: "0.75rem", flexWrap: "wrap" }}>
         <button type="submit" disabled={state === "submitting"} style={styles.primaryButton}>
-          {state === "submitting" ? "Creating…" : "Create employer account"}
+          {state === "submitting" ? t("auth.creating") : t("auth.createEmployerAccount")}
         </button>
         <a href="/signin" style={styles.secondaryButton}>
-          I already have an account
+          {t("auth.haveAccount")}
         </a>
       </div>
     </form>
