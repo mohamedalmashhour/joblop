@@ -122,9 +122,12 @@ export class QaResetPersistenceConflictError extends Error {
 export class QaResetRecordMutationError extends Error {
   constructor(
     readonly operation: DurableResetOperation,
-    readonly entityType: OwnedEntityType
+    readonly entityType: OwnedEntityType,
+    options?: ErrorOptions
   ) {
-    super("RWOS_QA_RESET_RECORD_MUTATION_FAILED");
+    // Message stays stable for assertions; the swallowed DB error is preserved as
+    // `cause` and the failing entity/operation as fields, so failures are diagnosable.
+    super("RWOS_QA_RESET_RECORD_MUTATION_FAILED", options);
   }
 }
 
@@ -244,8 +247,8 @@ export class PostgresQaResetRepository {
               request.operation === "prepare"
                 ? await this.mutator.prepare(connection, record)
                 : await this.mutator.cleanup(connection, record);
-          } catch {
-            throw new QaResetRecordMutationError(request.operation, record.entityType);
+          } catch (cause) {
+            throw new QaResetRecordMutationError(request.operation, record.entityType, { cause });
           }
           if (affected !== 1) throw new QaResetPersistenceConflictError();
           affectedCount += affected;
