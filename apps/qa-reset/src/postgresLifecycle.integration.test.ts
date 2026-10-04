@@ -38,6 +38,7 @@ suite("QA-reset durable PostgreSQL lifecycle", () => {
     });
     persistence = runtime.postgresFactory(testConfig, testManifest);
     repository = persistence.durableRepository;
+    await removeControlEnvelope();
     await seedControlEnvelope();
   });
 
@@ -155,7 +156,8 @@ suite("QA-reset durable PostgreSQL lifecycle", () => {
       `INSERT INTO access_role_definitions
          (id, key, scope, status, is_system, created_at, updated_at)
        VALUES ($1, 'ORGANIZATION_OWNER', 'organization', 'active', true,
-               CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)`,
+               CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+       ON CONFLICT (id) DO NOTHING`,
       testConfig.organizationOwnerAccessRoleId
     );
     await prisma.$executeRawUnsafe(
@@ -216,29 +218,30 @@ suite("QA-reset durable PostgreSQL lifecycle", () => {
   }
 
   async function removeControlEnvelope() {
-    await prisma.$executeRawUnsafe(
-      `DELETE FROM qa_reset_control_events
-        WHERE control_run_id IN (
-          SELECT id FROM qa_reset_control_runs WHERE manifest_id = $1
-        )`,
-      manifestOwnershipId
-    );
-    await prisma.$executeRawUnsafe(
-      `DELETE FROM qa_reset_control_runs WHERE manifest_id = $1`,
-      manifestOwnershipId
-    );
-    await prisma.$executeRawUnsafe(
-      `DELETE FROM qa_reset_owned_records WHERE manifest_id = $1`,
-      manifestOwnershipId
-    );
-    await prisma.$executeRawUnsafe(
-      `DELETE FROM qa_reset_manifest_tenants WHERE manifest_id = $1`,
-      manifestOwnershipId
-    );
-    await prisma.$executeRawUnsafe(
-      `DELETE FROM qa_reset_manifest_ownership WHERE id = $1`,
-      manifestOwnershipId
-    );
+    // qa_reset_* tables are owned exclusively by this utility, so a full wipe is
+    // safe and also clears residue from any prior aborted run (ids differ per run).
+    for (const table of [
+      "qa_reset_control_events",
+      "qa_reset_control_runs",
+      "qa_reset_owned_records",
+      "qa_reset_manifest_tenants",
+      "qa_reset_manifest_ownership"
+    ]) {
+      await prisma.$executeRawUnsafe(`DELETE FROM ${table}`);
+    }
+    // access_role_definitions is shared with other suites (e.g. api's
+    // PLATFORM_ADMINISTRATOR), so only remove THIS suite's ORGANIZATION_OWNER
+    // fixture, FK-safe, never touching rows another suite owns.
+    for (const table of [
+      "platform_access_grants",
+      "membership_access_roles",
+      "access_role_permissions"
+    ]) {
+      await prisma.$executeRawUnsafe(
+        `DELETE FROM ${table} WHERE access_role_definition_id = $1`,
+        testConfig.organizationOwnerAccessRoleId
+      );
+    }
     await prisma.$executeRawUnsafe(
       `DELETE FROM access_role_definitions WHERE id = $1`,
       testConfig.organizationOwnerAccessRoleId

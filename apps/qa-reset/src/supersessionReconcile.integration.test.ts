@@ -40,6 +40,7 @@ suite("QA-reset supersession reconciles stranded materializations", () => {
       now: () => new Date("2026-07-28T12:00:00.000Z")
     });
     persistence = runtime.postgresFactory(testConfig, testManifest);
+    await cleanup();
     await seedEnvelope();
   });
 
@@ -169,7 +170,8 @@ suite("QA-reset supersession reconciles stranded materializations", () => {
   async function seedEnvelope() {
     await prisma.$executeRawUnsafe(
       `INSERT INTO access_role_definitions (id, key, scope, status, is_system, created_at, updated_at)
-       VALUES ($1, 'ORGANIZATION_OWNER', 'organization', 'active', true, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)`,
+       VALUES ($1, 'ORGANIZATION_OWNER', 'organization', 'active', true, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+       ON CONFLICT (id) DO NOTHING`,
       testConfig.organizationOwnerAccessRoleId
     );
     await prisma.$executeRawUnsafe(
@@ -224,16 +226,34 @@ suite("QA-reset supersession reconciles stranded materializations", () => {
   }
 
   async function cleanup() {
+    // qa_reset_* tables are owned exclusively by this utility, so a full wipe is
+    // safe and also clears residue from any prior aborted run (ids differ per run).
     for (const table of [
       "qa_reset_control_events",
       "qa_reset_control_runs",
       "qa_reset_owned_records",
       "qa_reset_manifest_tenants",
-      "qa_reset_manifest_ownership",
-      "access_role_definitions"
+      "qa_reset_manifest_ownership"
     ]) {
       await prisma.$executeRawUnsafe(`DELETE FROM ${table}`);
     }
+    // access_role_definitions is shared with other suites (e.g. api's
+    // PLATFORM_ADMINISTRATOR), so only remove THIS suite's ORGANIZATION_OWNER
+    // fixture, FK-safe, never touching rows another suite owns.
+    for (const table of [
+      "platform_access_grants",
+      "membership_access_roles",
+      "access_role_permissions"
+    ]) {
+      await prisma.$executeRawUnsafe(
+        `DELETE FROM ${table} WHERE access_role_definition_id = $1`,
+        testConfig.organizationOwnerAccessRoleId
+      );
+    }
+    await prisma.$executeRawUnsafe(
+      `DELETE FROM access_role_definitions WHERE id = $1`,
+      testConfig.organizationOwnerAccessRoleId
+    );
   }
 
   function request(operation: DurableResetOperation, planChecksum: string): DurableResetRequest {
