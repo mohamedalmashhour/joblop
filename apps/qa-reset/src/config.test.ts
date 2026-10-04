@@ -2,23 +2,29 @@ import { describe, expect, it } from "vitest";
 import { readQaResetConfig } from "./config";
 import { testConfig } from "./testFixture";
 
+// Anchor validation to a moment inside the fixture manifest window
+// (created 2026-07-28, expires 2026-08-20), matching the convention used
+// by the other suites (service/http) so the suite is date-stable.
+const now = new Date("2026-07-28T12:00:00.000Z");
+const readConfig = (env: NodeJS.ProcessEnv) => readQaResetConfig(env, now);
+
 describe("QA reset configuration", () => {
   it("accepts exact bounded staging configuration", () => {
-    expect(readQaResetConfig(environment()).maximumRecordsPerEntity).toBe(2);
-    expect(readQaResetConfig(environment()).persistenceMode).toBe("postgres");
+    expect(readConfig(environment()).maximumRecordsPerEntity).toBe(2);
+    expect(readConfig(environment()).persistenceMode).toBe("postgres");
   });
 
   it("never permits process memory as the staging persistence mode", () => {
-    expect(() => readQaResetConfig(environment({ QA_RESET_PERSISTENCE_MODE: "memory" }))).toThrow(
+    expect(() => readConfig(environment({ QA_RESET_PERSISTENCE_MODE: "memory" }))).toThrow(
       "QA_RESET_POSTGRES_REQUIRED"
     );
-    expect(() => readQaResetConfig(environment({ QA_RESET_PERSISTENCE_MODE: undefined }))).toThrow(
+    expect(() => readConfig(environment({ QA_RESET_PERSISTENCE_MODE: undefined }))).toThrow(
       "QA_RESET_POSTGRES_REQUIRED"
     );
   });
 
   it.each(["production", "test", "local", undefined])("rejects environment %s", (RWOS_ENV) => {
-    expect(() => readQaResetConfig(environment({ RWOS_ENV }))).toThrow("QA_RESET_STAGING_ONLY");
+    expect(() => readConfig(environment({ RWOS_ENV }))).toThrow("QA_RESET_STAGING_ONLY");
   });
 
   it.each([
@@ -27,21 +33,21 @@ describe("QA reset configuration", () => {
     ["ambiguous", { QA_RESET_DATABASE_ID: "gcp/databases/current" }],
     ["placeholder", { QA_RESET_AUTHORITY_ID: "gcp/authorities/placeholder" }]
   ])("rejects %s target identity", (_label, override) => {
-    expect(() => readQaResetConfig(environment(override))).toThrow(/INVALID/);
+    expect(() => readConfig(environment(override))).toThrow(/INVALID/);
   });
 
   it("rejects wrong release, expired manifest, duplicate tenants and excessive records", () => {
-    expect(() => readQaResetConfig(environment({ QA_RESET_RELEASE_SHA: "0".repeat(40) }))).toThrow(
+    expect(() => readConfig(environment({ QA_RESET_RELEASE_SHA: "0".repeat(40) }))).toThrow(
       "QA_RESET_RELEASE_MISMATCH"
     );
     expect(() =>
-      readQaResetConfig(environment({ QA_RESET_MANIFEST_EXPIRES_AT: "2026-07-27T00:00:00.000Z" }))
+      readConfig(environment({ QA_RESET_MANIFEST_EXPIRES_AT: "2026-07-27T00:00:00.000Z" }))
     ).toThrow("QA_RESET_MANIFEST_TIME_INVALID");
     expect(() =>
-      readQaResetConfig(environment({ QA_RESET_TENANT_B_ID: testConfig.tenantAId }))
+      readConfig(environment({ QA_RESET_TENANT_B_ID: testConfig.tenantAId }))
     ).toThrow("QA_RESET_TENANTS_MUST_DIFFER");
     expect(() =>
-      readQaResetConfig(environment({ QA_RESET_MAXIMUM_RECORDS_PER_ENTITY: "11" }))
+      readConfig(environment({ QA_RESET_MAXIMUM_RECORDS_PER_ENTITY: "11" }))
     ).toThrow("QA_RESET_MAXIMUM_RECORDS_PER_ENTITY_INVALID");
   });
 
@@ -63,10 +69,10 @@ describe("QA reset configuration", () => {
   });
 
   it("requires an approved dual-header mode and exact Cloud Run audience", () => {
-    expect(() => readQaResetConfig(environment({ QA_RESET_AUTH_MODE: "legacy-app-only" }))).toThrow(
+    expect(() => readConfig(environment({ QA_RESET_AUTH_MODE: "legacy-app-only" }))).toThrow(
       "QA_RESET_AUTH_MODE_INVALID"
     );
-    expect(() => readQaResetConfig(environment({ QA_RESET_AUDIENCE: "http://localhost" }))).toThrow(
+    expect(() => readConfig(environment({ QA_RESET_AUDIENCE: "http://localhost" }))).toThrow(
       "QA_RESET_AUDIENCE_INVALID"
     );
   });

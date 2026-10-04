@@ -3,7 +3,9 @@ import { describe, expect, it } from "vitest";
 
 describe("QA reset database dependency boundary", () => {
   it("uses only approved workspace ports and has no direct network/provider implementation", () => {
-    const packageJson = JSON.parse(readFileSync("apps/qa-reset/package.json", "utf8")) as Record<
+    const packageJson = JSON.parse(
+      readFileSync(new URL("../package.json", import.meta.url), "utf8")
+    ) as Record<
       string,
       unknown
     >;
@@ -11,9 +13,10 @@ describe("QA reset database dependency boundary", () => {
       "@rwos/database": "workspace:*",
       "@rwos/service-auth": "workspace:*"
     });
-    const source = readdirSync("apps/qa-reset/src")
+    const srcDir = new URL("./", import.meta.url);
+    const source = readdirSync(srcDir)
       .filter((name) => name.endsWith(".ts") && !name.endsWith(".test.ts"))
-      .map((name) => readFileSync(`apps/qa-reset/src/${name}`, "utf8"))
+      .map((name) => readFileSync(new URL(name, srcDir), "utf8"))
       .join("\n");
     expect(source).not.toMatch(
       /\bfetch\s*\(|node:net|node:https|createConnection|TRUNCATE\s+(?:TABLE\s+)?["a-z]|DROP\s+TABLE/i
