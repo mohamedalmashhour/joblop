@@ -121,6 +121,7 @@ const payloadFields: Readonly<Record<OwnedEntityType, readonly string[]>> = {
     "workerIdentityId",
     "currentTermsVersionId",
     "status",
+    "createdAt",
     "expiresAt",
     "createdByUserId"
   ],
