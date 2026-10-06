@@ -4,6 +4,9 @@ const dispatchDetail =
 // Transaction Control Room + per-transaction audit report (read-only).
 const controlRoom = /^\/control-room(?:\/[A-Za-z0-9._-]+(?:\/report(?:\/(?:worker|employer))?)?)?$/;
 
+// Public, signed share links (party-scoped transaction statements).
+const shareLink = /^\/s\/[A-Za-z0-9._-]+$/;
+
 export function isProductionAdminRouteAllowed(pathname: string) {
   const path = normalizePath(pathname);
   if (!path) return false;
@@ -20,7 +23,8 @@ export function isProductionAdminRouteAllowed(pathname: string) {
     path === "/calendar/request" ||
     path === "/dispatches" ||
     dispatchDetail.test(path) ||
-    controlRoom.test(path)
+    controlRoom.test(path) ||
+    shareLink.test(path)
   );
 }
 
