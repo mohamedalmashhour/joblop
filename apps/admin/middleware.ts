@@ -55,7 +55,9 @@ function isProtectedAdminPage(pathname: string) {
   return (
     pathname === "/calendar/request" ||
     pathname === "/dispatches" ||
-    pathname.startsWith("/dispatches/")
+    pathname.startsWith("/dispatches/") ||
+    pathname === "/control-room" ||
+    pathname.startsWith("/control-room/")
   );
 }
 
