@@ -63,8 +63,8 @@ suite("persisted end-to-end close (local fake provider)", () => {
     const org = await prisma.employerOrganization.create({ data: { publicId: `ORG-CL-${randomUUID().slice(0, 8)}`, legalName: "L", displayName: "CloseCare", status: "active", createdByUserId: ownerId } });
     orgId = org.id;
     const res = await prisma.residence.create({ data: { publicId: `RES-CL-${randomUUID().slice(0, 8)}`, organizationId: org.id, name: "R", status: "active", createdByUserId: ownerId, province: "QC", city: "Laval" } });
-    const wg = await prisma.workGroup.findFirstOrThrow();
-    const role = await prisma.roleDefinition.findFirstOrThrow({ where: { workGroupId: wg.id } });
+    const wg = await prisma.workGroup.create({ data: { key: `wg-${randomUUID().slice(0, 8)}`, displayLabel: "Care", displayOrder: 1 } });
+    const role = await prisma.roleDefinition.create({ data: { workGroupId: wg.id, key: `role-${randomUUID().slice(0, 8)}`, displayLabel: "PSW", displayOrder: 1 } });
     const dept = await prisma.department.create({ data: { publicId: `DEP-CL-${randomUUID().slice(0, 8)}`, organizationId: org.id, residenceId: res.id, name: "D", status: "active", createdByUserId: ownerId } });
     scope = { organizationId: org.id, residenceId: res.id, departmentId: dept.id, workGroupId: wg.id, roleDefinitionId: role.id };
     await prisma.organizationMembership.create({ data: { organizationId: org.id, userId: ownerId, status: "active", acceptedAt: NOW } });
