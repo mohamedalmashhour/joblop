@@ -14,6 +14,7 @@ type JobDetailData = Readonly<{
   distanceKm: number | null;
   distanceLabel: string | null;
   mapPoint: { latitude: number; longitude: number; approximate: boolean };
+  travelTime: { durationLabel: string; distanceKm: number | null; mode: string } | null;
   startAt: string;
   endAt: string;
   openings: number;
@@ -158,6 +159,12 @@ export function JobDetail({ id, postalCode }: { id: string; postalCode: string |
 
       <div className="detail-facts">
         <Fact label={t("job.factLocation")}>{job.areaLabel}{job.distanceLabel ? ` · ${job.distanceLabel}` : ""}</Fact>
+        {job.travelTime ? (
+          <Fact label={t("job.factTravel")}>
+            {job.travelTime.durationLabel} {t("job.travelByCar")}
+            {job.travelTime.distanceKm !== null ? ` · ${job.travelTime.distanceKm} km` : ""}
+          </Fact>
+        ) : null}
         <Fact label={t("job.factWhen")}>{formatWhen(job.startAt, job.endAt, locale)}</Fact>
         <Fact label={t("job.factOpenings")}>{job.openings}</Fact>
         {job.workerRateMinor !== null ? <Fact label={t("job.factPay")}>{formatRate(job.workerRateMinor, job.currency, locale)}</Fact> : null}

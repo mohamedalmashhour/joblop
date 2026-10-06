@@ -3,6 +3,7 @@ export * from "./authenticatedCalendar";
 export * from "./authenticatedCalendarClient";
 export * from "./canadaLocation";
 export * from "./geocodingProviders";
+export * from "./travelTimeProviders";
 export * from "./marketplaceJobSearch";
 export * from "./marketplaceJobDetail";
 export * from "./cancellationObligation";

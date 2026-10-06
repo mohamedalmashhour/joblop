@@ -187,6 +187,9 @@ import {
   type MarketplaceJobCandidate,
   toMarketplaceJobDetail,
   toMarketplaceEmployerProfile,
+  createGoogleDistanceMatrixProvider,
+  toPublicTravelEstimate,
+  type TravelTimeProvider,
   type MarketplaceJobDetailCandidate,
   type MarketplaceEmployerProfileCandidate,
   type ProvinceCode
@@ -261,6 +264,7 @@ export interface BuildApiOptions {
   timesheetService?: TimesheetService;
   calendarRequestService?: CalendarRequestService;
   geocodingProvider?: GeocodingProvider;
+  travelTimeProvider?: TravelTimeProvider | null;
   workGroupService?: WorkGroupService;
   roleDefinitionService?: RoleDefinitionService;
   jobRequestService?: JobRequestService;
@@ -657,6 +661,14 @@ export function buildApi(options: BuildApiOptions = {}) {
       "V6B": { province: "BC", city: "Vancouver", latitude: 49.2807, longitude: -123.1088 },
       "T2P": { province: "AB", city: "Calgary", latitude: 51.0486, longitude: -114.0708 }
     }, { countryAddress: options.countryAddress });
+  // Road travel-time (ETA) provider — "how long to get there" over the road network.
+  // Fail-closed: only when GOOGLE_MAPS_API_KEY is set do we enrich job detail with a real
+  // road ETA; otherwise the worker still sees the straight-line distance. Not called per
+  // render beyond the single job-detail fetch.
+  const mapsApiKey = (environment.GOOGLE_MAPS_API_KEY ?? "").trim();
+  const travelTimeProvider: TravelTimeProvider | null =
+    options.travelTimeProvider ??
+    (mapsApiKey.length >= 20 ? createGoogleDistanceMatrixProvider({ fetch, apiKey: mapsApiKey }) : null);
   const residenceService =
     options.residenceService ??
     createResidenceService(
@@ -3951,7 +3963,23 @@ export function buildApi(options: BuildApiOptions = {}) {
     if (!countryAddress) {
       return reply.code(400).send({ error: "RWOS_COUNTRY_ADDRESS_UNAVAILABLE", message: "Address resolution is not configured for the selected country." });
     }
-    const detail = toMarketplaceJobDetail({ candidate, origin, regionNames: countryAddress });
+    let detail = toMarketplaceJobDetail({ candidate, origin, regionNames: countryAddress });
+    // Road ETA enrichment (fail-closed): needs a routing provider + a resolved worker origin.
+    if (travelTimeProvider && origin) {
+      const acceptLang = String(request.headers["accept-language"] ?? "").toLowerCase();
+      const etaLang = acceptLang.startsWith("fr") ? "fr" : "en";
+      try {
+        const eta = await travelTimeProvider.estimate({
+          origin,
+          destination: { latitude: candidate.latitude, longitude: candidate.longitude },
+          mode: "driving",
+          language: etaLang
+        });
+        if (eta.status === "ok") detail = { ...detail, travelTime: toPublicTravelEstimate(eta.estimate, etaLang) };
+      } catch {
+        // leave travelTime null — the worker still sees the straight-line distance label
+      }
+    }
 
     let saved: boolean;
     try {

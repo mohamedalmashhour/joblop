@@ -15,6 +15,7 @@ import {
   type PublicMapPoint
 } from "./canadaLocation";
 import type { MarketplaceRegionNames } from "./marketplaceJobSearch";
+import type { PublicTravelEstimate } from "./travelTimeProviders";
 
 // A fully-resolved candidate row (server-side only — carries exact coords the caller must
 // never serialize directly).
@@ -49,6 +50,7 @@ export type MarketplaceJobDetail = Readonly<{
   distanceKm: number | null; // null when no search origin was supplied
   distanceLabel: string | null;
   mapPoint: PublicMapPoint; // approximate (rounded)
+  travelTime: PublicTravelEstimate | null; // road ETA origin->worksite; null unless a routing provider resolved it
   startAt: string;
   endAt: string;
   openings: number;
@@ -90,6 +92,7 @@ export function toMarketplaceJobDetail(input: {
         ? formatDistanceKm(geodesicDistanceKm(input.origin, { latitude: c.latitude, longitude: c.longitude }))
         : null,
     mapPoint: toPublicMapPoint({ latitude: c.latitude, longitude: c.longitude }),
+    travelTime: null, // enriched by the API layer when a routing provider + origin are available
     startAt: c.startAt,
     endAt: c.endAt,
     openings: c.openings,
