@@ -32,6 +32,7 @@ suite("persisted end-to-end close (local fake provider)", () => {
   let scope: { organizationId: string; residenceId: string; departmentId: string; workGroupId: string; roleDefinitionId: string };
   let assignmentId = "";
   let timesheetId = "";
+  let attendanceRecordId = "";
   let invoiceId = "";
   let invoiceTotalMinor = 0;
   let paymentMethodId = "";
@@ -90,6 +91,7 @@ suite("persisted end-to-end close (local fake provider)", () => {
       tsId, assignmentId, attId, job.id, workerId, scope.organizationId, scope.residenceId, scope.departmentId, scope.workGroupId, scope.roleDefinitionId, s, e, n, ownerId
     );
     timesheetId = tsId;
+    attendanceRecordId = attId;
   });
 
   afterAll(async () => { await app?.close(); await prisma.$disconnect(); });
@@ -102,7 +104,7 @@ suite("persisted end-to-end close (local fake provider)", () => {
       payload: {
         idempotencyKey: `inv-${randomUUID()}`,
         calculation: {
-          source: { type: "locked_timesheet", organizationId: orgId, timesheetId, timesheetVersion: 1, assignmentId, attendanceRecordId: "" },
+          source: { type: "locked_timesheet", organizationId: orgId, timesheetId, timesheetVersion: 1, assignmentId, attendanceRecordId },
           occurredAt: "2026-10-20T21:00:00.000Z",
           regularLabour: money(24000), // 8h × $30.00
           urgentLabour: zero, approvedTravelTime: zero, mileage: zero, adjustments: zero, marketplaceFees: zero,
@@ -111,8 +113,6 @@ suite("persisted end-to-end close (local fake provider)", () => {
         }
       }
     });
-    // NOTE: the source needs the real attendanceRecordId; wire it through from beforeAll if the route
-    // validates it against the timesheet (ITERATION ITEM). Expect 201 on success.
     expect([201, 200]).toContain(res.statusCode);
     const invoice = res.json().invoice as { id: string; total?: { amountMinor: number }; snapshot?: { total?: { amountMinor: number } } };
     invoiceId = invoice.id;
