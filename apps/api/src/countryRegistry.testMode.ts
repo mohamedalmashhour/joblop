@@ -1,4 +1,12 @@
-import type { CountryProfile } from "@rwos/config";
+import type { CountryProfile, CountryAddressPort } from "@rwos/config";
+import {
+  PROVINCE_TERRITORY_NAMES,
+  isCanadianPostalCodeFormat,
+  isProvinceCode,
+  isWithinCanadaBounds,
+  normalizeCanadianPostalCode,
+  provinceHintFromPostalCode
+} from "@rwos/shared";
 
 /**
  * TEST-MODE country injection (local/test only).
@@ -50,4 +58,27 @@ export function withTestModeCountry(
   const isDev = rwosEnv === "local" || rwosEnv === "test";
   if (!enabled || !isDev) return base;
   return { ...base, [TEST_MODE_COUNTRY.country]: TEST_MODE_COUNTRY };
+}
+
+/**
+ * Test-mode address port — identical Canada semantics, kept self-contained in apps/api so it
+ * takes NO dependency on the gate-closed countries/canada package. Used only when the synthetic
+ * `canada-test` country is selected, so the marketplace / job-detail + geocoding path (and the
+ * worksite map + ETA) runs end-to-end locally. Real markets wire their own adapter.
+ */
+export const testModeCanadaAddressPort: CountryAddressPort = {
+  normalizePostalCode: (input) => normalizeCanadianPostalCode(input),
+  isPostalCodeFormat: (input) => isCanadianPostalCodeFormat(input),
+  regionNameFromCode: (code) => (isProvinceCode(code) ? PROVINCE_TERRITORY_NAMES[code] : null),
+  regionHintFromPostalCode: (postalCode) => provinceHintFromPostalCode(postalCode),
+  isWithinCountryBounds: (latitude, longitude) => isWithinCanadaBounds(latitude, longitude),
+  geocodeCountryRestriction: "CA"
+};
+
+/**
+ * Resolve the address port for a selected country. Test-mode only here (canada-test); returns
+ * undefined otherwise so non-test markets fail closed until their own adapter is wired.
+ */
+export function addressPortForCountry(country: string): CountryAddressPort | undefined {
+  return country === TEST_MODE_COUNTRY.country ? testModeCanadaAddressPort : undefined;
 }

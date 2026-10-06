@@ -4,7 +4,7 @@ import { getRuntimeConfig, resolveCountryConfig, type CountryProfile } from "@rw
 import { moneyEngineCurrencies } from "@rwos/shared";
 import { createLogger } from "@rwos/observability";
 import { apiCountryRegistry } from "./countryRegistry";
-import { withTestModeCountry } from "./countryRegistry.testMode";
+import { withTestModeCountry, addressPortForCountry } from "./countryRegistry.testMode";
 
 const logger = createLogger("api");
 const config = getRuntimeConfig();
@@ -62,7 +62,8 @@ async function startApi(profile: CountryProfile) {
   // path (Stage 2b.3a scope) — the fail-closed currency gate is enforced before startApi() runs.
   const app = buildApi({
     countryTimezone: profile.timezone ?? undefined,
-    countryCurrency: profile.currency ?? undefined
+    countryCurrency: profile.currency ?? undefined,
+    countryAddress: addressPortForCountry(profile.country)
   });
   let shuttingDown = false;
 
