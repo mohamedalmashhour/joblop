@@ -163,6 +163,7 @@ export function JobDetail({ id, postalCode }: { id: string; postalCode: string |
         {job.workerRateMinor !== null ? <Fact label={t("job.factPay")}>{formatRate(job.workerRateMinor, job.currency, locale)}</Fact> : null}
       </div>
 
+      <WorksiteMap point={job.mapPoint} locale={locale} />
       <p className="notice">{t("job.mapApproxNotice")}</p>
 
       {job.description ? (
@@ -197,6 +198,31 @@ export function JobDetail({ id, postalCode }: { id: string; postalCode: string |
         <a className="btn ghost" href="/my-interests">{t("nav.interests")}</a>
       </div>
     </article>
+  );
+}
+
+// Worksite locator map. Renders the (approximate) worksite point via the server-side
+// static-map proxy, so the Maps key never reaches the browser. Fail-closed by design:
+// if the map can't be rendered (key unset, upstream error), onError hides the image and
+// only the "approximate location" notice remains — the page never looks broken.
+function WorksiteMap({ point, locale }: { point: { latitude: number; longitude: number; approximate: boolean }; locale: string }) {
+  const t = useT();
+  const [failed, setFailed] = useState(false);
+  if (failed) return null;
+  if (!Number.isFinite(point?.latitude) || !Number.isFinite(point?.longitude)) return null;
+  const lang = locale === "fr" ? "fr" : "en";
+  const src = `/api/map/static?lat=${encodeURIComponent(point.latitude)}&lng=${encodeURIComponent(point.longitude)}&lang=${lang}`;
+  return (
+    <div className="worksite-map" style={{ marginTop: 12, borderRadius: 12, overflow: "hidden", lineHeight: 0 }}>
+      {/* eslint-disable-next-line @next/next/no-img-element */}
+      <img
+        src={src}
+        alt={t("job.mapAlt")}
+        loading="lazy"
+        onError={() => setFailed(true)}
+        style={{ width: "100%", height: "auto", display: "block" }}
+      />
+    </div>
   );
 }
 
