@@ -177,6 +177,7 @@ import {
   createLocalFakePaymentProvider,
   classifyRequestEdit,
   createFixtureGeocodingProvider,
+  createGoogleGeocodingProvider,
   searchNearbyJobs,
   boundingBoxKm,
   geodesicDistanceKm,
@@ -651,21 +652,24 @@ export function buildApi(options: BuildApiOptions = {}) {
   // major Canadian FSAs — no network, safe for local/CI. Production swaps in the OSM
   // (or Google) provider via options.geocodingProvider. Resolutions are persisted on
   // the residence (the cache), so providers are not called per render.
+  // Single Maps key read, shared by geocoding + travel-time. Server-only; never exposed.
+  const mapsApiKey = (environment.GOOGLE_MAPS_API_KEY ?? "").trim();
   const geocodingProvider: GeocodingProvider =
     options.geocodingProvider ??
-    createFixtureGeocodingProvider({
+    (mapsApiKey.length >= 20
+      ? createGoogleGeocodingProvider({ fetch, apiKey: mapsApiKey, countryAddress: options.countryAddress })
+      : createFixtureGeocodingProvider({
       "H7V": { province: "QC", city: "Laval", latitude: 45.5701, longitude: -73.7527 },
       "H2X": { province: "QC", city: "Montreal", latitude: 45.5088, longitude: -73.5678 },
       "M5V": { province: "ON", city: "Toronto", latitude: 43.6426, longitude: -79.3871 },
       "K1P": { province: "ON", city: "Ottawa", latitude: 45.4215, longitude: -75.6972 },
       "V6B": { province: "BC", city: "Vancouver", latitude: 49.2807, longitude: -123.1088 },
       "T2P": { province: "AB", city: "Calgary", latitude: 51.0486, longitude: -114.0708 }
-    }, { countryAddress: options.countryAddress });
+    }, { countryAddress: options.countryAddress }));
   // Road travel-time (ETA) provider — "how long to get there" over the road network.
   // Fail-closed: only when GOOGLE_MAPS_API_KEY is set do we enrich job detail with a real
   // road ETA; otherwise the worker still sees the straight-line distance. Not called per
   // render beyond the single job-detail fetch.
-  const mapsApiKey = (environment.GOOGLE_MAPS_API_KEY ?? "").trim();
   const travelTimeProvider: TravelTimeProvider | null =
     options.travelTimeProvider ??
     (mapsApiKey.length >= 20 ? createGoogleDistanceMatrixProvider({ fetch, apiKey: mapsApiKey }) : null);

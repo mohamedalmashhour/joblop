@@ -167,3 +167,116 @@ export function createOsmGeocodingProvider(deps: {
     }
   };
 }
+
+// ── Google Geocoding provider (API key) ──────────────────────────────────────
+// Resolves a postal code/address to a CanadianLocation via Google's Geocoding API,
+// restricted to the selected country. Fail-closed: no countryAddress capability, no
+// API key, or an unusable response => a non-ok GeocodeResult (callers fall back).
+type GoogleAddressComponent = { long_name?: string; short_name?: string; types?: string[] };
+type GoogleGeocodeHit = {
+  geometry?: { location?: { lat?: number; lng?: number }; location_type?: string };
+  address_components?: GoogleAddressComponent[];
+  place_id?: string;
+};
+type GoogleGeocodeResponse = { status?: string; results?: GoogleGeocodeHit[] };
+
+function componentShort(components: GoogleAddressComponent[] | undefined, type: string): string | null {
+  const hit = (components ?? []).find((c) => (c.types ?? []).includes(type));
+  return hit?.short_name ?? hit?.long_name ?? null;
+}
+function componentLong(components: GoogleAddressComponent[] | undefined, type: string): string | null {
+  const hit = (components ?? []).find((c) => (c.types ?? []).includes(type));
+  return hit?.long_name ?? hit?.short_name ?? null;
+}
+
+export function createGoogleGeocodingProvider(deps: {
+  fetch: typeof fetch;
+  apiKey: string;
+  baseUrl?: string;
+  now?: () => Date;
+  countryAddress?: GeocodingAddressCapability | undefined;
+}): GeocodingProvider {
+  const baseUrl = deps.baseUrl ?? "https://maps.googleapis.com/maps/api/geocode/json";
+  const now = deps.now ?? (() => new Date());
+  const countryAddress = deps.countryAddress;
+  return {
+    name: "google",
+    async geocode(query: GeocodeQuery): Promise<GeocodeResult> {
+      if (!countryAddress) return { status: "provider_unavailable" };
+      if (!deps.apiKey || deps.apiKey.trim().length < 20) return { status: "provider_unavailable" };
+      const restriction = countryAddress.geocodeCountryRestriction;
+      if (query.countryRestriction !== restriction) return { status: "outside_canada" };
+      const normalizedPostal = query.postalCode ? countryAddress.normalizePostalCode(query.postalCode) : null;
+      if (query.postalCode && !normalizedPostal) return { status: "not_found" }; // invalid postal format
+      const q = normalizedPostal ?? query.address;
+      if (!q || !q.trim()) return { status: "not_found" };
+
+      const url = new URL(baseUrl);
+      // Country-restrict via components; add postal_code component when we have one.
+      url.searchParams.set(
+        "components",
+        normalizedPostal ? `postal_code:${normalizedPostal}|country:${restriction}` : `country:${restriction}`
+      );
+      if (!normalizedPostal && query.address) url.searchParams.set("address", query.address);
+      url.searchParams.set("key", deps.apiKey);
+
+      let body: GoogleGeocodeResponse;
+      try {
+        const res = await deps.fetch(url.toString(), { cache: "no-store" } as RequestInit);
+        if (!res.ok) return { status: "provider_unavailable" };
+        body = (await res.json()) as GoogleGeocodeResponse;
+      } catch {
+        return { status: "provider_unavailable" };
+      }
+      if (body.status === "ZERO_RESULTS") return { status: "not_found" };
+      if (body.status === "OVER_QUERY_LIMIT" || body.status === "REQUEST_DENIED" || body.status === "OVER_DAILY_LIMIT") {
+        return { status: "provider_unavailable" };
+      }
+      if (body.status !== "OK" || !body.results || body.results.length === 0) return { status: "not_found" };
+
+      const first = body.results[0];
+      if (!first) return { status: "not_found" };
+      const latitude = Number(first.geometry?.location?.lat);
+      const longitude = Number(first.geometry?.location?.lng);
+      if (!isValidCoordinate(latitude, longitude) || !countryAddress.isWithinCountryBounds(latitude, longitude)) {
+        return { status: "outside_canada" };
+      }
+      const provinceRaw =
+        componentShort(first.address_components, "administrative_area_level_1") ??
+        (normalizedPostal ? countryAddress.regionHintFromPostalCode(normalizedPostal) : null);
+      const province = provinceRaw ? provinceRaw.trim().toUpperCase() : null;
+      if (!province || !isProvinceCode(province)) return { status: "low_confidence" };
+
+      const resolvedPostal =
+        normalizedPostal ??
+        (componentLong(first.address_components, "postal_code")
+          ? countryAddress.normalizePostalCode(componentLong(first.address_components, "postal_code")!)
+          : null);
+
+      const precision: GeocodePrecision =
+        first.geometry?.location_type === "ROOFTOP"
+          ? "rooftop"
+          : normalizedPostal
+            ? "postal_code"
+            : "approximate";
+
+      const location: CanadianLocation = {
+        country: "CA",
+        province,
+        city:
+          componentLong(first.address_components, "locality") ??
+          componentLong(first.address_components, "postal_town") ??
+          componentLong(first.address_components, "administrative_area_level_2"),
+        postalCode: resolvedPostal,
+        addressLines: [],
+        latitude,
+        longitude,
+        precision,
+        provider: "google",
+        providerReference: first.place_id ?? null,
+        resolvedAt: now().toISOString()
+      };
+      return { status: "ok", location };
+    }
+  };
+}
