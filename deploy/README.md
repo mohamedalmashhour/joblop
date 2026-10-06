@@ -30,10 +30,10 @@ System Settings → Energy to never sleep. Keep Docker Desktop running.
 
    | Public hostname            | Service                 |
    |----------------------------|-------------------------|
-   | `app.yourdomain.ca`        | `http://worker:8080`    |
-   | `employer.yourdomain.ca`   | `http://employer:8080`  |
-   | `admin.yourdomain.ca`      | `http://admin:8080`     |
-   | `api.yourdomain.ca` (opt.) | `http://api:8080`       |
+   | `app.joblop.com`        | `http://worker:8080`    |
+   | `employer.joblop.com`   | `http://employer:8080`  |
+   | `admin.joblop.com`      | `http://admin:8080`     |
+   | `api.joblop.com` (opt.) | `http://api:8080`       |
 
    Because `cloudflared` runs inside this compose stack, it reaches the apps by their
    service names (`worker`, `admin`, …) on the internal network.
@@ -47,7 +47,7 @@ openssl rand -hex 24      # paste as POSTGRES_PASSWORD
 ```
 
 Edit `.env`: set `POSTGRES_PASSWORD`, `CLOUDFLARE_TUNNEL_TOKEN`, `WORKER_WEB_ORIGIN`
-(e.g. `https://app.yourdomain.ca`), `RESEND_API_KEY`, `EMAIL_FROM`, and
+(e.g. `https://app.joblop.com`), `RESEND_API_KEY`, `EMAIL_FROM`, and
 `GOOGLE_MAPS_API_KEY`. Leave Stripe disabled until you have test keys.
 `deploy/.env` is gitignored — never commit it.
 
@@ -67,7 +67,7 @@ API to report healthy and then prints the container status.
 docker compose exec api pnpm bootstrap:first-admin
 ```
 
-Then sign in at `https://admin.yourdomain.ca`.
+Then sign in at `https://admin.joblop.com`.
 
 ## Day-to-day
 
