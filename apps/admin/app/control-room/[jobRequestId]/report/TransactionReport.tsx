@@ -38,6 +38,28 @@ export default function TransactionReport(
 ) {
   const [d, setD] = useState<Data | null>(null);
   const [err, setErr] = useState<string | null>(null);
+  const [share, setShare] = useState<{ url: string; view: string; expiresAt: string } | null>(null);
+  const [shareErr, setShareErr] = useState<string | null>(null);
+  const [busy, setBusy] = useState<string | null>(null);
+  const [copied, setCopied] = useState(false);
+
+  async function mint(v: "worker" | "employer") {
+    setBusy(v); setShareErr(null); setShare(null); setCopied(false);
+    try {
+      const res = await fetch(`/api/control-room/${encodeURIComponent(jobRequestId)}/share-link`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ view: v }),
+      });
+      const j = await res.json().catch(() => ({}));
+      if (!res.ok) setShareErr(j?.message || `Could not create link (HTTP ${res.status}).`);
+      else setShare(j);
+    } catch (e) {
+      setShareErr(String(e));
+    } finally {
+      setBusy(null);
+    }
+  }
 
   useEffect(() => {
     fetch(`/api/control-room/${encodeURIComponent(jobRequestId)}`)
@@ -134,6 +156,36 @@ export default function TransactionReport(
           ⎙ Print / Save PDF
         </button>
       </div>
+
+      {view === "full" && (
+        <div className="noprint" style={{ marginTop: 14, padding: "12px 14px", background: C.panel2, border: `1px solid ${C.line}`, borderRadius: 10 }}>
+          <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
+            <span style={{ fontSize: 12.5, color: C.muted, flex: "1 1 220px" }}>Create a private, time-limited link that shows only one party their own view:</span>
+            <button onClick={() => mint("worker")} disabled={!!busy}
+              style={{ padding: "7px 12px", borderRadius: 8, border: `1px solid ${C.line}`, background: C.panel, color: C.fg, cursor: busy ? "default" : "pointer", fontWeight: 600, opacity: busy ? 0.6 : 1 }}>
+              {busy === "worker" ? "Creating…" : "Create worker link"}
+            </button>
+            <button onClick={() => mint("employer")} disabled={!!busy}
+              style={{ padding: "7px 12px", borderRadius: 8, border: `1px solid ${C.line}`, background: C.panel, color: C.fg, cursor: busy ? "default" : "pointer", fontWeight: 600, opacity: busy ? 0.6 : 1 }}>
+              {busy === "employer" ? "Creating…" : "Create client link"}
+            </button>
+          </div>
+          {share && (
+            <div style={{ marginTop: 10, display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+              <input readOnly value={share.url} onFocus={(e) => e.currentTarget.select()}
+                style={{ flex: "1 1 320px", minWidth: 0, fontFamily: "ui-monospace, monospace", fontSize: 12, padding: "8px 10px", borderRadius: 7, border: `1px solid ${C.line}`, background: C.bg, color: C.fg }} />
+              <button onClick={() => { navigator.clipboard?.writeText(share.url).then(() => setCopied(true)).catch(() => {}); }}
+                style={{ padding: "7px 12px", borderRadius: 8, border: `1px solid ${C.line}`, background: C.panel, color: C.fg, cursor: "pointer", fontWeight: 600 }}>
+                {copied ? "Copied ✓" : "Copy"}
+              </button>
+              <span style={{ fontSize: 11, color: C.faint, flexBasis: "100%" }}>
+                {share.view === "worker" ? "Worker view" : "Client view"} · expires {new Date(share.expiresAt).toLocaleString("en-CA", { dateStyle: "medium", timeStyle: "short" })}
+              </span>
+            </div>
+          )}
+          {shareErr && <div style={{ marginTop: 10, fontSize: 12, color: C.hold }}>{shareErr}</div>}
+        </div>
+      )}
 
       <H t="Transaction details" />
       <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}><tbody>
