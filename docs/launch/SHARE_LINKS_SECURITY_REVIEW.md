@@ -29,7 +29,7 @@
 
 - [ ] Mint endpoint is reachable only via the admin session (`sessionBoundary`) and rejects cross-site callers (`isSameOriginMutation`). Confirm an unauthenticated or cross-origin POST is denied (401).
 - [ ] Decide whether **all** admins should be able to mint links, or only a finance/role-gated subset. If the latter, add a permission check in the mint route (the role shells FINANCE_REVIEWER / PAYROLL_ADMINISTRATOR already exist).
-- [ ] Minting is logged/audited: who minted, which transaction, which view, when, TTL. (Not yet implemented — add an audit write if external sharing goes live.)
+- [x] Minting emits a structured audit line (`evt: "share_link_minted"` with jti, jobRequestId, view, ttlHours, expiresAt, a non-reversible `actor` hash of the session, and timestamp). **To do:** forward that line from the log pipeline into the durable platform audit store.
 
 ## 5. Transport & headers
 
@@ -40,7 +40,8 @@
 ## 6. Lifetime & revocation policy
 
 - [ ] Choose a default TTL that matches how statements are used (72h is fine for "here is your statement"; shorten for anything sensitive).
-- [ ] Decide whether you need **per-link revocation** beyond global secret rotation. The current design has only the global kill switch. If per-link revocation is required, add a token id (`jti`) + a small revocation list / version column checked in `verifyShare`.
+- [x] **Per-link revocation** exists: every token carries a unique `jti`, and `verifyShare` rejects any `jti` listed in `CONTROL_ROOM_REVOKED_JTIS` (comma/space-separated env list). An admin sees the link id when minting. **To do (optional):** swap the env denylist for a KV/DB lookup in `isRevoked()` and add a "Revoke" button — the call site does not change.
+- [x] Global kill switch retained: rotating `CONTROL_ROOM_SHARE_SECRET` invalidates every outstanding link at once.
 - [ ] Decide retention: snapshots are point-in-time by design (a statement as of issue). Confirm that's the intended semantic and document it for support staff.
 
 ## 7. Abuse & rate limiting
@@ -57,8 +58,8 @@
 
 ## Current status (as built)
 
-Implemented: fail-closed secret, HMAC-SHA256 with timing-safe compare, server-side expiry, server-side masking embedded in the token, admin-only + same-origin mint, public page with no data fetch, route allowlisted.
+Implemented: fail-closed secret, HMAC-SHA256 with timing-safe compare, server-side expiry, server-side masking embedded in the token, admin-only + same-origin mint, public page with no data fetch, route allowlisted, **structured mint audit line**, **per-link revocation via jti denylist**, global kill switch via secret rotation.
 
-**Not yet implemented (decide before external launch):** mint audit log, per-link revocation, mint rate limiting, role-gating of who can mint, optional recipient authentication.
+**Not yet implemented (decide before external launch):** forwarding the audit line to the durable audit store, moving the revocation denylist from env to a KV/DB + a revoke button, mint rate limiting, role-gating of who can mint, optional recipient authentication.
 
 Nothing here should be sent to a real worker or client until Sections 1–5 are satisfied at minimum.

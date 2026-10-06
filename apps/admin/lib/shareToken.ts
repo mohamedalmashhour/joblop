@@ -6,14 +6,30 @@
 //
 // The secret is read from the environment and is NEVER committed. If it is
 // unset, minting and verification both refuse — sharing is simply disabled.
-import { createHmac, timingSafeEqual } from "node:crypto";
+import { createHmac, randomUUID, timingSafeEqual } from "node:crypto";
 import type { Snapshot } from "./controlRoomLedger";
 
-type Payload = Snapshot & { exp: number };
+// A token carries the masked snapshot plus: exp (expiry), jti (unique link id
+// for audit + revocation), and iat (issued-at).
+type Payload = Snapshot & { exp: number; jti: string; iat: number };
+
+export type MintResult = { token: string; jti: string; exp: number };
 
 function secret(): string | null {
   const s = process.env.CONTROL_ROOM_SHARE_SECRET;
   return s && s.length >= 32 ? s : null;
+}
+
+// Revocation denylist. Operator-driven today: set CONTROL_ROOM_REVOKED_JTIS to
+// a comma/space-separated list of link ids to kill specific links without
+// rotating the whole secret. Swap this function's body for a KV/DB lookup when
+// a datastore-backed revoke button is added — the call site does not change.
+function revokedSet(): Set<string> {
+  const raw = process.env.CONTROL_ROOM_REVOKED_JTIS ?? "";
+  return new Set(raw.split(/[\s,]+/).map((s) => s.trim().toLowerCase()).filter(Boolean));
+}
+export function isRevoked(jti: string): boolean {
+  return revokedSet().has(jti.toLowerCase());
 }
 
 function b64url(buf: Buffer): string {
@@ -32,13 +48,16 @@ export function isShareConfigured(): boolean {
 }
 
 /** Mint a token for an already-masked snapshot. Returns null if sharing is unconfigured. */
-export function signShare(snapshot: Snapshot, ttlHours: number): string | null {
+export function signShare(snapshot: Snapshot, ttlHours: number): MintResult | null {
   const key = secret();
   if (!key) return null;
   const ttl = Math.min(Math.max(ttlHours, 1), 24 * 30); // 1h..30d
-  const payload: Payload = { ...snapshot, exp: Date.now() + ttl * 3_600_000 };
+  const now = Date.now();
+  const jti = randomUUID();
+  const exp = now + ttl * 3_600_000;
+  const payload: Payload = { ...snapshot, exp, jti, iat: now };
   const payloadB64 = b64url(Buffer.from(JSON.stringify(payload), "utf8"));
-  return `${payloadB64}.${sign(payloadB64, key)}`;
+  return { token: `${payloadB64}.${sign(payloadB64, key)}`, jti, exp };
 }
 
 /** Verify + decode a token. Returns the snapshot only if signature and expiry are valid. */
@@ -57,8 +76,9 @@ export function verifyShare(token: string): Snapshot | null {
     const payload = JSON.parse(fromB64url(payloadB64).toString("utf8")) as Payload;
     if (typeof payload.exp !== "number" || Date.now() > payload.exp) return null;
     if (payload.view !== "employer" && payload.view !== "worker") return null;
-    const { exp, ...snapshot } = payload;
-    void exp;
+    if (typeof payload.jti === "string" && isRevoked(payload.jti)) return null;
+    const { exp, jti, iat, ...snapshot } = payload;
+    void exp; void jti; void iat;
     return snapshot;
   } catch {
     return null;

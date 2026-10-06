@@ -38,7 +38,7 @@ export default function TransactionReport(
 ) {
   const [d, setD] = useState<Data | null>(null);
   const [err, setErr] = useState<string | null>(null);
-  const [share, setShare] = useState<{ url: string; view: string; expiresAt: string } | null>(null);
+  const [share, setShare] = useState<{ url: string; view: string; expiresAt: string; id?: string } | null>(null);
   const [shareErr, setShareErr] = useState<string | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
@@ -180,6 +180,7 @@ export default function TransactionReport(
               </button>
               <span style={{ fontSize: 11, color: C.faint, flexBasis: "100%" }}>
                 {share.view === "worker" ? "Worker view" : "Client view"} · expires {new Date(share.expiresAt).toLocaleString("en-CA", { dateStyle: "medium", timeStyle: "short" })}
+                {share.id ? <> · link id <code style={{ fontFamily: "ui-monospace, monospace" }}>{share.id}</code> (add to CONTROL_ROOM_REVOKED_JTIS to revoke)</> : null}
               </span>
             </div>
           )}

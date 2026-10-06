@@ -3,9 +3,17 @@
 // callers. The link embeds an already-masked snapshot (employer or worker)
 // signed with CONTROL_ROOM_SHARE_SECRET; if that secret is unset, minting
 // refuses (503) and sharing stays disabled.
+import { createHash } from "node:crypto";
 import { sessionBoundary, sessionFailure, isSameOriginMutation } from "../../../sessionBoundary";
 import { assembleTransaction, buildSnapshot, type ShareView } from "../../../../../lib/controlRoomLedger";
 import { signShare, isShareConfigured } from "../../../../../lib/shareToken";
+
+// Non-reversible reference to the minting admin's session, so the audit line
+// attributes the action without logging the session token itself.
+function actorRef(token: string | null): string {
+  if (!token) return "unknown";
+  return createHash("sha256").update(token).digest("hex").slice(0, 12);
+}
 
 export async function POST(
   request: Request,
@@ -53,11 +61,24 @@ export async function POST(
     if (!share) return sessionFailure("unavailable");
 
     const origin = request.headers.get("origin") ?? new URL(request.url).origin;
-    const url = `${origin}/s/${share}`;
-    const expiresAt = new Date(Date.now() + Math.min(Math.max(ttlHours, 1), 24 * 30) * 3_600_000).toISOString();
+    const url = `${origin}/s/${share.token}`;
+    const expiresAt = new Date(share.exp).toISOString();
+
+    // Mint audit trail. Structured line for the log pipeline; forward to the
+    // platform audit store when external sharing goes live (see security review).
+    console.info(JSON.stringify({
+      evt: "share_link_minted",
+      jti: share.jti,
+      jobRequestId,
+      view,
+      ttlHours,
+      expiresAt,
+      actor: actorRef(token),
+      at: new Date().toISOString()
+    }));
 
     return Response.json(
-      { url, view, expiresAt },
+      { url, view, expiresAt, id: share.jti },
       { headers: { "cache-control": "private, no-store" } }
     );
   } catch {
