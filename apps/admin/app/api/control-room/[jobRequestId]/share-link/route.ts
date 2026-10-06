@@ -38,6 +38,17 @@ function mintRateLimited(key: string, now: number): boolean {
   return false;
 }
 
+// Optional finance-authority gate on who may mint links. Off by default (every
+// admin session may mint). When CONTROL_ROOM_MINT_REQUIRE_FINANCE is enabled, the
+// route probes a payroll-authority-gated API endpoint with the CALLER'S OWN token
+// and only mints when that probe is authorized — so the authorization system (not
+// the BFF) stays the single source of truth for who counts as finance. Fail-closed:
+// anything other than an authorized probe refuses the mint.
+function mintRequiresFinance(): boolean {
+  const v = (process.env.CONTROL_ROOM_MINT_REQUIRE_FINANCE ?? "").trim().toLowerCase();
+  return v === "enabled" || v === "1" || v === "true" || v === "yes";
+}
+
 export async function POST(
   request: Request,
   context: Readonly<{ params: Promise<{ jobRequestId: string }> }>
@@ -70,6 +81,18 @@ export async function POST(
       { status: 429, headers: { "cache-control": "private, no-store" } }
     );
   }
+  if (mintRequiresFinance()) {
+    // Probe a payroll-authority-gated endpoint as the caller. 403 -> "denied" here.
+    const probe = await gateway.request("/platform/payroll/periods", "GET", token);
+    if (probe.status === "denied") {
+      return Response.json(
+        { status: "forbidden", message: "Minting share links requires finance (payroll) authority." },
+        { status: 403, headers: { "cache-control": "private, no-store" } }
+      );
+    }
+    if (probe.status !== "ok") return sessionFailure(probe.status);
+  }
+
   const result = await gateway.request(
     `/platform/calendar/requests/${encodeURIComponent(jobRequestId)}`,
     "GET",

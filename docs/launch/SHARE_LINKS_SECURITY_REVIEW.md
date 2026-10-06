@@ -28,7 +28,7 @@
 ## 4. Who can mint
 
 - [ ] Mint endpoint is reachable only via the admin session (`sessionBoundary`) and rejects cross-site callers (`isSameOriginMutation`). Confirm an unauthenticated or cross-origin POST is denied (401).
-- [ ] Decide whether **all** admins should be able to mint links, or only a finance/role-gated subset. If the latter, add a permission check in the mint route (the role shells FINANCE_REVIEWER / PAYROLL_ADMINISTRATOR already exist).
+- [x] Decide whether **all** admins should be able to mint links, or only a finance/role-gated subset. **Opt-in gate implemented:** set `CONTROL_ROOM_MINT_REQUIRE_FINANCE=enabled` and the mint route probes a payroll-authority-gated API endpoint (`GET /platform/payroll/periods`) with the caller's own token, minting only when authorized (PAYROLL_ADMINISTRATOR or PLATFORM_ADMINISTRATOR); non-finance admins get **403**. Off by default. The authorization system — not the BFF — stays the source of truth for who counts as finance; the gate is fail-closed.
 - [x] Minting emits a structured audit line (`evt: "share_link_minted"` with jti, jobRequestId, view, ttlHours, expiresAt, a non-reversible `actor` hash of the session, and timestamp). **To do:** forward that line from the log pipeline into the durable platform audit store.
 
 ## 5. Transport & headers
@@ -58,8 +58,8 @@
 
 ## Current status (as built)
 
-Implemented: fail-closed secret, HMAC-SHA256 with timing-safe compare, server-side expiry, server-side masking embedded in the token, admin-only + same-origin mint, public page with no data fetch, route allowlisted, **structured mint audit line**, **per-link revocation via jti denylist**, global kill switch via secret rotation, **per-session mint rate limiting (429 over 30/10min)**.
+Implemented: fail-closed secret, HMAC-SHA256 with timing-safe compare, server-side expiry, server-side masking embedded in the token, admin-only + same-origin mint, public page with no data fetch, route allowlisted, **structured mint audit line**, **per-link revocation via jti denylist**, global kill switch via secret rotation, **per-session mint rate limiting (429 over 30/10min)**, **opt-in finance-authority mint gate (`CONTROL_ROOM_MINT_REQUIRE_FINANCE`, 403 for non-finance)**.
 
-**Not yet implemented (decide before external launch):** forwarding the audit line to the durable audit store, moving the revocation denylist from env to a KV/DB + a revoke button, backing the mint rate limiter with a shared store for multi-instance, role-gating of who can mint, optional recipient authentication.
+**Not yet implemented (decide before external launch):** forwarding the audit line to the durable audit store, moving the revocation denylist from env to a KV/DB + a revoke button, backing the mint rate limiter with a shared store for multi-instance, optional recipient authentication. (Role-gating of who can mint is available as an opt-in gate; turn it on in production.)
 
 Nothing here should be sent to a real worker or client until Sections 1–5 are satisfied at minimum.
