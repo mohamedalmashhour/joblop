@@ -1,6 +1,9 @@
 const dispatchDetail =
   /^\/dispatches\/[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
+// Transaction Control Room + per-transaction audit report (read-only).
+const controlRoom = /^\/control-room(?:\/[A-Za-z0-9._-]+(?:\/report)?)?$/;
+
 export function isProductionAdminRouteAllowed(pathname: string) {
   const path = normalizePath(pathname);
   if (!path) return false;
@@ -16,7 +19,8 @@ export function isProductionAdminRouteAllowed(pathname: string) {
     path === "/calendar" ||
     path === "/calendar/request" ||
     path === "/dispatches" ||
-    dispatchDetail.test(path)
+    dispatchDetail.test(path) ||
+    controlRoom.test(path)
   );
 }
 
