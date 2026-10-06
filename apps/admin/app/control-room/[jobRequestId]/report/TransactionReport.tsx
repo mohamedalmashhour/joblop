@@ -1,6 +1,14 @@
 "use client";
 // Per-transaction audit report — read-only, printable. Built from the same
-// /api/control-room/{id} BFF the Control Room uses. Additive; touches nothing else.
+// /api/control-room/{id} BFF the Control Room uses. Additive.
+//
+// `view` masks the report for who is looking:
+//   "full"     — internal/admin: everything (default).
+//   "employer" — the client: their invoice + taxes only. Worker pay, worker
+//                rate and platform margin are HIDDEN (worker rate is never
+//                shown to the employer).
+//   "worker"   — the worker: only their own pay line. Employer invoice, the
+//                platform margin and any other worker are HIDDEN.
 import { useEffect, useState, type CSSProperties } from "react";
 
 type Stage = { n: number; name: string; state: string };
@@ -12,6 +20,7 @@ type Data = {
   ledger?: Ledger | null;
   checks?: Check[];
 };
+type View = "full" | "employer" | "worker";
 
 const C: Record<string, string> = {
   bg: "#0a1424", panel: "#0f1d33", panel2: "#13243f", line: "#1e3254",
@@ -24,7 +33,9 @@ const money = (m: unknown) => {
 const dt = (s: string | null) =>
   s ? new Date(s).toLocaleString("en-CA", { dateStyle: "medium", timeStyle: "short" }) : "—";
 
-export default function TransactionReport({ jobRequestId }: { jobRequestId: string }) {
+export default function TransactionReport(
+  { jobRequestId, view = "full" }: { jobRequestId: string; view?: View }
+) {
   const [d, setD] = useState<Data | null>(null);
   const [err, setErr] = useState<string | null>(null);
 
@@ -43,11 +54,55 @@ export default function TransactionReport({ jobRequestId }: { jobRequestId: stri
   const L = d.ledger || {};
   const closed = (L.balanceMinor ?? -1) === 0;
 
-  const row = (k: string, v: string, strong = false) => (
-    <tr><td style={{ padding: "6px 0", borderBottom: `1px dashed ${C.line}`, color: C.muted }}>{k}</td>
-      <td style={{ padding: "6px 0", borderBottom: `1px dashed ${C.line}`, textAlign: "right", fontFamily: "ui-monospace, monospace", fontVariantNumeric: "tabular-nums", color: strong ? C.pass : C.fg, fontWeight: strong ? 700 : 400 }}>{v}</td></tr>
-  );
+  const title = view === "employer" ? "Your invoice — JobLop"
+    : view === "worker" ? "Your pay — JobLop"
+    : "Transaction audit report";
+
+  // Per-worker figures derived from the aggregate ledger.
+  const wRate = Number(L.workerRateMinor);
+  const wHours = Number(L.billableHours);
+  const wGrossEach = Number.isFinite(wRate) && Number.isFinite(wHours) ? wRate * wHours : NaN;
+  const wNetEach = Number(L.workerNetEachMinor);
+  const wDedEach = Number.isFinite(wGrossEach) && Number.isFinite(wNetEach) ? wGrossEach - wNetEach : NaN;
+
+  // Settlement rows per view (explicit, so masking is auditable — not a generic dump).
+  type Row = [string, unknown, boolean?];
+  let settle: Row[];
+  if (view === "employer") {
+    settle = [
+      ["Labour", L.labourMinor],
+      ["Card processing surcharge", L.surchargeMinor],
+      ["GST (illustrative)", L.gstMinor],
+      ["QST (illustrative)", L.qstMinor],
+      ["Total you pay", L.invoiceMinor, true],
+    ];
+  } else if (view === "worker") {
+    settle = [
+      ["Your rate / hr", L.workerRateMinor],
+      ["Hours worked", wHours],
+      ["Gross", wGrossEach],
+      ["Statutory deductions", -wDedEach],
+      ["Your net pay", wNetEach, true],
+    ];
+  } else {
+    settle = [
+      ["Employer pays in (invoice)", L.invoiceMinor],
+      ["Workers — net total", L.workersNetMinor],
+      ["  worker net, each", L.workerNetEachMinor],
+      ["Payroll remittances", L.remittancesMinor],
+      ["Government GST + QST", Number(L.gstMinor) + Number(L.qstMinor)],
+      ["Card processing fee", L.cardFeeMinor],
+      ["Platform net margin (kept)", L.platformNetMinor],
+      ["SETTLEMENT BALANCE", L.balanceMinor, true],
+    ];
+  }
+
+  const hoursCell = (k: string, v: unknown) =>
+    k === "Hours worked" ? `${Number.isFinite(Number(v)) ? v : "—"}h` : money(v);
+
   const H = ({ t }: { t: string }) => <h2 style={{ fontSize: 11, letterSpacing: 1, textTransform: "uppercase", color: C.muted, borderBottom: `1px solid ${C.line}`, paddingBottom: 6, margin: "24px 0 8px" }}>{t}</h2>;
+  const td: CSSProperties = { padding: "6px 0", borderBottom: `1px dashed ${C.line}`, color: C.fg };
+  const tdR: CSSProperties = { ...td, textAlign: "right", fontFamily: "ui-monospace, monospace", fontVariantNumeric: "tabular-nums" };
   const stamp = new Date().toISOString().slice(0, 16).replace("T", " ") + " UTC";
 
   return (
@@ -61,13 +116,18 @@ export default function TransactionReport({ jobRequestId }: { jobRequestId: stri
 
       <div style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
         <div style={{ flex: 1, minWidth: 0 }}>
-          <h1 style={{ fontSize: 19, margin: 0 }}>Transaction audit report</h1>
+          <h1 style={{ fontSize: 19, margin: 0 }}>{title}</h1>
           <div style={{ color: C.muted, fontSize: 13 }}>{job?.title ?? "Staffing request"} · {job?.number ?? jobRequestId}</div>
         </div>
+        {view !== "full" && (
+          <span style={{ fontSize: 11, color: C.faint, border: `1px solid ${C.line}`, padding: "4px 9px", borderRadius: 7 }}>
+            Read-only · your view
+          </span>
+        )}
         <span style={{ fontWeight: 700, fontSize: 12, letterSpacing: 0.5, padding: "5px 12px", borderRadius: 7,
           background: closed ? "rgba(54,196,142,.15)" : "rgba(242,185,73,.15)", color: closed ? C.pass : C.hold,
           border: `1px solid ${closed ? "rgba(54,196,142,.35)" : "rgba(242,185,73,.35)"}` }}>
-          {closed ? "CLOSED · $0.00" : "IN PROGRESS"}
+          {closed ? (view === "worker" ? "PAID" : view === "employer" ? "SETTLED" : "CLOSED · $0.00") : "IN PROGRESS"}
         </span>
         <button className="noprint" onClick={() => window.print()}
           style={{ padding: "8px 13px", borderRadius: 8, border: `1px solid ${C.line}`, background: C.panel2, color: C.fg, cursor: "pointer", fontWeight: 600 }}>
@@ -77,73 +137,69 @@ export default function TransactionReport({ jobRequestId }: { jobRequestId: stri
 
       <H t="Transaction details" />
       <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}><tbody>
-        {row("Report generated", stamp)}
-        {row("Job request", `${job?.number ?? jobRequestId}`)}
-        {row("Title", job?.title ?? "—")}
-        {row("Status", (job?.status ?? "—").toString().toUpperCase())}
-        {row("Shift start", dt(job?.startAt ?? null))}
-        {row("Shift end", dt(job?.endAt ?? null))}
-        {row("Headcount", job?.workers != null ? `${job.workers} worker(s)` : "—")}
-        {row("Hours", job?.hours != null ? `${job.hours}h` : "—")}
+        <tr><td style={{ ...td, color: C.muted }}>Report generated</td><td style={tdR}>{stamp}</td></tr>
+        <tr><td style={{ ...td, color: C.muted }}>Job request</td><td style={tdR}>{job?.number ?? jobRequestId}</td></tr>
+        <tr><td style={{ ...td, color: C.muted }}>Title</td><td style={tdR}>{job?.title ?? "—"}</td></tr>
+        <tr><td style={{ ...td, color: C.muted }}>Status</td><td style={tdR}>{(job?.status ?? "—").toString().toUpperCase()}</td></tr>
+        <tr><td style={{ ...td, color: C.muted }}>Shift start</td><td style={tdR}>{dt(job?.startAt ?? null)}</td></tr>
+        <tr><td style={{ ...td, color: C.muted }}>Shift end</td><td style={tdR}>{dt(job?.endAt ?? null)}</td></tr>
+        {view !== "worker" && <tr><td style={{ ...td, color: C.muted }}>Headcount</td><td style={tdR}>{job?.workers != null ? `${job.workers} worker(s)` : "—"}</td></tr>}
       </tbody></table>
 
-      {d.ledger ? (<>
-        <H t="Pricing (real @rwos/shared engine · 20% margin)" />
-        <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}><tbody>
-          {row("Employer rate / hr", money(L.employerRateMinor))}
-          {row("Worker rate / hr (E − margin)", money(L.workerRateMinor))}
-          {row("Platform margin / hr", money(L.platformRateMinor))}
-          {row("Billable hours (6h floor)", `${L.billableHours ?? "—"}h`)}
-          {row("Workers", `${L.workers ?? "—"}`)}
-          {row("Rate source", (L.rateSource ?? "—").toString())}
-        </tbody></table>
-
-        <H t="Settlement ledger (final)" />
-        <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}><tbody>
-          {row("Employer pays in (invoice)", money(L.invoiceMinor))}
-          {row("Workers — net total", money(L.workersNetMinor))}
-          {row("  worker net, each", money(L.workerNetEachMinor))}
-          {row("Payroll remittances", money(L.remittancesMinor))}
-          {row("Government GST + QST", money(Number(L.gstMinor) + Number(L.qstMinor)))}
-          {row("Card processing fee", money(L.cardFeeMinor))}
-          {row("Platform net margin (kept)", money(L.platformNetMinor))}
-          {row("SETTLEMENT BALANCE", money(L.balanceMinor), true)}
-        </tbody></table>
-      </>) : (
-        <p style={{ color: C.faint, fontSize: 13, marginTop: 16 }}>No priced ledger yet for this transaction (needs a start/end window and headcount).</p>
+      {d.ledger ? (
+        <>
+          <H t={view === "employer" ? "Your invoice" : view === "worker" ? "Your pay" : "Settlement ledger (final)"} />
+          <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}><tbody>
+            {settle.map(([k, v, strong]) => (
+              <tr key={k}>
+                <td style={{ ...td, color: strong ? C.fg : C.muted, fontWeight: strong ? 600 : 400, borderTop: strong ? `1px solid ${C.line}` : undefined, borderBottom: strong ? "0" : td.borderBottom, paddingTop: strong ? 8 : 6 }}>{k}</td>
+                <td style={{ ...tdR, color: strong ? C.pass : C.fg, fontWeight: strong ? 700 : 400, fontSize: strong ? 15 : 13, borderTop: strong ? `1px solid ${C.line}` : undefined, borderBottom: strong ? "0" : tdR.borderBottom, paddingTop: strong ? 8 : 6 }}>{hoursCell(k, v)}</td>
+              </tr>
+            ))}
+          </tbody></table>
+          {view === "employer" && (
+            <p style={{ color: C.faint, fontSize: 11, marginTop: 10 }}>You are billed only for clock-verified hours. Worker pay rates are set and paid by JobLop and are not shown on your invoice.</p>
+          )}
+          {view === "worker" && (
+            <p style={{ color: C.faint, fontSize: 11, marginTop: 10 }}>JobLop takes no fee from your pay. Hours are taken from your recorded clock-in / clock-out, and the 6-hour minimum is honoured.</p>
+          )}
+        </>
+      ) : (
+        <p style={{ color: C.faint, fontSize: 13, marginTop: 16 }}>No priced figures yet for this transaction.</p>
       )}
 
-      {Array.isArray(d.stages) && d.stages.length > 0 && (<>
-        <H t="Lifecycle audit log" />
-        <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}><tbody>
-          {d.stages.map((s) => (
-            <tr key={s.n}>
-              <td style={{ padding: "6px 0", borderBottom: `1px dashed ${C.line}`, color: C.fg }}>{s.n}. {s.name}</td>
-              <td style={{ padding: "6px 0", borderBottom: `1px dashed ${C.line}`, textAlign: "right", fontWeight: 700, fontSize: 11, letterSpacing: 0.5,
-                color: s.state === "done" ? C.pass : s.state === "current" ? C.accent : C.faint }}>{s.state.toUpperCase()}</td>
-            </tr>
-          ))}
-        </tbody></table>
-      </>)}
+      {view !== "worker" && Array.isArray(d.stages) && d.stages.length > 0 && (
+        <>
+          <H t="Lifecycle" />
+          <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}><tbody>
+            {d.stages.map((s) => (
+              <tr key={s.n}>
+                <td style={td}>{s.n}. {s.name}</td>
+                <td style={{ ...tdR, fontWeight: 700, fontSize: 11, letterSpacing: 0.5, color: s.state === "done" ? C.pass : s.state === "current" ? C.accent : C.faint }}>{s.state.toUpperCase()}</td>
+              </tr>
+            ))}
+          </tbody></table>
+        </>
+      )}
 
-      {Array.isArray(d.checks) && d.checks.length > 0 && (<>
-        <H t="Governance checks" />
-        <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}><tbody>
-          {d.checks.map((c, i) => (
-            <tr key={i}>
-              <td style={{ padding: "6px 0", borderBottom: `1px dashed ${C.line}`, color: C.fg }}>{c.label}</td>
-              <td style={{ padding: "6px 0", borderBottom: `1px dashed ${C.line}`, textAlign: "right", fontWeight: 700, fontSize: 11, letterSpacing: 0.5,
-                color: c.state === "pass" ? C.pass : C.hold }}>{c.state.toUpperCase()}</td>
-            </tr>
-          ))}
-        </tbody></table>
-      </>)}
+      {view === "full" && Array.isArray(d.checks) && d.checks.length > 0 && (
+        <>
+          <H t="Governance checks" />
+          <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}><tbody>
+            {d.checks.map((c, i) => (
+              <tr key={i}>
+                <td style={td}>{c.label}</td>
+                <td style={{ ...tdR, fontWeight: 700, fontSize: 11, letterSpacing: 0.5, color: c.state === "pass" ? C.pass : C.hold }}>{c.state.toUpperCase()}</td>
+              </tr>
+            ))}
+          </tbody></table>
+        </>
+      )}
 
       <p style={{ color: C.faint, fontSize: 11, marginTop: 22, borderTop: `1px solid ${C.line}`, paddingTop: 12, lineHeight: 1.6 }}>
-        Prepared by the Financial Controller function. Pricing & splits computed by the real @rwos/shared
-        engine (20% platform margin, 6-hour minimum). Pricing snapshot immutable at approval; an unpriced
-        request can never be approved. Figures are test-mode until a payment provider is bound for an
-        activated country; tax &amp; payroll deductions illustrative. Settlement balance {money(L.balanceMinor)}.
+        {view === "full"
+          ? <>Prepared by the Financial Controller function. Pricing &amp; splits computed by the real @rwos/shared engine (20% platform margin, 6-hour minimum). Pricing snapshot immutable at approval; an unpriced request can never be approved. Figures are test-mode until a payment provider is bound; tax &amp; payroll deductions illustrative. Settlement balance {money(L.balanceMinor)}.</>
+          : <>JobLop · read-only statement for this transaction. Figures from the @rwos/shared pricing engine. Test-mode until a payment provider is bound for your region; tax &amp; deductions illustrative.</>}
       </p>
     </main>
   );
