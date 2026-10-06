@@ -53,6 +53,7 @@ export {
   ProductionIntegrationError,
   createHttpCandidateSource,
   createHttpWorkerOfferDeliveryProvider,
+  createResendWorkerOfferDeliveryProvider,
   type WorkerOfferDeliveryProvider,
   type WorkerOfferDeliveryResult
 } from "./productionIntegrations";

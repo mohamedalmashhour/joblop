@@ -400,3 +400,167 @@ function summaryState(input: unknown) {
     "not_evaluated"
   ]);
 }
+
+// ── Resend email offer delivery ──────────────────────────────────────────────
+// A direct worker-offer delivery channel over Resend (https://resend.com) — the free,
+// reliable default. Implements the same WorkerOfferDeliveryProvider seam as the HTTP
+// provider. The worker's contact + offer summary are resolved via an injected
+// resolveRecipient (the API layer supplies a Prisma-backed one), so this stays free of
+// any database dependency. Fail-closed: no key / no deliverable email => a failed result
+// (non-retryable when retrying cannot help, e.g. the worker has no email on file).
+export type OfferEmailRecipient = Readonly<{
+  email: string;
+  name: string | null;
+  language: "en" | "fr";
+  title: string; // worker-visible role/title
+  summary: string | null; // worker-visible summary
+  compensation: string | null; // compensation summary (already worker-safe)
+  whenLabel: string | null; // formatted shift window
+  areaLabel: string | null; // "City, PROV" (never the exact address)
+  ctaUrl: string | null; // deep link into the worker app
+}>;
+
+export type ResendOfferDeliveryOptions = Readonly<{
+  apiKey: string;
+  fromAddress: string; // e.g. "JobLop <offers@mail.yourdomain.ca>"
+  replyTo?: string;
+  fetch?: Fetch;
+  baseUrl?: string;
+  resolveRecipient(input: {
+    organizationId: string;
+    workerOfferId: string;
+    workerIdentityId: string;
+  }): Promise<OfferEmailRecipient | null>;
+}>;
+
+function isEmailAddress(value: string): boolean {
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value);
+}
+
+function escapeHtml(value: string): string {
+  return value
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;");
+}
+
+function composeOfferEmail(r: OfferEmailRecipient): { subject: string; html: string; text: string } {
+  const fr = r.language === "fr";
+  const L = (en: string, frl: string) => (fr ? frl : en);
+  const hello = r.name ? L(`Hi ${r.name},`, `Bonjour ${r.name},`) : L("Hi,", "Bonjour,");
+  const subject = L(`New shift offer: ${r.title}`, `Nouvelle offre de quart : ${r.title}`);
+  const intro = L("You've received a shift offer on JobLop.", "Vous avez reçu une offre de quart sur JobLop.");
+  const rows: Array<[string, string | null]> = [
+    [L("Role", "Poste"), r.title],
+    [L("When", "Quand"), r.whenLabel],
+    [L("Area", "Secteur"), r.areaLabel],
+    [L("Pay", "Rémunération"), r.compensation],
+    [L("Details", "Détails"), r.summary]
+  ];
+  const ctaText = L("View and respond to the offer", "Voir et répondre à l'offre");
+  const closing = L(
+    "Please respond before the offer expires.",
+    "Veuillez répondre avant l'expiration de l'offre."
+  );
+
+  const textLines = [
+    hello,
+    "",
+    intro,
+    "",
+    ...rows.filter(([, v]) => v && v.trim().length > 0).map(([k, v]) => `${k}: ${v}`),
+    "",
+    r.ctaUrl ? `${ctaText}: ${r.ctaUrl}` : "",
+    "",
+    closing,
+    "",
+    "— JobLop"
+  ].filter((line, i, arr) => !(line === "" && arr[i - 1] === ""));
+  const text = textLines.join("\n");
+
+  const rowHtml = rows
+    .filter(([, v]) => v && v.trim().length > 0)
+    .map(
+      ([k, v]) =>
+        `<tr><td style="padding:6px 12px 6px 0;color:#5c749c;font-size:13px;white-space:nowrap;vertical-align:top">${escapeHtml(
+          k
+        )}</td><td style="padding:6px 0;color:#0f1d33;font-size:14px">${escapeHtml(v as string)}</td></tr>`
+    )
+    .join("");
+  const button = r.ctaUrl
+    ? `<p style="margin:22px 0 8px"><a href="${escapeHtml(
+        r.ctaUrl
+      )}" style="display:inline-block;background:#1f9bf0;color:#fff;text-decoration:none;font-weight:600;padding:11px 20px;border-radius:10px;font-size:14px">${escapeHtml(
+        ctaText
+      )}</a></p>`
+    : "";
+  const html = `<!doctype html><html><body style="margin:0;background:#f4f7fb;font-family:-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif">
+<div style="max-width:560px;margin:0 auto;padding:24px 16px">
+  <div style="background:#fff;border:1px solid #e3eaf4;border-radius:14px;padding:22px 22px 10px">
+    <p style="font-weight:700;font-size:18px;color:#0f1d33;margin:0 0 14px">JobLop</p>
+    <p style="font-size:15px;color:#0f1d33;margin:0 0 6px">${escapeHtml(hello)}</p>
+    <p style="font-size:14px;color:#32496e;margin:0 0 14px">${escapeHtml(intro)}</p>
+    <table role="presentation" cellspacing="0" cellpadding="0" style="border-collapse:collapse;width:100%">${rowHtml}</table>
+    ${button}
+    <p style="font-size:13px;color:#5c749c;margin:14px 0 0">${escapeHtml(closing)}</p>
+  </div>
+  <p style="font-size:11px;color:#8aa0c2;text-align:center;margin:14px 0 0">JobLop</p>
+</div></body></html>`;
+  return { subject, html, text };
+}
+
+export function createResendWorkerOfferDeliveryProvider(
+  options: ResendOfferDeliveryOptions
+): WorkerOfferDeliveryProvider {
+  const fetcher = options.fetch ?? fetch;
+  const baseUrl = options.baseUrl ?? "https://api.resend.com/emails";
+  return {
+    async deliver(input) {
+      if (!options.apiKey || options.apiKey.trim().length < 10 || !options.fromAddress) {
+        return { status: "failed", providerReference: null, retryable: false };
+      }
+      let recipient: OfferEmailRecipient | null;
+      try {
+        recipient = await options.resolveRecipient({
+          organizationId: input.organizationId,
+          workerOfferId: input.workerOfferId,
+          workerIdentityId: input.workerIdentityId
+        });
+      } catch {
+        return failedDelivery(); // transient lookup failure — retryable
+      }
+      if (!recipient || !isEmailAddress(recipient.email)) {
+        return { status: "failed", providerReference: null, retryable: false }; // no deliverable contact
+      }
+      const { subject, html, text } = composeOfferEmail(recipient);
+      try {
+        const response = await fetcher(baseUrl, {
+          method: "POST",
+          headers: {
+            authorization: `Bearer ${options.apiKey}`,
+            "content-type": "application/json",
+            "idempotency-key": input.idempotencyKey
+          },
+          body: JSON.stringify({
+            from: options.fromAddress,
+            to: [recipient.email],
+            subject,
+            html,
+            text,
+            ...(options.replyTo ? { reply_to: options.replyTo } : {})
+          })
+        });
+        if (!response.ok) {
+          const retryable = response.status >= 500 || response.status === 429;
+          return { status: "failed", providerReference: null, retryable };
+        }
+        const record = asRecord(await response.json().catch(() => null));
+        const providerReference = typeof record.id === "string" ? record.id : null;
+        return { status: "sent", providerReference, retryable: false };
+      } catch {
+        return failedDelivery();
+      }
+    }
+  };
+}

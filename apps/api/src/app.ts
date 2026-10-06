@@ -136,6 +136,7 @@ import {
   createPrismaWorkGroupRepository,
   createHttpCandidateSource,
   createHttpWorkerOfferDeliveryProvider,
+  createResendWorkerOfferDeliveryProvider,
   passwordPolicyErrorCode,
   registrationUnavailableCode,
   toSafeAuthorizationResponse,
@@ -336,6 +337,19 @@ export interface AuthenticationRateLimiter {
   ): Promise<AuthenticationRateLimitDecision>;
   check?(): Promise<boolean>;
   close?(): Promise<void>;
+}
+
+// Formats a shift window for worker-facing offer emails (localized, Canada timezone).
+function formatOfferWindow(start: Date, end: Date, lang: "en" | "fr"): string {
+  const locale = lang === "fr" ? "fr-CA" : "en-CA";
+  const tz = "America/Toronto";
+  try {
+    const day = new Intl.DateTimeFormat(locale, { weekday: "short", month: "short", day: "numeric", timeZone: tz }).format(start);
+    const clock = (d: Date) => new Intl.DateTimeFormat(locale, { hour: "numeric", minute: "2-digit", timeZone: tz }).format(d);
+    return `${day}, ${clock(start)}\u2013${clock(end)}`;
+  } catch {
+    return `${start.toISOString().slice(0, 16).replace("T", " ")} \u2192 ${end.toISOString().slice(11, 16)}`;
+  }
 }
 
 export function buildApi(options: BuildApiOptions = {}) {
@@ -737,6 +751,85 @@ export function buildApi(options: BuildApiOptions = {}) {
             : undefined
         )
       : createUnavailableDispatchService());
+  // Worker-offer delivery channel. Prefer Resend email (free, reliable; reuses the email
+  // config already used for verification), then the external HTTP delivery service, else none.
+  // Fail-closed: with neither configured, offers simply aren't auto-delivered.
+  const offerCtaOrigin = (options.publicWorkerWebOrigin ?? environment.WORKER_WEB_ORIGIN ?? "").trim() || null;
+  const resendOfferDeliveryProvider =
+    prisma && runtimeConfig.hasEmailDelivery && runtimeConfig.emailFrom
+      ? createResendWorkerOfferDeliveryProvider({
+          apiKey: runtimeConfig.resendApiKey!,
+          fromAddress: runtimeConfig.emailFrom,
+          resolveRecipient: async ({ workerOfferId, organizationId }) => {
+            const offer = await prisma.workerOffer.findFirst({
+              where: { id: workerOfferId, organizationId },
+              select: {
+                jobRequest: {
+                  select: {
+                    title: true,
+                    startAt: true,
+                    endAt: true,
+                    roleDefinition: { select: { displayLabel: true } },
+                    pricingSnapshot: { select: { workerHourlyRateMinor: true } }
+                  }
+                },
+                residence: { select: { city: true, province: true } },
+                workerIdentity: {
+                  select: {
+                    displayName: true,
+                    preferredLanguage: true,
+                    user: { select: { emailNormalized: true, displayName: true } }
+                  }
+                }
+              }
+            });
+            const email = offer?.workerIdentity?.user?.emailNormalized ?? null;
+            if (!offer || !email) return null;
+            const language: "en" | "fr" = offer.workerIdentity.preferredLanguage === "fr" ? "fr" : "en";
+            const role = offer.jobRequest?.roleDefinition?.displayLabel ?? null;
+            const title = offer.jobRequest?.title ?? role ?? (language === "fr" ? "Quart" : "Shift");
+            const city = offer.residence?.city ?? null;
+            const province = offer.residence?.province ?? null;
+            const areaLabel = city && province ? `${city}, ${province}` : province ?? city ?? null;
+            const rateMinor = offer.jobRequest?.pricingSnapshot?.workerHourlyRateMinor ?? null;
+            const compensation =
+              rateMinor != null && options.countryCurrency
+                ? `${new Intl.NumberFormat(language === "fr" ? "fr-CA" : "en-CA", {
+                    style: "currency",
+                    currency: options.countryCurrency
+                  }).format(rateMinor / 100)}/h`
+                : null;
+            const whenLabel =
+              offer.jobRequest?.startAt && offer.jobRequest?.endAt
+                ? formatOfferWindow(offer.jobRequest.startAt, offer.jobRequest.endAt, language)
+                : null;
+            return {
+              email,
+              name: offer.workerIdentity.displayName ?? offer.workerIdentity.user.displayName ?? null,
+              language,
+              title,
+              summary: null,
+              compensation,
+              whenLabel,
+              areaLabel,
+              ctaUrl: offerCtaOrigin ? `${offerCtaOrigin}/offers` : null
+            };
+          }
+        })
+      : null;
+  const workerOfferDeliveryProvider =
+    resendOfferDeliveryProvider ??
+    (runtimeConfig.hasOfferDelivery
+      ? createHttpWorkerOfferDeliveryProvider({
+          origin: runtimeConfig.offerDeliveryOrigin!,
+          token: runtimeConfig.offerDeliveryToken!,
+          ...(options.trustedServiceIdentity
+            ? {
+                trustedIdentityHeaders: trustedIdentityHeaders(options.trustedServiceIdentity, "offer-delivery")
+              }
+            : {})
+        })
+      : null);
   const workerOfferService =
     options.workerOfferService ??
     (prisma
@@ -745,24 +838,7 @@ export function buildApi(options: BuildApiOptions = {}) {
           createPrismaDispatchRepository(prisma),
           createPrismaJobRequestRepository(prisma),
           authorizationService,
-          {
-            ...(runtimeConfig.hasOfferDelivery
-              ? {
-                  deliveryProvider: createHttpWorkerOfferDeliveryProvider({
-                    origin: runtimeConfig.offerDeliveryOrigin!,
-                    token: runtimeConfig.offerDeliveryToken!,
-                    ...(options.trustedServiceIdentity
-                      ? {
-                          trustedIdentityHeaders: trustedIdentityHeaders(
-                            options.trustedServiceIdentity,
-                            "offer-delivery"
-                          )
-                        }
-                      : {})
-                  })
-                }
-              : {})
-          }
+          workerOfferDeliveryProvider ? { deliveryProvider: workerOfferDeliveryProvider } : {}
         )
       : createUnavailableWorkerOfferService());
   const assignmentService =
