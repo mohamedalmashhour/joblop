@@ -90,7 +90,7 @@ suite("persisted end-to-end close (local fake provider)", () => {
     );
     await prisma.$executeRawUnsafe(
       `INSERT INTO timesheets (id, assignment_id, attendance_record_id, job_request_id, worker_identity_id, organization_id, residence_id, department_id, work_group_id, role_definition_id, status, attendance_version_snapshot, assignment_version_snapshot, scheduled_start_at, scheduled_end_at, timezone, payable_minutes, billable_minutes, break_minutes, approved_at, created_by_user_id, version, created_at, updated_at)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,'approved',1,1,$11,$12,'America/Toronto',480,480,0,$13,$14,1,$13,$13)`,
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,'locked',1,1,$11,$12,'America/Toronto',480,480,0,$13,$14,1,$13,$13)`,
       tsId, assignmentId, attId, job.id, workerId, scope.organizationId, scope.residenceId, scope.departmentId, scope.workGroupId, scope.roleDefinitionId, s, e, n, ownerId
     );
     timesheetId = tsId;
