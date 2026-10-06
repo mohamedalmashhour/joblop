@@ -4,6 +4,7 @@ import { getRuntimeConfig, resolveCountryConfig, type CountryProfile } from "@rw
 import { moneyEngineCurrencies } from "@rwos/shared";
 import { createLogger } from "@rwos/observability";
 import { apiCountryRegistry } from "./countryRegistry";
+import { withTestModeCountry } from "./countryRegistry.testMode";
 
 const logger = createLogger("api");
 const config = getRuntimeConfig();
@@ -23,7 +24,9 @@ function resolveSelectedCountry(): { ok: true; profile: CountryProfile } | { ok:
     const profile = resolveCountryConfig({
       rwosEnv: config.rwosEnv,
       country: process.env.RWOS_COUNTRY,
-      registry: apiCountryRegistry
+      // TEST-MODE ONLY: in local/test with RWOS_COUNTRY_TEST_MODE set, overlay a synthetic
+      // activatable country so the full country path can run end-to-end. No-op in staging/production.
+      registry: withTestModeCountry(apiCountryRegistry, config.rwosEnv)
     });
     return { ok: true, profile };
   } catch (error) {
