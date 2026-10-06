@@ -118,9 +118,9 @@ suite("persisted end-to-end close (local fake provider)", () => {
       }
     });
     expect([201, 200]).toContain(res.statusCode);
-    const invoice = res.json().invoice as { id: string; total?: { amountMinor: number }; snapshot?: { total?: { amountMinor: number } } };
+    const invoice = res.json().invoice as { id: string; totalMinor?: number };
     invoiceId = invoice.id;
-    invoiceTotalMinor = invoice.total?.amountMinor ?? invoice.snapshot?.total?.amountMinor ?? 0;
+    invoiceTotalMinor = invoice.totalMinor ?? 0;
     expect(invoiceId).toBeTruthy();
     expect(invoiceTotalMinor).toBeGreaterThan(24000); // labour + card surcharge + GST + QST
   });
