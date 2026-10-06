@@ -108,10 +108,11 @@ suite("persisted end-to-end close (local fake provider)", () => {
         idempotencyKey: `inv-${randomUUID()}`,
         calculation: {
           source: { type: "locked_timesheet", organizationId: orgId, timesheetId, timesheetVersion: 1, assignmentId, attendanceRecordId },
+          rules: { employerTermsVersion: "v1", calculationPolicyVersion: "v1", taxPolicyVersion: "v1", travelPolicyVersion: "v1", adjustmentPolicyVersion: "v1", paymentTermsVersion: "v1" },
           occurredAt: "2026-10-20T21:00:00.000Z",
           regularLabour: money(24000), // 8h × $30.00
-          urgentLabour: zero, approvedTravelTime: zero, mileage: zero, adjustments: zero, marketplaceFees: zero,
-          lineRuleVersions: { regular_labour: "v1", urgent_labour: "v1", approved_travel_time: "v1", mileage: "v1", adjustment: "v1", marketplace_fee: "v1" },
+          urgentLabour: zero, approvedTravelTime: zero, mileage: zero, adjustments: zero, marketplaceFees: zero, credits: zero,
+          lineRuleVersions: { regular_labour: "v1", urgent_labour: "v1", approved_travel_time: "v1", mileage: "v1", adjustment: "v1", marketplace_fee: "v1", credit: "v1" },
           paymentMethodKind: "card"
         }
       }
