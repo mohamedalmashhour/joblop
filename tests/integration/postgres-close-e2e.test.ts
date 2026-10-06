@@ -52,7 +52,7 @@ suite("persisted end-to-end close (local fake provider)", () => {
       localPaymentWebhookSecret: "local-fake-webhook-secret-0123456789abcdef",
       // Give the owner the org-owner + finance roles so the org-scoped invoice/payment routes authorize.
       // ITERATION ITEM A: if invoice/payment authorize needs a different role/permission, adjust here.
-      resolveAuthorizationRoles: async () => ["ORGANIZATION_OWNER", "FINANCE_REVIEWER", "PAYROLL_ADMINISTRATOR"]
+      resolveAuthorizationRoles: async () => ["PLATFORM_ADMINISTRATOR", "ORGANIZATION_OWNER", "FINANCE_REVIEWER", "PAYROLL_ADMINISTRATOR"]
     });
     await app.ready();
 
