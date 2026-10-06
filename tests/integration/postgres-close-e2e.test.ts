@@ -138,7 +138,7 @@ suite("persisted end-to-end close (local fake provider)", () => {
   it("step 3 — create the payment attempt against the invoice", async () => {
     // Issue the invoice (draft -> issued). The governed approve/issue HTTP flow needs numbering
     // config; this test targets the money movement, so we move it to 'issued' directly in the DB.
-    await prisma.$executeRawUnsafe(`UPDATE invoices SET status = 'issued' WHERE id = $1 AND organization_id = $2`, invoiceId, orgId);
+    await prisma.$executeRawUnsafe(`UPDATE invoices SET status = 'issued', invoice_number = $3, issued_at = now() WHERE id = $1 AND organization_id = $2`, invoiceId, orgId, `INV-${randomUUID().slice(0, 8)}`);
     const res = await app.inject({
       method: "POST", url: `/organizations/${orgId}/payments`, headers: auth(ownerToken),
       payload: {
