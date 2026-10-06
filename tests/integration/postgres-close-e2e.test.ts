@@ -172,4 +172,19 @@ suite("persisted end-to-end close (local fake provider)", () => {
     expect(Number(settled.amountMinor)).toBe(invoiceTotalMinor);
     expect(Number(settled.allocatedMinor)).toBe(invoiceTotalMinor);
   });
+
+  it("step 5 — full refund reverses the settlement (persisted re-close)", async () => {
+    const list = await app.inject({ method: "GET", url: `/organizations/${orgId}/payments`, headers: auth(ownerToken) });
+    const p = (list.json().payments as Array<{ id: string; version: number; state: string }>)[0];
+    expect(p.state).toBe("succeeded");
+    const res = await app.inject({
+      method: "POST", url: `/organizations/${orgId}/payments/${p.id}/refund`, headers: auth(ownerToken),
+      payload: { expectedVersion: p.version, amountMinor: invoiceTotalMinor, idempotencyKey: `ref-${randomUUID()}`, scenario: "success" }
+    });
+    expect(res.statusCode).toBe(200);
+    const refunded = res.json().payment as { state: string; refundedMinor: number };
+    // Full reversal persists: state 'refunded', refunded amount equals the captured amount.
+    expect(refunded.state).toBe("refunded");
+    expect(Number(refunded.refundedMinor)).toBe(invoiceTotalMinor);
+  });
 });
