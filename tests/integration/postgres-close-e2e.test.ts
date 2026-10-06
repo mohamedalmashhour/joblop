@@ -166,7 +166,10 @@ suite("persisted end-to-end close (local fake provider)", () => {
       res = await app.inject({ method: "POST", url: `/organizations/${orgId}/payments/${payment.id}/capture`, headers: auth(ownerToken), payload: { expectedVersion: v, amountMinor: invoiceTotalMinor, idempotencyKey: `cap-${randomUUID()}`, scenario: "success" } });
     }
     expect(res.statusCode).toBe(200);
-    const settled = res.json().payment as { state: string };
+    const settled = res.json().payment as { state: string; amountMinor: number; allocatedMinor: number };
     expect(settled.state).toBe("succeeded");
+    // Money ties out: the captured (allocated) amount equals the issued invoice total — a balanced close.
+    expect(Number(settled.amountMinor)).toBe(invoiceTotalMinor);
+    expect(Number(settled.allocatedMinor)).toBe(invoiceTotalMinor);
   });
 });
