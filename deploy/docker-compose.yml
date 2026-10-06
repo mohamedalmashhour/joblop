@@ -1,0 +1,133 @@
+# JobLop — Mac self-host stack (staging tier) behind a Cloudflare Tunnel.
+# Postgres + API + the three web apps + cloudflared, all on one Docker network.
+# Public HTTPS + your domain come from the tunnel; nothing is exposed on your router.
+#
+#   cd deploy && cp .env.example .env   # then fill it in
+#   docker compose up -d --build
+#
+# Images are built from each app's existing Dockerfile (build context = repo root).
+name: joblop
+
+x-app-build: &app-build
+  context: ..
+  args:
+    RWOS_PUBLIC_DEPLOYMENT_TIER: staging
+
+services:
+  db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: rwos
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env.deploy}
+      POSTGRES_DB: rwos
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U rwos -d rwos"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+    # Not published to the host — only the app containers reach it on the internal network.
+
+  # One-shot: apply DB migrations, then exit. The api waits for this to finish.
+  migrate:
+    build:
+      context: ..
+      dockerfile: apps/api/Dockerfile
+    command: ["pnpm", "--filter", "@rwos/database", "exec", "prisma", "migrate", "deploy"]
+    environment:
+      DATABASE_URL: postgresql://rwos:${POSTGRES_PASSWORD}@db:5432/rwos
+    depends_on:
+      db:
+        condition: service_healthy
+    restart: "no"
+
+  api:
+    build:
+      context: ..
+      dockerfile: apps/api/Dockerfile
+    restart: unless-stopped
+    env_file: [.env]
+    environment:
+      RWOS_ENV: staging
+      NODE_ENV: production
+      PORT: "8080"
+      INTERNAL_API_ORIGIN: http://api:8080
+      DATABASE_URL: postgresql://rwos:${POSTGRES_PASSWORD}@db:5432/rwos
+    depends_on:
+      db:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+    healthcheck:
+      test: ["CMD-SHELL", "node -e \"fetch('http://127.0.0.1:8080/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))\""]
+      interval: 10s
+      timeout: 5s
+      retries: 30
+
+  admin:
+    build:
+      dockerfile: apps/admin/Dockerfile
+      <<: *app-build
+    restart: unless-stopped
+    env_file: [.env]
+    environment:
+      RWOS_ENV: staging
+      NODE_ENV: production
+      PORT: "8080"
+      INTERNAL_API_ORIGIN: http://api:8080
+    depends_on:
+      api:
+        condition: service_healthy
+
+  employer:
+    build:
+      dockerfile: apps/employer/Dockerfile
+      <<: *app-build
+    restart: unless-stopped
+    env_file: [.env]
+    environment:
+      RWOS_ENV: staging
+      NODE_ENV: production
+      PORT: "8080"
+      INTERNAL_API_ORIGIN: http://api:8080
+    depends_on:
+      api:
+        condition: service_healthy
+
+  worker:
+    build:
+      dockerfile: apps/worker/Dockerfile
+      <<: *app-build
+    restart: unless-stopped
+    env_file: [.env]
+    environment:
+      RWOS_ENV: staging
+      NODE_ENV: production
+      PORT: "8080"
+      INTERNAL_API_ORIGIN: http://api:8080
+    depends_on:
+      api:
+        condition: service_healthy
+
+  # Cloudflare Tunnel. Create the tunnel in the Cloudflare dashboard (Zero Trust →
+  # Networks → Tunnels), copy its token into CLOUDFLARE_TUNNEL_TOKEN, and map your
+  # public hostnames to these internal services (see deploy/README.md):
+  #   admin.<domain>    -> http://admin:8080
+  #   employer.<domain> -> http://employer:8080
+  #   app.<domain>      -> http://worker:8080
+  #   api.<domain>      -> http://api:8080   (only if you need the API publicly)
+  cloudflared:
+    image: cloudflare/cloudflared:latest
+    restart: unless-stopped
+    command: ["tunnel", "--no-autoupdate", "run"]
+    environment:
+      TUNNEL_TOKEN: ${CLOUDFLARE_TUNNEL_TOKEN:?set CLOUDFLARE_TUNNEL_TOKEN in .env.deploy}
+    depends_on:
+      - admin
+      - employer
+      - worker
+
+volumes:
+  pgdata:
