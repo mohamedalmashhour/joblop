@@ -47,6 +47,9 @@ suite("persisted end-to-end close (local fake provider)", () => {
     app = buildApi({
       countryCurrency: "CAD",
       env: { ...process.env, DATABASE_URL: databaseUrl, RWOS_ENV: "local", NODE_ENV: "test", LOCAL_PAYMENT_ENABLED: "enabled" },
+      // REQUIRED: payment routes mount only when a webhook secret is present (app.ts). The capture
+      // path below does not use it, but its presence is the gate that registers the routes at all.
+      localPaymentWebhookSecret: "local-fake-webhook-secret-0123456789abcdef",
       // Give the owner the org-owner + finance roles so the org-scoped invoice/payment routes authorize.
       // ITERATION ITEM A: if invoice/payment authorize needs a different role/permission, adjust here.
       resolveAuthorizationRoles: async () => ["ORGANIZATION_OWNER", "FINANCE_REVIEWER", "PAYROLL_ADMINISTRATOR"]
