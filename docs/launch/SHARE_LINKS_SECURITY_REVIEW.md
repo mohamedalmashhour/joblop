@@ -46,7 +46,7 @@
 
 ## 7. Abuse & rate limiting
 
-- [ ] Rate-limit the mint endpoint per admin session to prevent bulk link generation.
+- [x] **Rate-limit the mint endpoint per admin session** to prevent bulk link generation. Implemented in the mint route as an in-memory sliding window (`RATE_MAX` = 30 mints per 10 minutes per session, keyed by the non-reversible `actorRef` hash); over the cap returns **429** `rate_limited`. **To do (multi-instance):** back it with a shared store (Redis/KV) so the cap holds across replicas — it is per-instance today.
 - [ ] Consider a per-transaction cap or a "links issued" count surfaced in the admin UI so stray links are visible.
 
 ## 8. Privacy / compliance
@@ -58,8 +58,8 @@
 
 ## Current status (as built)
 
-Implemented: fail-closed secret, HMAC-SHA256 with timing-safe compare, server-side expiry, server-side masking embedded in the token, admin-only + same-origin mint, public page with no data fetch, route allowlisted, **structured mint audit line**, **per-link revocation via jti denylist**, global kill switch via secret rotation.
+Implemented: fail-closed secret, HMAC-SHA256 with timing-safe compare, server-side expiry, server-side masking embedded in the token, admin-only + same-origin mint, public page with no data fetch, route allowlisted, **structured mint audit line**, **per-link revocation via jti denylist**, global kill switch via secret rotation, **per-session mint rate limiting (429 over 30/10min)**.
 
-**Not yet implemented (decide before external launch):** forwarding the audit line to the durable audit store, moving the revocation denylist from env to a KV/DB + a revoke button, mint rate limiting, role-gating of who can mint, optional recipient authentication.
+**Not yet implemented (decide before external launch):** forwarding the audit line to the durable audit store, moving the revocation denylist from env to a KV/DB + a revoke button, backing the mint rate limiter with a shared store for multi-instance, role-gating of who can mint, optional recipient authentication.
 
 Nothing here should be sent to a real worker or client until Sections 1–5 are satisfied at minimum.
