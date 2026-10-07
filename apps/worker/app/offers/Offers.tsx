@@ -138,7 +138,6 @@ export function Offers() {
                 </div>
                 <dl className="agreement">
                   <dt>{t("offers.agreementTitle")}</dt>
-                  <dd />
                   {o.summary ? (<><dt>{t("offers.whatYoullDo")}</dt><dd>{o.summary}</dd></>) : null}
                   <dt>{t("offers.scheduleLabel")}</dt>
                   <dd>{when(o.startAt, o.endAt, o.timezone, locale, t("offers.scheduleTbc"))}</dd>
