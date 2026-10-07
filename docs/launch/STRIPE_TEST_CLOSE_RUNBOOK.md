@@ -55,3 +55,39 @@ not guesswork — paste them and the loop closes fast.
 ## Done = 
 `pnpm test tests/integration/postgres-close-stripe-e2e.test.ts` green: a real Stripe test-mode
 capture, persisted, tied to the issued invoice. That turns Workstream D fully green.
+
+## Deployed-stack activation (server.ts composition root) — verified gap
+
+*Verified against the code this session. The section above wires Stripe into `buildApi` for the
+**close test**. The **running API** (the deployed Mac/Docker stack) is wired separately and does NOT
+yet select Stripe from env alone — setting `STRIPE_TEST_*` in `deploy/.env` is currently inert until
+the wiring below is added. Safety is unaffected: `validateStripeTestEnvironment` already rejects any
+non-`sk_test_` / `sk_live_` key (proven), so nothing can go live by accident.*
+
+What the code does today:
+- `apps/api/src/app.ts` (~L918): `paymentRepository = options.paymentRepository ?? (localPaymentEnabled
+  ? createPrismaPaymentRepository(prisma, createLocalFakePaymentProvider()) : null)`. In **staging**
+  `LOCAL_PAYMENT_ENABLED` is off (only allowed in local/test), so the default is `null`.
+- Payment routes mount only when `paymentRepository && localPaymentWebhookSecret` (~L954).
+- The Stripe webhook route mounts only when `options.stripeWebhookRecovery` is injected (~L986).
+- `apps/api/src/server.ts` calls `buildApi({ countryTimezone, countryCurrency, countryAddress })` —
+  it passes **none** of `paymentRepository`, `localPaymentWebhookSecret`, or `stripeWebhookRecovery`.
+
+To light up Stripe test mode on the deployed stack (do this WITH the test keys so the close test
+validates it end-to-end in the same pass — build-and-iterate, like the local close):
+1. In `app.ts`, extend the `paymentRepository` default: when `runtimeConfig.stripeTestModeEnabled`
+   and `validateStripeTestEnvironment({enabled, secretKey, webhookSecret, accountReference})` passes
+   and `prisma` is present, build
+   `createPrismaPaymentRepository(prisma, createStripeTestPaymentProvider({ client:
+   createStripeTestClient(env), webhookSecret: env.webhookSecret, replayStore }))` where `replayStore`
+   is a Prisma-backed `StripeWebhookReplayStore` (idempotent `recordOnce`).
+2. Enable the payment routes in staging: when Stripe test mode is on, pass the Stripe webhook secret
+   as the route-enable gate (the `localPaymentWebhookSecret` param name is just the route-mount gate;
+   the local webhook route it also registers is unused under Stripe and can be left or gated off).
+3. Inject `stripeWebhookRecovery` (built from the same client + replay store) so
+   `registerStripeWebhookRoute` mounts and Stripe can finalize captures asynchronously.
+4. Keep it fail-closed: the entire branch is guarded by `stripeTestModeEnabled` + the key validator,
+   so with no keys the stack behaves exactly as today (no payment provider in staging).
+
+Verification once keys are set: `pnpm test:stripe:network` (provider boundary) → then the gated
+close test above → then a smoke on the running stack (invoice → authorize → capture → webhook).
