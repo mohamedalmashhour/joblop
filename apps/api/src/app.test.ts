@@ -2945,6 +2945,7 @@ function createApiUnavailableTimesheetService(): TimesheetService {
     employerConfirm: unavailable,
     employerDispute: unavailable,
     requestCorrection: unavailable,
+    overrideExceptions: unavailable,
     approve: unavailable,
     reject: unavailable,
     lock: unavailable,

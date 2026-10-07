@@ -6872,6 +6872,24 @@ export function buildApi(options: BuildApiOptions = {}) {
     return reply.code(200).send({ timesheet: serializeTimesheet(timesheet) });
   });
 
+  app.post("/platform/timesheets/:timesheetId/override-exceptions", async (request, reply) => {
+    const session = await authService.validateSession(
+      readBearerToken(request.headers.authorization)
+    );
+    if (!session.authenticated || !session.user) return sendTimesheetUnauthenticated(reply);
+
+    const body = asRecord(request.body);
+    const timesheet = await timesheetService.overrideExceptions({
+      session,
+      roles: await resolveAuthorizationRoles(session.user.id),
+      timesheetId: readRouteParam(request.params, "timesheetId"),
+      expectedVersion: readOptionalNumber(body, "expectedVersion") ?? 0,
+      reason: readRequiredString(body, "reason") ?? ""
+    });
+
+    return reply.code(200).send({ timesheet: serializeTimesheet(timesheet) });
+  });
+
   app.post("/platform/timesheets/:timesheetId/approve", async (request, reply) => {
     const session = await authService.validateSession(
       readBearerToken(request.headers.authorization)
@@ -8624,6 +8642,7 @@ function createUnavailableTimesheetService(): TimesheetService {
     employerConfirm: denied,
     employerDispute: denied,
     requestCorrection: denied,
+    overrideExceptions: denied,
     approve: denied,
     reject: denied,
     lock: denied,

@@ -4055,6 +4055,62 @@ describe("timesheet foundation", () => {
     expect(timesheetRepository.createdFinanceRecords).toBe(0);
   });
 
+  it("lets a platform reviewer override review exceptions back into the review chain", async () => {
+    const { timesheetService, timesheetRepository, attendanceRecord, adminSession, workerSession } =
+      await createTimesheetContext();
+    // Force a review exception: worker checked in after the confirmed start.
+    attendanceRecord.checkInAt = new Date("2026-08-12T12:30:00.000Z");
+    const draft = await timesheetService.createFromAttendance({
+      session: adminSession,
+      roles: ["TIMESHEET_REVIEWER"],
+      attendanceRecordId: attendanceRecord.id
+    });
+    const calculated = await timesheetService.calculate({
+      session: adminSession,
+      roles: ["TIMESHEET_REVIEWER"],
+      timesheetId: draft.id,
+      expectedVersion: draft.versionToken
+    });
+    expect(calculated.status).toBe("review_required");
+
+    // An override must carry an audited reason.
+    await expect(
+      timesheetService.overrideExceptions({
+        session: adminSession,
+        roles: ["TIMESHEET_REVIEWER"],
+        timesheetId: calculated.id,
+        expectedVersion: calculated.versionToken,
+        reason: "   "
+      })
+    ).rejects.toMatchObject({ decision: expect.objectContaining({ status: "invalid_input" }) });
+
+    // A worker cannot override review exceptions.
+    await expect(
+      timesheetService.overrideExceptions({
+        session: workerSession,
+        roles: ["WORKER_ACCESS"],
+        timesheetId: calculated.id,
+        expectedVersion: calculated.versionToken,
+        reason: "let me through"
+      })
+    ).rejects.toMatchObject({ decision: expect.objectContaining({ status: "permission_denied" }) });
+
+    // The platform reviewer accepts the exceptions and releases it into the normal review chain.
+    const overridden = await timesheetService.overrideExceptions({
+      session: adminSession,
+      roles: ["TIMESHEET_REVIEWER"],
+      timesheetId: calculated.id,
+      expectedVersion: calculated.versionToken,
+      reason: "Late arrival pre-authorized by the site supervisor; accept and proceed."
+    });
+    expect(overridden.status).toBe("worker_review");
+    expect(timesheetRepository.auditActions()).toContain("timesheet.exceptions_overridden");
+    // Override never approves pay or mutates upstream evidence.
+    expect(timesheetRepository.modifiedAttendanceRecords).toBe(0);
+    expect(timesheetRepository.createdPayrollRecords).toBe(0);
+    expect(timesheetRepository.createdFinanceRecords).toBe(0);
+  });
+
   it("requires explicit worker and employer review before platform approval and lock", async () => {
     const { timesheetService, attendanceRecord, adminSession, workerSession } =
       await createTimesheetContext();

@@ -175,6 +175,7 @@ export const authorizationPermissionKeys = [
   "timesheet.employer_confirm",
   "timesheet.employer_dispute",
   "timesheet.supervise",
+  "timesheet.override_exceptions",
   "audit.read",
   "platform.supervise"
 ] as const;
@@ -2223,6 +2224,7 @@ export interface TimesheetRepository {
       | "timesheet.employer_confirmed"
       | "timesheet.employer_disputed"
       | "timesheet.correction_requested"
+      | "timesheet.exceptions_overridden"
       | "timesheet.approved"
       | "timesheet.rejected"
       | "timesheet.locked"
@@ -2817,6 +2819,14 @@ export const authorizationPermissionDefinitions = [
     "Keeps Attendance immutable and requires recalculation or formal adjustment."
   ),
   permission(
+    "timesheet.override_exceptions",
+    "Accept flagged Timesheet review exceptions and release it into the normal review chain.",
+    "platform",
+    "active",
+    "Could wave through anomalous time if applied without evidence or audit.",
+    "Requires an audited reason; never approves pay and never mutates Attendance or minutes."
+  ),
+  permission(
     "timesheet.adjust",
     "Reserved formal adjustment capability for post-lock correction.",
     "platform",
@@ -2953,6 +2963,7 @@ export const authorizationRoleDefinitions = [
     "timesheet.lock",
     "timesheet.reject",
     "timesheet.request_correction",
+    "timesheet.override_exceptions",
     "timesheet.adjust",
     "timesheet.audit_read",
     "audit.read"
@@ -3073,6 +3084,7 @@ export const authorizationRoleDefinitions = [
     "timesheet.lock",
     "timesheet.reject",
     "timesheet.request_correction",
+    "timesheet.override_exceptions",
     "timesheet.adjust",
     "timesheet.audit_read"
   ])
@@ -9280,6 +9292,49 @@ export function createTimesheetService(
         action: "timesheet.correction_requested",
         correctionReason: normalizeOptionalResidenceText(input.reason, 240),
         reason: "correction_requested",
+        correlationId: input.correlationId,
+        now: currentTime
+      });
+    },
+
+    // Governed platform override of review exceptions. ACCEPTS the flagged exceptions and
+    // releases the timesheet from review_required back into the normal multi-party review
+    // chain (worker -> employer -> platform). It NEVER approves pay unilaterally, NEVER mutates
+    // the immutable Attendance record or the calculated minutes, and requires an audited reason.
+    async overrideExceptions(input: TimesheetTransitionInput & { reason: string }) {
+      const currentTime = now();
+      const trimmedReason = typeof input.reason === "string" ? input.reason.trim() : "";
+      const timesheet = await requireAuthorizedTimesheet({
+        timesheetRepository,
+        authorizationService,
+        session: input.session,
+        roles: input.roles ?? [],
+        permission: "timesheet.override_exceptions",
+        timesheetId: input.timesheetId,
+        correlationId: input.correlationId,
+        now: currentTime
+      });
+      if (!trimmedReason) {
+        throw new TimesheetError(
+          timesheetDeny(
+            "invalid_input",
+            "override_reason_required",
+            timesheet.publicTimesheet,
+            input.roles ?? []
+          )
+        );
+      }
+      return transitionTimesheet({
+        timesheetRepository,
+        timesheet: timesheet.stored,
+        expectedVersion: input.expectedVersion,
+        actorUserId: input.session.user?.id ?? null,
+        roles: input.roles ?? [],
+        allowedFrom: ["review_required"],
+        nextStatus: "worker_review",
+        action: "timesheet.exceptions_overridden",
+        correctionReason: normalizeOptionalResidenceText(trimmedReason, 240),
+        reason: "exceptions_overridden",
         correlationId: input.correlationId,
         now: currentTime
       });
