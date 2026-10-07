@@ -14,7 +14,7 @@ export default function EmployerDashboardPage() {
     <EmployerShell
       currentRoute="/employer/dashboard"
       eyebrow="Employer Dashboard"
-      title="Employer operational home for staffing attention, risks, and governed workflow handoffs."
+      title="Your staffing home — what needs attention, what's at risk, and where to take the next step."
       lede="The dashboard summarizes employer-side staffing activity. It does not become the source of truth for shifts, workers, payments, messages, notifications, documents, or compliance."
       actions={
         <>
@@ -32,8 +32,8 @@ export default function EmployerDashboardPage() {
           <p style={styles.eyebrowDark}>Primary attention band</p>
           <h2 style={styles.sectionTitle}>What requires attention now?</h2>
           <p style={styles.sectionCopy}>
-            Dashboard values are development summaries until source contracts are connected. They
-            route to authoritative workflows rather than silently executing actions.
+            These summaries point you to the right workflow to open — they never change anything
+            on their own.
           </p>
         </div>
         <div style={styles.cardGrid}>
@@ -72,9 +72,8 @@ export default function EmployerDashboardPage() {
             Orders and billing are visible without becoming workflow authority.
           </h2>
           <p style={styles.sectionCopy}>
-            These fixture-backed calendars keep available requests, past and future staffing, and
-            revenue timing separate. Estimates route to invoices and payments; they do not confirm
-            final charges.
+            These calendars keep available requests, past and future staffing, and revenue timing
+            separate. Estimates route to invoices and payments; they do not confirm final charges.
           </p>
         </div>
         <div style={styles.cardGrid}>

@@ -181,7 +181,7 @@ export function createSyntheticPayrollRuleProvider(): PayrollRuleProvider {
       // explainable per-rate provenance when a rate change splits a period across contract versions.
       const earnings: PayrollEarningDraft[] = input.segments.map((s) => ({
         classification: "regular",
-        description: `Regular worked time (synthetic) @ contract ${s.contractVersion}`,
+        description: "Regular worked time (synthetic)",
         quantityMinutes: s.payableMinutes,
         rate: s.hourlyRate,
         amount: proRateMinutesAtHourlyRate(s.hourlyRate, s.payableMinutes),

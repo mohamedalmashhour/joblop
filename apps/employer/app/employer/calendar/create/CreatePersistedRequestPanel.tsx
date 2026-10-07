@@ -192,9 +192,9 @@ export function CreatePersistedRequestPanel() {
     setMessage(t("create.msgReviewBeforeSave"));
   }
 
-  async function createDraft(): Promise<EmployerJobRequestDraft | null> {
+  async function createDraft(submitting = false): Promise<EmployerJobRequestDraft | null> {
     setStatus("saving");
-    setMessage(t("create.msgSavingDraft"));
+    setMessage(submitting ? t("create.msgSubmitting") : t("create.msgSavingDraft"));
     try {
       const response = await fetch("/api/job-requests", {
         method: "POST",
@@ -227,11 +227,13 @@ export function CreatePersistedRequestPanel() {
       const saved = await saveProfile(payload.jobRequest);
       setProfileSaved(saved);
       setStatus("draft");
-      setMessage(
-        saved
-          ? t("create.msgDraftSaved", { num: payload.jobRequest.jobRequestNumber })
-          : t("create.msgDraftSavedNoDetails", { num: payload.jobRequest.jobRequestNumber })
-      );
+      if (!submitting) {
+        setMessage(
+          saved
+            ? t("create.msgDraftSaved", { num: payload.jobRequest.jobRequestNumber })
+            : t("create.msgDraftSavedNoDetails", { num: payload.jobRequest.jobRequestNumber })
+        );
+      }
       return payload.jobRequest;
     } catch {
       setStatus("editing");
@@ -243,7 +245,7 @@ export function CreatePersistedRequestPanel() {
   // One-click path from the review step: persist the draft, then submit it for review using the
   // freshly-saved draft (the optional profile save never blocks submission).
   async function saveAndSubmit() {
-    const saved = await createDraft();
+    const saved = await createDraft(true);
     if (saved) await submitDraft(saved);
   }
 
@@ -433,7 +435,7 @@ export function CreatePersistedRequestPanel() {
         </label>
       ) : null}
 
-      {status === "review" ? <RequestReview form={form} t={t} /> : null}
+      {status === "review" ? <RequestReview form={form} roleLabel={selectedRole?.displayLabel ?? form.roleDefinition} t={t} /> : null}
       <p style={styles.cardText}>{t("create.economicsNote")}</p>
       <div style={{ display: "flex", flexWrap: "wrap", gap: 10, marginTop: 18 }}>
         {status === "editing" ? (
@@ -520,10 +522,10 @@ function AgreementClauses({ t }: { t: Translate }) {
   );
 }
 
-function RequestReview({ form, t }: Readonly<{ form: FormState; t: Translate }>) {
+function RequestReview({ form, roleLabel, t }: Readonly<{ form: FormState; roleLabel: string; t: Translate }>) {
   const np = t("create.notProvided");
   const rows = [
-    [t("create.role"), form.roleDefinition],
+    [t("create.role"), roleLabel],
     [t("create.requestType"), form.requestType.replaceAll("_", " ")],
     [t("create.urgency"), form.urgency],
     [t("create.workersRequired"), form.numberOfWorkers],
