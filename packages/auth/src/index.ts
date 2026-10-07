@@ -5911,6 +5911,92 @@ export function createUnavailableCandidateSource(): DispatchCandidateSource {
   };
 }
 
+// LOCAL/TEST candidate source backed by marketplace interest. The external HTTP candidate
+// source is not wired outside production, which would leave dispatch with no candidates and
+// block the governed offer flow. This implements the designed DispatchCandidateSource extension
+// point by sourcing candidates from workers who expressed interest in the job. It is wired ONLY
+// when the local E2E flag is set (see apps/api/src/app.ts); production still uses the HTTP source.
+export function createLocalMarketplaceCandidateSource(deps: {
+  listInterestedWorkers: (
+    jobRequestId: string
+  ) => Promise<readonly { workerIdentityId: string; displayName: string | null }[]>;
+}): DispatchCandidateSource {
+  const buildCandidate = (
+    dispatchReviewId: string,
+    workerIdentityId: string,
+    displayName: string | null,
+    at: Date
+  ): PublicDispatchCandidate => ({
+    id: `local-candidate-${workerIdentityId}`,
+    dispatchReviewId,
+    workerIdentityId,
+    candidateSourceType: "internal_worker_profile",
+    candidateSourceReference: `marketplace-interest:${workerIdentityId}`,
+    approvedDisplayName: displayName ?? "Interested worker",
+    workGroupMatch: "match",
+    roleDefinitionMatch: "match",
+    qualificationSummaryState: "meets_requirements",
+    verificationSummaryState: "meets_requirements",
+    availabilityState: "available",
+    scheduleConflictState: "conflict_free",
+    serviceAreaState: "inside_service_area",
+    travelSuitabilityState: "suitable",
+    transportConstraintState: "available",
+    recommendationState: "recommended",
+    shortlistState: "not_shortlisted",
+    shortlistOrder: null,
+    sourceFreshnessAt: at,
+    lastEvaluatedAt: at,
+    evaluationVersion: 1,
+    addedByUserId: null,
+    removedByUserId: null,
+    createdAt: at,
+    updatedAt: at,
+    version: 1,
+    versionToken: 1
+  });
+  const referenceToWorkerId = (reference: string) =>
+    reference.startsWith("marketplace-interest:")
+      ? reference.slice("marketplace-interest:".length)
+      : reference;
+  return {
+    async getStatus() {
+      return { status: "available" };
+    },
+    async searchCandidates(input) {
+      const interested = await deps.listInterestedWorkers(input.dispatchReview.jobRequestId);
+      return {
+        status: "available",
+        candidates: interested.map((worker) =>
+          buildCandidate(
+            input.dispatchReview.id,
+            worker.workerIdentityId,
+            worker.displayName,
+            input.requestedAt
+          )
+        )
+      };
+    },
+    async evaluateCandidate(input) {
+      const workerIdentityId = referenceToWorkerId(input.candidateSourceReference);
+      const interested = await deps.listInterestedWorkers(input.dispatchReview.jobRequestId);
+      const match = interested.find((worker) => worker.workerIdentityId === workerIdentityId);
+      if (!match) {
+        return { status: "candidate_source_unavailable", candidate: null };
+      }
+      return {
+        status: "available",
+        candidate: buildCandidate(
+          input.dispatchReview.id,
+          match.workerIdentityId,
+          match.displayName,
+          input.requestedAt
+        )
+      };
+    }
+  };
+}
+
 export function createDispatchService(
   dispatchRepository: DispatchRepository,
   jobRequestRepository: JobRequestRepository,

@@ -135,6 +135,7 @@ import {
   createPrismaWorkerOfferRepository,
   createPrismaWorkGroupRepository,
   createHttpCandidateSource,
+  createLocalMarketplaceCandidateSource,
   createHttpWorkerOfferDeliveryProvider,
   createResendWorkerOfferDeliveryProvider,
   passwordPolicyErrorCode,
@@ -726,6 +727,35 @@ export function buildApi(options: BuildApiOptions = {}) {
       authorizationService,
       { pricingSnapshotCapture: createPrismaRequestPricingSnapshotCapture(prisma!) }
     );
+  // Local/test fallback candidate source (marketplace-interest backed). Only consulted when no
+  // external HTTP candidate source is configured (production always configures one, and the
+  // ternary below prefers it), so this never affects production.
+  const dispatchCandidateSourceIsLocal =
+    runtimeConfig.rwosEnv === "local" || runtimeConfig.rwosEnv === "test";
+  const listInterestedWorkersForDispatch = async (jobRequestId: string) => {
+    if (!prisma) return [] as { workerIdentityId: string; displayName: string | null }[];
+    const interests = await workerJobInterestService.listInterestedForJob(jobRequestId);
+    const offerable = interests.filter(
+      (interest) =>
+        interest.status === "submitted" ||
+        interest.status === "under_review" ||
+        interest.status === "shortlisted"
+    );
+    const ids = [...new Set(offerable.map((interest) => interest.workerIdentityId))];
+    if (!ids.length) return [];
+    const workers = await prisma.workerIdentity.findMany({
+      where: { id: { in: ids } },
+      select: { id: true, displayName: true }
+    });
+    const nameById = new Map(workers.map((worker) => [worker.id, worker.displayName]));
+    return ids.map((id) => ({ workerIdentityId: id, displayName: nameById.get(id) ?? null }));
+  };
+  const localDispatchCandidateSource =
+    prisma && dispatchCandidateSourceIsLocal
+      ? createLocalMarketplaceCandidateSource({
+          listInterestedWorkers: listInterestedWorkersForDispatch
+        })
+      : undefined;
   const dispatchService =
     options.dispatchService ??
     (prisma
@@ -748,7 +778,7 @@ export function buildApi(options: BuildApiOptions = {}) {
                     }
                   : {})
               })
-            : undefined
+            : localDispatchCandidateSource
         )
       : createUnavailableDispatchService());
   // Worker-offer delivery channel. Prefer Resend email (free, reliable; reuses the email

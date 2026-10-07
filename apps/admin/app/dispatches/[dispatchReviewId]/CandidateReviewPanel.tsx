@@ -16,6 +16,7 @@ export function CandidateReviewPanel({
   const [sourceStatus, setSourceStatus] = useState<
     "not_checked" | "checking" | "available" | "candidate_source_unavailable" | "error"
   >("not_checked");
+  const [shortlisting, setShortlisting] = useState(false);
   const dialog = useRef<HTMLDialogElement>(null);
   const trigger = useRef<HTMLButtonElement>(null);
   const guard = useRef(false);
@@ -86,6 +87,36 @@ export function CandidateReviewPanel({
     }
   }
 
+  async function sourceAndShortlist() {
+    setShortlisting(true);
+    setMessage("Sourcing interested workers and shortlisting them.");
+    try {
+      const response = await fetch(
+        `/api/dispatches/${encodeURIComponent(dispatch.id)}/source-and-shortlist`,
+        { method: "POST", headers: { "content-type": "application/json" }, body: "{}" }
+      );
+      if (!response.ok) {
+        setMessage("Candidates could not be sourced. No worker was shortlisted.");
+        return;
+      }
+      const result = (await response.json()) as { shortlisted?: number };
+      const refreshed = await fetch(`/api/dispatches/${encodeURIComponent(dispatch.id)}`, {
+        cache: "no-store"
+      });
+      if (refreshed.ok) {
+        const payload = (await refreshed.json()) as { dispatchReview?: AdminDispatchReview };
+        if (payload.dispatchReview) onUpdated(payload.dispatchReview);
+      }
+      setMessage(
+        `Shortlisted ${result.shortlisted ?? 0} interested worker(s). You can now move to offer preparation.`
+      );
+    } catch {
+      setMessage("The sourcing result is unknown. Load the latest dispatch before trying again.");
+    } finally {
+      setShortlisting(false);
+    }
+  }
+
   const canStart = dispatch.state === "draft" || dispatch.state === "active";
   return (
     <section aria-busy={busy || sourceStatus === "checking"}>
@@ -124,10 +155,20 @@ export function CandidateReviewPanel({
               </p>
             </div>
           ) : sourceStatus === "available" ? (
-            <p role="status">
-              The candidate source is available. Candidate results are not exposed in this admin
-              view.
-            </p>
+            <div role="status">
+              <p>
+                The candidate source is available. Source the interested workers to create governed
+                shortlisted candidates for this dispatch.
+              </p>
+              <button
+                disabled={shortlisting}
+                onClick={() => void sourceAndShortlist()}
+                style={styles.primary}
+                type="button"
+              >
+                {shortlisting ? "Shortlisting…" : "Source & shortlist interested workers"}
+              </button>
+            </div>
           ) : sourceStatus === "error" ? (
             <p role="alert">Candidate-source status could not be checked. No result is claimed.</p>
           ) : null}
