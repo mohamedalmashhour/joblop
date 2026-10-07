@@ -17029,13 +17029,22 @@ async function transitionPlatformJobRequest(input: {
 
 async function findJobRequestByIdOrNumber(repository: JobRequestRepository, idOrNumber: string) {
   const trimmed = idOrNumber.trim();
-  // The `id` column is a UUID: passing a request number (e.g. "JR-2026-000001") to a
-  // by-id lookup makes the database reject the value and throw, which would surface as a
-  // 500 before the by-number fallback could run. Only attempt the id lookup for a real
-  // UUID; otherwise resolve by request number directly.
+  // The production `id` column is a UUID: passing a request number (e.g. "JR-2026-000001")
+  // to a by-id lookup makes the datastore reject the value and throw, which must never
+  // surface as a 500 before the by-number fallback runs. A canonical UUID is looked up by id
+  // directly. Any other string MIGHT still be a valid id for the configured repository (e.g.
+  // non-UUID ids in tests), so we attempt the id lookup defensively and treat a datastore
+  // type-rejection as "not found by id", falling through to the request-number lookup.
   if (/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(trimmed)) {
     const byId = await repository.findJobRequestById(trimmed);
     if (byId) return byId;
+  } else {
+    try {
+      const byId = await repository.findJobRequestById(trimmed);
+      if (byId) return byId;
+    } catch {
+      // Datastore rejected the value as a non-UUID id — resolve by request number instead.
+    }
   }
   return repository.findJobRequestByNumber(trimmed.toUpperCase());
 }
