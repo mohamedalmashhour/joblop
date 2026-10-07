@@ -14,7 +14,9 @@ deployment (see "Going to production" at the end).
 - **A domain** on **Cloudflare** — add your domain to a (free) Cloudflare account and
   point its nameservers to Cloudflare. DNS for the tunnel is created for you.
 - Your **Resend** API key + a verified sending domain (for offer emails).
-- Your **Google Maps** API key (Static Maps + Distance Matrix + Geocoding enabled).
+- *(Optional)* A **Google Maps** API key — only for the extras (static-map images,
+  inline precomputed ETA). The worksite map + directions work keyless, so this is NOT
+  needed to launch.
 
 Keep the Mac awake while serving: `caffeinate -s` in a Terminal, or set
 System Settings → Energy to never sleep. Keep Docker Desktop running.
@@ -47,8 +49,8 @@ openssl rand -hex 24      # paste as POSTGRES_PASSWORD
 ```
 
 Edit `.env`: set `POSTGRES_PASSWORD`, `CLOUDFLARE_TUNNEL_TOKEN`, `WORKER_WEB_ORIGIN`
-(e.g. `https://app.joblop.com`), `RESEND_API_KEY`, `EMAIL_FROM`, and
-`GOOGLE_MAPS_API_KEY`. Leave Stripe disabled until you have test keys.
+(e.g. `https://app.joblop.com`), `RESEND_API_KEY`, and `EMAIL_FROM`. Leave Stripe
+disabled and `GOOGLE_MAPS_API_KEY` empty until you need them (the map works keyless).
 `deploy/.env` is gitignored — never commit it.
 
 ## 3. Start it
@@ -85,8 +87,9 @@ Then sign in at `https://admin.joblop.com`.
   never put `sk_live_` keys here.
 - **Offer emails:** set `RESEND_API_KEY` + `EMAIL_FROM` (verified domain). Offers then
   email workers automatically.
-- **Maps + ETA:** set `GOOGLE_MAPS_API_KEY`. The worksite map and travel time appear on
-  job orders; geocoding resolves any Canadian postal code.
+- **Maps + ETA:** work out of the box with **no key** — job orders show a keyless Google
+  map plus a "Get directions & live travel time" link. Set `GOOGLE_MAPS_API_KEY` only to
+  add the optional extras (static-map images, inline precomputed ETA, postal-code geocoding).
 - **Share links:** set `CONTROL_ROOM_SHARE_SECRET` (≥32 chars) to enable signed
   transaction statements; add `CONTROL_ROOM_MINT_REQUIRE_FINANCE=enabled` to restrict
   who can mint them.
