@@ -4886,6 +4886,29 @@ export function buildApi(options: BuildApiOptions = {}) {
     return reply.code(200).send({ request: serializeCalendarRequest(calendarRequest) });
   });
 
+  // Control Room enrichment: the immutable pricing snapshot for one job (finance authority only).
+  // Additive + read-only. Lets the admin Transaction Control Room show the real settlement ledger
+  // without exposing pricing through the shared (client-facing) calendar DTO.
+  app.get("/platform/job-requests/:jobRequestId/pricing-snapshot", async (request, reply) => {
+    const actor = await requirePayrollAuthority(request, reply);
+    if (!actor) return;
+    const jobRequestId = readRouteParam(request.params, "jobRequestId");
+    if (!isCanonicalUuid(jobRequestId)) {
+      return reply.code(404).send({ error: "RWOS_PRICING_NOT_FOUND", message: "Not found." });
+    }
+    const snap = await prisma!.requestPricingSnapshot.findUnique({
+      where: { jobRequestId },
+      select: {
+        employerHourlyRateMinor: true,
+        workerHourlyRateMinor: true,
+        platformHourlyMarginMinor: true,
+        marginPpm: true,
+        currency: true
+      }
+    });
+    return reply.code(200).send({ pricingSnapshot: snap ?? null });
+  });
+
   app.put(
     "/platform/calendar/requests/:jobRequestIdOrNumber/verification",
     async (request, reply) => {

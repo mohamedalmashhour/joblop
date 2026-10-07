@@ -17,8 +17,31 @@ export async function GET(
   );
   if (result.status !== "ok") return sessionFailure(result.status);
 
+  // Enrich with the immutable pricing snapshot (finance-gated; null when unpriced) so the
+  // settlement ledger shows real figures. Additive: injected into request.pricingSnapshot,
+  // which assembleTransaction already reads. Failure leaves the transaction unpriced.
+  let payload: unknown = result.payload;
   try {
-    const { job, stages, ledger, checks } = assembleTransaction(result.payload, jobRequestId);
+    const pricing = await gateway.request(
+      `/platform/job-requests/${encodeURIComponent(jobRequestId)}/pricing-snapshot`,
+      "GET",
+      token
+    );
+    const snap =
+      pricing.status === "ok"
+        ? (pricing.payload as { pricingSnapshot?: unknown } | null)?.pricingSnapshot
+        : null;
+    if (snap) {
+      const base = (result.payload ?? {}) as Record<string, unknown>;
+      const req = (base.request ?? {}) as Record<string, unknown>;
+      payload = { ...base, request: { ...req, pricingSnapshot: snap } };
+    }
+  } catch {
+    // leave unpriced
+  }
+
+  try {
+    const { job, stages, ledger, checks } = assembleTransaction(payload, jobRequestId);
     return Response.json(
       { job, stages, ledger, checks },
       { headers: { "cache-control": "private, no-store" } }
