@@ -165,6 +165,7 @@ function pick(o: Record<string, unknown>, keys: string[]): unknown {
   return null;
 }
 function num(v: unknown): number | null {
+  if (v == null || v === "") return null; // Number(null)===0 / Number("")===0 would otherwise poison a ?? chain
   const n = Number(v);
   return Number.isFinite(n) ? n : null;
 }
@@ -198,8 +199,9 @@ export function assembleTransaction(rawPayload: unknown, jobRequestId: string): 
     if (Number.isFinite(ms) && ms > 0) hours = ms / 3_600_000;
   }
   const pricing = asRecord(pick(req, ["pricing", "pricingSnapshot", "price"]));
-  const rateMinor = num(pick(req, ["employerHourlyRateMinor", "hourlyRateMinor", "rateMinor"]))
+  const rawRate = num(pick(req, ["employerHourlyRateMinor", "hourlyRateMinor", "rateMinor"]))
     ?? num(pick(pricing, ["employerHourlyRateMinor", "hourlyRateMinor"]));
+  const rateMinor = rawRate != null && rawRate > 0 ? rawRate : null;
 
   const rateUsed = rateMinor ?? DEFAULT_RATE_MINOR;
   const rateSource: "request" | "reference" = rateMinor ? "request" : "reference";

@@ -33,8 +33,18 @@ export async function GET(
         : null;
     if (snap) {
       const base = (result.payload ?? {}) as Record<string, unknown>;
-      const req = (base.request ?? {}) as Record<string, unknown>;
-      payload = { ...base, request: { ...req, pricingSnapshot: snap } };
+      // Upstream /platform/calendar/requests/:id returns { request: <projected> } (the
+      // admin projection carries no rate/pricing). assembleTransaction resolves the request
+      // container as (request | calendarRequest | jobRequest) ?? payload, then reads the
+      // pricing snapshot off it. Inject onto the { request } wrapper when present, else onto
+      // a bare payload. The earlier bug wrapped a (hypothetical) bare payload in a fresh
+      // { request } stub, dropping numberOfWorkers/startAt/endAt and nulling the ledger.
+      if (base.request && typeof base.request === "object") {
+        const req = base.request as Record<string, unknown>;
+        payload = { ...base, request: { ...req, pricingSnapshot: snap } };
+      } else {
+        payload = { ...base, pricingSnapshot: snap };
+      }
     }
   } catch {
     // leave unpriced
