@@ -727,11 +727,12 @@ export function buildApi(options: BuildApiOptions = {}) {
       authorizationService,
       { pricingSnapshotCapture: createPrismaRequestPricingSnapshotCapture(prisma!) }
     );
-  // Local/test fallback candidate source (marketplace-interest backed). Only consulted when no
-  // external HTTP candidate source is configured (production always configures one, and the
-  // ternary below prefers it), so this never affects production.
-  const dispatchCandidateSourceIsLocal =
-    runtimeConfig.rwosEnv === "local" || runtimeConfig.rwosEnv === "test";
+  // Candidate source selection is env-switched by configuration, not by RWOS_ENV: when an
+  // external HTTPS candidate service is configured (CANDIDATE_SOURCE_ORIGIN + token), the
+  // dispatch service below prefers it in every environment; otherwise dispatch falls back to
+  // this marketplace-interest source, backed by JobLop's own interested workers. A self-
+  // contained marketplace can launch with no external candidate API and swap one in later
+  // purely via config, with no code change.
   const listInterestedWorkersForDispatch = async (jobRequestId: string) => {
     if (!prisma) return [] as { workerIdentityId: string; displayName: string | null }[];
     const interests = await workerJobInterestService.listInterestedForJob(jobRequestId);
@@ -750,12 +751,11 @@ export function buildApi(options: BuildApiOptions = {}) {
     const nameById = new Map(workers.map((worker) => [worker.id, worker.displayName]));
     return ids.map((id) => ({ workerIdentityId: id, displayName: nameById.get(id) ?? null }));
   };
-  const localDispatchCandidateSource =
-    prisma && dispatchCandidateSourceIsLocal
-      ? createLocalMarketplaceCandidateSource({
-          listInterestedWorkers: listInterestedWorkersForDispatch
-        })
-      : undefined;
+  const localDispatchCandidateSource = prisma
+    ? createLocalMarketplaceCandidateSource({
+        listInterestedWorkers: listInterestedWorkersForDispatch
+      })
+    : undefined;
   const dispatchService =
     options.dispatchService ??
     (prisma
