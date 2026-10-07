@@ -192,7 +192,7 @@ export function CreatePersistedRequestPanel() {
     setMessage(t("create.msgReviewBeforeSave"));
   }
 
-  async function createDraft() {
+  async function createDraft(): Promise<EmployerJobRequestDraft | null> {
     setStatus("saving");
     setMessage(t("create.msgSavingDraft"));
     try {
@@ -217,9 +217,10 @@ export function CreatePersistedRequestPanel() {
       if (!response.ok) {
         if (response.status === 401) setDeniedKind("signin");
         setStatus(response.status === 401 ? "denied" : "editing");
-        return setMessage(
+        setMessage(
           response.status === 409 ? t("create.msgOrgChanged") : t("create.msgDraftNotSaved")
         );
+        return null;
       }
       const payload = (await response.json()) as { jobRequest: EmployerJobRequestDraft };
       setDraft(payload.jobRequest);
@@ -231,10 +232,19 @@ export function CreatePersistedRequestPanel() {
           ? t("create.msgDraftSaved", { num: payload.jobRequest.jobRequestNumber })
           : t("create.msgDraftSavedNoDetails", { num: payload.jobRequest.jobRequestNumber })
       );
+      return payload.jobRequest;
     } catch {
       setStatus("editing");
       setMessage(t("create.msgDraftServiceDown"));
+      return null;
     }
+  }
+
+  // One-click path from the review step: persist the draft, then submit it for review using the
+  // freshly-saved draft (the optional profile save never blocks submission).
+  async function saveAndSubmit() {
+    const saved = await createDraft();
+    if (saved) await submitDraft(saved);
   }
 
   async function saveProfile(request: EmployerJobRequestDraft) {
@@ -267,15 +277,16 @@ export function CreatePersistedRequestPanel() {
     setMessage(saved ? t("create.msgDetailsSaved") : t("create.msgDetailsUnsaved"));
   }
 
-  async function submitDraft() {
-    if (!draft) return;
+  async function submitDraft(target?: EmployerJobRequestDraft) {
+    const current = target ?? draft;
+    if (!current) return;
     setStatus("submitting");
     setMessage(t("create.msgSubmitting"));
     try {
-      const response = await fetch(`/api/job-requests/${encodeURIComponent(draft.id)}/submit`, {
+      const response = await fetch(`/api/job-requests/${encodeURIComponent(current.id)}/submit`, {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ expectedVersion: draft.versionToken })
+        body: JSON.stringify({ expectedVersion: current.versionToken })
       });
       if (!response.ok) {
         setStatus("draft");
@@ -409,7 +420,7 @@ export function CreatePersistedRequestPanel() {
       ) : null}
 
       <AgreementClauses t={t} />
-      {status === "editing" || status === "draft" ? (
+      {status === "editing" || status === "draft" || status === "review" ? (
         <label style={{ display: "flex", gap: 8, alignItems: "center", marginTop: 12 }}>
           <input
             aria-label={t("create.agreementAccept")}
@@ -430,12 +441,13 @@ export function CreatePersistedRequestPanel() {
         ) : null}
         {status === "review" ? (
           <>
-            <button onClick={() => void createDraft()} style={styles.primaryButton} type="button">{t("create.saveDraft")}</button>
+            <button disabled={!agreementAccepted} onClick={() => void saveAndSubmit()} style={agreementAccepted ? styles.primaryButton : styles.disabledAction} type="button">{t("create.submitForReview")}</button>
+            <button onClick={() => void createDraft()} style={styles.secondaryButton} type="button">{t("create.saveDraft")}</button>
             <button onClick={() => { setStatus("editing"); setMessage(t("create.msgUpdateThenReview")); }} style={styles.secondaryButton} type="button">{t("create.backToEdit")}</button>
           </>
         ) : null}
         {status === "draft" ? (
-          <button disabled={!profileSaved || !agreementAccepted} onClick={() => void submitDraft()} style={profileSaved && agreementAccepted ? styles.primaryButton : styles.disabledAction} type="button">{t("create.submitForReview")}</button>
+          <button disabled={!agreementAccepted} onClick={() => void submitDraft()} style={agreementAccepted ? styles.primaryButton : styles.disabledAction} type="button">{t("create.submitForReview")}</button>
         ) : null}
         {status === "draft" && !profileSaved ? (
           <button onClick={() => void retryProfile()} style={styles.secondaryButton} type="button">{t("create.retryDetails")}</button>
