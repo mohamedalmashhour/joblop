@@ -187,7 +187,7 @@ function PageNavigator({
                 active ? "admin-page-number admin-page-number-active" : "admin-page-number"
               }
               href={item.href}
-              key={item.href}
+              key={`${item.href}-${index}`}
               title={item.label}
             >
               {index + 1}

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, type CSSProperties, type FormEvent, type ReactNode } from "react";
+import { useEffect, useState, type CSSProperties, type FormEvent, type ReactNode } from "react";
 import type {
   FinanceInvoice,
   FinancePayment
@@ -27,10 +27,11 @@ export function FinanceDataPanel() {
   const [organizationId, setOrganizationId] = useState("");
   const [state, setState] = useState<FinanceState>({ status: "idle" });
 
-  async function load(event: FormEvent) {
-    event.preventDefault();
+  async function runLoad(rawId: string) {
+    const id = rawId.trim();
+    if (!id) return;
     setState({ status: "loading" });
-    const query = `organizationId=${encodeURIComponent(organizationId.trim())}`;
+    const query = `organizationId=${encodeURIComponent(id)}`;
     try {
       const [invoiceResponse, paymentResponse] = await Promise.all([
         fetch(`/api/finance/invoices?${query}`, { cache: "no-store" }),
@@ -64,6 +65,26 @@ export function FinanceDataPanel() {
       });
     }
   }
+
+  function load(event: FormEvent) {
+    event.preventDefault();
+    void runLoad(organizationId);
+  }
+
+  // Allow finance to be reached by a direct/bookmarkable link (e.g. ?organizationId=<uuid>),
+  // not only by manually pasting the reference. Scope is still enforced by the backend.
+  useEffect(() => {
+    try {
+      const fromUrl = new URLSearchParams(window.location.search).get("organizationId");
+      if (fromUrl) {
+        setOrganizationId(fromUrl);
+        void runLoad(fromUrl);
+      }
+    } catch {
+      // URL not readable — the operator can still enter the reference manually.
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   return (
     <section aria-labelledby="durable-finance-title" style={styles.panel}>
