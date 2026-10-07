@@ -13,6 +13,8 @@ export function PersistedDispatchPanel({
 }: Readonly<{ dispatchReviewId: string }>) {
   const [dispatch, setDispatch] = useState<AdminDispatchReview | null>(null);
   const [status, setStatus] = useState<"loading" | "ready" | "denied" | "unavailable">("loading");
+  const [preparing, setPreparing] = useState(false);
+  const [actionMessage, setActionMessage] = useState("");
 
   const load = useCallback(async () => {
     setStatus("loading");
@@ -32,6 +34,37 @@ export function PersistedDispatchPanel({
       setStatus("unavailable");
     }
   }, [dispatchReviewId]);
+
+  const moveToOfferPreparation = useCallback(async () => {
+    if (!dispatch) return;
+    setPreparing(true);
+    setActionMessage("");
+    try {
+      const response = await fetch(
+        `/api/dispatches/${encodeURIComponent(dispatchReviewId)}/offer-preparation`,
+        {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ expectedVersion: dispatch.versionToken })
+        }
+      );
+      if (!response.ok) {
+        setActionMessage(
+          response.status === 409
+            ? "Dispatch changed. Refresh and try again."
+            : "Could not move to offer preparation."
+        );
+        return;
+      }
+      const payload = (await response.json()) as { dispatchReview?: AdminDispatchReview };
+      if (payload.dispatchReview) setDispatch(payload.dispatchReview);
+      setActionMessage("Dispatch moved to offer preparation.");
+    } catch {
+      setActionMessage("Offer-preparation service is unavailable.");
+    } finally {
+      setPreparing(false);
+    }
+  }, [dispatch, dispatchReviewId]);
 
   useEffect(() => {
     void load();
@@ -98,6 +131,23 @@ export function PersistedDispatchPanel({
               <span>{value}</span>
             </div>
           ))}
+          {dispatch.state === "candidate_review" || dispatch.state === "shortlist_ready" ? (
+            <div style={{ marginTop: 16 }}>
+              <button
+                disabled={preparing}
+                onClick={() => void moveToOfferPreparation()}
+                style={styles.button}
+                type="button"
+              >
+                {preparing ? "Moving…" : "Move to offer preparation"}
+              </button>
+              {actionMessage ? (
+                <p aria-live="polite" style={{ fontSize: 13, marginTop: 8 }}>
+                  {actionMessage}
+                </p>
+              ) : null}
+            </div>
+          ) : null}
         </article>
         <article style={styles.panel}>
           <CandidateReviewPanel dispatch={dispatch} onUpdated={setDispatch} />

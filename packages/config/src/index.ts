@@ -32,7 +32,20 @@ const runtimeConfigSchema = z
     // both are set: without them the mailer is a no-op (dev surfaces the code locally instead of
     // sending). Mirrors the STR gating model — the feature ships dark until the owner provisions keys.
     RESEND_API_KEY: z.string().min(1).optional(),
-    EMAIL_FROM: z.string().email().optional(),
+    // Accept either a bare address (user@domain) or an RFC-5322 display-name form
+    // ("JobLop <user@domain>"), which mail "From" headers use and Resend expects for branding.
+    EMAIL_FROM: z
+      .string()
+      .refine(
+        (value) => {
+          const v = value.trim();
+          const bare = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+          const named = /^.+<\s*[^\s@]+@[^\s@]+\.[^\s@]+\s*>$/;
+          return bare.test(v) || named.test(v);
+        },
+        { message: 'EMAIL_FROM must be an email address or "Name <email@domain>".' }
+      )
+      .optional(),
     PASSWORD_RESET_PUBLIC_ORIGIN: z.string().url().optional(),
     STRIPE_TEST_MODE_ENABLED: z.enum(["disabled", "enabled"]).default("disabled"),
     STRIPE_TEST_SECRET_KEY: z.string().min(1).optional(),

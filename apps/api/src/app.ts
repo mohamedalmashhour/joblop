@@ -5596,11 +5596,23 @@ export function buildApi(options: BuildApiOptions = {}) {
 
     const query = asRecord(request.query);
     const status = readAssignmentStatus(readOptionalString(query, "status"));
+    const dispatchReviewId = readOptionalString(query, "dispatchReviewId");
+    let organizationId: string | null = readOptionalString(query, "organizationId") ?? null;
+    // assignment.read is an organization-context permission. A platform reviewer lists assignments
+    // for a dispatch without supplying an org, which would fail the context check. Resolve the
+    // dispatch's organization so the governed read has the organization context it requires.
+    if (!organizationId && dispatchReviewId && prisma) {
+      const review = await prisma.dispatchReview.findUnique({
+        where: { id: dispatchReviewId },
+        select: { organizationId: true }
+      });
+      organizationId = review?.organizationId ?? null;
+    }
     const assignments = await assignmentService.listAssignments({
       session,
       roles: await resolveAuthorizationRoles(session.user.id),
-      dispatchReviewId: readOptionalString(query, "dispatchReviewId"),
-      organizationId: readOptionalString(query, "organizationId"),
+      dispatchReviewId,
+      organizationId,
       jobRequestId: readOptionalString(query, "jobRequestId"),
       ...(status ? { statuses: [status] } : {})
     });

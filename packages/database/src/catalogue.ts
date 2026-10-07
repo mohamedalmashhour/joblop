@@ -138,6 +138,7 @@ export const phase01AccessRoles = [
 export const phase01RolePermissionMappings = [
   rolePermissions("PLATFORM_ADMINISTRATOR", [
     "platform.supervise",
+    "role_definition.read",
     "job_request.admin_review",
     "job_request.request_information",
     "job_request.approve_for_dispatch",

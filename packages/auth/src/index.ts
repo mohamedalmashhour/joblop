@@ -2909,6 +2909,7 @@ export const authorizationPermissionDefinitions = [
 export const authorizationRoleDefinitions = [
   roleDefinition("PLATFORM_ADMINISTRATOR", "Platform Administrator", "platform", [
     "platform.supervise",
+    "role_definition.read",
     "job_request.admin_review",
     "job_request.request_information",
     "job_request.approve_for_dispatch",
@@ -16886,10 +16887,16 @@ async function transitionPlatformJobRequest(input: {
 }
 
 async function findJobRequestByIdOrNumber(repository: JobRequestRepository, idOrNumber: string) {
-  return (
-    (await repository.findJobRequestById(idOrNumber)) ??
-    repository.findJobRequestByNumber(idOrNumber.trim().toUpperCase())
-  );
+  const trimmed = idOrNumber.trim();
+  // The `id` column is a UUID: passing a request number (e.g. "JR-2026-000001") to a
+  // by-id lookup makes the database reject the value and throw, which would surface as a
+  // 500 before the by-number fallback could run. Only attempt the id lookup for a real
+  // UUID; otherwise resolve by request number directly.
+  if (/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(trimmed)) {
+    const byId = await repository.findJobRequestById(trimmed);
+    if (byId) return byId;
+  }
+  return repository.findJobRequestByNumber(trimmed.toUpperCase());
 }
 
 function normalizeRequiredJobRequestText(value: string, minLength: number, maxLength: number) {

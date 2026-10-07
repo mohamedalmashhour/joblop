@@ -16,7 +16,10 @@ export async function GET(
   try {
     const payload = result.payload as { request?: unknown };
     const calendarRequest = parseAdminCalendarDto(payload.request);
-    if (calendarRequest.id !== requestId) return sessionFailure("error");
+    // The admin list links by request number (JR-...), while the API returns the
+    // record keyed by its UUID id; accept a match on either so lookup by number works.
+    if (calendarRequest.id !== requestId && calendarRequest.requestNumber !== requestId)
+      return sessionFailure("error");
     return Response.json(
       { request: calendarRequest },
       { headers: { "cache-control": "private, no-store" } }
