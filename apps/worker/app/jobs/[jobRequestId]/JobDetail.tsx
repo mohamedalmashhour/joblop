@@ -208,27 +208,43 @@ export function JobDetail({ id, postalCode }: { id: string; postalCode: string |
   );
 }
 
-// Worksite locator map. Renders the (approximate) worksite point via the server-side
-// static-map proxy, so the Maps key never reaches the browser. Fail-closed by design:
-// if the map can't be rendered (key unset, upstream error), onError hides the image and
-// only the "approximate location" notice remains — the page never looks broken.
+// Worksite locator map — keyless Google Maps capsule (ported from SYBNB's googleMapCapsule).
+// Renders the APPROXIMATE worksite point in Google's keyless embed iframe (output=embed), so
+// NO Maps API key is ever required or sent to the browser, plus a "Get directions" link that
+// opens Google Maps with the worker's own live, personalised travel time (answers "how long
+// to get there" without the paid Distance Matrix API). Privacy-safe: only the approximate
+// public point is used — exact coordinates never reach the browser. Fail-closed: with no
+// coordinates nothing renders and only the "approximate location" notice remains.
+// The server-side static-map proxy (/api/map/static) and the Distance Matrix ETA (job.travelTime)
+// remain available as optional enhancements if a GOOGLE_MAPS_API_KEY is ever configured.
 function WorksiteMap({ point, locale }: { point: { latitude: number; longitude: number; approximate: boolean }; locale: string }) {
   const t = useT();
-  const [failed, setFailed] = useState(false);
-  if (failed) return null;
   if (!Number.isFinite(point?.latitude) || !Number.isFinite(point?.longitude)) return null;
-  const lang = locale === "fr" ? "fr" : "en";
-  const src = `/api/map/static?lat=${encodeURIComponent(point.latitude)}&lng=${encodeURIComponent(point.longitude)}&lang=${lang}`;
+  const q = `${point.latitude},${point.longitude}`;
+  const hl = locale === "fr" ? "fr" : "en";
+  const embedSrc = `https://www.google.com/maps?q=${encodeURIComponent(q)}&hl=${hl}&z=14&output=embed`;
+  const directionsUrl = `https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(q)}`;
   return (
-    <div className="worksite-map" style={{ marginTop: 12, borderRadius: 12, overflow: "hidden", lineHeight: 0 }}>
-      {/* eslint-disable-next-line @next/next/no-img-element */}
-      <img
-        src={src}
-        alt={t("job.mapAlt")}
-        loading="lazy"
-        onError={() => setFailed(true)}
-        style={{ width: "100%", height: "auto", display: "block" }}
-      />
+    <div className="worksite-map" style={{ marginTop: 12 }}>
+      <div style={{ borderRadius: 12, overflow: "hidden", lineHeight: 0, border: "1px solid rgba(0,0,0,0.08)" }}>
+        <iframe
+          title={t("job.mapAlt")}
+          src={embedSrc}
+          loading="lazy"
+          referrerPolicy="no-referrer-when-downgrade"
+          style={{ width: "100%", height: 220, border: 0, display: "block" }}
+          allowFullScreen
+        />
+      </div>
+      <a
+        className="btn ghost"
+        href={directionsUrl}
+        target="_blank"
+        rel="noreferrer"
+        style={{ marginTop: 8, display: "inline-flex", alignItems: "center", gap: 6 }}
+      >
+        {t("job.getDirections")}
+      </a>
     </div>
   );
 }
