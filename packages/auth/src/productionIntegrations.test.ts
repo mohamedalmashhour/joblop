@@ -3,7 +3,8 @@ import { describe, expect, it, vi } from "vitest";
 import {
   ProductionIntegrationError,
   createHttpCandidateSource,
-  createHttpWorkerOfferDeliveryProvider
+  createHttpWorkerOfferDeliveryProvider,
+  createResendWorkerOfferDeliveryProvider
 } from "./productionIntegrations";
 
 const dispatchReview = {
@@ -307,5 +308,124 @@ describe("production offer-delivery boundary", () => {
         retryable: true
       });
     }
+  });
+});
+
+
+describe("Resend worker offer delivery", () => {
+  const RESEND_URL = "https://api.resend.com/emails";
+  const API_KEY = "re_testkey_1234567890";
+  const FROM = "JobLop <no-reply@notifications.example>";
+  const deliverInput = {
+    organizationId: "00000000-0000-4000-8000-0000000003a1",
+    workerOfferId: "00000000-0000-4000-8000-0000000003a2",
+    workerIdentityId: "00000000-0000-4000-8000-0000000003a3",
+    idempotencyKey: "worker-offer:offer-a2:terms:t1"
+  };
+  const recipient = (over: Record<string, unknown> = {}) => ({
+    email: "worker@example.com",
+    name: "Alex",
+    language: "en" as const,
+    title: "Personal Support Worker (PSW)",
+    summary: "Evening coverage on the care floor.",
+    compensation: "$24.00/h",
+    whenLabel: "Oct 20, 2026, 9:00 a.m. – 5:00 p.m.",
+    areaLabel: "Laval, QC",
+    ctaUrl: "https://work.joblop.example/offers/abc",
+    ...over
+  });
+
+  it("POSTs a bilingual offer email to Resend with bearer auth, idempotency key, and worker-safe fields", async () => {
+    let captured: { url: unknown; init: RequestInit | undefined } | null = null;
+    const fetchImpl = (async (url: string | URL | Request, init?: RequestInit) => {
+      captured = { url, init };
+      return jsonResponse({ id: "resend-msg-123" });
+    }) as unknown as typeof fetch;
+
+    const provider = createResendWorkerOfferDeliveryProvider({
+      apiKey: API_KEY,
+      fromAddress: FROM,
+      fetch: fetchImpl,
+      resolveRecipient: async () => recipient()
+    });
+
+    const result = await provider.deliver(deliverInput);
+
+    expect(result).toEqual({ status: "sent", providerReference: "resend-msg-123", retryable: false });
+    expect(String(captured!.url)).toBe(RESEND_URL);
+    expect(captured!.init?.method).toBe("POST");
+    const headers = captured!.init?.headers as Record<string, string>;
+    expect(headers.authorization).toBe(`Bearer ${API_KEY}`);
+    expect(headers["idempotency-key"]).toBe(deliverInput.idempotencyKey);
+    const body = JSON.parse(String(captured!.init?.body));
+    expect(body.from).toBe(FROM);
+    expect(body.to).toEqual(["worker@example.com"]);
+    expect(body.subject).toContain("New shift offer");
+    expect(body.subject).toContain("Personal Support Worker");
+    // worker-safe: shows area label, never an exact street address
+    expect(body.text).toContain("Laval, QC");
+    expect(body.html).toContain("JobLop");
+    expect(body.text).toContain("JobLop");
+  });
+
+  it("composes the French subject for fr recipients", async () => {
+    let body: Record<string, unknown> = {};
+    const fetchImpl = (async (_url: string | URL | Request, init?: RequestInit) => {
+      body = JSON.parse(String(init?.body));
+      return jsonResponse({ id: "resend-msg-fr" });
+    }) as unknown as typeof fetch;
+    const provider = createResendWorkerOfferDeliveryProvider({
+      apiKey: API_KEY,
+      fromAddress: FROM,
+      fetch: fetchImpl,
+      resolveRecipient: async () => recipient({ language: "fr", name: "Alex" })
+    });
+    await provider.deliver(deliverInput);
+    expect(String(body.subject)).toContain("Nouvelle offre de quart");
+  });
+
+  it("fails closed without sending when there is no deliverable recipient", async () => {
+    const fetchImpl = vi.fn(async () => jsonResponse({ id: "should-not-send" })) as unknown as typeof fetch;
+    const provider = createResendWorkerOfferDeliveryProvider({
+      apiKey: API_KEY,
+      fromAddress: FROM,
+      fetch: fetchImpl,
+      resolveRecipient: async () => null
+    });
+    const result = await provider.deliver(deliverInput);
+    expect(result).toEqual({ status: "failed", providerReference: null, retryable: false });
+    expect(fetchImpl).not.toHaveBeenCalled();
+  });
+
+  it("refuses to send with a missing or too-short API key", async () => {
+    const fetchImpl = vi.fn(async () => jsonResponse({ id: "nope" })) as unknown as typeof fetch;
+    const provider = createResendWorkerOfferDeliveryProvider({
+      apiKey: "short",
+      fromAddress: FROM,
+      fetch: fetchImpl,
+      resolveRecipient: async () => recipient()
+    });
+    const result = await provider.deliver(deliverInput);
+    expect(result).toEqual({ status: "failed", providerReference: null, retryable: false });
+    expect(fetchImpl).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    [500, true],
+    [429, true],
+    [422, false],
+    [401, false]
+  ])("maps HTTP %i to the right retryable flag without fabricating delivery", async (status, retryable) => {
+    const provider = createResendWorkerOfferDeliveryProvider({
+      apiKey: API_KEY,
+      fromAddress: FROM,
+      fetch: (async () => jsonResponse({ message: "x" }, status)) as unknown as typeof fetch,
+      resolveRecipient: async () => recipient()
+    });
+    await expect(provider.deliver(deliverInput)).resolves.toEqual({
+      status: "failed",
+      providerReference: null,
+      retryable
+    });
   });
 });
