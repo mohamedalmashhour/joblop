@@ -105,6 +105,9 @@ export function CreatePersistedRequestPanel() {
     | "error"
   >("loading");
   const [message, setMessage] = useState(() => "");
+  // Why the context was denied: "signin" (401, not authenticated) routes to /signin;
+  // "org" (409, no employer org selected) routes back to the request calendar.
+  const [deniedKind, setDeniedKind] = useState<"signin" | "org">("org");
   const [draft, setDraft] = useState<EmployerJobRequestDraft | null>(null);
   const [profileSaved, setProfileSaved] = useState(false);
 
@@ -120,10 +123,12 @@ export function CreatePersistedRequestPanel() {
       if (residenceId) contextUrl.searchParams.set("residenceId", residenceId);
       const response = await fetch(contextUrl.toString(), { cache: "no-store" });
       if (response.status === 401) {
+        setDeniedKind("signin");
         setStatus("denied");
         return setMessage(t("create.msgSignInSelectOrg"));
       }
       if (response.status === 409) {
+        setDeniedKind("org");
         setStatus("denied");
         return setMessage(t("create.msgSelectOrgFirst"));
       }
@@ -209,6 +214,7 @@ export function CreatePersistedRequestPanel() {
         })
       });
       if (!response.ok) {
+        if (response.status === 401) setDeniedKind("signin");
         setStatus(response.status === 401 ? "denied" : "editing");
         return setMessage(
           response.status === 409 ? t("create.msgOrgChanged") : t("create.msgDraftNotSaved")
@@ -290,7 +296,16 @@ export function CreatePersistedRequestPanel() {
     return <StateCard busy message={message} title={t("create.statePreparing")} t={t} />;
   }
   if (status === "denied") {
-    return <StateCard action="/employer/calendar" message={message} title={t("create.stateContextRequired")} t={t} />;
+    const needsSignIn = deniedKind === "signin";
+    return (
+      <StateCard
+        action={needsSignIn ? "/signin" : "/employer/calendar"}
+        actionLabel={needsSignIn ? t("auth.signIn") : t("create.continue")}
+        message={message}
+        title={needsSignIn ? t("auth.signIn") : t("create.stateContextRequired")}
+        t={t}
+      />
+    );
   }
   if (status === "error" || !context) {
     return (
@@ -574,15 +589,15 @@ function TextField({
 }
 
 function StateCard({
-  action, busy = false, message, onRetry, title, t
+  action, actionLabel, busy = false, message, onRetry, title, t
 }: {
-  action?: string; busy?: boolean; message: string; onRetry?: () => void; title: string; t: Translate;
+  action?: string; actionLabel?: string; busy?: boolean; message: string; onRetry?: () => void; title: string; t: Translate;
 }) {
   return (
     <article aria-busy={busy} aria-live="polite" style={styles.panel}>
       <h2 style={styles.cardTitle}>{title}</h2>
       <p style={styles.sectionCopy}>{message}</p>
-      {action ? <a href={action} style={styles.primaryButton}>{t("create.continue")}</a> : null}
+      {action ? <a href={action} style={styles.primaryButton}>{actionLabel ?? t("create.continue")}</a> : null}
       {onRetry ? <button onClick={onRetry} style={styles.secondaryButton} type="button">{t("common.retry")}</button> : null}
     </article>
   );
