@@ -12,6 +12,8 @@ x-app-build: &app-build
   context: ..
   args:
     RWOS_PUBLIC_DEPLOYMENT_TIER: staging
+    # Baked into the employer landing "Find work" links (build-time). Points at the worker app.
+    NEXT_PUBLIC_WORKER_APP_URL: ${WORKER_WEB_ORIGIN:-}
 
 services:
   db:

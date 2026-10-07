@@ -262,7 +262,7 @@ export default async function LandingPage() {
     process.env.RWOS_ENV === "staging" ||
     process.env.NEXT_PUBLIC_RWOS_DEPLOYMENT_TIER === "staging";
   // The worker side is a separate app; "Find work" leaves the employer app for the worker front door.
-  const workerAppUrl = process.env.NEXT_PUBLIC_WORKER_APP_URL ?? "http://localhost:8090";
+  const workerAppUrl = process.env.NEXT_PUBLIC_WORKER_APP_URL || "http://localhost:8090";
   const hireHref = isProduction ? "/contact" : "/signup/employer";
   return (
     <main style={styles.page}>

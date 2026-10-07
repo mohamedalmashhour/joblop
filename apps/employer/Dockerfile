@@ -14,7 +14,9 @@ COPY packages/config packages/config
 COPY packages/design-system packages/design-system
 COPY packages/shared packages/shared
 ARG RWOS_PUBLIC_DEPLOYMENT_TIER=production
-RUN RWOS_ENV=production NEXT_PUBLIC_RWOS_DEPLOYMENT_TIER=$RWOS_PUBLIC_DEPLOYMENT_TIER INTERNAL_API_ORIGIN=https://api.invalid pnpm --filter @rwos/employer build
+# Public worker-app URL baked into the landing "Find work" links. Empty -> localhost fallback (dev).
+ARG NEXT_PUBLIC_WORKER_APP_URL=
+RUN RWOS_ENV=production NEXT_PUBLIC_RWOS_DEPLOYMENT_TIER=$RWOS_PUBLIC_DEPLOYMENT_TIER NEXT_PUBLIC_WORKER_APP_URL=$NEXT_PUBLIC_WORKER_APP_URL INTERNAL_API_ORIGIN=https://api.invalid pnpm --filter @rwos/employer build
 
 FROM node:20.20.2-bookworm-slim AS runtime
 ARG RWOS_GIT_SHA=unknown
