@@ -4,6 +4,7 @@ import { cookies } from "next/headers";
 import { LOCALE_COOKIE, htmlLang, resolveRwosLocale } from "./i18n/config";
 import { dictionaries } from "./i18n/messages";
 import { LocaleProvider } from "./i18n/LocaleProvider";
+import { Footer } from "./Footer";
 import "./globals.css";
 
 async function resolveLocale() {
@@ -26,6 +27,7 @@ export default async function RootLayout({ children }: Readonly<{ children: Reac
     <html lang={htmlLang(locale)}>
       <body>
         <LocaleProvider locale={locale}>{children}</LocaleProvider>
+        <Footer locale={locale} />
       </body>
     </html>
   );
