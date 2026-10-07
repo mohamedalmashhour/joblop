@@ -17,8 +17,8 @@ import {
 
 describe("design system colors", () => {
   it("uses the approved dark-blue foundation palette", () => {
-    expect(colors.deepTeal).toBe("#071f4d");
-    expect(colors.deepTealMuted).toBe("#123b78");
+    expect(colors.deepTeal).toBe("#0c2654");
+    expect(colors.deepTealMuted).toBe("#13346e");
     expect(colors.text).toBe("#0b1f3a");
   });
 

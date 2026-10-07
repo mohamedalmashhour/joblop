@@ -110,6 +110,7 @@ export function CreatePersistedRequestPanel() {
   const [deniedKind, setDeniedKind] = useState<"signin" | "org">("org");
   const [draft, setDraft] = useState<EmployerJobRequestDraft | null>(null);
   const [profileSaved, setProfileSaved] = useState(false);
+  const [agreementAccepted, setAgreementAccepted] = useState(false);
 
   useEffect(() => {
     setMessage(t("create.msgLoadingChoices"));
@@ -408,6 +409,18 @@ export function CreatePersistedRequestPanel() {
       ) : null}
 
       <AgreementClauses t={t} />
+      {status === "editing" || status === "draft" ? (
+        <label style={{ display: "flex", gap: 8, alignItems: "center", marginTop: 12 }}>
+          <input
+            aria-label={t("create.agreementAccept")}
+            checked={agreementAccepted}
+            onChange={(e) => setAgreementAccepted(e.target.checked)}
+            style={{ flexShrink: 0, margin: 0 }}
+            type="checkbox"
+          />
+          <span style={styles.cardText}>{t("create.agreementAccept")}</span>
+        </label>
+      ) : null}
 
       {status === "review" ? <RequestReview form={form} t={t} /> : null}
       <p style={styles.cardText}>{t("create.economicsNote")}</p>
@@ -422,7 +435,7 @@ export function CreatePersistedRequestPanel() {
           </>
         ) : null}
         {status === "draft" ? (
-          <button disabled={!profileSaved} onClick={() => void submitDraft()} style={profileSaved ? styles.primaryButton : styles.disabledAction} type="button">{t("create.submitForReview")}</button>
+          <button disabled={!profileSaved || !agreementAccepted} onClick={() => void submitDraft()} style={profileSaved && agreementAccepted ? styles.primaryButton : styles.disabledAction} type="button">{t("create.submitForReview")}</button>
         ) : null}
         {status === "draft" && !profileSaved ? (
           <button onClick={() => void retryProfile()} style={styles.secondaryButton} type="button">{t("create.retryDetails")}</button>
