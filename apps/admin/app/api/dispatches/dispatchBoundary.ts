@@ -1,6 +1,7 @@
 export type AdminDispatchReview = Readonly<{
   id: string;
   jobRequestId: string;
+  jobRequestNumber?: string | null;
   state:
     | "draft"
     | "active"
@@ -93,6 +94,8 @@ export function parseAdminDispatchReview(
   return {
     id: record.id,
     jobRequestId: record.jobRequestId,
+    jobRequestNumber:
+      typeof record.jobRequestNumber === "string" ? record.jobRequestNumber : null,
     state: record.state as AdminDispatchReview["state"],
     priority: record.priority as AdminDispatchReview["priority"],
     requiredWorkerCount: record.requiredWorkerCount as number,

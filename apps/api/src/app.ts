@@ -5031,9 +5031,15 @@ export function buildApi(options: BuildApiOptions = {}) {
       organizationId: readOptionalString(query, "organizationId")
     });
 
-    return reply
-      .code(200)
-      .send({ dispatches: dispatches.map((item) => serializeDispatchReview(item)) });
+    const dispatchSourceNumbers = await Promise.all(
+      dispatches.map((item) => reduceJobRequestRepository.findJobRequestById(item.jobRequestId))
+    );
+    return reply.code(200).send({
+      dispatches: dispatches.map((item, index) => ({
+        ...serializeDispatchReview(item),
+        jobRequestNumber: dispatchSourceNumbers[index]?.jobRequestNumber ?? null
+      }))
+    });
   });
 
   app.get("/platform/dispatches/:dispatchReviewId", async (request, reply) => {
@@ -5047,9 +5053,17 @@ export function buildApi(options: BuildApiOptions = {}) {
       roles: await resolveAuthorizationRoles(session.user.id),
       dispatchReviewId: readRouteParam(request.params, "dispatchReviewId")
     });
+    // Surface the human-readable source request number (e.g. JR-2026-000001) so the operator
+    // console can label the dispatch by it instead of a raw UUID. Audit ids remain available.
+    const sourceJobRequest = await reduceJobRequestRepository.findJobRequestById(
+      result.dispatchReview.jobRequestId
+    );
 
     return reply.code(200).send({
-      dispatchReview: serializeDispatchReview(result.dispatchReview),
+      dispatchReview: {
+        ...serializeDispatchReview(result.dispatchReview),
+        jobRequestNumber: sourceJobRequest?.jobRequestNumber ?? null
+      },
       candidates: result.candidates.map(serializeDispatchCandidate)
     });
   });

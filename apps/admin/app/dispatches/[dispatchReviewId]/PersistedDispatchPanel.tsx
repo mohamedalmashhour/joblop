@@ -99,7 +99,7 @@ export function PersistedDispatchPanel({
           <p style={styles.eyebrow}>Resident Workforce OS / Dispatch review</p>
           <h1 style={styles.title}>Operational dispatch review</h1>
           <p style={styles.lede}>
-            {dispatch.id} · {dispatch.state.replaceAll("_", " ")}
+            {dispatch.jobRequestNumber ?? dispatch.jobRequestId} · {dispatch.state.replaceAll("_", " ")}
           </p>
         </div>
         <a

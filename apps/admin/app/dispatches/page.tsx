@@ -12,6 +12,7 @@ type Row = {
   priority: string;
   requiredWorkerCount: number;
   createdAt: string;
+  jobRequestNumber?: string | null;
 };
 type Load =
   | { state: "loading" }
@@ -68,7 +69,7 @@ export default function DispatchReviewsPage() {
                     <span style={{ fontSize: 10.5, fontWeight: 700, letterSpacing: 0.4, textTransform: "uppercase", color: stateColor(r.state), border: `1px solid ${C.line}`, borderRadius: 6, padding: "2px 7px" }}>{r.state.replace(/_/g, " ")}</span>
                     {r.priority !== "normal" && <span style={{ fontSize: 10.5, fontWeight: 700, textTransform: "uppercase", color: "#9a1f2b" }}>{r.priority}</span>}
                   </div>
-                  <div style={{ fontSize: 13.5, marginTop: 4 }}>Request <span style={{ fontFamily: "ui-monospace, monospace" }}>{r.jobRequestId.slice(0, 8)}…</span></div>
+                  <div style={{ fontSize: 13.5, marginTop: 4 }}>Request <span style={{ fontFamily: "ui-monospace, monospace" }}>{r.jobRequestNumber ?? `${r.jobRequestId.slice(0, 8)}…`}</span></div>
                   <div style={{ color: C.muted, fontSize: 11.5, marginTop: 2 }}>{fmt(r.createdAt)} · needs {r.requiredWorkerCount} worker(s)</div>
                 </div>
                 <span style={{ color: C.accent, fontWeight: 600, fontSize: 13 }}>Open review →</span>
