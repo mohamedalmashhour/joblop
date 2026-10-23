@@ -12,6 +12,7 @@
     "@rwos/auth": "workspace:*",
     "@rwos/config": "workspace:*",
     "@rwos/design-system": "workspace:*",
+    "@rwos/observability": "workspace:*",
     "@rwos/shared": "workspace:*",
     "next": "^15.5.22",
     "react": "^19.1.0",

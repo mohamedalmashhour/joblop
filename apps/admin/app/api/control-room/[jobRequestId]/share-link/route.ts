@@ -7,6 +7,9 @@ import { createHash } from "node:crypto";
 import { sessionBoundary, sessionFailure, isSameOriginMutation } from "../../../sessionBoundary";
 import { assembleTransaction, buildSnapshot, type ShareView } from "../../../../../lib/controlRoomLedger";
 import { signShare, isShareConfigured } from "../../../../../lib/shareToken";
+import { createLogger } from "@rwos/observability";
+
+const auditLog = createLogger("admin-share-links");
 
 // Non-reversible reference to the minting admin's session, so the audit line
 // attributes the action without logging the session token itself.
@@ -118,16 +121,14 @@ export async function POST(
 
     // Mint audit trail. Structured line for the log pipeline; forward to the
     // platform audit store when external sharing goes live (see security review).
-    console.info(JSON.stringify({
-      evt: "share_link_minted",
+    auditLog.info("share_link_minted", {
       jti: share.jti,
       jobRequestId,
       view,
       ttlHours,
       expiresAt,
-      actor: actorRef(token),
-      at: new Date().toISOString()
-    }));
+      actor: actorRef(token)
+    });
 
     return Response.json(
       { url, view, expiresAt, id: share.jti },

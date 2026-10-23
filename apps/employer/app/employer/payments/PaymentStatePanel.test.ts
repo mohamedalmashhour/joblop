@@ -2,17 +2,25 @@ import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 
 const source = readFileSync(new URL("./PaymentStatePanel.tsx", import.meta.url), "utf8");
+// Copy lives in the bilingual catalogue (en-CA + fr-CA); the panel references it by key.
+const messages = readFileSync(new URL("../../i18n/messages.ts", import.meta.url), "utf8");
+
+function countKey(key: string) {
+  return messages.split(`"${key}":`).length - 1;
+}
 
 describe("durable employer payment panel", () => {
   it("renders truthful loading, error, empty, and disabled mutation boundaries", () => {
-    for (const statement of [
-      "Loading payment records",
-      "Payment records could not be loaded",
-      "No employer payment attempts exist for this organization",
-      "Mutations disabled in this view",
-      "Governed payment action unavailable"
-    ]) {
-      expect(source).toContain(statement);
+    for (const [key, statement] of [
+      ["pay.loading", "Loading payment records"],
+      ["pay.loadError", "Payment records could not be loaded"],
+      ["pay.none", "No employer payment attempts exist for this organization"],
+      ["pay.mutationsDisabled", "Mutations disabled in this view"],
+      ["pay.actionUnavailable", "Governed payment action unavailable"]
+    ] as const) {
+      expect(source).toContain(`t("${key}")`);
+      expect(messages).toContain(`"${key}": "${statement}`);
+      expect(countKey(key)).toBe(2); // en-CA and fr-CA
     }
     expect(source).toContain('fetch("/api/payments"');
     expect(source).toContain("disabled");

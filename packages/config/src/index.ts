@@ -306,13 +306,10 @@ export function getRuntimeConfig(env: NodeJS.ProcessEnv = process.env) {
     offerDeliveryOrigin: parsed.OFFER_DELIVERY_ORIGIN,
     offerDeliveryToken: parsed.OFFER_DELIVERY_TOKEN,
     // Assignment handoff (create a governed assignment from an accepted offer). Forbidden in
-    // production (see the refine above); explicitly enabled by the flag, and on by default in
-    // local/test so the full post→offer→accept→assignment lifecycle is exercisable end to end.
+    // production (see the refine above) and off unless ASSIGNMENT_HANDOFF_ENABLED=enabled;
+    // boot-local-stack.sh sets it so the full post→offer→accept→assignment lifecycle runs locally.
     assignmentHandoffEnabled:
-      parsed.RWOS_ENV !== "production" &&
-      (parsed.ASSIGNMENT_HANDOFF_ENABLED === "enabled" ||
-        parsed.RWOS_ENV === "local" ||
-        parsed.RWOS_ENV === "test"),
+      parsed.RWOS_ENV !== "production" && parsed.ASSIGNMENT_HANDOFF_ENABLED === "enabled",
     // Capability gate for a future external AI review provider. Non-production only, default off.
     payrollAiExternalEnabled:
       parsed.RWOS_ENV !== "production" && parsed.PAYROLL_AI_EXTERNAL_ENABLED === "enabled",

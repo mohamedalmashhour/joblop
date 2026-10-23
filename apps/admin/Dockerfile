@@ -6,12 +6,14 @@ COPY apps/admin/package.json apps/admin/package.json
 COPY packages/auth/package.json packages/auth/package.json
 COPY packages/config/package.json packages/config/package.json
 COPY packages/design-system/package.json packages/design-system/package.json
+COPY packages/observability/package.json packages/observability/package.json
 COPY packages/shared/package.json packages/shared/package.json
 RUN pnpm install --frozen-lockfile
 COPY apps/admin apps/admin
 COPY packages/auth packages/auth
 COPY packages/config packages/config
 COPY packages/design-system packages/design-system
+COPY packages/observability packages/observability
 COPY packages/shared packages/shared
 ARG RWOS_PUBLIC_DEPLOYMENT_TIER=production
 RUN RWOS_ENV=production NEXT_PUBLIC_RWOS_DEPLOYMENT_TIER=$RWOS_PUBLIC_DEPLOYMENT_TIER INTERNAL_API_ORIGIN=https://api.invalid pnpm --filter @rwos/admin build

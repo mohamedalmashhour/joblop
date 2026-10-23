@@ -45,6 +45,7 @@ describe("admin dispatch BFF boundary", () => {
     ).toEqual({
       id: dispatchId,
       jobRequestId,
+      jobRequestNumber: null,
       state: "draft",
       priority: "normal",
       requiredWorkerCount: 3,
@@ -55,6 +56,26 @@ describe("admin dispatch BFF boundary", () => {
       createdAt: "2026-07-27T12:00:00.000Z",
       updatedAt: "2026-07-27T12:01:00.000Z"
     });
+  });
+
+  it("passes through the human-readable source request number for labelling", () => {
+    const parsed = parseAdminDispatchReview({
+      id: dispatchId,
+      jobRequestId,
+      jobRequestNumber: "JR-2026-000001",
+      state: "draft",
+      priority: "normal",
+      requiredWorkerCount: 3,
+      shortlistedCandidateCount: 2,
+      preparedOfferCount: 1,
+      remainingWorkerCount: 2,
+      versionToken: 1,
+      createdAt: "2026-07-27T12:00:00.000Z",
+      updatedAt: "2026-07-27T12:01:00.000Z",
+      operationalOwnerUserId: "never-return"
+    });
+    expect(parsed).toMatchObject({ jobRequestNumber: "JR-2026-000001" });
+    expect(parsed).not.toHaveProperty("operationalOwnerUserId");
   });
 
   it("rejects malformed identifiers, versions, timestamps, and inconsistent counts", () => {

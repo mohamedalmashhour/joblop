@@ -11,7 +11,11 @@ describe("authenticated calendar UI integration", () => {
     expect(landing).toContain('process.env.RWOS_ENV === "production"');
     // Preview band is gated out of production and labelled as illustrative synthetic data.
     expect(landing).toContain("!isProduction");
-    expect(landing).toContain("Sample data shown for illustration.");
+    // The illustrative-data label lives in the bilingual landing copy and is rendered in the band.
+    const landingContent = read("apps", "employer", "app", "landingContent.ts");
+    expect(landing).toContain("{c.preview.copy}");
+    expect(landingContent).toContain("Sample data shown for illustration.");
+    expect(landingContent).toContain("Données d’exemple présentées à titre indicatif.");
   });
 
   it("connects employer and admin lists to same-origin BFF routes", () => {
@@ -259,11 +263,17 @@ describe("authenticated calendar UI integration", () => {
     expect(createPage).toContain("<CreatePersistedRequestPanel />");
     expect(createPage).toContain('mode="authenticated"');
     expect(createPanel).toContain('fetch("/api/job-requests"');
-    expect(createPanel).toContain("Review staffing request");
-    expect(createPanel).toContain("Review request");
+    // Copy lives in the bilingual employer catalogue; the panel references it by key.
+    const employerMessages = read("apps", "employer", "app", "i18n", "messages.ts");
+    expect(createPanel).toContain('t("create.reviewTitle")');
+    expect(employerMessages).toContain('"create.reviewTitle": "Review staffing request"');
+    expect(employerMessages).toContain('"Review request"');
     expect(createPanel).toContain('method: "PUT"');
-    expect(createPanel).toContain("Retry staffing details");
-    expect(createPanel).toContain("This request step does not collect or invent worker economics");
+    expect(createPanel).toContain('t("create.retryDetails")');
+    expect(employerMessages).toContain('"create.retryDetails": "Retry staffing details"');
+    // Worker economics are governed by the approved contract/offer terms, never invented here.
+    expect(createPanel).toContain('t("create.economicsNote")');
+    expect(employerMessages).toContain("governed by the approved contract and offer terms");
     expect(createPanel).toContain("/submit");
     expect(createPanel).not.toContain("mode=fixture");
     expect(clientRequestPage).toContain('mode === "fixture" && !request');

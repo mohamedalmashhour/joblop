@@ -172,7 +172,7 @@ export default function TransactionReport(
           </div>
           {share && (
             <div style={{ marginTop: 10, display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
-              <input readOnly value={share.url} onFocus={(e) => e.currentTarget.select()}
+              <input aria-label="Share link URL" readOnly value={share.url} onFocus={(e) => e.currentTarget.select()}
                 style={{ flex: "1 1 320px", minWidth: 0, fontFamily: "ui-monospace, monospace", fontSize: 12, padding: "8px 10px", borderRadius: 7, border: `1px solid ${C.line}`, background: C.bg, color: C.fg }} />
               <button onClick={() => { navigator.clipboard?.writeText(share.url).then(() => setCopied(true)).catch(() => {}); }}
                 style={{ padding: "7px 12px", borderRadius: 8, border: `1px solid ${C.line}`, background: C.panel, color: C.fg, cursor: "pointer", fontWeight: 600 }}>

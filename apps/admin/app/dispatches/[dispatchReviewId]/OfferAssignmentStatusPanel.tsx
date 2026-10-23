@@ -160,8 +160,12 @@ export function OfferAssignmentStatusPanel({
           });
           return;
         }
+        const dispatchSegment = encodeURIComponent(dispatchReviewId);
+        const offerSegment = encodeURIComponent(offer.id);
         const response = await fetch(
-          `/api/dispatches/${encodeURIComponent(dispatchReviewId)}/offers/${encodeURIComponent(offer.id)}/${action}`,
+          action === "approve"
+            ? `/api/dispatches/${dispatchSegment}/offers/${offerSegment}/approve`
+            : `/api/dispatches/${dispatchSegment}/offers/${offerSegment}/send`,
           {
             method: "POST",
             cache: "no-store",
