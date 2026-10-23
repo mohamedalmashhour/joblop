@@ -83,7 +83,7 @@ export function FinanceDataPanel() {
     } catch {
       // URL not readable — the operator can still enter the reference manually.
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    // Runs once on mount: reads the URL reference only.
   }, []);
 
   return (

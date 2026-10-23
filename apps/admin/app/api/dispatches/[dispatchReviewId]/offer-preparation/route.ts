@@ -21,7 +21,7 @@ export async function POST(
   if (current.status !== "ok") return sessionFailure(current.status);
   const currentDr = (current.payload as { dispatchReview?: Dr }).dispatchReview ?? {};
   let version = typeof currentDr.versionToken === "number" ? currentDr.versionToken : 0;
-  let state = currentDr.state;
+  const state = currentDr.state;
 
   if (state === "candidate_review" || state === "active") {
     const ready = await gateway.request(
@@ -33,7 +33,6 @@ export async function POST(
     if (ready.status !== "ok") return sessionFailure(ready.status);
     const readyDr = (ready.payload as { dispatchReview?: Dr }).dispatchReview ?? {};
     version = typeof readyDr.versionToken === "number" ? readyDr.versionToken : version + 1;
-    state = readyDr.state;
   }
 
   const moved = await gateway.request(
