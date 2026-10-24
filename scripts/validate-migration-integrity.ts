@@ -9,6 +9,11 @@ const execFileAsync = promisify(execFile);
 // Destructive migrations are blocked by default. Entries here are explicitly human-reviewed and
 // justified. Adding a migration to this set is itself the review record and must be scrutinized.
 const reviewedDestructiveMigrations = new Set<string>([
+  // Swaps employer_payment_methods' provider CHECK from a single-value fence ('local_fake' only) to an
+  // explicit two-value allowlist ('local_fake','stripe_test') to admit the Stripe TEST provider for the
+  // real-provider close. DROP CONSTRAINT + ADD CONSTRAINT only — no column dropped, no row deleted, no
+  // data rewritten. Live payments stay fail-closed (validateStripeTestEnvironment rejects non-sk_test_).
+  "20261023000000_payment_method_allow_stripe_test",
   // Drops the audit_events.organization_id -> employer_organizations foreign key. audit_events are
   // append-only (BEFORE UPDATE/DELETE triggers), so the ON DELETE SET NULL made deleting an
   // organization impossible. organization_id is kept as an immutable snapshot column; no data is
