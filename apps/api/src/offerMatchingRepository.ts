@@ -1,11 +1,23 @@
 import type { PrismaClient } from "@rwos/database";
 import {
   optimizeOffers,
+  type AcceptanceModel,
   type ClientContext,
   type JobContext,
   type OfferDecision,
   type WorkerFeatures
 } from "./offerEngine";
+import {
+  ACCEPTANCE_FEATURE_DIM,
+  acceptanceFeatures,
+  createLearnedAcceptanceModel,
+  logLoss,
+  trainLogistic,
+  type TrainingSample
+} from "./offerLearning";
+
+// Below this many labelled offers, the learned model isn't trusted and the optimizer uses the prior.
+export const MIN_SAMPLES_FOR_LEARNED_MODEL = 20;
 
 // Dynamic offer engine P2 — signal capture. Loads worker features (preferences + reliability derived
 // from the offer log), runs the optimizer, and APPENDS each proposal to offer_decision_events (the
@@ -35,6 +47,58 @@ async function loadWorkerFeatures(prisma: PrismaClient, workerIdentityId: string
   };
 }
 
+// ── the learning loop ──
+
+const LABELLED_OUTCOMES = ["accepted", "declined", "ignored", "expired"] as const;
+
+export type RetrainResult = Readonly<{ sampleSize: number; logLoss: number; trained: boolean }>;
+
+// Fit the acceptance model on the WHOLE offer/outcome history and store it as the active version.
+// This is the loop: call it on a schedule (or after a batch of outcomes) and the optimizer gets smarter.
+export async function retrainAcceptanceModel(prisma: PrismaClient): Promise<RetrainResult> {
+  const rows = await prisma.offerDecisionEvent.findMany({
+    where: { outcome: { in: [...LABELLED_OUTCOMES] } },
+    select: {
+      baseRateMinor: true, featMinRatePerHourMinor: true, transportAllowanceMinor: true, bonusMinor: true,
+      featRequiresTransport: true, featReliability: true, hoursUntilShift: true, distanceKm: true, outcome: true
+    }
+  });
+  if (rows.length < MIN_SAMPLES_FOR_LEARNED_MODEL) {
+    return { sampleSize: rows.length, logLoss: 0, trained: false };
+  }
+  const samples: TrainingSample[] = rows.map((r) => ({
+    x: acceptanceFeatures({
+      baseRatePerHourMinor: r.baseRateMinor,
+      minRatePerHourMinor: r.featMinRatePerHourMinor,
+      transportAllowanceMinor: r.transportAllowanceMinor,
+      bonusMinor: r.bonusMinor,
+      requiresTransport: r.featRequiresTransport,
+      reliability: r.featReliability,
+      hoursUntilShift: r.hoursUntilShift,
+      distanceKm: r.distanceKm
+    }),
+    y: r.outcome === "accepted" ? 1 : 0
+  }));
+  const weights = trainLogistic(samples);
+  const loss = logLoss(weights, samples);
+  await prisma.$transaction(async (tx) => {
+    await tx.matchingModelVersion.updateMany({ where: { modelType: "acceptance", isActive: true }, data: { isActive: false } });
+    await tx.matchingModelVersion.create({
+      data: { modelType: "acceptance", weights: weights as unknown as object, featureDim: ACCEPTANCE_FEATURE_DIM, sampleSize: samples.length, logLoss: loss, isActive: true }
+    });
+  });
+  return { sampleSize: samples.length, logLoss: loss, trained: true };
+}
+
+// Load the active learned acceptance model, or null to fall back to the cold-start prior.
+export async function loadActiveAcceptanceModel(prisma: PrismaClient): Promise<AcceptanceModel | null> {
+  const active = await prisma.matchingModelVersion.findFirst({ where: { modelType: "acceptance", isActive: true } });
+  if (!active || active.sampleSize < MIN_SAMPLES_FOR_LEARNED_MODEL) return null;
+  const weights = active.weights as unknown as number[];
+  if (!Array.isArray(weights)) return null;
+  return createLearnedAcceptanceModel(weights);
+}
+
 export type ProposeInput = Readonly<{
   jobRequestId?: string | null;
   job: JobContext;
@@ -50,12 +114,16 @@ export type LoggedDecision = OfferDecision & Readonly<{ eventId: string }>;
 export async function proposeAndLogOffers(prisma: PrismaClient, input: ProposeInput): Promise<LoggedDecision[]> {
   const workers = await Promise.all(input.workerIdentityIds.map((id) => loadWorkerFeatures(prisma, id)));
   const featureById = new Map(workers.map((w) => [w.workerIdentityId, w]));
+  // Use the learned model when the loop has trained one on enough history; otherwise the prior.
+  const learned = await loadActiveAcceptanceModel(prisma);
+  const modelKind = learned?.kind ?? "cold-start-prior";
   const decisions = optimizeOffers({
     job: input.job,
     client: input.client,
     workers,
     baseRatePerHourMinor: input.baseRatePerHourMinor,
-    marginFloorMinor: input.marginFloorMinor
+    marginFloorMinor: input.marginFloorMinor,
+    ...(learned ? { acceptanceModel: learned } : {})
   });
   const logged: LoggedDecision[] = [];
   for (const d of decisions) {
@@ -71,7 +139,7 @@ export async function proposeAndLogOffers(prisma: PrismaClient, input: ProposeIn
         workerCostMinor: d.workerCostMinor,
         marginMinor: d.marginMinor,
         acceptanceProbability: d.acceptanceProbability,
-        modelKind: "cold-start-prior",
+        modelKind,
         hours: input.job.hours,
         distanceKm: input.job.distanceKm,
         hoursUntilShift: input.job.hoursUntilShift,

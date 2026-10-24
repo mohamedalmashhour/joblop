@@ -246,9 +246,11 @@ import { buildTaxSlips, type SlipCalcInput } from "./taxSlip";
 import { GST_RATE_PPM, QST_RATE_PPM } from "./payChannel";
 import { buildAccounting, type AccountingCalcRow } from "./accounting";
 import {
+  MIN_SAMPLES_FOR_LEARNED_MODEL,
   OFFER_OUTCOMES,
   proposeAndLogOffers,
   recordOfferOutcome,
+  retrainAcceptanceModel,
   type OfferOutcome
 } from "./offerMatchingRepository";
 import { isWorkerDisputeCategory, normalizeWorkerDisputeReason } from "@rwos/shared";
@@ -6321,6 +6323,41 @@ export function buildApi(options: BuildApiOptions = {}) {
     const ok = await recordOfferOutcome(prisma!, eventId, outcome);
     if (!ok) return reply.code(404).send({ error: "RWOS_MATCHING_EVENT_NOT_FOUND", message: "That offer event was not found." });
     return reply.code(200).send({ eventId, outcome });
+  });
+
+  // Dynamic offer engine P3: the learning loop. Retrain the acceptance model on the WHOLE offer/outcome
+  // history and activate it. Call on a schedule (or after a batch of outcomes) — the optimizer then
+  // uses the smarter model. See docs/matching/DYNAMIC_OFFER_ENGINE_DESIGN.md.
+  app.post("/platform/matching/retrain", async (request, reply) => {
+    const actor = await requireHrAuthority(request, reply);
+    if (!actor) return;
+    const result = await retrainAcceptanceModel(prisma!);
+    return reply.code(200).send({
+      ...result,
+      minSamples: MIN_SAMPLES_FOR_LEARNED_MODEL,
+      note: result.trained
+        ? "Acceptance model retrained on the full offer history and activated."
+        : `Not enough labelled history yet (need ${MIN_SAMPLES_FOR_LEARNED_MODEL}); the optimizer keeps using the cold-start prior.`
+    });
+  });
+
+  // Dynamic offer engine: the active learned model's status (what the loop has produced).
+  app.get("/platform/matching/model", async (request, reply) => {
+    const actor = await requireHrAuthority(request, reply);
+    if (!actor) return;
+    const active = await prisma!.matchingModelVersion.findFirst({
+      where: { modelType: "acceptance", isActive: true },
+      select: { sampleSize: true, logLoss: true, trainedAt: true, featureDim: true }
+    });
+    const totalLabelled = await prisma!.offerDecisionEvent.count({ where: { outcome: { in: ["accepted", "declined", "ignored", "expired"] } } });
+    return reply.code(200).send({
+      active: active
+        ? { modelKind: "learned-logistic", sampleSize: active.sampleSize, logLoss: active.logLoss, trainedAt: active.trainedAt, featureDim: active.featureDim }
+        : null,
+      usingModel: active && active.sampleSize >= MIN_SAMPLES_FOR_LEARNED_MODEL ? "learned-logistic" : "cold-start-prior",
+      labelledHistory: totalLabelled,
+      minSamples: MIN_SAMPLES_FOR_LEARNED_MODEL
+    });
   });
 
   // Phase 5: the go-live gate's state. Shows whether live finance is on and exactly what stays

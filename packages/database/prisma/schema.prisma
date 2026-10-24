@@ -1578,6 +1578,24 @@ model OfferDecisionEvent {
   @@map("offer_decision_events")
 }
 
+// Dynamic offer engine P3 — the learning loop's model store. Each retrain fits a model on the whole
+// offer/outcome history and appends a version; one is active per model type. The optimizer loads the
+// active model. No money flows here. See docs/matching/DYNAMIC_OFFER_ENGINE_DESIGN.md.
+model MatchingModelVersion {
+  id         String   @id @default(uuid()) @db.Uuid
+  modelType  String   @map("model_type") // "acceptance" | "wtp"
+  weights    Json
+  featureDim Int      @map("feature_dim")
+  sampleSize Int      @map("sample_size")
+  logLoss    Float    @map("log_loss")
+  isActive   Boolean  @default(true) @map("is_active")
+  trainedAt  DateTime @default(now()) @map("trained_at") @db.Timestamptz(3)
+  createdAt  DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  @@index([modelType, isActive], map: "mmv_type_active_idx")
+  @@map("matching_model_versions")
+}
+
 // Worker-saved marketplace jobs. User-scoped (a worker saves opportunities to revisit).
 // Idempotent: one save per (worker, job) via the unique constraint.
 model WorkerSavedJob {
