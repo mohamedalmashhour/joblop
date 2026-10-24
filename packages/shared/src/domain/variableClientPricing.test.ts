@@ -4,6 +4,7 @@ import {
   demandClientUpliftMinor,
   distanceSurchargeMinor,
   emergencyClientSurchargeMinor,
+  splitDistanceSurchargeMinor,
   DISTANCE_FREE_RADIUS_KM
 } from "./variableClientPricing";
 
@@ -61,23 +62,36 @@ describe("demandClientUpliftMinor", () => {
   });
 });
 
+describe("splitDistanceSurchargeMinor", () => {
+  it("splits 50/50 with the odd cent to the worker", () => {
+    expect(splitDistanceSurchargeMinor(4000)).toEqual({ workerMinor: 2000, platformMinor: 2000 });
+    expect(splitDistanceSurchargeMinor(4001)).toEqual({ workerMinor: 2001, platformMinor: 2000 });
+    expect(splitDistanceSurchargeMinor(0)).toEqual({ workerMinor: 0, platformMinor: 0 });
+  });
+});
+
 describe("buildVariableClientQuote", () => {
-  it("assembles labour + allowances + emergency + distance + demand and reports platform-kept extras", () => {
+  it("assembles labour + allowances + emergency + distance + demand, splits distance 50/50, reports kept extras", () => {
     const q = buildVariableClientQuote({
       labourClientMinor: 30000, // $300 labour
       allowancesClientMinor: 2500, // $25 funded transport
       urgency: "urgent", // +15% of labour = 4500, platform-kept
-      distanceKm: 55, // 4000 distance surcharge
+      distanceKm: 55, // 4000 distance surcharge, split 2000/2000
       willingnessCeilingMinor: 50000,
       demandSignal: 1
     });
     expect(q.emergencySurchargeMinor).toBe(4500);
     expect(q.distanceSurcharge.totalMinor).toBe(4000);
+    expect(q.distanceWorkerMinor).toBe(2000);
+    expect(q.distancePlatformMinor).toBe(2000);
     // base before demand = 30000 + 2500 + 4500 + 4000 = 41000; headroom to 50000 = 9000;
     // rate cap 25% of 41000 = 10250 → capped at 9000 headroom.
     expect(q.demandUpliftMinor).toBe(9000);
     expect(q.clientSubtotalMinor).toBe(41000 + 9000);
-    expect(q.platformKeptExtrasMinor).toBe(4500 + 9000);
+    // platform keeps emergency + demand + its distance half.
+    expect(q.platformKeptExtrasMinor).toBe(4500 + 9000 + 2000);
+    // worker gets its distance half on top of base pay.
+    expect(q.workerExtrasMinor).toBe(2000);
   });
   it("omits demand uplift when no ceiling/signal is supplied", () => {
     const q = buildVariableClientQuote({ labourClientMinor: 30000, urgency: "scheduled", distanceKm: 10 });

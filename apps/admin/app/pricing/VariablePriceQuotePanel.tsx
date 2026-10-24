@@ -8,9 +8,12 @@ type Quote = Readonly<{
   allowancesClientMinor: number;
   emergencySurchargeMinor: number;
   distanceSurcharge: DistanceSurcharge;
+  distanceWorkerMinor: number;
+  distancePlatformMinor: number;
   demandUpliftMinor: number;
   clientSubtotalMinor: number;
   platformKeptExtrasMinor: number;
+  workerExtrasMinor: number;
 }>;
 
 const money = (minor: number) => (minor / 100).toLocaleString("en-CA", { style: "currency", currency: "CAD" });
@@ -110,11 +113,13 @@ export function VariablePriceQuotePanel() {
               <tr><td style={styles.td}>Labour</td><td style={styles.tdNum}>{money(quote.labourClientMinor)}</td><td style={styles.tdNote}>base margin split</td></tr>
               <tr><td style={styles.td}>Funded transport allowance</td><td style={styles.tdNum}>{money(quote.allowancesClientMinor)}</td><td style={styles.tdNote}>funds worker</td></tr>
               <tr><td style={styles.td}>Emergency surcharge</td><td style={styles.tdNum}>{money(quote.emergencySurchargeMinor)}</td><td style={styles.tdKept}>platform keeps</td></tr>
-              <tr><td style={styles.td}>Distance — gas ({quote.distanceSurcharge.billableKm} km)</td><td style={styles.tdNum}>{money(quote.distanceSurcharge.gasMinor)}</td><td style={styles.tdNote}>covers travel</td></tr>
-              <tr><td style={styles.td}>Distance — travel time</td><td style={styles.tdNum}>{money(quote.distanceSurcharge.travelTimeMinor)}</td><td style={styles.tdNote}>covers travel</td></tr>
+              <tr><td style={styles.td}>Distance — gas ({quote.distanceSurcharge.billableKm} km)</td><td style={styles.tdNum}>{money(quote.distanceSurcharge.gasMinor)}</td><td style={styles.tdNote}>split 50/50</td></tr>
+              <tr><td style={styles.td}>Distance — travel time</td><td style={styles.tdNum}>{money(quote.distanceSurcharge.travelTimeMinor)}</td><td style={styles.tdNote}>split 50/50</td></tr>
+              <tr><td style={styles.td}>&nbsp;&nbsp;↳ distance split</td><td style={styles.tdNum}>{money(quote.distanceSurcharge.totalMinor)}</td><td style={styles.tdNote}>worker {money(quote.distanceWorkerMinor)} · platform {money(quote.distancePlatformMinor)}</td></tr>
               <tr><td style={styles.td}>Demand uplift (toward ceiling)</td><td style={styles.tdNum}>{money(quote.demandUpliftMinor)}</td><td style={styles.tdKept}>platform keeps</td></tr>
               <tr><td style={styles.tdTotal}>Client total (pre-tax)</td><td style={styles.tdNumTotal}>{money(quote.clientSubtotalMinor)}</td><td style={styles.tdNote}>GST/QST added at invoice</td></tr>
-              <tr><td style={styles.tdTotal}>Extra platform keeps on top of base margin</td><td style={styles.tdNumTotal}>{money(quote.platformKeptExtrasMinor)}</td><td style={styles.tdNote}>emergency + demand</td></tr>
+              <tr><td style={styles.tdTotal}>Extra platform keeps on top of base margin</td><td style={styles.tdNumTotal}>{money(quote.platformKeptExtrasMinor)}</td><td style={styles.tdNote}>emergency + demand + ½ distance</td></tr>
+              <tr><td style={styles.tdTotal}>Extra to worker (travel)</td><td style={styles.tdNumTotal}>{money(quote.workerExtrasMinor)}</td><td style={styles.tdNote}>½ distance reimbursement</td></tr>
             </tbody>
           </table>
           <p style={styles.gate}>Quote only — no invoice is issued and no money moves (FINANCE_LIVE gated).</p>

@@ -114,13 +114,24 @@ export type VariableClientQuote = Readonly<{
   labourClientMinor: number; // base labour the client pays (E × billable hours), already computed upstream
   allowancesClientMinor: number; // funded transport/meal/lodging the client funds, already computed upstream
   emergencySurchargeMinor: number; // (1) platform-kept
-  distanceSurcharge: DistanceSurcharge; // (2) billed to client
+  distanceSurcharge: DistanceSurcharge; // (2) billed to client, split 50/50 below
+  distanceWorkerMinor: number; // worker's half of the distance surcharge (travel reimbursement; odd cent to worker)
+  distancePlatformMinor: number; // platform's half of the distance surcharge
   demandUpliftMinor: number; // (3) platform-kept
   /** Pre-tax client subtotal = labour + allowances + emergency + distance + demand uplift. */
   clientSubtotalMinor: number;
-  /** The part of the extras the platform keeps on top of the base margin (emergency + demand uplift). */
+  /** What the platform keeps on top of the base margin (emergency + demand uplift + its distance half). */
   platformKeptExtrasMinor: number;
+  /** What the worker receives on top of base pay from these extras (its distance half). */
+  workerExtrasMinor: number;
 }>;
+
+/** Split the distance surcharge 50/50; the odd minor unit goes to the WORKER (travel reimbursement). */
+export function splitDistanceSurchargeMinor(totalMinor: number): Readonly<{ workerMinor: number; platformMinor: number }> {
+  const total = nonNegInt(totalMinor);
+  const platformMinor = Math.floor(total / 2);
+  return { workerMinor: total - platformMinor, platformMinor };
+}
 
 /**
  * Assemble the full variable client quote (pre-tax) from the base labour/allowance figures plus the
@@ -160,13 +171,17 @@ export function buildVariableClientQuote(input: {
         })
       : 0;
   const clientSubtotalMinor = baseBeforeDemand + demandUpliftMinor;
+  const distanceSplit = splitDistanceSurchargeMinor(distanceSurcharge.totalMinor);
   return {
     labourClientMinor: labour,
     allowancesClientMinor: allowances,
     emergencySurchargeMinor,
     distanceSurcharge,
+    distanceWorkerMinor: distanceSplit.workerMinor,
+    distancePlatformMinor: distanceSplit.platformMinor,
     demandUpliftMinor,
     clientSubtotalMinor,
-    platformKeptExtrasMinor: emergencySurchargeMinor + demandUpliftMinor
+    platformKeptExtrasMinor: emergencySurchargeMinor + demandUpliftMinor + distanceSplit.platformMinor,
+    workerExtrasMinor: distanceSplit.workerMinor
   };
 }
