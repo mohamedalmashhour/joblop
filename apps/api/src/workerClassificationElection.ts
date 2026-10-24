@@ -8,11 +8,14 @@ import type { PrismaClient } from "@rwos/database";
 
 export type WorkerClassification = "employee" | "contractor";
 
-// The current signed-agreement versions a worker accepts when electing a channel. Bumping a version
-// here means a new election (and a new signature) is required to adopt it.
+// The signed-agreement versions a worker accepts when electing a channel. These reference the
+// CNESST-based worker contracts (Québec — Commission des normes, de l'équité, de la santé et de la
+// sécurité du travail). The actual contract TEXT is a legal document attached per election
+// (agreementDocumentId); CNESST coverage/registration for workers is a launch requirement handled
+// outside the code. Bumping a version here requires a new election (and a new signature) to adopt it.
 export const WORKER_AGREEMENT_VERSIONS: Readonly<Record<WorkerClassification, string>> = {
-  employee: "worker-employee-agreement-2026.10",
-  contractor: "worker-contractor-agreement-2026.10"
+  employee: "cnesst-employee-contract-2026.10",
+  contractor: "cnesst-contractor-contract-2026.10"
 };
 
 export type WorkerElectionView = Readonly<{

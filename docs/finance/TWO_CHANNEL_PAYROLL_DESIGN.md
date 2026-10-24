@@ -4,6 +4,19 @@
 go-live gate until a qualified Québec CPA signs off on the model, the rates, and the classification
 method. This document is engineering design, not tax or legal advice.
 
+**Owner decisions (2026-10-24):**
+- JobLop is a **job marketplace, not a placement/staffing agency** → the primary channel is the
+  **independent worker (contractor, T4A)**: paid gross, handles own taxes. The employee/payroll
+  channel stays built for cases that genuinely are employment.
+- The worker signs the **CNESST-based contract** (`WORKER_AGREEMENT_VERSIONS` reference it); the
+  contract text is a legal document attached per election. CNESST coverage/registration is a launch
+  requirement handled outside the code.
+- The **CPA reviews the model when the platform is ready** — until then everything is synthetic and
+  the `FINANCE_LIVE` gate stays closed (nothing files, nothing pays).
+- Caveat still in force: classification is decided by SUBSTANCE (CRA/Revenu Québec/CNESST tests), not
+  the label — a contractor marketplace holds up only if the working relationship is genuinely
+  arm's-length. Confirm with Québec employment/tax counsel before go-live.
+
 **Why:** A worker on JobLop is paid through one of two legally distinct channels, and the Canada
 Revenue Agency / Revenu Québec treat them very differently. Getting the channel wrong (or letting it
 drift) exposes the platform to back-remittances, a 10–20% penalty, interest, and director personal
