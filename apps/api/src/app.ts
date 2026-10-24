@@ -209,6 +209,7 @@ import {
   type TrustedService
 } from "@rwos/service-auth";
 import { createAdzunaClient } from "./jobScannerClient";
+import { upsertLeads, queryStoredLeads } from "./jobScannerRepository";
 import {
   activeMembershipRoleQuery,
   activePlatformGrantQuery,
@@ -6379,6 +6380,8 @@ export function buildApi(options: BuildApiOptions = {}) {
       return reply.code(502).send({ error: "RWOS_JOBSCANNER_SOURCE_ERROR", message: (err as Error).message, mode: client.mode });
     }
     const leads = dedupeLeads(normalizeAdzunaJobs(raws));
+    // Persist (upsert by source+sourceId) so a re-scan refreshes rather than duplicates.
+    const persisted = await upsertLeads(prisma!, leads);
     // Optional per-worker ranking when a worker profile is supplied.
     const wp = asRecord(body.worker);
     const roleKeywords = Array.isArray(wp.roleKeywords)
@@ -6400,6 +6403,7 @@ export function buildApi(options: BuildApiOptions = {}) {
       mode: client.mode,
       scanned: raws.length,
       leadCount: leads.length,
+      persisted,
       leads: ranked ?? leads,
       ranked: ranked !== null,
       note:
@@ -6407,6 +6411,37 @@ export function buildApi(options: BuildApiOptions = {}) {
           ? "MOCK feed (Adzuna account not yet approved). External leads only — hand-off to the source, not JobLop jobs."
           : "Live Adzuna feed. External leads only — hand-off to the source, not JobLop jobs."
     });
+  });
+
+  // JobScanner: read stored leads (from prior scans), optionally filtered by province/city and ranked
+  // for a worker. This is the funnel's data source — external hand-off leads, not JobLop jobs.
+  app.get("/platform/jobscanner/leads", async (request, reply) => {
+    const actor = await requireHrAuthority(request, reply);
+    if (!actor) return;
+    const q = asRecord((request as unknown as { query?: unknown }).query);
+    const province = readOptionalString(q, "province") ?? undefined;
+    const city = readOptionalString(q, "city") ?? undefined;
+    const limit = readOptionalNumber(q, "limit") ?? 100;
+    const stored = await queryStoredLeads(prisma!, {
+      ...(province !== undefined ? { province } : {}),
+      ...(city !== undefined ? { city } : {}),
+      limit
+    });
+    const roleKeywordsRaw = readOptionalString(q, "roleKeywords");
+    const roleKeywords = roleKeywordsRaw ? roleKeywordsRaw.split(",").map((s) => s.trim()).filter(Boolean) : [];
+    let leads: unknown = stored;
+    let ranked = false;
+    if (roleKeywords.length > 0) {
+      const profile: WorkerMatchProfile = {
+        roleKeywords,
+        latitude: readOptionalNumber(q, "latitude"),
+        longitude: readOptionalNumber(q, "longitude"),
+        maxDistanceKm: readOptionalNumber(q, "maxDistanceKm")
+      };
+      leads = rankLeadsForWorker(stored, profile);
+      ranked = true;
+    }
+    return reply.code(200).send({ leadCount: stored.length, ranked, leads, note: "External leads only — hand-off to the source, not JobLop jobs." });
   });
 
   // Dynamic offer engine P2: record what actually happened to a proposed offer (accepted / declined /

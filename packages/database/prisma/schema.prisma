@@ -3182,3 +3182,34 @@ model PaymentSweepControl {
 
   @@map("payment_sweep_control")
 }
+
+// JobScanner: EXTERNAL job postings aggregated from legal partner feeds (Adzuna now; Talent.com etc.
+// later). These are leads we display and hand off to the source — NOT JobLop governed jobs; no JobLop
+// pay/classification/dispatch applies and no money ever moves through them. Upserted by (source,
+// sourceId) on each scan; firstSeenAt/lastSeenAt track freshness for the scheduled re-scan.
+model ExternalJobLead {
+  id             String    @id @default(uuid()) @db.Uuid
+  source         String
+  sourceId       String    @map("source_id")
+  title          String
+  employer       String?
+  locationLabel  String?   @map("location_label")
+  city           String?
+  province       String?
+  latitude       Float?
+  longitude      Float?
+  salaryMinMinor Int?      @map("salary_min_minor")
+  salaryMaxMinor Int?      @map("salary_max_minor")
+  salaryPeriod   String?   @map("salary_period")
+  contractTime   String?   @map("contract_time")
+  category       String?
+  url            String
+  postedAt       DateTime? @map("posted_at") @db.Timestamptz(3)
+  description    String?
+  firstSeenAt    DateTime  @default(now()) @map("first_seen_at") @db.Timestamptz(3)
+  lastSeenAt     DateTime  @default(now()) @map("last_seen_at") @db.Timestamptz(3)
+
+  @@unique([source, sourceId], map: "external_job_leads_source_sourceid_key")
+  @@index([province, city], map: "external_job_leads_province_city_idx")
+  @@map("external_job_leads")
+}
