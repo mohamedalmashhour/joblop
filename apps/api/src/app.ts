@@ -6472,7 +6472,13 @@ export function buildApi(options: BuildApiOptions = {}) {
     if (!actor) return;
     const query = asRecord(request.query);
     const organizationId = readOptionalString(query, "organizationId");
-    const orgFilter = organizationId && isCanonicalUuid(organizationId) ? `AND c.organization_id = '${organizationId}'` : "";
+    // Parameterize the optional org filter (defense-in-depth; the value is also UUID-validated).
+    const params: unknown[] = [];
+    let orgFilter = "";
+    if (organizationId && isCanonicalUuid(organizationId)) {
+      params.push(organizationId);
+      orgFilter = `AND c.organization_id = $${params.length}::uuid`;
+    }
     const rows = (await prisma!.$queryRawUnsafe(
       `SELECT c.worker_classification AS channel,
               c.gross_pay_minor AS worker_gross,
@@ -6488,7 +6494,8 @@ export function buildApi(options: BuildApiOptions = {}) {
               ), 0) / 60 AS employer_billed,
               c.currency AS currency
        FROM payroll_calculations c
-       WHERE c.status = 'locked' ${orgFilter}`
+       WHERE c.status = 'locked' ${orgFilter}`,
+      ...params
     )) as Array<Record<string, unknown>>;
     const calcRows: AccountingCalcRow[] = rows.map((r) => ({
       channel: String(r.channel ?? "employee"),

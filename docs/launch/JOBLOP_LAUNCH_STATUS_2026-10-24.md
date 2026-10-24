@@ -39,7 +39,7 @@ is the owner's decision and stays blocked on the external gates below.
 | Provider rails (payment / SMS / geocoding) | ⛔ not bound | provider contracts (external) |
 | CI / staging validation | ⛔ blocked | GitHub Actions billing (per `JOBLOP_PUBLIC_LAUNCH_CERTIFICATION.md`) |
 | PR for this branch | ⛔ blocked | `drmmashhour-ux` GitHub login recovery (2FA pending) |
-| Security review / adversarial audit | ⚙️ partial | an independent audit before public GO (per the standing release-control gate) |
+| Security review / adversarial audit | ⚙️ self-review of new endpoints done; independent audit still required | an independent audit before public GO (per the standing release-control gate) |
 
 ## Honest verdict
 **NO-GO for launch today — and that's expected.** The product engineering is in strong shape and
