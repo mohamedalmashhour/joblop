@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { useT } from "./i18n/LocaleProvider";
+import { VerifyEmail } from "./VerifyEmail";
 
 /** Signed-out worker front door: value proposition + how-it-works, with a sign-in / create-account
  *  card. Fully bilingual (fr-CA / en-CA). On success it hands control back to the marketplace. */
@@ -124,6 +125,7 @@ function SignUpForm({ onSignedIn, onHaveAccount }: { onSignedIn: () => void; onH
   const [accepted, setAccepted] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [registered, setRegistered] = useState(false);
 
   async function submit(event: React.FormEvent) {
     event.preventDefault();
@@ -145,7 +147,7 @@ function SignUpForm({ onSignedIn, onHaveAccount }: { onSignedIn: () => void; onH
           displayName: name.trim() || null
         })
       });
-      if (response.ok) return onSignedIn();
+      if (response.ok) { setRegistered(true); return; }
       if (response.status === 404) setError(t("signup.closed"));
       else if (response.status === 409) setError(t("signup.conflict"));
       else if (response.status === 400) setError(t("signup.weakPassword"));
@@ -157,6 +159,8 @@ function SignUpForm({ onSignedIn, onHaveAccount }: { onSignedIn: () => void; onH
       setBusy(false);
     }
   }
+
+  if (registered) return <VerifyEmail onDone={onSignedIn} />;
 
   return (
     <form className="auth-form" onSubmit={submit}>
