@@ -18,13 +18,18 @@ services:
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
       POSTGRES_DB: ${POSTGRES_DB}
     volumes:
-      - pgdata:/var/lib/postgresql/data   # put this volume on your SSD, not the USB drive
+      - pgdata:/var/lib/postgresql/data   # DS923+: put this on the M.2 NVMe SSD pool, not the HDDs/USB
     # No published port — only the app containers reach it on the internal network.
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
       interval: 10s
       timeout: 5s
       retries: 10
+    # Memory caps so no single service starves the others on the DS923+ (2 cores / 32 GB).
+    deploy:
+      resources:
+        limits:
+          memory: 4g
 
   api:
     build:

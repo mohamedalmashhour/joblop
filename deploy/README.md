@@ -32,6 +32,21 @@ Apps listen internally on api:4000, worker:8090, employer:8091, admin:8092; Cadd
 - Put the `pgdata` volume on an **SSD**, not the USB drive. Use a **UPS**.
 - Back up nightly (`backup.sh`) and **test a restore monthly**.
 
+## Synology DS923+ (AMD Ryzen R1600, x86-64, 32 GB) — setup
+This box is x86-64, so these images run as-is. CPU (2 cores) is the limit, not RAM — great for
+dev/staging + light production; keep the busy/live platforms on a Canadian cloud VM (hybrid).
+1. **Storage:** add an **M.2 NVMe SSD** storage pool (DSM 7.2 → Storage Manager) and put the Postgres
+   `pgdata` volume there. HDD bays (SHR) for bulk; NexStar + 12 TB for backups.
+2. **Container Manager:** install the **Container Manager** package (DSM Package Center). It runs Docker
+   + Compose "Projects". Create a Project pointing at `deploy/docker-compose.yml`.
+3. **Private access (Phase 1, no public exposure):** install **Tailscale** (Package Center) and reach
+   everything over the tailnet. Nothing is on the public internet yet.
+4. **UPS:** connect a UPS over USB (DSM → Hardware & Power → UPS). Protects the database from power loss.
+5. **Public later:** add **Cloudflare Tunnel** (run `cloudflared` as a container) pointing at
+   `worker:8090` — no open ports, hides your home IP. Do this only after staging is proven.
+
+Memory limits in the compose keep any one service from starving the others on 2 cores.
+
 ## This is a starting template — test it on the target box
 The monorepo build (pnpm workspaces + Prisma + Next) is standard but every environment differs; run the
 `build` once on your NAS/VM and fix any environment-specific issues (memory, platform arch) before
