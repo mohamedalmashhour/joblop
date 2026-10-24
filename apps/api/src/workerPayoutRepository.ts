@@ -1,5 +1,6 @@
 import type { PrismaClient } from "@rwos/database";
 import { nextWorkerPayoutStatus, workerPayoutHoldUntilMs, type WorkerPayoutStatus } from "@rwos/shared";
+import { resolvePayChannel, type PayChannel, type PayStatementLine, type SlipType } from "./payChannel";
 
 export type WorkerPayoutView = Readonly<{
   id: string;
@@ -14,6 +15,12 @@ export type WorkerPayoutView = Readonly<{
   heldReason: string | null;
   periodStart: string;
   periodEnd: string;
+  // Phase 2: which channel this payout belongs to, and the statement the worker should see.
+  channel: PayChannel;
+  slipType: SlipType;
+  statementTitle: string;
+  statementLines: readonly PayStatementLine[];
+  employerCostMinor: number;
 }>;
 
 // Materialize a pending payout for each of the worker's LOCKED payroll calculations that has none,
@@ -95,8 +102,33 @@ export async function materializeAndListWorkerPayouts(
   }
 
   const periodByCalc = new Map(lockedCalcs.map((c) => [c.id, c.payrollPeriod]));
+
+  // Phase 2: resolve each payout's channel + statement from its payroll calculation.
+  const calcDetails = await prisma.payrollCalculation.findMany({
+    where: { id: { in: payouts.map((p) => p.payrollCalculationId) } },
+    select: {
+      id: true,
+      workerClassification: true,
+      grossPayMinor: true,
+      totalDeductionsMinor: true,
+      netPayMinor: true,
+      totalEmployerCostMinor: true,
+      currency: true
+    }
+  });
+  const calcById = new Map(calcDetails.map((c) => [c.id, c]));
+
   return payouts.map((p) => {
     const period = periodByCalc.get(p.payrollCalculationId);
+    const calc = calcById.get(p.payrollCalculationId);
+    const channel = resolvePayChannel({
+      classification: calc?.workerClassification ?? "employee",
+      grossPayMinor: calc?.grossPayMinor ?? p.amountMinor,
+      totalDeductionsMinor: calc?.totalDeductionsMinor ?? 0,
+      netPayMinor: calc?.netPayMinor ?? p.amountMinor,
+      totalEmployerCostMinor: calc?.totalEmployerCostMinor ?? 0,
+      currency: p.currency
+    });
     return {
       id: p.id,
       payrollCalculationId: p.payrollCalculationId,
@@ -109,7 +141,12 @@ export async function materializeAndListWorkerPayouts(
       paidAt: p.paidAt ? p.paidAt.toISOString() : null,
       heldReason: p.heldReason,
       periodStart: period ? period.periodStart.toISOString() : p.holdUntil.toISOString(),
-      periodEnd: period ? period.periodEnd.toISOString() : p.holdUntil.toISOString()
+      periodEnd: period ? period.periodEnd.toISOString() : p.holdUntil.toISOString(),
+      channel: channel.channel,
+      slipType: channel.slipType,
+      statementTitle: channel.statementTitle,
+      statementLines: channel.statementLines,
+      employerCostMinor: channel.employerCostMinor
     };
   });
 }
