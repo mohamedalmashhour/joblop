@@ -241,6 +241,7 @@ import {
   getActiveElection,
   type WorkerClassification
 } from "./workerClassificationElection";
+import { buildRemittanceSummary } from "./taxRemittance";
 import { isWorkerDisputeCategory, normalizeWorkerDisputeReason } from "@rwos/shared";
 import { normalizeEscalationReason } from "@rwos/shared";
 import { raiseWorkerDispute, listWorkerDisputes, withdrawWorkerDispute } from "./workerDisputeRepository";
@@ -6232,6 +6233,34 @@ export function buildApi(options: BuildApiOptions = {}) {
   const PAYROLL_SYNTHETIC_NOTICE = "SYNTHETIC / TEST PAYROLL — a governed calculation only. No money moves; this is not a real pay statement.";
 
   // Payroll authority: create a governed pay period for an org + jurisdiction.
+  // Phase 3: the remittance ledger. Accrued liabilities owed to CRA (federal) and Revenu Québec
+  // (provincial + QPP/QPIP + employer contributions) from LOCKED payroll, derived from the persisted
+  // deduction + employer-cost lines so it always reconciles to source. Read-only; nothing is filed or
+  // paid (gated). See docs/finance/TWO_CHANNEL_PAYROLL_DESIGN.md.
+  app.get("/platform/finance/remittances", async (request, reply) => {
+    const actor = await requirePayrollAuthority(request, reply);
+    if (!actor) return;
+    const query = asRecord(request.query);
+    const organizationId = readOptionalString(query, "organizationId");
+    const payrollPeriodId = readOptionalString(query, "payrollPeriodId");
+    const where: Record<string, unknown> = { status: "locked" };
+    if (organizationId) where.organizationId = organizationId;
+    if (payrollPeriodId) where.payrollPeriodId = payrollPeriodId;
+    const calcs = await prisma!.payrollCalculation.findMany({ where, select: { id: true, currency: true } });
+    const ids = calcs.map((c) => c.id);
+    const currency = calcs[0]?.currency ?? "CAD";
+    const [deductions, employerCosts] = await Promise.all([
+      prisma!.payrollDeductionLine.findMany({ where: { payrollCalculationId: { in: ids } }, select: { code: true, amountMinor: true } }),
+      prisma!.payrollEmployerCostLine.findMany({ where: { payrollCalculationId: { in: ids } }, select: { code: true, amountMinor: true } })
+    ]);
+    const summary = buildRemittanceSummary([...deductions, ...employerCosts], currency);
+    return reply.code(200).send({
+      remittances: summary,
+      lockedCalculations: ids.length,
+      note: "Accrued liabilities from locked payroll. Nothing is filed or paid while the go-live gate is closed."
+    });
+  });
+
   app.post("/platform/payroll/periods", async (request, reply) => {
     const actor = await requirePayrollAuthority(request, reply);
     if (!actor) return;
