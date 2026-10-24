@@ -15,6 +15,7 @@ import {
   trainLogistic,
   type TrainingSample
 } from "./offerLearning";
+import { isPro } from "./cvEntitlementRepository";
 
 // Below this many labelled offers, the learned model isn't trusted and the optimizer uses the prior.
 export const MIN_SAMPLES_FOR_LEARNED_MODEL = 20;
@@ -34,16 +35,19 @@ export function reliabilityFrom(accepted: number, declinedOrMissed: number): num
 
 async function loadWorkerFeatures(prisma: PrismaClient, workerIdentityId: string): Promise<WorkerFeatures> {
   const pref = await prisma.workerOfferPreference.findUnique({ where: { workerIdentityId } });
-  const [accepted, declinedOrMissed] = await Promise.all([
+  const identity = await prisma.workerIdentity.findUnique({ where: { id: workerIdentityId }, select: { userId: true } });
+  const [accepted, declinedOrMissed, pro] = await Promise.all([
     prisma.offerDecisionEvent.count({ where: { workerIdentityId, outcome: "accepted" } }),
-    prisma.offerDecisionEvent.count({ where: { workerIdentityId, outcome: { in: ["declined", "ignored", "expired"] } } })
+    prisma.offerDecisionEvent.count({ where: { workerIdentityId, outcome: { in: ["declined", "ignored", "expired"] } } }),
+    identity ? isPro(prisma, identity.userId) : Promise.resolve(false)
   ]);
   return {
     workerIdentityId,
     minRatePerHourMinor: pref?.minRatePerHourMinor ?? 0,
     requiresTransport: pref?.requiresTransport ?? false,
     maxDistanceKm: pref?.maxDistanceKm ?? 100,
-    reliability: reliabilityFrom(accepted, declinedOrMissed)
+    reliability: reliabilityFrom(accepted, declinedOrMissed),
+    pro
   };
 }
 
@@ -106,6 +110,7 @@ export type ProposeInput = Readonly<{
   workerIdentityIds: readonly string[];
   baseRatePerHourMinor: number;
   marginFloorMinor: number;
+  proPriority?: boolean; // Worker Pro benefit: offer to Pro workers first (default on)
 }>;
 
 export type LoggedDecision = OfferDecision & Readonly<{ eventId: string }>;
@@ -123,6 +128,7 @@ export async function proposeAndLogOffers(prisma: PrismaClient, input: ProposeIn
     workers,
     baseRatePerHourMinor: input.baseRatePerHourMinor,
     marginFloorMinor: input.marginFloorMinor,
+    proPriority: input.proPriority ?? true,
     ...(learned ? { acceptanceModel: learned } : {})
   });
   const logged: LoggedDecision[] = [];

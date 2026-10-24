@@ -70,6 +70,20 @@ describe("dynamic offer optimizer", () => {
     expect(fillFirst.acceptanceProbability).toBeGreaterThanOrEqual(marginFirst.acceptanceProbability);
   });
 
+  it("Worker Pro: proPriority offers Pro workers first, without changing the margin", () => {
+    // Free worker is slightly more attractive (higher reliability) so would normally rank first.
+    const freeBetter = worker({ workerIdentityId: "free", reliability: 0.95, pro: false });
+    const proWorker = worker({ workerIdentityId: "pro", reliability: 0.6, pro: true });
+    const withoutPriority = optimizeOffers({ ...base, workers: [freeBetter, proWorker] });
+    expect(withoutPriority[0]!.workerIdentityId).toBe("free"); // margin order
+    const withPriority = optimizeOffers({ ...base, proPriority: true, workers: [freeBetter, proWorker] });
+    expect(withPriority[0]!.workerIdentityId).toBe("pro"); // Pro offered first
+    // Same offer economics for the Pro worker either way (priority reorders, doesn't distort margin).
+    const proDecision = withPriority.find((d) => d.workerIdentityId === "pro")!;
+    const proDecisionNoPrio = withoutPriority.find((d) => d.workerIdentityId === "pro")!;
+    expect(proDecision.marginMinor).toBe(proDecisionNoPrio.marginMinor);
+  });
+
   it("acceptance model: below-minimum base is rejected outright", () => {
     const m = createPriorAcceptanceModel();
     const p = m.predict(worker({ minRatePerHourMinor: 3000 }), { baseRatePerHourMinor: 2500, transportAllowanceMinor: 0, bonusMinor: 0 }, job);

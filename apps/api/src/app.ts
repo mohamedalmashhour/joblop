@@ -6324,7 +6324,8 @@ export function buildApi(options: BuildApiOptions = {}) {
       client: { billPerHourMinor, extrasMinor, willingnessToPayPerHourMinor },
       workerIdentityIds,
       baseRatePerHourMinor,
-      marginFloorMinor
+      marginFloorMinor,
+      ...(body.proPriority === false ? { proPriority: false } : {})
     });
     return reply.code(200).send({ decisions, note: "Proposals logged to the offer-decision training set. No offer is sent and no money moves here." });
   });

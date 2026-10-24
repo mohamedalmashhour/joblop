@@ -20,6 +20,7 @@ export type WorkerFeatures = Readonly<{
   requiresTransport: boolean; // won't take it without a transport allowance
   maxDistanceKm: number;
   reliability: number; // 0..1 from history (cold-start: 0.5)
+  pro?: boolean; // Worker Pro — gets priority access to jobs (offered first) when proPriority is on
 }>;
 
 export type JobContext = Readonly<{
@@ -99,6 +100,10 @@ export type OptimizeInput = Readonly<{
   // "expected_margin" maximizes P(accept) × margin; "fill_first" prioritizes getting it filled. Default
   // is fill_first within 6h of the shift (fill matters more than margin at the last minute).
   objective?: "expected_margin" | "fill_first";
+  // Worker Pro benefit: when true, Pro workers are offered FIRST (ranked ahead of free workers),
+  // preserving the objective order within each group. The offer economics are unchanged — this only
+  // affects who gets the offer first, which matters most for the best / most urgent jobs.
+  proPriority?: boolean;
 }>;
 
 function isBetter(c: OfferDecision, best: OfferDecision, objective: "expected_margin" | "fill_first"): boolean {
@@ -158,9 +163,15 @@ export function optimizeOffers(input: OptimizeInput): OfferDecision[] {
     }
     if (best) decisions.push(best);
   }
-  return decisions.sort((a, b) =>
-    objective === "fill_first"
+  const proById = new Map(input.workers.map((w) => [w.workerIdentityId, w.pro ? 1 : 0]));
+  return decisions.sort((a, b) => {
+    if (input.proPriority) {
+      const pa = proById.get(a.workerIdentityId) ?? 0;
+      const pb = proById.get(b.workerIdentityId) ?? 0;
+      if (pb !== pa) return pb - pa; // Pro workers first
+    }
+    return objective === "fill_first"
       ? b.acceptanceProbability - a.acceptanceProbability || b.expectedMarginMinor - a.expectedMarginMinor
-      : b.expectedMarginMinor - a.expectedMarginMinor
-  );
+      : b.expectedMarginMinor - a.expectedMarginMinor;
+  });
 }
