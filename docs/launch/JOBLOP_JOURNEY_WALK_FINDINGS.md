@@ -58,6 +58,13 @@ Timesheet/payroll suites seed realistic full-shift worked time; none asserts the
 Whichever is chosen, it should be expressed once in a governed calc step with explicit handling of:
 early departure (worker choice) vs. dismissal (employer) vs. no-show, and documented provenance.
 
+**Resolution (implemented — Option 1):** `calculateTimesheetMinutes` now floors both `payableMinutes`
+and `billableMinutes` to `MINIMUM_STAFFING_SHIFT_MINUTES` (360) once attendance has a check-in and
+check-out, flagging `minimum_shift_floor_applied` for audit. A true no-show never reaches a completed
+attendance record, so it is handled by the no-show path, not the floor. Regression test added
+(sub-6h attendance → 360 payable/billable). The finer dismissal-vs-worker-choice distinction is left
+as a follow-up if the business wants asymmetric worker-pay vs. employer-billing rules.
+
 ---
 
 ## Finding 2 — Residence jurisdiction column mismatch breaks payroll for API-created worksites
@@ -97,8 +104,15 @@ through the residence-create API and then runs payroll against it.
    long-term, most work.
 
 Note: the onboarding BFF fix in `620b892` makes the employer app send `region` + `country` (the fields
-the API actually reads), so a worksite is created **with** a jurisdiction instead of none — but it
-does not resolve this mismatch, so payroll still needs one of the options above.
+the API actually reads), so a worksite is created **with** a jurisdiction instead of none.
+
+**Resolution (implemented — read-side fallback):** the payroll jurisdiction resolver
+(`createPrismaPayrollJurisdictionResolver`) now reads `province ?? region`, so both seeded
+(`province`) and API-provisioned (`region`) worksites resolve a jurisdiction. This was chosen over
+mirroring `region` into `province` on write because `province` is `@db.Char(2)` and an arbitrary
+`region` string could overflow it. Verified live: a `province = NULL, region = QC` worksite resolves
+to CA/QC and produces a payroll calculation. Collapsing the two columns into one remains optional
+cleanup (tech debt), but is no longer blocking.
 
 ---
 

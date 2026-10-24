@@ -9895,14 +9895,23 @@ function calculateTimesheetMinutes(
   if (attendanceRecord.exceptionCategory)
     exceptionFlags.push(`attendance_exception:${attendanceRecord.exceptionCategory}`);
 
+  // Authoritative 6-hour minimum applied to pay AND billing. The employer accepts, and the worker
+  // relies on, "any shift shorter than 6 hours is billed as 6 hours; if the worker is dismissed for
+  // any reason, the 6-hour minimum is still paid." Every dispatched shift is scheduled for at least
+  // this minimum (enforced at request creation), so once attendance has a check-in and check-out the
+  // worked time is floored to the minimum for both payable and billable minutes. A true no-show never
+  // reaches a completed attendance record, so it is handled by the no-show/missed path, not here.
+  const flooredMinutes = Math.max(rawElapsedMinutes, MINIMUM_STAFFING_SHIFT_MINUTES);
+  if (flooredMinutes > rawElapsedMinutes) exceptionFlags.push("minimum_shift_floor_applied");
+
   return {
     rawCheckInAt: attendanceRecord.checkInAt,
     rawCheckOutAt: attendanceRecord.checkOutAt,
     normalizedCheckInAt: attendanceRecord.checkInAt,
     normalizedCheckOutAt: attendanceRecord.checkOutAt,
     rawElapsedMinutes,
-    payableMinutes: rawElapsedMinutes,
-    billableMinutes: rawElapsedMinutes,
+    payableMinutes: flooredMinutes,
+    billableMinutes: flooredMinutes,
     excludedMinutes: 0,
     breakMinutes: 0,
     premiumCandidateMinutes: 0,

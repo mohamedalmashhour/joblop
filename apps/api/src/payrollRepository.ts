@@ -66,9 +66,14 @@ export function createPrismaPayrollRateResolver(prisma: PrismaClient): PayrollRa
 export function createPrismaPayrollJurisdictionResolver(prisma: PrismaClient): PayrollJurisdictionResolver {
   return {
     async resolve(input): Promise<PayrollJurisdiction | null> {
-      const residence = await prisma.residence.findUnique({ where: { id: input.residenceId }, select: { country: true, province: true } });
-      if (!residence || !residence.province) return null;
-      return { country: (residence.country ?? "CA").toUpperCase(), region: residence.province.toUpperCase() };
+      // The worksite region code lives in `province` for seeded residences but in `region` for
+      // residences created through the governed residence-create API (which stores region/country).
+      // Resolve from either so an API-provisioned worksite is not blocked from payroll; the engine
+      // still rejects an unknown jurisdiction key downstream.
+      const residence = await prisma.residence.findUnique({ where: { id: input.residenceId }, select: { country: true, province: true, region: true } });
+      const code = residence?.province ?? residence?.region ?? null;
+      if (!residence || !code) return null;
+      return { country: (residence.country ?? "CA").toUpperCase(), region: code.toUpperCase() };
     }
   };
 }

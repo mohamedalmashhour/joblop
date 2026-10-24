@@ -4089,6 +4089,29 @@ describe("timesheet foundation", () => {
     expect(timesheetRepository.createdFinanceRecords).toBe(0);
   });
 
+  it("applies the 6-hour minimum floor to pay and billing when worked time is under the minimum", async () => {
+    // The employer accepts, and the worker relies on, a 6-hour minimum: a shift shorter than 6h is
+    // billed as 6h and a dismissed worker is still paid 6h. With a completed attendance of only one
+    // hour, payable and billable minutes must be floored to 360 (raw elapsed is preserved for audit).
+    const { timesheetService, attendanceRecord, adminSession } = await createTimesheetContext();
+    attendanceRecord.checkOutAt = new Date("2026-08-12T13:00:00.000Z"); // 12:00 -> 13:00 = 60 minutes
+    const draft = await timesheetService.createFromAttendance({
+      session: adminSession,
+      roles: ["TIMESHEET_REVIEWER"],
+      attendanceRecordId: attendanceRecord.id
+    });
+    const calculated = await timesheetService.calculate({
+      session: adminSession,
+      roles: ["TIMESHEET_REVIEWER"],
+      timesheetId: draft.id,
+      expectedVersion: draft.versionToken
+    });
+    expect(calculated.rawElapsedMinutes).toBe(60);
+    expect(calculated.payableMinutes).toBe(360);
+    expect(calculated.billableMinutes).toBe(360);
+    expect(calculated.exceptionSummary ?? "").toContain("minimum_shift_floor_applied");
+  });
+
   it("lets a platform reviewer override review exceptions back into the review chain", async () => {
     const { timesheetService, timesheetRepository, attendanceRecord, adminSession, workerSession } =
       await createTimesheetContext();
