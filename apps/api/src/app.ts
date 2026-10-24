@@ -200,7 +200,9 @@ import {
   normalizeAdzunaJobs,
   dedupeLeads,
   rankLeadsForWorker,
-  type WorkerMatchProfile
+  prioritizeProLeads,
+  type WorkerMatchProfile,
+  type ExternalJobLead
 } from "@rwos/shared";
 import {
   createTrustedServiceIdentityHeaders,
@@ -214,6 +216,8 @@ import { startJobScannerSchedule, type ScanQuery } from "./jobScannerScheduler";
 import { type WorkerCvProfile, type TargetJob } from "./cvBuilder";
 import { getCvProvider } from "./cvBuilderClaude";
 import { createCvAsset, listCvAssets, deleteCvAsset } from "./cvAssetRepository";
+import { isPro, getActiveEntitlement, grantEntitlement, revokeEntitlement, PRO_PLAN } from "./cvEntitlementRepository";
+import { createSyntheticCvProvider } from "./cvBuilder";
 import {
   activeMembershipRoleQuery,
   activePlatformGrantQuery,
@@ -6541,6 +6545,28 @@ export function buildApi(options: BuildApiOptions = {}) {
     return reply.code(200).send({ deleted: true });
   });
 
+  // Worker Pro entitlements — admin grant/revoke (real admin mechanism; payments FROZEN, so no charge).
+  // workerRef is the worker's user id. This is how a worker gets Pro until a gated purchase flow opens.
+  app.post("/platform/cv-entitlements/grant", async (request, reply) => {
+    const actor = await requireHrAuthority(request, reply);
+    if (!actor) return;
+    const body = asRecord(request.body);
+    const workerRef = readOptionalString(body, "workerRef");
+    if (!workerRef) return reply.code(400).send({ error: "RWOS_ENTITLEMENT_INVALID", message: "workerRef is required." });
+    const entitlement = await grantEntitlement(prisma!, { workerRef, plan: PRO_PLAN, source: "admin_grant", grantedByUserId: actor });
+    return reply.code(200).send({ entitlement });
+  });
+
+  app.post("/platform/cv-entitlements/revoke", async (request, reply) => {
+    const actor = await requireHrAuthority(request, reply);
+    if (!actor) return;
+    const body = asRecord(request.body);
+    const workerRef = readOptionalString(body, "workerRef");
+    if (!workerRef) return reply.code(400).send({ error: "RWOS_ENTITLEMENT_INVALID", message: "workerRef is required." });
+    const revoked = await revokeEntitlement(prisma!, workerRef);
+    return reply.code(200).send({ revoked });
+  });
+
   // Dynamic offer engine P2: record what actually happened to a proposed offer (accepted / declined /
   // ignored / expired / offered). This is the label the learned models train on.
   app.post("/platform/matching/offers/:eventId/outcome", async (request, reply) => {
@@ -7392,7 +7418,7 @@ export function buildApi(options: BuildApiOptions = {}) {
     const stored = await queryStoredLeads(prisma!, { province, ...(city !== undefined ? { city } : {}), limit });
     const roleKeywordsRaw = readOptionalString(q, "roleKeywords");
     const roleKeywords = roleKeywordsRaw ? roleKeywordsRaw.split(",").map((s) => s.trim()).filter(Boolean) : [];
-    let leads: unknown = stored;
+    let leads: ExternalJobLead[] = stored;
     let ranked = false;
     if (roleKeywords.length > 0) {
       const identity = await prisma!.workerIdentity.findFirst({ where: { userId: session.user.id }, select: { id: true } });
@@ -7400,7 +7426,18 @@ export function buildApi(options: BuildApiOptions = {}) {
       leads = rankLeadsForWorker(stored, { roleKeywords, maxDistanceKm: pref?.maxDistanceKm ?? null });
       ranked = true;
     }
-    return reply.code(200).send({ leadCount: stored.length, ranked, leads, note: "External leads — apply on the source. Not JobLop jobs." });
+    // Worker Pro benefit: best-paying and freshest jobs surface first.
+    const pro = await isPro(prisma!, session.user.id);
+    if (pro) leads = prioritizeProLeads(leads);
+    return reply.code(200).send({
+      leadCount: stored.length,
+      ranked,
+      pro,
+      leads,
+      note: pro
+        ? "Worker Pro priority: best-paying and freshest jobs first. External leads — apply on the source."
+        : "External leads — apply on the source. Upgrade to Worker Pro to see the best jobs first."
+    });
   });
 
   // Generate the signed-in worker's own CV + cover letter (synthetic now, Claude when keyed). Advisory.
@@ -7425,13 +7462,40 @@ export function buildApi(options: BuildApiOptions = {}) {
       const title = readOptionalString(j, "title");
       if (title) job = { title, employer: readOptionalString(j, "employer"), description: readOptionalString(j, "description"), city: readOptionalString(j, "city") };
     }
-    const provider = getCvProvider();
+    // Worker Pro gating: Pro workers get the AI-written CV (Claude when keyed); free workers get the
+    // basic synthetic draft. Enforced server-side — the free path never reaches the paid provider.
+    const pro = await isPro(prisma!, session.user.id);
+    const provider = pro ? getCvProvider() : createSyntheticCvProvider();
     try {
       const result = await provider.generate({ profile, job });
-      return reply.code(200).send({ cv: result, providerKind: provider.kind, note: "Advisory draft — review and edit before applying. Nothing is sent." });
+      return reply.code(200).send({
+        cv: result,
+        providerKind: provider.kind,
+        pro,
+        upgradeAvailable: !pro,
+        note: pro
+          ? "Advisory draft — review and edit before applying. Nothing is sent."
+          : "Free basic draft. Upgrade to Worker Pro for an AI-written CV, premium designs, and best-jobs-first."
+      });
     } catch (err) {
       return reply.code(502).send({ error: "RWOS_CV_PROVIDER_ERROR", message: (err as Error).message, provider: provider.kind });
     }
+  });
+
+  // Worker Pro plan status for the signed-in worker.
+  app.get("/worker/cv/plan", async (request, reply) => {
+    const session = await authService.validateSession(readBearerToken(request.headers.authorization));
+    if (!session.authenticated || !session.user) {
+      return reply.code(401).send({ error: "RWOS_WORKER_DENIED", message: "Authentication is required." });
+    }
+    const entitlement = await getActiveEntitlement(prisma!, session.user.id);
+    return reply.code(200).send({
+      plan: entitlement?.plan ?? "free",
+      pro: entitlement?.plan === PRO_PLAN,
+      entitlement,
+      benefits: ["AI-written CV + premium designs", "Best-paying and emergency jobs first", "Priority job access"],
+      billing: "Payments are not yet enabled — Worker Pro is granted by the platform for now."
+    });
   });
 
   // Worker's own CV attachments — workerRef is the user id from the session, never client-supplied.

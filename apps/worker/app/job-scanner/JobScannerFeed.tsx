@@ -13,6 +13,7 @@ export function JobScannerFeed() {
   const [msg, setMsg] = useState("");
   const [busy, setBusy] = useState(false);
   const [loaded, setLoaded] = useState(false);
+  const [pro, setPro] = useState(false);
 
   const search = async () => {
     setBusy(true); setMsg("Searching jobs near you…");
@@ -23,8 +24,8 @@ export function JobScannerFeed() {
       const res = await fetch(`/api/jobscanner/leads?${qs.toString()}`, { cache: "no-store" });
       if (res.status === 401 || res.status === 403) { setMsg("Please sign in to see jobs."); return; }
       if (!res.ok) { setMsg("Could not load jobs."); return; }
-      const d = (await res.json()) as { leads: Lead[] };
-      setLeads(d.leads ?? []); setLoaded(true);
+      const d = (await res.json()) as { leads: Lead[]; pro?: boolean };
+      setLeads(d.leads ?? []); setLoaded(true); setPro(Boolean(d.pro));
       setMsg(d.leads?.length ? `${d.leads.length} jobs found.` : "No jobs match yet — try a broader search.");
     } finally { setBusy(false); }
   };
@@ -37,6 +38,11 @@ export function JobScannerFeed() {
         <button type="button" style={styles.cta} disabled={busy} onClick={() => void search()}>{busy ? "Searching…" : "Find jobs"}</button>
       </div>
       {msg ? <p style={styles.msg}>{msg}</p> : null}
+      {loaded && pro ? (
+        <p style={styles.proBanner}>⭐ Worker Pro — showing the best-paying and most urgent jobs first.</p>
+      ) : loaded ? (
+        <p style={styles.upsell}>🔒 <strong>Worker Pro</strong> members see the best-paying and emergency jobs first. <a href="/cv-builder" style={styles.link}>Learn about Pro →</a></p>
+      ) : null}
       <p style={styles.note}>These are external job postings from partner sources. You apply on the source site. Want a CV first? <a href="/cv-builder" style={styles.link}>Build your CV →</a></p>
 
       {leads.map((l, i) => (
@@ -62,6 +68,8 @@ const styles = {
   input: { border: "1px solid #c3d0e4", borderRadius: 8, flex: "1 1 220px", minHeight: 42, minWidth: 0, padding: "0 12px" },
   cta: { background: "#0f7f78", border: "none", borderRadius: 8, color: "#fff", cursor: "pointer", fontWeight: 800, minHeight: 44, padding: "0 18px" },
   msg: { color: "#0f7f78", fontSize: 14, fontWeight: 700 },
+  proBanner: { background: "#eafaf7", border: "1px solid #a9e3d8", borderRadius: 8, color: "#0b5c55", fontSize: 13, fontWeight: 700, margin: "4px 0", padding: "8px 12px" },
+  upsell: { background: "#fff6e6", border: "1px solid #f0d089", borderRadius: 8, color: "#8a5a00", fontSize: 13, margin: "4px 0", padding: "8px 12px" },
   note: { color: "#5a6b85", fontSize: 13, margin: "4px 0 16px" },
   link: { color: "#0f7f78", fontWeight: 700 },
   card: { background: "#fff", border: "1px solid #dbe4f0", borderRadius: 12, marginBottom: 12, padding: 16 },

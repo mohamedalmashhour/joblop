@@ -3232,3 +3232,23 @@ model CvAsset {
   @@index([workerRef], map: "cv_assets_worker_ref_idx")
   @@map("cv_assets")
 }
+
+// Worker Pro paid plan: entitlement that unlocks (1) AI-written CVs + premium designs and (2) PRIORITY
+// job access — best / higher-wage leads and emergency requests surfaced first. Free tier browses jobs
+// and gets a basic synthetic draft (funnel intact). Enforcement is SERVER-SIDE only (no client trust).
+// Real payment collection is FROZEN — entitlements are granted by an admin (real admin mechanism) or,
+// later, by a gated purchase once payments + the finance gate open. Append-only; active = 'active' and
+// not expired.
+model CvEntitlement {
+  id              String    @id @default(uuid()) @db.Uuid
+  workerRef       String    @map("worker_ref")
+  plan            String // "cv_pro"
+  status          String // "active" | "revoked" | "expired"
+  source          String // "admin_grant" | "trial" | "purchase"
+  grantedByUserId String?   @map("granted_by_user_id") @db.Uuid
+  expiresAt       DateTime? @map("expires_at") @db.Timestamptz(3)
+  createdAt       DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  @@index([workerRef, status], map: "cv_entitlements_worker_status_idx")
+  @@map("cv_entitlements")
+}

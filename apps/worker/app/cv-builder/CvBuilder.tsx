@@ -71,6 +71,7 @@ export function CvBuilder() {
   const [design, setDesign] = useState("service");
   const [cv, setCv] = useState<GeneratedCv | null>(null);
   const [provider, setProvider] = useState("");
+  const [cvPro, setCvPro] = useState(false);
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState("");
   const [assets, setAssets] = useState<CvAsset[]>([]);
@@ -104,8 +105,8 @@ export function CvBuilder() {
     try {
       const res = await fetch("/api/cv", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ profile, job: { title: category.label } }) });
       if (!res.ok) { setMsg("CV generation failed."); return; }
-      const d = (await res.json()) as { cv: GeneratedCv; providerKind?: string };
-      setCv(d.cv); setProvider(d.providerKind ?? "");
+      const d = (await res.json()) as { cv: GeneratedCv; providerKind?: string; pro?: boolean };
+      setCv(d.cv); setProvider(d.providerKind ?? ""); setCvPro(Boolean(d.pro));
       setMsg(`CV ready${d.providerKind?.startsWith("claude") ? " (AI-written)" : ""}.`);
     } finally { setBusy(false); }
   };
@@ -155,6 +156,12 @@ export function CvBuilder() {
           <button type="button" style={styles.cta} disabled={busy} onClick={() => void generate()}>{busy ? "Building…" : "Build my CV"}</button>
           {msg ? <span style={styles.notice}>{msg}</span> : null}
         </div>
+        {cv && !cvPro ? (
+          <div style={styles.upsell}>
+            <strong>Upgrade to Worker Pro</strong> for an <strong>AI-written</strong> CV that&rsquo;s tailored to each job, premium designs, and <strong>priority access</strong> — the best-paying and emergency jobs shown first.
+            <div style={styles.billing}>Payments aren&rsquo;t enabled yet — Worker Pro is granted by the platform for now.</div>
+          </div>
+        ) : null}
       </article>
 
       {cv ? (
@@ -192,6 +199,8 @@ const styles = {
   notice: { color: "#0f7f78", fontSize: 13, fontWeight: 700, marginLeft: 12 },
   prov: { fontSize: 11, marginTop: 16, opacity: 0.7 },
   warn: { background: "#fff6e6", border: "1px solid #f0d089", borderRadius: 8, color: "#8a5a00", fontSize: 12, marginTop: 8, padding: "8px 12px" },
+  upsell: { background: "#fff6e6", border: "1px solid #f0d089", borderRadius: 10, color: "#8a5a00", fontSize: 13, lineHeight: 1.5, marginTop: 16, padding: "12px 14px" },
+  billing: { color: "#a07a2a", fontSize: 11, marginTop: 6 },
   assetList: { listStyle: "none", margin: "12px 0 0", padding: 0 },
   assetItem: { alignItems: "center", borderBottom: "1px solid #eef3f9", color: "#10233f", display: "flex", fontSize: 13, justifyContent: "space-between", padding: "8px 0" },
   remove: { background: "none", border: "none", color: "#b23b2e", cursor: "pointer", fontSize: 12, fontWeight: 700 }

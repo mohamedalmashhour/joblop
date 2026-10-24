@@ -5,6 +5,7 @@ import {
   haversineKm,
   normalizeAdzunaJob,
   normalizeAdzunaJobs,
+  prioritizeProLeads,
   rankLeadsForWorker,
   type AdzunaRawJob,
   type ExternalJobLead
@@ -119,6 +120,16 @@ describe("rankLeadsForWorker", () => {
     const ranked = rankLeadsForWorker([noCoords], { roleKeywords: ["personal support worker"] });
     expect(ranked).toHaveLength(1);
     expect(ranked[0]!.distanceKm).toBeNull();
+  });
+});
+
+describe("prioritizeProLeads", () => {
+  it("surfaces the highest-paying lead first (Pro priority)", () => {
+    const low = normalizeAdzunaJob({ ...rawPSW, id: "a", salary_max: 45000, redirect_url: "u1" })!;
+    const high = normalizeAdzunaJob({ ...rawPSW, id: "b", salary_max: 92000, redirect_url: "u2" })!;
+    const none = normalizeAdzunaJob({ id: "c", title: "PSW", redirect_url: "u3" })!;
+    const out = prioritizeProLeads([low, none, high]);
+    expect(out.map((l) => l.sourceId)).toEqual(["b", "a", "c"]); // high, low, then unknown-salary last
   });
 });
 

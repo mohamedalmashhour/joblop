@@ -228,3 +228,15 @@ export function rankLeadsForWorker(
       (b.postedAt ?? "").localeCompare(a.postedAt ?? "")
   );
 }
+
+// Worker Pro priority: reorder leads so the best-paying and freshest surface FIRST (the paid-plan
+// benefit — "see the best jobs, higher wage, first"). Highest max salary first (nulls last), then by
+// most recently posted. Preserves the input element type (works on ExternalJobLead or RankedLead).
+export function prioritizeProLeads<T extends ExternalJobLead>(leads: readonly T[]): T[] {
+  return [...leads].sort((a, b) => {
+    const sa = a.salaryMaxMinor ?? a.salaryMinMinor ?? -1;
+    const sb = b.salaryMaxMinor ?? b.salaryMinMinor ?? -1;
+    if (sb !== sa) return sb - sa;
+    return (b.postedAt ?? "").localeCompare(a.postedAt ?? "");
+  });
+}
