@@ -1,0 +1,145 @@
+// Phase 1 of the dynamic offer + matching engine (docs/matching/DYNAMIC_OFFER_ENGINE_DESIGN.md).
+// The brain: given a job, candidate workers, and the client's willingness-to-pay, choose the offer
+// (worker base + incentives) that maximizes expected margin — P(accept) × margin — within a hard
+// platform-margin floor and the client's price ceiling. Pure and deterministic. No money moves here;
+// this only decides WHAT offer to make.
+//
+// The ML lives behind a model seam (AcceptanceModel, WillingnessToPayModel). Day one they are
+// transparent COLD-START priors from worker preferences and client intake answers; a learned model
+// (trained from the offer/outcome log) swaps in later with no change to the optimizer.
+
+export type OfferTerms = Readonly<{
+  baseRatePerHourMinor: number; // the worker's governed base ($25/hr)
+  transportAllowanceMinor: number; // per shift, 0 if none
+  bonusMinor: number; // urgency/scarcity bonus per shift, 0 if none
+}>;
+
+export type WorkerFeatures = Readonly<{
+  workerIdentityId: string;
+  minRatePerHourMinor: number; // will not accept a base below this
+  requiresTransport: boolean; // won't take it without a transport allowance
+  maxDistanceKm: number;
+  reliability: number; // 0..1 from history (cold-start: 0.5)
+}>;
+
+export type JobContext = Readonly<{
+  hours: number;
+  distanceKm: number; // site distance from the worker / city
+  hoursUntilShift: number; // time-to-shift, drives escalation
+}>;
+
+export type ClientContext = Readonly<{
+  billPerHourMinor: number; // what the client is charged for labour ($50/hr)
+  extrasMinor: number; // client-side transport/gas already billed (passed through), per shift
+  willingnessToPayPerHourMinor: number; // ceiling from intake answers
+}>;
+
+// ── model seam ──
+export interface AcceptanceModel {
+  readonly kind: string;
+  predict(worker: WorkerFeatures, offer: OfferTerms, job: JobContext): number; // 0..1
+}
+export interface WillingnessToPayModel {
+  readonly kind: string;
+  ceilingMinor(client: ClientContext, job: JobContext): number; // max client price for the job
+}
+
+const clamp01 = (x: number) => Math.max(0, Math.min(1, x));
+const sigmoid = (x: number) => 1 / (1 + Math.exp(-x));
+
+// Cold-start acceptance prior: transparent logistic over the few things we know before any data.
+export function createPriorAcceptanceModel(): AcceptanceModel {
+  return {
+    kind: "cold-start-prior",
+    predict(worker, offer, job) {
+      if (offer.baseRatePerHourMinor < worker.minRatePerHourMinor) return 0.03; // below their floor
+      if (job.distanceKm > worker.maxDistanceKm) return 0.02; // too far
+      if (worker.requiresTransport && offer.transportAllowanceMinor <= 0) return 0.08; // needs transport
+      // Score: how far the base clears their minimum, plus sweeteners, reliability, and urgency pull.
+      const overMin = (offer.baseRatePerHourMinor - worker.minRatePerHourMinor) / Math.max(1, worker.minRatePerHourMinor);
+      const sweetener = (offer.transportAllowanceMinor > 0 ? 0.6 : 0) + (offer.bonusMinor > 0 ? 0.5 : 0);
+      const reliabilityPull = (worker.reliability - 0.5) * 0.8; // reliable workers accept a bit more readily
+      const urgencyPull = job.hoursUntilShift <= 24 ? 0.3 : 0; // last-minute shifts get taken slightly more
+      const score = 0.2 + overMin * 2.2 + sweetener + reliabilityPull + urgencyPull;
+      return clamp01(sigmoid(score));
+    }
+  };
+}
+
+// Cold-start willingness-to-pay: the client's stated ceiling (from intake) applied to the job.
+export function createPriorWillingnessModel(): WillingnessToPayModel {
+  return {
+    kind: "cold-start-prior",
+    ceilingMinor(client, job) {
+      return client.willingnessToPayPerHourMinor * job.hours + client.extrasMinor;
+    }
+  };
+}
+
+export type OfferDecision = Readonly<{
+  workerIdentityId: string;
+  terms: OfferTerms;
+  acceptanceProbability: number;
+  clientPriceMinor: number;
+  workerCostMinor: number;
+  marginMinor: number;
+  expectedMarginMinor: number; // acceptanceProbability × marginMinor
+  reason: string;
+}>;
+
+export type OptimizeInput = Readonly<{
+  job: JobContext;
+  client: ClientContext;
+  workers: readonly WorkerFeatures[];
+  baseRatePerHourMinor: number; // governed worker base ($25/hr)
+  marginFloorMinor: number; // never offer below this platform margin
+  incentiveLadder?: readonly Omit<OfferTerms, "baseRatePerHourMinor">[]; // escalation steps
+  acceptanceModel?: AcceptanceModel;
+  willingnessModel?: WillingnessToPayModel;
+}>;
+
+const DEFAULT_LADDER: readonly Omit<OfferTerms, "baseRatePerHourMinor">[] = [
+  { transportAllowanceMinor: 0, bonusMinor: 0 },
+  { transportAllowanceMinor: 2500, bonusMinor: 0 }, // + ~1h transport
+  { transportAllowanceMinor: 2500, bonusMinor: 2000 } // + transport + bonus
+];
+
+// For each candidate worker, pick the offer on the escalation ladder with the highest EXPECTED margin
+// that stays within the margin floor and the client's willingness-to-pay ceiling. Ranked best-first.
+export function optimizeOffers(input: OptimizeInput): OfferDecision[] {
+  const acceptance = input.acceptanceModel ?? createPriorAcceptanceModel();
+  const willingness = input.willingnessModel ?? createPriorWillingnessModel();
+  const ladder = input.incentiveLadder ?? DEFAULT_LADDER;
+  const ceiling = willingness.ceilingMinor(input.client, input.job);
+  const clientPriceMinor = input.client.billPerHourMinor * input.job.hours + input.client.extrasMinor;
+
+  const decisions: OfferDecision[] = [];
+  for (const worker of input.workers) {
+    let best: OfferDecision | null = null;
+    for (const step of ladder) {
+      const terms: OfferTerms = { baseRatePerHourMinor: input.baseRatePerHourMinor, ...step };
+      const workerCostMinor = terms.baseRatePerHourMinor * input.job.hours + terms.transportAllowanceMinor + terms.bonusMinor;
+      const marginMinor = clientPriceMinor - workerCostMinor;
+      if (marginMinor < input.marginFloorMinor) continue; // margin floor
+      if (clientPriceMinor > ceiling) continue; // willingness-to-pay ceiling
+      const p = Number(acceptance.predict(worker, terms, input.job).toFixed(4));
+      const expectedMarginMinor = Math.round(p * marginMinor);
+      const candidate: OfferDecision = {
+        workerIdentityId: worker.workerIdentityId,
+        terms,
+        acceptanceProbability: p,
+        clientPriceMinor,
+        workerCostMinor,
+        marginMinor,
+        expectedMarginMinor,
+        reason:
+          step.transportAllowanceMinor > 0 || step.bonusMinor > 0
+            ? `sweetened (transport ${step.transportAllowanceMinor > 0 ? "yes" : "no"}, bonus ${step.bonusMinor > 0 ? "yes" : "no"}) — expected margin maximized`
+            : "base offer — expected margin maximized"
+      };
+      if (!best || candidate.expectedMarginMinor > best.expectedMarginMinor) best = candidate;
+    }
+    if (best) decisions.push(best);
+  }
+  return decisions.sort((a, b) => b.expectedMarginMinor - a.expectedMarginMinor);
+}
