@@ -6288,10 +6288,15 @@ export function buildApi(options: BuildApiOptions = {}) {
     const hoursUntilShift = readOptionalNumber(body, "hoursUntilShift") ?? 72;
     const billPerHourMinor = readOptionalNumber(body, "billPerHourMinor");
     const extrasMinor = readOptionalNumber(body, "extrasMinor") ?? 0;
-    const willingnessToPayPerHourMinor = readOptionalNumber(body, "willingnessToPayPerHourMinor");
+    let willingnessToPayPerHourMinor = readOptionalNumber(body, "willingnessToPayPerHourMinor");
     const baseRatePerHourMinor = readOptionalNumber(body, "baseRatePerHourMinor");
     const marginFloorMinor = readOptionalNumber(body, "marginFloorMinor") ?? 0;
     const jobRequestId = readOptionalString(body, "jobRequestId");
+    // If the caller didn't pass a WTP, use the client's captured intake signal for the job.
+    if (willingnessToPayPerHourMinor == null && jobRequestId && isCanonicalUuid(jobRequestId)) {
+      const sig = await prisma!.clientIntakeSignal.findUnique({ where: { jobRequestId }, select: { willingnessToPayPerHourMinor: true } });
+      willingnessToPayPerHourMinor = sig?.willingnessToPayPerHourMinor ?? null;
+    }
     const workerIdentityIds = Array.isArray(body.workerIdentityIds)
       ? body.workerIdentityIds.filter((x): x is string => typeof x === "string" && isCanonicalUuid(x))
       : [];
@@ -6385,6 +6390,42 @@ export function buildApi(options: BuildApiOptions = {}) {
       avgPredictedAcceptance: avgPred._avg.acceptanceProbability != null ? Number(avgPred._avg.acceptanceProbability.toFixed(4)) : null,
       model: model ? { kind: "learned-logistic", sampleSize: model.sampleSize, logLoss: model.logLoss, trainedAt: model.trainedAt } : { kind: "cold-start-prior" },
       recent
+    });
+  });
+
+  // Dynamic offer engine P4b: capture what the client needs (from the client page) — the WTP ceiling
+  // and context the optimizer uses. One signal per job. See docs/matching/DYNAMIC_OFFER_ENGINE_DESIGN.md.
+  app.put("/platform/matching/client-signals/:jobRequestId", async (request, reply) => {
+    const actor = await requireHrAuthority(request, reply);
+    if (!actor) return;
+    const jobRequestId = readRouteParam(request.params, "jobRequestId");
+    if (!jobRequestId || !isCanonicalUuid(jobRequestId)) {
+      return reply.code(400).send({ error: "RWOS_MATCHING_INVALID", message: "A valid jobRequestId is required." });
+    }
+    const body = asRecord(request.body);
+    const urgency = readOptionalString(body, "urgency") ?? "normal";
+    const budgetFlexibility = readOptionalString(body, "budgetFlexibility") ?? "normal";
+    const willingnessToPayPerHourMinor = readOptionalNumber(body, "willingnessToPayPerHourMinor");
+    if (willingnessToPayPerHourMinor == null || willingnessToPayPerHourMinor < 0 || !["low", "normal", "high", "urgent"].includes(urgency) || !["tight", "normal", "flexible"].includes(budgetFlexibility)) {
+      return reply.code(400).send({ error: "RWOS_MATCHING_INVALID", message: "willingnessToPayPerHourMinor and a valid urgency / budgetFlexibility are required." });
+    }
+    const data = {
+      organizationId: readOptionalString(body, "organizationId") ?? null,
+      urgency, budgetFlexibility, willingnessToPayPerHourMinor,
+      notes: readOptionalString(body, "notes") ?? null,
+      updatedByUserId: actor
+    };
+    const sig = await prisma!.clientIntakeSignal.upsert({ where: { jobRequestId }, create: { jobRequestId, ...data }, update: data });
+    return reply.code(200).send({ signal: { jobRequestId, urgency: sig.urgency, budgetFlexibility: sig.budgetFlexibility, willingnessToPayPerHourMinor: sig.willingnessToPayPerHourMinor } });
+  });
+
+  app.get("/platform/matching/client-signals/:jobRequestId", async (request, reply) => {
+    const actor = await requireHrAuthority(request, reply);
+    if (!actor) return;
+    const jobRequestId = readRouteParam(request.params, "jobRequestId");
+    const sig = jobRequestId && isCanonicalUuid(jobRequestId) ? await prisma!.clientIntakeSignal.findUnique({ where: { jobRequestId } }) : null;
+    return reply.code(200).send({
+      signal: sig ? { jobRequestId, urgency: sig.urgency, budgetFlexibility: sig.budgetFlexibility, willingnessToPayPerHourMinor: sig.willingnessToPayPerHourMinor, notes: sig.notes } : null
     });
   });
 

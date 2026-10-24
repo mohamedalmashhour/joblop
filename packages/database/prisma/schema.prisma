@@ -1596,6 +1596,23 @@ model MatchingModelVersion {
   @@map("matching_model_versions")
 }
 
+// Dynamic offer engine P4b — client intake signals ("what the client needs"), captured from the
+// client page and used as the willingness-to-pay ceiling the optimizer stays under. One per job.
+// A learned WTP model consumes these once there is client-accept data. No money flows here.
+model ClientIntakeSignal {
+  jobRequestId                 String   @id @map("job_request_id") @db.Uuid
+  organizationId               String?  @map("organization_id") @db.Uuid
+  urgency                      String   @default("normal") // low|normal|high|urgent
+  budgetFlexibility            String   @default("normal") @map("budget_flexibility") // tight|normal|flexible
+  willingnessToPayPerHourMinor Int      @map("willingness_to_pay_per_hour_minor")
+  notes                        String?
+  updatedByUserId              String?  @map("updated_by_user_id") @db.Uuid
+  createdAt                    DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt                    DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  @@map("client_intake_signals")
+}
+
 // Worker-saved marketplace jobs. User-scoped (a worker saves opportunities to revisit).
 // Idempotent: one save per (worker, job) via the unique constraint.
 model WorkerSavedJob {
