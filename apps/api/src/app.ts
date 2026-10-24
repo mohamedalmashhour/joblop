@@ -6797,6 +6797,38 @@ export function buildApi(options: BuildApiOptions = {}) {
     return reply.code(201).send({ election: result.election });
   });
 
+  // Phase 2b: a contractor declares (or clears) their GST/QST registration. Mutable and independent
+  // of the signed classification election. When registered, GST (5%) + QST (9.975%) are added to the
+  // contractor's fee on their statement. See docs/finance/TWO_CHANNEL_PAYROLL_DESIGN.md.
+  app.put("/worker/profile/tax-registration", async (request, reply) => {
+    const session = await authService.validateSession(readBearerToken(request.headers.authorization));
+    if (!session.authenticated || !session.user) {
+      return reply.code(401).send({ error: "RWOS_WORKER_DENIED", message: "Authentication is required." });
+    }
+    const body = asRecord(request.body);
+    const registered = body.gstQstRegistered === true;
+    const gstNumber = readOptionalString(body, "gstNumber");
+    const qstNumber = readOptionalString(body, "qstNumber");
+    if (registered && (!gstNumber || !qstNumber)) {
+      return reply.code(400).send({ error: "RWOS_TAX_REGISTRATION_INCOMPLETE", message: "Provide both your GST and QST numbers to register." });
+    }
+    const identity = await workerOfferService.ensureWorkerIdentity({ userId: session.user.id, displayName: null, preferredLanguage: null });
+    const data = {
+      gstQstRegistered: registered,
+      gstNumber: registered ? gstNumber : null,
+      qstNumber: registered ? qstNumber : null,
+      updatedByUserId: session.user.id
+    };
+    const profile = await prisma!.workerTaxProfile.upsert({
+      where: { workerIdentityId: identity.id },
+      create: { workerIdentityId: identity.id, ...data },
+      update: data
+    });
+    return reply.code(200).send({
+      taxProfile: { gstQstRegistered: profile.gstQstRegistered, gstNumber: profile.gstNumber, qstNumber: profile.qstNumber }
+    });
+  });
+
   // The old free toggle is removed: classification can no longer be flipped without a signed election.
   app.put("/worker/profile/classification", async (_request, reply) =>
     reply.code(410).send({
@@ -6821,8 +6853,8 @@ export function buildApi(options: BuildApiOptions = {}) {
     const toPay = payouts.filter((p) => p.status === "pending" || p.status === "held" || p.status === "released");
     const paid = payouts.filter((p) => p.status === "paid");
     const currency = payouts[0]?.currency ?? "CAD";
-    const toPayMinor = toPay.reduce((sum, p) => sum + p.amountMinor, 0);
-    const paidMinor = paid.reduce((sum, p) => sum + p.amountMinor, 0);
+    const toPayMinor = toPay.reduce((sum, p) => sum + p.workerReceivesMinor, 0);
+    const paidMinor = paid.reduce((sum, p) => sum + p.workerReceivesMinor, 0);
     return reply.code(200).send({ toPay, paid, summary: { currency, toPayMinor, paidMinor }, synthetic: true });
   });
 

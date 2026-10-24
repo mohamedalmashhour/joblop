@@ -1484,6 +1484,7 @@ model WorkerIdentity {
   hrCases            HrCase[]
   hrDocuments        HrDocument[]
   classificationElections WorkerClassificationElection[]
+  taxProfile              WorkerTaxProfile?
 
   @@index([status], map: "worker_identities_status_idx")
   @@map("worker_identities")
@@ -1511,6 +1512,24 @@ model WorkerClassificationElection {
 
   @@index([workerIdentityId, status], map: "wce_worker_status_idx")
   @@map("worker_classification_elections")
+}
+
+// Phase 2b: a contractor's GST/QST registration. Mutable and independent of the (immutable) signed
+// classification election. When a contractor is registered, GST (5%) and QST (9.975%) are added to
+// their fee, which the platform pays and the contractor remits. BEST-GUESS flow pending CPA sign-off;
+// money execution and remittance stay OFF behind the go-live gate.
+model WorkerTaxProfile {
+  workerIdentityId  String   @id @map("worker_identity_id") @db.Uuid
+  gstQstRegistered  Boolean  @default(false) @map("gst_qst_registered")
+  gstNumber         String?  @map("gst_number")
+  qstNumber         String?  @map("qst_number")
+  updatedByUserId   String?  @map("updated_by_user_id") @db.Uuid
+  createdAt         DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt         DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  workerIdentity WorkerIdentity @relation(fields: [workerIdentityId], references: [id], onDelete: Restrict)
+
+  @@map("worker_tax_profiles")
 }
 
 // Worker-saved marketplace jobs. User-scoped (a worker saves opportunities to revisit).

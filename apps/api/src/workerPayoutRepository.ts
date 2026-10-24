@@ -1,6 +1,6 @@
 import type { PrismaClient } from "@rwos/database";
 import { nextWorkerPayoutStatus, workerPayoutHoldUntilMs, type WorkerPayoutStatus } from "@rwos/shared";
-import { resolvePayChannel, type PayChannel, type PayStatementLine, type SlipType } from "./payChannel";
+import { resolvePayChannel, type PayChannel, type PayStatementLine, type SalesTax, type SlipType } from "./payChannel";
 
 export type WorkerPayoutView = Readonly<{
   id: string;
@@ -21,6 +21,10 @@ export type WorkerPayoutView = Readonly<{
   statementTitle: string;
   statementLines: readonly PayStatementLine[];
   employerCostMinor: number;
+  salesTax: SalesTax | null;
+  // What the worker actually receives: net pay (employee) or fee + collected GST/QST (contractor).
+  // `amountMinor` above remains the base payroll amount; this is authoritative for "amount paid".
+  workerReceivesMinor: number;
 }>;
 
 // Materialize a pending payout for each of the worker's LOCKED payroll calculations that has none,
@@ -118,6 +122,13 @@ export async function materializeAndListWorkerPayouts(
   });
   const calcById = new Map(calcDetails.map((c) => [c.id, c]));
 
+  // Phase 2b: the worker's GST/QST registration (contractors only; applied in the channel resolver).
+  const taxProfile = await prisma.workerTaxProfile.findUnique({
+    where: { workerIdentityId },
+    select: { gstQstRegistered: true }
+  });
+  const gstQstRegistered = taxProfile?.gstQstRegistered === true;
+
   return payouts.map((p) => {
     const period = periodByCalc.get(p.payrollCalculationId);
     const calc = calcById.get(p.payrollCalculationId);
@@ -127,7 +138,8 @@ export async function materializeAndListWorkerPayouts(
       totalDeductionsMinor: calc?.totalDeductionsMinor ?? 0,
       netPayMinor: calc?.netPayMinor ?? p.amountMinor,
       totalEmployerCostMinor: calc?.totalEmployerCostMinor ?? 0,
-      currency: p.currency
+      currency: p.currency,
+      gstQstRegistered
     });
     return {
       id: p.id,
@@ -146,7 +158,9 @@ export async function materializeAndListWorkerPayouts(
       slipType: channel.slipType,
       statementTitle: channel.statementTitle,
       statementLines: channel.statementLines,
-      employerCostMinor: channel.employerCostMinor
+      employerCostMinor: channel.employerCostMinor,
+      salesTax: channel.salesTax,
+      workerReceivesMinor: channel.workerReceivesMinor
     };
   });
 }

@@ -39,6 +39,22 @@ describe("resolvePayChannel", () => {
     expect(r.statementLines.some((l) => l.kind === "deduction")).toBe(false);
   });
 
+  it("adds GST (5%) and QST (9.975%) for a registered contractor", () => {
+    const r = resolvePayChannel({
+      classification: "contractor",
+      grossPayMinor: 15264,
+      totalDeductionsMinor: 0,
+      netPayMinor: 15264,
+      totalEmployerCostMinor: 0,
+      currency: "CAD",
+      gstQstRegistered: true
+    });
+    expect(r.salesTax).toEqual({ gstMinor: 763, qstMinor: 1522 }); // 5% and 9.975% of 152.64
+    expect(r.workerReceivesMinor).toBe(15264 + 763 + 1522); // fee + collected tax to remit
+    expect(r.statementLines.find((l) => l.kind === "total")?.amountMinor).toBe(17549);
+    expect(r.statementLines.some((l) => l.label.includes("GST"))).toBe(true);
+  });
+
   it("fails safe to the payroll channel for an unknown classification", () => {
     const r = resolvePayChannel({ classification: "freelancer", ...base });
     expect(r.channel).toBe("payroll");
