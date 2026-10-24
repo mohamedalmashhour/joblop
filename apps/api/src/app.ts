@@ -195,7 +195,8 @@ import {
   type TravelTimeProvider,
   type MarketplaceJobDetailCandidate,
   type MarketplaceEmployerProfileCandidate,
-  type ProvinceCode
+  type ProvinceCode,
+  buildVariableClientQuote
 } from "@rwos/shared";
 import {
   createTrustedServiceIdentityHeaders,
@@ -6312,6 +6313,37 @@ export function buildApi(options: BuildApiOptions = {}) {
       marginFloorMinor
     });
     return reply.code(200).send({ decisions, note: "Proposals logged to the offer-decision training set. No offer is sent and no money moves here." });
+  });
+
+  // Variable client pricing: compute the full CLIENT-side quote (pre-tax) for a job — base labour +
+  // funded allowances + emergency surcharge + distance (gas/time) surcharge + demand uplift toward the
+  // client's willingness-to-pay ceiling. Shows what the client is quoted and the part the platform
+  // keeps on top of the base margin. Pure computation — gated like every other number; no money moves.
+  app.post("/platform/pricing/quote", async (request, reply) => {
+    const actor = await requireHrAuthority(request, reply);
+    if (!actor) return;
+    const body = asRecord(request.body);
+    const labourClientMinor = readOptionalNumber(body, "labourClientMinor");
+    const employerHourlyRateMinor = readOptionalNumber(body, "employerHourlyRateMinor");
+    const hours = readOptionalNumber(body, "hours");
+    // Labour can be given directly, or derived from an hourly rate × hours.
+    const labour =
+      labourClientMinor ?? (employerHourlyRateMinor != null && hours != null ? employerHourlyRateMinor * hours : null);
+    if (labour == null) {
+      return reply.code(400).send({ error: "RWOS_PRICING_INVALID", message: "Provide labourClientMinor, or employerHourlyRateMinor and hours." });
+    }
+    const willingnessCeilingMinor = readOptionalNumber(body, "willingnessCeilingMinor");
+    const demandSignal = readOptionalNumber(body, "demandSignal");
+    const quote = buildVariableClientQuote({
+      labourClientMinor: labour,
+      allowancesClientMinor: readOptionalNumber(body, "allowancesClientMinor") ?? 0,
+      urgency: readOptionalString(body, "urgency"),
+      distanceKm: readOptionalNumber(body, "distanceKm") ?? 0,
+      ...(typeof body.roundTrip === "boolean" ? { roundTrip: body.roundTrip } : {}),
+      ...(willingnessCeilingMinor != null ? { willingnessCeilingMinor } : {}),
+      ...(demandSignal != null ? { demandSignal } : {})
+    });
+    return reply.code(200).send({ quote, note: "Quote only — no invoice is issued and no money moves (FINANCE_LIVE gated)." });
   });
 
   // Dynamic offer engine P2: record what actually happened to a proposed offer (accepted / declined /

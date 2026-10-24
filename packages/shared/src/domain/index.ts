@@ -25,6 +25,7 @@ export * from "./shift";
 export * from "./shiftRules";
 export * from "./worker";
 export * from "./platformPricing";
+export * from "./variableClientPricing";
 export * from "./platformInvoiceIssuer";
 export * from "./workerPayout";
 export * from "./workerDispute";

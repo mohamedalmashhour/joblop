@@ -1,0 +1,13 @@
+JobLop local stack — booted Wed  7 Oct 2026 00:19:31 EDT
+EMPLOYER : http://127.0.0.1:8081   (sign in at /signin)
+WORKER   : http://127.0.0.1:8090
+ADMIN    : http://127.0.0.1:8082
+API      : http://127.0.0.1:4100
+
+Login (all share one synthetic password): http://127.0.0.1:4100
+  password: Local-E2E-Synthetic-Pass1
+  employer : employer-a@local-e2e.invalid   (Org A owner)
+  worker   : worker-a@local-e2e.invalid
+  platform : platform-admin@local-e2e.invalid
+  payroll  : payroll-admin@local-e2e.invalid
+DB: rwos_local_dev_1791346556
