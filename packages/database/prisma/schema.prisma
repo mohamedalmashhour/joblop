@@ -3252,3 +3252,25 @@ model CvEntitlement {
   @@index([workerRef, status], map: "cv_entitlements_worker_status_idx")
   @@map("cv_entitlements")
 }
+
+// Worker Pro purchase orders. A worker "subscribes" → a PENDING order is recorded with the displayed
+// price. The charge itself is GATED OFF (CV_PRO_PURCHASE_ENABLED, default disabled) and no real money
+// moves — Stripe/live payments stay frozen platform-wide. When the gate opens (payments + finance
+// cleared), completing an order marks it paid and grants the entitlement (source "purchase"). Until
+// then subscribe only records intent; nothing is charged.
+model CvProOrder {
+  id           String    @id @default(uuid()) @db.Uuid
+  workerRef    String    @map("worker_ref")
+  plan         String
+  priceMinor   Int       @map("price_minor")
+  currency     String
+  periodMonths Int       @map("period_months")
+  method       String    @default("e_transfer") // "e_transfer" | "stripe"
+  status       String // "pending_payment" | "payment_claimed" | "paid" | "canceled"
+  paymentRef   String?   @map("payment_ref")
+  createdAt    DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+  paidAt       DateTime? @map("paid_at") @db.Timestamptz(3)
+
+  @@index([workerRef, status], map: "cv_pro_orders_worker_status_idx")
+  @@map("cv_pro_orders")
+}

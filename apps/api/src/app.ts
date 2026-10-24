@@ -217,6 +217,20 @@ import { type WorkerCvProfile, type TargetJob } from "./cvBuilder";
 import { getCvProvider } from "./cvBuilderClaude";
 import { createCvAsset, listCvAssets, deleteCvAsset } from "./cvAssetRepository";
 import { isPro, getActiveEntitlement, grantEntitlement, revokeEntitlement, PRO_PLAN } from "./cvEntitlementRepository";
+import {
+  createPendingOrder,
+  listOrders,
+  claimETransfer,
+  completeStripeOrder,
+  listOrdersForReview,
+  adminConfirmOrder,
+  adminRejectOrder,
+  eTransferInstructions,
+  isPurchaseEnabled,
+  PRO_PRICE,
+  PRO_METHODS,
+  type ProMethod
+} from "./cvProOrderRepository";
 import { createSyntheticCvProvider } from "./cvBuilder";
 import {
   activeMembershipRoleQuery,
@@ -7495,8 +7509,105 @@ export function buildApi(options: BuildApiOptions = {}) {
       pro: entitlement?.plan === PRO_PLAN,
       entitlement,
       benefits: ["AI-written CV + premium designs", "Best-paying and emergency jobs first", "Priority job access"],
-      billing: "Payments are not yet enabled — Worker Pro is granted by the platform for now."
+      price: PRO_PRICE,
+      purchaseEnabled: isPurchaseEnabled(),
+      billing: isPurchaseEnabled()
+        ? "You can subscribe to Worker Pro."
+        : "Payments are not yet enabled — subscribing records your interest; Worker Pro is granted by the platform for now."
     });
+  });
+
+  // Worker Pro purchase (design-for-real). subscribe records a PENDING order and shows how to pay:
+  //  - e_transfer: Interac e-transfer to billing@joblop.com with the order reference (worker then claims
+  //    it sent; an admin confirms receipt). No card routes through the platform.
+  //  - stripe: card checkout — TEST-ONLY and GATED OFF while payments are frozen.
+  app.post("/worker/cv/subscribe", async (request, reply) => {
+    const session = await authService.validateSession(readBearerToken(request.headers.authorization));
+    if (!session.authenticated || !session.user) {
+      return reply.code(401).send({ error: "RWOS_WORKER_DENIED", message: "Authentication is required." });
+    }
+    const body = asRecord(request.body);
+    const methodRaw = readOptionalString(body, "method") ?? "e_transfer";
+    const method: ProMethod = PRO_METHODS.includes(methodRaw as ProMethod) ? (methodRaw as ProMethod) : "e_transfer";
+    const order = await createPendingOrder(prisma!, session.user.id, method);
+    return reply.code(201).send({
+      order,
+      ...(method === "e_transfer" ? { eTransfer: eTransferInstructions(order) } : {}),
+      stripeEnabled: method === "stripe" ? isPurchaseEnabled() : undefined,
+      note:
+        method === "e_transfer"
+          ? "Send the Interac e-transfer to billing@joblop.com with the reference, then tap “I've sent it”. Worker Pro activates once we confirm receipt."
+          : isPurchaseEnabled()
+            ? "Card checkout (test mode) — complete payment to activate."
+            : "Card payments are not enabled yet. Use Interac e-transfer, or we'll notify you when card checkout opens."
+    });
+  });
+
+  app.get("/worker/cv/orders", async (request, reply) => {
+    const session = await authService.validateSession(readBearerToken(request.headers.authorization));
+    if (!session.authenticated || !session.user) {
+      return reply.code(401).send({ error: "RWOS_WORKER_DENIED", message: "Authentication is required." });
+    }
+    return reply.code(200).send({ orders: await listOrders(prisma!, session.user.id) });
+  });
+
+  // Worker marks the e-transfer sent → payment_claimed (awaiting admin confirmation). No money verified.
+  app.post("/worker/cv/orders/:id/claim-etransfer", async (request, reply) => {
+    const session = await authService.validateSession(readBearerToken(request.headers.authorization));
+    if (!session.authenticated || !session.user) {
+      return reply.code(401).send({ error: "RWOS_WORKER_DENIED", message: "Authentication is required." });
+    }
+    const id = readRouteParam(request.params, "id");
+    if (!id || !isCanonicalUuid(id)) return reply.code(400).send({ error: "RWOS_ORDER_INVALID", message: "A valid order id is required." });
+    const result = await claimETransfer(prisma!, session.user.id, id);
+    if (!result.ok) return reply.code(result.reason === "order_not_found" ? 404 : 409).send({ error: "RWOS_ORDER_" + result.reason.toUpperCase() });
+    return reply.code(200).send({ order: result.order, note: "Thanks — we'll confirm your e-transfer and activate Worker Pro." });
+  });
+
+  // Self-serve card (Stripe) completion — GATED; refuses (423) while payments are frozen.
+  app.post("/worker/cv/orders/:id/complete", async (request, reply) => {
+    const session = await authService.validateSession(readBearerToken(request.headers.authorization));
+    if (!session.authenticated || !session.user) {
+      return reply.code(401).send({ error: "RWOS_WORKER_DENIED", message: "Authentication is required." });
+    }
+    const id = readRouteParam(request.params, "id");
+    if (!id || !isCanonicalUuid(id)) return reply.code(400).send({ error: "RWOS_ORDER_INVALID", message: "A valid order id is required." });
+    const result = await completeStripeOrder(prisma!, session.user.id, id);
+    if (!result.ok) {
+      if (result.reason === "payments_disabled") {
+        return reply.code(423).send({ error: "RWOS_PAYMENTS_FROZEN", message: "Card payments are not enabled yet — use Interac e-transfer." });
+      }
+      return reply.code(result.reason === "order_not_found" ? 404 : 409).send({ error: "RWOS_ORDER_" + result.reason.toUpperCase() });
+    }
+    return reply.code(200).send({ order: result.order, note: "Worker Pro activated." });
+  });
+
+  // Admin review queue for Pro orders, and confirm/reject an e-transfer (real admin mechanism — manual
+  // verification of off-platform money receipt; confirming grants the entitlement).
+  app.get("/platform/cv-pro-orders", async (request, reply) => {
+    const actor = await requireHrAuthority(request, reply);
+    if (!actor) return;
+    return reply.code(200).send({ orders: await listOrdersForReview(prisma!) });
+  });
+
+  app.post("/platform/cv-pro-orders/:id/confirm", async (request, reply) => {
+    const actor = await requireHrAuthority(request, reply);
+    if (!actor) return;
+    const id = readRouteParam(request.params, "id");
+    if (!id || !isCanonicalUuid(id)) return reply.code(400).send({ error: "RWOS_ORDER_INVALID", message: "A valid order id is required." });
+    const result = await adminConfirmOrder(prisma!, id, actor);
+    if (!result.ok) return reply.code(result.reason === "order_not_found" ? 404 : 409).send({ error: "RWOS_ORDER_" + result.reason.toUpperCase() });
+    return reply.code(200).send({ order: result.order, note: "E-transfer confirmed; Worker Pro granted." });
+  });
+
+  app.post("/platform/cv-pro-orders/:id/reject", async (request, reply) => {
+    const actor = await requireHrAuthority(request, reply);
+    if (!actor) return;
+    const id = readRouteParam(request.params, "id");
+    if (!id || !isCanonicalUuid(id)) return reply.code(400).send({ error: "RWOS_ORDER_INVALID", message: "A valid order id is required." });
+    const ok = await adminRejectOrder(prisma!, id);
+    if (!ok) return reply.code(404).send({ error: "RWOS_ORDER_NOT_FOUND" });
+    return reply.code(200).send({ canceled: true });
   });
 
   // Worker's own CV attachments — workerRef is the user id from the session, never client-supplied.

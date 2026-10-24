@@ -1,6 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
+import { ProUpgrade } from "./ProUpgrade";
 
 // Worker-facing guided CV builder. Same flow as the admin demo, but on worker endpoints: the signed-in
 // worker builds their own CV, and CV attachments are keyed to their session server-side (no workerRef
@@ -156,12 +157,7 @@ export function CvBuilder() {
           <button type="button" style={styles.cta} disabled={busy} onClick={() => void generate()}>{busy ? "Building…" : "Build my CV"}</button>
           {msg ? <span style={styles.notice}>{msg}</span> : null}
         </div>
-        {cv && !cvPro ? (
-          <div style={styles.upsell}>
-            <strong>Upgrade to Worker Pro</strong> for an <strong>AI-written</strong> CV that&rsquo;s tailored to each job, premium designs, and <strong>priority access</strong> — the best-paying and emergency jobs shown first.
-            <div style={styles.billing}>Payments aren&rsquo;t enabled yet — Worker Pro is granted by the platform for now.</div>
-          </div>
-        ) : null}
+        {cv && !cvPro ? <ProUpgrade /> : null}
       </article>
 
       {cv ? (
