@@ -29,6 +29,7 @@ const DESIGNS = [
 ];
 
 type GeneratedCv = { headline: string; cvMarkdown: string; coverLetterMarkdown: string; tailoredTo: string | null };
+type CvAsset = { id: string; kind: "certificate" | "photo"; label: string | null; filename: string; contentType: string; size: number };
 
 // Minimal, safe Markdown -> HTML (headings, bold, italic, bullets). Escapes first.
 function mdToHtml(md: string): string {
@@ -81,6 +82,41 @@ export function CvWizard() {
   const [provider, setProvider] = useState("");
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState("");
+  const [workerRef] = useState<string>(() => (typeof crypto !== "undefined" && crypto.randomUUID ? crypto.randomUUID() : `w-${Date.now()}`));
+  const [assets, setAssets] = useState<CvAsset[]>([]);
+  const [upKind, setUpKind] = useState<"certificate" | "photo">("certificate");
+  const [upLabel, setUpLabel] = useState("");
+
+  const loadAssets = async () => {
+    try {
+      const res = await fetch(`/api/jobscanner/cv-assets?workerRef=${encodeURIComponent(workerRef)}`, { cache: "no-store" });
+      if (res.ok) setAssets(((await res.json()) as { assets: CvAsset[] }).assets ?? []);
+    } catch { /* ignore */ }
+  };
+
+  const uploadFile = async (file: File) => {
+    if (file.size > 5 * 1024 * 1024) { setMsg("File is over 5 MB."); return; }
+    const dataBase64 = await new Promise<string>((resolve, reject) => {
+      const r = new FileReader();
+      r.onload = () => resolve(String(r.result).split(",")[1] ?? "");
+      r.onerror = () => reject(new Error("read failed"));
+      r.readAsDataURL(file);
+    });
+    setBusy(true); setMsg(`Uploading ${file.name}…`);
+    try {
+      const res = await fetch("/api/jobscanner/cv-assets", {
+        method: "POST", headers: { "content-type": "application/json" },
+        body: JSON.stringify({ workerRef, kind: upKind, label: upLabel.trim() || null, filename: file.name, contentType: file.type, dataBase64 })
+      });
+      if (res.status === 201) { setMsg(`Uploaded ${file.name}.`); setUpLabel(""); await loadAssets(); }
+      else { const d = await res.json().catch(() => ({})); setMsg(`Upload rejected${d.reason ? `: ${d.reason}` : ""} (PDF/PNG/JPEG, ≤5 MB).`); }
+    } finally { setBusy(false); }
+  };
+
+  const removeAsset = async (id: string) => {
+    await fetch(`/api/jobscanner/cv-assets/${id}?workerRef=${encodeURIComponent(workerRef)}`, { method: "DELETE" });
+    await loadAssets();
+  };
 
   const category = useMemo(() => CATEGORIES.find((c) => c.key === cat)!, [cat]);
   const toggle = (arr: string[], set: (v: string[]) => void, v: string) => set(arr.includes(v) ? arr.filter((x) => x !== v) : [...arr, v]);
@@ -89,6 +125,7 @@ export function CvWizard() {
     if (!name.trim()) { setMsg("Please enter the worker's name."); return; }
     setBusy(true); setMsg("Building the CV…");
     const summary = `${exp} of experience as ${category.label}${city ? ` in the ${city} area` : ""}. Available: ${avail.join(", ") || "flexible"}.`;
+    const certifications = assets.filter((a) => a.kind === "certificate").map((a) => a.label?.trim() || a.filename);
     const profile = {
       fullName: name.trim(),
       headline: category.label,
@@ -97,6 +134,7 @@ export function CvWizard() {
       skills,
       languages: langs,
       language: outLang,
+      certifications,
       education: edu && edu !== "No diploma" ? [{ credential: edu, institution: "", year: "" }] : [],
       experience: lastJob.trim() ? [{ role: category.label, employer: lastJob.trim(), start: "", highlights: [] }] : []
     };
@@ -146,14 +184,42 @@ export function CvWizard() {
         <h2 style={styles.step}>8 · Most recent employer <span style={styles.hint}>(optional)</span></h2>
         <input style={{ ...styles.input, width: "100%" }} value={lastJob} onChange={(e) => setLastJob(e.target.value)} placeholder="e.g. Bistro Laval" />
 
-        <h2 style={styles.step}>9 · Design</h2>
+        <h2 style={styles.step}>9 · Documents &amp; photo <span style={styles.hint}>(optional)</span></h2>
+        <p style={styles.q}>Upload certificates (MAPAQ, RCR, cariste, licence…). They&rsquo;ll be listed on your CV.</p>
+        <div style={styles.row}>
+          <label style={styles.label}>Type
+            <select style={styles.input} value={upKind} onChange={(e) => setUpKind(e.target.value as "certificate" | "photo")}>
+              <option value="certificate">Certificate</option>
+              <option value="photo">Photo</option>
+            </select>
+          </label>
+          <label style={styles.label}>Label <span style={styles.hint}>(e.g. MAPAQ)</span>
+            <input style={styles.input} value={upLabel} onChange={(e) => setUpLabel(e.target.value)} placeholder="Food safety (MAPAQ)" />
+          </label>
+          <label style={styles.label}>File (PDF/PNG/JPEG)
+            <input style={styles.input} type="file" accept=".pdf,.png,.jpg,.jpeg" onChange={(e) => { const f = e.target.files?.[0]; if (f) void uploadFile(f); e.currentTarget.value = ""; }} />
+          </label>
+        </div>
+        {upKind === "photo" ? <p style={styles.warn}>⚠️ In Québec, a photo on a CV is generally not recommended and some employers discard CVs with photos. Only add one if the job specifically expects it.</p> : null}
+        {assets.length > 0 ? (
+          <ul style={styles.assetList}>
+            {assets.map((a) => (
+              <li key={a.id} style={styles.assetItem}>
+                <span>{a.kind === "photo" ? "🖼️" : "📄"} {a.label || a.filename} <span style={styles.hint}>({Math.round(a.size / 1024)} KB)</span></span>
+                <button type="button" style={styles.remove} onClick={() => void removeAsset(a.id)}>Remove</button>
+              </li>
+            ))}
+          </ul>
+        ) : null}
+
+        <h2 style={styles.step}>10 · Design</h2>
         <Chips options={DESIGNS.map((d) => d.label)} value={[DESIGNS.find((d) => d.key === design)!.label]} onToggle={(l) => setDesign(DESIGNS.find((d) => d.label === l)!.key)} />
 
         <div style={{ marginTop: 18 }}>
           <button type="button" style={styles.cta} disabled={busy} onClick={() => void generate()}>{busy ? "Building…" : "Build my CV"}</button>
           {msg ? <span style={styles.notice}>{msg}</span> : null}
         </div>
-        <p style={styles.upload}>📎 Document uploads (MAPAQ, RCR, cariste, licence) and optional photo — coming in the next step.</p>
+        <p style={styles.upload}>Certificates you add appear in a Certifications section on your CV. Files stay private; the worker owns them.</p>
       </article>
 
       {cv ? (
@@ -190,5 +256,9 @@ const styles = {
   cta: { background: "#0f7f78", border: "none", borderRadius: 10, color: "#fff", cursor: "pointer", fontSize: 15, fontWeight: 800, padding: "12px 22px" },
   notice: { color: "#0f7f78", fontSize: 13, fontWeight: 700, marginLeft: 12 },
   upload: { color: "#8696ad", fontSize: 12, marginTop: 14 },
-  prov: { fontSize: 11, marginTop: 16, opacity: 0.7 }
+  prov: { fontSize: 11, marginTop: 16, opacity: 0.7 },
+  warn: { background: "#fff6e6", border: "1px solid #f0d089", borderRadius: 8, color: "#8a5a00", fontSize: 12, marginTop: 8, padding: "8px 12px" },
+  assetList: { listStyle: "none", margin: "12px 0 0", padding: 0 },
+  assetItem: { alignItems: "center", borderBottom: "1px solid #eef3f9", color: "#10233f", display: "flex", fontSize: 13, justifyContent: "space-between", padding: "8px 0" },
+  remove: { background: "none", border: "none", color: "#b23b2e", cursor: "pointer", fontSize: 12, fontWeight: 700 }
 } as const;

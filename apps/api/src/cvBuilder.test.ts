@@ -47,6 +47,16 @@ describe("createSyntheticCvProvider", () => {
     expect(cv.coverLetterMarkdown).toContain("Marie Tremblay");
   });
 
+  it("renders uploaded certifications in their own section", async () => {
+    const cv = await createSyntheticCvProvider().generate({
+      profile: { ...profile, certifications: ["Food safety (MAPAQ)", "RCR / First aid"] },
+      job: chefJob
+    });
+    expect(cv.cvMarkdown).toContain("## Certifications");
+    expect(cv.cvMarkdown).toContain("Food safety (MAPAQ)");
+    expect(cv.cvMarkdown).toContain("RCR / First aid");
+  });
+
   it("produces a general CV with no target job", async () => {
     const cv = await createSyntheticCvProvider().generate({ profile });
     expect(cv.tailoredTo).toBeNull();

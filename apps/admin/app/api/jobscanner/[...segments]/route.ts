@@ -28,3 +28,14 @@ export async function POST(request: Request, context: Readonly<{ params: Promise
   if (result.status !== "ok") return sessionFailure(result.status);
   return Response.json(result.payload, { headers: { "cache-control": "private, no-store" } });
 }
+
+export async function DELETE(request: Request, context: Readonly<{ params: Promise<{ segments: string[] }> }>) {
+  if (!isSameOriginMutation(request)) return sessionFailure("denied");
+  const { segments } = await context.params;
+  const { gateway, token } = await sessionBoundary();
+  if (!token) return sessionFailure("denied");
+  const url = new URL(request.url);
+  const result = await gateway.request(targetPath(segments, url.search), "DELETE", token);
+  if (result.status !== "ok") return sessionFailure(result.status);
+  return Response.json(result.payload, { headers: { "cache-control": "private, no-store" } });
+}

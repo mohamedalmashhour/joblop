@@ -26,7 +26,8 @@ function buildPrompt(profile: WorkerCvProfile, job: TargetJob | null): string {
       skills: profile.skills,
       languages: profile.languages ?? [],
       experience: profile.experience ?? [],
-      education: profile.education ?? []
+      education: profile.education ?? [],
+      certifications: profile.certifications ?? []
     },
     null,
     2

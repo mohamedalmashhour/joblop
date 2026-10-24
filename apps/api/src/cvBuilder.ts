@@ -27,6 +27,7 @@ export type WorkerCvProfile = Readonly<{
   languages?: readonly string[];
   experience?: readonly CvExperience[];
   education?: readonly CvEducation[];
+  certifications?: readonly string[]; // e.g. ["Food safety (MAPAQ)", "RCR / First aid"] from uploaded docs
   language?: "en" | "fr"; // output language, default en
 }>;
 
@@ -67,6 +68,7 @@ const L = (lang: "en" | "fr") => ({
   relevant: lang === "fr" ? "Compétences pertinentes pour ce poste" : "Skills relevant to this role",
   experience: lang === "fr" ? "Expérience" : "Experience",
   education: lang === "fr" ? "Formation" : "Education",
+  certifications: lang === "fr" ? "Certifications" : "Certifications",
   languages: lang === "fr" ? "Langues" : "Languages",
   present: lang === "fr" ? "présent" : "present",
   dear: lang === "fr" ? "Madame, Monsieur" : "Dear Hiring Manager",
@@ -100,6 +102,9 @@ function cvBody(profile: WorkerCvProfile, matched: readonly string[]): string {
       lines.push(`\n**${e.role}** — ${e.employer}  \n${e.start}–${e.end ?? t.present}`);
       for (const h of e.highlights ?? []) lines.push(`- ${h}`);
     }
+  }
+  if (profile.certifications && profile.certifications.length > 0) {
+    lines.push(`\n## ${t.certifications}\n${profile.certifications.map((c) => `- ${c}`).join("\n")}`);
   }
   if (profile.education && profile.education.length > 0) {
     lines.push(`\n## ${t.education}`);

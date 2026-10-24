@@ -213,6 +213,7 @@ import { upsertLeads, queryStoredLeads } from "./jobScannerRepository";
 import { startJobScannerSchedule, type ScanQuery } from "./jobScannerScheduler";
 import { type WorkerCvProfile, type TargetJob } from "./cvBuilder";
 import { getCvProvider } from "./cvBuilderClaude";
+import { createCvAsset, listCvAssets, deleteCvAsset } from "./cvAssetRepository";
 import {
   activeMembershipRoleQuery,
   activePlatformGrantQuery,
@@ -6473,6 +6474,7 @@ export function buildApi(options: BuildApiOptions = {}) {
       summary: readOptionalString(profileRaw, "summary"),
       skills: strArray(profileRaw.skills),
       languages: strArray(profileRaw.languages),
+      certifications: strArray(profileRaw.certifications),
       experience: Array.isArray(profileRaw.experience)
         ? (profileRaw.experience as unknown[]).map((e) => {
             const r = asRecord(e);
@@ -6520,6 +6522,58 @@ export function buildApi(options: BuildApiOptions = {}) {
       providerKind: provider.kind,
       note: "Advisory draft — the worker reviews and edits before use. Nothing is sent. Apply is a separate, worker-confirmed step."
     });
+  });
+
+  // JobScanner CV attachments: worker uploads certificates (MAPAQ/RCR/cariste/licence) + optional photo.
+  // Worker-owned, referenced on the CV. PDF/PNG/JPEG, <=5MB, type sniffed. Not the HR compliance store.
+  app.post("/platform/jobscanner/cv-assets", async (request, reply) => {
+    const actor = await requireHrAuthority(request, reply);
+    if (!actor) return;
+    const body = asRecord(request.body);
+    const workerRef = readOptionalString(body, "workerRef");
+    const kind = readOptionalString(body, "kind");
+    const filename = readOptionalString(body, "filename");
+    const declaredContentType = readOptionalString(body, "contentType");
+    const dataBase64 = readOptionalString(body, "dataBase64");
+    if (!workerRef || !kind || !filename || !declaredContentType || !dataBase64) {
+      return reply.code(400).send({ error: "RWOS_CV_ASSET_INVALID", message: "workerRef, kind, filename, contentType and dataBase64 are required." });
+    }
+    const result = await createCvAsset(prisma!, {
+      workerRef,
+      kind,
+      label: readOptionalString(body, "label"),
+      filename,
+      declaredContentType,
+      dataBase64
+    });
+    if (!result.ok) {
+      return reply.code(400).send({ error: "RWOS_CV_ASSET_REJECTED", reason: result.reason });
+    }
+    return reply.code(201).send({ asset: result.asset });
+  });
+
+  app.get("/platform/jobscanner/cv-assets", async (request, reply) => {
+    const actor = await requireHrAuthority(request, reply);
+    if (!actor) return;
+    const q = asRecord((request as unknown as { query?: unknown }).query);
+    const workerRef = readOptionalString(q, "workerRef");
+    if (!workerRef) return reply.code(400).send({ error: "RWOS_CV_ASSET_INVALID", message: "workerRef is required." });
+    const assets = await listCvAssets(prisma!, workerRef);
+    return reply.code(200).send({ assets });
+  });
+
+  app.delete("/platform/jobscanner/cv-assets/:id", async (request, reply) => {
+    const actor = await requireHrAuthority(request, reply);
+    if (!actor) return;
+    const id = readRouteParam(request.params, "id");
+    const q = asRecord((request as unknown as { query?: unknown }).query);
+    const workerRef = readOptionalString(q, "workerRef");
+    if (!id || !isCanonicalUuid(id) || !workerRef) {
+      return reply.code(400).send({ error: "RWOS_CV_ASSET_INVALID", message: "A valid id and workerRef are required." });
+    }
+    const ok = await deleteCvAsset(prisma!, workerRef, id);
+    if (!ok) return reply.code(404).send({ error: "RWOS_CV_ASSET_NOT_FOUND" });
+    return reply.code(200).send({ deleted: true });
   });
 
   // Dynamic offer engine P2: record what actually happened to a proposed offer (accepted / declined /

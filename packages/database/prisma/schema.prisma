@@ -3213,3 +3213,22 @@ model ExternalJobLead {
   @@index([province, city], map: "external_job_leads_province_city_idx")
   @@map("external_job_leads")
 }
+
+// JobScanner CV builder: a worker's own CV attachments — certificates (MAPAQ, RCR, cariste, licence)
+// and an optional photo. The worker owns these; they are referenced on the CV (certificates listed in
+// a Certifications section). Bytes stored inline (small files; validated type + size). Not the
+// governance-heavy HR compliance document store (that is worker_identity / org-scoped).
+model CvAsset {
+  id          String   @id @default(uuid()) @db.Uuid
+  workerRef   String   @map("worker_ref") // worker identity id, or a wizard session ref pre-signup
+  kind        String // "certificate" | "photo"
+  label       String?
+  filename    String
+  contentType String   @map("content_type")
+  size        Int
+  data        Bytes
+  createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  @@index([workerRef], map: "cv_assets_worker_ref_idx")
+  @@map("cv_assets")
+}
