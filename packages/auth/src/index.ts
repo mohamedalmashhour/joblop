@@ -5177,6 +5177,14 @@ export type ResolvedRequestPricing = Readonly<{
   contractVersion: string;
   currency: string;
   snapshot: RequestPricingSnapshot;
+  // Gap A — variable client pricing captured at approval (optional; emergency is per-hour platform-kept,
+  // distance is a flat per-shift surcharge split 50/50 worker/platform).
+  variable?: Readonly<{
+    emergencySurchargePerHourMinor: number;
+    distanceSurchargeMinor: number;
+    distanceWorkerMinor: number;
+    distancePlatformMinor: number;
+  }>;
 }>;
 
 // Port that derives the immutable worker/platform split from the employer rate (E) and the admin

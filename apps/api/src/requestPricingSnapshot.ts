@@ -1,5 +1,11 @@
 import type { PrismaClient } from "@rwos/database";
-import { computeRequestPricingSnapshot, urgencyPremiumMinor } from "@rwos/shared";
+import {
+  computeRequestPricingSnapshot,
+  urgencyPremiumMinor,
+  emergencyClientSurchargeMinor,
+  distanceSurchargeMinor,
+  splitDistanceSurchargeMinor
+} from "@rwos/shared";
 import {
   createPrismaEmployerContractRepository,
   type RequestPricingSnapshotCapture
@@ -27,6 +33,7 @@ export function createPrismaRequestPricingSnapshotCapture(
           workGroupId: true,
           roleDefinitionId: true,
           urgency: true,
+          worksiteDistanceKm: true,
           startAt: true,
           calendarProfile: {
             select: {
@@ -73,13 +80,30 @@ export function createPrismaRequestPricingSnapshotCapture(
         lodgingAllowanceMinor: funded(profile?.lodgingProvision, profile?.lodgingAmountMinor)
       });
 
+      // Gap A — variable client pricing captured on the real job. Emergency is a per-hour surcharge the
+      // PLATFORM keeps (a % of the base employer labour rate, scales with billable hours). Distance
+      // (gas + travel time beyond the home-base free radius) is a flat per-shift surcharge split 50/50
+      // worker/platform. Demand uplift is intentionally NOT captured here (it's a matching-time signal).
+      const emergencySurchargePerHourMinor = emergencyClientSurchargeMinor({
+        labourClientMinor: roleRate.hourlyRateMinor,
+        urgency: jobRequest.urgency
+      });
+      const distance = distanceSurchargeMinor({ distanceKm: jobRequest.worksiteDistanceKm ?? 0 });
+      const distanceSplit = splitDistanceSurchargeMinor(distance.totalMinor);
+
       return {
         jobRequestId: jobRequest.id,
         organizationId: jobRequest.organizationId,
         contractId: contract.id,
         contractVersion: contract.version,
         currency: contract.currency,
-        snapshot
+        snapshot,
+        variable: {
+          emergencySurchargePerHourMinor,
+          distanceSurchargeMinor: distance.totalMinor,
+          distanceWorkerMinor: distanceSplit.workerMinor,
+          distancePlatformMinor: distanceSplit.platformMinor
+        }
       };
     },
 
@@ -101,6 +125,10 @@ export function createPrismaRequestPricingSnapshotCapture(
         mealWorkerMinor: s.meal.workerMinor,
         lodgingEmployerMinor: s.lodging.employerMinor,
         lodgingWorkerMinor: s.lodging.workerMinor,
+        emergencySurchargePerHourMinor: resolved.variable?.emergencySurchargePerHourMinor ?? 0,
+        distanceSurchargeMinor: resolved.variable?.distanceSurchargeMinor ?? 0,
+        distanceWorkerMinor: resolved.variable?.distanceWorkerMinor ?? 0,
+        distancePlatformMinor: resolved.variable?.distancePlatformMinor ?? 0,
         capturedByUserId,
         capturedAt: occurredAt
       };

@@ -2603,6 +2603,13 @@ export function buildApi(options: BuildApiOptions = {}) {
       endAt
     });
 
+    // Optional worksite distance (km) — input for the distance (gas/travel) surcharge captured at
+    // approval. Set directly (the governed draft service doesn't own pricing inputs).
+    const worksiteDistanceKm = readOptionalNumber(body, "worksiteDistanceKm");
+    if (worksiteDistanceKm != null && Number.isFinite(worksiteDistanceKm) && worksiteDistanceKm >= 0) {
+      await prisma!.jobRequest.update({ where: { id: jobRequest.id }, data: { worksiteDistanceKm } });
+    }
+
     return reply.code(201).send({ jobRequest: serializeJobRequest(jobRequest) });
   });
 
@@ -5020,10 +5027,27 @@ export function buildApi(options: BuildApiOptions = {}) {
         workerHourlyRateMinor: true,
         platformHourlyMarginMinor: true,
         marginPpm: true,
-        currency: true
+        currency: true,
+        emergencySurchargePerHourMinor: true,
+        distanceSurchargeMinor: true,
+        distanceWorkerMinor: true,
+        distancePlatformMinor: true
       }
     });
-    return reply.code(200).send({ pricingSnapshot: snap ?? null });
+    if (!snap) return reply.code(200).send({ pricingSnapshot: null });
+    // Full per-job money with the variable extras (Gap A). Per-hour amounts × billable hours land in
+    // the invoice/payroll; distance is a flat per-shift surcharge. "variableBreakdown" shows who keeps what.
+    return reply.code(200).send({
+      pricingSnapshot: snap,
+      variableBreakdown: {
+        emergencySurchargePerHourMinor: snap.emergencySurchargePerHourMinor, // billed to client per hour, platform keeps
+        distanceSurchargeMinor: snap.distanceSurchargeMinor, // flat per shift, billed to client
+        distanceWorkerMinor: snap.distanceWorkerMinor, // worker's travel half
+        distancePlatformMinor: snap.distancePlatformMinor, // platform's half
+        employerPerHourAllIn: snap.employerHourlyRateMinor + snap.emergencySurchargePerHourMinor,
+        platformKeptPerHour: snap.platformHourlyMarginMinor + snap.emergencySurchargePerHourMinor
+      }
+    });
   });
 
   app.put(

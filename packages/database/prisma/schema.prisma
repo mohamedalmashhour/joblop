@@ -1127,6 +1127,7 @@ model JobRequest {
   description        String?
   numberOfWorkers    Int               @default(1) @map("number_of_workers")
   urgency            JobRequestUrgency @default(normal)
+  worksiteDistanceKm Float?            @map("worksite_distance_km") // for the distance (gas/time) surcharge
   requestType        JobRequestType    @map("request_type")
   timezone           String
   startAt            DateTime          @map("start_at") @db.Timestamptz(3)
@@ -1356,6 +1357,13 @@ model RequestPricingSnapshot {
   mealWorkerMinor           Int      @default(0) @map("meal_worker_minor")
   lodgingEmployerMinor      Int      @default(0) @map("lodging_employer_minor")
   lodgingWorkerMinor        Int      @default(0) @map("lodging_worker_minor")
+  // Gap A — variable client pricing wired into the authoritative per-job money. Emergency is a
+  // per-hour platform-kept surcharge (scales with billable hours); distance (gas + travel time) is a
+  // flat per-shift amount split 50/50 worker/platform. Demand uplift stays a matching-time concept.
+  emergencySurchargePerHourMinor Int @default(0) @map("emergency_surcharge_per_hour_minor")
+  distanceSurchargeMinor    Int      @default(0) @map("distance_surcharge_minor")
+  distanceWorkerMinor       Int      @default(0) @map("distance_worker_minor")
+  distancePlatformMinor     Int      @default(0) @map("distance_platform_minor")
   capturedByUserId          String   @map("captured_by_user_id") @db.Uuid
   capturedAt                DateTime @default(now()) @map("captured_at") @db.Timestamptz(3)
 
