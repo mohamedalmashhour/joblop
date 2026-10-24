@@ -244,6 +244,7 @@ import {
 import { buildRemittanceSummary } from "./taxRemittance";
 import { buildTaxSlips, type SlipCalcInput } from "./taxSlip";
 import { GST_RATE_PPM, QST_RATE_PPM } from "./payChannel";
+import { buildAccounting, type AccountingCalcRow } from "./accounting";
 import { isWorkerDisputeCategory, normalizeWorkerDisputeReason } from "@rwos/shared";
 import { normalizeEscalationReason } from "@rwos/shared";
 import { raiseWorkerDispute, listWorkerDisputes, withdrawWorkerDispute } from "./workerDisputeRepository";
@@ -6260,6 +6261,49 @@ export function buildApi(options: BuildApiOptions = {}) {
       remittances: summary,
       lockedCalculations: ids.length,
       note: "Accrued liabilities from locked payroll. Nothing is filed or paid while the go-live gate is closed."
+    });
+  });
+
+  // Phase 4: the accountant's view. One strict, simple summary of the whole money flow over LOCKED
+  // payroll, per channel. The double-entry identity holds by construction: employer billed == worker
+  // net + deductions + employer cost + platform net. Surfaces the TRUE platform margin after the
+  // employer-side payroll burden. Derived; nothing filed or paid (gated).
+  app.get("/platform/finance/accounting", async (request, reply) => {
+    const actor = await requirePayrollAuthority(request, reply);
+    if (!actor) return;
+    const query = asRecord(request.query);
+    const organizationId = readOptionalString(query, "organizationId");
+    const orgFilter = organizationId && isCanonicalUuid(organizationId) ? `AND c.organization_id = '${organizationId}'` : "";
+    const rows = (await prisma!.$queryRawUnsafe(
+      `SELECT c.worker_classification AS channel,
+              c.gross_pay_minor AS worker_gross,
+              c.total_deductions_minor AS deductions,
+              c.total_employer_cost_minor AS employer_cost,
+              c.net_pay_minor AS worker_net,
+              COALESCE((
+                SELECT SUM(wtr.billable_minutes * s.employer_hourly_rate_minor)
+                FROM payroll_worked_time_references wtr
+                JOIN timesheets t ON t.id = wtr.timesheet_id
+                JOIN request_pricing_snapshots s ON s.job_request_id = t.job_request_id
+                WHERE wtr.payroll_calculation_id = c.id
+              ), 0) / 60 AS employer_billed,
+              c.currency AS currency
+       FROM payroll_calculations c
+       WHERE c.status = 'locked' ${orgFilter}`
+    )) as Array<Record<string, unknown>>;
+    const calcRows: AccountingCalcRow[] = rows.map((r) => ({
+      channel: String(r.channel ?? "employee"),
+      employerBilledMinor: Number(r.employer_billed ?? 0),
+      workerGrossMinor: Number(r.worker_gross ?? 0),
+      deductionsMinor: Number(r.deductions ?? 0),
+      employerCostMinor: Number(r.employer_cost ?? 0),
+      workerNetMinor: Number(r.worker_net ?? 0)
+    }));
+    const currency = rows.length ? String(rows[0]!.currency ?? "CAD") : "CAD";
+    return reply.code(200).send({
+      accounting: buildAccounting(calcRows, currency),
+      lockedCalculations: calcRows.length,
+      note: "Derived from locked payroll; the double-entry identity holds by construction. Nothing filed or paid (gated)."
     });
   });
 
