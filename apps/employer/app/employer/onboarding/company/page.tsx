@@ -5,48 +5,17 @@ import {
   organizationLifecycle
 } from "../../employerJourneyContent";
 import { styles } from "../../employerStyles";
+import { OnboardingPanel } from "./OnboardingPanel";
 
 export default function CompanyProfilePage() {
   return (
     <EmployerShell
       currentRoute="/employer/onboarding/company"
-      eyebrow="Company Profile"
-      title="Set up the organization without mixing public, legal, verified, and operational identity."
-      lede="Company Profile owns organization identity visibility. It does not implement verification, billing, role management, tax, compliance adjudication, or legal approval."
-      actions={
-        <a href="/employer/onboarding/residences" style={styles.primaryButton}>
-          Continue to residences
-        </a>
-      }
+      eyebrow="Get started"
+      title="Set up your organization, your first site, and a department — then create a staffing request."
+      lede="This persists your organization inside your authenticated account. It does not run verification, billing, or payments."
     >
-      <section style={styles.section}>
-        <div style={styles.sectionHeader}>
-          <p style={styles.eyebrowDark}>Organization information</p>
-          <h2 style={styles.sectionTitle}>Separate the identity layers before staffing begins.</h2>
-        </div>
-        <div style={styles.formGrid}>
-          <label style={styles.fieldLabel}>
-            Public display name
-            <input placeholder="Approved worker-facing name" style={styles.input} />
-          </label>
-          <label style={styles.fieldLabel}>
-            Legal organization name
-            <input placeholder="Legal name placeholder" style={styles.input} />
-          </label>
-          <label style={styles.fieldLabel}>
-            Authorized representative
-            <input placeholder="Representative placeholder" style={styles.input} />
-          </label>
-          <label style={styles.fieldLabel}>
-            Primary operational contact
-            <input placeholder="Scheduling or operations contact" style={styles.input} />
-          </label>
-        </div>
-        <p style={styles.warning}>
-          This is a development fixture surface. It does not verify legal identity, upload documents,
-          store billing data, or change employer approval status.
-        </p>
-      </section>
+      <OnboardingPanel />
 
       <section style={styles.whiteSection}>
         <div style={styles.sectionHeader}>
