@@ -211,7 +211,8 @@ import {
 import { createAdzunaClient } from "./jobScannerClient";
 import { upsertLeads, queryStoredLeads } from "./jobScannerRepository";
 import { startJobScannerSchedule, type ScanQuery } from "./jobScannerScheduler";
-import { createSyntheticCvProvider, type WorkerCvProfile, type TargetJob } from "./cvBuilder";
+import { type WorkerCvProfile, type TargetJob } from "./cvBuilder";
+import { getCvProvider } from "./cvBuilderClaude";
 import {
   activeMembershipRoleQuery,
   activePlatformGrantQuery,
@@ -6507,9 +6508,16 @@ export function buildApi(options: BuildApiOptions = {}) {
       const title = readOptionalString(j, "title");
       if (title) job = { title, employer: readOptionalString(j, "employer"), description: readOptionalString(j, "description"), city: readOptionalString(j, "city") };
     }
-    const result = await createSyntheticCvProvider().generate({ profile, job });
+    const provider = getCvProvider();
+    let result;
+    try {
+      result = await provider.generate({ profile, job });
+    } catch (err) {
+      return reply.code(502).send({ error: "RWOS_CV_PROVIDER_ERROR", message: (err as Error).message, provider: provider.kind });
+    }
     return reply.code(200).send({
       cv: result,
+      providerKind: provider.kind,
       note: "Advisory draft — the worker reviews and edits before use. Nothing is sent. Apply is a separate, worker-confirmed step."
     });
   });
