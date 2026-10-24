@@ -291,6 +291,7 @@ import { listPlatformOrdersInReview, getPlatformOrder } from "./adminOrderReposi
 import { raiseEscalation, listOpenEscalations, closeEscalation } from "./escalationRepository";
 import { workerAllowances } from "./workerAllowances";
 import { createPrismaInvoiceRepository, type InvoiceRepository } from "./invoiceRepository";
+import { autoGenerateInvoiceForLockedTimesheet } from "./invoiceFromTimesheet";
 import { createPrismaPayrollRepository, createPrismaPayrollRateResolver, createPrismaPayrollJurisdictionResolver, createPrismaPayrollClassificationResolver } from "./payrollRepository";
 import { registerPaymentRoutes } from "./paymentRoutes";
 import { registerStripeWebhookRoute } from "./stripeWebhookRoute";
@@ -7996,7 +7997,14 @@ export function buildApi(options: BuildApiOptions = {}) {
       expectedVersion: readOptionalNumber(body, "expectedVersion") ?? 0
     });
 
-    return reply.code(200).send({ timesheet: serializeTimesheet(timesheet) });
+    // Gap B: auto-generate the client invoice from the locked timesheet (labour + urgent + the Gap-A
+    // variable extras, with GST/QST). Never breaks the lock — a failure is reported, not thrown.
+    let invoice: Awaited<ReturnType<typeof autoGenerateInvoiceForLockedTimesheet>> | null = null;
+    if (invoiceRepository && prisma) {
+      invoice = await autoGenerateInvoiceForLockedTimesheet(prisma, invoiceRepository, timesheet.id, session.user.id);
+    }
+
+    return reply.code(200).send({ timesheet: serializeTimesheet(timesheet), invoice });
   });
 
   app.get("/platform/timesheets/:timesheetId/audit", async (request, reply) => {
