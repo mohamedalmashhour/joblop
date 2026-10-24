@@ -6360,6 +6360,34 @@ export function buildApi(options: BuildApiOptions = {}) {
     });
   });
 
+  // Dynamic offer engine P5: the operator dashboard — fill rate, realized margin, the outcome funnel,
+  // the active model, and recent offers. Read-only. See docs/matching/DYNAMIC_OFFER_ENGINE_DESIGN.md.
+  app.get("/platform/matching/dashboard", async (request, reply) => {
+    const actor = await requireHrAuthority(request, reply);
+    if (!actor) return;
+    const byOutcome = await prisma!.offerDecisionEvent.groupBy({ by: ["outcome"], _count: { _all: true } });
+    const counts: Record<string, number> = {};
+    for (const g of byOutcome) counts[g.outcome] = g._count._all;
+    const decided = (counts.accepted ?? 0) + (counts.declined ?? 0) + (counts.ignored ?? 0) + (counts.expired ?? 0);
+    const realized = await prisma!.offerDecisionEvent.aggregate({ _sum: { marginMinor: true }, where: { outcome: "accepted" } });
+    const avgPred = await prisma!.offerDecisionEvent.aggregate({ _avg: { acceptanceProbability: true } });
+    const model = await prisma!.matchingModelVersion.findFirst({ where: { modelType: "acceptance", isActive: true }, select: { sampleSize: true, logLoss: true, trainedAt: true } });
+    const recent = await prisma!.offerDecisionEvent.findMany({
+      orderBy: { createdAt: "desc" },
+      take: 10,
+      select: { workerIdentityId: true, transportAllowanceMinor: true, bonusMinor: true, acceptanceProbability: true, marginMinor: true, outcome: true, modelKind: true, createdAt: true }
+    });
+    return reply.code(200).send({
+      totalOffers: Object.values(counts).reduce((s, n) => s + n, 0),
+      outcomes: counts,
+      fillRate: decided > 0 ? Number(((counts.accepted ?? 0) / decided).toFixed(4)) : null,
+      realizedMarginMinor: realized._sum.marginMinor ?? 0,
+      avgPredictedAcceptance: avgPred._avg.acceptanceProbability != null ? Number(avgPred._avg.acceptanceProbability.toFixed(4)) : null,
+      model: model ? { kind: "learned-logistic", sampleSize: model.sampleSize, logLoss: model.logLoss, trainedAt: model.trainedAt } : { kind: "cold-start-prior" },
+      recent
+    });
+  });
+
   // Phase 5: the go-live gate's state. Shows whether live finance is on and exactly what stays
   // blocked while it is off. See docs/finance/TWO_CHANNEL_PAYROLL_DESIGN.md.
   app.get("/platform/finance/status", async (request, reply) => {
