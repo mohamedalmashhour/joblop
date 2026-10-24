@@ -49,11 +49,23 @@ export async function POST(request: Request) {
     );
   }
   if (context.status !== "ok") return sessionFailure(context.status);
+  // The residence-create API accepts the worksite jurisdiction as `region` + `country` (it ignores
+  // a "province" field). The onboarding province selector carries the Canadian region code
+  // (QC, ON, …); forward it as `region` and set the country so the worksite is created WITH a
+  // jurisdiction instead of none. NOTE: the payroll jurisdiction resolver currently reads the
+  // separate `province` column, so a worksite created here still needs the region/province column
+  // reconciliation (see the region-vs-province finding) before payroll can resolve it.
   const result = await gateway.request(
     `/organizations/${encodeURIComponent(context.organizationId)}/residences`,
     "POST",
     token,
-    { name, province, city, idempotencyKey: `res-${Date.now()}-${Math.random().toString(36).slice(2, 10)}` }
+    {
+      name,
+      city,
+      region: province,
+      country: "CA",
+      idempotencyKey: `res-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`
+    }
   );
   if (result.status !== "ok") return sessionFailure(result.status);
   const residence = (result.payload as { residence?: { id?: string; name?: string } }).residence;

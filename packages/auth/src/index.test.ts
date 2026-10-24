@@ -3104,6 +3104,40 @@ describe("worker offer foundation", () => {
     ]);
   });
 
+  it("creates an offer when the shortlist fully meets a single-worker requirement (preparedOfferCount === requiredWorkerCount)", async () => {
+    // Regression: moveToOfferPreparation sets preparedOfferCount = min(required, shortlisted).
+    // For a single-worker request with one shortlisted candidate that is exactly 1, which equals
+    // requiredWorkerCount. The offer capacity must still allow that one offer — a previous
+    // formulation (required - preparedOfferCount) evaluated to 0 here and made it impossible to
+    // ever offer the one worker. The broader-coverage context (required=2, shortlisted=1) masked
+    // this because its capacity was 1 either way.
+    const { workerOfferService, workerOfferRepository, dispatchReview, adminSession, workerOne } =
+      await createWorkerOfferContext({ numberOfWorkers: 1 });
+    const offer = await workerOfferService.createOffer({
+      session: adminSession,
+      roles: ["DISPATCHER"],
+      dispatchReviewId: dispatchReview.id,
+      workerIdentityId: workerOne.id,
+      expiresAt: new Date("2026-08-12T10:00:00.000Z")
+    });
+    expect(offer.status).toBe("draft");
+    // The single slot is now consumed — a second offer is correctly capacity-exceeded.
+    await expect(
+      workerOfferService.createOffer({
+        session: adminSession,
+        roles: ["DISPATCHER"],
+        dispatchReviewId: dispatchReview.id,
+        workerIdentityId: workerOne.id,
+        expiresAt: new Date("2026-08-12T10:00:00.000Z")
+      })
+    ).rejects.toMatchObject({
+      decision: expect.objectContaining({ status: "capacity_exceeded" })
+    });
+    await expect(
+      workerOfferRepository.countCapacityOffersForDispatch(dispatchReview.id)
+    ).resolves.toBe(1);
+  });
+
   it("approves, sends, views, and accepts without creating Assignment", async () => {
     const {
       workerOfferService,
@@ -6591,7 +6625,7 @@ function createJobRequestTestServices(
 }
 
 async function createApprovedDispatchContext(
-  input: { candidateSource?: DispatchCandidateSource } = {}
+  input: { candidateSource?: DispatchCandidateSource; numberOfWorkers?: number } = {}
 ) {
   const {
     organizationService,
@@ -6638,7 +6672,7 @@ async function createApprovedDispatchContext(
     workGroupSlug: "kitchen",
     roleDefinitionIdentifier: "chef",
     title: "Dispatch Chef Coverage",
-    numberOfWorkers: 2,
+    numberOfWorkers: input.numberOfWorkers ?? 2,
     urgency: "urgent",
     requestType: "single_day",
     timezone: "America/Toronto",
@@ -6681,11 +6715,16 @@ async function createApprovedDispatchContext(
 const WORKER_OFFER_TEST_NOW = new Date("2026-08-11T10:00:00.000Z");
 
 async function createWorkerOfferContext(
-  input: { deliveryProvider?: WorkerOfferDeliveryProvider; now?: () => Date } = {}
+  input: {
+    deliveryProvider?: WorkerOfferDeliveryProvider;
+    now?: () => Date;
+    numberOfWorkers?: number;
+  } = {}
 ) {
   const { dispatchService, dispatchRepository, approvedJobRequest, adminSession, organization } =
     await createApprovedDispatchContext({
-      candidateSource: new FixtureDispatchCandidateSource()
+      candidateSource: new FixtureDispatchCandidateSource(),
+      ...(input.numberOfWorkers !== undefined ? { numberOfWorkers: input.numberOfWorkers } : {})
     });
   const workerOfferRepository = new MemoryWorkerOfferRepository();
   const workerOfferService = createWorkerOfferService(

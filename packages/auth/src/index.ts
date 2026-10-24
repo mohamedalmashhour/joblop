@@ -6706,10 +6706,16 @@ export function createWorkerOfferService(
         );
       }
 
-      const remainingWorkerCount = Math.max(
-        0,
-        dispatchReview.requiredWorkerCount - dispatchReview.preparedOfferCount
-      );
+      // Offer capacity is the number of offers this dispatch may hold open at once. When the
+      // dispatch has been moved to offer_preparation, `preparedOfferCount` is the governed offer
+      // target set at that boundary (min of required headcount and shortlist size) — so up to that
+      // many offers may be created. For dispatches that reached offer_preparation without the
+      // boundary pass (e.g. seeded directly into the state), `preparedOfferCount` is 0 and we fall
+      // back to the required headcount. The repository gate enforces activeOfferCount < capacity.
+      const remainingWorkerCount =
+        dispatchReview.preparedOfferCount > 0
+          ? dispatchReview.preparedOfferCount
+          : dispatchReview.requiredWorkerCount;
       const title =
         normalizeRequiredJobRequestText(input.workerVisibleTitle ?? jobRequest.title, 4, 160) ??
         jobRequest.title;
