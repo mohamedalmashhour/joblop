@@ -235,6 +235,12 @@ import { registerDocumentRoutes } from "./documentRoutes";
 import { registerInvoiceRoutes } from "./invoiceRoutes";
 import { createPrismaRequestPricingSnapshotCapture } from "./requestPricingSnapshot";
 import { materializeAndListWorkerPayouts } from "./workerPayoutRepository";
+import {
+  WORKER_AGREEMENT_VERSIONS,
+  electClassification,
+  getActiveElection,
+  type WorkerClassification
+} from "./workerClassificationElection";
 import { isWorkerDisputeCategory, normalizeWorkerDisputeReason } from "@rwos/shared";
 import { normalizeEscalationReason } from "@rwos/shared";
 import { raiseWorkerDispute, listWorkerDisputes, withdrawWorkerDispute } from "./workerDisputeRepository";
@@ -3868,6 +3874,42 @@ export function buildApi(options: BuildApiOptions = {}) {
     }
   });
 
+  // HR authority: governed re-classification of a worker's pay channel (employee <-> contractor).
+  // This is the ONLY way the channel changes after onboarding — it supersedes the active election and
+  // appends a new signed one, with a reason, under HR authority. See
+  // docs/finance/TWO_CHANNEL_PAYROLL_DESIGN.md.
+  app.post("/platform/hr/workers/:workerIdentityId/reclassify", async (request, reply) => {
+    const actor = await requireHrAuthority(request, reply);
+    if (!actor) return;
+    const workerIdentityId = readRouteParam(request.params, "workerIdentityId");
+    const body = asRecord(request.body);
+    const classification = readOptionalString(body, "classification") as WorkerClassification | null;
+    const agreementVersion = readOptionalString(body, "agreementVersion");
+    const reason = readOptionalString(body, "reason");
+    if (!isCanonicalUuid(workerIdentityId) || (classification !== "employee" && classification !== "contractor") || !agreementVersion || !reason) {
+      return reply.code(400).send({ error: "RWOS_HR_INVALID", message: "workerIdentityId, classification, agreementVersion and reason are required." });
+    }
+    const result = await electClassification(prisma!, {
+      workerIdentityId,
+      classification,
+      electedByUserId: actor,
+      approvedByUserId: actor,
+      agreementVersion,
+      determinationRef: readOptionalString(body, "determinationRef") ?? null,
+      reason
+    });
+    if (!result.ok) {
+      if (result.reason === "stale_agreement_version") {
+        return reply.code(409).send({ error: "RWOS_AGREEMENT_VERSION_STALE", message: "Use the current agreement version.", agreementVersions: WORKER_AGREEMENT_VERSIONS });
+      }
+      if (result.reason === "unchanged") {
+        return reply.code(200).send({ election: await getActiveElection(prisma!, workerIdentityId), unchanged: true });
+      }
+      return reply.code(400).send({ error: "RWOS_HR_INVALID", message: "Invalid classification." });
+    }
+    return reply.code(201).send({ election: result.election });
+  });
+
   // HR authority: add / renew / revoke credentials.
   app.post("/platform/hr/workers/:workerIdentityId/credentials", async (request, reply) => {
     const actor = await requireHrAuthority(request, reply);
@@ -5557,6 +5599,22 @@ export function buildApi(options: BuildApiOptions = {}) {
     );
     if (!session.authenticated || !session.user) return sendWorkerOfferDenied(reply);
 
+    // A worker cannot accept work until they have signed a pay-channel election (employee or
+    // independent). This fixes the channel before any money is earned. The check needs the database;
+    // the no-DB test harness (mock services, prisma undefined) skips it. See
+    // docs/finance/TWO_CHANNEL_PAYROLL_DESIGN.md.
+    if (prisma) {
+      const electIdentity = await prisma.workerIdentity.findFirst({ where: { userId: session.user.id }, select: { id: true } });
+      const activeElection = electIdentity ? await getActiveElection(prisma, electIdentity.id) : null;
+      if (!activeElection) {
+        return reply.code(409).send({
+          error: "RWOS_CLASSIFICATION_ELECTION_REQUIRED",
+          message: "Choose and sign your pay channel (employee or independent) before accepting work.",
+          agreementVersions: WORKER_AGREEMENT_VERSIONS
+        });
+      }
+    }
+
     const body = asRecord(request.body);
     const workerOffer = await workerOfferService.accept({
       session,
@@ -6684,22 +6742,68 @@ export function buildApi(options: BuildApiOptions = {}) {
 
   // The worker declares their tax type (employee or travailleur autonome = contractor). This drives
   // payroll: employee -> source deductions + T4; contractor -> paid gross, no deductions, T4A.
-  app.put("/worker/profile/classification", async (request, reply) => {
+  // Read the worker's current signed classification election plus the agreement versions in force.
+  app.get("/worker/profile/classification", async (request, reply) => {
+    const session = await authService.validateSession(readBearerToken(request.headers.authorization));
+    if (!session.authenticated || !session.user) {
+      return reply.code(401).send({ error: "RWOS_WORKER_DENIED", message: "Authentication is required." });
+    }
+    const identity = await prisma!.workerIdentity.findFirst({ where: { userId: session.user.id }, select: { id: true } });
+    const election = identity ? await getActiveElection(prisma!, identity.id) : null;
+    return reply.code(200).send({ election, agreementVersions: WORKER_AGREEMENT_VERSIONS });
+  });
+
+  // Worker elects a pay channel at onboarding and SIGNS the matching agreement. Employee -> payroll
+  // (T4, source deductions); contractor -> independent (T4A, paid gross). Recorded as a signed,
+  // append-only election; this is the source of truth payroll reads. See
+  // docs/finance/TWO_CHANNEL_PAYROLL_DESIGN.md.
+  app.post("/worker/profile/classification-election", async (request, reply) => {
     const session = await authService.validateSession(readBearerToken(request.headers.authorization));
     if (!session.authenticated || !session.user) {
       return reply.code(401).send({ error: "RWOS_WORKER_DENIED", message: "Authentication is required." });
     }
     const body = asRecord(request.body);
-    const classification = readOptionalString(body, "classification");
+    const classification = readOptionalString(body, "classification") as WorkerClassification | null;
+    const agreementVersion = readOptionalString(body, "agreementVersion");
+    const agreementAccepted = body.agreementAccepted === true;
+    const determination = readOptionalString(body, "determinationRef");
     if (classification !== "employee" && classification !== "contractor") {
       return reply.code(400).send({ error: "RWOS_INVALID_CLASSIFICATION", message: "Classification must be employee or contractor." });
     }
-    const updated = await workerOfferService.setClassification({ userId: session.user.id, classification });
-    if (!updated) {
-      return reply.code(500).send({ error: "RWOS_WORKER_CLASSIFICATION_FAILED", message: "Could not update classification." });
+    if (!agreementAccepted || !agreementVersion) {
+      return reply.code(400).send({ error: "RWOS_AGREEMENT_NOT_SIGNED", message: "You must accept the agreement for the chosen channel to continue." });
     }
-    return reply.code(200).send({ classification: updated.classification });
+    // Ensure the worker identity exists, then record the signed election (worker self-signs).
+    const identity = await workerOfferService.ensureWorkerIdentity({ userId: session.user.id, displayName: null, preferredLanguage: null });
+    const result = await electClassification(prisma!, {
+      workerIdentityId: identity.id,
+      classification,
+      electedByUserId: session.user.id,
+      approvedByUserId: null,
+      agreementVersion,
+      determinationRef: determination ?? null,
+      reason: "Worker self-election at onboarding"
+    });
+    if (!result.ok) {
+      if (result.reason === "stale_agreement_version") {
+        return reply.code(409).send({ error: "RWOS_AGREEMENT_VERSION_STALE", message: "The agreement has been updated. Reload and accept the current version.", agreementVersions: WORKER_AGREEMENT_VERSIONS });
+      }
+      if (result.reason === "unchanged") {
+        const current = await getActiveElection(prisma!, identity.id);
+        return reply.code(200).send({ election: current, unchanged: true });
+      }
+      return reply.code(400).send({ error: "RWOS_INVALID_CLASSIFICATION", message: "Classification must be employee or contractor." });
+    }
+    return reply.code(201).send({ election: result.election });
   });
+
+  // The old free toggle is removed: classification can no longer be flipped without a signed election.
+  app.put("/worker/profile/classification", async (_request, reply) =>
+    reply.code(410).send({
+      error: "RWOS_CLASSIFICATION_TOGGLE_REMOVED",
+      message: "Classification is now a signed election. Use POST /worker/profile/classification-election."
+    })
+  );
 
   // The worker's payout ledger: what they are owed (To pay) and what has been sent (Paid). Reading it
   // materializes a pending payout per locked payroll calculation and auto-releases any whose two-week
