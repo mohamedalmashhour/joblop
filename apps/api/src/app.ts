@@ -374,6 +374,10 @@ export function buildApi(options: BuildApiOptions = {}) {
     ? trustedWorkerWebOrigin(options.publicWorkerWebOrigin ?? environment.WORKER_WEB_ORIGIN)
     : null;
   const runtimeConfig = getRuntimeConfig(environment);
+  // Two-channel pay go-live gate. OFF unless FINANCE_LIVE_ENABLED=enabled (which the config schema
+  // only permits with a recorded CPA sign-off in staging/production). While closed, the finance
+  // engine accounts for everything but executes no money and files nothing.
+  const financeLive = environment.FINANCE_LIVE_ENABLED === "enabled";
   const app = Fastify({
     logger: false,
     trustProxy: runtimeConfig.rwosEnv === "production" ? "loopback" : false
@@ -6261,6 +6265,40 @@ export function buildApi(options: BuildApiOptions = {}) {
       remittances: summary,
       lockedCalculations: ids.length,
       note: "Accrued liabilities from locked payroll. Nothing is filed or paid while the go-live gate is closed."
+    });
+  });
+
+  // Phase 5: the go-live gate's state. Shows whether live finance is on and exactly what stays
+  // blocked while it is off. See docs/finance/TWO_CHANNEL_PAYROLL_DESIGN.md.
+  app.get("/platform/finance/status", async (request, reply) => {
+    const actor = await requirePayrollAuthority(request, reply);
+    if (!actor) return;
+    return reply.code(200).send({
+      financeLive,
+      cpaSignoffRecorded: Boolean((environment.FINANCE_LIVE_CPA_SIGNOFF ?? "").trim()),
+      environment: runtimeConfig.rwosEnv,
+      blockedWhileGated: ["remittance_filing", "slip_filing", "worker_payout_execution"],
+      note: financeLive
+        ? "Live finance is ON. Execution paths are active."
+        : "Live finance is OFF. Everything is computed and accounted for, but no money moves and nothing is filed."
+    });
+  });
+
+  // Phase 5: execute a remittance filing to CRA / Revenu Québec. Hard-gated: refused while the
+  // go-live gate is closed. (The filing/payment provider integration itself is future work — this
+  // endpoint makes the gate explicit and enforced now.)
+  app.post("/platform/finance/remittances/file", async (request, reply) => {
+    const actor = await requirePayrollAuthority(request, reply);
+    if (!actor) return;
+    if (!financeLive) {
+      return reply.code(423).send({
+        error: "RWOS_FINANCE_GATED",
+        message: "Live finance is off. Remittances are accrued only; nothing is filed until the go-live gate opens (CPA sign-off required)."
+      });
+    }
+    return reply.code(501).send({
+      error: "RWOS_FINANCE_FILING_NOT_IMPLEMENTED",
+      message: "The remittance filing provider integration is not implemented yet."
     });
   });
 

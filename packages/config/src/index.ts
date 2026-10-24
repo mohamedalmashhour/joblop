@@ -59,9 +59,32 @@ const runtimeConfigSchema = z
     DOCUMENT_REFERENCE_SECRET: z.string().min(32).optional(),
     // HMAC secret verifying provider verification callbacks. Inert until set: without it the
     // callback endpoint rejects every request (no unsigned/unverifiable callback is trusted).
-    VERIFICATION_CALLBACK_SECRET: z.string().min(32).optional()
+    VERIFICATION_CALLBACK_SECRET: z.string().min(32).optional(),
+    // Two-channel pay go-live gate. OFF by default and everywhere: with it disabled the finance
+    // engine computes and accounts for everything (deductions, remittances, slips, double-entry) but
+    // executes no real money and files nothing. Turning it on is deliberate and requires a recorded
+    // CPA sign-off and a non-local environment (enforced below). See
+    // docs/finance/TWO_CHANNEL_PAYROLL_DESIGN.md.
+    FINANCE_LIVE_ENABLED: z.enum(["disabled", "enabled"]).default("disabled"),
+    FINANCE_LIVE_CPA_SIGNOFF: z.string().min(8).optional()
   })
   .superRefine((config, context) => {
+    if (config.FINANCE_LIVE_ENABLED === "enabled") {
+      if (!config.FINANCE_LIVE_CPA_SIGNOFF) {
+        context.addIssue({
+          code: "custom",
+          path: ["FINANCE_LIVE_ENABLED"],
+          message: "Live finance requires FINANCE_LIVE_CPA_SIGNOFF (a recorded CPA sign-off reference)."
+        });
+      }
+      if (config.RWOS_ENV !== "staging" && config.RWOS_ENV !== "production") {
+        context.addIssue({
+          code: "custom",
+          path: ["FINANCE_LIVE_ENABLED"],
+          message: "Live finance is allowed only in staging or production."
+        });
+      }
+    }
     if (config.STRIPE_TEST_MODE_ENABLED === "enabled") {
       if (config.RWOS_ENV !== "test" && config.RWOS_ENV !== "staging") {
         context.addIssue({

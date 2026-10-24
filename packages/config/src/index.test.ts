@@ -107,6 +107,17 @@ describe("production runtime configuration", () => {
     ).toMatchObject({ assignmentHandoffEnabled: true });
   });
 
+  it("gates live finance behind a CPA sign-off and a non-local environment", () => {
+    // Default: off, parses fine.
+    expect(() => getRuntimeConfig({ RWOS_ENV: "test" })).not.toThrow();
+    // Enabled without a recorded CPA sign-off is refused.
+    expect(() => getRuntimeConfig({ RWOS_ENV: "test", FINANCE_LIVE_ENABLED: "enabled" })).toThrow();
+    // Enabled with a sign-off but in a non-staging/production environment is still refused.
+    expect(() =>
+      getRuntimeConfig({ RWOS_ENV: "test", FINANCE_LIVE_ENABLED: "enabled", FINANCE_LIVE_CPA_SIGNOFF: "cpa-signoff-ref-0001" })
+    ).toThrow();
+  });
+
   it.each([
     {
       CANDIDATE_SOURCE_ORIGIN: "http://candidate.example.test",
