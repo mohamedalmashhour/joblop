@@ -211,6 +211,7 @@ import {
 import { createAdzunaClient } from "./jobScannerClient";
 import { upsertLeads, queryStoredLeads } from "./jobScannerRepository";
 import { startJobScannerSchedule, type ScanQuery } from "./jobScannerScheduler";
+import { createSyntheticCvProvider, type WorkerCvProfile, type TargetJob } from "./cvBuilder";
 import {
   activeMembershipRoleQuery,
   activePlatformGrantQuery,
@@ -6446,6 +6447,71 @@ export function buildApi(options: BuildApiOptions = {}) {
       ranked = true;
     }
     return reply.code(200).send({ leadCount: stored.length, ranked, leads, note: "External leads only — hand-off to the source, not JobLop jobs." });
+  });
+
+  // AI CV Builder: generate a tailored CV + cover letter for a worker, optionally targeted at a stored
+  // external lead (leadId) or an inline job. Uses the synthetic offline provider (a real Claude-backed
+  // provider plugs in behind a key later). ADVISORY — the worker reviews/edits before use; nothing is
+  // sent anywhere. This is also a revenue surface (premium generation) later.
+  app.post("/platform/jobscanner/cv", async (request, reply) => {
+    const actor = await requireHrAuthority(request, reply);
+    if (!actor) return;
+    const body = asRecord(request.body);
+    const profileRaw = asRecord(body.profile);
+    const fullName = readOptionalString(profileRaw, "fullName");
+    if (!fullName) {
+      return reply.code(400).send({ error: "RWOS_CV_INVALID", message: "profile.fullName is required." });
+    }
+    const strArray = (v: unknown): string[] => (Array.isArray(v) ? v.filter((x): x is string => typeof x === "string") : []);
+    const profile: WorkerCvProfile = {
+      fullName,
+      headline: readOptionalString(profileRaw, "headline"),
+      location: readOptionalString(profileRaw, "location"),
+      email: readOptionalString(profileRaw, "email"),
+      phone: readOptionalString(profileRaw, "phone"),
+      summary: readOptionalString(profileRaw, "summary"),
+      skills: strArray(profileRaw.skills),
+      languages: strArray(profileRaw.languages),
+      experience: Array.isArray(profileRaw.experience)
+        ? (profileRaw.experience as unknown[]).map((e) => {
+            const r = asRecord(e);
+            return {
+              role: readOptionalString(r, "role") ?? "",
+              employer: readOptionalString(r, "employer") ?? "",
+              start: readOptionalString(r, "start") ?? "",
+              end: readOptionalString(r, "end"),
+              highlights: strArray(r.highlights)
+            };
+          })
+        : [],
+      education: Array.isArray(profileRaw.education)
+        ? (profileRaw.education as unknown[]).map((e) => {
+            const r = asRecord(e);
+            return {
+              credential: readOptionalString(r, "credential") ?? "",
+              institution: readOptionalString(r, "institution") ?? "",
+              year: readOptionalString(r, "year")
+            };
+          })
+        : [],
+      language: readOptionalString(profileRaw, "language") === "fr" ? "fr" : "en"
+    };
+    // Target job: a stored lead by id, or an inline job object, or none (general CV).
+    let job: TargetJob | null = null;
+    const leadId = readOptionalString(body, "leadId");
+    if (leadId && isCanonicalUuid(leadId)) {
+      const lead = await prisma!.externalJobLead.findUnique({ where: { id: leadId } });
+      if (lead) job = { title: lead.title, employer: lead.employer, description: lead.description, city: lead.city };
+    } else if (body.job) {
+      const j = asRecord(body.job);
+      const title = readOptionalString(j, "title");
+      if (title) job = { title, employer: readOptionalString(j, "employer"), description: readOptionalString(j, "description"), city: readOptionalString(j, "city") };
+    }
+    const result = await createSyntheticCvProvider().generate({ profile, job });
+    return reply.code(200).send({
+      cv: result,
+      note: "Advisory draft — the worker reviews and edits before use. Nothing is sent. Apply is a separate, worker-confirmed step."
+    });
   });
 
   // Dynamic offer engine P2: record what actually happened to a proposed offer (accepted / declined /

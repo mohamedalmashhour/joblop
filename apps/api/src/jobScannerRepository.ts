@@ -94,9 +94,10 @@ export async function upsertLeads(prisma: PrismaClient, leads: readonly External
 }
 
 export type QueryLeadsOptions = Readonly<{ province?: string; city?: string; limit?: number }>;
+export type StoredLead = ExternalJobLead & Readonly<{ id: string }>;
 
 /** Query stored leads, most-recently-seen first, optionally filtered by province and/or city. */
-export async function queryStoredLeads(prisma: PrismaClient, opts: QueryLeadsOptions = {}): Promise<ExternalJobLead[]> {
+export async function queryStoredLeads(prisma: PrismaClient, opts: QueryLeadsOptions = {}): Promise<StoredLead[]> {
   const rows = await prisma.externalJobLead.findMany({
     where: {
       ...(opts.province ? { province: opts.province } : {}),
@@ -105,5 +106,5 @@ export async function queryStoredLeads(prisma: PrismaClient, opts: QueryLeadsOpt
     orderBy: { lastSeenAt: "desc" },
     take: opts.limit ?? 100
   });
-  return rows.map(toLead);
+  return rows.map((r) => ({ id: r.id, ...toLead(r) }));
 }
