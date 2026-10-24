@@ -6908,6 +6908,20 @@ export function buildApi(options: BuildApiOptions = {}) {
     if (!payrollPeriodId || !isCanonicalUuid(payrollPeriodId) || !workerIdentityId || !isCanonicalUuid(workerIdentityId)) {
       return reply.code(400).send({ error: "RWOS_PAYROLL_INVALID_INPUT", message: "payrollPeriodId and workerIdentityId are required." });
     }
+    // Gap C guard: if this worker's payroll for the period is already LOCKED, a recalculation would
+    // silently miss any newer timesheets. Refuse clearly — those timesheets belong to a supplementary
+    // run or the next period, not a stale/empty recompute.
+    const lockedCalc = await prisma!.payrollCalculation.findFirst({
+      where: { payrollPeriodId, workerIdentityId, status: "locked" },
+      select: { id: true }
+    });
+    if (lockedCalc) {
+      return reply.code(409).send({
+        error: "RWOS_PAYROLL_PERIOD_LOCKED",
+        message: "This worker's payroll for the period is already locked. Newer timesheets must go to a supplementary run or the next period — they are not added to a locked run.",
+        lockedCalculationId: lockedCalc.id
+      });
+    }
     try {
       const calc = await payrollService.calculate({ actorUserId: actor, payrollPeriodId, workerIdentityId, correlationId: request.id });
       return reply.code(201).send({ calculation: serializePayrollCalculation(calc), synthetic: true, notice: PAYROLL_SYNTHETIC_NOTICE });
