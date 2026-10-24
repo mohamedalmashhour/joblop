@@ -242,6 +242,8 @@ import {
   type WorkerClassification
 } from "./workerClassificationElection";
 import { buildRemittanceSummary } from "./taxRemittance";
+import { buildTaxSlips, type SlipCalcInput } from "./taxSlip";
+import { GST_RATE_PPM, QST_RATE_PPM } from "./payChannel";
 import { isWorkerDisputeCategory, normalizeWorkerDisputeReason } from "@rwos/shared";
 import { normalizeEscalationReason } from "@rwos/shared";
 import { raiseWorkerDispute, listWorkerDisputes, withdrawWorkerDispute } from "./workerDisputeRepository";
@@ -6885,6 +6887,54 @@ export function buildApi(options: BuildApiOptions = {}) {
     const toPayMinor = toPay.reduce((sum, p) => sum + p.workerReceivesMinor, 0);
     const paidMinor = paid.reduce((sum, p) => sum + p.workerReceivesMinor, 0);
     return reply.code(200).send({ toPay, paid, summary: { currency, toPayMinor, paidMinor }, synthetic: true });
+  });
+
+  // Phase 3b: the worker's year-end tax slip(s) — a T4 for employee pay, a T4A for contractor fees,
+  // derived from their LOCKED payroll for the year. Synthetic boxes; nothing is filed (gated). See
+  // docs/finance/TWO_CHANNEL_PAYROLL_DESIGN.md.
+  app.get("/worker/tax-slips", async (request, reply) => {
+    const session = await authService.validateSession(readBearerToken(request.headers.authorization));
+    if (!session.authenticated || !session.user) {
+      return reply.code(401).send({ error: "RWOS_WORKER_DENIED", message: "Authentication is required." });
+    }
+    const identity = await prisma!.workerIdentity.findFirst({ where: { userId: session.user.id }, select: { id: true } });
+    if (!identity) return reply.code(200).send({ slips: [], taxYear: null, synthetic: true });
+    const query = asRecord(request.query);
+    const taxYear = readOptionalNumber(query, "year") ?? new Date().getUTCFullYear();
+    const yearStart = new Date(Date.UTC(taxYear, 0, 1));
+    const yearEnd = new Date(Date.UTC(taxYear + 1, 0, 1));
+    const calcs = await prisma!.payrollCalculation.findMany({
+      where: { workerIdentityId: identity.id, status: "locked", payrollPeriod: { periodStart: { gte: yearStart, lt: yearEnd } } },
+      select: { id: true, workerClassification: true, grossPayMinor: true, totalEmployerCostMinor: true, currency: true }
+    });
+    if (calcs.length === 0) return reply.code(200).send({ slips: [], taxYear, synthetic: true });
+    const deductions = await prisma!.payrollDeductionLine.findMany({
+      where: { payrollCalculationId: { in: calcs.map((c) => c.id) } },
+      select: { payrollCalculationId: true, code: true, amountMinor: true }
+    });
+    const dedByCalc = new Map<string, Record<string, number>>();
+    for (const d of deductions) {
+      const m = dedByCalc.get(d.payrollCalculationId) ?? {};
+      m[d.code] = (m[d.code] ?? 0) + d.amountMinor;
+      dedByCalc.set(d.payrollCalculationId, m);
+    }
+    const taxProfile = await prisma!.workerTaxProfile.findUnique({ where: { workerIdentityId: identity.id }, select: { gstQstRegistered: true } });
+    const registered = taxProfile?.gstQstRegistered === true;
+    const inputs: SlipCalcInput[] = calcs.map((c) => {
+      const gross = c.grossPayMinor;
+      const gstQst = c.workerClassification === "contractor" && registered
+        ? Math.floor((gross * GST_RATE_PPM) / 1_000_000) + Math.floor((gross * QST_RATE_PPM) / 1_000_000)
+        : 0;
+      return {
+        classification: c.workerClassification,
+        grossPayMinor: gross,
+        deductionsByCode: dedByCalc.get(c.id) ?? {},
+        employerCostMinor: c.totalEmployerCostMinor,
+        gstQstCollectedMinor: gstQst
+      };
+    });
+    const slips = buildTaxSlips(taxYear, calcs[0]!.currency, inputs);
+    return reply.code(200).send({ slips, taxYear, synthetic: true, note: "Synthetic year-end slip; not filed with CRA/Revenu Québec." });
   });
 
   // The worker raises a dispute on what they are owed for a finished shift (its payout, by payroll
