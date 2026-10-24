@@ -1483,9 +1483,34 @@ model WorkerIdentity {
   hrCredentials      HrCredential[]
   hrCases            HrCase[]
   hrDocuments        HrDocument[]
+  classificationElections WorkerClassificationElection[]
 
   @@index([status], map: "worker_identities_status_idx")
   @@map("worker_identities")
+}
+
+// Two-channel pay (CRA/RQ): a worker's employee-vs-independent status is a signed, append-only
+// election, not a mutable flag. A change supersedes the prior row and writes a new one — the history
+// is the audit trail. Payroll reads the single `active` row. See docs/finance/TWO_CHANNEL_PAYROLL_DESIGN.md.
+model WorkerClassificationElection {
+  id                  String    @id @default(uuid()) @db.Uuid
+  workerIdentityId    String    @map("worker_identity_id") @db.Uuid
+  classification      String // "employee" | "contractor"
+  status              String    @default("active") // "active" | "superseded" | "revoked"
+  agreementDocumentId String?   @map("agreement_document_id") @db.Uuid
+  agreementVersion    String?   @map("agreement_version")
+  determinationRef    String?   @map("determination_ref")
+  reason              String?
+  effectiveFrom       DateTime  @map("effective_from") @db.Timestamptz(3)
+  effectiveTo         DateTime? @map("effective_to") @db.Timestamptz(3)
+  electedByUserId     String    @map("elected_by_user_id") @db.Uuid
+  approvedByUserId    String?   @map("approved_by_user_id") @db.Uuid
+  createdAt           DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  workerIdentity WorkerIdentity @relation(fields: [workerIdentityId], references: [id], onDelete: Restrict)
+
+  @@index([workerIdentityId, status], map: "wce_worker_status_idx")
+  @@map("worker_classification_elections")
 }
 
 // Worker-saved marketplace jobs. User-scoped (a worker saves opportunities to revisit).

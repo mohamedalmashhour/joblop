@@ -87,11 +87,22 @@ export function createPrismaPayrollClassificationResolver(
 ): { resolve(workerIdentityId: string): Promise<PayrollWorkerClassification> } {
   return {
     async resolve(workerIdentityId) {
-      const worker = await prisma.workerIdentity.findUnique({
-        where: { id: workerIdentityId },
+      // Authoritative source (Phase 1): the worker's single ACTIVE, signed classification election.
+      // Fall back to the legacy worker_identities.classification column only when no election exists
+      // yet (pre-Phase-1 data that has not been backfilled). See
+      // docs/finance/TWO_CHANNEL_PAYROLL_DESIGN.md.
+      const election = await prisma.workerClassificationElection.findFirst({
+        where: { workerIdentityId, status: "active" },
         select: { classification: true }
       });
-      const value = worker?.classification;
+      let value = election?.classification;
+      if (!value) {
+        const worker = await prisma.workerIdentity.findUnique({
+          where: { id: workerIdentityId },
+          select: { classification: true }
+        });
+        value = worker?.classification;
+      }
       if (value === "contractor" || value === "temporary_worker") return value;
       return "employee";
     }
