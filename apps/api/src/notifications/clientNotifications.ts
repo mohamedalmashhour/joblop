@@ -1,0 +1,103 @@
+import type { PrismaClient } from "@rwos/database";
+import type { EmailMessage, EmailSender } from "../mailer/emailSender";
+
+// Client-facing notification capsule — the two emails the owner's flow calls for:
+//   1. job code → client when admin approves the request for dispatch.
+//   2. "a worker accepted" → client when a worker accepts (assignment confirmed).
+// Copy is pure + bilingual (Québec: French default, English when the user's language is "en"), so it
+// is fully testable. The dispatcher is best-effort: it resolves the client from the job request's
+// creator, sends through the gated email capsule, and NEVER throws into the governed path — a missing
+// recipient or an unconfigured mailer is a quiet skip, not a failure. No money, no DB writes.
+
+export type NotificationLanguage = "fr" | "en";
+
+export function resolveLanguage(primaryLanguage: string | null | undefined): NotificationLanguage {
+  return primaryLanguage?.toLowerCase().startsWith("en") ? "en" : "fr";
+}
+
+export function jobCodeEmail(params: {
+  to: string;
+  language: NotificationLanguage;
+  jobCode: string;
+  title: string;
+}): EmailMessage {
+  const { to, jobCode, title } = params;
+  if (params.language === "en") {
+    return {
+      to,
+      subject: `JobLop — your request is approved (${jobCode})`,
+      text:
+        `Good news — your staffing request "${title}" has been approved and is now open to workers.\n\n` +
+        `Your job code is ${jobCode}. Keep it to track this request and find it in your calendar.\n\n` +
+        `We'll let you know as soon as a worker accepts.\n\n— JobLop`
+    };
+  }
+  return {
+    to,
+    subject: `JobLop — votre demande est approuvée (${jobCode})`,
+    text:
+      `Bonne nouvelle — votre demande de personnel « ${title} » a été approuvée et est maintenant ouverte aux travailleurs.\n\n` +
+      `Votre code de mission est ${jobCode}. Conservez-le pour suivre cette demande et la retrouver dans votre calendrier.\n\n` +
+      `Nous vous aviserons dès qu'un travailleur l'accepte.\n\n— JobLop`
+  };
+}
+
+export function workerAcceptedEmail(params: {
+  to: string;
+  language: NotificationLanguage;
+  jobCode: string;
+  title: string;
+}): EmailMessage {
+  const { to, jobCode, title } = params;
+  if (params.language === "en") {
+    return {
+      to,
+      subject: `JobLop — a worker accepted (${jobCode})`,
+      text:
+        `A worker has accepted your request "${title}" (job code ${jobCode}).\n\n` +
+        `The shift is now confirmed and appears in the worker's schedule. You'll see it in your calendar too.\n\n— JobLop`
+    };
+  }
+  return {
+    to,
+    subject: `JobLop — un travailleur a accepté (${jobCode})`,
+    text:
+      `Un travailleur a accepté votre demande « ${title} » (code de mission ${jobCode}).\n\n` +
+      `Le quart est maintenant confirmé et apparaît dans l'horaire du travailleur. Vous le verrez aussi dans votre calendrier.\n\n— JobLop`
+  };
+}
+
+export type ClientNotificationKind = "job_code" | "worker_accepted";
+
+export type ClientNotificationResult =
+  | Readonly<{ status: "sent" | "skipped" | "error"; kind: ClientNotificationKind }>
+  | Readonly<{ status: "no_recipient"; kind: ClientNotificationKind }>;
+
+// Resolve the client (job request creator) and send one notification. Best-effort, never throws.
+export async function notifyClient(
+  prisma: PrismaClient,
+  emailSender: EmailSender,
+  input: { jobRequestId: string; kind: ClientNotificationKind }
+): Promise<ClientNotificationResult> {
+  const { kind } = input;
+  try {
+    const job = await prisma.jobRequest.findUnique({
+      where: { id: input.jobRequestId },
+      select: { jobRequestNumber: true, title: true, createdByUserId: true }
+    });
+    if (!job?.createdByUserId) return { status: "no_recipient", kind };
+    const user = await prisma.user.findUnique({
+      where: { id: job.createdByUserId },
+      select: { emailNormalized: true, primaryLanguage: true }
+    });
+    if (!user?.emailNormalized) return { status: "no_recipient", kind };
+
+    const language = resolveLanguage(user.primaryLanguage);
+    const copy = { to: user.emailNormalized, language, jobCode: job.jobRequestNumber, title: job.title };
+    const message = kind === "job_code" ? jobCodeEmail(copy) : workerAcceptedEmail(copy);
+    const result = await emailSender.send(message);
+    return { status: result.status === "sent" ? "sent" : result.status === "error" ? "error" : "skipped", kind };
+  } catch {
+    return { status: "error", kind };
+  }
+}

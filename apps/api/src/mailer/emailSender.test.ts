@@ -13,11 +13,38 @@ describe("email sender capsule", () => {
     ).resolves.toEqual({ status: "skipped", reason: "not_configured" });
   });
 
+  it("posts to Brevo by default with api-key header and structured sender/to body", async () => {
+    let captured: Parameters<EmailFetch> | null = null;
+    const sender = createEmailSender({
+      apiKey: "xkeysib_secret",
+      from: "JobLop <ops@example.test>",
+      fetch: async (input, init) => {
+        captured = [input, init];
+        return { ok: true, status: 201, json: async () => ({ messageId: "brevo-1" }) };
+      }
+    });
+    expect(sender.configured).toBe(true);
+
+    const result = await sender.send({ to: "client@example.test", subject: "Approved", text: "code JR-1" });
+
+    expect(result).toEqual({ status: "sent", id: "brevo-1" });
+    const [url, init] = captured!;
+    expect(url).toBe("https://api.brevo.com/v3/smtp/email");
+    expect(init.headers["api-key"]).toBe("xkeysib_secret");
+    expect(JSON.parse(init.body)).toMatchObject({
+      sender: { email: "ops@example.test", name: "JobLop" },
+      to: [{ email: "client@example.test" }],
+      subject: "Approved",
+      textContent: "code JR-1"
+    });
+  });
+
   it("posts to Resend with bearer auth and the configured from-address when keyed", async () => {
     let captured: Parameters<EmailFetch> | null = null;
     const sender = createEmailSender({
       apiKey: "re_secret_key",
       from: "ops@example.test",
+      provider: "resend",
       fetch: async (input, init) => {
         captured = [input, init];
         return { ok: true, status: 200, json: async () => ({ id: "email-1" }) };

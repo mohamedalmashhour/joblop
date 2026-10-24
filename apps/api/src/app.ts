@@ -285,6 +285,7 @@ import {
 import { isWorkerDisputeCategory, normalizeWorkerDisputeReason } from "@rwos/shared";
 import { normalizeEscalationReason } from "@rwos/shared";
 import { buildCalendarExport } from "@rwos/shared";
+import { notifyClient } from "./notifications/clientNotifications";
 import { raiseWorkerDispute, listWorkerDisputes, withdrawWorkerDispute } from "./workerDisputeRepository";
 import { createEmployerOrderWithChildren, listEmployerOrders, getEmployerOrder, submitEmployerOrder, cancelEmployerOrder } from "./employerOrderRepository";
 import { listMarketWagesForResidence, listAllMarketWages, upsertMarketWage } from "./marketWageRepository";
@@ -499,8 +500,9 @@ export function buildApi(options: BuildApiOptions = {}) {
   const emailSender =
     options.emailSender ??
     createEmailSender({
-      apiKey: runtimeConfig.resendApiKey,
-      from: runtimeConfig.emailFrom
+      apiKey: runtimeConfig.emailApiKey,
+      from: runtimeConfig.emailFrom,
+      provider: runtimeConfig.emailProvider
     });
   const authService =
     options.authService ??
@@ -4775,6 +4777,11 @@ export function buildApi(options: BuildApiOptions = {}) {
         marginPpm: readOptionalNumber(body, "marginPpm") ?? null
       });
 
+      // Notify the client their request is approved, with the job code (best-effort, never blocks).
+      if (prisma) {
+        await notifyClient(prisma, emailSender, { jobRequestId: jobRequest.id, kind: "job_code" });
+      }
+
       return reply.code(200).send({ jobRequest: serializeJobRequest(jobRequest) });
     }
   );
@@ -5695,6 +5702,17 @@ export function buildApi(options: BuildApiOptions = {}) {
       expectedTermsVersionId: readRequiredString(body, "expectedTermsVersionId") ?? "",
       reason: readOptionalString(body, "reason")
     });
+
+    // Notify the client that a worker accepted (best-effort, never blocks the accept).
+    if (prisma) {
+      const offer = await prisma.workerOffer.findUnique({
+        where: { id: readRouteParam(request.params, "workerOfferId") },
+        select: { jobRequestId: true }
+      });
+      if (offer) {
+        await notifyClient(prisma, emailSender, { jobRequestId: offer.jobRequestId, kind: "worker_accepted" });
+      }
+    }
 
     return reply.code(200).send({ workerOffer: serializeWorkerOfferReference(workerOffer) });
   });

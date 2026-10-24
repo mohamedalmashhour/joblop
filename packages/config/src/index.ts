@@ -32,6 +32,10 @@ const runtimeConfigSchema = z
     // both are set: without them the mailer is a no-op (dev surfaces the code locally instead of
     // sending). Mirrors the STR gating model — the feature ships dark until the owner provisions keys.
     RESEND_API_KEY: z.string().min(1).optional(),
+    // Brevo (formerly Sendinblue) is the owner's chosen provider. Set BREVO_API_KEY (api-key header)
+    // and EMAIL_FROM; EMAIL_PROVIDER selects which HTTP API the mailer talks to (default brevo).
+    BREVO_API_KEY: z.string().min(1).optional(),
+    EMAIL_PROVIDER: z.enum(["brevo", "resend"]).default("brevo"),
     // Accept either a bare address (user@domain) or an RFC-5322 display-name form
     // ("JobLop <user@domain>"), which mail "From" headers use and Resend expects for branding.
     EMAIL_FROM: z
@@ -348,10 +352,16 @@ export function getRuntimeConfig(env: NodeJS.ProcessEnv = process.env) {
     hasDatabaseUrl: Boolean(parsed.DATABASE_URL),
     hasSessionSecret: Boolean(parsed.SESSION_SECRET),
     resendApiKey: parsed.RESEND_API_KEY,
+    emailProvider: parsed.EMAIL_PROVIDER,
+    // The API key for the selected provider — Brevo by default, Resend when EMAIL_PROVIDER=resend.
+    emailApiKey: parsed.EMAIL_PROVIDER === "resend" ? parsed.RESEND_API_KEY : parsed.BREVO_API_KEY,
     emailFrom: parsed.EMAIL_FROM,
     passwordResetPublicOrigin: parsed.PASSWORD_RESET_PUBLIC_ORIGIN,
-    // True only when both are present — the mailer sends real email; otherwise it stays a no-op.
-    hasEmailDelivery: Boolean(parsed.RESEND_API_KEY && parsed.EMAIL_FROM),
+    // True only when the selected provider's key + from-address are present; otherwise a no-op.
+    hasEmailDelivery: Boolean(
+      (parsed.EMAIL_PROVIDER === "resend" ? parsed.RESEND_API_KEY : parsed.BREVO_API_KEY) &&
+        parsed.EMAIL_FROM
+    ),
     stripeTestModeEnabled: parsed.STRIPE_TEST_MODE_ENABLED === "enabled",
     stripeTestSecretKey: parsed.STRIPE_TEST_SECRET_KEY,
     stripeTestWebhookSecret: parsed.STRIPE_TEST_WEBHOOK_SECRET,
