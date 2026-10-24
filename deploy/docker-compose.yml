@@ -1,135 +1,108 @@
-# JobLop — Mac self-host stack (staging tier) behind a Cloudflare Tunnel.
-# Postgres + API + the three web apps + cloudflared, all on one Docker network.
-# Public HTTPS + your domain come from the tunnel; nothing is exposed on your router.
+# JobLop self-hosted stack (NAS / mini-PC / Canadian cloud VM — identical everywhere).
+# Build once (the shared image), run Postgres + the four app containers + Caddy.
 #
-#   cd deploy && cp .env.example .env   # then fill it in
-#   docker compose up -d --build
+#   cd <repo root>
+#   cp deploy/.env.example deploy/.env   # then edit deploy/.env with real secrets
+#   docker compose -f deploy/docker-compose.yml --env-file deploy/.env build
+#   docker compose -f deploy/docker-compose.yml --env-file deploy/.env run --rm api \
+#       pnpm --filter @rwos/database exec prisma migrate deploy      # apply migrations once
+#   docker compose -f deploy/docker-compose.yml --env-file deploy/.env up -d
 #
-# Images are built from each app's existing Dockerfile (build context = repo root).
-name: joblop
-
-x-app-build: &app-build
-  context: ..
-  args:
-    RWOS_PUBLIC_DEPLOYMENT_TIER: staging
-    # Baked into the employer landing "Find work" links (build-time). Points at the worker app.
-    NEXT_PUBLIC_WORKER_APP_URL: ${WORKER_WEB_ORIGIN:-}
-
+# Payments/finance stay frozen; do NOT set production payment or FINANCE_LIVE env here.
 services:
-  db:
-    image: postgres:16-alpine
+  postgres:
+    image: postgres:16
     restart: unless-stopped
     environment:
-      POSTGRES_USER: rwos
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}
-      POSTGRES_DB: rwos
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
     volumes:
-      - pgdata:/var/lib/postgresql/data
+      - pgdata:/var/lib/postgresql/data   # put this volume on your SSD, not the USB drive
+    # No published port — only the app containers reach it on the internal network.
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U rwos -d rwos"]
-      interval: 5s
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
+      interval: 10s
       timeout: 5s
-      retries: 20
-    # Not published to the host — only the app containers reach it on the internal network.
-
-  # One-shot: apply DB migrations, then exit. The api waits for this to finish.
-  migrate:
-    build:
-      context: ..
-      dockerfile: apps/api/Dockerfile
-    command: ["pnpm", "--filter", "@rwos/database", "exec", "prisma", "migrate", "deploy"]
-    environment:
-      DATABASE_URL: postgresql://rwos:${POSTGRES_PASSWORD}@db:5432/rwos
-    depends_on:
-      db:
-        condition: service_healthy
-    restart: "no"
+      retries: 10
 
   api:
     build:
       context: ..
-      dockerfile: apps/api/Dockerfile
+      dockerfile: deploy/Dockerfile
+    image: joblop:latest
     restart: unless-stopped
-    env_file: [.env]
-    environment:
-      RWOS_ENV: staging
-      NODE_ENV: production
-      PORT: "8080"
-      INTERNAL_API_ORIGIN: http://api:8080
-      DATABASE_URL: postgresql://rwos:${POSTGRES_PASSWORD}@db:5432/rwos
     depends_on:
-      db:
+      postgres:
         condition: service_healthy
-      migrate:
-        condition: service_completed_successfully
-    healthcheck:
-      test: ["CMD-SHELL", "node -e \"fetch('http://127.0.0.1:8080/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))\""]
-      interval: 10s
-      timeout: 5s
-      retries: 30
-
-  admin:
-    build:
-      dockerfile: apps/admin/Dockerfile
-      <<: *app-build
-    restart: unless-stopped
-    env_file: [.env]
+    working_dir: /app/apps/api
+    command: ["pnpm", "start"]
     environment:
-      RWOS_ENV: staging
       NODE_ENV: production
-      PORT: "8080"
-      INTERNAL_API_ORIGIN: http://api:8080
-    depends_on:
-      api:
-        condition: service_healthy
-
-  employer:
-    build:
-      dockerfile: apps/employer/Dockerfile
-      <<: *app-build
-    restart: unless-stopped
-    env_file: [.env]
-    environment:
-      RWOS_ENV: staging
-      NODE_ENV: production
-      PORT: "8080"
-      INTERNAL_API_ORIGIN: http://api:8080
-    depends_on:
-      api:
-        condition: service_healthy
+      RWOS_ENV: production
+      PORT: "4000"
+      API_PORT: "4000"
+      DATABASE_URL: ${DATABASE_URL}
+      RWOS_COUNTRY: ${RWOS_COUNTRY}
+      # Real secrets come from deploy/.env — never commit them.
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+      ADZUNA_APP_ID: ${ADZUNA_APP_ID:-}
+      ADZUNA_APP_KEY: ${ADZUNA_APP_KEY:-}
+      ADZUNA_COUNTRY: ${ADZUNA_COUNTRY:-ca}
+    expose: ["4000"]
 
   worker:
-    build:
-      dockerfile: apps/worker/Dockerfile
-      <<: *app-build
+    image: joblop:latest
+    depends_on: [api]
     restart: unless-stopped
-    env_file: [.env]
+    working_dir: /app/apps/worker
+    command: ["pnpm", "start"]
     environment:
-      RWOS_ENV: staging
       NODE_ENV: production
-      PORT: "8080"
-      INTERNAL_API_ORIGIN: http://api:8080
-    depends_on:
-      api:
-        condition: service_healthy
+      RWOS_ENV: production
+      PORT: "8090"
+      INTERNAL_API_ORIGIN: http://api:4000
+    expose: ["8090"]
 
-  # Cloudflare Tunnel. Create the tunnel in the Cloudflare dashboard (Zero Trust →
-  # Networks → Tunnels), copy its token into CLOUDFLARE_TUNNEL_TOKEN, and map your
-  # public hostnames to these internal services (see deploy/README.md):
-  #   admin.<domain>    -> http://admin:8080
-  #   employer.<domain> -> http://employer:8080
-  #   app.<domain>      -> http://worker:8080
-  #   api.<domain>      -> http://api:8080   (only if you need the API publicly)
-  cloudflared:
-    image: cloudflare/cloudflared:latest
+  employer:
+    image: joblop:latest
+    depends_on: [api]
     restart: unless-stopped
-    command: ["tunnel", "--no-autoupdate", "run"]
+    working_dir: /app/apps/employer
+    command: ["pnpm", "start"]
     environment:
-      TUNNEL_TOKEN: ${CLOUDFLARE_TUNNEL_TOKEN:?set CLOUDFLARE_TUNNEL_TOKEN in .env}
-    depends_on:
-      - admin
-      - employer
-      - worker
+      NODE_ENV: production
+      RWOS_ENV: production
+      PORT: "8091"
+      INTERNAL_API_ORIGIN: http://api:4000
+    expose: ["8091"]
+
+  admin:
+    image: joblop:latest
+    depends_on: [api]
+    restart: unless-stopped
+    working_dir: /app/apps/admin
+    command: ["pnpm", "start"]
+    environment:
+      NODE_ENV: production
+      RWOS_ENV: production
+      PORT: "8092"
+      INTERNAL_API_ORIGIN: http://api:4000
+    expose: ["8092"]
+
+  caddy:
+    image: caddy:2
+    restart: unless-stopped
+    depends_on: [worker, employer, admin]
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
 
 volumes:
   pgdata:
+  caddy_data:
+  caddy_config:

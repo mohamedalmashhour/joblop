@@ -1,0 +1,22 @@
+# Caddy routes each domain to the right app and gets automatic TLS (Let's Encrypt).
+# Replace the domains with yours. If you use Cloudflare Tunnel instead of exposing 80/443,
+# you can skip Caddy and point the tunnel at worker:8090 / employer:8091 / admin:8092.
+
+# Worker-facing site (JobScanner, CV builder, offers)
+work.joblop.com {
+	encode gzip
+	reverse_proxy worker:8090
+}
+
+# Employer-facing site
+employer.joblop.com {
+	encode gzip
+	reverse_proxy employer:8091
+}
+
+# Admin console — keep this OFF the public internet in real use (reach it over VPN/Tailscale).
+# Shown here for completeness; comment it out for a public deployment.
+admin.joblop.com {
+	encode gzip
+	reverse_proxy admin:8092
+}
