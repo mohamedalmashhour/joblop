@@ -3,7 +3,7 @@ import { buildTaxSlips } from "./taxSlip";
 
 describe("year-end tax slips", () => {
   it("builds a T4 for employee pay", () => {
-    const [slip] = buildTaxSlips(2026, "CAD", [
+    const slip = buildTaxSlips(2026, "CAD", [
       {
         classification: "employee",
         grossPayMinor: 15264,
@@ -11,7 +11,7 @@ describe("year-end tax slips", () => {
         employerCostMinor: 2136,
         gstQstCollectedMinor: 0
       }
-    ]);
+    ])[0]!;
     expect(slip.slipType).toBe("T4");
     expect(slip.boxes.box14_employmentIncome).toBe(15264);
     expect(slip.boxes.box22_incomeTaxDeducted).toBe(2289 + 2136);
@@ -20,9 +20,9 @@ describe("year-end tax slips", () => {
   });
 
   it("builds a T4A for contractor fees with collected GST/QST", () => {
-    const [slip] = buildTaxSlips(2026, "CAD", [
+    const slip = buildTaxSlips(2026, "CAD", [
       { classification: "contractor", grossPayMinor: 15264, deductionsByCode: {}, employerCostMinor: 0, gstQstCollectedMinor: 2285 }
-    ]);
+    ])[0]!;
     expect(slip.slipType).toBe("T4A");
     expect(slip.boxes.box048_feesForServices).toBe(15264);
     expect(slip.boxes.gst_qst_collected).toBe(2285);

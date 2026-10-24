@@ -40,26 +40,34 @@ function makeFakePrisma() {
       return row;
     },
     async create({ data }: { data: Partial<Row> }) {
+      const d = data;
       const row: Row = {
         id: `election-${++seq}`,
-        agreementDocumentId: null,
-        agreementVersion: null,
-        determinationRef: null,
-        reason: null,
-        effectiveTo: null,
-        approvedByUserId: null,
-        createdAt: new Date(1_700_000_000_000 + seq),
-        ...(data as Row)
+        workerIdentityId: d.workerIdentityId!,
+        classification: d.classification!,
+        status: d.status!,
+        agreementDocumentId: d.agreementDocumentId ?? null,
+        agreementVersion: d.agreementVersion ?? null,
+        determinationRef: d.determinationRef ?? null,
+        reason: d.reason ?? null,
+        effectiveFrom: d.effectiveFrom!,
+        effectiveTo: d.effectiveTo ?? null,
+        electedByUserId: d.electedByUserId!,
+        approvedByUserId: d.approvedByUserId ?? null,
+        createdAt: new Date(1_700_000_000_000 + seq)
       };
       rows.push(row);
       return row;
     }
   };
-  const client = {
+  const api = {
     workerClassificationElection: table,
-    workerIdentity: { async updateMany() { return { count: 1 }; } },
-    async $transaction<T>(fn: (tx: typeof client) => Promise<T>) {
-      return fn(client);
+    workerIdentity: { async updateMany() { return { count: 1 }; } }
+  };
+  const client = {
+    ...api,
+    async $transaction<T>(fn: (tx: typeof api) => Promise<T>) {
+      return fn(api);
     }
   };
   return { prisma: client as never, rows };

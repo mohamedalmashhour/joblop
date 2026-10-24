@@ -21,7 +21,7 @@ const worker = (over: Partial<WorkerFeatures> = {}): WorkerFeatures => ({
 
 describe("dynamic offer optimizer", () => {
   it("sweetens the offer for a worker who requires transport", () => {
-    const [d] = optimizeOffers({ ...base, workers: [worker({ requiresTransport: true })] });
+    const d = optimizeOffers({ ...base, workers: [worker({ requiresTransport: true })] })[0]!;
     expect(d.terms.transportAllowanceMinor).toBeGreaterThan(0); // base-only would barely be accepted
     expect(d.marginMinor).toBe(d.clientPriceMinor - d.workerCostMinor);
     expect(d.expectedMarginMinor).toBe(Math.round(d.acceptanceProbability * d.marginMinor));
@@ -30,7 +30,7 @@ describe("dynamic offer optimizer", () => {
   it("respects the margin floor — won't add incentives that breach it", () => {
     // Client price = 5000*8 = 40000. Base worker cost = 20000 (margin 20000). A transport step costs
     // 2500 more (margin 17500). With a floor of 18000, only the base offer qualifies.
-    const [d] = optimizeOffers({ ...base, marginFloorMinor: 18000, workers: [worker({ requiresTransport: true })] });
+    const d = optimizeOffers({ ...base, marginFloorMinor: 18000, workers: [worker({ requiresTransport: true })] })[0]!;
     expect(d.terms.transportAllowanceMinor).toBe(0);
     expect(d.marginMinor).toBeGreaterThanOrEqual(18000);
   });
@@ -42,7 +42,7 @@ describe("dynamic offer optimizer", () => {
   });
 
   it("flags a worker whose minimum is above the base as unlikely to accept", () => {
-    const [d] = optimizeOffers({ ...base, workers: [worker({ minRatePerHourMinor: 3000 })] });
+    const d = optimizeOffers({ ...base, workers: [worker({ minRatePerHourMinor: 3000 })] })[0]!;
     expect(d.acceptanceProbability).toBeLessThan(0.1);
   });
 
@@ -65,8 +65,8 @@ describe("dynamic offer optimizer", () => {
 
   it("prioritizes fill over margin at the last minute", () => {
     const urgent = { ...job, hoursUntilShift: 3 };
-    const [fillFirst] = optimizeOffers({ ...base, job: urgent, workers: [worker({ requiresTransport: true })] });
-    const [marginFirst] = optimizeOffers({ ...base, job: urgent, objective: "expected_margin", workers: [worker({ requiresTransport: true })] });
+    const fillFirst = optimizeOffers({ ...base, job: urgent, workers: [worker({ requiresTransport: true })] })[0]!;
+    const marginFirst = optimizeOffers({ ...base, job: urgent, objective: "expected_margin", workers: [worker({ requiresTransport: true })] })[0]!;
     expect(fillFirst.acceptanceProbability).toBeGreaterThanOrEqual(marginFirst.acceptanceProbability);
   });
 

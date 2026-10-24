@@ -53,7 +53,7 @@ export function trainLogistic(samples: readonly TrainingSample[], opts: TrainOpt
     for (const s of samples) {
       const p = sigmoid(dot(w, s.x));
       const err = p - s.y;
-      for (let j = 0; j < dim; j++) grad[j] += err * (s.x[j] ?? 0);
+      for (let j = 0; j < dim; j++) grad[j] = (grad[j] ?? 0) + err * (s.x[j] ?? 0);
     }
     for (let j = 0; j < dim; j++) {
       // No L2 on the bias term (index 0).
