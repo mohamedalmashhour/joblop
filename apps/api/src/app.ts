@@ -210,6 +210,7 @@ import {
 } from "@rwos/service-auth";
 import { createAdzunaClient } from "./jobScannerClient";
 import { upsertLeads, queryStoredLeads } from "./jobScannerRepository";
+import { startJobScannerSchedule, type ScanQuery } from "./jobScannerScheduler";
 import {
   activeMembershipRoleQuery,
   activePlatformGrantQuery,
@@ -6369,11 +6370,14 @@ export function buildApi(options: BuildApiOptions = {}) {
     const what = readOptionalString(body, "what") ?? undefined;
     const where = readOptionalString(body, "where") ?? undefined;
     const resultsPerPage = readOptionalNumber(body, "resultsPerPage") ?? 20;
+    // Recency filter — the best available proxy for "needed now / urgent" (the feed has no urgency flag).
+    const maxDaysOld = readOptionalNumber(body, "maxDaysOld") ?? undefined;
     let raws;
     try {
       raws = await client.search({
         ...(what !== undefined ? { what } : {}),
         ...(where !== undefined ? { where } : {}),
+        ...(maxDaysOld !== undefined ? { maxDaysOld } : {}),
         resultsPerPage
       });
     } catch (err) {
@@ -7768,6 +7772,29 @@ export function buildApi(options: BuildApiOptions = {}) {
 
     return reply.code(200).send({ timesheet: serializeTimesheet(timesheet) });
   });
+
+  // JobScanner scheduled re-scan — OFF by default. Turn on with JOBSCANNER_SCAN_INTERVAL_MIN plus
+  // JOBSCANNER_SCAN_QUERIES (a JSON array of {what,where,maxDaysOld}). ⚠️ Each query spends one Adzuna
+  // call; the free test plan is 25 calls total, so only enable live scheduling on a paid Adzuna plan.
+  if (prisma && process.env.JOBSCANNER_SCAN_INTERVAL_MIN && process.env.JOBSCANNER_SCAN_QUERIES) {
+    const intervalMinutes = Number(process.env.JOBSCANNER_SCAN_INTERVAL_MIN);
+    let queries: ScanQuery[] = [];
+    try {
+      const parsed = JSON.parse(process.env.JOBSCANNER_SCAN_QUERIES) as unknown;
+      if (Array.isArray(parsed)) queries = parsed as ScanQuery[];
+    } catch {
+      queries = [];
+    }
+    if (Number.isFinite(intervalMinutes) && intervalMinutes > 0 && queries.length > 0) {
+      const client = createAdzunaClient({
+        appId: process.env.ADZUNA_APP_ID ?? null,
+        appKey: process.env.ADZUNA_APP_KEY ?? null,
+        country: process.env.ADZUNA_COUNTRY ?? "ca"
+      });
+      const stop = startJobScannerSchedule({ prisma, client, queries, intervalMinutes, logger });
+      app.addHook("onClose", async () => stop());
+    }
+  }
 
   async function resolveCatalogueReadRoles(userId: string, organizationId: string | null) {
     if (organizationId) {
