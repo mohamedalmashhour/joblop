@@ -89,6 +89,9 @@ export type PayrollRuleInput = Readonly<{
   currency: MoneyEngineCurrency;
   segments: readonly PayrollRuleSegment[];
   workerClassification: PayrollWorkerClassification;
+  // The date the rates are resolved against (effective-dated rate table). Optional; when omitted the
+  // most recent rate entry for the jurisdiction is used.
+  asOf?: Date;
 }>;
 
 export type PayrollRuleResult = Readonly<{
@@ -155,18 +158,54 @@ type SyntheticJurisdictionConfig = Readonly<{
   employerContributionBps: number;
 }>;
 
-const SYNTHETIC_CONFIGS: Readonly<Record<string, SyntheticJurisdictionConfig>> = {
-  "CA/QC": { overtimeThresholdMinutes: 2400, overtimeMultiplierBps: 15000, vacationPayBps: 600, federalTaxBps: 1500, provincialTaxBps: 1400, socialInsuranceBps: 600, employerContributionBps: 1400 },
-  "CA/ON": { overtimeThresholdMinutes: 2640, overtimeMultiplierBps: 15000, vacationPayBps: 400, federalTaxBps: 1500, provincialTaxBps: 900, socialInsuranceBps: 600, employerContributionBps: 1000 }
+// Effective-dated rate table. Each jurisdiction has one or more entries ordered by effectiveFrom; the
+// entry in force at the pay-period date (input.asOf) is applied. The CURRENT entries are SYNTHETIC
+// placeholders with NO statutory authority. A Québec CPA adds real, effective-dated entries
+// (source: "statutory") here: past periods keep their rates, and periods on/after a new entry's
+// effectiveFrom pick up the real rates. See docs/finance/TWO_CHANNEL_PAYROLL_DESIGN.md.
+type JurisdictionRateEntry = SyntheticJurisdictionConfig &
+  Readonly<{ effectiveFrom: Date; source: "synthetic" | "statutory"; note?: string }>;
+
+const JURISDICTION_RATE_TABLE: Readonly<Record<string, readonly JurisdictionRateEntry[]>> = {
+  "CA/QC": [
+    {
+      effectiveFrom: new Date("2000-01-01T00:00:00.000Z"),
+      source: "synthetic",
+      note: "Placeholder — replace with CPA-validated CA/QC rates (QPP, QPIP, income tax, employer contribution).",
+      overtimeThresholdMinutes: 2400, overtimeMultiplierBps: 15000, vacationPayBps: 600, federalTaxBps: 1500, provincialTaxBps: 1400, socialInsuranceBps: 600, employerContributionBps: 1400
+    }
+    // CPA: add the real CA/QC rates as a new dated entry, e.g.
+    // { effectiveFrom: new Date("2026-01-01T00:00:00.000Z"), source: "statutory", note: "CRA/RQ 2026",
+    //   overtimeThresholdMinutes: …, overtimeMultiplierBps: …, vacationPayBps: …, federalTaxBps: …,
+    //   provincialTaxBps: …, socialInsuranceBps: …, employerContributionBps: … }
+  ],
+  "CA/ON": [
+    {
+      effectiveFrom: new Date("2000-01-01T00:00:00.000Z"),
+      source: "synthetic",
+      note: "Placeholder — replace with CPA-validated CA/ON rates.",
+      overtimeThresholdMinutes: 2640, overtimeMultiplierBps: 15000, vacationPayBps: 400, federalTaxBps: 1500, provincialTaxBps: 900, socialInsuranceBps: 600, employerContributionBps: 1000
+    }
+  ]
 };
+
+// Resolve the rate entry in force for a jurisdiction at `asOf` (defaults to the most recent entry).
+export function resolveRateEntry(jurisdictionKey: string, asOf?: Date): JurisdictionRateEntry | null {
+  const entries = JURISDICTION_RATE_TABLE[jurisdictionKey];
+  if (!entries || entries.length === 0) return null;
+  const at = asOf ?? new Date(8_640_000_000_000_000);
+  const inForce = entries.filter((e) => e.effectiveFrom.getTime() <= at.getTime());
+  const pool = inForce.length > 0 ? inForce : entries; // before the first entry, fall back to the earliest
+  return pool.reduce((latest, e) => (e.effectiveFrom.getTime() > latest.effectiveFrom.getTime() ? e : latest));
+}
 
 export function createSyntheticPayrollRuleProvider(): PayrollRuleProvider {
   return {
     key: "synthetic-fixture",
     version: "synthetic-2026.08",
-    supports: (j) => payrollJurisdictionKey(j) in SYNTHETIC_CONFIGS,
+    supports: (j) => resolveRateEntry(payrollJurisdictionKey(j)) !== null,
     evaluate: (input) => {
-      const cfg = SYNTHETIC_CONFIGS[payrollJurisdictionKey(input.jurisdiction)];
+      const cfg = resolveRateEntry(payrollJurisdictionKey(input.jurisdiction), input.asOf);
       if (!cfg) {
         throw new PayrollError("invalid", `unsupported_jurisdiction:${payrollJurisdictionKey(input.jurisdiction)}`);
       }
@@ -397,7 +436,7 @@ export function createPayrollService(deps: PayrollDeps) {
       .map((seg) => ({ contractId: seg.contractId, contractVersion: seg.contractVersion, hourlyRate: createContractMoney({ amountMinor: seg.hourlyRateMinor, currency }), payableMinutes: seg.payableMinutes }));
 
     const workerClassification = deps.classificationResolver ? await deps.classificationResolver.resolve(workerIdentityId) : "employee";
-    const result = provider.evaluate({ jurisdiction, currency, segments, workerClassification });
+    const result = provider.evaluate({ jurisdiction, currency, segments, workerClassification, asOf: period.periodEnd });
     assertResultCurrency(result, currency);
     const totals = computePayrollTotals(result, currency);
     const fingerprint = buildCalculationFingerprint({ period, workerIdentityId, jurisdiction, provider, policyVersion, workerClassification, snapshots, result, totals });

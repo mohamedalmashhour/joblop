@@ -6,6 +6,7 @@ import {
   createPayrollService,
   createSyntheticPayrollRuleProvider,
   payrollJurisdictionKey,
+  resolveRateEntry,
   type CreatePayrollCalculationInput,
   type PayrollJurisdiction,
   type PayrollJurisdictionResolver,
@@ -39,6 +40,16 @@ describe("synthetic payroll rule provider (segmented)", () => {
     // $30 * 8h = 24000 ; $35 * 8h = 28000
     expect(regulars.find((r) => r.sourceContractVersion === "v4")!.amount.amountMinor).toBe(24000);
     expect(regulars.find((r) => r.sourceContractVersion === "v5")!.amount.amountMinor).toBe(28000);
+  });
+
+  it("resolves the effective-dated rate entry for a jurisdiction", () => {
+    const qc = resolveRateEntry("CA/QC");
+    expect(qc?.source).toBe("synthetic");
+    expect(qc?.federalTaxBps).toBe(1500);
+    // Before the earliest entry's effectiveFrom, fall back to the earliest (never undefined rates).
+    expect(resolveRateEntry("CA/QC", new Date("1990-01-01T00:00:00.000Z"))?.source).toBe("synthetic");
+    // Unknown jurisdiction resolves to null (provider.supports is false).
+    expect(resolveRateEntry("CA/US")).toBeNull();
   });
 
   it("contractor takes no deductions; net = gross - deductions; integer minor units", () => {
