@@ -93,23 +93,40 @@ export type OptimizeInput = Readonly<{
   workers: readonly WorkerFeatures[];
   baseRatePerHourMinor: number; // governed worker base ($25/hr)
   marginFloorMinor: number; // never offer below this platform margin
-  incentiveLadder?: readonly Omit<OfferTerms, "baseRatePerHourMinor">[]; // escalation steps
+  incentiveLadder?: readonly Omit<OfferTerms, "baseRatePerHourMinor">[]; // escalation steps (default: time-aware)
   acceptanceModel?: AcceptanceModel;
   willingnessModel?: WillingnessToPayModel;
+  // "expected_margin" maximizes P(accept) × margin; "fill_first" prioritizes getting it filled. Default
+  // is fill_first within 6h of the shift (fill matters more than margin at the last minute).
+  objective?: "expected_margin" | "fill_first";
 }>;
 
-const DEFAULT_LADDER: readonly Omit<OfferTerms, "baseRatePerHourMinor">[] = [
-  { transportAllowanceMinor: 0, bonusMinor: 0 },
-  { transportAllowanceMinor: 2500, bonusMinor: 0 }, // + ~1h transport
-  { transportAllowanceMinor: 2500, bonusMinor: 2000 } // + transport + bonus
-];
+function isBetter(c: OfferDecision, best: OfferDecision, objective: "expected_margin" | "fill_first"): boolean {
+  if (objective === "fill_first") {
+    return c.acceptanceProbability > best.acceptanceProbability || (c.acceptanceProbability === best.acceptanceProbability && c.marginMinor > best.marginMinor);
+  }
+  return c.expectedMarginMinor > best.expectedMarginMinor;
+}
+
+const T = 2500; // ~1h transport allowance
+
+// Time-aware escalation: with lots of runway, offer few sweeteners (protect margin); as the shift
+// nears and the job is still unfilled, make bigger incentives available so acceptance can be bought.
+// The optimizer still only picks a step if it beats the others on the chosen objective.
+export function escalationLadder(hoursUntilShift: number): readonly Omit<OfferTerms, "baseRatePerHourMinor">[] {
+  if (hoursUntilShift > 72) return [{ transportAllowanceMinor: 0, bonusMinor: 0 }, { transportAllowanceMinor: T, bonusMinor: 0 }];
+  if (hoursUntilShift > 48) return [{ transportAllowanceMinor: 0, bonusMinor: 0 }, { transportAllowanceMinor: T, bonusMinor: 0 }, { transportAllowanceMinor: T, bonusMinor: 1500 }];
+  if (hoursUntilShift > 24) return [{ transportAllowanceMinor: 0, bonusMinor: 0 }, { transportAllowanceMinor: T, bonusMinor: 0 }, { transportAllowanceMinor: T, bonusMinor: 2000 }, { transportAllowanceMinor: T, bonusMinor: 3500 }];
+  return [{ transportAllowanceMinor: 0, bonusMinor: 0 }, { transportAllowanceMinor: T, bonusMinor: 0 }, { transportAllowanceMinor: T, bonusMinor: 3000 }, { transportAllowanceMinor: T, bonusMinor: 5000 }, { transportAllowanceMinor: T, bonusMinor: 8000 }];
+}
 
 // For each candidate worker, pick the offer on the escalation ladder with the highest EXPECTED margin
 // that stays within the margin floor and the client's willingness-to-pay ceiling. Ranked best-first.
 export function optimizeOffers(input: OptimizeInput): OfferDecision[] {
   const acceptance = input.acceptanceModel ?? createPriorAcceptanceModel();
   const willingness = input.willingnessModel ?? createPriorWillingnessModel();
-  const ladder = input.incentiveLadder ?? DEFAULT_LADDER;
+  const ladder = input.incentiveLadder ?? escalationLadder(input.job.hoursUntilShift);
+  const objective = input.objective ?? (input.job.hoursUntilShift <= 6 ? "fill_first" : "expected_margin");
   const ceiling = willingness.ceilingMinor(input.client, input.job);
   const clientPriceMinor = input.client.billPerHourMinor * input.job.hours + input.client.extrasMinor;
 
@@ -137,9 +154,13 @@ export function optimizeOffers(input: OptimizeInput): OfferDecision[] {
             ? `sweetened (transport ${step.transportAllowanceMinor > 0 ? "yes" : "no"}, bonus ${step.bonusMinor > 0 ? "yes" : "no"}) — expected margin maximized`
             : "base offer — expected margin maximized"
       };
-      if (!best || candidate.expectedMarginMinor > best.expectedMarginMinor) best = candidate;
+      if (!best || isBetter(candidate, best, objective)) best = candidate;
     }
     if (best) decisions.push(best);
   }
-  return decisions.sort((a, b) => b.expectedMarginMinor - a.expectedMarginMinor);
+  return decisions.sort((a, b) =>
+    objective === "fill_first"
+      ? b.acceptanceProbability - a.acceptanceProbability || b.expectedMarginMinor - a.expectedMarginMinor
+      : b.expectedMarginMinor - a.expectedMarginMinor
+  );
 }

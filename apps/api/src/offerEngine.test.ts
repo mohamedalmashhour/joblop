@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { createPriorAcceptanceModel, optimizeOffers, type WorkerFeatures } from "./offerEngine";
+import { createPriorAcceptanceModel, escalationLadder, optimizeOffers, type WorkerFeatures } from "./offerEngine";
 
 // Client charged $50/hr, worker base $25/hr, 8-hour shift in Montréal (no client extras).
 const job = { hours: 8, distanceKm: 10, hoursUntilShift: 72 };
@@ -54,6 +54,20 @@ describe("dynamic offer optimizer", () => {
     expect(ds[0]!.expectedMarginMinor).toBeGreaterThanOrEqual(ds[ds.length - 1]!.expectedMarginMinor);
     // the far worker (distance 10 > max 1) is near-unacceptable
     expect(ds.find((d) => d.workerIdentityId === "far")!.acceptanceProbability).toBeLessThan(0.1);
+  });
+
+  it("offers bigger incentives as the shift nears (escalation)", () => {
+    expect(escalationLadder(100).length).toBeLessThan(escalationLadder(30).length);
+    expect(escalationLadder(30).length).toBeLessThan(escalationLadder(3).length);
+    const maxBonus = (h: number) => Math.max(...escalationLadder(h).map((s) => s.bonusMinor));
+    expect(maxBonus(3)).toBeGreaterThan(maxBonus(100));
+  });
+
+  it("prioritizes fill over margin at the last minute", () => {
+    const urgent = { ...job, hoursUntilShift: 3 };
+    const [fillFirst] = optimizeOffers({ ...base, job: urgent, workers: [worker({ requiresTransport: true })] });
+    const [marginFirst] = optimizeOffers({ ...base, job: urgent, objective: "expected_margin", workers: [worker({ requiresTransport: true })] });
+    expect(fillFirst.acceptanceProbability).toBeGreaterThanOrEqual(marginFirst.acceptanceProbability);
   });
 
   it("acceptance model: below-minimum base is rejected outright", () => {
