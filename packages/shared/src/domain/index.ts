@@ -8,6 +8,7 @@ export * from "./marketplaceJobSearch";
 export * from "./marketplaceJobDetail";
 export * from "./cancellationObligation";
 export * from "./capacityReduction";
+export * from "./calendarExport";
 export * from "./connectedCalendar";
 export * from "./contractPricing";
 export * from "./employerContractDto";

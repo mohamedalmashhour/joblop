@@ -284,6 +284,7 @@ import {
 } from "./offerMatchingRepository";
 import { isWorkerDisputeCategory, normalizeWorkerDisputeReason } from "@rwos/shared";
 import { normalizeEscalationReason } from "@rwos/shared";
+import { buildCalendarExport } from "@rwos/shared";
 import { raiseWorkerDispute, listWorkerDisputes, withdrawWorkerDispute } from "./workerDisputeRepository";
 import { createEmployerOrderWithChildren, listEmployerOrders, getEmployerOrder, submitEmployerOrder, cancelEmployerOrder } from "./employerOrderRepository";
 import { listMarketWagesForResidence, listAllMarketWages, upsertMarketWage } from "./marketWageRepository";
@@ -5953,7 +5954,40 @@ export function buildApi(options: BuildApiOptions = {}) {
       assignmentId: readRouteParam(request.params, "assignmentId")
     });
 
-    return reply.code(200).send({ assignment: serializeWorkerAssignment(assignment) });
+    const job = await reduceJobRequestRepository.findJobRequestById(assignment.jobRequestId);
+    return reply
+      .code(200)
+      .send({ assignment: serializeWorkerAssignment(assignment, job?.jobRequestNumber ?? null) });
+  });
+
+  // Worker's own-calendar export: raw RFC-5545 .ics the worker imports into Google/Apple/Outlook.
+  // The accepted shift carries its job code; no account linking, no money, worker-scoped read only.
+  app.get("/worker/assignments/:assignmentId/calendar.ics", async (request, reply) => {
+    const session = await authService.validateSession(
+      readBearerToken(request.headers.authorization)
+    );
+    if (!session.authenticated || !session.user) return sendAssignmentDenied(reply);
+
+    const assignment = await assignmentService.workerRead({
+      session,
+      roles: await resolveAuthorizationRoles(session.user.id),
+      assignmentId: readRouteParam(request.params, "assignmentId")
+    });
+    const job = await reduceJobRequestRepository.findJobRequestById(assignment.jobRequestId);
+    const exported = buildCalendarExport({
+      title: assignment.confirmedTitle,
+      startAt: assignment.confirmedStartAt.toISOString(),
+      endAt: assignment.confirmedEndAt.toISOString(),
+      jobCode: job?.jobRequestNumber ?? null,
+      location: assignment.confirmedWorksiteSummary,
+      uid: assignment.id,
+      stampedAt: new Date().toISOString()
+    });
+    return reply
+      .code(200)
+      .header("content-type", "text/calendar; charset=utf-8")
+      .header("content-disposition", `attachment; filename="${exported.filename}"`)
+      .send(exported.ics);
   });
 
   app.get("/worker/assignments", async (request, reply) => {
@@ -9408,8 +9442,21 @@ function serializeAssignment(
 }
 
 function serializeWorkerAssignment(
-  assignment: Awaited<ReturnType<AssignmentService["workerRead"]>>
+  assignment: Awaited<ReturnType<AssignmentService["workerRead"]>>,
+  jobCode?: string | null
 ) {
+  const startAt = assignment.confirmedStartAt.toISOString();
+  const endAt = assignment.confirmedEndAt.toISOString();
+  // "Open in Google" + .ics for the worker's own calendar — no account linking, no OAuth.
+  const calendar = buildCalendarExport({
+    title: assignment.confirmedTitle,
+    startAt,
+    endAt,
+    jobCode: jobCode ?? null,
+    location: assignment.confirmedWorksiteSummary,
+    uid: assignment.id,
+    stampedAt: new Date().toISOString()
+  });
   return {
     audience: "worker",
     assignmentId: assignment.id,
@@ -9422,10 +9469,11 @@ function serializeWorkerAssignment(
     responsibilitySummary: assignment.confirmedResponsibilitySummary,
     policySummary: assignment.confirmedPolicySummary,
     compensationSummary: assignment.confirmedCompensationSummary,
-    startAt: assignment.confirmedStartAt.toISOString(),
-    endAt: assignment.confirmedEndAt.toISOString(),
+    startAt,
+    endAt,
     timezone: assignment.timezone,
     attendanceBoundary: assignment.attendanceBoundary,
+    calendar: { googleCalendarUrl: calendar.googleCalendarUrl, icsFilename: calendar.filename },
     versionToken: assignment.versionToken,
     updatedAt: assignment.updatedAt.toISOString(),
     visibility: "worker_authorized_assignment"
