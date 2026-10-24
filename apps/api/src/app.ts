@@ -245,6 +245,12 @@ import { buildRemittanceSummary } from "./taxRemittance";
 import { buildTaxSlips, type SlipCalcInput } from "./taxSlip";
 import { GST_RATE_PPM, QST_RATE_PPM } from "./payChannel";
 import { buildAccounting, type AccountingCalcRow } from "./accounting";
+import {
+  OFFER_OUTCOMES,
+  proposeAndLogOffers,
+  recordOfferOutcome,
+  type OfferOutcome
+} from "./offerMatchingRepository";
 import { isWorkerDisputeCategory, normalizeWorkerDisputeReason } from "@rwos/shared";
 import { normalizeEscalationReason } from "@rwos/shared";
 import { raiseWorkerDispute, listWorkerDisputes, withdrawWorkerDispute } from "./workerDisputeRepository";
@@ -6268,6 +6274,55 @@ export function buildApi(options: BuildApiOptions = {}) {
     });
   });
 
+  // Dynamic offer engine P2: run the optimizer for a job over candidate workers and LOG each proposal
+  // to the offer-decision training set. Returns the ranked, explainable offers. No offer is sent and
+  // no money moves here. See docs/matching/DYNAMIC_OFFER_ENGINE_DESIGN.md.
+  app.post("/platform/matching/propose", async (request, reply) => {
+    const actor = await requireHrAuthority(request, reply);
+    if (!actor) return;
+    const body = asRecord(request.body);
+    const hours = readOptionalNumber(body, "hours");
+    const distanceKm = readOptionalNumber(body, "distanceKm") ?? 0;
+    const hoursUntilShift = readOptionalNumber(body, "hoursUntilShift") ?? 72;
+    const billPerHourMinor = readOptionalNumber(body, "billPerHourMinor");
+    const extrasMinor = readOptionalNumber(body, "extrasMinor") ?? 0;
+    const willingnessToPayPerHourMinor = readOptionalNumber(body, "willingnessToPayPerHourMinor");
+    const baseRatePerHourMinor = readOptionalNumber(body, "baseRatePerHourMinor");
+    const marginFloorMinor = readOptionalNumber(body, "marginFloorMinor") ?? 0;
+    const jobRequestId = readOptionalString(body, "jobRequestId");
+    const workerIdentityIds = Array.isArray(body.workerIdentityIds)
+      ? body.workerIdentityIds.filter((x): x is string => typeof x === "string" && isCanonicalUuid(x))
+      : [];
+    if (hours == null || billPerHourMinor == null || willingnessToPayPerHourMinor == null || baseRatePerHourMinor == null || workerIdentityIds.length === 0) {
+      return reply.code(400).send({ error: "RWOS_MATCHING_INVALID", message: "hours, billPerHourMinor, willingnessToPayPerHourMinor, baseRatePerHourMinor and at least one worker are required." });
+    }
+    const decisions = await proposeAndLogOffers(prisma!, {
+      jobRequestId: jobRequestId ?? null,
+      job: { hours, distanceKm, hoursUntilShift },
+      client: { billPerHourMinor, extrasMinor, willingnessToPayPerHourMinor },
+      workerIdentityIds,
+      baseRatePerHourMinor,
+      marginFloorMinor
+    });
+    return reply.code(200).send({ decisions, note: "Proposals logged to the offer-decision training set. No offer is sent and no money moves here." });
+  });
+
+  // Dynamic offer engine P2: record what actually happened to a proposed offer (accepted / declined /
+  // ignored / expired / offered). This is the label the learned models train on.
+  app.post("/platform/matching/offers/:eventId/outcome", async (request, reply) => {
+    const actor = await requireHrAuthority(request, reply);
+    if (!actor) return;
+    const eventId = readRouteParam(request.params, "eventId");
+    const body = asRecord(request.body);
+    const outcome = readOptionalString(body, "outcome") as OfferOutcome | null;
+    if (!eventId || !isCanonicalUuid(eventId) || !outcome || !OFFER_OUTCOMES.includes(outcome)) {
+      return reply.code(400).send({ error: "RWOS_MATCHING_INVALID", message: "A valid eventId and outcome are required." });
+    }
+    const ok = await recordOfferOutcome(prisma!, eventId, outcome);
+    if (!ok) return reply.code(404).send({ error: "RWOS_MATCHING_EVENT_NOT_FOUND", message: "That offer event was not found." });
+    return reply.code(200).send({ eventId, outcome });
+  });
+
   // Phase 5: the go-live gate's state. Shows whether live finance is on and exactly what stays
   // blocked while it is off. See docs/finance/TWO_CHANNEL_PAYROLL_DESIGN.md.
   app.get("/platform/finance/status", async (request, reply) => {
@@ -6939,6 +6994,46 @@ export function buildApi(options: BuildApiOptions = {}) {
     });
     return reply.code(200).send({
       taxProfile: { gstQstRegistered: profile.gstQstRegistered, gstNumber: profile.gstNumber, qstNumber: profile.qstNumber }
+    });
+  });
+
+  // Dynamic offer engine P2: the worker's offer preferences — what they need to accept work. Fed to
+  // the acceptance model. See docs/matching/DYNAMIC_OFFER_ENGINE_DESIGN.md.
+  app.get("/worker/profile/offer-preferences", async (request, reply) => {
+    const session = await authService.validateSession(readBearerToken(request.headers.authorization));
+    if (!session.authenticated || !session.user) {
+      return reply.code(401).send({ error: "RWOS_WORKER_DENIED", message: "Authentication is required." });
+    }
+    const identity = await prisma!.workerIdentity.findFirst({ where: { userId: session.user.id }, select: { id: true } });
+    const pref = identity ? await prisma!.workerOfferPreference.findUnique({ where: { workerIdentityId: identity.id } }) : null;
+    return reply.code(200).send({
+      preferences: pref
+        ? { minRatePerHourMinor: pref.minRatePerHourMinor, requiresTransport: pref.requiresTransport, maxDistanceKm: pref.maxDistanceKm }
+        : null
+    });
+  });
+
+  app.put("/worker/profile/offer-preferences", async (request, reply) => {
+    const session = await authService.validateSession(readBearerToken(request.headers.authorization));
+    if (!session.authenticated || !session.user) {
+      return reply.code(401).send({ error: "RWOS_WORKER_DENIED", message: "Authentication is required." });
+    }
+    const body = asRecord(request.body);
+    const minRatePerHourMinor = readOptionalNumber(body, "minRatePerHourMinor") ?? 0;
+    const requiresTransport = body.requiresTransport === true;
+    const maxDistanceKm = readOptionalNumber(body, "maxDistanceKm") ?? 100;
+    if (minRatePerHourMinor < 0 || maxDistanceKm < 0 || !Number.isFinite(minRatePerHourMinor) || !Number.isFinite(maxDistanceKm)) {
+      return reply.code(400).send({ error: "RWOS_INVALID_PREFERENCES", message: "Invalid offer preferences." });
+    }
+    const identity = await workerOfferService.ensureWorkerIdentity({ userId: session.user.id, displayName: null, preferredLanguage: null });
+    const data = { minRatePerHourMinor, requiresTransport, maxDistanceKm, updatedByUserId: session.user.id };
+    const pref = await prisma!.workerOfferPreference.upsert({
+      where: { workerIdentityId: identity.id },
+      create: { workerIdentityId: identity.id, ...data },
+      update: data
+    });
+    return reply.code(200).send({
+      preferences: { minRatePerHourMinor: pref.minRatePerHourMinor, requiresTransport: pref.requiresTransport, maxDistanceKm: pref.maxDistanceKm }
     });
   });
 

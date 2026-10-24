@@ -1532,6 +1532,52 @@ model WorkerTaxProfile {
   @@map("worker_tax_profiles")
 }
 
+// Dynamic offer engine P2 — worker offer preferences (mutable). What a worker needs to accept work,
+// fed to the acceptance model. See docs/matching/DYNAMIC_OFFER_ENGINE_DESIGN.md.
+model WorkerOfferPreference {
+  workerIdentityId   String   @id @map("worker_identity_id") @db.Uuid
+  minRatePerHourMinor Int     @default(0) @map("min_rate_per_hour_minor")
+  requiresTransport  Boolean  @default(false) @map("requires_transport")
+  maxDistanceKm      Int      @default(100) @map("max_distance_km")
+  updatedByUserId    String?  @map("updated_by_user_id") @db.Uuid
+  createdAt          DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt          DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  @@map("worker_offer_preferences")
+}
+
+// Dynamic offer engine P2 — the append-only offer/outcome log. Every offer the optimizer proposes is
+// recorded with the features it saw, the terms, the predicted acceptance, and (later) the outcome.
+// THIS is the training set the learned models (P3+) consume. No money flows through this table.
+model OfferDecisionEvent {
+  id                          String    @id @default(uuid()) @db.Uuid
+  jobRequestId                String?   @map("job_request_id") @db.Uuid
+  workerIdentityId            String    @map("worker_identity_id") @db.Uuid
+  baseRateMinor               Int       @map("base_rate_minor")
+  transportAllowanceMinor     Int       @map("transport_allowance_minor")
+  bonusMinor                  Int       @map("bonus_minor")
+  clientPriceMinor            Int       @map("client_price_minor")
+  workerCostMinor             Int       @map("worker_cost_minor")
+  marginMinor                 Int       @map("margin_minor")
+  acceptanceProbability       Float     @map("acceptance_probability")
+  modelKind                   String    @map("model_kind")
+  hours                       Int
+  distanceKm                  Int       @map("distance_km")
+  hoursUntilShift             Int       @map("hours_until_shift")
+  willingnessToPayPerHourMinor Int      @map("willingness_to_pay_per_hour_minor")
+  featReliability             Float     @map("feat_reliability")
+  featRequiresTransport       Boolean   @map("feat_requires_transport")
+  featMinRatePerHourMinor     Int       @map("feat_min_rate_per_hour_minor")
+  outcome                     String    @default("proposed") // proposed|offered|accepted|declined|ignored|expired
+  outcomeAt                   DateTime? @map("outcome_at") @db.Timestamptz(3)
+  createdAt                   DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  @@index([workerIdentityId], map: "ode_worker_idx")
+  @@index([jobRequestId], map: "ode_job_idx")
+  @@index([outcome], map: "ode_outcome_idx")
+  @@map("offer_decision_events")
+}
+
 // Worker-saved marketplace jobs. User-scoped (a worker saves opportunities to revisit).
 // Idempotent: one save per (worker, job) via the unique constraint.
 model WorkerSavedJob {
