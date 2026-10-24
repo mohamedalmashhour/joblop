@@ -196,7 +196,11 @@ import {
   type MarketplaceJobDetailCandidate,
   type MarketplaceEmployerProfileCandidate,
   type ProvinceCode,
-  buildVariableClientQuote
+  buildVariableClientQuote,
+  normalizeAdzunaJobs,
+  dedupeLeads,
+  rankLeadsForWorker,
+  type WorkerMatchProfile
 } from "@rwos/shared";
 import {
   createTrustedServiceIdentityHeaders,
@@ -204,6 +208,7 @@ import {
   type TrustedAudienceRegistry,
   type TrustedService
 } from "@rwos/service-auth";
+import { createAdzunaClient } from "./jobScannerClient";
 import {
   activeMembershipRoleQuery,
   activePlatformGrantQuery,
@@ -6344,6 +6349,64 @@ export function buildApi(options: BuildApiOptions = {}) {
       ...(demandSignal != null ? { demandSignal } : {})
     });
     return reply.code(200).send({ quote, note: "Quote only — no invoice is issued and no money moves (FINANCE_LIVE gated)." });
+  });
+
+  // JobScanner: scan external partner feeds (Adzuna now; Talent.com later) for Québec jobs, normalize
+  // and dedupe them into external leads, and optionally rank them for a worker (role keywords +
+  // location). These are EXTERNAL leads — a hand-off to the source, not JobLop governed jobs; no money
+  // moves. Uses the live Adzuna API when ADZUNA_APP_ID/ADZUNA_APP_KEY are set, else a mock QC feed so
+  // the pipeline runs before the account is approved. Results are not yet persisted (next slice).
+  app.post("/platform/jobscanner/scan", async (request, reply) => {
+    const actor = await requireHrAuthority(request, reply);
+    if (!actor) return;
+    const body = asRecord(request.body);
+    const client = createAdzunaClient({
+      appId: process.env.ADZUNA_APP_ID ?? null,
+      appKey: process.env.ADZUNA_APP_KEY ?? null,
+      country: process.env.ADZUNA_COUNTRY ?? "ca"
+    });
+    const what = readOptionalString(body, "what") ?? undefined;
+    const where = readOptionalString(body, "where") ?? undefined;
+    const resultsPerPage = readOptionalNumber(body, "resultsPerPage") ?? 20;
+    let raws;
+    try {
+      raws = await client.search({
+        ...(what !== undefined ? { what } : {}),
+        ...(where !== undefined ? { where } : {}),
+        resultsPerPage
+      });
+    } catch (err) {
+      return reply.code(502).send({ error: "RWOS_JOBSCANNER_SOURCE_ERROR", message: (err as Error).message, mode: client.mode });
+    }
+    const leads = dedupeLeads(normalizeAdzunaJobs(raws));
+    // Optional per-worker ranking when a worker profile is supplied.
+    const wp = asRecord(body.worker);
+    const roleKeywords = Array.isArray(wp.roleKeywords)
+      ? wp.roleKeywords.filter((x): x is string => typeof x === "string")
+      : [];
+    let ranked = null;
+    if (roleKeywords.length > 0) {
+      const profile: WorkerMatchProfile = {
+        roleKeywords,
+        latitude: readOptionalNumber(wp, "latitude"),
+        longitude: readOptionalNumber(wp, "longitude"),
+        maxDistanceKm: readOptionalNumber(wp, "maxDistanceKm"),
+        minSalaryMinorPerYear: readOptionalNumber(wp, "minSalaryMinorPerYear")
+      };
+      ranked = rankLeadsForWorker(leads, profile);
+    }
+    return reply.code(200).send({
+      source: client.source,
+      mode: client.mode,
+      scanned: raws.length,
+      leadCount: leads.length,
+      leads: ranked ?? leads,
+      ranked: ranked !== null,
+      note:
+        client.mode === "mock"
+          ? "MOCK feed (Adzuna account not yet approved). External leads only — hand-off to the source, not JobLop jobs."
+          : "Live Adzuna feed. External leads only — hand-off to the source, not JobLop jobs."
+    });
   });
 
   // Dynamic offer engine P2: record what actually happened to a proposed offer (accepted / declined /
