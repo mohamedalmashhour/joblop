@@ -6460,45 +6460,10 @@ export function buildApi(options: BuildApiOptions = {}) {
     if (!actor) return;
     const body = asRecord(request.body);
     const profileRaw = asRecord(body.profile);
-    const fullName = readOptionalString(profileRaw, "fullName");
-    if (!fullName) {
+    if (!readOptionalString(profileRaw, "fullName")) {
       return reply.code(400).send({ error: "RWOS_CV_INVALID", message: "profile.fullName is required." });
     }
-    const strArray = (v: unknown): string[] => (Array.isArray(v) ? v.filter((x): x is string => typeof x === "string") : []);
-    const profile: WorkerCvProfile = {
-      fullName,
-      headline: readOptionalString(profileRaw, "headline"),
-      location: readOptionalString(profileRaw, "location"),
-      email: readOptionalString(profileRaw, "email"),
-      phone: readOptionalString(profileRaw, "phone"),
-      summary: readOptionalString(profileRaw, "summary"),
-      skills: strArray(profileRaw.skills),
-      languages: strArray(profileRaw.languages),
-      certifications: strArray(profileRaw.certifications),
-      experience: Array.isArray(profileRaw.experience)
-        ? (profileRaw.experience as unknown[]).map((e) => {
-            const r = asRecord(e);
-            return {
-              role: readOptionalString(r, "role") ?? "",
-              employer: readOptionalString(r, "employer") ?? "",
-              start: readOptionalString(r, "start") ?? "",
-              end: readOptionalString(r, "end"),
-              highlights: strArray(r.highlights)
-            };
-          })
-        : [],
-      education: Array.isArray(profileRaw.education)
-        ? (profileRaw.education as unknown[]).map((e) => {
-            const r = asRecord(e);
-            return {
-              credential: readOptionalString(r, "credential") ?? "",
-              institution: readOptionalString(r, "institution") ?? "",
-              year: readOptionalString(r, "year")
-            };
-          })
-        : [],
-      language: readOptionalString(profileRaw, "language") === "fr" ? "fr" : "en"
-    };
+    const profile = buildCvProfile(profileRaw);
     // Target job: a stored lead by id, or an inline job object, or none (general CV).
     let job: TargetJob | null = null;
     const leadId = readOptionalString(body, "leadId");
@@ -7412,6 +7377,103 @@ export function buildApi(options: BuildApiOptions = {}) {
     });
   });
 
+  // ── Worker-facing JobScanner + CV builder (the funnel, where workers actually are) ──────────────
+  // Read-only over the stored external leads, ranked for the signed-in worker. No live scan here
+  // (that spends the platform's Adzuna budget and stays admin/scheduled). External leads only.
+  app.get("/worker/jobscanner/leads", async (request, reply) => {
+    const session = await authService.validateSession(readBearerToken(request.headers.authorization));
+    if (!session.authenticated || !session.user) {
+      return reply.code(401).send({ error: "RWOS_WORKER_DENIED", message: "Authentication is required." });
+    }
+    const q = asRecord((request as unknown as { query?: unknown }).query);
+    const province = readOptionalString(q, "province") ?? "QC";
+    const city = readOptionalString(q, "city") ?? undefined;
+    const limit = readOptionalNumber(q, "limit") ?? 50;
+    const stored = await queryStoredLeads(prisma!, { province, ...(city !== undefined ? { city } : {}), limit });
+    const roleKeywordsRaw = readOptionalString(q, "roleKeywords");
+    const roleKeywords = roleKeywordsRaw ? roleKeywordsRaw.split(",").map((s) => s.trim()).filter(Boolean) : [];
+    let leads: unknown = stored;
+    let ranked = false;
+    if (roleKeywords.length > 0) {
+      const identity = await prisma!.workerIdentity.findFirst({ where: { userId: session.user.id }, select: { id: true } });
+      const pref = identity ? await prisma!.workerOfferPreference.findUnique({ where: { workerIdentityId: identity.id } }) : null;
+      leads = rankLeadsForWorker(stored, { roleKeywords, maxDistanceKm: pref?.maxDistanceKm ?? null });
+      ranked = true;
+    }
+    return reply.code(200).send({ leadCount: stored.length, ranked, leads, note: "External leads — apply on the source. Not JobLop jobs." });
+  });
+
+  // Generate the signed-in worker's own CV + cover letter (synthetic now, Claude when keyed). Advisory.
+  app.post("/worker/cv", async (request, reply) => {
+    const session = await authService.validateSession(readBearerToken(request.headers.authorization));
+    if (!session.authenticated || !session.user) {
+      return reply.code(401).send({ error: "RWOS_WORKER_DENIED", message: "Authentication is required." });
+    }
+    const body = asRecord(request.body);
+    const profileRaw = asRecord(body.profile);
+    if (!readOptionalString(profileRaw, "fullName")) {
+      return reply.code(400).send({ error: "RWOS_CV_INVALID", message: "profile.fullName is required." });
+    }
+    const profile = buildCvProfile(profileRaw);
+    let job: TargetJob | null = null;
+    const leadId = readOptionalString(body, "leadId");
+    if (leadId && isCanonicalUuid(leadId)) {
+      const lead = await prisma!.externalJobLead.findUnique({ where: { id: leadId } });
+      if (lead) job = { title: lead.title, employer: lead.employer, description: lead.description, city: lead.city };
+    } else if (body.job) {
+      const j = asRecord(body.job);
+      const title = readOptionalString(j, "title");
+      if (title) job = { title, employer: readOptionalString(j, "employer"), description: readOptionalString(j, "description"), city: readOptionalString(j, "city") };
+    }
+    const provider = getCvProvider();
+    try {
+      const result = await provider.generate({ profile, job });
+      return reply.code(200).send({ cv: result, providerKind: provider.kind, note: "Advisory draft — review and edit before applying. Nothing is sent." });
+    } catch (err) {
+      return reply.code(502).send({ error: "RWOS_CV_PROVIDER_ERROR", message: (err as Error).message, provider: provider.kind });
+    }
+  });
+
+  // Worker's own CV attachments — workerRef is the user id from the session, never client-supplied.
+  app.post("/worker/cv-assets", async (request, reply) => {
+    const session = await authService.validateSession(readBearerToken(request.headers.authorization));
+    if (!session.authenticated || !session.user) {
+      return reply.code(401).send({ error: "RWOS_WORKER_DENIED", message: "Authentication is required." });
+    }
+    const body = asRecord(request.body);
+    const kind = readOptionalString(body, "kind");
+    const filename = readOptionalString(body, "filename");
+    const declaredContentType = readOptionalString(body, "contentType");
+    const dataBase64 = readOptionalString(body, "dataBase64");
+    if (!kind || !filename || !declaredContentType || !dataBase64) {
+      return reply.code(400).send({ error: "RWOS_CV_ASSET_INVALID", message: "kind, filename, contentType and dataBase64 are required." });
+    }
+    const result = await createCvAsset(prisma!, { workerRef: session.user.id, kind, label: readOptionalString(body, "label"), filename, declaredContentType, dataBase64 });
+    if (!result.ok) return reply.code(400).send({ error: "RWOS_CV_ASSET_REJECTED", reason: result.reason });
+    return reply.code(201).send({ asset: result.asset });
+  });
+
+  app.get("/worker/cv-assets", async (request, reply) => {
+    const session = await authService.validateSession(readBearerToken(request.headers.authorization));
+    if (!session.authenticated || !session.user) {
+      return reply.code(401).send({ error: "RWOS_WORKER_DENIED", message: "Authentication is required." });
+    }
+    const assets = await listCvAssets(prisma!, session.user.id);
+    return reply.code(200).send({ assets });
+  });
+
+  app.delete("/worker/cv-assets/:id", async (request, reply) => {
+    const session = await authService.validateSession(readBearerToken(request.headers.authorization));
+    if (!session.authenticated || !session.user) {
+      return reply.code(401).send({ error: "RWOS_WORKER_DENIED", message: "Authentication is required." });
+    }
+    const id = readRouteParam(request.params, "id");
+    if (!id || !isCanonicalUuid(id)) return reply.code(400).send({ error: "RWOS_CV_ASSET_INVALID", message: "A valid id is required." });
+    const ok = await deleteCvAsset(prisma!, session.user.id, id);
+    if (!ok) return reply.code(404).send({ error: "RWOS_CV_ASSET_NOT_FOUND" });
+    return reply.code(200).send({ deleted: true });
+  });
+
   // The old free toggle is removed: classification can no longer be flipped without a signed election.
   app.put("/worker/profile/classification", async (_request, reply) =>
     reply.code(410).send({
@@ -7995,6 +8057,36 @@ function parseQueryInt(value: string | null): number | null {
   if (!value) return null;
   const n = Number(value);
   return Number.isInteger(n) && n > 0 ? n : null;
+}
+
+// Build a WorkerCvProfile from a request body's `profile` object. Shared by the platform and worker
+// CV endpoints. fullName falls back to "" so callers validate it.
+function buildCvProfile(profileRaw: Record<string, unknown>): WorkerCvProfile {
+  const strArray = (v: unknown): string[] => (Array.isArray(v) ? v.filter((x): x is string => typeof x === "string") : []);
+  return {
+    fullName: readOptionalString(profileRaw, "fullName") ?? "",
+    headline: readOptionalString(profileRaw, "headline"),
+    location: readOptionalString(profileRaw, "location"),
+    email: readOptionalString(profileRaw, "email"),
+    phone: readOptionalString(profileRaw, "phone"),
+    summary: readOptionalString(profileRaw, "summary"),
+    skills: strArray(profileRaw.skills),
+    languages: strArray(profileRaw.languages),
+    certifications: strArray(profileRaw.certifications),
+    experience: Array.isArray(profileRaw.experience)
+      ? (profileRaw.experience as unknown[]).map((e) => {
+          const r = asRecord(e);
+          return { role: readOptionalString(r, "role") ?? "", employer: readOptionalString(r, "employer") ?? "", start: readOptionalString(r, "start") ?? "", end: readOptionalString(r, "end"), highlights: strArray(r.highlights) };
+        })
+      : [],
+    education: Array.isArray(profileRaw.education)
+      ? (profileRaw.education as unknown[]).map((e) => {
+          const r = asRecord(e);
+          return { credential: readOptionalString(r, "credential") ?? "", institution: readOptionalString(r, "institution") ?? "", year: readOptionalString(r, "year") };
+        })
+      : [],
+    language: readOptionalString(profileRaw, "language") === "fr" ? "fr" : "en"
+  };
 }
 
 // Coerce a stored qualifications JSON value into a clean string[] for the marketplace
