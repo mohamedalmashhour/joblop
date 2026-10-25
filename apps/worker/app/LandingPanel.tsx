@@ -29,6 +29,9 @@ export function LandingPanel({ onSignedIn }: { onSignedIn: () => void }) {
               <li key={v}><span aria-hidden="true">✓</span> {v}</li>
             ))}
           </ul>
+          <a href="/browse" className="landing-browse" style={{ display: "inline-block", marginTop: 14, fontWeight: 700, color: "#1f6feb", textDecoration: "none" }}>
+            {t("land.browsePublic")}
+          </a>
         </div>
         <AuthCard tab={tab} setTab={setTab} onSignedIn={onSignedIn} />
       </section>
