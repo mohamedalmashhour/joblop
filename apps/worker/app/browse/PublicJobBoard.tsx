@@ -391,7 +391,7 @@ export function PublicJobBoard() {
           <div className="jl-js-demo"><JobScannerDemo lang={lang} /></div>
         </div>
         {leads && leads.length > 0 && (
-          <div className="jl-wrap jl-leads">
+          <div className="jl-leads">
             <div className="jl-leads-head">
               <span className="jl-leads-dot" /> {t.leadsLive}
               <span className="jl-leads-src">{t.leadsSrc}</span>
@@ -715,7 +715,7 @@ const CSS = `
 .jl-js-btn{display:inline-block;background:linear-gradient(90deg,#2b6cf0,#58c6ff);color:#06122b;font-weight:800;padding:13px 22px;border-radius:12px;}
 .jl-js-btn:hover{filter:brightness(1.06);}
 .jl-js-demo{display:flex;justify-content:center;}
-.jl-leads{margin-top:34px;}
+.jl-leads{margin-top:18px;background:radial-gradient(600px 300px at 88% 0%,rgba(88,198,255,.18),transparent),linear-gradient(120deg,#0f1b3a,#13224a 55%,#0a2f3a);border-radius:22px;padding:clamp(22px,4vw,34px);margin-left:max(18px,env(safe-area-inset-left));margin-right:max(18px,env(safe-area-inset-right));}
 .jl-leads-head{display:flex;align-items:center;gap:9px;color:#dce7fb;font-weight:800;font-size:13px;letter-spacing:.04em;text-transform:uppercase;margin-bottom:14px;}
 .jl-leads-dot{width:9px;height:9px;border-radius:50%;background:#35e08a;box-shadow:0 0 0 4px rgba(53,224,138,.22);animation:jlpulse 1.8s ease-in-out infinite;}
 .jl-leads-src{margin-left:auto;font-weight:700;font-size:11px;letter-spacing:.03em;color:#9fb3d6;background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.12);border-radius:999px;padding:3px 10px;}
