@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { trackConversion } from "./analytics";
 import { useT } from "./i18n/LocaleProvider";
 import { VerifyEmail } from "./VerifyEmail";
 
@@ -185,7 +186,7 @@ function SignUpForm({ onSignedIn, onHaveAccount }: { onSignedIn: () => void; onH
           displayName: name.trim() || null
         })
       });
-      if (response.ok) { setRegistered(true); return; }
+      if (response.ok) { trackConversion("sign_up", { method: "worker" }); setRegistered(true); return; }
       if (response.status === 404) setError(t("signup.closed"));
       else if (response.status === 409) setError(t("signup.conflict"));
       else if (response.status === 400) setError(t("signup.weakPassword"));

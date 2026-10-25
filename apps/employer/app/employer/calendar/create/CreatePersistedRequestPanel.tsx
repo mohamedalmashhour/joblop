@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import { trackConversion } from "../../../analytics";
 import type {
   EmployerJobRequestDraft,
   EmployerRequestContext
@@ -299,6 +300,7 @@ export function CreatePersistedRequestPanel() {
       const payload = (await response.json()) as { jobRequest: EmployerJobRequestDraft };
       setDraft(payload.jobRequest);
       setStatus("submitted");
+      trackConversion("submit_request", { method: "employer" });
       setMessage(t("create.msgSubmitted", { num: payload.jobRequest.jobRequestNumber }));
     } catch {
       setStatus("draft");

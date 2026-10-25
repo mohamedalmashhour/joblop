@@ -5,6 +5,7 @@ import { LOCALE_COOKIE, htmlLang, resolveRwosLocale } from "./i18n/config";
 import { dictionaries } from "./i18n/messages";
 import { LocaleProvider } from "./i18n/LocaleProvider";
 import { Footer } from "./Footer";
+import { GoogleTag } from "./analytics";
 import "./globals.css";
 
 async function resolveLocale() {
@@ -46,6 +47,7 @@ export default async function RootLayout({ children }: Readonly<{ children: Reac
   return (
     <html lang={htmlLang(locale)}>
       <body>
+        <GoogleTag />
         <LocaleProvider locale={locale}>{children}</LocaleProvider>
         <Footer locale={locale} />
       </body>

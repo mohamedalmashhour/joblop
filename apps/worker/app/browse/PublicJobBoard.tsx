@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { JobScannerDemo } from "./JobScannerDemo";
+import { trackConversion } from "../analytics";
 
 // Public, no-sign-in landing + job board for JobLop. Hero search, real categories, REAL featured
 // jobs (from /public/jobs — never fabricated), job-seeker + employer sections, honest stats and
@@ -249,6 +250,7 @@ export function PublicJobBoard() {
         headers: { "content-type": "application/json" },
         body: JSON.stringify({ email, q: q.trim() || undefined, province: province || undefined, locale: lang })
       });
+      if (res.ok) trackConversion("generate_lead", { method: "email_alert" });
       setAlertState(res.ok ? "ok" : "err");
     } catch {
       setAlertState("err");
