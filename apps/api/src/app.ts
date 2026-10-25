@@ -173,6 +173,7 @@ import {
   type WorkerOfferStatus,
   type WorkGroupService
 } from "@rwos/auth";
+import { normalizeEmail } from "@rwos/auth";
 import { getRuntimeConfig, type CountryAddressPort } from "@rwos/config";
 import { createPrismaClient } from "@rwos/database";
 import { createLogger } from "@rwos/observability";
@@ -287,9 +288,9 @@ import { isWorkerDisputeCategory, normalizeWorkerDisputeReason } from "@rwos/sha
 import { normalizeEscalationReason } from "@rwos/shared";
 import { buildCalendarExport } from "@rwos/shared";
 import { deriveOrderLifecycle } from "@rwos/shared";
-import { deriveWorkerCancellationPenalty } from "@rwos/shared";
+import { deriveWorkerCancellationPenalty, WORKER_SUSPENSION_DAYS } from "@rwos/shared";
 import { notifyClient } from "./notifications/clientNotifications";
-import { notifyWorkerPayoutPaid } from "./notifications/workerNotifications";
+import { notifyWorkerPayoutPaid, notifyWorkerAccountPenalty } from "./notifications/workerNotifications";
 import { raiseWorkerDispute, listWorkerDisputes, withdrawWorkerDispute } from "./workerDisputeRepository";
 import { createEmployerOrderWithChildren, listEmployerOrders, getEmployerOrder, submitEmployerOrder, cancelEmployerOrder } from "./employerOrderRepository";
 import { listMarketWagesForResidence, listAllMarketWages, upsertMarketWage } from "./marketWageRepository";
@@ -1362,6 +1363,25 @@ export function buildApi(options: BuildApiOptions = {}) {
     if (!rateLimit) return sendAuthenticationUnavailable(reply);
     if (!rateLimit.allowed) {
       return sendAuthenticationRateLimited(reply, rateLimit.retryAfterSeconds);
+    }
+
+    // Auto-reinstate a worker whose 7-day cancellation suspension has elapsed: flip disabled → active
+    // and clear the expiry, so sign-in proceeds. A permanent close (status 'closed') is never lifted.
+    if (prisma) {
+      try {
+        const u = await prisma.user.findUnique({
+          where: { emailNormalized: normalizeEmail(email) },
+          select: { id: true, status: true, suspendedUntil: true }
+        });
+        if (u && u.status === "disabled" && u.suspendedUntil && u.suspendedUntil.getTime() <= Date.now()) {
+          await prisma.user.update({
+            where: { id: u.id },
+            data: { status: "active", suspendedUntil: null, disabledAt: null }
+          });
+        }
+      } catch {
+        // non-fatal: fall through to normal sign-in (which will still block a disabled account)
+      }
     }
 
     try {
@@ -5143,6 +5163,59 @@ export function buildApi(options: BuildApiOptions = {}) {
       currency: payout.currency
     });
     return reply.code(200).send({ payout: { id: payout.id, status: "paid" }, workerNotification: notified.status });
+  });
+
+  // Apply a worker late-cancellation penalty — the GOVERNED ADMIN action behind the recommendation the
+  // worker-withdraw endpoint surfaces. "suspend" disables the account for 7 days (auto-reinstated at
+  // sign-in once suspended_until passes); "permanent_close" closes it. Admin-gated; the worker is
+  // emailed. No money moves. Closure is irreversible, which is why only an admin can do it.
+  app.post("/platform/workers/:workerIdentityId/apply-cancellation-penalty", async (request, reply) => {
+    const session = await authService.validateSession(readBearerToken(request.headers.authorization));
+    if (!session.authenticated || !session.user) return sendJobRequestDenied(reply);
+    await jobRequestService.listAdminIntake({ session, roles: await resolveAuthorizationRoles(session.user.id) });
+    if (!prisma) return reply.code(503).send({ error: "RWOS_UNAVAILABLE", message: "Not available." });
+
+    const body = asRecord(request.body);
+    const action = readOptionalString(body, "action");
+    if (action !== "suspend" && action !== "permanent_close") {
+      return reply.code(400).send({ error: "RWOS_INVALID_PENALTY", message: "action must be suspend or permanent_close." });
+    }
+    const workerIdentityId = readRouteParam(request.params, "workerIdentityId");
+    const identity = await prisma.workerIdentity.findUnique({
+      where: { id: workerIdentityId },
+      select: { userId: true }
+    });
+    if (!identity) return reply.code(404).send({ error: "RWOS_WORKER_NOT_FOUND", message: "Worker not found." });
+
+    const nowDate = new Date();
+    if (action === "suspend") {
+      const until = new Date(nowDate.getTime() + WORKER_SUSPENSION_DAYS * 86_400_000);
+      await prisma.user.update({
+        where: { id: identity.userId },
+        data: { status: "disabled", disabledAt: nowDate, suspendedUntil: until }
+      });
+      const notified = await notifyWorkerAccountPenalty(prisma, emailSender, {
+        workerIdentityId,
+        penalty: "suspend",
+        suspensionDays: WORKER_SUSPENSION_DAYS
+      });
+      return reply.code(200).send({
+        applied: "suspend",
+        suspensionDays: WORKER_SUSPENSION_DAYS,
+        reinstatesAt: until.toISOString(),
+        workerNotification: notified.status
+      });
+    }
+    await prisma.user.update({
+      where: { id: identity.userId },
+      data: { status: "closed", closedAt: nowDate, suspendedUntil: null }
+    });
+    const notified = await notifyWorkerAccountPenalty(prisma, emailSender, {
+      workerIdentityId,
+      penalty: "permanent_close",
+      suspensionDays: 0
+    });
+    return reply.code(200).send({ applied: "permanent_close", workerNotification: notified.status });
   });
 
   app.get("/platform/calendar/requests/:jobRequestIdOrNumber", async (request, reply) => {

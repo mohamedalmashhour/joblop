@@ -1,6 +1,21 @@
 import { describe, expect, it } from "vitest";
 import type { EmailMessage } from "../mailer/emailSender";
-import { notifyWorkerPayoutPaid, payoutPaidEmail } from "./workerNotifications";
+import { accountPenaltyEmail, notifyWorkerPayoutPaid, payoutPaidEmail } from "./workerNotifications";
+
+describe("worker account penalty copy", () => {
+  it("suspension email names the days (FR default + EN)", () => {
+    const fr = accountPenaltyEmail({ to: "w@x.com", language: "fr", penalty: "suspend", suspensionDays: 7 });
+    expect(fr.subject).toContain("suspendu");
+    expect(fr.text).toContain("7 jours");
+    const en = accountPenaltyEmail({ to: "w@x.com", language: "en", penalty: "suspend", suspensionDays: 7 });
+    expect(en.subject).toContain("suspended");
+    expect(en.text).toContain("7 days");
+  });
+  it("permanent close email", () => {
+    const en = accountPenaltyEmail({ to: "w@x.com", language: "en", penalty: "permanent_close", suspensionDays: 0 });
+    expect(en.subject).toContain("closed");
+  });
+});
 
 describe("worker payout notification", () => {
   it("states the amount + currency (FR default, EN when english)", () => {

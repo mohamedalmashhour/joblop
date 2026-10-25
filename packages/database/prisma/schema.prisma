@@ -430,6 +430,9 @@ model User {
   updatedAt       DateTime   @updatedAt @map("updated_at") @db.Timestamptz(3)
   disabledAt      DateTime?  @map("disabled_at") @db.Timestamptz(3)
   closedAt        DateTime?  @map("closed_at") @db.Timestamptz(3)
+  // Set with status='disabled' when an admin applies a time-boxed (7-day) worker suspension; the
+  // sign-in path auto-reinstates (status='active', this cleared) once it passes. Null otherwise.
+  suspendedUntil  DateTime?  @map("suspended_until") @db.Timestamptz(3)
 
   identities                    UserIdentity[]
   sessions                      Session[]
