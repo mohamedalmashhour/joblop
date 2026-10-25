@@ -5188,12 +5188,20 @@ export function buildApi(options: BuildApiOptions = {}) {
     if (!identity) return reply.code(404).send({ error: "RWOS_WORKER_NOT_FOUND", message: "Worker not found." });
 
     const nowDate = new Date();
+    // Kick the worker out immediately: revoke every active session so a signed-in worker can't keep
+    // acting during the suspension/closure (new sign-ins are already blocked by the status gate).
+    const revokeActiveSessions = () =>
+      prisma.session.updateMany({
+        where: { userId: identity.userId, status: "active" },
+        data: { status: "revoked", revokedAt: nowDate }
+      });
     if (action === "suspend") {
       const until = new Date(nowDate.getTime() + WORKER_SUSPENSION_DAYS * 86_400_000);
       await prisma.user.update({
         where: { id: identity.userId },
         data: { status: "disabled", disabledAt: nowDate, suspendedUntil: until }
       });
+      await revokeActiveSessions();
       const notified = await notifyWorkerAccountPenalty(prisma, emailSender, {
         workerIdentityId,
         penalty: "suspend",
@@ -5210,6 +5218,7 @@ export function buildApi(options: BuildApiOptions = {}) {
       where: { id: identity.userId },
       data: { status: "closed", closedAt: nowDate, suspendedUntil: null }
     });
+    await revokeActiveSessions();
     const notified = await notifyWorkerAccountPenalty(prisma, emailSender, {
       workerIdentityId,
       penalty: "permanent_close",
