@@ -73,6 +73,10 @@ const T = {
     why1t: "Trusted workplaces", why1b: "Clear terms before you accept — no surprises.",
     why2t: "Paid fairly", why2b: "Your hours come from your own clock-in / clock-out.",
     why3t: "No cut of your pay", why3b: "JobLop never takes a fee from what you earn.",
+    contactTag: "CONTACT", contactTitle: "Get in touch",
+    contactSub: "Questions about a job, hiring, or your account? Send us a message and we'll get back to you.",
+    cEmail: "Email us", cVisit: "Visit us", cResp: "We usually reply within one business day.",
+    cName: "Your name", cEmailF: "Your email", cMsg: "How can we help?", cSend: "Send message",
     ctaTitle: "Ready to start your next shift?", ctaSub: "Whether you're looking for work or the right people, JobLop is here to help.",
     ctaFind: "Find work", ctaPost: "Post a request",
     fTag: "Connecting people with opportunities to build a brighter future.",
@@ -120,6 +124,10 @@ const T = {
     why1t: "Milieux de confiance", why1b: "Conditions claires avant d'accepter — sans surprise.",
     why2t: "Payé équitablement", why2b: "Vos heures proviennent de votre propre pointage.",
     why3t: "Aucune part de votre paie", why3b: "JobLop ne prend jamais de frais sur ce que vous gagnez.",
+    contactTag: "CONTACT", contactTitle: "Nous joindre",
+    contactSub: "Des questions sur un emploi, le recrutement ou votre compte ? Écrivez-nous et nous vous répondrons.",
+    cEmail: "Écrivez-nous", cVisit: "Nos bureaux", cResp: "Nous répondons habituellement en un jour ouvrable.",
+    cName: "Votre nom", cEmailF: "Votre courriel", cMsg: "Comment pouvons-nous aider ?", cSend: "Envoyer le message",
     ctaTitle: "Prêt pour votre prochain quart ?", ctaSub: "Que vous cherchiez du travail ou les bonnes personnes, JobLop est là pour vous aider.",
     ctaFind: "Trouver du travail", ctaPost: "Publier une demande",
     fTag: "Relier les gens aux occasions pour bâtir un avenir meilleur.",
@@ -133,6 +141,8 @@ const T = {
 } as const;
 
 const EMPLOYER_URL = "http://localhost:3100"; // employer app (public "post a request" entry)
+const CONTACT_EMAIL = "contact@joblop.com"; // change to the live inbox when set up
+const CONTACT_ADDRESS = "207-805 boul. Chomedey, Laval, QC";
 
 export function PublicJobBoard() {
   const [lang, setLang] = useState<Lang>("en");
@@ -140,8 +150,18 @@ export function PublicJobBoard() {
   const [province, setProvince] = useState("");
   const [q, setQ] = useState("");
   const [jobs, setJobs] = useState<Job[] | null>(null);
+  const [cForm, setCForm] = useState({ name: "", email: "", msg: "" });
   const gen = useRef(0);
   const t = T[lang];
+
+  // Opens the visitor's own email client with the message pre-filled — a real, no-backend contact
+  // path. We never collect or store the data ourselves.
+  const sendContact = (e: React.FormEvent) => {
+    e.preventDefault();
+    const subject = encodeURIComponent(`JobLop — ${cForm.name || "contact"}`);
+    const body = encodeURIComponent(`${cForm.msg}\n\n— ${cForm.name} <${cForm.email}>`);
+    window.location.href = `mailto:${CONTACT_EMAIL}?subject=${subject}&body=${body}`;
+  };
 
   const load = useCallback(async () => {
     const mine = ++gen.current;
@@ -184,7 +204,7 @@ export function PublicJobBoard() {
             <a href="#jobs">{t.navJobs}</a>
             <a href={EMPLOYER_URL}>{t.navEmp}</a>
             <a href="#jobscanner">JobScanner</a>
-            <a href="#about">{t.navAbout}</a>
+            <a href="#contact">{t.fContact}</a>
           </nav>
           <div className="jl-nav-cta">
             <button className="jl-lang" onClick={() => setLang(lang === "en" ? "fr" : "en")}>{lang === "en" ? "FR" : "EN"}</button>
@@ -398,6 +418,32 @@ export function PublicJobBoard() {
         </div>
       </section>
 
+      {/* CONTACT */}
+      <section className="jl-sec jl-sec-alt" id="contact">
+        <div className="jl-wrap jl-contact">
+          <div className="jl-contact-copy">
+            <span className="jl-eyebrow">{t.contactTag}</span>
+            <h2>{t.contactTitle}</h2>
+            <p className="jl-sub">{t.contactSub}</p>
+            <div className="jl-contact-row">
+              <span className="jl-contact-ic">✉️</span>
+              <div><strong>{t.cEmail}</strong><a href={`mailto:${CONTACT_EMAIL}`}>{CONTACT_EMAIL}</a></div>
+            </div>
+            <div className="jl-contact-row">
+              <span className="jl-contact-ic">📍</span>
+              <div><strong>{t.cVisit}</strong><span>{CONTACT_ADDRESS}</span></div>
+            </div>
+            <p className="jl-contact-note">⏱ {t.cResp}</p>
+          </div>
+          <form className="jl-contact-form" onSubmit={sendContact}>
+            <input required value={cForm.name} onChange={(e) => setCForm({ ...cForm, name: e.target.value })} placeholder={t.cName} aria-label={t.cName} />
+            <input required type="email" value={cForm.email} onChange={(e) => setCForm({ ...cForm, email: e.target.value })} placeholder={t.cEmailF} aria-label={t.cEmailF} />
+            <textarea required value={cForm.msg} onChange={(e) => setCForm({ ...cForm, msg: e.target.value })} placeholder={t.cMsg} aria-label={t.cMsg} rows={4} />
+            <button type="submit" className="jl-btn-primary jl-btn-lg">{t.cSend}</button>
+          </form>
+        </div>
+      </section>
+
       {/* CTA BAND */}
       <section className="jl-cta">
         <div className="jl-wrap jl-center">
@@ -420,7 +466,7 @@ export function PublicJobBoard() {
           <div className="jl-foot-cols">
             <div><h5>{t.fSeekers}</h5><a href="#jobs">{t.fBrowse}</a><a href="/">{t.fCreate}</a><a href="#jobs">{t.fAlerts}</a></div>
             <div><h5>{t.fEmp}</h5><a href={EMPLOYER_URL}>{t.fPost}</a><a href={EMPLOYER_URL}>{t.fFind}</a><a href={EMPLOYER_URL}>{t.fPricing}</a></div>
-            <div><h5>{t.fCo}</h5><a href="#about">{t.fAbout}</a><a href="#about">{t.fContact}</a><a href="#about">{t.fCareers}</a></div>
+            <div><h5>{t.fCo}</h5><a href="#about">{t.fAbout}</a><a href="#contact">{t.fContact}</a><a href="#about">{t.fCareers}</a></div>
             <div><h5>{t.fLegal}</h5><a href="/privacy">{t.fPrivacy}</a><a href="/privacy">{t.fTerms}</a><a href="/privacy">{t.fCookie}</a></div>
           </div>
         </div>
@@ -617,6 +663,19 @@ const CSS = `
 .jl-why-ic{font-size:24px;}
 .jl-why-c h4{margin:10px 0 6px;font-size:16.5px;}
 .jl-why-c p{margin:0;color:var(--muted);font-size:14.5px;}
+/* CONTACT */
+.jl-contact{display:grid;grid-template-columns:1fr 1fr;gap:32px;align-items:start;}
+.jl-contact-copy .jl-eyebrow{display:block;margin-bottom:6px;}
+.jl-contact-row{display:flex;gap:12px;align-items:flex-start;margin-top:16px;}
+.jl-contact-ic{width:40px;height:40px;border-radius:11px;background:var(--sky);display:grid;place-items:center;font-size:18px;flex:0 0 auto;}
+.jl-contact-row strong{display:block;font-size:13px;color:var(--muted);}
+.jl-contact-row a,.jl-contact-row span{color:var(--ink);font-weight:600;}
+.jl-contact-row a:hover{color:var(--blue);}
+.jl-contact-note{margin-top:18px;color:var(--muted);font-size:13.5px;}
+.jl-contact-form{display:flex;flex-direction:column;gap:10px;background:#fff;border:1px solid var(--line);border-radius:16px;padding:20px;box-shadow:0 18px 50px -30px rgba(16,26,43,.4);}
+.jl-contact-form input,.jl-contact-form textarea{border:1px solid var(--line);border-radius:10px;padding:12px 14px;font-size:15px;font-family:inherit;color:var(--ink);background:#f7f9fc;outline:none;resize:vertical;}
+.jl-contact-form input:focus,.jl-contact-form textarea:focus{border-color:var(--blue);background:#fff;}
+.jl-contact-form .jl-btn-lg{text-align:center;border:0;cursor:pointer;}
 /* CTA */
 .jl-cta{padding:clamp(30px,5vw,56px) 0;}
 .jl-cta .jl-wrap{background:linear-gradient(120deg,#1d4ed8,#2563eb 55%,#0ea5a3);border-radius:22px;padding:clamp(32px,6vw,54px) 24px;color:#fff;}
@@ -638,7 +697,7 @@ const CSS = `
 .jl-foot-bar{border-top:1px solid #1e2d44;padding:18px max(18px,env(safe-area-inset-left));text-align:center;color:#7f93b2;font-size:13px;max-width:1120px;margin:0 auto;}
 /* RESPONSIVE */
 @media (max-width:860px){
-  .jl-hero-in,.jl-split-in,.jl-foot-in,.jl-js-in{grid-template-columns:1fr;}
+  .jl-hero-in,.jl-split-in,.jl-foot-in,.jl-js-in,.jl-contact{grid-template-columns:1fr;}
   /* floating cards flow as a neat wrapping row above the copy — no absolute overlap on phones */
   .jl-hero-art{min-height:auto;order:-1;display:flex;flex-wrap:wrap;gap:10px;justify-content:center;margin-bottom:4px;}
   .jl-blob{display:none;}
