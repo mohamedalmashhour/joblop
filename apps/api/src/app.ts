@@ -288,6 +288,7 @@ import { normalizeEscalationReason } from "@rwos/shared";
 import { buildCalendarExport } from "@rwos/shared";
 import { deriveOrderLifecycle } from "@rwos/shared";
 import { notifyClient } from "./notifications/clientNotifications";
+import { notifyWorkerPayoutPaid } from "./notifications/workerNotifications";
 import { raiseWorkerDispute, listWorkerDisputes, withdrawWorkerDispute } from "./workerDisputeRepository";
 import { createEmployerOrderWithChildren, listEmployerOrders, getEmployerOrder, submitEmployerOrder, cancelEmployerOrder } from "./employerOrderRepository";
 import { listMarketWagesForResidence, listAllMarketWages, upsertMarketWage } from "./marketWageRepository";
@@ -5084,6 +5085,49 @@ export function buildApi(options: BuildApiOptions = {}) {
         signals: { attendanceUnderway, timesheetLocked, invoiceIssued, paymentCaptured, hasOpenDispute }
       }
     });
+  });
+
+  // Mark a RELEASED worker payout as paid — the "money transferred to the worker" step — and inform
+  // the worker by email. HARD finance-gated: with FINANCE_LIVE_ENABLED off (the default, requires a
+  // recorded CPA sign-off) this returns 423 and nothing moves. No external send happens here; this
+  // records the governed transition + notifies. Admin-gated.
+  app.post("/platform/worker-payouts/:payoutId/mark-paid", async (request, reply) => {
+    const session = await authService.validateSession(readBearerToken(request.headers.authorization));
+    if (!session.authenticated || !session.user) return sendJobRequestDenied(reply);
+    await jobRequestService.listAdminIntake({ session, roles: await resolveAuthorizationRoles(session.user.id) });
+    if (!prisma) return reply.code(503).send({ error: "RWOS_UNAVAILABLE", message: "Not available." });
+    if (!financeLive) {
+      return reply
+        .code(423)
+        .send({ error: "RWOS_FINANCE_LOCKED", message: "Worker payouts are not live yet (finance gate closed)." });
+    }
+
+    const payoutId = readRouteParam(request.params, "payoutId");
+    const payout = await prisma.workerPayout.findUnique({
+      where: { id: payoutId },
+      select: { id: true, status: true, workerIdentityId: true, amountMinor: true, currency: true }
+    });
+    if (!payout) return reply.code(404).send({ error: "RWOS_PAYOUT_NOT_FOUND", message: "Payout not found." });
+    if (payout.status !== "released") {
+      return reply
+        .code(409)
+        .send({ error: "RWOS_PAYOUT_NOT_RELEASED", message: "Only a released payout can be marked paid." });
+    }
+
+    const updated = await prisma.workerPayout.updateMany({
+      where: { id: payout.id, status: "released" },
+      data: { status: "paid", paidAt: new Date() }
+    });
+    if (updated.count === 0) {
+      return reply.code(409).send({ error: "RWOS_PAYOUT_CONFLICT", message: "Payout changed; retry." });
+    }
+
+    const notified = await notifyWorkerPayoutPaid(prisma, emailSender, {
+      workerIdentityId: payout.workerIdentityId,
+      amountMinor: payout.amountMinor,
+      currency: payout.currency
+    });
+    return reply.code(200).send({ payout: { id: payout.id, status: "paid" }, workerNotification: notified.status });
   });
 
   app.get("/platform/calendar/requests/:jobRequestIdOrNumber", async (request, reply) => {
