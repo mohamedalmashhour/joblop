@@ -3228,6 +3228,25 @@ model ExternalJobLead {
   @@map("external_job_leads")
 }
 
+// JobScanner job-alert subscriptions captured from the PUBLIC landing magnet. A visitor leaves their
+// email (optionally with a role/province) so JobLop — not the external source — owns the lead and can
+// alert them as matching jobs appear. One row per email (upsert). Consent is the act of submitting;
+// confirmedAt is set if/when a confirmation step is added. No money, no account required.
+model JobAlertSubscription {
+  id           String    @id @default(uuid()) @db.Uuid
+  email        String    @unique
+  roleKeywords String?   @map("role_keywords")
+  province     String?
+  locale       String?
+  source       String    @default("public_landing")
+  confirmedAt  DateTime? @map("confirmed_at") @db.Timestamptz(3)
+  createdAt    DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt    DateTime  @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  @@index([createdAt], map: "job_alert_subscriptions_created_at_idx")
+  @@map("job_alert_subscriptions")
+}
+
 // JobScanner CV builder: a worker's own CV attachments — certificates (MAPAQ, RCR, cariste, licence)
 // and an optional photo. The worker owns these; they are referenced on the CV (certificates listed in
 // a Certifications section). Bytes stored inline (small files; validated type + size). Not the

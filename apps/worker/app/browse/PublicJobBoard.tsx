@@ -76,8 +76,15 @@ const T = {
     js3t: "Apply free", js3b: "Apply on JobLop at no cost — we never take a cut of your pay.",
     jsBtn: "Search the market — free",
     leadsLive: "Live from across the web", leadsSrc: "External leads",
-    leadsNote: "These are external postings — you apply on the source.",
+    leadsApply: "Apply with JobLop", leadsApplyHint: "Create a free JobLop account to apply and get alerts",
+    leadsNote: "External roles — create a free JobLop account to apply and get alerts, all in one place.",
     leadsCta: "See the full ranked scanner (free)",
+    alertTitle: "Get job alerts — from JobLop",
+    alertSub: "Leave your email and we'll alert you as matching jobs appear. Free, and we never take a cut of your pay.",
+    alertPh: "you@email.com", alertBtn: "Alert me", alertSending: "Saving…",
+    alertOk: "You're on the list. We'll email you as JobLop alerts roll out.",
+    alertErr: "Please enter a valid email and try again.",
+    alertFine: "No spam. Unsubscribe anytime. Your email stays with JobLop.",
     whyTitle: "Why workers choose JobLop",
     why1t: "Trusted workplaces", why1b: "Clear terms before you accept — no surprises.",
     why2t: "Paid fairly", why2b: "Your hours come from your own clock-in / clock-out.",
@@ -130,8 +137,15 @@ const T = {
     js3t: "Postuler gratuitement", js3b: "Postulez sur JobLop sans frais — jamais de part de votre paie.",
     jsBtn: "Chercher le marché — gratuit",
     leadsLive: "En direct du web", leadsSrc: "Offres externes",
-    leadsNote: "Ce sont des offres externes — vous postulez à la source.",
+    leadsApply: "Postuler avec JobLop", leadsApplyHint: "Créez un compte JobLop gratuit pour postuler et recevoir des alertes",
+    leadsNote: "Offres externes — créez un compte JobLop gratuit pour postuler et recevoir des alertes, au même endroit.",
     leadsCta: "Voir le scanner complet et classé (gratuit)",
+    alertTitle: "Recevez des alertes d'emploi — de JobLop",
+    alertSub: "Laissez votre courriel et nous vous alerterons dès qu'un emploi correspond. Gratuit, et nous ne prenons aucune part de votre paie.",
+    alertPh: "vous@courriel.com", alertBtn: "M'alerter", alertSending: "Enregistrement…",
+    alertOk: "Vous êtes inscrit. Nous vous écrirons dès le lancement des alertes JobLop.",
+    alertErr: "Veuillez entrer un courriel valide et réessayer.",
+    alertFine: "Pas de pourriel. Désabonnement en tout temps. Votre courriel reste chez JobLop.",
     whyTitle: "Pourquoi les travailleurs choisissent JobLop",
     why1t: "Milieux de confiance", why1b: "Conditions claires avant d'accepter — sans surprise.",
     why2t: "Payé équitablement", why2b: "Vos heures proviennent de votre propre pointage.",
@@ -164,6 +178,8 @@ export function PublicJobBoard() {
   const [q, setQ] = useState("");
   const [jobs, setJobs] = useState<Job[] | null>(null);
   const [leads, setLeads] = useState<Lead[] | null>(null);
+  const [alertEmail, setAlertEmail] = useState("");
+  const [alertState, setAlertState] = useState<"idle" | "sending" | "ok" | "err">("idle");
   const [cForm, setCForm] = useState({ name: "", email: "", msg: "" });
   const gen = useRef(0);
   const t = T[lang];
@@ -218,6 +234,26 @@ export function PublicJobBoard() {
     const h = setTimeout(loadLeads, q ? 350 : 0);
     return () => clearTimeout(h);
   }, [loadLeads, q]);
+
+  // Capture a job-alert email for JobLop (not the external source). Carries the current role/province
+  // so the subscription is pre-targeted. Honest: records the subscription; delivery rolls out later.
+  const submitAlert = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (alertState === "sending") return;
+    const email = alertEmail.trim();
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) { setAlertState("err"); return; }
+    setAlertState("sending");
+    try {
+      const res = await fetch("/api/public/jobscanner/alerts", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ email, q: q.trim() || undefined, province: province || undefined, locale: lang })
+      });
+      setAlertState(res.ok ? "ok" : "err");
+    } catch {
+      setAlertState("err");
+    }
+  };
 
   const fmtPay = (l: Lead) => {
     const toK = (minor: number | null) => (minor == null ? null : Math.round(minor / 100 / 1000));
@@ -399,14 +435,17 @@ export function PublicJobBoard() {
             <div className="jl-leads-grid">
               {leads.map((l, i) => {
                 const pay = fmtPay(l);
+                // Funnel into JobLop first: clicking opens free sign-up (then Assisted Apply to the
+                // source), so JobLop — not the external site — owns the worker relationship.
                 return (
-                  <a key={`${l.source}-${i}`} href={l.url} target="_blank" rel="noopener noreferrer" className="jl-lead">
+                  <a key={`${l.source}-${i}`} href="/" className="jl-lead" title={t.leadsApplyHint}>
                     <span className="jl-lead-ic">{iconFor(l.title)}</span>
                     <span className="jl-lead-main">
                       <strong>{l.title}</strong>
                       <em>{l.employer ? `${l.employer} · ` : ""}📍 {l.areaLabel}</em>
                     </span>
                     {pay ? <span className="jl-lead-pay">{pay}</span> : null}
+                    <span className="jl-lead-go">{t.leadsApply} →</span>
                   </a>
                 );
               })}
@@ -414,6 +453,31 @@ export function PublicJobBoard() {
             <p className="jl-leads-note">{t.leadsNote} <a href="/job-scanner">{t.leadsCta} →</a></p>
           </div>
         )}
+        <div className="jl-wrap jl-alert">
+          <div className="jl-alert-copy">
+            <h3>{t.alertTitle}</h3>
+            <p>{t.alertSub}</p>
+          </div>
+          {alertState === "ok" ? (
+            <p className="jl-alert-ok">✓ {t.alertOk}</p>
+          ) : (
+            <form className="jl-alert-form" onSubmit={submitAlert}>
+              <input
+                type="email"
+                value={alertEmail}
+                onChange={(e) => { setAlertEmail(e.target.value); if (alertState === "err") setAlertState("idle"); }}
+                placeholder={t.alertPh}
+                aria-label={t.alertPh}
+                required
+              />
+              <button type="submit" disabled={alertState === "sending"}>
+                {alertState === "sending" ? t.alertSending : t.alertBtn}
+              </button>
+            </form>
+          )}
+          {alertState === "err" ? <p className="jl-alert-err">{t.alertErr}</p> : null}
+          {alertState !== "ok" ? <p className="jl-alert-fine">{t.alertFine}</p> : null}
+        </div>
       </section>
 
       {/* FOR WORKERS */}
@@ -729,6 +793,20 @@ const CSS = `
 .jl-lead-pay{margin-left:auto;flex:none;color:#35e08a;font-weight:800;font-size:13px;}
 .jl-leads-note{margin:16px 0 0;color:#aebfdd;font-size:13px;}
 .jl-leads-note a{color:#8fd0ff;font-weight:700;}
+.jl-lead-go{flex:none;margin-left:10px;color:#8fd0ff;font-weight:800;font-size:12px;opacity:0;transform:translateX(-4px);transition:opacity .15s,transform .15s;white-space:nowrap;}
+.jl-lead:hover .jl-lead-go{opacity:1;transform:translateX(0);}
+.jl-alert{margin-top:18px;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.12);border-radius:22px;padding:clamp(22px,4vw,32px);display:flex;flex-wrap:wrap;align-items:center;gap:16px 24px;margin-left:max(18px,env(safe-area-inset-left));margin-right:max(18px,env(safe-area-inset-right));}
+.jl-alert-copy{flex:1 1 280px;min-width:0;}
+.jl-alert-copy h3{margin:0 0 6px;color:#fff;font-size:19px;}
+.jl-alert-copy p{margin:0;color:#aebfdd;font-size:13.5px;max-width:460px;}
+.jl-alert-form{flex:1 1 300px;display:flex;gap:9px;min-width:0;}
+.jl-alert-form input{flex:1 1 auto;min-width:0;background:rgba(255,255,255,.95);border:1px solid rgba(255,255,255,.2);border-radius:11px;padding:12px 14px;font-size:14.5px;color:#0b1322;}
+.jl-alert-form button{flex:none;background:linear-gradient(90deg,#2b6cf0,#58c6ff);color:#06122b;font-weight:800;font-size:14px;padding:12px 20px;border:none;border-radius:11px;cursor:pointer;}
+.jl-alert-form button:hover{filter:brightness(1.06);}
+.jl-alert-form button:disabled{opacity:.6;cursor:default;}
+.jl-alert-ok{flex:1 1 300px;margin:0;color:#35e08a;font-weight:700;font-size:15px;}
+.jl-alert-err{flex:1 1 100%;margin:2px 0 0;color:#ff9b9b;font-size:13px;}
+.jl-alert-fine{flex:1 1 100%;margin:2px 0 0;color:#8597b8;font-size:12px;}
 .jl-js-feats{display:flex;flex-direction:column;gap:12px;}
 .jl-js-feat{display:flex;gap:13px;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.1);border-radius:13px;padding:15px;}
 .jl-js-feat span{font-size:22px;}

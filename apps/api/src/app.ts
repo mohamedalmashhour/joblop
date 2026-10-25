@@ -3065,6 +3065,37 @@ export function buildApi(options: BuildApiOptions = {}) {
       });
   });
 
+  // PUBLIC job-alert capture — the landing magnet's email box. A visitor leaves their email (optionally
+  // a role/province) so JobLop, not the external source, owns the lead. No auth, no account, no money.
+  // Upsert by email so re-submitting just refreshes the role/province. Delivery of alerts is a separate
+  // governed step (scheduler stays OFF) — this only records the subscription, honestly.
+  app.post("/public/jobscanner/alerts", async (request, reply) => {
+    if (!prisma) return reply.code(503).send({ error: "RWOS_UNAVAILABLE", message: "Not available." });
+    const body = asRecord(request.body);
+    const emailRaw = (readOptionalString(body, "email") ?? "").trim().toLowerCase();
+    // Conservative email shape check — not RFC-perfect, just enough to reject junk.
+    if (emailRaw.length < 5 || emailRaw.length > 254 || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(emailRaw)) {
+      return reply.code(400).send({ error: "RWOS_ALERT_EMAIL_INVALID", message: "A valid email is required." });
+    }
+    const roleRaw = (readOptionalString(body, "roleKeywords") ?? readOptionalString(body, "q") ?? "")
+      .trim()
+      .slice(0, 120);
+    const roleKeywords = roleRaw.length > 0 ? roleRaw : null;
+    const provinceRaw = readOptionalString(body, "province");
+    const province = provinceRaw && /^[A-Za-z]{2}$/.test(provinceRaw) ? provinceRaw.toUpperCase() : null;
+    const localeRaw = (readOptionalString(body, "locale") ?? "").trim().toLowerCase();
+    const locale = localeRaw === "fr" || localeRaw === "en" ? localeRaw : null;
+    await prisma.jobAlertSubscription.upsert({
+      where: { email: emailRaw },
+      update: { roleKeywords, province, locale },
+      create: { email: emailRaw, roleKeywords, province, locale, source: "public_landing" }
+    });
+    return reply.code(200).send({
+      status: "subscribed",
+      note: "You're on JobLop's job-alert list. We'll notify you as alerts roll out — no spam, unsubscribe anytime."
+    });
+  });
+
   // Worker marketplace job search. Cross-org, privacy-safe. Worker origin is a Canadian
   // postal code; the server geocodes it, does a bounding-box pre-filter, computes exact
   // geodesic distance, applies the radius, and returns area-level results (no exact
