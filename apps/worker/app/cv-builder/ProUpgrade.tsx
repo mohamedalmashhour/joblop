@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 
 type ETransfer = { email: string; amount: string; reference: string; note: string };
 type Order = { id: string; status: string; method: string };
@@ -13,6 +13,50 @@ export function ProUpgrade() {
   const [msg, setMsg] = useState("");
   const [trialBusy, setTrialBusy] = useState(false);
   const [trialMsg, setTrialMsg] = useState("");
+  const [cardBusy, setCardBusy] = useState(false);
+  const [cardEnabled, setCardEnabled] = useState(false);
+  const [cardMsg, setCardMsg] = useState("");
+
+  // On mount: learn whether real card checkout is live (test mode), and finalize a card payment if we
+  // just returned from Stripe's hosted Checkout (?pro=success&order=…). The API verifies payment itself.
+  useEffect(() => {
+    let active = true;
+    (async () => {
+      try {
+        const r = await fetch("/api/cv/plan", { cache: "no-store" });
+        if (r.ok && active) setCardEnabled(Boolean(((await r.json()) as { cardEnabled?: boolean }).cardEnabled));
+      } catch { /* ignore */ }
+    })();
+    try {
+      const params = new URLSearchParams(window.location.search);
+      const pro = params.get("pro");
+      const orderId = params.get("order");
+      if (pro === "success" && orderId) {
+        setCardBusy(true); setCardMsg("Confirming your payment…");
+        fetch(`/api/cv/orders/${encodeURIComponent(orderId)}/complete`, { method: "POST", headers: { "content-type": "application/json" } })
+          .then((res) => { if (res.ok) { window.location.replace("/cv-builder"); } else { setCardMsg("We couldn't confirm the payment yet. If you were charged, refresh in a moment."); setCardBusy(false); } })
+          .catch(() => { setCardMsg("We couldn't confirm the payment. Please refresh."); setCardBusy(false); });
+      } else if (pro === "cancel") {
+        setCardMsg("Card checkout cancelled — no charge was made.");
+      }
+    } catch { /* ignore */ }
+    return () => { active = false; };
+  }, []);
+
+  // Card: open Stripe's hosted test Checkout. No card data touches JobLop; we return and verify.
+  const payByCard = async () => {
+    setCardBusy(true); setCardMsg("");
+    try {
+      const res = await fetch("/api/cv/subscribe", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ method: "stripe" }) });
+      const d = (await res.json().catch(() => ({}))) as { checkoutUrl?: string | null };
+      if (res.ok && d.checkoutUrl) { window.location.href = d.checkoutUrl; return; }
+      setCardMsg("Card checkout isn't available right now — use Interac e-transfer.");
+      setCardBusy(false);
+    } catch {
+      setCardMsg("Could not start card checkout — try again.");
+      setCardBusy(false);
+    }
+  };
 
   // Start the one-time 14-day free trial. On success the worker is Pro immediately — reload so the whole
   // app (JobScanner priority, AI CV) reflects it. No card, no charge.
@@ -65,9 +109,14 @@ export function ProUpgrade() {
           {trialMsg ? <p style={styles.err}>{trialMsg}</p> : null}
           <p style={styles.orLine}>or subscribe now</p>
           <div style={styles.buttons}>
-            <button type="button" style={styles.cta} disabled={busy} onClick={() => void subscribe()}>{busy ? "…" : "Pay by Interac e-transfer"}</button>
-            <button type="button" style={styles.ctaGhost} disabled title="Card payments open soon">Pay by card (soon)</button>
+            <button type="button" style={styles.cta} disabled={busy || cardBusy} onClick={() => void subscribe()}>{busy ? "…" : "Pay by Interac e-transfer"}</button>
+            {cardEnabled ? (
+              <button type="button" style={styles.cta} disabled={cardBusy} onClick={() => void payByCard()}>{cardBusy ? "…" : "Pay by card"}</button>
+            ) : (
+              <button type="button" style={styles.ctaGhost} disabled title="Card payments open soon">Pay by card (soon)</button>
+            )}
           </div>
+          {cardMsg ? <p style={styles.hint2}>{cardMsg}</p> : null}
         </>
       ) : null}
 
@@ -89,7 +138,11 @@ export function ProUpgrade() {
       ) : null}
 
       {msg ? <p style={styles.err}>{msg}</p> : null}
-      <p style={styles.billing}>Card payments aren&rsquo;t enabled yet — Interac e-transfer is confirmed manually by the team. No card is charged.</p>
+      <p style={styles.billing}>
+        {cardEnabled
+          ? "Card checkout runs in Stripe TEST mode — use test card 4242 4242 4242 4242. No real money moves. Interac e-transfer is confirmed manually by the team."
+          : "Card payments aren’t enabled yet — Interac e-transfer is confirmed manually by the team. No card is charged."}
+      </p>
     </div>
   );
 }
@@ -101,6 +154,7 @@ const styles = {
   trialBox: { alignItems: "center", display: "flex", flexWrap: "wrap" as const, gap: "6px 12px", marginBottom: 6 },
   trialCta: { background: "#0f7f78", border: "none", borderRadius: 8, color: "#fff", cursor: "pointer", fontSize: 14, fontWeight: 800, padding: "11px 20px" },
   trialHint: { color: "#8a5a00", fontSize: 11.5, fontWeight: 600 },
+  hint2: { color: "#8a5a00", fontSize: 12, fontWeight: 600, margin: "8px 0 0" },
   orLine: { color: "#a07a2a", fontSize: 11.5, fontWeight: 700, letterSpacing: ".03em", margin: "10px 0 8px", textTransform: "uppercase" as const },
   cta: { background: "#0f7f78", border: "none", borderRadius: 8, color: "#fff", cursor: "pointer", fontWeight: 800, padding: "10px 16px" },
   ctaGhost: { background: "#fff", border: "1px solid #c9b27a", borderRadius: 8, color: "#a07a2a", cursor: "not-allowed", fontWeight: 700, padding: "10px 16px" },

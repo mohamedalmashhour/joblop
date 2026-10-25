@@ -1,0 +1,75 @@
+import { createStripeTestClient, type StripeTestEnvironment } from "./stripeTestProvider";
+
+// Worker Pro card payment via Stripe hosted Checkout — TEST MODE ONLY. Reuses the shared Stripe test
+// provider, which refuses any non-`sk_test_` secret, so no live charge can ever be created here. The
+// worker is redirected to Stripe's hosted test page (enter card 4242 4242 4242 4242), then returns to
+// JobLop where we verify the session was paid before granting Pro. No card data touches JobLop.
+
+/** Read the Stripe TEST environment from process env (same shape the shared provider validates). */
+export function stripeTestEnvFromProcess(): StripeTestEnvironment {
+  return {
+    enabled: process.env.STRIPE_TEST_MODE_ENABLED === "enabled",
+    secretKey: process.env.STRIPE_TEST_SECRET_KEY,
+    webhookSecret: process.env.STRIPE_TEST_WEBHOOK_SECRET,
+    accountReference: process.env.STRIPE_TEST_ACCOUNT_REFERENCE
+  };
+}
+
+/** True when the Stripe TEST keys are present and enabled, so a checkout can actually be created. */
+export function isStripeTestConfigured(): boolean {
+  const env = stripeTestEnvFromProcess();
+  return (
+    env.enabled === true &&
+    (env.secretKey?.startsWith("sk_test_") ?? false) &&
+    (env.webhookSecret?.startsWith("whsec_") ?? false) &&
+    Boolean(env.accountReference)
+  );
+}
+
+export type CvProCheckout = Readonly<{ id: string; url: string | null }>;
+
+/** Create a hosted Checkout Session for a Worker Pro order. Idempotent per order. */
+export async function createCvProCheckoutSession(input: {
+  orderId: string;
+  workerRef: string;
+  priceMinor: number;
+  currency: string;
+  successUrl: string;
+  cancelUrl: string;
+}): Promise<CvProCheckout> {
+  const client = createStripeTestClient(stripeTestEnvFromProcess());
+  const metadata = { cvProOrderId: input.orderId, workerRef: input.workerRef };
+  const session = await client.checkout.sessions.create(
+    {
+      mode: "payment",
+      line_items: [
+        {
+          quantity: 1,
+          price_data: {
+            currency: input.currency.toLowerCase(),
+            unit_amount: input.priceMinor,
+            product_data: { name: "JobLop Worker Pro — 1 month (test)" }
+          }
+        }
+      ],
+      metadata,
+      payment_intent_data: { metadata },
+      success_url: input.successUrl,
+      cancel_url: input.cancelUrl
+    },
+    { idempotencyKey: `cvpro-checkout-${input.orderId}` }
+  );
+  return { id: session.id, url: session.url };
+}
+
+/** Retrieve a Checkout Session and confirm it was PAID for exactly this order. Returns the PaymentIntent id. */
+export async function verifyCvProCheckoutPaid(
+  sessionId: string,
+  expectedOrderId: string
+): Promise<Readonly<{ paid: boolean; paymentRef: string | null }>> {
+  const client = createStripeTestClient(stripeTestEnvFromProcess());
+  const session = await client.checkout.sessions.retrieve(sessionId);
+  const paid = session.payment_status === "paid" && session.metadata?.cvProOrderId === expectedOrderId;
+  const paymentRef = typeof session.payment_intent === "string" ? session.payment_intent : (session.payment_intent?.id ?? null);
+  return { paid, paymentRef };
+}

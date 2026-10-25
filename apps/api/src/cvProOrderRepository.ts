@@ -1,5 +1,6 @@
 import type { PrismaClient } from "@rwos/database";
 import { grantEntitlement, PRO_PLAN } from "./cvEntitlementRepository";
+import { createCvProCheckoutSession, verifyCvProCheckoutPaid, isStripeTestConfigured } from "./cvProStripeCheckout";
 
 // Worker Pro purchase orders. Two payment methods:
 //  - "e_transfer": the worker sends an Interac e-transfer to BILLING_EMAIL with the order reference, marks
@@ -78,7 +79,34 @@ export async function listOrders(prisma: PrismaClient, workerRef: string): Promi
 
 export type OrderActionResult =
   | { ok: true; order: OrderView }
-  | { ok: false; reason: "payments_disabled" | "order_not_found" | "not_pending" | "wrong_method" };
+  | { ok: false; reason: "payments_disabled" | "order_not_found" | "not_pending" | "wrong_method" | "payment_incomplete" | "stripe_unconfigured" };
+
+export type StripeCheckoutResult =
+  | { ok: true; order: OrderView; checkoutUrl: string | null }
+  | { ok: false; reason: "payments_disabled" | "stripe_unconfigured" };
+
+/** Begin a Stripe TEST card checkout for Worker Pro: creates/reuses a pending order, opens a hosted
+ *  Checkout Session, stores its id on the order, and returns the redirect URL. No card touches JobLop. */
+export async function startStripeCheckout(
+  prisma: PrismaClient,
+  workerRef: string,
+  origin: string
+): Promise<StripeCheckoutResult> {
+  if (!isPurchaseEnabled()) return { ok: false, reason: "payments_disabled" };
+  if (!isStripeTestConfigured()) return { ok: false, reason: "stripe_unconfigured" };
+  const order = await createPendingOrder(prisma, workerRef, "stripe");
+  const base = origin.replace(/\/+$/, "");
+  const session = await createCvProCheckoutSession({
+    orderId: order.id,
+    workerRef,
+    priceMinor: order.priceMinor,
+    currency: order.currency,
+    successUrl: `${base}/cv-builder?pro=success&order=${order.id}`,
+    cancelUrl: `${base}/cv-builder?pro=cancel`
+  });
+  const updated = await prisma.cvProOrder.update({ where: { id: order.id }, data: { paymentRef: session.id } });
+  return { ok: true, order: toView(updated), checkoutUrl: session.url };
+}
 
 /** Worker marks an e-transfer as sent: pending_payment → payment_claimed (awaiting admin confirmation). */
 export async function claimETransfer(prisma: PrismaClient, workerRef: string, orderId: string): Promise<OrderActionResult> {
@@ -90,13 +118,19 @@ export async function claimETransfer(prisma: PrismaClient, workerRef: string, or
   return { ok: true, order: toView(updated) };
 }
 
-/** Self-serve Stripe (card) completion — GATED; refuses while payments are frozen. */
+/** Self-serve Stripe (card) completion — GATED. Verifies the hosted Checkout Session was actually PAID
+ *  (test mode) before granting Pro; never trusts the client. Idempotent if already paid. */
 export async function completeStripeOrder(prisma: PrismaClient, workerRef: string, orderId: string): Promise<OrderActionResult> {
   if (!isPurchaseEnabled()) return { ok: false, reason: "payments_disabled" };
+  if (!isStripeTestConfigured()) return { ok: false, reason: "stripe_unconfigured" };
   const order = await prisma.cvProOrder.findFirst({ where: { id: orderId, workerRef } });
   if (!order) return { ok: false, reason: "order_not_found" };
+  if (order.status === "paid") return { ok: true, order: toView(order) }; // already granted — idempotent
   if (order.status !== "pending_payment") return { ok: false, reason: "not_pending" };
-  return finalizePaid(prisma, order.id, workerRef, order.periodMonths, "purchase", `stripe-test-${order.id}`);
+  if (order.method !== "stripe" || !order.paymentRef) return { ok: false, reason: "wrong_method" };
+  const { paid, paymentRef } = await verifyCvProCheckoutPaid(order.paymentRef, order.id);
+  if (!paid) return { ok: false, reason: "payment_incomplete" };
+  return finalizePaid(prisma, order.id, workerRef, order.periodMonths, "purchase", paymentRef ?? `stripe-test-${order.id}`);
 }
 
 // ── admin ──────────────────────────────────────────────────────────────────────────────────────

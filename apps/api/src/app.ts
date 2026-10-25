@@ -224,6 +224,7 @@ import {
   listOrders,
   claimETransfer,
   completeStripeOrder,
+  startStripeCheckout,
   listOrdersForReview,
   adminConfirmOrder,
   adminRejectOrder,
@@ -233,6 +234,7 @@ import {
   PRO_METHODS,
   type ProMethod
 } from "./cvProOrderRepository";
+import { isStripeTestConfigured } from "./cvProStripeCheckout";
 import { createSyntheticCvProvider } from "./cvBuilder";
 import {
   activeMembershipRoleQuery,
@@ -8026,6 +8028,7 @@ export function buildApi(options: BuildApiOptions = {}) {
       trialAvailable: !isProNow && !trialUsed,
       trialUsed,
       purchaseEnabled: isPurchaseEnabled(),
+      cardEnabled: isPurchaseEnabled() && isStripeTestConfigured(),
       billing: isPurchaseEnabled()
         ? "You can subscribe to Worker Pro."
         : "Payments are not yet enabled — subscribing records your interest; Worker Pro is granted by the platform for now."
@@ -8066,17 +8069,31 @@ export function buildApi(options: BuildApiOptions = {}) {
     const body = asRecord(request.body);
     const methodRaw = readOptionalString(body, "method") ?? "e_transfer";
     const method: ProMethod = PRO_METHODS.includes(methodRaw as ProMethod) ? (methodRaw as ProMethod) : "e_transfer";
+
+    // Card: open a Stripe TEST hosted Checkout and hand back the redirect URL. Gated + test-only.
+    if (method === "stripe") {
+      const origin = (readOptionalString(body, "origin") ?? (request.headers.origin as string | undefined) ?? "https://joblop.com").trim();
+      const checkout = await startStripeCheckout(prisma!, session.user.id, origin);
+      if (!checkout.ok) {
+        return reply.code(423).send({
+          error: "RWOS_PAYMENTS_FROZEN",
+          message: "Card payments are not enabled yet — use Interac e-transfer."
+        });
+      }
+      return reply.code(201).send({
+        order: checkout.order,
+        stripeEnabled: true,
+        checkoutUrl: checkout.checkoutUrl,
+        note: "Redirecting to secure card checkout (test mode). Complete payment to activate Worker Pro."
+      });
+    }
+
     const order = await createPendingOrder(prisma!, session.user.id, method);
     return reply.code(201).send({
       order,
-      ...(method === "e_transfer" ? { eTransfer: eTransferInstructions(order) } : {}),
-      stripeEnabled: method === "stripe" ? isPurchaseEnabled() : undefined,
+      eTransfer: eTransferInstructions(order),
       note:
-        method === "e_transfer"
-          ? "Send the Interac e-transfer to billing@joblop.com with the reference, then tap “I've sent it”. Worker Pro activates once we confirm receipt."
-          : isPurchaseEnabled()
-            ? "Card checkout (test mode) — complete payment to activate."
-            : "Card payments are not enabled yet. Use Interac e-transfer, or we'll notify you when card checkout opens."
+        "Send the Interac e-transfer to billing@joblop.com with the reference, then tap “I've sent it”. Worker Pro activates once we confirm receipt."
     });
   });
 
@@ -8111,8 +8128,11 @@ export function buildApi(options: BuildApiOptions = {}) {
     if (!id || !isCanonicalUuid(id)) return reply.code(400).send({ error: "RWOS_ORDER_INVALID", message: "A valid order id is required." });
     const result = await completeStripeOrder(prisma!, session.user.id, id);
     if (!result.ok) {
-      if (result.reason === "payments_disabled") {
+      if (result.reason === "payments_disabled" || result.reason === "stripe_unconfigured") {
         return reply.code(423).send({ error: "RWOS_PAYMENTS_FROZEN", message: "Card payments are not enabled yet — use Interac e-transfer." });
+      }
+      if (result.reason === "payment_incomplete") {
+        return reply.code(402).send({ error: "RWOS_PAYMENT_INCOMPLETE", message: "We haven't received your card payment yet. If you just paid, wait a moment and retry." });
       }
       return reply.code(result.reason === "order_not_found" ? 404 : 409).send({ error: "RWOS_ORDER_" + result.reason.toUpperCase() });
     }
