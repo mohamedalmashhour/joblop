@@ -12,12 +12,32 @@ async function resolveLocale() {
   return resolveRwosLocale(store.get(LOCALE_COOKIE)?.value);
 }
 
+const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL ?? "https://joblop.com";
+// Google Search Console meta-tag verification. The owner pastes the token from Search Console
+// into the GOOGLE_SITE_VERIFICATION env var on Render — no code change needed. Empty ⇒ no tag.
+const GOOGLE_SITE_VERIFICATION = process.env.GOOGLE_SITE_VERIFICATION?.trim();
+
 export async function generateMetadata(): Promise<Metadata> {
   const locale = await resolveLocale();
   const m = dictionaries[locale];
+  const title = `JobLop — ${m["mk.heroTitle"]}`;
+  const description = m["mk.heroIntro"];
   return {
-    title: `JobLop — ${m["mk.heroTitle"]}`,
-    description: m["mk.heroIntro"]
+    metadataBase: new URL(SITE_URL),
+    title,
+    description,
+    applicationName: "JobLop",
+    alternates: { canonical: "/" },
+    openGraph: {
+      type: "website",
+      siteName: "JobLop",
+      url: SITE_URL,
+      title,
+      description,
+      locale: htmlLang(locale)
+    },
+    twitter: { card: "summary_large_image", title, description },
+    ...(GOOGLE_SITE_VERIFICATION ? { verification: { google: GOOGLE_SITE_VERIFICATION } } : {})
   };
 }
 
