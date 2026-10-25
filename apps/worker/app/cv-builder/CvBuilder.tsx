@@ -114,6 +114,28 @@ export function CvBuilder() {
 
   const set = (k: "fullName" | "lastJob", v: string) => (k === "fullName" ? setName(v) : setLastJob(v));
 
+  // CV tester — a free, deterministic score of how strong/complete this CV is, with the concrete gaps
+  // that cost points. Advisory only; it never blocks. The upgrade to Pro is how a worker turns the gaps
+  // into a professionally written, job-tailored CV. No AI call, no money.
+  const certCount = assets.filter((a) => a.kind === "certificate").length;
+  const scoreCard = (() => {
+    const parts: { ok: boolean; pts: number; gap: string }[] = [
+      { ok: name.trim().length > 1, pts: 10, gap: "Add your full name" },
+      { ok: exp.length > 0, pts: 15, gap: "Set your years of experience" },
+      { ok: skills.length >= 3, pts: 20, gap: `Add ${Math.max(0, 3 - skills.length)} more skill${3 - skills.length === 1 ? "" : "s"}` },
+      { ok: certCount >= 2, pts: 20, gap: certCount === 0 ? "Upload your certificates (MAPAQ, RCR, cariste…)" : "Add one more certificate" },
+      { ok: edu !== "" && edu !== "No diploma", pts: 10, gap: "Add your education / training" },
+      { ok: langs.length >= 2, pts: 10, gap: "Add a second language you speak" },
+      { ok: lastJob.trim().length > 1, pts: 10, gap: "Add your most recent employer" },
+      { ok: avail.length > 0, pts: 5, gap: "Set your availability" }
+    ];
+    const score = parts.reduce((s, p) => s + (p.ok ? p.pts : 0), 0);
+    const gaps = parts.filter((p) => !p.ok).map((p) => p.gap);
+    const grade = score >= 80 ? "Strong" : score >= 60 ? "Good" : score >= 40 ? "Fair" : "Needs work";
+    const color = score >= 80 ? "#0f7f78" : score >= 60 ? "#2b6cf0" : score >= 40 ? "#b8860b" : "#b23b2e";
+    return { score, gaps, grade, color };
+  })();
+
   return (
     <section style={styles.wrap}>
       <article style={styles.card}>
@@ -157,6 +179,24 @@ export function CvBuilder() {
           <button type="button" style={styles.cta} disabled={busy} onClick={() => void generate()}>{busy ? "Building…" : "Build my CV"}</button>
           {msg ? <span style={styles.notice}>{msg}</span> : null}
         </div>
+        {cv ? (
+          <div style={styles.scoreWrap}>
+            <div style={styles.scoreHead}>
+              <div>
+                <span style={styles.scoreLabel}>Your CV score</span>
+                <div><span style={{ ...styles.scoreNum, color: scoreCard.color }}>{scoreCard.score}</span><span style={styles.scoreOf}>/100 · {scoreCard.grade}</span></div>
+              </div>
+              <div style={styles.scoreBarTrack}><div style={{ ...styles.scoreBarFill, width: `${scoreCard.score}%`, background: scoreCard.color }} /></div>
+            </div>
+            {scoreCard.gaps.length > 0 ? (
+              <div style={styles.scoreGaps}>
+                <strong>Raise your score:</strong>
+                <ul style={styles.scoreGapList}>{scoreCard.gaps.slice(0, 4).map((g) => <li key={g}>{g}</li>)}</ul>
+              </div>
+            ) : <p style={styles.scoreMax}>✓ Your CV covers the basics. Worker Pro makes it stand out.</p>}
+            {!cvPro ? <p style={styles.scoreUpsell}>⭐ <strong>Worker Pro</strong> rewrites your CV professionally and tailors it to each job — the fastest way to a top score.</p> : null}
+          </div>
+        ) : null}
         {cv && !cvPro ? <ProUpgrade /> : null}
       </article>
 
@@ -199,5 +239,16 @@ const styles = {
   billing: { color: "#a07a2a", fontSize: 11, marginTop: 6 },
   assetList: { listStyle: "none", margin: "12px 0 0", padding: 0 },
   assetItem: { alignItems: "center", borderBottom: "1px solid #eef3f9", color: "#10233f", display: "flex", fontSize: 13, justifyContent: "space-between", padding: "8px 0" },
-  remove: { background: "none", border: "none", color: "#b23b2e", cursor: "pointer", fontSize: 12, fontWeight: 700 }
+  remove: { background: "none", border: "none", color: "#b23b2e", cursor: "pointer", fontSize: 12, fontWeight: 700 },
+  scoreWrap: { background: "#f6f9fe", border: "1px solid #dbe4f0", borderRadius: 12, marginTop: 16, padding: "14px 16px" },
+  scoreHead: { alignItems: "center", display: "flex", flexWrap: "wrap" as const, gap: "8px 18px", justifyContent: "space-between" },
+  scoreLabel: { color: "#5a6b85", fontSize: 12, fontWeight: 700, letterSpacing: ".03em", textTransform: "uppercase" as const },
+  scoreNum: { fontSize: 32, fontWeight: 800, lineHeight: 1 },
+  scoreOf: { color: "#5a6b85", fontSize: 14, fontWeight: 700, marginLeft: 6 },
+  scoreBarTrack: { background: "#e3eaf4", borderRadius: 999, flex: "1 1 160px", height: 10, minWidth: 140, overflow: "hidden" as const },
+  scoreBarFill: { borderRadius: 999, height: "100%", transition: "width .4s ease" },
+  scoreGaps: { color: "#10233f", fontSize: 13, marginTop: 12 },
+  scoreGapList: { margin: "6px 0 0", paddingLeft: 18 },
+  scoreMax: { color: "#0f7f78", fontSize: 13, fontWeight: 700, margin: "12px 0 0" },
+  scoreUpsell: { background: "#fff6e6", border: "1px solid #f0d089", borderRadius: 8, color: "#8a5a00", fontSize: 12.5, lineHeight: 1.5, margin: "12px 0 0", padding: "9px 12px" }
 } as const;

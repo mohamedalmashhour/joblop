@@ -56,6 +56,27 @@ export async function grantEntitlement(prisma: PrismaClient, input: GrantInput):
   });
 }
 
+export const TRIAL_DAYS = 14;
+
+/** True if this worker has ever started a Pro trial (active, expired, or revoked) — so trials are once-only. */
+export async function hasEverTrialed(prisma: PrismaClient, workerRef: string): Promise<boolean> {
+  const row = await prisma.cvEntitlement.findFirst({ where: { workerRef, source: "trial" }, select: { id: true } });
+  return row !== null;
+}
+
+export type StartTrialResult =
+  | Readonly<{ ok: true; entitlement: EntitlementView }>
+  | Readonly<{ ok: false; reason: "already_active" | "trial_used" }>;
+
+/** Start a one-time 14-day Worker Pro trial. Refuses if already Pro/active or a trial was used before. */
+export async function startTrial(prisma: PrismaClient, workerRef: string): Promise<StartTrialResult> {
+  if (await getActiveEntitlement(prisma, workerRef)) return { ok: false, reason: "already_active" };
+  if (await hasEverTrialed(prisma, workerRef)) return { ok: false, reason: "trial_used" };
+  const expiresAt = new Date(Date.now() + TRIAL_DAYS * 24 * 60 * 60 * 1000);
+  const entitlement = await grantEntitlement(prisma, { workerRef, source: "trial", expiresAt });
+  return { ok: true, entitlement };
+}
+
 /** Revoke all active entitlements for a worker. Returns how many rows were revoked. */
 export async function revokeEntitlement(prisma: PrismaClient, workerRef: string): Promise<number> {
   const res = await prisma.cvEntitlement.updateMany({ where: { workerRef, status: "active" }, data: { status: "revoked" } });

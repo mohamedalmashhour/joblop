@@ -218,7 +218,7 @@ import { startJobScannerSchedule, type ScanQuery } from "./jobScannerScheduler";
 import { type WorkerCvProfile, type TargetJob } from "./cvBuilder";
 import { getCvProvider } from "./cvBuilderClaude";
 import { createCvAsset, listCvAssets, deleteCvAsset } from "./cvAssetRepository";
-import { isPro, getActiveEntitlement, grantEntitlement, revokeEntitlement, PRO_PLAN } from "./cvEntitlementRepository";
+import { isPro, getActiveEntitlement, grantEntitlement, revokeEntitlement, startTrial, hasEverTrialed, TRIAL_DAYS, PRO_PLAN } from "./cvEntitlementRepository";
 import {
   createPendingOrder,
   listOrders,
@@ -8014,16 +8014,43 @@ export function buildApi(options: BuildApiOptions = {}) {
       return reply.code(401).send({ error: "RWOS_WORKER_DENIED", message: "Authentication is required." });
     }
     const entitlement = await getActiveEntitlement(prisma!, session.user.id);
+    const isProNow = entitlement?.plan === PRO_PLAN;
+    const trialUsed = await hasEverTrialed(prisma!, session.user.id);
     return reply.code(200).send({
       plan: entitlement?.plan ?? "free",
-      pro: entitlement?.plan === PRO_PLAN,
+      pro: isProNow,
       entitlement,
       benefits: ["AI-written CV + premium designs", "Best-paying and emergency jobs first", "Priority job access"],
       price: PRO_PRICE,
+      trialDays: TRIAL_DAYS,
+      trialAvailable: !isProNow && !trialUsed,
+      trialUsed,
       purchaseEnabled: isPurchaseEnabled(),
       billing: isPurchaseEnabled()
         ? "You can subscribe to Worker Pro."
         : "Payments are not yet enabled — subscribing records your interest; Worker Pro is granted by the platform for now."
+    });
+  });
+
+  // Start a one-time 14-day free Worker Pro trial. Self-serve, no payment. Refuses if already Pro or a
+  // trial was used before. No money moves — a trial is a time-boxed entitlement, not a charge.
+  app.post("/worker/cv/trial", async (request, reply) => {
+    const session = await authService.validateSession(readBearerToken(request.headers.authorization));
+    if (!session.authenticated || !session.user) {
+      return reply.code(401).send({ error: "RWOS_WORKER_DENIED", message: "Authentication is required." });
+    }
+    const result = await startTrial(prisma!, session.user.id);
+    if (!result.ok) {
+      const message =
+        result.reason === "already_active"
+          ? "You already have Worker Pro."
+          : "Your free trial has already been used.";
+      return reply.code(409).send({ error: "RWOS_TRIAL_" + result.reason.toUpperCase(), message });
+    }
+    return reply.code(200).send({
+      entitlement: result.entitlement,
+      trialDays: TRIAL_DAYS,
+      note: `Your ${TRIAL_DAYS}-day Worker Pro trial is active. Enjoy AI CVs and priority jobs — we'll remind you before it ends. No card, no charge.`
     });
   });
 

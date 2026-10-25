@@ -11,6 +11,21 @@ export function ProUpgrade() {
   const [et, setEt] = useState<ETransfer | null>(null);
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState("");
+  const [trialBusy, setTrialBusy] = useState(false);
+  const [trialMsg, setTrialMsg] = useState("");
+
+  // Start the one-time 14-day free trial. On success the worker is Pro immediately — reload so the whole
+  // app (JobScanner priority, AI CV) reflects it. No card, no charge.
+  const startTrial = async () => {
+    setTrialBusy(true); setTrialMsg("");
+    try {
+      const res = await fetch("/api/cv/trial", { method: "POST", headers: { "content-type": "application/json" } });
+      if (res.ok) { window.location.reload(); return; }
+      setTrialMsg(res.status === 409 ? "Your free trial has already been used." : "Could not start the trial — try again.");
+    } catch {
+      setTrialMsg("Could not start the trial — try again.");
+    } finally { setTrialBusy(false); }
+  };
 
   const subscribe = async () => {
     setBusy(true); setMsg("");
@@ -40,10 +55,20 @@ export function ProUpgrade() {
       </ul>
 
       {step === "idle" ? (
-        <div style={styles.buttons}>
-          <button type="button" style={styles.cta} disabled={busy} onClick={() => void subscribe()}>{busy ? "…" : "Pay by Interac e-transfer"}</button>
-          <button type="button" style={styles.ctaGhost} disabled title="Card payments open soon">Pay by card (soon)</button>
-        </div>
+        <>
+          <div style={styles.trialBox}>
+            <button type="button" style={styles.trialCta} disabled={trialBusy} onClick={() => void startTrial()}>
+              {trialBusy ? "…" : "Start 14-day free trial"}
+            </button>
+            <span style={styles.trialHint}>No card, no charge. Full Pro for 14 days — cancel anytime.</span>
+          </div>
+          {trialMsg ? <p style={styles.err}>{trialMsg}</p> : null}
+          <p style={styles.orLine}>or subscribe now</p>
+          <div style={styles.buttons}>
+            <button type="button" style={styles.cta} disabled={busy} onClick={() => void subscribe()}>{busy ? "…" : "Pay by Interac e-transfer"}</button>
+            <button type="button" style={styles.ctaGhost} disabled title="Card payments open soon">Pay by card (soon)</button>
+          </div>
+        </>
       ) : null}
 
       {step === "instructions" && et ? (
@@ -73,6 +98,10 @@ const styles = {
   wrap: { background: "#fff6e6", border: "1px solid #f0d089", borderRadius: 10, color: "#8a5a00", fontSize: 13, lineHeight: 1.5, marginTop: 16, padding: "14px 16px" },
   benefits: { margin: "8px 0 12px", paddingLeft: 18 },
   buttons: { display: "flex", flexWrap: "wrap" as const, gap: 10 },
+  trialBox: { alignItems: "center", display: "flex", flexWrap: "wrap" as const, gap: "6px 12px", marginBottom: 6 },
+  trialCta: { background: "#0f7f78", border: "none", borderRadius: 8, color: "#fff", cursor: "pointer", fontSize: 14, fontWeight: 800, padding: "11px 20px" },
+  trialHint: { color: "#8a5a00", fontSize: 11.5, fontWeight: 600 },
+  orLine: { color: "#a07a2a", fontSize: 11.5, fontWeight: 700, letterSpacing: ".03em", margin: "10px 0 8px", textTransform: "uppercase" as const },
   cta: { background: "#0f7f78", border: "none", borderRadius: 8, color: "#fff", cursor: "pointer", fontWeight: 800, padding: "10px 16px" },
   ctaGhost: { background: "#fff", border: "1px solid #c9b27a", borderRadius: 8, color: "#a07a2a", cursor: "not-allowed", fontWeight: 700, padding: "10px 16px" },
   box: { background: "#fffdf7", border: "1px solid #ecd9a8", borderRadius: 8, marginTop: 10, padding: 12 },
