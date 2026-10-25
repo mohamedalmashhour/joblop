@@ -716,6 +716,9 @@ model EmployerCancellationObligation {
   contractId           String?                              @map("contract_id") @db.Uuid
   contractVersion      String?                              @map("contract_version")
   amountMinor          Int                                  @map("amount_minor")
+  // Worker compensation (3h × worker rate × workers) on a late client cancellation — a payment TO the
+  // worker, recorded for governed Finance handling. Never a deduction. No money moves until FINANCE_LIVE.
+  workerCompensationMinor Int                               @default(0) @map("worker_compensation_minor")
   status               EmployerCancellationObligationStatus @default(RECORDED)
   computedByUserId     String                               @map("computed_by_user_id") @db.Uuid
   computedAt           DateTime                             @default(now()) @map("computed_at") @db.Timestamptz(3)

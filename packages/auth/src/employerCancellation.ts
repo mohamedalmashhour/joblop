@@ -132,6 +132,7 @@ export type CancellationStore = Readonly<{
       contractId: string | null;
       contractVersion: string | null;
       amountMinor: number;
+      workerCompensationMinor: number;
     } | null;
     now: Date;
   }): Promise<{ created: boolean; cancellation: StoredCancellation }>;
@@ -426,7 +427,8 @@ export function createEmployerCancellationService(deps: {
               cutoffHours: preview.cutoffHours,
               contractId: rate?.contractId ?? null,
               contractVersion: rate?.contractVersion ?? null,
-              amountMinor: preview.obligationAmountMinor
+              amountMinor: preview.obligationAmountMinor,
+              workerCompensationMinor: preview.workerCompensationMinor
             }
           : null,
         now: currentTime
@@ -732,6 +734,7 @@ export function createPrismaCancellationStore(prismaClient: unknown): Cancellati
                         contractId: input.obligation.contractId,
                         contractVersion: input.obligation.contractVersion,
                         amountMinor: input.obligation.amountMinor,
+                        workerCompensationMinor: input.obligation.workerCompensationMinor,
                         computedByUserId: input.initiatedByUserId,
                         computedAt: input.now
                       }
