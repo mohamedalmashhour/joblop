@@ -45,23 +45,32 @@ export type Ledger = {
   cardFeeMinor: number; platformNetMinor: number; balanceMinor: number;
 };
 
+// When the real Invoice record exists, anchor the ledger to its authoritative figures (subtotal =
+// everything billed: labour + any urgency/distance/emergency extras; tax; total) instead of the
+// recompute, which uses a different card-fee model and omits the variable extras. The party split
+// (worker/platform/govt) is then derived from the authoritative subtotal so it still reconciles.
+export type AuthoritativeInvoice = { subtotalMinor: number; taxMinor: number; totalMinor: number };
+
 export function computeLedger(
-  rateMinor: number | null, hours: number | null, workers: number | null
+  rateMinor: number | null, hours: number | null, workers: number | null,
+  authoritative?: AuthoritativeInvoice | null
 ): Ledger | null {
   if (!rateMinor || !hours || !workers || rateMinor <= 0 || hours <= 0 || workers <= 0) return null;
   const billable = Math.max(hours, MIN_HOURS);
   const workerRate = r(rateMinor * (1 - MARGIN));
   const platformRate = rateMinor - workerRate;
-  const labour = rateMinor * billable * workers;
+  // Labour billed to the client: the authoritative subtotal when invoiced, else the recompute.
+  const labour = authoritative ? authoritative.subtotalMinor : rateMinor * billable * workers;
   const workersGross = workerRate * billable * workers;
   const platformMargin = labour - workersGross;
   const cardFee = r(labour * CARD_PCT) + CARD_FIXED;
-  const platformFeeShare = Math.floor(cardFee / 2);
-  const employerSurcharge = cardFee - platformFeeShare;
-  const taxBase = labour + employerSurcharge;
-  const gst = r(taxBase * GST);
-  const qst = r(taxBase * QST);
-  const invoice = labour + employerSurcharge + gst + qst;
+  // Card fee is a platform cost, not billed to the client — the authoritative invoice confirms it is
+  // not in the subtotal. (Pre-invoice estimate also keeps it out of the client total now.)
+  const employerSurcharge = 0;
+  const gst = authoritative ? r(authoritative.taxMinor * (GST / (GST + QST))) : r(labour * GST);
+  const qst = authoritative ? authoritative.taxMinor - gst : r(labour * QST);
+  const invoice = authoritative ? authoritative.totalMinor : labour + gst + qst;
+  const platformFeeShare = cardFee; // platform bears the full card fee
   const grossEach = workerRate * billable;
   const dedEach = r(grossEach * 0.0595) + r(grossEach * 0.0164) + r(grossEach * 0.15);
   const netEach = grossEach - dedEach;
@@ -179,7 +188,7 @@ export type Assembled = {
     startAt: string | null; endAt: string | null; workers: number | null; hours: number | null;
   };
   stages: Stage[];
-  ledger: (Ledger & { rateSource: "request" | "reference" }) | null;
+  ledger: (Ledger & { rateSource: "request" | "reference" | "invoice" }) | null;
   checks: Check[];
 };
 
@@ -204,9 +213,19 @@ export function assembleTransaction(rawPayload: unknown, jobRequestId: string): 
   const rateMinor = rawRate != null && rawRate > 0 ? rawRate : null;
 
   const rateUsed = rateMinor ?? DEFAULT_RATE_MINOR;
-  const rateSource: "request" | "reference" = rateMinor ? "request" : "reference";
+  // The authoritative invoice (injected by the BFF) — when present the ledger shows the real billed
+  // amount, not a recompute.
+  const ai = asRecord(pick(req, ["authoritativeInvoice"]));
+  const subtotal = num(pick(ai, ["subtotalMinor"]));
+  const tax = num(pick(ai, ["taxMinor"]));
+  const total = num(pick(ai, ["totalMinor"]));
+  const authoritative =
+    subtotal != null && tax != null && total != null
+      ? { subtotalMinor: subtotal, taxMinor: tax, totalMinor: total }
+      : null;
+  const rateSource: "request" | "reference" | "invoice" = authoritative ? "invoice" : rateMinor ? "request" : "reference";
   const stages = stagesFor(status);
-  const base = computeLedger(rateUsed, hours, workers);
+  const base = computeLedger(rateUsed, hours, workers, authoritative);
   const ledger = base ? { ...base, rateSource } : null;
 
   const checks: Check[] = [

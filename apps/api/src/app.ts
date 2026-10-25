@@ -5044,8 +5044,21 @@ export function buildApi(options: BuildApiOptions = {}) {
     ]);
     const timesheetIds = timesheets.map((t) => t.id);
     const invoices = timesheetIds.length
-      ? await prisma.invoice.findMany({ where: { timesheetId: { in: timesheetIds } }, select: { status: true } })
+      ? await prisma.invoice.findMany({
+          where: { timesheetId: { in: timesheetIds } },
+          select: { status: true, subtotalMinor: true, taxMinor: true, totalMinor: true, updatedAt: true },
+          orderBy: { updatedAt: "desc" }
+        })
       : [];
+    // The authoritative invoice (newest) — the real billed amount, not a recompute.
+    const authoritativeInvoice = invoices[0]
+      ? {
+          status: invoices[0].status,
+          subtotalMinor: Number(invoices[0].subtotalMinor),
+          taxMinor: Number(invoices[0].taxMinor),
+          totalMinor: Number(invoices[0].totalMinor)
+        }
+      : null;
 
     const acceptedWorkers = assignments.map(
       (a) => a.workerIdentity?.displayName ?? a.workerIdentity?.user?.displayName ?? "Worker"
@@ -5082,6 +5095,7 @@ export function buildApi(options: BuildApiOptions = {}) {
         requestedWorkerCount: job.numberOfWorkers,
         acceptedWorkers,
         lifecycle,
+        authoritativeInvoice,
         signals: { attendanceUnderway, timesheetLocked, invoiceIssued, paymentCaptured, hasOpenDispute }
       }
     });
@@ -5151,9 +5165,17 @@ export function buildApi(options: BuildApiOptions = {}) {
   app.get("/platform/job-requests/:jobRequestId/pricing-snapshot", async (request, reply) => {
     const actor = await requirePayrollAuthority(request, reply);
     if (!actor) return;
-    const jobRequestId = readRouteParam(request.params, "jobRequestId");
-    if (!isCanonicalUuid(jobRequestId)) {
-      return reply.code(404).send({ error: "RWOS_PRICING_NOT_FOUND", message: "Not found." });
+    // Accept the UUID id or the human job code (JR-YYYY-NNNNNN) — the admin Control Room opens by
+    // code, and a 404 here silently dropped the snapshot and billed a $30 reference rate instead.
+    const idOrNumber = readRouteParam(request.params, "jobRequestId");
+    let jobRequestId = idOrNumber;
+    if (!isCanonicalUuid(idOrNumber)) {
+      const byNumber = await prisma!.jobRequest.findUnique({
+        where: { jobRequestNumber: idOrNumber },
+        select: { id: true }
+      });
+      if (!byNumber) return reply.code(404).send({ error: "RWOS_PRICING_NOT_FOUND", message: "Not found." });
+      jobRequestId = byNumber.id;
     }
     const snap = await prisma!.requestPricingSnapshot.findUnique({
       where: { jobRequestId },

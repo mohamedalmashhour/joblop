@@ -50,6 +50,30 @@ export async function GET(
     // leave unpriced
   }
 
+  // Enrich with the AUTHORITATIVE invoice (the real billed amount) so the ledger anchors to it
+  // instead of a recompute that can diverge (e.g. card-fee treatment). Additive; failure is benign.
+  try {
+    const overview = await gateway.request(
+      `/platform/job-requests/${encodeURIComponent(jobRequestId)}/order-overview`,
+      "GET",
+      token
+    );
+    const authoritativeInvoice =
+      overview.status === "ok"
+        ? (overview.payload as { order?: { authoritativeInvoice?: unknown } } | null)?.order?.authoritativeInvoice
+        : null;
+    if (authoritativeInvoice) {
+      const base = (payload && typeof payload === "object" ? payload : {}) as Record<string, unknown>;
+      if (base.request && typeof base.request === "object") {
+        payload = { ...base, request: { ...(base.request as Record<string, unknown>), authoritativeInvoice } };
+      } else {
+        payload = { ...base, authoritativeInvoice };
+      }
+    }
+  } catch {
+    // leave unanchored
+  }
+
   try {
     const { job, stages, ledger, checks } = assembleTransaction(payload, jobRequestId);
     return Response.json(
