@@ -58,6 +58,12 @@ const T = {
     trustTitle: "Trusted where people live and work",
     trustSub: "Care homes, restaurants, and local employers across Canada staff with JobLop.",
     st1: "open jobs", st2: "provinces hiring", st3: "worker fees", st4: "to browse",
+    jsTag: "JOBSCANNER", jsTitle: "More than JobLop jobs — the whole market",
+    jsSub: "JobScanner continuously scans partner job feeds across Canada and brings the best matches to you, right next to JobLop's own governed shifts. One place, more opportunities.",
+    js1t: "Always on", js1b: "New openings pulled in and refreshed around the clock.",
+    js2t: "Ranked for you", js2b: "Sorted by fit and pay so the best jobs rise to the top.",
+    js3t: "One funnel", js3b: "Apply on JobLop's governed shifts, or get pointed to the source.",
+    jsBtn: "Sign up to unlock JobScanner",
     whyTitle: "Why workers choose JobLop",
     why1t: "Trusted workplaces", why1b: "Clear terms before you accept — no surprises.",
     why2t: "Paid fairly", why2b: "Your hours come from your own clock-in / clock-out.",
@@ -95,6 +101,12 @@ const T = {
     trustTitle: "La confiance, là où l'on vit et travaille",
     trustSub: "Résidences, restaurants et employeurs locaux partout au Canada recrutent avec JobLop.",
     st1: "offres ouvertes", st2: "provinces qui embauchent", st3: "frais travailleur", st4: "pour consulter",
+    jsTag: "JOBSCANNER", jsTitle: "Plus que les offres JobLop — tout le marché",
+    jsSub: "JobScanner analyse en continu des fils d'emplois partenaires partout au Canada et vous présente les meilleures correspondances, juste à côté des quarts encadrés de JobLop. Un seul endroit, plus d'occasions.",
+    js1t: "Toujours actif", js1b: "De nouvelles offres intégrées et rafraîchies en continu.",
+    js2t: "Classé pour vous", js2b: "Triées par adéquation et salaire — les meilleures en premier.",
+    js3t: "Un seul parcours", js3b: "Postulez aux quarts encadrés de JobLop, ou soyez dirigé vers la source.",
+    jsBtn: "Inscrivez-vous pour débloquer JobScanner",
     whyTitle: "Pourquoi les travailleurs choisissent JobLop",
     why1t: "Milieux de confiance", why1b: "Conditions claires avant d'accepter — sans surprise.",
     why2t: "Payé équitablement", why2b: "Vos heures proviennent de votre propre pointage.",
@@ -162,7 +174,7 @@ export function PublicJobBoard() {
           <nav className="jl-links">
             <a href="#jobs">{t.navJobs}</a>
             <a href={EMPLOYER_URL}>{t.navEmp}</a>
-            <a href="#why">{t.navRes}</a>
+            <a href="#jobscanner">JobScanner</a>
             <a href="#about">{t.navAbout}</a>
           </nav>
           <div className="jl-nav-cta">
@@ -263,6 +275,23 @@ export function PublicJobBoard() {
               })}
             </div>
           )}
+        </div>
+      </section>
+
+      {/* JOBSCANNER */}
+      <section className="jl-js" id="jobscanner">
+        <div className="jl-wrap jl-js-in">
+          <div className="jl-js-copy">
+            <span className="jl-js-tag">📡 {t.jsTag}</span>
+            <h2>{t.jsTitle}</h2>
+            <p>{t.jsSub}</p>
+            <a href="/job-scanner" className="jl-js-btn">{t.jsBtn} →</a>
+          </div>
+          <div className="jl-js-feats">
+            <div className="jl-js-feat"><span>🔄</span><div><strong>{t.js1t}</strong><p>{t.js1b}</p></div></div>
+            <div className="jl-js-feat"><span>🎯</span><div><strong>{t.js2t}</strong><p>{t.js2b}</p></div></div>
+            <div className="jl-js-feat"><span>🧭</span><div><strong>{t.js3t}</strong><p>{t.js3b}</p></div></div>
+          </div>
         </div>
       </section>
 
@@ -510,6 +539,21 @@ const CSS = `
 .jl-mini-list{list-style:none;padding:0;margin:0;display:flex;flex-direction:column;gap:8px;color:var(--muted);font-size:14px;}
 .jl-avatars{display:flex;gap:6px;}
 .jl-avatars span{width:38px;height:38px;border-radius:50%;background:var(--sky);display:grid;place-items:center;font-size:19px;border:2px solid #fff;}
+/* JOBSCANNER */
+.jl-js{padding:clamp(32px,5vw,58px) 0;}
+.jl-js-in{background:radial-gradient(600px 300px at 12% 0%,rgba(88,198,255,.22),transparent),linear-gradient(120deg,#0f1b3a,#13224a 55%,#0a2f3a);
+  border-radius:22px;padding:clamp(28px,5vw,44px);color:#eaf1ff;display:grid;grid-template-columns:1.05fr .95fr;gap:28px;align-items:center;
+  margin-left:max(18px,env(safe-area-inset-left));margin-right:max(18px,env(safe-area-inset-right));}
+.jl-js-tag{display:inline-block;font-size:12px;font-weight:800;letter-spacing:.09em;color:#7fd3ff;background:rgba(127,211,255,.12);padding:5px 11px;border-radius:999px;}
+.jl-js-copy h2{color:#fff;margin:12px 0 10px;}
+.jl-js-copy>p{color:#b9c9e6;max-width:460px;margin:0 0 20px;}
+.jl-js-btn{display:inline-block;background:linear-gradient(90deg,#2b6cf0,#58c6ff);color:#06122b;font-weight:800;padding:13px 22px;border-radius:12px;}
+.jl-js-btn:hover{filter:brightness(1.06);}
+.jl-js-feats{display:flex;flex-direction:column;gap:12px;}
+.jl-js-feat{display:flex;gap:13px;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.1);border-radius:13px;padding:15px;}
+.jl-js-feat span{font-size:22px;}
+.jl-js-feat strong{display:block;font-size:15px;color:#fff;}
+.jl-js-feat p{margin:3px 0 0;color:#aebfdd;font-size:13.5px;}
 /* STATS */
 .jl-stats{display:flex;gap:34px;flex-wrap:wrap;justify-content:center;margin-top:26px;}
 .jl-stats div{display:flex;flex-direction:column;align-items:center;}
@@ -542,7 +586,7 @@ const CSS = `
 .jl-foot-bar{border-top:1px solid #1e2d44;padding:18px max(18px,env(safe-area-inset-left));text-align:center;color:#7f93b2;font-size:13px;max-width:1120px;margin:0 auto;}
 /* RESPONSIVE */
 @media (max-width:860px){
-  .jl-hero-in,.jl-split-in,.jl-foot-in{grid-template-columns:1fr;}
+  .jl-hero-in,.jl-split-in,.jl-foot-in,.jl-js-in{grid-template-columns:1fr;}
   /* floating cards flow as a neat wrapping row above the copy — no absolute overlap on phones */
   .jl-hero-art{min-height:auto;order:-1;display:flex;flex-wrap:wrap;gap:10px;justify-content:center;margin-bottom:4px;}
   .jl-blob{display:none;}
