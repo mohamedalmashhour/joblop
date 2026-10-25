@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { ProUpgrade } from "./ProUpgrade";
 
 // Worker-facing guided CV builder. Same flow as the admin demo, but on worker endpoints: the signed-in
@@ -79,6 +79,41 @@ export function CvBuilder() {
   const [upKind, setUpKind] = useState<"certificate" | "photo">("certificate");
   const [upLabel, setUpLabel] = useState("");
 
+  const [cardMsg, setCardMsg] = useState("");
+
+  // Finalize a card payment on return from Stripe's hosted Checkout (?pro=success&order=…). Runs at the
+  // always-mounted page level (ProUpgrade only mounts after a CV is built). The API verifies the payment.
+  useEffect(() => {
+    let params: URLSearchParams;
+    try { params = new URLSearchParams(window.location.search); } catch { return; }
+    const pro = params.get("pro");
+    const orderId = params.get("order");
+    if (pro === "success" && orderId) {
+      setCardMsg("Confirming your card payment…");
+      void (async () => {
+        try {
+          // The cross-site return from Stripe omits the SameSite=Strict session cookie on the first hit;
+          // a one-time same-site reload restores it. Guard so we reload at most once.
+          const reloaded = (() => { try { return sessionStorage.getItem("jl_pro_return") === "1"; } catch { return false; } })();
+          const s = await fetch("/api/session", { cache: "no-store" });
+          if (s.status === 401 && !reloaded) {
+            try { sessionStorage.setItem("jl_pro_return", "1"); } catch { /* ignore */ }
+            window.location.reload();
+            return;
+          }
+          try { sessionStorage.removeItem("jl_pro_return"); } catch { /* ignore */ }
+          const res = await fetch(`/api/cv/orders/${encodeURIComponent(orderId)}/complete`, { method: "POST", headers: { "content-type": "application/json" } });
+          if (res.ok) { setCvPro(true); setCardMsg("✓ Payment confirmed — Worker Pro is active."); window.history.replaceState({}, "", "/cv-builder"); }
+          else if (res.status === 401) { setCardMsg("Your payment went through. Please sign in to activate Worker Pro."); }
+          else { setCardMsg("We couldn't confirm the payment yet. If you were charged, refresh in a moment."); }
+        } catch { setCardMsg("We couldn't confirm the payment. Please refresh."); }
+      })();
+    } else if (pro === "cancel") {
+      setCardMsg("Card checkout cancelled — no charge was made.");
+      try { window.history.replaceState({}, "", "/cv-builder"); } catch { /* ignore */ }
+    }
+  }, []);
+
   const category = useMemo(() => CATEGORIES.find((c) => c.key === cat)!, [cat]);
   const toggle = (arr: string[], set: (v: string[]) => void, v: string) => set(arr.includes(v) ? arr.filter((x) => x !== v) : [...arr, v]);
 
@@ -138,6 +173,7 @@ export function CvBuilder() {
 
   return (
     <section style={styles.wrap}>
+      {cardMsg ? <div style={styles.cardBanner}>{cardMsg}</div> : null}
       <article style={styles.card}>
         <h2 style={styles.step}>1 · What kind of work?</h2>
         <Chips options={CATEGORIES.map((c) => c.label)} value={[category.label]} onToggle={(l) => { const c = CATEGORIES.find((x) => x.label === l)!; setCat(c.key); setSkills([]); }} />
@@ -221,6 +257,7 @@ function designStyle(key: string): Record<string, string> {
 
 const styles = {
   wrap: { padding: "8px 0 40px" },
+  cardBanner: { background: "#eafaf7", border: "1px solid #a9e3d8", borderRadius: 10, color: "#0b5c55", fontSize: 14, fontWeight: 700, marginBottom: 16, padding: "12px 16px" },
   card: { background: "#fff", border: "1px solid #dbe4f0", borderRadius: 14, boxShadow: "0 12px 30px rgba(6,27,65,.06)", marginBottom: 18, padding: 22 },
   step: { color: "#061b41", fontSize: 16, margin: "18px 0 8px" },
   hint: { color: "#8696ad", fontSize: 12, fontWeight: 500 },
