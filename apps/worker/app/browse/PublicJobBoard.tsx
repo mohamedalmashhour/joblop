@@ -140,7 +140,8 @@ const T = {
   }
 } as const;
 
-const EMPLOYER_URL = "http://localhost:3100"; // employer app (public "post a request" entry)
+// Employer app entry — set NEXT_PUBLIC_EMPLOYER_URL in production (https://employer.joblop.com).
+const EMPLOYER_URL = process.env.NEXT_PUBLIC_EMPLOYER_URL ?? "http://localhost:3100";
 const CONTACT_EMAIL = "contact@joblop.com"; // change to the live inbox when set up
 const CONTACT_ADDRESS = "207-805 boul. Chomedey, Laval, QC";
 

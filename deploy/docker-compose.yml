@@ -68,7 +68,9 @@ services:
       PORT: "8090"
       INTERNAL_API_ORIGIN: http://api:4000
       # Public URL of the worker-facing site — used by robots.txt / sitemap.xml for Google.
-      NEXT_PUBLIC_SITE_URL: ${WORKER_PUBLIC_URL:-https://work.joblop.com}
+      NEXT_PUBLIC_SITE_URL: ${WORKER_PUBLIC_URL:-https://joblop.com}
+      # Where the landing's employer links point.
+      NEXT_PUBLIC_EMPLOYER_URL: ${EMPLOYER_PUBLIC_URL:-https://employer.joblop.com}
     expose: ["8090"]
 
   employer:

@@ -3,7 +3,11 @@ import { PublicJobBoard } from "./PublicJobBoard";
 
 // Public, no-sign-in job board across Canada. A funnel front door for workers. Google-ready metadata
 // (title, description, Open Graph, Twitter, keywords) so it indexes and shares well once deployed.
+const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL ?? "https://joblop.com";
+
 export const metadata: Metadata = {
+  metadataBase: new URL(SITE_URL),
+  alternates: { canonical: "/browse" },
   title: "JobLop — Find work across Canada, free",
   description:
     "Search open jobs across Canada and apply free. JobLop's JobScanner scans the market for care, kitchen, housekeeping and more — ranked for you, with no cut of your pay.",
@@ -26,6 +30,7 @@ export const metadata: Metadata = {
     description:
       "Search open jobs across Canada and apply free. JobScanner scans the market and ranks the best matches for you.",
     siteName: "JobLop",
+    url: SITE_URL,
     type: "website",
     locale: "en_CA"
   },

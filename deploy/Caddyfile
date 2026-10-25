@@ -2,8 +2,12 @@
 # Replace the domains with yours. If you use Cloudflare Tunnel instead of exposing 80/443,
 # you can skip Caddy and point the tunnel at worker:8090 / employer:8091 / admin:8092.
 
-# Worker-facing site (JobScanner, CV builder, offers)
-work.joblop.com {
+# Public worker-facing site — the landing + JobScanner + offers. Served at the apex and www,
+# so joblop.com is the front door people find on Google. www redirects to the apex.
+www.joblop.com {
+	redir https://joblop.com{uri} permanent
+}
+joblop.com {
 	encode gzip
 	reverse_proxy worker:8090
 }
