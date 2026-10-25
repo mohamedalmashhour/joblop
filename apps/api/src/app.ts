@@ -3010,6 +3010,61 @@ export function buildApi(options: BuildApiOptions = {}) {
       .send({ jobs, nextCursor: hasMore ? offset + limit : null, province, q });
   });
 
+  // PUBLIC JobScanner teaser — a small, cached preview of external market leads for anonymous visitors
+  // (the landing-page "magnet"). Reads ONLY stored leads from prior scans: zero live Adzuna calls per
+  // request, so it never consumes the source budget and can't be abused to drain it. External leads are
+  // a hand-off to the source, never JobLop governed jobs; sanitized to public-safe fields (no coords, no
+  // internal id). Empty until a live scan has populated the store — nothing synthetic is served here.
+  app.get("/public/jobscanner/leads", async (request, reply) => {
+    if (!prisma) return reply.code(503).send({ error: "RWOS_UNAVAILABLE", message: "Not available." });
+    const query = asRecord(request.query);
+    const provinceRaw = readOptionalString(query, "province");
+    const province = provinceRaw && /^[A-Za-z]{2}$/.test(provinceRaw) ? provinceRaw.toUpperCase() : undefined;
+    const cityRaw = (readOptionalString(query, "city") ?? "").trim().slice(0, 60);
+    const city = cityRaw.length > 0 ? cityRaw : undefined;
+    // Small teaser only — the full, ranked feed is a signed-in worker benefit.
+    const limitRaw = readOptionalNumber(query, "limit");
+    const limit = Math.min(Math.max(limitRaw ? Math.floor(limitRaw) : 8, 1), 12);
+    const roleRaw = (readOptionalString(query, "q") ?? readOptionalString(query, "roleKeywords") ?? "")
+      .trim()
+      .slice(0, 80);
+
+    const stored = await queryStoredLeads(prisma, {
+      ...(province ? { province } : {}),
+      ...(city ? { city } : {}),
+      limit: 60
+    });
+    // Optional free-text narrowing on title/employer/category, in-memory over the already-fetched slice
+    // (no extra query, no live call).
+    const needle = roleRaw.toLowerCase();
+    const filtered = needle
+      ? stored.filter((l) => [l.title, l.employer, l.category].some((f) => (f ?? "").toLowerCase().includes(needle)))
+      : stored;
+    const leads = filtered.slice(0, limit).map((l) => {
+      const area = l.city && l.province ? `${l.city}, ${l.province}` : (l.locationLabel ?? l.province ?? "Canada");
+      return {
+        title: l.title,
+        employer: l.employer,
+        areaLabel: area,
+        salaryMinMinor: l.salaryMinMinor,
+        salaryMaxMinor: l.salaryMaxMinor,
+        salaryPeriod: l.salaryPeriod,
+        category: l.category,
+        postedAt: l.postedAt,
+        url: l.url,
+        source: l.source
+      };
+    });
+    return reply
+      .code(200)
+      .header("cache-control", "public, max-age=300")
+      .send({
+        leads,
+        total: filtered.length,
+        note: "External job leads from across the web — apply on the source. Sign up free for the full, ranked JobScanner."
+      });
+  });
+
   // Worker marketplace job search. Cross-org, privacy-safe. Worker origin is a Canadian
   // postal code; the server geocodes it, does a bounding-box pre-filter, computes exact
   // geodesic distance, applies the radius, and returns area-level results (no exact

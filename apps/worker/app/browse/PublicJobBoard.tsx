@@ -12,6 +12,12 @@ type Job = {
   jobCode: string; role: string; city: string | null; province: string | null;
   areaLabel: string; openings: number; startAt: string; urgency: string;
 };
+// Public JobScanner teaser lead — external market posting (sanitized), a hand-off to the source.
+type Lead = {
+  title: string; employer: string | null; areaLabel: string;
+  salaryMinMinor: number | null; salaryMaxMinor: number | null; salaryPeriod: string | null;
+  category: string | null; postedAt: string | null; url: string; source: string;
+};
 type Lang = "en" | "fr";
 
 const PROVINCES: { code: string; en: string; fr: string }[] = [
@@ -69,6 +75,9 @@ const T = {
     js2t: "Ranked for you", js2b: "Sorted by fit and pay so the best jobs rise to the top.",
     js3t: "Apply free", js3b: "Apply on JobLop at no cost — we never take a cut of your pay.",
     jsBtn: "Search the market — free",
+    leadsLive: "Live from across the web", leadsSrc: "External leads",
+    leadsNote: "These are external postings — you apply on the source.",
+    leadsCta: "See the full ranked scanner (free)",
     whyTitle: "Why workers choose JobLop",
     why1t: "Trusted workplaces", why1b: "Clear terms before you accept — no surprises.",
     why2t: "Paid fairly", why2b: "Your hours come from your own clock-in / clock-out.",
@@ -120,6 +129,9 @@ const T = {
     js2t: "Classé pour vous", js2b: "Triées par adéquation et salaire — les meilleures en premier.",
     js3t: "Postuler gratuitement", js3b: "Postulez sur JobLop sans frais — jamais de part de votre paie.",
     jsBtn: "Chercher le marché — gratuit",
+    leadsLive: "En direct du web", leadsSrc: "Offres externes",
+    leadsNote: "Ce sont des offres externes — vous postulez à la source.",
+    leadsCta: "Voir le scanner complet et classé (gratuit)",
     whyTitle: "Pourquoi les travailleurs choisissent JobLop",
     why1t: "Milieux de confiance", why1b: "Conditions claires avant d'accepter — sans surprise.",
     why2t: "Payé équitablement", why2b: "Vos heures proviennent de votre propre pointage.",
@@ -151,6 +163,7 @@ export function PublicJobBoard() {
   const [province, setProvince] = useState("");
   const [q, setQ] = useState("");
   const [jobs, setJobs] = useState<Job[] | null>(null);
+  const [leads, setLeads] = useState<Lead[] | null>(null);
   const [cForm, setCForm] = useState({ name: "", email: "", msg: "" });
   const gen = useRef(0);
   const t = T[lang];
@@ -184,6 +197,36 @@ export function PublicJobBoard() {
     const h = setTimeout(load, q ? 300 : 0);
     return () => clearTimeout(h);
   }, [load, q]);
+
+  // Public JobScanner teaser — real external market leads (cached, read-only). Follows the same
+  // role/province filters so the magnet reacts to the visitor's search. Empty until a scan has run.
+  const loadLeads = useCallback(async () => {
+    const params = new URLSearchParams();
+    if (province) params.set("province", province);
+    if (q.trim()) params.set("q", q.trim());
+    params.set("limit", "6");
+    try {
+      const res = await fetch(`/api/public/jobscanner/leads?${params.toString()}`, { cache: "no-store" });
+      const data = await res.json();
+      setLeads(Array.isArray(data.leads) ? data.leads : []);
+    } catch {
+      setLeads([]);
+    }
+  }, [province, q]);
+
+  useEffect(() => {
+    const h = setTimeout(loadLeads, q ? 350 : 0);
+    return () => clearTimeout(h);
+  }, [loadLeads, q]);
+
+  const fmtPay = (l: Lead) => {
+    const toK = (minor: number | null) => (minor == null ? null : Math.round(minor / 100 / 1000));
+    const lo = toK(l.salaryMinMinor);
+    const hi = toK(l.salaryMaxMinor);
+    if (lo == null && hi == null) return null;
+    if (lo != null && hi != null) return lo === hi ? `$${lo}k` : `$${lo}–${hi}k`;
+    return `$${lo ?? hi}k`;
+  };
 
   const scrollToJobs = () => document.getElementById("jobs")?.scrollIntoView({ behavior: "smooth" });
   const fmtDate = (iso: string) => {
@@ -347,6 +390,30 @@ export function PublicJobBoard() {
           </div>
           <div className="jl-js-demo"><JobScannerDemo lang={lang} /></div>
         </div>
+        {leads && leads.length > 0 && (
+          <div className="jl-wrap jl-leads">
+            <div className="jl-leads-head">
+              <span className="jl-leads-dot" /> {t.leadsLive}
+              <span className="jl-leads-src">{t.leadsSrc}</span>
+            </div>
+            <div className="jl-leads-grid">
+              {leads.map((l, i) => {
+                const pay = fmtPay(l);
+                return (
+                  <a key={`${l.source}-${i}`} href={l.url} target="_blank" rel="noopener noreferrer" className="jl-lead">
+                    <span className="jl-lead-ic">{iconFor(l.title)}</span>
+                    <span className="jl-lead-main">
+                      <strong>{l.title}</strong>
+                      <em>{l.employer ? `${l.employer} · ` : ""}📍 {l.areaLabel}</em>
+                    </span>
+                    {pay ? <span className="jl-lead-pay">{pay}</span> : null}
+                  </a>
+                );
+              })}
+            </div>
+            <p className="jl-leads-note">{t.leadsNote} <a href="/job-scanner">{t.leadsCta} →</a></p>
+          </div>
+        )}
       </section>
 
       {/* FOR WORKERS */}
@@ -648,6 +715,20 @@ const CSS = `
 .jl-js-btn{display:inline-block;background:linear-gradient(90deg,#2b6cf0,#58c6ff);color:#06122b;font-weight:800;padding:13px 22px;border-radius:12px;}
 .jl-js-btn:hover{filter:brightness(1.06);}
 .jl-js-demo{display:flex;justify-content:center;}
+.jl-leads{margin-top:34px;}
+.jl-leads-head{display:flex;align-items:center;gap:9px;color:#dce7fb;font-weight:800;font-size:13px;letter-spacing:.04em;text-transform:uppercase;margin-bottom:14px;}
+.jl-leads-dot{width:9px;height:9px;border-radius:50%;background:#35e08a;box-shadow:0 0 0 4px rgba(53,224,138,.22);animation:jlpulse 1.8s ease-in-out infinite;}
+.jl-leads-src{margin-left:auto;font-weight:700;font-size:11px;letter-spacing:.03em;color:#9fb3d6;background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.12);border-radius:999px;padding:3px 10px;}
+.jl-leads-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;}
+.jl-lead{display:flex;align-items:center;gap:12px;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.12);border-radius:13px;padding:13px 14px;transition:background .15s,border-color .15s,transform .15s;min-width:0;}
+.jl-lead:hover{background:rgba(255,255,255,.1);border-color:rgba(88,198,255,.5);transform:translateY(-1px);}
+.jl-lead-ic{font-size:22px;flex:none;}
+.jl-lead-main{display:flex;flex-direction:column;gap:2px;min-width:0;}
+.jl-lead-main strong{color:#fff;font-size:14.5px;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.jl-lead-main em{color:#aebfdd;font-size:12.5px;font-style:normal;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.jl-lead-pay{margin-left:auto;flex:none;color:#35e08a;font-weight:800;font-size:13px;}
+.jl-leads-note{margin:16px 0 0;color:#aebfdd;font-size:13px;}
+.jl-leads-note a{color:#8fd0ff;font-weight:700;}
 .jl-js-feats{display:flex;flex-direction:column;gap:12px;}
 .jl-js-feat{display:flex;gap:13px;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.1);border-radius:13px;padding:15px;}
 .jl-js-feat span{font-size:22px;}
@@ -706,6 +787,9 @@ const CSS = `
   .jl-fc2 strong,.jl-fc3 strong{font-size:13px;}
   .jl-links{display:none;}
   .jl-foot-cols{grid-template-columns:repeat(2,1fr);}
+}
+@media (max-width:860px){
+  .jl-leads-grid{grid-template-columns:1fr;}
 }
 @media (max-width:520px){
   .jl-sf,.jl-sf-loc,.jl-search-btn{flex:1 1 100%;}

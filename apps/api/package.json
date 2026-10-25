@@ -7,6 +7,7 @@
     "build": "tsc -p tsconfig.json",
     "dev": "tsx watch src/server.ts",
     "e2e:bootstrap-passwords": "node --import tsx src/stagingE2eSyntheticPasswordBootstrap.ts",
+    "jobscanner:seed": "node --import tsx src/seedJobScannerLeads.ts",
     "lint": "eslint .",
     "start": "node --import tsx src/server.ts",
     "test": "vitest run",
