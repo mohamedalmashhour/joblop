@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
+  buildCalendarExport,
   calendarFailureState,
   formatRwosDateTime,
   parseClientCalendarDto,
@@ -214,7 +215,50 @@ export function ClientRequestDetailPanel({ requestId }: Readonly<{ requestId: st
           </div>
         ))}
         <JobLocationMap address={request.addressSummary} />
+        {request.status === "assigned" || request.status === "in_progress" ? (
+          <AddToCalendar request={request} />
+        ) : null}
       </article>
+    </div>
+  );
+}
+
+// Client-side "add this confirmed shift to my own calendar" — Google Calendar link + .ics download,
+// built from the request the panel already holds. Reuses the shared, tested calendar-export capsule;
+// no account linking, no server round-trip.
+function AddToCalendar({ request }: Readonly<{ request: ClientCalendarDto }>) {
+  const exported = buildCalendarExport({
+    title: request.title,
+    startAt: request.startAt,
+    endAt: request.endAt,
+    jobCode: request.requestNumber,
+    location: request.addressSummary,
+    uid: request.id,
+    stampedAt: new Date().toISOString()
+  });
+  const downloadIcs = () => {
+    const blob = new Blob([exported.ics], { type: "text/calendar;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = exported.filename;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(url);
+  };
+  return (
+    <div style={styles.tintedCard}>
+      <strong>Add to your calendar</strong>
+      <p style={styles.cardText}>
+        This shift is confirmed. Add it to your calendar with the job code {request.requestNumber}.
+      </p>
+      <a href={exported.googleCalendarUrl} target="_blank" rel="noopener noreferrer" style={styles.secondaryButton}>
+        Add to Google Calendar
+      </a>
+      <button type="button" onClick={downloadIcs} style={{ ...styles.secondaryButton, cursor: "pointer", marginTop: 10 }}>
+        Download .ics (Apple / Outlook)
+      </button>
     </div>
   );
 }

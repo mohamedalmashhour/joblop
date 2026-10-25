@@ -123,6 +123,7 @@ import {
   createPrismaAssignmentRepository,
   createPrismaAttendanceRepository,
   createPrismaCalendarRequestProfileRepository,
+  createPrismaConfirmedAssignmentCoverageReader,
   createPrismaDepartmentRepository,
   createPrismaDispatchRepository,
   createPrismaAuthenticationRepository,
@@ -964,7 +965,8 @@ export function buildApi(options: BuildApiOptions = {}) {
       ? createCalendarRequestService({
           repository: createPrismaCalendarRequestProfileRepository(prisma),
           jobRequestAccess: jobRequestService,
-          workerOfferAccess: workerOfferService
+          workerOfferAccess: workerOfferService,
+          assignmentCoverage: createPrismaConfirmedAssignmentCoverageReader(prisma)
         })
       : createUnavailableCalendarRequestService());
   const resolveAuthorizationRoles =

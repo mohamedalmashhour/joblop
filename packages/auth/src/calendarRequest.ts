@@ -130,10 +130,32 @@ export class CalendarRequestError extends Error {
   }
 }
 
+// Per-request confirmed-worker coverage, so the CLIENT calendar can reflect "a worker accepted"
+// (fully staffed) without exposing worker identities or economics. Optional: when no reader is
+// injected (the no-DB test harness), the client status falls back to the job-request-derived status.
+export type AssignmentCoverage = Readonly<{ activeCount: number; inProgress: boolean }>;
+
+export interface ConfirmedAssignmentCoverageReader {
+  coverageForJobRequestIds(jobRequestIds: readonly string[]): Promise<ReadonlyMap<string, AssignmentCoverage>>;
+}
+
+// Pure: upgrade a client-facing status once confirmed workers cover the request. Only lifts the
+// "published" (approved_for_dispatch) state — it never overrides draft/under_review/cancelled/completed.
+export function upgradeClientStatusForCoverage(
+  baseStatus: string,
+  numberOfWorkers: number,
+  coverage: AssignmentCoverage | undefined
+): string {
+  if (baseStatus !== "published" || !coverage) return baseStatus;
+  if (coverage.activeCount < Math.max(1, numberOfWorkers)) return baseStatus;
+  return coverage.inProgress ? "in_progress" : "assigned";
+}
+
 export function createCalendarRequestService(input: {
   repository: CalendarRequestProfileRepository;
   jobRequestAccess: CalendarJobRequestAccess;
   workerOfferAccess: WorkerOfferCalendarAccess;
+  assignmentCoverage?: ConfirmedAssignmentCoverageReader;
   now?: () => Date;
 }) {
   const currentTime = input.now ?? (() => new Date());
@@ -240,7 +262,11 @@ export function createCalendarRequestService(input: {
       const profiles = await input.repository.findByJobRequestIds(
         jobRequests.map((jobRequest) => jobRequest.id)
       );
-      return projectCalendarRequests(jobRequests, profiles, "client");
+      const coverage =
+        (await input.assignmentCoverage?.coverageForJobRequestIds(
+          jobRequests.map((jobRequest) => jobRequest.id)
+        )) ?? undefined;
+      return projectCalendarRequests(jobRequests, profiles, "client", coverage);
     },
 
     async getClientCalendarRequest(getInput: {
@@ -250,7 +276,10 @@ export function createCalendarRequestService(input: {
     }) {
       const jobRequest = await input.jobRequestAccess.getForOrganization(getInput);
       const profile = await input.repository.findByJobRequestId(jobRequest.id);
-      return projectCalendarRequest(jobRequest, profile, "client");
+      const coverage = (await input.assignmentCoverage?.coverageForJobRequestIds([jobRequest.id]))?.get(
+        jobRequest.id
+      );
+      return projectCalendarRequest(jobRequest, profile, "client", coverage);
     },
 
     async listAdminCalendar(listInput: {
@@ -550,17 +579,57 @@ function normalizeText(value: string | null, maximumLength: number) {
   return normalized;
 }
 
+// Assignment states that mean a worker is confirmed on the request (covering a seat).
+const ACTIVE_ASSIGNMENT_STATUSES = [
+  "confirmed",
+  "worker_acknowledged",
+  "ready_for_attendance",
+  "in_attendance_window",
+  "attendance_handoff"
+] as const;
+const IN_PROGRESS_ASSIGNMENT_STATUSES = new Set(["in_attendance_window", "attendance_handoff"]);
+
+export function createPrismaConfirmedAssignmentCoverageReader(
+  prismaClient: unknown
+): ConfirmedAssignmentCoverageReader {
+  const prisma = prismaClient as {
+    assignment: {
+      findMany(args: unknown): Promise<readonly { jobRequestId: string; status: string }[]>;
+    };
+  };
+  return {
+    async coverageForJobRequestIds(jobRequestIds) {
+      const map = new Map<string, AssignmentCoverage>();
+      if (jobRequestIds.length === 0) return map;
+      const rows = await prisma.assignment.findMany({
+        where: { jobRequestId: { in: [...jobRequestIds] }, status: { in: [...ACTIVE_ASSIGNMENT_STATUSES] } },
+        select: { jobRequestId: true, status: true }
+      });
+      for (const row of rows) {
+        const current = map.get(row.jobRequestId) ?? { activeCount: 0, inProgress: false };
+        map.set(row.jobRequestId, {
+          activeCount: current.activeCount + 1,
+          inProgress: current.inProgress || IN_PROGRESS_ASSIGNMENT_STATUSES.has(row.status)
+        });
+      }
+      return map;
+    }
+  };
+}
+
 function projectCalendarRequests(
   jobRequests: readonly CalendarJobRequest[],
   profiles: readonly StoredCalendarRequestProfile[],
-  audience: "client" | "admin"
+  audience: "client" | "admin",
+  coverage?: ReadonlyMap<string, AssignmentCoverage>
 ) {
   const profilesByRequestId = new Map(profiles.map((profile) => [profile.jobRequestId, profile]));
   return jobRequests.map((jobRequest) =>
     projectCalendarRequest(
       jobRequest,
       matchingProfile(jobRequest, profilesByRequestId.get(jobRequest.id) ?? null),
-      audience
+      audience,
+      coverage?.get(jobRequest.id)
     )
   );
 }
@@ -568,9 +637,16 @@ function projectCalendarRequests(
 function projectCalendarRequest(
   jobRequest: CalendarJobRequest,
   profile: StoredCalendarRequestProfile | null,
-  audience: "client" | "admin"
+  audience: "client" | "admin",
+  coverage?: AssignmentCoverage
 ) {
   const scopedProfile = matchingProfile(jobRequest, profile);
+  const baseStatus = toCalendarStatus(jobRequest.status);
+  // Only the client calendar reflects confirmed-worker coverage; admin keeps the authoritative status.
+  const status =
+    audience === "client"
+      ? upgradeClientStatusForCoverage(baseStatus, jobRequest.numberOfWorkers, coverage)
+      : baseStatus;
   return {
     id: jobRequest.id,
     requestNumber: jobRequest.jobRequestNumber,
@@ -585,7 +661,7 @@ function projectCalendarRequest(
     timezone: jobRequest.timezone,
     startAt: jobRequest.startAt,
     endAt: jobRequest.endAt,
-    status: toCalendarStatus(jobRequest.status),
+    status,
     ...(audience === "admin"
       ? {
           authoritativeStatus: jobRequest.status,

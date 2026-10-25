@@ -3,9 +3,29 @@ import type { SessionValidationResult } from "./index";
 import {
   CalendarRequestError,
   createCalendarRequestService,
+  upgradeClientStatusForCoverage,
   type CalendarRequestProfileRepository,
   type StoredCalendarRequestProfile
 } from "./calendarRequest";
+
+describe("upgradeClientStatusForCoverage", () => {
+  it("lifts published → assigned once confirmed workers fill the request", () => {
+    expect(upgradeClientStatusForCoverage("published", 1, { activeCount: 1, inProgress: false })).toBe("assigned");
+    expect(upgradeClientStatusForCoverage("published", 2, { activeCount: 2, inProgress: false })).toBe("assigned");
+  });
+  it("shows in_progress once attendance is underway", () => {
+    expect(upgradeClientStatusForCoverage("published", 1, { activeCount: 1, inProgress: true })).toBe("in_progress");
+  });
+  it("stays published when not fully staffed or no coverage", () => {
+    expect(upgradeClientStatusForCoverage("published", 2, { activeCount: 1, inProgress: false })).toBe("published");
+    expect(upgradeClientStatusForCoverage("published", 1, undefined)).toBe("published");
+  });
+  it("never overrides non-published statuses", () => {
+    expect(upgradeClientStatusForCoverage("under_review", 1, { activeCount: 5, inProgress: true })).toBe("under_review");
+    expect(upgradeClientStatusForCoverage("cancelled", 1, { activeCount: 1, inProgress: false })).toBe("cancelled");
+    expect(upgradeClientStatusForCoverage("draft", 1, { activeCount: 1, inProgress: false })).toBe("draft");
+  });
+});
 
 const now = new Date("2026-08-01T12:00:00.000Z");
 const request = {

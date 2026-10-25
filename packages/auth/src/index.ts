@@ -33,9 +33,13 @@ export {
   CalendarRequestError,
   createCalendarRequestService,
   createPrismaCalendarRequestProfileRepository,
+  createPrismaConfirmedAssignmentCoverageReader,
+  upgradeClientStatusForCoverage,
+  type AssignmentCoverage,
   type CalendarRequestProfileRepository,
   type CalendarRequestService,
   type CalendarVerificationState,
+  type ConfirmedAssignmentCoverageReader,
   type StoredCalendarRequestProfile
 } from "./calendarRequest";
 export {
