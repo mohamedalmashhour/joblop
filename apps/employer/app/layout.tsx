@@ -26,7 +26,7 @@ export default async function RootLayout({ children }: Readonly<{ children: Reac
   return (
     <html lang={htmlLang(locale)}>
       <body>
-        <GoogleTag />
+        <GoogleTag tagId={process.env.GOOGLE_TAG_ID ?? null} />
         <LocaleProvider locale={locale}>{children}</LocaleProvider>
       </body>
     </html>
