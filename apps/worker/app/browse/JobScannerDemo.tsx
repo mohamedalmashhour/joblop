@@ -14,6 +14,7 @@ const DEMO = {
     typed: "Nurse", scanning: "Scanning partner feeds across Canada…",
     chips: ["Care homes", "Restaurants", "Agencies", "Boards"],
     ranked: "Ranked for you", apply: "Apply — free", applied: "✓ Applied — free",
+    play: "Play", pause: "Pause", replay: "Replay", watch: "Watch how it works",
     jobs: [
       { role: "Nurse", area: "Laval, QC", pay: "$36/h", urgent: true },
       { role: "Nurse", area: "Montréal, QC", pay: "$34/h", urgent: false },
@@ -25,6 +26,7 @@ const DEMO = {
     typed: "Infirmière", scanning: "Analyse des fils partenaires au Canada…",
     chips: ["Résidences", "Restaurants", "Agences", "Babillards"],
     ranked: "Classé pour vous", apply: "Postuler — gratuit", applied: "✓ Postulé — gratuit",
+    play: "Lecture", pause: "Pause", replay: "Rejouer", watch: "Voir comment ça marche",
     jobs: [
       { role: "Infirmière", area: "Laval, QC", pay: "36 $/h", urgent: true },
       { role: "Infirmière", area: "Montréal, QC", pay: "34 $/h", urgent: false },
@@ -35,13 +37,15 @@ const DEMO = {
 
 export function JobScannerDemo({ lang = "en" }: { lang?: Lang }) {
   const [step, setStep] = useState(0);
+  const [playing, setPlaying] = useState(true);
   const d = DEMO[lang];
 
   useEffect(() => {
+    if (!playing) return;
     const durations = [2000, 2600, 2600, 2400]; // per-step dwell
     const id = setTimeout(() => setStep((s) => (s + 1) % 4), durations[step]);
     return () => clearTimeout(id);
-  }, [step]);
+  }, [step, playing]);
 
   return (
     <div className="jsd">
@@ -91,10 +95,16 @@ export function JobScannerDemo({ lang = "en" }: { lang?: Lang }) {
       </div>
       <div className="jsd-steps">
         {d.steps.map((s, i) => (
-          <div key={i} className={`jsd-step ${step === i ? "on" : ""} ${step > i ? "done" : ""}`}>
+          <button key={i} className={`jsd-step ${step === i ? "on" : ""} ${step > i ? "done" : ""}`} onClick={() => { setStep(i); setPlaying(false); }}>
             <span className="jsd-num">{step > i ? "✓" : i + 1}</span>{s}
-          </div>
+          </button>
         ))}
+      </div>
+      <div className="jsd-controls">
+        <button className="jsd-ctl jsd-ctl-main" onClick={() => setPlaying((p) => !p)} aria-label={playing ? d.pause : d.watch}>
+          {playing ? `⏸ ${d.pause}` : `▶ ${d.watch}`}
+        </button>
+        <button className="jsd-ctl" onClick={() => { setStep(0); setPlaying(true); }} aria-label={d.replay}>↻ {d.replay}</button>
       </div>
     </div>
   );
@@ -146,10 +156,16 @@ const CSS = `
 @keyframes jsdfade{to{opacity:1;}}
 /* step rail */
 .jsd-steps{display:flex;flex-wrap:wrap;gap:8px;justify-content:center;max-width:420px;}
-.jsd-step{display:flex;align-items:center;gap:7px;font-size:12.5px;font-weight:700;color:#9fb0c9;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.1);border-radius:999px;padding:6px 12px;transition:color .3s,border-color .3s;}
+.jsd-step{display:flex;align-items:center;gap:7px;font-size:12.5px;font-weight:700;color:#9fb0c9;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.1);border-radius:999px;padding:6px 12px;transition:color .3s,border-color .3s;cursor:pointer;font-family:inherit;}
+.jsd-step:hover{border-color:rgba(88,198,255,.5);}
 .jsd-step.on{color:#fff;border-color:#58c6ff;}
 .jsd-step.done{color:#58f0a8;}
 .jsd-num{width:18px;height:18px;border-radius:50%;background:rgba(255,255,255,.12);display:grid;place-items:center;font-size:11px;font-weight:800;}
 .jsd-step.on .jsd-num{background:#2b6cf0;color:#fff;}
 .jsd-step.done .jsd-num{background:#1fbf6b;color:#06220f;}
+.jsd-controls{display:flex;gap:10px;flex-wrap:wrap;justify-content:center;}
+.jsd-ctl{font-family:inherit;cursor:pointer;border:1px solid rgba(255,255,255,.18);background:rgba(255,255,255,.06);color:#dbeaff;font-weight:700;font-size:13px;padding:9px 16px;border-radius:999px;transition:background .2s,border-color .2s;}
+.jsd-ctl:hover{background:rgba(255,255,255,.12);border-color:rgba(88,198,255,.5);}
+.jsd-ctl-main{background:linear-gradient(90deg,#2b6cf0,#58c6ff);color:#06122b;border:0;font-weight:800;}
+.jsd-ctl-main:hover{filter:brightness(1.08);background:linear-gradient(90deg,#2b6cf0,#58c6ff);}
 `;
