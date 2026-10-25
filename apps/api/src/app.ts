@@ -2941,6 +2941,75 @@ export function buildApi(options: BuildApiOptions = {}) {
     });
   });
 
+  // PUBLIC job board — no sign-in. Anyone can browse JobLop's open job offers across all of Canada
+  // and filter by location (province) or search text (city / role). Privacy-safe: only area-level
+  // fields (city + province), role, headcount, date and urgency — NEVER exact address/coords, client
+  // identity, or pay rates. Read-only; a funnel to bring workers onto the platform.
+  app.get("/public/jobs", async (request, reply) => {
+    if (!prisma) return reply.code(503).send({ error: "RWOS_UNAVAILABLE", message: "Not available." });
+    const query = asRecord(request.query);
+    const provinceRaw = readOptionalString(query, "province");
+    const province = provinceRaw && /^[A-Za-z]{2}$/.test(provinceRaw) ? provinceRaw.toUpperCase() : null;
+    const q = (readOptionalString(query, "q") ?? "").trim().slice(0, 80);
+    const limitRaw = readOptionalNumber(query, "limit");
+    const limit = Math.min(Math.max(limitRaw ? Math.floor(limitRaw) : 30, 1), 60);
+    const cursorRaw = readOptionalNumber(query, "cursor");
+    const offset = cursorRaw && cursorRaw > 0 ? Math.floor(cursorRaw) : 0;
+
+    const rows = await prisma.jobRequest.findMany({
+      where: {
+        status: "approved_for_dispatch", // open to workers
+        startAt: { gte: new Date() }, // upcoming shifts only
+        residence: {
+          status: "active",
+          ...(province ? { province } : {})
+        },
+        // Free-text search matches EITHER the city, the role, or the title (not ANDed with location).
+        ...(q
+          ? {
+              OR: [
+                { residence: { city: { contains: q, mode: "insensitive" } } },
+                { roleDefinition: { displayLabel: { contains: q, mode: "insensitive" } } },
+                { title: { contains: q, mode: "insensitive" } }
+              ]
+            }
+          : {})
+      },
+      select: {
+        jobRequestNumber: true,
+        title: true,
+        numberOfWorkers: true,
+        startAt: true,
+        urgency: true,
+        roleDefinition: { select: { displayLabel: true } },
+        residence: { select: { city: true, province: true } }
+      },
+      orderBy: [{ urgency: "desc" }, { startAt: "asc" }],
+      skip: offset,
+      take: limit + 1
+    });
+    const hasMore = rows.length > limit;
+    const page = rows.slice(0, limit);
+    const jobs = page.map((r) => {
+      const city = r.residence?.city ?? null;
+      const prov = r.residence?.province ?? null;
+      return {
+        jobCode: r.jobRequestNumber,
+        role: r.roleDefinition?.displayLabel ?? r.title,
+        city,
+        province: prov,
+        areaLabel: city && prov ? `${city}, ${prov}` : (prov ?? "Canada"),
+        openings: r.numberOfWorkers,
+        startAt: r.startAt.toISOString(),
+        urgency: r.urgency
+      };
+    });
+    return reply
+      .code(200)
+      .header("cache-control", "public, max-age=60")
+      .send({ jobs, nextCursor: hasMore ? offset + limit : null, province, q });
+  });
+
   // Worker marketplace job search. Cross-org, privacy-safe. Worker origin is a Canadian
   // postal code; the server geocodes it, does a bounding-box pre-filter, computes exact
   // geodesic distance, applies the radius, and returns area-level results (no exact
