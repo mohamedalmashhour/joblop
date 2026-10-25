@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import { JobScannerDemo } from "./JobScannerDemo";
 
 // Public, no-sign-in landing + job board for JobLop. Hero search, real categories, REAL featured
 // jobs (from /public/jobs — never fabricated), job-seeker + employer sections, honest stats and
@@ -323,11 +324,7 @@ export function PublicJobBoard() {
             <p>{t.jsSub}</p>
             <a href="/job-scanner" className="jl-js-btn">{t.jsBtn} →</a>
           </div>
-          <div className="jl-js-feats">
-            <div className="jl-js-feat"><span>🔄</span><div><strong>{t.js1t}</strong><p>{t.js1b}</p></div></div>
-            <div className="jl-js-feat"><span>🎯</span><div><strong>{t.js2t}</strong><p>{t.js2b}</p></div></div>
-            <div className="jl-js-feat"><span>🧭</span><div><strong>{t.js3t}</strong><p>{t.js3b}</p></div></div>
-          </div>
+          <div className="jl-js-demo"><JobScannerDemo lang={lang} /></div>
         </div>
       </section>
 
@@ -603,6 +600,7 @@ const CSS = `
 .jl-js-copy>p{color:#b9c9e6;max-width:460px;margin:0 0 20px;}
 .jl-js-btn{display:inline-block;background:linear-gradient(90deg,#2b6cf0,#58c6ff);color:#06122b;font-weight:800;padding:13px 22px;border-radius:12px;}
 .jl-js-btn:hover{filter:brightness(1.06);}
+.jl-js-demo{display:flex;justify-content:center;}
 .jl-js-feats{display:flex;flex-direction:column;gap:12px;}
 .jl-js-feat{display:flex;gap:13px;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.1);border-radius:13px;padding:15px;}
 .jl-js-feat span{font-size:22px;}
