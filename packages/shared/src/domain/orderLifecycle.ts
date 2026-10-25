@@ -26,11 +26,15 @@ export type OrderLifecycleSignals = Readonly<{
 }>;
 
 const CANCELLED_JOB_STATUSES = new Set(["cancelled", "expired"]);
+// A terminal job status means the order itself is closed/done. (Payroll is period-based, not
+// per-job, so a per-job order is "finished" when the job closes OR its payout is explicitly marked
+// transferred — never faked from a period payout that may span several jobs.)
+const FINISHED_JOB_STATUSES = new Set(["archived", "closed", "completed"]);
 
 export function deriveOrderLifecycle(signals: OrderLifecycleSignals): OrderLifecycleState {
   if (CANCELLED_JOB_STATUSES.has(signals.jobStatus)) return "cancelled";
   if (signals.hasOpenDispute) return "disputed";
-  if (signals.payoutTransferred) return "finished";
+  if (signals.payoutTransferred || FINISHED_JOB_STATUSES.has(signals.jobStatus)) return "finished";
 
   const active = signals.activeWorkerCount ?? 0;
   const requested = Math.max(1, signals.requestedWorkerCount ?? 1);

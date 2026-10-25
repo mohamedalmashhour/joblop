@@ -24,10 +24,12 @@ describe("deriveOrderLifecycle", () => {
     expect(deriveOrderLifecycle({ ...base, paymentCaptured: true })).toBe("processing");
   });
 
-  it("finished: worker paid out", () => {
+  it("finished: worker paid out, or the job is closed/archived (period-based payroll)", () => {
     expect(
-      deriveOrderLifecycle({ jobStatus: "archived", activeWorkerCount: 1, invoiceIssued: true, payoutTransferred: true })
+      deriveOrderLifecycle({ jobStatus: "approved_for_dispatch", activeWorkerCount: 1, payoutTransferred: true })
     ).toBe("finished");
+    expect(deriveOrderLifecycle({ jobStatus: "archived", activeWorkerCount: 1 })).toBe("finished");
+    expect(deriveOrderLifecycle({ jobStatus: "closed", activeWorkerCount: 1 })).toBe("finished");
   });
 
   it("disputed overrides accepted/processing/finished-signals but not cancelled", () => {
