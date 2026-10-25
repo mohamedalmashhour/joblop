@@ -43,6 +43,8 @@ const T = {
     heroSub: "Search jobs from across Canada and apply — 100% free, always. JobLop brings the whole market to you, and never takes a cut of your pay.",
     heroBadge: "⚡ Powered by JobScanner — one search across the market",
     freePill: "Free to apply",
+    previewLive: "Live results", previewMore: "Unlock the whole market with JobScanner — sign up free",
+    previewEmpty: "Type a role or pick a province to see live matches.",
     phRole: "Job title, role, or keyword", phLoc: "Location", searchBtn: "Search Jobs",
     popular: "Popular:", allCanada: "All of Canada",
     cStat1: "open jobs", cStat2: "Across every province", cBuild: "Build your future",
@@ -88,6 +90,8 @@ const T = {
     heroSub: "Cherchez des emplois partout au Canada et postulez — 100 % gratuit, toujours. JobLop vous apporte tout le marché et ne prend jamais de part de votre paie.",
     heroBadge: "⚡ Propulsé par JobScanner — une seule recherche, tout le marché",
     freePill: "Postuler gratuitement",
+    previewLive: "Résultats en direct", previewMore: "Débloquez tout le marché avec JobScanner — inscription gratuite",
+    previewEmpty: "Tapez un rôle ou choisissez une province pour voir des offres en direct.",
     phRole: "Titre, rôle ou mot-clé", phLoc: "Lieu", searchBtn: "Rechercher",
     popular: "Populaire :", allCanada: "Tout le Canada",
     cStat1: "offres ouvertes", cStat2: "Dans toutes les provinces", cBuild: "Bâtissez votre avenir",
@@ -223,6 +227,32 @@ export function PublicJobBoard() {
               </div>
             )}
             <a href="#jobscanner" className="jl-hero-js">{t.heroBadge} →</a>
+
+            {/* Live search demo: real matches appear as the visitor types — proof of the deep search. */}
+            {tab === "find" && (
+              <div className="jl-preview">
+                <div className="jl-preview-head">
+                  <span className="jl-preview-dot" /> {t.previewLive}
+                  {jobs !== null ? <span className="jl-preview-n">{jobs.length} {t.st1}</span> : null}
+                </div>
+                {jobs === null ? (
+                  <div className="jl-preview-empty">{t.loading}</div>
+                ) : jobs.length === 0 ? (
+                  <div className="jl-preview-empty">{t.previewEmpty}</div>
+                ) : (
+                  <>
+                    {jobs.slice(0, 3).map((j) => (
+                      <a key={j.jobCode} href="/" className="jl-preview-row">
+                        <span className="jl-preview-ic">{iconFor(j.role)}</span>
+                        <span className="jl-preview-main"><strong>{j.role}</strong><em>📍 {j.areaLabel}</em></span>
+                        {(j.urgency === "urgent" || j.urgency === "immediate") ? <span className="jl-preview-u">{t.urgent}</span> : null}
+                      </a>
+                    ))}
+                    <a href="/" className="jl-preview-more">🔓 {t.previewMore} →</a>
+                  </>
+                )}
+              </div>
+            )}
           </div>
           <div className="jl-hero-art" aria-hidden="true">
             <div className="jl-blob" />
@@ -472,7 +502,7 @@ const CSS = `
 .jl-hero{background:radial-gradient(900px 420px at 85% -5%,rgba(37,99,235,.14),transparent),linear-gradient(180deg,var(--sky),#fff);border-bottom:1px solid var(--line);}
 .jl-hero-in{max-width:1120px;margin:0 auto;display:grid;grid-template-columns:1.1fr .9fr;gap:28px;align-items:center;padding:clamp(34px,6vw,64px) max(18px,env(safe-area-inset-left));}
 .jl-free-pill{display:inline-block;background:#e7f9ef;color:#0a7a46;font-weight:800;font-size:12.5px;letter-spacing:.02em;padding:6px 13px;border-radius:999px;margin-bottom:14px;}
-.jl-hero-js{display:inline-flex;align-items:center;gap:6px;margin-top:16px;background:linear-gradient(90deg,#0f1b3a,#13224a);color:#bfe3ff;font-weight:700;font-size:13px;padding:9px 15px;border-radius:999px;border:1px solid rgba(88,198,255,.3);}
+.jl-hero-js{display:inline-flex;align-items:center;gap:6px;margin-top:16px;background:linear-gradient(90deg,#0f1b3a,#13224a);color:#dbf1ff;font-weight:700;font-size:13px;padding:9px 15px;border-radius:999px;border:1px solid rgba(88,198,255,.3);}
 .jl-hero-js:hover{filter:brightness(1.12);}
 .jl-hero-copy h1{font-size:clamp(32px,5.2vw,52px);line-height:1.04;letter-spacing:-.03em;margin:0 0 14px;font-weight:800;}
 .jl-blue{color:var(--blue);}
@@ -493,6 +523,21 @@ const CSS = `
 .jl-popular span{color:var(--muted);font-weight:700;}
 .jl-popular button{border:1px solid var(--line);background:#fff;border-radius:999px;padding:5px 12px;font-size:12.5px;cursor:pointer;color:var(--muted);}
 .jl-popular button:hover{border-color:var(--blue);color:var(--blue);}
+.jl-preview{margin-top:16px;max-width:560px;background:#fff;border:1px solid var(--line);border-radius:14px;padding:8px;box-shadow:0 14px 40px -24px rgba(16,26,43,.4);}
+.jl-preview-head{display:flex;align-items:center;gap:8px;font-size:12px;font-weight:800;letter-spacing:.03em;color:var(--muted);padding:6px 8px 8px;text-transform:uppercase;}
+.jl-preview-dot{width:8px;height:8px;border-radius:50%;background:#1fbf6b;box-shadow:0 0 0 0 rgba(31,191,107,.5);animation:jlpulse 1.8s infinite;}
+@keyframes jlpulse{0%{box-shadow:0 0 0 0 rgba(31,191,107,.5);}70%{box-shadow:0 0 0 7px rgba(31,191,107,0);}100%{box-shadow:0 0 0 0 rgba(31,191,107,0);}}
+.jl-preview-n{margin-left:auto;color:var(--blue);}
+.jl-preview-empty{padding:10px 8px 12px;color:var(--muted);font-size:13.5px;}
+.jl-preview-row{display:flex;align-items:center;gap:10px;padding:9px 8px;border-radius:9px;}
+.jl-preview-row:hover{background:#f3f6fb;}
+.jl-preview-ic{width:34px;height:34px;border-radius:9px;background:var(--sky);display:grid;place-items:center;font-size:17px;flex:0 0 auto;}
+.jl-preview-main{display:flex;flex-direction:column;min-width:0;flex:1;}
+.jl-preview-main strong{font-size:14px;}
+.jl-preview-main em{font-style:normal;color:var(--muted);font-size:12.5px;}
+.jl-preview-u{background:#fdece5;color:var(--orange);font-size:10.5px;font-weight:800;padding:2px 8px;border-radius:999px;text-transform:uppercase;flex:0 0 auto;}
+.jl-preview-more{display:block;text-align:center;margin-top:4px;background:linear-gradient(90deg,#0f1b3a,#13224a);color:#dbf1ff;font-weight:700;font-size:13px;padding:11px;border-radius:10px;}
+.jl-preview-more:hover{filter:brightness(1.12);}
 .jl-hero-art{position:relative;min-height:300px;display:flex;align-items:center;justify-content:center;}
 .jl-blob{position:absolute;inset:8% 6%;background:linear-gradient(135deg,rgba(37,99,235,.18),rgba(14,165,163,.16));border-radius:44% 56% 62% 38%/48% 42% 58% 52%;filter:blur(2px);}
 .jl-fc{position:absolute;background:#fff;border:1px solid var(--line);border-radius:14px;padding:12px 16px;box-shadow:0 18px 48px -24px rgba(16,26,43,.55);display:flex;align-items:center;gap:10px;}
