@@ -10,6 +10,7 @@ export * from "./cancellationObligation";
 export * from "./capacityReduction";
 export * from "./calendarExport";
 export * from "./connectedCalendar";
+export * from "./orderLifecycle";
 export * from "./contractPricing";
 export * from "./employerContractDto";
 export * from "./hrMoneyAdapter";

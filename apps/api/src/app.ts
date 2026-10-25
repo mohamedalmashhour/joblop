@@ -286,6 +286,7 @@ import {
 import { isWorkerDisputeCategory, normalizeWorkerDisputeReason } from "@rwos/shared";
 import { normalizeEscalationReason } from "@rwos/shared";
 import { buildCalendarExport } from "@rwos/shared";
+import { deriveOrderLifecycle } from "@rwos/shared";
 import { notifyClient } from "./notifications/clientNotifications";
 import { raiseWorkerDispute, listWorkerDisputes, withdrawWorkerDispute } from "./workerDisputeRepository";
 import { createEmployerOrderWithChildren, listEmployerOrders, getEmployerOrder, submitEmployerOrder, cancelEmployerOrder } from "./employerOrderRepository";
@@ -5004,6 +5005,85 @@ export function buildApi(options: BuildApiOptions = {}) {
     });
 
     return reply.code(200).send({ requests: requests.map(serializeCalendarRequest) });
+  });
+
+  // Admin order overview — one job request as an "order": its code, the CLIENT it belongs to, the
+  // worker(s) who accepted, and the derived lifecycle state (pending → accepted → processing →
+  // finished, with disputed/cancelled). Read-only; admin-gated. Money signals (invoice/payment/
+  // payout) feed the lifecycle but no money moves here.
+  app.get("/platform/job-requests/:jobRequestId/order-overview", async (request, reply) => {
+    const session = await authService.validateSession(readBearerToken(request.headers.authorization));
+    if (!session.authenticated || !session.user) return sendJobRequestDenied(reply);
+    // Admin gate (same pattern the other /platform admin reads use).
+    await jobRequestService.listAdminIntake({ session, roles: await resolveAuthorizationRoles(session.user.id) });
+    if (!prisma) return reply.code(503).send({ error: "RWOS_UNAVAILABLE", message: "Not available." });
+
+    // Accept either the UUID id or the human job code (JR-YYYY-NNNNNN) the admin UI links by.
+    const idOrNumber = readRouteParam(request.params, "jobRequestId");
+    const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(idOrNumber);
+    const job = await prisma.jobRequest.findUnique({
+      where: isUuid ? { id: idOrNumber } : { jobRequestNumber: idOrNumber },
+      select: { id: true, jobRequestNumber: true, title: true, status: true, organizationId: true, numberOfWorkers: true }
+    });
+    if (!job) return reply.code(404).send({ error: "RWOS_JOB_REQUEST_NOT_FOUND", message: "Order not found." });
+    const jobRequestId = job.id;
+
+    const ACTIVE = ["confirmed", "worker_acknowledged", "ready_for_attendance", "in_attendance_window", "attendance_handoff"];
+    const IN_PROGRESS = new Set(["in_attendance_window", "attendance_handoff"]);
+    const [org, assignments, timesheets] = await Promise.all([
+      prisma.employerOrganization.findUnique({
+        where: { id: job.organizationId },
+        select: { displayName: true, legalName: true }
+      }),
+      prisma.assignment.findMany({
+        where: { jobRequestId, status: { in: ACTIVE as AssignmentStatus[] } },
+        select: { status: true, workerIdentity: { select: { displayName: true, user: { select: { displayName: true } } } } }
+      }),
+      prisma.timesheet.findMany({ where: { jobRequestId }, select: { id: true, status: true } })
+    ]);
+    const timesheetIds = timesheets.map((t) => t.id);
+    const invoices = timesheetIds.length
+      ? await prisma.invoice.findMany({ where: { timesheetId: { in: timesheetIds } }, select: { status: true } })
+      : [];
+
+    const acceptedWorkers = assignments.map(
+      (a) => a.workerIdentity?.displayName ?? a.workerIdentity?.user?.displayName ?? "Worker"
+    );
+    const attendanceUnderway = assignments.some((a) => IN_PROGRESS.has(a.status));
+    const timesheetLocked = timesheets.some((t) => t.status === "locked");
+    const hasOpenDispute =
+      timesheets.some((t) => t.status === "rejected" || t.status === "correction_required") ||
+      invoices.some((inv) => inv.status === "disputed");
+    const invoiceIssued = invoices.some((inv) =>
+      ["issued", "sent", "viewed", "partially_paid", "paid"].includes(inv.status)
+    );
+    const paymentCaptured = invoices.some((inv) => ["partially_paid", "paid"].includes(inv.status));
+
+    const lifecycle = deriveOrderLifecycle({
+      jobStatus: job.status,
+      activeWorkerCount: assignments.length,
+      requestedWorkerCount: job.numberOfWorkers,
+      attendanceUnderway,
+      timesheetLocked,
+      invoiceIssued,
+      paymentCaptured,
+      payoutTransferred: false, // wired when the payout capsule lands
+      hasOpenDispute
+    });
+
+    return reply.code(200).send({
+      order: {
+        jobRequestId: job.id,
+        jobCode: job.jobRequestNumber,
+        title: job.title,
+        jobStatus: job.status,
+        client: { name: org?.displayName ?? org?.legalName ?? "Client" },
+        requestedWorkerCount: job.numberOfWorkers,
+        acceptedWorkers,
+        lifecycle,
+        signals: { attendanceUnderway, timesheetLocked, invoiceIssued, paymentCaptured, hasOpenDispute }
+      }
+    });
   });
 
   app.get("/platform/calendar/requests/:jobRequestIdOrNumber", async (request, reply) => {

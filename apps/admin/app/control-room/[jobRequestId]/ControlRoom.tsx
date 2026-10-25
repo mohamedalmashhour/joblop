@@ -39,8 +39,20 @@ const STAGE_NOTE: Record<string, string> = {
   Close: "Workers paid, remittances and fee settled, transaction closed."
 };
 
+type Overview = {
+  jobCode: string;
+  client: { name: string };
+  acceptedWorkers: string[];
+  requestedWorkerCount: number;
+  lifecycle: "pending" | "accepted" | "processing" | "finished" | "disputed" | "cancelled";
+};
+const LIFECYCLE_COLOR: Record<Overview["lifecycle"], string> = {
+  pending: "#5c749c", accepted: "#1f9bf0", processing: "#f2b949", finished: "#36c48e", disputed: "#f2766b", cancelled: "#5c749c"
+};
+
 export function ControlRoom({ jobRequestId }: Readonly<{ jobRequestId: string }>) {
   const [data, setData] = useState<History | null>(null);
+  const [overview, setOverview] = useState<Overview | null>(null);
   const [err, setErr] = useState<string | null>(null);
 
   useEffect(() => {
@@ -52,6 +64,11 @@ export function ControlRoom({ jobRequestId }: Readonly<{ jobRequestId: string }>
       })
       .then((h) => { if (live) setData(h); })
       .catch((e) => { if (live) setErr(String(e.message ?? e)); });
+    // Order linkage: client name + accepted worker(s) + lifecycle. Additive; failure is non-fatal.
+    fetch(`/api/control-room/${encodeURIComponent(jobRequestId)}/overview`, { cache: "no-store" })
+      .then(async (res) => (res.ok ? ((await res.json()) as { order: Overview }).order : null))
+      .then((o) => { if (live && o) setOverview(o); })
+      .catch(() => {});
     return () => { live = false; };
   }, [jobRequestId]);
 
@@ -72,11 +89,27 @@ export function ControlRoom({ jobRequestId }: Readonly<{ jobRequestId: string }>
           {data.job.workers != null && <> · {data.job.workers} worker{data.job.workers === 1 ? "" : "s"}</>}
           {data.job.hours != null && <> · {data.job.hours}h</>}
         </div>
-        <div style={{ fontFamily: "var(--disp)", fontWeight: 700, fontSize: 12, letterSpacing: .8, padding: "7px 13px", borderRadius: 999,
-          background: (closed || allDone) ? C.pass : C.panel, color: (closed || allDone) ? "#06241a" : C.muted, border: `1px solid ${C.line}` }}>
-          {closed || allDone ? "CLOSED ✓" : "IN PROGRESS"}
-        </div>
+        {overview ? (
+          <div style={{ fontFamily: "var(--disp)", fontWeight: 700, fontSize: 12, letterSpacing: .8, padding: "7px 13px", borderRadius: 999,
+            background: LIFECYCLE_COLOR[overview.lifecycle], color: "#06110a", border: `1px solid ${C.line}` }}>
+            {overview.lifecycle.toUpperCase()}
+          </div>
+        ) : (
+          <div style={{ fontFamily: "var(--disp)", fontWeight: 700, fontSize: 12, letterSpacing: .8, padding: "7px 13px", borderRadius: 999,
+            background: (closed || allDone) ? C.pass : C.panel, color: (closed || allDone) ? "#06241a" : C.muted, border: `1px solid ${C.line}` }}>
+            {closed || allDone ? "CLOSED ✓" : "IN PROGRESS"}
+          </div>
+        )}
       </div>
+
+      {overview ? (
+        <div style={{ display: "flex", gap: 20, flexWrap: "wrap", marginBottom: 14, padding: "10px 14px", background: C.panel2, border: `1px solid ${C.line}`, borderRadius: 10 }}>
+          <div><span style={{ color: C.muted, fontSize: 11 }}>CLIENT</span><div style={{ color: C.fg, fontWeight: 600 }}>{overview.client.name}</div></div>
+          <div><span style={{ color: C.muted, fontSize: 11 }}>ACCEPTED WORKER{overview.acceptedWorkers.length === 1 ? "" : "S"}</span>
+            <div style={{ color: C.fg, fontWeight: 600 }}>{overview.acceptedWorkers.length ? overview.acceptedWorkers.join(", ") : `— (0 / ${overview.requestedWorkerCount})`}</div></div>
+          <div><span style={{ color: C.muted, fontSize: 11 }}>JOB CODE</span><div style={{ color: C.fg, fontWeight: 600, fontFamily: mono }}>{overview.jobCode}</div></div>
+        </div>
+      ) : null}
 
       <div style={{ display: "grid", gridTemplateColumns: "1fr 320px", gap: 14, alignItems: "start" }} className="cr-grid">
         {/* lifecycle timeline */}
