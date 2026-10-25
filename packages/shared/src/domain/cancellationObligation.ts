@@ -1,8 +1,9 @@
-// Employer late-cancellation COMMERCIAL obligation calculator.
+// Late-cancellation obligation calculator.
 //
-// This is an employer <-> JobLop commercial obligation ONLY. It is NEVER a
-// worker-facing fee, deduction, clawback, penalty, or payment. It moves no money
-// and marks nothing paid — it computes a truthful obligation amount for later
+// Owner policy: when a CLIENT cancels within 24h of the shift start, the client is
+// billed 6 hours, and the affected worker(s) are compensated 3 hours. This computes
+// BOTH the employer obligation (bill side) and the worker compensation (pay side).
+// It moves no money and marks nothing paid — it produces truthful amounts for later
 // governed Finance handling. See docs/design/cancellation-obligation.md.
 
 import { createContractMoney, type Currency, type MoneyAmount } from "./moneyEngine";
@@ -30,8 +31,9 @@ export const CANCELLATION_CAUSES: readonly CancellationCause[] = [
 // MUTUALLY_CANCELLED carries none (owner-confirmed) unless a future approved rule changes it.
 export const EMPLOYER_OBLIGATION_CAUSES: readonly CancellationCause[] = ["EMPLOYER_CANCELLED"];
 
-export const LATE_CANCELLATION_CUTOFF_HOURS = 48;
-export const LATE_CANCELLATION_CHARGE_HOURS = 6;
+export const LATE_CANCELLATION_CUTOFF_HOURS = 24; // owner policy: within 24h of start is "late"
+export const LATE_CANCELLATION_CHARGE_HOURS = 6; // client is billed 6 hours
+export const LATE_CANCELLATION_WORKER_HOURS = 3; // affected worker(s) are paid 3 hours
 
 export function isCancellationCause(value: unknown): value is CancellationCause {
   return typeof value === "string" && (CANCELLATION_CAUSES as readonly string[]).includes(value);
@@ -48,10 +50,14 @@ export type LateCancellationObligation = Readonly<{
   cause: CancellationCause;
   cutoffHours: number;
   chargeHours: number;
+  workerCompensationHours: number;
   hoursBeforeStart: number;
   affectedConfirmedWorkers: number;
   governedHourlyRate: MoneyAmount;
-  amount: MoneyAmount; // 0 when !applies
+  amount: MoneyAmount; // client bill: 6h × employer rate × workers. 0 when !applies.
+  // Worker compensation: 3h × worker rate × workers ("admin pays 3h to workers"). 0 when !applies
+  // or no worker rate was supplied. NEVER deducted from the worker — this is a payment TO them.
+  workerCompensation: MoneyAmount;
 }>;
 
 // Whole/fractional hours between now and the shift start (may be negative if the
@@ -75,12 +81,19 @@ export function computeLateCancellationObligation(input: {
   governedRateMinor: number;
   currency: Currency;
   affectedConfirmedWorkers: number;
+  // The worker PAY rate, for the 3h compensation. Optional for back-compat: when omitted,
+  // workerCompensation is 0 (callers that only need the client obligation pass nothing).
+  workerRateMinor?: number;
 }): LateCancellationObligation {
   if (!Number.isInteger(input.governedRateMinor) || input.governedRateMinor < 0) {
     throw new Error("The governed hourly rate must be a non-negative integer (minor units).");
   }
   if (!Number.isInteger(input.affectedConfirmedWorkers) || input.affectedConfirmedWorkers < 0) {
     throw new Error("Affected confirmed workers must be a non-negative integer.");
+  }
+  const workerRateMinor = input.workerRateMinor ?? 0;
+  if (!Number.isInteger(workerRateMinor) || workerRateMinor < 0) {
+    throw new Error("The worker rate must be a non-negative integer (minor units).");
   }
 
   const governedHourlyRate = createContractMoney({
@@ -94,6 +107,7 @@ export function computeLateCancellationObligation(input: {
     cause: input.cause,
     cutoffHours: LATE_CANCELLATION_CUTOFF_HOURS,
     chargeHours: LATE_CANCELLATION_CHARGE_HOURS,
+    workerCompensationHours: LATE_CANCELLATION_WORKER_HOURS,
     hoursBeforeStart,
     affectedConfirmedWorkers: input.affectedConfirmedWorkers,
     governedHourlyRate
@@ -101,23 +115,26 @@ export function computeLateCancellationObligation(input: {
 
   // Cause gate: only approved employer-caused cancellations can carry an obligation.
   if (!(EMPLOYER_OBLIGATION_CAUSES as readonly string[]).includes(input.cause)) {
-    return { ...base, applies: false, reason: "cause_not_employer_obligated", amount: zero };
+    return { ...base, applies: false, reason: "cause_not_employer_obligated", amount: zero, workerCompensation: zero };
   }
-  // Cutoff gate: >= 48h before start carries no obligation.
+  // Cutoff gate: >= 24h before start carries no obligation.
   if (hoursBeforeStart >= LATE_CANCELLATION_CUTOFF_HOURS) {
-    return { ...base, applies: false, reason: "outside_cutoff_window", amount: zero };
+    return { ...base, applies: false, reason: "outside_cutoff_window", amount: zero, workerCompensation: zero };
   }
   // Only confirmed workers create an obligation.
   if (input.affectedConfirmedWorkers <= 0) {
-    return { ...base, applies: false, reason: "no_confirmed_workers", amount: zero };
+    return { ...base, applies: false, reason: "no_confirmed_workers", amount: zero, workerCompensation: zero };
   }
 
   const amountMinor =
     LATE_CANCELLATION_CHARGE_HOURS * input.governedRateMinor * input.affectedConfirmedWorkers;
+  const workerCompensationMinor =
+    LATE_CANCELLATION_WORKER_HOURS * workerRateMinor * input.affectedConfirmedWorkers;
   return {
     ...base,
     applies: true,
     reason: "employer_late_cancellation",
-    amount: createContractMoney({ amountMinor, currency: input.currency })
+    amount: createContractMoney({ amountMinor, currency: input.currency }),
+    workerCompensation: createContractMoney({ amountMinor: workerCompensationMinor, currency: input.currency })
   };
 }

@@ -11,6 +11,7 @@ export * from "./capacityReduction";
 export * from "./calendarExport";
 export * from "./connectedCalendar";
 export * from "./orderLifecycle";
+export * from "./workerCancellationPenalty";
 export * from "./contractPricing";
 export * from "./employerContractDto";
 export * from "./hrMoneyAdapter";

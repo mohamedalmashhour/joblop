@@ -21,7 +21,7 @@ export type EmployerCancellationCause =
 // Only this cause carries the employer late-cancellation obligation.
 const OBLIGATION_CAUSES: readonly EmployerCancellationCause[] = ["EMPLOYER_CANCELLED"];
 
-export const LATE_CANCELLATION_CUTOFF_HOURS = 48;
+export const LATE_CANCELLATION_CUTOFF_HOURS = 24; // owner policy: within 24h of start is "late"
 export const LATE_CANCELLATION_CHARGE_HOURS = 6;
 
 const CONTRACT_MANAGER_ROLES: readonly string[] = [

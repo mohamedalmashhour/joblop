@@ -144,16 +144,16 @@ function service(opts: {
 }
 
 describe("employer cancellation — preview (authoritative consequence)", () => {
-  it("charges nothing at exactly 48h before start", async () => {
-    const { svc } = service({ confirmed: 2, now: () => nowAtHoursBefore(48) });
+  it("charges nothing at exactly 24h before start", async () => {
+    const { svc } = service({ confirmed: 2, now: () => nowAtHoursBefore(24) });
     const p = await svc.previewCancellation({ actorUserId: "u1", organizationId: ORG, jobRequestId: REQ });
     expect(p.obligationApplies).toBe(false);
     expect(p.obligationAmountMinor).toBe(0);
     expect(p.requiresPlatformHandoff).toBe(true); // confirmed workers still need transition
   });
 
-  it("charges 6h × rate × workers at 47h59m", async () => {
-    const { svc } = service({ confirmed: 2, now: () => nowAtHoursBefore(47 + 59 / 60) });
+  it("charges 6h × rate × workers at 23h59m", async () => {
+    const { svc } = service({ confirmed: 2, now: () => nowAtHoursBefore(23 + 59 / 60) });
     const p = await svc.previewCancellation({ actorUserId: "u1", organizationId: ORG, jobRequestId: REQ });
     expect(p.obligationApplies).toBe(true);
     expect(p.obligationAmountMinor).toBe(36000); // 6×3000×2 = $360

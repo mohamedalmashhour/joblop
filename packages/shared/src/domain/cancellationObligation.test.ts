@@ -4,7 +4,7 @@ import {
   type CancellationCause
 } from "./cancellationObligation";
 
-// Shift starts at a fixed instant; vary "now" to hit the 48h boundary precisely.
+// Shift starts at a fixed instant; vary "now" to hit the 24h boundary precisely.
 const shiftStartIso = "2026-08-10T20:00:00.000Z";
 const nowAtHoursBefore = (h: number) =>
   new Date(Date.parse(shiftStartIso) - h * 3_600_000).toISOString();
@@ -18,17 +18,17 @@ const base = {
 };
 
 describe("employer late-cancellation commercial obligation", () => {
-  it("charges nothing at exactly 48 hours before start (>= cutoff is free)", () => {
-    const o = computeLateCancellationObligation({ ...base, nowIso: nowAtHoursBefore(48) });
+  it("charges nothing at exactly 24 hours before start (>= cutoff is free)", () => {
+    const o = computeLateCancellationObligation({ ...base, nowIso: nowAtHoursBefore(24) });
     expect(o.applies).toBe(false);
     expect(o.reason).toBe("outside_cutoff_window");
     expect(o.amount.amountMinor).toBe(0);
   });
 
-  it("charges at 47h59m before start (inside the window)", () => {
+  it("charges at 23h59m before start (inside the window)", () => {
     const o = computeLateCancellationObligation({
       ...base,
-      nowIso: nowAtHoursBefore(47 + 59 / 60)
+      nowIso: nowAtHoursBefore(23 + 59 / 60)
     });
     expect(o.applies).toBe(true);
     expect(o.reason).toBe("employer_late_cancellation");
@@ -36,7 +36,24 @@ describe("employer late-cancellation commercial obligation", () => {
     expect(o.amount).toMatchObject({ amountMinor: 36000, currency: "CAD" });
   });
 
-  it("charges nothing well outside the window (>48h)", () => {
+  it("pays affected workers 3h at the worker rate when a worker rate is supplied", () => {
+    const o = computeLateCancellationObligation({
+      ...base,
+      workerRateMinor: 2400, // $24/hr worker pay
+      nowIso: nowAtHoursBefore(5)
+    });
+    // client billed 6h × $30 × 2 = $360; workers paid 3h × $24 × 2 = $144
+    expect(o.amount.amountMinor).toBe(36000);
+    expect(o.workerCompensation.amountMinor).toBe(14400);
+    expect(o.workerCompensationHours).toBe(3);
+  });
+
+  it("worker compensation is 0 when no worker rate is supplied (back-compat)", () => {
+    const o = computeLateCancellationObligation({ ...base, nowIso: nowAtHoursBefore(5) });
+    expect(o.workerCompensation.amountMinor).toBe(0);
+  });
+
+  it("charges nothing well outside the window (>24h)", () => {
     const o = computeLateCancellationObligation({ ...base, nowIso: nowAtHoursBefore(72) });
     expect(o.applies).toBe(false);
     expect(o.amount.amountMinor).toBe(0);
