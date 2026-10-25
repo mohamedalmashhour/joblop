@@ -11228,9 +11228,53 @@ export interface RecordAuthenticationAuditEventInput {
   createdAt: Date;
 }
 
+export interface CreateOAuthUserInput {
+  publicId: string;
+  emailNormalized: string;
+  displayName: string | null;
+  provider: AuthenticationIdentityProvider;
+  providerSubject: string;
+  emailVerifiedAt: Date | null;
+  now: Date;
+}
+
+export interface LinkOAuthIdentityInput {
+  userId: string;
+  provider: AuthenticationIdentityProvider;
+  providerSubject: string;
+  emailVerifiedAt: Date | null;
+  now: Date;
+}
+
+export interface UpsertGoogleOAuthTokenInput {
+  userId: string;
+  googleSub: string;
+  // Null leaves any existing refresh token untouched (Google only returns it on first consent).
+  refreshTokenEncrypted: string | null;
+  scope: string;
+  calendarSyncEnabled: boolean;
+  now: Date;
+}
+
+export interface GoogleProfile {
+  sub: string;
+  email: string;
+  emailVerified: boolean;
+  name: string | null;
+}
+
 export interface AuthenticationRepository {
   findUserByEmailNormalized(emailNormalized: string): Promise<StoredAuthenticationUser | null>;
   createLocalUser(input: CreateLocalUserInput): Promise<StoredAuthenticationUser>;
+  // OAuth (Google) support. Optional so existing in-memory test repositories keep compiling; the
+  // service throws a clear error if signInWithGoogle is called against a repository without them.
+  findUserByOAuthSubject?(
+    provider: AuthenticationIdentityProvider,
+    providerSubject: string
+  ): Promise<StoredAuthenticationUser | null>;
+  createOAuthUser?(input: CreateOAuthUserInput): Promise<StoredAuthenticationUser>;
+  linkOAuthIdentity?(input: LinkOAuthIdentityInput): Promise<void>;
+  upsertGoogleOAuthToken?(input: UpsertGoogleOAuthTokenInput): Promise<void>;
   createSession(input: CreateSessionInput): Promise<StoredAuthenticationSession>;
   findSessionByHash(sessionHash: string): Promise<StoredAuthenticationSession | null>;
   updateSession(input: UpdateSessionInput): Promise<StoredAuthenticationSession | null>;
@@ -11538,6 +11582,127 @@ export function createAuthenticationService(
       };
     },
 
+    // Google OAuth sign-in: provisions (or links) a user for an already-verified Google profile and
+    // issues a session exactly as password sign-in does. The caller (API) has already exchanged the
+    // authorization code with Google and fetched the verified profile — the client is never trusted.
+    async signInWithGoogle(input: {
+      profile: GoogleProfile;
+      refreshTokenEncrypted: string | null;
+      scope: string;
+      calendarSyncEnabled: boolean;
+      source?: AuthenticationAuditSource;
+      correlationId?: string;
+      ipAddress?: string | null;
+      userAgent?: string | null;
+    }): Promise<SignInResult> {
+      if (
+        !repository.findUserByOAuthSubject ||
+        !repository.createOAuthUser ||
+        !repository.linkOAuthIdentity ||
+        !repository.upsertGoogleOAuthToken
+      ) {
+        throw new AuthenticationError();
+      }
+      const provider: AuthenticationIdentityProvider = "future_oauth";
+      const providerSubject = `google:${input.profile.sub}`;
+      const emailNormalized = normalizeEmail(input.profile.email);
+      const currentTime = now();
+
+      let user = await repository.findUserByOAuthSubject(provider, providerSubject);
+      if (!user) {
+        const existingByEmail = await repository.findUserByEmailNormalized(emailNormalized);
+        if (existingByEmail) {
+          await repository.linkOAuthIdentity({
+            userId: existingByEmail.id,
+            provider,
+            providerSubject,
+            emailVerifiedAt: input.profile.emailVerified ? currentTime : null,
+            now: currentTime
+          });
+          user = await repository.findUserByEmailNormalized(emailNormalized);
+        } else {
+          user = await repository.createOAuthUser({
+            publicId: createPublicUserId(),
+            emailNormalized,
+            displayName: input.profile.name,
+            provider,
+            providerSubject,
+            emailVerifiedAt: input.profile.emailVerified ? currentTime : null,
+            now: currentTime
+          });
+          await recordAuthenticationAudit(repository, {
+            action: "auth.registration",
+            actorType: "user",
+            userId: user.id,
+            entityId: user.id,
+            entityPublicReference: user.publicId,
+            priorState: null,
+            newState: user.status,
+            reason: "oauth_google",
+            source: input.source ?? "api",
+            correlationId: input.correlationId,
+            createdAt: currentTime
+          });
+        }
+      }
+
+      if (!user) {
+        throw new AuthenticationError();
+      }
+      if (user.status === "disabled" || user.status === "closed") {
+        await recordAuthenticationAudit(repository, {
+          action: user.status === "disabled" ? "auth.account_disabled" : "auth.account_closed",
+          actorType: "user",
+          userId: user.id,
+          entityId: user.id,
+          entityPublicReference: user.publicId,
+          priorState: user.status,
+          newState: user.status,
+          reason: "login_blocked",
+          source: input.source ?? "api",
+          correlationId: input.correlationId,
+          createdAt: currentTime
+        });
+        throw new AuthenticationError();
+      }
+
+      await repository.upsertGoogleOAuthToken({
+        userId: user.id,
+        googleSub: input.profile.sub,
+        refreshTokenEncrypted: input.refreshTokenEncrypted,
+        scope: input.scope,
+        calendarSyncEnabled: input.calendarSyncEnabled,
+        now: currentTime
+      });
+
+      const session = await createSessionForUser(
+        repository,
+        user,
+        randomToken,
+        sessionTtlSeconds,
+        currentTime,
+        input
+      );
+      await recordAuthenticationAudit(repository, {
+        action: "auth.login_success",
+        actorType: "user",
+        userId: user.id,
+        entityId: user.id,
+        entityPublicReference: user.publicId,
+        priorState: null,
+        newState: "session_active",
+        reason: "oauth_google",
+        source: input.source ?? "api",
+        correlationId: input.correlationId,
+        createdAt: currentTime
+      });
+
+      return {
+        user: toPublicUser(user),
+        ...session
+      };
+    },
+
     async validateSession(token: string | null | undefined): Promise<SessionValidationResult> {
       if (!token) {
         return unauthenticatedSession();
@@ -11763,10 +11928,69 @@ type PrismaAuthClient = PrismaAuthTransaction & {
   };
 };
 
+// Narrowed accessor for the OAuth (Google) models/shapes the password path never touches.
+type GoogleOAuthPrisma = {
+  user: {
+    findFirst(args: {
+      where: {
+        identities: {
+          some: { provider: AuthenticationIdentityProvider; providerSubject: string };
+        };
+      };
+      include: { identities: true };
+    }): Promise<StoredAuthenticationUser | null>;
+    create(args: {
+      data: {
+        publicId: string;
+        emailNormalized: string;
+        displayName: string | null;
+        status: "active";
+        identities: {
+          create: {
+            provider: AuthenticationIdentityProvider;
+            providerSubject: string;
+            emailVerifiedAt: Date | null;
+          };
+        };
+      };
+      include: { identities: true };
+    }): Promise<StoredAuthenticationUser>;
+  };
+  userIdentity: {
+    create(args: {
+      data: {
+        userId: string;
+        provider: AuthenticationIdentityProvider;
+        providerSubject: string;
+        emailVerifiedAt: Date | null;
+      };
+    }): Promise<unknown>;
+  };
+  googleOAuthToken: {
+    upsert(args: {
+      where: { userId: string };
+      create: {
+        userId: string;
+        refreshTokenEncrypted: string;
+        scope: string;
+        calendarSyncEnabled: boolean;
+        googleSub: string;
+      };
+      update: {
+        scope: string;
+        calendarSyncEnabled: boolean;
+        googleSub: string;
+        refreshTokenEncrypted?: string;
+      };
+    }): Promise<unknown>;
+  };
+};
+
 export function createPrismaAuthenticationRepository(
   prismaClient: unknown
 ): AuthenticationRepository {
   const prisma = prismaClient as PrismaAuthClient;
+  const oauthDb = prismaClient as GoogleOAuthPrisma;
 
   return {
     findUserByEmailNormalized(emailNormalized) {
@@ -11793,6 +12017,65 @@ export function createPrismaAuthenticationRepository(
           }
         },
         include: { identities: true }
+      });
+    },
+
+    findUserByOAuthSubject(provider, providerSubject) {
+      return oauthDb.user.findFirst({
+        where: { identities: { some: { provider, providerSubject } } },
+        include: { identities: true }
+      });
+    },
+
+    createOAuthUser(input) {
+      return oauthDb.user.create({
+        data: {
+          publicId: input.publicId,
+          emailNormalized: input.emailNormalized,
+          displayName: input.displayName,
+          status: "active",
+          identities: {
+            create: {
+              provider: input.provider,
+              providerSubject: input.providerSubject,
+              emailVerifiedAt: input.emailVerifiedAt
+            }
+          }
+        },
+        include: { identities: true }
+      });
+    },
+
+    async linkOAuthIdentity(input) {
+      await oauthDb.userIdentity.create({
+        data: {
+          userId: input.userId,
+          provider: input.provider,
+          providerSubject: input.providerSubject,
+          emailVerifiedAt: input.emailVerifiedAt
+        }
+      });
+    },
+
+    async upsertGoogleOAuthToken(input) {
+      await oauthDb.googleOAuthToken.upsert({
+        where: { userId: input.userId },
+        create: {
+          userId: input.userId,
+          refreshTokenEncrypted: input.refreshTokenEncrypted ?? "",
+          scope: input.scope,
+          calendarSyncEnabled: input.calendarSyncEnabled,
+          googleSub: input.googleSub
+        },
+        update: {
+          scope: input.scope,
+          calendarSyncEnabled: input.calendarSyncEnabled,
+          googleSub: input.googleSub,
+          // Only overwrite the stored refresh token when Google returned a fresh one.
+          ...(input.refreshTokenEncrypted
+            ? { refreshTokenEncrypted: input.refreshTokenEncrypted }
+            : {})
+        }
       });
     },
 

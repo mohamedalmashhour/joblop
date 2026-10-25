@@ -748,6 +748,12 @@ a.card.cardlink:hover {
 .auth-form .btn { margin-top: 14px; }
 .auth-switch { font-size: 14px; color: var(--muted, #5b6471); margin: 10px 0 0; text-align: center; }
 .linkbtn { appearance: none; border: 0; background: none; color: var(--brand, #1a56db); font: inherit; font-weight: 700; cursor: pointer; padding: 0; }
+.auth-google { padding: 0 20px 18px; }
+.auth-or { display: flex; align-items: center; gap: 12px; color: var(--muted, #5b6471); font-size: 13px; margin: 14px 0; text-transform: uppercase; letter-spacing: .04em; }
+.auth-or::before, .auth-or::after { content: ""; flex: 1; height: 1px; background: var(--line, #d7dbe0); }
+.google-btn { display: flex; align-items: center; justify-content: center; gap: 10px; width: 100%; background: #fff; color: #1f2937; border: 1px solid var(--line, #d7dbe0); font-weight: 700; }
+.google-btn:hover { background: #f8fafc; }
+.google-btn svg { flex: 0 0 auto; }
 .landing-steps h2 { font-size: 22px; margin: 0 0 16px; }
 .landing-steps ol { list-style: none; padding: 0; margin: 0; display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 18px; }
 .landing-steps li { display: flex; gap: 12px; align-items: flex-start; }

@@ -173,6 +173,72 @@ export function createFrontendSessionGateway(options: {
       token
         ? request("/auth/sign-out", "POST", token)
         : Promise.resolve({ status: "ok", payload: null } as const),
+    // Google OAuth. `googleConfig` tells the UI whether to show the button; `googleAuthorizeUrl`
+    // returns the consent URL to redirect to; `googleExchange` finalizes the callback and, on
+    // success, persists the issued session token exactly like password sign-in.
+    async googleConfig(): Promise<{ enabled: boolean; calendarSync: boolean }> {
+      try {
+        const response = await options.fetch(`${origin}/auth/google/config`, {
+          method: "GET",
+          headers: { accept: "application/json" },
+          cache: "no-store"
+        });
+        if (!response.ok) return { enabled: false, calendarSync: false };
+        const json = asRecord(await response.json());
+        return { enabled: json.enabled === true, calendarSync: json.calendarSync === true };
+      } catch {
+        return { enabled: false, calendarSync: false };
+      }
+    },
+    async googleAuthorizeUrl(input: {
+      redirectUri: string;
+      state: string;
+      withCalendar: boolean;
+    }): Promise<string | null> {
+      try {
+        const response = await options.fetch(`${origin}/auth/google/authorize`, {
+          method: "POST",
+          headers: { accept: "application/json", "content-type": "application/json" },
+          body: JSON.stringify(input),
+          cache: "no-store"
+        });
+        if (!response.ok) return null;
+        const json = asRecord(await response.json());
+        return typeof json.url === "string" ? json.url : null;
+      } catch {
+        return null;
+      }
+    },
+    async googleExchange(
+      input: { code: string; redirectUri: string; withCalendar: boolean },
+      persistToken: (token: string) => void
+    ): Promise<FrontendSessionResult> {
+      try {
+        const response = await options.fetch(`${origin}/auth/google/exchange`, {
+          method: "POST",
+          headers: { accept: "application/json", "content-type": "application/json" },
+          body: JSON.stringify(input),
+          cache: "no-store"
+        });
+        if (response.status === 401 || response.status === 403) return { status: "denied" };
+        if (response.status === 404) return { status: "not_found" };
+        if (response.status === 502 || response.status === 503 || response.status === 504) {
+          return { status: "unavailable" };
+        }
+        if (!response.ok) return { status: "error" };
+        const payload = await response.json();
+        const token = readToken(payload);
+        if (!token) return { status: "error" };
+        persistToken(token);
+        return { status: "ok", payload: sanitizeSessionPayload(payload) };
+      } catch {
+        return { status: "unavailable" };
+      }
+    },
+    // Connect Google Calendar for an already-signed-in user (authenticated; no new session).
+    googleLinkCalendar(input: { code: string; redirectUri: string }, token: string | null) {
+      return request("/worker/google/calendar/link", "POST", token, input);
+    },
     publicRequest,
     request
   };

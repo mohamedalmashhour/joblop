@@ -1,9 +1,58 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 
 import { styles } from "../employer/employerStyles";
 import { useT } from "../i18n/LocaleProvider";
+
+// "Continue with Google" — rendered only when the API reports Google OAuth is configured. Plain
+// link (top-level navigation) to the BFF start route, which redirects to Google's consent screen.
+function GoogleAuthButton() {
+  const t = useT();
+  const [enabled, setEnabled] = useState(false);
+  useEffect(() => {
+    let active = true;
+    fetch("/api/auth/google/config", { cache: "no-store" })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d: { enabled?: boolean } | null) => {
+        if (active && d?.enabled) setEnabled(true);
+      })
+      .catch(() => {});
+    return () => {
+      active = false;
+    };
+  }, []);
+  if (!enabled) return null;
+  return (
+    <div style={{ marginTop: "1rem", display: "grid", gap: "0.75rem" }}>
+      <div
+        aria-hidden="true"
+        style={{ textAlign: "center", color: "#64748b", fontSize: "0.8rem", textTransform: "uppercase", letterSpacing: "0.04em" }}
+      >
+        {t("auth.or")}
+      </div>
+      <a
+        href="/api/auth/google/start"
+        style={{
+          ...styles.secondaryButton,
+          display: "inline-flex",
+          alignItems: "center",
+          justifyContent: "center",
+          gap: "0.6rem",
+          background: "#fff"
+        }}
+      >
+        <svg width="18" height="18" viewBox="0 0 48 48" aria-hidden="true">
+          <path fill="#EA4335" d="M24 9.5c3.5 0 6.6 1.2 9 3.6l6.8-6.8C35.6 2.4 30.2 0 24 0 14.6 0 6.5 5.4 2.6 13.2l7.9 6.1C12.4 13.3 17.7 9.5 24 9.5z" />
+          <path fill="#4285F4" d="M46.1 24.6c0-1.6-.1-2.8-.4-4.1H24v7.7h12.4c-.3 2.1-1.6 5.2-4.6 7.3l7.1 5.5c4.3-3.9 6.8-9.7 6.8-16.4z" />
+          <path fill="#FBBC05" d="M10.5 28.3c-.5-1.5-.8-3-.8-4.3s.3-2.8.7-4.3l-7.9-6.1C.9 16.7 0 20.2 0 24s.9 7.3 2.6 10.4l7.9-6.1z" />
+          <path fill="#34A853" d="M24 48c6.2 0 11.4-2 15.2-5.5l-7.1-5.5c-2 1.4-4.6 2.3-8.1 2.3-6.3 0-11.6-3.8-13.5-9.3l-7.9 6.1C6.5 42.6 14.6 48 24 48z" />
+        </svg>
+        {t("auth.continueWithGoogle")}
+      </a>
+    </div>
+  );
+}
 
 /**
  * Employer sign-in capsule (client). Wires to the existing same-origin session route
@@ -58,6 +107,7 @@ export function SignInForm() {
   };
 
   return (
+    <>
     <form style={styles.formGrid} onSubmit={submit}>
       <label style={styles.fieldLabel}>
         {t("auth.workEmail")}
@@ -116,5 +166,7 @@ export function SignInForm() {
         </a>
       </div>
     </form>
+    <GoogleAuthButton />
+    </>
   );
 }

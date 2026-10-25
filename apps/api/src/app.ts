@@ -235,6 +235,15 @@ import {
   type ProMethod
 } from "./cvProOrderRepository";
 import { isStripeTestConfigured } from "./cvProStripeCheckout";
+import {
+  googleOAuthConfigFromEnv,
+  buildAuthUrl as buildGoogleAuthUrl,
+  exchangeCode as exchangeGoogleCode,
+  fetchUserInfo as fetchGoogleUserInfo,
+  encryptSecret as encryptGoogleSecret,
+  GoogleOAuthError
+} from "./googleOAuth";
+import { pushAssignmentToCalendar } from "./googleCalendarSync";
 import { createSyntheticCvProvider } from "./cvBuilder";
 import {
   activeMembershipRoleQuery,
@@ -1520,6 +1529,140 @@ export function buildApi(options: BuildApiOptions = {}) {
     });
 
     return reply.code(204).send();
+  });
+
+  // ── Google OAuth sign-in (+ optional Calendar sync). Flag-gated end to end. ──────────────────
+  // Public: tells the BFFs whether to show the "Sign in with Google" button.
+  app.get("/auth/google/config", async (_request, reply) => {
+    const cfg = googleOAuthConfigFromEnv();
+    return reply
+      .code(200)
+      .send({ enabled: cfg.enabled, calendarSync: cfg.calendarSyncEnabled });
+  });
+
+  // The BFF generates the CSRF `state` (and stores it in a cookie) and passes its own callback
+  // redirectUri; we return the Google authorization URL to redirect to.
+  app.post("/auth/google/authorize", async (request, reply) => {
+    const cfg = googleOAuthConfigFromEnv();
+    if (!cfg.enabled) {
+      return reply
+        .code(404)
+        .send({ error: "RWOS_GOOGLE_OAUTH_DISABLED", message: "Google sign-in is not enabled." });
+    }
+    const body = asRecord(request.body);
+    const redirectUri = readRequiredString(body, "redirectUri");
+    const state = readRequiredString(body, "state");
+    const withCalendar = body.withCalendar === true && cfg.calendarSyncEnabled;
+    if (!redirectUri || !state) {
+      return reply
+        .code(400)
+        .send({ error: "RWOS_GOOGLE_OAUTH_INVALID", message: "Invalid authorization request." });
+    }
+    return reply.code(200).send({ url: buildGoogleAuthUrl({ config: cfg, redirectUri, state, withCalendar }) });
+  });
+
+  // The BFF (after validating state) sends the authorization code; we exchange it with Google,
+  // fetch the verified profile, provision/link the user, and return a normal session token.
+  app.post("/auth/google/exchange", async (request, reply) => {
+    const cfg = googleOAuthConfigFromEnv();
+    if (!cfg.enabled) {
+      return reply
+        .code(404)
+        .send({ error: "RWOS_GOOGLE_OAUTH_DISABLED", message: "Google sign-in is not enabled." });
+    }
+    const body = asRecord(request.body);
+    const code = readRequiredString(body, "code");
+    const redirectUri = readRequiredString(body, "redirectUri");
+    const withCalendar = body.withCalendar === true && cfg.calendarSyncEnabled;
+    if (!code || !redirectUri) {
+      return reply
+        .code(400)
+        .send({ error: "RWOS_GOOGLE_OAUTH_INVALID", message: "Invalid authorization request." });
+    }
+    try {
+      const tokens = await exchangeGoogleCode({ config: cfg, code, redirectUri });
+      const profile = await fetchGoogleUserInfo(tokens.accessToken);
+      const refreshTokenEncrypted =
+        withCalendar && tokens.refreshToken
+          ? encryptGoogleSecret(tokens.refreshToken, cfg.tokenEncKey)
+          : null;
+      const result = await authService.signInWithGoogle({
+        profile,
+        refreshTokenEncrypted,
+        scope: tokens.scope,
+        calendarSyncEnabled: withCalendar,
+        source: "api",
+        ipAddress: request.ip,
+        userAgent: request.headers["user-agent"] ?? null
+      });
+      return reply.code(200).send(serializeAuthenticationResult(result));
+    } catch (error) {
+      if (error instanceof GoogleOAuthError) {
+        return reply
+          .code(502)
+          .send({ error: "RWOS_GOOGLE_OAUTH_FAILED", message: "Google sign-in failed." });
+      }
+      return sendAuthenticationError(reply, error);
+    }
+  });
+
+  // Connect Google Calendar for an ALREADY signed-in worker (grants the calendar scope without
+  // creating a new session). Stores the encrypted refresh token for the current user and turns on
+  // calendar sync. Gated on GOOGLE_CALENDAR_SYNC_ENABLED.
+  app.post("/worker/google/calendar/link", async (request, reply) => {
+    const session = await authService.validateSession(
+      readBearerToken(request.headers.authorization)
+    );
+    if (!session.authenticated || !session.user) {
+      return reply
+        .code(401)
+        .send({ error: "RWOS_WORKER_DENIED", message: "Authentication is required." });
+    }
+    const cfg = googleOAuthConfigFromEnv();
+    if (!cfg.calendarSyncEnabled) {
+      return reply
+        .code(404)
+        .send({ error: "RWOS_GOOGLE_CALENDAR_DISABLED", message: "Calendar sync is not enabled." });
+    }
+    const body = asRecord(request.body);
+    const code = readRequiredString(body, "code");
+    const redirectUri = readRequiredString(body, "redirectUri");
+    if (!code || !redirectUri || !prisma) {
+      return reply
+        .code(400)
+        .send({ error: "RWOS_GOOGLE_OAUTH_INVALID", message: "Invalid request." });
+    }
+    try {
+      const tokens = await exchangeGoogleCode({ config: cfg, code, redirectUri });
+      const profile = await fetchGoogleUserInfo(tokens.accessToken);
+      const refreshTokenEncrypted = tokens.refreshToken
+        ? encryptGoogleSecret(tokens.refreshToken, cfg.tokenEncKey)
+        : null;
+      await prisma.googleOAuthToken.upsert({
+        where: { userId: session.user.id },
+        create: {
+          userId: session.user.id,
+          googleSub: profile.sub,
+          refreshTokenEncrypted: refreshTokenEncrypted ?? "",
+          scope: tokens.scope,
+          calendarSyncEnabled: true
+        },
+        update: {
+          googleSub: profile.sub,
+          scope: tokens.scope,
+          calendarSyncEnabled: true,
+          ...(refreshTokenEncrypted ? { refreshTokenEncrypted } : {})
+        }
+      });
+      return reply.code(200).send({ connected: true });
+    } catch (error) {
+      if (error instanceof GoogleOAuthError) {
+        return reply
+          .code(502)
+          .send({ error: "RWOS_GOOGLE_OAUTH_FAILED", message: "Could not connect Google Calendar." });
+      }
+      throw error;
+    }
   });
 
   app.post("/authz/check", async (request, reply) => {
@@ -6099,6 +6242,12 @@ export function buildApi(options: BuildApiOptions = {}) {
       });
       if (offer) {
         await notifyClient(prisma, emailSender, { jobRequestId: offer.jobRequestId, kind: "worker_accepted" });
+        // Best-effort: push the confirmed shift to the worker's own Google Calendar. Opt-in per
+        // worker (calendar scope granted) + flag-gated; never blocks or fails the accept.
+        void pushAssignmentToCalendar(
+          { prisma, config: googleOAuthConfigFromEnv() },
+          { userId: session.user.id, jobRequestId: offer.jobRequestId }
+        );
       }
     }
 

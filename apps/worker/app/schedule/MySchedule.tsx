@@ -89,6 +89,7 @@ export function MySchedule() {
         <h1>{t("nav.schedule")}</h1>
         <p>{t("sched.intro")}</p>
       </section>
+      <GoogleCalendarConnect />
       {notice ? <p className="notice" style={{ color: "var(--accent)" }}>{notice}</p> : null}
 
       {state.items.length > 0 ? (
@@ -269,5 +270,44 @@ function CalendarView({ items, month, onPrev, onNext, selected, onSelect, busy, 
         <p className="notice">{t("sched.pickDay")}</p>
       )}
     </>
+  );
+}
+
+// Opt-in Google Calendar sync. Shown only when the API reports calendar sync is enabled. Links to
+// the Google start route with calendar=1; when already signed in, the callback links the calendar
+// grant to the current account (no new session) and returns here with ?calendar=connected.
+function GoogleCalendarConnect() {
+  const t = useT();
+  const [enabled, setEnabled] = useState(false);
+  const [status, setStatus] = useState<"idle" | "connected" | "error">("idle");
+  useEffect(() => {
+    let active = true;
+    fetch("/api/auth/google/config", { cache: "no-store" })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d: { calendarSync?: boolean } | null) => {
+        if (active && d?.calendarSync) setEnabled(true);
+      })
+      .catch(() => {});
+    try {
+      const p = new URLSearchParams(window.location.search).get("calendar");
+      if (p === "connected") setStatus("connected");
+      else if (p === "error") setStatus("error");
+    } catch {
+      /* ignore */
+    }
+    return () => {
+      active = false;
+    };
+  }, []);
+  if (!enabled) return null;
+  if (status === "connected") {
+    return <p className="notice" style={{ color: "var(--accent)" }}>{t("sched.calendarConnected")}</p>;
+  }
+  return (
+    <div className="state" style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
+      <span>{t("sched.calendarSyncHint")}</span>
+      <a className="btn ghost" href="/api/auth/google/start?calendar=1">{t("sched.connectGoogleCalendar")}</a>
+      {status === "error" ? <span className="error" role="alert">{t("sched.calendarConnectError")}</span> : null}
+    </div>
   );
 }

@@ -481,6 +481,7 @@ model User {
   platformAccessGrants          PlatformAccessGrant[]
   completedAdminBootstraps      InitialAdminBootstrap[]      @relation("InitialAdminBootstrapCreatedUser")
   ownedUploadedDocuments        UploadedDocument[]           @relation("UploadedDocumentOwner")
+  googleOAuthToken              GoogleOAuthToken?
 
   @@index([emailNormalized], map: "users_email_normalized_idx")
   @@index([status], map: "users_status_idx")
@@ -505,6 +506,23 @@ model UserIdentity {
   @@index([userId], map: "user_identities_user_id_idx")
   @@index([provider, providerSubject], map: "user_identities_provider_subject_idx")
   @@map("user_identities")
+}
+
+// Per-user Google OAuth link. The identity itself lives in UserIdentity (provider future_oauth,
+// providerSubject "google:<sub>"); this row holds the encrypted refresh token used for direct
+// Google Calendar sync. Refresh token is stored encrypted at rest (AES-256-GCM); never plaintext.
+model GoogleOAuthToken {
+  userId                String   @id @map("user_id") @db.Uuid
+  googleSub             String   @unique @map("google_sub")
+  refreshTokenEncrypted String   @map("refresh_token_encrypted")
+  scope                 String
+  calendarSyncEnabled   Boolean  @default(false) @map("calendar_sync_enabled")
+  createdAt             DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt             DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("google_oauth_tokens")
 }
 
 model Session {
