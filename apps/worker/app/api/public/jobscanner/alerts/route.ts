@@ -4,7 +4,7 @@ import { getRuntimeConfig } from "@rwos/config";
 // API's public /public/jobscanner/alerts so JobLop (not the external source) owns the lead.
 export async function POST(request: Request) {
   const origin = getRuntimeConfig().internalApiOrigin;
-  let body: unknown = {};
+  let body: unknown;
   try {
     body = await request.json();
   } catch {
