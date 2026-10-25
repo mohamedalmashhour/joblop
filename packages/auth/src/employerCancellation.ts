@@ -1,3 +1,5 @@
+import { LATE_CANCELLATION_WORKER_HOURS, resolveMarginPpm } from "@rwos/shared";
+
 // Employer cancellation — governed two-step (Option A).
 //
 // The employer INITIATES and CONFIRMS cancellation; this service records the
@@ -204,6 +206,11 @@ export type CancellationPreview = Readonly<{
   cutoffHours: number;
   obligationApplies: boolean;
   obligationAmountMinor: number;
+  // Owner policy: on a late client cancellation the affected worker(s) are paid 3h. This is the
+  // worker compensation amount (3h × worker pay rate × confirmed workers), a payment TO the worker,
+  // never a deduction. 0 when the obligation does not apply. Moves no money (Finance handles it).
+  workerCompensationHours: number;
+  workerCompensationMinor: number;
   requiresPlatformHandoff: boolean;
 }>;
 
@@ -305,6 +312,14 @@ export function createEmployerCancellationService(deps: {
       governedRateMinor,
       confirmedWorkers
     });
+    // Worker compensation: 3h at the worker PAY rate (employer rate less the platform margin).
+    const workerRateMinor =
+      governedRateMinor === null
+        ? 0
+        : Math.round(governedRateMinor * (1 - resolveMarginPpm(null) / 1_000_000));
+    const workerCompensationMinor = applies
+      ? LATE_CANCELLATION_WORKER_HOURS * workerRateMinor * confirmedWorkers
+      : 0;
     return {
       jobRequestId: jobRequest.id,
       shiftStartAt: jobRequest.startAt.toISOString(),
@@ -318,6 +333,8 @@ export function createEmployerCancellationService(deps: {
       cutoffHours: LATE_CANCELLATION_CUTOFF_HOURS,
       obligationApplies: applies,
       obligationAmountMinor: amountMinor,
+      workerCompensationHours: LATE_CANCELLATION_WORKER_HOURS,
+      workerCompensationMinor,
       requiresPlatformHandoff: confirmedWorkers > 0
     };
   }

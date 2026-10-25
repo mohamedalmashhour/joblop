@@ -287,6 +287,7 @@ import { isWorkerDisputeCategory, normalizeWorkerDisputeReason } from "@rwos/sha
 import { normalizeEscalationReason } from "@rwos/shared";
 import { buildCalendarExport } from "@rwos/shared";
 import { deriveOrderLifecycle } from "@rwos/shared";
+import { deriveWorkerCancellationPenalty } from "@rwos/shared";
 import { notifyClient } from "./notifications/clientNotifications";
 import { notifyWorkerPayoutPaid } from "./notifications/workerNotifications";
 import { raiseWorkerDispute, listWorkerDisputes, withdrawWorkerDispute } from "./workerDisputeRepository";
@@ -6199,15 +6200,48 @@ export function buildApi(options: BuildApiOptions = {}) {
     if (!session.authenticated || !session.user) return sendAssignmentDenied(reply);
 
     const body = asRecord(request.body);
+    const assignmentId = readRouteParam(request.params, "assignmentId");
     const assignment = await assignmentService.workerWithdraw({
       session,
       roles: await resolveAuthorizationRoles(session.user.id),
-      assignmentId: readRouteParam(request.params, "assignmentId"),
+      assignmentId,
       expectedVersion: readOptionalNumber(body, "expectedVersion") ?? 0,
       reason: readRequiredString(body, "reason") ?? ""
     });
 
-    return reply.code(200).send({ assignment: serializeWorkerAssignment(assignment) });
+    // Owner policy: a worker who cancels a confirmed job within 24h faces a 7-day suspension (first
+    // offence) or permanent close (repeat). We only COMPUTE the recommendation here and surface it —
+    // actually suspending/closing the account is a governed admin action (closure is irreversible).
+    let cancellationPenalty: ReturnType<typeof deriveWorkerCancellationPenalty> | null = null;
+    if (prisma && assignment.confirmedStartAt) {
+      try {
+        const identity = await prisma.workerIdentity.findFirst({
+          where: { userId: session.user.id },
+          select: { id: true }
+        });
+        let priorLate = 0;
+        if (identity) {
+          const priors = await prisma.assignment.findMany({
+            where: { workerIdentityId: identity.id, status: "worker_withdrawn", id: { not: assignmentId } },
+            select: { confirmedStartAt: true, workerWithdrawnAt: true }
+          });
+          priorLate = priors.filter(
+            (a) =>
+              a.workerWithdrawnAt &&
+              (a.confirmedStartAt.getTime() - a.workerWithdrawnAt.getTime()) / 3_600_000 < 24
+          ).length;
+        }
+        cancellationPenalty = deriveWorkerCancellationPenalty({
+          shiftStartIso: assignment.confirmedStartAt.toISOString(),
+          nowIso: new Date().toISOString(),
+          priorLateCancellations: priorLate
+        });
+      } catch {
+        cancellationPenalty = null;
+      }
+    }
+
+    return reply.code(200).send({ assignment: serializeWorkerAssignment(assignment), cancellationPenalty });
   });
 
   app.post("/platform/attendance", async (request, reply) => {

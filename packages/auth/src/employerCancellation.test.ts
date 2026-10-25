@@ -156,8 +156,11 @@ describe("employer cancellation — preview (authoritative consequence)", () => 
     const { svc } = service({ confirmed: 2, now: () => nowAtHoursBefore(23 + 59 / 60) });
     const p = await svc.previewCancellation({ actorUserId: "u1", organizationId: ORG, jobRequestId: REQ });
     expect(p.obligationApplies).toBe(true);
-    expect(p.obligationAmountMinor).toBe(36000); // 6×3000×2 = $360
+    expect(p.obligationAmountMinor).toBe(36000); // 6×3000×2 = $360 (client billed)
     expect(p.affectedConfirmedWorkers).toBe(2);
+    // Owner policy: workers paid 3h at the worker pay rate (employer $30 less 20% margin = $24).
+    expect(p.workerCompensationHours).toBe(3);
+    expect(p.workerCompensationMinor).toBe(3 * 2400 * 2); // 3h × $24 × 2 = $144
   });
 
   it("zero confirmed workers → $0 and no handoff", async () => {
