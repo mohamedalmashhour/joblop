@@ -23,8 +23,22 @@ type Offer = Readonly<{
 type State =
   | { status: "loading" }
   | { status: "signed_out" }
+  | { status: "needs_setup" }
   | { status: "error" }
   | { status: "ready"; items: readonly Offer[] };
+
+// The BFF collapses the API's 403 ("not a worker yet") into a 401. Disambiguate against the
+// real session: a signed-in account that is simply not set up as a worker is NOT signed out.
+async function resolveDenied(): Promise<State> {
+  try {
+    const s = await fetch("/api/session", { cache: "no-store" });
+    if (s.ok) {
+      const j = (await s.json()) as { authenticated?: boolean };
+      if (j?.authenticated) return { status: "needs_setup" };
+    }
+  } catch { /* fall through to signed_out */ }
+  return { status: "signed_out" };
+}
 
 // Statuses where the worker can still respond. Terminal states (accepted/declined/expired/
 // withdrawn/cancelled) are read-only. `draft`/`approved` are pre-delivery and never worker-visible.
@@ -71,7 +85,7 @@ export function Offers() {
   const load = useCallback(async () => {
     try {
       const r = await fetch("/api/offers", { cache: "no-store" });
-      if (r.status === 401 || r.status === 403) return setState({ status: r.status === 401 ? "signed_out" : "error" });
+      if (r.status === 401 || r.status === 403) return setState(await resolveDenied());
       if (!r.ok) return setState({ status: "error" });
       const payload = (await r.json()) as { workerOffers: Offer[] };
       setState({ status: "ready", items: payload.workerOffers ?? [] });
@@ -96,7 +110,7 @@ export function Offers() {
         await load();
         return;
       }
-      if (r.status === 401) return setState({ status: "signed_out" });
+      if (r.status === 401) return setState(await resolveDenied());
       if (!r.ok) {
         setNotice(t("offers.responseFailed"));
         return;
@@ -113,6 +127,8 @@ export function Offers() {
   if (state.status === "loading") return <div className="state">{t("common.loading")}</div>;
   if (state.status === "signed_out")
     return <div className="state">{t("offers.signInPrompt")}<div style={{ marginTop: 12 }}><a className="btn" href="/">{t("common.goToSearch")}</a></div></div>;
+  if (state.status === "needs_setup")
+    return <div className="state">{t("common.needsWorkerSetup")}<div style={{ marginTop: 12 }}><a className="btn" href="/pay">{t("common.setUpWorker")}</a></div></div>;
   if (state.status === "error") return <div className="state error" role="alert">{t("offers.loadError")}</div>;
 
   return (

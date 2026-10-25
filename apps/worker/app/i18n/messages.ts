@@ -131,6 +131,8 @@ export const en = {
 
   // Common (shared)
   "common.goToSearch": "Go to search",
+  "common.needsWorkerSetup": "You're signed in, but you're not set up as a worker yet. Choose your work type to start receiving offers.",
+  "common.setUpWorker": "Set up my worker profile",
 
   // Offers
   "offers.intro": "Private offers JobLop has issued you. Accepting binds you to the shift terms shown; declining releases it.",
@@ -588,6 +590,8 @@ export const fr: Messages = {
 
   // Commun (partagé)
   "common.goToSearch": "Aller à la recherche",
+  "common.needsWorkerSetup": "Vous êtes connecté, mais vous n'êtes pas encore configuré comme travailleur. Choisissez votre type de travail pour commencer à recevoir des offres.",
+  "common.setUpWorker": "Configurer mon profil de travailleur",
 
   // Offres
   "offers.intro": "Offres privées que JobLop vous a adressées. Accepter vous engage aux conditions du quart indiquées; refuser la libère.",

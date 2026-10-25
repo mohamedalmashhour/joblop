@@ -34,13 +34,23 @@ const INTEREST_LABEL_KEY: Record<string, MessageKey> = {
 export function MyInterests() {
   const t = useT();
   const locale = useLocale();
-  const [status, setStatus] = useState<"loading" | "ready" | "signed_out" | "error">("loading");
+  const [status, setStatus] = useState<"loading" | "ready" | "signed_out" | "needs_setup" | "error">("loading");
   const [items, setItems] = useState<InterestItem[]>([]);
 
   const load = useCallback(async () => {
     try {
       const r = await fetch("/api/my-interests", { cache: "no-store" });
-      if (r.status === 401) return setStatus("signed_out");
+      // The BFF collapses the API's 403 ("not a worker yet") into a 401. A signed-in account that
+      // simply isn't set up as a worker is NOT signed out — disambiguate against the real session.
+      if (r.status === 401) {
+        try {
+          const s = await fetch("/api/session", { cache: "no-store" });
+          const j = s.ok ? ((await s.json()) as { authenticated?: boolean }) : null;
+          return setStatus(j?.authenticated ? "needs_setup" : "signed_out");
+        } catch {
+          return setStatus("signed_out");
+        }
+      }
       if (!r.ok) return setStatus("error");
       const payload = (await r.json()) as { interests: InterestItem[] };
       setItems(payload.interests);
@@ -61,6 +71,15 @@ export function MyInterests() {
         {t("interests.signInPrompt")}
         <div style={{ marginTop: 12 }}>
           <a className="btn" href="/">{t("common.goToSearch")}</a>
+        </div>
+      </div>
+    );
+  if (status === "needs_setup")
+    return (
+      <div className="state">
+        {t("common.needsWorkerSetup")}
+        <div style={{ marginTop: 12 }}>
+          <a className="btn" href="/pay">{t("common.setUpWorker")}</a>
         </div>
       </div>
     );
