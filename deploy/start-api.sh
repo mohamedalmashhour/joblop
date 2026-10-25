@@ -16,4 +16,13 @@ if ! pnpm exec prisma migrate deploy; then
   pnpm exec prisma migrate deploy
 fi
 
-cd /app/apps/api && exec pnpm start
+cd /app/apps/api
+# Optional one-time JobScanner populate. Set JOBSCANNER_SEED_ON_BOOT=1 to fill the external-lead store
+# on boot; the seed script skips itself once the store is non-empty, so it runs at most once and never
+# blocks startup (non-fatal). Scheduler stays OFF; this is the only populate path in the cloud.
+if [ "${JOBSCANNER_SEED_ON_BOOT:-}" = "1" ]; then
+  echo "JOBSCANNER_SEED_ON_BOOT=1 — running bounded JobScanner populate (idempotent)"
+  pnpm jobscanner:seed || echo "jobscanner:seed failed (non-fatal) — continuing startup"
+fi
+
+exec pnpm start

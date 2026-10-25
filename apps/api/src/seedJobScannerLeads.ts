@@ -22,6 +22,15 @@ const RESULTS_PER_PAGE = Number(process.env.JOBSCANNER_SEED_RESULTS_PER_PAGE ?? 
 
 async function main() {
   const prisma = createPrismaClient(process.env.DATABASE_URL);
+  // Idempotent guard: never re-scan a store that already has leads (so a seed-on-boot flag left set
+  // does nothing on later restarts, and the source budget is spent at most once here). Override with
+  // JOBSCANNER_SEED_FORCE=1 to refresh deliberately.
+  const existing = await prisma.externalJobLead.count();
+  if (existing > 0 && process.env.JOBSCANNER_SEED_FORCE !== "1") {
+    console.log(`[jobscanner-seed] store already has ${existing} leads — skipping (set JOBSCANNER_SEED_FORCE=1 to refresh).`);
+    await prisma.$disconnect();
+    return;
+  }
   const client = createAdzunaClient({
     appId: process.env.ADZUNA_APP_ID ?? null,
     appKey: process.env.ADZUNA_APP_KEY ?? null,
