@@ -40,7 +40,9 @@ const T = {
     signin: "Sign In", create: "Create Account",
     tabFind: "Find a Job", tabHire: "Hire Talent",
     heroA: "Your Next Opportunity", heroB: "Starts Here",
-    heroSub: "JobLop connects local workers with great employers across Canada. Find work on your schedule, or hire the help you need — all in one place.",
+    heroSub: "Search jobs from across Canada and apply — 100% free, always. JobLop brings the whole market to you, and never takes a cut of your pay.",
+    heroBadge: "⚡ Powered by JobScanner — one search across the market",
+    freePill: "Free to apply",
     phRole: "Job title, role, or keyword", phLoc: "Location", searchBtn: "Search Jobs",
     popular: "Popular:", allCanada: "All of Canada",
     cStat1: "open jobs", cStat2: "Across every province", cBuild: "Build your future",
@@ -58,12 +60,12 @@ const T = {
     trustTitle: "Trusted where people live and work",
     trustSub: "Care homes, restaurants, and local employers across Canada staff with JobLop.",
     st1: "open jobs", st2: "provinces hiring", st3: "worker fees", st4: "to browse",
-    jsTag: "JOBSCANNER", jsTitle: "More than JobLop jobs — the whole market",
-    jsSub: "JobScanner continuously scans partner job feeds across Canada and brings the best matches to you, right next to JobLop's own governed shifts. One place, more opportunities.",
-    js1t: "Always on", js1b: "New openings pulled in and refreshed around the clock.",
+    jsTag: "⚡ JOBSCANNER", jsTitle: "The deepest job search in Canada — and it's free",
+    jsSub: "JobScanner hunts the market for you: it continuously scans partner job feeds across Canada, ranks the best matches, and lets you apply free on JobLop. One search instead of ten tabs.",
+    js1t: "Deep, real search", js1b: "The whole market scanned and refreshed around the clock.",
     js2t: "Ranked for you", js2b: "Sorted by fit and pay so the best jobs rise to the top.",
-    js3t: "One funnel", js3b: "Apply on JobLop's governed shifts, or get pointed to the source.",
-    jsBtn: "Sign up to unlock JobScanner",
+    js3t: "Apply free", js3b: "Apply on JobLop at no cost — we never take a cut of your pay.",
+    jsBtn: "Search the market — free",
     whyTitle: "Why workers choose JobLop",
     why1t: "Trusted workplaces", why1b: "Clear terms before you accept — no surprises.",
     why2t: "Paid fairly", why2b: "Your hours come from your own clock-in / clock-out.",
@@ -83,7 +85,9 @@ const T = {
     signin: "Se connecter", create: "Créer un compte",
     tabFind: "Trouver un emploi", tabHire: "Recruter",
     heroA: "Votre prochaine occasion", heroB: "commence ici",
-    heroSub: "JobLop met en relation les travailleurs locaux et de bons employeurs partout au Canada. Trouvez du travail selon votre horaire, ou recrutez l'aide dont vous avez besoin.",
+    heroSub: "Cherchez des emplois partout au Canada et postulez — 100 % gratuit, toujours. JobLop vous apporte tout le marché et ne prend jamais de part de votre paie.",
+    heroBadge: "⚡ Propulsé par JobScanner — une seule recherche, tout le marché",
+    freePill: "Postuler gratuitement",
     phRole: "Titre, rôle ou mot-clé", phLoc: "Lieu", searchBtn: "Rechercher",
     popular: "Populaire :", allCanada: "Tout le Canada",
     cStat1: "offres ouvertes", cStat2: "Dans toutes les provinces", cBuild: "Bâtissez votre avenir",
@@ -101,12 +105,12 @@ const T = {
     trustTitle: "La confiance, là où l'on vit et travaille",
     trustSub: "Résidences, restaurants et employeurs locaux partout au Canada recrutent avec JobLop.",
     st1: "offres ouvertes", st2: "provinces qui embauchent", st3: "frais travailleur", st4: "pour consulter",
-    jsTag: "JOBSCANNER", jsTitle: "Plus que les offres JobLop — tout le marché",
-    jsSub: "JobScanner analyse en continu des fils d'emplois partenaires partout au Canada et vous présente les meilleures correspondances, juste à côté des quarts encadrés de JobLop. Un seul endroit, plus d'occasions.",
-    js1t: "Toujours actif", js1b: "De nouvelles offres intégrées et rafraîchies en continu.",
+    jsTag: "⚡ JOBSCANNER", jsTitle: "La recherche d'emploi la plus poussée au Canada — gratuite",
+    jsSub: "JobScanner cherche le marché pour vous : il analyse en continu des fils d'emplois partenaires partout au Canada, classe les meilleures correspondances et vous laisse postuler gratuitement sur JobLop. Une seule recherche au lieu de dix onglets.",
+    js1t: "Recherche réelle et poussée", js1b: "Tout le marché analysé et rafraîchi en continu.",
     js2t: "Classé pour vous", js2b: "Triées par adéquation et salaire — les meilleures en premier.",
-    js3t: "Un seul parcours", js3b: "Postulez aux quarts encadrés de JobLop, ou soyez dirigé vers la source.",
-    jsBtn: "Inscrivez-vous pour débloquer JobScanner",
+    js3t: "Postuler gratuitement", js3b: "Postulez sur JobLop sans frais — jamais de part de votre paie.",
+    jsBtn: "Chercher le marché — gratuit",
     whyTitle: "Pourquoi les travailleurs choisissent JobLop",
     why1t: "Milieux de confiance", why1b: "Conditions claires avant d'accepter — sans surprise.",
     why2t: "Payé équitablement", why2b: "Vos heures proviennent de votre propre pointage.",
@@ -189,6 +193,7 @@ export function PublicJobBoard() {
       <section className="jl-hero">
         <div className="jl-hero-in">
           <div className="jl-hero-copy">
+            <span className="jl-free-pill">✓ {t.freePill}</span>
             <h1>{t.heroA}<br /><span className="jl-blue">{t.heroB}</span></h1>
             <p>{t.heroSub}</p>
             <div className="jl-tabs">
@@ -217,6 +222,7 @@ export function PublicJobBoard() {
                 ))}
               </div>
             )}
+            <a href="#jobscanner" className="jl-hero-js">{t.heroBadge} →</a>
           </div>
           <div className="jl-hero-art" aria-hidden="true">
             <div className="jl-blob" />
@@ -465,6 +471,9 @@ const CSS = `
 /* HERO */
 .jl-hero{background:radial-gradient(900px 420px at 85% -5%,rgba(37,99,235,.14),transparent),linear-gradient(180deg,var(--sky),#fff);border-bottom:1px solid var(--line);}
 .jl-hero-in{max-width:1120px;margin:0 auto;display:grid;grid-template-columns:1.1fr .9fr;gap:28px;align-items:center;padding:clamp(34px,6vw,64px) max(18px,env(safe-area-inset-left));}
+.jl-free-pill{display:inline-block;background:#e7f9ef;color:#0a7a46;font-weight:800;font-size:12.5px;letter-spacing:.02em;padding:6px 13px;border-radius:999px;margin-bottom:14px;}
+.jl-hero-js{display:inline-flex;align-items:center;gap:6px;margin-top:16px;background:linear-gradient(90deg,#0f1b3a,#13224a);color:#bfe3ff;font-weight:700;font-size:13px;padding:9px 15px;border-radius:999px;border:1px solid rgba(88,198,255,.3);}
+.jl-hero-js:hover{filter:brightness(1.12);}
 .jl-hero-copy h1{font-size:clamp(32px,5.2vw,52px);line-height:1.04;letter-spacing:-.03em;margin:0 0 14px;font-weight:800;}
 .jl-blue{color:var(--blue);}
 .jl-hero-copy>p{color:var(--muted);font-size:clamp(15px,1.9vw,18px);max-width:520px;margin:0 0 20px;}
