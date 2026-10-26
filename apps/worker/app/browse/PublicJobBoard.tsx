@@ -51,6 +51,8 @@ const T = {
     heroSub: "Search jobs from across Canada and apply — 100% free, always. JobLop brings the whole market to you, and never takes a cut of your pay.",
     heroBadge: "⚡ Powered by JobScanner — one search across the market",
     freePill: "Free to apply",
+    trust1: "100% free to apply", trust2: "Never a cut of your pay",
+    trust3: "The whole market, one search", trust4: "Across Canada · EN & FR",
     previewLive: "Live results", previewMore: "Unlock the whole market with JobScanner — sign up free",
     previewEmpty: "Type a role or pick a province to see live matches.",
     phRole: "Job title, role, or keyword", phLoc: "Location", searchBtn: "Search Jobs",
@@ -112,6 +114,8 @@ const T = {
     heroSub: "Cherchez des emplois partout au Canada et postulez — 100 % gratuit, toujours. JobLop vous apporte tout le marché et ne prend jamais de part de votre paie.",
     heroBadge: "⚡ Propulsé par JobScanner — une seule recherche, tout le marché",
     freePill: "Postuler gratuitement",
+    trust1: "Postuler 100 % gratuit", trust2: "Jamais de commission sur votre paie",
+    trust3: "Tout le marché, une seule recherche", trust4: "Partout au Canada · EN & FR",
     previewLive: "Résultats en direct", previewMore: "Débloquez tout le marché avec JobScanner — inscription gratuite",
     previewEmpty: "Tapez un rôle ou choisissez une province pour voir des offres en direct.",
     phRole: "Titre, rôle ou mot-clé", phLoc: "Lieu", searchBtn: "Rechercher",
@@ -368,6 +372,16 @@ export function PublicJobBoard() {
             <div className="jl-fc jl-fc2"><div className="jl-fc-ic">🍁</div><div><strong>{t.cStat2}</strong></div></div>
             <div className="jl-fc jl-fc3"><div className="jl-fc-ic">📈</div><div><strong>{t.cBuild}</strong></div></div>
           </div>
+        </div>
+      </section>
+
+      {/* TRUST STRIP — honest, concrete differentiators (what sets JobLop apart) */}
+      <section className="jl-trust" aria-label="Why JobLop">
+        <div className="jl-trust-in">
+          <div className="jl-trust-i"><span className="jl-trust-ic">✓</span>{t.trust1}</div>
+          <div className="jl-trust-i"><span className="jl-trust-ic">✋</span>{t.trust2}</div>
+          <div className="jl-trust-i"><span className="jl-trust-ic">🔎</span>{t.trust3}</div>
+          <div className="jl-trust-i"><span className="jl-trust-ic">🍁</span>{t.trust4}</div>
         </div>
       </section>
 
@@ -736,6 +750,10 @@ const CSS = `
 .jl-row-head h2,.jl-row-head p{margin:0;}
 .jl-link{border:0;background:transparent;color:var(--blue);font-weight:700;font-size:14.5px;cursor:pointer;}
 /* CATEGORIES */
+.jl-trust{border-bottom:1px solid var(--line);background:linear-gradient(180deg,var(--bg),var(--sky));}
+.jl-trust-in{max-width:1120px;margin:0 auto;display:flex;flex-wrap:wrap;gap:14px 34px;justify-content:center;align-items:center;padding:18px max(18px,env(safe-area-inset-left));}
+.jl-trust-i{display:inline-flex;align-items:center;gap:9px;font-size:14px;font-weight:700;color:var(--ink);}
+.jl-trust-ic{width:26px;height:26px;border-radius:999px;display:grid;place-items:center;background:var(--sky);color:var(--blue);font-size:13px;flex:0 0 auto;border:1px solid var(--line);}
 .jl-cats{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:14px;}
 .jl-cat{display:flex;flex-direction:column;gap:12px;align-items:flex-start;background:#fff;border:1px solid var(--line);border-radius:14px;padding:18px;cursor:pointer;text-align:left;transition:transform .12s,box-shadow .12s,border-color .12s;}
 .jl-cat:hover{transform:translateY(-2px);box-shadow:0 16px 36px -22px rgba(16,26,43,.4);border-color:#cfdaec;}
@@ -875,6 +893,8 @@ const CSS = `
   .jl-fc span{font-size:11px;}
   .jl-links{display:none;}
   .jl-foot-cols{grid-template-columns:repeat(2,1fr);}
+  .jl-trust-in{justify-content:flex-start;gap:11px 18px;}
+  .jl-trust-i{font-size:13px;}
 }
 @media (max-width:860px){
   .jl-leads-grid{grid-template-columns:1fr;}
