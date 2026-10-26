@@ -7095,13 +7095,16 @@ export function buildApi(options: BuildApiOptions = {}) {
     const province = readOptionalString(q, "province") ?? undefined;
     const city = readOptionalString(q, "city") ?? undefined;
     const limit = readOptionalNumber(q, "limit") ?? 100;
+    const roleKeywordsRaw = readOptionalString(q, "roleKeywords");
+    const roleKeywords = roleKeywordsRaw ? roleKeywordsRaw.split(",").map((s) => s.trim()).filter(Boolean) : [];
+    // Narrow to matching roles at the query (so a role search returns matching leads, not everything
+    // merely ranked), then rank the matched set below.
     const stored = await queryStoredLeads(prisma!, {
       ...(province !== undefined ? { province } : {}),
       ...(city !== undefined ? { city } : {}),
+      ...(roleKeywordsRaw ? { query: roleKeywordsRaw } : {}),
       limit
     });
-    const roleKeywordsRaw = readOptionalString(q, "roleKeywords");
-    const roleKeywords = roleKeywordsRaw ? roleKeywordsRaw.split(",").map((s) => s.trim()).filter(Boolean) : [];
     let leads: unknown = stored;
     let ranked = false;
     if (roleKeywords.length > 0) {
@@ -8091,9 +8094,16 @@ export function buildApi(options: BuildApiOptions = {}) {
     const province = readOptionalString(q, "province") ?? "QC";
     const city = readOptionalString(q, "city") ?? undefined;
     const limit = readOptionalNumber(q, "limit") ?? 50;
-    const stored = await queryStoredLeads(prisma!, { province, ...(city !== undefined ? { city } : {}), limit });
     const roleKeywordsRaw = readOptionalString(q, "roleKeywords");
     const roleKeywords = roleKeywordsRaw ? roleKeywordsRaw.split(",").map((s) => s.trim()).filter(Boolean) : [];
+    // Narrow to matching roles at the query (so "chef" returns chef leads, not everything ranked),
+    // then rank the matched set below.
+    const stored = await queryStoredLeads(prisma!, {
+      province,
+      ...(city !== undefined ? { city } : {}),
+      ...(roleKeywordsRaw ? { query: roleKeywordsRaw } : {}),
+      limit
+    });
     let leads: ExternalJobLead[] = stored;
     let ranked = false;
     if (roleKeywords.length > 0) {

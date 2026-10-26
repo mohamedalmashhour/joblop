@@ -93,15 +93,39 @@ export async function upsertLeads(prisma: PrismaClient, leads: readonly External
   return { inserted, updated };
 }
 
-export type QueryLeadsOptions = Readonly<{ province?: string; city?: string; limit?: number }>;
+export type QueryLeadsOptions = Readonly<{ province?: string; city?: string; query?: string; limit?: number }>;
 export type StoredLead = ExternalJobLead & Readonly<{ id: string }>;
 
-/** Query stored leads, most-recently-seen first, optionally filtered by province and/or city. */
+/** Split a free-text role/keyword query into up to 8 search tokens (whitespace- or comma-separated). */
+export function leadQueryTokens(query: string | undefined): string[] {
+  return (query ?? "")
+    .split(/[\s,]+/)
+    .map((t) => t.trim())
+    .filter((t) => t.length > 0)
+    .slice(0, 8);
+}
+
+/**
+ * Query stored leads, most-recently-seen first, optionally filtered by province and/or city.
+ * When `query` is given it also NARROWS to leads whose title, employer or category contains any of
+ * the query tokens (case-insensitive) — so a search for "chef" returns chef leads, not everything
+ * with chef merely ranked higher. Without a query the behaviour is unchanged.
+ */
 export async function queryStoredLeads(prisma: PrismaClient, opts: QueryLeadsOptions = {}): Promise<StoredLead[]> {
+  const tokens = leadQueryTokens(opts.query);
   const rows = await prisma.externalJobLead.findMany({
     where: {
       ...(opts.province ? { province: opts.province } : {}),
-      ...(opts.city ? { city: { contains: opts.city, mode: "insensitive" } } : {})
+      ...(opts.city ? { city: { contains: opts.city, mode: "insensitive" } } : {}),
+      ...(tokens.length > 0
+        ? {
+            OR: tokens.flatMap((tok) => [
+              { title: { contains: tok, mode: "insensitive" as const } },
+              { employer: { contains: tok, mode: "insensitive" as const } },
+              { category: { contains: tok, mode: "insensitive" as const } }
+            ])
+          }
+        : {})
     },
     orderBy: { lastSeenAt: "desc" },
     take: opts.limit ?? 100
