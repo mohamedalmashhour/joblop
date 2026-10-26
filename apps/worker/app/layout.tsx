@@ -6,7 +6,10 @@ import { dictionaries } from "./i18n/messages";
 import { LocaleProvider } from "./i18n/LocaleProvider";
 import { Footer } from "./Footer";
 import { GoogleTag } from "./analytics";
+import { RegisterSW } from "./RegisterSW";
 import "./globals.css";
+
+export const viewport = { themeColor: "#2563eb" };
 
 async function resolveLocale() {
   const store = await cookies();
@@ -28,6 +31,9 @@ export async function generateMetadata(): Promise<Metadata> {
     title,
     description,
     applicationName: "JobLop",
+    manifest: "/manifest.webmanifest",
+    appleWebApp: { capable: true, title: "JobLop", statusBarStyle: "default" },
+    icons: { apple: "/apple-touch-icon.png" },
     alternates: { canonical: "/" },
     openGraph: {
       type: "website",
@@ -48,6 +54,7 @@ export default async function RootLayout({ children }: Readonly<{ children: Reac
     <html lang={htmlLang(locale)}>
       <body>
         <GoogleTag tagId={process.env.GOOGLE_TAG_ID ?? null} />
+        <RegisterSW />
         <LocaleProvider locale={locale}>{children}</LocaleProvider>
         <Footer locale={locale} />
       </body>
