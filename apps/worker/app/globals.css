@@ -697,6 +697,19 @@ a.card.cardlink:hover {
   align-items: center;
   gap: 14px;
 }
+/* Phones: drop the decorative tagline and tighten spacing so the brand + links + language
+   switcher sit on one clean line instead of wrapping. */
+@media (max-width: 560px) {
+  .topbar .wrap { height: 54px; }
+  .topbar-right { gap: 10px; }
+  .topbar-tagline { display: none; }
+  /* keep each link on one line so "Build CV" can't wrap in the tight header */
+  .topbar-right > a { white-space: nowrap; font-size: 13px !important; }
+}
+@media (max-width: 380px) {
+  .topbar-right { gap: 8px; }
+  .topbar-right > a { font-size: 12.5px !important; }
+}
 .langswitch {
   display: inline-flex;
   border: 1px solid var(--line, #d7dbe0);

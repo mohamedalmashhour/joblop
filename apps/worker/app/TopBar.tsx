@@ -17,7 +17,7 @@ export function TopBar() {
         <div className="topbar-right">
           <a className="muted" href="/job-scanner" style={{ fontSize: 14, fontWeight: 700 }}>JobScanner</a>
           <a className="muted" href="/cv-builder" style={{ fontSize: 14, fontWeight: 700 }}>Build CV</a>
-          <span className="muted" style={{ fontSize: 14 }}>{t("brand.tagline")}</span>
+          <span className="muted topbar-tagline" style={{ fontSize: 14 }}>{t("brand.tagline")}</span>
           <LanguageSwitcher />
         </div>
       </div>

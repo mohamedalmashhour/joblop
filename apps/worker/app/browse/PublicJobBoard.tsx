@@ -179,6 +179,7 @@ export function PublicJobBoard() {
   const [q, setQ] = useState("");
   const [jobs, setJobs] = useState<Job[] | null>(null);
   const [leads, setLeads] = useState<Lead[] | null>(null);
+  const [leadsTotal, setLeadsTotal] = useState<number | null>(null);
   const [alertEmail, setAlertEmail] = useState("");
   const [alertState, setAlertState] = useState<"idle" | "sending" | "ok" | "err">("idle");
   const [cForm, setCForm] = useState({ name: "", email: "", msg: "" });
@@ -226,6 +227,7 @@ export function PublicJobBoard() {
       const res = await fetch(`/api/public/jobscanner/leads?${params.toString()}`, { cache: "no-store" });
       const data = await res.json();
       setLeads(Array.isArray(data.leads) ? data.leads : []);
+      setLeadsTotal(typeof data.total === "number" ? data.total : null);
     } catch {
       setLeads([]);
     }
@@ -273,6 +275,9 @@ export function PublicJobBoard() {
   };
   const provinceCount = jobs ? new Set(jobs.map((j) => j.province).filter(Boolean)).size : 0;
   const jobCount = jobs ? jobs.length : null;
+  // Hero/stat headline count: show the live JobScanner market total (what visitors can actually
+  // browse), falling back to JobLop's own governed public-job count only when the market is unknown.
+  const openCount = leadsTotal ?? jobCount;
 
   return (
     <div className="jl">
@@ -359,7 +364,7 @@ export function PublicJobBoard() {
           </div>
           <div className="jl-hero-art" aria-hidden="true">
             <div className="jl-blob" />
-            <div className="jl-fc jl-fc1"><div className="jl-fc-ic">🗂️</div><div><strong>{jobCount ?? "—"}</strong><span>{t.cStat1}</span></div></div>
+            <div className="jl-fc jl-fc1"><div className="jl-fc-ic">🗂️</div><div><strong>{openCount ?? "—"}</strong><span>{t.cStat1}</span></div></div>
             <div className="jl-fc jl-fc2"><div className="jl-fc-ic">🍁</div><div><strong>{t.cStat2}</strong></div></div>
             <div className="jl-fc jl-fc3"><div className="jl-fc-ic">📈</div><div><strong>{t.cBuild}</strong></div></div>
           </div>
@@ -532,7 +537,7 @@ export function PublicJobBoard() {
           <h2>{t.trustTitle}</h2>
           <p className="jl-sub">{t.trustSub}</p>
           <div className="jl-stats">
-            <div><strong>{jobCount ?? "—"}</strong><span>{t.st1}</span></div>
+            <div><strong>{openCount ?? "—"}</strong><span>{t.st1}</span></div>
             <div><strong>{provinceCount || "—"}</strong><span>{t.st2}</span></div>
             <div><strong>$0</strong><span>{t.st3}</span></div>
             <div><strong>$0</strong><span>{t.st4}</span></div>
@@ -860,11 +865,14 @@ const CSS = `
 /* RESPONSIVE */
 @media (max-width:860px){
   .jl-hero-in,.jl-split-in,.jl-foot-in,.jl-js-in,.jl-contact{grid-template-columns:1fr;}
-  /* floating cards flow as a neat wrapping row above the copy — no absolute overlap on phones */
-  .jl-hero-art{min-height:auto;order:-1;display:flex;flex-wrap:wrap;gap:10px;justify-content:center;margin-bottom:4px;}
+  /* floating cards become a tidy, uniform row of 3 equal cards above the copy on phones */
+  .jl-hero-art{min-height:auto;order:-1;display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-bottom:12px;align-items:stretch;}
   .jl-blob{display:none;}
-  .jl-fc{position:static;flex:0 1 auto;}
-  .jl-fc2 strong,.jl-fc3 strong{font-size:13px;}
+  .jl-fc{position:static;flex-direction:column;align-items:center;justify-content:center;text-align:center;gap:6px;padding:12px 8px;min-width:0;height:100%;}
+  .jl-fc-ic{width:34px;height:34px;font-size:17px;}
+  .jl-fc strong{font-size:15px;line-height:1.15;}
+  .jl-fc2 strong,.jl-fc3 strong{font-size:12.5px;}
+  .jl-fc span{font-size:11px;}
   .jl-links{display:none;}
   .jl-foot-cols{grid-template-columns:repeat(2,1fr);}
 }
