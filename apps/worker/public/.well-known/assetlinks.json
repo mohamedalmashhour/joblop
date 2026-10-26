@@ -4,7 +4,10 @@
     "target": {
       "namespace": "android_app",
       "package_name": "com.joblop.app",
-      "sha256_cert_fingerprints": ["REPLACE_WITH_YOUR_APP_SIGNING_SHA256_FINGERPRINT"]
+      "sha256_cert_fingerprints": [
+        "29:6F:32:0A:81:E3:81:7C:73:FC:47:ED:57:A6:9A:25:6E:C2:94:F0:64:83:56:F0:E6:40:C6:85:C9:48:29:0E",
+        "96:E0:C4:40:30:D9:7E:DA:65:16:ED:16:81:71:AE:46:9D:55:3D:C5:02:78:0A:41:60:B0:52:1F:CC:A0:19:63"
+      ]
     }
   }
 ]
