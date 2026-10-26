@@ -42,6 +42,14 @@ const CATEGORIES = [
   { icon: "🧺", bg: "#eef7e8", en: "Laundry & Cleaning", fr: "Buanderie & nettoyage", q: "cleaner" }
 ];
 
+// Illustrative preview roles for the hero card — real JobLop categories, clearly flagged as a
+// preview (not live listings), mirroring how premium marketplace heroes show "a few possibilities".
+const PREVIEW = [
+  { icon: "🩺", en: "Care & Nursing", fr: "Soins & infirmerie", areaEn: "Montréal", areaFr: "Montréal", tagEn: "Hybrid", tagFr: "Hybride" },
+  { icon: "🍳", en: "Kitchen", fr: "Cuisine", areaEn: "Laval", areaFr: "Laval", tagEn: "On-site", tagFr: "Sur place" },
+  { icon: "🧑‍⚕️", en: "Personal Support", fr: "Préposé aux bénéficiaires", areaEn: "Across Canada", areaFr: "Partout au Canada", tagEn: "Flexible", tagFr: "Flexible" }
+];
+
 const T = {
   en: {
     navJobs: "Find Jobs", navEmp: "For Employers", navRes: "Resources", navAbout: "About",
@@ -53,6 +61,7 @@ const T = {
     freePill: "Free to apply",
     trust1: "100% free to apply", trust2: "Never a cut of your pay",
     trust3: "The whole market, one search", trust4: "Across Canada · EN & FR",
+    pcTag: "Preview", pcTitle: "A few good possibilities",
     previewLive: "Live results", previewMore: "Unlock the whole market with JobScanner — sign up free",
     previewEmpty: "Type a role or pick a province to see live matches.",
     phRole: "Job title, role, or keyword", phLoc: "Location", searchBtn: "Search Jobs",
@@ -116,6 +125,7 @@ const T = {
     freePill: "Postuler gratuitement",
     trust1: "Postuler 100 % gratuit", trust2: "Jamais de commission sur votre paie",
     trust3: "Tout le marché, une seule recherche", trust4: "Partout au Canada · EN & FR",
+    pcTag: "Aperçu", pcTitle: "Quelques bonnes possibilités",
     previewLive: "Résultats en direct", previewMore: "Débloquez tout le marché avec JobScanner — inscription gratuite",
     previewEmpty: "Tapez un rôle ou choisissez une province pour voir des offres en direct.",
     phRole: "Titre, rôle ou mot-clé", phLoc: "Lieu", searchBtn: "Rechercher",
@@ -368,9 +378,18 @@ export function PublicJobBoard() {
           </div>
           <div className="jl-hero-art" aria-hidden="true">
             <div className="jl-blob" />
-            <div className="jl-fc jl-fc1"><div className="jl-fc-ic">🗂️</div><div><strong>{openCount ?? "—"}</strong><span>{t.cStat1}</span></div></div>
-            <div className="jl-fc jl-fc2"><div className="jl-fc-ic">🍁</div><div><strong>{t.cStat2}</strong></div></div>
-            <div className="jl-fc jl-fc3"><div className="jl-fc-ic">📈</div><div><strong>{t.cBuild}</strong></div></div>
+            <div className="jl-pcard">
+              <div className="jl-pcard-top"><span className="jl-pcard-tag">✦ {t.pcTag}</span></div>
+              <strong className="jl-pcard-h">{t.pcTitle}</strong>
+              {PREVIEW.map((p) => (
+                <div className="jl-pcard-row" key={p.en}>
+                  <span className="jl-pcard-ic">{p.icon}</span>
+                  <span className="jl-pcard-m"><b>{lang === "fr" ? p.fr : p.en}</b><em>{lang === "fr" ? p.areaFr : p.areaEn}</em></span>
+                  <span className="jl-pcard-t">{lang === "fr" ? p.tagFr : p.tagEn}</span>
+                </div>
+              ))}
+            </div>
+            <div className="jl-fc jl-fc-badge"><div className="jl-fc-ic">🗂️</div><div><strong>{openCount ?? "—"}</strong><span>{t.cStat1}</span></div></div>
           </div>
         </div>
       </section>
@@ -744,6 +763,19 @@ const CSS = `
 .jl-fc1{top:8%;left:2%;}
 .jl-fc2{top:44%;right:0;}
 .jl-fc3{bottom:10%;left:12%;}
+/* Hero preview card — an illustrative "a few possibilities" showcase (borrowed from the premium ref) */
+.jl-pcard{position:relative;z-index:2;width:min(100%,380px);background:var(--bg);border:1px solid var(--line);border-radius:18px;box-shadow:0 34px 80px -40px rgba(16,26,43,.55);padding:16px;}
+.jl-pcard-top{display:flex;align-items:center;justify-content:flex-end;margin-bottom:10px;min-height:22px;}
+.jl-pcard-tag{display:inline-flex;align-items:center;gap:5px;font-size:10.5px;font-weight:800;letter-spacing:.07em;text-transform:uppercase;color:var(--gold);background:#fbf3e3;border:1px solid #f0e0bf;padding:4px 10px;border-radius:999px;}
+.jl-pcard-h{display:block;font-family:'Playfair Display',Georgia,serif;font-size:19px;font-weight:800;margin:0 0 12px;letter-spacing:-.01em;}
+.jl-pcard-row{display:flex;align-items:center;gap:11px;padding:10px 11px;border:1px solid var(--line);border-radius:12px;margin-bottom:8px;background:var(--bg);}
+.jl-pcard-row:last-child{margin-bottom:0;}
+.jl-pcard-ic{width:34px;height:34px;border-radius:9px;background:var(--sky);display:grid;place-items:center;font-size:17px;flex:0 0 auto;}
+.jl-pcard-m{display:flex;flex-direction:column;min-width:0;flex:1;}
+.jl-pcard-m b{font-size:13.5px;line-height:1.2;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.jl-pcard-m em{font-size:12px;color:var(--muted);font-style:normal;}
+.jl-pcard-t{font-size:10.5px;font-weight:800;color:var(--blue);background:var(--sky);padding:4px 9px;border-radius:999px;flex:0 0 auto;}
+.jl-fc-badge{position:absolute;top:-16px;left:-12px;z-index:3;}
 /* SECTIONS */
 .jl-sec{padding:clamp(34px,5.5vw,64px) 0;}
 .jl-sec-alt{background:#f7f9fc;}
@@ -885,13 +917,13 @@ const CSS = `
 @media (max-width:860px){
   .jl-hero-in,.jl-split-in,.jl-foot-in,.jl-js-in,.jl-contact{grid-template-columns:1fr;}
   /* floating cards become a tidy, uniform row of 3 equal cards above the copy on phones */
-  .jl-hero-art{min-height:auto;order:-1;display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-bottom:12px;align-items:stretch;}
+  /* preview card stacks full-width above the copy; the count shows as a small chip above it */
+  .jl-hero-art{min-height:auto;order:-1;display:block;margin:2px 0 16px;}
   .jl-blob{display:none;}
-  .jl-fc{position:static;flex-direction:column;align-items:center;justify-content:center;text-align:center;gap:6px;padding:12px 8px;min-width:0;height:100%;}
-  .jl-fc-ic{width:34px;height:34px;font-size:17px;}
-  .jl-fc strong{font-size:15px;line-height:1.15;}
-  .jl-fc2 strong,.jl-fc3 strong{font-size:12.5px;}
-  .jl-fc span{font-size:11px;}
+  .jl-pcard{width:100%;box-shadow:0 20px 48px -30px rgba(16,26,43,.5);}
+  .jl-fc-badge{position:static;display:inline-flex;margin-bottom:10px;padding:9px 14px;}
+  .jl-fc-badge .jl-fc-ic{width:32px;height:32px;font-size:16px;}
+  .jl-fc-badge strong{font-size:16px;}
   .jl-links{display:none;}
   .jl-foot-cols{grid-template-columns:repeat(2,1fr);}
   .jl-trust-in{justify-content:flex-start;gap:11px 18px;}
