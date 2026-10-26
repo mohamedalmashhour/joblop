@@ -3210,6 +3210,39 @@ export function buildApi(options: BuildApiOptions = {}) {
       });
   });
 
+  // PUBLIC JobScanner stats — the TRUE totals for the landing magnet ("X jobs waiting"), so the number
+  // reflects the whole store, not the small teaser slice. Pure COUNT queries (prisma.count / distinct)
+  // over already-stored data: zero live Adzuna calls, cacheable, honest. Counts JobLop's own open public
+  // jobs + external scanned leads, and the distinct provinces they span. Optional ?province filter.
+  app.get("/public/jobscanner/stats", async (request, reply) => {
+    if (!prisma) return reply.code(503).send({ error: "RWOS_UNAVAILABLE", message: "Not available." });
+    const query = asRecord(request.query);
+    const provinceRaw = readOptionalString(query, "province");
+    const province = provinceRaw && /^[A-Za-z]{2}$/.test(provinceRaw) ? provinceRaw.toUpperCase() : null;
+    const [externalLeadCount, openJobCount, leadProvinces] = await Promise.all([
+      prisma.externalJobLead.count({ where: { ...(province ? { province } : {}) } }),
+      prisma.jobRequest.count({
+        where: {
+          status: "approved_for_dispatch",
+          startAt: { gte: new Date() },
+          residence: { status: "active", ...(province ? { province } : {}) }
+        }
+      }),
+      prisma.externalJobLead.findMany({ distinct: ["province"], select: { province: true } })
+    ]);
+    const provinceCount = new Set(leadProvinces.map((r) => r.province).filter((p): p is string => !!p)).size;
+    return reply
+      .code(200)
+      .header("cache-control", "public, max-age=300")
+      .send({
+        total: externalLeadCount + openJobCount,
+        externalLeadCount,
+        openJobCount,
+        provinceCount,
+        note: "Totals across JobLop open jobs and scanned external leads. External leads are a hand-off to the source."
+      });
+  });
+
   // PUBLIC job-alert capture — the landing magnet's email box. A visitor leaves their email (optionally
   // a role/province) so JobLop, not the external source, owns the lead. No auth, no account, no money.
   // Upsert by email so re-submitting just refreshes the role/province. Delivery of alerts is a separate

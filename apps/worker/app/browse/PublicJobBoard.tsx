@@ -55,6 +55,16 @@ const T = {
     navJobs: "Find Jobs", navEmp: "For Employers", navRes: "Resources", navAbout: "About",
     signin: "Sign In", create: "Create Account",
     tabFind: "Find a Job", tabHire: "Hire Talent",
+    pathTag: "GET STARTED", pathTitle: "Choose your path", pathSub: "JobLop works for both sides of the shift — pick the one that's you.",
+    pathWorkerTag: "WORKERS", pathWorkerTitle: "I'm looking for work",
+    pathWorkerDesc: "Search the whole market in one place, apply 100% free, and get paid fairly for your hours.",
+    pathWorkerBtn: "Find work",
+    pathClientTag: "CLIENTS & EMPLOYERS", pathClientTitle: "I'm hiring",
+    pathClientDesc: "Post a staffing request and fill shifts with reliable local workers — governed and compliant.",
+    pathClientBtn: "Hire & staff",
+    magnetJobs: "jobs waiting right now", magnetProv: (n: number) => `across ${n} province${n === 1 ? "" : "s"}`,
+    magnetSub: "Open a free account to see them all, apply in a tap, and get alerts the moment new ones land.",
+    magnetBtn: "See all jobs — free",
     heroA: "Your Next Opportunity", heroB: "Starts Here",
     heroSub: "Search jobs from across Canada and apply — 100% free, always. JobLop brings the whole market to you, and never takes a cut of your pay.",
     heroBadge: "⚡ Powered by JobScanner — one search across the market",
@@ -119,6 +129,16 @@ const T = {
     navJobs: "Offres", navEmp: "Employeurs", navRes: "Ressources", navAbout: "À propos",
     signin: "Se connecter", create: "Créer un compte",
     tabFind: "Trouver un emploi", tabHire: "Recruter",
+    pathTag: "COMMENCER", pathTitle: "Choisissez votre parcours", pathSub: "JobLop sert les deux côtés du quart — choisissez le vôtre.",
+    pathWorkerTag: "TRAVAILLEURS", pathWorkerTitle: "Je cherche du travail",
+    pathWorkerDesc: "Cherchez tout le marché au même endroit, postulez 100 % gratuitement et soyez payé équitablement pour vos heures.",
+    pathWorkerBtn: "Trouver du travail",
+    pathClientTag: "CLIENTS & EMPLOYEURS", pathClientTitle: "Je recrute",
+    pathClientDesc: "Publiez une demande de dotation et comblez vos quarts avec des travailleurs locaux fiables — encadré et conforme.",
+    pathClientBtn: "Recruter et doter",
+    magnetJobs: "emplois disponibles en ce moment", magnetProv: (n: number) => `dans ${n} province${n === 1 ? "" : "s"}`,
+    magnetSub: "Créez un compte gratuit pour tous les voir, postuler en un geste et être alerté dès qu'un nouvel emploi arrive.",
+    magnetBtn: "Voir tous les emplois — gratuit",
     heroA: "Votre prochaine occasion", heroB: "commence ici",
     heroSub: "Cherchez des emplois partout au Canada et postulez — 100 % gratuit, toujours. JobLop vous apporte tout le marché et ne prend jamais de part de votre paie.",
     heroBadge: "⚡ Propulsé par JobScanner — une seule recherche, tout le marché",
@@ -194,6 +214,8 @@ export function PublicJobBoard() {
   const [jobs, setJobs] = useState<Job[] | null>(null);
   const [leads, setLeads] = useState<Lead[] | null>(null);
   const [leadsTotal, setLeadsTotal] = useState<number | null>(null);
+  const [totalJobs, setTotalJobs] = useState<number | null>(null);
+  const [totalProvinces, setTotalProvinces] = useState<number | null>(null);
   const [alertEmail, setAlertEmail] = useState("");
   const [alertState, setAlertState] = useState<"idle" | "sending" | "ok" | "err">("idle");
   const [cForm, setCForm] = useState({ name: "", email: "", msg: "" });
@@ -252,6 +274,25 @@ export function PublicJobBoard() {
     return () => clearTimeout(h);
   }, [loadLeads, q]);
 
+  // TRUE total of jobs waiting (JobLop open jobs + scanned external leads) for the headline magnet.
+  // Pure count query on the API — no live scan. Reacts to province, not to every keystroke.
+  const loadStats = useCallback(async () => {
+    const params = new URLSearchParams();
+    if (province) params.set("province", province);
+    try {
+      const res = await fetch(`/api/public/jobscanner/stats?${params.toString()}`, { cache: "no-store" });
+      const data = await res.json();
+      setTotalJobs(typeof data.total === "number" ? data.total : null);
+      setTotalProvinces(typeof data.provinceCount === "number" ? data.provinceCount : null);
+    } catch {
+      /* non-fatal — magnet falls back to the live-result count */
+    }
+  }, [province]);
+
+  useEffect(() => {
+    void loadStats();
+  }, [loadStats]);
+
   // Capture a job-alert email for JobLop (not the external source). Carries the current role/province
   // so the subscription is pre-targeted. Honest: records the subscription; delivery rolls out later.
   const submitAlert = async (e: React.FormEvent) => {
@@ -289,9 +330,10 @@ export function PublicJobBoard() {
   };
   const provinceCount = jobs ? new Set(jobs.map((j) => j.province).filter(Boolean)).size : 0;
   const jobCount = jobs ? jobs.length : null;
-  // Hero/stat headline count: show the live JobScanner market total (what visitors can actually
-  // browse), falling back to JobLop's own governed public-job count only when the market is unknown.
-  const openCount = leadsTotal ?? jobCount;
+  // Hero/stat headline count: prefer the TRUE total (JobLop open jobs + all scanned leads) from the
+  // stats endpoint; fall back to the live teaser total, then to JobLop's own public-job count.
+  const openCount = totalJobs ?? leadsTotal ?? jobCount;
+  const fmtCount = (n: number | null) => (n == null ? "—" : n.toLocaleString(lang === "fr" ? "fr-CA" : "en-CA"));
 
   return (
     <div className="jl">
@@ -401,6 +443,47 @@ export function PublicJobBoard() {
           <div className="jl-trust-i"><span className="jl-trust-ic">✋</span>{t.trust2}</div>
           <div className="jl-trust-i"><span className="jl-trust-ic">🔎</span>{t.trust3}</div>
           <div className="jl-trust-i"><span className="jl-trust-ic">🍁</span>{t.trust4}</div>
+        </div>
+      </section>
+
+      {/* JOB-COUNT MAGNET + CHOOSE YOUR PATH — one clear fork for workers vs clients */}
+      <section className="jl-sec" id="paths">
+        <div className="jl-wrap">
+          <div className="jl-magnet">
+            <div className="jl-magnet-num">{fmtCount(openCount)}</div>
+            <div className="jl-magnet-copy">
+              <strong>{t.magnetJobs}</strong>
+              {totalProvinces ? <span className="jl-magnet-prov">{t.magnetProv(totalProvinces)}</span> : null}
+              <p>{t.magnetSub}</p>
+            </div>
+            <a href="/" className="jl-btn-orange jl-btn-lg">{t.magnetBtn}</a>
+          </div>
+
+          <div className="jl-paths-head">
+            <span className="jl-tag">{t.pathTag}</span>
+            <h2>{t.pathTitle}</h2>
+            <p className="jl-sub">{t.pathSub}</p>
+          </div>
+          <div className="jl-paths">
+            <div className="jl-path jl-path-worker">
+              <span className="jl-path-tag">👷 {t.pathWorkerTag}</span>
+              <h3>{t.pathWorkerTitle}</h3>
+              <p>{t.pathWorkerDesc}</p>
+              <div className="jl-path-cta">
+                <a href="/" className="jl-btn-primary">{t.pathWorkerBtn}</a>
+                <button className="jl-link" onClick={() => { setTab("find"); scrollToJobs(); }}>{t.navJobs} →</button>
+              </div>
+            </div>
+            <div className="jl-path jl-path-client">
+              <span className="jl-path-tag">🧑‍💼 {t.pathClientTag}</span>
+              <h3>{t.pathClientTitle}</h3>
+              <p>{t.pathClientDesc}</p>
+              <div className="jl-path-cta">
+                <a href={EMPLOYER_URL} className="jl-btn-primary">{t.pathClientBtn}</a>
+                <a href={EMPLOYER_URL} className="jl-link">{t.navEmp} →</a>
+              </div>
+            </div>
+          </div>
         </div>
       </section>
 
@@ -805,6 +888,23 @@ const CSS = `
 .jl-tag-u{background:#fdece5;color:var(--orange);}
 .jl-apply{background:var(--blue);color:#fff;font-weight:700;font-size:13.5px;padding:9px 16px;border-radius:9px;flex:0 0 auto;}
 .jl-apply:hover{background:var(--blue2);}
+/* JOB-COUNT MAGNET + CHOOSE YOUR PATH */
+.jl-magnet{display:flex;align-items:center;gap:20px;flex-wrap:wrap;background:linear-gradient(135deg,#0b2b57,#14407f);color:#fff;border-radius:20px;padding:clamp(22px,3vw,34px);margin-bottom:clamp(28px,4vw,44px);}
+.jl-magnet-num{font-size:clamp(44px,8vw,76px);font-weight:800;line-height:1;letter-spacing:-.02em;}
+.jl-magnet-copy{flex:1 1 240px;min-width:0;}
+.jl-magnet-copy strong{display:block;font-size:clamp(17px,2.4vw,22px);font-weight:700;}
+.jl-magnet-prov{display:inline-block;margin-top:2px;font-size:13px;color:#bcd4f5;font-weight:600;}
+.jl-magnet-copy p{margin:8px 0 0;color:#d6e4f8;font-size:14.5px;max-width:52ch;}
+.jl-paths-head{text-align:center;margin-bottom:22px;}
+.jl-paths-head .jl-tag{display:inline-block;margin-bottom:10px;}
+.jl-paths{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:18px;}
+.jl-path{background:#fff;border:1px solid var(--line);border-radius:18px;padding:clamp(20px,2.6vw,30px);display:flex;flex-direction:column;gap:10px;}
+.jl-path-worker{border-top:4px solid var(--blue);}
+.jl-path-client{border-top:4px solid var(--orange);}
+.jl-path-tag{font-size:12px;font-weight:700;letter-spacing:.04em;color:var(--muted);}
+.jl-path h3{margin:2px 0 0;font-size:clamp(20px,2.6vw,25px);}
+.jl-path p{color:var(--muted);font-size:15px;margin:0;flex:1 1 auto;}
+.jl-path-cta{display:flex;align-items:center;gap:14px;flex-wrap:wrap;margin-top:6px;}
 /* SPLIT (workers / employers) */
 .jl-split{padding:clamp(30px,5vw,56px) 0;}
 .jl-split-blue{background:var(--sky);}
