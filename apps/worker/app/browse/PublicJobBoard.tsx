@@ -718,8 +718,8 @@ const CSS = `
 .jl-hero{background:radial-gradient(900px 420px at 85% -5%,rgba(37,99,235,.14),transparent),linear-gradient(180deg,var(--sky),#fff);border-bottom:1px solid var(--line);}
 .jl-hero-in{max-width:1120px;margin:0 auto;display:grid;grid-template-columns:1.1fr .9fr;gap:28px;align-items:center;padding:clamp(34px,6vw,64px) max(18px,env(safe-area-inset-left));}
 .jl-free-pill{display:inline-block;background:#e7f9ef;color:#0a7a46;font-weight:800;font-size:12.5px;letter-spacing:.02em;padding:6px 13px;border-radius:999px;margin-bottom:14px;}
-.jl-hero-js{display:inline-flex;align-items:center;gap:6px;margin-top:16px;background:linear-gradient(90deg,#0f1b3a,#13224a);color:#dbf1ff;font-weight:700;font-size:13px;padding:9px 15px;border-radius:999px;border:1px solid rgba(88,198,255,.3);}
-.jl-hero-js:hover{filter:brightness(1.12);}
+.jl a.jl-hero-js{display:inline-flex;align-items:center;flex-wrap:wrap;gap:4px 8px;line-height:1.4;margin-top:16px;background:linear-gradient(90deg,#0f1b3a,#13224a);color:#eaf7ff;-webkit-text-fill-color:#eaf7ff;font-weight:700;font-size:13px;padding:10px 16px;border-radius:18px;border:1px solid rgba(88,198,255,.3);max-width:100%;}
+.jl a.jl-hero-js:hover{filter:brightness(1.12);}
 .jl-hero-copy h1{font-family:'Playfair Display',Georgia,'Times New Roman',serif;font-size:clamp(34px,5.4vw,56px);line-height:1.06;letter-spacing:-.01em;margin:0 0 14px;font-weight:800;}
 .jl-hl-accent{color:var(--gold);font-style:italic;font-weight:700;}
 .jl-hero-copy>p{color:var(--muted);font-size:clamp(15px,1.9vw,18px);max-width:520px;margin:0 0 20px;}
