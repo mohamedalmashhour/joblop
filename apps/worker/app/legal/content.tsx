@@ -345,3 +345,61 @@ export function TermsOfService() {
     </LegalShell>
   );
 }
+
+export function AccountDeletion() {
+  return (
+    <LegalShell title="Delete your JobLop account">
+      <p style={p}>
+        You can ask us to delete your JobLop account and the personal information associated with it
+        at any time. JobLop is operated by {ENTITY}.
+      </p>
+
+      <h2 style={h2}>How to request deletion</h2>
+      <ol>
+        <li style={li}>
+          Email{" "}
+          <a href={`mailto:${CONTACT}?subject=Delete my account`} style={{ color: "#3b3bee" }}>
+            {CONTACT}
+          </a>{" "}
+          from the email address on your JobLop account, with the subject{" "}
+          <strong>&ldquo;Delete my account&rdquo;</strong>.
+        </li>
+        <li style={li}>
+          Tell us the name on the account so we can confirm it&rsquo;s you.
+        </li>
+        <li style={li}>
+          We verify the request and delete your account. We aim to complete deletion within{" "}
+          <strong>30 days</strong> and will confirm by email.
+        </li>
+      </ol>
+
+      <h2 style={h2}>What is deleted</h2>
+      <p style={p}>
+        Your account and its personal information are deleted, including: your email and sign-in
+        credentials, display name, postal address and approximate geolocation, work preferences,
+        availability and roles, your CV content, and the usage data tied to your account.
+      </p>
+
+      <h2 style={h2}>What may be kept</h2>
+      <p style={p}>
+        We may retain a limited set of records that we are legally required to keep — for example,
+        completed-work and timesheet records and tax-related records — for the period required by
+        applicable law, after which they are deleted or anonymized. We do not sell your personal
+        information.
+      </p>
+
+      <h2 style={h2}>Questions</h2>
+      <p style={p}>
+        Contact{" "}
+        <a href={`mailto:${CONTACT}`} style={{ color: "#3b3bee" }}>
+          {CONTACT}
+        </a>
+        . See our{" "}
+        <a href="/privacy" style={{ color: "#3b3bee" }}>
+          Privacy Policy
+        </a>{" "}
+        for how we handle your data.
+      </p>
+    </LegalShell>
+  );
+}
