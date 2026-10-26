@@ -310,7 +310,7 @@ export function PublicJobBoard() {
         <div className="jl-hero-in">
           <div className="jl-hero-copy">
             <span className="jl-free-pill">✓ {t.freePill}</span>
-            <h1>{t.heroA}<br /><span className="jl-blue">{t.heroB}</span></h1>
+            <h1>{t.heroA}<br /><span className="jl-hl-accent">{t.heroB}</span></h1>
             <p>{t.heroSub}</p>
             <div className="jl-tabs">
               <button className={tab === "find" ? "on" : ""} onClick={() => setTab("find")}>🔍 {t.tabFind}</button>
@@ -670,11 +670,12 @@ function iconFor(role: string): string {
 }
 
 const CSS = `
-.jl{--ink:#101a2b;--muted:#5a6a82;--line:#e7ecf4;--blue:#2563eb;--blue2:#1d4ed8;--sky:#eef4ff;--orange:#f97316;--peach:#fff2e8;--navy:#0f1b2d;--bg:#fff;
+@import url('https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,700;0,800;1,600&display=swap');
+.jl{--ink:#101a2b;--muted:#5a6a82;--line:#e7ecf4;--blue:#2563eb;--blue2:#1d4ed8;--sky:#eef4ff;--orange:#f97316;--peach:#fff2e8;--navy:#0f1b2d;--bg:#fff;--gold:#a8741a;--gold2:#c08a2a;
   color:var(--ink);background:var(--bg);min-height:100vh;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;-webkit-font-smoothing:antialiased;line-height:1.45;}
 .jl *{box-sizing:border-box;}
 .jl a{color:inherit;text-decoration:none;}
-.jl h2{font-size:clamp(23px,3.4vw,33px);letter-spacing:-.02em;margin:0 0 8px;font-weight:800;text-wrap:balance;}
+.jl h2{font-family:'Playfair Display',Georgia,'Times New Roman',serif;font-size:clamp(24px,3.5vw,34px);letter-spacing:-.01em;margin:0 0 8px;font-weight:800;text-wrap:balance;}
 .jl .jl-sub{color:var(--muted);margin:0 0 26px;font-size:15.5px;}
 .jl-wrap{max-width:1120px;margin:0 auto;padding:0 max(18px,env(safe-area-inset-left)) 0 max(18px,env(safe-area-inset-right));}
 .jl-center{text-align:center;}
@@ -700,8 +701,8 @@ const CSS = `
 .jl-free-pill{display:inline-block;background:#e7f9ef;color:#0a7a46;font-weight:800;font-size:12.5px;letter-spacing:.02em;padding:6px 13px;border-radius:999px;margin-bottom:14px;}
 .jl-hero-js{display:inline-flex;align-items:center;gap:6px;margin-top:16px;background:linear-gradient(90deg,#0f1b3a,#13224a);color:#dbf1ff;font-weight:700;font-size:13px;padding:9px 15px;border-radius:999px;border:1px solid rgba(88,198,255,.3);}
 .jl-hero-js:hover{filter:brightness(1.12);}
-.jl-hero-copy h1{font-size:clamp(32px,5.2vw,52px);line-height:1.04;letter-spacing:-.03em;margin:0 0 14px;font-weight:800;}
-.jl-blue{color:var(--blue);}
+.jl-hero-copy h1{font-family:'Playfair Display',Georgia,'Times New Roman',serif;font-size:clamp(34px,5.4vw,56px);line-height:1.06;letter-spacing:-.01em;margin:0 0 14px;font-weight:800;}
+.jl-hl-accent{color:var(--gold);font-style:italic;font-weight:700;}
 .jl-hero-copy>p{color:var(--muted);font-size:clamp(15px,1.9vw,18px);max-width:520px;margin:0 0 20px;}
 .jl-tabs{display:inline-flex;gap:4px;background:#fff;border:1px solid var(--line);border-radius:11px;padding:4px;margin-bottom:12px;}
 .jl-tabs button{border:0;background:transparent;padding:9px 16px;border-radius:8px;font-weight:700;font-size:14px;cursor:pointer;color:var(--muted);}
