@@ -277,6 +277,7 @@ import { registerDocumentRoutes } from "./documentRoutes";
 import { registerInvoiceRoutes } from "./invoiceRoutes";
 import { createPrismaRequestPricingSnapshotCapture } from "./requestPricingSnapshot";
 import { materializeAndListWorkerPayouts } from "./workerPayoutRepository";
+import { executeTestWorkerPayout, isPayoutTestExecutionEnabled } from "./workerPayoutExecution";
 import {
   WORKER_AGREEMENT_VERSIONS,
   electClassification,
@@ -5564,6 +5565,60 @@ export function buildApi(options: BuildApiOptions = {}) {
       currency: payout.currency
     });
     return reply.code(200).send({ payout: { id: payout.id, status: "paid" }, workerNotification: notified.status });
+  });
+
+  // Money-flow Phase 2: mark a RELEASED worker payout `paid` through the TEST-mode execution — a Stripe
+  // TEST transfer to a configured test connected account, or a recorded SYNTHETIC reference otherwise.
+  // Gated behind PAYOUT_TEST_MODE_ENABLED *and* the Stripe TEST keys; INDEPENDENT of FINANCE_LIVE_ENABLED
+  // (which stays off) and never reads it. No real funds move; the test client refuses any non-sk_test_
+  // secret. Idempotent and status-guarded. Admin-gated. See docs/finance/WORKER_PAYOUT_TEST_EXECUTION.md.
+  app.post("/platform/worker-payouts/:payoutId/execute-test-payout", async (request, reply) => {
+    const session = await authService.validateSession(readBearerToken(request.headers.authorization));
+    if (!session.authenticated || !session.user) return sendJobRequestDenied(reply);
+    await jobRequestService.listAdminIntake({ session, roles: await resolveAuthorizationRoles(session.user.id) });
+    if (!prisma) return reply.code(503).send({ error: "RWOS_UNAVAILABLE", message: "Not available." });
+    // Production-safe gate: runtimeConfig.payoutTestModeEnabled is false in production regardless of the
+    // flag, requires the Stripe TEST keys, and is derived from this app's env — plus the process-env
+    // guard the execution module itself re-checks. FINANCE_LIVE_ENABLED is never consulted.
+    if (!runtimeConfig.payoutTestModeEnabled || !isPayoutTestExecutionEnabled()) {
+      return reply
+        .code(423)
+        .send({ error: "RWOS_PAYOUT_TEST_DISABLED", message: "Worker payout test-mode execution is disabled." });
+    }
+
+    const payoutId = readRouteParam(request.params, "payoutId");
+    const result = await executeTestWorkerPayout(prisma, { payoutId });
+    if (!result.ok) {
+      const map: Record<typeof result.reason, number> = {
+        execution_disabled: 423,
+        stripe_unconfigured: 503,
+        payout_not_found: 404,
+        payout_not_released: 409,
+        conflict: 409
+      };
+      return reply
+        .code(map[result.reason])
+        .send({ error: `RWOS_PAYOUT_${result.reason.toUpperCase()}`, message: "This payout cannot be paid now." });
+    }
+
+    // Best-effort "money received" notice, with the TEST reference. Never blocks the paid result.
+    const notified = await notifyWorkerPayoutPaid(prisma, emailSender, {
+      workerIdentityId: result.payout.workerIdentityId,
+      amountMinor: result.payout.amountMinor,
+      currency: result.payout.currency,
+      reference: result.payout.paymentRef
+    });
+    return reply.code(200).send({
+      payout: {
+        id: result.payout.id,
+        status: result.payout.status,
+        paymentRef: result.payout.paymentRef,
+        paidAt: result.payout.paidAt,
+        mode: result.payout.mode
+      },
+      synthetic: true,
+      workerNotification: notified.status
+    });
   });
 
   // Apply a worker late-cancellation penalty — the GOVERNED ADMIN action behind the recommendation the

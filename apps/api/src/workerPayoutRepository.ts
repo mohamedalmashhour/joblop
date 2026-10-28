@@ -13,6 +13,8 @@ export type WorkerPayoutView = Readonly<{
   releasedAt: string | null;
   paidAt: string | null;
   heldReason: string | null;
+  // Phase 2: the TEST payment reference recorded when the payout was marked paid (null until paid).
+  paymentRef: string | null;
   periodStart: string;
   periodEnd: string;
   // Phase 2: which channel this payout belongs to, and the statement the worker should see.
@@ -152,6 +154,7 @@ export async function materializeAndListWorkerPayouts(
       releasedAt: p.releasedAt ? p.releasedAt.toISOString() : null,
       paidAt: p.paidAt ? p.paidAt.toISOString() : null,
       heldReason: p.heldReason,
+      paymentRef: p.paymentRef,
       periodStart: period ? period.periodStart.toISOString() : p.holdUntil.toISOString(),
       periodEnd: period ? period.periodEnd.toISOString() : p.holdUntil.toISOString(),
       channel: channel.channel,

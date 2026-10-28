@@ -33,6 +33,16 @@ const runtimeConfigSchema = z
     // ASSIGNMENT_HANDOFF_ENABLED). No live key, no real money: createStripeTestClient rejects any
     // non-sk_test_ secret. See docs/finance/EMPLOYER_INVOICE_STRIPE_TEST_COLLECTION.md.
     INVOICE_TEST_MODE_ENABLED: z.enum(["disabled", "enabled"]).default("disabled"),
+    // Money-flow Phase 2: worker payout → Stripe TEST execution. Independent of FINANCE_LIVE_ENABLED
+    // (which stays OFF) — this gate turns on the TEST-mode worker-payout EXECUTION (released → paid)
+    // only, and only alongside the Stripe TEST keys. Default disabled; refused in production. No live
+    // key, no real money: createStripeTestClient rejects any non-sk_test_ secret; without a configured
+    // test connected account the "paid" is a recorded SYNTHETIC reference, never a real send. See
+    // docs/finance/WORKER_PAYOUT_TEST_EXECUTION.md.
+    PAYOUT_TEST_MODE_ENABLED: z.enum(["disabled", "enabled"]).default("disabled"),
+    // Optional Stripe TEST connected account (acct_...) the test payout transfers to when present.
+    // When absent, the test execution records a synthetic reference instead of attempting a transfer.
+    STRIPE_TEST_PAYOUT_CONNECTED_ACCOUNT: z.string().min(1).optional(),
     SESSION_SECRET: z.string().optional(),
     // Transactional email (Resend) for email-verification / resend-code. Optional and inert until
     // both are set: without them the mailer is a no-op (dev surfaces the code locally instead of
@@ -147,6 +157,39 @@ const runtimeConfigSchema = z
           message: "Employer invoice test-mode collection is a TEST path and cannot run with live finance on."
         });
       }
+    }
+    if (config.PAYOUT_TEST_MODE_ENABLED === "enabled") {
+      if (config.RWOS_ENV !== "test" && config.RWOS_ENV !== "staging") {
+        context.addIssue({
+          code: "custom",
+          path: ["PAYOUT_TEST_MODE_ENABLED"],
+          message: "Worker payout test-mode execution is allowed only in test or staging."
+        });
+      }
+      if (config.STRIPE_TEST_MODE_ENABLED !== "enabled") {
+        context.addIssue({
+          code: "custom",
+          path: ["PAYOUT_TEST_MODE_ENABLED"],
+          message: "Worker payout test-mode execution requires STRIPE_TEST_MODE_ENABLED=enabled."
+        });
+      }
+      if (config.FINANCE_LIVE_ENABLED === "enabled") {
+        context.addIssue({
+          code: "custom",
+          path: ["PAYOUT_TEST_MODE_ENABLED"],
+          message: "Worker payout test-mode execution is a TEST path and cannot run with live finance on."
+        });
+      }
+    }
+    if (
+      config.STRIPE_TEST_PAYOUT_CONNECTED_ACCOUNT &&
+      !config.STRIPE_TEST_PAYOUT_CONNECTED_ACCOUNT.startsWith("acct_")
+    ) {
+      context.addIssue({
+        code: "custom",
+        path: ["STRIPE_TEST_PAYOUT_CONNECTED_ACCOUNT"],
+        message: "A Stripe test payout connected account must be a Stripe account reference (acct_...)."
+      });
     }
     if (
       config.AUTH_RATE_LIMITER_NAMESPACE &&
@@ -382,6 +425,15 @@ export function getRuntimeConfig(env: NodeJS.ProcessEnv = process.env) {
       parsed.RWOS_ENV !== "production" &&
       parsed.INVOICE_TEST_MODE_ENABLED === "enabled" &&
       parsed.STRIPE_TEST_MODE_ENABLED === "enabled",
+    // Money-flow Phase 2: worker payout → Stripe TEST execution. Enabled only in test/staging with
+    // Stripe test mode also on; never in production. FINANCE_LIVE_ENABLED is untouched and stays off.
+    payoutTestModeEnabled:
+      parsed.RWOS_ENV !== "production" &&
+      parsed.PAYOUT_TEST_MODE_ENABLED === "enabled" &&
+      parsed.STRIPE_TEST_MODE_ENABLED === "enabled",
+    // The Stripe TEST connected account a worker payout transfers to, when configured. Absent → the
+    // test execution records a synthetic reference instead of attempting a real (test) transfer.
+    stripeTestPayoutConnectedAccount: parsed.STRIPE_TEST_PAYOUT_CONNECTED_ACCOUNT,
     hasDistributedAuthRateLimiter: Boolean(
       parsed.AUTH_RATE_LIMITER_ORIGIN &&
       parsed.AUTH_RATE_LIMITER_TOKEN &&

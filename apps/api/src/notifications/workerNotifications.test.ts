@@ -28,6 +28,15 @@ describe("worker payout notification", () => {
     expect(en.text).toContain("111.47 CAD");
   });
 
+  it("includes the TEST payment reference when provided, and omits the line when absent", () => {
+    const withRef = payoutPaidEmail({ to: "w@x.com", language: "en", amountMinor: 5000, currency: "CAD", reference: "payout-test-synthetic-1" });
+    expect(withRef.text).toContain("Reference: payout-test-synthetic-1");
+    const frRef = payoutPaidEmail({ to: "w@x.com", language: "fr", amountMinor: 5000, currency: "CAD", reference: "tr_test_123" });
+    expect(frRef.text).toContain("Référence : tr_test_123");
+    const noRef = payoutPaidEmail({ to: "w@x.com", language: "en", amountMinor: 5000, currency: "CAD" });
+    expect(noRef.text).not.toContain("Reference:");
+  });
+
   it("dispatcher resolves identity → user email and sends", async () => {
     let sent: EmailMessage | null = null;
     const prisma = {

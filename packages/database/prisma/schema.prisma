@@ -1270,6 +1270,10 @@ model WorkerPayout {
   releasedAt           DateTime?          @map("released_at") @db.Timestamptz(3)
   paidAt               DateTime?          @map("paid_at") @db.Timestamptz(3)
   heldReason           String?            @map("held_reason")
+  // Money-flow Phase 2: the TEST payment reference recorded when a released payout is marked paid via
+  // the gated test-mode execution — a Stripe TEST transfer id (tr_...) when a test connected account
+  // is configured, otherwise a synthetic reference. Never a real (live) send. Null until paid.
+  paymentRef           String?            @map("payment_ref")
   createdAt            DateTime           @default(now()) @map("created_at") @db.Timestamptz(3)
   updatedAt            DateTime           @updatedAt @map("updated_at") @db.Timestamptz(3)
 

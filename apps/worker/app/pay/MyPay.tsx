@@ -37,6 +37,7 @@ type Payout = Readonly<{
   releasedAt: string | null;
   paidAt: string | null;
   heldReason: string | null;
+  paymentRef: string | null;
   periodStart: string;
   periodEnd: string;
 }>;
@@ -348,6 +349,7 @@ function PaymentCard({ p, openDisputed, onRaise, t, locale }: { p: Payout; openD
       </div>
       <div className="when">{t("pay.forPeriod", { period: shortPeriod(p.periodStart, p.periodEnd, locale) })}</div>
       <div className="when">{dateLine}</div>
+      {p.status === "paid" && p.paymentRef ? <div className="when" style={{ color: "var(--text-muted)" }}>{t("pay.reference", { ref: p.paymentRef })}</div> : null}
       {p.status === "held" && p.heldReason ? <div className="when" style={{ color: "var(--text-muted)" }}>{t("pay.heldReason", { reason: p.heldReason })}</div> : null}
 
       {canDispute && !formOpen ? (

@@ -18,14 +18,19 @@ export function payoutPaidEmail(params: {
   language: NotificationLanguage;
   amountMinor: number;
   currency: string;
+  // Optional payment reference (Phase 2 test execution records a Stripe TEST transfer id or a
+  // synthetic reference); when present it is shown so the worker can reconcile the payment.
+  reference?: string | null;
 }): EmailMessage {
   const amount = formatMoney(params.amountMinor, params.currency);
+  const ref = params.reference?.trim();
   if (params.language === "en") {
     return {
       to: params.to,
       subject: "JobLop — your payment has been sent",
       text:
         `Your payment of ${amount} has been transferred to your account.\n\n` +
+        (ref ? `Reference: ${ref}\n\n` : "") +
         `Thanks for the work you did through JobLop. This completes the transaction.\n\n— JobLop`
     };
   }
@@ -34,6 +39,7 @@ export function payoutPaidEmail(params: {
     subject: "JobLop — votre paiement a été envoyé",
     text:
       `Votre paiement de ${amount} a été transféré dans votre compte.\n\n` +
+      (ref ? `Référence : ${ref}\n\n` : "") +
       `Merci pour le travail effectué via JobLop. Ceci complète la transaction.\n\n— JobLop`
   };
 }
@@ -71,7 +77,7 @@ export type WorkerPayoutNotificationResult = Readonly<{
 export async function notifyWorkerPayoutPaid(
   prisma: PrismaClient,
   emailSender: EmailSender,
-  input: { workerIdentityId: string; amountMinor: number; currency: string }
+  input: { workerIdentityId: string; amountMinor: number; currency: string; reference?: string | null }
 ): Promise<WorkerPayoutNotificationResult> {
   try {
     const identity = await prisma.workerIdentity.findUnique({
@@ -84,7 +90,8 @@ export async function notifyWorkerPayoutPaid(
       to: email,
       language: resolveLanguage(identity?.user?.primaryLanguage),
       amountMinor: input.amountMinor,
-      currency: input.currency
+      currency: input.currency,
+      reference: input.reference ?? null
     });
     const result = await emailSender.send(message);
     return { status: result.status === "sent" ? "sent" : result.status === "error" ? "error" : "skipped" };
