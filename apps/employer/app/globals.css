@@ -138,3 +138,15 @@ footer nav a {
 .langbtn:disabled { cursor: default; }
 .langbtn:not(.active):hover { background: #e8f0fe; color: #1a56db; }
 @media (prefers-color-scheme: dark) { .langswitch { border-color: #262c36; } .langbtn { color: #9aa4b2; } .langbtn + .langbtn { border-left-color: #262c36; } .langbtn.active { background: #4f83f0; } }
+
+/* Print: clean request-details printout — hide nav/chrome and interactive controls, keep content. */
+@media print {
+  header,
+  nav,
+  aside,
+  .jl-burger,
+  .jl-panel,
+  .no-print { display: none !important; }
+  body { background: #fff !important; color: #000 !important; }
+  a[href] { text-decoration: none; color: #000; }
+}

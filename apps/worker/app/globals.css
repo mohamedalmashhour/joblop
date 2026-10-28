@@ -789,3 +789,16 @@ dl.agreement dd { margin: 0; }
 .rights ul { margin: 0; padding-left: 18px; font-size: 13.5px; }
 .rights li { margin: 2px 0; }
 .rights-note { margin: 6px 0 0; font-size: 12.5px; color: var(--muted, #5b6471); }
+
+/* Print: a clean "job details" printout — hide nav and interactive controls, keep the content. */
+@media print {
+  .topbar,
+  .jl-nav,
+  .no-print,
+  .detail .btn,
+  .detail-cta,
+  .worksite-map a { display: none !important; }
+  body { background: #fff !important; color: #000 !important; }
+  .detail { padding: 0 !important; max-width: 100% !important; }
+  a[href] { text-decoration: none; color: #000; }
+}

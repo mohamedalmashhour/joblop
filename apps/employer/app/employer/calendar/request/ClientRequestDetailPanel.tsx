@@ -176,6 +176,14 @@ export function ClientRequestDetailPanel({ requestId }: Readonly<{ requestId: st
         >
           View staffing progress
         </a>
+        <button
+          type="button"
+          onClick={() => window.print()}
+          style={{ ...styles.secondaryButton, cursor: "pointer" }}
+          className="no-print"
+        >
+          🖨 Print details
+        </button>
         <div style={{ marginTop: 14 }}>
           <DuplicateRequestButton requestId={request.id} />
         </div>
@@ -215,6 +223,17 @@ export function ClientRequestDetailPanel({ requestId }: Readonly<{ requestId: st
           </div>
         ))}
         <JobLocationMap address={request.addressSummary} />
+        {request.addressSummary ? (
+          <a
+            href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(request.addressSummary)}`}
+            target="_blank"
+            rel="noreferrer"
+            style={{ ...styles.secondaryButton, marginTop: 10, display: "inline-block" }}
+            className="no-print"
+          >
+            Open in Google Maps
+          </a>
+        ) : null}
         {request.status === "assigned" || request.status === "in_progress" ? (
           <AddToCalendar request={request} />
         ) : null}

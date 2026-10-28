@@ -152,7 +152,7 @@ export function JobDetail({ id, postalCode }: { id: string; postalCode: string |
             {job.employer.verified ? <span className="chip verified" style={{ marginLeft: 8 }}>{t("job.verified")}</span> : null}
           </p>
         </div>
-        <button className="btn" type="button" aria-pressed={job.saved} onClick={toggleSaved}>
+        <button className="btn no-print" type="button" aria-pressed={job.saved} onClick={toggleSaved}>
           {job.saved ? t("job.saved") : t("job.saveJob")}
         </button>
       </div>
@@ -197,12 +197,15 @@ export function JobDetail({ id, postalCode }: { id: string; postalCode: string |
 
       <InterestPanel state={interest} busy={interestBusy} onExpress={expressInterest} onWithdraw={withdrawInterest} />
 
-      <div className="detail-cta">
+      <div className="detail-cta no-print">
         <button className="btn ghost" type="button" aria-pressed={job.saved} onClick={toggleSaved}>
           {job.saved ? t("job.saved") : t("job.saveJob")}
         </button>
         <a className="btn ghost" href={`/employers/${encodeURIComponent(job.employer.id)}`}>{t("job.viewEmployer")}</a>
         <a className="btn ghost" href="/my-interests">{t("nav.interests")}</a>
+        <button className="btn ghost" type="button" onClick={() => window.print()}>
+          {locale.startsWith("fr") ? "🖨 Imprimer" : "🖨 Print details"}
+        </button>
       </div>
     </article>
   );
