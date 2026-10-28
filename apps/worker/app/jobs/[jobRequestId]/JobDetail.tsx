@@ -142,7 +142,7 @@ export function JobDetail({ id, postalCode }: { id: string; postalCode: string |
           </p>
         </div>
         <button
-          className="btn"
+          className="btn no-print"
           type="button"
           aria-pressed={job.saved}
           onClick={toggleSaved}
@@ -184,7 +184,7 @@ export function JobDetail({ id, postalCode }: { id: string; postalCode: string |
 
       <InterestPanel state={interest} busy={interestBusy} onExpress={expressInterest} onWithdraw={withdrawInterest} />
 
-      <div className="detail-cta">
+      <div className="detail-cta no-print">
         <button className="btn ghost" type="button" aria-pressed={job.saved} onClick={toggleSaved}>
           {job.saved ? "★ Saved" : "☆ Save job"}
         </button>
@@ -194,6 +194,9 @@ export function JobDetail({ id, postalCode }: { id: string; postalCode: string |
         <a className="btn ghost" href="/my-interests">
           My interests
         </a>
+        <button className="btn ghost" type="button" onClick={() => window.print()}>
+          🖨 Print details
+        </button>
       </div>
     </article>
   );

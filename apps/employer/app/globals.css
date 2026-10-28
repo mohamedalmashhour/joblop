@@ -129,3 +129,15 @@ footer nav a {
     justify-self: end;
   }
 }
+
+/* Print: clean request-details printout — hide nav/chrome and interactive controls, keep content. */
+@media print {
+  header,
+  nav,
+  aside,
+  .jl-burger,
+  .jl-panel,
+  .no-print { display: none !important; }
+  body { background: #fff !important; color: #000 !important; }
+  a[href] { text-decoration: none; color: #000; }
+}
