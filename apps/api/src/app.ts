@@ -312,8 +312,13 @@ import { createPrismaInvoiceRepository, type InvoiceRepository } from "./invoice
 import { autoGenerateInvoiceForLockedTimesheet } from "./invoiceFromTimesheet";
 import { createPrismaPayrollRepository, createPrismaPayrollRateResolver, createPrismaPayrollJurisdictionResolver, createPrismaPayrollClassificationResolver } from "./payrollRepository";
 import { registerPaymentRoutes } from "./paymentRoutes";
-import { registerStripeWebhookRoute } from "./stripeWebhookRoute";
+import { registerStripeWebhookRoute, registerEmployerInvoiceWebhookRoute } from "./stripeWebhookRoute";
 import { createPrismaPaymentRepository, type PaymentRepository } from "./paymentRepository";
+import { reconcileInvoiceCheckoutPaid, isInvoiceCollectionEnabled } from "./employerInvoiceCollection";
+import { registerEmployerInvoiceCheckoutRoutes } from "./employerInvoiceCheckoutRoutes";
+import { createEmployerInvoiceWebhook, type CheckoutSessionEventLike } from "./employerInvoiceWebhook";
+import { createStripeTestClient } from "./stripeTestProvider";
+import { stripeTestEnvFromProcess } from "./cvProStripeCheckout";
 
 export interface BuildApiOptions {
   authService?: AuthenticationService;
@@ -358,6 +363,10 @@ export interface BuildApiOptions {
   // injected (Stripe test env enabled by the caller). Default undefined → route NOT mounted, no live
   // binding, no scheduler. Never enabled in production without separate owner authorization.
   stripeWebhookRecovery?: { resolve(rawBody: Buffer, signature: string): Promise<{ status: string; eventType: string; paymentId?: string; newState?: string }> };
+  // Money-flow Phase 1: OPTIONAL employer-invoice Stripe TEST webhook. Default undefined → when the
+  // Stripe test env + INVOICE_TEST_MODE_ENABLED are present, app.ts builds the real one; a caller (tests)
+  // may inject a fake. Never mounted in production.
+  employerInvoiceWebhook?: { resolve(rawBody: Buffer, signature: string): Promise<{ status: string; eventType: string; invoiceId?: string; invoiceStatus?: string }> };
   publicWorkerIngressOnly?: boolean;
   publicWorkerWebOrigin?: string;
   // HR-6: advisory AI review provider. Defaults to the deterministic synthetic provider — no
@@ -1049,6 +1058,37 @@ export function buildApi(options: BuildApiOptions = {}) {
         return null;
       }
     });
+
+    // Money-flow Phase 1 — employer invoice → Stripe TEST collection endpoints, in their own
+    // conditionally-mounted module so app.ts carries no money-route literals. Same authorization as the
+    // invoice routes; inert unless INVOICE_TEST_MODE_ENABLED + the Stripe TEST keys are present (the
+    // collection module fail-closes). FINANCE_LIVE_ENABLED is never consulted here.
+    if (prisma) {
+      registerEmployerInvoiceCheckoutRoutes(app, {
+        prisma,
+        repository: invoiceRepository,
+        fallbackOrigin: runtimeConfig.internalApiOrigin,
+        authorize: async (request, organizationId) => {
+          const session = await authService.validateSession(
+            readBearerToken(request.headers.authorization)
+          );
+          if (!session.authenticated || !session.user) return null;
+          const roles = await resolveAuthorizationRoles(session.user.id);
+          if (roles.includes("PLATFORM_ADMINISTRATOR")) {
+            return { actorId: session.user.id, role: "platform_admin" };
+          }
+          if (roles.includes("ORGANIZATION_OWNER") || roles.includes("ORGANIZATION_ADMINISTRATOR")) {
+            try {
+              await organizationService.getOrganization({ actorUserId: session.user.id, organizationId });
+              return { actorId: session.user.id, role: "finance_reviewer" };
+            } catch {
+              return null;
+            }
+          }
+          return null;
+        }
+      });
+    }
   }
 
   const localPaymentWebhookSecret =
@@ -1087,6 +1127,34 @@ export function buildApi(options: BuildApiOptions = {}) {
   // presents no user session); correlation + safety live entirely inside the injected recovery handler.
   if (options.stripeWebhookRecovery) {
     registerStripeWebhookRoute(app, { recovery: options.stripeWebhookRecovery });
+  }
+
+  // Money-flow Phase 1 — employer-invoice Stripe TEST webhook reconcile ("finance verifies with
+  // Stripe"). Mounted when a handler is injected (tests) OR when the Stripe TEST env + the invoice
+  // test-mode gate are both on and we have a repository + prisma to reconcile against. Verifies the
+  // signature + test-mode via the shared Stripe test client; never in production; moves no money.
+  const employerInvoiceWebhook =
+    options.employerInvoiceWebhook ??
+    (invoiceRepository && prisma && runtimeConfig.invoiceTestModeEnabled && isInvoiceCollectionEnabled()
+      ? createEmployerInvoiceWebhook({
+          verifyWebhook: async (rawBody, signature) => {
+            const client = createStripeTestClient(stripeTestEnvFromProcess());
+            const event = client.webhooks.constructEvent(
+              rawBody,
+              signature,
+              runtimeConfig.stripeTestWebhookSecret!
+            );
+            if ((event as { livemode?: boolean }).livemode === true) {
+              throw new Error("Live-mode Stripe object rejected.");
+            }
+            return event as unknown as CheckoutSessionEventLike;
+          },
+          reconcile: (reconcileInput) =>
+            reconcileInvoiceCheckoutPaid(prisma, invoiceRepository, reconcileInput)
+        })
+      : null);
+  if (employerInvoiceWebhook) {
+    registerEmployerInvoiceWebhookRoute(app, { recovery: employerInvoiceWebhook });
   }
 
   if (documentService && documentUploadContract) {

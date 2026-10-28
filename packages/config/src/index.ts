@@ -27,6 +27,12 @@ const runtimeConfigSchema = z
     // HR-6.1 Chunk 3: capability gate for a FUTURE external AI review provider. Default disabled;
     // never permitted in production. Even when enabled it does nothing unless a provider is injected.
     PAYROLL_AI_EXTERNAL_ENABLED: z.enum(["disabled", "enabled"]).default("disabled"),
+    // Money-flow Phase 1: employer invoice → Stripe TEST collection. Independent of FINANCE_LIVE_ENABLED
+    // (which stays OFF) — this gate turns on the TEST-mode employer-invoice card collection only, and
+    // only alongside the Stripe TEST keys. Default disabled; refused in production (like
+    // ASSIGNMENT_HANDOFF_ENABLED). No live key, no real money: createStripeTestClient rejects any
+    // non-sk_test_ secret. See docs/finance/EMPLOYER_INVOICE_STRIPE_TEST_COLLECTION.md.
+    INVOICE_TEST_MODE_ENABLED: z.enum(["disabled", "enabled"]).default("disabled"),
     SESSION_SECRET: z.string().optional(),
     // Transactional email (Resend) for email-verification / resend-code. Optional and inert until
     // both are set: without them the mailer is a no-op (dev surfaces the code locally instead of
@@ -116,6 +122,29 @@ const runtimeConfigSchema = z
           code: "custom",
           path: ["STRIPE_TEST_ACCOUNT_REFERENCE"],
           message: "Stripe test mode requires an approved account reference."
+        });
+      }
+    }
+    if (config.INVOICE_TEST_MODE_ENABLED === "enabled") {
+      if (config.RWOS_ENV !== "test" && config.RWOS_ENV !== "staging") {
+        context.addIssue({
+          code: "custom",
+          path: ["INVOICE_TEST_MODE_ENABLED"],
+          message: "Employer invoice test-mode collection is allowed only in test or staging."
+        });
+      }
+      if (config.STRIPE_TEST_MODE_ENABLED !== "enabled") {
+        context.addIssue({
+          code: "custom",
+          path: ["INVOICE_TEST_MODE_ENABLED"],
+          message: "Employer invoice test-mode collection requires STRIPE_TEST_MODE_ENABLED=enabled."
+        });
+      }
+      if (config.FINANCE_LIVE_ENABLED === "enabled") {
+        context.addIssue({
+          code: "custom",
+          path: ["INVOICE_TEST_MODE_ENABLED"],
+          message: "Employer invoice test-mode collection is a TEST path and cannot run with live finance on."
         });
       }
     }
@@ -277,6 +306,13 @@ const runtimeConfigSchema = z
         message: "PAYROLL_AI_EXTERNAL_ENABLED cannot be enabled in production."
       });
     }
+    if (config.INVOICE_TEST_MODE_ENABLED === "enabled") {
+      context.addIssue({
+        code: "custom",
+        path: ["INVOICE_TEST_MODE_ENABLED"],
+        message: "INVOICE_TEST_MODE_ENABLED cannot be enabled in production."
+      });
+    }
     if (
       config.AUTH_RATE_LIMITER_TOKEN &&
       config.AUTH_RATE_LIMITER_KEY_SECRET &&
@@ -340,6 +376,12 @@ export function getRuntimeConfig(env: NodeJS.ProcessEnv = process.env) {
     // Capability gate for a future external AI review provider. Non-production only, default off.
     payrollAiExternalEnabled:
       parsed.RWOS_ENV !== "production" && parsed.PAYROLL_AI_EXTERNAL_ENABLED === "enabled",
+    // Money-flow Phase 1: employer invoice → Stripe TEST collection. Enabled only in test/staging with
+    // Stripe test mode also on; never in production. FINANCE_LIVE_ENABLED is untouched and stays off.
+    invoiceTestModeEnabled:
+      parsed.RWOS_ENV !== "production" &&
+      parsed.INVOICE_TEST_MODE_ENABLED === "enabled" &&
+      parsed.STRIPE_TEST_MODE_ENABLED === "enabled",
     hasDistributedAuthRateLimiter: Boolean(
       parsed.AUTH_RATE_LIMITER_ORIGIN &&
       parsed.AUTH_RATE_LIMITER_TOKEN &&
