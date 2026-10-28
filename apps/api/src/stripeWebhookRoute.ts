@@ -1,5 +1,6 @@
 import type { FastifyInstance } from "fastify";
 import { StripeWebhookRejection } from "./stripeWebhookRecovery";
+import { EmployerInvoiceWebhookRejection } from "./employerInvoiceWebhook";
 
 // Stage 2b.4-C3-G-e1 — mount the Stripe webhook-first recovery handler behind a dedicated endpoint.
 // Test-mode only; no live keys; not authenticated (Stripe cannot present a user session); correlation is
@@ -30,6 +31,78 @@ function fixedWindowLimiter(maxPerWindow: number, windowMs: number, now: () => n
 function isSignatureError(error: unknown): boolean {
   const e = error as { type?: string; name?: string; message?: string };
   return e?.type === "StripeSignatureVerificationError" || /signature/i.test(e?.message ?? "");
+}
+
+// Money-flow Phase 1 — mount the employer-invoice Stripe TEST webhook reconcile on its own path, reusing
+// the exact same transport hardening (raw body for signature verification, size cap, POST-only, rate
+// limiting, safe structured logging, deterministic duplicate/ignored responses). Test-mode only; not
+// authenticated (Stripe presents no user session); correlation + the paid decision live entirely inside
+// the injected handler. It moves no money.
+const DEFAULT_INVOICE_PATH = "/payments/webhooks/stripe/employer-invoices";
+
+type InvoiceRecovery = {
+  resolve(
+    rawBody: Buffer,
+    signature: string
+  ): Promise<{ status: string; eventType: string; invoiceId?: string; invoiceStatus?: string }>;
+};
+
+export function registerEmployerInvoiceWebhookRoute(app: FastifyInstance, options: {
+  recovery: InvoiceRecovery;
+  path?: string;
+  bodyLimit?: number;
+  rateLimit?: { maxPerWindow: number; windowMs: number };
+  now?: () => number;
+}): void {
+  const path = options.path ?? DEFAULT_INVOICE_PATH;
+  const bodyLimit = options.bodyLimit ?? DEFAULT_BODY_LIMIT;
+  const rate = options.rateLimit ?? DEFAULT_RATE;
+  const now = options.now ?? (() => Date.now());
+  const limit = fixedWindowLimiter(rate.maxPerWindow, rate.windowMs, now);
+
+  app.register(async (scoped) => {
+    scoped.addContentTypeParser("application/json", { parseAs: "buffer", bodyLimit }, (_req, body, done) => {
+      done(null, body);
+    });
+
+    scoped.post(path, { bodyLimit }, async (request, reply) => {
+      const clientKey = request.ip || "unknown";
+      const gate = limit(clientKey);
+      if (!gate.allowed) {
+        return reply.code(429).header("retry-after", String(gate.retryAfterSeconds)).send({ error: "rate_limited" });
+      }
+
+      const signature = request.headers["stripe-signature"];
+      const rawBody = request.body;
+      if (typeof signature !== "string" || !signature || !Buffer.isBuffer(rawBody)) {
+        request.log.info({ evt: "stripe_invoice_webhook", outcome: "rejected", reason: "missing_signature_or_body" });
+        return reply.code(400).send({ error: "invalid_request" });
+      }
+
+      try {
+        const result = await options.recovery.resolve(rawBody, signature);
+        request.log.info({ evt: "stripe_invoice_webhook", type: result.eventType, status: result.status, invoiceId: result.invoiceId });
+        return reply.code(200).send({ received: true, status: result.status });
+      } catch (error) {
+        if (error instanceof EmployerInvoiceWebhookRejection) {
+          if (error.code === "livemode_rejected") {
+            request.log.warn({ evt: "stripe_invoice_webhook", outcome: "rejected", reason: "livemode" });
+            return reply.code(400).send({ error: "livemode_rejected" });
+          }
+          // Uncorrelated / not-paid: acknowledge WITHOUT applying (safe no-op) so Stripe does not
+          // retry-storm events that are not ours or not terminal; the decision is logged (no payload).
+          request.log.info({ evt: "stripe_invoice_webhook", outcome: "ignored", reason: error.code });
+          return reply.code(202).send({ received: true, status: "ignored", reason: error.code });
+        }
+        if (isSignatureError(error)) {
+          request.log.warn({ evt: "stripe_invoice_webhook", outcome: "rejected", reason: "invalid_signature" });
+          return reply.code(400).send({ error: "invalid_signature" });
+        }
+        request.log.error({ evt: "stripe_invoice_webhook", outcome: "error" });
+        return reply.code(500).send({ error: "internal_error" });
+      }
+    });
+  });
 }
 
 export function registerStripeWebhookRoute(app: FastifyInstance, options: {

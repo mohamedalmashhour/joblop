@@ -197,6 +197,43 @@ describe("production runtime configuration", () => {
     });
   });
 
+  it("keeps the employer invoice test-mode collection off by default and gates it fully", () => {
+    const stripe = {
+      STRIPE_TEST_MODE_ENABLED: "enabled",
+      STRIPE_TEST_SECRET_KEY: "sk_test_synthetic_reference",
+      STRIPE_TEST_WEBHOOK_SECRET: "whsec_synthetic_reference",
+      STRIPE_TEST_ACCOUNT_REFERENCE: "acct_test_synthetic"
+    };
+    // Off by default even with Stripe test mode on.
+    expect(getRuntimeConfig({ RWOS_ENV: "test", ...stripe })).toMatchObject({
+      invoiceTestModeEnabled: false
+    });
+    // Enabled only in test/staging alongside Stripe test keys; FINANCE_LIVE stays off.
+    const enabled = { RWOS_ENV: "test", ...stripe, INVOICE_TEST_MODE_ENABLED: "enabled" };
+    expect(validateRuntimeConfig(enabled)).toMatchObject({ success: true });
+    expect(getRuntimeConfig(enabled)).toMatchObject({ invoiceTestModeEnabled: true });
+  });
+
+  it.each([
+    // Never in production.
+    { RWOS_ENV: "production", INVOICE_TEST_MODE_ENABLED: "enabled" },
+    // Requires Stripe test mode to be on too.
+    { RWOS_ENV: "test", INVOICE_TEST_MODE_ENABLED: "enabled" },
+    // Cannot be combined with live finance.
+    {
+      RWOS_ENV: "staging",
+      INVOICE_TEST_MODE_ENABLED: "enabled",
+      STRIPE_TEST_MODE_ENABLED: "enabled",
+      STRIPE_TEST_SECRET_KEY: "sk_test_synthetic_reference",
+      STRIPE_TEST_WEBHOOK_SECRET: "whsec_synthetic_reference",
+      STRIPE_TEST_ACCOUNT_REFERENCE: "acct_test_synthetic",
+      FINANCE_LIVE_ENABLED: "enabled",
+      FINANCE_LIVE_CPA_SIGNOFF: "cpa-signoff-ref-0001"
+    }
+  ])("rejects an improperly gated employer invoice test-mode configuration", (env) => {
+    expect(validateRuntimeConfig(env)).toMatchObject({ success: false });
+  });
+
   it.each([
     { RWOS_ENV: "production", STRIPE_TEST_MODE_ENABLED: "enabled" },
     {

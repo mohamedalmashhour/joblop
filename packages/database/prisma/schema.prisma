@@ -2659,6 +2659,7 @@ model Invoice {
   creditNotes     InvoiceCreditNote[]
   deliveries      InvoiceDeliveryReceipt[]
   paymentAttempts EmployerPaymentAttempt[]
+  stripeCheckouts EmployerInvoiceCheckout[]
   auditEntries    InvoiceAuditEntry[]
 
   @@unique([organizationId, invoiceNumber], map: "invoices_organization_number_key")
@@ -3324,4 +3325,28 @@ model CvProOrder {
 
   @@index([workerRef, status], map: "cv_pro_orders_worker_status_idx")
   @@map("cv_pro_orders")
+}
+
+// Money-flow Phase 1 — employer invoice → Stripe TEST collection. One checkout per issued invoice.
+// Mirrors CvProOrder (the proven hosted-Checkout pattern): we persist the Stripe Checkout Session id
+// and, on paid, the PaymentIntent reference. No card data touches JobLop. TEST ONLY, gated behind
+// INVOICE_TEST_MODE_ENABLED + STRIPE_TEST_* ; FINANCE_LIVE_ENABLED stays off and no money is moved here.
+model EmployerInvoiceCheckout {
+  id               String    @id @default(uuid()) @db.Uuid
+  organizationId   String    @map("organization_id") @db.Uuid
+  invoiceId        String    @map("invoice_id") @db.Uuid
+  amountMinor      BigInt    @map("amount_minor")
+  currency         String    @default("CAD") @db.Char(3)
+  method           String    @default("stripe") // only "stripe" (hosted TEST checkout) in Phase 1
+  status           String // "pending_payment" | "paid" | "canceled"
+  checkoutSessionId String?  @map("checkout_session_id")
+  paymentRef       String?   @map("payment_ref") // Stripe PaymentIntent id, set on paid
+  createdAt        DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+  paidAt           DateTime? @map("paid_at") @db.Timestamptz(3)
+
+  invoice Invoice @relation(fields: [invoiceId, organizationId], references: [id, organizationId], onDelete: Restrict)
+
+  @@unique([organizationId, invoiceId], map: "employer_invoice_checkouts_org_invoice_key")
+  @@index([organizationId, status], map: "employer_invoice_checkouts_org_status_idx")
+  @@map("employer_invoice_checkouts")
 }
