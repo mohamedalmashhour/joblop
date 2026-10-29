@@ -19,6 +19,7 @@ export function TopBar() {
           <span style={{ color: "var(--text)" }}>Job<span>Lop</span></span>
         </a>
         <div className="topbar-right">
+          <a className="muted" href="/how-it-works" style={{ fontSize: 14, fontWeight: 700 }}>{locale.startsWith("fr") ? "Comment ça marche" : "How it works"}</a>
           <a className="muted" href="/job-scanner" style={{ fontSize: 14, fontWeight: 700 }}>JobScanner</a>
           <a className="muted" href="/cv-builder" style={{ fontSize: 14, fontWeight: 700 }}>Build CV</a>
           <a className="muted" href={EMPLOYER_URL} style={{ fontSize: 14, fontWeight: 700 }}>{locale.startsWith("fr") ? "Employeurs" : "For Employers"}</a>
