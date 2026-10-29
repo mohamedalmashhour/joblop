@@ -24,7 +24,7 @@
       "package": "com.joblop.app",
       "adaptiveIcon": {
         "foregroundImage": "./assets/adaptive-icon.png",
-        "backgroundColor": "#0c2654"
+        "backgroundColor": "#1546c8"
       }
     },
     "extra": {
