@@ -37,9 +37,17 @@ type Payout = Readonly<{
   releasedAt: string | null;
   paidAt: string | null;
   heldReason: string | null;
+  paymentRef: string | null;
+  // Two-timer hold: the 48h dispute/confirmation window + when the amount was registered. `stage` is
+  // the worker-facing state: review_window → registered → paid (or held).
+  completionAt: string | null;
+  disputeWindowEndsAt: string | null;
+  registeredAt: string | null;
+  stage: PayoutStage;
   periodStart: string;
   periodEnd: string;
 }>;
+type PayoutStage = "review_window" | "registered" | "paid" | "held" | "cancelled";
 type PayoutSummary = Readonly<{ currency: string; toPayMinor: number; paidMinor: number }>;
 type PayoutsState =
   | { status: "loading" }
@@ -61,11 +69,13 @@ type DisputesState = { status: "loading" } | { status: "error" } | { status: "re
 
 type Tab = "earnings" | "topay" | "paid" | "calendar" | "disputes";
 
-const PAYOUT_STATUS_KEY: Record<string, MessageKey> = {
-  pending: "pay.statusPending",
-  released: "pay.statusReleased",
+// Worker-facing stage labels — the three stages of the two-timer hold, plus paused.
+const PAYOUT_STAGE_KEY: Record<PayoutStage, MessageKey> = {
+  review_window: "pay.stageReviewWindow",
+  registered: "pay.stageRegistered",
+  paid: "pay.statusPaid",
   held: "pay.statusHeld",
-  paid: "pay.statusPaid"
+  cancelled: "pay.statusHeld"
 };
 const DISPUTE_STATUS_KEY: Record<string, MessageKey> = {
   open: "pay.disputeStatusOpen",
@@ -97,10 +107,10 @@ function shortDate(iso: string, locale: RwosLocale): string {
 function hours(minutes: number): string {
   return (minutes / 60).toFixed(2);
 }
-function payoutBadge(status: string): string {
-  if (status === "released" || status === "paid") return "verified";
-  if (status === "pending") return "pending";
-  if (status === "held") return "rejected";
+function payoutBadge(stage: PayoutStage): string {
+  if (stage === "registered" || stage === "paid") return "verified";
+  if (stage === "review_window") return "pending";
+  if (stage === "held") return "rejected";
   return "unverified";
 }
 // The date a payment lands on the calendar: when it was sent, else when it is expected to release.
@@ -327,9 +337,13 @@ function PaymentCard({ p, openDisputed, onRaise, t, locale }: { p: Payout; openD
   const [busy, setBusy] = useState(false);
   const isDisputed = openDisputed.has(p.payrollCalculationId) || p.status === "held";
   const canDispute = !isDisputed && (p.status === "pending" || p.status === "released");
-  const dateLine = p.status === "paid" && p.paidAt
+  // Date line per stage: in the 48h window → when it confirms; registered/awaiting → expected transfer;
+  // paid → the date it was sent. Never show "confirmed earnings" copy during the review window.
+  const dateLine = p.stage === "paid" && p.paidAt
     ? t("pay.paidOn", { date: shortDate(p.paidAt, locale) })
-    : t("pay.expectedDate", { date: shortDate(p.holdUntil, locale) });
+    : p.stage === "review_window"
+      ? t("pay.confirmsOn", { date: shortDate(p.disputeWindowEndsAt ?? p.holdUntil, locale) })
+      : t("pay.expectedDate", { date: shortDate(p.holdUntil, locale) });
 
   const submit = async () => {
     if (reason.trim().length === 0) return;
@@ -343,11 +357,13 @@ function PaymentCard({ p, openDisputed, onRaise, t, locale }: { p: Payout; openD
     <article className="card">
       <div className="when" style={{ fontSize: 20 }}><strong>{money(p.amountMinor, p.currency, locale)}</strong></div>
       <div className="chips">
-        <span className={`chip status-${payoutBadge(p.status)}`}>{t(PAYOUT_STATUS_KEY[p.status] ?? "pay.statusPending")}</span>
+        <span className={`chip status-${payoutBadge(p.stage)}`}>{t(PAYOUT_STAGE_KEY[p.stage] ?? "pay.stageReviewWindow")}</span>
         {isDisputed ? <span className="chip status-rejected">{t("pay.disputedChip")}</span> : null}
       </div>
       <div className="when">{t("pay.forPeriod", { period: shortPeriod(p.periodStart, p.periodEnd, locale) })}</div>
       <div className="when">{dateLine}</div>
+      {p.stage === "review_window" ? <div className="when" style={{ color: "var(--text-muted)" }}>{t("pay.reviewWindowNote")}</div> : null}
+      {p.stage === "paid" && p.paymentRef ? <div className="when" style={{ color: "var(--text-muted)" }}>{t("pay.reference", { ref: p.paymentRef })}</div> : null}
       {p.status === "held" && p.heldReason ? <div className="when" style={{ color: "var(--text-muted)" }}>{t("pay.heldReason", { reason: p.heldReason })}</div> : null}
 
       {canDispute && !formOpen ? (

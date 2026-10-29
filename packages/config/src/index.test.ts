@@ -234,6 +234,57 @@ describe("production runtime configuration", () => {
     expect(validateRuntimeConfig(env)).toMatchObject({ success: false });
   });
 
+  it("keeps the worker payout test-mode execution off by default and gates it fully", () => {
+    const stripe = {
+      STRIPE_TEST_MODE_ENABLED: "enabled",
+      STRIPE_TEST_SECRET_KEY: "sk_test_synthetic_reference",
+      STRIPE_TEST_WEBHOOK_SECRET: "whsec_synthetic_reference",
+      STRIPE_TEST_ACCOUNT_REFERENCE: "acct_test_synthetic"
+    };
+    // Off by default even with Stripe test mode on.
+    expect(getRuntimeConfig({ RWOS_ENV: "test", ...stripe })).toMatchObject({
+      payoutTestModeEnabled: false
+    });
+    // Enabled only in test/staging alongside Stripe test keys; FINANCE_LIVE stays off.
+    const enabled = { RWOS_ENV: "test", ...stripe, PAYOUT_TEST_MODE_ENABLED: "enabled" };
+    expect(validateRuntimeConfig(enabled)).toMatchObject({ success: true });
+    expect(getRuntimeConfig(enabled)).toMatchObject({ payoutTestModeEnabled: true });
+    // A configured test connected account surfaces for the transfer path.
+    expect(
+      getRuntimeConfig({ ...enabled, STRIPE_TEST_PAYOUT_CONNECTED_ACCOUNT: "acct_test_connected" })
+    ).toMatchObject({ stripeTestPayoutConnectedAccount: "acct_test_connected" });
+  });
+
+  it.each([
+    // Never in production.
+    { RWOS_ENV: "production", PAYOUT_TEST_MODE_ENABLED: "enabled" },
+    // Requires Stripe test mode to be on too.
+    { RWOS_ENV: "test", PAYOUT_TEST_MODE_ENABLED: "enabled" },
+    // Cannot be combined with live finance.
+    {
+      RWOS_ENV: "staging",
+      PAYOUT_TEST_MODE_ENABLED: "enabled",
+      STRIPE_TEST_MODE_ENABLED: "enabled",
+      STRIPE_TEST_SECRET_KEY: "sk_test_synthetic_reference",
+      STRIPE_TEST_WEBHOOK_SECRET: "whsec_synthetic_reference",
+      STRIPE_TEST_ACCOUNT_REFERENCE: "acct_test_synthetic",
+      FINANCE_LIVE_ENABLED: "enabled",
+      FINANCE_LIVE_CPA_SIGNOFF: "cpa-signoff-ref-0001"
+    },
+    // A non-acct connected account reference is refused.
+    {
+      RWOS_ENV: "test",
+      PAYOUT_TEST_MODE_ENABLED: "enabled",
+      STRIPE_TEST_MODE_ENABLED: "enabled",
+      STRIPE_TEST_SECRET_KEY: "sk_test_synthetic_reference",
+      STRIPE_TEST_WEBHOOK_SECRET: "whsec_synthetic_reference",
+      STRIPE_TEST_ACCOUNT_REFERENCE: "acct_test_synthetic",
+      STRIPE_TEST_PAYOUT_CONNECTED_ACCOUNT: "not_an_account"
+    }
+  ])("rejects an improperly gated worker payout test-mode configuration", (env) => {
+    expect(validateRuntimeConfig(env)).toMatchObject({ success: false });
+  });
+
   it.each([
     { RWOS_ENV: "production", STRIPE_TEST_MODE_ENABLED: "enabled" },
     {

@@ -1267,9 +1267,25 @@ model WorkerPayout {
   amountMinor          Int                @map("amount_minor")
   status               WorkerPayoutStatus @default(pending)
   holdUntil            DateTime           @map("hold_until") @db.Timestamptz(3)
+  // Money-flow Phase 2 (two-timer hold): the JOB COMPLETION anchor (latest shift end across the
+  // calculation's worked time) for the 48h dispute/confirmation window, and when that window closed
+  // clean so the amount became CONFIRMED / "registered in the worker's account" (and the worker was
+  // notified). Both nullable: legacy rows backfill completionAt on read; registeredAt is set once.
+  completionAt         DateTime?          @map("completion_at") @db.Timestamptz(3)
+  registeredAt         DateTime?          @map("registered_at") @db.Timestamptz(3)
   releasedAt           DateTime?          @map("released_at") @db.Timestamptz(3)
   paidAt               DateTime?          @map("paid_at") @db.Timestamptz(3)
   heldReason           String?            @map("held_reason")
+  // Money-flow Phase 2: the TEST payment reference recorded when a released payout is marked paid via
+  // the gated test-mode execution — a Stripe TEST transfer id (tr_...) when a test connected account
+  // is configured, otherwise a synthetic reference. Never a real (live) send. Null until paid.
+  paymentRef           String?            @map("payment_ref")
+  // Money-flow Phase 2 (reliable notification): when each of the two worker-facing notices was
+  // actually DELIVERED. The background progression job retries any payout whose amount is confirmed
+  // (registeredAt set) but whose "registered" notice has not been delivered (registeredNotifiedAt
+  // null), and likewise the "paid" notice. Stamped once on a successful send → never sent twice.
+  registeredNotifiedAt DateTime?          @map("registered_notified_at") @db.Timestamptz(3)
+  paidNotifiedAt       DateTime?          @map("paid_notified_at") @db.Timestamptz(3)
   createdAt            DateTime           @default(now()) @map("created_at") @db.Timestamptz(3)
   updatedAt            DateTime           @updatedAt @map("updated_at") @db.Timestamptz(3)
 

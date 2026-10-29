@@ -277,6 +277,7 @@ import { registerDocumentRoutes } from "./documentRoutes";
 import { registerInvoiceRoutes } from "./invoiceRoutes";
 import { createPrismaRequestPricingSnapshotCapture } from "./requestPricingSnapshot";
 import { materializeAndListWorkerPayouts } from "./workerPayoutRepository";
+import { executeTestWorkerPayout, isPayoutTestExecutionEnabled } from "./workerPayoutExecution";
 import {
   WORKER_AGREEMENT_VERSIONS,
   electClassification,
@@ -302,6 +303,7 @@ import { deriveOrderLifecycle } from "@rwos/shared";
 import { deriveWorkerCancellationPenalty, WORKER_SUSPENSION_DAYS } from "@rwos/shared";
 import { notifyClient } from "./notifications/clientNotifications";
 import { notifyWorkerPayoutPaid, notifyWorkerAccountPenalty } from "./notifications/workerNotifications";
+import { createWorkerPayoutProgressionRunner, startWorkerPayoutProgressionSchedule } from "./workerPayoutProgression";
 import { raiseWorkerDispute, listWorkerDisputes, withdrawWorkerDispute } from "./workerDisputeRepository";
 import { createEmployerOrderWithChildren, listEmployerOrders, getEmployerOrder, submitEmployerOrder, cancelEmployerOrder } from "./employerOrderRepository";
 import { listMarketWagesForResidence, listAllMarketWages, upsertMarketWage } from "./marketWageRepository";
@@ -5566,6 +5568,68 @@ export function buildApi(options: BuildApiOptions = {}) {
     return reply.code(200).send({ payout: { id: payout.id, status: "paid" }, workerNotification: notified.status });
   });
 
+  // Money-flow Phase 2: mark a RELEASED worker payout `paid` through the TEST-mode execution — a Stripe
+  // TEST transfer to a configured test connected account, or a recorded SYNTHETIC reference otherwise.
+  // Gated behind PAYOUT_TEST_MODE_ENABLED *and* the Stripe TEST keys; INDEPENDENT of FINANCE_LIVE_ENABLED
+  // (which stays off) and never reads it. No real funds move; the test client refuses any non-sk_test_
+  // secret. Idempotent and status-guarded. Admin-gated. See docs/finance/WORKER_PAYOUT_TEST_EXECUTION.md.
+  app.post("/platform/worker-payouts/:payoutId/execute-test-payout", async (request, reply) => {
+    const session = await authService.validateSession(readBearerToken(request.headers.authorization));
+    if (!session.authenticated || !session.user) return sendJobRequestDenied(reply);
+    await jobRequestService.listAdminIntake({ session, roles: await resolveAuthorizationRoles(session.user.id) });
+    if (!prisma) return reply.code(503).send({ error: "RWOS_UNAVAILABLE", message: "Not available." });
+    // Production-safe gate: runtimeConfig.payoutTestModeEnabled is false in production regardless of the
+    // flag, requires the Stripe TEST keys, and is derived from this app's env — plus the process-env
+    // guard the execution module itself re-checks. FINANCE_LIVE_ENABLED is never consulted.
+    if (!runtimeConfig.payoutTestModeEnabled || !isPayoutTestExecutionEnabled()) {
+      return reply
+        .code(423)
+        .send({ error: "RWOS_PAYOUT_TEST_DISABLED", message: "Worker payout test-mode execution is disabled." });
+    }
+
+    const payoutId = readRouteParam(request.params, "payoutId");
+    const result = await executeTestWorkerPayout(prisma, { payoutId });
+    if (!result.ok) {
+      const map: Record<typeof result.reason, number> = {
+        execution_disabled: 423,
+        stripe_unconfigured: 503,
+        payout_not_found: 404,
+        payout_not_released: 409,
+        conflict: 409
+      };
+      return reply
+        .code(map[result.reason])
+        .send({ error: `RWOS_PAYOUT_${result.reason.toUpperCase()}`, message: "This payout cannot be paid now." });
+    }
+
+    // Best-effort "money received" notice, with the TEST reference. Never blocks the paid result. On a
+    // successful send we stamp paid_notified_at so the background progression job does not re-send;
+    // if it fails (or the mailer is unconfigured) the marker stays null and the job retries it later.
+    const notified = await notifyWorkerPayoutPaid(prisma, emailSender, {
+      workerIdentityId: result.payout.workerIdentityId,
+      amountMinor: result.payout.amountMinor,
+      currency: result.payout.currency,
+      reference: result.payout.paymentRef
+    });
+    if (notified.status === "sent") {
+      await prisma.workerPayout.updateMany({
+        where: { id: result.payout.id, paidNotifiedAt: null },
+        data: { paidNotifiedAt: new Date() }
+      });
+    }
+    return reply.code(200).send({
+      payout: {
+        id: result.payout.id,
+        status: result.payout.status,
+        paymentRef: result.payout.paymentRef,
+        paidAt: result.payout.paidAt,
+        mode: result.payout.mode
+      },
+      synthetic: true,
+      workerNotification: notified.status
+    });
+  });
+
   // Apply a worker late-cancellation penalty — the GOVERNED ADMIN action behind the recommendation the
   // worker-withdraw endpoint surfaces. "suspend" disables the account for 7 days (auto-reinstated at
   // sign-in once suspended_until passes); "permanent_close" closes it. Admin-gated; the worker is
@@ -8487,7 +8551,12 @@ export function buildApi(options: BuildApiOptions = {}) {
     if (!identity) {
       return reply.code(200).send({ toPay: [], paid: [], summary: { currency: "CAD", toPayMinor: 0, paidMinor: 0 }, synthetic: true });
     }
-    const payouts = await materializeAndListWorkerPayouts(prisma!, identity.id, new Date());
+    // Materialize for immediacy so the worker sees current state on read, but DO NOT send any email
+    // here — the read path must not await notifications. The background progression job
+    // (startWorkerPayoutProgressionSchedule) owns sending the "registered" notice and retrying any
+    // that failed, driven by the durable registered_notified_at / paid_notified_at markers. So this
+    // read ignores `newlyRegistered`: registeredAt may be persisted here, but the job delivers the notice.
+    const { payouts } = await materializeAndListWorkerPayouts(prisma!, identity.id, new Date());
     const toPay = payouts.filter((p) => p.status === "pending" || p.status === "held" || p.status === "released");
     const paid = payouts.filter((p) => p.status === "paid");
     const currency = payouts[0]?.currency ?? "CAD";
@@ -9018,6 +9087,25 @@ export function buildApi(options: BuildApiOptions = {}) {
         country: process.env.ADZUNA_COUNTRY ?? "ca"
       });
       const stop = startJobScannerSchedule({ prisma, client, queries, intervalMinutes, logger });
+      app.addHook("onClose", async () => stop());
+    }
+  }
+
+  // Money-flow Phase 2: BACKGROUND worker-payout progression — the real driver of the payout lifecycle
+  // and its notifications, independent of any worker page view. OFF by default (its own env flag):
+  // starts only when WORKER_PAYOUT_PROGRESSION_INTERVAL_MIN is a positive number. Even then every pass
+  // is fail-closed behind the durable kill switch (payment_sweep_control row "worker_payout_progression",
+  // default OFF) and serialized by a cross-instance lease. It moves no money and never reads
+  // FINANCE_LIVE_ENABLED. See docs/finance/WORKER_PAYOUT_TEST_EXECUTION.md.
+  if (prisma && process.env.WORKER_PAYOUT_PROGRESSION_INTERVAL_MIN) {
+    const intervalMinutes = Number(process.env.WORKER_PAYOUT_PROGRESSION_INTERVAL_MIN);
+    if (Number.isFinite(intervalMinutes) && intervalMinutes > 0) {
+      const runner = createWorkerPayoutProgressionRunner({
+        prisma,
+        emailSender,
+        emitMetrics: (m) => logger.info("worker_payout.progression.metrics", { ...m })
+      });
+      const stop = startWorkerPayoutProgressionSchedule({ runner, intervalMinutes, logger });
       app.addHook("onClose", async () => stop());
     }
   }
