@@ -627,3 +627,54 @@ describe("open marketplace transport", () => {
     expect((await missT.expressInterest("33333333-3333-4333-8333-333333333333")).status).toBe("not_found");
   });
 });
+
+describe("my applications (interests) transport", () => {
+  const origin = "https://api.example.com";
+  function withSession() {
+    const v = vault();
+    v.stored = "session-token-ffffffffffff";
+    return v;
+  }
+
+  it("projects my interests with the privacy-safe job summary + linked offer status", async () => {
+    const fetchMock = vi.fn(async () =>
+      response(200, {
+        count: 1,
+        interests: [
+          {
+            jobRequestId: "44444444-4444-4444-8444-444444444444",
+            status: "offer_created",
+            createdAt: "2026-07-01T00:00:00.000Z",
+            offerStatus: "sent",
+            summary: {
+              role: "Cook",
+              title: "Dinner cook",
+              employer: { id: "org-9", name: "Maple Residence" },
+              areaLabel: "Laval, QC",
+              startAt: "2026-07-05T16:00:00.000Z",
+              endAt: "2026-07-05T23:00:00.000Z"
+            }
+          }
+        ]
+      })
+    );
+    const transport = createMobileSessionTransport({ apiOrigin: origin, vault: withSession(), fetch: fetchMock });
+    const result = await transport.myInterests();
+    expect(result.status).toBe("ready");
+    if (result.status === "ready") {
+      expect(result.data[0]).toMatchObject({ status: "offer_created", offerStatus: "sent" });
+      expect(result.data[0]!.summary).toMatchObject({ title: "Dinner cook", employerName: "Maple Residence", areaLabel: "Laval, QC" });
+    }
+    expect(fetchMock).toHaveBeenCalledWith(
+      `${origin}/marketplace/my-interests`,
+      expect.objectContaining({ method: "GET", headers: expect.objectContaining({ authorization: "Bearer session-token-ffffffffffff" }) })
+    );
+  });
+
+  it("maps empty → empty and no session → denied", async () => {
+    const emptyT = createMobileSessionTransport({ apiOrigin: origin, vault: withSession(), fetch: vi.fn(async () => response(200, { count: 0, interests: [] })) });
+    expect((await emptyT.myInterests()).status).toBe("empty");
+    const deniedT = createMobileSessionTransport({ apiOrigin: origin, vault: vault(), fetch: vi.fn(async () => response(200, { interests: [] })) });
+    expect((await deniedT.myInterests()).status).toBe("denied");
+  });
+});

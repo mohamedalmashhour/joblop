@@ -434,6 +434,31 @@ export function createMobileSessionTransport(options: {
         return { status: "error" };
       }
     },
+    // The worker's own applications ("My interests") from GET /marketplace/my-interests — each with a
+    // privacy-safe job summary and the linked governed-offer status when one exists. Read-only; it
+    // reflects intent the worker already expressed, never creating an offer or assignment.
+    async myInterests(): Promise<
+      | Readonly<{ status: "ready"; data: readonly MarketplaceInterest[] }>
+      | Readonly<{ status: "empty" | "denied" | "error" }>
+    > {
+      const token = await options.vault.read();
+      if (!token) return { status: "denied" };
+      try {
+        const response = await request(`${origin}/marketplace/my-interests`, {
+          method: "GET",
+          headers: { accept: "application/json", authorization: `Bearer ${token}` },
+          cache: "no-store"
+        });
+        if (response.status === 401 || response.status === 403) return { status: "denied" };
+        if (!response.ok) return { status: "error" };
+        const payload = (await response.json()) as { interests?: unknown };
+        if (!Array.isArray(payload.interests)) return { status: "error" };
+        const data = payload.interests.map(parseMarketplaceInterest).filter((v): v is MarketplaceInterest => v !== null);
+        return data.length === 0 ? { status: "empty" } : { status: "ready", data };
+      } catch {
+        return { status: "error" };
+      }
+    },
     async respondToWorkerOffer(
       input: Readonly<{
         offerId: string;
@@ -716,5 +741,45 @@ function parseMarketplaceJobDetail(input: unknown): MarketplaceJobDetail | null 
     description: typeof j.description === "string" ? j.description : null,
     duties: typeof j.duties === "string" ? j.duties : null,
     qualifications
+  };
+}
+
+// The worker's own application to an open posting: their interest status + the linked governed-offer
+// status (when dispatch has created one), plus a privacy-safe job summary.
+export type MarketplaceInterest = Readonly<{
+  jobRequestId: string;
+  status: string;
+  createdAt: string;
+  offerStatus: string | null;
+  summary: Readonly<{ role: string; title: string; employerName: string; areaLabel: string | null; startAt: string; endAt: string }> | null;
+}>;
+
+function parseMarketplaceInterest(input: unknown): MarketplaceInterest | null {
+  if (typeof input !== "object" || input === null) return null;
+  const i = input as Record<string, unknown>;
+  const jobRequestId = str(i.jobRequestId);
+  if (!jobRequestId) return null;
+  const s = i.summary;
+  const summary =
+    typeof s === "object" && s !== null
+      ? (() => {
+          const sr = s as Record<string, unknown>;
+          const employer = (typeof sr.employer === "object" && sr.employer !== null ? sr.employer : {}) as Record<string, unknown>;
+          return {
+            role: str(sr.role),
+            title: str(sr.title, str(sr.role)),
+            employerName: str(employer.name),
+            areaLabel: typeof sr.areaLabel === "string" ? sr.areaLabel : null,
+            startAt: str(sr.startAt),
+            endAt: str(sr.endAt)
+          };
+        })()
+      : null;
+  return {
+    jobRequestId,
+    status: str(i.status, "submitted"),
+    createdAt: str(i.createdAt),
+    offerStatus: typeof i.offerStatus === "string" ? i.offerStatus : null,
+    summary
   };
 }

@@ -7,12 +7,7 @@ import { WorkerServiceScreen } from "../features/worker-service";
 import type { WorkerServiceMode } from "../features/worker-service/workerServiceContent";
 import { WorkerCalendarPanel } from "../features/worker-calendar";
 import { MarketplaceJobScreen, MarketplaceSearchScreen } from "../features/marketplace";
-import {
-  ApplicationDetailsScreen,
-  ConfirmationDetailsScreen,
-  MyShiftsScreen,
-  OfferDetailsScreen
-} from "../features/applications";
+import { MyWorkScreen } from "../features/my-work";
 import { WorkerAttendanceScreen } from "../features/worker-attendance";
 import type { WorkerAttendanceStage } from "../features/worker-attendance/workerAttendanceContent";
 import { WorkerTimesheetScreen } from "../features/worker-timesheets";
@@ -32,9 +27,6 @@ type Screen =
   | { name: "available" }
   | { name: "marketplaceJob"; jobRequestId: string; postalCode: string | null }
   | { name: "myShifts" }
-  | { name: "applicationDetails"; applicationId: string }
-  | { name: "offerDetails"; offerId: string }
-  | { name: "confirmationDetails"; confirmationId: string }
   | { name: "calendar" }
   | { name: "attendance" }
   | { name: "timesheet" }
@@ -122,26 +114,7 @@ export function WorkerNavigator({
           />
         );
       case "myShifts":
-        return (
-          <MyShiftsScreen
-            onOpenApplication={(applicationId) => push({ name: "applicationDetails", applicationId })}
-            onOpenOffer={(offerIdValue) => push({ name: "offerDetails", offerId: offerIdValue })}
-            onOpenConfirmation={(confirmationId) => push({ name: "confirmationDetails", confirmationId })}
-          />
-        );
-      case "applicationDetails":
-        return <ApplicationDetailsScreen applicationId={current.applicationId} onBack={back} />;
-      case "offerDetails":
-        return <OfferDetailsScreen offerId={current.offerId} onBack={back} onDone={() => selectTab("myShifts")} />;
-      case "confirmationDetails":
-        return (
-          <ConfirmationDetailsScreen
-            confirmationId={current.confirmationId}
-            onBack={back}
-            onDone={() => selectTab("myShifts")}
-            onOpenAttendance={() => push({ name: "attendance" })}
-          />
-        );
+        return <MyWorkScreen transport={transport} />;
       case "calendar":
         return <WorkerCalendarPanel allowFixturePreview={false} offerId={offerId} transport={transport} />;
       case "attendance":
