@@ -203,7 +203,13 @@ import {
   rankLeadsForWorker,
   prioritizeProLeads,
   type WorkerMatchProfile,
-  type ExternalJobLead
+  type ExternalJobLead,
+  parseGradePostingRequest,
+  gradePostingFromRequest,
+  WIZARD_DEGREE_ANCHORS,
+  WIZARD_FACTOR_ORDER,
+  FACTOR_LABELS,
+  FAMILY_LABELS
 } from "@rwos/shared";
 import {
   createTrustedServiceIdentityHeaders,
@@ -4001,6 +4007,46 @@ export function buildApi(options: BuildApiOptions = {}) {
     }
     const record = await verificationService.requestEmployerVerification({ organizationId });
     return reply.code(200).send({ status: record.status });
+  });
+
+  // Employer: ADVISORY job grading (ACR-0005). Computes a pay-equity-defensible tier + market band
+  // from the structured wizard input, with a gender-neutral CNESST audit trail. ADVISORY ONLY — it
+  // never sets binding pay, moves no money, and (this phase) does not persist (audit persistence is a
+  // separate, gated follow-up). Owner/administrator of the URL org only. Input is fail-closed via
+  // parseGradePostingRequest; the engine is the library's deterministic gradePosting composition.
+  app.post("/organizations/:organizationId/job-grading/evaluate", async (request, reply) => {
+    const session = await authService.validateSession(readBearerToken(request.headers.authorization));
+    if (!session.authenticated || !session.user) {
+      return reply.code(401).send({ error: "RWOS_JOBGRADE_DENIED", message: "Authentication is required." });
+    }
+    const organizationId = readRouteParam(request.params, "organizationId");
+    if (!isCanonicalUuid(organizationId) || !(await requireActiveOrgMembership(session.user.id, organizationId, ["ORGANIZATION_OWNER", "ORGANIZATION_ADMINISTRATOR"]))) {
+      return reply.code(403).send({ error: "RWOS_JOBGRADE_DENIED", message: "Organization owner or administrator authority is required." });
+    }
+    const parsed = parseGradePostingRequest(request.body);
+    if ("status" in parsed) {
+      return reply.code(400).send({ error: parsed.reason, message: "The grading request is invalid." });
+    }
+    const result = gradePostingFromRequest(parsed);
+    if (result.status !== "graded") {
+      return reply.code(422).send({ error: result.reason, message: "The posting could not be graded." });
+    }
+    return reply.code(200).send(result);
+  });
+
+  // Employer: the bilingual wizard content (statutory factors, degree anchors, labels) for the grading
+  // wizard UI. Any authenticated user; static content only, no org data.
+  app.get("/job-grading/anchors", async (request, reply) => {
+    const session = await authService.validateSession(readBearerToken(request.headers.authorization));
+    if (!session.authenticated || !session.user) {
+      return reply.code(401).send({ error: "RWOS_JOBGRADE_DENIED", message: "Authentication is required." });
+    }
+    return reply.code(200).send({
+      factors: WIZARD_FACTOR_ORDER,
+      factorLabels: FACTOR_LABELS,
+      familyLabels: FAMILY_LABELS,
+      anchors: WIZARD_DEGREE_ANCHORS
+    });
   });
 
   // Provider callback / webhook — HMAC-verified, idempotent, normalized. Never trusts an
