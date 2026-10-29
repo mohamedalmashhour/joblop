@@ -302,7 +302,8 @@ import { buildCalendarExport } from "@rwos/shared";
 import { deriveOrderLifecycle } from "@rwos/shared";
 import { deriveWorkerCancellationPenalty, WORKER_SUSPENSION_DAYS } from "@rwos/shared";
 import { notifyClient } from "./notifications/clientNotifications";
-import { notifyWorkerPayoutPaid, notifyWorkerPayoutRegistered, notifyWorkerAccountPenalty } from "./notifications/workerNotifications";
+import { notifyWorkerPayoutPaid, notifyWorkerAccountPenalty } from "./notifications/workerNotifications";
+import { createWorkerPayoutProgressionRunner, startWorkerPayoutProgressionSchedule } from "./workerPayoutProgression";
 import { raiseWorkerDispute, listWorkerDisputes, withdrawWorkerDispute } from "./workerDisputeRepository";
 import { createEmployerOrderWithChildren, listEmployerOrders, getEmployerOrder, submitEmployerOrder, cancelEmployerOrder } from "./employerOrderRepository";
 import { listMarketWagesForResidence, listAllMarketWages, upsertMarketWage } from "./marketWageRepository";
@@ -5601,13 +5602,21 @@ export function buildApi(options: BuildApiOptions = {}) {
         .send({ error: `RWOS_PAYOUT_${result.reason.toUpperCase()}`, message: "This payout cannot be paid now." });
     }
 
-    // Best-effort "money received" notice, with the TEST reference. Never blocks the paid result.
+    // Best-effort "money received" notice, with the TEST reference. Never blocks the paid result. On a
+    // successful send we stamp paid_notified_at so the background progression job does not re-send;
+    // if it fails (or the mailer is unconfigured) the marker stays null and the job retries it later.
     const notified = await notifyWorkerPayoutPaid(prisma, emailSender, {
       workerIdentityId: result.payout.workerIdentityId,
       amountMinor: result.payout.amountMinor,
       currency: result.payout.currency,
       reference: result.payout.paymentRef
     });
+    if (notified.status === "sent") {
+      await prisma.workerPayout.updateMany({
+        where: { id: result.payout.id, paidNotifiedAt: null },
+        data: { paidNotifiedAt: new Date() }
+      });
+    }
     return reply.code(200).send({
       payout: {
         id: result.payout.id,
@@ -8542,12 +8551,12 @@ export function buildApi(options: BuildApiOptions = {}) {
     if (!identity) {
       return reply.code(200).send({ toPay: [], paid: [], summary: { currency: "CAD", toPayMinor: 0, paidMinor: 0 }, synthetic: true });
     }
-    const { payouts, newlyRegistered } = await materializeAndListWorkerPayouts(prisma!, identity.id, new Date());
-    // The 48h dispute window closed clean for these payouts this read → the amount is now confirmed
-    // ("registered in your account"). Notify once (best-effort); the "transferred/paid" notice comes later.
-    for (const r of newlyRegistered) {
-      await notifyWorkerPayoutRegistered(prisma!, emailSender, { workerIdentityId: r.workerIdentityId, amountMinor: r.amountMinor, currency: r.currency });
-    }
+    // Materialize for immediacy so the worker sees current state on read, but DO NOT send any email
+    // here — the read path must not await notifications. The background progression job
+    // (startWorkerPayoutProgressionSchedule) owns sending the "registered" notice and retrying any
+    // that failed, driven by the durable registered_notified_at / paid_notified_at markers. So this
+    // read ignores `newlyRegistered`: registeredAt may be persisted here, but the job delivers the notice.
+    const { payouts } = await materializeAndListWorkerPayouts(prisma!, identity.id, new Date());
     const toPay = payouts.filter((p) => p.status === "pending" || p.status === "held" || p.status === "released");
     const paid = payouts.filter((p) => p.status === "paid");
     const currency = payouts[0]?.currency ?? "CAD";
@@ -9042,6 +9051,25 @@ export function buildApi(options: BuildApiOptions = {}) {
         country: process.env.ADZUNA_COUNTRY ?? "ca"
       });
       const stop = startJobScannerSchedule({ prisma, client, queries, intervalMinutes, logger });
+      app.addHook("onClose", async () => stop());
+    }
+  }
+
+  // Money-flow Phase 2: BACKGROUND worker-payout progression — the real driver of the payout lifecycle
+  // and its notifications, independent of any worker page view. OFF by default (its own env flag):
+  // starts only when WORKER_PAYOUT_PROGRESSION_INTERVAL_MIN is a positive number. Even then every pass
+  // is fail-closed behind the durable kill switch (payment_sweep_control row "worker_payout_progression",
+  // default OFF) and serialized by a cross-instance lease. It moves no money and never reads
+  // FINANCE_LIVE_ENABLED. See docs/finance/WORKER_PAYOUT_TEST_EXECUTION.md.
+  if (prisma && process.env.WORKER_PAYOUT_PROGRESSION_INTERVAL_MIN) {
+    const intervalMinutes = Number(process.env.WORKER_PAYOUT_PROGRESSION_INTERVAL_MIN);
+    if (Number.isFinite(intervalMinutes) && intervalMinutes > 0) {
+      const runner = createWorkerPayoutProgressionRunner({
+        prisma,
+        emailSender,
+        emitMetrics: (m) => logger.info("worker_payout.progression.metrics", { ...m })
+      });
+      const stop = startWorkerPayoutProgressionSchedule({ runner, intervalMinutes, logger });
       app.addHook("onClose", async () => stop());
     }
   }

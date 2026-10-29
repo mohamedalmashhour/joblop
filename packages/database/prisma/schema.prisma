@@ -1280,6 +1280,12 @@ model WorkerPayout {
   // the gated test-mode execution — a Stripe TEST transfer id (tr_...) when a test connected account
   // is configured, otherwise a synthetic reference. Never a real (live) send. Null until paid.
   paymentRef           String?            @map("payment_ref")
+  // Money-flow Phase 2 (reliable notification): when each of the two worker-facing notices was
+  // actually DELIVERED. The background progression job retries any payout whose amount is confirmed
+  // (registeredAt set) but whose "registered" notice has not been delivered (registeredNotifiedAt
+  // null), and likewise the "paid" notice. Stamped once on a successful send → never sent twice.
+  registeredNotifiedAt DateTime?          @map("registered_notified_at") @db.Timestamptz(3)
+  paidNotifiedAt       DateTime?          @map("paid_notified_at") @db.Timestamptz(3)
   createdAt            DateTime           @default(now()) @map("created_at") @db.Timestamptz(3)
   updatedAt            DateTime           @updatedAt @map("updated_at") @db.Timestamptz(3)
 

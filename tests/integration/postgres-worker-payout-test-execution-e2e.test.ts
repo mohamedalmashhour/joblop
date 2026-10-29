@@ -2,6 +2,11 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { randomUUID } from "node:crypto";
 import { buildApi } from "../../apps/api/src/app";
 import { materializeAndListWorkerPayouts } from "../../apps/api/src/workerPayoutRepository";
+import {
+  WORKER_PAYOUT_PROGRESSION_LOCK,
+  createWorkerPayoutProgressionRunner
+} from "../../apps/api/src/workerPayoutProgression";
+import type { EmailMessage, EmailSender } from "../../apps/api/src/mailer/emailSender";
 import { createPrismaClient } from "@rwos/database";
 import type { FastifyInstance } from "fastify";
 
@@ -284,5 +289,112 @@ suite("persisted worker-payout Stripe TEST execution", () => {
     expect(v.stage).toBe("held");
     expect(v.registeredAt).toBeNull();
     expect(out.newlyRegistered.some((r) => r.id === v.id)).toBe(false);
+  });
+
+  // ── BACKGROUND PROGRESSION JOB (finding #1–#3): drives the lifecycle + notifications with NO page
+  // read, fail-closed behind the durable kill switch, and retries an undelivered "registered" notice.
+  const capturing = (sink: EmailMessage[]): EmailSender => ({
+    configured: true,
+    async send(m: EmailMessage) { sink.push(m); return { status: "sent", id: "x" } as const; }
+  });
+  const failing: EmailSender = { configured: true, async send() { return { status: "error" } as const; } };
+
+  async function setProgressionKillSwitch(enabled: boolean) {
+    await prisma.paymentSweepControl.upsert({
+      where: { name: WORKER_PAYOUT_PROGRESSION_LOCK },
+      create: { name: WORKER_PAYOUT_PROGRESSION_LOCK, enabled },
+      update: { enabled }
+    });
+  }
+
+  it("step 8 — the background job is FAIL-CLOSED: with the kill switch off nothing materializes or sends", async () => {
+    await setProgressionKillSwitch(false); // default-off control
+    const completion = new Date("2026-07-01T20:00:00.000Z");
+    const periodEnd = new Date("2026-07-02T00:00:00.000Z");
+    const calcId = await seedLockedCalc({ completion, periodStart: new Date("2026-06-18T00:00:00.000Z"), periodEnd, netPayMinor: 41_000 });
+    const emails: EmailMessage[] = [];
+    const runner = createWorkerPayoutProgressionRunner({ prisma, emailSender: capturing(emails), now: () => new Date(periodEnd.getTime() + 20 * DAY) });
+    const m = await runner.runOnce();
+    expect(m.status).toBe("disabled");
+    expect(emails).toHaveLength(0);
+    const row = await prisma.workerPayout.findFirst({ where: { payrollCalculationId: calcId } });
+    expect(row).toBeNull(); // nothing materialized while fail-closed
+  });
+
+  it("step 9 — enabled: ONE background pass drives finish→48h→registered(+notified)→14d→released, no page read", async () => {
+    await setProgressionKillSwitch(true);
+    const completion = new Date("2026-07-10T20:00:00.000Z");
+    const periodEnd = new Date("2026-07-11T00:00:00.000Z"); // +14d = 2026-07-25
+    const calcId = await seedLockedCalc({ completion, periodStart: new Date("2026-06-27T00:00:00.000Z"), periodEnd, netPayMinor: 52_000 });
+    const now = new Date(periodEnd.getTime() + 20 * DAY); // past BOTH the 48h window and the 14-day hold
+    const emails: EmailMessage[] = [];
+    const runner = createWorkerPayoutProgressionRunner({ prisma, emailSender: capturing(emails), now: () => now });
+
+    const m = await runner.runOnce();
+    expect(m.status).toBe("completed");
+
+    // The payout exists, is registered + released, and its "registered" notice was DELIVERED — all
+    // without any GET /worker/payouts for this calc.
+    const row = await prisma.workerPayout.findFirst({
+      where: { payrollCalculationId: calcId },
+      select: { id: true, status: true, registeredAt: true, registeredNotifiedAt: true, completionAt: true }
+    });
+    expect(row).toBeTruthy();
+    expect(row!.status).toBe("released");
+    expect(row!.registeredAt).not.toBeNull();
+    expect(row!.registeredNotifiedAt).not.toBeNull();
+    expect(row!.completionAt?.toISOString()).toBe(completion.toISOString()); // actual/scheduled completion anchor
+    expect(emails.some((e) => /registered in your account|enregistré dans votre compte/i.test(e.text))).toBe(true);
+
+    // Admin TEST execution → paid, still with no worker page read. The app's own mailer is
+    // unconfigured in this test env, so the inline paid notice is NOT delivered and paid_notified_at
+    // stays null — precisely the case the background retry handles.
+    const exec = await app.inject({ method: "POST", url: `/platform/worker-payouts/${row!.id}/execute-test-payout`, headers: auth(adminToken), payload: {} });
+    expect(exec.statusCode).toBe(200);
+    let paidRow = await prisma.workerPayout.findUnique({ where: { id: row!.id }, select: { status: true, paidAt: true, paymentRef: true, paidNotifiedAt: true } });
+    expect(paidRow?.status).toBe("paid");
+    expect(paidRow?.paymentRef).toBe(`payout-test-synthetic-${row!.id}`);
+    expect(paidRow?.paidNotifiedAt).toBeNull(); // inline send skipped (mailer unconfigured) → pending retry
+
+    // A later background pass with a working mailer DELIVERS the paid notice and stamps the marker —
+    // reliable "money received" delivery with no worker page read.
+    const paidEmails: EmailMessage[] = [];
+    const paidRunner = createWorkerPayoutProgressionRunner({ prisma, emailSender: capturing(paidEmails), now: () => now });
+    await paidRunner.runOnce();
+    paidRow = await prisma.workerPayout.findUnique({ where: { id: row!.id }, select: { status: true, paidAt: true, paymentRef: true, paidNotifiedAt: true } });
+    expect(paidRow?.paidNotifiedAt).not.toBeNull();
+    expect(paidEmails.some((e) => new RegExp(`payout-test-synthetic-${row!.id}`).test(e.text))).toBe(true);
+  });
+
+  it("step 10 — reliable notification: a failed 'registered' send is RETRIED by a later pass until delivered", async () => {
+    await setProgressionKillSwitch(true);
+    const completion = new Date("2026-07-20T20:00:00.000Z");
+    const periodEnd = new Date("2026-07-21T00:00:00.000Z");
+    const calcId = await seedLockedCalc({ completion, periodStart: new Date("2026-07-07T00:00:00.000Z"), periodEnd, netPayMinor: 39_000 });
+    const now = new Date(periodEnd.getTime() + 20 * DAY);
+
+    // (a) First pass: the mailer fails. The payout still REGISTERS, but the notice is NOT delivered →
+    //     registered_notified_at stays null so it will be retried.
+    const failRunner = createWorkerPayoutProgressionRunner({ prisma, emailSender: failing, now: () => now });
+    const mFail = await failRunner.runOnce();
+    expect(mFail.status).toBe("completed");
+    expect(mFail.registeredFailed).toBeGreaterThanOrEqual(1);
+    let row = await prisma.workerPayout.findFirst({
+      where: { payrollCalculationId: calcId },
+      select: { id: true, registeredAt: true, registeredNotifiedAt: true }
+    });
+    expect(row!.registeredAt).not.toBeNull();
+    expect(row!.registeredNotifiedAt).toBeNull(); // not delivered → pending retry
+
+    // (b) Later pass: the mailer works. The notice is now delivered and the marker is stamped.
+    const emails: EmailMessage[] = [];
+    const okRunner = createWorkerPayoutProgressionRunner({ prisma, emailSender: capturing(emails), now: () => now });
+    await okRunner.runOnce();
+    row = await prisma.workerPayout.findFirst({
+      where: { payrollCalculationId: calcId },
+      select: { id: true, registeredAt: true, registeredNotifiedAt: true }
+    });
+    expect(row!.registeredNotifiedAt).not.toBeNull();
+    expect(emails.some((e) => /registered in your account|enregistré dans votre compte/i.test(e.text))).toBe(true);
   });
 });

@@ -59,26 +59,54 @@ export type MaterializedWorkerPayouts = Readonly<{
   newlyRegistered: readonly NewlyRegisteredPayout[];
 }>;
 
-// Job completion = the latest shift end across a calculation's worked-time references (when all the
-// work in the calculation is finished). Falls back to the pay-period end when a calculation has no
-// worked-time refs, so the 48h window still has a defined anchor.
+// Job completion = the latest point at which all the work in the calculation was actually finished.
+// The authoritative signal is the worker's ACTUAL check-out on the approved timesheet that fed the
+// calculation (`Timesheet.actualCheckOutAt` — the normalized, reviewed real shift end), resolved per
+// worked-time reference via its `timesheetId`. When a reference's timesheet carries no actual
+// check-out (e.g. an auto-generated or not-yet-checked-out timesheet), that reference falls back to
+// its `scheduledEndAt`. The calculation's completion is the latest such per-reference value. When a
+// calculation has no worked-time references at all, the caller falls back to the pay-period end, so
+// the 48h dispute window always has a defined anchor.
+export type CompletionRef = Readonly<{ payrollCalculationId: string; timesheetId: string; scheduledEndAt: Date }>;
+
+// Pure completion selection (unit-tested): per worked-time reference, the ACTUAL worker check-out on
+// its timesheet when recorded, otherwise that reference's scheduled end; the calculation's completion
+// is the latest such value across its references. Kept separate from the DB query so the
+// actual-vs-scheduled anchor logic can be verified without seeding the full timesheet FK chain.
+export function resolveCompletionByCalc(
+  refs: readonly CompletionRef[],
+  actualCheckOutByTimesheetId: ReadonlyMap<string, Date | null>
+): Map<string, Date> {
+  const map = new Map<string, Date>();
+  for (const r of refs) {
+    const completion = actualCheckOutByTimesheetId.get(r.timesheetId) ?? r.scheduledEndAt;
+    const current = map.get(r.payrollCalculationId);
+    if (!current || completion.getTime() > current.getTime()) {
+      map.set(r.payrollCalculationId, completion);
+    }
+  }
+  return map;
+}
+
 async function completionByCalc(
   prisma: PrismaClient,
   calcIds: readonly string[]
 ): Promise<Map<string, Date>> {
-  const map = new Map<string, Date>();
-  if (calcIds.length === 0) return map;
+  if (calcIds.length === 0) return new Map();
   const refs = await prisma.payrollWorkedTimeReference.findMany({
     where: { payrollCalculationId: { in: [...calcIds] } },
-    select: { payrollCalculationId: true, scheduledEndAt: true }
+    select: { payrollCalculationId: true, timesheetId: true, scheduledEndAt: true }
   });
-  for (const r of refs) {
-    const current = map.get(r.payrollCalculationId);
-    if (!current || r.scheduledEndAt.getTime() > current.getTime()) {
-      map.set(r.payrollCalculationId, r.scheduledEndAt);
-    }
-  }
-  return map;
+  // Resolve the ACTUAL check-out for each referenced timesheet (null when it has none).
+  const timesheetIds = [...new Set(refs.map((r) => r.timesheetId))];
+  const timesheets = timesheetIds.length
+    ? await prisma.timesheet.findMany({
+        where: { id: { in: timesheetIds } },
+        select: { id: true, actualCheckOutAt: true }
+      })
+    : [];
+  const actualCheckOutById = new Map<string, Date | null>(timesheets.map((t) => [t.id, t.actualCheckOutAt]));
+  return resolveCompletionByCalc(refs, actualCheckOutById);
 }
 
 // Materialize a pending payout for each of the worker's LOCKED payroll calculations that has none,
