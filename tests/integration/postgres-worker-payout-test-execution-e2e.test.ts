@@ -1,19 +1,23 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { randomUUID } from "node:crypto";
 import { buildApi } from "../../apps/api/src/app";
+import { materializeAndListWorkerPayouts } from "../../apps/api/src/workerPayoutRepository";
 import { createPrismaClient } from "@rwos/database";
 import type { FastifyInstance } from "fastify";
 
 // Persisted worker-payout → Stripe TEST execution (Money-flow Phase 2), against REAL Postgres. It
 // proves end-to-end, with no Stripe network (the SYNTHETIC path runs when no test connected account is
 // configured):
-//   1. a LOCKED payroll calculation whose pay-period ended > the two-week hold ago materializes a
-//      worker payout that AUTO-RELEASES on the first /worker/payouts read;
+//   1. a LOCKED payroll calculation whose pay-period + 48h completion window both elapsed materializes
+//      a worker payout that REGISTERS then AUTO-RELEASES on the first /worker/payouts read;
 //   2. the gated admin /execute-test-payout flips the RELEASED payout to `paid`, recording a synthetic
 //      TEST reference — INDEPENDENT of FINANCE_LIVE_ENABLED (which stays off);
 //   3. the worker's /worker/payouts then surfaces it as paid with that reference;
 //   4. a second execution is idempotent (already_paid), and
 //   5. with PAYOUT_TEST_MODE_ENABLED off the endpoint refuses (423) — nothing moves.
+// Plus the TWO-TIMER lifecycle driven through the real repository with controlled time:
+//   6. finish → 48h dispute window (review_window) → registered (once, notify signal) → 14-day hold →
+//      released; and a dispute raised in the window prevents registration (held).
 // TEST-mode only; fail-closed; no real money.
 //
 // Gate: RWOS_TEST_DATABASE_URL (Postgres). No Stripe network is used.
@@ -35,6 +39,7 @@ suite("persisted worker-payout Stripe TEST execution", () => {
   let workerToken = "";
   let workerIdentityId = "";
   let orgId = "";
+  let adminUserId = "";
   let payoutId = "";
   const netPayMinor = 48_000;
   const auth = (t: string) => ({ authorization: `Bearer ${t}` });
@@ -65,7 +70,7 @@ suite("persisted worker-payout Stripe TEST execution", () => {
 
     const admin = await register(`payout-admin-${randomUUID()}@e2e.local`);
     adminToken = admin.token;
-    const adminUserId = admin.user.id;
+    adminUserId = admin.user.id;
     const worker = await register(`payout-worker-${randomUUID()}@e2e.local`);
     workerToken = worker.token;
 
@@ -189,5 +194,95 @@ suite("persisted worker-payout Stripe TEST execution", () => {
     }
     const row = await prisma.workerPayout.findUnique({ where: { id: fresh.id }, select: { status: true, paymentRef: true } });
     expect(row).toMatchObject({ status: "released", paymentRef: null });
+  });
+
+  // Seed a LOCKED calc + period + a worked-time reference whose scheduledEndAt is the job-completion
+  // anchor for the 48h window. Returns the calc id (one payout materialises per calc).
+  async function seedLockedCalc(input: { completion: Date; periodStart: Date; periodEnd: Date; netPayMinor: number }): Promise<string> {
+    const period = await prisma.payrollPeriod.create({
+      data: {
+        organizationId: orgId, jurisdictionCountry: "CA", jurisdictionRegion: "QC",
+        periodStart: input.periodStart, periodEnd: input.periodEnd, timezone: "America/Toronto",
+        currency: "CAD", ruleProviderKey: "synthetic", ruleProviderVersion: "v1", status: "locked",
+        createdByUserId: adminUserId
+      }
+    });
+    const calc = await prisma.payrollCalculation.create({
+      data: {
+        payrollPeriodId: period.id, organizationId: orgId, workerIdentityId, revision: 1, status: "locked",
+        jurisdictionCountry: "CA", jurisdictionRegion: "QC", ruleProviderKey: "synthetic",
+        ruleProviderVersion: "v1", calculationPolicyVersion: "v1", workerClassification: "employee",
+        currency: "CAD", grossPayMinor: input.netPayMinor + 12_000, totalDeductionsMinor: 12_000,
+        netPayMinor: input.netPayMinor, totalEmployerCostMinor: input.netPayMinor + 18_000,
+        calculatedAt: new Date(), createdByUserId: adminUserId
+      }
+    });
+    await prisma.payrollWorkedTimeReference.create({
+      data: {
+        payrollCalculationId: calc.id, timesheetId: randomUUID(), timesheetVersion: 1, timesheetStatus: "locked",
+        payableMinutes: 480, billableMinutes: 480, scheduledStartAt: new Date(input.completion.getTime() - 8 * 3_600_000),
+        scheduledEndAt: input.completion, assignmentId: randomUUID(), workGroupId: randomUUID(),
+        roleDefinitionId: randomUUID(), residenceId: randomUUID(), contractId: randomUUID(), contractVersion: "v1",
+        contractEffectiveFrom: input.periodStart, appliedHourlyRateMinor: 2_500, currency: "CAD",
+        sourceEffectiveInstant: input.completion
+      }
+    });
+    return calc.id;
+  }
+
+  const HOUR = 3_600_000;
+  const DAY = 86_400_000;
+
+  it("step 6 — two-timer: 48h window holds a hold-elapsed payout until registered (once), then releases", async () => {
+    // Period ended long ago (14-day transfer hold elapsed), but the 48h window anchors on completion.
+    const completion = new Date("2026-06-01T20:00:00.000Z"); // +48h = 2026-06-03T20:00Z
+    const periodEnd = new Date("2026-06-03T00:00:00.000Z"); // +14d = 2026-06-17
+    const calcId = await seedLockedCalc({ completion, periodStart: new Date("2026-05-20T00:00:00.000Z"), periodEnd, netPayMinor: 33_000 });
+
+    // (a) Within 48h of completion → review window: pending, NOT registered, NOT released, no signal —
+    //     even though the 14-day transfer hold already elapsed.
+    let out = await materializeAndListWorkerPayouts(prisma, workerIdentityId, new Date(completion.getTime() + HOUR));
+    let v = out.payouts.find((p) => p.payrollCalculationId === calcId)!;
+    expect(v.stage).toBe("review_window");
+    expect(v.registeredAt).toBeNull();
+    expect(v.status).toBe("pending");
+    expect(out.newlyRegistered.some((r) => r.id === v.id)).toBe(false);
+    const payoutRowId = v.id;
+
+    // (b) >48h after completion but before period+14d → REGISTERS (reported once), still pending.
+    const afterWindow = new Date(completion.getTime() + 49 * HOUR); // 2026-06-03T21:00Z < 2026-06-17
+    out = await materializeAndListWorkerPayouts(prisma, workerIdentityId, afterWindow);
+    v = out.payouts.find((p) => p.payrollCalculationId === calcId)!;
+    expect(v.stage).toBe("registered");
+    expect(v.registeredAt).not.toBeNull();
+    expect(v.status).toBe("pending");
+    expect(out.newlyRegistered.some((r) => r.id === payoutRowId)).toBe(true);
+
+    // Idempotent: a second pass at the same time does NOT re-register (no duplicate notify signal).
+    out = await materializeAndListWorkerPayouts(prisma, workerIdentityId, afterWindow);
+    expect(out.newlyRegistered.some((r) => r.id === payoutRowId)).toBe(false);
+
+    // (c) After period+14d (and past the window) → RELEASED (registered + transfer hold elapsed).
+    out = await materializeAndListWorkerPayouts(prisma, workerIdentityId, new Date(periodEnd.getTime() + 15 * DAY));
+    v = out.payouts.find((p) => p.payrollCalculationId === calcId)!;
+    expect(v.status).toBe("released");
+    expect(v.stage).toBe("registered");
+  });
+
+  it("step 7 — a dispute raised in the 48h window prevents registration (held, not registered)", async () => {
+    const completion = new Date("2026-06-05T20:00:00.000Z");
+    const periodEnd = new Date("2026-06-07T00:00:00.000Z");
+    const calcId = await seedLockedCalc({ completion, periodStart: new Date("2026-05-24T00:00:00.000Z"), periodEnd, netPayMinor: 27_000 });
+    await prisma.workerDispute.create({
+      data: { workerIdentityId, payrollCalculationId: calcId, organizationId: orgId, status: "open", category: "pay_amount", reason: "client flagged hours in the window" }
+    });
+
+    // Past the 48h window, but an open dispute blocks registration and pauses the payout.
+    const out = await materializeAndListWorkerPayouts(prisma, workerIdentityId, new Date(completion.getTime() + 49 * HOUR));
+    const v = out.payouts.find((p) => p.payrollCalculationId === calcId)!;
+    expect(v.status).toBe("held");
+    expect(v.stage).toBe("held");
+    expect(v.registeredAt).toBeNull();
+    expect(out.newlyRegistered.some((r) => r.id === v.id)).toBe(false);
   });
 });

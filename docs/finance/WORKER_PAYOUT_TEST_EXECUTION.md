@@ -25,14 +25,30 @@ The payout **ledger** and its release lifecycle were built earlier and are not r
 - `/platform/worker-payouts/:payoutId/mark-paid` — a **hard finance-gated** (423 unless
   `FINANCE_LIVE_ENABLED`) released→paid transition + notification. Left as-is; it is the live-finance seam.
 
-### Hold period — note for review
+### Two-timer hold (owner's model)
 
-The existing ledger uses a **14-day** hold anchored to the pay-period end
-(`WORKER_PAYOUT_HOLD_DAYS = 14`), the practical stand-in for "two weeks after the work". The Phase 2
-brief asked for a **48h** dispute hold. 14 days is **strictly stronger** than 48h for the "a payout
-cannot be paid before it is releasable" guarantee, so this change **kept 14 days** rather than regress a
-money-protection window. If the owner wants the shorter 48h window, change `WORKER_PAYOUT_HOLD_DAYS`
-(one constant) — flagged here for an explicit ruling.
+There are **two distinct timers**, anchored on two different events:
+
+1. **48h dispute / confirmation window** — anchored on **job completion** (the latest shift end across
+   the calculation's worked-time references; `WORKER_PAYOUT_DISPUTE_WINDOW_HOURS = 48`). During this
+   window the money is **not yet the worker's to count on** — the client may still flag something wrong.
+   A dispute raised in the window pauses the payout (`held`). After 48h with **no** dispute the amount
+   becomes **confirmed / "registered in the worker's account"** (`registeredAt` is set) and the worker
+   is notified then (`notifyWorkerPayoutRegistered`).
+2. **14-day transfer hold** — anchored on the **pay-period end** (`WORKER_PAYOUT_HOLD_DAYS = 14`),
+   unchanged. It gates the actual **release → (TEST) transfer** and now applies **only after** the
+   payout is registered.
+
+Lifecycle: finish → **48h dispute window** (`review_window`) → (no dispute) → **registered** + notify
+→ **14-day hold** → `released` → `paid`. The worker's pay view shows exactly three stages —
+"In 48-hour review window" → "Registered in your account — awaiting transfer" → "Paid (reference)" —
+and never shows confirmed-earnings copy during the 48h window.
+
+Pure helpers in `packages/shared/src/domain/workerPayout.ts`: `canRegisterWorkerPayout` (48h,
+completion-anchored), `canReleaseWorkerPayout` / `nextWorkerPayoutStatus` (now require `isRegistered`),
+`workerPayoutStage` (the worker-facing stage). `completion_at` / `registered_at` columns added
+(migration `20261028020000_worker_payout_dispute_window`; both nullable, additive — legacy rows backfill
+`completion_at` on read).
 
 ## What Phase 2 adds (test execution)
 
@@ -53,29 +69,37 @@ money-protection window. If the owner wants the shorter 48h window, change `WORK
 - **Route** — `POST /platform/worker-payouts/:payoutId/execute-test-payout` (admin-gated). Gated on
   `runtimeConfig.payoutTestModeEnabled` (production-safe) **and** the process-env flag; **independent of
   `financeLive`**. Fires the "money received" notice with the reference. Never reads `FINANCE_LIVE_ENABLED`.
-- **Notification** — `notifyWorkerPayoutPaid` now carries the optional reference into the bilingual
-  (FR/EN) "your payment has been sent" email.
-- **Worker view** — `/worker/payouts` and `MyPay.tsx` surface the `paid` state with its reference; the
-  SYNTHETIC/TEST chip stays.
+- **Registration** — `materializeAndListWorkerPayouts` sets `completion_at` (latest shift end) on create
+  and, when the 48h window closes clean, sets `registered_at` and returns the payout in `newlyRegistered`;
+  the `/worker/payouts` route then fires `notifyWorkerPayoutRegistered` once. Release now requires the
+  payout to be registered first.
+- **Notifications** — `notifyWorkerPayoutRegistered` (new, FR/EN) "registered in your account" when the
+  48h window closes; `notifyWorkerPayoutPaid` (FR/EN) now carries the reference for the later "sent/paid".
+- **Worker view** — `/worker/payouts` + `MyPay.tsx` surface the three stages via `stage`:
+  "In 48-hour review window" → "Registered in your account — awaiting transfer" → "Paid (reference)";
+  no confirmed-earnings copy during the review window. The SYNTHETIC/TEST chip stays.
 
 ## Flow
 
-locked payroll calculation → `/worker/payouts` materialises a `pending` payout → hold elapses, no open
-dispute → **auto-released** → admin `POST …/execute-test-payout` (gated) → Stripe TEST transfer *or*
-synthetic reference → payout → `paid` (+ `payment_ref`, `paid_at`) → worker emailed + the pay view shows
-`paid` + reference. A dispute at any point holds the payout and blocks execution (status ≠ `released`).
+locked payroll calculation → `/worker/payouts` materialises a `pending` payout (stage `review_window`) →
+**48h completion-anchored dispute window** elapses with no dispute → **registered** (`registered_at` set,
+worker notified) → **14-day period-end transfer hold** elapses → **released** → admin
+`POST …/execute-test-payout` (gated) → Stripe TEST transfer *or* synthetic reference → `paid`
+(+ `payment_ref`, `paid_at`) → worker emailed + the pay view shows `paid` + reference. A dispute in the
+window holds the payout and blocks registration; a dispute later holds it and blocks execution.
 
 ## Verification
 
-- `pnpm --filter @rwos/config exec tsc --noEmit` ✅ · config vitest **43 passed** ✅
-- `pnpm --filter @rwos/api exec tsc --noEmit` ✅ · eslint ✅ · api vitest **418 passed / 6 skipped** ✅
-- `pnpm typecheck` ✅ · worker `tsc --noEmit` ✅ · `pnpm validate:migrations` ✅
+- `tsc` (api, config, worker, `pnpm typecheck`) ✅ · eslint ✅ · `pnpm validate:migrations` ✅
+- shared vitest **265 passed** ✅ (domain two-timer lifecycle) · api vitest **420 passed / 6 skipped** ✅ ·
+  config vitest **43 passed** ✅
 - **Real reproduction** — `tests/integration/postgres-worker-payout-test-execution-e2e.test.ts` run
-  against a **real Postgres** (full migration history deployed): a locked calculation materialises and
-  auto-releases a payout; the gated endpoint flips it to `paid` with a synthetic reference; the worker
-  read surfaces it; a second call is idempotent; and with the gate off the endpoint refuses (423) with
-  nothing moved. DB inspection confirmed the paid row carries `payment_ref` + `paid_at` and the gated-off
-  rows stayed `released` with no reference.
+  against a **real Postgres** (full migration history deployed): a locked calculation materialises,
+  registers (48h) then auto-releases (14d); the gated endpoint flips it to `paid` with a synthetic
+  reference; the worker read surfaces it; a second call is idempotent; the gate off → 423 with nothing
+  moved; a payout within its 48h window stays `review_window` (unregistered, unreleased even though the
+  14-day hold elapsed), registers exactly once, then releases; and a dispute in the window blocks
+  registration (`held`). DB inspection confirmed `completion_at`/`registered_at`/`payment_ref` states.
 
 ## Real-Stripe-payout follow-up (out of scope)
 

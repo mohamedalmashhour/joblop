@@ -1,5 +1,14 @@
 import type { PrismaClient } from "@rwos/database";
-import { nextWorkerPayoutStatus, workerPayoutHoldUntilMs, type WorkerPayoutStatus } from "@rwos/shared";
+import {
+  WORKER_PAYOUT_HOLD_DAYS,
+  canRegisterWorkerPayout,
+  nextWorkerPayoutStatus,
+  workerPayoutHoldUntilMs,
+  workerPayoutRegisterableAtMs,
+  workerPayoutStage,
+  type WorkerPayoutStage,
+  type WorkerPayoutStatus
+} from "@rwos/shared";
 import { resolvePayChannel, type PayChannel, type PayStatementLine, type SalesTax, type SlipType } from "./payChannel";
 
 export type WorkerPayoutView = Readonly<{
@@ -15,6 +24,13 @@ export type WorkerPayoutView = Readonly<{
   heldReason: string | null;
   // Phase 2: the TEST payment reference recorded when the payout was marked paid (null until paid).
   paymentRef: string | null;
+  // Phase 2 two-timer hold: the job-completion anchor, when the 48h dispute window ends, and when the
+  // amount became confirmed/"registered in the worker's account" (null until registered). `stage` is
+  // the worker-facing state: review_window → registered → paid (or held).
+  completionAt: string | null;
+  disputeWindowEndsAt: string | null;
+  registeredAt: string | null;
+  stage: WorkerPayoutStage;
   periodStart: string;
   periodEnd: string;
   // Phase 2: which channel this payout belongs to, and the statement the worker should see.
@@ -29,16 +45,55 @@ export type WorkerPayoutView = Readonly<{
   workerReceivesMinor: number;
 }>;
 
+/** A payout that just became REGISTERED this pass — the caller fires the "registered in your account"
+ *  notification for each (the amount is now confirmed/the worker's). */
+export type NewlyRegisteredPayout = Readonly<{
+  id: string;
+  workerIdentityId: string;
+  amountMinor: number;
+  currency: string;
+}>;
+
+export type MaterializedWorkerPayouts = Readonly<{
+  payouts: WorkerPayoutView[];
+  newlyRegistered: readonly NewlyRegisteredPayout[];
+}>;
+
+// Job completion = the latest shift end across a calculation's worked-time references (when all the
+// work in the calculation is finished). Falls back to the pay-period end when a calculation has no
+// worked-time refs, so the 48h window still has a defined anchor.
+async function completionByCalc(
+  prisma: PrismaClient,
+  calcIds: readonly string[]
+): Promise<Map<string, Date>> {
+  const map = new Map<string, Date>();
+  if (calcIds.length === 0) return map;
+  const refs = await prisma.payrollWorkedTimeReference.findMany({
+    where: { payrollCalculationId: { in: [...calcIds] } },
+    select: { payrollCalculationId: true, scheduledEndAt: true }
+  });
+  for (const r of refs) {
+    const current = map.get(r.payrollCalculationId);
+    if (!current || r.scheduledEndAt.getTime() > current.getTime()) {
+      map.set(r.payrollCalculationId, r.scheduledEndAt);
+    }
+  }
+  return map;
+}
+
 // Materialize a pending payout for each of the worker's LOCKED payroll calculations that has none,
-// then move each payout to the status the world dictates (pure nextWorkerPayoutStatus): an open
-// dispute on its calculation holds it; a resolved/withdrawn dispute un-holds it; a pending payout
-// past its two-week hold with no dispute is released automatically. Reporting/ledger only: it
-// creates/updates ledger rows; the external Interac/EFT send ("paid") is a provider integration.
+// then move each payout through the two-timer lifecycle (pure helpers): an open dispute holds it; a
+// resolved/withdrawn dispute un-holds it; once its 48h completion-anchored dispute window has elapsed
+// with no dispute it is REGISTERED (the amount becomes confirmed — the caller notifies the worker);
+// and only a REGISTERED pending payout past its 14-day period-end transfer hold with no dispute is
+// released automatically. Reporting/ledger only; the external (TEST) send ("paid") is executed
+// elsewhere. Returns the views plus the payouts that newly registered this pass.
 export async function materializeAndListWorkerPayouts(
   prisma: PrismaClient,
   workerIdentityId: string,
   now: Date
-): Promise<WorkerPayoutView[]> {
+): Promise<MaterializedWorkerPayouts> {
+  const newlyRegistered: NewlyRegisteredPayout[] = [];
   const lockedCalcs = await prisma.payrollCalculation.findMany({
     where: { workerIdentityId, status: "locked" },
     select: {
@@ -54,9 +109,12 @@ export async function materializeAndListWorkerPayouts(
     select: { payrollCalculationId: true }
   });
   const have = new Set(existing.map((e) => e.payrollCalculationId));
+  const completions = await completionByCalc(prisma, lockedCalcs.map((c) => c.id));
   for (const c of lockedCalcs) {
     if (have.has(c.id)) continue;
     const holdUntil = new Date(workerPayoutHoldUntilMs(c.payrollPeriod.periodEnd.getTime()));
+    // The 48h dispute window anchors on job completion (latest shift end), not the pay-period end.
+    const completionAt = completions.get(c.id) ?? c.payrollPeriod.periodEnd;
     await prisma.workerPayout
       .create({
         data: {
@@ -66,7 +124,8 @@ export async function materializeAndListWorkerPayouts(
           currency: c.currency,
           amountMinor: c.netPayMinor,
           status: "pending",
-          holdUntil
+          holdUntil,
+          completionAt
         }
       })
       .catch(() => undefined); // tolerate a concurrent create (unique on payrollCalculationId)
@@ -88,12 +147,47 @@ export async function materializeAndListWorkerPayouts(
   });
   const disputed = new Set(openDisputes.map((d) => d.payrollCalculationId));
 
+  // Completion anchors for every payout's calculation (superset of the locked ones), used to backfill
+  // legacy rows whose completionAt is null and to evaluate the 48h window.
+  const completionAll = await completionByCalc(prisma, payouts.map((p) => p.payrollCalculationId));
+  const holdMs = WORKER_PAYOUT_HOLD_DAYS * 86_400_000;
+
   for (const p of payouts) {
+    const hasOpenDispute = disputed.has(p.payrollCalculationId);
+
+    // Backfill a missing completion anchor (legacy rows): the calc's latest shift end, else the
+    // period-end the 14-day hold was derived from (holdUntil - 14 days). Persist so reads are stable.
+    if (!p.completionAt) {
+      const derived = completionAll.get(p.payrollCalculationId) ?? new Date(p.holdUntil.getTime() - holdMs);
+      await prisma.workerPayout.updateMany({ where: { id: p.id, completionAt: null }, data: { completionAt: derived } });
+      p.completionAt = derived;
+    }
+
+    // 48h dispute/confirmation window → REGISTERED. Set registeredAt once; collect for notification.
+    if (
+      !p.registeredAt &&
+      canRegisterWorkerPayout({
+        status: p.status as WorkerPayoutStatus,
+        isRegistered: false,
+        completionMs: p.completionAt.getTime(),
+        nowMs: now.getTime(),
+        hasOpenDispute
+      })
+    ) {
+      const updated = await prisma.workerPayout.updateMany({ where: { id: p.id, registeredAt: null }, data: { registeredAt: now } });
+      if (updated.count > 0) {
+        p.registeredAt = now;
+        newlyRegistered.push({ id: p.id, workerIdentityId, amountMinor: p.amountMinor, currency: p.currency });
+      }
+    }
+
+    // Status transitions (dispute pause/resume; registered + 14-day hold → released).
     const next = nextWorkerPayoutStatus({
       status: p.status as WorkerPayoutStatus,
+      isRegistered: p.registeredAt !== null,
       holdUntilMs: p.holdUntil.getTime(),
       nowMs: now.getTime(),
-      hasOpenDispute: disputed.has(p.payrollCalculationId)
+      hasOpenDispute
     });
     if (next === p.status) continue;
     const data: { status: WorkerPayoutStatus; releasedAt?: Date; heldReason?: string | null } = { status: next };
@@ -131,7 +225,7 @@ export async function materializeAndListWorkerPayouts(
   });
   const gstQstRegistered = taxProfile?.gstQstRegistered === true;
 
-  return payouts.map((p) => {
+  const views = payouts.map((p): WorkerPayoutView => {
     const period = periodByCalc.get(p.payrollCalculationId);
     const calc = calcById.get(p.payrollCalculationId);
     const channel = resolvePayChannel({
@@ -143,6 +237,7 @@ export async function materializeAndListWorkerPayouts(
       currency: p.currency,
       gstQstRegistered
     });
+    const isRegistered = p.registeredAt !== null;
     return {
       id: p.id,
       payrollCalculationId: p.payrollCalculationId,
@@ -155,6 +250,12 @@ export async function materializeAndListWorkerPayouts(
       paidAt: p.paidAt ? p.paidAt.toISOString() : null,
       heldReason: p.heldReason,
       paymentRef: p.paymentRef,
+      completionAt: p.completionAt ? p.completionAt.toISOString() : null,
+      disputeWindowEndsAt: p.completionAt
+        ? new Date(workerPayoutRegisterableAtMs(p.completionAt.getTime())).toISOString()
+        : null,
+      registeredAt: p.registeredAt ? p.registeredAt.toISOString() : null,
+      stage: workerPayoutStage({ status: p.status as WorkerPayoutStatus, isRegistered }),
       periodStart: period ? period.periodStart.toISOString() : p.holdUntil.toISOString(),
       periodEnd: period ? period.periodEnd.toISOString() : p.holdUntil.toISOString(),
       channel: channel.channel,
@@ -166,4 +267,6 @@ export async function materializeAndListWorkerPayouts(
       workerReceivesMinor: channel.workerReceivesMinor
     };
   });
+
+  return { payouts: views, newlyRegistered };
 }

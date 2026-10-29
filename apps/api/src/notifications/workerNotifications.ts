@@ -44,6 +44,36 @@ export function payoutPaidEmail(params: {
   };
 }
 
+// The "amount is now registered in your account" notice — fired when the 48h dispute/confirmation
+// window closes clean, BEFORE the money is transferred. Distinct from payoutPaidEmail ("sent/paid"):
+// this tells the worker the amount is confirmed as theirs and will be transferred on the normal cycle.
+export function payoutRegisteredEmail(params: {
+  to: string;
+  language: NotificationLanguage;
+  amountMinor: number;
+  currency: string;
+}): EmailMessage {
+  const amount = formatMoney(params.amountMinor, params.currency);
+  if (params.language === "en") {
+    return {
+      to: params.to,
+      subject: "JobLop — your earnings are now confirmed",
+      text:
+        `${amount} is now registered in your account.\n\n` +
+        `This amount is confirmed as yours and will be transferred to you on the normal payment cycle. ` +
+        `You will get a second message once the transfer has been sent.\n\n— JobLop`
+    };
+  }
+  return {
+    to: params.to,
+    subject: "JobLop — vos gains sont maintenant confirmés",
+    text:
+      `${amount} est maintenant enregistré dans votre compte.\n\n` +
+      `Ce montant vous est confirmé et vous sera transféré selon le cycle de paiement habituel. ` +
+      `Vous recevrez un second message une fois le transfert effectué.\n\n— JobLop`
+  };
+}
+
 export function accountPenaltyEmail(params: {
   to: string;
   language: NotificationLanguage;
@@ -92,6 +122,32 @@ export async function notifyWorkerPayoutPaid(
       amountMinor: input.amountMinor,
       currency: input.currency,
       reference: input.reference ?? null
+    });
+    const result = await emailSender.send(message);
+    return { status: result.status === "sent" ? "sent" : result.status === "error" ? "error" : "skipped" };
+  } catch {
+    return { status: "error" };
+  }
+}
+
+// Resolve the worker (identity → user) and send the "registered in your account" email. Best-effort.
+export async function notifyWorkerPayoutRegistered(
+  prisma: PrismaClient,
+  emailSender: EmailSender,
+  input: { workerIdentityId: string; amountMinor: number; currency: string }
+): Promise<WorkerPayoutNotificationResult> {
+  try {
+    const identity = await prisma.workerIdentity.findUnique({
+      where: { id: input.workerIdentityId },
+      select: { user: { select: { emailNormalized: true, primaryLanguage: true } } }
+    });
+    const email = identity?.user?.emailNormalized;
+    if (!email) return { status: "no_recipient" };
+    const message = payoutRegisteredEmail({
+      to: email,
+      language: resolveLanguage(identity?.user?.primaryLanguage),
+      amountMinor: input.amountMinor,
+      currency: input.currency
     });
     const result = await emailSender.send(message);
     return { status: result.status === "sent" ? "sent" : result.status === "error" ? "error" : "skipped" };

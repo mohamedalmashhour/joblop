@@ -1267,6 +1267,12 @@ model WorkerPayout {
   amountMinor          Int                @map("amount_minor")
   status               WorkerPayoutStatus @default(pending)
   holdUntil            DateTime           @map("hold_until") @db.Timestamptz(3)
+  // Money-flow Phase 2 (two-timer hold): the JOB COMPLETION anchor (latest shift end across the
+  // calculation's worked time) for the 48h dispute/confirmation window, and when that window closed
+  // clean so the amount became CONFIRMED / "registered in the worker's account" (and the worker was
+  // notified). Both nullable: legacy rows backfill completionAt on read; registeredAt is set once.
+  completionAt         DateTime?          @map("completion_at") @db.Timestamptz(3)
+  registeredAt         DateTime?          @map("registered_at") @db.Timestamptz(3)
   releasedAt           DateTime?          @map("released_at") @db.Timestamptz(3)
   paidAt               DateTime?          @map("paid_at") @db.Timestamptz(3)
   heldReason           String?            @map("held_reason")

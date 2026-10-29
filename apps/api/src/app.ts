@@ -302,7 +302,7 @@ import { buildCalendarExport } from "@rwos/shared";
 import { deriveOrderLifecycle } from "@rwos/shared";
 import { deriveWorkerCancellationPenalty, WORKER_SUSPENSION_DAYS } from "@rwos/shared";
 import { notifyClient } from "./notifications/clientNotifications";
-import { notifyWorkerPayoutPaid, notifyWorkerAccountPenalty } from "./notifications/workerNotifications";
+import { notifyWorkerPayoutPaid, notifyWorkerPayoutRegistered, notifyWorkerAccountPenalty } from "./notifications/workerNotifications";
 import { raiseWorkerDispute, listWorkerDisputes, withdrawWorkerDispute } from "./workerDisputeRepository";
 import { createEmployerOrderWithChildren, listEmployerOrders, getEmployerOrder, submitEmployerOrder, cancelEmployerOrder } from "./employerOrderRepository";
 import { listMarketWagesForResidence, listAllMarketWages, upsertMarketWage } from "./marketWageRepository";
@@ -8542,7 +8542,12 @@ export function buildApi(options: BuildApiOptions = {}) {
     if (!identity) {
       return reply.code(200).send({ toPay: [], paid: [], summary: { currency: "CAD", toPayMinor: 0, paidMinor: 0 }, synthetic: true });
     }
-    const payouts = await materializeAndListWorkerPayouts(prisma!, identity.id, new Date());
+    const { payouts, newlyRegistered } = await materializeAndListWorkerPayouts(prisma!, identity.id, new Date());
+    // The 48h dispute window closed clean for these payouts this read → the amount is now confirmed
+    // ("registered in your account"). Notify once (best-effort); the "transferred/paid" notice comes later.
+    for (const r of newlyRegistered) {
+      await notifyWorkerPayoutRegistered(prisma!, emailSender, { workerIdentityId: r.workerIdentityId, amountMinor: r.amountMinor, currency: r.currency });
+    }
     const toPay = payouts.filter((p) => p.status === "pending" || p.status === "held" || p.status === "released");
     const paid = payouts.filter((p) => p.status === "paid");
     const currency = payouts[0]?.currency ?? "CAD";

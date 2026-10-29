@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { EmailMessage } from "../mailer/emailSender";
-import { accountPenaltyEmail, notifyWorkerPayoutPaid, payoutPaidEmail } from "./workerNotifications";
+import { accountPenaltyEmail, notifyWorkerPayoutPaid, notifyWorkerPayoutRegistered, payoutPaidEmail, payoutRegisteredEmail } from "./workerNotifications";
 
 describe("worker account penalty copy", () => {
   it("suspension email names the days (FR default + EN)", () => {
@@ -47,6 +47,27 @@ describe("worker payout notification", () => {
     expect(res).toEqual({ status: "sent" });
     expect(sent!.to).toBe("w@x.com");
     expect(sent!.text).toContain("50.00 CAD");
+  });
+
+  it("registered email is distinct from paid — confirms the amount, not a transfer (FR default + EN)", () => {
+    const en = payoutRegisteredEmail({ to: "w@x.com", language: "en", amountMinor: 33000, currency: "CAD" });
+    expect(en.subject).toContain("confirmed");
+    expect(en.text).toContain("registered in your account");
+    expect(en.text).not.toContain("transferred to your account"); // not the "paid/sent" notice
+    const fr = payoutRegisteredEmail({ to: "w@x.com", language: "fr", amountMinor: 33000, currency: "CAD" });
+    expect(fr.subject).toContain("confirmés");
+    expect(fr.text).toContain("enregistré dans votre compte");
+  });
+
+  it("registered dispatcher resolves identity → user email and sends", async () => {
+    let sent: EmailMessage | null = null;
+    const prisma = {
+      workerIdentity: { findUnique: async () => ({ user: { emailNormalized: "w@x.com", primaryLanguage: "en" } }) }
+    } as never;
+    const sender = { configured: true, async send(m: EmailMessage) { sent = m; return { status: "sent", id: "x" } as const; } };
+    const res = await notifyWorkerPayoutRegistered(prisma, sender, { workerIdentityId: "wi1", amountMinor: 5000, currency: "CAD" });
+    expect(res).toEqual({ status: "sent" });
+    expect(sent!.text).toContain("registered in your account");
   });
 
   it("skips (no_recipient) when the worker has no email, without throwing", async () => {
