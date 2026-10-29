@@ -9,8 +9,7 @@ import { WorkerCalendarPanel } from "../features/worker-calendar";
 import { MarketplaceJobScreen, MarketplaceSearchScreen } from "../features/marketplace";
 import { MyWorkScreen } from "../features/my-work";
 import { WorkerScheduleScreen } from "../features/worker-attendance";
-import { WorkerTimesheetScreen } from "../features/worker-timesheets";
-import type { WorkerTimesheetStage } from "../features/worker-timesheets/workerTimesheetContent";
+import { WorkerTimesheetListScreen } from "../features/worker-timesheets";
 import { WorkerEarningsScreen } from "../features/worker-earnings";
 import { WorkerDashboardHandoffScreen, WorkerOnboardingScreen } from "../features/worker-onboarding";
 
@@ -60,7 +59,6 @@ export function WorkerNavigator({
   const [tab, setTab] = useState<TabId>(offerId ? "calendar" : "home");
   const [stack, setStack] = useState<Screen[]>([offerId ? { name: "calendar" } : { name: "home" }]);
   const [serviceMode, setServiceMode] = useState<WorkerServiceMode>("support");
-  const [timesheetStage, setTimesheetStage] = useState<WorkerTimesheetStage>("review");
 
   const current = stack[stack.length - 1]!;
   const push = useCallback((screen: Screen) => setStack((s) => [...s, screen]), []);
@@ -112,20 +110,19 @@ export function WorkerNavigator({
           />
         );
       case "myShifts":
-        return <MyWorkScreen transport={transport} onOpenSchedule={() => push({ name: "attendance" })} />;
+        return (
+          <MyWorkScreen
+            transport={transport}
+            onOpenSchedule={() => push({ name: "attendance" })}
+            onOpenTimesheets={() => push({ name: "timesheet" })}
+          />
+        );
       case "calendar":
         return <WorkerCalendarPanel allowFixturePreview={false} offerId={offerId} transport={transport} />;
       case "attendance":
         return <WorkerScheduleScreen transport={transport} onBack={back} />;
       case "timesheet":
-        return (
-          <WorkerTimesheetScreen
-            onBack={back}
-            onOpenEarnings={() => selectTab("earnings")}
-            onSelectStage={setTimesheetStage}
-            stage={timesheetStage}
-          />
-        );
+        return <WorkerTimesheetListScreen transport={transport} onBack={back} />;
       case "earnings":
         return (
           <WorkerEarningsScreen

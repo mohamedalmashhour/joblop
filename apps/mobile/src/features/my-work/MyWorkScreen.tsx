@@ -22,7 +22,15 @@ type AssignmentsState =
   | { status: "ready"; data: readonly WorkerAssignmentDto[] }
   | { status: "empty" | "denied" | "error" | "unavailable" };
 
-export function MyWorkScreen({ transport, onOpenSchedule }: { transport: MobileSessionTransport | null; onOpenSchedule?: () => void }) {
+export function MyWorkScreen({
+  transport,
+  onOpenSchedule,
+  onOpenTimesheets
+}: {
+  transport: MobileSessionTransport | null;
+  onOpenSchedule?: () => void;
+  onOpenTimesheets?: () => void;
+}) {
   const [interests, setInterests] = useState<InterestsState>({ status: "loading" });
   const [assignments, setAssignments] = useState<AssignmentsState>({ status: "loading" });
 
@@ -49,6 +57,7 @@ export function MyWorkScreen({ transport, onOpenSchedule }: { transport: MobileS
             <Heading>{myWorkCopy.title}</Heading>
             <BodyText>{myWorkCopy.intro}</BodyText>
             {transport && onOpenSchedule ? <Button label="View my schedule & check in" onPress={onOpenSchedule} variant="secondary" /> : null}
+            {transport && onOpenTimesheets ? <Button label="Review my timesheets" onPress={onOpenTimesheets} variant="secondary" /> : null}
           </Card>
 
           {!transport ? (

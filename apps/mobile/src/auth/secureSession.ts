@@ -525,6 +525,72 @@ export function createMobileSessionTransport(options: {
         return { status: "error" };
       }
     },
+    // The worker's own timesheets from GET /worker/timesheets — their shifts' recorded time with review
+    // status. Worker-scoped read; safe projection (no employer economics). Confirm/dispute below are the
+    // worker's governed review actions on a timesheet in worker-review; they compute no payroll and move
+    // no money.
+    async workerTimesheets(): Promise<
+      | Readonly<{ status: "ready"; data: readonly WorkerTimesheet[] }>
+      | Readonly<{ status: "empty" | "denied" | "error" }>
+    > {
+      const token = await options.vault.read();
+      if (!token) return { status: "denied" };
+      try {
+        const response = await request(`${origin}/worker/timesheets`, {
+          method: "GET",
+          headers: { accept: "application/json", authorization: `Bearer ${token}` },
+          cache: "no-store"
+        });
+        if (response.status === 401 || response.status === 403) return { status: "denied" };
+        if (!response.ok) return { status: "error" };
+        const payload = (await response.json()) as { items?: unknown };
+        if (!Array.isArray(payload.items)) return { status: "error" };
+        const data = payload.items.map(parseWorkerTimesheet).filter((v): v is WorkerTimesheet => v !== null);
+        return data.length === 0 ? { status: "empty" } : { status: "ready", data };
+      } catch {
+        return { status: "error" };
+      }
+    },
+    async timesheetConfirm(timesheetId: string, expectedVersion: number): Promise<TimesheetMutationResult> {
+      const token = await options.vault.read();
+      if (!token) return { status: "denied" };
+      try {
+        const response = await request(`${origin}/worker/timesheets/${encodeURIComponent(timesheetId)}/confirm`, {
+          method: "POST",
+          headers: { accept: "application/json", "content-type": "application/json", authorization: `Bearer ${token}` },
+          body: JSON.stringify({ expectedVersion }),
+          cache: "no-store"
+        });
+        if (response.status === 401 || response.status === 403) return { status: "denied" };
+        if (response.status === 404) return { status: "not_found" };
+        if (response.status === 409 || response.status === 412) return { status: "conflict" };
+        if (!response.ok) return { status: "error" };
+        return { status: "ready" };
+      } catch {
+        return { status: "error" };
+      }
+    },
+    async timesheetDispute(timesheetId: string, expectedVersion: number, reason: string): Promise<TimesheetMutationResult> {
+      const token = await options.vault.read();
+      if (!token) return { status: "denied" };
+      if (reason.trim().length === 0) return { status: "invalid" };
+      try {
+        const response = await request(`${origin}/worker/timesheets/${encodeURIComponent(timesheetId)}/dispute`, {
+          method: "POST",
+          headers: { accept: "application/json", "content-type": "application/json", authorization: `Bearer ${token}` },
+          body: JSON.stringify({ expectedVersion, reason: reason.trim() }),
+          cache: "no-store"
+        });
+        if (response.status === 401 || response.status === 403) return { status: "denied" };
+        if (response.status === 404) return { status: "not_found" };
+        if (response.status === 400) return { status: "invalid" };
+        if (response.status === 409 || response.status === 412) return { status: "conflict" };
+        if (!response.ok) return { status: "error" };
+        return { status: "ready" };
+      } catch {
+        return { status: "error" };
+      }
+    },
     async respondToWorkerOffer(
       input: Readonly<{
         offerId: string;
@@ -884,6 +950,46 @@ function parseWorkerAttendanceRecord(input: unknown): WorkerAttendanceRecord | n
     checkInAt: typeof r.checkInAt === "string" ? r.checkInAt : null,
     checkOutAt: typeof r.checkOutAt === "string" ? r.checkOutAt : null,
     exceptionCategory: typeof r.exceptionCategory === "string" ? r.exceptionCategory : null,
+    version: num(r.version) ?? 0,
+    employerName: str(r.employerName),
+    areaLabel: typeof r.areaLabel === "string" ? r.areaLabel : null
+  };
+}
+
+// Safe worker-facing projection of one of the worker's timesheets. No employer economics; only the
+// worker's own recorded time + review status.
+export type WorkerTimesheet = Readonly<{
+  timesheetId: string;
+  assignmentId: string;
+  status: string;
+  scheduledStartAt: string;
+  scheduledEndAt: string;
+  payableMinutes: number | null;
+  billableMinutes: number | null;
+  breakMinutes: number;
+  workerReviewStatus: string;
+  version: number;
+  employerName: string;
+  areaLabel: string | null;
+}>;
+
+export type TimesheetMutationResult = Readonly<{ status: "ready" | "denied" | "not_found" | "conflict" | "invalid" | "error" }>;
+
+function parseWorkerTimesheet(input: unknown): WorkerTimesheet | null {
+  if (typeof input !== "object" || input === null) return null;
+  const r = input as Record<string, unknown>;
+  const timesheetId = str(r.timesheetId);
+  if (!timesheetId) return null;
+  return {
+    timesheetId,
+    assignmentId: str(r.assignmentId),
+    status: str(r.status),
+    scheduledStartAt: str(r.scheduledStartAt),
+    scheduledEndAt: str(r.scheduledEndAt),
+    payableMinutes: num(r.payableMinutes),
+    billableMinutes: num(r.billableMinutes),
+    breakMinutes: num(r.breakMinutes) ?? 0,
+    workerReviewStatus: str(r.workerReviewStatus),
     version: num(r.version) ?? 0,
     employerName: str(r.employerName),
     areaLabel: typeof r.areaLabel === "string" ? r.areaLabel : null

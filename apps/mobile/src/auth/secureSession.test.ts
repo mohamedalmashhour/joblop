@@ -737,3 +737,69 @@ describe("worker attendance transport", () => {
     expect((await noSessionT.attendanceCheckOut("55555555-5555-4555-8555-555555555555", 3)).status).toBe("denied");
   });
 });
+
+describe("worker timesheet transport", () => {
+  const origin = "https://api.example.com";
+  function withSession() {
+    const v = vault();
+    v.stored = "session-token-hhhhhhhhhhhh";
+    return v;
+  }
+
+  it("lists the worker's timesheets (safe projection with review status + version)", async () => {
+    const transport = createMobileSessionTransport({
+      apiOrigin: origin,
+      vault: withSession(),
+      fetch: vi.fn(async () =>
+        response(200, {
+          items: [
+            {
+              timesheetId: "66666666-6666-4666-8666-666666666666",
+              assignmentId: "a1",
+              status: "worker_review",
+              scheduledStartAt: "2026-07-10T12:00:00.000Z",
+              scheduledEndAt: "2026-07-10T20:00:00.000Z",
+              payableMinutes: 450,
+              billableMinutes: 480,
+              breakMinutes: 30,
+              workerReviewStatus: "not_started",
+              version: 1,
+              employerName: "Cedar Residence",
+              areaLabel: "Montreal, QC"
+            }
+          ],
+          nextCursor: null
+        })
+      )
+    });
+    const result = await transport.workerTimesheets();
+    expect(result.status).toBe("ready");
+    if (result.status === "ready") expect(result.data[0]).toMatchObject({ status: "worker_review", payableMinutes: 450, version: 1, employerName: "Cedar Residence" });
+  });
+
+  it("confirms with the expected version and maps 409 → conflict", async () => {
+    const fetchMock = vi.fn(async () => response(200, { timesheet: { id: "x", status: "employer_review", version: 2 } }));
+    const okT = createMobileSessionTransport({ apiOrigin: origin, vault: withSession(), fetch: fetchMock });
+    expect((await okT.timesheetConfirm("66666666-6666-4666-8666-666666666666", 1)).status).toBe("ready");
+    expect(fetchMock).toHaveBeenCalledWith(
+      `${origin}/worker/timesheets/66666666-6666-4666-8666-666666666666/confirm`,
+      expect.objectContaining({ method: "POST", body: JSON.stringify({ expectedVersion: 1 }) })
+    );
+    const conflictT = createMobileSessionTransport({ apiOrigin: origin, vault: withSession(), fetch: vi.fn(async () => response(409, {})) });
+    expect((await conflictT.timesheetConfirm("66666666-6666-4666-8666-666666666666", 1)).status).toBe("conflict");
+  });
+
+  it("disputes with a reason; an empty reason is rejected client-side without a request", async () => {
+    const fetchMock = vi.fn(async () => response(200, { timesheet: { id: "x", status: "correction_required", version: 2 } }));
+    const okT = createMobileSessionTransport({ apiOrigin: origin, vault: withSession(), fetch: fetchMock });
+    expect((await okT.timesheetDispute("66666666-6666-4666-8666-666666666666", 1, "Hours look short")).status).toBe("ready");
+    expect(fetchMock).toHaveBeenCalledWith(
+      `${origin}/worker/timesheets/66666666-6666-4666-8666-666666666666/dispute`,
+      expect.objectContaining({ method: "POST", body: JSON.stringify({ expectedVersion: 1, reason: "Hours look short" }) })
+    );
+    const emptyReason = createMobileSessionTransport({ apiOrigin: origin, vault: withSession(), fetch: fetchMock });
+    const r = await emptyReason.timesheetDispute("66666666-6666-4666-8666-666666666666", 1, "   ");
+    expect(r.status).toBe("invalid");
+    expect(fetchMock).toHaveBeenCalledTimes(1); // no second request fired for the empty reason
+  });
+});
