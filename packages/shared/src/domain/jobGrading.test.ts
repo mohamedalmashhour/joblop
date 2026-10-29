@@ -12,16 +12,16 @@ import {
   type FactorDegrees
 } from "./jobGrading";
 
-const deg = (s: number, a: number, c: number, r: number): FactorDegrees => ({
+const deg = (s: number, e: number, r: number, w: number): FactorDegrees => ({
   skill: s as FactorDegree,
-  autonomy: a as FactorDegree,
-  complexity: c as FactorDegree,
-  responsibility: r as FactorDegree
+  effort: e as FactorDegree,
+  responsibility: r as FactorDegree,
+  workingConditions: w as FactorDegree
 });
 
 describe("job grading — the four compensable factors", () => {
   it("has exactly the four ACR-0005 factors", () => {
-    expect([...COMPENSABLE_FACTORS]).toEqual(["skill", "autonomy", "complexity", "responsibility"]);
+    expect([...COMPENSABLE_FACTORS]).toEqual(["skill", "effort", "responsibility", "workingConditions"]);
   });
 });
 
@@ -69,7 +69,7 @@ describe("job grading — weights", () => {
   it("weighting a factor can raise the tier (weight is an open calibration knob)", () => {
     const d = deg(5, 1, 1, 1);
     expect(gradeRole("service", d)).toMatchObject({ tier: 1 }); // equal weights: raw 8 → 0.25 → 1
-    const weighted = gradeRole("service", d, { weights: { skill: 3, autonomy: 1, complexity: 1, responsibility: 1 } });
+    const weighted = gradeRole("service", d, { weights: { skill: 3, effort: 1, responsibility: 1, workingConditions: 1 } });
     // raw = 15+1+1+1 = 18; totalWeight 6 → (18-6)/(30-6)=0.5 → ceil(2)=2
     expect(weighted).toMatchObject({ tier: 2 });
   });
@@ -104,17 +104,17 @@ describe("job grading — fail-closed validation (never a silent default)", () =
     expect(gradeRole("service", { ...deg(3, 3, 3, 3), skill: 2.5 as FactorDegree }).status).toBe("invalid");
   });
   it("rejects a missing factor", () => {
-    const missing = { skill: 3, autonomy: 3, complexity: 3 } as unknown as FactorDegrees;
+    const missing = { skill: 3, effort: 3, responsibility: 3 } as unknown as FactorDegrees;
     const r = gradeRole("service", missing);
     expect(r.status).toBe("invalid");
-    if (r.status === "invalid") expect(r.reason).toContain("responsibility");
+    if (r.status === "invalid") expect(r.reason).toContain("workingConditions");
   });
   it("rejects invalid or all-zero weights", () => {
     expect(
-      gradeRole("service", deg(3, 3, 3, 3), { weights: { skill: 0, autonomy: 0, complexity: 0, responsibility: 0 } })
+      gradeRole("service", deg(3, 3, 3, 3), { weights: { skill: 0, effort: 0, responsibility: 0, workingConditions: 0 } })
     ).toEqual({ status: "invalid", reason: "RWOS_JOBGRADE_WEIGHTS_ZERO" });
     expect(
-      gradeRole("service", deg(3, 3, 3, 3), { weights: { skill: -1, autonomy: 1, complexity: 1, responsibility: 1 } })
+      gradeRole("service", deg(3, 3, 3, 3), { weights: { skill: -1, effort: 1, responsibility: 1, workingConditions: 1 } })
         .status
     ).toBe("invalid");
   });

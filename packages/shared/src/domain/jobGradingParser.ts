@@ -20,10 +20,14 @@ export interface JobGradingParser {
 // Signal lexicon per factor (lowercased substring match, EN + FR). Each hit lifts the factor one
 // degree above the base of 2, capped at 5. Deterministic for a given description.
 const SIGNALS: Readonly<Record<(typeof COMPENSABLE_FACTORS)[number], readonly string[]>> = {
-  skill: ["certified", "certifié", "licensed", "licence", "diploma", "diplôme", "degree", "expert", "senior", "specialist", "spécialiste", "advanced", "avancé"],
-  autonomy: ["independent", "autonome", "autonomy", "lead", "responsable", "manage", "gérer", "supervise", "superviser", "oversee", "owns", "sans supervision"],
-  complexity: ["complex", "complexe", "multiple", "multi-", "coordinate", "coordonner", "integrate", "intégrer", "system", "système", "architecture", "large-scale", "grande échelle"],
-  responsibility: ["responsible", "responsable", "safety", "sécurité", "liability", "budget", "confidential", "confidentiel", "security", "accountable", "imputable", "team"]
+  // Qualifications & skill
+  skill: ["certified", "certifié", "licensed", "licence", "diploma", "diplôme", "degree", "expert", "senior", "specialist", "spécialiste", "advanced", "avancé", "red seal", "sceau rouge"],
+  // Effort — physical and mental demand
+  effort: ["physical", "physique", "lift", "lifting", "soulever", "heavy", "lourd", "demanding", "exigeant", "stamina", "endurance", "fast-paced", "deadline", "échéance", "pressure", "pression", "mental", "concentration", "intense"],
+  // Responsibilities
+  responsibility: ["responsible", "responsable", "liability", "budget", "confidential", "confidentiel", "security", "sécurité des données", "accountable", "imputable", "manage", "gérer", "supervise", "superviser", "team", "équipe", "lead"],
+  // Working conditions — environment, hazards, hours
+  workingConditions: ["outdoor", "extérieur", "hazard", "danger", "hazardous", "dangereux", "noise", "bruit", "cold", "froid", "heat", "chaleur", "night", "nuit", "weekend", "fin de semaine", "exposure", "exposition", "confined", "espace clos", "heights", "hauteur"]
 };
 
 const BASE_DEGREE = 2;

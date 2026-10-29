@@ -11,7 +11,10 @@ export type RoleFamily = "service" | "professional";
 
 export const ROLE_FAMILIES: readonly RoleFamily[] = ["service", "professional"];
 
-export const COMPENSABLE_FACTORS = ["skill", "autonomy", "complexity", "responsibility"] as const;
+// The four factors mandated by Québec's Loi sur l'équité salariale (and the standard pay-equity
+// framework): qualifications/skill, effort (physical + mental), responsibilities, and the conditions
+// under which the work is performed. Using the statutory set keeps the grading pay-equity-defensible.
+export const COMPENSABLE_FACTORS = ["skill", "effort", "responsibility", "workingConditions"] as const;
 export type CompensableFactor = (typeof COMPENSABLE_FACTORS)[number];
 
 /** Degree an employer selects per factor: 1 (minimal) … 5 (highest). */
@@ -29,9 +32,9 @@ export const FAMILY_TIER_CEILING: Readonly<Record<RoleFamily, number>> = {
 /** Equal weights by default — the weighting curve is an open calibration decision (ACR-0005). */
 export const DEFAULT_FACTOR_WEIGHTS: Readonly<Record<CompensableFactor, number>> = {
   skill: 1,
-  autonomy: 1,
-  complexity: 1,
-  responsibility: 1
+  effort: 1,
+  responsibility: 1,
+  workingConditions: 1
 };
 
 export type GradeOptions = Readonly<{
@@ -127,10 +130,10 @@ export const FAMILY_LABELS: Readonly<Record<RoleFamily, Bilingual>> = {
 };
 
 export const FACTOR_LABELS: Readonly<Record<CompensableFactor, Bilingual>> = {
-  skill: { en: "Skill & qualification", fr: "Compétence et qualification" },
-  autonomy: { en: "Autonomy & supervision", fr: "Autonomie et supervision" },
-  complexity: { en: "Complexity & scope", fr: "Complexité et portée" },
-  responsibility: { en: "Responsibility & risk", fr: "Responsabilité et risque" }
+  skill: { en: "Qualifications & skill", fr: "Qualifications et compétences" },
+  effort: { en: "Effort (physical & mental)", fr: "Efforts (physiques et mentaux)" },
+  responsibility: { en: "Responsibilities", fr: "Responsabilités" },
+  workingConditions: { en: "Working conditions", fr: "Conditions de travail" }
 };
 
 /** Generic degree ladder shown in the wizard (1…5). Per-factor anchor prose is a later refinement. */

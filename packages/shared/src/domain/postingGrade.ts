@@ -101,7 +101,8 @@ export function gradePosting(input: GradePostingInput, options: GradePostingOpti
     premiumPpm: withPremium.premiumPpm,
     note:
       `${input.family} role graded tier ${grade.tier}/${FAMILY_TIER_CEILING[input.family]} by a deterministic ` +
-      `point-factor method over gender-neutral factors (skill, autonomy, complexity, responsibility). ` +
+      `point-factor method over the gender-neutral statutory pay-equity factors ` +
+      `(qualifications/skill, effort, responsibilities, working conditions). ` +
       `Advisory market guidance only — not binding pay.`
   };
 

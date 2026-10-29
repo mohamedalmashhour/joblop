@@ -2,11 +2,11 @@ import { describe, expect, it } from "vitest";
 import { gradePosting } from "./postingGrade";
 import type { FactorDegree, FactorDegrees } from "./jobGrading";
 
-const deg = (s: number, a: number, c: number, r: number): FactorDegrees => ({
+const deg = (s: number, e: number, r: number, w: number): FactorDegrees => ({
   skill: s as FactorDegree,
-  autonomy: a as FactorDegree,
-  complexity: c as FactorDegree,
-  responsibility: r as FactorDegree
+  effort: e as FactorDegree,
+  responsibility: r as FactorDegree,
+  workingConditions: w as FactorDegree
 });
 
 describe("gradePosting — composes scorer → band → premium with a pay-equity audit", () => {
