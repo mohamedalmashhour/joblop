@@ -35,7 +35,30 @@ export function formatOpenings(openings: number): string {
   return openings === 1 ? "1 opening" : `${openings} openings`;
 }
 
-export const marketplaceCopy = {
+import type { Locale } from "../../i18n/strings";
+
+export type MarketplaceCopy = Readonly<{
+  title: string;
+  intro: string;
+  postalLabel: string;
+  postalPlaceholder: string;
+  searchCta: string;
+  verifiedOn: string;
+  verifiedOff: string;
+  signInRequired: string;
+  invalidLocation: string;
+  unavailable: string;
+  loadError: string;
+  emptyResults: string;
+  applyCta: string;
+  applied: string;
+  alreadyApplied: string;
+  applyIneligible: string;
+  applyError: string;
+  notFound: string;
+}>;
+
+const en: MarketplaceCopy = {
   title: "Open shifts",
   intro: "Browse open postings from JobLop employers near you. Applying registers your interest — it does not guarantee an assignment.",
   postalLabel: "Your postal code",
@@ -54,4 +77,56 @@ export const marketplaceCopy = {
   applyIneligible: "You can't express interest in this shift right now.",
   applyError: "Your interest could not be submitted right now.",
   notFound: "This shift is no longer available."
-} as const;
+};
+
+const fr: MarketplaceCopy = {
+  title: "Quarts ouverts",
+  intro: "Parcourez les offres ouvertes d'employeurs JobLop près de chez vous. Postuler enregistre votre intérêt — cela ne garantit pas une affectation.",
+  postalLabel: "Votre code postal",
+  postalPlaceholder: "ex. H2X 1Y4",
+  searchCta: "Chercher des quarts à proximité",
+  verifiedOn: "Employeurs vérifiés seulement : activé",
+  verifiedOff: "Employeurs vérifiés seulement : désactivé",
+  signInRequired: "Connectez-vous pour parcourir et postuler aux quarts ouverts.",
+  invalidLocation: "Ce lieu n'a pas pu être localisé. Vérifiez le code postal et réessayez.",
+  unavailable: "La place de marché n'est pas disponible pour le moment.",
+  loadError: "Les quarts ouverts n'ont pas pu être chargés.",
+  emptyResults: "Aucun quart ouvert ne correspond à votre recherche.",
+  applyCta: "Manifester mon intérêt",
+  applied: "Intérêt envoyé — l'équipe de l'employeur l'examinera.",
+  alreadyApplied: "Vous avez déjà manifesté votre intérêt pour ce quart.",
+  applyIneligible: "Vous ne pouvez pas manifester d'intérêt pour ce quart actuellement.",
+  applyError: "Votre intérêt n'a pas pu être envoyé.",
+  notFound: "Ce quart n'est plus disponible."
+};
+
+const ar: MarketplaceCopy = {
+  title: "فرص العمل المتاحة",
+  intro: "تصفّح فرص العمل المتاحة من أصحاب العمل في JobLop القريبين منك. التقديم يسجّل اهتمامك — ولا يضمن التعيين.",
+  postalLabel: "رمزك البريدي",
+  postalPlaceholder: "مثال: H2X 1Y4",
+  searchCta: "ابحث عن فرص عمل قريبة",
+  verifiedOn: "أصحاب العمل المُوثّقون فقط: مُفعّل",
+  verifiedOff: "أصحاب العمل المُوثّقون فقط: مُعطّل",
+  signInRequired: "سجّل الدخول لتصفّح فرص العمل والتقديم عليها.",
+  invalidLocation: "تعذّر تحديد هذا الموقع. تحقّق من الرمز البريدي وحاول مجددًا.",
+  unavailable: "السوق غير متاح حاليًا.",
+  loadError: "تعذّر تحميل فرص العمل الآن.",
+  emptyResults: "لا توجد فرص عمل تطابق بحثك حاليًا.",
+  applyCta: "إبداء الاهتمام",
+  applied: "تم إرسال اهتمامك — سيراجعه فريق صاحب العمل.",
+  alreadyApplied: "لقد أبديت اهتمامك بهذه الفرصة مسبقًا.",
+  applyIneligible: "لا يمكنك إبداء الاهتمام بهذه الفرصة حاليًا.",
+  applyError: "تعذّر إرسال اهتمامك الآن.",
+  notFound: "لم تعد هذه الفرصة متاحة."
+};
+
+const BY_LOCALE: Record<Locale, MarketplaceCopy> = { en, fr, ar };
+
+/** Marketplace copy for a locale (falls back to English). */
+export function marketplaceCopyFor(locale: Locale): MarketplaceCopy {
+  return BY_LOCALE[locale] ?? en;
+}
+
+/** English copy, kept for any non-localized caller / tests. */
+export const marketplaceCopy = en;

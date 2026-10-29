@@ -3,7 +3,8 @@ import { Pressable, ScrollView, StyleSheet, View } from "react-native";
 import { colors, radii, spacing } from "@rwos/design-system";
 import type { MarketplaceJob, MobileSessionTransport } from "../../auth/secureSession";
 import { Badge, BodyText, Button, Card, EmptyState, ErrorState, Heading, Input, LoadingState, ScreenContainer, Section, SmallText } from "../../ui/primitives";
-import { formatDistance, formatOpenings, formatShiftWindow, formatWorkerRate, marketplaceCopy } from "./marketplaceContent";
+import { formatDistance, formatOpenings, formatShiftWindow, formatWorkerRate, marketplaceCopyFor } from "./marketplaceContent";
+import { useLocale } from "../../i18n/LocaleContext";
 
 type SearchState =
   | { status: "idle" }
@@ -18,6 +19,7 @@ export function MarketplaceSearchScreen({
   transport: MobileSessionTransport | null;
   onOpenJob: (jobRequestId: string, postalCode: string) => void;
 }) {
+  const marketplaceCopy = marketplaceCopyFor(useLocale().locale);
   const [postalCode, setPostalCode] = useState("");
   const [verifiedOnly, setVerifiedOnly] = useState(false);
   const [state, setState] = useState<SearchState>({ status: "idle" });

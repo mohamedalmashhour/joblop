@@ -3,7 +3,8 @@ import { ScrollView, StyleSheet, View } from "react-native";
 import { spacing } from "@rwos/design-system";
 import type { MarketplaceJobDetail, MobileSessionTransport } from "../../auth/secureSession";
 import { Badge, BodyText, Button, Card, Divider, ErrorState, Heading, LoadingState, ScreenContainer, Section, SmallText } from "../../ui/primitives";
-import { formatOpenings, formatShiftWindow, formatWorkerRate, marketplaceCopy } from "./marketplaceContent";
+import { formatOpenings, formatShiftWindow, formatWorkerRate, marketplaceCopyFor } from "./marketplaceContent";
+import { useLocale } from "../../i18n/LocaleContext";
 import { JobLocationLink } from "../maps";
 
 type DetailState =
@@ -28,6 +29,7 @@ export function MarketplaceJobScreen({
   transport: MobileSessionTransport | null;
   onBack: () => void;
 }) {
+  const marketplaceCopy = marketplaceCopyFor(useLocale().locale);
   const [state, setState] = useState<DetailState>({ status: "loading" });
   const [apply, setApply] = useState<ApplyState>({ status: "idle" });
 
