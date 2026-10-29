@@ -459,6 +459,72 @@ export function createMobileSessionTransport(options: {
         return { status: "error" };
       }
     },
+    // The worker's own attendance schedule from GET /worker/attendance — their shifts with check-in/out
+    // state. Worker-scoped read; the backend returns only this worker's records (no other worker data,
+    // no home location).
+    async workerAttendance(): Promise<
+      | Readonly<{ status: "ready"; data: readonly WorkerAttendanceRecord[] }>
+      | Readonly<{ status: "empty" | "denied" | "error" }>
+    > {
+      const token = await options.vault.read();
+      if (!token) return { status: "denied" };
+      try {
+        const response = await request(`${origin}/worker/attendance`, {
+          method: "GET",
+          headers: { accept: "application/json", authorization: `Bearer ${token}` },
+          cache: "no-store"
+        });
+        if (response.status === 401 || response.status === 403) return { status: "denied" };
+        if (!response.ok) return { status: "error" };
+        const payload = (await response.json()) as { items?: unknown };
+        if (!Array.isArray(payload.items)) return { status: "error" };
+        const data = payload.items.map(parseWorkerAttendanceRecord).filter((v): v is WorkerAttendanceRecord => v !== null);
+        return data.length === 0 ? { status: "empty" } : { status: "ready", data };
+      } catch {
+        return { status: "error" };
+      }
+    },
+    // Worker check-in / check-out on an attendance record. Optimistic-concurrency guarded by
+    // expectedVersion (the value from the attendance list). The backend enforces the attendance-window
+    // policy and state machine; the client reloads the schedule on success. No money moves.
+    async attendanceCheckIn(attendanceRecordId: string, expectedVersion: number): Promise<AttendanceMutationResult> {
+      const token = await options.vault.read();
+      if (!token) return { status: "denied" };
+      try {
+        const response = await request(`${origin}/worker/attendance/${encodeURIComponent(attendanceRecordId)}/check-in`, {
+          method: "POST",
+          headers: { accept: "application/json", "content-type": "application/json", authorization: `Bearer ${token}` },
+          body: JSON.stringify({ expectedVersion, method: "worker_app" }),
+          cache: "no-store"
+        });
+        if (response.status === 401 || response.status === 403) return { status: "denied" };
+        if (response.status === 404) return { status: "not_found" };
+        if (response.status === 409 || response.status === 412) return { status: "conflict" };
+        if (!response.ok) return { status: "error" };
+        return { status: "ready" };
+      } catch {
+        return { status: "error" };
+      }
+    },
+    async attendanceCheckOut(attendanceRecordId: string, expectedVersion: number): Promise<AttendanceMutationResult> {
+      const token = await options.vault.read();
+      if (!token) return { status: "denied" };
+      try {
+        const response = await request(`${origin}/worker/attendance/${encodeURIComponent(attendanceRecordId)}/check-out`, {
+          method: "POST",
+          headers: { accept: "application/json", "content-type": "application/json", authorization: `Bearer ${token}` },
+          body: JSON.stringify({ expectedVersion, method: "worker_app" }),
+          cache: "no-store"
+        });
+        if (response.status === 401 || response.status === 403) return { status: "denied" };
+        if (response.status === 404) return { status: "not_found" };
+        if (response.status === 409 || response.status === 412) return { status: "conflict" };
+        if (!response.ok) return { status: "error" };
+        return { status: "ready" };
+      } catch {
+        return { status: "error" };
+      }
+    },
     async respondToWorkerOffer(
       input: Readonly<{
         offerId: string;
@@ -781,5 +847,45 @@ function parseMarketplaceInterest(input: unknown): MarketplaceInterest | null {
     createdAt: str(i.createdAt),
     offerStatus: typeof i.offerStatus === "string" ? i.offerStatus : null,
     summary
+  };
+}
+
+// Safe worker-facing projection of one attendance record (the worker's own shift). No other worker
+// data, no exact address — only the area label the backend already returns.
+export type WorkerAttendanceRecord = Readonly<{
+  attendanceRecordId: string;
+  assignmentId: string;
+  status: string;
+  scheduledStartAt: string;
+  scheduledEndAt: string;
+  timezone: string;
+  checkInAt: string | null;
+  checkOutAt: string | null;
+  exceptionCategory: string | null;
+  version: number;
+  employerName: string;
+  areaLabel: string | null;
+}>;
+
+export type AttendanceMutationResult = Readonly<{ status: "ready" | "denied" | "not_found" | "conflict" | "error" }>;
+
+function parseWorkerAttendanceRecord(input: unknown): WorkerAttendanceRecord | null {
+  if (typeof input !== "object" || input === null) return null;
+  const r = input as Record<string, unknown>;
+  const attendanceRecordId = str(r.attendanceRecordId);
+  if (!attendanceRecordId) return null;
+  return {
+    attendanceRecordId,
+    assignmentId: str(r.assignmentId),
+    status: str(r.status),
+    scheduledStartAt: str(r.scheduledStartAt),
+    scheduledEndAt: str(r.scheduledEndAt),
+    timezone: str(r.timezone),
+    checkInAt: typeof r.checkInAt === "string" ? r.checkInAt : null,
+    checkOutAt: typeof r.checkOutAt === "string" ? r.checkOutAt : null,
+    exceptionCategory: typeof r.exceptionCategory === "string" ? r.exceptionCategory : null,
+    version: num(r.version) ?? 0,
+    employerName: str(r.employerName),
+    areaLabel: typeof r.areaLabel === "string" ? r.areaLabel : null
   };
 }

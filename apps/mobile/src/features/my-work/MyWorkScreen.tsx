@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { ScrollView, StyleSheet, View } from "react-native";
 import { spacing } from "@rwos/design-system";
 import type { MarketplaceInterest, MobileSessionTransport, WorkerAssignmentDto } from "../../auth/secureSession";
-import { Badge, BodyText, Card, EmptyState, ErrorState, Heading, LoadingState, ScreenContainer, Section, SmallText } from "../../ui/primitives";
+import { Badge, BodyText, Button, Card, EmptyState, ErrorState, Heading, LoadingState, ScreenContainer, Section, SmallText } from "../../ui/primitives";
 import { formatShiftWindow } from "../marketplace/marketplaceContent";
 import {
   assignmentStatusLabel,
@@ -22,7 +22,7 @@ type AssignmentsState =
   | { status: "ready"; data: readonly WorkerAssignmentDto[] }
   | { status: "empty" | "denied" | "error" | "unavailable" };
 
-export function MyWorkScreen({ transport }: { transport: MobileSessionTransport | null }) {
+export function MyWorkScreen({ transport, onOpenSchedule }: { transport: MobileSessionTransport | null; onOpenSchedule?: () => void }) {
   const [interests, setInterests] = useState<InterestsState>({ status: "loading" });
   const [assignments, setAssignments] = useState<AssignmentsState>({ status: "loading" });
 
@@ -48,6 +48,7 @@ export function MyWorkScreen({ transport }: { transport: MobileSessionTransport 
             <Badge label="My shifts" tone="neutral" />
             <Heading>{myWorkCopy.title}</Heading>
             <BodyText>{myWorkCopy.intro}</BodyText>
+            {transport && onOpenSchedule ? <Button label="View my schedule & check in" onPress={onOpenSchedule} variant="secondary" /> : null}
           </Card>
 
           {!transport ? (

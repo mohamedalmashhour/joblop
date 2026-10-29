@@ -8,8 +8,7 @@ import type { WorkerServiceMode } from "../features/worker-service/workerService
 import { WorkerCalendarPanel } from "../features/worker-calendar";
 import { MarketplaceJobScreen, MarketplaceSearchScreen } from "../features/marketplace";
 import { MyWorkScreen } from "../features/my-work";
-import { WorkerAttendanceScreen } from "../features/worker-attendance";
-import type { WorkerAttendanceStage } from "../features/worker-attendance/workerAttendanceContent";
+import { WorkerScheduleScreen } from "../features/worker-attendance";
 import { WorkerTimesheetScreen } from "../features/worker-timesheets";
 import type { WorkerTimesheetStage } from "../features/worker-timesheets/workerTimesheetContent";
 import { WorkerEarningsScreen } from "../features/worker-earnings";
@@ -61,7 +60,6 @@ export function WorkerNavigator({
   const [tab, setTab] = useState<TabId>(offerId ? "calendar" : "home");
   const [stack, setStack] = useState<Screen[]>([offerId ? { name: "calendar" } : { name: "home" }]);
   const [serviceMode, setServiceMode] = useState<WorkerServiceMode>("support");
-  const [attendanceStage, setAttendanceStage] = useState<WorkerAttendanceStage>("overview");
   const [timesheetStage, setTimesheetStage] = useState<WorkerTimesheetStage>("review");
 
   const current = stack[stack.length - 1]!;
@@ -114,18 +112,11 @@ export function WorkerNavigator({
           />
         );
       case "myShifts":
-        return <MyWorkScreen transport={transport} />;
+        return <MyWorkScreen transport={transport} onOpenSchedule={() => push({ name: "attendance" })} />;
       case "calendar":
         return <WorkerCalendarPanel allowFixturePreview={false} offerId={offerId} transport={transport} />;
       case "attendance":
-        return (
-          <WorkerAttendanceScreen
-            onBack={back}
-            onOpenTimesheet={() => push({ name: "timesheet" })}
-            onSelectStage={setAttendanceStage}
-            stage={attendanceStage}
-          />
-        );
+        return <WorkerScheduleScreen transport={transport} onBack={back} />;
       case "timesheet":
         return (
           <WorkerTimesheetScreen

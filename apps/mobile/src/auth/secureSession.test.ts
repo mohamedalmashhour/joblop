@@ -678,3 +678,62 @@ describe("my applications (interests) transport", () => {
     expect((await deniedT.myInterests()).status).toBe("denied");
   });
 });
+
+describe("worker attendance transport", () => {
+  const origin = "https://api.example.com";
+  function withSession() {
+    const v = vault();
+    v.stored = "session-token-gggggggggggg";
+    return v;
+  }
+
+  it("lists the worker's attendance records (safe projection: status, times, version, area)", async () => {
+    const transport = createMobileSessionTransport({
+      apiOrigin: origin,
+      vault: withSession(),
+      fetch: vi.fn(async () =>
+        response(200, {
+          items: [
+            {
+              attendanceRecordId: "55555555-5555-4555-8555-555555555555",
+              assignmentId: "a1",
+              status: "pending_start",
+              scheduledStartAt: "2026-07-10T12:00:00.000Z",
+              scheduledEndAt: "2026-07-10T20:00:00.000Z",
+              timezone: "America/Toronto",
+              checkInAt: null,
+              checkOutAt: null,
+              exceptionCategory: null,
+              version: 2,
+              employerName: "Lakeside Residence",
+              areaLabel: "Laval, QC"
+            }
+          ],
+          nextCursor: null
+        })
+      )
+    });
+    const result = await transport.workerAttendance();
+    expect(result.status).toBe("ready");
+    if (result.status === "ready") expect(result.data[0]).toMatchObject({ status: "pending_start", version: 2, employerName: "Lakeside Residence", checkInAt: null });
+  });
+
+  it("checks in with the expected version and maps 409 → conflict", async () => {
+    const fetchMock = vi.fn(async () => response(200, { attendanceRecord: { id: "x", status: "checked_in", version: 3 } }));
+    const okT = createMobileSessionTransport({ apiOrigin: origin, vault: withSession(), fetch: fetchMock });
+    expect((await okT.attendanceCheckIn("55555555-5555-4555-8555-555555555555", 2)).status).toBe("ready");
+    expect(fetchMock).toHaveBeenCalledWith(
+      `${origin}/worker/attendance/55555555-5555-4555-8555-555555555555/check-in`,
+      expect.objectContaining({ method: "POST", body: JSON.stringify({ expectedVersion: 2, method: "worker_app" }) })
+    );
+    const conflictT = createMobileSessionTransport({ apiOrigin: origin, vault: withSession(), fetch: vi.fn(async () => response(409, { error: "RWOS_ATTENDANCE_CONFLICT" })) });
+    expect((await conflictT.attendanceCheckIn("55555555-5555-4555-8555-555555555555", 2)).status).toBe("conflict");
+  });
+
+  it("checks out, and a missing session → denied", async () => {
+    const okT = createMobileSessionTransport({ apiOrigin: origin, vault: withSession(), fetch: vi.fn(async () => response(200, { attendanceRecord: { id: "x", status: "checked_out", version: 4 } })) });
+    expect((await okT.attendanceCheckOut("55555555-5555-4555-8555-555555555555", 3)).status).toBe("ready");
+    const noSessionT = createMobileSessionTransport({ apiOrigin: origin, vault: vault(), fetch: vi.fn(async () => response(200, {})) });
+    expect((await noSessionT.attendanceCheckOut("55555555-5555-4555-8555-555555555555", 3)).status).toBe("denied");
+  });
+});
