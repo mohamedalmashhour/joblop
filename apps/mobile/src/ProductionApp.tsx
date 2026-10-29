@@ -8,11 +8,12 @@ import {
   tryCreateMobileSessionTransport
 } from "./auth/secureSession";
 import { readWorkerCalendarOfferId } from "./features/worker-calendar/deepLink";
-import { WorkerCalendarPanel } from "./features/worker-calendar";
 import { productName } from "./navigation/routes";
+import { WorkerNavigator } from "./navigation/WorkerNavigator";
 
 export default function ProductionApp() {
   const [offerId, setOfferId] = useState<string | null>(null);
+  const [authenticated, setAuthenticated] = useState(false);
   const isStaging = process.env.EXPO_PUBLIC_RWOS_DEPLOYMENT_TIER === "staging";
   const transport = useMemo(
     () =>
@@ -45,19 +46,20 @@ export default function ProductionApp() {
             importantForAccessibility="no-hide-descendants"
             style={styles.mark}
           >
-            <Text style={styles.markText}>RZ</Text>
+            <Text style={styles.markText}>JL</Text>
           </View>
           <View>
             <Text accessibilityRole="header" style={styles.title}>
               {productName}
             </Text>
-            <Text style={styles.subtitle}>Workforce marketplace · Phase 1</Text>
+            <Text style={styles.subtitle}>Workforce marketplace</Text>
           </View>
         </View>
         <View style={styles.content}>
-          <WorkerCalendarPanel
-            allowFixturePreview={false}
+          <WorkerNavigator
+            authenticated={authenticated}
             offerId={offerId}
+            onAuthenticatedChange={setAuthenticated}
             transport={transport}
           />
         </View>

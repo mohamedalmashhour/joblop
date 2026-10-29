@@ -450,3 +450,69 @@ function workerOfferFixture(override: Record<string, unknown> = {}) {
     ...override
   };
 }
+
+describe("worker payout ledger transport", () => {
+  const origin = "https://api.example.com";
+
+  it("projects the real /worker/payouts summary (currency + minor totals + counts)", async () => {
+    const secureVault = vault();
+    secureVault.stored = "session-token-aaaaaaaaaaaa";
+    const transport = createMobileSessionTransport({
+      apiOrigin: origin,
+      vault: secureVault,
+      fetch: vi.fn(async () =>
+        response(200, {
+          toPay: [{ id: "p1" }, { id: "p2" }],
+          paid: [{ id: "p3" }],
+          summary: { currency: "CAD", toPayMinor: 60000, paidMinor: 48000 },
+          synthetic: true
+        })
+      )
+    });
+    const result = await transport.workerPayouts();
+    expect(result).toEqual({
+      status: "ready",
+      data: { currency: "CAD", toPayMinor: 60000, paidMinor: 48000, toPayCount: 2, paidCount: 1 }
+    });
+  });
+
+  it("reports empty when the worker has no payouts, denied without a session, and error on a 500", async () => {
+    const withToken = vault();
+    withToken.stored = "session-token-bbbbbbbbbbbb";
+    const emptyTransport = createMobileSessionTransport({
+      apiOrigin: origin,
+      vault: withToken,
+      fetch: vi.fn(async () => response(200, { toPay: [], paid: [], summary: { currency: "CAD", toPayMinor: 0, paidMinor: 0 } }))
+    });
+    expect(await emptyTransport.workerPayouts()).toEqual({ status: "empty" });
+
+    const noToken = vault();
+    const deniedTransport = createMobileSessionTransport({
+      apiOrigin: origin,
+      vault: noToken,
+      fetch: vi.fn(async () => response(200, {}))
+    });
+    expect(await deniedTransport.workerPayouts()).toEqual({ status: "denied" });
+
+    const errorVault = vault();
+    errorVault.stored = "session-token-cccccccccccc";
+    const errorTransport = createMobileSessionTransport({
+      apiOrigin: origin,
+      vault: errorVault,
+      fetch: vi.fn(async () => response(500, {}))
+    });
+    expect(await errorTransport.workerPayouts()).toEqual({ status: "error" });
+  });
+
+  it("never sends money — it only issues a GET to /worker/payouts with the bearer token", async () => {
+    const secureVault = vault();
+    secureVault.stored = "session-token-dddddddddddd";
+    const fetchMock = vi.fn(async () => response(200, { toPay: [], paid: [], summary: {} }));
+    const transport = createMobileSessionTransport({ apiOrigin: origin, vault: secureVault, fetch: fetchMock });
+    await transport.workerPayouts();
+    expect(fetchMock).toHaveBeenCalledWith(
+      `${origin}/worker/payouts`,
+      expect.objectContaining({ method: "GET", headers: expect.objectContaining({ authorization: "Bearer session-token-dddddddddddd" }) })
+    );
+  });
+});

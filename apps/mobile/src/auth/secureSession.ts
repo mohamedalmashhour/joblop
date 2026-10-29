@@ -310,6 +310,34 @@ export function createMobileSessionTransport(options: {
         return { status: "error" };
       }
     },
+    // The worker's own payout ledger from GET /worker/payouts — a worker-scoped read that returns only
+    // the amounts the worker is owed (to-pay) and has been sent (paid). It NEVER moves money; the
+    // backend is authoritative and gates everything. The mobile client keeps only the safe aggregate
+    // projection (currency + minor-unit totals + counts), never employer economics.
+    async workerPayouts(): Promise<
+      | Readonly<{ status: "ready"; data: WorkerPayoutsSummary }>
+      | Readonly<{ status: "empty" | "denied" | "error" | "unavailable" }>
+    > {
+      const token = await options.vault.read();
+      if (!token) return { status: "denied" };
+      try {
+        const response = await request(`${origin}/worker/payouts`, {
+          method: "GET",
+          headers: { accept: "application/json", authorization: `Bearer ${token}` },
+          cache: "no-store"
+        });
+        if (response.status === 401 || response.status === 403) return { status: "denied" };
+        if (response.status === 503) return { status: "unavailable" };
+        if (!response.ok) return { status: "error" };
+        const summary = parseWorkerPayoutsSummary(await response.json());
+        if (!summary) return { status: "error" };
+        return summary.toPayCount === 0 && summary.paidCount === 0
+          ? { status: "empty" }
+          : { status: "ready", data: summary };
+      } catch {
+        return { status: "error" };
+      }
+    },
     async respondToWorkerOffer(
       input: Readonly<{
         offerId: string;
@@ -470,5 +498,36 @@ function parseWorkerAssignment(input: unknown): WorkerAssignmentDto {
     versionToken: versionToken as number,
     updatedAt,
     visibility: "worker_authorized_assignment"
+  };
+}
+
+// Safe aggregate projection of GET /worker/payouts. Only worker-facing totals — never employer
+// economics, invoices or individual payment references.
+export type WorkerPayoutsSummary = Readonly<{
+  currency: string;
+  toPayMinor: number;
+  paidMinor: number;
+  toPayCount: number;
+  paidCount: number;
+}>;
+
+function parseWorkerPayoutsSummary(input: unknown): WorkerPayoutsSummary | null {
+  if (typeof input !== "object" || input === null) return null;
+  const payload = input as { toPay?: unknown; paid?: unknown; summary?: unknown };
+  if (!Array.isArray(payload.toPay) || !Array.isArray(payload.paid)) return null;
+  const summary = (typeof payload.summary === "object" && payload.summary !== null ? payload.summary : {}) as {
+    currency?: unknown;
+    toPayMinor?: unknown;
+    paidMinor?: unknown;
+  };
+  const currency = typeof summary.currency === "string" ? summary.currency : "CAD";
+  const toPayMinor = Number.isFinite(summary.toPayMinor) ? Number(summary.toPayMinor) : 0;
+  const paidMinor = Number.isFinite(summary.paidMinor) ? Number(summary.paidMinor) : 0;
+  return {
+    currency,
+    toPayMinor,
+    paidMinor,
+    toPayCount: payload.toPay.length,
+    paidCount: payload.paid.length
   };
 }

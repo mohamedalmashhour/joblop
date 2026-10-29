@@ -1,20 +1,31 @@
 {
   "expo": {
-    "name": "RezekMe",
+    "name": "JobLop",
     "slug": "resident-workforce-os",
     "scheme": "rwos",
     "version": "0.1.0",
     "orientation": "portrait",
     "userInterfaceStyle": "light",
     "newArchEnabled": true,
+    "icon": "./assets/icon.png",
     "web": {
-      "bundler": "metro"
+      "bundler": "metro",
+      "favicon": "./assets/favicon.png"
     },
     "ios": {
-      "bundleIdentifier": "app.residentworkforce.mobile"
+      "bundleIdentifier": "com.joblop.app",
+      "buildNumber": "1",
+      "supportsTablet": false,
+      "infoPlist": {
+        "ITSAppUsesNonExemptEncryption": false
+      }
     },
     "android": {
-      "package": "app.residentworkforce.mobile"
+      "package": "com.joblop.app",
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/adaptive-icon.png",
+        "backgroundColor": "#0c2654"
+      }
     },
     "extra": {
       "foundationOnly": true
