@@ -7,11 +7,13 @@
     "development": {
       "developmentClient": true,
       "distribution": "internal",
-      "ios": { "simulator": true }
+      "ios": { "simulator": true },
+      "android": { "buildType": "apk" }
     },
     "preview": {
       "distribution": "internal",
       "ios": { "simulator": false },
+      "android": { "buildType": "apk" },
       "env": {
         "EXPO_PUBLIC_RWOS_DEPLOYMENT_TIER": "staging"
       }
@@ -20,6 +22,9 @@
       "autoIncrement": true,
       "ios": {
         "resourceClass": "m-medium"
+      },
+      "android": {
+        "buildType": "app-bundle"
       },
       "env": {
         "EXPO_PUBLIC_RWOS_DEPLOYMENT_TIER": "production"
@@ -32,6 +37,10 @@
         "appleId": "REPLACE_WITH_APPLE_ID_EMAIL",
         "ascAppId": "REPLACE_WITH_APP_STORE_CONNECT_APP_ID",
         "appleTeamId": "REPLACE_WITH_APPLE_TEAM_ID"
+      },
+      "android": {
+        "serviceAccountKeyPath": "REPLACE_WITH_PATH_TO_GOOGLE_PLAY_SERVICE_ACCOUNT_JSON",
+        "track": "internal"
       }
     }
   }
