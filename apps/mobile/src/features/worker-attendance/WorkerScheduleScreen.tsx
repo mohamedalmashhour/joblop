@@ -4,7 +4,8 @@ import { spacing } from "@rwos/design-system";
 import type { MobileSessionTransport, WorkerAttendanceRecord } from "../../auth/secureSession";
 import { Badge, BodyText, Button, Card, EmptyState, ErrorState, Heading, LoadingState, ScreenContainer, SmallText } from "../../ui/primitives";
 import { formatShiftWindow } from "../marketplace/marketplaceContent";
-import { attendanceAction, attendanceCopy, attendanceStatusLabel, attendanceStatusTone } from "./attendanceScheduleContent";
+import { useLocale } from "../../i18n/LocaleContext";
+import { attendanceAction, attendanceCopyFor, attendanceStatusLabel, attendanceStatusTone } from "./attendanceScheduleContent";
 
 type ScheduleState =
   | { status: "loading" }
@@ -12,6 +13,8 @@ type ScheduleState =
   | { status: "empty" | "denied" | "error" };
 
 export function WorkerScheduleScreen({ transport, onBack }: { transport: MobileSessionTransport | null; onBack: () => void }) {
+  const { locale } = useLocale();
+  const attendanceCopy = attendanceCopyFor(locale);
   const [state, setState] = useState<ScheduleState>({ status: "loading" });
   const [busyId, setBusyId] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
@@ -56,25 +59,25 @@ export function WorkerScheduleScreen({ transport, onBack }: { transport: MobileS
         setNotice(attendanceCopy.actionError);
       }
     },
-    [transport, load]
+    [transport, load, attendanceCopy]
   );
 
   return (
     <ScreenContainer testID="worker-schedule-screen">
       <ScrollView style={styles.scroll}>
         <View style={styles.stack}>
-          <Button label="Back" onPress={onBack} variant="secondary" />
+          <Button label={attendanceCopy.back} onPress={onBack} variant="secondary" />
           <Card>
-            <Badge label="My schedule" tone="neutral" />
+            <Badge label={attendanceCopy.title} tone="neutral" />
             <Heading>{attendanceCopy.title}</Heading>
             <BodyText>{attendanceCopy.intro}</BodyText>
             {notice ? <SmallText>{notice}</SmallText> : null}
           </Card>
 
-          {state.status === "loading" ? <LoadingState label="Loading your schedule" /> : null}
-          {state.status === "empty" ? <EmptyState title={attendanceCopy.empty} body="Confirmed shifts appear here." /> : null}
-          {state.status === "denied" ? <ErrorState title="Sign in required" body={attendanceCopy.signInRequired} /> : null}
-          {state.status === "error" ? <ErrorState title="Something went wrong" body={attendanceCopy.loadError} /> : null}
+          {state.status === "loading" ? <LoadingState label={attendanceCopy.loadingSchedule} /> : null}
+          {state.status === "empty" ? <EmptyState title={attendanceCopy.empty} body={attendanceCopy.emptyBody} /> : null}
+          {state.status === "denied" ? <ErrorState title={attendanceCopy.signInRequiredTitle} body={attendanceCopy.signInRequired} /> : null}
+          {state.status === "error" ? <ErrorState title={attendanceCopy.errorTitle} body={attendanceCopy.loadError} /> : null}
 
           {state.status === "ready"
             ? state.data.map((r) => {
@@ -83,7 +86,7 @@ export function WorkerScheduleScreen({ transport, onBack }: { transport: MobileS
                   <Card key={r.attendanceRecordId} testID="schedule-shift">
                     <View style={styles.row}>
                       <Heading>{r.employerName}</Heading>
-                      <Badge label={attendanceStatusLabel(r.status)} tone={attendanceStatusTone(r.status)} />
+                      <Badge label={attendanceStatusLabel(r.status, locale)} tone={attendanceStatusTone(r.status)} />
                     </View>
                     {r.areaLabel ? <BodyText>{r.areaLabel}</BodyText> : null}
                     <SmallText>{formatShiftWindow(r.scheduledStartAt, r.scheduledEndAt)}</SmallText>

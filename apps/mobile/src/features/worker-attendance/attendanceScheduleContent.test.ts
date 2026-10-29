@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { attendanceAction, attendanceStatusLabel, attendanceStatusTone } from "./attendanceScheduleContent";
+import { attendanceAction, attendanceCopyFor, attendanceStatusLabel, attendanceStatusTone } from "./attendanceScheduleContent";
 
 describe("attendance schedule content", () => {
   it("labels + tones statuses (pass-through unknowns)", () => {
@@ -16,5 +16,13 @@ describe("attendance schedule content", () => {
     expect(attendanceAction({ status: "checked_out", checkInAt: "x", checkOutAt: "y" })).toBe("none");
     expect(attendanceAction({ status: "cancelled", checkInAt: null, checkOutAt: null })).toBe("none");
     expect(attendanceAction({ status: "completed", checkInAt: "x", checkOutAt: "y" })).toBe("none");
+  });
+
+  it("localizes labels + screen copy (FR/AR)", () => {
+    expect(attendanceStatusLabel("checked_in", "fr")).toBe("Arrivée enregistrée");
+    expect(attendanceStatusLabel("checked_in", "ar")).toBe("تم تسجيل الوصول");
+    expect(attendanceCopyFor("en").title).toBe("My schedule");
+    expect(attendanceCopyFor("fr").title).toBe("Mon horaire");
+    expect(attendanceCopyFor("ar").title).toBe("جدولي");
   });
 });

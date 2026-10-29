@@ -3,9 +3,11 @@ import { ScrollView, StyleSheet, View } from "react-native";
 import { spacing } from "@rwos/design-system";
 import type { MobileSessionTransport, WorkerPayoutsSummary } from "../../auth/secureSession";
 import { Badge, BodyText, Button, Card, Divider, Heading, ScreenContainer, Section, SmallText } from "../../ui/primitives";
+import { useLocale } from "../../i18n/LocaleContext";
 import {
   getWorkerEarningsFixtureDisclosure,
   workerEarningsBoundaries,
+  workerEarningsCopyFor,
   workerEarningsPrivacyRules,
   workerEarningsRows,
   workerEarningsStatusModel
@@ -28,14 +30,15 @@ function formatMinor(amountMinor: number, currency: string): string {
   return `${(amountMinor / 100).toFixed(2)} ${currency}`;
 }
 
-const LEDGER_MESSAGE: Record<"denied" | "error" | "unavailable" | "empty", string> = {
-  denied: "Sign in to see the amounts registered in your account.",
-  error: "Your payout ledger could not be loaded right now.",
-  unavailable: "The payout service is not available right now.",
-  empty: "No payouts registered to your account yet."
-};
-
 export function WorkerEarningsScreen({ onBack, onOpenSupport, transport }: WorkerEarningsScreenProps) {
+  const { locale } = useLocale();
+  const copy = workerEarningsCopyFor(locale);
+  const ledgerMessage: Record<"denied" | "error" | "unavailable" | "empty", string> = {
+    denied: copy.denied,
+    error: copy.error,
+    unavailable: copy.unavailable,
+    empty: copy.empty
+  };
   const [ledger, setLedger] = useState<LedgerState>({ status: "loading" });
 
   useEffect(() => {
@@ -53,49 +56,46 @@ export function WorkerEarningsScreen({ onBack, onOpenSupport, transport }: Worke
     <ScreenContainer testID="worker-earnings-screen">
       <ScrollView style={styles.scroll}>
         <View style={styles.stack}>
-          {onBack ? <Button label="Back" onPress={onBack} variant="secondary" /> : null}
+          {onBack ? <Button label={copy.back} onPress={onBack} variant="secondary" /> : null}
           <Card>
-            <Badge label="Worker payable summary" tone="warning" />
-            <Heading>Earnings</Heading>
-            <BodyText>
-              Worker-facing earnings and payable status only. This screen does not calculate
-              payroll, execute payments, display employer invoices or guarantee settlement.
-            </BodyText>
+            <Badge label={copy.badge} tone="warning" />
+            <Heading>{copy.title}</Heading>
+            <BodyText>{copy.intro}</BodyText>
             {!transport
               ? getWorkerEarningsFixtureDisclosure().map((item) => <SmallText key={item}>{item}</SmallText>)
               : null}
           </Card>
 
           {transport ? (
-            <Section title="From your account">
+            <Section title={copy.fromAccountTitle}>
               <Card>
                 {ledger.status === "loading" ? (
-                  <BodyText>Loading your payout ledger…</BodyText>
+                  <BodyText>{copy.loadingLedger}</BodyText>
                 ) : ledger.status === "ready" ? (
                   <>
                     <View style={styles.summaryRow}>
                       <View style={styles.rowBody}>
-                        <Heading>To pay</Heading>
-                        <SmallText>Confirmed and awaiting transfer.</SmallText>
+                        <Heading>{copy.toPayTitle}</Heading>
+                        <SmallText>{copy.toPayNote}</SmallText>
                       </View>
                       <BodyText>{formatMinor(ledger.data.toPayMinor, ledger.data.currency)}</BodyText>
                     </View>
                     <Divider />
                     <View style={styles.summaryRow}>
                       <View style={styles.rowBody}>
-                        <Heading>Paid</Heading>
-                        <SmallText>Already sent to your account.</SmallText>
+                        <Heading>{copy.paidTitle}</Heading>
+                        <SmallText>{copy.paidNote}</SmallText>
                       </View>
                       <BodyText>{formatMinor(ledger.data.paidMinor, ledger.data.currency)}</BodyText>
                     </View>
                   </>
                 ) : (
-                  <BodyText>{LEDGER_MESSAGE[ledger.status]}</BodyText>
+                  <BodyText>{ledgerMessage[ledger.status]}</BodyText>
                 )}
               </Card>
             </Section>
           ) : (
-            <Section title="Payable summary">
+            <Section title={copy.payableSummaryTitle}>
               <Card>
                 {workerEarningsRows.map((row) => (
                   <View key={row.label} style={styles.summaryRow}>
@@ -126,12 +126,9 @@ export function WorkerEarningsScreen({ onBack, onOpenSupport, transport }: Worke
                 <SmallText key={item}>{item}</SmallText>
               ))}
               <Divider />
-              <BodyText>
-                Failed, held or disputed payable states route to support and human review. AI may
-                explain states but cannot calculate payroll or release funds.
-              </BodyText>
+              <BodyText>{copy.supportNote}</BodyText>
               {onOpenSupport ? (
-                <Button label="Contact support" onPress={onOpenSupport} variant="secondary" />
+                <Button label={copy.contactSupport} onPress={onOpenSupport} variant="secondary" />
               ) : null}
             </Card>
           </Section>

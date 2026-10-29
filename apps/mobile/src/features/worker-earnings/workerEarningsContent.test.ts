@@ -2,12 +2,20 @@ import { describe, expect, it } from "vitest";
 import {
   getWorkerEarningsFixtureDisclosure,
   workerEarningsBoundaries,
+  workerEarningsCopyFor,
   workerEarningsPrivacyRules,
   workerEarningsRows,
   workerEarningsStatusModel
 } from "./workerEarningsContent";
 
 describe("worker earnings content", () => {
+  it("exposes trilingual worker-facing copy (EN/FR/AR)", () => {
+    expect(workerEarningsCopyFor("en").title).toBe("Earnings");
+    expect(workerEarningsCopyFor("fr").title).toBe("Revenus");
+    expect(workerEarningsCopyFor("ar").title).toBe("الأرباح");
+    expect(workerEarningsCopyFor("ar").toPayTitle).toBe("مستحقّ الدفع");
+  });
+
   it("keeps earnings, payable, payroll and payment states independent", () => {
     expect(workerEarningsStatusModel).toEqual(
       expect.arrayContaining([

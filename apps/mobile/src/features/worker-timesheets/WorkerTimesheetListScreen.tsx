@@ -4,7 +4,8 @@ import { spacing } from "@rwos/design-system";
 import type { MobileSessionTransport, WorkerTimesheet } from "../../auth/secureSession";
 import { Badge, BodyText, Button, Card, EmptyState, ErrorState, Heading, Input, LoadingState, ScreenContainer, SmallText } from "../../ui/primitives";
 import { formatShiftWindow } from "../marketplace/marketplaceContent";
-import { canWorkerReview, formatMinutes, timesheetCopy, timesheetStatusLabel, timesheetStatusTone } from "./timesheetListContent";
+import { useLocale } from "../../i18n/LocaleContext";
+import { canWorkerReview, formatMinutes, timesheetCopyFor, timesheetStatusLabel, timesheetStatusTone } from "./timesheetListContent";
 
 type ListState =
   | { status: "loading" }
@@ -12,6 +13,8 @@ type ListState =
   | { status: "empty" | "denied" | "error" };
 
 export function WorkerTimesheetListScreen({ transport, onBack }: { transport: MobileSessionTransport | null; onBack: () => void }) {
+  const { locale } = useLocale();
+  const timesheetCopy = timesheetCopyFor(locale);
   const [state, setState] = useState<ListState>({ status: "loading" });
   const [busyId, setBusyId] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
@@ -47,7 +50,7 @@ export function WorkerTimesheetListScreen({ transport, onBack }: { transport: Mo
       else setNotice(result.status === "conflict" ? timesheetCopy.conflict : timesheetCopy.actionError);
       if (result.status === "conflict") await load();
     },
-    [transport, load]
+    [transport, load, timesheetCopy]
   );
 
   const dispute = useCallback(
@@ -67,25 +70,25 @@ export function WorkerTimesheetListScreen({ transport, onBack }: { transport: Mo
       else setNotice(result.status === "conflict" ? timesheetCopy.conflict : timesheetCopy.actionError);
       if (result.status === "conflict") await load();
     },
-    [transport, load, reasons]
+    [transport, load, reasons, timesheetCopy]
   );
 
   return (
     <ScreenContainer testID="worker-timesheet-list-screen">
       <ScrollView style={styles.scroll}>
         <View style={styles.stack}>
-          <Button label="Back" onPress={onBack} variant="secondary" />
+          <Button label={timesheetCopy.back} onPress={onBack} variant="secondary" />
           <Card>
-            <Badge label="My timesheets" tone="neutral" />
+            <Badge label={timesheetCopy.title} tone="neutral" />
             <Heading>{timesheetCopy.title}</Heading>
             <BodyText>{timesheetCopy.intro}</BodyText>
             {notice ? <SmallText>{notice}</SmallText> : null}
           </Card>
 
-          {state.status === "loading" ? <LoadingState label="Loading your timesheets" /> : null}
-          {state.status === "empty" ? <EmptyState title={timesheetCopy.empty} body="Timesheets appear after you work a shift." /> : null}
-          {state.status === "denied" ? <ErrorState title="Sign in required" body={timesheetCopy.signInRequired} /> : null}
-          {state.status === "error" ? <ErrorState title="Something went wrong" body={timesheetCopy.loadError} /> : null}
+          {state.status === "loading" ? <LoadingState label={timesheetCopy.loadingTimesheets} /> : null}
+          {state.status === "empty" ? <EmptyState title={timesheetCopy.empty} body={timesheetCopy.emptyBody} /> : null}
+          {state.status === "denied" ? <ErrorState title={timesheetCopy.signInRequiredTitle} body={timesheetCopy.signInRequired} /> : null}
+          {state.status === "error" ? <ErrorState title={timesheetCopy.errorTitle} body={timesheetCopy.loadError} /> : null}
 
           {state.status === "ready"
             ? state.data.map((t) => {
@@ -94,7 +97,7 @@ export function WorkerTimesheetListScreen({ transport, onBack }: { transport: Mo
                   <Card key={t.timesheetId} testID="timesheet-row">
                     <View style={styles.row}>
                       <Heading>{t.employerName}</Heading>
-                      <Badge label={timesheetStatusLabel(t.status)} tone={timesheetStatusTone(t.status)} />
+                      <Badge label={timesheetStatusLabel(t.status, locale)} tone={timesheetStatusTone(t.status)} />
                     </View>
                     {t.areaLabel ? <BodyText>{t.areaLabel}</BodyText> : null}
                     <SmallText>{formatShiftWindow(t.scheduledStartAt, t.scheduledEndAt)}</SmallText>

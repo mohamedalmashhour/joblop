@@ -4,12 +4,13 @@ import { spacing } from "@rwos/design-system";
 import type { MarketplaceInterest, MobileSessionTransport, WorkerAssignmentDto } from "../../auth/secureSession";
 import { Badge, BodyText, Button, Card, EmptyState, ErrorState, Heading, LoadingState, ScreenContainer, Section, SmallText } from "../../ui/primitives";
 import { formatShiftWindow } from "../marketplace/marketplaceContent";
+import { useLocale } from "../../i18n/LocaleContext";
 import {
   assignmentStatusLabel,
   assignmentStatusTone,
   interestStatusLabel,
   interestStatusTone,
-  myWorkCopy
+  myWorkCopyFor
 } from "./myWorkContent";
 
 type InterestsState =
@@ -31,6 +32,8 @@ export function MyWorkScreen({
   onOpenSchedule?: () => void;
   onOpenTimesheets?: () => void;
 }) {
+  const { locale } = useLocale();
+  const myWorkCopy = myWorkCopyFor(locale);
   const [interests, setInterests] = useState<InterestsState>({ status: "loading" });
   const [assignments, setAssignments] = useState<AssignmentsState>({ status: "loading" });
 
@@ -53,11 +56,11 @@ export function MyWorkScreen({
       <ScrollView style={styles.scroll}>
         <View style={styles.stack}>
           <Card>
-            <Badge label="My shifts" tone="neutral" />
+            <Badge label={myWorkCopy.title} tone="neutral" />
             <Heading>{myWorkCopy.title}</Heading>
             <BodyText>{myWorkCopy.intro}</BodyText>
-            {transport && onOpenSchedule ? <Button label="View my schedule & check in" onPress={onOpenSchedule} variant="secondary" /> : null}
-            {transport && onOpenTimesheets ? <Button label="Review my timesheets" onPress={onOpenTimesheets} variant="secondary" /> : null}
+            {transport && onOpenSchedule ? <Button label={myWorkCopy.scheduleCta} onPress={onOpenSchedule} variant="secondary" /> : null}
+            {transport && onOpenTimesheets ? <Button label={myWorkCopy.timesheetsCta} onPress={onOpenTimesheets} variant="secondary" /> : null}
           </Card>
 
           {!transport ? (
@@ -67,16 +70,16 @@ export function MyWorkScreen({
           ) : (
             <>
               <Section title={myWorkCopy.applicationsTitle}>
-                {interests.status === "loading" ? <LoadingState label="Loading applications" /> : null}
-                {interests.status === "empty" ? <EmptyState title={myWorkCopy.applicationsEmpty} body="Browse open shifts in the Available tab." /> : null}
-                {interests.status === "denied" ? <ErrorState title="Sign in required" body={myWorkCopy.signInRequired} /> : null}
-                {interests.status === "error" ? <ErrorState title="Something went wrong" body={myWorkCopy.loadError} /> : null}
+                {interests.status === "loading" ? <LoadingState label={myWorkCopy.loadingApplications} /> : null}
+                {interests.status === "empty" ? <EmptyState title={myWorkCopy.applicationsEmpty} body={myWorkCopy.applicationsEmptyBody} /> : null}
+                {interests.status === "denied" ? <ErrorState title={myWorkCopy.signInRequiredTitle} body={myWorkCopy.signInRequired} /> : null}
+                {interests.status === "error" ? <ErrorState title={myWorkCopy.errorTitle} body={myWorkCopy.loadError} /> : null}
                 {interests.status === "ready"
                   ? interests.data.map((it) => (
                       <Card key={`${it.jobRequestId}-${it.createdAt}`} testID="my-work-application">
                         <View style={styles.row}>
-                          <Heading>{it.summary?.title ?? it.summary?.role ?? "Open shift"}</Heading>
-                          <Badge label={interestStatusLabel(it.status)} tone={interestStatusTone(it.status)} />
+                          <Heading>{it.summary?.title ?? it.summary?.role ?? myWorkCopy.openShiftFallback}</Heading>
+                          <Badge label={interestStatusLabel(it.status, locale)} tone={interestStatusTone(it.status)} />
                         </View>
                         {it.summary ? <SmallText>{it.summary.employerName}</SmallText> : null}
                         {it.summary?.areaLabel ? <BodyText>{it.summary.areaLabel}</BodyText> : null}
@@ -88,18 +91,18 @@ export function MyWorkScreen({
               </Section>
 
               <Section title={myWorkCopy.assignmentsTitle}>
-                {assignments.status === "loading" ? <LoadingState label="Loading confirmed shifts" /> : null}
-                {assignments.status === "empty" ? <EmptyState title={myWorkCopy.assignmentsEmpty} body="Accepted offers become confirmed shifts here." /> : null}
-                {assignments.status === "denied" ? <ErrorState title="Sign in required" body={myWorkCopy.signInRequired} /> : null}
+                {assignments.status === "loading" ? <LoadingState label={myWorkCopy.loadingAssignments} /> : null}
+                {assignments.status === "empty" ? <EmptyState title={myWorkCopy.assignmentsEmpty} body={myWorkCopy.assignmentsEmptyBody} /> : null}
+                {assignments.status === "denied" ? <ErrorState title={myWorkCopy.signInRequiredTitle} body={myWorkCopy.signInRequired} /> : null}
                 {assignments.status === "error" || assignments.status === "unavailable" ? (
-                  <ErrorState title="Something went wrong" body={myWorkCopy.loadError} />
+                  <ErrorState title={myWorkCopy.errorTitle} body={myWorkCopy.loadError} />
                 ) : null}
                 {assignments.status === "ready"
                   ? assignments.data.map((a) => (
                       <Card key={a.assignmentId} testID="my-work-assignment">
                         <View style={styles.row}>
                           <Heading>{a.title}</Heading>
-                          <Badge label={assignmentStatusLabel(a.status)} tone={assignmentStatusTone(a.status)} />
+                          <Badge label={assignmentStatusLabel(a.status, locale)} tone={assignmentStatusTone(a.status)} />
                         </View>
                         {a.roleSummary ? <SmallText>{a.roleSummary}</SmallText> : null}
                         {a.worksiteSummary ? <BodyText>{a.worksiteSummary}</BodyText> : null}
