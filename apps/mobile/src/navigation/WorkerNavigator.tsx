@@ -1,4 +1,5 @@
 import { useCallback, useState } from "react";
+import { useLocale } from "../i18n/LocaleContext";
 import { Pressable, StyleSheet, Text, View } from "react-native";
 import { colors, spacing, typography } from "@rwos/design-system";
 import type { MobileSessionTransport } from "../auth/secureSession";
@@ -51,6 +52,7 @@ export function WorkerNavigator({
   authenticated: boolean;
   onAuthenticatedChange: (next: boolean) => void;
 }) {
+  const { t: tr } = useLocale();
   // A deep-linked offer opens the Calendar tab; otherwise the hub.
   const [tab, setTab] = useState<TabId>(offerId ? "calendar" : "home");
   const [stack, setStack] = useState<Screen[]>([offerId ? { name: "calendar" } : { name: "home" }]);
@@ -143,9 +145,9 @@ export function WorkerNavigator({
   return (
     <View style={styles.root}>
       <View style={styles.topBar}>
-        <Text style={styles.topTitle}>{TABS.find((t) => t.id === tab)?.label ?? "JobLop"}</Text>
+        <Text style={styles.topTitle}>{tr(`nav.${tab}`)}</Text>
         <Pressable accessibilityRole="button" onPress={() => void signOut()} style={styles.signOut}>
-          <Text style={styles.signOutText}>Sign out</Text>
+          <Text style={styles.signOutText}>{tr("nav.signOut")}</Text>
         </Pressable>
       </View>
       <View style={styles.body}>{renderScreen()}</View>
@@ -160,7 +162,7 @@ export function WorkerNavigator({
               onPress={() => selectTab(t.id)}
               style={styles.tab}
             >
-              <Text style={[styles.tabLabel, active ? styles.tabLabelActive : null]}>{t.label}</Text>
+              <Text style={[styles.tabLabel, active ? styles.tabLabelActive : null]}>{tr(`nav.${t.id}`)}</Text>
             </Pressable>
           );
         })}

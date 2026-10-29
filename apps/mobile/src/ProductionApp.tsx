@@ -10,6 +10,7 @@ import {
 import { readWorkerCalendarOfferId } from "./features/worker-calendar/deepLink";
 import { productName } from "./navigation/routes";
 import { WorkerNavigator } from "./navigation/WorkerNavigator";
+import { LocaleProvider } from "./i18n/LocaleContext";
 
 export default function ProductionApp() {
   const [offerId, setOfferId] = useState<string | null>(null);
@@ -30,6 +31,7 @@ export default function ProductionApp() {
     return () => subscription.remove();
   }, []);
   return (
+    <LocaleProvider>
     <SafeAreaView style={styles.safeArea}>
       <StatusBar style="dark" />
       <View style={styles.app}>
@@ -65,6 +67,7 @@ export default function ProductionApp() {
         </View>
       </View>
     </SafeAreaView>
+    </LocaleProvider>
   );
 }
 

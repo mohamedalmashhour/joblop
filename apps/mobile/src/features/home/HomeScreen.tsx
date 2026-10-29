@@ -1,10 +1,12 @@
 import { Pressable, ScrollView, StyleSheet, View } from "react-native";
 import { colors, radii, spacing } from "@rwos/design-system";
 import { BodyText, Card, Heading, ScreenContainer, SmallText } from "../../ui/primitives";
-import { homeCopy, homeDestinations, type HomeDestination } from "./homeContent";
+import { useLocale } from "../../i18n/LocaleContext";
+import { LOCALES, localeLabel } from "../../i18n/strings";
+import { homeDestinations, type HomeDestination } from "./homeContent";
 
-// The worker's real home: a greeting plus quick, reachable routes to every live destination (and the
-// onboarding flow). Replaces the former fixture "service/support" hub. No data fetching, no fixtures.
+// The worker's real home: a greeting, a language switch (EN / FR / العربية), and quick routes to every
+// live destination (and onboarding). Fully translated; Arabic renders right-to-left.
 export function HomeScreen({
   authenticated,
   onOpen
@@ -12,14 +14,33 @@ export function HomeScreen({
   authenticated: boolean;
   onOpen: (destination: HomeDestination) => void;
 }) {
+  const { t, locale, setLocale } = useLocale();
+
   return (
     <ScreenContainer testID="home-screen">
       <ScrollView style={styles.scroll}>
         <View style={styles.stack}>
           <Card>
-            <Heading>{homeCopy.title}</Heading>
-            <BodyText>{homeCopy.intro}</BodyText>
-            {!authenticated ? <SmallText>{homeCopy.signedOutNote}</SmallText> : null}
+            <Heading>{t("home.title")}</Heading>
+            <BodyText>{t("home.intro")}</BodyText>
+            {!authenticated ? <SmallText>{t("home.signedOut")}</SmallText> : null}
+            <View style={styles.langRow}>
+              {LOCALES.map((l) => {
+                const active = l === locale;
+                return (
+                  <Pressable
+                    accessibilityRole="button"
+                    accessibilityState={{ selected: active }}
+                    key={l}
+                    onPress={() => setLocale(l)}
+                    style={[styles.langChip, active ? styles.langChipActive : null]}
+                    testID={`lang-${l}`}
+                  >
+                    <SmallText>{localeLabel[l]}</SmallText>
+                  </Pressable>
+                );
+              })}
+            </View>
           </Card>
 
           {homeDestinations.map((d) => (
@@ -30,8 +51,8 @@ export function HomeScreen({
               style={styles.tile}
               testID={`home-tile-${d.id}`}
             >
-              <Heading>{d.label}</Heading>
-              <SmallText>{d.description}</SmallText>
+              <Heading>{t(`home.${d.id}.label`)}</Heading>
+              <SmallText>{t(`home.${d.id}.desc`)}</SmallText>
             </Pressable>
           ))}
         </View>
@@ -50,5 +71,13 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     gap: spacing.xs,
     padding: spacing.lg
-  }
+  },
+  langRow: { flexDirection: "row", flexWrap: "wrap", gap: spacing.sm, marginTop: spacing.sm },
+  langChip: {
+    backgroundColor: colors.surfaceSubtle,
+    borderRadius: radii.sm,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.xs
+  },
+  langChipActive: { backgroundColor: colors.actionTeal }
 });
