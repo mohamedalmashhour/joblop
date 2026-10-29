@@ -41,3 +41,4 @@ export * from "./jobGrading";
 export * from "./tierBand";
 export * from "./engagementPremium";
 export * from "./jobGradingParser";
+export * from "./postingGrade";
