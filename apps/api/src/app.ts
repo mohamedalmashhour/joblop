@@ -185,7 +185,6 @@ import {
   searchNearbyJobs,
   boundingBoxKm,
   geodesicDistanceKm,
-  isProvinceCode,
   isValidCoordinate,
   type RequestEditState,
   type GeocodingProvider,
@@ -3433,7 +3432,7 @@ export function buildApi(options: BuildApiOptions = {}) {
     const candidates: MarketplaceJobCandidate[] = [];
     for (const r of rows) {
       const province = r.residence.province;
-      if (!isProvinceCode(province) || r.residence.latitude === null || r.residence.longitude === null) continue;
+      if (!options.countryAddress?.isRegionCode(province) || r.residence.latitude === null || r.residence.longitude === null) continue;
       const isVerifiedEmployer = verifiedOrgIds.has(r.organization.id);
       if (verifiedOnly && !isVerifiedEmployer) continue; // verified-only narrows to real verified orgs
       candidates.push({
@@ -3576,7 +3575,7 @@ export function buildApi(options: BuildApiOptions = {}) {
                 title: r.title,
                 employer: { id: r.organization.id, name: r.organization.displayName, verified: false },
                 areaLabel:
-                  r.residence.city && isProvinceCode(r.residence.province)
+                  r.residence.city && options.countryAddress?.isRegionCode(r.residence.province)
                     ? `${r.residence.city}, ${r.residence.province}`
                     : null,
                 startAt: r.startAt.toISOString(),
@@ -3740,7 +3739,7 @@ export function buildApi(options: BuildApiOptions = {}) {
                 role: j.roleDefinition.displayLabel,
                 title: j.title,
                 employer: { id: j.organization.id, name: j.organization.displayName },
-                areaLabel: j.residence.city && isProvinceCode(j.residence.province) ? `${j.residence.city}, ${j.residence.province}` : null,
+                areaLabel: j.residence.city && options.countryAddress?.isRegionCode(j.residence.province) ? `${j.residence.city}, ${j.residence.province}` : null,
                 startAt: j.startAt.toISOString(),
                 endAt: j.endAt.toISOString()
               }
@@ -3888,7 +3887,7 @@ export function buildApi(options: BuildApiOptions = {}) {
     const worksite = {
       label: job.residence.name,
       city: job.residence.city,
-      province: isProvinceCode(job.residence.province) ? job.residence.province : null,
+      province: options.countryAddress?.isRegionCode(job.residence.province) ? job.residence.province : null,
       addressLine1: job.residence.addressLine1, // exact — admin-authoritative view only
       latitude: job.residence.latitude,
       longitude: job.residence.longitude
@@ -4556,7 +4555,7 @@ export function buildApi(options: BuildApiOptions = {}) {
     });
     if (
       !row ||
-      !isProvinceCode(row.residence.province) ||
+      !options.countryAddress?.isRegionCode(row.residence.province) ||
       row.residence.latitude === null ||
       row.residence.longitude === null
     ) {
@@ -4668,7 +4667,7 @@ export function buildApi(options: BuildApiOptions = {}) {
       name: org.displayName,
       verified: await verificationService.isEmployerVerified(org.id), // authoritative
       opportunities: jobRows.flatMap((j) =>
-        isProvinceCode(j.residence.province)
+        options.countryAddress?.isRegionCode(j.residence.province)
           ? [
               {
                 jobRequestId: j.id,
@@ -7050,7 +7049,7 @@ export function buildApi(options: BuildApiOptions = {}) {
       checkInAt: r.checkInAt?.toISOString() ?? null, checkOutAt: r.checkOutAt?.toISOString() ?? null,
       exceptionCategory: r.exceptionCategory, version: r.version,
       employerName: r.organization.displayName,
-      areaLabel: r.residence.city && isProvinceCode(r.residence.province) ? `${r.residence.city}, ${r.residence.province}` : null
+      areaLabel: r.residence.city && options.countryAddress?.isRegionCode(r.residence.province) ? `${r.residence.city}, ${r.residence.province}` : null
     }));
     return reply.code(200).send({ items, nextCursor: hasMore ? (rows[limit - 1]?.id ?? null) : null });
   });
@@ -9013,7 +9012,7 @@ export function buildApi(options: BuildApiOptions = {}) {
       payableMinutes: r.payableMinutes, billableMinutes: r.billableMinutes, breakMinutes: r.breakMinutes,
       workerReviewStatus: r.workerReviewStatus, version: r.version,
       employerName: r.organization.displayName,
-      areaLabel: r.residence.city && isProvinceCode(r.residence.province) ? `${r.residence.city}, ${r.residence.province}` : null
+      areaLabel: r.residence.city && options.countryAddress?.isRegionCode(r.residence.province) ? `${r.residence.city}, ${r.residence.province}` : null
     }));
     return reply.code(200).send({ items, nextCursor: hasMore ? (rows[limit - 1]?.id ?? null) : null });
   });

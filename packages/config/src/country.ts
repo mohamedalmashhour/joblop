@@ -47,6 +47,9 @@ export interface CountryAddressPort {
   isPostalCodeFormat(input: string): boolean;
   /** Human name for a region (province/state/…) code, or null if unknown. */
   regionNameFromCode(code: string): string | null;
+  /** Whether the input is a valid region (province/state/governorate) code for this country.
+   *  Accepts a possibly-null/undefined value (mirrors the permissive guard it replaces). */
+  isRegionCode(code: string | null | undefined): boolean;
   /** Best-effort region code inferred from a postal code, or null. */
   regionHintFromPostalCode(postalCode: string): string | null;
   /** Whether a coordinate falls within this country's geographic bounds. */
