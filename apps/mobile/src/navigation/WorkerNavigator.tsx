@@ -10,14 +10,13 @@ import { MyWorkScreen } from "../features/my-work";
 import { WorkerScheduleScreen } from "../features/worker-attendance";
 import { WorkerTimesheetListScreen } from "../features/worker-timesheets";
 import { WorkerEarningsScreen } from "../features/worker-earnings";
-import { WorkerDashboardHandoffScreen, WorkerOnboardingScreen } from "../features/worker-onboarding";
+import { WorkerSetupScreen } from "../features/worker-onboarding";
 
 // The worker app's real navigation shell. A dependency-free stack + bottom-tab navigator (no
 // react-navigation / native-screens dependency, to keep the EAS build surface minimal) that mounts
 // the already-built feature screens and wires their callbacks into real transitions. Each screen owns
 // its own data source and fixture/real disclosure; this shell only routes between them.
 
-type OnboardingKind = "profile" | "qualifications" | "availability" | "review";
 
 type Screen =
   | { name: "home" }
@@ -28,8 +27,7 @@ type Screen =
   | { name: "attendance" }
   | { name: "timesheet" }
   | { name: "earnings" }
-  | { name: "onboarding"; kind: OnboardingKind }
-  | { name: "dashboard" };
+  | { name: "onboarding" };
 
 type TabId = "home" | "available" | "myShifts" | "calendar" | "earnings";
 
@@ -41,7 +39,6 @@ const TABS: readonly { id: TabId; label: string; root: Screen }[] = [
   { id: "earnings", label: "Earnings", root: { name: "earnings" } }
 ];
 
-const ONBOARDING_ORDER: readonly OnboardingKind[] = ["profile", "qualifications", "availability", "review"];
 
 export function WorkerNavigator({
   transport,
@@ -82,7 +79,7 @@ export function WorkerNavigator({
           <HomeScreen
             authenticated={authenticated}
             onOpen={(destination) => {
-              if (destination === "onboarding") push({ name: "onboarding", kind: "profile" });
+              if (destination === "onboarding") push({ name: "onboarding" });
               else selectTab(destination);
             }}
           />
@@ -122,24 +119,7 @@ export function WorkerNavigator({
           <WorkerEarningsScreen transport={transport} onOpenSupport={() => selectTab("home")} />
         );
       case "onboarding":
-        return (
-          <WorkerOnboardingScreen
-            kind={current.kind}
-            onBack={back}
-            onNext={() => {
-              const idx = ONBOARDING_ORDER.indexOf(current.kind);
-              const next = ONBOARDING_ORDER[idx + 1];
-              push(next ? { name: "onboarding", kind: next } : { name: "dashboard" });
-            }}
-          />
-        );
-      case "dashboard":
-        return (
-          <WorkerDashboardHandoffScreen
-            onOpenAvailable={() => selectTab("available")}
-            onOpenProfile={() => push({ name: "onboarding", kind: "review" })}
-          />
-        );
+        return <WorkerSetupScreen transport={transport} onBack={back} />;
       default: {
         const _exhaustive: never = current;
         return _exhaustive;

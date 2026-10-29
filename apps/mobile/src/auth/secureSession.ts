@@ -591,6 +591,61 @@ export function createMobileSessionTransport(options: {
         return { status: "error" };
       }
     },
+    // The worker's pay-channel classification state from GET /worker/profile/classification. `election`
+    // is null until the worker has elected (and signed); `agreementVersions` names the current signed
+    // agreement per channel. Read-only.
+    async workerClassification(): Promise<
+      | Readonly<{ status: "ready"; election: WorkerElection | null; agreementVersions: Readonly<{ employee: string; contractor: string }> }>
+      | Readonly<{ status: "denied" | "error" }>
+    > {
+      const token = await options.vault.read();
+      if (!token) return { status: "denied" };
+      try {
+        const response = await request(`${origin}/worker/profile/classification`, {
+          method: "GET",
+          headers: { accept: "application/json", authorization: `Bearer ${token}` },
+          cache: "no-store"
+        });
+        if (response.status === 401 || response.status === 403) return { status: "denied" };
+        if (!response.ok) return { status: "error" };
+        const payload = (await response.json()) as { election?: unknown; agreementVersions?: unknown };
+        const av = payload.agreementVersions as Record<string, unknown> | undefined;
+        const agreementVersions = {
+          employee: typeof av?.employee === "string" ? av.employee : "",
+          contractor: typeof av?.contractor === "string" ? av.contractor : ""
+        };
+        return { status: "ready", election: parseWorkerElection(payload.election), agreementVersions };
+      } catch {
+        return { status: "error" };
+      }
+    },
+    // The worker elects their pay channel and SIGNS the matching agreement. This creates their worker
+    // identity (if new) and records a signed, append-only election — the gate that lets them apply to
+    // and receive offers. It computes no payroll and moves no money.
+    async electClassification(input: Readonly<{ classification: "employee" | "contractor"; agreementVersion: string; agreementAccepted: boolean }>): Promise<
+      | Readonly<{ status: "ready"; election: WorkerElection | null; unchanged: boolean }>
+      | Readonly<{ status: "denied" | "invalid" | "stale" | "error" }>
+    > {
+      const token = await options.vault.read();
+      if (!token) return { status: "denied" };
+      if (!input.agreementAccepted) return { status: "invalid" };
+      try {
+        const response = await request(`${origin}/worker/profile/classification-election`, {
+          method: "POST",
+          headers: { accept: "application/json", "content-type": "application/json", authorization: `Bearer ${token}` },
+          body: JSON.stringify({ classification: input.classification, agreementVersion: input.agreementVersion, agreementAccepted: true }),
+          cache: "no-store"
+        });
+        if (response.status === 401 || response.status === 403) return { status: "denied" };
+        if (response.status === 400) return { status: "invalid" };
+        if (response.status === 409) return { status: "stale" };
+        if (!response.ok) return { status: "error" };
+        const payload = (await response.json()) as { election?: unknown; unchanged?: unknown };
+        return { status: "ready", election: parseWorkerElection(payload.election), unchanged: payload.unchanged === true };
+      } catch {
+        return { status: "error" };
+      }
+    },
     async respondToWorkerOffer(
       input: Readonly<{
         offerId: string;
@@ -993,5 +1048,27 @@ function parseWorkerTimesheet(input: unknown): WorkerTimesheet | null {
     version: num(r.version) ?? 0,
     employerName: str(r.employerName),
     areaLabel: typeof r.areaLabel === "string" ? r.areaLabel : null
+  };
+}
+
+// The worker's active pay-channel election (safe projection: no other-party user ids beyond their own
+// signer, which the backend already returns).
+export type WorkerElection = Readonly<{
+  classification: "employee" | "contractor";
+  status: string;
+  agreementVersion: string | null;
+  effectiveFrom: string;
+}>;
+
+function parseWorkerElection(input: unknown): WorkerElection | null {
+  if (typeof input !== "object" || input === null) return null;
+  const e = input as Record<string, unknown>;
+  const classification = e.classification;
+  if (classification !== "employee" && classification !== "contractor") return null;
+  return {
+    classification,
+    status: str(e.status),
+    agreementVersion: typeof e.agreementVersion === "string" ? e.agreementVersion : null,
+    effectiveFrom: str(e.effectiveFrom)
   };
 }

@@ -803,3 +803,49 @@ describe("worker timesheet transport", () => {
     expect(fetchMock).toHaveBeenCalledTimes(1); // no second request fired for the empty reason
   });
 });
+
+describe("worker classification (setup) transport", () => {
+  const origin = "https://api.example.com";
+  function withSession() {
+    const v = vault();
+    v.stored = "session-token-iiiiiiiiiiii";
+    return v;
+  }
+
+  it("reads classification state (null election before setup) + agreement versions", async () => {
+    const transport = createMobileSessionTransport({
+      apiOrigin: origin,
+      vault: withSession(),
+      fetch: vi.fn(async () => response(200, { election: null, agreementVersions: { employee: "emp-v1", contractor: "con-v1" } }))
+    });
+    const result = await transport.workerClassification();
+    expect(result.status).toBe("ready");
+    if (result.status === "ready") {
+      expect(result.election).toBeNull();
+      expect(result.agreementVersions).toEqual({ employee: "emp-v1", contractor: "con-v1" });
+    }
+  });
+
+  it("elects a classification with a signed agreement and returns the active election", async () => {
+    const fetchMock = vi.fn(async () =>
+      response(201, { election: { classification: "contractor", status: "active", agreementVersion: "con-v1", effectiveFrom: "2026-07-01T00:00:00.000Z" } })
+    );
+    const transport = createMobileSessionTransport({ apiOrigin: origin, vault: withSession(), fetch: fetchMock });
+    const result = await transport.electClassification({ classification: "contractor", agreementVersion: "con-v1", agreementAccepted: true });
+    expect(result.status).toBe("ready");
+    if (result.status === "ready") expect(result.election).toMatchObject({ classification: "contractor", status: "active" });
+    expect(fetchMock).toHaveBeenCalledWith(
+      `${origin}/worker/profile/classification-election`,
+      expect.objectContaining({ method: "POST", body: JSON.stringify({ classification: "contractor", agreementVersion: "con-v1", agreementAccepted: true }) })
+    );
+  });
+
+  it("refuses to submit (invalid) when the agreement isn't accepted — no request fired; maps 409 → stale", async () => {
+    const fetchMock = vi.fn(async () => response(201, {}));
+    const t = createMobileSessionTransport({ apiOrigin: origin, vault: withSession(), fetch: fetchMock });
+    expect((await t.electClassification({ classification: "employee", agreementVersion: "emp-v1", agreementAccepted: false })).status).toBe("invalid");
+    expect(fetchMock).not.toHaveBeenCalled();
+    const staleT = createMobileSessionTransport({ apiOrigin: origin, vault: withSession(), fetch: vi.fn(async () => response(409, {})) });
+    expect((await staleT.electClassification({ classification: "employee", agreementVersion: "emp-v1", agreementAccepted: true })).status).toBe("stale");
+  });
+});
