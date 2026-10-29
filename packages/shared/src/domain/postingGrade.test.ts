@@ -40,8 +40,10 @@ describe("gradePosting — composes scorer → band → premium with a pay-equit
     });
     expect(r.audit.factors).toHaveLength(4);
     expect(r.audit.factors).toContainEqual({ factor: "skill", degree: 5, weight: 1, points: 5 });
-    expect(r.audit.note).toContain("tier 6/6");
-    expect(r.audit.note).toContain("gender-neutral");
+    expect(r.audit.note.en).toContain("tier 6/6");
+    expect(r.audit.note.en).toContain("gender-neutral");
+    expect(r.audit.note.fr).toContain("niveau 6/6");
+    expect(r.audit.note.fr).toContain("équité salariale");
   });
 
   it("shift engagement raises the band above the permanent base and records the premium", () => {

@@ -31,7 +31,8 @@ export type PayEquityAudit = Readonly<{
   bandMultiplier: number;
   engagement: EngagementType;
   premiumPpm: number;
-  note: string;
+  /** Bilingual audit note. FR uses the formal CNESST register for administrative defensibility. */
+  note: Readonly<{ en: string; fr: string }>;
 }>;
 
 export type PostingGrade = Readonly<{
@@ -63,6 +64,24 @@ export type GradePostingOptions = Readonly<{
   tierBand?: TierBandOptions;
   premiumPpm?: number;
 }>;
+
+// Bilingual audit note. FR uses the formal CNESST register (administrative defensibility); EN is the
+// plain operational summary. Both name the four statutory pay-equity factors and disclaim binding pay.
+function buildAuditNote(family: RoleFamily, tier: number, ceiling: number): Readonly<{ en: string; fr: string }> {
+  const familyEn = family === "service" ? "service / trades" : "professional / technical";
+  const familyFr = family === "service" ? "service / métiers" : "professionnel / technique";
+  return {
+    en:
+      `${familyEn} role graded tier ${tier}/${ceiling} by a deterministic point-factor method over the ` +
+      `gender-neutral statutory pay-equity factors (qualifications/skill, effort, responsibilities, ` +
+      `working conditions). Advisory market guidance only — not binding pay.`,
+    fr:
+      `Poste de la famille « ${familyFr} » évalué au niveau ${tier}/${ceiling} selon une méthode ` +
+      `déterministe à points et facteurs, fondée sur les quatre facteurs non sexistes prévus par la Loi ` +
+      `sur l'équité salariale : qualifications, efforts, responsabilités et conditions de travail. ` +
+      `Document indicatif du marché seulement; ne constitue pas une rémunération obligatoire.`
+  };
+}
 
 /**
  * Compose an advisory posting grade. Fail-closed: any invalid stage propagates `{ status: "invalid" }`.
@@ -99,11 +118,7 @@ export function gradePosting(input: GradePostingInput, options: GradePostingOpti
     bandMultiplier: baseBand.multiplier,
     engagement: input.engagement,
     premiumPpm: withPremium.premiumPpm,
-    note:
-      `${input.family} role graded tier ${grade.tier}/${FAMILY_TIER_CEILING[input.family]} by a deterministic ` +
-      `point-factor method over the gender-neutral statutory pay-equity factors ` +
-      `(qualifications/skill, effort, responsibilities, working conditions). ` +
-      `Advisory market guidance only — not binding pay.`
+    note: buildAuditNote(input.family, grade.tier, FAMILY_TIER_CEILING[input.family])
   };
 
   return {
