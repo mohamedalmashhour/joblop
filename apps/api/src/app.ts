@@ -309,6 +309,7 @@ import { deriveWorkerCancellationPenalty, WORKER_SUSPENSION_DAYS } from "@rwos/s
 import { notifyClient } from "./notifications/clientNotifications";
 import { notifyWorkerPayoutPaid, notifyWorkerAccountPenalty } from "./notifications/workerNotifications";
 import { createWorkerPayoutProgressionRunner, startWorkerPayoutProgressionSchedule } from "./workerPayoutProgression";
+import { createPrismaJobGradingAuditStore, JOB_GRADING_ENGINE_VERSION, type JobGradingAuditStore } from "./jobGradingAuditRepository";
 import { raiseWorkerDispute, listWorkerDisputes, withdrawWorkerDispute } from "./workerDisputeRepository";
 import { createEmployerOrderWithChildren, listEmployerOrders, getEmployerOrder, submitEmployerOrder, cancelEmployerOrder } from "./employerOrderRepository";
 import { listMarketWagesForResidence, listAllMarketWages, upsertMarketWage } from "./marketWageRepository";
@@ -403,6 +404,10 @@ export interface BuildApiOptions {
   // stage); the composition root is responsible for fail-closing on a currency the money subsystem
   // cannot execute (see server.ts). Absent → no country currency asserted (local/test neutral fixture).
   countryCurrency?: string | undefined;
+  // ACR-0005: store for persisting advisory job-grading audits. Defaults to a prisma-backed store when
+  // a prisma client is available; injectable (and fakeable in tests). Absent → grading still returns,
+  // just not persisted (best-effort — the grade is advisory).
+  jobGradingAuditStore?: JobGradingAuditStore | undefined;
 }
 
 export type AuthenticationRateLimitDecision = Readonly<{
@@ -528,6 +533,8 @@ export function buildApi(options: BuildApiOptions = {}) {
         ? createMemoryAuthenticationRateLimiter({ accountMaxAttempts: 100000, networkMaxAttempts: 100000, windowMs: 1, maxBuckets: 20000, keySecret: "rwos-local-e2e-auth-rate-limit" })
         : createMemoryAuthenticationRateLimiter());
   const prisma = options.authService ? null : createPrismaClient(runtimeConfig.databaseUrl);
+  const jobGradingAuditStore: JobGradingAuditStore | null =
+    options.jobGradingAuditStore ?? (prisma ? createPrismaJobGradingAuditStore(prisma) : null);
   const authenticationRepository = prisma ? createPrismaAuthenticationRepository(prisma) : null;
   const emailSender =
     options.emailSender ??
@@ -4031,7 +4038,28 @@ export function buildApi(options: BuildApiOptions = {}) {
     if (result.status !== "graded") {
       return reply.code(422).send({ error: result.reason, message: "The posting could not be graded." });
     }
-    return reply.code(200).send(result);
+    // Persist the advisory pay-equity audit (best-effort — the grade is advisory and still returned if
+    // the store is absent or the write fails). jobRequestId is optional: a grade may be computed while
+    // the posting is still a draft.
+    let persistedAuditId: string | null = null;
+    const rawJobRequestId = asRecord(request.body).jobRequestId;
+    const jobRequestId = typeof rawJobRequestId === "string" && isCanonicalUuid(rawJobRequestId) ? rawJobRequestId : null;
+    if (jobGradingAuditStore) {
+      try {
+        const stored = await jobGradingAuditStore.record({
+          organizationId,
+          createdByUserId: session.user.id,
+          jobRequestId,
+          request: parsed,
+          graded: result,
+          evaluatedBy: `engine:structured:${JOB_GRADING_ENGINE_VERSION}`
+        });
+        persistedAuditId = stored.id;
+      } catch {
+        persistedAuditId = null;
+      }
+    }
+    return reply.code(200).send({ ...result, persistedAuditId });
   });
 
   // Employer: the bilingual wizard content (statutory factors, degree anchors, labels) for the grading

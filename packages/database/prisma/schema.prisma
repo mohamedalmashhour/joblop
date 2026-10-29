@@ -3366,3 +3366,42 @@ model EmployerInvoiceCheckout {
   @@index([organizationId, status], map: "employer_invoice_checkouts_org_status_idx")
   @@map("employer_invoice_checkouts")
 }
+
+// ACR-0005 — persisted advisory job-grading audit (the pay-equity record of WHY a tier was assigned).
+// Deterministic, gender-neutral, bilingual. Advisory only — no money. FK constraints are declared in
+// the migration SQL (org CASCADE, job request SET NULL, user CASCADE); scalar-only here to keep the
+// change localized. Append-only in practice.
+model JobGradingAudit {
+  id                      String   @id @default(uuid()) @db.Uuid
+  organizationId          String   @map("organization_id") @db.Uuid
+  jobRequestId            String?  @map("job_request_id") @db.Uuid
+  createdByUserId         String   @map("created_by_user_id") @db.Uuid
+  family                  String
+  tier                    Int
+  tierCeiling             Int      @map("tier_ceiling")
+  rawScore                Int      @map("raw_score")
+  normalizedScore         Float    @map("normalized_score")
+  degreeSkill             Int      @map("degree_skill")
+  degreeEffort            Int      @map("degree_effort")
+  degreeResponsibility    Int      @map("degree_responsibility")
+  degreeWorkingConditions Int      @map("degree_working_conditions")
+  factorWeights           Json     @map("factor_weights")
+  bandCurrency            String   @map("band_currency")
+  bandMinMinor            Int      @map("band_min_minor")
+  bandMidMinor            Int      @map("band_mid_minor")
+  bandMaxMinor            Int      @map("band_max_minor")
+  bandMultiplier          Float    @map("band_multiplier")
+  engagement              String
+  premiumPpm              Int      @map("premium_ppm")
+  needsHumanReview        Boolean  @map("needs_human_review")
+  confidence              Float
+  evaluatedBy             String   @map("evaluated_by")
+  auditNoteEn             String   @map("audit_note_en")
+  auditNoteFr             String   @map("audit_note_fr")
+  engineVersion           String   @map("engine_version")
+  createdAt               DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  @@index([organizationId], map: "job_grading_audit_org_idx")
+  @@index([jobRequestId], map: "job_grading_audit_job_request_idx")
+  @@map("job_grading_audit")
+}
