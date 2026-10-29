@@ -34,7 +34,12 @@ const en: Dict = {
   "home.earnings.label": "My earnings",
   "home.earnings.desc": "What's registered to your account and what's been paid.",
   "home.onboarding.label": "Get set up",
-  "home.onboarding.desc": "Complete your worker profile to receive offers."
+  "home.onboarding.desc": "Complete your worker profile to receive offers.",
+  "calendar.signIn": "Sign in to see your monthly schedule.",
+  "calendar.noShifts": "No shifts on this day.",
+  "calendar.loadError": "Your calendar could not be loaded right now.",
+  "calendar.offers": "My offers",
+  "calendar.today": "Today"
 };
 
 const fr: Dict = {
@@ -58,7 +63,12 @@ const fr: Dict = {
   "home.earnings.label": "Mes gains",
   "home.earnings.desc": "Ce qui est enregistré à votre compte et ce qui a été payé.",
   "home.onboarding.label": "Configurer mon profil",
-  "home.onboarding.desc": "Complétez votre profil travailleur pour recevoir des offres."
+  "home.onboarding.desc": "Complétez votre profil travailleur pour recevoir des offres.",
+  "calendar.signIn": "Connectez-vous pour voir votre horaire du mois.",
+  "calendar.noShifts": "Aucun quart ce jour-là.",
+  "calendar.loadError": "Votre calendrier n'a pas pu être chargé.",
+  "calendar.offers": "Mes offres",
+  "calendar.today": "Aujourd'hui"
 };
 
 const ar: Dict = {
@@ -82,7 +92,12 @@ const ar: Dict = {
   "home.earnings.label": "أرباحي",
   "home.earnings.desc": "ما هو مُسجَّل في حسابك وما تم دفعه.",
   "home.onboarding.label": "إعداد الملف",
-  "home.onboarding.desc": "أكمل ملفك كعامل لتلقّي العروض."
+  "home.onboarding.desc": "أكمل ملفك كعامل لتلقّي العروض.",
+  "calendar.signIn": "سجّل الدخول لعرض جدولك الشهري.",
+  "calendar.noShifts": "لا توجد فرص عمل في هذا اليوم.",
+  "calendar.loadError": "تعذّر تحميل التقويم الآن.",
+  "calendar.offers": "عروضي",
+  "calendar.today": "اليوم"
 };
 
 export const dictionaries: Record<Locale, Dict> = { en, fr, ar };

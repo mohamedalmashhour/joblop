@@ -6,6 +6,7 @@ import type { MobileSessionTransport } from "../auth/secureSession";
 import { WorkerAuthScreen } from "../features/worker-auth";
 import { HomeScreen } from "../features/home";
 import { WorkerCalendarPanel } from "../features/worker-calendar";
+import { MonthCalendarScreen } from "../features/calendar-month";
 import { MarketplaceJobScreen, MarketplaceSearchScreen } from "../features/marketplace";
 import { MyWorkScreen } from "../features/my-work";
 import { WorkerScheduleScreen } from "../features/worker-attendance";
@@ -25,6 +26,7 @@ type Screen =
   | { name: "marketplaceJob"; jobRequestId: string; postalCode: string | null }
   | { name: "myShifts" }
   | { name: "calendar" }
+  | { name: "offers" }
   | { name: "attendance" }
   | { name: "timesheet" }
   | { name: "earnings" }
@@ -54,8 +56,9 @@ export function WorkerNavigator({
 }) {
   const { t: tr } = useLocale();
   // A deep-linked offer opens the Calendar tab; otherwise the hub.
-  const [tab, setTab] = useState<TabId>(offerId ? "calendar" : "home");
-  const [stack, setStack] = useState<Screen[]>([offerId ? { name: "calendar" } : { name: "home" }]);
+  // The worker opens to their month calendar (a deep-linked offer still opens the Calendar tab too).
+  const [tab, setTab] = useState<TabId>("calendar");
+  const [stack, setStack] = useState<Screen[]>([{ name: "calendar" }]);
 
   const current = stack[stack.length - 1]!;
   const push = useCallback((screen: Screen) => setStack((s) => [...s, screen]), []);
@@ -111,7 +114,16 @@ export function WorkerNavigator({
           />
         );
       case "calendar":
-        return <WorkerCalendarPanel allowFixturePreview={false} offerId={offerId} transport={transport} />;
+        // Normal open → the worker's month calendar, with a button to their offers (accept/decline).
+        // A deep-linked offer → the offer panel directly so the existing accept flow still works.
+        return offerId ? (
+          <WorkerCalendarPanel allowFixturePreview={false} offerId={offerId} transport={transport} />
+        ) : (
+          <MonthCalendarScreen transport={transport} onOpenOffers={() => push({ name: "offers" })} />
+        );
+      case "offers":
+        // The worker's targeted offers — accept or decline (respondToWorkerOffer, with terms confirm).
+        return <WorkerCalendarPanel allowFixturePreview={false} offerId={null} transport={transport} />;
       case "attendance":
         return <WorkerScheduleScreen transport={transport} onBack={back} />;
       case "timesheet":

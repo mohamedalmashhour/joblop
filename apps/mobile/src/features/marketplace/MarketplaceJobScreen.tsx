@@ -4,6 +4,7 @@ import { spacing } from "@rwos/design-system";
 import type { MarketplaceJobDetail, MobileSessionTransport } from "../../auth/secureSession";
 import { Badge, BodyText, Button, Card, Divider, ErrorState, Heading, LoadingState, ScreenContainer, Section, SmallText } from "../../ui/primitives";
 import { formatOpenings, formatShiftWindow, formatWorkerRate, marketplaceCopy } from "./marketplaceContent";
+import { JobLocationLink } from "../maps";
 
 type DetailState =
   | { status: "loading" }
@@ -76,6 +77,7 @@ export function MarketplaceJobScreen({
                 <SmallText>{state.job.role}</SmallText>
                 <BodyText>{state.job.employerName}</BodyText>
                 <SmallText>{`${state.job.city}, ${state.job.province}`}</SmallText>
+                <JobLocationLink address={`${state.job.city}, ${state.job.province}`} />
                 <Divider />
                 <SmallText>{formatShiftWindow(state.job.startAt, state.job.endAt)}</SmallText>
                 <SmallText>{formatOpenings(state.job.openings)}</SmallText>
