@@ -3,8 +3,7 @@ import { Pressable, StyleSheet, Text, View } from "react-native";
 import { colors, spacing, typography } from "@rwos/design-system";
 import type { MobileSessionTransport } from "../auth/secureSession";
 import { WorkerAuthScreen } from "../features/worker-auth";
-import { WorkerServiceScreen } from "../features/worker-service";
-import type { WorkerServiceMode } from "../features/worker-service/workerServiceContent";
+import { HomeScreen } from "../features/home";
 import { WorkerCalendarPanel } from "../features/worker-calendar";
 import { MarketplaceJobScreen, MarketplaceSearchScreen } from "../features/marketplace";
 import { MyWorkScreen } from "../features/my-work";
@@ -58,7 +57,6 @@ export function WorkerNavigator({
   // A deep-linked offer opens the Calendar tab; otherwise the hub.
   const [tab, setTab] = useState<TabId>(offerId ? "calendar" : "home");
   const [stack, setStack] = useState<Screen[]>([offerId ? { name: "calendar" } : { name: "home" }]);
-  const [serviceMode, setServiceMode] = useState<WorkerServiceMode>("support");
 
   const current = stack[stack.length - 1]!;
   const push = useCallback((screen: Screen) => setStack((s) => [...s, screen]), []);
@@ -81,16 +79,12 @@ export function WorkerNavigator({
     switch (current.name) {
       case "home":
         return (
-          <WorkerServiceScreen
-            mode={serviceMode}
-            onOpenMode={setServiceMode}
-            onOpenAvailable={() => selectTab("available")}
-            onOpenMyShifts={() => selectTab("myShifts")}
-            onOpenEarnings={() => selectTab("earnings")}
-            onOpenAttendance={() => push({ name: "attendance" })}
-            onOpenTimesheet={() => push({ name: "timesheet" })}
-            onOpenOnboarding={() => push({ name: "onboarding", kind: "profile" })}
-            onOpenProfile={() => push({ name: "dashboard" })}
+          <HomeScreen
+            authenticated={authenticated}
+            onOpen={(destination) => {
+              if (destination === "onboarding") push({ name: "onboarding", kind: "profile" });
+              else selectTab(destination);
+            }}
           />
         );
       case "available":
@@ -125,13 +119,7 @@ export function WorkerNavigator({
         return <WorkerTimesheetListScreen transport={transport} onBack={back} />;
       case "earnings":
         return (
-          <WorkerEarningsScreen
-            transport={transport}
-            onOpenSupport={() => {
-              setServiceMode("support");
-              selectTab("home");
-            }}
-          />
+          <WorkerEarningsScreen transport={transport} onOpenSupport={() => selectTab("home")} />
         );
       case "onboarding":
         return (
