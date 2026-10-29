@@ -40,6 +40,26 @@ account/submit steps are owner-only. Money stays gated off; this is the app, not
 See `docs/launch/IOS_APP_STORE_SUBMISSION.md`. Summary: Apple Developer account → App ID `com.joblop.app`
 → fill `eas.json → submit.production.ios` → `eas build`/`eas submit` → TestFlight → submit.
 
+## Google Play policy deadlines & triage (from the 2026-10-29 Play Developer Update)
+
+The Oct-2026 Play policy round **changes nothing we must do now** — JobLop requests **no** location,
+contacts, SMS, call-log, all-files, or accessibility permissions (verified: `apps/mobile` declares none;
+maps use keyless "open in Google Maps" links, job search is by postal code), so the restricted-permission
+tightening does not apply. Email verification is via Brevo (no SMS/Call-Log). Not crypto, not a game,
+not XR, not selling into/out of Japan.
+
+**Owner / Play Console calendar items (account-level, not code):**
+- **Declare trader status** in Play Console — **starting Nov 2026.** DSA requirement; applies even
+  selling Canada-only and is needed to keep publishing. Do it when the Console prompts.
+- **App-quality memory/code optimization thresholds** — **Feb 2027.** Review at build time so the app
+  keeps visibility/publishing (Expo builds are usually fine; check bundle size/optimization before release).
+- **Target audience = adults (18+ workforce)** at submission — so Families policies don't apply. (IARC
+  rating already recorded above.)
+
+**Deferred — only relevant once payments go live (currently OFF):**
+- **Payments policy for AI/agentic digital purchases** — applies only when JobLop enables in-app digital
+  purchases, especially via AI/agentic flows. Revisit with the IARC re-rate trigger when live payments ship.
+
 ## Honest status
 - The app is **test-mode** (payments gated off). A store build is a **pilot/TestFlight-grade** release,
   not a live-money launch — that still needs the money licence + KYC/AML + CPA sign-off (owner).
