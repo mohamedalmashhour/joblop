@@ -516,3 +516,114 @@ describe("worker payout ledger transport", () => {
     );
   });
 });
+
+describe("open marketplace transport", () => {
+  const origin = "https://api.example.com";
+  function withSession() {
+    const v = vault();
+    v.stored = "session-token-eeeeeeeeeeee";
+    return v;
+  }
+
+  it("searches open shifts and projects the safe job list (role, employer, area, window, openings)", async () => {
+    const fetchMock = vi.fn(async () =>
+      response(200, {
+        origin: { province: "QC", city: "Montreal", postalCode: "H2X1Y4" },
+        total: 1,
+        nextCursor: null,
+        jobs: [
+          {
+            jobRequestId: "11111111-1111-4111-8111-111111111111",
+            role: "Dishwasher",
+            employerName: "Residence Care",
+            verifiedEmployer: true,
+            city: "Montreal",
+            province: "QC",
+            latitude: 45.5,
+            longitude: -73.6,
+            startAt: "2026-07-01T12:00:00.000Z",
+            endAt: "2026-07-01T20:00:00.000Z",
+            openings: 3,
+            workerRateMinor: null,
+            currency: "CAD",
+            saved: false
+          }
+        ]
+      })
+    );
+    const transport = createMobileSessionTransport({ apiOrigin: origin, vault: withSession(), fetch: fetchMock });
+    const result = await transport.marketplaceSearch({ postalCode: "H2X 1Y4", verifiedOnly: true });
+    expect(result.status).toBe("ready");
+    if (result.status === "ready") {
+      expect(result.data.jobs).toHaveLength(1);
+      expect(result.data.jobs[0]).toMatchObject({ role: "Dishwasher", employerName: "Residence Care", verifiedEmployer: true, openings: 3, workerRateMinor: null });
+    }
+    expect(fetchMock).toHaveBeenCalledWith(
+      `${origin}/marketplace/jobs/search`,
+      expect.objectContaining({ method: "POST", headers: expect.objectContaining({ authorization: "Bearer session-token-eeeeeeeeeeee" }) })
+    );
+  });
+
+  it("maps marketplace states: empty jobs → empty, bad location → invalid_location, no session → denied", async () => {
+    const emptyT = createMobileSessionTransport({ apiOrigin: origin, vault: withSession(), fetch: vi.fn(async () => response(200, { jobs: [], total: 0 })) });
+    expect((await emptyT.marketplaceSearch({ postalCode: "H2X 1Y4" })).status).toBe("empty");
+
+    const badLocT = createMobileSessionTransport({ apiOrigin: origin, vault: withSession(), fetch: vi.fn(async () => response(422, { error: "RWOS_ORIGIN_UNRESOLVED" })) });
+    expect((await badLocT.marketplaceSearch({ postalCode: "ZZZ" })).status).toBe("invalid_location");
+
+    const deniedT = createMobileSessionTransport({ apiOrigin: origin, vault: vault(), fetch: vi.fn(async () => response(200, { jobs: [] })) });
+    expect((await deniedT.marketplaceSearch({ postalCode: "H2X 1Y4" })).status).toBe("denied");
+  });
+
+  it("loads a job detail and 404 → not_found", async () => {
+    const okT = createMobileSessionTransport({
+      apiOrigin: origin,
+      vault: withSession(),
+      fetch: vi.fn(async () =>
+        response(200, {
+          job: {
+            jobRequestId: "22222222-2222-4222-8222-222222222222",
+            role: "Cook",
+            title: "Evening line cook",
+            employerId: "org-1",
+            employerName: "Villa Kitchen",
+            verifiedEmployer: false,
+            city: "Laval",
+            province: "QC",
+            startAt: "2026-07-02T16:00:00.000Z",
+            endAt: "2026-07-02T23:00:00.000Z",
+            openings: 1,
+            workerRateMinor: null,
+            currency: "CAD",
+            description: "Line cook for dinner service.",
+            duties: "Prep, plating, cleanup.",
+            qualifications: ["Food-safe"],
+            saved: false
+          }
+        })
+      )
+    });
+    const ok = await okT.marketplaceJob("22222222-2222-4222-8222-222222222222");
+    expect(ok.status).toBe("ready");
+    if (ok.status === "ready") expect(ok.data).toMatchObject({ title: "Evening line cook", qualifications: ["Food-safe"], workerRateMinor: null });
+
+    const missT = createMobileSessionTransport({ apiOrigin: origin, vault: withSession(), fetch: vi.fn(async () => response(404, {})) });
+    expect((await missT.marketplaceJob("22222222-2222-4222-8222-222222222222")).status).toBe("not_found");
+  });
+
+  it("applies by expressing interest (idempotent alreadyInterested) and 404 → not_found", async () => {
+    const applyT = createMobileSessionTransport({
+      apiOrigin: origin,
+      vault: withSession(),
+      fetch: vi.fn(async () => response(200, { interest: { status: "submitted", jobRequestId: "x", createdAt: "2026-07-01T00:00:00.000Z" }, alreadyInterested: false }))
+    });
+    const res = await applyT.expressInterest("33333333-3333-4333-8333-333333333333");
+    expect(res).toMatchObject({ status: "ready", interestStatus: "submitted", alreadyInterested: false });
+
+    const dupT = createMobileSessionTransport({ apiOrigin: origin, vault: withSession(), fetch: vi.fn(async () => response(200, { interest: { status: "submitted" }, alreadyInterested: true })) });
+    expect((await dupT.expressInterest("33333333-3333-4333-8333-333333333333"))).toMatchObject({ status: "ready", alreadyInterested: true });
+
+    const missT = createMobileSessionTransport({ apiOrigin: origin, vault: withSession(), fetch: vi.fn(async () => response(404, {})) });
+    expect((await missT.expressInterest("33333333-3333-4333-8333-333333333333")).status).toBe("not_found");
+  });
+});

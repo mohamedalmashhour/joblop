@@ -6,11 +6,9 @@ import { WorkerAuthScreen } from "../features/worker-auth";
 import { WorkerServiceScreen } from "../features/worker-service";
 import type { WorkerServiceMode } from "../features/worker-service/workerServiceContent";
 import { WorkerCalendarPanel } from "../features/worker-calendar";
-import { AvailableShiftsScreen, ShiftDetailsScreen } from "../features/shifts";
+import { MarketplaceJobScreen, MarketplaceSearchScreen } from "../features/marketplace";
 import {
   ApplicationDetailsScreen,
-  ApplicationSuccessScreen,
-  ApplicationSummaryScreen,
   ConfirmationDetailsScreen,
   MyShiftsScreen,
   OfferDetailsScreen
@@ -32,9 +30,7 @@ type OnboardingKind = "profile" | "qualifications" | "availability" | "review";
 type Screen =
   | { name: "home" }
   | { name: "available" }
-  | { name: "shiftDetails"; shiftId: string }
-  | { name: "applicationSummary"; shiftId: string }
-  | { name: "applicationSuccess"; applicationId: string }
+  | { name: "marketplaceJob"; jobRequestId: string; postalCode: string | null }
   | { name: "myShifts" }
   | { name: "applicationDetails"; applicationId: string }
   | { name: "offerDetails"; offerId: string }
@@ -110,29 +106,19 @@ export function WorkerNavigator({
           />
         );
       case "available":
-        return <AvailableShiftsScreen onOpenShift={(shiftId) => push({ name: "shiftDetails", shiftId })} />;
-      case "shiftDetails":
         return (
-          <ShiftDetailsScreen
-            shiftId={current.shiftId}
-            onBack={back}
-            onApply={(shiftId) => push({ name: "applicationSummary", shiftId })}
+          <MarketplaceSearchScreen
+            transport={transport}
+            onOpenJob={(jobRequestId, postalCode) => push({ name: "marketplaceJob", jobRequestId, postalCode })}
           />
         );
-      case "applicationSummary":
+      case "marketplaceJob":
         return (
-          <ApplicationSummaryScreen
-            shiftId={current.shiftId}
+          <MarketplaceJobScreen
+            jobRequestId={current.jobRequestId}
+            postalCode={current.postalCode}
+            transport={transport}
             onBack={back}
-            onSubmitted={(applicationId) => push({ name: "applicationSuccess", applicationId })}
-          />
-        );
-      case "applicationSuccess":
-        return (
-          <ApplicationSuccessScreen
-            applicationId={current.applicationId}
-            onOpenApplication={(applicationId) => push({ name: "applicationDetails", applicationId })}
-            onOpenMyShifts={() => selectTab("myShifts")}
           />
         );
       case "myShifts":

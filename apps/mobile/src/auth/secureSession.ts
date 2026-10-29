@@ -338,6 +338,102 @@ export function createMobileSessionTransport(options: {
         return { status: "error" };
       }
     },
+    // Open-shift marketplace: browse published job postings near the worker's postal code via
+    // POST /marketplace/jobs/search. The backend is authoritative — it returns only the safe,
+    // sensitive-field-stripped projection (role, employer public name, area-level city/province,
+    // date/time, openings; worker rate is policy-gated and currently null). No money moves.
+    async marketplaceSearch(
+      input: Readonly<{ postalCode: string; role?: string; radiusKm?: number; verifiedOnly?: boolean; sort?: "nearest" | "soonest" | "highest_rate"; limit?: number }>
+    ): Promise<
+      | Readonly<{ status: "ready"; data: Readonly<{ jobs: readonly MarketplaceJob[]; total: number; origin: MarketplaceOrigin | null }> }>
+      | Readonly<{ status: "empty" | "denied" | "invalid_location" | "unavailable" | "error" }>
+    > {
+      const token = await options.vault.read();
+      if (!token) return { status: "denied" };
+      try {
+        const response = await request(`${origin}/marketplace/jobs/search`, {
+          method: "POST",
+          headers: { accept: "application/json", "content-type": "application/json", authorization: `Bearer ${token}` },
+          body: JSON.stringify({
+            postalCode: input.postalCode,
+            ...(input.role ? { role: input.role } : {}),
+            ...(input.radiusKm ? { radiusKm: input.radiusKm } : {}),
+            ...(input.verifiedOnly ? { verifiedOnly: true } : {}),
+            ...(input.sort ? { sort: input.sort } : {}),
+            ...(input.limit ? { limit: input.limit } : {})
+          }),
+          cache: "no-store"
+        });
+        if (response.status === 401 || response.status === 403) return { status: "denied" };
+        if (response.status === 400 || response.status === 422) return { status: "invalid_location" };
+        if (response.status === 503) return { status: "unavailable" };
+        if (!response.ok) return { status: "error" };
+        const parsed = parseMarketplaceSearch(await response.json());
+        if (!parsed) return { status: "error" };
+        return parsed.jobs.length === 0 ? { status: "empty" } : { status: "ready", data: parsed };
+      } catch {
+        return { status: "error" };
+      }
+    },
+    // A single open posting's public detail via GET /marketplace/jobs/:id. 404 → not_found (a
+    // non-visible job is indistinguishable from a missing one, by design).
+    async marketplaceJob(
+      jobRequestId: string,
+      postalCode?: string
+    ): Promise<
+      | Readonly<{ status: "ready"; data: MarketplaceJobDetail }>
+      | Readonly<{ status: "not_found" | "denied" | "unavailable" | "error" }>
+    > {
+      const token = await options.vault.read();
+      if (!token) return { status: "denied" };
+      try {
+        const query = postalCode ? `?postalCode=${encodeURIComponent(postalCode)}` : "";
+        const response = await request(`${origin}/marketplace/jobs/${encodeURIComponent(jobRequestId)}${query}`, {
+          method: "GET",
+          headers: { accept: "application/json", authorization: `Bearer ${token}` },
+          cache: "no-store"
+        });
+        if (response.status === 401 || response.status === 403) return { status: "denied" };
+        if (response.status === 404) return { status: "not_found" };
+        if (response.status === 503) return { status: "unavailable" };
+        if (!response.ok) return { status: "error" };
+        const payload = (await response.json()) as { job?: unknown };
+        const detail = parseMarketplaceJobDetail(payload.job);
+        return detail ? { status: "ready", data: detail } : { status: "error" };
+      } catch {
+        return { status: "error" };
+      }
+    },
+    // Apply to an open posting by expressing interest (POST /marketplace/jobs/:id/interest). This
+    // records intent ONLY — it never creates an offer, assignment or payment. Idempotent: a repeat
+    // returns alreadyInterested. 404 → the job is not available.
+    async expressInterest(
+      jobRequestId: string,
+      postalCode?: string
+    ): Promise<
+      | Readonly<{ status: "ready"; interestStatus: string; alreadyInterested: boolean }>
+      | Readonly<{ status: "not_found" | "denied" | "ineligible" | "error" }>
+    > {
+      const token = await options.vault.read();
+      if (!token) return { status: "denied" };
+      try {
+        const response = await request(`${origin}/marketplace/jobs/${encodeURIComponent(jobRequestId)}/interest`, {
+          method: "POST",
+          headers: { accept: "application/json", "content-type": "application/json", authorization: `Bearer ${token}` },
+          body: JSON.stringify(postalCode ? { postalCode } : {}),
+          cache: "no-store"
+        });
+        if (response.status === 401 || response.status === 403) return { status: "denied" };
+        if (response.status === 404) return { status: "not_found" };
+        if (response.status === 409 || response.status === 422) return { status: "ineligible" };
+        if (!response.ok) return { status: "error" };
+        const payload = (await response.json()) as { interest?: { status?: unknown }; alreadyInterested?: unknown };
+        const interestStatus = typeof payload.interest?.status === "string" ? payload.interest.status : "submitted";
+        return { status: "ready", interestStatus, alreadyInterested: payload.alreadyInterested === true };
+      } catch {
+        return { status: "error" };
+      }
+    },
     async respondToWorkerOffer(
       input: Readonly<{
         offerId: string;
@@ -529,5 +625,96 @@ function parseWorkerPayoutsSummary(input: unknown): WorkerPayoutsSummary | null 
     paidMinor,
     toPayCount: payload.toPay.length,
     paidCount: payload.paid.length
+  };
+}
+
+// Safe worker-facing projection of an open marketplace posting (list item). Mirrors the backend
+// select — area-level location only, no exact address, no employer economics (workerRateMinor is the
+// only rate and is policy-gated to null for now).
+export type MarketplaceJob = Readonly<{
+  jobRequestId: string;
+  role: string;
+  employerName: string;
+  verifiedEmployer: boolean;
+  city: string;
+  province: string;
+  startAt: string;
+  endAt: string;
+  openings: number;
+  workerRateMinor: number | null;
+  currency: string;
+  distanceKm: number | null;
+  saved: boolean;
+}>;
+
+export type MarketplaceOrigin = Readonly<{ province: string; city: string; postalCode: string }>;
+
+export type MarketplaceJobDetail = MarketplaceJob &
+  Readonly<{ title: string; employerId: string; description: string | null; duties: string | null; qualifications: readonly string[] }>;
+
+function str(value: unknown, fallback = ""): string {
+  return typeof value === "string" ? value : fallback;
+}
+
+function num(value: unknown): number | null {
+  return typeof value === "number" && Number.isFinite(value) ? value : null;
+}
+
+function parseMarketplaceJob(input: unknown): MarketplaceJob | null {
+  if (typeof input !== "object" || input === null) return null;
+  const j = input as Record<string, unknown>;
+  const jobRequestId = str(j.jobRequestId);
+  const role = str(j.role);
+  if (!jobRequestId || !role) return null;
+  return {
+    jobRequestId,
+    role,
+    employerName: str(j.employerName),
+    verifiedEmployer: j.verifiedEmployer === true,
+    city: str(j.city),
+    province: str(j.province),
+    startAt: str(j.startAt),
+    endAt: str(j.endAt),
+    openings: num(j.openings) ?? 1,
+    workerRateMinor: num(j.workerRateMinor),
+    currency: str(j.currency, "CAD"),
+    distanceKm: num(j.distanceKm),
+    saved: j.saved === true
+  };
+}
+
+function parseMarketplaceSearch(
+  input: unknown
+): Readonly<{ jobs: readonly MarketplaceJob[]; total: number; origin: MarketplaceOrigin | null }> | null {
+  if (typeof input !== "object" || input === null) return null;
+  const payload = input as { jobs?: unknown; total?: unknown; origin?: unknown };
+  if (!Array.isArray(payload.jobs)) return null;
+  const jobs: MarketplaceJob[] = [];
+  for (const row of payload.jobs) {
+    const job = parseMarketplaceJob(row);
+    if (job) jobs.push(job);
+  }
+  const o = payload.origin;
+  const origin =
+    typeof o === "object" && o !== null
+      ? { province: str((o as Record<string, unknown>).province), city: str((o as Record<string, unknown>).city), postalCode: str((o as Record<string, unknown>).postalCode) }
+      : null;
+  return { jobs, total: num(payload.total) ?? jobs.length, origin };
+}
+
+function parseMarketplaceJobDetail(input: unknown): MarketplaceJobDetail | null {
+  const base = parseMarketplaceJob(input);
+  if (!base) return null;
+  const j = input as Record<string, unknown>;
+  const qualifications = Array.isArray(j.qualifications)
+    ? j.qualifications.filter((q): q is string => typeof q === "string")
+    : [];
+  return {
+    ...base,
+    title: str(j.title, base.role),
+    employerId: str(j.employerId),
+    description: typeof j.description === "string" ? j.description : null,
+    duties: typeof j.duties === "string" ? j.duties : null,
+    qualifications
   };
 }
