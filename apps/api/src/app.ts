@@ -8913,6 +8913,42 @@ export function buildApi(options: BuildApiOptions = {}) {
     }
   );
 
+  // The worker's own timesheets (worker-scoped list). Mirrors GET /worker/attendance: a bounded,
+  // index-backed, privacy-safe projection over the EXISTING timesheet authority — the worker sees only
+  // their OWN timesheets, with no employer economics, no exact address, and no other worker's data. It
+  // computes nothing and moves no money; it only lets the worker find the timesheet to confirm/dispute.
+  app.get("/worker/timesheets", async (request, reply) => {
+    const session = await authService.validateSession(readBearerToken(request.headers.authorization));
+    if (!session.authenticated || !session.user) return sendTimesheetUnauthenticated(reply);
+    const identity = await prisma!.workerIdentity.findUnique({ where: { userId: session.user.id }, select: { id: true } });
+    if (!identity) return reply.code(403).send({ error: "RWOS_TIMESHEET_DENIED", message: "Only a worker can view their timesheets." });
+    const query = asRecord(request.query);
+    const limit = Math.min(Math.max(parseQueryInt(readOptionalString(query, "limit")) ?? 25, 1), 100);
+    const cursor = readOptionalString(query, "cursor");
+    const rows = await prisma!.timesheet.findMany({
+      where: { workerIdentityId: identity.id },
+      orderBy: [{ scheduledStartAt: "desc" }, { id: "desc" }],
+      take: limit + 1,
+      ...(cursor && isCanonicalUuid(cursor) ? { cursor: { id: cursor }, skip: 1 } : {}),
+      select: {
+        id: true, assignmentId: true, status: true, scheduledStartAt: true, scheduledEndAt: true,
+        payableMinutes: true, billableMinutes: true, breakMinutes: true, workerReviewStatus: true, version: true,
+        organization: { select: { displayName: true } },
+        residence: { select: { city: true, province: true } }
+      }
+    });
+    const hasMore = rows.length > limit;
+    const items = rows.slice(0, limit).map((r) => ({
+      timesheetId: r.id, assignmentId: r.assignmentId, status: r.status,
+      scheduledStartAt: r.scheduledStartAt.toISOString(), scheduledEndAt: r.scheduledEndAt.toISOString(),
+      payableMinutes: r.payableMinutes, billableMinutes: r.billableMinutes, breakMinutes: r.breakMinutes,
+      workerReviewStatus: r.workerReviewStatus, version: r.version,
+      employerName: r.organization.displayName,
+      areaLabel: r.residence.city && isProvinceCode(r.residence.province) ? `${r.residence.city}, ${r.residence.province}` : null
+    }));
+    return reply.code(200).send({ items, nextCursor: hasMore ? (rows[limit - 1]?.id ?? null) : null });
+  });
+
   app.get("/worker/timesheets/:timesheetId", async (request, reply) => {
     const session = await authService.validateSession(
       readBearerToken(request.headers.authorization)

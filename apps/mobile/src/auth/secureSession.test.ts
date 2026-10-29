@@ -450,3 +450,402 @@ function workerOfferFixture(override: Record<string, unknown> = {}) {
     ...override
   };
 }
+
+describe("worker payout ledger transport", () => {
+  const origin = "https://api.example.com";
+
+  it("projects the real /worker/payouts summary (currency + minor totals + counts)", async () => {
+    const secureVault = vault();
+    secureVault.stored = "session-token-aaaaaaaaaaaa";
+    const transport = createMobileSessionTransport({
+      apiOrigin: origin,
+      vault: secureVault,
+      fetch: vi.fn(async () =>
+        response(200, {
+          toPay: [{ id: "p1" }, { id: "p2" }],
+          paid: [{ id: "p3" }],
+          summary: { currency: "CAD", toPayMinor: 60000, paidMinor: 48000 },
+          synthetic: true
+        })
+      )
+    });
+    const result = await transport.workerPayouts();
+    expect(result).toEqual({
+      status: "ready",
+      data: { currency: "CAD", toPayMinor: 60000, paidMinor: 48000, toPayCount: 2, paidCount: 1 }
+    });
+  });
+
+  it("reports empty when the worker has no payouts, denied without a session, and error on a 500", async () => {
+    const withToken = vault();
+    withToken.stored = "session-token-bbbbbbbbbbbb";
+    const emptyTransport = createMobileSessionTransport({
+      apiOrigin: origin,
+      vault: withToken,
+      fetch: vi.fn(async () => response(200, { toPay: [], paid: [], summary: { currency: "CAD", toPayMinor: 0, paidMinor: 0 } }))
+    });
+    expect(await emptyTransport.workerPayouts()).toEqual({ status: "empty" });
+
+    const noToken = vault();
+    const deniedTransport = createMobileSessionTransport({
+      apiOrigin: origin,
+      vault: noToken,
+      fetch: vi.fn(async () => response(200, {}))
+    });
+    expect(await deniedTransport.workerPayouts()).toEqual({ status: "denied" });
+
+    const errorVault = vault();
+    errorVault.stored = "session-token-cccccccccccc";
+    const errorTransport = createMobileSessionTransport({
+      apiOrigin: origin,
+      vault: errorVault,
+      fetch: vi.fn(async () => response(500, {}))
+    });
+    expect(await errorTransport.workerPayouts()).toEqual({ status: "error" });
+  });
+
+  it("never sends money — it only issues a GET to /worker/payouts with the bearer token", async () => {
+    const secureVault = vault();
+    secureVault.stored = "session-token-dddddddddddd";
+    const fetchMock = vi.fn(async () => response(200, { toPay: [], paid: [], summary: {} }));
+    const transport = createMobileSessionTransport({ apiOrigin: origin, vault: secureVault, fetch: fetchMock });
+    await transport.workerPayouts();
+    expect(fetchMock).toHaveBeenCalledWith(
+      `${origin}/worker/payouts`,
+      expect.objectContaining({ method: "GET", headers: expect.objectContaining({ authorization: "Bearer session-token-dddddddddddd" }) })
+    );
+  });
+});
+
+describe("open marketplace transport", () => {
+  const origin = "https://api.example.com";
+  function withSession() {
+    const v = vault();
+    v.stored = "session-token-eeeeeeeeeeee";
+    return v;
+  }
+
+  it("searches open shifts and projects the safe job list (role, employer, area, window, openings)", async () => {
+    const fetchMock = vi.fn(async () =>
+      response(200, {
+        origin: { province: "QC", city: "Montreal", postalCode: "H2X1Y4" },
+        total: 1,
+        nextCursor: null,
+        jobs: [
+          {
+            jobRequestId: "11111111-1111-4111-8111-111111111111",
+            role: "Dishwasher",
+            employerName: "Residence Care",
+            verifiedEmployer: true,
+            city: "Montreal",
+            province: "QC",
+            latitude: 45.5,
+            longitude: -73.6,
+            startAt: "2026-07-01T12:00:00.000Z",
+            endAt: "2026-07-01T20:00:00.000Z",
+            openings: 3,
+            workerRateMinor: null,
+            currency: "CAD",
+            saved: false
+          }
+        ]
+      })
+    );
+    const transport = createMobileSessionTransport({ apiOrigin: origin, vault: withSession(), fetch: fetchMock });
+    const result = await transport.marketplaceSearch({ postalCode: "H2X 1Y4", verifiedOnly: true });
+    expect(result.status).toBe("ready");
+    if (result.status === "ready") {
+      expect(result.data.jobs).toHaveLength(1);
+      expect(result.data.jobs[0]).toMatchObject({ role: "Dishwasher", employerName: "Residence Care", verifiedEmployer: true, openings: 3, workerRateMinor: null });
+    }
+    expect(fetchMock).toHaveBeenCalledWith(
+      `${origin}/marketplace/jobs/search`,
+      expect.objectContaining({ method: "POST", headers: expect.objectContaining({ authorization: "Bearer session-token-eeeeeeeeeeee" }) })
+    );
+  });
+
+  it("maps marketplace states: empty jobs → empty, bad location → invalid_location, no session → denied", async () => {
+    const emptyT = createMobileSessionTransport({ apiOrigin: origin, vault: withSession(), fetch: vi.fn(async () => response(200, { jobs: [], total: 0 })) });
+    expect((await emptyT.marketplaceSearch({ postalCode: "H2X 1Y4" })).status).toBe("empty");
+
+    const badLocT = createMobileSessionTransport({ apiOrigin: origin, vault: withSession(), fetch: vi.fn(async () => response(422, { error: "RWOS_ORIGIN_UNRESOLVED" })) });
+    expect((await badLocT.marketplaceSearch({ postalCode: "ZZZ" })).status).toBe("invalid_location");
+
+    const deniedT = createMobileSessionTransport({ apiOrigin: origin, vault: vault(), fetch: vi.fn(async () => response(200, { jobs: [] })) });
+    expect((await deniedT.marketplaceSearch({ postalCode: "H2X 1Y4" })).status).toBe("denied");
+  });
+
+  it("loads a job detail and 404 → not_found", async () => {
+    const okT = createMobileSessionTransport({
+      apiOrigin: origin,
+      vault: withSession(),
+      fetch: vi.fn(async () =>
+        response(200, {
+          job: {
+            jobRequestId: "22222222-2222-4222-8222-222222222222",
+            role: "Cook",
+            title: "Evening line cook",
+            employerId: "org-1",
+            employerName: "Villa Kitchen",
+            verifiedEmployer: false,
+            city: "Laval",
+            province: "QC",
+            startAt: "2026-07-02T16:00:00.000Z",
+            endAt: "2026-07-02T23:00:00.000Z",
+            openings: 1,
+            workerRateMinor: null,
+            currency: "CAD",
+            description: "Line cook for dinner service.",
+            duties: "Prep, plating, cleanup.",
+            qualifications: ["Food-safe"],
+            saved: false
+          }
+        })
+      )
+    });
+    const ok = await okT.marketplaceJob("22222222-2222-4222-8222-222222222222");
+    expect(ok.status).toBe("ready");
+    if (ok.status === "ready") expect(ok.data).toMatchObject({ title: "Evening line cook", qualifications: ["Food-safe"], workerRateMinor: null });
+
+    const missT = createMobileSessionTransport({ apiOrigin: origin, vault: withSession(), fetch: vi.fn(async () => response(404, {})) });
+    expect((await missT.marketplaceJob("22222222-2222-4222-8222-222222222222")).status).toBe("not_found");
+  });
+
+  it("applies by expressing interest (idempotent alreadyInterested) and 404 → not_found", async () => {
+    const applyT = createMobileSessionTransport({
+      apiOrigin: origin,
+      vault: withSession(),
+      fetch: vi.fn(async () => response(200, { interest: { status: "submitted", jobRequestId: "x", createdAt: "2026-07-01T00:00:00.000Z" }, alreadyInterested: false }))
+    });
+    const res = await applyT.expressInterest("33333333-3333-4333-8333-333333333333");
+    expect(res).toMatchObject({ status: "ready", interestStatus: "submitted", alreadyInterested: false });
+
+    const dupT = createMobileSessionTransport({ apiOrigin: origin, vault: withSession(), fetch: vi.fn(async () => response(200, { interest: { status: "submitted" }, alreadyInterested: true })) });
+    expect((await dupT.expressInterest("33333333-3333-4333-8333-333333333333"))).toMatchObject({ status: "ready", alreadyInterested: true });
+
+    const missT = createMobileSessionTransport({ apiOrigin: origin, vault: withSession(), fetch: vi.fn(async () => response(404, {})) });
+    expect((await missT.expressInterest("33333333-3333-4333-8333-333333333333")).status).toBe("not_found");
+  });
+});
+
+describe("my applications (interests) transport", () => {
+  const origin = "https://api.example.com";
+  function withSession() {
+    const v = vault();
+    v.stored = "session-token-ffffffffffff";
+    return v;
+  }
+
+  it("projects my interests with the privacy-safe job summary + linked offer status", async () => {
+    const fetchMock = vi.fn(async () =>
+      response(200, {
+        count: 1,
+        interests: [
+          {
+            jobRequestId: "44444444-4444-4444-8444-444444444444",
+            status: "offer_created",
+            createdAt: "2026-07-01T00:00:00.000Z",
+            offerStatus: "sent",
+            summary: {
+              role: "Cook",
+              title: "Dinner cook",
+              employer: { id: "org-9", name: "Maple Residence" },
+              areaLabel: "Laval, QC",
+              startAt: "2026-07-05T16:00:00.000Z",
+              endAt: "2026-07-05T23:00:00.000Z"
+            }
+          }
+        ]
+      })
+    );
+    const transport = createMobileSessionTransport({ apiOrigin: origin, vault: withSession(), fetch: fetchMock });
+    const result = await transport.myInterests();
+    expect(result.status).toBe("ready");
+    if (result.status === "ready") {
+      expect(result.data[0]).toMatchObject({ status: "offer_created", offerStatus: "sent" });
+      expect(result.data[0]!.summary).toMatchObject({ title: "Dinner cook", employerName: "Maple Residence", areaLabel: "Laval, QC" });
+    }
+    expect(fetchMock).toHaveBeenCalledWith(
+      `${origin}/marketplace/my-interests`,
+      expect.objectContaining({ method: "GET", headers: expect.objectContaining({ authorization: "Bearer session-token-ffffffffffff" }) })
+    );
+  });
+
+  it("maps empty → empty and no session → denied", async () => {
+    const emptyT = createMobileSessionTransport({ apiOrigin: origin, vault: withSession(), fetch: vi.fn(async () => response(200, { count: 0, interests: [] })) });
+    expect((await emptyT.myInterests()).status).toBe("empty");
+    const deniedT = createMobileSessionTransport({ apiOrigin: origin, vault: vault(), fetch: vi.fn(async () => response(200, { interests: [] })) });
+    expect((await deniedT.myInterests()).status).toBe("denied");
+  });
+});
+
+describe("worker attendance transport", () => {
+  const origin = "https://api.example.com";
+  function withSession() {
+    const v = vault();
+    v.stored = "session-token-gggggggggggg";
+    return v;
+  }
+
+  it("lists the worker's attendance records (safe projection: status, times, version, area)", async () => {
+    const transport = createMobileSessionTransport({
+      apiOrigin: origin,
+      vault: withSession(),
+      fetch: vi.fn(async () =>
+        response(200, {
+          items: [
+            {
+              attendanceRecordId: "55555555-5555-4555-8555-555555555555",
+              assignmentId: "a1",
+              status: "pending_start",
+              scheduledStartAt: "2026-07-10T12:00:00.000Z",
+              scheduledEndAt: "2026-07-10T20:00:00.000Z",
+              timezone: "America/Toronto",
+              checkInAt: null,
+              checkOutAt: null,
+              exceptionCategory: null,
+              version: 2,
+              employerName: "Lakeside Residence",
+              areaLabel: "Laval, QC"
+            }
+          ],
+          nextCursor: null
+        })
+      )
+    });
+    const result = await transport.workerAttendance();
+    expect(result.status).toBe("ready");
+    if (result.status === "ready") expect(result.data[0]).toMatchObject({ status: "pending_start", version: 2, employerName: "Lakeside Residence", checkInAt: null });
+  });
+
+  it("checks in with the expected version and maps 409 → conflict", async () => {
+    const fetchMock = vi.fn(async () => response(200, { attendanceRecord: { id: "x", status: "checked_in", version: 3 } }));
+    const okT = createMobileSessionTransport({ apiOrigin: origin, vault: withSession(), fetch: fetchMock });
+    expect((await okT.attendanceCheckIn("55555555-5555-4555-8555-555555555555", 2)).status).toBe("ready");
+    expect(fetchMock).toHaveBeenCalledWith(
+      `${origin}/worker/attendance/55555555-5555-4555-8555-555555555555/check-in`,
+      expect.objectContaining({ method: "POST", body: JSON.stringify({ expectedVersion: 2, method: "worker_app" }) })
+    );
+    const conflictT = createMobileSessionTransport({ apiOrigin: origin, vault: withSession(), fetch: vi.fn(async () => response(409, { error: "RWOS_ATTENDANCE_CONFLICT" })) });
+    expect((await conflictT.attendanceCheckIn("55555555-5555-4555-8555-555555555555", 2)).status).toBe("conflict");
+  });
+
+  it("checks out, and a missing session → denied", async () => {
+    const okT = createMobileSessionTransport({ apiOrigin: origin, vault: withSession(), fetch: vi.fn(async () => response(200, { attendanceRecord: { id: "x", status: "checked_out", version: 4 } })) });
+    expect((await okT.attendanceCheckOut("55555555-5555-4555-8555-555555555555", 3)).status).toBe("ready");
+    const noSessionT = createMobileSessionTransport({ apiOrigin: origin, vault: vault(), fetch: vi.fn(async () => response(200, {})) });
+    expect((await noSessionT.attendanceCheckOut("55555555-5555-4555-8555-555555555555", 3)).status).toBe("denied");
+  });
+});
+
+describe("worker timesheet transport", () => {
+  const origin = "https://api.example.com";
+  function withSession() {
+    const v = vault();
+    v.stored = "session-token-hhhhhhhhhhhh";
+    return v;
+  }
+
+  it("lists the worker's timesheets (safe projection with review status + version)", async () => {
+    const transport = createMobileSessionTransport({
+      apiOrigin: origin,
+      vault: withSession(),
+      fetch: vi.fn(async () =>
+        response(200, {
+          items: [
+            {
+              timesheetId: "66666666-6666-4666-8666-666666666666",
+              assignmentId: "a1",
+              status: "worker_review",
+              scheduledStartAt: "2026-07-10T12:00:00.000Z",
+              scheduledEndAt: "2026-07-10T20:00:00.000Z",
+              payableMinutes: 450,
+              billableMinutes: 480,
+              breakMinutes: 30,
+              workerReviewStatus: "not_started",
+              version: 1,
+              employerName: "Cedar Residence",
+              areaLabel: "Montreal, QC"
+            }
+          ],
+          nextCursor: null
+        })
+      )
+    });
+    const result = await transport.workerTimesheets();
+    expect(result.status).toBe("ready");
+    if (result.status === "ready") expect(result.data[0]).toMatchObject({ status: "worker_review", payableMinutes: 450, version: 1, employerName: "Cedar Residence" });
+  });
+
+  it("confirms with the expected version and maps 409 → conflict", async () => {
+    const fetchMock = vi.fn(async () => response(200, { timesheet: { id: "x", status: "employer_review", version: 2 } }));
+    const okT = createMobileSessionTransport({ apiOrigin: origin, vault: withSession(), fetch: fetchMock });
+    expect((await okT.timesheetConfirm("66666666-6666-4666-8666-666666666666", 1)).status).toBe("ready");
+    expect(fetchMock).toHaveBeenCalledWith(
+      `${origin}/worker/timesheets/66666666-6666-4666-8666-666666666666/confirm`,
+      expect.objectContaining({ method: "POST", body: JSON.stringify({ expectedVersion: 1 }) })
+    );
+    const conflictT = createMobileSessionTransport({ apiOrigin: origin, vault: withSession(), fetch: vi.fn(async () => response(409, {})) });
+    expect((await conflictT.timesheetConfirm("66666666-6666-4666-8666-666666666666", 1)).status).toBe("conflict");
+  });
+
+  it("disputes with a reason; an empty reason is rejected client-side without a request", async () => {
+    const fetchMock = vi.fn(async () => response(200, { timesheet: { id: "x", status: "correction_required", version: 2 } }));
+    const okT = createMobileSessionTransport({ apiOrigin: origin, vault: withSession(), fetch: fetchMock });
+    expect((await okT.timesheetDispute("66666666-6666-4666-8666-666666666666", 1, "Hours look short")).status).toBe("ready");
+    expect(fetchMock).toHaveBeenCalledWith(
+      `${origin}/worker/timesheets/66666666-6666-4666-8666-666666666666/dispute`,
+      expect.objectContaining({ method: "POST", body: JSON.stringify({ expectedVersion: 1, reason: "Hours look short" }) })
+    );
+    const emptyReason = createMobileSessionTransport({ apiOrigin: origin, vault: withSession(), fetch: fetchMock });
+    const r = await emptyReason.timesheetDispute("66666666-6666-4666-8666-666666666666", 1, "   ");
+    expect(r.status).toBe("invalid");
+    expect(fetchMock).toHaveBeenCalledTimes(1); // no second request fired for the empty reason
+  });
+});
+
+describe("worker classification (setup) transport", () => {
+  const origin = "https://api.example.com";
+  function withSession() {
+    const v = vault();
+    v.stored = "session-token-iiiiiiiiiiii";
+    return v;
+  }
+
+  it("reads classification state (null election before setup) + agreement versions", async () => {
+    const transport = createMobileSessionTransport({
+      apiOrigin: origin,
+      vault: withSession(),
+      fetch: vi.fn(async () => response(200, { election: null, agreementVersions: { employee: "emp-v1", contractor: "con-v1" } }))
+    });
+    const result = await transport.workerClassification();
+    expect(result.status).toBe("ready");
+    if (result.status === "ready") {
+      expect(result.election).toBeNull();
+      expect(result.agreementVersions).toEqual({ employee: "emp-v1", contractor: "con-v1" });
+    }
+  });
+
+  it("elects a classification with a signed agreement and returns the active election", async () => {
+    const fetchMock = vi.fn(async () =>
+      response(201, { election: { classification: "contractor", status: "active", agreementVersion: "con-v1", effectiveFrom: "2026-07-01T00:00:00.000Z" } })
+    );
+    const transport = createMobileSessionTransport({ apiOrigin: origin, vault: withSession(), fetch: fetchMock });
+    const result = await transport.electClassification({ classification: "contractor", agreementVersion: "con-v1", agreementAccepted: true });
+    expect(result.status).toBe("ready");
+    if (result.status === "ready") expect(result.election).toMatchObject({ classification: "contractor", status: "active" });
+    expect(fetchMock).toHaveBeenCalledWith(
+      `${origin}/worker/profile/classification-election`,
+      expect.objectContaining({ method: "POST", body: JSON.stringify({ classification: "contractor", agreementVersion: "con-v1", agreementAccepted: true }) })
+    );
+  });
+
+  it("refuses to submit (invalid) when the agreement isn't accepted — no request fired; maps 409 → stale", async () => {
+    const fetchMock = vi.fn(async () => response(201, {}));
+    const t = createMobileSessionTransport({ apiOrigin: origin, vault: withSession(), fetch: fetchMock });
+    expect((await t.electClassification({ classification: "employee", agreementVersion: "emp-v1", agreementAccepted: false })).status).toBe("invalid");
+    expect(fetchMock).not.toHaveBeenCalled();
+    const staleT = createMobileSessionTransport({ apiOrigin: origin, vault: withSession(), fetch: vi.fn(async () => response(409, {})) });
+    expect((await staleT.electClassification({ classification: "employee", agreementVersion: "emp-v1", agreementAccepted: true })).status).toBe("stale");
+  });
+});

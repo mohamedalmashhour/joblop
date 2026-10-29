@@ -310,6 +310,342 @@ export function createMobileSessionTransport(options: {
         return { status: "error" };
       }
     },
+    // The worker's own payout ledger from GET /worker/payouts — a worker-scoped read that returns only
+    // the amounts the worker is owed (to-pay) and has been sent (paid). It NEVER moves money; the
+    // backend is authoritative and gates everything. The mobile client keeps only the safe aggregate
+    // projection (currency + minor-unit totals + counts), never employer economics.
+    async workerPayouts(): Promise<
+      | Readonly<{ status: "ready"; data: WorkerPayoutsSummary }>
+      | Readonly<{ status: "empty" | "denied" | "error" | "unavailable" }>
+    > {
+      const token = await options.vault.read();
+      if (!token) return { status: "denied" };
+      try {
+        const response = await request(`${origin}/worker/payouts`, {
+          method: "GET",
+          headers: { accept: "application/json", authorization: `Bearer ${token}` },
+          cache: "no-store"
+        });
+        if (response.status === 401 || response.status === 403) return { status: "denied" };
+        if (response.status === 503) return { status: "unavailable" };
+        if (!response.ok) return { status: "error" };
+        const summary = parseWorkerPayoutsSummary(await response.json());
+        if (!summary) return { status: "error" };
+        return summary.toPayCount === 0 && summary.paidCount === 0
+          ? { status: "empty" }
+          : { status: "ready", data: summary };
+      } catch {
+        return { status: "error" };
+      }
+    },
+    // Open-shift marketplace: browse published job postings near the worker's postal code via
+    // POST /marketplace/jobs/search. The backend is authoritative — it returns only the safe,
+    // sensitive-field-stripped projection (role, employer public name, area-level city/province,
+    // date/time, openings; worker rate is policy-gated and currently null). No money moves.
+    async marketplaceSearch(
+      input: Readonly<{ postalCode: string; role?: string; radiusKm?: number; verifiedOnly?: boolean; sort?: "nearest" | "soonest" | "highest_rate"; limit?: number }>
+    ): Promise<
+      | Readonly<{ status: "ready"; data: Readonly<{ jobs: readonly MarketplaceJob[]; total: number; origin: MarketplaceOrigin | null }> }>
+      | Readonly<{ status: "empty" | "denied" | "invalid_location" | "unavailable" | "error" }>
+    > {
+      const token = await options.vault.read();
+      if (!token) return { status: "denied" };
+      try {
+        const response = await request(`${origin}/marketplace/jobs/search`, {
+          method: "POST",
+          headers: { accept: "application/json", "content-type": "application/json", authorization: `Bearer ${token}` },
+          body: JSON.stringify({
+            postalCode: input.postalCode,
+            ...(input.role ? { role: input.role } : {}),
+            ...(input.radiusKm ? { radiusKm: input.radiusKm } : {}),
+            ...(input.verifiedOnly ? { verifiedOnly: true } : {}),
+            ...(input.sort ? { sort: input.sort } : {}),
+            ...(input.limit ? { limit: input.limit } : {})
+          }),
+          cache: "no-store"
+        });
+        if (response.status === 401 || response.status === 403) return { status: "denied" };
+        if (response.status === 400 || response.status === 422) return { status: "invalid_location" };
+        if (response.status === 503) return { status: "unavailable" };
+        if (!response.ok) return { status: "error" };
+        const parsed = parseMarketplaceSearch(await response.json());
+        if (!parsed) return { status: "error" };
+        return parsed.jobs.length === 0 ? { status: "empty" } : { status: "ready", data: parsed };
+      } catch {
+        return { status: "error" };
+      }
+    },
+    // A single open posting's public detail via GET /marketplace/jobs/:id. 404 → not_found (a
+    // non-visible job is indistinguishable from a missing one, by design).
+    async marketplaceJob(
+      jobRequestId: string,
+      postalCode?: string
+    ): Promise<
+      | Readonly<{ status: "ready"; data: MarketplaceJobDetail }>
+      | Readonly<{ status: "not_found" | "denied" | "unavailable" | "error" }>
+    > {
+      const token = await options.vault.read();
+      if (!token) return { status: "denied" };
+      try {
+        const query = postalCode ? `?postalCode=${encodeURIComponent(postalCode)}` : "";
+        const response = await request(`${origin}/marketplace/jobs/${encodeURIComponent(jobRequestId)}${query}`, {
+          method: "GET",
+          headers: { accept: "application/json", authorization: `Bearer ${token}` },
+          cache: "no-store"
+        });
+        if (response.status === 401 || response.status === 403) return { status: "denied" };
+        if (response.status === 404) return { status: "not_found" };
+        if (response.status === 503) return { status: "unavailable" };
+        if (!response.ok) return { status: "error" };
+        const payload = (await response.json()) as { job?: unknown };
+        const detail = parseMarketplaceJobDetail(payload.job);
+        return detail ? { status: "ready", data: detail } : { status: "error" };
+      } catch {
+        return { status: "error" };
+      }
+    },
+    // Apply to an open posting by expressing interest (POST /marketplace/jobs/:id/interest). This
+    // records intent ONLY — it never creates an offer, assignment or payment. Idempotent: a repeat
+    // returns alreadyInterested. 404 → the job is not available.
+    async expressInterest(
+      jobRequestId: string,
+      postalCode?: string
+    ): Promise<
+      | Readonly<{ status: "ready"; interestStatus: string; alreadyInterested: boolean }>
+      | Readonly<{ status: "not_found" | "denied" | "ineligible" | "error" }>
+    > {
+      const token = await options.vault.read();
+      if (!token) return { status: "denied" };
+      try {
+        const response = await request(`${origin}/marketplace/jobs/${encodeURIComponent(jobRequestId)}/interest`, {
+          method: "POST",
+          headers: { accept: "application/json", "content-type": "application/json", authorization: `Bearer ${token}` },
+          body: JSON.stringify(postalCode ? { postalCode } : {}),
+          cache: "no-store"
+        });
+        if (response.status === 401 || response.status === 403) return { status: "denied" };
+        if (response.status === 404) return { status: "not_found" };
+        if (response.status === 409 || response.status === 422) return { status: "ineligible" };
+        if (!response.ok) return { status: "error" };
+        const payload = (await response.json()) as { interest?: { status?: unknown }; alreadyInterested?: unknown };
+        const interestStatus = typeof payload.interest?.status === "string" ? payload.interest.status : "submitted";
+        return { status: "ready", interestStatus, alreadyInterested: payload.alreadyInterested === true };
+      } catch {
+        return { status: "error" };
+      }
+    },
+    // The worker's own applications ("My interests") from GET /marketplace/my-interests — each with a
+    // privacy-safe job summary and the linked governed-offer status when one exists. Read-only; it
+    // reflects intent the worker already expressed, never creating an offer or assignment.
+    async myInterests(): Promise<
+      | Readonly<{ status: "ready"; data: readonly MarketplaceInterest[] }>
+      | Readonly<{ status: "empty" | "denied" | "error" }>
+    > {
+      const token = await options.vault.read();
+      if (!token) return { status: "denied" };
+      try {
+        const response = await request(`${origin}/marketplace/my-interests`, {
+          method: "GET",
+          headers: { accept: "application/json", authorization: `Bearer ${token}` },
+          cache: "no-store"
+        });
+        if (response.status === 401 || response.status === 403) return { status: "denied" };
+        if (!response.ok) return { status: "error" };
+        const payload = (await response.json()) as { interests?: unknown };
+        if (!Array.isArray(payload.interests)) return { status: "error" };
+        const data = payload.interests.map(parseMarketplaceInterest).filter((v): v is MarketplaceInterest => v !== null);
+        return data.length === 0 ? { status: "empty" } : { status: "ready", data };
+      } catch {
+        return { status: "error" };
+      }
+    },
+    // The worker's own attendance schedule from GET /worker/attendance — their shifts with check-in/out
+    // state. Worker-scoped read; the backend returns only this worker's records (no other worker data,
+    // no home location).
+    async workerAttendance(): Promise<
+      | Readonly<{ status: "ready"; data: readonly WorkerAttendanceRecord[] }>
+      | Readonly<{ status: "empty" | "denied" | "error" }>
+    > {
+      const token = await options.vault.read();
+      if (!token) return { status: "denied" };
+      try {
+        const response = await request(`${origin}/worker/attendance`, {
+          method: "GET",
+          headers: { accept: "application/json", authorization: `Bearer ${token}` },
+          cache: "no-store"
+        });
+        if (response.status === 401 || response.status === 403) return { status: "denied" };
+        if (!response.ok) return { status: "error" };
+        const payload = (await response.json()) as { items?: unknown };
+        if (!Array.isArray(payload.items)) return { status: "error" };
+        const data = payload.items.map(parseWorkerAttendanceRecord).filter((v): v is WorkerAttendanceRecord => v !== null);
+        return data.length === 0 ? { status: "empty" } : { status: "ready", data };
+      } catch {
+        return { status: "error" };
+      }
+    },
+    // Worker check-in / check-out on an attendance record. Optimistic-concurrency guarded by
+    // expectedVersion (the value from the attendance list). The backend enforces the attendance-window
+    // policy and state machine; the client reloads the schedule on success. No money moves.
+    async attendanceCheckIn(attendanceRecordId: string, expectedVersion: number): Promise<AttendanceMutationResult> {
+      const token = await options.vault.read();
+      if (!token) return { status: "denied" };
+      try {
+        const response = await request(`${origin}/worker/attendance/${encodeURIComponent(attendanceRecordId)}/check-in`, {
+          method: "POST",
+          headers: { accept: "application/json", "content-type": "application/json", authorization: `Bearer ${token}` },
+          body: JSON.stringify({ expectedVersion, method: "worker_app" }),
+          cache: "no-store"
+        });
+        if (response.status === 401 || response.status === 403) return { status: "denied" };
+        if (response.status === 404) return { status: "not_found" };
+        if (response.status === 409 || response.status === 412) return { status: "conflict" };
+        if (!response.ok) return { status: "error" };
+        return { status: "ready" };
+      } catch {
+        return { status: "error" };
+      }
+    },
+    async attendanceCheckOut(attendanceRecordId: string, expectedVersion: number): Promise<AttendanceMutationResult> {
+      const token = await options.vault.read();
+      if (!token) return { status: "denied" };
+      try {
+        const response = await request(`${origin}/worker/attendance/${encodeURIComponent(attendanceRecordId)}/check-out`, {
+          method: "POST",
+          headers: { accept: "application/json", "content-type": "application/json", authorization: `Bearer ${token}` },
+          body: JSON.stringify({ expectedVersion, method: "worker_app" }),
+          cache: "no-store"
+        });
+        if (response.status === 401 || response.status === 403) return { status: "denied" };
+        if (response.status === 404) return { status: "not_found" };
+        if (response.status === 409 || response.status === 412) return { status: "conflict" };
+        if (!response.ok) return { status: "error" };
+        return { status: "ready" };
+      } catch {
+        return { status: "error" };
+      }
+    },
+    // The worker's own timesheets from GET /worker/timesheets — their shifts' recorded time with review
+    // status. Worker-scoped read; safe projection (no employer economics). Confirm/dispute below are the
+    // worker's governed review actions on a timesheet in worker-review; they compute no payroll and move
+    // no money.
+    async workerTimesheets(): Promise<
+      | Readonly<{ status: "ready"; data: readonly WorkerTimesheet[] }>
+      | Readonly<{ status: "empty" | "denied" | "error" }>
+    > {
+      const token = await options.vault.read();
+      if (!token) return { status: "denied" };
+      try {
+        const response = await request(`${origin}/worker/timesheets`, {
+          method: "GET",
+          headers: { accept: "application/json", authorization: `Bearer ${token}` },
+          cache: "no-store"
+        });
+        if (response.status === 401 || response.status === 403) return { status: "denied" };
+        if (!response.ok) return { status: "error" };
+        const payload = (await response.json()) as { items?: unknown };
+        if (!Array.isArray(payload.items)) return { status: "error" };
+        const data = payload.items.map(parseWorkerTimesheet).filter((v): v is WorkerTimesheet => v !== null);
+        return data.length === 0 ? { status: "empty" } : { status: "ready", data };
+      } catch {
+        return { status: "error" };
+      }
+    },
+    async timesheetConfirm(timesheetId: string, expectedVersion: number): Promise<TimesheetMutationResult> {
+      const token = await options.vault.read();
+      if (!token) return { status: "denied" };
+      try {
+        const response = await request(`${origin}/worker/timesheets/${encodeURIComponent(timesheetId)}/confirm`, {
+          method: "POST",
+          headers: { accept: "application/json", "content-type": "application/json", authorization: `Bearer ${token}` },
+          body: JSON.stringify({ expectedVersion }),
+          cache: "no-store"
+        });
+        if (response.status === 401 || response.status === 403) return { status: "denied" };
+        if (response.status === 404) return { status: "not_found" };
+        if (response.status === 409 || response.status === 412) return { status: "conflict" };
+        if (!response.ok) return { status: "error" };
+        return { status: "ready" };
+      } catch {
+        return { status: "error" };
+      }
+    },
+    async timesheetDispute(timesheetId: string, expectedVersion: number, reason: string): Promise<TimesheetMutationResult> {
+      const token = await options.vault.read();
+      if (!token) return { status: "denied" };
+      if (reason.trim().length === 0) return { status: "invalid" };
+      try {
+        const response = await request(`${origin}/worker/timesheets/${encodeURIComponent(timesheetId)}/dispute`, {
+          method: "POST",
+          headers: { accept: "application/json", "content-type": "application/json", authorization: `Bearer ${token}` },
+          body: JSON.stringify({ expectedVersion, reason: reason.trim() }),
+          cache: "no-store"
+        });
+        if (response.status === 401 || response.status === 403) return { status: "denied" };
+        if (response.status === 404) return { status: "not_found" };
+        if (response.status === 400) return { status: "invalid" };
+        if (response.status === 409 || response.status === 412) return { status: "conflict" };
+        if (!response.ok) return { status: "error" };
+        return { status: "ready" };
+      } catch {
+        return { status: "error" };
+      }
+    },
+    // The worker's pay-channel classification state from GET /worker/profile/classification. `election`
+    // is null until the worker has elected (and signed); `agreementVersions` names the current signed
+    // agreement per channel. Read-only.
+    async workerClassification(): Promise<
+      | Readonly<{ status: "ready"; election: WorkerElection | null; agreementVersions: Readonly<{ employee: string; contractor: string }> }>
+      | Readonly<{ status: "denied" | "error" }>
+    > {
+      const token = await options.vault.read();
+      if (!token) return { status: "denied" };
+      try {
+        const response = await request(`${origin}/worker/profile/classification`, {
+          method: "GET",
+          headers: { accept: "application/json", authorization: `Bearer ${token}` },
+          cache: "no-store"
+        });
+        if (response.status === 401 || response.status === 403) return { status: "denied" };
+        if (!response.ok) return { status: "error" };
+        const payload = (await response.json()) as { election?: unknown; agreementVersions?: unknown };
+        const av = payload.agreementVersions as Record<string, unknown> | undefined;
+        const agreementVersions = {
+          employee: typeof av?.employee === "string" ? av.employee : "",
+          contractor: typeof av?.contractor === "string" ? av.contractor : ""
+        };
+        return { status: "ready", election: parseWorkerElection(payload.election), agreementVersions };
+      } catch {
+        return { status: "error" };
+      }
+    },
+    // The worker elects their pay channel and SIGNS the matching agreement. This creates their worker
+    // identity (if new) and records a signed, append-only election — the gate that lets them apply to
+    // and receive offers. It computes no payroll and moves no money.
+    async electClassification(input: Readonly<{ classification: "employee" | "contractor"; agreementVersion: string; agreementAccepted: boolean }>): Promise<
+      | Readonly<{ status: "ready"; election: WorkerElection | null; unchanged: boolean }>
+      | Readonly<{ status: "denied" | "invalid" | "stale" | "error" }>
+    > {
+      const token = await options.vault.read();
+      if (!token) return { status: "denied" };
+      if (!input.agreementAccepted) return { status: "invalid" };
+      try {
+        const response = await request(`${origin}/worker/profile/classification-election`, {
+          method: "POST",
+          headers: { accept: "application/json", "content-type": "application/json", authorization: `Bearer ${token}` },
+          body: JSON.stringify({ classification: input.classification, agreementVersion: input.agreementVersion, agreementAccepted: true }),
+          cache: "no-store"
+        });
+        if (response.status === 401 || response.status === 403) return { status: "denied" };
+        if (response.status === 400) return { status: "invalid" };
+        if (response.status === 409) return { status: "stale" };
+        if (!response.ok) return { status: "error" };
+        const payload = (await response.json()) as { election?: unknown; unchanged?: unknown };
+        return { status: "ready", election: parseWorkerElection(payload.election), unchanged: payload.unchanged === true };
+      } catch {
+        return { status: "error" };
+      }
+    },
     async respondToWorkerOffer(
       input: Readonly<{
         offerId: string;
@@ -470,5 +806,269 @@ function parseWorkerAssignment(input: unknown): WorkerAssignmentDto {
     versionToken: versionToken as number,
     updatedAt,
     visibility: "worker_authorized_assignment"
+  };
+}
+
+// Safe aggregate projection of GET /worker/payouts. Only worker-facing totals — never employer
+// economics, invoices or individual payment references.
+export type WorkerPayoutsSummary = Readonly<{
+  currency: string;
+  toPayMinor: number;
+  paidMinor: number;
+  toPayCount: number;
+  paidCount: number;
+}>;
+
+function parseWorkerPayoutsSummary(input: unknown): WorkerPayoutsSummary | null {
+  if (typeof input !== "object" || input === null) return null;
+  const payload = input as { toPay?: unknown; paid?: unknown; summary?: unknown };
+  if (!Array.isArray(payload.toPay) || !Array.isArray(payload.paid)) return null;
+  const summary = (typeof payload.summary === "object" && payload.summary !== null ? payload.summary : {}) as {
+    currency?: unknown;
+    toPayMinor?: unknown;
+    paidMinor?: unknown;
+  };
+  const currency = typeof summary.currency === "string" ? summary.currency : "CAD";
+  const toPayMinor = Number.isFinite(summary.toPayMinor) ? Number(summary.toPayMinor) : 0;
+  const paidMinor = Number.isFinite(summary.paidMinor) ? Number(summary.paidMinor) : 0;
+  return {
+    currency,
+    toPayMinor,
+    paidMinor,
+    toPayCount: payload.toPay.length,
+    paidCount: payload.paid.length
+  };
+}
+
+// Safe worker-facing projection of an open marketplace posting (list item). Mirrors the backend
+// select — area-level location only, no exact address, no employer economics (workerRateMinor is the
+// only rate and is policy-gated to null for now).
+export type MarketplaceJob = Readonly<{
+  jobRequestId: string;
+  role: string;
+  employerName: string;
+  verifiedEmployer: boolean;
+  city: string;
+  province: string;
+  startAt: string;
+  endAt: string;
+  openings: number;
+  workerRateMinor: number | null;
+  currency: string;
+  distanceKm: number | null;
+  saved: boolean;
+}>;
+
+export type MarketplaceOrigin = Readonly<{ province: string; city: string; postalCode: string }>;
+
+export type MarketplaceJobDetail = MarketplaceJob &
+  Readonly<{ title: string; employerId: string; description: string | null; duties: string | null; qualifications: readonly string[] }>;
+
+function str(value: unknown, fallback = ""): string {
+  return typeof value === "string" ? value : fallback;
+}
+
+function num(value: unknown): number | null {
+  return typeof value === "number" && Number.isFinite(value) ? value : null;
+}
+
+function parseMarketplaceJob(input: unknown): MarketplaceJob | null {
+  if (typeof input !== "object" || input === null) return null;
+  const j = input as Record<string, unknown>;
+  const jobRequestId = str(j.jobRequestId);
+  const role = str(j.role);
+  if (!jobRequestId || !role) return null;
+  return {
+    jobRequestId,
+    role,
+    employerName: str(j.employerName),
+    verifiedEmployer: j.verifiedEmployer === true,
+    city: str(j.city),
+    province: str(j.province),
+    startAt: str(j.startAt),
+    endAt: str(j.endAt),
+    openings: num(j.openings) ?? 1,
+    workerRateMinor: num(j.workerRateMinor),
+    currency: str(j.currency, "CAD"),
+    distanceKm: num(j.distanceKm),
+    saved: j.saved === true
+  };
+}
+
+function parseMarketplaceSearch(
+  input: unknown
+): Readonly<{ jobs: readonly MarketplaceJob[]; total: number; origin: MarketplaceOrigin | null }> | null {
+  if (typeof input !== "object" || input === null) return null;
+  const payload = input as { jobs?: unknown; total?: unknown; origin?: unknown };
+  if (!Array.isArray(payload.jobs)) return null;
+  const jobs: MarketplaceJob[] = [];
+  for (const row of payload.jobs) {
+    const job = parseMarketplaceJob(row);
+    if (job) jobs.push(job);
+  }
+  const o = payload.origin;
+  const origin =
+    typeof o === "object" && o !== null
+      ? { province: str((o as Record<string, unknown>).province), city: str((o as Record<string, unknown>).city), postalCode: str((o as Record<string, unknown>).postalCode) }
+      : null;
+  return { jobs, total: num(payload.total) ?? jobs.length, origin };
+}
+
+function parseMarketplaceJobDetail(input: unknown): MarketplaceJobDetail | null {
+  const base = parseMarketplaceJob(input);
+  if (!base) return null;
+  const j = input as Record<string, unknown>;
+  const qualifications = Array.isArray(j.qualifications)
+    ? j.qualifications.filter((q): q is string => typeof q === "string")
+    : [];
+  return {
+    ...base,
+    title: str(j.title, base.role),
+    employerId: str(j.employerId),
+    description: typeof j.description === "string" ? j.description : null,
+    duties: typeof j.duties === "string" ? j.duties : null,
+    qualifications
+  };
+}
+
+// The worker's own application to an open posting: their interest status + the linked governed-offer
+// status (when dispatch has created one), plus a privacy-safe job summary.
+export type MarketplaceInterest = Readonly<{
+  jobRequestId: string;
+  status: string;
+  createdAt: string;
+  offerStatus: string | null;
+  summary: Readonly<{ role: string; title: string; employerName: string; areaLabel: string | null; startAt: string; endAt: string }> | null;
+}>;
+
+function parseMarketplaceInterest(input: unknown): MarketplaceInterest | null {
+  if (typeof input !== "object" || input === null) return null;
+  const i = input as Record<string, unknown>;
+  const jobRequestId = str(i.jobRequestId);
+  if (!jobRequestId) return null;
+  const s = i.summary;
+  const summary =
+    typeof s === "object" && s !== null
+      ? (() => {
+          const sr = s as Record<string, unknown>;
+          const employer = (typeof sr.employer === "object" && sr.employer !== null ? sr.employer : {}) as Record<string, unknown>;
+          return {
+            role: str(sr.role),
+            title: str(sr.title, str(sr.role)),
+            employerName: str(employer.name),
+            areaLabel: typeof sr.areaLabel === "string" ? sr.areaLabel : null,
+            startAt: str(sr.startAt),
+            endAt: str(sr.endAt)
+          };
+        })()
+      : null;
+  return {
+    jobRequestId,
+    status: str(i.status, "submitted"),
+    createdAt: str(i.createdAt),
+    offerStatus: typeof i.offerStatus === "string" ? i.offerStatus : null,
+    summary
+  };
+}
+
+// Safe worker-facing projection of one attendance record (the worker's own shift). No other worker
+// data, no exact address — only the area label the backend already returns.
+export type WorkerAttendanceRecord = Readonly<{
+  attendanceRecordId: string;
+  assignmentId: string;
+  status: string;
+  scheduledStartAt: string;
+  scheduledEndAt: string;
+  timezone: string;
+  checkInAt: string | null;
+  checkOutAt: string | null;
+  exceptionCategory: string | null;
+  version: number;
+  employerName: string;
+  areaLabel: string | null;
+}>;
+
+export type AttendanceMutationResult = Readonly<{ status: "ready" | "denied" | "not_found" | "conflict" | "error" }>;
+
+function parseWorkerAttendanceRecord(input: unknown): WorkerAttendanceRecord | null {
+  if (typeof input !== "object" || input === null) return null;
+  const r = input as Record<string, unknown>;
+  const attendanceRecordId = str(r.attendanceRecordId);
+  if (!attendanceRecordId) return null;
+  return {
+    attendanceRecordId,
+    assignmentId: str(r.assignmentId),
+    status: str(r.status),
+    scheduledStartAt: str(r.scheduledStartAt),
+    scheduledEndAt: str(r.scheduledEndAt),
+    timezone: str(r.timezone),
+    checkInAt: typeof r.checkInAt === "string" ? r.checkInAt : null,
+    checkOutAt: typeof r.checkOutAt === "string" ? r.checkOutAt : null,
+    exceptionCategory: typeof r.exceptionCategory === "string" ? r.exceptionCategory : null,
+    version: num(r.version) ?? 0,
+    employerName: str(r.employerName),
+    areaLabel: typeof r.areaLabel === "string" ? r.areaLabel : null
+  };
+}
+
+// Safe worker-facing projection of one of the worker's timesheets. No employer economics; only the
+// worker's own recorded time + review status.
+export type WorkerTimesheet = Readonly<{
+  timesheetId: string;
+  assignmentId: string;
+  status: string;
+  scheduledStartAt: string;
+  scheduledEndAt: string;
+  payableMinutes: number | null;
+  billableMinutes: number | null;
+  breakMinutes: number;
+  workerReviewStatus: string;
+  version: number;
+  employerName: string;
+  areaLabel: string | null;
+}>;
+
+export type TimesheetMutationResult = Readonly<{ status: "ready" | "denied" | "not_found" | "conflict" | "invalid" | "error" }>;
+
+function parseWorkerTimesheet(input: unknown): WorkerTimesheet | null {
+  if (typeof input !== "object" || input === null) return null;
+  const r = input as Record<string, unknown>;
+  const timesheetId = str(r.timesheetId);
+  if (!timesheetId) return null;
+  return {
+    timesheetId,
+    assignmentId: str(r.assignmentId),
+    status: str(r.status),
+    scheduledStartAt: str(r.scheduledStartAt),
+    scheduledEndAt: str(r.scheduledEndAt),
+    payableMinutes: num(r.payableMinutes),
+    billableMinutes: num(r.billableMinutes),
+    breakMinutes: num(r.breakMinutes) ?? 0,
+    workerReviewStatus: str(r.workerReviewStatus),
+    version: num(r.version) ?? 0,
+    employerName: str(r.employerName),
+    areaLabel: typeof r.areaLabel === "string" ? r.areaLabel : null
+  };
+}
+
+// The worker's active pay-channel election (safe projection: no other-party user ids beyond their own
+// signer, which the backend already returns).
+export type WorkerElection = Readonly<{
+  classification: "employee" | "contractor";
+  status: string;
+  agreementVersion: string | null;
+  effectiveFrom: string;
+}>;
+
+function parseWorkerElection(input: unknown): WorkerElection | null {
+  if (typeof input !== "object" || input === null) return null;
+  const e = input as Record<string, unknown>;
+  const classification = e.classification;
+  if (classification !== "employee" && classification !== "contractor") return null;
+  return {
+    classification,
+    status: str(e.status),
+    agreementVersion: typeof e.agreementVersion === "string" ? e.agreementVersion : null,
+    effectiveFrom: str(e.effectiveFrom)
   };
 }

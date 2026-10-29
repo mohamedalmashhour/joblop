@@ -18,6 +18,9 @@ describe("worker staging identity", () => {
     expect(source).toContain('process.env.EXPO_PUBLIC_RWOS_DEPLOYMENT_TIER === "staging"');
     expect(source).toContain("STAGING · SYNTHETIC DATA");
     expect(source).toContain("NO REAL PAYMENT · NO PRODUCTION CUSTOMER DATA");
-    expect(source).toContain("allowFixturePreview={false}");
+    // The calendar is now mounted by the navigator; the production build must still never enable
+    // fixture previews there.
+    const navigator = readFileSync(new URL("../navigation/WorkerNavigator.tsx", import.meta.url), "utf8");
+    expect(navigator).toContain("allowFixturePreview={false}");
   });
 });

@@ -1,4 +1,4 @@
-export const productName = "RezekMe";
+export const productName = "JobLop";
 
 export const mobileRouteNames = {
   home: "rwos://worker/home",
