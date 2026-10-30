@@ -45,7 +45,7 @@ export default function ProductionApp() {
             importantForAccessibility="no-hide-descendants"
             style={styles.mark}
           >
-            <Text style={styles.markText}>RZ</Text>
+            <Text style={styles.markText}>JL</Text>
           </View>
           <View>
             <Text accessibilityRole="header" style={styles.title}>
