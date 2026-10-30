@@ -66,16 +66,16 @@ export function JobScannerFeed() {
 const styles = {
   searchRow: { display: "flex", flexWrap: "wrap" as const, gap: 10, margin: "12px 0" },
   input: { border: "1px solid #e3d7c0", borderRadius: 8, flex: "1 1 220px", minHeight: 42, minWidth: 0, padding: "0 12px" },
-  cta: { background: "#0f7f78", border: "none", borderRadius: 8, color: "#fff", cursor: "pointer", fontWeight: 800, minHeight: 44, padding: "0 18px" },
-  msg: { color: "#0f7f78", fontSize: 14, fontWeight: 700 },
-  proBanner: { background: "#eafaf7", border: "1px solid #a9e3d8", borderRadius: 8, color: "#0b5c55", fontSize: 13, fontWeight: 700, margin: "4px 0", padding: "8px 12px" },
+  cta: { background: "#b8862f", border: "none", borderRadius: 8, color: "#fff", cursor: "pointer", fontWeight: 800, minHeight: 44, padding: "0 18px" },
+  msg: { color: "#b8862f", fontSize: 14, fontWeight: 700 },
+  proBanner: { background: "#faf6ec", border: "1px solid #f0e2c0", borderRadius: 8, color: "#8a5a00", fontSize: 13, fontWeight: 700, margin: "4px 0", padding: "8px 12px" },
   upsell: { background: "#fff6e6", border: "1px solid #f0d089", borderRadius: 8, color: "#8a5a00", fontSize: 13, margin: "4px 0", padding: "8px 12px" },
   note: { color: "#6b6356", fontSize: 13, margin: "4px 0 16px" },
-  link: { color: "#0f7f78", fontWeight: 700 },
-  card: { background: "#fff", border: "1px solid #dbe4f0", borderRadius: 12, marginBottom: 12, padding: 16 },
-  title: { color: "#061b41", fontSize: 16 },
+  link: { color: "#b8862f", fontWeight: 700 },
+  card: { background: "#fff", border: "1px solid #ece3d2", borderRadius: 12, marginBottom: 12, padding: 16 },
+  title: { color: "#15110b", fontSize: 16 },
   meta: { color: "#6b6356", fontSize: 13, margin: "4px 0 10px" },
   actions: { alignItems: "center", display: "flex", gap: 14 },
   apply: { color: "#b23b2e", fontSize: 14, fontWeight: 800, textDecoration: "none" },
-  ghost: { color: "#0f7f78", fontSize: 14, fontWeight: 700, textDecoration: "none" }
+  ghost: { color: "#b8862f", fontSize: 14, fontWeight: 700, textDecoration: "none" }
 } as const;

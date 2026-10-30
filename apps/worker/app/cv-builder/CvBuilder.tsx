@@ -167,7 +167,7 @@ export function CvBuilder() {
     const score = parts.reduce((s, p) => s + (p.ok ? p.pts : 0), 0);
     const gaps = parts.filter((p) => !p.ok).map((p) => p.gap);
     const grade = score >= 80 ? "Strong" : score >= 60 ? "Good" : score >= 40 ? "Fair" : "Needs work";
-    const color = score >= 80 ? "#0f7f78" : score >= 60 ? "#a8842f" : score >= 40 ? "#b8860b" : "#b23b2e";
+    const color = score >= 80 ? "#b8862f" : score >= 60 ? "#a8842f" : score >= 40 ? "#b8860b" : "#b23b2e";
     return { score, gaps, grade, color };
   })();
 
@@ -250,42 +250,42 @@ export function CvBuilder() {
 }
 
 function designStyle(key: string): Record<string, string> {
-  if (key === "healthcare") return { fontFamily: "Georgia, serif", color: "#0b3b52", background: "#f7fbfd", borderTop: "6px solid #b8862f" };
-  if (key === "professional") return { fontFamily: "Inter, system-ui, sans-serif", color: "#1a1a2e", background: "#fff", borderTop: "6px solid #2b2d6e" };
-  return { fontFamily: "'Helvetica Neue', Arial, sans-serif", color: "#13303a", background: "#fffdf7", borderTop: "6px solid #0f7f78" };
+  if (key === "healthcare") return { fontFamily: "Georgia, serif", color: "#1b160e", background: "#fbf9f4", borderTop: "6px solid #b8862f" };
+  if (key === "professional") return { fontFamily: "Inter, system-ui, sans-serif", color: "#171511", background: "#fff", borderTop: "6px solid #2a2114" };
+  return { fontFamily: "'Helvetica Neue', Arial, sans-serif", color: "#1b160e", background: "#fffdf7", borderTop: "6px solid #b8862f" };
 }
 
 const styles = {
   wrap: { padding: "8px 0 40px" },
-  cardBanner: { background: "#eafaf7", border: "1px solid #a9e3d8", borderRadius: 10, color: "#0b5c55", fontSize: 14, fontWeight: 700, marginBottom: 16, padding: "12px 16px" },
-  card: { background: "#fff", border: "1px solid #dbe4f0", borderRadius: 14, boxShadow: "0 12px 30px rgba(6,27,65,.06)", marginBottom: 18, padding: 22 },
-  step: { color: "#061b41", fontSize: 16, margin: "18px 0 8px" },
+  cardBanner: { background: "#faf6ec", border: "1px solid #f0e2c0", borderRadius: 10, color: "#8a5a00", fontSize: 14, fontWeight: 700, marginBottom: 16, padding: "12px 16px" },
+  card: { background: "#fff", border: "1px solid #ece3d2", borderRadius: 14, boxShadow: "0 12px 30px rgba(6,27,65,.06)", marginBottom: 18, padding: 22 },
+  step: { color: "#15110b", fontSize: 16, margin: "18px 0 8px" },
   hint: { color: "#8a8070", fontSize: 12, fontWeight: 500 },
   q: { color: "#6b6356", fontSize: 13, fontWeight: 700, margin: "10px 0 6px" },
   row: { display: "flex", flexWrap: "wrap" as const, gap: 12 },
-  label: { color: "#10233f", display: "flex", flexDirection: "column" as const, fontSize: 12, fontWeight: 700, gap: 4 },
+  label: { color: "#1b160e", display: "flex", flexDirection: "column" as const, fontSize: 12, fontWeight: 700, gap: 4 },
   input: { border: "1px solid #e3d7c0", borderRadius: 8, minHeight: 40, padding: "0 10px", minWidth: 180 },
   chips: { display: "flex", flexWrap: "wrap" as const, gap: 8 },
-  chip: { background: "#f1f5fb", border: "1px solid #d4deec", borderRadius: 999, color: "#10233f", cursor: "pointer", fontSize: 13, fontWeight: 600, padding: "8px 14px" },
-  chipOn: { background: "#0f7f78", borderColor: "#0f7f78", color: "#fff" },
-  cta: { background: "#0f7f78", border: "none", borderRadius: 10, color: "#fff", cursor: "pointer", fontSize: 15, fontWeight: 800, padding: "12px 22px" },
-  notice: { color: "#0f7f78", fontSize: 13, fontWeight: 700, marginLeft: 12 },
+  chip: { background: "#f6efdd", border: "1px solid #ece3d2", borderRadius: 999, color: "#1b160e", cursor: "pointer", fontSize: 13, fontWeight: 600, padding: "8px 14px" },
+  chipOn: { background: "#b8862f", borderColor: "#b8862f", color: "#fff" },
+  cta: { background: "#b8862f", border: "none", borderRadius: 10, color: "#fff", cursor: "pointer", fontSize: 15, fontWeight: 800, padding: "12px 22px" },
+  notice: { color: "#b8862f", fontSize: 13, fontWeight: 700, marginLeft: 12 },
   prov: { fontSize: 11, marginTop: 16, opacity: 0.7 },
   warn: { background: "#fff6e6", border: "1px solid #f0d089", borderRadius: 8, color: "#8a5a00", fontSize: 12, marginTop: 8, padding: "8px 12px" },
   upsell: { background: "#fff6e6", border: "1px solid #f0d089", borderRadius: 10, color: "#8a5a00", fontSize: 13, lineHeight: 1.5, marginTop: 16, padding: "12px 14px" },
   billing: { color: "#a07a2a", fontSize: 11, marginTop: 6 },
   assetList: { listStyle: "none", margin: "12px 0 0", padding: 0 },
-  assetItem: { alignItems: "center", borderBottom: "1px solid #eef3f9", color: "#10233f", display: "flex", fontSize: 13, justifyContent: "space-between", padding: "8px 0" },
+  assetItem: { alignItems: "center", borderBottom: "1px solid #f6efdd", color: "#1b160e", display: "flex", fontSize: 13, justifyContent: "space-between", padding: "8px 0" },
   remove: { background: "none", border: "none", color: "#b23b2e", cursor: "pointer", fontSize: 12, fontWeight: 700 },
-  scoreWrap: { background: "#f6f9fe", border: "1px solid #dbe4f0", borderRadius: 12, marginTop: 16, padding: "14px 16px" },
+  scoreWrap: { background: "#fbf9f4", border: "1px solid #ece3d2", borderRadius: 12, marginTop: 16, padding: "14px 16px" },
   scoreHead: { alignItems: "center", display: "flex", flexWrap: "wrap" as const, gap: "8px 18px", justifyContent: "space-between" },
   scoreLabel: { color: "#6b6356", fontSize: 12, fontWeight: 700, letterSpacing: ".03em", textTransform: "uppercase" as const },
   scoreNum: { fontSize: 32, fontWeight: 800, lineHeight: 1 },
   scoreOf: { color: "#6b6356", fontSize: 14, fontWeight: 700, marginLeft: 6 },
-  scoreBarTrack: { background: "#e3eaf4", borderRadius: 999, flex: "1 1 160px", height: 10, minWidth: 140, overflow: "hidden" as const },
+  scoreBarTrack: { background: "#f0e8d8", borderRadius: 999, flex: "1 1 160px", height: 10, minWidth: 140, overflow: "hidden" as const },
   scoreBarFill: { borderRadius: 999, height: "100%", transition: "width .4s ease" },
-  scoreGaps: { color: "#10233f", fontSize: 13, marginTop: 12 },
+  scoreGaps: { color: "#1b160e", fontSize: 13, marginTop: 12 },
   scoreGapList: { margin: "6px 0 0", paddingLeft: 18 },
-  scoreMax: { color: "#0f7f78", fontSize: 13, fontWeight: 700, margin: "12px 0 0" },
+  scoreMax: { color: "#b8862f", fontSize: 13, fontWeight: 700, margin: "12px 0 0" },
   scoreUpsell: { background: "#fff6e6", border: "1px solid #f0d089", borderRadius: 8, color: "#8a5a00", fontSize: 12.5, lineHeight: 1.5, margin: "12px 0 0", padding: "9px 12px" }
 } as const;
