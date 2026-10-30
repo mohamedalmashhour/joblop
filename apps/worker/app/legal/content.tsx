@@ -19,7 +19,7 @@ const page: React.CSSProperties = {
   lineHeight: 1.6
 };
 const h1: React.CSSProperties = { fontSize: 28, margin: "16px 0 4px" };
-const meta: React.CSSProperties = { color: "#5c749c", fontSize: 13, margin: "0 0 24px" };
+const meta: React.CSSProperties = { color: "#6b6356", fontSize: 13, margin: "0 0 24px" };
 const h2: React.CSSProperties = { fontSize: 18, margin: "28px 0 8px" };
 const p: React.CSSProperties = { margin: "0 0 12px", fontSize: 15 };
 const li: React.CSSProperties = { marginBottom: 6, fontSize: 15 };
@@ -39,23 +39,23 @@ const cell: React.CSSProperties = {
 function LegalShell({ title, children }: { title: string; children: ReactNode }) {
   return (
     <main style={page}>
-      <Link href="/" style={{ color: "#3b3bee", textDecoration: "none", fontSize: 13 }}>
+      <Link href="/" style={{ color: "#b8862f", textDecoration: "none", fontSize: 13 }}>
         ← JobLop
       </Link>
       <h1 style={h1}>{title}</h1>
       <p style={meta}>
         Last updated: {LAST_UPDATED} · Operated by {ENTITY} · Contact:{" "}
-        <a href={`mailto:${CONTACT}`} style={{ color: "#3b3bee" }}>
+        <a href={`mailto:${CONTACT}`} style={{ color: "#b8862f" }}>
           {CONTACT}
         </a>
       </p>
       {children}
       <p style={{ ...meta, marginTop: 40 }}>
-        <Link href="/privacy" style={{ color: "#3b3bee" }}>
+        <Link href="/privacy" style={{ color: "#b8862f" }}>
           Privacy Policy
         </Link>{" "}
         ·{" "}
-        <Link href="/terms" style={{ color: "#3b3bee" }}>
+        <Link href="/terms" style={{ color: "#b8862f" }}>
           Terms of Service
         </Link>
       </p>
@@ -203,7 +203,7 @@ export function PrivacyPolicy() {
         information we hold about you, correct inaccurate information, request deletion of your
         account and associated personal information, and withdraw consent to optional communications.
         To exercise any of these rights, contact{" "}
-        <a href={`mailto:${CONTACT}`} style={{ color: "#3b3bee" }}>
+        <a href={`mailto:${CONTACT}`} style={{ color: "#b8862f" }}>
           {CONTACT}
         </a>
         . We will respond within the timelines required by law.
@@ -224,7 +224,7 @@ export function PrivacyPolicy() {
       <h2 style={h2}>9. Contact</h2>
       <p style={p}>
         Questions or requests:{" "}
-        <a href={`mailto:${CONTACT}`} style={{ color: "#3b3bee" }}>
+        <a href={`mailto:${CONTACT}`} style={{ color: "#b8862f" }}>
           {CONTACT}
         </a>{" "}
         — {ENTITY}.
@@ -315,7 +315,7 @@ export function TermsOfService() {
       <h2 style={h2}>10. Termination</h2>
       <p style={p}>
         You may stop using JobLop and request deletion of your account at any time (contact{" "}
-        <a href={`mailto:${CONTACT}`} style={{ color: "#3b3bee" }}>
+        <a href={`mailto:${CONTACT}`} style={{ color: "#b8862f" }}>
           {CONTACT}
         </a>
         ). We may suspend or terminate access for breach of these Terms or misuse of the platform.
@@ -337,7 +337,7 @@ export function TermsOfService() {
       <h2 style={h2}>13. Contact</h2>
       <p style={p}>
         Questions:{" "}
-        <a href={`mailto:${CONTACT}`} style={{ color: "#3b3bee" }}>
+        <a href={`mailto:${CONTACT}`} style={{ color: "#b8862f" }}>
           {CONTACT}
         </a>{" "}
         — {ENTITY}.
@@ -358,7 +358,7 @@ export function AccountDeletion() {
       <ol>
         <li style={li}>
           Email{" "}
-          <a href={`mailto:${CONTACT}?subject=Delete my account`} style={{ color: "#3b3bee" }}>
+          <a href={`mailto:${CONTACT}?subject=Delete my account`} style={{ color: "#b8862f" }}>
             {CONTACT}
           </a>{" "}
           from the email address on your JobLop account, with the subject{" "}
@@ -391,11 +391,11 @@ export function AccountDeletion() {
       <h2 style={h2}>Questions</h2>
       <p style={p}>
         Contact{" "}
-        <a href={`mailto:${CONTACT}`} style={{ color: "#3b3bee" }}>
+        <a href={`mailto:${CONTACT}`} style={{ color: "#b8862f" }}>
           {CONTACT}
         </a>
         . See our{" "}
-        <a href="/privacy" style={{ color: "#3b3bee" }}>
+        <a href="/privacy" style={{ color: "#b8862f" }}>
           Privacy Policy
         </a>{" "}
         for how we handle your data.

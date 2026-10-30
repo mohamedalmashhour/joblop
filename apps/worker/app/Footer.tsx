@@ -16,15 +16,15 @@ export function Footer({ locale }: { locale: string }) {
         alignItems: "center",
         justifyContent: "space-between",
         fontSize: 12.5,
-        color: "#5c749c"
+        color: "#6b6356"
       }}
     >
       <span>© {year} JobLop · 9375-7649 Québec inc.</span>
       <nav style={{ display: "flex", gap: 20 }}>
-        <Link href="/terms" style={{ color: "#3b3bee", textDecoration: "none" }}>
+        <Link href="/terms" style={{ color: "#b8862f", textDecoration: "none" }}>
           {fr ? "Conditions d’utilisation" : "Terms"}
         </Link>
-        <Link href="/privacy" style={{ color: "#3b3bee", textDecoration: "none" }}>
+        <Link href="/privacy" style={{ color: "#b8862f", textDecoration: "none" }}>
           {fr ? "Confidentialité" : "Privacy"}
         </Link>
       </nav>
