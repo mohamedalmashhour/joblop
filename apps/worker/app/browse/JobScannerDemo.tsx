@@ -126,10 +126,12 @@ const CSS = `
 @keyframes jsdblink{50%{opacity:0;}}
 .jsd-hint{color:#cbb482;font-size:12.5px;text-align:center;margin-top:auto;padding-bottom:6px;}
 /* radar */
-.jsd-radar{position:relative;width:150px;height:150px;margin:18px auto 6px;border-radius:50%;background:radial-gradient(circle,rgba(201,162,75,.14),transparent 70%);box-shadow:inset 0 0 0 1px rgba(201,162,75,.25),inset 0 0 0 40px rgba(201,162,75,.06);}
-.jsd-sweep{position:absolute;inset:0;border-radius:50%;background:conic-gradient(from 0deg,rgba(201,162,75,.5),transparent 45%);animation:jsdspin 1.6s linear infinite;}
+.jsd-radar{position:relative;width:150px;height:150px;margin:18px auto 6px;border-radius:50%;background:radial-gradient(circle,rgba(240,217,160,.22),rgba(201,162,75,.05) 55%,transparent 72%),repeating-radial-gradient(circle,transparent 0 23px,rgba(224,195,110,.16) 23px 24px);box-shadow:inset 0 0 0 1px rgba(224,195,110,.5),0 0 26px rgba(201,162,75,.22);}
+.jsd-radar::after{content:"";position:absolute;inset:0;border-radius:50%;background:linear-gradient(rgba(224,195,110,.22),rgba(224,195,110,.22)) center/1px 100% no-repeat,linear-gradient(rgba(224,195,110,.22),rgba(224,195,110,.22)) center/100% 1px no-repeat;}
+.jsd-sweep{position:absolute;inset:0;border-radius:50%;background:conic-gradient(from 0deg,rgba(240,217,160,.6),rgba(240,217,160,.08) 35%,transparent 55%);animation:jsdspin 1.6s linear infinite;}
+.jsd-sweep::before{content:"";position:absolute;top:50%;left:50%;width:50%;height:2px;transform-origin:left center;background:linear-gradient(90deg,rgba(245,224,160,.95),transparent);box-shadow:0 0 8px rgba(240,217,160,.7);}
 @keyframes jsdspin{to{transform:rotate(360deg);}}
-.jsd-ping{position:absolute;width:8px;height:8px;border-radius:50%;background:#d4af61;box-shadow:0 0 10px #d4af61;opacity:0;animation:jsdping 1.6s ease-out infinite;}
+.jsd-ping{position:absolute;width:8px;height:8px;border-radius:50%;background:#f3dd9e;box-shadow:0 0 12px #f0d9a0,0 0 4px #fff6df;opacity:0;animation:jsdping 1.6s ease-out infinite;z-index:2;}
 .jsd-p1{top:30%;left:60%;animation-delay:.2s;}
 .jsd-p2{top:62%;left:38%;animation-delay:.7s;}
 .jsd-p3{top:48%;left:70%;animation-delay:1.1s;}
