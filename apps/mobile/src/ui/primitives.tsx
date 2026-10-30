@@ -286,7 +286,7 @@ const styles = StyleSheet.create({
     paddingVertical: spacing.md
   },
   primaryButton: {
-    backgroundColor: colors.navy
+    backgroundColor: colors.deepTeal
   },
   secondaryButton: {
     backgroundColor: colors.surfaceRaised,
