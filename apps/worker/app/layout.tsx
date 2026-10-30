@@ -9,7 +9,7 @@ import { GoogleTag } from "./analytics";
 import { RegisterSW } from "./RegisterSW";
 import "./globals.css";
 
-export const viewport = { themeColor: "#2563eb" };
+export const viewport = { themeColor: "#17140f" };
 
 async function resolveLocale() {
   const store = await cookies();
