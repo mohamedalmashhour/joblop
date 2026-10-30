@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { useLocale, useT } from "../i18n/LocaleProvider";
+import { useLocale, useT, fmtLocale } from "../i18n/LocaleProvider";
 import type { RwosLocale } from "../i18n/config";
 import type { MessageKey } from "../i18n/messages";
 import type { Translate } from "../i18n/LocaleProvider";
@@ -120,7 +120,7 @@ function payoutAnchor(p: Payout): string {
 
 export function MyPay() {
   const t = useT();
-  const locale = useLocale();
+  const locale = fmtLocale(useLocale());
   const [state, setState] = useState<PayState>({ status: "loading" });
   const [payouts, setPayouts] = useState<PayoutsState>({ status: "loading" });
   const [disputes, setDisputes] = useState<DisputesState>({ status: "loading" });

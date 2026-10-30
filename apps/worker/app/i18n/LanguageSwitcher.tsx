@@ -7,8 +7,8 @@ import {
   LOCALE_COOKIE_MAX_AGE,
   localeSelfName,
   localeShortLabel,
-  supportedRwosLocales,
-  type RwosLocale
+  supportedWorkerLocales,
+  type WorkerLocale
 } from "./config";
 import { useLocale, useT } from "./LocaleProvider";
 
@@ -23,7 +23,7 @@ export function LanguageSwitcher() {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
 
-  function choose(locale: RwosLocale) {
+  function choose(locale: WorkerLocale) {
     if (locale === current) return;
     document.cookie = `${LOCALE_COOKIE}=${locale}; path=/; max-age=${LOCALE_COOKIE_MAX_AGE}; samesite=lax`;
     startTransition(() => router.refresh());
@@ -31,7 +31,7 @@ export function LanguageSwitcher() {
 
   return (
     <div className="langswitch" role="group" aria-label="Language / Langue">
-      {supportedRwosLocales.map((locale) => (
+      {supportedWorkerLocales.map((locale) => (
         <button
           key={locale}
           type="button"

@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import type { ReactNode } from "react";
 import { cookies } from "next/headers";
-import { LOCALE_COOKIE, htmlLang, resolveRwosLocale } from "./i18n/config";
+import { LOCALE_COOKIE, htmlLang, localeDir, resolveWorkerLocale } from "./i18n/config";
 import { dictionaries } from "./i18n/messages";
 import { LocaleProvider } from "./i18n/LocaleProvider";
 import { Footer } from "./Footer";
@@ -13,7 +13,7 @@ export const viewport = { themeColor: "#2563eb" };
 
 async function resolveLocale() {
   const store = await cookies();
-  return resolveRwosLocale(store.get(LOCALE_COOKIE)?.value);
+  return resolveWorkerLocale(store.get(LOCALE_COOKIE)?.value);
 }
 
 const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL ?? "https://joblop.com";
@@ -23,9 +23,10 @@ const GOOGLE_SITE_VERIFICATION = process.env.GOOGLE_SITE_VERIFICATION?.trim();
 
 export async function generateMetadata(): Promise<Metadata> {
   const locale = await resolveLocale();
-  const m = dictionaries[locale];
-  const title = `JobLop — ${m["mk.heroTitle"]}`;
-  const description = m["mk.heroIntro"];
+  const enDict = dictionaries["en-CA"];
+  const m = dictionaries[locale] ?? enDict;
+  const title = `JobLop — ${m["mk.heroTitle"] ?? enDict["mk.heroTitle"]}`;
+  const description = m["mk.heroIntro"] ?? enDict["mk.heroIntro"];
   return {
     metadataBase: new URL(SITE_URL),
     title,
@@ -51,7 +52,7 @@ export async function generateMetadata(): Promise<Metadata> {
 export default async function RootLayout({ children }: Readonly<{ children: ReactNode }>) {
   const locale = await resolveLocale();
   return (
-    <html lang={htmlLang(locale)}>
+    <html lang={htmlLang(locale)} dir={localeDir(locale)}>
       <body>
         <GoogleTag tagId={process.env.GOOGLE_TAG_ID ?? null} />
         <RegisterSW />

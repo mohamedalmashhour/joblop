@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { formatWhen } from "../MarketplaceExplorer";
-import { useLocale, useT } from "../i18n/LocaleProvider";
+import { useLocale, useT, fmtLocale } from "../i18n/LocaleProvider";
 
 type SavedEntry = Readonly<{
   jobRequestId: string;
@@ -21,7 +21,7 @@ type SavedEntry = Readonly<{
 
 export function SavedJobs() {
   const t = useT();
-  const locale = useLocale();
+  const locale = fmtLocale(useLocale());
   const [status, setStatus] = useState<"loading" | "ready" | "signed_out" | "error">("loading");
   const [entries, setEntries] = useState<SavedEntry[]>([]);
 

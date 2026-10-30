@@ -1,15 +1,17 @@
 "use client";
 
 import { createContext, useContext, useMemo, type ReactNode } from "react";
-import { interpolate, type RwosLocale } from "./config";
+import { interpolate, type WorkerLocale } from "./config";
 import { dictionaries, type MessageKey, type Messages } from "./messages";
+
+export { fmtLocale } from "./config";
 
 export type Translate = (
   key: MessageKey,
   vars?: Readonly<Record<string, string | number>>
 ) => string;
 
-type LocaleContextValue = Readonly<{ locale: RwosLocale; t: Translate }>;
+type LocaleContextValue = Readonly<{ locale: WorkerLocale; t: Translate }>;
 
 const LocaleContext = createContext<LocaleContextValue | null>(null);
 
@@ -21,9 +23,9 @@ const LocaleContext = createContext<LocaleContextValue | null>(null);
 export function LocaleProvider({
   locale,
   children
-}: Readonly<{ locale: RwosLocale; children: ReactNode }>) {
+}: Readonly<{ locale: WorkerLocale; children: ReactNode }>) {
   const value = useMemo<LocaleContextValue>(() => {
-    const messages: Messages = dictionaries[locale] ?? dictionaries["en-CA"];
+    const messages: Partial<Messages> = dictionaries[locale] ?? dictionaries["en-CA"];
     const fallback = dictionaries["en-CA"];
     const t: Translate = (key, vars) =>
       interpolate(messages[key] ?? fallback[key] ?? key, vars);
@@ -39,7 +41,7 @@ function useLocaleContext(): LocaleContextValue {
   return ctx;
 }
 
-export function useLocale(): RwosLocale {
+export function useLocale(): WorkerLocale {
   return useLocaleContext().locale;
 }
 
