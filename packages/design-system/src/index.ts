@@ -1,22 +1,22 @@
 export const colors = {
-  deepTeal: "#0c2654",
-  deepTealMuted: "#13346e",
-  actionTeal: "#1f9bf0",
-  actionTealMuted: "#127fd4",
-  navy: "#0c2654",
-  navyMuted: "#13346e",
+  deepTeal: "#b8862f",
+  deepTealMuted: "#9a7122",
+  actionTeal: "#c9a24b",
+  actionTealMuted: "#a8842f",
+  navy: "#1c1812",
+  navyMuted: "#2a2114",
   urgent: "#b66b00",
-  cream: "#fff8d8",
-  surface: "#f7faff",
-  surfaceSubtle: "#eef5ff",
+  cream: "#fbf3dd",
+  surface: "#fbf9f4",
+  surfaceSubtle: "#faf6ec",
   surfaceRaised: "#ffffff",
-  border: "#d8e4f5",
-  text: "#0b1f3a",
-  muted: "#526782",
+  border: "#ece3d2",
+  text: "#171511",
+  muted: "#6b6356",
   warning: "#8a5100",
   danger: "#b42323",
   success: "#176b47",
-  focus: "#0d6efd"
+  focus: "#c9a24b"
 } as const;
 
 export const colorRoles = {
