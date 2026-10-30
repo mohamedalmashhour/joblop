@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { formatWhen } from "../../MarketplaceExplorer";
-import { useLocale, useT } from "../../i18n/LocaleProvider";
+import { useLocale, useT, fmtLocale } from "../../i18n/LocaleProvider";
 
 type Opportunity = Readonly<{
   jobRequestId: string;
@@ -24,7 +24,7 @@ type Profile = Readonly<{
 
 export function EmployerProfile({ id }: { id: string }) {
   const t = useT();
-  const locale = useLocale();
+  const locale = fmtLocale(useLocale());
   const [status, setStatus] = useState<"loading" | "ready" | "not_found" | "error">("loading");
   const [profile, setProfile] = useState<Profile | null>(null);
 

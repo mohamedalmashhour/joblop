@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { formatWhen, formatRate } from "../../MarketplaceExplorer";
-import { useLocale, useT } from "../../i18n/LocaleProvider";
+import { useLocale, useT, fmtLocale } from "../../i18n/LocaleProvider";
 import type { MessageKey } from "../../i18n/messages";
 
 type JobDetailData = Readonly<{
@@ -49,7 +49,7 @@ const INELIGIBLE_KEY: Record<string, MessageKey> = {
 
 export function JobDetail({ id, postalCode }: { id: string; postalCode: string | null }) {
   const t = useT();
-  const locale = useLocale();
+  const locale = fmtLocale(useLocale());
   const [status, setStatus] = useState<"loading" | "ready" | "not_found" | "error">("loading");
   const [job, setJob] = useState<JobDetailData | null>(null);
   const [interest, setInterest] = useState<InterestState | null>(null);

@@ -1,7 +1,7 @@
 // Worker-app message catalogue. en-CA is the key source of truth; fr-CA MUST stay at full parity
 // (Bill 96: French available under conditions at least as favourable, with equivalent content).
 // Keys are dotted and flat so the type system enforces that both locales define the same set.
-import type { RwosLocale } from "./config";
+import type { WorkerLocale } from "./config";
 
 export const en = {
   // Brand / shell
@@ -938,7 +938,173 @@ export const fr: Messages = {
   "job.allowancesNone": "Aucune condition de déplacement, de repas ou d'hébergement n'est rattachée à ce quart.",
 };
 
-export const dictionaries: Readonly<Record<RwosLocale, Messages>> = {
+// Arabic (Modern Standard Arabic). Partial on purpose: the core worker surfaces (shell, sign-in,
+// marketplace, My pay, offers, schedule) are translated now; any key not yet translated falls back to
+// en-CA at render time (see LocaleProvider). Arabic also drives right-to-left layout (localeDir).
+export const ar: Partial<Messages> = {
+  // Brand / shell + nav
+  "brand.tagline": "اعثر على عمل بالقرب منك",
+  "nav.verification": "التحقق",
+  "nav.hr": "مواردي البشرية",
+  "nav.documents": "المستندات",
+  "nav.schedule": "جدولي",
+  "nav.pay": "مستحقاتي",
+  "nav.interests": "اهتماماتي",
+  "nav.offers": "عروضي",
+  "nav.savedJobs": "الوظائف المحفوظة",
+  "nav.signOut": "تسجيل الخروج",
+  "nav.backToSearch": "العودة إلى البحث",
+
+  // Common
+  "common.loading": "جارٍ التحميل…",
+  "common.retry": "إعادة المحاولة",
+  "common.somethingWrong": "حدث خطأ ما. يرجى المحاولة مرة أخرى.",
+  "common.findJobs": "ابحث عن عمل",
+  "common.goToSearch": "الذهاب إلى البحث",
+  "common.aJob": "وظيفة",
+  "common.expires": "تنتهي",
+  "common.needsWorkerSetup": "يلزم إكمال إعداد حساب العامل",
+  "common.setUpWorker": "إعداد حساب العامل",
+  "lang.switchTo": "التبديل إلى {language}",
+
+  // Sign-in
+  "auth.signInTitle": "اعثر على عمل بالقرب منك",
+  "auth.signInIntro": "سجّل الدخول للبحث عن المناوبات المتاحة، ومعرفة بُعدها، وحفظ ما يعجبك.",
+  "auth.email": "البريد الإلكتروني",
+  "auth.password": "كلمة المرور",
+  "auth.signIn": "تسجيل الدخول",
+  "auth.signingIn": "جارٍ تسجيل الدخول…",
+  "auth.or": "أو",
+  "auth.continueWithGoogle": "المتابعة باستخدام Google",
+  "auth.tooManyAttempts": "محاولات كثيرة جداً. حاول مرة أخرى بعد قليل.",
+  "auth.signInFailed": "فشل تسجيل الدخول. تحقق من بريدك الإلكتروني وكلمة المرور.",
+  "auth.tabSignIn": "تسجيل الدخول",
+  "auth.tabCreate": "إنشاء حساب",
+
+  // Marketplace — hero + search
+  "mk.heroTitle": "اعثر على عمل بالقرب منك",
+  "mk.heroIntro": "ابحث عن المناوبات المتاحة، وشاهد بُعدها، واحفظ ما يعجبك.",
+  "mk.postalCode": "الرمز البريدي",
+  "mk.postalPlaceholder": "مثال: H7V 1A1",
+  "mk.within": "في نطاق",
+  "mk.kmUnit": "{km} كم",
+  "mk.role": "الدور (اختياري)",
+  "mk.anyRole": "أي دور",
+  "mk.sortBy": "الترتيب حسب",
+  "mk.sortNearest": "الأقرب",
+  "mk.sortSoonest": "الأقرب موعداً",
+  "mk.sortHighestRate": "الأعلى أجراً",
+  "mk.searchJobs": "ابحث عن وظائف",
+  "mk.searching": "جارٍ البحث…",
+  "mk.searchError": "تعذّر تنفيذ البحث. تحقق من الرمز البريدي.",
+  "mk.fromDate": "من تاريخ",
+  "mk.minOpenings": "أدنى عدد شواغر",
+  "mk.any": "الكل",
+  "mk.verifiedOnly": "أصحاب العمل الموثّقون فقط",
+  "mk.clearFilters": "مسح عوامل التصفية",
+  "mk.resultsOne": "وظيفة واحدة بالقرب من {place}",
+  "mk.resultsMany": "{count} وظيفة بالقرب من {place}",
+  "mk.viewList": "قائمة",
+  "mk.viewMap": "خريطة",
+  "mk.viewAgenda": "أجندة",
+  "mk.emptyFiltered": "لا توجد وظائف مطابقة لهذه الفلاتر في هذه المنطقة بعد.",
+  "mk.empty": "لا توجد وظائف متاحة في هذه المنطقة بعد.",
+  "mk.save": "حفظ",
+  "mk.saved": "محفوظة",
+  "mk.ratePerHour": "{amount}/ساعة",
+  "mk.viewDetails": "عرض التفاصيل ←",
+  "mk.openingOne": "شاغر واحد",
+  "mk.openingMany": "{count} شواغر",
+
+  // Job detail (core)
+  "job.aboutShift": "عن هذه المناوبة",
+  "job.duties": "المهام",
+  "job.qualifications": "المؤهلات",
+  "job.factLocation": "الموقع",
+  "job.factWhen": "الموعد",
+  "job.factOpenings": "الشواغر",
+  "job.factPay": "الأجر",
+  "job.viewEmployer": "عرض صاحب العمل",
+  "job.saveJob": "☆ حفظ الوظيفة",
+  "job.saved": "★ محفوظة",
+  "job.verified": "✓ موثّق",
+
+  // My pay
+  "pay.defaultNotice": "حساب خاضع للحوكمة فقط — وليس كشف راتب فعلي.",
+  "pay.syntheticChip": "تجريبي / اختباري — لا تتحرك أي أموال",
+  "pay.signInPrompt": "يرجى تسجيل الدخول لعرض مستحقاتك.",
+  "pay.loadError": "تعذّر تحميل كشف مستحقاتك.",
+  "pay.none": "لا توجد كشوف معتمدة بعد. ستظهر هنا بمجرد اعتماد كشوف المرتبات لحسابك.",
+  "pay.gross": "الإجمالي:",
+  "pay.deductions": "الاستقطاعات: −{amount}",
+  "pay.net": "صافي المستحق:",
+  "pay.rev": "مراجعة {n}",
+  "pay.footer": "تظهر هنا مستحقاتك فقط. الأرقام تجريبية (قواعد اختبارية) ولا تُحوّل أي أموال من JobLop.",
+  "pay.summaryTitle": "ملخص أرباحك",
+  "pay.totalNet": "إجمالي الصافي المكتسب",
+  "pay.totalGross": "إجمالي الأجر",
+  "pay.totalDeductions": "إجمالي الاستقطاعات",
+  "pay.statementCount": "الكشوف",
+  "pay.earningsTitle": "الأرباح",
+  "pay.hours": "{hours} ساعة",
+  "pay.rateHr": "{rate}/ساعة",
+  "pay.workTypeTitle": "نوع عملك",
+  "pay.typeEmployee": "موظف",
+  "pay.typeAutonomous": "عامل مستقل",
+  "pay.typeEmployeeDesc": "رواتب مع استقطاعات — نموذج T4 في نهاية العام",
+  "pay.typeAutonomousDesc": "يُدفع بالكامل دون استقطاعات — نموذج T4A في نهاية العام",
+  "pay.slipType": "نموذج نهاية العام: {slip}",
+  "pay.tabEarnings": "الأرباح",
+  "pay.tabToPay": "قيد الدفع",
+  "pay.tabPaid": "مدفوع",
+
+  // Schedule
+  "sched.intro": "مناوباتك المُسندة. سجّل الدخول والخروج — يسجّل JobLop الوقت الرسمي.",
+  "sched.statusScheduled": "مجدولة",
+  "sched.statusCheckedIn": "تم تسجيل الدخول",
+  "sched.statusCheckedOut": "تم تسجيل الخروج",
+  "sched.statusCompleted": "مكتملة",
+  "sched.statusMissed": "فائتة",
+  "sched.statusCancelled": "ملغاة",
+  "sched.statusException": "تحتاج إلى انتباه",
+  "sched.signInPrompt": "يرجى تسجيل الدخول لعرض جدولك.",
+  "sched.none": "لا توجد مناوبات مُسندة بعد. ستظهر هنا بمجرد إسنادك.",
+  "sched.upcoming": "القادمة والنشطة",
+  "sched.history": "السجل",
+  "sched.checkIn": "تسجيل الدخول",
+  "sched.checkOut": "تسجيل الخروج",
+  "sched.viewList": "قائمة",
+  "sched.viewCalendar": "تقويم",
+
+  // Offers
+  "offers.shiftOffer": "عرض مناوبة",
+  "offers.intro": "عروض خاصة أصدرها لك JobLop. قبول العرض يلزمك بالشروط الموضحة؛ والرفض يحرّرها.",
+  "offers.none": "لا توجد عروض بعد. عندما يختارك JobLop لمناوبة، سيظهر العرض هنا.",
+  "offers.agreementTitle": "الاتفاقية",
+  "offers.whatYoullDo": "ما ستقوم به",
+  "offers.scheduleLabel": "الجدول",
+  "offers.respondBy": "الرد قبل",
+  "offers.rightsTitle": "حقوقك",
+  "offers.rightBinding": "قبول العرض يلزمك بهذه الشروط؛ والرفض يحرّر المناوبة.",
+  "offers.rightNoFee": "لا يقتطع JobLop أبداً من أجرك — عمولته يدفعها صاحب العمل.",
+  "offers.rightRecorded": "تُسجّل ساعاتك بواسطة JobLop عند تسجيل الدخول والخروج.",
+  "offers.acceptOffer": "قبول العرض",
+  "offers.decline": "رفض",
+  "offers.accepted": "تم القبول",
+  "offers.declined": "تم الرفض",
+  "offers.signInPrompt": "يرجى تسجيل الدخول لعرض عروضك.",
+  "offers.statusAccepted": "تم القبول",
+  "offers.compensationLabel": "الأجر",
+  "offers.policyLabel": "السياسة والشروط",
+
+  // My HR
+  "hr.title": "مواردي البشرية",
+  "hr.credentials": "الاعتمادات",
+  "hr.signInPrompt": "يرجى تسجيل الدخول لعرض موارد بشرية."
+};
+
+export const dictionaries: Readonly<Record<WorkerLocale, Partial<Messages>>> = {
   "en-CA": en,
-  "fr-CA": fr
+  "fr-CA": fr,
+  ar
 };

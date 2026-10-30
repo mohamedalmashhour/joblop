@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { formatWhen } from "../MarketplaceExplorer";
-import { useLocale, useT } from "../i18n/LocaleProvider";
+import { useLocale, useT, fmtLocale } from "../i18n/LocaleProvider";
 import type { MessageKey } from "../i18n/messages";
 
 type InterestItem = Readonly<{
@@ -33,7 +33,7 @@ const INTEREST_LABEL_KEY: Record<string, MessageKey> = {
 
 export function MyInterests() {
   const t = useT();
-  const locale = useLocale();
+  const locale = fmtLocale(useLocale());
   const [status, setStatus] = useState<"loading" | "ready" | "signed_out" | "needs_setup" | "error">("loading");
   const [items, setItems] = useState<InterestItem[]>([]);
 

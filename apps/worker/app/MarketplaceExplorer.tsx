@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { MarketplaceMap, type MapPin } from "./MarketplaceMap";
-import { useLocale, useT } from "./i18n/LocaleProvider";
+import { useLocale, useT, fmtLocale } from "./i18n/LocaleProvider";
 import { LandingPanel } from "./LandingPanel";
 import type { RwosLocale } from "./i18n/config";
 
@@ -55,7 +55,7 @@ export function MarketplaceExplorer() {
 
 function SearchPanel({ onSignedOut }: { onSignedOut: () => void }) {
   const t = useT();
-  const locale = useLocale();
+  const locale = fmtLocale(useLocale());
   const [postalCode, setPostalCode] = useState("H7V 1A1");
   const [radiusKm, setRadiusKm] = useState<number>(25);
   const [role, setRole] = useState("");

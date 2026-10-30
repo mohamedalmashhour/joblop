@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { useLocale, useT } from "../i18n/LocaleProvider";
+import { useLocale, useT, fmtLocale } from "../i18n/LocaleProvider";
 import type { RwosLocale } from "../i18n/config";
 import type { MessageKey } from "../i18n/messages";
 
@@ -77,7 +77,7 @@ function expiryWhen(expiresAt: string, locale: RwosLocale): string {
 
 export function Offers() {
   const t = useT();
-  const locale = useLocale();
+  const locale = fmtLocale(useLocale());
   const [state, setState] = useState<State>({ status: "loading" });
   const [busyId, setBusyId] = useState<string | null>(null);
   const [notice, setNotice] = useState<string>("");
