@@ -8,7 +8,7 @@ import {
 } from "../paymentWorkflowContent";
 import { styles } from "../employerStyles";
 import { LanguageSwitcher } from "../../i18n/LanguageSwitcher";
-import { useLocale, useT } from "../../i18n/LocaleProvider";
+import { fmtLocale, useLocale, useT } from "../../i18n/LocaleProvider";
 import type { RwosLocale } from "../../i18n/config";
 
 type PaymentSummary = Readonly<{
@@ -34,7 +34,7 @@ export function PaymentStatePanel({
   mode: "overview" | "method" | "authorization" | "settlement" | "receipt" | "exceptions";
 }) {
   const t = useT();
-  const locale = useLocale();
+  const locale = fmtLocale(useLocale());
   const [state, setState] = useState<LoadState>({ status: "loading" });
 
   useEffect(() => {

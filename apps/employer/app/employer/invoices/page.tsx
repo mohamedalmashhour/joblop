@@ -2,12 +2,13 @@ import { cookies } from "next/headers";
 import { EmployerShell, WorkflowRoutes } from "../EmployerShell";
 import { styles } from "../employerStyles";
 import { InvoiceReviewPanel } from "./InvoiceReviewPanel";
-import { LOCALE_COOKIE, resolveRwosLocale } from "../../i18n/config";
-import { dictionaries } from "../../i18n/messages";
+import { LOCALE_COOKIE, resolveEmployerLocale } from "../../i18n/config";
+import { dictionaries, type Messages } from "../../i18n/messages";
 
 export default async function InvoicesPage() {
   const store = await cookies();
-  const m = dictionaries[resolveRwosLocale(store.get(LOCALE_COOKIE)?.value)];
+  const locale = resolveEmployerLocale(store.get(LOCALE_COOKIE)?.value);
+  const m: Messages = { ...dictionaries["en-CA"], ...dictionaries[locale] } as Messages;
   return (
     <EmployerShell
       currentRoute="/employer/invoices"

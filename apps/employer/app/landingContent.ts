@@ -2,7 +2,7 @@
 // parity (Quebec / Bill 96). page.tsx is a server component that resolves the active locale
 // and renders from getLandingContent(locale). Stable `key` fields drive image and status
 // lookups so translating the visible label never breaks them.
-import type { RwosLocale } from "./i18n/config";
+import type { EmployerLocale } from "./i18n/config";
 
 export interface StaffingCategory {
   key: "kitchen" | "care" | "housekeeping" | "maintenance";
@@ -309,8 +309,132 @@ const fr: LandingContent = {
   workerPhone: [["À venir", "Quart de soir PAB", "96,00 $"], ["Horaire", "Mai 2026", "3 quarts"], ["Gains", "560,00 $", "en attente"]]
 };
 
-const content: Readonly<Record<RwosLocale, LandingContent>> = { "en-CA": en, "fr-CA": fr };
+// Arabic (RTL) marketing landing — full parity with en-CA. Proper nouns (JobLop, App Store,
+// Google Play, Interac) and sample data (places, numbers) stay as-is by convention.
+const ar: LandingContent = {
+  header: {
+    navLinks: ["كيف تعمل", "أصحاب العمل", "العمّال", "الأسعار", "من نحن"],
+    ctaGetStarted: "ابدأ الآن",
+    ctaRequestAccess: "طلب الوصول",
+    openMenu: "فتح القائمة",
+    closeMenu: "إغلاق القائمة",
+    signIn: "تسجيل الدخول"
+  },
+  staging: { label: "بيئة اختبار", synthetic: "بيانات اصطناعية", noPayment: "لا دفع حقيقي", noProdData: "لا بيانات عملاء إنتاجية" },
+  hero: {
+    line1: "اعثر على عمل.",
+    line2: "اعثر على أشخاص.",
+    line3: "امضِ قُدُمًا.",
+    lede: "تربط JobLop العمّال المحليّين بالأشخاص والشركات التي تحتاج إلى مساعدة. سريع. بسيط. موثوق.",
+    chips: ["مطابقات سريعة", "مستخدمون موثَّقون", "آمن وموثوق"],
+    ctaWork: "أبحث عن عمل",
+    ctaHire: "طلب عمّال",
+    availableOn: "متاح على",
+    oppTitle: "فرص",
+    oppAround: "من حولك"
+  },
+  categories: {
+    eyebrow: "كبسولات مجموعات العمل",
+    title: "ابدأ بالمجموعة المناسبة، ثم ضيّق نطاق الطلب.",
+    copy: "تُبقي الكبسولات طلبات العمل سهلة التصفّح مع إتاحة مساحة للأدوار الجديدة التي يضيفها العملاء والعمّال مع الوقت.",
+    items: [
+      { key: "kitchen", name: "المطبخ", roles: "Chef diplômé، Sous-chef، Cuisinier، Aide-cuisinier، غسّال صحون", detail: "تغطية خدمات الطعام مع متطلّبات المناوبة وسياق سلامة الغذاء وملاحظات تسليم المطبخ." },
+      { key: "care", name: "الرعاية / التمريض", roles: "Préposé(e) aux bénéficiaires، ممرّض، مساعد رعاية", detail: "طلبات تراعي الاعتمادات لبيئات الرعاية الخاضعة للإشراف دون كشف سجلّات المقيمين." },
+      { key: "housekeeping", name: "التدبير المنزلي وقاعة الطعام", roles: "التدبير المنزلي، دعم قاعة الطعام، الغسيل، عامل نظافة", detail: "أدوار دعم تشغيلية للتغطية اليومية للمقارّ السكنية واستبدال الغياب العاجل." },
+      { key: "maintenance", name: "الصيانة", roles: "دعم المرافق، الإصلاحات، البوّاب، الدعم العاجل", detail: "طلبات المرافق بحدود وصول واضحة وتوقّعات سلامة وتسليم للمشرف." }
+    ]
+  },
+  workflow: {
+    eyebrow: "تدفّق توظيف مُدار",
+    title: "مبنيّ حول العمليات، لا مجرّد نشر الوظائف.",
+    steps: ["طلب عمل", "توزيع إداري", "عرض للعامل", "تعيين", "تسليم الحضور"]
+  },
+  experiences: {
+    eyebrow: "منصّة واحدة، ثلاث تجارب",
+    title: "أدوات مركّزة لكل دور في القوى العاملة.",
+    pillars: [
+      { key: "employers", label: "لأصحاب العمل", points: ["إنشاء طلبات توظيف", "تتبّع مراجعة الطلبات", "رؤية تقدّم التوظيف", "عرض التعيينات المؤكَّدة"] },
+      { key: "workers", label: "للعمّال", points: ["مراجعة العروض الخاصة", "القبول أو الرفض", "رؤية التعيينات", "استخدام تسليم الحضور"] },
+      { key: "admins", label: "للمسؤولين", points: ["التحكّم في التوزيع", "مراجعة الامتثال", "مراقبة الاستثناءات", "حفظ سجلّات التدقيق"] }
+    ]
+  },
+  preview: {
+    eyebrow: "داخل مساحة العمل",
+    title: "لوحات تحكّم هادئة للعمل اليومي المتكرّر.",
+    copy: "معاينة لمساحة عمل JobLop — حالة توظيف وطلبات وتغطية واضحة بلمحة. تُعرَض بيانات عيّنة لأغراض التوضيح."
+  },
+  workers: {
+    eyebrow: "للعمّال",
+    title: "توظيف يركّز على الهاتف دون اقتصاديات خفيّة لصاحب العمل.",
+    benefits: ["رؤية خاصّة للعروض", "نسخ دقيقة من الشروط", "جدول تعيينات شخصي", "وصول مُصادَق عليه", "مرجع يركّز على الهاتف", "حالات فارغة صادقة"]
+  },
+  ai: {
+    eyebrow: "حدود عقل الذكاء الاصطناعي",
+    title: "الذكاء الاصطناعي يساعد في القرارات. الناس يبقون متحكّمين.",
+    flow: [["يوصي", "مطابقات مؤهّلة وثغرات ومخاطر"], ["يشرح", "الأدلّة وعدم اليقين والبيانات الناقصة"], ["ينتظر", "المراجعة البشرية تتحكّم في الإجراء النهائي"]]
+  },
+  trust: {
+    eyebrow: "ضوابط الثقة",
+    title: "تبقى الحوكمة ظاهرة طوال الرحلة.",
+    controls: ["أدوار مخزّنة في قاعدة البيانات", "عزل المستأجرين", "سجلّات يملكها العامل", "مراجعة بشرية للتوزيع", "فحوصات تعارض الإصدارات", "حدود تسليم الحضور"]
+  },
+  journeys: {
+    workerTitle: "رحلة العامل",
+    employerTitle: "رحلة صاحب العمل",
+    worker: ["تسجيل الدخول", "مراجعة العرض الخاص", "القبول أو الرفض", "رؤية التعيين المؤكَّد", "المتابعة إلى تسليم الحضور"],
+    employer: ["إنشاء طلب", "الإرسال للمراجعة", "التصحيح عند الطلب", "تتبّع تقدّم التوظيف", "رؤية التعيينات المؤكَّدة"]
+  },
+  faq: {
+    eyebrow: "معاينة الأسئلة الشائعة",
+    title: "إجابات واضحة قبل أن يختار المستخدمون مسارًا.",
+    questions: ["كيف يدخل طلب التوظيف إلى المراجعة؟", "من يمكنه رؤية تفاصيل عرض العامل؟", "متى يصبح العرض تعيينًا؟", "هل يعيّن الذكاء الاصطناعي العمّال؟"],
+    readNote: "اقرأ الإجابة المحكومة قبل اختيار مسار.",
+    readLink: "اقرأ الإجابة في الأسئلة الشائعة"
+  },
+  cta: {
+    title: "هل أنت مستعدّ لتحويل قوّتك العاملة؟",
+    copy: "ابدأ بطلب توظيف محكوم أو احجز عرضًا توضيحيًا.",
+    hire: "توظيف طاقم",
+    requestAccess: "طلب الوصول",
+    findWork: "ابحث عن عمل"
+  },
+  footer: { brandHome: "JobLop", employers: "أصحاب العمل", workers: "العمّال", howItWorks: "كيف تعمل", pricing: "الأسعار", contact: "اتصل بنا" },
+  store: {
+    apple: { line: "نزّله من", name: "App Store", aria: "App Store — قريبًا" },
+    google: { line: "احصل عليه من", name: "Google Play", aria: "Google Play — قريبًا" }
+  },
+  heroPhone: {
+    greeting: "مرحبًا، أحمد",
+    prompt: "عمّا تبحث اليوم؟",
+    findWork: "ابحث عن عمل",
+    findWorkSub: "وظائف قريبة منك",
+    findPeople: "ابحث عن أشخاص",
+    findPeopleSub: "وظّف أشخاصًا يمكنك الاعتماد عليهم",
+    popular: "رائج بالقرب منك",
+    jobTitle: "مساعد مطبخ",
+    jobMeta: "مطعم · لافال، كيبيك",
+    jobPay: "18$/ساعة"
+  },
+  dashboard: {
+    nav: ["لوحة التحكّم", "العمّال", "الوظائف", "الامتثال", "التقارير"],
+    welcome: "مرحبًا، سارة جونسون",
+    org: "Sunrise of Oak Hill",
+    postShift: "نشر مناوبة",
+    metrics: [["مناوبات مفتوحة", "12"], ["مجدولة اليوم", "24"], ["عمّال نشطون", "48"], ["ساعات هذا الأسبوع", "320"]],
+    upcoming: "المناوبات القادمة",
+    recentActivity: "النشاط الأخير",
+    activity: ["قبِل عامل مناوبة", "تمّ شغل المناوبة", "طلب جديد"],
+    operations: [
+      { role: "مناوبة مسائية CNA", status: "مشغولة", filled: true },
+      { role: "التدبير المنزلي", status: "جزئية", filled: false },
+      { role: "مساعد قاعة طعام", status: "مفتوحة", filled: false }
+    ]
+  },
+  workerPhone: [["قادمة", "مناوبة مسائية CNA", "96.00$"], ["الجدول", "أيار 2026", "3 مناوبات"], ["الأرباح", "560.00$", "قيد الانتظار"]]
+};
 
-export function getLandingContent(locale: RwosLocale): LandingContent {
+const content: Readonly<Record<EmployerLocale, LandingContent>> = { "en-CA": en, "fr-CA": fr, ar };
+
+export function getLandingContent(locale: EmployerLocale): LandingContent {
   return content[locale];
 }
