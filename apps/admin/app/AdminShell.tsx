@@ -3,23 +3,38 @@
 import { usePathname } from "next/navigation";
 import { useEffect, useRef, type ReactNode } from "react";
 import { phase01Routes } from "./phase-01-review/phase01ReviewContent";
+import { LanguageSwitcher } from "./i18n/LanguageSwitcher";
+import { useT, type Translate } from "./i18n/LocaleProvider";
+import type { MessageKey } from "./i18n/messages";
 
+// Navigation carries a translation key (labelKey) where a catalogue entry exists; the phase-01
+// review routes bring their own (English) title and keep it until those deep pages are translated.
 const connectedNavigation = [
-  { href: "/calendar", label: "Request calendar" },
-  { href: "/orders", label: "Order review" },
-  { href: "/dispatches", label: "Dispatch reviews" },
-  { href: "/market-wages", label: "Market wages" },
-  { href: "/escalations", label: "Owner escalations" }
-] as const;
+  { href: "/calendar", labelKey: "nav.calendar" },
+  { href: "/orders", labelKey: "nav.orders" },
+  { href: "/dispatches", labelKey: "nav.dispatches" },
+  { href: "/market-wages", labelKey: "nav.marketWages" },
+  { href: "/escalations", labelKey: "nav.escalations" }
+] as const satisfies readonly { href: string; labelKey: MessageKey }[];
 const reviewNavigation = phase01Routes.map(({ route, title }) => ({ href: route, label: title }));
 // Platform operations surfaces not in the phase-01 review set.
 const operationsNavigation = [
-  { href: "/verification", label: "Verification" },
-  { href: "/hr", label: "HR" },
-  { href: "/payroll", label: "Payroll" }
-] as const;
+  { href: "/verification", labelKey: "nav.verification" },
+  { href: "/hr", labelKey: "nav.hr" },
+  { href: "/payroll", labelKey: "nav.payroll" }
+] as const satisfies readonly { href: string; labelKey: MessageKey }[];
 
+type NavSource = { href: string; labelKey?: MessageKey; label?: string };
 type NavItem = { href: string; label: string };
+
+// Resolve each navigation entry's visible label: translate when it has a catalogue key, otherwise
+// fall back to the entry's own (phase-01 review) title.
+function resolveNavigation(source: readonly NavSource[], t: Translate): NavItem[] {
+  return source.map((item) => ({
+    href: item.href,
+    label: item.labelKey ? t(item.labelKey) : item.label ?? item.href
+  }));
+}
 
 // Platform sections organized into named groups (capsules), mirroring the SYBNB grouped-nav
 // pattern — every route belongs to a section so the workspace reads as coherent groups
@@ -60,6 +75,7 @@ export function AdminShell({
   staging
 }: Readonly<{ children: ReactNode; staging: boolean }>) {
   const pathname = usePathname();
+  const t = useT();
   const contentRef = useRef<HTMLDivElement>(null);
   const compiledStaging = process.env.NEXT_PUBLIC_RWOS_DEPLOYMENT_TIER === "staging";
   const connectedEnvironment =
@@ -69,7 +85,8 @@ export function AdminShell({
   const navigation = connectedEnvironment
     ? connectedNavigation
     : [...connectedNavigation, ...operationsNavigation, ...reviewNavigation];
-  const currentIndex = navigation.findIndex(
+  const resolvedNavigation = resolveNavigation(navigation as readonly NavSource[], t);
+  const currentIndex = resolvedNavigation.findIndex(
     (item) => pathname === item.href || pathname.startsWith(`${item.href}/`)
   );
 
@@ -83,7 +100,7 @@ export function AdminShell({
   return (
     <div className="admin-app-shell">
       <a className="admin-skip-link" href="#admin-main-content">
-        Skip to main content
+        {t("shell.skip")}
       </a>
       {staging || compiledStaging ? (
         <aside aria-label="Staging environment notice" className="admin-staging-banner">
@@ -94,11 +111,7 @@ export function AdminShell({
         </aside>
       ) : null}
       <header className="admin-topbar">
-        <a
-          aria-label="Resident Workforce OS administration home"
-          className="admin-brand"
-          href="/calendar"
-        >
+        <a aria-label={t("shell.brandHomeAria")} className="admin-brand" href="/calendar">
           { /* eslint-disable-next-line @next/next/no-img-element */ }
           <img
             src="/img/joblop-logo.png"
@@ -106,18 +119,17 @@ export function AdminShell({
             style={{ height: 30, width: "auto", display: "block", borderRadius: 6 }}
           />
           <span>
-            <strong>Administration</strong>
-            <small>governed operations</small>
+            <strong>{t("shell.brandTitle")}</strong>
+            <small>{t("shell.brandSub")}</small>
           </span>
         </a>
-        <p className="admin-session-context">
-          Secure administration workspace · authority is verified before persisted data is shown
-        </p>
+        <p className="admin-session-context">{t("shell.sessionContext")}</p>
+        <LanguageSwitcher />
       </header>
-      <nav aria-label="Administration navigation" className="admin-navigation">
-        {groupNavigation(navigation).map(({ group, items }) => (
+      <nav aria-label={t("shell.navAria")} className="admin-navigation">
+        {groupNavigation(resolvedNavigation).map(({ group, items }) => (
           <div aria-label={group} className="admin-nav-group" key={group} role="group">
-            <span className="admin-nav-group-label">{group}</span>
+            <span className="admin-nav-group-label">{t(`group.${group}` as MessageKey)}</span>
             <div className="admin-nav-group-links">
               {items.map((item) => {
                 const active = pathname === item.href || pathname.startsWith(`${item.href}/`);
@@ -138,9 +150,11 @@ export function AdminShell({
       </nav>
       {currentIndex >= 0 ? (
         <PageNavigator
+          backLabel={t("page.back")}
           currentIndex={currentIndex}
-          navigation={navigation}
-          sectionName="Administration"
+          navigation={resolvedNavigation}
+          nextLabel={t("page.next")}
+          sectionName={t("shell.brandTitle")}
         />
       ) : null}
       <div ref={contentRef}>{children}</div>
@@ -149,12 +163,16 @@ export function AdminShell({
 }
 
 function PageNavigator({
+  backLabel,
   currentIndex,
   navigation,
+  nextLabel,
   sectionName
 }: {
+  backLabel: string;
   currentIndex: number;
   navigation: readonly { href: string; label: string }[];
+  nextLabel: string;
   sectionName: string;
 }) {
   const previous = navigation[currentIndex - 1];
@@ -169,11 +187,11 @@ function PageNavigator({
           href={previous.href}
           rel="prev"
         >
-          <span aria-hidden="true">←</span> Back
+          <span aria-hidden="true">←</span> {backLabel}
         </a>
       ) : (
         <span aria-disabled="true" className="admin-page-arrow admin-page-arrow-disabled">
-          <span aria-hidden="true">←</span> Back
+          <span aria-hidden="true">←</span> {backLabel}
         </span>
       )}
       <div
@@ -205,11 +223,11 @@ function PageNavigator({
           href={next.href}
           rel="next"
         >
-          Next <span aria-hidden="true">→</span>
+          {nextLabel} <span aria-hidden="true">→</span>
         </a>
       ) : (
         <span aria-disabled="true" className="admin-page-arrow admin-page-arrow-disabled">
-          Next <span aria-hidden="true">→</span>
+          {nextLabel} <span aria-hidden="true">→</span>
         </span>
       )}
     </nav>

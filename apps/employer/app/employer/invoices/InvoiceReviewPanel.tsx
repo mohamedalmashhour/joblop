@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import { invoiceBoundaries, invoiceDataTruth, invoiceStates } from "../invoiceWorkflowContent";
 import { styles } from "../employerStyles";
 import { LanguageSwitcher } from "../../i18n/LanguageSwitcher";
-import { useLocale, useT } from "../../i18n/LocaleProvider";
+import { fmtLocale, useLocale, useT } from "../../i18n/LocaleProvider";
 import { previewInvoicePaymentOptions } from "./invoicePaymentPreview";
 import type { RwosLocale } from "../../i18n/config";
 
@@ -29,7 +29,7 @@ type LoadState =
 
 export function InvoiceReviewPanel({ mode }: { mode: "list" | "detail" | "breakdown" }) {
   const t = useT();
-  const locale = useLocale();
+  const locale = fmtLocale(useLocale());
   const [state, setState] = useState<LoadState>({ status: "loading" });
 
   useEffect(() => {
