@@ -7,14 +7,26 @@
     "orientation": "portrait",
     "userInterfaceStyle": "light",
     "newArchEnabled": true,
+    "icon": "./assets/icon.png",
+    "splash": {
+      "image": "./assets/icon.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#0c0c0c"
+    },
     "web": {
-      "bundler": "metro"
+      "bundler": "metro",
+      "favicon": "./assets/favicon.png"
     },
     "ios": {
-      "bundleIdentifier": "app.residentworkforce.mobile"
+      "bundleIdentifier": "app.residentworkforce.mobile",
+      "icon": "./assets/icon.png"
     },
     "android": {
-      "package": "app.residentworkforce.mobile"
+      "package": "app.residentworkforce.mobile",
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/adaptive-icon.png",
+        "backgroundColor": "#0c0c0c"
+      }
     },
     "extra": {
       "foundationOnly": true

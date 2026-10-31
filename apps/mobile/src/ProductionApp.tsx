@@ -1,6 +1,6 @@
 import { StatusBar } from "expo-status-bar";
 import { useEffect, useMemo, useState } from "react";
-import { Linking, Platform, SafeAreaView, StyleSheet, Text, View } from "react-native";
+import { Image, Linking, Platform, SafeAreaView, StyleSheet, Text, View } from "react-native";
 import { colors, spacing, typography } from "@rwos/design-system";
 import {
   createVolatileSessionVault,
@@ -39,20 +39,14 @@ export default function ProductionApp() {
           </View>
         ) : null}
         <View style={styles.header}>
-          <View
-            accessibilityElementsHidden
-            accessible={false}
-            importantForAccessibility="no-hide-descendants"
-            style={styles.mark}
-          >
-            <Text style={styles.markText}>JL</Text>
-          </View>
-          <View>
-            <Text accessibilityRole="header" style={styles.title}>
-              {productName}
-            </Text>
-            <Text style={styles.subtitle}>Workforce marketplace · Phase 1</Text>
-          </View>
+          <Image
+            accessibilityRole="header"
+            accessibilityLabel={productName}
+            resizeMode="contain"
+            source={require("../assets/joblop-logo.png")}
+            style={styles.logo}
+          />
+          <Text style={styles.subtitle}>Workforce marketplace · Phase 1</Text>
         </View>
         <View style={styles.content}>
           <WorkerCalendarPanel
@@ -79,22 +73,12 @@ const styles = StyleSheet.create({
   stagingTitle: { color: "#684B00", fontSize: typography.small, fontWeight: "800" },
   stagingText: { color: "#684B00", fontSize: typography.small, fontWeight: "700" },
   header: {
-    alignItems: "center",
+    alignItems: "flex-start",
     backgroundColor: colors.surface,
-    flexDirection: "row",
-    gap: spacing.md,
+    gap: spacing.xs,
     padding: spacing.lg
   },
-  mark: {
-    alignItems: "center",
-    backgroundColor: colors.deepTeal,
-    borderRadius: 16,
-    height: 48,
-    justifyContent: "center",
-    width: 48
-  },
-  markText: { color: colors.surface, fontSize: typography.body, fontWeight: "800" },
-  title: { color: colors.deepTeal, fontSize: typography.title, fontWeight: "800" },
+  logo: { height: 34, width: 150, borderRadius: 6 },
   subtitle: { color: colors.muted, fontSize: typography.small },
   content: { flex: 1 }
 });
