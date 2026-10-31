@@ -8,23 +8,24 @@
     "userInterfaceStyle": "light",
     "newArchEnabled": true,
     "icon": "./assets/icon.png",
+    "splash": {
+      "image": "./assets/icon.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#0c0c0c"
+    },
     "web": {
       "bundler": "metro",
       "favicon": "./assets/favicon.png"
     },
     "ios": {
-      "bundleIdentifier": "com.joblop.app",
-      "buildNumber": "1",
-      "supportsTablet": false,
-      "infoPlist": {
-        "ITSAppUsesNonExemptEncryption": false
-      }
+      "bundleIdentifier": "app.residentworkforce.mobile",
+      "icon": "./assets/icon.png"
     },
     "android": {
-      "package": "com.joblop.app",
+      "package": "app.residentworkforce.mobile",
       "adaptiveIcon": {
         "foregroundImage": "./assets/adaptive-icon.png",
-        "backgroundColor": "#1546c8"
+        "backgroundColor": "#0c0c0c"
       }
     },
     "extra": {
