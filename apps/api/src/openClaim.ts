@@ -103,6 +103,11 @@ export async function ensureOpenClaimDispatch(
     startedAt: input.now,
     now: input.now
   });
+  // The row was just created, so the version-guarded update effectively always succeeds; guard the
+  // audit on it anyway so the trail never claims a transition that did not land.
+  if (!opened) {
+    throw new Error("open_claim_dispatch_transition_failed");
+  }
   await deps.dispatchRepository.recordDispatchAuditEvent({
     action: "dispatch.offer_preparation",
     organizationId: created.organizationId,
@@ -115,7 +120,7 @@ export async function ensureOpenClaimDispatch(
     correlationId: `open_claim_dispatch_${randomUUID()}`,
     createdAt: input.now
   });
-  return { dispatchReviewId: (opened ?? created).id, created: true };
+  return { dispatchReviewId: opened.id, created: true };
 }
 
 // Worker direct-claim orchestration. Returns a discriminated result; the endpoint maps it to HTTP.
