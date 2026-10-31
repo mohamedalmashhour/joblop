@@ -2,7 +2,7 @@
 
 import { LanguageSwitcher } from "./i18n/LanguageSwitcher";
 import { useLocale, useT } from "./i18n/LocaleProvider";
-import { JobLopMark } from "./JobLopMark";
+import { JoblopLogo } from "./JoblopLogo";
 
 // Employer app entry — set NEXT_PUBLIC_EMPLOYER_URL in production (e.g. https://joblop-employer.onrender.com).
 const EMPLOYER_URL = process.env.NEXT_PUBLIC_EMPLOYER_URL ?? "http://localhost:3100";
@@ -14,9 +14,8 @@ export function TopBar() {
   return (
     <header className="topbar">
       <div className="wrap">
-        <a className="brand" href="/" style={{ display: "inline-flex", alignItems: "center", gap: 8, textDecoration: "none" }}>
-          <JobLopMark size={28} />
-          <span style={{ color: "var(--text)" }}>Job<span>Lop</span></span>
+        <a className="brand" href="/" style={{ display: "inline-flex", alignItems: "center", textDecoration: "none" }}>
+          <JoblopLogo height={30} />
         </a>
         <div className="topbar-right">
           <a className="muted" href="/how-it-works" style={{ fontSize: 14, fontWeight: 700 }}>{locale.startsWith("fr") ? "Comment ça marche" : "How it works"}</a>
