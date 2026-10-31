@@ -5,6 +5,7 @@ import { getLandingContent, type LandingContent } from "./landingContent";
 const landingSource = readFileSync(new URL("./page.tsx", import.meta.url), "utf8");
 const en = getLandingContent("en-CA");
 const fr = getLandingContent("fr-CA");
+const ar = getLandingContent("ar");
 
 function shape(c: LandingContent) {
   return {
@@ -74,6 +75,16 @@ describe("Page 001 landing content", () => {
     expect(fr.header.signIn).toBe("Se connecter");
     // Status styling is driven by a stable boolean, not the translated label.
     expect(en.dashboard.operations.map((o) => o.filled)).toEqual([true, false, false]);
+  });
+
+  it("ships Arabic (RTL) landing content at structural parity with en-CA", () => {
+    expect(shape(ar)).toEqual(shape(en));
+    // Visible marketing copy is actually translated, not left in English.
+    expect(ar.hero.line1).not.toBe(en.hero.line1);
+    expect(ar.cta.title).not.toBe(en.cta.title);
+    expect(ar.header.signIn).toBe("تسجيل الدخول");
+    // Operation status booleans stay stable so status styling is identical across locales.
+    expect(ar.dashboard.operations.map((o) => o.filled)).toEqual([true, false, false]);
   });
 
   it("routes public access and gates production without leaking legacy branding", () => {

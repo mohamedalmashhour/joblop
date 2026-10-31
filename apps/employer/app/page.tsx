@@ -1,6 +1,6 @@
 import type { CSSProperties } from "react";
 import { cookies } from "next/headers";
-import { LOCALE_COOKIE, resolveRwosLocale } from "./i18n/config";
+import { LOCALE_COOKIE, resolveEmployerLocale } from "./i18n/config";
 import { getLandingContent, type LandingContent } from "./landingContent";
 import { LogoIntro } from "./LogoIntro";
 import { JobLopLogo } from "./JobLopLogo";
@@ -9,7 +9,7 @@ import { LanguageSwitcher } from "./i18n/LanguageSwitcher";
 
 async function resolveLocale() {
   const store = await cookies();
-  return resolveRwosLocale(store.get(LOCALE_COOKIE)?.value);
+  return resolveEmployerLocale(store.get(LOCALE_COOKIE)?.value);
 }
 
 function CheckTile({ size = 34 }: { size?: number }) {
