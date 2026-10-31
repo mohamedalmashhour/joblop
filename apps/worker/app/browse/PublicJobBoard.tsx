@@ -428,6 +428,9 @@ export function PublicJobBoard() {
   // Hero/stat headline count: prefer the TRUE total (Joblop open jobs + all scanned leads) from the
   // stats endpoint; fall back to the live teaser total, then to Joblop's own public-job count.
   const openCount = totalJobs ?? leadsTotal ?? jobCount;
+  // Province tally for the aggregate stats: prefer the stats endpoint (same source as openCount) so
+  // the trust-band figure isn't a bare "—" just because the live typeahead has no local matches yet.
+  const openProvinces = totalProvinces ?? (provinceCount || null);
   const fmtCount = (n: number | null) => (n == null ? "—" : n.toLocaleString(lang === "fr" ? "fr-CA" : "en-CA"));
 
   return (
@@ -492,7 +495,7 @@ export function PublicJobBoard() {
               <div className="jl-preview">
                 <div className="jl-preview-head">
                   <span className="jl-preview-dot" /> {t.previewLive}
-                  {jobs !== null ? <span className="jl-preview-n">{jobs.length} {t.st1}</span> : null}
+                  {jobs !== null && jobs.length > 0 ? <span className="jl-preview-n">{jobs.length} {t.st1}</span> : null}
                 </div>
                 {jobs === null ? (
                   <div className="jl-preview-empty">{t.loading}</div>
@@ -698,7 +701,7 @@ export function PublicJobBoard() {
             <p>{t.jsSub}</p>
             <a href="/job-scanner" className="jl-js-btn">{t.jsBtn} →</a>
           </div>
-          <div className="jl-js-demo"><JobScannerDemo lang={lang === "ar" ? "en" : lang} /></div>
+          <div className="jl-js-demo"><JobScannerDemo lang={lang} /></div>
         </div>
         {leads && leads.length > 0 && (
           <div className="jl-leads">
@@ -805,7 +808,7 @@ export function PublicJobBoard() {
           <p className="jl-sub">{t.trustSub}</p>
           <div className="jl-stats">
             <div><strong>{openCount ?? "—"}</strong><span>{t.st1}</span></div>
-            <div><strong>{provinceCount || "—"}</strong><span>{t.st2}</span></div>
+            <div><strong>{openProvinces ?? "—"}</strong><span>{t.st2}</span></div>
             <div><strong>$0</strong><span>{t.st3}</span></div>
             <div><strong>$0</strong><span>{t.st4}</span></div>
           </div>
