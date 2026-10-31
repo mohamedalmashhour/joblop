@@ -5,6 +5,7 @@ import { getLandingContent, type LandingContent } from "./landingContent";
 import { LogoIntro } from "./LogoIntro";
 import { JobLopLogo } from "./JobLopLogo";
 import { HeaderNav } from "./HeaderNav";
+import { EmployerFlowMovie } from "./EmployerFlowMovie";
 import { LanguageSwitcher } from "./i18n/LanguageSwitcher";
 
 async function resolveLocale() {
@@ -355,6 +356,8 @@ export default async function LandingPage() {
           </div>
         </div>
       </section>
+
+      <EmployerFlowMovie lang={locale === "ar" ? "ar" : locale.startsWith("fr") ? "fr" : "en"} />
 
       <section aria-labelledby="categories-title" style={styles.section}>
         <div style={styles.centerHeader}>
