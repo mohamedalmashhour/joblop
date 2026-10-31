@@ -1,4 +1,5 @@
 import type { CSSProperties } from "react";
+import { MarketingHeader, MarketingFooter } from "../MarketingChrome";
 import {
   aiFinancialBoundary,
   authorizationTimeline,
@@ -12,36 +13,7 @@ import {
 export default function PricingPage() {
   return (
     <main style={styles.page}>
-      <header style={styles.header}>
-        <a href="/" style={styles.brand} aria-label="JobLop home">
-          JobLop
-        </a>
-        <nav aria-label="Primary navigation" style={styles.nav}>
-          <a href="/about" style={styles.navLink}>
-            About
-          </a>
-          <a href="/how-it-works" style={styles.navLink}>
-            How it works
-          </a>
-          <a href="/pricing" style={styles.navLink} aria-current="page">
-            Pricing
-          </a>
-          <a href="/contact" style={styles.navLink}>
-            Contact
-          </a>
-          <a href="/signin" style={styles.navLink}>
-            Sign in
-          </a>
-        </nav>
-        <div style={styles.headerActions}>
-          <a href="/signup/employer" style={styles.primaryButton}>
-            Request staff
-          </a>
-          <a href="#estimate" style={styles.secondaryButton}>
-            Get an estimate
-          </a>
-        </div>
-      </header>
+      <MarketingHeader active="pricing" />
 
       <section style={styles.hero}>
         <p style={styles.eyebrow}>Pricing</p>
@@ -208,27 +180,7 @@ export default function PricingPage() {
         </div>
       </section>
 
-      <footer style={styles.footer}>
-        <span>JobLop</span>
-        <nav aria-label="Footer navigation" style={styles.footerLinks}>
-          <a href="/" style={styles.footerLink}>
-            Home
-          </a>
-          <a href="/about" style={styles.footerLink}>
-            About
-          </a>
-          <a href="/how-it-works" style={styles.footerLink}>
-            How it works
-          </a>
-          <a href="/pricing" style={styles.footerLink}>
-            Pricing
-          </a>
-          <a href="/faq" style={styles.footerLink}>
-            FAQ
-          </a>
-        </nav>
-        <span style={styles.footerNote}>Payment integration is not part of this public page.</span>
-      </footer>
+      <MarketingFooter note="Payment integration is not part of this public page." />
     </main>
   );
 }

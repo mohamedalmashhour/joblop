@@ -1,0 +1,162 @@
+/* JobLop shared CHROME — one visual language for the brand bar, nav, buttons, cards and footer
+   across the worker, employer and admin apps. Built on the --jl-* tokens (tokens.css). @import this
+   AFTER tokens.css in each app's globals so the whole platform wears one header/button/card/footer.
+   This is Phase 3 of the design system: it is what stops the apps looking like four products. */
+
+/* ---- Brand top bar ---------------------------------------------------------------------------- */
+.jl-topbar {
+  position: sticky;
+  top: env(safe-area-inset-top, 0px);
+  z-index: 30;
+  background: color-mix(in srgb, var(--jl-white) 92%, transparent);
+  -webkit-backdrop-filter: blur(10px);
+  backdrop-filter: blur(10px);
+  border-bottom: 1px solid var(--jl-border);
+}
+.jl-topbar-in {
+  max-width: 1180px;
+  margin: 0 auto;
+  display: flex;
+  align-items: center;
+  gap: 18px;
+  min-height: 64px;
+  padding: 10px max(16px, env(safe-area-inset-right)) 10px max(16px, env(safe-area-inset-left));
+}
+.jl-brand {
+  display: inline-flex;
+  align-items: center;
+  gap: 9px;
+  text-decoration: none;
+  color: var(--jl-text);
+  font-family: var(--jl-font-serif);
+  font-weight: 800;
+  font-size: 20px;
+  letter-spacing: -0.02em;
+}
+.jl-topbar-nav {
+  display: flex;
+  align-items: center;
+  gap: 22px;
+  margin-left: auto;
+}
+.jl-navlink {
+  color: var(--jl-muted);
+  font-family: var(--jl-font-sans);
+  font-weight: 700;
+  font-size: 14px;
+  text-decoration: none;
+  white-space: nowrap;
+  transition: color var(--jl-motion-standard) var(--jl-motion-easing);
+}
+.jl-navlink:hover {
+  color: var(--jl-text);
+}
+.jl-navlink-active {
+  color: var(--jl-gold-deep);
+}
+
+/* ---- Buttons ---------------------------------------------------------------------------------- */
+.jl-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  font-family: var(--jl-font-sans);
+  font-weight: 700;
+  font-size: 14px;
+  line-height: 1;
+  border: 1px solid transparent;
+  border-radius: var(--jl-radius-md);
+  padding: 11px 18px;
+  min-height: var(--jl-touch-minimum);
+  cursor: pointer;
+  text-decoration: none;
+  white-space: nowrap;
+  transition: background var(--jl-motion-standard) var(--jl-motion-easing),
+    border-color var(--jl-motion-standard) var(--jl-motion-easing),
+    transform var(--jl-motion-fast) var(--jl-motion-easing);
+}
+.jl-btn-primary {
+  background: var(--jl-gold-strong);
+  color: var(--jl-on-gold);
+}
+.jl-btn-primary:hover {
+  background: var(--jl-gold-deep);
+}
+.jl-btn-dark {
+  background: var(--jl-black);
+  color: var(--jl-on-black);
+}
+.jl-btn-dark:hover {
+  background: var(--jl-ink);
+}
+.jl-btn-ghost {
+  background: transparent;
+  color: var(--jl-text);
+  border-color: var(--jl-border-strong);
+}
+.jl-btn-ghost:hover {
+  background: var(--jl-cream);
+}
+.jl-btn-sm {
+  padding: 8px 14px;
+  font-size: 13px;
+  min-height: 0;
+}
+.jl-btn:focus-visible {
+  outline: 2px solid var(--jl-focus);
+  outline-offset: 2px;
+}
+.jl-btn:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+/* ---- Card ------------------------------------------------------------------------------------- */
+.jl-card {
+  background: var(--jl-white);
+  border: 1px solid var(--jl-border);
+  border-radius: var(--jl-radius-lg);
+  box-shadow: var(--jl-shadow-sm);
+  padding: 20px;
+}
+
+/* ---- Footer ----------------------------------------------------------------------------------- */
+.jl-footer {
+  border-top: 1px solid var(--jl-border);
+  margin-top: 56px;
+  padding: 22px max(16px, env(safe-area-inset-right)) calc(22px + env(safe-area-inset-bottom, 0px))
+    max(16px, env(safe-area-inset-left));
+  display: flex;
+  gap: 16px;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  font-family: var(--jl-font-sans);
+  font-size: 12.5px;
+  color: var(--jl-muted);
+  background: var(--jl-cream);
+}
+.jl-footer-links {
+  display: flex;
+  gap: 20px;
+  flex-wrap: wrap;
+}
+.jl-footer a {
+  color: var(--jl-gold-deep);
+  text-decoration: none;
+  font-weight: 700;
+}
+.jl-footer a:hover {
+  color: var(--jl-gold-strong);
+}
+
+@media (max-width: 720px) {
+  .jl-topbar-in {
+    min-height: 56px;
+    gap: 12px;
+  }
+  .jl-topbar-nav {
+    gap: 14px;
+  }
+}

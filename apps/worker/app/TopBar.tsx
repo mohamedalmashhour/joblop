@@ -14,16 +14,16 @@ export function TopBar() {
   const nav = (ar: string, fr: string, en: string) =>
     locale === "ar" ? ar : locale.startsWith("fr") ? fr : en;
   return (
-    <header className="topbar">
-      <div className="wrap">
-        <a className="brand" href="/" style={{ display: "inline-flex", alignItems: "center", textDecoration: "none" }}>
+    <header className="jl-topbar">
+      <div className="jl-topbar-in">
+        <a className="jl-brand" href="/">
           <JoblopLogo height={30} />
         </a>
-        <div className="topbar-right">
-          <a className="muted" href="/how-it-works" style={{ fontSize: 14, fontWeight: 700 }}>{nav("كيف يعمل", "Comment ça marche", "How it works")}</a>
-          <a className="muted" href="/job-scanner" style={{ fontSize: 14, fontWeight: 700 }}>JobScanner</a>
-          <a className="muted" href="/cv-builder" style={{ fontSize: 14, fontWeight: 700 }}>{nav("إنشاء السيرة", "Créer un CV", "Build CV")}</a>
-          <a className="muted" href={EMPLOYER_URL} style={{ fontSize: 14, fontWeight: 700 }}>{nav("لأصحاب العمل", "Employeurs", "For Employers")}</a>
+        <div className="jl-topbar-nav">
+          <a className="jl-navlink" href="/how-it-works">{nav("كيف يعمل", "Comment ça marche", "How it works")}</a>
+          <a className="jl-navlink" href="/job-scanner">JobScanner</a>
+          <a className="jl-navlink" href="/cv-builder">{nav("إنشاء السيرة", "Créer un CV", "Build CV")}</a>
+          <a className="jl-navlink" href={EMPLOYER_URL}>{nav("لأصحاب العمل", "Employeurs", "For Employers")}</a>
           <span className="muted topbar-tagline" style={{ fontSize: 14 }}>{t("brand.tagline")}</span>
           <LanguageSwitcher />
         </div>

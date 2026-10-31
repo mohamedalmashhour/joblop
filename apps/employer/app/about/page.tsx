@@ -1,4 +1,5 @@
 import type { CSSProperties } from "react";
+import { MarketingHeader, MarketingFooter } from "../MarketingChrome";
 import {
   aiBoundary,
   operatingPhilosophy,
@@ -11,36 +12,7 @@ import {
 export default function AboutPage() {
   return (
     <main style={styles.page}>
-      <header style={styles.header}>
-        <a href="/" style={styles.brand} aria-label="JobLop home">
-          JobLop
-        </a>
-        <nav aria-label="Primary navigation" style={styles.nav}>
-          <a href="/about" style={styles.navLink} aria-current="page">
-            About
-          </a>
-          <a href="/how-it-works" style={styles.navLink}>
-            How it works
-          </a>
-          <a href="/pricing" style={styles.navLink}>
-            Pricing
-          </a>
-          <a href="/faq" style={styles.navLink}>
-            FAQ
-          </a>
-          <a href="/signin" style={styles.navLink}>
-            Sign in
-          </a>
-        </nav>
-        <div style={styles.headerActions}>
-          <a href="/#workers" style={styles.secondaryButton}>
-            Become worker
-          </a>
-          <a href="/signup/employer" style={styles.primaryButton}>
-            Request staff
-          </a>
-        </div>
-      </header>
+      <MarketingHeader active="about" />
 
       <section style={styles.hero}>
         <div style={styles.heroCopy}>
@@ -193,24 +165,7 @@ export default function AboutPage() {
         </div>
       </section>
 
-      <footer style={styles.footer}>
-        <span>JobLop</span>
-        <nav aria-label="Footer navigation" style={styles.footerLinks}>
-          <a href="/" style={styles.footerLink}>
-            Home
-          </a>
-          <a href="/about" style={styles.footerLink}>
-            About
-          </a>
-          <a href="/contact" style={styles.footerLink}>
-            Privacy
-          </a>
-          <a href="/faq" style={styles.footerLink}>
-            Terms
-          </a>
-        </nav>
-        <span style={styles.footerNote}>Language and region selector reserved for localization.</span>
-      </footer>
+      <MarketingFooter note="Language and region selector reserved for localization." />
     </main>
   );
 }

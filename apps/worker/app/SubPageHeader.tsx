@@ -9,13 +9,13 @@ import { JoblopLogo } from "./JoblopLogo";
 export function SubPageHeader() {
   const t = useT();
   return (
-    <header className="topbar">
-      <div className="wrap">
-        <a className="brand" href="/" style={{ display: "inline-flex", alignItems: "center" }}>
+    <header className="jl-topbar">
+      <div className="jl-topbar-in">
+        <a className="jl-brand" href="/">
           <JoblopLogo height={28} />
         </a>
-        <div className="topbar-right">
-          <a className="muted" href="/" style={{ fontSize: 14 }}>{t("nav.backToSearch")}</a>
+        <div className="jl-topbar-nav">
+          <a className="jl-navlink" href="/">{t("nav.backToSearch")}</a>
           <LanguageSwitcher />
         </div>
       </div>

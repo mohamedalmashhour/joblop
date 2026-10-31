@@ -1,5 +1,6 @@
 /* Brand tokens — the SINGLE source of truth (packages/design-system). */
 @import "@rwos/design-system/tokens.css";
+@import "@rwos/design-system/chrome.css";
 
 * {
   box-sizing: border-box;
@@ -65,15 +66,23 @@ h3 {
   transform: translateY(0);
 }
 
+/* Shared brand bar treatment (matches .jl-topbar in the worker/employer apps): a light cream bar,
+   so the admin console wears the same header as the rest of the platform. */
 .admin-topbar {
   align-items: center;
-  background: #171511;
-  color: #ffffff;
+  background: color-mix(in srgb, var(--jl-white) 92%, transparent);
+  -webkit-backdrop-filter: blur(10px);
+  backdrop-filter: blur(10px);
+  border-bottom: 1px solid var(--jl-border);
+  color: var(--jl-text);
   display: flex;
-  font-family: Inter, system-ui, sans-serif;
+  font-family: var(--jl-font-sans);
   gap: 24px;
   justify-content: space-between;
-  padding: 14px clamp(16px, 3vw, 32px);
+  padding: 12px clamp(16px, 3vw, 32px);
+  position: sticky;
+  top: env(safe-area-inset-top, 0px);
+  z-index: 30;
 }
 
 .admin-brand {
@@ -89,8 +98,12 @@ h3 {
   gap: 2px;
 }
 
+.admin-brand strong {
+  font-family: var(--jl-font-serif);
+}
+
 .admin-brand small {
-  color: #faf6ec;
+  color: var(--jl-muted);
 }
 
 .admin-brand-mark {
@@ -105,7 +118,7 @@ h3 {
 }
 
 .admin-session-context {
-  color: #faf6ec;
+  color: var(--jl-muted);
   font-size: 0.8rem;
   margin: 0;
   max-width: 420px;
@@ -119,10 +132,10 @@ h3 {
 }
 
 .admin-langbtn {
-  background: rgba(255, 255, 255, 0.08);
-  border: 1px solid rgba(255, 255, 255, 0.3);
+  background: transparent;
+  border: 1px solid var(--jl-border-strong);
   border-radius: 6px;
-  color: #ffffff;
+  color: var(--jl-text);
   cursor: pointer;
   font: inherit;
   font-size: 0.8rem;
@@ -133,8 +146,9 @@ h3 {
 }
 
 .admin-langbtn.active {
-  background: #171511;
-  border-color: #171511;
+  background: var(--jl-gold-strong);
+  border-color: var(--jl-gold-strong);
+  color: var(--jl-on-gold);
   font-weight: 700;
 }
 

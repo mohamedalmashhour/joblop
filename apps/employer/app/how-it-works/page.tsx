@@ -1,4 +1,5 @@
 import type { CSSProperties } from "react";
+import { MarketingHeader, MarketingFooter } from "../MarketingChrome";
 import {
   aiAssistance,
   employerJourney,
@@ -13,36 +14,7 @@ const responsibilityOwners = ["Employer", "Worker", "Platform"] as const;
 export default function HowItWorksPage() {
   return (
     <main style={styles.page}>
-      <header style={styles.header}>
-        <a href="/" style={styles.brand} aria-label="JobLop home">
-          JobLop
-        </a>
-        <nav aria-label="Primary navigation" style={styles.nav}>
-          <a href="/about" style={styles.navLink}>
-            About
-          </a>
-          <a href="/how-it-works" style={styles.navLink} aria-current="page">
-            How it works
-          </a>
-          <a href="/pricing" style={styles.navLink}>
-            Pricing
-          </a>
-          <a href="/contact" style={styles.navLink}>
-            Contact
-          </a>
-          <a href="/signin" style={styles.navLink}>
-            Sign in
-          </a>
-        </nav>
-        <div style={styles.headerActions}>
-          <a href="/#workers" style={styles.secondaryButton}>
-            I want shifts
-          </a>
-          <a href="/signup/employer" style={styles.primaryButton}>
-            I need staff
-          </a>
-        </div>
-      </header>
+      <MarketingHeader active="how-it-works" />
 
       <section style={styles.hero}>
         <p style={styles.eyebrow}>How JobLop works</p>
@@ -150,24 +122,7 @@ export default function HowItWorksPage() {
         </div>
       </section>
 
-      <footer style={styles.footer}>
-        <span>JobLop</span>
-        <nav aria-label="Footer navigation" style={styles.footerLinks}>
-          <a href="/" style={styles.footerLink}>
-            Home
-          </a>
-          <a href="/about" style={styles.footerLink}>
-            About
-          </a>
-          <a href="/how-it-works" style={styles.footerLink}>
-            How it works
-          </a>
-          <a href="/contact" style={styles.footerLink}>
-            Privacy
-          </a>
-        </nav>
-        <span style={styles.footerNote}>Language and region selector reserved for localization.</span>
-      </footer>
+      <MarketingFooter note="Language and region selector reserved for localization." />
     </main>
   );
 }

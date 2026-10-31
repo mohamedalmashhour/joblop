@@ -1,5 +1,6 @@
 /* Brand tokens — the SINGLE source of truth (packages/design-system). */
 @import "@rwos/design-system/tokens.css";
+@import "@rwos/design-system/chrome.css";
 
 * {
   box-sizing: border-box;

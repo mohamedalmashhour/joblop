@@ -1,4 +1,5 @@
 import type { CSSProperties } from "react";
+import { MarketingHeader, MarketingFooter } from "../MarketingChrome";
 import {
   activeShiftIssues,
   aiSupportBoundary,
@@ -13,39 +14,7 @@ import {
 export default function ContactPage() {
   return (
     <main style={styles.page}>
-      <header style={styles.header}>
-        <a href="/" style={styles.brand} aria-label="JobLop home">
-          JobLop
-        </a>
-        <nav aria-label="Primary navigation" style={styles.nav}>
-          <a href="/about" style={styles.navLink}>
-            About
-          </a>
-          <a href="/how-it-works" style={styles.navLink}>
-            How it works
-          </a>
-          <a href="/pricing" style={styles.navLink}>
-            Pricing
-          </a>
-          <a href="/contact" style={styles.navLink} aria-current="page">
-            Contact
-          </a>
-          <a href="/faq" style={styles.navLink}>
-            FAQ
-          </a>
-          <a href="/signin" style={styles.navLink}>
-            Sign in
-          </a>
-        </nav>
-        <div style={styles.headerActions}>
-          <a href="#active-shift" style={styles.primaryButton}>
-            Active-shift help
-          </a>
-          <a href="#general-contact" style={styles.secondaryButton}>
-            General contact
-          </a>
-        </div>
-      </header>
+      <MarketingHeader active="contact" />
 
       <section style={styles.hero}>
         <p style={styles.eyebrow}>Contact JobLop</p>
@@ -248,24 +217,7 @@ export default function ContactPage() {
         </div>
       </section>
 
-      <footer style={styles.footer}>
-        <span>JobLop</span>
-        <nav aria-label="Footer navigation" style={styles.footerLinks}>
-          <a href="/" style={styles.footerLink}>
-            Home
-          </a>
-          <a href="/about" style={styles.footerLink}>
-            About
-          </a>
-          <a href="/pricing" style={styles.footerLink}>
-            Pricing
-          </a>
-          <a href="/contact" style={styles.footerLink}>
-            Contact
-          </a>
-        </nav>
-        <span style={styles.footerNote}>No fabricated phone numbers, emails, hours, or response promises.</span>
-      </footer>
+      <MarketingFooter note="No fabricated phone numbers, emails, hours, or response promises." />
     </main>
   );
 }

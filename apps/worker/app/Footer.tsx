@@ -5,28 +5,11 @@ export function Footer({ locale }: { locale: string }) {
   const fr = locale === "fr";
   const year = new Date().getFullYear();
   return (
-    <footer
-      style={{
-        borderTop: "1px solid #faf6ec",
-        marginTop: 56,
-        padding: "22px 16px",
-        display: "flex",
-        gap: 16,
-        flexWrap: "wrap",
-        alignItems: "center",
-        justifyContent: "space-between",
-        fontSize: 12.5,
-        color: "#6b6356"
-      }}
-    >
+    <footer className="jl-footer">
       <span>© {year} JobLop · 9375-7649 Québec inc.</span>
-      <nav style={{ display: "flex", gap: 20 }}>
-        <Link href="/terms" style={{ color: "#b8862f", textDecoration: "none" }}>
-          {fr ? "Conditions d’utilisation" : "Terms"}
-        </Link>
-        <Link href="/privacy" style={{ color: "#b8862f", textDecoration: "none" }}>
-          {fr ? "Confidentialité" : "Privacy"}
-        </Link>
+      <nav className="jl-footer-links">
+        <Link href="/terms">{fr ? "Conditions d’utilisation" : "Terms"}</Link>
+        <Link href="/privacy">{fr ? "Confidentialité" : "Privacy"}</Link>
       </nav>
     </footer>
   );

@@ -1,31 +1,11 @@
 import type { CSSProperties } from "react";
+import { MarketingHeader, MarketingFooter } from "../MarketingChrome";
 import { aiFaqRules, faqAnswers, faqCategories, sensitiveSearchWarning } from "./faqContent";
 
 export default function FAQPage() {
   return (
     <main style={styles.page}>
-      <header style={styles.header}>
-        <a href="/" style={styles.brand} aria-label="JobLop home">
-          JobLop
-        </a>
-        <nav aria-label="Primary navigation" style={styles.nav}>
-          <a href="/about" style={styles.navLink}>
-            About
-          </a>
-          <a href="/how-it-works" style={styles.navLink}>
-            How it works
-          </a>
-          <a href="/pricing" style={styles.navLink}>
-            Pricing
-          </a>
-          <a href="/faq" style={styles.navLink} aria-current="page">
-            FAQ
-          </a>
-          <a href="/contact" style={styles.navLink}>
-            Contact
-          </a>
-        </nav>
-      </header>
+      <MarketingHeader />
 
       <section style={styles.hero}>
         <p style={styles.eyebrow}>Help center and FAQ</p>
@@ -123,24 +103,7 @@ export default function FAQPage() {
         </div>
       </section>
 
-      <footer style={styles.footer}>
-        <span>JobLop</span>
-        <nav aria-label="Footer navigation" style={styles.footerLinks}>
-          <a href="/" style={styles.footerLink}>
-            Home
-          </a>
-          <a href="/contact" style={styles.footerLink}>
-            Contact
-          </a>
-          <a href="/pricing" style={styles.footerLink}>
-            Pricing
-          </a>
-          <a href="/faq" style={styles.footerLink}>
-            FAQ
-          </a>
-        </nav>
-        <span style={styles.footerNote}>No search engine or knowledge-base backend is connected.</span>
-      </footer>
+      <MarketingFooter note="No search engine or knowledge-base backend is connected." />
     </main>
   );
 }

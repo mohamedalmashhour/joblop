@@ -275,11 +275,12 @@ export default async function LandingPage() {
           <span>{c.staging.noProdData}</span>
         </aside>
       ) : null}
-      <header style={{ ...styles.header, position: "relative" }}>
-        <a href="/" style={styles.brand} aria-label="JobLop home">
+      <header className="jl-topbar" style={{ position: "relative" }}>
+        <div className="jl-topbar-in">
+        <a href="/" className="jl-brand" aria-label="JobLop home">
           <JobLopLogo height={30} />
         </a>
-        <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 14, marginLeft: "auto" }}>
           <LanguageSwitcher />
           <HeaderNav
             ctaHref={isProduction ? "/contact" : "/signup/employer"}
@@ -289,6 +290,7 @@ export default async function LandingPage() {
             closeLabel={c.header.closeMenu}
             signIn={c.header.signIn}
           />
+        </div>
         </div>
       </header>
 

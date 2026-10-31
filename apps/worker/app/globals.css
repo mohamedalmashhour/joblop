@@ -1,6 +1,7 @@
 /* Brand tokens — the SINGLE source of truth (packages/design-system). Every color/font below
    resolves from --jl-* so the worker app shares one soul with employer, admin and mobile. */
 @import "@rwos/design-system/tokens.css";
+@import "@rwos/design-system/chrome.css";
 
 :root {
   /* App-level roles mapped onto the shared brand tokens. No raw brand hex lives here. */
@@ -77,31 +78,8 @@ a {
   padding: 0 20px;
 }
 
-.topbar {
-  background: var(--surface);
-  border-bottom: 1px solid var(--border);
-  position: sticky;
-  top: 0;
-  z-index: 10;
-}
-
-.topbar .wrap {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  height: 60px;
-}
-
-.brand {
-  font-weight: 800;
-  font-size: 20px;
-  letter-spacing: -0.02em;
-  color: var(--text);
-}
-
-.brand span {
-  color: var(--brand);
-}
+/* The brand top bar now lives in the shared chrome (@rwos/design-system/chrome.css):
+   .jl-topbar / .jl-topbar-in / .jl-brand / .jl-topbar-nav / .jl-navlink. */
 
 .muted {
   color: var(--text-muted);
@@ -710,23 +688,10 @@ a.card.cardlink:hover {
 }
 
 /* --- Bill 96 language switcher --- */
-.topbar-right {
-  display: flex;
-  align-items: center;
-  gap: 14px;
-}
-/* Phones: drop the decorative tagline and tighten spacing so the brand + links + language
-   switcher sit on one clean line instead of wrapping. */
+/* Phones: drop the decorative tagline so the brand + links + language switcher sit on one line. */
 @media (max-width: 560px) {
-  .topbar .wrap { height: 54px; }
-  .topbar-right { gap: 10px; }
   .topbar-tagline { display: none; }
-  /* keep each link on one line so "Build CV" can't wrap in the tight header */
-  .topbar-right > a { white-space: nowrap; font-size: 13px !important; }
-}
-@media (max-width: 380px) {
-  .topbar-right { gap: 8px; }
-  .topbar-right > a { font-size: 12.5px !important; }
+  .jl-topbar-nav > a { white-space: nowrap; }
 }
 .langswitch {
   display: inline-flex;
