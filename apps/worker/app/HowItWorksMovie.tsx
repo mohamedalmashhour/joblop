@@ -4,10 +4,10 @@ import { JobScannerDemo } from "./browse/JobScannerDemo";
 import { useLocale } from "./i18n/LocaleProvider";
 
 // Features the auto-playing "how JobLop works" motion graphic (the JobScanner movie) on the worker
-// home, in the dark + gold brand frame. The demo itself is EN/FR; Arabic falls back to en.
+// home, in the dark + gold brand frame. The demo is trilingual (EN/FR/AR), following the site language.
 export function HowItWorksMovie() {
   const locale = useLocale();
-  const lang = locale.startsWith("fr") ? "fr" : "en";
+  const lang: "en" | "fr" | "ar" = locale === "ar" ? "ar" : locale.startsWith("fr") ? "fr" : "en";
   const t =
     locale === "ar"
       ? { eyebrow: "شاهدها وهي تعمل", title: "كيف يعمل جوب‑لوب", sub: "بحث واحد، والسوق كله يُفحص ويُرتّب من أجلك — ثم تتقدّم مجانًا." }

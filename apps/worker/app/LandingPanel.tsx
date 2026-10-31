@@ -5,6 +5,24 @@ import { trackConversion } from "./analytics";
 import { useT } from "./i18n/LocaleProvider";
 import { VerifyEmail } from "./VerifyEmail";
 
+// Client-side strong-password generator for the "suggest a strong password" helper. 20 chars,
+// crypto-random, at least one from each class, with look-alike characters (0/O, 1/l/I) left out.
+function generatePassword(length = 20): string {
+  const sets = ["ABCDEFGHJKLMNPQRSTUVWXYZ", "abcdefghijkmnopqrstuvwxyz", "23456789", "!@#$%^&*-_=+?"];
+  const all = sets.join("");
+  const bytes = new Uint32Array(length);
+  crypto.getRandomValues(bytes);
+  const chars: string[] = sets.map((s, i) => s[bytes[i] % s.length]);
+  for (let i = sets.length; i < length; i++) chars.push(all[bytes[i] % all.length]);
+  const order = new Uint32Array(length);
+  crypto.getRandomValues(order);
+  for (let i = length - 1; i > 0; i--) {
+    const j = order[i] % (i + 1);
+    [chars[i], chars[j]] = [chars[j], chars[i]];
+  }
+  return chars.join("");
+}
+
 /** Signed-out worker front door: value proposition + how-it-works, with a sign-in / create-account
  *  card. Fully bilingual (fr-CA / en-CA). On success it hands control back to the marketplace. */
 export function LandingPanel({ onSignedIn }: { onSignedIn: () => void }) {
@@ -119,6 +137,7 @@ function SignInForm({ onSignedIn, onNeedAccount }: { onSignedIn: () => void; onN
   const t = useT();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [showPw, setShowPw] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -146,7 +165,8 @@ function SignInForm({ onSignedIn, onNeedAccount }: { onSignedIn: () => void; onN
       <label htmlFor="si-email">{t("auth.email")}</label>
       <input id="si-email" type="email" autoComplete="username" value={email} onChange={(e) => setEmail(e.target.value)} required />
       <label htmlFor="si-password">{t("auth.password")}</label>
-      <input id="si-password" type="password" autoComplete="current-password" value={password} onChange={(e) => setPassword(e.target.value)} required />
+      <input id="si-password" type={showPw ? "text" : "password"} autoComplete="current-password" value={password} onChange={(e) => setPassword(e.target.value)} required />
+      <button type="button" className="linkbtn" aria-pressed={showPw} onClick={() => setShowPw((v) => !v)} style={{ alignSelf: "flex-start", marginTop: 4 }}>{showPw ? t("auth.hidePassword") : t("auth.showPassword")}</button>
       {error ? <p className="notice" role="alert" style={{ color: "var(--danger)" }}>{error}</p> : null}
       <button className="btn" type="submit" disabled={busy}>{busy ? t("auth.signingIn") : t("auth.signIn")}</button>
       <p className="auth-switch">{t("auth.needAccount")} <button type="button" className="linkbtn" onClick={onNeedAccount}>{t("auth.tabCreate")}</button></p>
@@ -161,6 +181,7 @@ function SignUpForm({ onSignedIn, onHaveAccount }: { onSignedIn: () => void; onH
   const [confirmEmail, setConfirmEmail] = useState("");
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
+  const [showPw, setShowPw] = useState(false);
   const [accepted, setAccepted] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -210,9 +231,13 @@ function SignUpForm({ onSignedIn, onHaveAccount }: { onSignedIn: () => void; onH
       <label htmlFor="su-confirm-email">{t("signup.confirmEmail")}</label>
       <input id="su-confirm-email" type="email" autoComplete="username" value={confirmEmail} onChange={(e) => setConfirmEmail(e.target.value)} required />
       <label htmlFor="su-password">{t("auth.password")}</label>
-      <input id="su-password" type="password" autoComplete="new-password" value={password} onChange={(e) => setPassword(e.target.value)} required aria-describedby="su-password-hint" />
+      <input id="su-password" type={showPw ? "text" : "password"} autoComplete="new-password" value={password} onChange={(e) => setPassword(e.target.value)} required aria-describedby="su-password-hint" />
       <label htmlFor="su-confirm-password">{t("signup.confirmPassword")}</label>
-      <input id="su-confirm-password" type="password" autoComplete="new-password" value={confirmPassword} onChange={(e) => setConfirmPassword(e.target.value)} required />
+      <input id="su-confirm-password" type={showPw ? "text" : "password"} autoComplete="new-password" value={confirmPassword} onChange={(e) => setConfirmPassword(e.target.value)} required />
+      <div style={{ display: "flex", gap: 14, flexWrap: "wrap", marginTop: 4 }}>
+        <button type="button" className="linkbtn" aria-pressed={showPw} onClick={() => setShowPw((v) => !v)}>{showPw ? t("auth.hidePassword") : t("auth.showPassword")}</button>
+        <button type="button" className="linkbtn" onClick={() => { const pw = generatePassword(); setPassword(pw); setConfirmPassword(pw); setShowPw(true); }}>{t("signup.suggestPassword")}</button>
+      </div>
       <p id="su-password-hint" className="notice" style={{ margin: "2px 0 0" }}>{t("signup.passwordHint")}</p>
       <label className="checkfield" htmlFor="su-accept" style={{ marginTop: 6 }}>
         <input id="su-accept" type="checkbox" checked={accepted} onChange={(e) => setAccepted(e.target.checked)} />

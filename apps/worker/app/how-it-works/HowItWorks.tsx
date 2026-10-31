@@ -17,7 +17,7 @@ type Scene = {
 
 const SCENE_MS = 5200;
 
-const FILMS: Record<"en" | "fr", ReadonlyArray<ReadonlyArray<Scene>>> = {
+const FILMS: Record<"en" | "fr" | "ar", ReadonlyArray<ReadonlyArray<Scene>>> = {
   en: [
     [
       { chip: "Joblop", title: "Staffing that runs itself", body: "From a job request to money in the worker's account — every step tracked, nothing lost.", art: "🧭" },
@@ -61,17 +61,40 @@ const FILMS: Record<"en" | "fr", ReadonlyArray<ReadonlyArray<Scene>>> = {
       { chip: "Postuler", title: "Créez un CV, postulez avec de l'aide", body: "Un assistant IA crée votre CV, puis Assisted Apply vous aide à postuler — jamais en silence, toujours vous aux commandes.", art: "📄", flow: [["CV par IA", "#b8862f"], ["Assisted Apply", "#9a7122"]] },
       { chip: "Rejoindre", title: "Ouvrez un compte, ne ratez aucun emploi", body: "Inscrivez-vous gratuitement, suivez les postes et soyez le premier au bon quart.", art: "🚀" }
     ]
+  ],
+  ar: [
+    [
+      { chip: "جوب‑لوب", title: "توظيف يُدير نفسه", body: "من طلب العمل إلى وصول المال لحساب العامل — كل خطوة متتبَّعة، ولا شيء يضيع.", art: "🧭" },
+      { chip: "الخطوة 1 · صاحب العمل", title: "صاحب العمل ينشر وظيفة", body: "الدور، التاريخ، عدد العمال، المكان. تصل كطلب في تقويمه.", art: "📝", flow: [["طلب", "#e8a13a"]] },
+      { chip: "الخطوة 2 · المسؤول", title: "جوب‑لوب يراجعها ويسعّرها", body: "يراجع المسؤول الطلب ويحدّد السعر المنظَّم. لا تخرج أي وظيفة دون تسعير.", art: "✅", flow: [["طلب", "#e8a13a"], ["مُعتمد", "#9a7122"], ["مُسعّر", "#b8862f"]] },
+      { chip: "الخطوة 3 · العامل", title: "عامل يتلقّى العرض — ويقبله", body: "يُطابَق العامل المناسب، يرى المناوبة، يوقّع تصنيفه، ويقبل.", art: "🤝", flow: [["أُرسل العرض", "#b8862f"], ["مقبول", "#9a7122"]] },
+      { chip: "الخطوة 4 · تزامن", title: "كل التقاويم تتحدّث دفعة واحدة", body: "صاحب العمل يرى «مقبول». المسؤول يرى من يعمل. المالية ترى موعد الدفع.", art: "📅", flow: [["صاحب العمل", "#e8a13a"], ["المسؤول", "#b8862f"], ["المالية", "#9a7122"]] },
+      { chip: "الخطوة 5 · المناوبة", title: "العمل يجري، من الحضور إلى الانصراف", body: "يسجّل العامل حضوره وانصرافه. وعند الانتهاء، ترى الأطراف الثلاثة إغلاق الوظيفة.", art: "⏱️", flow: [["حضور", "#9a7122"], ["انصراف", "#9a7122"], ["انتهى", "#b8862f"]] },
+      { chip: "الخطوة 6 · مراجعة", title: "نافذة مراجعة 48 ساعة", body: "بعد المناوبة، يُحتجز المبلغ 48 ساعة تحسبًا لأي ملاحظة من العميل — ولا يُبلَّغ العامل بعد أنه له.", art: "🛡️", flow: [["انتهى", "#b8862f"], ["مراجعة 48 س", "#e8a13a"]] },
+      { chip: "الخطوة 7 · مُسجّل", title: "ثم يُسجَّل في حساب العامل", body: "لا نزاع خلال 48 ساعة؟ يُؤكَّد المبلغ ويُبلَّغ العامل بأنه أصبح في حسابه.", art: "💰", flow: [["مُسجّل", "#9a7122"], ["أُبلغ العامل", "#b8862f"]] },
+      { chip: "الخطوة 8 · مدفوع", title: "يُدفع ضمن دورة 14 يومًا", body: "تصدر المالية فاتورة على بطاقة صاحب العمل؛ ويُدفع للعامل في الدورة المعتادة، مؤكَّدًا عبر Stripe.", art: "💳", flow: [["فاتورة", "#e8a13a"], ["دورة 14 يومًا", "#b8862f"], ["مدفوع", "#9a7122"]] },
+      { chip: "تم", title: "تدفّق واحد. ثلاثة أطراف. بلا تخمين.", body: "هذا هو جوب‑لوب — توظيف منظَّم من الطلب إلى الدفع.", art: "🎉" }
+    ],
+    [
+      { chip: "JobScanner", title: "سكاي‑سكانر الوظائف", body: "بحث واحد عبر مصادر وظائف موثوقة — فترى كل فرصة محلية في مكان واحد.", art: "🛰️" },
+      { chip: "كيف", title: "نمسح مصادر الشركاء — بالطريقة الصحيحة", body: "يسحب JobScanner من شركاء مرخَّصين مثل Adzuna. مصادر الشركاء فقط، دون استخلاص.", art: "🔗", flow: [["مصادر الشركاء", "#b8862f"], ["بلا استخلاص", "#9a7122"]] },
+      { chip: "متاح الآن", title: "وظائف محلية حقيقية، اليوم", body: "طهاة، مشرفو مطابخ، خدمة طعام، رعاية أطفال وأكثر — فرص حقيقية بالقرب منك.", art: "📍", big: "85" },
+      { chip: "بحث", title: "اكتب مهنتك — ترَ مهنتك فقط", body: "ابحث عن «طاهٍ» فتحصل على وظائف طهاة. المطابقة الذكية تُبعد الضجيج.", art: "🔎", flow: [["بحث «طاهٍ»", "#e8a13a"], ["ذو صلة فقط", "#9a7122"]] },
+      { chip: "تقديم", title: "أنشئ سيرة ذاتية، وتقدّم بمساعدة", body: "ينشئ مساعد ذكاء اصطناعي سيرتك، ثم يساعدك Assisted Apply على التقديم — لا في صمت أبدًا، وأنت المتحكّم دائمًا.", art: "📄", flow: [["سيرة بالذكاء الاصطناعي", "#b8862f"], ["Assisted Apply", "#9a7122"]] },
+      { chip: "انضمّ", title: "افتح حسابًا، لا تفوّت أي وظيفة", body: "سجّل مجانًا، تابع الفرص، وكن الأول عند ظهور المناوبة المناسبة.", art: "🚀" }
+    ]
   ]
 };
 
 const COPY = {
   en: { h1: "How Joblop works", sub: "Two short explainers — the platform, and JobScanner.", tab0: "How Joblop works", tab1: "Meet JobScanner", pause: "Pause", play: "Play", back: "Back", next: "Next", replay: "Replay", cta: "Create your free account" },
-  fr: { h1: "Comment fonctionne Joblop", sub: "Deux courts explicatifs — la plateforme, et JobScanner.", tab0: "Comment ça marche", tab1: "Découvrez JobScanner", pause: "Pause", play: "Lecture", back: "Retour", next: "Suivant", replay: "Rejouer", cta: "Créez votre compte gratuit" }
+  fr: { h1: "Comment fonctionne Joblop", sub: "Deux courts explicatifs — la plateforme, et JobScanner.", tab0: "Comment ça marche", tab1: "Découvrez JobScanner", pause: "Pause", play: "Lecture", back: "Retour", next: "Suivant", replay: "Rejouer", cta: "Créez votre compte gratuit" },
+  ar: { h1: "كيف يعمل جوب‑لوب", sub: "شرحان قصيران — المنصّة، وJobScanner.", tab0: "كيف يعمل جوب‑لوب", tab1: "تعرّف على JobScanner", pause: "إيقاف", play: "تشغيل", back: "رجوع", next: "التالي", replay: "إعادة", cta: "أنشئ حسابك المجاني" }
 };
 
 export function HowItWorks() {
   const locale = useLocale();
-  const lang: "en" | "fr" = locale.startsWith("fr") ? "fr" : "en";
+  const lang: "en" | "fr" | "ar" = locale === "ar" ? "ar" : locale.startsWith("fr") ? "fr" : "en";
   const c = COPY[lang];
   const [film, setFilm] = useState(0);
   const [idx, setIdx] = useState(0);

@@ -23,13 +23,13 @@ type Lead = {
 };
 type Lang = "en" | "fr" | "ar";
 
-const PROVINCES: { code: string; en: string; fr: string }[] = [
-  { code: "AB", en: "Alberta", fr: "Alberta" }, { code: "BC", en: "British Columbia", fr: "Colombie-Britannique" },
-  { code: "MB", en: "Manitoba", fr: "Manitoba" }, { code: "NB", en: "New Brunswick", fr: "Nouveau-Brunswick" },
-  { code: "NL", en: "Newfoundland and Labrador", fr: "Terre-Neuve-et-Labrador" }, { code: "NS", en: "Nova Scotia", fr: "Nouvelle-Écosse" },
-  { code: "NT", en: "Northwest Territories", fr: "Territoires du Nord-Ouest" }, { code: "NU", en: "Nunavut", fr: "Nunavut" },
-  { code: "ON", en: "Ontario", fr: "Ontario" }, { code: "PE", en: "Prince Edward Island", fr: "Île-du-Prince-Édouard" },
-  { code: "QC", en: "Quebec", fr: "Québec" }, { code: "SK", en: "Saskatchewan", fr: "Saskatchewan" }, { code: "YT", en: "Yukon", fr: "Yukon" }
+const PROVINCES: { code: string; en: string; fr: string; ar: string }[] = [
+  { code: "AB", en: "Alberta", fr: "Alberta", ar: "ألبرتا" }, { code: "BC", en: "British Columbia", fr: "Colombie-Britannique", ar: "كولومبيا البريطانية" },
+  { code: "MB", en: "Manitoba", fr: "Manitoba", ar: "مانيتوبا" }, { code: "NB", en: "New Brunswick", fr: "Nouveau-Brunswick", ar: "نيو برونزويك" },
+  { code: "NL", en: "Newfoundland and Labrador", fr: "Terre-Neuve-et-Labrador", ar: "نيوفاوندلاند ولابرادور" }, { code: "NS", en: "Nova Scotia", fr: "Nouvelle-Écosse", ar: "نوفا سكوشا" },
+  { code: "NT", en: "Northwest Territories", fr: "Territoires du Nord-Ouest", ar: "الأقاليم الشمالية الغربية" }, { code: "NU", en: "Nunavut", fr: "Nunavut", ar: "نونافوت" },
+  { code: "ON", en: "Ontario", fr: "Ontario", ar: "أونتاريو" }, { code: "PE", en: "Prince Edward Island", fr: "Île-du-Prince-Édouard", ar: "جزيرة الأمير إدوارد" },
+  { code: "QC", en: "Quebec", fr: "Québec", ar: "كيبيك" }, { code: "SK", en: "Saskatchewan", fr: "Saskatchewan", ar: "ساسكاتشوان" }, { code: "YT", en: "Yukon", fr: "Yukon", ar: "يوكون" }
 ];
 
 // Joblop's real work categories (not tech roles). `q` matches role/title/city server-side.
@@ -428,6 +428,9 @@ export function PublicJobBoard() {
   // Hero/stat headline count: prefer the TRUE total (Joblop open jobs + all scanned leads) from the
   // stats endpoint; fall back to the live teaser total, then to Joblop's own public-job count.
   const openCount = totalJobs ?? leadsTotal ?? jobCount;
+  // Province tally for the aggregate stats: prefer the stats endpoint (same source as openCount) so
+  // the trust-band figure isn't a bare "—" just because the live typeahead has no local matches yet.
+  const openProvinces = totalProvinces ?? (provinceCount || null);
   const fmtCount = (n: number | null) => (n == null ? "—" : n.toLocaleString(lang === "fr" ? "fr-CA" : "en-CA"));
 
   return (
@@ -469,7 +472,7 @@ export function PublicJobBoard() {
                 <div className="jl-sf jl-sf-loc"><span>📍</span>
                   <select value={province} onChange={(e) => setProvince(e.target.value)} aria-label={t.phLoc}>
                     <option value="">{t.allCanada}</option>
-                    {PROVINCES.map((p) => <option key={p.code} value={p.code}>{lang === "fr" ? p.fr : p.en}</option>)}
+                    {PROVINCES.map((p) => <option key={p.code} value={p.code}>{lang === "ar" ? p.ar : lang === "fr" ? p.fr : p.en}</option>)}
                   </select>
                 </div>
                 <button type="submit" className="jl-search-btn">{t.searchBtn}</button>
@@ -492,7 +495,7 @@ export function PublicJobBoard() {
               <div className="jl-preview">
                 <div className="jl-preview-head">
                   <span className="jl-preview-dot" /> {t.previewLive}
-                  {jobs !== null ? <span className="jl-preview-n">{jobs.length} {t.st1}</span> : null}
+                  {jobs !== null && jobs.length > 0 ? <span className="jl-preview-n">{jobs.length} {t.st1}</span> : null}
                 </div>
                 {jobs === null ? (
                   <div className="jl-preview-empty">{t.loading}</div>
@@ -698,7 +701,7 @@ export function PublicJobBoard() {
             <p>{t.jsSub}</p>
             <a href="/job-scanner" className="jl-js-btn">{t.jsBtn} →</a>
           </div>
-          <div className="jl-js-demo"><JobScannerDemo lang={lang === "ar" ? "en" : lang} /></div>
+          <div className="jl-js-demo"><JobScannerDemo lang={lang} /></div>
         </div>
         {leads && leads.length > 0 && (
           <div className="jl-leads">
@@ -805,7 +808,7 @@ export function PublicJobBoard() {
           <p className="jl-sub">{t.trustSub}</p>
           <div className="jl-stats">
             <div><strong>{openCount ?? "—"}</strong><span>{t.st1}</span></div>
-            <div><strong>{provinceCount || "—"}</strong><span>{t.st2}</span></div>
+            <div><strong>{openProvinces ?? "—"}</strong><span>{t.st2}</span></div>
             <div><strong>$0</strong><span>{t.st3}</span></div>
             <div><strong>$0</strong><span>{t.st4}</span></div>
           </div>
