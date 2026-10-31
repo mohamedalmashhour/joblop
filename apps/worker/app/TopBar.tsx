@@ -11,6 +11,8 @@ const EMPLOYER_URL = process.env.NEXT_PUBLIC_EMPLOYER_URL ?? "http://localhost:3
 export function TopBar() {
   const t = useT();
   const locale = useLocale();
+  const nav = (ar: string, fr: string, en: string) =>
+    locale === "ar" ? ar : locale.startsWith("fr") ? fr : en;
   return (
     <header className="topbar">
       <div className="wrap">
@@ -18,10 +20,10 @@ export function TopBar() {
           <JoblopLogo height={30} />
         </a>
         <div className="topbar-right">
-          <a className="muted" href="/how-it-works" style={{ fontSize: 14, fontWeight: 700 }}>{locale.startsWith("fr") ? "Comment ça marche" : "How it works"}</a>
+          <a className="muted" href="/how-it-works" style={{ fontSize: 14, fontWeight: 700 }}>{nav("كيف يعمل", "Comment ça marche", "How it works")}</a>
           <a className="muted" href="/job-scanner" style={{ fontSize: 14, fontWeight: 700 }}>JobScanner</a>
-          <a className="muted" href="/cv-builder" style={{ fontSize: 14, fontWeight: 700 }}>Build CV</a>
-          <a className="muted" href={EMPLOYER_URL} style={{ fontSize: 14, fontWeight: 700 }}>{locale.startsWith("fr") ? "Employeurs" : "For Employers"}</a>
+          <a className="muted" href="/cv-builder" style={{ fontSize: 14, fontWeight: 700 }}>{nav("إنشاء السيرة", "Créer un CV", "Build CV")}</a>
+          <a className="muted" href={EMPLOYER_URL} style={{ fontSize: 14, fontWeight: 700 }}>{nav("لأصحاب العمل", "Employeurs", "For Employers")}</a>
           <span className="muted topbar-tagline" style={{ fontSize: 14 }}>{t("brand.tagline")}</span>
           <LanguageSwitcher />
         </div>
