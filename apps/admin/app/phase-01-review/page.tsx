@@ -108,15 +108,15 @@ export default function Phase01ReviewPage() {
 
 const styles: Record<string, CSSProperties> = {
   page: {
-    background: "#eef3f8",
-    color: "#0b1f3a",
+    background: "#fbf9f4",
+    color: "#000000",
     fontFamily: "Inter, system-ui, sans-serif",
     minHeight: "100vh",
     padding: 24
   },
   header: {
     alignItems: "stretch",
-    background: "#071f4d",
+    background: "#171511",
     borderRadius: 8,
     color: "white",
     display: "grid",
@@ -133,7 +133,7 @@ const styles: Record<string, CSSProperties> = {
     textTransform: "uppercase"
   },
   eyebrowDark: {
-    color: "#123b78",
+    color: "#171511",
     fontSize: 12,
     fontWeight: 900,
     letterSpacing: 0,
@@ -146,7 +146,7 @@ const styles: Record<string, CSSProperties> = {
     margin: "8px 0"
   },
   lede: {
-    color: "#dce8e8",
+    color: "#faf6ec",
     fontSize: 16,
     lineHeight: 1.6,
     margin: 0,
@@ -162,7 +162,7 @@ const styles: Record<string, CSSProperties> = {
   },
   noticePanel: {
     background: "#ffffff",
-    border: "1px solid #dce8e8",
+    border: "1px solid #faf6ec",
     borderRadius: 8,
     display: "grid",
     gap: 16,
@@ -170,7 +170,7 @@ const styles: Record<string, CSSProperties> = {
     padding: 18
   },
   sectionTitle: {
-    color: "#071f4d",
+    color: "#171511",
     fontSize: 24,
     lineHeight: 1.18,
     margin: "6px 0 0"
@@ -184,7 +184,7 @@ const styles: Record<string, CSSProperties> = {
   },
   panel: {
     background: "#ffffff",
-    border: "1px solid #dce8e8",
+    border: "1px solid #faf6ec",
     borderRadius: 8,
     marginTop: 18,
     padding: 18
@@ -198,15 +198,15 @@ const styles: Record<string, CSSProperties> = {
     marginBottom: 14
   },
   h2: {
-    color: "#071f4d",
+    color: "#171511",
     fontSize: 21,
     margin: 0
   },
   statusBadge: {
-    background: "#eef4ff",
-    border: "1px solid #bfd0f5",
+    background: "#fbf9f4",
+    border: "1px solid #ece3d2",
     borderRadius: 8,
-    color: "#071f4d",
+    color: "#171511",
     fontSize: 12,
     fontWeight: 900,
     padding: "7px 10px"
@@ -227,9 +227,9 @@ const styles: Record<string, CSSProperties> = {
   },
   routeCard: {
     background: "#f7faf9",
-    border: "1px solid #dce8e8",
+    border: "1px solid #faf6ec",
     borderRadius: 8,
-    color: "#0b1f3a",
+    color: "#000000",
     display: "grid",
     gap: 8,
     minHeight: 130,
@@ -237,13 +237,13 @@ const styles: Record<string, CSSProperties> = {
     textDecoration: "none"
   },
   pageNumber: {
-    color: "#123b78",
+    color: "#171511",
     fontSize: 12,
     fontWeight: 900,
     textTransform: "uppercase"
   },
   muted: {
-    color: "#607276",
+    color: "#171511",
     fontSize: 13
   },
   tableWrap: {
@@ -256,13 +256,13 @@ const styles: Record<string, CSSProperties> = {
   },
   th: {
     background: "#f7faf9",
-    border: "1px solid #dce8e8",
+    border: "1px solid #faf6ec",
     fontSize: 13,
     padding: 10,
     textAlign: "left"
   },
   td: {
-    border: "1px solid #dce8e8",
+    border: "1px solid #faf6ec",
     fontSize: 13,
     padding: 10,
     verticalAlign: "top"

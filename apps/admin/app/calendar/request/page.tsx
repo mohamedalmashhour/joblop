@@ -9,8 +9,8 @@ export default async function AdminRequestReviewPage({
   ) : (
     <main
       style={{
-        background: "#f4f7fb",
-        color: "#10233f",
+        background: "#fbf9f4",
+        color: "#171511",
         minHeight: "100vh",
         padding: "48px clamp(18px, 5vw, 64px)"
       }}

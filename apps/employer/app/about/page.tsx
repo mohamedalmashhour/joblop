@@ -229,7 +229,7 @@ const baseButton: CSSProperties = {
 
 const styles: Record<string, CSSProperties> = {
   page: {
-    background: "#f7faff",
+    background: "#fbf9f4",
     color: "#15110b",
     fontFamily: "Inter, system-ui, sans-serif",
     minHeight: "100vh"
@@ -450,7 +450,7 @@ const styles: Record<string, CSSProperties> = {
     padding: 0
   },
   featureItem: {
-    background: "#f7faff",
+    background: "#fbf9f4",
     border: "1px solid #f0e8d8",
     borderRadius: 8,
     color: "#1b160e",
@@ -486,7 +486,7 @@ const styles: Record<string, CSSProperties> = {
     padding: 0
   },
   philosophyItem: {
-    background: "#f7faff",
+    background: "#fbf9f4",
     border: "1px solid #f0e8d8",
     borderRadius: 8,
     color: "#1b160e",

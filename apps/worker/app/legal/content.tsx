@@ -15,7 +15,7 @@ const page: React.CSSProperties = {
   margin: "0 auto",
   padding: "40px 20px 72px",
   fontFamily: "-apple-system,Segoe UI,Roboto,sans-serif",
-  color: "#0f1d33",
+  color: "#000000",
   lineHeight: 1.6
 };
 const h1: React.CSSProperties = { fontSize: 28, margin: "16px 0 4px" };
@@ -30,7 +30,7 @@ const table: React.CSSProperties = {
   margin: "4px 0 16px"
 };
 const cell: React.CSSProperties = {
-  border: "1px solid #dfe6f2",
+  border: "1px solid #faf6ec",
   padding: "8px 10px",
   textAlign: "left",
   verticalAlign: "top"

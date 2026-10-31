@@ -289,10 +289,10 @@ function clientStatusStyle(status: ClientCalendarDto["status"]) {
       : status === "under_review"
         ? ["#fff8d8", "#725000"]
         : status === "assigned" || status === "in_progress" || status === "completed"
-          ? ["#e8f5f3", "#075e58"]
+          ? ["#faf6ec", "#171511"]
           : status === "submitted" || status === "published"
             ? ["#faf6ec", "#2a2114"]
-            : ["#eef2f7", "#3a3326"];
+            : ["#fbf9f4", "#3a3326"];
   return { ...styles.statusBadge, background: tone[0], color: tone[1] };
 }
 

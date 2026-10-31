@@ -20,7 +20,7 @@ type Load =
   | { state: "empty" }
   | { state: "error"; reason: string };
 
-const C = { bg: "#0a1424", panel: "#0f1d33", panel2: "#13243f", line: "#1e3254", fg: "#e8eef8", muted: "#8aa0c2", faint: "#5c749c", accent: "#1f9bf0", done: "#36c48e", hold: "#f2b949" };
+const C = { bg: "#000000", panel: "#0c0c0c", panel2: "#141210", line: "#2a2114", fg: "#fbf9f4", muted: "#b3a894", faint: "#6b6356", accent: "#c9a24b", done: "#36c48e", hold: "#f2b949" };
 
 function statusColor(s: string): string {
   const v = s.toLowerCase();
@@ -53,7 +53,7 @@ export default function ControlRoomLanding() {
     <main style={{ background: C.bg, color: C.fg, minHeight: "100vh", fontFamily: "'IBM Plex Sans', system-ui, sans-serif" }}>
       <div style={{ maxWidth: 820, margin: "0 auto", paddingBlock: 40, paddingInline: 16 }}>
         <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 18 }}>
-          <div style={{ width: 32, height: 32, borderRadius: 9, background: "linear-gradient(135deg,#1f9bf0,#57b6f7)", display: "grid", placeItems: "center", color: "#06192e", fontWeight: 700 }}>JL</div>
+          <div style={{ width: 32, height: 32, borderRadius: 9, background: "linear-gradient(135deg,#c9a24b,#f0d9a0)", display: "grid", placeItems: "center", color: "#000000", fontWeight: 700 }}>JL</div>
           <div>
             <div style={{ fontWeight: 700, fontSize: 20 }}>Transaction Control Room</div>
             <div style={{ color: C.muted, fontSize: 13 }}>Open any transaction to see exactly what happened and how the money settled.</div>
@@ -67,7 +67,7 @@ export default function ControlRoomLanding() {
               onKeyDown={(e) => { if (e.key === "Enter") open(); }}
               placeholder="e.g. JR-2026-287288 or a job id"
               style={{ flex: "1 1 260px", minWidth: 0, background: C.panel2, color: C.fg, border: `1px solid ${C.line}`, borderRadius: 9, padding: "10px 12px", fontSize: 14 }} />
-            <button onClick={open} style={{ background: C.accent, color: "#06192e", border: "none", borderRadius: 9, padding: "10px 18px", fontWeight: 700, cursor: "pointer" }}>Open</button>
+            <button onClick={open} style={{ background: C.accent, color: "#000000", border: "none", borderRadius: 9, padding: "10px 18px", fontWeight: 700, cursor: "pointer" }}>Open</button>
           </div>
         </div>
 
@@ -91,7 +91,7 @@ export default function ControlRoomLanding() {
                 </div>
                 <div style={{ display: "flex", gap: 8 }}>
                   <button onClick={() => router.push(`/control-room/${encodeURIComponent(r.id)}`)}
-                    style={{ background: C.accent, color: "#06192e", border: "none", borderRadius: 8, padding: "8px 13px", fontWeight: 700, cursor: "pointer", fontSize: 13 }}>Control Room</button>
+                    style={{ background: C.accent, color: "#000000", border: "none", borderRadius: 8, padding: "8px 13px", fontWeight: 700, cursor: "pointer", fontSize: 13 }}>Control Room</button>
                   <button onClick={() => router.push(`/control-room/${encodeURIComponent(r.id)}/report`)}
                     style={{ background: C.panel2, color: C.fg, border: `1px solid ${C.line}`, borderRadius: 8, padding: "8px 13px", fontWeight: 600, cursor: "pointer", fontSize: 13 }}>Report</button>
                 </div>

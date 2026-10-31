@@ -122,15 +122,15 @@ export function AdminMarketWagesPanel() {
 
 const styles = {
   wrap: { padding: "32px clamp(18px, 5vw, 64px)" },
-  card: { background: "#fff", border: "1px solid #dbe4f0", borderRadius: 14, boxShadow: "0 12px 30px rgba(6,27,65,.08)", marginBottom: 18, padding: 22 },
-  h2: { color: "#061b41", fontSize: 22 },
+  card: { background: "#fff", border: "1px solid #faf6ec", borderRadius: 14, boxShadow: "0 12px 30px rgba(6,27,65,.08)", marginBottom: 18, padding: 22 },
+  h2: { color: "#000000", fontSize: 22 },
   formRow: { alignItems: "flex-end", display: "flex", flexWrap: "wrap" as const, gap: 12 },
-  label: { color: "#10233f", display: "flex", flexDirection: "column" as const, fontSize: 13, fontWeight: 700, gap: 4 },
-  input: { border: "1px solid #c3d0e4", borderRadius: 8, minHeight: 40, padding: "0 10px" },
-  button: { alignItems: "center", background: "#0f7f78", border: "none", borderRadius: 8, color: "#fff", cursor: "pointer", display: "inline-flex", fontWeight: 800, minHeight: 44, padding: "0 16px" },
-  text: { color: "#10233f", fontSize: 15 },
-  notice: { color: "#0f7f78", fontSize: 14, fontWeight: 700 },
-  table: { background: "#fff", border: "1px solid #dbe4f0", borderCollapse: "collapse" as const, borderRadius: 14, width: "100%" },
-  th: { borderBottom: "1px solid #dbe4f0", color: "#5a6b85", fontSize: 12, padding: 10, textAlign: "left" as const, textTransform: "uppercase" as const },
-  td: { borderBottom: "1px solid #eef3f9", color: "#10233f", fontSize: 14, padding: 10 }
+  label: { color: "#171511", display: "flex", flexDirection: "column" as const, fontSize: 13, fontWeight: 700, gap: 4 },
+  input: { border: "1px solid #ece3d2", borderRadius: 8, minHeight: 40, padding: "0 10px" },
+  button: { alignItems: "center", background: "#171511", border: "none", borderRadius: 8, color: "#fff", cursor: "pointer", display: "inline-flex", fontWeight: 800, minHeight: 44, padding: "0 16px" },
+  text: { color: "#171511", fontSize: 15 },
+  notice: { color: "#171511", fontSize: 14, fontWeight: 700 },
+  table: { background: "#fff", border: "1px solid #faf6ec", borderCollapse: "collapse" as const, borderRadius: 14, width: "100%" },
+  th: { borderBottom: "1px solid #faf6ec", color: "#171511", fontSize: 12, padding: 10, textAlign: "left" as const, textTransform: "uppercase" as const },
+  td: { borderBottom: "1px solid #fbf9f4", color: "#171511", fontSize: 14, padding: 10 }
 } as const;

@@ -405,16 +405,16 @@ function formatWindow(startAt: string, endAt: string, timezone: string) {
 const styles = {
   button: {
     background: "#fff",
-    border: "1px solid #91a5bf",
+    border: "1px solid #ece3d2",
     borderRadius: 8,
-    color: "#061b41",
+    color: "#000000",
     fontWeight: 800,
     minHeight: 44,
     padding: "0 18px"
   },
   primaryButton: {
-    background: "#061b41",
-    border: "1px solid #061b41",
+    background: "#000000",
+    border: "1px solid #000000",
     borderRadius: 8,
     color: "#fff",
     fontWeight: 800,
@@ -435,7 +435,7 @@ const styles = {
     padding: 12
   },
   record: {
-    borderTop: "1px solid #e7edf5",
+    borderTop: "1px solid #faf6ec",
     display: "grid",
     gap: 6,
     padding: "14px 0"

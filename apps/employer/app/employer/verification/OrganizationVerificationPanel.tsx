@@ -82,5 +82,5 @@ const card: React.CSSProperties = { background: "#fff", border: "1px solid #ece3
 const text: React.CSSProperties = { color: "#1c1812", margin: 0, lineHeight: 1.55 };
 const dim: React.CSSProperties = { color: "#7a7060", fontSize: 13, margin: 0 };
 const badgeGood: React.CSSProperties = { background: "#dcfce7", color: "#15803d", borderRadius: 999, padding: "5px 14px", fontWeight: 700, fontSize: 14 };
-const badgeNeutral: React.CSSProperties = { background: "#eef2f7", color: "#3a3326", borderRadius: 999, padding: "5px 14px", fontWeight: 700, fontSize: 14, textTransform: "capitalize" };
+const badgeNeutral: React.CSSProperties = { background: "#fbf9f4", color: "#3a3326", borderRadius: 999, padding: "5px 14px", fontWeight: 700, fontSize: 14, textTransform: "capitalize" };
 const button: React.CSSProperties = { alignSelf: "flex-start", background: "#a8842f", color: "#fff", border: "none", borderRadius: 8, padding: "10px 16px", fontSize: 14, fontWeight: 700, cursor: "pointer" };

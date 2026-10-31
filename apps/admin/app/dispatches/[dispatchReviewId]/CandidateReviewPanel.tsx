@@ -219,13 +219,13 @@ const styles = {
     background: "#fff8d8",
     border: "1px solid #e8d782",
     borderRadius: 12,
-    color: "#10233f",
+    color: "#171511",
     maxWidth: 560,
     padding: 24
   },
   notice: { background: "#fff8d8", borderRadius: 10, marginTop: 16, padding: 16 },
   primary: {
-    background: "#0f7f78",
+    background: "#171511",
     border: 0,
     borderRadius: 8,
     color: "#fff",
@@ -235,9 +235,9 @@ const styles = {
   },
   secondary: {
     background: "#fff",
-    border: "1px solid #91a5bf",
+    border: "1px solid #ece3d2",
     borderRadius: 8,
-    color: "#061b41",
+    color: "#000000",
     fontWeight: 800,
     marginRight: 10,
     minHeight: 44,
