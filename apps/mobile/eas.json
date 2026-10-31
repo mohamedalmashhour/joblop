@@ -15,7 +15,8 @@
       "ios": { "simulator": false },
       "android": { "buildType": "apk" },
       "env": {
-        "EXPO_PUBLIC_RWOS_DEPLOYMENT_TIER": "staging"
+        "EXPO_PUBLIC_RWOS_DEPLOYMENT_TIER": "staging",
+        "EXPO_PUBLIC_RWOS_API_ORIGIN": "https://joblop-api.onrender.com"
       }
     },
     "production": {
@@ -27,7 +28,8 @@
         "buildType": "app-bundle"
       },
       "env": {
-        "EXPO_PUBLIC_RWOS_DEPLOYMENT_TIER": "production"
+        "EXPO_PUBLIC_RWOS_DEPLOYMENT_TIER": "production",
+        "EXPO_PUBLIC_RWOS_API_ORIGIN": "https://joblop-api.onrender.com"
       }
     }
   },
