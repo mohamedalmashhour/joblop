@@ -18,7 +18,7 @@ footer nav a {
 
 .employer-skip-link {
   background: #ffd44a;
-  color: #0b1f3a;
+  color: #15110b;
   font-weight: 800;
   left: 1rem;
   padding: 0.75rem 1rem;
@@ -43,7 +43,7 @@ footer nav a {
 .employer-page-navigator {
   align-items: center;
   background: #f7f9fc;
-  border-bottom: 1px solid #d8dee8;
+  border-bottom: 1px solid #e8e0d0;
   display: grid;
   font-family: Inter, system-ui, sans-serif;
   gap: 12px;
@@ -64,9 +64,9 @@ footer nav a {
 .employer-page-number {
   align-items: center;
   background: #ffffff;
-  border: 1px solid #b9c7d9;
+  border: 1px solid #d8ccb4;
   border-radius: 999px;
-  color: #0b2a59;
+  color: #1f190f;
   display: inline-flex;
   flex: 0 0 auto;
   font-weight: 800;
@@ -84,18 +84,18 @@ footer nav a {
 .employer-page-arrow:hover,
 .employer-page-number:hover {
   background: #e8f5f3;
-  border-color: #0f7f78;
+  border-color: #b8862f;
 }
 
 .employer-page-number-active {
-  background: #0f7f78;
-  border-color: #0f7f78;
+  background: #b8862f;
+  border-color: #b8862f;
   color: #ffffff;
 }
 
 .employer-page-arrow-disabled {
   background: #edf0f4;
-  color: #758195;
+  color: #8a8070;
   cursor: not-allowed;
 }
 
@@ -132,12 +132,12 @@ footer nav a {
 
 /* --- Bill 96 language switcher --- */
 .langswitch { display: inline-flex; border: 1px solid #d7dbe0; border-radius: 999px; overflow: hidden; }
-.langbtn { appearance: none; border: 0; background: transparent; color: #5b6471; font: inherit; font-size: 13px; font-weight: 700; padding: 5px 12px; cursor: pointer; line-height: 1.4; }
+.langbtn { appearance: none; border: 0; background: transparent; color: #6b6356; font: inherit; font-size: 13px; font-weight: 700; padding: 5px 12px; cursor: pointer; line-height: 1.4; }
 .langbtn + .langbtn { border-left: 1px solid #d7dbe0; }
-.langbtn.active { background: #1a56db; color: #fff; }
+.langbtn.active { background: #b8862f; color: #fff; }
 .langbtn:disabled { cursor: default; }
-.langbtn:not(.active):hover { background: #e8f0fe; color: #1a56db; }
-@media (prefers-color-scheme: dark) { .langswitch { border-color: #262c36; } .langbtn { color: #9aa4b2; } .langbtn + .langbtn { border-left-color: #262c36; } .langbtn.active { background: #4f83f0; } }
+.langbtn:not(.active):hover { background: #f6efdd; color: #b8862f; }
+@media (prefers-color-scheme: dark) { .langswitch { border-color: #2a2419; } .langbtn { color: #a89e8c; } .langbtn + .langbtn { border-left-color: #2a2419; } .langbtn.active { background: #c9a24b; } }
 
 /* Print: clean request-details printout — hide nav/chrome and interactive controls, keep content. */
 @media print {
