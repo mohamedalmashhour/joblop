@@ -327,6 +327,7 @@ import { registerEmployerInvoiceCheckoutRoutes } from "./employerInvoiceCheckout
 import { createEmployerInvoiceWebhook, type CheckoutSessionEventLike } from "./employerInvoiceWebhook";
 import { createStripeTestClient } from "./stripeTestProvider";
 import { stripeTestEnvFromProcess } from "./cvProStripeCheckout";
+import { claimOpenJob, ensureOpenClaimDispatch } from "./openClaim";
 
 export interface BuildApiOptions {
   authService?: AuthenticationService;
@@ -3708,6 +3709,76 @@ export function buildApi(options: BuildApiOptions = {}) {
     }
   });
 
+  // ── Hybrid auto-offer: direct worker CLAIM (open-claim jobs only) ──
+  // The first eligible worker to claim a slot is assigned INSTANTLY. Contention + capacity are
+  // decided by the existing first-come assignment arbiter; when all slots are filled, further
+  // claims get 409 job_capacity_reached ("full"). Non-open jobs keep the express-interest path.
+  app.post("/marketplace/jobs/:jobRequestId/claim", async (request, reply) => {
+    const session = await authService.validateSession(readBearerToken(request.headers.authorization));
+    if (!session.authenticated || !session.user) {
+      return reply.code(401).send({ error: "RWOS_MARKETPLACE_DENIED", message: "Authentication is required." });
+    }
+    if (!prisma) {
+      return reply.code(503).send({ error: "RWOS_CLAIM_UNAVAILABLE", message: "Claiming is unavailable." });
+    }
+    const jobRequestId = readRouteParam(request.params, "jobRequestId");
+    if (!isCanonicalUuid(jobRequestId)) {
+      return reply.code(404).send({ error: "RWOS_CLAIM_NOT_FOUND", message: "That job is not available." });
+    }
+
+    // Privacy parity with the interest/detail endpoints: a non-visible job must 404, never reveal
+    // its open-claim state. Only marketplace-visible jobs with an active residence proceed.
+    const visible = await prisma.jobRequest.findFirst({
+      where: { id: jobRequestId, status: { in: ["submitted", "approved_for_dispatch"] }, residence: { status: "active" } },
+      select: { id: true }
+    });
+    if (!visible) {
+      return reply.code(404).send({ error: "RWOS_CLAIM_NOT_FOUND", message: "That job is not available." });
+    }
+
+    // Keep the pay-channel classification-election gate on the claim path, exactly as the offer
+    // accept endpoint does. A worker must have a signed election before taking any work.
+    const electIdentity = await prisma.workerIdentity.findFirst({ where: { userId: session.user.id }, select: { id: true } });
+    const activeElection = electIdentity ? await getActiveElection(prisma, electIdentity.id) : null;
+    if (!activeElection) {
+      return reply.code(409).send({
+        error: "RWOS_CLASSIFICATION_ELECTION_REQUIRED",
+        message: "Choose and sign your pay channel (employee or independent) before claiming work.",
+        agreementVersions: WORKER_AGREEMENT_VERSIONS
+      });
+    }
+
+    const result = await claimOpenJob(
+      {
+        prisma,
+        assignmentRepository: createPrismaAssignmentRepository(prisma),
+        workerOfferRepository: createPrismaWorkerOfferRepository(prisma)
+      },
+      { userId: session.user.id, jobRequestId }
+    );
+
+    if (result.status === "assigned") {
+      // Mirror the manual accept path's side effects (best-effort, never block the assign).
+      await notifyClient(prisma, emailSender, { jobRequestId, kind: "worker_accepted" }).catch(() => {});
+      await workerJobInterestService.markOfferAcceptedByOffer(result.workerOfferId).catch(() => {});
+      void pushAssignmentToCalendar(
+        { prisma, config: googleOAuthConfigFromEnv() },
+        { userId: session.user.id, jobRequestId }
+      );
+      return reply.code(201).send({ status: "assigned", assignmentId: result.assignmentId });
+    }
+    if (result.status === "full") {
+      return reply.code(409).send({ status: "full", error: "RWOS_CLAIM_FULL", message: "This job is already full." });
+    }
+    if (result.status === "not_found") {
+      return reply.code(404).send({ error: "RWOS_CLAIM_NOT_FOUND", message: "That job is not available." });
+    }
+    if (result.status === "not_open") {
+      return reply.code(409).send({ status: "not_open", error: "RWOS_CLAIM_NOT_OPEN", message: "This job is not open for direct claim." });
+    }
+    return reply.code(422).send({ status: "ineligible", error: "RWOS_CLAIM_INELIGIBLE", message: "You can't claim this job right now.", reasons: result.reasons });
+  });
+
   // The worker's applications ("My Interests"), enriched with a privacy-safe job summary +
   // the linked governed-offer status when one exists.
   app.get("/marketplace/my-interests", async (request, reply) => {
@@ -4597,6 +4668,8 @@ export function buildApi(options: BuildApiOptions = {}) {
         title: true,
         description: true,
         numberOfWorkers: true,
+        openClaim: true,
+        status: true,
         startAt: true,
         endAt: true,
         roleDefinition: { select: { displayLabel: true } },
@@ -4697,7 +4770,18 @@ export function buildApi(options: BuildApiOptions = {}) {
     } catch {
       saved = false; // not a worker → not saved
     }
-    return reply.code(200).send({ job: { ...detail, saved, allowances: workerAllowances(row.calendarProfile, row.pricingSnapshot) } });
+    // Hybrid auto-offer: a job is directly claimable when it was approved+priced with open-claim on.
+    // The worker UI shows Accept/Claim (vs express-interest) based on this flag.
+    const claimable = row.openClaim === true && row.status === "approved_for_dispatch" && !!row.pricingSnapshot;
+    return reply.code(200).send({
+      job: {
+        ...detail,
+        saved,
+        allowances: workerAllowances(row.calendarProfile, row.pricingSnapshot),
+        openClaim: row.openClaim === true,
+        claimable
+      }
+    });
   });
 
   // Employer PUBLIC PROFILE — only approved public info: public display name, real
@@ -5278,12 +5362,29 @@ export function buildApi(options: BuildApiOptions = {}) {
         marginPpm: readOptionalNumber(body, "marginPpm") ?? null
       });
 
+      // Hybrid auto-offer: when the admin approves+prices WITH open-claim, mark the job claimable and
+      // auto-open a dispatch in offer_preparation so eligible workers can self-claim instantly. When
+      // the flag is absent/false, nothing here runs and the manual shortlist→offer path is unchanged.
+      let openClaimState: { openClaim: boolean; dispatchReviewId: string | null } = {
+        openClaim: false,
+        dispatchReviewId: null
+      };
+      if (prisma && body.openClaim === true) {
+        await prisma.jobRequest.update({ where: { id: jobRequest.id }, data: { openClaim: true } });
+        const opened = await ensureOpenClaimDispatch(
+          prisma,
+          { dispatchRepository: createPrismaDispatchRepository(prisma) },
+          { jobRequest, actorUserId: session.user.id, now: new Date() }
+        );
+        openClaimState = { openClaim: true, dispatchReviewId: opened.dispatchReviewId };
+      }
+
       // Notify the client their request is approved, with the job code (best-effort, never blocks).
       if (prisma) {
         await notifyClient(prisma, emailSender, { jobRequestId: jobRequest.id, kind: "job_code" });
       }
 
-      return reply.code(200).send({ jobRequest: serializeJobRequest(jobRequest) });
+      return reply.code(200).send({ jobRequest: serializeJobRequest(jobRequest), openClaim: openClaimState });
     }
   );
 
