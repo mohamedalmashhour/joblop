@@ -99,12 +99,15 @@ export function AdminShell({
           className="admin-brand"
           href="/calendar"
         >
-          <span aria-hidden="true" className="admin-brand-mark">
-            RW
-          </span>
+          { /* eslint-disable-next-line @next/next/no-img-element */ }
+          <img
+            src="/img/joblop-logo.png"
+            alt="JobLop"
+            style={{ height: 30, width: "auto", display: "block", borderRadius: 6 }}
+          />
           <span>
-            <strong>Resident Workforce OS</strong>
-            <small>Administration · governed operations</small>
+            <strong>Administration</strong>
+            <small>governed operations</small>
           </span>
         </a>
         <p className="admin-session-context">

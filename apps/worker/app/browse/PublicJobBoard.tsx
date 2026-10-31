@@ -342,7 +342,7 @@ export function PublicJobBoard() {
       {/* NAV */}
       <header className="jl-nav">
         <div className="jl-nav-in">
-          <a href="/" className="jl-logo"><JobLopMark size={30} />Job<span>Lop</span></a>
+          <a href="/" className="jl-logo"><img src="/img/joblop-logo.png" alt="JobLop" style={{ height: 30, width: "auto", display: "block", borderRadius: 6 }} /></a>
           <nav className="jl-links">
             <a href="#jobs">{t.navJobs}</a>
             <a href={EMPLOYER_URL}>{t.navEmp}</a>
@@ -738,7 +738,7 @@ export function PublicJobBoard() {
       <footer className="jl-foot">
         <div className="jl-wrap jl-foot-in">
           <div className="jl-foot-brand">
-            <a href="/" className="jl-logo jl-logo-w"><JobLopMark size={30} />Job<span>Lop</span></a>
+            <a href="/" className="jl-logo jl-logo-w"><img src="/img/joblop-logo.png" alt="JobLop" style={{ height: 28, width: "auto", display: "block", borderRadius: 6 }} /></a>
             <p>{t.fTag}</p>
           </div>
           <div className="jl-foot-cols">
@@ -754,33 +754,6 @@ export function PublicJobBoard() {
   );
 }
 
-// JobLop brand mark — the app icon recreated as a crisp, scalable SVG: blue rounded-square badge,
-// a white briefcase whose body sweeps into a "J", and an upward arrow (growth).
-function JobLopMark({ size = 30 }: { size?: number }) {
-  return (
-    <svg width={size} height={size} viewBox="0 0 64 64" fill="none" aria-hidden="true" style={{ flex: "0 0 auto", display: "block" }}>
-      <defs>
-        <linearGradient id="jlbg" x1="0" y1="0" x2="1" y2="1">
-          <stop offset="0" stopColor="#c9a24b" />
-          <stop offset="1" stopColor="#a8842f" />
-        </linearGradient>
-        <linearGradient id="jlar" x1="0" y1="1" x2="1" y2="0">
-          <stop offset="0" stopColor="#c9a24b" />
-          <stop offset="1" stopColor="#f0d9a0" />
-        </linearGradient>
-      </defs>
-      <rect x="2" y="2" width="60" height="60" rx="16" fill="url(#jlbg)" />
-      {/* briefcase handle */}
-      <path d="M26 17a6 6 0 0 1 12 0v4h-4v-4a2 2 0 0 0-4 0v4h-4z" fill="#fff" />
-      {/* briefcase + J body */}
-      <path d="M21 23h22a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2h-6v-6h-4v14a9 9 0 0 1-18 0 3 3 0 0 1 6 0 3 3 0 0 0 6 0V25a2 2 0 0 1 2-2z" fill="#fff" />
-      {/* clasp */}
-      <rect x="34" y="28" width="7" height="6" rx="2" fill="#c9a24b" />
-      {/* upward arrow */}
-      <path d="M24 48c6-1 12-6 16-12l3 3 2-11-11 2 3 3c-3 5-9 10-16 11z" fill="url(#jlar)" />
-    </svg>
-  );
-}
 
 function iconFor(role: string): string {
   const r = role.toLowerCase();
