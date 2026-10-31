@@ -8,6 +8,11 @@
     "userInterfaceStyle": "light",
     "newArchEnabled": true,
     "icon": "./assets/icon.png",
+    "splash": {
+      "image": "./assets/icon.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#0c0c0c"
+    },
     "web": {
       "bundler": "metro",
       "favicon": "./assets/favicon.png"
@@ -16,6 +21,7 @@
       "bundleIdentifier": "com.joblop.app",
       "buildNumber": "1",
       "supportsTablet": false,
+      "icon": "./assets/icon.png",
       "infoPlist": {
         "ITSAppUsesNonExemptEncryption": false
       }
@@ -24,7 +30,7 @@
       "package": "com.joblop.app",
       "adaptiveIcon": {
         "foregroundImage": "./assets/adaptive-icon.png",
-        "backgroundColor": "#1546c8"
+        "backgroundColor": "#0c0c0c"
       }
     },
     "extra": {
