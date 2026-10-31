@@ -39,8 +39,9 @@ describe("admin shell accessibility", () => {
   });
 
   it("labels staging without weakening the production navigation boundary", () => {
-    expect(layout).toContain('process.env.RWOS_ENV === "staging"');
-    expect(layout).toContain("<AdminShell staging={staging}>");
+    expect(layout).toContain("process.env.RWOS_ENV");
+    expect(layout).toContain('rwosEnv === "staging"');
+    expect(layout).toContain("staging={staging}");
     expect(shell).toContain("staging: boolean");
     expect(shell).toContain('process.env.NEXT_PUBLIC_RWOS_DEPLOYMENT_TIER === "staging"');
     expect(shell).toContain("STAGING");

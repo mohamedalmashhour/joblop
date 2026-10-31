@@ -56,7 +56,15 @@ describe("employer shell accessibility", () => {
     expect(shellSource).toContain(
       "const navigation = connectedEnvironment ? persistedEmployerNavigation : uniqueEmployerNavigation"
     );
-    expect(shellSource).toContain("const connectedEnvironment = production || staging");
+    expect(shellSource).toContain("const connectedEnvironment = isConnectedEnvironment()");
+  });
+
+  it("restricts the full prototype page-map to genuine local development", () => {
+    // The deployed test tier (RWOS_ENV="test") must be treated as connected, so only local dev
+    // (RWOS_ENV unset or "local" with no deployment tier) ever renders uniqueEmployerNavigation.
+    expect(shellSource).toContain('rwosEnv === undefined || rwosEnv === "" || rwosEnv === "local"');
+    expect(shellSource).toContain("return Boolean(deploymentTier)");
+    expect(shellSource).toContain("function isConnectedEnvironment()");
   });
 
   it("shows permanent safety labels in the staging employer workspace", () => {

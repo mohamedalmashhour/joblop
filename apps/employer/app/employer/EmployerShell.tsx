@@ -1,4 +1,5 @@
 import type { ReactNode } from "react";
+import { JobLopLogo } from "../JobLopLogo";
 import { assignmentWorkflow } from "./assignmentWorkflowContent";
 import { attendanceWorkflow } from "./attendanceWorkflowContent";
 import { clientCalendarWorkflow } from "./calendar/clientCalendarContent";
@@ -24,6 +25,20 @@ const employerNavigation = [
   ...moneyWorkflow
 ] as const;
 const uniqueEmployerNavigation = deduplicateNavigationByRoute(employerNavigation);
+
+// The deployed test tier (Render soft launch, RWOS_ENV="test"), staging, and production must all
+// behave like a real connected environment: lean authenticated nav + sign-in gate, never the
+// numbered prototype page-map. The full page-map is reserved for genuine LOCAL dev (RWOS_ENV unset
+// or "local") so developers can still navigate every prototype surface. A compiled deployment tier
+// also counts as connected.
+function isConnectedEnvironment(): boolean {
+  const rwosEnv = process.env.RWOS_ENV;
+  const deploymentTier = process.env.NEXT_PUBLIC_RWOS_DEPLOYMENT_TIER;
+  if (rwosEnv === undefined || rwosEnv === "" || rwosEnv === "local") {
+    return Boolean(deploymentTier);
+  }
+  return true;
+}
 const persistedEmployerNavigation = deduplicateNavigationByRoute([
   ...clientCalendarWorkflow.filter((step) =>
     ["/employer/calendar", "/employer/calendar/create"].includes(step.route)
@@ -49,11 +64,10 @@ export function EmployerShell({
   mode?: "fixture" | "authenticated";
   title: string;
 }) {
-  const production = process.env.RWOS_ENV === "production";
   const staging =
     process.env.RWOS_ENV === "staging" ||
     process.env.NEXT_PUBLIC_RWOS_DEPLOYMENT_TIER === "staging";
-  const connectedEnvironment = production || staging;
+  const connectedEnvironment = isConnectedEnvironment();
   const effectiveMode = connectedEnvironment ? "authenticated" : mode;
   const navigation = connectedEnvironment ? persistedEmployerNavigation : uniqueEmployerNavigation;
   return (
@@ -64,10 +78,7 @@ export function EmployerShell({
       <div style={styles.appFrame}>
         <aside className="employer-sidebar" style={styles.sidebarShell}>
           <a href="/" style={styles.brand} aria-label="JobLop home">
-            <span aria-hidden="true" style={styles.brandMark}>
-              JL
-            </span>
-            <span>JobLop</span>
+            <JobLopLogo height={34} />
           </a>
           <nav aria-label="Employer navigation" className="employer-navigation" style={styles.nav}>
             {navigation.map((step) => (
@@ -223,8 +234,9 @@ function EmployerPageNavigator({
 }
 
 export function WorkflowRoutes({ currentRoute }: { currentRoute: string }) {
-  const navigation =
-    process.env.RWOS_ENV === "production" ? persistedEmployerNavigation : uniqueEmployerNavigation;
+  const navigation = isConnectedEnvironment()
+    ? persistedEmployerNavigation
+    : uniqueEmployerNavigation;
   return (
     <section aria-labelledby="workflow-title" style={styles.section}>
       <div style={styles.sectionHeader}>
