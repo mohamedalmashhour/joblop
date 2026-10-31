@@ -32,12 +32,12 @@ const PROVINCES: { code: string; en: string; fr: string }[] = [
 
 // JobLop's real work categories (not tech roles). `q` matches role/title/city server-side.
 const CATEGORIES = [
-  { icon: "🩺", bg: "#e9f0ff", en: "Care & Nursing", fr: "Soins & infirmerie", q: "nurse" },
+  { icon: "🩺", bg: "#fbf9f4", en: "Care & Nursing", fr: "Soins & infirmerie", q: "nurse" },
   { icon: "🧑‍⚕️", bg: "#eafaf4", en: "Personal Support", fr: "Préposé aux bénéficiaires", q: "support" },
   { icon: "🍳", bg: "#fff2e8", en: "Kitchen", fr: "Cuisine", q: "cook" },
   { icon: "👨‍🍳", bg: "#fdeef3", en: "Chef", fr: "Chef", q: "chef" },
-  { icon: "🧹", bg: "#f0ecff", en: "Housekeeping", fr: "Entretien ménager", q: "housekeeping" },
-  { icon: "🍽️", bg: "#e7f7fb", en: "Dining Support", fr: "Service en salle", q: "dining" },
+  { icon: "🧹", bg: "#fbf9f4", en: "Housekeeping", fr: "Entretien ménager", q: "housekeeping" },
+  { icon: "🍽️", bg: "#fbf9f4", en: "Dining Support", fr: "Service en salle", q: "dining" },
   { icon: "🔧", bg: "#fff6e0", en: "Maintenance", fr: "Maintenance", q: "maintenance" },
   { icon: "🧺", bg: "#eef7e8", en: "Laundry & Cleaning", fr: "Buanderie & nettoyage", q: "cleaner" }
 ];
@@ -931,7 +931,7 @@ const CSS = `
 /* JOBSCANNER */
 .jl-js{padding:clamp(32px,5vw,58px) 0;}
 .jl-js-in{background:radial-gradient(600px 300px at 12% 0%,rgba(201,162,75,.22),transparent),linear-gradient(120deg,#1c1812,#241d13 55%,#000000);
-  border-radius:22px;padding:clamp(28px,5vw,44px);color:#eaf1ff;display:grid;grid-template-columns:1.05fr .95fr;gap:28px;align-items:center;
+  border-radius:22px;padding:clamp(28px,5vw,44px);color:#fbf9f4;display:grid;grid-template-columns:1.05fr .95fr;gap:28px;align-items:center;
   margin-left:max(18px,env(safe-area-inset-left));margin-right:max(18px,env(safe-area-inset-right));}
 .jl-js-tag{display:inline-block;font-size:12px;font-weight:800;letter-spacing:.09em;color:#d9b45f;background:rgba(201,162,75,.14);padding:5px 11px;border-radius:999px;}
 .jl-js-copy h2{color:#fff;margin:12px 0 10px;}

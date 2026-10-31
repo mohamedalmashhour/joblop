@@ -25,7 +25,7 @@ const stateColor = (s: string): string => {
   if (v.includes("assign") || v.includes("complete") || v.includes("closed")) return "#1a7f4b";
   if (v.includes("offer") || v.includes("shortlist")) return "#8a6414";
   if (v.includes("cancel") || v.includes("paused")) return "#9a1f2b";
-  return "#1f5fae";
+  return "#171511";
 };
 const fmt = (s: string) => {
   try { return new Date(s).toLocaleString("en-CA", { dateStyle: "medium", timeStyle: "short" }); } catch { return s; }
@@ -45,7 +45,7 @@ export default function DispatchReviewsPage() {
       .catch((reason) => setLoad({ state: "error", reason: String(reason) }));
   }, []);
 
-  const C = { bg: "#f4f7fb", fg: "#10233f", muted: "#5a6b85", line: "#dbe3ee", card: "#ffffff", accent: "#1f5fae" };
+  const C = { bg: "#fbf9f4", fg: "#171511", muted: "#6b6356", line: "#ece3d2", card: "#ffffff", accent: "#b8862f" };
 
   return (
     <main style={{ background: C.bg, color: C.fg, minHeight: "100vh", fontFamily: "'IBM Plex Sans', system-ui, sans-serif" }}>

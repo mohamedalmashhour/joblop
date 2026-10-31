@@ -283,7 +283,7 @@ const baseButton: CSSProperties = {
 };
 
 const styles: Record<string, CSSProperties> = {
-  page: { background: "#f7faff", color: "#15110b", fontFamily: "Inter, system-ui, sans-serif", minHeight: "100vh" },
+  page: { background: "#fbf9f4", color: "#15110b", fontFamily: "Inter, system-ui, sans-serif", minHeight: "100vh" },
   header: { alignItems: "center", background: "#ffffff", borderBottom: "1px solid #f0e8d8", display: "flex", flexWrap: "wrap", gap: 16, justifyContent: "space-between", padding: "18px clamp(16px, 4vw, 40px)", position: "sticky", top: 0, zIndex: 1 },
   brand: { color: "#1b160e", fontSize: 20, fontWeight: 900, textDecoration: "none" },
   nav: { alignItems: "center", display: "flex", flexWrap: "wrap", gap: 14 },

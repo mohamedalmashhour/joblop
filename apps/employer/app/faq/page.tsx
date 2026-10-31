@@ -155,7 +155,7 @@ function Meta({ label, value }: { label: string; value: string }) {
 }
 
 const styles: Record<string, CSSProperties> = {
-  page: { background: "#f7faff", color: "#15110b", fontFamily: "Inter, system-ui, sans-serif", minHeight: "100vh" },
+  page: { background: "#fbf9f4", color: "#15110b", fontFamily: "Inter, system-ui, sans-serif", minHeight: "100vh" },
   header: { alignItems: "center", background: "#ffffff", borderBottom: "1px solid #f0e8d8", display: "flex", flexWrap: "wrap", gap: 16, justifyContent: "space-between", padding: "18px clamp(16px, 4vw, 40px)", position: "sticky", top: 0, zIndex: 1 },
   brand: { color: "#1b160e", fontSize: 20, fontWeight: 900, textDecoration: "none" },
   nav: { alignItems: "center", display: "flex", flexWrap: "wrap", gap: 14 },
@@ -176,7 +176,7 @@ const styles: Record<string, CSSProperties> = {
   pill: { background: "#ffffff", border: "1px solid #f0e8d8", borderRadius: 8, color: "#1b160e", fontWeight: 900, padding: 16 },
   activeLink: { alignItems: "center", background: "#1b160e", borderRadius: 8, color: "#ffffff", display: "inline-flex", fontWeight: 900, marginTop: 18, minHeight: 48, padding: "0 18px", textDecoration: "none" },
   answerGrid: { display: "grid", gap: 16 },
-  answerCard: { background: "#f7faff", border: "1px solid #f0e8d8", borderRadius: 8, padding: 20 },
+  answerCard: { background: "#fbf9f4", border: "1px solid #f0e8d8", borderRadius: 8, padding: 20 },
   category: { color: "#2a2114", fontSize: 12, fontWeight: 900, margin: 0, textTransform: "uppercase" },
   cardGrid: { display: "grid", gap: 14, gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))" },
   card: { background: "#ffffff", border: "1px solid #f0e8d8", borderRadius: 8, padding: 18 },

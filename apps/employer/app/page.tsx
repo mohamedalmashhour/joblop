@@ -216,7 +216,7 @@ const hx: Record<string, CSSProperties> = {
     alignItems: "center",
     marginTop: 8,
     padding: "10px 12px",
-    border: "1px solid #eef2f8",
+    border: "1px solid #fbf9f4",
     borderRadius: 12
   },
   oppCard: {
@@ -226,7 +226,7 @@ const hx: Record<string, CSSProperties> = {
     background: "#ffffff",
     borderRadius: 14,
     boxShadow: "0 18px 45px rgba(11,31,63,0.16)",
-    border: "1px solid #eef2f8",
+    border: "1px solid #fbf9f4",
     padding: "12px 16px",
     display: "flex",
     alignItems: "center",
@@ -670,7 +670,7 @@ const baseButton: CSSProperties = {
 
 const styles: Record<string, CSSProperties> = {
   page: {
-    background: "#f7faff",
+    background: "#fbf9f4",
     color: "#1b160e",
     fontFamily:
       'Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif',
@@ -753,7 +753,7 @@ const styles: Record<string, CSSProperties> = {
   },
   hero: {
     alignItems: "center",
-    background: "linear-gradient(180deg, #ffffff 0%, #f5f9ff 74%, #f6efdd 100%)",
+    background: "linear-gradient(180deg, #ffffff 0%, #fbf9f4 74%, #f6efdd 100%)",
     display: "grid",
     gap: 36,
     gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 360px), 1fr))",
@@ -983,7 +983,7 @@ const styles: Record<string, CSSProperties> = {
     gridTemplateColumns: "repeat(auto-fit, minmax(135px, 1fr))"
   },
   timelineStep: {
-    background: "#f3f7ff",
+    background: "#fbf9f4",
     border: "1px solid #f0e8d8",
     borderRadius: 8,
     color: "#2a2114",
@@ -1101,7 +1101,7 @@ const styles: Record<string, CSSProperties> = {
     gridTemplateColumns: "repeat(auto-fit, minmax(92px, 1fr))"
   },
   metricTile: {
-    background: "#f7faff",
+    background: "#fbf9f4",
     border: "1px solid #f6efdd",
     borderRadius: 8,
     display: "grid",
@@ -1126,7 +1126,7 @@ const styles: Record<string, CSSProperties> = {
   },
   shiftRow: {
     alignItems: "center",
-    borderTop: "1px solid #edf2f8",
+    borderTop: "1px solid #fbf9f4",
     color: "#2a2114",
     display: "flex",
     fontSize: 13,
@@ -1140,7 +1140,7 @@ const styles: Record<string, CSSProperties> = {
     color: "#b36b00"
   },
   activityLine: {
-    borderTop: "1px solid #edf2f8",
+    borderTop: "1px solid #fbf9f4",
     color: "#2a2114",
     fontSize: 13,
     margin: 0,
@@ -1216,7 +1216,7 @@ const styles: Record<string, CSSProperties> = {
     gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))"
   },
   flowStep: {
-    background: "#f7faff",
+    background: "#fbf9f4",
     border: "1px solid #f0e8d8",
     borderRadius: 8,
     padding: 20

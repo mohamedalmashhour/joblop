@@ -47,7 +47,7 @@ export function HeaderNav({
           }
           .jl-navroot.open .jl-panel { display: flex; }
           .jl-links { flex-direction: column; align-items: stretch; gap: 4px; }
-          .jl-panel .jl-link { font-size: 17px; padding: 10px 2px; border-bottom: 1px solid #f0f3f9; }
+          .jl-panel .jl-link { font-size: 17px; padding: 10px 2px; border-bottom: 1px solid #fbf9f4; }
           .jl-actions { flex-direction: column; align-items: stretch; gap: 10px; margin-top: 10px; }
           .jl-panel .jl-ghost, .jl-panel .jl-primary { text-align: center; padding: 13px 18px; font-size: 16px; }
         }

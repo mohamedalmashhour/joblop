@@ -7,7 +7,7 @@ export function Footer({ locale }: { locale: string }) {
   return (
     <footer
       style={{
-        borderTop: "1px solid #e3eaf4",
+        borderTop: "1px solid #faf6ec",
         marginTop: 56,
         padding: "22px 16px",
         display: "flex",

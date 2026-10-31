@@ -403,14 +403,14 @@ function AdminState({
 
 const styles = {
   page: {
-    background: "#f4f7fb",
-    color: "#10233f",
+    background: "#fbf9f4",
+    color: "#171511",
     fontFamily: "Inter, system-ui, sans-serif",
     minHeight: "100vh"
   },
   hero: {
     alignItems: "center",
-    background: "#061b41",
+    background: "#000000",
     color: "#fff",
     display: "flex",
     flexWrap: "wrap" as const,
@@ -420,12 +420,12 @@ const styles = {
   },
   eyebrow: { color: "#fff1a8", fontSize: 12, fontWeight: 900, textTransform: "uppercase" as const },
   title: { fontSize: "clamp(34px, 5vw, 56px)", margin: "8px 0" },
-  lede: { color: "#d6e5f8", fontSize: 18, lineHeight: 1.6, maxWidth: 760 },
+  lede: { color: "#faf6ec", fontSize: 18, lineHeight: 1.6, maxWidth: 760 },
   secondaryButton: {
     alignItems: "center",
     background: "#fff",
     borderRadius: 8,
-    color: "#061b41",
+    color: "#000000",
     display: "inline-flex",
     fontWeight: 800,
     minHeight: 44,
@@ -434,23 +434,23 @@ const styles = {
   },
   actionStack: { display: "flex", flexWrap: "wrap" as const, gap: 10 },
   assignmentBoundary: {
-    color: "#d6e5f8",
+    color: "#faf6ec",
     fontSize: 13,
     margin: 0,
     maxWidth: 240
   },
   retryButton: {
     background: "#fff",
-    border: "1px solid #91a5bf",
+    border: "1px solid #ece3d2",
     borderRadius: 8,
-    color: "#061b41",
+    color: "#000000",
     cursor: "pointer",
     fontWeight: 800,
     minHeight: 44,
     padding: "0 18px"
   },
   primaryButton: {
-    background: "#0f7f78",
+    background: "#171511",
     border: 0,
     borderRadius: 8,
     color: "#fff",
@@ -461,9 +461,9 @@ const styles = {
   },
   secondaryAction: {
     background: "#fff",
-    border: "1px solid #91a5bf",
+    border: "1px solid #ece3d2",
     borderRadius: 8,
-    color: "#061b41",
+    color: "#000000",
     cursor: "pointer",
     fontWeight: 800,
     minHeight: 44,
@@ -471,7 +471,7 @@ const styles = {
   },
   label: { display: "grid", fontWeight: 800, gap: 8, marginTop: 16 },
   textarea: {
-    border: "1px solid #91a5bf",
+    border: "1px solid #ece3d2",
     borderRadius: 8,
     font: "inherit",
     padding: 12,
@@ -490,11 +490,11 @@ const styles = {
     gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))",
     padding: "24px clamp(18px, 5vw, 64px)"
   },
-  panel: { background: "#fff", border: "1px solid #dbe4f0", borderRadius: 14, padding: 24 },
-  h2: { color: "#061b41", fontSize: 25, margin: "6px 0 14px" },
+  panel: { background: "#fff", border: "1px solid #faf6ec", borderRadius: 14, padding: 24 },
+  h2: { color: "#000000", fontSize: 25, margin: "6px 0 14px" },
   row: {
     alignItems: "center",
-    borderBottom: "1px solid #e7edf5",
+    borderBottom: "1px solid #faf6ec",
     display: "flex",
     flexWrap: "wrap" as const,
     gap: 12,

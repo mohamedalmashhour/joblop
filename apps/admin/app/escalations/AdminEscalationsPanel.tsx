@@ -82,16 +82,16 @@ export function AdminEscalationsPanel() {
 
 const styles = {
   wrap: { padding: "32px clamp(18px, 5vw, 64px)" },
-  card: { background: "#fff", border: "1px solid #dbe4f0", borderRadius: 14, boxShadow: "0 12px 30px rgba(6,27,65,.08)", margin: "14px 0", padding: 22 },
+  card: { background: "#fff", border: "1px solid #faf6ec", borderRadius: 14, boxShadow: "0 12px 30px rgba(6,27,65,.08)", margin: "14px 0", padding: 22 },
   cardHead: { alignItems: "center", display: "flex", gap: 12, justifyContent: "space-between" },
-  h2: { color: "#061b41", fontSize: 22, margin: 0 },
+  h2: { color: "#000000", fontSize: 22, margin: 0 },
   badge: { background: "#fde8d6", borderRadius: 99, color: "#b4541f", fontSize: 12, fontWeight: 900, padding: "7px 10px", textTransform: "uppercase" as const },
-  meta: { color: "#5a6b85", fontSize: 13 },
-  text: { color: "#10233f", fontSize: 15, lineHeight: 1.5 },
-  notice: { color: "#0f7f78", fontSize: 14, fontWeight: 700 },
-  label: { color: "#10233f", display: "flex", flexDirection: "column" as const, fontSize: 13, fontWeight: 700, gap: 4, marginTop: 8 },
-  input: { border: "1px solid #c3d0e4", borderRadius: 8, minHeight: 40, padding: "0 10px" },
+  meta: { color: "#171511", fontSize: 13 },
+  text: { color: "#171511", fontSize: 15, lineHeight: 1.5 },
+  notice: { color: "#171511", fontSize: 14, fontWeight: 700 },
+  label: { color: "#171511", display: "flex", flexDirection: "column" as const, fontSize: 13, fontWeight: 700, gap: 4, marginTop: 8 },
+  input: { border: "1px solid #ece3d2", borderRadius: 8, minHeight: 40, padding: "0 10px" },
   actions: { display: "flex", gap: 12, marginTop: 12 },
-  button: { alignItems: "center", background: "#0f7f78", border: "none", borderRadius: 8, color: "#fff", cursor: "pointer", display: "inline-flex", fontWeight: 800, minHeight: 44, padding: "0 16px" },
-  buttonAlt: { alignItems: "center", background: "#55617a", border: "none", borderRadius: 8, color: "#fff", cursor: "pointer", display: "inline-flex", fontWeight: 800, minHeight: 44, padding: "0 16px" }
+  button: { alignItems: "center", background: "#171511", border: "none", borderRadius: 8, color: "#fff", cursor: "pointer", display: "inline-flex", fontWeight: 800, minHeight: 44, padding: "0 16px" },
+  buttonAlt: { alignItems: "center", background: "#171511", border: "none", borderRadius: 8, color: "#fff", cursor: "pointer", display: "inline-flex", fontWeight: 800, minHeight: 44, padding: "0 16px" }
 } as const;

@@ -252,7 +252,7 @@ const styles: Record<string, CSSProperties> = {
   },
   hero: {
     alignItems: "center",
-    background: `linear-gradient(135deg, ${navy} 0%, #082a66 100%)`,
+    background: `linear-gradient(135deg, ${navy} 0%, #171511 100%)`,
     border: "1px solid rgba(255,255,255,0.12)",
     borderRadius: radii.md,
     boxShadow: elevation.overlay,
@@ -265,7 +265,7 @@ const styles: Record<string, CSSProperties> = {
   },
   eyebrow: { color: colors.cream, fontSize: 12, fontWeight: 900, letterSpacing: 0, margin: 0 },
   title: { fontSize: "clamp(30px, 4vw, 46px)", letterSpacing: 0, lineHeight: 1.05, margin: "8px 0" },
-  copy: { color: "#d6e5f8", fontSize: 16, lineHeight: 1.58, margin: 0, maxWidth: 820 },
+  copy: { color: "#faf6ec", fontSize: 16, lineHeight: 1.58, margin: 0, maxWidth: 820 },
   roleBox: {
     background: "rgba(255,255,255,0.1)",
     border: "1px solid rgba(255,255,255,0.24)",
@@ -317,7 +317,7 @@ const styles: Record<string, CSSProperties> = {
   },
   matchCard: {
     alignItems: "center",
-    borderTop: "1px solid #e7eeee",
+    borderTop: "1px solid #faf6ec",
     display: "flex",
     gap: 16,
     justifyContent: "space-between",
@@ -334,7 +334,7 @@ const styles: Record<string, CSSProperties> = {
     padding: `0 ${spacing.lg}px`
   },
   poolRow: {
-    borderTop: "1px solid #e7eeee",
+    borderTop: "1px solid #faf6ec",
     display: "grid",
     gap: 8,
     gridTemplateColumns: "1fr auto",
@@ -367,7 +367,7 @@ const styles: Record<string, CSSProperties> = {
   status: { color: colors.success, fontSize: 13, fontWeight: 800 },
   danger: { color: colors.danger, fontSize: 13, fontWeight: 900 },
   requestRow: {
-    borderTop: "1px solid #e7eeee",
+    borderTop: "1px solid #faf6ec",
     display: "grid",
     gap: 12,
     gridTemplateColumns: "repeat(auto-fit, minmax(150px, 1fr))",

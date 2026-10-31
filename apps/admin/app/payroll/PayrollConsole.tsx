@@ -267,11 +267,11 @@ function LineTable({ title, lines, currency }: { title: string; lines: Line[]; c
   );
 }
 function severityStyle(severity: string): CSSProperties {
-  const tone = severity === "high" ? "#8a2f20" : severity === "medium" ? "#8a5340" : severity === "low" ? "#155e9c" : "#555";
+  const tone = severity === "high" ? "#8a2f20" : severity === "medium" ? "#8a5340" : severity === "low" ? "#171511" : "#555";
   return { color: tone, borderColor: tone };
 }
 function statusChip(status: string) {
-  const tone = status === "locked" ? "#1f6f43" : status === "approved" ? "#155e9c" : status === "superseded" || status === "rejected" ? "#8a5340" : "#555";
+  const tone = status === "locked" ? "#1f6f43" : status === "approved" ? "#171511" : status === "superseded" || status === "rejected" ? "#8a5340" : "#555";
   return <span style={{ ...s.chip, color: tone, borderColor: tone }}>{status}</span>;
 }
 
@@ -291,7 +291,7 @@ const s: Record<string, CSSProperties> = {
   muted: { color: "#777", fontSize: 13 },
   list: { listStyle: "none", padding: 0, margin: 0, display: "flex", flexDirection: "column", gap: 6 },
   rowBtn: { width: "100%", textAlign: "left", background: "#fafafa", border: "1px solid #e6e6e6", borderRadius: 8, padding: "8px 10px", cursor: "pointer", display: "flex", flexDirection: "column", gap: 2 },
-  rowBtnActive: { background: "#eef4ff", borderColor: "#155e9c" },
+  rowBtnActive: { background: "#fbf9f4", borderColor: "#171511" },
   rowMeta: { fontSize: 12, color: "#777" },
   detail: { border: "1px solid #e0e0e0", borderRadius: 10, padding: 20, background: "#fff", marginTop: 20 },
   detailCols: { display: "grid", gridTemplateColumns: "1fr 1fr", gap: 24 },
@@ -304,9 +304,9 @@ const s: Record<string, CSSProperties> = {
   td: { borderBottom: "1px solid #f0f0f0", padding: "4px 6px", verticalAlign: "top" },
   chip: { border: "1px solid", borderRadius: 999, padding: "1px 8px", fontSize: 11, marginLeft: 6 },
   correctChip: { background: "#f0e8fb", color: "#5a3a8a", borderRadius: 999, padding: "1px 8px", fontSize: 11, marginLeft: 6 },
-  adjBox: { background: "#eef4ff", border: "1px solid #155e9c", borderRadius: 8, padding: 12, margin: "12px 0", fontSize: 13 },
+  adjBox: { background: "#fbf9f4", border: "1px solid #171511", borderRadius: 8, padding: 12, margin: "12px 0", fontSize: 13 },
   actions: { display: "flex", gap: 8, margin: "16px 0", flexWrap: "wrap" },
-  btn: { background: "#155e9c", color: "#fff", border: "none", borderRadius: 8, padding: "8px 14px", cursor: "pointer", fontWeight: 600 },
+  btn: { background: "#171511", color: "#fff", border: "none", borderRadius: 8, padding: "8px 14px", cursor: "pointer", fontWeight: 600 },
   btnGhost: { background: "#fff", color: "#8a5340", border: "1px solid #8a5340", borderRadius: 8, padding: "8px 14px", cursor: "pointer" },
   correctForm: { border: "1px dashed #bbb", borderRadius: 8, padding: 12, margin: "8px 0 16px" },
   label: { display: "block", fontSize: 13, color: "#444", marginBottom: 6 },

@@ -7,8 +7,8 @@ import type { CSSProperties } from "react";
 import type { Snapshot } from "../../../lib/controlRoomLedger";
 
 const C: Record<string, string> = {
-  bg: "#0a1424", panel2: "#13243f", line: "#1e3254",
-  fg: "#e8eef8", muted: "#8aa0c2", faint: "#5c749c", pass: "#36c48e", hold: "#f2b949",
+  bg: "#000000", panel2: "#141210", line: "#2a2114",
+  fg: "#fbf9f4", muted: "#b3a894", faint: "#6b6356", pass: "#36c48e", hold: "#f2b949",
 };
 
 export default function SharedStatement({ snapshot }: { snapshot: Snapshot | null }) {
@@ -36,7 +36,7 @@ export default function SharedStatement({ snapshot }: { snapshot: Snapshot | nul
 
       <div style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
         <div style={{ flex: 1, minWidth: 0 }}>
-          <div style={{ fontFamily: "ui-monospace, monospace", fontSize: 12, color: "#57b6f7", marginBottom: 4 }}>JobLop</div>
+          <div style={{ fontFamily: "ui-monospace, monospace", fontSize: 12, color: "#ece3d2", marginBottom: 4 }}>JobLop</div>
           <h1 style={{ fontSize: 19, margin: 0 }}>{s.title}</h1>
           <div style={{ color: C.muted, fontSize: 13 }}>{s.number}</div>
         </div>

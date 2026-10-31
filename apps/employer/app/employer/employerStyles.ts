@@ -302,7 +302,7 @@ export const styles: Record<string, CSSProperties> = {
     background: "#eefbf6",
     border: "1px solid #9fd8bc",
     borderRadius: 999,
-    color: "#0f5f54",
+    color: "#171511",
     display: "inline-flex",
     fontSize: 12,
     fontWeight: 900,

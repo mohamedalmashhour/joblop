@@ -147,17 +147,17 @@ function formatTime(iso: string) {
 }
 
 const styles: Record<string, React.CSSProperties> = {
-  muted: { color: "#64748b", fontSize: 13, lineHeight: 1.5 },
-  dim: { color: "#94a3b8", fontSize: 12 },
+  muted: { color: "#6b6356", fontSize: 13, lineHeight: 1.5 },
+  dim: { color: "#ece3d2", fontSize: 12 },
   grid: { display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(260px, 1fr))", gap: 16, marginTop: 8 },
   mapCard: { display: "flex", flexDirection: "column", gap: 8 },
   h3: { fontSize: 14, margin: 0 },
-  caption: { fontSize: 13, color: "#334155", margin: 0, lineHeight: 1.5 },
+  caption: { fontSize: 13, color: "#171511", margin: 0, lineHeight: 1.5 },
   dayTabs: { display: "flex", flexWrap: "wrap", gap: 6 },
-  dayTab: { border: "1px solid #cbd5e1", background: "transparent", color: "#334155", borderRadius: 999, padding: "5px 10px", fontSize: 12, fontWeight: 600, cursor: "pointer" },
-  dayTabActive: { border: "1px solid #1d4ed8", background: "#1d4ed8", color: "#fff", borderRadius: 999, padding: "5px 10px", fontSize: 12, fontWeight: 700, cursor: "pointer" },
+  dayTab: { border: "1px solid #ece3d2", background: "transparent", color: "#171511", borderRadius: 999, padding: "5px 10px", fontSize: 12, fontWeight: 600, cursor: "pointer" },
+  dayTabActive: { border: "1px solid #171511", background: "#171511", color: "#fff", borderRadius: 999, padding: "5px 10px", fontSize: 12, fontWeight: 700, cursor: "pointer" },
   roster: { listStyle: "none", margin: 0, padding: 0, display: "flex", flexDirection: "column", gap: 6 },
-  rosterItem: { display: "flex", justifyContent: "space-between", gap: 8, borderBottom: "1px solid #eef2f7", paddingBottom: 5 },
-  emptyDays: { color: "#64748b", fontSize: 13, border: "1px dashed #cbd5e1", borderRadius: 10, padding: 20, textAlign: "center" },
-  button: { border: "1px solid #1d4ed8", background: "#1d4ed8", color: "#fff", borderRadius: 8, padding: "7px 12px", fontSize: 13, fontWeight: 600, cursor: "pointer" }
+  rosterItem: { display: "flex", justifyContent: "space-between", gap: 8, borderBottom: "1px solid #fbf9f4", paddingBottom: 5 },
+  emptyDays: { color: "#6b6356", fontSize: 13, border: "1px dashed #ece3d2", borderRadius: 10, padding: 20, textAlign: "center" },
+  button: { border: "1px solid #171511", background: "#171511", color: "#fff", borderRadius: 8, padding: "7px 12px", fontSize: 13, fontWeight: 600, cursor: "pointer" }
 };

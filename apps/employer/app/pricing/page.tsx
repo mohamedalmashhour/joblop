@@ -247,7 +247,7 @@ const baseButton: CSSProperties = {
 
 const styles: Record<string, CSSProperties> = {
   page: {
-    background: "#f7faff",
+    background: "#fbf9f4",
     color: "#15110b",
     fontFamily: "Inter, system-ui, sans-serif",
     minHeight: "100vh"
@@ -493,7 +493,7 @@ const styles: Record<string, CSSProperties> = {
     gap: 6
   },
   input: {
-    background: "#f7faff",
+    background: "#fbf9f4",
     border: "1px solid #d8ccb4",
     borderRadius: 8,
     color: "#6b6356",

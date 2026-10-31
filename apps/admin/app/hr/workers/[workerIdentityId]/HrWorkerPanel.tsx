@@ -261,14 +261,14 @@ export function HrWorkerPanel({ workerIdentityId }: { workerIdentityId: string }
 function credBadge(status: string): React.CSSProperties {
   if (status === "expired" || status === "revoked") return { ...styles.badge, background: "#fee2e2", color: "#b91c1c" };
   if (status === "expiring") return { ...styles.badge, background: "#fef3c7", color: "#92400e" };
-  if (status === "replaced") return { ...styles.badge, background: "#e2e8f0", color: "#475569" };
+  if (status === "replaced") return { ...styles.badge, background: "#faf6ec", color: "#171511" };
   return { ...styles.badge, background: "#dcfce7", color: "#15803d" };
 }
 function docBadge(status: string): React.CSSProperties {
   if (status === "accepted") return { ...styles.badge, background: "#dcfce7", color: "#15803d" };
   if (status === "expiring" || status === "submitted" || status === "under_review") return { ...styles.badge, background: "#fef3c7", color: "#92400e" };
   if (status === "expired" || status === "rejected" || status === "revoked") return { ...styles.badge, background: "#fee2e2", color: "#b91c1c" };
-  return { ...styles.badge, background: "#e2e8f0", color: "#475569" };
+  return { ...styles.badge, background: "#faf6ec", color: "#171511" };
 }
 function complianceBadge(result: string): React.CSSProperties {
   if (result === "compliant") return { ...styles.badge, background: "#dcfce7", color: "#15803d" };
@@ -277,28 +277,28 @@ function complianceBadge(result: string): React.CSSProperties {
 }
 
 const styles: Record2Style = {
-  page: { padding: "clamp(16px, 3vw, 32px)", fontFamily: "Inter, system-ui, sans-serif", color: "#1e293b" },
+  page: { padding: "clamp(16px, 3vw, 32px)", fontFamily: "Inter, system-ui, sans-serif", color: "#171511" },
   hero: { marginBottom: 12 },
-  back: { color: "#0f766e", textDecoration: "none", fontWeight: 600, fontSize: 13 },
+  back: { color: "#171511", textDecoration: "none", fontWeight: 600, fontSize: 13 },
   title: { fontSize: "clamp(22px, 3.5vw, 30px)", margin: "6px 0 2px" },
   grid: { display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(320px, 1fr))", gap: 16 },
-  card: { border: "1px solid #e2e8f0", borderRadius: 12, padding: 16, background: "#fff", display: "flex", flexDirection: "column", gap: 8 },
+  card: { border: "1px solid #faf6ec", borderRadius: 12, padding: 16, background: "#fff", display: "flex", flexDirection: "column", gap: 8 },
   h2: { fontSize: 16, margin: 0 },
-  h3: { fontSize: 13, margin: "8px 0 2px", color: "#475569" },
+  h3: { fontSize: 13, margin: "8px 0 2px", color: "#171511" },
   formRow: { display: "flex", flexWrap: "wrap", gap: 8, alignItems: "center" },
-  input: { border: "1px solid #cbd5e1", borderRadius: 8, padding: "8px 10px", fontSize: 14, minHeight: 38 },
+  input: { border: "1px solid #ece3d2", borderRadius: 8, padding: "8px 10px", fontSize: 14, minHeight: 38 },
   plainList: { listStyle: "none", margin: 0, padding: 0, display: "flex", flexDirection: "column", gap: 8 },
-  credItem: { display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 8, borderBottom: "1px solid #eef2f7", paddingBottom: 8 },
-  timelineItem: { fontSize: 13, borderBottom: "1px solid #eef2f7", paddingBottom: 6 },
+  credItem: { display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 8, borderBottom: "1px solid #fbf9f4", paddingBottom: 8 },
+  timelineItem: { fontSize: 13, borderBottom: "1px solid #fbf9f4", paddingBottom: 6 },
   rowBtns: { display: "flex", gap: 6, flexShrink: 0 },
   chips: { display: "flex", gap: 6, flexWrap: "wrap" },
-  chip: { background: "#eef2f7", color: "#334155", borderRadius: 999, padding: "3px 10px", fontSize: 12, fontWeight: 600 },
-  badge: { borderRadius: 999, padding: "2px 9px", fontSize: 12, fontWeight: 700, background: "#f1f5f9", color: "#334155" },
-  dim: { color: "#94a3b8", fontSize: 12 },
-  note: { color: "#64748b", fontSize: 12, margin: 0 },
-  btn: { border: "1px solid #0f766e", background: "#0f766e", color: "#fff", borderRadius: 8, padding: "8px 14px", fontSize: 13, fontWeight: 600, cursor: "pointer" },
-  btnSm: { border: "1px solid #0f766e", background: "#0f766e", color: "#fff", borderRadius: 8, padding: "5px 10px", fontSize: 12, fontWeight: 600, cursor: "pointer" },
-  btnGhostSm: { border: "1px solid #cbd5e1", background: "transparent", color: "#334155", borderRadius: 8, padding: "5px 10px", fontSize: 12, fontWeight: 600, cursor: "pointer" },
+  chip: { background: "#fbf9f4", color: "#171511", borderRadius: 999, padding: "3px 10px", fontSize: 12, fontWeight: 600 },
+  badge: { borderRadius: 999, padding: "2px 9px", fontSize: 12, fontWeight: 700, background: "#fbf9f4", color: "#171511" },
+  dim: { color: "#ece3d2", fontSize: 12 },
+  note: { color: "#6b6356", fontSize: 12, margin: 0 },
+  btn: { border: "1px solid #171511", background: "#171511", color: "#fff", borderRadius: 8, padding: "8px 14px", fontSize: 13, fontWeight: 600, cursor: "pointer" },
+  btnSm: { border: "1px solid #171511", background: "#171511", color: "#fff", borderRadius: 8, padding: "5px 10px", fontSize: 12, fontWeight: 600, cursor: "pointer" },
+  btnGhostSm: { border: "1px solid #ece3d2", background: "transparent", color: "#171511", borderRadius: 8, padding: "5px 10px", fontSize: 12, fontWeight: 600, cursor: "pointer" },
   ok: { color: "#15803d", fontSize: 13 },
   err: { color: "#b91c1c", fontSize: 13 }
 };

@@ -1,3 +1,6 @@
+/* Brand tokens — the SINGLE source of truth (packages/design-system). */
+@import "@rwos/design-system/tokens.css";
+
 * {
   box-sizing: border-box;
 }
@@ -55,7 +58,7 @@ footer nav a {
 
 .employer-page-navigator {
   align-items: center;
-  background: #f7f9fc;
+  background: #fbf9f4;
   border-bottom: 1px solid #e8e0d0;
   display: grid;
   font-family: Inter, system-ui, sans-serif;
@@ -96,7 +99,7 @@ footer nav a {
 
 .employer-page-arrow:hover,
 .employer-page-number:hover {
-  background: #e8f5f3;
+  background: #faf6ec;
   border-color: #b8862f;
 }
 
@@ -107,7 +110,7 @@ footer nav a {
 }
 
 .employer-page-arrow-disabled {
-  background: #edf0f4;
+  background: #fbf9f4;
   color: #8a8070;
   cursor: not-allowed;
 }
@@ -144,9 +147,9 @@ footer nav a {
 }
 
 /* --- Bill 96 language switcher --- */
-.langswitch { display: inline-flex; border: 1px solid #d7dbe0; border-radius: 999px; overflow: hidden; }
+.langswitch { display: inline-flex; border: 1px solid #faf6ec; border-radius: 999px; overflow: hidden; }
 .langbtn { appearance: none; border: 0; background: transparent; color: #6b6356; font: inherit; font-size: 13px; font-weight: 700; padding: 5px 12px; cursor: pointer; line-height: 1.4; }
-.langbtn + .langbtn { border-left: 1px solid #d7dbe0; }
+.langbtn + .langbtn { border-left: 1px solid #faf6ec; }
 .langbtn.active { background: #b8862f; color: #fff; }
 .langbtn:disabled { cursor: default; }
 .langbtn:not(.active):hover { background: #f6efdd; color: #b8862f; }
