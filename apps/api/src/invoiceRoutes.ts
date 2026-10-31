@@ -338,7 +338,7 @@ function invoiceCalculationInput(
   // The shared calculation engine is the authoritative validator for all
   // effective-dated configuration, money, tax, and rounding fields.
   //
-  // Platform-agency model: JobLop invoices every client under the single platform issuer
+  // Platform-agency model: Joblop invoices every client under the single platform issuer
   // (9375-7649 Québec Inc. + Québec GST/QST). The issuer and tax configuration are supplied
   // server-side from @rwos/shared when the caller omits them, so a client can never spoof the
   // issuer identity on a tax invoice. A caller MAY still supply them (tests, self-billing).

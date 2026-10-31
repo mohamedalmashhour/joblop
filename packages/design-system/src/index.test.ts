@@ -22,7 +22,7 @@ import {
 } from "./index";
 
 describe("design system brand palette", () => {
-  it("uses the fixed JobLop black + gold + cream foundation", () => {
+  it("uses the fixed Joblop black + gold + cream foundation", () => {
     expect(brand.black).toBe("#000000");
     expect(brand.ink).toBe("#0c0c0c");
     expect(brand.gold).toBe("#c9a24b");

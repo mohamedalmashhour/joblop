@@ -33,8 +33,8 @@ export async function generateMetadata(): Promise<Metadata> {
   const enDict = dictionaries["en-CA"];
   const m = dictionaries[locale] ?? enDict;
   return {
-    title: `JobLop — ${m["brand.tagline"] ?? enDict["brand.tagline"]}`,
-    description: "JobLop employer workforce, staffing, scheduling and operations workspace."
+    title: `Joblop — ${m["brand.tagline"] ?? enDict["brand.tagline"]}`,
+    description: "Joblop employer workforce, staffing, scheduling and operations workspace."
   };
 }
 

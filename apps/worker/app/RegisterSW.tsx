@@ -2,7 +2,7 @@
 
 import { useEffect } from "react";
 
-// Registers the service worker so JobLop is installable (PWA) and TWA-ready. No-op where unsupported.
+// Registers the service worker so Joblop is installable (PWA) and TWA-ready. No-op where unsupported.
 export function RegisterSW() {
   useEffect(() => {
     if (typeof navigator !== "undefined" && "serviceWorker" in navigator) {

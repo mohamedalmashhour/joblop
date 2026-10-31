@@ -1,7 +1,7 @@
 import { getRuntimeConfig } from "@rwos/config";
 
 // PUBLIC job board BFF — no sign-in required. Forwards to the API's public /public/jobs (area-level,
-// privacy-safe) so anyone can browse JobLop's open offers across Canada and filter by location. The
+// privacy-safe) so anyone can browse Joblop's open offers across Canada and filter by location. The
 // session gateway requires a token, so this calls the internal API directly (no auth needed).
 export async function GET(request: Request) {
   const url = new URL(request.url);

@@ -36,7 +36,7 @@ export default function SharedStatement({ snapshot }: { snapshot: Snapshot | nul
 
       <div style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
         <div style={{ flex: 1, minWidth: 0 }}>
-          <div style={{ fontFamily: "ui-monospace, monospace", fontSize: 12, color: "#ece3d2", marginBottom: 4 }}>JobLop</div>
+          <div style={{ fontFamily: "ui-monospace, monospace", fontSize: 12, color: "#ece3d2", marginBottom: 4 }}>Joblop</div>
           <h1 style={{ fontSize: 19, margin: 0 }}>{s.title}</h1>
           <div style={{ color: C.muted, fontSize: 13 }}>{s.number}</div>
         </div>
@@ -69,7 +69,7 @@ export default function SharedStatement({ snapshot }: { snapshot: Snapshot | nul
 
       <p style={{ color: C.faint, fontSize: 11.5, marginTop: 12, lineHeight: 1.6 }}>{s.note}</p>
       <p style={{ color: C.faint, fontSize: 11, marginTop: 18, borderTop: `1px solid ${C.line}`, paddingTop: 12, lineHeight: 1.6 }}>
-        Issued {new Date(s.generated).toLocaleString("en-CA", { dateStyle: "medium", timeStyle: "short" })}. Figures from the JobLop @rwos/shared pricing engine. Test-mode until a payment provider is bound for your region; tax &amp; deductions illustrative. This is a private, time-limited statement.
+        Issued {new Date(s.generated).toLocaleString("en-CA", { dateStyle: "medium", timeStyle: "short" })}. Figures from the Joblop @rwos/shared pricing engine. Test-mode until a payment provider is bound for your region; tax &amp; deductions illustrative. This is a private, time-limited statement.
       </p>
     </main>
   );

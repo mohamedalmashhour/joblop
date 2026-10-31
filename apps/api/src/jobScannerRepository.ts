@@ -3,7 +3,7 @@ import type { ExternalJobLead, ExternalJobSource } from "@rwos/shared";
 
 // JobScanner persistence. Leads are upserted by (source, sourceId) on each scan so a re-scan refreshes
 // lastSeenAt and any changed fields without duplicating. firstSeenAt is preserved across re-scans.
-// External leads only — no money, no JobLop governance.
+// External leads only — no money, no Joblop governance.
 
 type LeadRow = {
   source: string;

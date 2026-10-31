@@ -2,7 +2,7 @@ import { getRuntimeConfig } from "@rwos/config";
 
 // PUBLIC JobScanner stats BFF — no sign-in. Forwards to the API's public /public/jobscanner/stats
 // (pure COUNT queries, zero live scan) so the landing magnet can show the TRUE total of jobs waiting
-// ("X jobs — open a free account"). External leads are a hand-off to the source, not JobLop jobs.
+// ("X jobs — open a free account"). External leads are a hand-off to the source, not Joblop jobs.
 export async function GET(request: Request) {
   const url = new URL(request.url);
   const origin = getRuntimeConfig().internalApiOrigin;

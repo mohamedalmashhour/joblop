@@ -67,7 +67,7 @@ export function AddWorkersPanel({
         />
       </label>
       <p style={styles.cardText}>
-        New total: <strong>{newTotal}</strong>. Additional staffing will be matched by JobLop; existing
+        New total: <strong>{newTotal}</strong>. Additional staffing will be matched by Joblop; existing
         workers and assignments are unchanged.
       </p>
       <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>

@@ -1,6 +1,6 @@
 /* GENERATED from packages/design-system/src/index.ts (jlCssVariables) — do not edit by hand.
    Regenerate with: node --import tsx scripts/generate-design-tokens-css.ts
-   The SINGLE source of truth for JobLop brand tokens. @import this in each app globals.css. */
+   The SINGLE source of truth for Joblop brand tokens. @import this in each app globals.css. */
 :root {
   --jl-font-serif: var(--font-serif, "Playfair Display"), Georgia, "Times New Roman", serif;
   --jl-font-sans: var(--font-sans, "Inter"), -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;

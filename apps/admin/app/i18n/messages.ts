@@ -10,7 +10,7 @@ export const en = {
   "shell.brandSub": "governed operations",
   "shell.sessionContext":
     "Secure administration workspace · authority is verified before persisted data is shown",
-  "shell.brandHomeAria": "JobLop administration home",
+  "shell.brandHomeAria": "Joblop administration home",
   "shell.navAria": "Administration navigation",
 
   // Navigation items
@@ -47,7 +47,7 @@ export const fr: Messages = {
   "shell.brandSub": "opérations encadrées",
   "shell.sessionContext":
     "Espace d'administration sécurisé · l'autorité est vérifiée avant l'affichage des données persistées",
-  "shell.brandHomeAria": "Accueil de l'administration JobLop",
+  "shell.brandHomeAria": "Accueil de l'administration Joblop",
   "shell.navAria": "Navigation de l'administration",
 
   "nav.calendar": "Calendrier des demandes",
@@ -79,7 +79,7 @@ export const ar: Partial<Messages> = {
   "shell.brandSub": "عمليات محكومة",
   "shell.sessionContext":
     "مساحة إدارة آمنة · يُتحقَّق من الصلاحية قبل عرض البيانات المحفوظة",
-  "shell.brandHomeAria": "الصفحة الرئيسية لإدارة JobLop",
+  "shell.brandHomeAria": "الصفحة الرئيسية لإدارة Joblop",
   "shell.navAria": "تنقّل الإدارة",
 
   "nav.calendar": "تقويم الطلبات",

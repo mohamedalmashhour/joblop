@@ -315,7 +315,7 @@ describe("production offer-delivery boundary", () => {
 describe("Resend worker offer delivery", () => {
   const RESEND_URL = "https://api.resend.com/emails";
   const API_KEY = "re_testkey_1234567890";
-  const FROM = "JobLop <no-reply@notifications.example>";
+  const FROM = "Joblop <no-reply@notifications.example>";
   const deliverInput = {
     organizationId: "00000000-0000-4000-8000-0000000003a1",
     workerOfferId: "00000000-0000-4000-8000-0000000003a2",
@@ -364,8 +364,8 @@ describe("Resend worker offer delivery", () => {
     expect(body.subject).toContain("Personal Support Worker");
     // worker-safe: shows area label, never an exact street address
     expect(body.text).toContain("Laval, QC");
-    expect(body.html).toContain("JobLop");
-    expect(body.text).toContain("JobLop");
+    expect(body.html).toContain("Joblop");
+    expect(body.text).toContain("Joblop");
   });
 
   it("composes the French subject for fr recipients", async () => {

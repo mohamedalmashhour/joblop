@@ -120,7 +120,7 @@ export function AdminShell({
           { /* eslint-disable-next-line @next/next/no-img-element */ }
           <img
             src="/img/joblop-logo.png"
-            alt="JobLop"
+            alt="Joblop"
             style={{ height: 30, width: "auto", display: "block", borderRadius: 6 }}
           />
           <span>

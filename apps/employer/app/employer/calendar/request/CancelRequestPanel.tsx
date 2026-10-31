@@ -106,7 +106,7 @@ export function CancelRequestPanel({ requestId }: Readonly<{ requestId: string }
       <p style={styles.cardText}>Confirmed workers: {preview.affectedConfirmedWorkers}</p>
       {late ? (
         <div style={styles.warning}>
-          This shift begins in less than {preview.cutoffHours} hours. Cancelling now creates a JobLop
+          This shift begins in less than {preview.cutoffHours} hours. Cancelling now creates a Joblop
           commercial cancellation obligation for the affected confirmed workers.
           <p style={{ ...styles.cardText, marginTop: 8 }}>
             <strong>
@@ -160,13 +160,13 @@ function CancellationResult({ result }: Readonly<{ result: CancellationConfirmat
       {amount ? <p style={styles.cardText}>Commercial cancellation obligation: <strong>{amount}</strong></p> : null}
       {cancellation.status === "assignment_cancellation_pending" ? (
         <p style={styles.cardText}>
-          <strong>Cancellation processing.</strong> JobLop is completing the governed cancellation of the
+          <strong>Cancellation processing.</strong> Joblop is completing the governed cancellation of the
           confirmed worker assignments. This request is not fully cancelled until that completes.
         </p>
       ) : cancellation.status === "requires_reconciliation" ? (
         <p style={styles.warning}>
-          <strong>Requires JobLop review.</strong> Your cancellation and obligation are recorded, but the
-          assignment cancellation needs review by JobLop. Our team will complete it — this request is not
+          <strong>Requires Joblop review.</strong> Your cancellation and obligation are recorded, but the
+          assignment cancellation needs review by Joblop. Our team will complete it — this request is not
           yet fully cancelled.
         </p>
       ) : completed ? (

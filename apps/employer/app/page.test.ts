@@ -90,7 +90,7 @@ describe("Page 001 landing content", () => {
   it("routes public access and gates production without leaking legacy branding", () => {
     expect(landingSource).toContain('isProduction ? "/contact" : "/signup/employer"');
     expect(landingSource).toContain('href="/faq" style={styles.textLink}');
-    expect(landingSource).toContain("JobLop");
+    expect(landingSource).toContain("Joblop");
     expect(landingSource).not.toContain("Resident Job");
     expect(landingSource).not.toContain("Resident Workforce OS home");
   });

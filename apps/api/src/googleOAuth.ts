@@ -1,7 +1,7 @@
 import { createCipheriv, createDecipheriv, randomBytes } from "node:crypto";
 import type { GoogleProfile } from "@rwos/auth";
 
-// Google OAuth 2.0 + Calendar integration for JobLop. Flag-gated: nothing is reachable unless a
+// Google OAuth 2.0 + Calendar integration for Joblop. Flag-gated: nothing is reachable unless a
 // client id/secret are configured AND GOOGLE_OAUTH_ENABLED=enabled. Calendar sync is a further gate.
 // The refresh token (returned by Google only on first consent) is stored encrypted at rest.
 

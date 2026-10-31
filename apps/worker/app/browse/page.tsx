@@ -8,9 +8,9 @@ const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL ?? "https://joblop.com";
 export const metadata: Metadata = {
   metadataBase: new URL(SITE_URL),
   alternates: { canonical: "/browse" },
-  title: "JobLop — Find work across Canada, free",
+  title: "Joblop — Find work across Canada, free",
   description:
-    "Search open jobs across Canada and apply free. JobLop's JobScanner scans the market for care, kitchen, housekeeping and more — ranked for you, with no cut of your pay.",
+    "Search open jobs across Canada and apply free. Joblop's JobScanner scans the market for care, kitchen, housekeeping and more — ranked for you, with no cut of your pay.",
   keywords: [
     "jobs Canada",
     "find work",
@@ -26,17 +26,17 @@ export const metadata: Metadata = {
     "trouver du travail"
   ],
   openGraph: {
-    title: "JobLop — Find work across Canada, free",
+    title: "Joblop — Find work across Canada, free",
     description:
       "Search open jobs across Canada and apply free. JobScanner scans the market and ranks the best matches for you.",
-    siteName: "JobLop",
+    siteName: "Joblop",
     url: SITE_URL,
     type: "website",
     locale: "en_CA"
   },
   twitter: {
     card: "summary_large_image",
-    title: "JobLop — Find work across Canada, free",
+    title: "Joblop — Find work across Canada, free",
     description: "Search open jobs across Canada and apply free. JobScanner scans the market for you."
   },
   robots: { index: true, follow: true }
