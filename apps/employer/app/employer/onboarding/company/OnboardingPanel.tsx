@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { activeCountry } from "@rwos/shared";
 import { styles } from "../../employerStyles";
 
 // Round 2c: real self-serve employer onboarding. Persists org → residence → department against the
@@ -8,7 +9,8 @@ import { styles } from "../../employerStyles";
 // employer can immediately create a staffing request. No fixtures, no localStorage.
 type Step = "company" | "residence" | "department" | "done";
 
-const PROVINCES = ["QC", "ON", "BC", "AB", "MB", "SK", "NS", "NB", "NL", "PE", "NT", "NU", "YT"];
+// Region codes come from the active country profile (F16 seam) — no hardcoded province list here.
+const PROVINCES = activeCountry().regions.map((r) => r.code);
 
 export function OnboardingPanel() {
   const [step, setStep] = useState<Step>("company");

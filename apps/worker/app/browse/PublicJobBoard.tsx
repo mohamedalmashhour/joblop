@@ -405,12 +405,13 @@ export function PublicJobBoard() {
   };
 
   const fmtPay = (l: Lead) => {
+    const sym = activeCountry().currencySymbol;
     const toK = (minor: number | null) => (minor == null ? null : Math.round(minor / 100 / 1000));
     const lo = toK(l.salaryMinMinor);
     const hi = toK(l.salaryMaxMinor);
     if (lo == null && hi == null) return null;
-    if (lo != null && hi != null) return lo === hi ? `$${lo}k` : `$${lo}–${hi}k`;
-    return `$${lo ?? hi}k`;
+    if (lo != null && hi != null) return lo === hi ? `${sym}${lo}k` : `${sym}${lo}–${hi}k`;
+    return `${sym}${lo ?? hi}k`;
   };
 
   const scrollToJobs = () => document.getElementById("jobs")?.scrollIntoView({ behavior: "smooth" });
