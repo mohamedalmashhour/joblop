@@ -1150,6 +1150,10 @@ model JobRequest {
   title              String
   description        String?
   numberOfWorkers    Int               @default(1) @map("number_of_workers")
+  // Hybrid auto-offer: when true, approving+pricing the job opens it for direct worker claim
+  // (first eligible worker to tap Accept is assigned instantly, up to numberOfWorkers slots).
+  // When false, the job keeps the manual admin shortlist→offer→accept dispatch path unchanged.
+  openClaim          Boolean           @default(false) @map("open_claim")
   urgency            JobRequestUrgency @default(normal)
   worksiteDistanceKm Float?            @map("worksite_distance_km") // for the distance (gas/time) surcharge
   requestType        JobRequestType    @map("request_type")

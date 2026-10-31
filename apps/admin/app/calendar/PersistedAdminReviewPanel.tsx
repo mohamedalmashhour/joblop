@@ -21,6 +21,9 @@ export function PersistedAdminReviewPanel({ requestId }: Readonly<{ requestId: s
     "admin-review" | "request-information" | "approve-for-dispatch" | null
   >(null);
   const [reason, setReason] = useState("");
+  // Hybrid auto-offer: when checked, approving opens the job for direct worker claim (first eligible
+  // worker to tap Accept is assigned instantly). Unchecked keeps the manual shortlist→offer path.
+  const [openClaim, setOpenClaim] = useState(false);
   const requestGeneration = useRef(0);
   const confirmationDialog = useRef<HTMLDialogElement>(null);
   const confirmationTrigger = useRef<HTMLButtonElement | null>(null);
@@ -113,7 +116,8 @@ export function PersistedAdminReviewPanel({ requestId }: Readonly<{ requestId: s
         headers: { "content-type": "application/json" },
         body: JSON.stringify({
           expectedVersion: request.versionToken,
-          ...(action === "request-information" ? { reason: reason.trim() } : {})
+          ...(action === "request-information" ? { reason: reason.trim() } : {}),
+          ...(action === "approve-for-dispatch" && openClaim ? { openClaim: true } : {})
         })
       });
       if (response.status === 409) {
@@ -239,6 +243,19 @@ export function PersistedAdminReviewPanel({ requestId }: Readonly<{ requestId: s
                   value={reason}
                 />
               </label>
+              <label style={{ display: "flex", gap: 8, alignItems: "flex-start", marginTop: 12 }}>
+                <input
+                  checked={openClaim}
+                  disabled={actionBusy}
+                  onChange={(event) => setOpenClaim(event.currentTarget.checked)}
+                  type="checkbox"
+                />
+                <span>
+                  Open for direct worker claim — eligible workers claim and are assigned instantly
+                  (first-come, up to the requested headcount). Leave unchecked to use the manual
+                  shortlist → offer path.
+                </span>
+              </label>
               <div style={styles.actionStack}>
                 <button
                   disabled={actionBusy || reason.trim().length < 4}
@@ -260,7 +277,7 @@ export function PersistedAdminReviewPanel({ requestId }: Readonly<{ requestId: s
                   style={styles.primaryButton}
                   type="button"
                 >
-                  Approve for dispatch
+                  {openClaim ? "Approve + open claim" : "Approve for dispatch"}
                 </button>
               </div>
             </>

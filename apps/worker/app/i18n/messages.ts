@@ -130,6 +130,15 @@ export const en = {
   "job.inelNotOpen": "This job is no longer open.",
   "job.inelNotFound": "This job is no longer available.",
   "job.inelDefault": "You can't express interest in this job right now.",
+  // Hybrid auto-offer — direct claim
+  "job.claimTitle": "Claim this shift",
+  "job.claimBody": "This shift is open for direct claim. The first eligible worker to claim each slot is assigned instantly.",
+  "job.claimButton": "Accept & claim",
+  "job.claiming": "Claiming…",
+  "job.claimAssignedTitle": "You're assigned",
+  "job.claimAssignedBody": "You claimed this shift. See the details in your assignments.",
+  "job.claimFull": "All slots for this shift are now full.",
+  "job.claimElectionRequired": "Choose and sign your pay channel (employee or independent) before claiming work.",
 
   // Common (shared)
   "common.goToSearch": "Go to search",
@@ -600,6 +609,15 @@ export const fr: Messages = {
   "job.inelNotOpen": "Cet emploi n'est plus ouvert.",
   "job.inelNotFound": "Cet emploi n'est plus disponible.",
   "job.inelDefault": "Vous ne pouvez pas manifester d'intérêt pour cet emploi pour le moment.",
+  // Offre automatique hybride — réclamation directe
+  "job.claimTitle": "Réclamer ce quart",
+  "job.claimBody": "Ce quart est ouvert à la réclamation directe. Le premier travailleur admissible à réclamer chaque place est affecté instantanément.",
+  "job.claimButton": "Accepter et réclamer",
+  "job.claiming": "Réclamation…",
+  "job.claimAssignedTitle": "Vous êtes affecté",
+  "job.claimAssignedBody": "Vous avez réclamé ce quart. Consultez les détails dans vos affectations.",
+  "job.claimFull": "Toutes les places de ce quart sont maintenant complètes.",
+  "job.claimElectionRequired": "Choisissez et signez votre mode de paiement (salarié ou indépendant) avant de réclamer du travail.",
 
   // Commun (partagé)
   "common.goToSearch": "Aller à la recherche",

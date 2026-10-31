@@ -25,7 +25,12 @@ type JobDetailData = Readonly<{
   qualifications: readonly string[];
   allowances?: AllowancesData;
   saved: boolean;
+  // Hybrid auto-offer: when claimable, the worker claims directly instead of expressing interest.
+  openClaim?: boolean;
+  claimable?: boolean;
 }>;
+
+type ClaimState = "idle" | "claiming" | "assigned" | "full" | "election_required" | "ineligible" | "error";
 
 type AllowanceLine = Readonly<{ provision: string; amountMinor: number | null; note: string | null }>;
 type AllowancesData = Readonly<{
@@ -54,6 +59,7 @@ export function JobDetail({ id, postalCode }: { id: string; postalCode: string |
   const [job, setJob] = useState<JobDetailData | null>(null);
   const [interest, setInterest] = useState<InterestState | null>(null);
   const [interestBusy, setInterestBusy] = useState(false);
+  const [claimState, setClaimState] = useState<ClaimState>("idle");
 
   useEffect(() => {
     let active = true;
@@ -103,6 +109,24 @@ export function JobDetail({ id, postalCode }: { id: string; postalCode: string |
       if (r.ok) setInterest((prev) => ({ interest: null, eligibility: prev?.eligibility ?? { eligible: true, reasons: [] } }));
     } finally {
       setInterestBusy(false);
+    }
+  }, [id]);
+
+  const claimJob = useCallback(async () => {
+    setClaimState("claiming");
+    try {
+      const r = await fetch(`/api/jobs/${encodeURIComponent(id)}/claim`, { method: "POST" });
+      if (r.status === 201) {
+        setClaimState("assigned");
+        return;
+      }
+      const body = (await r.json().catch(() => ({}))) as { error?: string };
+      if (r.status === 409 && body.error === "RWOS_CLASSIFICATION_ELECTION_REQUIRED") setClaimState("election_required");
+      else if (r.status === 409) setClaimState("full");
+      else if (r.status === 422) setClaimState("ineligible");
+      else setClaimState("error");
+    } catch {
+      setClaimState("error");
     }
   }, [id]);
 
@@ -195,7 +219,11 @@ export function JobDetail({ id, postalCode }: { id: string; postalCode: string |
 
       <AllowancesSection allowances={job.allowances} currency={job.currency} locale={locale} />
 
-      <InterestPanel state={interest} busy={interestBusy} onExpress={expressInterest} onWithdraw={withdrawInterest} />
+      {job.claimable ? (
+        <ClaimPanel state={claimState} onClaim={claimJob} />
+      ) : (
+        <InterestPanel state={interest} busy={interestBusy} onExpress={expressInterest} onWithdraw={withdrawInterest} />
+      )}
 
       <div className="detail-cta no-print">
         <button className="btn ghost" type="button" aria-pressed={job.saved} onClick={toggleSaved}>
@@ -340,6 +368,38 @@ function InterestPanel({
       ) : (
         <p className="muted">{t(INELIGIBLE_KEY[reasons[0] ?? ""] ?? "job.inelDefault")}</p>
       )}
+    </section>
+  );
+}
+
+// Hybrid auto-offer — direct claim CTA. First eligible worker to claim each slot is assigned
+// instantly; once slots fill, the claim returns "full". The pay-channel election gate still applies.
+function ClaimPanel({ state, onClaim }: { state: ClaimState; onClaim: () => void }) {
+  const t = useT();
+
+  if (state === "assigned") {
+    return (
+      <section className="detail-section interest submitted">
+        <h2>{t("job.claimAssignedTitle")}</h2>
+        <p>{t("job.claimAssignedBody")}</p>
+        <a className="btn" href="/offers">{t("job.goToOffers")}</a>
+      </section>
+    );
+  }
+
+  return (
+    <section className="detail-section interest">
+      <h2>{t("job.claimTitle")}</h2>
+      <p>{t("job.claimBody")}</p>
+      {state === "full" ? <p className="muted">{t("job.claimFull")}</p> : null}
+      {state === "election_required" ? <p className="muted">{t("job.claimElectionRequired")}</p> : null}
+      {state === "ineligible" ? <p className="muted">{t("job.inelDefault")}</p> : null}
+      {state === "error" ? <p className="muted">{t("job.loadError")}</p> : null}
+      {state !== "full" ? (
+        <button className="btn" type="button" onClick={onClaim} disabled={state === "claiming"}>
+          {state === "claiming" ? t("job.claiming") : t("job.claimButton")}
+        </button>
+      ) : null}
     </section>
   );
 }
