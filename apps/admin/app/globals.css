@@ -10,6 +10,19 @@ body {
   margin: 0;
 }
 
+/* One brand voice, platform-wide: Playfair Display serif headings + Inter sans body.
+   Fonts are loaded in layout.tsx (next/font) and exposed as --font-serif / --font-sans. */
+body {
+  font-family: var(--font-sans, Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif);
+}
+
+h1,
+h2,
+h3 {
+  font-family: var(--font-serif, "Playfair Display", Georgia, "Times New Roman", serif);
+  letter-spacing: -0.01em;
+}
+
 .admin-app-shell {
   min-height: 100vh;
 }
