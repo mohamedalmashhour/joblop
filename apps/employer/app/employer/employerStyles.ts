@@ -108,7 +108,7 @@ export const styles: Record<string, CSSProperties> = {
     background: "rgba(255,255,255,0.06)",
     border: "1px solid rgba(255,255,255,0.12)",
     borderRadius: radii.sm,
-    color: "#d6e5f8",
+    color: "#f0e8d8",
     display: "grid",
     fontSize: 13,
     fontWeight: 700,
@@ -141,7 +141,7 @@ export const styles: Record<string, CSSProperties> = {
     background: "rgba(255,255,255,0.08)",
     border: "1px solid rgba(255,255,255,0.14)",
     borderRadius: radii.sm,
-    color: "#d6e5f8",
+    color: "#f0e8d8",
     display: "grid",
     fontSize: 12,
     gap: 6,
@@ -180,7 +180,7 @@ export const styles: Record<string, CSSProperties> = {
     color: statusColors.disabled.foreground
   },
   hero: {
-    background: `linear-gradient(135deg, ${navy} 0%, #082a66 100%)`,
+    background: `linear-gradient(135deg, ${navy} 0%, #2a2114 100%)`,
     borderBottom: `1px solid ${border}`,
     color: "#ffffff",
     display: "grid",
@@ -196,7 +196,7 @@ export const styles: Record<string, CSSProperties> = {
     textTransform: "uppercase"
   },
   eyebrowDark: {
-    color: "#123b78",
+    color: "#2a2114",
     fontSize: 12,
     fontWeight: 900,
     letterSpacing: 0,
@@ -210,7 +210,7 @@ export const styles: Record<string, CSSProperties> = {
     maxWidth: 940
   },
   lede: {
-    color: "#d6e5f8",
+    color: "#f0e8d8",
     fontSize: 18,
     lineHeight: 1.6,
     margin: 0,
@@ -272,7 +272,7 @@ export const styles: Record<string, CSSProperties> = {
   },
   tintedCard: {
     background: surfaceSubtle,
-    border: "1px solid #c9ddff",
+    border: "1px solid #f0e2c0",
     borderRadius: radii.sm,
     boxShadow: elevation.raised,
     padding: 18
@@ -290,7 +290,7 @@ export const styles: Record<string, CSSProperties> = {
     margin: "8px 0 0"
   },
   metaLabel: {
-    color: "#123b78",
+    color: "#2a2114",
     display: "block",
     fontSize: 11,
     fontWeight: 900,
@@ -357,7 +357,7 @@ export const styles: Record<string, CSSProperties> = {
     marginTop: 14
   },
   calendarMetric: {
-    color: "#071f4d",
+    color: "#1b160e",
     display: "block",
     fontSize: 24,
     fontWeight: 900,
@@ -367,7 +367,7 @@ export const styles: Record<string, CSSProperties> = {
     background: "#ffffff",
     border: `1px solid ${border}`,
     borderRadius: 999,
-    color: "#123b78",
+    color: "#2a2114",
     display: "inline-flex",
     fontSize: 12,
     fontWeight: 900,
@@ -378,7 +378,7 @@ export const styles: Record<string, CSSProperties> = {
     background: "rgba(255,255,255,0.76)",
     border: `1px solid ${border}`,
     borderRadius: 8,
-    color: "#0b1f3a",
+    color: "#15110b",
     display: "block",
     minHeight: 142,
     padding: 12,
@@ -404,7 +404,7 @@ export const styles: Record<string, CSSProperties> = {
     paddingLeft: 22
   },
   stepItem: {
-    color: "#0b1f3a",
+    color: "#15110b",
     fontWeight: 800,
     lineHeight: 1.45
   },
@@ -414,7 +414,7 @@ export const styles: Record<string, CSSProperties> = {
     gridTemplateColumns: "repeat(auto-fit, minmax(230px, 1fr))"
   },
   fieldLabel: {
-    color: "#0b1f3a",
+    color: "#15110b",
     display: "grid",
     fontSize: 14,
     fontWeight: 800,
@@ -445,7 +445,7 @@ export const styles: Record<string, CSSProperties> = {
     textDecoration: "none"
   },
   routeStatus: {
-    color: "#123b78",
+    color: "#2a2114",
     fontSize: 12,
     fontWeight: 900,
     textTransform: "uppercase"
@@ -453,7 +453,7 @@ export const styles: Record<string, CSSProperties> = {
   warning: {
     background: "#fff8d8",
     borderRadius: 8,
-    color: "#071f4d",
+    color: "#1b160e",
     fontSize: 14,
     fontWeight: 900,
     lineHeight: 1.5,
@@ -461,7 +461,7 @@ export const styles: Record<string, CSSProperties> = {
   },
   footer: {
     alignItems: "center",
-    background: "#071f4d",
+    background: "#1b160e",
     color: "#ffffff",
     display: "flex",
     flexWrap: "wrap",

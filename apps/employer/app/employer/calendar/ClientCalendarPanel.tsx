@@ -370,8 +370,8 @@ function clientStatusStyle(status: ClientCalendarDto["status"]) {
         : status === "assigned" || status === "in_progress" || status === "completed"
           ? ["#e8f5f3", "#075e58"]
           : status === "submitted" || status === "published"
-            ? ["#eaf2ff", "#174a8b"]
-            : ["#eef2f7", "#34445b"];
+            ? ["#faf6ec", "#2a2114"]
+            : ["#eef2f7", "#3a3326"];
   return { ...styles.pill, background: tone[0], color: tone[1] };
 }
 
