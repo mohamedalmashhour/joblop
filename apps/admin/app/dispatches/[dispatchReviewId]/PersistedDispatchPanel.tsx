@@ -203,8 +203,8 @@ function dispatchStateCopy(state: AdminDispatchReview["state"]) {
 
 const styles = {
   page: {
-    background: "#fbf9f4",
-    color: "#171511",
+    background: "#000000",
+    color: "#f4efe4",
     fontFamily: "Inter, system-ui, sans-serif",
     minHeight: "100vh"
   },
@@ -227,9 +227,9 @@ const styles = {
     gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))",
     padding: "24px clamp(18px, 5vw, 64px)"
   },
-  panel: { background: "#fff", border: "1px solid #faf6ec", borderRadius: 14, padding: 24 },
+  panel: { background: "#fff", border: "1px solid rgba(201, 162, 75, 0.16)", borderRadius: 14, padding: 24 },
   row: {
-    borderBottom: "1px solid #faf6ec",
+    borderBottom: "1px solid rgba(201, 162, 75, 0.16)",
     display: "flex",
     flexWrap: "wrap" as const,
     gap: 12,
@@ -238,7 +238,7 @@ const styles = {
   },
   button: {
     background: "#fff",
-    border: "1px solid #ece3d2",
+    border: "1px solid rgba(201, 162, 75, 0.16)",
     borderRadius: 8,
     color: "#000000",
     fontWeight: 800,

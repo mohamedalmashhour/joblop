@@ -405,7 +405,7 @@ function formatWindow(startAt: string, endAt: string, timezone: string) {
 const styles = {
   button: {
     background: "#fff",
-    border: "1px solid #ece3d2",
+    border: "1px solid rgba(201, 162, 75, 0.16)",
     borderRadius: 8,
     color: "#000000",
     fontWeight: 800,
@@ -414,7 +414,7 @@ const styles = {
   },
   primaryButton: {
     background: "#000000",
-    border: "1px solid #000000",
+    border: "1px solid rgba(201, 162, 75, 0.16)",
     borderRadius: 8,
     color: "#fff",
     fontWeight: 800,
@@ -427,7 +427,7 @@ const styles = {
     gap: 8
   },
   reconciliation: {
-    background: "#fff8e6",
+    background: "#000000",
     border: "1px solid #c69214",
     borderRadius: 8,
     display: "grid",
@@ -435,7 +435,7 @@ const styles = {
     padding: 12
   },
   record: {
-    borderTop: "1px solid #faf6ec",
+    borderTop: "1px solid rgba(201, 162, 75, 0.16)",
     display: "grid",
     gap: 6,
     padding: "14px 0"

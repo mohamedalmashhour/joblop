@@ -216,14 +216,14 @@ export function CandidateReviewPanel({
 const styles = {
   actions: { display: "flex", flexWrap: "wrap" as const, gap: 10 },
   dialog: {
-    background: "#fff8d8",
+    background: "#0c0c0c",
     border: "1px solid #e8d782",
     borderRadius: 12,
-    color: "#171511",
+    color: "#f4efe4",
     maxWidth: 560,
     padding: 24
   },
-  notice: { background: "#fff8d8", borderRadius: 10, marginTop: 16, padding: 16 },
+  notice: { background: "#0c0c0c", borderRadius: 10, marginTop: 16, padding: 16 },
   primary: {
     background: "#171511",
     border: 0,
@@ -235,7 +235,7 @@ const styles = {
   },
   secondary: {
     background: "#fff",
-    border: "1px solid #ece3d2",
+    border: "1px solid rgba(201, 162, 75, 0.16)",
     borderRadius: 8,
     color: "#000000",
     fontWeight: 800,

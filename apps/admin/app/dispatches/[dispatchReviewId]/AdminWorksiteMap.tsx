@@ -81,14 +81,14 @@ export function AdminWorksiteMap({ points, emptyLabel }: { points: readonly Work
 }
 
 const styles: Record<string, React.CSSProperties> = {
-  svg: { width: "100%", height: "auto", aspectRatio: "1 / 1", border: "1px solid #faf6ec", borderRadius: 10, display: "block" },
+  svg: { width: "100%", height: "auto", aspectRatio: "1 / 1", border: "1px solid rgba(201, 162, 75, 0.16)", borderRadius: 10, display: "block" },
   empty: {
     aspectRatio: "1 / 1",
-    border: "1px dashed #ece3d2",
+    border: "1px dashed rgba(201, 162, 75, 0.16)",
     borderRadius: 10,
     display: "grid",
     placeItems: "center",
-    color: "#6b6356",
+    color: "#b3a894",
     textAlign: "center",
     padding: 20,
     fontSize: 13

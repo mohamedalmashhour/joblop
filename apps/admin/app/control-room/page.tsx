@@ -53,7 +53,7 @@ export default function ControlRoomLanding() {
     <main style={{ background: C.bg, color: C.fg, minHeight: "100vh", fontFamily: "'IBM Plex Sans', system-ui, sans-serif" }}>
       <div style={{ maxWidth: 820, margin: "0 auto", paddingBlock: 40, paddingInline: 16 }}>
         <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 18 }}>
-          <div style={{ width: 32, height: 32, borderRadius: 9, background: "linear-gradient(135deg,#c9a24b,#f0d9a0)", display: "grid", placeItems: "center", color: "#000000", fontWeight: 700 }}>JL</div>
+          <div style={{ width: 32, height: 32, borderRadius: 9, background: "linear-gradient(135deg,#c9a24b,#141210)", display: "grid", placeItems: "center", color: "#000000", fontWeight: 700 }}>JL</div>
           <div>
             <div style={{ fontWeight: 700, fontSize: 20 }}>Transaction Control Room</div>
             <div style={{ color: C.muted, fontSize: 13 }}>Open any transaction to see exactly what happened and how the money settled.</div>

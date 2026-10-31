@@ -403,8 +403,8 @@ function AdminState({
 
 const styles = {
   page: {
-    background: "#fbf9f4",
-    color: "#171511",
+    background: "#000000",
+    color: "#f4efe4",
     fontFamily: "Inter, system-ui, sans-serif",
     minHeight: "100vh"
   },
@@ -441,7 +441,7 @@ const styles = {
   },
   retryButton: {
     background: "#fff",
-    border: "1px solid #ece3d2",
+    border: "1px solid rgba(201, 162, 75, 0.16)",
     borderRadius: 8,
     color: "#000000",
     cursor: "pointer",
@@ -461,7 +461,7 @@ const styles = {
   },
   secondaryAction: {
     background: "#fff",
-    border: "1px solid #ece3d2",
+    border: "1px solid rgba(201, 162, 75, 0.16)",
     borderRadius: 8,
     color: "#000000",
     cursor: "pointer",
@@ -471,14 +471,14 @@ const styles = {
   },
   label: { display: "grid", fontWeight: 800, gap: 8, marginTop: 16 },
   textarea: {
-    border: "1px solid #ece3d2",
+    border: "1px solid rgba(201, 162, 75, 0.16)",
     borderRadius: 8,
     font: "inherit",
     padding: 12,
     resize: "vertical" as const
   },
   confirmation: {
-    background: "#fff8d8",
+    background: "#0c0c0c",
     border: "1px solid #e8d782",
     borderRadius: 12,
     marginTop: 18,
@@ -490,11 +490,11 @@ const styles = {
     gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))",
     padding: "24px clamp(18px, 5vw, 64px)"
   },
-  panel: { background: "#fff", border: "1px solid #faf6ec", borderRadius: 14, padding: 24 },
+  panel: { background: "#fff", border: "1px solid rgba(201, 162, 75, 0.16)", borderRadius: 14, padding: 24 },
   h2: { color: "#000000", fontSize: 25, margin: "6px 0 14px" },
   row: {
     alignItems: "center",
-    borderBottom: "1px solid #faf6ec",
+    borderBottom: "1px solid rgba(201, 162, 75, 0.16)",
     display: "flex",
     flexWrap: "wrap" as const,
     gap: 12,
@@ -502,7 +502,7 @@ const styles = {
     padding: "12px 0"
   },
   notice: {
-    background: "#fff8d8",
+    background: "#0c0c0c",
     border: "1px solid #e8d782",
     borderRadius: 14,
     margin: "0 clamp(18px, 5vw, 64px) 48px",

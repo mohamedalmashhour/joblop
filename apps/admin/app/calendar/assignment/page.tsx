@@ -50,12 +50,12 @@ export default async function AdminCalendarAssignmentPage({
 }
 
 const styles = {
-  page: { background: "#fbf9f4", color: "#171511", fontFamily: "Inter, system-ui, sans-serif", minHeight: "100vh" },
+  page: { background: "#000000", color: "#f4efe4", fontFamily: "Inter, system-ui, sans-serif", minHeight: "100vh" },
   hero: { background: "#000000", color: "#fff", padding: "48px clamp(18px, 5vw, 64px)" },
   eyebrow: { color: "#fff1a8", fontSize: 12, fontWeight: 900, textTransform: "uppercase" as const },
   title: { fontSize: "clamp(36px, 5vw, 58px)", margin: "8px 0" },
   lede: { color: "#faf6ec", fontSize: 18, lineHeight: 1.6, maxWidth: 820 },
   button: { alignItems: "center", background: "#fff", borderRadius: 8, color: "#000000", display: "inline-flex", fontWeight: 800, marginTop: 12, minHeight: 44, padding: "0 16px", textDecoration: "none" },
   grid: { display: "grid", gap: 16, gridTemplateColumns: "repeat(auto-fit, minmax(240px, 1fr))", padding: "28px clamp(18px, 5vw, 64px) 0" },
-  card: { background: "#fff", border: "1px solid #faf6ec", borderRadius: 12, padding: 20 }
+  card: { background: "#fff", border: "1px solid rgba(201, 162, 75, 0.16)", borderRadius: 12, padding: 20 }
 } as const;

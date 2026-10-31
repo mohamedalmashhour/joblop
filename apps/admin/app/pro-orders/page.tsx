@@ -18,7 +18,7 @@ export default function ProOrdersPage() {
 }
 
 const styles = {
-  page: { background: "#fbf9f4", color: "#171511", fontFamily: "Inter, system-ui, sans-serif", minHeight: "100vh" },
+  page: { background: "#000000", color: "#f4efe4", fontFamily: "Inter, system-ui, sans-serif", minHeight: "100vh" },
   hero: { background: "#000000", color: "#fff", padding: "40px clamp(18px, 5vw, 64px)" },
   eyebrow: { color: "#fff1a8", fontSize: 12, fontWeight: 900, textTransform: "uppercase" as const },
   title: { fontSize: "clamp(34px, 5vw, 56px)", margin: "8px 0" },

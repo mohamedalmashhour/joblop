@@ -32,8 +32,8 @@ export default function AdminCalendarPage() {
 
 const styles = {
   page: {
-    background: "#fbf9f4",
-    color: "#171511",
+    background: "#000000",
+    color: "#f4efe4",
     fontFamily: "Inter, system-ui, sans-serif",
     minHeight: "100vh"
   },
@@ -49,16 +49,16 @@ const styles = {
   },
   card: {
     background: "#fff",
-    border: "1px solid #faf6ec",
+    border: "1px solid rgba(201, 162, 75, 0.16)",
     borderRadius: 14,
     boxShadow: "0 12px 30px rgba(6,27,65,.08)",
     padding: 22
   },
   h2: { color: "#000000", fontSize: 24 },
   badge: {
-    background: "#faf6ec",
+    background: "#000000",
     borderRadius: 99,
-    color: "#171511",
+    color: "#f4efe4",
     display: "inline-block",
     fontSize: 12,
     fontWeight: 900,
@@ -83,5 +83,5 @@ const styles = {
     gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))",
     padding: "0 clamp(18px, 5vw, 64px) 48px"
   },
-  boundaryCard: { background: "#fff", border: "1px solid #faf6ec", borderRadius: 10, padding: 16 }
+  boundaryCard: { background: "#fff", border: "1px solid rgba(201, 162, 75, 0.16)", borderRadius: 10, padding: 16 }
 } as const;

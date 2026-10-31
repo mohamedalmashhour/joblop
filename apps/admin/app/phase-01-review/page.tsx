@@ -108,7 +108,7 @@ export default function Phase01ReviewPage() {
 
 const styles: Record<string, CSSProperties> = {
   page: {
-    background: "#fbf9f4",
+    background: "#000000",
     color: "#000000",
     fontFamily: "Inter, system-ui, sans-serif",
     minHeight: "100vh",
@@ -133,7 +133,7 @@ const styles: Record<string, CSSProperties> = {
     textTransform: "uppercase"
   },
   eyebrowDark: {
-    color: "#171511",
+    color: "#f4efe4",
     fontSize: 12,
     fontWeight: 900,
     letterSpacing: 0,
@@ -161,8 +161,8 @@ const styles: Record<string, CSSProperties> = {
     padding: 16
   },
   noticePanel: {
-    background: "#ffffff",
-    border: "1px solid #faf6ec",
+    background: "#000000",
+    border: "1px solid rgba(201, 162, 75, 0.16)",
     borderRadius: 8,
     display: "grid",
     gap: 16,
@@ -170,7 +170,7 @@ const styles: Record<string, CSSProperties> = {
     padding: 18
   },
   sectionTitle: {
-    color: "#171511",
+    color: "#f4efe4",
     fontSize: 24,
     lineHeight: 1.18,
     margin: "6px 0 0"
@@ -183,8 +183,8 @@ const styles: Record<string, CSSProperties> = {
     paddingLeft: 20
   },
   panel: {
-    background: "#ffffff",
-    border: "1px solid #faf6ec",
+    background: "#000000",
+    border: "1px solid rgba(201, 162, 75, 0.16)",
     borderRadius: 8,
     marginTop: 18,
     padding: 18
@@ -198,21 +198,21 @@ const styles: Record<string, CSSProperties> = {
     marginBottom: 14
   },
   h2: {
-    color: "#171511",
+    color: "#f4efe4",
     fontSize: 21,
     margin: 0
   },
   statusBadge: {
-    background: "#fbf9f4",
-    border: "1px solid #ece3d2",
+    background: "#000000",
+    border: "1px solid rgba(201, 162, 75, 0.16)",
     borderRadius: 8,
-    color: "#171511",
+    color: "#f4efe4",
     fontSize: 12,
     fontWeight: 900,
     padding: "7px 10px"
   },
   warningBadge: {
-    background: "#fff8d8",
+    background: "#0c0c0c",
     border: "1px solid #e8d782",
     borderRadius: 8,
     color: "#8a5600",
@@ -227,7 +227,7 @@ const styles: Record<string, CSSProperties> = {
   },
   routeCard: {
     background: "#f7faf9",
-    border: "1px solid #faf6ec",
+    border: "1px solid rgba(201, 162, 75, 0.16)",
     borderRadius: 8,
     color: "#000000",
     display: "grid",
@@ -237,13 +237,13 @@ const styles: Record<string, CSSProperties> = {
     textDecoration: "none"
   },
   pageNumber: {
-    color: "#171511",
+    color: "#f4efe4",
     fontSize: 12,
     fontWeight: 900,
     textTransform: "uppercase"
   },
   muted: {
-    color: "#171511",
+    color: "#f4efe4",
     fontSize: 13
   },
   tableWrap: {
@@ -256,13 +256,13 @@ const styles: Record<string, CSSProperties> = {
   },
   th: {
     background: "#f7faf9",
-    border: "1px solid #faf6ec",
+    border: "1px solid rgba(201, 162, 75, 0.16)",
     fontSize: 13,
     padding: 10,
     textAlign: "left"
   },
   td: {
-    border: "1px solid #faf6ec",
+    border: "1px solid rgba(201, 162, 75, 0.16)",
     fontSize: 13,
     padding: 10,
     verticalAlign: "top"

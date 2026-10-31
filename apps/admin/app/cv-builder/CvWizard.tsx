@@ -236,29 +236,29 @@ export function CvWizard() {
 }
 
 function designStyle(key: string): Record<string, string> {
-  if (key === "healthcare") return { fontFamily: "Georgia, serif", color: "#171511", background: "#fbf9f4", borderTop: "6px solid #171511" };
-  if (key === "professional") return { fontFamily: "Inter, system-ui, sans-serif", color: "#0c0c0c", background: "#fff", borderTop: "6px solid #171511" };
-  return { fontFamily: "'Helvetica Neue', Arial, sans-serif", color: "#171511", background: "#fffdf7", borderTop: "6px solid #171511" }; // service/trades
+  if (key === "healthcare") return { fontFamily: "Georgia, serif", color: "#f4efe4", background: "#000000", borderTop: "6px solid rgba(201, 162, 75, 0.16)" };
+  if (key === "professional") return { fontFamily: "Inter, system-ui, sans-serif", color: "#0c0c0c", background: "#fff", borderTop: "6px solid rgba(201, 162, 75, 0.16)" };
+  return { fontFamily: "'Helvetica Neue', Arial, sans-serif", color: "#f4efe4", background: "#000000", borderTop: "6px solid rgba(201, 162, 75, 0.16)" }; // service/trades
 }
 
 const styles = {
   wrap: { padding: "24px clamp(18px, 5vw, 64px)" },
-  card: { background: "#fff", border: "1px solid #faf6ec", borderRadius: 14, boxShadow: "0 12px 30px rgba(6,27,65,.06)", marginBottom: 18, padding: 22 },
+  card: { background: "#fff", border: "1px solid rgba(201, 162, 75, 0.16)", borderRadius: 14, boxShadow: "0 12px 30px rgba(6,27,65,.06)", marginBottom: 18, padding: 22 },
   step: { color: "#000000", fontSize: 16, margin: "18px 0 8px" },
-  hint: { color: "#6b6356", fontSize: 12, fontWeight: 500 },
-  q: { color: "#171511", fontSize: 13, fontWeight: 700, margin: "10px 0 6px" },
+  hint: { color: "#b3a894", fontSize: 12, fontWeight: 500 },
+  q: { color: "#f4efe4", fontSize: 13, fontWeight: 700, margin: "10px 0 6px" },
   row: { display: "flex", flexWrap: "wrap" as const, gap: 12 },
-  label: { color: "#171511", display: "flex", flexDirection: "column" as const, fontSize: 12, fontWeight: 700, gap: 4 },
-  input: { border: "1px solid #ece3d2", borderRadius: 8, minHeight: 40, padding: "0 10px", minWidth: 200 },
+  label: { color: "#f4efe4", display: "flex", flexDirection: "column" as const, fontSize: 12, fontWeight: 700, gap: 4 },
+  input: { border: "1px solid rgba(201, 162, 75, 0.16)", borderRadius: 8, minHeight: 40, padding: "0 10px", minWidth: 200 },
   chips: { display: "flex", flexWrap: "wrap" as const, gap: 8 },
-  chip: { background: "#fbf9f4", border: "1px solid #faf6ec", borderRadius: 999, color: "#171511", cursor: "pointer", fontSize: 13, fontWeight: 600, padding: "8px 14px" },
-  chipOn: { background: "#171511", borderColor: "#171511", color: "#fff" },
+  chip: { background: "#000000", border: "1px solid rgba(201, 162, 75, 0.16)", borderRadius: 999, color: "#f4efe4", cursor: "pointer", fontSize: 13, fontWeight: 600, padding: "8px 14px" },
+  chipOn: { background: "#171511", borderColor: "rgba(201, 162, 75, 0.16)", color: "#fff" },
   cta: { background: "#171511", border: "none", borderRadius: 10, color: "#fff", cursor: "pointer", fontSize: 15, fontWeight: 800, padding: "12px 22px" },
-  notice: { color: "#171511", fontSize: 13, fontWeight: 700, marginLeft: 12 },
-  upload: { color: "#6b6356", fontSize: 12, marginTop: 14 },
+  notice: { color: "#f4efe4", fontSize: 13, fontWeight: 700, marginLeft: 12 },
+  upload: { color: "#b3a894", fontSize: 12, marginTop: 14 },
   prov: { fontSize: 11, marginTop: 16, opacity: 0.7 },
-  warn: { background: "#fff6e6", border: "1px solid #f0d089", borderRadius: 8, color: "#8a5a00", fontSize: 12, marginTop: 8, padding: "8px 12px" },
+  warn: { background: "#000000", border: "1px solid rgba(201, 162, 75, 0.16)", borderRadius: 8, color: "#8a5a00", fontSize: 12, marginTop: 8, padding: "8px 12px" },
   assetList: { listStyle: "none", margin: "12px 0 0", padding: 0 },
-  assetItem: { alignItems: "center", borderBottom: "1px solid #fbf9f4", color: "#171511", display: "flex", fontSize: 13, justifyContent: "space-between", padding: "8px 0" },
+  assetItem: { alignItems: "center", borderBottom: "1px solid rgba(201, 162, 75, 0.16)", color: "#f4efe4", display: "flex", fontSize: 13, justifyContent: "space-between", padding: "8px 0" },
   remove: { background: "none", border: "none", color: "#b23b2e", cursor: "pointer", fontSize: 12, fontWeight: 700 }
 } as const;

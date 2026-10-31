@@ -131,23 +131,23 @@ function WorkerSummaryRow({ r }: { r: WorkerRow }) {
 }
 
 const styles: Record<string, React.CSSProperties> = {
-  page: { padding: "clamp(16px, 3vw, 32px)", fontFamily: "Inter, system-ui, sans-serif", color: "#171511" },
+  page: { padding: "clamp(16px, 3vw, 32px)", fontFamily: "Inter, system-ui, sans-serif", color: "#f4efe4" },
   hero: { marginBottom: 16 },
-  eyebrow: { color: "#171511", fontWeight: 700, fontSize: 12, letterSpacing: "0.06em", textTransform: "uppercase", margin: 0 },
+  eyebrow: { color: "#f4efe4", fontWeight: 700, fontSize: 12, letterSpacing: "0.06em", textTransform: "uppercase", margin: 0 },
   title: { fontSize: "clamp(24px, 4vw, 34px)", margin: "4px 0" },
-  lede: { color: "#171511", maxWidth: 760, margin: 0 },
+  lede: { color: "#f4efe4", maxWidth: 760, margin: 0 },
   tabs: { display: "flex", flexWrap: "wrap", gap: 8, margin: "12px 0" },
-  tab: { border: "1px solid #ece3d2", background: "transparent", color: "#171511", borderRadius: 999, padding: "6px 14px", fontSize: 13, fontWeight: 600, cursor: "pointer" },
-  tabActive: { border: "1px solid #171511", background: "#171511", color: "#fff", borderRadius: 999, padding: "6px 14px", fontSize: 13, fontWeight: 700, cursor: "pointer" },
+  tab: { border: "1px solid rgba(201, 162, 75, 0.16)", background: "transparent", color: "#f4efe4", borderRadius: 999, padding: "6px 14px", fontSize: 13, fontWeight: 600, cursor: "pointer" },
+  tabActive: { border: "1px solid rgba(201, 162, 75, 0.16)", background: "#171511", color: "#fff", borderRadius: 999, padding: "6px 14px", fontSize: 13, fontWeight: 700, cursor: "pointer" },
   searchBar: { display: "flex", flexWrap: "wrap", gap: 8, marginBottom: 12 },
-  input: { border: "1px solid #ece3d2", borderRadius: 8, padding: "8px 10px", fontSize: 14, minHeight: 38 },
+  input: { border: "1px solid rgba(201, 162, 75, 0.16)", borderRadius: 8, padding: "8px 10px", fontSize: 14, minHeight: 38 },
   list: { listStyle: "none", margin: 0, padding: 0, display: "flex", flexDirection: "column", gap: 8 },
-  item: { border: "1px solid #faf6ec", borderRadius: 10, background: "#fff" },
+  item: { border: "1px solid rgba(201, 162, 75, 0.16)", borderRadius: 10, background: "#fff" },
   rowLink: { display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8, padding: "12px 14px", textDecoration: "none", color: "inherit" },
-  badge: { background: "#fbf9f4", color: "#171511", borderRadius: 999, padding: "2px 9px", fontSize: 12, fontWeight: 700 },
-  badgeWarn: { background: "#fef3c7", color: "#92400e", borderRadius: 999, padding: "2px 9px", fontSize: 12, fontWeight: 700 },
+  badge: { background: "#000000", color: "#f4efe4", borderRadius: 999, padding: "2px 9px", fontSize: 12, fontWeight: 700 },
+  badgeWarn: { background: "#0c0c0c", color: "#b3a894", borderRadius: 999, padding: "2px 9px", fontSize: 12, fontWeight: 700 },
   badgeBad: { background: "#fee2e2", color: "#b91c1c", borderRadius: 999, padding: "2px 9px", fontSize: 12, fontWeight: 700 },
   dim: { color: "#ece3d2", fontSize: 12 },
-  muted: { color: "#6b6356" },
-  button: { border: "1px solid #171511", background: "#171511", color: "#fff", borderRadius: 8, padding: "8px 14px", fontSize: 13, fontWeight: 600, cursor: "pointer" }
+  muted: { color: "#b3a894" },
+  button: { border: "1px solid rgba(201, 162, 75, 0.16)", background: "#171511", color: "#fff", borderRadius: 8, padding: "8px 14px", fontSize: 13, fontWeight: 600, cursor: "pointer" }
 };
