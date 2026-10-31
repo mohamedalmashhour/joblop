@@ -23,13 +23,13 @@ type Lead = {
 };
 type Lang = "en" | "fr" | "ar";
 
-const PROVINCES: { code: string; en: string; fr: string }[] = [
-  { code: "AB", en: "Alberta", fr: "Alberta" }, { code: "BC", en: "British Columbia", fr: "Colombie-Britannique" },
-  { code: "MB", en: "Manitoba", fr: "Manitoba" }, { code: "NB", en: "New Brunswick", fr: "Nouveau-Brunswick" },
-  { code: "NL", en: "Newfoundland and Labrador", fr: "Terre-Neuve-et-Labrador" }, { code: "NS", en: "Nova Scotia", fr: "Nouvelle-Écosse" },
-  { code: "NT", en: "Northwest Territories", fr: "Territoires du Nord-Ouest" }, { code: "NU", en: "Nunavut", fr: "Nunavut" },
-  { code: "ON", en: "Ontario", fr: "Ontario" }, { code: "PE", en: "Prince Edward Island", fr: "Île-du-Prince-Édouard" },
-  { code: "QC", en: "Quebec", fr: "Québec" }, { code: "SK", en: "Saskatchewan", fr: "Saskatchewan" }, { code: "YT", en: "Yukon", fr: "Yukon" }
+const PROVINCES: { code: string; en: string; fr: string; ar: string }[] = [
+  { code: "AB", en: "Alberta", fr: "Alberta", ar: "ألبرتا" }, { code: "BC", en: "British Columbia", fr: "Colombie-Britannique", ar: "كولومبيا البريطانية" },
+  { code: "MB", en: "Manitoba", fr: "Manitoba", ar: "مانيتوبا" }, { code: "NB", en: "New Brunswick", fr: "Nouveau-Brunswick", ar: "نيو برونزويك" },
+  { code: "NL", en: "Newfoundland and Labrador", fr: "Terre-Neuve-et-Labrador", ar: "نيوفاوندلاند ولابرادور" }, { code: "NS", en: "Nova Scotia", fr: "Nouvelle-Écosse", ar: "نوفا سكوشا" },
+  { code: "NT", en: "Northwest Territories", fr: "Territoires du Nord-Ouest", ar: "الأقاليم الشمالية الغربية" }, { code: "NU", en: "Nunavut", fr: "Nunavut", ar: "نونافوت" },
+  { code: "ON", en: "Ontario", fr: "Ontario", ar: "أونتاريو" }, { code: "PE", en: "Prince Edward Island", fr: "Île-du-Prince-Édouard", ar: "جزيرة الأمير إدوارد" },
+  { code: "QC", en: "Quebec", fr: "Québec", ar: "كيبيك" }, { code: "SK", en: "Saskatchewan", fr: "Saskatchewan", ar: "ساسكاتشوان" }, { code: "YT", en: "Yukon", fr: "Yukon", ar: "يوكون" }
 ];
 
 // Joblop's real work categories (not tech roles). `q` matches role/title/city server-side.
@@ -472,7 +472,7 @@ export function PublicJobBoard() {
                 <div className="jl-sf jl-sf-loc"><span>📍</span>
                   <select value={province} onChange={(e) => setProvince(e.target.value)} aria-label={t.phLoc}>
                     <option value="">{t.allCanada}</option>
-                    {PROVINCES.map((p) => <option key={p.code} value={p.code}>{lang === "fr" ? p.fr : p.en}</option>)}
+                    {PROVINCES.map((p) => <option key={p.code} value={p.code}>{lang === "ar" ? p.ar : lang === "fr" ? p.fr : p.en}</option>)}
                   </select>
                 </div>
                 <button type="submit" className="jl-search-btn">{t.searchBtn}</button>
