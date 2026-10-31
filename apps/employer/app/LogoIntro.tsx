@@ -31,7 +31,7 @@ export function LogoIntro() {
       onClick={() => setPhase("done")}
       style={{
         alignItems: "center",
-        background: "#0c0c0c",
+        background: "#000000",
         cursor: "pointer",
         display: "flex",
         inset: 0,

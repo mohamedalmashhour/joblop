@@ -11,7 +11,7 @@
     "splash": {
       "image": "./assets/icon.png",
       "resizeMode": "contain",
-      "backgroundColor": "#0c0c0c"
+      "backgroundColor": "#000000"
     },
     "web": {
       "bundler": "metro",
@@ -30,7 +30,7 @@
       "package": "com.joblop.app",
       "adaptiveIcon": {
         "foregroundImage": "./assets/adaptive-icon.png",
-        "backgroundColor": "#0c0c0c"
+        "backgroundColor": "#000000"
       }
     },
     "extra": {
