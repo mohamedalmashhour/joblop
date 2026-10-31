@@ -82,7 +82,7 @@ const en: LandingContent = {
     lede: "JobLop connects local workers with people and businesses that need help. Fast. Simple. Reliable.",
     chips: ["Quick Matches", "Verified Users", "Secure & Trusted"],
     ctaWork: "I’m Looking for Work",
-    ctaHire: "I Need to Hire",
+    ctaHire: "Workers Request",
     availableOn: "Available on",
     oppTitle: "Opportunities",
     oppAround: "around you"
@@ -204,7 +204,7 @@ const fr: LandingContent = {
     lede: "JobLop met en relation les travailleurs locaux avec les personnes et les entreprises qui ont besoin d’aide. Rapide. Simple. Fiable.",
     chips: ["Jumelages rapides", "Utilisateurs vérifiés", "Sécurisé et fiable"],
     ctaWork: "Je cherche du travail",
-    ctaHire: "J’ai besoin d’embaucher",
+    ctaHire: "Demande de travailleurs",
     availableOn: "Disponible sur",
     oppTitle: "Occasions",
     oppAround: "près de vous"
