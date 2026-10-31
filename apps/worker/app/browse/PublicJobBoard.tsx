@@ -4,7 +4,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { JobScannerDemo } from "./JobScannerDemo";
 import { trackConversion } from "../analytics";
 import { useLocale } from "../i18n/LocaleProvider";
-import { LanguageSwitcher } from "../i18n/LanguageSwitcher";
+import { SiteHeader } from "../SiteHeader";
 
 // Public, no-sign-in landing + job board for Joblop. Hero search, real categories, REAL featured
 // jobs (from /public/jobs — never fabricated), job-seeker + employer sections, honest stats and
@@ -438,22 +438,7 @@ export function PublicJobBoard() {
       <style>{CSS}</style>
 
       {/* NAV */}
-      <header className="jl-nav">
-        <div className="jl-nav-in">
-          <a href="/" className="jl-logo"><img src="/img/joblop-logo.png" alt="Joblop" style={{ height: 30, width: "auto", display: "block", borderRadius: 6 }} /></a>
-          <nav className="jl-links">
-            <a href="#jobs">{t.navJobs}</a>
-            <a href={EMPLOYER_URL}>{t.navEmp}</a>
-            <a href="#jobscanner">JobScanner</a>
-            <a href="#contact">{t.fContact}</a>
-          </nav>
-          <div className="jl-nav-cta">
-            <LanguageSwitcher />
-            <a href="/" className="jl-btn-ghost">{t.signin}</a>
-            <a href="/" className="jl-btn-primary">{t.create}</a>
-          </div>
-        </div>
-      </header>
+      <SiteHeader />
 
       {/* HERO */}
       <section className="jl-hero">
