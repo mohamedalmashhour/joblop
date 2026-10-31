@@ -3,29 +3,35 @@
 @import "@rwos/design-system/tokens.css";
 
 :root {
-  /* App-level roles mapped onto the shared brand tokens. No raw brand hex lives here. */
-  --bg: var(--jl-cream);
-  --surface: var(--jl-white);
-  --surface-2: var(--jl-cream-raised);
-  --border: var(--jl-border);
-  --text: var(--jl-text);
-  --text-muted: var(--jl-muted);
-  --brand: var(--jl-gold-strong);
+  /* DARK-FIRST: one continuous black canvas, cream body, gold accents, gold hairline borders —
+     the whole worker app wears the hero's soul, regardless of OS theme. */
+  --bg: var(--jl-black);
+  --surface: var(--jl-ink);
+  --surface-2: #141210;
+  --border: rgba(201, 162, 75, 0.16);
+  --text: var(--jl-on-black);
+  --text-muted: #b3a894;
+  --brand: var(--jl-gold);
   --brand-ink: var(--jl-on-gold);
-  --brand-soft: var(--jl-cream-contrast);
-  --accent: var(--jl-gold-strong);
-  --danger: var(--jl-danger);
+  --brand-soft: #2a2114;
+  --accent: var(--jl-gold);
+  --danger: #e5a4a4;
   --radius: 14px;
-  --shadow: var(--jl-shadow-sm);
+  --shadow: 0 24px 60px -34px rgba(0, 0, 0, 0.8), 0 2px 8px rgba(0, 0, 0, 0.5);
+  color-scheme: dark;
+  /* Aliases so older component rules that read --card / --line / --muted also go dark. */
+  --card: var(--surface);
+  --line: var(--border);
+  --muted: var(--text-muted);
 }
 
 @media (prefers-color-scheme: dark) {
   :root {
-    /* Pure black dark surfaces (brand decision). Gold lifts to #c9a24b for contrast on black. */
+    /* Already dark-first above; keep these in sync for the OS-dark case. */
     --bg: var(--jl-black);
     --surface: var(--jl-ink);
     --surface-2: #141210;
-    --border: #2a2114;
+    --border: rgba(201, 162, 75, 0.16);
     --text: var(--jl-on-black);
     --text-muted: #b3a894;
     --brand: var(--jl-gold);
