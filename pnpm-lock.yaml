@@ -229,6 +229,9 @@ importers:
       '@rwos/config':
         specifier: workspace:*
         version: link:../../packages/config
+      '@rwos/design-system':
+        specifier: workspace:*
+        version: link:../../packages/design-system
       '@rwos/shared':
         specifier: workspace:*
         version: link:../../packages/shared
