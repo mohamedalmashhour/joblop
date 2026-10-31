@@ -12,14 +12,22 @@ export const metadata: Metadata = {
 };
 
 export default async function RootLayout({ children }: Readonly<{ children: ReactNode }>) {
-  const staging = process.env.RWOS_ENV === "staging";
+  const rwosEnv = process.env.RWOS_ENV;
+  const staging = rwosEnv === "staging";
+  // The deployed test tier (Render soft launch, RWOS_ENV="test") and any non-local tier must behave
+  // like a real connected environment: lean nav only, never the numbered prototype page-map. The
+  // full page-map is reserved for genuine LOCAL dev (RWOS_ENV unset or "local"). Computed here
+  // server-side so RWOS_ENV (not exposed to the client bundle) is authoritative.
+  const connected = rwosEnv !== undefined && rwosEnv !== "" && rwosEnv !== "local";
   const store = await cookies();
   const locale = resolveAdminLocale(store.get(LOCALE_COOKIE)?.value);
   return (
     <html lang={htmlLang(locale)} dir={localeDir(locale)}>
       <body>
         <LocaleProvider locale={locale}>
-          <AdminShell staging={staging}>{children}</AdminShell>
+          <AdminShell connected={connected} staging={staging}>
+            {children}
+          </AdminShell>
         </LocaleProvider>
       </body>
     </html>

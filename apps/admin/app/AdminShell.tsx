@@ -72,13 +72,18 @@ function groupNavigation(navigation: readonly NavItem[]): { group: string; items
 
 export function AdminShell({
   children,
+  connected = false,
   staging
-}: Readonly<{ children: ReactNode; staging: boolean }>) {
+}: Readonly<{ children: ReactNode; connected?: boolean; staging: boolean }>) {
   const pathname = usePathname();
   const t = useT();
   const contentRef = useRef<HTMLDivElement>(null);
   const compiledStaging = process.env.NEXT_PUBLIC_RWOS_DEPLOYMENT_TIER === "staging";
+  // `connected` is the server-authoritative signal (RWOS_ENV !== local/unset), so the deployed test
+  // tier shows the lean nav, not the prototype page-map. The NEXT_PUBLIC checks remain as a
+  // compiled-in fallback for environments where only the public vars are set.
   const connectedEnvironment =
+    connected ||
     ["production", "staging"].includes(process.env.NEXT_PUBLIC_RWOS_ENV ?? "") ||
     compiledStaging ||
     staging;
