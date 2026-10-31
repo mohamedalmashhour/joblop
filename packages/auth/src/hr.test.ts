@@ -5,6 +5,7 @@ import {
   type HrCaseRecord,
   type HrCredentialRecord,
   type HrEventInput,
+  type HrIntakeRecord,
   type HrProfileRecord,
   type HrStore,
   type Page
@@ -19,12 +20,20 @@ function makeStore() {
   const creds: StoredCred[] = [];
   const cases: Mut<HrCaseRecord>[] = [];
   const events: HrEventInput[] = [];
+  const intakes: Record<string, HrIntakeRecord> = {};
   let seq = 0;
   const iso = () => new Date(1_700_000_000_000 + seq * 1000).toISOString();
   const store: HrStore = {
     async getProfile(w) { return profiles.find((p) => p.workerIdentityId === w) ?? null; },
     async createProfile(w) { const p = { id: `pr-${seq++}`, workerIdentityId: w, standing: "active" as const, standingReason: null, updatedAt: iso() }; profiles.push(p); return { ...p }; },
     async setStanding({ workerIdentityId, standing, reason }) { const p = profiles.find((x) => x.workerIdentityId === workerIdentityId)!; p.standing = standing; p.standingReason = reason; return { ...p }; },
+    async getIntake(w) { return intakes[w] ?? null; },
+    async upsertIntake({ workerIdentityId, data }) {
+      const prev: HrIntakeRecord = intakes[workerIdentityId] ?? { legalFirstName: null, legalLastName: null, phone: null, addressLine: null, city: null, province: null, postalCode: null, hasDrivingLicence: false, licenceClass: null, licenceExpiry: null, hasVehicle: false, vehicleType: null, canTravelKm: null, transportNotes: null, updatedAt: iso() };
+      const next: HrIntakeRecord = { ...prev, ...data, updatedAt: iso() };
+      intakes[workerIdentityId] = next;
+      return next;
+    },
     async listCredentials(w) { return creds.filter((c) => c.workerIdentityId === w).map((c) => ({ ...c })); },
     async getCredential(id) { const c = creds.find((x) => x.id === id); return c ? { ...c } : null; },
     async addCredential(input) { const c: StoredCred = { id: `cr-${seq++}`, workerIdentityId: input.workerIdentityId, credentialType: input.credentialType, issuer: input.issuer, issuedAt: input.issuedAt?.toISOString() ?? null, expiresAt: input.expiresAt?.toISOString() ?? null, status: "valid", verificationReference: input.verificationReference, supersededById: null, updatedAt: iso() }; creds.push(c); return { ...c }; },

@@ -4268,6 +4268,22 @@ export function buildApi(options: BuildApiOptions = {}) {
     }
   });
 
+  // Worker: edit my own HR intake (personal + driving licence + vehicle/transport). Worker-scoped;
+  // standing/credentials/cases are never writable here. All fields optional + validated server-side.
+  app.put("/hr/worker", async (request, reply) => {
+    const session = await authService.validateSession(readBearerToken(request.headers.authorization));
+    if (!session.authenticated || !session.user) {
+      return reply.code(401).send({ error: "RWOS_HR_DENIED", message: "Authentication is required." });
+    }
+    try {
+      const body = (request.body ?? {}) as Record<string, unknown>;
+      const intake = await hrService.upsertWorkerIntake({ userId: session.user.id, input: body });
+      return reply.code(200).send(intake);
+    } catch (error) {
+      return sendHrError(reply, error);
+    }
+  });
+
   // HR authority: full worker HR record (profile + credentials + cases).
   app.get("/platform/hr/workers/:workerIdentityId", async (request, reply) => {
     const actor = await requireHrAuthority(request, reply);

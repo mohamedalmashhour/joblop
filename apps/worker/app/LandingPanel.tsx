@@ -12,13 +12,16 @@ function generatePassword(length = 20): string {
   const all = sets.join("");
   const bytes = new Uint32Array(length);
   crypto.getRandomValues(bytes);
-  const chars: string[] = sets.map((s, i) => s[bytes[i] % s.length]);
-  for (let i = sets.length; i < length; i++) chars.push(all[bytes[i] % all.length]);
+  const chars: string[] = sets.map((s, i) => s.charAt((bytes[i] ?? 0) % s.length));
+  for (let i = sets.length; i < length; i++) chars.push(all.charAt((bytes[i] ?? 0) % all.length));
   const order = new Uint32Array(length);
   crypto.getRandomValues(order);
   for (let i = length - 1; i > 0; i--) {
-    const j = order[i] % (i + 1);
-    [chars[i], chars[j]] = [chars[j], chars[i]];
+    const j = (order[i] ?? 0) % (i + 1);
+    const a = chars[i] ?? "";
+    const b = chars[j] ?? "";
+    chars[i] = b;
+    chars[j] = a;
   }
   return chars.join("");
 }
