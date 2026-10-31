@@ -27,7 +27,7 @@ function GoogleAuthButton() {
     <div style={{ marginTop: "1rem", display: "grid", gap: "0.75rem" }}>
       <div
         aria-hidden="true"
-        style={{ textAlign: "center", color: "#7a7060", fontSize: "0.8rem", textTransform: "uppercase", letterSpacing: "0.04em" }}
+        style={{ textAlign: "center", color: "#b3a894", fontSize: "0.8rem", textTransform: "uppercase", letterSpacing: "0.04em" }}
       >
         {t("auth.or")}
       </div>

@@ -1,13 +1,12 @@
 import type { CSSProperties } from "react";
+import { JobLopLogo } from "../JobLopLogo";
 import { aiFaqRules, faqAnswers, faqCategories, sensitiveSearchWarning } from "./faqContent";
 
 export default function FAQPage() {
   return (
     <main style={styles.page}>
       <header style={styles.header}>
-        <a href="/" style={styles.brand} aria-label="JobLop home">
-          JobLop
-        </a>
+        <a href="/" style={styles.brand} aria-label="Joblop home"><JobLopLogo height={28} /></a>
         <nav aria-label="Primary navigation" style={styles.nav}>
           <a href="/about" style={styles.navLink}>
             About
@@ -124,7 +123,7 @@ export default function FAQPage() {
       </section>
 
       <footer style={styles.footer}>
-        <span>JobLop</span>
+        <span>Joblop</span>
         <nav aria-label="Footer navigation" style={styles.footerLinks}>
           <a href="/" style={styles.footerLink}>
             Home
@@ -155,40 +154,40 @@ function Meta({ label, value }: { label: string; value: string }) {
 }
 
 const styles: Record<string, CSSProperties> = {
-  page: { background: "#fbf9f4", color: "#15110b", fontFamily: "Inter, system-ui, sans-serif", minHeight: "100vh" },
-  header: { alignItems: "center", background: "#ffffff", borderBottom: "1px solid #f0e8d8", display: "flex", flexWrap: "wrap", gap: 16, justifyContent: "space-between", padding: "18px clamp(16px, 4vw, 40px)", position: "sticky", top: 0, zIndex: 1 },
-  brand: { color: "#1b160e", fontSize: 20, fontWeight: 900, textDecoration: "none" },
+  page: { background: "#000000", color: "#f4efe4", fontFamily: "Inter, system-ui, sans-serif", minHeight: "100vh" },
+  header: { alignItems: "center", background: "#000000", borderBottom: "1px solid rgba(201, 162, 75, 0.16)", display: "flex", flexWrap: "wrap", gap: 16, justifyContent: "space-between", padding: "18px clamp(16px, 4vw, 40px)", position: "sticky", top: 0, zIndex: 1 },
+  brand: { color: "#f4efe4", fontSize: 20, fontWeight: 900, textDecoration: "none" },
   nav: { alignItems: "center", display: "flex", flexWrap: "wrap", gap: 14 },
-  navLink: { color: "#15110b", fontSize: 14, fontWeight: 700, textDecoration: "none" },
+  navLink: { color: "#f4efe4", fontSize: 14, fontWeight: 700, textDecoration: "none" },
   hero: { background: "#1b160e", color: "#ffffff", display: "grid", gap: 14, padding: "clamp(34px, 7vw, 72px) clamp(16px, 4vw, 40px)" },
   eyebrow: { color: "#fff8d8", fontSize: 13, fontWeight: 900, letterSpacing: 0, margin: 0, textTransform: "uppercase" },
-  eyebrowDark: { color: "#2a2114", fontSize: 12, fontWeight: 900, letterSpacing: 0, margin: 0, textTransform: "uppercase" },
+  eyebrowDark: { color: "#f4efe4", fontSize: 12, fontWeight: 900, letterSpacing: 0, margin: 0, textTransform: "uppercase" },
   title: { fontSize: "clamp(34px, 5vw, 58px)", lineHeight: 1.04, margin: 0, maxWidth: 920 },
   lede: { color: "#f0e8d8", fontSize: 18, lineHeight: 1.6, margin: 0, maxWidth: 820 },
   searchLabel: { color: "#ffffff", display: "grid", fontSize: 14, fontWeight: 900, gap: 8, maxWidth: 620 },
-  searchInput: { border: "1px solid #d8ccb4", borderRadius: 8, color: "#15110b", font: "inherit", minHeight: 48, padding: "0 14px" },
+  searchInput: { border: "1px solid rgba(201, 162, 75, 0.16)", borderRadius: 8, color: "#f4efe4", font: "inherit", minHeight: 48, padding: "0 14px" },
   section: { padding: "48px clamp(16px, 4vw, 40px)" },
-  whiteSection: { background: "#ffffff", borderBottom: "1px solid #f0e8d8", borderTop: "1px solid #f0e8d8", padding: "48px clamp(16px, 4vw, 40px)" },
-  aiSection: { background: "#f6efdd", borderBottom: "1px solid #f0e8d8", borderTop: "1px solid #f0e8d8", padding: "48px clamp(16px, 4vw, 40px)" },
+  whiteSection: { background: "#000000", borderBottom: "1px solid rgba(201, 162, 75, 0.16)", borderTop: "1px solid rgba(201, 162, 75, 0.16)", padding: "48px clamp(16px, 4vw, 40px)" },
+  aiSection: { background: "#0c0c0c", borderBottom: "1px solid rgba(201, 162, 75, 0.16)", borderTop: "1px solid rgba(201, 162, 75, 0.16)", padding: "48px clamp(16px, 4vw, 40px)" },
   sectionHeader: { display: "grid", gap: 8, marginBottom: 18, maxWidth: 900 },
-  sectionTitle: { color: "#1b160e", fontSize: "clamp(26px, 4vw, 42px)", lineHeight: 1.12, margin: 0 },
+  sectionTitle: { color: "#f4efe4", fontSize: "clamp(26px, 4vw, 42px)", lineHeight: 1.12, margin: 0 },
   pillGrid: { display: "grid", gap: 10, gridTemplateColumns: "repeat(auto-fit, minmax(190px, 1fr))" },
-  pill: { background: "#ffffff", border: "1px solid #f0e8d8", borderRadius: 8, color: "#1b160e", fontWeight: 900, padding: 16 },
+  pill: { background: "#000000", border: "1px solid rgba(201, 162, 75, 0.16)", borderRadius: 8, color: "#f4efe4", fontWeight: 900, padding: 16 },
   activeLink: { alignItems: "center", background: "#1b160e", borderRadius: 8, color: "#ffffff", display: "inline-flex", fontWeight: 900, marginTop: 18, minHeight: 48, padding: "0 18px", textDecoration: "none" },
   answerGrid: { display: "grid", gap: 16 },
-  answerCard: { background: "#fbf9f4", border: "1px solid #f0e8d8", borderRadius: 8, padding: 20 },
-  category: { color: "#2a2114", fontSize: 12, fontWeight: 900, margin: 0, textTransform: "uppercase" },
+  answerCard: { background: "#000000", border: "1px solid rgba(201, 162, 75, 0.16)", borderRadius: 8, padding: 20 },
+  category: { color: "#f4efe4", fontSize: 12, fontWeight: 900, margin: 0, textTransform: "uppercase" },
   cardGrid: { display: "grid", gap: 14, gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))" },
-  card: { background: "#ffffff", border: "1px solid #f0e8d8", borderRadius: 8, padding: 18 },
-  cardTitle: { color: "#1b160e", fontSize: 20, margin: "8px 0 0" },
-  cardText: { color: "#6b6356", fontSize: 14, fontWeight: 700, lineHeight: 1.55, margin: "8px 0 0" },
-  detailText: { color: "#15110b", fontSize: 15, lineHeight: 1.6, margin: "12px 0 0" },
-  governance: { background: "#ffffff", border: "1px solid #f0e8d8", borderRadius: 8, marginTop: 16, padding: 16 },
-  governanceTitle: { color: "#1b160e", fontSize: 16, margin: 0 },
+  card: { background: "#000000", border: "1px solid rgba(201, 162, 75, 0.16)", borderRadius: 8, padding: 18 },
+  cardTitle: { color: "#f4efe4", fontSize: 20, margin: "8px 0 0" },
+  cardText: { color: "#b3a894", fontSize: 14, fontWeight: 700, lineHeight: 1.55, margin: "8px 0 0" },
+  detailText: { color: "#f4efe4", fontSize: 15, lineHeight: 1.6, margin: "12px 0 0" },
+  governance: { background: "#000000", border: "1px solid rgba(201, 162, 75, 0.16)", borderRadius: 8, marginTop: 16, padding: 16 },
+  governanceTitle: { color: "#f4efe4", fontSize: 16, margin: 0 },
   metaGrid: { display: "grid", gap: 8, gridTemplateColumns: "minmax(140px, 180px) 1fr", margin: "12px 0 0" },
-  metaLabel: { color: "#6b6356", fontSize: 13, fontWeight: 900, margin: 0 },
-  metaValue: { color: "#15110b", fontSize: 13, fontWeight: 800, margin: 0 },
-  action: { background: "#fff8d8", borderRadius: 8, color: "#1b160e", display: "inline-flex", fontWeight: 900, marginTop: 14, padding: "10px 12px" },
+  metaLabel: { color: "#b3a894", fontSize: 13, fontWeight: 900, margin: 0 },
+  metaValue: { color: "#f4efe4", fontSize: 13, fontWeight: 800, margin: 0 },
+  action: { background: "#0c0c0c", borderRadius: 8, color: "#f4efe4", display: "inline-flex", fontWeight: 900, marginTop: 14, padding: "10px 12px" },
   footer: { alignItems: "center", background: "#1b160e", color: "#ffffff", display: "flex", flexWrap: "wrap", gap: 16, justifyContent: "space-between", padding: "28px clamp(16px, 4vw, 40px)" },
   footerLinks: { display: "flex", flexWrap: "wrap", gap: 12 },
   footerLink: { color: "#ffffff", fontWeight: 700, textDecoration: "none" },
