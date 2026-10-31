@@ -84,6 +84,7 @@ export function PrivacyPolicy() {
           Password (stored only as a salted hash — we never store your password in plain text)
         </li>
         <li style={li}>Display name</li>
+        <li style={li}>Mobile number — optional; collected only if you choose to provide it (for shift alerts and account recovery)</li>
       </ul>
       <p style={p}>
         <strong>Profile and location information</strong>
@@ -116,9 +117,10 @@ export function PrivacyPolicy() {
         </li>
       </ul>
       <p style={p}>
-        We do <strong>not</strong> collect your phone number, government identification numbers, or
-        payment card details through the app. We do not knowingly collect information from anyone
-        under 18; Joblop is intended for adults.
+        Your mobile number is <strong>optional</strong> — we collect it only if you choose to provide
+        it, and use it for shift alerts and account recovery. We do <strong>not</strong> collect
+        government identification numbers or payment card details through the app. We do not knowingly
+        collect information from anyone under 18; Joblop is intended for adults.
       </p>
 
       <h2 style={h2}>2. How we use your information</h2>

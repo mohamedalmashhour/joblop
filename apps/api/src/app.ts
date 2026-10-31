@@ -1403,6 +1403,9 @@ export function buildApi(options: BuildApiOptions = {}) {
     const email = readRequiredString(body, "email");
     const password = readRequiredString(body, "password");
     const displayName = readOptionalString(body, "displayName");
+    // Optional mobile number (seeded #1). Never required; bounded. Null when absent/blank.
+    const phoneRaw = readOptionalString(body, "phone");
+    const phone = phoneRaw && phoneRaw.trim() ? phoneRaw.trim().slice(0, 32) : null;
 
     if (!email || !password) {
       return reply.code(400).send({
@@ -1426,6 +1429,7 @@ export function buildApi(options: BuildApiOptions = {}) {
         email,
         password,
         displayName,
+        phone,
         source: "api",
         ipAddress: request.ip,
         userAgent: request.headers["user-agent"] ?? null

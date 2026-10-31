@@ -180,6 +180,7 @@ function SignInForm({ onSignedIn, onNeedAccount }: { onSignedIn: () => void; onN
 function SignUpForm({ onSignedIn, onHaveAccount }: { onSignedIn: () => void; onHaveAccount: () => void }) {
   const t = useT();
   const [name, setName] = useState("");
+  const [phone, setPhone] = useState("");
   const [email, setEmail] = useState("");
   const [confirmEmail, setConfirmEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -207,7 +208,8 @@ function SignUpForm({ onSignedIn, onHaveAccount }: { onSignedIn: () => void; onH
           password,
           confirmPassword,
           acceptedNotices: true,
-          displayName: name.trim() || null
+          displayName: name.trim() || null,
+          phone: phone.trim() || null
         })
       });
       if (response.ok) { trackConversion("sign_up", { method: "worker" }); setRegistered(true); return; }
@@ -229,6 +231,8 @@ function SignUpForm({ onSignedIn, onHaveAccount }: { onSignedIn: () => void; onH
     <form className="auth-form" onSubmit={submit}>
       <label htmlFor="su-name">{t("signup.name")}</label>
       <input id="su-name" type="text" autoComplete="name" value={name} onChange={(e) => setName(e.target.value)} placeholder={t("signup.namePlaceholder")} />
+      <label htmlFor="su-phone">{t("signup.phone")}</label>
+      <input id="su-phone" type="tel" autoComplete="tel" value={phone} onChange={(e) => setPhone(e.target.value)} placeholder={t("signup.phonePlaceholder")} />
       <label htmlFor="su-email">{t("auth.email")}</label>
       <input id="su-email" type="email" autoComplete="username" value={email} onChange={(e) => setEmail(e.target.value)} required />
       <label htmlFor="su-confirm-email">{t("signup.confirmEmail")}</label>
