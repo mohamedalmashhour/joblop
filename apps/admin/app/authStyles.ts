@@ -5,8 +5,8 @@ import type { CSSProperties } from "react";
 // the pages match the rest of the administration workspace (navy + action teal on light surfaces).
 export const authStyles: Record<string, CSSProperties> = {
   page: {
-    background: colors.surface,
-    color: colors.text,
+    background: "#0c0c0c",
+    color: "#f4efe4",
     fontFamily: "Inter, system-ui, sans-serif",
     minHeight: "100vh",
     padding: "clamp(16px, 3vw, 32px)",
@@ -15,8 +15,8 @@ export const authStyles: Record<string, CSSProperties> = {
     alignItems: "flex-start"
   },
   card: {
-    background: colors.surfaceRaised,
-    border: `1px solid ${colors.border}`,
+    background: "#141210",
+    border: `1px solid ${"rgba(201, 162, 75, 0.16)"}`,
     borderRadius: radii.md,
     boxShadow: elevation.raised,
     padding: "clamp(20px, 4vw, 32px)",
@@ -33,24 +33,24 @@ export const authStyles: Record<string, CSSProperties> = {
     textTransform: "uppercase",
     margin: 0
   },
-  title: { color: colors.navy, fontSize: 26, lineHeight: 1.15, margin: 0 },
-  copy: { color: colors.muted, fontSize: 15, lineHeight: 1.55, margin: 0 },
+  title: { color: "#f4efe4", fontSize: 26, lineHeight: 1.15, margin: 0 },
+  copy: { color: "#b3a894", fontSize: 15, lineHeight: 1.55, margin: 0 },
   form: { display: "grid", gap: spacing.md },
   fieldLabel: {
     display: "grid",
     gap: spacing.xs,
-    color: colors.text,
+    color: "#f4efe4",
     fontSize: 14,
     fontWeight: 700
   },
   input: {
-    border: `1px solid ${colors.border}`,
+    border: `1px solid ${"rgba(201, 162, 75, 0.16)"}`,
     borderRadius: radii.sm,
     padding: "0 12px",
     minHeight: touch.minimumTarget,
     fontSize: 15,
-    background: colors.surfaceRaised,
-    color: colors.text
+    background: "#141210",
+    color: "#f4efe4"
   },
   primaryButton: {
     background: colors.actionTeal,
@@ -64,10 +64,10 @@ export const authStyles: Record<string, CSSProperties> = {
     cursor: "pointer"
   },
   secondaryButton: {
-    background: colors.surfaceSubtle,
-    border: `1px solid ${colors.border}`,
+    background: "#0a0a0a",
+    border: `1px solid ${"rgba(201, 162, 75, 0.16)"}`,
     borderRadius: radii.sm,
-    color: colors.navy,
+    color: "#f4efe4",
     fontWeight: 700,
     fontSize: 14,
     minHeight: touch.minimumTarget,
@@ -77,11 +77,11 @@ export const authStyles: Record<string, CSSProperties> = {
     alignItems: "center",
     cursor: "pointer"
   },
-  message: { color: colors.muted, fontSize: 14, lineHeight: 1.5, margin: 0 },
+  message: { color: "#b3a894", fontSize: 14, lineHeight: 1.5, margin: 0 },
   warning: {
-    color: colors.navy,
-    background: colors.surfaceSubtle,
-    border: `1px solid ${colors.border}`,
+    color: "#f4efe4",
+    background: "#0a0a0a",
+    border: `1px solid ${"rgba(201, 162, 75, 0.16)"}`,
     borderRadius: radii.sm,
     padding: 12,
     fontSize: 14,

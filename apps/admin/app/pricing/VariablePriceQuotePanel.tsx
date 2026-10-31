@@ -131,19 +131,19 @@ export function VariablePriceQuotePanel() {
 
 const styles = {
   wrap: { padding: "32px clamp(18px, 5vw, 64px)" },
-  card: { background: "#fff", border: "1px solid #faf6ec", borderRadius: 14, boxShadow: "0 12px 30px rgba(6,27,65,.08)", marginBottom: 18, padding: 22 },
+  card: { background: "#fff", border: "1px solid rgba(201, 162, 75, 0.16)", borderRadius: 14, boxShadow: "0 12px 30px rgba(6,27,65,.08)", marginBottom: 18, padding: 22 },
   h2: { color: "#000000", fontSize: 22, marginTop: 0 },
   formRow: { alignItems: "flex-end", display: "flex", flexWrap: "wrap" as const, gap: 12 },
-  label: { color: "#171511", display: "flex", flexDirection: "column" as const, fontSize: 13, fontWeight: 700, gap: 4 },
-  input: { border: "1px solid #ece3d2", borderRadius: 8, minHeight: 40, padding: "0 10px", width: 150 },
+  label: { color: "#f4efe4", display: "flex", flexDirection: "column" as const, fontSize: 13, fontWeight: 700, gap: 4 },
+  input: { border: "1px solid rgba(201, 162, 75, 0.16)", borderRadius: 8, minHeight: 40, padding: "0 10px", width: 150 },
   button: { alignItems: "center", background: "#171511", border: "none", borderRadius: 8, color: "#fff", cursor: "pointer", display: "inline-flex", fontWeight: 800, minHeight: 44, padding: "0 16px" },
   notice: { color: "#b23b2e", fontSize: 14, fontWeight: 700, marginBottom: 0 },
   table: { background: "#fff", borderCollapse: "collapse" as const, width: "100%" },
-  td: { borderBottom: "1px solid #fbf9f4", color: "#171511", fontSize: 14, padding: 10 },
-  tdNum: { borderBottom: "1px solid #fbf9f4", color: "#171511", fontSize: 14, fontWeight: 700, padding: 10, textAlign: "right" as const, whiteSpace: "nowrap" as const },
-  tdNote: { borderBottom: "1px solid #fbf9f4", color: "#171511", fontSize: 12, padding: 10 },
-  tdKept: { borderBottom: "1px solid #fbf9f4", color: "#171511", fontSize: 12, fontWeight: 800, padding: 10 },
-  tdTotal: { borderTop: "2px solid #000000", color: "#000000", fontSize: 15, fontWeight: 800, padding: 10 },
-  tdNumTotal: { borderTop: "2px solid #000000", color: "#000000", fontSize: 15, fontWeight: 800, padding: 10, textAlign: "right" as const, whiteSpace: "nowrap" as const },
-  gate: { color: "#171511", fontSize: 12, fontStyle: "italic" as const, marginBottom: 0, marginTop: 14 }
+  td: { borderBottom: "1px solid rgba(201, 162, 75, 0.16)", color: "#f4efe4", fontSize: 14, padding: 10 },
+  tdNum: { borderBottom: "1px solid rgba(201, 162, 75, 0.16)", color: "#f4efe4", fontSize: 14, fontWeight: 700, padding: 10, textAlign: "right" as const, whiteSpace: "nowrap" as const },
+  tdNote: { borderBottom: "1px solid rgba(201, 162, 75, 0.16)", color: "#f4efe4", fontSize: 12, padding: 10 },
+  tdKept: { borderBottom: "1px solid rgba(201, 162, 75, 0.16)", color: "#f4efe4", fontSize: 12, fontWeight: 800, padding: 10 },
+  tdTotal: { borderTop: "2px solid rgba(201, 162, 75, 0.16)", color: "#000000", fontSize: 15, fontWeight: 800, padding: 10 },
+  tdNumTotal: { borderTop: "2px solid rgba(201, 162, 75, 0.16)", color: "#000000", fontSize: 15, fontWeight: 800, padding: 10, textAlign: "right" as const, whiteSpace: "nowrap" as const },
+  gate: { color: "#f4efe4", fontSize: 12, fontStyle: "italic" as const, marginBottom: 0, marginTop: 14 }
 } as const;

@@ -134,22 +134,22 @@ export function VerificationQueuePanel() {
 }
 
 const styles: Record<string, React.CSSProperties> = {
-  page: { padding: "clamp(16px, 3vw, 32px)", fontFamily: "Inter, system-ui, sans-serif", color: "#171511" },
+  page: { padding: "clamp(16px, 3vw, 32px)", fontFamily: "Inter, system-ui, sans-serif", color: "#f4efe4" },
   hero: { marginBottom: 16 },
-  eyebrow: { color: "#171511", fontWeight: 700, fontSize: 12, letterSpacing: "0.06em", textTransform: "uppercase", margin: 0 },
+  eyebrow: { color: "#f4efe4", fontWeight: 700, fontSize: 12, letterSpacing: "0.06em", textTransform: "uppercase", margin: 0 },
   title: { fontSize: "clamp(24px, 4vw, 34px)", margin: "4px 0" },
-  lede: { color: "#171511", maxWidth: 720, margin: 0 },
+  lede: { color: "#f4efe4", maxWidth: 720, margin: 0 },
   filters: { display: "flex", flexWrap: "wrap", gap: 8, margin: "12px 0" },
-  filter: { border: "1px solid #ece3d2", background: "transparent", color: "#171511", borderRadius: 999, padding: "6px 12px", fontSize: 13, fontWeight: 600, cursor: "pointer" },
-  filterActive: { border: "1px solid #171511", background: "#171511", color: "#fff", borderRadius: 999, padding: "6px 12px", fontSize: 13, fontWeight: 700, cursor: "pointer" },
+  filter: { border: "1px solid rgba(201, 162, 75, 0.16)", background: "transparent", color: "#f4efe4", borderRadius: 999, padding: "6px 12px", fontSize: 13, fontWeight: 600, cursor: "pointer" },
+  filterActive: { border: "1px solid rgba(201, 162, 75, 0.16)", background: "#171511", color: "#fff", borderRadius: 999, padding: "6px 12px", fontSize: 13, fontWeight: 700, cursor: "pointer" },
   list: { listStyle: "none", margin: 0, padding: 0, display: "flex", flexDirection: "column", gap: 12 },
-  item: { border: "1px solid #faf6ec", borderRadius: 12, padding: 14, display: "flex", flexDirection: "column", gap: 8, background: "#fff" },
+  item: { border: "1px solid rgba(201, 162, 75, 0.16)", borderRadius: 12, padding: 14, display: "flex", flexDirection: "column", gap: 8, background: "#fff" },
   itemHead: { display: "flex", justifyContent: "space-between", alignItems: "baseline", gap: 8 },
-  statusBadge: { background: "#fbf9f4", color: "#171511", borderRadius: 999, padding: "3px 10px", fontSize: 12, fontWeight: 700 },
+  statusBadge: { background: "#000000", color: "#f4efe4", borderRadius: 999, padding: "3px 10px", fontSize: 12, fontWeight: 700 },
   dim: { color: "#ece3d2", fontSize: 12 },
   actions: { display: "flex", flexWrap: "wrap", gap: 8 },
-  muted: { color: "#6b6356" },
-  button: { border: "1px solid #171511", background: "#171511", color: "#fff", borderRadius: 8, padding: "7px 12px", fontSize: 13, fontWeight: 600, cursor: "pointer" },
-  buttonGhost: { border: "1px solid #ece3d2", background: "transparent", color: "#171511", borderRadius: 8, padding: "7px 12px", fontSize: 13, fontWeight: 600, cursor: "pointer" },
+  muted: { color: "#b3a894" },
+  button: { border: "1px solid rgba(201, 162, 75, 0.16)", background: "#171511", color: "#fff", borderRadius: 8, padding: "7px 12px", fontSize: 13, fontWeight: 600, cursor: "pointer" },
+  buttonGhost: { border: "1px solid rgba(201, 162, 75, 0.16)", background: "transparent", color: "#f4efe4", borderRadius: 8, padding: "7px 12px", fontSize: 13, fontWeight: 600, cursor: "pointer" },
   alert: { color: "#b91c1c", fontSize: 13 }
 };

@@ -272,7 +272,7 @@ const styles = {
   },
   card: {
     background: "#fff",
-    border: "1px solid #faf6ec",
+    border: "1px solid rgba(201, 162, 75, 0.16)",
     borderRadius: 14,
     boxShadow: "0 12px 30px rgba(6,27,65,.08)",
     overflowWrap: "anywhere" as const,
@@ -303,7 +303,7 @@ const styles = {
   reference: { overflowWrap: "anywhere" as const },
   stateCard: {
     background: "#fff",
-    border: "1px solid #faf6ec",
+    border: "1px solid rgba(201, 162, 75, 0.16)",
     borderRadius: 14,
     display: "grid",
     gap: 12,
@@ -313,7 +313,7 @@ const styles = {
   },
   label: { display: "grid", fontWeight: 800, gap: 6 },
   input: {
-    border: "1px solid #ece3d2",
+    border: "1px solid rgba(201, 162, 75, 0.16)",
     borderRadius: 8,
     font: "inherit",
     minHeight: 44,
@@ -321,7 +321,7 @@ const styles = {
   },
   retry: {
     background: "#fff",
-    border: "1px solid #ece3d2",
+    border: "1px solid rgba(201, 162, 75, 0.16)",
     borderRadius: 8,
     color: "#000000",
     cursor: "pointer",

@@ -206,7 +206,7 @@ function Shell({ children }: Readonly<{ children: ReactNode }>) {
       <style>{`.cr-grid{} @media (max-width:820px){.cr-grid{grid-template-columns:1fr !important}}`}</style>
       <div style={{ maxWidth: 1060, margin: "0 auto", paddingBlock: 22, paddingInline: 16 }}>
         <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 16 }}>
-          <div style={{ width: 32, height: 32, borderRadius: 9, background: "linear-gradient(135deg,#c9a24b,#f0d9a0)", display: "grid", placeItems: "center", color: "#000000", fontWeight: 700 }}>JL</div>
+          <div style={{ width: 32, height: 32, borderRadius: 9, background: "linear-gradient(135deg,#c9a24b,#141210)", display: "grid", placeItems: "center", color: "#000000", fontWeight: 700 }}>JL</div>
           <div>
             <div style={{ fontWeight: 700, fontSize: 18, letterSpacing: .3 }}>Transaction Control Room</div>
             <div style={{ color: C.muted, fontSize: 12 }}>Open any transaction to see its full lifecycle and settlement</div>

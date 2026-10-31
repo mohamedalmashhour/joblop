@@ -2,14 +2,15 @@ import { adminRoles } from "@rwos/auth";
 import { colors, elevation, radii, spacing, statusColors, touch } from "@rwos/design-system";
 import type { CSSProperties } from "react";
 
-const navy = colors.navy;
-const teal = colors.actionTeal;
-const border = colors.border;
-const surface = colors.surface;
-const surfaceRaised = colors.surfaceRaised;
-const surfaceSubtle = colors.surfaceSubtle;
-const text = colors.text;
-const muted = colors.muted;
+// Dark-first: black canvas, dark-raised panels, cream text, gold accent + hairline.
+const navy = colors.navy; // #000000 brand black
+const teal = colors.actionTeal; // gold accent
+const border = "rgba(201, 162, 75, 0.16)"; // gold hairline
+const surface = "#0c0c0c"; // dark-raised panel
+const surfaceRaised = "#141210"; // higher raise
+const surfaceSubtle = "#0a0a0a"; // subtle
+const text = "#f4efe4"; // cream body
+const muted = "#b3a894"; // warm secondary
 
 const kpis = [
   ["Residences", "16", "6 need attention"],
@@ -317,7 +318,7 @@ const styles: Record<string, CSSProperties> = {
   },
   matchCard: {
     alignItems: "center",
-    borderTop: "1px solid #faf6ec",
+    borderTop: "1px solid rgba(201, 162, 75, 0.16)",
     display: "flex",
     gap: 16,
     justifyContent: "space-between",
@@ -334,7 +335,7 @@ const styles: Record<string, CSSProperties> = {
     padding: `0 ${spacing.lg}px`
   },
   poolRow: {
-    borderTop: "1px solid #faf6ec",
+    borderTop: "1px solid rgba(201, 162, 75, 0.16)",
     display: "grid",
     gap: 8,
     gridTemplateColumns: "1fr auto",
@@ -367,7 +368,7 @@ const styles: Record<string, CSSProperties> = {
   status: { color: colors.success, fontSize: 13, fontWeight: 800 },
   danger: { color: colors.danger, fontSize: 13, fontWeight: 900 },
   requestRow: {
-    borderTop: "1px solid #faf6ec",
+    borderTop: "1px solid rgba(201, 162, 75, 0.16)",
     display: "grid",
     gap: 12,
     gridTemplateColumns: "repeat(auto-fit, minmax(150px, 1fr))",
