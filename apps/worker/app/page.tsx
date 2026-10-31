@@ -1,3 +1,4 @@
+import { HowItWorksMovie } from "./HowItWorksMovie";
 import { MarketplaceExplorer } from "./MarketplaceExplorer";
 import { TopBar } from "./TopBar";
 
@@ -10,6 +11,7 @@ export default function Page() {
       <TopBar />
       <main className="wrap">
         <MarketplaceExplorer />
+        <HowItWorksMovie />
       </main>
     </>
   );
