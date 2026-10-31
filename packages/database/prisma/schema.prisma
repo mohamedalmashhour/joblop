@@ -1532,6 +1532,7 @@ model WorkerIdentity {
   disputes           WorkerDispute[]
   verifications      WorkerVerification[]
   hrProfile          HrProfile?
+  hrIntake           WorkerHrIntake?
   hrCredentials      HrCredential[]
   hrCases            HrCase[]
   hrDocuments        HrDocument[]
@@ -1833,6 +1834,40 @@ model HrProfile {
 
   @@index([standing, updatedAt], map: "hr_profiles_standing_updated_at_idx")
   @@map("hr_profiles")
+}
+
+// Worker-EDITABLE HR intake (seeded #5). Distinct from HrProfile (HR-authority standing) and from
+// HrCredential/HrDocument (governed credential/doc pointers): this holds the fields the worker fills
+// in themselves — personal details, driving licence, vehicle/transport. Certificate FILES are NOT
+// stored here; they stay as HrDocument/UploadedDocument pointers. All fields optional; an incomplete
+// intake must not block offers. Keep values country-neutral (no hardcoded province/licence lists here).
+model WorkerHrIntake {
+  id               String    @id @default(uuid()) @db.Uuid
+  workerIdentityId String    @unique @map("worker_identity_id") @db.Uuid
+  // personal
+  legalFirstName   String?   @map("legal_first_name")
+  legalLastName    String?   @map("legal_last_name")
+  phone            String?   @map("phone")
+  addressLine      String?   @map("address_line")
+  city             String?   @map("city")
+  province         String?   @map("province")
+  postalCode       String?   @map("postal_code")
+  // driving licence
+  hasDrivingLicence Boolean  @default(false) @map("has_driving_licence")
+  licenceClass      String?  @map("licence_class")
+  licenceExpiry     DateTime? @map("licence_expiry") @db.Date
+  // vehicle / transport
+  hasVehicle        Boolean  @default(false) @map("has_vehicle")
+  vehicleType       String?  @map("vehicle_type")
+  canTravelKm       Int?     @map("can_travel_km")
+  transportNotes    String?  @map("transport_notes")
+  createdAt        DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt        DateTime  @updatedAt @map("updated_at") @db.Timestamptz(3)
+  version          Int       @default(1)
+
+  worker WorkerIdentity @relation(fields: [workerIdentityId], references: [id], onDelete: Cascade)
+
+  @@map("worker_hr_intakes")
 }
 
 // A worker credential/qualification. Multiple per worker. Renewal creates a NEW record and
