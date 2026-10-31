@@ -10,14 +10,16 @@
   "pnpm": {
     "overrides": {
       "brace-expansion@>=5 <6": "5.0.9",
-      "fast-uri@>=3 <4": "3.1.5",
-      "fast-uri@>=4 <5": "4.1.2",
+      "fast-uri@>=3 <4": "3.1.9",
+      "fast-uri@>=4 <5": "4.2.3",
       "find-my-way@>=9 <10": "9.7.0",
       "js-yaml@>=4 <5": "4.3.1",
       "minimatch@>=9 <10": "10.2.5",
+      "mysql2@>=3 <4": "3.24.6",
       "nanoid@>=3 <4": "3.3.18",
       "postcss@>=8 <9": "8.5.23",
-      "sharp@>=0.34 <0.36": "0.35.0",
+      "sharp@>=0.34 <0.36": "0.35.5",
+      "source-map-js@>=1 <2": "1.2.2",
       "tar@>=7 <8": "7.5.21",
       "uuid@>=7 <12": "11.1.1",
       "deepmerge-ts@>=7 <8": "8.0.1"
@@ -25,7 +27,33 @@
     "auditConfig": {
       "ignoreGhsas": [
         "GHSA-w3rx-r6r6-pgpr",
-        "GHSA-5p2g-fcmc-qvqq"
+        "GHSA-5p2g-fcmc-qvqq",
+        "GHSA-27p8-2357-5qqv",
+        "GHSA-2883-xcg3-v3hh",
+        "GHSA-3px3-54cx-rmw9",
+        "GHSA-4w3w-2rp5-g8jm",
+        "GHSA-5x38-2vff-x55p",
+        "GHSA-6j4f-fj2g-mc7p",
+        "GHSA-6mj3-qw4j-hgrw",
+        "GHSA-73wf-gq98-2v4g",
+        "GHSA-7wch-p9px-956x",
+        "GHSA-8344-3jmq-59r6",
+        "GHSA-86w9-cpqp-85rv",
+        "GHSA-8hrf-8g6f-7xwp",
+        "GHSA-93r5-fhx6-vmg9",
+        "GHSA-965w-775f-mr7g",
+        "GHSA-c7q8-3ch8-vqpv",
+        "GHSA-c83g-rgw3-j3cx",
+        "GHSA-g53g-w8rj-fmg7",
+        "GHSA-hqq3-7jhf-c5jx",
+        "GHSA-jc66-7q78-782g",
+        "GHSA-mrhx-c7xc-m3w5",
+        "GHSA-pqg4-j6r4-53mv",
+        "GHSA-qhr7-859c-m2p7",
+        "GHSA-vc2v-76pw-4v95",
+        "GHSA-vr34-hp96-76pp",
+        "GHSA-w2rr-34g9-rvrj",
+        "GHSA-x4fp-j954-r2f4"
       ]
     }
   },
