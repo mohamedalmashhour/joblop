@@ -3,11 +3,13 @@
 import { useCallback, useEffect, useState } from "react";
 import { useLocale, useT } from "../i18n/LocaleProvider";
 import type { MessageKey } from "../i18n/messages";
+import { resolveDeniedKind } from "../resolveDenied";
 
 type Doc = Readonly<{ id: string; documentType: string; jurisdiction: string | null; expiresAt: string | null; effectiveStatus: string; supersededById: string | null }>;
 type State =
   | { status: "loading" }
   | { status: "signed_out" }
+  | { status: "needs_setup" }
   | { status: "error" }
   | { status: "ready"; documents: readonly Doc[] };
 
@@ -51,7 +53,7 @@ export function MyDocuments() {
   const load = useCallback(async () => {
     try {
       const r = await fetch("/api/documents", { cache: "no-store" });
-      if (r.status === 401) return setState({ status: "signed_out" });
+      if (r.status === 401) return setState({ status: await resolveDeniedKind() });
       if (!r.ok) return setState({ status: "error" });
       const payload = (await r.json()) as { documents: Doc[] };
       setState({ status: "ready", documents: payload.documents });
@@ -98,6 +100,7 @@ export function MyDocuments() {
 
   if (state.status === "loading") return <div className="state">{t("common.loading")}</div>;
   if (state.status === "signed_out") return <div className="state">{t("doc.signInPrompt")}<div style={{ marginTop: 12 }}><a className="btn" href="/">{t("common.goToSearch")}</a></div></div>;
+  if (state.status === "needs_setup") return <div className="state">{t("common.needsWorkerSetup")}<div style={{ marginTop: 12 }}><a className="btn" href="/pay">{t("common.setUpWorker")}</a></div></div>;
   if (state.status === "error") return <div className="state error" role="alert">{t("doc.loadError")}</div>;
 
   const active = state.documents.filter((d) => d.effectiveStatus !== "superseded");

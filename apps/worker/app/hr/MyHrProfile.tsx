@@ -3,11 +3,13 @@
 import { useCallback, useEffect, useState } from "react";
 import { useLocale, useT } from "../i18n/LocaleProvider";
 import type { MessageKey } from "../i18n/messages";
+import { resolveDeniedKind } from "../resolveDenied";
 
 type Cred = Readonly<{ id: string; credentialType: string; expiresAt: string | null; effectiveStatus: string }>;
 type State =
   | { status: "loading" }
   | { status: "signed_out" }
+  | { status: "needs_setup" }
   | { status: "error" }
   | { status: "ready"; standing: string; credentials: readonly Cred[] };
 
@@ -34,7 +36,7 @@ export function MyHrProfile() {
   const load = useCallback(async () => {
     try {
       const r = await fetch("/api/hr", { cache: "no-store" });
-      if (r.status === 401) return setState({ status: "signed_out" });
+      if (r.status === 401) return setState({ status: await resolveDeniedKind() });
       if (!r.ok) return setState({ status: "error" });
       const payload = (await r.json()) as { standing: string; credentials: Cred[] };
       setState({ status: "ready", standing: payload.standing, credentials: payload.credentials });
@@ -48,6 +50,8 @@ export function MyHrProfile() {
   if (state.status === "loading") return <div className="state">{t("common.loading")}</div>;
   if (state.status === "signed_out")
     return <div className="state">{t("hr.signInPrompt")}<div style={{ marginTop: 12 }}><a className="btn" href="/">{t("common.goToSearch")}</a></div></div>;
+  if (state.status === "needs_setup")
+    return <div className="state">{t("common.needsWorkerSetup")}<div style={{ marginTop: 12 }}><a className="btn" href="/pay">{t("common.setUpWorker")}</a></div></div>;
   if (state.status === "error") return <div className="state error" role="alert">{t("hr.loadError")}</div>;
 
   const needsAction = state.credentials.filter((c) => c.effectiveStatus === "expired" || c.effectiveStatus === "expiring");

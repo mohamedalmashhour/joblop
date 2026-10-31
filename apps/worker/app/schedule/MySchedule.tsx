@@ -5,6 +5,7 @@ import { useLocale, useT, fmtLocale } from "../i18n/LocaleProvider";
 import type { RwosLocale } from "../i18n/config";
 import type { MessageKey } from "../i18n/messages";
 import type { Translate } from "../i18n/LocaleProvider";
+import { resolveDeniedKind } from "../resolveDenied";
 
 type Shift = Readonly<{
   attendanceRecordId: string;
@@ -20,7 +21,7 @@ type Shift = Readonly<{
   employerName: string;
   areaLabel: string | null;
 }>;
-type State = { status: "loading" } | { status: "signed_out" } | { status: "error" } | { status: "ready"; items: readonly Shift[] };
+type State = { status: "loading" } | { status: "signed_out" } | { status: "needs_setup" } | { status: "error" } | { status: "ready"; items: readonly Shift[] };
 
 const STATUS_COPY_KEY: Record<string, MessageKey> = {
   pending_start: "sched.statusScheduled",
@@ -45,7 +46,8 @@ export function MySchedule() {
   const load = useCallback(async () => {
     try {
       const r = await fetch("/api/attendance?limit=25", { cache: "no-store" });
-      if (r.status === 401 || r.status === 403) return setState({ status: r.status === 401 ? "signed_out" : "error" });
+      if (r.status === 403) return setState({ status: "error" });
+      if (r.status === 401) return setState({ status: await resolveDeniedKind() });
       if (!r.ok) return setState({ status: "error" });
       const payload = (await r.json()) as { items: Shift[] };
       setState({ status: "ready", items: payload.items });
@@ -77,6 +79,7 @@ export function MySchedule() {
 
   if (state.status === "loading") return <div className="state">{t("common.loading")}</div>;
   if (state.status === "signed_out") return <div className="state">{t("sched.signInPrompt")}<div style={{ marginTop: 12 }}><a className="btn" href="/">{t("common.goToSearch")}</a></div></div>;
+  if (state.status === "needs_setup") return <div className="state">{t("common.needsWorkerSetup")}<div style={{ marginTop: 12 }}><a className="btn" href="/pay">{t("common.setUpWorker")}</a></div></div>;
   if (state.status === "error") return <div className="state error" role="alert">{t("sched.loadError")}</div>;
 
   const now = Date.now();

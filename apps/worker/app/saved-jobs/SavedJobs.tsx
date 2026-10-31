@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { formatWhen } from "../MarketplaceExplorer";
 import { useLocale, useT, fmtLocale } from "../i18n/LocaleProvider";
+import { resolveDeniedKind } from "../resolveDenied";
 
 type SavedEntry = Readonly<{
   jobRequestId: string;
@@ -22,13 +23,13 @@ type SavedEntry = Readonly<{
 export function SavedJobs() {
   const t = useT();
   const locale = fmtLocale(useLocale());
-  const [status, setStatus] = useState<"loading" | "ready" | "signed_out" | "error">("loading");
+  const [status, setStatus] = useState<"loading" | "ready" | "signed_out" | "needs_setup" | "error">("loading");
   const [entries, setEntries] = useState<SavedEntry[]>([]);
 
   const load = useCallback(async () => {
     try {
       const r = await fetch("/api/saved-jobs", { cache: "no-store" });
-      if (r.status === 401) return setStatus("signed_out");
+      if (r.status === 401) return setStatus(await resolveDeniedKind());
       if (!r.ok) return setStatus("error");
       const payload = (await r.json()) as { saved: SavedEntry[] };
       setEntries(payload.saved);
@@ -60,6 +61,15 @@ export function SavedJobs() {
         {t("saved.signInPrompt")}
         <div style={{ marginTop: 12 }}>
           <a className="btn" href="/">{t("common.goToSearch")}</a>
+        </div>
+      </div>
+    );
+  if (status === "needs_setup")
+    return (
+      <div className="state">
+        {t("common.needsWorkerSetup")}
+        <div style={{ marginTop: 12 }}>
+          <a className="btn" href="/pay">{t("common.setUpWorker")}</a>
         </div>
       </div>
     );
