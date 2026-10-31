@@ -424,6 +424,7 @@ model User {
   publicId        String     @unique @map("public_id")
   emailNormalized String     @unique @map("email_normalized")
   displayName     String?    @map("display_name")
+  phone           String?    @map("phone")
   status          UserStatus @default(email_verification_pending)
   primaryLanguage String?    @map("primary_language")
   createdAt       DateTime   @default(now()) @map("created_at") @db.Timestamptz(3)

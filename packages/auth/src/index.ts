@@ -11162,6 +11162,7 @@ export interface CreateLocalUserInput {
   publicId: string;
   emailNormalized: string;
   displayName: string | null;
+  phone?: string | null;
   passwordHash: string;
   now: Date;
 }
@@ -11441,6 +11442,7 @@ export function createAuthenticationService(
       email: string;
       password: string;
       displayName?: string | null;
+      phone?: string | null;
       source?: AuthenticationAuditSource;
       correlationId?: string;
       ipAddress?: string | null;
@@ -11472,6 +11474,7 @@ export function createAuthenticationService(
         publicId: createPublicUserId(),
         emailNormalized,
         displayName: input.displayName ?? null,
+        phone: input.phone ?? null,
         passwordHash,
         now: currentTime
       });
@@ -12006,6 +12009,7 @@ export function createPrismaAuthenticationRepository(
           publicId: input.publicId,
           emailNormalized: input.emailNormalized,
           displayName: input.displayName,
+          phone: input.phone ?? null,
           status: "active",
           identities: {
             create: {
