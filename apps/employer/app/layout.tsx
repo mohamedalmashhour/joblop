@@ -1,26 +1,12 @@
 import type { Metadata } from "next";
 import type { ReactNode } from "react";
 import { cookies } from "next/headers";
-import { Inter, Playfair_Display } from "next/font/google";
 import { LOCALE_COOKIE, htmlLang, localeDir, resolveEmployerLocale } from "./i18n/config";
 import { dictionaries } from "./i18n/messages";
 import { LocaleProvider } from "./i18n/LocaleProvider";
 import { GoogleTag } from "./analytics";
+import { serif, sans } from "./fonts";
 import "./globals.css";
-
-// One brand voice, platform-wide: Playfair Display serif headings + Inter sans body.
-const serif = Playfair_Display({
-  subsets: ["latin"],
-  weight: ["600", "700", "800"],
-  variable: "--font-serif",
-  display: "swap"
-});
-const sans = Inter({
-  subsets: ["latin"],
-  weight: ["400", "500", "600", "700", "800"],
-  variable: "--font-sans",
-  display: "swap"
-});
 
 
 async function resolveLocale() {
