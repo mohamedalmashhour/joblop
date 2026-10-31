@@ -1,6 +1,7 @@
 import { adminRoles } from "@rwos/auth";
 import { colors, elevation, radii, spacing, statusColors, touch } from "@rwos/design-system";
 import type { CSSProperties } from "react";
+import { AdminFlowMovie } from "./AdminFlowMovie";
 
 // Dark-first: black canvas, dark-raised panels, cream text, gold accent + hairline.
 const navy = colors.navy; // #000000 brand black
@@ -84,6 +85,8 @@ export default function AdminHome() {
           <span>{adminRoles.join(", ")}</span>
         </div>
       </section>
+
+      <AdminFlowMovie />
 
       <section style={styles.kpiGrid}>
         {kpis.map(([label, value, note]) => (
