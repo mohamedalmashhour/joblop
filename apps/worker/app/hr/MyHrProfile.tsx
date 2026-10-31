@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { useLocale, useT } from "../i18n/LocaleProvider";
 import type { MessageKey } from "../i18n/messages";
+import { resolveDeniedKind } from "../resolveDenied";
 
 type Cred = Readonly<{ id: string; credentialType: string; expiresAt: string | null; effectiveStatus: string }>;
 type Intake = Readonly<{
@@ -43,19 +44,6 @@ const CRED_KEY: Record<string, MessageKey> = {
   revoked: "hr.credRevoked"
 };
 
-// The BFF collapses the API's 403 ("not a worker yet") into a 401. Disambiguate against the real
-// session so a signed-in worker without a profile is offered setup, not a dead "please sign in".
-async function resolveDenied(): Promise<"needs_setup" | "signed_out"> {
-  try {
-    const s = await fetch("/api/session", { cache: "no-store" });
-    if (s.ok) {
-      const j = (await s.json()) as { authenticated?: boolean };
-      if (j?.authenticated) return "needs_setup";
-    }
-  } catch { /* fall through */ }
-  return "signed_out";
-}
-
 export function MyHrProfile() {
   const t = useT();
   const locale = useLocale();
@@ -64,7 +52,7 @@ export function MyHrProfile() {
   const load = useCallback(async () => {
     try {
       const r = await fetch("/api/hr", { cache: "no-store" });
-      if (r.status === 401) return setState({ status: await resolveDenied() });
+      if (r.status === 401) return setState({ status: await resolveDeniedKind() });
       if (!r.ok) return setState({ status: "error" });
       const payload = (await r.json()) as { standing: string; credentials: Cred[]; intake: Intake | null };
       setState({ status: "ready", standing: payload.standing, credentials: payload.credentials, intake: payload.intake ?? null });

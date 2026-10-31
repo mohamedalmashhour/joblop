@@ -1,6 +1,6 @@
 import { HowItWorksMovie } from "./HowItWorksMovie";
 import { MarketplaceExplorer } from "./MarketplaceExplorer";
-import { TopBar } from "./TopBar";
+import { SiteHeader } from "./SiteHeader";
 
 // The worker marketplace home: "search and discover jobs confidently." Everything
 // authoritative (geocoding, distance, ranking, privacy) lives in the API; this page is
@@ -8,7 +8,7 @@ import { TopBar } from "./TopBar";
 export default function Page() {
   return (
     <>
-      <TopBar />
+      <SiteHeader />
       <main className="wrap">
         <MarketplaceExplorer />
         <HowItWorksMovie />

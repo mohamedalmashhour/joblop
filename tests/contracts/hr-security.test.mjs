@@ -23,11 +23,12 @@ const platformRoutePrefixes = [
   "/platform/timesheets"
 ];
 // True money-EXECUTION surfaces that remain deferred (no such routes may exist).
-// NOTE: `/platform/payroll` is intentionally NOT here — the HR-5.1 payroll-CALCULATION
-// layer shipped as a governed, synthetic, non-disbursing surface. It is authority-gated
-// (asserted separately below), and calculation is not money movement.
+// NOTE: `/platform/payroll` and `/platform/finance` are intentionally NOT here — the payroll
+// CALCULATION layer and the finance remittance/accounting VIEWS shipped as governed, synthetic,
+// non-disbursing surfaces. They are authority-gated (asserted separately below), and the single
+// filing route (`POST /platform/finance/remittances/file`) is hard-gated (423 while finance is off,
+// 501 not-implemented otherwise) — nothing is filed or paid. Computation/reporting is not money movement.
 const moneyRouteFragments = [
-  "/platform/finance",
   "/platform/invoices",
   "/platform/payments",
   "/platform/worker-payables",
@@ -64,6 +65,20 @@ describe("HR contract security gate", () => {
     const payrollRoutes = routes.filter((route) => route.path.startsWith("/platform/payroll"));
     expect(payrollRoutes.length).toBeGreaterThan(0);
     for (const route of payrollRoutes) {
+      const declaration = `app.${route.method}("${route.path}"`;
+      const declIndex = apiSource.indexOf(declaration);
+      expect(declIndex).toBeGreaterThan(-1);
+      const handlerWindow = apiSource.slice(declIndex, declIndex + 240);
+      expect(handlerWindow).toContain("requirePayrollAuthority(request, reply)");
+    }
+
+    // The shipped finance remittance/accounting VIEWS must likewise be authority-gated: every
+    // `/platform/finance/*` route calls requirePayrollAuthority before doing any work. These are
+    // governed, non-disbursing (status/accounting/remittance summaries over LOCKED payroll); the one
+    // filing route is additionally hard-gated at runtime (423/501) so no money moves.
+    const financeRoutes = routes.filter((route) => route.path.startsWith("/platform/finance"));
+    expect(financeRoutes.length).toBeGreaterThan(0);
+    for (const route of financeRoutes) {
       const declaration = `app.${route.method}("${route.path}"`;
       const declIndex = apiSource.indexOf(declaration);
       expect(declIndex).toBeGreaterThan(-1);
