@@ -11853,6 +11853,7 @@ type PrismaAuthTransaction = {
         publicId: string;
         emailNormalized: string;
         displayName: string | null;
+        phone?: string | null;
         status: "active";
         identities: {
           create: {
