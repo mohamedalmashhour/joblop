@@ -30,7 +30,12 @@ export default [
       "**/coverage/**",
       ".staging-inputs/**",
       "contracts/**",
-      "pnpm-lock.yaml"
+      "pnpm-lock.yaml",
+      // Root-level local dev-stack scaffolding scripts and Vitest configs are not part of any
+      // app tsconfig project, so typescript-eslint's project service can't type them. They are
+      // not shipped code — exempt them from linting rather than forcing them into a tsconfig.
+      "local-stack-*.ts",
+      "**/vitest.config.ts"
     ]
   },
   js.configs.recommended,
@@ -50,7 +55,25 @@ export default [
     },
     rules: {
       "@typescript-eslint/no-explicit-any": "error",
-      "@typescript-eslint/consistent-type-imports": "error"
+      "@typescript-eslint/consistent-type-imports": "error",
+      // Allow deliberately-unused args/vars when prefixed with `_` (e.g. a kept public-API
+      // parameter that this implementation doesn't consume).
+      "@typescript-eslint/no-unused-vars": ["error", { argsIgnorePattern: "^_", varsIgnorePattern: "^_" }]
+    }
+  },
+  {
+    // The PWA service worker runs in the ServiceWorkerGlobalScope, not the browser window.
+    // Give it the service-worker globals it uses at runtime without importing them.
+    files: ["**/public/sw.js"],
+    languageOptions: {
+      globals: {
+        self: "readonly",
+        caches: "readonly",
+        fetch: "readonly",
+        URL: "readonly",
+        clients: "readonly",
+        location: "readonly"
+      }
     }
   },
   {
