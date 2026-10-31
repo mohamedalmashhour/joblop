@@ -1,4 +1,4 @@
-// Central money model for JobLop's staffing marketplace — the SINGLE source of truth for how the
+// Central money model for Joblop's staffing marketplace — the SINGLE source of truth for how the
 // employer price (E), the platform margin, the worker rate (W), allowances, the 6-hour billing
 // floor, and the card/Interac transfer-fee split are computed. Every surface (employer preview,
 // admin publish, worker agreement, invoice, payroll) must derive its numbers from here so the three

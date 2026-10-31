@@ -4,10 +4,10 @@ import type { MetadataRoute } from "next";
 // Trusted Web Activity (TWA) Android app on Google Play. Served at /manifest.webmanifest.
 export default function manifest(): MetadataRoute.Manifest {
   return {
-    name: "JobLop — Find work across Canada",
-    short_name: "JobLop",
+    name: "Joblop — Find work across Canada",
+    short_name: "Joblop",
     description:
-      "Find work across Canada and apply free. JobScanner brings the whole market into one search — and JobLop never takes a cut of your pay.",
+      "Find work across Canada and apply free. JobScanner brings the whole market into one search — and Joblop never takes a cut of your pay.",
     start_url: "/",
     scope: "/",
     display: "standalone",

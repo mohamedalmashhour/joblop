@@ -19,7 +19,7 @@ export function Footer({ locale }: { locale: string }) {
         color: "#6b6356"
       }}
     >
-      <span>© {year} JobLop · 9375-7649 Québec inc.</span>
+      <span>© {year} Joblop · 9375-7649 Québec inc.</span>
       <nav style={{ display: "flex", gap: 20 }}>
         <Link href="/terms" style={{ color: "#b8862f", textDecoration: "none" }}>
           {fr ? "Conditions d’utilisation" : "Terms"}

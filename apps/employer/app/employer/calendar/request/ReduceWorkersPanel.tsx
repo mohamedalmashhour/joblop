@@ -168,9 +168,9 @@ function ReduceResult({ result }: Readonly<{ result: ReduceConfirmationDto }>) {
       <h3 style={styles.cardTitle}>{completed ? `Reduced to ${reduction.newTarget}` : "Reduction recorded"}</h3>
       {amount ? <p style={styles.cardText}>Commercial cancellation obligation: <strong>{amount}</strong></p> : null}
       {reduction.status === "assignment_cancellation_pending" ? (
-        <p style={styles.cardText}><strong>Reduction processing.</strong> JobLop is cancelling the selected confirmed assignment(s). The request stays active at target {reduction.newTarget}.</p>
+        <p style={styles.cardText}><strong>Reduction processing.</strong> Joblop is cancelling the selected confirmed assignment(s). The request stays active at target {reduction.newTarget}.</p>
       ) : reduction.status === "requires_reconciliation" ? (
-        <p style={styles.warning}><strong>Requires JobLop review.</strong> Your reduction is recorded, but the assignment cancellation needs review. The target has not changed yet.</p>
+        <p style={styles.warning}><strong>Requires Joblop review.</strong> Your reduction is recorded, but the assignment cancellation needs review. The target has not changed yet.</p>
       ) : (
         <p style={styles.cardText}>The request stays active at {reduction.newTarget} worker{reduction.newTarget === 1 ? "" : "s"}; remaining assignments are unchanged.</p>
       )}

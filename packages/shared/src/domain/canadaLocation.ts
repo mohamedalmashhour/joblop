@@ -1,4 +1,4 @@
-// Canada location foundation — provider-NEUTRAL core for the JobLop marketplace.
+// Canada location foundation — provider-NEUTRAL core for the Joblop marketplace.
 //
 // The domain owns the authoritative location model, Canadian postal-code handling,
 // province/territory reference data, and geodesic distance. Concrete geocoding/maps

@@ -63,7 +63,7 @@ export function MyDocuments() {
   useEffect(() => { void load(); }, [load]);
 
   // Real secure upload path: obtain a storage reference + signed upload URL, PUT the chosen FILE to the
-  // provider, then submit the metadata. The file bytes go to the storage provider, never through JobLop.
+  // provider, then submit the metadata. The file bytes go to the storage provider, never through Joblop.
   const submit = useCallback(async (documentType: string, replace: boolean, chosen: File | null) => {
     if (!documentType.trim()) return;
     if (!chosen) { setError(t("doc.chooseFileFirst")); return; }

@@ -42,20 +42,20 @@ export async function generateMetadata(): Promise<Metadata> {
   const locale = await resolveLocale();
   const enDict = dictionaries["en-CA"];
   const m = dictionaries[locale] ?? enDict;
-  const title = `JobLop — ${m["mk.heroTitle"] ?? enDict["mk.heroTitle"]}`;
+  const title = `Joblop — ${m["mk.heroTitle"] ?? enDict["mk.heroTitle"]}`;
   const description = m["mk.heroIntro"] ?? enDict["mk.heroIntro"];
   return {
     metadataBase: new URL(SITE_URL),
     title,
     description,
-    applicationName: "JobLop",
+    applicationName: "Joblop",
     manifest: "/manifest.webmanifest",
-    appleWebApp: { capable: true, title: "JobLop", statusBarStyle: "default" },
+    appleWebApp: { capable: true, title: "Joblop", statusBarStyle: "default" },
     icons: { apple: "/apple-touch-icon.png" },
     alternates: { canonical: "/" },
     openGraph: {
       type: "website",
-      siteName: "JobLop",
+      siteName: "Joblop",
       url: SITE_URL,
       title,
       description,

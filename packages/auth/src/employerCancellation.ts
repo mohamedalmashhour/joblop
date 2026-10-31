@@ -3,7 +3,7 @@ import { LATE_CANCELLATION_WORKER_HOURS, resolveMarginPpm } from "@rwos/shared";
 // Employer cancellation — governed two-step (Option A).
 //
 // The employer INITIATES and CONFIRMS cancellation; this service records the
-// auditable cancellation intent + the employer<->JobLop COMMERCIAL cancellation
+// auditable cancellation intent + the employer<->Joblop COMMERCIAL cancellation
 // obligation, then hands off to the platform-authorized assignment-cancel path to
 // transition confirmed assignments to `employer_cancelled`. Employer-facing code
 // never directly mutates platform-governed assignments.

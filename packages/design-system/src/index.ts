@@ -1,6 +1,6 @@
-// @rwos/design-system — the SINGLE source of truth for the JobLop brand.
+// @rwos/design-system — the SINGLE source of truth for the Joblop brand.
 //
-// One product, one soul. Every JobLop surface (worker, employer, admin web apps and the mobile
+// One product, one soul. Every Joblop surface (worker, employer, admin web apps and the mobile
 // app) themes from the tokens below so the whole platform reads as a single premium product
 // instead of copy-pasted pages. The brand is deliberate and fixed:
 //   • BLACK  — pure #000000 for every dark surface (see brand decision: joblop-brand-black).

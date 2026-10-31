@@ -76,8 +76,8 @@ export default function TransactionReport(
   const L = d.ledger || {};
   const closed = (L.balanceMinor ?? -1) === 0;
 
-  const title = view === "employer" ? "Your invoice — JobLop"
-    : view === "worker" ? "Your pay — JobLop"
+  const title = view === "employer" ? "Your invoice — Joblop"
+    : view === "worker" ? "Your pay — Joblop"
     : "Transaction audit report";
 
   // Per-worker figures derived from the aggregate ledger.
@@ -211,10 +211,10 @@ export default function TransactionReport(
             ))}
           </tbody></table>
           {view === "employer" && (
-            <p style={{ color: C.faint, fontSize: 11, marginTop: 10 }}>You are billed only for clock-verified hours. Worker pay rates are set and paid by JobLop and are not shown on your invoice.</p>
+            <p style={{ color: C.faint, fontSize: 11, marginTop: 10 }}>You are billed only for clock-verified hours. Worker pay rates are set and paid by Joblop and are not shown on your invoice.</p>
           )}
           {view === "worker" && (
-            <p style={{ color: C.faint, fontSize: 11, marginTop: 10 }}>JobLop takes no fee from your pay. Hours are taken from your recorded clock-in / clock-out, and the 6-hour minimum is honoured.</p>
+            <p style={{ color: C.faint, fontSize: 11, marginTop: 10 }}>Joblop takes no fee from your pay. Hours are taken from your recorded clock-in / clock-out, and the 6-hour minimum is honoured.</p>
           )}
         </>
       ) : (
@@ -252,7 +252,7 @@ export default function TransactionReport(
       <p style={{ color: C.faint, fontSize: 11, marginTop: 22, borderTop: `1px solid ${C.line}`, paddingTop: 12, lineHeight: 1.6 }}>
         {view === "full"
           ? <>Prepared by the Financial Controller function. Pricing &amp; splits computed by the real @rwos/shared engine (20% platform margin, 6-hour minimum). Pricing snapshot immutable at approval; an unpriced request can never be approved. Figures are test-mode until a payment provider is bound; tax &amp; payroll deductions illustrative. Settlement balance {money(L.balanceMinor)}.</>
-          : <>JobLop · read-only statement for this transaction. Figures from the @rwos/shared pricing engine. Test-mode until a payment provider is bound for your region; tax &amp; deductions illustrative.</>}
+          : <>Joblop · read-only statement for this transaction. Figures from the @rwos/shared pricing engine. Test-mode until a payment provider is bound for your region; tax &amp; deductions illustrative.</>}
       </p>
     </main>
   );

@@ -9,7 +9,7 @@ import { isStripeTestConfigured } from "./cvProStripeCheckout";
 // invoice transitioning to `paid` through the SAME governed, version-guarded invoice state machine.
 //
 // Design-for-real, TEST ONLY: everything here is gated behind INVOICE_TEST_MODE_ENABLED *and* the Stripe
-// TEST keys. FINANCE_LIVE_ENABLED is never consulted or touched. No card data touches JobLop; the paid
+// TEST keys. FINANCE_LIVE_ENABLED is never consulted or touched. No card data touches Joblop; the paid
 // decision always comes from Stripe (retrieve on /complete, or the verified webhook), never the client.
 
 /** An invoice can be collected only once it is issued and before it is settled/closed. */

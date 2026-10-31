@@ -17,7 +17,7 @@ describe("email sender capsule", () => {
     let captured: Parameters<EmailFetch> | null = null;
     const sender = createEmailSender({
       apiKey: "xkeysib_secret",
-      from: "JobLop <ops@example.test>",
+      from: "Joblop <ops@example.test>",
       fetch: async (input, init) => {
         captured = [input, init];
         return { ok: true, status: 201, json: async () => ({ messageId: "brevo-1" }) };
@@ -32,7 +32,7 @@ describe("email sender capsule", () => {
     expect(url).toBe("https://api.brevo.com/v3/smtp/email");
     expect(init.headers["api-key"]).toBe("xkeysib_secret");
     expect(JSON.parse(init.body)).toMatchObject({
-      sender: { email: "ops@example.test", name: "JobLop" },
+      sender: { email: "ops@example.test", name: "Joblop" },
       to: [{ email: "client@example.test" }],
       subject: "Approved",
       textContent: "code JR-1"

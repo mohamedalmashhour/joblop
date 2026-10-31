@@ -276,7 +276,7 @@ export default async function LandingPage() {
         </aside>
       ) : null}
       <header style={{ ...styles.header, position: "relative" }}>
-        <a href="/" style={styles.brand} aria-label="JobLop home">
+        <a href="/" style={styles.brand} aria-label="Joblop home">
           <JobLopLogo height={30} />
         </a>
         <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
@@ -302,7 +302,7 @@ export default async function LandingPage() {
             <span style={{ color: "#b8862f" }}>{c.hero.line3}</span>
           </h1>
           <p style={hx.lede}>{c.hero.lede}</p>
-          <ul style={hx.chips} aria-label="Why JobLop">
+          <ul style={hx.chips} aria-label="Why Joblop">
             {c.hero.chips.map((label) => (
               <li key={label} style={hx.chip}>
                 <span aria-hidden="true" style={hx.chipDot}>
@@ -533,7 +533,7 @@ export default async function LandingPage() {
 
       <footer style={styles.footer}>
         <a href="/" style={styles.footerBrand}>
-          JobLop
+          Joblop
         </a>
         <nav aria-label="Footer navigation" style={styles.footerLinks}>
           <a href="#employers" style={styles.footerLink}>
@@ -561,7 +561,7 @@ function DashboardPreview({ d }: { d: LandingContent["dashboard"] }) {
   return (
     <article style={styles.dashboardPreview} aria-label="Employer dashboard preview">
       <div style={styles.sidebar}>
-        <strong>JobLop</strong>
+        <strong>Joblop</strong>
         {d.nav.map((item, index) => (
           <span key={item} style={index === 0 ? styles.sidebarActive : styles.sidebarItem}>
             {item}

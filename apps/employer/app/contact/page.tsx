@@ -14,8 +14,8 @@ export default function ContactPage() {
   return (
     <main style={styles.page}>
       <header style={styles.header}>
-        <a href="/" style={styles.brand} aria-label="JobLop home">
-          JobLop
+        <a href="/" style={styles.brand} aria-label="Joblop home">
+          Joblop
         </a>
         <nav aria-label="Primary navigation" style={styles.nav}>
           <a href="/about" style={styles.navLink}>
@@ -48,10 +48,10 @@ export default function ContactPage() {
       </header>
 
       <section style={styles.hero}>
-        <p style={styles.eyebrow}>Contact JobLop</p>
+        <p style={styles.eyebrow}>Contact Joblop</p>
         <h1 style={styles.title}>Choose the right support path so your request can be routed safely.</h1>
         <p style={styles.lede}>
-          JobLop handles staffing and operational shift issues. Medical emergencies, threats
+          Joblop handles staffing and operational shift issues. Medical emergencies, threats
           to immediate safety, or public-safety emergencies must use local emergency services.
         </p>
       </section>
@@ -180,10 +180,10 @@ export default function ContactPage() {
           Message
           <textarea placeholder="Describe what you need. Do not include passwords or full financial details." style={styles.textarea} />
         </label>
-        <a href="mailto:support@joblop.ca?subject=JobLop%20support%20request" style={styles.primaryButton}>
-          Email JobLop support
+        <a href="mailto:support@joblop.ca?subject=Joblop%20support%20request" style={styles.primaryButton}>
+          Email Joblop support
         </a>
-        <p style={styles.guardrail}>This opens your email app to reach JobLop support directly. Don&apos;t include passwords or full financial details.</p>
+        <p style={styles.guardrail}>This opens your email app to reach Joblop support directly. Don&apos;t include passwords or full financial details.</p>
       </section>
 
       <section aria-labelledby="guardrails-title" style={styles.section}>
@@ -249,7 +249,7 @@ export default function ContactPage() {
       </section>
 
       <footer style={styles.footer}>
-        <span>JobLop</span>
+        <span>Joblop</span>
         <nav aria-label="Footer navigation" style={styles.footerLinks}>
           <a href="/" style={styles.footerLink}>
             Home

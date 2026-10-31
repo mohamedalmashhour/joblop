@@ -1,13 +1,13 @@
 import type { Metadata } from "next";
 
-// The JobLop style guide — a living showcase of the ONE design system that drives every surface
+// The Joblop style guide — a living showcase of the ONE design system that drives every surface
 // (worker, employer, admin, mobile). Everything here reads from the shared brand tokens
 // (packages/design-system → --jl-* variables), so this page IS the proof that the platform has a
 // single soul: one palette, one type voice (Playfair Display + Inter), one component language.
 
 export const metadata: Metadata = {
-  title: "JobLop Style Guide",
-  description: "The single JobLop design system — palette, type scale and components.",
+  title: "Joblop Style Guide",
+  description: "The single Joblop design system — palette, type scale and components.",
   robots: { index: false, follow: false }
 };
 
@@ -37,7 +37,7 @@ const typeRows: { label: string; cls: string; sample: string; serif: boolean }[]
   { label: "Display · Playfair 800", cls: "sg-display", sample: "Work that fits your life", serif: true },
   { label: "H1 · Playfair 800", cls: "sg-h1", sample: "Find your next shift", serif: true },
   { label: "H2 · Playfair 800", cls: "sg-h2", sample: "Browse jobs near you", serif: true },
-  { label: "H3 · Playfair 700", cls: "sg-h3", sample: "How JobLop works", serif: true },
+  { label: "H3 · Playfair 700", cls: "sg-h3", sample: "How Joblop works", serif: true },
   { label: "Body large · Inter 400", cls: "sg-body-lg", sample: "Apply once and let employers come to you. Every role is verified before it reaches you.", serif: false },
   { label: "Body · Inter 400", cls: "sg-body", sample: "Clean, readable body copy set in Inter for calm, confident reading across the platform.", serif: false },
   { label: "Small · Inter 400", cls: "sg-small", sample: "Supporting detail, captions and helper text.", serif: false },
@@ -51,10 +51,10 @@ export default function StyleGuidePage() {
       <style>{CSS}</style>
 
       <header className="sg-hero">
-        <span className="sg-eyebrow sg-eyebrow-gold">JobLop Design System</span>
+        <span className="sg-eyebrow sg-eyebrow-gold">Joblop Design System</span>
         <h1 className="sg-display">One platform, one soul</h1>
         <p className="sg-body-lg sg-hero-sub">
-          Every JobLop surface — worker, employer, admin and mobile — is built from the same tokens:
+          Every Joblop surface — worker, employer, admin and mobile — is built from the same tokens:
           one palette of black &amp; gold on warm cream, one type voice in Playfair Display and Inter,
           and one set of components. This page is the source of truth you can see.
         </p>

@@ -9,7 +9,7 @@ export default function JobScannerPage() {
         <p style={styles.lede}>
           Aggregated external jobs from legal partner feeds (Adzuna now; more later), ranked for a
           worker, with an AI-built tailored CV + cover letter and a review-and-apply hand-off. These are
-          external leads — not JobLop jobs — and the worker always reviews and applies themselves.
+          external leads — not Joblop jobs — and the worker always reviews and applies themselves.
           Nothing is submitted automatically.
         </p>
       </header>

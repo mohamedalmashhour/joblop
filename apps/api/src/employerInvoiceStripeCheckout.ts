@@ -4,9 +4,9 @@ import { stripeTestEnvFromProcess } from "./cvProStripeCheckout";
 // Money-flow Phase 1 — employer invoice card payment via Stripe hosted Checkout, TEST MODE ONLY.
 // Mirrors the proven Worker Pro pattern (cvProStripeCheckout): reuse the shared Stripe test provider,
 // which refuses any non-`sk_test_` secret, so no live charge can ever be created here. The employer is
-// redirected to Stripe's hosted test page (card 4242 4242 4242 4242), then returns to JobLop where we
+// redirected to Stripe's hosted test page (card 4242 4242 4242 4242), then returns to Joblop where we
 // RETRIEVE the session and verify it was paid for THIS invoice before flipping anything. No card data
-// touches JobLop. The correlation key on the Stripe object is our opaque invoice id + organization id.
+// touches Joblop. The correlation key on the Stripe object is our opaque invoice id + organization id.
 
 export type InvoiceCheckout = Readonly<{ id: string; url: string | null }>;
 
@@ -33,7 +33,7 @@ export async function createInvoiceCheckoutSession(input: {
           price_data: {
             currency: input.currency.toLowerCase(),
             unit_amount: input.amountMinor,
-            product_data: { name: `JobLop invoice ${input.invoiceNumber} (test)` }
+            product_data: { name: `Joblop invoice ${input.invoiceNumber} (test)` }
           }
         }
       ],

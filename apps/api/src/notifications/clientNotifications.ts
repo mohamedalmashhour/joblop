@@ -25,20 +25,20 @@ export function jobCodeEmail(params: {
   if (params.language === "en") {
     return {
       to,
-      subject: `JobLop — your request is approved (${jobCode})`,
+      subject: `Joblop — your request is approved (${jobCode})`,
       text:
         `Good news — your staffing request "${title}" has been approved and is now open to workers.\n\n` +
         `Your job code is ${jobCode}. Keep it to track this request and find it in your calendar.\n\n` +
-        `We'll let you know as soon as a worker accepts.\n\n— JobLop`
+        `We'll let you know as soon as a worker accepts.\n\n— Joblop`
     };
   }
   return {
     to,
-    subject: `JobLop — votre demande est approuvée (${jobCode})`,
+    subject: `Joblop — votre demande est approuvée (${jobCode})`,
     text:
       `Bonne nouvelle — votre demande de personnel « ${title} » a été approuvée et est maintenant ouverte aux travailleurs.\n\n` +
       `Votre code de mission est ${jobCode}. Conservez-le pour suivre cette demande et la retrouver dans votre calendrier.\n\n` +
-      `Nous vous aviserons dès qu'un travailleur l'accepte.\n\n— JobLop`
+      `Nous vous aviserons dès qu'un travailleur l'accepte.\n\n— Joblop`
   };
 }
 
@@ -52,18 +52,18 @@ export function workerAcceptedEmail(params: {
   if (params.language === "en") {
     return {
       to,
-      subject: `JobLop — a worker accepted (${jobCode})`,
+      subject: `Joblop — a worker accepted (${jobCode})`,
       text:
         `A worker has accepted your request "${title}" (job code ${jobCode}).\n\n` +
-        `The shift is now confirmed and appears in the worker's schedule. You'll see it in your calendar too.\n\n— JobLop`
+        `The shift is now confirmed and appears in the worker's schedule. You'll see it in your calendar too.\n\n— Joblop`
     };
   }
   return {
     to,
-    subject: `JobLop — un travailleur a accepté (${jobCode})`,
+    subject: `Joblop — un travailleur a accepté (${jobCode})`,
     text:
       `Un travailleur a accepté votre demande « ${title} » (code de mission ${jobCode}).\n\n` +
-      `Le quart est maintenant confirmé et apparaît dans l'horaire du travailleur. Vous le verrez aussi dans votre calendrier.\n\n— JobLop`
+      `Le quart est maintenant confirmé et apparaît dans l'horaire du travailleur. Vous le verrez aussi dans votre calendrier.\n\n— Joblop`
   };
 }
 

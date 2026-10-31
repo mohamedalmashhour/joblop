@@ -46,7 +46,7 @@ describe("fixture geocoding provider", () => {
 });
 
 describe("OSM geocoding provider", () => {
-  const make = (fetchImpl: typeof fetch) => createOsmGeocodingProvider({ fetch: fetchImpl, userAgent: "JobLop-test/1.0", countryAddress: canadaCapability });
+  const make = (fetchImpl: typeof fetch) => createOsmGeocodingProvider({ fetch: fetchImpl, userAgent: "Joblop-test/1.0", countryAddress: canadaCapability });
   const ok = (body: unknown): typeof fetch =>
     (async () => new Response(JSON.stringify(body), { status: 200, headers: { "content-type": "application/json" } })) as unknown as typeof fetch;
 

@@ -1,4 +1,4 @@
-// JobLop brand mark — the app icon as a crisp, scalable SVG: blue rounded-square badge, a white
+// Joblop brand mark — the app icon as a crisp, scalable SVG: blue rounded-square badge, a white
 // briefcase whose body sweeps into a "J", and an upward arrow (growth). Shared across the platform.
 export function JobLopMark({ size = 28 }: { size?: number }) {
   return (

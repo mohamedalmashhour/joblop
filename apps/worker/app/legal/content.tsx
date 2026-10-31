@@ -1,7 +1,7 @@
 import type { ReactNode } from "react";
 import Link from "next/link";
 
-// Shared legal content for JobLop's public Privacy Policy and Terms of Service.
+// Shared legal content for Joblop's public Privacy Policy and Terms of Service.
 // Rendered at /privacy and /terms. Kept as plain, reviewable prose so the pages
 // satisfy Google Play's requirement for a real, publicly accessible policy that
 // comprehensively discloses how the app collects, uses and shares user data.
@@ -40,7 +40,7 @@ function LegalShell({ title, children }: { title: string; children: ReactNode })
   return (
     <main style={page}>
       <Link href="/" style={{ color: "#b8862f", textDecoration: "none", fontSize: 13 }}>
-        ← JobLop
+        ← Joblop
       </Link>
       <h1 style={h1}>{title}</h1>
       <p style={meta}>
@@ -67,7 +67,7 @@ export function PrivacyPolicy() {
   return (
     <LegalShell title="Privacy Policy">
       <p style={p}>
-        JobLop is a staffing and job-matching platform operating in Québec and across Canada. This
+        Joblop is a staffing and job-matching platform operating in Québec and across Canada. This
         Privacy Policy explains what personal information we collect, how we use it, who we share it
         with, and the choices and rights you have. We handle personal information in accordance with
         Québec&rsquo;s <em>Act respecting the protection of personal information in the private
@@ -118,7 +118,7 @@ export function PrivacyPolicy() {
       <p style={p}>
         We do <strong>not</strong> collect your phone number, government identification numbers, or
         payment card details through the app. We do not knowingly collect information from anyone
-        under 18; JobLop is intended for adults.
+        under 18; Joblop is intended for adults.
       </p>
 
       <h2 style={h2}>2. How we use your information</h2>
@@ -237,22 +237,22 @@ export function TermsOfService() {
   return (
     <LegalShell title="Terms of Service">
       <p style={p}>
-        Welcome to JobLop. By creating an account or using the JobLop app or website, you agree to
+        Welcome to Joblop. By creating an account or using the Joblop app or website, you agree to
         these Terms of Service. If you do not agree, do not use the service.
       </p>
 
-      <h2 style={h2}>1. Who can use JobLop</h2>
+      <h2 style={h2}>1. Who can use Joblop</h2>
       <p style={p}>
         You must be at least 18 years old and able to form a binding contract. You agree to provide
         accurate information and to keep your account credentials secure. You are responsible for
         activity under your account.
       </p>
 
-      <h2 style={h2}>2. What JobLop is</h2>
+      <h2 style={h2}>2. What Joblop is</h2>
       <p style={p}>
-        JobLop is a platform that connects workers with employers for staffing and shift work in
+        Joblop is a platform that connects workers with employers for staffing and shift work in
         Québec and across Canada, and provides supporting tools such as job search (JobScanner) and
-        an AI-assisted CV builder. JobLop facilitates connections and scheduling; the working
+        an AI-assisted CV builder. Joblop facilitates connections and scheduling; the working
         relationship and any obligations arising from it are between the worker and the employer.
       </p>
 
@@ -273,27 +273,27 @@ export function TermsOfService() {
       <p style={p}>
         Employers are responsible for the accuracy of their job requests and for meeting their legal
         obligations toward workers. Workers are responsible for performing accepted work as agreed.
-        JobLop is not the employer of workers unless expressly stated in a separate written
+        Joblop is not the employer of workers unless expressly stated in a separate written
         agreement, and does not guarantee any particular job, worker, outcome, pay or availability.
       </p>
 
       <h2 style={h2}>5. JobScanner and third-party listings</h2>
       <p style={p}>
         JobScanner surfaces job listings from third-party partner sources. Those listings and the
-        sites you apply on are controlled by third parties; JobLop does not control and is not
+        sites you apply on are controlled by third parties; Joblop does not control and is not
         responsible for their content, accuracy or hiring decisions.
       </p>
 
       <h2 style={h2}>6. Fees and payments</h2>
       <p style={p}>
-        JobLop does not take a cut of a worker&rsquo;s pay for applying through the platform. Any fees
+        Joblop does not take a cut of a worker&rsquo;s pay for applying through the platform. Any fees
         that may apply to specific services will be disclosed before you incur them. Payment-processing
         features, where offered, are provided through a third-party processor subject to its own terms.
       </p>
 
       <h2 style={h2}>7. Content you provide</h2>
       <p style={p}>
-        You keep ownership of the content you submit (such as your CV). You grant JobLop a limited
+        You keep ownership of the content you submit (such as your CV). You grant Joblop a limited
         licence to host, display and process that content solely to provide the service to you (for
         example, to show your profile to a potential employer or to generate a CV).
       </p>
@@ -308,13 +308,13 @@ export function TermsOfService() {
       <p style={p}>
         The service is provided &ldquo;as is&rdquo; and &ldquo;as available&rdquo; without warranties
         of any kind, to the extent permitted by law. To the maximum extent permitted by applicable
-        law, JobLop is not liable for indirect, incidental or consequential damages, or for the
+        law, Joblop is not liable for indirect, incidental or consequential damages, or for the
         conduct of any worker, employer or third party.
       </p>
 
       <h2 style={h2}>10. Termination</h2>
       <p style={p}>
-        You may stop using JobLop and request deletion of your account at any time (contact{" "}
+        You may stop using Joblop and request deletion of your account at any time (contact{" "}
         <a href={`mailto:${CONTACT}`} style={{ color: "#b8862f" }}>
           {CONTACT}
         </a>
@@ -348,10 +348,10 @@ export function TermsOfService() {
 
 export function AccountDeletion() {
   return (
-    <LegalShell title="Delete your JobLop account">
+    <LegalShell title="Delete your Joblop account">
       <p style={p}>
-        You can ask us to delete your JobLop account and the personal information associated with it
-        at any time. JobLop is operated by {ENTITY}.
+        You can ask us to delete your Joblop account and the personal information associated with it
+        at any time. Joblop is operated by {ENTITY}.
       </p>
 
       <h2 style={h2}>How to request deletion</h2>
@@ -361,7 +361,7 @@ export function AccountDeletion() {
           <a href={`mailto:${CONTACT}?subject=Delete my account`} style={{ color: "#b8862f" }}>
             {CONTACT}
           </a>{" "}
-          from the email address on your JobLop account, with the subject{" "}
+          from the email address on your Joblop account, with the subject{" "}
           <strong>&ldquo;Delete my account&rdquo;</strong>.
         </li>
         <li style={li}>

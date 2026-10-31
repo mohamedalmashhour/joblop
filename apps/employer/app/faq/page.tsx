@@ -5,8 +5,8 @@ export default function FAQPage() {
   return (
     <main style={styles.page}>
       <header style={styles.header}>
-        <a href="/" style={styles.brand} aria-label="JobLop home">
-          JobLop
+        <a href="/" style={styles.brand} aria-label="Joblop home">
+          Joblop
         </a>
         <nav aria-label="Primary navigation" style={styles.nav}>
           <a href="/about" style={styles.navLink}>
@@ -124,7 +124,7 @@ export default function FAQPage() {
       </section>
 
       <footer style={styles.footer}>
-        <span>JobLop</span>
+        <span>Joblop</span>
         <nav aria-label="Footer navigation" style={styles.footerLinks}>
           <a href="/" style={styles.footerLink}>
             Home

@@ -3,7 +3,7 @@ import { createStripeTestClient, type StripeTestEnvironment } from "./stripeTest
 // Worker Pro card payment via Stripe hosted Checkout — TEST MODE ONLY. Reuses the shared Stripe test
 // provider, which refuses any non-`sk_test_` secret, so no live charge can ever be created here. The
 // worker is redirected to Stripe's hosted test page (enter card 4242 4242 4242 4242), then returns to
-// JobLop where we verify the session was paid before granting Pro. No card data touches JobLop.
+// Joblop where we verify the session was paid before granting Pro. No card data touches Joblop.
 
 /** Read the Stripe TEST environment from process env (same shape the shared provider validates). */
 export function stripeTestEnvFromProcess(): StripeTestEnvironment {
@@ -48,7 +48,7 @@ export async function createCvProCheckoutSession(input: {
           price_data: {
             currency: input.currency.toLowerCase(),
             unit_amount: input.priceMinor,
-            product_data: { name: "JobLop Worker Pro — 1 month (test)" }
+            product_data: { name: "Joblop Worker Pro — 1 month (test)" }
           }
         }
       ],

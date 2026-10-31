@@ -4,7 +4,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { JobScannerDemo } from "./JobScannerDemo";
 import { trackConversion } from "../analytics";
 
-// Public, no-sign-in landing + job board for JobLop. Hero search, real categories, REAL featured
+// Public, no-sign-in landing + job board for Joblop. Hero search, real categories, REAL featured
 // jobs (from /public/jobs — never fabricated), job-seeker + employer sections, honest stats and
 // value props (no fake brand logos or invented reviews), CTA band, footer. Bilingual (Bill 96).
 // Privacy-safe: area-level job data only (city + province) — never address, client, or pay.
@@ -30,7 +30,7 @@ const PROVINCES: { code: string; en: string; fr: string }[] = [
   { code: "QC", en: "Quebec", fr: "Québec" }, { code: "SK", en: "Saskatchewan", fr: "Saskatchewan" }, { code: "YT", en: "Yukon", fr: "Yukon" }
 ];
 
-// JobLop's real work categories (not tech roles). `q` matches role/title/city server-side.
+// Joblop's real work categories (not tech roles). `q` matches role/title/city server-side.
 const CATEGORIES = [
   { icon: "🩺", bg: "#fbf9f4", en: "Care & Nursing", fr: "Soins & infirmerie", q: "nurse" },
   { icon: "🧑‍⚕️", bg: "#eafaf4", en: "Personal Support", fr: "Préposé aux bénéficiaires", q: "support" },
@@ -42,7 +42,7 @@ const CATEGORIES = [
   { icon: "🧺", bg: "#eef7e8", en: "Laundry & Cleaning", fr: "Buanderie & nettoyage", q: "cleaner" }
 ];
 
-// Illustrative preview roles for the hero card — real JobLop categories, clearly flagged as a
+// Illustrative preview roles for the hero card — real Joblop categories, clearly flagged as a
 // preview (not live listings), mirroring how premium marketplace heroes show "a few possibilities".
 const PREVIEW = [
   { icon: "🩺", en: "Care & Nursing", fr: "Soins & infirmerie", areaEn: "Montréal", areaFr: "Montréal", tagEn: "Hybrid", tagFr: "Hybride" },
@@ -55,7 +55,7 @@ const T = {
     navJobs: "Find Jobs", navEmp: "For Employers", navRes: "Resources", navAbout: "About",
     signin: "Sign In", create: "Create Account",
     tabFind: "Find a Job", tabHire: "Hire Talent",
-    pathTag: "GET STARTED", pathTitle: "Choose your path", pathSub: "JobLop works for both sides of the shift — pick the one that's you.",
+    pathTag: "GET STARTED", pathTitle: "Choose your path", pathSub: "Joblop works for both sides of the shift — pick the one that's you.",
     pathWorkerTag: "WORKERS", pathWorkerTitle: "I'm looking for work",
     pathWorkerDesc: "Search the whole market in one place, apply 100% free, and get paid fairly for your hours.",
     pathWorkerBtn: "Find work",
@@ -89,33 +89,33 @@ const T = {
     empSub: "Post a request, reach available local workers, and get coverage you can count on.",
     empBtn: "Post a request", emp1: "Reach available local workers", emp2: "Governed, compliant staffing", emp3: "Fill urgent shifts fast",
     trustTitle: "Trusted where people live and work",
-    trustSub: "Care homes, restaurants, and local employers across Canada staff with JobLop.",
+    trustSub: "Care homes, restaurants, and local employers across Canada staff with Joblop.",
     st1: "open jobs", st2: "provinces hiring", st3: "worker fees", st4: "to browse",
     jsTag: "⚡ JOBSCANNER", jsTitle: "The deepest job search in Canada — and it's free",
-    jsSub: "JobScanner hunts the market for you: it continuously scans partner job feeds across Canada, ranks the best matches, and lets you apply free on JobLop. One search instead of ten tabs.",
+    jsSub: "JobScanner hunts the market for you: it continuously scans partner job feeds across Canada, ranks the best matches, and lets you apply free on Joblop. One search instead of ten tabs.",
     js1t: "Deep, real search", js1b: "The whole market scanned and refreshed around the clock.",
     js2t: "Ranked for you", js2b: "Sorted by fit and pay so the best jobs rise to the top.",
-    js3t: "Apply free", js3b: "Apply on JobLop at no cost — we never take a cut of your pay.",
+    js3t: "Apply free", js3b: "Apply on Joblop at no cost — we never take a cut of your pay.",
     jsBtn: "Search the market — free",
     leadsLive: "Live from across the web", leadsSrc: "External leads",
-    leadsApply: "Apply with JobLop", leadsApplyHint: "Create a free JobLop account to apply and get alerts",
-    leadsNote: "External roles — create a free JobLop account to apply and get alerts, all in one place.",
+    leadsApply: "Apply with Joblop", leadsApplyHint: "Create a free Joblop account to apply and get alerts",
+    leadsNote: "External roles — create a free Joblop account to apply and get alerts, all in one place.",
     leadsCta: "See the full ranked scanner (free)",
-    alertTitle: "Get job alerts — from JobLop",
+    alertTitle: "Get job alerts — from Joblop",
     alertSub: "Leave your email and we'll alert you as matching jobs appear. Free, and we never take a cut of your pay.",
     alertPh: "you@email.com", alertBtn: "Alert me", alertSending: "Saving…",
-    alertOk: "You're on the list. We'll email you as JobLop alerts roll out.",
+    alertOk: "You're on the list. We'll email you as Joblop alerts roll out.",
     alertErr: "Please enter a valid email and try again.",
-    alertFine: "No spam. Unsubscribe anytime. Your email stays with JobLop.",
-    whyTitle: "Why workers choose JobLop",
+    alertFine: "No spam. Unsubscribe anytime. Your email stays with Joblop.",
+    whyTitle: "Why workers choose Joblop",
     why1t: "Trusted workplaces", why1b: "Clear terms before you accept — no surprises.",
     why2t: "Paid fairly", why2b: "Your hours come from your own clock-in / clock-out.",
-    why3t: "No cut of your pay", why3b: "JobLop never takes a fee from what you earn.",
+    why3t: "No cut of your pay", why3b: "Joblop never takes a fee from what you earn.",
     contactTag: "CONTACT", contactTitle: "Get in touch",
     contactSub: "Questions about a job, hiring, or your account? Send us a message and we'll get back to you.",
     cEmail: "Email us", cVisit: "Visit us", cResp: "We usually reply within one business day.",
     cName: "Your name", cEmailF: "Your email", cMsg: "How can we help?", cSend: "Send message",
-    ctaTitle: "Ready to start your next shift?", ctaSub: "Whether you're looking for work or the right people, JobLop is here to help.",
+    ctaTitle: "Ready to start your next shift?", ctaSub: "Whether you're looking for work or the right people, Joblop is here to help.",
     ctaFind: "Find work", ctaPost: "Post a request",
     fTag: "Connecting people with opportunities to build a brighter future.",
     fSeekers: "For Workers", fEmp: "For Employers", fCo: "Company", fLegal: "Legal",
@@ -123,13 +123,13 @@ const T = {
     fPost: "Post a request", fFind: "Find workers", fPricing: "Pricing",
     fAbout: "About", fContact: "Contact", fCareers: "Careers",
     fPrivacy: "Privacy", fTerms: "Terms", fCookie: "Cookies",
-    copyright: "JobLop. A brighter future, together."
+    copyright: "Joblop. A brighter future, together."
   },
   fr: {
     navJobs: "Offres", navEmp: "Employeurs", navRes: "Ressources", navAbout: "À propos",
     signin: "Se connecter", create: "Créer un compte",
     tabFind: "Trouver un emploi", tabHire: "Recruter",
-    pathTag: "COMMENCER", pathTitle: "Choisissez votre parcours", pathSub: "JobLop sert les deux côtés du quart — choisissez le vôtre.",
+    pathTag: "COMMENCER", pathTitle: "Choisissez votre parcours", pathSub: "Joblop sert les deux côtés du quart — choisissez le vôtre.",
     pathWorkerTag: "TRAVAILLEURS", pathWorkerTitle: "Je cherche du travail",
     pathWorkerDesc: "Cherchez tout le marché au même endroit, postulez 100 % gratuitement et soyez payé équitablement pour vos heures.",
     pathWorkerBtn: "Trouver du travail",
@@ -163,33 +163,33 @@ const T = {
     empSub: "Publiez une demande, rejoignez des travailleurs locaux disponibles et obtenez une couverture fiable.",
     empBtn: "Publier une demande", emp1: "Rejoignez des travailleurs locaux", emp2: "Dotation encadrée et conforme", emp3: "Comblez les urgences vite",
     trustTitle: "La confiance, là où l'on vit et travaille",
-    trustSub: "Résidences, restaurants et employeurs locaux partout au Canada recrutent avec JobLop.",
+    trustSub: "Résidences, restaurants et employeurs locaux partout au Canada recrutent avec Joblop.",
     st1: "offres ouvertes", st2: "provinces qui embauchent", st3: "frais travailleur", st4: "pour consulter",
     jsTag: "⚡ JOBSCANNER", jsTitle: "La recherche d'emploi la plus poussée au Canada — gratuite",
-    jsSub: "JobScanner cherche le marché pour vous : il analyse en continu des fils d'emplois partenaires partout au Canada, classe les meilleures correspondances et vous laisse postuler gratuitement sur JobLop. Une seule recherche au lieu de dix onglets.",
+    jsSub: "JobScanner cherche le marché pour vous : il analyse en continu des fils d'emplois partenaires partout au Canada, classe les meilleures correspondances et vous laisse postuler gratuitement sur Joblop. Une seule recherche au lieu de dix onglets.",
     js1t: "Recherche réelle et poussée", js1b: "Tout le marché analysé et rafraîchi en continu.",
     js2t: "Classé pour vous", js2b: "Triées par adéquation et salaire — les meilleures en premier.",
-    js3t: "Postuler gratuitement", js3b: "Postulez sur JobLop sans frais — jamais de part de votre paie.",
+    js3t: "Postuler gratuitement", js3b: "Postulez sur Joblop sans frais — jamais de part de votre paie.",
     jsBtn: "Chercher le marché — gratuit",
     leadsLive: "En direct du web", leadsSrc: "Offres externes",
-    leadsApply: "Postuler avec JobLop", leadsApplyHint: "Créez un compte JobLop gratuit pour postuler et recevoir des alertes",
-    leadsNote: "Offres externes — créez un compte JobLop gratuit pour postuler et recevoir des alertes, au même endroit.",
+    leadsApply: "Postuler avec Joblop", leadsApplyHint: "Créez un compte Joblop gratuit pour postuler et recevoir des alertes",
+    leadsNote: "Offres externes — créez un compte Joblop gratuit pour postuler et recevoir des alertes, au même endroit.",
     leadsCta: "Voir le scanner complet et classé (gratuit)",
-    alertTitle: "Recevez des alertes d'emploi — de JobLop",
+    alertTitle: "Recevez des alertes d'emploi — de Joblop",
     alertSub: "Laissez votre courriel et nous vous alerterons dès qu'un emploi correspond. Gratuit, et nous ne prenons aucune part de votre paie.",
     alertPh: "vous@courriel.com", alertBtn: "M'alerter", alertSending: "Enregistrement…",
-    alertOk: "Vous êtes inscrit. Nous vous écrirons dès le lancement des alertes JobLop.",
+    alertOk: "Vous êtes inscrit. Nous vous écrirons dès le lancement des alertes Joblop.",
     alertErr: "Veuillez entrer un courriel valide et réessayer.",
-    alertFine: "Pas de pourriel. Désabonnement en tout temps. Votre courriel reste chez JobLop.",
-    whyTitle: "Pourquoi les travailleurs choisissent JobLop",
+    alertFine: "Pas de pourriel. Désabonnement en tout temps. Votre courriel reste chez Joblop.",
+    whyTitle: "Pourquoi les travailleurs choisissent Joblop",
     why1t: "Milieux de confiance", why1b: "Conditions claires avant d'accepter — sans surprise.",
     why2t: "Payé équitablement", why2b: "Vos heures proviennent de votre propre pointage.",
-    why3t: "Aucune part de votre paie", why3b: "JobLop ne prend jamais de frais sur ce que vous gagnez.",
+    why3t: "Aucune part de votre paie", why3b: "Joblop ne prend jamais de frais sur ce que vous gagnez.",
     contactTag: "CONTACT", contactTitle: "Nous joindre",
     contactSub: "Des questions sur un emploi, le recrutement ou votre compte ? Écrivez-nous et nous vous répondrons.",
     cEmail: "Écrivez-nous", cVisit: "Nos bureaux", cResp: "Nous répondons habituellement en un jour ouvrable.",
     cName: "Votre nom", cEmailF: "Votre courriel", cMsg: "Comment pouvons-nous aider ?", cSend: "Envoyer le message",
-    ctaTitle: "Prêt pour votre prochain quart ?", ctaSub: "Que vous cherchiez du travail ou les bonnes personnes, JobLop est là pour vous aider.",
+    ctaTitle: "Prêt pour votre prochain quart ?", ctaSub: "Que vous cherchiez du travail ou les bonnes personnes, Joblop est là pour vous aider.",
     ctaFind: "Trouver du travail", ctaPost: "Publier une demande",
     fTag: "Relier les gens aux occasions pour bâtir un avenir meilleur.",
     fSeekers: "Travailleurs", fEmp: "Employeurs", fCo: "Entreprise", fLegal: "Légal",
@@ -197,7 +197,7 @@ const T = {
     fPost: "Publier une demande", fFind: "Trouver des travailleurs", fPricing: "Tarifs",
     fAbout: "À propos", fContact: "Contact", fCareers: "Carrières",
     fPrivacy: "Confidentialité", fTerms: "Conditions", fCookie: "Témoins",
-    copyright: "JobLop. Un avenir meilleur, ensemble."
+    copyright: "Joblop. Un avenir meilleur, ensemble."
   }
 } as const;
 
@@ -226,7 +226,7 @@ export function PublicJobBoard() {
   // path. We never collect or store the data ourselves.
   const sendContact = (e: React.FormEvent) => {
     e.preventDefault();
-    const subject = encodeURIComponent(`JobLop — ${cForm.name || "contact"}`);
+    const subject = encodeURIComponent(`Joblop — ${cForm.name || "contact"}`);
     const body = encodeURIComponent(`${cForm.msg}\n\n— ${cForm.name} <${cForm.email}>`);
     window.location.href = `mailto:${CONTACT_EMAIL}?subject=${subject}&body=${body}`;
   };
@@ -274,7 +274,7 @@ export function PublicJobBoard() {
     return () => clearTimeout(h);
   }, [loadLeads, q]);
 
-  // TRUE total of jobs waiting (JobLop open jobs + scanned external leads) for the headline magnet.
+  // TRUE total of jobs waiting (Joblop open jobs + scanned external leads) for the headline magnet.
   // Pure count query on the API — no live scan. Reacts to province, not to every keystroke.
   const loadStats = useCallback(async () => {
     const params = new URLSearchParams();
@@ -293,7 +293,7 @@ export function PublicJobBoard() {
     void loadStats();
   }, [loadStats]);
 
-  // Capture a job-alert email for JobLop (not the external source). Carries the current role/province
+  // Capture a job-alert email for Joblop (not the external source). Carries the current role/province
   // so the subscription is pre-targeted. Honest: records the subscription; delivery rolls out later.
   const submitAlert = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -330,8 +330,8 @@ export function PublicJobBoard() {
   };
   const provinceCount = jobs ? new Set(jobs.map((j) => j.province).filter(Boolean)).size : 0;
   const jobCount = jobs ? jobs.length : null;
-  // Hero/stat headline count: prefer the TRUE total (JobLop open jobs + all scanned leads) from the
-  // stats endpoint; fall back to the live teaser total, then to JobLop's own public-job count.
+  // Hero/stat headline count: prefer the TRUE total (Joblop open jobs + all scanned leads) from the
+  // stats endpoint; fall back to the live teaser total, then to Joblop's own public-job count.
   const openCount = totalJobs ?? leadsTotal ?? jobCount;
   const fmtCount = (n: number | null) => (n == null ? "—" : n.toLocaleString(lang === "fr" ? "fr-CA" : "en-CA"));
 
@@ -342,7 +342,7 @@ export function PublicJobBoard() {
       {/* NAV */}
       <header className="jl-nav">
         <div className="jl-nav-in">
-          <a href="/" className="jl-logo"><img src="/img/joblop-logo.png" alt="JobLop" style={{ height: 30, width: "auto", display: "block", borderRadius: 6 }} /></a>
+          <a href="/" className="jl-logo"><img src="/img/joblop-logo.png" alt="Joblop" style={{ height: 30, width: "auto", display: "block", borderRadius: 6 }} /></a>
           <nav className="jl-links">
             <a href="#jobs">{t.navJobs}</a>
             <a href={EMPLOYER_URL}>{t.navEmp}</a>
@@ -436,8 +436,8 @@ export function PublicJobBoard() {
         </div>
       </section>
 
-      {/* TRUST STRIP — honest, concrete differentiators (what sets JobLop apart) */}
-      <section className="jl-trust" aria-label="Why JobLop">
+      {/* TRUST STRIP — honest, concrete differentiators (what sets Joblop apart) */}
+      <section className="jl-trust" aria-label="Why Joblop">
         <div className="jl-trust-in">
           <div className="jl-trust-i"><span className="jl-trust-ic">✓</span>{t.trust1}</div>
           <div className="jl-trust-i"><span className="jl-trust-ic">✋</span>{t.trust2}</div>
@@ -581,8 +581,8 @@ export function PublicJobBoard() {
             <div className="jl-leads-grid">
               {leads.map((l, i) => {
                 const pay = fmtPay(l);
-                // Funnel into JobLop first: clicking opens free sign-up (then Assisted Apply to the
-                // source), so JobLop — not the external site — owns the worker relationship.
+                // Funnel into Joblop first: clicking opens free sign-up (then Assisted Apply to the
+                // source), so Joblop — not the external site — owns the worker relationship.
                 return (
                   <a key={`${l.source}-${i}`} href="/" className="jl-lead" title={t.leadsApplyHint}>
                     <span className="jl-lead-ic">{iconFor(l.title)}</span>
@@ -738,7 +738,7 @@ export function PublicJobBoard() {
       <footer className="jl-foot">
         <div className="jl-wrap jl-foot-in">
           <div className="jl-foot-brand">
-            <a href="/" className="jl-logo jl-logo-w"><img src="/img/joblop-logo.png" alt="JobLop" style={{ height: 28, width: "auto", display: "block", borderRadius: 6 }} /></a>
+            <a href="/" className="jl-logo jl-logo-w"><img src="/img/joblop-logo.png" alt="Joblop" style={{ height: 28, width: "auto", display: "block", borderRadius: 6 }} /></a>
             <p>{t.fTag}</p>
           </div>
           <div className="jl-foot-cols">

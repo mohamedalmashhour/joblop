@@ -825,7 +825,7 @@ export function buildApi(options: BuildApiOptions = {}) {
   // Candidate source selection is env-switched by configuration, not by RWOS_ENV: when an
   // external HTTPS candidate service is configured (CANDIDATE_SOURCE_ORIGIN + token), the
   // dispatch service below prefers it in every environment; otherwise dispatch falls back to
-  // this marketplace-interest source, backed by JobLop's own interested workers. A self-
+  // this marketplace-interest source, backed by Joblop's own interested workers. A self-
   // contained marketplace can launch with no external candidate API and swap one in later
   // purely via config, with no code change.
   const listInterestedWorkersForDispatch = async (jobRequestId: string) => {
@@ -3169,7 +3169,7 @@ export function buildApi(options: BuildApiOptions = {}) {
     });
   });
 
-  // PUBLIC job board — no sign-in. Anyone can browse JobLop's open job offers across all of Canada
+  // PUBLIC job board — no sign-in. Anyone can browse Joblop's open job offers across all of Canada
   // and filter by location (province) or search text (city / role). Privacy-safe: only area-level
   // fields (city + province), role, headcount, date and urgency — NEVER exact address/coords, client
   // identity, or pay rates. Read-only; a funnel to bring workers onto the platform.
@@ -3241,7 +3241,7 @@ export function buildApi(options: BuildApiOptions = {}) {
   // PUBLIC JobScanner teaser — a small, cached preview of external market leads for anonymous visitors
   // (the landing-page "magnet"). Reads ONLY stored leads from prior scans: zero live Adzuna calls per
   // request, so it never consumes the source budget and can't be abused to drain it. External leads are
-  // a hand-off to the source, never JobLop governed jobs; sanitized to public-safe fields (no coords, no
+  // a hand-off to the source, never Joblop governed jobs; sanitized to public-safe fields (no coords, no
   // internal id). Empty until a live scan has populated the store — nothing synthetic is served here.
   app.get("/public/jobscanner/leads", async (request, reply) => {
     if (!prisma) return reply.code(503).send({ error: "RWOS_UNAVAILABLE", message: "Not available." });
@@ -3295,7 +3295,7 @@ export function buildApi(options: BuildApiOptions = {}) {
 
   // PUBLIC JobScanner stats — the TRUE totals for the landing magnet ("X jobs waiting"), so the number
   // reflects the whole store, not the small teaser slice. Pure COUNT queries (prisma.count / distinct)
-  // over already-stored data: zero live Adzuna calls, cacheable, honest. Counts JobLop's own open public
+  // over already-stored data: zero live Adzuna calls, cacheable, honest. Counts Joblop's own open public
   // jobs + external scanned leads, and the distinct provinces they span. Optional ?province filter.
   app.get("/public/jobscanner/stats", async (request, reply) => {
     if (!prisma) return reply.code(503).send({ error: "RWOS_UNAVAILABLE", message: "Not available." });
@@ -3322,12 +3322,12 @@ export function buildApi(options: BuildApiOptions = {}) {
         externalLeadCount,
         openJobCount,
         provinceCount,
-        note: "Totals across JobLop open jobs and scanned external leads. External leads are a hand-off to the source."
+        note: "Totals across Joblop open jobs and scanned external leads. External leads are a hand-off to the source."
       });
   });
 
   // PUBLIC job-alert capture — the landing magnet's email box. A visitor leaves their email (optionally
-  // a role/province) so JobLop, not the external source, owns the lead. No auth, no account, no money.
+  // a role/province) so Joblop, not the external source, owns the lead. No auth, no account, no money.
   // Upsert by email so re-submitting just refreshes the role/province. Delivery of alerts is a separate
   // governed step (scheduler stays OFF) — this only records the subscription, honestly.
   app.post("/public/jobscanner/alerts", async (request, reply) => {
@@ -3353,7 +3353,7 @@ export function buildApi(options: BuildApiOptions = {}) {
     });
     return reply.code(200).send({
       status: "subscribed",
-      note: "You're on JobLop's job-alert list. We'll notify you as alerts roll out — no spam, unsubscribe anytime."
+      note: "You're on Joblop's job-alert list. We'll notify you as alerts roll out — no spam, unsubscribe anytime."
     });
   });
 
@@ -4356,7 +4356,7 @@ export function buildApi(options: BuildApiOptions = {}) {
     return session.user.id;
   };
 
-  // Worker: request a storage upload reference (they upload to the provider, not to JobLop).
+  // Worker: request a storage upload reference (they upload to the provider, not to Joblop).
   app.post("/hr/documents/upload-reference", async (request, reply) => {
     const userId = await requireWorkerSession(request, reply);
     if (!userId) return;
@@ -7363,7 +7363,7 @@ export function buildApi(options: BuildApiOptions = {}) {
 
   // JobScanner: scan external partner feeds (Adzuna now; Talent.com later) for Québec jobs, normalize
   // and dedupe them into external leads, and optionally rank them for a worker (role keywords +
-  // location). These are EXTERNAL leads — a hand-off to the source, not JobLop governed jobs; no money
+  // location). These are EXTERNAL leads — a hand-off to the source, not Joblop governed jobs; no money
   // moves. Uses the live Adzuna API when ADZUNA_APP_ID/ADZUNA_APP_KEY are set, else a mock QC feed so
   // the pipeline runs before the account is approved. Results are not yet persisted (next slice).
   app.post("/platform/jobscanner/scan", async (request, reply) => {
@@ -7420,13 +7420,13 @@ export function buildApi(options: BuildApiOptions = {}) {
       ranked: ranked !== null,
       note:
         client.mode === "mock"
-          ? "MOCK feed (Adzuna account not yet approved). External leads only — hand-off to the source, not JobLop jobs."
-          : "Live Adzuna feed. External leads only — hand-off to the source, not JobLop jobs."
+          ? "MOCK feed (Adzuna account not yet approved). External leads only — hand-off to the source, not Joblop jobs."
+          : "Live Adzuna feed. External leads only — hand-off to the source, not Joblop jobs."
     });
   });
 
   // JobScanner: read stored leads (from prior scans), optionally filtered by province/city and ranked
-  // for a worker. This is the funnel's data source — external hand-off leads, not JobLop jobs.
+  // for a worker. This is the funnel's data source — external hand-off leads, not Joblop jobs.
   app.get("/platform/jobscanner/leads", async (request, reply) => {
     const actor = await requireHrAuthority(request, reply);
     if (!actor) return;
@@ -7456,7 +7456,7 @@ export function buildApi(options: BuildApiOptions = {}) {
       leads = rankLeadsForWorker(stored, profile);
       ranked = true;
     }
-    return reply.code(200).send({ leadCount: stored.length, ranked, leads, note: "External leads only — hand-off to the source, not JobLop jobs." });
+    return reply.code(200).send({ leadCount: stored.length, ranked, leads, note: "External leads only — hand-off to the source, not Joblop jobs." });
   });
 
   // AI CV Builder: generate a tailored CV + cover letter for a worker, optionally targeted at a stored
