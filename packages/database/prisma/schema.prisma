@@ -3341,6 +3341,26 @@ model CvAsset {
   @@map("cv_assets")
 }
 
+// R2-15: the worker's built CV, persisted to Joblop's DB when they generate it in the CV builder. One
+// current CV per worker (upsert by workerRef). Stores BOTH the rendered output (headline + CV and cover
+// letter markdown) and the structured profile JSON it was built from, so it can be re-rendered later with
+// any JSON Resume theme. Advisory content the worker owns — no money, no governance.
+model WorkerCv {
+  id                  String   @id @default(uuid()) @db.Uuid
+  workerRef           String   @unique @map("worker_ref") // worker identity / user id (same key as cv_assets)
+  headline            String
+  cvMarkdown          String   @map("cv_markdown")
+  coverLetterMarkdown String   @map("cover_letter_markdown")
+  tailoredTo          String?  @map("tailored_to")
+  language            String   @default("en")
+  profileJson         Json     @map("profile_json")
+  providerKind        String   @map("provider_kind")
+  createdAt           DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt           DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  @@map("worker_cvs")
+}
+
 // Worker Pro paid plan: entitlement that unlocks (1) AI-written CVs + premium designs and (2) PRIORITY
 // job access — best / higher-wage leads and emergency requests surfaced first. Free tier browses jobs
 // and gets a basic synthetic draft (funnel intact). Enforcement is SERVER-SIDE only (no client trust).

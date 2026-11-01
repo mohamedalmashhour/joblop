@@ -151,9 +151,9 @@ export function CvBuilder() {
     try {
       const res = await fetch("/api/cv", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ profile, job: { title: category.label } }) });
       if (!res.ok) { setMsg("CV generation failed."); return; }
-      const d = (await res.json()) as { cv: GeneratedCv; providerKind?: string; pro?: boolean };
+      const d = (await res.json()) as { cv: GeneratedCv; providerKind?: string; pro?: boolean; saved?: boolean };
       setCv(d.cv); setProvider(d.providerKind ?? ""); setCvPro(Boolean(d.pro));
-      setMsg(`CV ready${d.providerKind?.startsWith("claude") ? " (AI-written)" : ""}.`);
+      setMsg(`CV ready${d.providerKind?.startsWith("claude") ? " (AI-written)" : ""}${d.saved ? " — saved to your account" : ""}.`);
     } finally { setBusy(false); }
   };
 

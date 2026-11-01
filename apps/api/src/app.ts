@@ -175,7 +175,7 @@ import {
 } from "@rwos/auth";
 import { normalizeEmail } from "@rwos/auth";
 import { getRuntimeConfig, type CountryAddressPort } from "@rwos/config";
-import { createPrismaClient } from "@rwos/database";
+import { createPrismaClient, type Prisma } from "@rwos/database";
 import { createLogger } from "@rwos/observability";
 import {
   createLocalFakePaymentProvider,
@@ -8513,10 +8513,33 @@ export function buildApi(options: BuildApiOptions = {}) {
     const provider = pro ? getCvProvider() : createSyntheticCvProvider();
     try {
       const result = await provider.generate({ profile, job });
+      // R2-15: persist the built CV to Joblop's DB (one current CV per worker). Best-effort — a storage
+      // hiccup must never fail the generate the worker is waiting on; we log and still return the CV.
+      let saved = false;
+      try {
+        const data = {
+          headline: result.headline,
+          cvMarkdown: result.cvMarkdown,
+          coverLetterMarkdown: result.coverLetterMarkdown,
+          tailoredTo: result.tailoredTo,
+          language: profile.language ?? "en",
+          profileJson: profile as unknown as Prisma.InputJsonValue,
+          providerKind: provider.kind
+        };
+        await prisma!.workerCv.upsert({
+          where: { workerRef: session.user.id },
+          create: { workerRef: session.user.id, ...data },
+          update: data
+        });
+        saved = true;
+      } catch (persistErr) {
+        app.log.error({ err: persistErr, userId: session.user.id }, "worker CV persist failed");
+      }
       return reply.code(200).send({
         cv: result,
         providerKind: provider.kind,
         pro,
+        saved,
         upgradeAvailable: !pro,
         note: pro
           ? "Advisory draft — review and edit before applying. Nothing is sent."
