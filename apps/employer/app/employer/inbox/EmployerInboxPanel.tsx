@@ -8,12 +8,13 @@ import { useEffect, useState } from "react";
 type Greeting = { id: string; title: string; message: string; occasionKey: string | null; templateKey: string; read: boolean; receivedAt: string };
 type Certificate = { id: string; kind: string; title: string; recipientName: string; note: string | null; serial: string; read: boolean; issuedAt: string };
 
-const TEMPLATE_ACCENT: Record<string, { bg: string; bar: string; emoji: string }> = {
+const TEMPLATE_ACCENT = {
   holiday: { bg: "#fffaf0", bar: "#b8862f", emoji: "🎉" },
   thank_you: { bg: "#f3f8f3", bar: "#4a7c59", emoji: "💛" },
   welcome: { bg: "#f0f6fb", bar: "#2f6fb8", emoji: "👋" },
   custom: { bg: "#fffdf7", bar: "#b8862f", emoji: "✉️" }
-};
+} as const;
+const accentFor = (key: string) => (key in TEMPLATE_ACCENT ? TEMPLATE_ACCENT[key as keyof typeof TEMPLATE_ACCENT] : TEMPLATE_ACCENT.custom);
 
 function escapeHtml(s: string): string {
   return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
@@ -105,7 +106,7 @@ export function EmployerInboxPanel() {
       {greetings.length === 0 ? <p style={styles.hint}>No greetings yet.</p> : (
         <div style={styles.grid}>
           {greetings.map((g) => {
-            const a = TEMPLATE_ACCENT[g.templateKey] ?? TEMPLATE_ACCENT.custom;
+            const a = accentFor(g.templateKey);
             return (
               <article key={g.id} style={{ ...styles.greetCard, background: a.bg, borderTop: `5px solid ${a.bar}` }} onMouseEnter={() => { if (!g.read) markGreetingRead(g.id); }}>
                 <div style={styles.greetHead}>
