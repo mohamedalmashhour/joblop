@@ -5,6 +5,7 @@ import { JobScannerDemo } from "./JobScannerDemo";
 import { trackConversion } from "../analytics";
 import { useLocale } from "../i18n/LocaleProvider";
 import { SiteHeader } from "../SiteHeader";
+import { activeCountry } from "../country";
 
 // Public, no-sign-in landing + job board for Joblop. Hero search, real categories, REAL featured
 // jobs (from /public/jobs — never fabricated), job-seeker + employer sections, honest stats and
@@ -23,14 +24,8 @@ type Lead = {
 };
 type Lang = "en" | "fr" | "ar";
 
-const PROVINCES: { code: string; en: string; fr: string; ar: string }[] = [
-  { code: "AB", en: "Alberta", fr: "Alberta", ar: "ألبرتا" }, { code: "BC", en: "British Columbia", fr: "Colombie-Britannique", ar: "كولومبيا البريطانية" },
-  { code: "MB", en: "Manitoba", fr: "Manitoba", ar: "مانيتوبا" }, { code: "NB", en: "New Brunswick", fr: "Nouveau-Brunswick", ar: "نيو برونزويك" },
-  { code: "NL", en: "Newfoundland and Labrador", fr: "Terre-Neuve-et-Labrador", ar: "نيوفاوندلاند ولابرادور" }, { code: "NS", en: "Nova Scotia", fr: "Nouvelle-Écosse", ar: "نوفا سكوشا" },
-  { code: "NT", en: "Northwest Territories", fr: "Territoires du Nord-Ouest", ar: "الأقاليم الشمالية الغربية" }, { code: "NU", en: "Nunavut", fr: "Nunavut", ar: "نونافوت" },
-  { code: "ON", en: "Ontario", fr: "Ontario", ar: "أونتاريو" }, { code: "PE", en: "Prince Edward Island", fr: "Île-du-Prince-Édouard", ar: "جزيرة الأمير إدوارد" },
-  { code: "QC", en: "Quebec", fr: "Québec", ar: "كيبيك" }, { code: "SK", en: "Saskatchewan", fr: "Saskatchewan", ar: "ساسكاتشوان" }, { code: "YT", en: "Yukon", fr: "Yukon", ar: "يوكون" }
-];
+// Regions come from the active country profile (F16 seam) — no hardcoded province list here.
+const PROVINCES = activeCountry().regions;
 
 // Joblop's real work categories (not tech roles). `q` matches role/title/city server-side.
 const CATEGORIES = [
@@ -280,7 +275,7 @@ const T = {
 // Employer app entry — set NEXT_PUBLIC_EMPLOYER_URL in production (https://employer.joblop.com).
 const EMPLOYER_URL = process.env.NEXT_PUBLIC_EMPLOYER_URL ?? "http://localhost:3100";
 const CONTACT_EMAIL = "contact@joblop.com"; // change to the live inbox when set up
-const CONTACT_ADDRESS = "207-805 boul. Chomedey, Laval, QC";
+const CONTACT_ADDRESS = activeCountry().contactAddress;
 
 export function PublicJobBoard() {
   // Follow the platform's chosen locale (cookie-driven, same control as the rest of the app) so the
@@ -410,12 +405,13 @@ export function PublicJobBoard() {
   };
 
   const fmtPay = (l: Lead) => {
+    const sym = activeCountry().currencySymbol;
     const toK = (minor: number | null) => (minor == null ? null : Math.round(minor / 100 / 1000));
     const lo = toK(l.salaryMinMinor);
     const hi = toK(l.salaryMaxMinor);
     if (lo == null && hi == null) return null;
-    if (lo != null && hi != null) return lo === hi ? `$${lo}k` : `$${lo}–${hi}k`;
-    return `$${lo ?? hi}k`;
+    if (lo != null && hi != null) return lo === hi ? `${sym}${lo}k` : `${sym}${lo}–${hi}k`;
+    return `${sym}${lo ?? hi}k`;
   };
 
   const scrollToJobs = () => document.getElementById("jobs")?.scrollIntoView({ behavior: "smooth" });

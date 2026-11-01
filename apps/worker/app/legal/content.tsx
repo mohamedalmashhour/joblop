@@ -1,5 +1,6 @@
 import type { ReactNode } from "react";
 import Link from "next/link";
+import { activeCountry } from "../country";
 
 // Shared legal content for Joblop's public Privacy Policy and Terms of Service.
 // Rendered at /privacy and /terms. Kept as plain, reviewable prose so the pages
@@ -7,7 +8,7 @@ import Link from "next/link";
 // comprehensively discloses how the app collects, uses and shares user data.
 
 const LAST_UPDATED = "October 26, 2026";
-const ENTITY = "9375-7649 Québec inc.";
+const ENTITY = activeCountry().legalEntityName;
 const CONTACT = "info@sybnb.app";
 
 const page: React.CSSProperties = {
