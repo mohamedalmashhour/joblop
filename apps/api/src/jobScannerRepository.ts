@@ -96,12 +96,21 @@ export async function upsertLeads(prisma: PrismaClient, leads: readonly External
 export type QueryLeadsOptions = Readonly<{ province?: string; city?: string; query?: string; limit?: number }>;
 export type StoredLead = ExternalJobLead & Readonly<{ id: string }>;
 
-/** Split a free-text role/keyword query into up to 8 search tokens (whitespace- or comma-separated). */
+// Stopwords dropped from role queries. Common EN/FR function words — especially short ones like "de"
+// that otherwise substring-match almost every French QC listing (e.g. "chef de cuisine" would match
+// "Aide-soignante", "CIUSSS de l'Estrie", "Directeur de succursale" via the "de" token), returning
+// unrelated jobs. Removing them makes the search return the actual trade.
+const LEAD_QUERY_STOPWORDS = new Set([
+  "de", "des", "du", "la", "le", "les", "l", "un", "une", "et", "en", "au", "aux", "à", "d",
+  "of", "the", "and", "a", "an", "or", "for", "in", "on", "to", "with"
+]);
+
+/** Split a free-text role/keyword query into up to 8 meaningful search tokens (stopwords removed). */
 export function leadQueryTokens(query: string | undefined): string[] {
   return (query ?? "")
     .split(/[\s,]+/)
     .map((t) => t.trim())
-    .filter((t) => t.length > 0)
+    .filter((t) => t.length > 0 && !LEAD_QUERY_STOPWORDS.has(t.toLowerCase()))
     .slice(0, 8);
 }
 
