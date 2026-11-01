@@ -80,6 +80,15 @@ export function CvBuilder() {
   const [upLabel, setUpLabel] = useState("");
 
   const [cardMsg, setCardMsg] = useState("");
+  // Build CV is a signed-in worker feature — a signed-out visitor is guided to create/sign in first.
+  const [authState, setAuthState] = useState<"loading" | "signed_in" | "signed_out">("loading");
+  useEffect(() => {
+    let active = true;
+    fetch("/api/session", { cache: "no-store" })
+      .then((r) => (active ? setAuthState(r.ok ? "signed_in" : "signed_out") : undefined))
+      .catch(() => (active ? setAuthState("signed_out") : undefined));
+    return () => { active = false; };
+  }, []);
 
   // Finalize a card payment on return from Stripe's hosted Checkout (?pro=success&order=…). Runs at the
   // always-mounted page level (ProUpgrade only mounts after a CV is built). The API verifies the payment.
@@ -171,6 +180,18 @@ export function CvBuilder() {
     return { score, gaps, grade, color };
   })();
 
+  if (authState === "loading") return <section style={styles.wrap}><p style={styles.hint}>Loading…</p></section>;
+  if (authState === "signed_out")
+    return (
+      <section style={styles.wrap}>
+        <div style={{ textAlign: "center", padding: "36px 16px" }}>
+          <h2 style={{ margin: "0 0 8px" }}>Create a free account to build your CV</h2>
+          <p style={styles.hint}>Build CV is part of your Joblop worker account. Sign in or create a free account to build and save your CV.</p>
+          <a href="/" style={{ display: "inline-block", marginTop: 14, background: "#a8842f", color: "#fff", textDecoration: "none", padding: "12px 24px", borderRadius: 12, fontWeight: 800 }}>Create / sign in</a>
+        </div>
+      </section>
+    );
+
   return (
     <section style={styles.wrap}>
       {cardMsg ? <div style={styles.cardBanner}>{cardMsg}</div> : null}
@@ -201,7 +222,7 @@ export function CvBuilder() {
         <div style={styles.row}>
           <label style={styles.label}>Type<select style={styles.input} value={upKind} onChange={(e) => setUpKind(e.target.value as "certificate" | "photo")}><option value="certificate">Certificate</option><option value="photo">Photo</option></select></label>
           <label style={styles.label}>Label <span style={styles.hint}>(e.g. MAPAQ)</span><input style={styles.input} value={upLabel} onChange={(e) => setUpLabel(e.target.value)} placeholder="Food safety (MAPAQ)" /></label>
-          <label style={styles.label}>File (PDF/PNG/JPEG)<input style={styles.input} type="file" accept=".pdf,.png,.jpg,.jpeg" onChange={(e) => { const f = e.target.files?.[0]; if (f) void uploadFile(f); e.currentTarget.value = ""; }} /></label>
+          <label style={styles.label}>File (PDF/PNG/JPEG)<input style={styles.input} type="file" multiple accept=".pdf,.png,.jpg,.jpeg" onChange={(e) => { const files = Array.from(e.target.files ?? []); if (files.length) void (async () => { for (const f of files) await uploadFile(f); })(); e.currentTarget.value = ""; }} /></label>
         </div>
         {upKind === "photo" ? <p style={styles.warn}>⚠️ In Québec, a photo on a CV is generally not recommended and some employers discard CVs with photos. Only add one if the job specifically expects it.</p> : null}
         {assets.length > 0 ? (

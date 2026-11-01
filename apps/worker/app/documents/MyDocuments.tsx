@@ -44,7 +44,7 @@ export function MyDocuments() {
   const locale = useLocale();
   const [state, setState] = useState<State>({ status: "loading" });
   const [docType, setDocType] = useState("");
-  const [file, setFile] = useState<File | null>(null);
+  const [files, setFiles] = useState<File[]>([]);
   const [replacing, setReplacing] = useState(false);
   const [busy, setBusy] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
@@ -66,37 +66,50 @@ export function MyDocuments() {
 
   // Real secure upload path: obtain a storage reference + signed upload URL, PUT the chosen FILE to the
   // provider, then submit the metadata. The file bytes go to the storage provider, never through Joblop.
-  const submit = useCallback(async (documentType: string, replace: boolean, chosen: File | null) => {
+  // Upload ONE file end to end (ref → PUT → metadata). Returns true on success; no form-state reset.
+  const uploadOne = useCallback(async (documentType: string, replace: boolean, chosen: File): Promise<boolean> => {
+    const refRes = await fetch("/api/documents/upload-reference", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ documentType: documentType.trim() }) });
+    if (!refRes.ok) { setError(t("doc.startFailed")); return false; }
+    const { storageReference, uploadUrl } = (await refRes.json()) as { storageReference: string; uploadUrl?: string };
+    if (uploadUrl) {
+      try {
+        const put = await fetch(uploadUrl, { method: "PUT", headers: { "content-type": chosen.type || "application/octet-stream" }, body: chosen });
+        if (!put.ok) { setError(t("doc.uploadFailed")); return false; }
+      } catch {
+        setError(t("doc.uploadUnreachable"));
+        return false;
+      }
+    }
+    const endpoint = replace ? "/api/documents/replace" : "/api/documents";
+    const res = await fetch(endpoint, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ documentType: documentType.trim(), storageReference }) });
+    if (!res.ok) { setError(t("doc.submitFailed")); return false; }
+    return true;
+  }, [t]);
+
+  // Submit the chosen file(s): replace affects exactly one; a new upload accepts MULTIPLE files of the type.
+  const submit = useCallback(async (documentType: string, replace: boolean, chosen: readonly File[]) => {
     if (!documentType.trim()) return;
-    if (!chosen) { setError(t("doc.chooseFileFirst")); return; }
+    if (chosen.length === 0) { setError(t("doc.chooseFileFirst")); return; }
     setBusy(true);
     setNotice(null);
     setError(null);
     try {
-      const refRes = await fetch("/api/documents/upload-reference", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ documentType: documentType.trim() }) });
-      if (!refRes.ok) { setError(t("doc.startFailed")); return; }
-      const { storageReference, uploadUrl } = (await refRes.json()) as { storageReference: string; uploadUrl?: string };
-      if (chosen && uploadUrl) {
-        try {
-          const put = await fetch(uploadUrl, { method: "PUT", headers: { "content-type": chosen.type || "application/octet-stream" }, body: chosen });
-          if (!put.ok) { setError(t("doc.uploadFailed")); return; }
-        } catch {
-          setError(t("doc.uploadUnreachable"));
-          return;
-        }
+      let ok = 0;
+      for (const f of (replace ? chosen.slice(0, 1) : chosen)) {
+        if (await uploadOne(documentType, replace, f)) ok++;
+        else break;
       }
-      const endpoint = replace ? "/api/documents/replace" : "/api/documents";
-      const res = await fetch(endpoint, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ documentType: documentType.trim(), storageReference }) });
-      if (!res.ok) { setError(t("doc.submitFailed")); return; }
-      setNotice(replace ? t("doc.replacementSubmitted") : t("doc.submitted"));
-      setDocType("");
-      setFile(null);
-      setReplacing(false);
-      await load();
+      if (ok > 0) {
+        setNotice(replace ? t("doc.replacementSubmitted") : t("doc.submitted"));
+        setDocType("");
+        setFiles([]);
+        setReplacing(false);
+        await load();
+      }
     } finally {
       setBusy(false);
     }
-  }, [load, t]);
+  }, [load, t, uploadOne]);
 
   if (state.status === "loading") return <div className="state">{t("common.loading")}</div>;
   if (state.status === "signed_out") return <div className="state">{t("doc.signInPrompt")}<div style={{ marginTop: 12 }}><a className="btn" href="/">{t("common.goToSearch")}</a></div></div>;
@@ -115,7 +128,7 @@ export function MyDocuments() {
       {notice ? <p className="notice" role="status" style={{ color: "var(--accent)" }}>{notice}</p> : null}
       {error ? <p className="notice" role="alert" style={{ color: "var(--danger)" }}>{error}</p> : null}
 
-      <form className="searchbar" onSubmit={(e) => { e.preventDefault(); void submit(docType, replacing, file); }}>
+      <form className="searchbar" onSubmit={(e) => { e.preventDefault(); void submit(docType, replacing, files); }}>
         <div className="field grow">
           <label htmlFor="doctype">{t("doc.documentType")}</label>
           <select id="doctype" value={docType} onChange={(e) => setDocType(e.target.value)} aria-describedby="doctype-help">
@@ -125,9 +138,9 @@ export function MyDocuments() {
         </div>
         <div className="field grow">
           <label htmlFor="docfile">{t("doc.file")}</label>
-          <input id="docfile" type="file" accept="image/*,application/pdf" onChange={(e) => setFile(e.target.files?.[0] ?? null)} aria-describedby="doctype-help" />
+          <input id="docfile" type="file" multiple accept="image/*,application/pdf" onChange={(e) => setFiles(Array.from(e.target.files ?? []))} aria-describedby="doctype-help" />
         </div>
-        <button className="btn" type="submit" disabled={busy || !docType.trim() || !file}>{busy ? t("doc.uploading") : t("doc.uploadDocument")}</button>
+        <button className="btn" type="submit" disabled={busy || !docType.trim() || files.length === 0}>{busy ? t("doc.uploading") : t("doc.uploadDocument")}</button>
       </form>
       <p id="doctype-help" className="notice">{t("doc.formHelp")}</p>
 
@@ -146,7 +159,7 @@ export function MyDocuments() {
                 {d.jurisdiction ? <span className="chip">{d.jurisdiction}</span> : null}
               </div>
               {["accepted", "expiring", "expired", "rejected"].includes(d.effectiveStatus) ? (
-                <button className="btn ghost" type="button" style={{ alignSelf: "flex-start" }} disabled={busy} onClick={() => { setReplacing(true); setDocType(d.documentType); setFile(null); setError(null); setNotice(t("doc.chooseNewToReplace")); }}>{t("doc.replace")}</button>
+                <button className="btn ghost" type="button" style={{ alignSelf: "flex-start" }} disabled={busy} onClick={() => { setReplacing(true); setDocType(d.documentType); setFiles([]); setError(null); setNotice(t("doc.chooseNewToReplace")); }}>{t("doc.replace")}</button>
               ) : null}
             </article>
           );

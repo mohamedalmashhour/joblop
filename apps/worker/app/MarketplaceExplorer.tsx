@@ -55,7 +55,15 @@ export function MarketplaceExplorer() {
 
 function SearchPanel({ onSignedOut }: { onSignedOut: () => void }) {
   const t = useT();
-  const locale = fmtLocale(useLocale());
+  const rawLocale = useLocale();
+  const locale = fmtLocale(rawLocale);
+  // Selectable role suggestions for the search box (worker picks a role instead of guessing free-text).
+  const roleSuggestions =
+    rawLocale === "ar"
+      ? ["ممرضة", "الدعم الشخصي", "طاهٍ", "طباخ", "التدبير المنزلي", "خدمة الطعام", "الصيانة", "عامل نظافة"]
+      : rawLocale.startsWith("fr")
+        ? ["Infirmière", "Préposé aux bénéficiaires", "Chef", "Cuisinier", "Entretien ménager", "Service en salle", "Maintenance", "Nettoyage"]
+        : ["Nurse", "Personal Support", "Chef", "Cook", "Housekeeping", "Dining Support", "Maintenance", "Cleaning"];
   const [postalCode, setPostalCode] = useState("H7V 1A1");
   const [radiusKm, setRadiusKm] = useState<number>(25);
   const [role, setRole] = useState("");
@@ -222,7 +230,10 @@ function SearchPanel({ onSignedOut }: { onSignedOut: () => void }) {
         </div>
         <div className="field grow">
           <label htmlFor="role">{t("mk.role")}</label>
-          <input id="role" value={role} onChange={(e) => setRole(e.target.value)} placeholder={t("mk.anyRole")} />
+          <input id="role" list="role-options" value={role} onChange={(e) => setRole(e.target.value)} placeholder={t("mk.anyRole")} />
+          <datalist id="role-options">
+            {roleSuggestions.map((r) => <option key={r} value={r} />)}
+          </datalist>
         </div>
         <div className="field">
           <label htmlFor="sort">{t("mk.sortBy")}</label>
