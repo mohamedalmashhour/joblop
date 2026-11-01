@@ -128,7 +128,7 @@ export function Offers() {
   if (state.status === "signed_out")
     return <div className="state">{t("offers.signInPrompt")}<div style={{ marginTop: 12 }}><a className="btn" href="/">{t("common.goToSearch")}</a></div></div>;
   if (state.status === "needs_setup")
-    return <div className="state">{t("common.needsWorkerSetup")}<div style={{ marginTop: 12 }}><a className="btn" href="/pay">{t("common.setUpWorker")}</a></div></div>;
+    return <div className="state">{t("common.needsWorkerSetup")}<div style={{ marginTop: 12 }}><a className="btn" href="/onboarding">{t("common.setUpWorker")}</a></div></div>;
   if (state.status === "error") return <div className="state error" role="alert">{t("offers.loadError")}</div>;
 
   return (

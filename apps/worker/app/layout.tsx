@@ -4,6 +4,7 @@ import { cookies } from "next/headers";
 import { LOCALE_COOKIE, htmlLang, localeDir, resolveWorkerLocale } from "./i18n/config";
 import { dictionaries } from "./i18n/messages";
 import { LocaleProvider } from "./i18n/LocaleProvider";
+import { IdleLogout } from "./IdleLogout";
 import { Footer } from "./Footer";
 import { GoogleTag } from "./analytics";
 import { RegisterSW } from "./RegisterSW";
@@ -57,7 +58,10 @@ export default async function RootLayout({ children }: Readonly<{ children: Reac
       <body>
         <GoogleTag tagId={process.env.GOOGLE_TAG_ID ?? null} />
         <RegisterSW />
-        <LocaleProvider locale={locale}>{children}</LocaleProvider>
+        <LocaleProvider locale={locale}>
+          <IdleLogout />
+          {children}
+        </LocaleProvider>
         <Footer locale={locale} />
       </body>
     </html>
