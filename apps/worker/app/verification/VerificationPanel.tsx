@@ -72,7 +72,7 @@ export function VerificationPanel() {
     return (
       <div className="state">
         {t("common.needsWorkerSetup")}
-        <div style={{ marginTop: 12 }}><a className="btn" href="/pay">{t("common.setUpWorker")}</a></div>
+        <div style={{ marginTop: 12 }}><a className="btn" href="/onboarding">{t("common.setUpWorker")}</a></div>
       </div>
     );
   if (state.status === "error") return <div className="state error" role="alert">{t("ver.loadError")}</div>;
