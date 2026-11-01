@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { ProUpgrade } from "./ProUpgrade";
+import { toJsonResume, type CvProfile } from "./jsonResume";
 
 // Worker-facing guided CV builder. Same flow as the admin demo, but on worker endpoints: the signed-in
 // worker builds their own CV, and CV attachments are keyed to their session server-side (no workerRef
@@ -147,6 +148,39 @@ export function CvBuilder() {
     } finally { setBusy(false); }
   };
 
+  // R2-12b: export a standards-compliant JSON Resume file. The worker can render it with ANY free,
+  // MIT-licensed JSON Resume theme (jsonresume.org/themes). In-app theme rendering is a follow-up.
+  const downloadJsonResume = () => {
+    if (!name.trim()) { setMsg("Please enter your name."); return; }
+    const summary = `${exp} of experience as ${category.label}${city ? ` in the ${city} area` : ""}. Available: ${avail.join(", ") || "flexible"}.`;
+    const certifications = assets.filter((a) => a.kind === "certificate").map((a) => a.label?.trim() || a.filename);
+    const profile: CvProfile = {
+      fullName: name.trim(),
+      headline: category.label,
+      location: city,
+      summary,
+      skills,
+      languages: langs,
+      certifications,
+      education: edu && edu !== "No diploma" ? [{ credential: edu, institution: "", year: "" }] : [],
+      experience: lastJob.trim() ? [{ role: category.label, employer: lastJob.trim(), start: "", highlights: [] }] : []
+    };
+    try {
+      const blob = new Blob([JSON.stringify(toJsonResume(profile), null, 2)], { type: "application/json" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `${name.trim().replace(/\s+/g, "_") || "resume"}.json`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(url);
+      setMsg("Downloaded resume.json — use it with any free JSON Resume theme.");
+    } catch {
+      setMsg("Could not prepare the download. Please try again.");
+    }
+  };
+
   const set = (k: "fullName" | "lastJob", v: string) => (k === "fullName" ? setName(v) : setLastJob(v));
 
   // CV tester — a free, deterministic score of how strong/complete this CV is, with the concrete gaps
@@ -211,10 +245,14 @@ export function CvBuilder() {
         ) : null}
         <h2 style={styles.step}>10 · Design</h2>
         <Chips options={DESIGNS.map((d) => d.label)} value={[DESIGNS.find((d) => d.key === design)!.label]} onToggle={(l) => setDesign(DESIGNS.find((d) => d.label === l)!.key)} />
-        <div style={{ marginTop: 18 }}>
+        <div style={{ marginTop: 18, display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center" }}>
           <button type="button" style={styles.cta} disabled={busy} onClick={() => void generate()}>{busy ? "Building…" : "Build my CV"}</button>
+          <button type="button" style={{ ...styles.cta, background: "transparent", border: "1px solid #a8842f", color: "#c9a24b" }} onClick={downloadJsonResume}>Download JSON Resume</button>
           {msg ? <span style={styles.notice}>{msg}</span> : null}
         </div>
+        <p style={styles.hint}>
+          Your CV data in the open <a href="https://jsonresume.org/themes" target="_blank" rel="noopener noreferrer" style={{ color: "#c9a24b" }}>JSON Resume</a> format — render it free in dozens of designs with any JSON Resume theme.
+        </p>
         {cv ? (
           <div style={styles.scoreWrap}>
             <div style={styles.scoreHead}>
