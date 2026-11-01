@@ -1,5 +1,6 @@
 export * from "./domain";
 export * from "./country";
+export * from "./holidays";
 
 import type { ContractMoney } from "./domain";
 

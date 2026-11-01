@@ -6,6 +6,8 @@
 // an incomplete or wrong profile. NOTE: money-domain currency (invoice/payment/contract boundaries)
 // is intentionally NOT driven from here yet — that is the money layer's own staged migration.
 
+import type { Holiday } from "./holidays";
+
 export type Region = Readonly<{ code: string; en: string; fr: string; ar: string }>;
 
 export type CountryProfile = Readonly<{
@@ -23,6 +25,9 @@ export type CountryProfile = Readonly<{
   legalEntityName: string;
   /** Postal contact address shown on public pages. */
   contactAddress: string;
+  /** Public holidays for this country — drives the platform greeting-card occasions. Country-specific
+   *  DATA; the holiday engine (holidays.ts) that resolves these to dates is country-neutral. */
+  holidays: readonly Holiday[];
 }>;
 
 // ── Canada (the first launch country). Values moved verbatim from the previously hardcoded apps.
@@ -47,7 +52,23 @@ const ca: CountryProfile = {
   currencyCode: "CAD",
   currencySymbol: "$",
   legalEntityName: "9375-7649 Québec inc.",
-  contactAddress: "207-805 boul. Chomedey, Laval, QC"
+  contactAddress: "207-805 boul. Chomedey, Laval, QC",
+  // Canada's statutory / widely-observed holidays. weekday: 0=Sun … 1=Mon. QC-only days carry a region.
+  holidays: [
+    { key: "new_year", en: "New Year's Day", fr: "Jour de l'An", ar: "رأس السنة", rule: { kind: "fixed", month: 1, day: 1 } },
+    { key: "good_friday", en: "Good Friday", fr: "Vendredi saint", ar: "الجمعة العظيمة", rule: { kind: "easterOffset", offsetDays: -2 } },
+    { key: "easter_monday", en: "Easter Monday", fr: "Lundi de Pâques", ar: "اثنين الفصح", rule: { kind: "easterOffset", offsetDays: 1 } },
+    { key: "victoria_day", en: "Victoria Day", fr: "Journée nationale des patriotes", ar: "عيد فيكتوريا", rule: { kind: "weekdayOnOrBefore", month: 5, day: 24, weekday: 1 } },
+    { key: "saint_jean", en: "St-Jean-Baptiste Day", fr: "Fête nationale du Québec", ar: "عيد القديس يوحنا المعمدان", rule: { kind: "fixed", month: 6, day: 24 }, regions: ["QC"] },
+    { key: "canada_day", en: "Canada Day", fr: "Fête du Canada", ar: "يوم كندا", rule: { kind: "fixed", month: 7, day: 1 } },
+    { key: "civic_holiday", en: "Civic Holiday", fr: "Congé civique", ar: "العطلة المدنية", rule: { kind: "nthWeekday", month: 8, weekday: 1, nth: 1 } },
+    { key: "labour_day", en: "Labour Day", fr: "Fête du Travail", ar: "عيد العمال", rule: { kind: "nthWeekday", month: 9, weekday: 1, nth: 1 } },
+    { key: "truth_reconciliation", en: "National Day for Truth and Reconciliation", fr: "Journée de la vérité et de la réconciliation", ar: "يوم الحقيقة والمصالحة", rule: { kind: "fixed", month: 9, day: 30 } },
+    { key: "thanksgiving", en: "Thanksgiving", fr: "Action de grâce", ar: "عيد الشكر", rule: { kind: "nthWeekday", month: 10, weekday: 1, nth: 2 } },
+    { key: "remembrance_day", en: "Remembrance Day", fr: "Jour du Souvenir", ar: "يوم الذكرى", rule: { kind: "fixed", month: 11, day: 11 } },
+    { key: "christmas", en: "Christmas Day", fr: "Noël", ar: "عيد الميلاد", rule: { kind: "fixed", month: 12, day: 25 } },
+    { key: "boxing_day", en: "Boxing Day", fr: "Lendemain de Noël", ar: "يوم الملاكمة", rule: { kind: "fixed", month: 12, day: 26 } }
+  ]
 };
 
 // Registry of supported country profiles. A new country is added as its own entry (eventually sourced

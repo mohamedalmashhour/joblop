@@ -3361,6 +3361,63 @@ model WorkerCv {
   @@map("worker_cvs")
 }
 
+// Platform Greetings & Certificates — an admin sends holiday/occasion greeting cards and issues
+// certificates (e.g. "Super Worker") to workers and employers. Delivery is in-app (these rows ARE the
+// inbox) plus best-effort email (reusing the existing mailer; fail-closed when unconfigured). Country-
+// neutral: the holiday OCCASIONS come from the active CountryProfile, not from these tables. No money.
+model PlatformGreeting {
+  id              String                      @id @default(uuid()) @db.Uuid
+  occasionKey     String?                     @map("occasion_key") // holiday key from the country profile, or null for a custom greeting
+  templateKey     String                      @map("template_key") // card design: "holiday" | "thank_you" | "welcome" | "custom"
+  title           String
+  message         String
+  audienceScope   String                      @map("audience_scope") // "all" | "workers" | "employers" | "selected"
+  createdByUserId String                      @map("created_by_user_id") @db.Uuid
+  createdAt       DateTime                    @default(now()) @map("created_at") @db.Timestamptz(3)
+  deliveries      PlatformGreetingDelivery[]
+
+  @@index([createdAt], map: "platform_greetings_created_idx")
+  @@map("platform_greetings")
+}
+
+// One delivery of a greeting to one recipient. These rows are the recipient's in-app inbox; emailStatus
+// records the best-effort email outcome separately so an email failure never hides the in-app card.
+model PlatformGreetingDelivery {
+  id              String           @id @default(uuid()) @db.Uuid
+  greetingId      String           @map("greeting_id") @db.Uuid
+  recipientUserId String           @map("recipient_user_id") @db.Uuid
+  recipientKind   String           @map("recipient_kind") // "worker" | "employer"
+  emailStatus     String           @default("none") @map("email_status") // "none" | "sent" | "skipped" | "error"
+  readAt          DateTime?        @map("read_at") @db.Timestamptz(3)
+  createdAt       DateTime         @default(now()) @map("created_at") @db.Timestamptz(3)
+  greeting        PlatformGreeting @relation(fields: [greetingId], references: [id], onDelete: Cascade)
+
+  @@index([recipientUserId, createdAt], map: "platform_greeting_deliveries_recipient_idx")
+  @@index([greetingId], map: "platform_greeting_deliveries_greeting_idx")
+  @@map("platform_greeting_deliveries")
+}
+
+// A certificate (award) issued by an admin to a worker or employer. Rendered in-app as a printable
+// certificate and emailed best-effort. recipientName is snapshotted at issue so a later rename doesn't
+// rewrite history; serial is a short human-verifiable code shown on the certificate.
+model PlatformCertificate {
+  id              String    @id @default(uuid()) @db.Uuid
+  recipientUserId String    @map("recipient_user_id") @db.Uuid
+  recipientKind   String    @map("recipient_kind") // "worker" | "employer"
+  recipientName   String    @map("recipient_name")
+  kind            String // "super_worker" | "most_reliable" | "employee_of_month" | "top_employer" | "custom"
+  title           String
+  note            String?
+  serial          String    @unique
+  emailStatus     String    @default("none") @map("email_status")
+  readAt          DateTime? @map("read_at") @db.Timestamptz(3)
+  issuedByUserId  String    @map("issued_by_user_id") @db.Uuid
+  issuedAt        DateTime  @default(now()) @map("issued_at") @db.Timestamptz(3)
+
+  @@index([recipientUserId, issuedAt], map: "platform_certificates_recipient_idx")
+  @@map("platform_certificates")
+}
+
 // Worker Pro paid plan: entitlement that unlocks (1) AI-written CVs + premium designs and (2) PRIORITY
 // job access — best / higher-wage leads and emergency requests surfaced first. Free tier browses jobs
 // and gets a basic synthetic draft (funnel intact). Enforcement is SERVER-SIDE only (no client trust).
