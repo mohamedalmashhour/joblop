@@ -38,7 +38,7 @@ export function IdleLogout() {
       schedule();
     }
 
-    const events: (keyof WindowEventMap)[] = ["mousemove", "mousedown", "keydown", "scroll", "touchstart", "visibilitychange"];
+    const events: (keyof WindowEventMap)[] = ["mousemove", "mousedown", "keydown", "scroll", "touchstart"];
     events.forEach((e) => window.addEventListener(e, onActivity, { passive: true }));
     schedule();
     return () => {
