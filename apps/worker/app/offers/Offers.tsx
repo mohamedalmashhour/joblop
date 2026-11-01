@@ -1,7 +1,7 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
-import { useLocale, useT, fmtLocale } from "../i18n/LocaleProvider";
+import { useCallback, useEffect, useState, type ReactNode } from "react";
+import { useLocale, useT, fmtLocale, type Translate } from "../i18n/LocaleProvider";
 import type { RwosLocale } from "../i18n/config";
 import type { MessageKey } from "../i18n/messages";
 
@@ -43,6 +43,9 @@ async function resolveDenied(): Promise<State> {
 // Statuses where the worker can still respond. Terminal states (accepted/declined/expired/
 // withdrawn/cancelled) are read-only. `draft`/`approved` are pre-delivery and never worker-visible.
 const RESPONDABLE = new Set(["sent", "delivered", "viewed"]);
+
+// Local day key for grouping offers onto calendar cells.
+function dayKey(d: Date): string { return `${d.getFullYear()}-${d.getMonth()}-${d.getDate()}`; }
 const STATUS_LABEL_KEY: Record<string, MessageKey> = {
   draft: "offers.statusPreparing",
   approved: "offers.statusPreparing",
@@ -81,6 +84,11 @@ export function Offers() {
   const [state, setState] = useState<State>({ status: "loading" });
   const [busyId, setBusyId] = useState<string | null>(null);
   const [notice, setNotice] = useState<string>("");
+  // R2-8b: list / calendar view of offers. The calendar lets the worker see offered shifts by day and
+  // accept them right there (same accept/decline as the list, just filtered to the selected day).
+  const [view, setView] = useState<"list" | "calendar">("list");
+  const [month, setMonth] = useState(() => { const d = new Date(); return new Date(d.getFullYear(), d.getMonth(), 1); });
+  const [selectedDay, setSelectedDay] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     try {
@@ -131,22 +139,10 @@ export function Offers() {
     return <div className="state">{t("common.needsWorkerSetup")}<div style={{ marginTop: 12 }}><a className="btn" href="/onboarding">{t("common.setUpWorker")}</a></div></div>;
   if (state.status === "error") return <div className="state error" role="alert">{t("offers.loadError")}</div>;
 
-  return (
-    <>
-      <section className="hero">
-        <h1>{t("nav.offers")}</h1>
-        <p>{t("offers.intro")}</p>
-      </section>
-      {notice ? <div className="state" role="status" style={{ marginBottom: 16 }}>{notice}</div> : null}
-
-      {state.items.length === 0 ? (
-        <div className="state">{t("offers.none")}</div>
-      ) : (
-        <div className="results" style={{ paddingBottom: 48 }}>
-          {state.items.map((o) => {
-            const respondable = RESPONDABLE.has(o.status);
-            const busy = busyId === o.workerOfferId;
-            return (
+  const renderOffer = (o: Offer) => {
+    const respondable = RESPONDABLE.has(o.status);
+    const busy = busyId === o.workerOfferId;
+    return (
               <article className="card" key={o.workerOfferId}>
                 <div className="role">{o.title ?? t("offers.shiftOffer")}</div>
                 <div className="chips">
@@ -189,11 +185,118 @@ export function Offers() {
                   </div>
                 )}
               </article>
+    );
+  };
+
+  return (
+    <>
+      <section className="hero">
+        <h1>{t("nav.offers")}</h1>
+        <p>{t("offers.intro")}</p>
+      </section>
+      {notice ? <div className="state" role="status" style={{ marginBottom: 16 }}>{notice}</div> : null}
+
+      {state.items.length === 0 ? (
+        <div className="state">{t("offers.none")}</div>
+      ) : (
+        <>
+          <div className="chips" style={{ marginBottom: 12 }}>
+            <button type="button" className={`chip ${view === "list" ? "status-verified" : ""}`} onClick={() => setView("list")}>{t("sched.viewList")}</button>
+            <button type="button" className={`chip ${view === "calendar" ? "status-verified" : ""}`} onClick={() => setView("calendar")}>{t("sched.viewCalendar")}</button>
+          </div>
+          {view === "list" ? (
+            <div className="results" style={{ paddingBottom: 48 }}>{state.items.map(renderOffer)}</div>
+          ) : (
+            <OffersCalendar
+              items={state.items}
+              month={month}
+              onPrev={() => setMonth((m) => new Date(m.getFullYear(), m.getMonth() - 1, 1))}
+              onNext={() => setMonth((m) => new Date(m.getFullYear(), m.getMonth() + 1, 1))}
+              selected={selectedDay}
+              onSelect={setSelectedDay}
+              locale={locale}
+              t={t}
+              renderOffer={renderOffer}
+            />
+          )}
+        </>
+      )}
+      <p className="notice">{t("offers.footer")}</p>
+    </>
+  );
+}
+
+function OffersCalendar({ items, month, onPrev, onNext, selected, onSelect, locale, t, renderOffer }: {
+  items: readonly Offer[];
+  month: Date;
+  onPrev: () => void;
+  onNext: () => void;
+  selected: string | null;
+  onSelect: (k: string | null) => void;
+  locale: RwosLocale;
+  t: Translate;
+  renderOffer: (o: Offer) => ReactNode;
+}) {
+  const year = month.getFullYear();
+  const m = month.getMonth();
+  const startWeekday = new Date(year, m, 1).getDay();
+  const daysInMonth = new Date(year, m + 1, 0).getDate();
+  const counts = new Map<string, number>();
+  for (const o of items) {
+    if (!o.startAt) continue;
+    const d = new Date(o.startAt);
+    if (d.getFullYear() === year && d.getMonth() === m) counts.set(dayKey(d), (counts.get(dayKey(d)) ?? 0) + 1);
+  }
+  const monthLabel = new Date(year, m, 1).toLocaleDateString(locale, { month: "long", year: "numeric" });
+  const weekdays = Array.from({ length: 7 }, (_, i) => new Date(2023, 0, 1 + i).toLocaleDateString(locale, { weekday: "narrow" }));
+  const cells: (number | null)[] = [...Array<null>(startWeekday).fill(null), ...Array.from({ length: daysInMonth }, (_, i) => i + 1)];
+  const todayKey = dayKey(new Date());
+  const dayOffers = selected ? items.filter((o) => o.startAt && dayKey(new Date(o.startAt)) === selected) : [];
+  return (
+    <>
+      <section className="card" style={{ marginBottom: 16 }}>
+        <div className="chips" style={{ justifyContent: "space-between", alignItems: "center" }}>
+          <button type="button" className="chip" onClick={onPrev} aria-label={t("sched.prevMonth")}>&#8249;</button>
+          <div className="role">{monthLabel}</div>
+          <button type="button" className="chip" onClick={onNext} aria-label={t("sched.nextMonth")}>&#8250;</button>
+        </div>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(7, 1fr)", gap: 4, marginTop: 10 }}>
+          {weekdays.map((w, i) => <div key={`wd-${i}`} style={{ textAlign: "center", fontSize: 12, opacity: 0.7 }}>{w}</div>)}
+          {cells.map((day, i) => {
+            if (day === null) return <div key={`b-${i}`} />;
+            const k = `${year}-${m}-${day}`;
+            const count = counts.get(k) ?? 0;
+            const isToday = k === todayKey;
+            const isSel = k === selected;
+            return (
+              <button
+                key={`d-${day}`}
+                type="button"
+                onClick={() => onSelect(isSel ? null : k)}
+                style={{
+                  aspectRatio: "1 / 1", borderRadius: 8,
+                  border: isToday ? "2px solid var(--accent)" : "1px solid var(--border, rgba(127,127,127,0.3))",
+                  background: isSel ? "var(--accent)" : count > 0 ? "var(--accent-soft, rgba(127,127,127,0.12))" : "transparent",
+                  color: isSel ? "#fff" : "inherit", cursor: "pointer",
+                  display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", fontSize: 13
+                }}
+              >
+                <span>{day}</span>
+                {count > 0 ? <span style={{ fontSize: 10, marginTop: 2 }}>&#9679;{count > 1 ? ` ${count}` : ""}</span> : null}
+              </button>
             );
           })}
         </div>
+      </section>
+      {selected ? (
+        dayOffers.length > 0 ? (
+          <div className="results" style={{ paddingBottom: 48 }}>{dayOffers.map(renderOffer)}</div>
+        ) : (
+          <div className="state">{t("sched.noShiftsDay")}</div>
+        )
+      ) : (
+        <p className="notice">{t("sched.pickDay")}</p>
       )}
-      <p className="notice">{t("offers.footer")}</p>
     </>
   );
 }
