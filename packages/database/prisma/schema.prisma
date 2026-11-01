@@ -3361,6 +3361,32 @@ model WorkerCv {
   @@map("worker_cvs")
 }
 
+// Invite-a-friend / referral. Each user gets ONE stable, shareable invite code; a friend who signs up
+// with that code (…/?ref=CODE) is recorded as a referral attributed to the inviter. Country-neutral,
+// no money — a growth/attribution feature. A code is created lazily the first time a user opens their
+// invite panel; a referral is recorded once per invitee at signup.
+model ReferralCode {
+  id        String   @id @default(uuid()) @db.Uuid
+  userId    String   @unique @map("user_id") @db.Uuid
+  code      String   @unique
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  @@map("referral_codes")
+}
+
+model Referral {
+  id             String   @id @default(uuid()) @db.Uuid
+  referrerUserId String   @map("referrer_user_id") @db.Uuid
+  code           String
+  inviteeUserId  String?  @unique @map("invitee_user_id") @db.Uuid // one referral per invitee
+  inviteeEmail   String?  @map("invitee_email")
+  status         String   @default("joined") // "joined" (recorded at signup); reserved for future "pending"
+  createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  @@index([referrerUserId, createdAt], map: "referrals_referrer_idx")
+  @@map("referrals")
+}
+
 // Platform Greetings & Certificates — an admin sends holiday/occasion greeting cards and issues
 // certificates (e.g. "Super Worker") to workers and employers. Delivery is in-app (these rows ARE the
 // inbox) plus best-effort email (reusing the existing mailer; fail-closed when unconfigured). Country-

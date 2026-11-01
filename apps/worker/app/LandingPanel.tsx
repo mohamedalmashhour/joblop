@@ -190,6 +190,16 @@ function SignUpForm({ onSignedIn, onHaveAccount }: { onSignedIn: () => void; onH
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [registered, setRegistered] = useState(false);
+  // Invite-a-friend: capture ?ref=CODE once and remember it (survives tab switches / the email step).
+  const [referralCode, setReferralCode] = useState<string | null>(null);
+  useEffect(() => {
+    try {
+      const fromUrl = new URLSearchParams(window.location.search).get("ref");
+      if (fromUrl) { setReferralCode(fromUrl); try { localStorage.setItem("jl_ref", fromUrl); } catch { /* ignore */ } return; }
+      const stored = (() => { try { return localStorage.getItem("jl_ref"); } catch { return null; } })();
+      if (stored) setReferralCode(stored);
+    } catch { /* ignore */ }
+  }, []);
 
   async function submit(event: React.FormEvent) {
     event.preventDefault();
@@ -209,7 +219,8 @@ function SignUpForm({ onSignedIn, onHaveAccount }: { onSignedIn: () => void; onH
           confirmPassword,
           acceptedNotices: true,
           displayName: name.trim() || null,
-          phone: phone.trim() || null
+          phone: phone.trim() || null,
+          referralCode
         })
       });
       if (response.ok) { trackConversion("sign_up", { method: "worker" }); setRegistered(true); return; }

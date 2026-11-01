@@ -227,6 +227,7 @@ import {
   type AudienceScope,
   type RecipientKind
 } from "./platformGreetings";
+import { getOrCreateReferralCode, referralStats, recordReferralSignup } from "./referrals";
 import {
   createTrustedServiceIdentityHeaders,
   type IdentityTokenProvider,
@@ -1422,6 +1423,8 @@ export function buildApi(options: BuildApiOptions = {}) {
     // Optional mobile number (seeded #1). Never required; bounded. Null when absent/blank.
     const phoneRaw = readOptionalString(body, "phone");
     const phone = phoneRaw && phoneRaw.trim() ? phoneRaw.trim().slice(0, 32) : null;
+    // Invite-a-friend: optional referral code captured from ?ref= at signup. Attribution is best-effort.
+    const referralCode = readOptionalString(body, "referralCode");
 
     if (!email || !password) {
       return reply.code(400).send({
@@ -1450,6 +1453,15 @@ export function buildApi(options: BuildApiOptions = {}) {
         ipAddress: request.ip,
         userAgent: request.headers["user-agent"] ?? null
       });
+
+      // Best-effort referral attribution — never let it fail the registration.
+      if (referralCode && prisma && result.user?.id) {
+        try {
+          await recordReferralSignup(prisma, referralCode, result.user.id, email);
+        } catch (referralErr) {
+          app.log.warn({ err: referralErr }, "referral attribution failed");
+        }
+      }
 
       return reply.code(201).send(serializeAuthenticationResult(result));
     } catch (error) {
@@ -8906,6 +8918,15 @@ export function buildApi(options: BuildApiOptions = {}) {
     if (!id || !isCanonicalUuid(id)) return reply.code(400).send({ error: "RWOS_INBOX_INVALID" });
     await markCertificateRead(prisma!, user.id, id);
     return reply.code(200).send({ read: true });
+  });
+
+  // Invite-a-friend: the signed-in user's own invite code (created on first use) + how many have joined.
+  app.get("/invite/code", async (request, reply) => {
+    const user = await requireRecipient(request, reply);
+    if (!user) return;
+    const code = await getOrCreateReferralCode(prisma!, user.id);
+    const stats = await referralStats(prisma!, user.id);
+    return reply.code(200).send({ code, joined: stats.joined });
   });
 
   // The old free toggle is removed: classification can no longer be flipped without a signed election.
