@@ -4,8 +4,8 @@ export default function Page() {
   return (
     <main style={styles.page}>
       <header style={styles.header}>
-        <a href="/employer" style={styles.brand}>Joblop</a>
-        <a href="/employer" style={styles.back}>← Dashboard</a>
+        <a href="/" style={styles.brand}>Joblop</a>
+        <a href="/employer/dashboard" style={styles.back}>← Dashboard</a>
       </header>
       <div style={styles.body}>
         <h1 style={styles.title}>Greetings &amp; awards</h1>
