@@ -14,7 +14,8 @@ const connectedNavigation = [
   { href: "/orders", labelKey: "nav.orders" },
   { href: "/dispatches", labelKey: "nav.dispatches" },
   { href: "/market-wages", labelKey: "nav.marketWages" },
-  { href: "/escalations", labelKey: "nav.escalations" }
+  { href: "/escalations", labelKey: "nav.escalations" },
+  { href: "/greetings", labelKey: "nav.greetings" }
 ] as const satisfies readonly { href: string; labelKey: MessageKey }[];
 const reviewNavigation = phase01Routes.map(({ route, title }) => ({ href: route, label: title }));
 // Platform operations surfaces not in the phase-01 review set.
@@ -45,7 +46,7 @@ const NAV_GROUPS: readonly { group: string; hrefs: readonly string[] }[] = [
   { group: "Finance & payroll", hrefs: ["/finance", "/payroll", "/market-wages"] },
   { group: "People & trust", hrefs: ["/verification", "/hr"] },
   { group: "Governance & compliance", hrefs: ["/escalations", "/compliance", "/audit-log", "/reports"] },
-  { group: "Platform", hrefs: ["/system-settings", "/platform-analytics", "/notification-center", "/ai-control-center"] }
+  { group: "Platform", hrefs: ["/greetings", "/system-settings", "/platform-analytics", "/notification-center", "/ai-control-center"] }
 ];
 
 // Bucket the active navigation into ordered groups, preserving each group's declared order.
