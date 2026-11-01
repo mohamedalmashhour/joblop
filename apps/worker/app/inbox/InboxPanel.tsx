@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { InviteFriends } from "./InviteFriends";
 
 // Recipient inbox: the signed-in worker's greeting cards and certificates. Self-gates like the CV
 // builder — a signed-out visitor is guided to sign in. Certificates are printable (new-window print view).
@@ -88,6 +89,7 @@ export function InboxPanel() {
 
   return (
     <section style={styles.wrap}>
+      <InviteFriends />
       <h2 style={styles.section}>Certificates</h2>
       {certs.length === 0 ? <p style={styles.hint}>No certificates yet.</p> : (
         <div style={styles.grid}>

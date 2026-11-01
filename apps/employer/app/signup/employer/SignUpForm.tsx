@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 
 import { styles } from "../../employer/employerStyles";
 import { useT } from "../../i18n/LocaleProvider";
@@ -23,6 +23,16 @@ export function SignUpForm({ registrationOpen }: { registrationOpen: boolean }) 
   const [state, setState] = useState<"idle" | "submitting" | "error">("idle");
   const [verifying, setVerifying] = useState(false);
   const [message, setMessage] = useState(() => t("auth.signUpIntro"));
+  // Invite-a-friend: capture ?ref=CODE once and remember it across the signup flow.
+  const [referralCode, setReferralCode] = useState<string | null>(null);
+  useEffect(() => {
+    try {
+      const fromUrl = new URLSearchParams(window.location.search).get("ref");
+      if (fromUrl) { setReferralCode(fromUrl); try { localStorage.setItem("jl_ref", fromUrl); } catch { /* ignore */ } return; }
+      const stored = (() => { try { return localStorage.getItem("jl_ref"); } catch { return null; } })();
+      if (stored) setReferralCode(stored);
+    } catch { /* ignore */ }
+  }, []);
 
   const continueToOnboarding = () => window.location.assign("/employer/onboarding/company");
 
@@ -67,7 +77,8 @@ export function SignUpForm({ registrationOpen }: { registrationOpen: boolean }) 
           password,
           confirmPassword,
           acceptedNotices,
-          displayName: fullName || null
+          displayName: fullName || null,
+          referralCode
         })
       });
       setPassword("");
