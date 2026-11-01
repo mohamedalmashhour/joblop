@@ -129,6 +129,9 @@ export function EmployerShell({
           <footer style={styles.footer}>
             <span>Joblop Employer Journey</span>
             <nav aria-label="Employer footer navigation" style={styles.footerLinks}>
+              <a href="/employer/inbox" style={styles.footerLink}>
+                Greetings &amp; awards
+              </a>
               <a href="/contact" style={styles.footerLink}>
                 Support
               </a>

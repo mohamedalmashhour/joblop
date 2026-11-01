@@ -209,8 +209,24 @@ import {
   WIZARD_DEGREE_ANCHORS,
   WIZARD_FACTOR_ORDER,
   FACTOR_LABELS,
-  FAMILY_LABELS
+  FAMILY_LABELS,
+  activeCountry,
+  upcomingHolidays
 } from "@rwos/shared";
+import {
+  sendGreeting,
+  issueCertificate,
+  searchRecipients,
+  listSentGreetings,
+  listIssuedCertificates,
+  listGreetingsForRecipient,
+  listCertificatesForRecipient,
+  markGreetingRead,
+  markCertificateRead,
+  isCertificateKind,
+  type AudienceScope,
+  type RecipientKind
+} from "./platformGreetings";
 import {
   createTrustedServiceIdentityHeaders,
   type IdentityTokenProvider,
@@ -8746,6 +8762,150 @@ export function buildApi(options: BuildApiOptions = {}) {
     const ok = await deleteCvAsset(prisma!, session.user.id, id);
     if (!ok) return reply.code(404).send({ error: "RWOS_CV_ASSET_NOT_FOUND" });
     return reply.code(200).send({ deleted: true });
+  });
+
+  // ── Platform Greetings & Certificates ────────────────────────────────────────────────────────────
+  // Admin sends holiday/occasion greeting cards and issues certificates to workers/employers. In-app +
+  // best-effort email. Country-neutral: occasions come from the active CountryProfile's holiday list.
+  const requirePlatformAdmin = async (request: FastifyRequest, reply: FastifyReply) => {
+    const session = await authService.validateSession(readBearerToken(request.headers.authorization));
+    if (!session.authenticated || !session.user) {
+      reply.code(401).send({ error: "RWOS_PLATFORM_DENIED", message: "Authentication is required." });
+      return null;
+    }
+    const roles = await resolveAuthorizationRoles(session.user.id);
+    if (!roles.includes("PLATFORM_ADMINISTRATOR")) {
+      reply.code(403).send({ error: "RWOS_PLATFORM_DENIED", message: "Platform authority is required." });
+      return null;
+    }
+    return session.user;
+  };
+
+  // Upcoming holiday occasions for the active country — drives the greeting-card occasion picker.
+  app.get("/platform/greetings/holidays", async (request, reply) => {
+    const user = await requirePlatformAdmin(request, reply);
+    if (!user) return;
+    try {
+      const holidays = upcomingHolidays(activeCountry().holidays, new Date(), 12);
+      return reply.code(200).send({ country: activeCountry().code, holidays });
+    } catch (err) {
+      return reply.code(500).send({ error: "RWOS_COUNTRY_UNCONFIGURED", message: (err as Error).message });
+    }
+  });
+
+  // Search workers/employers by name/email for the "selected recipients" picker.
+  app.get("/platform/greetings/recipients", async (request, reply) => {
+    const user = await requirePlatformAdmin(request, reply);
+    if (!user) return;
+    const q = asRecord(request.query);
+    const query = readOptionalString(q, "q") ?? "";
+    const kindRaw = readOptionalString(q, "kind") ?? "all";
+    const kind: RecipientKind | "all" = kindRaw === "worker" || kindRaw === "employer" ? kindRaw : "all";
+    const results = await searchRecipients(prisma!, query, kind);
+    return reply.code(200).send({ recipients: results });
+  });
+
+  // Send a greeting to an audience (all / workers / employers / selected).
+  app.post("/platform/greetings", async (request, reply) => {
+    const user = await requirePlatformAdmin(request, reply);
+    if (!user) return;
+    const body = asRecord(request.body);
+    const title = readOptionalString(body, "title");
+    const message = readOptionalString(body, "message");
+    if (!title || !message) return reply.code(400).send({ error: "RWOS_GREETING_INVALID", message: "title and message are required." });
+    const scopeRaw = readOptionalString(body, "audienceScope") ?? "all";
+    const validScopes: AudienceScope[] = ["all", "workers", "employers", "selected"];
+    if (!validScopes.includes(scopeRaw as AudienceScope)) return reply.code(400).send({ error: "RWOS_GREETING_INVALID", message: "Invalid audienceScope." });
+    const audienceScope = scopeRaw as AudienceScope;
+    const selectedUserIds = Array.isArray(body.recipientUserIds)
+      ? body.recipientUserIds.filter((v): v is string => typeof v === "string" && isCanonicalUuid(v))
+      : [];
+    if (audienceScope === "selected" && selectedUserIds.length === 0) return reply.code(400).send({ error: "RWOS_GREETING_INVALID", message: "Select at least one recipient." });
+    const result = await sendGreeting(prisma!, emailSender, {
+      createdByUserId: user.id,
+      occasionKey: readOptionalString(body, "occasionKey") ?? null,
+      templateKey: readOptionalString(body, "templateKey") ?? "custom",
+      title: title.slice(0, 160),
+      message: message.slice(0, 2000),
+      audienceScope,
+      selectedUserIds
+    });
+    return reply.code(201).send(result);
+  });
+
+  // Greetings the admin has sent (history).
+  app.get("/platform/greetings", async (request, reply) => {
+    const user = await requirePlatformAdmin(request, reply);
+    if (!user) return;
+    return reply.code(200).send({ greetings: await listSentGreetings(prisma!) });
+  });
+
+  // Issue a certificate to one recipient.
+  app.post("/platform/certificates", async (request, reply) => {
+    const user = await requirePlatformAdmin(request, reply);
+    if (!user) return;
+    const body = asRecord(request.body);
+    const recipientUserId = readOptionalString(body, "recipientUserId");
+    const kind = readOptionalString(body, "kind") ?? "";
+    if (!recipientUserId || !isCanonicalUuid(recipientUserId)) return reply.code(400).send({ error: "RWOS_CERTIFICATE_INVALID", message: "A valid recipientUserId is required." });
+    if (!isCertificateKind(kind)) return reply.code(400).send({ error: "RWOS_CERTIFICATE_INVALID", message: "Invalid certificate kind." });
+    const result = await issueCertificate(prisma!, emailSender, {
+      issuedByUserId: user.id,
+      recipientUserId,
+      kind,
+      title: readOptionalString(body, "title"),
+      note: readOptionalString(body, "note")
+    });
+    if (!result.ok) return reply.code(404).send({ error: "RWOS_CERTIFICATE_RECIPIENT_NOT_FOUND", message: "Recipient not found." });
+    return reply.code(201).send({ certificate: result.certificate });
+  });
+
+  // Certificates the admin has issued (history).
+  app.get("/platform/certificates", async (request, reply) => {
+    const user = await requirePlatformAdmin(request, reply);
+    if (!user) return;
+    return reply.code(200).send({ certificates: await listIssuedCertificates(prisma!) });
+  });
+
+  // Recipient-facing inbox: a signed-in worker or employer reads THEIR greetings/certificates. The same
+  // handlers serve both apps — delivery rows are keyed by user id, so each user sees only their own.
+  const requireRecipient = async (request: FastifyRequest, reply: FastifyReply) => {
+    const session = await authService.validateSession(readBearerToken(request.headers.authorization));
+    if (!session.authenticated || !session.user) {
+      reply.code(401).send({ error: "RWOS_INBOX_DENIED", message: "Authentication is required." });
+      return null;
+    }
+    return session.user;
+  };
+
+  app.get("/inbox/greetings", async (request, reply) => {
+    const user = await requireRecipient(request, reply);
+    if (!user) return;
+    return reply.code(200).send({ greetings: await listGreetingsForRecipient(prisma!, user.id) });
+  });
+
+  app.post("/inbox/greetings/:id/read", async (request, reply) => {
+    const user = await requireRecipient(request, reply);
+    if (!user) return;
+    const id = readRouteParam(request.params, "id");
+    if (!id || !isCanonicalUuid(id)) return reply.code(400).send({ error: "RWOS_INBOX_INVALID" });
+    await markGreetingRead(prisma!, user.id, id);
+    return reply.code(200).send({ read: true });
+  });
+
+  app.get("/inbox/certificates", async (request, reply) => {
+    const user = await requireRecipient(request, reply);
+    if (!user) return;
+    return reply.code(200).send({ certificates: await listCertificatesForRecipient(prisma!, user.id) });
+  });
+
+  app.post("/inbox/certificates/:id/read", async (request, reply) => {
+    const user = await requireRecipient(request, reply);
+    if (!user) return;
+    const id = readRouteParam(request.params, "id");
+    if (!id || !isCanonicalUuid(id)) return reply.code(400).send({ error: "RWOS_INBOX_INVALID" });
+    await markCertificateRead(prisma!, user.id, id);
+    return reply.code(200).send({ read: true });
   });
 
   // The old free toggle is removed: classification can no longer be flipped without a signed election.
