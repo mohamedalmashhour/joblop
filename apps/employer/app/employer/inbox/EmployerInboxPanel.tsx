@@ -129,21 +129,21 @@ export function EmployerInboxPanel() {
 
 const styles = {
   wrap: { padding: "8px 0 48px" },
-  section: { color: "#15110b", fontSize: 20, margin: "10px 0 12px" },
-  hint: { color: "#8a8070", fontSize: 13, fontWeight: 500 },
+  section: { color: "#f4efe4", fontSize: 20, margin: "10px 0 12px" },
+  hint: { color: "#b3a994", fontSize: 13, fontWeight: 500 },
   signin: { background: "#a8842f", borderRadius: 12, color: "#fff", display: "inline-block", fontWeight: 800, marginTop: 14, padding: "12px 24px", textDecoration: "none" },
   grid: { display: "grid", gap: 16, gridTemplateColumns: "repeat(auto-fill, minmax(260px, 1fr))" },
-  certCard: { background: "#fffdf7", border: "1px solid #ece3d2", borderRadius: 14, boxShadow: "0 10px 26px rgba(6,27,65,.06)", padding: "22px 20px", textAlign: "center" as const },
+  certCard: { background: "#0c0c0c", border: "1px solid rgba(201, 162, 75, 0.16)", borderRadius: 14, boxShadow: "0 10px 26px rgba(0,0,0,.4)", padding: "22px 20px", textAlign: "center" as const },
   ribbon: { fontSize: 34 },
-  certTitle: { color: "#8a5a00", fontSize: 19, margin: "8px 0 4px" },
-  certName: { color: "#15110b", fontSize: 16, fontWeight: 800, margin: "0 0 8px" },
-  certNote: { color: "#6b6356", fontSize: 13, lineHeight: 1.5, margin: "0 0 8px" },
-  certMeta: { color: "#8a8070", fontSize: 11, margin: "6px 0 0" },
+  certTitle: { color: "#d4af61", fontSize: 19, margin: "8px 0 4px" },
+  certName: { color: "#f4efe4", fontSize: 16, fontWeight: 800, margin: "0 0 8px" },
+  certNote: { color: "#b3a994", fontSize: 13, lineHeight: 1.5, margin: "0 0 8px" },
+  certMeta: { color: "#b3a994", fontSize: 11, margin: "6px 0 0" },
   printBtn: { background: "#b8862f", border: "none", borderRadius: 10, color: "#fff", cursor: "pointer", fontSize: 13, fontWeight: 800, marginTop: 12, padding: "10px 16px" },
-  greetCard: { border: "1px solid #ece3d2", borderRadius: 14, boxShadow: "0 10px 26px rgba(6,27,65,.05)", padding: "18px 18px 16px" },
+  greetCard: { background: "#0c0c0c", border: "1px solid rgba(201, 162, 75, 0.16)", borderRadius: 14, boxShadow: "0 10px 26px rgba(0,0,0,.4)", padding: "18px 18px 16px" },
   greetHead: { alignItems: "center", display: "flex", justifyContent: "space-between" },
   greetEmoji: { fontSize: 26 },
   unread: { background: "#b23b2e", borderRadius: 999, color: "#fff", fontSize: 10, fontWeight: 800, padding: "2px 8px", textTransform: "uppercase" as const },
-  greetTitle: { color: "#15110b", fontSize: 17, margin: "8px 0 6px" },
-  greetMsg: { color: "#3a342b", fontSize: 14, lineHeight: 1.55, margin: 0, whiteSpace: "pre-wrap" as const }
+  greetTitle: { color: "#f4efe4", fontSize: 17, margin: "8px 0 6px" },
+  greetMsg: { color: "#cdbfa6", fontSize: 14, lineHeight: 1.55, margin: 0, whiteSpace: "pre-wrap" as const }
 } as const;
