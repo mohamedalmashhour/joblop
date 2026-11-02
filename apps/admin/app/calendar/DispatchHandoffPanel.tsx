@@ -234,10 +234,10 @@ const button = {
     padding: "0 18px"
   },
   secondary: {
-    background: "#fff",
-    border: "1px solid rgba(201, 162, 75, 0.16)",
+    background: "#0c0c0c",
+    border: "1px solid rgba(201, 162, 75, 0.3)",
     borderRadius: 8,
-    color: "#000000",
+    color: "#f4efe4",
     cursor: "pointer",
     fontWeight: 800,
     minHeight: 44,

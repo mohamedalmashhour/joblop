@@ -198,10 +198,10 @@ export function AdminOrderReviewPanel({ orderId }: Readonly<{ orderId: string }>
 
 const styles = {
   wrap: { padding: "32px clamp(18px, 5vw, 64px)" },
-  card: { background: "#fff", border: "1px solid rgba(201, 162, 75, 0.16)", borderRadius: 14, boxShadow: "0 12px 30px rgba(6,27,65,.08)", margin: "14px 0", padding: 22 },
+  card: { background: "#0c0c0c", border: "1px solid rgba(201, 162, 75, 0.16)", borderRadius: 14, boxShadow: "0 12px 30px rgba(0,0,0,.4)", margin: "14px 0", padding: 22 },
   cardHead: { alignItems: "center", display: "flex", gap: 12, justifyContent: "space-between" },
-  h2: { color: "#000000", fontSize: 26, margin: 0 },
-  h3: { color: "#000000", fontSize: 20, margin: 0 },
+  h2: { color: "#f4efe4", fontSize: 26, margin: 0 },
+  h3: { color: "#f4efe4", fontSize: 20, margin: 0 },
   badge: { background: "#000000", borderRadius: 99, color: "#f4efe4", fontSize: 12, fontWeight: 900, padding: "7px 10px", textTransform: "uppercase" as const },
   meta: { color: "#f4efe4", fontSize: 13 },
   text: { color: "#f4efe4", fontSize: 15, padding: "32px clamp(18px, 5vw, 64px)" },

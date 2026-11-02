@@ -87,10 +87,10 @@ const styles = {
   lead: { color: "#f4efe4", fontSize: 14, marginBottom: 14, maxWidth: 820 },
   notice: { color: "#f4efe4", fontSize: 14, fontWeight: 700 },
   text: { color: "#f4efe4", fontSize: 15, padding: "24px clamp(18px, 5vw, 64px)" },
-  table: { background: "#fff", border: "1px solid rgba(201, 162, 75, 0.16)", borderCollapse: "collapse" as const, borderRadius: 14, width: "100%" },
+  table: { background: "#0c0c0c", border: "1px solid rgba(201, 162, 75, 0.16)", borderCollapse: "collapse" as const, borderRadius: 14, width: "100%" },
   th: { borderBottom: "1px solid rgba(201, 162, 75, 0.16)", color: "#f4efe4", fontSize: 12, padding: 10, textAlign: "left" as const, textTransform: "uppercase" as const },
   td: { borderBottom: "1px solid rgba(201, 162, 75, 0.16)", color: "#f4efe4", fontSize: 14, padding: 10 },
   tdMono: { borderBottom: "1px solid rgba(201, 162, 75, 0.16)", color: "#f4efe4", fontFamily: "monospace", fontSize: 12, padding: 10 },
   confirm: { background: "#171511", border: "none", borderRadius: 8, color: "#fff", cursor: "pointer", fontWeight: 800, marginRight: 8, padding: "8px 14px" },
-  reject: { background: "#fff", border: "1px solid #b23b2e", borderRadius: 8, color: "#b23b2e", cursor: "pointer", fontWeight: 700, padding: "8px 12px" }
+  reject: { background: "#0c0c0c", border: "1px solid #e5a4a4", borderRadius: 8, color: "#e5a4a4", cursor: "pointer", fontWeight: 700, padding: "8px 12px" }
 } as const;
