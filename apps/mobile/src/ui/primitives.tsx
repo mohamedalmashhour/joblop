@@ -8,7 +8,7 @@ import {
   TextInput,
   View
 } from "react-native";
-import { colors, radii, spacing, touch, typography } from "@rwos/design-system";
+import { colors, radii, spacing, touch, typography } from "../theme";
 import { uiFoundation } from "@rwos/ui";
 
 type CommonProps = PropsWithChildren<{
@@ -249,16 +249,16 @@ const styles = StyleSheet.create({
     paddingVertical: spacing.xs
   },
   neutralBadge: {
-    backgroundColor: "#eef5f5"
+    backgroundColor: colors.cream
   },
   successBadge: {
-    backgroundColor: "#e7f6ed"
+    backgroundColor: "#10231a"
   },
   warningBadge: {
-    backgroundColor: "#fff1d6"
+    backgroundColor: "#2a1f0a"
   },
   dangerBadge: {
-    backgroundColor: "#fde8e8"
+    backgroundColor: "#2a1312"
   },
   badgeText: {
     fontSize: typography.micro,
@@ -269,13 +269,13 @@ const styles = StyleSheet.create({
     color: colors.deepTeal
   },
   successBadgeText: {
-    color: "#166534"
+    color: colors.success
   },
   warningBadgeText: {
-    color: "#7c2d12"
+    color: colors.warning
   },
   dangerBadgeText: {
-    color: "#991b1b"
+    color: colors.danger
   },
   button: {
     alignItems: "center",

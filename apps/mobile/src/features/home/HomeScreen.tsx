@@ -1,5 +1,5 @@
 import { Pressable, ScrollView, StyleSheet, View } from "react-native";
-import { colors, radii, spacing } from "@rwos/design-system";
+import { colors, radii, spacing } from "../../theme";
 import { BodyText, Card, Heading, ScreenContainer, SmallText } from "../../ui/primitives";
 import { useLocale } from "../../i18n/LocaleContext";
 import { LOCALES, localeLabel } from "../../i18n/strings";

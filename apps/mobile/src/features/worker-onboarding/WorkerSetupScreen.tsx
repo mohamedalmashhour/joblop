@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import { Pressable, ScrollView, StyleSheet, View } from "react-native";
-import { colors, radii, spacing } from "@rwos/design-system";
+import { colors, radii, spacing } from "../../theme";
 import type { MobileSessionTransport, WorkerElection } from "../../auth/secureSession";
 import { Badge, BodyText, Button, Card, ErrorState, Heading, LoadingState, ScreenContainer, SmallText } from "../../ui/primitives";
 import { agreementVersionFor, classificationLabel, classificationOptions, setupCopy, type Classification } from "./setupContent";

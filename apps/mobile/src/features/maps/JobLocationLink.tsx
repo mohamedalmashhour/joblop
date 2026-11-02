@@ -1,5 +1,5 @@
 import { Linking, Pressable, StyleSheet, Text, View } from "react-native";
-import { colors, radii, spacing, touch, typography } from "@rwos/design-system";
+import { colors, radii, spacing, touch, typography } from "../../theme";
 
 import { directionsUrl, mapSearchUrl } from "./mapUrls";
 

@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 import { ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
-import { colors, spacing } from "@rwos/design-system";
+import { colors, spacing } from "../../theme";
 import { formatRwosDateTime, type WorkerCalendarDto } from "@rwos/shared";
 import type { createMobileSessionTransport, WorkerAssignmentDto } from "../../auth/secureSession";
 import {

@@ -10,7 +10,7 @@ import {
   Text,
   View
 } from "react-native";
-import { colors, radii, spacing, touch, typography } from "@rwos/design-system";
+import { colors, radii, spacing, touch, typography } from "./src/theme";
 import {
   ApplicationDetailsScreen,
   ApplicationSuccessScreen,
@@ -329,11 +329,11 @@ export default function App() {
 
   return (
     <SafeAreaView style={styles.safeArea}>
-      <StatusBar style="dark" />
+      <StatusBar style="light" />
       <View style={styles.app}>
         <View style={styles.header}>
           <View style={styles.brandMark}>
-            <Text style={styles.brandMarkText}>RW</Text>
+            <Text style={styles.brandMarkText}>Jo</Text>
           </View>
           <View style={styles.headerCopy}>
             <HeaderText variant="title">{productName}</HeaderText>
@@ -877,14 +877,16 @@ const styles = StyleSheet.create({
   brandMark: {
     alignItems: "center",
     backgroundColor: colors.navy,
+    borderColor: colors.border,
     borderRadius: radii.sm,
+    borderWidth: 1,
     height: 42,
     justifyContent: "center",
     width: 42
   },
   brandMarkText: {
-    color: colors.surfaceRaised,
-    fontSize: typography.micro,
+    color: colors.deepTeal,
+    fontSize: typography.body,
     fontWeight: "900"
   },
   headerCopy: {
@@ -893,7 +895,7 @@ const styles = StyleSheet.create({
     minWidth: 0
   },
   productName: {
-    color: colors.navy,
+    color: colors.text,
     fontSize: typography.title,
     fontWeight: "900",
     maxWidth: "100%",
@@ -1050,7 +1052,7 @@ const styles = StyleSheet.create({
     fontWeight: "900"
   },
   groupCapsuleTitleActive: {
-    color: colors.cream
+    color: colors.surface
   },
   groupCard: {
     backgroundColor: colors.surface,
@@ -1073,7 +1075,7 @@ const styles = StyleSheet.create({
     fontWeight: "900"
   },
   groupTitleActive: {
-    color: colors.cream
+    color: colors.surface
   },
   groupCount: {
     color: colors.warning,
@@ -1099,7 +1101,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.md
   },
   offerButtonText: {
-    color: colors.cream,
+    color: colors.surface,
     fontSize: typography.small,
     fontWeight: "900"
   },
@@ -1226,7 +1228,7 @@ const styles = StyleSheet.create({
     padding: spacing.md
   },
   hotDay: {
-    backgroundColor: "#fff4f4",
+    backgroundColor: "#2a1312",
     borderColor: colors.danger
   },
   dayCardActive: {
@@ -1256,11 +1258,11 @@ const styles = StyleSheet.create({
     padding: spacing.md
   },
   calendarCellHot: {
-    backgroundColor: "#fff4f4",
+    backgroundColor: "#2a1312",
     borderColor: colors.danger
   },
   calendarCellMoney: {
-    backgroundColor: "#f0fff8",
+    backgroundColor: "#10231a",
     borderColor: colors.success
   },
   calendarCellActive: {
@@ -1313,7 +1315,7 @@ const styles = StyleSheet.create({
 });
 
 const webHeaderTitleStyle = {
-  color: colors.navy,
+  color: colors.text,
   display: "block",
   fontSize: typography.title,
   fontWeight: 700,

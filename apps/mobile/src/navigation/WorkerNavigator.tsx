@@ -1,7 +1,7 @@
 import { useCallback, useState } from "react";
 import { useLocale } from "../i18n/LocaleContext";
 import { Pressable, StyleSheet, Text, View } from "react-native";
-import { colors, spacing, typography } from "@rwos/design-system";
+import { colors, spacing, typography } from "../theme";
 import type { MobileSessionTransport } from "../auth/secureSession";
 import { WorkerAuthScreen } from "../features/worker-auth";
 import { HomeScreen } from "../features/home";

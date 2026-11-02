@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { ScrollView, StyleSheet, View } from "react-native";
-import { spacing } from "@rwos/design-system";
+import { spacing } from "../../theme";
 import type { MobileSessionTransport, WorkerPayoutsSummary } from "../../auth/secureSession";
 import { Badge, BodyText, Button, Card, Divider, Heading, ScreenContainer, Section, SmallText } from "../../ui/primitives";
 import { useLocale } from "../../i18n/LocaleContext";
