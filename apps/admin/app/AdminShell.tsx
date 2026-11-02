@@ -18,8 +18,11 @@ const connectedNavigation = [
   { href: "/greetings", labelKey: "nav.greetings" }
 ] as const satisfies readonly { href: string; labelKey: MessageKey }[];
 const reviewNavigation = phase01Routes.map(({ route, title }) => ({ href: route, label: title }));
-// Finance surfaces that carry their own (English) label until a catalogue key is added.
-const financeNavigation = [{ href: "/finance/calendar", label: "Billing calendar" }] as const satisfies readonly { href: string; label: string }[];
+// Calendar + finance surfaces that carry their own (English) label until a catalogue key is added.
+const financeNavigation = [
+  { href: "/calendar/lifecycle", label: "Lifecycle calendar" },
+  { href: "/finance/calendar", label: "Billing calendar" }
+] as const satisfies readonly { href: string; label: string }[];
 // Platform operations surfaces not in the phase-01 review set.
 const operationsNavigation = [
   { href: "/verification", labelKey: "nav.verification" },
@@ -43,7 +46,7 @@ function resolveNavigation(source: readonly NavSource[], t: Translate): NavItem[
 // pattern — every route belongs to a section so the workspace reads as coherent groups
 // instead of one long flat list.
 const NAV_GROUPS: readonly { group: string; hrefs: readonly string[] }[] = [
-  { group: "Operations", hrefs: ["/calendar", "/orders", "/dispatches", "/shifts"] },
+  { group: "Operations", hrefs: ["/calendar", "/calendar/lifecycle", "/orders", "/dispatches", "/shifts"] },
   { group: "Directory", hrefs: ["/workers", "/employers", "/residences"] },
   { group: "Finance & payroll", hrefs: ["/finance", "/finance/calendar", "/payroll", "/market-wages"] },
   { group: "People & trust", hrefs: ["/verification", "/hr"] },
