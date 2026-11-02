@@ -27,20 +27,20 @@ export function payoutPaidEmail(params: {
   if (params.language === "en") {
     return {
       to: params.to,
-      subject: "JobLop — your payment has been sent",
+      subject: "Joblop — your payment has been sent",
       text:
         `Your payment of ${amount} has been transferred to your account.\n\n` +
         (ref ? `Reference: ${ref}\n\n` : "") +
-        `Thanks for the work you did through JobLop. This completes the transaction.\n\n— JobLop`
+        `Thanks for the work you did through Joblop. This completes the transaction.\n\n— Joblop`
     };
   }
   return {
     to: params.to,
-    subject: "JobLop — votre paiement a été envoyé",
+    subject: "Joblop — votre paiement a été envoyé",
     text:
       `Votre paiement de ${amount} a été transféré dans votre compte.\n\n` +
       (ref ? `Référence : ${ref}\n\n` : "") +
-      `Merci pour le travail effectué via JobLop. Ceci complète la transaction.\n\n— JobLop`
+      `Merci pour le travail effectué via Joblop. Ceci complète la transaction.\n\n— Joblop`
   };
 }
 
@@ -57,20 +57,20 @@ export function payoutRegisteredEmail(params: {
   if (params.language === "en") {
     return {
       to: params.to,
-      subject: "JobLop — your earnings are now confirmed",
+      subject: "Joblop — your earnings are now confirmed",
       text:
         `${amount} is now registered in your account.\n\n` +
         `This amount is confirmed as yours and will be transferred to you on the normal payment cycle. ` +
-        `You will get a second message once the transfer has been sent.\n\n— JobLop`
+        `You will get a second message once the transfer has been sent.\n\n— Joblop`
     };
   }
   return {
     to: params.to,
-    subject: "JobLop — vos gains sont maintenant confirmés",
+    subject: "Joblop — vos gains sont maintenant confirmés",
     text:
       `${amount} est maintenant enregistré dans votre compte.\n\n` +
       `Ce montant vous est confirmé et vous sera transféré selon le cycle de paiement habituel. ` +
-      `Vous recevrez un second message une fois le transfert effectué.\n\n— JobLop`
+      `Vous recevrez un second message une fois le transfert effectué.\n\n— Joblop`
   };
 }
 
@@ -84,18 +84,18 @@ export function accountPenaltyEmail(params: {
   if (params.language === "en") {
     return {
       to: params.to,
-      subject: suspend ? "JobLop — your account is suspended" : "JobLop — your account has been closed",
+      subject: suspend ? "Joblop — your account is suspended" : "Joblop — your account has been closed",
       text: suspend
-        ? `Because you cancelled a confirmed job less than 24 hours before it started, your JobLop account is suspended for ${params.suspensionDays} days. It will be reactivated automatically after that. Repeated late cancellations lead to permanent closure.\n\n— JobLop`
-        : `Because of repeated late cancellations of confirmed jobs, your JobLop account has been closed.\n\n— JobLop`
+        ? `Because you cancelled a confirmed job less than 24 hours before it started, your Joblop account is suspended for ${params.suspensionDays} days. It will be reactivated automatically after that. Repeated late cancellations lead to permanent closure.\n\n— Joblop`
+        : `Because of repeated late cancellations of confirmed jobs, your Joblop account has been closed.\n\n— Joblop`
     };
   }
   return {
     to: params.to,
-    subject: suspend ? "JobLop — votre compte est suspendu" : "JobLop — votre compte a été fermé",
+    subject: suspend ? "Joblop — votre compte est suspendu" : "Joblop — votre compte a été fermé",
     text: suspend
-      ? `Parce que vous avez annulé un travail confirmé moins de 24 heures avant le début, votre compte JobLop est suspendu pour ${params.suspensionDays} jours. Il sera réactivé automatiquement par la suite. Des annulations tardives répétées entraînent une fermeture définitive.\n\n— JobLop`
-      : `En raison d'annulations tardives répétées de travaux confirmés, votre compte JobLop a été fermé.\n\n— JobLop`
+      ? `Parce que vous avez annulé un travail confirmé moins de 24 heures avant le début, votre compte Joblop est suspendu pour ${params.suspensionDays} jours. Il sera réactivé automatiquement par la suite. Des annulations tardives répétées entraînent une fermeture définitive.\n\n— Joblop`
+      : `En raison d'annulations tardives répétées de travaux confirmés, votre compte Joblop a été fermé.\n\n— Joblop`
   };
 }
 

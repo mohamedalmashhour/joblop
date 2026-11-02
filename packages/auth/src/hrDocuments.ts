@@ -1,7 +1,7 @@
 // HR-3 Documents — governed HR document domain.
 //
 // Rules:
-//   - File CONTENTS never touch JobLop core. The DB stores metadata + a provider
+//   - File CONTENTS never touch Joblop core. The DB stores metadata + a provider
 //     storageReference only. Storage is provider-neutral (fixture in dev; a real
 //     encrypted-at-rest, signed-URL, malware-scanned provider swaps in behind the seam).
 //   - A previously ACCEPTED document is NEVER overwritten — a replacement is a NEW record;
@@ -164,7 +164,7 @@ export function createHrDocumentService(deps: HrDocumentDeps) {
   }
 
   return {
-    // Worker: get a provider upload reference (they upload to the provider, not to JobLop).
+    // Worker: get a provider upload reference (they upload to the provider, not to Joblop).
     async requestUploadReference(input: { userId: string; documentType: string }): Promise<{ storageReference: string; uploadUrl: string }> {
       const workerIdentityId = await requireWorker(input.userId);
       if (!input.documentType.trim()) throw new HrDocumentError("invalid", "A documentType is required.");

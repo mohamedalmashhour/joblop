@@ -6,14 +6,14 @@ import { useEffect, useState } from "react";
 // looping through how a worker scans for jobs — search once → JobScanner scans the market → ranked
 // matches → apply free. Loops forever; pauses when off-screen isn't needed (it's cheap). Bilingual.
 
-type Lang = "en" | "fr";
+type Lang = "en" | "fr" | "ar";
 
 const DEMO = {
   en: {
     steps: ["Search once", "JobScanner scans the market", "Best matches, ranked", "Apply — free"],
     typed: "Nurse", scanning: "Scanning partner feeds across Canada…",
     chips: ["Care homes", "Restaurants", "Agencies", "Boards"],
-    ranked: "Ranked for you", apply: "Apply — free", applied: "✓ Applied — free",
+    ranked: "Ranked for you", apply: "Apply — free", applied: "✓ Applied — free", urgent: "Urgent",
     play: "Play", pause: "Pause", replay: "Replay", watch: "Watch how it works",
     jobs: [
       { role: "Nurse", area: "Laval, QC", pay: "$36/h", urgent: true },
@@ -25,12 +25,24 @@ const DEMO = {
     steps: ["Cherchez une fois", "JobScanner analyse le marché", "Meilleures offres, classées", "Postulez — gratuit"],
     typed: "Infirmière", scanning: "Analyse des fils partenaires au Canada…",
     chips: ["Résidences", "Restaurants", "Agences", "Babillards"],
-    ranked: "Classé pour vous", apply: "Postuler — gratuit", applied: "✓ Postulé — gratuit",
+    ranked: "Classé pour vous", apply: "Postuler — gratuit", applied: "✓ Postulé — gratuit", urgent: "Urgent",
     play: "Lecture", pause: "Pause", replay: "Rejouer", watch: "Voir comment ça marche",
     jobs: [
       { role: "Infirmière", area: "Laval, QC", pay: "36 $/h", urgent: true },
       { role: "Infirmière", area: "Montréal, QC", pay: "34 $/h", urgent: false },
       { role: "Infirmière", area: "Gatineau, QC", pay: "33 $/h", urgent: false }
+    ]
+  },
+  ar: {
+    steps: ["ابحث مرة واحدة", "JobScanner يمسح السوق", "أفضل التطابقات، مرتّبة", "تقدّم — مجانًا"],
+    typed: "ممرضة", scanning: "يمسح مصادر الشركاء عبر كندا…",
+    chips: ["دور رعاية", "مطاعم", "وكالات", "لوحات وظائف"],
+    ranked: "مرتّبة لك", apply: "تقدّم — مجانًا", applied: "✓ تم التقديم — مجانًا", urgent: "عاجل",
+    play: "تشغيل", pause: "إيقاف", replay: "إعادة", watch: "شاهد كيف يعمل",
+    jobs: [
+      { role: "ممرضة", area: "لافال، كيبيك", pay: "36$/س", urgent: true },
+      { role: "ممرضة", area: "مونتريال، كيبيك", pay: "34$/س", urgent: false },
+      { role: "ممرضة", area: "غاتينو، كيبيك", pay: "33$/س", urgent: false }
     ]
   }
 } as const;
@@ -75,7 +87,7 @@ export function JobScannerDemo({ lang = "en" }: { lang?: Lang }) {
               <div key={i} className="jsd-card" style={{ animationDelay: `${i * 0.18}s` }}>
                 <span className="jsd-ic">🩺</span>
                 <span className="jsd-cmain"><strong>{j.role}</strong><em>{j.area}</em></span>
-                {j.urgent ? <span className="jsd-u">Urgent</span> : null}
+                {j.urgent ? <span className="jsd-u">{d.urgent}</span> : null}
                 <span className="jsd-pay">{j.pay}</span>
               </div>
             ))}

@@ -1,5 +1,5 @@
 import { JobDetail } from "./JobDetail";
-import { SubPageHeader } from "../../SubPageHeader";
+import { SiteHeader } from "../../SiteHeader";
 
 // Job details route. Server shell resolves params/searchParams (Next 15 promises) and hands
 // them to the client component that fetches the privacy-safe detail from the BFF.
@@ -15,7 +15,7 @@ export default async function Page({
   const postalCode = typeof sp.postalCode === "string" ? sp.postalCode : null;
   return (
     <>
-      <SubPageHeader />
+      <SiteHeader />
       <main className="wrap">
         <JobDetail id={jobRequestId} postalCode={postalCode} />
       </main>

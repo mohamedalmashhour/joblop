@@ -86,12 +86,12 @@ export async function pushAssignmentToCalendar(
     const area = [job.residence?.city, job.residence?.province].filter(Boolean).join(", ");
     const event = {
       id: deterministicEventId(input.userId, input.jobRequestId),
-      summary: `JobLop — ${role}`,
-      description: "Confirmed shift via JobLop.",
+      summary: `Joblop — ${role}`,
+      description: "Confirmed shift via Joblop.",
       ...(area ? { location: area } : {}),
       start: { dateTime: job.startAt.toISOString(), timeZone: tz },
       end: { dateTime: job.endAt.toISOString(), timeZone: tz },
-      source: { title: "JobLop", url: "https://joblop.com" }
+      source: { title: "Joblop", url: "https://joblop.com" }
     };
 
     // Insert first; if the deterministic id already exists, update it in place.

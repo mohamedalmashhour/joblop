@@ -278,15 +278,15 @@ function BoundaryList({
 
 const styles: Record<string, CSSProperties> = {
   page: {
-    background: "#f7faff",
-    color: "#0b1f3a",
+    background: "#000000",
+    color: "#000000",
     fontFamily: "Inter, system-ui, sans-serif",
     minHeight: "100vh",
     padding: 24
   },
   header: {
     alignItems: "stretch",
-    background: "#071f4d",
+    background: "#171511",
     borderRadius: 8,
     color: "white",
     display: "grid",
@@ -303,7 +303,7 @@ const styles: Record<string, CSSProperties> = {
     textTransform: "uppercase"
   },
   eyebrowDark: {
-    color: "#123b78",
+    color: "#f4efe4",
     fontSize: 12,
     fontWeight: 900,
     letterSpacing: 0,
@@ -316,7 +316,7 @@ const styles: Record<string, CSSProperties> = {
     margin: "8px 0"
   },
   lede: {
-    color: "#d8e4f5",
+    color: "#faf6ec",
     fontSize: 16,
     lineHeight: 1.6,
     margin: 0,
@@ -331,8 +331,8 @@ const styles: Record<string, CSSProperties> = {
     padding: 16
   },
   boundaryStrip: {
-    background: "#ffffff",
-    border: "1px solid #d8e4f5",
+    background: "#000000",
+    border: "1px solid rgba(201, 162, 75, 0.16)",
     borderRadius: 8,
     display: "grid",
     gap: 16,
@@ -340,7 +340,7 @@ const styles: Record<string, CSSProperties> = {
     padding: 18
   },
   sectionTitle: {
-    color: "#071f4d",
+    color: "#f4efe4",
     fontSize: 24,
     lineHeight: 1.18,
     margin: "6px 0 0"
@@ -351,18 +351,18 @@ const styles: Record<string, CSSProperties> = {
     gridTemplateColumns: "repeat(auto-fit, minmax(210px, 1fr))"
   },
   boundaryChip: {
-    background: "#f7faff",
-    border: "1px solid #d8e4f5",
+    background: "#000000",
+    border: "1px solid rgba(201, 162, 75, 0.16)",
     borderRadius: 8,
-    color: "#071f4d",
+    color: "#f4efe4",
     fontSize: 13,
     fontWeight: 800,
     minHeight: 44,
     padding: "12px 14px"
   },
   panel: {
-    background: "#ffffff",
-    border: "1px solid #d8e4f5",
+    background: "#000000",
+    border: "1px solid rgba(201, 162, 75, 0.16)",
     borderRadius: 8,
     marginTop: 18,
     padding: 18
@@ -376,26 +376,26 @@ const styles: Record<string, CSSProperties> = {
     marginBottom: 14
   },
   h2: {
-    color: "#071f4d",
+    color: "#f4efe4",
     fontSize: 21,
     margin: 0
   },
   h3: {
-    color: "#071f4d",
+    color: "#f4efe4",
     fontSize: 17,
     margin: 0
   },
   statusBadge: {
-    background: "#eef5ff",
-    border: "1px solid #c9ddff",
+    background: "#000000",
+    border: "1px solid rgba(201, 162, 75, 0.16)",
     borderRadius: 8,
-    color: "#071f4d",
+    color: "#f4efe4",
     fontSize: 12,
     fontWeight: 900,
     padding: "7px 10px"
   },
   warningBadge: {
-    background: "#fff8d8",
+    background: "#0c0c0c",
     border: "1px solid #e8d782",
     borderRadius: 8,
     color: "#8a5600",
@@ -418,36 +418,36 @@ const styles: Record<string, CSSProperties> = {
     gridTemplateColumns: "repeat(auto-fit, minmax(170px, 1fr))"
   },
   fieldLabel: {
-    color: "#0b1f3a",
+    color: "#000000",
     display: "grid",
     fontSize: 13,
     fontWeight: 900,
     gap: 6
   },
   input: {
-    border: "1px solid #b8c8dc",
+    border: "1px solid rgba(201, 162, 75, 0.16)",
     borderRadius: 8,
-    color: "#0b1f3a",
+    color: "#000000",
     font: "inherit",
     minHeight: 44,
     padding: "0 12px"
   },
   textarea: {
-    border: "1px solid #b8c8dc",
+    border: "1px solid rgba(201, 162, 75, 0.16)",
     borderRadius: 8,
-    color: "#0b1f3a",
+    color: "#000000",
     font: "inherit",
     padding: 12,
     resize: "vertical"
   },
   helpText: {
-    color: "#526782",
+    color: "#f4efe4",
     fontSize: 13,
     lineHeight: 1.55,
     margin: "12px 0 0"
   },
   loadingNote: {
-    color: "#526782",
+    color: "#f4efe4",
     fontSize: 13,
     fontWeight: 800,
     lineHeight: 1.55,
@@ -463,7 +463,7 @@ const styles: Record<string, CSSProperties> = {
     gap: 12
   },
   residenceCard: {
-    border: "1px solid #d8e4f5",
+    border: "1px solid rgba(201, 162, 75, 0.16)",
     borderRadius: 8,
     display: "grid",
     gap: 10,
@@ -475,18 +475,18 @@ const styles: Record<string, CSSProperties> = {
     gap: 8
   },
   muted: {
-    color: "#526782",
+    color: "#f4efe4",
     fontSize: 13,
     margin: "4px 0"
   },
   cardText: {
-    color: "#0b1f3a",
+    color: "#000000",
     fontSize: 14,
     lineHeight: 1.55,
     margin: 0
   },
   privacyText: {
-    color: "#526782",
+    color: "#f4efe4",
     fontSize: 13,
     lineHeight: 1.55,
     margin: 0
@@ -497,7 +497,7 @@ const styles: Record<string, CSSProperties> = {
     margin: 0
   },
   summaryRow: {
-    borderTop: "1px solid #e5edf8",
+    borderTop: "1px solid rgba(201, 162, 75, 0.16)",
     display: "grid",
     gap: 8,
     gridTemplateColumns: "minmax(120px, 0.4fr) minmax(0, 1fr)",
@@ -510,7 +510,7 @@ const styles: Record<string, CSSProperties> = {
     marginBottom: 14
   },
   actionButton: {
-    background: "#071f4d",
+    background: "#171511",
     border: 0,
     borderRadius: 8,
     color: "#ffffff",
@@ -524,8 +524,8 @@ const styles: Record<string, CSSProperties> = {
     gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))"
   },
   stateCard: {
-    background: "#f7faff",
-    border: "1px solid #d8e4f5",
+    background: "#000000",
+    border: "1px solid rgba(201, 162, 75, 0.16)",
     borderRadius: 8,
     display: "grid",
     gap: 8,
@@ -550,7 +550,7 @@ const styles: Record<string, CSSProperties> = {
     padding: 14
   },
   listStack: {
-    color: "#0b1f3a",
+    color: "#000000",
     display: "grid",
     gap: 8,
     margin: "12px 0 0",

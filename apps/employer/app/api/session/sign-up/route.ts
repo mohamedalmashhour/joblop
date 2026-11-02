@@ -30,7 +30,8 @@ export async function POST(request: Request) {
     {
       email: body.email,
       password: body.password,
-      displayName: body.displayName ?? null
+      displayName: body.displayName ?? null,
+      referralCode: body.referralCode ?? null
     },
     (issuedToken) => {
       cookieStore.set(sessionCookieName, issuedToken, sessionCookieOptions);
@@ -83,6 +84,7 @@ function validRegistration(
   confirmPassword: string;
   acceptedNotices: true;
   displayName?: string | null;
+  referralCode?: string | null;
 } {
   if (typeof input !== "object" || input === null) return false;
   const record = input as Record<string, unknown>;

@@ -175,7 +175,7 @@ import {
 } from "@rwos/auth";
 import { normalizeEmail } from "@rwos/auth";
 import { getRuntimeConfig, type CountryAddressPort } from "@rwos/config";
-import { createPrismaClient } from "@rwos/database";
+import { createPrismaClient, type Prisma } from "@rwos/database";
 import { createLogger } from "@rwos/observability";
 import {
   createLocalFakePaymentProvider,
@@ -209,8 +209,25 @@ import {
   WIZARD_DEGREE_ANCHORS,
   WIZARD_FACTOR_ORDER,
   FACTOR_LABELS,
-  FAMILY_LABELS
+  FAMILY_LABELS,
+  activeCountry,
+  upcomingHolidays
 } from "@rwos/shared";
+import {
+  sendGreeting,
+  issueCertificate,
+  searchRecipients,
+  listSentGreetings,
+  listIssuedCertificates,
+  listGreetingsForRecipient,
+  listCertificatesForRecipient,
+  markGreetingRead,
+  markCertificateRead,
+  isCertificateKind,
+  type AudienceScope,
+  type RecipientKind
+} from "./platformGreetings";
+import { getOrCreateReferralCode, referralStats, recordReferralSignup } from "./referrals";
 import {
   createTrustedServiceIdentityHeaders,
   type IdentityTokenProvider,
@@ -829,7 +846,7 @@ export function buildApi(options: BuildApiOptions = {}) {
   // Candidate source selection is env-switched by configuration, not by RWOS_ENV: when an
   // external HTTPS candidate service is configured (CANDIDATE_SOURCE_ORIGIN + token), the
   // dispatch service below prefers it in every environment; otherwise dispatch falls back to
-  // this marketplace-interest source, backed by JobLop's own interested workers. A self-
+  // this marketplace-interest source, backed by Joblop's own interested workers. A self-
   // contained marketplace can launch with no external candidate API and swap one in later
   // purely via config, with no code change.
   const listInterestedWorkersForDispatch = async (jobRequestId: string) => {
@@ -1413,6 +1430,11 @@ export function buildApi(options: BuildApiOptions = {}) {
     const email = readRequiredString(body, "email");
     const password = readRequiredString(body, "password");
     const displayName = readOptionalString(body, "displayName");
+    // Optional mobile number (seeded #1). Never required; bounded. Null when absent/blank.
+    const phoneRaw = readOptionalString(body, "phone");
+    const phone = phoneRaw && phoneRaw.trim() ? phoneRaw.trim().slice(0, 32) : null;
+    // Invite-a-friend: optional referral code captured from ?ref= at signup. Attribution is best-effort.
+    const referralCode = readOptionalString(body, "referralCode");
 
     if (!email || !password) {
       return reply.code(400).send({
@@ -1436,10 +1458,20 @@ export function buildApi(options: BuildApiOptions = {}) {
         email,
         password,
         displayName,
+        phone,
         source: "api",
         ipAddress: request.ip,
         userAgent: request.headers["user-agent"] ?? null
       });
+
+      // Best-effort referral attribution — never let it fail the registration.
+      if (referralCode && prisma && result.user?.id) {
+        try {
+          await recordReferralSignup(prisma, referralCode, result.user.id, email);
+        } catch (referralErr) {
+          app.log.warn({ err: referralErr }, "referral attribution failed");
+        }
+      }
 
       return reply.code(201).send(serializeAuthenticationResult(result));
     } catch (error) {
@@ -3179,7 +3211,7 @@ export function buildApi(options: BuildApiOptions = {}) {
     });
   });
 
-  // PUBLIC job board — no sign-in. Anyone can browse JobLop's open job offers across all of Canada
+  // PUBLIC job board — no sign-in. Anyone can browse Joblop's open job offers across all of Canada
   // and filter by location (province) or search text (city / role). Privacy-safe: only area-level
   // fields (city + province), role, headcount, date and urgency — NEVER exact address/coords, client
   // identity, or pay rates. Read-only; a funnel to bring workers onto the platform.
@@ -3251,7 +3283,7 @@ export function buildApi(options: BuildApiOptions = {}) {
   // PUBLIC JobScanner teaser — a small, cached preview of external market leads for anonymous visitors
   // (the landing-page "magnet"). Reads ONLY stored leads from prior scans: zero live Adzuna calls per
   // request, so it never consumes the source budget and can't be abused to drain it. External leads are
-  // a hand-off to the source, never JobLop governed jobs; sanitized to public-safe fields (no coords, no
+  // a hand-off to the source, never Joblop governed jobs; sanitized to public-safe fields (no coords, no
   // internal id). Empty until a live scan has populated the store — nothing synthetic is served here.
   app.get("/public/jobscanner/leads", async (request, reply) => {
     if (!prisma) return reply.code(503).send({ error: "RWOS_UNAVAILABLE", message: "Not available." });
@@ -3305,7 +3337,7 @@ export function buildApi(options: BuildApiOptions = {}) {
 
   // PUBLIC JobScanner stats — the TRUE totals for the landing magnet ("X jobs waiting"), so the number
   // reflects the whole store, not the small teaser slice. Pure COUNT queries (prisma.count / distinct)
-  // over already-stored data: zero live Adzuna calls, cacheable, honest. Counts JobLop's own open public
+  // over already-stored data: zero live Adzuna calls, cacheable, honest. Counts Joblop's own open public
   // jobs + external scanned leads, and the distinct provinces they span. Optional ?province filter.
   app.get("/public/jobscanner/stats", async (request, reply) => {
     if (!prisma) return reply.code(503).send({ error: "RWOS_UNAVAILABLE", message: "Not available." });
@@ -3332,12 +3364,12 @@ export function buildApi(options: BuildApiOptions = {}) {
         externalLeadCount,
         openJobCount,
         provinceCount,
-        note: "Totals across JobLop open jobs and scanned external leads. External leads are a hand-off to the source."
+        note: "Totals across Joblop open jobs and scanned external leads. External leads are a hand-off to the source."
       });
   });
 
   // PUBLIC job-alert capture — the landing magnet's email box. A visitor leaves their email (optionally
-  // a role/province) so JobLop, not the external source, owns the lead. No auth, no account, no money.
+  // a role/province) so Joblop, not the external source, owns the lead. No auth, no account, no money.
   // Upsert by email so re-submitting just refreshes the role/province. Delivery of alerts is a separate
   // governed step (scheduler stays OFF) — this only records the subscription, honestly.
   app.post("/public/jobscanner/alerts", async (request, reply) => {
@@ -3363,7 +3395,7 @@ export function buildApi(options: BuildApiOptions = {}) {
     });
     return reply.code(200).send({
       status: "subscribed",
-      note: "You're on JobLop's job-alert list. We'll notify you as alerts roll out — no spam, unsubscribe anytime."
+      note: "You're on Joblop's job-alert list. We'll notify you as alerts roll out — no spam, unsubscribe anytime."
     });
   });
 
@@ -4278,6 +4310,22 @@ export function buildApi(options: BuildApiOptions = {}) {
     }
   });
 
+  // Worker: edit my own HR intake (personal + driving licence + vehicle/transport). Worker-scoped;
+  // standing/credentials/cases are never writable here. All fields optional + validated server-side.
+  app.put("/hr/worker", async (request, reply) => {
+    const session = await authService.validateSession(readBearerToken(request.headers.authorization));
+    if (!session.authenticated || !session.user) {
+      return reply.code(401).send({ error: "RWOS_HR_DENIED", message: "Authentication is required." });
+    }
+    try {
+      const body = (request.body ?? {}) as Record<string, unknown>;
+      const intake = await hrService.upsertWorkerIntake({ userId: session.user.id, input: body });
+      return reply.code(200).send(intake);
+    } catch (error) {
+      return sendHrError(reply, error);
+    }
+  });
+
   // HR authority: full worker HR record (profile + credentials + cases).
   app.get("/platform/hr/workers/:workerIdentityId", async (request, reply) => {
     const actor = await requireHrAuthority(request, reply);
@@ -4366,7 +4414,7 @@ export function buildApi(options: BuildApiOptions = {}) {
     return session.user.id;
   };
 
-  // Worker: request a storage upload reference (they upload to the provider, not to JobLop).
+  // Worker: request a storage upload reference (they upload to the provider, not to Joblop).
   app.post("/hr/documents/upload-reference", async (request, reply) => {
     const userId = await requireWorkerSession(request, reply);
     if (!userId) return;
@@ -5609,6 +5657,22 @@ export function buildApi(options: BuildApiOptions = {}) {
     if (!session.authenticated || !session.user) return sendJobRequestDenied(reply);
 
     const requests = await calendarRequestService.listAdminCalendar({
+      session,
+      roles: await resolveAuthorizationRoles(session.user.id)
+    });
+
+    return reply.code(200).send({ requests: requests.map(serializeCalendarRequest) });
+  });
+
+  // Full-lifecycle admin calendar — every non-draft request (submission → closure), not only the
+  // review queue. Same admin-review authority as /platform/calendar/requests; read-only.
+  app.get("/platform/calendar/lifecycle", async (request, reply) => {
+    const session = await authService.validateSession(
+      readBearerToken(request.headers.authorization)
+    );
+    if (!session.authenticated || !session.user) return sendJobRequestDenied(reply);
+
+    const requests = await calendarRequestService.listAdminLifecycleCalendar({
       session,
       roles: await resolveAuthorizationRoles(session.user.id)
     });
@@ -7373,7 +7437,7 @@ export function buildApi(options: BuildApiOptions = {}) {
 
   // JobScanner: scan external partner feeds (Adzuna now; Talent.com later) for Québec jobs, normalize
   // and dedupe them into external leads, and optionally rank them for a worker (role keywords +
-  // location). These are EXTERNAL leads — a hand-off to the source, not JobLop governed jobs; no money
+  // location). These are EXTERNAL leads — a hand-off to the source, not Joblop governed jobs; no money
   // moves. Uses the live Adzuna API when ADZUNA_APP_ID/ADZUNA_APP_KEY are set, else a mock QC feed so
   // the pipeline runs before the account is approved. Results are not yet persisted (next slice).
   app.post("/platform/jobscanner/scan", async (request, reply) => {
@@ -7430,13 +7494,13 @@ export function buildApi(options: BuildApiOptions = {}) {
       ranked: ranked !== null,
       note:
         client.mode === "mock"
-          ? "MOCK feed (Adzuna account not yet approved). External leads only — hand-off to the source, not JobLop jobs."
-          : "Live Adzuna feed. External leads only — hand-off to the source, not JobLop jobs."
+          ? "MOCK feed (Adzuna account not yet approved). External leads only — hand-off to the source, not Joblop jobs."
+          : "Live Adzuna feed. External leads only — hand-off to the source, not Joblop jobs."
     });
   });
 
   // JobScanner: read stored leads (from prior scans), optionally filtered by province/city and ranked
-  // for a worker. This is the funnel's data source — external hand-off leads, not JobLop jobs.
+  // for a worker. This is the funnel's data source — external hand-off leads, not Joblop jobs.
   app.get("/platform/jobscanner/leads", async (request, reply) => {
     const actor = await requireHrAuthority(request, reply);
     if (!actor) return;
@@ -7466,7 +7530,7 @@ export function buildApi(options: BuildApiOptions = {}) {
       leads = rankLeadsForWorker(stored, profile);
       ranked = true;
     }
-    return reply.code(200).send({ leadCount: stored.length, ranked, leads, note: "External leads only — hand-off to the source, not JobLop jobs." });
+    return reply.code(200).send({ leadCount: stored.length, ranked, leads, note: "External leads only — hand-off to the source, not Joblop jobs." });
   });
 
   // AI CV Builder: generate a tailored CV + cover letter for a worker, optionally targeted at a stored
@@ -8503,10 +8567,33 @@ export function buildApi(options: BuildApiOptions = {}) {
     const provider = pro ? getCvProvider() : createSyntheticCvProvider();
     try {
       const result = await provider.generate({ profile, job });
+      // R2-15: persist the built CV to Joblop's DB (one current CV per worker). Best-effort — a storage
+      // hiccup must never fail the generate the worker is waiting on; we log and still return the CV.
+      let saved = false;
+      try {
+        const data = {
+          headline: result.headline,
+          cvMarkdown: result.cvMarkdown,
+          coverLetterMarkdown: result.coverLetterMarkdown,
+          tailoredTo: result.tailoredTo,
+          language: profile.language ?? "en",
+          profileJson: profile as unknown as Prisma.InputJsonValue,
+          providerKind: provider.kind
+        };
+        await prisma!.workerCv.upsert({
+          where: { workerRef: session.user.id },
+          create: { workerRef: session.user.id, ...data },
+          update: data
+        });
+        saved = true;
+      } catch (persistErr) {
+        app.log.error({ err: persistErr, userId: session.user.id }, "worker CV persist failed");
+      }
       return reply.code(200).send({
         cv: result,
         providerKind: provider.kind,
         pro,
+        saved,
         upgradeAvailable: !pro,
         note: pro
           ? "Advisory draft — review and edit before applying. Nothing is sent."
@@ -8713,6 +8800,159 @@ export function buildApi(options: BuildApiOptions = {}) {
     const ok = await deleteCvAsset(prisma!, session.user.id, id);
     if (!ok) return reply.code(404).send({ error: "RWOS_CV_ASSET_NOT_FOUND" });
     return reply.code(200).send({ deleted: true });
+  });
+
+  // ── Platform Greetings & Certificates ────────────────────────────────────────────────────────────
+  // Admin sends holiday/occasion greeting cards and issues certificates to workers/employers. In-app +
+  // best-effort email. Country-neutral: occasions come from the active CountryProfile's holiday list.
+  const requirePlatformAdmin = async (request: FastifyRequest, reply: FastifyReply) => {
+    const session = await authService.validateSession(readBearerToken(request.headers.authorization));
+    if (!session.authenticated || !session.user) {
+      reply.code(401).send({ error: "RWOS_PLATFORM_DENIED", message: "Authentication is required." });
+      return null;
+    }
+    const roles = await resolveAuthorizationRoles(session.user.id);
+    if (!roles.includes("PLATFORM_ADMINISTRATOR")) {
+      reply.code(403).send({ error: "RWOS_PLATFORM_DENIED", message: "Platform authority is required." });
+      return null;
+    }
+    return session.user;
+  };
+
+  // Upcoming holiday occasions for the active country — drives the greeting-card occasion picker.
+  app.get("/platform/greetings/holidays", async (request, reply) => {
+    const user = await requirePlatformAdmin(request, reply);
+    if (!user) return;
+    try {
+      const holidays = upcomingHolidays(activeCountry().holidays, new Date(), 12);
+      return reply.code(200).send({ country: activeCountry().code, holidays });
+    } catch (err) {
+      return reply.code(500).send({ error: "RWOS_COUNTRY_UNCONFIGURED", message: (err as Error).message });
+    }
+  });
+
+  // Search workers/employers by name/email for the "selected recipients" picker.
+  app.get("/platform/greetings/recipients", async (request, reply) => {
+    const user = await requirePlatformAdmin(request, reply);
+    if (!user) return;
+    const q = asRecord(request.query);
+    const query = readOptionalString(q, "q") ?? "";
+    const kindRaw = readOptionalString(q, "kind") ?? "all";
+    const kind: RecipientKind | "all" = kindRaw === "worker" || kindRaw === "employer" ? kindRaw : "all";
+    const results = await searchRecipients(prisma!, query, kind);
+    return reply.code(200).send({ recipients: results });
+  });
+
+  // Send a greeting to an audience (all / workers / employers / selected).
+  app.post("/platform/greetings", async (request, reply) => {
+    const user = await requirePlatformAdmin(request, reply);
+    if (!user) return;
+    const body = asRecord(request.body);
+    const title = readOptionalString(body, "title");
+    const message = readOptionalString(body, "message");
+    if (!title || !message) return reply.code(400).send({ error: "RWOS_GREETING_INVALID", message: "title and message are required." });
+    const scopeRaw = readOptionalString(body, "audienceScope") ?? "all";
+    const validScopes: AudienceScope[] = ["all", "workers", "employers", "selected"];
+    if (!validScopes.includes(scopeRaw as AudienceScope)) return reply.code(400).send({ error: "RWOS_GREETING_INVALID", message: "Invalid audienceScope." });
+    const audienceScope = scopeRaw as AudienceScope;
+    const selectedUserIds = Array.isArray(body.recipientUserIds)
+      ? body.recipientUserIds.filter((v): v is string => typeof v === "string" && isCanonicalUuid(v))
+      : [];
+    if (audienceScope === "selected" && selectedUserIds.length === 0) return reply.code(400).send({ error: "RWOS_GREETING_INVALID", message: "Select at least one recipient." });
+    const result = await sendGreeting(prisma!, emailSender, {
+      createdByUserId: user.id,
+      occasionKey: readOptionalString(body, "occasionKey") ?? null,
+      templateKey: readOptionalString(body, "templateKey") ?? "custom",
+      title: title.slice(0, 160),
+      message: message.slice(0, 2000),
+      audienceScope,
+      selectedUserIds
+    });
+    return reply.code(201).send(result);
+  });
+
+  // Greetings the admin has sent (history).
+  app.get("/platform/greetings", async (request, reply) => {
+    const user = await requirePlatformAdmin(request, reply);
+    if (!user) return;
+    return reply.code(200).send({ greetings: await listSentGreetings(prisma!) });
+  });
+
+  // Issue a certificate to one recipient.
+  app.post("/platform/certificates", async (request, reply) => {
+    const user = await requirePlatformAdmin(request, reply);
+    if (!user) return;
+    const body = asRecord(request.body);
+    const recipientUserId = readOptionalString(body, "recipientUserId");
+    const kind = readOptionalString(body, "kind") ?? "";
+    if (!recipientUserId || !isCanonicalUuid(recipientUserId)) return reply.code(400).send({ error: "RWOS_CERTIFICATE_INVALID", message: "A valid recipientUserId is required." });
+    if (!isCertificateKind(kind)) return reply.code(400).send({ error: "RWOS_CERTIFICATE_INVALID", message: "Invalid certificate kind." });
+    const result = await issueCertificate(prisma!, emailSender, {
+      issuedByUserId: user.id,
+      recipientUserId,
+      kind,
+      title: readOptionalString(body, "title"),
+      note: readOptionalString(body, "note")
+    });
+    if (!result.ok) return reply.code(404).send({ error: "RWOS_CERTIFICATE_RECIPIENT_NOT_FOUND", message: "Recipient not found." });
+    return reply.code(201).send({ certificate: result.certificate });
+  });
+
+  // Certificates the admin has issued (history).
+  app.get("/platform/certificates", async (request, reply) => {
+    const user = await requirePlatformAdmin(request, reply);
+    if (!user) return;
+    return reply.code(200).send({ certificates: await listIssuedCertificates(prisma!) });
+  });
+
+  // Recipient-facing inbox: a signed-in worker or employer reads THEIR greetings/certificates. The same
+  // handlers serve both apps — delivery rows are keyed by user id, so each user sees only their own.
+  const requireRecipient = async (request: FastifyRequest, reply: FastifyReply) => {
+    const session = await authService.validateSession(readBearerToken(request.headers.authorization));
+    if (!session.authenticated || !session.user) {
+      reply.code(401).send({ error: "RWOS_INBOX_DENIED", message: "Authentication is required." });
+      return null;
+    }
+    return session.user;
+  };
+
+  app.get("/inbox/greetings", async (request, reply) => {
+    const user = await requireRecipient(request, reply);
+    if (!user) return;
+    return reply.code(200).send({ greetings: await listGreetingsForRecipient(prisma!, user.id) });
+  });
+
+  app.post("/inbox/greetings/:id/read", async (request, reply) => {
+    const user = await requireRecipient(request, reply);
+    if (!user) return;
+    const id = readRouteParam(request.params, "id");
+    if (!id || !isCanonicalUuid(id)) return reply.code(400).send({ error: "RWOS_INBOX_INVALID" });
+    await markGreetingRead(prisma!, user.id, id);
+    return reply.code(200).send({ read: true });
+  });
+
+  app.get("/inbox/certificates", async (request, reply) => {
+    const user = await requireRecipient(request, reply);
+    if (!user) return;
+    return reply.code(200).send({ certificates: await listCertificatesForRecipient(prisma!, user.id) });
+  });
+
+  app.post("/inbox/certificates/:id/read", async (request, reply) => {
+    const user = await requireRecipient(request, reply);
+    if (!user) return;
+    const id = readRouteParam(request.params, "id");
+    if (!id || !isCanonicalUuid(id)) return reply.code(400).send({ error: "RWOS_INBOX_INVALID" });
+    await markCertificateRead(prisma!, user.id, id);
+    return reply.code(200).send({ read: true });
+  });
+
+  // Invite-a-friend: the signed-in user's own invite code (created on first use) + how many have joined.
+  app.get("/invite/code", async (request, reply) => {
+    const user = await requireRecipient(request, reply);
+    if (!user) return;
+    const code = await getOrCreateReferralCode(prisma!, user.id);
+    const stats = await referralStats(prisma!, user.id);
+    return reply.code(200).send({ code, joined: stats.joined });
   });
 
   // The old free toggle is removed: classification can no longer be flipped without a signed election.
@@ -10879,6 +11119,7 @@ function createUnavailableCalendarRequestService(): CalendarRequestService {
     listClientCalendar: denied,
     getClientCalendarRequest: denied,
     listAdminCalendar: denied,
+    listAdminLifecycleCalendar: denied,
     getAdminCalendarRequest: denied,
     getWorkerOfferCalendarReference: denied
   } as CalendarRequestService;

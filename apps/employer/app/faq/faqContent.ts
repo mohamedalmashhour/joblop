@@ -41,7 +41,7 @@ export const faqAnswers = [
     question: "What happens if a worker is late or absent?",
     summary: "Use Active-Shift Support for current shift issues such as late arrival, no-show, or replacement support.",
     detail:
-      "JobLop can route the issue, capture shift context, and prepare a support case. Replacement availability is not guaranteed. A person or authorized employer confirms final assignment decisions.",
+      "Joblop can route the issue, capture shift context, and prepare a support case. Replacement availability is not guaranteed. A person or authorized employer confirms final assignment decisions.",
     action: "Open Active-Shift Support",
     governance: {
       owner: "Support",

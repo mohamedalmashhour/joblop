@@ -8,7 +8,7 @@ export default function EmployerOrdersPage() {
       currentRoute="/employer/orders"
       eyebrow="Orders"
       title="Staffing orders"
-      lede="One order can staff several roles at once. Each role is reviewed and priced by JobLop on its own."
+      lede="One order can staff several roles at once. Each role is reviewed and priced by Joblop on its own."
       mode="authenticated"
       actions={
         <a href="/employer/calendar" style={styles.secondaryButton}>

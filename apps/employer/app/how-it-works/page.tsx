@@ -1,4 +1,5 @@
 import type { CSSProperties } from "react";
+import { JobLopLogo } from "../JobLopLogo";
 import {
   aiAssistance,
   employerJourney,
@@ -14,9 +15,7 @@ export default function HowItWorksPage() {
   return (
     <main style={styles.page}>
       <header style={styles.header}>
-        <a href="/" style={styles.brand} aria-label="JobLop home">
-          JobLop
-        </a>
+        <a href="/" style={styles.brand} aria-label="Joblop home"><JobLopLogo height={28} /></a>
         <nav aria-label="Primary navigation" style={styles.nav}>
           <a href="/about" style={styles.navLink}>
             About
@@ -45,7 +44,7 @@ export default function HowItWorksPage() {
       </header>
 
       <section style={styles.hero}>
-        <p style={styles.eyebrow}>How JobLop works</p>
+        <p style={styles.eyebrow}>How Joblop works</p>
         <h1 style={styles.title}>A clear staffing workflow for workers, employers, and operations.</h1>
         <p style={styles.lede}>
           This public page explains the process. It does not confirm availability, dispatch,
@@ -151,7 +150,7 @@ export default function HowItWorksPage() {
       </section>
 
       <footer style={styles.footer}>
-        <span>JobLop</span>
+        <span>Joblop</span>
         <nav aria-label="Footer navigation" style={styles.footerLinks}>
           <a href="/" style={styles.footerLink}>
             Home
@@ -231,15 +230,15 @@ const baseButton: CSSProperties = {
 
 const styles: Record<string, CSSProperties> = {
   page: {
-    background: "#f7faff",
-    color: "#15110b",
+    background: "#000000",
+    color: "#f4efe4",
     fontFamily: "Inter, system-ui, sans-serif",
     minHeight: "100vh"
   },
   header: {
     alignItems: "center",
-    background: "#ffffff",
-    borderBottom: "1px solid #f0e8d8",
+    background: "#000000",
+    borderBottom: "1px solid rgba(201, 162, 75, 0.16)",
     display: "flex",
     flexWrap: "wrap",
     gap: 16,
@@ -250,7 +249,7 @@ const styles: Record<string, CSSProperties> = {
     zIndex: 1
   },
   brand: {
-    color: "#1b160e",
+    color: "#f4efe4",
     fontSize: 20,
     fontWeight: 900,
     textDecoration: "none"
@@ -262,7 +261,7 @@ const styles: Record<string, CSSProperties> = {
     gap: 14
   },
   navLink: {
-    color: "#15110b",
+    color: "#f4efe4",
     fontSize: 14,
     fontWeight: 700,
     textDecoration: "none"
@@ -279,20 +278,20 @@ const styles: Record<string, CSSProperties> = {
   },
   secondaryButton: {
     ...baseButton,
-    background: "#fff8d8",
-    color: "#1b160e"
+    background: "#0c0c0c",
+    color: "#f4efe4"
   },
   primaryButtonLarge: {
     ...baseButton,
-    background: "#fff8d8",
-    color: "#1b160e",
+    background: "#0c0c0c",
+    color: "#f4efe4",
     minHeight: 52,
     padding: "0 22px"
   },
   secondaryButtonLarge: {
     ...baseButton,
     background: "transparent",
-    border: "1px solid #f0e8d8",
+    border: "1px solid rgba(201, 162, 75, 0.16)",
     color: "#ffffff",
     minHeight: 52,
     padding: "0 22px"
@@ -313,7 +312,7 @@ const styles: Record<string, CSSProperties> = {
     textTransform: "uppercase"
   },
   eyebrowDark: {
-    color: "#2a2114",
+    color: "#f4efe4",
     fontSize: 12,
     fontWeight: 900,
     letterSpacing: 0,
@@ -349,7 +348,7 @@ const styles: Record<string, CSSProperties> = {
     maxWidth: 880
   },
   sectionTitle: {
-    color: "#1b160e",
+    color: "#f4efe4",
     fontSize: "clamp(26px, 4vw, 42px)",
     lineHeight: 1.12,
     margin: 0
@@ -360,18 +359,18 @@ const styles: Record<string, CSSProperties> = {
     gridTemplateColumns: "repeat(auto-fit, minmax(260px, 1fr))"
   },
   card: {
-    background: "#ffffff",
-    border: "1px solid #f0e8d8",
+    background: "#000000",
+    border: "1px solid rgba(201, 162, 75, 0.16)",
     borderRadius: 8,
     padding: 20
   },
   cardTitle: {
-    color: "#1b160e",
+    color: "#f4efe4",
     fontSize: 18,
     margin: 0
   },
   cardText: {
-    color: "#6b6356",
+    color: "#b3a894",
     fontSize: 14,
     lineHeight: 1.55,
     margin: "8px 0 0"
@@ -383,14 +382,14 @@ const styles: Record<string, CSSProperties> = {
     paddingLeft: 22
   },
   stepItem: {
-    color: "#15110b",
+    color: "#f4efe4",
     fontWeight: 700,
     lineHeight: 1.45
   },
   lifecycleSection: {
-    background: "#ffffff",
-    borderBottom: "1px solid #f0e8d8",
-    borderTop: "1px solid #f0e8d8",
+    background: "#000000",
+    borderBottom: "1px solid rgba(201, 162, 75, 0.16)",
+    borderTop: "1px solid rgba(201, 162, 75, 0.16)",
     padding: "48px clamp(16px, 4vw, 40px)"
   },
   phaseGrid: {
@@ -398,13 +397,13 @@ const styles: Record<string, CSSProperties> = {
     gap: 18
   },
   phaseCard: {
-    background: "#f7faff",
-    border: "1px solid #f0e8d8",
+    background: "#000000",
+    border: "1px solid rgba(201, 162, 75, 0.16)",
     borderRadius: 8,
     padding: 20
   },
   phaseTitle: {
-    color: "#1b160e",
+    color: "#f4efe4",
     fontSize: 24,
     margin: 0,
     textTransform: "capitalize"
@@ -416,10 +415,10 @@ const styles: Record<string, CSSProperties> = {
     marginTop: 12
   },
   statusPill: {
-    background: "#fff8d8",
-    border: "1px solid #e7d889",
+    background: "#0c0c0c",
+    border: "1px solid rgba(201, 162, 75, 0.16)",
     borderRadius: 8,
-    color: "#1b160e",
+    color: "#f4efe4",
     fontSize: 13,
     fontWeight: 900,
     padding: "8px 10px"
@@ -431,13 +430,13 @@ const styles: Record<string, CSSProperties> = {
     marginTop: 18
   },
   ownerBlock: {
-    background: "#ffffff",
-    border: "1px solid #f0e8d8",
+    background: "#000000",
+    border: "1px solid rgba(201, 162, 75, 0.16)",
     borderRadius: 8,
     padding: 16
   },
   ownerTitle: {
-    color: "#2a2114",
+    color: "#f4efe4",
     fontSize: 15,
     margin: 0
   },
@@ -448,13 +447,13 @@ const styles: Record<string, CSSProperties> = {
     paddingLeft: 18
   },
   item: {
-    color: "#15110b",
+    color: "#f4efe4",
     lineHeight: 1.45
   },
   aiSection: {
-    background: "#f6efdd",
-    borderBottom: "1px solid #f0e8d8",
-    borderTop: "1px solid #f0e8d8",
+    background: "#0c0c0c",
+    borderBottom: "1px solid rgba(201, 162, 75, 0.16)",
+    borderTop: "1px solid rgba(201, 162, 75, 0.16)",
     padding: "48px clamp(16px, 4vw, 40px)"
   },
   aiGrid: {
@@ -463,8 +462,8 @@ const styles: Record<string, CSSProperties> = {
     gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))"
   },
   aiCard: {
-    background: "#ffffff",
-    border: "1px solid #f0e2c0",
+    background: "#000000",
+    border: "1px solid rgba(201, 162, 75, 0.16)",
     borderRadius: 8,
     padding: 18
   },
@@ -474,10 +473,10 @@ const styles: Record<string, CSSProperties> = {
     gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))"
   },
   pill: {
-    background: "#ffffff",
-    border: "1px solid #f0e8d8",
+    background: "#000000",
+    border: "1px solid rgba(201, 162, 75, 0.16)",
     borderRadius: 8,
-    color: "#1b160e",
+    color: "#f4efe4",
     fontWeight: 900,
     minHeight: 52,
     padding: 16

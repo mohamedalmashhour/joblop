@@ -129,7 +129,7 @@ export function buildSnapshot(view: ShareView, job: JobInfo, L: Ledger): Snapsho
   if (view === "employer") {
     if (job.workers != null) jobRows.push({ label: "Headcount", value: `${job.workers} worker(s)` });
     return {
-      view, title: "Your invoice — JobLop", number: job.number,
+      view, title: "Your invoice — Joblop", number: job.number,
       generated: new Date().toISOString(), closed,
       badge: closed ? "SETTLED" : "IN PROGRESS",
       jobRows,
@@ -140,7 +140,7 @@ export function buildSnapshot(view: ShareView, job: JobInfo, L: Ledger): Snapsho
         { label: "QST (illustrative)", value: money(L.qstMinor) },
         { label: "Total you pay", value: money(L.invoiceMinor), strong: true }
       ],
-      note: "You are billed only for clock-verified hours. Worker pay rates are set and paid by JobLop and are not shown on your invoice."
+      note: "You are billed only for clock-verified hours. Worker pay rates are set and paid by Joblop and are not shown on your invoice."
     };
   }
 
@@ -148,7 +148,7 @@ export function buildSnapshot(view: ShareView, job: JobInfo, L: Ledger): Snapsho
   const grossEach = L.workerRateMinor * L.billableHours;
   const dedEach = grossEach - L.workerNetEachMinor;
   return {
-    view, title: "Your pay — JobLop", number: job.number,
+    view, title: "Your pay — Joblop", number: job.number,
     generated: new Date().toISOString(), closed,
     badge: closed ? "PAID" : "IN PROGRESS",
     jobRows,
@@ -159,7 +159,7 @@ export function buildSnapshot(view: ShareView, job: JobInfo, L: Ledger): Snapsho
       { label: "Statutory deductions", value: `-${money(dedEach)}` },
       { label: "Your net pay", value: money(L.workerNetEachMinor), strong: true }
     ],
-    note: "JobLop takes no fee from your pay. Hours are taken from your recorded clock-in / clock-out, and the 6-hour minimum is honoured."
+    note: "Joblop takes no fee from your pay. Hours are taken from your recorded clock-in / clock-out, and the 6-hour minimum is honoured."
   };
 }
 

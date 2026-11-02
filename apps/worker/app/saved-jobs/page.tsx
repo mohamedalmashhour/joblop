@@ -1,10 +1,10 @@
 import { SavedJobs } from "./SavedJobs";
-import { SubPageHeader } from "../SubPageHeader";
+import { SiteHeader } from "../SiteHeader";
 
 export default function Page() {
   return (
     <>
-      <SubPageHeader />
+      <SiteHeader />
       <main className="wrap">
         <SavedJobs />
       </main>

@@ -12,9 +12,9 @@ describe("worker accessibility contracts", () => {
     expect(primitivesSource).toContain('accessibilityLiveRegion="polite"');
   });
 
-  it("hides the decorative production brand mark", () => {
-    expect(productionSource).toContain("accessibilityElementsHidden");
-    expect(productionSource).toContain('importantForAccessibility="no-hide-descendants"');
+  it("labels the production brand logo as a header for screen readers", () => {
+    expect(productionSource).toContain('accessibilityRole="header"');
+    expect(productionSource).toContain("accessibilityLabel={productName}");
   });
 
   it("exposes fixture navigation with tab semantics and selected state", () => {

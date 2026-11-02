@@ -77,7 +77,7 @@ export function EmployerShell({
       </a>
       <div style={styles.appFrame}>
         <aside className="employer-sidebar" style={styles.sidebarShell}>
-          <a href="/" style={styles.brand} aria-label="JobLop home">
+          <a href="/" style={styles.brand} aria-label="Joblop home">
             <JobLopLogo height={34} />
           </a>
           <nav aria-label="Employer navigation" className="employer-navigation" style={styles.nav}>
@@ -127,8 +127,11 @@ export function EmployerShell({
             {children}
           </main>
           <footer style={styles.footer}>
-            <span>JobLop Employer Journey</span>
+            <span>Joblop Employer Journey</span>
             <nav aria-label="Employer footer navigation" style={styles.footerLinks}>
+              <a href="/employer/inbox" style={styles.footerLink}>
+                Greetings &amp; awards
+              </a>
               <a href="/contact" style={styles.footerLink}>
                 Support
               </a>

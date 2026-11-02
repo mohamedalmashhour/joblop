@@ -267,11 +267,11 @@ function LineTable({ title, lines, currency }: { title: string; lines: Line[]; c
   );
 }
 function severityStyle(severity: string): CSSProperties {
-  const tone = severity === "high" ? "#8a2f20" : severity === "medium" ? "#8a5340" : severity === "low" ? "#155e9c" : "#555";
+  const tone = severity === "high" ? "#8a2f20" : severity === "medium" ? "#8a5340" : severity === "low" ? "#171511" : "#555";
   return { color: tone, borderColor: tone };
 }
 function statusChip(status: string) {
-  const tone = status === "locked" ? "#1f6f43" : status === "approved" ? "#155e9c" : status === "superseded" || status === "rejected" ? "#8a5340" : "#555";
+  const tone = status === "locked" ? "#1f6f43" : status === "approved" ? "#171511" : status === "superseded" || status === "rejected" ? "#8a5340" : "#555";
   return <span style={{ ...s.chip, color: tone, borderColor: tone }}>{status}</span>;
 }
 
@@ -281,19 +281,19 @@ const s: Record<string, CSSProperties> = {
   eyebrow: { textTransform: "uppercase", letterSpacing: 1, fontSize: 12, color: "#666", margin: 0 },
   title: { fontSize: 28, margin: "4px 0" },
   lede: { color: "#444", maxWidth: 640, margin: 0 },
-  syntheticBadge: { background: "#fff4e5", border: "1px solid #d99a3d", color: "#7a4b12", padding: "8px 12px", borderRadius: 8, maxWidth: 320, fontSize: 13, fontWeight: 600 },
+  syntheticBadge: { background: "#000000", border: "1px solid #d99a3d", color: "#7a4b12", padding: "8px 12px", borderRadius: 8, maxWidth: 320, fontSize: 13, fontWeight: 600 },
   infoNote: { background: "#e8f4ea", border: "1px solid #3f9b5c", color: "#1f6f43", padding: "8px 12px", borderRadius: 6, marginTop: 12 },
   errorNote: { background: "#fce8e6", border: "1px solid #c5533f", color: "#8a2f20", padding: "8px 12px", borderRadius: 6, marginTop: 12 },
   columns: { display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16, marginTop: 20 },
-  panel: { border: "1px solid #e0e0e0", borderRadius: 10, padding: 16, background: "#fff" },
+  panel: { border: "1px solid rgba(201, 162, 75, 0.16)", borderRadius: 10, padding: 16, background: "#fff" },
   h2: { fontSize: 18, marginTop: 0 },
   h3: { fontSize: 15, margin: "16px 0 6px" },
   muted: { color: "#777", fontSize: 13 },
   list: { listStyle: "none", padding: 0, margin: 0, display: "flex", flexDirection: "column", gap: 6 },
-  rowBtn: { width: "100%", textAlign: "left", background: "#fafafa", border: "1px solid #e6e6e6", borderRadius: 8, padding: "8px 10px", cursor: "pointer", display: "flex", flexDirection: "column", gap: 2 },
-  rowBtnActive: { background: "#eef4ff", borderColor: "#155e9c" },
+  rowBtn: { width: "100%", textAlign: "left", background: "#000000", border: "1px solid rgba(201, 162, 75, 0.16)", borderRadius: 8, padding: "8px 10px", cursor: "pointer", display: "flex", flexDirection: "column", gap: 2 },
+  rowBtnActive: { background: "#000000", borderColor: "rgba(201, 162, 75, 0.16)" },
   rowMeta: { fontSize: 12, color: "#777" },
-  detail: { border: "1px solid #e0e0e0", borderRadius: 10, padding: 20, background: "#fff", marginTop: 20 },
+  detail: { border: "1px solid rgba(201, 162, 75, 0.16)", borderRadius: 10, padding: 20, background: "#fff", marginTop: 20 },
   detailCols: { display: "grid", gridTemplateColumns: "1fr 1fr", gap: 24 },
   dl: { display: "grid", gridTemplateColumns: "auto 1fr", gap: "4px 12px", margin: "8px 0" },
   dt: { color: "#666", fontSize: 13 },
@@ -301,12 +301,12 @@ const s: Record<string, CSSProperties> = {
   table: { width: "100%", borderCollapse: "collapse", margin: "8px 0", fontSize: 13 },
   caption: { textAlign: "left", fontWeight: 600, fontSize: 13, padding: "4px 0" },
   th: { textAlign: "left", borderBottom: "1px solid #ddd", padding: "4px 6px", fontSize: 12, color: "#555" },
-  td: { borderBottom: "1px solid #f0f0f0", padding: "4px 6px", verticalAlign: "top" },
+  td: { borderBottom: "1px solid rgba(201, 162, 75, 0.16)", padding: "4px 6px", verticalAlign: "top" },
   chip: { border: "1px solid", borderRadius: 999, padding: "1px 8px", fontSize: 11, marginLeft: 6 },
   correctChip: { background: "#f0e8fb", color: "#5a3a8a", borderRadius: 999, padding: "1px 8px", fontSize: 11, marginLeft: 6 },
-  adjBox: { background: "#eef4ff", border: "1px solid #155e9c", borderRadius: 8, padding: 12, margin: "12px 0", fontSize: 13 },
+  adjBox: { background: "#000000", border: "1px solid rgba(201, 162, 75, 0.16)", borderRadius: 8, padding: 12, margin: "12px 0", fontSize: 13 },
   actions: { display: "flex", gap: 8, margin: "16px 0", flexWrap: "wrap" },
-  btn: { background: "#155e9c", color: "#fff", border: "none", borderRadius: 8, padding: "8px 14px", cursor: "pointer", fontWeight: 600 },
+  btn: { background: "#171511", color: "#fff", border: "none", borderRadius: 8, padding: "8px 14px", cursor: "pointer", fontWeight: 600 },
   btnGhost: { background: "#fff", color: "#8a5340", border: "1px solid #8a5340", borderRadius: 8, padding: "8px 14px", cursor: "pointer" },
   correctForm: { border: "1px dashed #bbb", borderRadius: 8, padding: 12, margin: "8px 0 16px" },
   label: { display: "block", fontSize: 13, color: "#444", marginBottom: 6 },

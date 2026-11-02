@@ -109,6 +109,7 @@ type CalendarJobRequestAccess = Pick<
   | "listForOrganization"
   | "getForAdmin"
   | "listAdminIntake"
+  | "listAdminLifecycle"
 >;
 type WorkerOfferCalendarAccess = Pick<WorkerOfferService, "workerCalendarReference">;
 
@@ -287,6 +288,19 @@ export function createCalendarRequestService(input: {
       roles: readonly AuthorizationRoleKey[];
     }) {
       const jobRequests = await input.jobRequestAccess.listAdminIntake(listInput);
+      const profiles = await input.repository.findByJobRequestIds(
+        jobRequests.map((jobRequest) => jobRequest.id)
+      );
+      return projectCalendarRequests(jobRequests, profiles, "admin");
+    },
+
+    // Full-lifecycle admin calendar: every non-draft request (submission → closure), not just the
+    // review queue. Same admin projection as listAdminCalendar; differs only in the source listing.
+    async listAdminLifecycleCalendar(listInput: {
+      session: CalendarSession;
+      roles: readonly AuthorizationRoleKey[];
+    }) {
+      const jobRequests = await input.jobRequestAccess.listAdminLifecycle(listInput);
       const profiles = await input.repository.findByJobRequestIds(
         jobRequests.map((jobRequest) => jobRequest.id)
       );

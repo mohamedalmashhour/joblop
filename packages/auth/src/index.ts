@@ -5785,6 +5785,41 @@ export function createJobRequestService(
       ).map(toPublicJobRequest);
     },
 
+    // Same admin-review authority as listAdminIntake, but across the whole request lifecycle (every
+    // non-draft status) rather than only the review queue — so the admin can see requests from
+    // submission through to closure on a calendar. Read-only; identical governance.
+    async listAdminLifecycle(input: {
+      session: SessionValidationResult;
+      roles?: readonly AuthorizationRoleKey[];
+      correlationId?: string;
+    }) {
+      const decision = await authorizeJobRequestPlatformOperation({
+        jobRequestRepository,
+        authorizationService,
+        session: input.session,
+        roles: input.roles ?? [],
+        permission: "job_request.admin_review",
+        correlationId: input.correlationId,
+        now: now()
+      });
+
+      if (!decision.allow) throw new JobRequestError(decision);
+
+      return (
+        await jobRequestRepository.listJobRequests({
+          statuses: [
+            "submitted",
+            "admin_review",
+            "information_required",
+            "approved_for_dispatch",
+            "cancelled",
+            "expired",
+            "archived"
+          ]
+        })
+      ).map(toPublicJobRequest);
+    },
+
     async getForAdmin(input: {
       session: SessionValidationResult;
       roles?: readonly AuthorizationRoleKey[];
@@ -11162,6 +11197,7 @@ export interface CreateLocalUserInput {
   publicId: string;
   emailNormalized: string;
   displayName: string | null;
+  phone?: string | null;
   passwordHash: string;
   now: Date;
 }
@@ -11441,6 +11477,7 @@ export function createAuthenticationService(
       email: string;
       password: string;
       displayName?: string | null;
+      phone?: string | null;
       source?: AuthenticationAuditSource;
       correlationId?: string;
       ipAddress?: string | null;
@@ -11472,6 +11509,7 @@ export function createAuthenticationService(
         publicId: createPublicUserId(),
         emailNormalized,
         displayName: input.displayName ?? null,
+        phone: input.phone ?? null,
         passwordHash,
         now: currentTime
       });
@@ -11850,6 +11888,7 @@ type PrismaAuthTransaction = {
         publicId: string;
         emailNormalized: string;
         displayName: string | null;
+        phone?: string | null;
         status: "active";
         identities: {
           create: {
@@ -12006,6 +12045,7 @@ export function createPrismaAuthenticationRepository(
           publicId: input.publicId,
           emailNormalized: input.emailNormalized,
           displayName: input.displayName,
+          phone: input.phone ?? null,
           status: "active",
           identities: {
             create: {

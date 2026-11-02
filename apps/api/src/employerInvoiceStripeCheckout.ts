@@ -5,9 +5,9 @@ import { isStripeLiveModeEnabled, stripeCollectionEnvFromProcess } from "./strip
 // live only when STRIPE_LIVE_MODE_ENABLED is on (see stripeEnvironment.ts).
 // Mirrors the proven Worker Pro pattern (cvProStripeCheckout): reuse the shared Stripe test provider,
 // which refuses any non-`sk_test_` secret, so no live charge can ever be created here. The employer is
-// redirected to Stripe's hosted test page (card 4242 4242 4242 4242), then returns to JobLop where we
+// redirected to Stripe's hosted test page (card 4242 4242 4242 4242), then returns to Joblop where we
 // RETRIEVE the session and verify it was paid for THIS invoice before flipping anything. No card data
-// touches JobLop. The correlation key on the Stripe object is our opaque invoice id + organization id.
+// touches Joblop. The correlation key on the Stripe object is our opaque invoice id + organization id.
 
 export type InvoiceCheckout = Readonly<{ id: string; url: string | null }>;
 
@@ -35,7 +35,7 @@ export async function createInvoiceCheckoutSession(input: {
             currency: input.currency.toLowerCase(),
             unit_amount: input.amountMinor,
             product_data: {
-              name: `JobLop invoice ${input.invoiceNumber}${isStripeLiveModeEnabled() ? "" : " (test)"}`
+              name: `Joblop invoice ${input.invoiceNumber}${isStripeLiveModeEnabled() ? "" : " (test)"}`
             }
           }
         }

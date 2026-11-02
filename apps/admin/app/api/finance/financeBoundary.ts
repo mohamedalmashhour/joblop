@@ -7,6 +7,7 @@ export type FinanceInvoice = Readonly<{
   status: string;
   currency: string;
   totalMinor: number;
+  issuedAt: string | null;
   dueAt: string | null;
 }>;
 
@@ -42,6 +43,7 @@ export function parseFinanceInvoices(payload: unknown): readonly FinanceInvoice[
       status: requiredText(item.status),
       currency: requiredText(item.currency),
       totalMinor: safeInteger(item.totalMinor),
+      issuedAt: nullableText(item.issuedAt),
       dueAt: nullableText(item.dueAt)
     };
   });

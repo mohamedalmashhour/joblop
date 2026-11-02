@@ -43,7 +43,7 @@ export function ProUpgrade() {
     return () => { active = false; };
   }, []);
 
-  // Card: open Stripe's hosted test Checkout. No card data touches JobLop; we return and verify.
+  // Card: open Stripe's hosted test Checkout. No card data touches Joblop; we return and verify.
   const payByCard = async () => {
     setCardBusy(true); setCardMsg("");
     try {

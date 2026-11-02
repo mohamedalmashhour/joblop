@@ -1,4 +1,4 @@
-// JobLop marketing landing copy. en-CA is the source of truth; fr-CA MUST stay at full
+// Joblop marketing landing copy. en-CA is the source of truth; fr-CA MUST stay at full
 // parity (Quebec / Bill 96). page.tsx is a server component that resolves the active locale
 // and renders from getLandingContent(locale). Stable `key` fields drive image and status
 // lookups so translating the visible label never breaks them.
@@ -79,7 +79,7 @@ const en: LandingContent = {
     line1: "Find work.",
     line2: "Find people.",
     line3: "Move forward.",
-    lede: "JobLop connects local workers with people and businesses that need help. Fast. Simple. Reliable.",
+    lede: "Joblop connects local workers with people and businesses that need help. Fast. Simple. Reliable.",
     chips: ["Quick Matches", "Verified Users", "Secure & Trusted"],
     ctaWork: "I’m Looking for Work",
     ctaHire: "Workers Request",
@@ -115,7 +115,7 @@ const en: LandingContent = {
   preview: {
     eyebrow: "Inside the workspace",
     title: "Quiet dashboards for repeated daily work.",
-    copy: "A preview of the JobLop workspace — clear staffing status, requests, and coverage at a glance. Sample data shown for illustration."
+    copy: "A preview of the Joblop workspace — clear staffing status, requests, and coverage at a glance. Sample data shown for illustration."
   },
   workers: {
     eyebrow: "For workers",
@@ -152,7 +152,7 @@ const en: LandingContent = {
     requestAccess: "Request Access",
     findWork: "Find work"
   },
-  footer: { brandHome: "JobLop", employers: "Employers", workers: "Workers", howItWorks: "How It Works", pricing: "Pricing", contact: "Contact" },
+  footer: { brandHome: "Joblop", employers: "Employers", workers: "Workers", howItWorks: "How It Works", pricing: "Pricing", contact: "Contact" },
   store: {
     apple: { line: "Download on the", name: "App Store", aria: "App Store — coming soon" },
     google: { line: "GET IT ON", name: "Google Play", aria: "Google Play — coming soon" }
@@ -201,7 +201,7 @@ const fr: LandingContent = {
     line1: "Trouvez du travail.",
     line2: "Trouvez des gens.",
     line3: "Avancez.",
-    lede: "JobLop met en relation les travailleurs locaux avec les personnes et les entreprises qui ont besoin d’aide. Rapide. Simple. Fiable.",
+    lede: "Joblop met en relation les travailleurs locaux avec les personnes et les entreprises qui ont besoin d’aide. Rapide. Simple. Fiable.",
     chips: ["Jumelages rapides", "Utilisateurs vérifiés", "Sécurisé et fiable"],
     ctaWork: "Je cherche du travail",
     ctaHire: "Demande de travailleurs",
@@ -237,7 +237,7 @@ const fr: LandingContent = {
   preview: {
     eyebrow: "À l’intérieur de l’espace de travail",
     title: "Des tableaux de bord sobres pour le travail quotidien répété.",
-    copy: "Un aperçu de l’espace de travail JobLop — statut de dotation, demandes et couverture clairs d’un coup d’œil. Données d’exemple présentées à titre indicatif."
+    copy: "Un aperçu de l’espace de travail Joblop — statut de dotation, demandes et couverture clairs d’un coup d’œil. Données d’exemple présentées à titre indicatif."
   },
   workers: {
     eyebrow: "Pour les travailleurs",
@@ -274,7 +274,7 @@ const fr: LandingContent = {
     requestAccess: "Demander l’accès",
     findWork: "Trouver du travail"
   },
-  footer: { brandHome: "JobLop", employers: "Employeurs", workers: "Travailleurs", howItWorks: "Comment ça marche", pricing: "Tarifs", contact: "Contact" },
+  footer: { brandHome: "Joblop", employers: "Employeurs", workers: "Travailleurs", howItWorks: "Comment ça marche", pricing: "Tarifs", contact: "Contact" },
   store: {
     apple: { line: "Téléchargez sur", name: "App Store", aria: "App Store — bientôt disponible" },
     google: { line: "DISPONIBLE SUR", name: "Google Play", aria: "Google Play — bientôt disponible" }
@@ -309,7 +309,7 @@ const fr: LandingContent = {
   workerPhone: [["À venir", "Quart de soir PAB", "96,00 $"], ["Horaire", "Mai 2026", "3 quarts"], ["Gains", "560,00 $", "en attente"]]
 };
 
-// Arabic (RTL) marketing landing — full parity with en-CA. Proper nouns (JobLop, App Store,
+// Arabic (RTL) marketing landing — full parity with en-CA. Proper nouns (Joblop, App Store,
 // Google Play, Interac) and sample data (places, numbers) stay as-is by convention.
 const ar: LandingContent = {
   header: {
@@ -323,9 +323,9 @@ const ar: LandingContent = {
   staging: { label: "بيئة اختبار", synthetic: "بيانات اصطناعية", noPayment: "لا دفع حقيقي", noProdData: "لا بيانات عملاء إنتاجية" },
   hero: {
     line1: "اعثر على عمل.",
-    line2: "اعثر على أشخاص.",
+    line2: "اعثر على موظفين.",
     line3: "امضِ قُدُمًا.",
-    lede: "تربط JobLop العمّال المحليّين بالأشخاص والشركات التي تحتاج إلى مساعدة. سريع. بسيط. موثوق.",
+    lede: "تربط Joblop العمّال المحليّين بالأشخاص والشركات التي تحتاج إلى مساعدة. سريع. بسيط. موثوق.",
     chips: ["مطابقات سريعة", "مستخدمون موثَّقون", "آمن وموثوق"],
     ctaWork: "أبحث عن عمل",
     ctaHire: "طلب عمّال",
@@ -361,7 +361,7 @@ const ar: LandingContent = {
   preview: {
     eyebrow: "داخل مساحة العمل",
     title: "لوحات تحكّم هادئة للعمل اليومي المتكرّر.",
-    copy: "معاينة لمساحة عمل JobLop — حالة توظيف وطلبات وتغطية واضحة بلمحة. تُعرَض بيانات عيّنة لأغراض التوضيح."
+    copy: "معاينة لمساحة عمل Joblop — حالة توظيف وطلبات وتغطية واضحة بلمحة. تُعرَض بيانات عيّنة لأغراض التوضيح."
   },
   workers: {
     eyebrow: "للعمّال",
@@ -398,7 +398,7 @@ const ar: LandingContent = {
     requestAccess: "طلب الوصول",
     findWork: "ابحث عن عمل"
   },
-  footer: { brandHome: "JobLop", employers: "أصحاب العمل", workers: "العمّال", howItWorks: "كيف تعمل", pricing: "الأسعار", contact: "اتصل بنا" },
+  footer: { brandHome: "Joblop", employers: "أصحاب العمل", workers: "العمّال", howItWorks: "كيف تعمل", pricing: "الأسعار", contact: "اتصل بنا" },
   store: {
     apple: { line: "نزّله من", name: "App Store", aria: "App Store — قريبًا" },
     google: { line: "احصل عليه من", name: "Google Play", aria: "Google Play — قريبًا" }
@@ -408,8 +408,8 @@ const ar: LandingContent = {
     prompt: "عمّا تبحث اليوم؟",
     findWork: "ابحث عن عمل",
     findWorkSub: "وظائف قريبة منك",
-    findPeople: "ابحث عن أشخاص",
-    findPeopleSub: "وظّف أشخاصًا يمكنك الاعتماد عليهم",
+    findPeople: "ابحث عن موظفين",
+    findPeopleSub: "وظّف موظفين يمكنك الاعتماد عليهم",
     popular: "رائج بالقرب منك",
     jobTitle: "مساعد مطبخ",
     jobMeta: "مطعم · لافال، كيبيك",

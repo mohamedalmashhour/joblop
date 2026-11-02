@@ -32,15 +32,15 @@ export default function AdminCalendarPage() {
 
 const styles = {
   page: {
-    background: "#f4f7fb",
-    color: "#10233f",
+    background: "#000000",
+    color: "#f4efe4",
     fontFamily: "Inter, system-ui, sans-serif",
     minHeight: "100vh"
   },
-  hero: { background: "#061b41", color: "#fff", padding: "48px clamp(18px, 5vw, 64px)" },
+  hero: { background: "#000000", color: "#fff", padding: "48px clamp(18px, 5vw, 64px)" },
   eyebrow: { color: "#fff1a8", fontSize: 12, fontWeight: 900, textTransform: "uppercase" as const },
   title: { fontSize: "clamp(38px, 5vw, 60px)", margin: "8px 0" },
-  lede: { color: "#d6e5f8", fontSize: 18, lineHeight: 1.6, maxWidth: 820 },
+  lede: { color: "#faf6ec", fontSize: 18, lineHeight: 1.6, maxWidth: 820 },
   grid: {
     display: "grid",
     gap: 18,
@@ -49,16 +49,16 @@ const styles = {
   },
   card: {
     background: "#fff",
-    border: "1px solid #dbe4f0",
+    border: "1px solid rgba(201, 162, 75, 0.16)",
     borderRadius: 14,
     boxShadow: "0 12px 30px rgba(6,27,65,.08)",
     padding: 22
   },
-  h2: { color: "#061b41", fontSize: 24 },
+  h2: { color: "#000000", fontSize: 24 },
   badge: {
-    background: "#e8f5f3",
+    background: "#000000",
     borderRadius: 99,
-    color: "#075e58",
+    color: "#f4efe4",
     display: "inline-block",
     fontSize: 12,
     fontWeight: 900,
@@ -66,7 +66,7 @@ const styles = {
     textTransform: "uppercase" as const
   },
   button: {
-    background: "#0f7f78",
+    background: "#171511",
     borderRadius: 8,
     color: "#fff",
     display: "inline-flex",
@@ -83,5 +83,5 @@ const styles = {
     gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))",
     padding: "0 clamp(18px, 5vw, 64px) 48px"
   },
-  boundaryCard: { background: "#fff", border: "1px solid #dbe4f0", borderRadius: 10, padding: 16 }
+  boundaryCard: { background: "#fff", border: "1px solid rgba(201, 162, 75, 0.16)", borderRadius: 10, padding: 16 }
 } as const;

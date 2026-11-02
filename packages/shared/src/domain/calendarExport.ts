@@ -60,7 +60,7 @@ export function buildCalendarTitle(input: Pick<CalendarExportInput, "title" | "j
 
 function buildDescription(input: CalendarExportInput): string {
   const parts: string[] = [];
-  if (input.jobCode) parts.push(`JobLop job code: ${input.jobCode}`);
+  if (input.jobCode) parts.push(`Joblop job code: ${input.jobCode}`);
   if (input.description) parts.push(input.description);
   return parts.join("\n");
 }
@@ -79,7 +79,7 @@ export function buildCalendarExport(input: CalendarExportInput): CalendarExport 
   const lines = [
     "BEGIN:VCALENDAR",
     "VERSION:2.0",
-    "PRODID:-//JobLop//Shift//EN",
+    "PRODID:-//Joblop//Shift//EN",
     "CALSCALE:GREGORIAN",
     "METHOD:PUBLISH",
     "BEGIN:VEVENT",

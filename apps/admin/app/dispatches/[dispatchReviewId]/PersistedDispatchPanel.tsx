@@ -203,14 +203,14 @@ function dispatchStateCopy(state: AdminDispatchReview["state"]) {
 
 const styles = {
   page: {
-    background: "#f4f7fb",
-    color: "#10233f",
+    background: "#000000",
+    color: "#f4efe4",
     fontFamily: "Inter, system-ui, sans-serif",
     minHeight: "100vh"
   },
   hero: {
     alignItems: "center",
-    background: "#061b41",
+    background: "#000000",
     color: "#fff",
     display: "flex",
     flexWrap: "wrap" as const,
@@ -220,16 +220,16 @@ const styles = {
   },
   eyebrow: { color: "#fff1a8", fontSize: 12, fontWeight: 900, textTransform: "uppercase" as const },
   title: { fontSize: "clamp(34px, 5vw, 56px)", margin: "8px 0" },
-  lede: { color: "#d6e5f8", fontSize: 18 },
+  lede: { color: "#faf6ec", fontSize: 18 },
   grid: {
     display: "grid",
     gap: 18,
     gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))",
     padding: "24px clamp(18px, 5vw, 64px)"
   },
-  panel: { background: "#fff", border: "1px solid #dbe4f0", borderRadius: 14, padding: 24 },
+  panel: { background: "#fff", border: "1px solid rgba(201, 162, 75, 0.16)", borderRadius: 14, padding: 24 },
   row: {
-    borderBottom: "1px solid #e7edf5",
+    borderBottom: "1px solid rgba(201, 162, 75, 0.16)",
     display: "flex",
     flexWrap: "wrap" as const,
     gap: 12,
@@ -238,9 +238,9 @@ const styles = {
   },
   button: {
     background: "#fff",
-    border: "1px solid #91a5bf",
+    border: "1px solid rgba(201, 162, 75, 0.16)",
     borderRadius: 8,
-    color: "#061b41",
+    color: "#000000",
     fontWeight: 800,
     minHeight: 44,
     padding: "0 18px"
@@ -249,7 +249,7 @@ const styles = {
     alignItems: "center",
     background: "#fff",
     borderRadius: 8,
-    color: "#061b41",
+    color: "#000000",
     display: "inline-flex",
     fontWeight: 800,
     minHeight: 44,

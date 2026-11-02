@@ -17,6 +17,14 @@ describe("leadQueryTokens", () => {
     expect(leadQueryTokens("  chef  ")).toEqual(["chef"]);
   });
 
+  it("drops EN/FR stopwords so common words like 'de' don't match everything", () => {
+    expect(leadQueryTokens("chef de cuisine")).toEqual(["chef", "cuisine"]);
+    expect(leadQueryTokens("aide de la cuisine")).toEqual(["aide", "cuisine"]);
+    expect(leadQueryTokens("head of the kitchen")).toEqual(["head", "kitchen"]);
+    // a query that is only stopwords yields nothing (no match-everything)
+    expect(leadQueryTokens("de la le")).toEqual([]);
+  });
+
   it("splits on whitespace and commas, dropping empties", () => {
     expect(leadQueryTokens("chef cook")).toEqual(["chef", "cook"]);
     expect(leadQueryTokens("chef, cook")).toEqual(["chef", "cook"]);

@@ -1,13 +1,29 @@
+/* Brand tokens — the SINGLE source of truth (packages/design-system). */
+@import "@rwos/design-system/tokens.css";
+
 * {
   box-sizing: border-box;
 }
 
 html {
-  background: #f5f7fa;
+  background: #000000;
 }
 
 body {
   margin: 0;
+}
+
+/* One brand voice, platform-wide: Playfair Display serif headings + Inter sans body.
+   Fonts are loaded in layout.tsx (next/font) and exposed as --font-serif / --font-sans. */
+body {
+  font-family: var(--font-sans, Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif);
+}
+
+h1,
+h2,
+h3 {
+  font-family: var(--font-serif, "Playfair Display", Georgia, "Times New Roman", serif);
+  letter-spacing: -0.01em;
 }
 
 .admin-app-shell {
@@ -16,7 +32,7 @@ body {
 
 .admin-staging-banner {
   align-items: center;
-  background: #fff4d6;
+  background: #0c0c0c;
   border-bottom: 1px solid #d49b00;
   color: #684b00;
   display: flex;
@@ -30,10 +46,10 @@ body {
 }
 
 .admin-skip-link {
-  background: #ffffff;
+  background: #000000;
   border: 3px solid #f3b61f;
   border-radius: 6px;
-  color: #071d49;
+  color: #f4efe4;
   font-family: Inter, system-ui, sans-serif;
   font-weight: 800;
   left: 12px;
@@ -51,7 +67,7 @@ body {
 
 .admin-topbar {
   align-items: center;
-  background: #071d49;
+  background: #171511;
   color: #ffffff;
   display: flex;
   font-family: Inter, system-ui, sans-serif;
@@ -74,12 +90,12 @@ body {
 }
 
 .admin-brand small {
-  color: #cbd7ef;
+  color: #faf6ec;
 }
 
 .admin-brand-mark {
   align-items: center;
-  background: #007f7b;
+  background: #171511;
   border-radius: 8px;
   display: inline-flex;
   font-weight: 800;
@@ -89,7 +105,7 @@ body {
 }
 
 .admin-session-context {
-  color: #dce5f7;
+  color: #faf6ec;
   font-size: 0.8rem;
   margin: 0;
   max-width: 420px;
@@ -117,8 +133,8 @@ body {
 }
 
 .admin-langbtn.active {
-  background: #007f7b;
-  border-color: #007f7b;
+  background: #171511;
+  border-color: rgba(201, 162, 75, 0.16);
   font-weight: 700;
 }
 
@@ -129,8 +145,8 @@ body {
 
 .admin-navigation {
   align-items: stretch;
-  background: #ffffff;
-  border-bottom: 1px solid #d8dee8;
+  background: #000000;
+  border-bottom: 1px solid rgba(201, 162, 75, 0.16);
   display: flex;
   font-family: Inter, system-ui, sans-serif;
   gap: 18px;
@@ -148,12 +164,12 @@ body {
 }
 
 .admin-nav-group + .admin-nav-group {
-  border-left: 1px solid #e6eaf1;
+  border-left: 1px solid rgba(201, 162, 75, 0.16);
   padding-left: 18px;
 }
 
 .admin-nav-group-label {
-  color: #8a97a8;
+  color: #b3a894;
   font-size: 0.66rem;
   font-weight: 700;
   letter-spacing: 0.06em;
@@ -168,7 +184,7 @@ body {
 
 .admin-nav-link {
   border-radius: 6px;
-  color: #34445b;
+  color: #f4efe4;
   flex: 0 0 auto;
   font-size: 0.86rem;
   font-weight: 650;
@@ -177,19 +193,19 @@ body {
 }
 
 .admin-nav-link:hover {
-  background: #eef5f7;
-  color: #075e58;
+  background: #000000;
+  color: #f4efe4;
 }
 
 .admin-nav-link-active {
-  background: #dff3f1;
-  color: #075e58;
+  background: #000000;
+  color: #f4efe4;
 }
 
 .admin-page-navigator {
   align-items: center;
-  background: #f8fafc;
-  border-bottom: 1px solid #d8dee8;
+  background: #000000;
+  border-bottom: 1px solid rgba(201, 162, 75, 0.16);
   display: grid;
   font-family: Inter, system-ui, sans-serif;
   gap: 12px;
@@ -209,10 +225,10 @@ body {
 .admin-page-arrow,
 .admin-page-number {
   align-items: center;
-  background: #ffffff;
-  border: 1px solid #c5cfdd;
+  background: #000000;
+  border: 1px solid rgba(201, 162, 75, 0.16);
   border-radius: 999px;
-  color: #17345f;
+  color: #f4efe4;
   display: inline-flex;
   flex: 0 0 auto;
   font-weight: 800;
@@ -229,19 +245,19 @@ body {
 
 .admin-page-arrow:hover,
 .admin-page-number:hover {
-  background: #e9f5f4;
-  border-color: #007f7b;
+  background: #000000;
+  border-color: rgba(201, 162, 75, 0.16);
 }
 
 .admin-page-number-active {
-  background: #007f7b;
-  border-color: #007f7b;
+  background: #171511;
+  border-color: rgba(201, 162, 75, 0.16);
   color: #ffffff;
 }
 
 .admin-page-arrow-disabled {
-  background: #edf0f4;
-  color: #758195;
+  background: #000000;
+  color: #b3a894;
   cursor: not-allowed;
 }
 

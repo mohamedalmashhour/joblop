@@ -247,19 +247,19 @@ function badgeStyle(status: string) {
       : warning
         ? "#fff8d8"
         : positive
-          ? "#e8f5f3"
+          ? "#faf6ec"
           : informational
-            ? "#eaf2ff"
-            : "#eef2f7",
+            ? "#fbf9f4"
+            : "#fbf9f4",
     color: danger
       ? "#8a1c1c"
       : warning
         ? "#725000"
         : positive
-          ? "#075e58"
+          ? "#171511"
           : informational
-            ? "#174a8b"
-            : "#34445b"
+            ? "#171511"
+            : "#171511"
   };
 }
 
@@ -272,13 +272,13 @@ const styles = {
   },
   card: {
     background: "#fff",
-    border: "1px solid #dbe4f0",
+    border: "1px solid rgba(201, 162, 75, 0.16)",
     borderRadius: 14,
     boxShadow: "0 12px 30px rgba(6,27,65,.08)",
     overflowWrap: "anywhere" as const,
     padding: 22
   },
-  h2: { color: "#061b41", fontSize: 24 },
+  h2: { color: "#000000", fontSize: 24 },
   badge: {
     borderRadius: 99,
     display: "inline-block",
@@ -289,7 +289,7 @@ const styles = {
   },
   button: {
     alignItems: "center",
-    background: "#0f7f78",
+    background: "#171511",
     borderRadius: 8,
     color: "#fff",
     cursor: "pointer",
@@ -303,7 +303,7 @@ const styles = {
   reference: { overflowWrap: "anywhere" as const },
   stateCard: {
     background: "#fff",
-    border: "1px solid #dbe4f0",
+    border: "1px solid rgba(201, 162, 75, 0.16)",
     borderRadius: 14,
     display: "grid",
     gap: 12,
@@ -313,7 +313,7 @@ const styles = {
   },
   label: { display: "grid", fontWeight: 800, gap: 6 },
   input: {
-    border: "1px solid #91a5bf",
+    border: "1px solid rgba(201, 162, 75, 0.16)",
     borderRadius: 8,
     font: "inherit",
     minHeight: 44,
@@ -321,9 +321,9 @@ const styles = {
   },
   retry: {
     background: "#fff",
-    border: "1px solid #91a5bf",
+    border: "1px solid rgba(201, 162, 75, 0.16)",
     borderRadius: 8,
-    color: "#061b41",
+    color: "#000000",
     cursor: "pointer",
     fontWeight: 800,
     minHeight: 44,

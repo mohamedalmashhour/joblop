@@ -4,12 +4,14 @@ import { cookies } from "next/headers";
 import { LOCALE_COOKIE, htmlLang, localeDir, resolveWorkerLocale } from "./i18n/config";
 import { dictionaries } from "./i18n/messages";
 import { LocaleProvider } from "./i18n/LocaleProvider";
+import { IdleLogout } from "./IdleLogout";
 import { Footer } from "./Footer";
 import { GoogleTag } from "./analytics";
 import { RegisterSW } from "./RegisterSW";
+import { serif, sans } from "./fonts";
 import "./globals.css";
 
-export const viewport = { themeColor: "#17140f" };
+export const viewport = { themeColor: "#000000" };
 
 async function resolveLocale() {
   const store = await cookies();
@@ -25,20 +27,20 @@ export async function generateMetadata(): Promise<Metadata> {
   const locale = await resolveLocale();
   const enDict = dictionaries["en-CA"];
   const m = dictionaries[locale] ?? enDict;
-  const title = `JobLop — ${m["mk.heroTitle"] ?? enDict["mk.heroTitle"]}`;
+  const title = `Joblop — ${m["mk.heroTitle"] ?? enDict["mk.heroTitle"]}`;
   const description = m["mk.heroIntro"] ?? enDict["mk.heroIntro"];
   return {
     metadataBase: new URL(SITE_URL),
     title,
     description,
-    applicationName: "JobLop",
+    applicationName: "Joblop",
     manifest: "/manifest.webmanifest",
-    appleWebApp: { capable: true, title: "JobLop", statusBarStyle: "default" },
+    appleWebApp: { capable: true, title: "Joblop", statusBarStyle: "default" },
     icons: { apple: "/apple-touch-icon.png" },
     alternates: { canonical: "/" },
     openGraph: {
       type: "website",
-      siteName: "JobLop",
+      siteName: "Joblop",
       url: SITE_URL,
       title,
       description,
@@ -52,11 +54,14 @@ export async function generateMetadata(): Promise<Metadata> {
 export default async function RootLayout({ children }: Readonly<{ children: ReactNode }>) {
   const locale = await resolveLocale();
   return (
-    <html lang={htmlLang(locale)} dir={localeDir(locale)}>
+    <html lang={htmlLang(locale)} dir={localeDir(locale)} className={`${serif.variable} ${sans.variable}`}>
       <body>
         <GoogleTag tagId={process.env.GOOGLE_TAG_ID ?? null} />
         <RegisterSW />
-        <LocaleProvider locale={locale}>{children}</LocaleProvider>
+        <LocaleProvider locale={locale}>
+          <IdleLogout />
+          {children}
+        </LocaleProvider>
         <Footer locale={locale} />
       </body>
     </html>

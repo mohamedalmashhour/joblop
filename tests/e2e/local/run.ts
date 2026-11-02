@@ -18,6 +18,7 @@ async function main() {
   const user = process.env.USER ?? "postgres";
   const host = process.env.RWOS_LOCAL_E2E_PG_HOST ?? "localhost";
   const pgPort = process.env.RWOS_LOCAL_E2E_PG_PORT ?? "5432";
+  const apiPort = process.env.RWOS_LOCAL_E2E_API_PORT ?? "4100";
   const dbName = `rwos_local_e2e_${randomUUID().replaceAll("-", "").slice(0, 12)}`;
   const databaseUrl = `postgresql://${user}@${host}:${pgPort}/${dbName}`;
 
@@ -30,12 +31,14 @@ async function main() {
       DATABASE_URL: databaseUrl,
       RWOS_ENV: "local",
       RWOS_LOCAL_E2E: "enabled",
-      INTERNAL_API_ORIGIN: "http://127.0.0.1:4100",
-      API_PORT: "4100",
-      RWOS_LOCAL_E2E_API_PORT: "4100",
-      RWOS_LOCAL_E2E_WORKER_PORT: "8090",
-      RWOS_LOCAL_E2E_EMPLOYER_PORT: "8081",
-      RWOS_LOCAL_E2E_ADMIN_PORT: "8082",
+      // Ports honor env overrides (defaults unchanged) so a run can avoid colliding with a dev
+      // stack already bound to the default ports. apiPort drives both API_PORT and INTERNAL_API_ORIGIN.
+      INTERNAL_API_ORIGIN: `http://127.0.0.1:${apiPort}`,
+      API_PORT: apiPort,
+      RWOS_LOCAL_E2E_API_PORT: apiPort,
+      RWOS_LOCAL_E2E_WORKER_PORT: process.env.RWOS_LOCAL_E2E_WORKER_PORT ?? "8090",
+      RWOS_LOCAL_E2E_EMPLOYER_PORT: process.env.RWOS_LOCAL_E2E_EMPLOYER_PORT ?? "8081",
+      RWOS_LOCAL_E2E_ADMIN_PORT: process.env.RWOS_LOCAL_E2E_ADMIN_PORT ?? "8082",
       // Seeded ids for the journey specs (discovered here, not hard-coded in the specs).
       RWOS_LOCAL_E2E_ORG_A: seeded.orgAId,
       RWOS_LOCAL_E2E_ORG_B: seeded.orgBId,

@@ -1,13 +1,14 @@
 import type { CSSProperties } from "react";
 import { colors, elevation, radii, spacing, statusColors, touch } from "@rwos/design-system";
 
-const navy = colors.navy;
-const teal = colors.actionTeal;
-const surface = colors.surface;
-const surfaceSubtle = colors.surfaceSubtle;
-const border = colors.border;
-const text = colors.text;
-const muted = colors.muted;
+// Dark-first workspace: black canvas, dark-raised panels, cream text, gold accent + hairline.
+const navy = colors.navy; // #000000 brand black (dark panels)
+const teal = colors.actionTeal; // gold accent
+const surface = "#0c0c0c"; // dark-raised panel
+const surfaceSubtle = "#141210"; // slightly higher raise
+const border = "rgba(201, 162, 75, 0.16)"; // gold hairline
+const text = "#f4efe4"; // cream body
+const muted = "#b3a894"; // warm secondary
 
 export const baseButton: CSSProperties = {
   alignItems: "center",
@@ -51,7 +52,7 @@ export const styles: Record<string, CSSProperties> = {
   },
   stagingBanner: {
     alignItems: "center",
-    background: "#fff8d8",
+    background: "#0c0c0c",
     borderBottom: "2px solid #e8d782",
     color: "#5f4000",
     display: "flex",
@@ -66,7 +67,7 @@ export const styles: Record<string, CSSProperties> = {
   },
   header: {
     alignItems: "center",
-    background: "rgba(255, 255, 255, 0.97)",
+    background: "rgba(0, 0, 0, 0.72)",
     borderBottom: `1px solid ${border}`,
     display: "flex",
     flexWrap: "wrap",
@@ -88,7 +89,7 @@ export const styles: Record<string, CSSProperties> = {
   },
   brandMark: {
     alignItems: "center",
-    background: "#ffffff",
+    background: "#000000",
     borderRadius: radii.sm,
     color: navy,
     display: "inline-flex",
@@ -118,8 +119,8 @@ export const styles: Record<string, CSSProperties> = {
     textDecoration: "none"
   },
   navLinkActive: {
-    background: "#ffffff",
-    border: "1px solid #ffffff",
+    background: "#000000",
+    border: "1px solid rgba(201, 162, 75, 0.16)",
     borderRadius: radii.sm,
     color: navy,
     display: "grid",
@@ -170,7 +171,7 @@ export const styles: Record<string, CSSProperties> = {
   },
   secondaryButton: {
     ...baseButton,
-    background: "#ffffff",
+    background: "#000000",
     border: `1px solid ${border}`,
     color: navy
   },
@@ -196,7 +197,7 @@ export const styles: Record<string, CSSProperties> = {
     textTransform: "uppercase"
   },
   eyebrowDark: {
-    color: "#2a2114",
+    color: "#f4efe4",
     fontSize: 12,
     fontWeight: 900,
     letterSpacing: 0,
@@ -220,7 +221,7 @@ export const styles: Record<string, CSSProperties> = {
     padding: "48px clamp(16px, 4vw, 40px)"
   },
   whiteSection: {
-    background: "#ffffff",
+    background: "#000000",
     borderBottom: `1px solid ${border}`,
     borderTop: `1px solid ${border}`,
     padding: "48px clamp(16px, 4vw, 40px)"
@@ -255,14 +256,14 @@ export const styles: Record<string, CSSProperties> = {
     gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))"
   },
   card: {
-    background: "#ffffff",
+    background: "#000000",
     border: `1px solid ${border}`,
     borderRadius: radii.sm,
     boxShadow: elevation.raised,
     padding: 18
   },
   panel: {
-    background: "#ffffff",
+    background: "#000000",
     border: `1px solid ${border}`,
     borderRadius: radii.md,
     boxShadow: elevation.raised,
@@ -272,7 +273,7 @@ export const styles: Record<string, CSSProperties> = {
   },
   tintedCard: {
     background: surfaceSubtle,
-    border: "1px solid #f0e2c0",
+    border: "1px solid rgba(201, 162, 75, 0.16)",
     borderRadius: radii.sm,
     boxShadow: elevation.raised,
     padding: 18
@@ -290,7 +291,7 @@ export const styles: Record<string, CSSProperties> = {
     margin: "8px 0 0"
   },
   metaLabel: {
-    color: "#2a2114",
+    color: "#f4efe4",
     display: "block",
     fontSize: 11,
     fontWeight: 900,
@@ -302,7 +303,7 @@ export const styles: Record<string, CSSProperties> = {
     background: "#eefbf6",
     border: "1px solid #9fd8bc",
     borderRadius: 999,
-    color: "#0f5f54",
+    color: "#f4efe4",
     display: "inline-flex",
     fontSize: 12,
     fontWeight: 900,
@@ -311,7 +312,7 @@ export const styles: Record<string, CSSProperties> = {
   },
   statusBadgeWarning: {
     alignItems: "center",
-    background: "#fff8d8",
+    background: "#0c0c0c",
     border: "1px solid #e8d782",
     borderRadius: 999,
     color: "#7a5200",
@@ -347,7 +348,7 @@ export const styles: Record<string, CSSProperties> = {
     borderColor: "#9fd8bc"
   },
   calendarCardUrgent: {
-    background: "#fff8d8",
+    background: "#0c0c0c",
     borderColor: "#e8d782"
   },
   calendarGrid: {
@@ -357,17 +358,17 @@ export const styles: Record<string, CSSProperties> = {
     marginTop: 14
   },
   calendarMetric: {
-    color: "#1b160e",
+    color: "#f4efe4",
     display: "block",
     fontSize: 24,
     fontWeight: 900,
     marginTop: 4
   },
   calendarState: {
-    background: "#ffffff",
+    background: "#000000",
     border: `1px solid ${border}`,
     borderRadius: 999,
-    color: "#2a2114",
+    color: "#f4efe4",
     display: "inline-flex",
     fontSize: 12,
     fontWeight: 900,
@@ -378,7 +379,7 @@ export const styles: Record<string, CSSProperties> = {
     background: "rgba(255,255,255,0.76)",
     border: `1px solid ${border}`,
     borderRadius: 8,
-    color: "#15110b",
+    color: "#f4efe4",
     display: "block",
     minHeight: 142,
     padding: 12,
@@ -390,7 +391,7 @@ export const styles: Record<string, CSSProperties> = {
     gridTemplateColumns: "repeat(auto-fit, minmax(190px, 1fr))"
   },
   pill: {
-    background: "#ffffff",
+    background: "#000000",
     border: `1px solid ${border}`,
     borderRadius: radii.sm,
     color: navy,
@@ -404,7 +405,7 @@ export const styles: Record<string, CSSProperties> = {
     paddingLeft: 22
   },
   stepItem: {
-    color: "#15110b",
+    color: "#f4efe4",
     fontWeight: 800,
     lineHeight: 1.45
   },
@@ -414,14 +415,14 @@ export const styles: Record<string, CSSProperties> = {
     gridTemplateColumns: "repeat(auto-fit, minmax(230px, 1fr))"
   },
   fieldLabel: {
-    color: "#15110b",
+    color: "#f4efe4",
     display: "grid",
     fontSize: 14,
     fontWeight: 800,
     gap: 6
   },
   input: {
-    background: "#ffffff",
+    background: "#000000",
     border: `1px solid ${border}`,
     borderRadius: radii.sm,
     color: text,
@@ -435,7 +436,7 @@ export const styles: Record<string, CSSProperties> = {
     gridTemplateColumns: "repeat(auto-fit, minmax(210px, 1fr))"
   },
   routeCard: {
-    background: "#ffffff",
+    background: "#000000",
     border: `1px solid ${border}`,
     borderRadius: radii.sm,
     boxShadow: elevation.raised,
@@ -445,15 +446,15 @@ export const styles: Record<string, CSSProperties> = {
     textDecoration: "none"
   },
   routeStatus: {
-    color: "#2a2114",
+    color: "#f4efe4",
     fontSize: 12,
     fontWeight: 900,
     textTransform: "uppercase"
   },
   warning: {
-    background: "#fff8d8",
+    background: "#0c0c0c",
     borderRadius: 8,
-    color: "#1b160e",
+    color: "#f4efe4",
     fontSize: 14,
     fontWeight: 900,
     lineHeight: 1.5,

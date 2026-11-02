@@ -53,7 +53,7 @@ const runtimeConfigSchema = z
     BREVO_API_KEY: z.string().min(1).optional(),
     EMAIL_PROVIDER: z.enum(["brevo", "resend"]).default("brevo"),
     // Accept either a bare address (user@domain) or an RFC-5322 display-name form
-    // ("JobLop <user@domain>"), which mail "From" headers use and Resend expects for branding.
+    // ("Joblop <user@domain>"), which mail "From" headers use and Resend expects for branding.
     EMAIL_FROM: z
       .string()
       .refine(

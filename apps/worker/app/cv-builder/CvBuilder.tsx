@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { ProUpgrade } from "./ProUpgrade";
+import { toJsonResume, type CvProfile } from "./jsonResume";
 
 // Worker-facing guided CV builder. Same flow as the admin demo, but on worker endpoints: the signed-in
 // worker builds their own CV, and CV attachments are keyed to their session server-side (no workerRef
@@ -80,6 +81,15 @@ export function CvBuilder() {
   const [upLabel, setUpLabel] = useState("");
 
   const [cardMsg, setCardMsg] = useState("");
+  // Build CV is a signed-in worker feature — a signed-out visitor is guided to create/sign in first.
+  const [authState, setAuthState] = useState<"loading" | "signed_in" | "signed_out">("loading");
+  useEffect(() => {
+    let active = true;
+    fetch("/api/session", { cache: "no-store" })
+      .then((r) => (active ? setAuthState(r.ok ? "signed_in" : "signed_out") : undefined))
+      .catch(() => (active ? setAuthState("signed_out") : undefined));
+    return () => { active = false; };
+  }, []);
 
   // Finalize a card payment on return from Stripe's hosted Checkout (?pro=success&order=…). Runs at the
   // always-mounted page level (ProUpgrade only mounts after a CV is built). The API verifies the payment.
@@ -141,10 +151,43 @@ export function CvBuilder() {
     try {
       const res = await fetch("/api/cv", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ profile, job: { title: category.label } }) });
       if (!res.ok) { setMsg("CV generation failed."); return; }
-      const d = (await res.json()) as { cv: GeneratedCv; providerKind?: string; pro?: boolean };
+      const d = (await res.json()) as { cv: GeneratedCv; providerKind?: string; pro?: boolean; saved?: boolean };
       setCv(d.cv); setProvider(d.providerKind ?? ""); setCvPro(Boolean(d.pro));
-      setMsg(`CV ready${d.providerKind?.startsWith("claude") ? " (AI-written)" : ""}.`);
+      setMsg(`CV ready${d.providerKind?.startsWith("claude") ? " (AI-written)" : ""}${d.saved ? " — saved to your account" : ""}.`);
     } finally { setBusy(false); }
+  };
+
+  // R2-12b: export a standards-compliant JSON Resume file. The worker can render it with ANY free,
+  // MIT-licensed JSON Resume theme (jsonresume.org/themes). In-app theme rendering is a follow-up.
+  const downloadJsonResume = () => {
+    if (!name.trim()) { setMsg("Please enter your name."); return; }
+    const summary = `${exp} of experience as ${category.label}${city ? ` in the ${city} area` : ""}. Available: ${avail.join(", ") || "flexible"}.`;
+    const certifications = assets.filter((a) => a.kind === "certificate").map((a) => a.label?.trim() || a.filename);
+    const profile: CvProfile = {
+      fullName: name.trim(),
+      headline: category.label,
+      location: city,
+      summary,
+      skills,
+      languages: langs,
+      certifications,
+      education: edu && edu !== "No diploma" ? [{ credential: edu, institution: "", year: "" }] : [],
+      experience: lastJob.trim() ? [{ role: category.label, employer: lastJob.trim(), start: "", highlights: [] }] : []
+    };
+    try {
+      const blob = new Blob([JSON.stringify(toJsonResume(profile), null, 2)], { type: "application/json" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `${name.trim().replace(/\s+/g, "_") || "resume"}.json`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(url);
+      setMsg("Downloaded resume.json — use it with any free JSON Resume theme.");
+    } catch {
+      setMsg("Could not prepare the download. Please try again.");
+    }
   };
 
   const set = (k: "fullName" | "lastJob", v: string) => (k === "fullName" ? setName(v) : setLastJob(v));
@@ -170,6 +213,18 @@ export function CvBuilder() {
     const color = score >= 80 ? "#b8862f" : score >= 60 ? "#a8842f" : score >= 40 ? "#b8860b" : "#b23b2e";
     return { score, gaps, grade, color };
   })();
+
+  if (authState === "loading") return <section style={styles.wrap}><p style={styles.hint}>Loading…</p></section>;
+  if (authState === "signed_out")
+    return (
+      <section style={styles.wrap}>
+        <div style={{ textAlign: "center", padding: "36px 16px" }}>
+          <h2 style={{ margin: "0 0 8px" }}>Create a free account to build your CV</h2>
+          <p style={styles.hint}>Build CV is part of your Joblop worker account. Sign in or create a free account to build and save your CV.</p>
+          <a href="/" style={{ display: "inline-block", marginTop: 14, background: "#a8842f", color: "#fff", textDecoration: "none", padding: "12px 24px", borderRadius: 12, fontWeight: 800 }}>Create / sign in</a>
+        </div>
+      </section>
+    );
 
   return (
     <section style={styles.wrap}>
@@ -201,7 +256,7 @@ export function CvBuilder() {
         <div style={styles.row}>
           <label style={styles.label}>Type<select style={styles.input} value={upKind} onChange={(e) => setUpKind(e.target.value as "certificate" | "photo")}><option value="certificate">Certificate</option><option value="photo">Photo</option></select></label>
           <label style={styles.label}>Label <span style={styles.hint}>(e.g. MAPAQ)</span><input style={styles.input} value={upLabel} onChange={(e) => setUpLabel(e.target.value)} placeholder="Food safety (MAPAQ)" /></label>
-          <label style={styles.label}>File (PDF/PNG/JPEG)<input style={styles.input} type="file" accept=".pdf,.png,.jpg,.jpeg" onChange={(e) => { const f = e.target.files?.[0]; if (f) void uploadFile(f); e.currentTarget.value = ""; }} /></label>
+          <label style={styles.label}>File (PDF/PNG/JPEG)<input style={styles.input} type="file" multiple accept=".pdf,.png,.jpg,.jpeg" onChange={(e) => { const files = Array.from(e.target.files ?? []); if (files.length) void (async () => { for (const f of files) await uploadFile(f); })(); e.currentTarget.value = ""; }} /></label>
         </div>
         {upKind === "photo" ? <p style={styles.warn}>⚠️ In Québec, a photo on a CV is generally not recommended and some employers discard CVs with photos. Only add one if the job specifically expects it.</p> : null}
         {assets.length > 0 ? (
@@ -211,10 +266,14 @@ export function CvBuilder() {
         ) : null}
         <h2 style={styles.step}>10 · Design</h2>
         <Chips options={DESIGNS.map((d) => d.label)} value={[DESIGNS.find((d) => d.key === design)!.label]} onToggle={(l) => setDesign(DESIGNS.find((d) => d.label === l)!.key)} />
-        <div style={{ marginTop: 18 }}>
+        <div style={{ marginTop: 18, display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center" }}>
           <button type="button" style={styles.cta} disabled={busy} onClick={() => void generate()}>{busy ? "Building…" : "Build my CV"}</button>
+          <button type="button" style={{ ...styles.cta, background: "transparent", border: "1px solid #a8842f", color: "#c9a24b" }} onClick={downloadJsonResume}>Download JSON Resume</button>
           {msg ? <span style={styles.notice}>{msg}</span> : null}
         </div>
+        <p style={styles.hint}>
+          Your CV data in the open <a href="https://jsonresume.org/themes" target="_blank" rel="noopener noreferrer" style={{ color: "#c9a24b" }}>JSON Resume</a> format — render it free in dozens of designs with any JSON Resume theme.
+        </p>
         {cv ? (
           <div style={styles.scoreWrap}>
             <div style={styles.scoreHead}>

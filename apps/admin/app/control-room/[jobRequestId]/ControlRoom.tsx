@@ -21,8 +21,8 @@ const money = (m: number | null | undefined) =>
   m == null ? "—" : `$${(m / 100).toLocaleString("en-CA", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 
 const C = {
-  bg: "#0a1424", panel: "#0f1d33", panel2: "#13243f", line: "#1e3254", fg: "#e8eef8",
-  muted: "#8aa0c2", faint: "#5c749c", accent: "#1f9bf0", cmd: "#f2b949", pass: "#36c48e", hold: "#f2b949"
+  bg: "#000000", panel: "#0c0c0c", panel2: "#141210", line: "#2a2114", fg: "#fbf9f4",
+  muted: "#b3a894", faint: "#6b6356", accent: "#c9a24b", cmd: "#f2b949", pass: "#36c48e", hold: "#f2b949"
 };
 const mono = "'IBM Plex Mono', ui-monospace, Menlo, monospace";
 
@@ -47,7 +47,7 @@ type Overview = {
   lifecycle: "pending" | "accepted" | "processing" | "finished" | "disputed" | "cancelled";
 };
 const LIFECYCLE_COLOR: Record<Overview["lifecycle"], string> = {
-  pending: "#5c749c", accepted: "#1f9bf0", processing: "#f2b949", finished: "#36c48e", disputed: "#f2766b", cancelled: "#5c749c"
+  pending: "#6b6356", accepted: "#171511", processing: "#f2b949", finished: "#36c48e", disputed: "#f2766b", cancelled: "#6b6356"
 };
 
 export function ControlRoom({ jobRequestId }: Readonly<{ jobRequestId: string }>) {
@@ -82,7 +82,7 @@ export function ControlRoom({ jobRequestId }: Readonly<{ jobRequestId: string }>
   return (
     <Shell>
       <div style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap", marginBottom: 14 }}>
-        <div style={{ fontFamily: mono, fontSize: 12, color: C.accent, background: "#163a5e", border: `1px solid ${C.line}`, padding: "5px 10px", borderRadius: 999 }}>{data.job.number}</div>
+        <div style={{ fontFamily: mono, fontSize: 12, color: C.accent, background: "#171511", border: `1px solid ${C.line}`, padding: "5px 10px", borderRadius: 999 }}>{data.job.number}</div>
         <div style={{ fontWeight: 700, fontSize: 18 }}>{data.job.title}</div>
         <div style={{ marginLeft: "auto", fontFamily: mono, fontSize: 12, color: C.muted }}>
           status: <span style={{ color: C.fg }}>{data.job.status}</span>
@@ -206,7 +206,7 @@ function Shell({ children }: Readonly<{ children: ReactNode }>) {
       <style>{`.cr-grid{} @media (max-width:820px){.cr-grid{grid-template-columns:1fr !important}}`}</style>
       <div style={{ maxWidth: 1060, margin: "0 auto", paddingBlock: 22, paddingInline: 16 }}>
         <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 16 }}>
-          <div style={{ width: 32, height: 32, borderRadius: 9, background: "linear-gradient(135deg,#1f9bf0,#57b6f7)", display: "grid", placeItems: "center", color: "#06192e", fontWeight: 700 }}>JL</div>
+          <div style={{ width: 32, height: 32, borderRadius: 9, background: "linear-gradient(135deg,#c9a24b,#141210)", display: "grid", placeItems: "center", color: "#000000", fontWeight: 700 }}>JL</div>
           <div>
             <div style={{ fontWeight: 700, fontSize: 18, letterSpacing: .3 }}>Transaction Control Room</div>
             <div style={{ color: C.muted, fontSize: 12 }}>Open any transaction to see its full lifecycle and settlement</div>

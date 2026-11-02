@@ -53,9 +53,9 @@ export function AdminWorksiteMap({ points, emptyLabel }: { points: readonly Work
       aria-label={`Worksite map with ${located.length} location${located.length === 1 ? "" : "s"}. The same information is listed beside the map.`}
       style={styles.svg}
     >
-      <rect x={0} y={0} width={SIZE} height={SIZE} fill="#eef2f7" />
+      <rect x={0} y={0} width={SIZE} height={SIZE} fill="#fbf9f4" />
       {[0.25, 0.5, 0.75].map((f) => (
-        <g key={f} stroke="#dbe2ec" strokeWidth={1}>
+        <g key={f} stroke="#faf6ec" strokeWidth={1}>
           <line x1={f * SIZE} y1={0} x2={f * SIZE} y2={SIZE} />
           <line x1={0} y1={f * SIZE} x2={SIZE} y2={f * SIZE} />
         </g>
@@ -64,12 +64,12 @@ export function AdminWorksiteMap({ points, emptyLabel }: { points: readonly Work
         const { x, y } = project(p.latitude, p.longitude);
         return (
           <g key={p.id} transform={`translate(${x}, ${y})`}>
-            <circle r={9} fill="#1d4ed8" stroke="#ffffff" strokeWidth={2} />
-            <text x={0} y={-14} textAnchor="middle" fontSize={11} fontWeight={700} fill="#1e293b">
+            <circle r={9} fill="#171511" stroke="#ffffff" strokeWidth={2} />
+            <text x={0} y={-14} textAnchor="middle" fontSize={11} fontWeight={700} fill="#171511">
               {p.label}
             </text>
             {p.detail ? (
-              <text x={0} y={22} textAnchor="middle" fontSize={10} fill="#475569">
+              <text x={0} y={22} textAnchor="middle" fontSize={10} fill="#171511">
                 {p.detail}
               </text>
             ) : null}
@@ -81,14 +81,14 @@ export function AdminWorksiteMap({ points, emptyLabel }: { points: readonly Work
 }
 
 const styles: Record<string, React.CSSProperties> = {
-  svg: { width: "100%", height: "auto", aspectRatio: "1 / 1", border: "1px solid #d8dee8", borderRadius: 10, display: "block" },
+  svg: { width: "100%", height: "auto", aspectRatio: "1 / 1", border: "1px solid rgba(201, 162, 75, 0.16)", borderRadius: 10, display: "block" },
   empty: {
     aspectRatio: "1 / 1",
-    border: "1px dashed #cbd5e1",
+    border: "1px dashed rgba(201, 162, 75, 0.16)",
     borderRadius: 10,
     display: "grid",
     placeItems: "center",
-    color: "#64748b",
+    color: "#b3a894",
     textAlign: "center",
     padding: 20,
     fontSize: 13

@@ -34,7 +34,7 @@ describe("buildCalendarExport", () => {
     expect(ics).toContain("DTSTART:20261104T130000Z");
     expect(ics).toContain("DTEND:20261104T190000Z");
     expect(ics).toContain("DTSTAMP:20261024T120000Z");
-    expect(ics).toContain("DESCRIPTION:JobLop job code: JR-2026-000123");
+    expect(ics).toContain("DESCRIPTION:Joblop job code: JR-2026-000123");
     expect(ics).toContain("END:VCALENDAR");
     expect(ics.endsWith("\r\n")).toBe(true);
     expect(filename).toBe("joblop-JR-2026-000123.ics");

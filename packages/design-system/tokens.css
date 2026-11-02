@@ -1,0 +1,50 @@
+/* GENERATED from packages/design-system/src/index.ts (jlCssVariables) — do not edit by hand.
+   Regenerate with: node --import tsx scripts/generate-design-tokens-css.ts
+   The SINGLE source of truth for Joblop brand tokens. @import this in each app globals.css. */
+:root {
+  --jl-font-serif: var(--font-serif, "Playfair Display"), Georgia, "Times New Roman", serif;
+  --jl-font-sans: var(--font-sans, "Inter"), -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  --jl-font-mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  --jl-black: #000000;
+  --jl-ink: #0c0c0c;
+  --jl-gold-soft: #f0d9a0;
+  --jl-gold: #c9a24b;
+  --jl-gold-strong: #b8862f;
+  --jl-gold-deep: #9a7122;
+  --jl-gold-text: #7a5513;
+  --jl-cream: #faf6ec;
+  --jl-cream-raised: #fbf9f4;
+  --jl-white: #ffffff;
+  --jl-cream-contrast: #fbf3dd;
+  --jl-text: #171511;
+  --jl-muted: #6b6356;
+  --jl-border: #ece3d2;
+  --jl-border-strong: #ddd0b6;
+  --jl-danger: #b42323;
+  --jl-success: #176b47;
+  --jl-warning: #8a5100;
+  --jl-focus: #c9a24b;
+  --jl-on-gold: #000000;
+  --jl-on-black: #faf6ec;
+  --jl-space-xs: 4px;
+  --jl-space-sm: 8px;
+  --jl-space-md: 12px;
+  --jl-space-lg: 16px;
+  --jl-space-xl: 24px;
+  --jl-space-xxl: 32px;
+  --jl-radius-sm: 8px;
+  --jl-radius-md: 12px;
+  --jl-radius-lg: 18px;
+  --jl-radius-pill: 999px;
+  --jl-shadow-xs: 0 1px 2px rgba(23, 21, 17, 0.06);
+  --jl-shadow-sm: 0 1px 2px rgba(23, 21, 17, 0.06), 0 1px 3px rgba(23, 21, 17, 0.08);
+  --jl-shadow-md: 0 4px 12px rgba(23, 21, 17, 0.08), 0 2px 4px rgba(23, 21, 17, 0.05);
+  --jl-shadow-lg: 0 12px 32px rgba(23, 21, 17, 0.12), 0 4px 8px rgba(23, 21, 17, 0.06);
+  --jl-shadow-gold: 0 8px 24px rgba(184, 134, 47, 0.28);
+  --jl-motion-fast: 120ms;
+  --jl-motion-standard: 180ms;
+  --jl-motion-slow: 240ms;
+  --jl-motion-easing: cubic-bezier(0.2, 0, 0, 1);
+  --jl-touch-minimum: 44px;
+  --jl-touch-comfortable: 56px;
+}

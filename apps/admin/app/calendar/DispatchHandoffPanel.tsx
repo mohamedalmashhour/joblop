@@ -215,16 +215,16 @@ function dispatchHref(dispatchReviewId: string) {
 const button = {
   actions: { display: "flex", flexWrap: "wrap" as const, gap: 10 },
   confirmation: {
-    background: "#fff8d8",
+    background: "#0c0c0c",
     border: "1px solid #e8d782",
     borderRadius: 12,
     marginTop: 18,
     padding: 18
   },
   label: { display: "grid", fontWeight: 800, gap: 8, margin: "16px 0", maxWidth: 260 },
-  select: { border: "1px solid #91a5bf", borderRadius: 8, font: "inherit", padding: 12 },
+  select: { border: "1px solid rgba(201, 162, 75, 0.16)", borderRadius: 8, font: "inherit", padding: 12 },
   primary: {
-    background: "#0f7f78",
+    background: "#171511",
     border: 0,
     borderRadius: 8,
     color: "#fff",
@@ -235,9 +235,9 @@ const button = {
   },
   secondary: {
     background: "#fff",
-    border: "1px solid #91a5bf",
+    border: "1px solid rgba(201, 162, 75, 0.16)",
     borderRadius: 8,
-    color: "#061b41",
+    color: "#000000",
     cursor: "pointer",
     fontWeight: 800,
     minHeight: 44,
@@ -245,7 +245,7 @@ const button = {
   },
   link: {
     alignItems: "center",
-    background: "#0f7f78",
+    background: "#171511",
     borderRadius: 8,
     color: "#fff",
     display: "inline-flex",

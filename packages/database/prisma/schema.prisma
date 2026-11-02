@@ -424,6 +424,7 @@ model User {
   publicId        String     @unique @map("public_id")
   emailNormalized String     @unique @map("email_normalized")
   displayName     String?    @map("display_name")
+  phone           String?    @map("phone")
   status          UserStatus @default(email_verification_pending)
   primaryLanguage String?    @map("primary_language")
   createdAt       DateTime   @default(now()) @map("created_at") @db.Timestamptz(3)
@@ -1532,6 +1533,7 @@ model WorkerIdentity {
   disputes           WorkerDispute[]
   verifications      WorkerVerification[]
   hrProfile          HrProfile?
+  hrIntake           WorkerHrIntake?
   hrCredentials      HrCredential[]
   hrCases            HrCase[]
   hrDocuments        HrDocument[]
@@ -1833,6 +1835,40 @@ model HrProfile {
 
   @@index([standing, updatedAt], map: "hr_profiles_standing_updated_at_idx")
   @@map("hr_profiles")
+}
+
+// Worker-EDITABLE HR intake (seeded #5). Distinct from HrProfile (HR-authority standing) and from
+// HrCredential/HrDocument (governed credential/doc pointers): this holds the fields the worker fills
+// in themselves — personal details, driving licence, vehicle/transport. Certificate FILES are NOT
+// stored here; they stay as HrDocument/UploadedDocument pointers. All fields optional; an incomplete
+// intake must not block offers. Keep values country-neutral (no hardcoded province/licence lists here).
+model WorkerHrIntake {
+  id               String    @id @default(uuid()) @db.Uuid
+  workerIdentityId String    @unique @map("worker_identity_id") @db.Uuid
+  // personal
+  legalFirstName   String?   @map("legal_first_name")
+  legalLastName    String?   @map("legal_last_name")
+  phone            String?   @map("phone")
+  addressLine      String?   @map("address_line")
+  city             String?   @map("city")
+  province         String?   @map("province")
+  postalCode       String?   @map("postal_code")
+  // driving licence
+  hasDrivingLicence Boolean  @default(false) @map("has_driving_licence")
+  licenceClass      String?  @map("licence_class")
+  licenceExpiry     DateTime? @map("licence_expiry") @db.Date
+  // vehicle / transport
+  hasVehicle        Boolean  @default(false) @map("has_vehicle")
+  vehicleType       String?  @map("vehicle_type")
+  canTravelKm       Int?     @map("can_travel_km")
+  transportNotes    String?  @map("transport_notes")
+  createdAt        DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt        DateTime  @updatedAt @map("updated_at") @db.Timestamptz(3)
+  version          Int       @default(1)
+
+  worker WorkerIdentity @relation(fields: [workerIdentityId], references: [id], onDelete: Cascade)
+
+  @@map("worker_hr_intakes")
 }
 
 // A worker credential/qualification. Multiple per worker. Renewal creates a NEW record and
@@ -3303,6 +3339,109 @@ model CvAsset {
 
   @@index([workerRef], map: "cv_assets_worker_ref_idx")
   @@map("cv_assets")
+}
+
+// R2-15: the worker's built CV, persisted to Joblop's DB when they generate it in the CV builder. One
+// current CV per worker (upsert by workerRef). Stores BOTH the rendered output (headline + CV and cover
+// letter markdown) and the structured profile JSON it was built from, so it can be re-rendered later with
+// any JSON Resume theme. Advisory content the worker owns — no money, no governance.
+model WorkerCv {
+  id                  String   @id @default(uuid()) @db.Uuid
+  workerRef           String   @unique @map("worker_ref") // worker identity / user id (same key as cv_assets)
+  headline            String
+  cvMarkdown          String   @map("cv_markdown")
+  coverLetterMarkdown String   @map("cover_letter_markdown")
+  tailoredTo          String?  @map("tailored_to")
+  language            String   @default("en")
+  profileJson         Json     @map("profile_json")
+  providerKind        String   @map("provider_kind")
+  createdAt           DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt           DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  @@map("worker_cvs")
+}
+
+// Invite-a-friend / referral. Each user gets ONE stable, shareable invite code; a friend who signs up
+// with that code (…/?ref=CODE) is recorded as a referral attributed to the inviter. Country-neutral,
+// no money — a growth/attribution feature. A code is created lazily the first time a user opens their
+// invite panel; a referral is recorded once per invitee at signup.
+model ReferralCode {
+  id        String   @id @default(uuid()) @db.Uuid
+  userId    String   @unique @map("user_id") @db.Uuid
+  code      String   @unique
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  @@map("referral_codes")
+}
+
+model Referral {
+  id             String   @id @default(uuid()) @db.Uuid
+  referrerUserId String   @map("referrer_user_id") @db.Uuid
+  code           String
+  inviteeUserId  String?  @unique @map("invitee_user_id") @db.Uuid // one referral per invitee
+  inviteeEmail   String?  @map("invitee_email")
+  status         String   @default("joined") // "joined" (recorded at signup); reserved for future "pending"
+  createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  @@index([referrerUserId, createdAt], map: "referrals_referrer_idx")
+  @@map("referrals")
+}
+
+// Platform Greetings & Certificates — an admin sends holiday/occasion greeting cards and issues
+// certificates (e.g. "Super Worker") to workers and employers. Delivery is in-app (these rows ARE the
+// inbox) plus best-effort email (reusing the existing mailer; fail-closed when unconfigured). Country-
+// neutral: the holiday OCCASIONS come from the active CountryProfile, not from these tables. No money.
+model PlatformGreeting {
+  id              String                      @id @default(uuid()) @db.Uuid
+  occasionKey     String?                     @map("occasion_key") // holiday key from the country profile, or null for a custom greeting
+  templateKey     String                      @map("template_key") // card design: "holiday" | "thank_you" | "welcome" | "custom"
+  title           String
+  message         String
+  audienceScope   String                      @map("audience_scope") // "all" | "workers" | "employers" | "selected"
+  createdByUserId String                      @map("created_by_user_id") @db.Uuid
+  createdAt       DateTime                    @default(now()) @map("created_at") @db.Timestamptz(3)
+  deliveries      PlatformGreetingDelivery[]
+
+  @@index([createdAt], map: "platform_greetings_created_idx")
+  @@map("platform_greetings")
+}
+
+// One delivery of a greeting to one recipient. These rows are the recipient's in-app inbox; emailStatus
+// records the best-effort email outcome separately so an email failure never hides the in-app card.
+model PlatformGreetingDelivery {
+  id              String           @id @default(uuid()) @db.Uuid
+  greetingId      String           @map("greeting_id") @db.Uuid
+  recipientUserId String           @map("recipient_user_id") @db.Uuid
+  recipientKind   String           @map("recipient_kind") // "worker" | "employer"
+  emailStatus     String           @default("none") @map("email_status") // "none" | "sent" | "skipped" | "error"
+  readAt          DateTime?        @map("read_at") @db.Timestamptz(3)
+  createdAt       DateTime         @default(now()) @map("created_at") @db.Timestamptz(3)
+  greeting        PlatformGreeting @relation(fields: [greetingId], references: [id], onDelete: Cascade)
+
+  @@index([recipientUserId, createdAt], map: "platform_greeting_deliveries_recipient_idx")
+  @@index([greetingId], map: "platform_greeting_deliveries_greeting_idx")
+  @@map("platform_greeting_deliveries")
+}
+
+// A certificate (award) issued by an admin to a worker or employer. Rendered in-app as a printable
+// certificate and emailed best-effort. recipientName is snapshotted at issue so a later rename doesn't
+// rewrite history; serial is a short human-verifiable code shown on the certificate.
+model PlatformCertificate {
+  id              String    @id @default(uuid()) @db.Uuid
+  recipientUserId String    @map("recipient_user_id") @db.Uuid
+  recipientKind   String    @map("recipient_kind") // "worker" | "employer"
+  recipientName   String    @map("recipient_name")
+  kind            String // "super_worker" | "most_reliable" | "employee_of_month" | "top_employer" | "custom"
+  title           String
+  note            String?
+  serial          String    @unique
+  emailStatus     String    @default("none") @map("email_status")
+  readAt          DateTime? @map("read_at") @db.Timestamptz(3)
+  issuedByUserId  String    @map("issued_by_user_id") @db.Uuid
+  issuedAt        DateTime  @default(now()) @map("issued_at") @db.Timestamptz(3)
+
+  @@index([recipientUserId, issuedAt], map: "platform_certificates_recipient_idx")
+  @@map("platform_certificates")
 }
 
 // Worker Pro paid plan: entitlement that unlocks (1) AI-written CVs + premium designs and (2) PRIORITY

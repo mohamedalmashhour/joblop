@@ -23,7 +23,7 @@ export type VerificationPolicy = Readonly<{
 }>;
 
 // Default: nothing is gated on verification OR HR standing yet (permissive). States are
-// recorded + surfaced; turning a switch on here is how JobLop later enforces a rule everywhere.
+// recorded + surfaced; turning a switch on here is how Joblop later enforces a rule everywhere.
 export const DEFAULT_VERIFICATION_POLICY: VerificationPolicy = {
   requireIdentityForInterest: false,
   requireIdentityForOffer: false,

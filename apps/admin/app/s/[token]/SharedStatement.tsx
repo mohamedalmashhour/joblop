@@ -7,8 +7,8 @@ import type { CSSProperties } from "react";
 import type { Snapshot } from "../../../lib/controlRoomLedger";
 
 const C: Record<string, string> = {
-  bg: "#0a1424", panel2: "#13243f", line: "#1e3254",
-  fg: "#e8eef8", muted: "#8aa0c2", faint: "#5c749c", pass: "#36c48e", hold: "#f2b949",
+  bg: "#000000", panel2: "#141210", line: "#2a2114",
+  fg: "#fbf9f4", muted: "#b3a894", faint: "#6b6356", pass: "#36c48e", hold: "#f2b949",
 };
 
 export default function SharedStatement({ snapshot }: { snapshot: Snapshot | null }) {
@@ -36,7 +36,7 @@ export default function SharedStatement({ snapshot }: { snapshot: Snapshot | nul
 
       <div style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
         <div style={{ flex: 1, minWidth: 0 }}>
-          <div style={{ fontFamily: "ui-monospace, monospace", fontSize: 12, color: "#57b6f7", marginBottom: 4 }}>JobLop</div>
+          <div style={{ fontFamily: "ui-monospace, monospace", fontSize: 12, color: "#ece3d2", marginBottom: 4 }}>Joblop</div>
           <h1 style={{ fontSize: 19, margin: 0 }}>{s.title}</h1>
           <div style={{ color: C.muted, fontSize: 13 }}>{s.number}</div>
         </div>
@@ -69,7 +69,7 @@ export default function SharedStatement({ snapshot }: { snapshot: Snapshot | nul
 
       <p style={{ color: C.faint, fontSize: 11.5, marginTop: 12, lineHeight: 1.6 }}>{s.note}</p>
       <p style={{ color: C.faint, fontSize: 11, marginTop: 18, borderTop: `1px solid ${C.line}`, paddingTop: 12, lineHeight: 1.6 }}>
-        Issued {new Date(s.generated).toLocaleString("en-CA", { dateStyle: "medium", timeStyle: "short" })}. Figures from the JobLop @rwos/shared pricing engine. Test-mode until a payment provider is bound for your region; tax &amp; deductions illustrative. This is a private, time-limited statement.
+        Issued {new Date(s.generated).toLocaleString("en-CA", { dateStyle: "medium", timeStyle: "short" })}. Figures from the Joblop @rwos/shared pricing engine. Test-mode until a payment provider is bound for your region; tax &amp; deductions illustrative. This is a private, time-limited statement.
       </p>
     </main>
   );

@@ -37,6 +37,28 @@ export type HrProfileRecord = Readonly<{
   updatedAt: string;
 }>;
 
+// Worker-EDITABLE intake (seeded #5). Worker-entered facts — NOT HR-authority data (standing /
+// credentials / cases stay HR-owned). All fields optional; an incomplete intake never blocks offers.
+export type HrIntakeRecord = Readonly<{
+  legalFirstName: string | null;
+  legalLastName: string | null;
+  phone: string | null;
+  addressLine: string | null;
+  city: string | null;
+  province: string | null;
+  postalCode: string | null;
+  hasDrivingLicence: boolean;
+  licenceClass: string | null;
+  licenceExpiry: string | null; // ISO date (YYYY-MM-DD) or null
+  hasVehicle: boolean;
+  vehicleType: string | null;
+  canTravelKm: number | null;
+  transportNotes: string | null;
+  updatedAt: string;
+}>;
+// Partial patch the worker submits; only present keys are written.
+export type HrIntakeInput = Partial<Omit<HrIntakeRecord, "updatedAt">>;
+
 export type HrCredentialRecord = Readonly<{
   id: string;
   workerIdentityId: string;
@@ -122,6 +144,9 @@ export type HrStore = Readonly<{
   createProfile(workerIdentityId: string): Promise<HrProfileRecord>;
   setStanding(input: { workerIdentityId: string; standing: HrStanding; reason: string | null }): Promise<HrProfileRecord>;
 
+  getIntake(workerIdentityId: string): Promise<HrIntakeRecord | null>;
+  upsertIntake(input: { workerIdentityId: string; data: HrIntakeInput }): Promise<HrIntakeRecord>;
+
   listCredentials(workerIdentityId: string): Promise<readonly Omit<HrCredentialRecord, "effectiveStatus">[]>;
   getCredential(id: string): Promise<Omit<HrCredentialRecord, "effectiveStatus"> | null>;
   addCredential(input: {
@@ -162,6 +187,50 @@ export type HrService = ReturnType<typeof createHrService>;
 
 const MAX_PAGE = 100;
 
+// Validate + bound a worker intake patch. Only keys PRESENT in the input are written. Country-neutral:
+// licence class / province are free strings here (any allowed-list lives in config, not this core).
+function validateIntakeInput(input: HrIntakeInput): HrIntakeInput {
+  const text = (v: unknown, max: number): string | null => {
+    if (v === null || v === undefined) return null;
+    const t = String(v).trim();
+    if (!t) return null;
+    if (t.length > max) throw new HrError("invalid", "A field exceeds its maximum length.");
+    return t;
+  };
+  const out: Record<string, unknown> = {};
+  if ("legalFirstName" in input) out.legalFirstName = text(input.legalFirstName, 120);
+  if ("legalLastName" in input) out.legalLastName = text(input.legalLastName, 120);
+  if ("phone" in input) out.phone = text(input.phone, 32);
+  if ("addressLine" in input) out.addressLine = text(input.addressLine, 200);
+  if ("city" in input) out.city = text(input.city, 120);
+  if ("province" in input) out.province = text(input.province, 120);
+  if ("postalCode" in input) out.postalCode = text(input.postalCode, 16);
+  if ("licenceClass" in input) out.licenceClass = text(input.licenceClass, 16);
+  if ("vehicleType" in input) out.vehicleType = text(input.vehicleType, 60);
+  if ("transportNotes" in input) out.transportNotes = text(input.transportNotes, 500);
+  if ("hasDrivingLicence" in input) out.hasDrivingLicence = Boolean(input.hasDrivingLicence);
+  if ("hasVehicle" in input) out.hasVehicle = Boolean(input.hasVehicle);
+  if ("licenceExpiry" in input) {
+    const v = input.licenceExpiry;
+    if (v === null || v === undefined || v === "") out.licenceExpiry = null;
+    else {
+      const d = new Date(v);
+      if (Number.isNaN(d.getTime())) throw new HrError("invalid", "Invalid licence expiry date.");
+      out.licenceExpiry = d.toISOString().slice(0, 10);
+    }
+  }
+  if ("canTravelKm" in input) {
+    const v = input.canTravelKm;
+    if (v === null || v === undefined) out.canTravelKm = null;
+    else {
+      const n = Number(v);
+      if (!Number.isInteger(n) || n < 0 || n > 100000) throw new HrError("invalid", "Invalid travel distance.");
+      out.canTravelKm = n;
+    }
+  }
+  return out as HrIntakeInput;
+}
+
 export function createHrService(deps: HrDeps) {
   const now = deps.now ?? (() => new Date());
   const withEffective = (c: Omit<HrCredentialRecord, "effectiveStatus">): HrCredentialRecord => ({
@@ -179,12 +248,27 @@ export function createHrService(deps: HrDeps) {
 
   return {
     // ── Worker self-view (own profile + credentials + standing). NOT HR case notes. ──
-    async getWorkerSelfView(input: { userId: string }): Promise<{ standing: HrStanding; credentials: readonly HrCredentialRecord[] }> {
+    async getWorkerSelfView(input: { userId: string }): Promise<{ standing: HrStanding; credentials: readonly HrCredentialRecord[]; intake: HrIntakeRecord | null }> {
       const worker = await deps.workers.resolveByUserId(input.userId);
       if (!worker) throw new HrError("denied", "Only a worker can view their HR profile.");
       const profile = await ensureProfile(worker.workerIdentityId);
-      const credentials = (await deps.store.listCredentials(worker.workerIdentityId)).map(withEffective);
-      return { standing: profile.standing, credentials };
+      const [credentials, intake] = await Promise.all([
+        deps.store.listCredentials(worker.workerIdentityId).then((rows) => rows.map(withEffective)),
+        deps.store.getIntake(worker.workerIdentityId)
+      ]);
+      return { standing: profile.standing, credentials, intake };
+    },
+
+    // Worker-editable intake (seeded #5). The worker edits only their OWN intake; HR standing,
+    // credentials and cases are never writable here. All fields optional; validated + bounded.
+    async upsertWorkerIntake(input: { userId: string; input: HrIntakeInput }): Promise<HrIntakeRecord> {
+      const worker = await deps.workers.resolveByUserId(input.userId);
+      if (!worker) throw new HrError("denied", "Only a worker can edit their HR intake.");
+      const profile = await ensureProfile(worker.workerIdentityId);
+      const clean = validateIntakeInput(input.input);
+      const rec = await deps.store.upsertIntake({ workerIdentityId: worker.workerIdentityId, data: clean });
+      await deps.store.appendEvent({ subjectType: "profile", subjectId: profile.id, workerIdentityId: worker.workerIdentityId, eventType: "intake_updated", newState: "updated", source: "worker", actorUserId: input.userId });
+      return rec;
     },
 
     // ── HR authority: full record (profile + credentials + cases) ──
@@ -325,6 +409,10 @@ type HrPrisma = {
     create(args: unknown): Promise<CaseRow>;
     update(args: unknown): Promise<CaseRow>;
   };
+  workerHrIntake: {
+    findUnique(args: unknown): Promise<IntakeRow | null>;
+    upsert(args: unknown): Promise<IntakeRow>;
+  };
 };
 
 type ProfileRow = { id: string; workerIdentityId: string; standing: HrStanding; standingReason: string | null; updatedAt: Date };
@@ -332,10 +420,31 @@ type ProfileWithWorkerRow = ProfileRow & { worker: { displayName: string | null 
 type EventRow = { id: string; subjectType: string; subjectId: string; eventType: string; priorState: string | null; newState: string; reason: string | null; source: string; actorUserId: string | null; correlationId: string | null; createdAt: Date };
 type CredentialRow = { id: string; workerIdentityId: string; credentialType: string; issuer: string | null; issuedAt: Date | null; expiresAt: Date | null; status: HrCredentialStatus; verificationReference: string | null; supersededById: string | null; updatedAt: Date };
 type CaseRow = { id: string; workerIdentityId: string; caseType: string; status: HrCaseStatus; reason: string | null; openedByUserId: string; createdAt: Date; updatedAt: Date };
+type IntakeRow = {
+  legalFirstName: string | null; legalLastName: string | null; phone: string | null;
+  addressLine: string | null; city: string | null; province: string | null; postalCode: string | null;
+  hasDrivingLicence: boolean; licenceClass: string | null; licenceExpiry: Date | null;
+  hasVehicle: boolean; vehicleType: string | null; canTravelKm: number | null; transportNotes: string | null;
+  updatedAt: Date;
+};
 
 const toProfile = (r: ProfileRow): HrProfileRecord => ({ id: r.id, workerIdentityId: r.workerIdentityId, standing: r.standing, standingReason: r.standingReason, updatedAt: r.updatedAt.toISOString() });
 const toCred = (r: CredentialRow): Omit<HrCredentialRecord, "effectiveStatus"> => ({ id: r.id, workerIdentityId: r.workerIdentityId, credentialType: r.credentialType, issuer: r.issuer, issuedAt: r.issuedAt?.toISOString() ?? null, expiresAt: r.expiresAt?.toISOString() ?? null, status: r.status, verificationReference: r.verificationReference, supersededById: r.supersededById, updatedAt: r.updatedAt.toISOString() });
 const toCase = (r: CaseRow): HrCaseRecord => ({ id: r.id, workerIdentityId: r.workerIdentityId, caseType: r.caseType, status: r.status, reason: r.reason, openedByUserId: r.openedByUserId, createdAt: r.createdAt.toISOString(), updatedAt: r.updatedAt.toISOString() });
+const toIntake = (r: IntakeRow): HrIntakeRecord => ({
+  legalFirstName: r.legalFirstName, legalLastName: r.legalLastName, phone: r.phone,
+  addressLine: r.addressLine, city: r.city, province: r.province, postalCode: r.postalCode,
+  hasDrivingLicence: r.hasDrivingLicence, licenceClass: r.licenceClass,
+  licenceExpiry: r.licenceExpiry ? r.licenceExpiry.toISOString().slice(0, 10) : null,
+  hasVehicle: r.hasVehicle, vehicleType: r.vehicleType, canTravelKm: r.canTravelKm,
+  transportNotes: r.transportNotes, updatedAt: r.updatedAt.toISOString()
+});
+// Map a validated intake patch to Prisma data (licenceExpiry ISO date → Date for @db.Date).
+const toIntakeData = (data: HrIntakeInput): Record<string, unknown> => {
+  const d: Record<string, unknown> = { ...data };
+  if ("licenceExpiry" in d) d.licenceExpiry = d.licenceExpiry ? new Date(d.licenceExpiry as string) : null;
+  return d;
+};
 
 export function createPrismaHrWorkerResolver(prisma: HrPrisma): HrWorkerResolver {
   return {
@@ -357,6 +466,15 @@ export function createPrismaHrStore(prisma: HrPrisma): HrStore {
     },
     async setStanding({ workerIdentityId, standing, reason }) {
       return toProfile(await prisma.hrProfile.update({ where: { workerIdentityId }, data: { standing, standingReason: reason } }));
+    },
+    async getIntake(workerIdentityId) {
+      const r = await prisma.workerHrIntake.findUnique({ where: { workerIdentityId } });
+      return r ? toIntake(r) : null;
+    },
+    async upsertIntake({ workerIdentityId, data }) {
+      const d = toIntakeData(data);
+      const r = await prisma.workerHrIntake.upsert({ where: { workerIdentityId }, create: { workerIdentityId, ...d }, update: d });
+      return toIntake(r);
     },
     async listCredentials(workerIdentityId) {
       const rows = await prisma.hrCredential.findMany({ where: { workerIdentityId }, orderBy: { createdAt: "desc" } });

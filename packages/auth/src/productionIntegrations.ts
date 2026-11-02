@@ -422,7 +422,7 @@ export type OfferEmailRecipient = Readonly<{
 
 export type ResendOfferDeliveryOptions = Readonly<{
   apiKey: string;
-  fromAddress: string; // e.g. "JobLop <offers@mail.yourdomain.ca>"
+  fromAddress: string; // e.g. "Joblop <offers@mail.yourdomain.ca>"
   replyTo?: string;
   fetch?: Fetch;
   baseUrl?: string;
@@ -450,7 +450,7 @@ function composeOfferEmail(r: OfferEmailRecipient): { subject: string; html: str
   const L = (en: string, frl: string) => (fr ? frl : en);
   const hello = r.name ? L(`Hi ${r.name},`, `Bonjour ${r.name},`) : L("Hi,", "Bonjour,");
   const subject = L(`New shift offer: ${r.title}`, `Nouvelle offre de quart : ${r.title}`);
-  const intro = L("You've received a shift offer on JobLop.", "Vous avez reçu une offre de quart sur JobLop.");
+  const intro = L("You've received a shift offer on Joblop.", "Vous avez reçu une offre de quart sur Joblop.");
   const rows: Array<[string, string | null]> = [
     [L("Role", "Poste"), r.title],
     [L("When", "Quand"), r.whenLabel],
@@ -475,7 +475,7 @@ function composeOfferEmail(r: OfferEmailRecipient): { subject: string; html: str
     "",
     closing,
     "",
-    "— JobLop"
+    "— Joblop"
   ].filter((line, i, arr) => !(line === "" && arr[i - 1] === ""));
   const text = textLines.join("\n");
 
@@ -498,14 +498,14 @@ function composeOfferEmail(r: OfferEmailRecipient): { subject: string; html: str
   const html = `<!doctype html><html><body style="margin:0;background:#f4f7fb;font-family:-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif">
 <div style="max-width:560px;margin:0 auto;padding:24px 16px">
   <div style="background:#fff;border:1px solid #e3eaf4;border-radius:14px;padding:22px 22px 10px">
-    <p style="font-weight:700;font-size:18px;color:#0f1d33;margin:0 0 14px">JobLop</p>
+    <p style="font-weight:700;font-size:18px;color:#0f1d33;margin:0 0 14px">Joblop</p>
     <p style="font-size:15px;color:#0f1d33;margin:0 0 6px">${escapeHtml(hello)}</p>
     <p style="font-size:14px;color:#32496e;margin:0 0 14px">${escapeHtml(intro)}</p>
     <table role="presentation" cellspacing="0" cellpadding="0" style="border-collapse:collapse;width:100%">${rowHtml}</table>
     ${button}
     <p style="font-size:13px;color:#5c749c;margin:14px 0 0">${escapeHtml(closing)}</p>
   </div>
-  <p style="font-size:11px;color:#8aa0c2;text-align:center;margin:14px 0 0">JobLop</p>
+  <p style="font-size:11px;color:#8aa0c2;text-align:center;margin:14px 0 0">Joblop</p>
 </div></body></html>`;
   return { subject, html, text };
 }
