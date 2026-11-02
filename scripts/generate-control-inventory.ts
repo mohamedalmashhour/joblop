@@ -177,13 +177,19 @@ async function discoverRoutePatterns() {
   for (const target of appRoots.filter((entry) => entry.app !== "worker")) {
     const appDirectory = join(target.path, "app");
     for (const file of await files(appDirectory)) {
-      if (!file.endsWith("/page.tsx")) continue;
+      // Page routes (page.tsx) AND API route handlers (route.ts) are both valid link destinations —
+      // e.g. an <a href="/api/auth/google/start"> that kicks off an OAuth redirect.
+      if (!file.endsWith("/page.tsx") && !file.endsWith("/route.ts")) continue;
       const route = relative(appDirectory, dirname(file))
         .split("/")
         .filter((segment) => !segment.startsWith("("))
-        .map((segment) =>
-          segment.startsWith("[") && segment.endsWith("]") ? "[^/]+" : escapeRegex(segment)
-        )
+        .map((segment) => {
+          // Optional catch-all `[[...x]]` and catch-all `[...x]` absorb the remaining path; a single
+          // dynamic segment `[x]` matches exactly one.
+          if (/^\[\[\.\.\..+\]\]$/u.test(segment)) return "[^/]*(?:/[^/]+)*";
+          if (/^\[\.\.\..+\]$/u.test(segment)) return "[^/]+(?:/[^/]+)*";
+          return segment.startsWith("[") && segment.endsWith("]") ? "[^/]+" : escapeRegex(segment);
+        })
         .join("/");
       patterns[target.app].push(new RegExp(`^/${route}/?$`, "u"));
     }
