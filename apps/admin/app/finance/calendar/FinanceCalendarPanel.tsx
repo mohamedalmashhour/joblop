@@ -2,19 +2,20 @@
 
 import { useEffect, useMemo, useState, type CSSProperties, type FormEvent } from "react";
 import type { FinanceInvoice, FinancePayment } from "../../api/finance/financeBoundary";
+import { MonthCalendar, type CalendarEntry, type CalendarLegendItem, type CalendarTone } from "../../calendar/MonthCalendar";
 
-// Admin finance calendar: lays the authorized organization's invoices (and their payment attempts)
-// on a month grid by the date each invoice was issued (falling back to its due date). It reuses the
-// same governed read endpoints as the finance data panel and never creates, approves, issues,
-// captures, voids, refunds, settles, or reconciles money. Read-only, organization-scoped.
+// Admin finance billing calendar: lays the authorized organization's invoices on a month grid by the
+// date each was issued (falling back to its due date), coloured by status, with a paid marker from
+// its payment attempts and an unscheduled list for invoices lacking any date. It reuses the same
+// governed read endpoints as the finance data panel and never executes money. Read-only, org-scoped.
+// The grid itself is the shared MonthCalendar component.
 
 type CalendarState =
   | { status: "idle" | "loading" }
   | { status: "denied" | "error" | "unavailable"; message: string }
   | { status: "ready"; invoices: readonly FinanceInvoice[]; payments: readonly FinancePayment[] };
 
-// Map an invoice status to a readable swatch that works on a dark surface.
-function statusTone(status: string): { bg: string; fg: string } {
+function statusTone(status: string): CalendarTone {
   switch (status) {
     case "paid":
       return { bg: "#143d2b", fg: "#9fe1cb" };
@@ -36,6 +37,14 @@ function statusTone(status: string): { bg: string; fg: string } {
   }
 }
 
+const LEGEND: readonly CalendarLegendItem[] = [
+  { label: "Paid", tone: statusTone("paid") },
+  { label: "Issued / sent", tone: statusTone("issued") },
+  { label: "Approved", tone: statusTone("approved") },
+  { label: "Overdue / disputed", tone: statusTone("overdue") },
+  { label: "Draft / other", tone: statusTone("draft") }
+];
+
 function money(minor: number, currency: string) {
   try {
     return new Intl.NumberFormat("en-CA", { style: "currency", currency }).format(minor / 100);
@@ -44,25 +53,14 @@ function money(minor: number, currency: string) {
   }
 }
 
-const WEEKDAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"] as const;
-
 // The anchor date for an invoice on the calendar: issued date if present, else due date.
-function anchorDate(invoice: FinanceInvoice): Date | null {
-  const raw = invoice.issuedAt ?? invoice.dueAt;
-  if (!raw) return null;
-  const parsed = new Date(raw);
-  return Number.isNaN(parsed.getTime()) ? null : parsed;
-}
-
-function isoDay(d: Date): string {
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+function anchor(invoice: FinanceInvoice): string | null {
+  return invoice.issuedAt ?? invoice.dueAt ?? null;
 }
 
 export function FinanceCalendarPanel() {
   const [organizationId, setOrganizationId] = useState("");
   const [state, setState] = useState<CalendarState>({ status: "idle" });
-  const today = useMemo(() => new Date(), []);
-  const [view, setView] = useState({ year: today.getFullYear(), month: today.getMonth() });
 
   async function runLoad(rawId: string) {
     const id = rawId.trim();
@@ -120,6 +118,34 @@ export function FinanceCalendarPanel() {
     }
   }, []);
 
+  const paidInvoiceIds = useMemo(() => {
+    const ids = new Set<string>();
+    if (state.status !== "ready") return ids;
+    for (const p of state.payments) {
+      if (p.state === "captured" || p.state === "settled") ids.add(p.invoiceId);
+    }
+    return ids;
+  }, [state]);
+
+  const entries = useMemo<readonly CalendarEntry[]>(() => {
+    if (state.status !== "ready") return [];
+    return state.invoices
+      .filter((invoice) => anchor(invoice) !== null)
+      .map((invoice) => {
+        const paid = paidInvoiceIds.has(invoice.id);
+        return {
+          id: invoice.id,
+          date: anchor(invoice) as string,
+          tone: statusTone(invoice.status),
+          primary: money(invoice.totalMinor, invoice.currency),
+          secondary: `${invoice.status.replaceAll("_", " ")}${paid ? " · paid" : ""}`,
+          title: `${invoice.invoiceNumber ?? "Draft"} · ${invoice.status} · ${money(invoice.totalMinor, invoice.currency)}`
+        };
+      });
+  }, [state, paidInvoiceIds]);
+
+  const unscheduled = state.status === "ready" ? state.invoices.filter((i) => anchor(i) === null) : [];
+
   return (
     <section aria-labelledby="finance-calendar-title" style={styles.panel}>
       <div style={styles.header}>
@@ -159,154 +185,32 @@ export function FinanceCalendarPanel() {
           <p style={styles.state}>{state.message}</p>
         ) : null}
         {state.status === "ready" ? (
-          <CalendarGrid
-            invoices={state.invoices}
-            payments={state.payments}
-            view={view}
-            today={today}
-            onPrev={() => setView((v) => (v.month === 0 ? { year: v.year - 1, month: 11 } : { year: v.year, month: v.month - 1 }))}
-            onNext={() => setView((v) => (v.month === 11 ? { year: v.year + 1, month: 0 } : { year: v.year, month: v.month + 1 }))}
-          />
+          <>
+            <MonthCalendar entries={entries} legend={LEGEND} />
+            {unscheduled.length > 0 ? (
+              <div style={styles.unscheduled}>
+                <strong style={styles.unschedTitle}>No scheduled date ({unscheduled.length})</strong>
+                <p style={styles.help}>
+                  These invoices have neither an issue date nor a due date yet, so they cannot be placed
+                  on the calendar.
+                </p>
+                <div style={styles.unschedList}>
+                  {unscheduled.map((invoice) => {
+                    const tone = statusTone(invoice.status);
+                    return (
+                      <span key={invoice.id} style={{ ...styles.chip, background: tone.bg, color: tone.fg }}>
+                        <span style={styles.chipPrimary}>{invoice.invoiceNumber ?? "Draft"} · {money(invoice.totalMinor, invoice.currency)}</span>
+                        <span style={styles.chipSecondary}>{invoice.status.replaceAll("_", " ")}</span>
+                      </span>
+                    );
+                  })}
+                </div>
+              </div>
+            ) : null}
+          </>
         ) : null}
       </div>
     </section>
-  );
-}
-
-function CalendarGrid({
-  invoices,
-  payments,
-  view,
-  today,
-  onNext,
-  onPrev
-}: Readonly<{
-  invoices: readonly FinanceInvoice[];
-  payments: readonly FinancePayment[];
-  view: { year: number; month: number };
-  today: Date;
-  onNext: () => void;
-  onPrev: () => void;
-}>) {
-  const paymentsByInvoice = useMemo(() => {
-    const map = new Map<string, FinancePayment[]>();
-    for (const p of payments) {
-      const list = map.get(p.invoiceId) ?? [];
-      list.push(p);
-      map.set(p.invoiceId, list);
-    }
-    return map;
-  }, [payments]);
-
-  const byDay = useMemo(() => {
-    const map = new Map<string, FinanceInvoice[]>();
-    for (const invoice of invoices) {
-      const d = anchorDate(invoice);
-      if (!d) continue;
-      const key = isoDay(d);
-      const list = map.get(key) ?? [];
-      list.push(invoice);
-      map.set(key, list);
-    }
-    return map;
-  }, [invoices]);
-
-  const unscheduled = invoices.filter((i) => anchorDate(i) === null);
-
-  const first = new Date(view.year, view.month, 1);
-  const startOffset = first.getDay();
-  const daysInMonth = new Date(view.year, view.month + 1, 0).getDate();
-  const cells: (number | null)[] = [];
-  for (let i = 0; i < startOffset; i += 1) cells.push(null);
-  for (let d = 1; d <= daysInMonth; d += 1) cells.push(d);
-  while (cells.length % 7 !== 0) cells.push(null);
-
-  const monthTitle = first.toLocaleDateString("en-CA", { month: "long", year: "numeric" });
-  const todayKey = isoDay(today);
-
-  return (
-    <div style={styles.calendarWrap}>
-      <div style={styles.monthBar}>
-        <button aria-label="Previous month" onClick={onPrev} style={styles.navButton} type="button">←</button>
-        <strong style={styles.monthTitle}>{monthTitle}</strong>
-        <button aria-label="Next month" onClick={onNext} style={styles.navButton} type="button">→</button>
-      </div>
-
-      <div style={styles.weekRow}>
-        {WEEKDAYS.map((w) => (
-          <span key={w} style={styles.weekday}>{w}</span>
-        ))}
-      </div>
-
-      <div style={styles.grid}>
-        {cells.map((day, index) => {
-          if (day === null) return <div key={`empty-${index}`} style={styles.emptyCell} />;
-          const key = `${view.year}-${String(view.month + 1).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
-          const dayInvoices = byDay.get(key) ?? [];
-          const isToday = key === todayKey;
-          return (
-            <div key={key} style={{ ...styles.dayCell, ...(isToday ? styles.dayCellToday : {}) }}>
-              <span style={styles.dayNumber}>{day}</span>
-              <div style={styles.dayInvoices}>
-                {dayInvoices.map((invoice) => {
-                  const tone = statusTone(invoice.status);
-                  const paid = (paymentsByInvoice.get(invoice.id) ?? []).some((p) => p.state === "captured" || p.state === "settled");
-                  return (
-                    <div
-                      key={invoice.id}
-                      style={{ ...styles.invoiceChip, background: tone.bg, color: tone.fg }}
-                      title={`${invoice.invoiceNumber ?? "Draft"} · ${invoice.status} · ${money(invoice.totalMinor, invoice.currency)}`}
-                    >
-                      <span style={styles.chipAmount}>{money(invoice.totalMinor, invoice.currency)}</span>
-                      <span style={styles.chipStatus}>{invoice.status.replaceAll("_", " ")}{paid ? " · paid" : ""}</span>
-                    </div>
-                  );
-                })}
-              </div>
-            </div>
-          );
-        })}
-      </div>
-
-      <div style={styles.legend}>
-        {([
-          ["paid", "Paid"],
-          ["issued", "Issued / sent"],
-          ["approved", "Approved"],
-          ["overdue", "Overdue / disputed"],
-          ["draft", "Draft / other"]
-        ] as const).map(([status, label]) => {
-          const tone = statusTone(status);
-          return (
-            <span key={status} style={styles.legendItem}>
-              <span style={{ ...styles.legendSwatch, background: tone.bg, border: `1px solid ${tone.fg}` }} />
-              {label}
-            </span>
-          );
-        })}
-      </div>
-
-      {unscheduled.length > 0 ? (
-        <div style={styles.unscheduled}>
-          <strong style={styles.unschedTitle}>No scheduled date ({unscheduled.length})</strong>
-          <p style={styles.help}>
-            These invoices have neither an issue date nor a due date yet, so they cannot be placed on
-            the calendar.
-          </p>
-          <div style={styles.unschedList}>
-            {unscheduled.map((invoice) => {
-              const tone = statusTone(invoice.status);
-              return (
-                <span key={invoice.id} style={{ ...styles.invoiceChip, background: tone.bg, color: tone.fg }}>
-                  <span style={styles.chipAmount}>{invoice.invoiceNumber ?? "Draft"} · {money(invoice.totalMinor, invoice.currency)}</span>
-                  <span style={styles.chipStatus}>{invoice.status.replaceAll("_", " ")}</span>
-                </span>
-              );
-            })}
-          </div>
-        </div>
-      ) : null}
-    </div>
   );
 }
 
@@ -321,25 +225,10 @@ const styles: Record<string, CSSProperties> = {
   input: { background: "#0c0c0c", border: "1px solid rgba(201, 162, 75, 0.16)", borderRadius: 8, color: "#f4efe4", font: "inherit", minHeight: 44, padding: "0 12px" },
   button: { background: "#171511", border: 0, borderRadius: 8, color: "#fff", fontWeight: 800, minHeight: 44, padding: "0 16px" },
   state: { background: "#0c0c0c", border: "1px solid rgba(201, 162, 75, 0.16)", borderRadius: 8, color: "#f4efe4", fontSize: 13, marginTop: 16, padding: 14 },
-  calendarWrap: { marginTop: 18 },
-  monthBar: { alignItems: "center", display: "flex", gap: 14, justifyContent: "center", marginBottom: 12 },
-  monthTitle: { color: "#f4efe4", fontSize: 18, minWidth: 180, textAlign: "center" },
-  navButton: { background: "#171511", border: "1px solid rgba(201, 162, 75, 0.16)", borderRadius: 8, color: "#f4efe4", fontSize: 16, minHeight: 36, minWidth: 44, padding: "0 10px" },
-  weekRow: { display: "grid", gap: 6, gridTemplateColumns: "repeat(7, 1fr)", marginBottom: 6 },
-  weekday: { color: "#b4b2a9", fontSize: 12, fontWeight: 800, textAlign: "center" },
-  grid: { display: "grid", gap: 6, gridTemplateColumns: "repeat(7, 1fr)" },
-  emptyCell: { background: "transparent", borderRadius: 8, minHeight: 92 },
-  dayCell: { background: "#0c0c0c", border: "1px solid rgba(201, 162, 75, 0.16)", borderRadius: 8, display: "flex", flexDirection: "column", gap: 4, minHeight: 92, padding: 6 },
-  dayCellToday: { border: "1px solid #ba9044" },
-  dayNumber: { color: "#f4efe4", fontSize: 12, fontWeight: 800 },
-  dayInvoices: { display: "flex", flexDirection: "column", gap: 4 },
-  invoiceChip: { borderRadius: 6, display: "grid", gap: 1, padding: "4px 6px" },
-  chipAmount: { fontSize: 12, fontWeight: 800 },
-  chipStatus: { fontSize: 11, fontWeight: 600, textTransform: "capitalize" },
-  legend: { display: "flex", flexWrap: "wrap", gap: 14, marginTop: 14 },
-  legendItem: { alignItems: "center", color: "#b4b2a9", display: "inline-flex", fontSize: 12, gap: 6 },
-  legendSwatch: { borderRadius: 3, display: "inline-block", height: 12, width: 12 },
   unscheduled: { borderTop: "1px solid rgba(201, 162, 75, 0.16)", marginTop: 18, paddingTop: 16 },
   unschedTitle: { color: "#f4efe4", fontSize: 14 },
-  unschedList: { display: "flex", flexWrap: "wrap", gap: 8, marginTop: 10 }
+  unschedList: { display: "flex", flexWrap: "wrap", gap: 8, marginTop: 10 },
+  chip: { borderRadius: 6, display: "grid", gap: 1, padding: "4px 6px" },
+  chipPrimary: { fontSize: 12, fontWeight: 800 },
+  chipSecondary: { fontSize: 11, fontWeight: 600, textTransform: "capitalize" }
 };
