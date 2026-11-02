@@ -17,11 +17,11 @@ export default function Page() {
 }
 
 const styles = {
-  page: { background: "#faf7f0", color: "#15110b", fontFamily: "Inter, system-ui, sans-serif", minHeight: "100vh" },
-  header: { alignItems: "center", background: "#fff", borderBottom: "1px solid #ece3d2", display: "flex", justifyContent: "space-between", padding: "14px clamp(16px,4vw,48px)" },
-  brand: { color: "#15110b", fontSize: 20, fontWeight: 900, textDecoration: "none" },
-  back: { color: "#6b6356", fontSize: 14, fontWeight: 700, textDecoration: "none" },
+  page: { background: "#000000", color: "#f4efe4", fontFamily: "Inter, system-ui, sans-serif", minHeight: "100vh" },
+  header: { alignItems: "center", background: "#000000", borderBottom: "1px solid rgba(201, 162, 75, 0.16)", display: "flex", justifyContent: "space-between", padding: "14px clamp(16px,4vw,48px)" },
+  brand: { color: "#f4efe4", fontSize: 20, fontWeight: 900, textDecoration: "none" },
+  back: { color: "#b3a994", fontSize: 14, fontWeight: 700, textDecoration: "none" },
   body: { margin: "0 auto", maxWidth: 1000, padding: "24px clamp(16px,4vw,48px) 56px" },
   title: { fontSize: "clamp(26px,5vw,40px)", margin: "8px 0 6px" },
-  lede: { color: "#6b6356", fontSize: 16, lineHeight: 1.6, margin: "0 0 14px", maxWidth: 760 }
+  lede: { color: "#b3a994", fontSize: 16, lineHeight: 1.6, margin: "0 0 14px", maxWidth: 760 }
 } as const;
