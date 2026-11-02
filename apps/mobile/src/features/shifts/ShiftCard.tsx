@@ -1,6 +1,6 @@
 import { Pressable, StyleSheet, View } from "react-native";
 import type { ShiftDiscoveryRecord } from "@rwos/shared";
-import { colors, spacing, touch } from "@rwos/design-system";
+import { colors, spacing, touch } from "../../theme";
 import { Badge, BodyText, Card, Heading, SmallText } from "../../ui/primitives";
 import { formatDurationHours, formatMoney, formatShiftDate, formatShiftTimeRange } from "./formatters";
 

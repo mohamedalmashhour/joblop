@@ -7,7 +7,7 @@ import type {
   ShiftUrgency,
   TimeOfDay
 } from "@rwos/shared";
-import { colors, radii, spacing, touch, typography } from "@rwos/design-system";
+import { colors, radii, spacing, touch, typography } from "../../theme";
 import {
   Badge,
   BodyText,
@@ -760,7 +760,7 @@ const styles = StyleSheet.create({
     minWidth: 220
   },
   heroTitle: {
-    color: colors.cream,
+    color: colors.surface,
     fontSize: typography.title,
     fontWeight: "900",
     lineHeight: 32
@@ -810,7 +810,7 @@ const styles = StyleSheet.create({
   flowNumber: {
     backgroundColor: colors.deepTeal,
     borderRadius: radii.pill,
-    color: colors.cream,
+    color: colors.surface,
     fontSize: typography.micro,
     fontWeight: "900",
     overflow: "hidden",
@@ -862,7 +862,7 @@ const styles = StyleSheet.create({
     alignSelf: "flex-start",
     backgroundColor: colors.deepTeal,
     borderRadius: radii.pill,
-    color: colors.cream,
+    color: colors.surface,
     fontSize: typography.small,
     fontWeight: "900",
     overflow: "hidden",
@@ -879,7 +879,7 @@ const styles = StyleSheet.create({
     fontWeight: "900"
   },
   searchCapsuleTitleActive: {
-    color: colors.cream
+    color: colors.surface
   },
   searchCapsuleSummary: {
     color: colors.muted,
@@ -977,10 +977,10 @@ const styles = StyleSheet.create({
     fontWeight: "900"
   },
   specialtyCapsuleTextActive: {
-    color: colors.cream
+    color: colors.surface
   },
   aiPanel: {
-    backgroundColor: "#f0fff8",
+    backgroundColor: "#10231a",
     borderColor: colors.success,
     borderRadius: radii.md,
     borderWidth: 1,

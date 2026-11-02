@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { ScrollView, StyleSheet, View } from "react-native";
 import type { ShiftDiscoveryRecord, ShiftDiscoveryRepository } from "@rwos/shared";
-import { spacing } from "@rwos/design-system";
+import { spacing } from "../../theme";
 import {
   Badge,
   BodyText,

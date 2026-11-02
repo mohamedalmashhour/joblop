@@ -1,7 +1,7 @@
 import { StatusBar } from "expo-status-bar";
 import { useEffect, useMemo, useState } from "react";
 import { Image, Linking, Platform, SafeAreaView, StyleSheet, Text, View } from "react-native";
-import { colors, spacing, typography } from "@rwos/design-system";
+import { colors, spacing, typography } from "./theme";
 import {
   createVolatileSessionVault,
   nativeSecureSessionVault,
@@ -34,7 +34,7 @@ export default function ProductionApp() {
   return (
     <LocaleProvider>
     <SafeAreaView style={styles.safeArea}>
-      <StatusBar style="dark" />
+      <StatusBar style="light" />
       <View style={styles.app}>
         {isStaging ? (
           <View accessibilityRole="alert" style={styles.stagingBanner}>
@@ -70,17 +70,19 @@ const styles = StyleSheet.create({
   safeArea: { backgroundColor: colors.surfaceSubtle, flex: 1 },
   app: { backgroundColor: colors.surfaceSubtle, flex: 1 },
   stagingBanner: {
-    backgroundColor: "#FFF4D6",
-    borderBottomColor: "#D49B00",
+    backgroundColor: "#2a1f0a",
+    borderBottomColor: colors.deepTealMuted,
     borderBottomWidth: 1,
     paddingHorizontal: spacing.lg,
     paddingVertical: spacing.sm
   },
-  stagingTitle: { color: "#684B00", fontSize: typography.small, fontWeight: "800" },
-  stagingText: { color: "#684B00", fontSize: typography.small, fontWeight: "700" },
+  stagingTitle: { color: colors.focus, fontSize: typography.small, fontWeight: "800" },
+  stagingText: { color: colors.warning, fontSize: typography.small, fontWeight: "700" },
   header: {
     alignItems: "flex-start",
     backgroundColor: colors.surface,
+    borderBottomColor: colors.border,
+    borderBottomWidth: StyleSheet.hairlineWidth,
     gap: spacing.xs,
     padding: spacing.lg
   },

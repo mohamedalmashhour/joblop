@@ -1,6 +1,6 @@
 import { useCallback, useState } from "react";
 import { Pressable, ScrollView, StyleSheet, View } from "react-native";
-import { colors, radii, spacing } from "@rwos/design-system";
+import { colors, radii, spacing } from "../../theme";
 import type { MarketplaceJob, MobileSessionTransport } from "../../auth/secureSession";
 import { Badge, BodyText, Button, Card, EmptyState, ErrorState, Heading, Input, LoadingState, ScreenContainer, Section, SmallText } from "../../ui/primitives";
 import { formatDistance, formatOpenings, formatShiftWindow, formatWorkerRate, marketplaceCopyFor } from "./marketplaceContent";

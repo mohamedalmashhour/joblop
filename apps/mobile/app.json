@@ -5,7 +5,7 @@
     "scheme": "rwos",
     "version": "0.1.0",
     "orientation": "portrait",
-    "userInterfaceStyle": "light",
+    "userInterfaceStyle": "dark",
     "newArchEnabled": true,
     "icon": "./assets/icon.png",
     "splash": {

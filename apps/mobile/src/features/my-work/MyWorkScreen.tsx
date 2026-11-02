@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { ScrollView, StyleSheet, View } from "react-native";
-import { spacing } from "@rwos/design-system";
+import { spacing } from "../../theme";
 import type { MarketplaceInterest, MobileSessionTransport, WorkerAssignmentDto } from "../../auth/secureSession";
 import { Badge, BodyText, Button, Card, EmptyState, ErrorState, Heading, LoadingState, ScreenContainer, Section, SmallText } from "../../ui/primitives";
 import { formatShiftWindow } from "../marketplace/marketplaceContent";
