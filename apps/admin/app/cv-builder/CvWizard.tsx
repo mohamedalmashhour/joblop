@@ -243,13 +243,13 @@ function designStyle(key: string): Record<string, string> {
 
 const styles = {
   wrap: { padding: "24px clamp(18px, 5vw, 64px)" },
-  card: { background: "#fff", border: "1px solid rgba(201, 162, 75, 0.16)", borderRadius: 14, boxShadow: "0 12px 30px rgba(6,27,65,.06)", marginBottom: 18, padding: 22 },
-  step: { color: "#000000", fontSize: 16, margin: "18px 0 8px" },
+  card: { background: "#0c0c0c", border: "1px solid rgba(201, 162, 75, 0.16)", borderRadius: 14, boxShadow: "0 12px 30px rgba(0,0,0,.4)", marginBottom: 18, padding: 22 },
+  step: { color: "#f4efe4", fontSize: 16, margin: "18px 0 8px" },
   hint: { color: "#b3a894", fontSize: 12, fontWeight: 500 },
   q: { color: "#f4efe4", fontSize: 13, fontWeight: 700, margin: "10px 0 6px" },
   row: { display: "flex", flexWrap: "wrap" as const, gap: 12 },
   label: { color: "#f4efe4", display: "flex", flexDirection: "column" as const, fontSize: 12, fontWeight: 700, gap: 4 },
-  input: { border: "1px solid rgba(201, 162, 75, 0.16)", borderRadius: 8, minHeight: 40, padding: "0 10px", minWidth: 200 },
+  input: { background: "#0c0c0c", border: "1px solid rgba(201, 162, 75, 0.16)", borderRadius: 8, color: "#f4efe4", minHeight: 40, padding: "0 10px", minWidth: 200 },
   chips: { display: "flex", flexWrap: "wrap" as const, gap: 8 },
   chip: { background: "#000000", border: "1px solid rgba(201, 162, 75, 0.16)", borderRadius: 999, color: "#f4efe4", cursor: "pointer", fontSize: 13, fontWeight: 600, padding: "8px 14px" },
   chipOn: { background: "#171511", borderColor: "rgba(201, 162, 75, 0.16)", color: "#fff" },
@@ -257,7 +257,7 @@ const styles = {
   notice: { color: "#f4efe4", fontSize: 13, fontWeight: 700, marginLeft: 12 },
   upload: { color: "#b3a894", fontSize: 12, marginTop: 14 },
   prov: { fontSize: 11, marginTop: 16, opacity: 0.7 },
-  warn: { background: "#000000", border: "1px solid rgba(201, 162, 75, 0.16)", borderRadius: 8, color: "#8a5a00", fontSize: 12, marginTop: 8, padding: "8px 12px" },
+  warn: { background: "#000000", border: "1px solid rgba(201, 162, 75, 0.16)", borderRadius: 8, color: "#d4af61", fontSize: 12, marginTop: 8, padding: "8px 12px" },
   assetList: { listStyle: "none", margin: "12px 0 0", padding: 0 },
   assetItem: { alignItems: "center", borderBottom: "1px solid rgba(201, 162, 75, 0.16)", color: "#f4efe4", display: "flex", fontSize: 13, justifyContent: "space-between", padding: "8px 0" },
   remove: { background: "none", border: "none", color: "#b23b2e", cursor: "pointer", fontSize: 12, fontWeight: 700 }
