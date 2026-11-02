@@ -68,8 +68,8 @@ function RecipientPicker({ single, selected, onChange }: { single?: boolean; sel
   return (
     <div>
       <div style={styles.row}>
-        <input style={styles.input} placeholder="Search by name or email…" value={q} onChange={(e) => setQ(e.target.value)} />
-        <select style={styles.input} value={kind} onChange={(e) => setKind(e.target.value as typeof kind)}>
+        <input aria-label="Search recipients" style={styles.input} placeholder="Search by name or email…" value={q} onChange={(e) => setQ(e.target.value)} />
+        <select aria-label="Recipient type" style={styles.input} value={kind} onChange={(e) => setKind(e.target.value as typeof kind)}>
           <option value="all">Workers &amp; employers</option>
           <option value="worker">Workers</option>
           <option value="employer">Employers</option>
