@@ -12,8 +12,8 @@ vi.mock("./employerInvoiceStripeCheckout", () => ({
   createInvoiceCheckoutSession: (...a: unknown[]) => createInvoiceCheckoutSession(...a),
   verifyInvoiceCheckoutPaid: (...a: unknown[]) => verifyInvoiceCheckoutPaid(...a)
 }));
-vi.mock("./cvProStripeCheckout", () => ({
-  isStripeTestConfigured: () => isStripeTestConfigured()
+vi.mock("./stripeEnvironment", () => ({
+  isStripeCollectionConfigured: () => isStripeTestConfigured()
 }));
 
 import {

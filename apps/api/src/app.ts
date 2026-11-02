@@ -325,8 +325,8 @@ import { createPrismaPaymentRepository, type PaymentRepository } from "./payment
 import { reconcileInvoiceCheckoutPaid, isInvoiceCollectionEnabled } from "./employerInvoiceCollection";
 import { registerEmployerInvoiceCheckoutRoutes } from "./employerInvoiceCheckoutRoutes";
 import { createEmployerInvoiceWebhook, type CheckoutSessionEventLike } from "./employerInvoiceWebhook";
-import { createStripeTestClient } from "./stripeTestProvider";
-import { stripeTestEnvFromProcess } from "./cvProStripeCheckout";
+import { createStripeClient } from "./stripeTestProvider";
+import { stripeCollectionEnvFromProcess } from "./stripeEnvironment";
 import { claimOpenJob, ensureOpenClaimDispatch } from "./openClaim";
 
 export interface BuildApiOptions {
@@ -1150,17 +1150,22 @@ export function buildApi(options: BuildApiOptions = {}) {
   // signature + test-mode via the shared Stripe test client; never in production; moves no money.
   const employerInvoiceWebhook =
     options.employerInvoiceWebhook ??
-    (invoiceRepository && prisma && runtimeConfig.invoiceTestModeEnabled && isInvoiceCollectionEnabled()
+    (invoiceRepository &&
+    prisma &&
+    (runtimeConfig.invoiceTestModeEnabled || runtimeConfig.invoiceLiveEnabled) &&
+    isInvoiceCollectionEnabled()
       ? createEmployerInvoiceWebhook({
+          expectLivemode: runtimeConfig.invoiceLiveEnabled,
           verifyWebhook: async (rawBody, signature) => {
-            const client = createStripeTestClient(stripeTestEnvFromProcess());
+            const live = runtimeConfig.invoiceLiveEnabled;
+            const client = createStripeClient(stripeCollectionEnvFromProcess());
             const event = client.webhooks.constructEvent(
               rawBody,
               signature,
-              runtimeConfig.stripeTestWebhookSecret!
+              live ? runtimeConfig.stripeLiveWebhookSecret! : runtimeConfig.stripeTestWebhookSecret!
             );
-            if ((event as { livemode?: boolean }).livemode === true) {
-              throw new Error("Live-mode Stripe object rejected.");
+            if (((event as { livemode?: boolean }).livemode === true) !== live) {
+              throw new Error("Stripe event mode does not match the configured mode.");
             }
             return event as unknown as CheckoutSessionEventLike;
           },

@@ -2,7 +2,7 @@ import type { PrismaClient } from "@rwos/database";
 import type { InvoiceActorRole, InvoiceStatus } from "@rwos/shared";
 import type { DurableInvoice, InvoiceRepository } from "./invoiceRepository";
 import { createInvoiceCheckoutSession, verifyInvoiceCheckoutPaid } from "./employerInvoiceStripeCheckout";
-import { isStripeTestConfigured } from "./cvProStripeCheckout";
+import { isStripeCollectionConfigured } from "./stripeEnvironment";
 
 // Money-flow Phase 1 — employer invoice → Stripe TEST collection orchestration. Mirrors the Worker Pro
 // order repository, but the "order" is an already-issued platform invoice and the terminal effect is the
@@ -15,8 +15,11 @@ import { isStripeTestConfigured } from "./cvProStripeCheckout";
 /** An invoice can be collected only once it is issued and before it is settled/closed. */
 const COLLECTIBLE_STATUSES: readonly InvoiceStatus[] = ["issued", "sent", "viewed", "overdue"];
 
-/** Whether the employer-invoice Stripe TEST collection path is enabled. Default OFF. */
+/** Whether employer-invoice Stripe collection is enabled (test, or live behind both live gates). Default OFF. */
 export function isInvoiceCollectionEnabled(): boolean {
+  if (process.env.STRIPE_LIVE_MODE_ENABLED === "enabled") {
+    return process.env.INVOICE_LIVE_ENABLED === "enabled";
+  }
   return process.env.INVOICE_TEST_MODE_ENABLED === "enabled";
 }
 
@@ -96,7 +99,7 @@ export async function startInvoiceCheckout(
   input: { organizationId: string; invoiceId: string; origin: string }
 ): Promise<StartCheckoutResult> {
   if (!isInvoiceCollectionEnabled()) return { ok: false, reason: "collection_disabled" };
-  if (!isStripeTestConfigured()) return { ok: false, reason: "stripe_unconfigured" };
+  if (!isStripeCollectionConfigured()) return { ok: false, reason: "stripe_unconfigured" };
 
   const invoice = await invoiceRepository.get(input.invoiceId, input.organizationId);
   if (!invoice || !invoice.invoiceNumber) return { ok: false, reason: "invoice_not_found" };
@@ -132,7 +135,7 @@ export async function completeInvoiceCheckout(
   input: { organizationId: string; invoiceId: string; actorReference: string; actorRole: InvoiceActorRole }
 ): Promise<CompleteResult> {
   if (!isInvoiceCollectionEnabled()) return { ok: false, reason: "collection_disabled" };
-  if (!isStripeTestConfigured()) return { ok: false, reason: "stripe_unconfigured" };
+  if (!isStripeCollectionConfigured()) return { ok: false, reason: "stripe_unconfigured" };
 
   const row = (await prisma.employerInvoiceCheckout.findUnique({
     where: {
