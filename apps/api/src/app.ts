@@ -3794,7 +3794,7 @@ export function buildApi(options: BuildApiOptions = {}) {
       await notifyClient(prisma, emailSender, { jobRequestId, kind: "worker_accepted" }).catch(() => {});
       await workerJobInterestService.markOfferAcceptedByOffer(result.workerOfferId).catch(() => {});
       void pushAssignmentToCalendar(
-        { prisma, config: googleOAuthConfigFromEnv() },
+        { prisma, config: googleOAuthConfigFromEnv(), countryTimezone: options.countryTimezone },
         { userId: session.user.id, jobRequestId }
       );
       return reply.code(201).send({ status: "assigned", assignmentId: result.assignmentId });
@@ -6648,7 +6648,7 @@ export function buildApi(options: BuildApiOptions = {}) {
         // Best-effort: push the confirmed shift to the worker's own Google Calendar. Opt-in per
         // worker (calendar scope granted) + flag-gated; never blocks or fails the accept.
         void pushAssignmentToCalendar(
-          { prisma, config: googleOAuthConfigFromEnv() },
+          { prisma, config: googleOAuthConfigFromEnv(), countryTimezone: options.countryTimezone },
           { userId: session.user.id, jobRequestId: offer.jobRequestId }
         );
       }
