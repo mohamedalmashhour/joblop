@@ -20,9 +20,47 @@ const buildTimePublic = new Set([
   "EXPO_PUBLIC_API_ORIGIN",
   "EXPO_PUBLIC_RWOS_API_ORIGIN",
   "NEXT_PUBLIC_RWOS_ENV",
-  "NEXT_PUBLIC_RWOS_DEPLOYMENT_TIER"
+  "NEXT_PUBLIC_RWOS_DEPLOYMENT_TIER",
+  // NEXT_PUBLIC_ is inlined into the client bundle at build; the active-country selector is a
+  // non-secret public value (country code only), consistent with the country-profile seam.
+  "NEXT_PUBLIC_RWOS_COUNTRY"
 ]);
 const serverOnlySecret = new Set(["SESSION_SECRET"]);
+// Server-side, non-secret configuration read via process.env in server code (route handlers,
+// server components, seed/worker scripts). These never carry credential material and are not
+// inlined into any client bundle (they are not NEXT_PUBLIC_/EXPO_PUBLIC_). Secret-shaped siblings
+// (e.g. *_API_KEY) are caught by the prohibited regex below, which runs before this set is read.
+const serverOnlyNonSecret = new Set([
+  // External job-source (Adzuna) non-secret config — the paired APP_KEY is prohibited below.
+  "ADZUNA_APP_ID",
+  "ADZUNA_COUNTRY",
+  "JOBSCANNER_SCAN_INTERVAL_MIN",
+  "JOBSCANNER_SCAN_QUERIES",
+  "JOBSCANNER_SEED_FORCE",
+  "JOBSCANNER_SEED_MAX_DAYS_OLD",
+  "JOBSCANNER_SEED_RESULTS_PER_PAGE",
+  "JOBSCANNER_SEED_WHERE",
+  // Control-room governance flags / revocation list (opaque JTI identifiers, not secrets).
+  "CONTROL_ROOM_MINT_REQUIRE_FINANCE",
+  "CONTROL_ROOM_REVOKED_JTIS",
+  // CV builder feature config (model name + purchase gate).
+  "CV_MODEL",
+  "CV_PRO_PURCHASE_ENABLED",
+  // Transactional email sender address (public from-line, not a credential).
+  "EMAIL_FROM",
+  // Google integrations: non-secret public identifiers and server-side feature gates. The OAuth
+  // client id is a public identifier; the paired client secret / token encryption key and the
+  // Maps API key are prohibited below.
+  "GOOGLE_CALENDAR_SYNC_ENABLED",
+  "GOOGLE_OAUTH_CLIENT_ID",
+  "GOOGLE_OAUTH_ENABLED",
+  "GOOGLE_SITE_VERIFICATION",
+  "GOOGLE_TAG_ID",
+  // Test-mode gates for the money path (server-only booleans).
+  "INVOICE_TEST_MODE_ENABLED",
+  "PAYOUT_TEST_MODE_ENABLED",
+  "WORKER_PAYOUT_PROGRESSION_INTERVAL_MIN"
+]);
 const allowedServerPrefixes = [
   "API_",
   "ASSIGNMENT_",
@@ -46,7 +84,7 @@ export function classifyEnvironmentName(name: string): EnvironmentClass | null {
   if (buildTimePublic.has(name)) return "build-time-public";
   if (serverOnlySecret.has(name)) return "server-only-secret";
   if (
-    /(?:^|_)(?:TOKEN|SECRET|PASSWORD|CREDENTIAL|PRIVATE_KEY|SECRET_KEY|KEY_SECRET|DATABASE_URL|REDIS_URL|EMAIL)$/.test(
+    /(?:^|_)(?:TOKEN|SECRET|PASSWORD|CREDENTIAL|PRIVATE_KEY|SECRET_KEY|KEY_SECRET|API_KEY|APP_KEY|ENC_KEY|DATABASE_URL|REDIS_URL|EMAIL)$/.test(
       name
     ) ||
     /(?:SERVICE_ACCOUNT|SERVICE_IDENTITY|OPERATOR_IDENTITY|GOOGLE_APPLICATION_CREDENTIALS)/.test(
@@ -58,6 +96,7 @@ export function classifyEnvironmentName(name: string): EnvironmentClass | null {
   if (/(?:^|_)(?:ORIGIN|URL|AUDIENCE|ENDPOINT|HEALTHCHECK_URL|SECRET_REFERENCE)$/.test(name)) {
     return "runtime-server-only";
   }
+  if (serverOnlyNonSecret.has(name)) return "server-only-non-secret";
   if (
     name === "PORT" ||
     name === "DATABASE_URL" ||
