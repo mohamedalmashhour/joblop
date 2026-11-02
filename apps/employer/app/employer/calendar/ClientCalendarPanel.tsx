@@ -21,6 +21,13 @@ export function ClientCalendarPanel() {
   const [state, setState] = useState<ClientCalendarState>({
     status: "loading"
   });
+  // Align with the admin/worker calendars: a month-grid view by default, with the original card
+  // list still available via the toggle. Both hooks live before any early return (rules of hooks).
+  const [view, setView] = useState<"calendar" | "list">("calendar");
+  const [month, setMonth] = useState(() => {
+    const now = new Date();
+    return new Date(now.getFullYear(), now.getMonth(), 1);
+  });
   const requestGeneration = useRef(0);
   const load = useCallback(async () => {
     const generation = ++requestGeneration.current;
@@ -103,42 +110,162 @@ export function ClientCalendarPanel() {
           onRetry={load}
         />
       ) : null}
-      <div style={styles.cardGrid}>
-        {state.data.map((request) => (
-          <article key={request.id} style={styles.card}>
-            <span style={clientStatusStyle(request.status)}>
-              {request.status.replaceAll("_", " ")}
-            </span>
-            <h3 style={styles.cardTitle}>{request.title}</h3>
-            <p style={styles.cardText}>{formatWindow(request)}</p>
-            <p style={styles.cardText}>
-              {request.numberOfWorkers} worker{request.numberOfWorkers === 1 ? "" : "s"} requested
-            </p>
-            {request.actionRequired === "information_required" ? (
-              <p aria-live="polite" style={styles.warning}>
-                Information requested: {request.actionRequiredReason}
-              </p>
-            ) : null}
-            <a
-              href={`/employer/calendar/request?request=${encodeURIComponent(request.requestNumber)}`}
-              style={styles.secondaryButton}
-            >
-              Open request detail
-            </a>
-            {request.status === "draft" || request.actionRequired === "information_required" ? (
-              <a
-                href={`/employer/calendar/request/edit?id=${encodeURIComponent(request.id)}`}
-                style={styles.primaryButton}
-              >
-                {request.actionRequired === "information_required"
-                  ? "Provide requested information"
-                  : "Edit draft"}
-              </a>
-            ) : null}
-          </article>
+      <div style={gridStyles.toggleRow}>
+        <button
+          type="button"
+          onClick={() => setView("calendar")}
+          style={view === "calendar" ? gridStyles.toggleActive : gridStyles.toggle}
+        >
+          Calendar
+        </button>
+        <button
+          type="button"
+          onClick={() => setView("list")}
+          style={view === "list" ? gridStyles.toggleActive : gridStyles.toggle}
+        >
+          List
+        </button>
+      </div>
+      {view === "calendar" ? (
+        <ClientCalendarGrid
+          requests={state.data}
+          month={month}
+          onPrev={() => setMonth((m) => new Date(m.getFullYear(), m.getMonth() - 1, 1))}
+          onNext={() => setMonth((m) => new Date(m.getFullYear(), m.getMonth() + 1, 1))}
+        />
+      ) : (
+        <div style={styles.cardGrid}>
+          {state.data.map((request) => (
+            <RequestCard key={request.id} request={request} />
+          ))}
+        </div>
+      )}
+    </>
+  );
+}
+
+const MAX_CHIPS_PER_DAY = 3;
+
+function dayKey(d: Date): string {
+  return `${d.getFullYear()}-${d.getMonth()}-${d.getDate()}`;
+}
+
+// Month-grid calendar for the client's requests, aligned with the admin and worker calendars: each
+// request sits on its shift date, coloured by status, and busy days collapse to "+N more".
+function ClientCalendarGrid({
+  requests,
+  month,
+  onPrev,
+  onNext
+}: Readonly<{
+  requests: readonly ClientCalendarDto[];
+  month: Date;
+  onPrev: () => void;
+  onNext: () => void;
+}>) {
+  const [expanded, setExpanded] = useState<ReadonlySet<string>>(new Set());
+  const year = month.getFullYear();
+  const m = month.getMonth();
+  const startWeekday = new Date(year, m, 1).getDay();
+  const daysInMonth = new Date(year, m + 1, 0).getDate();
+  const cells: (number | null)[] = [
+    ...Array<null>(startWeekday).fill(null),
+    ...Array.from({ length: daysInMonth }, (_, i) => i + 1)
+  ];
+  while (cells.length % 7 !== 0) cells.push(null);
+
+  const byDay = new Map<string, ClientCalendarDto[]>();
+  for (const request of requests) {
+    const parsed = new Date(request.startAt);
+    if (Number.isNaN(parsed.getTime())) continue;
+    const key = dayKey(parsed);
+    const list = byDay.get(key) ?? [];
+    list.push(request);
+    byDay.set(key, list);
+  }
+
+  const monthLabel = new Date(year, m, 1).toLocaleDateString(undefined, { month: "long", year: "numeric" });
+  const weekdays = Array.from({ length: 7 }, (_, i) => new Date(2023, 0, 1 + i).toLocaleDateString(undefined, { weekday: "short" }));
+  const todayKey = dayKey(new Date());
+
+  return (
+    <div>
+      <div style={gridStyles.monthBar}>
+        <button type="button" onClick={onPrev} aria-label="Previous month" style={gridStyles.nav}>&#8249;</button>
+        <strong style={gridStyles.monthLabel}>{monthLabel}</strong>
+        <button type="button" onClick={onNext} aria-label="Next month" style={gridStyles.nav}>&#8250;</button>
+      </div>
+      <div style={gridStyles.weekRow}>
+        {weekdays.map((w, i) => (
+          <div key={`wd-${i}`} style={gridStyles.weekday}>{w}</div>
         ))}
       </div>
-    </>
+      <div style={gridStyles.grid}>
+        {cells.map((day, i) => {
+          if (day === null) return <div key={`b-${i}`} style={gridStyles.emptyCell} />;
+          const key = `${year}-${m}-${day}`;
+          const dayRequests = byDay.get(key) ?? [];
+          const isExpanded = expanded.has(key);
+          const visible = isExpanded ? dayRequests : dayRequests.slice(0, MAX_CHIPS_PER_DAY);
+          const hidden = dayRequests.length - visible.length;
+          return (
+            <div key={key} style={{ ...gridStyles.dayCell, ...(key === todayKey ? gridStyles.dayCellToday : {}) }}>
+              <span style={gridStyles.dayNumber}>{day}</span>
+              {visible.map((request) => (
+                <a
+                  key={request.id}
+                  href={`/employer/calendar/request?request=${encodeURIComponent(request.requestNumber)}`}
+                  style={{ ...gridStyles.chip, ...clientStatusTone(request.status) }}
+                  title={`${request.title} · ${request.status.replaceAll("_", " ")}`}
+                >
+                  <span style={gridStyles.chipTitle}>{request.title}</span>
+                  <span style={gridStyles.chipStatus}>{request.status.replaceAll("_", " ")}</span>
+                </a>
+              ))}
+              {hidden > 0 ? (
+                <button type="button" onClick={() => setExpanded((p) => new Set(p).add(key))} style={gridStyles.more}>
+                  +{hidden} more
+                </button>
+              ) : null}
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+function RequestCard({ request }: Readonly<{ request: ClientCalendarDto }>) {
+  return (
+    <article style={styles.card}>
+      <span style={clientStatusStyle(request.status)}>{request.status.replaceAll("_", " ")}</span>
+      <h3 style={styles.cardTitle}>{request.title}</h3>
+      <p style={styles.cardText}>{formatWindow(request)}</p>
+      <p style={styles.cardText}>
+        {request.numberOfWorkers} worker{request.numberOfWorkers === 1 ? "" : "s"} requested
+      </p>
+      {request.actionRequired === "information_required" ? (
+        <p aria-live="polite" style={styles.warning}>
+          Information requested: {request.actionRequiredReason}
+        </p>
+      ) : null}
+      <a
+        href={`/employer/calendar/request?request=${encodeURIComponent(request.requestNumber)}`}
+        style={styles.secondaryButton}
+      >
+        Open request detail
+      </a>
+      {request.status === "draft" || request.actionRequired === "information_required" ? (
+        <a
+          href={`/employer/calendar/request/edit?id=${encodeURIComponent(request.id)}`}
+          style={styles.primaryButton}
+        >
+          {request.actionRequired === "information_required"
+            ? "Provide requested information"
+            : "Edit draft"}
+        </a>
+      ) : null}
+    </article>
   );
 }
 
@@ -361,19 +488,49 @@ function parseOrganizationContext(
   return organizations.length ? { status: "organization_required", organizations } : null;
 }
 
-function clientStatusStyle(status: ClientCalendarDto["status"]) {
-  const tone =
+function clientStatusTone(status: ClientCalendarDto["status"]): { background: string; color: string; border: string } {
+  const [background, color]: readonly [string, string] =
     status === "cancelled"
       ? ["#fdecec", "#8a1c1c"]
       : status === "under_review"
         ? ["#fff8d8", "#725000"]
-        : status === "assigned" || status === "in_progress" || status === "completed"
-          ? ["#faf6ec", "#171511"]
-          : status === "submitted" || status === "published"
-            ? ["#faf6ec", "#2a2114"]
-            : ["#fbf9f4", "#3a3326"];
-  return { ...styles.pill, background: tone[0], color: tone[1] };
+        : status === "assigned" || status === "in_progress"
+          ? ["#e7f3ee", "#15624a"]
+          : status === "completed"
+            ? ["#eef3e3", "#3b6d11"]
+            : status === "submitted" || status === "published"
+              ? ["#eaf1fb", "#185fa5"]
+              : ["#f1efe8", "#3a3326"];
+  return { background, color, border: `1px solid ${color}22` };
 }
+
+function clientStatusStyle(status: ClientCalendarDto["status"]) {
+  const tone = clientStatusTone(status);
+  return { ...styles.pill, background: tone.background, color: tone.color };
+}
+
+const gridStyles: Record<string, React.CSSProperties> = {
+  // The employer page background is dark, while request cells stay light (the app's card surface).
+  // Chrome text (month label, weekday headers, inactive toggle) must therefore read light; the active
+  // toggle and the nav buttons carry their own light fills so their dark text stays legible.
+  toggleRow: { display: "flex", gap: 8, margin: "0 0 14px" },
+  toggle: { background: "transparent", border: "1px solid rgba(255,255,255,0.25)", borderRadius: 999, color: "#f4efe4", cursor: "pointer", fontSize: 13, fontWeight: 700, padding: "6px 16px" },
+  toggleActive: { background: "#c9a24b", border: "1px solid #c9a24b", borderRadius: 999, color: "#15110b", cursor: "pointer", fontSize: 13, fontWeight: 700, padding: "6px 16px" },
+  monthBar: { alignItems: "center", display: "flex", gap: 14, justifyContent: "center", margin: "4px 0 12px" },
+  monthLabel: { color: "#f4efe4", fontSize: 18, minWidth: 180, textAlign: "center" },
+  nav: { background: "#faf6ec", border: "1px solid rgba(255,255,255,0.25)", borderRadius: 8, color: "#15110b", cursor: "pointer", fontSize: 18, minHeight: 36, minWidth: 44 },
+  weekRow: { display: "grid", gap: 6, gridTemplateColumns: "repeat(7, 1fr)", marginBottom: 6 },
+  weekday: { color: "#d3d1c7", fontSize: 12, fontWeight: 700, textAlign: "center" },
+  grid: { display: "grid", gap: 6, gridTemplateColumns: "repeat(7, 1fr)" },
+  emptyCell: { minHeight: 96 },
+  dayCell: { background: "#fff", border: "1px solid #ece3d2", borderRadius: 8, display: "flex", flexDirection: "column", gap: 4, minHeight: 96, padding: 6 },
+  dayCellToday: { border: "2px solid #c9a24b" },
+  dayNumber: { color: "#15110b", fontSize: 12, fontWeight: 800 },
+  chip: { borderRadius: 6, display: "grid", gap: 1, padding: "4px 6px", textDecoration: "none" },
+  chipTitle: { fontSize: 11, fontWeight: 800, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" },
+  chipStatus: { fontSize: 10, fontWeight: 600, textTransform: "capitalize" },
+  more: { background: "transparent", border: "1px solid #ece3d2", borderRadius: 6, color: "#6b6356", cursor: "pointer", fontSize: 10, fontWeight: 700, padding: "3px 6px", textAlign: "left" }
+};
 
 function formatWindow(request: ClientCalendarDto) {
   const start = formatRwosDateTime(request.startAt, {
