@@ -5785,6 +5785,41 @@ export function createJobRequestService(
       ).map(toPublicJobRequest);
     },
 
+    // Same admin-review authority as listAdminIntake, but across the whole request lifecycle (every
+    // non-draft status) rather than only the review queue — so the admin can see requests from
+    // submission through to closure on a calendar. Read-only; identical governance.
+    async listAdminLifecycle(input: {
+      session: SessionValidationResult;
+      roles?: readonly AuthorizationRoleKey[];
+      correlationId?: string;
+    }) {
+      const decision = await authorizeJobRequestPlatformOperation({
+        jobRequestRepository,
+        authorizationService,
+        session: input.session,
+        roles: input.roles ?? [],
+        permission: "job_request.admin_review",
+        correlationId: input.correlationId,
+        now: now()
+      });
+
+      if (!decision.allow) throw new JobRequestError(decision);
+
+      return (
+        await jobRequestRepository.listJobRequests({
+          statuses: [
+            "submitted",
+            "admin_review",
+            "information_required",
+            "approved_for_dispatch",
+            "cancelled",
+            "expired",
+            "archived"
+          ]
+        })
+      ).map(toPublicJobRequest);
+    },
+
     async getForAdmin(input: {
       session: SessionValidationResult;
       roles?: readonly AuthorizationRoleKey[];

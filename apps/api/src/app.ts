@@ -5654,6 +5654,22 @@ export function buildApi(options: BuildApiOptions = {}) {
     return reply.code(200).send({ requests: requests.map(serializeCalendarRequest) });
   });
 
+  // Full-lifecycle admin calendar — every non-draft request (submission → closure), not only the
+  // review queue. Same admin-review authority as /platform/calendar/requests; read-only.
+  app.get("/platform/calendar/lifecycle", async (request, reply) => {
+    const session = await authService.validateSession(
+      readBearerToken(request.headers.authorization)
+    );
+    if (!session.authenticated || !session.user) return sendJobRequestDenied(reply);
+
+    const requests = await calendarRequestService.listAdminLifecycleCalendar({
+      session,
+      roles: await resolveAuthorizationRoles(session.user.id)
+    });
+
+    return reply.code(200).send({ requests: requests.map(serializeCalendarRequest) });
+  });
+
   // Admin order overview — one job request as an "order": its code, the CLIENT it belongs to, the
   // worker(s) who accepted, and the derived lifecycle state (pending → accepted → processing →
   // finished, with disputed/cancelled). Read-only; admin-gated. Money signals (invoice/payment/
@@ -11093,6 +11109,7 @@ function createUnavailableCalendarRequestService(): CalendarRequestService {
     listClientCalendar: denied,
     getClientCalendarRequest: denied,
     listAdminCalendar: denied,
+    listAdminLifecycleCalendar: denied,
     getAdminCalendarRequest: denied,
     getWorkerOfferCalendarReference: denied
   } as CalendarRequestService;
