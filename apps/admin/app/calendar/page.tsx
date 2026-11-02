@@ -48,13 +48,13 @@ const styles = {
     padding: "32px clamp(18px, 5vw, 64px)"
   },
   card: {
-    background: "#fff",
+    background: "#0c0c0c",
     border: "1px solid rgba(201, 162, 75, 0.16)",
     borderRadius: 14,
-    boxShadow: "0 12px 30px rgba(6,27,65,.08)",
+    boxShadow: "0 12px 30px rgba(0,0,0,.4)",
     padding: 22
   },
-  h2: { color: "#000000", fontSize: 24 },
+  h2: { color: "#f4efe4", fontSize: 24 },
   badge: {
     background: "#000000",
     borderRadius: 99,
@@ -66,7 +66,8 @@ const styles = {
     textTransform: "uppercase" as const
   },
   button: {
-    background: "#171511",
+    background: "#0c0c0c",
+    border: "1px solid rgba(201, 162, 75, 0.3)",
     borderRadius: 8,
     color: "#fff",
     display: "inline-flex",
@@ -83,5 +84,5 @@ const styles = {
     gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))",
     padding: "0 clamp(18px, 5vw, 64px) 48px"
   },
-  boundaryCard: { background: "#fff", border: "1px solid rgba(201, 162, 75, 0.16)", borderRadius: 10, padding: 16 }
+  boundaryCard: { background: "#0c0c0c", border: "1px solid rgba(201, 162, 75, 0.16)", borderRadius: 10, padding: 16 }
 } as const;

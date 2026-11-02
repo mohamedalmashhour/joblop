@@ -227,7 +227,7 @@ const styles = {
     gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))",
     padding: "24px clamp(18px, 5vw, 64px)"
   },
-  panel: { background: "#fff", border: "1px solid rgba(201, 162, 75, 0.16)", borderRadius: 14, padding: 24 },
+  panel: { background: "#0c0c0c", border: "1px solid rgba(201, 162, 75, 0.16)", borderRadius: 14, padding: 24 },
   row: {
     borderBottom: "1px solid rgba(201, 162, 75, 0.16)",
     display: "flex",
@@ -237,19 +237,20 @@ const styles = {
     padding: "12px 0"
   },
   button: {
-    background: "#fff",
-    border: "1px solid rgba(201, 162, 75, 0.16)",
+    background: "#0c0c0c",
+    border: "1px solid rgba(201, 162, 75, 0.3)",
     borderRadius: 8,
-    color: "#000000",
+    color: "#f4efe4",
     fontWeight: 800,
     minHeight: 44,
     padding: "0 18px"
   },
   link: {
     alignItems: "center",
-    background: "#fff",
+    background: "#0c0c0c",
+    border: "1px solid rgba(201, 162, 75, 0.3)",
     borderRadius: 8,
-    color: "#000000",
+    color: "#f4efe4",
     display: "inline-flex",
     fontWeight: 800,
     minHeight: 44,

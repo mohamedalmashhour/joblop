@@ -282,7 +282,7 @@ const styles: Record2Style = {
   back: { color: "#f4efe4", textDecoration: "none", fontWeight: 600, fontSize: 13 },
   title: { fontSize: "clamp(22px, 3.5vw, 30px)", margin: "6px 0 2px" },
   grid: { display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(320px, 1fr))", gap: 16 },
-  card: { border: "1px solid rgba(201, 162, 75, 0.16)", borderRadius: 12, padding: 16, background: "#fff", display: "flex", flexDirection: "column", gap: 8 },
+  card: { border: "1px solid rgba(201, 162, 75, 0.16)", borderRadius: 12, padding: 16, background: "#0c0c0c", display: "flex", flexDirection: "column", gap: 8 },
   h2: { fontSize: 16, margin: 0 },
   h3: { fontSize: 13, margin: "8px 0 2px", color: "#f4efe4" },
   formRow: { display: "flex", flexWrap: "wrap", gap: 8, alignItems: "center" },

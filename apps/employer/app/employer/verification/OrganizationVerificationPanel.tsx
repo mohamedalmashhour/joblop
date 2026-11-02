@@ -78,9 +78,9 @@ export function OrganizationVerificationPanel() {
   );
 }
 
-const card: React.CSSProperties = { background: "#fff", border: "1px solid rgba(201, 162, 75, 0.16)", borderRadius: 14, padding: 20, display: "flex", flexDirection: "column", gap: 12, maxWidth: 620 };
+const card: React.CSSProperties = { background: "#0c0c0c", border: "1px solid rgba(201, 162, 75, 0.16)", borderRadius: 14, padding: 20, display: "flex", flexDirection: "column", gap: 12, maxWidth: 620 };
 const text: React.CSSProperties = { color: "#f4efe4", margin: 0, lineHeight: 1.55 };
 const dim: React.CSSProperties = { color: "#b3a894", fontSize: 13, margin: 0 };
 const badgeGood: React.CSSProperties = { background: "#dcfce7", color: "#15803d", borderRadius: 999, padding: "5px 14px", fontWeight: 700, fontSize: 14 };
-const badgeNeutral: React.CSSProperties = { background: "#000000", color: "#3a3326", borderRadius: 999, padding: "5px 14px", fontWeight: 700, fontSize: 14, textTransform: "capitalize" };
+const badgeNeutral: React.CSSProperties = { background: "rgba(201, 162, 75, 0.14)", color: "#f4efe4", border: "1px solid rgba(201, 162, 75, 0.3)", borderRadius: 999, padding: "5px 14px", fontWeight: 700, fontSize: 14, textTransform: "capitalize" };
 const button: React.CSSProperties = { alignSelf: "flex-start", background: "#a8842f", color: "#fff", border: "none", borderRadius: 8, padding: "10px 16px", fontSize: 14, fontWeight: 700, cursor: "pointer" };
