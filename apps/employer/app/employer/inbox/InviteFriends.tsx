@@ -42,7 +42,7 @@ export function InviteFriends() {
         </div>
       </div>
       <div style={styles.row}>
-        <input style={styles.input} readOnly value={link} onFocus={(e) => e.currentTarget.select()} aria-label="Your invite link" />
+        <input aria-label="Your invite link" style={styles.input} readOnly value={link} onFocus={(e) => e.currentTarget.select()} />
         <button type="button" style={styles.copyBtn} onClick={() => void copy()}>{copied ? "Copied ✓" : "Copy link"}</button>
         <button type="button" style={styles.shareBtn} onClick={() => void share()}>Share</button>
       </div>

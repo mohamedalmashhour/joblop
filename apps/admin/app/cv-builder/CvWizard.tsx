@@ -182,7 +182,7 @@ export function CvWizard() {
         <Chips options={AVAILABILITY} value={avail} onToggle={(v) => toggle(avail, setAvail, v)} multi />
 
         <h2 style={styles.step}>8 · Most recent employer <span style={styles.hint}>(optional)</span></h2>
-        <input style={{ ...styles.input, width: "100%" }} value={lastJob} onChange={(e) => setLastJob(e.target.value)} placeholder="e.g. Bistro Laval" />
+        <input aria-label="Most recent job" style={{ ...styles.input, width: "100%" }} value={lastJob} onChange={(e) => setLastJob(e.target.value)} placeholder="e.g. Bistro Laval" />
 
         <h2 style={styles.step}>9 · Documents &amp; photo <span style={styles.hint}>(optional)</span></h2>
         <p style={styles.q}>Upload certificates (MAPAQ, RCR, cariste, licence…). They&rsquo;ll be listed on your CV.</p>

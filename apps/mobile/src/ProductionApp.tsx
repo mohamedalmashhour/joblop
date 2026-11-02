@@ -42,10 +42,10 @@ export default function ProductionApp() {
             <Text style={styles.stagingText}>NO REAL PAYMENT · NO PRODUCTION CUSTOMER DATA</Text>
           </View>
         ) : null}
-        <View style={styles.header}>
+        <View accessibilityRole="header" accessibilityLabel={productName} style={styles.header}>
           <Image
-            accessibilityRole="header"
-            accessibilityLabel={productName}
+            accessibilityElementsHidden={true}
+            importantForAccessibility="no-hide-descendants"
             resizeMode="contain"
             source={joblopLogo}
             style={styles.logo}

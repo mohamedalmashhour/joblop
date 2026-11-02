@@ -30,6 +30,7 @@ describe("admin finance read boundary", () => {
           status: "issued",
           currency: "CAD",
           totalMinor: 12500,
+          issuedAt: "2026-11-03T00:00:00.000Z",
           dueAt: null,
           calculationSnapshot: { private: true }
         }]
@@ -41,6 +42,7 @@ describe("admin finance read boundary", () => {
       status: "issued",
       currency: "CAD",
       totalMinor: 12500,
+      issuedAt: "2026-11-03T00:00:00.000Z",
       dueAt: null
     }]);
   });

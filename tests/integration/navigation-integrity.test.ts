@@ -57,6 +57,10 @@ function isColorHex(value: string) {
 }
 
 function isPredicateLiteral(source: string, matchIndex = 0) {
+  // A quote immediately preceded by `/` is the closing delimiter of a regex literal, not a string —
+  // e.g. `.replace(/"/g, "&quot;")`, where the `"` inside `/"/` would otherwise be read as the start
+  // of a route-like literal. Skip it.
+  if (source[matchIndex - 1] === "/") return true;
   return /startsWith\(\s*$/.test(source.slice(Math.max(0, matchIndex - 24), matchIndex));
 }
 
@@ -122,6 +126,12 @@ function matchesRoutePattern(route: string, pattern: string) {
   const patternSegments = pattern.split("/");
   for (let index = 0; index < patternSegments.length; index += 1) {
     const expected = patternSegments[index] ?? "";
+    // Optional catch-all segment (`[[...segments]]`) absorbs zero or more remaining segments, so the
+    // base path (with the segment absent) is also valid — e.g. `/api/cv-pro-orders` served by
+    // `cv-pro-orders/[[...segments]]/route.ts`.
+    if (/^\[\[\.\.\..+\]\]$/u.test(expected)) {
+      return routeSegments.length >= patternSegments.length - 1;
+    }
     // Catch-all segment (`[...segments]`) absorbs this segment and every remaining one.
     if (/^\[\.\.\..+\]$/u.test(expected)) {
       return routeSegments.length >= patternSegments.length;
