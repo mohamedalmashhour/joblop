@@ -20,6 +20,7 @@ import {
   startInvoiceCheckout,
   completeInvoiceCheckout,
   reconcileInvoiceCheckoutPaid,
+  recordInvoiceCheckoutAdjustment,
   isInvoiceCollectionEnabled
 } from "./employerInvoiceCollection";
 import type { PrismaClient } from "@rwos/database";
@@ -74,6 +75,8 @@ function fakePrisma() {
     employerInvoiceCheckout: {
       findUnique: async ({ where }: { where: { organizationId_invoiceId: { organizationId: string; invoiceId: string } } }) =>
         rows.get(key(where.organizationId_invoiceId.organizationId, where.organizationId_invoiceId.invoiceId)) ?? null,
+      findFirst: async ({ where }: { where: { paymentRef: string } }) =>
+        [...rows.values()].find((r) => r.paymentRef === where.paymentRef) ?? null,
       create: async ({ data }: { data: Record<string, unknown> }) => {
         const row: Record<string, unknown> = { id: `chk-${rows.size + 1}`, createdAt: new Date(), paidAt: null, checkoutSessionId: null, paymentRef: null, ...data };
         rows.set(key(row.organizationId as string, row.invoiceId as string), row);
@@ -229,5 +232,46 @@ describe("reconcileInvoiceCheckoutPaid (webhook path)", () => {
     await reconcileInvoiceCheckoutPaid(prisma, repo, { organizationId: ORG, invoiceId: INVOICE, paymentRef: "pi_1" });
     const again = await reconcileInvoiceCheckoutPaid(prisma, repo, { organizationId: ORG, invoiceId: INVOICE, paymentRef: "pi_1" });
     expect(again.status).toBe("already_paid");
+  });
+});
+
+describe("recordInvoiceCheckoutAdjustment (refunds and disputes)", () => {
+  async function paidCheckout() {
+    const prisma = fakePrisma();
+    const { repo, state } = fakeInvoiceRepository(invoice());
+    await startInvoiceCheckout(prisma, repo, { organizationId: ORG, invoiceId: INVOICE, origin: "https://app.test" });
+    await reconcileInvoiceCheckoutPaid(prisma, repo, { organizationId: ORG, invoiceId: INVOICE, paymentRef: "pi_paid" });
+    const row = () => [...prisma.rows.values()][0]!;
+    return { prisma, repo, state, row };
+  }
+
+  it("records a refund without reopening the invoice", async () => {
+    const { prisma, state, row } = await paidCheckout();
+    const result = await recordInvoiceCheckoutAdjustment(prisma, { paymentRef: "pi_paid", adjustment: "refunded" });
+    expect(result).toEqual({ status: "adjusted", invoiceId: INVOICE });
+    expect(row().status).toBe("refunded");
+    expect(state.current.status).toBe("paid");
+  });
+
+  it("keeps a full refund final against later events", async () => {
+    const { prisma, row } = await paidCheckout();
+    await recordInvoiceCheckoutAdjustment(prisma, { paymentRef: "pi_paid", adjustment: "refunded" });
+    await recordInvoiceCheckoutAdjustment(prisma, { paymentRef: "pi_paid", adjustment: "disputed" });
+    expect(row().status).toBe("refunded");
+  });
+
+  it("is not reverted to paid by a replayed paid event", async () => {
+    const { prisma, repo, row } = await paidCheckout();
+    await recordInvoiceCheckoutAdjustment(prisma, { paymentRef: "pi_paid", adjustment: "disputed" });
+    const replay = await reconcileInvoiceCheckoutPaid(prisma, repo, { organizationId: ORG, invoiceId: INVOICE, paymentRef: "pi_paid" });
+    expect(replay.status).toBe("already_paid");
+    expect(row().status).toBe("disputed");
+  });
+
+  it("reports unknown for a PaymentIntent we never recorded", async () => {
+    const { prisma } = await paidCheckout();
+    await expect(
+      recordInvoiceCheckoutAdjustment(prisma, { paymentRef: "pi_other", adjustment: "refunded" })
+    ).resolves.toEqual({ status: "unknown" });
   });
 });

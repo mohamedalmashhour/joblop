@@ -3,6 +3,7 @@ import type { InvoiceActorRole, InvoiceStatus } from "@rwos/shared";
 import type { DurableInvoice, InvoiceRepository } from "./invoiceRepository";
 import { createInvoiceCheckoutSession, verifyInvoiceCheckoutPaid } from "./employerInvoiceStripeCheckout";
 import { isStripeCollectionConfigured } from "./stripeEnvironment";
+import type { InvoiceCheckoutAdjustment } from "./employerInvoiceWebhook";
 
 // Money-flow Phase 1 — employer invoice → Stripe TEST collection orchestration. Mirrors the Worker Pro
 // order repository, but the "order" is an already-issued platform invoice and the terminal effect is the
@@ -35,6 +36,19 @@ export type CheckoutView = Readonly<{
   createdAt: string;
   paidAt: string | null;
 }>;
+
+// Paid, possibly with a recorded refund/dispute outcome. A replayed "paid" event must not overwrite these.
+const SETTLED_CHECKOUT_STATUSES = new Set([
+  "paid",
+  "refunded",
+  "partially_refunded",
+  "disputed",
+  "dispute_won",
+  "dispute_lost"
+]);
+function isSettledRow(row: { status: string }) {
+  return SETTLED_CHECKOUT_STATUSES.has(row.status);
+}
 
 type CheckoutRow = {
   id: string;
@@ -148,7 +162,7 @@ export async function completeInvoiceCheckout(
   if (!invoice) return { ok: false, reason: "invoice_not_found" };
 
   // Already settled (webhook or a prior complete got there first) → idempotent success.
-  if (row.status === "paid" && invoice.status === "paid") {
+  if (isSettledRow(row) && invoice.status === "paid") {
     return { ok: true, invoice, checkout: toView(row) };
   }
 
@@ -179,7 +193,7 @@ export async function reconcileInvoiceCheckoutPaid(
 
   const invoice = await invoiceRepository.get(input.invoiceId, input.organizationId);
   if (!invoice) return { status: "unknown" };
-  if (row.status === "paid" && invoice.status === "paid") {
+  if (isSettledRow(row) && invoice.status === "paid") {
     return { status: "already_paid", invoiceStatus: invoice.status };
   }
 
@@ -247,4 +261,24 @@ async function finalizePaid(
     data: { status: "paid", paymentRef: input.paymentRef, paidAt: input.row.paidAt ?? new Date() }
   })) as unknown as CheckoutRow;
   return { ok: true, invoice: settled, checkout: toView(paidRow) };
+}
+
+/** Record a Stripe refund/dispute outcome on the checkout paid with `paymentRef`. Never reopens the
+ *  invoice or moves money. Returns "unknown" when no paid checkout carries this PaymentIntent. */
+export async function recordInvoiceCheckoutAdjustment(
+  prisma: PrismaClient,
+  input: { paymentRef: string; adjustment: InvoiceCheckoutAdjustment }
+): Promise<Readonly<{ status: "adjusted" | "unknown"; invoiceId?: string }>> {
+  const row = (await prisma.employerInvoiceCheckout.findFirst({
+    where: { paymentRef: input.paymentRef }
+  })) as unknown as CheckoutRow | null;
+  if (!row || row.status === "pending_payment" || row.status === "canceled") return { status: "unknown" };
+  // A full refund is final: a later partial-refund or dispute event cannot overwrite it.
+  if (row.status !== "refunded") {
+    await prisma.employerInvoiceCheckout.update({
+      where: { id: row.id },
+      data: { status: input.adjustment }
+    });
+  }
+  return { status: "adjusted", invoiceId: row.invoiceId };
 }

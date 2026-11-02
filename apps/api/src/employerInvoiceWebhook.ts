@@ -20,12 +20,16 @@ export type CheckoutSessionEventLike = Readonly<{
       currency?: string | null;
       payment_intent?: string | { id?: string } | null;
       metadata?: Record<string, string> | null;
+      // Charge / dispute fields (refund and dispute events).
+      amount?: number;
+      amount_refunded?: number;
+      status?: string;
     }>;
   };
 }>;
 
 export type EmployerInvoiceWebhookResult = Readonly<{
-  status: "reconciled" | "already_paid" | "ignored" | "unknown";
+  status: "reconciled" | "already_paid" | "adjusted" | "ignored" | "unknown";
   eventType: string;
   invoiceId?: string;
   invoiceStatus?: string;
@@ -38,6 +42,36 @@ export class EmployerInvoiceWebhookRejection extends Error {
   ) {
     super(`employer_invoice_webhook_rejected:${code}`);
     this.name = "EmployerInvoiceWebhookRejection";
+  }
+}
+
+export type InvoiceCheckoutAdjustment =
+  | "refunded"
+  | "partially_refunded"
+  | "disputed"
+  | "dispute_won"
+  | "dispute_lost";
+
+// Refund / dispute events are correlated by the PaymentIntent id we stored on the paid checkout row.
+// They only RECORD the outcome; they never reopen the invoice or move money. Finance handles any credit
+// note or re-billing from the recorded status.
+function adjustmentFor(event: CheckoutSessionEventLike): InvoiceCheckoutAdjustment | null {
+  const object = event.data.object;
+  switch (event.type) {
+    case "charge.refunded": {
+      const amount = object.amount ?? 0;
+      const refunded = object.amount_refunded ?? 0;
+      if (refunded <= 0) return null;
+      return refunded >= amount ? "refunded" : "partially_refunded";
+    }
+    case "charge.dispute.created":
+      return "disputed";
+    case "charge.dispute.closed":
+      if (object.status === "won") return "dispute_won";
+      if (object.status === "lost") return "dispute_lost";
+      return null;
+    default:
+      return null;
   }
 }
 
@@ -62,11 +96,29 @@ export function createEmployerInvoiceWebhook(deps: {
     invoiceId: string;
     paymentRef: string | null;
   }): Promise<Readonly<{ status: "reconciled" | "already_paid" | "unknown"; invoiceStatus?: string }>>;
+  // Records a refund/dispute outcome against the checkout paid with this PaymentIntent. Optional so
+  // existing wiring keeps ignoring these events until it opts in.
+  adjust?(input: {
+    paymentRef: string;
+    adjustment: InvoiceCheckoutAdjustment;
+  }): Promise<Readonly<{ status: "adjusted" | "unknown"; invoiceId?: string }>>;
 }) {
   return {
     async resolve(rawBody: Buffer, signature: string): Promise<EmployerInvoiceWebhookResult> {
       const event = await deps.verifyWebhook(rawBody, signature); // signature + test-mode enforced here
       if ((event.livemode === true) !== (deps.expectLivemode ?? false)) throw new EmployerInvoiceWebhookRejection("livemode_rejected");
+
+      const adjustment = adjustmentFor(event);
+      if (adjustment) {
+        const paymentRef = paymentIntentId(event.data.object.payment_intent);
+        if (!deps.adjust || !paymentRef) return { status: "ignored", eventType: event.type };
+        const result = await deps.adjust({ paymentRef, adjustment });
+        return {
+          status: result.status,
+          eventType: event.type,
+          ...(result.invoiceId ? { invoiceId: result.invoiceId } : {})
+        };
+      }
 
       if (!PAID_EVENTS.has(event.type)) return { status: "ignored", eventType: event.type };
 

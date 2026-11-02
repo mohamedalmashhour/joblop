@@ -322,7 +322,11 @@ import { createPrismaPayrollRepository, createPrismaPayrollRateResolver, createP
 import { registerPaymentRoutes } from "./paymentRoutes";
 import { registerStripeWebhookRoute, registerEmployerInvoiceWebhookRoute } from "./stripeWebhookRoute";
 import { createPrismaPaymentRepository, type PaymentRepository } from "./paymentRepository";
-import { reconcileInvoiceCheckoutPaid, isInvoiceCollectionEnabled } from "./employerInvoiceCollection";
+import {
+  reconcileInvoiceCheckoutPaid,
+  recordInvoiceCheckoutAdjustment,
+  isInvoiceCollectionEnabled
+} from "./employerInvoiceCollection";
 import { registerEmployerInvoiceCheckoutRoutes } from "./employerInvoiceCheckoutRoutes";
 import { createEmployerInvoiceWebhook, type CheckoutSessionEventLike } from "./employerInvoiceWebhook";
 import { createStripeClient } from "./stripeTestProvider";
@@ -1170,7 +1174,8 @@ export function buildApi(options: BuildApiOptions = {}) {
             return event as unknown as CheckoutSessionEventLike;
           },
           reconcile: (reconcileInput) =>
-            reconcileInvoiceCheckoutPaid(prisma, invoiceRepository, reconcileInput)
+            reconcileInvoiceCheckoutPaid(prisma, invoiceRepository, reconcileInput),
+          adjust: (adjustInput) => recordInvoiceCheckoutAdjustment(prisma, adjustInput)
         })
       : null);
   if (employerInvoiceWebhook) {
