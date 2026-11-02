@@ -143,7 +143,7 @@ const styles: Record<string, React.CSSProperties> = {
   filter: { border: "1px solid rgba(201, 162, 75, 0.16)", background: "transparent", color: "#f4efe4", borderRadius: 999, padding: "6px 12px", fontSize: 13, fontWeight: 600, cursor: "pointer" },
   filterActive: { border: "1px solid rgba(201, 162, 75, 0.16)", background: "#171511", color: "#fff", borderRadius: 999, padding: "6px 12px", fontSize: 13, fontWeight: 700, cursor: "pointer" },
   list: { listStyle: "none", margin: 0, padding: 0, display: "flex", flexDirection: "column", gap: 12 },
-  item: { border: "1px solid rgba(201, 162, 75, 0.16)", borderRadius: 12, padding: 14, display: "flex", flexDirection: "column", gap: 8, background: "#fff" },
+  item: { border: "1px solid rgba(201, 162, 75, 0.16)", borderRadius: 12, padding: 14, display: "flex", flexDirection: "column", gap: 8, background: "#0c0c0c" },
   itemHead: { display: "flex", justifyContent: "space-between", alignItems: "baseline", gap: 8 },
   statusBadge: { background: "#000000", color: "#f4efe4", borderRadius: 999, padding: "3px 10px", fontSize: 12, fontWeight: 700 },
   dim: { color: "#ece3d2", fontSize: 12 },

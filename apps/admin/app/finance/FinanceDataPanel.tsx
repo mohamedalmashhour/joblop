@@ -213,7 +213,7 @@ function formatMoney(minor: number, currency: string) {
 }
 
 const styles: Record<string, CSSProperties> = {
-  panel: { background: "#fff", border: "1px solid rgba(201, 162, 75, 0.16)", borderRadius: 8, marginTop: 18, padding: 18 },
+  panel: { background: "#0c0c0c", border: "1px solid rgba(201, 162, 75, 0.16)", borderRadius: 8, marginTop: 18, padding: 18 },
   header: { alignItems: "start", display: "flex", gap: 12, justifyContent: "space-between" },
   h2: { color: "#f4efe4", fontSize: 21, margin: 0 },
   h3: { color: "#f4efe4", fontSize: 17, margin: "0 0 10px" },

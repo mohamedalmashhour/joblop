@@ -110,9 +110,9 @@ const styles = {
   eyebrowDark: { color: "#f4efe4", fontSize: 12, fontWeight: 900, textTransform: "uppercase" as const },
   title: { fontSize: "clamp(34px, 5vw, 56px)", margin: "8px 0" },
   lede: { color: "#faf6ec", fontSize: 18, lineHeight: 1.6, maxWidth: 760 },
-  h2: { color: "#000000", fontSize: 25, margin: "6px 0 14px" },
+  h2: { color: "#f4efe4", fontSize: 25, margin: "6px 0 14px" },
   grid: { display: "grid", gap: 18, gridTemplateColumns: "repeat(auto-fit, minmax(300px, 1fr))", padding: "24px clamp(18px, 5vw, 64px) 0" },
-  panel: { background: "#fff", border: "1px solid rgba(201, 162, 75, 0.16)", borderRadius: 14, boxShadow: "0 12px 30px rgba(6,27,65,.08)", padding: 24 },
+  panel: { background: "#0c0c0c", border: "1px solid rgba(201, 162, 75, 0.16)", borderRadius: 14, boxShadow: "0 12px 30px rgba(0,0,0,.4)", padding: 24 },
   advisoryPanel: { background: "#edf8f5", border: "1px solid rgba(201, 162, 75, 0.16)", borderRadius: 14, padding: 24 },
   row: { alignItems: "center", borderBottom: "1px solid rgba(201, 162, 75, 0.16)", display: "flex", gap: 12, justifyContent: "space-between", padding: "12px 0" },
   economicsCard: { background: "#000000", border: "1px solid rgba(201, 162, 75, 0.16)", borderRadius: 10, marginTop: 12, padding: 18 },
@@ -120,8 +120,8 @@ const styles = {
   localState: { background: "#000000", borderRadius: 8, color: "#f4efe4", fontWeight: 800, padding: 12 },
   actionGrid: { display: "flex", flexWrap: "wrap" as const, gap: 10 },
   actionButton: { background: "#171511", border: 0, borderRadius: 8, color: "#fff", cursor: "pointer", fontWeight: 800, minHeight: 44, padding: "0 16px" },
-  secondaryButton: { background: "#fff", borderRadius: 8, color: "#000000", fontWeight: 800, minHeight: 44, padding: "12px 18px", textDecoration: "none" },
+  secondaryButton: { background: "#0c0c0c", border: "1px solid rgba(201, 162, 75, 0.3)", borderRadius: 8, color: "#f4efe4", fontWeight: 800, minHeight: 44, padding: "12px 18px", textDecoration: "none" },
   assignmentLink: { alignItems: "center", background: "#000000", borderRadius: 8, color: "#fff", display: "inline-flex", fontWeight: 800, marginTop: 14, minHeight: 44, padding: "0 16px", textDecoration: "none" },
   boundaryGrid: { display: "grid", gap: 12, gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", padding: "24px clamp(18px, 5vw, 64px) 48px" },
-  boundaryCard: { background: "#fff", border: "1px solid rgba(201, 162, 75, 0.16)", borderRadius: 10, padding: 16 }
+  boundaryCard: { background: "#0c0c0c", border: "1px solid rgba(201, 162, 75, 0.16)", borderRadius: 10, padding: 16 }
 } as const;

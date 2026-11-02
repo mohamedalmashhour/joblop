@@ -423,9 +423,10 @@ const styles = {
   lede: { color: "#faf6ec", fontSize: 18, lineHeight: 1.6, maxWidth: 760 },
   secondaryButton: {
     alignItems: "center",
-    background: "#fff",
+    background: "#0c0c0c",
+    border: "1px solid rgba(201, 162, 75, 0.3)",
     borderRadius: 8,
-    color: "#000000",
+    color: "#f4efe4",
     display: "inline-flex",
     fontWeight: 800,
     minHeight: 44,
@@ -440,18 +441,18 @@ const styles = {
     maxWidth: 240
   },
   retryButton: {
-    background: "#fff",
-    border: "1px solid rgba(201, 162, 75, 0.16)",
+    background: "#0c0c0c",
+    border: "1px solid rgba(201, 162, 75, 0.3)",
     borderRadius: 8,
-    color: "#000000",
+    color: "#f4efe4",
     cursor: "pointer",
     fontWeight: 800,
     minHeight: 44,
     padding: "0 18px"
   },
   primaryButton: {
-    background: "#171511",
-    border: 0,
+    background: "#0c0c0c",
+    border: "1px solid rgba(201, 162, 75, 0.3)",
     borderRadius: 8,
     color: "#fff",
     cursor: "pointer",
@@ -460,10 +461,10 @@ const styles = {
     padding: "0 18px"
   },
   secondaryAction: {
-    background: "#fff",
-    border: "1px solid rgba(201, 162, 75, 0.16)",
+    background: "#0c0c0c",
+    border: "1px solid rgba(201, 162, 75, 0.3)",
     borderRadius: 8,
-    color: "#000000",
+    color: "#f4efe4",
     cursor: "pointer",
     fontWeight: 800,
     minHeight: 44,
@@ -471,8 +472,10 @@ const styles = {
   },
   label: { display: "grid", fontWeight: 800, gap: 8, marginTop: 16 },
   textarea: {
+    background: "#0c0c0c",
     border: "1px solid rgba(201, 162, 75, 0.16)",
     borderRadius: 8,
+    color: "#f4efe4",
     font: "inherit",
     padding: 12,
     resize: "vertical" as const
@@ -490,8 +493,8 @@ const styles = {
     gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))",
     padding: "24px clamp(18px, 5vw, 64px)"
   },
-  panel: { background: "#fff", border: "1px solid rgba(201, 162, 75, 0.16)", borderRadius: 14, padding: 24 },
-  h2: { color: "#000000", fontSize: 25, margin: "6px 0 14px" },
+  panel: { background: "#0c0c0c", border: "1px solid rgba(201, 162, 75, 0.16)", borderRadius: 14, padding: 24 },
+  h2: { color: "#f4efe4", fontSize: 25, margin: "6px 0 14px" },
   row: {
     alignItems: "center",
     borderBottom: "1px solid rgba(201, 162, 75, 0.16)",

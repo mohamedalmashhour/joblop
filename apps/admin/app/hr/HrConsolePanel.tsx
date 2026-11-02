@@ -142,7 +142,7 @@ const styles: Record<string, React.CSSProperties> = {
   searchBar: { display: "flex", flexWrap: "wrap", gap: 8, marginBottom: 12 },
   input: { border: "1px solid rgba(201, 162, 75, 0.16)", borderRadius: 8, padding: "8px 10px", fontSize: 14, minHeight: 38 },
   list: { listStyle: "none", margin: 0, padding: 0, display: "flex", flexDirection: "column", gap: 8 },
-  item: { border: "1px solid rgba(201, 162, 75, 0.16)", borderRadius: 10, background: "#fff" },
+  item: { border: "1px solid rgba(201, 162, 75, 0.16)", borderRadius: 10, background: "#0c0c0c" },
   rowLink: { display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8, padding: "12px 14px", textDecoration: "none", color: "inherit" },
   badge: { background: "#000000", color: "#f4efe4", borderRadius: 999, padding: "2px 9px", fontSize: 12, fontWeight: 700 },
   badgeWarn: { background: "#0c0c0c", color: "#b3a894", borderRadius: 999, padding: "2px 9px", fontSize: 12, fontWeight: 700 },
