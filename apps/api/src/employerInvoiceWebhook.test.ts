@@ -81,6 +81,22 @@ describe("employer invoice webhook", () => {
     void recovery;
   });
 
+  it("in live mode, accepts live events and rejects test-mode events", async () => {
+    const reconcile = vi.fn(async () => ({ status: "reconciled" as const, invoiceStatus: "paid" }));
+    const live = createEmployerInvoiceWebhook({
+      expectLivemode: true,
+      verifyWebhook: async () => ({ ...event(), livemode: true }),
+      reconcile
+    });
+    await expect(live.resolve(RAW, "sig")).resolves.toMatchObject({ status: "reconciled" });
+    const testEventInLive = createEmployerInvoiceWebhook({
+      expectLivemode: true,
+      verifyWebhook: async () => event(),
+      reconcile: vi.fn()
+    });
+    await expect(testEventInLive.resolve(RAW, "sig")).rejects.toMatchObject({ code: "livemode_rejected" });
+  });
+
   it("reads the PaymentIntent id from an expanded object", async () => {
     const { recovery, reconcile } = handler(event({ payment_intent: { id: "pi_expanded" } }));
     await recovery.resolve(RAW, "sig");

@@ -54,6 +54,8 @@ function paymentIntentId(value: CheckoutSessionEventLike["data"]["object"]["paym
 export function createEmployerInvoiceWebhook(deps: {
   // Verifies the Stripe signature and enforces test-mode (livemode=false), returning the parsed event
   // or throwing. Reuse the Stripe test provider's constructEvent — this handler adds no signature logic.
+  // Defaults to false (test mode). Live deployments pass true; any mismatch is rejected.
+  expectLivemode?: boolean;
   verifyWebhook(rawBody: Buffer, signature: string): Promise<CheckoutSessionEventLike>;
   reconcile(input: {
     organizationId: string;
@@ -64,7 +66,7 @@ export function createEmployerInvoiceWebhook(deps: {
   return {
     async resolve(rawBody: Buffer, signature: string): Promise<EmployerInvoiceWebhookResult> {
       const event = await deps.verifyWebhook(rawBody, signature); // signature + test-mode enforced here
-      if (event.livemode === true) throw new EmployerInvoiceWebhookRejection("livemode_rejected");
+      if ((event.livemode === true) !== (deps.expectLivemode ?? false)) throw new EmployerInvoiceWebhookRejection("livemode_rejected");
 
       if (!PAID_EVENTS.has(event.type)) return { status: "ignored", eventType: event.type };
 
