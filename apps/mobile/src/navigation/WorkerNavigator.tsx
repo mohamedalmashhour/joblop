@@ -47,17 +47,12 @@ export function WorkerNavigator({
   transport,
   offerId,
   authenticated,
-  onAuthenticatedChange,
-  allowFixturePreview
+  onAuthenticatedChange
 }: {
   transport: MobileSessionTransport | null;
   offerId: string | null;
   authenticated: boolean;
   onAuthenticatedChange: (next: boolean) => void;
-  // Whether the worker calendar may surface its local fixture preview. The production entry point
-  // passes false so fixture data can never reach a production build (enforced by
-  // tests/integration/production-fixture-exclusion.test.ts).
-  allowFixturePreview: boolean;
 }) {
   const { t: tr } = useLocale();
   // A deep-linked offer opens the Calendar tab; otherwise the hub.
@@ -122,13 +117,13 @@ export function WorkerNavigator({
         // Normal open → the worker's month calendar, with a button to their offers (accept/decline).
         // A deep-linked offer → the offer panel directly so the existing accept flow still works.
         return offerId ? (
-          <WorkerCalendarPanel allowFixturePreview={allowFixturePreview} offerId={offerId} transport={transport} />
+          <WorkerCalendarPanel allowFixturePreview={false} offerId={offerId} transport={transport} />
         ) : (
           <MonthCalendarScreen transport={transport} onOpenOffers={() => push({ name: "offers" })} />
         );
       case "offers":
         // The worker's targeted offers — accept or decline (respondToWorkerOffer, with terms confirm).
-        return <WorkerCalendarPanel allowFixturePreview={allowFixturePreview} offerId={null} transport={transport} />;
+        return <WorkerCalendarPanel allowFixturePreview={false} offerId={null} transport={transport} />;
       case "attendance":
         return <WorkerScheduleScreen transport={transport} onBack={back} />;
       case "timesheet":

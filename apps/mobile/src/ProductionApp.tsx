@@ -42,7 +42,7 @@ export default function ProductionApp() {
             <Text style={styles.stagingText}>NO REAL PAYMENT · NO PRODUCTION CUSTOMER DATA</Text>
           </View>
         ) : null}
-        <View accessibilityRole="header" style={styles.header}>
+        <View accessibilityRole="header" accessibilityLabel={productName} style={styles.header}>
           <Image
             accessibilityElementsHidden={true}
             importantForAccessibility="no-hide-descendants"
@@ -50,11 +50,10 @@ export default function ProductionApp() {
             source={joblopLogo}
             style={styles.logo}
           />
-          <Text style={styles.subtitle}>{productName} · Workforce marketplace</Text>
+          <Text style={styles.subtitle}>Workforce marketplace</Text>
         </View>
         <View style={styles.content}>
           <WorkerNavigator
-            allowFixturePreview={false}
             authenticated={authenticated}
             offerId={offerId}
             onAuthenticatedChange={setAuthenticated}

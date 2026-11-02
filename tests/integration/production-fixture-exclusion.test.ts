@@ -45,7 +45,12 @@ describe("production fixture exclusion policy", () => {
     expect(bootstrap).toContain(
       'isProductionWorkerBuild() ? import("./src/ProductionApp") : import("./App")'
     );
-    expect(source("apps/mobile/src/ProductionApp.tsx")).toContain("allowFixturePreview={false}");
+    // The worker calendar (which owns the fixture preview) is mounted by the navigator, which
+    // hardcodes the production-safe value — ProductionApp renders the navigator rather than the
+    // calendar directly. Same guard the mobile runtime test asserts on WorkerNavigator.
+    expect(source("apps/mobile/src/navigation/WorkerNavigator.tsx")).toContain(
+      "allowFixturePreview={false}"
+    );
   });
 });
 
