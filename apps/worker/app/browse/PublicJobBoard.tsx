@@ -436,85 +436,7 @@ export function PublicJobBoard() {
       {/* NAV */}
       <SiteHeader />
 
-      {/* HERO */}
-      <section className="jl-hero">
-        <div className="jl-hero-in">
-          <div className="jl-hero-copy">
-            <span className="jl-free-pill">✓ {t.freePill}</span>
-            <h1>{t.heroA}<br /><span className="jl-hl-accent">{t.heroB}</span></h1>
-            <p>{t.heroSub}</p>
-            <div className="jl-tabs">
-              <button className={tab === "find" ? "on" : ""} onClick={() => setTab("find")}>🔍 {t.tabFind}</button>
-              <button className={tab === "hire" ? "on" : ""} onClick={() => setTab("hire")}>🧑‍💼 {t.tabHire}</button>
-            </div>
-            {tab === "find" ? (
-              <form className="jl-search" onSubmit={(e) => { e.preventDefault(); scrollToJobs(); void load(); }}>
-                <div className="jl-sf"><span>🔎</span><input value={q} onChange={(e) => setQ(e.target.value)} placeholder={t.phRole} aria-label={t.phRole} /></div>
-                <div className="jl-sf jl-sf-loc"><span>📍</span>
-                  <select value={province} onChange={(e) => setProvince(e.target.value)} aria-label={t.phLoc}>
-                    <option value="">{t.allCanada}</option>
-                    {PROVINCES.map((p) => <option key={p.code} value={p.code}>{lang === "ar" ? p.ar : lang === "fr" ? p.fr : p.en}</option>)}
-                  </select>
-                </div>
-                <button type="submit" className="jl-search-btn">{t.searchBtn}</button>
-              </form>
-            ) : (
-              <a href={EMPLOYER_URL} className="jl-hire-cta">{t.empBtn} →</a>
-            )}
-            {tab === "find" && (
-              <div className="jl-popular">
-                <span>{t.popular}</span>
-                {CATEGORIES.slice(0, 4).map((c) => (
-                  <button key={c.q} onClick={() => { setQ(c.q); scrollToJobs(); }}>{c[lang]}</button>
-                ))}
-              </div>
-            )}
-
-            {/* Live search demo: real matches appear as the visitor types — proof of the deep search. */}
-            {tab === "find" && (
-              <div className="jl-preview">
-                <div className="jl-preview-head">
-                  <span className="jl-preview-dot" /> {t.previewLive}
-                  {jobs !== null && jobs.length > 0 ? <span className="jl-preview-n">{jobs.length} {t.st1}</span> : null}
-                </div>
-                {jobs === null ? (
-                  <div className="jl-preview-empty">{t.loading}</div>
-                ) : jobs.length === 0 ? (
-                  <div className="jl-preview-empty">{t.previewEmpty}</div>
-                ) : (
-                  <>
-                    {jobs.slice(0, 3).map((j) => (
-                      <a key={j.jobCode} href="/" className="jl-preview-row">
-                        <span className="jl-preview-ic">{iconFor(j.role)}</span>
-                        <span className="jl-preview-main"><strong>{j.role}</strong><em>📍 {j.areaLabel}</em></span>
-                        {(j.urgency === "urgent" || j.urgency === "immediate") ? <span className="jl-preview-u">{t.urgent}</span> : null}
-                      </a>
-                    ))}
-                    <a href="/" className="jl-preview-more">🔓 {t.previewMore} →</a>
-                  </>
-                )}
-              </div>
-            )}
-          </div>
-          <div className="jl-hero-art" aria-hidden="true">
-            <div className="jl-blob" />
-            <div className="jl-pcard">
-              <div className="jl-pcard-top"><span className="jl-pcard-tag">✦ {t.pcTag}</span></div>
-              <strong className="jl-pcard-h">{t.pcTitle}</strong>
-              {PREVIEW.map((p) => (
-                <div className="jl-pcard-row" key={p.en}>
-                  <span className="jl-pcard-ic">{p.icon}</span>
-                  <span className="jl-pcard-m"><b>{p[lang]}</b><em>{lang === "ar" ? p.areaAr : lang === "fr" ? p.areaFr : p.areaEn}</em></span>
-                  <span className="jl-pcard-t">{lang === "ar" ? p.tagAr : lang === "fr" ? p.tagFr : p.tagEn}</span>
-                </div>
-              ))}
-            </div>
-            <div className="jl-fc jl-fc-badge"><div className="jl-fc-ic">🗂️</div><div><strong>{openCount ?? "—"}</strong><span>{t.cStat1}</span></div></div>
-          </div>
-        </div>
-      </section>
-
-      {/* CHOOSE YOUR PATH — moved up: one clear fork for workers vs clients, right under the hero */}
+      {/* CHOOSE YOUR PATH — pulled to the very top (owner spec): the role fork is the first thing. */}
       <section className="jl-sec" id="paths">
         <div className="jl-wrap">
           <div className="jl-magnet">
@@ -551,6 +473,43 @@ export function PublicJobBoard() {
                 <a href={`${EMPLOYER_URL}/signin`} className="jl-link">{t.signin} →</a>
               </div>
             </div>
+          </div>
+        </div>
+      </section>
+
+      {/* HERO */}
+      <section className="jl-hero">
+        <div className="jl-hero-in">
+          <div className="jl-hero-copy">
+            <span className="jl-free-pill">✓ {t.freePill}</span>
+            <h1>{t.heroA}<br /><span className="jl-hl-accent">{t.heroB}</span></h1>
+            <p>{t.heroSub}</p>
+            <div className="jl-tabs">
+              <button className={tab === "find" ? "on" : ""} onClick={() => setTab("find")}>🔍 {t.tabFind}</button>
+              <button className={tab === "hire" ? "on" : ""} onClick={() => setTab("hire")}>🧑‍💼 {t.tabHire}</button>
+            </div>
+            {/* Owner spec: hero search box removed (it read as "JobScanner"); the two role actions stay.
+                Find a job -> internal Joblop jobs on this page; Hire talent -> employer app. */}
+            {tab === "find" ? (
+              <a href="/browse#jobs" className="jl-hire-cta" onClick={(e) => { e.preventDefault(); scrollToJobs(); }}>{t.tabFind} →</a>
+            ) : (
+              <a href={EMPLOYER_URL} className="jl-hire-cta">{t.empBtn} →</a>
+            )}
+          </div>
+          <div className="jl-hero-art" aria-hidden="true">
+            <div className="jl-blob" />
+            <div className="jl-pcard">
+              <div className="jl-pcard-top"><span className="jl-pcard-tag">✦ {t.pcTag}</span></div>
+              <strong className="jl-pcard-h">{t.pcTitle}</strong>
+              {PREVIEW.map((p) => (
+                <div className="jl-pcard-row" key={p.en}>
+                  <span className="jl-pcard-ic">{p.icon}</span>
+                  <span className="jl-pcard-m"><b>{p[lang]}</b><em>{lang === "ar" ? p.areaAr : lang === "fr" ? p.areaFr : p.areaEn}</em></span>
+                  <span className="jl-pcard-t">{lang === "ar" ? p.tagAr : lang === "fr" ? p.tagFr : p.tagEn}</span>
+                </div>
+              ))}
+            </div>
+            <div className="jl-fc jl-fc-badge"><div className="jl-fc-ic">🗂️</div><div><strong>{openCount ?? "—"}</strong><span>{t.cStat1}</span></div></div>
           </div>
         </div>
       </section>
