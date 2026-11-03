@@ -29,7 +29,10 @@ const STATUS_KEY: Record<string, MessageKey> = {
 const DOCUMENT_TYPES: ReadonlyArray<{ value: string; labelKey: MessageKey }> = [
   { value: "work_authorization", labelKey: "doc.typeWorkAuth" },
   { value: "identity", labelKey: "doc.typeIdentity" },
+  { value: "cv", labelKey: "doc.typeCv" },
   { value: "licence", labelKey: "doc.typeLicence" },
+  { value: "certificate", labelKey: "doc.typeCertificate" },
+  { value: "photo", labelKey: "doc.typePhoto" },
   { value: "first_aid", labelKey: "doc.typeFirstAid" },
   { value: "qc_healthcare_doc", labelKey: "doc.typeQcHealth" },
   { value: "sin", labelKey: "doc.typeSin" },
@@ -128,7 +131,15 @@ export function MyDocuments() {
       {notice ? <p className="notice" role="status" style={{ color: "var(--accent)" }}>{notice}</p> : null}
       {error ? <p className="notice" role="alert" style={{ color: "var(--danger)" }}>{error}</p> : null}
 
-      <form className="searchbar" onSubmit={(e) => { e.preventDefault(); void submit(docType, replacing, files); }}>
+      <form className="searchbar" onSubmit={(e) => {
+        e.preventDefault();
+        // Cap: at most 6 live certificates (existing non-superseded + the files being added).
+        if (docType === "certificate" && !replacing) {
+          const existing = state.documents.filter((d) => d.documentType === "certificate" && !d.supersededById).length;
+          if (existing + files.length > 6) { setError(t("doc.certLimit")); return; }
+        }
+        void submit(docType, replacing, files);
+      }}>
         <div className="field grow">
           <label htmlFor="doctype">{t("doc.documentType")}</label>
           <select id="doctype" value={docType} onChange={(e) => setDocType(e.target.value)} aria-describedby="doctype-help">
