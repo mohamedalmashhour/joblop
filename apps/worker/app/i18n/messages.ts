@@ -7,7 +7,7 @@ export const en = {
   // Brand / shell
   "brand.tagline": "Find work near you",
   "nav.verification": "Verification",
-  "nav.hr": "My HR",
+  "nav.hr": "HR Profile",
   "nav.documents": "Documents",
   "nav.schedule": "My schedule",
   "nav.pay": "My pay",
@@ -520,7 +520,7 @@ export const fr: Messages = {
   // Marque / coquille
   "brand.tagline": "Trouvez du travail près de chez vous",
   "nav.verification": "Vérification",
-  "nav.hr": "Mes RH",
+  "nav.hr": "Profil RH",
   "nav.documents": "Documents",
   "nav.schedule": "Mon horaire",
   "nav.pay": "Ma paie",
@@ -1035,7 +1035,7 @@ export const ar: Partial<Messages> = {
   // Brand / shell + nav
   "brand.tagline": "اعثر على عمل بالقرب منك",
   "nav.verification": "التحقق",
-  "nav.hr": "مواردي البشرية",
+  "nav.hr": "ملف الموارد البشرية",
   "nav.documents": "المستندات",
   "nav.schedule": "جدولي",
   "nav.pay": "مستحقاتي",
