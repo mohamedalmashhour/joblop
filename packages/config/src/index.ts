@@ -67,6 +67,11 @@ const runtimeConfigSchema = z
       )
       .optional(),
     PASSWORD_RESET_PUBLIC_ORIGIN: z.string().url().optional(),
+    // Transactional SMS (Brevo) — reuses BREVO_API_KEY. SMS_SENDER is the alphanumeric sender id shown
+    // on the recipient's phone (max 11 chars, e.g. "JobLop"). SMS costs money per message, so it is
+    // double-gated: it only sends when SMS_ENABLED=enabled AND the key + sender are present. Defaults OFF.
+    SMS_ENABLED: z.enum(["disabled", "enabled"]).default("disabled"),
+    SMS_SENDER: z.string().min(1).max(32).optional(),
     STRIPE_TEST_MODE_ENABLED: z.enum(["disabled", "enabled"]).default("disabled"),
     STRIPE_TEST_SECRET_KEY: z.string().min(1).optional(),
     STRIPE_TEST_WEBHOOK_SECRET: z.string().min(1).optional(),
@@ -456,6 +461,12 @@ export function getRuntimeConfig(env: NodeJS.ProcessEnv = process.env) {
       (parsed.EMAIL_PROVIDER === "resend" ? parsed.RESEND_API_KEY : parsed.BREVO_API_KEY) &&
         parsed.EMAIL_FROM
     ),
+    // Transactional SMS (Brevo): reuses the Brevo key. Enabled only when SMS_ENABLED=enabled.
+    smsEnabled: parsed.SMS_ENABLED === "enabled",
+    smsSender: parsed.SMS_SENDER,
+    smsApiKey: parsed.BREVO_API_KEY,
+    // True only when the key + sender are present; the enable flag is a separate money gate.
+    hasSmsDelivery: Boolean(parsed.BREVO_API_KEY && parsed.SMS_SENDER),
     stripeTestModeEnabled: parsed.STRIPE_TEST_MODE_ENABLED === "enabled",
     stripeTestSecretKey: parsed.STRIPE_TEST_SECRET_KEY,
     stripeTestWebhookSecret: parsed.STRIPE_TEST_WEBHOOK_SECRET,

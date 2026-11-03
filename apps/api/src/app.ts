@@ -281,6 +281,7 @@ import {
   type EmailVerificationService
 } from "./emailVerification";
 import { createEmailSender, type EmailSender } from "./mailer/emailSender";
+import { createSmsSender, type SmsSender } from "./mailer/smsSender";
 import {
   createPasswordResetService,
   passwordResetAccepted,
@@ -353,6 +354,7 @@ export interface BuildApiOptions {
   emailVerificationService?: EmailVerificationService;
   passwordResetService?: PasswordResetService;
   emailSender?: EmailSender;
+  smsSender?: SmsSender;
   authorizationService?: AuthorizationService;
   membershipService?: OrganizationMembershipService;
   organizationService?: EmployerOrganizationService;
@@ -563,6 +565,17 @@ export function buildApi(options: BuildApiOptions = {}) {
       from: runtimeConfig.emailFrom,
       provider: runtimeConfig.emailProvider
     });
+  // Transactional SMS twin of emailSender. Double-gated: no-op unless the Brevo key + sender are set
+  // AND SMS_ENABLED=enabled (SMS costs money per message). Threaded into notification sites alongside
+  // emailSender; today it is instantiated and gated OFF by default.
+  const smsSender =
+    options.smsSender ??
+    createSmsSender({
+      apiKey: runtimeConfig.smsApiKey,
+      sender: runtimeConfig.smsSender,
+      enabled: runtimeConfig.smsEnabled
+    });
+  void smsSender;
   const authService =
     options.authService ??
     createAuthenticationService(authenticationRepository!, {
