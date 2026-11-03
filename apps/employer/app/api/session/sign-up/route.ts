@@ -31,6 +31,7 @@ export async function POST(request: Request) {
       email: body.email,
       password: body.password,
       displayName: body.displayName ?? null,
+      phone: body.phone ?? null,
       referralCode: body.referralCode ?? null
     },
     (issuedToken) => {
@@ -84,6 +85,7 @@ function validRegistration(
   confirmPassword: string;
   acceptedNotices: true;
   displayName?: string | null;
+  phone?: string | null;
   referralCode?: string | null;
 } {
   if (typeof input !== "object" || input === null) return false;
@@ -98,6 +100,9 @@ function validRegistration(
     record.acceptedNotices === true &&
     (record.displayName === undefined ||
       record.displayName === null ||
-      typeof record.displayName === "string")
+      typeof record.displayName === "string") &&
+    (record.phone === undefined ||
+      record.phone === null ||
+      typeof record.phone === "string")
   );
 }

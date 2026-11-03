@@ -15,6 +15,7 @@ import { VerifyEmailPanel } from "./VerifyEmailPanel";
 export function SignUpForm({ registrationOpen }: { registrationOpen: boolean }) {
   const t = useT();
   const [fullName, setFullName] = useState("");
+  const [phone, setPhone] = useState("");
   const [email, setEmail] = useState("");
   const [confirmEmail, setConfirmEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -78,6 +79,7 @@ export function SignUpForm({ registrationOpen }: { registrationOpen: boolean }) 
           confirmPassword,
           acceptedNotices,
           displayName: fullName || null,
+          phone: phone.trim() || null,
           referralCode
         })
       });
@@ -135,6 +137,17 @@ export function SignUpForm({ registrationOpen }: { registrationOpen: boolean }) 
           value={fullName}
           onChange={(event) => setFullName(event.target.value)}
           placeholder={t("auth.fullNamePlaceholder")}
+        />
+      </label>
+      <label style={styles.fieldLabel}>
+        {t("auth.phone")}
+        <input
+          style={styles.input}
+          type="tel"
+          autoComplete="tel"
+          value={phone}
+          onChange={(event) => setPhone(event.target.value)}
+          placeholder={t("auth.phonePlaceholder")}
         />
       </label>
       <label style={styles.fieldLabel}>
