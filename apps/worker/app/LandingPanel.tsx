@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { trackConversion } from "./analytics";
-import { useT } from "./i18n/LocaleProvider";
+import { useLocale, useT } from "./i18n/LocaleProvider";
 import { VerifyEmail } from "./VerifyEmail";
 
 // Client-side strong-password generator for the "suggest a strong password" helper. 20 chars,
@@ -138,6 +138,7 @@ function GoogleAuthButton() {
 
 function SignInForm({ onSignedIn, onNeedAccount }: { onSignedIn: () => void; onNeedAccount: () => void }) {
   const t = useT();
+  const locale = useLocale();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [showPw, setShowPw] = useState(false);
@@ -170,6 +171,7 @@ function SignInForm({ onSignedIn, onNeedAccount }: { onSignedIn: () => void; onN
       <label htmlFor="si-password">{t("auth.password")}</label>
       <input id="si-password" type={showPw ? "text" : "password"} autoComplete="current-password" value={password} onChange={(e) => setPassword(e.target.value)} required />
       <button type="button" className="linkbtn" aria-pressed={showPw} onClick={() => setShowPw((v) => !v)} style={{ alignSelf: "flex-start", marginTop: 4 }}>{showPw ? t("auth.hidePassword") : t("auth.showPassword")}</button>
+      <a className="linkbtn" href="/forgot-password" style={{ alignSelf: "flex-start", marginTop: 2 }}>{locale === "ar" ? "نسيت كلمة المرور؟" : locale.startsWith("fr") ? "Mot de passe oublié ?" : "Forgot password?"}</a>
       {error ? <p className="notice" role="alert" style={{ color: "var(--danger)" }}>{error}</p> : null}
       <button className="btn" type="submit" disabled={busy}>{busy ? t("auth.signingIn") : t("auth.signIn")}</button>
       <p className="auth-switch">{t("auth.needAccount")} <button type="button" className="linkbtn" onClick={onNeedAccount}>{t("auth.tabCreate")}</button></p>
