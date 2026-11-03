@@ -247,6 +247,7 @@ function SignUpForm({ onSignedIn, onHaveAccount }: { onSignedIn: () => void; onH
       <input id="su-name" type="text" autoComplete="name" value={name} onChange={(e) => setName(e.target.value)} placeholder={t("signup.namePlaceholder")} />
       <label htmlFor="su-phone">{t("signup.phone")}</label>
       <input id="su-phone" type="tel" autoComplete="tel" value={phone} onChange={(e) => setPhone(e.target.value)} placeholder={t("signup.phonePlaceholder")} />
+      <p id="su-sms-consent" className="notice" style={{ margin: "2px 0 0", fontSize: 12, lineHeight: 1.4 }}>{withBrand(t("hr.smsConsent"))}</p>
       <label htmlFor="su-email">{t("auth.email")}</label>
       <input id="su-email" type="email" autoComplete="username" value={email} onChange={(e) => setEmail(e.target.value)} required />
       <label htmlFor="su-confirm-email">{t("signup.confirmEmail")}</label>
