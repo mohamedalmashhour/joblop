@@ -282,6 +282,7 @@ import {
 } from "./emailVerification";
 import { createEmailSender, type EmailSender } from "./mailer/emailSender";
 import { createSmsSender, type SmsSender } from "./mailer/smsSender";
+import { createMarketingContactSync, type MarketingContactSync } from "./mailer/brevoContacts";
 import { runShiftReminderSweep } from "./shiftReminderSweep";
 import {
   createPasswordResetService,
@@ -356,6 +357,7 @@ export interface BuildApiOptions {
   passwordResetService?: PasswordResetService;
   emailSender?: EmailSender;
   smsSender?: SmsSender;
+  marketingContactSync?: MarketingContactSync;
   authorizationService?: AuthorizationService;
   membershipService?: OrganizationMembershipService;
   organizationService?: EmployerOrganizationService;
@@ -575,6 +577,15 @@ export function buildApi(options: BuildApiOptions = {}) {
       apiKey: runtimeConfig.smsApiKey,
       sender: runtimeConfig.smsSender,
       enabled: runtimeConfig.smsEnabled
+    });
+  // CASL step 2: sync opted-in workers to a Brevo marketing list. Gated OFF by default; never blocks
+  // a profile save, never affects transactional email/SMS.
+  const marketingContactSync =
+    options.marketingContactSync ??
+    createMarketingContactSync({
+      apiKey: runtimeConfig.smsApiKey,
+      listId: runtimeConfig.marketingListId,
+      enabled: runtimeConfig.marketingSyncEnabled
     });
   const authService =
     options.authService ??
@@ -4353,6 +4364,15 @@ export function buildApi(options: BuildApiOptions = {}) {
     try {
       const body = (request.body ?? {}) as Record<string, unknown>;
       const intake = await hrService.upsertWorkerIntake({ userId: session.user.id, input: body });
+      // CASL step 2: when the worker changed their marketing consent, reflect it in the Brevo list
+      // (best-effort, gated, fail-soft — never blocks the save, never touches transactional sending).
+      if ("marketingEmailOptIn" in body && session.user.emailNormalized) {
+        const email = session.user.emailNormalized;
+        void (intake.marketingEmailOptIn
+          ? marketingContactSync.optIn({ email })
+          : marketingContactSync.optOut({ email })
+        ).catch(() => undefined);
+      }
       return reply.code(200).send(intake);
     } catch (error) {
       return sendHrError(reply, error);

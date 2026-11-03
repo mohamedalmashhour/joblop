@@ -75,6 +75,10 @@ const runtimeConfigSchema = z
     // Shared secret for the pre-shift reminder sweep trigger (a scheduled cron calls the internal
     // endpoint with this token). Fail-closed: when unset, the sweep endpoint is disabled (404).
     SHIFT_REMINDER_SWEEP_TOKEN: z.string().min(16).optional(),
+    // Marketing contact sync (Brevo, CASL step 2) — reuses BREVO_API_KEY. BREVO_MARKETING_LIST_ID is the
+    // numeric Brevo list opted-in contacts are synced into. Gated: only syncs when MARKETING_SYNC_ENABLED.
+    MARKETING_SYNC_ENABLED: z.enum(["disabled", "enabled"]).default("disabled"),
+    BREVO_MARKETING_LIST_ID: z.coerce.number().int().positive().optional(),
     STRIPE_TEST_MODE_ENABLED: z.enum(["disabled", "enabled"]).default("disabled"),
     STRIPE_TEST_SECRET_KEY: z.string().min(1).optional(),
     STRIPE_TEST_WEBHOOK_SECRET: z.string().min(1).optional(),
@@ -471,6 +475,8 @@ export function getRuntimeConfig(env: NodeJS.ProcessEnv = process.env) {
     // True only when the key + sender are present; the enable flag is a separate money gate.
     hasSmsDelivery: Boolean(parsed.BREVO_API_KEY && parsed.SMS_SENDER),
     shiftReminderSweepToken: parsed.SHIFT_REMINDER_SWEEP_TOKEN,
+    marketingSyncEnabled: parsed.MARKETING_SYNC_ENABLED === "enabled",
+    marketingListId: parsed.BREVO_MARKETING_LIST_ID,
     stripeTestModeEnabled: parsed.STRIPE_TEST_MODE_ENABLED === "enabled",
     stripeTestSecretKey: parsed.STRIPE_TEST_SECRET_KEY,
     stripeTestWebhookSecret: parsed.STRIPE_TEST_WEBHOOK_SECRET,
