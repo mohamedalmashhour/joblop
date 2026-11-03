@@ -1,5 +1,5 @@
 import { randomBytes } from "node:crypto";
-import { cookies } from "next/headers";
+import { NextResponse } from "next/server";
 import { sessionBoundary } from "../../../sessionBoundary";
 import { GOOGLE_STATE_COOKIE, GOOGLE_STATE_PATH } from "../state";
 
@@ -21,15 +21,17 @@ export async function GET(request: Request) {
   const redirectUri = `${origin}/api/auth/google/callback`;
   const authUrl = await gateway.googleAuthorizeUrl({ redirectUri, state, withCalendar });
   if (!authUrl) {
-    return Response.redirect(`${origin}/?google=unavailable`, 302);
+    return NextResponse.redirect(`${origin}/?google=unavailable`, 302);
   }
-  const store = await cookies();
-  store.set(GOOGLE_STATE_COOKIE, JSON.stringify({ state, withCalendar }), {
+  // Set the CSRF-state cookie ON the redirect response. A bare Response.redirect() drops any cookie
+  // set via next/headers, so the callback would never see the state and would fail with ?google=error.
+  const response = NextResponse.redirect(authUrl, 302);
+  response.cookies.set(GOOGLE_STATE_COOKIE, JSON.stringify({ state, withCalendar }), {
     httpOnly: true,
     sameSite: "lax",
     secure: process.env.NODE_ENV === "production",
     path: GOOGLE_STATE_PATH,
     maxAge: 600
   });
-  return Response.redirect(authUrl, 302);
+  return response;
 }

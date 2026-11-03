@@ -1,10 +1,19 @@
 import { cookies } from "next/headers";
+import { NextResponse } from "next/server";
 import {
   sessionBoundary,
   sessionCookieName,
   sessionCookieOptions
 } from "../../../sessionBoundary";
 import { GOOGLE_STATE_COOKIE, GOOGLE_STATE_PATH } from "../state";
+
+// Build a redirect that actually carries its Set-Cookie. A bare Response.redirect() drops cookies set
+// via next/headers, so the session cookie (and state clear) must ride on a NextResponse instead.
+function redirectTo(url: string, setCookies: (res: NextResponse) => void = () => {}): NextResponse {
+  const res = NextResponse.redirect(url, 302);
+  setCookies(res);
+  return res;
+}
 
 function publicOrigin(request: Request): string {
   const site = process.env.NEXT_PUBLIC_SITE_URL?.trim();
@@ -22,7 +31,9 @@ export async function GET(request: Request) {
 
   const store = await cookies();
   const raw = store.get(GOOGLE_STATE_COOKIE)?.value ?? null;
-  store.set(GOOGLE_STATE_COOKIE, "", { path: GOOGLE_STATE_PATH, maxAge: 0 });
+  // Clear the one-time state cookie on every outgoing response.
+  const clearState = (res: NextResponse) =>
+    res.cookies.set(GOOGLE_STATE_COOKIE, "", { path: GOOGLE_STATE_PATH, maxAge: 0 });
 
   let expected: { state?: unknown; withCalendar?: unknown } | null;
   try {
@@ -39,10 +50,10 @@ export async function GET(request: Request) {
     typeof expected.state !== "string" ||
     expected.state !== returnedState
   ) {
-    return Response.redirect(`${origin}/?google=error`, 302);
+    return redirectTo(`${origin}/?google=error`, clearState);
   }
 
-  const { cookieStore, gateway, token } = await sessionBoundary();
+  const { gateway, token } = await sessionBoundary();
   if (token) {
     // Already signed in. If this was a "Connect Google Calendar" grant, link it to the current
     // account; otherwise don't silently swap accounts.
@@ -51,14 +62,15 @@ export async function GET(request: Request) {
         { code, redirectUri: `${origin}/api/auth/google/callback` },
         token
       );
-      return Response.redirect(
+      return redirectTo(
         `${origin}/schedule?calendar=${link.status === "ok" ? "connected" : "error"}`,
-        302
+        clearState
       );
     }
-    return Response.redirect(`${origin}/?google=already`, 302);
+    return redirectTo(`${origin}/?google=already`, clearState);
   }
 
+  let issuedToken: string | null = null;
   const result = await gateway.googleExchange(
     {
       code,
@@ -66,12 +78,16 @@ export async function GET(request: Request) {
       withCalendar: expected.withCalendar === true
     },
     (issued) => {
-      cookieStore.set(sessionCookieName, issued, sessionCookieOptions);
+      issuedToken = issued;
     }
   );
 
   if (result.status !== "ok") {
-    return Response.redirect(`${origin}/?google=failed`, 302);
+    return redirectTo(`${origin}/?google=failed`, clearState);
   }
-  return Response.redirect(`${origin}/`, 302);
+  // Set the session cookie ON the redirect response so it actually persists.
+  return redirectTo(`${origin}/`, (res) => {
+    clearState(res);
+    if (issuedToken) res.cookies.set(sessionCookieName, issuedToken, sessionCookieOptions);
+  });
 }
