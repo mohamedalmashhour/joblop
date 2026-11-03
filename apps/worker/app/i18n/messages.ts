@@ -239,6 +239,7 @@ export const en = {
   "pay.typeEmployeeDesc": "Payroll with deductions — T4 at year-end",
   "pay.typeAutonomousDesc": "Paid gross, no deductions — T4A at year-end",
   "pay.slipType": "Year-end slip: {slip}",
+  "pay.changeInHrProfile": "Change this in your HR Profile",
   "pay.typeSaveError": "Couldn't update your work type.",
 
   // Payments (payout ledger: To pay / Paid / calendar)
@@ -754,6 +755,7 @@ export const fr: Messages = {
   "pay.typeEmployeeDesc": "Paie avec retenues — T4 en fin d'année",
   "pay.typeAutonomousDesc": "Payé brut, sans retenues — T4A en fin d'année",
   "pay.slipType": "Relevé de fin d'année : {slip}",
+  "pay.changeInHrProfile": "Modifier dans votre Profil RH",
   "pay.typeSaveError": "Impossible de mettre à jour votre type de travail.",
 
   // Paiements (registre des versements : À payer / Payé / calendrier)
@@ -1218,6 +1220,7 @@ export const ar: Partial<Messages> = {
   "pay.typeEmployeeDesc": "رواتب مع استقطاعات — نموذج T4 في نهاية العام",
   "pay.typeAutonomousDesc": "يُدفع بالكامل دون استقطاعات — نموذج T4A في نهاية العام",
   "pay.slipType": "نموذج نهاية العام: {slip}",
+  "pay.changeInHrProfile": "غيّر هذا في ملف الموارد البشرية",
   "pay.tabEarnings": "الأرباح",
   "pay.tabToPay": "قيد الدفع",
   "pay.tabPaid": "مدفوع",

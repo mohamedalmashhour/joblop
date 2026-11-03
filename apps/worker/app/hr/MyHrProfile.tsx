@@ -87,6 +87,10 @@ export function MyHrProfile() {
         <p className="when">{t(STANDING_KEY[state.standing] ?? "hr.standingInactive")}</p>
       </div>
 
+      {/* Work type / tax classification lives in the HR Profile (build your profile here) — not in
+          the payment section. Sets how pay is calculated + the year-end slip (T4 / T4A). */}
+      <WorkTypeCard t={t} />
+
       {/* Worker-editable intake (seeded #5). Standing/credentials above/below stay read-only. */}
       <IntakeForm key={state.intake ? "loaded" : "empty"} initial={state.intake} onSaved={load} t={t} />
 
@@ -126,6 +130,52 @@ export function MyHrProfile() {
 
       <p className="notice">{t("hr.footer")}</p>
     </>
+  );
+}
+
+// Worker's own tax classification (employee / self-employed). Built here in the HR Profile; the pay
+// page only reflects it. Reads the current value (from payroll summary) and sets it via the profile
+// classification endpoint — same governed election the backend already enforces.
+function WorkTypeCard({ t }: { t: (k: MessageKey, v?: Record<string, string | number>) => string }) {
+  const [cls, setCls] = useState<string | null>(null);
+  const [saving, setSaving] = useState(false);
+
+  const loadCls = useCallback(async () => {
+    try {
+      const r = await fetch("/api/payroll?limit=1", { cache: "no-store" });
+      if (r.ok) {
+        const p = (await r.json()) as { workerClassification?: string };
+        setCls(p.workerClassification ?? "employee");
+      }
+    } catch { /* leave null; buttons still work */ }
+  }, []);
+  useEffect(() => { void loadCls(); }, [loadCls]);
+
+  const choose = async (c: "employee" | "contractor") => {
+    setSaving(true);
+    try {
+      const r = await fetch("/api/profile/classification", {
+        method: "PUT",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ classification: c })
+      });
+      if (r.ok) setCls(c);
+    } catch { /* ignore */ } finally {
+      setSaving(false);
+    }
+  };
+
+  const isContractor = cls === "contractor";
+  return (
+    <div className="card" style={{ marginBottom: 14 }}>
+      <div className="role">{t("pay.workTypeTitle")}</div>
+      <div className="chips">
+        <button type="button" disabled={saving} className={`chip ${cls !== null && !isContractor ? "status-verified" : ""}`} onClick={() => void choose("employee")}>{t("pay.typeEmployee")}</button>
+        <button type="button" disabled={saving} className={`chip ${isContractor ? "status-verified" : ""}`} onClick={() => void choose("contractor")}>{t("pay.typeAutonomous")}</button>
+      </div>
+      <div className="when">{isContractor ? t("pay.typeAutonomousDesc") : t("pay.typeEmployeeDesc")}</div>
+      <div className="when">{t("pay.slipType", { slip: isContractor ? "T4A" : "T4" })}</div>
+    </div>
   );
 }
 
