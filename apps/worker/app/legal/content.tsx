@@ -185,6 +185,9 @@ export function PrivacyPolicy() {
         information when required by law, to protect our rights or users&rsquo; safety, or in
         connection with a corporate transaction, with notice where required.
       </p>
+      <p style={p}>
+        {"All the above categories exclude text messaging originator opt-in data and consent; this information won't be shared with any third parties."}
+      </p>
 
       <h2 style={h2}>4. How long we keep it</h2>
       <p style={p}>
@@ -337,7 +340,25 @@ export function TermsOfService() {
         &ldquo;Last updated&rdquo; date; continued use after changes means you accept them.
       </p>
 
-      <h2 style={h2}>13. Contact</h2>
+      <h2 style={h2}>13. Text messages (SMS)</h2>
+      <p style={p}>
+        By providing your mobile phone number, you agree to receive text messages from JobLop
+        (9375-7649 Québec inc.) at the number provided — account and job messages such as verification
+        codes, password-reset links, job-offer and assignment confirmations, and shift reminders —
+        sent using an automated system. Consent is not a condition of using the service. Message
+        frequency varies. Message and data rates may apply. Reply STOP to unsubscribe at any time, or
+        HELP for help. For assistance, contact{" "}
+        <a href={`mailto:${CONTACT}`} style={{ color: "#b8862f" }}>
+          {CONTACT}
+        </a>
+        . Carriers are not liable for delayed or undelivered messages. See our{" "}
+        <a href="/privacy" style={{ color: "#b8862f" }}>
+          Privacy Policy
+        </a>{" "}
+        for how we handle your personal information.
+      </p>
+
+      <h2 style={h2}>14. Contact</h2>
       <p style={p}>
         Questions:{" "}
         <a href={`mailto:${CONTACT}`} style={{ color: "#b8862f" }}>
