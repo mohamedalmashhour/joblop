@@ -800,7 +800,7 @@ export function PublicJobBoard() {
             <div><h5>{t.fSeekers}</h5><a href="#jobs">{t.fBrowse}</a><a href="/">{t.fCreate}</a><a href="#jobs">{t.fAlerts}</a></div>
             <div><h5>{t.fEmp}</h5><a href={EMPLOYER_URL}>{t.fPost}</a><a href={EMPLOYER_URL}>{t.fFind}</a><a href={EMPLOYER_URL}>{t.fPricing}</a></div>
             <div><h5>{t.fCo}</h5><a href="#about">{t.fAbout}</a><a href="#contact">{t.fContact}</a><a href="#about">{t.fCareers}</a></div>
-            <div><h5>{t.fLegal}</h5><a href="/privacy">{t.fPrivacy}</a><a href="/privacy">{t.fTerms}</a><a href="/privacy">{t.fCookie}</a></div>
+            <div><h5>{t.fLegal}</h5><a href="/privacy">{t.fPrivacy}</a><a href="/terms">{t.fTerms}</a><a href="/privacy">{t.fCookie}</a></div>
           </div>
         </div>
         <div className="jl-foot-bar">© {new Date().getFullYear()} {t.copyright}</div>

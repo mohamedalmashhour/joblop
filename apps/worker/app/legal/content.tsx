@@ -9,18 +9,19 @@ import { activeCountry } from "../country";
 
 const LAST_UPDATED = "October 26, 2026";
 const ENTITY = activeCountry().legalEntityName;
-const CONTACT = "info@sybnb.app";
+const CONTACT = "contact@joblop.com";
 
 const page: React.CSSProperties = {
   maxWidth: 820,
   margin: "0 auto",
   padding: "40px 20px 72px",
   fontFamily: "-apple-system,Segoe UI,Roboto,sans-serif",
-  color: "#000000",
+  // Dark-first: readable cream text on the black canvas (was #000 → invisible on black).
+  color: "#ece3d1",
   lineHeight: 1.6
 };
-const h1: React.CSSProperties = { fontSize: 28, margin: "16px 0 4px" };
-const meta: React.CSSProperties = { color: "#6b6356", fontSize: 13, margin: "0 0 24px" };
+const h1: React.CSSProperties = { fontSize: 28, margin: "16px 0 4px", color: "#f4ead6" };
+const meta: React.CSSProperties = { color: "#b3a894", fontSize: 13, margin: "0 0 24px" };
 const h2: React.CSSProperties = { fontSize: 18, margin: "28px 0 8px" };
 const p: React.CSSProperties = { margin: "0 0 12px", fontSize: 15 };
 const li: React.CSSProperties = { marginBottom: 6, fontSize: 15 };
@@ -31,7 +32,7 @@ const table: React.CSSProperties = {
   margin: "4px 0 16px"
 };
 const cell: React.CSSProperties = {
-  border: "1px solid #faf6ec",
+  border: "1px solid rgba(201, 162, 75, 0.22)",
   padding: "8px 10px",
   textAlign: "left",
   verticalAlign: "top"
