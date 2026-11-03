@@ -42,6 +42,20 @@ const DOC_TYPE_LABEL_KEY: Record<string, MessageKey> = Object.fromEntries(
   DOCUMENT_TYPES.map((d) => [d.value, d.labelKey])
 ) as Record<string, MessageKey>;
 
+// Advisory AI verdict → label + badge colour.
+const AI_VERDICT_KEY: Record<string, MessageKey> = {
+  ai_approved: "doc.aiApproved",
+  needs_reupload: "doc.aiReupload",
+  human_required: "doc.aiHuman",
+  error: "doc.aiError"
+};
+const AI_VERDICT_BADGE: Record<string, string> = {
+  ai_approved: "verified",
+  needs_reupload: "rejected",
+  human_required: "pending",
+  error: "rejected"
+};
+
 export function MyDocuments() {
   const t = useT();
   const locale = useLocale();
@@ -52,6 +66,23 @@ export function MyDocuments() {
   const [busy, setBusy] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  // Advisory AI review results, keyed by document id (ephemeral — not persisted).
+  const [aiVerdicts, setAiVerdicts] = useState<Record<string, string>>({});
+  const [aiBusy, setAiBusy] = useState<string | null>(null);
+
+  const aiReview = useCallback(async (documentId: string) => {
+    setAiBusy(documentId);
+    try {
+      const r = await fetch(`/api/documents/${encodeURIComponent(documentId)}/ai-review`, { method: "POST", headers: { "content-type": "application/json" }, body: "{}" });
+      if (!r.ok) { setAiVerdicts((v) => ({ ...v, [documentId]: "error" })); return; }
+      const p = (await r.json()) as { verdict?: { status?: string } };
+      setAiVerdicts((v) => ({ ...v, [documentId]: p.verdict?.status ?? "human_required" }));
+    } catch {
+      setAiVerdicts((v) => ({ ...v, [documentId]: "error" }));
+    } finally {
+      setAiBusy(null);
+    }
+  }, []);
 
   const load = useCallback(async () => {
     try {
@@ -149,7 +180,7 @@ export function MyDocuments() {
         </div>
         <div className="field grow">
           <label htmlFor="docfile">{t("doc.file")}</label>
-          <input id="docfile" type="file" multiple accept="image/*,application/pdf" onChange={(e) => setFiles(Array.from(e.target.files ?? []))} aria-describedby="doctype-help" />
+          <input id="docfile" type="file" multiple onChange={(e) => setFiles(Array.from(e.target.files ?? []))} aria-describedby="doctype-help" />
         </div>
         <button className="btn" type="submit" disabled={busy || !docType.trim() || files.length === 0}>{busy ? t("doc.uploading") : t("doc.uploadDocument")}</button>
       </form>
@@ -161,6 +192,7 @@ export function MyDocuments() {
         ) : (
           active.map((d) => {
             const labelKey = DOC_TYPE_LABEL_KEY[d.documentType];
+            const verdict = aiVerdicts[d.id];
             return (
             <article key={d.id} className="card">
               <div className="role">{labelKey ? t(labelKey) : d.documentType}</div>
@@ -168,6 +200,14 @@ export function MyDocuments() {
                 <span className={`chip status-${badgeClass(d.effectiveStatus)}`}>{t(STATUS_KEY[d.effectiveStatus] ?? "doc.statusRequired")}</span>
                 {d.expiresAt ? <span className="chip">{t("common.expires", { date: new Date(d.expiresAt).toLocaleDateString(locale) })}</span> : null}
                 {d.jurisdiction ? <span className="chip">{d.jurisdiction}</span> : null}
+              </div>
+              <div className="chips" style={{ marginTop: 6 }}>
+                <button className="btn ghost" type="button" disabled={aiBusy === d.id} onClick={() => void aiReview(d.id)}>{aiBusy === d.id ? t("doc.aiReviewing") : t("doc.aiReview")}</button>
+                {verdict ? (
+                  <span className={`chip status-${AI_VERDICT_BADGE[verdict] ?? "pending"}`}>
+                    {t(AI_VERDICT_KEY[verdict] ?? "doc.aiHuman")} · {t("doc.aiAdvisory")}
+                  </span>
+                ) : null}
               </div>
               {["accepted", "expiring", "expired", "rejected"].includes(d.effectiveStatus) ? (
                 <button className="btn ghost" type="button" style={{ alignSelf: "flex-start" }} disabled={busy} onClick={() => { setReplacing(true); setDocType(d.documentType); setFiles([]); setError(null); setNotice(t("doc.chooseNewToReplace")); }}>{t("doc.replace")}</button>

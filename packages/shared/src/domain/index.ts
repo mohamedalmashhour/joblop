@@ -30,6 +30,7 @@ export * from "./worker";
 export * from "./platformPricing";
 export * from "./variableClientPricing";
 export * from "./jobScanner";
+export * from "./documentAiReview";
 export * from "./platformInvoiceIssuer";
 export * from "./workerPayout";
 export * from "./workerDispute";

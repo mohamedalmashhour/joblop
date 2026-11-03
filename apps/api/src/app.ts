@@ -239,6 +239,8 @@ import { upsertLeads, queryStoredLeads } from "./jobScannerRepository";
 import { startJobScannerSchedule, type ScanQuery } from "./jobScannerScheduler";
 import { type WorkerCvProfile, type TargetJob } from "./cvBuilder";
 import { getCvProvider } from "./cvBuilderClaude";
+import { reviewDocumentAdvisory, isReviewableImageType } from "./documentAiReview";
+import { offlineAdvisoryVerdict } from "@rwos/shared";
 import { createCvAsset, listCvAssets, deleteCvAsset } from "./cvAssetRepository";
 import { isPro, getActiveEntitlement, grantEntitlement, revokeEntitlement, startTrial, hasEverTrialed, TRIAL_DAYS, PRO_PLAN } from "./cvEntitlementRepository";
 import {
@@ -4459,6 +4461,44 @@ export function buildApi(options: BuildApiOptions = {}) {
     try {
       const documents = await hrDocumentService.listMyDocuments({ userId });
       return reply.code(200).send({ documents });
+    } catch (error) {
+      return sendHrDocError(reply, error);
+    }
+  });
+
+  // Worker: advisory AI pre-check of their OWN uploaded document. ADVISORY ONLY — never a legal
+  // verification; a platform HR admin still accepts/rejects. Sensitive types (identity/SIN/licence/…)
+  // are never sent to the model (the domain layer forces them to "human_required"). Non-sensitive
+  // image documents are read by Claude vision when ANTHROPIC_API_KEY is set, else an offline advisory.
+  app.post("/hr/documents/:documentId/ai-review", async (request, reply) => {
+    const userId = await requireWorkerSession(request, reply);
+    if (!userId) return;
+    try {
+      const documentId = (request.params as { documentId?: string }).documentId ?? "";
+      const resolved = await hrDocumentService.resolveMyDocumentForReview({ userId, documentId });
+      if (!resolved) return reply.code(404).send({ error: "RWOS_HR_DOC_NOT_FOUND", message: "Document not found." });
+
+      // Only fetch bytes when the type is AI-reviewable and not expired (offline fn decides otherwise),
+      // and only up to a safe size. A failed/oversized fetch degrades to the offline advisory verdict.
+      let image: { base64: string; mediaType: string } | null = null;
+      const preliminary = offlineAdvisoryVerdict(resolved.documentType, { expired: resolved.expired });
+      if (preliminary.status === "ai_approved" && resolved.downloadUrl && process.env.ANTHROPIC_API_KEY?.trim()) {
+        try {
+          const dl = await fetch(resolved.downloadUrl);
+          const mediaType = dl.headers.get("content-type")?.split(";")[0]?.trim() ?? "";
+          if (dl.ok && isReviewableImageType(mediaType)) {
+            const buf = Buffer.from(await dl.arrayBuffer());
+            if (buf.byteLength > 0 && buf.byteLength <= 5_000_000) {
+              image = { base64: buf.toString("base64"), mediaType };
+            }
+          }
+        } catch {
+          image = null; // provider unreachable (e.g. local fixture) -> offline advisory
+        }
+      }
+
+      const verdict = await reviewDocumentAdvisory({ documentType: resolved.documentType, expired: resolved.expired, image });
+      return reply.code(200).send({ verdict });
     } catch (error) {
       return sendHrDocError(reply, error);
     }

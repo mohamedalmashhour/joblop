@@ -208,6 +208,19 @@ export function createHrDocumentService(deps: HrDocumentDeps) {
       return (await deps.store.listForWorker(workerIdentityId)).map(toWorkerView);
     },
 
+    // Worker: resolve ONE of their OWN documents for an advisory AI review. Ownership is enforced
+    // (only documents belonging to the requesting worker are returned). Returns the type, expiry and a
+    // short-lived provider download URL so the API can fetch the bytes for the vision pre-check. Never
+    // exposes the raw storageReference to the client.
+    async resolveMyDocumentForReview(input: { userId: string; documentId: string }): Promise<{ documentType: string; expired: boolean; downloadUrl: string | null } | null> {
+      const workerIdentityId = await requireWorker(input.userId);
+      const rec = (await deps.store.listForWorker(workerIdentityId)).find((r) => r.id === input.documentId);
+      if (!rec) return null;
+      const effective = withEffective(rec).effectiveStatus;
+      const dl = rec.storageReference ? await deps.storage.resolveDownloadUrl({ storageReference: rec.storageReference }) : null;
+      return { documentType: rec.documentType, expired: effective === "expired", downloadUrl: dl?.url ?? null };
+    },
+
     // ── HR authority ──
     async getDocument(id: string): Promise<HrDocumentRecord | null> {
       const rec = await deps.store.getById(id);
