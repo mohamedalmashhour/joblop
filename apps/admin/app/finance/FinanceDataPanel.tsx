@@ -166,7 +166,20 @@ function FinanceResults({
       </State>
     );
   }
+  // Read-only summary: invoiced vs paid vs outstanding (client-side aggregation of the loaded scope).
+  // Single active currency per country (Canada = CAD). No money is moved here — visibility only.
+  const currency = invoices[0]?.currency ?? payments[0]?.currency ?? "CAD";
+  const invoicedMinor = invoices.reduce((sum, i) => sum + i.totalMinor, 0);
+  const paidMinor = payments.reduce((sum, p) => sum + p.allocatedMinor, 0);
+  const outstandingMinor = Math.max(0, invoicedMinor - paidMinor);
   return (
+    <>
+      <section aria-label="Finance summary" style={{ display: "flex", gap: 12, flexWrap: "wrap", marginBottom: 16 }}>
+        <div style={styles.card}><small>Invoiced to clients</small><strong style={{ fontSize: 20 }}>{formatMoney(invoicedMinor, currency)}</strong></div>
+        <div style={styles.card}><small>Paid</small><strong style={{ fontSize: 20 }}>{formatMoney(paidMinor, currency)}</strong></div>
+        <div style={styles.card}><small>Outstanding</small><strong style={{ fontSize: 20 }}>{formatMoney(outstandingMinor, currency)}</strong></div>
+        <div style={{ ...styles.card, maxWidth: 320 }}><small>Transfers / payouts are disabled (test mode). This view is read-only; no money is moved by Joblop.</small></div>
+      </section>
     <div style={styles.columns}>
       <section aria-labelledby="invoice-results-title">
         <h3 id="invoice-results-title" style={styles.h3}>Invoices ({invoices.length})</h3>
@@ -197,6 +210,7 @@ function FinanceResults({
         ))}
       </section>
     </div>
+    </>
   );
 }
 
