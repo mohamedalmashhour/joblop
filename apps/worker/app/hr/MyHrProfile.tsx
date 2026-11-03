@@ -21,6 +21,7 @@ type Intake = Readonly<{
   vehicleType: string | null;
   canTravelKm: number | null;
   transportNotes: string | null;
+  marketingEmailOptIn?: boolean;
 }>;
 type State =
   | { status: "loading" }
@@ -144,6 +145,7 @@ function IntakeForm({ initial, onSaved, t }: { initial: Intake | null; onSaved: 
   const [vehicleType, setVehicleType] = useState(initial?.vehicleType ?? "");
   const [canTravelKm, setCanTravelKm] = useState(initial?.canTravelKm != null ? String(initial.canTravelKm) : "");
   const [transportNotes, setTransportNotes] = useState(initial?.transportNotes ?? "");
+  const [marketingEmailOptIn, setMarketingEmailOptIn] = useState(Boolean(initial?.marketingEmailOptIn));
   const [consent, setConsent] = useState(false);
   const [saving, setSaving] = useState(false);
   const [notice, setNotice] = useState<"ok" | "err" | "consent" | null>(null);
@@ -162,7 +164,8 @@ function IntakeForm({ initial, onSaved, t }: { initial: Intake | null; onSaved: 
         hasVehicle,
         vehicleType: hasVehicle ? vehicleType : null,
         canTravelKm: hasVehicle && canTravelKm.trim() !== "" ? Number(canTravelKm) : null,
-        transportNotes
+        transportNotes,
+        marketingEmailOptIn
       };
       const r = await fetch("/api/hr", { method: "PUT", headers: { "content-type": "application/json" }, body: JSON.stringify(body) });
       if (r.ok) { setNotice("ok"); await onSaved(); } else { setNotice("err"); }
@@ -222,6 +225,11 @@ function IntakeForm({ initial, onSaved, t }: { initial: Intake | null; onSaved: 
 
         <label htmlFor="hr-notes">{t("hr.fTransportNotes")}</label>
         <textarea id="hr-notes" rows={3} value={transportNotes} onChange={(e) => setTransportNotes(e.target.value)} />
+
+        <label className="checkfield" htmlFor="hr-mktg" style={{ marginTop: 6 }}>
+          <input id="hr-mktg" type="checkbox" checked={marketingEmailOptIn} onChange={(e) => setMarketingEmailOptIn(e.target.checked)} />
+          {t("hr.marketingOptIn")}
+        </label>
 
         <label className="checkfield" htmlFor="hr-consent" style={{ marginTop: 6 }}>
           <input id="hr-consent" type="checkbox" checked={consent} onChange={(e) => setConsent(e.target.checked)} />

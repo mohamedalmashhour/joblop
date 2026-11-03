@@ -54,6 +54,9 @@ export type HrIntakeRecord = Readonly<{
   vehicleType: string | null;
   canTravelKm: number | null;
   transportNotes: string | null;
+  // Separate, explicit marketing-email consent (CASL): true once the worker opts in. Distinct from the
+  // service/account relationship; transactional messages never depend on it.
+  marketingEmailOptIn: boolean;
   updatedAt: string;
 }>;
 // Partial patch the worker submits; only present keys are written.
@@ -210,6 +213,8 @@ function validateIntakeInput(input: HrIntakeInput): HrIntakeInput {
   if ("transportNotes" in input) out.transportNotes = text(input.transportNotes, 500);
   if ("hasDrivingLicence" in input) out.hasDrivingLicence = Boolean(input.hasDrivingLicence);
   if ("hasVehicle" in input) out.hasVehicle = Boolean(input.hasVehicle);
+  // Marketing consent is stored as a timestamp (consent proof); clearing sets it null.
+  if ("marketingEmailOptIn" in input) out.marketingEmailOptInAt = input.marketingEmailOptIn ? new Date() : null;
   if ("licenceExpiry" in input) {
     const v = input.licenceExpiry;
     if (v === null || v === undefined || v === "") out.licenceExpiry = null;
@@ -425,6 +430,7 @@ type IntakeRow = {
   addressLine: string | null; city: string | null; province: string | null; postalCode: string | null;
   hasDrivingLicence: boolean; licenceClass: string | null; licenceExpiry: Date | null;
   hasVehicle: boolean; vehicleType: string | null; canTravelKm: number | null; transportNotes: string | null;
+  marketingEmailOptInAt: Date | null;
   updatedAt: Date;
 };
 
@@ -437,7 +443,8 @@ const toIntake = (r: IntakeRow): HrIntakeRecord => ({
   hasDrivingLicence: r.hasDrivingLicence, licenceClass: r.licenceClass,
   licenceExpiry: r.licenceExpiry ? r.licenceExpiry.toISOString().slice(0, 10) : null,
   hasVehicle: r.hasVehicle, vehicleType: r.vehicleType, canTravelKm: r.canTravelKm,
-  transportNotes: r.transportNotes, updatedAt: r.updatedAt.toISOString()
+  transportNotes: r.transportNotes, marketingEmailOptIn: r.marketingEmailOptInAt != null,
+  updatedAt: r.updatedAt.toISOString()
 });
 // Map a validated intake patch to Prisma data (licenceExpiry ISO date → Date for @db.Date).
 const toIntakeData = (data: HrIntakeInput): Record<string, unknown> => {

@@ -29,7 +29,7 @@ function makeStore() {
     async setStanding({ workerIdentityId, standing, reason }) { const p = profiles.find((x) => x.workerIdentityId === workerIdentityId)!; p.standing = standing; p.standingReason = reason; return { ...p }; },
     async getIntake(w) { return intakes[w] ?? null; },
     async upsertIntake({ workerIdentityId, data }) {
-      const prev: HrIntakeRecord = intakes[workerIdentityId] ?? { legalFirstName: null, legalLastName: null, phone: null, addressLine: null, city: null, province: null, postalCode: null, hasDrivingLicence: false, licenceClass: null, licenceExpiry: null, hasVehicle: false, vehicleType: null, canTravelKm: null, transportNotes: null, updatedAt: iso() };
+      const prev: HrIntakeRecord = intakes[workerIdentityId] ?? { legalFirstName: null, legalLastName: null, phone: null, addressLine: null, city: null, province: null, postalCode: null, hasDrivingLicence: false, licenceClass: null, licenceExpiry: null, hasVehicle: false, vehicleType: null, canTravelKm: null, transportNotes: null, marketingEmailOptIn: false, updatedAt: iso() };
       const next: HrIntakeRecord = { ...prev, ...data, updatedAt: iso() };
       intakes[workerIdentityId] = next;
       return next;
