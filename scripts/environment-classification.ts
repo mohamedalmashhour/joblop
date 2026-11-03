@@ -46,6 +46,8 @@ const serverOnlyNonSecret = new Set([
   // CV builder feature config (model name + purchase gate).
   "CV_MODEL",
   "CV_PRO_PURCHASE_ENABLED",
+  // Advisory document-review model name (not a credential).
+  "DOC_REVIEW_MODEL",
   // Transactional email sender address (public from-line, not a credential).
   "EMAIL_FROM",
   // Google integrations: non-secret public identifiers and server-side feature gates. The OAuth
