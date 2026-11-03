@@ -1,6 +1,20 @@
 import type { PrismaClient } from "@rwos/database";
 import type { EmailMessage, EmailSender } from "../mailer/emailSender";
+import type { SmsSender } from "../mailer/smsSender";
 import { resolveLanguage, type NotificationLanguage } from "./clientNotifications";
+
+// Format a shift start in Québec local time, in the worker's language. Kept simple + fail-soft.
+function formatShiftWhen(startAt: Date, language: NotificationLanguage): string {
+  try {
+    return new Intl.DateTimeFormat(language === "en" ? "en-CA" : "fr-CA", {
+      dateStyle: "full",
+      timeStyle: "short",
+      timeZone: "America/Toronto"
+    }).format(startAt);
+  } catch {
+    return startAt.toISOString();
+  }
+}
 
 // Worker-facing notification capsule — the end of the owner's flow: "inform the worker that the
 // money was transferred to their account." Bilingual (FR default for QC), pure copy + a best-effort
@@ -99,6 +113,46 @@ export function accountPenaltyEmail(params: {
   };
 }
 
+// "You got the job!" — confirmation that a worker is assigned to a shift. Email copy, bilingual.
+export function assignedJobEmail(params: {
+  to: string;
+  language: NotificationLanguage;
+  title: string;
+  startAt: Date;
+}): EmailMessage {
+  const when = formatShiftWhen(params.startAt, params.language);
+  if (params.language === "en") {
+    return {
+      to: params.to,
+      subject: "Joblop — you got the job!",
+      text:
+        `Good news — you're confirmed for "${params.title}".\n\n` +
+        `When: ${when}\n\n` +
+        `Open Joblop to see the full details in your schedule. See you there!\n\n— Joblop`
+    };
+  }
+  return {
+    to: params.to,
+    subject: "Joblop — vous avez obtenu le travail !",
+    text:
+      `Bonne nouvelle — vous êtes confirmé(e) pour « ${params.title} ».\n\n` +
+      `Quand : ${when}\n\n` +
+      `Ouvrez Joblop pour voir tous les détails dans votre horaire. À bientôt !\n\n— Joblop`
+  };
+}
+
+// Short SMS twin of assignedJobEmail (SMS is billed per message, so keep it tight).
+export function assignedJobSmsText(params: {
+  language: NotificationLanguage;
+  title: string;
+  startAt: Date;
+}): string {
+  const when = formatShiftWhen(params.startAt, params.language);
+  return params.language === "en"
+    ? `JobLop: you got the job! "${params.title}" — ${when}. Details in the app.`
+    : `JobLop : travail obtenu ! « ${params.title} » — ${when}. Détails dans l'app.`;
+}
+
 export type WorkerPayoutNotificationResult = Readonly<{
   status: "sent" | "skipped" | "error" | "no_recipient";
 }>;
@@ -176,6 +230,42 @@ export async function notifyWorkerAccountPenalty(
       suspensionDays: input.suspensionDays
     });
     const result = await emailSender.send(message);
+    return { status: result.status === "sent" ? "sent" : result.status === "error" ? "error" : "skipped" };
+  } catch {
+    return { status: "error" };
+  }
+}
+
+// "You got the job!" — notify a worker (by userId) that they are confirmed for a shift. Sends email
+// AND, when enabled + a phone is on file, SMS. Best-effort: resolves the user + job, never throws.
+export async function notifyWorkerAssigned(
+  prisma: PrismaClient,
+  emailSender: EmailSender,
+  smsSender: SmsSender | undefined,
+  input: { userId: string; jobRequestId: string }
+): Promise<WorkerPayoutNotificationResult> {
+  try {
+    const [user, job] = await Promise.all([
+      prisma.user.findUnique({
+        where: { id: input.userId },
+        select: { emailNormalized: true, phone: true, primaryLanguage: true }
+      }),
+      prisma.jobRequest.findUnique({
+        where: { id: input.jobRequestId },
+        select: { title: true, startAt: true }
+      })
+    ]);
+    const email = user?.emailNormalized;
+    if (!email || !job) return { status: "no_recipient" };
+    const language = resolveLanguage(user?.primaryLanguage);
+    const result = await emailSender.send(
+      assignedJobEmail({ to: email, language, title: job.title, startAt: job.startAt })
+    );
+    if (smsSender && user?.phone) {
+      await smsSender
+        .send({ to: user.phone, text: assignedJobSmsText({ language, title: job.title, startAt: job.startAt }) })
+        .catch(() => undefined);
+    }
     return { status: result.status === "sent" ? "sent" : result.status === "error" ? "error" : "skipped" };
   } catch {
     return { status: "error" };

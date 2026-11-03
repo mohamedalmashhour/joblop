@@ -327,7 +327,7 @@ import { buildCalendarExport } from "@rwos/shared";
 import { deriveOrderLifecycle } from "@rwos/shared";
 import { deriveWorkerCancellationPenalty, WORKER_SUSPENSION_DAYS } from "@rwos/shared";
 import { notifyClient } from "./notifications/clientNotifications";
-import { notifyWorkerPayoutPaid, notifyWorkerAccountPenalty } from "./notifications/workerNotifications";
+import { notifyWorkerPayoutPaid, notifyWorkerAccountPenalty, notifyWorkerAssigned } from "./notifications/workerNotifications";
 import { createWorkerPayoutProgressionRunner, startWorkerPayoutProgressionSchedule } from "./workerPayoutProgression";
 import { createPrismaJobGradingAuditStore, JOB_GRADING_ENGINE_VERSION, type JobGradingAuditStore } from "./jobGradingAuditRepository";
 import { raiseWorkerDispute, listWorkerDisputes, withdrawWorkerDispute } from "./workerDisputeRepository";
@@ -3812,6 +3812,8 @@ export function buildApi(options: BuildApiOptions = {}) {
     if (result.status === "assigned") {
       // Mirror the manual accept path's side effects (best-effort, never block the assign).
       await notifyClient(prisma, emailSender, { jobRequestId, kind: "worker_accepted" }).catch(() => {});
+      // "You got the job!" — confirm the worker by email (+ SMS when enabled).
+      await notifyWorkerAssigned(prisma, emailSender, smsSender, { userId: session.user.id, jobRequestId }).catch(() => {});
       await workerJobInterestService.markOfferAcceptedByOffer(result.workerOfferId).catch(() => {});
       void pushAssignmentToCalendar(
         { prisma, config: googleOAuthConfigFromEnv() },
@@ -6819,6 +6821,12 @@ export function buildApi(options: BuildApiOptions = {}) {
     } catch {
       /* interest mirror is best-effort; the governed assignment already succeeded */
     }
+
+    // "You got the job!" — confirm the worker by email (+ SMS when enabled). Best-effort.
+    await notifyWorkerAssigned(prisma!, emailSender, smsSender, {
+      userId: session.user.id,
+      jobRequestId: assignment.jobRequestId
+    }).catch(() => {});
 
     return reply.code(201).send({ assignment: serializeAssignment(assignment) });
   });
