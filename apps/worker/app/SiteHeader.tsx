@@ -24,17 +24,14 @@ export function SiteHeader() {
           <JoblopLogo height={30} />
         </a>
         <div className="topbar-right">
-          {/* Primary actions: a job seeker finds a job (→ JobScanner); an employer lists a job (→ employer app). */}
-          <a className="muted" href="/job-scanner" style={{ fontSize: 14, fontWeight: 700 }}>{nav("ابحث عن وظيفة", "Trouver un emploi", "Find a job")}</a>
-          <a className="muted" href={EMPLOYER_URL} style={{ fontSize: 14, fontWeight: 700 }}>{nav("انشر وظيفة", "Publier un emploi", "List a job")}</a>
+          <a className="muted" href="/browse" style={{ fontSize: 14, fontWeight: 700 }}>{nav("الوظائف", "Emplois", "Find jobs")}</a>
           <a className="muted" href="/how-it-works" style={{ fontSize: 14, fontWeight: 700 }}>{nav("كيف يعمل", "Comment ça marche", "How it works")}</a>
+          <a className="muted" href="/job-scanner" style={{ fontSize: 14, fontWeight: 700 }}>JobScanner</a>
           <a className="muted" href="/cv-builder" style={{ fontSize: 14, fontWeight: 700 }}>{nav("إنشاء السيرة", "Créer un CV", "Build CV")}</a>
-          <a className="muted" href="/inbox" style={{ fontSize: 14, fontWeight: 700 }}>{nav("صندوقي", "Mes messages", "My inbox")}</a>
+          <a className="muted" href={EMPLOYER_URL} style={{ fontSize: 14, fontWeight: 700 }}>{nav("لأصحاب العمل", "Employeurs", "For Employers")}</a>
           <a className="muted" href="/browse#contact" style={{ fontSize: 14, fontWeight: 700 }}>{nav("تواصل", "Contact", "Contact")}</a>
-          {/* Role entry points — each opens create-account / sign-in for that side. Worker auth is the
-              worker landing ("/"); employer auth is the employer app. */}
-          <a href="/" style={{ fontSize: 14, fontWeight: 800, color: "#c9a24b", textDecoration: "none" }}>{nav("عامل: حساب / دخول", "Travailleur : s'inscrire / connexion", "Worker: sign up / in")}</a>
-          <a href={EMPLOYER_URL} style={{ fontSize: 14, fontWeight: 800, color: "#c9a24b", textDecoration: "none" }}>{nav("صاحب عمل: حساب / دخول", "Employeur : s'inscrire / connexion", "Employer: sign up / in")}</a>
+          <a className="muted" href="/" style={{ fontSize: 14, fontWeight: 700 }}>{nav("تسجيل الدخول", "Se connecter", "Sign in")}</a>
+          <a href="/" style={{ fontSize: 14, fontWeight: 800, color: "#c9a24b", textDecoration: "none" }}>{nav("إنشاء حساب", "Créer un compte", "Create account")}</a>
           <LanguageSwitcher />
         </div>
       </div>
