@@ -761,25 +761,8 @@ export function PublicJobBoard() {
         </div>
       </section>
 
-      {/* FOR EMPLOYERS */}
-      <section className="jl-split jl-split-b">
-        <div className="jl-wrap jl-split-in">
-          <div className="jl-split-copy">
-            <span className="jl-eyebrow jl-eyebrow-o">{t.empTag}</span>
-            <h2>{t.empTitle}</h2>
-            <p>{t.empSub}</p>
-            <a href={EMPLOYER_URL} className="jl-btn-orange jl-btn-lg">{t.empBtn}</a>
-            <ul className="jl-checks jl-checks-o">
-              <li>✓ {t.emp1}</li><li>✓ {t.emp2}</li><li>✓ {t.emp3}</li>
-            </ul>
-          </div>
-          <div className="jl-split-card">
-            <div className="jl-mini"><span>👥</span> {tr("Qualified workers", "Travailleurs qualifiés", "عمال مؤهّلون")}</div>
-            <div className="jl-avatars">{["🧑‍⚕️","👨‍🍳","🧹","🔧","🧑‍⚕️"].map((a, i) => <span key={i}>{a}</span>)}</div>
-            <div className="jl-mini jl-mini-2"><span>📊</span> {tr("Coverage you can count on", "Couverture fiable", "تغطية يمكنك الاعتماد عليها")}</div>
-          </div>
-        </div>
-      </section>
+      {/* (Removed from landing per owner spec #12: the "For employers — find & staff faster"
+          section is being rewritten as an ADVANCED SEARCH inside the employer site.) */}
 
       {/* TRUST (honest) + STATS */}
       <section className="jl-sec" id="about">
@@ -833,14 +816,19 @@ export function PublicJobBoard() {
         </div>
       </section>
 
-      {/* CTA BAND */}
+      {/* REFER A FRIEND (owner spec #13) — invite others; the personal invite link is generated
+          in your account after sign-up (reuses the existing ?ref= referral attribution). */}
       <section className="jl-cta">
         <div className="jl-wrap jl-center">
-          <h2>{t.ctaTitle}</h2>
-          <p>{t.ctaSub}</p>
+          <h2>{tr("Refer your friends", "Parrainez vos amis", "ادعُ أصدقاءك")}</h2>
+          <p>{tr(
+            "Know someone looking for work? Create your free account to get a personal invite link — share it and help them find shifts faster on Joblop.",
+            "Vous connaissez quelqu'un qui cherche du travail ? Créez votre compte gratuit pour obtenir un lien d'invitation personnel — partagez-le et aidez vos proches à trouver des quarts plus vite sur Joblop.",
+            "تعرف شخصًا يبحث عن عمل؟ أنشئ حسابك المجاني للحصول على رابط دعوة شخصي — شاركه وساعد أصدقاءك على إيجاد نوبات أسرع على جوب‑لوب."
+          )}</p>
           <div className="jl-cta-btns">
-            <a href="/" className="jl-cta-white">{t.ctaFind}</a>
-            <a href={EMPLOYER_URL} className="jl-cta-outline">{t.ctaPost}</a>
+            <a href="/" className="jl-cta-white">{tr("Create account & get your invite link", "Créer un compte et obtenir votre lien", "أنشئ حسابًا واحصل على رابط دعوتك")}</a>
+            <a href="/how-it-works" className="jl-cta-outline">{tr("How referrals work", "Comment fonctionne le parrainage", "كيف تعمل الدعوات")}</a>
           </div>
         </div>
       </section>
