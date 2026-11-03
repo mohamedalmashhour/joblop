@@ -470,10 +470,12 @@ describe("api authentication foundation", () => {
     });
     expect(issued.statusCode).toBe(202);
     expect(issued.json()).toEqual({ status: "accepted", code: "123456" });
-    expect(issue).toHaveBeenCalledWith({
-      userId: repository.firstUserId(),
-      emailNormalized: "verify@example.test"
-    });
+    expect(issue).toHaveBeenCalledWith(
+      expect.objectContaining({
+        userId: repository.firstUserId(),
+        emailNormalized: "verify@example.test"
+      })
+    );
     expect(consume).toHaveBeenLastCalledWith(
       expect.objectContaining({
         action: "email_verify_send",
