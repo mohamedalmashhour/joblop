@@ -873,3 +873,24 @@ dl.agreement dd { margin: 0; }
   .detail { padding: 0 !important; max-width: 100% !important; }
   a[href] { text-decoration: none; color: #000; }
 }
+
+/* Brand wordmark — any literal "Joblop" in copy renders as the logo's voice: brand letters with
+   gold aperture "o"s and a gentle gold pulse. Matches the logo palette (cream letters + gold o). */
+.brandword {
+  font-weight: 800;
+  letter-spacing: 0.01em;
+  white-space: nowrap;
+  color: var(--jl-on-black, #f4ead6);
+}
+.brandword-o {
+  display: inline-block;
+  color: var(--jl-gold, #d6a63a);
+  animation: brandPulse 2.6s ease-in-out infinite;
+}
+@keyframes brandPulse {
+  0%, 100% { color: #c79a37; text-shadow: 0 0 0 rgba(214, 166, 58, 0); }
+  50% { color: #f0c45a; text-shadow: 0 0 8px rgba(214, 166, 58, 0.55); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .brandword-o { animation: none; color: var(--jl-gold, #d6a63a); }
+}

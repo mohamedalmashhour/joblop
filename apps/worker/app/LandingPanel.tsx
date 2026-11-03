@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { trackConversion } from "./analytics";
+import { withBrand } from "./Brand";
 import { useLocale, useT } from "./i18n/LocaleProvider";
 import { VerifyEmail } from "./VerifyEmail";
 
@@ -44,11 +45,11 @@ export function LandingPanel({ onSignedIn }: { onSignedIn: () => void }) {
     <div className="landing">
       <section className="landing-hero">
         <div className="landing-copy">
-          <h1>{t("land.heroTitle")}</h1>
-          <p>{t("land.heroSub")}</p>
+          <h1>{withBrand(t("land.heroTitle"))}</h1>
+          <p>{withBrand(t("land.heroSub"))}</p>
           <ul className="landing-values">
             {values.map((v) => (
-              <li key={v}><span aria-hidden="true">✓</span> {v}</li>
+              <li key={v}><span aria-hidden="true">✓</span> {withBrand(v)}</li>
             ))}
           </ul>
           <a href="/browse" className="landing-browse" style={{ display: "inline-block", marginTop: 14, fontWeight: 700, color: "#b8862f", textDecoration: "none" }}>
@@ -65,8 +66,8 @@ export function LandingPanel({ onSignedIn }: { onSignedIn: () => void }) {
             <li key={s.title}>
               <span className="step-n" aria-hidden="true">{i + 1}</span>
               <div>
-                <h3>{s.title}</h3>
-                <p>{s.body}</p>
+                <h3>{withBrand(s.title)}</h3>
+                <p>{withBrand(s.body)}</p>
               </div>
             </li>
           ))}

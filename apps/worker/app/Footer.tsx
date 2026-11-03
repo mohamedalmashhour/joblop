@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { Brand } from "./Brand";
 import { activeCountry } from "./country";
 
 // Global footer for the worker app: copyright + legal links on every page.
@@ -21,7 +22,7 @@ export function Footer({ locale }: { locale: string }) {
         color: "#b3a894"
       }}
     >
-      <span>© {year} Joblop · {activeCountry().legalEntityName}</span>
+      <span>© {year} <Brand /> · {activeCountry().legalEntityName}</span>
       <nav style={{ display: "flex", gap: 20 }}>
         <Link href="/terms" style={{ color: "#c9a24b", textDecoration: "none" }}>
           {fr ? "Conditions d’utilisation" : "Terms"}
