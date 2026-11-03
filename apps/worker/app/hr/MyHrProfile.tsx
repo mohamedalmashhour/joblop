@@ -188,6 +188,7 @@ function IntakeForm({ initial, onSaved, t }: { initial: Intake | null; onSaved: 
         <input id="hr-ln" type="text" value={legalLastName} onChange={(e) => setLegalLastName(e.target.value)} />
         <label htmlFor="hr-ph">{t("hr.fPhone")}</label>
         <input id="hr-ph" type="tel" autoComplete="tel" value={phone} onChange={(e) => setPhone(e.target.value)} />
+        <p className="when" style={{ marginTop: -4, fontSize: 12, lineHeight: 1.4 }}>{t("hr.smsConsent")}</p>
         <label htmlFor="hr-addr">{t("hr.fAddress")}</label>
         <input id="hr-addr" type="text" value={addressLine} onChange={(e) => setAddressLine(e.target.value)} />
         <label htmlFor="hr-city">{t("hr.fCity")}</label>
