@@ -469,7 +469,6 @@ export function PublicJobBoard() {
                 ))}
               </div>
             )}
-            <a href="#jobscanner" className="jl-hero-js">{t.heroBadge} →</a>
 
             {/* Live search demo: real matches appear as the visitor types — proof of the deep search. */}
             {tab === "find" && (
@@ -515,6 +514,47 @@ export function PublicJobBoard() {
         </div>
       </section>
 
+      {/* CHOOSE YOUR PATH — moved up: one clear fork for workers vs clients, right under the hero */}
+      <section className="jl-sec" id="paths">
+        <div className="jl-wrap">
+          <div className="jl-magnet">
+            <div className="jl-magnet-num">{fmtCount(openCount)}</div>
+            <div className="jl-magnet-copy">
+              <strong>{t.magnetJobs}</strong>
+              {totalProvinces ? <span className="jl-magnet-prov">{t.magnetProv(totalProvinces)}</span> : null}
+              <p>{t.magnetSub}</p>
+            </div>
+            <a href="/" className="jl-btn-orange jl-btn-lg">{t.magnetBtn}</a>
+          </div>
+
+          <div className="jl-paths-head">
+            <span className="jl-tag">{t.pathTag}</span>
+            <h2>{t.pathTitle}</h2>
+            <p className="jl-sub">{t.pathSub}</p>
+          </div>
+          <div className="jl-paths">
+            <div className="jl-path jl-path-worker">
+              <span className="jl-path-tag">👷 {t.pathWorkerTag}</span>
+              <h3>{t.pathWorkerTitle}</h3>
+              <p>{t.pathWorkerDesc}</p>
+              <div className="jl-path-cta">
+                <a href="/" className="jl-btn-primary">{t.create}</a>
+                <a href="/" className="jl-link">{t.signin} →</a>
+              </div>
+            </div>
+            <div className="jl-path jl-path-client">
+              <span className="jl-path-tag">🧑‍💼 {t.pathClientTag}</span>
+              <h3>{t.pathClientTitle}</h3>
+              <p>{t.pathClientDesc}</p>
+              <div className="jl-path-cta">
+                <a href={`${EMPLOYER_URL}/signup/employer`} className="jl-btn-primary">{t.create}</a>
+                <a href={`${EMPLOYER_URL}/signin`} className="jl-link">{t.signin} →</a>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
       {/* FEATURE BAND — four concrete, honest differentiators under the hero (reference layout) */}
       <section className="jl-features" aria-label="Why Joblop">
         <div className="jl-wrap jl-features-in">
@@ -554,47 +594,6 @@ export function PublicJobBoard() {
                 </div>
               </div>
             ))}
-          </div>
-        </div>
-      </section>
-
-      {/* JOB-COUNT MAGNET + CHOOSE YOUR PATH — one clear fork for workers vs clients */}
-      <section className="jl-sec" id="paths">
-        <div className="jl-wrap">
-          <div className="jl-magnet">
-            <div className="jl-magnet-num">{fmtCount(openCount)}</div>
-            <div className="jl-magnet-copy">
-              <strong>{t.magnetJobs}</strong>
-              {totalProvinces ? <span className="jl-magnet-prov">{t.magnetProv(totalProvinces)}</span> : null}
-              <p>{t.magnetSub}</p>
-            </div>
-            <a href="/" className="jl-btn-orange jl-btn-lg">{t.magnetBtn}</a>
-          </div>
-
-          <div className="jl-paths-head">
-            <span className="jl-tag">{t.pathTag}</span>
-            <h2>{t.pathTitle}</h2>
-            <p className="jl-sub">{t.pathSub}</p>
-          </div>
-          <div className="jl-paths">
-            <div className="jl-path jl-path-worker">
-              <span className="jl-path-tag">👷 {t.pathWorkerTag}</span>
-              <h3>{t.pathWorkerTitle}</h3>
-              <p>{t.pathWorkerDesc}</p>
-              <div className="jl-path-cta">
-                <a href="/" className="jl-btn-primary">{t.pathWorkerBtn}</a>
-                <button className="jl-link" onClick={() => { setTab("find"); scrollToJobs(); }}>{t.navJobs} →</button>
-              </div>
-            </div>
-            <div className="jl-path jl-path-client">
-              <span className="jl-path-tag">🧑‍💼 {t.pathClientTag}</span>
-              <h3>{t.pathClientTitle}</h3>
-              <p>{t.pathClientDesc}</p>
-              <div className="jl-path-cta">
-                <a href={EMPLOYER_URL} className="jl-btn-primary">{t.pathClientBtn}</a>
-                <a href={EMPLOYER_URL} className="jl-link">{t.navEmp} →</a>
-              </div>
-            </div>
           </div>
         </div>
       </section>
