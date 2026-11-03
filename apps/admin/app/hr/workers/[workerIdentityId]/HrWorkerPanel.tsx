@@ -116,6 +116,25 @@ export function HrWorkerPanel({ workerIdentityId }: { workerIdentityId: string }
       </header>
       {notice ? <p role={notice.tone === "err" ? "alert" : "status"} style={notice.tone === "err" ? styles.err : styles.ok}>{notice.msg}</p> : null}
 
+      {(() => {
+        // Advisory profile scan — consolidates what's blocking this worker, from data already loaded.
+        // Read-only: does not change standing/eligibility (those stay governed + centrally gated).
+        const issues: string[] = [];
+        if (!record.eligibility.receiveOffer.allowed) issues.push(...record.eligibility.receiveOffer.reasons.map((r) => `Cannot receive offers: ${r}`));
+        if (compliance) issues.push(...compliance.reasons.filter((r) => !r.satisfied).map((r) => `Missing ${r.requiredType || r.requirementKey}${r.detail ? ` — ${r.detail}` : ""}`));
+        issues.push(...documents.filter((d) => (d.effectiveStatus === "expired" || d.effectiveStatus === "rejected") && !d.supersededById).map((d) => `Document "${d.documentType}" is ${d.effectiveStatus}`));
+        return (
+          <section style={styles.card} aria-label="Profile issues">
+            <h2 style={styles.h2}>Profile scan {issues.length > 0 ? `· ${issues.length} to resolve` : "· all clear"} <span style={styles.dim}>(advisory)</span></h2>
+            {issues.length === 0 ? (
+              <p style={styles.dim}>No profile issues detected. (Advisory — a human still makes governed decisions.)</p>
+            ) : (
+              <ul style={{ margin: "6px 0 0", paddingInlineStart: 18 }}>{issues.map((it, i) => <li key={i} style={styles.dim}>{it}</li>)}</ul>
+            )}
+          </section>
+        );
+      })()}
+
       <div style={styles.grid}>
         {/* Standing + verification indicators + eligibility impact */}
         <section style={styles.card}>
