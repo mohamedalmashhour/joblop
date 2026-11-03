@@ -4554,6 +4554,38 @@ export function buildApi(options: BuildApiOptions = {}) {
     return reply.code(200).send(url);
   });
 
+  // AI Control Center — Documents: admin-scoped advisory AI review of ANY worker's document, to help
+  // the reviewer decide. ADVISORY only (the admin still accepts/rejects). Sensitive types are never
+  // sent to the model (the domain forces "human_required"); non-sensitive images use Claude vision when
+  // configured, else an offline advisory. Reuses the same engine as the worker-facing review.
+  app.post("/platform/hr/documents/:documentId/ai-review", async (request, reply) => {
+    const actor = await requireHrAuthority(request, reply);
+    if (!actor) return;
+    const documentId = readRouteParam(request.params, "documentId");
+    if (!isCanonicalUuid(documentId)) return reply.code(404).send({ error: "RWOS_HR_DOC_NOT_FOUND", message: "That document was not found." });
+    const doc = await hrDocumentService.getDocument(documentId);
+    if (!doc) return reply.code(404).send({ error: "RWOS_HR_DOC_NOT_FOUND", message: "That document was not found." });
+    const expired = doc.effectiveStatus === "expired";
+    let image: { base64: string; mediaType: string } | null = null;
+    if (offlineAdvisoryVerdict(doc.documentType, { expired }).status === "ai_approved" && process.env.ANTHROPIC_API_KEY?.trim()) {
+      const dl = await hrDocumentService.resolveDownloadUrl(documentId);
+      if (dl?.url) {
+        try {
+          const res = await fetch(dl.url);
+          const mediaType = res.headers.get("content-type")?.split(";")[0]?.trim() ?? "";
+          if (res.ok && isReviewableImageType(mediaType)) {
+            const buf = Buffer.from(await res.arrayBuffer());
+            if (buf.byteLength > 0 && buf.byteLength <= 5_000_000) image = { base64: buf.toString("base64"), mediaType };
+          }
+        } catch {
+          image = null;
+        }
+      }
+    }
+    const verdict = await reviewDocumentAdvisory({ documentType: doc.documentType, expired, image });
+    return reply.code(200).send({ verdict });
+  });
+
   const hrDocDecision = (path: string, apply: (actor: string, id: string, body: Record<string, unknown>) => Promise<{ status: HrDocumentStatus }>) =>
     app.post(path, async (request, reply) => {
       const actor = await requireHrAuthority(request, reply);

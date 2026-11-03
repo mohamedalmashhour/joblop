@@ -113,12 +113,38 @@ function ExpiringRow({ r }: { r: CredRow }) {
     </a>
   );
 }
+const AI_VERDICT_LABEL: Record<string, string> = {
+  ai_approved: "AI: looks good (advisory)",
+  needs_reupload: "AI: re-upload needed (advisory)",
+  human_required: "AI: human review needed",
+  error: "AI: unavailable"
+};
 function DocumentRow({ r }: { r: DocRow }) {
+  const [verdict, setVerdict] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+  const review = async () => {
+    setBusy(true);
+    try {
+      const res = await fetch(`/api/hr/documents/${encodeURIComponent(r.id)}/ai-review`, { method: "POST", headers: { "content-type": "application/json" }, body: "{}" });
+      if (!res.ok) { setVerdict("error"); return; }
+      const p = (await res.json()) as { verdict?: { status?: string } };
+      setVerdict(p.verdict?.status ?? "human_required");
+    } catch {
+      setVerdict("error");
+    } finally {
+      setBusy(false);
+    }
+  };
   return (
-    <a href={link(r.workerIdentityId)} style={styles.rowLink}>
+    <div style={{ ...styles.rowLink, flexWrap: "wrap" }}>
       <span><strong>Doc · {r.documentType}</strong> <span style={styles.badgeWarn}>{r.effectiveStatus.replaceAll("_", " ")}</span></span>
       <span style={styles.dim}>{r.workerIdentityId.slice(0, 8)}{r.expiresAt ? ` · expires ${new Date(r.expiresAt).toLocaleDateString()}` : ""}</span>
-    </a>
+      <span style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+        <a href={link(r.workerIdentityId)} style={styles.button}>Open worker</a>
+        <button type="button" style={styles.button} disabled={busy} onClick={() => void review()}>{busy ? "AI reviewing…" : "AI review"}</button>
+        {verdict ? <span style={styles.badge}>{AI_VERDICT_LABEL[verdict] ?? AI_VERDICT_LABEL.human_required}</span> : null}
+      </span>
+    </div>
   );
 }
 function WorkerSummaryRow({ r }: { r: WorkerRow }) {
