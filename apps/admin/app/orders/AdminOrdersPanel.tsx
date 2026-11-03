@@ -27,8 +27,16 @@ export function AdminOrdersPanel() {
   if (state.status === "error") return <p style={styles.text}>The order-review queue could not be reached.</p>;
   if (state.orders.length === 0) return <p style={styles.text}>No orders are awaiting review.</p>;
 
+  // Advisory jobs scan — surfaces what needs attention across all orders (read-only).
+  const pendingLines = state.orders.reduce((sum, o) => sum + o.children.filter((c) => c.status === "submitted" || c.status === "admin_review").length, 0);
+  const ordersNeedingReview = state.orders.filter((o) => o.children.some((c) => c.status === "submitted" || c.status === "admin_review")).length;
+
   return (
     <div style={styles.grid}>
+      <div style={{ ...styles.card, borderColor: pendingLines > 0 ? "rgba(201,162,75,0.5)" : undefined }}>
+        <strong>AI scan (advisory): {ordersNeedingReview > 0 ? `${ordersNeedingReview} order(s) · ${pendingLines} job line(s) awaiting review` : "all orders reviewed — nothing pending"}</strong>
+        <p style={styles.meta}>Advisory only — a human admin prices and approves each job line.</p>
+      </div>
       {state.orders.map((order) => {
         const pending = order.children.filter((c) => c.status === "submitted" || c.status === "admin_review").length;
         return (
