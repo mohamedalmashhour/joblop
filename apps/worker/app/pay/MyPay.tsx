@@ -161,7 +161,18 @@ export function MyPay() {
     }
   }, []);
 
-  // Work type is chosen in the HR Profile now; this page only reflects it (read-only).
+  const choose = useCallback(async (classification: "employee" | "contractor") => {
+    try {
+      const r = await fetch("/api/profile/classification", {
+        method: "PUT",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ classification })
+      });
+      if (r.ok) void load();
+    } catch {
+      // keep the current value on failure
+    }
+  }, [load]);
 
   const raiseDispute = useCallback(async (payrollCalculationId: string, category: string, reason: string): Promise<boolean> => {
     setActionNotice(null);
@@ -233,7 +244,7 @@ export function MyPay() {
 
       {actionNotice ? <p className="notice" style={{ color: "var(--accent)" }}>{actionNotice}</p> : null}
 
-      {tab === "earnings" ? <EarningsTab state={state} t={t} locale={locale} /> : null}
+      {tab === "earnings" ? <EarningsTab state={state} choose={choose} t={t} locale={locale} /> : null}
       {tab === "topay" ? <ToPayTab payouts={payouts} openDisputed={openDisputedCalcIds} onRaise={raiseDispute} t={t} locale={locale} /> : null}
       {tab === "paid" ? <PaidTab payouts={payouts} openDisputed={openDisputedCalcIds} onRaise={raiseDispute} t={t} locale={locale} /> : null}
       {tab === "calendar" ? <PaymentsCalendar payouts={payouts} items={allPayouts} openDisputed={openDisputedCalcIds} onRaise={raiseDispute} t={t} locale={locale} /> : null}
@@ -244,7 +255,7 @@ export function MyPay() {
   );
 }
 
-function EarningsTab({ state, t, locale }: { state: Extract<PayState, { status: "ready" }>; t: Translate; locale: RwosLocale }) {
+function EarningsTab({ state, choose, t, locale }: { state: Extract<PayState, { status: "ready" }>; choose: (c: "employee" | "contractor") => void; t: Translate; locale: RwosLocale }) {
   return (
     <>
       {state.summary ? (
@@ -257,15 +268,26 @@ function EarningsTab({ state, t, locale }: { state: Extract<PayState, { status: 
         </section>
       ) : null}
 
-      {/* Read-only here — work type is chosen in the HR Profile, not in the payment section. */}
       <section className="card" style={{ marginBottom: 16 }}>
         <div className="role">{t("pay.workTypeTitle")}</div>
         <div className="chips" style={{ marginTop: 6 }}>
-          <span className="chip status-verified">{state.workerClassification === "contractor" ? t("pay.typeAutonomous") : t("pay.typeEmployee")}</span>
+          <button
+            type="button"
+            className={`chip ${state.workerClassification !== "contractor" ? "status-verified" : ""}`}
+            onClick={() => void choose("employee")}
+          >
+            {t("pay.typeEmployee")}
+          </button>
+          <button
+            type="button"
+            className={`chip ${state.workerClassification === "contractor" ? "status-verified" : ""}`}
+            onClick={() => void choose("contractor")}
+          >
+            {t("pay.typeAutonomous")}
+          </button>
         </div>
         <div className="when">{state.workerClassification === "contractor" ? t("pay.typeAutonomousDesc") : t("pay.typeEmployeeDesc")}</div>
         <div className="when">{t("pay.slipType", { slip: state.workerClassification === "contractor" ? "T4A" : "T4" })}</div>
-        <a className="btn ghost" href="/hr" style={{ alignSelf: "flex-start", marginTop: 8 }}>{t("pay.changeInHrProfile")}</a>
       </section>
 
       {state.items.length === 0 ? (
