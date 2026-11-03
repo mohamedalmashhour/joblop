@@ -24,9 +24,6 @@ type Lead = {
 };
 type Lang = "en" | "fr" | "ar";
 
-// Regions come from the active country profile (F16 seam) — no hardcoded province list here.
-const PROVINCES = activeCountry().regions;
-
 // Joblop's real work categories (not tech roles). `q` matches role/title/city server-side.
 const CATEGORIES = [
   { icon: "🩺", bg: "#fbf9f4", en: "Care & Nursing", fr: "Soins & infirmerie", ar: "الرعاية والتمريض", q: "nurse" },
