@@ -4504,6 +4504,20 @@ export function buildApi(options: BuildApiOptions = {}) {
     }
   });
 
+  // Worker: remove (revoke) ONE of their OWN documents. Ownership enforced in the service; keeps the
+  // audit trail. The worker can then re-upload. Cannot affect another worker's document.
+  app.post("/hr/documents/:documentId/remove", async (request, reply) => {
+    const userId = await requireWorkerSession(request, reply);
+    if (!userId) return;
+    try {
+      const documentId = (request.params as { documentId?: string }).documentId ?? "";
+      const document = await hrDocumentService.removeMyDocument({ userId, documentId });
+      return reply.code(200).send({ document });
+    } catch (error) {
+      return sendHrDocError(reply, error);
+    }
+  });
+
   // HR authority: document review queues + a worker's documents + governed decisions.
   app.get("/platform/hr/documents/queue", async (request, reply) => {
     const actor = await requireHrAuthority(request, reply);

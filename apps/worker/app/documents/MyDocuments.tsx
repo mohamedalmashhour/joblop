@@ -98,6 +98,21 @@ export function MyDocuments() {
 
   useEffect(() => { void load(); }, [load]);
 
+  const removeDoc = useCallback(async (documentId: string) => {
+    setBusy(true);
+    setError(null);
+    try {
+      const r = await fetch(`/api/documents/${encodeURIComponent(documentId)}/remove`, { method: "POST", headers: { "content-type": "application/json" }, body: "{}" });
+      if (!r.ok) { setError(t("doc.removeFailed")); return; }
+      setNotice(t("doc.removed"));
+      await load();
+    } catch {
+      setError(t("doc.removeFailed"));
+    } finally {
+      setBusy(false);
+    }
+  }, [load, t]);
+
   // Real secure upload path: obtain a storage reference + signed upload URL, PUT the chosen FILE to the
   // provider, then submit the metadata. The file bytes go to the storage provider, never through Joblop.
   // Upload ONE file end to end (ref → PUT → metadata). Returns true on success; no form-state reset.
@@ -150,7 +165,7 @@ export function MyDocuments() {
   if (state.status === "needs_setup") return <div className="state">{t("common.needsWorkerSetup")}<div style={{ marginTop: 12 }}><a className="btn" href="/onboarding">{t("common.setUpWorker")}</a></div></div>;
   if (state.status === "error") return <div className="state error" role="alert">{t("doc.loadError")}</div>;
 
-  const active = state.documents.filter((d) => d.effectiveStatus !== "superseded");
+  const active = state.documents.filter((d) => d.effectiveStatus !== "superseded" && d.effectiveStatus !== "revoked");
 
   return (
     <>
@@ -208,6 +223,7 @@ export function MyDocuments() {
                     {t(AI_VERDICT_KEY[verdict] ?? "doc.aiHuman")} · {t("doc.aiAdvisory")}
                   </span>
                 ) : null}
+                <button className="btn ghost" type="button" disabled={busy} onClick={() => void removeDoc(d.id)}>{t("doc.remove")}</button>
               </div>
               {["accepted", "expiring", "expired", "rejected"].includes(d.effectiveStatus) ? (
                 <button className="btn ghost" type="button" style={{ alignSelf: "flex-start" }} disabled={busy} onClick={() => { setReplacing(true); setDocType(d.documentType); setFiles([]); setError(null); setNotice(t("doc.chooseNewToReplace")); }}>{t("doc.replace")}</button>

@@ -221,6 +221,18 @@ export function createHrDocumentService(deps: HrDocumentDeps) {
       return { documentType: rec.documentType, expired: effective === "expired", downloadUrl: dl?.url ?? null };
     },
 
+    // Worker: remove ONE of their OWN documents. Ownership enforced. Governed/append-only model — this
+    // marks the record "revoked" (worker-initiated) and keeps the audit event rather than hard-deleting.
+    // The worker then re-uploads a fresh one if needed. Cannot touch another worker's document.
+    async removeMyDocument(input: { userId: string; documentId: string }): Promise<WorkerDocumentView> {
+      const workerIdentityId = await requireWorker(input.userId);
+      const rec = (await deps.store.listForWorker(workerIdentityId)).find((r) => r.id === input.documentId);
+      if (!rec) throw new HrDocumentError("not_found", "That document was not found.");
+      const updated = await deps.store.setStatus({ id: rec.id, status: "revoked", reviewReason: "removed_by_worker", reviewedByUserId: null });
+      await deps.store.appendEvent({ documentId: rec.id, workerIdentityId, eventType: "document_revoked", priorState: rec.status, newState: "revoked", reason: "removed_by_worker", source: "worker", actorUserId: null });
+      return toWorkerView(updated);
+    },
+
     // ── HR authority ──
     async getDocument(id: string): Promise<HrDocumentRecord | null> {
       const rec = await deps.store.getById(id);
