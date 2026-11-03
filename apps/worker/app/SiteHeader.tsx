@@ -1,5 +1,6 @@
 "use client";
 
+import { useState } from "react";
 import { LanguageSwitcher } from "./i18n/LanguageSwitcher";
 import { useLocale } from "./i18n/LocaleProvider";
 import { JoblopLogo } from "./JoblopLogo";
@@ -15,24 +16,38 @@ const EMPLOYER_URL = process.env.NEXT_PUBLIC_EMPLOYER_URL ?? "http://localhost:3
  */
 export function SiteHeader() {
   const locale = useLocale();
+  const [open, setOpen] = useState(false);
   const nav = (ar: string, fr: string, en: string) =>
     locale === "ar" ? ar : locale.startsWith("fr") ? fr : en;
+  const close = () => setOpen(false);
   return (
     <header className="topbar">
       <div className="wrap">
-        <a className="brand" href="/" style={{ display: "inline-flex", alignItems: "center", textDecoration: "none" }}>
+        <a className="brand" href="/" style={{ display: "inline-flex", alignItems: "center", textDecoration: "none" }} onClick={close}>
           <JoblopLogo height={30} />
         </a>
         <div className="topbar-right">
-          <a className="muted" href="/browse" style={{ fontSize: 14, fontWeight: 700 }}>{nav("الوظائف", "Emplois", "Find jobs")}</a>
-          <a className="muted" href="/how-it-works" style={{ fontSize: 14, fontWeight: 700 }}>{nav("كيف يعمل", "Comment ça marche", "How it works")}</a>
-          <a className="muted" href="/job-scanner" style={{ fontSize: 14, fontWeight: 700 }}>JobScanner</a>
-          <a className="muted" href="/cv-builder" style={{ fontSize: 14, fontWeight: 700 }}>{nav("إنشاء السيرة", "Créer un CV", "Build CV")}</a>
-          <a className="muted" href={EMPLOYER_URL} style={{ fontSize: 14, fontWeight: 700 }}>{nav("لأصحاب العمل", "Employeurs", "For Employers")}</a>
-          <a className="muted" href="/browse#contact" style={{ fontSize: 14, fontWeight: 700 }}>{nav("تواصل", "Contact", "Contact")}</a>
-          <a className="muted" href="/" style={{ fontSize: 14, fontWeight: 700 }}>{nav("تسجيل الدخول", "Se connecter", "Sign in")}</a>
-          <a href="/" style={{ fontSize: 14, fontWeight: 800, color: "#c9a24b", textDecoration: "none" }}>{nav("إنشاء حساب", "Créer un compte", "Create account")}</a>
-          <LanguageSwitcher />
+          {/* Mobile menu toggle — hidden on desktop via CSS; collapses the nav so it never overflows. */}
+          <button
+            type="button"
+            className="topbar-burger"
+            aria-label={nav("القائمة", "Menu", "Menu")}
+            aria-expanded={open}
+            onClick={() => setOpen((o) => !o)}
+          >
+            <span /><span /><span />
+          </button>
+          <nav className={open ? "topbar-nav open" : "topbar-nav"}>
+            <a className="muted" href="/browse" onClick={close}>{nav("الوظائف", "Emplois", "Find jobs")}</a>
+            <a className="muted" href="/how-it-works" onClick={close}>{nav("كيف يعمل", "Comment ça marche", "How it works")}</a>
+            <a className="muted" href="/job-scanner" onClick={close}>JobScanner</a>
+            <a className="muted" href="/cv-builder" onClick={close}>{nav("إنشاء السيرة", "Créer un CV", "Build CV")}</a>
+            <a className="muted" href={EMPLOYER_URL} onClick={close}>{nav("لأصحاب العمل", "Employeurs", "For Employers")}</a>
+            <a className="muted" href="/browse#contact" onClick={close}>{nav("تواصل", "Contact", "Contact")}</a>
+            <a className="muted" href="/" onClick={close}>{nav("تسجيل الدخول", "Se connecter", "Sign in")}</a>
+            <a className="topbar-cta" href="/" onClick={close}>{nav("إنشاء حساب", "Créer un compte", "Create account")}</a>
+            <LanguageSwitcher />
+          </nav>
         </div>
       </div>
     </header>
