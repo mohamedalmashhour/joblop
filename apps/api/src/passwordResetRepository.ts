@@ -4,8 +4,8 @@ type PasswordResetPrisma = {
   user: {
     findUnique(input: {
       where: { emailNormalized: string };
-      select: { id: true; publicId: true; status: true };
-    }): Promise<{ id: string; publicId: string; status: string } | null>;
+      select: { id: true; publicId: true; status: true; phone: true };
+    }): Promise<{ id: string; publicId: string; status: string; phone: string | null } | null>;
   };
   passwordResetToken: {
     updateMany(input: {
@@ -72,10 +72,10 @@ export function createPrismaPasswordResetRepository(prismaClient: unknown): Pass
     async findEligibleUser(emailNormalized) {
       const user = await prisma.user.findUnique({
         where: { emailNormalized },
-        select: { id: true, publicId: true, status: true }
+        select: { id: true, publicId: true, status: true, phone: true }
       });
       if (!user || user.status === "disabled" || user.status === "closed") return null;
-      return { id: user.id, publicId: user.publicId };
+      return { id: user.id, publicId: user.publicId, phone: user.phone };
     },
 
     createToken(input) {

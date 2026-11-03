@@ -1,6 +1,7 @@
 import { createHash, randomBytes, timingSafeEqual } from "node:crypto";
 import { hashPassword, normalizeEmail } from "@rwos/auth";
 import type { EmailSender } from "./mailer/emailSender";
+import type { SmsSender } from "./mailer/smsSender";
 
 export const passwordResetExpiryMinutes = 30;
 export const passwordResetAccepted = Object.freeze({
@@ -13,7 +14,9 @@ export const passwordResetFailure = Object.freeze({
 });
 
 export interface PasswordResetRepository {
-  findEligibleUser(emailNormalized: string): Promise<{ id: string; publicId: string } | null>;
+  findEligibleUser(
+    emailNormalized: string
+  ): Promise<{ id: string; publicId: string; phone?: string | null } | null>;
   createToken(input: {
     userId: string;
     tokenHash: string;
@@ -42,6 +45,9 @@ export function createPasswordResetService(
   options: {
     now?: () => Date;
     randomToken?: () => string;
+    // Optional SMS twin (fail-soft, money-gated in the sender): also texts the reset link when a phone
+    // is on file for the account.
+    smsSender?: SmsSender;
   } = {}
 ): PasswordResetService {
   const now = options.now ?? (() => new Date());
@@ -72,6 +78,15 @@ export function createPasswordResetService(
           `Use this single-use link within ${passwordResetExpiryMinutes} minutes to reset your password: ` +
           `${resetUrl.toString()}\n\nIf you did not request this, you can ignore this message.`
       });
+      // SMS twin (fail-soft, money-gated in the sender): text the reset link when a phone is on file.
+      if (options.smsSender && user.phone) {
+        await options.smsSender
+          .send({
+            to: user.phone,
+            text: `JobLop password reset (valid ${passwordResetExpiryMinutes} min): ${resetUrl.toString()}`
+          })
+          .catch(() => undefined);
+      }
       return passwordResetAccepted;
     },
 

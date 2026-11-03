@@ -575,7 +575,6 @@ export function buildApi(options: BuildApiOptions = {}) {
       sender: runtimeConfig.smsSender,
       enabled: runtimeConfig.smsEnabled
     });
-  void smsSender;
   const authService =
     options.authService ??
     createAuthenticationService(authenticationRepository!, {
@@ -585,13 +584,14 @@ export function buildApi(options: BuildApiOptions = {}) {
     options.emailVerificationService ??
     (authenticationRepository && hasEmailVerificationDelegate(prisma)
       ? createEmailVerificationService(authenticationRepository, emailSender, {
-          exposeLocalCode: runtimeConfig.rwosEnv !== "production" && !runtimeConfig.hasEmailDelivery
+          exposeLocalCode: runtimeConfig.rwosEnv !== "production" && !runtimeConfig.hasEmailDelivery,
+          smsSender
         })
       : null);
   const passwordResetService =
     options.passwordResetService ??
     (prisma && "passwordResetToken" in prisma
-      ? createPasswordResetService(createPrismaPasswordResetRepository(prisma), emailSender)
+      ? createPasswordResetService(createPrismaPasswordResetRepository(prisma), emailSender, { smsSender })
       : null);
   const authorizationService = options.authorizationService ?? createAuthorizationService();
   const membershipService =
@@ -1611,9 +1611,14 @@ export function buildApi(options: BuildApiOptions = {}) {
       return sendAuthenticationRateLimited(reply, rateLimit.retryAfterSeconds);
     }
 
+    // Look up the account's phone so the verification code can also be texted (SMS is money-gated).
+    const phoneRow = prisma
+      ? await prisma.user.findUnique({ where: { id: session.user.id }, select: { phone: true } }).catch(() => null)
+      : null;
     const result = await emailVerificationService.issue({
       userId: session.user.id,
-      emailNormalized: session.user.emailNormalized
+      emailNormalized: session.user.emailNormalized,
+      recipientPhone: phoneRow?.phone ?? null
     });
     return reply.code(202).send(result);
   });

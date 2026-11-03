@@ -1,6 +1,7 @@
 import { createHash, randomInt, timingSafeEqual } from "node:crypto";
 import type { EmailSender } from "./mailer/emailSender";
 import { verificationEmailMessage } from "./mailer/emailSender";
+import type { SmsSender } from "./mailer/smsSender";
 
 export const emailVerificationExpiryMinutes = 10;
 export const emailVerificationMaximumAttempts = 5;
@@ -53,12 +54,16 @@ export interface EmailVerificationServiceOptions {
   now?: () => Date;
   randomInteger?: (minimumInclusive: number, maximumExclusive: number) => number;
   exposeLocalCode?: boolean;
+  // Optional SMS twin: when provided AND enabled AND the issue() call carries a recipientPhone, the
+  // same code is also texted. Fail-soft and money-gated inside the sender (no-op unless SMS_ENABLED).
+  smsSender?: SmsSender;
 }
 
 export interface EmailVerificationService {
   issue(input: {
     userId: string;
     emailNormalized: string;
+    recipientPhone?: string | null;
   }): Promise<
     | Readonly<{ status: "accepted" }>
     | Readonly<{ status: "accepted"; code: string }>
@@ -103,6 +108,15 @@ export function createEmailVerificationService(
           emailVerificationExpiryMinutes
         )
       );
+      // SMS twin (fail-soft, money-gated in the sender): text the same code when a phone is on file.
+      if (options.smsSender && input.recipientPhone) {
+        await options.smsSender
+          .send({
+            to: input.recipientPhone,
+            text: `JobLop code: ${code}. Expires in ${emailVerificationExpiryMinutes} min. Never share it.`
+          })
+          .catch(() => undefined);
+      }
       return exposeLocalCode
         ? { status: "accepted", code }
         : { status: "accepted" };
