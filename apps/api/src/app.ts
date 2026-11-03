@@ -282,6 +282,7 @@ import {
 } from "./emailVerification";
 import { createEmailSender, type EmailSender } from "./mailer/emailSender";
 import { createSmsSender, type SmsSender } from "./mailer/smsSender";
+import { runShiftReminderSweep } from "./shiftReminderSweep";
 import {
   createPasswordResetService,
   passwordResetAccepted,
@@ -1386,6 +1387,26 @@ export function buildApi(options: BuildApiOptions = {}) {
       service: "resident-workforce-os-api",
       check: "liveness"
     };
+  });
+
+  // Pre-shift reminder sweep trigger. Called by a scheduled cron with the shared-secret header.
+  // Fail-closed: disabled (404) unless SHIFT_REMINDER_SWEEP_TOKEN is configured; 401 on token mismatch.
+  // Runs ONE bounded sweep and returns metrics. SMS stays money-gated inside the sender.
+  app.post("/internal/shift-reminders/sweep", async (request, reply) => {
+    const expected = runtimeConfig.shiftReminderSweepToken;
+    if (!expected) {
+      return reply.code(404).send({ error: "RWOS_NOT_FOUND", message: "Not found." });
+    }
+    const provided = request.headers["x-sweep-token"];
+    if (typeof provided !== "string" || provided !== expected) {
+      return reply.code(401).send({ error: "RWOS_SWEEP_DENIED", message: "Sweep token required." });
+    }
+    if (!prisma) {
+      return reply.code(503).send({ error: "RWOS_SWEEP_UNAVAILABLE", message: "Database unavailable." });
+    }
+    const metrics = await runShiftReminderSweep({ prisma, emailSender, smsSender });
+    logger.info("api.shift_reminder.sweep", { ...metrics });
+    return reply.code(200).send({ status: "completed", ...metrics });
   });
 
   app.get("/ready", async (_request, reply) => {

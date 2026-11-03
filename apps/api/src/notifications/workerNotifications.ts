@@ -153,6 +153,46 @@ export function assignedJobSmsText(params: {
     : `JobLop : travail obtenu ! « ${params.title} » — ${when}. Détails dans l'app.`;
 }
 
+// Pre-shift reminder — "your shift is coming up". Email copy, bilingual.
+export function shiftReminderEmail(params: {
+  to: string;
+  language: NotificationLanguage;
+  title: string;
+  startAt: Date;
+}): EmailMessage {
+  const when = formatShiftWhen(params.startAt, params.language);
+  if (params.language === "en") {
+    return {
+      to: params.to,
+      subject: "Joblop — reminder: your shift is coming up",
+      text:
+        `This is a reminder for your upcoming shift "${params.title}".\n\n` +
+        `When: ${when}\n\n` +
+        `Open Joblop for the full details. Please arrive on time.\n\n— Joblop`
+    };
+  }
+  return {
+    to: params.to,
+    subject: "Joblop — rappel : votre quart approche",
+    text:
+      `Rappel pour votre prochain quart « ${params.title} ».\n\n` +
+      `Quand : ${when}\n\n` +
+      `Ouvrez Joblop pour tous les détails. Merci d'arriver à l'heure.\n\n— Joblop`
+  };
+}
+
+// Short SMS twin of shiftReminderEmail.
+export function shiftReminderSmsText(params: {
+  language: NotificationLanguage;
+  title: string;
+  startAt: Date;
+}): string {
+  const when = formatShiftWhen(params.startAt, params.language);
+  return params.language === "en"
+    ? `JobLop reminder: "${params.title}" — ${when}. Details in the app.`
+    : `Rappel JobLop : « ${params.title} » — ${when}. Détails dans l'app.`;
+}
+
 export type WorkerPayoutNotificationResult = Readonly<{
   status: "sent" | "skipped" | "error" | "no_recipient";
 }>;

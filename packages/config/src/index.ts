@@ -72,6 +72,9 @@ const runtimeConfigSchema = z
     // double-gated: it only sends when SMS_ENABLED=enabled AND the key + sender are present. Defaults OFF.
     SMS_ENABLED: z.enum(["disabled", "enabled"]).default("disabled"),
     SMS_SENDER: z.string().min(1).max(32).optional(),
+    // Shared secret for the pre-shift reminder sweep trigger (a scheduled cron calls the internal
+    // endpoint with this token). Fail-closed: when unset, the sweep endpoint is disabled (404).
+    SHIFT_REMINDER_SWEEP_TOKEN: z.string().min(16).optional(),
     STRIPE_TEST_MODE_ENABLED: z.enum(["disabled", "enabled"]).default("disabled"),
     STRIPE_TEST_SECRET_KEY: z.string().min(1).optional(),
     STRIPE_TEST_WEBHOOK_SECRET: z.string().min(1).optional(),
@@ -467,6 +470,7 @@ export function getRuntimeConfig(env: NodeJS.ProcessEnv = process.env) {
     smsApiKey: parsed.BREVO_API_KEY,
     // True only when the key + sender are present; the enable flag is a separate money gate.
     hasSmsDelivery: Boolean(parsed.BREVO_API_KEY && parsed.SMS_SENDER),
+    shiftReminderSweepToken: parsed.SHIFT_REMINDER_SWEEP_TOKEN,
     stripeTestModeEnabled: parsed.STRIPE_TEST_MODE_ENABLED === "enabled",
     stripeTestSecretKey: parsed.STRIPE_TEST_SECRET_KEY,
     stripeTestWebhookSecret: parsed.STRIPE_TEST_WEBHOOK_SECRET,
