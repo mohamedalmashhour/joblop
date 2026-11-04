@@ -42,12 +42,16 @@ export const styles: Record<string, CSSProperties> = {
     flex: "0 0 280px",
     gap: 20,
     gridTemplateRows: "auto 1fr auto",
-    minHeight: "100vh",
+    // No forced 100vh: on a flex row it stretches to the workspace height anyway; forcing it full
+    // height pushed the workspace a whole screen down whenever the row wrapped (narrow/tablet),
+    // leaving the employer looking at a blank page.
     padding: 20
   },
   workspace: {
     background: surface,
-    flex: "1 1 680px",
+    // A smaller flex-basis so the workspace sits BESIDE the 280px sidebar at tablet/pane widths
+    // instead of wrapping below it; it still stacks under the sidebar on true mobile.
+    flex: "1 1 360px",
     minWidth: 0
   },
   stagingBanner: {
