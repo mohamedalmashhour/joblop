@@ -142,8 +142,6 @@ function IntakeForm({ initial, onSaved, t }: { initial: Intake | null; onSaved: 
   const [licenceClass, setLicenceClass] = useState(initial?.licenceClass ?? "");
   const [licenceExpiry, setLicenceExpiry] = useState(initial?.licenceExpiry ?? "");
   const [hasVehicle, setHasVehicle] = useState(Boolean(initial?.hasVehicle));
-  const [vehicleType, setVehicleType] = useState(initial?.vehicleType ?? "");
-  const [canTravelKm, setCanTravelKm] = useState(initial?.canTravelKm != null ? String(initial.canTravelKm) : "");
   const [transportNotes, setTransportNotes] = useState(initial?.transportNotes ?? "");
   const [marketingEmailOptIn, setMarketingEmailOptIn] = useState(Boolean(initial?.marketingEmailOptIn));
   const [consent, setConsent] = useState(false);
@@ -162,8 +160,8 @@ function IntakeForm({ initial, onSaved, t }: { initial: Intake | null; onSaved: 
         licenceClass: hasDrivingLicence ? licenceClass : null,
         licenceExpiry: hasDrivingLicence ? (licenceExpiry || null) : null,
         hasVehicle,
-        vehicleType: hasVehicle ? vehicleType : null,
-        canTravelKm: hasVehicle && canTravelKm.trim() !== "" ? Number(canTravelKm) : null,
+        vehicleType: null,
+        canTravelKm: null,
         transportNotes,
         marketingEmailOptIn
       };
@@ -205,7 +203,7 @@ function IntakeForm({ initial, onSaved, t }: { initial: Intake | null; onSaved: 
         {hasDrivingLicence ? (
           <>
             <label htmlFor="hr-licclass">{t("hr.fLicenceClass")}</label>
-            <input id="hr-licclass" type="text" maxLength={16} value={licenceClass} onChange={(e) => setLicenceClass(e.target.value)} />
+            <input id="hr-licclass" type="text" maxLength={32} value={licenceClass} onChange={(e) => setLicenceClass(e.target.value)} />
             <label htmlFor="hr-licexp">{t("hr.fLicenceExpiry")}</label>
             <input id="hr-licexp" type="date" value={licenceExpiry} onChange={(e) => setLicenceExpiry(e.target.value)} />
           </>
@@ -215,14 +213,6 @@ function IntakeForm({ initial, onSaved, t }: { initial: Intake | null; onSaved: 
           <input id="hr-hasveh" type="checkbox" checked={hasVehicle} onChange={(e) => setHasVehicle(e.target.checked)} />
           {t("hr.hasVehicle")}
         </label>
-        {hasVehicle ? (
-          <>
-            <label htmlFor="hr-vtype">{t("hr.fVehicleType")}</label>
-            <input id="hr-vtype" type="text" value={vehicleType} onChange={(e) => setVehicleType(e.target.value)} />
-            <label htmlFor="hr-travel">{t("hr.fCanTravelKm")}</label>
-            <input id="hr-travel" type="number" min={0} value={canTravelKm} onChange={(e) => setCanTravelKm(e.target.value)} />
-          </>
-        ) : null}
 
         <label htmlFor="hr-notes">{t("hr.fTransportNotes")}</label>
         <textarea id="hr-notes" rows={3} value={transportNotes} onChange={(e) => setTransportNotes(e.target.value)} />
