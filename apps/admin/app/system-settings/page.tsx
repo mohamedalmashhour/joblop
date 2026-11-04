@@ -293,7 +293,7 @@ function BoundaryList({
 const styles: Record<string, CSSProperties> = {
   page: {
     background: "#000000",
-    color: "#000000",
+    color: "#ece3d1",
     fontFamily: "Inter, system-ui, sans-serif",
     minHeight: "100vh",
     padding: 24
