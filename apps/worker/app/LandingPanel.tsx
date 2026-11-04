@@ -146,11 +146,26 @@ function SignInForm({ onSignedIn, onNeedAccount }: { onSignedIn: () => void; onN
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  // Remember the last email used on this device (convenience only — never the password).
+  useEffect(() => {
+    try {
+      const saved = localStorage.getItem("jl_last_email");
+      if (saved) setEmail(saved);
+    } catch {
+      /* private mode / blocked storage — fine, just start blank */
+    }
+  }, []);
+
   async function submit(event: React.FormEvent) {
     event.preventDefault();
     setBusy(true);
     setError(null);
     try {
+      try {
+        localStorage.setItem("jl_last_email", email.trim());
+      } catch {
+        /* ignore storage errors */
+      }
       const response = await fetch("/api/session/sign-in", {
         method: "POST",
         headers: { "content-type": "application/json" },
