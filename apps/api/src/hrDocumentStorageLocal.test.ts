@@ -1,0 +1,63 @@
+import { describe, expect, it } from "vitest";
+import { createMemoryPrivateObjectStore } from "./documentUpload";
+import { createLocalHrDocumentStorageProvider } from "./hrDocumentStorageLocal";
+
+const SECRET = "0123456789abcdef0123456789abcdef"; // 32 chars
+const WORKER = "11111111-1111-1111-1111-111111111111";
+const OTHER = "22222222-2222-2222-2222-222222222222";
+
+function make() {
+  const store = createMemoryPrivateObjectStore();
+  const provider = createLocalHrDocumentStorageProvider({ store, secret: SECRET });
+  return { store, provider };
+}
+
+describe("local HR document storage provider", () => {
+  it("rejects a secret that is too short", () => {
+    expect(() => createLocalHrDocumentStorageProvider({ store: createMemoryPrivateObjectStore(), secret: "short" })).toThrow();
+  });
+
+  it("mints a same-origin upload URL with a signed reference", async () => {
+    const { provider } = make();
+    const { storageReference, uploadUrl } = await provider.createUploadReference({ workerIdentityId: WORKER, documentType: "certificate" });
+    expect(storageReference.startsWith(`${WORKER}/certificate/`)).toBe(true);
+    expect(uploadUrl.startsWith("/api/documents/blob?ref=")).toBe(true);
+    const sig = new URL(uploadUrl, "https://x").searchParams.get("sig")!;
+    expect(provider.verifyUploadSignature(storageReference, sig)).toBe(true);
+    expect(provider.verifyUploadSignature(storageReference, "deadbeef")).toBe(false);
+  });
+
+  it("sanitizes the document type into the reference", async () => {
+    const { provider } = make();
+    const { storageReference } = await provider.createUploadReference({ workerIdentityId: WORKER, documentType: "../../etc/passwd" });
+    expect(storageReference.startsWith(`${WORKER}/etcpasswd/`)).toBe(true);
+  });
+
+  it("verifyReference requires a well-formed, owned reference with stored bytes", async () => {
+    const { store, provider } = make();
+    const { storageReference } = await provider.createUploadReference({ workerIdentityId: WORKER, documentType: "certificate" });
+    // No bytes yet -> not verifiable.
+    expect(await provider.verifyReference({ storageReference, workerIdentityId: WORKER })).toBe(false);
+    await store.put({ key: provider.objectKey(storageReference), bytes: new Uint8Array([1, 2, 3]) });
+    // Now stored -> verifiable for the owner, never for another worker.
+    expect(await provider.verifyReference({ storageReference, workerIdentityId: WORKER })).toBe(true);
+    expect(await provider.verifyReference({ storageReference, workerIdentityId: OTHER })).toBe(false);
+  });
+
+  it("rejects malformed references (traversal, wrong shape)", async () => {
+    const { provider } = make();
+    for (const bad of ["../x", `${WORKER}/t/..`, "a/b/c", `${WORKER}/type/not-a-uuid`]) {
+      expect(await provider.verifyReference({ storageReference: bad, workerIdentityId: WORKER })).toBe(false);
+      expect(provider.verifyUploadSignature(bad, "a".repeat(64))).toBe(false);
+    }
+  });
+
+  it("uses a distinct signing scope for download URLs", async () => {
+    const { provider } = make();
+    const { storageReference } = await provider.createUploadReference({ workerIdentityId: WORKER, documentType: "certificate" });
+    const dl = await provider.resolveDownloadUrl({ storageReference });
+    const dlSig = new URL(dl!.url, "https://x").searchParams.get("dl")!;
+    // A download signature must NOT pass as an upload signature (scope separation).
+    expect(provider.verifyUploadSignature(storageReference, dlSig)).toBe(false);
+  });
+});

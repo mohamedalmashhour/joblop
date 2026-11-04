@@ -298,6 +298,11 @@ import {
   type DocumentUploadService
 } from "./documentUpload";
 import { createDocumentUploadContract } from "./documentUploadContract";
+import {
+  ALLOWED_HR_DOCUMENT_CONTENT_TYPES,
+  MAX_HR_DOCUMENT_BYTES,
+  createLocalHrDocumentStorageProvider
+} from "./hrDocumentStorageLocal";
 import { resolvePayrollPeriodTimezone } from "./payrollPeriodTimezone";
 import { createPrismaDocumentMetadataRepository } from "./documentUploadRepository";
 import { registerDocumentRoutes } from "./documentRoutes";
@@ -761,10 +766,22 @@ export function buildApi(options: BuildApiOptions = {}) {
   // HR-3 Documents & Compliance. Provider-neutral storage (fixture in dev); file contents
   // never touch core. Compliance evaluator is centralized + explainable; requirements are
   // jurisdiction/role data, not hard-coded rules.
+  const hrDocWorkerResolver = createPrismaHrDocWorkerResolver(prisma!);
+  // Real disk-backed HR-document storage when local upload is enabled (persistent disk), else the
+  // fixture placeholder. The fixture hands out an unreachable URL, so uploads only work once this is on.
+  const hrDocLocalStorage =
+    runtimeConfig.documentLocalUploadEnabled &&
+    runtimeConfig.documentReferenceSecret &&
+    runtimeConfig.documentLocalStorageRoot
+      ? createLocalHrDocumentStorageProvider({
+          store: createLocalPrivateFileObjectStore(`${runtimeConfig.documentLocalStorageRoot}/hr`),
+          secret: runtimeConfig.documentReferenceSecret
+        })
+      : null;
   const hrDocumentService = createHrDocumentService({
-    workers: createPrismaHrDocWorkerResolver(prisma!),
+    workers: hrDocWorkerResolver,
     store: createPrismaHrDocumentStore(prisma!),
-    storage: createFixtureDocumentStorageProvider()
+    storage: hrDocLocalStorage ?? createFixtureDocumentStorageProvider()
   });
   const complianceEvaluator = createComplianceEvaluator({
     requirements: createPrismaComplianceRequirementResolver(prisma!),
@@ -4478,6 +4495,45 @@ export function buildApi(options: BuildApiOptions = {}) {
     } catch (error) {
       return sendHrDocError(reply, error);
     }
+  });
+
+  // Worker: receive the document bytes for a signed upload reference and write them to the private
+  // object store. The browser PUTs the file to the worker BFF (same-origin), which base64-forwards it
+  // here. Guards: worker session, HMAC-signed reference, reference owned by this worker, content-type
+  // allowlist, and a size cap. Only available when disk-backed local storage is enabled.
+  app.post("/hr/documents/blob", { bodyLimit: Math.ceil(MAX_HR_DOCUMENT_BYTES * 1.4) + 4096 }, async (request, reply) => {
+    const userId = await requireWorkerSession(request, reply);
+    if (!userId) return;
+    if (!hrDocLocalStorage) {
+      return reply.code(503).send({ error: "RWOS_HR_DOC_STORAGE_OFF", message: "Document storage is not enabled." });
+    }
+    const body = asRecord(request.body);
+    const ref = readOptionalString(body, "ref");
+    const sig = readOptionalString(body, "sig");
+    const dataBase64 = readOptionalString(body, "dataBase64");
+    const contentType = readOptionalString(body, "contentType") ?? "application/octet-stream";
+    if (!ref || !sig || !dataBase64) {
+      return reply.code(400).send({ error: "RWOS_HR_DOC_INVALID", message: "ref, sig and dataBase64 are required." });
+    }
+    if (!hrDocLocalStorage.verifyUploadSignature(ref, sig)) {
+      return reply.code(403).send({ error: "RWOS_HR_DOC_DENIED", message: "Invalid upload reference." });
+    }
+    const worker = await hrDocWorkerResolver.resolveByUserId(userId);
+    if (!worker || !ref.startsWith(`${worker.workerIdentityId}/`)) {
+      return reply.code(403).send({ error: "RWOS_HR_DOC_DENIED", message: "That upload reference is not yours." });
+    }
+    if (!ALLOWED_HR_DOCUMENT_CONTENT_TYPES.has(contentType)) {
+      return reply.code(415).send({ error: "RWOS_HR_DOC_TYPE", message: "That file type is not accepted." });
+    }
+    const bytes = Buffer.from(dataBase64, "base64");
+    if (bytes.length === 0) {
+      return reply.code(400).send({ error: "RWOS_HR_DOC_INVALID", message: "The file is empty." });
+    }
+    if (bytes.length > MAX_HR_DOCUMENT_BYTES) {
+      return reply.code(413).send({ error: "RWOS_HR_DOC_TOO_LARGE", message: "That file is too large (max 10 MB)." });
+    }
+    await hrDocLocalStorage.store.put({ key: hrDocLocalStorage.objectKey(ref), bytes: new Uint8Array(bytes) });
+    return reply.code(200).send({ ok: true });
   });
 
   // Worker: submit / replace a document (verified reference; never self-accept).
