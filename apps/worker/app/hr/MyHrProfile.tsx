@@ -239,7 +239,12 @@ function IntakeForm({ initial, onSaved, t }: { initial: Intake | null; onSaved: 
 
         {notice === "err" ? <p className="notice" role="alert" style={{ color: "var(--danger)" }}>{t("hr.saveError")}</p> : null}
         {notice === "consent" ? <p className="notice" role="alert" style={{ color: "var(--danger)" }}>{t("hr.mustConsent")}</p> : null}
-        {notice === "ok" ? <p className="notice" role="status" style={{ color: "var(--accent)" }}>{t("hr.saved")}</p> : null}
+        {notice === "ok" ? (
+          <div className="card" style={{ marginTop: 4, borderColor: "var(--accent)" }}>
+            <p className="notice" role="status" style={{ color: "var(--accent)", margin: 0 }}>{t("hr.savedContinue")}</p>
+            <a className="btn" href="/documents" style={{ alignSelf: "flex-start", marginTop: 8 }}>{t("hr.continueProfile")}</a>
+          </div>
+        ) : null}
 
         <button className="btn" type="submit" disabled={saving} style={{ alignSelf: "flex-start" }}>{saving ? t("hr.saving") : t("hr.save")}</button>
       </div>
