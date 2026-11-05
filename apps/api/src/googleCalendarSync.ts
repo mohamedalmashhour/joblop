@@ -53,7 +53,13 @@ function deterministicEventId(userId: string, jobRequestId: string): string {
 }
 
 export async function pushAssignmentToCalendar(
-  deps: { prisma: CalendarSyncPrisma; config: GoogleOAuthConfig },
+  deps: {
+    prisma: CalendarSyncPrisma;
+    config: GoogleOAuthConfig;
+    // Injected timezone of the SELECTED country profile (composition root), never an implicit Canada
+    // default. Used only as a fallback when the job row itself carries no timezone.
+    countryTimezone?: string | null | undefined;
+  },
   input: { userId: string; jobRequestId: string }
 ): Promise<CalendarSyncOutcome> {
   if (!deps.config.calendarSyncEnabled) return "skipped";
@@ -79,9 +85,14 @@ export async function pushAssignmentToCalendar(
     });
     if (!job || !job.startAt || !job.endAt) return "skipped";
 
+    // Neutral timezone resolution (Phase 2b.2b): the job's own timezone, else the injected
+    // country-profile timezone — never an implicit Canada default. If neither is present we cannot
+    // assume a country, so we skip the sync (fail-closed) rather than inventing one.
+    const tz = job.timezone ?? deps.countryTimezone ?? null;
+    if (!tz) return "skipped";
+
     const accessToken = await refreshAccessToken({ config: deps.config, refreshToken });
 
-    const tz = job.timezone ?? "America/Toronto";
     const role = job.roleDefinition?.displayLabel ?? job.title ?? "Shift";
     const area = [job.residence?.city, job.residence?.province].filter(Boolean).join(", ");
     const event = {

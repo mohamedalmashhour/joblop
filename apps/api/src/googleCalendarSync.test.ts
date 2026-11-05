@@ -75,4 +75,28 @@ describe("pushAssignmentToCalendar (gating / skip paths)", () => {
     // A valid token row is present but the job can't be scheduled → skipped, never a throw.
     expect(out).toBe("skipped");
   });
+
+  it("skips (fail-closed) when the job has no timezone and no country timezone is injected", async () => {
+    // Phase 2b.2b neutrality: with neither a job timezone nor an injected country-profile timezone
+    // there is no country to assume, so the sync is skipped rather than defaulting to any country.
+    const out = await pushAssignmentToCalendar(
+      {
+        prisma: prismaWith(
+          { refreshTokenEncrypted: encryptSecret("rt", key), calendarSyncEnabled: true },
+          {
+            title: "x",
+            startAt: new Date("2026-01-02T15:00:00.000Z"),
+            endAt: new Date("2026-01-02T23:00:00.000Z"),
+            timezone: null,
+            roleDefinition: null,
+            residence: null
+          }
+        ),
+        config: enabledConfig
+        // no countryTimezone injected
+      },
+      { userId: "u1", jobRequestId: "j1" }
+    );
+    expect(out).toBe("skipped");
+  });
 });
