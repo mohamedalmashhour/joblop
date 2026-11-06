@@ -401,10 +401,9 @@ function summaryState(input: unknown) {
   ]);
 }
 
-// ── Resend email offer delivery ──────────────────────────────────────────────
-// A direct worker-offer delivery channel over Resend (https://resend.com) — the free,
-// reliable default. Implements the same WorkerOfferDeliveryProvider seam as the HTTP
-// provider. The worker's contact + offer summary are resolved via an injected
+// ── Brevo email offer delivery ───────────────────────────────────────────────
+// A direct worker-offer delivery channel over Brevo's transactional email API. Implements
+// the same WorkerOfferDeliveryProvider seam as the HTTP provider. The worker's contact + offer summary are resolved via an injected
 // resolveRecipient (the API layer supplies a Prisma-backed one), so this stays free of
 // any database dependency. Fail-closed: no key / no deliverable email => a failed result
 // (non-retryable when retrying cannot help, e.g. the worker has no email on file).
@@ -420,7 +419,7 @@ export type OfferEmailRecipient = Readonly<{
   ctaUrl: string | null; // deep link into the worker app
 }>;
 
-export type ResendOfferDeliveryOptions = Readonly<{
+export type BrevoOfferDeliveryOptions = Readonly<{
   apiKey: string;
   fromAddress: string; // e.g. "Joblop <offers@mail.yourdomain.ca>"
   replyTo?: string;
@@ -510,11 +509,21 @@ function composeOfferEmail(r: OfferEmailRecipient): { subject: string; html: str
   return { subject, html, text };
 }
 
-export function createResendWorkerOfferDeliveryProvider(
-  options: ResendOfferDeliveryOptions
+// "Name <email@domain>" or a bare address, in the structured sender shape Brevo requires.
+function brevoSender(from: string): { email: string; name?: string } {
+  const match = /^\s*(.+?)\s*<([^>]+)>\s*$/.exec(from);
+  const name = match?.[1];
+  const email = match?.[2];
+  return name && email ? { email: email.trim(), name: name.trim() } : { email: from.trim() };
+}
+
+// No idempotency header is sent, so a retry after a lost reply could repeat the email; the offer
+// itself is unaffected.
+export function createBrevoWorkerOfferDeliveryProvider(
+  options: BrevoOfferDeliveryOptions
 ): WorkerOfferDeliveryProvider {
   const fetcher = options.fetch ?? fetch;
-  const baseUrl = options.baseUrl ?? "https://api.resend.com/emails";
+  const baseUrl = options.baseUrl ?? "https://api.brevo.com/v3/smtp/email";
   return {
     async deliver(input) {
       if (!options.apiKey || options.apiKey.trim().length < 10 || !options.fromAddress) {
@@ -538,17 +547,17 @@ export function createResendWorkerOfferDeliveryProvider(
         const response = await fetcher(baseUrl, {
           method: "POST",
           headers: {
-            authorization: `Bearer ${options.apiKey}`,
+            "api-key": options.apiKey,
             "content-type": "application/json",
-            "idempotency-key": input.idempotencyKey
+            accept: "application/json"
           },
           body: JSON.stringify({
-            from: options.fromAddress,
-            to: [recipient.email],
+            sender: brevoSender(options.fromAddress),
+            to: [{ email: recipient.email, ...(recipient.name ? { name: recipient.name } : {}) }],
             subject,
-            html,
-            text,
-            ...(options.replyTo ? { reply_to: options.replyTo } : {})
+            htmlContent: html,
+            textContent: text,
+            ...(options.replyTo ? { replyTo: { email: options.replyTo } } : {})
           })
         });
         if (!response.ok) {
@@ -556,7 +565,7 @@ export function createResendWorkerOfferDeliveryProvider(
           return { status: "failed", providerReference: null, retryable };
         }
         const record = asRecord(await response.json().catch(() => null));
-        const providerReference = typeof record.id === "string" ? record.id : null;
+        const providerReference = typeof record.messageId === "string" ? record.messageId : null;
         return { status: "sent", providerReference, retryable: false };
       } catch {
         return failedDelivery();

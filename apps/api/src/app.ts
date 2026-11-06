@@ -138,7 +138,7 @@ import {
   createHttpCandidateSource,
   createLocalMarketplaceCandidateSource,
   createHttpWorkerOfferDeliveryProvider,
-  createResendWorkerOfferDeliveryProvider,
+  createBrevoWorkerOfferDeliveryProvider,
   passwordPolicyErrorCode,
   registrationUnavailableCode,
   toSafeAuthorizationResponse,
@@ -579,8 +579,7 @@ export function buildApi(options: BuildApiOptions = {}) {
     options.emailSender ??
     createEmailSender({
       apiKey: runtimeConfig.emailApiKey,
-      from: runtimeConfig.emailFrom,
-      provider: runtimeConfig.emailProvider
+      from: runtimeConfig.emailFrom
     });
   // Transactional SMS twin of emailSender. Double-gated: no-op unless the Brevo key + sender are set
   // AND SMS_ENABLED=enabled (SMS costs money per message). Threaded into notification sites alongside
@@ -946,14 +945,14 @@ export function buildApi(options: BuildApiOptions = {}) {
             : localDispatchCandidateSource
         )
       : createUnavailableDispatchService());
-  // Worker-offer delivery channel. Prefer Resend email (free, reliable; reuses the email
-  // config already used for verification), then the external HTTP delivery service, else none.
+  // Worker-offer delivery channel. Prefer Brevo email (reuses the email config already used for
+  // verification), then the external HTTP delivery service, else none.
   // Fail-closed: with neither configured, offers simply aren't auto-delivered.
   const offerCtaOrigin = (options.publicWorkerWebOrigin ?? environment.WORKER_WEB_ORIGIN ?? "").trim() || null;
-  const resendOfferDeliveryProvider =
+  const emailOfferDeliveryProvider =
     prisma && runtimeConfig.hasEmailDelivery && runtimeConfig.emailFrom
-      ? createResendWorkerOfferDeliveryProvider({
-          apiKey: runtimeConfig.resendApiKey!,
+      ? createBrevoWorkerOfferDeliveryProvider({
+          apiKey: runtimeConfig.emailApiKey!,
           fromAddress: runtimeConfig.emailFrom,
           resolveRecipient: async ({ workerOfferId, organizationId }) => {
             const offer = await prisma.workerOffer.findFirst({
@@ -1013,7 +1012,7 @@ export function buildApi(options: BuildApiOptions = {}) {
         })
       : null;
   const workerOfferDeliveryProvider =
-    resendOfferDeliveryProvider ??
+    emailOfferDeliveryProvider ??
     (runtimeConfig.hasOfferDelivery
       ? createHttpWorkerOfferDeliveryProvider({
           origin: runtimeConfig.offerDeliveryOrigin!,
