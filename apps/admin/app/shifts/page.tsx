@@ -417,7 +417,7 @@ const styles: Record<string, CSSProperties> = {
     gridTemplateColumns: "repeat(auto-fit, minmax(170px, 1fr))"
   },
   fieldLabel: {
-    color: "#000000",
+    color: "#f4efe4",
     display: "grid",
     fontSize: 13,
     fontWeight: 900,
@@ -426,7 +426,7 @@ const styles: Record<string, CSSProperties> = {
   input: {
     border: "1px solid rgba(201, 162, 75, 0.16)",
     borderRadius: 8,
-    color: "#000000",
+    color: "#f4efe4",
     font: "inherit",
     minHeight: 44,
     padding: "0 12px"
@@ -434,7 +434,7 @@ const styles: Record<string, CSSProperties> = {
   textarea: {
     border: "1px solid rgba(201, 162, 75, 0.16)",
     borderRadius: 8,
-    color: "#000000",
+    color: "#f4efe4",
     font: "inherit",
     padding: 12,
     resize: "vertical"
@@ -472,7 +472,7 @@ const styles: Record<string, CSSProperties> = {
     margin: "4px 0"
   },
   cardText: {
-    color: "#000000",
+    color: "#f4efe4",
     fontSize: 14,
     lineHeight: 1.55,
     margin: 0
@@ -542,7 +542,7 @@ const styles: Record<string, CSSProperties> = {
     padding: 14
   },
   listStack: {
-    color: "#000000",
+    color: "#f4efe4",
     display: "grid",
     gap: 8,
     margin: "12px 0 0",

@@ -23,6 +23,7 @@ export function isProductionAdminRouteAllowed(pathname: string) {
     path === "/calendar/request" ||
     path === "/contact-desk" ||
     path === "/dispatches" ||
+    path === "/disputes" ||
     dispatchDetail.test(path) ||
     controlRoom.test(path) ||
     shareLink.test(path)

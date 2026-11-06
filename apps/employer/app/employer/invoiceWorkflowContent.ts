@@ -31,7 +31,7 @@ export const invoiceWorkflow = [
     title: "Charge Breakdown",
     route: "/employer/invoices/breakdown",
     status: "Line-item view",
-    boundary: "Charge breakdown explains fixture totals without tax advice or accounting entries."
+    boundary: "Charge breakdown explains invoice totals without tax advice or accounting entries."
   },
   {
     page: "051",

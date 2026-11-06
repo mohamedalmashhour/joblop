@@ -39,7 +39,8 @@ function GoogleAuthButton() {
           alignItems: "center",
           justifyContent: "center",
           gap: "0.6rem",
-          background: "#fff"
+          background: "#fff",
+          color: "#000000"
         }}
       >
         <svg width="18" height="18" viewBox="0 0 48 48" aria-hidden="true">

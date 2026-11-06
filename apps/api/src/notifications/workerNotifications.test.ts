@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { EmailMessage } from "../mailer/emailSender";
-import { accountPenaltyEmail, notifyWorkerPayoutPaid, notifyWorkerPayoutRegistered, payoutPaidEmail, payoutRegisteredEmail } from "./workerNotifications";
+import { accountPenaltyEmail, assignedJobEmail, notifyWorkerPayoutPaid, notifyWorkerPayoutRegistered, payoutPaidEmail, payoutRegisteredEmail } from "./workerNotifications";
 
 describe("worker account penalty copy", () => {
   it("suspension email names the days (FR default + EN)", () => {
@@ -75,5 +75,18 @@ describe("worker payout notification", () => {
     const sender = { configured: true, async send() { return { status: "sent", id: "x" } as const; } };
     const res = await notifyWorkerPayoutPaid(prisma, sender, { workerIdentityId: "wi1", amountMinor: 5000, currency: "CAD" });
     expect(res).toEqual({ status: "no_recipient" });
+  });
+});
+
+describe("assigned job email address", () => {
+  const base = { to: "w@example.test", title: "Shift", startAt: new Date("2026-08-10T13:00:00Z") };
+
+  it("gives the assigned worker the exact address in their language", () => {
+    expect(assignedJobEmail({ ...base, language: "en", address: "1 Main St" }).text).toContain("Where: 1 Main St");
+    expect(assignedJobEmail({ ...base, language: "fr", address: "1 Main St" }).text).toContain("Où : 1 Main St");
+  });
+
+  it("omits the line when the worksite has no address on file", () => {
+    expect(assignedJobEmail({ ...base, language: "en", address: null }).text).not.toContain("Where:");
   });
 });

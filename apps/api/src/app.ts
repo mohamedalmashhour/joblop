@@ -326,6 +326,7 @@ import {
   getActiveElection,
   type WorkerClassification
 } from "./workerClassificationElection";
+import { currentPayrollCalculations } from "./currentPayrollCalculations";
 import { buildRemittanceSummary } from "./taxRemittance";
 import { buildTaxSlips, type SlipCalcInput } from "./taxSlip";
 import { GST_RATE_PPM, QST_RATE_PPM } from "./payChannel";
@@ -347,7 +348,7 @@ import { notifyClient } from "./notifications/clientNotifications";
 import { notifyWorkerPayoutPaid, notifyWorkerAccountPenalty, notifyWorkerAssigned } from "./notifications/workerNotifications";
 import { createWorkerPayoutProgressionRunner, startWorkerPayoutProgressionSchedule } from "./workerPayoutProgression";
 import { createPrismaJobGradingAuditStore, JOB_GRADING_ENGINE_VERSION, type JobGradingAuditStore } from "./jobGradingAuditRepository";
-import { raiseWorkerDispute, listWorkerDisputes, withdrawWorkerDispute } from "./workerDisputeRepository";
+import { raiseWorkerDispute, listWorkerDisputes, listWorkerDisputesForStaff, resolveWorkerDispute, withdrawWorkerDispute } from "./workerDisputeRepository";
 import { createEmployerOrderWithChildren, listEmployerOrders, getEmployerOrder, submitEmployerOrder, cancelEmployerOrder } from "./employerOrderRepository";
 import { listMarketWagesForResidence, listAllMarketWages, upsertMarketWage } from "./marketWageRepository";
 import { listPlatformOrdersInReview, getPlatformOrder } from "./adminOrderRepository";
@@ -364,7 +365,8 @@ import { registerEmployerInvoiceCheckoutRoutes } from "./employerInvoiceCheckout
 import { createEmployerInvoiceWebhook, type CheckoutSessionEventLike } from "./employerInvoiceWebhook";
 import { createStripeTestClient } from "./stripeTestProvider";
 import { stripeTestEnvFromProcess } from "./cvProStripeCheckout";
-import { claimOpenJob, ensureOpenClaimDispatch } from "./openClaim";
+import { claimOpenJob, ensureOpenClaimDispatch, placeClaimedShiftOnSchedule } from "./openClaim";
+import { formatWorksiteAddress, isWorksiteAddressVisible, WORKSITE_ADDRESS_SELECT } from "./worksiteAddress";
 
 export interface BuildApiOptions {
   authService?: AuthenticationService;
@@ -3881,6 +3883,17 @@ export function buildApi(options: BuildApiOptions = {}) {
     );
 
     if (result.status === "assigned") {
+      // Put the shift on the worker's schedule, as staff assignment does. Without it there is no
+      // attendance record, so the worker could not see the shift or check in. A failure here must
+      // not undo the claim; it is logged for staff instead.
+      try {
+        await placeClaimedShiftOnSchedule(
+          { assignmentRepository: createPrismaAssignmentRepository(prisma), attendanceRepository: createPrismaAttendanceRepository(prisma) },
+          { assignmentId: result.assignmentId, actorUserId: session.user.id }
+        );
+      } catch (error) {
+        logger.warn("assignment.schedule_handoff_failed", { assignmentId: result.assignmentId, error: error instanceof Error ? error.message : "unknown" });
+      }
       // Mirror the manual accept path's side effects (best-effort, never block the assign).
       await notifyClient(prisma, emailSender, { jobRequestId, kind: "worker_accepted" }).catch(() => {});
       // "You got the job!" — confirm the worker by email (+ SMS when enabled).
@@ -7042,11 +7055,24 @@ export function buildApi(options: BuildApiOptions = {}) {
       logger.warn("assignment.schedule_handoff_failed", { assignmentId: assignment.id, error: error instanceof Error ? error.message : "unknown" });
     }
 
-    // "You got the job!" — confirm the worker by email (+ SMS when enabled). Best-effort.
-    await notifyWorkerAssigned(prisma!, emailSender, smsSender, {
-      userId: session.user.id,
-      jobRequestId: assignment.jobRequestId
-    }).catch(() => {});
+    // "You got the job!" — confirm the worker by email (+ SMS when enabled). Best-effort. The session
+    // here is the staff member's, so the recipient comes from the assignment.
+    if (prisma) {
+      try {
+        const assignedWorker = await prisma.workerIdentity.findUnique({
+          where: { id: assignment.workerIdentityId },
+          select: { userId: true }
+        });
+        if (assignedWorker) {
+          await notifyWorkerAssigned(prisma, emailSender, smsSender, {
+            userId: assignedWorker.userId,
+            jobRequestId: assignment.jobRequestId
+          });
+        }
+      } catch (error) {
+        logger.warn("assignment.worker_notice_failed", { assignmentId: assignment.id, error: error instanceof Error ? error.message : "unknown" });
+      }
+    }
 
     return reply.code(201).send({ assignment: serializeAssignment(assignment) });
   });
@@ -7610,7 +7636,7 @@ export function buildApi(options: BuildApiOptions = {}) {
         id: true, assignmentId: true, status: true, scheduledStartAt: true, scheduledEndAt: true, timezone: true,
         checkInAt: true, checkOutAt: true, exceptionCategory: true, version: true,
         organization: { select: { displayName: true } },
-        residence: { select: { city: true, province: true } }
+        residence: { select: WORKSITE_ADDRESS_SELECT }
       }
     });
     const hasMore = rows.length > limit;
@@ -7620,7 +7646,9 @@ export function buildApi(options: BuildApiOptions = {}) {
       checkInAt: r.checkInAt?.toISOString() ?? null, checkOutAt: r.checkOutAt?.toISOString() ?? null,
       exceptionCategory: r.exceptionCategory, version: r.version,
       employerName: r.organization.displayName,
-      areaLabel: r.residence.city && options.countryAddress?.isRegionCode(r.residence.province) ? `${r.residence.city}, ${r.residence.province}` : null
+      areaLabel: r.residence.city && options.countryAddress?.isRegionCode(r.residence.province) ? `${r.residence.city}, ${r.residence.province}` : null,
+      // This route only returns the signed-in worker's own assigned shifts.
+      worksiteAddress: isWorksiteAddressVisible(r.status) ? formatWorksiteAddress(r.residence) : null
     }));
     return reply.code(200).send({ items, nextCursor: hasMore ? (rows[limit - 1]?.id ?? null) : null });
   });
@@ -7672,7 +7700,8 @@ export function buildApi(options: BuildApiOptions = {}) {
     const where: Record<string, unknown> = { status: "locked" };
     if (organizationId) where.organizationId = organizationId;
     if (payrollPeriodId) where.payrollPeriodId = payrollPeriodId;
-    const calcs = await prisma!.payrollCalculation.findMany({ where, select: { id: true, currency: true } });
+    const locked = await prisma!.payrollCalculation.findMany({ where, select: { id: true, currency: true, familyRootId: true, revision: true } });
+    const calcs = currentPayrollCalculations(locked);
     const ids = calcs.map((c) => c.id);
     const currency = calcs[0]?.currency ?? "CAD";
     const [deductions, employerCosts] = await Promise.all([
@@ -8685,16 +8714,16 @@ export function buildApi(options: BuildApiOptions = {}) {
       deductions: c.deductionLines.map((d) => ({ category: d.category, code: d.code, description: d.description, amountMinor: d.amountMinor, currency: d.currency }))
     }));
     // Accurate to-date totals across ALL the worker's approved/locked statements (not just this page).
-    const totals = await prisma!.payrollCalculation.aggregate({
+    const statements = await prisma!.payrollCalculation.findMany({
       where: { workerIdentityId: identity.id, status: { in: ["approved", "locked"] } },
-      _sum: { grossPayMinor: true, totalDeductionsMinor: true, netPayMinor: true },
-      _count: true
+      select: { id: true, familyRootId: true, revision: true, grossPayMinor: true, totalDeductionsMinor: true, netPayMinor: true }
     });
+    const current = currentPayrollCalculations(statements);
     const summary = {
-      statementCount: totals._count,
-      totalGrossMinor: totals._sum.grossPayMinor ?? 0,
-      totalDeductionsMinor: totals._sum.totalDeductionsMinor ?? 0,
-      totalNetMinor: totals._sum.netPayMinor ?? 0,
+      statementCount: current.length,
+      totalGrossMinor: current.reduce((sum, c) => sum + c.grossPayMinor, 0),
+      totalDeductionsMinor: current.reduce((sum, c) => sum + c.totalDeductionsMinor, 0),
+      totalNetMinor: current.reduce((sum, c) => sum + c.netPayMinor, 0),
       currency: items[0]?.currency ?? "CAD"
     };
     return reply.code(200).send({ items, summary, workerClassification: identity.classification, nextCursor: hasMore ? (rows[limit - 1]?.id ?? null) : null, synthetic: true, notice: PAYROLL_SYNTHETIC_NOTICE });
@@ -9348,10 +9377,11 @@ export function buildApi(options: BuildApiOptions = {}) {
     const taxYear = readOptionalNumber(query, "year") ?? new Date().getUTCFullYear();
     const yearStart = new Date(Date.UTC(taxYear, 0, 1));
     const yearEnd = new Date(Date.UTC(taxYear + 1, 0, 1));
-    const calcs = await prisma!.payrollCalculation.findMany({
+    const locked = await prisma!.payrollCalculation.findMany({
       where: { workerIdentityId: identity.id, status: "locked", payrollPeriod: { periodStart: { gte: yearStart, lt: yearEnd } } },
-      select: { id: true, workerClassification: true, grossPayMinor: true, totalEmployerCostMinor: true, currency: true }
+      select: { id: true, familyRootId: true, revision: true, workerClassification: true, grossPayMinor: true, totalEmployerCostMinor: true, currency: true }
     });
+    const calcs = currentPayrollCalculations(locked);
     if (calcs.length === 0) return reply.code(200).send({ slips: [], taxYear, synthetic: true });
     const deductions = await prisma!.payrollDeductionLine.findMany({
       where: { payrollCalculationId: { in: calcs.map((c) => c.id) } },
@@ -9420,6 +9450,50 @@ export function buildApi(options: BuildApiOptions = {}) {
     }
     const items = await listWorkerDisputes(prisma!, identity.id);
     return reply.code(200).send({ items, synthetic: true });
+  });
+
+  // Staff queue of worker disputes. Payroll or platform administrators only.
+  app.get("/platform/worker-disputes", async (request, reply) => {
+    const actor = await requirePayrollAuthority(request, reply);
+    if (!actor) return;
+    const status = readOptionalString(asRecord(request.query), "status") ?? "open";
+    if (status !== "open" && status !== "resolved" && status !== "withdrawn") {
+      return reply.code(400).send({ error: "RWOS_INVALID_DISPUTE", message: "status must be open, resolved or withdrawn." });
+    }
+    const items = await listWorkerDisputesForStaff(prisma!, { status });
+    return reply.code(200).send({ items, synthetic: true });
+  });
+
+  // Staff settle an open dispute: the decision is recorded and shown to the worker, and the payout it
+  // held returns to the normal flow. No amount changes here. A different amount is a payroll correction.
+  app.post("/platform/worker-disputes/:disputeId/resolve", async (request, reply) => {
+    const actor = await requirePayrollAuthority(request, reply);
+    if (!actor) return;
+    const disputeId = readRouteParam(request.params, "disputeId");
+    const resolution = normalizeWorkerDisputeReason(asRecord(request.body).resolution);
+    if (!resolution) {
+      return reply.code(400).send({ error: "RWOS_INVALID_DISPUTE", message: "Say how the dispute was settled." });
+    }
+    if (!isCanonicalUuid(disputeId)) {
+      return reply.code(404).send({ error: "RWOS_DISPUTE_NOT_FOUND", message: "Dispute not found." });
+    }
+    const now = new Date();
+    const result = await resolveWorkerDispute(prisma!, { disputeId, resolution, now });
+    if (!result.ok) {
+      return result.reason === "not_found"
+        ? reply.code(404).send({ error: "RWOS_DISPUTE_NOT_FOUND", message: "Dispute not found." })
+        : reply.code(409).send({ error: "RWOS_DISPUTE_NOT_OPEN", message: "This dispute is already closed." });
+    }
+    try {
+      await createPrismaPayrollRepository(prisma!).recordAudit({
+        entityType: "worker_dispute", entityId: result.dispute.id, entityPublicReference: result.dispute.payrollCalculationId,
+        organizationId: result.dispute.organizationId, action: "worker_dispute.resolved", priorState: "open", newState: "resolved",
+        reason: resolution.slice(0, 240), actorUserId: actor, correlationId: request.id, now
+      });
+    } catch (error) {
+      logger.warn("worker_dispute.audit_failed", { disputeId, error: error instanceof Error ? error.message : "unknown" });
+    }
+    return reply.code(200).send({ dispute: result.dispute, synthetic: true });
   });
 
   // The worker withdraws their own still-open dispute; its paused payout returns to the normal flow.

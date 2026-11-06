@@ -2,6 +2,7 @@ import type { PrismaClient } from "@rwos/database";
 import type { EmailMessage, EmailSender } from "../mailer/emailSender";
 import type { SmsSender } from "../mailer/smsSender";
 import { resolveLanguage, type NotificationLanguage } from "./clientNotifications";
+import { formatWorksiteAddress, WORKSITE_ADDRESS_SELECT } from "../worksiteAddress";
 
 // Format a shift start in Québec local time, in the worker's language. Kept simple + fail-soft.
 function formatShiftWhen(startAt: Date, language: NotificationLanguage): string {
@@ -119,6 +120,7 @@ export function assignedJobEmail(params: {
   language: NotificationLanguage;
   title: string;
   startAt: Date;
+  address?: string | null;
 }): EmailMessage {
   const when = formatShiftWhen(params.startAt, params.language);
   if (params.language === "en") {
@@ -128,6 +130,7 @@ export function assignedJobEmail(params: {
       text:
         `Good news — you're confirmed for "${params.title}".\n\n` +
         `When: ${when}\n\n` +
+        (params.address ? `Where: ${params.address}\n\n` : "") +
         `Open Joblop to see the full details in your schedule. See you there!\n\n— Joblop`
     };
   }
@@ -137,6 +140,7 @@ export function assignedJobEmail(params: {
     text:
       `Bonne nouvelle — vous êtes confirmé(e) pour « ${params.title} ».\n\n` +
       `Quand : ${when}\n\n` +
+      (params.address ? `Où : ${params.address}\n\n` : "") +
       `Ouvrez Joblop pour voir tous les détails dans votre horaire. À bientôt !\n\n— Joblop`
   };
 }
@@ -292,14 +296,14 @@ export async function notifyWorkerAssigned(
       }),
       prisma.jobRequest.findUnique({
         where: { id: input.jobRequestId },
-        select: { title: true, startAt: true }
+        select: { title: true, startAt: true, residence: { select: WORKSITE_ADDRESS_SELECT } }
       })
     ]);
     const email = user?.emailNormalized;
     if (!email || !job) return { status: "no_recipient" };
     const language = resolveLanguage(user?.primaryLanguage);
     const result = await emailSender.send(
-      assignedJobEmail({ to: email, language, title: job.title, startAt: job.startAt })
+      assignedJobEmail({ to: email, language, title: job.title, startAt: job.startAt, address: formatWorksiteAddress(job.residence) })
     );
     if (smsSender && user?.phone) {
       await smsSender

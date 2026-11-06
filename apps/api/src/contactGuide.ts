@@ -29,13 +29,13 @@ DOCUMENTS AND RATING (/documents)
 FINDING WORK
 - /browse is public. Signed in, the home page searches by postal code and distance, with list, map and agenda views.
 - Save jobs at /saved-jobs. "Express interest" is free and guarantees nothing; follow it at /my-interests.
-- Some jobs show "Accept & claim": the first eligible worker gets the place at once. If this happens and the shift does not appear in My schedule, pass it to the Joblop team.
+- Some jobs show "Accept & claim": the first eligible worker gets the place at once, and the shift appears in My schedule.
 - Offers are at /offers, with a "Respond by" time. Expired offers cannot be accepted. After accepting, My schedule shows "Accepted — waiting for confirmation" until staff confirm.
 
 WORKING A SHIFT
 - My schedule (/schedule) lists shifts. Press Check in at the start and Check out at the end; Joblop records the time. Workers cannot edit times.
 - If check-in fails, refresh, then use "Ask about this" on the shift. If the shift is now, treat it as urgent.
-- The exact address is promised after assignment, but it may not show yet. If a worker needs it, pass it to the Joblop team.
+- The exact address shows on the shift in My schedule once the worker is assigned. Before that, only the area shows.
 - There is no cancel button. Cancelling a confirmed job goes through the Joblop team. Staff may apply a suspension for cancelling within 24 hours, so never promise an outcome.
 
 AFTER THE SHIFT
@@ -109,15 +109,10 @@ No real money moves. Live finance stays off until its go-live checks are met.
 6. Invoices: locking a timesheet creates a draft. Statuses: draft, approved, issued, sent, viewed, partially_paid, paid, overdue, disputed, voided, refunded. Approve, issue, dispute and void are API only; /finance and /finance/calendar are read-only. No invoice email is sent, and due dates are not set.
 7. Employer payment: only test paths exist, with no employer screen. Refunds exist only on the fake local provider.
 8. Worker payout: created for each locked calculation. 48-hour review window from job completion, then registered, then a 14-day hold from period end, then released, then paid. Release does not check whether the employer paid. There is no admin payout list.
-9. Disputes: a worker dispute holds the payout. There is no staff route to resolve it yet, so a held payout needs a developer. Only workers can withdraw it.
+9. Disputes (/disputes): a worker dispute holds the payout. Staff write a note and press "Settle dispute and release hold". The worker can also withdraw it.
 10. Notices: workers get best-effort emails for confirmed earnings and sent payments. Employers get none.
 
 KNOWN GAPS TO FLAG WHEN RELEVANT
-- A locked adjustment may create a second full payout. Check before locking one.
-- Claimed shifts may not reach My schedule because no attendance record is created.
-- The "you got the job" notice may not reach the worker.
-- The exact address is not shown to workers after assignment.
-- The employer invoice detail page may show the wrong invoice.
 - Workers' work-type buttons on My pay do not work.`;
 
 export function guideFor(audience: ContactAudience): string {

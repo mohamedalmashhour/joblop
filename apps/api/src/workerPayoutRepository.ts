@@ -88,6 +88,24 @@ export function resolveCompletionByCalc(
   return map;
 }
 
+type AdjustmentFields = Readonly<{
+  correctionType: string | null;
+  adjustmentNetDirection: string | null;
+  adjustmentNetDeltaMinor: number | null;
+}>;
+
+// A post-lock adjustment stores the FULL recomputed pay, and the locked calculation it corrects keeps
+// its own payout. So an adjustment pays only the signed difference: a credit tops the worker up, and
+// a debit creates no payout (recovering an overpayment is a staff decision, not an automatic one).
+export function workerPayoutAmountMinor(calc: AdjustmentFields & Readonly<{ netPayMinor: number }>): number | null {
+  if (calc.correctionType !== "post_lock_adjustment") return calc.netPayMinor;
+  const delta = calc.adjustmentNetDeltaMinor ?? 0;
+  return calc.adjustmentNetDirection === "credit" && delta > 0 ? delta : null;
+}
+
+const signedDelta = (direction: string | null, deltaMinor: number | null) =>
+  direction === "debit" ? -(deltaMinor ?? 0) : (deltaMinor ?? 0);
+
 async function completionByCalc(
   prisma: PrismaClient,
   calcIds: readonly string[]
@@ -129,6 +147,9 @@ export async function materializeAndListWorkerPayouts(
       organizationId: true,
       currency: true,
       netPayMinor: true,
+      correctionType: true,
+      adjustmentNetDirection: true,
+      adjustmentNetDeltaMinor: true,
       payrollPeriod: { select: { periodStart: true, periodEnd: true } }
     }
   });
@@ -140,6 +161,8 @@ export async function materializeAndListWorkerPayouts(
   const completions = await completionByCalc(prisma, lockedCalcs.map((c) => c.id));
   for (const c of lockedCalcs) {
     if (have.has(c.id)) continue;
+    const amountMinor = workerPayoutAmountMinor(c);
+    if (amountMinor === null) continue;
     const holdUntil = new Date(workerPayoutHoldUntilMs(c.payrollPeriod.periodEnd.getTime()));
     // The 48h dispute window anchors on job completion (latest shift end), not the pay-period end.
     const completionAt = completions.get(c.id) ?? c.payrollPeriod.periodEnd;
@@ -150,7 +173,7 @@ export async function materializeAndListWorkerPayouts(
           payrollCalculationId: c.id,
           organizationId: c.organizationId,
           currency: c.currency,
-          amountMinor: c.netPayMinor,
+          amountMinor,
           status: "pending",
           holdUntil,
           completionAt
@@ -241,7 +264,16 @@ export async function materializeAndListWorkerPayouts(
       totalDeductionsMinor: true,
       netPayMinor: true,
       totalEmployerCostMinor: true,
-      currency: true
+      currency: true,
+      correctionType: true,
+      adjustmentNetDirection: true,
+      adjustmentNetDeltaMinor: true,
+      adjustmentGrossDirection: true,
+      adjustmentGrossDeltaMinor: true,
+      adjustmentDeductionsDirection: true,
+      adjustmentDeductionsDeltaMinor: true,
+      adjustmentEmployerCostDirection: true,
+      adjustmentEmployerCostDeltaMinor: true
     }
   });
   const calcById = new Map(calcDetails.map((c) => [c.id, c]));
@@ -256,12 +288,22 @@ export async function materializeAndListWorkerPayouts(
   const views = payouts.map((p): WorkerPayoutView => {
     const period = periodByCalc.get(p.payrollCalculationId);
     const calc = calcById.get(p.payrollCalculationId);
+    // An adjustment's statement must describe the difference being paid, not the full recompute.
+    const isAdjustment = calc?.correctionType === "post_lock_adjustment";
+    const figures = calc && isAdjustment
+      ? {
+          grossPayMinor: signedDelta(calc.adjustmentGrossDirection, calc.adjustmentGrossDeltaMinor),
+          totalDeductionsMinor: signedDelta(calc.adjustmentDeductionsDirection, calc.adjustmentDeductionsDeltaMinor),
+          netPayMinor: signedDelta(calc.adjustmentNetDirection, calc.adjustmentNetDeltaMinor),
+          totalEmployerCostMinor: signedDelta(calc.adjustmentEmployerCostDirection, calc.adjustmentEmployerCostDeltaMinor)
+        }
+      : calc;
     const channel = resolvePayChannel({
       classification: calc?.workerClassification ?? "employee",
-      grossPayMinor: calc?.grossPayMinor ?? p.amountMinor,
-      totalDeductionsMinor: calc?.totalDeductionsMinor ?? 0,
-      netPayMinor: calc?.netPayMinor ?? p.amountMinor,
-      totalEmployerCostMinor: calc?.totalEmployerCostMinor ?? 0,
+      grossPayMinor: figures?.grossPayMinor ?? p.amountMinor,
+      totalDeductionsMinor: figures?.totalDeductionsMinor ?? 0,
+      netPayMinor: figures?.netPayMinor ?? p.amountMinor,
+      totalEmployerCostMinor: figures?.totalEmployerCostMinor ?? 0,
       currency: p.currency,
       gstQstRegistered
     });
@@ -288,7 +330,7 @@ export async function materializeAndListWorkerPayouts(
       periodEnd: period ? period.periodEnd.toISOString() : p.holdUntil.toISOString(),
       channel: channel.channel,
       slipType: channel.slipType,
-      statementTitle: channel.statementTitle,
+      statementTitle: isAdjustment ? `${channel.statementTitle}: adjustment` : channel.statementTitle,
       statementLines: channel.statementLines,
       employerCostMinor: channel.employerCostMinor,
       salesTax: channel.salesTax,
