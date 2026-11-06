@@ -24,6 +24,7 @@ export const en = {
   "nav.payroll": "Payroll",
   "nav.timesheets": "Timesheets",
   "nav.greetings": "Greetings & awards",
+  "nav.contactDesk": "Contact desk",
 
   // Navigation group headings
   "group.Operations": "Operations",
@@ -62,6 +63,7 @@ export const fr: Messages = {
   "nav.payroll": "Paie",
   "nav.timesheets": "Feuilles de temps",
   "nav.greetings": "Vœux et distinctions",
+  "nav.contactDesk": "Bureau de contact",
 
   "group.Operations": "Opérations",
   "group.Directory": "Répertoire",
@@ -96,6 +98,7 @@ export const ar: Partial<Messages> = {
   "nav.payroll": "الرواتب",
   "nav.timesheets": "سجلات الدوام",
   "nav.greetings": "التهاني والشهادات",
+  "nav.contactDesk": "مكتب التواصل",
 
   "group.Operations": "العمليات",
   "group.Directory": "الدليل",

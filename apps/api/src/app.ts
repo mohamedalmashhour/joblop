@@ -282,6 +282,7 @@ import {
 } from "./emailVerification";
 import { createEmailSender, type EmailSender } from "./mailer/emailSender";
 import { createSmsSender, type SmsSender } from "./mailer/smsSender";
+import { registerInstantContactRoutes } from "./instantContactRoutes";
 import { createMarketingContactSync, type MarketingContactSync } from "./mailer/brevoContacts";
 import { runShiftReminderSweep } from "./shiftReminderSweep";
 import {
@@ -9248,6 +9249,17 @@ export function buildApi(options: BuildApiOptions = {}) {
     }
     return session.user;
   };
+
+  if (prisma) {
+    registerInstantContactRoutes(app, {
+      prisma,
+      emailSender,
+      smsSender,
+      isLocal: runtimeConfig.rwosEnv === "local",
+      requireUser: requireRecipient,
+      requireAdmin: requirePlatformAdmin
+    });
+  }
 
   app.get("/inbox/greetings", async (request, reply) => {
     const user = await requireRecipient(request, reply);

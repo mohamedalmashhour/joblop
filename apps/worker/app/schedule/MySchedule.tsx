@@ -179,6 +179,7 @@ function ShiftCard({ s, busy, onAct, history, t, locale }: { s: Shift; busy: boo
         {s.exceptionCategory ? <span className="chip status-rejected">{s.exceptionCategory.replaceAll("_", " ")}</span> : null}
       </div>
       <div className="when">{formatShift(s.scheduledStartAt, s.scheduledEndAt, s.timezone, locale)}</div>
+      <a className="muted" href={`/contact?topic=shift&relatedType=assignment&relatedId=${encodeURIComponent(s.assignmentId)}`}>{t("contact.askAbout")}</a>
       {inTime ? <div className="when">{outTime ? t("sched.inOut", { inTime, outTime }) : t("sched.in", { time: inTime })}</div> : null}
       {s.checkInAt && s.checkOutAt ? <div className="when"><strong>{t("sched.worked", { duration: workedDuration(s.checkInAt, s.checkOutAt, t) })}</strong></div> : null}
       {!history && (canCheckIn || canCheckOut) ? (

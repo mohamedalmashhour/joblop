@@ -116,7 +116,10 @@ export function EmployerShell({
                     : "Sunrise of Oak Hill"}
                 </strong>
               </div>
-              {actions}
+              <div style={styles.headerActions}>
+                <a href="/employer/contact-joblop" style={styles.footerLink}>Contact Joblop</a>
+                {actions}
+              </div>
             </header>
             <section style={styles.hero}>
               <p style={styles.eyebrow}>{eyebrow}</p>
@@ -129,6 +132,9 @@ export function EmployerShell({
           <footer style={styles.footer}>
             <span>Joblop Employer Journey</span>
             <nav aria-label="Employer footer navigation" style={styles.footerLinks}>
+              <a href="/employer/contact-joblop" style={styles.footerLink}>
+                Contact Joblop
+              </a>
               <a href="/employer/inbox" style={styles.footerLink}>
                 Greetings &amp; awards
               </a>
