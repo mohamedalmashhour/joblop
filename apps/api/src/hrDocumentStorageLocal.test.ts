@@ -1,5 +1,8 @@
+import { mkdtemp, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { describe, expect, it } from "vitest";
-import { createMemoryPrivateObjectStore } from "./documentUpload";
+import { createLocalPrivateFileObjectStore, createMemoryPrivateObjectStore } from "./documentUpload";
 import { createLocalHrDocumentStorageProvider } from "./hrDocumentStorageLocal";
 
 const SECRET = "0123456789abcdef0123456789abcdef"; // 32 chars
@@ -59,5 +62,37 @@ describe("local HR document storage provider", () => {
     const dlSig = new URL(dl!.url, "https://x").searchParams.get("dl")!;
     // A download signature must NOT pass as an upload signature (scope separation).
     expect(provider.verifyUploadSignature(storageReference, dlSig)).toBe(false);
+  });
+});
+
+// The memory store accepts any key, so the real disk store must be exercised too: production hit a
+// 500 on every upload because the disk store only allowed `quarantine/...` keys.
+describe("local HR document storage on the real disk store", () => {
+  async function withDiskProvider(run: (provider: ReturnType<typeof createLocalHrDocumentStorageProvider>) => Promise<void>) {
+    const root = await mkdtemp(join(tmpdir(), "rwos-hr-docs-"));
+    try {
+      await run(createLocalHrDocumentStorageProvider({ store: createLocalPrivateFileObjectStore(root), secret: SECRET }));
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  }
+
+  it("stores, reads back and verifies an uploaded document", async () => {
+    await withDiskProvider(async (provider) => {
+      const { storageReference } = await provider.createUploadReference({ workerIdentityId: WORKER, documentType: "work_authorization" });
+      const key = provider.objectKey(storageReference);
+      await provider.store.put({ key, bytes: new Uint8Array([1, 2, 3]) });
+      expect(Array.from((await provider.store.get(key))!)).toEqual([1, 2, 3]);
+      expect(await provider.verifyReference({ storageReference, workerIdentityId: WORKER })).toBe(true);
+    });
+  });
+
+  it("still rejects traversal and malformed keys", async () => {
+    await withDiskProvider(async (provider) => {
+      const bytes = new Uint8Array([1]);
+      await expect(provider.store.put({ key: "hr/../../etc/passwd", bytes })).rejects.toThrow("invalid");
+      await expect(provider.store.put({ key: `hr/${WORKER}/../x/y`, bytes })).rejects.toThrow("invalid");
+      await expect(provider.store.put({ key: `hr/${WORKER}/type`, bytes })).rejects.toThrow("invalid");
+    });
   });
 });

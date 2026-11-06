@@ -76,10 +76,17 @@ export function createMemoryPrivateObjectStore(): PrivateObjectStore {
   };
 }
 
+// Every key shape the disk store accepts. Neither allows dots or empty segments, so no key can
+// traverse out of the storage root. `hr/` is `hr/<workerIdentityId>/<documentType>/<uuid>`.
+const OBJECT_KEY_PATTERNS = [
+  /^quarantine\/[A-Za-z0-9-]{1,64}\/[A-Za-z0-9-]{1,64}$/u,
+  /^hr\/[0-9a-fA-F-]{8,64}\/[a-z0-9_]{1,40}\/[0-9a-f-]{36}$/u
+];
+
 export function createLocalPrivateFileObjectStore(rootDirectory: string): PrivateObjectStore {
   const root = resolve(rootDirectory);
   const objectPath = (key: string) => {
-    if (!/^quarantine\/[A-Za-z0-9-]{1,64}\/[A-Za-z0-9-]{1,64}$/u.test(key)) {
+    if (!OBJECT_KEY_PATTERNS.some((pattern) => pattern.test(key))) {
       throw new Error("Document object key is invalid.");
     }
     const target = resolve(root, key);
