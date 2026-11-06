@@ -5,7 +5,6 @@ import {
   calendarFailureState,
   calendarListState,
   calendarPartialState,
-  parseEmployerResidenceList,
   type AuthenticatedViewState,
   type EmployerResidenceDto
 } from "@rwos/shared";
@@ -36,9 +35,10 @@ export function EmployerResidencesPanel() {
         }
       }
       if (!response.ok) return setState(calendarFailureState(response.status));
-      const payload = await response.json();
+      // The route has already parsed the API record into this shape, and parsing it again would fail.
+      const payload = (await response.json()) as { residences: readonly EmployerResidenceDto[] };
       if (generation !== generationRef.current) return;
-      const residences = parseEmployerResidenceList(payload);
+      const residences = payload.residences;
       setState(residences.length > 0 ? calendarListState(residences) : calendarPartialState(residences));
     } catch {
       if (generation === generationRef.current) setState({ status: "error" });

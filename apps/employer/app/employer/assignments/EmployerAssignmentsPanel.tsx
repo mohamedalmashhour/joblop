@@ -6,7 +6,6 @@ import {
   calendarListState,
   calendarPartialState,
   formatRwosDateTime,
-  parseEmployerAssignmentList,
   type AuthenticatedViewState,
   type EmployerAssignmentDto
 } from "@rwos/shared";
@@ -37,9 +36,10 @@ export function EmployerAssignmentsPanel() {
         }
       }
       if (!response.ok) return setState(calendarFailureState(response.status));
-      const payload = await response.json();
+      // The route has already parsed the API record into this shape, and parsing it again would fail.
+      const payload = (await response.json()) as { assignments: readonly EmployerAssignmentDto[] };
       if (generation !== generationRef.current) return;
-      const assignments = parseEmployerAssignmentList(payload);
+      const assignments = payload.assignments;
       setState(assignments.length > 0 ? calendarListState(assignments) : calendarPartialState(assignments));
     } catch {
       if (generation === generationRef.current) setState({ status: "error" });
