@@ -1,6 +1,7 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { workerProfileRating, type WorkerProfileTier } from "@rwos/shared";
 import { useLocale, useT } from "../i18n/LocaleProvider";
 import type { MessageKey } from "../i18n/messages";
 import { resolveDeniedKind } from "../resolveDenied";
@@ -59,6 +60,13 @@ function allowedType(file: File): string | null {
   return FILE_TYPES[file.name.split(".").pop()?.toLowerCase() ?? ""] ?? null;
 }
 
+const TIER_KEY: Record<WorkerProfileTier, MessageKey> = {
+  starter: "doc.tierStarter",
+  good: "doc.tierGood",
+  strong: "doc.tierStrong",
+  top: "doc.tierTop"
+};
+
 // Advisory AI verdict → label + badge colour.
 const AI_VERDICT_KEY: Record<string, MessageKey> = {
   ai_approved: "doc.aiApproved",
@@ -83,6 +91,7 @@ export function MyDocuments() {
   const [confirmDelete, setConfirmDelete] = useState<string | null>(null);
   // Bumped to clear the file input, which React cannot reset through a value.
   const [fileInputKey, setFileInputKey] = useState(0);
+  const formRef = useRef<HTMLFormElement>(null);
   const [busy, setBusy] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -196,6 +205,7 @@ export function MyDocuments() {
   if (state.status === "error") return <div className="state error" role="alert">{t("doc.loadError")}</div>;
 
   const active = state.documents.filter((d) => d.effectiveStatus !== "superseded" && d.effectiveStatus !== "revoked");
+  const rating = workerProfileRating(state.documents);
 
   return (
     <>
@@ -207,7 +217,26 @@ export function MyDocuments() {
       {notice ? <p className="notice" role="status" style={{ color: "var(--accent)" }}>{notice}</p> : null}
       {error ? <p className="notice" role="alert" style={{ color: "var(--danger)" }}>{error}</p> : null}
 
-      <form className="searchbar" onSubmit={(e) => {
+      <section className="card" aria-labelledby="profile-rating" style={{ marginBottom: 16 }}>
+        <div id="profile-rating" className="role">{t("doc.ratingTitle", { score: rating.score, tier: t(TIER_KEY[rating.tier]) })}</div>
+        <div role="progressbar" aria-valuenow={rating.score} aria-valuemin={0} aria-valuemax={100} aria-labelledby="profile-rating" style={{ height: 8, borderRadius: 999, background: "var(--line, #333)", overflow: "hidden" }}>
+          <div style={{ width: `${rating.score}%`, height: "100%", background: "var(--accent)" }} />
+        </div>
+        <p className="notice" style={{ margin: 0 }}>{rating.jobLimit === null ? t("doc.ratingAllJobs") : t("doc.ratingJobs", { count: rating.jobLimit })}</p>
+        <ul style={{ listStyle: "none", margin: 0, padding: 0, display: "grid", gap: 8 }}>
+          {rating.items.map((item) => (
+            <li key={item.key} style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+              <span aria-hidden="true">{item.done ? "✅" : "⬜"}</span>
+              <span style={{ flex: "1 1 160px" }}>{t(DOC_TYPE_LABEL_KEY[item.key] ?? "doc.typeCertificate")} <span className="notice">+{item.points}</span></span>
+              {item.done ? <span className="chip status-verified">{t("doc.itemDone")}</span> : (
+                <button className="btn ghost" type="button" onClick={() => { setReplacing(null); setDocType(item.key); setError(null); formRef.current?.scrollIntoView({ behavior: "smooth" }); }}>{t("doc.itemUpload")}</button>
+              )}
+            </li>
+          ))}
+        </ul>
+      </section>
+
+      <form ref={formRef} className="searchbar" onSubmit={(e) => {
         e.preventDefault();
         // Cap: at most 6 live certificates (those still on the list + the files being added).
         if (docType === "certificate" && !replacing) {
@@ -293,7 +322,7 @@ export function MyDocuments() {
         <div className="card" style={{ marginBottom: 24, borderColor: "var(--accent)" }}>
           <div className="role">{t("doc.doneTitle")}</div>
           <p className="notice" style={{ margin: 0 }}>{t("doc.doneBody")}</p>
-          <a className="btn" href="/verification" style={{ alignSelf: "flex-start", marginTop: 8 }}>{t("doc.nextStep")}</a>
+          <a className="btn" href="/" style={{ alignSelf: "flex-start", marginTop: 8 }}>{t("doc.nextStep")}</a>
         </div>
       ) : null}
 

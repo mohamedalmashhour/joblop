@@ -240,7 +240,7 @@ import { startJobScannerSchedule, type ScanQuery } from "./jobScannerScheduler";
 import { type WorkerCvProfile, type TargetJob } from "./cvBuilder";
 import { getCvProvider } from "./cvBuilderClaude";
 import { reviewDocumentAdvisory, isReviewableImageType } from "./documentAiReview";
-import { offlineAdvisoryVerdict } from "@rwos/shared";
+import { offlineAdvisoryVerdict, presentableVerdict, workerProfileRating } from "@rwos/shared";
 import { createCvAsset, listCvAssets, deleteCvAsset } from "./cvAssetRepository";
 import { isPro, getActiveEntitlement, grantEntitlement, revokeEntitlement, startTrial, hasEverTrialed, TRIAL_DAYS, PRO_PLAN } from "./cvEntitlementRepository";
 import {
@@ -3581,8 +3581,14 @@ export function buildApi(options: BuildApiOptions = {}) {
     else if (sort === "highest_rate") sorted.sort((a, b) => (b.workerRateMinor ?? -1) - (a.workerRateMinor ?? -1));
     // else "nearest" — already distance-ordered.
 
-    const total = sorted.length;
-    const page = sorted.slice(offset, offset + limit);
+    // A more complete profile shows more jobs. Search only: the worker is never blocked from a job.
+    // Someone without a worker record yet rates as an empty profile.
+    const documents = await hrDocumentService.myDocumentStatuses({ userId: session.user.id }).catch(() => []);
+    const rating = workerProfileRating(documents);
+    const visible = rating.jobLimit === null ? sorted : sorted.slice(0, rating.jobLimit);
+
+    const total = visible.length;
+    const page = visible.slice(offset, offset + limit);
     const nextCursor = offset + limit < total ? offset + limit : null;
 
     // Hydrate saved-state for THIS page (best-effort; non-workers get no flags).
@@ -3602,7 +3608,8 @@ export function buildApi(options: BuildApiOptions = {}) {
       count: jobs.length,
       total,
       nextCursor,
-      jobs
+      jobs,
+      profile: { score: rating.score, tier: rating.tier, hiddenJobs: sorted.length - visible.length }
     });
   });
 
@@ -4643,7 +4650,7 @@ export function buildApi(options: BuildApiOptions = {}) {
       }
 
       const verdict = await reviewDocumentAdvisory({ documentType: resolved.documentType, expired: resolved.expired, image });
-      return reply.code(200).send({ verdict });
+      return reply.code(200).send({ verdict: presentableVerdict(verdict) });
     } catch (error) {
       return sendHrDocError(reply, error);
     }
@@ -4728,7 +4735,7 @@ export function buildApi(options: BuildApiOptions = {}) {
       }
     }
     const verdict = await reviewDocumentAdvisory({ documentType: doc.documentType, expired, image });
-    return reply.code(200).send({ verdict });
+    return reply.code(200).send({ verdict: presentableVerdict(verdict) });
   });
 
   const hrDocDecision = (path: string, apply: (actor: string, id: string, body: Record<string, unknown>) => Promise<{ status: HrDocumentStatus }>) =>
