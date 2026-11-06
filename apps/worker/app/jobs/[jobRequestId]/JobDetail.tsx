@@ -55,7 +55,7 @@ const INELIGIBLE_KEY: Record<string, MessageKey> = {
 export function JobDetail({ id, postalCode }: { id: string; postalCode: string | null }) {
   const t = useT();
   const locale = fmtLocale(useLocale());
-  const [status, setStatus] = useState<"loading" | "ready" | "not_found" | "error">("loading");
+  const [status, setStatus] = useState<"loading" | "ready" | "not_found" | "signed_out" | "error">("loading");
   const [job, setJob] = useState<JobDetailData | null>(null);
   const [interest, setInterest] = useState<InterestState | null>(null);
   const [interestBusy, setInterestBusy] = useState(false);
@@ -68,6 +68,7 @@ export function JobDetail({ id, postalCode }: { id: string; postalCode: string |
       .then(async (r) => {
         if (!active) return;
         if (r.status === 404) return setStatus("not_found");
+        if (r.status === 401) return setStatus("signed_out");
         if (!r.ok) return setStatus("error");
         const payload = (await r.json()) as { job: JobDetailData };
         setJob(payload.job);
@@ -156,6 +157,13 @@ export function JobDetail({ id, postalCode }: { id: string; postalCode: string |
         <div style={{ marginTop: 12 }}>
           <a className="btn" href="/">{t("job.returnToSearch")}</a>
         </div>
+      </div>
+    );
+  if (status === "signed_out")
+    return (
+      <div className="state">
+        {t("job.signInToView")}
+        <div style={{ marginTop: 12 }}><a className="btn" href="/">{t("job.signInCta")}</a></div>
       </div>
     );
   if (status === "error" || !job)
@@ -382,7 +390,7 @@ function ClaimPanel({ state, onClaim }: { state: ClaimState; onClaim: () => void
       <section className="detail-section interest submitted">
         <h2>{t("job.claimAssignedTitle")}</h2>
         <p>{t("job.claimAssignedBody")}</p>
-        <a className="btn" href="/offers">{t("job.goToOffers")}</a>
+        <a className="btn" href="/schedule">{t("job.goToSchedule")}</a>
       </section>
     );
   }

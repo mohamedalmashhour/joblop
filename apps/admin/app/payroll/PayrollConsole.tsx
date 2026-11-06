@@ -4,7 +4,7 @@ import { useCallback, useEffect, useState, type CSSProperties } from "react";
 import { aiReviewDisclaimer, aiReviewHeading, aiReviewUnavailableText } from "./payrollContent";
 
 // ── Types (mirror the payroll API serializers) ──
-type Period = Readonly<{ id: string; organizationId: string; jurisdiction: { country: string; region: string }; periodStart: string; periodEnd: string; status: string; currency: string; calculationCount?: number }>;
+type Period = Readonly<{ id: string; organizationId: string; jurisdiction: { country: string; region: string }; periodStart: string; periodEnd: string; timezone?: string; status: string; currency: string; calculationCount?: number }>;
 type Calc = Readonly<{
   id: string; revision: number; status: string; workerIdentityId: string; jurisdiction: { country: string; region: string };
   ruleProvider: { key: string; version: string }; currency: string; grossPayMinor: number; totalDeductionsMinor: number; netPayMinor: number;
@@ -37,6 +37,8 @@ export function PayrollConsole() {
   const [notice, setNotice] = useState<{ tone: "info" | "error"; text: string } | null>(null);
   const [reason, setReason] = useState("");
   const [busy, setBusy] = useState(false);
+  // Shift times read in the pay period's own time zone, not UTC.
+  const periodZone = periods?.find((p) => p.id === periodId)?.timezone;
 
   const [organizations, setOrganizations] = useState<readonly { id: string; displayName: string }[]>([]);
   const [newPeriod, setNewPeriod] = useState({ organizationId: "", country: "", region: "", start: "", end: "" });
@@ -125,7 +127,7 @@ export function PayrollConsole() {
               {periods.map((p) => (
                 <li key={p.id}>
                   <button type="button" onClick={() => openPeriod(p.id)} aria-pressed={p.id === periodId} style={{ ...s.rowBtn, ...(p.id === periodId ? s.rowBtnActive : {}) }}>
-                    <span>{day(p.periodStart)} – {day(p.periodEnd)}</span>
+                    <span>{day(p.periodStart, p.timezone)} – {day(p.periodEnd, p.timezone)}</span>
                     <span style={s.rowMeta}>{p.jurisdiction.country}/{p.jurisdiction.region} · {p.status} · {p.calculationCount ?? 0} calc</span>
                   </button>
                 </li>
@@ -175,9 +177,9 @@ export function PayrollConsole() {
                   {detail.workedTimeRefs.map((w) => (
                     <tr key={w.timesheetId}>
                       <td style={s.td}>{w.timesheetId.slice(0, 8)} v{w.timesheetVersion} <span style={s.muted}>({w.timesheetStatus})</span></td>
-                      <td style={s.td}>{day(w.scheduledStartAt)} → {day(w.scheduledEndAt)}</td>
+                      <td style={s.td}>{day(w.scheduledStartAt, periodZone)} → {day(w.scheduledEndAt, periodZone)}</td>
                       <td style={s.td}>{w.payableMinutes}</td>
-                      <td style={s.td}>{w.contractVersion} <span style={s.muted}>eff {day(w.contractEffectiveFrom)}</span></td>
+                      <td style={s.td}>{w.contractVersion} <span style={s.muted}>eff {day(w.contractEffectiveFrom, periodZone)}</span></td>
                       <td style={s.td}>{money(w.appliedHourlyRateMinor, w.currency)}/h</td>
                     </tr>
                   ))}
@@ -196,7 +198,7 @@ export function PayrollConsole() {
                 <Row k="Net" v={money(detail.netPayMinor, detail.currency)} strong />
                 <Row k="Employer cost (separate)" v={money(detail.totalEmployerCostMinor, detail.currency)} />
                 <Row k="Fingerprint" v={detail.calculationFingerprint.slice(0, 16) + "…"} mono />
-                {detail.calculatedAt ? <Row k="Calculated at" v={day(detail.calculatedAt)} /> : null}
+                {detail.calculatedAt ? <Row k="Calculated at" v={day(detail.calculatedAt, periodZone)} /> : null}
               </dl>
             </div>
           </div>

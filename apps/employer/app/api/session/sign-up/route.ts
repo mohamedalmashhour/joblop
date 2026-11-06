@@ -18,12 +18,15 @@ export async function POST(request: Request) {
   const body = await request.json().catch(() => null);
   if (!validRegistration(body)) return sessionFailure("denied");
   const { cookieStore, gateway, token } = await sessionBoundary();
-  if (token) {
+  // Only a live session blocks this. An expired one is cleared, or the person would be told they
+  // are signed in while every page refuses them.
+  if (token && (await gateway.validate(token)).status !== "denied") {
     return Response.json(
       { status: "sign_out_required", message: "Sign out before creating another account." },
       { status: 409, headers: { "cache-control": "private, no-store" } }
     );
   }
+  if (token) cookieStore.set(sessionCookieName, "", { ...sessionCookieOptions, maxAge: 0 });
   cookieStore.set(organizationContextCookieName, "", { ...sessionCookieOptions, maxAge: 0 });
 
   const result = await gateway.register(
