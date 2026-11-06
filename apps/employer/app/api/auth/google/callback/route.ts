@@ -1,14 +1,19 @@
 import { cookies } from "next/headers";
+import { NextResponse } from "next/server";
 import {
   sessionBoundary,
   sessionCookieName,
   sessionCookieOptions
 } from "../../../sessionBoundary";
-import { GOOGLE_STATE_COOKIE, GOOGLE_STATE_PATH } from "../state";
+import { GOOGLE_STATE_COOKIE, GOOGLE_STATE_PATH, publicOrigin } from "../state";
 
-function publicOrigin(request: Request): string {
-  const site = process.env.NEXT_PUBLIC_SITE_URL?.trim();
-  return site && /^https?:\/\//.test(site) ? site.replace(/\/$/, "") : new URL(request.url).origin;
+// Build a redirect that carries its Set-Cookie: a bare Response.redirect() drops cookies set via
+// next/headers, so the state clear and the session cookie must ride on a NextResponse.
+function redirectTo(url: string, issuedToken: string | null = null): NextResponse {
+  const response = NextResponse.redirect(url, 302);
+  response.cookies.set(GOOGLE_STATE_COOKIE, "", { path: GOOGLE_STATE_PATH, maxAge: 0 });
+  if (issuedToken) response.cookies.set(sessionCookieName, issuedToken, sessionCookieOptions);
+  return response;
 }
 
 // Google returns here with ?code&state. Validate state, exchange via the API (provision/link +
@@ -21,7 +26,6 @@ export async function GET(request: Request) {
 
   const store = await cookies();
   const raw = store.get(GOOGLE_STATE_COOKIE)?.value ?? null;
-  store.set(GOOGLE_STATE_COOKIE, "", { path: GOOGLE_STATE_PATH, maxAge: 0 });
 
   let expected: { state?: unknown; withCalendar?: unknown } | null;
   try {
@@ -38,14 +42,15 @@ export async function GET(request: Request) {
     typeof expected.state !== "string" ||
     expected.state !== returnedState
   ) {
-    return Response.redirect(`${origin}/signin?google=error`, 302);
+    return redirectTo(`${origin}/signin?google=error`);
   }
 
-  const { cookieStore, gateway, token } = await sessionBoundary();
+  const { gateway, token } = await sessionBoundary();
   if (token) {
-    return Response.redirect(`${origin}/signin?google=already`, 302);
+    return redirectTo(`${origin}/signin?google=already`);
   }
 
+  let issuedToken: string | null = null;
   const result = await gateway.googleExchange(
     {
       code,
@@ -53,12 +58,12 @@ export async function GET(request: Request) {
       withCalendar: expected.withCalendar === true
     },
     (issued) => {
-      cookieStore.set(sessionCookieName, issued, sessionCookieOptions);
+      issuedToken = issued;
     }
   );
 
   if (result.status !== "ok") {
-    return Response.redirect(`${origin}/signin?google=failed`, 302);
+    return redirectTo(`${origin}/signin?google=failed`);
   }
-  return Response.redirect(`${origin}/`, 302);
+  return redirectTo(`${origin}/`, issuedToken);
 }

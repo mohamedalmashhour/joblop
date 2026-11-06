@@ -73,7 +73,8 @@ export const styles: Record<string, CSSProperties> = {
   },
   header: {
     alignItems: "center",
-    background: "rgba(0, 0, 0, 0.72)",
+    background: "#000000", // solid: this bar stays on screen, so see-through mixed it with page text
+
     borderBottom: `1px solid ${border}`,
     display: "flex",
     flexWrap: "wrap",
