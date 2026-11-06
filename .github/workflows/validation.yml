@@ -2,10 +2,21 @@ name: Foundation Validation
 
 on:
   pull_request:
+    paths-ignore:
+      - "**.md"
+      - "docs/**"
   push:
     branches:
       - main
       - "foundation/**"
+    paths-ignore:
+      - "**.md"
+      - "docs/**"
+
+# A new push to a pull request replaces its unfinished run. Runs on main always finish.
+concurrency:
+  group: validation-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
   validate:
@@ -70,7 +81,9 @@ jobs:
       - name: Dependency advisory report (informational)
         run: pnpm audit && pnpm audit --prod || true
 
+  # The slowest job. It runs on every push to main, so each image is proven before a deploy.
   container-runtime:
+    if: github.event_name == 'push'
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
