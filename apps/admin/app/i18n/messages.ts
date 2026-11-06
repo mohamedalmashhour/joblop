@@ -23,6 +23,7 @@ export const en = {
   "nav.hr": "HR",
   "nav.payroll": "Payroll",
   "nav.disputes": "Worker disputes",
+  "nav.invoices": "Invoices",
   "nav.timesheets": "Timesheets",
   "nav.greetings": "Greetings & awards",
 
@@ -62,6 +63,7 @@ export const fr: Messages = {
   "nav.hr": "RH",
   "nav.payroll": "Paie",
   "nav.disputes": "Litiges des travailleurs",
+  "nav.invoices": "Factures",
   "nav.timesheets": "Feuilles de temps",
   "nav.greetings": "Vœux et distinctions",
 
@@ -97,6 +99,7 @@ export const ar: Partial<Messages> = {
   "nav.hr": "الموارد البشرية",
   "nav.payroll": "الرواتب",
   "nav.disputes": "نزاعات العمال",
+  "nav.invoices": "الفواتير",
   "nav.timesheets": "سجلات الدوام",
   "nav.greetings": "التهاني والشهادات",
 

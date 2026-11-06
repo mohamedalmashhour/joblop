@@ -57,7 +57,7 @@ export function WorkerDisputesPanel() {
   }, [notes, load]);
 
   if (state.status === "loading") return <p style={styles.text}>Loading worker disputes.</p>;
-  if (state.status === "denied") return <p style={styles.text}>Payroll or platform administrator access is required.</p>;
+  if (state.status === "denied") return <p style={styles.text}>Your session has ended or this account has no access. <a href="/signin" style={{ color: "#fff1a8" }}>Sign in again</a>.</p>;
   if (state.status === "error") return <p style={styles.text}>The dispute queue could not be reached.</p>;
 
   return (

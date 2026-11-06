@@ -31,7 +31,8 @@ const productionEntries = {
     "apps/admin/app/calendar/request/page.tsx",
     "apps/admin/app/dispatches/page.tsx",
     "apps/admin/app/dispatches/[dispatchReviewId]/page.tsx",
-    "apps/admin/app/disputes/page.tsx"
+    "apps/admin/app/disputes/page.tsx",
+    "apps/admin/app/invoices/page.tsx"
   ],
   worker: ["apps/mobile/src/ProductionApp.tsx"]
 } as const;
