@@ -52,6 +52,8 @@ export type DocumentStorageProvider = Readonly<{
   resolveDownloadUrl(input: { storageReference: string }): Promise<{ url: string; expiresInSeconds: number } | null>;
   // Reject fabricated / cross-worker references before trusting them.
   verifyReference(input: { storageReference: string; workerIdentityId: string }): Promise<boolean>;
+  // Original file name / type recorded at upload, when the provider keeps them.
+  describe?(input: { storageReference: string }): Promise<{ fileName: string | null; contentType: string | null } | null>;
 }>;
 
 // Fixture provider: deterministic namespace per worker, no network. NOTE: encryption-at-rest,
@@ -99,6 +101,8 @@ export type HrDocumentRecord = Readonly<{
 export type WorkerDocumentView = Readonly<{
   id: string;
   documentType: string;
+  fileName?: string | null;
+  contentType?: string | null;
   jurisdiction: string | null;
   expiresAt: string | null;
   effectiveStatus: HrDocumentStatus;
@@ -205,7 +209,21 @@ export function createHrDocumentService(deps: HrDocumentDeps) {
 
     async listMyDocuments(input: { userId: string }): Promise<readonly WorkerDocumentView[]> {
       const workerIdentityId = await requireWorker(input.userId);
-      return (await deps.store.listForWorker(workerIdentityId)).map(toWorkerView);
+      const records = await deps.store.listForWorker(workerIdentityId);
+      return Promise.all(records.map(async (r) => {
+        const info = r.storageReference ? await deps.storage.describe?.({ storageReference: r.storageReference }) : null;
+        return { ...toWorkerView(r), fileName: info?.fileName ?? null, contentType: info?.contentType ?? null };
+      }));
+    },
+
+    // Worker: locate ONE of their OWN current documents so they can view or save it. A deleted or
+    // replaced document is not served, and another worker's document is never found.
+    async getMyDocumentFile(input: { userId: string; documentId: string }): Promise<{ documentType: string; storageReference: string } | null> {
+      const workerIdentityId = await requireWorker(input.userId);
+      const rec = (await deps.store.listForWorker(workerIdentityId)).find((r) => r.id === input.documentId);
+      if (!rec || !rec.storageReference) return null;
+      if (rec.status === "revoked" || rec.status === "superseded") return null;
+      return { documentType: rec.documentType, storageReference: rec.storageReference };
     },
 
     // Worker: resolve ONE of their OWN documents for an advisory AI review. Ownership is enforced

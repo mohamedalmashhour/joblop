@@ -60,6 +60,20 @@ describe("HR document service", () => {
   let ctx: ReturnType<typeof makeService>;
   beforeEach(() => { ctx = makeService(); });
 
+  it("serves a worker only their own current documents", async () => {
+    const { storageReference } = await ctx.service.requestUploadReference({ userId: "u-1", documentType: "licence" });
+    const view = await ctx.service.submitDocument({ userId: "u-1", documentType: "licence", storageReference });
+    expect(await ctx.service.getMyDocumentFile({ userId: "u-1", documentId: view.id })).toEqual({ documentType: "licence", storageReference });
+    const otherWorker = createHrDocumentService({
+      workers: { async resolveByUserId() { return { workerIdentityId: "w-2" }; } },
+      store: ctx.store,
+      storage: createFixtureDocumentStorageProvider()
+    });
+    expect(await otherWorker.getMyDocumentFile({ userId: "u-2", documentId: view.id })).toBeNull();
+    await ctx.service.removeMyDocument({ userId: "u-1", documentId: view.id });
+    expect(await ctx.service.getMyDocumentFile({ userId: "u-1", documentId: view.id })).toBeNull();
+  });
+
   it("submit verifies the storage reference (rejects fabricated/cross-worker) and audits", async () => {
     const { storageReference } = await ctx.service.requestUploadReference({ userId: "u-1", documentType: "licence" });
     const view = await ctx.service.submitDocument({ userId: "u-1", documentType: "licence", storageReference });
