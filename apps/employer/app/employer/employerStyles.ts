@@ -7,8 +7,10 @@ const teal = colors.actionTeal; // gold accent
 const surface = "#0c0c0c"; // dark-raised panel
 const surfaceSubtle = "#141210"; // slightly higher raise
 const border = "rgba(201, 162, 75, 0.16)"; // gold hairline
+const inputBorder = "rgba(201, 162, 75, 0.6)"; // form fields must be easy to find
 const text = "#f4efe4"; // cream body
 const muted = "#b3a894"; // warm secondary
+const warning = "#e8c46b"; // readable amber on dark
 
 export const baseButton: CSSProperties = {
   alignItems: "center",
@@ -58,7 +60,7 @@ export const styles: Record<string, CSSProperties> = {
     alignItems: "center",
     background: "#0c0c0c",
     borderBottom: "2px solid #e8d782",
-    color: "#5f4000",
+    color: warning,
     display: "flex",
     flexWrap: "wrap",
     fontSize: 12,
@@ -95,7 +97,7 @@ export const styles: Record<string, CSSProperties> = {
     alignItems: "center",
     background: "#000000",
     borderRadius: radii.sm,
-    color: navy,
+    color: text,
     display: "inline-flex",
     fontSize: 12,
     height: 36,
@@ -126,7 +128,7 @@ export const styles: Record<string, CSSProperties> = {
     background: "#000000",
     border: "1px solid rgba(201, 162, 75, 0.16)",
     borderRadius: radii.sm,
-    color: navy,
+    color: text,
     display: "grid",
     fontSize: 13,
     fontWeight: 900,
@@ -162,7 +164,7 @@ export const styles: Record<string, CSSProperties> = {
     textTransform: "uppercase"
   },
   topbarTitle: {
-    color: navy,
+    color: text,
     display: "block",
     fontSize: 18,
     marginTop: 2
@@ -171,13 +173,13 @@ export const styles: Record<string, CSSProperties> = {
     ...baseButton,
     background: teal,
     boxShadow: "0 10px 24px rgba(15, 127, 120, 0.18)",
-    color: "#ffffff"
+    color: "#000000"
   },
   secondaryButton: {
     ...baseButton,
     background: "#000000",
     border: `1px solid ${border}`,
-    color: navy
+    color: text
   },
   disabledAction: {
     ...baseButton,
@@ -237,7 +239,7 @@ export const styles: Record<string, CSSProperties> = {
     maxWidth: 900
   },
   sectionTitle: {
-    color: navy,
+    color: text,
     fontSize: "clamp(26px, 4vw, 42px)",
     lineHeight: 1.12,
     margin: 0
@@ -283,7 +285,7 @@ export const styles: Record<string, CSSProperties> = {
     padding: 18
   },
   cardTitle: {
-    color: navy,
+    color: text,
     fontSize: 18,
     margin: 0
   },
@@ -304,7 +306,7 @@ export const styles: Record<string, CSSProperties> = {
   },
   statusBadge: {
     alignItems: "center",
-    background: "#eefbf6",
+    background: "#000000",
     border: "1px solid #9fd8bc",
     borderRadius: 999,
     color: "#f4efe4",
@@ -319,7 +321,7 @@ export const styles: Record<string, CSSProperties> = {
     background: "#0c0c0c",
     border: "1px solid #e8d782",
     borderRadius: 999,
-    color: "#7a5200",
+    color: warning,
     display: "inline-flex",
     fontSize: 12,
     fontWeight: 900,
@@ -398,7 +400,7 @@ export const styles: Record<string, CSSProperties> = {
     background: "#000000",
     border: `1px solid ${border}`,
     borderRadius: radii.sm,
-    color: navy,
+    color: text,
     fontWeight: 900,
     padding: 14
   },
@@ -427,7 +429,7 @@ export const styles: Record<string, CSSProperties> = {
   },
   input: {
     background: "#000000",
-    border: `1px solid ${border}`,
+    border: `1px solid ${inputBorder}`,
     borderRadius: radii.sm,
     color: text,
     font: "inherit",
