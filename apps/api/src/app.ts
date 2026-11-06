@@ -365,7 +365,7 @@ import { createEmployerInvoiceWebhook, type CheckoutSessionEventLike } from "./e
 import { createStripeTestClient } from "./stripeTestProvider";
 import { stripeTestEnvFromProcess } from "./cvProStripeCheckout";
 import { claimOpenJob, ensureOpenClaimDispatch, placeClaimedShiftOnSchedule } from "./openClaim";
-import { formatWorksiteAddress, isWorksiteAddressVisible, WORKSITE_ADDRESS_SELECT } from "./worksiteAddress";
+import { isWorksiteAddressVisible, workerJobAddress, WORKSITE_ADDRESS_SELECT } from "./worksiteAddress";
 
 export interface BuildApiOptions {
   authService?: AuthenticationService;
@@ -7635,7 +7635,8 @@ export function buildApi(options: BuildApiOptions = {}) {
         id: true, assignmentId: true, status: true, scheduledStartAt: true, scheduledEndAt: true, timezone: true,
         checkInAt: true, checkOutAt: true, exceptionCategory: true, version: true,
         organization: { select: { displayName: true } },
-        residence: { select: WORKSITE_ADDRESS_SELECT }
+        residence: { select: WORKSITE_ADDRESS_SELECT },
+        jobRequest: { select: { calendarProfile: { select: { addressSummary: true } } } }
       }
     });
     const hasMore = rows.length > limit;
@@ -7647,7 +7648,7 @@ export function buildApi(options: BuildApiOptions = {}) {
       employerName: r.organization.displayName,
       areaLabel: r.residence.city && options.countryAddress?.isRegionCode(r.residence.province) ? `${r.residence.city}, ${r.residence.province}` : null,
       // This route only returns the signed-in worker's own assigned shifts.
-      worksiteAddress: isWorksiteAddressVisible(r.status) ? formatWorksiteAddress(r.residence) : null
+      worksiteAddress: isWorksiteAddressVisible(r.status) ? workerJobAddress(r.jobRequest.calendarProfile?.addressSummary, r.residence) : null
     }));
     return reply.code(200).send({ items, nextCursor: hasMore ? (rows[limit - 1]?.id ?? null) : null });
   });

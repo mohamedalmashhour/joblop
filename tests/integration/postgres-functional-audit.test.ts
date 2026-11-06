@@ -387,6 +387,24 @@ suite("worker journey and payout guards", () => {
       expect((await read(worker.token))[0]?.worksiteAddress).toBeNull();
     });
 
+    it("the site address entered on the job comes before the residence address", async () => {
+      const worker = await makeWorker("site");
+      const { job, review } = await makeJob({ ...soon(), openClaim: false });
+      await prisma.staffingRequestCalendarProfile.create({
+        data: { jobRequestId: job.id, organizationId: scope.organizationId, residenceId: scope.residenceId, qualifications: [], addressSummary: "77 Field Road, Rural Site", createdByUserId: staff.id, updatedByUserId: staff.id }
+      });
+      const offer = await makeAcceptedOffer(worker, job, review.id);
+      emails.length = 0;
+      const made = await app.inject({
+        method: "POST", url: "/platform/assignments", headers: auth(staff.token),
+        payload: { workerOfferId: offer.id, dispatchReviewId: review.id, expectedOfferVersion: offer.version }
+      });
+      expect(made.statusCode, made.body).toBe(201);
+      expect(emails.find((m) => m.to === worker.email)?.text).toContain("77 Field Road, Rural Site");
+      const schedule = await app.inject({ method: "GET", url: "/worker/attendance", headers: auth(worker.token) });
+      expect(schedule.json().items[0].worksiteAddress).toBe("77 Field Road, Rural Site");
+    });
+
     it("an address is never shown before assignment", async () => {
       const { job } = await makeJob({ ...soon(), openClaim: true });
       const worker = await makeWorker("preview");
