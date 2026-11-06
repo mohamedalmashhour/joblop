@@ -14,6 +14,7 @@ import {
 } from "./instantContact";
 import type { EmailSender } from "./mailer/emailSender";
 import type { SmsSender } from "./mailer/smsSender";
+import { formatWorksiteAddress, isWorksiteAddressVisible, WORKSITE_ADDRESS_SELECT } from "./worksiteAddress";
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
@@ -24,12 +25,22 @@ async function workerFacts(prisma: PrismaClient, userId: string): Promise<string
     select: { id: true, displayName: true, classification: true }
   });
   if (!identity) return "No worker profile.";
-  const [shifts, pay, documents] = await Promise.all([
-    prisma.assignment.findMany({
+  const [attendance, timesheets, pay, documents] = await Promise.all([
+    prisma.attendanceRecord.findMany({
       where: { workerIdentityId: identity.id },
-      orderBy: { confirmedStartAt: "desc" },
+      orderBy: { scheduledStartAt: "desc" },
       take: 5,
-      select: { confirmedTitle: true, confirmedStartAt: true, confirmedEndAt: true, timezone: true, status: true, confirmedWorksiteSummary: true }
+      select: {
+        status: true, scheduledStartAt: true, scheduledEndAt: true, timezone: true, checkInAt: true, checkOutAt: true,
+        assignment: { select: { confirmedTitle: true } },
+        residence: { select: { ...WORKSITE_ADDRESS_SELECT } }
+      }
+    }),
+    prisma.timesheet.findMany({
+      where: { workerIdentityId: identity.id },
+      orderBy: { scheduledStartAt: "desc" },
+      take: 5,
+      select: { status: true, scheduledStartAt: true, payableMinutes: true }
     }),
     prisma.payrollCalculation.findMany({
       where: { workerIdentityId: identity.id, status: { in: ["approved", "locked"] } },
@@ -45,7 +56,17 @@ async function workerFacts(prisma: PrismaClient, userId: string): Promise<string
   return JSON.stringify({
     name: identity.displayName,
     workType: identity.classification,
-    shifts,
+    shifts: attendance.map((a) => ({
+      title: a.assignment.confirmedTitle,
+      attendanceStatus: a.status,
+      scheduledStart: a.scheduledStartAt,
+      scheduledEnd: a.scheduledEndAt,
+      timezone: a.timezone,
+      checkedInAt: a.checkInAt,
+      checkedOutAt: a.checkOutAt,
+      exactAddress: isWorksiteAddressVisible(a.status) ? formatWorksiteAddress(a.residence) : null
+    })),
+    timesheets,
     payStatements: pay.map((p) => ({
       periodStart: p.payrollPeriod.periodStart,
       periodEnd: p.payrollPeriod.periodEnd,
@@ -63,16 +84,40 @@ async function workerFacts(prisma: PrismaClient, userId: string): Promise<string
 
 async function employerFacts(prisma: PrismaClient, organizationId: string | null): Promise<string> {
   if (!organizationId) return "No employer organization.";
-  const [organization, orders] = await Promise.all([
+  const [organization, requests, orders, timesheets, invoices] = await Promise.all([
     prisma.employerOrganization.findUnique({ where: { id: organizationId }, select: { displayName: true, status: true } }),
+    prisma.jobRequest.findMany({
+      where: { organizationId },
+      orderBy: { startAt: "desc" },
+      take: 5,
+      select: { jobRequestNumber: true, title: true, status: true, numberOfWorkers: true, startAt: true, endAt: true, timezone: true }
+    }),
     prisma.employerOrder.findMany({
       where: { organizationId },
       orderBy: { startAt: "desc" },
       take: 5,
       select: { orderNumber: true, title: true, startAt: true, endAt: true, timezone: true, status: true }
+    }),
+    prisma.timesheet.findMany({
+      where: { organizationId },
+      orderBy: { scheduledStartAt: "desc" },
+      take: 5,
+      select: { status: true, scheduledStartAt: true, scheduledEndAt: true }
+    }),
+    prisma.invoice.findMany({
+      where: { organizationId },
+      orderBy: { createdAt: "desc" },
+      take: 5,
+      select: { invoiceNumber: true, status: true, currency: true, totalMinor: true }
     })
   ]);
-  return JSON.stringify({ organization, orders });
+  return JSON.stringify({
+    organization,
+    requests,
+    orders,
+    timesheets,
+    invoices: invoices.map((i) => ({ ...i, total: Number(i.totalMinor) / 100, totalMinor: undefined }))
+  });
 }
 
 export function createPrismaContactStore(prisma: PrismaClient): ContactStore {

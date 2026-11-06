@@ -4696,15 +4696,21 @@ export function buildApi(options: BuildApiOptions = {}) {
       // and only up to a safe size. A failed/oversized fetch degrades to the offline advisory verdict.
       let image: { base64: string; mediaType: string } | null = null;
       const preliminary = offlineAdvisoryVerdict(resolved.documentType, { expired: resolved.expired });
-      if (preliminary.status === "ai_approved" && resolved.downloadUrl && process.env.ANTHROPIC_API_KEY?.trim()) {
+      if (preliminary.status === "ai_approved" && resolved.storageReference && process.env.ANTHROPIC_API_KEY?.trim()) {
         try {
-          const dl = await fetch(resolved.downloadUrl);
-          const mediaType = dl.headers.get("content-type")?.split(";")[0]?.trim() ?? "";
-          if (dl.ok && isReviewableImageType(mediaType)) {
-            const buf = Buffer.from(await dl.arrayBuffer());
-            if (buf.byteLength > 0 && buf.byteLength <= 5_000_000) {
-              image = { base64: buf.toString("base64"), mediaType };
-            }
+          let bytes: Uint8Array | null = null;
+          let mediaType = "";
+          if (hrDocLocalStorage) {
+            // Local storage hands out a browser-relative link, so read the stored file directly.
+            bytes = await hrDocLocalStorage.store.get(hrDocLocalStorage.objectKey(resolved.storageReference));
+            mediaType = (await hrDocLocalStorage.describe?.({ storageReference: resolved.storageReference }))?.contentType ?? "";
+          } else if (resolved.downloadUrl) {
+            const dl = await fetch(resolved.downloadUrl);
+            mediaType = dl.headers.get("content-type")?.split(";")[0]?.trim() ?? "";
+            if (dl.ok) bytes = new Uint8Array(await dl.arrayBuffer());
+          }
+          if (bytes && isReviewableImageType(mediaType) && bytes.byteLength > 0 && bytes.byteLength <= 5_000_000) {
+            image = { base64: Buffer.from(bytes).toString("base64"), mediaType };
           }
         } catch {
           image = null; // provider unreachable (e.g. local fixture) -> offline advisory
