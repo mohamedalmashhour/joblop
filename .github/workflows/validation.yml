@@ -54,6 +54,9 @@ jobs:
           --health-timeout 5s
           --health-retries 10
     env:
+      # The fake local payment provider, so the invoice-to-close suite runs. It moves no money.
+      LOCAL_PAYMENT_ENABLED: enabled
+      LOCAL_PAYMENT_WEBHOOK_SECRET: local-fake-webhook-secret-0123456789abcdef
       RWOS_POSTGRES_TEST_MODE: local-disposable
       RWOS_TEST_DATABASE_CONFIRMATION: disposable-test-target
       RWOS_TEST_DATABASE_URL: postgresql://postgres@127.0.0.1:5432/rwos_validation_admin

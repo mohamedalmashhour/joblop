@@ -246,6 +246,10 @@ suite("QA-reset supersession reconciles stranded materializations", () => {
           `DELETE FROM ${approvedTableForEntity(entityType)} WHERE id = ANY($1::uuid[])`,
           ids
         );
+        // The probe event this suite adds is not a manifest record, and it references the actor.
+        if (appendOnly) {
+          await prisma.$executeRawUnsafe(`DELETE FROM audit_events WHERE correlation_id = 'reconcile-audit-probe'`);
+        }
       } finally {
         if (appendOnly) {
           await prisma.$executeRawUnsafe(`ALTER TABLE audit_events ENABLE TRIGGER audit_events_prevent_delete`);
