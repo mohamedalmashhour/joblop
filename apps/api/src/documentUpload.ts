@@ -76,11 +76,11 @@ export function createMemoryPrivateObjectStore(): PrivateObjectStore {
   };
 }
 
-// Every key shape the disk store accepts. Neither allows dots or empty segments, so no key can
-// traverse out of the storage root. `hr/` is `hr/<workerIdentityId>/<documentType>/<uuid>`.
+// Every key shape the disk store accepts. Neither allows `..` or empty segments, so no key can
+// traverse out of the storage root. `hr/` is `hr/<workerIdentityId>/<documentType>/<uuid>[.meta]`.
 const OBJECT_KEY_PATTERNS = [
   /^quarantine\/[A-Za-z0-9-]{1,64}\/[A-Za-z0-9-]{1,64}$/u,
-  /^hr\/[0-9a-fA-F-]{8,64}\/[a-z0-9_]{1,40}\/[0-9a-f-]{36}$/u
+  /^hr\/[0-9a-fA-F-]{8,64}\/[a-z0-9_]{1,40}\/[0-9a-f-]{36}(\.meta)?$/u
 ];
 
 export function createLocalPrivateFileObjectStore(rootDirectory: string): PrivateObjectStore {

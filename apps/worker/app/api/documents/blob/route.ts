@@ -30,6 +30,7 @@ export async function PUT(request: Request) {
     ref,
     sig,
     contentType,
+    fileName: url.searchParams.get("name"),
     dataBase64: buffer.toString("base64")
   });
   if (result.status !== "ok") return sessionFailure(result.status);

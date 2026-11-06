@@ -301,7 +301,9 @@ import { createDocumentUploadContract } from "./documentUploadContract";
 import {
   ALLOWED_HR_DOCUMENT_CONTENT_TYPES,
   MAX_HR_DOCUMENT_BYTES,
-  createLocalHrDocumentStorageProvider
+  createLocalHrDocumentStorageProvider,
+  detectViewableHrDocumentType,
+  sanitizeHrDocumentFileName
 } from "./hrDocumentStorageLocal";
 import { resolvePayrollPeriodTimezone } from "./payrollPeriodTimezone";
 import { createPrismaDocumentMetadataRepository } from "./documentUploadRepository";
@@ -4533,7 +4535,33 @@ export function buildApi(options: BuildApiOptions = {}) {
       return reply.code(413).send({ error: "RWOS_HR_DOC_TOO_LARGE", message: "That file is too large (max 10 MB)." });
     }
     await hrDocLocalStorage.store.put({ key: hrDocLocalStorage.objectKey(ref), bytes: new Uint8Array(bytes) });
+    await hrDocLocalStorage.saveFileInfo(ref, { fileName: sanitizeHrDocumentFileName(readOptionalString(body, "fileName")), contentType });
     return reply.code(200).send({ ok: true });
+  });
+
+  // Worker: open or save ONE of their OWN current documents. `mode=view` opens in the browser only
+  // when the bytes really are a PDF or image; anything else is always a download.
+  app.get("/hr/documents/:documentId/file", async (request, reply) => {
+    const userId = await requireWorkerSession(request, reply);
+    if (!userId) return;
+    const documentId = readRouteParam(request.params, "documentId");
+    if (!isCanonicalUuid(documentId) || !hrDocLocalStorage) return reply.code(404).send({ error: "RWOS_HR_DOC_NOT_FOUND", message: "That document was not found." });
+    try {
+      const found = await hrDocumentService.getMyDocumentFile({ userId, documentId });
+      const bytes = found ? await hrDocLocalStorage.store.get(hrDocLocalStorage.objectKey(found.storageReference)) : null;
+      if (!found || !bytes) return reply.code(404).send({ error: "RWOS_HR_DOC_NOT_FOUND", message: "That document was not found." });
+      const info = await hrDocLocalStorage.describe?.({ storageReference: found.storageReference });
+      const viewable = detectViewableHrDocumentType(bytes);
+      const inline = readOptionalString(asRecord(request.query), "mode") === "view" && viewable !== null;
+      const fileName = info?.fileName ?? found.documentType;
+      return reply
+        .header("content-type", inline ? viewable : "application/octet-stream")
+        .header("content-disposition", `${inline ? "inline" : "attachment"}; filename*=UTF-8''${encodeURIComponent(fileName)}`)
+        .header("cache-control", "private, no-store")
+        .send(Buffer.from(bytes));
+    } catch (error) {
+      return sendHrDocError(reply, error);
+    }
   });
 
   // Worker: submit / replace a document (verified reference; never self-accept).

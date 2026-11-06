@@ -5,7 +5,7 @@ import { useLocale, useT } from "../i18n/LocaleProvider";
 import type { MessageKey } from "../i18n/messages";
 import { resolveDeniedKind } from "../resolveDenied";
 
-type Doc = Readonly<{ id: string; documentType: string; jurisdiction: string | null; expiresAt: string | null; effectiveStatus: string; supersededById: string | null }>;
+type Doc = Readonly<{ id: string; documentType: string; fileName?: string | null; contentType?: string | null; jurisdiction: string | null; expiresAt: string | null; effectiveStatus: string; supersededById: string | null }>;
 type State =
   | { status: "loading" }
   | { status: "signed_out" }
@@ -42,6 +42,23 @@ const DOC_TYPE_LABEL_KEY: Record<string, MessageKey> = Object.fromEntries(
   DOCUMENT_TYPES.map((d) => [d.value, d.labelKey])
 ) as Record<string, MessageKey>;
 
+// Mirrors the API's allowlist and 10 MB cap, so a worker hears why a file is refused before uploading.
+const MAX_FILE_BYTES = 10 * 1024 * 1024;
+const FILE_TYPES: Readonly<Record<string, string>> = {
+  pdf: "application/pdf", jpg: "image/jpeg", jpeg: "image/jpeg", png: "image/png", webp: "image/webp",
+  gif: "image/gif", heic: "image/heic", heif: "image/heif", tif: "image/tiff", tiff: "image/tiff", txt: "text/plain",
+  doc: "application/msword", odt: "application/vnd.oasis.opendocument.text",
+  docx: "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+};
+const ACCEPT = Object.keys(FILE_TYPES).map((ext) => `.${ext}`).join(",");
+
+// The file's real type. Browsers leave `type` empty for some formats (HEIC on many), so fall back to
+// the extension. Null means the API would refuse it.
+function allowedType(file: File): string | null {
+  if (Object.values(FILE_TYPES).includes(file.type)) return file.type;
+  return FILE_TYPES[file.name.split(".").pop()?.toLowerCase() ?? ""] ?? null;
+}
+
 // Advisory AI verdict → label + badge colour.
 const AI_VERDICT_KEY: Record<string, MessageKey> = {
   ai_approved: "doc.aiApproved",
@@ -62,7 +79,10 @@ export function MyDocuments() {
   const [state, setState] = useState<State>({ status: "loading" });
   const [docType, setDocType] = useState("");
   const [files, setFiles] = useState<File[]>([]);
-  const [replacing, setReplacing] = useState(false);
+  const [replacing, setReplacing] = useState<Doc | null>(null);
+  const [confirmDelete, setConfirmDelete] = useState<string | null>(null);
+  // Bumped to clear the file input, which React cannot reset through a value.
+  const [fileInputKey, setFileInputKey] = useState(0);
   const [busy, setBusy] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -100,6 +120,7 @@ export function MyDocuments() {
 
   const removeDoc = useCallback(async (documentId: string) => {
     setBusy(true);
+    setConfirmDelete(null);
     setError(null);
     try {
       const r = await fetch(`/api/documents/${encodeURIComponent(documentId)}/remove`, { method: "POST", headers: { "content-type": "application/json" }, body: "{}" });
@@ -117,12 +138,15 @@ export function MyDocuments() {
   // provider, then submit the metadata. The file bytes go to the storage provider, never through Joblop.
   // Upload ONE file end to end (ref → PUT → metadata). Returns true on success; no form-state reset.
   const uploadOne = useCallback(async (documentType: string, replace: boolean, chosen: File): Promise<boolean> => {
+    const contentType = allowedType(chosen);
+    if (!contentType) { setError(t("doc.fileTypeNotAllowed", { name: chosen.name })); return false; }
+    if (chosen.size > MAX_FILE_BYTES) { setError(t("doc.fileTooLarge", { name: chosen.name })); return false; }
     const refRes = await fetch("/api/documents/upload-reference", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ documentType: documentType.trim() }) });
     if (!refRes.ok) { setError(t("doc.startFailed")); return false; }
     const { storageReference, uploadUrl } = (await refRes.json()) as { storageReference: string; uploadUrl?: string };
     if (uploadUrl) {
       try {
-        const put = await fetch(uploadUrl, { method: "PUT", headers: { "content-type": chosen.type || "application/octet-stream" }, body: chosen });
+        const put = await fetch(`${uploadUrl}&name=${encodeURIComponent(chosen.name)}`, { method: "PUT", headers: { "content-type": contentType }, body: chosen });
         if (!put.ok) { setError(t("doc.uploadFailed")); return false; }
       } catch {
         setError(t("doc.uploadUnreachable"));
@@ -136,7 +160,8 @@ export function MyDocuments() {
   }, [t]);
 
   // Submit the chosen file(s): replace affects exactly one; a new upload accepts MULTIPLE files of the type.
-  const submit = useCallback(async (documentType: string, replace: boolean, chosen: readonly File[]) => {
+  const submit = useCallback(async (documentType: string, replaced: Doc | null, chosen: readonly File[]) => {
+    const replace = replaced !== null;
     if (!documentType.trim()) return;
     if (chosen.length === 0) { setError(t("doc.chooseFileFirst")); return; }
     setBusy(true);
@@ -149,10 +174,15 @@ export function MyDocuments() {
         else break;
       }
       if (ok > 0) {
+        // The API only supersedes an accepted document, so retire a not-yet-accepted original here.
+        if (replaced && replaced.effectiveStatus !== "accepted") {
+          await fetch(`/api/documents/${encodeURIComponent(replaced.id)}/remove`, { method: "POST", headers: { "content-type": "application/json" }, body: "{}" });
+        }
         setNotice(replace ? t("doc.replacementSubmitted") : t("doc.submitted"));
         setDocType("");
         setFiles([]);
-        setReplacing(false);
+        setFileInputKey((k) => k + 1);
+        setReplacing(null);
         await load();
       }
     } finally {
@@ -179,27 +209,33 @@ export function MyDocuments() {
 
       <form className="searchbar" onSubmit={(e) => {
         e.preventDefault();
-        // Cap: at most 6 live certificates (existing non-superseded + the files being added).
+        // Cap: at most 6 live certificates (those still on the list + the files being added).
         if (docType === "certificate" && !replacing) {
-          const existing = state.documents.filter((d) => d.documentType === "certificate" && !d.supersededById).length;
+          const existing = active.filter((d) => d.documentType === "certificate").length;
           if (existing + files.length > 6) { setError(t("doc.certLimit")); return; }
         }
         void submit(docType, replacing, files);
       }}>
         <div className="field grow">
           <label htmlFor="doctype">{t("doc.documentType")}</label>
-          <select id="doctype" value={docType} onChange={(e) => setDocType(e.target.value)} aria-describedby="doctype-help">
+          <select id="doctype" value={docType} disabled={replacing !== null} onChange={(e) => setDocType(e.target.value)} aria-describedby="doctype-help">
             <option value="">{t("doc.chooseType")}</option>
             {DOCUMENT_TYPES.map((d) => <option key={d.value} value={d.value}>{t(d.labelKey)}</option>)}
           </select>
         </div>
         <div className="field grow">
           <label htmlFor="docfile">{t("doc.file")}</label>
-          <input id="docfile" type="file" multiple onChange={(e) => setFiles(Array.from(e.target.files ?? []))} aria-describedby="doctype-help" />
+          <input key={fileInputKey} id="docfile" type="file" multiple={replacing === null} accept={ACCEPT} onChange={(e) => setFiles(Array.from(e.target.files ?? []))} aria-describedby="doctype-help" />
         </div>
         <button className="btn" type="submit" disabled={busy || !docType.trim() || files.length === 0}>{busy ? t("doc.uploading") : t("doc.uploadDocument")}</button>
       </form>
       <p id="doctype-help" className="notice">{t("doc.formHelp")}</p>
+      {replacing ? (
+        <p className="notice" role="status">
+          {t("doc.chooseNewToReplace")}{" "}
+          <button className="linkbtn" type="button" onClick={() => { setReplacing(null); setDocType(""); setFiles([]); setFileInputKey((k) => k + 1); setNotice(null); }}>{t("doc.cancel")}</button>
+        </p>
+      ) : null}
 
       <div className="results" style={{ paddingBottom: 48 }}>
         {active.length === 0 ? (
@@ -210,7 +246,30 @@ export function MyDocuments() {
             const verdict = aiVerdicts[d.id];
             return (
             <article key={d.id} className="card">
-              <div className="role">{labelKey ? t(labelKey) : d.documentType}</div>
+              <div style={{ display: "flex", gap: 12, alignItems: "center", flexWrap: "wrap" }}>
+                <a href={`/api/documents/${d.id}/file?mode=view`} target="_blank" rel="noopener" aria-label={t("doc.view")} style={{ flex: "none", width: 56, height: 56, display: "grid", placeItems: "center", borderRadius: 8, border: "1px solid var(--line, #333)", overflow: "hidden", textDecoration: "none", fontSize: 11, fontWeight: 800 }}>
+                  {/* Bytes come from an authenticated route that next/image cannot fetch. */}
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  {["image/jpeg", "image/png", "image/webp", "image/gif"].includes(d.contentType ?? "") ? <img src={`/api/documents/${d.id}/file?mode=view`} alt="" style={{ width: "100%", height: "100%", objectFit: "cover" }} /> : <span>{(d.fileName?.split(".").pop() ?? "FILE").slice(0, 4).toUpperCase()}</span>}
+                </a>
+                <div style={{ flex: "1 1 180px", minWidth: 0 }}>
+                  <div className="role" style={{ overflowWrap: "anywhere" }}>{d.fileName ?? (labelKey ? t(labelKey) : d.documentType)}</div>
+                  {d.fileName && labelKey ? <div className="notice" style={{ margin: 0 }}>{t(labelKey)}</div> : null}
+                </div>
+                <div className="chips" style={{ flex: "none" }}>
+                  <a className="btn ghost" href={`/api/documents/${d.id}/file?mode=view`} target="_blank" rel="noopener">{t("doc.view")}</a>
+                  <a className="btn ghost" href={`/api/documents/${d.id}/file?mode=save`}>{t("doc.save")}</a>
+                  <button className="btn ghost" type="button" disabled={busy} onClick={() => { setReplacing(d); setDocType(d.documentType); setFiles([]); setFileInputKey((k) => k + 1); setError(null); setNotice(null); window.scrollTo({ top: 0, behavior: "smooth" }); }}>{t("doc.replace")}</button>
+                  <button className="btn ghost" type="button" disabled={busy} onClick={() => setConfirmDelete(d.id)}>{t("doc.remove")}</button>
+                </div>
+              </div>
+              {confirmDelete === d.id ? (
+                <div className="chips" role="alertdialog" aria-label={t("doc.confirmDelete")} style={{ marginTop: 8, alignItems: "center" }}>
+                  <span>{t("doc.confirmDelete")}</span>
+                  <button className="btn" type="button" disabled={busy} onClick={() => void removeDoc(d.id)}>{t("doc.confirmYes")}</button>
+                  <button className="btn ghost" type="button" onClick={() => setConfirmDelete(null)}>{t("doc.cancel")}</button>
+                </div>
+              ) : null}
               <div className="chips">
                 <span className={`chip status-${badgeClass(d.effectiveStatus)}`}>{t(STATUS_KEY[d.effectiveStatus] ?? "doc.statusRequired")}</span>
                 {d.expiresAt ? <span className="chip">{t("common.expires", { date: new Date(d.expiresAt).toLocaleDateString(locale) })}</span> : null}
@@ -223,16 +282,20 @@ export function MyDocuments() {
                     {t(AI_VERDICT_KEY[verdict] ?? "doc.aiHuman")} · {t("doc.aiAdvisory")}
                   </span>
                 ) : null}
-                <button className="btn ghost" type="button" disabled={busy} onClick={() => void removeDoc(d.id)}>{t("doc.remove")}</button>
               </div>
-              {["accepted", "expiring", "expired", "rejected"].includes(d.effectiveStatus) ? (
-                <button className="btn ghost" type="button" style={{ alignSelf: "flex-start" }} disabled={busy} onClick={() => { setReplacing(true); setDocType(d.documentType); setFiles([]); setError(null); setNotice(t("doc.chooseNewToReplace")); }}>{t("doc.replace")}</button>
-              ) : null}
             </article>
           );
           })
         )}
       </div>
+
+      {active.length > 0 ? (
+        <div className="card" style={{ marginBottom: 24, borderColor: "var(--accent)" }}>
+          <div className="role">{t("doc.doneTitle")}</div>
+          <p className="notice" style={{ margin: 0 }}>{t("doc.doneBody")}</p>
+          <a className="btn" href="/verification" style={{ alignSelf: "flex-start", marginTop: 8 }}>{t("doc.nextStep")}</a>
+        </div>
+      ) : null}
 
       <p className="notice">{t("doc.footer")}</p>
     </>
