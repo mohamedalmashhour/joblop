@@ -7,8 +7,8 @@ export default function InvoiceApprovalPage() {
         <p style={styles.eyebrow}>Joblop / Finance</p>
         <h1 style={styles.title}>Invoices</h1>
         <p style={styles.lede}>
-          A locked timesheet creates a draft invoice. Approve it, then issue it to give it a number and make it
-          official for the employer. No money moves here, and issuing cannot be undone from this screen.
+          A locked timesheet creates a draft invoice. Approve it, issue it to give it a number, then send it to the
+          employer, who is emailed and can pay it. No money moves here, and issuing cannot be undone from this screen.
         </p>
       </header>
       <InvoiceApprovalPanel />

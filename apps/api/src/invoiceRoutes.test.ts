@@ -451,4 +451,47 @@ describe("authenticated invoice routes", () => {
       })
     );
   });
+
+  describe("employer notice on send", () => {
+    const send = (app: ReturnType<typeof Fastify>) =>
+      app.inject({
+        method: "POST",
+        url: `/organizations/${organizationId}/invoices/${invoice.id}/deliveries`,
+        payload: { expectedVersion: 3, recipientAlias: "employer-contact", idempotencyKey: "send-key" }
+      });
+    const firstSendRepository = () => {
+      const target = repository();
+      vi.mocked(target.recordFakeDelivery).mockImplementation(async (input) => ({
+        invoice: { ...invoice, status: "sent", version: 4 },
+        receipt: { id: input.id } as Awaited<ReturnType<InvoiceRepository["recordFakeDelivery"]>>["receipt"]
+      }));
+      return target;
+    };
+    const authorize = async () => ({ actorId: "synthetic-finance", role: "finance_reviewer" as const });
+
+    it("emails the employer on the first send and reports the result", async () => {
+      const app = Fastify();
+      const notifyInvoiceSent = vi.fn(async () => "sent");
+      registerInvoiceRoutes(app, { repository: firstSendRepository(), authorize, notifyInvoiceSent });
+      const response = await send(app);
+      expect(response.json().employerNotice).toBe("sent");
+      expect(notifyInvoiceSent).toHaveBeenCalledOnce();
+    });
+
+    it("does not email again when the same send is repeated", async () => {
+      const app = Fastify();
+      const notifyInvoiceSent = vi.fn(async () => "sent");
+      registerInvoiceRoutes(app, { repository: repository(), authorize, notifyInvoiceSent });
+      expect((await send(app)).statusCode).toBe(201);
+      expect(notifyInvoiceSent).not.toHaveBeenCalled();
+    });
+
+    it("keeps the send when the email fails", async () => {
+      const app = Fastify();
+      registerInvoiceRoutes(app, { repository: firstSendRepository(), authorize, notifyInvoiceSent: async () => { throw new Error("mail down"); } });
+      const response = await send(app);
+      expect(response.statusCode).toBe(201);
+      expect(response.json().employerNotice).toBe("error");
+    });
+  });
 });

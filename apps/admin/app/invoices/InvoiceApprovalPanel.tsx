@@ -2,12 +2,27 @@
 
 import { useCallback, useEffect, useState } from "react";
 import type { FinanceInvoice } from "../api/finance/financeBoundary";
-import { invoiceIssueBody, nextInvoiceAction, type InvoiceStaffAction } from "./invoiceIssue";
+import { invoiceActionPath, invoiceIssueBody, invoiceSendBody, nextInvoiceAction, type InvoiceStaffAction } from "./invoiceIssue";
 
 type Organization = Readonly<{ id: string; displayName: string }>;
 type State = { status: "idle" | "loading" | "denied" | "error" } | { status: "ready"; invoices: readonly FinanceInvoice[] };
 
-const ACTION_LABEL: Record<InvoiceStaffAction, string> = { approve: "Approve invoice", issue: "Issue invoice" };
+const ACTION_LABEL: Record<InvoiceStaffAction, string> = { approve: "Approve invoice", issue: "Issue invoice", send: "Send to employer" };
+const ACTION_PROGRESS: Record<InvoiceStaffAction, string> = { approve: "Approving the invoice.", issue: "Issuing the invoice.", send: "Sending the invoice." };
+
+function actionBody(invoice: FinanceInvoice, action: InvoiceStaffAction) {
+  if (action === "issue") return invoiceIssueBody(invoice.organizationId, invoice.version, new Date());
+  if (action === "send") return invoiceSendBody(invoice.id, invoice.version);
+  return { expectedVersion: invoice.version };
+}
+
+function doneMessage(action: InvoiceStaffAction, employerNotice: unknown): string {
+  if (action === "approve") return "Invoice approved. It can be issued now.";
+  if (action === "issue") return "Invoice issued. It can be sent now.";
+  return employerNotice === "sent"
+    ? "Invoice sent, and the employer has been emailed."
+    : "Invoice marked as sent and visible to the employer, but the email did not go out.";
+}
 
 function money(minor: number, currency: string): string {
   return new Intl.NumberFormat(undefined, { style: "currency", currency }).format(minor / 100);
@@ -46,17 +61,17 @@ export function InvoiceApprovalPanel() {
 
   const act = useCallback(async (invoice: FinanceInvoice, action: InvoiceStaffAction) => {
     setBusy(invoice.id);
-    setMessage(action === "approve" ? "Approving the invoice." : "Issuing the invoice.");
+    setMessage(ACTION_PROGRESS[action]);
     try {
-      const body = action === "issue" ? invoiceIssueBody(invoice.organizationId, invoice.version, new Date()) : { expectedVersion: invoice.version };
       const response = await fetch(
-        `/api/finance/invoices/${encodeURIComponent(invoice.id)}/${action}?organizationId=${encodeURIComponent(invoice.organizationId)}`,
-        { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) }
+        `/api/finance/invoices/${encodeURIComponent(invoice.id)}/${invoiceActionPath(action)}?organizationId=${encodeURIComponent(invoice.organizationId)}`,
+        { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(actionBody(invoice, action)) }
       );
       if (!response.ok) {
         setMessage("That didn't go through. Someone may have changed this invoice, so the list has been refreshed.");
       } else {
-        setMessage(action === "approve" ? "Invoice approved. It can be issued now." : "Invoice issued.");
+        const payload = (await response.json().catch(() => ({}))) as { employerNotice?: unknown };
+        setMessage(doneMessage(action, payload.employerNotice));
       }
       await load(invoice.organizationId);
     } catch {

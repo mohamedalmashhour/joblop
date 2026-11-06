@@ -29,6 +29,9 @@ export function registerInvoiceRoutes(
       request: FastifyRequest,
       organizationId: string
     ): Promise<InvoiceRouteAuthorization | null>;
+    // Tells the employer an invoice has been sent. Best-effort: it reports what happened and never
+    // undoes the send.
+    notifyInvoiceSent?(invoice: { id: string; organizationId: string }): Promise<string>;
   }
 ) {
   app.post("/organizations/:organizationId/invoices", async (request, reply) => {
@@ -150,8 +153,9 @@ export function registerInvoiceRoutes(
     if (!recipientAlias || !idempotencyKey || expectedVersion === null) return invalid(reply);
     try {
       const rendered = renderBilingualSyntheticInvoicePdf(scope.invoice);
+      const deliveryId = randomUUID();
       const result = await options.repository.recordFakeDelivery({
-        id: randomUUID(),
+        id: deliveryId,
         invoiceId: scope.invoice.id,
         organizationId: scope.invoice.organizationId,
         expectedVersion,
@@ -161,7 +165,10 @@ export function registerInvoiceRoutes(
         actorReference: scope.authorization.actorId,
         actorRole: scope.authorization.role
       });
-      return reply.code(201).send(result);
+      // A repeated request returns the first receipt, and must not email the employer again.
+      const firstSend = result.receipt.id === deliveryId;
+      const employerNotice = firstSend ? await options.notifyInvoiceSent?.(result.invoice).catch(() => "error") : undefined;
+      return reply.code(201).send({ ...result, ...(employerNotice ? { employerNotice } : {}) });
     } catch (error) {
       return invoiceFailure(reply, error);
     }

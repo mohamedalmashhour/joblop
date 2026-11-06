@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { EmailMessage } from "../mailer/emailSender";
-import { jobCodeEmail, notifyClient, resolveLanguage, workerAcceptedEmail } from "./clientNotifications";
+import { jobCodeEmail, notifyClient, resolveLanguage, workerAcceptedEmail, invoiceSentEmail } from "./clientNotifications";
 
 // Minimal fakes — just the two lookups + send the dispatcher uses.
 function fakePrisma(job: unknown, user: unknown) {
@@ -72,5 +72,15 @@ describe("notifyClient dispatcher", () => {
       kind: "job_code"
     });
     expect(res).toEqual({ status: "skipped", kind: "job_code" });
+  });
+});
+
+describe("invoice sent email", () => {
+  it("names the invoice in the employer's language, with no amounts", () => {
+    const en = invoiceSentEmail({ to: "a@b.test", language: "en", invoiceNumber: "JL-2026-000001" });
+    expect(en.subject).toContain("JL-2026-000001");
+    expect(en.text).toContain("open Invoices");
+    expect(en.text).not.toMatch(/\$/);
+    expect(invoiceSentEmail({ to: "a@b.test", language: "fr", invoiceNumber: "JL-2026-000001" }).text).toContain("Factures");
   });
 });

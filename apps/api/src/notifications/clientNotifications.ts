@@ -67,6 +67,64 @@ export function workerAcceptedEmail(params: {
   };
 }
 
+// An invoice has been sent. No figures in the email: the employer reads it in Joblop, signed in.
+export function invoiceSentEmail(params: {
+  to: string;
+  language: NotificationLanguage;
+  invoiceNumber: string;
+}): EmailMessage {
+  if (params.language === "en") {
+    return {
+      to: params.to,
+      subject: `Joblop — invoice ${params.invoiceNumber} is ready`,
+      text:
+        `Your invoice ${params.invoiceNumber} is ready.\n\n` +
+        `Sign in to Joblop and open Invoices to see it and pay.\n\n— Joblop`
+    };
+  }
+  return {
+    to: params.to,
+    subject: `Joblop — la facture ${params.invoiceNumber} est prête`,
+    text:
+      `Votre facture ${params.invoiceNumber} est prête.\n\n` +
+      `Connectez-vous à Joblop et ouvrez Factures pour la consulter et la payer.\n\n— Joblop`
+  };
+}
+
+// The employer contact is whoever created the job, the same person who gets its other notices.
+export async function notifyClientInvoiceSent(
+  prisma: PrismaClient,
+  emailSender: EmailSender,
+  input: { invoiceId: string; organizationId: string }
+): Promise<"sent" | "skipped" | "error" | "no_recipient"> {
+  try {
+    const invoice = await prisma.invoice.findFirst({
+      where: { id: input.invoiceId, organizationId: input.organizationId },
+      select: { invoiceNumber: true, timesheetId: true }
+    });
+    if (!invoice?.invoiceNumber) return "no_recipient";
+    const timesheet = await prisma.timesheet.findFirst({
+      where: { id: invoice.timesheetId, organizationId: input.organizationId },
+      select: { jobRequestId: true }
+    });
+    const job = timesheet
+      ? await prisma.jobRequest.findUnique({ where: { id: timesheet.jobRequestId }, select: { createdByUserId: true } })
+      : null;
+    if (!job?.createdByUserId) return "no_recipient";
+    const user = await prisma.user.findUnique({
+      where: { id: job.createdByUserId },
+      select: { emailNormalized: true, primaryLanguage: true }
+    });
+    if (!user?.emailNormalized) return "no_recipient";
+    const result = await emailSender.send(
+      invoiceSentEmail({ to: user.emailNormalized, language: resolveLanguage(user.primaryLanguage), invoiceNumber: invoice.invoiceNumber })
+    );
+    return result.status === "sent" ? "sent" : result.status === "error" ? "error" : "skipped";
+  } catch {
+    return "error";
+  }
+}
+
 export type ClientNotificationKind = "job_code" | "worker_accepted";
 
 export type ClientNotificationResult =
