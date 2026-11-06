@@ -80,6 +80,17 @@ const runtimeConfigSchema = z
     STRIPE_TEST_WEBHOOK_SECRET: z.string().min(1).optional(),
     STRIPE_TEST_ACCOUNT_REFERENCE: z.string().min(1).optional(),
     STRIPE_ACSS_DEBIT_ENABLED: z.enum(["disabled", "enabled"]).default("disabled"),
+    // Stripe LIVE (real money) foundation. OFF by default and inert: nothing reads these yet beyond
+    // validation — the provider still rejects live keys until a later, separately reviewed step wires
+    // it. Turning it on requires production, FINANCE_LIVE_ENABLED with a CPA sign-off, live-prefixed
+    // keys, and Stripe test mode OFF (enforced below). Collection only: payouts stay test/synthetic.
+    STRIPE_LIVE_MODE_ENABLED: z.enum(["disabled", "enabled"]).default("disabled"),
+    STRIPE_LIVE_SECRET_KEY: z.string().min(1).optional(),
+    STRIPE_LIVE_PUBLISHABLE_KEY: z.string().min(1).optional(),
+    STRIPE_LIVE_WEBHOOK_SECRET: z.string().min(1).optional(),
+    STRIPE_LIVE_ACCOUNT_REFERENCE: z.string().min(1).optional(),
+    // Separate gate for LIVE employer-invoice card collection; requires Stripe live mode.
+    INVOICE_LIVE_ENABLED: z.enum(["disabled", "enabled"]).default("disabled"),
     LOCAL_PAYMENT_ENABLED: z.enum(["disabled", "enabled"]).default("disabled"),
     LOCAL_PAYMENT_WEBHOOK_SECRET: z.string().min(32).optional(),
     DOCUMENT_LOCAL_UPLOAD_ENABLED: z.enum(["disabled", "enabled"]).default("disabled"),
@@ -142,6 +153,54 @@ const runtimeConfigSchema = z
           message: "Stripe test mode requires an approved account reference."
         });
       }
+    }
+    if (config.STRIPE_LIVE_MODE_ENABLED === "enabled") {
+      const issue = (path: string, message: string) =>
+        context.addIssue({ code: "custom", path: [path], message });
+      if (config.RWOS_ENV !== "production") {
+        issue("STRIPE_LIVE_MODE_ENABLED", "Stripe live mode is allowed only in production.");
+      }
+      if (config.FINANCE_LIVE_ENABLED !== "enabled" || !config.FINANCE_LIVE_CPA_SIGNOFF) {
+        issue(
+          "STRIPE_LIVE_MODE_ENABLED",
+          "Stripe live mode requires FINANCE_LIVE_ENABLED=enabled with a recorded CPA sign-off."
+        );
+      }
+      if (config.STRIPE_TEST_MODE_ENABLED === "enabled") {
+        issue("STRIPE_LIVE_MODE_ENABLED", "Stripe live mode and Stripe test mode cannot both be enabled.");
+      }
+      const liveSecret = config.STRIPE_LIVE_SECRET_KEY ?? "";
+      if (!liveSecret.startsWith("sk_live_") && !liveSecret.startsWith("rk_live_")) {
+        issue("STRIPE_LIVE_SECRET_KEY", "Stripe live mode requires a live secret reference (sk_live_ or rk_live_).");
+      }
+      if (!config.STRIPE_LIVE_PUBLISHABLE_KEY?.startsWith("pk_live_")) {
+        issue("STRIPE_LIVE_PUBLISHABLE_KEY", "Stripe live mode requires a live publishable key (pk_live_).");
+      }
+      if (!config.STRIPE_LIVE_WEBHOOK_SECRET?.startsWith("whsec_")) {
+        issue("STRIPE_LIVE_WEBHOOK_SECRET", "Stripe live mode requires a webhook secret reference.");
+      }
+      if (
+        config.STRIPE_TEST_WEBHOOK_SECRET &&
+        config.STRIPE_LIVE_WEBHOOK_SECRET === config.STRIPE_TEST_WEBHOOK_SECRET
+      ) {
+        issue("STRIPE_LIVE_WEBHOOK_SECRET", "The live webhook secret must differ from the test webhook secret.");
+      }
+      if (!config.STRIPE_LIVE_ACCOUNT_REFERENCE?.startsWith("acct_")) {
+        issue("STRIPE_LIVE_ACCOUNT_REFERENCE", "Stripe live mode requires the live account reference (acct_...).");
+      }
+      if (config.PAYOUT_TEST_MODE_ENABLED === "enabled" || config.STRIPE_ACSS_DEBIT_ENABLED === "enabled") {
+        issue(
+          "STRIPE_LIVE_MODE_ENABLED",
+          "Stripe live mode is collection-only: payouts and ACSS debit must stay disabled."
+        );
+      }
+    }
+    if (config.INVOICE_LIVE_ENABLED === "enabled" && config.STRIPE_LIVE_MODE_ENABLED !== "enabled") {
+      context.addIssue({
+        code: "custom",
+        path: ["INVOICE_LIVE_ENABLED"],
+        message: "Employer invoice live collection requires STRIPE_LIVE_MODE_ENABLED=enabled."
+      });
     }
     if (config.INVOICE_TEST_MODE_ENABLED === "enabled") {
       if (config.RWOS_ENV !== "test" && config.RWOS_ENV !== "staging") {
@@ -472,6 +531,14 @@ export function getRuntimeConfig(env: NodeJS.ProcessEnv = process.env) {
     stripeTestWebhookSecret: parsed.STRIPE_TEST_WEBHOOK_SECRET,
     stripeTestAccountReference: parsed.STRIPE_TEST_ACCOUNT_REFERENCE,
     stripeAcssDebitEnabled: parsed.STRIPE_ACSS_DEBIT_ENABLED === "enabled",
+    // Validation above guarantees these are only true in production with live finance signed off.
+    stripeLiveModeEnabled: parsed.STRIPE_LIVE_MODE_ENABLED === "enabled",
+    stripeLiveSecretKey: parsed.STRIPE_LIVE_SECRET_KEY,
+    stripeLivePublishableKey: parsed.STRIPE_LIVE_PUBLISHABLE_KEY,
+    stripeLiveWebhookSecret: parsed.STRIPE_LIVE_WEBHOOK_SECRET,
+    stripeLiveAccountReference: parsed.STRIPE_LIVE_ACCOUNT_REFERENCE,
+    invoiceLiveEnabled:
+      parsed.INVOICE_LIVE_ENABLED === "enabled" && parsed.STRIPE_LIVE_MODE_ENABLED === "enabled",
     localPaymentEnabled: parsed.LOCAL_PAYMENT_ENABLED === "enabled",
     localPaymentWebhookSecret: parsed.LOCAL_PAYMENT_WEBHOOK_SECRET,
     documentLocalUploadEnabled: parsed.DOCUMENT_LOCAL_UPLOAD_ENABLED === "enabled",

@@ -81,9 +81,59 @@ describe("employer invoice webhook", () => {
     void recovery;
   });
 
+  it("in live mode, accepts live events and rejects test-mode events", async () => {
+    const reconcile = vi.fn(async () => ({ status: "reconciled" as const, invoiceStatus: "paid" }));
+    const live = createEmployerInvoiceWebhook({
+      expectLivemode: true,
+      verifyWebhook: async () => ({ ...event(), livemode: true }),
+      reconcile
+    });
+    await expect(live.resolve(RAW, "sig")).resolves.toMatchObject({ status: "reconciled" });
+    const testEventInLive = createEmployerInvoiceWebhook({
+      expectLivemode: true,
+      verifyWebhook: async () => event(),
+      reconcile: vi.fn()
+    });
+    await expect(testEventInLive.resolve(RAW, "sig")).rejects.toMatchObject({ code: "livemode_rejected" });
+  });
+
   it("reads the PaymentIntent id from an expanded object", async () => {
     const { recovery, reconcile } = handler(event({ payment_intent: { id: "pi_expanded" } }));
     await recovery.resolve(RAW, "sig");
     expect(reconcile).toHaveBeenCalledWith(expect.objectContaining({ paymentRef: "pi_expanded" }));
+  });
+});
+
+describe("employer invoice webhook refunds and disputes", () => {
+  function chargeEvent(type: string, object: Record<string, unknown>): CheckoutSessionEventLike {
+    return { id: "evt_adj", type, created: 0, livemode: false, data: { object: { payment_intent: "pi_test_1", ...object } } };
+  }
+  function adjuster(ev: CheckoutSessionEventLike) {
+    const adjust = vi.fn(async () => ({ status: "adjusted" as const, invoiceId: INVOICE }));
+    const h = createEmployerInvoiceWebhook({ verifyWebhook: async () => ev, reconcile: vi.fn(), adjust });
+    return { h, adjust };
+  }
+
+  it.each([
+    ["charge.refunded", { amount: 11_497, amount_refunded: 11_497 }, "refunded"],
+    ["charge.refunded", { amount: 11_497, amount_refunded: 1_000 }, "partially_refunded"],
+    ["charge.dispute.created", {}, "disputed"],
+    ["charge.dispute.closed", { status: "won" }, "dispute_won"],
+    ["charge.dispute.closed", { status: "lost" }, "dispute_lost"]
+  ])("records %s as %s", async (type, object, adjustment) => {
+    const { h, adjust } = adjuster(chargeEvent(type, object));
+    await expect(h.resolve(RAW, "sig")).resolves.toMatchObject({ status: "adjusted", invoiceId: INVOICE });
+    expect(adjust).toHaveBeenCalledWith({ paymentRef: "pi_test_1", adjustment });
+  });
+
+  it("ignores refund events when adjust is not wired or nothing was refunded", async () => {
+    const noAdjust = createEmployerInvoiceWebhook({
+      verifyWebhook: async () => chargeEvent("charge.refunded", { amount: 100, amount_refunded: 100 }),
+      reconcile: vi.fn()
+    });
+    await expect(noAdjust.resolve(RAW, "sig")).resolves.toMatchObject({ status: "ignored" });
+    const { h, adjust } = adjuster(chargeEvent("charge.refunded", { amount: 100, amount_refunded: 0 }));
+    await expect(h.resolve(RAW, "sig")).resolves.toMatchObject({ status: "ignored" });
+    expect(adjust).not.toHaveBeenCalled();
   });
 });

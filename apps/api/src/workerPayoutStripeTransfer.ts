@@ -36,6 +36,10 @@ export async function createWorkerPayoutTransfer(input: {
   amountMinor: number;
   currency: string;
 }): Promise<WorkerPayoutTransferResult> {
+  // Live mode is collection-only: real payouts need Connect onboarding, licensing and CPA review.
+  if (process.env.STRIPE_LIVE_MODE_ENABLED === "enabled") {
+    throw new Error("Worker payouts are not available in Stripe live mode.");
+  }
   const connectedAccount = testPayoutConnectedAccountFromProcess();
   if (!connectedAccount) {
     // No TEST connected account onboarded — record a synthetic, clearly-labelled test reference. This

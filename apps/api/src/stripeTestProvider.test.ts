@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import {
+  createStripeTestClient,
   createStripeTestPaymentProvider,
   validateStripeTestEnvironment
 } from "./stripeTestProvider";
@@ -149,5 +150,54 @@ describe("Stripe test-mode provider foundation", () => {
         providerOperationReference: null
       })
     ).resolves.toMatchObject({ provider: "stripe_test", outcome: "not_found" });
+  });
+});
+
+describe("Stripe provider live mode", () => {
+  const liveEnvironment = {
+    ...testEnvironment,
+    mode: "live" as const,
+    secretKey: "rk_live_synthetic_not_a_real_key"
+  };
+
+  it("requires the key prefix to match the mode in both directions", () => {
+    expect(validateStripeTestEnvironment(liveEnvironment)).toEqual({ enabled: true, mode: "live" });
+    expect(
+      validateStripeTestEnvironment({ ...liveEnvironment, secretKey: "sk_live_synthetic" })
+    ).toEqual({ enabled: true, mode: "live" });
+    expect(() =>
+      validateStripeTestEnvironment({ ...liveEnvironment, secretKey: "sk_test_synthetic" })
+    ).toThrow(/live-mode secret/);
+    expect(validateStripeTestEnvironment(testEnvironment)).toEqual({ enabled: true, mode: "test" });
+  });
+
+  it("never lets the test client run with a live key", () => {
+    expect(() => createStripeTestClient(liveEnvironment)).toThrow(/test-mode secret/);
+  });
+
+  it("rejects test-mode objects and events when configured for live", async () => {
+    const client = stripeClient();
+    const seen = new Set<string>();
+    const adapter = createStripeTestPaymentProvider({
+      client: client as never,
+      webhookSecret: testEnvironment.webhookSecret,
+      mode: "live",
+      replayStore: {
+        async recordOnce({ eventId }) {
+          if (seen.has(eventId)) return false;
+          seen.add(eventId);
+          return true;
+        }
+      }
+    });
+    await expect(
+      adapter.createCustomer({ organizationId: "org-a", email: "a@example.test", idempotencyKey: "c1" })
+    ).rejects.toThrow(/Test-mode/);
+    await expect(adapter.verifyWebhook(Buffer.from("{}"), "sig")).rejects.toThrow(/Test-mode/);
+
+    client.customers.create.mockResolvedValueOnce({ id: "cus_live", livemode: true });
+    await expect(
+      adapter.createCustomer({ organizationId: "org-a", email: "a@example.test", idempotencyKey: "c2" })
+    ).resolves.toBe("cus_live");
   });
 });

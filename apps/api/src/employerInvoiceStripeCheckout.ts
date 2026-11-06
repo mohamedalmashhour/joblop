@@ -1,7 +1,8 @@
-import { createStripeTestClient } from "./stripeTestProvider";
-import { stripeTestEnvFromProcess } from "./cvProStripeCheckout";
+import { createStripeClient } from "./stripeTestProvider";
+import { isStripeLiveModeEnabled, stripeCollectionEnvFromProcess } from "./stripeEnvironment";
 
-// Money-flow Phase 1 — employer invoice card payment via Stripe hosted Checkout, TEST MODE ONLY.
+// Money-flow Phase 1 — employer invoice card payment via Stripe hosted Checkout. Test mode by default;
+// live only when STRIPE_LIVE_MODE_ENABLED is on (see stripeEnvironment.ts).
 // Mirrors the proven Worker Pro pattern (cvProStripeCheckout): reuse the shared Stripe test provider,
 // which refuses any non-`sk_test_` secret, so no live charge can ever be created here. The employer is
 // redirected to Stripe's hosted test page (card 4242 4242 4242 4242), then returns to Joblop where we
@@ -20,7 +21,7 @@ export async function createInvoiceCheckoutSession(input: {
   successUrl: string;
   cancelUrl: string;
 }): Promise<InvoiceCheckout> {
-  const client = createStripeTestClient(stripeTestEnvFromProcess());
+  const client = createStripeClient(stripeCollectionEnvFromProcess());
   // OUR correlation metadata only — never a client-supplied identifier. Mirrored onto the PaymentIntent
   // so the webhook can correlate the terminal event back to this invoice.
   const metadata = { employerInvoiceId: input.invoiceId, organizationReference: input.organizationId };
@@ -33,7 +34,9 @@ export async function createInvoiceCheckoutSession(input: {
           price_data: {
             currency: input.currency.toLowerCase(),
             unit_amount: input.amountMinor,
-            product_data: { name: `Joblop invoice ${input.invoiceNumber} (test)` }
+            product_data: {
+              name: `Joblop invoice ${input.invoiceNumber}${isStripeLiveModeEnabled() ? "" : " (test)"}`
+            }
           }
         }
       ],
@@ -53,7 +56,7 @@ export async function verifyInvoiceCheckoutPaid(
   sessionId: string,
   expectedInvoiceId: string
 ): Promise<Readonly<{ paid: boolean; paymentRef: string | null }>> {
-  const client = createStripeTestClient(stripeTestEnvFromProcess());
+  const client = createStripeClient(stripeCollectionEnvFromProcess());
   const session = await client.checkout.sessions.retrieve(sessionId);
   const paid =
     session.payment_status === "paid" && session.metadata?.employerInvoiceId === expectedInvoiceId;

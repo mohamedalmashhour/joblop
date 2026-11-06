@@ -197,6 +197,77 @@ describe("production runtime configuration", () => {
     });
   });
 
+  describe("Stripe live mode gate", () => {
+    const production = {
+      RWOS_ENV: "production",
+      NODE_ENV: "production",
+      DATABASE_URL: "postgresql://db.example.test/rwos",
+      INTERNAL_API_ORIGIN: "https://api.example.test",
+      AUTH_RATE_LIMITER_ORIGIN: "https://rate-limit.example.test",
+      AUTH_RATE_LIMITER_TOKEN: "test-rate-limiter-token-at-least-32-characters",
+      AUTH_RATE_LIMITER_KEY_SECRET: "test-key-secret-that-is-at-least-32-characters",
+      AUTH_RATE_LIMITER_KEY_ID: "key-current",
+      AUTH_RATE_LIMITER_NAMESPACE: "rwos:authrl:production:v1",
+      FINANCE_LIVE_ENABLED: "enabled",
+      FINANCE_LIVE_CPA_SIGNOFF: "cpa-signoff-ref-0001"
+    };
+    const live = {
+      ...production,
+      STRIPE_LIVE_MODE_ENABLED: "enabled",
+      STRIPE_LIVE_SECRET_KEY: "rk_live_synthetic_reference",
+      STRIPE_LIVE_PUBLISHABLE_KEY: "pk_live_synthetic_reference",
+      STRIPE_LIVE_WEBHOOK_SECRET: "whsec_live_synthetic_reference",
+      STRIPE_LIVE_ACCOUNT_REFERENCE: "acct_live_synthetic"
+    };
+
+    it("is off by default", () => {
+      expect(getRuntimeConfig({ RWOS_ENV: "test" })).toMatchObject({
+        stripeLiveModeEnabled: false,
+        invoiceLiveEnabled: false
+      });
+    });
+
+    it("accepts a complete production configuration with signed-off live finance", () => {
+      expect(validateRuntimeConfig(live)).toMatchObject({ success: true });
+      expect(getRuntimeConfig({ ...live, INVOICE_LIVE_ENABLED: "enabled" })).toMatchObject({
+        stripeLiveModeEnabled: true,
+        stripeLiveAccountReference: "acct_live_synthetic",
+        invoiceLiveEnabled: true
+      });
+    });
+
+    it.each([
+      ["outside production", { RWOS_ENV: "staging", AUTH_RATE_LIMITER_NAMESPACE: "rwos:authrl:staging:v1" }],
+      ["without live finance", { FINANCE_LIVE_ENABLED: "disabled" }],
+      ["with a test secret key", { STRIPE_LIVE_SECRET_KEY: "sk_test_synthetic_reference" }],
+      ["with a test publishable key", { STRIPE_LIVE_PUBLISHABLE_KEY: "pk_test_synthetic_reference" }],
+      ["without a webhook secret", { STRIPE_LIVE_WEBHOOK_SECRET: undefined }],
+      ["without an account reference", { STRIPE_LIVE_ACCOUNT_REFERENCE: undefined }],
+      [
+        "with the test webhook secret reused",
+        { STRIPE_TEST_WEBHOOK_SECRET: "whsec_live_synthetic_reference" }
+      ],
+      [
+        "alongside Stripe test mode",
+        {
+          STRIPE_TEST_MODE_ENABLED: "enabled",
+          STRIPE_TEST_SECRET_KEY: "sk_test_synthetic_reference",
+          STRIPE_TEST_WEBHOOK_SECRET: "whsec_synthetic_reference",
+          STRIPE_TEST_ACCOUNT_REFERENCE: "acct_test_synthetic"
+        }
+      ],
+      ["with ACSS debit on", { STRIPE_ACSS_DEBIT_ENABLED: "enabled" }]
+    ])("is refused %s", (_label, override) => {
+      expect(validateRuntimeConfig({ ...live, ...override })).toMatchObject({ success: false });
+    });
+
+    it("refuses live invoice collection without Stripe live mode", () => {
+      expect(validateRuntimeConfig({ ...production, INVOICE_LIVE_ENABLED: "enabled" })).toMatchObject({
+        success: false
+      });
+    });
+  });
+
   it("keeps the employer invoice test-mode collection off by default and gates it fully", () => {
     const stripe = {
       STRIPE_TEST_MODE_ENABLED: "enabled",

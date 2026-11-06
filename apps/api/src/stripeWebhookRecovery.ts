@@ -67,13 +67,15 @@ function classify(event: StripeEventLike): { kind: "terminal"; newState: "succee
 export function createStripeWebhookRecovery(deps: {
   // Verifies the Stripe signature and enforces test-mode (livemode=false). Returns the parsed event or
   // throws. Reuse the Stripe test provider's verifyWebhook — this handler adds no signature logic itself.
+  // Defaults to false (test mode). Live deployments pass true; any mismatch is rejected.
+  expectLivemode?: boolean;
   verifyWebhook(rawBody: Buffer, signature: string): Promise<StripeEventLike>;
   repository: Pick<PaymentRepository, "get" | "processProviderEvent">;
 }) {
   return {
     async resolve(rawBody: Buffer, signature: string): Promise<StripeWebhookRecoveryResult> {
       const event = await deps.verifyWebhook(rawBody, signature); // signature + test-mode enforced here
-      if (event.livemode === true) throw new StripeWebhookRejection("livemode_rejected"); // defence-in-depth
+      if ((event.livemode === true) !== (deps.expectLivemode ?? false)) throw new StripeWebhookRejection("livemode_rejected"); // defence-in-depth
 
       const classification = classify(event);
       if (classification.kind === "ignored") return { status: "ignored", eventType: event.type };

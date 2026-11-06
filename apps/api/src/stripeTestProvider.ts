@@ -6,8 +6,12 @@ import type {
   ProviderPaymentResult
 } from "@rwos/shared";
 
+export type StripeMode = "test" | "live";
+
 export type StripeTestEnvironment = Readonly<{
   enabled: boolean;
+  /** Defaults to "test". "live" accepts only live-prefixed secrets and is never the default. */
+  mode?: StripeMode;
   secretKey: string | undefined;
   webhookSecret: string | undefined;
   accountReference: string | undefined;
@@ -26,8 +30,15 @@ type StripeClient = Pick<
 
 export function validateStripeTestEnvironment(env: StripeTestEnvironment) {
   if (!env.enabled) return { enabled: false as const };
-  if (!env.secretKey?.startsWith("sk_test_") || env.secretKey.startsWith("sk_live_")) {
+  const mode = env.mode ?? "test";
+  const secret = env.secretKey ?? "";
+  const isTestSecret = secret.startsWith("sk_test_") || secret.startsWith("rk_test_");
+  const isLiveSecret = secret.startsWith("sk_live_") || secret.startsWith("rk_live_");
+  if (mode === "test" && (!secret.startsWith("sk_test_") || isLiveSecret)) {
     throw new Error("Stripe test provider requires a test-mode secret reference.");
+  }
+  if (mode === "live" && (!isLiveSecret || isTestSecret)) {
+    throw new Error("Stripe live provider requires a live-mode secret reference.");
   }
   if (!env.webhookSecret?.startsWith("whsec_")) {
     throw new Error("Stripe test provider requires a webhook signing secret reference.");
@@ -35,18 +46,27 @@ export function validateStripeTestEnvironment(env: StripeTestEnvironment) {
   if (!env.accountReference) {
     throw new Error("Stripe test provider requires an approved account reference.");
   }
-  return { enabled: true as const };
+  return { enabled: true as const, mode };
 }
 
-export function createStripeTestClient(env: StripeTestEnvironment) {
+/** Build a Stripe client for the requested mode. The key prefix must match the mode exactly. */
+export function createStripeClient(env: StripeTestEnvironment) {
   const validated = validateStripeTestEnvironment(env);
-  if (!validated.enabled) throw new Error("Stripe test provider is disabled.");
+  if (!validated.enabled) throw new Error("Stripe provider is disabled.");
   return new Stripe(env.secretKey!, {
     apiVersion: "2026-07-29.dahlia",
-    appInfo: { name: "Resident Workforce OS", version: "test-foundation" },
+    appInfo: {
+      name: "Resident Workforce OS",
+      version: validated.mode === "live" ? "live" : "test-foundation"
+    },
     maxNetworkRetries: 2,
     telemetry: false
   });
+}
+
+/** Test-only client: forces test mode regardless of the env's mode field. */
+export function createStripeTestClient(env: StripeTestEnvironment) {
+  return createStripeClient({ ...env, mode: "test" });
 }
 
 export function createStripeTestPaymentProvider(
@@ -55,6 +75,8 @@ export function createStripeTestPaymentProvider(
     webhookSecret: string;
     replayStore: StripeWebhookReplayStore;
     now?: () => Date;
+    /** Defaults to "test": objects must have livemode=false. "live" requires livemode=true. */
+    mode?: StripeMode;
   }>
 ): PaymentProviderPort & {
   createCustomer(
@@ -72,6 +94,10 @@ export function createStripeTestPaymentProvider(
 } {
   if (!options.webhookSecret) throw new Error("Stripe webhook secret is required.");
   const now = options.now ?? (() => new Date());
+  const expectLive = (options.mode ?? "test") === "live";
+  const assertTestObject = (object: { livemode: boolean }) => assertMode(object, expectLive);
+  const paymentIntentResult = (intent: Stripe.PaymentIntent, webhookExpected: boolean) =>
+    intentResult(intent, webhookExpected, expectLive);
 
   return {
     id: "stripe_test" as const,
@@ -203,11 +229,12 @@ export function createStripeTestPaymentProvider(
   };
 }
 
-function paymentIntentResult(
+function intentResult(
   intent: Stripe.PaymentIntent,
-  webhookExpected: boolean
+  webhookExpected: boolean,
+  expectLive: boolean
 ): ProviderPaymentResult {
-  assertTestObject(intent);
+  assertMode(intent, expectLive);
   if (intent.status === "requires_action") {
     return {
       provider: "stripe_test",
@@ -252,13 +279,14 @@ function stableKey(operation: string, scope: string, key: string) {
   return `rwos_${operation}_${digest}`;
 }
 
-function assertTestObject(object: { livemode: boolean }) {
-  if (object.livemode) throw new LiveModeStripeObjectError();
+// Rejects any object whose livemode does not match the configured mode, in either direction.
+function assertMode(object: { livemode: boolean }, expectLive: boolean) {
+  if (object.livemode !== expectLive) throw new LiveModeStripeObjectError(object.livemode);
 }
 
 class LiveModeStripeObjectError extends Error {
-  constructor() {
-    super("Live-mode Stripe object rejected.");
+  constructor(livemode: boolean) {
+    super(livemode ? "Live-mode Stripe object rejected." : "Test-mode Stripe object rejected.");
   }
 }
 
