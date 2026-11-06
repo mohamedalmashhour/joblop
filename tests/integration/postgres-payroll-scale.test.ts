@@ -3,6 +3,7 @@ import { randomUUID } from "node:crypto";
 import { buildApi } from "../../apps/api/src/app";
 import { createPrismaClient } from "@rwos/database";
 import type { FastifyInstance } from "fastify";
+import { priceJob } from "./payrollPricingFixture";
 
 // HR-5.1 Chunk 5 — meaningful-scale bulk calculation + EXPLAIN ANALYZE evidence + bulk concurrency
 // and failure isolation, over a synthetic dataset. TEST/SYNTHETIC — no money execution. The worker
@@ -45,6 +46,7 @@ suite(`HR-5.1 payroll scale (${N} synthetic workers)`, () => {
     const cid = randomUUID();
     await prisma.$executeRawUnsafe(`INSERT INTO employer_contracts (id, organization_id, version, status, currency, activated_at, effective_from, created_by_user_id, created_at, updated_at) VALUES ($1,$2,$3,'active','CAD',now(),'2026-07-01T00:00:00Z',$4,now(),now())`, cid, org.id, `sc-${tag}`, payrollAdminId);
     await prisma.$executeRawUnsafe(`INSERT INTO contract_role_rates (id, contract_id, work_group_id, role_definition_id, hourly_rate_minor, created_at) VALUES (gen_random_uuid(),$1,$2,$3,3000,now())`, cid, wg.id, role.id);
+    await priceJob(prisma, { jobRequestId: job.id, organizationId: org.id, contract: { id: cid, version: `sc-${tag}`, effectiveFrom: new Date("2026-07-01T00:00:00Z"), rateMinor: 3000 }, capturedByUserId: payrollAdminId });
 
     // ── bulk-generate N synthetic worker chains via generate_series with deterministic UUIDs ──
     const u = (p: string) => `(md5('${p}-${tag}-'||g::text))::uuid`;
