@@ -236,10 +236,21 @@ suite("QA-reset supersession reconciles stranded materializations", () => {
         .filter((r) => r.entityType === entityType && r.ownership === "manifest_owned")
         .map((r) => r.recordId);
       if (ids.length === 0) continue;
-      await prisma.$executeRawUnsafe(
-        `DELETE FROM ${approvedTableForEntity(entityType)} WHERE id = ANY($1::uuid[])`,
-        ids
-      );
+      // audit_events are append-only, so this one test teardown lifts the delete guard briefly.
+      const appendOnly = entityType === "audit_event";
+      if (appendOnly) {
+        await prisma.$executeRawUnsafe(`ALTER TABLE audit_events DISABLE TRIGGER audit_events_prevent_delete`);
+      }
+      try {
+        await prisma.$executeRawUnsafe(
+          `DELETE FROM ${approvedTableForEntity(entityType)} WHERE id = ANY($1::uuid[])`,
+          ids
+        );
+      } finally {
+        if (appendOnly) {
+          await prisma.$executeRawUnsafe(`ALTER TABLE audit_events ENABLE TRIGGER audit_events_prevent_delete`);
+        }
+      }
     }
     // qa_reset_* tables are owned exclusively by this utility, so a full wipe is
     // safe and also clears residue from any prior aborted run (ids differ per run).
