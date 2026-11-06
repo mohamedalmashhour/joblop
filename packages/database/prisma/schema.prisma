@@ -421,6 +421,7 @@ enum UploadedDocumentState {
 
 model User {
   id              String     @id @default(uuid()) @db.Uuid
+  supportConversations SupportConversation[] @relation("SupportConversationRequester")
   publicId        String     @unique @map("public_id")
   emailNormalized String     @unique @map("email_normalized")
   displayName     String?    @map("display_name")
@@ -3569,4 +3570,49 @@ model WorkerJobCategory {
   @@id([workerIdentityId, workGroupId])
   @@index([workGroupId])
   @@map("worker_job_categories")
+}
+
+// Instant contact: a worker or employer talking privately to Joblop. AI answers first; status moves to
+// needs_admin when a person must act. Workers and employers never see each other's conversations.
+model SupportConversation {
+  id               String    @id @default(uuid()) @db.Uuid
+  requesterUserId  String    @map("requester_user_id") @db.Uuid
+  requesterKind    String    @map("requester_kind") // "worker" | "employer"
+  organizationId   String?   @map("organization_id") @db.Uuid
+  topic            String
+  relatedType      String?   @map("related_type") // "assignment" | "pay" | "order"
+  relatedId        String?   @map("related_id") @db.Uuid
+  status           String    @default("ai") // "ai" | "needs_admin" | "admin_replied" | "solved"
+  urgent           Boolean   @default(false)
+  handoffReason    String?   @map("handoff_reason")
+  summary          String?
+  assignedToUserId String?   @map("assigned_to_user_id") @db.Uuid
+  lastMessageAt    DateTime  @default(now()) @map("last_message_at") @db.Timestamptz(3)
+  requesterReadAt  DateTime? @map("requester_read_at") @db.Timestamptz(3)
+  adminReadAt      DateTime? @map("admin_read_at") @db.Timestamptz(3)
+  createdAt        DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt        DateTime  @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  requester User             @relation("SupportConversationRequester", fields: [requesterUserId], references: [id], onDelete: Restrict)
+  messages  SupportMessage[]
+
+  @@index([requesterUserId, lastMessageAt], map: "support_conversations_requester_idx")
+  @@index([status, urgent, lastMessageAt], map: "support_conversations_queue_idx")
+  @@map("support_conversations")
+}
+
+model SupportMessage {
+  id             String   @id @default(uuid()) @db.Uuid
+  conversationId String   @map("conversation_id") @db.Uuid
+  authorKind     String   @map("author_kind") // "requester" | "ai" | "admin" | "system"
+  authorUserId   String?  @map("author_user_id") @db.Uuid
+  body           String
+  internal       Boolean  @default(false)
+  createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  conversation SupportConversation @relation(fields: [conversationId], references: [id], onDelete: Restrict)
+
+  @@index([conversationId, createdAt], map: "support_messages_conversation_idx")
+  @@index([authorKind, createdAt], map: "support_messages_ai_usage_idx")
+  @@map("support_messages")
 }

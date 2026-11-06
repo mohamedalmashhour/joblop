@@ -52,7 +52,9 @@ export async function reviewDocumentImageWithClaude(
     headers: { "x-api-key": config.apiKey, "anthropic-version": "2023-06-01", "content-type": "application/json" },
     body: JSON.stringify({
       model,
-      max_tokens: 16,
+      // Room for the model's thinking as well as the one-word answer, which would otherwise be cut off.
+      max_tokens: 2000,
+      output_config: { effort: "low" },
       messages: [
         {
           role: "user",

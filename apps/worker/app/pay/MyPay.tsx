@@ -297,6 +297,7 @@ function EarningsTab({ state, choose, t, locale }: { state: Extract<PayState, { 
           {state.items.map((s) => (
             <article className="card" key={s.calculationId}>
               <div className="role">{period(s.periodStart, s.periodEnd, s.timezone, locale)}</div>
+              <a className="muted" href={`/contact?topic=pay&relatedType=pay&relatedId=${encodeURIComponent(s.calculationId)}`}>{t("contact.askAbout")}</a>
               <div className="chips">
                 <span className="chip status-verified">{s.status}</span>
                 <span className="chip">{s.jurisdiction.country}/{s.jurisdiction.region}</span>

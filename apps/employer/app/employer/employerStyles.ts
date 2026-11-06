@@ -481,6 +481,12 @@ export const styles: Record<string, CSSProperties> = {
     flexWrap: "wrap",
     gap: 12
   },
+  headerActions: {
+    alignItems: "center",
+    display: "flex",
+    flexWrap: "wrap",
+    gap: 12
+  },
   footerLink: {
     alignItems: "center",
     color: "#ffffff",

@@ -15,6 +15,7 @@ const connectedNavigation = [
   { href: "/dispatches", labelKey: "nav.dispatches" },
   { href: "/timesheets", labelKey: "nav.timesheets" },
   { href: "/market-wages", labelKey: "nav.marketWages" },
+  { href: "/contact-desk", labelKey: "nav.contactDesk" },
   { href: "/escalations", labelKey: "nav.escalations" },
   { href: "/greetings", labelKey: "nav.greetings" }
 ] as const satisfies readonly { href: string; labelKey: MessageKey }[];
@@ -52,7 +53,7 @@ const NAV_GROUPS: readonly { group: string; hrefs: readonly string[] }[] = [
   { group: "Operations", hrefs: ["/calendar", "/calendar/lifecycle", "/orders", "/dispatches", "/timesheets", "/shifts"] },
   { group: "Directory", hrefs: ["/workers", "/employers", "/residences"] },
   { group: "Finance & payroll", hrefs: ["/finance", "/finance/calendar", "/payroll", "/disputes", "/invoices", "/market-wages"] },
-  { group: "People & trust", hrefs: ["/verification", "/hr"] },
+  { group: "People & trust", hrefs: ["/contact-desk", "/verification", "/hr"] },
   { group: "Governance & compliance", hrefs: ["/escalations", "/compliance", "/audit-log", "/reports"] },
   { group: "Platform", hrefs: ["/greetings", "/system-settings", "/platform-analytics", "/notification-center", "/ai-control-center"] }
 ];

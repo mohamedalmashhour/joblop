@@ -21,6 +21,7 @@ export function isProductionAdminRouteAllowed(pathname: string) {
     path === "/signup" ||
     path === "/calendar" ||
     path === "/calendar/request" ||
+    path === "/contact-desk" ||
     path === "/dispatches" ||
     path === "/disputes" ||
     path === "/invoices" ||

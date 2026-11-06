@@ -52,6 +52,7 @@ export function SiteHeader() {
               <>
                 <a className="muted" href="/schedule" onClick={close}>{nav("جدولي", "Mon horaire", "My schedule")}</a>
                 <a className="muted" href="/pay" onClick={close}>{nav("أجري", "Ma paie", "My pay")}</a>
+                <a className="muted" href="/contact" onClick={close}>{nav("تواصل مع Joblop", "Contacter Joblop", "Contact Joblop")}</a>
                 <a className="topbar-cta" href="/" onClick={close}>{nav("لوحة التحكم", "Tableau de bord", "Dashboard")}</a>
               </>
             ) : (
