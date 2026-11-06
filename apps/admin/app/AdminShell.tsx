@@ -28,7 +28,8 @@ const financeNavigation = [
 const operationsNavigation = [
   { href: "/verification", labelKey: "nav.verification" },
   { href: "/hr", labelKey: "nav.hr" },
-  { href: "/payroll", labelKey: "nav.payroll" }
+  { href: "/payroll", labelKey: "nav.payroll" },
+  { href: "/disputes", labelKey: "nav.disputes" }
 ] as const satisfies readonly { href: string; labelKey: MessageKey }[];
 
 type NavSource = { href: string; labelKey?: MessageKey; label?: string };
@@ -49,7 +50,7 @@ function resolveNavigation(source: readonly NavSource[], t: Translate): NavItem[
 const NAV_GROUPS: readonly { group: string; hrefs: readonly string[] }[] = [
   { group: "Operations", hrefs: ["/calendar", "/calendar/lifecycle", "/orders", "/dispatches", "/timesheets", "/shifts"] },
   { group: "Directory", hrefs: ["/workers", "/employers", "/residences"] },
-  { group: "Finance & payroll", hrefs: ["/finance", "/finance/calendar", "/payroll", "/market-wages"] },
+  { group: "Finance & payroll", hrefs: ["/finance", "/finance/calendar", "/payroll", "/disputes", "/market-wages"] },
   { group: "People & trust", hrefs: ["/verification", "/hr"] },
   { group: "Governance & compliance", hrefs: ["/escalations", "/compliance", "/audit-log", "/reports"] },
   { group: "Platform", hrefs: ["/greetings", "/system-settings", "/platform-analytics", "/notification-center", "/ai-control-center"] }

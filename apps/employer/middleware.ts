@@ -86,7 +86,10 @@ function isProtectedEmployerPage(pathname: string) {
     pathname === "/employer/calendar/create" ||
     pathname === "/employer/calendar/request" ||
     pathname === "/employer/calendar/request/edit" ||
-    pathname === "/employer/calendar/assignment"
+    pathname === "/employer/calendar/assignment" ||
+    pathname.startsWith("/employer/orders") ||
+    pathname === "/employer/money" ||
+    pathname.startsWith("/employer/invoices")
   );
 }
 

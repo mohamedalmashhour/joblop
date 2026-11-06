@@ -89,6 +89,7 @@ export function WorkerScheduleScreen({ transport, onBack }: { transport: MobileS
                       <Badge label={attendanceStatusLabel(r.status, locale)} tone={attendanceStatusTone(r.status)} />
                     </View>
                     {r.areaLabel ? <BodyText>{r.areaLabel}</BodyText> : null}
+                    {r.worksiteAddress ? <BodyText>{r.worksiteAddress}</BodyText> : null}
                     <SmallText>{formatShiftWindow(r.scheduledStartAt, r.scheduledEndAt)}</SmallText>
                     {action === "check_in" ? (
                       <Button label={attendanceCopy.checkInCta} onPress={() => void act(r, "check_in")} disabled={busyId === r.attendanceRecordId} />

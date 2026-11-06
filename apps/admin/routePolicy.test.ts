@@ -15,6 +15,7 @@ describe("admin production route policy", () => {
       "/signup",
       "/dispatches",
       "/dispatches/11111111-1111-4111-8111-111111111111",
+      "/disputes",
       "/api/session",
       "/_next/static/app.js"
     ]) {

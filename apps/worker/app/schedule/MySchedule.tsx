@@ -20,6 +20,7 @@ type Shift = Readonly<{
   version: number;
   employerName: string;
   areaLabel: string | null;
+  worksiteAddress: string | null;
 }>;
 type PendingOffer = Readonly<{ workerOfferId: string; jobRequestId: string; title: string | null; startAt: string | null }>;
 type State = { status: "loading" } | { status: "signed_out" } | { status: "needs_setup" } | { status: "error" } | { status: "ready"; items: readonly Shift[] };
@@ -179,6 +180,7 @@ function ShiftCard({ s, busy, onAct, history, t, locale }: { s: Shift; busy: boo
         {s.exceptionCategory ? <span className="chip status-rejected">{s.exceptionCategory.replaceAll("_", " ")}</span> : null}
       </div>
       <div className="when">{formatShift(s.scheduledStartAt, s.scheduledEndAt, s.timezone, locale)}</div>
+      {s.worksiteAddress ? <div className="when">{t("sched.address", { address: s.worksiteAddress })}</div> : null}
       {inTime ? <div className="when">{outTime ? t("sched.inOut", { inTime, outTime }) : t("sched.in", { time: inTime })}</div> : null}
       {s.checkInAt && s.checkOutAt ? <div className="when"><strong>{t("sched.worked", { duration: workedDuration(s.checkInAt, s.checkOutAt, t) })}</strong></div> : null}
       {!history && (canCheckIn || canCheckOut) ? (

@@ -21,6 +21,7 @@
 import { randomUUID } from "node:crypto";
 import type {
   AssignmentRepository,
+  AttendanceRepository,
   DispatchRepository,
   StoredJobRequest,
   WorkerOfferRepository
@@ -121,6 +122,86 @@ export async function ensureOpenClaimDispatch(
     createdAt: input.now
   });
   return { dispatchReviewId: opened.id, created: true };
+}
+
+// Put a claimed shift on the worker's schedule: the same steps staff run after creating an assignment
+// (ready for attendance, attendance handoff, attendance record), so the worker can check in. A claim
+// has no staff member behind it and the worker holds no platform permission, so this runs the
+// repository steps directly as part of the scoped claim path, with the worker as the recorded actor.
+export async function placeClaimedShiftOnSchedule(
+  deps: {
+    assignmentRepository: AssignmentRepository;
+    attendanceRepository: AttendanceRepository;
+    now?: () => Date;
+  },
+  input: { assignmentId: string; actorUserId: string }
+): Promise<void> {
+  const { assignmentRepository, attendanceRepository } = deps;
+  const at = (deps.now ?? (() => new Date()))();
+  const correlationId = `open_claim_${randomUUID()}`;
+
+  const claimed = await assignmentRepository.findAssignmentById(input.assignmentId);
+  if (!claimed) throw new Error("claimed_assignment_not_found");
+  const ready = await assignmentRepository.updateAssignment({
+    assignmentId: claimed.id,
+    expectedVersion: claimed.version,
+    actorUserId: input.actorUserId,
+    status: "ready_for_attendance",
+    readyForAttendanceAt: at,
+    now: at
+  });
+  if (!ready) throw new Error("claimed_assignment_changed");
+  const handedOff = await assignmentRepository.updateAssignment({
+    assignmentId: ready.id,
+    expectedVersion: ready.version,
+    actorUserId: input.actorUserId,
+    status: "attendance_handoff",
+    attendanceHandoffAt: at,
+    now: at
+  });
+  if (!handedOff) throw new Error("claimed_assignment_changed");
+
+  const assignmentAudit = {
+    organizationId: handedOff.organizationId,
+    assignmentId: handedOff.id,
+    workerOfferId: handedOff.workerOfferId,
+    jobRequestId: handedOff.jobRequestId,
+    actorUserId: input.actorUserId,
+    reason: "open_claim",
+    correlationId,
+    createdAt: at
+  };
+  await assignmentRepository.recordAssignmentAuditEvent({
+    ...assignmentAudit,
+    action: "assignment.ready_for_attendance",
+    priorState: claimed.status,
+    newState: ready.status
+  });
+  await assignmentRepository.recordAssignmentAuditEvent({
+    ...assignmentAudit,
+    action: "assignment.attendance_handoff",
+    priorState: ready.status,
+    newState: handedOff.status
+  });
+
+  const attendance = await attendanceRepository.createAttendanceFromAssignment({
+    assignment: handedOff,
+    actorUserId: input.actorUserId,
+    verificationMethod: "none",
+    now: at
+  });
+  await attendanceRepository.recordAttendanceAuditEvent({
+    action: "attendance.created",
+    organizationId: attendance.organizationId,
+    attendanceRecordId: attendance.id,
+    assignmentId: attendance.assignmentId,
+    actorUserId: input.actorUserId,
+    priorState: null,
+    newState: attendance.status,
+    reason: "open_claim",
+    correlationId,
+    createdAt: at
+  });
 }
 
 // Worker direct-claim orchestration. Returns a discriminated result; the endpoint maps it to HTTP.

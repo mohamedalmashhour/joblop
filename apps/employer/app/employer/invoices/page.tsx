@@ -1,6 +1,5 @@
 import { cookies } from "next/headers";
 import { EmployerShell, WorkflowRoutes } from "../EmployerShell";
-import { styles } from "../employerStyles";
 import { InvoiceReviewPanel } from "./InvoiceReviewPanel";
 import { LOCALE_COOKIE, resolveEmployerLocale } from "../../i18n/config";
 import { dictionaries, type Messages } from "../../i18n/messages";
@@ -15,7 +14,6 @@ export default async function InvoicesPage() {
       eyebrow={m["page.invoicesEyebrow"]}
       title={m["page.invoicesTitle"]}
       lede={m["page.invoicesLede"]}
-      actions={<a href="/employer/invoices/detail" style={styles.primaryButton}>{m["page.invoiceDetail"]}</a>}
     >
       <InvoiceReviewPanel mode="list" />
       <WorkflowRoutes currentRoute="/employer/invoices" />

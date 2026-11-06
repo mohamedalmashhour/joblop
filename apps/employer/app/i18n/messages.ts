@@ -139,6 +139,8 @@ export const en = {
   "inv.total": "Total: {amount}",
   "inv.due": "Due: {date}",
   "inv.openDetail": "Open detail",
+  "inv.chooseFromList": "Choose an invoice from your list to see its details.",
+  "inv.backToList": "Back to invoices",
   "inv.subtotal": "Subtotal",
   "inv.tax": "Tax",
   "inv.credits": "Credits",
@@ -165,7 +167,6 @@ export const en = {
   "page.invoicesEyebrow": "Invoices",
   "page.invoicesTitle": "Review invoices generated from approved timesheet state.",
   "page.invoicesLede": "Invoices are lifecycle records, not payment execution, settlement, payroll, accounting, or tax engines.",
-  "page.invoiceDetail": "Invoice detail",
 
   // Multi-role orders
   "order.navTitle": "Orders",
@@ -247,7 +248,6 @@ export const en = {
   "money.loadError": "We couldn't load your money summary.",
   "money.selectOrg": "Select an employer organization from the request calendar first.",
   "money.viewInvoices": "View all invoices",
-  "money.viewPayments": "View payment state",
   "money.disclaimer": "A summary of lifecycle records only — Joblop does not move money here. Worker pay and platform margin are never shown.",
   "money.invDraft": "draft",
   "money.invApproved": "approved",
@@ -455,6 +455,8 @@ export const fr: Messages = {
   "inv.total": "Total : {amount}",
   "inv.due": "Échéance : {date}",
   "inv.openDetail": "Ouvrir le détail",
+  "inv.chooseFromList": "Choisissez une facture dans votre liste pour voir son détail.",
+  "inv.backToList": "Retour aux factures",
   "inv.subtotal": "Sous-total",
   "inv.tax": "Taxes",
   "inv.credits": "Crédits",
@@ -481,7 +483,6 @@ export const fr: Messages = {
   "page.invoicesEyebrow": "Factures",
   "page.invoicesTitle": "Consultez les factures générées à partir des feuilles de temps approuvées.",
   "page.invoicesLede": "Les factures sont des registres de cycle de vie, non des moteurs de paiement, de règlement, de paie, de comptabilité ou de taxes.",
-  "page.invoiceDetail": "Détail de la facture",
 
   // Commandes multi-rôles
   "order.navTitle": "Commandes",
@@ -563,7 +564,6 @@ export const fr: Messages = {
   "money.loadError": "Impossible de charger votre r\u00e9sum\u00e9 financier.",
   "money.selectOrg": "Choisissez d'abord une organisation employeur dans le calendrier des demandes.",
   "money.viewInvoices": "Voir toutes les factures",
-  "money.viewPayments": "Voir l'\u00e9tat des paiements",
   "money.disclaimer": "Un r\u00e9sum\u00e9 de registres de cycle de vie seulement \u2014 Joblop ne transf\u00e8re pas d'argent ici. La paie du travailleur et la marge de la plateforme ne sont jamais affich\u00e9es.",
   "money.invDraft": "brouillon",
   "money.invApproved": "approuv\u00e9e",
@@ -770,6 +770,8 @@ export const ar: Partial<Messages> = {
   "inv.total": "الإجمالي: {amount}",
   "inv.due": "الاستحقاق: {date}",
   "inv.openDetail": "فتح التفاصيل",
+  "inv.chooseFromList": "اختر فاتورة من قائمتك لعرض تفاصيلها.",
+  "inv.backToList": "العودة إلى الفواتير",
   "inv.subtotal": "المجموع الفرعي",
   "inv.tax": "الضريبة",
   "inv.credits": "الأرصدة",
@@ -796,7 +798,6 @@ export const ar: Partial<Messages> = {
   "page.invoicesEyebrow": "الفواتير",
   "page.invoicesTitle": "راجع الفواتير المُولَّدة من حالة كشوف الوقت المعتمدة.",
   "page.invoicesLede": "الفواتير سجلّات دورة حياة، وليست محرّكات دفع أو تسوية أو رواتب أو محاسبة أو ضرائب.",
-  "page.invoiceDetail": "تفاصيل الفاتورة",
 
   // الطلبات متعدّدة الأدوار
   "order.navTitle": "الطلبات",
@@ -878,7 +879,6 @@ export const ar: Partial<Messages> = {
   "money.loadError": "تعذّر علينا تحميل ملخّصك المالي.",
   "money.selectOrg": "اختر أولاً مؤسسة صاحب العمل من تقويم الطلبات.",
   "money.viewInvoices": "عرض كل الفواتير",
-  "money.viewPayments": "عرض حالة الدفع",
   "money.disclaimer": "ملخّص لسجلّات دورة الحياة فقط — Joblop لا تحوّل أموالًا هنا. ولا تُعرَض أبدًا أجرة العامل أو هامش المنصّة.",
   "money.invDraft": "مسودّة",
   "money.invApproved": "مُعتمَدة",

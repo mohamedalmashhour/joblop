@@ -23,6 +23,13 @@ describe("employer production route policy", () => {
       "/employer/calendar/request",
       "/employer/calendar/request/edit",
       "/employer/calendar/assignment",
+      "/employer/orders",
+      "/employer/orders/create",
+      "/employer/orders/2f0d7c5e-3b1a-4a1e-9c7d-6a1f2b3c4d5e",
+      "/employer/money",
+      "/employer/invoices",
+      "/employer/invoices/detail",
+      "/employer/invoices/breakdown",
       "/api/session",
       "/_next/static/app.js"
     ]) {
@@ -40,8 +47,8 @@ describe("employer production route policy", () => {
       "/employer/assignments/confirmation",
       "/employer/assignments/worker-response",
       "/employer/assignments/detail",
-      "/employer/invoices",
       "/employer/payments",
+      "/employer/orders/not-a-uuid",
       "/employer/%2f../payments",
       "//employer/calendar"
     ]) {

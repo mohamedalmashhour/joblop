@@ -16,14 +16,22 @@ const productionEntries = {
     "apps/employer/app/employer/calendar/create/page.tsx",
     "apps/employer/app/employer/calendar/request/page.tsx",
     "apps/employer/app/employer/calendar/request/edit/page.tsx",
-    "apps/employer/app/employer/calendar/assignment/page.tsx"
+    "apps/employer/app/employer/calendar/assignment/page.tsx",
+    "apps/employer/app/employer/orders/page.tsx",
+    "apps/employer/app/employer/orders/create/page.tsx",
+    "apps/employer/app/employer/orders/[orderId]/page.tsx",
+    "apps/employer/app/employer/money/page.tsx",
+    "apps/employer/app/employer/invoices/page.tsx",
+    "apps/employer/app/employer/invoices/detail/page.tsx",
+    "apps/employer/app/employer/invoices/breakdown/page.tsx"
   ],
   admin: [
     "apps/admin/app/layout.tsx",
     "apps/admin/app/calendar/page.tsx",
     "apps/admin/app/calendar/request/page.tsx",
     "apps/admin/app/dispatches/page.tsx",
-    "apps/admin/app/dispatches/[dispatchReviewId]/page.tsx"
+    "apps/admin/app/dispatches/[dispatchReviewId]/page.tsx",
+    "apps/admin/app/disputes/page.tsx"
   ],
   worker: ["apps/mobile/src/ProductionApp.tsx"]
 } as const;

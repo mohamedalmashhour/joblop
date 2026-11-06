@@ -13,6 +13,13 @@ export type WorkerDisputeView = Readonly<{
   createdAt: string;
 }>;
 
+// What staff need to settle a dispute: who raised it, and the payout it is holding.
+export type StaffWorkerDisputeView = WorkerDisputeView & Readonly<{
+  workerDisplayName: string | null;
+  organizationName: string | null;
+  payout: Readonly<{ id: string; status: string; amountMinor: number; currency: string; heldReason: string | null }> | null;
+}>;
+
 export type RaiseWorkerDisputeResult =
   | { ok: true; dispute: WorkerDisputeView }
   | { ok: false; reason: "not_found" | "already_open" | "already_paid" };
@@ -92,8 +99,7 @@ export async function listWorkerDisputes(prisma: PrismaClient, workerIdentityId:
 }
 
 // Withdraw an open dispute the worker raised. Only an open, owned dispute can be withdrawn. When no
-// other open dispute remains on that calculation, its held payout returns to pending (its hold is
-// then re-evaluated on the next read).
+// other open dispute remains on that calculation, its held payout returns to pending.
 export async function withdrawWorkerDispute(
   prisma: PrismaClient,
   input: { workerIdentityId: string; disputeId: string; now: Date }
@@ -107,17 +113,86 @@ export async function withdrawWorkerDispute(
     data: { status: "withdrawn", resolvedAt: input.now, resolution: "withdrawn_by_worker" }
   });
 
-  const stillOpen = await prisma.workerDispute.findFirst({
-    where: { workerIdentityId: input.workerIdentityId, payrollCalculationId: dispute.payrollCalculationId, status: "open" },
-    select: { id: true }
-  });
-  if (!stillOpen) {
-    await prisma.workerPayout.updateMany({
-      where: { payrollCalculationId: dispute.payrollCalculationId, status: "held" },
-      data: { status: "pending", heldReason: null }
-    });
-  }
+  await releaseHoldIfUndisputed(prisma, dispute.payrollCalculationId);
 
   const updated = await prisma.workerDispute.findUnique({ where: { id: dispute.id } });
   return { ok: true, dispute: toView(updated!) };
+}
+
+// A held payout returns to pending once no open dispute remains on its calculation. Its hold is then
+// re-evaluated on the next read, so it continues through the normal lifecycle.
+async function releaseHoldIfUndisputed(
+  client: Pick<PrismaClient, "workerDispute" | "workerPayout">,
+  payrollCalculationId: string
+): Promise<void> {
+  const stillOpen = await client.workerDispute.findFirst({
+    where: { payrollCalculationId, status: "open" },
+    select: { id: true }
+  });
+  if (stillOpen) return;
+  await client.workerPayout.updateMany({
+    where: { payrollCalculationId, status: "held" },
+    data: { status: "pending", heldReason: null }
+  });
+}
+
+const STAFF_DISPUTE_LIST_LIMIT = 100;
+
+// Staff queue, oldest first so the longest-held payouts come up first.
+export async function listWorkerDisputesForStaff(
+  prisma: PrismaClient,
+  input: { status: "open" | "resolved" | "withdrawn" }
+): Promise<StaffWorkerDisputeView[]> {
+  const rows = await prisma.workerDispute.findMany({
+    where: { status: input.status },
+    orderBy: { createdAt: "asc" },
+    take: STAFF_DISPUTE_LIST_LIMIT,
+    include: { workerIdentity: { select: { displayName: true } } }
+  });
+  const calcIds = rows.map((r) => r.payrollCalculationId);
+  const orgIds = [...new Set(rows.map((r) => r.organizationId))];
+  const [payouts, organizations] = await Promise.all([
+    prisma.workerPayout.findMany({
+      where: { payrollCalculationId: { in: calcIds } },
+      select: { id: true, payrollCalculationId: true, status: true, amountMinor: true, currency: true, heldReason: true }
+    }),
+    prisma.employerOrganization.findMany({ where: { id: { in: orgIds } }, select: { id: true, displayName: true } })
+  ]);
+  const payoutByCalc = new Map(payouts.map((p) => [p.payrollCalculationId, p]));
+  const orgName = new Map(organizations.map((o) => [o.id, o.displayName]));
+  return rows.map((r) => {
+    const payout = payoutByCalc.get(r.payrollCalculationId);
+    return {
+      ...toView(r),
+      workerDisplayName: r.workerIdentity.displayName,
+      organizationName: orgName.get(r.organizationId) ?? null,
+      payout: payout
+        ? { id: payout.id, status: payout.status, amountMinor: payout.amountMinor, currency: payout.currency, heldReason: payout.heldReason }
+        : null
+    };
+  });
+}
+
+// Staff settle an open dispute. This records the decision and lifts the hold; it never changes an
+// amount. If the worker is owed something different, staff correct it through payroll, which is the
+// only place money figures change.
+export async function resolveWorkerDispute(
+  prisma: PrismaClient,
+  input: { disputeId: string; resolution: string; now: Date }
+): Promise<
+  | { ok: true; dispute: WorkerDisputeView }
+  | { ok: false; reason: "not_found" | "not_open" }
+> {
+  return prisma.$transaction(async (tx) => {
+    const dispute = await tx.workerDispute.findUnique({ where: { id: input.disputeId } });
+    if (!dispute) return { ok: false, reason: "not_found" } as const;
+    const updated = await tx.workerDispute.updateMany({
+      where: { id: dispute.id, status: "open" },
+      data: { status: "resolved", resolvedAt: input.now, resolution: input.resolution }
+    });
+    if (updated.count === 0) return { ok: false, reason: "not_open" } as const;
+    await releaseHoldIfUndisputed(tx, dispute.payrollCalculationId);
+    const resolved = await tx.workerDispute.findUnique({ where: { id: dispute.id } });
+    return { ok: true, dispute: toView(resolved!) } as const;
+  });
 }

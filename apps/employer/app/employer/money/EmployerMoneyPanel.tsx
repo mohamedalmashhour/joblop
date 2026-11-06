@@ -111,7 +111,6 @@ export function EmployerMoneyPanel() {
 
       <div style={styles.actionBar}>
         <a href="/employer/invoices" style={styles.footerLink}>{t("money.viewInvoices")}</a>
-        <a href="/employer/payments" style={styles.footerLink}>{t("money.viewPayments")}</a>
       </div>
       <p style={styles.metaLabel}>{t("money.disclaimer")}</p>
     </section>

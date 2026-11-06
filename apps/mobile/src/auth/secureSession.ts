@@ -986,6 +986,8 @@ export type WorkerAttendanceRecord = Readonly<{
   version: number;
   employerName: string;
   areaLabel: string | null;
+  // The exact address, sent only for the worker's own shift while it is still to be worked.
+  worksiteAddress: string | null;
 }>;
 
 export type AttendanceMutationResult = Readonly<{ status: "ready" | "denied" | "not_found" | "conflict" | "error" }>;
@@ -1007,7 +1009,8 @@ function parseWorkerAttendanceRecord(input: unknown): WorkerAttendanceRecord | n
     exceptionCategory: typeof r.exceptionCategory === "string" ? r.exceptionCategory : null,
     version: num(r.version) ?? 0,
     employerName: str(r.employerName),
-    areaLabel: typeof r.areaLabel === "string" ? r.areaLabel : null
+    areaLabel: typeof r.areaLabel === "string" ? r.areaLabel : null,
+    worksiteAddress: typeof r.worksiteAddress === "string" ? r.worksiteAddress : null
   };
 }
 
