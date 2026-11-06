@@ -7,6 +7,7 @@ import { LanguageSwitcher } from "../../i18n/LanguageSwitcher";
 import { fmtLocale, useLocale, useT } from "../../i18n/LocaleProvider";
 import { previewInvoicePaymentOptions } from "./invoicePaymentPreview";
 import { findSelectedInvoice, invoiceDetailHref } from "./invoiceSelection";
+import { confirmCardPayment, isInvoicePayable, startCardPayment } from "./invoiceCardPayment";
 import type { RwosLocale } from "../../i18n/config";
 
 type InvoiceSummary = Readonly<{
@@ -30,14 +31,42 @@ type LoadState =
 
 export function InvoiceReviewPanel({
   mode,
-  invoiceId = null
+  invoiceId = null,
+  paymentReturn = null
 }: {
   mode: "list" | "detail" | "breakdown";
   invoiceId?: string | null;
+  paymentReturn?: "success" | "cancel" | null;
 }) {
   const t = useT();
   const locale = fmtLocale(useLocale());
   const [state, setState] = useState<LoadState>({ status: "loading" });
+  const [reloadKey, setReloadKey] = useState(0);
+  const [payBusy, setPayBusy] = useState(false);
+  const [payMessage, setPayMessage] = useState<string | null>(
+    paymentReturn === "cancel" ? t("inv.payCancelled") : paymentReturn === "success" ? t("inv.payConfirming") : null
+  );
+
+  // Back from Stripe's hosted page: the server checks the payment with Stripe before anything changes.
+  useEffect(() => {
+    if (paymentReturn !== "success" || !invoiceId) return;
+    void confirmCardPayment(invoiceId, fetch).then((confirmed) => {
+      setPayMessage(t(confirmed ? "inv.paySuccess" : "inv.payIncomplete"));
+      setReloadKey((key) => key + 1);
+    });
+  }, [paymentReturn, invoiceId]);
+
+  async function payByCard(id: string) {
+    setPayBusy(true);
+    setPayMessage(null);
+    const url = await startCardPayment(id, fetch);
+    if (url) {
+      window.location.assign(url);
+      return;
+    }
+    setPayMessage(t("inv.payUnavailable"));
+    setPayBusy(false);
+  }
 
   useEffect(() => {
     const controller = new AbortController();
@@ -66,7 +95,7 @@ export function InvoiceReviewPanel({
     }
     void load();
     return () => controller.abort();
-  }, []);
+  }, [reloadKey]);
 
   const invoices = state.status === "ready" ? state.invoices : [];
   const selected = findSelectedInvoice(invoices, invoiceId);
@@ -85,6 +114,7 @@ export function InvoiceReviewPanel({
           <p style={styles.sectionCopy}>{t("inv.copy")}</p>
           <span style={styles.statusBadgeWarning}>{t("inv.readOnly")}</span>
         </div>
+        {payMessage ? <p aria-live="polite" role="status" style={styles.cardText}>{payMessage}</p> : null}
 
         {state.status === "loading" ? (
           <p aria-live="polite" style={styles.cardText}>{t("inv.loading")}</p>
@@ -131,6 +161,11 @@ export function InvoiceReviewPanel({
               </article>
             ))}
           </div>
+          {mode === "detail" && isInvoicePayable(selected.status) ? (
+            <button disabled={payBusy} onClick={() => void payByCard(selected.id)} style={{ ...styles.primaryButton, marginTop: 18 }} type="button">
+              {t("inv.payByCard")}
+            </button>
+          ) : null}
           {paymentPreview ? (
             <section style={{ marginTop: 18 }}>
               <p style={styles.eyebrowDark}>{t("inv.payTitle")}</p>

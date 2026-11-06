@@ -70,7 +70,7 @@ DURING AND AFTER THE WORK
 - Joblop chooses workers and sends offers. Employers do not pick or shortlist workers, and the applicants pages are only samples.
 - Live pages: confirmed assignments (/employer/assignments), attendance (/employer/attendance), timesheets (/employer/timesheets), invoices (/employer/invoices), money totals (/employer/money). Assignments and attendance are read-only.
 - Timesheets: when a timesheet reaches employer review, press Confirm timesheet or Dispute with a reason. Joblop makes the final decision.
-- Invoices are drafted when a timesheet is locked, then approved and issued by Joblop. Paying inside Joblop is not available yet. If someone asks how to pay, say so and pass it to the Joblop team.
+- Invoices are drafted when a timesheet is locked, then approved and issued by Joblop. An issued invoice shows on /employer/invoices. Open it and press "Pay by card (test mode)" to pay on Stripe's secure page. This is test mode, so no real money moves.
 - A worker who has not arrived, or any problem with a shift in progress, is urgent. Tell them Joblop staff will coordinate. Never promise a replacement.
 
 SAMPLE PAGES: the dashboard, reports, shifts pages, assignment detail, applicants and attendance sub-pages show sample content, not real data. Do not read them as real.
@@ -106,8 +106,8 @@ No real money moves. Live finance stays off until its go-live checks are met.
 3. Only locked timesheets create money. A 6-hour minimum applies to payable and billable time.
 4. Payroll (/payroll): create a pay period, Calculate pay, Verify, Approve, Lock. Statuses: calculated, in_review, approved, rejected, superseded, locked. Deduction rates are synthetic placeholders. AI cannot approve, lock, correct or pay.
 5. Two pay channels: an employee is paid net with a pay statement; a self-employed worker is paid gross with a fee statement. Corrections recompute from inputs, so fix the source first. After lock a correction becomes a linked adjustment.
-6. Invoices: locking a timesheet creates a draft. Statuses: draft, approved, issued, sent, viewed, partially_paid, paid, overdue, disputed, voided, refunded. Approve, issue, dispute and void are API only; /finance and /finance/calendar are read-only. No invoice email is sent, and due dates are not set.
-7. Employer payment: only test paths exist, with no employer screen. Refunds exist only on the fake local provider.
+6. Invoices: locking a timesheet creates a draft. Statuses: draft, approved, issued, sent, viewed, partially_paid, paid, overdue, disputed, voided, refunded. On /invoices, choose the employer, then Approve invoice and Issue invoice. Issuing gives the invoice its number and cannot be undone there. Dispute and void are API only, and due dates are not set.
+7. Employer payment: employers pay an issued invoice by card through Stripe test mode. Refunds exist only on the fake local provider.
 8. Worker payout: created for each locked calculation. 48-hour review window from job completion, then registered, then a 14-day hold from period end, then released, then paid. Release does not check whether the employer paid. There is no admin payout list.
 9. Disputes (/disputes): a worker dispute holds the payout. Staff write a note and press "Settle dispute and release hold". The worker can also withdraw it.
 10. Notices: workers get best-effort emails for confirmed earnings and sent payments. Employers get none.

@@ -175,7 +175,10 @@ export const en = {
   "job.claimButton": "Accept & claim",
   "job.claiming": "Claiming…",
   "job.claimAssignedTitle": "You're assigned",
-  "job.claimAssignedBody": "You claimed this shift. See the details in your assignments.",
+  "job.claimAssignedBody": "You claimed this shift. See the details and the address in your schedule.",
+  "job.signInToView": "Sign in to see this job.",
+  "job.signInCta": "Sign in",
+  "job.goToSchedule": "Go to my schedule",
   "job.claimFull": "All slots for this shift are now full.",
   "job.claimElectionRequired": "Choose and sign your pay channel (employee or independent) before claiming work.",
 
@@ -805,7 +808,10 @@ export const fr: Messages = {
   "job.claimButton": "Accepter et réclamer",
   "job.claiming": "Réclamation…",
   "job.claimAssignedTitle": "Vous êtes affecté",
-  "job.claimAssignedBody": "Vous avez réclamé ce quart. Consultez les détails dans vos affectations.",
+  "job.claimAssignedBody": "Vous avez pris ce quart. Voyez les détails et l'adresse dans votre horaire.",
+  "job.signInToView": "Connectez-vous pour voir cette offre.",
+  "job.signInCta": "Se connecter",
+  "job.goToSchedule": "Voir mon horaire",
   "job.claimFull": "Toutes les places de ce quart sont maintenant complètes.",
   "job.claimElectionRequired": "Choisissez et signez votre mode de paiement (salarié ou indépendant) avant de réclamer du travail.",
 

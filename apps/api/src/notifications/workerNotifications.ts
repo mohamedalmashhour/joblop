@@ -2,7 +2,7 @@ import type { PrismaClient } from "@rwos/database";
 import type { EmailMessage, EmailSender } from "../mailer/emailSender";
 import type { SmsSender } from "../mailer/smsSender";
 import { resolveLanguage, type NotificationLanguage } from "./clientNotifications";
-import { formatWorksiteAddress, WORKSITE_ADDRESS_SELECT } from "../worksiteAddress";
+import { workerJobAddress, WORKSITE_ADDRESS_SELECT } from "../worksiteAddress";
 
 // Format a shift start in Québec local time, in the worker's language. Kept simple + fail-soft.
 function formatShiftWhen(startAt: Date, language: NotificationLanguage): string {
@@ -296,14 +296,14 @@ export async function notifyWorkerAssigned(
       }),
       prisma.jobRequest.findUnique({
         where: { id: input.jobRequestId },
-        select: { title: true, startAt: true, residence: { select: WORKSITE_ADDRESS_SELECT } }
+        select: { title: true, startAt: true, residence: { select: WORKSITE_ADDRESS_SELECT }, calendarProfile: { select: { addressSummary: true } } }
       })
     ]);
     const email = user?.emailNormalized;
     if (!email || !job) return { status: "no_recipient" };
     const language = resolveLanguage(user?.primaryLanguage);
     const result = await emailSender.send(
-      assignedJobEmail({ to: email, language, title: job.title, startAt: job.startAt, address: formatWorksiteAddress(job.residence) })
+      assignedJobEmail({ to: email, language, title: job.title, startAt: job.startAt, address: workerJobAddress(job.calendarProfile?.addressSummary, job.residence) })
     );
     if (smsSender && user?.phone) {
       await smsSender

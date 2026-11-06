@@ -29,6 +29,12 @@ export function isWorksiteAddressVisible(attendanceStatus: string): boolean {
   return ADDRESS_VISIBLE_ATTENDANCE_STATUSES.has(attendanceStatus);
 }
 
+// The site address the employer entered for this job comes first, because a job can run somewhere
+// other than the residence's main address. The residence is the fallback.
+export function workerJobAddress(jobSiteAddress: string | null | undefined, residence: WorksiteAddressFields): string | null {
+  return jobSiteAddress?.trim() || formatWorksiteAddress(residence);
+}
+
 export function formatWorksiteAddress(fields: WorksiteAddressFields): string | null {
   const street = fields.addressLine1?.trim();
   // A city on its own is not an exact address, so fall back to the summary, or to nothing.

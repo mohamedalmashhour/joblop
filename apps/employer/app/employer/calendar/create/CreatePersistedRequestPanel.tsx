@@ -369,7 +369,7 @@ export function CreatePersistedRequestPanel() {
         <SelectField disabled={!editing} label={t("create.requestType")} onChange={(v) => update("requestType", v as FormState["requestType"])} options={[{ label: t("create.typeSingle"), value: "single_day" }, { label: t("create.typeMulti"), value: "multi_day" }, { label: t("create.typeRecurring"), value: "recurring_intent" }]} value={form.requestType} t={t} />
         <TextField disabled={!editing} label={t("create.timezone")} onChange={(v) => update("timezone", v)} value={form.timezone} />
         <TextField disabled={!editing} label={t("create.siteAddress")} maxLength={500} onChange={(v) => update("addressSummary", v)} value={form.addressSummary} />
-        <TextField disabled={!editing} label={t("create.certifications")} maxLength={2000} onChange={(v) => update("qualifications", v)} value={form.qualifications} />
+        <TextField disabled={!editing} label={t("create.certifications")} maxLength={2000} onChange={(v) => update("qualifications", v)} optional value={form.qualifications} />
         <label style={styles.fieldLabel}>
           {t("create.description")}
           <textarea disabled={!editing} maxLength={2000} onChange={(e) => update("description", e.target.value)} rows={4} style={styles.input} value={form.description} />
@@ -604,15 +604,15 @@ function SelectField({
 }
 
 function TextField({
-  disabled, label, maxLength, min, onChange, type = "text", value
+  disabled, label, maxLength, min, onChange, optional = false, type = "text", value
 }: {
   disabled: boolean; label: string; maxLength?: number; min?: string;
-  onChange: (value: string) => void; type?: string; value: string;
+  onChange: (value: string) => void; optional?: boolean; type?: string; value: string;
 }) {
   return (
     <label style={styles.fieldLabel}>
       {label}
-      <input disabled={disabled} maxLength={maxLength} min={min} onChange={(event) => onChange(event.target.value)} required style={styles.input} type={type} value={value} />
+      <input disabled={disabled} maxLength={maxLength} min={min} onChange={(event) => onChange(event.target.value)} required={!optional} style={styles.input} type={type} value={value} />
     </label>
   );
 }
