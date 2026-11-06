@@ -240,7 +240,7 @@ import { startJobScannerSchedule, type ScanQuery } from "./jobScannerScheduler";
 import { type WorkerCvProfile, type TargetJob } from "./cvBuilder";
 import { getCvProvider } from "./cvBuilderClaude";
 import { reviewDocumentAdvisory, isReviewableImageType } from "./documentAiReview";
-import { offlineAdvisoryVerdict, presentableVerdict, workerProfileRating } from "@rwos/shared";
+import { offlineAdvisoryVerdict, payslipYearToDate, presentableVerdict, workerProfileRating } from "@rwos/shared";
 import { createCvAsset, listCvAssets, deleteCvAsset } from "./cvAssetRepository";
 import { isPro, getActiveEntitlement, grantEntitlement, revokeEntitlement, startTrial, hasEverTrialed, TRIAL_DAYS, PRO_PLAN } from "./cvEntitlementRepository";
 import {
@@ -8698,6 +8698,44 @@ export function buildApi(options: BuildApiOptions = {}) {
       currency: items[0]?.currency ?? "CAD"
     };
     return reply.code(200).send({ items, summary, workerClassification: identity.classification, nextCursor: hasMore ? (rows[limit - 1]?.id ?? null) : null, synthetic: true, notice: PAYROLL_SYNTHETIC_NOTICE });
+  });
+
+  // Worker: one pay slip, with January 1 to December 31 year-to-date totals. Own records only; the
+  // pay type shown is the one recorded on this calculation, not whatever the worker elects later.
+  app.get("/worker/payroll/statement/:calculationId/slip", async (request, reply) => {
+    const session = await authService.validateSession(readBearerToken(request.headers.authorization));
+    if (!session.authenticated || !session.user) return reply.code(401).send({ error: "RWOS_PAYROLL_DENIED", message: "Authentication is required." });
+    const calculationId = readRouteParam(request.params, "calculationId");
+    const identity = await prisma!.workerIdentity.findFirst({ where: { userId: session.user.id }, select: { id: true, displayName: true } });
+    const slip = identity && isCanonicalUuid(calculationId)
+      ? await prisma!.payrollCalculation.findFirst({
+          where: { id: calculationId, workerIdentityId: identity.id, status: { in: ["approved", "locked"] } },
+          include: { deductionLines: true, earningLines: true, payrollPeriod: { select: { periodStart: true, periodEnd: true, timezone: true } } }
+        })
+      : null;
+    if (!identity || !slip) return reply.code(404).send({ error: "RWOS_PAYROLL_NOT_FOUND", message: "That pay slip was not found." });
+    const [rows, organization] = await Promise.all([
+      prisma!.payrollCalculation.findMany({
+        where: { workerIdentityId: identity.id, status: { in: ["approved", "locked"] }, supersededById: null },
+        select: { payrollPeriodId: true, revision: true, grossPayMinor: true, totalDeductionsMinor: true, netPayMinor: true, payrollPeriod: { select: { periodEnd: true, timezone: true } } }
+      }),
+      prisma!.employerOrganization.findUnique({ where: { id: slip.organizationId }, select: { legalName: true } })
+    ]);
+    const yearToDate = payslipYearToDate(
+      rows.map((r) => ({ periodId: r.payrollPeriodId, revision: r.revision, periodEnd: r.payrollPeriod.periodEnd.toISOString(), timezone: r.payrollPeriod.timezone, grossPayMinor: r.grossPayMinor, totalDeductionsMinor: r.totalDeductionsMinor, netPayMinor: r.netPayMinor })),
+      { periodEnd: slip.payrollPeriod.periodEnd.toISOString(), timezone: slip.payrollPeriod.timezone }
+    );
+    return reply.code(200).send({
+      slip: {
+        calculationId: slip.id, revision: slip.revision, status: slip.status,
+        periodStart: slip.payrollPeriod.periodStart.toISOString(), periodEnd: slip.payrollPeriod.periodEnd.toISOString(), timezone: slip.payrollPeriod.timezone,
+        workerName: identity.displayName, organizationName: organization?.legalName ?? null, workerClassification: slip.workerClassification,
+        currency: slip.currency, grossPayMinor: slip.grossPayMinor, totalDeductionsMinor: slip.totalDeductionsMinor, netPayMinor: slip.netPayMinor,
+        earningLines: slip.earningLines.map((e) => ({ description: e.description, quantityMinutes: e.quantityMinutes, rateMinor: e.rateMinor, amountMinor: e.amountMinor })),
+        deductions: slip.deductionLines.map((d) => ({ code: d.code, description: d.description, amountMinor: d.amountMinor })),
+        yearToDate, synthetic: slip.synthetic
+      }
+    });
   });
 
   // The worker declares their tax type (employee or travailleur autonome = contractor). This drives

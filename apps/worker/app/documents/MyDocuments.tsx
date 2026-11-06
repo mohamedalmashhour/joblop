@@ -206,6 +206,7 @@ export function MyDocuments() {
 
   const active = state.documents.filter((d) => d.effectiveStatus !== "superseded" && d.effectiveStatus !== "revoked");
   const rating = workerProfileRating(state.documents);
+  const hasPayDocument = active.some((d) => d.documentType === "void_cheque");
 
   return (
     <>
@@ -234,6 +235,18 @@ export function MyDocuments() {
             </li>
           ))}
         </ul>
+      </section>
+
+      <section className="card" aria-labelledby="pay-document" style={{ marginBottom: 16 }}>
+        <div id="pay-document" className="role">{t("doc.payTitle")}</div>
+        <p className="notice" style={{ margin: 0 }}>{t("doc.payIntro")}</p>
+        <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+          <span aria-hidden="true">{hasPayDocument ? "✅" : "⬜"}</span>
+          <span style={{ flex: "1 1 160px" }}>{t("doc.typeVoidCheque")}</span>
+          {hasPayDocument ? <span className="chip status-verified">{t("doc.itemDone")}</span> : (
+            <button className="btn ghost" type="button" onClick={() => { setReplacing(null); setDocType("void_cheque"); setError(null); formRef.current?.scrollIntoView({ behavior: "smooth" }); }}>{t("doc.itemUpload")}</button>
+          )}
+        </div>
       </section>
 
       <form ref={formRef} className="searchbar" onSubmit={(e) => {

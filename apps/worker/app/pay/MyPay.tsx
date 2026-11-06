@@ -161,19 +161,6 @@ export function MyPay() {
     }
   }, []);
 
-  const choose = useCallback(async (classification: "employee" | "contractor") => {
-    try {
-      const r = await fetch("/api/profile/classification", {
-        method: "PUT",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ classification })
-      });
-      if (r.ok) void load();
-    } catch {
-      // keep the current value on failure
-    }
-  }, [load]);
-
   const raiseDispute = useCallback(async (payrollCalculationId: string, category: string, reason: string): Promise<boolean> => {
     setActionNotice(null);
     try {
@@ -244,7 +231,7 @@ export function MyPay() {
 
       {actionNotice ? <p className="notice" style={{ color: "var(--accent)" }}>{actionNotice}</p> : null}
 
-      {tab === "earnings" ? <EarningsTab state={state} choose={choose} t={t} locale={locale} /> : null}
+      {tab === "earnings" ? <EarningsTab state={state} reload={() => void load()} t={t} locale={locale} /> : null}
       {tab === "topay" ? <ToPayTab payouts={payouts} openDisputed={openDisputedCalcIds} onRaise={raiseDispute} t={t} locale={locale} /> : null}
       {tab === "paid" ? <PaidTab payouts={payouts} openDisputed={openDisputedCalcIds} onRaise={raiseDispute} t={t} locale={locale} /> : null}
       {tab === "calendar" ? <PaymentsCalendar payouts={payouts} items={allPayouts} openDisputed={openDisputedCalcIds} onRaise={raiseDispute} t={t} locale={locale} /> : null}
@@ -255,7 +242,73 @@ export function MyPay() {
   );
 }
 
-function EarningsTab({ state, choose, t, locale }: { state: Extract<PayState, { status: "ready" }>; choose: (c: "employee" | "contractor") => void; t: Translate; locale: RwosLocale }) {
+// A work type is a signed election, so changing it means signing the matching agreement.
+function WorkTypeChange({ current, onChanged, t }: { current: "employee" | "contractor"; onChanged: () => void; t: Translate }) {
+  const target = current === "contractor" ? "employee" : "contractor";
+  const [open, setOpen] = useState(false);
+  const [version, setVersion] = useState<string | null>(null);
+  const [agreed, setAgreed] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [failed, setFailed] = useState(false);
+
+  const start = async () => {
+    setFailed(false);
+    setOpen(true);
+    try {
+      const r = await fetch("/api/profile/classification-election", { cache: "no-store" });
+      const d = r.ok ? ((await r.json()) as { agreementVersions?: { employee?: string; contractor?: string } }) : null;
+      const found = d?.agreementVersions?.[target] ?? null;
+      setVersion(found);
+      if (!found) setFailed(true);
+    } catch {
+      setFailed(true);
+    }
+  };
+
+  const sign = async () => {
+    if (!version) return;
+    setBusy(true);
+    setFailed(false);
+    try {
+      const r = await fetch("/api/profile/classification-election", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ classification: target, agreementVersion: version, agreementAccepted: true })
+      });
+      if (r.ok) {
+        setOpen(false);
+        setAgreed(false);
+        onChanged();
+      } else {
+        setFailed(true);
+      }
+    } catch {
+      setFailed(true);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  if (!open) return <button type="button" className="btn ghost" style={{ alignSelf: "flex-start", marginTop: 6 }} onClick={() => void start()}>{t("pay.changeWorkType")}</button>;
+  return (
+    <div style={{ marginTop: 8, display: "grid", gap: 8 }}>
+      <div className="when">{t("pay.changeWorkTypeTo", { type: t(target === "contractor" ? "pay.typeAutonomous" : "pay.typeEmployee") })}</div>
+      <div className="when">{target === "contractor" ? t("pay.typeAutonomousDesc") : t("pay.typeEmployeeDesc")}</div>
+      <label className="when" style={{ display: "flex", gap: 8, alignItems: "flex-start" }}>
+        <input type="checkbox" checked={agreed} onChange={(e) => setAgreed(e.target.checked)} />
+        <span>{t("pay.changeWorkTypeAgree", { slip: target === "contractor" ? "T4A" : "T4", version: version ?? "…" })}</span>
+      </label>
+      <div className="when" style={{ color: "var(--text-muted)" }}>{t("pay.changeWorkTypeNote")}</div>
+      {failed ? <p className="notice" role="alert" style={{ margin: 0, color: "var(--danger)" }}>{t("pay.changeWorkTypeError")}</p> : null}
+      <div className="chips">
+        <button type="button" className="btn" disabled={busy || !agreed || !version} onClick={() => void sign()}>{busy ? "…" : t("pay.changeWorkTypeSign")}</button>
+        <button type="button" className="chip" onClick={() => { setOpen(false); setAgreed(false); }}>{t("pay.disputeCancel")}</button>
+      </div>
+    </div>
+  );
+}
+
+function EarningsTab({ state, reload, t, locale }: { state: Extract<PayState, { status: "ready" }>; reload: () => void; t: Translate; locale: RwosLocale }) {
   return (
     <>
       {state.summary ? (
@@ -271,23 +324,11 @@ function EarningsTab({ state, choose, t, locale }: { state: Extract<PayState, { 
       <section className="card" style={{ marginBottom: 16 }}>
         <div className="role">{t("pay.workTypeTitle")}</div>
         <div className="chips" style={{ marginTop: 6 }}>
-          <button
-            type="button"
-            className={`chip ${state.workerClassification !== "contractor" ? "status-verified" : ""}`}
-            onClick={() => void choose("employee")}
-          >
-            {t("pay.typeEmployee")}
-          </button>
-          <button
-            type="button"
-            className={`chip ${state.workerClassification === "contractor" ? "status-verified" : ""}`}
-            onClick={() => void choose("contractor")}
-          >
-            {t("pay.typeAutonomous")}
-          </button>
+          <span className="chip status-verified">{t(state.workerClassification === "contractor" ? "pay.typeAutonomous" : "pay.typeEmployee")}</span>
         </div>
         <div className="when">{state.workerClassification === "contractor" ? t("pay.typeAutonomousDesc") : t("pay.typeEmployeeDesc")}</div>
         <div className="when">{t("pay.slipType", { slip: state.workerClassification === "contractor" ? "T4A" : "T4" })}</div>
+        <WorkTypeChange current={state.workerClassification === "contractor" ? "contractor" : "employee"} onChanged={reload} t={t} />
       </section>
 
       {state.items.length === 0 ? (
@@ -322,6 +363,7 @@ function EarningsTab({ state, choose, t, locale }: { state: Extract<PayState, { 
                   ))}
                 </ul>
               ) : null}
+              <a className="btn ghost" href={`/pay/slip/${encodeURIComponent(s.calculationId)}`} style={{ alignSelf: "flex-start", marginTop: 8 }}>{t("pay.viewSlip")}</a>
             </article>
           ))}
         </div>

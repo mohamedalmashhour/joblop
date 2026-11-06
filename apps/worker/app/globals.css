@@ -872,6 +872,13 @@ dl.agreement dd { margin: 0; }
   body { background: #fff !important; color: #000 !important; }
   .detail { padding: 0 !important; max-width: 100% !important; }
   a[href] { text-decoration: none; color: #000; }
+  /* Pay slip: black on white with nothing else on the page, whatever the screen theme. */
+  body:has(.pay-slip) .wrap ~ *,
+  body:has(.pay-slip) footer,
+  body:has(.pay-slip) nextjs-portal { display: none !important; }
+  .pay-slip, .pay-slip * { color: #000 !important; background: #fff !important; box-shadow: none !important; }
+  .pay-slip .card { border: 1px solid #000 !important; }
+  .pay-slip { max-width: 100% !important; }
 }
 
 /* Brand wordmark — any literal "Joblop" in copy renders as the logo's voice: brand letters with

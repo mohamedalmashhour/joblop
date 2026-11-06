@@ -14,7 +14,7 @@ export function Onboarding() {
   const tr = (a: string, f: string, en: string) => (ar ? a : fr ? f : en);
 
   const [agreementVersions, setAgreementVersions] = useState<{ employee?: string; contractor?: string }>({});
-  const [classification, setClassification] = useState<"employee" | "contractor">("employee");
+  const [classification, setClassification] = useState<"employee" | "contractor">("contractor");
   const [agree, setAgree] = useState(false);
 
   const [firstName, setFirstName] = useState("");
