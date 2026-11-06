@@ -164,4 +164,23 @@ describe("HR document encryption at rest", () => {
     expect(Buffer.from((await store.get(key))!).includes(Buffer.from("private worker document"))).toBe(false);
     expect(Buffer.from((await provider.store.get(key))!).equals(Buffer.from(plain))).toBe(true);
   });
+
+  it("keeps a real file on disk unreadable and still gives it back", async () => {
+    const root = await mkdtemp(join(tmpdir(), "hr-sealed-"));
+    try {
+      const disk = createLocalPrivateFileObjectStore(root);
+      const provider = createLocalHrDocumentStorageProvider({ store: disk, secret: SECRET });
+      const { storageReference } = await provider.createUploadReference({ workerIdentityId: WORKER, documentType: "void_cheque" });
+      await provider.store.put({ key: provider.objectKey(storageReference), bytes: plain });
+      await provider.saveFileInfo(storageReference, { fileName: "cheque.pdf", contentType: "application/pdf" });
+      const raw = await disk.get(provider.objectKey(storageReference));
+      expect(Buffer.from(raw!).subarray(0, 4).toString("ascii")).toBe("JLE1");
+      expect(Buffer.from(raw!).includes(Buffer.from("private worker document"))).toBe(false);
+      expect(Buffer.from((await provider.store.get(provider.objectKey(storageReference)))!).equals(Buffer.from(plain))).toBe(true);
+      expect(await provider.describe({ storageReference })).toEqual({ fileName: "cheque.pdf", contentType: "application/pdf" });
+      expect(await provider.verifyReference({ storageReference, workerIdentityId: WORKER })).toBe(true);
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
 });
