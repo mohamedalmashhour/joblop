@@ -248,6 +248,9 @@ export class PostgresQaResetRepository {
                 ? await this.mutator.prepare(connection, record)
                 : await this.mutator.cleanup(connection, record);
           } catch (cause) {
+            // A conflict is a decision the mutator made, such as finding tampered evidence, so it
+            // keeps its own type. Only an unexpected database failure is wrapped.
+            if (cause instanceof QaResetPersistenceConflictError) throw cause;
             throw new QaResetRecordMutationError(request.operation, record.entityType, { cause });
           }
           if (affected !== 1) throw new QaResetPersistenceConflictError();
