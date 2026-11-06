@@ -159,6 +159,7 @@ export function MySchedule() {
           ) : null}
         </>
       )}
+      <p className="notice"><a href="/timesheets">{t("ts.title")}</a></p>
       <p className="notice">{t("sched.footer")}</p>
     </>
   );

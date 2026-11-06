@@ -8293,6 +8293,18 @@ export function buildApi(options: BuildApiOptions = {}) {
 
   // Bounded BULK calculation for a period (payroll authority). Calculation-only — no approve/lock/
   // pay. Returns a bounded per-worker summary + a keyset cursor for the next page.
+  // Employers a pay period can be opened for.
+  app.get("/platform/payroll/organizations", async (request, reply) => {
+    const actor = await requirePayrollAuthority(request, reply);
+    if (!actor) return;
+    const items = await prisma!.employerOrganization.findMany({
+      orderBy: { displayName: "asc" },
+      take: 200,
+      select: { id: true, displayName: true }
+    });
+    return reply.code(200).send({ items });
+  });
+
   app.post("/platform/payroll/periods/:periodId/bulk-calculate", async (request, reply) => {
     const actor = await requirePayrollAuthority(request, reply);
     if (!actor) return;
@@ -9471,6 +9483,81 @@ export function buildApi(options: BuildApiOptions = {}) {
     });
 
     return reply.code(200).send({ timesheets: timesheets.map((item) => serializeTimesheet(item)) });
+  });
+
+  // Staff queue: finished shifts still needing a timesheet, plus every timesheet with readable names.
+  app.get("/platform/timesheets/queue", async (request, reply) => {
+    const session = await authService.validateSession(
+      readBearerToken(request.headers.authorization)
+    );
+    if (!session.authenticated || !session.user) return sendTimesheetUnauthenticated(reply);
+
+    // Also the authority check: the shift names below are read only after this list is allowed.
+    const timesheets = await timesheetService.listTimesheets({
+      session,
+      roles: await resolveAuthorizationRoles(session.user.id)
+    });
+    const finished = await prisma!.attendanceRecord.findMany({
+      where: { status: { in: ["checked_out", "completed"] }, timesheet: { is: null } },
+      orderBy: { checkOutAt: "desc" },
+      take: 100,
+      select: {
+        id: true, status: true, checkInAt: true, checkOutAt: true,
+        organization: { select: { displayName: true } },
+        workerIdentity: { select: { displayName: true } }
+      }
+    });
+    const [organizations, workers] = await Promise.all([
+      prisma!.employerOrganization.findMany({
+        where: { id: { in: [...new Set(timesheets.map((t) => t.organizationId))] } },
+        select: { id: true, displayName: true }
+      }),
+      prisma!.workerIdentity.findMany({
+        where: { id: { in: [...new Set(timesheets.map((t) => t.workerIdentityId))] } },
+        select: { id: true, displayName: true }
+      })
+    ]);
+    const organizationName = new Map(organizations.map((o) => [o.id, o.displayName]));
+    const workerName = new Map(workers.map((w) => [w.id, w.displayName]));
+    return reply.code(200).send({
+      ready: finished.map((a) => ({
+        attendanceRecordId: a.id,
+        status: a.status,
+        employerName: a.organization.displayName,
+        workerName: a.workerIdentity.displayName,
+        checkInAt: a.checkInAt?.toISOString() ?? null,
+        checkOutAt: a.checkOutAt?.toISOString() ?? null
+      })),
+      timesheets: timesheets.map((t) => ({
+        id: t.id,
+        status: t.status,
+        version: t.version,
+        employerName: organizationName.get(t.organizationId) ?? "",
+        workerName: workerName.get(t.workerIdentityId) ?? null,
+        scheduledStartAt: t.scheduledStartAt.toISOString(),
+        payableMinutes: t.payableMinutes,
+        exceptionSummary: t.exceptionSummary
+      }))
+    });
+  });
+
+  // One staff action for a finished shift: complete attendance, create the timesheet, calculate it.
+  // A worker's punch-out cannot do this, because these steps need staff authority.
+  app.post("/platform/timesheets/prepare", async (request, reply) => {
+    const session = await authService.validateSession(
+      readBearerToken(request.headers.authorization)
+    );
+    if (!session.authenticated || !session.user) return sendTimesheetUnauthenticated(reply);
+
+    const attendanceRecordId = readRequiredString(asRecord(request.body), "attendanceRecordId") ?? "";
+    const roles = await resolveAuthorizationRoles(session.user.id);
+    const attendance = await attendanceService.readAttendance({ session, roles, attendanceRecordId });
+    if (attendance.status === "checked_out") {
+      await attendanceService.markCompleted({ session, roles, attendanceRecordId, expectedVersion: attendance.version });
+    }
+    const created = await timesheetService.createFromAttendance({ session, roles, attendanceRecordId });
+    const timesheet = await timesheetService.calculate({ session, roles, timesheetId: created.id, expectedVersion: created.version });
+    return reply.code(200).send({ timesheet: serializeTimesheet(timesheet) });
   });
 
   app.get("/platform/timesheets/:timesheetId", async (request, reply) => {
