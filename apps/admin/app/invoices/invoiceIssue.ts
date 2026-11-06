@@ -18,11 +18,21 @@ export function invoiceIssueBody(organizationId: string, expectedVersion: number
   };
 }
 
-export type InvoiceStaffAction = "approve" | "issue";
+export type InvoiceStaffAction = "approve" | "issue" | "send";
+
+// Sending the same version twice is one send, so a double-click cannot email the employer twice.
+export function invoiceSendBody(invoiceId: string, expectedVersion: number) {
+  return { expectedVersion, recipientAlias: "employer-contact", idempotencyKey: `send-${invoiceId}-v${expectedVersion}` };
+}
+
+export function invoiceActionPath(action: InvoiceStaffAction): string {
+  return action === "send" ? "deliveries" : action;
+}
 
 // The next step staff can take. Anything already issued has no action here.
 export function nextInvoiceAction(status: string): InvoiceStaffAction | null {
   if (status === "draft") return "approve";
   if (status === "approved") return "issue";
+  if (status === "issued") return "send";
   return null;
 }

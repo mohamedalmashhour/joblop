@@ -1,13 +1,20 @@
 import { describe, expect, it } from "vitest";
-import { invoiceIssueBody, nextInvoiceAction } from "./invoiceIssue";
+import { invoiceActionPath, invoiceIssueBody, invoiceSendBody, nextInvoiceAction } from "./invoiceIssue";
 
 describe("staff invoice actions", () => {
   it("offers only the next step in order", () => {
     expect(nextInvoiceAction("draft")).toBe("approve");
     expect(nextInvoiceAction("approved")).toBe("issue");
-    for (const status of ["issued", "sent", "paid", "voided", "disputed"]) {
+    expect(nextInvoiceAction("issued")).toBe("send");
+    for (const status of ["sent", "paid", "voided", "disputed"]) {
       expect(nextInvoiceAction(status)).toBeNull();
     }
+  });
+
+  it("sends through the delivery route, once per invoice version", () => {
+    expect(invoiceActionPath("send")).toBe("deliveries");
+    expect(invoiceActionPath("approve")).toBe("approve");
+    expect(invoiceSendBody("inv-1", 4)).toEqual({ expectedVersion: 4, recipientAlias: "employer-contact", idempotencyKey: "send-inv-1-v4" });
   });
 
   it("issues into the current year's numbering series for that employer", () => {
