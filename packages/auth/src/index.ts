@@ -58,7 +58,6 @@ export {
   createHttpCandidateSource,
   createHttpWorkerOfferDeliveryProvider,
   createBrevoWorkerOfferDeliveryProvider,
-  createResendWorkerOfferDeliveryProvider,
   type WorkerOfferDeliveryProvider,
   type WorkerOfferDeliveryResult
 } from "./productionIntegrations";

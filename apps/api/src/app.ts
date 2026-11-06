@@ -139,7 +139,6 @@ import {
   createLocalMarketplaceCandidateSource,
   createHttpWorkerOfferDeliveryProvider,
   createBrevoWorkerOfferDeliveryProvider,
-  createResendWorkerOfferDeliveryProvider,
   passwordPolicyErrorCode,
   registrationUnavailableCode,
   toSafeAuthorizationResponse,
@@ -580,8 +579,7 @@ export function buildApi(options: BuildApiOptions = {}) {
     options.emailSender ??
     createEmailSender({
       apiKey: runtimeConfig.emailApiKey,
-      from: runtimeConfig.emailFrom,
-      provider: runtimeConfig.emailProvider
+      from: runtimeConfig.emailFrom
     });
   // Transactional SMS twin of emailSender. Double-gated: no-op unless the Brevo key + sender are set
   // AND SMS_ENABLED=enabled (SMS costs money per message). Threaded into notification sites alongside
@@ -947,17 +945,13 @@ export function buildApi(options: BuildApiOptions = {}) {
             : localDispatchCandidateSource
         )
       : createUnavailableDispatchService());
-  // Worker-offer delivery channel. Prefer the configured email provider (Brevo or Resend; reuses
-  // the email config already used for verification), then the external HTTP delivery service, else none.
+  // Worker-offer delivery channel. Prefer Brevo email (reuses the email config already used for
+  // verification), then the external HTTP delivery service, else none.
   // Fail-closed: with neither configured, offers simply aren't auto-delivered.
   const offerCtaOrigin = (options.publicWorkerWebOrigin ?? environment.WORKER_WEB_ORIGIN ?? "").trim() || null;
-  const createEmailOfferDeliveryProvider =
-    runtimeConfig.emailProvider === "resend"
-      ? createResendWorkerOfferDeliveryProvider
-      : createBrevoWorkerOfferDeliveryProvider;
   const emailOfferDeliveryProvider =
     prisma && runtimeConfig.hasEmailDelivery && runtimeConfig.emailFrom
-      ? createEmailOfferDeliveryProvider({
+      ? createBrevoWorkerOfferDeliveryProvider({
           apiKey: runtimeConfig.emailApiKey!,
           fromAddress: runtimeConfig.emailFrom,
           resolveRecipient: async ({ workerOfferId, organizationId }) => {

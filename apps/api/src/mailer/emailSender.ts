@@ -1,5 +1,5 @@
-// Isolated transactional-email capsule. Free of any SDK — it talks to the provider's HTTP API
-// directly (Brevo or Resend), and is gated: without an API key + from-address it is a no-op that
+// Isolated transactional-email capsule. Free of any SDK — it talks to Brevo's HTTP API directly,
+// and is gated: without an API key + from-address it is a no-op that
 // reports "skipped" (dev surfaces the code to the caller instead of sending). This mirrors the STR
 // mailer-gating model so the email-verification feature can ship dark until the owner provisions a
 // provider. Injected by dependency, never reads process.env itself, so it is trivially testable.
@@ -32,8 +32,6 @@ export type EmailFetch = (
   }>
 ) => Promise<Readonly<{ ok: boolean; status: number; json(): Promise<unknown> }>>;
 
-export type EmailProvider = "brevo" | "resend";
-
 // Parse "Name <email@domain>" or a bare address into Brevo's structured sender shape.
 function parseSender(from: string): { email: string; name?: string } {
   const match = /^\s*(.+?)\s*<([^>]+)>\s*$/.exec(from);
@@ -46,11 +44,9 @@ function parseSender(from: string): { email: string; name?: string } {
 export function createEmailSender(options: {
   apiKey: string | undefined;
   from: string | undefined;
-  provider?: EmailProvider;
   fetch?: EmailFetch;
 }): EmailSender {
   const { apiKey, from } = options;
-  const provider: EmailProvider = options.provider ?? "brevo";
   if (!apiKey || !from) {
     return {
       configured: false,
@@ -65,39 +61,21 @@ export function createEmailSender(options: {
     configured: true,
     async send(message) {
       try {
-        const request =
-          provider === "resend"
-            ? {
-                url: "https://api.resend.com/emails",
-                headers: { authorization: `Bearer ${apiKey}`, "content-type": "application/json" },
-                body: JSON.stringify({
-                  from,
-                  to: message.to,
-                  subject: message.subject,
-                  text: message.text,
-                  ...(message.html ? { html: message.html } : {})
-                })
-              }
-            : {
-                // Brevo (formerly Sendinblue) transactional email: POST /v3/smtp/email, api-key header.
-                url: "https://api.brevo.com/v3/smtp/email",
-                headers: { "api-key": apiKey, "content-type": "application/json", accept: "application/json" },
-                body: JSON.stringify({
-                  sender: parseSender(from),
-                  to: [{ email: message.to }],
-                  subject: message.subject,
-                  textContent: message.text,
-                  ...(message.html ? { htmlContent: message.html } : {})
-                })
-              };
-        const response = await doFetch(request.url, {
+        // Brevo (formerly Sendinblue) transactional email: POST /v3/smtp/email, api-key header.
+        const response = await doFetch("https://api.brevo.com/v3/smtp/email", {
           method: "POST",
-          headers: request.headers,
-          body: request.body
+          headers: { "api-key": apiKey, "content-type": "application/json", accept: "application/json" },
+          body: JSON.stringify({
+            sender: parseSender(from),
+            to: [{ email: message.to }],
+            subject: message.subject,
+            textContent: message.text,
+            ...(message.html ? { htmlContent: message.html } : {})
+          })
         });
         if (!response.ok) return { status: "error" };
-        const data = (await response.json().catch(() => ({}))) as { id?: unknown; messageId?: unknown };
-        const id = typeof data.messageId === "string" ? data.messageId : typeof data.id === "string" ? data.id : "";
+        const data = (await response.json().catch(() => ({}))) as { messageId?: unknown };
+        const id = typeof data.messageId === "string" ? data.messageId : "";
         return { status: "sent", id };
       } catch {
         return { status: "error" };

@@ -44,16 +44,12 @@ const runtimeConfigSchema = z
     // When absent, the test execution records a synthetic reference instead of attempting a transfer.
     STRIPE_TEST_PAYOUT_CONNECTED_ACCOUNT: z.string().min(1).optional(),
     SESSION_SECRET: z.string().optional(),
-    // Transactional email (Resend) for email-verification / resend-code. Optional and inert until
-    // both are set: without them the mailer is a no-op (dev surfaces the code locally instead of
-    // sending). Mirrors the STR gating model — the feature ships dark until the owner provisions keys.
-    RESEND_API_KEY: z.string().min(1).optional(),
-    // Brevo (formerly Sendinblue) is the owner's chosen provider. Set BREVO_API_KEY (api-key header)
-    // and EMAIL_FROM; EMAIL_PROVIDER selects which HTTP API the mailer talks to (default brevo).
+    // Transactional email through Brevo (formerly Sendinblue), the owner's chosen provider. Optional
+    // and inert until BREVO_API_KEY and EMAIL_FROM are both set: without them the mailer is a no-op
+    // (dev surfaces the code locally instead of sending).
     BREVO_API_KEY: z.string().min(1).optional(),
-    EMAIL_PROVIDER: z.enum(["brevo", "resend"]).default("brevo"),
     // Accept either a bare address (user@domain) or an RFC-5322 display-name form
-    // ("Joblop <user@domain>"), which mail "From" headers use and Resend expects for branding.
+    // ("Joblop <user@domain>"), which mail "From" headers use.
     EMAIL_FROM: z
       .string()
       .refine(
@@ -457,17 +453,11 @@ export function getRuntimeConfig(env: NodeJS.ProcessEnv = process.env) {
     hasOfferDelivery: Boolean(parsed.OFFER_DELIVERY_ORIGIN && parsed.OFFER_DELIVERY_TOKEN),
     hasDatabaseUrl: Boolean(parsed.DATABASE_URL),
     hasSessionSecret: Boolean(parsed.SESSION_SECRET),
-    resendApiKey: parsed.RESEND_API_KEY,
-    emailProvider: parsed.EMAIL_PROVIDER,
-    // The API key for the selected provider — Brevo by default, Resend when EMAIL_PROVIDER=resend.
-    emailApiKey: parsed.EMAIL_PROVIDER === "resend" ? parsed.RESEND_API_KEY : parsed.BREVO_API_KEY,
+    emailApiKey: parsed.BREVO_API_KEY,
     emailFrom: parsed.EMAIL_FROM,
     passwordResetPublicOrigin: parsed.PASSWORD_RESET_PUBLIC_ORIGIN,
-    // True only when the selected provider's key + from-address are present; otherwise a no-op.
-    hasEmailDelivery: Boolean(
-      (parsed.EMAIL_PROVIDER === "resend" ? parsed.RESEND_API_KEY : parsed.BREVO_API_KEY) &&
-        parsed.EMAIL_FROM
-    ),
+    // True only when the Brevo key + from-address are present; otherwise a no-op.
+    hasEmailDelivery: Boolean(parsed.BREVO_API_KEY && parsed.EMAIL_FROM),
     // Transactional SMS (Brevo): reuses the Brevo key. Enabled only when SMS_ENABLED=enabled.
     smsEnabled: parsed.SMS_ENABLED === "enabled",
     smsSender: parsed.SMS_SENDER,
