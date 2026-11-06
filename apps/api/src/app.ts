@@ -6695,6 +6695,30 @@ export function buildApi(options: BuildApiOptions = {}) {
     }
   );
 
+  // What an offer states when the admin writes nothing: the approved pay, employer and area, so a
+  // worker never accepts binding terms without seeing them.
+  const defaultOfferCompensation = async (dispatchReviewId: string): Promise<string | null> => {
+    if (!prisma || !isCanonicalUuid(dispatchReviewId)) return null;
+    const review = await prisma.dispatchReview.findUnique({
+      where: { id: dispatchReviewId },
+      select: {
+        jobRequest: {
+          select: {
+            pricingSnapshot: { select: { workerHourlyRateMinor: true, currency: true } },
+            organization: { select: { displayName: true } },
+            residence: { select: { city: true, province: true } }
+          }
+        }
+      }
+    });
+    const job = review?.jobRequest;
+    if (!job?.pricingSnapshot) return null;
+    const { workerHourlyRateMinor, currency } = job.pricingSnapshot;
+    const area = [job.residence.city, job.residence.province].filter(Boolean).join(", ");
+    const pay = `${(workerHourlyRateMinor / 100).toFixed(2)} ${currency} per hour`;
+    return `${pay} at ${job.organization.displayName}${area ? `, ${area}` : ""}`;
+  };
+
   app.post("/platform/worker-offers", async (request, reply) => {
     const session = await authService.validateSession(
       readBearerToken(request.headers.authorization)
@@ -6713,7 +6737,9 @@ export function buildApi(options: BuildApiOptions = {}) {
       expiresAt,
       workerVisibleTitle: readOptionalString(body, "workerVisibleTitle"),
       workerVisibleSummary: readOptionalString(body, "workerVisibleSummary"),
-      compensationSummary: readOptionalString(body, "compensationSummary"),
+      compensationSummary:
+        readOptionalString(body, "compensationSummary") ??
+        (await defaultOfferCompensation(readRequiredString(body, "dispatchReviewId") ?? "")),
       policySummary: readOptionalString(body, "policySummary")
     });
 
@@ -7001,6 +7027,19 @@ export function buildApi(options: BuildApiOptions = {}) {
       await workerJobInterestService.markOfferAcceptedByOffer(workerOfferId);
     } catch {
       /* interest mirror is best-effort; the governed assignment already succeeded */
+    }
+
+    // Put the shift on the worker's schedule, where they punch in and out. Those steps have no admin
+    // screen, so an assignment would otherwise never reach the worker. A failure here must not undo
+    // the assignment; it is logged for staff instead.
+    try {
+      const roles = await resolveAuthorizationRoles(session.user.id);
+      const assignmentId = assignment.id;
+      const ready = await assignmentService.markReadyForAttendance({ session, roles, assignmentId, expectedVersion: assignment.version });
+      await assignmentService.attendanceHandoff({ session, roles, assignmentId, expectedVersion: ready.version });
+      await attendanceService.createFromAssignment({ session, roles, assignmentId, verificationMethod: null });
+    } catch (error) {
+      logger.warn("assignment.schedule_handoff_failed", { assignmentId: assignment.id, error: error instanceof Error ? error.message : "unknown" });
     }
 
     // "You got the job!" — confirm the worker by email (+ SMS when enabled). Best-effort.

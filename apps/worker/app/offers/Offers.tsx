@@ -83,6 +83,7 @@ export function Offers() {
   const locale = fmtLocale(useLocale());
   const [state, setState] = useState<State>({ status: "loading" });
   const [busyId, setBusyId] = useState<string | null>(null);
+  const [needsPayChoice, setNeedsPayChoice] = useState(false);
   const [notice, setNotice] = useState<string>("");
   // R2-8b: list / calendar view of offers. The calendar lets the worker see offered shifts by day and
   // accept them right there (same accept/decline as the list, just filtered to the selected day).
@@ -103,6 +104,15 @@ export function Offers() {
   }, []);
 
   useEffect(() => { void load(); }, [load]);
+
+  // Accepting needs a signed pay choice. Ask for it up front: the API refuses without one, and that
+  // refusal cannot be told apart from a changed offer once it reaches this page.
+  useEffect(() => {
+    fetch("/api/profile/classification-election", { cache: "no-store" })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d: { election?: unknown } | null) => setNeedsPayChoice(d !== null && !d.election))
+      .catch(() => undefined);
+  }, []);
 
   const respond = useCallback(async (offer: Offer, action: "accept" | "decline") => {
     setBusyId(offer.workerOfferId);
@@ -169,9 +179,16 @@ export function Offers() {
                     <p className="rights-note">{t("offers.allowancesNote")}</p>
                   </aside>
                 ) : null}
+                {respondable && needsPayChoice ? (
+                  <div className="notice" role="status" style={{ marginTop: 12 }}>
+                    <strong>{t("offers.payChoiceTitle")}</strong>
+                    <p style={{ margin: "4px 0 8px" }}>{t("offers.payChoiceBody")}</p>
+                    <a className="btn" href="/onboarding?next=offers">{t("offers.payChoiceAction")}</a>
+                  </div>
+                ) : null}
                 {respondable ? (
                   <div style={{ display: "flex", gap: 8, marginTop: 12 }}>
-                    <button className="btn" type="button" disabled={busy} onClick={() => void respond(o, "accept")}>
+                    <button className="btn" type="button" disabled={busy || needsPayChoice} onClick={() => void respond(o, "accept")}>
                       {busy ? t("offers.working") : t("offers.acceptOffer")}
                     </button>
                     <button className="btn ghost" type="button" disabled={busy} onClick={() => void respond(o, "decline")}>

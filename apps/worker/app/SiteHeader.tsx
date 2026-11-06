@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { LanguageSwitcher } from "./i18n/LanguageSwitcher";
 import { useLocale } from "./i18n/LocaleProvider";
 import { JoblopLogo } from "./JoblopLogo";
@@ -17,6 +17,10 @@ const EMPLOYER_URL = process.env.NEXT_PUBLIC_EMPLOYER_URL ?? "http://localhost:3
 export function SiteHeader() {
   const locale = useLocale();
   const [open, setOpen] = useState(false);
+  const [signedIn, setSignedIn] = useState(false);
+  useEffect(() => {
+    fetch("/api/session", { cache: "no-store" }).then((r) => setSignedIn(r.ok)).catch(() => undefined);
+  }, []);
   const nav = (ar: string, fr: string, en: string) =>
     locale === "ar" ? ar : locale.startsWith("fr") ? fr : en;
   const close = () => setOpen(false);
@@ -44,8 +48,18 @@ export function SiteHeader() {
             <a className="muted" href="/cv-builder" onClick={close}>{nav("إنشاء السيرة", "Créer un CV", "Build CV")}</a>
             <a className="muted" href={EMPLOYER_URL} onClick={close}>{nav("لأصحاب العمل", "Employeurs", "For Employers")}</a>
             <a className="muted" href="/browse#contact" onClick={close}>{nav("تواصل", "Contact", "Contact")}</a>
-            <a className="muted" href="/" onClick={close}>{nav("تسجيل الدخول", "Se connecter", "Sign in")}</a>
-            <a className="topbar-cta" href="/" onClick={close}>{nav("إنشاء حساب", "Créer un compte", "Create account")}</a>
+            {signedIn ? (
+              <>
+                <a className="muted" href="/schedule" onClick={close}>{nav("جدولي", "Mon horaire", "My schedule")}</a>
+                <a className="muted" href="/pay" onClick={close}>{nav("أجري", "Ma paie", "My pay")}</a>
+                <a className="topbar-cta" href="/" onClick={close}>{nav("لوحة التحكم", "Tableau de bord", "Dashboard")}</a>
+              </>
+            ) : (
+              <>
+                <a className="muted" href="/" onClick={close}>{nav("تسجيل الدخول", "Se connecter", "Sign in")}</a>
+                <a className="topbar-cta" href="/" onClick={close}>{nav("إنشاء حساب", "Créer un compte", "Create account")}</a>
+              </>
+            )}
             <LanguageSwitcher />
           </nav>
         </div>
