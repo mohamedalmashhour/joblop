@@ -44,6 +44,10 @@ const serverOnlyNonSecret = new Set([
   "CONTROL_ROOM_MINT_REQUIRE_FINANCE",
   "CONTROL_ROOM_REVOKED_JTIS",
   // CV builder feature config (model name + purchase gate).
+  "CONTACT_ADMIN_EMAIL",
+  "CONTACT_ADMIN_PHONE",
+  "CONTACT_AI_MODEL",
+  "CONTACT_AI_MONTHLY_LIMIT",
   "CV_MODEL",
   "CV_PRO_PURCHASE_ENABLED",
   // Advisory document-review model name (not a credential).
