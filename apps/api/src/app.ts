@@ -325,6 +325,7 @@ import {
   getActiveElection,
   type WorkerClassification
 } from "./workerClassificationElection";
+import { currentPayrollCalculations } from "./currentPayrollCalculations";
 import { buildRemittanceSummary } from "./taxRemittance";
 import { buildTaxSlips, type SlipCalcInput } from "./taxSlip";
 import { GST_RATE_PPM, QST_RATE_PPM } from "./payChannel";
@@ -7698,7 +7699,8 @@ export function buildApi(options: BuildApiOptions = {}) {
     const where: Record<string, unknown> = { status: "locked" };
     if (organizationId) where.organizationId = organizationId;
     if (payrollPeriodId) where.payrollPeriodId = payrollPeriodId;
-    const calcs = await prisma!.payrollCalculation.findMany({ where, select: { id: true, currency: true } });
+    const locked = await prisma!.payrollCalculation.findMany({ where, select: { id: true, currency: true, familyRootId: true, revision: true } });
+    const calcs = currentPayrollCalculations(locked);
     const ids = calcs.map((c) => c.id);
     const currency = calcs[0]?.currency ?? "CAD";
     const [deductions, employerCosts] = await Promise.all([
@@ -8711,16 +8713,16 @@ export function buildApi(options: BuildApiOptions = {}) {
       deductions: c.deductionLines.map((d) => ({ category: d.category, code: d.code, description: d.description, amountMinor: d.amountMinor, currency: d.currency }))
     }));
     // Accurate to-date totals across ALL the worker's approved/locked statements (not just this page).
-    const totals = await prisma!.payrollCalculation.aggregate({
+    const statements = await prisma!.payrollCalculation.findMany({
       where: { workerIdentityId: identity.id, status: { in: ["approved", "locked"] } },
-      _sum: { grossPayMinor: true, totalDeductionsMinor: true, netPayMinor: true },
-      _count: true
+      select: { id: true, familyRootId: true, revision: true, grossPayMinor: true, totalDeductionsMinor: true, netPayMinor: true }
     });
+    const current = currentPayrollCalculations(statements);
     const summary = {
-      statementCount: totals._count,
-      totalGrossMinor: totals._sum.grossPayMinor ?? 0,
-      totalDeductionsMinor: totals._sum.totalDeductionsMinor ?? 0,
-      totalNetMinor: totals._sum.netPayMinor ?? 0,
+      statementCount: current.length,
+      totalGrossMinor: current.reduce((sum, c) => sum + c.grossPayMinor, 0),
+      totalDeductionsMinor: current.reduce((sum, c) => sum + c.totalDeductionsMinor, 0),
+      totalNetMinor: current.reduce((sum, c) => sum + c.netPayMinor, 0),
       currency: items[0]?.currency ?? "CAD"
     };
     return reply.code(200).send({ items, summary, workerClassification: identity.classification, nextCursor: hasMore ? (rows[limit - 1]?.id ?? null) : null, synthetic: true, notice: PAYROLL_SYNTHETIC_NOTICE });
@@ -9363,10 +9365,11 @@ export function buildApi(options: BuildApiOptions = {}) {
     const taxYear = readOptionalNumber(query, "year") ?? new Date().getUTCFullYear();
     const yearStart = new Date(Date.UTC(taxYear, 0, 1));
     const yearEnd = new Date(Date.UTC(taxYear + 1, 0, 1));
-    const calcs = await prisma!.payrollCalculation.findMany({
+    const locked = await prisma!.payrollCalculation.findMany({
       where: { workerIdentityId: identity.id, status: "locked", payrollPeriod: { periodStart: { gte: yearStart, lt: yearEnd } } },
-      select: { id: true, workerClassification: true, grossPayMinor: true, totalEmployerCostMinor: true, currency: true }
+      select: { id: true, familyRootId: true, revision: true, workerClassification: true, grossPayMinor: true, totalEmployerCostMinor: true, currency: true }
     });
+    const calcs = currentPayrollCalculations(locked);
     if (calcs.length === 0) return reply.code(200).send({ slips: [], taxYear, synthetic: true });
     const deductions = await prisma!.payrollDeductionLine.findMany({
       where: { payrollCalculationId: { in: calcs.map((c) => c.id) } },

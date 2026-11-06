@@ -216,6 +216,50 @@ suite("worker journey and payout guards", () => {
       expect(top?.statementLines.find((l) => l.kind === "total")?.amountMinor).toBe(delta);
     });
 
+    it("remittances count an adjusted calculation once, at its latest figures", async () => {
+      const { original, adjustment } = await lockedThenAdjusted(3000, 3500);
+      const res = await app.inject({ method: "GET", url: `/platform/finance/remittances?payrollPeriodId=${original.payrollPeriodId}`, headers: auth(staff.token) });
+      expect(res.statusCode, res.body).toBe(200);
+      expect(res.json().lockedCalculations).toBe(1);
+      expect(res.json().remittances.grandTotalMinor).toBe(adjustment.totalDeductionsMinor + adjustment.totalEmployerCostMinor);
+    });
+
+    it("a tax slip counts an adjusted calculation once, at its latest figures", async () => {
+      const { worker, adjustment } = await lockedThenAdjusted(3000, 3500);
+      const res = await app.inject({ method: "GET", url: "/worker/tax-slips?year=2026", headers: auth(worker.token) });
+      expect(res.statusCode, res.body).toBe(200);
+      const slips = res.json().slips as Record<string, unknown>[];
+      expect(slips).toHaveLength(1);
+      expect(JSON.stringify(slips)).toContain(String(adjustment.grossPayMinor));
+    });
+
+    it("the worker's to-date totals count an adjusted calculation once", async () => {
+      const { worker, adjustment } = await lockedThenAdjusted(3000, 3500);
+      const res = await app.inject({ method: "GET", url: "/worker/payroll/statement", headers: auth(worker.token) });
+      expect(res.statusCode, res.body).toBe(200);
+      expect(res.json().summary).toMatchObject({ statementCount: 1, totalGrossMinor: adjustment.grossPayMinor, totalNetMinor: adjustment.netPayMinor });
+      // Both revisions stay listed as history.
+      expect(res.json().items).toHaveLength(2);
+    });
+
+    it("a second adjustment chains from the first: totals and payouts both land on the latest figure", async () => {
+      const { worker, original, adjustment } = await lockedThenAdjusted(3000, 3500);
+      const job = await prisma.timesheet.findFirstOrThrow({ where: { workerIdentityId: worker.workerIdentityId } });
+      await setWorkerRate(job.jobRequestId, 4000);
+      const corrected = await app.inject({ method: "POST", url: `/platform/payroll/calculations/${adjustment.id}/correct`, headers: auth(staff.token), payload: { expectedVersion: adjustment.version, reason: "second fix" } });
+      expect(corrected.statusCode, corrected.body).toBe(201);
+      await approveAndLock(corrected.json().calculation);
+      const latest = await prisma.payrollCalculation.findUniqueOrThrow({ where: { id: corrected.json().calculation.id } });
+
+      const { payouts } = await materializeAndListWorkerPayouts(prisma, worker.workerIdentityId, new Date());
+      expect(payouts).toHaveLength(3);
+      expect(payouts.reduce((sum, p) => sum + p.amountMinor, 0)).toBe(latest.netPayMinor);
+
+      const remittance = await app.inject({ method: "GET", url: `/platform/finance/remittances?payrollPeriodId=${original.payrollPeriodId}`, headers: auth(staff.token) });
+      expect(remittance.json().lockedCalculations).toBe(1);
+      expect(remittance.json().remittances.grandTotalMinor).toBe(latest.totalDeductionsMinor + latest.totalEmployerCostMinor);
+    });
+
     it("a downward adjustment creates no payout at all", async () => {
       const { worker, original, adjustment } = await lockedThenAdjusted(3500, 3000);
       expect(adjustment.adjustmentNetDirection).toBe("debit");
