@@ -293,7 +293,7 @@ const styles: Record<string, CSSProperties> = {
     padding: 18
   },
   small: { color: muted, fontSize: 13, lineHeight: 1.45, margin: "4px 0" },
-  big: { color: navy, display: "block", fontSize: 30, fontVariantNumeric: "tabular-nums", margin: "6px 0" },
+  big: { color: "#f4efe4", display: "block", fontSize: 30, fontVariantNumeric: "tabular-nums", margin: "6px 0" },
   grid: {
     display: "grid",
     gap: 18,
@@ -309,7 +309,7 @@ const styles: Record<string, CSSProperties> = {
     padding: 18
   },
   panelHeader: { alignItems: "center", display: "flex", justifyContent: "space-between" },
-  h2: { color: navy, fontSize: 20, margin: 0 },
+  h2: { color: "#f4efe4", fontSize: 20, margin: 0 },
   badge: {
     background: statusColors.informational.background,
     border: `1px solid ${statusColors.informational.border}`,
@@ -360,7 +360,7 @@ const styles: Record<string, CSSProperties> = {
     padding: 14
   },
   groupTitle: {
-    color: navy,
+    color: "#f4efe4",
     fontSize: 17
   },
   groupCount: {
@@ -417,11 +417,11 @@ const styles: Record<string, CSSProperties> = {
     textDecoration: "none"
   },
   calendarValue: {
-    color: navy,
+    color: "#f4efe4",
     fontSize: 28,
     fontWeight: 900
   },
-  time: { color: colors.navyMuted },
+  time: { color: "#f4efe4" },
   audit: {
     background: navy,
     borderRadius: radii.sm,

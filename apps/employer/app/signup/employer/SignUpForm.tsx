@@ -20,6 +20,7 @@ export function SignUpForm({ registrationOpen }: { registrationOpen: boolean }) 
   const [confirmEmail, setConfirmEmail] = useState("");
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
+  const [showPassword, setShowPassword] = useState(false);
   const [acceptedNotices, setAcceptedNotices] = useState(false);
   const [state, setState] = useState<"idle" | "submitting" | "error">("idle");
   const [verifying, setVerifying] = useState(false);
@@ -154,7 +155,7 @@ export function SignUpForm({ registrationOpen }: { registrationOpen: boolean }) 
         {t("auth.password")}
         <input
           style={styles.input}
-          type="password"
+          type={showPassword ? "text" : "password"}
           autoComplete="new-password"
           value={password}
           onChange={(event) => setPassword(event.target.value)}
@@ -167,7 +168,7 @@ export function SignUpForm({ registrationOpen }: { registrationOpen: boolean }) 
         {t("auth.confirmPassword")}
         <input
           style={styles.input}
-          type="password"
+          type={showPassword ? "text" : "password"}
           autoComplete="new-password"
           value={confirmPassword}
           onChange={(event) => setConfirmPassword(event.target.value)}
@@ -175,6 +176,14 @@ export function SignUpForm({ registrationOpen }: { registrationOpen: boolean }) 
           minLength={12}
           required
         />
+      </label>
+      <label style={{ ...styles.fieldLabel, gridTemplateColumns: "auto 1fr", alignItems: "center" }}>
+        <input
+          type="checkbox"
+          checked={showPassword}
+          onChange={(event) => setShowPassword(event.target.checked)}
+        />
+        {t("auth.showPassword")}
       </label>
       <label style={{ ...styles.fieldLabel, gridTemplateColumns: "auto 1fr", alignItems: "start" }}>
         <input
