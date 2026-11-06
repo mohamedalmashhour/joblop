@@ -3,7 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { createLocalPrivateFileObjectStore, createMemoryPrivateObjectStore } from "./documentUpload";
-import { createLocalHrDocumentStorageProvider, detectViewableHrDocumentType, sanitizeHrDocumentFileName } from "./hrDocumentStorageLocal";
+import { createEncryptedObjectStore, createLocalHrDocumentStorageProvider, detectViewableHrDocumentType, sanitizeHrDocumentFileName } from "./hrDocumentStorageLocal";
 
 const SECRET = "0123456789abcdef0123456789abcdef"; // 32 chars
 const WORKER = "11111111-1111-1111-1111-111111111111";
@@ -121,5 +121,47 @@ describe("HR document file handling", () => {
     expect(detectViewableHrDocumentType(new Uint8Array([0xff, 0xd8, 0xff, 0xe0]))).toBe("image/jpeg");
     expect(detectViewableHrDocumentType(text("<html><script>alert(1)</script>"))).toBeNull();
     expect(detectViewableHrDocumentType(new Uint8Array())).toBeNull();
+  });
+});
+
+describe("HR document encryption at rest", () => {
+  const key = "hr/worker/certificate/one";
+  const plain = new TextEncoder().encode("%PDF-1.7 private worker document");
+
+  it("never writes the readable bytes to the store, and reads them back", async () => {
+    const inner = createMemoryPrivateObjectStore();
+    const sealed = createEncryptedObjectStore(inner, SECRET);
+    await sealed.put({ key, bytes: plain });
+    const onDisk = await inner.get(key);
+    expect(Buffer.from(onDisk!).includes(Buffer.from("private worker document"))).toBe(false);
+    expect(Buffer.from((await sealed.get(key))!).equals(Buffer.from(plain))).toBe(true);
+  });
+
+  it("still reads files stored before encryption existed", async () => {
+    const inner = createMemoryPrivateObjectStore();
+    await inner.put({ key, bytes: plain });
+    expect(Buffer.from((await createEncryptedObjectStore(inner, SECRET).get(key))!).equals(Buffer.from(plain))).toBe(true);
+  });
+
+  it("refuses a tampered file, a moved file, and the wrong secret", async () => {
+    const inner = createMemoryPrivateObjectStore();
+    const sealed = createEncryptedObjectStore(inner, SECRET);
+    await sealed.put({ key, bytes: plain });
+    const onDisk = (await inner.get(key))!;
+    await inner.put({ key: "hr/other", bytes: onDisk });
+    expect(await sealed.get("hr/other")).toBeNull();
+    expect(await createEncryptedObjectStore(inner, SECRET.replace("0", "x")).get(key)).toBeNull();
+    const broken = Uint8Array.from(onDisk);
+    broken[broken.length - 1] = (broken[broken.length - 1] ?? 0) ^ 1;
+    await inner.delete(key);
+    await inner.put({ key, bytes: broken });
+    expect(await sealed.get(key)).toBeNull();
+  });
+
+  it("encrypts through the provider too", async () => {
+    const { store, provider } = make();
+    await provider.store.put({ key, bytes: plain });
+    expect(Buffer.from((await store.get(key))!).includes(Buffer.from("private worker document"))).toBe(false);
+    expect(Buffer.from((await provider.store.get(key))!).equals(Buffer.from(plain))).toBe(true);
   });
 });

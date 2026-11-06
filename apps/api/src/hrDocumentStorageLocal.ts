@@ -1,4 +1,4 @@
-import { createHmac, randomUUID, timingSafeEqual } from "node:crypto";
+import { createCipheriv, createDecipheriv, createHmac, hkdfSync, randomBytes, randomUUID, timingSafeEqual } from "node:crypto";
 import type { DocumentStorageProvider } from "@rwos/auth";
 import type { PrivateObjectStore } from "./documentUpload";
 
@@ -21,6 +21,44 @@ export type LocalHrDocumentStorageProvider = DocumentStorageProvider & {
   isValidReference(ref: string): boolean;
 };
 
+// Encryption at rest. Every object is sealed with AES-256-GCM before it reaches the disk, using a key
+// derived from the storage secret, and bound to its object key so a file cannot be swapped for
+// another worker's. Files written before this existed have no header and are read as they are.
+// Changing the storage secret makes sealed files unreadable, so it must be kept and backed up.
+const SEALED_HEADER = Buffer.from("JLE1", "ascii");
+const IV_BYTES = 12;
+const TAG_BYTES = 16;
+
+export function createEncryptedObjectStore(inner: PrivateObjectStore, secret: string): PrivateObjectStore {
+  const key = Buffer.from(hkdfSync("sha256", secret, "", "joblop-hr-documents-at-rest-v1", 32));
+  return {
+    async put({ key: objectKey, bytes }) {
+      const iv = randomBytes(IV_BYTES);
+      const cipher = createCipheriv("aes-256-gcm", key, iv);
+      cipher.setAAD(Buffer.from(objectKey, "utf8"));
+      const body = Buffer.concat([cipher.update(bytes), cipher.final()]);
+      await inner.put({ key: objectKey, bytes: new Uint8Array(Buffer.concat([SEALED_HEADER, iv, cipher.getAuthTag(), body])) });
+    },
+    async get(objectKey) {
+      const stored = await inner.get(objectKey);
+      if (!stored) return null;
+      const raw = Buffer.from(stored);
+      if (!raw.subarray(0, SEALED_HEADER.length).equals(SEALED_HEADER)) return stored;
+      const bodyStart = SEALED_HEADER.length + IV_BYTES + TAG_BYTES;
+      if (raw.length < bodyStart) return null;
+      try {
+        const decipher = createDecipheriv("aes-256-gcm", key, raw.subarray(SEALED_HEADER.length, SEALED_HEADER.length + IV_BYTES));
+        decipher.setAAD(Buffer.from(objectKey, "utf8"));
+        decipher.setAuthTag(raw.subarray(SEALED_HEADER.length + IV_BYTES, bodyStart));
+        return new Uint8Array(Buffer.concat([decipher.update(raw.subarray(bodyStart)), decipher.final()]));
+      } catch {
+        return null; // Tampered, moved, or sealed under another secret: never hand back bad bytes.
+      }
+    },
+    delete: (objectKey) => inner.delete(objectKey)
+  };
+}
+
 export function createLocalHrDocumentStorageProvider(options: {
   store: PrivateObjectStore;
   secret: string;
@@ -29,6 +67,7 @@ export function createLocalHrDocumentStorageProvider(options: {
   if (!options.secret || options.secret.length < 32) {
     throw new Error("HR document storage secret is required (>= 32 chars).");
   }
+  const store = createEncryptedObjectStore(options.store, options.secret);
   const sign = (scope: "up" | "dl", ref: string) =>
     createHmac("sha256", options.secret).update(`${scope}:${ref}`).digest("hex");
   const verify = (scope: "up" | "dl", ref: string, sig: string) => {
@@ -42,16 +81,16 @@ export function createLocalHrDocumentStorageProvider(options: {
 
   return {
     name: options.name ?? "local-hr",
-    store: options.store,
+    store,
     isValidReference: (ref) => typeof ref === "string" && REF_RE.test(ref),
     objectKey,
     async saveFileInfo(ref, info) {
       const bytes = new TextEncoder().encode(JSON.stringify(info));
-      await options.store.put({ key: infoKey(ref), bytes });
+      await store.put({ key: infoKey(ref), bytes });
     },
     async describe({ storageReference }) {
       if (!REF_RE.test(storageReference)) return null;
-      const bytes = await options.store.get(infoKey(storageReference));
+      const bytes = await store.get(infoKey(storageReference));
       if (!bytes) return null;
       try {
         const info = JSON.parse(new TextDecoder().decode(bytes)) as { fileName?: unknown; contentType?: unknown };
@@ -84,7 +123,7 @@ export function createLocalHrDocumentStorageProvider(options: {
       // (so a worker cannot record a document whose bytes were never uploaded).
       if (!REF_RE.test(storageReference)) return false;
       if (!storageReference.startsWith(`${workerIdentityId}/`)) return false;
-      return (await options.store.get(objectKey(storageReference))) !== null;
+      return (await store.get(objectKey(storageReference))) !== null;
     }
   };
 }
