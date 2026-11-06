@@ -60,6 +60,14 @@ export function offlineAdvisoryVerdict(documentType: string, opts?: { expired?: 
   return { status: "human_required", advisory: true, reason: "unknown_type", source: "offline" };
 }
 
+/** What a person may be shown. An offline pass means no file was read, so it must never read as an
+ *  approval; it goes to a human instead. */
+export function presentableVerdict(verdict: DocumentAiVerdict): DocumentAiVerdict {
+  return verdict.source === "offline" && verdict.status === "ai_approved"
+    ? { ...verdict, status: "human_required", reason: "not_read" }
+    : verdict;
+}
+
 /** Map a free-form model answer ("APPROVE" / "REUPLOAD" / "HUMAN") to a verdict. Defaults to the
  *  safe side (human_required) when the answer is unrecognized. */
 export function parseModelVerdict(answer: string, documentType: string): DocumentAiVerdict {

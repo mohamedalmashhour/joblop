@@ -216,6 +216,11 @@ export function createHrDocumentService(deps: HrDocumentDeps) {
       }));
     },
 
+    async myDocumentStatuses(input: { userId: string }): Promise<ReadonlyArray<{ documentType: string; effectiveStatus: string }>> {
+      const workerIdentityId = await requireWorker(input.userId);
+      return (await deps.store.listForWorker(workerIdentityId)).map((r) => ({ documentType: r.documentType, effectiveStatus: withEffective(r).effectiveStatus }));
+    },
+
     // Worker: locate ONE of their OWN current documents so they can view or save it. A deleted or
     // replaced document is not served, and another worker's document is never found.
     async getMyDocumentFile(input: { userId: string; documentId: string }): Promise<{ documentType: string; storageReference: string } | null> {

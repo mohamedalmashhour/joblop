@@ -29,6 +29,7 @@ type SearchResponse = Readonly<{
   total: number;
   nextCursor: number | null;
   jobs: readonly JobResult[];
+  profile?: { score: number; tier: string; hiddenJobs: number };
 }>;
 
 const RADII = [5, 10, 25, 50, 100] as const;
@@ -76,6 +77,7 @@ function SearchPanel({ onSignedOut }: { onSignedOut: () => void }) {
   const [jobs, setJobs] = useState<JobResult[]>([]);
   const [total, setTotal] = useState(0);
   const [nextCursor, setNextCursor] = useState<number | null>(null);
+  const [hiddenJobs, setHiddenJobs] = useState(0);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [view, setView] = useState<"list" | "agenda" | "map">("list");
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
@@ -125,6 +127,7 @@ function SearchPanel({ onSignedOut }: { onSignedOut: () => void }) {
         setJobs([...payload.jobs]);
         setTotal(payload.total);
         setNextCursor(payload.nextCursor);
+        setHiddenJobs(payload.profile?.hiddenJobs ?? 0);
         setStatus(payload.total === 0 ? "empty" : "done");
       } catch {
         setErrorMessage(t("common.somethingWrong"));
@@ -317,6 +320,12 @@ function SearchPanel({ onSignedOut }: { onSignedOut: () => void }) {
       {status === "done" && view !== "agenda" ? (
         <div className={`explorer view-${view}`}>
           <div className="results" ref={listRef}>
+            {hiddenJobs > 0 ? (
+              <div className="card" style={{ borderColor: "var(--accent)" }}>
+                <p className="notice" style={{ margin: 0 }}>{t("mk.moreJobs", { count: hiddenJobs })}</p>
+                <a className="btn" href="/documents" style={{ alignSelf: "flex-start" }}>{t("mk.completeProfile")}</a>
+              </div>
+            ) : null}
             {jobs.map((job) => (
               <JobCard
                 key={job.jobRequestId}
