@@ -138,6 +138,7 @@ import {
   createHttpCandidateSource,
   createLocalMarketplaceCandidateSource,
   createHttpWorkerOfferDeliveryProvider,
+  createBrevoWorkerOfferDeliveryProvider,
   createResendWorkerOfferDeliveryProvider,
   passwordPolicyErrorCode,
   registrationUnavailableCode,
@@ -946,14 +947,18 @@ export function buildApi(options: BuildApiOptions = {}) {
             : localDispatchCandidateSource
         )
       : createUnavailableDispatchService());
-  // Worker-offer delivery channel. Prefer Resend email (free, reliable; reuses the email
-  // config already used for verification), then the external HTTP delivery service, else none.
+  // Worker-offer delivery channel. Prefer the configured email provider (Brevo or Resend; reuses
+  // the email config already used for verification), then the external HTTP delivery service, else none.
   // Fail-closed: with neither configured, offers simply aren't auto-delivered.
   const offerCtaOrigin = (options.publicWorkerWebOrigin ?? environment.WORKER_WEB_ORIGIN ?? "").trim() || null;
-  const resendOfferDeliveryProvider =
+  const createEmailOfferDeliveryProvider =
+    runtimeConfig.emailProvider === "resend"
+      ? createResendWorkerOfferDeliveryProvider
+      : createBrevoWorkerOfferDeliveryProvider;
+  const emailOfferDeliveryProvider =
     prisma && runtimeConfig.hasEmailDelivery && runtimeConfig.emailFrom
-      ? createResendWorkerOfferDeliveryProvider({
-          apiKey: runtimeConfig.resendApiKey!,
+      ? createEmailOfferDeliveryProvider({
+          apiKey: runtimeConfig.emailApiKey!,
           fromAddress: runtimeConfig.emailFrom,
           resolveRecipient: async ({ workerOfferId, organizationId }) => {
             const offer = await prisma.workerOffer.findFirst({
@@ -1013,7 +1018,7 @@ export function buildApi(options: BuildApiOptions = {}) {
         })
       : null;
   const workerOfferDeliveryProvider =
-    resendOfferDeliveryProvider ??
+    emailOfferDeliveryProvider ??
     (runtimeConfig.hasOfferDelivery
       ? createHttpWorkerOfferDeliveryProvider({
           origin: runtimeConfig.offerDeliveryOrigin!,

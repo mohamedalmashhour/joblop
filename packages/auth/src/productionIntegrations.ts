@@ -510,11 +510,27 @@ function composeOfferEmail(r: OfferEmailRecipient): { subject: string; html: str
   return { subject, html, text };
 }
 
-export function createResendWorkerOfferDeliveryProvider(
-  options: ResendOfferDeliveryOptions
+type OfferEmailContent = Readonly<{
+  recipient: OfferEmailRecipient;
+  subject: string;
+  html: string;
+  text: string;
+}>;
+
+type OfferEmailRequest = Readonly<{
+  url: string;
+  headers: Record<string, string>;
+  body: Record<string, unknown>;
+}>;
+
+// The delivery rules shared by every email provider: fail closed without a key or a deliverable
+// contact, retry only what retrying can help. Each provider supplies its own request and reply id.
+function createEmailOfferDeliveryProvider(
+  options: ResendOfferDeliveryOptions,
+  buildRequest: (content: OfferEmailContent, idempotencyKey: string) => OfferEmailRequest,
+  readReference: (reply: Record<string, unknown>) => unknown
 ): WorkerOfferDeliveryProvider {
   const fetcher = options.fetch ?? fetch;
-  const baseUrl = options.baseUrl ?? "https://api.resend.com/emails";
   return {
     async deliver(input) {
       if (!options.apiKey || options.apiKey.trim().length < 10 || !options.fromAddress) {
@@ -533,34 +549,88 @@ export function createResendWorkerOfferDeliveryProvider(
       if (!recipient || !isEmailAddress(recipient.email)) {
         return { status: "failed", providerReference: null, retryable: false }; // no deliverable contact
       }
-      const { subject, html, text } = composeOfferEmail(recipient);
+      const request = buildRequest({ recipient, ...composeOfferEmail(recipient) }, input.idempotencyKey);
       try {
-        const response = await fetcher(baseUrl, {
+        const response = await fetcher(request.url, {
           method: "POST",
-          headers: {
-            authorization: `Bearer ${options.apiKey}`,
-            "content-type": "application/json",
-            "idempotency-key": input.idempotencyKey
-          },
-          body: JSON.stringify({
-            from: options.fromAddress,
-            to: [recipient.email],
-            subject,
-            html,
-            text,
-            ...(options.replyTo ? { reply_to: options.replyTo } : {})
-          })
+          headers: request.headers,
+          body: JSON.stringify(request.body)
         });
         if (!response.ok) {
           const retryable = response.status >= 500 || response.status === 429;
           return { status: "failed", providerReference: null, retryable };
         }
-        const record = asRecord(await response.json().catch(() => null));
-        const providerReference = typeof record.id === "string" ? record.id : null;
-        return { status: "sent", providerReference, retryable: false };
+        const reference = readReference(asRecord(await response.json().catch(() => null)));
+        return {
+          status: "sent",
+          providerReference: typeof reference === "string" ? reference : null,
+          retryable: false
+        };
       } catch {
         return failedDelivery();
       }
     }
   };
+}
+
+export function createResendWorkerOfferDeliveryProvider(
+  options: ResendOfferDeliveryOptions
+): WorkerOfferDeliveryProvider {
+  const url = options.baseUrl ?? "https://api.resend.com/emails";
+  return createEmailOfferDeliveryProvider(
+    options,
+    ({ recipient, subject, html, text }, idempotencyKey) => ({
+      url,
+      headers: {
+        authorization: `Bearer ${options.apiKey}`,
+        "content-type": "application/json",
+        "idempotency-key": idempotencyKey
+      },
+      body: {
+        from: options.fromAddress,
+        to: [recipient.email],
+        subject,
+        html,
+        text,
+        ...(options.replyTo ? { reply_to: options.replyTo } : {})
+      }
+    }),
+    (reply) => reply.id
+  );
+}
+
+// "Name <email@domain>" or a bare address, in the structured sender shape Brevo requires.
+function brevoSender(from: string): { email: string; name?: string } {
+  const match = /^\s*(.+?)\s*<([^>]+)>\s*$/.exec(from);
+  const name = match?.[1];
+  const email = match?.[2];
+  return name && email ? { email: email.trim(), name: name.trim() } : { email: from.trim() };
+}
+
+// Same offer email over Brevo's transactional API. No idempotency header is sent, so a retry after
+// a lost reply could repeat the email; the offer itself is unaffected.
+export function createBrevoWorkerOfferDeliveryProvider(
+  options: ResendOfferDeliveryOptions
+): WorkerOfferDeliveryProvider {
+  const url = options.baseUrl ?? "https://api.brevo.com/v3/smtp/email";
+  return createEmailOfferDeliveryProvider(
+    options,
+    ({ recipient, subject, html, text }) => ({
+      url,
+      headers: {
+        "api-key": options.apiKey,
+        "content-type": "application/json",
+        accept: "application/json"
+      },
+      body: {
+        sender: brevoSender(options.fromAddress),
+        to: [{ email: recipient.email, ...(recipient.name ? { name: recipient.name } : {}) }],
+        subject,
+        htmlContent: html,
+        textContent: text,
+        ...(options.replyTo ? { replyTo: { email: options.replyTo } } : {})
+      }
+    }),
+    (reply) => reply.messageId
+  );
 }

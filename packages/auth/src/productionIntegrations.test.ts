@@ -4,6 +4,7 @@ import {
   ProductionIntegrationError,
   createHttpCandidateSource,
   createHttpWorkerOfferDeliveryProvider,
+  createBrevoWorkerOfferDeliveryProvider,
   createResendWorkerOfferDeliveryProvider
 } from "./productionIntegrations";
 
@@ -427,5 +428,78 @@ describe("Resend worker offer delivery", () => {
       providerReference: null,
       retryable
     });
+  });
+});
+
+describe("Brevo worker offer delivery", () => {
+  const API_KEY = "xkeysib-testkey-1234567890";
+  const deliverInput = {
+    organizationId: "00000000-0000-4000-8000-0000000003b1",
+    workerOfferId: "00000000-0000-4000-8000-0000000003b2",
+    workerIdentityId: "00000000-0000-4000-8000-0000000003b3",
+    idempotencyKey: "worker-offer:offer-b2:terms:t1"
+  };
+  const recipient = {
+    email: "worker@example.com",
+    name: "Alex",
+    language: "en" as const,
+    title: "Personal Support Worker (PSW)",
+    summary: null,
+    compensation: "$24.00/h",
+    whenLabel: "Oct 20, 2026, 9:00 a.m. – 5:00 p.m.",
+    areaLabel: "Laval, QC",
+    ctaUrl: "https://work.joblop.example/offers"
+  };
+
+  it("sends the offer through Brevo's API with its own key header and sender shape", async () => {
+    let captured: { url: unknown; init: RequestInit | undefined } | null = null;
+    const fetchImpl = (async (url: string | URL | Request, init?: RequestInit) => {
+      captured = { url, init };
+      return jsonResponse({ messageId: "<brevo-msg-1>" });
+    }) as unknown as typeof fetch;
+    const provider = createBrevoWorkerOfferDeliveryProvider({
+      apiKey: API_KEY,
+      fromAddress: "Joblop <no-reply@notifications.example>",
+      fetch: fetchImpl,
+      resolveRecipient: async () => recipient
+    });
+
+    const result = await provider.deliver(deliverInput);
+
+    expect(result).toEqual({ status: "sent", providerReference: "<brevo-msg-1>", retryable: false });
+    expect(String(captured!.url)).toBe("https://api.brevo.com/v3/smtp/email");
+    const headers = captured!.init?.headers as Record<string, string>;
+    expect(headers["api-key"]).toBe(API_KEY);
+    expect(headers.authorization).toBeUndefined();
+    const body = JSON.parse(String(captured!.init?.body));
+    expect(body.sender).toEqual({ name: "Joblop", email: "no-reply@notifications.example" });
+    expect(body.to).toEqual([{ email: "worker@example.com", name: "Alex" }]);
+    expect(body.subject).toContain("New shift offer");
+    expect(body.textContent).toContain("Laval, QC");
+    expect(body.htmlContent).toContain("Joblop");
+  });
+
+  it("fails closed without a key and retries only provider outages", async () => {
+    const neverCalled = vi.fn(async () => jsonResponse({})) as unknown as typeof fetch;
+    const noKey = createBrevoWorkerOfferDeliveryProvider({
+      apiKey: "",
+      fromAddress: "no-reply@notifications.example",
+      fetch: neverCalled,
+      resolveRecipient: async () => recipient
+    });
+    await expect(noKey.deliver(deliverInput)).resolves.toEqual({
+      status: "failed",
+      providerReference: null,
+      retryable: false
+    });
+    expect(neverCalled).not.toHaveBeenCalled();
+
+    const outage = createBrevoWorkerOfferDeliveryProvider({
+      apiKey: API_KEY,
+      fromAddress: "no-reply@notifications.example",
+      fetch: (async () => new Response("{}", { status: 503 })) as unknown as typeof fetch,
+      resolveRecipient: async () => recipient
+    });
+    await expect(outage.deliver(deliverInput)).resolves.toMatchObject({ status: "failed", retryable: true });
   });
 });
