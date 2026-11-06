@@ -401,10 +401,9 @@ function summaryState(input: unknown) {
   ]);
 }
 
-// ── Resend email offer delivery ──────────────────────────────────────────────
-// A direct worker-offer delivery channel over Resend (https://resend.com) — the free,
-// reliable default. Implements the same WorkerOfferDeliveryProvider seam as the HTTP
-// provider. The worker's contact + offer summary are resolved via an injected
+// ── Brevo email offer delivery ───────────────────────────────────────────────
+// A direct worker-offer delivery channel over Brevo's transactional email API. Implements
+// the same WorkerOfferDeliveryProvider seam as the HTTP provider. The worker's contact + offer summary are resolved via an injected
 // resolveRecipient (the API layer supplies a Prisma-backed one), so this stays free of
 // any database dependency. Fail-closed: no key / no deliverable email => a failed result
 // (non-retryable when retrying cannot help, e.g. the worker has no email on file).
@@ -420,7 +419,7 @@ export type OfferEmailRecipient = Readonly<{
   ctaUrl: string | null; // deep link into the worker app
 }>;
 
-export type ResendOfferDeliveryOptions = Readonly<{
+export type BrevoOfferDeliveryOptions = Readonly<{
   apiKey: string;
   fromAddress: string; // e.g. "Joblop <offers@mail.yourdomain.ca>"
   replyTo?: string;
@@ -510,27 +509,21 @@ function composeOfferEmail(r: OfferEmailRecipient): { subject: string; html: str
   return { subject, html, text };
 }
 
-type OfferEmailContent = Readonly<{
-  recipient: OfferEmailRecipient;
-  subject: string;
-  html: string;
-  text: string;
-}>;
+// "Name <email@domain>" or a bare address, in the structured sender shape Brevo requires.
+function brevoSender(from: string): { email: string; name?: string } {
+  const match = /^\s*(.+?)\s*<([^>]+)>\s*$/.exec(from);
+  const name = match?.[1];
+  const email = match?.[2];
+  return name && email ? { email: email.trim(), name: name.trim() } : { email: from.trim() };
+}
 
-type OfferEmailRequest = Readonly<{
-  url: string;
-  headers: Record<string, string>;
-  body: Record<string, unknown>;
-}>;
-
-// The delivery rules shared by every email provider: fail closed without a key or a deliverable
-// contact, retry only what retrying can help. Each provider supplies its own request and reply id.
-function createEmailOfferDeliveryProvider(
-  options: ResendOfferDeliveryOptions,
-  buildRequest: (content: OfferEmailContent, idempotencyKey: string) => OfferEmailRequest,
-  readReference: (reply: Record<string, unknown>) => unknown
+// No idempotency header is sent, so a retry after a lost reply could repeat the email; the offer
+// itself is unaffected.
+export function createBrevoWorkerOfferDeliveryProvider(
+  options: BrevoOfferDeliveryOptions
 ): WorkerOfferDeliveryProvider {
   const fetcher = options.fetch ?? fetch;
+  const baseUrl = options.baseUrl ?? "https://api.brevo.com/v3/smtp/email";
   return {
     async deliver(input) {
       if (!options.apiKey || options.apiKey.trim().length < 10 || !options.fromAddress) {
@@ -549,88 +542,34 @@ function createEmailOfferDeliveryProvider(
       if (!recipient || !isEmailAddress(recipient.email)) {
         return { status: "failed", providerReference: null, retryable: false }; // no deliverable contact
       }
-      const request = buildRequest({ recipient, ...composeOfferEmail(recipient) }, input.idempotencyKey);
+      const { subject, html, text } = composeOfferEmail(recipient);
       try {
-        const response = await fetcher(request.url, {
+        const response = await fetcher(baseUrl, {
           method: "POST",
-          headers: request.headers,
-          body: JSON.stringify(request.body)
+          headers: {
+            "api-key": options.apiKey,
+            "content-type": "application/json",
+            accept: "application/json"
+          },
+          body: JSON.stringify({
+            sender: brevoSender(options.fromAddress),
+            to: [{ email: recipient.email, ...(recipient.name ? { name: recipient.name } : {}) }],
+            subject,
+            htmlContent: html,
+            textContent: text,
+            ...(options.replyTo ? { replyTo: { email: options.replyTo } } : {})
+          })
         });
         if (!response.ok) {
           const retryable = response.status >= 500 || response.status === 429;
           return { status: "failed", providerReference: null, retryable };
         }
-        const reference = readReference(asRecord(await response.json().catch(() => null)));
-        return {
-          status: "sent",
-          providerReference: typeof reference === "string" ? reference : null,
-          retryable: false
-        };
+        const record = asRecord(await response.json().catch(() => null));
+        const providerReference = typeof record.messageId === "string" ? record.messageId : null;
+        return { status: "sent", providerReference, retryable: false };
       } catch {
         return failedDelivery();
       }
     }
   };
-}
-
-export function createResendWorkerOfferDeliveryProvider(
-  options: ResendOfferDeliveryOptions
-): WorkerOfferDeliveryProvider {
-  const url = options.baseUrl ?? "https://api.resend.com/emails";
-  return createEmailOfferDeliveryProvider(
-    options,
-    ({ recipient, subject, html, text }, idempotencyKey) => ({
-      url,
-      headers: {
-        authorization: `Bearer ${options.apiKey}`,
-        "content-type": "application/json",
-        "idempotency-key": idempotencyKey
-      },
-      body: {
-        from: options.fromAddress,
-        to: [recipient.email],
-        subject,
-        html,
-        text,
-        ...(options.replyTo ? { reply_to: options.replyTo } : {})
-      }
-    }),
-    (reply) => reply.id
-  );
-}
-
-// "Name <email@domain>" or a bare address, in the structured sender shape Brevo requires.
-function brevoSender(from: string): { email: string; name?: string } {
-  const match = /^\s*(.+?)\s*<([^>]+)>\s*$/.exec(from);
-  const name = match?.[1];
-  const email = match?.[2];
-  return name && email ? { email: email.trim(), name: name.trim() } : { email: from.trim() };
-}
-
-// Same offer email over Brevo's transactional API. No idempotency header is sent, so a retry after
-// a lost reply could repeat the email; the offer itself is unaffected.
-export function createBrevoWorkerOfferDeliveryProvider(
-  options: ResendOfferDeliveryOptions
-): WorkerOfferDeliveryProvider {
-  const url = options.baseUrl ?? "https://api.brevo.com/v3/smtp/email";
-  return createEmailOfferDeliveryProvider(
-    options,
-    ({ recipient, subject, html, text }) => ({
-      url,
-      headers: {
-        "api-key": options.apiKey,
-        "content-type": "application/json",
-        accept: "application/json"
-      },
-      body: {
-        sender: brevoSender(options.fromAddress),
-        to: [{ email: recipient.email, ...(recipient.name ? { name: recipient.name } : {}) }],
-        subject,
-        htmlContent: html,
-        textContent: text,
-        ...(options.replyTo ? { replyTo: { email: options.replyTo } } : {})
-      }
-    }),
-    (reply) => reply.messageId
-  );
 }
