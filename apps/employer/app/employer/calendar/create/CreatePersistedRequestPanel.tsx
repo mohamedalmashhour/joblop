@@ -18,6 +18,7 @@ import {
 } from "@rwos/shared";
 import { LanguageSwitcher } from "../../../i18n/LanguageSwitcher";
 import { useT, type Translate } from "../../../i18n/LocaleProvider";
+import { requestActionNotice } from "./requestActionNotice";
 
 type Provision = "none" | "provided" | "allowance";
 
@@ -338,6 +339,7 @@ export function CreatePersistedRequestPanel() {
   }
 
   const editing = status === "editing";
+  const actionNotice = requestActionNotice({ editing, message, rateUnpriced, missingFields: validation.filter((field) => field !== undefined), t });
 
   return (
     <form aria-busy={status === "saving" || status === "submitting"} onSubmit={prepareReview}>
@@ -439,6 +441,7 @@ export function CreatePersistedRequestPanel() {
 
       {status === "review" ? <RequestReview form={form} roleLabel={selectedRole?.displayLabel ?? form.roleDefinition} t={t} /> : null}
       <p style={styles.cardText}>{t("create.economicsNote")}</p>
+      {actionNotice ? <div style={{ ...styles.warning, marginTop: 18 }}>{actionNotice}</div> : null}
       <div style={{ display: "flex", flexWrap: "wrap", gap: 10, marginTop: 18 }}>
         {status === "editing" ? (
           <button disabled={validation.length > 0 || rateUnpriced} style={validation.length || rateUnpriced ? styles.disabledAction : styles.primaryButton} type="submit">{t("create.reviewRequest")}</button>
