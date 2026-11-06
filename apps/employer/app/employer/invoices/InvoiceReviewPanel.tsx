@@ -6,6 +6,7 @@ import { styles } from "../employerStyles";
 import { LanguageSwitcher } from "../../i18n/LanguageSwitcher";
 import { fmtLocale, useLocale, useT } from "../../i18n/LocaleProvider";
 import { previewInvoicePaymentOptions } from "./invoicePaymentPreview";
+import { findSelectedInvoice, invoiceDetailHref } from "./invoiceSelection";
 import type { RwosLocale } from "../../i18n/config";
 
 type InvoiceSummary = Readonly<{
@@ -27,7 +28,13 @@ type LoadState =
   | { status: "ready"; invoices: readonly InvoiceSummary[] }
   | { status: "error"; message: string };
 
-export function InvoiceReviewPanel({ mode }: { mode: "list" | "detail" | "breakdown" }) {
+export function InvoiceReviewPanel({
+  mode,
+  invoiceId = null
+}: {
+  mode: "list" | "detail" | "breakdown";
+  invoiceId?: string | null;
+}) {
   const t = useT();
   const locale = fmtLocale(useLocale());
   const [state, setState] = useState<LoadState>({ status: "loading" });
@@ -62,7 +69,7 @@ export function InvoiceReviewPanel({ mode }: { mode: "list" | "detail" | "breakd
   }, []);
 
   const invoices = state.status === "ready" ? state.invoices : [];
-  const selected = invoices[0] ?? null;
+  const selected = findSelectedInvoice(invoices, invoiceId);
   const paymentPreview = selected ? previewInvoicePaymentOptions(selected) : null;
   return (
     <section style={styles.section}>
@@ -93,7 +100,7 @@ export function InvoiceReviewPanel({ mode }: { mode: "list" | "detail" | "breakd
                 <p style={styles.cardText}>{t("inv.stateLine", { state: invoice.status })}</p>
                 <p style={styles.cardText}>{t("inv.total", { amount: formatCad(invoice.totalMinor, locale) })}</p>
                 <p style={styles.cardText}>{t("inv.due", { date: formatDate(invoice.dueAt, locale, t) })}</p>
-                <a href="/employer/invoices/detail" style={{ ...styles.secondaryButton, marginTop: 12 }}>
+                <a href={invoiceDetailHref(invoice.id)} style={{ ...styles.secondaryButton, marginTop: 12 }}>
                   {t("inv.openDetail")}
                 </a>
               </article>
@@ -159,7 +166,14 @@ export function InvoiceReviewPanel({ mode }: { mode: "list" | "detail" | "breakd
             </section>
           ) : null}
           </>
-        ) : null}
+        ) : (
+          <>
+            <p style={styles.cardText}>{t("inv.chooseFromList")}</p>
+            <a href="/employer/invoices" style={{ ...styles.secondaryButton, marginTop: 12 }}>
+              {t("inv.backToList")}
+            </a>
+          </>
+        )}
       </div>
       <section style={{ marginTop: 22 }}>
         <div style={styles.pillGrid}>
