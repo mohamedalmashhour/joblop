@@ -1,5 +1,6 @@
 import { spawnSync } from "node:child_process";
 import { randomUUID } from "node:crypto";
+import { readdirSync } from "node:fs";
 
 import { createPrismaClient } from "@rwos/database";
 
@@ -84,22 +85,11 @@ async function main() {
       ],
       validationEnvironment
     );
+    // Every suite runs, so a new one cannot be left off a list. They share one database, so they run
+    // one at a time: some compare table-wide row counts before and after an action.
     run(
       "pnpm",
-      [
-        "exec",
-        "vitest",
-        "run",
-        "tests/integration/postgres-worker-offer-capacity.test.ts",
-        "tests/integration/postgres-assignment-concurrency.test.ts",
-        "tests/integration/postgres-payroll-review-context.test.ts",
-        "tests/integration/postgres-payroll-ai-review.test.ts",
-        "tests/integration/postgres-payroll-period-review.test.ts",
-        "tests/integration/postgres-payroll-period-review-paths.test.ts",
-        "tests/integration/postgres-payroll-provenance.test.ts",
-        "tests/integration/postgres-payroll-ai-egress.test.ts",
-        "tests/integration/postgres-payroll-telemetry.test.ts"
-      ],
+      ["exec", "vitest", "run", "--no-file-parallelism", ...postgresSuites()],
       validationEnvironment
     );
   } finally {
@@ -123,6 +113,19 @@ async function main() {
       ? "LOCAL_POSTGRES_REQUIRED_VALIDATION_PASS evidence=none\n"
       : `POSTGRES_REQUIRED_VALIDATION_PASS releaseSha=${process.env.RWOS_RELEASE_SHA}\n`
   );
+}
+
+function postgresSuites() {
+  const integrationDirectory = "tests/integration";
+  const integrationSuites = readdirSync(integrationDirectory)
+    .filter((name) => /^postgres-.*\.test\.ts$/.test(name))
+    .sort()
+    .map((name) => `${integrationDirectory}/${name}`);
+  return [
+    "apps/api/src/stagingE2eSyntheticPasswordBootstrap.test.ts",
+    "apps/qa-reset/src/supersessionReconcile.integration.test.ts",
+    ...integrationSuites
+  ];
 }
 
 function run(command: string, args: string[], environment: NodeJS.ProcessEnv) {

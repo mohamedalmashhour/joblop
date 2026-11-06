@@ -36,6 +36,41 @@ jobs:
       - run: pnpm validate
       - run: pnpm validate:containers:static
 
+  # `pnpm validate` skips every suite that needs a database, so this job runs them against a real
+  # one. The version matches production. The database exists only for this job.
+  postgres-tests:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_DB: rwos_validation_admin
+          POSTGRES_HOST_AUTH_METHOD: trust
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      RWOS_POSTGRES_TEST_MODE: local-disposable
+      RWOS_TEST_DATABASE_CONFIRMATION: disposable-test-target
+      RWOS_TEST_DATABASE_URL: postgresql://postgres@127.0.0.1:5432/rwos_validation_admin
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+      - uses: pnpm/action-setup@9fd676a19091d4595eefd76e4bd31c97133911f1 # v4.2.0
+        with:
+          version: 10.33.2
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: 20.20.2
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - name: Generate Prisma Client
+        run: pnpm --filter @rwos/database prisma:generate
+      - run: pnpm test:postgres:required
+
   terraform-validate:
     runs-on: ubuntu-latest
     strategy:
