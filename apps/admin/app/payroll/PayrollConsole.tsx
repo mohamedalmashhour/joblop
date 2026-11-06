@@ -38,6 +38,11 @@ export function PayrollConsole() {
   const [reason, setReason] = useState("");
   const [busy, setBusy] = useState(false);
 
+  const [organizations, setOrganizations] = useState<readonly { id: string; displayName: string }[]>([]);
+  const [newPeriod, setNewPeriod] = useState({ organizationId: "", country: "", region: "", start: "", end: "" });
+
+  useEffect(() => { void api("organizations").then((r) => { if (r.ok) setOrganizations(r.data.items as { id: string; displayName: string }[]); }); }, []);
+
   useEffect(() => { void api("periods?limit=50").then((r) => setPeriods(r.ok ? (r.data.items as Period[]) : [])); }, []);
 
   const openPeriod = useCallback(async (id: string) => {
@@ -91,6 +96,30 @@ export function PayrollConsole() {
         {/* Periods */}
         <section aria-labelledby="periods-h" style={s.panel}>
           <h2 id="periods-h" style={s.h2}>Pay periods</h2>
+          <form style={s.correctForm} onSubmit={(e) => {
+            e.preventDefault();
+            void (async () => {
+              await act("Create pay period", "periods", {
+                organizationId: newPeriod.organizationId,
+                jurisdictionCountry: newPeriod.country.trim().toUpperCase(),
+                jurisdictionRegion: newPeriod.region.trim().toUpperCase(),
+                periodStart: new Date(`${newPeriod.start}T00:00:00`).toISOString(),
+                periodEnd: new Date(`${newPeriod.end}T00:00:00`).toISOString()
+              }, () => "Pay period created.");
+              const r = await api("periods?limit=50");
+              if (r.ok) setPeriods(r.data.items as Period[]);
+            })();
+          }}>
+            <select aria-label="Employer" required style={s.periodField} value={newPeriod.organizationId} onChange={(e) => setNewPeriod((v) => ({ ...v, organizationId: e.target.value }))}>
+              <option value="">Choose employer…</option>
+              {organizations.map((o) => <option key={o.id} value={o.id}>{o.displayName}</option>)}
+            </select>
+            <input aria-label="Country code" required maxLength={2} placeholder="Country (e.g. CA)" style={s.periodField} value={newPeriod.country} onChange={(e) => setNewPeriod((v) => ({ ...v, country: e.target.value }))} />
+            <input aria-label="Region code" required maxLength={3} placeholder="Region (e.g. QC)" style={s.periodField} value={newPeriod.region} onChange={(e) => setNewPeriod((v) => ({ ...v, region: e.target.value }))} />
+            <input aria-label="Period start" required type="date" style={s.periodField} value={newPeriod.start} onChange={(e) => setNewPeriod((v) => ({ ...v, start: e.target.value }))} />
+            <input aria-label="Period end" required type="date" style={s.periodField} value={newPeriod.end} onChange={(e) => setNewPeriod((v) => ({ ...v, end: e.target.value }))} />
+            <button type="submit" disabled={busy} style={s.btn}>Create pay period</button>
+          </form>
           {periods.length === 0 ? <p style={s.muted}>No pay periods yet.</p> : (
             <ul style={s.list}>
               {periods.map((p) => (
@@ -108,6 +137,7 @@ export function PayrollConsole() {
         {/* Review queue */}
         <section aria-labelledby="queue-h" style={s.panel}>
           <h2 id="queue-h" style={s.h2}>Review queue</h2>
+          {periodId ? <button type="button" disabled={busy} style={s.btn} onClick={() => void (async () => { await act("Calculate pay", `periods/${periodId}/bulk-calculate`, {}, () => "Pay calculated for this period."); await openPeriod(periodId); })()}>Calculate pay</button> : null}
           {!periodId ? <p style={s.muted}>Select a pay period.</p> : calcs === null ? <p style={s.muted}>Loading…</p> : calcs.length === 0 ? <p style={s.muted}>No calculations in this period.</p> : (
             <ul style={s.list}>
               {calcs.map((c) => (
@@ -308,6 +338,7 @@ const s: Record<string, CSSProperties> = {
   actions: { display: "flex", gap: 8, margin: "16px 0", flexWrap: "wrap" },
   btn: { background: "#171511", color: "#fff", border: "none", borderRadius: 8, padding: "8px 14px", cursor: "pointer", fontWeight: 600 },
   btnGhost: { background: "#0c0c0c", color: "#f4efe4", border: "1px solid rgba(201, 162, 75, 0.3)", borderRadius: 8, padding: "8px 14px", cursor: "pointer" },
+  periodField: { border: "1px solid #bbb", borderRadius: 6, display: "block", marginBottom: 6, minHeight: 34, padding: "4px 8px", width: "100%" },
   correctForm: { border: "1px dashed #bbb", borderRadius: 8, padding: 12, margin: "8px 0 16px" },
   label: { display: "block", fontSize: 13, color: "#444", marginBottom: 6 },
   correctRow: { display: "flex", gap: 8 },

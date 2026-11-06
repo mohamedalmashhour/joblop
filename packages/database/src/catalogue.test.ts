@@ -13,7 +13,18 @@ describe("Phase 01 development catalogue", () => {
       "kitchen",
       "care_nursing",
       "housekeeping_support",
-      "maintenance"
+      "maintenance",
+      "pharmacy",
+      "factory_production",
+      "warehouse_logistics",
+      "construction_trades",
+      "retail_sales",
+      "hospitality_events",
+      "transport_delivery",
+      "security",
+      "office_admin",
+      "childcare_education",
+      "farming_agriculture"
     ]);
   });
 
@@ -138,15 +149,26 @@ describe("Phase 01 development catalogue", () => {
     await seedDevelopmentCatalogue(client as never);
     await seedDevelopmentCatalogue(client as never);
 
-    expect(client.workGroups).toHaveLength(4);
+    expect(client.workGroups).toHaveLength(15);
     expect(client.workGroups.map((workGroup) => workGroup.key)).toEqual([
       "kitchen",
       "care_nursing",
       "housekeeping_support",
-      "maintenance"
+      "maintenance",
+      "pharmacy",
+      "factory_production",
+      "warehouse_logistics",
+      "construction_trades",
+      "retail_sales",
+      "hospitality_events",
+      "transport_delivery",
+      "security",
+      "office_admin",
+      "childcare_education",
+      "farming_agriculture"
     ]);
-    expect(client.workGroups.map((workGroup) => workGroup.displayOrder)).toEqual([10, 20, 30, 40]);
-    expect(client.createdWorkGroups).toBe(4);
+    expect(client.workGroups.map((workGroup) => workGroup.displayOrder)).toEqual(developmentWorkGroups.map((group) => group.displayOrder));
+    expect(client.createdWorkGroups).toBe(15);
   });
 
   it("preserves existing WorkGroup labels, order, and inactive lifecycle state during seed", async () => {
@@ -171,7 +193,7 @@ describe("Phase 01 development catalogue", () => {
       iconKey: "custom-icon",
       status: "inactive"
     });
-    expect(client.workGroups).toHaveLength(4);
+    expect(client.workGroups).toHaveLength(15);
   });
 
   it("seeds RoleDefinitions idempotently without duplicates and keeps WorkGroup mapping stable", async () => {
@@ -180,27 +202,12 @@ describe("Phase 01 development catalogue", () => {
     await seedDevelopmentCatalogue(client as never);
     await seedDevelopmentCatalogue(client as never);
 
-    expect(client.roleDefinitionList()).toHaveLength(17);
-    expect(client.createdRoleDefinitions).toBe(17);
-    expect(client.roleDefinitionList().map((roleDefinition) => roleDefinition.key)).toEqual([
-      "chef",
-      "sous_chef",
-      "cook",
-      "kitchen_helper",
-      "dishwasher",
-      "nurse",
-      "licensed_practical_nurse",
-      "personal_support_worker",
-      "care_aide",
-      "housekeeper",
-      "laundry_worker",
-      "dining_room_aide",
-      "general_support",
-      "general_maintenance",
-      "repair_technician",
-      "facility_support",
-      "emergency_maintenance"
-    ]);
+    const roleCount = developmentWorkGroups.reduce((total, group) => total + group.roles.length, 0);
+    expect(client.roleDefinitionList()).toHaveLength(roleCount);
+    expect(client.createdRoleDefinitions).toBe(roleCount);
+    expect(client.roleDefinitionList().map((roleDefinition) => roleDefinition.key)).toEqual(
+      developmentWorkGroups.flatMap((group) => group.roles.map((roleDefinition) => roleDefinition.key))
+    );
     expect(
       client.roleDefinitionList().find((roleDefinition) => roleDefinition.key === "chef")
         ?.workGroupId

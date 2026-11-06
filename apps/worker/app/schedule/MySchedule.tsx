@@ -21,6 +21,7 @@ type Shift = Readonly<{
   employerName: string;
   areaLabel: string | null;
 }>;
+type PendingOffer = Readonly<{ workerOfferId: string; jobRequestId: string; title: string | null; startAt: string | null }>;
 type State = { status: "loading" } | { status: "signed_out" } | { status: "needs_setup" } | { status: "error" } | { status: "ready"; items: readonly Shift[] };
 
 const STATUS_COPY_KEY: Record<string, MessageKey> = {
@@ -37,6 +38,7 @@ export function MySchedule() {
   const t = useT();
   const locale = fmtLocale(useLocale());
   const [state, setState] = useState<State>({ status: "loading" });
+  const [pending, setPending] = useState<readonly PendingOffer[]>([]);
   const [busy, setBusy] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [view, setView] = useState<"list" | "calendar">("list");
@@ -54,6 +56,14 @@ export function MySchedule() {
     } catch {
       setState({ status: "error" });
     }
+  }, []);
+
+  // Accepted jobs waiting for Joblop to confirm, so a worker sees them straight after accepting.
+  useEffect(() => {
+    fetch("/api/offers?status=accepted", { cache: "no-store" })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((p: { workerOffers?: PendingOffer[] } | null) => setPending(p?.workerOffers ?? []))
+      .catch(() => undefined);
   }, []);
 
   useEffect(() => { void load(); }, [load]);
@@ -86,6 +96,9 @@ export function MySchedule() {
   const upcoming = state.items.filter((s) => new Date(s.scheduledEndAt).getTime() >= now);
   const past = state.items.filter((s) => new Date(s.scheduledEndAt).getTime() < now);
 
+  const assignedJobs = new Set(state.items.map((item) => item.assignmentId));
+  const waiting = assignedJobs.size === 0 ? pending : [];
+
   return (
     <>
       <section className="hero">
@@ -95,6 +108,19 @@ export function MySchedule() {
       <GoogleCalendarConnect />
       {notice ? <p className="notice" style={{ color: "var(--accent)" }}>{notice}</p> : null}
 
+      {waiting.length > 0 ? (
+        <div className="results" style={{ marginBottom: 16 }}>
+          {waiting.map((o) => (
+            <article key={o.workerOfferId} className="card">
+              <div className="role">{o.title ?? t("offers.shiftOffer")}</div>
+              <div className="chips"><span className="chip status-pending">{t("sched.waitingConfirm")}</span></div>
+              {o.startAt ? <div className="when">{new Date(o.startAt).toLocaleString(locale)}</div> : null}
+              <p className="notice" style={{ margin: 0 }}>{t("sched.waitingBody")}</p>
+            </article>
+          ))}
+        </div>
+      ) : null}
+
       {state.items.length > 0 ? (
         <div className="chips" style={{ marginBottom: 12 }}>
           <button type="button" className={`chip ${view === "list" ? "status-verified" : ""}`} onClick={() => setView("list")}>{t("sched.viewList")}</button>
@@ -103,7 +129,7 @@ export function MySchedule() {
       ) : null}
 
       {state.items.length === 0 ? (
-        <div className="state">{t("sched.none")}</div>
+        waiting.length > 0 ? null : <div className="state">{t("sched.none")}</div>
       ) : view === "calendar" ? (
         <CalendarView
           items={state.items}
@@ -133,6 +159,7 @@ export function MySchedule() {
           ) : null}
         </>
       )}
+      <p className="notice"><a href="/timesheets">{t("ts.title")}</a></p>
       <p className="notice">{t("sched.footer")}</p>
     </>
   );

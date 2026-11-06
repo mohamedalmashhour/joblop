@@ -209,6 +209,7 @@ function SearchPanel({ onSignedOut }: { onSignedOut: () => void }) {
             <a className="btn ghost" href="/hr">{t("nav.hr")}</a>
             <a className="btn ghost" href="/documents">{t("nav.documents")}</a>
             <a className="btn ghost" href="/schedule">{t("nav.schedule")}</a>
+            <a className="btn ghost" href="/timesheets">{t("ts.title")}</a>
             <a className="btn ghost" href="/pay">{t("nav.pay")}</a>
             <a className="btn ghost" href="/my-interests">{t("nav.interests")}</a>
             <a className="btn ghost" href="/offers">{t("nav.offers")}</a>

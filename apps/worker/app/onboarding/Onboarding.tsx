@@ -82,7 +82,7 @@ export function Onboarding() {
         setBusy(false);
         return;
       }
-      window.location.assign("/hr");
+      window.location.assign(new URLSearchParams(window.location.search).get("next") === "offers" ? "/offers" : "/hr");
     } catch {
       setError(tr("حدث خطأ. حاول مجددًا.", "Une erreur est survenue. Réessayez.", "Something went wrong. Please try again."));
       setBusy(false);

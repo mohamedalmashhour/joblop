@@ -6,7 +6,6 @@ import {
   calendarListState,
   calendarPartialState,
   formatRwosDateTime,
-  parseEmployerTimesheetList,
   type AuthenticatedViewState,
   type EmployerTimesheetDto
 } from "@rwos/shared";
@@ -37,9 +36,10 @@ export function EmployerTimesheetsPanel() {
         }
       }
       if (!response.ok) return setState(calendarFailureState(response.status));
-      const payload = await response.json();
+      // The route has already parsed the API record into this shape, and parsing it again would fail.
+      const payload = (await response.json()) as { timesheets: readonly EmployerTimesheetDto[] };
       if (generation !== generationRef.current) return;
-      const timesheets = parseEmployerTimesheetList(payload);
+      const timesheets = payload.timesheets;
       setState(timesheets.length > 0 ? calendarListState(timesheets) : calendarPartialState(timesheets));
     } catch {
       if (generation === generationRef.current) setState({ status: "error" });

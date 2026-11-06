@@ -13,6 +13,7 @@ const connectedNavigation = [
   { href: "/calendar", labelKey: "nav.calendar" },
   { href: "/orders", labelKey: "nav.orders" },
   { href: "/dispatches", labelKey: "nav.dispatches" },
+  { href: "/timesheets", labelKey: "nav.timesheets" },
   { href: "/market-wages", labelKey: "nav.marketWages" },
   { href: "/escalations", labelKey: "nav.escalations" },
   { href: "/greetings", labelKey: "nav.greetings" }
@@ -46,7 +47,7 @@ function resolveNavigation(source: readonly NavSource[], t: Translate): NavItem[
 // pattern — every route belongs to a section so the workspace reads as coherent groups
 // instead of one long flat list.
 const NAV_GROUPS: readonly { group: string; hrefs: readonly string[] }[] = [
-  { group: "Operations", hrefs: ["/calendar", "/calendar/lifecycle", "/orders", "/dispatches", "/shifts"] },
+  { group: "Operations", hrefs: ["/calendar", "/calendar/lifecycle", "/orders", "/dispatches", "/timesheets", "/shifts"] },
   { group: "Directory", hrefs: ["/workers", "/employers", "/residences"] },
   { group: "Finance & payroll", hrefs: ["/finance", "/finance/calendar", "/payroll", "/market-wages"] },
   { group: "People & trust", hrefs: ["/verification", "/hr"] },

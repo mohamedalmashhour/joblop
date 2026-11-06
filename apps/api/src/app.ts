@@ -306,6 +306,13 @@ import {
   sanitizeHrDocumentFileName
 } from "./hrDocumentStorageLocal";
 import { resolvePayrollPeriodTimezone } from "./payrollPeriodTimezone";
+import {
+  WorkerJobCategoryError,
+  jobCategoryDemand,
+  listWorkerJobCategories,
+  replaceWorkerJobCategories,
+  workersWantingCategory
+} from "./workerJobCategoryRepository";
 import { createPrismaDocumentMetadataRepository } from "./documentUploadRepository";
 import { registerDocumentRoutes } from "./documentRoutes";
 import { registerInvoiceRoutes } from "./invoiceRoutes";
@@ -3525,7 +3532,7 @@ export function buildApi(options: BuildApiOptions = {}) {
         numberOfWorkers: true,
         startAt: true,
         endAt: true,
-        roleDefinition: { select: { displayLabel: true } },
+        roleDefinition: { select: { displayLabel: true, workGroup: { select: { key: true } } } },
         organization: { select: { id: true, displayName: true } },
         residence: { select: { city: true, province: true, latitude: true, longitude: true } },
         pricingSnapshot: { select: { workerHourlyRateMinor: true } }
@@ -3585,6 +3592,12 @@ export function buildApi(options: BuildApiOptions = {}) {
     // Someone without a worker record yet rates as an empty profile.
     const documents = await hrDocumentService.myDocumentStatuses({ userId: session.user.id }).catch(() => []);
     const rating = workerProfileRating(documents);
+    // Jobs in the categories the worker chose come first, keeping the chosen sort within each group.
+    const categories = await listWorkerJobCategories(prisma!, session.user.id).catch(() => []);
+    const wanted = new Set(categories.filter((c) => c.selected).map((c) => c.key));
+    const categoryByJob = new Map(rows.map((r) => [r.id, r.roleDefinition.workGroup?.key]));
+    const isWanted = (job: (typeof sorted)[number]) => (wanted.has(categoryByJob.get(job.jobRequestId) ?? "") ? 0 : 1);
+    sorted.sort((a, b) => isWanted(a) - isWanted(b));
     const visible = rating.jobLimit === null ? sorted : sorted.slice(0, rating.jobLimit);
 
     const total = visible.length;
@@ -4604,6 +4617,42 @@ export function buildApi(options: BuildApiOptions = {}) {
     } catch (error) {
       return sendHrDocError(reply, error);
     }
+  });
+
+  // Worker: the job categories I want. The worker record is resolved from the session, never the request.
+  app.get("/worker/job-categories", async (request, reply) => {
+    const userId = await requireWorkerSession(request, reply);
+    if (!userId) return;
+    return reply.code(200).send({ categories: await listWorkerJobCategories(prisma!, userId) });
+  });
+
+  app.put("/worker/job-categories", async (request, reply) => {
+    const userId = await requireWorkerSession(request, reply);
+    if (!userId) return;
+    const keys = asRecord(request.body).keys;
+    if (!Array.isArray(keys) || keys.length > 50 || keys.some((key) => typeof key !== "string")) {
+      return reply.code(400).send({ error: "RWOS_JOB_CATEGORY_INVALID", message: "Choose from the listed job categories." });
+    }
+    try {
+      await replaceWorkerJobCategories(prisma!, userId, keys as string[]);
+      return reply.code(200).send({ categories: await listWorkerJobCategories(prisma!, userId) });
+    } catch (error) {
+      if (!(error instanceof WorkerJobCategoryError)) throw error;
+      return reply.code(error.code === "needs_worker" ? 409 : 400).send({ error: `RWOS_JOB_CATEGORY_${error.code.toUpperCase()}`, message: error.message });
+    }
+  });
+
+  // HR authority: how many workers want each category, and who they are.
+  app.get("/platform/hr/job-categories", async (request, reply) => {
+    const actor = await requireHrAuthority(request, reply);
+    if (!actor) return;
+    return reply.code(200).send({ categories: await jobCategoryDemand(prisma!) });
+  });
+
+  app.get("/platform/hr/job-categories/:key/workers", async (request, reply) => {
+    const actor = await requireHrAuthority(request, reply);
+    if (!actor) return;
+    return reply.code(200).send({ workers: await workersWantingCategory(prisma!, readRouteParam(request.params, "key"), 100) });
   });
 
   // Worker: my documents (no internal review notes / storage references).
@@ -6646,6 +6695,30 @@ export function buildApi(options: BuildApiOptions = {}) {
     }
   );
 
+  // What an offer states when the admin writes nothing: the approved pay, employer and area, so a
+  // worker never accepts binding terms without seeing them.
+  const defaultOfferCompensation = async (dispatchReviewId: string): Promise<string | null> => {
+    if (!prisma || !isCanonicalUuid(dispatchReviewId)) return null;
+    const review = await prisma.dispatchReview.findUnique({
+      where: { id: dispatchReviewId },
+      select: {
+        jobRequest: {
+          select: {
+            pricingSnapshot: { select: { workerHourlyRateMinor: true, currency: true } },
+            organization: { select: { displayName: true } },
+            residence: { select: { city: true, province: true } }
+          }
+        }
+      }
+    });
+    const job = review?.jobRequest;
+    if (!job?.pricingSnapshot) return null;
+    const { workerHourlyRateMinor, currency } = job.pricingSnapshot;
+    const area = [job.residence.city, job.residence.province].filter(Boolean).join(", ");
+    const pay = `${(workerHourlyRateMinor / 100).toFixed(2)} ${currency} per hour`;
+    return `${pay} at ${job.organization.displayName}${area ? `, ${area}` : ""}`;
+  };
+
   app.post("/platform/worker-offers", async (request, reply) => {
     const session = await authService.validateSession(
       readBearerToken(request.headers.authorization)
@@ -6664,7 +6737,9 @@ export function buildApi(options: BuildApiOptions = {}) {
       expiresAt,
       workerVisibleTitle: readOptionalString(body, "workerVisibleTitle"),
       workerVisibleSummary: readOptionalString(body, "workerVisibleSummary"),
-      compensationSummary: readOptionalString(body, "compensationSummary"),
+      compensationSummary:
+        readOptionalString(body, "compensationSummary") ??
+        (await defaultOfferCompensation(readRequiredString(body, "dispatchReviewId") ?? "")),
       policySummary: readOptionalString(body, "policySummary")
     });
 
@@ -6952,6 +7027,19 @@ export function buildApi(options: BuildApiOptions = {}) {
       await workerJobInterestService.markOfferAcceptedByOffer(workerOfferId);
     } catch {
       /* interest mirror is best-effort; the governed assignment already succeeded */
+    }
+
+    // Put the shift on the worker's schedule, where they punch in and out. Those steps have no admin
+    // screen, so an assignment would otherwise never reach the worker. A failure here must not undo
+    // the assignment; it is logged for staff instead.
+    try {
+      const roles = await resolveAuthorizationRoles(session.user.id);
+      const assignmentId = assignment.id;
+      const ready = await assignmentService.markReadyForAttendance({ session, roles, assignmentId, expectedVersion: assignment.version });
+      await assignmentService.attendanceHandoff({ session, roles, assignmentId, expectedVersion: ready.version });
+      await attendanceService.createFromAssignment({ session, roles, assignmentId, verificationMethod: null });
+    } catch (error) {
+      logger.warn("assignment.schedule_handoff_failed", { assignmentId: assignment.id, error: error instanceof Error ? error.message : "unknown" });
     }
 
     // "You got the job!" — confirm the worker by email (+ SMS when enabled). Best-effort.
@@ -8205,6 +8293,18 @@ export function buildApi(options: BuildApiOptions = {}) {
 
   // Bounded BULK calculation for a period (payroll authority). Calculation-only — no approve/lock/
   // pay. Returns a bounded per-worker summary + a keyset cursor for the next page.
+  // Employers a pay period can be opened for.
+  app.get("/platform/payroll/organizations", async (request, reply) => {
+    const actor = await requirePayrollAuthority(request, reply);
+    if (!actor) return;
+    const items = await prisma!.employerOrganization.findMany({
+      orderBy: { displayName: "asc" },
+      take: 200,
+      select: { id: true, displayName: true }
+    });
+    return reply.code(200).send({ items });
+  });
+
   app.post("/platform/payroll/periods/:periodId/bulk-calculate", async (request, reply) => {
     const actor = await requirePayrollAuthority(request, reply);
     if (!actor) return;
@@ -9383,6 +9483,81 @@ export function buildApi(options: BuildApiOptions = {}) {
     });
 
     return reply.code(200).send({ timesheets: timesheets.map((item) => serializeTimesheet(item)) });
+  });
+
+  // Staff queue: finished shifts still needing a timesheet, plus every timesheet with readable names.
+  app.get("/platform/timesheets/queue", async (request, reply) => {
+    const session = await authService.validateSession(
+      readBearerToken(request.headers.authorization)
+    );
+    if (!session.authenticated || !session.user) return sendTimesheetUnauthenticated(reply);
+
+    // Also the authority check: the shift names below are read only after this list is allowed.
+    const timesheets = await timesheetService.listTimesheets({
+      session,
+      roles: await resolveAuthorizationRoles(session.user.id)
+    });
+    const finished = await prisma!.attendanceRecord.findMany({
+      where: { status: { in: ["checked_out", "completed"] }, timesheet: { is: null } },
+      orderBy: { checkOutAt: "desc" },
+      take: 100,
+      select: {
+        id: true, status: true, checkInAt: true, checkOutAt: true,
+        organization: { select: { displayName: true } },
+        workerIdentity: { select: { displayName: true } }
+      }
+    });
+    const [organizations, workers] = await Promise.all([
+      prisma!.employerOrganization.findMany({
+        where: { id: { in: [...new Set(timesheets.map((t) => t.organizationId))] } },
+        select: { id: true, displayName: true }
+      }),
+      prisma!.workerIdentity.findMany({
+        where: { id: { in: [...new Set(timesheets.map((t) => t.workerIdentityId))] } },
+        select: { id: true, displayName: true }
+      })
+    ]);
+    const organizationName = new Map(organizations.map((o) => [o.id, o.displayName]));
+    const workerName = new Map(workers.map((w) => [w.id, w.displayName]));
+    return reply.code(200).send({
+      ready: finished.map((a) => ({
+        attendanceRecordId: a.id,
+        status: a.status,
+        employerName: a.organization.displayName,
+        workerName: a.workerIdentity.displayName,
+        checkInAt: a.checkInAt?.toISOString() ?? null,
+        checkOutAt: a.checkOutAt?.toISOString() ?? null
+      })),
+      timesheets: timesheets.map((t) => ({
+        id: t.id,
+        status: t.status,
+        version: t.version,
+        employerName: organizationName.get(t.organizationId) ?? "",
+        workerName: workerName.get(t.workerIdentityId) ?? null,
+        scheduledStartAt: t.scheduledStartAt.toISOString(),
+        payableMinutes: t.payableMinutes,
+        exceptionSummary: t.exceptionSummary
+      }))
+    });
+  });
+
+  // One staff action for a finished shift: complete attendance, create the timesheet, calculate it.
+  // A worker's punch-out cannot do this, because these steps need staff authority.
+  app.post("/platform/timesheets/prepare", async (request, reply) => {
+    const session = await authService.validateSession(
+      readBearerToken(request.headers.authorization)
+    );
+    if (!session.authenticated || !session.user) return sendTimesheetUnauthenticated(reply);
+
+    const attendanceRecordId = readRequiredString(asRecord(request.body), "attendanceRecordId") ?? "";
+    const roles = await resolveAuthorizationRoles(session.user.id);
+    const attendance = await attendanceService.readAttendance({ session, roles, attendanceRecordId });
+    if (attendance.status === "checked_out") {
+      await attendanceService.markCompleted({ session, roles, attendanceRecordId, expectedVersion: attendance.version });
+    }
+    const created = await timesheetService.createFromAttendance({ session, roles, attendanceRecordId });
+    const timesheet = await timesheetService.calculate({ session, roles, timesheetId: created.id, expectedVersion: created.version });
+    return reply.code(200).send({ timesheet: serializeTimesheet(timesheet) });
   });
 
   app.get("/platform/timesheets/:timesheetId", async (request, reply) => {
