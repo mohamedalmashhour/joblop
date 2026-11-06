@@ -306,6 +306,13 @@ import {
   sanitizeHrDocumentFileName
 } from "./hrDocumentStorageLocal";
 import { resolvePayrollPeriodTimezone } from "./payrollPeriodTimezone";
+import {
+  WorkerJobCategoryError,
+  jobCategoryDemand,
+  listWorkerJobCategories,
+  replaceWorkerJobCategories,
+  workersWantingCategory
+} from "./workerJobCategoryRepository";
 import { createPrismaDocumentMetadataRepository } from "./documentUploadRepository";
 import { registerDocumentRoutes } from "./documentRoutes";
 import { registerInvoiceRoutes } from "./invoiceRoutes";
@@ -3525,7 +3532,7 @@ export function buildApi(options: BuildApiOptions = {}) {
         numberOfWorkers: true,
         startAt: true,
         endAt: true,
-        roleDefinition: { select: { displayLabel: true } },
+        roleDefinition: { select: { displayLabel: true, workGroup: { select: { key: true } } } },
         organization: { select: { id: true, displayName: true } },
         residence: { select: { city: true, province: true, latitude: true, longitude: true } },
         pricingSnapshot: { select: { workerHourlyRateMinor: true } }
@@ -3585,6 +3592,12 @@ export function buildApi(options: BuildApiOptions = {}) {
     // Someone without a worker record yet rates as an empty profile.
     const documents = await hrDocumentService.myDocumentStatuses({ userId: session.user.id }).catch(() => []);
     const rating = workerProfileRating(documents);
+    // Jobs in the categories the worker chose come first, keeping the chosen sort within each group.
+    const categories = await listWorkerJobCategories(prisma!, session.user.id).catch(() => []);
+    const wanted = new Set(categories.filter((c) => c.selected).map((c) => c.key));
+    const categoryByJob = new Map(rows.map((r) => [r.id, r.roleDefinition.workGroup?.key]));
+    const isWanted = (job: (typeof sorted)[number]) => (wanted.has(categoryByJob.get(job.jobRequestId) ?? "") ? 0 : 1);
+    sorted.sort((a, b) => isWanted(a) - isWanted(b));
     const visible = rating.jobLimit === null ? sorted : sorted.slice(0, rating.jobLimit);
 
     const total = visible.length;
@@ -4604,6 +4617,42 @@ export function buildApi(options: BuildApiOptions = {}) {
     } catch (error) {
       return sendHrDocError(reply, error);
     }
+  });
+
+  // Worker: the job categories I want. The worker record is resolved from the session, never the request.
+  app.get("/worker/job-categories", async (request, reply) => {
+    const userId = await requireWorkerSession(request, reply);
+    if (!userId) return;
+    return reply.code(200).send({ categories: await listWorkerJobCategories(prisma!, userId) });
+  });
+
+  app.put("/worker/job-categories", async (request, reply) => {
+    const userId = await requireWorkerSession(request, reply);
+    if (!userId) return;
+    const keys = asRecord(request.body).keys;
+    if (!Array.isArray(keys) || keys.length > 50 || keys.some((key) => typeof key !== "string")) {
+      return reply.code(400).send({ error: "RWOS_JOB_CATEGORY_INVALID", message: "Choose from the listed job categories." });
+    }
+    try {
+      await replaceWorkerJobCategories(prisma!, userId, keys as string[]);
+      return reply.code(200).send({ categories: await listWorkerJobCategories(prisma!, userId) });
+    } catch (error) {
+      if (!(error instanceof WorkerJobCategoryError)) throw error;
+      return reply.code(error.code === "needs_worker" ? 409 : 400).send({ error: `RWOS_JOB_CATEGORY_${error.code.toUpperCase()}`, message: error.message });
+    }
+  });
+
+  // HR authority: how many workers want each category, and who they are.
+  app.get("/platform/hr/job-categories", async (request, reply) => {
+    const actor = await requireHrAuthority(request, reply);
+    if (!actor) return;
+    return reply.code(200).send({ categories: await jobCategoryDemand(prisma!) });
+  });
+
+  app.get("/platform/hr/job-categories/:key/workers", async (request, reply) => {
+    const actor = await requireHrAuthority(request, reply);
+    if (!actor) return;
+    return reply.code(200).send({ workers: await workersWantingCategory(prisma!, readRouteParam(request.params, "key"), 100) });
   });
 
   // Worker: my documents (no internal review notes / storage references).

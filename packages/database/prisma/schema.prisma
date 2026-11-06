@@ -958,6 +958,7 @@ model WorkGroup {
   assignments       Assignment[]
   attendanceRecords AttendanceRecord[]
   timesheets        Timesheet[]
+  workerJobCategories WorkerJobCategory[]
 
   @@index([status, displayOrder], map: "work_groups_status_display_order_idx")
   @@map("work_groups")
@@ -1541,6 +1542,8 @@ model WorkerIdentity {
   taxProfile              WorkerTaxProfile?
 
   @@index([status], map: "worker_identities_status_idx")
+  jobCategories WorkerJobCategory[]
+
   @@map("worker_identities")
 }
 
@@ -3552,4 +3555,18 @@ model JobGradingAudit {
   @@index([organizationId], map: "job_grading_audit_org_idx")
   @@index([jobRequestId], map: "job_grading_audit_job_request_idx")
   @@map("job_grading_audit")
+}
+
+// The job categories a worker wants, chosen on their profile.
+model WorkerJobCategory {
+  workerIdentityId String   @map("worker_identity_id") @db.Uuid
+  workGroupId      String   @map("work_group_id") @db.Uuid
+  createdAt        DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  workerIdentity WorkerIdentity @relation(fields: [workerIdentityId], references: [id], onDelete: Cascade)
+  workGroup      WorkGroup      @relation(fields: [workGroupId], references: [id], onDelete: Restrict)
+
+  @@id([workerIdentityId, workGroupId])
+  @@index([workGroupId])
+  @@map("worker_job_categories")
 }

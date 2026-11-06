@@ -1,8 +1,9 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
+import { JobInterestPanel } from "./JobInterestPanel";
 
-type Tab = "review" | "documents" | "expiring" | "restricted" | "search";
+type Tab = "review" | "documents" | "expiring" | "restricted" | "search" | "interests";
 
 type CaseRow = { id: string; workerIdentityId: string; caseType: string; status: string; createdAt: string };
 type CredRow = { id: string; workerIdentityId: string; credentialType: string; expiresAt: string | null; effectiveStatus: string };
@@ -37,7 +38,7 @@ export function HrConsolePanel() {
   }, [q, searchStanding, searchCredStatus]);
 
   useEffect(() => {
-    if (tab !== "search") void load(tab);
+    if (tab !== "search" && tab !== "interests") void load(tab);
   }, [tab, load]);
 
   return (
@@ -48,13 +49,14 @@ export function HrConsolePanel() {
         <p style={styles.lede}>Governed HR operations for HR administrators. HR consumes verification and eligibility — it never mutates marketplace, dispatch, or payroll. Every decision is audited.</p>
       </header>
       <div style={styles.tabs} role="tablist" aria-label="HR views">
-        {(["review", "documents", "expiring", "restricted", "search"] as Tab[]).map((t) => (
+        {(["review", "documents", "expiring", "restricted", "search", "interests"] as Tab[]).map((t) => (
           <button key={t} type="button" role="tab" aria-selected={tab === t} style={tab === t ? styles.tabActive : styles.tab} onClick={() => setTab(t)}>
-            {t === "review" ? "Case review" : t === "documents" ? "Documents to review" : t === "expiring" ? "Expiring credentials" : t === "restricted" ? "Restricted / suspended" : "Search"}
+            {t === "interests" ? "Job interests" : t === "review" ? "Case review" : t === "documents" ? "Documents to review" : t === "expiring" ? "Expiring credentials" : t === "restricted" ? "Restricted / suspended" : "Search"}
           </button>
         ))}
       </div>
 
+      {tab === "interests" ? <JobInterestPanel style={styles} /> : null}
       {tab === "search" ? (
         <form
           style={styles.searchBar}

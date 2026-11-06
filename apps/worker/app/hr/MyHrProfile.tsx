@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from "react";
 import { useLocale, useT } from "../i18n/LocaleProvider";
 import type { MessageKey } from "../i18n/messages";
 import { resolveDeniedKind } from "../resolveDenied";
+import { JobCategories } from "./JobCategories";
 
 type Cred = Readonly<{ id: string; credentialType: string; expiresAt: string | null; effectiveStatus: string }>;
 type Intake = Readonly<{
@@ -117,6 +118,8 @@ export function MyHrProfile() {
           ))
         )}
       </div>
+
+      <JobCategories />
 
       {/* Certificates reuse the existing Documents feature — no separate uploader here. */}
       <div className="card" style={{ marginBottom: 14 }}>
