@@ -31,6 +31,57 @@ function waitingFor(iso: string) {
   return hours < 24 ? `${hours} h` : `${Math.floor(hours / 24)} d`;
 }
 
+function AskAi({ conversationId }: { conversationId: string | null }) {
+  const [question, setQuestion] = useState("");
+  const [answer, setAnswer] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [failed, setFailed] = useState(false);
+
+  async function ask(text: string) {
+    setBusy(true);
+    setFailed(false);
+    setAnswer(null);
+    try {
+      const response = await fetch("/api/contact/ask", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ question: text, conversationId })
+      });
+      const payload = response.ok ? ((await response.json()) as { answer: string | null }) : null;
+      if (payload?.answer) setAnswer(payload.answer);
+      else setFailed(true);
+    } catch {
+      setFailed(true);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  function submit(event: FormEvent) {
+    event.preventDefault();
+    void ask(question);
+  }
+
+  return (
+    <section style={styles.thread} aria-label="Ask Joblop AI">
+      <h2 style={{ fontSize: 18, margin: "0 0 4px" }}>Ask Joblop AI</h2>
+      <p style={styles.muted}>Ask how anything works, for admin or finance. It advises only and changes nothing.</p>
+      <form onSubmit={submit}>
+        <label style={styles.label} htmlFor="desk-ask">Your question</label>
+        <textarea id="desk-ask" value={question} onChange={(e) => setQuestion(e.target.value)} maxLength={2000} rows={2} required style={styles.field} />
+        <div style={styles.row}>
+          <button type="submit" disabled={busy || !question.trim()} style={styles.button}>{busy ? "Thinking…" : "Ask"}</button>
+          {conversationId ? (
+            <button type="button" disabled={busy} onClick={() => void ask("Draft a reply to this conversation.")} style={styles.ghost}>Draft a reply</button>
+          ) : null}
+        </div>
+      </form>
+      {failed ? <p role="alert" style={styles.error}>AI could not answer. It may not be set up yet, or you can try again.</p> : null}
+      {answer ? <div style={{ ...styles.message, marginTop: 12, whiteSpace: "pre-wrap" }}>{answer}</div> : null}
+    </section>
+  );
+}
+
 function Thread({ id, onChanged }: { id: string; onChanged(): void }) {
   const [detail, setDetail] = useState<Detail | null>(null);
   const [text, setText] = useState("");
@@ -152,6 +203,7 @@ export function ContactDeskPanel() {
           <button key={label} type="button" aria-pressed={side === value} onClick={() => setSide(value)} style={side === value ? styles.button : styles.ghost}>{label}</button>
         ))}
       </div>
+      {state.status === "denied" ? null : <AskAi conversationId={openId} />}
       {state.status === "loading" ? <p style={styles.muted}>Loading…</p> : null}
       {state.status === "denied" ? <p style={styles.error}>Platform administrator access is required.</p> : null}
       {state.status === "error" ? <p role="alert" style={styles.error}>The Contact desk could not be loaded.</p> : null}

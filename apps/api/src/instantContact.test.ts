@@ -193,8 +193,37 @@ describe("instant contact: admin", () => {
   });
 });
 
+describe("staff assistant", () => {
+  it("answers staff without saving anything or changing the conversation", async () => {
+    const ai = vi.fn(async () => ({ reply: "Open /timesheets.", handoff: false, urgent: false, summary: "" }));
+    const { service, conversations, messages } = setup(ai);
+    await start(service, "let me talk to a human");
+    const before = messages.length;
+    const status = conversations.get("c1")?.status;
+    await expect(service.adminAsk({ question: "Draft a reply", conversationId: "c1" })).resolves.toEqual({ ok: true, value: { answer: "Open /timesheets." } });
+    expect(ai).toHaveBeenLastCalledWith(expect.objectContaining({ audience: "admin" }));
+    expect(messages).toHaveLength(before);
+    expect(conversations.get("c1")?.status).toBe(status);
+  });
+
+  it("leaves internal notes out of what it reads", async () => {
+    const ai = vi.fn(async () => ({ reply: "ok", handoff: false, urgent: false, summary: "" }));
+    const { service } = setup(ai);
+    await start(service, "What time is my shift?");
+    await service.adminSend({ adminId: "admin", id: "c1", body: "Staff secret", internal: true });
+    await service.adminAsk({ question: "Summarize", conversationId: "c1" });
+    expect(JSON.stringify(ai.mock.calls.at(-1))).not.toContain("Staff secret");
+  });
+
+  it("returns no answer without AI and rejects an empty question", async () => {
+    const { service } = setup(null);
+    await expect(service.adminAsk({ question: "Help", conversationId: null })).resolves.toEqual({ ok: true, value: { answer: null } });
+    await expect(service.adminAsk({ question: " ", conversationId: null })).resolves.toEqual({ ok: false, error: "invalid" });
+  });
+});
+
 describe("Claude contact AI", () => {
-  const input = { side: "worker" as const, topic: "pay", facts: "{}", turns: [{ role: "user" as const, text: "hi" }] };
+  const input = { audience: "worker" as const, topic: "pay", facts: "{}", turns: [{ role: "user" as const, text: "hi" }] };
   const reply = (body: unknown, status = 200) => vi.fn(async () => new Response(JSON.stringify(body), { status })) as unknown as typeof fetch;
   const content = (value: unknown) => [{ type: "text", text: JSON.stringify(value) }];
 
@@ -206,6 +235,22 @@ describe("Claude contact AI", () => {
     expect(sent.tools).toBeUndefined();
     expect(sent.model).toBe("claude-opus-5-5");
     expect(sent.output_config.format.type).toBe("json_schema");
+  });
+
+  it("gives each audience only its own guide", async () => {
+    const systemFor = async (audience: "worker" | "employer" | "admin") => {
+      const fetchImpl = reply({ stop_reason: "end_turn", content: content({ reply: "Hi", handoff: false, urgent: false, summary: "" }) });
+      await createClaudeContactAi({ apiKey: "key", fetchImpl })({ ...input, audience });
+      return String(JSON.parse(String((fetchImpl as unknown as ReturnType<typeof vi.fn>).mock.calls[0]?.[1]?.body)).system[0].text);
+    };
+    const [worker, employer, staff] = await Promise.all([systemFor("worker"), systemFor("employer"), systemFor("admin")]);
+    expect(worker).toContain("/schedule");
+    expect(worker).not.toContain("defaults to 20%");
+    expect(worker).not.toContain("KNOWN GAPS");
+    expect(employer).toContain("/employer/calendar/create");
+    expect(employer).not.toContain("defaults to 20%");
+    expect(employer).not.toContain("FINANCE JOURNEY");
+    expect(staff).toContain("FINANCE JOURNEY");
   });
 
   it.each([

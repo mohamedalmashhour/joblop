@@ -1,4 +1,5 @@
 import type { PrismaClient } from "@rwos/database";
+import { workerProfileRating } from "@rwos/shared";
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import {
   createClaudeContactAi,
@@ -53,7 +54,10 @@ async function workerFacts(prisma: PrismaClient, userId: string): Promise<string
       deductions: p.totalDeductionsMinor / 100,
       net: p.netPayMinor / 100
     })),
-    documents
+    documents,
+    profileRating: (({ score, tier, jobLimit }) => ({ score, tier, jobsShownPerSearch: jobLimit ?? "all" }))(
+      workerProfileRating(documents.map((d) => ({ documentType: d.documentType, effectiveStatus: d.status })))
+    )
   });
 }
 
@@ -323,6 +327,13 @@ export function registerInstantContactRoutes(
     const filter: AdminFilter = query.filter === "ai" || query.filter === "solved" || query.filter === "all" ? query.filter : "needs_admin";
     const side = query.side === "worker" || query.side === "employer" ? query.side : null;
     return reply.code(200).send({ conversations: await service.adminList(filter, side) });
+  });
+
+  app.post("/platform/contact/ask", async (request, reply) => {
+    const admin = await deps.requireAdmin(request, reply);
+    if (!admin) return;
+    const body = asObject(request.body);
+    return sendResult(reply, await service.adminAsk({ question: body.question, conversationId: body.conversationId }));
   });
 
   app.get("/platform/contact/conversations/:id", async (request, reply) => {
