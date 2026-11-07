@@ -9,6 +9,7 @@ export interface EmailMessage {
   subject: string;
   text: string;
   html?: string;
+  attachments?: readonly Readonly<{ name: string; contentBase64: string }>[];
 }
 
 export type EmailSendResult =
@@ -31,6 +32,40 @@ export type EmailFetch = (
     body: string;
   }>
 ) => Promise<Readonly<{ ok: boolean; status: number; json(): Promise<unknown> }>>;
+
+const escapeHtml = (value: string) =>
+  value.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+
+// Every Joblop email shares one design, built from its plain text: the first paragraph is the
+// headline, and a closing "— Joblop" line is dropped because the footer already signs the email.
+// Inline styles and tables, because email apps ignore most other styling.
+export function brandedEmailHtml(message: Pick<EmailMessage, "subject" | "text">): string {
+  const paragraphs = message.text
+    .split(/\n\s*\n/)
+    .map((part) => part.trim())
+    .filter((part) => part.length > 0 && !/^—\s*Joblop$/i.test(part));
+  const [headline, ...rest] = paragraphs;
+  const body = rest
+    .map(
+      (part) =>
+        `<p style="margin:0 0 16px;font-size:16px;line-height:1.6;color:#3d3a34;">${escapeHtml(part).replace(/\n/g, "<br>")}</p>`
+    )
+    .join("");
+  return [
+    `<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${escapeHtml(message.subject)}</title></head>`,
+    `<body style="margin:0;padding:0;background:#f4f1ea;font-family:Helvetica,Arial,sans-serif;">`,
+    `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#f4f1ea;"><tr><td align="center" style="padding:24px 12px;">`,
+    `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width:560px;background:#ffffff;border-radius:12px;overflow:hidden;">`,
+    `<tr><td style="background:#000000;padding:22px 28px;font-size:26px;font-weight:700;color:#ffffff;">Job<span style="color:#d9a93f;">lop</span></td></tr>`,
+    `<tr><td style="height:4px;background:#d9a93f;font-size:0;line-height:0;">&nbsp;</td></tr>`,
+    `<tr><td style="padding:28px;">`,
+    `<p style="margin:0 0 18px;font-size:20px;line-height:1.4;font-weight:700;color:#111111;">${escapeHtml(headline ?? message.subject).replace(/\n/g, "<br>")}</p>`,
+    body,
+    `</td></tr>`,
+    `<tr><td style="padding:16px 28px;background:#faf8f3;font-size:13px;line-height:1.5;color:#7a7468;">Joblop</td></tr>`,
+    `</table></td></tr></table></body></html>`
+  ].join("");
+}
 
 // Parse "Name <email@domain>" or a bare address into Brevo's structured sender shape.
 function parseSender(from: string): { email: string; name?: string } {
@@ -70,7 +105,10 @@ export function createEmailSender(options: {
             to: [{ email: message.to }],
             subject: message.subject,
             textContent: message.text,
-            ...(message.html ? { htmlContent: message.html } : {})
+            htmlContent: message.html ?? brandedEmailHtml(message),
+            ...(message.attachments?.length
+              ? { attachment: message.attachments.map((file) => ({ name: file.name, content: file.contentBase64 })) }
+              : {})
           })
         });
         if (!response.ok) return { status: "error" };

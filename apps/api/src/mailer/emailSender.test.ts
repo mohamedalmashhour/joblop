@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { createEmailSender, verificationEmailMessage, type EmailFetch } from "./emailSender";
+import { brandedEmailHtml, createEmailSender, verificationEmailMessage, type EmailFetch } from "./emailSender";
 
 describe("email sender capsule", () => {
   it("is a no-op that reports skipped when not configured", async () => {
@@ -66,5 +66,27 @@ describe("email sender capsule", () => {
     expect(message.text).toContain("482913");
     expect(message.text).toContain("10 minutes");
     expect(message.subject.toLowerCase()).toContain("verification code");
+  });
+
+  it("sends attachments to Brevo in its own format", async () => {
+    let body: Record<string, unknown> = {};
+    const sender = createEmailSender({
+      apiKey: "key",
+      from: "Joblop <a@b.test>",
+      fetch: async (_url, init) => {
+        body = JSON.parse(init.body) as Record<string, unknown>;
+        return { ok: true, status: 201, json: async () => ({ messageId: "m" }) };
+      }
+    });
+    await sender.send({ to: "c@d.test", subject: "s", text: "t", attachments: [{ name: "a.pdf", contentBase64: "cGRm" }] });
+    expect(body.attachment).toEqual([{ name: "a.pdf", content: "cGRm" }]);
+  });
+
+  it("wraps plain text in the Joblop design without trusting its content", () => {
+    const html = brandedEmailHtml({ subject: "Hello", text: "Your <b>invoice</b> is ready.\n\nSign in to pay.\n\n— Joblop" });
+    expect(html).toContain("Your &lt;b&gt;invoice&lt;/b&gt; is ready.");
+    expect(html).toContain("Sign in to pay.");
+    expect(html).not.toContain("— Joblop");
+    expect(html).not.toContain("<b>invoice");
   });
 });

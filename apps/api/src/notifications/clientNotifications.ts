@@ -67,27 +67,31 @@ export function workerAcceptedEmail(params: {
   };
 }
 
-// An invoice has been sent. No figures in the email: the employer reads it in Joblop, signed in.
+// An invoice has been sent. The figures are in the attached PDF, and the employer pays in Joblop.
 export function invoiceSentEmail(params: {
   to: string;
   language: NotificationLanguage;
   invoiceNumber: string;
+  pdf?: Readonly<{ name: string; contentBase64: string }> | null;
 }): EmailMessage {
+  const attachments = params.pdf ? { attachments: [params.pdf] } : {};
   if (params.language === "en") {
     return {
       to: params.to,
       subject: `Joblop — invoice ${params.invoiceNumber} is ready`,
       text:
-        `Your invoice ${params.invoiceNumber} is ready.\n\n` +
-        `Sign in to Joblop and open Invoices to see it and pay.\n\n— Joblop`
+        `Your invoice ${params.invoiceNumber} is ready.${params.pdf ? " A copy is attached." : ""}\n\n` +
+        `Sign in to Joblop and open Invoices to see it and pay.\n\n— Joblop`,
+      ...attachments
     };
   }
   return {
     to: params.to,
     subject: `Joblop — la facture ${params.invoiceNumber} est prête`,
     text:
-      `Votre facture ${params.invoiceNumber} est prête.\n\n` +
-      `Connectez-vous à Joblop et ouvrez Factures pour la consulter et la payer.\n\n— Joblop`
+      `Votre facture ${params.invoiceNumber} est prête.${params.pdf ? " Une copie est jointe." : ""}\n\n` +
+      `Connectez-vous à Joblop et ouvrez Factures pour la consulter et la payer.\n\n— Joblop`,
+    ...attachments
   };
 }
 
@@ -95,7 +99,7 @@ export function invoiceSentEmail(params: {
 export async function notifyClientInvoiceSent(
   prisma: PrismaClient,
   emailSender: EmailSender,
-  input: { invoiceId: string; organizationId: string }
+  input: { invoiceId: string; organizationId: string; pdf?: Readonly<{ name: string; contentBase64: string }> | null }
 ): Promise<"sent" | "skipped" | "error" | "no_recipient"> {
   try {
     const invoice = await prisma.invoice.findFirst({
@@ -117,7 +121,7 @@ export async function notifyClientInvoiceSent(
     });
     if (!user?.emailNormalized) return "no_recipient";
     const result = await emailSender.send(
-      invoiceSentEmail({ to: user.emailNormalized, language: resolveLanguage(user.primaryLanguage), invoiceNumber: invoice.invoiceNumber })
+      invoiceSentEmail({ to: user.emailNormalized, language: resolveLanguage(user.primaryLanguage), invoiceNumber: invoice.invoiceNumber, pdf: input.pdf ?? null })
     );
     return result.status === "sent" ? "sent" : result.status === "error" ? "error" : "skipped";
   } catch {

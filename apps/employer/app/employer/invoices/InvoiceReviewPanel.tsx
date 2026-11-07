@@ -7,7 +7,7 @@ import { LanguageSwitcher } from "../../i18n/LanguageSwitcher";
 import { fmtLocale, useLocale, useT } from "../../i18n/LocaleProvider";
 import { previewInvoicePaymentOptions } from "./invoicePaymentPreview";
 import { findSelectedInvoice, invoiceDetailHref } from "./invoiceSelection";
-import { confirmCardPayment, isInvoicePayable, startCardPayment } from "./invoiceCardPayment";
+import { confirmCardPayment, isInvoicePayable, nextCardPaymentStep } from "./invoiceCardPayment";
 import type { RwosLocale } from "../../i18n/config";
 
 type InvoiceSummary = Readonly<{
@@ -59,14 +59,27 @@ export function InvoiceReviewPanel({
   async function payByCard(id: string) {
     setPayBusy(true);
     setPayMessage(null);
-    const url = await startCardPayment(id, fetch);
-    if (url) {
-      window.location.assign(url);
+    const step = await nextCardPaymentStep(id, fetch);
+    if (step.kind === "open") {
+      window.location.assign(step.url);
       return;
     }
-    setPayMessage(t("inv.payUnavailable"));
+    setPayMessage(t(step.kind === "paid" ? "inv.paySuccess" : "inv.payUnavailable"));
+    if (step.kind === "paid") setReloadKey((key) => key + 1);
     setPayBusy(false);
   }
+
+  // Opening an unpaid invoice checks with Stripe too, in case the employer never came back from paying.
+  const openInvoice = state.status === "ready" ? state.invoices.find((invoice) => invoice.id === invoiceId) : undefined;
+  const openInvoiceIsPayable = openInvoice ? isInvoicePayable(openInvoice.status) : false;
+  useEffect(() => {
+    if (mode !== "detail" || paymentReturn || !invoiceId || !openInvoiceIsPayable) return;
+    void confirmCardPayment(invoiceId, fetch).then((confirmed) => {
+      if (!confirmed) return;
+      setPayMessage(t("inv.paySuccess"));
+      setReloadKey((key) => key + 1);
+    });
+  }, [mode, paymentReturn, invoiceId, openInvoiceIsPayable]);
 
   useEffect(() => {
     const controller = new AbortController();
