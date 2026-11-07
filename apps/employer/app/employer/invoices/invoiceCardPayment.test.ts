@@ -37,7 +37,7 @@ describe("invoice card payment", () => {
     const calls: string[] = [];
     const fetcher = async (url: string) => {
       calls.push(url);
-      return { ok: url.endsWith("/complete"), json: async () => ({}) };
+      return { ok: url.endsWith("complete"), json: async () => ({}) };
     };
     await expect(nextCardPaymentStep("a", fetcher)).resolves.toEqual({ kind: "paid" });
     expect(calls).toEqual(["/api/invoices/a/checkout/complete"]);
@@ -45,7 +45,7 @@ describe("invoice card payment", () => {
 
   it("opens Stripe when nothing has been paid yet", async () => {
     const fetcher = async (url: string) =>
-      url.endsWith("/complete")
+      url.endsWith("complete")
         ? { ok: false, json: async () => ({}) }
         : { ok: true, json: async () => ({ checkoutUrl: "https://checkout.stripe.com/x" }) };
     await expect(nextCardPaymentStep("a", fetcher)).resolves.toEqual({ kind: "open", url: "https://checkout.stripe.com/x" });
