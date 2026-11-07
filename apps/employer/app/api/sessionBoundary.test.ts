@@ -189,6 +189,15 @@ describe("employer organization session context", () => {
     ).resolves.toEqual({ status: "error" });
   });
 
+  it("asks a signed-in account with no company to set one up, not to sign in again", async () => {
+    const request = vi.fn().mockResolvedValueOnce({ status: "ok", payload: { memberships: [] } });
+    const gateway = { request } as unknown as Parameters<typeof resolveClientOrganizationId>[0];
+    await expect(resolveClientOrganizationId(gateway, "session-token", null)).resolves.toEqual({
+      status: "context_required",
+      organizations: []
+    });
+  });
+
   it("does not call membership or capability services without a session token", async () => {
     const request = vi.fn();
     const gateway = { request } as unknown as Parameters<typeof resolveClientOrganizationId>[0];

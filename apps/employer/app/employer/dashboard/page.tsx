@@ -1,150 +1,22 @@
-import { EmployerShell, WorkflowRoutes } from "../EmployerShell";
-import {
-  dashboardAttention,
-  dashboardAvailableOrdersCalendar,
-  dashboardBoundaries,
-  dashboardOrderCalendar,
-  dashboardRevenueCalendar,
-  dashboardSections
-} from "../employerJourneyContent";
+import { EmployerShell } from "../EmployerShell";
 import { styles } from "../employerStyles";
+import { EmployerHomePanel } from "./EmployerHomePanel";
 
 export default function EmployerDashboardPage() {
   return (
     <EmployerShell
-      currentRoute="/employer/dashboard"
-      eyebrow="Employer Dashboard"
-      title="Your staffing home — what needs attention, what's at risk, and where to take the next step."
-      lede="The dashboard summarizes employer-side staffing activity. It does not become the source of truth for shifts, workers, payments, messages, notifications, documents, or compliance."
       actions={
-        <>
-          <a href="/employer/calendar/create" style={styles.primaryButton}>
-            Create staffing request
-          </a>
-          <a href="/employer/calendar" style={styles.secondaryButton}>
-            Open request calendar
-          </a>
-        </>
+        <a href="/employer/calendar/create" style={styles.primaryButton}>
+          Create staffing request
+        </a>
       }
+      currentRoute="/employer/dashboard"
+      eyebrow="Employer home"
+      lede="What needs you today, read live from your own Joblop records."
+      mode="authenticated"
+      title="Your staffing at a glance."
     >
-      <section style={styles.section}>
-        <div style={styles.sectionHeader}>
-          <p style={styles.eyebrowDark}>Primary attention band</p>
-          <h2 style={styles.sectionTitle}>What requires attention now?</h2>
-          <p style={styles.sectionCopy}>
-            These summaries point you to the right workflow to open — they never change anything
-            on their own.
-          </p>
-        </div>
-        <div style={styles.cardGrid}>
-          {dashboardAttention.map((card) => (
-            <article key={card.title} style={styles.tintedCard}>
-              <h3 style={styles.cardTitle}>{card.title}</h3>
-              <p style={styles.cardText}>{card.state}</p>
-              <a href={card.route} style={styles.secondaryButton}>
-                Open workflow
-              </a>
-            </article>
-          ))}
-        </div>
-      </section>
-
-      <section style={styles.whiteSection}>
-        <div style={styles.sectionHeader}>
-          <p style={styles.eyebrowDark}>Operational workspace</p>
-          <h2 style={styles.sectionTitle}>
-            Staffing, people, communications, finance, and support summaries.
-          </h2>
-        </div>
-        <div style={styles.pillGrid}>
-          {dashboardSections.map((section) => (
-            <span key={section} style={styles.pill}>
-              {section}
-            </span>
-          ))}
-        </div>
-      </section>
-
-      <section style={styles.section}>
-        <div style={styles.sectionHeader}>
-          <p style={styles.eyebrowDark}>Employer calendars</p>
-          <h2 style={styles.sectionTitle}>
-            Orders and billing are visible without becoming workflow authority.
-          </h2>
-          <p style={styles.sectionCopy}>
-            These calendars keep available requests, past and future staffing, and revenue timing
-            separate. Estimates route to invoices and payments; they do not confirm final charges.
-          </p>
-        </div>
-        <div style={styles.cardGrid}>
-          <CalendarPanel
-            items={dashboardAvailableOrdersCalendar}
-            title="Available Orders Calendar"
-            tone="urgent"
-          />
-          <CalendarPanel items={dashboardOrderCalendar} title="Past & Future Orders Calendar" />
-          <CalendarPanel items={dashboardRevenueCalendar} title="Revenue Calendar" tone="money" />
-        </div>
-      </section>
-
-      <section style={styles.section}>
-        <div style={styles.sectionHeader}>
-          <p style={styles.eyebrowDark}>AI assistant panel</p>
-          <h2 style={styles.sectionTitle}>AI may summarize visible dashboard items only.</h2>
-        </div>
-        <div style={styles.cardGrid}>
-          {dashboardBoundaries.map((boundary) => (
-            <article key={boundary} style={styles.card}>
-              <p style={styles.cardText}>{boundary}</p>
-            </article>
-          ))}
-        </div>
-      </section>
-
-      <WorkflowRoutes currentRoute="/employer/dashboard" />
+      <EmployerHomePanel />
     </EmployerShell>
-  );
-}
-
-function CalendarPanel({
-  items,
-  title,
-  tone = "default"
-}: {
-  items: readonly Readonly<{
-    day: string;
-    detail: string;
-    route: string;
-    state: string;
-    value: string;
-  }>[];
-  title: string;
-  tone?: "default" | "money" | "urgent";
-}) {
-  return (
-    <article
-      style={{
-        ...styles.card,
-        ...(tone === "urgent" ? styles.calendarCardUrgent : {}),
-        ...(tone === "money" ? styles.calendarCardMoney : {})
-      }}
-    >
-      <h3 style={styles.cardTitle}>{title}</h3>
-      <div style={styles.calendarGrid}>
-        {items.map((item) => (
-          <a
-            aria-label={`${title}: open ${item.day} ${item.state}`}
-            href={item.route}
-            key={`${title}-${item.day}`}
-            style={styles.calendarTile}
-          >
-            <span style={styles.routeStatus}>{item.day}</span>
-            <strong style={styles.calendarMetric}>{item.value}</strong>
-            <p style={styles.cardText}>{item.detail}</p>
-            <span style={styles.calendarState}>{item.state}</span>
-          </a>
-        ))}
-      </div>
-    </article>
   );
 }

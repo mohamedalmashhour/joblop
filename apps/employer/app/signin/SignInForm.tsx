@@ -70,6 +70,15 @@ export function SignInForm() {
   const [message, setMessage] = useState(() => t("auth.signInIntro"));
   const [needsSignOut, setNeedsSignOut] = useState(false);
 
+  // Someone already signed in never needs this form: send them to their workspace.
+  useEffect(() => {
+    fetch("/api/session", { cache: "no-store" })
+      .then((response) => {
+        if (response.ok) window.location.replace("/employer/dashboard");
+      })
+      .catch(() => undefined);
+  }, []);
+
   const submit = async (event: React.FormEvent) => {
     event.preventDefault();
     setState("submitting");
