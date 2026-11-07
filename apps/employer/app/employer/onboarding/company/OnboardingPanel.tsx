@@ -30,7 +30,16 @@ export function OnboardingPanel() {
     setError(null);
     try {
       const res = await fetch(url, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) });
-      if (res.status === 401) { setError("Your session expired. Please sign in again."); return null; }
+      if (res.status === 401) {
+        // The API refuses some requests the same way as a lost session, so check which this is.
+        const session = await fetch("/api/session", { cache: "no-store" }).catch(() => null);
+        setError(
+          session?.ok
+            ? "We couldn't save that. Please try again, or contact Joblop if it keeps happening."
+            : "Your session expired. Please sign in again."
+        );
+        return null;
+      }
       if (!res.ok) { setError("That couldn't be saved. Check the details and try again."); return null; }
       return (await res.json().catch(() => ({}))) as Record<string, unknown>;
     } catch {

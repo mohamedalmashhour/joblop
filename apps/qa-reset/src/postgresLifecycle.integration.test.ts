@@ -152,6 +152,13 @@ suite("QA-reset durable PostgreSQL lifecycle", () => {
   }
 
   async function seedControlEnvelope() {
+    // Migrations now create this role with a random id, and this suite needs its fixed fixture id, so
+    // set the migrated row aside for the duration of the test. Cleanup puts it back.
+    await prisma.$executeRawUnsafe(
+      `UPDATE access_role_definitions SET key = 'ORGANIZATION_OWNER_SET_ASIDE'
+        WHERE key = 'ORGANIZATION_OWNER' AND id <> $1`,
+      testConfig.organizationOwnerAccessRoleId
+    );
     await prisma.$executeRawUnsafe(
       `INSERT INTO access_role_definitions
          (id, key, scope, status, is_system, created_at, updated_at)
@@ -271,6 +278,10 @@ suite("QA-reset durable PostgreSQL lifecycle", () => {
     await prisma.$executeRawUnsafe(
       `DELETE FROM access_role_definitions WHERE id = $1`,
       testConfig.organizationOwnerAccessRoleId
+    );
+    await prisma.$executeRawUnsafe(
+      `UPDATE access_role_definitions SET key = 'ORGANIZATION_OWNER'
+        WHERE key = 'ORGANIZATION_OWNER_SET_ASIDE'`
     );
   }
 
