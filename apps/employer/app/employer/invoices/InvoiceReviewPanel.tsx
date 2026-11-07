@@ -174,6 +174,15 @@ export function InvoiceReviewPanel({
               </article>
             ))}
           </div>
+          {mode === "detail" && selected.invoiceNumber ? (
+            <a
+              download
+              href={`/api/invoices/${encodeURIComponent(selected.id)}/pdf`}
+              style={{ ...styles.secondaryButton, display: "inline-block", marginTop: 18, marginRight: 12 }}
+            >
+              {t("inv.downloadPdf")}
+            </a>
+          ) : null}
           {mode === "detail" && isInvoicePayable(selected.status) ? (
             <button disabled={payBusy} onClick={() => void payByCard(selected.id)} style={{ ...styles.primaryButton, marginTop: 18 }} type="button">
               {t("inv.payByCard")}

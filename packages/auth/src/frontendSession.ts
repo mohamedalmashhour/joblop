@@ -19,6 +19,7 @@ export type FrontendSessionFetch = (
     status: number;
     headers?: Readonly<{ get(name: string): string | null }>;
     json(): Promise<unknown>;
+    arrayBuffer?(): Promise<ArrayBuffer>;
   }>
 >;
 
@@ -29,6 +30,10 @@ export type FrontendSessionResult =
   | Readonly<{ status: "stale" }>
   | Readonly<{ status: "unavailable" }>
   | Readonly<{ status: "error" }>;
+
+export type PdfResult =
+  | Readonly<{ status: "ok"; bytes: Uint8Array }>
+  | Readonly<{ status: "denied" | "not_found" | "stale" | "unavailable" | "error" }>;
 
 export type FrontendSignInResult =
   FrontendSessionResult | Readonly<{ status: "rate_limited"; retryAfterSeconds: number }>;
@@ -267,6 +272,26 @@ export function createFrontendSessionGateway(options: {
         if (!token) return { status: "error" };
         persistToken(token);
         return { status: "ok", payload: sanitizeSessionPayload(payload) };
+      } catch {
+        return { status: "unavailable" };
+      }
+    },
+    // A signed-in user's PDF, such as an invoice. The bytes pass through untouched.
+    async requestPdf(path: string, sessionToken: string | null): Promise<PdfResult> {
+      if (!sessionToken) return { status: "denied" };
+      try {
+        const response = await options.fetch(`${origin}${path}`, {
+          method: "GET",
+          headers: { accept: "application/pdf", authorization: `Bearer ${sessionToken}` },
+          cache: "no-store"
+        });
+        if (response.status === 401 || response.status === 403) return { status: "denied" };
+        if (response.status === 404) return { status: "not_found" };
+        if (response.status === 409) return { status: "stale" };
+        if (!response.ok || !response.arrayBuffer || !(response.headers?.get("content-type") ?? "").startsWith("application/pdf")) {
+          return { status: "error" };
+        }
+        return { status: "ok", bytes: new Uint8Array(await response.arrayBuffer()) };
       } catch {
         return { status: "unavailable" };
       }
