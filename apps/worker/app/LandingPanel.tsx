@@ -5,6 +5,7 @@ import { trackConversion } from "./analytics";
 import { withBrand } from "./Brand";
 import { useT } from "./i18n/LocaleProvider";
 import { VerifyEmail } from "./VerifyEmail";
+import { VideoCard } from "./VideoCard";
 
 /** Signed-out worker front door: value proposition + how-it-works, with a sign-in / create-account
  *  card. Fully bilingual (fr-CA / en-CA). On success it hands control back to the marketplace. */
@@ -28,18 +29,41 @@ export function LandingPanel({ onSignedIn }: { onSignedIn: () => void }) {
           <p>{withBrand(t("land.heroSub"))}</p>
           <ul className="landing-values">
             {values.map((v) => (
-              <li key={v}><span aria-hidden="true">✓</span> {withBrand(v)}</li>
+              <li key={v}>
+                <span className="landing-tick" aria-hidden="true">✓</span>
+                <span>{withBrand(v)}</span>
+              </li>
             ))}
           </ul>
           <a href="/browse" className="landing-browse" style={{ display: "inline-block", marginTop: 14, fontWeight: 700, color: "#b8862f", textDecoration: "none" }}>
             {t("land.browsePublic")}
           </a>
         </div>
-        <AuthCard tab={tab} setTab={setTab} onSignedIn={onSignedIn} />
+        <div className="landing-hero-side">
+          <AuthCard tab={tab} setTab={setTab} onSignedIn={onSignedIn} />
+        </div>
+        <div className="landing-hero-video">
+          <VideoCard
+            src="/media/workers-ready.mp4"
+            poster="/media/workers-ready.jpg"
+            label={t("land.videoReadyLabel")}
+            playLabel={t("land.videoPlay")}
+          />
+        </div>
       </section>
 
       <section className="landing-steps">
         <h2>{t("land.howItWorks")}</h2>
+        <div className="landing-steps-body">
+          <VideoCard
+            src="/media/how-joblop-works.mp4"
+            poster="/media/how-joblop-works.jpg"
+            label={t("land.videoHowLabel")}
+            soundLabel={t("land.videoSoundOn")}
+            muteLabel={t("land.videoSoundOff")}
+            playLabel={t("land.videoPlay")}
+            withSound
+          />
         <ol>
           {steps.map((s, i) => (
             <li key={s.title}>
@@ -51,6 +75,7 @@ export function LandingPanel({ onSignedIn }: { onSignedIn: () => void }) {
             </li>
           ))}
         </ol>
+        </div>
       </section>
     </div>
   );
@@ -173,7 +198,7 @@ function SignInForm({ onSignedIn, onNeedAccount }: { onSignedIn: () => void; onN
         <input id="si-phone" type="tel" autoComplete="tel" value={phone} onChange={(e) => setPhone(e.target.value)} placeholder={t("signup.phonePlaceholder")} required />
         {problem}
         <button className="btn" type="submit" disabled={busy}>{busy ? t("auth.sendingCode") : t("auth.textMeCode")}</button>
-        <p className="auth-switch">{t("auth.needAccount")} <button type="button" className="linkbtn" onClick={onNeedAccount}>{t("auth.tabCreate")}</button></p>
+        <p className="auth-switch">{withBrand(t("auth.needAccount"))} <button type="button" className="linkbtn" onClick={onNeedAccount}>{t("auth.tabCreate")}</button></p>
       </form>
     );
   }

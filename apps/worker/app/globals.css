@@ -815,20 +815,26 @@ a.card.cardlink:hover {
 }
 
 /* --- Worker landing --- */
+:root { --jl-logo-gold: #f8b808; }
 .landing { display: flex; flex-direction: column; gap: 40px; padding: 8px 0 40px; }
-.landing-hero { display: grid; grid-template-columns: 1.2fr 0.9fr; gap: 32px; align-items: start; }
+.landing-hero { display: grid; grid-template-columns: minmax(0, 1.25fr) minmax(220px, 0.7fr) minmax(300px, 0.95fr); grid-template-areas: "copy video auth"; gap: 32px; align-items: start; }
+.landing-copy { grid-area: copy; }
+.landing-hero-video { grid-area: video; }
+.landing-hero-side { grid-area: auth; }
 .landing-copy h1 { font-size: 34px; line-height: 1.12; margin: 0 0 12px; letter-spacing: -0.02em; }
 .landing-copy > p { font-size: 17px; color: var(--muted, #171511); margin: 0 0 18px; max-width: 48ch; }
 .landing-values { list-style: none; padding: 0; margin: 0; display: grid; gap: 8px; }
-.landing-values li { display: flex; gap: 8px; align-items: center; font-weight: 600; }
-.landing-values span { color: var(--brand, #171511); font-weight: 800; }
+.landing-values li { display: flex; gap: 10px; align-items: baseline; font-weight: 600; }
+.landing-values .landing-tick { color: var(--jl-logo-gold, #f8b808); font-weight: 800; flex: none; }
 .auth-card { border: 1px solid var(--line, #faf6ec); border-radius: 16px; background: var(--card, #fff); box-shadow: 0 1px 3px rgba(16,24,40,.08); overflow: hidden; }
 .auth-tabs { display: flex; border-bottom: 1px solid var(--line, #faf6ec); }
 .auth-tabs button { flex: 1; appearance: none; border: 0; background: transparent; font: inherit; font-weight: 700; padding: 14px; cursor: pointer; color: var(--muted, #171511); }
 .auth-tabs button.active { color: var(--brand, #171511); box-shadow: inset 0 -2px 0 var(--brand, #171511); }
 .auth-form { display: flex; flex-direction: column; gap: 6px; padding: 18px; }
 .auth-form label:not(.checkfield) { font-size: 13px; font-weight: 600; color: var(--muted, #171511); margin-top: 8px; }
-.auth-form input[type="email"], .auth-form input[type="password"], .auth-form input[type="text"] { padding: 10px 12px; border: 1px solid var(--line, #faf6ec); border-radius: 8px; font: inherit; }
+.auth-form input:not([type="checkbox"]):not([type="radio"]) { padding: 12px 14px; border: 1px solid rgba(248, 184, 8, 0.35); border-radius: 10px; font: inherit; font-size: 16px; background: #0b0b0b; color: #fff; }
+.auth-form input:not([type="checkbox"]):not([type="radio"])::placeholder { color: #8a8478; }
+.auth-form input:not([type="checkbox"]):not([type="radio"]):focus { outline: 2px solid var(--jl-logo-gold, #f8b808); outline-offset: 1px; border-color: transparent; }
 .auth-form .btn { margin-top: 14px; }
 .auth-switch { font-size: 14px; color: var(--muted, #171511); margin: 10px 0 0; text-align: center; }
 .linkbtn { appearance: none; border: 0; background: none; color: var(--brand, #171511); font: inherit; font-weight: 700; cursor: pointer; padding: 0; }
@@ -844,7 +850,26 @@ a.card.cardlink:hover {
 .landing-steps .step-n { flex: none; width: 30px; height: 30px; border-radius: 50%; background: var(--brand, #171511); color: #fff; font-weight: 800; display: flex; align-items: center; justify-content: center; }
 .landing-steps h3 { margin: 2px 0 4px; font-size: 16px; }
 .landing-steps p { margin: 0; color: var(--muted, #171511); font-size: 14.5px; }
-@media (max-width: 760px) { .landing-hero { grid-template-columns: 1fr; } }
+.landing-steps-body { display: grid; grid-template-columns: minmax(220px, 280px) 1fr; gap: 32px; align-items: start; }
+.landing-steps-body ol { align-self: center; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 28px 32px; }
+.landing-steps-body ol li { background: #0c0c0c; border: 1px solid rgba(248, 184, 8, 0.18); border-radius: 16px; padding: 18px; }
+@media (max-width: 1100px) {
+  .landing-hero { grid-template-columns: minmax(0, 1fr) minmax(300px, 0.9fr); grid-template-areas: "copy auth" "video auth"; }
+  .landing-hero-video { max-width: 260px; }
+}
+@media (max-width: 760px) {
+  .landing-hero { grid-template-columns: 1fr; grid-template-areas: "copy" "auth" "video"; }
+  .landing-hero-video { max-width: 280px; margin: 0 auto; }
+  .landing-steps-body { grid-template-columns: 1fr; }
+  .landing-steps-body ol { grid-template-columns: 1fr; }
+  .landing-steps-body .video-card { max-width: 280px; margin: 0 auto; }
+}
+
+/* Phone-shaped video card used on the landing pages. */
+.video-card { position: relative; margin: 0; aspect-ratio: 9 / 16; border-radius: 28px; overflow: hidden; background: #000; border: 6px solid #1a1a1a; box-shadow: 0 0 0 1px rgba(248, 184, 8, 0.35), 0 24px 48px rgba(0, 0, 0, 0.45); }
+.video-card video { width: 100%; height: 100%; object-fit: cover; display: block; }
+.video-card-play { position: absolute; inset: 0; margin: auto; width: 64px; height: 64px; border-radius: 50%; border: 0; background: rgba(248, 184, 8, 0.92); color: #000; font-size: 22px; cursor: pointer; }
+.video-card-sound { position: absolute; left: 50%; bottom: 14px; transform: translateX(-50%); border: 0; border-radius: 999px; padding: 8px 14px; background: rgba(0, 0, 0, 0.72); color: #fff; font: inherit; font-size: 13px; font-weight: 700; cursor: pointer; white-space: nowrap; }
 
 /* --- Agenda view --- */
 .agenda { display: flex; flex-direction: column; gap: 22px; padding-bottom: 48px; }
@@ -874,23 +899,17 @@ dl.agreement dd { margin: 0; }
   a[href] { text-decoration: none; color: #000; }
 }
 
-/* Brand wordmark — any literal "Joblop" in copy renders as the logo's voice: brand letters with
-   gold aperture "o"s and a gentle gold pulse. Matches the logo palette (cream letters + gold o). */
+/* Brand wordmark: any literal "Joblop" in copy looks like the logo, the surrounding text colour with
+   the two "o"s in the logo's gold. */
 .brandword {
   font-weight: 800;
   letter-spacing: 0.01em;
   white-space: nowrap;
-  color: var(--jl-on-black, #f4ead6);
+  color: inherit;
 }
+/* The logo's two "o"s, in the logo's own gold (#F8B808). */
 .brandword-o {
   display: inline-block;
-  color: var(--jl-gold, #d6a63a);
-  animation: brandPulse 2.6s ease-in-out infinite;
+  color: var(--jl-logo-gold, #f8b808);
 }
-@keyframes brandPulse {
-  0%, 100% { color: #c79a37; text-shadow: 0 0 0 rgba(214, 166, 58, 0); }
-  50% { color: #f0c45a; text-shadow: 0 0 8px rgba(214, 166, 58, 0.55); }
-}
-@media (prefers-reduced-motion: reduce) {
-  .brandword-o { animation: none; color: var(--jl-gold, #d6a63a); }
-}
+
