@@ -1,4 +1,5 @@
 import { getRuntimeConfig } from "@rwos/config";
+import { ScrollToScanner } from "./ScrollToScanner";
 
 // Live JobScanner on the main landing page. Anyone can search and see real job postings scanned from
 // partner job boards (no account). Opening a job sends the visitor to the worker side to create an
@@ -96,13 +97,14 @@ export async function JobScannerBand({ lang, q, workerAppUrl }: { lang: Lang; q:
   const signUp = workerAppUrl;
   return (
     <section id="scanner" aria-labelledby="scanner-title" className="scan-band" dir={lang === "ar" ? "rtl" : "ltr"}>
+      {q ? <ScrollToScanner /> : null}
       <div className="scan-inner">
         <span className="scan-tag">
           <span className="scan-dot" aria-hidden="true" /> {t.tag}
         </span>
         <h2 id="scanner-title" className="scan-title">{t.title}</h2>
         <p className="scan-copy">{t.copy}</p>
-        <form className="scan-form" action="/#scanner" method="get" role="search">
+        <form className="scan-form" action="/" method="get" role="search">
           <input name="scan" defaultValue={q} placeholder={t.placeholder} aria-label={t.placeholder} maxLength={80} />
           <button type="submit">{t.search}</button>
         </form>
@@ -111,7 +113,7 @@ export async function JobScannerBand({ lang, q, workerAppUrl }: { lang: Lang; q:
           {q ? (
             <>
               {" · "}
-              <a href="/#scanner">{t.all}</a>
+              <a href="/" data-keep="scanner">{t.all}</a>
             </>
           ) : null}
         </p>
