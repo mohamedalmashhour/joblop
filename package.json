@@ -83,6 +83,7 @@
     "db:restore:rehearse": "node --import tsx scripts/rehearse-database-restore.ts",
     "qa-reset:postgres:validate": "bash scripts/validate-qa-reset-local-postgres.sh",
     "bootstrap:first-admin": "node --import tsx scripts/bootstrap-first-platform-admin.ts",
+    "grant:first-staff-admin": "node --import tsx scripts/grant-first-staff-admin.ts",
     "scan:secrets": "node --import tsx scripts/scan-secrets.ts",
     "scan:public-bundles": "node --import tsx scripts/validate-public-bundles.ts",
     "validate": "pnpm lint && pnpm typecheck && pnpm test && pnpm validate:env && pnpm validate:boundaries && pnpm validate:migrations && pnpm scan:secrets && pnpm build && pnpm scan:public-bundles",
