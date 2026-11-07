@@ -8,6 +8,7 @@ import { JobLopLogo } from "./JobLopLogo";
 import { HeaderNav } from "./HeaderNav";
 import { EmployerFlowMovie } from "./EmployerFlowMovie";
 import { LanguageSwitcher } from "./i18n/LanguageSwitcher";
+import { JobScannerBand } from "./JobScannerBand";
 
 async function resolveLocale() {
   const store = await cookies();
@@ -256,8 +257,12 @@ const hx: Record<string, CSSProperties> = {
   }
 };
 
-export default async function LandingPage() {
+export default async function LandingPage({ searchParams }: { searchParams?: Promise<Record<string, string | string[] | undefined>> }) {
   const locale = await resolveLocale();
+  const sp = (await searchParams) ?? {};
+  const scanRaw = Array.isArray(sp.scan) ? sp.scan[0] : sp.scan;
+  const scanQuery = (scanRaw ?? "").trim().slice(0, 80);
+  const lang = locale === "ar" ? "ar" : locale.startsWith("fr") ? "fr" : "en";
   const c = getLandingContent(locale);
   const isProduction = process.env.RWOS_ENV === "production";
   const isStaging =
@@ -358,7 +363,9 @@ export default async function LandingPage() {
         </div>
       </section>
 
-      <EmployerFlowMovie lang={locale === "ar" ? "ar" : locale.startsWith("fr") ? "fr" : "en"} />
+      <JobScannerBand lang={lang} q={scanQuery} workerAppUrl={workerAppUrl} />
+
+      <EmployerFlowMovie lang={lang} />
 
       <section aria-labelledby="media-title" className="media-band">
         <div className="media-band-inner">

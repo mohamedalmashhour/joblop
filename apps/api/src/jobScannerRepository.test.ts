@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { leadQueryTokens } from "./jobScannerRepository";
+import { expandLeadQueryTokens, leadQueryTokens } from "./jobScannerRepository";
 
 // The role/keyword search tokenizer that powers JobScanner relevance filtering. When a visitor
 // searches "chef", queryStoredLeads narrows to leads whose title/employer/category contain a token,
@@ -34,5 +34,16 @@ describe("leadQueryTokens", () => {
   it("caps at 8 tokens so a pathological query can't explode the OR filter", () => {
     const many = Array.from({ length: 20 }, (_, i) => `role${i}`).join(" ");
     expect(leadQueryTokens(many)).toHaveLength(8);
+  });
+});
+
+describe("expandLeadQueryTokens", () => {
+  it("adds the French job-title words for an English search, so Québec listings are found", () => {
+    expect(expandLeadQueryTokens("driver", ["driver"])).toEqual(expect.arrayContaining(["driver", "chauffeur", "livreur"]));
+    expect(expandLeadQueryTokens("Cleaner", ["Cleaner"])).toEqual(expect.arrayContaining(["cleaner", "entretien", "ménage"]));
+  });
+  it("matches a whole multi-word role and leaves unknown words alone", () => {
+    expect(expandLeadQueryTokens("personal support worker", ["personal", "support", "worker"])).toContain("préposé");
+    expect(expandLeadQueryTokens("plumber", ["plumber"])).toEqual(["plumber"]);
   });
 });

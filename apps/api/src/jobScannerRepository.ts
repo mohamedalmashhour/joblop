@@ -114,6 +114,47 @@ export function leadQueryTokens(query: string | undefined): string[] {
     .slice(0, 8);
 }
 
+// Québec listings are often titled in French, so an English search word also matches its common
+// French job-title words (and the reverse). Keys and values are lower-case substrings.
+const LEAD_QUERY_SYNONYMS: Record<string, readonly string[]> = {
+  driver: ["chauffeur", "livreur", "livraison"],
+  delivery: ["livreur", "livraison"],
+  cleaner: ["entretien", "ménage", "nettoyage", "concierge"],
+  cleaning: ["entretien", "ménage", "nettoyage"],
+  housekeeping: ["ménage", "entretien ménager"],
+  warehouse: ["entrepôt", "entrepot", "manutention", "magasinier"],
+  labourer: ["journalier", "manoeuvre", "manœuvre"],
+  laborer: ["journalier", "manoeuvre", "manœuvre"],
+  retail: ["vente", "caissier", "caissière", "commis"],
+  cashier: ["caissier", "caissière"],
+  cook: ["cuisinier", "cuisinière", "cuisine"],
+  kitchen: ["cuisine", "plongeur"],
+  dishwasher: ["plongeur"],
+  security: ["sécurité", "gardien", "agent de sécurité"],
+  guard: ["gardien", "sécurité"],
+  construction: ["chantier", "journalier", "menuisier"],
+  nurse: ["infirmier", "infirmière"],
+  "personal support worker": ["préposé", "préposée", "aide-soignant", "pab"],
+  psw: ["préposé", "préposée", "pab"],
+  caregiver: ["préposé", "aidant", "soignant"],
+  event: ["événement", "evenement", "banquet"],
+  server: ["serveur", "serveuse"],
+  chauffeur: ["driver"],
+  entretien: ["cleaner", "cleaning"],
+  cuisinier: ["cook"],
+  entrepôt: ["warehouse"]
+};
+
+/** Add French/English job-title equivalents to the search words (bounded). */
+export function expandLeadQueryTokens(query: string | undefined, tokens: readonly string[]): string[] {
+  const out = new Set(tokens.map((t) => t.toLowerCase()));
+  const whole = (query ?? "").trim().toLowerCase();
+  for (const key of [whole, ...out]) {
+    for (const alt of LEAD_QUERY_SYNONYMS[key] ?? []) out.add(alt);
+  }
+  return [...out].slice(0, 16);
+}
+
 /**
  * Query stored leads, most-recently-seen first, optionally filtered by province and/or city.
  * When `query` is given it also NARROWS to leads whose title, employer or category contains any of
@@ -121,7 +162,7 @@ export function leadQueryTokens(query: string | undefined): string[] {
  * with chef merely ranked higher. Without a query the behaviour is unchanged.
  */
 export async function queryStoredLeads(prisma: PrismaClient, opts: QueryLeadsOptions = {}): Promise<StoredLead[]> {
-  const tokens = leadQueryTokens(opts.query);
+  const tokens = expandLeadQueryTokens(opts.query, leadQueryTokens(opts.query));
   const rows = await prisma.externalJobLead.findMany({
     where: {
       ...(opts.province ? { province: opts.province } : {}),
