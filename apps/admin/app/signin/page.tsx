@@ -13,10 +13,7 @@ export default function AdminSignInPage() {
       <section style={authStyles.card}>
         <p style={authStyles.eyebrow}>Administration access</p>
         <h1 style={authStyles.title}>Sign in to the administration workspace.</h1>
-        <p style={authStyles.copy}>
-          Authority is verified before any persisted data is shown. Sign-in is available in every
-          environment.
-        </p>
+        <p style={authStyles.copy}>Staff sign in with their mobile number and a texted code.</p>
         <SignInForm />
       </section>
     </main>

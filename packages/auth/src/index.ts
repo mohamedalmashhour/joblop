@@ -11741,6 +11741,35 @@ export function createAuthenticationService(
       };
     },
 
+    // Staff phone sign-in: the API has already checked the texted code and the staff grant, so this
+    // only issues the session, exactly as password sign-in does.
+    async signInWithVerifiedStaffPhone(input: {
+      emailNormalized: string;
+      source?: AuthenticationAuditSource;
+      correlationId?: string;
+      ipAddress?: string | null;
+      userAgent?: string | null;
+    }): Promise<SignInResult> {
+      const currentTime = now();
+      const user = await repository.findUserByEmailNormalized(input.emailNormalized);
+      if (!user || user.status !== "active") throw new AuthenticationError();
+      const session = await createSessionForUser(repository, user, randomToken, sessionTtlSeconds, currentTime, input);
+      await recordAuthenticationAudit(repository, {
+        action: "auth.login_success",
+        actorType: "user",
+        userId: user.id,
+        entityId: user.id,
+        entityPublicReference: user.publicId,
+        priorState: null,
+        newState: "session_active",
+        reason: "staff_phone_code",
+        source: input.source ?? "api",
+        correlationId: input.correlationId,
+        createdAt: currentTime
+      });
+      return { user: toPublicUser(user), ...session };
+    },
+
     async validateSession(token: string | null | undefined): Promise<SessionValidationResult> {
       if (!token) {
         return unauthenticatedSession();
