@@ -11741,7 +11741,7 @@ export function createAuthenticationService(
       };
     },
 
-    // Staff phone sign-in: the API has already checked the texted code and the staff grant, so this
+    // Phone sign-in: the API has already checked the texted code and who may sign in, so this
     // only issues the session, exactly as password sign-in does.
     async signInWithVerifiedStaffPhone(input: {
       emailNormalized: string;
@@ -11762,7 +11762,7 @@ export function createAuthenticationService(
         entityPublicReference: user.publicId,
         priorState: null,
         newState: "session_active",
-        reason: "staff_phone_code",
+        reason: "phone_code",
         source: input.source ?? "api",
         correlationId: input.correlationId,
         createdAt: currentTime

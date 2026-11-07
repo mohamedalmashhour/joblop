@@ -235,9 +235,9 @@ export function createFrontendSessionGateway(options: {
         return { status: "unavailable" };
       }
     },
-    async staffPhoneRequest(input: { phone: string }): Promise<void> {
+    async phoneRequest(audience: PhoneSignInSite, input: { phone: string }): Promise<void> {
       await options
-        .fetch(`${origin}/auth/staff-phone/request`, {
+        .fetch(`${origin}/auth/${audience}-phone/request`, {
           method: "POST",
           headers: { accept: "application/json", "content-type": "application/json" },
           body: JSON.stringify(input),
@@ -245,12 +245,13 @@ export function createFrontendSessionGateway(options: {
         })
         .catch(() => undefined);
     },
-    async staffPhoneVerify(
+    async phoneVerify(
+      audience: PhoneSignInSite,
       input: { phone: string; code: string },
       persistToken: (token: string) => void
     ): Promise<FrontendSessionResult> {
       try {
-        const response = await options.fetch(`${origin}/auth/staff-phone/verify`, {
+        const response = await options.fetch(`${origin}/auth/${audience}-phone/verify`, {
           method: "POST",
           headers: { accept: "application/json", "content-type": "application/json" },
           body: JSON.stringify(input),
@@ -278,6 +279,8 @@ export function createFrontendSessionGateway(options: {
     request
   };
 }
+
+export type PhoneSignInSite = "staff" | "employer" | "worker";
 
 function readRetryAfter(value: string | null | undefined) {
   const parsed = Number(value);

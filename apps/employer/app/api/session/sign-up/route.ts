@@ -1,3 +1,5 @@
+import { randomBytes } from "node:crypto";
+
 import {
   isSameOriginMutation,
   organizationContextCookieName,
@@ -32,9 +34,10 @@ export async function POST(request: Request) {
   const result = await gateway.register(
     {
       email: body.email,
-      password: body.password,
+      // Employers sign in by texted code. The account still stores a password nobody ever sees.
+      password: `${randomBytes(32).toString("base64url")}a1`,
       displayName: body.displayName ?? null,
-      phone: body.phone ?? null,
+      phone: body.phone,
       referralCode: body.referralCode ?? null
     },
     (issuedToken) => {
@@ -71,7 +74,7 @@ export async function POST(request: Request) {
   }
   if (result.status === "invalid") {
     return Response.json(
-      { status: "invalid", message: "Password does not meet the required strength." },
+      { status: "invalid", message: "Check your details and try again." },
       { status: 400, headers: { "cache-control": "private, no-store" } }
     );
   }
@@ -84,11 +87,9 @@ function validRegistration(
 ): input is {
   email: string;
   confirmEmail: string;
-  password: string;
-  confirmPassword: string;
   acceptedNotices: true;
   displayName?: string | null;
-  phone?: string | null;
+  phone: string;
   referralCode?: string | null;
 } {
   if (typeof input !== "object" || input === null) return false;
@@ -97,15 +98,11 @@ function validRegistration(
     typeof record.email === "string" &&
     typeof record.confirmEmail === "string" &&
     record.email.trim().toLowerCase() === record.confirmEmail.trim().toLowerCase() &&
-    typeof record.password === "string" &&
-    typeof record.confirmPassword === "string" &&
-    record.password === record.confirmPassword &&
     record.acceptedNotices === true &&
     (record.displayName === undefined ||
       record.displayName === null ||
       typeof record.displayName === "string") &&
-    (record.phone === undefined ||
-      record.phone === null ||
-      typeof record.phone === "string")
+    typeof record.phone === "string" &&
+    record.phone.replace(/\D/g, "").length >= 10
   );
 }

@@ -1512,7 +1512,8 @@ export function buildApi(options: BuildApiOptions = {}) {
     const displayName = readOptionalString(body, "displayName");
     // Optional mobile number (seeded #1). Never required; bounded. Null when absent/blank.
     const phoneRaw = readOptionalString(body, "phone");
-    const phone = phoneRaw && phoneRaw.trim() ? phoneRaw.trim().slice(0, 32) : null;
+    // Stored in one standard form so the same number finds this account at phone sign-in.
+    const phone = phoneRaw && phoneRaw.trim() ? (normalizeStaffPhone(phoneRaw) ?? phoneRaw.trim().slice(0, 32)) : null;
     // Invite-a-friend: optional referral code captured from ?ref= at signup. Attribution is best-effort.
     const referralCode = readOptionalString(body, "referralCode");
 
@@ -1559,38 +1560,44 @@ export function buildApi(options: BuildApiOptions = {}) {
     }
   });
 
-  // Staff phone sign-in. The answer is the same whether or not the number is staff, so this never
+  // Phone sign-in. The answer is the same whether or not the number has an account, so this never
   // reveals which numbers can sign in.
-  app.post("/auth/staff-phone/request", async (request, reply) => {
-    const phone = normalizeStaffPhone(asRecord(request.body).phone);
-    if (!phone || !prisma) return reply.code(202).send({ status: "code_requested" });
-    const rateLimit = await consumeAuthenticationRateLimit(authRateLimiter, { action: "sign_in", ip: request.ip, email: phone });
-    if (!rateLimit) return sendAuthenticationUnavailable(reply);
-    if (!rateLimit.allowed) return sendAuthenticationRateLimited(reply, rateLimit.retryAfterSeconds);
-    const outcome = await requestStaffPhoneCode(prisma, smsSender, { phone, now: new Date() }).catch(() => "not_sent" as const);
-    if (outcome === "not_sent") logger.error("api.staff_phone.text_not_sent", { requestId: request.id });
-    return reply.code(202).send({ status: "code_requested" });
-  });
-
-  app.post("/auth/staff-phone/verify", async (request, reply) => {
-    const body = asRecord(request.body);
-    const phone = normalizeStaffPhone(body.phone);
-    const code = readRequiredString(body, "code");
-    const denied = () => reply.code(401).send({ error: authenticationErrorCode, message: authenticationErrorMessage });
-    if (!phone || !code || !/^\d{6}$/.test(code) || !prisma) return denied();
-    const rateLimit = await consumeAuthenticationRateLimit(authRateLimiter, { action: "sign_in", ip: request.ip, email: phone });
-    if (!rateLimit) return sendAuthenticationUnavailable(reply);
-    if (!rateLimit.allowed) return sendAuthenticationRateLimited(reply, rateLimit.retryAfterSeconds);
-    const verified = await verifyStaffPhoneCode(prisma, { phone, code, now: new Date() });
-    if (!verified) return denied();
-    const result = await authService.signInWithVerifiedStaffPhone({
-      emailNormalized: verified.emailNormalized,
-      source: "api",
-      ipAddress: request.ip,
-      userAgent: request.headers["user-agent"] ?? null
+  for (const [path, audience] of [
+    ["staff-phone", "staff"],
+    ["employer-phone", "employer"],
+    ["worker-phone", "worker"]
+  ] as const) {
+    app.post(`/auth/${path}/request`, async (request, reply) => {
+      const phone = normalizeStaffPhone(asRecord(request.body).phone);
+      if (!phone || !prisma) return reply.code(202).send({ status: "code_requested" });
+      const rateLimit = await consumeAuthenticationRateLimit(authRateLimiter, { action: "sign_in", ip: request.ip, email: phone });
+      if (!rateLimit) return sendAuthenticationUnavailable(reply);
+      if (!rateLimit.allowed) return sendAuthenticationRateLimited(reply, rateLimit.retryAfterSeconds);
+      const outcome = await requestStaffPhoneCode(prisma, smsSender, { phone, now: new Date(), audience }).catch(() => "not_sent" as const);
+      if (outcome === "not_sent") logger.error("api.staff_phone.text_not_sent", { requestId: request.id, audience });
+      return reply.code(202).send({ status: "code_requested" });
     });
-    return reply.code(200).send(serializeAuthenticationResult(result));
-  });
+
+    app.post(`/auth/${path}/verify`, async (request, reply) => {
+      const body = asRecord(request.body);
+      const phone = normalizeStaffPhone(body.phone);
+      const code = readRequiredString(body, "code");
+      const denied = () => reply.code(401).send({ error: authenticationErrorCode, message: authenticationErrorMessage });
+      if (!phone || !code || !/^\d{6}$/.test(code) || !prisma) return denied();
+      const rateLimit = await consumeAuthenticationRateLimit(authRateLimiter, { action: "sign_in", ip: request.ip, email: phone });
+      if (!rateLimit) return sendAuthenticationUnavailable(reply);
+      if (!rateLimit.allowed) return sendAuthenticationRateLimited(reply, rateLimit.retryAfterSeconds);
+      const verified = await verifyStaffPhoneCode(prisma, { phone, code, now: new Date(), audience });
+      if (!verified) return denied();
+      const result = await authService.signInWithVerifiedStaffPhone({
+        emailNormalized: verified.emailNormalized,
+        source: "api",
+        ipAddress: request.ip,
+        userAgent: request.headers["user-agent"] ?? null
+      });
+      return reply.code(200).send(serializeAuthenticationResult(result));
+    });
+  }
 
   app.post("/auth/sign-in", async (request, reply) => {
     const body = asRecord(request.body);

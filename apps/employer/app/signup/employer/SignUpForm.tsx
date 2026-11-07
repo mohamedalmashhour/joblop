@@ -18,9 +18,6 @@ export function SignUpForm({ registrationOpen }: { registrationOpen: boolean }) 
   const [phone, setPhone] = useState("");
   const [email, setEmail] = useState("");
   const [confirmEmail, setConfirmEmail] = useState("");
-  const [password, setPassword] = useState("");
-  const [confirmPassword, setConfirmPassword] = useState("");
-  const [showPassword, setShowPassword] = useState(false);
   const [acceptedNotices, setAcceptedNotices] = useState(false);
   const [state, setState] = useState<"idle" | "submitting" | "error">("idle");
   const [verifying, setVerifying] = useState(false);
@@ -59,10 +56,6 @@ export function SignUpForm({ registrationOpen }: { registrationOpen: boolean }) 
       setState("error");
       return setMessage(t("auth.emailMismatch"));
     }
-    if (password !== confirmPassword) {
-      setState("error");
-      return setMessage(t("auth.passwordMismatch"));
-    }
     if (!acceptedNotices) {
       setState("error");
       return setMessage(t("auth.acceptNotices"));
@@ -76,21 +69,17 @@ export function SignUpForm({ registrationOpen }: { registrationOpen: boolean }) 
         body: JSON.stringify({
           email,
           confirmEmail,
-          password,
-          confirmPassword,
           acceptedNotices,
           displayName: fullName || null,
-          phone: phone.trim() || null,
+          phone: phone.trim(),
           referralCode
         })
       });
-      setPassword("");
-      setConfirmPassword("");
       if (!response.ok) {
         setState("error");
         if (response.status === 404) return setMessage(t("auth.regNotOpen"));
         if (response.status === 409) return setMessage(t("auth.emailRegistered"));
-        if (response.status === 400) return setMessage(t("auth.strongerPassword"));
+        if (response.status === 400) return setMessage(t("auth.numberUnusable"));
         if (response.status === 429) return setMessage(t("auth.tooManyAttempts"));
         if (response.status === 503) return setMessage(t("auth.signUpUnavailable"));
         return setMessage(t("auth.createFailed"));
@@ -149,41 +138,8 @@ export function SignUpForm({ registrationOpen }: { registrationOpen: boolean }) 
           value={phone}
           onChange={(event) => setPhone(event.target.value)}
           placeholder={t("auth.phonePlaceholder")}
-        />
-      </label>
-      <label style={styles.fieldLabel}>
-        {t("auth.password")}
-        <input
-          style={styles.input}
-          type={showPassword ? "text" : "password"}
-          autoComplete="new-password"
-          value={password}
-          onChange={(event) => setPassword(event.target.value)}
-          placeholder={t("auth.createPassword")}
-          minLength={12}
           required
         />
-      </label>
-      <label style={styles.fieldLabel}>
-        {t("auth.confirmPassword")}
-        <input
-          style={styles.input}
-          type={showPassword ? "text" : "password"}
-          autoComplete="new-password"
-          value={confirmPassword}
-          onChange={(event) => setConfirmPassword(event.target.value)}
-          placeholder={t("auth.repeatPassword")}
-          minLength={12}
-          required
-        />
-      </label>
-      <label style={{ ...styles.fieldLabel, gridTemplateColumns: "auto 1fr", alignItems: "center" }}>
-        <input
-          type="checkbox"
-          checked={showPassword}
-          onChange={(event) => setShowPassword(event.target.checked)}
-        />
-        {t("auth.showPassword")}
       </label>
       <label style={{ ...styles.fieldLabel, gridTemplateColumns: "auto 1fr", alignItems: "start" }}>
         <input

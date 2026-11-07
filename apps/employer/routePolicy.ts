@@ -3,13 +3,11 @@ const publicRoutes = new Set([
   "/about",
   "/contact",
   "/faq",
-  "/forgot-password",
   "/health",
   "/how-it-works",
   "/pricing",
   "/privacy",
   "/ready",
-  "/reset-password",
   "/signin",
   "/signup/employer",
   "/terms"
