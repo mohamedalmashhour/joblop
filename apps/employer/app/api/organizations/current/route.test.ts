@@ -75,8 +75,17 @@ describe("current company route", () => {
   });
 
   it("reports when someone else changed the company first", async () => {
-    request.mockResolvedValue({ status: "stale" });
+    request
+      .mockResolvedValueOnce({ status: "denied" })
+      .mockResolvedValueOnce({ status: "ok", payload: { organization } });
     expect((await PATCH(patch())).status).toBe(409);
+  });
+
+  it("keeps a real refusal as a refusal", async () => {
+    request
+      .mockResolvedValueOnce({ status: "denied" })
+      .mockResolvedValueOnce({ status: "ok", payload: { organization } });
+    expect((await PATCH(patch({ ...body, expectedVersion: organization.version }))).status).toBe(401);
   });
 
   it("sends an account with no company to setup", async () => {

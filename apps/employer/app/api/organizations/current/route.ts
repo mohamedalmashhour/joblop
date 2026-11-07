@@ -63,12 +63,13 @@ export async function PATCH(request: Request) {
   const { context, gateway, token } = await currentOrganization();
   if (context.status === "context_required") return organizationRequired(context.organizations);
   if (context.status !== "ok") return sessionFailure(context.status);
-  return respond(
-    await gateway.request(
-      `/organizations/${encodeURIComponent(context.organizationId)}`,
-      "PATCH",
-      token,
-      update
-    )
-  );
+  const path = `/organizations/${encodeURIComponent(context.organizationId)}`;
+  const result = await gateway.request(path, "PATCH", token, update);
+  if (result.status !== "denied") return respond(result);
+
+  // The API deliberately answers a stale save the same way as a refusal. If the company has moved on
+  // since this person loaded it, tell them so instead of showing a dead end.
+  const current = await gateway.request(path, "GET", token);
+  const company = current.status === "ok" ? toCompanyDetails(current.payload) : null;
+  return sessionFailure(company && company.version !== update.expectedVersion ? "stale" : "denied");
 }

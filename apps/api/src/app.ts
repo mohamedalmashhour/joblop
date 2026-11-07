@@ -1351,13 +1351,6 @@ export function buildApi(options: BuildApiOptions = {}) {
     }
 
     if (error instanceof EmployerOrganizationError) {
-      // A version conflict is only reached after authorization passed, so saying so reveals nothing.
-      if (error.decision.status === "version_conflict") {
-        return reply.code(409).send({
-          error: "RWOS_ORGANIZATION_VERSION_CONFLICT",
-          message: "The organization changed. Reload and try again."
-        });
-      }
       return sendOrganizationDenied(reply);
     }
 
