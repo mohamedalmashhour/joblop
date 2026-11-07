@@ -14,7 +14,13 @@ const connectedNavigation = [
   { href: "/orders", labelKey: "nav.orders" },
   { href: "/dispatches", labelKey: "nav.dispatches" },
   { href: "/timesheets", labelKey: "nav.timesheets" },
+  { href: "/invoices", labelKey: "nav.invoices" },
+  { href: "/payroll", labelKey: "nav.payroll" },
+  { href: "/payouts", labelKey: "nav.payouts" },
+  { href: "/contracts", labelKey: "nav.contracts" },
+  { href: "/disputes", labelKey: "nav.disputes" },
   { href: "/market-wages", labelKey: "nav.marketWages" },
+  { href: "/hr", labelKey: "nav.hr" },
   { href: "/contact-desk", labelKey: "nav.contactDesk" },
   { href: "/escalations", labelKey: "nav.escalations" },
   { href: "/greetings", labelKey: "nav.greetings" }
@@ -101,7 +107,12 @@ export function AdminShell({
     staging;
   const navigation = connectedEnvironment
     ? connectedNavigation
-    : [...connectedNavigation, ...operationsNavigation, ...reviewNavigation, ...financeNavigation];
+    : [
+        ...connectedNavigation,
+        ...operationsNavigation.filter((item) => !connectedNavigation.some((entry) => entry.href === item.href)),
+        ...reviewNavigation,
+        ...financeNavigation
+      ];
   const resolvedNavigation = resolveNavigation(navigation as readonly NavSource[], t);
   const currentIndex = resolvedNavigation.findIndex(
     (item) => pathname === item.href || pathname.startsWith(`${item.href}/`)

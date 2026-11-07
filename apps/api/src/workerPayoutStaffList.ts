@@ -35,14 +35,15 @@ export async function listWorkerPayoutsForStaff(prisma: PrismaClient): Promise<S
   const [workers, organizations] = await Promise.all([
     prisma.workerIdentity.findMany({
       where: { id: { in: [...new Set(rows.map((row) => row.workerIdentityId))] } },
-      select: { id: true, displayName: true }
+      select: { id: true, displayName: true, user: { select: { displayName: true } } }
     }),
     prisma.employerOrganization.findMany({
       where: { id: { in: [...new Set(rows.map((row) => row.organizationId))] } },
       select: { id: true, displayName: true }
     })
   ]);
-  const workerName = new Map(workers.map((worker) => [worker.id, worker.displayName]));
+  // A worker profile often has no name of its own yet; the account's name is the next best.
+  const workerName = new Map(workers.map((worker) => [worker.id, worker.displayName ?? worker.user?.displayName ?? null]));
   const organizationName = new Map(organizations.map((organization) => [organization.id, organization.displayName]));
   return rows.map((row) => ({
     id: row.id,

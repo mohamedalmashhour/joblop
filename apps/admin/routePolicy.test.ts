@@ -9,8 +9,6 @@ describe("admin production route policy", () => {
       "/calendar/request",
       "/health",
       "/ready",
-      "/forgot-password",
-      "/reset-password",
       "/signin",
       "/signup",
       "/dispatches",
@@ -19,6 +17,8 @@ describe("admin production route policy", () => {
       "/contracts",
       "/payouts",
       "/invoices",
+      "/payroll",
+      "/hr",
       "/api/session",
       "/_next/static/app.js"
     ]) {
@@ -30,7 +30,8 @@ describe("admin production route policy", () => {
     for (const path of [
       "/",
       "/finance",
-      "/payroll",
+      "/forgot-password",
+      "/reset-password",
       "/reports",
       "/ai-control-center",
       "/calendar/assignment",

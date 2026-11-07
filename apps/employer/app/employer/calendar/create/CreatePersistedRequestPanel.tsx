@@ -157,9 +157,19 @@ export function CreatePersistedRequestPanel() {
   }, []);
 
   const selectedWorkGroup = context?.workGroups.find((item) => item.slug === form.workGroup);
+  // Once the contract prices any role, only priced roles (and the groups holding them) can be requested.
+  const contractPricesRoles = Boolean(context?.roleDefinitions.some((role) => role.hourlyRateMinor !== null));
+  const requestableWorkGroups =
+    context?.workGroups.filter(
+      (group) =>
+        !contractPricesRoles ||
+        context.roleDefinitions.some((role) => role.workGroupId === group.id && role.hourlyRateMinor !== null)
+    ) ?? [];
   const roles = useMemo(
     () =>
-      context?.roleDefinitions.filter((role) => role.workGroupId === selectedWorkGroup?.id) ?? [],
+      context?.roleDefinitions.filter(
+        (role) => role.workGroupId === selectedWorkGroup?.id && (!contractPricesRoles || role.hourlyRateMinor !== null)
+      ) ?? [],
     [context, selectedWorkGroup]
   );
   const repeats = form.requestType === "recurring_intent";
@@ -407,7 +417,7 @@ export function CreatePersistedRequestPanel() {
       <div style={styles.formGrid}>
         <SelectField disabled={!editing} label={t("create.residence")} onChange={(v) => void selectResidence(v)} options={context.residences.map((i) => ({ label: i.name, value: i.id }))} value={form.residenceId} t={t} />
         <SelectField disabled={!editing || !form.residenceId} label={t("create.department")} onChange={(v) => update("departmentId", v)} options={context.departments.filter((i) => i.residenceId === form.residenceId).map((i) => ({ label: i.name, value: i.id }))} value={form.departmentId} t={t} />
-        <SelectField disabled={!editing} label={t("create.workGroup")} onChange={(v) => update("workGroup", v)} options={context.workGroups.map((i) => ({ label: i.displayLabel, value: i.slug }))} value={form.workGroup} t={t} />
+        <SelectField disabled={!editing} label={t("create.workGroup")} onChange={(v) => update("workGroup", v)} options={requestableWorkGroups.map((i) => ({ label: i.displayLabel, value: i.slug }))} value={form.workGroup} t={t} />
         <SelectField disabled={!editing || !form.workGroup} label={t("create.role")} onChange={(v) => update("roleDefinition", v)} options={roles.map((i) => ({ label: i.displayLabel, value: i.slug }))} value={form.roleDefinition} t={t} />
         <TextField dictation={editing} disabled={!editing} label={t("create.title")} maxLength={160} onChange={(v) => update("title", v)} value={form.title} />
         <TextField disabled={!editing} label={t("create.workersRequired")} min="1" onChange={(v) => update("numberOfWorkers", v)} type="number" value={form.numberOfWorkers} />

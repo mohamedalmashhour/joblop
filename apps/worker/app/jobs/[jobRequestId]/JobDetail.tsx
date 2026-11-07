@@ -406,7 +406,11 @@ function ClaimPanel({ state, onClaim }: { state: ClaimState; onClaim: () => void
       <h2>{t("job.claimTitle")}</h2>
       <p>{t("job.claimBody")}</p>
       {state === "full" ? <p className="muted">{t("job.claimFull")}</p> : null}
-      {state === "election_required" ? <p className="muted">{t("job.claimElectionRequired")}</p> : null}
+      {state === "election_required" ? (
+        <p className="muted">
+          {t("job.claimElectionRequired")} <a href="/onboarding">{t("common.setUpWorker")}</a>
+        </p>
+      ) : null}
       {state === "ineligible" ? <p className="muted">{t("job.inelDefault")}</p> : null}
       {state === "error" ? <p className="muted">{t("job.loadError")}</p> : null}
       {state !== "full" ? (

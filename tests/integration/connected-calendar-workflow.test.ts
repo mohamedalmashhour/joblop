@@ -192,6 +192,6 @@ describe("Connected Calendar Workflow integrity", () => {
     expect(calendarClientSource).not.toMatch(/localStorage|sessionStorage/u);
     expect(
       [...calendarClientSource.matchAll(/fetch\(\s*["'`]([^"'`]+)/gu)].map((match) => match[1])
-    ).toEqual(expect.arrayContaining(["/api/calendar/requests", "/api/session/sign-in"]));
+    ).toEqual(expect.arrayContaining(["/api/calendar/requests"]));
   });
 });

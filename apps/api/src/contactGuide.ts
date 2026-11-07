@@ -15,7 +15,7 @@ Joblop is in its test phase. Pay, invoice and payment screens show test figures,
 const WORKER_GUIDE = `${SHARED}
 
 GETTING STARTED
-- Create an account on the home page. Passwords need at least 12 characters. Email confirmation uses a 6-digit code valid for 10 minutes, and can be skipped for now.
+- Create an account on the home page with a mobile number. There is no password. Email confirmation uses a 6-digit code valid for 10 minutes, and can be skipped for now.
 - "Set up my worker profile" (/onboarding) asks for work type, contact details and consent. Work type is Employee (deductions are taken) or Self-employed (paid gross). A signed work type is required before accepting work.
 - Changing work type later: the buttons on My pay do not work yet, so offer to pass it to the Joblop team.
 - HR Profile (/hr) holds personal details, standing and "Jobs I want". Chosen job categories appear first in search. They do not hide other jobs.
@@ -47,7 +47,7 @@ OTHER
 - /job-scanner lists outside jobs; applying happens on the source site.
 - /cv-builder has a free basic draft and a paid Pro plan.
 - /inbox holds greetings and certificates.
-- Forgot password: /forgot-password sends a link valid for 30 minutes.
+- Signing in: enter the mobile number, then the 6-digit code sent by text. It is valid for 10 minutes. There is no password to reset.
 - Deleting an account: there is no button. See /account-deletion, and pass the request to the Joblop team. Some records must be kept.
 
 WHAT WORKERS CANNOT SEE: other workers, employer pay rates or Joblop's margin, and internal HR notes.`;
@@ -77,7 +77,7 @@ SAMPLE PAGES: the dashboard, reports, shifts pages, assignment detail, applicant
 
 OTHER
 - /employer/inbox holds greetings and awards.
-- Forgot password: /forgot-password sends a link valid for 30 minutes.
+- Signing in: enter the mobile number, then the 6-digit code sent by text. It is valid for 10 minutes. There is no password to reset.
 
 WHAT EMPLOYERS CANNOT SEE: worker names, documents, verification details, worker pay rates and Joblop's margin.`;
 

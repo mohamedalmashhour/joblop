@@ -13,7 +13,7 @@ export async function middleware(request: NextRequest) {
   }
   if (isConnectedRuntimeEnvironment() && isProtectedAdminPage(request.nextUrl.pathname)) {
     const token = request.cookies.get("__Host-rwos_admin_session")?.value;
-    if (!token) return NextResponse.redirect(new URL("/calendar", request.url));
+    if (!token) return NextResponse.redirect(new URL("/signin", request.url));
     const origin = process.env.INTERNAL_API_ORIGIN;
     if (!origin) return new NextResponse("Service Unavailable", { status: 503 });
     try {
@@ -24,7 +24,7 @@ export async function middleware(request: NextRequest) {
       });
       if (!authorization.ok) {
         return authorization.status === 401 || authorization.status === 403
-          ? NextResponse.redirect(new URL("/calendar", request.url))
+          ? NextResponse.redirect(new URL("/signin", request.url))
           : new NextResponse("Service Unavailable", { status: 503 });
       }
       if (!hasPlatformAdminAuthorization(await authorization.json())) {

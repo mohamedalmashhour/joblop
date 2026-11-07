@@ -17,7 +17,7 @@ const row = {
 function prismaWith(rows: readonly (typeof row)[]) {
   return {
     workerPayout: { findMany: async () => rows },
-    workerIdentity: { findMany: async () => [{ id: "worker-1", displayName: "Worker A" }] },
+    workerIdentity: { findMany: async () => [{ id: "worker-1", displayName: null, user: { displayName: "Worker A" } }] },
     employerOrganization: { findMany: async () => [{ id: "org-1", displayName: "Org A" }] }
   } as unknown as PrismaClient;
 }

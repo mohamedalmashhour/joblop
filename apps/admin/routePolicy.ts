@@ -4,6 +4,9 @@ const dispatchDetail =
 // Transaction Control Room + per-transaction audit report (read-only).
 const controlRoom = /^\/control-room(?:\/[A-Za-z0-9._-]+(?:\/report(?:\/(?:worker|employer))?)?)?$/;
 
+// One worker's HR record.
+const hrWorker = /^\/hr\/workers\/[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
 // Public, signed share links (party-scoped transaction statements).
 const shareLink = /^\/s\/[A-Za-z0-9._-]+$/;
 
@@ -15,8 +18,6 @@ export function isProductionAdminRouteAllowed(pathname: string) {
   return (
     path === "/health" ||
     path === "/ready" ||
-    path === "/forgot-password" ||
-    path === "/reset-password" ||
     path === "/signin" ||
     path === "/signup" ||
     path === "/calendar" ||
@@ -27,7 +28,10 @@ export function isProductionAdminRouteAllowed(pathname: string) {
     path === "/contracts" ||
     path === "/payouts" ||
     path === "/invoices" ||
+    path === "/payroll" ||
+    path === "/hr" ||
     dispatchDetail.test(path) ||
+    hrWorker.test(path) ||
     controlRoom.test(path) ||
     shareLink.test(path)
   );
