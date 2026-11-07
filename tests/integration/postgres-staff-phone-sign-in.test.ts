@@ -87,3 +87,28 @@ suite("PostgreSQL employer and worker phone sign-in", () => {
     expect(await verifyStaffPhoneCode(prisma, { phone, code: "444555", now, audience: "worker" })).toEqual({ emailNormalized: email });
   });
 });
+
+suite("PostgreSQL phone sign-in for one person with two accounts", () => {
+  const prisma = createPrismaClient(databaseUrl!);
+
+  afterAll(async () => {
+    await prisma.$disconnect();
+  });
+
+  it("keeps a worker account out of a new employer account's way on the same number", async () => {
+    const suffix = randomUUID().replaceAll("-", "");
+    const phone = `+1579${String(Math.floor(Math.random() * 10_000_000)).padStart(7, "0")}`;
+    const worker = await prisma.user.create({
+      data: { publicId: `usr_worker_${suffix}`, emailNormalized: `worker-${suffix}@example.test`, status: "active", phone }
+    });
+    await prisma.workerIdentity.create({ data: { userId: worker.id } });
+    const employerEmail = `employer-${suffix}@example.test`;
+    await prisma.user.create({
+      data: { publicId: `usr_employer_${suffix}`, emailNormalized: employerEmail, status: "active", phone }
+    });
+    const sms = { send: vi.fn(async () => ({ status: "sent" as const, id: "s" })) };
+    const now = new Date();
+    expect(await requestStaffPhoneCode(prisma, sms, { phone, now, audience: "employer", generateCode: () => "666777" })).toBe("sent");
+    expect(await verifyStaffPhoneCode(prisma, { phone, code: "666777", now, audience: "employer" })).toEqual({ emailNormalized: employerEmail });
+  });
+});

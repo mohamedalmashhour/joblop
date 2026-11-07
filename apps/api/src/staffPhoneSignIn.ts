@@ -43,8 +43,9 @@ function digest(userId: string, code: string): Buffer {
 
 export type PhoneSignInAudience = "staff" | "employer" | "worker";
 
-// Numbers are not unique yet, so a company member or a worker comes first, and a number that still
-// matches two accounts signs in to neither rather than guessing.
+// Numbers are not unique yet. One person may hold a company account and a worker account on one
+// number, so each site picks its own kind first, then new accounts of neither kind. A number that
+// still matches two accounts signs in to neither rather than guessing.
 async function findClientUser(prisma: StaffPhonePrisma, phone: string, audience: "employer" | "worker") {
   const users = await prisma.user.findMany({
     where: { phone, status: "active" },
@@ -55,10 +56,10 @@ async function findClientUser(prisma: StaffPhonePrisma, phone: string, audience:
       workerIdentity: { select: { id: true } }
     }
   });
-  const preferred = users.filter((user) =>
-    audience === "employer" ? (user.memberships?.length ?? 0) > 0 : Boolean(user.workerIdentity)
-  );
-  const matches = preferred.length > 0 ? preferred : users;
+  const isMember = (user: (typeof users)[number]) => (user.memberships?.length ?? 0) > 0;
+  const isWorker = (user: (typeof users)[number]) => Boolean(user.workerIdentity);
+  const own = users.filter(audience === "employer" ? isMember : isWorker);
+  const matches = own.length > 0 ? own : users.filter((user) => !isMember(user) && !isWorker(user));
   return matches.length === 1 ? matches[0]! : null;
 }
 
