@@ -54,7 +54,7 @@ active. It works only while no staff administrator exists, never in production, 
 sets no password and writes an audit event. Run it from the API host with the owner's authorization:
 
 ```sh
-RWOS_FIRST_STAFF_ADMIN_EMAIL=owner@example.com pnpm grant:first-staff-admin
+RWOS_RELEASE_SHA=<deployed 40-character commit> RWOS_FIRST_STAFF_ADMIN_EMAIL=owner@example.com pnpm grant:first-staff-admin
 ```
 
 It prints only the outcome.

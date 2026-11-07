@@ -8,7 +8,7 @@ try {
   const outcome = await grantFirstStaffAdmin(prisma, {
     email: env.RWOS_FIRST_STAFF_ADMIN_EMAIL ?? "",
     environment: env.RWOS_ENV ?? "",
-    releaseSha: env.RWOS_RELEASE_SHA ?? env.RENDER_GIT_COMMIT ?? "",
+    releaseSha: env.RWOS_RELEASE_SHA ?? "",
     now: new Date()
   });
   // Prints only the outcome, never the email.
