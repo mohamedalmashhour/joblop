@@ -18,6 +18,7 @@ describe("employer production route policy", () => {
       "/signin",
       "/signup/employer",
       "/terms",
+      "/employer/dashboard",
       "/employer/calendar",
       "/employer/calendar/create",
       "/employer/calendar/request",
@@ -39,7 +40,6 @@ describe("employer production route policy", () => {
 
   it("fails closed for fixture and ambiguous operational paths", () => {
     for (const path of [
-      "/employer/dashboard",
       "/employer/shifts/create",
       "/employer/applicants",
       "/employer/assignments/manual",

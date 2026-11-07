@@ -65,5 +65,5 @@ export async function GET(request: Request) {
   if (result.status !== "ok") {
     return redirectTo(`${origin}/signin?google=failed`);
   }
-  return redirectTo(`${origin}/`, issuedToken);
+  return redirectTo(`${origin}/employer/dashboard`, issuedToken);
 }

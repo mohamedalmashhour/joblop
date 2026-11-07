@@ -443,6 +443,18 @@ function OrganizationPicker({
       setSubmitting(false);
     }
   };
+  if (organizations.length === 0) {
+    return (
+      <article style={styles.tintedCard}>
+        <h3 style={styles.cardTitle}>Set up your company</h3>
+        <p style={styles.cardText}>You are signed in. Add your company details to start requesting workers.</p>
+        <a href="/employer/onboarding/company" style={styles.primaryButton}>
+          Set up my company
+        </a>
+      </article>
+    );
+  }
+
   return (
     <article aria-busy={submitting} aria-live="polite" style={styles.panel}>
       <h3 style={styles.cardTitle}>Select organization</h3>
@@ -485,7 +497,7 @@ function parseOrganizationContext(
       typeof candidate.displayName === "string"
     );
   });
-  return organizations.length ? { status: "organization_required", organizations } : null;
+  return { status: "organization_required", organizations };
 }
 
 function clientStatusTone(status: ClientCalendarDto["status"]): { background: string; color: string; border: string } {

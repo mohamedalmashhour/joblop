@@ -16,6 +16,7 @@ const publicRoutes = new Set([
 ]);
 const persistedEmployerRoutes = new Set([
   "/employer",
+  "/employer/dashboard",
   "/employer/calendar",
   "/employer/calendar/create",
   "/employer/calendar/request",
