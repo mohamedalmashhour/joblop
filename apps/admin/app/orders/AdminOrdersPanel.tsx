@@ -33,7 +33,7 @@ export function AdminOrdersPanel() {
 
   return (
     <div style={styles.grid}>
-      <div style={{ ...styles.card, borderColor: pendingLines > 0 ? "rgba(201,162,75,0.5)" : undefined }}>
+      <div style={{ ...styles.card, borderColor: pendingLines > 0 ? "rgba(248, 184, 8,0.5)" : undefined }}>
         <strong>AI scan (advisory): {ordersNeedingReview > 0 ? `${ordersNeedingReview} order(s) · ${pendingLines} job line(s) awaiting review` : "all orders reviewed — nothing pending"}</strong>
         <p style={styles.meta}>Advisory only — a human admin prices and approves each job line.</p>
       </div>
@@ -61,7 +61,7 @@ export function AdminOrdersPanel() {
 
 const styles = {
   grid: { display: "grid", gap: 18, gridTemplateColumns: "repeat(auto-fit, minmax(300px, 1fr))", padding: "32px clamp(18px, 5vw, 64px)" },
-  card: { background: "#0c0c0c", border: "1px solid rgba(201, 162, 75, 0.16)", borderRadius: 14, boxShadow: "0 12px 30px rgba(0,0,0,.4)", padding: 22 },
+  card: { background: "#0c0c0c", border: "1px solid rgba(248, 184, 8, 0.16)", borderRadius: 14, boxShadow: "0 12px 30px rgba(0,0,0,.4)", padding: 22 },
   cardHead: { alignItems: "center", display: "flex", gap: 12, justifyContent: "space-between" },
   h2: { color: "#f4efe4", fontSize: 22, margin: 0 },
   badge: { background: "#000000", borderRadius: 99, color: "#f4efe4", fontSize: 12, fontWeight: 900, padding: "7px 10px", textTransform: "uppercase" as const },

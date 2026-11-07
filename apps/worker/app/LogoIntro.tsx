@@ -82,7 +82,7 @@ export function LogoIntro() {
             height: 320,
             maxHeight: "80vw",
             borderRadius: "50%",
-            background: "radial-gradient(circle, rgba(214,166,58,0.45) 0%, rgba(214,166,58,0) 68%)",
+            background: "radial-gradient(circle, rgba(248, 184, 8,0.45) 0%, rgba(248, 184, 8,0) 68%)",
             filter: "blur(6px)",
             animation: "joblopIntroGlow 1.8s ease-in-out infinite"
           }}

@@ -7,11 +7,11 @@
   --jl-font-mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
   --jl-black: #000000;
   --jl-ink: #0c0c0c;
-  --jl-gold-soft: #f0d9a0;
-  --jl-gold: #c9a24b;
-  --jl-gold-strong: #b8862f;
-  --jl-gold-deep: #9a7122;
-  --jl-gold-text: #7a5513;
+  --jl-gold-soft: #ffe08a;
+  --jl-gold: #f8b808;
+  --jl-gold-strong: #e0a500;
+  --jl-gold-deep: #b58500;
+  --jl-gold-text: #7a5600;
   --jl-cream: #faf6ec;
   --jl-cream-raised: #fbf9f4;
   --jl-white: #ffffff;
@@ -23,7 +23,7 @@
   --jl-danger: #b42323;
   --jl-success: #176b47;
   --jl-warning: #8a5100;
-  --jl-focus: #c9a24b;
+  --jl-focus: #f8b808;
   --jl-on-gold: #000000;
   --jl-on-black: #faf6ec;
   --jl-space-xs: 4px;
@@ -40,7 +40,7 @@
   --jl-shadow-sm: 0 1px 2px rgba(23, 21, 17, 0.06), 0 1px 3px rgba(23, 21, 17, 0.08);
   --jl-shadow-md: 0 4px 12px rgba(23, 21, 17, 0.08), 0 2px 4px rgba(23, 21, 17, 0.05);
   --jl-shadow-lg: 0 12px 32px rgba(23, 21, 17, 0.12), 0 4px 8px rgba(23, 21, 17, 0.06);
-  --jl-shadow-gold: 0 8px 24px rgba(184, 134, 47, 0.28);
+  --jl-shadow-gold: 0 8px 24px rgba(248, 184, 8, 0.28);
   --jl-motion-fast: 120ms;
   --jl-motion-standard: 180ms;
   --jl-motion-slow: 240ms;

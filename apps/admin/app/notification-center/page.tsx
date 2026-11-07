@@ -355,7 +355,7 @@ const styles: Record<string, CSSProperties> = {
   },
   boundaryStrip: {
     background: "#000000",
-    border: "1px solid rgba(201, 162, 75, 0.16)",
+    border: "1px solid rgba(248, 184, 8, 0.16)",
     borderRadius: 8,
     display: "grid",
     gap: 16,
@@ -375,7 +375,7 @@ const styles: Record<string, CSSProperties> = {
   },
   boundaryChip: {
     background: "#000000",
-    border: "1px solid rgba(201, 162, 75, 0.16)",
+    border: "1px solid rgba(248, 184, 8, 0.16)",
     borderRadius: 8,
     color: "#f4efe4",
     fontSize: 13,
@@ -385,7 +385,7 @@ const styles: Record<string, CSSProperties> = {
   },
   panel: {
     background: "#000000",
-    border: "1px solid rgba(201, 162, 75, 0.16)",
+    border: "1px solid rgba(248, 184, 8, 0.16)",
     borderRadius: 8,
     marginTop: 18,
     padding: 18
@@ -410,7 +410,7 @@ const styles: Record<string, CSSProperties> = {
   },
   statusBadge: {
     background: "#000000",
-    border: "1px solid rgba(201, 162, 75, 0.16)",
+    border: "1px solid rgba(248, 184, 8, 0.16)",
     borderRadius: 8,
     color: "#f4efe4",
     fontSize: 12,
@@ -448,7 +448,7 @@ const styles: Record<string, CSSProperties> = {
     gap: 6
   },
   input: {
-    border: "1px solid rgba(201, 162, 75, 0.16)",
+    border: "1px solid rgba(248, 184, 8, 0.16)",
     borderRadius: 8,
     color: "#f4efe4",
     font: "inherit",
@@ -456,7 +456,7 @@ const styles: Record<string, CSSProperties> = {
     padding: "0 12px"
   },
   textarea: {
-    border: "1px solid rgba(201, 162, 75, 0.16)",
+    border: "1px solid rgba(248, 184, 8, 0.16)",
     borderRadius: 8,
     color: "#f4efe4",
     font: "inherit",
@@ -479,7 +479,7 @@ const styles: Record<string, CSSProperties> = {
     gap: 12
   },
   notificationCard: {
-    border: "1px solid rgba(201, 162, 75, 0.16)",
+    border: "1px solid rgba(248, 184, 8, 0.16)",
     borderRadius: 8,
     display: "grid",
     gap: 10,
@@ -513,7 +513,7 @@ const styles: Record<string, CSSProperties> = {
     margin: 0
   },
   summaryRow: {
-    borderTop: "1px solid rgba(201, 162, 75, 0.16)",
+    borderTop: "1px solid rgba(248, 184, 8, 0.16)",
     display: "grid",
     gap: 8,
     gridTemplateColumns: "minmax(120px, 0.4fr) minmax(0, 1fr)",
@@ -544,7 +544,7 @@ const styles: Record<string, CSSProperties> = {
   },
   stateCard: {
     background: "#000000",
-    border: "1px solid rgba(201, 162, 75, 0.16)",
+    border: "1px solid rgba(248, 184, 8, 0.16)",
     borderRadius: 8,
     display: "grid",
     gap: 8,
@@ -563,7 +563,7 @@ const styles: Record<string, CSSProperties> = {
   },
   blockBox: {
     background: "#000000",
-    border: "1px solid rgba(201, 162, 75, 0.16)",
+    border: "1px solid rgba(248, 184, 8, 0.16)",
     borderRadius: 8,
     padding: 14
   },

@@ -226,23 +226,23 @@ export function ContactDeskPanel() {
   );
 }
 
-const line = "1px solid rgba(201, 162, 75, 0.28)";
+const line = "1px solid rgba(248, 184, 8, 0.28)";
 const styles = {
   body: { display: "grid", gap: 16, padding: "0 clamp(18px, 5vw, 64px) 56px" },
   columns: { alignItems: "start", display: "grid", gap: 16, gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))" },
   list: { display: "grid", gap: 10 },
   item: { background: "transparent", border: line, borderRadius: 10, color: "#f4efe4", cursor: "pointer", display: "grid", font: "inherit", gap: 4, padding: 12, textAlign: "start", width: "100%" },
-  itemOpen: { background: "rgba(201, 162, 75, 0.14)", border: line, borderRadius: 10, color: "#f4efe4", cursor: "pointer", display: "grid", font: "inherit", gap: 4, padding: 12, textAlign: "start", width: "100%" },
+  itemOpen: { background: "rgba(248, 184, 8, 0.14)", border: line, borderRadius: 10, color: "#f4efe4", cursor: "pointer", display: "grid", font: "inherit", gap: 4, padding: 12, textAlign: "start", width: "100%" },
   thread: { border: line, borderRadius: 12, padding: 16 },
   log: { display: "grid", gap: 10, margin: "12px 0" },
   message: { border: line, borderRadius: 10, padding: 10 },
   note: { background: "rgba(255, 241, 168, 0.1)", border: "1px dashed rgba(255, 241, 168, 0.5)", borderRadius: 10, padding: 10 },
-  label: { color: "#c9a24b", display: "block", fontSize: 13, fontWeight: 700, marginBottom: 4 },
+  label: { color: "#f8b808", display: "block", fontSize: 13, fontWeight: 700, marginBottom: 4 },
   field: { background: "#111", border: line, borderRadius: 8, boxSizing: "border-box", color: "#f4efe4", display: "block", font: "inherit", marginBottom: 12, padding: 10, width: "100%" },
   check: { alignItems: "center", display: "flex", gap: 8, marginBottom: 12 },
   muted: { color: "#b3a994", fontSize: 14 },
   error: { color: "#ff8a7a" },
-  button: { background: "#c9a24b", border: "none", borderRadius: 8, color: "#000", cursor: "pointer", fontWeight: 800, padding: "10px 14px" },
+  button: { background: "#f8b808", border: "none", borderRadius: 8, color: "#000", cursor: "pointer", fontWeight: 800, padding: "10px 14px" },
   ghost: { background: "transparent", border: line, borderRadius: 8, color: "#f4efe4", cursor: "pointer", fontWeight: 700, padding: "10px 14px" },
   row: { display: "flex", flexWrap: "wrap", gap: 10 }
 } as const;

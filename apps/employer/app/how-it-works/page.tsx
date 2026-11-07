@@ -238,7 +238,7 @@ const styles: Record<string, CSSProperties> = {
   header: {
     alignItems: "center",
     background: "#000000",
-    borderBottom: "1px solid rgba(201, 162, 75, 0.16)",
+    borderBottom: "1px solid rgba(248, 184, 8, 0.16)",
     display: "flex",
     flexWrap: "wrap",
     gap: 16,
@@ -291,7 +291,7 @@ const styles: Record<string, CSSProperties> = {
   secondaryButtonLarge: {
     ...baseButton,
     background: "transparent",
-    border: "1px solid rgba(201, 162, 75, 0.16)",
+    border: "1px solid rgba(248, 184, 8, 0.16)",
     color: "#ffffff",
     minHeight: 52,
     padding: "0 22px"
@@ -360,7 +360,7 @@ const styles: Record<string, CSSProperties> = {
   },
   card: {
     background: "#000000",
-    border: "1px solid rgba(201, 162, 75, 0.16)",
+    border: "1px solid rgba(248, 184, 8, 0.16)",
     borderRadius: 8,
     padding: 20
   },
@@ -388,8 +388,8 @@ const styles: Record<string, CSSProperties> = {
   },
   lifecycleSection: {
     background: "#000000",
-    borderBottom: "1px solid rgba(201, 162, 75, 0.16)",
-    borderTop: "1px solid rgba(201, 162, 75, 0.16)",
+    borderBottom: "1px solid rgba(248, 184, 8, 0.16)",
+    borderTop: "1px solid rgba(248, 184, 8, 0.16)",
     padding: "48px clamp(16px, 4vw, 40px)"
   },
   phaseGrid: {
@@ -398,7 +398,7 @@ const styles: Record<string, CSSProperties> = {
   },
   phaseCard: {
     background: "#000000",
-    border: "1px solid rgba(201, 162, 75, 0.16)",
+    border: "1px solid rgba(248, 184, 8, 0.16)",
     borderRadius: 8,
     padding: 20
   },
@@ -416,7 +416,7 @@ const styles: Record<string, CSSProperties> = {
   },
   statusPill: {
     background: "#0c0c0c",
-    border: "1px solid rgba(201, 162, 75, 0.16)",
+    border: "1px solid rgba(248, 184, 8, 0.16)",
     borderRadius: 8,
     color: "#f4efe4",
     fontSize: 13,
@@ -431,7 +431,7 @@ const styles: Record<string, CSSProperties> = {
   },
   ownerBlock: {
     background: "#000000",
-    border: "1px solid rgba(201, 162, 75, 0.16)",
+    border: "1px solid rgba(248, 184, 8, 0.16)",
     borderRadius: 8,
     padding: 16
   },
@@ -452,8 +452,8 @@ const styles: Record<string, CSSProperties> = {
   },
   aiSection: {
     background: "#0c0c0c",
-    borderBottom: "1px solid rgba(201, 162, 75, 0.16)",
-    borderTop: "1px solid rgba(201, 162, 75, 0.16)",
+    borderBottom: "1px solid rgba(248, 184, 8, 0.16)",
+    borderTop: "1px solid rgba(248, 184, 8, 0.16)",
     padding: "48px clamp(16px, 4vw, 40px)"
   },
   aiGrid: {
@@ -463,7 +463,7 @@ const styles: Record<string, CSSProperties> = {
   },
   aiCard: {
     background: "#000000",
-    border: "1px solid rgba(201, 162, 75, 0.16)",
+    border: "1px solid rgba(248, 184, 8, 0.16)",
     borderRadius: 8,
     padding: 18
   },
@@ -474,7 +474,7 @@ const styles: Record<string, CSSProperties> = {
   },
   pill: {
     background: "#000000",
-    border: "1px solid rgba(201, 162, 75, 0.16)",
+    border: "1px solid rgba(248, 184, 8, 0.16)",
     borderRadius: 8,
     color: "#f4efe4",
     fontWeight: 900,

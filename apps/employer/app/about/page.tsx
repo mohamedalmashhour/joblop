@@ -236,7 +236,7 @@ const styles: Record<string, CSSProperties> = {
   header: {
     alignItems: "center",
     background: "#000000",
-    borderBottom: "1px solid rgba(201, 162, 75, 0.16)",
+    borderBottom: "1px solid rgba(248, 184, 8, 0.16)",
     display: "flex",
     flexWrap: "wrap",
     gap: 16,
@@ -282,7 +282,7 @@ const styles: Record<string, CSSProperties> = {
   tertiaryButton: {
     ...baseButton,
     background: "#000000",
-    border: "1px solid rgba(201, 162, 75, 0.16)",
+    border: "1px solid rgba(248, 184, 8, 0.16)",
     color: "#f4efe4"
   },
   primaryButtonLarge: {
@@ -295,7 +295,7 @@ const styles: Record<string, CSSProperties> = {
   secondaryButtonLarge: {
     ...baseButton,
     background: "transparent",
-    border: "1px solid rgba(201, 162, 75, 0.16)",
+    border: "1px solid rgba(248, 184, 8, 0.16)",
     color: "#ffffff",
     minHeight: 52,
     padding: "0 22px"
@@ -350,7 +350,7 @@ const styles: Record<string, CSSProperties> = {
   heroPanel: {
     alignSelf: "center",
     background: "#000000",
-    border: "1px solid rgba(201, 162, 75, 0.16)",
+    border: "1px solid rgba(248, 184, 8, 0.16)",
     borderRadius: 8,
     color: "#f4efe4",
     display: "grid",
@@ -404,7 +404,7 @@ const styles: Record<string, CSSProperties> = {
   },
   card: {
     background: "#000000",
-    border: "1px solid rgba(201, 162, 75, 0.16)",
+    border: "1px solid rgba(248, 184, 8, 0.16)",
     borderRadius: 8,
     minHeight: 146,
     padding: 18
@@ -428,14 +428,14 @@ const styles: Record<string, CSSProperties> = {
   },
   statementCard: {
     background: "#0c0c0c",
-    border: "1px solid rgba(201, 162, 75, 0.16)",
+    border: "1px solid rgba(248, 184, 8, 0.16)",
     borderRadius: 8,
     padding: 18
   },
   splitSection: {
     background: "#000000",
-    borderBottom: "1px solid rgba(201, 162, 75, 0.16)",
-    borderTop: "1px solid rgba(201, 162, 75, 0.16)",
+    borderBottom: "1px solid rgba(248, 184, 8, 0.16)",
+    borderTop: "1px solid rgba(248, 184, 8, 0.16)",
     display: "grid",
     gap: 28,
     gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))",
@@ -450,7 +450,7 @@ const styles: Record<string, CSSProperties> = {
   },
   featureItem: {
     background: "#000000",
-    border: "1px solid rgba(201, 162, 75, 0.16)",
+    border: "1px solid rgba(248, 184, 8, 0.16)",
     borderRadius: 8,
     color: "#f4efe4",
     fontWeight: 800,
@@ -463,7 +463,7 @@ const styles: Record<string, CSSProperties> = {
   },
   pill: {
     background: "#000000",
-    border: "1px solid rgba(201, 162, 75, 0.16)",
+    border: "1px solid rgba(248, 184, 8, 0.16)",
     borderRadius: 8,
     color: "#f4efe4",
     fontWeight: 900,
@@ -472,8 +472,8 @@ const styles: Record<string, CSSProperties> = {
   },
   philosophySection: {
     background: "#000000",
-    borderBottom: "1px solid rgba(201, 162, 75, 0.16)",
-    borderTop: "1px solid rgba(201, 162, 75, 0.16)",
+    borderBottom: "1px solid rgba(248, 184, 8, 0.16)",
+    borderTop: "1px solid rgba(248, 184, 8, 0.16)",
     padding: "48px clamp(16px, 4vw, 40px)"
   },
   philosophyList: {
@@ -486,7 +486,7 @@ const styles: Record<string, CSSProperties> = {
   },
   philosophyItem: {
     background: "#000000",
-    border: "1px solid rgba(201, 162, 75, 0.16)",
+    border: "1px solid rgba(248, 184, 8, 0.16)",
     borderRadius: 8,
     color: "#f4efe4",
     fontWeight: 900,
@@ -494,8 +494,8 @@ const styles: Record<string, CSSProperties> = {
   },
   aiSection: {
     background: "#0c0c0c",
-    borderBottom: "1px solid rgba(201, 162, 75, 0.16)",
-    borderTop: "1px solid rgba(201, 162, 75, 0.16)",
+    borderBottom: "1px solid rgba(248, 184, 8, 0.16)",
+    borderTop: "1px solid rgba(248, 184, 8, 0.16)",
     padding: "48px clamp(16px, 4vw, 40px)"
   },
   aiGrid: {
@@ -505,7 +505,7 @@ const styles: Record<string, CSSProperties> = {
   },
   aiCard: {
     background: "#000000",
-    border: "1px solid rgba(201, 162, 75, 0.16)",
+    border: "1px solid rgba(248, 184, 8, 0.16)",
     borderRadius: 8,
     padding: 18
   },

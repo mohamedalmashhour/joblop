@@ -9,14 +9,14 @@ export function JobLopMark({ size = 28 }: { size?: number }) {
           <stop offset="1" stopColor="#15110b" />
         </linearGradient>
         <linearGradient id="jlmk-ar" x1="0" y1="1" x2="1" y2="0">
-          <stop offset="0" stopColor="#c9a24b" />
+          <stop offset="0" stopColor="#f8b808" />
           <stop offset="1" stopColor="#f0d9a0" />
         </linearGradient>
       </defs>
       <rect x="2" y="2" width="60" height="60" rx="16" fill="url(#jlmk-bg)" />
       <path d="M26 17a6 6 0 0 1 12 0v4h-4v-4a2 2 0 0 0-4 0v4h-4z" fill="#f4e9cf" />
       <path d="M21 23h22a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2h-6v-6h-4v14a9 9 0 0 1-18 0 3 3 0 0 1 6 0 3 3 0 0 0 6 0V25a2 2 0 0 1 2-2z" fill="#f4e9cf" />
-      <rect x="34" y="28" width="7" height="6" rx="2" fill="#c9a24b" />
+      <rect x="34" y="28" width="7" height="6" rx="2" fill="#f8b808" />
       <path d="M24 48c6-1 12-6 16-12l3 3 2-11-11 2 3 3c-3 5-9 10-16 11z" fill="url(#jlmk-ar)" />
     </svg>
   );

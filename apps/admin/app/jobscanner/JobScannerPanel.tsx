@@ -163,22 +163,22 @@ export function JobScannerPanel() {
 
 const styles = {
   wrap: { padding: "24px clamp(18px, 5vw, 64px)" },
-  card: { background: "#0c0c0c", border: "1px solid rgba(201, 162, 75, 0.16)", borderRadius: 14, boxShadow: "0 12px 30px rgba(0,0,0,.4)", marginBottom: 16, padding: 20 },
+  card: { background: "#0c0c0c", border: "1px solid rgba(248, 184, 8, 0.16)", borderRadius: 14, boxShadow: "0 12px 30px rgba(0,0,0,.4)", marginBottom: 16, padding: 20 },
   h2: { color: "#f4efe4", fontSize: 20, marginTop: 0 },
   h3: { color: "#f4efe4", fontSize: 14, margin: "0 0 6px" },
   formRow: { alignItems: "flex-end", display: "flex", flexWrap: "wrap" as const, gap: 12, marginBottom: 10 },
   label: { color: "#f4efe4", display: "flex", flexDirection: "column" as const, fontSize: 12, fontWeight: 700, gap: 4 },
-  input: { border: "1px solid rgba(201, 162, 75, 0.16)", borderRadius: 8, minHeight: 38, padding: "0 10px", minWidth: 160 },
+  input: { border: "1px solid rgba(248, 184, 8, 0.16)", borderRadius: 8, minHeight: 38, padding: "0 10px", minWidth: 160 },
   button: { background: "#171511", border: "none", borderRadius: 8, color: "#fff", cursor: "pointer", fontWeight: 800, minHeight: 40, padding: "0 14px" },
-  buttonGhost: { background: "#0c0c0c", border: "1px solid rgba(201, 162, 75, 0.3)", borderRadius: 8, color: "#f4efe4", cursor: "pointer", fontWeight: 800, minHeight: 40, padding: "0 14px" },
+  buttonGhost: { background: "#0c0c0c", border: "1px solid rgba(248, 184, 8, 0.3)", borderRadius: 8, color: "#f4efe4", cursor: "pointer", fontWeight: 800, minHeight: 40, padding: "0 14px" },
   notice: { color: "#f4efe4", fontSize: 13, fontWeight: 700, marginBottom: 0 },
   leadHead: { alignItems: "flex-start", display: "flex", flexWrap: "wrap" as const, gap: 12, justifyContent: "space-between" },
   leadTitle: { color: "#f4efe4", fontSize: 16 },
   leadMeta: { color: "#f4efe4", fontSize: 13, marginTop: 4 },
   leadActions: { alignItems: "center", display: "flex", flexWrap: "wrap" as const, gap: 10 },
   applyLink: { color: "#b23b2e", fontSize: 13, fontWeight: 800, textDecoration: "none" },
-  cvWrap: { borderTop: "1px solid rgba(201, 162, 75, 0.16)", marginTop: 14, paddingTop: 12 },
+  cvWrap: { borderTop: "1px solid rgba(248, 184, 8, 0.16)", marginTop: 14, paddingTop: 12 },
   cvNote: { color: "#f4efe4", fontSize: 12, marginTop: 0 },
   cvGrid: { display: "grid", gap: 14, gridTemplateColumns: "repeat(auto-fit, minmax(260px, 1fr))" },
-  pre: { background: "#000000", border: "1px solid rgba(201, 162, 75, 0.16)", borderRadius: 8, fontSize: 12, lineHeight: 1.5, margin: 0, overflowX: "auto" as const, padding: 12, whiteSpace: "pre-wrap" as const }
+  pre: { background: "#000000", border: "1px solid rgba(248, 184, 8, 0.16)", borderRadius: 8, fontSize: 12, lineHeight: 1.5, margin: 0, overflowX: "auto" as const, padding: 12, whiteSpace: "pre-wrap" as const }
 } as const;

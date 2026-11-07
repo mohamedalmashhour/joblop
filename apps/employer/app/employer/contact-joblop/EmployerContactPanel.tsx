@@ -197,19 +197,19 @@ export function EmployerContactPanel() {
   );
 }
 
-const line = "1px solid rgba(201, 162, 75, 0.24)";
+const line = "1px solid rgba(248, 184, 8, 0.24)";
 const styles = {
   card: { border: line, borderRadius: 12, marginBottom: 16, padding: 16 },
-  label: { color: "#c9a24b", display: "block", fontSize: 13, fontWeight: 700, marginBottom: 4 },
+  label: { color: "#f8b808", display: "block", fontSize: 13, fontWeight: 700, marginBottom: 4 },
   field: { background: "#111", border: line, borderRadius: 8, boxSizing: "border-box", color: "#f4efe4", display: "block", font: "inherit", marginBottom: 12, padding: 10, width: "100%" },
   check: { alignItems: "center", display: "flex", gap: 8, marginBottom: 12 },
   muted: { color: "#b3a994", fontSize: 14 },
   error: { color: "#ff8a7a" },
-  button: { background: "#c9a24b", border: "none", borderRadius: 8, color: "#000", cursor: "pointer", fontWeight: 800, padding: "10px 16px" },
+  button: { background: "#f8b808", border: "none", borderRadius: 8, color: "#000", cursor: "pointer", fontWeight: 800, padding: "10px 16px" },
   ghost: { background: "transparent", border: line, borderRadius: 8, color: "#f4efe4", cursor: "pointer", fontWeight: 700, padding: "10px 16px" },
   row: { display: "flex", flexWrap: "wrap", gap: 10 },
   log: { display: "grid", gap: 10, marginBottom: 12 },
-  mine: { background: "rgba(201, 162, 75, 0.1)", border: line, borderRadius: 10, padding: 10 },
+  mine: { background: "rgba(248, 184, 8, 0.1)", border: line, borderRadius: 10, padding: 10 },
   theirs: { border: line, borderRadius: 10, padding: 10 },
   list: { display: "grid", gap: 10 },
   item: { background: "transparent", border: line, borderRadius: 10, color: "#f4efe4", cursor: "pointer", display: "grid", font: "inherit", gap: 4, padding: 12, textAlign: "start", width: "100%" }

@@ -162,7 +162,7 @@ const styles: Record<string, CSSProperties> = {
   },
   noticePanel: {
     background: "#000000",
-    border: "1px solid rgba(201, 162, 75, 0.16)",
+    border: "1px solid rgba(248, 184, 8, 0.16)",
     borderRadius: 8,
     display: "grid",
     gap: 16,
@@ -184,7 +184,7 @@ const styles: Record<string, CSSProperties> = {
   },
   panel: {
     background: "#000000",
-    border: "1px solid rgba(201, 162, 75, 0.16)",
+    border: "1px solid rgba(248, 184, 8, 0.16)",
     borderRadius: 8,
     marginTop: 18,
     padding: 18
@@ -204,7 +204,7 @@ const styles: Record<string, CSSProperties> = {
   },
   statusBadge: {
     background: "#000000",
-    border: "1px solid rgba(201, 162, 75, 0.16)",
+    border: "1px solid rgba(248, 184, 8, 0.16)",
     borderRadius: 8,
     color: "#f4efe4",
     fontSize: 12,
@@ -227,7 +227,7 @@ const styles: Record<string, CSSProperties> = {
   },
   routeCard: {
     background: "#f7faf9",
-    border: "1px solid rgba(201, 162, 75, 0.16)",
+    border: "1px solid rgba(248, 184, 8, 0.16)",
     borderRadius: 8,
     color: "#000000",
     display: "grid",
@@ -256,13 +256,13 @@ const styles: Record<string, CSSProperties> = {
   },
   th: {
     background: "#f7faf9",
-    border: "1px solid rgba(201, 162, 75, 0.16)",
+    border: "1px solid rgba(248, 184, 8, 0.16)",
     fontSize: 13,
     padding: 10,
     textAlign: "left"
   },
   td: {
-    border: "1px solid rgba(201, 162, 75, 0.16)",
+    border: "1px solid rgba(248, 184, 8, 0.16)",
     fontSize: 13,
     padding: 10,
     verticalAlign: "top"

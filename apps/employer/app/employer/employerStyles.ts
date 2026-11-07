@@ -6,8 +6,8 @@ const navy = colors.navy; // #000000 brand black (dark panels)
 const teal = colors.actionTeal; // gold accent
 const surface = "#0c0c0c"; // dark-raised panel
 const surfaceSubtle = "#141210"; // slightly higher raise
-const border = "rgba(201, 162, 75, 0.16)"; // gold hairline
-const inputBorder = "rgba(201, 162, 75, 0.6)"; // form fields must be easy to find
+const border = "rgba(248, 184, 8, 0.16)"; // gold hairline
+const inputBorder = "rgba(248, 184, 8, 0.6)"; // form fields must be easy to find
 const text = "#f4efe4"; // cream body
 const muted = "#b3a894"; // warm secondary
 const warning = "#e8c46b"; // readable amber on dark
@@ -127,7 +127,7 @@ export const styles: Record<string, CSSProperties> = {
   },
   navLinkActive: {
     background: "#000000",
-    border: "1px solid rgba(201, 162, 75, 0.16)",
+    border: "1px solid rgba(248, 184, 8, 0.16)",
     borderRadius: radii.sm,
     color: text,
     display: "grid",
@@ -280,7 +280,7 @@ export const styles: Record<string, CSSProperties> = {
   },
   tintedCard: {
     background: surfaceSubtle,
-    border: "1px solid rgba(201, 162, 75, 0.16)",
+    border: "1px solid rgba(248, 184, 8, 0.16)",
     borderRadius: radii.sm,
     boxShadow: elevation.raised,
     padding: 18

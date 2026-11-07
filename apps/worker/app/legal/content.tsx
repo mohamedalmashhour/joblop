@@ -32,7 +32,7 @@ const table: React.CSSProperties = {
   margin: "4px 0 16px"
 };
 const cell: React.CSSProperties = {
-  border: "1px solid rgba(201, 162, 75, 0.22)",
+  border: "1px solid rgba(248, 184, 8, 0.22)",
   padding: "8px 10px",
   textAlign: "left",
   verticalAlign: "top"
@@ -41,23 +41,23 @@ const cell: React.CSSProperties = {
 function LegalShell({ title, children }: { title: string; children: ReactNode }) {
   return (
     <main style={page}>
-      <Link href="/" style={{ color: "#b8862f", textDecoration: "none", fontSize: 13 }}>
+      <Link href="/" style={{ color: "#e0a500", textDecoration: "none", fontSize: 13 }}>
         ← Joblop
       </Link>
       <h1 style={h1}>{title}</h1>
       <p style={meta}>
         Last updated: {LAST_UPDATED} · Operated by {ENTITY} · Contact:{" "}
-        <a href={`mailto:${CONTACT}`} style={{ color: "#b8862f" }}>
+        <a href={`mailto:${CONTACT}`} style={{ color: "#e0a500" }}>
           {CONTACT}
         </a>
       </p>
       {children}
       <p style={{ ...meta, marginTop: 40 }}>
-        <Link href="/privacy" style={{ color: "#b8862f" }}>
+        <Link href="/privacy" style={{ color: "#e0a500" }}>
           Privacy Policy
         </Link>{" "}
         ·{" "}
-        <Link href="/terms" style={{ color: "#b8862f" }}>
+        <Link href="/terms" style={{ color: "#e0a500" }}>
           Terms of Service
         </Link>
       </p>
@@ -210,7 +210,7 @@ export function PrivacyPolicy() {
         information we hold about you, correct inaccurate information, request deletion of your
         account and associated personal information, and withdraw consent to optional communications.
         To exercise any of these rights, contact{" "}
-        <a href={`mailto:${CONTACT}`} style={{ color: "#b8862f" }}>
+        <a href={`mailto:${CONTACT}`} style={{ color: "#e0a500" }}>
           {CONTACT}
         </a>
         . We will respond within the timelines required by law.
@@ -231,7 +231,7 @@ export function PrivacyPolicy() {
       <h2 style={h2}>9. Contact</h2>
       <p style={p}>
         Questions or requests:{" "}
-        <a href={`mailto:${CONTACT}`} style={{ color: "#b8862f" }}>
+        <a href={`mailto:${CONTACT}`} style={{ color: "#e0a500" }}>
           {CONTACT}
         </a>{" "}
         — {ENTITY}.
@@ -322,7 +322,7 @@ export function TermsOfService() {
       <h2 style={h2}>10. Termination</h2>
       <p style={p}>
         You may stop using Joblop and request deletion of your account at any time (contact{" "}
-        <a href={`mailto:${CONTACT}`} style={{ color: "#b8862f" }}>
+        <a href={`mailto:${CONTACT}`} style={{ color: "#e0a500" }}>
           {CONTACT}
         </a>
         ). We may suspend or terminate access for breach of these Terms or misuse of the platform.
@@ -349,11 +349,11 @@ export function TermsOfService() {
         sent using an automated system. Consent is not a condition of using the service. Message
         frequency varies. Message and data rates may apply. Reply STOP to unsubscribe at any time, or
         HELP for help. For assistance, contact{" "}
-        <a href={`mailto:${CONTACT}`} style={{ color: "#b8862f" }}>
+        <a href={`mailto:${CONTACT}`} style={{ color: "#e0a500" }}>
           {CONTACT}
         </a>
         . Carriers are not liable for delayed or undelivered messages. See our{" "}
-        <a href="/privacy" style={{ color: "#b8862f" }}>
+        <a href="/privacy" style={{ color: "#e0a500" }}>
           Privacy Policy
         </a>{" "}
         for how we handle your personal information.
@@ -362,7 +362,7 @@ export function TermsOfService() {
       <h2 style={h2}>14. Contact</h2>
       <p style={p}>
         Questions:{" "}
-        <a href={`mailto:${CONTACT}`} style={{ color: "#b8862f" }}>
+        <a href={`mailto:${CONTACT}`} style={{ color: "#e0a500" }}>
           {CONTACT}
         </a>{" "}
         — {ENTITY}.
@@ -383,7 +383,7 @@ export function AccountDeletion() {
       <ol>
         <li style={li}>
           Email{" "}
-          <a href={`mailto:${CONTACT}?subject=Delete my account`} style={{ color: "#b8862f" }}>
+          <a href={`mailto:${CONTACT}?subject=Delete my account`} style={{ color: "#e0a500" }}>
             {CONTACT}
           </a>{" "}
           from the email address on your Joblop account, with the subject{" "}
@@ -416,11 +416,11 @@ export function AccountDeletion() {
       <h2 style={h2}>Questions</h2>
       <p style={p}>
         Contact{" "}
-        <a href={`mailto:${CONTACT}`} style={{ color: "#b8862f" }}>
+        <a href={`mailto:${CONTACT}`} style={{ color: "#e0a500" }}>
           {CONTACT}
         </a>
         . See our{" "}
-        <a href="/privacy" style={{ color: "#b8862f" }}>
+        <a href="/privacy" style={{ color: "#e0a500" }}>
           Privacy Policy
         </a>{" "}
         for how we handle your data.

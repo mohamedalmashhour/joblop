@@ -45,7 +45,7 @@ export default function DispatchReviewsPage() {
       .catch((reason) => setLoad({ state: "error", reason: String(reason) }));
   }, []);
 
-  const C = { bg: "#fbf9f4", fg: "#171511", muted: "#6b6356", line: "#ece3d2", card: "#ffffff", accent: "#b8862f" };
+  const C = { bg: "#fbf9f4", fg: "#171511", muted: "#6b6356", line: "#ece3d2", card: "#ffffff", accent: "#e0a500" };
 
   return (
     <main style={{ background: C.bg, color: C.fg, minHeight: "100vh", fontFamily: "'IBM Plex Sans', system-ui, sans-serif" }}>

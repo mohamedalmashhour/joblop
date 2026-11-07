@@ -25,10 +25,10 @@ describe("design system brand palette", () => {
   it("uses the fixed Joblop black + gold + cream foundation", () => {
     expect(brand.black).toBe("#000000");
     expect(brand.ink).toBe("#0c0c0c");
-    expect(brand.gold).toBe("#c9a24b");
-    expect(brand.goldStrong).toBe("#b8862f");
-    expect(brand.goldDeep).toBe("#9a7122");
-    expect(brand.goldSoft).toBe("#f0d9a0");
+    expect(brand.gold).toBe("#f8b808");
+    expect(brand.goldStrong).toBe("#e0a500");
+    expect(brand.goldDeep).toBe("#b58500");
+    expect(brand.goldSoft).toBe("#ffe08a");
     expect(brand.cream).toBe("#faf6ec");
   });
 

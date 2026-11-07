@@ -210,7 +210,7 @@ export function CvBuilder() {
     const score = parts.reduce((s, p) => s + (p.ok ? p.pts : 0), 0);
     const gaps = parts.filter((p) => !p.ok).map((p) => p.gap);
     const grade = score >= 80 ? "Strong" : score >= 60 ? "Good" : score >= 40 ? "Fair" : "Needs work";
-    const color = score >= 80 ? "#b8862f" : score >= 60 ? "#a8842f" : score >= 40 ? "#b8860b" : "#b23b2e";
+    const color = score >= 80 ? "#e0a500" : score >= 60 ? "#a8842f" : score >= 40 ? "#b8860b" : "#b23b2e";
     return { score, gaps, grade, color };
   })();
 
@@ -268,11 +268,11 @@ export function CvBuilder() {
         <Chips options={DESIGNS.map((d) => d.label)} value={[DESIGNS.find((d) => d.key === design)!.label]} onToggle={(l) => setDesign(DESIGNS.find((d) => d.label === l)!.key)} />
         <div style={{ marginTop: 18, display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center" }}>
           <button type="button" style={styles.cta} disabled={busy} onClick={() => void generate()}>{busy ? "Building…" : "Build my CV"}</button>
-          <button type="button" style={{ ...styles.cta, background: "transparent", border: "1px solid #a8842f", color: "#c9a24b" }} onClick={downloadJsonResume}>Download JSON Resume</button>
+          <button type="button" style={{ ...styles.cta, background: "transparent", border: "1px solid #a8842f", color: "#f8b808" }} onClick={downloadJsonResume}>Download JSON Resume</button>
           {msg ? <span style={styles.notice}>{msg}</span> : null}
         </div>
         <p style={styles.hint}>
-          Your CV data in the open <a href="https://jsonresume.org/themes" target="_blank" rel="noopener noreferrer" style={{ color: "#c9a24b" }}>JSON Resume</a> format — render it free in dozens of designs with any JSON Resume theme.
+          Your CV data in the open <a href="https://jsonresume.org/themes" target="_blank" rel="noopener noreferrer" style={{ color: "#f8b808" }}>JSON Resume</a> format — render it free in dozens of designs with any JSON Resume theme.
         </p>
         {cv ? (
           <div style={styles.scoreWrap}>
@@ -309,9 +309,9 @@ export function CvBuilder() {
 }
 
 function designStyle(key: string): Record<string, string> {
-  if (key === "healthcare") return { fontFamily: "Georgia, serif", color: "#1b160e", background: "#fbf9f4", borderTop: "6px solid #b8862f" };
+  if (key === "healthcare") return { fontFamily: "Georgia, serif", color: "#1b160e", background: "#fbf9f4", borderTop: "6px solid #e0a500" };
   if (key === "professional") return { fontFamily: "Inter, system-ui, sans-serif", color: "#171511", background: "#fff", borderTop: "6px solid #2a2114" };
-  return { fontFamily: "'Helvetica Neue', Arial, sans-serif", color: "#1b160e", background: "#fffdf7", borderTop: "6px solid #b8862f" };
+  return { fontFamily: "'Helvetica Neue', Arial, sans-serif", color: "#1b160e", background: "#fffdf7", borderTop: "6px solid #e0a500" };
 }
 
 const styles = {
@@ -326,9 +326,9 @@ const styles = {
   input: { border: "1px solid #e3d7c0", borderRadius: 8, minHeight: 40, padding: "0 10px", minWidth: 180 },
   chips: { display: "flex", flexWrap: "wrap" as const, gap: 8 },
   chip: { background: "#f6efdd", border: "1px solid #ece3d2", borderRadius: 999, color: "#1b160e", cursor: "pointer", fontSize: 13, fontWeight: 600, padding: "8px 14px" },
-  chipOn: { background: "#b8862f", borderColor: "#b8862f", color: "#fff" },
-  cta: { background: "#b8862f", border: "none", borderRadius: 10, color: "#fff", cursor: "pointer", fontSize: 15, fontWeight: 800, padding: "12px 22px" },
-  notice: { color: "#b8862f", fontSize: 13, fontWeight: 700, marginLeft: 12 },
+  chipOn: { background: "#e0a500", borderColor: "#e0a500", color: "#fff" },
+  cta: { background: "#e0a500", border: "none", borderRadius: 10, color: "#fff", cursor: "pointer", fontSize: 15, fontWeight: 800, padding: "12px 22px" },
+  notice: { color: "#e0a500", fontSize: 13, fontWeight: 700, marginLeft: 12 },
   prov: { fontSize: 11, marginTop: 16, opacity: 0.7 },
   warn: { background: "#fff6e6", border: "1px solid #f0d089", borderRadius: 8, color: "#8a5a00", fontSize: 12, marginTop: 8, padding: "8px 12px" },
   upsell: { background: "#fff6e6", border: "1px solid #f0d089", borderRadius: 10, color: "#8a5a00", fontSize: 13, lineHeight: 1.5, marginTop: 16, padding: "12px 14px" },
@@ -345,6 +345,6 @@ const styles = {
   scoreBarFill: { borderRadius: 999, height: "100%", transition: "width .4s ease" },
   scoreGaps: { color: "#1b160e", fontSize: 13, marginTop: 12 },
   scoreGapList: { margin: "6px 0 0", paddingLeft: 18 },
-  scoreMax: { color: "#b8862f", fontSize: 13, fontWeight: 700, margin: "12px 0 0" },
+  scoreMax: { color: "#e0a500", fontSize: 13, fontWeight: 700, margin: "12px 0 0" },
   scoreUpsell: { background: "#fff6e6", border: "1px solid #f0d089", borderRadius: 8, color: "#8a5a00", fontSize: 12.5, lineHeight: 1.5, margin: "12px 0 0", padding: "9px 12px" }
 } as const;

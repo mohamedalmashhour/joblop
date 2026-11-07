@@ -15,7 +15,7 @@ export default async function NotFound() {
   return (
     <main className="wrap">
       <div className="state" style={{ paddingTop: 48, paddingBottom: 48 }}>
-        <div style={{ fontSize: 56, fontWeight: 800, color: "var(--gold, #c9a24b)", lineHeight: 1 }}>404</div>
+        <div style={{ fontSize: 56, fontWeight: 800, color: "var(--gold, #f8b808)", lineHeight: 1 }}>404</div>
         <h1 style={{ marginTop: 12 }}>{tr("notFound.title")}</h1>
         <p style={{ marginTop: 6 }}>{tr("notFound.body")}</p>
         <div style={{ marginTop: 16, display: "flex", gap: 12, flexWrap: "wrap", justifyContent: "center" }}>

@@ -258,15 +258,15 @@ const styles: Record<string, React.CSSProperties> = {
   muted: { color: "#b3a894", fontSize: 13, lineHeight: 1.5 },
   dim: { color: "#ece3d2", fontSize: 12 },
   list: { listStyle: "none", margin: 0, padding: 0, display: "flex", flexDirection: "column", gap: 12 },
-  item: { border: "1px solid rgba(201, 162, 75, 0.16)", borderRadius: 10, padding: 12, display: "flex", flexDirection: "column", gap: 8 },
+  item: { border: "1px solid rgba(248, 184, 8, 0.16)", borderRadius: 10, padding: 12, display: "flex", flexDirection: "column", gap: 8 },
   itemHead: { display: "flex", justifyContent: "space-between", alignItems: "baseline", gap: 8 },
   badges: { display: "flex", flexWrap: "wrap", gap: 6 },
   intentBadge: { background: "#000000", color: "#f4efe4", borderRadius: 999, padding: "3px 10px", fontSize: 12, fontWeight: 600 },
   infoBadge: { background: "#000000", color: "#f4efe4", borderRadius: 999, padding: "3px 10px", fontSize: 12, fontWeight: 600 },
   goodBadge: { background: "#dcfce7", color: "#15803d", borderRadius: 999, padding: "3px 10px", fontSize: 12, fontWeight: 700 },
   actions: { display: "flex", flexWrap: "wrap", gap: 8, alignItems: "center" },
-  button: { border: "1px solid rgba(201, 162, 75, 0.16)", background: "#171511", color: "#fff", borderRadius: 8, padding: "7px 12px", fontSize: 13, fontWeight: 600, cursor: "pointer" },
-  buttonGhost: { border: "1px solid rgba(201, 162, 75, 0.16)", background: "transparent", color: "#f4efe4", borderRadius: 8, padding: "7px 12px", fontSize: 13, fontWeight: 600, cursor: "pointer" },
+  button: { border: "1px solid rgba(248, 184, 8, 0.16)", background: "#171511", color: "#fff", borderRadius: 8, padding: "7px 12px", fontSize: 13, fontWeight: 600, cursor: "pointer" },
+  buttonGhost: { border: "1px solid rgba(248, 184, 8, 0.16)", background: "transparent", color: "#f4efe4", borderRadius: 8, padding: "7px 12px", fontSize: 13, fontWeight: 600, cursor: "pointer" },
   status: { color: "#15803d", fontSize: 13 },
   alert: { color: "#b91c1c", fontSize: 13 }
 };
