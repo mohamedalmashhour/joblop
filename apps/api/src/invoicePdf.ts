@@ -293,7 +293,7 @@ function money(amountMinor: number) {
 
 function escapePdf(value: string) {
   // The built-in fonts only cover Latin-1, so anything outside it is replaced rather than lost silently.
-  const latin1 = value.replace(/[\u2018\u2019]/gu, "'").replace(/[\u201c\u201d]/gu, '"').replace(/[^\u0000-\u00ff]/gu, "?");
+  const latin1 = value.replace(/[\u2018\u2019]/gu, "'").replace(/[\u201c\u201d]/gu, '"').replace(/[^\u0020-\u00ff]/gu, "?");
   return latin1.replaceAll("\\", "\\\\").replaceAll("(", "\\(").replaceAll(")", "\\)");
 }
 
