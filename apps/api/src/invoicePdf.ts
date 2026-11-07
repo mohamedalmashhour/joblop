@@ -1,6 +1,7 @@
 import { createHash } from "node:crypto";
 import { PLATFORM_INVOICE_CONTACT } from "@rwos/shared";
 import type { DurableCreditNote, DurableInvoice } from "./invoiceRepository";
+import { JOBLOP_LOGO_JPEG } from "./joblopLogoJpeg";
 
 export type RenderedInvoicePdf = Readonly<{
   bytes: Uint8Array;
@@ -51,8 +52,7 @@ export function renderBilingualSyntheticInvoicePdf(invoice: DurableInvoice, deta
 
   // Header band.
   page.rect(0, 712, 612, 80, BLACK);
-  page.text("Job", 50, 742, 30, "bold", WHITE);
-  page.text("lop", 50 + textWidth("Job", 30, "bold"), 742, 30, "bold", GOLD);
+  page.logo(44, 727, 42);
   page.textRight("INVOICE / FACTURE", 562, 754, 15, "bold", WHITE);
   page.textRight(invoice.invoiceNumber, 562, 734, 11, "regular", GOLD);
   page.rect(0, 708, 612, 4, GOLD);
@@ -145,8 +145,16 @@ export function renderBilingualSyntheticInvoicePdf(invoice: DurableInvoice, deta
   page.textRight(`${money(invoice.totalMinor)} ${invoice.currency}`, 550, y - 2, 13, "bold", GOLD);
 
   // Footer.
-  page.text("Thank you for working with Joblop. / Merci de faire affaire avec Joblop.", 50, 120, 10, "bold", INK);
-  page.text("Pay online: sign in to Joblop and open Invoices. / Payez en ligne : connectez-vous à Joblop, puis Factures.", 50, 104, 8.5, "regular", MUTED);
+  if (invoice.status === "paid") {
+    page.rect(50, y - 14, 150, 32, GOLD);
+    page.text("PAID / PAYÉE", 64, y - 2, 13, "bold", BLACK);
+  }
+  page.rect(50, 128, 512, 46, PANEL);
+  page.rect(50, 128, 4, 46, GOLD);
+  page.text("Thank you for your cooperation with us.", 66, 156, 12, "bold", INK);
+  page.text("Merci pour votre collaboration avec nous.", 66, 139, 10, "regular", MUTED);
+  page.text("Pay online: sign in to Joblop and open Invoices. / Payez en ligne : connectez-vous à Joblop, puis Factures.", 50, 108, 8.5, "regular", MUTED);
+  page.text(`Questions? / Des questions? ${PLATFORM_INVOICE_CONTACT.email} · ${PLATFORM_INVOICE_CONTACT.phone}`, 50, 95, 8.5, "regular", MUTED);
   page.rect(50, 86, 512, 0.6, RULE);
   page.text("Test document, not valid for tax filing. / Document d'essai, non valide pour la déclaration fiscale.", 50, 70, 7.5, "regular", MUTED);
 
@@ -169,8 +177,7 @@ export function renderBilingualSyntheticCreditNotePdf(
   }
   const page = new PdfPage();
   page.rect(0, 712, 612, 80, BLACK);
-  page.text("Job", 50, 742, 30, "bold", WHITE);
-  page.text("lop", 50 + textWidth("Job", 30, "bold"), 742, 30, "bold", GOLD);
+  page.logo(44, 727, 42);
   page.textRight("CREDIT NOTE / NOTE DE CRÉDIT", 562, 754, 15, "bold", WHITE);
   page.textRight(creditNote.creditNoteNumber, 562, 734, 11, "regular", GOLD);
   page.rect(0, 708, 612, 4, GOLD);
@@ -228,6 +235,14 @@ function textWidth(value: string, size: number, weight: "regular" | "bold") {
 
 class PdfPage {
   private readonly ops: string[] = [];
+  private usesLogo = false;
+
+  // The platform wordmark, drawn at the given height. Its black background sits on the black header.
+  logo(x: number, y: number, height: number) {
+    const width = (height * JOBLOP_LOGO_JPEG.width) / JOBLOP_LOGO_JPEG.height;
+    this.usesLogo = true;
+    this.ops.push(`q ${num(width)} 0 0 ${num(height)} ${num(x)} ${num(y)} cm /Logo Do Q`);
+  }
 
   rect(x: number, y: number, width: number, height: number, colour: Colour) {
     this.ops.push(`${rgb(colour)} rg ${num(x)} ${num(y)} ${num(width)} ${num(height)} re f`);
@@ -246,10 +261,11 @@ class PdfPage {
     const objects = [
       "<< /Type /Catalog /Pages 2 0 R >>",
       "<< /Type /Pages /Kids [3 0 R] /Count 1 >>",
-      "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << /Font << /F1 5 0 R /F2 6 0 R >> >> /Contents 4 0 R >>",
+      `<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << /Font << /F1 5 0 R /F2 6 0 R >>${this.usesLogo ? " /XObject << /Logo 7 0 R >>" : ""} >> /Contents 4 0 R >>`,
       `<< /Length ${Buffer.byteLength(content, "latin1")} >>\nstream\n${content}\nendstream`,
       "<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica /Encoding /WinAnsiEncoding >>",
-      "<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica-Bold /Encoding /WinAnsiEncoding >>"
+      "<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica-Bold /Encoding /WinAnsiEncoding >>",
+      ...(this.usesLogo ? [logoObject()] : [])
     ];
     const chunks = ["%PDF-1.4\n%RWOS\n"];
     const offsets = [0];
@@ -274,6 +290,11 @@ class PdfPage {
       contentType: "application/pdf"
     };
   }
+}
+
+function logoObject() {
+  const jpeg = Buffer.from(JOBLOP_LOGO_JPEG.base64, "base64").toString("latin1");
+  return `<< /Type /XObject /Subtype /Image /Width ${JOBLOP_LOGO_JPEG.width} /Height ${JOBLOP_LOGO_JPEG.height} /ColorSpace /DeviceRGB /BitsPerComponent 8 /Filter /DCTDecode /Length ${jpeg.length} >>\nstream\n${jpeg}\nendstream`;
 }
 
 const num = (value: number) => (Math.round(value * 100) / 100).toString();
