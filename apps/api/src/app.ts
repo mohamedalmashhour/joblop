@@ -367,6 +367,7 @@ import { createStripeTestClient } from "./stripeTestProvider";
 import { stripeTestEnvFromProcess } from "./cvProStripeCheckout";
 import { claimOpenJob, ensureOpenClaimDispatch, placeClaimedShiftOnSchedule } from "./openClaim";
 import { isWorksiteAddressVisible, workerJobAddress, WORKSITE_ADDRESS_SELECT } from "./worksiteAddress";
+import { listWorkerPayoutsForStaff } from "./workerPayoutStaffList";
 
 export interface BuildApiOptions {
   authService?: AuthenticationService;
@@ -6069,6 +6070,17 @@ export function buildApi(options: BuildApiOptions = {}) {
         authoritativeInvoice,
         signals: { attendanceUnderway, timesheetLocked, invoiceIssued, paymentCaptured, hasOpenDispute }
       }
+    });
+  });
+
+  // Finance staff's view of worker payouts, and whether the test-mode send is switched on.
+  app.get("/platform/worker-payouts", async (request, reply) => {
+    const actor = await requirePayrollAuthority(request, reply);
+    if (!actor) return;
+    const items = await listWorkerPayoutsForStaff(prisma!);
+    return reply.code(200).send({
+      items,
+      testPayoutEnabled: runtimeConfig.payoutTestModeEnabled && isPayoutTestExecutionEnabled()
     });
   });
 
