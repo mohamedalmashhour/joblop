@@ -82,5 +82,11 @@ describe("invoice sent email", () => {
     expect(en.text).toContain("open Invoices");
     expect(en.text).not.toMatch(/\$/);
     expect(invoiceSentEmail({ to: "a@b.test", language: "fr", invoiceNumber: "JL-2026-000001" }).text).toContain("Factures");
+    const pdf = { name: "JL-2026-000001.pdf", contentBase64: "cGRm" };
+    const withCopy = invoiceSentEmail({ to: "a@b.test", language: "en", invoiceNumber: "JL-2026-000001", pdf });
+    expect(withCopy.attachments).toEqual([pdf]);
+    expect(withCopy.text).toContain("A copy is attached.");
+    expect(invoiceSentEmail({ to: "a@b.test", language: "fr", invoiceNumber: "JL-2026-000001", pdf }).text).toContain("Une copie est jointe.");
+    expect(en.attachments).toBeUndefined();
   });
 });

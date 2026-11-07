@@ -29,3 +29,13 @@ export async function confirmCardPayment(invoiceId: string, fetcher: Fetcher): P
     return false;
   }
 }
+
+export type CardPaymentStep = Readonly<{ kind: "paid" } | { kind: "open"; url: string } | { kind: "unavailable" }>;
+
+// A payment can finish at Stripe without the employer coming back to Joblop. Pressing Pay checks that
+// first, so a paid invoice is recorded instead of reopening a Stripe page that has already closed.
+export async function nextCardPaymentStep(invoiceId: string, fetcher: Fetcher): Promise<CardPaymentStep> {
+  if (await confirmCardPayment(invoiceId, fetcher)) return { kind: "paid" };
+  const url = await startCardPayment(invoiceId, fetcher);
+  return url ? { kind: "open", url } : { kind: "unavailable" };
+}

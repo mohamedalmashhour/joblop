@@ -9,6 +9,16 @@ export type RenderedInvoicePdf = Readonly<{
   contentType: "application/pdf";
 }>;
 
+// The copy attached to the invoice email. A PDF that cannot be made never stops the email itself.
+export function invoiceEmailAttachment(invoice: DurableInvoice): Readonly<{ name: string; contentBase64: string }> | null {
+  try {
+    const rendered = renderBilingualSyntheticInvoicePdf(invoice);
+    return { name: rendered.filename, contentBase64: Buffer.from(rendered.bytes).toString("base64") };
+  } catch {
+    return null;
+  }
+}
+
 export function renderBilingualSyntheticInvoicePdf(invoice: DurableInvoice): RenderedInvoicePdf {
   if (!invoice.invoiceNumber || !invoice.issuedAt) {
     throw new Error("Only an issued invoice can be rendered.");

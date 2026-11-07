@@ -14,7 +14,7 @@ import {
   renderBilingualSyntheticCreditNotePdf,
   renderBilingualSyntheticInvoicePdf
 } from "./invoicePdf";
-import type { InvoiceRepository } from "./invoiceRepository";
+import type { DurableInvoice, InvoiceRepository } from "./invoiceRepository";
 
 export type InvoiceRouteAuthorization = Readonly<{
   actorId: string;
@@ -48,7 +48,7 @@ export function registerInvoiceRoutes(
     ): Promise<InvoiceRouteAuthorization | null>;
     // Tells the employer an invoice has been sent. Best-effort: it reports what happened and never
     // undoes the send.
-    notifyInvoiceSent?(invoice: { id: string; organizationId: string }): Promise<string>;
+    notifyInvoiceSent?(invoice: DurableInvoice): Promise<string>;
   }
 ) {
   app.post("/organizations/:organizationId/invoices", async (request, reply) => {
