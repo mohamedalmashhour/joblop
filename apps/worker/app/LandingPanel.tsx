@@ -3,29 +3,8 @@
 import { useEffect, useState } from "react";
 import { trackConversion } from "./analytics";
 import { withBrand } from "./Brand";
-import { useLocale, useT } from "./i18n/LocaleProvider";
+import { useT } from "./i18n/LocaleProvider";
 import { VerifyEmail } from "./VerifyEmail";
-
-// Client-side strong-password generator for the "suggest a strong password" helper. 20 chars,
-// crypto-random, at least one from each class, with look-alike characters (0/O, 1/l/I) left out.
-function generatePassword(length = 20): string {
-  const sets = ["ABCDEFGHJKLMNPQRSTUVWXYZ", "abcdefghijkmnopqrstuvwxyz", "23456789", "!@#$%^&*-_=+?"];
-  const all = sets.join("");
-  const bytes = new Uint32Array(length);
-  crypto.getRandomValues(bytes);
-  const chars: string[] = sets.map((s, i) => s.charAt((bytes[i] ?? 0) % s.length));
-  for (let i = sets.length; i < length; i++) chars.push(all.charAt((bytes[i] ?? 0) % all.length));
-  const order = new Uint32Array(length);
-  crypto.getRandomValues(order);
-  for (let i = length - 1; i > 0; i--) {
-    const j = (order[i] ?? 0) % (i + 1);
-    const a = chars[i] ?? "";
-    const b = chars[j] ?? "";
-    chars[i] = b;
-    chars[j] = a;
-  }
-  return chars.join("");
-}
 
 /** Signed-out worker front door: value proposition + how-it-works, with a sign-in / create-account
  *  card. Fully bilingual (fr-CA / en-CA). On success it hands control back to the marketplace. */
@@ -137,42 +116,28 @@ function GoogleAuthButton() {
   );
 }
 
+// Workers sign in with a mobile number and a texted code. The session stays in an httpOnly cookie.
 function SignInForm({ onSignedIn, onNeedAccount }: { onSignedIn: () => void; onNeedAccount: () => void }) {
   const t = useT();
-  const locale = useLocale();
-  const [email, setEmail] = useState("");
-  const [password, setPassword] = useState("");
-  const [showPw, setShowPw] = useState(false);
+  const [phone, setPhone] = useState("");
+  const [code, setCode] = useState("");
+  const [step, setStep] = useState<"phone" | "code">("phone");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  // Remember the last email used on this device (convenience only — never the password).
-  useEffect(() => {
-    try {
-      const saved = localStorage.getItem("jl_last_email");
-      if (saved) setEmail(saved);
-    } catch {
-      /* private mode / blocked storage — fine, just start blank */
-    }
-  }, []);
-
-  async function submit(event: React.FormEvent) {
-    event.preventDefault();
+  async function sendCode(event?: React.FormEvent) {
+    event?.preventDefault();
     setBusy(true);
     setError(null);
     try {
-      try {
-        localStorage.setItem("jl_last_email", email.trim());
-      } catch {
-        /* ignore storage errors */
-      }
-      const response = await fetch("/api/session/sign-in", {
+      const response = await fetch("/api/session/phone/request", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ email, password })
+        body: JSON.stringify({ phone })
       });
-      if (response.ok) return onSignedIn();
-      setError(response.status === 429 ? t("auth.tooManyAttempts") : t("auth.signInFailed"));
+      if (!response.ok) return setError(t("auth.numberUnusable"));
+      setStep("code");
+      setCode("");
     } catch {
       setError(t("common.somethingWrong"));
     } finally {
@@ -180,17 +145,50 @@ function SignInForm({ onSignedIn, onNeedAccount }: { onSignedIn: () => void; onN
     }
   }
 
+  async function verify(event: React.FormEvent) {
+    event.preventDefault();
+    setBusy(true);
+    setError(null);
+    try {
+      const response = await fetch("/api/session/phone/verify", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ phone, code: code.trim() })
+      });
+      if (response.ok) return onSignedIn();
+      setError(t("auth.signInFailed"));
+    } catch {
+      setError(t("common.somethingWrong"));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  const problem = error ? <p className="notice" role="alert" style={{ color: "var(--danger)" }}>{error}</p> : null;
+
+  if (step === "phone") {
+    return (
+      <form className="auth-form" onSubmit={(event) => void sendCode(event)}>
+        <label htmlFor="si-phone">{t("auth.mobileNumber")}</label>
+        <input id="si-phone" type="tel" autoComplete="tel" value={phone} onChange={(e) => setPhone(e.target.value)} placeholder={t("signup.phonePlaceholder")} required />
+        {problem}
+        <button className="btn" type="submit" disabled={busy}>{busy ? t("auth.sendingCode") : t("auth.textMeCode")}</button>
+        <p className="auth-switch">{t("auth.needAccount")} <button type="button" className="linkbtn" onClick={onNeedAccount}>{t("auth.tabCreate")}</button></p>
+      </form>
+    );
+  }
+
   return (
-    <form className="auth-form" onSubmit={submit}>
-      <label htmlFor="si-email">{t("auth.email")}</label>
-      <input id="si-email" type="email" autoComplete="username" value={email} onChange={(e) => setEmail(e.target.value)} required />
-      <label htmlFor="si-password">{t("auth.password")}</label>
-      <input id="si-password" type={showPw ? "text" : "password"} autoComplete="current-password" value={password} onChange={(e) => setPassword(e.target.value)} required />
-      <button type="button" className="linkbtn" aria-pressed={showPw} onClick={() => setShowPw((v) => !v)} style={{ alignSelf: "flex-start", marginTop: 4 }}>{showPw ? t("auth.hidePassword") : t("auth.showPassword")}</button>
-      <a className="linkbtn" href="/forgot-password" style={{ alignSelf: "flex-start", marginTop: 2 }}>{locale === "ar" ? "نسيت كلمة المرور؟" : locale.startsWith("fr") ? "Mot de passe oublié ?" : "Forgot password?"}</a>
-      {error ? <p className="notice" role="alert" style={{ color: "var(--danger)" }}>{error}</p> : null}
+    <form className="auth-form" onSubmit={(event) => void verify(event)}>
+      <p className="notice" role="status">{t("auth.codeOnWay")}</p>
+      <label htmlFor="si-code">{t("auth.codeLabel")}</label>
+      <input id="si-code" autoComplete="one-time-code" inputMode="numeric" maxLength={6} pattern="[0-9]{6}" value={code} onChange={(e) => setCode(e.target.value)} required />
+      {problem}
       <button className="btn" type="submit" disabled={busy}>{busy ? t("auth.signingIn") : t("auth.signIn")}</button>
-      <p className="auth-switch">{t("auth.needAccount")} <button type="button" className="linkbtn" onClick={onNeedAccount}>{t("auth.tabCreate")}</button></p>
+      <div style={{ display: "flex", gap: 14, flexWrap: "wrap" }}>
+        <button type="button" className="linkbtn" disabled={busy} onClick={() => void sendCode()}>{t("auth.sendNewCode")}</button>
+        <button type="button" className="linkbtn" disabled={busy} onClick={() => setStep("phone")}>{t("auth.changeNumber")}</button>
+      </div>
     </form>
   );
 }
@@ -201,9 +199,6 @@ function SignUpForm({ onSignedIn, onHaveAccount }: { onSignedIn: () => void; onH
   const [phone, setPhone] = useState("");
   const [email, setEmail] = useState("");
   const [confirmEmail, setConfirmEmail] = useState("");
-  const [password, setPassword] = useState("");
-  const [confirmPassword, setConfirmPassword] = useState("");
-  const [showPw, setShowPw] = useState(false);
   const [accepted, setAccepted] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -223,7 +218,6 @@ function SignUpForm({ onSignedIn, onHaveAccount }: { onSignedIn: () => void; onH
     event.preventDefault();
     setError(null);
     if (email.trim().toLowerCase() !== confirmEmail.trim().toLowerCase()) return setError(t("signup.emailMismatch"));
-    if (password !== confirmPassword) return setError(t("signup.passwordMismatch"));
     if (!accepted) return setError(t("signup.mustAccept"));
     setBusy(true);
     try {
@@ -233,18 +227,16 @@ function SignUpForm({ onSignedIn, onHaveAccount }: { onSignedIn: () => void; onH
         body: JSON.stringify({
           email,
           confirmEmail,
-          password,
-          confirmPassword,
           acceptedNotices: true,
           displayName: name.trim() || null,
-          phone: phone.trim() || null,
+          phone: phone.trim(),
           referralCode
         })
       });
       if (response.ok) { trackConversion("sign_up", { method: "worker" }); setRegistered(true); return; }
       if (response.status === 404) setError(t("signup.closed"));
       else if (response.status === 409) setError(t("signup.conflict"));
-      else if (response.status === 400) setError(t("signup.weakPassword"));
+      else if (response.status === 400) setError(t("auth.numberUnusable"));
       else if (response.status === 429) setError(t("signup.rateLimited"));
       else setError(t("signup.failed"));
     } catch {
@@ -261,21 +253,12 @@ function SignUpForm({ onSignedIn, onHaveAccount }: { onSignedIn: () => void; onH
       <label htmlFor="su-name">{t("signup.name")}</label>
       <input id="su-name" type="text" autoComplete="name" value={name} onChange={(e) => setName(e.target.value)} placeholder={t("signup.namePlaceholder")} />
       <label htmlFor="su-phone">{t("signup.phone")}</label>
-      <input id="su-phone" type="tel" autoComplete="tel" value={phone} onChange={(e) => setPhone(e.target.value)} placeholder={t("signup.phonePlaceholder")} />
+      <input id="su-phone" type="tel" autoComplete="tel" value={phone} onChange={(e) => setPhone(e.target.value)} placeholder={t("signup.phonePlaceholder")} required />
       <p id="su-sms-consent" className="notice" style={{ margin: "2px 0 0", fontSize: 12, lineHeight: 1.4 }}>{withBrand(t("hr.smsConsent"))}</p>
       <label htmlFor="su-email">{t("auth.email")}</label>
       <input id="su-email" type="email" autoComplete="username" value={email} onChange={(e) => setEmail(e.target.value)} required />
       <label htmlFor="su-confirm-email">{t("signup.confirmEmail")}</label>
       <input id="su-confirm-email" type="email" autoComplete="username" value={confirmEmail} onChange={(e) => setConfirmEmail(e.target.value)} required />
-      <label htmlFor="su-password">{t("auth.password")}</label>
-      <input id="su-password" type={showPw ? "text" : "password"} autoComplete="new-password" value={password} onChange={(e) => setPassword(e.target.value)} required aria-describedby="su-password-hint" />
-      <label htmlFor="su-confirm-password">{t("signup.confirmPassword")}</label>
-      <input id="su-confirm-password" type={showPw ? "text" : "password"} autoComplete="new-password" value={confirmPassword} onChange={(e) => setConfirmPassword(e.target.value)} required />
-      <div style={{ display: "flex", gap: 14, flexWrap: "wrap", marginTop: 4 }}>
-        <button type="button" className="linkbtn" aria-pressed={showPw} onClick={() => setShowPw((v) => !v)}>{showPw ? t("auth.hidePassword") : t("auth.showPassword")}</button>
-        <button type="button" className="linkbtn" onClick={() => { const pw = generatePassword(); setPassword(pw); setConfirmPassword(pw); setShowPw(true); }}>{t("signup.suggestPassword")}</button>
-      </div>
-      <p id="su-password-hint" className="notice" style={{ margin: "2px 0 0" }}>{t("signup.passwordHint")}</p>
       <label className="checkfield" htmlFor="su-accept" style={{ marginTop: 6 }}>
         <input id="su-accept" type="checkbox" checked={accepted} onChange={(e) => setAccepted(e.target.checked)} />
         {t("signup.accept")}

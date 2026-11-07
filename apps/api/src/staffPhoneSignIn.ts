@@ -8,7 +8,14 @@ export const MAX_CODE_ATTEMPTS = 5;
 type CodeRow = Readonly<{ id: string; codeHash: string; attempts: number; expiresAt: Date; createdAt: Date }>;
 type StaffPhonePrisma = {
   user: {
-    findMany(args: unknown): Promise<readonly { id: string; emailNormalized: string }[]>;
+    findMany(args: unknown): Promise<
+      readonly {
+        id: string;
+        emailNormalized: string;
+        memberships?: readonly unknown[];
+        workerIdentity?: unknown;
+      }[]
+    >;
     updateMany(args: unknown): Promise<{ count: number }>;
   };
   platformAccessGrant: { findFirst(args: unknown): Promise<{ userId: string } | null> };
@@ -34,6 +41,28 @@ function digest(userId: string, code: string): Buffer {
   return createHash("sha256").update(`${userId}:${code}`, "utf8").digest();
 }
 
+export type PhoneSignInAudience = "staff" | "employer" | "worker";
+
+// Numbers are not unique yet. One person may hold a company account and a worker account on one
+// number, so each site picks its own kind first, then new accounts of neither kind. A number that
+// still matches two accounts signs in to neither rather than guessing.
+async function findClientUser(prisma: StaffPhonePrisma, phone: string, audience: "employer" | "worker") {
+  const users = await prisma.user.findMany({
+    where: { phone, status: "active" },
+    select: {
+      id: true,
+      emailNormalized: true,
+      memberships: { where: { status: "active" }, select: { id: true }, take: 1 },
+      workerIdentity: { select: { id: true } }
+    }
+  });
+  const isMember = (user: (typeof users)[number]) => (user.memberships?.length ?? 0) > 0;
+  const isWorker = (user: (typeof users)[number]) => Boolean(user.workerIdentity);
+  const own = users.filter(audience === "employer" ? isMember : isWorker);
+  const matches = own.length > 0 ? own : users.filter((user) => !isMember(user) && !isWorker(user));
+  return matches.length === 1 ? matches[0]! : null;
+}
+
 // Only an active account holding the staff grant can sign in this way.
 async function findStaffUser(prisma: StaffPhonePrisma, phone: string) {
   const users = await prisma.user.findMany({
@@ -54,10 +83,11 @@ export type StaffCodeRequestOutcome = "sent" | "throttled" | "not_staff" | "not_
 export async function requestStaffPhoneCode(
   prismaClient: unknown,
   sms: Pick<SmsSender, "send">,
-  input: { phone: string; now: Date; generateCode?: () => string }
+  input: { phone: string; now: Date; generateCode?: () => string; audience?: PhoneSignInAudience }
 ): Promise<StaffCodeRequestOutcome> {
   const prisma = prismaClient as StaffPhonePrisma;
-  const user = await findStaffUser(prisma, input.phone);
+  const audience = input.audience ?? "staff";
+  const user = audience === "staff" ? await findStaffUser(prisma, input.phone) : await findClientUser(prisma, input.phone, audience);
   if (!user) return "not_staff";
   const recent = await prisma.staffPhoneSignInCode.findFirst({
     where: { userId: user.id, createdAt: { gt: new Date(input.now.getTime() - RESEND_AFTER_MS) } },
@@ -80,7 +110,7 @@ export async function requestStaffPhoneCode(
   });
   const sent = await sms.send({
     to: input.phone,
-    text: `Your Joblop staff sign-in code is ${code}. It expires in 10 minutes. Never share it.`
+    text: `Your Joblop ${audience === "staff" ? "staff " : ""}sign-in code is ${code}. It expires in 10 minutes. Never share it.`
   });
   return sent.status === "sent" ? "sent" : "not_sent";
 }
@@ -88,10 +118,11 @@ export async function requestStaffPhoneCode(
 // Returns the account to sign in, or null. Wrong guesses use up the code, and a code works once.
 export async function verifyStaffPhoneCode(
   prismaClient: unknown,
-  input: { phone: string; code: string; now: Date }
+  input: { phone: string; code: string; now: Date; audience?: PhoneSignInAudience }
 ): Promise<Readonly<{ emailNormalized: string }> | null> {
   const prisma = prismaClient as StaffPhonePrisma;
-  const user = await findStaffUser(prisma, input.phone);
+  const audience = input.audience ?? "staff";
+  const user = audience === "staff" ? await findStaffUser(prisma, input.phone) : await findClientUser(prisma, input.phone, audience);
   if (!user) return null;
   const row = await prisma.staffPhoneSignInCode.findFirst({
     where: { userId: user.id, consumedAt: null, expiresAt: { gt: input.now } },

@@ -64,7 +64,7 @@ export function ClientCalendarPanel() {
         message="Checking your authenticated organization context."
       />
     );
-  if (state.status === "denied") return <ClientSignIn onSignedIn={load} />;
+  if (state.status === "denied") return <ClientSignIn />;
   if (state.status === "organization_required") {
     return (
       <>
@@ -297,97 +297,15 @@ function SessionAction({ onSignedOut }: Readonly<{ onSignedOut: () => Promise<vo
   );
 }
 
-function ClientSignIn({ onSignedIn }: Readonly<{ onSignedIn: () => Promise<void> }>) {
-  const [email, setEmail] = useState("");
-  const [password, setPassword] = useState("");
-  const [message, setMessage] = useState(
-    "Sign in to load your organization’s persisted request calendar."
-  );
-  const [needsSignOut, setNeedsSignOut] = useState(false);
-  const [submitting, setSubmitting] = useState(false);
-  const submit = async (event: React.FormEvent) => {
-    event.preventDefault();
-    setSubmitting(true);
-    setNeedsSignOut(false);
-    try {
-      const response = await fetch("/api/session/sign-in", {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ email, password })
-      });
-      setPassword("");
-      if (!response.ok) {
-        setNeedsSignOut(response.status === 409);
-        return setMessage(
-          response.status === 409 ? "Sign out before changing accounts." : "Sign-in failed."
-        );
-      }
-      await onSignedIn();
-    } catch {
-      setMessage("Sign-in service unavailable. Try again.");
-    } finally {
-      setSubmitting(false);
-    }
-  };
-  const signOut = async () => {
-    setSubmitting(true);
-    try {
-      const cleared = await clearWebCalendarSession(fetch);
-      if (!cleared) return setMessage("Session could not be cleared. Try again.");
-      setNeedsSignOut(false);
-      setMessage("Local session cleared. Sign in with the intended employer account.");
-    } finally {
-      setSubmitting(false);
-    }
-  };
+function ClientSignIn() {
   return (
-    <form aria-busy={submitting} onSubmit={submit} style={styles.panel}>
+    <section style={styles.panel}>
       <h3 style={styles.cardTitle}>Employer sign-in required</h3>
-      <p aria-live="polite" style={styles.sectionCopy}>
-        {message}
-      </p>
-      <label style={styles.fieldLabel}>
-        Email
-        <input
-          autoComplete="username"
-          disabled={submitting}
-          required
-          type="email"
-          value={email}
-          onChange={(event) => setEmail(event.target.value)}
-          style={styles.input}
-        />
-      </label>
-      <label style={styles.fieldLabel}>
-        Password
-        <input
-          autoComplete="current-password"
-          disabled={submitting}
-          required
-          type="password"
-          value={password}
-          onChange={(event) => setPassword(event.target.value)}
-          style={styles.input}
-        />
-      </label>
-      <button
-        disabled={submitting}
-        type="submit"
-        style={{ ...styles.primaryButton, border: 0, opacity: submitting ? 0.65 : 1 }}
-      >
-        {submitting ? "Checking account…" : "Sign in securely"}
-      </button>
-      {needsSignOut ? (
-        <button
-          disabled={submitting}
-          type="button"
-          onClick={() => void signOut()}
-          style={{ ...styles.secondaryButton, cursor: "pointer" }}
-        >
-          Clear prior session
-        </button>
-      ) : null}
-    </form>
+      <p style={styles.sectionCopy}>Sign in to load your organization’s request calendar.</p>
+      <a href="/signin" style={styles.primaryButton}>
+        Sign in
+      </a>
+    </section>
   );
 }
 

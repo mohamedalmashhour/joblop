@@ -30,11 +30,12 @@ describe("authenticated calendar UI integration", () => {
     const admin = read("apps", "admin", "app", "calendar", "AdminCalendarPanel.tsx");
     for (const source of [employer, admin]) {
       expect(source).toContain('fetch("/api/calendar/requests"');
-      expect(source).toContain('fetch("/api/session/sign-in"');
       expect(source).toContain("clearWebCalendarSession(fetch)");
       expect(source).not.toMatch(/Bearer\s|authorization\s*:/iu);
       expect(source).not.toMatch(/localStorage|sessionStorage/u);
     }
+    expect(admin).toContain('fetch("/api/session/sign-in"');
+    expect(employer).toContain('href="/signin"');
   });
 
   it("routes persisted list records to the matching persisted detail", () => {
