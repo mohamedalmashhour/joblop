@@ -367,6 +367,7 @@ import { createStripeTestClient } from "./stripeTestProvider";
 import { stripeTestEnvFromProcess } from "./cvProStripeCheckout";
 import { claimOpenJob, ensureOpenClaimDispatch, placeClaimedShiftOnSchedule } from "./openClaim";
 import { isWorksiteAddressVisible, workerJobAddress, WORKSITE_ADDRESS_SELECT } from "./worksiteAddress";
+import { listEmployerApplicants, setEmployerFavorite } from "./employerApplicants";
 import { listWorkerPayoutsForStaff } from "./workerPayoutStaffList";
 
 export interface BuildApiOptions {
@@ -2592,6 +2593,51 @@ export function buildApi(options: BuildApiOptions = {}) {
     }
   });
 
+  // Employer applicants: who is interested in this employer's job, with limited details. Only the
+  // company's owners and administrators may see them or mark a favourite for Joblop staff.
+  const requireApplicantAccess = async (request: FastifyRequest, reply: FastifyReply) => {
+    const denied = () => {
+      void reply.code(403).send({ error: "RWOS_AUTHORIZATION_DENIED", message: "Access denied." });
+      return null;
+    };
+    const session = await authService.validateSession(readBearerToken(request.headers.authorization));
+    if (!session.authenticated || !session.user || !prisma) return denied();
+    const organizationId = readRouteParam(request.params, "organizationId");
+    const jobRequestId = readRouteParam(request.params, "jobRequestId");
+    if (!isCanonicalUuid(organizationId) || !isCanonicalUuid(jobRequestId)) return denied();
+    const roles = await resolveAuthorizationRoles(session.user.id);
+    if (!roles.includes("ORGANIZATION_OWNER") && !roles.includes("ORGANIZATION_ADMINISTRATOR")) return denied();
+    try {
+      await organizationService.getOrganization({ actorUserId: session.user.id, organizationId });
+    } catch {
+      return denied();
+    }
+    return { actorUserId: session.user.id, organizationId, jobRequestId, prisma };
+  };
+
+  app.get("/organizations/:organizationId/job-requests/:jobRequestId/applicants", async (request, reply) => {
+    const access = await requireApplicantAccess(request, reply);
+    if (!access) return;
+    const applicants = await listEmployerApplicants(access.prisma, access);
+    return reply.code(200).send({ applicants });
+  });
+
+  app.post(
+    "/organizations/:organizationId/job-requests/:jobRequestId/applicants/:interestId/favorite",
+    async (request, reply) => {
+      const access = await requireApplicantAccess(request, reply);
+      if (!access) return;
+      const interestId = readRouteParam(request.params, "interestId");
+      const favorite = asRecord(request.body).favorite;
+      if (!isCanonicalUuid(interestId) || typeof favorite !== "boolean") {
+        return reply.code(400).send({ error: "RWOS_INVALID_FAVORITE", message: "Invalid favourite request." });
+      }
+      const saved = await setEmployerFavorite(access.prisma, { ...access, interestId, favorite });
+      if (!saved) return reply.code(404).send({ error: "RWOS_INTEREST_NOT_FOUND", message: "That applicant is not available." });
+      return reply.code(200).send({ favorite });
+    }
+  );
+
   // Employer: read-only authoritative cancellation consequence. No amount/rate/count
   // from the browser — everything is derived server-side.
   app.post(
@@ -4010,6 +4056,11 @@ export function buildApi(options: BuildApiOptions = {}) {
       ? await prisma!.workerIdentity.findMany({ where: { id: { in: workerIds } }, select: { id: true, displayName: true } })
       : [];
     const nameById = new Map(workers.map((w) => [w.id, w.displayName]));
+    const favorites = await prisma!.workerJobInterest.findMany({
+      where: { jobRequestId, employerFavoritedAt: { not: null } },
+      select: { id: true }
+    });
+    const favoriteIds = new Set(favorites.map((favorite) => favorite.id));
     return reply.code(200).send({
       count: interests.length,
       interested: interests.map((i) => ({
@@ -4019,6 +4070,7 @@ export function buildApi(options: BuildApiOptions = {}) {
         status: i.status,
         distanceKmAtInterest: i.distanceKmAtInterest,
         workerOfferId: i.workerOfferId,
+        employerFavorite: favoriteIds.has(i.id),
         createdAt: i.createdAt
       }))
     });
