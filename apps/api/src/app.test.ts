@@ -582,6 +582,25 @@ describe("api authentication foundation", () => {
     await app.close();
   });
 
+  it("creates an account with a mobile number and no password, and refuses one with neither", async () => {
+    const app = buildApi({
+      authService: createAuthenticationService(new ApiMemoryAuthenticationRepository(), testAuthOptions())
+    });
+    const withPhone = await app.inject({
+      method: "POST",
+      url: "/auth/register",
+      payload: { email: "phone-only@example.test", phone: "514 555 0101", displayName: "Phone Only" }
+    });
+    expect(withPhone.statusCode).toBe(201);
+    const neither = await app.inject({
+      method: "POST",
+      url: "/auth/register",
+      payload: { email: "nothing@example.test" }
+    });
+    expect(neither.statusCode).toBe(400);
+    await app.close();
+  });
+
   it("fails email verification closed until its durable repository is available", async () => {
     const repository = new ApiMemoryAuthenticationRepository();
     const app = buildApi({

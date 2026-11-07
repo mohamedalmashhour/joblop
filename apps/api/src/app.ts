@@ -1,4 +1,4 @@
-import { createHmac } from "node:crypto";
+import { createHmac, randomBytes } from "node:crypto";
 import Fastify, { type FastifyReply, type FastifyRequest } from "fastify";
 import {
   AuthenticationError,
@@ -1516,12 +1516,16 @@ export function buildApi(options: BuildApiOptions = {}) {
     }
     const body = asRecord(request.body);
     const email = readRequiredString(body, "email");
-    const password = readRequiredString(body, "password");
     const displayName = readOptionalString(body, "displayName");
     // Optional mobile number (seeded #1). Never required; bounded. Null when absent/blank.
     const phoneRaw = readOptionalString(body, "phone");
     // Stored in one standard form so the same number finds this account at phone sign-in.
     const phone = phoneRaw && phoneRaw.trim() ? (normalizeStaffPhone(phoneRaw) ?? phoneRaw.trim().slice(0, 32)) : null;
+    // Accounts that sign in by texted code need no password. When a valid mobile number is given and
+    // no password, the account gets a long random one that nobody knows, so password sign-in is shut.
+    const password =
+      readRequiredString(body, "password") ??
+      (phone && normalizeStaffPhone(phone) ? `${randomBytes(32).toString("base64url")}a1` : null);
     // Invite-a-friend: optional referral code captured from ?ref= at signup. Attribution is best-effort.
     const referralCode = readOptionalString(body, "referralCode");
 

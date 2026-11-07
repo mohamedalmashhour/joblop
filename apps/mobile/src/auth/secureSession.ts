@@ -123,8 +123,43 @@ export function createMobileSessionTransport(options: {
         return { status: "error" };
       }
     },
+    // Phone sign-in, step 1: ask for a texted code. The answer is the same whether or not the number
+    // has an account, so this never reveals who is registered.
+    async requestPhoneCode(phone: string): Promise<"requested" | "error"> {
+      try {
+        const response = await request(`${origin}/auth/worker-phone/request`, {
+          method: "POST",
+          headers: { accept: "application/json", "content-type": "application/json" },
+          body: JSON.stringify({ phone }),
+          cache: "no-store"
+        });
+        return response.ok ? "requested" : "error";
+      } catch {
+        return "error";
+      }
+    },
+    // Phone sign-in, step 2: trade the code for a session kept in the device's secure store.
+    async verifyPhoneCode(phone: string, code: string): Promise<MobileSessionState> {
+      if (await options.vault.read()) return { status: "sign_out_required" };
+      try {
+        const response = await request(`${origin}/auth/worker-phone/verify`, {
+          method: "POST",
+          headers: { accept: "application/json", "content-type": "application/json" },
+          body: JSON.stringify({ phone, code }),
+          cache: "no-store"
+        });
+        if (response.status === 401 || response.status === 403 || response.status === 429) return { status: "denied" };
+        if (!response.ok) return { status: "error" };
+        const token = readToken(await response.json());
+        if (!token) return { status: "error" };
+        await options.vault.write(token);
+        return { status: "authenticated" };
+      } catch {
+        return { status: "error" };
+      }
+    },
     async signUp(
-      input: Readonly<{ email: string; password: string; displayName?: string | null }>
+      input: Readonly<{ email: string; password?: string; phone?: string; displayName?: string | null }>
     ): Promise<MobileRegisterState> {
       if (await options.vault.read()) return { status: "sign_out_required" };
       try {

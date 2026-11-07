@@ -27,9 +27,11 @@ export function WorkerAuthScreen({
   initialMode?: Mode;
 }) {
   const [mode, setMode] = useState<Mode>(initialMode);
+  const [step, setStep] = useState<"phone" | "code">("phone");
   const [fullName, setFullName] = useState("");
   const [email, setEmail] = useState("");
-  const [password, setPassword] = useState("");
+  const [phone, setPhone] = useState("");
+  const [code, setCode] = useState("");
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
   const [verifying, setVerifying] = useState(false);
@@ -40,53 +42,58 @@ export function WorkerAuthScreen({
     return <WorkerVerifyEmail onDone={onAuthenticated} transport={transport} />;
   }
 
-  const submit = async () => {
+  const sendCode = async () => {
+    if (!transport) return;
+    setBusy(true);
+    setMessage(null);
+    const result = await transport.requestPhoneCode(phone.trim());
+    setBusy(false);
+    if (result !== "requested") return setMessage("That number could not be used. Check it and try again.");
+    setStep("code");
+    setCode("");
+    setMessage("If this number has an account, a 6-digit code is on its way. It expires in 10 minutes.");
+  };
+
+  const verify = async () => {
     if (!transport) return;
     setBusy(true);
     setMessage(null);
     try {
-      if (mode === "sign-in") {
-        const result = await transport.signIn({ email, password });
-        setPassword("");
-        if (result.status === "authenticated") return onAuthenticated();
-        if (result.status === "sign_out_required") {
-          return setMessage("You are already signed in on this device. Sign out first.");
-        }
-        if (result.status === "denied") {
-          return setMessage("Sign-in failed. Check your email and password.");
-        }
-        return setMessage("Sign-in is unavailable right now. Try again.");
-      }
+      const result = await transport.verifyPhoneCode(phone.trim(), code.trim());
+      if (result.status === "authenticated") return onAuthenticated();
+      if (result.status === "sign_out_required") return setMessage("You are already signed in on this device. Sign out first.");
+      if (result.status === "denied") return setMessage("That code did not work. Check it, or ask for a new one.");
+      return setMessage("Sign-in is unavailable right now. Try again.");
+    } finally {
+      setBusy(false);
+    }
+  };
 
-      const result = await transport.signUp({
-        email,
-        password,
-        displayName: fullName || null
-      });
-      setPassword("");
-      // New accounts go through the additive email-verification step before continuing.
+  const createAccount = async () => {
+    if (!transport) return;
+    setBusy(true);
+    setMessage(null);
+    try {
+      const result = await transport.signUp({ email: email.trim(), phone: phone.trim(), displayName: fullName.trim() || null });
+      // New accounts confirm their email once before continuing.
       if (result.status === "authenticated") return setVerifying(true);
-      if (result.status === "sign_out_required") {
-        return setMessage("You are already signed in on this device. Sign out first.");
-      }
-      if (result.status === "registration_closed") {
-        return setMessage("Account creation is not open in this environment yet.");
-      }
-      if (result.status === "conflict") {
-        return setMessage("That email is already registered — try signing in instead.");
-      }
-      if (result.status === "invalid") {
-        return setMessage("Choose a stronger password and try again.");
-      }
-      if (result.status === "rate_limited") {
-        return setMessage("Too many attempts. Please wait a moment and try again.");
-      }
+      if (result.status === "sign_out_required") return setMessage("You are already signed in on this device. Sign out first.");
+      if (result.status === "registration_closed") return setMessage("Account creation is not open yet.");
+      if (result.status === "conflict") return setMessage("That email already has an account. Sign in with your mobile number instead.");
+      if (result.status === "invalid") return setMessage("Check your mobile number and email, then try again.");
+      if (result.status === "rate_limited") return setMessage("Too many attempts. Please wait a moment and try again.");
       return setMessage("Could not create the account. Check your details and try again.");
     } catch {
       setMessage("Something went wrong. Try again.");
     } finally {
       setBusy(false);
     }
+  };
+
+  const switchMode = () => {
+    setMode(mode === "sign-in" ? "sign-up" : "sign-in");
+    setStep("phone");
+    setMessage(null);
   };
 
   return (
@@ -97,59 +104,45 @@ export function WorkerAuthScreen({
           <Heading>{mode === "sign-in" ? "Sign in" : "Create your worker account"}</Heading>
           <BodyText>
             {mode === "sign-in"
-              ? "Sign in to see your matched offers, confirmations, and shift directions."
-              : "Create an account to start worker onboarding. Account creation is available in non-production environments."}
+              ? "Enter your mobile number. We will text you a code. No password needed."
+              : "Tell us who you are. You will sign in with your mobile number and a texted code."}
           </BodyText>
 
           {unavailable ? (
-            <SmallText>
-              The account service is not configured in this build (no API origin). Sign-in and sign-up
-              are unavailable here.
-            </SmallText>
+            <SmallText>The account service is not available in this build. Sign-in is unavailable here.</SmallText>
           ) : (
             <View style={{ gap: spacing.sm, marginTop: spacing.sm }}>
               {mode === "sign-up" ? (
-                <Input
-                  label="Full name"
-                  onChangeText={setFullName}
-                  placeholder="Your name"
-                  value={fullName}
-                />
-              ) : null}
-              <Input
-                label="Work email"
-                onChangeText={setEmail}
-                placeholder="you@example.com"
-                value={email}
-              />
-              <Input
-                label="Password"
-                onChangeText={setPassword}
-                placeholder={mode === "sign-in" ? "Your password" : "Create a password"}
-                value={password}
-              />
+                <>
+                  <Input label="Full name" onChangeText={setFullName} placeholder="Your name" value={fullName} />
+                  <Input label="Mobile number" onChangeText={setPhone} placeholder="514 555 0199" value={phone} />
+                  <Input label="Email (for receipts and pay statements)" onChangeText={setEmail} placeholder="you@example.com" value={email} />
+                </>
+              ) : step === "phone" ? (
+                <Input label="Mobile number" onChangeText={setPhone} placeholder="514 555 0199" value={phone} />
+              ) : (
+                <Input keyboardType="numeric" label="6-digit code" onChangeText={setCode} placeholder="123456" value={code} />
+              )}
               {message ? <BodyText>{message}</BodyText> : null}
               <Button
                 disabled={busy}
                 label={
                   busy
                     ? "Please wait…"
-                    : mode === "sign-in"
-                      ? "Sign in"
-                      : "Create account"
+                    : mode === "sign-up"
+                      ? "Create account"
+                      : step === "phone"
+                        ? "Text me a code"
+                        : "Sign in"
                 }
-                onPress={() => void submit()}
+                onPress={() => void (mode === "sign-up" ? createAccount() : step === "phone" ? sendCode() : verify())}
               />
+              {mode === "sign-in" && step === "code" ? (
+                <Button label="Send a new code" onPress={() => void sendCode()} variant="secondary" />
+              ) : null}
               <Button
-                label={
-                  mode === "sign-in"
-                    ? "New here? Create an account"
-                    : "I already have an account"
-                }
-                onPress={() => {
-                  setMode(mode === "sign-in" ? "sign-up" : "sign-in");
-                  setMessage(null);
-                }}
+                label={mode === "sign-in" ? "New here? Create an account" : "I already have an account"}
+                onPress={switchMode}
                 variant="secondary"
               />
             </View>
