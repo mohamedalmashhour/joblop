@@ -73,7 +73,7 @@ export function createPasswordResetService(
       resetUrl.searchParams.set("token", token);
       await emailSender.send({
         to: input.email,
-        subject: "Reset your Resident Workforce OS password",
+        subject: "Reset your Joblop password",
         text:
           `Use this single-use link within ${passwordResetExpiryMinutes} minutes to reset your password: ` +
           `${resetUrl.toString()}\n\nIf you did not request this, you can ignore this message.`

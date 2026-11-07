@@ -16,7 +16,7 @@ export function AdminReviewPanel() {
     <main style={styles.page}>
       <header style={styles.hero}>
         <div>
-          <p style={styles.eyebrow}>Resident Workforce OS / Connected calendar</p>
+          <p style={styles.eyebrow}>Joblop / Connected calendar</p>
           <h1 style={styles.title}>Review staffing request</h1>
           <p style={styles.lede}>
             Review readiness and separated economics before choosing a non-persistent fixture action.

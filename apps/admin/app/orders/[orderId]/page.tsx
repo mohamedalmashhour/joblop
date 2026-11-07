@@ -5,7 +5,7 @@ export default async function AdminOrderDetailPage({ params }: { params: Promise
   return (
     <main style={styles.page}>
       <header style={styles.hero}>
-        <p style={styles.eyebrow}>Resident Workforce OS / Administration</p>
+        <p style={styles.eyebrow}>Joblop / Administration</p>
         <h1 style={styles.title}>Order review</h1>
         <p style={styles.lede}>
           Review each role line. Begin review, then approve for dispatch with a margin (default 20%)

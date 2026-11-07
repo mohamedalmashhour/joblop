@@ -4,7 +4,7 @@ export default function AdminGreetingsPage() {
   return (
     <main style={styles.page}>
       <header style={styles.hero}>
-        <p style={styles.eyebrow}>Resident Workforce OS / Administration</p>
+        <p style={styles.eyebrow}>Joblop / Administration</p>
         <h1 style={styles.title}>Greetings &amp; awards</h1>
         <p style={styles.lede}>
           Send holiday greeting cards and issue certificates (Super Worker, Most Reliable, Employee of the

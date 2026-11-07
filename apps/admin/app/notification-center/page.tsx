@@ -17,7 +17,7 @@ export default function NotificationCenterPage() {
     <main style={styles.page}>
       <header style={styles.header}>
         <div>
-          <p style={styles.eyebrow}>Resident Workforce OS / Administration</p>
+          <p style={styles.eyebrow}>Joblop / Administration</p>
           <h1 style={styles.title}>Notification Center</h1>
           <p style={styles.lede}>
             Governed notification visibility and history for authorized administrators and support

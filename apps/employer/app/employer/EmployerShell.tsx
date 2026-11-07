@@ -5,6 +5,9 @@ import { attendanceWorkflow } from "./attendanceWorkflowContent";
 import { clientCalendarWorkflow } from "./calendar/clientCalendarContent";
 import { employerWorkflow } from "./employerJourneyContent";
 import { styles } from "./employerStyles";
+import { ShellText } from "./ShellText";
+import { LanguageSwitcher } from "../i18n/LanguageSwitcher";
+import type { MessageKey } from "../i18n/messages";
 import { invoiceWorkflow } from "./invoiceWorkflowContent";
 import { ordersWorkflow } from "./orders/ordersContent";
 import { moneyWorkflow } from "./money/moneyContent";
@@ -40,18 +43,18 @@ function isConnectedEnvironment(): boolean {
   return true;
 }
 // What a real employer sees: every working page, and no prototype pages.
-const persistedEmployerNavigation = [
-  { page: "", route: "/employer/dashboard", title: "Home" },
-  { page: "", route: "/employer/calendar/create", title: "Request workers" },
-  { page: "", route: "/employer/calendar", title: "Request calendar" },
-  { page: "", route: "/employer/orders", title: "Orders" },
-  { page: "", route: "/employer/assignments", title: "Assigned workers" },
-  { page: "", route: "/employer/attendance", title: "Attendance" },
-  { page: "", route: "/employer/timesheets", title: "Timesheets" },
-  { page: "", route: "/employer/money", title: "Money" },
-  { page: "", route: "/employer/invoices", title: "Invoices" },
-  { page: "", route: "/employer/contract", title: "Contract" },
-  { page: "", route: "/employer/contact-joblop", title: "Contact Joblop" }
+const persistedEmployerNavigation: readonly { page: string; route: string; title: string; titleKey: MessageKey }[] = [
+  { page: "", route: "/employer/dashboard", title: "Home", titleKey: "shell.nav.home" },
+  { page: "", route: "/employer/calendar/create", title: "Request workers", titleKey: "shell.nav.request" },
+  { page: "", route: "/employer/calendar", title: "Request calendar", titleKey: "shell.nav.calendar" },
+  { page: "", route: "/employer/orders", title: "Orders", titleKey: "shell.nav.orders" },
+  { page: "", route: "/employer/assignments", title: "Assigned workers", titleKey: "shell.nav.assignments" },
+  { page: "", route: "/employer/attendance", title: "Attendance", titleKey: "shell.nav.attendance" },
+  { page: "", route: "/employer/timesheets", title: "Timesheets", titleKey: "shell.nav.timesheets" },
+  { page: "", route: "/employer/money", title: "Money", titleKey: "shell.nav.money" },
+  { page: "", route: "/employer/invoices", title: "Invoices", titleKey: "shell.nav.invoices" },
+  { page: "", route: "/employer/contract", title: "Contract", titleKey: "shell.nav.contract" },
+  { page: "", route: "/employer/contact-joblop", title: "Contact Joblop", titleKey: "shell.nav.contact" }
 ];
 
 export function EmployerShell({
@@ -82,7 +85,7 @@ export function EmployerShell({
   return (
     <div style={styles.page}>
       <a className="employer-skip-link" href="#employer-main-content">
-        Skip to employer workspace
+        <ShellText k="shell.skip" />
       </a>
       <div style={styles.appFrame}>
         <aside className="employer-sidebar" style={styles.sidebarShell}>
@@ -98,17 +101,17 @@ export function EmployerShell({
                 aria-current={step.route === currentRoute ? "page" : undefined}
               >
                 {step.page ? <span style={styles.navPage}>Page {step.page}</span> : null}
-                <span>{step.title}</span>
+                <span>{"titleKey" in step ? <ShellText k={step.titleKey} /> : step.title}</span>
               </a>
             ))}
           </nav>
           <div style={styles.sidebarNote}>
             <strong>
-              {effectiveMode === "authenticated" ? "Secure boundary" : "Fixture mode"}
+              {effectiveMode === "authenticated" ? <ShellText k="shell.secureTitle" /> : "Fixture mode"}
             </strong>
             <span>
               {effectiveMode === "authenticated"
-                ? "Session and organization authority are verified before persisted data is shown."
+                ? <ShellText k="shell.secureText" />
                 : "Visual workflow preview. Authoritative actions remain governed."}
             </span>
           </div>
@@ -118,15 +121,16 @@ export function EmployerShell({
             {staging ? <StagingSafetyBanner /> : null}
             <header style={styles.header}>
               <div>
-                <p style={styles.topbarEyebrow}>Employer workspace</p>
+                <p style={styles.topbarEyebrow}><ShellText k="shell.eyebrow" /></p>
                 <strong style={styles.topbarTitle}>
                   {effectiveMode === "authenticated"
-                    ? "Secure employer workspace"
+                    ? <ShellText k="shell.title" />
                     : "Sunrise of Oak Hill"}
                 </strong>
               </div>
               <div style={styles.headerActions}>
-                <a href="/employer/contact-joblop" style={styles.footerLink}>Contact Joblop</a>
+                <a href="/employer/contact-joblop" style={styles.footerLink}><ShellText k="shell.nav.contact" /></a>
+                <LanguageSwitcher />
                 {actions}
               </div>
             </header>
@@ -143,22 +147,22 @@ export function EmployerShell({
             {children}
           </main>
           <footer style={styles.footer}>
-            <span>Joblop Employer Journey</span>
+            <span><ShellText k="shell.footer" /></span>
             <nav aria-label="Employer footer navigation" style={styles.footerLinks}>
               <a href="/employer/contact-joblop" style={styles.footerLink}>
-                Contact Joblop
+                <ShellText k="shell.nav.contact" />
               </a>
               <a href="/employer/inbox" style={styles.footerLink}>
-                Greetings &amp; awards
+                <ShellText k="shell.greetings" />
               </a>
               <a href="/contact" style={styles.footerLink}>
-                Support
+                <ShellText k="shell.support" />
               </a>
               <a href="/faq" style={styles.footerLink}>
-                FAQ
+                <ShellText k="shell.faq" />
               </a>
               <a href="/pricing" style={styles.footerLink}>
-                Pricing
+                <ShellText k="shell.pricing" />
               </a>
             </nav>
           </footer>
@@ -206,11 +210,11 @@ function EmployerPageNavigator({
           href={previous.route}
           rel="prev"
         >
-          <span aria-hidden="true">←</span> Back
+          <span aria-hidden="true">←</span> <ShellText k="shell.back" />
         </a>
       ) : (
         <span aria-disabled="true" className="employer-page-arrow employer-page-arrow-disabled">
-          <span aria-hidden="true">←</span> Back
+          <span aria-hidden="true">←</span> <ShellText k="shell.back" />
         </span>
       )}
       <div
@@ -242,11 +246,11 @@ function EmployerPageNavigator({
           href={next.route}
           rel="next"
         >
-          Next <span aria-hidden="true">→</span>
+          <ShellText k="shell.next" /> <span aria-hidden="true">→</span>
         </a>
       ) : (
         <span aria-disabled="true" className="employer-page-arrow employer-page-arrow-disabled">
-          Next <span aria-hidden="true">→</span>
+          <ShellText k="shell.next" /> <span aria-hidden="true">→</span>
         </span>
       )}
     </nav>

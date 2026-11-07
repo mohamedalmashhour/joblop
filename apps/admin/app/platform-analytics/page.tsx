@@ -17,7 +17,7 @@ export default function PlatformAnalyticsPage() {
     <main style={styles.page}>
       <header style={styles.header}>
         <div>
-          <p style={styles.eyebrow}>Resident Workforce OS / Administration</p>
+          <p style={styles.eyebrow}>Joblop / Administration</p>
           <h1 style={styles.title}>Platform Analytics</h1>
           <p style={styles.lede}>
             Governed platform analytics visibility for authorized administrators, finance users, and

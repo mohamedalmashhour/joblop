@@ -13,7 +13,6 @@ import {
   urgencyPremiumMinor,
   compareToMarket
 } from "@rwos/shared";
-import { LanguageSwitcher } from "../../../i18n/LanguageSwitcher";
 import { useT } from "../../../i18n/LocaleProvider";
 
 type Urgency = "normal" | "urgent" | "immediate";
@@ -248,7 +247,6 @@ export function OrderBuilderPanel() {
           <h1 style={styles.cardTitle}>{t("order.createTitle")}</h1>
           <p style={styles.cardText}>{t("order.createLede")}</p>
         </div>
-        <LanguageSwitcher />
       </div>
 
       {message ? <p style={styles.cardText} role="status">{message}</p> : null}

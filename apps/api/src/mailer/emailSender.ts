@@ -33,6 +33,9 @@ export type EmailFetch = (
   }>
 ) => Promise<Readonly<{ ok: boolean; status: number; json(): Promise<unknown> }>>;
 
+// The gold of the Joblop logo artwork (apps/worker/public/img/joblop-logo.png).
+const LOGO_GOLD = "#F8B808";
+
 const escapeHtml = (value: string) =>
   value.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
 
@@ -56,8 +59,9 @@ export function brandedEmailHtml(message: Pick<EmailMessage, "subject" | "text">
     `<body style="margin:0;padding:0;background:#f4f1ea;font-family:Helvetica,Arial,sans-serif;">`,
     `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#f4f1ea;"><tr><td align="center" style="padding:24px 12px;">`,
     `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width:560px;background:#ffffff;border-radius:12px;overflow:hidden;">`,
-    `<tr><td style="background:#000000;padding:22px 28px;font-size:26px;font-weight:700;color:#ffffff;">Job<span style="color:#d9a93f;">lop</span></td></tr>`,
-    `<tr><td style="height:4px;background:#d9a93f;font-size:0;line-height:0;">&nbsp;</td></tr>`,
+    // The wordmark as in the logo: white letters with the two "o"s in the logo's gold.
+    `<tr><td style="background:#000000;padding:22px 28px;font-size:28px;font-weight:800;letter-spacing:-0.5px;color:#ffffff;">J<span style="color:${LOGO_GOLD};">o</span>bl<span style="color:${LOGO_GOLD};">o</span>p</td></tr>`,
+    `<tr><td style="height:4px;background:${LOGO_GOLD};font-size:0;line-height:0;">&nbsp;</td></tr>`,
     `<tr><td style="padding:28px;">`,
     `<p style="margin:0 0 18px;font-size:20px;line-height:1.4;font-weight:700;color:#111111;">${escapeHtml(headline ?? message.subject).replace(/\n/g, "<br>")}</p>`,
     body,
@@ -130,7 +134,7 @@ export function verificationEmailMessage(
 ): EmailMessage {
   return {
     to,
-    subject: "Your Resident Workforce OS verification code",
-    text: `Your Resident Workforce OS verification code is ${code}. It expires in ${expiryMinutes} minutes. If you did not request this, you can ignore this email.`
+    subject: "Your Joblop verification code",
+    text: `Your Joblop verification code is ${code}. It expires in ${expiryMinutes} minutes. If you did not request this, you can ignore this email.`
   };
 }

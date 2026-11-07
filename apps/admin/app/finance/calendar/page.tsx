@@ -5,7 +5,7 @@ export default function FinanceCalendarPage() {
   return (
     <main style={styles.page}>
       <header style={styles.header}>
-        <p style={styles.eyebrow}>Resident Workforce OS / Administration</p>
+        <p style={styles.eyebrow}>Joblop / Administration</p>
         <h1 style={styles.title}>Billing calendar</h1>
         <p style={styles.lede}>
           A month view of an authorized organization&apos;s invoices, placed on the date each was

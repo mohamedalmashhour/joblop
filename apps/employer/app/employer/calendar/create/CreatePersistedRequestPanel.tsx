@@ -16,7 +16,6 @@ import {
   hoursBetween,
   meetsMinimumShiftDuration
 } from "@rwos/shared";
-import { LanguageSwitcher } from "../../../i18n/LanguageSwitcher";
 import { useLocale, useT, type Translate } from "../../../i18n/LocaleProvider";
 import { MAX_RECURRING_SHIFTS, recurringShifts, type ShiftTimes } from "./recurringShifts";
 import { DictationButton } from "./DictationButton";
@@ -408,9 +407,6 @@ export function CreatePersistedRequestPanel() {
 
   return (
     <form aria-busy={status === "saving" || status === "submitting"} onSubmit={prepareReview}>
-      <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: 8 }}>
-        <LanguageSwitcher />
-      </div>
       <div aria-live="polite" role="status" style={styles.warning}>
         {message}
       </div>
