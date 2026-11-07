@@ -14,8 +14,8 @@ export default function ResidencesPage() {
       title="Create governed residence records without absorbing department or clinical data."
       lede="Residences are operating sites inside an organization. They are not departments, patient records, clinical records, or staffing engines."
       actions={
-        <a href="/employer/onboarding/departments" style={styles.primaryButton}>
-          Continue to departments
+        <a href="/employer/onboarding/company" style={styles.primaryButton}>
+          Add a site or department
         </a>
       }
     >

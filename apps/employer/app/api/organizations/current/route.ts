@@ -47,9 +47,21 @@ export async function GET() {
   const { context, gateway, token } = await currentOrganization();
   if (context.status === "context_required") return organizationRequired(context.organizations);
   if (context.status !== "ok") return sessionFailure(context.status);
-  return respond(
-    await gateway.request(`/organizations/${encodeURIComponent(context.organizationId)}`, "GET", token)
-  );
+  const path = `/organizations/${encodeURIComponent(context.organizationId)}`;
+  const [organization, verification] = await Promise.all([
+    gateway.request(path, "GET", token),
+    gateway.request(`${path}/verification`, "GET", token)
+  ]);
+  if (organization.status !== "ok") return sessionFailure(organization.status);
+  const company = toCompanyDetails(organization.payload);
+  if (!company) return sessionFailure("error");
+  return Response.json({ company, legalNameLocked: isVerified(verification) }, { headers: privateHeaders });
+}
+
+function isVerified(result: Awaited<ReturnType<Awaited<ReturnType<typeof sessionBoundary>>["gateway"]["request"]>>) {
+  if (result.status !== "ok") return false;
+  const payload = result.payload as { status?: unknown; verification?: { status?: unknown } | null } | null;
+  return (payload?.verification?.status ?? payload?.status) === "business_verified";
 }
 
 // Saves the company's names. The API checks the employer may do this and audits the change, and the

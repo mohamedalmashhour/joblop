@@ -49,12 +49,23 @@ describe("current company route", () => {
   it("returns only the fields the page needs", async () => {
     const response = await GET();
     expect(request).toHaveBeenCalledWith("/organizations/org%2F1", "GET", "t");
-    expect((await response.json()).company).toEqual({
+    const payload = await response.json();
+    expect(payload.legalNameLocked).toBe(false);
+    expect(payload.company).toEqual({
       legalName: "Legal Inc.",
       displayName: "Public",
       publicId: "ORG-1",
       version: "2026-11-07T00:00:00.000Z"
     });
+  });
+
+  it("locks the legal name once the company is verified", async () => {
+    request.mockImplementation(async (path: string) =>
+      path.endsWith("/verification")
+        ? { status: "ok", payload: { verification: { status: "business_verified" } } }
+        : { status: "ok", payload: { organization } }
+    );
+    expect((await (await GET()).json()).legalNameLocked).toBe(true);
   });
 
   it("forwards a save with only the allowed fields", async () => {
