@@ -17,7 +17,8 @@ import {
   meetsMinimumShiftDuration
 } from "@rwos/shared";
 import { LanguageSwitcher } from "../../../i18n/LanguageSwitcher";
-import { useT, type Translate } from "../../../i18n/LocaleProvider";
+import { useLocale, useT, type Translate } from "../../../i18n/LocaleProvider";
+import { MAX_RECURRING_SHIFTS, recurringShifts, type ShiftTimes } from "./recurringShifts";
 import { DictationButton } from "./DictationButton";
 import { requestActionNotice } from "./requestActionNotice";
 
@@ -40,6 +41,8 @@ type FormState = {
   timezone: string;
   startAt: string;
   endAt: string;
+  repeatWeekdays: readonly number[];
+  repeatUntil: string;
   transportProvision: Provision;
   transportAmount: string;
   transportNote: string;
@@ -68,6 +71,8 @@ const initialForm: FormState = {
   timezone: "America/Toronto",
   startAt: "",
   endAt: "",
+  repeatWeekdays: [],
+  repeatUntil: "",
   transportProvision: "none",
   transportAmount: "",
   transportNote: "",
@@ -94,6 +99,7 @@ function allowancesPayload(form: FormState) {
 
 export function CreatePersistedRequestPanel() {
   const t = useT();
+  const locale = useLocale();
   const [context, setContext] = useState<EmployerRequestContext | null>(null);
   const [form, setForm] = useState<FormState>(initialForm);
   const [status, setStatus] = useState<
@@ -156,7 +162,14 @@ export function CreatePersistedRequestPanel() {
       context?.roleDefinitions.filter((role) => role.workGroupId === selectedWorkGroup?.id) ?? [],
     [context, selectedWorkGroup]
   );
+  const repeats = form.requestType === "recurring_intent";
+  const shifts = repeats
+    ? recurringShifts({ startAt: form.startAt, endAt: form.endAt, weekdays: form.repeatWeekdays, until: form.repeatUntil })
+    : [];
   const validation = validate(form, t);
+  if (repeats && (shifts.length === 0 || shifts.length > MAX_RECURRING_SHIFTS)) {
+    validation.push(t("create.repeatInvalid", { max: MAX_RECURRING_SHIFTS }));
+  }
   const selectedRole = roles.find((role) => role.slug === form.roleDefinition);
   const rateCurrency: "CAD" | "USD" = selectedRole?.currency === "USD" ? "USD" : "CAD";
   const rateUnpriced = Boolean(selectedRole && selectedRole.hourlyRateMinor === null);
@@ -195,28 +208,33 @@ export function CreatePersistedRequestPanel() {
     setMessage(t("create.msgReviewBeforeSave"));
   }
 
+  function postRequest(times: ShiftTimes) {
+    return fetch("/api/job-requests", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        residenceId: form.residenceId,
+        departmentId: form.departmentId,
+        workGroup: form.workGroup,
+        roleDefinition: form.roleDefinition,
+        title: form.title,
+        description: form.description,
+        urgency: form.urgency,
+        // Each shift in a repeat is its own one-day job.
+        requestType: repeats ? "single_day" : form.requestType,
+        timezone: form.timezone,
+        numberOfWorkers: Number(form.numberOfWorkers),
+        startAt: new Date(times.startAt).toISOString(),
+        endAt: new Date(times.endAt).toISOString()
+      })
+    });
+  }
+
   async function createDraft(submitting = false): Promise<EmployerJobRequestDraft | null> {
     setStatus("saving");
     setMessage(submitting ? t("create.msgSubmitting") : t("create.msgSavingDraft"));
     try {
-      const response = await fetch("/api/job-requests", {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({
-          residenceId: form.residenceId,
-          departmentId: form.departmentId,
-          workGroup: form.workGroup,
-          roleDefinition: form.roleDefinition,
-          title: form.title,
-          description: form.description,
-          urgency: form.urgency,
-          requestType: form.requestType,
-          timezone: form.timezone,
-          numberOfWorkers: Number(form.numberOfWorkers),
-          startAt: new Date(form.startAt).toISOString(),
-          endAt: new Date(form.endAt).toISOString()
-        })
-      });
+      const response = await postRequest(form);
       if (!response.ok) {
         if (response.status === 401) setDeniedKind("signin");
         setStatus(response.status === 401 ? "denied" : "editing");
@@ -248,8 +266,44 @@ export function CreatePersistedRequestPanel() {
   // One-click path from the review step: persist the draft, then submit it for review using the
   // freshly-saved draft (the optional profile save never blocks submission).
   async function saveAndSubmit() {
+    if (repeats) return submitSeries();
     const saved = await createDraft(true);
     if (saved) await submitDraft(saved);
+  }
+
+  // A repeat is one ordinary job per shift, sent to staff review one at a time. If one fails, the
+  // ones already sent stand, so the employer is told exactly where it stopped.
+  async function submitSeries() {
+    setStatus("saving");
+    let done = 0;
+    let last: EmployerJobRequestDraft | null = null;
+    for (const shift of shifts) {
+      setMessage(t("create.seriesProgress", { done: done + 1, total: shifts.length }));
+      try {
+        const created = await postRequest(shift);
+        if (!created.ok) break;
+        const { jobRequest } = (await created.json()) as { jobRequest: EmployerJobRequestDraft };
+        last = jobRequest;
+        await saveProfile(jobRequest);
+        const submitted = await fetch(`/api/job-requests/${encodeURIComponent(jobRequest.id)}/submit`, {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ expectedVersion: jobRequest.versionToken })
+        });
+        if (!submitted.ok) break;
+        done += 1;
+      } catch {
+        break;
+      }
+    }
+    if (last) setDraft(last);
+    setStatus(done > 0 ? "submitted" : "review");
+    if (done > 0) trackConversion("submit_request", { method: "employer_recurring" });
+    setMessage(
+      done === shifts.length
+        ? t("create.seriesDone", { total: shifts.length })
+        : t("create.seriesStopped", { done, total: shifts.length, date: shifts[done]?.startAt.slice(0, 10) ?? "" })
+    );
   }
 
   async function saveProfile(request: EmployerJobRequestDraft) {
@@ -370,6 +424,39 @@ export function CreatePersistedRequestPanel() {
         </div>
         <SelectField disabled={!editing} label={t("create.urgency")} onChange={(v) => update("urgency", v as FormState["urgency"])} options={[{ label: t("create.urgencyNormal"), value: "normal" }, { label: t("create.urgencyUrgent"), value: "urgent" }, { label: t("create.urgencyImmediate"), value: "immediate" }]} value={form.urgency} t={t} />
         <SelectField disabled={!editing} label={t("create.requestType")} onChange={(v) => update("requestType", v as FormState["requestType"])} options={[{ label: t("create.typeSingle"), value: "single_day" }, { label: t("create.typeMulti"), value: "multi_day" }, { label: t("create.typeRecurring"), value: "recurring_intent" }]} value={form.requestType} t={t} />
+        {repeats ? (
+          <fieldset disabled={!editing} style={{ ...styles.tintedCard, border: 0, gridColumn: "1 / -1", margin: 0 }}>
+            <legend style={styles.fieldLabel}>{t("create.repeatOn")}</legend>
+            <div style={{ display: "flex", flexWrap: "wrap", gap: 12, marginTop: 8 }}>
+              {[1, 2, 3, 4, 5, 6, 0].map((day) => (
+                <label key={day} style={{ alignItems: "center", display: "flex", gap: 6 }}>
+                  <input
+                    checked={form.repeatWeekdays.includes(day)}
+                    onChange={(event) =>
+                      update(
+                        "repeatWeekdays",
+                        event.target.checked ? [...form.repeatWeekdays, day] : form.repeatWeekdays.filter((d) => d !== day)
+                      )
+                    }
+                    type="checkbox"
+                  />
+                  <span style={styles.cardText}>
+                    {new Intl.DateTimeFormat(locale, { timeZone: "UTC", weekday: "short" }).format(new Date(Date.UTC(2026, 10, 1 + day)))}
+                  </span>
+                </label>
+              ))}
+            </div>
+            <label style={{ ...styles.fieldLabel, marginTop: 12, maxWidth: 260 }}>
+              {t("create.repeatUntil")}
+              <input min={form.startAt.slice(0, 10)} onChange={(event) => update("repeatUntil", event.target.value)} style={styles.input} type="date" value={form.repeatUntil} />
+            </label>
+            <p style={styles.cardText}>
+              {shifts.length > 0 && shifts.length <= MAX_RECURRING_SHIFTS
+                ? t("create.repeatCount", { count: shifts.length })
+                : t("create.repeatHelp", { max: MAX_RECURRING_SHIFTS })}
+            </p>
+          </fieldset>
+        ) : null}
         <TextField disabled={!editing} label={t("create.timezone")} onChange={(v) => update("timezone", v)} value={form.timezone} />
         <TextField disabled={!editing} label={t("create.siteAddress")} maxLength={500} onChange={(v) => update("addressSummary", v)} value={form.addressSummary} />
         <TextField disabled={!editing} label={t("create.certifications")} maxLength={2000} onChange={(v) => update("qualifications", v)} optional value={form.qualifications} />
@@ -411,6 +498,14 @@ export function CreatePersistedRequestPanel() {
               {scheduledHours > 0 ? (
                 <span> · {t("create.estimatedTotal", { amount: formatMoney(estimateRequestCost({ hourlyRate: { amountMinor: selectedRole.hourlyRateMinor, currency: rateCurrency }, hours: scheduledHours, workers: workerCount })), hours: scheduledHours, workers: workerCount })}</span>
               ) : null}
+              {repeats && shifts.length > 1 && scheduledHours > 0 ? (
+                <p style={styles.cardText}>
+                  {t("create.seriesTotal", {
+                    count: shifts.length,
+                    amount: formatMoney(estimateRequestCost({ hourlyRate: { amountMinor: selectedRole.hourlyRateMinor, currency: rateCurrency }, hours: scheduledHours * shifts.length, workers: workerCount }))
+                  })}
+                </p>
+              ) : null}
               <p style={styles.cardText}>{t("create.rateFromContract")}</p>
             </div>
           ) : (
@@ -443,7 +538,7 @@ export function CreatePersistedRequestPanel() {
         </label>
       ) : null}
 
-      {status === "review" ? <RequestReview form={form} roleLabel={selectedRole?.displayLabel ?? form.roleDefinition} t={t} /> : null}
+      {status === "review" ? <RequestReview form={form} roleLabel={selectedRole?.displayLabel ?? form.roleDefinition} shiftCount={shifts.length} t={t} /> : null}
       <p style={styles.cardText}>{t("create.economicsNote")}</p>
       {actionNotice ? <div style={{ ...styles.warning, marginTop: 18 }}>{actionNotice}</div> : null}
       <div style={{ display: "flex", flexWrap: "wrap", gap: 10, marginTop: 18 }}>
@@ -453,7 +548,9 @@ export function CreatePersistedRequestPanel() {
         {status === "review" ? (
           <>
             <button disabled={!agreementAccepted} onClick={() => void saveAndSubmit()} style={agreementAccepted ? styles.primaryButton : styles.disabledAction} type="button">{t("create.submitForReview")}</button>
-            <button onClick={() => void createDraft()} style={styles.secondaryButton} type="button">{t("create.saveDraft")}</button>
+            {repeats ? null : (
+              <button onClick={() => void createDraft()} style={styles.secondaryButton} type="button">{t("create.saveDraft")}</button>
+            )}
             <button onClick={() => { setStatus("editing"); setMessage(t("create.msgUpdateThenReview")); }} style={styles.secondaryButton} type="button">{t("create.backToEdit")}</button>
           </>
         ) : null}
@@ -531,11 +628,11 @@ function AgreementClauses({ t }: { t: Translate }) {
   );
 }
 
-function RequestReview({ form, roleLabel, t }: Readonly<{ form: FormState; roleLabel: string; t: Translate }>) {
+function RequestReview({ form, roleLabel, shiftCount, t }: Readonly<{ form: FormState; roleLabel: string; shiftCount: number; t: Translate }>) {
   const np = t("create.notProvided");
   const rows = [
     [t("create.role"), roleLabel],
-    [t("create.requestType"), form.requestType.replaceAll("_", " ")],
+    [t("create.requestType"), form.requestType === "recurring_intent" ? t("create.repeatCount", { count: shiftCount }) : form.requestType.replaceAll("_", " ")],
     [t("create.urgency"), form.urgency],
     [t("create.workersRequired"), form.numberOfWorkers],
     [t("create.reviewSchedule"), t("create.scheduleValue", { start: form.startAt, end: form.endAt, tz: form.timezone })],
