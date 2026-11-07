@@ -1,6 +1,7 @@
 import type { PrismaClient } from "@rwos/database";
 import type { EmailMessage, EmailSender } from "../mailer/emailSender";
 import type { SmsSender } from "../mailer/smsSender";
+import { sendsText } from "./noticeChannels";
 import { resolveLanguage, type NotificationLanguage } from "./clientNotifications";
 import { workerJobAddress, WORKSITE_ADDRESS_SELECT } from "../worksiteAddress";
 
@@ -305,7 +306,7 @@ export async function notifyWorkerAssigned(
     const result = await emailSender.send(
       assignedJobEmail({ to: email, language, title: job.title, startAt: job.startAt, address: workerJobAddress(job.calendarProfile?.addressSummary, job.residence) })
     );
-    if (smsSender && user?.phone) {
+    if (smsSender && user?.phone && sendsText("shift_confirmed")) {
       await smsSender
         .send({ to: user.phone, text: assignedJobSmsText({ language, title: job.title, startAt: job.startAt }) })
         .catch(() => undefined);
