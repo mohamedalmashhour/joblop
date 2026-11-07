@@ -9,7 +9,7 @@ export function Footer({ locale }: { locale: string }) {
   return (
     <footer
       style={{
-        borderTop: "1px solid rgba(201, 162, 75, 0.16)",
+        borderTop: "1px solid rgba(248, 184, 8, 0.16)",
         background: "#000000",
         marginTop: 56,
         padding: "22px 16px",
@@ -24,10 +24,10 @@ export function Footer({ locale }: { locale: string }) {
     >
       <span>© {year} <Brand /> · {activeCountry().legalEntityName}</span>
       <nav style={{ display: "flex", gap: 20 }}>
-        <Link href="/terms" style={{ color: "#c9a24b", textDecoration: "none" }}>
+        <Link href="/terms" style={{ color: "#f8b808", textDecoration: "none" }}>
           {fr ? "Conditions d’utilisation" : "Terms"}
         </Link>
-        <Link href="/privacy" style={{ color: "#c9a24b", textDecoration: "none" }}>
+        <Link href="/privacy" style={{ color: "#f8b808", textDecoration: "none" }}>
           {fr ? "Confidentialité" : "Privacy"}
         </Link>
       </nav>

@@ -57,7 +57,7 @@ function Icon({ path }: { path: string }) {
   return (
     <span aria-hidden="true" style={look.iconTile}>
       <svg fill="none" height="22" viewBox="0 0 24 24" width="22">
-        <path d={path} stroke="#c9a24b" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" />
+        <path d={path} stroke="#f8b808" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" />
       </svg>
     </span>
   );
@@ -314,15 +314,15 @@ export function EmployerHomePanel() {
   );
 }
 
-const gold = "#c9a24b";
+const gold = "#f8b808";
 const raised = "#141210";
-const hairline = "rgba(201, 162, 75, 0.2)";
+const hairline = "rgba(248, 184, 8, 0.2)";
 const cream = "#f4efe4";
 const serif = "var(--font-serif), Georgia, serif";
 
 const look: Record<string, CSSProperties> = {
   hero: {
-    background: "radial-gradient(circle at 85% 10%, rgba(201, 162, 75, 0.2), transparent 45%), linear-gradient(135deg, #000000 0%, #2a2114 100%)",
+    background: "radial-gradient(circle at 85% 10%, rgba(248, 184, 8, 0.2), transparent 45%), linear-gradient(135deg, #000000 0%, #2a2114 100%)",
     borderBottom: `1px solid ${hairline}`,
     padding: "clamp(36px, 6vw, 72px) clamp(16px, 4vw, 40px)"
   },
@@ -333,13 +333,13 @@ const look: Record<string, CSSProperties> = {
   band: { display: "grid", gap: 16, padding: "clamp(24px, 4vw, 40px) clamp(16px, 4vw, 40px) 48px" },
   statGrid: { display: "grid", gap: 16, gridTemplateColumns: "repeat(auto-fit, minmax(190px, 1fr))" },
   stat: { background: raised, border: `1px solid ${hairline}`, borderRadius: 14, color: cream, display: "grid", gap: 6, padding: 20, textDecoration: "none" },
-  iconTile: { alignItems: "center", background: "rgba(201, 162, 75, 0.12)", borderRadius: 10, display: "inline-flex", height: 40, justifyContent: "center", width: 40 },
+  iconTile: { alignItems: "center", background: "rgba(248, 184, 8, 0.12)", borderRadius: 10, display: "inline-flex", height: 40, justifyContent: "center", width: 40 },
   statValue: { color: gold, fontFamily: serif, fontSize: 42, fontVariantNumeric: "lining-nums", fontWeight: 700, lineHeight: 1.1 },
   cardTitle: { color: cream, fontSize: 16, fontWeight: 800 },
   columns: { display: "grid", gap: 24, gridTemplateColumns: "repeat(auto-fit, minmax(300px, 1fr))", marginTop: 8 },
   heading: { color: "#ffffff", fontFamily: serif, fontSize: 24, margin: "16px 0 12px" },
   row: { alignItems: "center", background: raised, border: `1px solid ${hairline}`, borderRadius: 12, color: cream, display: "flex", gap: 12, margin: "0 0 10px", padding: "12px 14px", textDecoration: "none" },
-  rowAttention: { alignItems: "center", background: "rgba(201, 162, 75, 0.1)", border: `1px solid ${gold}`, borderRadius: 12, color: cream, display: "flex", gap: 12, justifyContent: "space-between", marginBottom: 10, padding: "14px 16px", textDecoration: "none" },
+  rowAttention: { alignItems: "center", background: "rgba(248, 184, 8, 0.1)", border: `1px solid ${gold}`, borderRadius: 12, color: cream, display: "flex", gap: 12, justifyContent: "space-between", marginBottom: 10, padding: "14px 16px", textDecoration: "none" },
   link: { color: gold, flex: "none" },
   dateChip: { alignItems: "center", background: "#000000", border: `1px solid ${hairline}`, borderRadius: 10, color: cream, display: "grid", flex: "none", justifyItems: "center", padding: "6px 10px" },
   shiftTitle: { color: cream, fontSize: 15, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" },

@@ -113,12 +113,12 @@ const s: Record<string, CSSProperties> = {
   page: { color: "#f4efe4", margin: "0 auto", maxWidth: 980, padding: "32px 20px" },
   h1: { fontSize: 32, margin: "0 0 8px" },
   h2: { fontSize: 18, margin: "0 0 12px" },
-  panel: { background: "#0c0c0c", border: "1px solid rgba(201,162,75,.3)", borderRadius: 12, marginTop: 20, padding: 18 },
-  row: { alignItems: "center", borderTop: "1px solid rgba(201,162,75,.16)", display: "flex", flexWrap: "wrap", gap: 12, justifyContent: "space-between", padding: "12px 0" },
+  panel: { background: "#0c0c0c", border: "1px solid rgba(248, 184, 8,.3)", borderRadius: 12, marginTop: 20, padding: 18 },
+  row: { alignItems: "center", borderTop: "1px solid rgba(248, 184, 8,.16)", display: "flex", flexWrap: "wrap", gap: 12, justifyContent: "space-between", padding: "12px 0" },
   muted: { color: "#c9c2b4", fontSize: 14, margin: "4px 0 0" },
   warn: { color: "#f0d089", fontSize: 14, marginTop: 4 },
   notice: { color: "#f0d089", fontWeight: 700 },
   actions: { display: "flex", flexWrap: "wrap", gap: 8 },
   input: { background: "#000", border: "1px solid #444", borderRadius: 8, color: "#f4efe4", minHeight: 40, padding: "0 10px" },
-  btn: { background: "#c9a24b", border: 0, borderRadius: 8, color: "#000", cursor: "pointer", fontWeight: 800, minHeight: 40, padding: "0 14px" }
+  btn: { background: "#f8b808", border: 0, borderRadius: 8, color: "#000", cursor: "pointer", fontWeight: 800, minHeight: 40, padding: "0 14px" }
 };

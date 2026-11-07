@@ -16,7 +16,7 @@ export const authStyles: Record<string, CSSProperties> = {
   },
   card: {
     background: "#141210",
-    border: `1px solid ${"rgba(201, 162, 75, 0.16)"}`,
+    border: `1px solid ${"rgba(248, 184, 8, 0.16)"}`,
     borderRadius: radii.md,
     boxShadow: elevation.raised,
     padding: "clamp(20px, 4vw, 32px)",
@@ -44,7 +44,7 @@ export const authStyles: Record<string, CSSProperties> = {
     fontWeight: 700
   },
   input: {
-    border: `1px solid ${"rgba(201, 162, 75, 0.16)"}`,
+    border: `1px solid ${"rgba(248, 184, 8, 0.16)"}`,
     borderRadius: radii.sm,
     padding: "0 12px",
     minHeight: touch.minimumTarget,
@@ -65,7 +65,7 @@ export const authStyles: Record<string, CSSProperties> = {
   },
   secondaryButton: {
     background: "#0a0a0a",
-    border: `1px solid ${"rgba(201, 162, 75, 0.16)"}`,
+    border: `1px solid ${"rgba(248, 184, 8, 0.16)"}`,
     borderRadius: radii.sm,
     color: "#f4efe4",
     fontWeight: 700,
@@ -81,7 +81,7 @@ export const authStyles: Record<string, CSSProperties> = {
   warning: {
     color: "#f4efe4",
     background: "#0a0a0a",
-    border: `1px solid ${"rgba(201, 162, 75, 0.16)"}`,
+    border: `1px solid ${"rgba(248, 184, 8, 0.16)"}`,
     borderRadius: radii.sm,
     padding: 12,
     fontSize: 14,

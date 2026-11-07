@@ -80,7 +80,7 @@ function PhoneMockup({ p }: { p: LandingContent["heroPhone"] }) {
         {p.prompt}
       </div>
       <div style={{ display: "grid", gap: 12 }}>
-        <div style={{ background: "#b8862f", color: "#fff", borderRadius: 14, padding: 16 }}>
+        <div style={{ background: "#e0a500", color: "#fff", borderRadius: 14, padding: 16 }}>
           <strong>{p.findWork}</strong>
           <div style={{ fontSize: 12, opacity: 0.85 }}>{p.findWorkSub}</div>
         </div>
@@ -143,7 +143,7 @@ const hx: Record<string, CSSProperties> = {
     width: 22,
     height: 22,
     borderRadius: 999,
-    background: "#b8862f",
+    background: "#e0a500",
     display: "inline-flex",
     alignItems: "center",
     justifyContent: "center",
@@ -151,7 +151,7 @@ const hx: Record<string, CSSProperties> = {
   },
   ctaRow: { display: "flex", gap: 14, margin: "28px 0 0", flexWrap: "wrap" },
   ctaPrimary: {
-    background: "#b8862f",
+    background: "#e0a500",
     color: "#ffffff",
     padding: "15px 26px",
     borderRadius: 12,
@@ -166,7 +166,7 @@ const hx: Record<string, CSSProperties> = {
   ctaOutline: {
     background: "#000000",
     color: "#f4efe4",
-    border: "1.5px solid rgba(201, 162, 75, 0.16)",
+    border: "1.5px solid rgba(248, 184, 8, 0.16)",
     padding: "15px 26px",
     borderRadius: 12,
     fontWeight: 700,
@@ -208,7 +208,7 @@ const hx: Record<string, CSSProperties> = {
     maxWidth: "100%",
     background: "#000000",
     borderRadius: 34,
-    border: "10px solid rgba(201, 162, 75, 0.16)",
+    border: "10px solid rgba(248, 184, 8, 0.16)",
     boxShadow: "0 34px 80px rgba(11,31,63,0.28)",
     padding: "20px 16px 24px"
   },
@@ -218,7 +218,7 @@ const hx: Record<string, CSSProperties> = {
     alignItems: "center",
     marginTop: 8,
     padding: "10px 12px",
-    border: "1px solid rgba(201, 162, 75, 0.16)",
+    border: "1px solid rgba(248, 184, 8, 0.16)",
     borderRadius: 12
   },
   oppCard: {
@@ -228,7 +228,7 @@ const hx: Record<string, CSSProperties> = {
     background: "#000000",
     borderRadius: 14,
     boxShadow: "0 18px 45px rgba(11,31,63,0.16)",
-    border: "1px solid rgba(201, 162, 75, 0.16)",
+    border: "1px solid rgba(248, 184, 8, 0.16)",
     padding: "12px 16px",
     display: "flex",
     alignItems: "center",
@@ -239,7 +239,7 @@ const hx: Record<string, CSSProperties> = {
     width: 30,
     height: 30,
     borderRadius: 999,
-    border: "2px solid rgba(201, 162, 75, 0.16)",
+    border: "2px solid rgba(248, 184, 8, 0.16)",
     display: "inline-block"
   },
   avatarMore: {
@@ -301,7 +301,7 @@ export default async function LandingPage() {
             <br />
             {c.hero.line2}
             <br />
-            <span style={{ color: "#b8862f" }}>{c.hero.line3}</span>
+            <span style={{ color: "#e0a500" }}>{c.hero.line3}</span>
           </h1>
           <p style={hx.lede}>{c.hero.lede}</p>
           <ul style={hx.chips} aria-label="Why Joblop">
@@ -349,7 +349,7 @@ export default async function LandingPage() {
               <span style={{ fontSize: 13, color: "#b3a894" }}>{c.hero.oppAround}</span>
             </div>
             <div style={hx.avatars}>
-              {["#d4af61", "#f5a97c", "#8fd4a8", "#d9b45f"].map((c, i) => (
+              {["#f8b808", "#f5a97c", "#8fd4a8", "#ffcf3f"].map((c, i) => (
                 <span key={c} style={{ ...hx.avatar, background: c, marginLeft: i ? -10 : 0 }} />
               ))}
               <span style={{ ...hx.avatar, ...hx.avatarMore, marginLeft: -10 }}>+2K</span>
@@ -723,7 +723,7 @@ const styles: Record<string, CSSProperties> = {
   header: {
     alignItems: "center",
     background: "rgba(0, 0, 0, 0.72)",
-    borderBottom: "1px solid rgba(201, 162, 75, 0.16)",
+    borderBottom: "1px solid rgba(248, 184, 8, 0.16)",
     display: "flex",
     flexWrap: "wrap",
     gap: 16,
@@ -780,7 +780,7 @@ const styles: Record<string, CSSProperties> = {
   ghostButton: {
     ...baseButton,
     background: "#000000",
-    border: "1px solid rgba(201, 162, 75, 0.16)",
+    border: "1px solid rgba(248, 184, 8, 0.16)",
     color: "#f4efe4"
   },
   hero: {
@@ -850,7 +850,7 @@ const styles: Record<string, CSSProperties> = {
   ghostButtonLarge: {
     ...baseButton,
     background: "#000000",
-    border: "1px solid rgba(201, 162, 75, 0.16)",
+    border: "1px solid rgba(248, 184, 8, 0.16)",
     color: "#f4efe4",
     minHeight: 54,
     padding: "0 24px"
@@ -872,7 +872,7 @@ const styles: Record<string, CSSProperties> = {
   },
   smallIcon: {
     background: "#0c0c0c",
-    border: "1px solid rgba(201, 162, 75, 0.16)",
+    border: "1px solid rgba(248, 184, 8, 0.16)",
     borderRadius: 8,
     height: 34,
     width: 34
@@ -918,7 +918,7 @@ const styles: Record<string, CSSProperties> = {
   },
   resident: {
     background: "#0c0c0c",
-    border: "8px solid rgba(201, 162, 75, 0.16)",
+    border: "8px solid rgba(248, 184, 8, 0.16)",
     borderRadius: "50% 50% 10% 10%",
     bottom: 0,
     height: "52%",
@@ -928,7 +928,7 @@ const styles: Record<string, CSSProperties> = {
   },
   floatingMetric: {
     background: "#000000",
-    border: "1px solid rgba(201, 162, 75, 0.16)",
+    border: "1px solid rgba(248, 184, 8, 0.16)",
     borderRadius: 8,
     bottom: 24,
     boxShadow: "0 18px 45px rgba(8, 31, 73, 0.13)",
@@ -970,7 +970,7 @@ const styles: Record<string, CSSProperties> = {
   },
   capsuleCard: {
     background: "#000000",
-    border: "1px solid rgba(201, 162, 75, 0.16)",
+    border: "1px solid rgba(248, 184, 8, 0.16)",
     borderRadius: 12,
     boxShadow: "0 18px 50px rgba(8, 31, 73, 0.07)",
     minHeight: 210,
@@ -1005,8 +1005,8 @@ const styles: Record<string, CSSProperties> = {
   },
   workflowBand: {
     background: "#000000",
-    borderBottom: "1px solid rgba(201, 162, 75, 0.16)",
-    borderTop: "1px solid rgba(201, 162, 75, 0.16)",
+    borderBottom: "1px solid rgba(248, 184, 8, 0.16)",
+    borderTop: "1px solid rgba(248, 184, 8, 0.16)",
     padding: "52px clamp(20px, 5vw, 72px)"
   },
   timeline: {
@@ -1016,7 +1016,7 @@ const styles: Record<string, CSSProperties> = {
   },
   timelineStep: {
     background: "#000000",
-    border: "1px solid rgba(201, 162, 75, 0.16)",
+    border: "1px solid rgba(248, 184, 8, 0.16)",
     borderRadius: 8,
     color: "#f4efe4",
     fontSize: 13,
@@ -1032,7 +1032,7 @@ const styles: Record<string, CSSProperties> = {
   },
   experienceCard: {
     background: "#000000",
-    border: "1px solid rgba(201, 162, 75, 0.16)",
+    border: "1px solid rgba(248, 184, 8, 0.16)",
     borderRadius: 8,
     boxShadow: "0 18px 50px rgba(8, 31, 73, 0.07)",
     overflow: "hidden"
@@ -1072,7 +1072,7 @@ const styles: Record<string, CSSProperties> = {
   },
   dashboardPreview: {
     background: "#000000",
-    border: "1px solid rgba(201, 162, 75, 0.16)",
+    border: "1px solid rgba(248, 184, 8, 0.16)",
     borderRadius: 8,
     boxShadow: "0 24px 70px rgba(8, 31, 73, 0.12)",
     display: "grid",
@@ -1134,7 +1134,7 @@ const styles: Record<string, CSSProperties> = {
   },
   metricTile: {
     background: "#000000",
-    border: "1px solid rgba(201, 162, 75, 0.16)",
+    border: "1px solid rgba(248, 184, 8, 0.16)",
     borderRadius: 8,
     display: "grid",
     gap: 6,
@@ -1147,7 +1147,7 @@ const styles: Record<string, CSSProperties> = {
   },
   previewPanel: {
     background: "#000000",
-    border: "1px solid rgba(201, 162, 75, 0.16)",
+    border: "1px solid rgba(248, 184, 8, 0.16)",
     borderRadius: 8,
     padding: 14
   },
@@ -1158,7 +1158,7 @@ const styles: Record<string, CSSProperties> = {
   },
   shiftRow: {
     alignItems: "center",
-    borderTop: "1px solid rgba(201, 162, 75, 0.16)",
+    borderTop: "1px solid rgba(248, 184, 8, 0.16)",
     color: "#f4efe4",
     display: "flex",
     fontSize: 13,
@@ -1172,7 +1172,7 @@ const styles: Record<string, CSSProperties> = {
     color: "#b36b00"
   },
   activityLine: {
-    borderTop: "1px solid rgba(201, 162, 75, 0.16)",
+    borderTop: "1px solid rgba(248, 184, 8, 0.16)",
     color: "#f4efe4",
     fontSize: 13,
     margin: 0,
@@ -1186,7 +1186,7 @@ const styles: Record<string, CSSProperties> = {
   },
   phone: {
     background: "#000000",
-    border: "7px solid rgba(201, 162, 75, 0.16)",
+    border: "7px solid rgba(248, 184, 8, 0.16)",
     borderRadius: 30,
     boxShadow: "0 18px 45px rgba(8, 31, 73, 0.16)",
     minHeight: 286,
@@ -1227,7 +1227,7 @@ const styles: Record<string, CSSProperties> = {
   },
   benefit: {
     background: "#000000",
-    border: "1px solid rgba(201, 162, 75, 0.16)",
+    border: "1px solid rgba(248, 184, 8, 0.16)",
     borderRadius: 8,
     boxShadow: "0 14px 34px rgba(8, 31, 73, 0.05)",
     color: "#f4efe4",
@@ -1236,8 +1236,8 @@ const styles: Record<string, CSSProperties> = {
   },
   aiSection: {
     background: "#000000",
-    borderBottom: "1px solid rgba(201, 162, 75, 0.16)",
-    borderTop: "1px solid rgba(201, 162, 75, 0.16)",
+    borderBottom: "1px solid rgba(248, 184, 8, 0.16)",
+    borderTop: "1px solid rgba(248, 184, 8, 0.16)",
     display: "grid",
     gap: 20,
     padding: "56px clamp(20px, 5vw, 72px)"
@@ -1249,7 +1249,7 @@ const styles: Record<string, CSSProperties> = {
   },
   flowStep: {
     background: "#000000",
-    border: "1px solid rgba(201, 162, 75, 0.16)",
+    border: "1px solid rgba(248, 184, 8, 0.16)",
     borderRadius: 8,
     padding: 20
   },
@@ -1261,7 +1261,7 @@ const styles: Record<string, CSSProperties> = {
   controlCard: {
     alignItems: "center",
     background: "#000000",
-    border: "1px solid rgba(201, 162, 75, 0.16)",
+    border: "1px solid rgba(248, 184, 8, 0.16)",
     borderRadius: 8,
     display: "grid",
     gap: 12,
@@ -1272,7 +1272,7 @@ const styles: Record<string, CSSProperties> = {
   },
   controlIcon: {
     background: "#0c0c0c",
-    border: "1px solid rgba(201, 162, 75, 0.16)",
+    border: "1px solid rgba(248, 184, 8, 0.16)",
     borderRadius: 8,
     height: 38,
     width: 38
@@ -1289,7 +1289,7 @@ const styles: Record<string, CSSProperties> = {
   },
   journeyCard: {
     background: "#000000",
-    border: "1px solid rgba(201, 162, 75, 0.16)",
+    border: "1px solid rgba(248, 184, 8, 0.16)",
     borderRadius: 8,
     boxShadow: "0 14px 34px rgba(8, 31, 73, 0.05)",
     padding: 22
@@ -1312,7 +1312,7 @@ const styles: Record<string, CSSProperties> = {
   },
   faqItem: {
     background: "#000000",
-    border: "1px solid rgba(201, 162, 75, 0.16)",
+    border: "1px solid rgba(248, 184, 8, 0.16)",
     borderRadius: 8,
     boxShadow: "0 14px 34px rgba(8, 31, 73, 0.05)",
     padding: 18
@@ -1372,7 +1372,7 @@ const styles: Record<string, CSSProperties> = {
   footer: {
     alignItems: "center",
     background: "#000000",
-    borderTop: "1px solid rgba(201, 162, 75, 0.16)",
+    borderTop: "1px solid rgba(248, 184, 8, 0.16)",
     color: "#f4efe4",
     display: "flex",
     flexWrap: "wrap",

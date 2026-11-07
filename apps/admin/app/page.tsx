@@ -6,7 +6,7 @@ import { AdminFlowMovie } from "./AdminFlowMovie";
 // Dark-first: black canvas, dark-raised panels, cream text, gold accent + hairline.
 const navy = colors.navy; // #000000 brand black
 const teal = colors.actionTeal; // gold accent
-const border = "rgba(201, 162, 75, 0.16)"; // gold hairline
+const border = "rgba(248, 184, 8, 0.16)"; // gold hairline
 const surface = "#0c0c0c"; // dark-raised panel
 const surfaceRaised = "#141210"; // higher raise
 const surfaceSubtle = "#0a0a0a"; // subtle
@@ -321,7 +321,7 @@ const styles: Record<string, CSSProperties> = {
   },
   matchCard: {
     alignItems: "center",
-    borderTop: "1px solid rgba(201, 162, 75, 0.16)",
+    borderTop: "1px solid rgba(248, 184, 8, 0.16)",
     display: "flex",
     gap: 16,
     justifyContent: "space-between",
@@ -338,7 +338,7 @@ const styles: Record<string, CSSProperties> = {
     padding: `0 ${spacing.lg}px`
   },
   poolRow: {
-    borderTop: "1px solid rgba(201, 162, 75, 0.16)",
+    borderTop: "1px solid rgba(248, 184, 8, 0.16)",
     display: "grid",
     gap: 8,
     gridTemplateColumns: "1fr auto",
@@ -371,7 +371,7 @@ const styles: Record<string, CSSProperties> = {
   status: { color: colors.success, fontSize: 13, fontWeight: 800 },
   danger: { color: colors.danger, fontSize: 13, fontWeight: 900 },
   requestRow: {
-    borderTop: "1px solid rgba(201, 162, 75, 0.16)",
+    borderTop: "1px solid rgba(248, 184, 8, 0.16)",
     display: "grid",
     gap: 12,
     gridTemplateColumns: "repeat(auto-fit, minmax(150px, 1fr))",

@@ -23,11 +23,11 @@ export const brand = {
   ink: "#0c0c0c", // raised dark surface (cards/nav on black)
   charcoal: "#171511", // warm charcoal — primary text on light
   // Gold scale — light → deep.
-  goldSoft: "#f0d9a0",
-  gold: "#c9a24b", // primary accent
-  goldStrong: "#b8862f", // primary action fill
-  goldDeep: "#9a7122", // action hover / pressed
-  goldText: "#7a5513", // readable gold-brown for text/icons on light chips (AA on cream)
+  goldSoft: "#ffe08a",
+  gold: "#f8b808", // primary accent: the gold of the Joblop logo artwork
+  goldStrong: "#e0a500", // primary action fill
+  goldDeep: "#b58500", // action hover / pressed
+  goldText: "#7a5600", // readable gold-brown for text/icons on light chips (AA on cream)
   // Warm light surfaces.
   cream: "#faf6ec", // subtle page background
   creamRaised: "#fbf9f4", // panel background
@@ -42,7 +42,7 @@ export const brand = {
   danger: "#b42323",
   success: "#176b47",
   warning: "#8a5100",
-  focus: "#c9a24b",
+  focus: "#f8b808",
   // Foreground that sits on gold / on black.
   onGold: "#000000",
   onBlack: "#faf6ec",
@@ -145,7 +145,7 @@ export const shadows = {
   sm: "0 1px 2px rgba(23, 21, 17, 0.06), 0 1px 3px rgba(23, 21, 17, 0.08)",
   md: "0 4px 12px rgba(23, 21, 17, 0.08), 0 2px 4px rgba(23, 21, 17, 0.05)",
   lg: "0 12px 32px rgba(23, 21, 17, 0.12), 0 4px 8px rgba(23, 21, 17, 0.06)",
-  gold: "0 8px 24px rgba(184, 134, 47, 0.28)"
+  gold: "0 8px 24px rgba(248, 184, 8, 0.28)"
 } as const;
 
 // ---------------------------------------------------------------------------------------------

@@ -154,10 +154,10 @@ const styles: Record<string, React.CSSProperties> = {
   h3: { fontSize: 14, margin: 0 },
   caption: { fontSize: 13, color: "#f4efe4", margin: 0, lineHeight: 1.5 },
   dayTabs: { display: "flex", flexWrap: "wrap", gap: 6 },
-  dayTab: { border: "1px solid rgba(201, 162, 75, 0.16)", background: "transparent", color: "#f4efe4", borderRadius: 999, padding: "5px 10px", fontSize: 12, fontWeight: 600, cursor: "pointer" },
-  dayTabActive: { border: "1px solid rgba(201, 162, 75, 0.16)", background: "#171511", color: "#fff", borderRadius: 999, padding: "5px 10px", fontSize: 12, fontWeight: 700, cursor: "pointer" },
+  dayTab: { border: "1px solid rgba(248, 184, 8, 0.16)", background: "transparent", color: "#f4efe4", borderRadius: 999, padding: "5px 10px", fontSize: 12, fontWeight: 600, cursor: "pointer" },
+  dayTabActive: { border: "1px solid rgba(248, 184, 8, 0.16)", background: "#171511", color: "#fff", borderRadius: 999, padding: "5px 10px", fontSize: 12, fontWeight: 700, cursor: "pointer" },
   roster: { listStyle: "none", margin: 0, padding: 0, display: "flex", flexDirection: "column", gap: 6 },
-  rosterItem: { display: "flex", justifyContent: "space-between", gap: 8, borderBottom: "1px solid rgba(201, 162, 75, 0.16)", paddingBottom: 5 },
-  emptyDays: { color: "#b3a894", fontSize: 13, border: "1px dashed rgba(201, 162, 75, 0.16)", borderRadius: 10, padding: 20, textAlign: "center" },
-  button: { border: "1px solid rgba(201, 162, 75, 0.16)", background: "#171511", color: "#fff", borderRadius: 8, padding: "7px 12px", fontSize: 13, fontWeight: 600, cursor: "pointer" }
+  rosterItem: { display: "flex", justifyContent: "space-between", gap: 8, borderBottom: "1px solid rgba(248, 184, 8, 0.16)", paddingBottom: 5 },
+  emptyDays: { color: "#b3a894", fontSize: 13, border: "1px dashed rgba(248, 184, 8, 0.16)", borderRadius: 10, padding: 20, textAlign: "center" },
+  button: { border: "1px solid rgba(248, 184, 8, 0.16)", background: "#171511", color: "#fff", borderRadius: 8, padding: "7px 12px", fontSize: 13, fontWeight: 600, cursor: "pointer" }
 };

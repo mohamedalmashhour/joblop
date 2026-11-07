@@ -24,7 +24,7 @@ type View = "full" | "employer" | "worker";
 
 const C: Record<string, string> = {
   bg: "#000000", panel: "#0c0c0c", panel2: "#141210", line: "#2a2114",
-  fg: "#fbf9f4", muted: "#b3a894", faint: "#6b6356", pass: "#36c48e", hold: "#f2b949", accent: "#c9a24b",
+  fg: "#fbf9f4", muted: "#b3a894", faint: "#6b6356", pass: "#36c48e", hold: "#f2b949", accent: "#f8b808",
 };
 const money = (m: unknown) => {
   const n = Number(m);

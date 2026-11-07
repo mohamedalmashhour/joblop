@@ -8,7 +8,7 @@
   --bg: var(--jl-black);
   --surface: var(--jl-ink);
   --surface-2: #141210;
-  --border: rgba(201, 162, 75, 0.16);
+  --border: rgba(248, 184, 8, 0.16);
   --text: var(--jl-on-black);
   --text-muted: #b3a894;
   --brand: var(--jl-gold);
@@ -31,7 +31,7 @@
     --bg: var(--jl-black);
     --surface: var(--jl-ink);
     --surface-2: #141210;
-    --border: rgba(201, 162, 75, 0.16);
+    --border: rgba(248, 184, 8, 0.16);
     --text: var(--jl-on-black);
     --text-muted: #b3a894;
     --brand: var(--jl-gold);
@@ -734,7 +734,7 @@ a.card.cardlink:hover {
   white-space: nowrap;
   text-decoration: none;
 }
-.topbar-cta { color: #c9a24b; font-weight: 800; }
+.topbar-cta { color: #f8b808; font-weight: 800; }
 /* Hamburger — hidden on desktop, shown when the nav collapses. */
 .topbar-burger {
   display: none;

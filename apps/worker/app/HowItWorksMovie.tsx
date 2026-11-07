@@ -34,10 +34,10 @@ const CSS = `
 .hiw-movie{
   max-width:1080px;margin:40px auto 8px;padding:clamp(26px,4vw,40px) clamp(18px,3vw,36px);
   display:grid;grid-template-columns:1fr 1fr;gap:clamp(24px,4vw,44px);align-items:center;
-  background:radial-gradient(640px 320px at 12% 0%,rgba(201,162,75,.18),transparent),linear-gradient(120deg,#0b0906,#16110a 60%,#000);
-  border:1px solid rgba(201,162,75,.22);border-radius:24px;color:#f4efe4;
+  background:radial-gradient(640px 320px at 12% 0%,rgba(248, 184, 8,.18),transparent),linear-gradient(120deg,#0b0906,#16110a 60%,#000);
+  border:1px solid rgba(248, 184, 8,.22);border-radius:24px;color:#f4efe4;
 }
-.hiw-eyebrow{font-family:var(--jl-font-sans);font-size:12px;font-weight:800;letter-spacing:.1em;text-transform:uppercase;color:#c9a24b;}
+.hiw-eyebrow{font-family:var(--jl-font-sans);font-size:12px;font-weight:800;letter-spacing:.1em;text-transform:uppercase;color:#f8b808;}
 .hiw-title{font-family:var(--jl-font-serif);font-size:clamp(26px,3.4vw,38px);font-weight:800;line-height:1.1;letter-spacing:-.01em;margin:12px 0 10px;color:#fbf7ee;text-wrap:balance;}
 .hiw-sub{font-family:var(--jl-font-sans);color:#cabfa8;font-size:clamp(15px,1.6vw,17px);line-height:1.6;margin:0;max-width:46ch;}
 .hiw-stage{display:flex;justify-content:center;}

@@ -22,7 +22,7 @@ const money = (m: number | null | undefined) =>
 
 const C = {
   bg: "#000000", panel: "#0c0c0c", panel2: "#141210", line: "#2a2114", fg: "#fbf9f4",
-  muted: "#b3a894", faint: "#6b6356", accent: "#c9a24b", cmd: "#f2b949", pass: "#36c48e", hold: "#f2b949"
+  muted: "#b3a894", faint: "#6b6356", accent: "#f8b808", cmd: "#f2b949", pass: "#36c48e", hold: "#f2b949"
 };
 const mono = "'IBM Plex Mono', ui-monospace, Menlo, monospace";
 
@@ -206,7 +206,7 @@ function Shell({ children }: Readonly<{ children: ReactNode }>) {
       <style>{`.cr-grid{} @media (max-width:820px){.cr-grid{grid-template-columns:1fr !important}}`}</style>
       <div style={{ maxWidth: 1060, margin: "0 auto", paddingBlock: 22, paddingInline: 16 }}>
         <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 16 }}>
-          <div style={{ width: 32, height: 32, borderRadius: 9, background: "linear-gradient(135deg,#c9a24b,#141210)", display: "grid", placeItems: "center", color: "#000000", fontWeight: 700 }}>JL</div>
+          <div style={{ width: 32, height: 32, borderRadius: 9, background: "linear-gradient(135deg,#f8b808,#141210)", display: "grid", placeItems: "center", color: "#000000", fontWeight: 700 }}>JL</div>
           <div>
             <div style={{ fontWeight: 700, fontSize: 18, letterSpacing: .3 }}>Transaction Control Room</div>
             <div style={{ color: C.muted, fontSize: 12 }}>Open any transaction to see its full lifecycle and settlement</div>

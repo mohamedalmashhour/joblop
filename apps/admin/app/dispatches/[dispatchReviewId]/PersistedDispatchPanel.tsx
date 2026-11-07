@@ -227,9 +227,9 @@ const styles = {
     gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))",
     padding: "24px clamp(18px, 5vw, 64px)"
   },
-  panel: { background: "#0c0c0c", border: "1px solid rgba(201, 162, 75, 0.16)", borderRadius: 14, padding: 24 },
+  panel: { background: "#0c0c0c", border: "1px solid rgba(248, 184, 8, 0.16)", borderRadius: 14, padding: 24 },
   row: {
-    borderBottom: "1px solid rgba(201, 162, 75, 0.16)",
+    borderBottom: "1px solid rgba(248, 184, 8, 0.16)",
     display: "flex",
     flexWrap: "wrap" as const,
     gap: 12,
@@ -238,7 +238,7 @@ const styles = {
   },
   button: {
     background: "#0c0c0c",
-    border: "1px solid rgba(201, 162, 75, 0.3)",
+    border: "1px solid rgba(248, 184, 8, 0.3)",
     borderRadius: 8,
     color: "#f4efe4",
     fontWeight: 800,
@@ -248,7 +248,7 @@ const styles = {
   link: {
     alignItems: "center",
     background: "#0c0c0c",
-    border: "1px solid rgba(201, 162, 75, 0.3)",
+    border: "1px solid rgba(248, 184, 8, 0.3)",
     borderRadius: 8,
     color: "#f4efe4",
     display: "inline-flex",

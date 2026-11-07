@@ -134,7 +134,7 @@ h3 {
 
 .admin-langbtn.active {
   background: #171511;
-  border-color: rgba(201, 162, 75, 0.16);
+  border-color: rgba(248, 184, 8, 0.16);
   font-weight: 700;
 }
 
@@ -146,7 +146,7 @@ h3 {
 .admin-navigation {
   align-items: stretch;
   background: #000000;
-  border-bottom: 1px solid rgba(201, 162, 75, 0.16);
+  border-bottom: 1px solid rgba(248, 184, 8, 0.16);
   display: flex;
   font-family: Inter, system-ui, sans-serif;
   gap: 18px;
@@ -164,7 +164,7 @@ h3 {
 }
 
 .admin-nav-group + .admin-nav-group {
-  border-left: 1px solid rgba(201, 162, 75, 0.16);
+  border-left: 1px solid rgba(248, 184, 8, 0.16);
   padding-left: 18px;
 }
 
@@ -205,7 +205,7 @@ h3 {
 .admin-page-navigator {
   align-items: center;
   background: #000000;
-  border-bottom: 1px solid rgba(201, 162, 75, 0.16);
+  border-bottom: 1px solid rgba(248, 184, 8, 0.16);
   display: grid;
   font-family: Inter, system-ui, sans-serif;
   gap: 12px;
@@ -226,7 +226,7 @@ h3 {
 .admin-page-number {
   align-items: center;
   background: #000000;
-  border: 1px solid rgba(201, 162, 75, 0.16);
+  border: 1px solid rgba(248, 184, 8, 0.16);
   border-radius: 999px;
   color: #f4efe4;
   display: inline-flex;
@@ -246,12 +246,12 @@ h3 {
 .admin-page-arrow:hover,
 .admin-page-number:hover {
   background: #000000;
-  border-color: rgba(201, 162, 75, 0.16);
+  border-color: rgba(248, 184, 8, 0.16);
 }
 
 .admin-page-number-active {
   background: #171511;
-  border-color: rgba(201, 162, 75, 0.16);
+  border-color: rgba(248, 184, 8, 0.16);
   color: #ffffff;
 }
 

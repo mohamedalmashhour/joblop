@@ -100,10 +100,10 @@ export function AdminLifecycleCalendarPanel() {
 }
 
 const styles: Record<string, CSSProperties> = {
-  panel: { background: "#000000", border: "1px solid rgba(201, 162, 75, 0.16)", borderRadius: 8, marginTop: 18, padding: 18 },
+  panel: { background: "#000000", border: "1px solid rgba(248, 184, 8, 0.16)", borderRadius: 8, marginTop: 18, padding: 18 },
   header: { alignItems: "start", display: "flex", gap: 12, justifyContent: "space-between" },
   h2: { color: "#f4efe4", fontSize: 21, margin: 0 },
   help: { color: "#b4b2a9", fontSize: 13, lineHeight: 1.55, margin: "6px 0 0" },
-  badge: { background: "#000000", border: "1px solid rgba(201, 162, 75, 0.16)", borderRadius: 8, color: "#f4efe4", fontSize: 12, fontWeight: 900, padding: "7px 10px" },
-  state: { background: "#0c0c0c", border: "1px solid rgba(201, 162, 75, 0.16)", borderRadius: 8, color: "#f4efe4", fontSize: 14, marginTop: 16, padding: 16 }
+  badge: { background: "#000000", border: "1px solid rgba(248, 184, 8, 0.16)", borderRadius: 8, color: "#f4efe4", fontSize: 12, fontWeight: 900, padding: "7px 10px" },
+  state: { background: "#0c0c0c", border: "1px solid rgba(248, 184, 8, 0.16)", borderRadius: 8, color: "#f4efe4", fontSize: 14, marginTop: 16, padding: 16 }
 };

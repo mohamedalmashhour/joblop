@@ -35,7 +35,7 @@ export function LandingPanel({ onSignedIn }: { onSignedIn: () => void }) {
               </li>
             ))}
           </ul>
-          <a href="/browse" className="landing-browse" style={{ display: "inline-block", marginTop: 14, fontWeight: 700, color: "#b8862f", textDecoration: "none" }}>
+          <a href="/browse" className="landing-browse" style={{ display: "inline-block", marginTop: 14, fontWeight: 700, color: "#e0a500", textDecoration: "none" }}>
             {t("land.browsePublic")}
           </a>
         </div>

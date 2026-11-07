@@ -49,7 +49,7 @@ const styles = {
   },
   card: {
     background: "#0c0c0c",
-    border: "1px solid rgba(201, 162, 75, 0.16)",
+    border: "1px solid rgba(248, 184, 8, 0.16)",
     borderRadius: 14,
     boxShadow: "0 12px 30px rgba(0,0,0,.4)",
     padding: 22
@@ -67,7 +67,7 @@ const styles = {
   },
   button: {
     background: "#0c0c0c",
-    border: "1px solid rgba(201, 162, 75, 0.3)",
+    border: "1px solid rgba(248, 184, 8, 0.3)",
     borderRadius: 8,
     color: "#fff",
     display: "inline-flex",
@@ -84,5 +84,5 @@ const styles = {
     gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))",
     padding: "0 clamp(18px, 5vw, 64px) 48px"
   },
-  boundaryCard: { background: "#0c0c0c", border: "1px solid rgba(201, 162, 75, 0.16)", borderRadius: 10, padding: 16 }
+  boundaryCard: { background: "#0c0c0c", border: "1px solid rgba(248, 184, 8, 0.16)", borderRadius: 10, padding: 16 }
 } as const;

@@ -215,17 +215,17 @@ export function FinanceCalendarPanel() {
 }
 
 const styles: Record<string, CSSProperties> = {
-  panel: { background: "#000000", border: "1px solid rgba(201, 162, 75, 0.16)", borderRadius: 8, marginTop: 18, padding: 18 },
+  panel: { background: "#000000", border: "1px solid rgba(248, 184, 8, 0.16)", borderRadius: 8, marginTop: 18, padding: 18 },
   header: { alignItems: "start", display: "flex", gap: 12, justifyContent: "space-between" },
   h2: { color: "#f4efe4", fontSize: 21, margin: 0 },
   help: { color: "#b4b2a9", fontSize: 13, lineHeight: 1.55, margin: "6px 0 0" },
-  badge: { background: "#000000", border: "1px solid rgba(201, 162, 75, 0.16)", borderRadius: 8, color: "#f4efe4", fontSize: 12, fontWeight: 900, padding: "7px 10px" },
+  badge: { background: "#000000", border: "1px solid rgba(248, 184, 8, 0.16)", borderRadius: 8, color: "#f4efe4", fontSize: 12, fontWeight: 900, padding: "7px 10px" },
   form: { alignItems: "end", display: "grid", gap: 12, gridTemplateColumns: "minmax(240px, 1fr) auto", marginTop: 18 },
   label: { color: "#f4efe4", display: "grid", fontSize: 13, fontWeight: 800, gap: 6 },
-  input: { background: "#0c0c0c", border: "1px solid rgba(201, 162, 75, 0.16)", borderRadius: 8, color: "#f4efe4", font: "inherit", minHeight: 44, padding: "0 12px" },
+  input: { background: "#0c0c0c", border: "1px solid rgba(248, 184, 8, 0.16)", borderRadius: 8, color: "#f4efe4", font: "inherit", minHeight: 44, padding: "0 12px" },
   button: { background: "#171511", border: 0, borderRadius: 8, color: "#fff", fontWeight: 800, minHeight: 44, padding: "0 16px" },
-  state: { background: "#0c0c0c", border: "1px solid rgba(201, 162, 75, 0.16)", borderRadius: 8, color: "#f4efe4", fontSize: 13, marginTop: 16, padding: 14 },
-  unscheduled: { borderTop: "1px solid rgba(201, 162, 75, 0.16)", marginTop: 18, paddingTop: 16 },
+  state: { background: "#0c0c0c", border: "1px solid rgba(248, 184, 8, 0.16)", borderRadius: 8, color: "#f4efe4", fontSize: 13, marginTop: 16, padding: 14 },
+  unscheduled: { borderTop: "1px solid rgba(248, 184, 8, 0.16)", marginTop: 18, paddingTop: 16 },
   unschedTitle: { color: "#f4efe4", fontSize: 14 },
   unschedList: { display: "flex", flexWrap: "wrap", gap: 8, marginTop: 10 },
   chip: { borderRadius: 6, display: "grid", gap: 1, padding: "4px 6px" },

@@ -15,8 +15,8 @@ const swatches: { name: string; token: string; hex: string; on: string }[] = [
   { name: "Black", token: "--jl-black", hex: "#000000", on: "#faf6ec" },
   { name: "Ink", token: "--jl-ink", hex: "#0c0c0c", on: "#faf6ec" },
   { name: "Gold soft", token: "--jl-gold-soft", hex: "#f0d9a0", on: "#000000" },
-  { name: "Gold", token: "--jl-gold", hex: "#c9a24b", on: "#000000" },
-  { name: "Gold strong", token: "--jl-gold-strong", hex: "#b8862f", on: "#000000" },
+  { name: "Gold", token: "--jl-gold", hex: "#f8b808", on: "#000000" },
+  { name: "Gold strong", token: "--jl-gold-strong", hex: "#e0a500", on: "#000000" },
   { name: "Gold deep", token: "--jl-gold-deep", hex: "#9a7122", on: "#faf6ec" },
   { name: "Cream", token: "--jl-cream", hex: "#faf6ec", on: "#171511" },
   { name: "Cream raised", token: "--jl-cream-raised", hex: "#fbf9f4", on: "#171511" },
@@ -30,7 +30,7 @@ const semantic: { name: string; token: string; hex: string; on: string }[] = [
   { name: "Success", token: "--jl-success", hex: "#176b47", on: "#ffffff" },
   { name: "Warning", token: "--jl-warning", hex: "#8a5100", on: "#ffffff" },
   { name: "Danger", token: "--jl-danger", hex: "#b42323", on: "#ffffff" },
-  { name: "Focus", token: "--jl-focus", hex: "#c9a24b", on: "#000000" }
+  { name: "Focus", token: "--jl-focus", hex: "#f8b808", on: "#000000" }
 ];
 
 const typeRows: { label: string; cls: string; sample: string; serif: boolean }[] = [

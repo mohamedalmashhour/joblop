@@ -10,10 +10,10 @@ type Greeting = { id: string; title: string; message: string; occasionKey: strin
 type Certificate = { id: string; kind: string; title: string; recipientName: string; note: string | null; serial: string; read: boolean; issuedAt: string };
 
 const TEMPLATE_ACCENT = {
-  holiday: { bg: "#fffaf0", bar: "#b8862f", emoji: "🎉" },
+  holiday: { bg: "#fffaf0", bar: "#e0a500", emoji: "🎉" },
   thank_you: { bg: "#f3f8f3", bar: "#4a7c59", emoji: "💛" },
   welcome: { bg: "#f0f6fb", bar: "#2f6fb8", emoji: "👋" },
-  custom: { bg: "#fffdf7", bar: "#b8862f", emoji: "✉️" }
+  custom: { bg: "#fffdf7", bar: "#e0a500", emoji: "✉️" }
 } as const;
 const accentFor = (key: string) => (key in TEMPLATE_ACCENT ? TEMPLATE_ACCENT[key as keyof typeof TEMPLATE_ACCENT] : TEMPLATE_ACCENT.custom);
 
@@ -29,8 +29,8 @@ function printCertificate(c: Certificate) {
   <style>
     @page { size: landscape; margin: 0; }
     body { margin: 0; font-family: Georgia, 'Times New Roman', serif; color: #2a2114; }
-    .cert { box-sizing: border-box; width: 100%; min-height: 100vh; padding: 56px; display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; border: 16px double #b8862f; }
-    .brand { letter-spacing: .3em; text-transform: uppercase; font-size: 14px; color: #b8862f; font-weight: 700; }
+    .cert { box-sizing: border-box; width: 100%; min-height: 100vh; padding: 56px; display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; border: 16px double #e0a500; }
+    .brand { letter-spacing: .3em; text-transform: uppercase; font-size: 14px; color: #e0a500; font-weight: 700; }
     h1 { font-size: 46px; margin: 18px 0 6px; }
     .sub { font-size: 16px; color: #6b6356; margin-bottom: 28px; }
     .name { font-size: 38px; font-weight: 700; border-bottom: 2px solid #e3d7c0; padding: 0 40px 10px; margin: 8px 0 18px; }
@@ -133,14 +133,14 @@ const styles = {
   hint: { color: "#b3a994", fontSize: 13, fontWeight: 500 },
   signin: { background: "#a8842f", borderRadius: 12, color: "#fff", display: "inline-block", fontWeight: 800, marginTop: 14, padding: "12px 24px", textDecoration: "none" },
   grid: { display: "grid", gap: 16, gridTemplateColumns: "repeat(auto-fill, minmax(260px, 1fr))" },
-  certCard: { background: "#0c0c0c", border: "1px solid rgba(201, 162, 75, 0.16)", borderRadius: 14, boxShadow: "0 10px 26px rgba(0,0,0,.4)", padding: "22px 20px", textAlign: "center" as const },
+  certCard: { background: "#0c0c0c", border: "1px solid rgba(248, 184, 8, 0.16)", borderRadius: 14, boxShadow: "0 10px 26px rgba(0,0,0,.4)", padding: "22px 20px", textAlign: "center" as const },
   ribbon: { fontSize: 34 },
-  certTitle: { color: "#d4af61", fontSize: 19, margin: "8px 0 4px" },
+  certTitle: { color: "#f8b808", fontSize: 19, margin: "8px 0 4px" },
   certName: { color: "#f4efe4", fontSize: 16, fontWeight: 800, margin: "0 0 8px" },
   certNote: { color: "#b3a994", fontSize: 13, lineHeight: 1.5, margin: "0 0 8px" },
   certMeta: { color: "#b3a994", fontSize: 11, margin: "6px 0 0" },
-  printBtn: { background: "#b8862f", border: "none", borderRadius: 10, color: "#fff", cursor: "pointer", fontSize: 13, fontWeight: 800, marginTop: 12, padding: "10px 16px" },
-  greetCard: { background: "#0c0c0c", border: "1px solid rgba(201, 162, 75, 0.16)", borderRadius: 14, boxShadow: "0 10px 26px rgba(0,0,0,.4)", padding: "18px 18px 16px" },
+  printBtn: { background: "#e0a500", border: "none", borderRadius: 10, color: "#fff", cursor: "pointer", fontSize: 13, fontWeight: 800, marginTop: 12, padding: "10px 16px" },
+  greetCard: { background: "#0c0c0c", border: "1px solid rgba(248, 184, 8, 0.16)", borderRadius: 14, boxShadow: "0 10px 26px rgba(0,0,0,.4)", padding: "18px 18px 16px" },
   greetHead: { alignItems: "center", display: "flex", justifyContent: "space-between" },
   greetEmoji: { fontSize: 26 },
   unread: { background: "#b23b2e", borderRadius: 999, color: "#fff", fontSize: 10, fontWeight: 800, padding: "2px 8px", textTransform: "uppercase" as const },

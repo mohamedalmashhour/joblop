@@ -227,20 +227,20 @@ function formatMoney(minor: number, currency: string) {
 }
 
 const styles: Record<string, CSSProperties> = {
-  panel: { background: "#0c0c0c", border: "1px solid rgba(201, 162, 75, 0.16)", borderRadius: 8, marginTop: 18, padding: 18 },
+  panel: { background: "#0c0c0c", border: "1px solid rgba(248, 184, 8, 0.16)", borderRadius: 8, marginTop: 18, padding: 18 },
   header: { alignItems: "start", display: "flex", gap: 12, justifyContent: "space-between" },
   h2: { color: "#f4efe4", fontSize: 21, margin: 0 },
   h3: { color: "#f4efe4", fontSize: 17, margin: "0 0 10px" },
   help: { color: "#f4efe4", fontSize: 13, lineHeight: 1.55, margin: "6px 0 0" },
-  badge: { background: "#000000", border: "1px solid rgba(201, 162, 75, 0.16)", borderRadius: 8, fontSize: 12, fontWeight: 900, padding: "7px 10px" },
+  badge: { background: "#000000", border: "1px solid rgba(248, 184, 8, 0.16)", borderRadius: 8, fontSize: 12, fontWeight: 900, padding: "7px 10px" },
   form: { alignItems: "end", display: "grid", gap: 12, gridTemplateColumns: "minmax(240px, 1fr) auto", marginTop: 18 },
   label: { display: "grid", fontSize: 13, fontWeight: 800, gap: 6 },
-  input: { border: "1px solid rgba(201, 162, 75, 0.16)", borderRadius: 8, font: "inherit", minHeight: 44, padding: "0 12px" },
+  input: { border: "1px solid rgba(248, 184, 8, 0.16)", borderRadius: 8, font: "inherit", minHeight: 44, padding: "0 12px" },
   button: { background: "#171511", border: 0, borderRadius: 8, color: "#fff", fontWeight: 800, minHeight: 44, padding: "0 16px" },
-  state: { background: "#000000", border: "1px solid rgba(201, 162, 75, 0.16)", borderRadius: 8, marginTop: 16, padding: 14 },
+  state: { background: "#000000", border: "1px solid rgba(248, 184, 8, 0.16)", borderRadius: 8, marginTop: 16, padding: 14 },
   columns: { display: "grid", gap: 18, gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))", marginTop: 18 },
-  card: { border: "1px solid rgba(201, 162, 75, 0.16)", borderRadius: 8, display: "grid", gap: 6, marginTop: 10, padding: 14 },
-  actions: { borderTop: "1px solid rgba(201, 162, 75, 0.16)", marginTop: 20, paddingTop: 18 },
+  card: { border: "1px solid rgba(248, 184, 8, 0.16)", borderRadius: 8, display: "grid", gap: 6, marginTop: 10, padding: 14 },
+  actions: { borderTop: "1px solid rgba(248, 184, 8, 0.16)", marginTop: 20, paddingTop: 18 },
   actionGrid: { display: "grid", gap: 10, gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))" },
   disabledButton: { minHeight: 44, padding: "0 12px" }
 };

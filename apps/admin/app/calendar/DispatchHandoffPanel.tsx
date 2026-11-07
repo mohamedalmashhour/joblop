@@ -222,7 +222,7 @@ const button = {
     padding: 18
   },
   label: { display: "grid", fontWeight: 800, gap: 8, margin: "16px 0", maxWidth: 260 },
-  select: { border: "1px solid rgba(201, 162, 75, 0.16)", borderRadius: 8, font: "inherit", padding: 12 },
+  select: { border: "1px solid rgba(248, 184, 8, 0.16)", borderRadius: 8, font: "inherit", padding: 12 },
   primary: {
     background: "#171511",
     border: 0,
@@ -235,7 +235,7 @@ const button = {
   },
   secondary: {
     background: "#0c0c0c",
-    border: "1px solid rgba(201, 162, 75, 0.3)",
+    border: "1px solid rgba(248, 184, 8, 0.3)",
     borderRadius: 8,
     color: "#f4efe4",
     cursor: "pointer",

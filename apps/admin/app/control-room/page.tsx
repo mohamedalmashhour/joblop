@@ -20,7 +20,7 @@ type Load =
   | { state: "empty" }
   | { state: "error"; reason: string };
 
-const C = { bg: "#000000", panel: "#0c0c0c", panel2: "#141210", line: "#2a2114", fg: "#fbf9f4", muted: "#b3a894", faint: "#6b6356", accent: "#c9a24b", done: "#36c48e", hold: "#f2b949" };
+const C = { bg: "#000000", panel: "#0c0c0c", panel2: "#141210", line: "#2a2114", fg: "#fbf9f4", muted: "#b3a894", faint: "#6b6356", accent: "#f8b808", done: "#36c48e", hold: "#f2b949" };
 
 function statusColor(s: string): string {
   const v = s.toLowerCase();
@@ -53,7 +53,7 @@ export default function ControlRoomLanding() {
     <main style={{ background: C.bg, color: C.fg, minHeight: "100vh", fontFamily: "'IBM Plex Sans', system-ui, sans-serif" }}>
       <div style={{ maxWidth: 820, margin: "0 auto", paddingBlock: 40, paddingInline: 16 }}>
         <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 18 }}>
-          <div style={{ width: 32, height: 32, borderRadius: 9, background: "linear-gradient(135deg,#c9a24b,#141210)", display: "grid", placeItems: "center", color: "#000000", fontWeight: 700 }}>JL</div>
+          <div style={{ width: 32, height: 32, borderRadius: 9, background: "linear-gradient(135deg,#f8b808,#141210)", display: "grid", placeItems: "center", color: "#000000", fontWeight: 700 }}>JL</div>
           <div>
             <div style={{ fontWeight: 700, fontSize: 20 }}>Transaction Control Room</div>
             <div style={{ color: C.muted, fontSize: 13 }}>Open any transaction to see exactly what happened and how the money settled.</div>

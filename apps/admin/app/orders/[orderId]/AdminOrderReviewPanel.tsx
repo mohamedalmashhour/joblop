@@ -198,7 +198,7 @@ export function AdminOrderReviewPanel({ orderId }: Readonly<{ orderId: string }>
 
 const styles = {
   wrap: { padding: "32px clamp(18px, 5vw, 64px)" },
-  card: { background: "#0c0c0c", border: "1px solid rgba(201, 162, 75, 0.16)", borderRadius: 14, boxShadow: "0 12px 30px rgba(0,0,0,.4)", margin: "14px 0", padding: 22 },
+  card: { background: "#0c0c0c", border: "1px solid rgba(248, 184, 8, 0.16)", borderRadius: 14, boxShadow: "0 12px 30px rgba(0,0,0,.4)", margin: "14px 0", padding: 22 },
   cardHead: { alignItems: "center", display: "flex", gap: 12, justifyContent: "space-between" },
   h2: { color: "#f4efe4", fontSize: 26, margin: 0 },
   h3: { color: "#f4efe4", fontSize: 20, margin: 0 },
@@ -208,7 +208,7 @@ const styles = {
   notice: { color: "#f4efe4", fontSize: 14, fontWeight: 700 },
   actions: { alignItems: "flex-end", display: "flex", flexWrap: "wrap" as const, gap: 12, marginTop: 10 },
   label: { color: "#f4efe4", display: "flex", flexDirection: "column" as const, fontSize: 13, fontWeight: 700, gap: 4 },
-  input: { border: "1px solid rgba(201, 162, 75, 0.16)", borderRadius: 8, minHeight: 40, padding: "0 10px" },
+  input: { border: "1px solid rgba(248, 184, 8, 0.16)", borderRadius: 8, minHeight: 40, padding: "0 10px" },
   button: { alignItems: "center", background: "#171511", borderRadius: 8, border: "none", color: "#fff", cursor: "pointer", display: "inline-flex", fontWeight: 800, minHeight: 44, padding: "0 16px", textDecoration: "none" },
   buttonAlt: { alignItems: "center", background: "#b4541f", borderRadius: 8, border: "none", color: "#fff", cursor: "pointer", display: "inline-flex", fontWeight: 800, minHeight: 44, padding: "0 16px" },
   recApprove: { color: "#f4efe4", fontSize: 13, fontWeight: 800 },

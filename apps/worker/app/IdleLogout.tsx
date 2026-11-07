@@ -66,7 +66,7 @@ export function IdleLogout() {
         zIndex: 1000,
         background: "#1a140a",
         color: "#f4efe4",
-        borderTop: "1px solid rgba(201,162,75,.4)",
+        borderTop: "1px solid rgba(248, 184, 8,.4)",
         padding: "10px 16px",
         fontSize: 14,
         textAlign: "center"

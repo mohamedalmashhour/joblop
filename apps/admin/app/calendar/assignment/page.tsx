@@ -55,7 +55,7 @@ const styles = {
   eyebrow: { color: "#fff1a8", fontSize: 12, fontWeight: 900, textTransform: "uppercase" as const },
   title: { fontSize: "clamp(36px, 5vw, 58px)", margin: "8px 0" },
   lede: { color: "#faf6ec", fontSize: 18, lineHeight: 1.6, maxWidth: 820 },
-  button: { alignItems: "center", background: "#0c0c0c", border: "1px solid rgba(201, 162, 75, 0.3)", borderRadius: 8, color: "#f4efe4", display: "inline-flex", fontWeight: 800, marginTop: 12, minHeight: 44, padding: "0 16px", textDecoration: "none" },
+  button: { alignItems: "center", background: "#0c0c0c", border: "1px solid rgba(248, 184, 8, 0.3)", borderRadius: 8, color: "#f4efe4", display: "inline-flex", fontWeight: 800, marginTop: 12, minHeight: 44, padding: "0 16px", textDecoration: "none" },
   grid: { display: "grid", gap: 16, gridTemplateColumns: "repeat(auto-fit, minmax(240px, 1fr))", padding: "28px clamp(18px, 5vw, 64px) 0" },
-  card: { background: "#0c0c0c", border: "1px solid rgba(201, 162, 75, 0.16)", borderRadius: 12, padding: 20 }
+  card: { background: "#0c0c0c", border: "1px solid rgba(248, 184, 8, 0.16)", borderRadius: 12, padding: 20 }
 } as const;
