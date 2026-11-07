@@ -439,6 +439,7 @@ model User {
   identities                    UserIdentity[]
   sessions                      Session[]
   emailVerificationCodes        EmailVerificationCode[]
+  staffPhoneSignInCodes         StaffPhoneSignInCode[]
   passwordResetTokens           PasswordResetToken[]
   createdOrganizations          EmployerOrganization[]       @relation("EmployerOrganizationCreatedByUser")
   reviewedOrganizations         EmployerOrganization[]       @relation("EmployerOrganizationReviewedByUser")
@@ -545,6 +546,21 @@ model Session {
   @@index([userId, status], map: "sessions_user_id_status_idx")
   @@index([expiresAt], map: "sessions_expires_at_idx")
   @@map("sessions")
+}
+
+model StaffPhoneSignInCode {
+  id         String    @id @default(uuid()) @db.Uuid
+  userId     String    @map("user_id") @db.Uuid
+  codeHash   String    @map("code_hash") @db.Char(64)
+  attempts   Int       @default(0)
+  expiresAt  DateTime  @map("expires_at") @db.Timestamptz(3)
+  consumedAt DateTime? @map("consumed_at") @db.Timestamptz(3)
+  createdAt  DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  user User @relation(fields: [userId], references: [id], onDelete: Restrict)
+
+  @@index([userId, createdAt], map: "staff_phone_sign_in_codes_user_id_created_at_idx")
+  @@map("staff_phone_sign_in_codes")
 }
 
 model EmailVerificationCode {

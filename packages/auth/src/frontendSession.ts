@@ -235,6 +235,41 @@ export function createFrontendSessionGateway(options: {
         return { status: "unavailable" };
       }
     },
+    async staffPhoneRequest(input: { phone: string }): Promise<void> {
+      await options
+        .fetch(`${origin}/auth/staff-phone/request`, {
+          method: "POST",
+          headers: { accept: "application/json", "content-type": "application/json" },
+          body: JSON.stringify(input),
+          cache: "no-store"
+        })
+        .catch(() => undefined);
+    },
+    async staffPhoneVerify(
+      input: { phone: string; code: string },
+      persistToken: (token: string) => void
+    ): Promise<FrontendSessionResult> {
+      try {
+        const response = await options.fetch(`${origin}/auth/staff-phone/verify`, {
+          method: "POST",
+          headers: { accept: "application/json", "content-type": "application/json" },
+          body: JSON.stringify(input),
+          cache: "no-store"
+        });
+        if (response.status === 401 || response.status === 403 || response.status === 429) return { status: "denied" };
+        if (response.status === 502 || response.status === 503 || response.status === 504) {
+          return { status: "unavailable" };
+        }
+        if (!response.ok) return { status: "error" };
+        const payload = await response.json();
+        const token = readToken(payload);
+        if (!token) return { status: "error" };
+        persistToken(token);
+        return { status: "ok", payload: sanitizeSessionPayload(payload) };
+      } catch {
+        return { status: "unavailable" };
+      }
+    },
     // Connect Google Calendar for an already-signed-in user (authenticated; no new session).
     googleLinkCalendar(input: { code: string; redirectUri: string }, token: string | null) {
       return request("/worker/google/calendar/link", "POST", token, input);

@@ -1,116 +1,134 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 
 import { authStyles } from "../authStyles";
 
 /**
- * Admin sign-in capsule (client). Posts to the same-origin `/api/session/sign-in` route, which sets
- * the httpOnly admin session cookie server-side. On success it lands on the request calendar. Sign-in
- * is available in every environment; only account creation is gated to non-production.
+ * Staff sign-in: a phone number, then a code sent by text. The code and session are handled
+ * server-side through same-origin routes; the session stays in an httpOnly cookie.
  */
 export function SignInForm() {
-  const [email, setEmail] = useState("");
-  const [password, setPassword] = useState("");
-  const [showPassword, setShowPassword] = useState(false);
-  const [state, setState] = useState<"idle" | "submitting" | "error">("idle");
-  const [message, setMessage] = useState("Sign in with your authorized administration account.");
-  const [needsSignOut, setNeedsSignOut] = useState(false);
+  const [phone, setPhone] = useState("");
+  const [code, setCode] = useState("");
+  const [step, setStep] = useState<"phone" | "code">("phone");
+  const [busy, setBusy] = useState(false);
+  const [problem, setProblem] = useState(false);
+  const [message, setMessage] = useState("Enter your staff mobile number. We will text you a code.");
 
-  const submit = async (event: React.FormEvent) => {
-    event.preventDefault();
-    setState("submitting");
-    setNeedsSignOut(false);
-    setMessage("Signing in…");
+  useEffect(() => {
+    fetch("/api/session", { cache: "no-store" })
+      .then((response) => {
+        if (response.ok) window.location.replace("/calendar");
+      })
+      .catch(() => undefined);
+  }, []);
+
+  async function sendCode(event?: React.FormEvent) {
+    event?.preventDefault();
+    setBusy(true);
+    setProblem(false);
     try {
-      const response = await fetch("/api/session/sign-in", {
+      const response = await fetch("/api/session/phone/request", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ email, password })
+        body: JSON.stringify({ phone })
       });
-      setPassword("");
       if (!response.ok) {
-        setState("error");
-        if (response.status === 409) {
-          setNeedsSignOut(true);
-          return setMessage("You are already signed in. Sign out before switching accounts.");
-        }
-        if (response.status === 429) {
-          return setMessage("Too many attempts. Please wait a moment and try again.");
-        }
-        return setMessage("Sign-in failed. Check your email and password.");
+        setProblem(true);
+        return setMessage("That number could not be used. Check it and try again.");
+      }
+      setStep("code");
+      setCode("");
+      setMessage("If this is a staff number, a 6-digit code is on its way. It expires in 10 minutes.");
+    } catch {
+      setProblem(true);
+      setMessage("Sign-in is unavailable. Try again.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function verify(event: React.FormEvent) {
+    event.preventDefault();
+    setBusy(true);
+    setProblem(false);
+    try {
+      const response = await fetch("/api/session/phone/verify", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ phone, code: code.trim() })
+      });
+      if (!response.ok) {
+        setProblem(true);
+        return setMessage("That code did not work. Check it, or ask for a new one.");
       }
       window.location.assign("/calendar");
     } catch {
-      setState("error");
-      setMessage("Sign-in service is unavailable. Try again.");
+      setProblem(true);
+      setMessage("Sign-in is unavailable. Try again.");
+    } finally {
+      setBusy(false);
     }
-  };
+  }
 
-  const signOut = async () => {
-    await fetch("/api/session/sign-out", { method: "POST" }).catch(() => undefined);
-    setNeedsSignOut(false);
-    setState("idle");
-    setMessage("Signed out. You can sign in now.");
-  };
+  const status = (
+    <p aria-live="polite" role={problem ? "alert" : "status"} style={problem ? authStyles.warning : authStyles.message}>
+      {message}
+    </p>
+  );
+
+  if (step === "phone") {
+    return (
+      <form style={authStyles.form} onSubmit={(event) => void sendCode(event)}>
+        <label style={authStyles.fieldLabel}>
+          Mobile number
+          <input
+            autoComplete="tel"
+            onChange={(event) => setPhone(event.target.value)}
+            placeholder="514 555 0100"
+            required
+            style={authStyles.input}
+            type="tel"
+            value={phone}
+          />
+        </label>
+        {status}
+        <div style={authStyles.actions}>
+          <button disabled={busy} style={authStyles.primaryButton} type="submit">
+            {busy ? "Sending…" : "Text me a code"}
+          </button>
+        </div>
+      </form>
+    );
+  }
 
   return (
-    <form style={authStyles.form} onSubmit={submit}>
+    <form style={authStyles.form} onSubmit={(event) => void verify(event)}>
       <label style={authStyles.fieldLabel}>
-        Work email
+        6-digit code
         <input
-          style={authStyles.input}
-          type="email"
-          autoComplete="email"
+          autoComplete="one-time-code"
+          inputMode="numeric"
+          maxLength={6}
+          onChange={(event) => setCode(event.target.value)}
+          pattern="[0-9]{6}"
           required
-          value={email}
-          onChange={(event) => setEmail(event.target.value)}
-          placeholder="admin@example.org"
-        />
-      </label>
-      <label style={authStyles.fieldLabel}>
-        Password
-        <input
           style={authStyles.input}
-          type={showPassword ? "text" : "password"}
-          autoComplete="current-password"
-          required
-          value={password}
-          onChange={(event) => setPassword(event.target.value)}
-          placeholder="Your password"
+          value={code}
         />
       </label>
-      <label
-        style={{ ...authStyles.fieldLabel, gridTemplateColumns: "auto 1fr", alignItems: "center" }}
-      >
-        <input
-          type="checkbox"
-          checked={showPassword}
-          onChange={(event) => setShowPassword(event.target.checked)}
-        />
-        Show password
-      </label>
-      <p
-        aria-live="polite"
-        role={state === "error" ? "alert" : "status"}
-        style={state === "error" ? authStyles.warning : authStyles.message}
-      >
-        {message}
-      </p>
+      {status}
       <div style={authStyles.actions}>
-        <button type="submit" disabled={state === "submitting"} style={authStyles.primaryButton}>
-          {state === "submitting" ? "Signing in…" : "Sign in"}
+        <button disabled={busy} style={authStyles.primaryButton} type="submit">
+          {busy ? "Checking…" : "Sign in"}
         </button>
-        {needsSignOut ? (
-          <button type="button" onClick={signOut} style={authStyles.secondaryButton}>
-            Sign out first
-          </button>
-        ) : (
-          <span style={authStyles.message}>Admin accounts are provisioned—self-registration is closed.</span>
-        )}
-        <a href="/forgot-password" style={authStyles.secondaryButton}>
-          Forgot password?
-        </a>
+        <button disabled={busy} onClick={() => void sendCode()} style={authStyles.secondaryButton} type="button">
+          Send a new code
+        </button>
+        <button disabled={busy} onClick={() => setStep("phone")} style={authStyles.secondaryButton} type="button">
+          Change number
+        </button>
       </div>
     </form>
   );

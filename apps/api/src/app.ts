@@ -369,6 +369,7 @@ import { claimOpenJob, ensureOpenClaimDispatch, placeClaimedShiftOnSchedule } fr
 import { isWorksiteAddressVisible, workerJobAddress, WORKSITE_ADDRESS_SELECT } from "./worksiteAddress";
 import { listEmployerApplicants, setEmployerFavorite } from "./employerApplicants";
 import { legalNameChangeBlocked } from "./organizationLegalName";
+import { normalizeStaffPhone, requestStaffPhoneCode, verifyStaffPhoneCode } from "./staffPhoneSignIn";
 import { listWorkerPayoutsForStaff } from "./workerPayoutStaffList";
 
 export interface BuildApiOptions {
@@ -1556,6 +1557,39 @@ export function buildApi(options: BuildApiOptions = {}) {
     } catch (error) {
       return sendAuthenticationError(reply, error);
     }
+  });
+
+  // Staff phone sign-in. The answer is the same whether or not the number is staff, so this never
+  // reveals which numbers can sign in.
+  app.post("/auth/staff-phone/request", async (request, reply) => {
+    const phone = normalizeStaffPhone(asRecord(request.body).phone);
+    if (!phone || !prisma) return reply.code(202).send({ status: "code_requested" });
+    const rateLimit = await consumeAuthenticationRateLimit(authRateLimiter, { action: "sign_in", ip: request.ip, email: phone });
+    if (!rateLimit) return sendAuthenticationUnavailable(reply);
+    if (!rateLimit.allowed) return sendAuthenticationRateLimited(reply, rateLimit.retryAfterSeconds);
+    const outcome = await requestStaffPhoneCode(prisma, smsSender, { phone, now: new Date() }).catch(() => "not_sent" as const);
+    if (outcome === "not_sent") logger.error("api.staff_phone.text_not_sent", { requestId: request.id });
+    return reply.code(202).send({ status: "code_requested" });
+  });
+
+  app.post("/auth/staff-phone/verify", async (request, reply) => {
+    const body = asRecord(request.body);
+    const phone = normalizeStaffPhone(body.phone);
+    const code = readRequiredString(body, "code");
+    const denied = () => reply.code(401).send({ error: authenticationErrorCode, message: authenticationErrorMessage });
+    if (!phone || !code || !/^\d{6}$/.test(code) || !prisma) return denied();
+    const rateLimit = await consumeAuthenticationRateLimit(authRateLimiter, { action: "sign_in", ip: request.ip, email: phone });
+    if (!rateLimit) return sendAuthenticationUnavailable(reply);
+    if (!rateLimit.allowed) return sendAuthenticationRateLimited(reply, rateLimit.retryAfterSeconds);
+    const verified = await verifyStaffPhoneCode(prisma, { phone, code, now: new Date() });
+    if (!verified) return denied();
+    const result = await authService.signInWithVerifiedStaffPhone({
+      emailNormalized: verified.emailNormalized,
+      source: "api",
+      ipAddress: request.ip,
+      userAgent: request.headers["user-agent"] ?? null
+    });
+    return reply.code(200).send(serializeAuthenticationResult(result));
   });
 
   app.post("/auth/sign-in", async (request, reply) => {
