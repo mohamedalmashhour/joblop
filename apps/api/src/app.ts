@@ -1352,6 +1352,16 @@ export function buildApi(options: BuildApiOptions = {}) {
     }
 
     if (error instanceof EmployerOrganizationError) {
+      // Failing to create a company answers like any refusal, so record the cause for operators.
+      // Only our own coded reasons are logged: a raw database message could hold submitted names.
+      if (error.decision.status === "bootstrap_failed" || error.decision.status === "duplicate_organization") {
+        const reason = error.decision.internalReason ?? "";
+        logger.warn("api.organization.create_failed", {
+          requestId: request.id,
+          status: error.decision.status,
+          reason: reason.startsWith("RWOS_") ? reason : "unexpected"
+        });
+      }
       return sendOrganizationDenied(reply);
     }
 
