@@ -27,6 +27,21 @@ async function readCompanyName(response: Response): Promise<string | null> {
   return typeof payload?.displayName === "string" ? payload.displayName : null;
 }
 
+async function readContractUnsigned(response: Response): Promise<boolean> {
+  if (!response.ok) return false;
+  const payload = (await response.json().catch(() => null)) as { contract?: { signedAt?: unknown } | null } | null;
+  return Boolean(payload?.contract) && !payload?.contract?.signedAt;
+}
+
+async function readVerificationStatus(response: Response): Promise<string | null> {
+  if (!response.ok) return null;
+  const payload = (await response.json().catch(() => null)) as
+    | { status?: unknown; verification?: { status?: unknown } | null }
+    | null;
+  const status = payload?.verification?.status ?? payload?.status;
+  return typeof status === "string" ? status : null;
+}
+
 function money(minor: number): string {
   return formatMoney(createContractMoney({ amountMinor: minor, currency: "CAD" }));
 }
@@ -34,7 +49,8 @@ function money(minor: number): string {
 const icons = {
   requests: "M4 6h16M4 12h16M4 18h10",
   timesheets: "M12 7v5l3 2M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z",
-  invoices: "M7 3h10v18l-3-2-2 2-2-2-3 2V3ZM10 8h4M10 12h4"
+  invoices: "M7 3h10v18l-3-2-2 2-2-2-3 2V3ZM10 8h4M10 12h4",
+  workers: "M16 20v-1a4 4 0 0 0-4-4H7a4 4 0 0 0-4 4v1M9.5 11a3.5 3.5 0 1 0 0-7 3.5 3.5 0 0 0 0 7ZM21 20v-1a4 4 0 0 0-3-3.9M16 4.1a3.5 3.5 0 0 1 0 6.8"
 } as const;
 
 function Icon({ path }: { path: string }) {
@@ -61,11 +77,14 @@ export function EmployerHomePanel() {
   const load = useCallback(async () => {
     setState({ status: "loading" });
     try {
-      const [requests, timesheets, invoices, company] = await Promise.all([
+      const [requests, timesheets, invoices, company, attendance, contract, verification] = await Promise.all([
         fetch("/api/calendar/requests", { cache: "no-store" }),
         fetch("/api/timesheets", { cache: "no-store" }),
         fetch("/api/invoices", { cache: "no-store" }),
-        fetch("/api/organizations", { cache: "no-store" })
+        fetch("/api/organizations", { cache: "no-store" }),
+        fetch("/api/attendance", { cache: "no-store" }),
+        fetch("/api/contract", { cache: "no-store" }),
+        fetch("/api/organization-verification", { cache: "no-store" })
       ]);
       if (requests.status === 401) return window.location.replace("/signin");
       if (requests.status === 409) {
@@ -78,7 +97,10 @@ export function EmployerHomePanel() {
         sources: {
           requests: await readList(requests, "requests"),
           timesheets: await readList(timesheets, "timesheets"),
-          invoices: await readList(invoices, "invoices")
+          invoices: await readList(invoices, "invoices"),
+          attendance: await readList(attendance, "attendanceRecords"),
+          contractUnsigned: await readContractUnsigned(contract),
+          verificationStatus: await readVerificationStatus(verification)
         }
       });
     } catch {
@@ -159,6 +181,7 @@ export function EmployerHomePanel() {
   const number = (value: number | null) => (value === null ? "—" : String(value));
   const amount = money(summary.invoicesToPayMinor ?? 0);
   const stats = [
+    { icon: icons.workers, title: t("home.workingNow"), value: number(summary.workingNow), note: t("home.workingNowNote"), href: "/employer/attendance" },
     { icon: icons.requests, title: t("home.requests"), value: number(summary.requestCount), note: t("home.requestsNote"), href: "/employer/calendar" },
     { icon: icons.timesheets, title: t("home.timesheets"), value: number(summary.timesheetsToConfirm), note: t("home.timesheetsNote"), href: "/employer/timesheets" },
     {
@@ -170,16 +193,42 @@ export function EmployerHomePanel() {
     }
   ];
   const attentionText = (kind: (typeof items)[number]["kind"], count: number) =>
-    kind === "info"
+    kind === "contract"
+      ? t("home.actionContract")
+      : kind === "verification"
+        ? t("home.actionVerification")
+        : kind === "info"
       ? t("home.actionInfo", { count: String(count) })
       : kind === "timesheets"
         ? t("home.actionTimesheets", { count: String(count) })
         : t("home.actionInvoices", { count: String(count), amount });
-  const shortcuts: readonly [string, MessageKey][] = [
-    ["/employer/orders", "home.shortOrders"],
-    ["/employer/money", "home.shortMoney"],
-    ["/employer/contract", "home.shortContract"],
-    ["/employer/contact-joblop", "home.shortContact"]
+  const groups: readonly (readonly [MessageKey, readonly (readonly [string, MessageKey])[]])[] = [
+    ["home.groupStaffing", [
+      ["/employer/calendar/create", "home.linkRequest"],
+      ["/employer/calendar", "home.linkCalendar"],
+      ["/employer/orders", "home.linkOrders"],
+      ["/employer/orders/create", "home.linkNewOrder"],
+      ["/employer/assignments", "home.linkAssigned"],
+      ["/employer/attendance", "home.linkAttendance"]
+    ]],
+    ["home.groupMoney", [
+      ["/employer/timesheets", "home.linkTimesheets"],
+      ["/employer/money", "home.linkMoney"],
+      ["/employer/invoices", "home.linkInvoices"],
+      ["/employer/payments", "home.linkPayments"],
+      ["/employer/contract", "home.linkContract"]
+    ]],
+    ["home.groupCompany", [
+      ["/employer/onboarding/residences", "home.linkSites"],
+      ["/employer/onboarding/departments", "home.linkDepartments"],
+      ["/employer/verification", "home.linkVerification"]
+    ]],
+    ["home.groupHelp", [
+      ["/employer/contact-joblop", "home.linkContact"],
+      ["/employer/inbox", "home.linkInbox"],
+      ["/faq", "home.linkFaq"],
+      ["/pricing", "home.linkPricing"]
+    ]]
   ];
 
   return (
@@ -247,13 +296,18 @@ export function EmployerHomePanel() {
           </div>
         </div>
 
-        <h2 style={look.heading}>{t("home.shortcuts")}</h2>
-        <div style={look.actions}>
-          {shortcuts.map(([href, label]) => (
-            <a href={href} key={href} style={styles.secondaryButton}>{t(label)}</a>
+        <h2 style={look.heading}>{t("home.everything")}</h2>
+        <div style={look.groupGrid}>
+          {groups.map(([title, links]) => (
+            <section key={title} style={look.group}>
+              <h3 style={look.groupTitle}>{t(title)}</h3>
+              {links.map(([href, label]) => (
+                <a href={href} key={href} style={look.groupLink}>{t(label)}</a>
+              ))}
+            </section>
           ))}
-          {signOutButton}
         </div>
+        <div style={look.actions}>{signOutButton}</div>
       </Band>
     </>
   );
@@ -276,7 +330,7 @@ const look: Record<string, CSSProperties> = {
   lede: { color: "#f0e8d8", fontSize: 18, lineHeight: 1.5, margin: 0, maxWidth: 620 },
   actions: { alignItems: "center", display: "flex", flexWrap: "wrap", gap: 12, marginTop: 24 },
   band: { display: "grid", gap: 16, padding: "clamp(24px, 4vw, 40px) clamp(16px, 4vw, 40px) 48px" },
-  statGrid: { display: "grid", gap: 16, gridTemplateColumns: "repeat(auto-fit, minmax(210px, 1fr))" },
+  statGrid: { display: "grid", gap: 16, gridTemplateColumns: "repeat(auto-fit, minmax(190px, 1fr))" },
   stat: { background: raised, border: `1px solid ${hairline}`, borderRadius: 14, color: cream, display: "grid", gap: 6, padding: 20, textDecoration: "none" },
   iconTile: { alignItems: "center", background: "rgba(201, 162, 75, 0.12)", borderRadius: 10, display: "inline-flex", height: 40, justifyContent: "center", width: 40 },
   statValue: { color: gold, fontFamily: serif, fontSize: 42, fontVariantNumeric: "lining-nums", fontWeight: 700, lineHeight: 1.1 },
@@ -289,6 +343,10 @@ const look: Record<string, CSSProperties> = {
   dateChip: { alignItems: "center", background: "#000000", border: `1px solid ${hairline}`, borderRadius: 10, color: cream, display: "grid", flex: "none", justifyItems: "center", padding: "6px 10px" },
   shiftTitle: { color: cream, fontSize: 15, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" },
   pill: { border: `1px solid ${hairline}`, borderRadius: 999, color: gold, flex: "none", fontSize: 12, fontWeight: 700, padding: "4px 10px" },
+  groupGrid: { display: "grid", gap: 16, gridTemplateColumns: "repeat(auto-fit, minmax(210px, 1fr))" },
+  group: { alignContent: "start", background: raised, border: `1px solid ${hairline}`, borderRadius: 14, display: "grid", gap: 2, padding: 18 },
+  groupTitle: { color: gold, fontSize: 13, fontWeight: 800, letterSpacing: 1, margin: "0 0 8px", textTransform: "uppercase" },
+  groupLink: { color: cream, fontSize: 15, fontWeight: 600, padding: "7px 0", textDecoration: "none" },
   quietButton: { background: "transparent", border: 0, color: "#b3a894", cursor: "pointer", font: "inherit", fontWeight: 700, padding: "10px 6px", textDecoration: "underline" },
   steps: { display: "grid", gap: 16, gridTemplateColumns: "repeat(auto-fit, minmax(210px, 1fr))", listStyle: "none", margin: 0, padding: 0 },
   step: { alignContent: "start", background: raised, border: `1px solid ${hairline}`, borderRadius: 14, display: "grid", gap: 8, justifyItems: "start", padding: 20 },

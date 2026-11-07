@@ -39,13 +39,20 @@ function isConnectedEnvironment(): boolean {
   }
   return true;
 }
-const persistedEmployerNavigation = deduplicateNavigationByRoute([
-  ...clientCalendarWorkflow.filter((step) =>
-    ["/employer/calendar", "/employer/calendar/create"].includes(step.route)
-  ),
-  ...ordersWorkflow,
-  ...moneyWorkflow
-]);
+// What a real employer sees: every working page, and no prototype pages.
+const persistedEmployerNavigation = [
+  { page: "", route: "/employer/dashboard", title: "Home" },
+  { page: "", route: "/employer/calendar/create", title: "Request workers" },
+  { page: "", route: "/employer/calendar", title: "Request calendar" },
+  { page: "", route: "/employer/orders", title: "Orders" },
+  { page: "", route: "/employer/assignments", title: "Assigned workers" },
+  { page: "", route: "/employer/attendance", title: "Attendance" },
+  { page: "", route: "/employer/timesheets", title: "Timesheets" },
+  { page: "", route: "/employer/money", title: "Money" },
+  { page: "", route: "/employer/invoices", title: "Invoices" },
+  { page: "", route: "/employer/contract", title: "Contract" },
+  { page: "", route: "/employer/contact-joblop", title: "Contact Joblop" }
+];
 
 export function EmployerShell({
   actions,
@@ -90,7 +97,7 @@ export function EmployerShell({
                 style={step.route === currentRoute ? styles.navLinkActive : styles.navLink}
                 aria-current={step.route === currentRoute ? "page" : undefined}
               >
-                <span style={styles.navPage}>Page {step.page}</span>
+                {step.page ? <span style={styles.navPage}>Page {step.page}</span> : null}
                 <span>{step.title}</span>
               </a>
             ))}
@@ -180,10 +187,8 @@ function EmployerPageNavigator({
 }: {
   currentRoute: string;
   navigation: readonly {
-    boundary: string;
     page: string;
     route: string;
-    status: string;
     title: string;
   }[];
 }) {
@@ -249,9 +254,9 @@ function EmployerPageNavigator({
 }
 
 export function WorkflowRoutes({ currentRoute }: { currentRoute: string }) {
-  const navigation = isConnectedEnvironment()
-    ? persistedEmployerNavigation
-    : uniqueEmployerNavigation;
+  // The numbered workflow map is a prototype tool. Real employers use the sidebar and home page.
+  if (isConnectedEnvironment()) return null;
+  const navigation = uniqueEmployerNavigation;
   return (
     <section aria-labelledby="workflow-title" style={styles.section}>
       <div style={styles.sectionHeader}>
