@@ -219,6 +219,7 @@ export function EmployerHomePanel() {
       ["/employer/contract", "home.linkContract"]
     ]],
     ["home.groupCompany", [
+      ["/employer/company", "home.linkCompany"],
       ["/employer/onboarding/residences", "home.linkSites"],
       ["/employer/onboarding/departments", "home.linkDepartments"],
       ["/employer/verification", "home.linkVerification"]

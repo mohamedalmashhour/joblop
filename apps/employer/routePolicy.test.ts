@@ -19,6 +19,7 @@ describe("employer production route policy", () => {
       "/signup/employer",
       "/terms",
       "/employer/dashboard",
+      "/employer/company",
       "/employer/onboarding/company",
       "/employer/onboarding/residences",
       "/employer/onboarding/departments",
