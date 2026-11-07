@@ -2,6 +2,7 @@ import { createHash, randomInt, timingSafeEqual } from "node:crypto";
 import type { EmailSender } from "./mailer/emailSender";
 import { verificationEmailMessage } from "./mailer/emailSender";
 import type { SmsSender } from "./mailer/smsSender";
+import { sendsText } from "./notifications/noticeChannels";
 
 export const emailVerificationExpiryMinutes = 10;
 export const emailVerificationMaximumAttempts = 5;
@@ -109,11 +110,11 @@ export function createEmailVerificationService(
         )
       );
       // SMS twin (fail-soft, money-gated in the sender): text the same code when a phone is on file.
-      if (options.smsSender && input.recipientPhone) {
+      if (options.smsSender && input.recipientPhone && sendsText("email_confirmation_code")) {
         await options.smsSender
           .send({
             to: input.recipientPhone,
-            text: `JobLop code: ${code}. Expires in ${emailVerificationExpiryMinutes} min. Never share it.`
+            text: `Joblop code: ${code}. Expires in ${emailVerificationExpiryMinutes} min. Never share it.`
           })
           .catch(() => undefined);
       }

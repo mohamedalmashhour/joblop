@@ -14,6 +14,7 @@ import {
 } from "./instantContact";
 import type { EmailSender } from "./mailer/emailSender";
 import type { SmsSender } from "./mailer/smsSender";
+import { sendsText } from "./notifications/noticeChannels";
 import { formatWorksiteAddress, isWorksiteAddressVisible, WORKSITE_ADDRESS_SELECT } from "./worksiteAddress";
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -249,7 +250,7 @@ export function createContactNotices(deps: {
           text: `${describe(conversation)} needs a person. Open the Contact desk in Joblop admin.`
         });
       }
-      if (urgent && deps.adminPhone) {
+      if (deps.adminPhone && sendsText("staff_needed", { urgent })) {
         await deps.smsSender.send({ to: deps.adminPhone, text: `Joblop URGENT: ${describe(conversation)} needs a person. Open the Contact desk.` });
       }
     },

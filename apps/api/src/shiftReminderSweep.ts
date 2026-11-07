@@ -1,6 +1,7 @@
 import type { PrismaClient } from "@rwos/database";
 import type { EmailSender } from "./mailer/emailSender";
 import type { SmsSender } from "./mailer/smsSender";
+import { sendsText } from "./notifications/noticeChannels";
 import { resolveLanguage } from "./notifications/clientNotifications";
 import { shiftReminderEmail, shiftReminderSmsText } from "./notifications/workerNotifications";
 
@@ -69,7 +70,7 @@ export async function runShiftReminderSweep(deps: {
       await deps.emailSender.send(
         shiftReminderEmail({ to: email, language, title: assignment.confirmedTitle, startAt: assignment.confirmedStartAt })
       );
-      if (deps.smsSender && user?.phone) {
+      if (deps.smsSender && user?.phone && sendsText("shift_reminder")) {
         await deps.smsSender
           .send({
             to: user.phone,

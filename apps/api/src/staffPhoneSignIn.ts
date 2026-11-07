@@ -1,5 +1,6 @@
 import { createHash, randomInt, randomUUID, timingSafeEqual } from "node:crypto";
 import type { SmsSender } from "./mailer/smsSender";
+// Sign-in codes go by text only; see notifications/noticeChannels.ts.
 
 const CODE_TTL_MS = 10 * 60_000;
 const RESEND_AFTER_MS = 60_000;
