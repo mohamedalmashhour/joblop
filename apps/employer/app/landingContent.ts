@@ -40,6 +40,15 @@ export interface LandingContent {
   };
   categories: { eyebrow: string; title: string; copy: string; items: readonly StaffingCategory[] };
   workflow: { eyebrow: string; title: string; steps: readonly string[] };
+  media: {
+    eyebrow: string;
+    title: string;
+    copy: string;
+    clips: readonly { src: string; poster: string; label: string; caption: string; withSound?: boolean }[];
+    soundOn: string;
+    soundOff: string;
+    play: string;
+  };
   experiences: { eyebrow: string; title: string; pillars: readonly Pillar[] };
   preview: { eyebrow: string; title: string; copy: string };
   workers: { eyebrow: string; title: string; benefits: readonly string[] };
@@ -97,6 +106,19 @@ const en: LandingContent = {
       { key: "housekeeping", name: "Housekeeping & Dining", roles: "Housekeeping, dining support, laundry, cleaner", detail: "Operational support roles for daily residence coverage and urgent absence replacement." },
       { key: "maintenance", name: "Maintenance", roles: "Facility support, repairs, porter, urgent support", detail: "Facility requests with clear access limits, safety expectations, and supervisor handoff." }
     ]
+  },
+  media: {
+    eyebrow: "See Joblop in action",
+    title: "Help on site, when you need it",
+    copy: "Short clips from kitchens and teams: post a shift, get matched with ready workers, and keep the day running.",
+    clips: [
+      { src: "/media/find-help.mp4", poster: "/media/find-help.jpg", label: "Find the help you need", caption: "Find the help you need" },
+      { src: "/media/kitchen-rush.mp4", poster: "/media/kitchen-rush.jpg", label: "A rush in the kitchen? Get covered fast", caption: "A rush in the kitchen? Get covered fast" },
+      { src: "/media/how-joblop-works.mp4", poster: "/media/how-joblop-works.jpg", label: "How Joblop works for employers (30 s)", caption: "How Joblop works for employers (30 s)", withSound: true }
+    ],
+    soundOn: "Sound on",
+    soundOff: "Sound off",
+    play: "Play video"
   },
   workflow: {
     eyebrow: "Managed staffing flow",
@@ -219,6 +241,19 @@ const fr: LandingContent = {
       { key: "housekeeping", name: "Entretien ménager et salle à manger", roles: "Entretien ménager, soutien en salle, buanderie, préposé au nettoyage", detail: "Rôles de soutien opérationnel pour la couverture quotidienne des résidences et le remplacement d’absences urgentes." },
       { key: "maintenance", name: "Entretien", roles: "Soutien aux installations, réparations, portier, soutien urgent", detail: "Demandes liées aux installations avec limites d’accès claires, attentes de sécurité et transfert au superviseur." }
     ]
+  },
+  media: {
+    eyebrow: "Joblop en action",
+    title: "De l'aide sur place, quand vous en avez besoin",
+    copy: "De courtes vidéos de cuisines et d'équipes : publiez un quart, trouvez des travailleurs prêts et gardez la journée sur les rails.",
+    clips: [
+      { src: "/media/find-help.mp4", poster: "/media/find-help.jpg", label: "Trouvez le renfort qu'il vous faut", caption: "Trouvez le renfort qu'il vous faut" },
+      { src: "/media/kitchen-rush.mp4", poster: "/media/kitchen-rush.jpg", label: "Un coup de feu en cuisine ? Soyez couvert vite", caption: "Un coup de feu en cuisine ? Soyez couvert vite" },
+      { src: "/media/how-joblop-works.mp4", poster: "/media/how-joblop-works.jpg", label: "Comment Joblop fonctionne pour les employeurs (30 s)", caption: "Comment Joblop fonctionne pour les employeurs (30 s)", withSound: true }
+    ],
+    soundOn: "Activer le son",
+    soundOff: "Couper le son",
+    play: "Lire la vidéo"
   },
   workflow: {
     eyebrow: "Flux de dotation géré",
@@ -343,6 +378,19 @@ const ar: LandingContent = {
       { key: "housekeeping", name: "التدبير المنزلي وقاعة الطعام", roles: "التدبير المنزلي، دعم قاعة الطعام، الغسيل، عامل نظافة", detail: "أدوار دعم تشغيلية للتغطية اليومية للمقارّ السكنية واستبدال الغياب العاجل." },
       { key: "maintenance", name: "الصيانة", roles: "دعم المرافق، الإصلاحات، البوّاب، الدعم العاجل", detail: "طلبات المرافق بحدود وصول واضحة وتوقّعات سلامة وتسليم للمشرف." }
     ]
+  },
+  media: {
+    eyebrow: "Joblop أثناء العمل",
+    title: "مساعدة في الموقع عندما تحتاجها",
+    copy: "مقاطع قصيرة من المطابخ والفرق: انشر مناوبة، وتواصل مع عمال جاهزين، وحافظ على سير يومك.",
+    clips: [
+      { src: "/media/find-help.mp4", poster: "/media/find-help.jpg", label: "اعثر على الدعم الذي تحتاجه", caption: "اعثر على الدعم الذي تحتاجه" },
+      { src: "/media/kitchen-rush.mp4", poster: "/media/kitchen-rush.jpg", label: "ضغط في المطبخ؟ احصل على تغطية بسرعة", caption: "ضغط في المطبخ؟ احصل على تغطية بسرعة" },
+      { src: "/media/how-joblop-works.mp4", poster: "/media/how-joblop-works.jpg", label: "كيف يعمل Joblop لأصحاب العمل (30 ث)", caption: "كيف يعمل Joblop لأصحاب العمل (30 ث)", withSound: true }
+    ],
+    soundOn: "تشغيل الصوت",
+    soundOff: "كتم الصوت",
+    play: "تشغيل الفيديو"
   },
   workflow: {
     eyebrow: "تدفّق توظيف مُدار",

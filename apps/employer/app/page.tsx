@@ -3,6 +3,7 @@ import { cookies } from "next/headers";
 import { LOCALE_COOKIE, resolveEmployerLocale } from "./i18n/config";
 import { getLandingContent, type LandingContent } from "./landingContent";
 import { LogoIntro } from "./LogoIntro";
+import { VideoCard } from "./VideoCard";
 import { JobLopLogo } from "./JobLopLogo";
 import { HeaderNav } from "./HeaderNav";
 import { EmployerFlowMovie } from "./EmployerFlowMovie";
@@ -358,6 +359,34 @@ export default async function LandingPage() {
       </section>
 
       <EmployerFlowMovie lang={locale === "ar" ? "ar" : locale.startsWith("fr") ? "fr" : "en"} />
+
+      <section aria-labelledby="media-title" className="media-band">
+        <div className="media-band-inner">
+          <div style={styles.centerHeader}>
+            <p style={styles.eyebrowDark}>{c.media.eyebrow}</p>
+            <h2 id="media-title" style={styles.sectionTitle}>
+              {c.media.title}
+            </h2>
+            <p style={styles.sectionCopy}>{c.media.copy}</p>
+          </div>
+          <div className="media-band-grid">
+            {c.media.clips.map((clip) => (
+              <div key={clip.src}>
+                <VideoCard
+                  src={clip.src}
+                  poster={clip.poster}
+                  label={clip.label}
+                  soundLabel={c.media.soundOn}
+                  muteLabel={c.media.soundOff}
+                  playLabel={c.media.play}
+                  withSound={clip.withSound === true}
+                />
+                <p style={{ marginTop: 14, textAlign: "center", color: "#e8dfcc", fontWeight: 600, fontSize: 15 }}>{clip.caption}</p>
+              </div>
+            ))}
+          </div>
+        </div>
+      </section>
 
       <section aria-labelledby="categories-title" style={styles.section}>
         <div style={styles.centerHeader}>
