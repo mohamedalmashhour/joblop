@@ -52,6 +52,7 @@ export function EmployerShell({
   children,
   currentRoute,
   eyebrow,
+  hideHero = false,
   lede,
   mode = "fixture",
   title
@@ -60,6 +61,7 @@ export function EmployerShell({
   children: ReactNode;
   currentRoute: string;
   eyebrow: string;
+  hideHero?: boolean;
   lede: string;
   mode?: "fixture" | "authenticated";
   title: string;
@@ -121,12 +123,16 @@ export function EmployerShell({
                 {actions}
               </div>
             </header>
-            <section style={styles.hero}>
-              <p style={styles.eyebrow}>{eyebrow}</p>
-              <h1 style={styles.title}>{title}</h1>
-              <p style={styles.lede}>{lede}</p>
-            </section>
-            <EmployerPageNavigator currentRoute={currentRoute} navigation={navigation} />
+            {hideHero ? null : (
+              <>
+                <section style={styles.hero}>
+                  <p style={styles.eyebrow}>{eyebrow}</p>
+                  <h1 style={styles.title}>{title}</h1>
+                  <p style={styles.lede}>{lede}</p>
+                </section>
+                <EmployerPageNavigator currentRoute={currentRoute} navigation={navigation} />
+              </>
+            )}
             {children}
           </main>
           <footer style={styles.footer}>
