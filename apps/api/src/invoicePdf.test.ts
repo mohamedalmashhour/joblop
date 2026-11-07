@@ -92,9 +92,28 @@ describe("bilingual synthetic invoice PDF", () => {
     const text = Buffer.from(first.bytes).toString("latin1");
     expect(text.startsWith("%PDF-1.4")).toBe(true);
     expect(text).toContain("INVOICE / FACTURE");
-    expect(text).toContain("SYNTHETIC LOCAL TEST DOCUMENT");
+    expect(text).toContain("Test document, not valid for tax filing.");
+    expect(text).not.toContain("precalculated_minor_units");
     expect(first.digest).toBe(second.digest);
     expect(first.filename).toBe("SYN-A-2026-000001.pdf");
+  });
+
+  it("shows the client, the job and the hours when they are known, and hides empty lines", () => {
+    const text = Buffer.from(
+      renderBilingualSyntheticInvoicePdf(invoice, {
+        billToName: "Oak Hill",
+        billToLegalName: "Oak Hill Inc.",
+        jobTitle: "Farm helper",
+        serviceDate: "2026-07-30",
+        payableMinutes: 360
+      }).bytes
+    ).toString("latin1");
+    expect(text).toContain("(Oak Hill) Tj");
+    expect(text).toContain("Farm helper");
+    expect(text).toContain("(6.00) Tj");
+    expect(text).toContain("($100.00) Tj");
+    expect(text).not.toContain("Mileage");
+    expect(text).toContain("On receipt / À réception");
   });
 
   it("fails closed before issuance", () => {

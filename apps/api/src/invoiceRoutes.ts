@@ -12,7 +12,8 @@ import {
 } from "@rwos/shared";
 import {
   renderBilingualSyntheticCreditNotePdf,
-  renderBilingualSyntheticInvoicePdf
+  renderBilingualSyntheticInvoicePdf,
+  type InvoicePdfDetails
 } from "./invoicePdf";
 import type { DurableInvoice, InvoiceRepository } from "./invoiceRepository";
 
@@ -49,6 +50,8 @@ export function registerInvoiceRoutes(
     // Tells the employer an invoice has been sent. Best-effort: it reports what happened and never
     // undoes the send.
     notifyInvoiceSent?(invoice: DurableInvoice): Promise<string>;
+    // Bill-to and job facts for the PDF. Without it the PDF still renders, with less detail.
+    describeInvoice?(invoice: DurableInvoice): Promise<InvoicePdfDetails>;
   }
 ) {
   app.post("/organizations/:organizationId/invoices", async (request, reply) => {
@@ -100,7 +103,8 @@ export function registerInvoiceRoutes(
       return unavailable(reply);
     }
     try {
-      const rendered = renderBilingualSyntheticInvoicePdf(scope.invoice);
+      const details = (await options.describeInvoice?.(scope.invoice).catch(() => ({}))) ?? {};
+      const rendered = renderBilingualSyntheticInvoicePdf(scope.invoice, details);
       return reply
         .type("application/pdf")
         .header("content-disposition", `attachment; filename="${rendered.filename}"`)
