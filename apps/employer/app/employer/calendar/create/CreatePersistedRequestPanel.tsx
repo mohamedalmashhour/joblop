@@ -18,6 +18,7 @@ import {
 } from "@rwos/shared";
 import { LanguageSwitcher } from "../../../i18n/LanguageSwitcher";
 import { useT, type Translate } from "../../../i18n/LocaleProvider";
+import { DictationButton } from "./DictationButton";
 import { requestActionNotice } from "./requestActionNotice";
 
 type Provision = "none" | "provided" | "allowance";
@@ -354,7 +355,7 @@ export function CreatePersistedRequestPanel() {
         <SelectField disabled={!editing || !form.residenceId} label={t("create.department")} onChange={(v) => update("departmentId", v)} options={context.departments.filter((i) => i.residenceId === form.residenceId).map((i) => ({ label: i.name, value: i.id }))} value={form.departmentId} t={t} />
         <SelectField disabled={!editing} label={t("create.workGroup")} onChange={(v) => update("workGroup", v)} options={context.workGroups.map((i) => ({ label: i.displayLabel, value: i.slug }))} value={form.workGroup} t={t} />
         <SelectField disabled={!editing || !form.workGroup} label={t("create.role")} onChange={(v) => update("roleDefinition", v)} options={roles.map((i) => ({ label: i.displayLabel, value: i.slug }))} value={form.roleDefinition} t={t} />
-        <TextField disabled={!editing} label={t("create.title")} maxLength={160} onChange={(v) => update("title", v)} value={form.title} />
+        <TextField dictation={editing} disabled={!editing} label={t("create.title")} maxLength={160} onChange={(v) => update("title", v)} value={form.title} />
         <TextField disabled={!editing} label={t("create.workersRequired")} min="1" onChange={(v) => update("numberOfWorkers", v)} type="number" value={form.numberOfWorkers} />
         <TextField disabled={!editing} label={t("create.starts")} onChange={(v) => update("startAt", v)} type="datetime-local" value={form.startAt} />
         <TextField disabled={!editing} label={t("create.ends")} onChange={(v) => update("endAt", v)} type="datetime-local" value={form.endAt} />
@@ -375,15 +376,18 @@ export function CreatePersistedRequestPanel() {
         <label style={styles.fieldLabel}>
           {t("create.description")}
           <textarea disabled={!editing} maxLength={2000} onChange={(e) => update("description", e.target.value)} rows={4} style={styles.input} value={form.description} />
+          {editing ? <DictationButton maxLength={2000} onText={(v) => update("description", v)} value={form.description} /> : null}
         </label>
         <label style={styles.fieldLabel}>
           {t("create.duties")}
           <textarea disabled={!editing} maxLength={2000} onChange={(e) => update("dutiesSummary", e.target.value)} rows={4} style={styles.input} value={form.dutiesSummary} />
+          {editing ? <DictationButton maxLength={2000} onText={(v) => update("dutiesSummary", v)} value={form.dutiesSummary} /> : null}
           <span style={styles.cardText}>{t("create.dutiesScopeNote")}</span>
         </label>
         <label style={styles.fieldLabel}>
           {t("create.safety")}
           <textarea disabled={!editing} maxLength={2000} onChange={(e) => update("specialInstructions", e.target.value)} rows={4} style={styles.input} value={form.specialInstructions} />
+          {editing ? <DictationButton maxLength={2000} onText={(v) => update("specialInstructions", v)} value={form.specialInstructions} /> : null}
           <span style={styles.cardText}>{t("create.safetyNote")}</span>
         </label>
       </div>
@@ -607,15 +611,16 @@ function SelectField({
 }
 
 function TextField({
-  disabled, label, maxLength, min, onChange, optional = false, type = "text", value
+  dictation = false, disabled, label, maxLength, min, onChange, optional = false, type = "text", value
 }: {
-  disabled: boolean; label: string; maxLength?: number; min?: string;
+  dictation?: boolean; disabled: boolean; label: string; maxLength?: number; min?: string;
   onChange: (value: string) => void; optional?: boolean; type?: string; value: string;
 }) {
   return (
     <label style={styles.fieldLabel}>
       {label}
       <input disabled={disabled} maxLength={maxLength} min={min} onChange={(event) => onChange(event.target.value)} required={!optional} style={styles.input} type={type} value={value} />
+      {dictation ? <DictationButton maxLength={maxLength} onText={onChange} value={value} /> : null}
     </label>
   );
 }
