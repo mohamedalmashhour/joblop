@@ -21,6 +21,7 @@ type Shift = Readonly<{
   employerName: string;
   areaLabel: string | null;
   worksiteAddress: string | null;
+  safetyNotes: string | null;
 }>;
 type PendingOffer = Readonly<{ workerOfferId: string; jobRequestId: string; title: string | null; startAt: string | null }>;
 type State = { status: "loading" } | { status: "signed_out" } | { status: "needs_setup" } | { status: "error" } | { status: "ready"; items: readonly Shift[] };
@@ -181,6 +182,7 @@ function ShiftCard({ s, busy, onAct, history, t, locale }: { s: Shift; busy: boo
       </div>
       <div className="when">{formatShift(s.scheduledStartAt, s.scheduledEndAt, s.timezone, locale)}</div>
       {s.worksiteAddress ? <div className="when">{t("sched.address", { address: s.worksiteAddress })}</div> : null}
+      {s.safetyNotes ? <div className="when">{t("sched.safetyNotes", { notes: s.safetyNotes })}</div> : null}
       <a className="muted" href={`/contact?topic=shift&relatedType=assignment&relatedId=${encodeURIComponent(s.assignmentId)}`}>{t("contact.askAbout")}</a>
       {inTime ? <div className="when">{outTime ? t("sched.inOut", { inTime, outTime }) : t("sched.in", { time: inTime })}</div> : null}
       {s.checkInAt && s.checkOutAt ? <div className="when"><strong>{t("sched.worked", { duration: workedDuration(s.checkInAt, s.checkOutAt, t) })}</strong></div> : null}

@@ -21,6 +21,23 @@ export type InvoiceRouteAuthorization = Readonly<{
   role: InvoiceActorRole;
 }>;
 
+// An employer sees an invoice only once staff have sent it. Drafts and issued-but-unsent invoices are
+// still Joblop's own working papers.
+const EMPLOYER_VISIBLE_INVOICE_STATUSES: readonly InvoiceStatus[] = [
+  "sent",
+  "viewed",
+  "partially_paid",
+  "paid",
+  "overdue",
+  "disputed",
+  "voided",
+  "refunded"
+];
+
+function canSeeInvoice(role: InvoiceActorRole, status: InvoiceStatus): boolean {
+  return role === "platform_admin" || EMPLOYER_VISIBLE_INVOICE_STATUSES.includes(status);
+}
+
 export function registerInvoiceRoutes(
   app: FastifyInstance,
   options: {
@@ -59,21 +76,29 @@ export function registerInvoiceRoutes(
 
   app.get("/organizations/:organizationId/invoices", async (request, reply) => {
     const organizationId = routeParam(request.params, "organizationId");
-    if (!(await options.authorize(request, organizationId))) return unavailable(reply);
+    const authorization = await options.authorize(request, organizationId);
+    if (!authorization) return unavailable(reply);
     const statuses = statusList(record(request.query).status);
     if (statuses === null) return invalid(reply);
-    return reply.send({ invoices: await options.repository.list(organizationId, statuses) });
+    const invoices = await options.repository.list(organizationId, statuses);
+    return reply.send({
+      invoices: invoices.filter((invoice) => canSeeInvoice(authorization.role, invoice.status))
+    });
   });
 
   app.get("/organizations/:organizationId/invoices/:invoiceId", async (request, reply) => {
     const scope = await authorizedInvoice(request, options);
-    if (!scope) return unavailable(reply);
+    if (!scope || !canSeeInvoice(scope.authorization.role, scope.invoice.status)) {
+      return unavailable(reply);
+    }
     return reply.send({ invoice: scope.invoice });
   });
 
   app.get("/organizations/:organizationId/invoices/:invoiceId/pdf", async (request, reply) => {
     const scope = await authorizedInvoice(request, options);
-    if (!scope) return unavailable(reply);
+    if (!scope || !canSeeInvoice(scope.authorization.role, scope.invoice.status)) {
+      return unavailable(reply);
+    }
     try {
       const rendered = renderBilingualSyntheticInvoicePdf(scope.invoice);
       return reply

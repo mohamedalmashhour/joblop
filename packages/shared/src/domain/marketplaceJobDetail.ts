@@ -37,6 +37,7 @@ export type MarketplaceJobDetailCandidate = Readonly<{
   currency: string;
   description: string | null; // public job description
   duties: string | null; // duties summary
+  safetyNotes: string | null; // employer's safety and site-access notes
   qualifications: readonly string[];
 }>;
 
@@ -58,6 +59,7 @@ export type MarketplaceJobDetail = Readonly<{
   currency: string;
   description: string | null;
   duties: string | null;
+  safetyNotes: string | null;
   qualifications: readonly string[];
 }>;
 
@@ -100,6 +102,7 @@ export function toMarketplaceJobDetail(input: {
     currency: c.currency,
     description: c.description,
     duties: c.duties,
+    safetyNotes: c.safetyNotes,
     qualifications: c.qualifications
   };
 }
