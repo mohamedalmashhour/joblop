@@ -422,6 +422,7 @@ export const styles: Record<string, CSSProperties> = {
     gridTemplateColumns: "repeat(auto-fit, minmax(230px, 1fr))"
   },
   fieldLabel: {
+    alignContent: "start",
     color: "#f4efe4",
     display: "grid",
     fontSize: 14,
