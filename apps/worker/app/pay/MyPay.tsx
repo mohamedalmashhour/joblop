@@ -228,7 +228,7 @@ export function MyPay() {
     <>
       <section className="hero">
         <h1>{t("nav.pay")}</h1>
-        <p>{state.notice || t("pay.defaultNotice")}</p>
+        <p>{t("pay.defaultNotice")}</p>
       </section>
       <div className="chips" style={{ marginBottom: 16 }}>
         <span className="chip status-rejected">{t("pay.syntheticChip")}</span>
@@ -299,7 +299,7 @@ function EarningsTab({ state, choose, t, locale }: { state: Extract<PayState, { 
               <div className="role">{period(s.periodStart, s.periodEnd, s.timezone, locale)}</div>
               <a className="muted" href={`/contact?topic=pay&relatedType=pay&relatedId=${encodeURIComponent(s.calculationId)}`}>{t("contact.askAbout")}</a>
               <div className="chips">
-                <span className="chip status-verified">{s.status}</span>
+                <span className="chip status-verified">{statusLabel(s.status, t)}</span>
                 <span className="chip">{s.jurisdiction.country}/{s.jurisdiction.region}</span>
                 <span className="chip">{t("pay.rev", { n: s.revision })}</span>
               </div>
@@ -311,7 +311,7 @@ function EarningsTab({ state, choose, t, locale }: { state: Extract<PayState, { 
                   <div className="when" style={{ marginTop: 6 }}>{t("pay.earningsTitle")}</div>
                   <ul style={{ margin: "4px 0 0", paddingLeft: 18, fontSize: 13 }}>
                     {s.earningLines.map((e, i) => (
-                      <li key={`${e.classification}-${i}`}>{e.description}: {money(e.amountMinor, e.currency, locale)} <span style={{ opacity: 0.7 }}>({t("pay.hours", { hours: hours(e.quantityMinutes) })} · {t("pay.rateHr", { rate: money(e.rateMinor, e.currency, locale) })})</span></li>
+                      <li key={`${e.classification}-${i}`}>{lineLabel("earning", e.classification, e.description, t)}: {money(e.amountMinor, e.currency, locale)} <span style={{ opacity: 0.7 }}>({t("pay.hours", { hours: hours(e.quantityMinutes) })} · {t("pay.rateHr", { rate: money(e.rateMinor, e.currency, locale) })})</span></li>
                     ))}
                   </ul>
                 </>
@@ -319,7 +319,7 @@ function EarningsTab({ state, choose, t, locale }: { state: Extract<PayState, { 
               {s.deductions.length > 0 ? (
                 <ul style={{ margin: "6px 0 0", paddingLeft: 18, fontSize: 13, color: "var(--text-muted)" }}>
                   {s.deductions.map((d) => (
-                    <li key={d.code}>{d.description}: −{money(d.amountMinor, d.currency, locale)} <span style={{ opacity: 0.7 }}>({d.category})</span></li>
+                    <li key={d.code}>{lineLabel("deduction", d.code, d.description, t)}: −{money(d.amountMinor, d.currency, locale)}</li>
                   ))}
                 </ul>
               ) : null}
@@ -544,4 +544,18 @@ function PaymentsCalendar({ payouts, items, openDisputed, onRaise, t, locale }: 
       )}
     </>
   );
+}
+
+// Pay lines arrive with English test names such as "Federal tax (synthetic)". Known lines get the
+// worker's language; anything else keeps its own name without the test marker.
+function lineLabel(kind: "earning" | "deduction", code: string, description: string, t: Translate): string {
+  const key = `pay.line.${code}` as MessageKey;
+  const translated = t(key);
+  return translated !== key ? translated : description.replace(/\s*\(synthetic\)\s*$/iu, "");
+}
+
+function statusLabel(status: string, t: Translate): string {
+  const key = `pay.status.${status}` as MessageKey;
+  const translated = t(key);
+  return translated !== key ? translated : status.replaceAll("_", " ");
 }

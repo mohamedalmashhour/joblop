@@ -3462,6 +3462,7 @@ export function buildApi(options: BuildApiOptions = {}) {
           : {})
       },
       select: {
+        id: true,
         jobRequestNumber: true,
         title: true,
         numberOfWorkers: true,
@@ -3475,7 +3476,9 @@ export function buildApi(options: BuildApiOptions = {}) {
       take: limit + 1
     });
     const hasMore = rows.length > limit;
-    const page = rows.slice(0, limit);
+    const openingsLeft = await remainingOpenings(prisma, rows);
+    // Full jobs drop off the board; pages may then show fewer than `limit`.
+    const page = rows.slice(0, limit).filter((r) => (openingsLeft.get(r.id) ?? r.numberOfWorkers) > 0);
     const jobs = page.map((r) => {
       const city = r.residence?.city ?? null;
       const prov = r.residence?.province ?? null;
@@ -3485,7 +3488,7 @@ export function buildApi(options: BuildApiOptions = {}) {
         city,
         province: prov,
         areaLabel: city && prov ? `${city}, ${prov}` : (prov ?? "Canada"),
-        openings: r.numberOfWorkers,
+        openings: openingsLeft.get(r.id) ?? r.numberOfWorkers,
         startAt: r.startAt.toISOString(),
         urgency: r.urgency
       };
@@ -3666,6 +3669,7 @@ export function buildApi(options: BuildApiOptions = {}) {
     const rows = await prisma!.jobRequest.findMany({
       where: {
         status: { in: ["submitted", "approved_for_dispatch"] },
+        endAt: { gt: new Date() }, // a shift that has already ended is not work anyone can take
         ...(roleFilter ? { roleDefinition: { key: roleFilter } } : {}),
         ...(minOpenings ? { numberOfWorkers: { gte: minOpenings } } : {}),
         ...(dateFrom || dateTo ? { startAt: { ...(dateFrom ? { gte: dateFrom } : {}), ...(dateTo ? { lte: dateTo } : {}) } } : {}),
@@ -3701,8 +3705,11 @@ export function buildApi(options: BuildApiOptions = {}) {
       });
       for (const v of verifiedRows) verifiedOrgIds.add(v.organizationId);
     }
+    const openingsLeft = await remainingOpenings(prisma!, rows);
     const candidates: MarketplaceJobCandidate[] = [];
     for (const r of rows) {
+      const left = openingsLeft.get(r.id) ?? r.numberOfWorkers;
+      if (left <= 0) continue; // every place is taken
       const province = r.residence.province;
       if (!options.countryAddress?.isRegionCode(province) || r.residence.latitude === null || r.residence.longitude === null) continue;
       const isVerifiedEmployer = verifiedOrgIds.has(r.organization.id);
@@ -3718,7 +3725,7 @@ export function buildApi(options: BuildApiOptions = {}) {
         longitude: r.residence.longitude,
         startAt: r.startAt.toISOString(),
         endAt: r.endAt.toISOString(),
-        openings: r.numberOfWorkers,
+        openings: left,
         workerRateMinor: r.pricingSnapshot?.workerHourlyRateMinor ?? null, // W from the immutable approval snapshot (null until approved); the employer rate E is never exposed here
         currency: countryCurrency // display-only; driven by the selected country (CAD for Canada)
       });
@@ -11791,4 +11798,33 @@ function createUnavailableCalendarRequestService(): CalendarRequestService {
     getAdminCalendarRequest: denied,
     getWorkerOfferCalendarReference: denied
   } as CalendarRequestService;
+}
+
+// Assignment states that still hold a place on a job. Withdrawn, cancelled and replaced ones free it.
+const PLACE_HOLDING_ASSIGNMENT_STATUSES = [
+  "pending_validation",
+  "confirmed",
+  "worker_acknowledged",
+  "ready_for_attendance",
+  "in_attendance_window",
+  "attendance_handoff",
+  "closed"
+] as const;
+
+// How many places are still open on each job: the headcount asked for, less the workers holding one.
+export async function remainingOpenings(
+  prisma: Pick<ReturnType<typeof createPrismaClient>, "assignment">,
+  jobs: readonly Readonly<{ id: string; numberOfWorkers: number }>[]
+): Promise<Map<string, number>> {
+  const left = new Map(jobs.map((job) => [job.id, job.numberOfWorkers]));
+  if (jobs.length === 0) return left;
+  const held = await prisma.assignment.groupBy({
+    by: ["jobRequestId"],
+    where: { jobRequestId: { in: jobs.map((job) => job.id) }, status: { in: [...PLACE_HOLDING_ASSIGNMENT_STATUSES] } },
+    _count: { _all: true }
+  });
+  for (const row of held) {
+    left.set(row.jobRequestId, Math.max(0, (left.get(row.jobRequestId) ?? 0) - row._count._all));
+  }
+  return left;
 }
