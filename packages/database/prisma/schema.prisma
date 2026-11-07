@@ -2074,6 +2074,9 @@ model WorkerJobInterest {
   // Logical link to the governed offer once one is created for this interest (no FK — the
   // offer lifecycle stays authoritative in its own model).
   workerOfferId      String?                 @map("worker_offer_id") @db.Uuid
+  // The employer's favourite mark: a suggestion to Joblop staff, never an offer or a status change.
+  employerFavoritedAt       DateTime? @map("employer_favorited_at") @db.Timestamptz(3)
+  employerFavoritedByUserId String?   @map("employer_favorited_by_user_id") @db.Uuid
   createdAt          DateTime                @default(now()) @map("created_at") @db.Timestamptz(3)
   updatedAt          DateTime                @updatedAt @map("updated_at") @db.Timestamptz(3)
   version            Int                     @default(1)
