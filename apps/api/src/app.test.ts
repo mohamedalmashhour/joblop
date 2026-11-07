@@ -1165,6 +1165,15 @@ describe("api employer organization foundation", () => {
         displayName: "Tenant API Updated"
       }
     });
+    const stale = await app.inject({
+      method: "PATCH",
+      url: `/organizations/${organization.id}`,
+      headers: { authorization: `Bearer ${registration.token}` },
+      payload: {
+        expectedVersion: organization.version,
+        displayName: "Stale Update"
+      }
+    });
     const status = await app.inject({
       method: "GET",
       url: `/organizations/${organization.id}/status`,
@@ -1173,6 +1182,7 @@ describe("api employer organization foundation", () => {
 
     expect(current.statusCode).toBe(200);
     expect(updated.statusCode).toBe(200);
+    expect(stale.statusCode).toBe(409);
     expect(updated.json().organization.displayName).toBe("Tenant API Updated");
     expect(status.statusCode).toBe(200);
     expect(status.json()).toMatchObject({

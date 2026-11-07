@@ -17,6 +17,7 @@ const publicRoutes = new Set([
 const persistedEmployerRoutes = new Set([
   "/employer",
   "/employer/dashboard",
+  "/employer/company",
   "/employer/onboarding/company",
   "/employer/onboarding/residences",
   "/employer/onboarding/departments",
