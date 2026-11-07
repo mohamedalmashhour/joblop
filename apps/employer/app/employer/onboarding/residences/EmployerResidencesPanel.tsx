@@ -112,9 +112,49 @@ export function EmployerResidencesPanel() {
             <p style={styles.cardText}>{formatLocation(residence)}</p>
           ) : null}
           <p style={styles.cardText}>Reference: {residence.publicId}</p>
+          <SiteLocationForm residenceId={residence.residenceId} onSaved={load} />
         </article>
       ))}
     </div>
+  );
+}
+
+// Workers search by distance, so a site without a location never appears in their results.
+function SiteLocationForm({ residenceId, onSaved }: Readonly<{ residenceId: string; onSaved: () => Promise<void> }>) {
+  const [postalCode, setPostalCode] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [problem, setProblem] = useState(false);
+  const save = async (event: React.FormEvent) => {
+    event.preventDefault();
+    setBusy(true);
+    setProblem(false);
+    const response = await fetch(`/api/residences/${encodeURIComponent(residenceId)}/location`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ postalCode })
+    }).catch(() => null);
+    setBusy(false);
+    if (response?.ok) return onSaved();
+    setProblem(true);
+  };
+  return (
+    <form onSubmit={(event) => void save(event)} style={styles.formGrid}>
+      <label style={styles.fieldLabel}>
+        Postal code, so workers can find this site
+        <input
+          autoComplete="postal-code"
+          onChange={(event) => setPostalCode(event.target.value)}
+          placeholder="e.g. H7V 1A1"
+          required
+          style={styles.input}
+          value={postalCode}
+        />
+      </label>
+      {problem ? <p role="alert" style={styles.warning}>That postal code could not be found. Check it and try again.</p> : null}
+      <button disabled={busy} style={styles.primaryButton} type="submit">
+        {busy ? "Saving…" : "Save location"}
+      </button>
+    </form>
   );
 }
 

@@ -22,6 +22,7 @@ export function OnboardingPanel() {
   const [resName, setResName] = useState("");
   const [province, setProvince] = useState("QC");
   const [city, setCity] = useState("");
+  const [postalCode, setPostalCode] = useState("");
   const [residenceId, setResidenceId] = useState("");
   const [deptName, setDeptName] = useState("");
 
@@ -68,10 +69,15 @@ export function OnboardingPanel() {
     if (out) setStep("residence");
   }
   async function createResidence() {
-    if (!resName.trim() || !city.trim()) return;
+    if (!resName.trim() || !city.trim() || !postalCode.trim()) return;
     const out = await post("/api/residences", { name: resName.trim(), province, city: city.trim() });
     const id = (out?.residence as { id?: string } | undefined)?.id;
-    if (out && id) { setResidenceId(id); setStep("department"); }
+    if (out && id) {
+      setResidenceId(id);
+      setStep("department");
+      const located = await post(`/api/residences/${encodeURIComponent(id)}/location`, { postalCode: postalCode.trim() });
+      if (!located) setError("The site was saved, but that postal code could not be found. Workers cannot find its jobs until you fix it on the Sites page.");
+    }
     else if (out) setError("The residence was saved but no id came back. Refresh and continue.");
   }
   async function createDepartment() {
@@ -127,7 +133,11 @@ export function OnboardingPanel() {
             City
             <input value={city} onChange={(e) => setCity(e.target.value)} placeholder="e.g. Laval" style={styles.input} />
           </label>
-          <button type="button" disabled={busy || !resName.trim() || !city.trim()} onClick={() => void createResidence()} style={styles.primaryButton}>
+          <label style={styles.fieldLabel}>
+            Postal code
+            <input value={postalCode} onChange={(e) => setPostalCode(e.target.value)} autoComplete="postal-code" placeholder="e.g. H7V 1A1" style={styles.input} />
+          </label>
+          <button type="button" disabled={busy || !resName.trim() || !city.trim() || !postalCode.trim()} onClick={() => void createResidence()} style={styles.primaryButton}>
             {busy ? "Saving…" : "Add site"}
           </button>
         </div>
