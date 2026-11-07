@@ -9,7 +9,7 @@ type State =
   | { status: "loading" }
   | { status: "setup_required" }
   | { status: "error" }
-  | { status: "ready"; company: CompanyDetails };
+  | { status: "ready"; company: CompanyDetails; legalNameLocked: boolean };
 
 export function EmployerCompanyPanel() {
   const t = useT();
@@ -19,10 +19,10 @@ export function EmployerCompanyPanel() {
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState("");
 
-  const show = useCallback((company: CompanyDetails) => {
+  const show = useCallback((company: CompanyDetails, legalNameLocked: boolean) => {
     setDisplayName(company.displayName);
     setLegalName(company.legalName);
-    setState({ status: "ready", company });
+    setState({ status: "ready", company, legalNameLocked });
   }, []);
 
   const load = useCallback(async () => {
@@ -31,7 +31,8 @@ export function EmployerCompanyPanel() {
       if (response.status === 401) return window.location.replace("/signin");
       if (response.status === 409) return setState({ status: "setup_required" });
       if (!response.ok) return setState({ status: "error" });
-      show(((await response.json()) as { company: CompanyDetails }).company);
+      const payload = (await response.json()) as { company: CompanyDetails; legalNameLocked?: boolean };
+      show(payload.company, payload.legalNameLocked === true);
     } catch {
       setState({ status: "error" });
     }
@@ -54,7 +55,7 @@ export function EmployerCompanyPanel() {
     );
   }
 
-  const { company } = state;
+  const { company, legalNameLocked } = state;
   const unchanged = displayName.trim() === company.displayName && legalName.trim() === company.legalName;
   const blank = !displayName.trim() || !legalName.trim();
 
@@ -72,7 +73,7 @@ export function EmployerCompanyPanel() {
         return setMessage(t("company.conflict"));
       }
       if (!response.ok) return setMessage(t("company.saveError"));
-      show(((await response.json()) as { company: CompanyDetails }).company);
+      show(((await response.json()) as { company: CompanyDetails }).company, legalNameLocked);
       setMessage(t("company.saved"));
     } catch {
       setMessage(t("company.saveError"));
@@ -91,8 +92,8 @@ export function EmployerCompanyPanel() {
         </label>
         <label style={styles.fieldLabel}>
           {t("company.legalName")}
-          <input maxLength={200} onChange={(event) => setLegalName(event.target.value)} style={styles.input} value={legalName} />
-          <span style={styles.cardText}>{t("company.legalNameNote")}</span>
+          <input disabled={legalNameLocked} maxLength={200} onChange={(event) => setLegalName(event.target.value)} style={styles.input} value={legalName} />
+          <span style={styles.cardText}>{t(legalNameLocked ? "company.legalNameLocked" : "company.legalNameNote")}</span>
         </label>
         <p style={styles.cardText}>{t("company.reference", { id: company.publicId })}</p>
         <div style={{ alignItems: "center", display: "flex", flexWrap: "wrap", gap: 12 }}>

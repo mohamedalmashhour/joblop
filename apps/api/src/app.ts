@@ -368,6 +368,7 @@ import { stripeTestEnvFromProcess } from "./cvProStripeCheckout";
 import { claimOpenJob, ensureOpenClaimDispatch, placeClaimedShiftOnSchedule } from "./openClaim";
 import { isWorksiteAddressVisible, workerJobAddress, WORKSITE_ADDRESS_SELECT } from "./worksiteAddress";
 import { listEmployerApplicants, setEmployerFavorite } from "./employerApplicants";
+import { legalNameChangeBlocked } from "./organizationLegalName";
 import { listWorkerPayoutsForStaff } from "./workerPayoutStaffList";
 
 export interface BuildApiOptions {
@@ -2476,9 +2477,26 @@ export function buildApi(options: BuildApiOptions = {}) {
     }
 
     const body = asRecord(request.body);
+    const organizationId = readRouteParam(request.params, "organizationId");
+    const requestedLegalName = readOptionalString(body, "legalName");
+    if (requestedLegalName !== null) {
+      const current = await organizationService.getOrganization({ actorUserId: session.user.id, organizationId });
+      const blocked = legalNameChangeBlocked({
+        currentLegalName: current.legalName,
+        requestedLegalName,
+        verified: await verificationService.isEmployerVerified(organizationId),
+        platformAdmin: (await resolveAuthorizationRoles(session.user.id)).includes("PLATFORM_ADMINISTRATOR")
+      });
+      if (blocked) {
+        return reply.code(409).send({
+          error: "RWOS_ORGANIZATION_LEGAL_NAME_LOCKED",
+          message: "A verified company's legal name can only be changed by Joblop."
+        });
+      }
+    }
     const organization = await organizationService.updateOrganization({
       actorUserId: session.user.id,
-      organizationId: readRouteParam(request.params, "organizationId"),
+      organizationId,
       expectedVersion: readRequiredString(body, "expectedVersion") ?? "",
       legalName: readOptionalString(body, "legalName"),
       displayName: readOptionalString(body, "displayName")

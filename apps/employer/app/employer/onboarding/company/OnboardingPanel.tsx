@@ -1,19 +1,19 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { activeCountry } from "@rwos/shared";
 import { styles } from "../../employerStyles";
+import { resumeStep, type SetupStep } from "./setupStep";
 
 // Round 2c: real self-serve employer onboarding. Persists org → residence → department against the
 // governed API (via BFF routes), auto-selecting the new org as the active context. On completion the
 // employer can immediately create a staffing request. No fixtures, no localStorage.
-type Step = "company" | "residence" | "department" | "done";
 
 // Region codes come from the active country profile (F16 seam) — no hardcoded province list here.
 const PROVINCES = activeCountry().regions.map((r) => r.code);
 
 export function OnboardingPanel() {
-  const [step, setStep] = useState<Step>("company");
+  const [step, setStep] = useState<SetupStep>("company");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -24,6 +24,18 @@ export function OnboardingPanel() {
   const [city, setCity] = useState("");
   const [residenceId, setResidenceId] = useState("");
   const [deptName, setDeptName] = useState("");
+
+  // Coming back to setup continues where this company left off.
+  useEffect(() => {
+    void (async () => {
+      const company = await fetch("/api/organizations/current", { cache: "no-store" }).catch(() => null);
+      if (!company?.ok) return;
+      const sites = await fetch("/api/residences", { cache: "no-store" }).catch(() => null);
+      const list = sites?.ok ? ((await sites.json()) as { residences?: { id: string }[] }).residences ?? [] : [];
+      setResidenceId(list[0]?.id ?? "");
+      setStep(resumeStep(true, list.length));
+    })();
+  }, []);
 
   async function post(url: string, body: unknown): Promise<Record<string, unknown> | null> {
     setBusy(true);
@@ -100,7 +112,7 @@ export function OnboardingPanel() {
 
       {step === "residence" ? (
         <div style={styles.formGrid}>
-          <p style={styles.cardText}>Your organization is created. Add your first site (a residence/location where shifts happen).</p>
+          <p style={styles.cardText}>Add a site: the place where shifts happen.</p>
           <label style={styles.fieldLabel}>
             Site / residence name
             <input value={resName} onChange={(e) => setResName(e.target.value)} placeholder="e.g. Oak Hill Residence" style={styles.input} />
@@ -137,10 +149,13 @@ export function OnboardingPanel() {
       {step === "done" ? (
         <div style={styles.formGrid}>
           <p style={styles.cardText}>
-            Your organization, first site, and a department are set up and saved. You can now create a staffing request.
+            Your company and site are saved. Sign your contract, then you can request workers.
           </p>
-          <a href="/employer/calendar/create" style={styles.primaryButton}>Create your first staffing request</a>
-          <a href="/employer/onboarding/residences" style={styles.secondaryButton}>Add more sites</a>
+          <a href="/employer/contract" style={styles.primaryButton}>Review my contract</a>
+          <button onClick={() => { setResName(""); setCity(""); setStep("residence"); }} style={styles.secondaryButton} type="button">Add another site</button>
+          {residenceId ? (
+            <button onClick={() => { setDeptName(""); setStep("department"); }} style={styles.secondaryButton} type="button">Add a department</button>
+          ) : null}
         </div>
       ) : null}
     </section>
