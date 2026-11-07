@@ -96,7 +96,7 @@ export function PersistedDispatchPanel({
     <main style={styles.page}>
       <header style={styles.hero}>
         <div>
-          <p style={styles.eyebrow}>Resident Workforce OS / Dispatch review</p>
+          <p style={styles.eyebrow}>Joblop / Dispatch review</p>
           <h1 style={styles.title}>Operational dispatch review</h1>
           <p style={styles.lede}>
             {dispatch.jobRequestNumber ?? dispatch.jobRequestId} · {dispatch.state.replaceAll("_", " ")}

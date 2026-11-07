@@ -199,8 +199,9 @@ export function renderBilingualSyntheticCreditNotePdf(
 type Colour = readonly [number, number, number];
 const BLACK: Colour = [0, 0, 0];
 const WHITE: Colour = [1, 1, 1];
-const GOLD: Colour = [0.851, 0.663, 0.247];
-const GOLD_DARK: Colour = [0.62, 0.46, 0.13];
+// The gold of the Joblop logo artwork, #F8B808.
+const GOLD: Colour = [0.973, 0.722, 0.031];
+const GOLD_DARK: Colour = [0.72, 0.52, 0.0];
 const INK: Colour = [0.07, 0.07, 0.07];
 const MUTED: Colour = [0.42, 0.4, 0.37];
 const PANEL: Colour = [0.965, 0.949, 0.914];

@@ -3,7 +3,6 @@
 import { useEffect, useState } from "react";
 import { invoiceStates } from "../invoiceWorkflowContent";
 import { styles } from "../employerStyles";
-import { LanguageSwitcher } from "../../i18n/LanguageSwitcher";
 import { fmtLocale, useLocale, useT } from "../../i18n/LocaleProvider";
 import { previewInvoicePaymentOptions } from "./invoicePaymentPreview";
 import { findSelectedInvoice, invoiceDetailHref } from "./invoiceSelection";
@@ -115,9 +114,6 @@ export function InvoiceReviewPanel({
   const paymentPreview = selected ? previewInvoicePaymentOptions(selected) : null;
   return (
     <section style={styles.section}>
-      <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: 8 }}>
-        <LanguageSwitcher />
-      </div>
       <div style={styles.panel}>
         <div style={styles.sectionHeader}>
           <p style={styles.eyebrowDark}>{t("inv.eyebrow")}</p>

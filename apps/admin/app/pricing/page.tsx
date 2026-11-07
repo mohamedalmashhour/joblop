@@ -4,7 +4,7 @@ export default function AdminPricingPage() {
   return (
     <main style={styles.page}>
       <header style={styles.hero}>
-        <p style={styles.eyebrow}>Resident Workforce OS / Administration</p>
+        <p style={styles.eyebrow}>Joblop / Administration</p>
         <h1 style={styles.title}>Variable price quote</h1>
         <p style={styles.lede}>
           Compute the full client-side quote for a job: base labour, funded allowances, the emergency

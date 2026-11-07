@@ -17,7 +17,7 @@ export default function EmployersPage() {
     <main style={styles.page}>
       <header style={styles.header}>
         <div>
-          <p style={styles.eyebrow}>Resident Workforce OS / Administration</p>
+          <p style={styles.eyebrow}>Joblop / Administration</p>
           <h1 style={styles.title}>Employers</h1>
           <p style={styles.lede}>
             Governed employer account administration for authorized administrators, support, and

@@ -9,8 +9,8 @@ import "./globals.css";
 
 
 export const metadata: Metadata = {
-  title: "Resident Workforce OS Administration",
-  description: "Authorized Resident Workforce OS administration workspace."
+  title: "Joblop Administration",
+  description: "Joblop staff workspace."
 };
 
 export default async function RootLayout({ children }: Readonly<{ children: ReactNode }>) {

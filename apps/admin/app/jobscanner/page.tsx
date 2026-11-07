@@ -4,7 +4,7 @@ export default function JobScannerPage() {
   return (
     <main style={styles.page}>
       <header style={styles.hero}>
-        <p style={styles.eyebrow}>Resident Workforce OS / JobScanner</p>
+        <p style={styles.eyebrow}>Joblop / JobScanner</p>
         <h1 style={styles.title}>JobScanner</h1>
         <p style={styles.lede}>
           Aggregated external jobs from legal partner feeds (Adzuna now; more later), ranked for a

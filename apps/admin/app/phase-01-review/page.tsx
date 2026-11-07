@@ -6,7 +6,7 @@ export default function Phase01ReviewPage() {
     <main style={styles.page}>
       <header style={styles.header}>
         <div>
-          <p style={styles.eyebrow}>Resident Workforce OS / Owner Review</p>
+          <p style={styles.eyebrow}>Joblop / Owner Review</p>
           <h1 style={styles.title}>Implementation Phase 01 Owner Review</h1>
           <p style={styles.lede}>
             Open every implemented administration page from one safe review index. These pages use

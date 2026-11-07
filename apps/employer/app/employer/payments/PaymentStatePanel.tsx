@@ -5,7 +5,6 @@ import {
   employerPaymentStates,
 } from "../paymentWorkflowContent";
 import { styles } from "../employerStyles";
-import { LanguageSwitcher } from "../../i18n/LanguageSwitcher";
 import { fmtLocale, useLocale, useT } from "../../i18n/LocaleProvider";
 import type { RwosLocale } from "../../i18n/config";
 
@@ -68,9 +67,6 @@ export function PaymentStatePanel({
   const selected = payments[0] ?? null;
   return (
     <section style={styles.section}>
-      <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: 8 }}>
-        <LanguageSwitcher />
-      </div>
       <div style={styles.panel}>
         <div style={styles.sectionHeader}>
           <p style={styles.eyebrowDark}>{t("pay.eyebrow")}</p>

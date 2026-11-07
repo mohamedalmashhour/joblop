@@ -84,7 +84,7 @@ export function VerificationQueuePanel() {
   return (
     <main style={styles.page}>
       <header style={styles.hero}>
-        <p style={styles.eyebrow}>Resident Workforce OS / Verification</p>
+        <p style={styles.eyebrow}>Joblop / Verification</p>
         <h1 style={styles.title}>Verification queue</h1>
         <p style={styles.lede}>Governed trust decisions for workers and employers. Every decision is audited. Badges and eligibility read these states — never an account, contract, or payment.</p>
       </header>

@@ -155,7 +155,7 @@ export function PersistedAdminReviewPanel({ requestId }: Readonly<{ requestId: s
     <main style={styles.page}>
       <header style={styles.hero}>
         <div>
-          <p style={styles.eyebrow}>Resident Workforce OS / Persisted review</p>
+          <p style={styles.eyebrow}>Joblop / Persisted review</p>
           <h1 style={styles.title}>{request.title}</h1>
           <p style={styles.lede}>
             {request.requestNumber} · {request.authoritativeStatus.replaceAll("_", " ")}

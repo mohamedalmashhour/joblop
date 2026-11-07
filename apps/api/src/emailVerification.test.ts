@@ -43,7 +43,7 @@ describe("email verification service", () => {
     expect(sender.messages).toHaveLength(1);
     expect(sender.messages[0]).toMatchObject({
       to: "worker@example.test",
-      subject: "Your Resident Workforce OS verification code"
+      subject: "Your Joblop verification code"
     });
     expect(sender.messages[0]?.text).toContain("123456");
     expect(repository.active?.codeHash).toBe(hashEmailVerificationCode("123456"));

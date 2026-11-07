@@ -15,7 +15,7 @@ export default function FinancePage() {
     <main style={styles.page}>
       <header style={styles.header}>
         <div>
-          <p style={styles.eyebrow}>Resident Workforce OS / Administration</p>
+          <p style={styles.eyebrow}>Joblop / Administration</p>
           <h1 style={styles.title}>Finance</h1>
           <p style={styles.lede}>
             Governed finance operations visibility for authorized finance, administrator, and super

@@ -4,7 +4,7 @@ export default function ProOrdersPage() {
   return (
     <main style={styles.page}>
       <header style={styles.hero}>
-        <p style={styles.eyebrow}>Resident Workforce OS / Administration</p>
+        <p style={styles.eyebrow}>Joblop / Administration</p>
         <h1 style={styles.title}>Worker Pro orders</h1>
         <p style={styles.lede}>
           Review and confirm Worker Pro subscriptions paid by Interac e-transfer. Confirm an order only

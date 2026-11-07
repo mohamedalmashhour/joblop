@@ -44,7 +44,7 @@ export function HrConsolePanel() {
   return (
     <main style={styles.page}>
       <header style={styles.hero}>
-        <p style={styles.eyebrow}>Resident Workforce OS / HR</p>
+        <p style={styles.eyebrow}>Joblop / HR</p>
         <h1 style={styles.title}>HR console</h1>
         <p style={styles.lede}>Governed HR operations for HR administrators. HR consumes verification and eligibility — it never mutates marketplace, dispatch, or payroll. Every decision is audited.</p>
       </header>

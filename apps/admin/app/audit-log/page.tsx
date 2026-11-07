@@ -17,7 +17,7 @@ export default function AuditLogPage() {
     <main style={styles.page}>
       <header style={styles.header}>
         <div>
-          <p style={styles.eyebrow}>Resident Workforce OS / Administration</p>
+          <p style={styles.eyebrow}>Joblop / Administration</p>
           <h1 style={styles.title}>Audit Log</h1>
           <p style={styles.lede}>
             Append-only audit evidence visibility for authorized administrators, super

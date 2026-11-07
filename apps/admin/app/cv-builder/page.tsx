@@ -4,7 +4,7 @@ export default function CvBuilderPage() {
   return (
     <main style={styles.page}>
       <header style={styles.hero}>
-        <p style={styles.eyebrow}>Resident Workforce OS / JobScanner</p>
+        <p style={styles.eyebrow}>Joblop / JobScanner</p>
         <h1 style={styles.title}>CV Builder</h1>
         <p style={styles.lede}>
           A guided, tap-to-answer builder — short questions with ready options, per-trade skill

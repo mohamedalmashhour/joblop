@@ -4,7 +4,7 @@ export default function ContactDeskPage() {
   return (
     <main style={styles.page}>
       <header style={styles.hero}>
-        <p style={styles.eyebrow}>Resident Workforce OS / Administration</p>
+        <p style={styles.eyebrow}>Joblop / Administration</p>
         <h1 style={styles.title}>Contact desk</h1>
         <p style={styles.lede}>
           Workers and employers talking to Joblop. AI answers first; everything here needing a person is

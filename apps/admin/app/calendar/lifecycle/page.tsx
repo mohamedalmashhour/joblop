@@ -5,7 +5,7 @@ export default function AdminLifecycleCalendarPage() {
   return (
     <main style={styles.page}>
       <header style={styles.header}>
-        <p style={styles.eyebrow}>Resident Workforce OS / Administration</p>
+        <p style={styles.eyebrow}>Joblop / Administration</p>
         <h1 style={styles.title}>Lifecycle calendar</h1>
         <p style={styles.lede}>
           A month view of every non-draft request across organizations, placed on its shift date and

@@ -5,7 +5,7 @@ export default function AdminCalendarPage() {
   return (
     <main style={styles.page}>
       <header style={styles.hero}>
-        <p style={styles.eyebrow}>Resident Workforce OS / Administration</p>
+        <p style={styles.eyebrow}>Joblop / Administration</p>
         <h1 style={styles.title}>Review calendar</h1>
         <p style={styles.lede}>
           Authenticated client requests in one governed review queue. Opening a request does not

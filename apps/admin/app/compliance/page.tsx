@@ -17,7 +17,7 @@ export default function CompliancePage() {
     <main style={styles.page}>
       <header style={styles.header}>
         <div>
-          <p style={styles.eyebrow}>Resident Workforce OS / Administration</p>
+          <p style={styles.eyebrow}>Joblop / Administration</p>
           <h1 style={styles.title}>Compliance</h1>
           <p style={styles.lede}>
             Governed compliance visibility for authorized compliance, administrator, and super
