@@ -94,6 +94,8 @@ describe("bilingual synthetic invoice PDF", () => {
     expect(text).toContain("INVOICE / FACTURE");
     expect(text).toContain("Test document, not valid for tax filing.");
     expect(text).not.toContain("precalculated_minor_units");
+    expect(text).toContain("/Subtype /Image");
+    expect(text).toContain("Thank you for your cooperation with us.");
     expect(first.digest).toBe(second.digest);
     expect(first.filename).toBe("SYN-A-2026-000001.pdf");
   });
