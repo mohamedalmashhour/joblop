@@ -16,6 +16,7 @@ describe("admin production route policy", () => {
       "/dispatches",
       "/dispatches/11111111-1111-4111-8111-111111111111",
       "/disputes",
+      "/contracts",
       "/payouts",
       "/invoices",
       "/api/session",

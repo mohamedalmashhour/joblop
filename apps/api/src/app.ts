@@ -2556,6 +2556,27 @@ export function buildApi(options: BuildApiOptions = {}) {
     }
   });
 
+  app.get("/platform/organizations/:organizationId/contract", async (request, reply) => {
+    const session = await authService.validateSession(readBearerToken(request.headers.authorization));
+    if (!session.authenticated || !session.user) return sendContractDenied(reply);
+    try {
+      const contract = await employerContractService.getActiveContractForPlatform({
+        actorUserId: session.user.id,
+        organizationId: readRouteParam(request.params, "organizationId")
+      });
+      // The general catalogue route is scoped to company roles, so staff get the groups here. The
+      // service call above has already confirmed this is a platform administrator.
+      const workGroups = await prisma!.workGroup.findMany({
+        where: { status: "active" },
+        orderBy: { displayOrder: "asc" },
+        select: { id: true, displayLabel: true }
+      });
+      return reply.code(200).send({ contract, workGroups });
+    } catch (error) {
+      return sendContractError(reply, error);
+    }
+  });
+
   // Publish/replace the governed rate card. PLATFORM-ADMIN ONLY — the service
   // (signContract → assertPlatformAdmin) denies any organization owner/administrator,
   // so an employer cannot create, publish, modify, or override governed rates even by

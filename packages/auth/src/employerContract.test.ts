@@ -153,6 +153,14 @@ describe("employer contract service", () => {
     expect(active?.version).toBe("v1");
   });
 
+  it("lets only a platform admin read a rate card through the staff route", async () => {
+    const { repository } = fakeRepository();
+    const input = { actorUserId: "staff-1", organizationId: "org-1" };
+    const staff = makeService(repository, { platform: PLATFORM });
+    expect(await staff.getActiveContractForPlatform(input)).toBeNull();
+    await expect(makeService(repository).getActiveContractForPlatform(input)).rejects.toMatchObject({ code: "denied" });
+  });
+
   it("denies a non-owner viewing and an inactive membership acknowledging", async () => {
     const { repository } = fakeRepository();
     const staff = makeService(repository, { membership: membershipReader(["ORGANIZATION_STAFF"]) });

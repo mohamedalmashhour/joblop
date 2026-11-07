@@ -24,6 +24,7 @@ export function isProductionAdminRouteAllowed(pathname: string) {
     path === "/contact-desk" ||
     path === "/dispatches" ||
     path === "/disputes" ||
+    path === "/contracts" ||
     path === "/payouts" ||
     path === "/invoices" ||
     dispatchDetail.test(path) ||

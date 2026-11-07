@@ -188,6 +188,13 @@ export function createEmployerContractService(
       return contract ? toPublicContract(contract) : null;
     },
 
+    // Staff reading a company's rate card before replacing it. Platform-admin authority only.
+    async getActiveContractForPlatform(input: { actorUserId: string; organizationId: string }) {
+      await assertPlatformAdmin(platformAuthority, input.actorUserId);
+      const contract = await repository.findActiveContract(input.organizationId);
+      return contract ? toPublicContract(contract) : null;
+    },
+
     // Publish/replace the governed rate card. Platform-admin authority ONLY — an
     // organization owner/administrator is denied here, so a client cannot create,
     // publish, modify, or override governed rates.
