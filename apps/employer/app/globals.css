@@ -200,6 +200,8 @@ footer nav a {
 .scan-count a { color: #f8b808; }
 .scan-empty { color: #c9bfae; padding: 20px 0; }
 .scan-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 14px; text-align: start; }
+.scan-cell { position: relative; display: flex; }
+.scan-cell .scan-card { flex: 1; padding-bottom: 46px; }
 .scan-card { display: flex; flex-direction: column; gap: 8px; padding: 18px; border-radius: 16px; background: #fff; color: #111; text-decoration: none; border: 2px solid transparent; transition: transform 0.15s ease, border-color 0.15s ease; animation: scan-in 0.5s ease both; }
 .scan-card:nth-child(2) { animation-delay: 0.08s; } .scan-card:nth-child(3) { animation-delay: 0.16s; } .scan-card:nth-child(4) { animation-delay: 0.24s; } .scan-card:nth-child(5) { animation-delay: 0.32s; } .scan-card:nth-child(6) { animation-delay: 0.4s; }
 @keyframes scan-in { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: none; } }
@@ -216,3 +218,8 @@ footer nav a {
 @media (max-width: 860px) { .scan-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
 @media (max-width: 560px) { .scan-grid { grid-template-columns: 1fr; } .scan-form { flex-direction: column; } .scan-form button { padding: 14px; } .scan-band { padding: 48px 16px; } }
 @media (prefers-reduced-motion: reduce) { .scan-dot, .scan-card { animation: none; } }
+
+/* Adzuna's API terms: each displayed Adzuna advert is labelled "Adzuna" (min 116x23 px), linked to adzuna.ca */
+.adzuna-badge { position: absolute; left: 18px; bottom: 14px; display: inline-flex; align-items: center; justify-content: center; min-width: 116px; min-height: 24px; padding: 0 10px; border-radius: 6px; background: #f3f0ea; color: #2b2b2b; font-size: 14px; font-weight: 700; text-decoration: none; }
+[dir="rtl"] .adzuna-badge { left: auto; right: 18px; }
+.adzuna-badge:hover { background: #e9e3d6; }

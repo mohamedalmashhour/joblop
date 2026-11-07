@@ -15,6 +15,7 @@ type Lead = Readonly<{
   salaryMaxMinor?: number | null;
   salaryPeriod?: string | null;
   postedAt?: string | null;
+  source?: string | null;
 }>;
 
 const TEXT: Record<Lang, Record<string, string>> = {
@@ -124,7 +125,8 @@ export async function JobScannerBand({ lang, q, workerAppUrl }: { lang: Lang; q:
             {leads.map((l, i) => {
               const p = pay(l);
               return (
-                <a key={`${l.title}-${i}`} href={signUp} className="scan-card" title={t.gate}>
+                <div key={`${l.title}-${i}`} className="scan-cell">
+                <a href={signUp} className="scan-card" title={t.gate}>
                   <strong>{l.title}</strong>
                   <span className="scan-meta">
                     {l.employer ? `${l.employer} · ` : ""}📍 {l.areaLabel}
@@ -134,6 +136,10 @@ export async function JobScannerBand({ lang, q, workerAppUrl }: { lang: Lang; q:
                     <span className="scan-open">{t.open} →</span>
                   </span>
                 </a>
+                {l.source === "adzuna" ? (
+                  <a className="adzuna-badge" href="https://www.adzuna.ca" target="_blank" rel="noreferrer">Adzuna</a>
+                ) : null}
+                </div>
               );
             })}
           </div>

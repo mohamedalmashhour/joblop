@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 
-type Lead = { id?: string; title: string; employer: string | null; city: string | null; province: string | null; salaryMaxMinor: number | null; url: string; score?: number; distanceKm?: number | null };
+type Lead = { id?: string; title: string; employer: string | null; city: string | null; province: string | null; salaryMaxMinor: number | null; url: string; source?: string; score?: number; distanceKm?: number | null };
 
 const money = (m: number | null) => (m ? `~${(m / 100).toLocaleString("en-CA", { style: "currency", currency: "CAD", maximumFractionDigits: 0 })}/yr` : "");
 
@@ -55,6 +55,9 @@ export function JobScannerFeed() {
           <div style={styles.actions}>
             <a style={styles.apply} href={l.url} target="_blank" rel="noreferrer">Apply on source ↗</a>
             <a style={styles.ghost} href="/cv-builder">Tailor my CV</a>
+            {l.source === "adzuna" ? (
+              <a style={styles.adzuna} href="https://www.adzuna.ca" target="_blank" rel="noreferrer">Adzuna</a>
+            ) : null}
           </div>
         </article>
       ))}
@@ -72,6 +75,7 @@ const styles = {
   upsell: { background: "#fff6e6", border: "1px solid #f0d089", borderRadius: 8, color: "#8a5a00", fontSize: 13, margin: "4px 0", padding: "8px 12px" },
   note: { color: "#6b6356", fontSize: 13, margin: "4px 0 16px" },
   link: { color: "#e0a500", fontWeight: 700 },
+  adzuna: { alignItems: "center", background: "#f3f0ea", borderRadius: 6, color: "#2b2b2b", display: "inline-flex", fontSize: 14, fontWeight: 700, justifyContent: "center", marginInlineStart: "auto", minHeight: 24, minWidth: 116, padding: "0 10px", textDecoration: "none" },
   card: { background: "#fff", border: "1px solid #ece3d2", borderRadius: 12, marginBottom: 12, padding: 16 },
   title: { color: "#15110b", fontSize: 16 },
   meta: { color: "#6b6356", fontSize: 13, margin: "4px 0 10px" },
