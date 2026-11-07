@@ -66,6 +66,39 @@ describe("mobile secure session transport", () => {
     expect(secureVault.stored).toBe("native-session-token-123456789");
   });
 
+  it("signs in by texted code: asks for the code, then keeps the session only in the secure vault", async () => {
+    const secureVault = vault();
+    const calls: Array<{ url: string; body: unknown }> = [];
+    const transport = createMobileSessionTransport({
+      apiOrigin: "https://api.example.test",
+      vault: secureVault,
+      fetch: vi.fn(async (url: string, init?: { body?: string }) => {
+        calls.push({ url, body: JSON.parse(init?.body ?? "{}") });
+        return url.endsWith("/request") ? response(202, { status: "code_requested" }) : response(200, { token: "phone-session-token-123456789" });
+      }) as never
+    });
+    expect(await transport.requestPhoneCode("514 555 0101")).toBe("requested");
+    const result = await transport.verifyPhoneCode("514 555 0101", "123456");
+    expect(result).toEqual({ status: "authenticated" });
+    expect(secureVault.stored).toBe("phone-session-token-123456789");
+    expect(calls.map((call) => call.url)).toEqual([
+      "https://api.example.test/auth/worker-phone/request",
+      "https://api.example.test/auth/worker-phone/verify"
+    ]);
+    expect(calls[1]?.body).toEqual({ phone: "514 555 0101", code: "123456" });
+  });
+
+  it("refuses a wrong texted code without storing anything", async () => {
+    const secureVault = vault();
+    const transport = createMobileSessionTransport({
+      apiOrigin: "https://api.example.test",
+      vault: secureVault,
+      fetch: vi.fn(async () => response(401, { error: "denied" }))
+    });
+    expect(await transport.verifyPhoneCode("514 555 0101", "000000")).toEqual({ status: "denied" });
+    expect(secureVault.stored).toBeNull();
+  });
+
   it("reads a worker-only reference without returning client economics", async () => {
     const secureVault = vault();
     secureVault.stored = "native-session-token-123456789";
