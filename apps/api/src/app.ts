@@ -3522,17 +3522,14 @@ export function buildApi(options: BuildApiOptions = {}) {
       .trim()
       .slice(0, 80);
 
-    const stored = await queryStoredLeads(prisma, {
+    // The search word narrows in the database across ALL stored leads (with French/English job-title
+    // equivalents), not just the newest slice — otherwise most trades were never found.
+    const filtered = await queryStoredLeads(prisma, {
       ...(province ? { province } : {}),
       ...(city ? { city } : {}),
-      limit: 60
+      ...(roleRaw ? { query: roleRaw } : {}),
+      limit: 500
     });
-    // Optional free-text narrowing on title/employer/category, in-memory over the already-fetched slice
-    // (no extra query, no live call).
-    const needle = roleRaw.toLowerCase();
-    const filtered = needle
-      ? stored.filter((l) => [l.title, l.employer, l.category].some((f) => (f ?? "").toLowerCase().includes(needle)))
-      : stored;
     const leads = filtered.slice(0, limit).map((l) => {
       const area = l.city && l.province ? `${l.city}, ${l.province}` : (l.locationLabel ?? l.province ?? "Canada");
       return {
