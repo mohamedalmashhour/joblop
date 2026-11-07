@@ -47,6 +47,18 @@ must authorize one of these reviewed actions:
 1. recover the existing administrator through the approved identity/password process; or
 2. add a separately designed, audited platform grant to an already verified user.
 
+### First staff grant for an existing account
+
+Reviewed action 2 is available as a one-time command for an account that already exists and is
+active. It works only while no staff administrator exists, never in production, creates no account,
+sets no password and writes an audit event. Run it from the API host with the owner's authorization:
+
+```sh
+RWOS_RELEASE_SHA=<deployed 40-character commit> RWOS_FIRST_STAFF_ADMIN_EMAIL=owner@example.com pnpm grant:first-staff-admin
+```
+
+It prints only the outcome.
+
 Never clear `initial_admin_bootstrap.used_at`, replace its secret digest, delete the existing
 administrator, edit `_prisma_migrations`, or reuse the first-admin command. A second bootstrap
 requires a new architecture change, migration, release SHA, incident record, and independent

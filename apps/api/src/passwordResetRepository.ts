@@ -6,6 +6,10 @@ type PasswordResetPrisma = {
       where: { emailNormalized: string };
       select: { id: true; publicId: true; status: true; phone: true };
     }): Promise<{ id: string; publicId: string; status: string; phone: string | null } | null>;
+    findUnique(input: {
+      where: { id: string };
+      select: { emailNormalized: true };
+    }): Promise<{ emailNormalized: string } | null>;
   };
   passwordResetToken: {
     updateMany(input: {
@@ -33,6 +37,16 @@ type PasswordResetPrisma = {
       where: { userId: string; provider: "local_password" };
       data: { passwordHash: string; passwordUpdatedAt: Date };
     }): Promise<{ count: number }>;
+    create(input: {
+      data: {
+        userId: string;
+        provider: "local_password";
+        providerSubject: string;
+        passwordHash: string;
+        passwordUpdatedAt: Date;
+        emailVerifiedAt: Date;
+      };
+    }): Promise<unknown>;
   };
   session: {
     updateMany(input: {
@@ -110,7 +124,26 @@ export function createPrismaPasswordResetRepository(prismaClient: unknown): Pass
           where: { userId: token.userId, provider: "local_password" },
           data: { passwordHash: input.passwordHash, passwordUpdatedAt: input.now }
         });
-        if (identities.count !== 1) throw new Error("Local password identity unavailable.");
+        if (identities.count > 1) throw new Error("Local password identity unavailable.");
+        if (identities.count === 0) {
+          // An account created through Google has no password yet. The emailed link just proved the
+          // person owns this address, so they may add one.
+          const user = await transaction.user.findUnique({
+            where: { id: token.userId },
+            select: { emailNormalized: true }
+          });
+          if (!user) throw new Error("Local password identity unavailable.");
+          await transaction.userIdentity.create({
+            data: {
+              userId: token.userId,
+              provider: "local_password",
+              providerSubject: user.emailNormalized,
+              passwordHash: input.passwordHash,
+              passwordUpdatedAt: input.now,
+              emailVerifiedAt: input.now
+            }
+          });
+        }
         await transaction.session.updateMany({
           where: { userId: token.userId, status: "active" },
           data: { status: "revoked", revokedAt: input.now, lastSeenAt: input.now }
