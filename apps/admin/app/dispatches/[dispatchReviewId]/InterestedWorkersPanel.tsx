@@ -17,6 +17,7 @@ type InterestedWorker = Readonly<{
   status: string | null;
   distanceKmAtInterest: number | null;
   linkedOfferId: string | null;
+  employerFavorite: boolean;
   createdAt: string | null;
   governedOffer: { workerOfferId: string | null; status: string | null; version: number | null } | null;
 }>;
@@ -203,6 +204,7 @@ export function InterestedWorkersPanel({
               <li key={w.interestId ?? w.workerIdentityId} style={styles.item}>
                 <div style={styles.itemHead}>
                   <strong>{w.displayName ?? "Worker"}</strong>
+                  {w.employerFavorite ? <span> ★ Employer favourite</span> : null}
                   {w.distanceKmAtInterest !== null ? (
                     <span style={styles.dim}>{w.distanceKmAtInterest} km at interest</span>
                   ) : null}

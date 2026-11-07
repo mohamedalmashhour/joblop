@@ -1,5 +1,6 @@
 "use client";
 
+import { ApplicantsPanel } from "./ApplicantsPanel";
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
   buildCalendarExport,
@@ -184,6 +185,7 @@ export function ClientRequestDetailPanel({ requestId }: Readonly<{ requestId: st
         >
           🖨 Print details
         </button>
+        <ApplicantsPanel requestId={request.id} />
         <div style={{ marginTop: 14 }}>
           <DuplicateRequestButton requestId={request.id} />
         </div>
