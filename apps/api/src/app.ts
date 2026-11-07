@@ -346,6 +346,7 @@ import { deriveOrderLifecycle } from "@rwos/shared";
 import { deriveWorkerCancellationPenalty, WORKER_SUSPENSION_DAYS } from "@rwos/shared";
 import { notifyClient, notifyClientInvoiceSent } from "./notifications/clientNotifications";
 import { invoiceEmailAttachment } from "./invoicePdf";
+import { invoicePdfDetails } from "./invoicePdfDetails";
 import { notifyWorkerPayoutPaid, notifyWorkerAccountPenalty, notifyWorkerAssigned } from "./notifications/workerNotifications";
 import { createWorkerPayoutProgressionRunner, startWorkerPayoutProgressionSchedule } from "./workerPayoutProgression";
 import { createPrismaJobGradingAuditStore, JOB_GRADING_ENGINE_VERSION, type JobGradingAuditStore } from "./jobGradingAuditRepository";
@@ -1127,7 +1128,13 @@ export function buildApi(options: BuildApiOptions = {}) {
   if (invoiceRepository) {
     registerInvoiceRoutes(app, {
       repository: invoiceRepository,
-      notifyInvoiceSent: (invoice) => notifyClientInvoiceSent(prisma!, emailSender, { invoiceId: invoice.id, organizationId: invoice.organizationId, pdf: invoiceEmailAttachment(invoice) }),
+      notifyInvoiceSent: async (invoice) =>
+        notifyClientInvoiceSent(prisma!, emailSender, {
+          invoiceId: invoice.id,
+          organizationId: invoice.organizationId,
+          pdf: invoiceEmailAttachment(invoice, await invoicePdfDetails(prisma!, invoice))
+        }),
+      describeInvoice: (invoice) => invoicePdfDetails(prisma!, invoice),
       authorize: async (request, organizationId) => {
         const session = await authService.validateSession(
           readBearerToken(request.headers.authorization)
