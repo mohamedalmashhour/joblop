@@ -5034,6 +5034,7 @@ export function buildApi(options: BuildApiOptions = {}) {
           select: {
             dutiesSummary: true,
             qualifications: true,
+            specialInstructions: true,
             transportProvision: true,
             transportAmountMinor: true,
             transportNote: true,
@@ -5095,6 +5096,7 @@ export function buildApi(options: BuildApiOptions = {}) {
       currency: countryCurrency, // display-only; driven by the selected country (CAD for Canada)
       description: row.description,
       duties: row.calendarProfile?.dutiesSummary ?? null,
+      safetyNotes: row.calendarProfile?.specialInstructions ?? null,
       qualifications: coerceQualifications(row.calendarProfile?.qualifications)
     };
     if (!countryAddress) {
@@ -7644,7 +7646,7 @@ export function buildApi(options: BuildApiOptions = {}) {
         checkInAt: true, checkOutAt: true, exceptionCategory: true, version: true,
         organization: { select: { displayName: true } },
         residence: { select: WORKSITE_ADDRESS_SELECT },
-        jobRequest: { select: { calendarProfile: { select: { addressSummary: true } } } }
+        jobRequest: { select: { calendarProfile: { select: { addressSummary: true, specialInstructions: true } } } }
       }
     });
     const hasMore = rows.length > limit;
@@ -7656,7 +7658,8 @@ export function buildApi(options: BuildApiOptions = {}) {
       employerName: r.organization.displayName,
       areaLabel: r.residence.city && options.countryAddress?.isRegionCode(r.residence.province) ? `${r.residence.city}, ${r.residence.province}` : null,
       // This route only returns the signed-in worker's own assigned shifts.
-      worksiteAddress: isWorksiteAddressVisible(r.status) ? workerJobAddress(r.jobRequest.calendarProfile?.addressSummary, r.residence) : null
+      worksiteAddress: isWorksiteAddressVisible(r.status) ? workerJobAddress(r.jobRequest.calendarProfile?.addressSummary, r.residence) : null,
+      safetyNotes: isWorksiteAddressVisible(r.status) ? (r.jobRequest.calendarProfile?.specialInstructions ?? null) : null
     }));
     return reply.code(200).send({ items, nextCursor: hasMore ? (rows[limit - 1]?.id ?? null) : null });
   });

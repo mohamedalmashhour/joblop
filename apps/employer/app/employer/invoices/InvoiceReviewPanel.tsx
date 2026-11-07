@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { invoiceBoundaries, invoiceDataTruth, invoiceStates } from "../invoiceWorkflowContent";
+import { invoiceStates } from "../invoiceWorkflowContent";
 import { styles } from "../employerStyles";
 import { LanguageSwitcher } from "../../i18n/LanguageSwitcher";
 import { fmtLocale, useLocale, useT } from "../../i18n/LocaleProvider";
@@ -214,15 +214,6 @@ export function InvoiceReviewPanel({
         <div style={styles.pillGrid}>
           {invoiceStates.map((item) => (
             <span key={item} style={styles.pill}>{item}</span>
-          ))}
-        </div>
-      </section>
-      <section style={{ marginTop: 22 }}>
-        <div style={styles.cardGrid}>
-          {[...invoiceBoundaries, ...invoiceDataTruth].map((item) => (
-            <article key={item} style={styles.card}>
-              <p style={styles.cardText}>{item}</p>
-            </article>
           ))}
         </div>
       </section>

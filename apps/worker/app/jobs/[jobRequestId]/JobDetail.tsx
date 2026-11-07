@@ -22,6 +22,7 @@ type JobDetailData = Readonly<{
   currency: string;
   description: string | null;
   duties: string | null;
+  safetyNotes: string | null;
   qualifications: readonly string[];
   allowances?: AllowancesData;
   saved: boolean;
@@ -213,6 +214,11 @@ export function JobDetail({ id, postalCode }: { id: string; postalCode: string |
       {job.duties ? (
         <Section title={t("job.duties")}>
           <p>{job.duties}</p>
+        </Section>
+      ) : null}
+      {job.safetyNotes ? (
+        <Section title={t("job.safetyNotes")}>
+          <p>{job.safetyNotes}</p>
         </Section>
       ) : null}
       {job.qualifications.length > 0 ? (

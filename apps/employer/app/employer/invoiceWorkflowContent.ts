@@ -108,24 +108,6 @@ export const chargeBreakdownRows = [
   ["Total", invoiceFixture.total]
 ] as const;
 
-export const invoiceBoundaries = [
-  "Invoice != Payment",
-  "Issued != Paid",
-  "Payment Authorized != Settled",
-  "Invoice total != Worker payable",
-  "Charge breakdown != Accounting ledger",
-  "Tax display != Tax advice"
-] as const;
-
-export const invoiceDataTruth = [
-  "Synthetic Test Employer Organization A data",
-  "No payment provider",
-  "No financial settlement",
-  "No accounting ledger",
-  "Versioned synthetic tax policy only",
-  "Legal issuer model not approved for production"
-] as const;
-
 export function getInvoiceStateSummary(state: InvoiceState) {
   return {
     state,

@@ -53,8 +53,9 @@ export function PayrollConsole() {
     setCalcs(r.ok ? (r.data.items as Calc[]) : []);
   }, []);
 
-  const openCalc = useCallback(async (id: string) => {
-    setNotice(null); setAiReview(null);
+  const openCalc = useCallback(async (id: string, keepNotice = false) => {
+    if (!keepNotice) setNotice(null);
+    setAiReview(null);
     const [d, f] = await Promise.all([api(`calculations/${id}`), api(`calculations/${id}/family`)]);
     setDetail(d.ok ? (d.data.calculation as Detail) : null);
     setFamily(f.ok ? (f.data.items as Calc[]) : null);
@@ -63,7 +64,7 @@ export function PayrollConsole() {
     setAiReview(r.ok ? (r.data.review as AiReview) : null);
   }, []);
 
-  const refresh = useCallback(async () => { if (detail) await openCalc(detail.id); if (periodId) { const r = await api(`periods/${periodId}/calculations?limit=100`); setCalcs(r.ok ? (r.data.items as Calc[]) : []); } }, [detail, periodId, openCalc]);
+  const refresh = useCallback(async () => { if (detail) await openCalc(detail.id, true); if (periodId) { const r = await api(`periods/${periodId}/calculations?limit=100`); setCalcs(r.ok ? (r.data.items as Calc[]) : []); } }, [detail, periodId, openCalc]);
 
   const act = useCallback(async (label: string, path: string, body: unknown, onOk: (data: Record<string, unknown>) => string) => {
     setBusy(true); setNotice(null);

@@ -3,8 +3,6 @@
 import { useEffect, useState } from "react";
 import {
   employerPaymentStates,
-  paymentBoundaries,
-  paymentDataTruth
 } from "../paymentWorkflowContent";
 import { styles } from "../employerStyles";
 import { LanguageSwitcher } from "../../i18n/LanguageSwitcher";
@@ -119,15 +117,6 @@ export function PaymentStatePanel({
             <span key={item} style={selected?.state === item.toLowerCase() ? styles.pill : styles.routeCard}>
               {item}
             </span>
-          ))}
-        </div>
-      </section>
-      <section style={{ marginTop: 22 }}>
-        <div style={styles.cardGrid}>
-          {[...paymentBoundaries, ...paymentDataTruth].map((item) => (
-            <article key={item} style={styles.tintedCard}>
-              <p style={styles.cardText}>{item}</p>
-            </article>
           ))}
         </div>
       </section>

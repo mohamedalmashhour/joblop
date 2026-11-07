@@ -411,6 +411,53 @@ describe("authenticated invoice routes", () => {
     expect(response.json()).toMatchObject({ error: "RWOS_RESOURCE_UNAVAILABLE" });
   });
 
+  describe("employer visibility", () => {
+    const withStatus = (status: "issued" | "sent") => ({ ...invoice, status });
+    const repositoryHolding = (status: "issued" | "sent") => ({
+      ...repository(),
+      get: async () => withStatus(status),
+      list: async () => [withStatus(status)]
+    });
+    const app = (status: "issued" | "sent", role: "finance_reviewer" | "platform_admin") => {
+      const server = Fastify();
+      registerInvoiceRoutes(server, {
+        repository: repositoryHolding(status),
+        authorize: async () => ({ actorId: "synthetic-actor", role })
+      });
+      return server;
+    };
+
+    it("hides an invoice staff have not sent from the employer", async () => {
+      const server = app("issued", "finance_reviewer");
+      const list = await server.inject({ method: "GET", url: `/organizations/${organizationId}/invoices` });
+      expect(list.json().invoices).toEqual([]);
+      for (const suffix of ["", "/pdf"]) {
+        const response = await server.inject({
+          method: "GET",
+          url: `/organizations/${organizationId}/invoices/${invoice.id}${suffix}`
+        });
+        expect(response.statusCode).toBe(404);
+      }
+    });
+
+    it("shows a sent invoice to the employer", async () => {
+      const server = app("sent", "finance_reviewer");
+      const list = await server.inject({ method: "GET", url: `/organizations/${organizationId}/invoices` });
+      expect(list.json().invoices).toHaveLength(1);
+      const detail = await server.inject({
+        method: "GET",
+        url: `/organizations/${organizationId}/invoices/${invoice.id}`
+      });
+      expect(detail.statusCode).toBe(200);
+    });
+
+    it("keeps an unsent invoice visible to staff", async () => {
+      const server = app("issued", "platform_admin");
+      const list = await server.inject({ method: "GET", url: `/organizations/${organizationId}/invoices` });
+      expect(list.json().invoices).toHaveLength(1);
+    });
+  });
+
   it("serves the bilingual PDF only through an authorized organization scope", async () => {
     const app = Fastify();
     registerInvoiceRoutes(app, {
