@@ -34,7 +34,7 @@ describe("authenticated calendar UI integration", () => {
       expect(source).not.toMatch(/Bearer\s|authorization\s*:/iu);
       expect(source).not.toMatch(/localStorage|sessionStorage/u);
     }
-    expect(admin).toContain('fetch("/api/session/sign-in"');
+    expect(admin).toContain('href="/signin"');
     expect(employer).toContain('href="/signin"');
   });
 

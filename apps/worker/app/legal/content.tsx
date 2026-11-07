@@ -345,7 +345,7 @@ export function TermsOfService() {
       <p style={p}>
         By providing your mobile phone number, you agree to receive text messages from JobLop
         (9375-7649 Québec inc.) at the number provided — account and job messages such as verification
-        codes, password-reset links, job-offer and assignment confirmations, and shift reminders —
+        codes, sign-in codes, job-offer and assignment confirmations, and shift reminders —
         sent using an automated system. Consent is not a condition of using the service. Message
         frequency varies. Message and data rates may apply. Reply STOP to unsubscribe at any time, or
         HELP for help. For assistance, contact{" "}

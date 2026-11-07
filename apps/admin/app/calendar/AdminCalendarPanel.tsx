@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState, type FormEvent } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import {
   calendarFailureState,
   calendarListState,
@@ -38,13 +38,13 @@ export function AdminCalendarPanel() {
     };
   }, [load]);
 
-  if (state.status === "denied") return <AdminSignIn onSignedIn={load} />;
+  if (state.status === "denied") return <AdminSignIn />;
   if (state.status === "loading")
     return <StateCard title="Loading review calendar" message="Checking platform authorization." />;
   if (state.status === "empty")
     return (
       <>
-        <SessionAction onSignedOut={load} />
+        <SessionAction />
         <StateCard title="No persisted requests" message="The governed review queue is empty." />
       </>
     );
@@ -63,7 +63,7 @@ export function AdminCalendarPanel() {
   }
   return (
     <>
-      <SessionAction onSignedOut={load} />
+      <SessionAction />
       {state.status === "partial" ? (
         <StateCard
           title="Some reviews could not be shown"
@@ -91,7 +91,7 @@ export function AdminCalendarPanel() {
   );
 }
 
-function SessionAction({ onSignedOut }: Readonly<{ onSignedOut: () => Promise<void> }>) {
+function SessionAction() {
   const [submitting, setSubmitting] = useState(false);
   const [message, setMessage] = useState("Authenticated administrator calendar session.");
   const signOut = async () => {
@@ -99,7 +99,7 @@ function SessionAction({ onSignedOut }: Readonly<{ onSignedOut: () => Promise<vo
     try {
       const cleared = await clearWebCalendarSession(fetch);
       if (!cleared) return setMessage("Session could not be cleared. Try again.");
-      await onSignedOut();
+      window.location.assign("/signin");
     } finally {
       setSubmitting(false);
     }
@@ -119,93 +119,16 @@ function SessionAction({ onSignedOut }: Readonly<{ onSignedOut: () => Promise<vo
   );
 }
 
-function AdminSignIn({ onSignedIn }: Readonly<{ onSignedIn: () => Promise<void> }>) {
-  const [email, setEmail] = useState("");
-  const [password, setPassword] = useState("");
-  const [message, setMessage] = useState("Sign in with an authorized platform account.");
-  const [needsSignOut, setNeedsSignOut] = useState(false);
-  const [submitting, setSubmitting] = useState(false);
-  const submit = async (event: FormEvent) => {
-    event.preventDefault();
-    setSubmitting(true);
-    setNeedsSignOut(false);
-    try {
-      const response = await fetch("/api/session/sign-in", {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ email, password })
-      });
-      setPassword("");
-      if (!response.ok) {
-        setNeedsSignOut(response.status === 409);
-        return setMessage(
-          response.status === 409 ? "Sign out before changing accounts." : "Sign-in failed."
-        );
-      }
-      await onSignedIn();
-    } catch {
-      setMessage("Sign-in service unavailable. Try again.");
-    } finally {
-      setSubmitting(false);
-    }
-  };
-  const signOut = async () => {
-    setSubmitting(true);
-    try {
-      const cleared = await clearWebCalendarSession(fetch);
-      if (!cleared) return setMessage("Session could not be cleared. Try again.");
-      setNeedsSignOut(false);
-      setMessage("Local session cleared. Sign in with the intended administrator account.");
-    } finally {
-      setSubmitting(false);
-    }
-  };
+// Staff sign in with a mobile number and a texted code on the sign-in page.
+function AdminSignIn() {
   return (
-    <form aria-busy={submitting} onSubmit={submit} style={styles.stateCard}>
+    <section style={styles.stateCard} aria-live="polite">
       <h2 style={styles.h2}>Administrator sign-in required</h2>
-      <p aria-live="polite">{message}</p>
-      <label style={styles.label}>
-        Email
-        <input
-          autoComplete="username"
-          disabled={submitting}
-          required
-          type="email"
-          value={email}
-          onChange={(event) => setEmail(event.target.value)}
-          style={styles.input}
-        />
-      </label>
-      <label style={styles.label}>
-        Password
-        <input
-          autoComplete="current-password"
-          disabled={submitting}
-          required
-          type="password"
-          value={password}
-          onChange={(event) => setPassword(event.target.value)}
-          style={styles.input}
-        />
-      </label>
-      <button
-        disabled={submitting}
-        type="submit"
-        style={{ ...styles.button, border: 0, opacity: submitting ? 0.65 : 1 }}
-      >
-        {submitting ? "Checking account…" : "Sign in securely"}
-      </button>
-      {needsSignOut ? (
-        <button
-          disabled={submitting}
-          type="button"
-          onClick={() => void signOut()}
-          style={styles.retry}
-        >
-          Clear prior session
-        </button>
-      ) : null}
-    </form>
+      <p>Sign in with your staff mobile number and a texted code.</p>
+      <a href="/signin" style={styles.button}>
+        Sign in
+      </a>
+    </section>
   );
 }
 

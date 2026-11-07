@@ -9755,7 +9755,7 @@ export function buildApi(options: BuildApiOptions = {}) {
       select: {
         id: true, status: true, checkInAt: true, checkOutAt: true,
         organization: { select: { displayName: true } },
-        workerIdentity: { select: { displayName: true } }
+        workerIdentity: { select: { displayName: true, user: { select: { displayName: true } } } }
       }
     });
     const [organizations, workers] = await Promise.all([
@@ -9765,17 +9765,18 @@ export function buildApi(options: BuildApiOptions = {}) {
       }),
       prisma!.workerIdentity.findMany({
         where: { id: { in: [...new Set(timesheets.map((t) => t.workerIdentityId))] } },
-        select: { id: true, displayName: true }
+        select: { id: true, displayName: true, user: { select: { displayName: true } } }
       })
     ]);
     const organizationName = new Map(organizations.map((o) => [o.id, o.displayName]));
-    const workerName = new Map(workers.map((w) => [w.id, w.displayName]));
+    // A worker profile often has no name of its own yet; the account's name is the next best.
+    const workerName = new Map(workers.map((w) => [w.id, w.displayName ?? w.user.displayName]));
     return reply.code(200).send({
       ready: finished.map((a) => ({
         attendanceRecordId: a.id,
         status: a.status,
         employerName: a.organization.displayName,
-        workerName: a.workerIdentity.displayName,
+        workerName: a.workerIdentity.displayName ?? a.workerIdentity.user?.displayName ?? null,
         checkInAt: a.checkInAt?.toISOString() ?? null,
         checkOutAt: a.checkOutAt?.toISOString() ?? null
       })),
