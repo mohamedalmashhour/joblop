@@ -50,6 +50,29 @@ export function formatHourlyRate(workerRateMinor: number | null, locale: string,
   }
 }
 
+/** True when Joblop added a bonus to this job. */
+export function hasBonus(job: OpenJob): boolean {
+  return job.bonus !== undefined && job.bonus.amountMinor > 0;
+}
+
+/** The gold bonus badge text, e.g. "+ $2.50/h bonus". Templates use {amount}. */
+export function bonusLabel(
+  job: OpenJob,
+  locale: string,
+  templates: Readonly<{ hourly: string; transport: string; oneTime: string }>
+): string | null {
+  if (!hasBonus(job) || !job.bonus) return null;
+  const value = job.bonus.amountMinor / 100;
+  let amount: string;
+  try {
+    amount = new Intl.NumberFormat(locale, { style: "currency", currency: "CAD", currencyDisplay: "narrowSymbol" }).format(value);
+  } catch {
+    amount = `$${value.toFixed(2)}`;
+  }
+  const template = job.bonus.kind === "hourly" ? templates.hourly : job.bonus.kind === "transport" ? templates.transport : templates.oneTime;
+  return template.replace("{amount}", amount);
+}
+
 export function isUrgent(job: OpenJob): boolean {
   return job.urgency !== "standard";
 }

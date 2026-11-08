@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { usePageText } from "../../i18n/pageText";
+import { BonusSection, bonusAmountLabel, isActiveBonus, type BonusSuggestion, type JobBonus } from "./BonusSection";
 import { coverageText } from "./text";
 
 type Coverage = "open" | "partly_filled" | "full" | "not_open";
@@ -24,6 +25,8 @@ type CoverageJob = {
   workers: { name: string; status: string }[];
   workerRateMinor: number | null;
   employerRateMinor: number | null;
+  bonus?: JobBonus | null;
+  bonusSuggestion?: BonusSuggestion | null;
 };
 
 type State =
@@ -40,6 +43,7 @@ const COVERAGE_COLOR: Readonly<Record<Coverage, { bg: string; fg: string }>> = {
   not_open: { bg: "#6b6b6b", fg: "#ffffff" }
 };
 const MAX_CHIPS = 4;
+const BONUS_GOLD = "#F8B808";
 const NEEDS_WORKERS_WINDOW_MS = 48 * 3_600_000;
 
 function dayKey(date: Date): string {
@@ -83,8 +87,9 @@ export function CoverageCalendarPanel() {
 
   const grid = useMemo(() => monthGrid(month), [month]);
 
-  const load = useCallback(async () => {
-    setState({ status: "loading" });
+  // `silent` keeps the current calendar on screen while it refreshes (after a bonus action).
+  const load = useCallback(async (silent = false) => {
+    if (!silent) setState({ status: "loading" });
     const from = grid[0]!;
     const last = grid[grid.length - 1]!;
     const to = new Date(last.getFullYear(), last.getMonth(), last.getDate() + 1);
@@ -102,6 +107,7 @@ export function CoverageCalendarPanel() {
   }, [grid]);
 
   useEffect(() => { void load(); }, [load]);
+  const reloadQuietly = useCallback(() => { void load(true); }, [load]);
 
   const jobsByDay = useMemo(() => {
     const map = new Map<string, CoverageJob[]>();
@@ -151,6 +157,10 @@ export function CoverageCalendarPanel() {
             {t.coverage[coverage]}
           </span>
         ))}
+        <span role="listitem" style={styles.legendItem}>
+          <span aria-hidden="true" style={styles.bonusChip}>★ {t.bonusChip}</span>
+          {t.bonusLegend}
+        </span>
       </div>
 
       {state.status === "loading" ? <p style={styles.text}>{t.loading}</p> : null}
@@ -171,9 +181,10 @@ export function CoverageCalendarPanel() {
             const inMonth = date.getMonth() === month.getMonth();
             const isSelected = key === selected;
             const hasUrgent = jobs.some((job) => needsWorkers(job, now));
+            const hasBonus = jobs.some((job) => isActiveBonus(job.bonus));
             return (
               <button
-                aria-label={`${date.toLocaleDateString(undefined, { dateStyle: "long" })}, ${t.dayJobs(jobs.length)}`}
+                aria-label={`${date.toLocaleDateString(undefined, { dateStyle: "long" })}, ${t.dayJobs(jobs.length)}${hasBonus ? `, ${t.bonusLegend}` : ""}`}
                 aria-pressed={isSelected}
                 key={key}
                 onClick={() => setSelected(key)}
@@ -185,15 +196,18 @@ export function CoverageCalendarPanel() {
                 }}
                 type="button"
               >
-                <span style={{ ...styles.dayNumber, ...(key === todayKey ? styles.todayNumber : null) }}>{date.getDate()}</span>
+                <span style={styles.dayHead}>
+                  <span style={{ ...styles.dayNumber, ...(key === todayKey ? styles.todayNumber : null) }}>{date.getDate()}</span>
+                  {hasBonus ? <span aria-hidden="true" style={styles.bonusChip}>★ {t.bonusChip}</span> : null}
+                </span>
                 <span style={styles.chips}>
                   {jobs.slice(0, MAX_CHIPS).map((job) => (
                     <span
                       key={job.jobRequestId}
                       style={{ ...styles.chip, background: COVERAGE_COLOR[job.coverage]?.bg ?? "#6b6b6b", color: COVERAGE_COLOR[job.coverage]?.fg ?? "#fff" }}
-                      title={`${job.role} · ${t.coverage[job.coverage] ?? job.coverage}`}
+                      title={`${job.role} · ${t.coverage[job.coverage] ?? job.coverage}${isActiveBonus(job.bonus) ? ` · ${t.bonusChip}` : ""}`}
                     >
-                      {job.placesTaken}/{job.placesAsked} {job.role}
+                      {isActiveBonus(job.bonus) ? "★ " : ""}{job.placesTaken}/{job.placesAsked} {job.role}
                     </span>
                   ))}
                   {jobs.length > MAX_CHIPS ? <span style={styles.more}>{t.moreJobs(jobs.length - MAX_CHIPS)}</span> : null}
@@ -220,6 +234,9 @@ export function CoverageCalendarPanel() {
                 <h3 style={styles.heading}>{job.role}</h3>
                 <span style={{ ...styles.badge, background: color.bg, color: color.fg }}>{t.coverage[job.coverage] ?? job.coverage}</span>
                 {urgent ? <span style={styles.urgent}>{t.needsWorkers}</span> : null}
+                {isActiveBonus(job.bonus) && job.bonus ? (
+                  <span style={styles.bonusBadge}>★ {t.bonusChip} {bonusAmountLabel(job.bonus.kind, job.bonus.amountMinor, t)}</span>
+                ) : null}
               </div>
               <p style={styles.meta}>
                 {job.employer ?? t.employerFallback}
@@ -243,6 +260,14 @@ export function CoverageCalendarPanel() {
                   </ul>
                 )}
               </div>
+              <BonusSection
+                bonus={job.bonus ?? null}
+                canAdd={job.coverage === "open" || job.coverage === "partly_filled"}
+                initialSuggestion={job.bonusSuggestion ?? null}
+                jobRequestId={job.jobRequestId}
+                onChanged={reloadQuietly}
+                t={t}
+              />
               <a
                 aria-label={`${t.openJob} ${job.jobCode}`}
                 href={`/calendar/request?request=${encodeURIComponent(job.jobRequestId)}`}
@@ -272,7 +297,10 @@ const styles = {
   grid: { display: "grid", gap: 4, gridTemplateColumns: "repeat(7, minmax(44px, 1fr))", minWidth: 0 },
   weekday: { color: "#d8d2c4", fontSize: 12, fontWeight: 800, padding: "4px 2px", textAlign: "center" as const, textTransform: "uppercase" as const, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" as const },
   cell: { alignItems: "stretch", background: "#141414", border: "1px solid #3a3a3a", borderRadius: 6, color: "#f4efe4", cursor: "pointer", display: "flex", flexDirection: "column" as const, gap: 4, minHeight: 92, minWidth: 0, padding: 4, textAlign: "start" as const },
+  dayHead: { alignItems: "center", display: "flex", flexWrap: "wrap" as const, gap: 4, justifyContent: "space-between" },
   dayNumber: { fontSize: 13, fontWeight: 700 },
+  bonusChip: { background: BONUS_GOLD, borderRadius: 4, color: "#000", fontSize: 10, fontWeight: 900, padding: "0 4px", whiteSpace: "nowrap" as const },
+  bonusBadge: { background: BONUS_GOLD, borderRadius: 999, color: "#000", fontSize: 12, fontWeight: 900, padding: "2px 10px" },
   todayNumber: { background: "#fff1a8", borderRadius: 10, color: "#000", padding: "0 6px", alignSelf: "flex-start" },
   chips: { display: "flex", flexDirection: "column" as const, gap: 2, minWidth: 0 },
   chip: { borderRadius: 4, fontSize: 11, fontWeight: 700, overflow: "hidden", padding: "1px 4px", textOverflow: "ellipsis", whiteSpace: "nowrap" as const },

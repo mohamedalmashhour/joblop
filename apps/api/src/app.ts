@@ -283,6 +283,7 @@ import {
 import { createEmailSender, type EmailSender } from "./mailer/emailSender";
 import { createSmsSender, type SmsSender } from "./mailer/smsSender";
 import { registerInstantContactRoutes } from "./instantContactRoutes";
+import { activeBonusByJob, coverageBonusSuggestion, latestBonusByJob, registerJobBonusRoutes } from "./jobBonusRoutes";
 import { createMarketingContactSync, type MarketingContactSync } from "./mailer/brevoContacts";
 import { runShiftReminderSweep } from "./shiftReminderSweep";
 import {
@@ -3543,6 +3544,7 @@ export function buildApi(options: BuildApiOptions = {}) {
       take: 500
     });
     const left = await remainingOpenings(prisma, rows);
+    const openBonus = await activeBonusByJob(prisma, rows.map((r) => r.id));
     const jobs = rows
       .filter((r) => (left.get(r.id) ?? r.numberOfWorkers) > 0)
       .map((r) => {
@@ -3556,7 +3558,9 @@ export function buildApi(options: BuildApiOptions = {}) {
           endAt: r.endAt.toISOString(),
           urgency: r.urgency,
           placesLeft: left.get(r.id) ?? r.numberOfWorkers,
-          workerRateMinor: r.pricingSnapshot?.workerHourlyRateMinor ?? null
+          workerRateMinor: r.pricingSnapshot?.workerHourlyRateMinor ?? null,
+          // The job's active bonus (kind + amount only; who pays it is never shown to workers).
+          bonus: openBonus.get(r.id) ?? null
         };
       });
     return reply.code(200).header("cache-control", "no-store").send({ jobs, from: from.toISOString(), to: until.toISOString() });
@@ -4594,6 +4598,26 @@ export function buildApi(options: BuildApiOptions = {}) {
     return session.user.id;
   };
 
+  // JOB BONUS: staff offer a bonus to the employer or approve one paid by Joblop; the employer
+  // accepts/declines its offer. Employer = active owner/administrator of the job's organization.
+  if (prisma) {
+    registerJobBonusRoutes(app, {
+      prisma,
+      emailSender,
+      requireStaff: requireHrAuthority,
+      requireUser: async (request, reply) => {
+        const session = await authService.validateSession(readBearerToken(request.headers.authorization));
+        if (!session.authenticated || !session.user) {
+          reply.code(401).send({ error: "RWOS_BONUS_DENIED", message: "Authentication is required." });
+          return null;
+        }
+        return session.user.id;
+      },
+      isOrganizationManager: async (userId, organizationId) =>
+        (await requireActiveOrgMembership(userId, organizationId, ["ORGANIZATION_OWNER", "ORGANIZATION_ADMINISTRATOR"])) !== null
+    });
+  }
+
   // STAFF CALENDAR COVERAGE. For each job in the window: status, places asked / taken / left, and the
   // workers who accepted, so staff can see open, partly filled and full jobs and act (e.g. a bonus).
   app.get("/platform/calendar/coverage", async (request, reply) => {
@@ -4624,11 +4648,13 @@ export function buildApi(options: BuildApiOptions = {}) {
         roleDefinition: { select: { displayLabel: true } },
         residence: { select: { city: true, province: true } },
         organization: { select: { displayName: true } },
-        pricingSnapshot: { select: { workerHourlyRateMinor: true, employerHourlyRateMinor: true } }
+        pricingSnapshot: { select: { workerHourlyRateMinor: true, employerHourlyRateMinor: true, platformHourlyMarginMinor: true } }
       },
       orderBy: [{ startAt: "asc" }],
       take: 500
     });
+    const latestBonus = await latestBonusByJob(prisma, rows.map((r) => r.id));
+    const coverageNow = new Date();
     const assignments = rows.length
       ? await prisma.assignment.findMany({
           where: { jobRequestId: { in: rows.map((r) => r.id) }, status: { in: [...PLACE_HOLDING_ASSIGNMENT_STATUSES] } },
@@ -4668,7 +4694,11 @@ export function buildApi(options: BuildApiOptions = {}) {
         coverage: r.status !== "approved_for_dispatch" ? "not_open" : placesLeft === 0 ? "full" : workers.length > 0 ? "partly_filled" : "open",
         workers,
         workerRateMinor: r.pricingSnapshot?.workerHourlyRateMinor ?? null,
-        employerRateMinor: r.pricingSnapshot?.employerHourlyRateMinor ?? null
+        employerRateMinor: r.pricingSnapshot?.employerHourlyRateMinor ?? null,
+        // Latest non-cancelled bonus, and a system suggestion for approved jobs with places left that
+        // start within 48 hours (null otherwise).
+        bonus: latestBonus.get(r.id) ?? null,
+        bonusSuggestion: coverageBonusSuggestion(r, placesLeft, coverageNow)
       };
     });
     return reply.code(200).header("cache-control", "no-store").send({ jobs, from: from.toISOString(), to: until.toISOString() });
@@ -5435,6 +5465,12 @@ export function buildApi(options: BuildApiOptions = {}) {
       : row.numberOfWorkers;
     const claimable =
       row.openClaim === true && row.status === "approved_for_dispatch" && !!row.pricingSnapshot && placesLeft > 0;
+    // The job's active bonus (kind + amount only; who pays it is never shown to workers).
+    const bonus = prisma
+      ? await activeBonusByJob(prisma, [row.id])
+          .then((m) => m.get(row.id) ?? null)
+          .catch(() => null)
+      : null;
     return reply.code(200).send({
       job: {
         ...detail,
@@ -5442,7 +5478,8 @@ export function buildApi(options: BuildApiOptions = {}) {
         saved,
         allowances: workerAllowances(row.calendarProfile, row.pricingSnapshot),
         openClaim: row.openClaim === true,
-        claimable
+        claimable,
+        bonus
       }
     });
   });

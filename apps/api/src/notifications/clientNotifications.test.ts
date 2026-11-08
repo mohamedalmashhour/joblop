@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { EmailMessage } from "../mailer/emailSender";
-import { jobCodeEmail, notifyClient, resolveLanguage, workerAcceptedEmail, invoiceSentEmail } from "./clientNotifications";
+import { bonusOfferEmail, jobCodeEmail, notifyClient, resolveLanguage, workerAcceptedEmail, invoiceSentEmail } from "./clientNotifications";
 
 // Minimal fakes — just the two lookups + send the dispatcher uses.
 function fakePrisma(job: unknown, user: unknown) {
@@ -59,6 +59,19 @@ describe("notifyClient dispatcher", () => {
     expect(sent!.subject).toContain("approuvée"); // French for fr-CA
   });
 
+  it("sends the bonus offer with the amount in the employer's language", async () => {
+    let sent: EmailMessage | null = null;
+    const sender = { configured: true, async send(m: EmailMessage) { sent = m; return { status: "sent", id: "x" } as const; } };
+    const res = await notifyClient(fakePrisma(job, { emailNormalized: "c@x.com", primaryLanguage: "en" }), sender, {
+      jobRequestId: "j1",
+      kind: "bonus_offer",
+      bonus: { kind: "hourly", amountMinor: 225 }
+    });
+    expect(res).toEqual({ status: "sent", kind: "bonus_offer" });
+    expect(sent!.subject).toContain("bonus");
+    expect(sent!.text).toContain("$2.25 more per hour");
+  });
+
   it("skips (no_recipient) when the creator has no email, without throwing", async () => {
     const sender = { configured: true, async send() { return { status: "sent", id: "x" } as const; } };
     const res = await notifyClient(fakePrisma(job, null), sender, { jobRequestId: "j1", kind: "worker_accepted" });
@@ -88,5 +101,17 @@ describe("invoice sent email", () => {
     expect(withCopy.text).toContain("A copy is attached.");
     expect(invoiceSentEmail({ to: "a@b.test", language: "fr", invoiceNumber: "JL-2026-000001", pdf }).text).toContain("Une copie est jointe.");
     expect(en.attachments).toBeUndefined();
+  });
+});
+
+describe("bonus offer email", () => {
+  it("is French by default and explains it is billed when accepted", () => {
+    const fr = bonusOfferEmail({ to: "c@x.com", language: "fr", jobCode: "JR-1", title: "Préposé", bonusKind: "transport", amountMinor: 1500 });
+    expect(fr.subject).toContain("prime");
+    expect(fr.text).toContain("15,00 $");
+    expect(fr.text).toContain("facture");
+    const en = bonusOfferEmail({ to: "c@x.com", language: "en", jobCode: "JR-1", title: "Aide", bonusKind: "one_time", amountMinor: 2000 });
+    expect(en.text).toContain("one-time $20.00");
+    expect(en.text).toContain("invoice");
   });
 });

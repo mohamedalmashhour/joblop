@@ -465,6 +465,20 @@ export const en = {
   "auth.creating": "Creating…",
   "auth.createEmployerAccount": "Create employer account",
   "auth.haveAccount": "I already have an account",
+  "bonusOffer.title": "Fill this job faster",
+  "bonusOffer.body": "No worker has accepted this job yet. Add a {amount} bonus to fill it faster? It will be added to your invoice.",
+  "bonusOffer.amountHourly": "+{amount}/h",
+  "bonusOffer.amountTransport": "+{amount} transport per worker per shift",
+  "bonusOffer.amountOneTime": "+{amount} per worker per shift",
+  "bonusOffer.reason": "Why: {reason}",
+  "bonusOffer.accept": "Accept bonus",
+  "bonusOffer.decline": "No thanks",
+  "bonusOffer.declineConfirm": "Decline this bonus offer?",
+  "bonusOffer.working": "Saving…",
+  "bonusOffer.accepted": "Bonus added. It will appear on your invoice.",
+  "bonusOffer.declined": "Bonus offer declined.",
+  "bonusOffer.conflict": "This offer changed. Refresh the page and try again.",
+  "bonusOffer.error": "Your answer could not be saved. Please try again.",
 } as const;
 
 export type MessageKey = keyof typeof en;
@@ -933,6 +947,20 @@ export const fr: Messages = {
   "auth.creating": "Création…",
   "auth.createEmployerAccount": "Créer un compte employeur",
   "auth.haveAccount": "J’ai déjà un compte",
+  "bonusOffer.title": "Pourvoir ce poste plus vite",
+  "bonusOffer.body": "Aucun travailleur n’a encore accepté ce poste. Ajouter une prime de {amount} pour le pourvoir plus vite? Elle sera ajoutée à votre facture.",
+  "bonusOffer.amountHourly": "+{amount}/h",
+  "bonusOffer.amountTransport": "+{amount} de transport par travailleur par quart",
+  "bonusOffer.amountOneTime": "+{amount} par travailleur par quart",
+  "bonusOffer.reason": "Motif : {reason}",
+  "bonusOffer.accept": "Accepter la prime",
+  "bonusOffer.decline": "Non merci",
+  "bonusOffer.declineConfirm": "Refuser cette offre de prime?",
+  "bonusOffer.working": "Enregistrement…",
+  "bonusOffer.accepted": "Prime ajoutée. Elle figurera sur votre facture.",
+  "bonusOffer.declined": "Offre de prime refusée.",
+  "bonusOffer.conflict": "Cette offre a changé. Actualisez la page et réessayez.",
+  "bonusOffer.error": "Votre réponse n’a pas pu être enregistrée. Veuillez réessayer.",
 };
 
 // Arabic (RTL). Partial — any missing key falls back to en-CA at render time. Aim for full
@@ -1399,7 +1427,21 @@ export const ar: Partial<Messages> = {
   "auth.acceptPost": ".",
   "auth.creating": "جارٍ الإنشاء…",
   "auth.createEmployerAccount": "إنشاء حساب صاحب عمل",
-  "auth.haveAccount": "لديّ حساب بالفعل"
+  "auth.haveAccount": "لديّ حساب بالفعل",
+  "bonusOffer.title": "املأ هذه الوظيفة أسرع",
+  "bonusOffer.body": "لم يقبل أي عامل هذه الوظيفة بعد. هل تضيف مكافأة {amount} لملئها أسرع؟ ستُضاف إلى فاتورتك.",
+  "bonusOffer.amountHourly": "+{amount} في الساعة",
+  "bonusOffer.amountTransport": "+{amount} مواصلات لكل عامل في كل نوبة",
+  "bonusOffer.amountOneTime": "+{amount} لكل عامل في كل نوبة",
+  "bonusOffer.reason": "السبب: {reason}",
+  "bonusOffer.accept": "قبول المكافأة",
+  "bonusOffer.decline": "لا، شكرًا",
+  "bonusOffer.declineConfirm": "هل تريد رفض عرض المكافأة هذا؟",
+  "bonusOffer.working": "جارٍ الحفظ…",
+  "bonusOffer.accepted": "تمت إضافة المكافأة. ستظهر في فاتورتك.",
+  "bonusOffer.declined": "تم رفض عرض المكافأة.",
+  "bonusOffer.conflict": "تغيّر هذا العرض. حدّث الصفحة وحاول مرة أخرى.",
+  "bonusOffer.error": "تعذّر حفظ ردك. حاول مرة أخرى."
 };
 
 export const dictionaries: Readonly<Record<EmployerLocale, Partial<Messages>>> = {

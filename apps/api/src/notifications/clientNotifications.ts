@@ -67,6 +67,75 @@ export function workerAcceptedEmail(params: {
   };
 }
 
+export type BonusOfferKind = "hourly" | "transport" | "one_time";
+
+function formatCad(amountMinor: number, language: NotificationLanguage): string {
+  const dollars = (amountMinor / 100).toFixed(2);
+  return language === "en" ? `$${dollars}` : `${dollars.replace(".", ",")} $`;
+}
+
+// Joblop suggests a bonus to help fill an approved job that is still open. The employer accepts or
+// declines in Joblop; an accepted bonus is added to the invoice for this job (taxes apply).
+export function bonusOfferEmail(params: {
+  to: string;
+  language: NotificationLanguage;
+  jobCode: string;
+  title: string;
+  bonusKind: BonusOfferKind;
+  amountMinor: number;
+}): EmailMessage {
+  const { to, jobCode, title } = params;
+  const amount = formatCad(params.amountMinor, params.language);
+  if (params.language === "en") {
+    const what =
+      params.bonusKind === "hourly"
+        ? `${amount} more per hour worked`
+        : params.bonusKind === "transport"
+          ? `${amount} transport money per worker per shift`
+          : `a one-time ${amount} per worker per shift`;
+    return {
+      to,
+      subject: `Joblop — a bonus could help fill your request (${jobCode})`,
+      text:
+        `Your request "${title}" (job code ${jobCode}) still has open places.
+
+` +
+        `To attract workers faster, Joblop suggests a bonus: ${what}.
+
+` +
+        `If you accept, the bonus is added to the invoice for this job (taxes apply). If you decline, nothing changes.
+
+` +
+        `Sign in to Joblop and open this request to accept or decline.
+
+— Joblop`
+    };
+  }
+  const what =
+    params.bonusKind === "hourly"
+      ? `${amount} de plus par heure travaillée`
+      : params.bonusKind === "transport"
+        ? `${amount} pour le transport, par travailleur et par quart`
+        : `un montant unique de ${amount} par travailleur et par quart`;
+  return {
+    to,
+    subject: `Joblop — une prime pourrait aider à combler votre demande (${jobCode})`,
+    text:
+      `Votre demande « ${title} » (code de mission ${jobCode}) a encore des places libres.
+
+` +
+      `Pour attirer des travailleurs plus vite, Joblop suggère une prime : ${what}.
+
+` +
+      `Si vous acceptez, la prime est ajoutée à la facture de cette mission (taxes applicables). Si vous refusez, rien ne change.
+
+` +
+      `Connectez-vous à Joblop et ouvrez cette demande pour accepter ou refuser.
+
+— Joblop`
+  };
+}
+
 // An invoice has been sent. The figures are in the attached PDF, and the employer pays in Joblop.
 export function invoiceSentEmail(params: {
   to: string;
@@ -129,7 +198,11 @@ export async function notifyClientInvoiceSent(
   }
 }
 
-export type ClientNotificationKind = "job_code" | "worker_accepted";
+export type ClientNotificationKind = "job_code" | "worker_accepted" | "bonus_offer";
+
+export type ClientNotificationInput =
+  | Readonly<{ jobRequestId: string; kind: "job_code" | "worker_accepted" }>
+  | Readonly<{ jobRequestId: string; kind: "bonus_offer"; bonus: Readonly<{ kind: BonusOfferKind; amountMinor: number }> }>;
 
 export type ClientNotificationResult =
   | Readonly<{ status: "sent" | "skipped" | "error"; kind: ClientNotificationKind }>
@@ -139,7 +212,7 @@ export type ClientNotificationResult =
 export async function notifyClient(
   prisma: PrismaClient,
   emailSender: EmailSender,
-  input: { jobRequestId: string; kind: ClientNotificationKind }
+  input: ClientNotificationInput
 ): Promise<ClientNotificationResult> {
   const { kind } = input;
   try {
@@ -156,7 +229,22 @@ export async function notifyClient(
 
     const language = resolveLanguage(user.primaryLanguage);
     const copy = { to: user.emailNormalized, language, jobCode: job.jobRequestNumber, title: job.title };
-    const message = kind === "job_code" ? jobCodeEmail(copy) : workerAcceptedEmail(copy);
+    let message: EmailMessage;
+    switch (input.kind) {
+      case "job_code":
+        message = jobCodeEmail(copy);
+        break;
+      case "worker_accepted":
+        message = workerAcceptedEmail(copy);
+        break;
+      case "bonus_offer":
+        message = bonusOfferEmail({ ...copy, bonusKind: input.bonus.kind, amountMinor: input.bonus.amountMinor });
+        break;
+      default: {
+        const unreachable: never = input;
+        return { status: "skipped", kind: (unreachable as { kind: ClientNotificationKind }).kind };
+      }
+    }
     const result = await emailSender.send(message);
     return { status: result.status === "sent" ? "sent" : result.status === "error" ? "error" : "skipped", kind };
   } catch {

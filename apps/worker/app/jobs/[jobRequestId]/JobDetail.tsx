@@ -29,7 +29,11 @@ type JobDetailData = Readonly<{
   // Hybrid auto-offer: when claimable, the worker claims directly instead of expressing interest.
   openClaim?: boolean;
   claimable?: boolean;
+  // Extra pay Joblop added to fill the job faster (null when there is none).
+  bonus?: JobBonus | null;
 }>;
+
+type JobBonus = Readonly<{ kind: string; amountMinor: number }>;
 
 type ClaimState = "idle" | "claiming" | "assigned" | "full" | "election_required" | "ineligible" | "error";
 
@@ -203,6 +207,8 @@ export function JobDetail({ id, postalCode }: { id: string; postalCode: string |
         {job.workerRateMinor !== null ? <Fact label={t("job.factPay")}>{formatRate(job.workerRateMinor, job.currency, locale)}</Fact> : null}
       </div>
 
+      {job.bonus && job.bonus.amountMinor > 0 ? <BonusBox bonus={job.bonus} currency={job.currency} locale={locale} /> : null}
+
       <WorksiteMap point={job.mapPoint} locale={locale} />
       <p className="notice">{t("job.mapApproxNotice")}</p>
 
@@ -291,6 +297,31 @@ function WorksiteMap({ point, locale }: { point: { latitude: number; longitude: 
         {t("job.getDirections")}
       </a>
     </div>
+  );
+}
+
+function BonusBox({ bonus, currency, locale }: { bonus: JobBonus; currency: string; locale: string }) {
+  const t = useT();
+  const amount = (bonus.amountMinor / 100).toLocaleString(locale, { style: "currency", currency: currency || "CAD" });
+  const label =
+    bonus.kind === "hourly"
+      ? t("job.bonusHourly", { amount })
+      : bonus.kind === "transport"
+        ? t("job.bonusTransport", { amount })
+        : t("job.bonusOneTime", { amount });
+  return (
+    <section
+      aria-label={t("job.bonusTitle")}
+      style={{ marginTop: 12, padding: "12px 14px", borderRadius: 12, background: "#fff8dc", border: "2px solid #F8B808", color: "#3d2c00" }}
+    >
+      <span
+        style={{ display: "inline-block", background: "#F8B808", color: "#111", fontWeight: 800, borderRadius: 999, padding: "3px 12px" }}
+      >
+        <span aria-hidden="true">★ </span>
+        <bdi>{label}</bdi>
+      </span>
+      <p style={{ margin: "8px 0 0" }}>{t("job.bonusNote")}</p>
+    </section>
   );
 }
 

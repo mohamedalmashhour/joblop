@@ -13,6 +13,7 @@ import {
 import { styles } from "../../employerStyles";
 import { JobLocationMap } from "../../../shared/maps";
 import { AddWorkersPanel } from "./AddWorkersPanel";
+import { BonusOfferPanel } from "./BonusOfferPanel";
 import { CancelRequestPanel } from "./CancelRequestPanel";
 import { EditRequestPanel } from "./EditRequestPanel";
 import { DuplicateRequestButton } from "./DuplicateRequestButton";
@@ -151,6 +152,9 @@ export function ClientRequestDetailPanel({ requestId }: Readonly<{ requestId: st
         <p style={styles.eyebrowDark}>Persisted client request</p>
         <h2 style={styles.sectionTitle}>{request.title}</h2>
         <span style={clientStatusStyle(request.status)}>{request.status.replaceAll("_", " ")}</span>
+        {request.status !== "cancelled" && request.status !== "completed" ? (
+          <BonusOfferPanel requestId={request.id} />
+        ) : null}
         <p style={styles.sectionCopy}>
           Worker compensation, platform margin, and internal admin information are not included.
         </p>

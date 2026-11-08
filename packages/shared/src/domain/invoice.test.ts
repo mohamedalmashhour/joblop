@@ -105,6 +105,27 @@ describe("invoice foundation", () => {
     expect(snapshot.roundingPolicy).toBe("integer_minor_units_half_up");
   });
 
+  it("adds an employer-funded job bonus as a taxed line inside the subtotal", () => {
+    const snapshot = calculateInvoiceSnapshot(input({ bonus: cad(1_200) }));
+
+    const bonusLine = snapshot.lines.find((line) => line.kind === "bonus");
+    expect(bonusLine?.amount).toEqual(cad(1_200));
+    expect(bonusLine?.ruleVersion).toBe("bonus-v1");
+    // 26,000 base subtotal + 1,200 bonus; GST 5% and QST 9.975% apply to the bonus too.
+    expect(snapshot.subtotal).toEqual(cad(27_200));
+    expect(snapshot.lines.find((line) => line.kind === "gst")?.amount).toEqual(cad(1_360));
+    expect(snapshot.lines.find((line) => line.kind === "qst")?.amount).toEqual(cad(2_713));
+    expect(snapshot.total).toEqual(cad(27_200 + 1_360 + 2_713 - 500));
+    expect(snapshot.lines.map((line) => line.kind).indexOf("bonus")).toBeLessThan(
+      snapshot.lines.map((line) => line.kind).indexOf("gst")
+    );
+  });
+
+  it("omits the bonus line when the bonus is absent or zero", () => {
+    expect(calculateInvoiceSnapshot(input({ bonus: cad(0) })).lines.some((line) => line.kind === "bonus")).toBe(false);
+    expect(calculateInvoiceSnapshot(input()).subtotal).toEqual(cad(26_000));
+  });
+
   it.each(["zero_rated", "exempt", "tax_not_enabled"] as const)(
     "does not silently apply taxes for %s treatment",
     (treatment) => {

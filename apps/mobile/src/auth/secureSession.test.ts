@@ -928,6 +928,26 @@ describe("open jobs calendar transport", () => {
     );
   });
 
+  it("reads an optional bonus on open jobs and ignores malformed ones", async () => {
+    const fetchMock = vi.fn(async () =>
+      response(200, {
+        jobs: [
+          { ...openJob, bonus: { kind: "hourly", amountMinor: 250 } },
+          { ...openJob, jobRequestId: "x2", bonus: { kind: "mystery", amountMinor: 250 } },
+          { ...openJob, jobRequestId: "x3", bonus: null }
+        ]
+      })
+    );
+    const transport = createMobileSessionTransport({ apiOrigin: origin, vault: withSession(), fetch: fetchMock });
+    const result = await transport.listOpenJobs({ from: "2026-11-01T00:00:00.000Z", to: "2026-12-01T00:00:00.000Z" });
+    expect(result.status).toBe("ready");
+    if (result.status === "ready") {
+      expect(result.jobs[0]?.bonus).toEqual({ kind: "hourly", amountMinor: 250 });
+      expect(result.jobs[1]?.bonus).toBeUndefined();
+      expect(result.jobs[2]?.bonus).toBeUndefined();
+    }
+  });
+
   it("maps signed-out, 401, network failure and server errors when listing", async () => {
     const window = { from: "2026-11-01T00:00:00.000Z", to: "2026-12-01T00:00:00.000Z" };
     const noFetch = vi.fn();

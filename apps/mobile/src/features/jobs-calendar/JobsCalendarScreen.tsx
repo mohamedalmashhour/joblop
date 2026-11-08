@@ -6,11 +6,13 @@ import { BodyText, Button, Card, Heading, LoadingState, ScreenContainer, SmallTe
 import { useLocale } from "../../i18n/LocaleContext";
 import { addMonths, buildMonthWeeks, dayNumber, isoDay, monthTitle, weekdayNames } from "../calendar-month/monthGrid";
 import {
+  bonusLabel,
   claimMessage,
   formatHourlyRate,
   formatJobTime,
   gridWindow,
   groupJobsByDay,
+  hasBonus,
   isUrgent,
   placesLeftLabel,
   type ClaimMessage
@@ -87,6 +89,7 @@ export function JobsCalendarScreen({
   const byDay = state.status === "ready" ? state.byDay : new Map<string, OpenJob[]>();
   const dayJobs = byDay.get(selected) ?? [];
   const perHour = t("jobs.perHour");
+  const bonusTemplates = { hourly: t("jobs.bonusHourly"), transport: t("jobs.bonusTransport"), oneTime: t("jobs.bonusOneTime") };
 
   return (
     <ScreenContainer testID="jobs-calendar-screen">
@@ -151,11 +154,13 @@ export function JobsCalendarScreen({
               <View key={wi} style={styles.weekRow}>
                 {week.map((cell) => {
                   const count = byDay.get(cell.iso)?.length ?? 0;
+                  const dayHasBonus = (byDay.get(cell.iso) ?? []).some(hasBonus);
+                  const dayLabel = count === 0 ? dayNumber(cell.date, locale) : `${dayNumber(cell.date, locale)} · ${t("jobs.countLabel").replace("{n}", String(count))}`;
                   const isSelected = cell.iso === selected;
                   const isToday = cell.iso === todayIso;
                   return (
                     <Pressable
-                      accessibilityLabel={count === 0 ? dayNumber(cell.date, locale) : `${dayNumber(cell.date, locale)} · ${t("jobs.countLabel").replace("{n}", String(count))}`}
+                      accessibilityLabel={dayHasBonus ? `${dayLabel} · ${t("jobs.bonusDay")}` : dayLabel}
                       accessibilityRole="button"
                       accessibilityState={{ selected: isSelected }}
                       key={cell.iso}
@@ -169,6 +174,7 @@ export function JobsCalendarScreen({
                       <Text style={[styles.dayText, !cell.inMonth ? styles.dayTextOut : null, isToday ? styles.dayTextToday : null]}>
                         {dayNumber(cell.date, locale)}
                       </Text>
+                      {dayHasBonus ? <Text style={styles.dayStar}>★</Text> : null}
                       {count > 0 ? (
                         <View style={styles.countBadge}>
                           <Text style={styles.countText}>{count}</Text>
@@ -209,6 +215,7 @@ export function JobsCalendarScreen({
                 const rate = formatHourlyRate(job.workerRateMinor, locale, perHour);
                 const confirming = confirmingId === job.jobRequestId;
                 const claiming = claimingId === job.jobRequestId;
+                const bonus = bonusLabel(job, locale, bonusTemplates);
                 return (
                   <Card key={job.jobRequestId} testID="jobs-card">
                     <View style={styles.cardHead}>
@@ -223,6 +230,11 @@ export function JobsCalendarScreen({
                     <SmallText>{formatJobTime(job.startAt, job.endAt, locale)}</SmallText>
                     <View style={styles.metaRow}>
                       {rate ? <Text style={styles.rate}>{rate}</Text> : null}
+                      {bonus ? (
+                        <View style={styles.bonusPill} testID="jobs-bonus">
+                          <Text style={styles.bonusText}>{`★ ${bonus}`}</Text>
+                        </View>
+                      ) : null}
                       <SmallText>{placesLeftLabel(job.placesLeft, t("jobs.placeLeft"), t("jobs.placesLeft"))}</SmallText>
                     </View>
                     {confirming ? (
@@ -297,6 +309,9 @@ const styles = StyleSheet.create({
     minWidth: 18,
     paddingHorizontal: 4
   },
+  dayStar: { color: GOLD, fontSize: 10, position: "absolute", right: 3, top: 1 },
+  bonusPill: { backgroundColor: GOLD, borderRadius: radii.sm, paddingHorizontal: spacing.sm, paddingVertical: 2 },
+  bonusText: { color: "#000000", fontSize: typography.small, fontWeight: "800" },
   countText: { color: "#000000", fontSize: 11, fontWeight: "800" },
   cardHead: { alignItems: "center", flexDirection: "row", gap: spacing.sm, justifyContent: "space-between" },
   urgentPill: { backgroundColor: colors.urgent, borderRadius: radii.sm, paddingHorizontal: spacing.sm, paddingVertical: 2 },
