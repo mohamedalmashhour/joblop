@@ -10,6 +10,9 @@ export const environmentClasses = [
 export type EnvironmentClass = (typeof environmentClasses)[number];
 
 const publicSafe = new Set([
+  // Read (never set in production) by the expo-notifications library to detect a Jest test run.
+  // It names no secret and carries no configuration of ours.
+  "JEST_WORKER_ID",
   "EXPO_PUBLIC_RWOS_ENV",
   "EXPO_PUBLIC_RWOS_DEMO_MODE",
   "EXPO_PUBLIC_RWOS_DEPLOYMENT_TIER"
