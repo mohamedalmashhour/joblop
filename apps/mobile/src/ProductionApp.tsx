@@ -9,6 +9,8 @@ import {
 } from "./auth/secureSession";
 import { readWorkerCalendarOfferId } from "./features/worker-calendar/deepLink";
 import joblopLogo from "../assets/joblop-logo.png";
+import { LanguageToggle } from "./ui/LanguageToggle";
+import { useLocale } from "./i18n/LocaleContext";
 import { productName } from "./navigation/routes";
 import { WorkerNavigator } from "./navigation/WorkerNavigator";
 import { LocaleProvider } from "./i18n/LocaleContext";
@@ -43,14 +45,17 @@ export default function ProductionApp() {
           </View>
         ) : null}
         <View accessibilityRole="header" accessibilityLabel={productName} style={styles.header}>
-          <Image
-            accessibilityElementsHidden={true}
-            importantForAccessibility="no-hide-descendants"
-            resizeMode="contain"
-            source={joblopLogo}
-            style={styles.logo}
-          />
-          <Text style={styles.subtitle}>Workforce marketplace</Text>
+          <View style={styles.brand}>
+            <Image
+              accessibilityElementsHidden={true}
+              importantForAccessibility="no-hide-descendants"
+              resizeMode="contain"
+              source={joblopLogo}
+              style={styles.logo}
+            />
+            <Tagline />
+          </View>
+          <LanguageToggle />
         </View>
         <View style={styles.content}>
           <WorkerNavigator
@@ -79,14 +84,23 @@ const styles = StyleSheet.create({
   stagingTitle: { color: colors.focus, fontSize: typography.small, fontWeight: "800" },
   stagingText: { color: colors.warning, fontSize: typography.small, fontWeight: "700" },
   header: {
-    alignItems: "flex-start",
-    backgroundColor: colors.surface,
+    alignItems: "center",
+    // Pure black so the logo artwork (black background) blends in with no visible box.
+    backgroundColor: "#000000",
+    flexDirection: "row",
+    justifyContent: "space-between",
     borderBottomColor: colors.border,
     borderBottomWidth: StyleSheet.hairlineWidth,
     gap: spacing.xs,
     padding: spacing.lg
   },
-  logo: { height: 34, width: 150, borderRadius: 6 },
+  brand: { gap: spacing.xs },
+  logo: { height: 34, width: 150 },
   subtitle: { color: colors.muted, fontSize: typography.small },
   content: { flex: 1 }
 });
+
+function Tagline() {
+  const { t } = useLocale();
+  return <Text style={styles.subtitle}>{t("brand.tagline")}</Text>;
+}

@@ -225,6 +225,7 @@ function WorkerSignIn({
               keyboardType="phone-pad"
               onChangeText={setPhone}
               placeholder="514 555 0199"
+              placeholderTextColor={colors.muted}
               style={styles.input}
               value={phone}
             />
@@ -245,6 +246,7 @@ function WorkerSignIn({
               maxLength={6}
               onChangeText={setCode}
               placeholder="123456"
+              placeholderTextColor={colors.muted}
               style={styles.input}
               value={code}
             />

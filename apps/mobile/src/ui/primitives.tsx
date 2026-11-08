@@ -136,6 +136,7 @@ export function Input({
         keyboardType={keyboardType}
         onChangeText={onChangeText}
         placeholder={placeholder}
+        placeholderTextColor={colors.muted}
         style={styles.input}
         value={value}
       />
