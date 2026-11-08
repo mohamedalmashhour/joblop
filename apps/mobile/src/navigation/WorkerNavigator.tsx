@@ -40,7 +40,6 @@ const TABS: readonly { id: TabId; label: string; root: Screen }[] = [
   { id: "home", label: "Home", root: { name: "home" } },
   { id: "available", label: "My calendar", root: { name: "available" } },
   { id: "myShifts", label: "My Shifts", root: { name: "myShifts" } },
-  { id: "calendar", label: "Calendar", root: { name: "calendar" } },
   { id: "earnings", label: "Earnings", root: { name: "earnings" } }
 ];
 
@@ -57,15 +56,17 @@ export function WorkerNavigator({
   onAuthenticatedChange: (next: boolean) => void;
 }) {
   const { t: tr } = useLocale();
-  // A deep-linked offer opens the Calendar tab; otherwise the hub.
-  // The worker opens to their month calendar (a deep-linked offer still opens the Calendar tab too).
-  const [tab, setTab] = useState<TabId>("calendar");
-  const [stack, setStack] = useState<Screen[]>([{ name: "calendar" }]);
+  // One calendar (owner rule): the worker opens on "My calendar". A deep-linked offer opens the offer
+  // on top of it so the existing accept flow still works, and Back returns to the calendar.
+  const [tab, setTab] = useState<TabId>("available");
+  const [stack, setStack] = useState<Screen[]>(offerId ? [{ name: "available" }, { name: "calendar" }] : [{ name: "available" }]);
 
   const current = stack[stack.length - 1]!;
   const push = useCallback((screen: Screen) => setStack((s) => [...s, screen]), []);
   const back = useCallback(() => setStack((s) => (s.length > 1 ? s.slice(0, -1) : s)), []);
-  const selectTab = useCallback((next: TabId) => {
+  const selectTab = useCallback((requested: TabId) => {
+    // The old separate "Calendar" tab is now part of "My calendar".
+    const next: TabId = requested === "calendar" ? "available" : requested;
     const root = TABS.find((t) => t.id === next)!.root;
     setTab(next);
     setStack([root]);
@@ -101,6 +102,7 @@ export function WorkerNavigator({
             onOpenSearch={() => push({ name: "marketplaceSearch" })}
             onOpenSchedule={() => push({ name: "attendance" })}
             onOpenPay={() => selectTab("earnings")}
+            onOpenOffers={() => push({ name: "offers" })}
           />
         );
       case "marketplaceSearch":

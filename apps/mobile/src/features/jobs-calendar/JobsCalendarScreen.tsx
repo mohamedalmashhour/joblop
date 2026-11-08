@@ -48,13 +48,15 @@ export function JobsCalendarScreen({
   onOpenSetup,
   onOpenSearch,
   onOpenSchedule,
-  onOpenPay
+  onOpenPay,
+  onOpenOffers
 }: {
   transport: MobileSessionTransport | null;
   onOpenSetup?: () => void;
   onOpenSearch?: () => void;
   onOpenSchedule?: () => void;
   onOpenPay?: () => void;
+  onOpenOffers?: () => void;
 }) {
   const { t, locale, isRtl } = useLocale();
   const today = useMemo(() => new Date(), []);
@@ -137,6 +139,11 @@ export function JobsCalendarScreen({
             {transport && onOpenSearch ? (
               <View style={styles.topAction}>
                 <Button label={t("jobs.searchByPostal")} onPress={onOpenSearch} variant="secondary" />
+              </View>
+            ) : null}
+            {transport && onOpenOffers ? (
+              <View style={styles.topAction}>
+                <Button label={t("hub.myOffers")} onPress={onOpenOffers} variant="secondary" />
               </View>
             ) : null}
           </Card>

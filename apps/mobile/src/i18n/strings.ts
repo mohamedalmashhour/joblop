@@ -140,7 +140,8 @@ const en: Dict = {
   "hub.openPay": "Open my earnings",
   "hub.dayShift": "you work",
   "hub.dayPay": "pay day",
-  "hub.dayCancelled": "cancelled shift"
+  "hub.dayCancelled": "cancelled shift",
+  "hub.myOffers": "My offers (accept or decline)"
 };
 
 const fr: Dict = {
@@ -270,7 +271,8 @@ const fr: Dict = {
   "hub.openPay": "Ouvrir mes gains",
   "hub.dayShift": "vous travaillez",
   "hub.dayPay": "jour de paie",
-  "hub.dayCancelled": "quart annulé"
+  "hub.dayCancelled": "quart annulé",
+  "hub.myOffers": "Mes offres (accepter ou refuser)"
 };
 
 const ar: Dict = {
@@ -400,7 +402,8 @@ const ar: Dict = {
   "hub.openPay": "افتح أرباحي",
   "hub.dayShift": "لديك نوبة",
   "hub.dayPay": "يوم دفع",
-  "hub.dayCancelled": "نوبة ملغاة"
+  "hub.dayCancelled": "نوبة ملغاة",
+  "hub.myOffers": "عروضي (قبول أو رفض)"
 };
 
 export const dictionaries: Record<Locale, Dict> = { en, fr, ar };
