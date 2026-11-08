@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import { LanguageSwitcher } from "./i18n/LanguageSwitcher";
 import { useLocale } from "./i18n/LocaleProvider";
 import { JoblopLogo } from "./JoblopLogo";
@@ -24,6 +24,10 @@ export function SiteHeader() {
   const nav = (ar: string, fr: string, en: string) =>
     locale === "ar" ? ar : locale.startsWith("fr") ? fr : en;
   const close = () => setOpen(false);
+  const signOut = async () => {
+    await fetch("/api/session/sign-out", { method: "POST" }).catch(() => undefined);
+    window.location.assign("/");
+  };
   return (
     <header className="topbar">
       <div className="wrap">
@@ -42,23 +46,46 @@ export function SiteHeader() {
             <span /><span /><span />
           </button>
           <nav className={open ? "topbar-nav open" : "topbar-nav"}>
-            <a className="muted" href="/browse" onClick={close}>{nav("الوظائف", "Emplois", "Find jobs")}</a>
+            {!signedIn ? <a className="muted" href="/browse" onClick={close}>{nav("الوظائف", "Emplois", "Find jobs")}</a> : null}
             <a className="muted" href="/how-it-works" onClick={close}>{nav("كيف يعمل", "Comment ça marche", "How it works")}</a>
             <a className="muted" href="/job-scanner" onClick={close}>JobScanner</a>
             <a className="muted" href="/cv-builder" onClick={close}>{nav("إنشاء السيرة", "Créer un CV", "Build CV")}</a>
-            <a className="muted" href={EMPLOYER_URL} onClick={close}>{nav("لأصحاب العمل", "Employeurs", "For Employers")}</a>
-            <a className="muted" href="/browse#contact" onClick={close}>{nav("تواصل", "Contact", "Contact")}</a>
+            {!signedIn ? (
+              <>
+                <a className="muted" href={EMPLOYER_URL} onClick={close}>{nav("لأصحاب العمل", "Employeurs", "For Employers")}</a>
+                <a className="muted" href="/browse#contact" onClick={close}>{nav("تواصل", "Contact", "Contact")}</a>
+              </>
+            ) : null}
             {signedIn ? (
               <>
-                <a className="muted" href="/schedule" onClick={close}>{nav("جدولي", "Mon horaire", "My schedule")}</a>
-                <a className="muted" href="/pay" onClick={close}>{nav("أجري", "Ma paie", "My pay")}</a>
-                <a className="muted" href="/contact" onClick={close}>{nav("تواصل مع Joblop", "Contacter Joblop", "Contact Joblop")}</a>
-                <a className="topbar-cta" href="/" onClick={close}>{nav("لوحة التحكم", "Tableau de bord", "Dashboard")}</a>
+                {/* Signed-in pages grouped, so the home page keeps its space for "Find work near you". */}
+                <MenuGroup label={nav("عملي", "Mon travail", "My work")}>
+                  <a href="/offers" onClick={close}>{nav("العروض", "Offres", "Offers")}</a>
+                  <a href="/schedule" onClick={close}>{nav("جدولي", "Mon horaire", "My schedule")}</a>
+                  <a href="/timesheets" onClick={close}>{nav("سجلات الدوام", "Feuilles de temps", "Timesheets")}</a>
+                  <a href="/saved-jobs" onClick={close}>{nav("الوظائف المحفوظة", "Emplois sauvegardés", "Saved jobs")}</a>
+                  <a href="/my-interests" onClick={close}>{nav("اهتماماتي", "Mes intérêts", "My interests")}</a>
+                </MenuGroup>
+                <MenuGroup label={nav("ملفي", "Mon profil", "My profile")}>
+                  <a href="/verification" onClick={close}>{nav("التحقق", "Vérification", "Verification")}</a>
+                  <a href="/hr" onClick={close}>{nav("ملف الموارد البشرية", "Dossier RH", "HR profile")}</a>
+                  <a href="/documents" onClick={close}>{nav("المستندات", "Documents", "Documents")}</a>
+                </MenuGroup>
+                <MenuGroup label={nav("المال", "Argent", "Money")}>
+                  <a href="/pay" onClick={close}>{nav("أجري", "Ma paie", "My pay")}</a>
+                </MenuGroup>
+                <MenuGroup label={nav("مساعدة", "Aide", "Help")}>
+                  <a href="/contact" onClick={close}>{nav("تواصل مع Joblop", "Contacter Joblop", "Contact Joblop")}</a>
+                  <button type="button" className="topbar-signout" onClick={() => void signOut()}>
+                    {nav("تسجيل الخروج", "Se déconnecter", "Sign out")}
+                  </button>
+                </MenuGroup>
+                <a className="topbar-cta" href="/" onClick={close}>{nav("ابحث عن عمل", "Trouver du travail", "Find work")}</a>
               </>
             ) : (
               <>
-                <a className="muted" href="/" onClick={close}>{nav("تسجيل الدخول", "Se connecter", "Sign in")}</a>
-                <a className="topbar-cta" href="/" onClick={close}>{nav("إنشاء حساب", "Créer un compte", "Create account")}</a>
+                <a className="topbar-cta" href="/#auth-card" onClick={close}>{nav("إنشاء حساب", "Créer un compte", "Create account")}</a>
+                <a className="muted" href="/#auth-card" onClick={close}>{nav("تسجيل الدخول", "Se connecter", "Sign in")}</a>
               </>
             )}
             <LanguageSwitcher />
@@ -66,5 +93,15 @@ export function SiteHeader() {
         </div>
       </div>
     </header>
+  );
+}
+
+/** A small dropdown group in the header (a plain list inside the mobile menu). */
+function MenuGroup({ label, children }: { label: string; children: ReactNode }) {
+  return (
+    <details className="topbar-group">
+      <summary>{label}</summary>
+      <div className="topbar-group-items">{children}</div>
+    </details>
   );
 }
