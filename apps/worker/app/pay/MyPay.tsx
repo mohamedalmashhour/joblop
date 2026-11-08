@@ -7,7 +7,7 @@ import type { MessageKey } from "../i18n/messages";
 import type { Translate } from "../i18n/LocaleProvider";
 
 type Deduction = Readonly<{ category: string; code: string; description: string; amountMinor: number; currency: string }>;
-type Earning = Readonly<{ classification: string; description: string; quantityMinutes: number; rateMinor: number; amountMinor: number; currency: string }>;
+type Earning = Readonly<{ classification: string; description: string; quantityMinutes: number | null; rateMinor: number | null; amountMinor: number; currency: string }>;
 type Statement = Readonly<{
   calculationId: string;
   revision: number;
@@ -311,7 +311,7 @@ function EarningsTab({ state, choose, t, locale }: { state: Extract<PayState, { 
                   <div className="when" style={{ marginTop: 6 }}>{t("pay.earningsTitle")}</div>
                   <ul style={{ margin: "4px 0 0", paddingLeft: 18, fontSize: 13 }}>
                     {s.earningLines.map((e, i) => (
-                      <li key={`${e.classification}-${i}`}>{lineLabel("earning", e.classification, e.description, t)}: {money(e.amountMinor, e.currency, locale)} <span style={{ opacity: 0.7 }}>({t("pay.hours", { hours: hours(e.quantityMinutes) })} · {t("pay.rateHr", { rate: money(e.rateMinor, e.currency, locale) })})</span></li>
+                      <li key={`${e.classification}-${i}`}>{lineLabel("earning", e.classification, e.description, t)}: {money(e.amountMinor, e.currency, locale)} <span style={{ opacity: 0.7 }}>({e.quantityMinutes === null || e.quantityMinutes === undefined ? "—" : t("pay.hours", { hours: hours(e.quantityMinutes) })} · {e.rateMinor === null || e.rateMinor === undefined ? "—" : t("pay.rateHr", { rate: money(e.rateMinor, e.currency, locale) })})</span></li>
                     ))}
                   </ul>
                 </>

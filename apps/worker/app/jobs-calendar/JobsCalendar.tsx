@@ -16,6 +16,8 @@ type OpenJob = Readonly<{
   urgency: string;
   placesLeft: number;
   workerRateMinor: number | null;
+  // Extra pay Joblop added to fill the job faster (absent or null when there is none).
+  bonus?: Readonly<{ kind: string; amountMinor: number }> | null;
 }>;
 
 type Lang = "en" | "fr" | "ar";
@@ -47,6 +49,10 @@ const TEXT = {
     places: (n: number) => (n === 1 ? "1 place left" : `${n} places left`),
     urgent: "Urgent",
     perHour: (amount: string) => `$${amount}/h`,
+    bonusHourly: (amount: string) => `+ $${amount}/h bonus`,
+    bonusTransport: (amount: string) => `+ $${amount} transport`,
+    bonusOneTime: (amount: string) => `+ $${amount} bonus`,
+    bonusDay: "has a bonus job",
     accept: "Accept this job",
     accepting: "Accepting…",
     details: "View details",
@@ -92,6 +98,10 @@ const TEXT = {
     places: (n: number) => (n === 1 ? "1 place restante" : `${n} places restantes`),
     urgent: "Urgent",
     perHour: (amount: string) => `${amount} $/h`,
+    bonusHourly: (amount: string) => `+ ${amount} $/h de prime`,
+    bonusTransport: (amount: string) => `+ ${amount} $ transport`,
+    bonusOneTime: (amount: string) => `+ ${amount} $ de prime`,
+    bonusDay: "emploi avec prime",
     accept: "Accepter cet emploi",
     accepting: "Acceptation…",
     details: "Voir les détails",
@@ -137,6 +147,10 @@ const TEXT = {
     places: (n: number) => (n === 1 ? "بقي مكان واحد" : `بقي ${n} أماكن`),
     urgent: "عاجل",
     perHour: (amount: string) => `${amount}$ / ساعة`,
+    bonusHourly: (amount: string) => `+ ${amount}$ مكافأة في الساعة`,
+    bonusTransport: (amount: string) => `+ ${amount}$ للمواصلات`,
+    bonusOneTime: (amount: string) => `+ ${amount}$ مكافأة`,
+    bonusDay: "فيه وظيفة بمكافأة",
     accept: "اقبل هذه الوظيفة",
     accepting: "جارٍ القبول…",
     details: "عرض التفاصيل",
@@ -175,6 +189,18 @@ function dayKey(date: Date): string {
 
 function intlLocale(lang: Lang): string {
   return lang === "ar" ? "ar-u-nu-latn" : lang === "fr" ? "fr-CA" : "en-CA";
+}
+
+function hasBonus(job: OpenJob): boolean {
+  return Boolean(job.bonus && job.bonus.amountMinor > 0);
+}
+
+function bonusLabel(job: OpenJob, t: (typeof TEXT)[Lang]): string | null {
+  if (!job.bonus || !(job.bonus.amountMinor > 0)) return null;
+  const amount = formatAmount(job.bonus.amountMinor);
+  if (job.bonus.kind === "hourly") return t.bonusHourly(amount);
+  if (job.bonus.kind === "transport") return t.bonusTransport(amount);
+  return t.bonusOneTime(amount);
 }
 
 function formatAmount(minor: number): string {
@@ -356,6 +382,7 @@ export function JobsCalendar() {
                 if (!date) return <div key={`b${i}`} className="jc-cell jc-blank" aria-hidden="true" />;
                 const key = dayKey(date);
                 const count = byDay.get(key)?.length ?? 0;
+                const dayHasBonus = (byDay.get(key) ?? []).some(hasBonus);
                 const isToday = key === todayKey;
                 const isPast = key < todayKey;
                 const isSelected = key === selected;
@@ -373,12 +400,13 @@ export function JobsCalendar() {
                     className={cls}
                     aria-pressed={isSelected}
                     aria-current={isToday ? "date" : undefined}
-                    aria-label={`${dayFmt.format(date)}${count > 0 ? `, ${t.dayCount(count)}` : ""}`}
+                    aria-label={`${dayFmt.format(date)}${count > 0 ? `, ${t.dayCount(count)}` : ""}${dayHasBonus ? `, ${t.bonusDay}` : ""}`}
                     onClick={() => {
                       setSelected(key);
                       setBanner(null);
                     }}
                   >
+                    {dayHasBonus ? <span className="jc-star" aria-hidden="true">★</span> : null}
                     <span className="jc-num">{date.getDate()}</span>
                     {count > 0 ? <span className="jc-badge">{count}</span> : <span className="jc-badge-empty" />}
                   </button>
@@ -408,6 +436,7 @@ export function JobsCalendar() {
                   {selectedJobs.map((job) => {
                     const notice = notices[job.jobRequestId];
                     const busy = busyId === job.jobRequestId;
+                    const bonus = bonusLabel(job, t);
                     return (
                       <article key={job.jobRequestId} className="jc-card">
                         <div className="jc-card-top">
@@ -422,6 +451,7 @@ export function JobsCalendar() {
                           {job.workerRateMinor !== null && job.workerRateMinor !== undefined ? (
                             <span className="jc-pay"><bdi>{t.perHour(formatAmount(job.workerRateMinor))}</bdi></span>
                           ) : null}
+                          {bonus ? <span className="jc-bonus"><span aria-hidden="true">★ </span><bdi>{bonus}</bdi></span> : null}
                           <span className="jc-places">{t.places(job.placesLeft)}</span>
                         </div>
                         {notice ? <NoticeView notice={notice} t={t} /> : null}
@@ -567,6 +597,9 @@ const STYLES = `
 .jc-meta { margin: 2px 0; color: #444; font-size: 0.92rem; }
 .jc-facts { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 8px; }
 .jc-pay { background: #111; color: #f8b808; font-weight: 700; padding: 3px 10px; border-radius: 999px; font-size: 0.85rem; }
+.jc-bonus { background: #F8B808; color: #111; font-weight: 800; padding: 3px 10px; border-radius: 999px; font-size: 0.85rem; }
+.jc-star { position: absolute; top: 2px; inset-inline-end: 4px; color: #F8B808; font-size: 0.75rem; line-height: 1; }
+.jc-selected .jc-star { color: #111; }
 .jc-places { background: #fdf3d4; color: #6b4e00; font-weight: 600; padding: 3px 10px; border-radius: 999px; font-size: 0.85rem; }
 .jc-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; margin-top: 12px; }
 .jc-btn { display: inline-flex; align-items: center; justify-content: center; min-height: 44px; padding: 0 18px; border-radius: 999px; border: 0; background: #f8b808; color: #111; font: inherit; font-weight: 700; text-decoration: none; cursor: pointer; }

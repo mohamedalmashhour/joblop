@@ -1215,6 +1215,7 @@ model JobRequest {
   changeProposals EmployerRequestChangeProposal[]
   savedByWorkers WorkerSavedJob[]
   workerInterests WorkerJobInterest[]
+  bonuses JobBonus[]
 
   @@unique([id, organizationId, residenceId, departmentId, workGroupId, roleDefinitionId], map: "job_requests_operational_scope_key")
   @@index([jobRequestNumber], map: "job_requests_job_request_number_idx")
@@ -1689,6 +1690,56 @@ model ClientIntakeSignal {
 
 // Worker-saved marketplace jobs. User-scoped (a worker saves opportunities to revisit).
 // Idempotent: one save per (worker, job) via the unique constraint.
+// ── Job bonus (attract workers to an unfilled approved job) ──
+// Funded by the employer (offered -> accepted/declined, billed on the employer invoice) or by the
+// platform (approved by staff, capped at the platform's share unless urgentOverride). At most one
+// active bonus (employer_accepted | approved) per job; the worker receives it in pay for that shift.
+enum JobBonusKind {
+  hourly
+  transport
+  one_time
+}
+
+enum JobBonusFunding {
+  employer
+  platform
+}
+
+enum JobBonusStatus {
+  offered_to_employer
+  employer_accepted
+  employer_declined
+  approved
+  cancelled
+}
+
+model JobBonus {
+  id                String          @id @default(uuid()) @db.Uuid
+  jobRequestId      String          @map("job_request_id") @db.Uuid
+  organizationId    String          @map("organization_id") @db.Uuid
+  kind              JobBonusKind
+  fundedBy          JobBonusFunding @map("funded_by")
+  status            JobBonusStatus
+  amountMinor       Int             @map("amount_minor")
+  currency          String          @default("CAD")
+  suggestedBySystem Boolean         @default(false) @map("suggested_by_system")
+  urgentOverride    Boolean         @default(false) @map("urgent_override")
+  reason            String?
+  createdByUserId   String          @map("created_by_user_id") @db.Uuid
+  decidedByUserId   String?         @map("decided_by_user_id") @db.Uuid
+  offeredAt         DateTime?       @map("offered_at") @db.Timestamptz(3)
+  respondedAt       DateTime?       @map("responded_at") @db.Timestamptz(3)
+  approvedAt        DateTime?       @map("approved_at") @db.Timestamptz(3)
+  cancelledAt       DateTime?       @map("cancelled_at") @db.Timestamptz(3)
+  createdAt         DateTime        @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt         DateTime        @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  jobRequest JobRequest @relation(fields: [jobRequestId], references: [id], onDelete: Cascade)
+
+  @@index([jobRequestId, status], map: "job_bonuses_job_request_id_status_idx")
+  @@map("job_bonuses")
+}
+
 model WorkerSavedJob {
   id               String   @id @default(uuid()) @db.Uuid
   workerIdentityId String   @map("worker_identity_id") @db.Uuid
@@ -2645,6 +2696,8 @@ model PayrollWorkedTimeReference {
   appliedHourlyRateMinor Int             @map("applied_hourly_rate_minor")
   currency            String
   sourceEffectiveInstant DateTime        @map("source_effective_instant") @db.Timestamptz(3)
+  // Job bonus paid for this shift (0 when none). Snapshotted so replay/verify stays reproducible.
+  bonusMinor          Int                @default(0) @map("bonus_minor")
 
   payrollCalculation  PayrollCalculation @relation(fields: [payrollCalculationId], references: [id], onDelete: Cascade)
 

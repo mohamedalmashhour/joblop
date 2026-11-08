@@ -116,7 +116,15 @@ suite("worker journey and payout guards", () => {
     scope = { organizationId: org.id, residenceId: res.id, departmentId: dept.id, workGroupId: wg.id, roleDefinitionId: role.id };
   });
 
+  // Memberships made by these tests are removed again: suites share one database, and others
+  // (e.g. the QA-reset reconcile test) expect no leftover organization roles.
+  const createdMembershipIds: string[] = [];
+
   afterAll(async () => {
+    if (createdMembershipIds.length > 0) {
+      await prisma.membershipAccessRole.deleteMany({ where: { membershipId: { in: createdMembershipIds } } });
+      await prisma.organizationMembership.deleteMany({ where: { id: { in: createdMembershipIds } } });
+    }
     await app?.close();
     await prisma.$disconnect();
   });
@@ -444,6 +452,111 @@ suite("worker journey and payout guards", () => {
       const worker = await makeWorker("preview");
       const detail = await app.inject({ method: "GET", url: `/marketplace/jobs/${job.id}`, headers: auth(worker.token) });
       expect(detail.body).not.toContain(STREET);
+    });
+  });
+
+  describe("job bonus", () => {
+    async function makeEmployer() {
+      const user = await register("fa-employer");
+      employerIds.add(user.id);
+      const membership = await prisma.organizationMembership.create({ data: { organizationId: scope.organizationId, userId: user.id, status: "active", acceptedAt: new Date() } });
+      const owner = await prisma.accessRoleDefinition.findUniqueOrThrow({ where: { key: "ORGANIZATION_OWNER" } });
+      await prisma.membershipAccessRole.create({ data: { membershipId: membership.id, accessRoleDefinitionId: owner.id } });
+      createdMembershipIds.push(membership.id);
+      return user;
+    }
+    const openJobBonus = async (token: string, jobRequestId: string) => {
+      const res = await app.inject({ method: "GET", url: "/marketplace/open-jobs", headers: auth(token) });
+      expect(res.statusCode, res.body).toBe(200);
+      return (res.json().jobs as { jobRequestId: string; bonus: Record<string, unknown> | null }[]).find((j) => j.jobRequestId === jobRequestId)?.bonus;
+    };
+
+    it("staff offer → employer accepts → workers see it; platform cap, urgent override and cancel are governed", async () => {
+      const employer = await makeEmployer();
+      const worker = await makeWorker("bonus-w");
+      // 6-hour shift starting in 2 hours: worker $25/h, platform share $5/h ($30 per shift).
+      const { job } = await makeJob({ startAt: new Date(Date.now() + 2 * HOUR), endAt: new Date(Date.now() + 8 * HOUR), openClaim: true });
+      const base = `/platform/job-requests/${job.id}`;
+
+      const suggested = await app.inject({ method: "GET", url: `${base}/bonus-suggestion`, headers: auth(staff.token) });
+      expect(suggested.statusCode, suggested.body).toBe(200);
+      // Within 12 hours → 15% of $25.00 = $3.75; one-time equivalent $3.75 x 6 h.
+      expect(suggested.json().suggestion).toMatchObject({ kind: "hourly", amountMinor: 375, oneTimeEquivalentMinor: 2250, platformCapHourlyMinor: 500, platformCapShiftMinor: 3000 });
+
+      // Only staff may create bonuses; amounts are validated.
+      expect((await app.inject({ method: "POST", url: `${base}/bonuses`, headers: auth(employer.token), payload: { kind: "hourly", amountMinor: 375, fundedBy: "employer" } })).statusCode).toBe(403);
+      expect((await app.inject({ method: "POST", url: `${base}/bonuses`, headers: auth(staff.token), payload: { kind: "hourly", amountMinor: 10, fundedBy: "employer" } })).statusCode).toBe(400);
+
+      emails.length = 0;
+      const offered = await app.inject({ method: "POST", url: `${base}/bonuses`, headers: auth(staff.token), payload: { kind: "hourly", amountMinor: 375, fundedBy: "employer", reason: "Short notice" } });
+      expect(offered.statusCode, offered.body).toBe(201);
+      const offer = offered.json().bonus as { id: string; status: string; suggestedBySystem: boolean };
+      expect(offer.status).toBe("offered_to_employer");
+      expect(offer.suggestedBySystem).toBe(true);
+      expect(emails.some((m) => /prime|bonus/i.test(m.subject))).toBe(true);
+      expect(await openJobBonus(worker.token, job.id)).toBeNull(); // not active until accepted
+
+      const pending = await app.inject({ method: "GET", url: `/employer/job-requests/${job.id}/bonus-offer`, headers: auth(employer.token) });
+      expect(pending.statusCode, pending.body).toBe(200);
+      expect(pending.json().offer).toMatchObject({ bonusId: offer.id, kind: "hourly", amountMinor: 375, currency: "CAD", reason: "Short notice" });
+      // Someone outside the company sees nothing and cannot answer.
+      expect((await app.inject({ method: "GET", url: `/employer/job-requests/${job.id}/bonus-offer`, headers: auth(worker.token) })).statusCode).toBe(404);
+      expect((await app.inject({ method: "POST", url: `/employer/bonuses/${offer.id}/accept`, headers: auth(worker.token) })).statusCode).toBe(404);
+
+      const accepted = await app.inject({ method: "POST", url: `/employer/bonuses/${offer.id}/accept`, headers: auth(employer.token) });
+      expect(accepted.statusCode, accepted.body).toBe(200);
+      expect(accepted.json().bonus.status).toBe("employer_accepted");
+      expect((await app.inject({ method: "POST", url: `/employer/bonuses/${offer.id}/decline`, headers: auth(employer.token) })).statusCode).toBe(409);
+      // Workers see kind + amount only, never who pays.
+      expect(await openJobBonus(worker.token, job.id)).toEqual({ kind: "hourly", amountMinor: 375 });
+
+      // One active bonus per job.
+      const second = await app.inject({ method: "POST", url: `${base}/bonuses`, headers: auth(staff.token), payload: { kind: "hourly", amountMinor: 100, fundedBy: "platform" } });
+      expect(second.statusCode, second.body).toBe(409);
+      expect(second.json().error).toBe("RWOS_BONUS_ACTIVE_EXISTS");
+
+      const cancelled = await app.inject({ method: "POST", url: `/platform/bonuses/${offer.id}/cancel`, headers: auth(staff.token) });
+      expect(cancelled.statusCode, cancelled.body).toBe(200);
+      expect(cancelled.json().bonus.status).toBe("cancelled");
+      expect(await openJobBonus(worker.token, job.id)).toBeNull();
+      expect((await app.inject({ method: "POST", url: `/platform/bonuses/${offer.id}/cancel`, headers: auth(staff.token) })).statusCode).toBe(409);
+
+      // Platform-funded: over Joblop's $5/h share is refused, unless staff record an urgent override.
+      const over = await app.inject({ method: "POST", url: `${base}/bonuses`, headers: auth(staff.token), payload: { kind: "hourly", amountMinor: 600, fundedBy: "platform" } });
+      expect(over.statusCode, over.body).toBe(422);
+      expect(over.json().error).toBe("RWOS_BONUS_OVER_PLATFORM_SHARE");
+      const urgent = await app.inject({ method: "POST", url: `${base}/bonuses`, headers: auth(staff.token), payload: { kind: "hourly", amountMinor: 600, fundedBy: "platform", urgentOverride: true } });
+      expect(urgent.statusCode, urgent.body).toBe(201);
+      expect(urgent.json().bonus).toMatchObject({ status: "approved", fundedBy: "platform", urgentOverride: true });
+      expect(await openJobBonus(worker.token, job.id)).toEqual({ kind: "hourly", amountMinor: 600 });
+
+      const coverage = await app.inject({ method: "GET", url: "/platform/calendar/coverage", headers: auth(staff.token) });
+      expect(coverage.statusCode, coverage.body).toBe(200);
+      const row = (coverage.json().jobs as { jobRequestId: string; bonus: unknown; bonusSuggestion: unknown }[]).find((j) => j.jobRequestId === job.id);
+      expect(row?.bonus).toEqual({ id: urgent.json().bonus.id, kind: "hourly", amountMinor: 600, fundedBy: "platform", status: "approved" });
+      expect(row?.bonusSuggestion).toMatchObject({ kind: "hourly", amountMinor: 375 });
+
+      const listed = await app.inject({ method: "GET", url: `${base}/bonuses`, headers: auth(staff.token) });
+      expect(listed.statusCode, listed.body).toBe(200);
+      expect((listed.json().bonuses as { status: string }[]).map((b) => b.status).sort()).toEqual(["approved", "cancelled"]);
+
+      const trail = await prisma.auditEvent.findMany({ where: { entityType: "job_bonus", entityPublicReference: job.id }, include: { actorReference: true }, orderBy: { createdAt: "asc" } });
+      expect(trail.map((e) => e.action)).toEqual(["bonus.offered", "bonus.employer_accepted", "bonus.cancelled", "bonus.approved"]);
+      expect(trail.find((e) => e.action === "bonus.employer_accepted")?.actorReference.userId).toBe(employer.id);
+      expect(trail.find((e) => e.action === "bonus.approved")?.actorReference.userId).toBe(staff.id);
+    });
+
+    it("an employer can decline an offer, and it never becomes active", async () => {
+      const employer = await makeEmployer();
+      const { job } = await makeJob({ startAt: new Date(Date.now() + 30 * HOUR), endAt: new Date(Date.now() + 38 * HOUR), openClaim: true });
+      const offered = await app.inject({ method: "POST", url: `/platform/job-requests/${job.id}/bonuses`, headers: auth(staff.token), payload: { kind: "transport", amountMinor: 1500, fundedBy: "employer" } });
+      expect(offered.statusCode, offered.body).toBe(201);
+      const declined = await app.inject({ method: "POST", url: `/employer/bonuses/${offered.json().bonus.id}/decline`, headers: auth(employer.token) });
+      expect(declined.statusCode, declined.body).toBe(200);
+      expect(declined.json().bonus.status).toBe("employer_declined");
+      const pending = await app.inject({ method: "GET", url: `/employer/job-requests/${job.id}/bonus-offer`, headers: auth(employer.token) });
+      expect(pending.json().offer).toBeNull();
+      expect(await openJobBonus(employer.token, job.id)).toBeNull();
     });
   });
 });

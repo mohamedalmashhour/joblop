@@ -3,16 +3,18 @@ import type { PrismaClient } from "@rwos/database";
 import {
   billableHours,
   calculateInvoiceSnapshot,
+  jobBonusInvoiceMinor,
   PLATFORM_INVOICE_ISSUER,
   PLATFORM_INVOICE_TAX,
   urgencyPremiumMinor,
   type InvoiceCalculationInput
 } from "@rwos/shared";
 import type { InvoiceRepository } from "./invoiceRepository";
+import { loadShiftBonuses, pickShiftBonus } from "./jobBonusShift";
 
 // Gap B — auto-generate the client invoice from a locked timesheet, billing the FULL per-job money:
 // regular labour + urgent premium + the Gap-A variable extras (emergency surcharge the platform keeps,
-// and the distance/gas+travel surcharge), with GST/QST applied by the invoice engine under the single
+// and the distance/gas+travel surcharge, plus an employer-accepted job bonus), with GST/QST applied by the invoice engine under the single
 // platform issuer. Numbering is assigned at ISSUE time, not here. Runs AFTER the timesheet is locked;
 // never throws into the lock path — a failure is reported, not propagated. Still gated downstream like
 // every invoice (draft until approved/issued). No money moves.
@@ -35,6 +37,8 @@ export function buildInvoiceCalculationInput(p: {
   distanceSurchargeMinor: number;
   urgency: string | null | undefined;
   occurredAt: string;
+  /** Employer-funded job bonus already priced for this shift (see jobBonusInvoiceMinor). 0/absent → no line. */
+  bonusMinor?: number;
 }): InvoiceCalculationInput {
   // The employer is billed at least 6 hours per shift (shown on the invoice); the worker is still paid the
   // hours actually worked, so the difference is platform revenue (owner rule, no hidden fees).
@@ -69,6 +73,7 @@ export function buildInvoiceCalculationInput(p: {
     adjustments: money(0),
     marketplaceFees: money(p.emergencySurchargePerHourMinor * hours),
     credits: money(0),
+    ...(p.bonusMinor && p.bonusMinor > 0 ? { bonus: money(p.bonusMinor) } : {}),
     lineRuleVersions: {
       regular_labour: "v1",
       urgent_labour: "v1",
@@ -97,7 +102,8 @@ export async function autoGenerateInvoiceForLockedTimesheet(
       assignmentId: true,
       attendanceRecordId: true,
       jobRequestId: true,
-      billableMinutes: true
+      billableMinutes: true,
+      scheduledStartAt: true
     }
   });
   if (!ts || ts.status !== "locked") return { ok: false, reason: "timesheet_not_locked" };
@@ -114,6 +120,15 @@ export async function autoGenerateInvoiceForLockedTimesheet(
   if (!snap) return { ok: false, reason: "no_pricing_snapshot" };
   if (!ts.billableMinutes || ts.billableMinutes <= 0) return { ok: false, reason: "no_billable_minutes" };
   const job = await prisma.jobRequest.findUnique({ where: { id: ts.jobRequestId }, select: { urgency: true } });
+  // Employer-funded job bonus (accepted by the employer) for this shift: hourly x billed hours (the
+  // same hours as labour, with the 6-hour minimum), or the fixed transport/one-time amount.
+  // Platform-funded bonuses are paid by Joblop and never billed to the employer.
+  const employerBonus = pickShiftBonus(
+    await loadShiftBonuses(prisma, [ts.jobRequestId]),
+    ts.jobRequestId,
+    ts.scheduledStartAt,
+    "employer"
+  );
 
   const input = buildInvoiceCalculationInput({
     timesheetId: ts.id,
@@ -126,7 +141,8 @@ export async function autoGenerateInvoiceForLockedTimesheet(
     emergencySurchargePerHourMinor: snap.emergencySurchargePerHourMinor,
     distanceSurchargeMinor: snap.distanceSurchargeMinor,
     urgency: job?.urgency ?? null,
-    occurredAt: new Date().toISOString()
+    occurredAt: new Date().toISOString(),
+    bonusMinor: employerBonus ? jobBonusInvoiceMinor(employerBonus, ts.billableMinutes) : 0
   });
 
   try {

@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { OpenJob } from "../../auth/secureSession";
 import { isoDay } from "../calendar-month/monthGrid";
-import { claimMessage, formatHourlyRate, gridWindow, groupJobsByDay, humanizeReason, isUrgent, placesLeftLabel } from "./jobsCalendarContent";
+import { bonusLabel, claimMessage, formatHourlyRate, gridWindow, groupJobsByDay, hasBonus, humanizeReason, isUrgent, placesLeftLabel } from "./jobsCalendarContent";
 
 function job(overrides: Partial<OpenJob>): OpenJob {
   return {
@@ -18,6 +18,15 @@ function job(overrides: Partial<OpenJob>): OpenJob {
 }
 
 describe("jobs calendar content", () => {
+  it("labels a bonus by kind and ignores jobs without one", () => {
+    const templates = { hourly: "+ {amount}/h bonus", transport: "+ {amount} transport", oneTime: "+ {amount} bonus" };
+    expect(hasBonus(job({}))).toBe(false);
+    expect(bonusLabel(job({}), "en-CA", templates)).toBeNull();
+    expect(bonusLabel(job({ bonus: { kind: "hourly", amountMinor: 250 } }), "en-CA", templates)).toBe("+ $2.50/h bonus");
+    expect(bonusLabel(job({ bonus: { kind: "transport", amountMinor: 2000 } }), "en-CA", templates)).toBe("+ $20.00 transport");
+    expect(bonusLabel(job({ bonus: { kind: "one_time", amountMinor: 3000 } }), "en-CA", templates)).toBe("+ $30.00 bonus");
+  });
+
   it("requests the whole visible grid (6 weeks) for a month", () => {
     const { from, to } = gridWindow(2026, 10); // November 2026 starts on a Sunday
     expect(isoDay(new Date(from))).toBe("2026-11-01");

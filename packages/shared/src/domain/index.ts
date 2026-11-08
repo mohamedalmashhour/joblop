@@ -46,3 +46,4 @@ export * from "./postingGrade";
 export * from "./jobGradingAnchors";
 export * from "./jobGradingContract";
 export * from "./workerProfileRating";
+export * from "./jobBonus";

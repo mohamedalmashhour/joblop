@@ -1,5 +1,6 @@
 import type { PrismaClient } from "@rwos/database";
-import { createContractMoney } from "@rwos/shared";
+import { createContractMoney, jobBonusWorkerPayMinor } from "@rwos/shared";
+import { loadShiftBonuses, pickShiftBonus } from "./jobBonusShift";
 import type {
   CreatePayrollCalculationInput,
   PayrollCalculationStatus,
@@ -181,14 +182,23 @@ export function createPrismaPayrollRepository(prisma: PrismaClient): PayrollRepo
           scheduledStartAt: { gte: input.from, lt: input.to }
         },
         orderBy: [{ scheduledStartAt: "asc" }, { id: "asc" }],
-        select: { id: true, version: true, status: true, payableMinutes: true, billableMinutes: true, scheduledStartAt: true, scheduledEndAt: true, assignmentId: true, workGroupId: true, roleDefinitionId: true, residenceId: true }
+        select: { id: true, version: true, status: true, payableMinutes: true, billableMinutes: true, scheduledStartAt: true, scheduledEndAt: true, assignmentId: true, workGroupId: true, roleDefinitionId: true, residenceId: true, jobRequestId: true }
       });
-      return rows.map((r) => ({
-        timesheetId: r.id, timesheetVersion: r.version, timesheetStatus: r.status,
-        payableMinutes: r.payableMinutes ?? 0, billableMinutes: r.billableMinutes ?? 0,
-        scheduledStartAt: r.scheduledStartAt, scheduledEndAt: r.scheduledEndAt,
-        assignmentId: r.assignmentId, workGroupId: r.workGroupId, roleDefinitionId: r.roleDefinitionId, residenceId: r.residenceId
-      }));
+      // Job bonus for each shift: the bonus active for that shift on the timesheet's own job (employer-
+      // or platform-funded). Hourly → amount x ACTUAL payable hours (not the 6-hour billing minimum);
+      // transport/one-time → the amount once per timesheet.
+      const bonuses = await loadShiftBonuses(prisma, rows.map((r) => r.jobRequestId));
+      return rows.map((r) => {
+        const payableMinutes = r.payableMinutes ?? 0;
+        const bonus = pickShiftBonus(bonuses, r.jobRequestId, r.scheduledStartAt);
+        return {
+          timesheetId: r.id, timesheetVersion: r.version, timesheetStatus: r.status,
+          payableMinutes, billableMinutes: r.billableMinutes ?? 0,
+          scheduledStartAt: r.scheduledStartAt, scheduledEndAt: r.scheduledEndAt,
+          assignmentId: r.assignmentId, workGroupId: r.workGroupId, roleDefinitionId: r.roleDefinitionId, residenceId: r.residenceId,
+          bonusMinor: bonus ? jobBonusWorkerPayMinor(bonus, payableMinutes) : 0
+        };
+      });
     },
 
     async getCalculationForReplay(calculationId): Promise<PayrollReplaySnapshot | null> {
@@ -202,7 +212,7 @@ export function createPrismaPayrollRepository(prisma: PrismaClient): PayrollRepo
         jurisdiction: { country: c.jurisdictionCountry, region: c.jurisdictionRegion },
         ruleProviderKey: c.ruleProviderKey, ruleProviderVersion: c.ruleProviderVersion, calculationPolicyVersion: c.calculationPolicyVersion,
         workerClassification: c.workerClassification as PayrollReplaySnapshot["workerClassification"], currency: c.currency, calculationFingerprint: c.calculationFingerprint,
-        workedTime: c.workedTimeRefs.map((w) => ({ timesheetId: w.timesheetId, timesheetVersion: w.timesheetVersion, payableMinutes: w.payableMinutes, contractId: w.contractId, contractVersion: w.contractVersion, appliedHourlyRateMinor: w.appliedHourlyRateMinor, contractEffectiveFrom: w.contractEffectiveFrom, sourceEffectiveInstant: w.sourceEffectiveInstant })),
+        workedTime: c.workedTimeRefs.map((w) => ({ timesheetId: w.timesheetId, timesheetVersion: w.timesheetVersion, payableMinutes: w.payableMinutes, contractId: w.contractId, contractVersion: w.contractVersion, appliedHourlyRateMinor: w.appliedHourlyRateMinor, contractEffectiveFrom: w.contractEffectiveFrom, sourceEffectiveInstant: w.sourceEffectiveInstant, bonusMinor: w.bonusMinor })),
         earnings: c.earningLines.map((e) => ({ classification: e.classification, amountMinor: e.amountMinor, sourceContractVersion: e.sourceContractVersion })),
         deductions: c.deductionLines.map((d) => ({ category: d.category, code: d.code, amountMinor: d.amountMinor })),
         employerCosts: c.employerCostLines.map((x) => ({ category: x.category, code: x.code, amountMinor: x.amountMinor })),
@@ -279,7 +289,8 @@ export function createPrismaPayrollRepository(prisma: PrismaClient): PayrollRepo
                   assignmentId: w.assignmentId, workGroupId: w.workGroupId, roleDefinitionId: w.roleDefinitionId, residenceId: w.residenceId,
                   compensationType: w.compensationType, contractId: w.contractId, contractVersion: w.contractVersion,
                   contractEffectiveFrom: w.contractEffectiveFrom, appliedHourlyRateMinor: w.appliedHourlyRateMinor,
-                  currency: w.currency, sourceEffectiveInstant: w.sourceEffectiveInstant
+                  currency: w.currency, sourceEffectiveInstant: w.sourceEffectiveInstant,
+                  bonusMinor: w.bonusMinor ?? 0
                 }))
               },
               earningLines: {

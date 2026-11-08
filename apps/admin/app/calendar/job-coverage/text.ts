@@ -36,7 +36,49 @@ const en = {
   employerRate: "Employer rate",
   perHour: "per hour",
   notSet: "not set",
-  openJob: "Open job"
+  openJob: "Open job",
+  bonusChip: "Bonus",
+  bonusLegend: "Has an active bonus",
+  bonusTitle: "Bonus",
+  bonusStatus: {
+    offered_to_employer: "Offered to employer — waiting",
+    employer_accepted: "Employer accepted",
+    employer_declined: "Employer declined",
+    approved: "Approved from Joblop share",
+    cancelled: "Cancelled"
+  } as Readonly<Record<string, string>>,
+  bonusKindLabel: {
+    hourly: "Extra per hour",
+    transport: "Transport (per worker per shift)",
+    one_time: "One-time (per worker per shift)"
+  } as Readonly<Record<string, string>>,
+  bonusAmountHourly: (amount: string) => `+${amount} per hour`,
+  bonusAmountShift: (amount: string) => `+${amount} per worker per shift`,
+  bonusCurrent: "Current bonus",
+  bonusSuggested: (amount: string, reason: string) => `Suggested: ${amount}${reason ? ` — ${reason}` : ""}`,
+  bonusNoSuggestion: "No suggestion from Joblop for this job. You can still set a bonus.",
+  bonusAdd: "Add a bonus",
+  bonusHide: "Hide",
+  bonusLoading: "Loading the bonus suggestion.",
+  bonusKind: "Type",
+  bonusAmount: "Amount (dollars)",
+  bonusReason: "Reason (optional)",
+  bonusOffer: "Offer to employer",
+  bonusOfferHint: "The employer pays if they accept. It is added to their invoice.",
+  bonusApprove: "Approve from Joblop share",
+  bonusCapHourly: (amount: string) => `Up to ${amount} per hour from Joblop's share`,
+  bonusCapShift: (amount: string) => `Up to ${amount} per worker per shift from Joblop's share`,
+  bonusUrgent: "Urgent: allow more than Joblop's share",
+  bonusCancel: "Cancel bonus",
+  bonusCancelConfirm: "Cancel this bonus? Workers will no longer see it on the job.",
+  bonusWorking: "Saving…",
+  bonusSaved: "Bonus saved.",
+  bonusCancelled: "Bonus cancelled.",
+  bonusErrorAmount: "Enter an amount above $0.",
+  bonusErrorOverShare: "This is more than Joblop's share for this job. Lower the amount, or tick \"Urgent\" to allow it.",
+  bonusErrorActive: "This job already has an active bonus. Cancel it first, then try again.",
+  bonusErrorDenied: "Your session has ended or this account cannot change bonuses.",
+  bonusErrorGeneric: "The bonus could not be saved. Please try again."
 };
 
 export type CoverageText = typeof en;
@@ -77,7 +119,49 @@ const fr: CoverageText = {
   employerRate: "Tarif employeur",
   perHour: "par heure",
   notSet: "non défini",
-  openJob: "Ouvrir le poste"
+  openJob: "Ouvrir le poste",
+  bonusChip: "Prime",
+  bonusLegend: "Prime active",
+  bonusTitle: "Prime",
+  bonusStatus: {
+    offered_to_employer: "Proposée à l’employeur — en attente",
+    employer_accepted: "Acceptée par l’employeur",
+    employer_declined: "Refusée par l’employeur",
+    approved: "Approuvée sur la part de Joblop",
+    cancelled: "Annulée"
+  },
+  bonusKindLabel: {
+    hourly: "Supplément par heure",
+    transport: "Transport (par travailleur par quart)",
+    one_time: "Unique (par travailleur par quart)"
+  },
+  bonusAmountHourly: (amount) => `+${amount} par heure`,
+  bonusAmountShift: (amount) => `+${amount} par travailleur par quart`,
+  bonusCurrent: "Prime actuelle",
+  bonusSuggested: (amount, reason) => `Suggestion : ${amount}${reason ? ` — ${reason}` : ""}`,
+  bonusNoSuggestion: "Aucune suggestion de Joblop pour ce poste. Vous pouvez quand même fixer une prime.",
+  bonusAdd: "Ajouter une prime",
+  bonusHide: "Masquer",
+  bonusLoading: "Chargement de la suggestion de prime.",
+  bonusKind: "Type",
+  bonusAmount: "Montant (dollars)",
+  bonusReason: "Motif (facultatif)",
+  bonusOffer: "Proposer à l’employeur",
+  bonusOfferHint: "L’employeur paie s’il accepte. La prime est ajoutée à sa facture.",
+  bonusApprove: "Approuver sur la part de Joblop",
+  bonusCapHourly: (amount) => `Jusqu’à ${amount} par heure sur la part de Joblop`,
+  bonusCapShift: (amount) => `Jusqu’à ${amount} par travailleur par quart sur la part de Joblop`,
+  bonusUrgent: "Urgent : permettre plus que la part de Joblop",
+  bonusCancel: "Annuler la prime",
+  bonusCancelConfirm: "Annuler cette prime? Les travailleurs ne la verront plus sur le poste.",
+  bonusWorking: "Enregistrement…",
+  bonusSaved: "Prime enregistrée.",
+  bonusCancelled: "Prime annulée.",
+  bonusErrorAmount: "Entrez un montant supérieur à 0 $.",
+  bonusErrorOverShare: "C’est plus que la part de Joblop pour ce poste. Baissez le montant ou cochez « Urgent » pour l’autoriser.",
+  bonusErrorActive: "Ce poste a déjà une prime active. Annulez-la d’abord, puis réessayez.",
+  bonusErrorDenied: "Votre session a pris fin ou ce compte ne peut pas modifier les primes.",
+  bonusErrorGeneric: "La prime n’a pas pu être enregistrée. Veuillez réessayer."
 };
 
 const ar: CoverageText = {
@@ -113,7 +197,49 @@ const ar: CoverageText = {
   employerRate: "سعر صاحب العمل",
   perHour: "في الساعة",
   notSet: "غير محدد",
-  openJob: "فتح الوظيفة"
+  openJob: "فتح الوظيفة",
+  bonusChip: "مكافأة",
+  bonusLegend: "فيها مكافأة نشطة",
+  bonusTitle: "مكافأة",
+  bonusStatus: {
+    offered_to_employer: "عُرضت على صاحب العمل — بانتظار الرد",
+    employer_accepted: "وافق صاحب العمل",
+    employer_declined: "رفض صاحب العمل",
+    approved: "معتمدة من حصة Joblop",
+    cancelled: "ملغاة"
+  },
+  bonusKindLabel: {
+    hourly: "إضافة في الساعة",
+    transport: "مواصلات (لكل عامل في كل نوبة)",
+    one_time: "مرة واحدة (لكل عامل في كل نوبة)"
+  },
+  bonusAmountHourly: (amount) => `+${amount} في الساعة`,
+  bonusAmountShift: (amount) => `+${amount} لكل عامل في كل نوبة`,
+  bonusCurrent: "المكافأة الحالية",
+  bonusSuggested: (amount, reason) => `المقترح: ${amount}${reason ? ` — ${reason}` : ""}`,
+  bonusNoSuggestion: "لا يوجد اقتراح من Joblop لهذه الوظيفة. ما زال بإمكانك تحديد مكافأة.",
+  bonusAdd: "إضافة مكافأة",
+  bonusHide: "إخفاء",
+  bonusLoading: "جارٍ تحميل اقتراح المكافأة.",
+  bonusKind: "النوع",
+  bonusAmount: "المبلغ (بالدولار)",
+  bonusReason: "السبب (اختياري)",
+  bonusOffer: "اعرضها على صاحب العمل",
+  bonusOfferHint: "يدفع صاحب العمل إذا وافق، وتُضاف إلى فاتورته.",
+  bonusApprove: "اعتمدها من حصة Joblop",
+  bonusCapHourly: (amount) => `حتى ${amount} في الساعة من حصة Joblop`,
+  bonusCapShift: (amount) => `حتى ${amount} لكل عامل في كل نوبة من حصة Joblop`,
+  bonusUrgent: "عاجل: السماح بأكثر من حصة Joblop",
+  bonusCancel: "إلغاء المكافأة",
+  bonusCancelConfirm: "هل تريد إلغاء هذه المكافأة؟ لن يراها العمال على الوظيفة بعد الآن.",
+  bonusWorking: "جارٍ الحفظ…",
+  bonusSaved: "تم حفظ المكافأة.",
+  bonusCancelled: "تم إلغاء المكافأة.",
+  bonusErrorAmount: "أدخل مبلغًا أكبر من 0 دولار.",
+  bonusErrorOverShare: "هذا أكثر من حصة Joblop في هذه الوظيفة. خفّض المبلغ أو اختر «عاجل» للسماح به.",
+  bonusErrorActive: "لهذه الوظيفة مكافأة نشطة بالفعل. ألغِها أولًا ثم حاول مرة أخرى.",
+  bonusErrorDenied: "انتهت جلستك أو لا يستطيع هذا الحساب تعديل المكافآت.",
+  bonusErrorGeneric: "تعذّر حفظ المكافأة. حاول مرة أخرى."
 };
 
 export const coverageText = { en, fr, ar } satisfies PageText<CoverageText>;

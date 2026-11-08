@@ -39,6 +39,7 @@ const LINE_LABEL: Record<string, string> = {
   mileage: "Mileage / Kilométrage",
   adjustment: "Adjustment / Ajustement",
   marketplace_fee: "Service fee / Frais de service",
+  bonus: "Bonus / Prime",
   credit: "Credit / Crédit"
 };
 

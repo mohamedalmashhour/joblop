@@ -821,7 +821,11 @@ export type OpenJob = Readonly<{
   urgency: string;
   placesLeft: number;
   workerRateMinor: number | null;
+  // Extra pay Joblop added to fill the job faster; absent when there is none. Amount in cents.
+  bonus?: OpenJobBonus;
 }>;
+
+export type OpenJobBonus = Readonly<{ kind: "hourly" | "transport" | "one_time"; amountMinor: number }>;
 
 export type OpenJobsResult =
   | Readonly<{ status: "ready"; jobs: readonly OpenJob[] }>
@@ -842,6 +846,7 @@ function parseOpenJob(input: unknown): OpenJob | null {
   if (!Number.isFinite(Date.parse(startAt)) || !Number.isFinite(Date.parse(endAt))) return null;
   const placesLeft = typeof v.placesLeft === "number" && Number.isFinite(v.placesLeft) ? Math.max(0, Math.floor(v.placesLeft)) : 0;
   const rate = v.workerRateMinor;
+  const bonus = parseOpenJobBonus(v.bonus);
   return {
     jobRequestId,
     role: str("role") ?? "",
@@ -850,8 +855,19 @@ function parseOpenJob(input: unknown): OpenJob | null {
     endAt,
     urgency: str("urgency") ?? "standard",
     placesLeft,
-    workerRateMinor: typeof rate === "number" && Number.isFinite(rate) && rate >= 0 ? rate : null
+    workerRateMinor: typeof rate === "number" && Number.isFinite(rate) && rate >= 0 ? rate : null,
+    ...(bonus ? { bonus } : {})
   };
+}
+
+function parseOpenJobBonus(input: unknown): OpenJobBonus | null {
+  if (!input || typeof input !== "object") return null;
+  const v = input as Record<string, unknown>;
+  const kind = v.kind;
+  const amount = v.amountMinor;
+  if (kind !== "hourly" && kind !== "transport" && kind !== "one_time") return null;
+  if (typeof amount !== "number" || !Number.isFinite(amount) || amount <= 0) return null;
+  return { kind, amountMinor: Math.round(amount) };
 }
 
 export function tryCreateMobileSessionTransport(options: {

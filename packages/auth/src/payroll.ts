@@ -48,6 +48,9 @@ export type PayrollWorkedTimeLine = Readonly<{
   workGroupId: string;
   roleDefinitionId: string;
   residenceId: string;
+  // Job bonus earned on this shift (0/absent when none): hourly bonus x actual payable hours, or the
+  // fixed transport/one-time amount once per timesheet. Taxable earnings.
+  bonusMinor?: number;
 }>;
 
 // The governed EmployerContract rate resolved as effective at a specific instant for a role scope.
@@ -89,6 +92,8 @@ export type PayrollRuleInput = Readonly<{
   currency: MoneyEngineCurrency;
   segments: readonly PayrollRuleSegment[];
   workerClassification: PayrollWorkerClassification;
+  // Total job bonus earned in the period (taxable earnings). Omitted or 0 → no bonus line.
+  bonus?: ContractMoney;
   // The date the rates are resolved against (effective-dated rate table). Optional; when omitted the
   // most recent rate entry for the jurisdiction is used.
   asOf?: Date;
@@ -239,6 +244,13 @@ export function createSyntheticPayrollRuleProvider(): PayrollRuleProvider {
         earnings.push({ classification: "overtime_premium", description: "Overtime premium (synthetic)", quantityMinutes: overtimeMinutes, rate: premiumRate, amount: proRateMinutesAtHourlyRate(premiumRate, overtimeMinutes), sourceContractId: null, sourceContractVersion: null });
       }
 
+      // Job bonus: taxable earnings, added BEFORE vacation pay and deductions. Only when non-zero, so
+      // a calculation without a bonus is byte-identical to before (same lines, same fingerprint).
+      if (input.bonus && input.bonus.amountMinor > 0) {
+        if (input.bonus.currency !== currency) throw new PayrollError("invalid", "currency_mismatch:bonus");
+        earnings.push({ classification: "bonus", description: "Job bonus", quantityMinutes: null, rate: null, amount: input.bonus, sourceContractId: null, sourceContractVersion: null });
+      }
+
       const workedEarnings = sumMoney(earnings.map((e) => e.amount));
       const vacationAmount = percentOfBps(workedEarnings, cfg.vacationPayBps);
       earnings.push({ classification: "vacation_pay", description: "Vacation pay accrual (synthetic)", quantityMinutes: null, rate: null, amount: vacationAmount, sourceContractId: null, sourceContractVersion: null });
@@ -289,7 +301,7 @@ export type PayrollReplaySnapshot = Readonly<{
   id: string; payrollPeriodId: string; organizationId: string; workerIdentityId: string;
   jurisdiction: PayrollJurisdiction; ruleProviderKey: string; ruleProviderVersion: string; calculationPolicyVersion: string;
   workerClassification: PayrollWorkerClassification; currency: string; calculationFingerprint: string;
-  workedTime: readonly Readonly<{ timesheetId: string; timesheetVersion: number; payableMinutes: number; contractId: string; contractVersion: string; appliedHourlyRateMinor: number; contractEffectiveFrom: Date; sourceEffectiveInstant: Date }>[];
+  workedTime: readonly Readonly<{ timesheetId: string; timesheetVersion: number; payableMinutes: number; contractId: string; contractVersion: string; appliedHourlyRateMinor: number; contractEffectiveFrom: Date; sourceEffectiveInstant: Date; bonusMinor?: number }>[];
   earnings: readonly Readonly<{ classification: string; amountMinor: number; sourceContractVersion: string | null }>[];
   deductions: readonly Readonly<{ category: string; code: string; amountMinor: number }>[];
   employerCosts: readonly Readonly<{ category: string; code: string; amountMinor: number }>[];
@@ -436,7 +448,8 @@ export function createPayrollService(deps: PayrollDeps) {
       .map((seg) => ({ contractId: seg.contractId, contractVersion: seg.contractVersion, hourlyRate: createContractMoney({ amountMinor: seg.hourlyRateMinor, currency }), payableMinutes: seg.payableMinutes }));
 
     const workerClassification = deps.classificationResolver ? await deps.classificationResolver.resolve(workerIdentityId) : "employee";
-    const result = provider.evaluate({ jurisdiction, currency, segments, workerClassification, asOf: period.periodEnd });
+    const bonus = bonusMoney(snapshots, currency);
+    const result = provider.evaluate({ jurisdiction, currency, segments, workerClassification, asOf: period.periodEnd, ...(bonus ? { bonus } : {}) });
     assertResultCurrency(result, currency);
     const totals = computePayrollTotals(result, currency);
     const fingerprint = buildCalculationFingerprint({ period, workerIdentityId, jurisdiction, provider, policyVersion, workerClassification, snapshots, result, totals });
@@ -578,14 +591,15 @@ export function createPayrollService(deps: PayrollDeps) {
     }
     const segments: PayrollRuleSegment[] = [...bySeg.values()].sort((a, b) => a.effectiveFrom.getTime() - b.effectiveFrom.getTime()).map((seg) => ({ contractId: seg.contractId, contractVersion: seg.contractVersion, hourlyRate: createContractMoney({ amountMinor: seg.rateMinor, currency }), payableMinutes: seg.minutes }));
 
-    const result = provider.evaluate({ jurisdiction: s.jurisdiction, currency, segments, workerClassification: s.workerClassification });
+    const bonus = bonusMoney(s.workedTime, currency);
+    const result = provider.evaluate({ jurisdiction: s.jurisdiction, currency, segments, workerClassification: s.workerClassification, ...(bonus ? { bonus } : {}) });
     const totals = computePayrollTotals(result, currency);
     const totalsMatch = totals.gross.amountMinor === s.grossPayMinor && totals.totalDeductions.amountMinor === s.totalDeductionsMinor && totals.net.amountMinor === s.netPayMinor && totals.totalEmployerCost.amountMinor === s.totalEmployerCostMinor;
     const recomputedFingerprint = canonicalFingerprint({
       periodId: s.payrollPeriodId, workerIdentityId: s.workerIdentityId, jurisdiction: s.jurisdiction,
       providerKey: s.ruleProviderKey, providerVersion: s.ruleProviderVersion, policyVersion: s.calculationPolicyVersion,
       workerClassification: s.workerClassification, currency: s.currency,
-      workedTime: s.workedTime.map((w) => ({ timesheetId: w.timesheetId, timesheetVersion: w.timesheetVersion, payableMinutes: w.payableMinutes, contractId: w.contractId, contractVersion: w.contractVersion, appliedHourlyRateMinor: w.appliedHourlyRateMinor, sourceEffectiveInstant: w.sourceEffectiveInstant.toISOString() })),
+      workedTime: s.workedTime.map((w) => ({ timesheetId: w.timesheetId, timesheetVersion: w.timesheetVersion, payableMinutes: w.payableMinutes, contractId: w.contractId, contractVersion: w.contractVersion, appliedHourlyRateMinor: w.appliedHourlyRateMinor, sourceEffectiveInstant: w.sourceEffectiveInstant.toISOString(), bonusMinor: w.bonusMinor ?? 0 })),
       earnings: result.earnings.map((e) => ({ classification: e.classification, amountMinor: e.amount.amountMinor, sourceContractVersion: e.sourceContractVersion })),
       deductions: result.deductions.map((d) => ({ category: d.category, code: d.code, amountMinor: d.amount.amountMinor })),
       employerCosts: result.employerCosts.map((c) => ({ category: c.category, code: c.code, amountMinor: c.amount.amountMinor })),
@@ -693,7 +707,7 @@ export function applyPayrollDelta(originalMinor: number, direction: PayrollDelta
 type FingerprintArgs = Readonly<{
   periodId: string; workerIdentityId: string; jurisdiction: PayrollJurisdiction;
   providerKey: string; providerVersion: string; policyVersion: string; workerClassification: string; currency: string;
-  workedTime: readonly Readonly<{ timesheetId: string; timesheetVersion: number; payableMinutes: number; contractId: string; contractVersion: string; appliedHourlyRateMinor: number; sourceEffectiveInstant: string }>[];
+  workedTime: readonly Readonly<{ timesheetId: string; timesheetVersion: number; payableMinutes: number; contractId: string; contractVersion: string; appliedHourlyRateMinor: number; sourceEffectiveInstant: string; bonusMinor: number }>[];
   earnings: readonly Readonly<{ classification: string; amountMinor: number; sourceContractVersion: string | null }>[];
   deductions: readonly Readonly<{ category: string; code: string; amountMinor: number }>[];
   employerCosts: readonly Readonly<{ category: string; code: string; amountMinor: number }>[];
@@ -711,7 +725,13 @@ function canonicalFingerprint(args: FingerprintArgs): string {
     classification: args.workerClassification,
     currency: args.currency,
     // worked-time sorted by timesheetId for stability
-    workedTime: [...args.workedTime].sort((a, b) => a.timesheetId.localeCompare(b.timesheetId)).map((w) => [w.timesheetId, w.timesheetVersion, w.payableMinutes, w.contractId, w.contractVersion, w.appliedHourlyRateMinor, w.sourceEffectiveInstant]),
+    // The bonus is appended ONLY when non-zero, so every calculation without a bonus keeps exactly
+    // the fingerprint it had before job bonuses existed (stored fingerprints still verify).
+    workedTime: [...args.workedTime].sort((a, b) => a.timesheetId.localeCompare(b.timesheetId)).map((w) => {
+      const tuple: (string | number)[] = [w.timesheetId, w.timesheetVersion, w.payableMinutes, w.contractId, w.contractVersion, w.appliedHourlyRateMinor, w.sourceEffectiveInstant];
+      if (w.bonusMinor > 0) tuple.push(w.bonusMinor);
+      return tuple;
+    }),
     earnings: args.earnings.map((e) => [e.classification, e.amountMinor, e.sourceContractVersion]),
     deductions: args.deductions.map((d) => [d.category, d.code, d.amountMinor]),
     employerCosts: args.employerCosts.map((c) => [c.category, c.code, c.amountMinor]),
@@ -728,12 +748,19 @@ function buildCalculationFingerprint(input: {
     periodId: input.period.id, workerIdentityId: input.workerIdentityId, jurisdiction: input.jurisdiction,
     providerKey: input.provider.key, providerVersion: input.provider.version, policyVersion: input.policyVersion,
     workerClassification: input.workerClassification, currency: input.period.currency,
-    workedTime: input.snapshots.map((w) => ({ timesheetId: w.timesheetId, timesheetVersion: w.timesheetVersion, payableMinutes: w.payableMinutes, contractId: w.contractId, contractVersion: w.contractVersion, appliedHourlyRateMinor: w.appliedHourlyRateMinor, sourceEffectiveInstant: w.sourceEffectiveInstant.toISOString() })),
+    workedTime: input.snapshots.map((w) => ({ timesheetId: w.timesheetId, timesheetVersion: w.timesheetVersion, payableMinutes: w.payableMinutes, contractId: w.contractId, contractVersion: w.contractVersion, appliedHourlyRateMinor: w.appliedHourlyRateMinor, sourceEffectiveInstant: w.sourceEffectiveInstant.toISOString(), bonusMinor: w.bonusMinor ?? 0 })),
     earnings: input.result.earnings.map((e) => ({ classification: e.classification, amountMinor: e.amount.amountMinor, sourceContractVersion: e.sourceContractVersion })),
     deductions: input.result.deductions.map((d) => ({ category: d.category, code: d.code, amountMinor: d.amount.amountMinor })),
     employerCosts: input.result.employerCosts.map((c) => ({ category: c.category, code: c.code, amountMinor: c.amount.amountMinor })),
     totals: { grossPayMinor: input.totals.gross.amountMinor, totalDeductionsMinor: input.totals.totalDeductions.amountMinor, netPayMinor: input.totals.net.amountMinor, totalEmployerCostMinor: input.totals.totalEmployerCost.amountMinor }
   });
+}
+
+// Sum of the per-timesheet job bonuses, or null when there is none (keeps zero-bonus results identical).
+function bonusMoney(lines: readonly Readonly<{ bonusMinor?: number }>[], currency: MoneyEngineCurrency): ContractMoney | null {
+  const total = lines.reduce((sum, l) => sum + (l.bonusMinor ?? 0), 0);
+  if (!Number.isSafeInteger(total) || total < 0) throw new PayrollError("invalid", "invalid_bonus_amount");
+  return total > 0 ? createContractMoney({ amountMinor: total, currency }) : null;
 }
 
 function isSupportedCurrency(currency: string): currency is MoneyEngineCurrency {
