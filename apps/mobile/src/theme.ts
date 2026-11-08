@@ -9,7 +9,7 @@
 //
 // Brand palette (fixed):
 //   • BLACK  pure #000000 base, warm near-blacks for raised panels
-//   • GOLD   #c9a24b accent / #b8862f action fill — used sparingly (CTAs, numbers, active state)
+//   • GOLD   #f8b808 logo gold accent / #e0a500 pressed fill — used sparingly (CTAs, numbers, active state)
 //   • CREAM  #f4efe4 body text on black
 //   • NO blue/teal anywhere.
 export { spacing, radii, typography, touch } from "@rwos/design-system";
@@ -21,9 +21,9 @@ export { spacing, radii, typography, touch } from "@rwos/design-system";
 export const colors = {
   // Action + accent (gold). Used both as CTA fills and as emphasis text; gold reads well on black
   // and dark text reads well on a gold fill.
-  deepTeal: "#c9a24b",
-  deepTealMuted: "#b8862f",
-  actionTeal: "#c9a24b",
+  deepTeal: "#f8b808",
+  deepTealMuted: "#e0a500",
+  actionTeal: "#f8b808",
 
   // Dark surfaces.
   navy: "#000000",
@@ -35,12 +35,12 @@ export const colors = {
   // Text + hairlines.
   text: "#f4efe4", // cream body text
   muted: "#9b9281", // warm muted text, readable on black
-  border: "rgba(201, 162, 75, 0.16)", // thin gold hairline
+  border: "rgba(248, 184, 8, 0.16)", // thin gold hairline
 
   // Status (brightened for legibility on black; used sparingly).
   urgent: "#e0953a",
   warning: "#e0a640",
   danger: "#e4756b",
   success: "#6bbf8a",
-  focus: "#f0d9a0"
+  focus: "#ffe08a"
 } as const;
