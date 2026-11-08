@@ -8,7 +8,9 @@ export const pricingModels = [
 
 export const transparencyPrinciples = [
   "Clear estimates before booking",
-  "No hidden platform charges",
+  "No hidden fees: your hourly price includes Joblop's service fee",
+  "Every shift is billed for at least 6 hours, and this is shown before you book",
+  "Urgent, long-distance and late-cancellation charges are shown before you confirm",
   "Charges based on verified attendance",
   "Approved adjustments are visible",
   "Workers and employers have separate financial records",

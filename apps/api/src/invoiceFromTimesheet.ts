@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 import type { PrismaClient } from "@rwos/database";
 import {
+  billableHours,
   calculateInvoiceSnapshot,
   PLATFORM_INVOICE_ISSUER,
   PLATFORM_INVOICE_TAX,
@@ -35,7 +36,9 @@ export function buildInvoiceCalculationInput(p: {
   urgency: string | null | undefined;
   occurredAt: string;
 }): InvoiceCalculationInput {
-  const hours = p.billableMinutes / 60;
+  // The employer is billed at least 6 hours per shift (shown on the invoice); the worker is still paid the
+  // hours actually worked, so the difference is platform revenue (owner rule, no hidden fees).
+  const hours = billableHours(p.billableMinutes / 60);
   const urgentPerHour = urgencyPremiumMinor(p.urgency ?? null);
   const baseRatePerHour = Math.max(0, p.employerHourlyRateMinor - urgentPerHour);
   const money = (amountMinor: number) => ({ amountMinor: Math.round(amountMinor), currency: "CAD" as const });

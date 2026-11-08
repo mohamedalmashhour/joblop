@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { PLATFORM_INVOICE_CONTACT } from "@rwos/shared";
+import { PLATFORM_INVOICE_CONTACT, MINIMUM_BILLABLE_SHIFT_HOURS } from "@rwos/shared";
 import type { DurableCreditNote, DurableInvoice } from "./invoiceRepository";
 import { JOBLOP_LOGO_JPEG } from "./joblopLogoJpeg";
 
@@ -107,17 +107,24 @@ export function renderBilingualSyntheticInvoicePdf(invoice: DurableInvoice, deta
   const items = snapshot.lines.filter((line) => line.kind !== "gst" && line.kind !== "qst" && line.amount.amountMinor !== 0);
   for (const line of items) {
     const isLabour = line.kind === "regular_labour";
-    const hours = isLabour && details.payableMinutes ? details.payableMinutes / 60 : null;
+    // Labour is billed for at least 6 hours; say so on the invoice when the shift was shorter.
+    const workedHours = isLabour && details.payableMinutes ? details.payableMinutes / 60 : null;
+    const hours = workedHours === null ? null : Math.max(workedHours, MINIMUM_BILLABLE_SHIFT_HOURS);
+    const minimumApplied = workedHours !== null && workedHours < MINIMUM_BILLABLE_SHIFT_HOURS;
     page.text(LINE_LABEL[line.kind] ?? line.description, 62, y, 10, "bold", INK);
-    if (isLabour && (details.jobTitle || details.serviceDate)) {
-      page.text([details.jobTitle, details.serviceDate].filter(Boolean).join(" · "), 62, y - 13, 8.5, "regular", MUTED);
+    if (isLabour && (details.jobTitle || details.serviceDate || minimumApplied)) {
+      const subline = [details.jobTitle, details.serviceDate].filter(Boolean).join(" · ");
+      const note = minimumApplied
+        ? `Minimum ${MINIMUM_BILLABLE_SHIFT_HOURS} h billed (${workedHours!.toFixed(2)} h worked) / Minimum de ${MINIMUM_BILLABLE_SHIFT_HOURS} h facturé`
+        : "";
+      page.text([subline, note].filter(Boolean).join(" · "), 62, y - 13, 8.5, "regular", MUTED);
     }
     if (hours) {
       page.textRight(hours.toFixed(2), 372, y, 10, "regular", INK);
       page.textRight(money(Math.round(line.amount.amountMinor / hours)), 462, y, 10, "regular", INK);
     }
     page.textRight(money(line.amount.amountMinor), 550, y, 10, "regular", INK);
-    y -= isLabour && (details.jobTitle || details.serviceDate) ? 30 : 22;
+    y -= isLabour && (details.jobTitle || details.serviceDate || minimumApplied) ? 30 : 22;
     page.rect(50, y + 10, 512, 0.6, RULE);
   }
   y -= 10;

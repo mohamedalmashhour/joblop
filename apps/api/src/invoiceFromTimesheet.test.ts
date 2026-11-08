@@ -35,6 +35,23 @@ describe("buildInvoiceCalculationInput (Gap B — variable extras billed with GS
     expect(snapshot.total.amountMinor).toBe(43748); // $437.48
   });
 
+  it("bills at least 6 hours when the shift was shorter, and the real hours when longer", () => {
+    const base = {
+      timesheetId: "00000000-0000-4000-8000-000000000003",
+      timesheetVersion: 1,
+      organizationId: "00000000-0000-4000-8000-0000000000aa",
+      assignmentId: "00000000-0000-4000-8000-0000000000bb",
+      attendanceRecordId: "00000000-0000-4000-8000-0000000000cc",
+      employerHourlyRateMinor: 3000,
+      emergencySurchargePerHourMinor: 0,
+      distanceSurchargeMinor: 0,
+      urgency: "standard",
+      occurredAt: "2026-10-24T12:00:00.000Z"
+    };
+    expect(buildInvoiceCalculationInput({ ...base, billableMinutes: 120 }).regularLabour.amountMinor).toBe(18000); // 2 h worked → 6 h × $30
+    expect(buildInvoiceCalculationInput({ ...base, billableMinutes: 480 }).regularLabour.amountMinor).toBe(24000); // 8 h × $30
+  });
+
   it("a normal (non-urgent) job has no urgent/emergency and bills just labour + tax", () => {
     const normal = buildInvoiceCalculationInput({
       timesheetId: "00000000-0000-4000-8000-000000000002",
