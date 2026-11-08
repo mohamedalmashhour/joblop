@@ -651,7 +651,8 @@ export function PublicJobBoard() {
                 // Funnel into Joblop first: clicking opens free sign-up (then Assisted Apply to the
                 // source), so Joblop — not the external site — owns the worker relationship.
                 return (
-                  <a key={`${l.source}-${i}`} href="/" className="jl-lead" title={t.leadsApplyHint}>
+                  <div key={`${l.source}-${i}`} className="jl-lead-cell">
+                  <a href="/" className="jl-lead" title={t.leadsApplyHint}>
                     <span className="jl-lead-ic">{iconFor(l.title)}</span>
                     <span className="jl-lead-main">
                       <strong>{l.title}</strong>
@@ -660,6 +661,10 @@ export function PublicJobBoard() {
                     {pay ? <span className="jl-lead-pay">{pay}</span> : null}
                     <span className="jl-lead-go">{t.leadsApply} →</span>
                   </a>
+                  {l.source === "adzuna" ? (
+                    <a className="jl-adzuna" href="https://www.adzuna.ca" target="_blank" rel="noreferrer">Adzuna</a>
+                  ) : null}
+                  </div>
                 );
               })}
             </div>
@@ -1025,6 +1030,8 @@ const CSS = `
 .jl-leads-dot{width:9px;height:9px;border-radius:50%;background:#35e08a;box-shadow:0 0 0 4px rgba(53,224,138,.22);animation:jlpulse 1.8s ease-in-out infinite;}
 .jl-leads-src{margin-left:auto;font-weight:700;font-size:11px;letter-spacing:.03em;color:var(--muted);background:rgba(255,255,255,.05);border:1px solid var(--line);border-radius:999px;padding:3px 10px;}
 .jl-leads-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;}
+.jl-lead-cell{display:flex;flex-direction:column;gap:6px;min-width:0;}
+.jl-adzuna{align-self:flex-start;display:inline-flex;align-items:center;justify-content:center;min-width:116px;min-height:24px;padding:0 10px;border-radius:6px;background:rgba(255,255,255,.1);color:#fff;font-size:14px;font-weight:700;}
 .jl-lead{display:flex;align-items:center;gap:12px;background:rgba(255,255,255,.04);border:1px solid var(--line);border-radius:14px;padding:13px 14px;transition:background .15s,border-color .15s,transform .15s;min-width:0;}
 .jl-lead:hover{background:rgba(255,255,255,.07);border-color:var(--line-2);transform:translateY(-1px);}
 .jl-lead-ic{font-size:22px;flex:none;}
