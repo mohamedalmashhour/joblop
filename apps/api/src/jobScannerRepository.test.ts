@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { expandLeadQueryTokens, leadQueryTokens } from "./jobScannerRepository";
+import { expandLeadQueryTokens, leadMatchesWholeWord, leadQueryTokens } from "./jobScannerRepository";
 
 // The role/keyword search tokenizer that powers JobScanner relevance filtering. When a visitor
 // searches "chef", queryStoredLeads narrows to leads whose title/employer/category contain a token,
@@ -45,5 +45,18 @@ describe("expandLeadQueryTokens", () => {
   it("matches a whole multi-word role and leaves unknown words alone", () => {
     expect(expandLeadQueryTokens("personal support worker", ["personal", "support", "worker"])).toContain("préposé");
     expect(expandLeadQueryTokens("plumber", ["plumber"])).toEqual(["plumber"]);
+  });
+});
+
+describe("leadMatchesWholeWord", () => {
+  it("does not match a search word hidden inside another word", () => {
+    expect(leadMatchesWholeWord({ title: "Technicien d'écloserie", employer: "Cooke Aquaculture Inc." }, ["cook"])).toBe(false);
+  });
+  it("matches whole words, simple endings and accented French words", () => {
+    expect(leadMatchesWholeWord({ title: "Line Cook", employer: "A&W" }, ["cook"])).toBe(true);
+    expect(leadMatchesWholeWord({ title: "Cooks wanted" }, ["cook"])).toBe(true);
+    expect(leadMatchesWholeWord({ title: "Préposée aux bénéficiaires" }, ["préposée"])).toBe(true);
+    expect(leadMatchesWholeWord({ title: "Commis d'entrepôt" }, ["entrepôt"])).toBe(true);
+    expect(leadMatchesWholeWord({ title: "Chauffeur-livreur" }, ["livreur"])).toBe(true);
   });
 });
