@@ -7,9 +7,9 @@ export const en = {
   "lang.switchTo": "Switch to {language}",
   "shell.skip": "Skip to main content",
   "shell.brandTitle": "Administration",
-  "shell.brandSub": "governed operations",
+  "shell.brandSub": "Joblop team workspace",
   "shell.sessionContext":
-    "Secure administration workspace · authority is verified before persisted data is shown",
+    "Secure staff area · only signed-in Joblop staff can see this information",
   "shell.brandHomeAria": "Joblop administration home",
   "shell.navAria": "Administration navigation",
 
@@ -51,9 +51,9 @@ export const fr: Messages = {
   "lang.switchTo": "Passer à {language}",
   "shell.skip": "Aller au contenu principal",
   "shell.brandTitle": "Administration",
-  "shell.brandSub": "opérations encadrées",
+  "shell.brandSub": "Espace de l’équipe Joblop",
   "shell.sessionContext":
-    "Espace d'administration sécurisé · l'autorité est vérifiée avant l'affichage des données persistées",
+    "Espace sécurisé du personnel · seul le personnel Joblop connecté peut voir ces informations",
   "shell.brandHomeAria": "Accueil de l'administration Joblop",
   "shell.navAria": "Navigation de l'administration",
 
@@ -90,9 +90,9 @@ export const ar: Partial<Messages> = {
   "lang.switchTo": "التبديل إلى {language}",
   "shell.skip": "تخطَّ إلى المحتوى الرئيسي",
   "shell.brandTitle": "الإدارة",
-  "shell.brandSub": "عمليات محكومة",
+  "shell.brandSub": "مساحة فريق Joblop",
   "shell.sessionContext":
-    "مساحة إدارة آمنة · يُتحقَّق من الصلاحية قبل عرض البيانات المحفوظة",
+    "منطقة آمنة للموظفين · لا يرى هذه المعلومات إلا موظفو Joblop المسجّلون",
   "shell.brandHomeAria": "الصفحة الرئيسية لإدارة Joblop",
   "shell.navAria": "تنقّل الإدارة",
 
