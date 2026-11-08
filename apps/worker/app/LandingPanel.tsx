@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import { NEXT_AFTER_SIGN_UP_KEY, PublicJobSearch } from "./PublicJobSearch";
 import { trackConversion } from "./analytics";
 import { withBrand } from "./Brand";
-import { useT } from "./i18n/LocaleProvider";
+import { useLocale, useT } from "./i18n/LocaleProvider";
 import { VerifyEmail } from "./VerifyEmail";
 import { VideoCard } from "./VideoCard";
 
@@ -12,6 +12,7 @@ import { VideoCard } from "./VideoCard";
  *  card. Fully bilingual (fr-CA / en-CA). On success it hands control back to the marketplace. */
 export function LandingPanel({ onSignedIn }: { onSignedIn: () => void }) {
   const t = useT();
+  const locale = useLocale();
   // Create account comes first (owner rule): returning workers switch to "Sign in" in one tap.
   const [tab, setTab] = useState<"signin" | "signup">("signup");
   const wantDetails = (next: string) => {
@@ -49,6 +50,10 @@ export function LandingPanel({ onSignedIn }: { onSignedIn: () => void }) {
           </ul>
           <a href="/browse" className="landing-browse" style={{ display: "inline-block", marginTop: 14, fontWeight: 700, color: "#e0a500", textDecoration: "none" }}>
             {t("land.browsePublic")}
+          </a>
+          <a href="/how-it-works" className="landing-guide" style={{ display: "inline-flex", alignItems: "center", gap: 8, marginTop: 12, padding: "9px 14px", border: "1px solid rgba(248,184,8,.4)", borderRadius: 999, fontWeight: 700, color: "#f4efe4", textDecoration: "none" }}>
+            <span aria-hidden="true" style={{ color: "#f8b808" }}>?</span>
+            {locale === "ar" ? "كيف يعمل جوب‑لوب — الدليل الكامل" : locale.startsWith("fr") ? "Comment fonctionne Joblop — le guide complet" : "How Joblop works — the full guide"}
           </a>
         </div>
         <div className="landing-hero-side">
