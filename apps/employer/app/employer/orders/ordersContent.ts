@@ -7,7 +7,7 @@ export const ordersWorkflow = [
     title: "Orders",
     route: "/employer/orders",
     status: "Multi-role orders",
-    boundary: "Lists your staffing orders and their rolled-up status; worker pay and platform margin stay private."
+    boundary: "Lists your staffing orders and their rolled-up status."
   },
   {
     page: "O02",

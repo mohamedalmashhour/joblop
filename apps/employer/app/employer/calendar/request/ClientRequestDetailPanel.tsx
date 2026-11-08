@@ -155,9 +155,6 @@ export function ClientRequestDetailPanel({ requestId }: Readonly<{ requestId: st
         {request.status !== "cancelled" && request.status !== "completed" ? (
           <BonusOfferPanel requestId={request.id} />
         ) : null}
-        <p style={styles.sectionCopy}>
-          Worker compensation, platform margin, and internal admin information are not included.
-        </p>
         {request.actionRequired === "information_required" ? (
           <p aria-live="polite" style={styles.warning}>
             Information requested: {request.actionRequiredReason}

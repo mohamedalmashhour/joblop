@@ -1,4 +1,3 @@
-import { adminCalendarBoundaries } from "./adminCalendarContent";
 import { AdminCalendarPanel } from "./AdminCalendarPanel";
 import { serverPageText } from "../i18n/serverPageText";
 import { calendarText } from "./text";
@@ -14,14 +13,6 @@ export default async function AdminCalendarPage() {
       </header>
       <AdminCalendarPanel />
       <section style={styles.boundaryGrid}>
-        {adminCalendarBoundaries
-          .map((boundary, index) => ({ boundary, label: t.boundaries[index] ?? boundary }))
-          .filter(({ boundary }) => !boundary.includes("fixture"))
-          .map(({ boundary, label }) => (
-            <article key={boundary} style={styles.boundaryCard}>
-              {label}
-            </article>
-          ))}
         <article style={styles.boundaryCard}>{t.page.persistedBoundary}</article>
       </section>
     </main>

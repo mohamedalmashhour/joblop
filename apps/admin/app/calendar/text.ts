@@ -7,9 +7,9 @@ const en = {
   page: {
     eyebrow: "Joblop / Administration",
     title: "Review calendar",
-    lede: "Authenticated client requests in one governed review queue. Opening a request does not approve, publish, assign, notify, or execute payment.",
+    lede: "All employer requests waiting for review. Opening a request changes nothing.",
     persistedBoundary:
-      "Persisted review actions use current version tokens and explicit human confirmation. No fixture review controls are mixed into authoritative records."
+      "Approving or rejecting a request always asks you to confirm first."
   },
   // Same order as adminCalendarBoundaries in adminCalendarContent.ts.
   boundaries: [
@@ -140,9 +140,9 @@ const fr: typeof en = {
   page: {
     eyebrow: "Joblop / Administration",
     title: "Calendrier de révision",
-    lede: "Les demandes authentifiées des clients, dans une seule file de révision encadrée. Ouvrir une demande ne l’approuve pas, ne la publie pas, ne l’attribue pas, n’envoie aucun avis et n’effectue aucun paiement.",
+    lede: "Toutes les demandes des employeurs en attente de révision. Ouvrir une demande ne change rien.",
     persistedBoundary:
-      "Les actions de révision enregistrées utilisent le jeton de version actuel et une confirmation humaine explicite. Aucun contrôle de révision fictif n’est mêlé aux dossiers officiels."
+      "Approuver ou refuser une demande vous demande toujours de confirmer d’abord."
   },
   boundaries: [
     "Les conditions financières du client et celles de l’offre au travailleur restent séparées.",
@@ -276,9 +276,9 @@ const ar: typeof en = {
   page: {
     eyebrow: "Joblop / الإدارة",
     title: "تقويم المراجعة",
-    lede: "طلبات العملاء الموثّقة في قائمة مراجعة واحدة منظّمة. فتح الطلب لا يعني الموافقة عليه أو نشره أو إسناده أو إرسال إشعار أو تنفيذ أي دفعة.",
+    lede: "كل طلبات أصحاب العمل التي تنتظر المراجعة. فتح الطلب لا يغيّر شيئًا.",
     persistedBoundary:
-      "تستخدم إجراءات المراجعة المحفوظة رمز الإصدار الحالي وتأكيدًا بشريًا صريحًا. لا تُخلط أي أدوات مراجعة تجريبية بالسجلات الرسمية."
+      "الموافقة على الطلب أو رفضه تطلب منك التأكيد أولًا دائمًا."
   },
   boundaries: [
     "تبقى الشروط المالية للعميل منفصلة عن الشروط المالية لعرض العامل.",

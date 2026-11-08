@@ -59,6 +59,12 @@ describe("employer shell accessibility", () => {
     expect(shellSource).toContain("const connectedEnvironment = isConnectedEnvironment()");
   });
 
+  it("hides the numbered prototype pager in connected environments", () => {
+    expect(shellSource).toMatch(
+      /connectedEnvironment \? null : \(\s*<EmployerPageNavigator currentRoute=\{currentRoute\} navigation=\{navigation\} \/>/
+    );
+  });
+
   it("restricts the full prototype page-map to genuine local development", () => {
     // The deployed test tier (RWOS_ENV="test") must be treated as connected, so only local dev
     // (RWOS_ENV unset or "local" with no deployment tier) ever renders uniqueEmployerNavigation.

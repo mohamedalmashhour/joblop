@@ -272,9 +272,10 @@ describe("authenticated calendar UI integration", () => {
     expect(createPanel).toContain('method: "PUT"');
     expect(createPanel).toContain('t("create.retryDetails")');
     expect(employerMessages).toContain('"create.retryDetails": "Retry staffing details"');
-    // Worker economics are governed by the approved contract/offer terms, never invented here.
+    // The rate note points at the approved contract and never mentions the worker's rate or a share.
     expect(createPanel).toContain('t("create.economicsNote")');
-    expect(employerMessages).toContain("governed by the approved contract and offer terms");
+    expect(employerMessages).toContain("follow your approved contract");
+    expect(employerMessages).not.toMatch(/worker's rate is set|worker's share|hourly share|platform margin/i);
     expect(createPanel).toContain("/submit");
     expect(createPanel).not.toContain("mode=fixture");
     expect(clientRequestPage).toContain('mode === "fixture" && !request');

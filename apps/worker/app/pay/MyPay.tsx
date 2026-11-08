@@ -5,6 +5,7 @@ import { useLocale, useT, fmtLocale } from "../i18n/LocaleProvider";
 import type { RwosLocale } from "../i18n/config";
 import type { MessageKey } from "../i18n/messages";
 import type { Translate } from "../i18n/LocaleProvider";
+import { isProductionTier } from "../deploymentTier";
 
 type Deduction = Readonly<{ category: string; code: string; description: string; amountMinor: number; currency: string }>;
 type Earning = Readonly<{ classification: string; description: string; quantityMinutes: number | null; rateMinor: number | null; amountMinor: number; currency: string }>;
@@ -120,6 +121,7 @@ function payoutAnchor(p: Payout): string {
 
 export function MyPay() {
   const t = useT();
+  const production = isProductionTier();
   const locale = fmtLocale(useLocale());
   const [state, setState] = useState<PayState>({ status: "loading" });
   const [payouts, setPayouts] = useState<PayoutsState>({ status: "loading" });
@@ -228,11 +230,13 @@ export function MyPay() {
     <>
       <section className="hero">
         <h1>{t("nav.pay")}</h1>
-        <p>{t("pay.defaultNotice")}</p>
+        <p>{t(production ? "pay.productionNotice" : "pay.defaultNotice")}</p>
       </section>
-      <div className="chips" style={{ marginBottom: 16 }}>
-        <span className="chip status-rejected">{t("pay.syntheticChip")}</span>
-      </div>
+      {production ? null : (
+        <div className="chips" style={{ marginBottom: 16 }}>
+          <span className="chip status-rejected">{t("pay.syntheticChip")}</span>
+        </div>
+      )}
 
       <div className="chips" style={{ marginBottom: 16 }}>
         <button type="button" className={`chip ${tab === "earnings" ? "status-verified" : ""}`} onClick={() => setTab("earnings")}>{t("pay.tabEarnings")}</button>
@@ -250,7 +254,7 @@ export function MyPay() {
       {tab === "calendar" ? <PaymentsCalendar payouts={payouts} items={allPayouts} openDisputed={openDisputedCalcIds} onRaise={raiseDispute} t={t} locale={locale} /> : null}
       {tab === "disputes" ? <DisputesTab disputes={disputes} onWithdraw={withdrawDispute} t={t} locale={locale} /> : null}
 
-      <p className="notice">{t("pay.footer")}</p>
+      <p className="notice">{t(production ? "pay.productionFooter" : "pay.footer")}</p>
     </>
   );
 }

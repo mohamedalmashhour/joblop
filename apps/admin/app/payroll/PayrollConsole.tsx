@@ -28,7 +28,7 @@ async function api(path: string, method: "GET" | "POST" = "GET", body?: unknown)
   return { ok: res.ok, status: res.status, data };
 }
 
-export function PayrollConsole() {
+export function PayrollConsole({ showTestBadge = true }: Readonly<{ showTestBadge?: boolean }> = {}) {
   const t = usePageText(payrollText);
   const [periods, setPeriods] = useState<Period[] | null>(null);
   const [periodId, setPeriodId] = useState<string | null>(null);
@@ -92,7 +92,7 @@ export function PayrollConsole() {
           <h1 id="payroll-title" style={s.title}>{t.title}</h1>
           <p style={s.lede}>{t.lede}</p>
         </div>
-        <p role="status" style={s.syntheticBadge}>{t.syntheticBadge}</p>
+        {showTestBadge ? <p role="status" style={s.syntheticBadge}>{t.syntheticBadge}</p> : null}
       </header>
 
       {notice ? <p role="alert" style={notice.tone === "error" ? s.errorNote : s.infoNote}>{notice.text}</p> : null}

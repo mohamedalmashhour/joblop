@@ -152,7 +152,10 @@ export function EmployerShell({
                   <h1 style={styles.title}>{title}</h1>
                   <p style={styles.lede}>{lede}</p>
                 </section>
-                <EmployerPageNavigator currentRoute={currentRoute} navigation={navigation} />
+                {/* The numbered prototype pager is a local-dev tool; real employers use the sidebar. */}
+                {connectedEnvironment ? null : (
+                  <EmployerPageNavigator currentRoute={currentRoute} navigation={navigation} />
+                )}
               </>
             )}
             {children}

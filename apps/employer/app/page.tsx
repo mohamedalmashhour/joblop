@@ -10,6 +10,7 @@ import { EmployerFlowMovie } from "./EmployerFlowMovie";
 import { LanguageSwitcher } from "./i18n/LanguageSwitcher";
 import { JobScannerBand } from "./JobScannerBand";
 import { PlatformLoopMovie } from "./PlatformLoopMovie";
+import { homeFaqAnchors } from "./faq/faqContent";
 
 async function resolveLocale() {
   const store = await cookies();
@@ -546,11 +547,11 @@ export default async function LandingPage({ searchParams }: { searchParams?: Pro
           </h2>
         </div>
         <div style={styles.faqGrid}>
-          {c.faq.questions.map((question) => (
+          {c.faq.questions.map((question, index) => (
             <article key={question} style={styles.faqItem}>
               <h3 style={styles.faqQuestion}>{question}</h3>
               <p style={styles.cardText}>{c.faq.readNote}</p>
-              <a href="/faq" style={styles.textLink}>
+              <a href={["/faq", homeFaqAnchors[index] ?? ""].join("#")} style={styles.textLink}>
                 {c.faq.readLink}
               </a>
             </article>

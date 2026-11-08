@@ -92,7 +92,7 @@ const en: LandingContent = {
     chips: ["Quick Matches", "Verified Users", "Secure & Trusted"],
     ctaWork: "I’m Looking for Work",
     ctaHire: "Workers Request",
-    availableOn: "Available on",
+    availableOn: "Phone app — coming soon",
     oppTitle: "Opportunities",
     oppAround: "around you"
   },
@@ -176,8 +176,8 @@ const en: LandingContent = {
   },
   footer: { brandHome: "Joblop", employers: "Employers", workers: "Workers", howItWorks: "How It Works", pricing: "Pricing", contact: "Contact" },
   store: {
-    apple: { line: "Download on the", name: "App Store", aria: "App Store — coming soon" },
-    google: { line: "GET IT ON", name: "Google Play", aria: "Google Play — coming soon" }
+    apple: { line: "Coming soon to the", name: "App Store", aria: "App Store — coming soon" },
+    google: { line: "COMING SOON TO", name: "Google Play", aria: "Google Play — coming soon" }
   },
   heroPhone: {
     greeting: "Hello, Ahmed",
@@ -227,7 +227,7 @@ const fr: LandingContent = {
     chips: ["Jumelages rapides", "Utilisateurs vérifiés", "Sécurisé et fiable"],
     ctaWork: "Je cherche du travail",
     ctaHire: "Demande de travailleurs",
-    availableOn: "Disponible sur",
+    availableOn: "Application mobile — bientôt disponible",
     oppTitle: "Occasions",
     oppAround: "près de vous"
   },
@@ -311,8 +311,8 @@ const fr: LandingContent = {
   },
   footer: { brandHome: "Joblop", employers: "Employeurs", workers: "Travailleurs", howItWorks: "Comment ça marche", pricing: "Tarifs", contact: "Contact" },
   store: {
-    apple: { line: "Téléchargez sur", name: "App Store", aria: "App Store — bientôt disponible" },
-    google: { line: "DISPONIBLE SUR", name: "Google Play", aria: "Google Play — bientôt disponible" }
+    apple: { line: "Bientôt sur", name: "App Store", aria: "App Store — bientôt disponible" },
+    google: { line: "BIENTÔT SUR", name: "Google Play", aria: "Google Play — bientôt disponible" }
   },
   heroPhone: {
     greeting: "Bonjour, Ahmed",
@@ -364,7 +364,7 @@ const ar: LandingContent = {
     chips: ["مطابقات سريعة", "مستخدمون موثَّقون", "آمن وموثوق"],
     ctaWork: "أبحث عن عمل",
     ctaHire: "طلب عمّال",
-    availableOn: "متاح على",
+    availableOn: "تطبيق الهاتف — قريبًا",
     oppTitle: "فرص",
     oppAround: "من حولك"
   },
@@ -448,8 +448,8 @@ const ar: LandingContent = {
   },
   footer: { brandHome: "Joblop", employers: "أصحاب العمل", workers: "العمّال", howItWorks: "كيف تعمل", pricing: "الأسعار", contact: "اتصل بنا" },
   store: {
-    apple: { line: "نزّله من", name: "App Store", aria: "App Store — قريبًا" },
-    google: { line: "احصل عليه من", name: "Google Play", aria: "Google Play — قريبًا" }
+    apple: { line: "قريبًا على", name: "App Store", aria: "App Store — قريبًا" },
+    google: { line: "قريبًا على", name: "Google Play", aria: "Google Play — قريبًا" }
   },
   heroPhone: {
     greeting: "مرحبًا، أحمد",

@@ -7,6 +7,7 @@ import { LocaleProvider } from "./i18n/LocaleProvider";
 import { IdleLogout } from "./IdleLogout";
 import { LogoIntro } from "./LogoIntro";
 import { Footer } from "./Footer";
+import { FooterGate } from "./FooterGate";
 import { GoogleTag } from "./analytics";
 import { RegisterSW } from "./RegisterSW";
 import { serif, sans } from "./fonts";
@@ -64,7 +65,9 @@ export default async function RootLayout({ children }: Readonly<{ children: Reac
           <IdleLogout />
           {children}
         </LocaleProvider>
-        <Footer locale={locale} />
+        <FooterGate>
+          <Footer locale={locale} />
+        </FooterGate>
       </body>
     </html>
   );

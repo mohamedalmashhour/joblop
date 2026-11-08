@@ -87,9 +87,19 @@ describe("Page 001 landing content", () => {
     expect(ar.dashboard.operations.map((o) => o.filled)).toEqual([true, false, false]);
   });
 
+  it("labels the store badges as coming soon, with no store links", () => {
+    expect(en.hero.availableOn).toMatch(/coming soon/i);
+    expect(fr.hero.availableOn).toMatch(/bientôt/i);
+    expect(ar.hero.availableOn).toContain("قريبًا");
+    for (const c of [en, fr, ar]) {
+      expect(`${c.store.apple.line} ${c.store.google.line}`).not.toMatch(/download|get it on|téléchargez|disponible sur/i);
+    }
+    expect(landingSource).not.toMatch(/apps\.apple\.com|play\.google\.com/);
+  });
+
   it("routes public access and gates production without leaking legacy branding", () => {
     expect(landingSource).toContain('isProduction ? "/contact" : "/signup/employer"');
-    expect(landingSource).toContain('href="/faq" style={styles.textLink}');
+    expect(landingSource).toContain('href={["/faq", homeFaqAnchors[index] ?? ""].join("#")}');
     expect(landingSource).toContain("Joblop");
     expect(landingSource).not.toContain("Resident Job");
     expect(landingSource).not.toContain("Resident Workforce OS home");

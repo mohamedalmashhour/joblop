@@ -89,7 +89,6 @@ export function Onboarding() {
     }
   };
 
-  const slip = classification === "contractor" ? "T4A" : "T4";
   const input: React.CSSProperties = { width: "100%", marginTop: 6, padding: "10px 12px", borderRadius: 8, border: "1px solid #3a342a", background: "#17140f", color: "inherit" };
 
   return (
@@ -112,7 +111,9 @@ export function Onboarding() {
         </label>
         <label style={{ display: "flex", gap: 8, alignItems: "flex-start", marginTop: 4 }}>
           <input type="checkbox" checked={agree} onChange={(e) => setAgree(e.target.checked)} />
-          <span>{tr(`أوافق على اتفاقية ${slip} وأوقّعها (النسخة ${agreementVersions[classification] ?? "…"}).`, `J'accepte et je signe l'entente ${slip} (version ${agreementVersions[classification] ?? "…"}).`, `I accept and sign the ${slip} agreement (version ${agreementVersions[classification] ?? "…"}).`)}</span>
+          <span>{classification === "contractor"
+            ? tr("أوافق على اتفاقية العمل المستقل الخاصة بي وأوقّعها.", "J'accepte et je signe mon entente de travailleur autonome.", "I accept and sign my self-employed work agreement.")
+            : tr("أوافق على عقد عملي وأوقّعه.", "J'accepte et je signe mon contrat de travail.", "I accept and sign my employment agreement.")}</span>
         </label>
 
         {/* 2. Details */}
