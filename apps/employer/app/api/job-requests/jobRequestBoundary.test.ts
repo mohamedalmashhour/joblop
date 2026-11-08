@@ -113,6 +113,36 @@ describe("employer job request BFF boundary", () => {
     });
   });
 
+  it("forwards a valid long-term pay offer only (clean fields, no other economics)", () => {
+    const base = {
+      residenceId: "res-1",
+      departmentId: "dep-1",
+      workGroup: "kitchen",
+      roleDefinition: "chef",
+      title: "Permanent Chef",
+      numberOfWorkers: 1,
+      urgency: "normal",
+      requestType: "single_day",
+      timezone: "America/Toronto",
+      startAt: "2026-08-10T14:00:00.000Z",
+      endAt: "2026-08-10T22:00:00.000Z"
+    };
+    expect(
+      readEmployerJobRequestInput({
+        ...base,
+        jobLength: "long_term",
+        payOffered: { minMinor: 2_200, maxMinor: 2_500, unit: "hour", platformMargin: 900 }
+      })
+    ).toMatchObject({ jobLength: "long_term", payOffered: { minMinor: 2_200, maxMinor: 2_500, unit: "hour" } });
+    expect(
+      readEmployerJobRequestInput({ ...base, jobLength: "long_term", payOffered: { minMinor: 2_200, unit: "hour", platformMargin: 900 } })?.payOffered
+    ).toEqual({ minMinor: 2_200, maxMinor: null, unit: "hour" });
+    // invalid offer, or a short-term job: no pay offer is forwarded
+    expect(readEmployerJobRequestInput({ ...base, jobLength: "long_term", payOffered: { minMinor: 0, unit: "hour" } })).not.toHaveProperty("payOffered");
+    expect(readEmployerJobRequestInput({ ...base, jobLength: "short_term", payOffered: { minMinor: 2_200, unit: "hour" } })).not.toHaveProperty("payOffered");
+    expect(readEmployerJobRequestInput(base)).not.toHaveProperty("payOffered");
+  });
+
   it("rejects invalid counts, enums, and time windows", () => {
     const valid = {
       residenceId: "res-1",

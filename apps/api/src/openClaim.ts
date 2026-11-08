@@ -27,6 +27,7 @@ import type {
   WorkerOfferRepository
 } from "@rwos/auth";
 import type { createPrismaClient } from "@rwos/database";
+import { isLongTermListingJob, longTermPaySentence } from "./longTermWorkerPay";
 
 type PrismaClient = ReturnType<typeof createPrismaClient>;
 
@@ -264,10 +265,10 @@ export async function claimOpenJob(
   // 5. Mint the accepted-offer chain atomically: offer(accepted) + terms(priced) + response(accepted).
   //    The unique index worker_offers_dispatch_worker_key makes this idempotent per (dispatch,
   //    worker): a concurrent double-tap or a prior lost race surfaces as P2002.
-  const compensationSummary = formatRateMinor(
-    job.pricingSnapshot.workerHourlyRateMinor,
-    job.pricingSnapshot.currency
-  );
+  // Long-term listing (employer plans flag): the employer's own pay offer, never "0.00 CAD/hr".
+  const compensationSummary = isLongTermListingJob(job)
+    ? longTermPaySentence(job, "en")
+    : formatRateMinor(job.pricingSnapshot.workerHourlyRateMinor, job.pricingSnapshot.currency);
   const offerExpiresAt = new Date(at.getTime() + 24 * 60 * 60 * 1000);
   let minted: { offerId: string; offerVersion: number };
   try {

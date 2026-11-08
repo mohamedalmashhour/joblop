@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from "react";
 import { formatWhen, formatRate } from "../../MarketplaceExplorer";
 import { useLocale, useT, fmtLocale } from "../../i18n/LocaleProvider";
 import type { MessageKey } from "../../i18n/messages";
+import { payOfferedLabel } from "../../payOfferedLabel";
 
 type JobDetailData = Readonly<{
   jobRequestId: string;
@@ -20,6 +21,8 @@ type JobDetailData = Readonly<{
   openings: number;
   workerRateMinor: number | null;
   currency: string;
+  /** Long-term listing only: the pay the employer offers and pays directly. */
+  payOffered?: unknown;
   description: string | null;
   duties: string | null;
   safetyNotes: string | null;
@@ -205,6 +208,9 @@ export function JobDetail({ id, postalCode }: { id: string; postalCode: string |
         <Fact label={t("job.factWhen")}>{formatWhen(job.startAt, job.endAt, locale)}</Fact>
         <Fact label={t("job.factOpenings")}>{job.openings}</Fact>
         {job.workerRateMinor !== null ? <Fact label={t("job.factPay")}>{formatRate(job.workerRateMinor, job.currency, locale)}</Fact> : null}
+        {job.payOffered !== undefined ? (
+          <Fact label={t("job.factPay")}>{payOfferedLabel(job.payOffered, locale, { paidByEmployer: t("pay.paidByEmployer"), employerPaysDirectly: t("pay.employerPaysDirectly") })}</Fact>
+        ) : null}
       </div>
 
       {job.bonus && job.bonus.amountMinor > 0 ? <BonusBox bonus={job.bonus} currency={job.currency} locale={locale} /> : null}

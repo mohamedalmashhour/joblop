@@ -1,5 +1,6 @@
 import { randomBytes } from "node:crypto";
 import type { PrismaClient } from "@rwos/database";
+import { payOfferedSentence, type PayOfferedView } from "@rwos/shared";
 import type { EmailMessage, EmailSender } from "./mailer/emailSender";
 import { resolveLanguage, type NotificationLanguage } from "./notifications/clientNotifications";
 import { leadQueryTokens, queryStoredLeads } from "./jobScannerRepository";
@@ -49,6 +50,8 @@ export type AlertOpenJob = Readonly<{
   province: string | null;
   startAt: Date;
   workerRateMinor: number | null;
+  // Long-term listing only (employer plans flag): the employer's own pay offer, paid directly.
+  payOffered?: PayOfferedView | null;
   // When the job last became visible as open (used to decide what is "new").
   freshAt: Date;
 }>;
@@ -174,7 +177,10 @@ function itemLines(item: AlertItem, index: number, language: NotificationLanguag
   if (item.kind === "job") {
     const { job } = item;
     const place = area(job.city, job.province, null);
-    const details = [when(job.startAt, language, true), job.workerRateMinor ? `${money(job.workerRateMinor, language)}/h` : null]
+    const rate = job.payOffered !== undefined
+      ? payOfferedSentence(job.payOffered, language)
+      : job.workerRateMinor ? `${money(job.workerRateMinor, language)}/h` : null;
+    const details = [when(job.startAt, language, true), rate]
       .filter(Boolean)
       .join(" · ");
     return [

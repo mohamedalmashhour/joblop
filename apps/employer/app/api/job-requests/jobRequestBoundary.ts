@@ -1,3 +1,5 @@
+import { parsePayOffered, type PayOffered } from "@rwos/shared";
+
 export type EmployerRequestContext = Readonly<{
   residences: readonly Readonly<{ id: string; name: string }>[];
   departments: readonly Readonly<{ id: string; name: string; residenceId: string }>[];
@@ -282,8 +284,17 @@ export function readEmployerJobRequestInput(input: unknown) {
     // unless EMPLOYER_PLANS_ENABLED is on).
     ...(record.jobLength === "short_term" || record.jobLength === "long_term"
       ? { jobLength: record.jobLength as "short_term" | "long_term" }
+      : {}),
+    // Long-term only: the pay the employer offers (paid directly to the worker). Forwarded as a clean
+    // { minMinor, maxMinor, unit } when valid; the API refuses a long-term job without one.
+    ...(record.jobLength === "long_term" && parsePayOffered(record.payOffered)
+      ? { payOffered: payOfferedBody(parsePayOffered(record.payOffered)!) }
       : {})
   };
+}
+
+function payOfferedBody(pay: PayOffered) {
+  return { minMinor: pay.minMinor, maxMinor: pay.maxMinor, unit: pay.unit };
 }
 
 export function readEmployerCalendarProfileInput(input: unknown) {

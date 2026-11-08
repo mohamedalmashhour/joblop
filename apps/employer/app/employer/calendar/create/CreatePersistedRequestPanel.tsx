@@ -13,6 +13,7 @@ import {
   estimateRequestCost,
   formatHourlyRate,
   formatMoney,
+  formatPayOffered,
   hoursBetween,
   meetsMinimumShiftDuration
 } from "@rwos/shared";
@@ -21,6 +22,7 @@ import { MAX_RECURRING_SHIFTS, recurringShifts, type ShiftTimes } from "./recurr
 import { DictationButton } from "./DictationButton";
 import { requestActionNotice } from "./requestActionNotice";
 import { LongTermListingsPanel } from "../../listings/LongTermListingsPanel";
+import { formPayOffered, longTermRequestBody, requestPricingGate } from "./longTermRequestForm";
 
 type Provision = "none" | "provided" | "allowance";
 
@@ -38,6 +40,10 @@ type FormState = {
   numberOfWorkers: string;
   urgency: "normal" | "urgent" | "immediate";
   jobLength: "short_term" | "long_term";
+  // Long-term only: the pay the employer offers and pays the worker directly (dollars as typed).
+  payMin: string;
+  payMax: string;
+  payUnit: "hour" | "year";
   requestType: "single_day" | "multi_day" | "recurring_intent";
   timezone: string;
   startAt: string;
@@ -69,6 +75,9 @@ const initialForm: FormState = {
   numberOfWorkers: "1",
   urgency: "normal",
   jobLength: "short_term",
+  payMin: "",
+  payMax: "",
+  payUnit: "hour",
   requestType: "single_day",
   timezone: "America/Toronto",
   startAt: "",
@@ -158,23 +167,6 @@ export function CreatePersistedRequestPanel() {
     void loadContext();
   }, []);
 
-  const selectedWorkGroup = context?.workGroups.find((item) => item.slug === form.workGroup);
-  // Once the contract prices any role, only priced roles (and the groups holding them) can be requested.
-  const contractPricesRoles = Boolean(context?.roleDefinitions.some((role) => role.hourlyRateMinor !== null));
-  const requestableWorkGroups =
-    context?.workGroups.filter(
-      (group) =>
-        !contractPricesRoles ||
-        context.roleDefinitions.some((role) => role.workGroupId === group.id && role.hourlyRateMinor !== null)
-    ) ?? [];
-  const roles = useMemo(
-    () =>
-      context?.roleDefinitions.filter(
-        (role) => role.workGroupId === selectedWorkGroup?.id && (!contractPricesRoles || role.hourlyRateMinor !== null)
-      ) ?? [],
-    [context, selectedWorkGroup]
-  );
-  const repeats = form.requestType === "recurring_intent";
   // Job length (short / long term) is only asked while employer plans are switched on; otherwise the
   // field is hidden and every job stays short term, exactly as today.
   const [plansEnabled, setPlansEnabled] = useState(false);
@@ -190,16 +182,45 @@ export function CreatePersistedRequestPanel() {
       active = false;
     };
   }, []);
+  // Long-term job (flag on): a paid listing, no contract rate needed and no hourly cost shown.
+  const longTerm = requestPricingGate({ plansEnabled, jobLength: form.jobLength, rateUnpriced: false }).longTerm;
+  const selectedWorkGroup = context?.workGroups.find((item) => item.slug === form.workGroup);
+  // Once the contract prices any role, only priced roles (and the groups holding them) can be requested
+  // (short-term jobs; a long-term listing can be any role).
+  const contractPricesRoles = !longTerm && Boolean(context?.roleDefinitions.some((role) => role.hourlyRateMinor !== null));
+  const requestableWorkGroups =
+    context?.workGroups.filter(
+      (group) =>
+        !contractPricesRoles ||
+        context.roleDefinitions.some((role) => role.workGroupId === group.id && role.hourlyRateMinor !== null)
+    ) ?? [];
+  const roles = useMemo(
+    () =>
+      context?.roleDefinitions.filter(
+        (role) => role.workGroupId === selectedWorkGroup?.id && (!contractPricesRoles || role.hourlyRateMinor !== null)
+      ) ?? [],
+    [context, selectedWorkGroup, contractPricesRoles]
+  );
+  const repeats = form.requestType === "recurring_intent";
   const shifts = repeats
     ? recurringShifts({ startAt: form.startAt, endAt: form.endAt, weekdays: form.repeatWeekdays, until: form.repeatUntil })
     : [];
   const validation = validate(form, t);
+  const payOffered = longTerm ? formPayOffered(form) : null;
+  if (longTerm && !payOffered) validation.push(t("create.payOfferedInvalid"));
   if (repeats && (shifts.length === 0 || shifts.length > MAX_RECURRING_SHIFTS)) {
     validation.push(t("create.repeatInvalid", { max: MAX_RECURRING_SHIFTS }));
   }
   const selectedRole = roles.find((role) => role.slug === form.roleDefinition);
+  // Switching back from Long term can leave an unpriced role chosen that short-term no longer offers.
+  if (longTerm === false && plansEnabled && form.roleDefinition && context && !selectedRole) validation.push(t("create.role"));
   const rateCurrency: "CAD" | "USD" = selectedRole?.currency === "USD" ? "USD" : "CAD";
-  const rateUnpriced = Boolean(selectedRole && selectedRole.hourlyRateMinor === null);
+  const pricingGate = requestPricingGate({
+    plansEnabled,
+    jobLength: form.jobLength,
+    rateUnpriced: Boolean(selectedRole && selectedRole.hourlyRateMinor === null)
+  });
+  const rateUnpriced = pricingGate.rateUnpriced;
   const scheduledHours = hoursBetween(form.startAt, form.endAt);
   const workerCount =
     Number.isInteger(Number(form.numberOfWorkers)) && Number(form.numberOfWorkers) > 0
@@ -248,6 +269,7 @@ export function CreatePersistedRequestPanel() {
         description: form.description,
         urgency: form.urgency,
         ...(plansEnabled ? { jobLength: form.jobLength } : {}),
+        ...longTermRequestBody(plansEnabled, form.jobLength, form),
         // Each shift in a repeat is its own one-day job.
         requestType: repeats ? "single_day" : form.requestType,
         timezone: form.timezone,
@@ -457,6 +479,30 @@ export function CreatePersistedRequestPanel() {
             </p>
           </div>
         ) : null}
+        {longTerm ? (
+          <fieldset disabled={!editing} style={{ ...styles.tintedCard, border: 0, gridColumn: "1 / -1", margin: 0 }}>
+            <legend style={styles.fieldLabel}>{t("create.payOffered")}</legend>
+            <div style={{ display: "flex", flexWrap: "wrap", gap: 12, marginTop: 8 }}>
+              <label style={{ ...styles.fieldLabel, maxWidth: 180 }}>
+                {t("create.payOfferedMin")}
+                <input inputMode="decimal" onChange={(e) => update("payMin", e.target.value)} required style={styles.input} value={form.payMin} />
+              </label>
+              <label style={{ ...styles.fieldLabel, maxWidth: 180 }}>
+                {t("create.payOfferedMax")}
+                <input inputMode="decimal" onChange={(e) => update("payMax", e.target.value)} style={styles.input} value={form.payMax} />
+              </label>
+              <label style={{ ...styles.fieldLabel, maxWidth: 180 }}>
+                {t("create.payOfferedUnit")}
+                <select onChange={(e) => update("payUnit", e.target.value === "year" ? "year" : "hour")} style={styles.input} value={form.payUnit}>
+                  <option value="hour">{t("create.payOfferedPerHour")}</option>
+                  <option value="year">{t("create.payOfferedPerYear")}</option>
+                </select>
+              </label>
+            </div>
+            <p style={styles.cardText}>{t("create.payOfferedHint")}</p>
+            {payOffered ? <p style={styles.cardText}><strong>{t("create.payOfferedPreview", { pay: formatPayOffered(payOffered, locale) })}</strong></p> : null}
+          </fieldset>
+        ) : null}
         <SelectField disabled={!editing} label={t("create.requestType")} onChange={(v) => update("requestType", v as FormState["requestType"])} options={[{ label: t("create.typeSingle"), value: "single_day" }, { label: t("create.typeMulti"), value: "multi_day" }, { label: t("create.typeRecurring"), value: "recurring_intent" }]} value={form.requestType} t={t} />
         {repeats ? (
           <fieldset disabled={!editing} style={{ ...styles.tintedCard, border: 0, gridColumn: "1 / -1", margin: 0 }}>
@@ -523,7 +569,10 @@ export function CreatePersistedRequestPanel() {
         </div>
       </section>
 
-      {selectedRole ? (
+      {longTerm ? (
+        <div style={{ ...styles.tintedCard, marginTop: 18 }}>{t("create.longTermNoHourlyCost")}</div>
+      ) : null}
+      {selectedRole && pricingGate.showHourlyCost ? (
         <div style={{ marginTop: 18 }}>
           <p style={styles.metaLabel}>{t("create.rateYouPay")}</p>
           {selectedRole.hourlyRateMinor !== null ? (
@@ -578,8 +627,8 @@ export function CreatePersistedRequestPanel() {
           <LongTermListingsPanel onlyJobRequestId={draft.id} />
         </div>
       ) : null}
-      {status === "review" ? <RequestReview form={form} roleLabel={selectedRole?.displayLabel ?? form.roleDefinition} shiftCount={shifts.length} t={t} /> : null}
-      <p style={styles.cardText}>{t("create.economicsNote")}</p>
+      {status === "review" ? <RequestReview form={form} payOfferedLabel={payOffered ? formatPayOffered(payOffered, locale) : null} roleLabel={selectedRole?.displayLabel ?? form.roleDefinition} shiftCount={shifts.length} t={t} /> : null}
+      {longTerm ? null : <p style={styles.cardText}>{t("create.economicsNote")}</p>}
       {actionNotice ? <div style={{ ...styles.warning, marginTop: 18 }}>{actionNotice}</div> : null}
       <div style={{ display: "flex", flexWrap: "wrap", gap: 10, marginTop: 18 }}>
         {status === "editing" ? (
@@ -668,9 +717,10 @@ function AgreementClauses({ t }: { t: Translate }) {
   );
 }
 
-function RequestReview({ form, roleLabel, shiftCount, t }: Readonly<{ form: FormState; roleLabel: string; shiftCount: number; t: Translate }>) {
+function RequestReview({ form, payOfferedLabel, roleLabel, shiftCount, t }: Readonly<{ form: FormState; payOfferedLabel: string | null; roleLabel: string; shiftCount: number; t: Translate }>) {
   const np = t("create.notProvided");
   const rows = [
+    ...(payOfferedLabel ? ([[t("create.payOffered"), payOfferedLabel]] as const) : []),
     [t("create.role"), roleLabel],
     [t("create.requestType"), form.requestType === "recurring_intent" ? t("create.repeatCount", { count: shiftCount }) : form.requestType.replaceAll("_", " ")],
     [t("create.urgency"), form.urgency],

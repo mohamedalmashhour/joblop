@@ -1194,6 +1194,11 @@ model JobRequest {
   // Employer-chosen job length: "short_term" (shifts up to 4 weeks) | "long_term" (contract over 4
   // weeks). Only changes pricing when EMPLOYER_PLANS_ENABLED is on.
   jobLength          String            @default("short_term") @map("job_length")
+  // Long-term jobs only (EMPLOYER_PLANS_ENABLED): the pay the employer offers and pays the worker
+  // directly (a listing, Joblop holds no rate). Amount or range in cents, per "hour" or "year".
+  payOfferedMinMinor Int?              @map("pay_offered_min_minor")
+  payOfferedMaxMinor Int?              @map("pay_offered_max_minor")
+  payOfferedUnit     String?           @map("pay_offered_unit")
   status             JobRequestStatus  @default(draft)
   adminReviewReason  String?           @map("admin_review_reason")
   version            Int               @default(1)

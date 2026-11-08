@@ -26,3 +26,13 @@ describe("attendance schedule content", () => {
     expect(attendanceCopyFor("ar").title).toBe("جدولي");
   });
 });
+
+describe("long-term jobs (employer plans flag): no clock-in", () => {
+  it("offers no check-in or check-out when the API says clockInAllowed: false", () => {
+    expect(attendanceAction({ status: "pending_start", checkInAt: null, checkOutAt: null, clockInAllowed: false })).toBe("none");
+    expect(attendanceAction({ status: "checked_in", checkInAt: "2026-07-10T12:00:00.000Z", checkOutAt: null, clockInAllowed: false })).toBe("none");
+    // absent flag (short-term, or flag off): today's behaviour
+    expect(attendanceAction({ status: "pending_start", checkInAt: null, checkOutAt: null })).toBe("check_in");
+    for (const locale of ["en", "fr", "ar"] as const) expect(attendanceCopyFor(locale).longTermNoClockIn.length).toBeGreaterThan(10);
+  });
+});

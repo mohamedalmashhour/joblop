@@ -3,7 +3,7 @@ import { ScrollView, StyleSheet, View } from "react-native";
 import { spacing } from "../../theme";
 import type { MarketplaceJobDetail, MobileSessionTransport } from "../../auth/secureSession";
 import { Badge, BodyText, Button, Card, Divider, ErrorState, Heading, LoadingState, ScreenContainer, Section, SmallText } from "../../ui/primitives";
-import { formatOpenings, formatShiftWindow, formatWorkerRate, marketplaceCopyFor } from "./marketplaceContent";
+import { formatOpenings, formatShiftWindow, formatJobPay, marketplaceCopyFor } from "./marketplaceContent";
 import { useLocale } from "../../i18n/LocaleContext";
 import { JobLocationLink } from "../maps";
 
@@ -29,7 +29,8 @@ export function MarketplaceJobScreen({
   transport: MobileSessionTransport | null;
   onBack: () => void;
 }) {
-  const marketplaceCopy = marketplaceCopyFor(useLocale().locale);
+  const locale = useLocale().locale;
+  const marketplaceCopy = marketplaceCopyFor(locale);
   const [state, setState] = useState<DetailState>({ status: "loading" });
   const [apply, setApply] = useState<ApplyState>({ status: "idle" });
 
@@ -83,7 +84,7 @@ export function MarketplaceJobScreen({
                 <Divider />
                 <SmallText>{formatShiftWindow(state.job.startAt, state.job.endAt)}</SmallText>
                 <SmallText>{formatOpenings(state.job.openings)}</SmallText>
-                <SmallText>{formatWorkerRate(state.job.workerRateMinor, state.job.currency)}</SmallText>
+                <SmallText>{formatJobPay(state.job, locale)}</SmallText>
               </Card>
 
               {state.job.description ? (

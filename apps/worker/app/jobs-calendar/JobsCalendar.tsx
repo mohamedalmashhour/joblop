@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useLocale } from "../i18n/LocaleProvider";
+import { payOfferedLabel } from "../payOfferedLabel";
 
 // "My calendar" hub: one calendar that shows the worker everything with a date on it —
 // open Joblop jobs they can accept (bonus ★), their confirmed shifts, cancelled shifts and pay
@@ -25,6 +26,8 @@ type HubItem = Readonly<{
   placesTaken: number | null;
   jobRequestId: string | null;
   refId: string | null;
+  // Long-term listing only: the pay the employer offers and pays directly (no Joblop hourly rate).
+  payOffered?: unknown;
 }>;
 
 type TodayItem = Readonly<{
@@ -83,6 +86,9 @@ const TEXT = {
     places: (n: number) => (n === 1 ? "1 place left" : `${n} places left`),
     perHour: (amount: string) => `$${amount}/h`,
     money: (amount: string) => `$${amount}`,
+    payLocale: "en-CA",
+    paidByEmployer: "paid directly by the employer",
+    employerPaysDirectly: "Pay set and paid directly by the employer",
     bonusHourly: (amount: string) => `+ $${amount}/h bonus`,
     bonusTransport: (amount: string) => `+ $${amount} transport`,
     bonusOneTime: (amount: string) => `+ $${amount} bonus`,
@@ -162,6 +168,9 @@ const TEXT = {
     places: (n: number) => (n === 1 ? "1 place restante" : `${n} places restantes`),
     perHour: (amount: string) => `${amount} $/h`,
     money: (amount: string) => `${amount} $`,
+    payLocale: "fr-CA",
+    paidByEmployer: "payé directement par l'employeur",
+    employerPaysDirectly: "Salaire fixé et payé directement par l'employeur",
     bonusHourly: (amount: string) => `+ ${amount} $/h de prime`,
     bonusTransport: (amount: string) => `+ ${amount} $ transport`,
     bonusOneTime: (amount: string) => `+ ${amount} $ de prime`,
@@ -241,6 +250,9 @@ const TEXT = {
     places: (n: number) => (n === 1 ? "بقي مكان واحد" : `بقي ${n} أماكن`),
     perHour: (amount: string) => `${amount}$ / ساعة`,
     money: (amount: string) => `${amount}$`,
+    payLocale: "en-CA",
+    paidByEmployer: "يدفعه صاحب العمل مباشرة",
+    employerPaysDirectly: "يحدد صاحب العمل الأجر ويدفعه مباشرة",
     bonusHourly: (amount: string) => `+ ${amount}$ مكافأة في الساعة`,
     bonusTransport: (amount: string) => `+ ${amount}$ للمواصلات`,
     bonusOneTime: (amount: string) => `+ ${amount}$ مكافأة`,
@@ -740,6 +752,9 @@ function ItemCard({
         <div className="jc-facts">
           {item.amountMinor !== null && item.amountMinor !== undefined ? (
             <span className="jc-pay"><bdi>{t.perHour(formatAmount(item.amountMinor))}</bdi></span>
+          ) : null}
+          {item.payOffered !== undefined ? (
+            <span className="jc-pay"><bdi>{payOfferedLabel(item.payOffered, t.payLocale, t)}</bdi></span>
           ) : null}
           {bonus ? <span className="jc-bonus"><span aria-hidden="true">★ </span><bdi>{bonus}</bdi></span> : null}
           {item.placesLeft !== null ? <span className="jc-places">{t.places(item.placesLeft)}</span> : null}

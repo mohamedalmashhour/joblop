@@ -609,6 +609,16 @@ export const en = {
   "create.jobLengthHintShort": "Short-term jobs: save 5% to 8% an hour with Shift Pro or Shift Business.",
   "create.jobLengthHintLong": "Long-term job: C$99/month listing, paid in advance. First 2 weeks free, then 50% off your first month. You hire and pay the worker directly.",
   "create.jobLengthSeePlans": "See plans",
+  "create.payOffered": "Pay offered",
+  "create.payOfferedMin": "Amount (or lowest)",
+  "create.payOfferedMax": "Up to (optional)",
+  "create.payOfferedUnit": "Per",
+  "create.payOfferedPerHour": "hour",
+  "create.payOfferedPerYear": "year",
+  "create.payOfferedHint": "You pay the worker directly. Workers see this pay labelled \u201cpaid directly by the employer\u201d. Joblop takes no hourly share.",
+  "create.payOfferedPreview": "Workers will see: {pay}",
+  "create.payOfferedInvalid": "pay offered (an amount, per hour or per year)",
+  "create.longTermNoHourlyCost": "Long-term job: no hourly cost from Joblop. You pay the C$99/month listing and pay the worker directly.",
 } as const;
 
 export type MessageKey = keyof typeof en;
@@ -1221,6 +1231,16 @@ export const fr: Messages = {
   "create.jobLengthHintShort": "Emplois de courte durée : économisez 5 % à 8 % l’heure avec Quart Pro ou Quart Entreprise.",
   "create.jobLengthHintLong": "Emploi de longue durée : annonce à 99 $ CA par mois, payée d’avance. 2 premières semaines gratuites, puis 50 % de rabais sur votre premier mois. Vous embauchez et payez le travailleur directement.",
   "create.jobLengthSeePlans": "Voir les forfaits",
+  "create.payOffered": "Salaire offert",
+  "create.payOfferedMin": "Montant (ou minimum)",
+  "create.payOfferedMax": "Jusqu'à (facultatif)",
+  "create.payOfferedUnit": "Par",
+  "create.payOfferedPerHour": "heure",
+  "create.payOfferedPerYear": "année",
+  "create.payOfferedHint": "Vous payez le travailleur directement. Les travailleurs voient ce salaire avec la mention « payé directement par l'employeur ». Joblop ne prend aucune part horaire.",
+  "create.payOfferedPreview": "Les travailleurs verront : {pay}",
+  "create.payOfferedInvalid": "salaire offert (un montant, par heure ou par année)",
+  "create.longTermNoHourlyCost": "Emploi de longue durée : aucun coût horaire de Joblop. Vous payez l'annonce à 99 $ CA par mois et payez le travailleur directement.",
 };
 
 // Arabic (RTL). Partial — any missing key falls back to en-CA at render time. Aim for full
@@ -1831,7 +1851,17 @@ export const ar: Partial<Messages> = {
   "create.jobLengthLong": "طويلة — عقد لأكثر من 4 أسابيع",
   "create.jobLengthHintShort": "الوظائف القصيرة: وفّر من 5% إلى 8% في الساعة مع الورديات برو أو الورديات للأعمال.",
   "create.jobLengthHintLong": "وظيفة طويلة: إعلان بسعر 99 دولارًا كنديًا شهريًا، يُدفع مقدمًا. أول أسبوعين مجانًا، ثم خصم 50% على شهرك الأول. أنت توظّف العامل وتدفع له مباشرة.",
-  "create.jobLengthSeePlans": "عرض الباقات"
+  "create.jobLengthSeePlans": "عرض الباقات",
+  "create.payOffered": "الأجر المعروض",
+  "create.payOfferedMin": "المبلغ (أو الحد الأدنى)",
+  "create.payOfferedMax": "حتى (اختياري)",
+  "create.payOfferedUnit": "لكل",
+  "create.payOfferedPerHour": "ساعة",
+  "create.payOfferedPerYear": "سنة",
+  "create.payOfferedHint": "أنت تدفع للعامل مباشرة. يرى العمال هذا الأجر مع عبارة «يدفعه صاحب العمل مباشرة». لا يأخذ Joblop أي حصة بالساعة.",
+  "create.payOfferedPreview": "سيرى العمال: {pay}",
+  "create.payOfferedInvalid": "الأجر المعروض (مبلغ لكل ساعة أو لكل سنة)",
+  "create.longTermNoHourlyCost": "وظيفة طويلة: لا توجد تكلفة بالساعة من Joblop. تدفع رسوم الإعلان 99 دولارًا كنديًا شهريًا وتدفع للعامل مباشرة."
 };
 
 export const dictionaries: Readonly<Record<EmployerLocale, Partial<Messages>>> = {

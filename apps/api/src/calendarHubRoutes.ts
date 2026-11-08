@@ -2,6 +2,8 @@ import type { Prisma, PrismaClient } from "@rwos/database";
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import { listedJobWhere } from "./jobListingVisibility";
 import { activeBonusByJob, latestBonusByJob } from "./jobBonusRoutes";
+import { WORKER_PAY_SELECT, workerPay, type WorkerPay } from "./longTermWorkerPay";
+import type { PayOfferedView } from "@rwos/shared";
 
 // CALENDAR HUB. One read per side (worker, employer, staff) that gathers everything dated in a window
 // (jobs, shifts, cancellations, pay, invoices, disputes, pay runs) into calendar items, plus a short
@@ -35,6 +37,8 @@ export type HubItem = {
   placesTaken: number | null;
   jobRequestId: string | null;
   refId: string | null;
+  /** Worker side, long-term listing only (employer plans flag): the employer's own pay offer. */
+  payOffered?: PayOfferedView | null;
 };
 export type TodaySeverity = "info" | "attention" | "urgent";
 export type TodayItem = {
@@ -260,7 +264,13 @@ export const areaOf = (residence: JobRow["residence"]): string | null => {
   return city && prov ? `${city}, ${prov}` : prov;
 };
 
-export function availableJobItem(job: JobRow, placesLeft: number, workerRateMinor: number | null, bonus: HubBonus | null): HubItem {
+export function availableJobItem(
+  job: JobRow,
+  placesLeft: number,
+  workerRateMinor: number | null,
+  bonus: HubBonus | null,
+  payExtra: WorkerPay["extra"] = {}
+): HubItem {
   return {
     id: `available:${job.id}`,
     type: "available_job",
@@ -275,7 +285,8 @@ export function availableJobItem(job: JobRow, placesLeft: number, workerRateMino
     placesAsked: job.numberOfWorkers,
     placesTaken: Math.max(0, job.numberOfWorkers - placesLeft),
     jobRequestId: job.id,
-    refId: job.id
+    refId: job.id,
+    ...payExtra
   };
 }
 
@@ -371,7 +382,7 @@ export function registerCalendarHubRoutes(app: FastifyInstance, deps: CalendarHu
               },
               at
             ),
-            select: { ...JOB_SELECT, organization: false, pricingSnapshot: { select: { workerHourlyRateMinor: true } } },
+            select: { ...JOB_SELECT, ...WORKER_PAY_SELECT, organization: false, pricingSnapshot: { select: { workerHourlyRateMinor: true } } },
             orderBy: [{ startAt: "asc" }],
             take: TAKE
           })
@@ -388,7 +399,7 @@ export function registerCalendarHubRoutes(app: FastifyInstance, deps: CalendarHu
             confirmedEndAt: true,
             confirmedTitle: true,
             organization: { select: { displayName: true } },
-            jobRequest: { select: { ...JOB_SELECT, organization: false, pricingSnapshot: { select: { workerHourlyRateMinor: true } } } }
+            jobRequest: { select: { ...JOB_SELECT, ...WORKER_PAY_SELECT, organization: false, pricingSnapshot: { select: { workerHourlyRateMinor: true } } } }
           },
           orderBy: [{ confirmedStartAt: "asc" }],
           take: TAKE
@@ -417,7 +428,9 @@ export function registerCalendarHubRoutes(app: FastifyInstance, deps: CalendarHu
     for (const r of openRows) {
       const placesLeft = left.get(r.id) ?? r.numberOfWorkers;
       if (placesLeft <= 0 || mine.has(r.id)) continue;
-      items.push(availableJobItem(r, placesLeft, r.pricingSnapshot?.workerHourlyRateMinor ?? null, toHubBonus(bonus.get(r.id))));
+      // Long-term listing (flag on): no hourly amount, the employer's pay offer instead.
+      const pay = workerPay(r, r.pricingSnapshot?.workerHourlyRateMinor ?? null);
+      items.push(availableJobItem(r, placesLeft, pay.rateMinor, toHubBonus(bonus.get(r.id)), pay.extra));
     }
     for (const s of shifts) {
       const job = s.jobRequest;
@@ -425,6 +438,7 @@ export function registerCalendarHubRoutes(app: FastifyInstance, deps: CalendarHu
       if (!cancelled && !holding.has(s.status)) continue;
       const area = areaOf(job.residence);
       const subtitle = [s.organization?.displayName ?? null, area].filter(Boolean).join(" · ") || null;
+      const pay = workerPay(job, job.pricingSnapshot?.workerHourlyRateMinor ?? null);
       items.push({
         id: `${cancelled ? "cancelled" : "shift"}:${s.id}`,
         type: cancelled ? "cancelled_shift" : "my_shift",
@@ -433,13 +447,14 @@ export function registerCalendarHubRoutes(app: FastifyInstance, deps: CalendarHu
         title: job.roleDefinition?.displayLabel ?? s.confirmedTitle,
         subtitle,
         status: cancelled ? "cancelled" : s.status,
-        amountMinor: job.pricingSnapshot?.workerHourlyRateMinor ?? null,
+        amountMinor: pay.rateMinor,
         bonus: cancelled ? null : toHubBonus(bonus.get(s.jobRequestId)),
         placesLeft: null,
         placesAsked: null,
         placesTaken: null,
         jobRequestId: s.jobRequestId,
-        refId: s.id
+        refId: s.id,
+        ...pay.extra
       });
     }
     for (const p of payouts) {

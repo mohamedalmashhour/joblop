@@ -607,6 +607,39 @@ describe("open marketplace transport", () => {
     );
   });
 
+  it("long-term listing (employer plans flag): keeps the employer's pay offer, drops anything else", async () => {
+    const job = {
+      jobRequestId: "11111111-1111-4111-8111-111111111111",
+      role: "Caregiver",
+      employerName: "Residence Care",
+      verifiedEmployer: true,
+      city: "Laval",
+      province: "QC",
+      startAt: "2026-07-01T12:00:00.000Z",
+      endAt: "2026-07-01T20:00:00.000Z",
+      openings: 1,
+      workerRateMinor: null,
+      currency: "CAD",
+      saved: false
+    };
+    const fetchMock = vi.fn(async () =>
+      response(200, {
+        total: 2,
+        jobs: [
+          { ...job, payOffered: { minMinor: 2_200, maxMinor: 2_500, unit: "hour", currency: "CAD", paidBy: "employer", shareMinor: 900 } },
+          { ...job, jobRequestId: "22222222-2222-4222-8222-222222222222" }
+        ]
+      })
+    );
+    const transport = createMobileSessionTransport({ apiOrigin: origin, vault: withSession(), fetch: fetchMock });
+    const result = await transport.marketplaceSearch({ postalCode: "H7N 1A1" });
+    expect(result.status).toBe("ready");
+    if (result.status === "ready") {
+      expect(result.data.jobs[0]?.payOffered).toEqual({ minMinor: 2_200, maxMinor: 2_500, unit: "hour", currency: "CAD", paidBy: "employer" });
+      expect(result.data.jobs[1]).not.toHaveProperty("payOffered");
+    }
+  });
+
   it("maps marketplace states: empty jobs → empty, bad location → invalid_location, no session → denied", async () => {
     const emptyT = createMobileSessionTransport({ apiOrigin: origin, vault: withSession(), fetch: vi.fn(async () => response(200, { jobs: [], total: 0 })) });
     expect((await emptyT.marketplaceSearch({ postalCode: "H2X 1Y4" })).status).toBe("empty");
@@ -759,6 +792,34 @@ describe("worker attendance transport", () => {
     const result = await transport.workerAttendance();
     expect(result.status).toBe("ready");
     if (result.status === "ready") expect(result.data[0]).toMatchObject({ status: "pending_start", version: 2, employerName: "Lakeside Residence", checkInAt: null });
+  });
+
+  it("long-term job (employer plans flag): keeps clockInAllowed: false; absent otherwise", async () => {
+    const row = {
+      attendanceRecordId: "55555555-5555-4555-8555-555555555555",
+      assignmentId: "a1",
+      status: "pending_start",
+      scheduledStartAt: "2026-07-10T12:00:00.000Z",
+      scheduledEndAt: "2026-07-10T20:00:00.000Z",
+      timezone: "America/Toronto",
+      checkInAt: null,
+      checkOutAt: null,
+      exceptionCategory: null,
+      version: 2,
+      employerName: "Lakeside Residence",
+      areaLabel: "Laval, QC"
+    };
+    const transport = createMobileSessionTransport({
+      apiOrigin: origin,
+      vault: withSession(),
+      fetch: vi.fn(async () => response(200, { items: [{ ...row, clockInAllowed: false }, { ...row, attendanceRecordId: "66666666-6666-4666-8666-666666666666" }], nextCursor: null }))
+    });
+    const result = await transport.workerAttendance();
+    expect(result.status).toBe("ready");
+    if (result.status === "ready") {
+      expect(result.data[0]?.clockInAllowed).toBe(false);
+      expect(result.data[1]).not.toHaveProperty("clockInAllowed");
+    }
   });
 
   it("checks in with the expected version and maps 409 → conflict", async () => {

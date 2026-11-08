@@ -2358,6 +2358,70 @@ describe("api assignment foundation", () => {
   });
 });
 
+describe("long-term job requests (employer plans flag)", () => {
+  async function setup() {
+    const { app } = buildJobRequestApi();
+    const employer = await registerApiUser(app);
+    const organization = await createApiOrganization(app, employer.token, "Long Term Tenant");
+    const residence = await createApiResidence(app, employer.token, organization.id, "Long Term Residence");
+    const department = await createApiDepartment(app, employer.token, organization.id, residence.id, "Care");
+    const body = {
+      residenceId: residence.id,
+      departmentId: department.id,
+      workGroup: "kitchen",
+      roleDefinition: "chef",
+      title: "Permanent Chef",
+      numberOfWorkers: 1,
+      urgency: "normal",
+      requestType: "single_day",
+      timezone: "America/Toronto",
+      startAt: "2026-08-10T14:00:00.000Z",
+      endAt: "2026-08-10T22:00:00.000Z",
+      jobLength: "long_term"
+    };
+    const post = (payload: Record<string, unknown>) =>
+      app.inject({
+        method: "POST",
+        url: `/organizations/${organization.id}/job-requests`,
+        headers: { authorization: `Bearer ${employer.token}` },
+        payload
+      });
+    return { app, body, post };
+  }
+
+  it("flag ON: a long-term request without a pay offer is refused before any draft is made", async () => {
+    const previous = process.env.EMPLOYER_PLANS_ENABLED;
+    process.env.EMPLOYER_PLANS_ENABLED = "enabled";
+    try {
+      const { app, body, post } = await setup();
+      const missing = await post(body);
+      expect(missing.statusCode).toBe(400);
+      expect(missing.json().error).toBe("RWOS_INVALID_PAY_OFFERED");
+      const zero = await post({ ...body, payOffered: { minMinor: 0, unit: "hour" } });
+      expect(zero.statusCode).toBe(400);
+      await app.close();
+    } finally {
+      if (previous === undefined) delete process.env.EMPLOYER_PLANS_ENABLED;
+      else process.env.EMPLOYER_PLANS_ENABLED = previous;
+    }
+  });
+
+  it("flag OFF: job length and pay offer are ignored, the draft is created as today", async () => {
+    const previous = process.env.EMPLOYER_PLANS_ENABLED;
+    delete process.env.EMPLOYER_PLANS_ENABLED;
+    try {
+      const { app, body, post } = await setup();
+      const created = await post(body);
+      expect(created.statusCode).toBe(201);
+      expect(created.json().jobRequest).not.toHaveProperty("payOffered");
+      expect(created.json().jobRequest).not.toHaveProperty("jobLength");
+      await app.close();
+    } finally {
+      if (previous !== undefined) process.env.EMPLOYER_PLANS_ENABLED = previous;
+    }
+  });
+});
+
 describe("api attendance foundation", () => {
   it("routes Attendance creation, worker check-in/out, employer read-only status, and Timesheet boundary", async () => {
     const authRepository = new ApiMemoryAuthenticationRepository();

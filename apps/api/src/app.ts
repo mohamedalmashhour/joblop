@@ -241,6 +241,7 @@ import { type WorkerCvProfile, type TargetJob } from "./cvBuilder";
 import { getCvProvider } from "./cvBuilderClaude";
 import { reviewDocumentAdvisory, isReviewableImageType } from "./documentAiReview";
 import { offlineAdvisoryVerdict, presentableVerdict, workerProfileRating } from "@rwos/shared";
+import { longTermJobRequestInput } from "./longTermJobRequestInput";
 import { createCvAsset, listCvAssets, deleteCvAsset } from "./cvAssetRepository";
 import { isPro, getActiveEntitlement, grantEntitlement, revokeEntitlement, startTrial, hasEverTrialed, TRIAL_DAYS, PRO_PLAN } from "./cvEntitlementRepository";
 import {
@@ -287,6 +288,8 @@ import { activeBonusByJob, coverageBonusSuggestion, latestBonusByJob, registerJo
 import { registerCalendarHubRoutes } from "./calendarHubRoutes";
 import { registerEmployerPlanRoutes } from "./employerPlanRoutes";
 import { isListedForWorkers, listedJobWhere, listingVisibilitySelect } from "./jobListingVisibility";
+import { WORKER_PAY_SELECT, isLongTermListingJob, longTermPaySentence, workerPay } from "./longTermWorkerPay";
+import { LONG_TERM_NO_TIMESHEETS_BODY, clockInFields, isLongTermAssignment, isLongTermAttendance } from "./longTermNoTimesheets";
 import { isEmployerPlansEnabled } from "./employerPlanRepository";
 import { createMarketingContactSync, type MarketingContactSync } from "./mailer/brevoContacts";
 import { runShiftReminderSweep } from "./shiftReminderSweep";
@@ -1075,7 +1078,8 @@ export function buildApi(options: BuildApiOptions = {}) {
                     startAt: true,
                     endAt: true,
                     roleDefinition: { select: { displayLabel: true } },
-                    pricingSnapshot: { select: { workerHourlyRateMinor: true } }
+                    pricingSnapshot: { select: { workerHourlyRateMinor: true } },
+                    ...WORKER_PAY_SELECT
                   }
                 },
                 residence: { select: { city: true, province: true } },
@@ -1097,8 +1101,10 @@ export function buildApi(options: BuildApiOptions = {}) {
             const province = offer.residence?.province ?? null;
             const areaLabel = city && province ? `${city}, ${province}` : province ?? city ?? null;
             const rateMinor = offer.jobRequest?.pricingSnapshot?.workerHourlyRateMinor ?? null;
-            const compensation =
-              rateMinor != null && options.countryCurrency
+            // Long-term listing (employer plans flag): the employer's own pay offer, never "$0/h".
+            const compensation = isLongTermListingJob(offer.jobRequest)
+              ? longTermPaySentence(offer.jobRequest!, language)
+              : rateMinor != null && options.countryCurrency
                 ? `${new Intl.NumberFormat(language === "fr" ? "fr-CA" : "en-CA", {
                     style: "currency",
                     currency: options.countryCurrency
@@ -1598,7 +1604,8 @@ export function buildApi(options: BuildApiOptions = {}) {
         updatedAt: true,
         roleDefinition: { select: { displayLabel: true } },
         residence: { select: { city: true, province: true } },
-        pricingSnapshot: { select: { workerHourlyRateMinor: true } }
+        pricingSnapshot: { select: { workerHourlyRateMinor: true } },
+        ...WORKER_PAY_SELECT
       },
       orderBy: [{ updatedAt: "desc" }],
       take: 500
@@ -1606,16 +1613,20 @@ export function buildApi(options: BuildApiOptions = {}) {
     const left = await remainingOpenings(prisma, rows);
     return rows
       .filter((r) => (left.get(r.id) ?? r.numberOfWorkers) > 0)
-      .map((r) => ({
-        jobRequestId: r.id,
-        role: r.roleDefinition?.displayLabel ?? r.title,
-        title: r.title,
-        city: r.residence?.city ?? null,
-        province: r.residence?.province ?? null,
-        startAt: r.startAt,
-        workerRateMinor: r.pricingSnapshot?.workerHourlyRateMinor ?? null,
-        freshAt: r.updatedAt
-      }));
+      .map((r) => {
+        const pay = workerPay(r, r.pricingSnapshot?.workerHourlyRateMinor ?? null);
+        return {
+          jobRequestId: r.id,
+          role: r.roleDefinition?.displayLabel ?? r.title,
+          title: r.title,
+          city: r.residence?.city ?? null,
+          province: r.residence?.province ?? null,
+          startAt: r.startAt,
+          workerRateMinor: pay.rateMinor,
+          ...pay.extra,
+          freshAt: r.updatedAt
+        };
+      });
   };
   app.post("/internal/job-alerts/sweep", async (request, reply) => {
     if (jobAlertSweepToken.length < 16) {
@@ -3301,6 +3312,18 @@ export function buildApi(options: BuildApiOptions = {}) {
       });
     }
 
+    // Employer-chosen job length (short_term | long_term). Only recorded while EMPLOYER_PLANS_ENABLED
+    // is on; otherwise every job keeps the column default (short_term) and today's pricing. A long-term
+    // job is a paid listing: it needs no contract rate, but it must state the pay the employer offers
+    // (shown to workers as paid directly by the employer).
+    const longTerm = longTermJobRequestInput(body, isEmployerPlansEnabled());
+    if (longTerm.status === "invalid_pay_offered") {
+      return reply.code(400).send({
+        error: "RWOS_INVALID_PAY_OFFERED",
+        message: "A long-term job must state the pay offered (an amount or a range, per hour or per year)."
+      });
+    }
+
     const jobRequest = await jobRequestService.createDraft({
       actorUserId: session.user.id,
       organizationId: readRouteParam(request.params, "organizationId"),
@@ -3325,11 +3348,8 @@ export function buildApi(options: BuildApiOptions = {}) {
       await prisma!.jobRequest.update({ where: { id: jobRequest.id }, data: { worksiteDistanceKm } });
     }
 
-    // Employer-chosen job length (short_term | long_term). Only recorded while EMPLOYER_PLANS_ENABLED
-    // is on; otherwise every job keeps the column default (short_term) and today's pricing.
-    const jobLength = readOptionalString(body, "jobLength");
-    if (isEmployerPlansEnabled() && jobLength === "long_term") {
-      await prisma!.jobRequest.update({ where: { id: jobRequest.id }, data: { jobLength } });
+    if (longTerm.status === "long_term") {
+      await prisma!.jobRequest.update({ where: { id: jobRequest.id }, data: longTerm.data });
     }
 
     return reply.code(201).send({ jobRequest: serializeJobRequest(jobRequest) });
@@ -3760,7 +3780,8 @@ export function buildApi(options: BuildApiOptions = {}) {
         urgency: true,
         roleDefinition: { select: { displayLabel: true } },
         residence: { select: { city: true, province: true } },
-        pricingSnapshot: { select: { workerHourlyRateMinor: true } }
+        pricingSnapshot: { select: { workerHourlyRateMinor: true } },
+        ...WORKER_PAY_SELECT
       },
       orderBy: [{ startAt: "asc" }],
       take: 500
@@ -3772,6 +3793,8 @@ export function buildApi(options: BuildApiOptions = {}) {
       .map((r) => {
         const city = r.residence?.city ?? null;
         const prov = r.residence?.province ?? null;
+        // Long-term listing (flag on): rate null + the employer's pay offer; otherwise unchanged.
+        const pay = workerPay(r, r.pricingSnapshot?.workerHourlyRateMinor ?? null);
         return {
           jobRequestId: r.id,
           role: r.roleDefinition?.displayLabel ?? r.title,
@@ -3780,7 +3803,8 @@ export function buildApi(options: BuildApiOptions = {}) {
           endAt: r.endAt.toISOString(),
           urgency: r.urgency,
           placesLeft: left.get(r.id) ?? r.numberOfWorkers,
-          workerRateMinor: r.pricingSnapshot?.workerHourlyRateMinor ?? null,
+          workerRateMinor: pay.rateMinor,
+          ...pay.extra,
           // The job's active bonus (kind + amount only; who pays it is never shown to workers).
           bonus: openBonus.get(r.id) ?? null
         };
@@ -4111,7 +4135,8 @@ export function buildApi(options: BuildApiOptions = {}) {
         roleDefinition: { select: { displayLabel: true, workGroup: { select: { key: true } } } },
         organization: { select: { id: true, displayName: true } },
         residence: { select: { city: true, province: true, latitude: true, longitude: true } },
-        pricingSnapshot: { select: { workerHourlyRateMinor: true } }
+        pricingSnapshot: { select: { workerHourlyRateMinor: true } },
+        ...WORKER_PAY_SELECT
       },
       take: MARKETPLACE_CANDIDATE_CAP
     });
@@ -4138,6 +4163,7 @@ export function buildApi(options: BuildApiOptions = {}) {
       if (!options.countryAddress?.isRegionCode(province) || r.residence.latitude === null || r.residence.longitude === null) continue;
       const isVerifiedEmployer = verifiedOrgIds.has(r.organization.id);
       if (verifiedOnly && !isVerifiedEmployer) continue; // verified-only narrows to real verified orgs
+      const pay = workerPay(r, r.pricingSnapshot?.workerHourlyRateMinor ?? null);
       candidates.push({
         jobRequestId: r.id,
         role: r.roleDefinition.displayLabel,
@@ -4150,8 +4176,9 @@ export function buildApi(options: BuildApiOptions = {}) {
         startAt: r.startAt.toISOString(),
         endAt: r.endAt.toISOString(),
         openings: left,
-        workerRateMinor: r.pricingSnapshot?.workerHourlyRateMinor ?? null, // W from the immutable approval snapshot (null until approved); the employer rate E is never exposed here
-        currency: countryCurrency // display-only; driven by the selected country (CAD for Canada)
+        workerRateMinor: pay.rateMinor, // W from the immutable approval snapshot (null until approved); the employer rate E is never exposed here
+        currency: countryCurrency, // display-only; driven by the selected country (CAD for Canada)
+        ...pay.extra // long-term listing (flag on): the employer's own pay offer
       });
     }
     // Distance ranking is authoritative + always computed first (radius applied here).
@@ -5763,7 +5790,8 @@ export function buildApi(options: BuildApiOptions = {}) {
             mealWorkerMinor: true,
             lodgingWorkerMinor: true
           }
-        }
+        },
+        ...WORKER_PAY_SELECT
       }
     });
     if (
@@ -5788,6 +5816,7 @@ export function buildApi(options: BuildApiOptions = {}) {
       return reply.code(400).send({ error: "RWOS_COUNTRY_CURRENCY_UNAVAILABLE", message: "Currency is not configured for the selected country." });
     }
 
+    const detailPay = workerPay(row, row.pricingSnapshot?.workerHourlyRateMinor ?? null);
     const candidate: MarketplaceJobDetailCandidate = {
       jobRequestId: row.id,
       role: row.roleDefinition.displayLabel,
@@ -5802,8 +5831,9 @@ export function buildApi(options: BuildApiOptions = {}) {
       startAt: row.startAt.toISOString(),
       endAt: row.endAt.toISOString(),
       openings: row.numberOfWorkers,
-      workerRateMinor: row.pricingSnapshot?.workerHourlyRateMinor ?? null, // W from the approval snapshot; employer rate E never exposed
+      workerRateMinor: detailPay.rateMinor, // W from the approval snapshot; employer rate E never exposed
       currency: countryCurrency, // display-only; driven by the selected country (CAD for Canada)
+      ...detailPay.extra, // long-term listing (flag on): the employer's own pay offer
       description: row.description,
       duties: row.calendarProfile?.dutiesSummary ?? null,
       safetyNotes: row.calendarProfile?.specialInstructions ?? null,
@@ -7527,6 +7557,7 @@ export function buildApi(options: BuildApiOptions = {}) {
         jobRequest: {
           select: {
             pricingSnapshot: { select: { workerHourlyRateMinor: true, currency: true, jobLength: true } },
+            ...WORKER_PAY_SELECT,
             organization: { select: { displayName: true } },
             residence: { select: { city: true, province: true } }
           }
@@ -7538,9 +7569,12 @@ export function buildApi(options: BuildApiOptions = {}) {
     const { workerHourlyRateMinor, currency } = job.pricingSnapshot;
     const area = [job.residence.city, job.residence.province].filter(Boolean).join(", ");
     // Long-term listing jobs (employer plans flag): the employer sets and pays the wage directly.
+    // With the flag on, the employer's pay offer from the request is stated when it was given.
     const pay =
       job.pricingSnapshot.jobLength === "long_term"
-        ? "Pay agreed and paid directly by the employer"
+        ? isLongTermListingJob(job)
+          ? longTermPaySentence(job, "en")
+          : "Pay agreed and paid directly by the employer"
         : `${(workerHourlyRateMinor / 100).toFixed(2)} ${currency} per hour`;
     return `${pay} at ${job.organization.displayName}${area ? `, ${area}` : ""}`;
   };
@@ -7869,7 +7903,10 @@ export function buildApi(options: BuildApiOptions = {}) {
       const assignmentId = assignment.id;
       const ready = await assignmentService.markReadyForAttendance({ session, roles, assignmentId, expectedVersion: assignment.version });
       await assignmentService.attendanceHandoff({ session, roles, assignmentId, expectedVersion: ready.version });
-      await attendanceService.createFromAssignment({ session, roles, assignmentId, verificationMethod: null });
+      // Long-term job (employer plans flag): the employer pays directly, Joblop keeps no attendance.
+      if (!(await isLongTermAssignment(prisma, assignmentId))) {
+        await attendanceService.createFromAssignment({ session, roles, assignmentId, verificationMethod: null });
+      }
     } catch (error) {
       logger.warn("assignment.schedule_handoff_failed", { assignmentId: assignment.id, error: error instanceof Error ? error.message : "unknown" });
     }
@@ -8235,6 +8272,9 @@ export function buildApi(options: BuildApiOptions = {}) {
     if (!session.authenticated || !session.user) return sendAttendanceUnauthenticated(reply);
 
     const body = asRecord(request.body);
+    if (await isLongTermAssignment(prisma, readRequiredString(body, "assignmentId") ?? "")) {
+      return reply.code(409).send(LONG_TERM_NO_TIMESHEETS_BODY);
+    }
     const attendanceRecord = await attendanceService.createFromAssignment({
       session,
       roles: await resolveAuthorizationRoles(session.user.id),
@@ -8430,6 +8470,10 @@ export function buildApi(options: BuildApiOptions = {}) {
     if (!session.authenticated || !session.user) return sendAttendanceUnauthenticated(reply);
 
     const body = asRecord(request.body);
+    // Long-term job (employer plans flag): no clock-in / clock-out, the employer pays directly.
+    if (await isLongTermAttendance(prisma, readRouteParam(request.params, "attendanceRecordId"))) {
+      return reply.code(409).send(LONG_TERM_NO_TIMESHEETS_BODY);
+    }
     const attendanceRecord = await attendanceService.workerCheckIn({
       session,
       roles: await resolveAuthorizationRoles(session.user.id),
@@ -8450,6 +8494,10 @@ export function buildApi(options: BuildApiOptions = {}) {
     if (!session.authenticated || !session.user) return sendAttendanceUnauthenticated(reply);
 
     const body = asRecord(request.body);
+    // Long-term job (employer plans flag): no clock-in / clock-out, the employer pays directly.
+    if (await isLongTermAttendance(prisma, readRouteParam(request.params, "attendanceRecordId"))) {
+      return reply.code(409).send(LONG_TERM_NO_TIMESHEETS_BODY);
+    }
     const attendanceRecord = await attendanceService.workerCheckOut({
       session,
       roles: await resolveAuthorizationRoles(session.user.id),
@@ -8484,7 +8532,7 @@ export function buildApi(options: BuildApiOptions = {}) {
         checkInAt: true, checkOutAt: true, exceptionCategory: true, version: true,
         organization: { select: { displayName: true } },
         residence: { select: WORKSITE_ADDRESS_SELECT },
-        jobRequest: { select: { calendarProfile: { select: { addressSummary: true, specialInstructions: true } } } }
+        jobRequest: { select: { jobLength: true, calendarProfile: { select: { addressSummary: true, specialInstructions: true } } } }
       }
     });
     const hasMore = rows.length > limit;
@@ -8497,7 +8545,9 @@ export function buildApi(options: BuildApiOptions = {}) {
       areaLabel: r.residence.city && options.countryAddress?.isRegionCode(r.residence.province) ? `${r.residence.city}, ${r.residence.province}` : null,
       // This route only returns the signed-in worker's own assigned shifts.
       worksiteAddress: isWorksiteAddressVisible(r.status) ? workerJobAddress(r.jobRequest.calendarProfile?.addressSummary, r.residence) : null,
-      safetyNotes: isWorksiteAddressVisible(r.status) ? (r.jobRequest.calendarProfile?.specialInstructions ?? null) : null
+      safetyNotes: isWorksiteAddressVisible(r.status) ? (r.jobRequest.calendarProfile?.specialInstructions ?? null) : null,
+      // Long-term job (employer plans flag): no clock-in offered; nothing added otherwise.
+      ...clockInFields(r.jobRequest.jobLength)
     }));
     return reply.code(200).send({ items, nextCursor: hasMore ? (rows[limit - 1]?.id ?? null) : null });
   });
@@ -10415,6 +10465,9 @@ export function buildApi(options: BuildApiOptions = {}) {
     if (!session.authenticated || !session.user) return sendTimesheetUnauthenticated(reply);
 
     const body = asRecord(request.body);
+    if (await isLongTermAttendance(prisma, readRequiredString(body, "attendanceRecordId") ?? "")) {
+      return reply.code(409).send(LONG_TERM_NO_TIMESHEETS_BODY);
+    }
     const timesheet = await timesheetService.createFromAttendance({
       session,
       roles: await resolveAuthorizationRoles(session.user.id),
@@ -10509,6 +10562,9 @@ export function buildApi(options: BuildApiOptions = {}) {
     if (!session.authenticated || !session.user) return sendTimesheetUnauthenticated(reply);
 
     const attendanceRecordId = readRequiredString(asRecord(request.body), "attendanceRecordId") ?? "";
+    if (await isLongTermAttendance(prisma, attendanceRecordId)) {
+      return reply.code(409).send(LONG_TERM_NO_TIMESHEETS_BODY);
+    }
     const roles = await resolveAuthorizationRoles(session.user.id);
     const attendance = await attendanceService.readAttendance({ session, roles, attendanceRecordId });
     if (attendance.status === "checked_out") {
