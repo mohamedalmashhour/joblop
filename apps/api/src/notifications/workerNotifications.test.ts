@@ -1,6 +1,22 @@
 import { describe, expect, it } from "vitest";
 import type { EmailMessage } from "../mailer/emailSender";
-import { accountPenaltyEmail, assignedJobEmail, notifyWorkerPayoutPaid, notifyWorkerPayoutRegistered, payoutPaidEmail, payoutRegisteredEmail } from "./workerNotifications";
+import type { SmsMessage } from "../mailer/smsSender";
+import {
+  accountPenaltyEmail,
+  assignedJobEmail,
+  describeShiftChange,
+  notifyWorkerPayoutPaid,
+  notifyWorkerPayoutRegistered,
+  notifyWorkersShiftCancelled,
+  notifyWorkersShiftChanged,
+  payoutPaidEmail,
+  payoutRegisteredEmail,
+  shiftCancelledEmail,
+  shiftCancelledSmsText,
+  shiftChangedEmail,
+  shiftChangedSmsText,
+  type ShiftNoticeDetails
+} from "./workerNotifications";
 
 describe("worker account penalty copy", () => {
   it("suspension email names the days (FR default + EN)", () => {
@@ -88,5 +104,125 @@ describe("assigned job email address", () => {
 
   it("omits the line when the worksite has no address on file", () => {
     expect(assignedJobEmail({ ...base, language: "en", address: null }).text).not.toContain("Where:");
+  });
+});
+
+describe("shift cancelled / changed notices", () => {
+  // 2026-12-03 14:00 UTC = 09:00 in Montréal.
+  const shift: ShiftNoticeDetails = {
+    role: "Préposé(e)",
+    startAt: new Date("2026-12-03T14:00:00Z"),
+    endAt: new Date("2026-12-03T22:00:00Z"),
+    timeZone: "America/Toronto",
+    area: "Laval"
+  };
+
+  it("cancelled SMS names role, date-time and area, in English and French", () => {
+    const en = shiftCancelledSmsText({ language: "en", shift });
+    expect(en).toMatch(/^Joblop: your shift Préposé\(e\) on .*Dec.*3.*2026.* at Laval was cancelled\. Check your calendar\.$/);
+    expect(en).toMatch(/9:00/);
+    const fr = shiftCancelledSmsText({ language: "fr", shift });
+    expect(fr).toMatch(/^Joblop : votre quart Préposé\(e\) le .*déc.* à Laval a été annulé\. Consultez votre calendrier\.$/);
+    expect(fr).toMatch(/9 h 00/);
+  });
+
+  it("an offer-only cancel says it was the offered shift", () => {
+    expect(shiftCancelledSmsText({ language: "en", shift, offerOnly: true })).toContain("the shift you were offered");
+    expect(shiftCancelledSmsText({ language: "fr", shift, offerOnly: true })).toContain("qui vous était offert");
+  });
+
+  it("cancelled email links the calendar and says to contact Joblop if already on the way", () => {
+    const en = shiftCancelledEmail({ to: "w@x.com", language: "en", shift, cancelledBy: "staff", workerWebOrigin: "https://worker.example.test/" });
+    expect(en.subject).toContain("cancelled");
+    expect(en.text).toContain("https://worker.example.test/jobs-calendar");
+    expect(en.text).toContain("If you were already on your way, contact Joblop.");
+    expect(en.text).toContain("by Joblop");
+    const fr = shiftCancelledEmail({ to: "w@x.com", language: "fr", shift, cancelledBy: "employer", workerWebOrigin: "https://worker.example.test" });
+    expect(fr.subject).toContain("annulé");
+    expect(fr.text).toContain("https://worker.example.test/jobs-calendar");
+    expect(fr.text).toContain("Si vous étiez déjà en route, communiquez avec Joblop.");
+    expect(fr.text).toContain("par l'employeur");
+  });
+
+  it("promises no money unless the path recorded late-cancellation pay", () => {
+    for (const language of ["en", "fr"] as const) {
+      const plain = shiftCancelledEmail({ to: "w@x.com", language, shift, cancelledBy: "employer" });
+      expect(plain.text).not.toMatch(/owed|dues|pay|paie|\$/i);
+      expect(shiftCancelledSmsText({ language, shift })).not.toMatch(/owed|dues|pay\b|paie/i);
+    }
+    const owedEn = shiftCancelledEmail({ to: "w@x.com", language: "en", shift, cancelledBy: "employer", compensationHours: 3 });
+    expect(owedEn.text).toContain("you are owed 3 hours of pay");
+    const owedFr = shiftCancelledEmail({ to: "w@x.com", language: "fr", shift, cancelledBy: "employer", compensationHours: 3 });
+    expect(owedFr.text).toContain("3 heures de paie vous sont dues");
+  });
+
+  it("changed SMS and email carry a short plain summary", () => {
+    const summary = { newStartAt: new Date("2026-12-03T14:00:00Z"), newEndAt: new Date("2026-12-03T20:00:00Z") };
+    const en = shiftChangedSmsText({ language: "en", shift, summary });
+    expect(en).toMatch(/^Joblop: your shift Préposé\(e\) on .* changed: new time 9:00.*–3:00.*\. Open your calendar to see the new details\.$/);
+    const fr = shiftChangedSmsText({ language: "fr", shift, summary });
+    expect(fr).toMatch(/a changé : nouvel horaire 0?9 h 00–15 h 00\. Ouvrez votre calendrier/);
+    const email = shiftChangedEmail({ to: "w@x.com", language: "en", shift, summary: { newPlace: "77 Field Road" }, workerWebOrigin: "https://w.test" });
+    expect(email.subject).toContain("changed");
+    expect(email.text).toContain("new place 77 Field Road");
+    expect(email.text).toContain("https://w.test/jobs-calendar");
+  });
+
+  it("describes date, role and settled outcomes", () => {
+    const moved = describeShiftChange(
+      { newStartAt: new Date("2026-12-04T14:00:00Z"), newEndAt: new Date("2026-12-04T20:00:00Z"), dateChanged: true, newRole: "Cook" },
+      "en",
+      "America/Toronto"
+    );
+    expect(moved).toMatch(/^new date .*Dec.*4.*2026, 9:00.*; new role Cook$/);
+    expect(describeShiftChange({ outcome: "withdrawn" }, "fr", "America/Toronto")).toContain("vos détails d'origine restent");
+    expect(describeShiftChange({ outcome: "final" }, "en", "America/Toronto")).toBe("the change is now final");
+  });
+
+  function fakes(phone: string | null) {
+    const emails: EmailMessage[] = [];
+    const texts: SmsMessage[] = [];
+    const prisma = {
+      jobRequest: {
+        findUnique: async () => ({
+          title: "Shift",
+          startAt: shift.startAt,
+          endAt: shift.endAt,
+          timezone: "America/Toronto",
+          roleDefinition: { displayLabel: "Cook" },
+          residence: { city: "Laval", region: null, province: "QC" }
+        })
+      },
+      user: { findMany: async () => [{ id: "u1", emailNormalized: "w@x.com", phone, primaryLanguage: "en" }] }
+    } as never;
+    const emailSender = { configured: true, async send(m: EmailMessage) { emails.push(m); return { status: "sent", id: "e" } as const; } };
+    const smsSender = { configured: true, enabled: true, async send(m: SmsMessage) { texts.push(m); return { status: "sent", id: "s" } as const; } };
+    return { prisma, emailSender, smsSender, emails, texts };
+  }
+
+  it("cancel dispatcher texts and emails each worker once", async () => {
+    const f = fakes("+15145550000");
+    const res = await notifyWorkersShiftCancelled(f.prisma, f.emailSender, f.smsSender, {
+      jobRequestId: "j1",
+      workers: [{ userId: "u1" }, { userId: "u1" }],
+      cancelledBy: "staff",
+      workerWebOrigin: "https://w.test"
+    });
+    expect(res).toEqual({ sent: 1, skipped: 0, failed: 0 });
+    expect(f.emails.map((m) => m.to)).toEqual(["w@x.com"]);
+    expect(f.texts).toHaveLength(1);
+    expect(f.texts[0]!.to).toBe("+15145550000");
+    expect(f.texts[0]!.text).toContain("your shift Cook on");
+    expect(f.texts[0]!.text).toContain("at Laval was cancelled");
+  });
+
+  it("change dispatcher still emails when the worker has no phone, and never throws", async () => {
+    const f = fakes(null);
+    const res = await notifyWorkersShiftChanged(f.prisma, f.emailSender, f.smsSender, { jobRequestId: "j1", workers: [{ userId: "u1" }], summary: { newPlace: "Laval" } });
+    expect(res.sent).toBe(1);
+    expect(f.texts).toHaveLength(0);
+    expect(f.emails[0]!.subject).toContain("changed");
+    const broken = { jobRequest: { findUnique: async () => { throw new Error("db down"); } }, user: { findMany: async () => [] } } as never;
+    await expect(notifyWorkersShiftChanged(broken, f.emailSender, f.smsSender, { jobRequestId: "j1", workers: [{ userId: "u1" }], summary: {} })).resolves.toEqual({ sent: 0, skipped: 0, failed: 1 });
   });
 });

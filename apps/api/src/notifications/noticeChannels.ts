@@ -2,7 +2,8 @@
 //   - Sign-in is by mobile number and a texted code. No passwords.
 //   - Email carries documents and information: invoices, receipts, statements, replies, greetings.
 //   - Text carries only what is urgent or important: codes, a confirmed shift, a shift about to
-//     start, and staff alerts marked urgent. Texts cost money and interrupt, so nothing else.
+//     start, a held shift that is cancelled or changed, and staff alerts marked urgent. Texts cost
+//     money and interrupt, so nothing else.
 // A notice not listed here is email only.
 
 export type NoticeKind =
@@ -10,6 +11,8 @@ export type NoticeKind =
   | "email_confirmation_code"
   | "shift_confirmed"
   | "shift_reminder"
+  | "shift_cancelled"
+  | "shift_changed"
   | "invoice_sent"
   | "job_received"
   | "worker_accepted"
@@ -27,6 +30,9 @@ export const NOTICE_CHANNELS: Readonly<Record<NoticeKind, NoticeChannels>> = {
   email_confirmation_code: { email: true, text: "always" },
   shift_confirmed: { email: true, text: "always" },
   shift_reminder: { email: true, text: "always" },
+  // A worker must not travel to a shift that no longer exists, or arrive at the wrong time or place.
+  shift_cancelled: { email: true, text: "always" },
+  shift_changed: { email: true, text: "always" },
   invoice_sent: { email: true, text: "never" },
   job_received: { email: true, text: "never" },
   worker_accepted: { email: true, text: "never" },

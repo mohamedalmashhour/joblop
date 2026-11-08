@@ -316,3 +316,359 @@ export async function notifyWorkerAssigned(
     return { status: "error" };
   }
 }
+
+// ── Shift cancelled / shift changed ──────────────────────────────────────────────────────────────
+// A worker who holds a shift (or was sent an offer for it) must hear at once when it is cancelled
+// or changed, so they do not travel to a shift that is gone or arrive at the wrong time or place.
+// Urgent, so by text always, plus email (noticeChannels: shift_cancelled / shift_changed).
+
+// What a worker needs to recognise the shift: role, when, and the area (city level, never the street).
+export type ShiftNoticeDetails = Readonly<{
+  role: string;
+  startAt: Date;
+  endAt: Date;
+  timeZone: string;
+  area: string | null;
+}>;
+
+function formatInZone(date: Date, language: NotificationLanguage, timeZone: string, options: Intl.DateTimeFormatOptions): string {
+  const locale = language === "en" ? "en-CA" : "fr-CA";
+  try {
+    return new Intl.DateTimeFormat(locale, { ...options, timeZone }).format(date);
+  } catch {
+    try {
+      return new Intl.DateTimeFormat(locale, { ...options, timeZone: "America/Toronto" }).format(date);
+    } catch {
+      return date.toISOString();
+    }
+  }
+}
+
+function shiftDate(shift: Pick<ShiftNoticeDetails, "startAt" | "timeZone">, language: NotificationLanguage): string {
+  return formatInZone(shift.startAt, language, shift.timeZone, { dateStyle: "medium" });
+}
+
+function shiftDateTime(shift: Pick<ShiftNoticeDetails, "startAt" | "timeZone">, language: NotificationLanguage): string {
+  return formatInZone(shift.startAt, language, shift.timeZone, { dateStyle: "medium", timeStyle: "short" });
+}
+
+function timeRange(startAt: Date, endAt: Date, language: NotificationLanguage, timeZone: string): string {
+  const opts: Intl.DateTimeFormatOptions = { timeStyle: "short" };
+  return `${formatInZone(startAt, language, timeZone, opts)}–${formatInZone(endAt, language, timeZone, opts)}`;
+}
+
+function calendarLine(workerWebOrigin: string | null | undefined, language: NotificationLanguage): string {
+  const origin = workerWebOrigin?.trim().replace(/\/+$/, "");
+  if (origin) return language === "en" ? `See your calendar: ${origin}/jobs-calendar` : `Voir votre calendrier : ${origin}/jobs-calendar`;
+  return language === "en" ? "Open Joblop to see your calendar." : "Ouvrez Joblop pour voir votre calendrier.";
+}
+
+export type ShiftCancelledCopyInput = Readonly<{
+  language: NotificationLanguage;
+  shift: ShiftNoticeDetails;
+  cancelledBy: "employer" | "staff";
+  // True when the worker had only been sent an offer for the shift, not assigned to it.
+  offerOnly?: boolean;
+  // Hours of late-cancellation pay owed to this worker. Set ONLY when the cancel path actually
+  // records that compensation (the employer cancel-confirm path, inside 24 h, with a governed rate).
+  compensationHours?: number;
+  reasonText?: string | null;
+  workerWebOrigin?: string | null;
+}>;
+
+export function shiftCancelledSmsText(input: Pick<ShiftCancelledCopyInput, "language" | "shift" | "offerOnly">): string {
+  const { language, shift } = input;
+  const when = shiftDateTime(shift, language);
+  if (language === "en") {
+    const where = shift.area ? ` at ${shift.area}` : "";
+    return input.offerOnly
+      ? `Joblop: the shift you were offered, ${shift.role} on ${when}${where}, was cancelled. Check your calendar.`
+      : `Joblop: your shift ${shift.role} on ${when}${where} was cancelled. Check your calendar.`;
+  }
+  const where = shift.area ? ` à ${shift.area}` : "";
+  return input.offerOnly
+    ? `Joblop : le quart qui vous était offert, ${shift.role} le ${when}${where}, a été annulé. Consultez votre calendrier.`
+    : `Joblop : votre quart ${shift.role} le ${when}${where} a été annulé. Consultez votre calendrier.`;
+}
+
+export function shiftCancelledEmail(input: ShiftCancelledCopyInput & { to: string }): EmailMessage {
+  const { language, shift } = input;
+  const when = shiftDateTime(shift, language);
+  const reason = input.reasonText?.trim();
+  const hours = input.compensationHours && input.compensationHours > 0 ? input.compensationHours : null;
+  if (language === "en") {
+    const where = shift.area ? ` at ${shift.area}` : "";
+    const who = input.cancelledBy === "employer" ? "by the employer" : "by Joblop";
+    return {
+      to: input.to,
+      subject: "Joblop — your shift was cancelled",
+      text:
+        (input.offerOnly
+          ? `The shift you were offered, "${shift.role}" on ${when}${where}, was cancelled ${who}. The offer no longer applies.\n\n`
+          : `Your shift "${shift.role}" on ${when}${where} was cancelled ${who}. You do not need to go.\n\n`) +
+        (reason ? `Reason: ${reason}\n\n` : "") +
+        (hours
+          ? `Because the employer cancelled less than 24 hours before the start, you are owed ${hours} hours of pay under Joblop's late-cancellation rule. Joblop has recorded it for payment.\n\n`
+          : "") +
+        `${calendarLine(input.workerWebOrigin, language)}\n\n` +
+        `If you were already on your way, contact Joblop.\n\n— Joblop`
+    };
+  }
+  const where = shift.area ? ` à ${shift.area}` : "";
+  const who = input.cancelledBy === "employer" ? "par l'employeur" : "par Joblop";
+  return {
+    to: input.to,
+    subject: "Joblop — votre quart a été annulé",
+    text:
+      (input.offerOnly
+        ? `Le quart qui vous était offert, « ${shift.role} » le ${when}${where}, a été annulé ${who}. L'offre ne s'applique plus.\n\n`
+        : `Votre quart « ${shift.role} » le ${when}${where} a été annulé ${who}. Vous n'avez pas à vous présenter.\n\n`) +
+      (reason ? `Raison : ${reason}\n\n` : "") +
+      (hours
+        ? `Comme l'employeur a annulé moins de 24 heures avant le début, ${hours} heures de paie vous sont dues selon la règle d'annulation tardive de Joblop. Joblop les a enregistrées pour paiement.\n\n`
+        : "") +
+      `${calendarLine(input.workerWebOrigin, language)}\n\n` +
+      `Si vous étiez déjà en route, communiquez avec Joblop.\n\n— Joblop`
+  };
+}
+
+// What changed on a shift, as data; turned into a short plain sentence in the worker's language.
+export type ShiftChangeSummary = Readonly<{
+  // New start/end. `dateChanged` says the day moved (else only the time did).
+  newStartAt?: Date;
+  newEndAt?: Date;
+  dateChanged?: boolean;
+  newRole?: string;
+  newPlace?: string;
+  // A pending change was settled: "final" = it now applies; "withdrawn" = the original details stay.
+  outcome?: "final" | "withdrawn";
+}>;
+
+export function describeShiftChange(change: ShiftChangeSummary, language: NotificationLanguage, timeZone: string): string {
+  const en = language === "en";
+  const parts: string[] = [];
+  if (change.newStartAt && change.newEndAt) {
+    const range = timeRange(change.newStartAt, change.newEndAt, language, timeZone);
+    if (change.dateChanged) {
+      const day = formatInZone(change.newStartAt, language, timeZone, { dateStyle: "medium" });
+      parts.push(en ? `new date ${day}, ${range}` : `nouvelle date ${day}, ${range}`);
+    } else {
+      parts.push(en ? `new time ${range}` : `nouvel horaire ${range}`);
+    }
+  }
+  if (change.newRole) parts.push(en ? `new role ${change.newRole}` : `nouveau poste ${change.newRole}`);
+  if (change.newPlace) parts.push(en ? `new place ${change.newPlace}` : `nouveau lieu ${change.newPlace}`);
+  if (change.outcome === "final") parts.push(en ? "the change is now final" : "le changement est maintenant confirmé");
+  if (change.outcome === "withdrawn") {
+    parts.push(en ? "the change was dropped, your original details stay" : "le changement est abandonné, vos détails d'origine restent");
+  }
+  return parts.join("; ") || (en ? "details updated" : "détails mis à jour");
+}
+
+export function shiftChangedSmsText(input: { language: NotificationLanguage; shift: ShiftNoticeDetails; summary: ShiftChangeSummary }): string {
+  const { language, shift } = input;
+  const what = describeShiftChange(input.summary, language, shift.timeZone);
+  return language === "en"
+    ? `Joblop: your shift ${shift.role} on ${shiftDate(shift, language)} changed: ${what}. Open your calendar to see the new details.`
+    : `Joblop : votre quart ${shift.role} le ${shiftDate(shift, language)} a changé : ${what}. Ouvrez votre calendrier pour voir les nouveaux détails.`;
+}
+
+export function shiftChangedEmail(input: {
+  to: string;
+  language: NotificationLanguage;
+  shift: ShiftNoticeDetails;
+  summary: ShiftChangeSummary;
+  workerWebOrigin?: string | null;
+}): EmailMessage {
+  const { language, shift } = input;
+  const what = describeShiftChange(input.summary, language, shift.timeZone);
+  const when = shiftDateTime(shift, language);
+  if (language === "en") {
+    const where = shift.area ? ` at ${shift.area}` : "";
+    return {
+      to: input.to,
+      subject: "Joblop — your shift has changed",
+      text:
+        `Your shift "${shift.role}" on ${when}${where} has changed: ${what}.\n\n` +
+        `${calendarLine(input.workerWebOrigin, language)}\n\n` +
+        `If you can no longer work this shift, contact Joblop.\n\n— Joblop`
+    };
+  }
+  const where = shift.area ? ` à ${shift.area}` : "";
+  return {
+    to: input.to,
+    subject: "Joblop — votre quart a changé",
+    text:
+      `Votre quart « ${shift.role} » le ${when}${where} a changé : ${what}.\n\n` +
+      `${calendarLine(input.workerWebOrigin, language)}\n\n` +
+      `Si vous ne pouvez plus faire ce quart, communiquez avec Joblop.\n\n— Joblop`
+  };
+}
+
+// One worker to tell. `offerOnly` / `compensationHours` only apply to cancellations.
+export type ShiftNoticeWorker = Readonly<{ userId: string; offerOnly?: boolean; compensationHours?: number }>;
+
+export type ShiftNoticeResult = Readonly<{ sent: number; skipped: number; failed: number }>;
+
+type ShiftNoticeRecipient = Readonly<{ worker: ShiftNoticeWorker; email: string | null; phone: string | null; language: NotificationLanguage }>;
+
+async function loadShiftNoticeContext(
+  prisma: PrismaClient,
+  jobRequestId: string,
+  workers: readonly ShiftNoticeWorker[]
+): Promise<{ shift: ShiftNoticeDetails; recipients: ShiftNoticeRecipient[] } | null> {
+  // One notice per worker, even when they appear twice (e.g. an offer and its assignment).
+  const unique = [...new Map(workers.map((w) => [w.userId, w] as const)).values()];
+  if (unique.length === 0) return null;
+  const [job, users] = await Promise.all([
+    prisma.jobRequest.findUnique({
+      where: { id: jobRequestId },
+      select: {
+        title: true,
+        startAt: true,
+        endAt: true,
+        timezone: true,
+        roleDefinition: { select: { displayLabel: true } },
+        residence: { select: { city: true, region: true, province: true } }
+      }
+    }),
+    prisma.user.findMany({
+      where: { id: { in: unique.map((w) => w.userId) } },
+      select: { id: true, emailNormalized: true, phone: true, primaryLanguage: true }
+    })
+  ]);
+  if (!job) return null;
+  const byId = new Map(users.map((u) => [u.id, u] as const));
+  const shift: ShiftNoticeDetails = {
+    role: job.roleDefinition?.displayLabel?.trim() || job.title,
+    startAt: job.startAt,
+    endAt: job.endAt,
+    timeZone: job.timezone || "America/Toronto",
+    area: job.residence?.city?.trim() || job.residence?.region?.trim() || job.residence?.province?.trim() || null
+  };
+  const recipients = unique.map((worker) => {
+    const user = byId.get(worker.userId);
+    return {
+      worker,
+      email: user?.emailNormalized ?? null,
+      phone: user?.phone ?? null,
+      language: resolveLanguage(user?.primaryLanguage)
+    };
+  });
+  return { shift, recipients };
+}
+
+async function deliverShiftNotice(
+  recipient: ShiftNoticeRecipient,
+  emailSender: EmailSender,
+  smsSender: SmsSender | undefined,
+  textAllowed: boolean,
+  build: () => { email: EmailMessage | null; sms: string }
+): Promise<"sent" | "skipped" | "failed"> {
+  try {
+    const { email, sms } = build();
+    let delivered = false;
+    let failed = false;
+    if (email) {
+      const result = await emailSender.send(email).catch(() => ({ status: "error" }) as const);
+      if (result.status === "sent") delivered = true;
+      if (result.status === "error") failed = true;
+    }
+    if (smsSender && recipient.phone && textAllowed) {
+      const result = await smsSender.send({ to: recipient.phone, text: sms }).catch(() => ({ status: "error" }) as const);
+      if (result.status === "sent") delivered = true;
+      if (result.status === "error") failed = true;
+    }
+    return failed ? "failed" : delivered ? "sent" : "skipped";
+  } catch {
+    return "failed";
+  }
+}
+
+function tally(outcomes: readonly ("sent" | "skipped" | "failed")[]): ShiftNoticeResult {
+  return {
+    sent: outcomes.filter((o) => o === "sent").length,
+    skipped: outcomes.filter((o) => o === "skipped").length,
+    failed: outcomes.filter((o) => o === "failed").length
+  };
+}
+
+// Tell each worker who held (or was sent an offer for) the shift that it was cancelled: text always
+// + email. Best-effort; never throws into the request path. The caller collects the workers BEFORE
+// the cancel changes any status, and calls this only after the cancel succeeded.
+export async function notifyWorkersShiftCancelled(
+  prisma: PrismaClient,
+  emailSender: EmailSender,
+  smsSender: SmsSender | undefined,
+  input: {
+    jobRequestId: string;
+    workers: readonly ShiftNoticeWorker[];
+    cancelledBy: "employer" | "staff";
+    reasonText?: string | null;
+    workerWebOrigin?: string | null;
+  }
+): Promise<ShiftNoticeResult> {
+  try {
+    const context = await loadShiftNoticeContext(prisma, input.jobRequestId, input.workers);
+    if (!context) return { sent: 0, skipped: input.workers.length, failed: 0 };
+    const outcomes = await Promise.all(
+      context.recipients.map((recipient) =>
+        deliverShiftNotice(recipient, emailSender, smsSender, sendsText("shift_cancelled"), () => {
+          const copy = {
+            language: recipient.language,
+            shift: context.shift,
+            cancelledBy: input.cancelledBy,
+            offerOnly: recipient.worker.offerOnly === true,
+            compensationHours: recipient.worker.compensationHours ?? 0,
+            reasonText: input.reasonText ?? null,
+            workerWebOrigin: input.workerWebOrigin ?? null
+          };
+          return {
+            email: recipient.email ? shiftCancelledEmail({ ...copy, to: recipient.email }) : null,
+            sms: shiftCancelledSmsText(copy)
+          };
+        })
+      )
+    );
+    return tally(outcomes);
+  } catch {
+    return { sent: 0, skipped: 0, failed: input.workers.length };
+  }
+}
+
+// Tell each worker assigned to the shift what changed on it: text always + email. Best-effort.
+export async function notifyWorkersShiftChanged(
+  prisma: PrismaClient,
+  emailSender: EmailSender,
+  smsSender: SmsSender | undefined,
+  input: {
+    jobRequestId: string;
+    workers: readonly ShiftNoticeWorker[];
+    summary: ShiftChangeSummary;
+    workerWebOrigin?: string | null;
+  }
+): Promise<ShiftNoticeResult> {
+  try {
+    const context = await loadShiftNoticeContext(prisma, input.jobRequestId, input.workers);
+    if (!context) return { sent: 0, skipped: input.workers.length, failed: 0 };
+    const outcomes = await Promise.all(
+      context.recipients.map((recipient) =>
+        deliverShiftNotice(recipient, emailSender, smsSender, sendsText("shift_changed"), () => ({
+          email: recipient.email
+            ? shiftChangedEmail({
+                to: recipient.email,
+                language: recipient.language,
+                shift: context.shift,
+                summary: input.summary,
+                workerWebOrigin: input.workerWebOrigin ?? null
+              })
+            : null,
+          sms: shiftChangedSmsText({ language: recipient.language, shift: context.shift, summary: input.summary })
+        }))
+      )
+    );
+    return tally(outcomes);
+  } catch {
+    return { sent: 0, skipped: 0, failed: input.workers.length };
+  }
+}
