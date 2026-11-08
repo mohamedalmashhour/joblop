@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
 import {
   DEFAULT_EMPLOYER_ORIGIN,
+  brandParts,
+  columnsForWidth,
   countLabel,
   employerOrigin,
   formatJobDate,
@@ -48,5 +50,24 @@ describe("public job search helpers", () => {
   it("formats a job date and stays empty for a bad date", () => {
     expect(formatJobDate("bad", "en")).toBe("");
     expect(formatJobDate("2026-11-20T13:00:00.000Z", "en").length).toBeGreaterThan(0);
+  });
+
+  it("splits sentences around the brand name for the gold-o styling", () => {
+    expect(brandParts("Apply free — Joblop never takes a cut")).toEqual([
+      { text: "Apply free — ", brand: false },
+      { text: "Joblop", brand: true },
+      { text: " never takes a cut", brand: false }
+    ]);
+    expect(brandParts("وظائف Joblop")).toEqual([
+      { text: "وظائف ", brand: false },
+      { text: "Joblop", brand: true }
+    ]);
+    expect(brandParts("No brand here")).toEqual([{ text: "No brand here", brand: false }]);
+  });
+
+  it("uses the website grid breakpoints for job-card columns", () => {
+    expect(columnsForWidth(375)).toBe(1);
+    expect(columnsForWidth(600)).toBe(2);
+    expect(columnsForWidth(1200)).toBe(3);
   });
 });
