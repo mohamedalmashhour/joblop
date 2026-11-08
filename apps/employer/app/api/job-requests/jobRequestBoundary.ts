@@ -277,7 +277,12 @@ export function readEmployerJobRequestInput(input: unknown) {
     requestType: record.requestType as "single_day" | "multi_day" | "recurring_intent",
     timezone: record.timezone as string,
     startAt: startAt.toISOString(),
-    endAt: endAt.toISOString()
+    endAt: endAt.toISOString(),
+    // Employer plans: job length is forwarded only when the form sent a valid one (the API ignores it
+    // unless EMPLOYER_PLANS_ENABLED is on).
+    ...(record.jobLength === "short_term" || record.jobLength === "long_term"
+      ? { jobLength: record.jobLength as "short_term" | "long_term" }
+      : {})
   };
 }
 

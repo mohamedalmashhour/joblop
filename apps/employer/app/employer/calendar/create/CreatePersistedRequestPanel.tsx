@@ -36,6 +36,7 @@ type FormState = {
   specialInstructions: string;
   numberOfWorkers: string;
   urgency: "normal" | "urgent" | "immediate";
+  jobLength: "short_term" | "long_term";
   requestType: "single_day" | "multi_day" | "recurring_intent";
   timezone: string;
   startAt: string;
@@ -66,6 +67,7 @@ const initialForm: FormState = {
   specialInstructions: "",
   numberOfWorkers: "1",
   urgency: "normal",
+  jobLength: "short_term",
   requestType: "single_day",
   timezone: "America/Toronto",
   startAt: "",
@@ -172,6 +174,21 @@ export function CreatePersistedRequestPanel() {
     [context, selectedWorkGroup]
   );
   const repeats = form.requestType === "recurring_intent";
+  // Job length (short / long term) is only asked while employer plans are switched on; otherwise the
+  // field is hidden and every job stays short term, exactly as today.
+  const [plansEnabled, setPlansEnabled] = useState(false);
+  useEffect(() => {
+    let active = true;
+    fetch("/api/employer-plan?only=status", { cache: "no-store" })
+      .then((response) => (response.ok ? response.json() : null))
+      .then((payload: { enabled?: boolean } | null) => {
+        if (active) setPlansEnabled(payload?.enabled === true);
+      })
+      .catch(() => undefined);
+    return () => {
+      active = false;
+    };
+  }, []);
   const shifts = repeats
     ? recurringShifts({ startAt: form.startAt, endAt: form.endAt, weekdays: form.repeatWeekdays, until: form.repeatUntil })
     : [];
@@ -229,6 +246,7 @@ export function CreatePersistedRequestPanel() {
         title: form.title,
         description: form.description,
         urgency: form.urgency,
+        ...(plansEnabled ? { jobLength: form.jobLength } : {}),
         // Each shift in a repeat is its own one-day job.
         requestType: repeats ? "single_day" : form.requestType,
         timezone: form.timezone,
@@ -429,6 +447,15 @@ export function CreatePersistedRequestPanel() {
           )}
         </div>
         <SelectField disabled={!editing} label={t("create.urgency")} onChange={(v) => update("urgency", v as FormState["urgency"])} options={[{ label: t("create.urgencyNormal"), value: "normal" }, { label: t("create.urgencyUrgent"), value: "urgent" }, { label: t("create.urgencyImmediate"), value: "immediate" }]} value={form.urgency} t={t} />
+        {plansEnabled ? (
+          <div>
+            <SelectField disabled={!editing} label={t("create.jobLength")} onChange={(v) => update("jobLength", v === "long_term" ? "long_term" : "short_term")} options={[{ label: t("create.jobLengthShort"), value: "short_term" }, { label: t("create.jobLengthLong"), value: "long_term" }]} value={form.jobLength} t={t} />
+            <p style={styles.cardText}>
+              {form.jobLength === "long_term" ? t("create.jobLengthHintLong") : t("create.jobLengthHintShort")}{" "}
+              <a href="/plans">{t("create.jobLengthSeePlans")}</a>
+            </p>
+          </div>
+        ) : null}
         <SelectField disabled={!editing} label={t("create.requestType")} onChange={(v) => update("requestType", v as FormState["requestType"])} options={[{ label: t("create.typeSingle"), value: "single_day" }, { label: t("create.typeMulti"), value: "multi_day" }, { label: t("create.typeRecurring"), value: "recurring_intent" }]} value={form.requestType} t={t} />
         {repeats ? (
           <fieldset disabled={!editing} style={{ ...styles.tintedCard, border: 0, gridColumn: "1 / -1", margin: 0 }}>

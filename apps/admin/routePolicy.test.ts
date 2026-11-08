@@ -19,6 +19,7 @@ describe("admin production route policy", () => {
       "/invoices",
       "/payroll",
       "/hr",
+      "/employer-plan-orders",
       "/api/session",
       "/_next/static/app.js"
     ]) {
