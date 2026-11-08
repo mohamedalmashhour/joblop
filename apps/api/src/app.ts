@@ -5289,9 +5289,11 @@ export function buildApi(options: BuildApiOptions = {}) {
     // Hybrid auto-offer: a job is directly claimable when it was approved+priced with open-claim on.
     // The worker UI shows Accept/Claim (vs express-interest) based on this flag.
     // A full job (every place taken) is not claimable, so the worker never sees Accept on it.
-    const placesLeft = await remainingOpenings(prisma, [{ id: row.id, numberOfWorkers: row.numberOfWorkers }])
-      .then((left) => left.get(row.id) ?? row.numberOfWorkers)
-      .catch(() => row.numberOfWorkers);
+    const placesLeft = prisma
+      ? await remainingOpenings(prisma, [{ id: row.id, numberOfWorkers: row.numberOfWorkers }])
+          .then((left) => left.get(row.id) ?? row.numberOfWorkers)
+          .catch(() => row.numberOfWorkers)
+      : row.numberOfWorkers;
     const claimable =
       row.openClaim === true && row.status === "approved_for_dispatch" && !!row.pricingSnapshot && placesLeft > 0;
     return reply.code(200).send({
