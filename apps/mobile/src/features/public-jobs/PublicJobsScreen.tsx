@@ -108,12 +108,13 @@ export function PublicJobsScreen({
   const { t, locale, isRtl } = useLocale();
   const { width } = useWindowDimensions();
   const [query, setQuery] = useState("");
-  const [focused, setFocused] = useState(false);
+  const [where, setWhere] = useState("");
+  const [focused, setFocused] = useState<"what" | "where" | null>(null);
   const [state, setState] = useState<LoadState>({ status: "loading" });
   const runId = useRef(0);
 
   const run = useCallback(
-    async (text: string) => {
+    async (text: string, place: string) => {
       const id = ++runId.current;
       setState({ status: "loading" });
       if (!transport) {
@@ -121,9 +122,12 @@ export function PublicJobsScreen({
         return;
       }
       const q = text.trim();
+      const city = place.trim();
+      // Joblop jobs: one search word matches the role or the town, so send the job word first.
+      const jobWord = q || city;
       const [jobs, leads] = await Promise.all([
-        transport.listPublicJobs({ ...(q ? { q } : {}), limit: PUBLIC_LIST_LIMIT }),
-        transport.listPublicLeads({ q: q || EVERYDAY_WORK_QUERY, limit: PUBLIC_LIST_LIMIT })
+        transport.listPublicJobs({ ...(jobWord ? { q: jobWord } : {}), limit: PUBLIC_LIST_LIMIT }),
+        transport.listPublicLeads({ q: q || EVERYDAY_WORK_QUERY, ...(city ? { city } : {}), limit: PUBLIC_LIST_LIMIT })
       ]);
       if (id !== runId.current) return; // a newer search replaced this one
       if (jobs.status === "ready" || leads.status === "ready") {
@@ -143,14 +147,13 @@ export function PublicJobsScreen({
   );
 
   useEffect(() => {
-    void run("");
+    void run("", "");
   }, [run]);
 
-  const search = useCallback(() => void run(query), [run, query]);
+  const search = useCallback(() => void run(query, where), [run, query, where]);
 
   const rtl = isRtl ? styles.rtl : null;
   const arrow = isRtl ? "←" : "→";
-  const narrow = width < 340;
   const cols = columnsForWidth(width);
   const cellWidth = cols === 1 ? "100%" : cols === 2 ? "50%" : "33.333%";
   const stepWidth = width >= 700 ? "50%" : "100%";
@@ -166,34 +169,50 @@ export function PublicJobsScreen({
         {/* 1 — Search block (website .pjs) */}
         <View style={styles.pjs}>
           <View pointerEvents="none" style={styles.pjsGlow} />
-          <Text accessibilityRole="header" style={[styles.pjsTitle, rtl]}>
-            {t("publicJobs.title")}
-          </Text>
-          <Branded text={t("publicJobs.sub")} style={[styles.pjsSub, rtl]} />
-
-          <View style={[styles.form, narrow ? styles.formStacked : null]}>
-            <TextInput
-              accessibilityLabel={t("publicJobs.searchLabel")}
-              maxLength={80}
-              onBlur={() => setFocused(false)}
-              onChangeText={setQuery}
-              onFocus={() => setFocused(true)}
-              onSubmitEditing={search}
-              placeholder={t("publicJobs.placeholder")}
-              placeholderTextColor="#8a8478"
-              returnKeyType="search"
-              style={[styles.input, focused ? styles.inputFocused : null, rtl]}
-              value={query}
-            />
+          {/* Search first, like a job app: What + Where, then the button */}
+          <View style={styles.searchStack}>
+            <View style={[styles.field, focused === "what" ? styles.inputFocused : null, isRtl ? styles.fieldRtl : null]}>
+              <Text style={styles.fieldIcon}>🔍</Text>
+              <TextInput
+                accessibilityLabel={t("publicJobs.searchLabel")}
+                maxLength={80}
+                onBlur={() => setFocused(null)}
+                onChangeText={setQuery}
+                onFocus={() => setFocused("what")}
+                onSubmitEditing={search}
+                placeholder={t("publicJobs.placeholder")}
+                placeholderTextColor="#8a8478"
+                returnKeyType="search"
+                style={[styles.fieldInput, rtl]}
+                value={query}
+              />
+            </View>
+            <View style={[styles.field, focused === "where" ? styles.inputFocused : null, isRtl ? styles.fieldRtl : null]}>
+              <Text style={styles.fieldIcon}>📍</Text>
+              <TextInput
+                accessibilityLabel={t("publicJobs.whereLabel")}
+                maxLength={60}
+                onBlur={() => setFocused(null)}
+                onChangeText={setWhere}
+                onFocus={() => setFocused("where")}
+                onSubmitEditing={search}
+                placeholder={t("publicJobs.wherePlaceholder")}
+                placeholderTextColor="#8a8478"
+                returnKeyType="search"
+                style={[styles.fieldInput, rtl]}
+                value={where}
+              />
+            </View>
             <Pressable
               onPress={search}
               accessibilityRole="button"
               testID="public-jobs-search"
-              style={({ pressed }) => [styles.searchButton, narrow ? styles.searchButtonStacked : null, pressed ? styles.pressed : null]}
+              style={({ pressed }) => [styles.searchButtonWide, pressed ? styles.pressed : null]}
             >
-              <Text style={styles.searchButtonText}>{t("publicJobs.search")}</Text>
+              <Text style={styles.searchButtonText}>{t("publicJobs.findJobs")}</Text>
             </Pressable>
           </View>
+          <Text style={[styles.noAccount, rtl]}>{t("publicJobs.noAccount")}</Text>
 
           {state.status === "loading" ? (
             <View style={styles.noteRow}>
@@ -411,33 +430,30 @@ const styles = StyleSheet.create({
     top: -150,
     width: 360
   },
-  pjsTitle: { color: web.heading, fontFamily: serif, fontSize: 26, fontWeight: "800", lineHeight: 32, marginBottom: 6 },
-  pjsSub: { color: web.sub, fontSize: 15, lineHeight: 22, marginBottom: 16 },
-  form: { flexDirection: "row", gap: 10 },
-  formStacked: { flexDirection: "column" },
-  input: {
+  searchStack: { gap: 10 },
+  field: {
+    alignItems: "center",
     backgroundColor: "#ffffff",
     borderColor: "rgba(248, 184, 8, 0.35)",
     borderRadius: 12,
     borderWidth: 2,
-    color: web.ink,
-    flex: 1,
-    fontSize: 16,
-    minHeight: 50,
-    minWidth: 0,
-    paddingHorizontal: 16,
-    paddingVertical: 12
+    flexDirection: "row",
+    gap: 8,
+    minHeight: 52,
+    paddingHorizontal: 14
   },
+  fieldRtl: { flexDirection: "row-reverse" },
+  fieldIcon: { fontSize: 16 },
+  fieldInput: { color: web.ink, flex: 1, fontSize: 16, minWidth: 0, paddingVertical: 12 },
   inputFocused: { borderColor: web.gold },
-  searchButton: {
+  searchButtonWide: {
     alignItems: "center",
     backgroundColor: web.gold,
     borderRadius: 12,
     justifyContent: "center",
-    minHeight: 50,
-    paddingHorizontal: 22
+    minHeight: 52
   },
-  searchButtonStacked: { paddingVertical: 13 },
+  noAccount: { color: web.sub, fontSize: 14, lineHeight: 20, marginTop: 10 },
   searchButtonText: { color: web.ink, fontSize: 16, fontWeight: "800" },
   noteRow: { alignItems: "center", flexDirection: "row", gap: spacing.sm, marginTop: 14 },
   note: { color: web.sub, fontSize: 15, lineHeight: 21, marginTop: 14 },
