@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 import { ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
 import { colors, spacing } from "../../theme";
+import { useLocale } from "../../i18n/LocaleContext";
 import { formatRwosDateTime, type WorkerCalendarDto } from "@rwos/shared";
 import type { createMobileSessionTransport, WorkerAssignmentDto } from "../../auth/secureSession";
 import {
@@ -160,22 +161,25 @@ function WorkerSignIn({
   );
   const [needsSignOut, setNeedsSignOut] = useState(false);
   const [submitting, setSubmitting] = useState(false);
+  const { t } = useLocale();
   const sendCode = async () => {
-    if (!phone.trim()) return setMessage("Enter your mobile number.");
+    if (phone.replace(/\D/g, "").length < 10) return setMessage(t("auth.msg.shortNumber"));
     setSubmitting(true);
     setNeedsSignOut(false);
     try {
       const result = await transport.requestPhoneCode(phone.trim());
-      if (result !== "requested") return setMessage("That number could not be used. Check it and try again.");
+      if (result === "offline") return setMessage(t("auth.msg.offline"));
+      if (result === "rate_limited") return setMessage(t("auth.msg.rateLimited"));
+      if (result !== "requested") return setMessage(t("auth.msg.serverDown"));
       setStep("code");
       setCode("");
-      setMessage("If this number has an account, a 6-digit code is on its way. It expires in 10 minutes.");
+      setMessage(t("auth.msg.codeSent"));
     } finally {
       setSubmitting(false);
     }
   };
   const signIn = async () => {
-    if (!/^\d{6}$/.test(code.trim())) return setMessage("Enter the 6-digit code from the text.");
+    if (!/^\d{6}$/.test(code.trim())) return setMessage(t("auth.msg.enterCode"));
     setSubmitting(true);
     setNeedsSignOut(false);
     try {
@@ -185,7 +189,13 @@ function WorkerSignIn({
         return setMessage(
           result.status === "sign_out_required"
             ? "Sign out before changing accounts."
-            : "That code did not work. Check it, or ask for a new one."
+            : result.status === "offline"
+              ? t("auth.msg.offline")
+              : result.status === "rate_limited"
+                ? t("auth.msg.rateLimited")
+                : result.status === "denied"
+                  ? t("auth.msg.badCode")
+                  : t("auth.msg.serverDown")
         );
       }
       await onSignedIn();

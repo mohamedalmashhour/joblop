@@ -58,7 +58,6 @@ const en: Dict = {
   "auth.toSignUp": "New here? Create an account",
   "auth.toSignIn": "I already have an account",
   "auth.back": "Back",
-  "auth.msg.badNumber": "That number could not be used. Check it and try again.",
   "auth.msg.codeSent": "If this number has an account, a 6-digit code is on its way. It expires in 10 minutes.",
   "auth.msg.signedIn": "You are already signed in on this device. Sign out first.",
   "auth.msg.badCode": "That code did not work. Check it, or ask for a new one.",
@@ -68,7 +67,11 @@ const en: Dict = {
   "auth.msg.invalid": "Check your mobile number and email, then try again.",
   "auth.msg.rateLimited": "Too many attempts. Please wait a moment and try again.",
   "auth.msg.createFailed": "Could not create the account. Check your details and try again.",
-  "auth.msg.error": "Something went wrong. Try again."
+  "auth.msg.error": "Something went wrong. Try again.",
+  "auth.msg.offline": "No connection to Joblop. Check your internet and try again.",
+  "auth.msg.serverDown": "Joblop is not responding right now. Try again in a minute.",
+  "auth.msg.shortNumber": "Enter your full mobile number, for example 514 555 0199.",
+  "auth.msg.enterCode": "Enter the 6-digit code from the text message."
 };
 
 const fr: Dict = {
@@ -116,7 +119,6 @@ const fr: Dict = {
   "auth.toSignUp": "Nouveau? Créez un compte",
   "auth.toSignIn": "J’ai déjà un compte",
   "auth.back": "Retour",
-  "auth.msg.badNumber": "Ce numéro ne peut pas être utilisé. Vérifiez-le et réessayez.",
   "auth.msg.codeSent": "Si ce numéro a un compte, un code à 6 chiffres est en route. Il expire dans 10 minutes.",
   "auth.msg.signedIn": "Vous êtes déjà connecté sur cet appareil. Déconnectez-vous d’abord.",
   "auth.msg.badCode": "Ce code n’a pas fonctionné. Vérifiez-le ou demandez-en un nouveau.",
@@ -126,7 +128,11 @@ const fr: Dict = {
   "auth.msg.invalid": "Vérifiez votre numéro de cellulaire et votre courriel, puis réessayez.",
   "auth.msg.rateLimited": "Trop de tentatives. Attendez un moment et réessayez.",
   "auth.msg.createFailed": "Impossible de créer le compte. Vérifiez vos informations et réessayez.",
-  "auth.msg.error": "Un problème est survenu. Réessayez."
+  "auth.msg.error": "Un problème est survenu. Réessayez.",
+  "auth.msg.offline": "Aucune connexion à Joblop. Vérifiez votre connexion Internet et réessayez.",
+  "auth.msg.serverDown": "Joblop ne répond pas pour le moment. Réessayez dans une minute.",
+  "auth.msg.shortNumber": "Entrez votre numéro de cellulaire complet, par exemple 514 555 0199.",
+  "auth.msg.enterCode": "Entrez le code à 6 chiffres reçu par texto."
 };
 
 const ar: Dict = {
@@ -174,7 +180,6 @@ const ar: Dict = {
   "auth.toSignUp": "جديد هنا؟ أنشئ حسابًا",
   "auth.toSignIn": "لدي حساب بالفعل",
   "auth.back": "رجوع",
-  "auth.msg.badNumber": "لا يمكن استخدام هذا الرقم. تحقّق منه وحاول مرة أخرى.",
   "auth.msg.codeSent": "إذا كان لهذا الرقم حساب، فإن رمزًا من 6 أرقام في الطريق إليك. تنتهي صلاحيته خلال 10 دقائق.",
   "auth.msg.signedIn": "أنت مسجّل الدخول بالفعل على هذا الجهاز. سجّل الخروج أولًا.",
   "auth.msg.badCode": "لم ينجح هذا الرمز. تحقّق منه أو اطلب رمزًا جديدًا.",
@@ -184,7 +189,11 @@ const ar: Dict = {
   "auth.msg.invalid": "تحقّق من رقم هاتفك المحمول وبريدك الإلكتروني، ثم حاول مرة أخرى.",
   "auth.msg.rateLimited": "محاولات كثيرة جدًا. انتظر قليلًا ثم حاول مرة أخرى.",
   "auth.msg.createFailed": "تعذّر إنشاء الحساب. تحقّق من بياناتك وحاول مرة أخرى.",
-  "auth.msg.error": "حدث خطأ ما. حاول مرة أخرى."
+  "auth.msg.error": "حدث خطأ ما. حاول مرة أخرى.",
+  "auth.msg.offline": "لا يوجد اتصال بـ Joblop. تحقّق من اتصالك بالإنترنت وحاول مرة أخرى.",
+  "auth.msg.serverDown": "Joblop لا يستجيب حاليًا. حاول مرة أخرى بعد دقيقة.",
+  "auth.msg.shortNumber": "أدخل رقم هاتفك المحمول كاملًا، مثل 514 555 0199.",
+  "auth.msg.enterCode": "أدخل الرمز المكوّن من 6 أرقام الذي وصلك برسالة نصية."
 };
 
 export const dictionaries: Record<Locale, Dict> = { en, fr, ar };
