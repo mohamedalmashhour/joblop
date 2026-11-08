@@ -22,6 +22,8 @@ const buildTimePublic = new Set([
   "EXPO_PUBLIC_API_BASE_URL",
   "EXPO_PUBLIC_API_ORIGIN",
   "EXPO_PUBLIC_RWOS_API_ORIGIN",
+  // Public address of the employer website, opened by the phone app's "For employers" button.
+  "EXPO_PUBLIC_RWOS_EMPLOYER_ORIGIN",
   "NEXT_PUBLIC_RWOS_ENV",
   "NEXT_PUBLIC_RWOS_DEPLOYMENT_TIER",
   // NEXT_PUBLIC_ is inlined into the client bundle at build; the active-country selector is a

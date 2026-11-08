@@ -10,7 +10,7 @@ function job(overrides: Partial<OpenJob>): OpenJob {
     areaLabel: "Plateau",
     startAt: new Date(2026, 10, 10, 9, 0).toISOString(),
     endAt: new Date(2026, 10, 10, 17, 0).toISOString(),
-    urgency: "standard",
+    urgency: "normal",
     placesLeft: 2,
     workerRateMinor: 2250,
     ...overrides
@@ -47,6 +47,8 @@ describe("jobs calendar content", () => {
     expect(formatHourlyRate(2250, "en-CA", "/h")).toBe("$22.50/h");
     expect(isUrgent(job({}))).toBe(false);
     expect(isUrgent(job({ urgency: "urgent" }))).toBe(true);
+    expect(isUrgent(job({ urgency: "immediate" }))).toBe(true);
+    expect(isUrgent(job({ urgency: "normal" }))).toBe(false);
     expect(placesLeftLabel(1, "1 place left", "{n} places left")).toBe("1 place left");
     expect(placesLeftLabel(3, "1 place left", "{n} places left")).toBe("3 places left");
   });

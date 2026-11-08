@@ -4,6 +4,7 @@ import { Pressable, StyleSheet, Text, View } from "react-native";
 import { colors, spacing, typography } from "../theme";
 import type { MobileSessionTransport } from "../auth/secureSession";
 import { WorkerAuthScreen } from "../features/worker-auth";
+import { PublicJobsScreen } from "../features/public-jobs";
 import { HomeScreen } from "../features/home";
 import { WorkerCalendarPanel } from "../features/worker-calendar";
 import { MonthCalendarScreen } from "../features/calendar-month";
@@ -44,6 +45,9 @@ type Screen =
   | { name: "onboarding" }
   | { name: "contact"; draft: ContactDraft | null; conversationId?: string | null };
 
+// What a signed-out person sees: the free public job search first; its actions open sign-up / sign-in.
+type GuestView = { name: "publicJobs" } | { name: "auth"; mode: "sign-in" | "sign-up" };
+
 type TabId = "home" | "available" | "myShifts" | "calendar" | "earnings" | "contact";
 
 const TABS: readonly { id: TabId; label: string; root: Screen }[] = [
@@ -71,6 +75,8 @@ export function WorkerNavigator({
   // on top of it so the existing accept flow still works, and Back returns to the calendar.
   const [tab, setTab] = useState<TabId>("available");
   const [stack, setStack] = useState<Screen[]>(offerId ? [{ name: "available" }, { name: "calendar" }] : [{ name: "available" }]);
+
+  const [guestView, setGuestView] = useState<GuestView>({ name: "publicJobs" });
 
   const current = stack[stack.length - 1]!;
   const push = useCallback((screen: Screen) => setStack((s) => [...s, screen]), []);
@@ -109,7 +115,7 @@ export function WorkerNavigator({
     setPendingTarget(null);
   }, [authenticated, pendingTarget, selectTab]);
   useEffect(() => {
-    // "authenticated" is also true for a guest who skipped sign-in, so check for a real session.
+    // Defensive: only register push for a real stored session.
     if (!authenticated || !transport) return;
     let cancelled = false;
     void (async () => {
@@ -143,6 +149,7 @@ export function WorkerNavigator({
       if (pushToken) await transport?.unregisterPushToken(pushToken).catch(() => undefined);
       await transport?.signOut();
     } finally {
+      setGuestView({ name: "publicJobs" });
       onAuthenticatedChange(false);
     }
   }, [transport, onAuthenticatedChange]);
@@ -228,15 +235,31 @@ export function WorkerNavigator({
     }
   }
 
-  // Auth gate: unauthenticated workers see sign-in; "back" lets them browse the fixture-disclosed app
-  // as a guest (discovery/earnings/etc. are self-disclosed previews; the calendar states when a sign-in
-  // is required).
+  // Signed out (owner rule, same as the website): the FIRST screen is the free public job search — no
+  // account needed. Tapping a job or "Create free account" opens sign-up; "Sign in" opens phone-code
+  // sign-in; Back from either returns to the search. Only a real sign-in opens the app (and only then
+  // does a pending notification target route).
   if (!authenticated) {
+    if (guestView.name === "auth") {
+      return (
+        <WorkerAuthScreen
+          key={guestView.mode}
+          initialMode={guestView.mode}
+          transport={transport}
+          onAuthenticated={() => {
+            setGuestView({ name: "publicJobs" });
+            onAuthenticatedChange(true);
+          }}
+          onBack={() => setGuestView({ name: "publicJobs" })}
+        />
+      );
+    }
     return (
-      <WorkerAuthScreen
+      <PublicJobsScreen
         transport={transport}
-        onAuthenticated={() => onAuthenticatedChange(true)}
-        onBack={() => onAuthenticatedChange(true)}
+        onWantDetails={() => setGuestView({ name: "auth", mode: "sign-up" })}
+        onCreateAccount={() => setGuestView({ name: "auth", mode: "sign-up" })}
+        onSignIn={() => setGuestView({ name: "auth", mode: "sign-in" })}
       />
     );
   }

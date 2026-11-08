@@ -142,7 +142,7 @@ export function PublicJobSearch({ onWantDetails }: { onWantDetails: (next: strin
                     <strong>{job.role}</strong>
                     <span className="pjs-meta">📍 {job.areaLabel} · {new Date(job.startAt).toLocaleDateString(locale)}</span>
                     <span className="pjs-foot">
-                      <em>{t.places(job.openings)}{job.urgency !== "standard" ? ` · ${t.urgent}` : ""}</em>
+                      <em>{t.places(job.openings)}{job.urgency === "urgent" || job.urgency === "immediate" ? ` · ${t.urgent}` : ""}</em>
                       <span>{t.open} →</span>
                     </span>
                   </button>
