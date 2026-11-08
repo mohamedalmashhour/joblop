@@ -15,11 +15,14 @@ import {
 import type { EmailSender } from "./mailer/emailSender";
 import type { SmsSender } from "./mailer/smsSender";
 import { sendsText } from "./notifications/noticeChannels";
-import { formatWorksiteAddress, isWorksiteAddressVisible, WORKSITE_ADDRESS_SELECT } from "./worksiteAddress";
+import { isWorksiteAddressVisible } from "./worksiteAddress";
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
-/** The facts AI may use: this person's own records only, and nothing about anyone else. */
+/** The facts AI may use: this person's own records only, and nothing about anyone else.
+ *  Only what an answer needs leaves for the outside AI: a first name for the greeting, never a full name,
+ *  email, phone, exact address or internal id. The worksite city is enough to answer "where"; the exact
+ *  address stays on the shift page in the app. The privacy filter still runs on all of it at the call. */
 async function workerFacts(prisma: PrismaClient, userId: string): Promise<string> {
   const identity = await prisma.workerIdentity.findFirst({
     where: { userId },
@@ -34,7 +37,7 @@ async function workerFacts(prisma: PrismaClient, userId: string): Promise<string
       select: {
         status: true, scheduledStartAt: true, scheduledEndAt: true, timezone: true, checkInAt: true, checkOutAt: true,
         assignment: { select: { confirmedTitle: true } },
-        residence: { select: { ...WORKSITE_ADDRESS_SELECT } }
+        residence: { select: { city: true, region: true } }
       }
     }),
     prisma.timesheet.findMany({
@@ -55,7 +58,7 @@ async function workerFacts(prisma: PrismaClient, userId: string): Promise<string
     })
   ]);
   return JSON.stringify({
-    name: identity.displayName,
+    firstName: identity.displayName?.trim().split(/\s+/)[0] || null,
     workType: identity.classification,
     shifts: attendance.map((a) => ({
       title: a.assignment.confirmedTitle,
@@ -65,7 +68,8 @@ async function workerFacts(prisma: PrismaClient, userId: string): Promise<string
       timezone: a.timezone,
       checkedInAt: a.checkInAt,
       checkedOutAt: a.checkOutAt,
-      exactAddress: isWorksiteAddressVisible(a.status) ? formatWorksiteAddress(a.residence) : null
+      worksiteCity: a.residence.city ?? a.residence.region ?? null,
+      exactLocationOnShiftPage: isWorksiteAddressVisible(a.status)
     })),
     timesheets,
     payStatements: pay.map((p) => ({

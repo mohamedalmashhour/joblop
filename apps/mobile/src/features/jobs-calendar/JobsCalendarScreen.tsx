@@ -4,6 +4,7 @@ import { colors, radii, spacing, typography } from "../../theme";
 import type { CalendarHubItem, CalendarHubToday, MobileSessionTransport } from "../../auth/secureSession";
 import { BodyText, Button, Card, Heading, LoadingState, ScreenContainer, SmallText } from "../../ui/primitives";
 import { useLocale } from "../../i18n/LocaleContext";
+import { shiftDraft, type ContactDraft } from "../contact/contactContent";
 import { addMonths, buildMonthWeeks, dayNumber, isoDay, monthTitle, weekdayNames } from "../calendar-month/monthGrid";
 import {
   HUB_LAYERS,
@@ -49,7 +50,8 @@ export function JobsCalendarScreen({
   onOpenSearch,
   onOpenSchedule,
   onOpenPay,
-  onOpenOffers
+  onOpenOffers,
+  onContactAboutShift
 }: {
   transport: MobileSessionTransport | null;
   onOpenSetup?: () => void;
@@ -57,6 +59,8 @@ export function JobsCalendarScreen({
   onOpenSchedule?: () => void;
   onOpenPay?: () => void;
   onOpenOffers?: () => void;
+  /** Opens "Contact Joblop" with a new message about this shift (linked to the assignment). */
+  onContactAboutShift?: (draft: ContactDraft) => void;
 }) {
   const { t, locale, isRtl } = useLocale();
   const today = useMemo(() => new Date(), []);
@@ -375,6 +379,7 @@ export function JobsCalendarScreen({
                           <Button label={t("hub.openSchedule")} onPress={onOpenSchedule} variant="secondary" />
                         </View>
                       ) : null}
+                      <ContactShiftLink item={item} onContact={onContactAboutShift} />
                     </Card>
                   );
                 }
@@ -403,6 +408,7 @@ export function JobsCalendarScreen({
                       {item.subtitle ? <Text style={[styles.struck, rtlText(isRtl)]}>{item.subtitle}</Text> : null}
                       <Text style={[styles.struck, rtlText(isRtl)]}>{time}</Text>
                       <Text style={[styles.cancelNote, rtlText(isRtl)]}>{t("hub.cancelledNote")}</Text>
+                      <ContactShiftLink item={item} onContact={onContactAboutShift} />
                     </Card>
                   );
                 }
@@ -458,6 +464,25 @@ export function JobsCalendarScreen({
         </View>
       </ScrollView>
     </ScreenContainer>
+  );
+}
+
+// Small "Contact Joblop about this shift" link on the worker's own (or cancelled) shift cards.
+function ContactShiftLink({ item, onContact }: { item: CalendarHubItem; onContact?: ((draft: ContactDraft) => void) | undefined }) {
+  const { t, locale } = useLocale();
+  if (!onContact) return null;
+  // Only my_shift / cancelled_shift carry the worker's own assignment id in refId.
+  const ownShift = item.type === "my_shift" || item.type === "cancelled_shift";
+  if (!ownShift) return null;
+  return (
+    <Pressable
+      onPress={() => onContact(shiftDraft(item, locale, t("contact.shiftPrefill")))}
+      accessibilityRole="button"
+      style={styles.contactLink}
+      testID="hub-contact-shift"
+    >
+      <Text style={styles.contactLinkText}>{t("contact.aboutShift")}</Text>
+    </Pressable>
   );
 }
 
@@ -580,5 +605,7 @@ const styles = StyleSheet.create({
   dangerBanner: { backgroundColor: "#241110", borderColor: colors.danger },
   bannerText: { color: colors.text, fontSize: typography.body, fontWeight: "800" },
   bannerReason: { color: colors.muted, fontSize: typography.small },
+  contactLink: { alignSelf: "flex-start", marginTop: spacing.sm, paddingVertical: spacing.xs },
+  contactLinkText: { color: GOLD, fontSize: typography.small, fontWeight: "700", textDecorationLine: "underline" },
   rtl: { textAlign: "right", writingDirection: "rtl" }
 });

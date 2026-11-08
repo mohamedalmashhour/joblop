@@ -1052,3 +1052,118 @@ describe("open jobs calendar transport", () => {
     expect(await make(async () => response(200, { items: [] })).getCalendarHub(window)).toEqual({ status: "ready", items: [], today: [] });
   });
 });
+
+describe("contact Joblop transport", () => {
+  const origin = "https://api.example.com";
+  const convId = "88888888-8888-4888-8888-888888888888";
+  const assignmentId = "99999999-9999-4999-8999-999999999999";
+  const bearer = "Bearer session-token-cccccccccccc";
+  function withSession() {
+    const v = vault();
+    v.stored = "session-token-cccccccccccc";
+    return v;
+  }
+  const conversation = {
+    id: convId,
+    topic: "shift",
+    status: "ai",
+    urgent: false,
+    unread: false,
+    lastMessageAt: "2026-11-08T14:00:00.000Z",
+    createdAt: "2026-11-08T13:59:00.000Z"
+  };
+  const make = (fetchImpl: () => Promise<Response>) =>
+    createMobileSessionTransport({ apiOrigin: origin, vault: withSession(), fetch: vi.fn(fetchImpl) });
+
+  it("lists conversations with the Bearer token and drops malformed rows", async () => {
+    const fetchMock = vi.fn(async () =>
+      response(200, { conversations: [conversation, { ...conversation, id: "c2", status: "mystery" }, { bad: true }], unread: 2 })
+    );
+    const transport = createMobileSessionTransport({ apiOrigin: origin, vault: withSession(), fetch: fetchMock });
+    expect(await transport.listContactConversations()).toEqual({ status: "ready", conversations: [conversation], unread: 2 });
+    expect(fetchMock).toHaveBeenCalledWith(
+      `${origin}/contact/worker/conversations`,
+      expect.objectContaining({ method: "GET", headers: expect.objectContaining({ authorization: bearer }) })
+    );
+  });
+
+  it("starts a conversation linked to a shift, with topic, urgency and locale", async () => {
+    const fetchMock = vi.fn(async (_url: RequestInfo | URL, _init?: RequestInit) => response(200, { id: convId }));
+    const transport = createMobileSessionTransport({ apiOrigin: origin, vault: withSession(), fetch: fetchMock });
+    expect(await transport.startContactConversation({ text: "  About my shift  ", topic: "shift", assignmentId, urgent: true, locale: "fr-CA" })).toEqual({
+      status: "ready",
+      id: convId
+    });
+    const [url, init] = fetchMock.mock.calls[0]!;
+    expect(url).toBe(`${origin}/contact/worker/conversations`);
+    expect(init?.method).toBe("POST");
+    expect((init?.headers as Record<string, string>).authorization).toBe(bearer);
+    expect(JSON.parse(String(init?.body))).toEqual({
+      topic: "shift",
+      body: "About my shift",
+      urgent: true,
+      locale: "fr",
+      relatedType: "assignment",
+      relatedId: assignmentId
+    });
+  });
+
+  it("defaults the topic to other and refuses empty or too long text without calling the API", async () => {
+    const fetchMock = vi.fn(async (_url: RequestInfo | URL, _init?: RequestInit) => response(200, { id: convId }));
+    const transport = createMobileSessionTransport({ apiOrigin: origin, vault: withSession(), fetch: fetchMock });
+    await transport.startContactConversation({ text: "Hello" });
+    expect(JSON.parse(String(fetchMock.mock.calls[0]![1]?.body))).toEqual({ topic: "other", body: "Hello", urgent: false });
+    expect((await transport.startContactConversation({ text: "   " })).status).toBe("error");
+    expect((await transport.startContactConversation({ text: "x".repeat(2001) })).status).toBe("error");
+    expect((await transport.sendContactMessage(convId, "")).status).toBe("error");
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("reads one conversation with its messages and drops unknown authors", async () => {
+    const messages = [
+      { id: "m1", authorKind: "requester", body: "Hi", createdAt: "2026-11-08T14:00:00.000Z" },
+      { id: "m2", authorKind: "ai", body: "Hello", createdAt: "2026-11-08T14:00:01.000Z" },
+      { id: "m3", authorKind: "robot", body: "?", createdAt: "2026-11-08T14:00:02.000Z" }
+    ];
+    const fetchMock = vi.fn(async () => response(200, { conversation, messages }));
+    const transport = createMobileSessionTransport({ apiOrigin: origin, vault: withSession(), fetch: fetchMock });
+    expect(await transport.getContactConversation(convId)).toEqual({ status: "ready", conversation, messages: messages.slice(0, 2) });
+    expect(fetchMock).toHaveBeenCalledWith(
+      `${origin}/contact/worker/conversations/${convId}`,
+      expect.objectContaining({ method: "GET", headers: expect.objectContaining({ authorization: bearer }) })
+    );
+    expect((await make(async () => response(200, { messages })).getContactConversation(convId)).status).toBe("error");
+  });
+
+  it("sends a message and asks for a person", async () => {
+    const fetchMock = vi.fn(async (_url: RequestInfo | URL, _init?: RequestInit) => response(200, { id: convId }));
+    const transport = createMobileSessionTransport({ apiOrigin: origin, vault: withSession(), fetch: fetchMock });
+    expect(await transport.sendContactMessage(convId, "Thanks", "ar")).toEqual({ status: "ready" });
+    expect(await transport.askForPerson(convId, "en")).toEqual({ status: "ready" });
+    expect(fetchMock.mock.calls[0]![0]).toBe(`${origin}/contact/worker/conversations/${convId}/messages`);
+    expect(JSON.parse(String(fetchMock.mock.calls[0]![1]?.body))).toEqual({ body: "Thanks", locale: "ar" });
+    expect(fetchMock.mock.calls[1]![0]).toBe(`${origin}/contact/worker/conversations/${convId}/person`);
+    expect(fetchMock.mock.calls[1]![1]?.method).toBe("POST");
+    expect((fetchMock.mock.calls[1]![1]?.headers as Record<string, string>).authorization).toBe(bearer);
+  });
+
+  it("maps signed-out, 401, 403, network failure and server errors for contact calls", async () => {
+    const noFetch = vi.fn();
+    const signedOut = createMobileSessionTransport({ apiOrigin: origin, vault: vault(), fetch: noFetch });
+    expect((await signedOut.listContactConversations()).status).toBe("denied");
+    expect((await signedOut.startContactConversation({ text: "Hi" })).status).toBe("denied");
+    expect((await signedOut.getContactConversation(convId)).status).toBe("denied");
+    expect((await signedOut.sendContactMessage(convId, "Hi")).status).toBe("denied");
+    expect((await signedOut.askForPerson(convId)).status).toBe("denied");
+    expect(noFetch).not.toHaveBeenCalled();
+    expect((await make(async () => response(401, {})).listContactConversations()).status).toBe("denied");
+    expect((await make(async () => response(403, {})).askForPerson(convId)).status).toBe("denied");
+    expect((await make(async () => { throw new TypeError("Network request failed"); }).listContactConversations()).status).toBe("offline");
+    expect((await make(async () => { throw new TypeError("Network request failed"); }).sendContactMessage(convId, "Hi")).status).toBe("offline");
+    expect((await make(async () => response(500, {})).getContactConversation(convId)).status).toBe("error");
+    expect((await make(async () => response(404, {})).getContactConversation(convId)).status).toBe("error");
+    expect((await make(async () => response(400, {})).startContactConversation({ text: "Hi" })).status).toBe("error");
+    expect((await make(async () => response(200, { nope: [] })).listContactConversations()).status).toBe("error");
+    expect((await make(async () => response(200, {})).startContactConversation({ text: "Hi" })).status).toBe("error");
+  });
+});
