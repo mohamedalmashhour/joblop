@@ -14,6 +14,7 @@ import { WorkerScheduleScreen } from "../features/worker-attendance";
 import { WorkerTimesheetListScreen } from "../features/worker-timesheets";
 import { WorkerEarningsScreen } from "../features/worker-earnings";
 import { WorkerSetupScreen } from "../features/worker-onboarding";
+import { ContactScreen, type ContactDraft } from "../features/contact";
 
 // The worker app's real navigation shell. A dependency-free stack + bottom-tab navigator (no
 // react-navigation / native-screens dependency, to keep the EAS build surface minimal) that mounts
@@ -32,15 +33,17 @@ type Screen =
   | { name: "attendance" }
   | { name: "timesheet" }
   | { name: "earnings" }
-  | { name: "onboarding" };
+  | { name: "onboarding" }
+  | { name: "contact"; draft: ContactDraft | null };
 
-type TabId = "home" | "available" | "myShifts" | "calendar" | "earnings";
+type TabId = "home" | "available" | "myShifts" | "calendar" | "earnings" | "contact";
 
 const TABS: readonly { id: TabId; label: string; root: Screen }[] = [
   { id: "home", label: "Home", root: { name: "home" } },
   { id: "available", label: "My calendar", root: { name: "available" } },
   { id: "myShifts", label: "My Shifts", root: { name: "myShifts" } },
-  { id: "earnings", label: "Earnings", root: { name: "earnings" } }
+  { id: "earnings", label: "Earnings", root: { name: "earnings" } },
+  { id: "contact", label: "Contact", root: { name: "contact", draft: null } }
 ];
 
 
@@ -70,6 +73,11 @@ export function WorkerNavigator({
     const root = TABS.find((t) => t.id === next)!.root;
     setTab(next);
     setStack([root]);
+  }, []);
+  // "Contact Joblop about this shift": open the Contact tab with a prefilled new message.
+  const contactWith = useCallback((draft: ContactDraft) => {
+    setTab("contact");
+    setStack([{ name: "contact", draft }]);
   }, []);
 
   const signOut = useCallback(async () => {
@@ -103,6 +111,7 @@ export function WorkerNavigator({
             onOpenSchedule={() => push({ name: "attendance" })}
             onOpenPay={() => selectTab("earnings")}
             onOpenOffers={() => push({ name: "offers" })}
+            onContactAboutShift={contactWith}
           />
         );
       case "marketplaceSearch":
@@ -146,10 +155,13 @@ export function WorkerNavigator({
         return <WorkerTimesheetListScreen transport={transport} onBack={back} />;
       case "earnings":
         return (
-          <WorkerEarningsScreen transport={transport} onOpenSupport={() => selectTab("home")} />
+          <WorkerEarningsScreen transport={transport} onOpenSupport={() => selectTab("contact")} />
         );
       case "onboarding":
         return <WorkerSetupScreen transport={transport} onBack={back} />;
+      case "contact":
+        // "Contact Joblop": AI assistant first, Joblop staff take over when needed.
+        return <ContactScreen draft={current.draft} transport={transport} />;
       default: {
         const _exhaustive: never = current;
         return _exhaustive;
