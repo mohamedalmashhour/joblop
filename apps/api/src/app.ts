@@ -349,7 +349,15 @@ import { deriveWorkerCancellationPenalty, WORKER_SUSPENSION_DAYS } from "@rwos/s
 import { notifyClient, notifyClientInvoiceSent } from "./notifications/clientNotifications";
 import { invoiceEmailAttachment } from "./invoicePdf";
 import { invoicePdfDetails } from "./invoicePdfDetails";
-import { notifyWorkerPayoutPaid, notifyWorkerAccountPenalty, notifyWorkerAssigned } from "./notifications/workerNotifications";
+import {
+  notifyWorkerPayoutPaid,
+  notifyWorkerAccountPenalty,
+  notifyWorkerAssigned,
+  notifyWorkersShiftCancelled,
+  notifyWorkersShiftChanged,
+  type ShiftChangeSummary,
+  type ShiftNoticeWorker
+} from "./notifications/workerNotifications";
 import { createWorkerPayoutProgressionRunner, startWorkerPayoutProgressionSchedule } from "./workerPayoutProgression";
 import { createPrismaJobGradingAuditStore, JOB_GRADING_ENGINE_VERSION, type JobGradingAuditStore } from "./jobGradingAuditRepository";
 import { raiseWorkerDispute, listWorkerDisputes, listWorkerDisputesForStaff, resolveWorkerDispute, withdrawWorkerDispute } from "./workerDisputeRepository";
@@ -960,6 +968,74 @@ export function buildApi(options: BuildApiOptions = {}) {
   // verification), then the external HTTP delivery service, else none.
   // Fail-closed: with neither configured, offers simply aren't auto-delivered.
   const offerCtaOrigin = (options.publicWorkerWebOrigin ?? environment.WORKER_WEB_ORIGIN ?? "").trim() || null;
+  // Shift cancelled / changed notices to workers (text always + email). Best-effort: a failure is
+  // logged and never reaches the request that cancelled or changed the shift.
+  const tellWorkersShiftCancelled = async (input: {
+    jobRequestId: string;
+    workers: readonly ShiftNoticeWorker[];
+    cancelledBy: "employer" | "staff";
+  }): Promise<void> => {
+    if (!prisma || input.workers.length === 0) return;
+    const result = await notifyWorkersShiftCancelled(prisma, emailSender, smsSender, { ...input, workerWebOrigin: offerCtaOrigin }).catch(() => null);
+    if (!result || result.failed > 0) logger.warn("worker.shift_cancelled_notice_failed", { jobRequestId: input.jobRequestId });
+  };
+  const tellWorkersShiftChanged = async (input: {
+    jobRequestId: string;
+    workers: readonly ShiftNoticeWorker[];
+    summary: ShiftChangeSummary;
+  }): Promise<void> => {
+    if (!prisma || input.workers.length === 0) return;
+    const result = await notifyWorkersShiftChanged(prisma, emailSender, smsSender, { ...input, workerWebOrigin: offerCtaOrigin }).catch(() => null);
+    if (!result || result.failed > 0) logger.warn("worker.shift_changed_notice_failed", { jobRequestId: input.jobRequestId });
+  };
+  // A short, worker-facing account of a material edit, or null when nothing the worker agreed to
+  // (role, place, day, time) changed.
+  const describeMaterialEdit = async (
+    fields: readonly string[],
+    after: Readonly<{ roleDefinitionId: string; residenceId: string; startAt: string; endAt: string }>
+  ): Promise<ShiftChangeSummary | null> => {
+    if (!prisma) return null;
+    const touches = ["role", "work_location", "work_date", "schedule_time", "timezone"];
+    if (!fields.some((field) => touches.includes(field))) return null;
+    const startAt = new Date(after.startAt);
+    const endAt = new Date(after.endAt);
+    const timeChanged = fields.includes("work_date") || fields.includes("schedule_time") || fields.includes("timezone");
+    const [role, residence] = await Promise.all([
+      fields.includes("role")
+        ? prisma.roleDefinition.findUnique({ where: { id: after.roleDefinitionId }, select: { displayLabel: true } }).catch(() => null)
+        : null,
+      fields.includes("work_location")
+        ? prisma.residence.findUnique({ where: { id: after.residenceId }, select: { name: true, city: true } }).catch(() => null)
+        : null
+    ]);
+    const place = residence?.city?.trim() || residence?.name?.trim();
+    return {
+      ...(timeChanged && Number.isFinite(startAt.getTime()) && Number.isFinite(endAt.getTime())
+        ? { newStartAt: startAt, newEndAt: endAt, dateChanged: fields.includes("work_date") }
+        : {}),
+      ...(role?.displayLabel ? { newRole: role.displayLabel } : {}),
+      ...(place ? { newPlace: place } : {})
+    };
+  };
+  // Workers who were sent an offer that is still open (sent, delivered or viewed), by job. Read
+  // before an offer or dispatch cancel; a draft or approved offer never reached the worker.
+  const readSentOfferWorkers = async (where: { workerOfferId?: string; dispatchReviewId?: string }): Promise<Map<string, string[]>> => {
+    const byJob = new Map<string, string[]>();
+    if (!prisma || (!where.workerOfferId && !where.dispatchReviewId)) return byJob;
+    const offers = await prisma.workerOffer
+      .findMany({
+        where: {
+          ...(where.workerOfferId ? { id: where.workerOfferId } : {}),
+          ...(where.dispatchReviewId ? { dispatchReviewId: where.dispatchReviewId } : {}),
+          status: { in: ["sent", "delivered", "viewed"] },
+          sentAt: { not: null }
+        },
+        select: { jobRequestId: true, workerIdentity: { select: { userId: true } } }
+      })
+      .catch(() => []);
+    for (const offer of offers) byJob.set(offer.jobRequestId, [...(byJob.get(offer.jobRequestId) ?? []), offer.workerIdentity.userId]);
+    return byJob;
+  };
   const emailOfferDeliveryProvider =
     prisma && runtimeConfig.hasEmailDelivery && runtimeConfig.emailFrom
       ? createBrevoWorkerOfferDeliveryProvider({
@@ -2775,12 +2851,39 @@ export function buildApi(options: BuildApiOptions = {}) {
       if (!session.authenticated || !session.user) return sendCancellationDenied(reply);
       const body = asRecord(request.body);
       const idempotencyKey = readRequiredString(body, "idempotencyKey") ?? "";
+      const organizationId = readRouteParam(request.params, "organizationId");
+      const jobRequestId = readRouteParam(request.params, "jobRequestId");
       try {
+        // Who holds the shift, read before the cancel. A job that already has a cancellation on
+        // record is a replay: its workers were told the first time.
+        const alreadyCancelled = prisma
+          ? await prisma.employerRequestCancellation
+              .findFirst({ where: { jobRequestId, organizationId }, select: { id: true } })
+              .then((row) => row !== null)
+              .catch(() => true)
+          : true;
+        const holders = prisma && !alreadyCancelled
+          ? await readShiftHolders(prisma, { jobRequestIds: [jobRequestId] }).catch(() => [])
+          : [];
         const result = await employerCancellationService.confirmCancellation({
           actorUserId: session.user.id,
-          organizationId: readRouteParam(request.params, "organizationId"),
-          jobRequestId: readRouteParam(request.params, "jobRequestId"),
+          organizationId,
+          jobRequestId,
           idempotencyKey
+        });
+        // The workers are told now, when the employer cancels. Staff completing the assignment
+        // handoff later does not tell them again. Late-cancellation pay is mentioned only when this
+        // path recorded it (inside 24 h, with a governed rate), and only to the confirmed workers it
+        // was computed for.
+        const owedHours =
+          result.preview.obligationApplies && result.preview.workerCompensationMinor > 0 ? result.preview.workerCompensationHours : 0;
+        await tellWorkersShiftCancelled({
+          jobRequestId: result.cancellation.jobRequestId,
+          cancelledBy: "employer",
+          workers: holders.map((holder) => ({
+            userId: holder.userId,
+            ...(owedHours > 0 && CONFIRMED_ASSIGNMENT_STATUSES.includes(holder.status) ? { compensationHours: owedHours } : {})
+          }))
         });
         return reply.code(200).send(result);
       } catch (error) {
@@ -3223,16 +3326,36 @@ export function buildApi(options: BuildApiOptions = {}) {
     if (!(await userHasOrganizationAccess(session.user.id, organizationId))) return sendJobRequestDenied(reply);
     const reason = readRequiredString(asRecord(request.body), "reason");
     if (!reason) return reply.code(400).send({ error: "RWOS_ORDER_REASON_REQUIRED", message: "A cancellation reason is required." });
+    const orderId = readRouteParam(request.params, "orderId");
+    // Who holds a shift on the order's still-open jobs, read before anything is cancelled.
+    const openJobIds = await prisma!.jobRequest
+      .findMany({ where: { orderId, organizationId, status: { not: "cancelled" } }, select: { id: true } })
+      .then((rows) => rows.map((row) => row.id))
+      .catch(() => [] as string[]);
+    const holders = await readShiftHolders(prisma!, { jobRequestIds: openJobIds }).catch(() => [] as ShiftHolder[]);
     const result = await cancelEmployerOrder(prisma!, jobRequestService, {
       actorUserId: session.user.id,
       organizationId,
-      orderId: readRouteParam(request.params, "orderId"),
+      orderId,
       reason,
       now: new Date()
     });
     if (!result.ok) {
       const code = result.reason === "not_found" ? 404 : 422;
       return reply.code(code).send({ error: `RWOS_ORDER_${result.reason.toUpperCase()}`, message: "The order could not be cancelled." });
+    }
+    // Tell the workers on each job this cancel actually moved to cancelled.
+    if (holders.length > 0) {
+      const nowCancelled = new Set(
+        await prisma!.jobRequest
+          .findMany({ where: { id: { in: [...new Set(holders.map((h) => h.jobRequestId))] }, status: "cancelled" }, select: { id: true } })
+          .then((rows) => rows.map((row) => row.id))
+          .catch(() => [] as string[])
+      );
+      for (const [jobRequestId, onJob] of groupShiftHoldersByJob(holders)) {
+        if (!nowCancelled.has(jobRequestId)) continue;
+        await tellWorkersShiftCancelled({ jobRequestId, cancelledBy: "employer", workers: onJob.map((h) => ({ userId: h.userId })) });
+      }
     }
     return reply.code(200).send({ order: result.order });
   });
@@ -5631,6 +5754,12 @@ export function buildApi(options: BuildApiOptions = {}) {
             ...("addressSummary" in proposed ? { addressSummary: address } : {})
           }
         });
+        // A new site address is a change of place for workers already holding the shift.
+        const newAddress = address?.trim();
+        if ("addressSummary" in proposed && newAddress && newAddress !== (profile.addressSummary ?? "").trim() && prisma) {
+          const holders = await readShiftHolders(prisma, { jobRequestIds: [source.id] }).catch(() => [] as ShiftHolder[]);
+          await tellWorkersShiftChanged({ jobRequestId: source.id, summary: { newPlace: newAddress }, workers: holders.map((h) => ({ userId: h.userId })) });
+        }
         return reply.code(200).send({ classification: "NON_MATERIAL", applied: true, materialFields: [] });
       }
 
@@ -5654,6 +5783,15 @@ export function buildApi(options: BuildApiOptions = {}) {
         currency,
         reason: readOptionalString(body, "reason")
       });
+      // Tell the confirmed workers when the change touches what they agreed to: role, place, day or
+      // time. A qualifications or headcount change alone is not sent to them.
+      if (proposal.status === "reconfirmation_pending" && prisma) {
+        const summary = await describeMaterialEdit(classification.materialFields, after);
+        if (summary) {
+          const holders = await readShiftHolders(prisma, { assignmentIds: proposal.affectedAssignmentIds }).catch(() => [] as ShiftHolder[]);
+          await tellWorkersShiftChanged({ jobRequestId: source.id, summary, workers: holders.map((h) => ({ userId: h.userId })) });
+        }
+      }
       return reply.code(200).send({
         classification: "MATERIAL",
         materialFields: classification.materialFields,
@@ -5736,8 +5874,18 @@ export function buildApi(options: BuildApiOptions = {}) {
     if (!roles.includes("PLATFORM_ADMINISTRATOR")) {
       return reply.code(403).send({ error: "RWOS_REDUCE_DENIED", message: "Platform authority is required." });
     }
+    // Workers whose assignment this reduction cancels, read before each cancel; told once it is done.
+    const reducedHolders: ShiftHolder[] = [];
+    const reducedAssignmentIds = new Set<string>();
+    const tellReducedWorkers = async () => {
+      const cancelledHolders = reducedHolders.filter((h) => reducedAssignmentIds.has(h.assignmentId));
+      for (const [jobRequestId, onJob] of groupShiftHoldersByJob(cancelledHolders)) {
+        await tellWorkersShiftCancelled({ jobRequestId, cancelledBy: "employer", workers: onJob.map((h) => ({ userId: h.userId })) });
+      }
+    };
     const port: SelectedAssignmentCancelPort = {
       async cancelSelectedAssignments({ organizationId, jobRequestId, assignmentIds, reason }) {
+        if (prisma) reducedHolders.push(...(await readShiftHolders(prisma, { assignmentIds }).catch(() => [] as ShiftHolder[])));
         const active = await assignmentService.listAssignments({
           session,
           roles,
@@ -5756,6 +5904,7 @@ export function buildApi(options: BuildApiOptions = {}) {
           }
           try {
             await assignmentService.cancel({ session, roles, assignmentId: id, expectedVersion: version, reason, status: "employer_cancelled" });
+            reducedAssignmentIds.add(id);
             cancelled += 1;
           } catch {
             failed += 1;
@@ -5769,8 +5918,11 @@ export function buildApi(options: BuildApiOptions = {}) {
         reductionId: readRouteParam(request.params, "reductionId"),
         assignmentCancelPort: port
       });
+      await tellReducedWorkers();
       return reply.code(200).send(result);
     } catch (error) {
+      // Assignments already cancelled stay cancelled, so their workers are told either way.
+      await tellReducedWorkers();
       return sendReduceError(reply, error);
     }
   });
@@ -5791,10 +5943,21 @@ export function buildApi(options: BuildApiOptions = {}) {
       return reply.code(400).send({ error: "RWOS_EDIT_INVALID", message: "outcome must be accepted or declined." });
     }
     try {
-      const result = await employerRequestEditService.completeReconfirmation({
-        proposalId: readRouteParam(request.params, "proposalId"),
-        outcome
-      });
+      const proposalId = readRouteParam(request.params, "proposalId");
+      // Read the proposal's state first: workers are told only when this call settles it.
+      const before = prisma
+        ? await prisma.employerRequestChangeProposal.findUnique({ where: { id: proposalId }, select: { status: true } }).catch(() => null)
+        : null;
+      const result = await employerRequestEditService.completeReconfirmation({ proposalId, outcome });
+      const settledNow = before !== null && before.status !== "completed" && before.status !== "rejected";
+      if (settledNow && prisma && result.proposal.affectedAssignmentIds.length > 0) {
+        const holders = await readShiftHolders(prisma, { assignmentIds: result.proposal.affectedAssignmentIds }).catch(() => [] as ShiftHolder[]);
+        await tellWorkersShiftChanged({
+          jobRequestId: result.proposal.jobRequestId,
+          summary: { outcome: outcome === "accepted" ? "final" : "withdrawn" },
+          workers: holders.map((h) => ({ userId: h.userId }))
+        });
+      }
       return reply.code(200).send(result);
     } catch (error) {
       return sendEditError(reply, error);
@@ -5962,13 +6125,23 @@ export function buildApi(options: BuildApiOptions = {}) {
           .send({ error: "RWOS_INVALID_JOB_REQUEST", message: "Invalid job request." });
       }
 
+      const organizationId = readRouteParam(request.params, "organizationId");
+      const jobRequestId = readRouteParam(request.params, "jobRequestId");
+      // Who holds the shift, read before the cancel (only jobs of this organization).
+      const holders = prisma
+        ? await prisma.jobRequest
+            .findFirst({ where: { id: jobRequestId, organizationId, status: { not: "cancelled" } }, select: { id: true } })
+            .then((job) => (job ? readShiftHolders(prisma, { jobRequestIds: [job.id] }) : []))
+            .catch(() => [] as ShiftHolder[])
+        : [];
       const jobRequest = await jobRequestService.cancel({
         actorUserId: session.user.id,
-        organizationId: readRouteParam(request.params, "organizationId"),
-        jobRequestId: readRouteParam(request.params, "jobRequestId"),
+        organizationId,
+        jobRequestId,
         expectedVersion: readOptionalNumber(body, "expectedVersion") ?? 0,
         reason
       });
+      await tellWorkersShiftCancelled({ jobRequestId: jobRequest.id, cancelledBy: "employer", workers: holders.map((h) => ({ userId: h.userId })) });
 
       return reply.code(200).send({ jobRequest: serializeJobRequest(jobRequest) });
     }
@@ -7029,13 +7202,20 @@ export function buildApi(options: BuildApiOptions = {}) {
     if (!session.authenticated || !session.user) return sendDispatchDenied(reply);
 
     const body = asRecord(request.body);
+    const dispatchReviewId = readRouteParam(request.params, "dispatchReviewId");
+    // Cancelling a dispatch leaves its assignments as they are, but the offers it already sent to
+    // workers no longer lead anywhere. Read those workers first; unsent offers were never seen.
+    const offered = await readSentOfferWorkers({ dispatchReviewId });
     const dispatchReview = await dispatchService.cancel({
       session,
       roles: await resolveAuthorizationRoles(session.user.id),
-      dispatchReviewId: readRouteParam(request.params, "dispatchReviewId"),
+      dispatchReviewId,
       expectedVersion: readOptionalNumber(body, "expectedVersion") ?? 0,
       reason: readRequiredString(body, "reason") ?? ""
     });
+    for (const [jobRequestId, userIds] of offered) {
+      await tellWorkersShiftCancelled({ jobRequestId, cancelledBy: "staff", workers: userIds.map((userId) => ({ userId, offerOnly: true })) });
+    }
 
     return reply.code(200).send({ dispatchReview: serializeDispatchReview(dispatchReview) });
   });
@@ -7254,13 +7434,19 @@ export function buildApi(options: BuildApiOptions = {}) {
     if (!session.authenticated || !session.user) return sendWorkerOfferDenied(reply);
 
     const body = asRecord(request.body);
+    const workerOfferId = readRouteParam(request.params, "workerOfferId");
+    // Only a worker who was actually sent the offer hears that it was cancelled.
+    const offered = await readSentOfferWorkers({ workerOfferId });
     const workerOffer = await workerOfferService.cancel({
       session,
       roles: await resolveAuthorizationRoles(session.user.id),
-      workerOfferId: readRouteParam(request.params, "workerOfferId"),
+      workerOfferId,
       expectedVersion: readOptionalNumber(body, "expectedVersion") ?? 0,
       reason: readRequiredString(body, "reason") ?? ""
     });
+    for (const [jobRequestId, userIds] of offered) {
+      await tellWorkersShiftCancelled({ jobRequestId, cancelledBy: "staff", workers: userIds.map((userId) => ({ userId, offerOnly: true })) });
+    }
 
     return reply.code(200).send({ workerOffer: serializeWorkerOffer(workerOffer) });
   });
@@ -7567,14 +7753,27 @@ export function buildApi(options: BuildApiOptions = {}) {
     if (!session.authenticated || !session.user) return sendAssignmentDenied(reply);
 
     const body = asRecord(request.body);
+    const assignmentId = readRouteParam(request.params, "assignmentId");
+    const cancelStatus = readAssignmentStatus(readOptionalString(body, "status")) ?? "platform_cancelled";
+    // The worker holding this assignment, read before the cancel changes its status.
+    const holders = prisma ? await readShiftHolders(prisma, { assignmentIds: [assignmentId] }).catch(() => [] as ShiftHolder[]) : [];
     const assignment = await assignmentService.cancel({
       session,
       roles: await resolveAuthorizationRoles(session.user.id),
-      assignmentId: readRouteParam(request.params, "assignmentId"),
+      assignmentId,
       expectedVersion: readOptionalNumber(body, "expectedVersion") ?? 0,
       reason: readRequiredString(body, "reason") ?? "",
-      status: readAssignmentStatus(readOptionalString(body, "status")) ?? "platform_cancelled"
+      status: cancelStatus
     });
+    // Staff act here; an employer_cancelled status records that the employer asked for it. No
+    // late-cancellation pay is computed on this path, so none is mentioned.
+    for (const [jobRequestId, onJob] of groupShiftHoldersByJob(holders)) {
+      await tellWorkersShiftCancelled({
+        jobRequestId,
+        cancelledBy: cancelStatus === "employer_cancelled" ? "employer" : "staff",
+        workers: onJob.map((h) => ({ userId: h.userId }))
+      });
+    }
 
     return reply.code(200).send({ assignment: serializeAssignment(assignment) });
   });
@@ -7890,13 +8089,25 @@ export function buildApi(options: BuildApiOptions = {}) {
     if (!session.authenticated || !session.user) return sendAttendanceUnauthenticated(reply);
 
     const body = asRecord(request.body);
+    const attendanceRecordId = readRouteParam(request.params, "attendanceRecordId");
+    // The worker on this attendance record, read before the cancel, and only while their assignment
+    // still holds the shift (an already-cancelled assignment told them when it was cancelled).
+    const holders = prisma
+      ? await prisma.attendanceRecord
+          .findUnique({ where: { id: attendanceRecordId }, select: { assignmentId: true } })
+          .then((record) => (record ? readShiftHolders(prisma, { assignmentIds: [record.assignmentId] }) : []))
+          .catch(() => [] as ShiftHolder[])
+      : [];
     const attendanceRecord = await attendanceService.cancel({
       session,
       roles: await resolveAuthorizationRoles(session.user.id),
-      attendanceRecordId: readRouteParam(request.params, "attendanceRecordId"),
+      attendanceRecordId,
       expectedVersion: readOptionalNumber(body, "expectedVersion") ?? 0,
       reason: readRequiredString(body, "reason") ?? ""
     });
+    for (const [jobRequestId, onJob] of groupShiftHoldersByJob(holders)) {
+      await tellWorkersShiftCancelled({ jobRequestId, cancelledBy: "staff", workers: onJob.map((h) => ({ userId: h.userId })) });
+    }
 
     return reply.code(200).send({ attendanceRecord: serializeAttendanceRecord(attendanceRecord) });
   });
@@ -12015,6 +12226,39 @@ const PLACE_HOLDING_ASSIGNMENT_STATUSES = [
   "attendance_handoff",
   "closed"
 ] as const;
+
+// Workers to tell when a shift is cancelled or changed: those still holding a place on it. A closed
+// (finished) assignment is left out; nothing about it can change for the worker any more.
+const SHIFT_NOTICE_ASSIGNMENT_STATUSES = PLACE_HOLDING_ASSIGNMENT_STATUSES.filter((status) => status !== "closed");
+
+export type ShiftHolder = Readonly<{ jobRequestId: string; assignmentId: string; status: string; userId: string }>;
+
+// Read who holds a place on the given jobs (or the given assignments) right now. Callers read this
+// BEFORE a cancel changes any status, and only notify after the cancel has succeeded.
+export async function readShiftHolders(
+  prisma: Pick<ReturnType<typeof createPrismaClient>, "assignment">,
+  where: Readonly<{ jobRequestIds?: readonly string[]; assignmentIds?: readonly string[] }>
+): Promise<ShiftHolder[]> {
+  const jobIds = where.jobRequestIds ?? [];
+  const assignmentIds = where.assignmentIds ?? [];
+  if (jobIds.length === 0 && assignmentIds.length === 0) return [];
+  const rows = await prisma.assignment.findMany({
+    where: {
+      status: { in: [...SHIFT_NOTICE_ASSIGNMENT_STATUSES] },
+      ...(jobIds.length > 0 ? { jobRequestId: { in: [...jobIds] } } : {}),
+      ...(assignmentIds.length > 0 ? { id: { in: [...assignmentIds] } } : {})
+    },
+    select: { id: true, jobRequestId: true, status: true, workerIdentity: { select: { userId: true } } }
+  });
+  return rows.map((row) => ({ jobRequestId: row.jobRequestId, assignmentId: row.id, status: row.status, userId: row.workerIdentity.userId }));
+}
+
+// Group holders by job, so each job's notice names its own shift.
+export function groupShiftHoldersByJob(holders: readonly ShiftHolder[]): Map<string, ShiftHolder[]> {
+  const byJob = new Map<string, ShiftHolder[]>();
+  for (const holder of holders) byJob.set(holder.jobRequestId, [...(byJob.get(holder.jobRequestId) ?? []), holder]);
+  return byJob;
+}
 
 // How many places are still open on each job: the headcount asked for, less the workers holding one.
 export async function remainingOpenings(

@@ -5,6 +5,7 @@ import { createPrismaAssignmentRepository } from "@rwos/auth";
 import { createPrismaClient } from "@rwos/database";
 import { buildApi } from "../../apps/api/src/app";
 import type { EmailMessage, EmailSender } from "../../apps/api/src/mailer/emailSender";
+import type { SmsMessage, SmsSender } from "../../apps/api/src/mailer/smsSender";
 import { materializeAndListWorkerPayouts } from "../../apps/api/src/workerPayoutRepository";
 
 // End-to-end guards for the worker journey and the money paths it feeds: each case drives the real
@@ -23,6 +24,16 @@ suite("worker journey and payout guards", () => {
     send: async (message) => {
       emails.push(message);
       return { status: "sent" } as Awaited<ReturnType<EmailSender["send"]>>;
+    }
+  };
+  // Texts are captured, never sent. Only users given a phone number receive one.
+  const texts: SmsMessage[] = [];
+  const smsSender: SmsSender = {
+    configured: true,
+    enabled: true,
+    send: async (message) => {
+      texts.push(message);
+      return { status: "sent", id: `sms-${texts.length}` };
     }
   };
   let app: FastifyInstance;
@@ -96,6 +107,7 @@ suite("worker journey and payout guards", () => {
       countryCurrency: "CAD",
       countryTimezone: "America/Toronto",
       emailSender,
+      smsSender,
       env: { ...process.env, DATABASE_URL: databaseUrl, RWOS_ENV: "local", NODE_ENV: "test" },
       resolveAuthorizationRoles: async (userId: string) =>
         staffIds.has(userId) ? ["PLATFORM_ADMINISTRATOR", "PAYROLL_ADMINISTRATOR"] : employerIds.has(userId) ? ["ORGANIZATION_OWNER"] : ["WORKER_ACCESS"]
@@ -445,6 +457,47 @@ suite("worker journey and payout guards", () => {
       expect(emails.find((m) => m.to === worker.email)?.text).toContain("77 Field Road, Rural Site");
       const schedule = await app.inject({ method: "GET", url: "/worker/attendance", headers: auth(worker.token) });
       expect(schedule.json().items[0].worksiteAddress).toBe("77 Field Road, Rural Site");
+    });
+
+    it("a worker whose claimed shift staff cancel is told by email and text, and no one else is", async () => {
+      const worker = await makeWorker("cancelled");
+      const phone = `+1514${String(Math.floor(Math.random() * 10_000_000)).padStart(7, "0")}`;
+      await prisma.user.update({ where: { id: worker.id }, data: { phone } });
+      const bystander = await makeWorker("bystander");
+      const { job } = await makeJob({ startAt: new Date(Date.now() + 3 * HOUR), endAt: new Date(Date.now() + 9 * HOUR), openClaim: true });
+      const claimed = await app.inject({ method: "POST", url: `/marketplace/jobs/${job.id}/claim`, headers: auth(worker.token) });
+      expect(claimed.statusCode, claimed.body).toBe(201);
+      // A claimed shift goes straight onto the schedule, so staff cancel it through its attendance record.
+      const record = await prisma.attendanceRecord.findUniqueOrThrow({ where: { assignmentId: claimed.json().assignmentId } });
+
+      emails.length = 0;
+      texts.length = 0;
+      const cancelled = await app.inject({
+        method: "POST", url: `/platform/attendance/${record.id}/cancel`, headers: auth(staff.token),
+        payload: { expectedVersion: record.version, reason: "staff_cancelled" }
+      });
+      expect(cancelled.statusCode, cancelled.body).toBe(200);
+      expect(cancelled.json().attendanceRecord.status).toBe("cancelled");
+
+      const notices = emails.filter((m) => /cancelled|annulé/.test(m.subject));
+      expect(notices.map((m) => m.to)).toEqual([worker.email]);
+      expect(notices[0]?.text).toMatch(/calendar|calendrier/);
+      expect(notices[0]?.text).toMatch(/Laval/);
+      expect(notices[0]?.text).not.toMatch(/owed|dues/); // a staff cancel computes no late-cancellation pay
+      expect(emails.some((m) => m.to === bystander.email)).toBe(false);
+      expect(texts.map((t) => t.to)).toEqual([phone]);
+      expect(texts[0]?.text).toMatch(/cancelled|annulé/);
+
+      // A second cancel is refused and tells no one again.
+      emails.length = 0;
+      texts.length = 0;
+      const again = await app.inject({
+        method: "POST", url: `/platform/attendance/${record.id}/cancel`, headers: auth(staff.token),
+        payload: { expectedVersion: record.version + 1, reason: "staff_cancelled" }
+      });
+      expect(again.statusCode).not.toBe(200);
+      expect(emails).toHaveLength(0);
+      expect(texts).toHaveLength(0);
     });
 
     it("an address is never shown before assignment", async () => {
