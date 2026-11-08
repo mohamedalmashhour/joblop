@@ -636,6 +636,8 @@ model EmployerOrganization {
   verification EmployerVerification?
 
   orders EmployerOrder[]
+  employerPlans      EmployerPlan[]
+  employerPlanOrders EmployerPlanOrder[]
 
   @@index([status], map: "employer_organizations_status_idx")
   @@map("employer_organizations")
@@ -1183,6 +1185,9 @@ model JobRequest {
   endAt              DateTime          @map("end_at") @db.Timestamptz(3)
   isMultiDay         Boolean           @default(false) @map("is_multi_day")
   hasRecurringIntent Boolean           @default(false) @map("has_recurring_intent")
+  // Employer-chosen job length: "short_term" (shifts up to 4 weeks) | "long_term" (contract over 4
+  // weeks). Only changes pricing when EMPLOYER_PLANS_ENABLED is on.
+  jobLength          String            @default("short_term") @map("job_length")
   status             JobRequestStatus  @default(draft)
   adminReviewReason  String?           @map("admin_review_reason")
   version            Int               @default(1)
@@ -1430,6 +1435,13 @@ model RequestPricingSnapshot {
   distanceSurchargeMinor    Int      @default(0) @map("distance_surcharge_minor")
   distanceWorkerMinor       Int      @default(0) @map("distance_worker_minor")
   distancePlatformMinor     Int      @default(0) @map("distance_platform_minor")
+  // Employer fixed plans (EMPLOYER_PLANS_ENABLED, default off). The plan in force when the snapshot
+  // was captured and the discount it gave (ppm of the contract rate). Null / 0 = no plan.
+  employerPlanCode          String?  @map("employer_plan_code")
+  employerPlanDiscountPpm   Int      @default(0) @map("employer_plan_discount_ppm")
+  // Job length the snapshot was priced under. Null = captured with the flag off (today's short-term
+  // rules). "long_term" = no 6-hour minimum on the invoice and no urgent surcharge.
+  jobLength                 String?  @map("job_length")
   capturedByUserId          String   @map("captured_by_user_id") @db.Uuid
   capturedAt                DateTime @default(now()) @map("captured_at") @db.Timestamptz(3)
 
@@ -3597,6 +3609,54 @@ model CvProOrder {
 
   @@index([workerRef, status], map: "cv_pro_orders_worker_status_idx")
   @@map("cv_pro_orders")
+}
+
+// Employer fixed plans — one row per organization per track (job length). Absent = the track's free
+// plan (pay_per_shift / pay_per_contract). Gated behind
+// EMPLOYER_PLANS_ENABLED (default off). Expiry is evaluated at read time: a trial past trialEndsAt or
+// a paid plan past currentPeriodEnd falls back to pay_per_shift without a background job.
+model EmployerPlan {
+  id                String    @id @default(uuid()) @db.Uuid
+  organizationId    String    @map("organization_id") @db.Uuid
+  track             String // "short_term" | "long_term"
+  plan              String // short_term: "shift_pro" | "shift_business"; long_term: "contract_plus"
+  status            String // "active" | "trialing" | "canceled" | "expired"
+  source            String // "trial" | "purchase" | "admin_grant"
+  trialEndsAt       DateTime? @map("trial_ends_at") @db.Timestamptz(3)
+  currentPeriodEnd  DateTime? @map("current_period_end") @db.Timestamptz(3)
+  cancelAtPeriodEnd Boolean   @default(false) @map("cancel_at_period_end")
+  // Set once, the first time the organization starts a trial on this track (once per org per track).
+  trialUsedAt       DateTime? @map("trial_used_at") @db.Timestamptz(3)
+  createdAt         DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt         DateTime  @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  organization EmployerOrganization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@unique([organizationId, track], map: "employer_plans_organization_track_key")
+  @@map("employer_plans")
+}
+
+// Employer plan purchase orders — mirrors CvProOrder. Monthly, one period per order. Methods:
+// "e_transfer" (employer claims, staff confirms) and "stripe" (TEST-mode hosted Checkout only).
+model EmployerPlanOrder {
+  id             String    @id @default(uuid()) @db.Uuid
+  organizationId String    @map("organization_id") @db.Uuid
+  plan           String // "shift_pro" | "shift_business" | "contract_plus" (the code implies the track)
+  priceMinor     Int       @map("price_minor")
+  currency       String
+  periodMonths   Int       @map("period_months")
+  method         String    @default("e_transfer") // "e_transfer" | "stripe"
+  status         String // "pending_payment" | "payment_claimed" | "paid" | "canceled"
+  paymentRef     String?   @map("payment_ref")
+  createdAt      DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt      DateTime  @updatedAt @map("updated_at") @db.Timestamptz(3)
+  paidAt         DateTime? @map("paid_at") @db.Timestamptz(3)
+
+  organization EmployerOrganization @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+
+  @@index([organizationId, status], map: "employer_plan_orders_org_status_idx")
+  @@index([status, createdAt], map: "employer_plan_orders_status_created_idx")
+  @@map("employer_plan_orders")
 }
 
 // Money-flow Phase 1 — employer invoice → Stripe TEST collection. One checkout per issued invoice.

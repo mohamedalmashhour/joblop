@@ -39,10 +39,13 @@ export function buildInvoiceCalculationInput(p: {
   occurredAt: string;
   /** Employer-funded job bonus already priced for this shift (see jobBonusInvoiceMinor). 0/absent → no line. */
   bonusMinor?: number;
+  /** Long-term contracts (employer plans flag on) bill the hours actually worked. Default: true. */
+  minimumBilling?: boolean;
 }): InvoiceCalculationInput {
   // The employer is billed at least 6 hours per shift (shown on the invoice); the worker is still paid the
   // hours actually worked, so the difference is platform revenue (owner rule, no hidden fees).
-  const hours = billableHours(p.billableMinutes / 60);
+  // A long-term contract snapshot (only captured while EMPLOYER_PLANS_ENABLED is on) has no minimum.
+  const hours = p.minimumBilling === false ? Math.max(0, p.billableMinutes / 60) : billableHours(p.billableMinutes / 60);
   const urgentPerHour = urgencyPremiumMinor(p.urgency ?? null);
   const baseRatePerHour = Math.max(0, p.employerHourlyRateMinor - urgentPerHour);
   const money = (amountMinor: number) => ({ amountMinor: Math.round(amountMinor), currency: "CAD" as const });
@@ -114,7 +117,8 @@ export async function autoGenerateInvoiceForLockedTimesheet(
       employerHourlyRateMinor: true,
       emergencySurchargePerHourMinor: true,
       distanceSurchargeMinor: true,
-      currency: true
+      currency: true,
+      jobLength: true
     }
   });
   if (!snap) return { ok: false, reason: "no_pricing_snapshot" };
@@ -142,7 +146,8 @@ export async function autoGenerateInvoiceForLockedTimesheet(
     distanceSurchargeMinor: snap.distanceSurchargeMinor,
     urgency: job?.urgency ?? null,
     occurredAt: new Date().toISOString(),
-    bonusMinor: employerBonus ? jobBonusInvoiceMinor(employerBonus, ts.billableMinutes) : 0
+    bonusMinor: employerBonus ? jobBonusInvoiceMinor(employerBonus, ts.billableMinutes) : 0,
+    ...(snap.jobLength === "long_term" ? { minimumBilling: false } : {})
   });
 
   try {

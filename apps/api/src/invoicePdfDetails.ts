@@ -19,7 +19,7 @@ export async function invoicePdfDetails(prisma: PrismaClient, invoice: DurableIn
     const job = timesheet
       ? await prisma.jobRequest.findFirst({
           where: { id: timesheet.jobRequestId, organizationId: invoice.organizationId },
-          select: { title: true }
+          select: { title: true, pricingSnapshot: { select: { jobLength: true } } }
         })
       : null;
     return {
@@ -27,7 +27,8 @@ export async function invoicePdfDetails(prisma: PrismaClient, invoice: DurableIn
       billToLegalName: organization?.legalName ?? null,
       jobTitle: job?.title ?? null,
       serviceDate: timesheet ? timesheet.scheduledStartAt.toISOString().slice(0, 10) : null,
-      payableMinutes: timesheet?.payableMinutes ?? null
+      payableMinutes: timesheet?.payableMinutes ?? null,
+      ...(job?.pricingSnapshot?.jobLength === "long_term" ? { noMinimumBilling: true } : {})
     };
   } catch {
     return {};

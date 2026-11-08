@@ -59,6 +59,8 @@ const serverOnlyNonSecret = new Set([
   "DOC_REVIEW_MODEL",
   // Transactional email sender address (public from-line, not a credential).
   "EMAIL_FROM",
+  // Employer fixed plans feature gate (server-only boolean; "enabled" turns plans on, default off).
+  "EMPLOYER_PLANS_ENABLED",
   // Google integrations: non-secret public identifiers and server-side feature gates. The OAuth
   // client id is a public identifier; the paired client secret / token encryption key and the
   // Maps API key are prohibited below.
