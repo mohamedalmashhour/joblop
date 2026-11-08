@@ -1,5 +1,5 @@
 import * as SecureStore from "expo-secure-store";
-import { parseWorkerCalendarDto, type WorkerCalendarDto } from "@rwos/shared";
+import { parsePayOfferedView, parseWorkerCalendarDto, type PayOfferedView, type WorkerCalendarDto } from "@rwos/shared";
 
 const sessionKey = "rwos.mobile.session";
 
@@ -1221,9 +1221,17 @@ export type OpenJob = Readonly<{
   workerRateMinor: number | null;
   // Extra pay Joblop added to fill the job faster; absent when there is none. Amount in cents.
   bonus?: OpenJobBonus;
+  // Long-term listing only: the employer's own pay offer, paid directly.
+  payOffered?: PayOfferedView | null;
 }>;
 
 export type OpenJobBonus = Readonly<{ kind: "hourly" | "transport" | "one_time"; amountMinor: number }>;
+
+// Long-term listing only (employer plans flag): the API sends `payOffered` (the pay the employer offers
+// and pays directly) instead of a Joblop rate. Absent key = not a long-term job.
+function payOfferedField(record: Record<string, unknown>): Readonly<{ payOffered?: PayOfferedView | null }> {
+  return "payOffered" in record ? { payOffered: parsePayOfferedView(record.payOffered) } : {};
+}
 
 export type OpenJobsResult =
   | Readonly<{ status: "ready"; jobs: readonly OpenJob[] }>
@@ -1254,7 +1262,8 @@ function parseOpenJob(input: unknown): OpenJob | null {
     urgency: str("urgency") ?? "normal",
     placesLeft,
     workerRateMinor: typeof rate === "number" && Number.isFinite(rate) && rate >= 0 ? rate : null,
-    ...(bonus ? { bonus } : {})
+    ...(bonus ? { bonus } : {}),
+    ...payOfferedField(v)
   };
 }
 
@@ -1285,6 +1294,8 @@ export type CalendarHubItem = Readonly<{
   placesTaken: number | null;
   jobRequestId: string | null;
   refId: string | null;
+  // Long-term listing only: the employer's own pay offer, paid directly.
+  payOffered?: PayOfferedView | null;
 }>;
 
 export type CalendarHubToday = Readonly<{
@@ -1325,7 +1336,8 @@ function parseHubItem(input: unknown): CalendarHubItem | null {
     placesAsked: num("placesAsked"),
     placesTaken: num("placesTaken"),
     jobRequestId: str("jobRequestId"),
-    refId: str("refId")
+    refId: str("refId"),
+    ...payOfferedField(v)
   };
 }
 
@@ -1503,6 +1515,8 @@ export type MarketplaceJob = Readonly<{
   currency: string;
   distanceKm: number | null;
   saved: boolean;
+  // Long-term listing only: the employer's own pay offer, paid directly.
+  payOffered?: PayOfferedView | null;
 }>;
 
 export type MarketplaceOrigin = Readonly<{ province: string; city: string; postalCode: string }>;
@@ -1537,7 +1551,8 @@ function parseMarketplaceJob(input: unknown): MarketplaceJob | null {
     workerRateMinor: num(j.workerRateMinor),
     currency: str(j.currency, "CAD"),
     distanceKm: num(j.distanceKm),
-    saved: j.saved === true
+    saved: j.saved === true,
+    ...payOfferedField(j)
   };
 }
 
@@ -1634,6 +1649,8 @@ export type WorkerAttendanceRecord = Readonly<{
   areaLabel: string | null;
   // The exact address, sent only for the worker's own shift while it is still to be worked.
   worksiteAddress: string | null;
+  // Long-term job (employer plans flag): no check-in / check-out, the employer pays directly.
+  clockInAllowed?: false;
 }>;
 
 export type AttendanceMutationResult = Readonly<{ status: "ready" | "denied" | "not_found" | "conflict" | "error" }>;
@@ -1656,7 +1673,8 @@ function parseWorkerAttendanceRecord(input: unknown): WorkerAttendanceRecord | n
     version: num(r.version) ?? 0,
     employerName: str(r.employerName),
     areaLabel: typeof r.areaLabel === "string" ? r.areaLabel : null,
-    worksiteAddress: typeof r.worksiteAddress === "string" ? r.worksiteAddress : null
+    worksiteAddress: typeof r.worksiteAddress === "string" ? r.worksiteAddress : null,
+    ...(r.clockInAllowed === false ? { clockInAllowed: false as const } : {})
   };
 }
 

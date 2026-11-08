@@ -59,7 +59,14 @@ export function attendanceStatusTone(status: string): BadgeTone {
 export type AttendanceAction = "check_in" | "check_out" | "none";
 
 /** Which action the worker can take, from the record's timestamps. A terminal record offers none. */
-export function attendanceAction(record: { status: string; checkInAt: string | null; checkOutAt: string | null }): AttendanceAction {
+export function attendanceAction(record: {
+  status: string;
+  checkInAt: string | null;
+  checkOutAt: string | null;
+  clockInAllowed?: boolean;
+}): AttendanceAction {
+  // Long-term job (employer plans flag): the employer pays directly, Joblop keeps no check-in.
+  if (record.clockInAllowed === false) return "none";
   if (record.status === "cancelled" || record.status === "missed" || record.status === "completed") return "none";
   if (record.checkInAt === null) return "check_in";
   if (record.checkOutAt === null) return "check_out";
@@ -82,6 +89,7 @@ export type AttendanceCopy = Readonly<{
   emptyBody: string;
   signInRequiredTitle: string;
   errorTitle: string;
+  longTermNoClockIn: string;
 }>;
 
 const en: AttendanceCopy = {
@@ -99,7 +107,8 @@ const en: AttendanceCopy = {
   loadingSchedule: "Loading your schedule",
   emptyBody: "Confirmed shifts appear here.",
   signInRequiredTitle: "Sign in required",
-  errorTitle: "Something went wrong"
+  errorTitle: "Something went wrong",
+  longTermNoClockIn: "Long-term job: the employer pays you directly, so there is no check-in or timesheet on Joblop."
 };
 
 const fr: AttendanceCopy = {
@@ -117,7 +126,8 @@ const fr: AttendanceCopy = {
   loadingSchedule: "Chargement de votre horaire",
   emptyBody: "Les quarts confirmés apparaissent ici.",
   signInRequiredTitle: "Connexion requise",
-  errorTitle: "Une erreur s'est produite"
+  errorTitle: "Une erreur s'est produite",
+  longTermNoClockIn: "Emploi de longue durée : l'employeur vous paie directement, donc pas de pointage ni de feuille de temps sur Joblop."
 };
 
 const ar: AttendanceCopy = {
@@ -135,7 +145,8 @@ const ar: AttendanceCopy = {
   loadingSchedule: "جارٍ تحميل جدولك",
   emptyBody: "تظهر فرص العمل المؤكَّدة هنا.",
   signInRequiredTitle: "تسجيل الدخول مطلوب",
-  errorTitle: "حدث خطأ ما"
+  errorTitle: "حدث خطأ ما",
+  longTermNoClockIn: "وظيفة طويلة: يدفع لك صاحب العمل مباشرة، لذا لا يوجد تسجيل حضور أو ورقة دوام على Joblop."
 };
 
 const BY_LOCALE: Record<Locale, AttendanceCopy> = { en, fr, ar };

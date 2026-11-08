@@ -3,7 +3,7 @@ import { Pressable, ScrollView, StyleSheet, View } from "react-native";
 import { colors, radii, spacing } from "../../theme";
 import type { MarketplaceJob, MobileSessionTransport } from "../../auth/secureSession";
 import { Badge, BodyText, Button, Card, EmptyState, ErrorState, Heading, Input, LoadingState, ScreenContainer, Section, SmallText } from "../../ui/primitives";
-import { formatDistance, formatOpenings, formatShiftWindow, formatWorkerRate, marketplaceCopyFor } from "./marketplaceContent";
+import { formatDistance, formatOpenings, formatShiftWindow, formatJobPay, marketplaceCopyFor } from "./marketplaceContent";
 import { useLocale } from "../../i18n/LocaleContext";
 
 type SearchState =
@@ -19,7 +19,8 @@ export function MarketplaceSearchScreen({
   transport: MobileSessionTransport | null;
   onOpenJob: (jobRequestId: string, postalCode: string) => void;
 }) {
-  const marketplaceCopy = marketplaceCopyFor(useLocale().locale);
+  const locale = useLocale().locale;
+  const marketplaceCopy = marketplaceCopyFor(locale);
   const [postalCode, setPostalCode] = useState("");
   const [verifiedOnly, setVerifiedOnly] = useState(false);
   const [state, setState] = useState<SearchState>({ status: "idle" });
@@ -87,7 +88,7 @@ export function MarketplaceSearchScreen({
                         <SmallText>{formatOpenings(job.openings)}</SmallText>
                         {formatDistance(job.distanceKm) ? <SmallText>{formatDistance(job.distanceKm)}</SmallText> : null}
                       </View>
-                      <SmallText>{formatWorkerRate(job.workerRateMinor, job.currency)}</SmallText>
+                      <SmallText>{formatJobPay(job, locale)}</SmallText>
                     </Pressable>
                   ))}
                 </Section>

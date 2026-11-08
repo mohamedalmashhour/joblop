@@ -26,6 +26,28 @@ export function formatWorkerRate(workerRateMinor: number | null, currency: strin
   return `${(workerRateMinor / 100).toFixed(2)} ${currency}/h`;
 }
 
+// Long-term listing (employer plans flag): no Joblop rate — the pay the employer offers and pays
+// directly. `undefined` = not a long-term job; null = long-term without a stated amount.
+const PAID_BY_EMPLOYER: Record<Locale, Readonly<{ paid: string; noAmount: string }>> = {
+  en: { paid: "paid directly by the employer", noAmount: "Pay set and paid directly by the employer" },
+  fr: { paid: "payé directement par l'employeur", noAmount: "Salaire fixé et payé directement par l'employeur" },
+  ar: { paid: "يدفعه صاحب العمل مباشرة", noAmount: "يحدد صاحب العمل الأجر ويدفعه مباشرة" }
+};
+
+export function payOfferedText(payOffered: PayOfferedView | null | undefined, locale: Locale): string | null {
+  if (payOffered === undefined) return null;
+  const copy = PAID_BY_EMPLOYER[locale] ?? PAID_BY_EMPLOYER.en;
+  return payOffered ? `${formatPayOffered(payOffered, locale === "fr" ? "fr-CA" : "en-CA")} · ${copy.paid}` : copy.noAmount;
+}
+
+/** The pay line of a marketplace job: the employer's pay offer for a long-term job, else the rate. */
+export function formatJobPay(
+  job: Readonly<{ workerRateMinor: number | null; currency: string; payOffered?: PayOfferedView | null }>,
+  locale: Locale
+): string {
+  return payOfferedText(job.payOffered, locale) ?? formatWorkerRate(job.workerRateMinor, job.currency);
+}
+
 export function formatDistance(distanceKm: number | null): string {
   if (distanceKm === null) return "";
   return distanceKm < 1 ? "Less than 1 km away" : `${distanceKm.toFixed(distanceKm < 10 ? 1 : 0)} km away`;
@@ -36,6 +58,7 @@ export function formatOpenings(openings: number): string {
 }
 
 import type { Locale } from "../../i18n/strings";
+import { formatPayOffered, type PayOfferedView } from "@rwos/shared";
 
 export type MarketplaceCopy = Readonly<{
   title: string;

@@ -22,6 +22,8 @@ type Shift = Readonly<{
   areaLabel: string | null;
   worksiteAddress: string | null;
   safetyNotes: string | null;
+  // Long-term job (employer plans flag): false = no check-in / check-out (the employer pays directly).
+  clockInAllowed?: boolean;
 }>;
 type PendingOffer = Readonly<{ workerOfferId: string; jobRequestId: string; title: string | null; startAt: string | null }>;
 type State = { status: "loading" } | { status: "signed_out" } | { status: "needs_setup" } | { status: "error" } | { status: "ready"; items: readonly Shift[] };
@@ -168,8 +170,9 @@ export function MySchedule() {
 }
 
 function ShiftCard({ s, busy, onAct, history, t, locale }: { s: Shift; busy: boolean; onAct: (s: Shift, a: "check-in" | "check-out") => void; history?: boolean; t: Translate; locale: RwosLocale }) {
-  const canCheckIn = s.status === "pending_start";
-  const canCheckOut = s.status === "checked_in";
+  const noClock = s.clockInAllowed === false;
+  const canCheckIn = !noClock && s.status === "pending_start";
+  const canCheckOut = !noClock && s.status === "checked_in";
   const inTime = s.checkInAt ? new Date(s.checkInAt).toLocaleTimeString(locale) : null;
   const outTime = s.checkOutAt ? new Date(s.checkOutAt).toLocaleTimeString(locale) : null;
   return (
@@ -186,6 +189,7 @@ function ShiftCard({ s, busy, onAct, history, t, locale }: { s: Shift; busy: boo
       <a className="muted" href={`/contact?topic=shift&relatedType=assignment&relatedId=${encodeURIComponent(s.assignmentId)}`}>{t("contact.askAbout")}</a>
       {inTime ? <div className="when">{outTime ? t("sched.inOut", { inTime, outTime }) : t("sched.in", { time: inTime })}</div> : null}
       {s.checkInAt && s.checkOutAt ? <div className="when"><strong>{t("sched.worked", { duration: workedDuration(s.checkInAt, s.checkOutAt, t) })}</strong></div> : null}
+      {noClock ? <p className="notice" style={{ margin: 0 }}>{t("sched.longTermNoClockIn")}</p> : null}
       {!history && (canCheckIn || canCheckOut) ? (
         <button className="btn" type="button" style={{ alignSelf: "flex-start" }} disabled={busy} onClick={() => onAct(s, canCheckIn ? "check-in" : "check-out")}>
           {busy ? "…" : canCheckIn ? t("sched.checkIn") : t("sched.checkOut")}

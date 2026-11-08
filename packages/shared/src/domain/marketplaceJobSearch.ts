@@ -11,6 +11,7 @@ import {
   type ProvinceCode,
   type PublicMapPoint
 } from "./canadaLocation";
+import type { PayOfferedView } from "./payOffered";
 
 /**
  * The region display-name behavior the neutral marketplace serializers need from the selected
@@ -39,6 +40,8 @@ export type MarketplaceJobCandidate = Readonly<{
   openings: number;
   workerRateMinor: number | null; // governed worker-facing rate, if policy allows
   currency: string;
+  /** Long-term listing only (employer plans flag): the employer's own pay offer, paid directly. */
+  payOffered?: PayOfferedView | null;
 }>;
 
 // Privacy-safe result for List + Map views. No exact address; no exact coordinates.
@@ -56,6 +59,8 @@ export type MarketplaceJobResult = Readonly<{
   openings: number;
   workerRateMinor: number | null;
   currency: string;
+  /** Long-term listing only (employer plans flag): the employer's own pay offer, paid directly. */
+  payOffered?: PayOfferedView | null;
 }>;
 
 function areaLabel(city: string | null, province: ProvinceCode, regionNames: MarketplaceRegionNames): string {
@@ -84,6 +89,7 @@ export function searchNearbyJobs(input: {
     endAt: c.endAt,
     openings: c.openings,
     workerRateMinor: c.workerRateMinor,
-    currency: c.currency
+    currency: c.currency,
+    ...(c.payOffered !== undefined ? { payOffered: c.payOffered } : {})
   }));
 }

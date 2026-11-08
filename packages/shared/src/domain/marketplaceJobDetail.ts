@@ -16,6 +16,7 @@ import {
 } from "./canadaLocation";
 import type { MarketplaceRegionNames } from "./marketplaceJobSearch";
 import type { PublicTravelEstimate } from "./travelTimeProviders";
+import type { PayOfferedView } from "./payOffered";
 
 // A fully-resolved candidate row (server-side only — carries exact coords the caller must
 // never serialize directly).
@@ -35,6 +36,8 @@ export type MarketplaceJobDetailCandidate = Readonly<{
   openings: number;
   workerRateMinor: number | null; // policy-gated worker-facing rate
   currency: string;
+  /** Long-term listing only (employer plans flag): the employer's own pay offer, paid directly. */
+  payOffered?: PayOfferedView | null;
   description: string | null; // public job description
   duties: string | null; // duties summary
   safetyNotes: string | null; // employer's safety and site-access notes
@@ -57,6 +60,8 @@ export type MarketplaceJobDetail = Readonly<{
   openings: number;
   workerRateMinor: number | null;
   currency: string;
+  /** Long-term listing only (employer plans flag): the employer's own pay offer, paid directly. */
+  payOffered?: PayOfferedView | null;
   description: string | null;
   duties: string | null;
   safetyNotes: string | null;
@@ -100,6 +105,7 @@ export function toMarketplaceJobDetail(input: {
     openings: c.openings,
     workerRateMinor: c.workerRateMinor,
     currency: c.currency,
+    ...(c.payOffered !== undefined ? { payOffered: c.payOffered } : {}),
     description: c.description,
     duties: c.duties,
     safetyNotes: c.safetyNotes,

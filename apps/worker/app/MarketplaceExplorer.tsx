@@ -6,6 +6,7 @@ import { useLocale, useT, fmtLocale } from "./i18n/LocaleProvider";
 import { LandingPanel } from "./LandingPanel";
 import { NEXT_AFTER_SIGN_UP_KEY } from "./PublicJobSearch";
 import type { RwosLocale } from "./i18n/config";
+import { payOfferedLabel } from "./payOfferedLabel";
 
 export type JobResult = Readonly<{
   jobRequestId: string;
@@ -21,6 +22,8 @@ export type JobResult = Readonly<{
   openings: number;
   workerRateMinor: number | null;
   currency: string;
+  /** Long-term listing only: the pay the employer offers and pays directly. */
+  payOffered?: unknown;
   saved: boolean;
 }>;
 
@@ -400,6 +403,9 @@ function JobCard({
           {job.openings === 1 ? t("mk.openingOne", { count: job.openings }) : t("mk.openingMany", { count: job.openings })}
         </span>
         {job.workerRateMinor !== null ? <span className="chip">{formatRate(job.workerRateMinor, job.currency, locale)}</span> : null}
+        {job.payOffered !== undefined ? (
+          <span className="chip">{payOfferedLabel(job.payOffered, locale, { paidByEmployer: t("pay.paidByEmployer"), employerPaysDirectly: t("pay.employerPaysDirectly") })}</span>
+        ) : null}
       </div>
       <div className="when">{formatWhen(job.startAt, job.endAt, locale)}</div>
       <a className="detaillink" href={href}>{t("mk.viewDetails")}</a>

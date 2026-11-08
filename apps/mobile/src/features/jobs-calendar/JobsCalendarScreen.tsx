@@ -5,6 +5,7 @@ import type { CalendarHubItem, CalendarHubToday, MobileSessionTransport } from "
 import { BodyText, Button, Card, Heading, LoadingState, ScreenContainer, SmallText } from "../../ui/primitives";
 import { useLocale } from "../../i18n/LocaleContext";
 import { shiftDraft, type ContactDraft } from "../contact/contactContent";
+import { payOfferedText } from "../marketplace/marketplaceContent";
 import { addMonths, buildMonthWeeks, dayNumber, isoDay, monthTitle, weekdayNames } from "../calendar-month/monthGrid";
 import {
   HUB_LAYERS,
@@ -421,7 +422,8 @@ export function JobsCalendarScreen({
 
                 // Open job to accept.
                 const jobId = item.jobRequestId;
-                const rate = formatHourlyRate(item.amountMinor, locale, perHour);
+                // Long-term listing: the employer's pay offer (paid directly), never a $0 rate.
+                const rate = payOfferedText(item.payOffered, locale) ?? formatHourlyRate(item.amountMinor, locale, perHour);
                 const confirming = jobId !== null && confirmingId === jobId;
                 const claiming = jobId !== null && claimingId === jobId;
                 const bonus = formatBonus(item.bonus, locale, bonusTemplates);

@@ -91,6 +91,7 @@ export function WorkerScheduleScreen({ transport, onBack }: { transport: MobileS
                     {r.areaLabel ? <BodyText>{r.areaLabel}</BodyText> : null}
                     {r.worksiteAddress ? <BodyText>{r.worksiteAddress}</BodyText> : null}
                     <SmallText>{formatShiftWindow(r.scheduledStartAt, r.scheduledEndAt)}</SmallText>
+                    {r.clockInAllowed === false ? <SmallText>{attendanceCopy.longTermNoClockIn}</SmallText> : null}
                     {action === "check_in" ? (
                       <Button label={attendanceCopy.checkInCta} onPress={() => void act(r, "check_in")} disabled={busyId === r.attendanceRecordId} />
                     ) : null}
