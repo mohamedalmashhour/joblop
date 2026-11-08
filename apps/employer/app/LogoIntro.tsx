@@ -1,7 +1,6 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { JobLopLogo } from "./JobLopLogo";
 
 // Clean, watermark-free animated logo intro (SVG + CSS, no video).
 // Fades to the page automatically; dismissible by click; skipped for reduced motion.
@@ -48,18 +47,33 @@ export function LogoIntro() {
           60% { opacity: 1; }
           100% { opacity: 1; transform: translateY(0) scale(1); }
         }
-        @keyframes joblopIntroPulse {
-          0%, 100% { transform: scale(1); }
-          50% { transform: scale(1.04); }
+        @keyframes joblopIntroShine {
+          0% { transform: translateX(-120%) skewX(-20deg); }
+          100% { transform: translateX(220%) skewX(-20deg); }
         }
       `}</style>
       <div
         style={{
-          animation:
-            "joblopIntroIn 1s cubic-bezier(0.16,1,0.3,1) both, joblopIntroPulse 1.6s ease-in-out 1s infinite"
+          position: "relative",
+          overflow: "hidden",
+          borderRadius: 10,
+          width: "min(78vw, 420px)",
+          animation: "joblopIntroIn 1s cubic-bezier(0.16,1,0.3,1) both"
         }}
       >
-        <JobLopLogo height={96} />
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img src="/img/joblop-logo.png" alt="" style={{ display: "block", width: "100%", height: "auto" }} />
+        {/* a gold light that sweeps across the logo once it has landed */}
+        <span
+          aria-hidden="true"
+          style={{
+            position: "absolute",
+            inset: 0,
+            width: "40%",
+            background: "linear-gradient(90deg, transparent, rgba(248, 184, 8, 0.45), transparent)",
+            animation: "joblopIntroShine 1.1s ease-in-out 0.8s both"
+          }}
+        />
       </div>
     </div>
   );

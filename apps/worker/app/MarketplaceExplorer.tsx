@@ -4,6 +4,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { MarketplaceMap, type MapPin } from "./MarketplaceMap";
 import { useLocale, useT, fmtLocale } from "./i18n/LocaleProvider";
 import { LandingPanel } from "./LandingPanel";
+import { NEXT_AFTER_SIGN_UP_KEY } from "./PublicJobSearch";
 import type { RwosLocale } from "./i18n/config";
 
 export type JobResult = Readonly<{
@@ -50,7 +51,18 @@ export function MarketplaceExplorer() {
   }, []);
 
   if (authState === "loading") return <div className="state">{t("common.loading")}</div>;
-  if (authState === "signed_out") return <LandingPanel onSignedIn={() => setAuthState("signed_in")} />;
+  if (authState === "signed_out") {
+    const afterSignIn = () => {
+      const next = readAndClearNext();
+      // Only same-site paths, never an outside address.
+      if (next && next.startsWith("/") && !next.startsWith("//") && next !== "/") {
+        window.location.assign(next);
+        return;
+      }
+      setAuthState("signed_in");
+    };
+    return <LandingPanel onSignedIn={afterSignIn} />;
+  }
   return <SearchPanel onSignedOut={() => setAuthState("signed_out")} />;
 }
 
@@ -175,10 +187,6 @@ function SearchPanel({ onSignedOut }: { onSignedOut: () => void }) {
     });
   }, []);
 
-  async function signOut() {
-    await fetch("/api/session/sign-out", { method: "POST" }).catch(() => undefined);
-    onSignedOut();
-  }
 
   const pins: MapPin[] = jobs.map((j) => ({
     jobRequestId: j.jobRequestId,
@@ -203,19 +211,6 @@ function SearchPanel({ onSignedOut }: { onSignedOut: () => void }) {
           <div>
             <h1>{t("mk.heroTitle")}</h1>
             <p>{t("mk.heroIntro")}</p>
-          </div>
-          <div className="hero-actions">
-            <a className="btn ghost" href="/verification">{t("nav.verification")}</a>
-            <a className="btn ghost" href="/hr">{t("nav.hr")}</a>
-            <a className="btn ghost" href="/documents">{t("nav.documents")}</a>
-            <a className="btn ghost" href="/schedule">{t("nav.schedule")}</a>
-            <a className="btn ghost" href="/timesheets">{t("ts.title")}</a>
-            <a className="btn ghost" href="/pay">{t("nav.pay")}</a>
-            <a className="btn ghost" href="/contact">{t("nav.contact")}</a>
-            <a className="btn ghost" href="/my-interests">{t("nav.interests")}</a>
-            <a className="btn ghost" href="/offers">{t("nav.offers")}</a>
-            <a className="btn ghost" href="/saved-jobs">{t("nav.savedJobs")}</a>
-            <button className="btn ghost" type="button" onClick={signOut}>{t("nav.signOut")}</button>
           </div>
         </div>
       </section>
@@ -465,4 +460,15 @@ export function formatWhen(startAt: string, endAt: string, locale?: RwosLocale):
 
 export function formatRate(minor: number, currency: string, locale?: RwosLocale): string {
   return `${(minor / 100).toLocaleString(locale, { style: "currency", currency })}/h`;
+}
+
+/** Where the visitor wanted to go before signing up (same-site path), read once. */
+function readAndClearNext(): string | null {
+  try {
+    const value = window.sessionStorage.getItem(NEXT_AFTER_SIGN_UP_KEY);
+    window.sessionStorage.removeItem(NEXT_AFTER_SIGN_UP_KEY);
+    return value;
+  } catch {
+    return null;
+  }
 }

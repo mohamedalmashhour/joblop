@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { NEXT_AFTER_SIGN_UP_KEY, PublicJobSearch } from "./PublicJobSearch";
 import { trackConversion } from "./analytics";
 import { withBrand } from "./Brand";
 import { useT } from "./i18n/LocaleProvider";
@@ -11,7 +12,17 @@ import { VideoCard } from "./VideoCard";
  *  card. Fully bilingual (fr-CA / en-CA). On success it hands control back to the marketplace. */
 export function LandingPanel({ onSignedIn }: { onSignedIn: () => void }) {
   const t = useT();
-  const [tab, setTab] = useState<"signin" | "signup">("signin");
+  // Create account comes first (owner rule): returning workers switch to "Sign in" in one tap.
+  const [tab, setTab] = useState<"signin" | "signup">("signup");
+  const wantDetails = (next: string) => {
+    try {
+      window.sessionStorage.setItem(NEXT_AFTER_SIGN_UP_KEY, next);
+    } catch {
+      /* storage blocked: they still land on the search after signing up */
+    }
+    setTab("signup");
+    document.getElementById("auth-card")?.scrollIntoView({ behavior: "smooth", block: "center" });
+  };
 
   const steps = [
     { title: t("land.step1Title"), body: t("land.step1Body") },
@@ -23,6 +34,7 @@ export function LandingPanel({ onSignedIn }: { onSignedIn: () => void }) {
 
   return (
     <div className="landing">
+      <PublicJobSearch onWantDetails={wantDetails} />
       <section className="landing-hero">
         <div className="landing-copy">
           <h1>{withBrand(t("land.heroTitle"))}</h1>
@@ -92,7 +104,7 @@ function AuthCard({
 }) {
   const t = useT();
   return (
-    <div className="auth-card">
+    <div className="auth-card" id="auth-card">
       <div className="auth-tabs" role="tablist" aria-label="Sign in or create account">
         <button role="tab" type="button" aria-selected={tab === "signin"} className={tab === "signin" ? "active" : ""} onClick={() => setTab("signin")}>
           {t("auth.tabSignIn")}
