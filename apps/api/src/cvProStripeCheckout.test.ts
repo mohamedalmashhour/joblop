@@ -15,6 +15,7 @@ describe("isStripeTestConfigured (card button gate)", () => {
 
   it("is true with complete Stripe TEST keys outside production", () => {
     setStripeTestEnv();
+    vi.stubEnv("RENDER", "");
     for (const env of ["local", "test", "staging"]) {
       vi.stubEnv("RWOS_ENV", env);
       expect(isStripeTestConfigured()).toBe(true);
@@ -24,6 +25,13 @@ describe("isStripeTestConfigured (card button gate)", () => {
   it("is always false in production, even with complete Stripe TEST keys", () => {
     setStripeTestEnv();
     vi.stubEnv("RWOS_ENV", "production");
+    expect(isStripeTestConfigured()).toBe(false);
+  });
+
+  it("is always false on a Render server (live soft launch runs as RWOS_ENV=test)", () => {
+    setStripeTestEnv();
+    vi.stubEnv("RWOS_ENV", "test");
+    vi.stubEnv("RENDER", "true");
     expect(isStripeTestConfigured()).toBe(false);
   });
 
