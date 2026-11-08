@@ -190,7 +190,9 @@ const en: Dict = {
   "contact.solvedNote": "This conversation is solved. Write again if you still need help.",
   "contact.sendFailed": "Your message was not sent. Try again.",
   "contact.sendOffline": "No connection. Your message was not sent.",
-  "contact.noMessages": "No messages yet."
+  "contact.noMessages": "No messages yet.",
+  "nav.tab.available": "Calendar",
+  "hub.myOffersShort": "My offers"
 };
 
 const fr: Dict = {
@@ -370,7 +372,9 @@ const fr: Dict = {
   "contact.solvedNote": "Cette conversation est résolue. Écrivez de nouveau si vous avez encore besoin d'aide.",
   "contact.sendFailed": "Votre message n'a pas été envoyé. Réessayez.",
   "contact.sendOffline": "Pas de connexion. Votre message n'a pas été envoyé.",
-  "contact.noMessages": "Aucun message pour l'instant."
+  "contact.noMessages": "Aucun message pour l'instant.",
+  "nav.tab.available": "Calendrier",
+  "hub.myOffersShort": "Mes offres"
 };
 
 const ar: Dict = {
@@ -550,7 +554,9 @@ const ar: Dict = {
   "contact.solvedNote": "تم حل هذه المحادثة. اكتب مرة أخرى إذا كنت لا تزال بحاجة إلى مساعدة.",
   "contact.sendFailed": "لم تُرسل رسالتك. حاول مرة أخرى.",
   "contact.sendOffline": "لا يوجد اتصال. لم تُرسل رسالتك.",
-  "contact.noMessages": "لا توجد رسائل بعد."
+  "contact.noMessages": "لا توجد رسائل بعد.",
+  "nav.tab.available": "التقويم",
+  "hub.myOffersShort": "عروضي"
 };
 
 export const dictionaries: Record<Locale, Dict> = { en, fr, ar };

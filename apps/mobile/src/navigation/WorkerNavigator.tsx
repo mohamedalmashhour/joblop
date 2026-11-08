@@ -274,7 +274,9 @@ export function WorkerNavigator({
               onPress={() => selectTab(t.id)}
               style={styles.tab}
             >
-              <Text style={[styles.tabLabel, active ? styles.tabLabelActive : null]}>{tr(`nav.${t.id}`)}</Text>
+              <Text numberOfLines={1} style={[styles.tabLabel, active ? styles.tabLabelActive : null]}>
+                {t.id === "available" ? tr("nav.tab.available") : tr(`nav.${t.id}`)}
+              </Text>
             </Pressable>
           );
         })}

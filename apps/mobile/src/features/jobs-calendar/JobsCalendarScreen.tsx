@@ -137,20 +137,21 @@ export function JobsCalendarScreen({
     <ScreenContainer testID="jobs-calendar-screen">
       <ScrollView style={styles.scroll}>
         <View style={styles.stack}>
-          <Card>
-            <Heading>{t("jobs.title")}</Heading>
-            <BodyText>{t("jobs.intro")}</BodyText>
-            {transport && onOpenSearch ? (
-              <View style={styles.topAction}>
-                <Button label={t("jobs.searchByPostal")} onPress={onOpenSearch} variant="secondary" />
-              </View>
-            ) : null}
-            {transport && onOpenOffers ? (
-              <View style={styles.topAction}>
-                <Button label={t("hub.myOffers")} onPress={onOpenOffers} variant="secondary" />
-              </View>
-            ) : null}
-          </Card>
+          {/* Compact top links so the month calendar shows sooner (the screen title is already in the header). */}
+          {transport && (onOpenSearch || onOpenOffers) ? (
+            <View style={styles.quickRow}>
+              {onOpenSearch ? (
+                <Pressable onPress={onOpenSearch} accessibilityRole="button" style={styles.quickLink} testID="hub-quick-search">
+                  <Text style={styles.quickLinkText}>{t("jobs.searchByPostal")}</Text>
+                </Pressable>
+              ) : null}
+              {onOpenOffers ? (
+                <Pressable onPress={onOpenOffers} accessibilityRole="button" style={styles.quickLink} testID="hub-quick-offers">
+                  <Text style={styles.quickLinkText}>{t("hub.myOffersShort")}</Text>
+                </Pressable>
+              ) : null}
+            </View>
+          ) : null}
 
           {state.status === "ready" ? (
             <Card testID="hub-today">
@@ -197,7 +198,12 @@ export function JobsCalendarScreen({
             </View>
           ) : null}
 
-          <View accessibilityLabel={t("hub.filters")} style={styles.chips}>
+          <ScrollView
+            accessibilityLabel={t("hub.filters")}
+            contentContainerStyle={styles.chips}
+            horizontal
+            showsHorizontalScrollIndicator={false}
+          >
             {HUB_LAYERS.map((layer) => {
               const on = shown[layer];
               return (
@@ -214,7 +220,7 @@ export function JobsCalendarScreen({
                 </Pressable>
               );
             })}
-          </View>
+          </ScrollView>
 
           <Card>
             <View style={styles.monthBar}>
@@ -512,7 +518,10 @@ const styles = StyleSheet.create({
   todayItemDetail: { color: colors.muted, fontSize: typography.small },
   todayGo: { alignSelf: "flex-start", marginTop: spacing.xs, paddingVertical: spacing.xs },
   todayGoText: { color: GOLD, fontSize: typography.small, fontWeight: "700" },
-  chips: { flexDirection: "row", flexWrap: "wrap", gap: spacing.sm },
+  chips: { flexDirection: "row", gap: spacing.sm, paddingRight: spacing.sm },
+  quickRow: { flexDirection: "row", flexWrap: "wrap", gap: spacing.sm },
+  quickLink: { borderColor: colors.border, borderRadius: 999, borderWidth: 1, paddingHorizontal: spacing.md, paddingVertical: spacing.sm },
+  quickLinkText: { color: colors.actionTeal, fontSize: 14, fontWeight: "700" },
   chip: {
     alignItems: "center",
     borderColor: GREY,
