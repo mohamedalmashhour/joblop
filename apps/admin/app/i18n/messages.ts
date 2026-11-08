@@ -90,9 +90,9 @@ export const ar: Partial<Messages> = {
   "lang.switchTo": "التبديل إلى {language}",
   "shell.skip": "تخطَّ إلى المحتوى الرئيسي",
   "shell.brandTitle": "الإدارة",
-  "shell.brandSub": "مساحة فريق Joblop",
+  "shell.brandSub": "مساحة عمل فريق Joblop",
   "shell.sessionContext":
-    "منطقة آمنة للموظفين · لا يرى هذه المعلومات إلا موظفو Joblop المسجّلون",
+    "منطقة آمنة للموظفين · يمكن لموظفي Joblop -ممن سجلوا دخولهم فقط- الاطلاع على هذه المعلومات.",
   "shell.brandHomeAria": "الصفحة الرئيسية لإدارة Joblop",
   "shell.navAria": "تنقّل الإدارة",
 
