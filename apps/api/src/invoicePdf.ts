@@ -30,6 +30,8 @@ export type InvoicePdfDetails = Readonly<{
   jobTitle?: string | null;
   serviceDate?: string | null;
   payableMinutes?: number | null;
+  /** Long-term contract: billed on hours worked, no 6-hour minimum. */
+  noMinimumBilling?: boolean;
 }>;
 
 const LINE_LABEL: Record<string, string> = {
@@ -110,8 +112,9 @@ export function renderBilingualSyntheticInvoicePdf(invoice: DurableInvoice, deta
     const isLabour = line.kind === "regular_labour";
     // Labour is billed for at least 6 hours; say so on the invoice when the shift was shorter.
     const workedHours = isLabour && details.payableMinutes ? details.payableMinutes / 60 : null;
-    const hours = workedHours === null ? null : Math.max(workedHours, MINIMUM_BILLABLE_SHIFT_HOURS);
-    const minimumApplied = workedHours !== null && workedHours < MINIMUM_BILLABLE_SHIFT_HOURS;
+    const minimumHours = details.noMinimumBilling ? 0 : MINIMUM_BILLABLE_SHIFT_HOURS;
+    const hours = workedHours === null ? null : Math.max(workedHours, minimumHours);
+    const minimumApplied = workedHours !== null && workedHours < minimumHours;
     page.text(LINE_LABEL[line.kind] ?? line.description, 62, y, 10, "bold", INK);
     if (isLabour && (details.jobTitle || details.serviceDate || minimumApplied)) {
       const subline = [details.jobTitle, details.serviceDate].filter(Boolean).join(" · ");

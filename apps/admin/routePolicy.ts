@@ -31,6 +31,7 @@ export function isProductionAdminRouteAllowed(pathname: string) {
     path === "/invoices" ||
     path === "/payroll" ||
     path === "/hr" ||
+    path === "/employer-plan-orders" ||
     dispatchDetail.test(path) ||
     hrWorker.test(path) ||
     controlRoom.test(path) ||

@@ -5189,6 +5189,13 @@ export type ResolvedRequestPricing = Readonly<{
     distanceWorkerMinor: number;
     distancePlatformMinor: number;
   }>;
+  // Employer fixed plans (only when EMPLOYER_PLANS_ENABLED is on; absent otherwise). The job length the
+  // request was priced under and the plan discount applied (ppm of the contract rate; 0 = none).
+  employerPlan?: Readonly<{
+    jobLength: string;
+    planCode: string | null;
+    discountPpm: number;
+  }>;
 }>;
 
 // Port that derives the immutable worker/platform split from the employer rate (E) and the admin

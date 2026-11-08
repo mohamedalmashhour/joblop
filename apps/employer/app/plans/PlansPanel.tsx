@@ -1,0 +1,407 @@
+"use client";
+
+import { useCallback, useEffect, useState } from "react";
+import {
+  EMPLOYER_PLAN_CATALOG,
+  JOB_LENGTHS,
+  defaultMarginPpmForJobLength,
+  employerPlanMonthlySavingMinor,
+  planBreakEvenHours,
+  plansForTrack,
+  type EmployerPlanCode,
+  type JobLength
+} from "@rwos/shared";
+import { JobLopLogo } from "../JobLopLogo";
+import { LanguageSwitcher } from "../i18n/LanguageSwitcher";
+import { fmtLocale, useLocale, useT, type Translate } from "../i18n/LocaleProvider";
+import type { MessageKey } from "../i18n/messages";
+
+// Employer fixed plans page. Two sections — short-term jobs (3 cards) and long-term contracts
+// (2 cards) — each with its own trial / subscribe / cancel and a savings calculator. The page never
+// shows Joblop's share: only the employer's discount and the monthly price.
+
+type TrackState = Readonly<{
+  track: JobLength;
+  plan: EmployerPlanCode;
+  status: "none" | "active" | "trialing" | "expired";
+  endsAt: string | null;
+  cancelAtPeriodEnd: boolean;
+  trialAvailable: boolean;
+}>;
+
+type Order = Readonly<{
+  id: string;
+  plan: string;
+  track: JobLength | null;
+  priceMinor: number;
+  currency: string;
+  method: string;
+  status: string;
+}>;
+
+type Overview = Readonly<{
+  enabled: boolean;
+  signedIn?: boolean;
+  manager?: boolean;
+  companyRequired?: boolean;
+  cardEnabled?: boolean;
+  tracks?: readonly TrackState[];
+  orders?: readonly Order[];
+}>;
+
+type ETransfer = Readonly<{ email: string; amount: string; reference: string; orderId: string }>;
+
+const GOLD = "#f8b808";
+const INK = "#f4efe4";
+const MUTED = "#b3a894";
+const LINE = "rgba(248, 184, 8, 0.16)";
+
+function money(minor: number, locale: ReturnType<typeof useLocale>): string {
+  return (minor / 100).toLocaleString(fmtLocale(locale), { style: "currency", currency: "CAD", maximumFractionDigits: minor % 100 === 0 ? 0 : 2 });
+}
+
+function day(iso: string, locale: ReturnType<typeof useLocale>): string {
+  return new Date(iso).toLocaleDateString(fmtLocale(locale), { year: "numeric", month: "long", day: "numeric" });
+}
+
+function perkKeys(code: EmployerPlanCode): MessageKey[] {
+  const count: Record<EmployerPlanCode, number> = {
+    pay_per_shift: 1,
+    shift_pro: 2,
+    shift_business: 3,
+    pay_per_contract: 1,
+    contract_plus: 2
+  };
+  return Array.from({ length: count[code] }, (_, i) => `plans.perk.${code}.${i + 1}` as MessageKey);
+}
+
+async function post(url: string, body: unknown): Promise<{ ok: boolean; payload: Record<string, unknown> | null }> {
+  try {
+    const response = await fetch(url, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) });
+    const payload = (await response.json().catch(() => null)) as Record<string, unknown> | null;
+    return { ok: response.ok, payload };
+  } catch {
+    return { ok: false, payload: null };
+  }
+}
+
+export function PlansPanel() {
+  const t = useT();
+  const locale = useLocale();
+  const [overview, setOverview] = useState<Overview | null>(null);
+  const [busy, setBusy] = useState<string | null>(null);
+  const [notice, setNotice] = useState("");
+  const [eTransfer, setETransfer] = useState<ETransfer | null>(null);
+
+  const load = useCallback(async () => {
+    try {
+      const response = await fetch("/api/employer-plan", { cache: "no-store" });
+      setOverview(response.ok ? ((await response.json()) as Overview) : { enabled: false });
+    } catch {
+      setOverview({ enabled: false });
+    }
+  }, []);
+
+  useEffect(() => {
+    void (async () => {
+      // Back from the Stripe TEST checkout: ask the API to verify the payment, then reload.
+      const params = new URLSearchParams(window.location.search);
+      const order = params.get("order");
+      if (params.get("paid") === "success" && order) {
+        const result = await post(`/api/employer-plan/orders/${encodeURIComponent(order)}/complete`, {});
+        setNotice(result.ok ? t("plans.paidOk") : t("plans.paidPending"));
+        window.history.replaceState(null, "", "/plans");
+      }
+      await load();
+    })();
+  }, [load, t]);
+
+  async function act(key: string, url: string, body: unknown, success: (payload: Record<string, unknown> | null) => void) {
+    setBusy(key);
+    setNotice("");
+    const result = await post(url, body);
+    setBusy(null);
+    if (!result.ok) {
+      setNotice(t("plans.error"));
+      return;
+    }
+    success(result.payload);
+    await load();
+  }
+
+  const startTrial = (plan: EmployerPlanCode) =>
+    act(`trial-${plan}`, "/api/employer-plan/trial", { plan }, () => setNotice(t("plans.trialStarted")));
+
+  const subscribe = (plan: EmployerPlanCode, method: "e_transfer" | "stripe") =>
+    act(`sub-${plan}-${method}`, "/api/employer-plan/subscribe", { plan, method }, (payload) => {
+      if (method === "stripe") {
+        const url = typeof payload?.checkoutUrl === "string" ? payload.checkoutUrl : null;
+        if (url) window.location.assign(url);
+        return;
+      }
+      const details = payload?.eTransfer as Record<string, unknown> | undefined;
+      const order = payload?.order as Record<string, unknown> | undefined;
+      if (details && order && typeof order.id === "string") {
+        setETransfer({
+          email: String(details.email ?? ""),
+          amount: String(details.amount ?? ""),
+          reference: String(details.reference ?? order.id),
+          orderId: order.id
+        });
+      }
+    });
+
+  const claimSent = (orderId: string) =>
+    act(`claim-${orderId}`, `/api/employer-plan/orders/${encodeURIComponent(orderId)}/claim-etransfer`, {}, () => {
+      setETransfer(null);
+      setNotice(t("plans.etransferThanks"));
+    });
+
+  const cancel = (track: JobLength) =>
+    act(`cancel-${track}`, "/api/employer-plan/cancel", { track }, () => setNotice(t("plans.canceled")));
+
+  return (
+    <main className="jp-page">
+      <style>{css}</style>
+      <header className="jp-header">
+        <a href="/" aria-label="Joblop home"><JobLopLogo height={28} /></a>
+        <nav aria-label="Primary navigation" className="jp-nav">
+          <a href="/pricing" className="jp-link">{t("plans.back")}</a>
+          <a href="/signin" className="jp-link">{t("hub.signinButton")}</a>
+          <LanguageSwitcher />
+        </nav>
+      </header>
+
+      <section className="jp-hero">
+        <p className="jp-eyebrow">{t("plans.eyebrow")}</p>
+        <h1 className="jp-title">{t("plans.title")}</h1>
+        <p className="jp-lede">{t("plans.lede")}</p>
+        <p className="jp-strong">{t("plans.noHidden")}</p>
+      </section>
+
+      {overview === null ? (
+        <p className="jp-section jp-muted">{t("common.loading")}</p>
+      ) : !overview.enabled ? (
+        <section className="jp-section" aria-labelledby="soon-title">
+          <div className="jp-card jp-soon">
+            <h2 id="soon-title" className="jp-h2">{t("plans.comingSoonTitle")}</h2>
+            <p className="jp-muted">{t("plans.comingSoonText")}</p>
+          </div>
+        </section>
+      ) : (
+        <>
+          {notice ? <p className="jp-notice" role="status">{notice}</p> : null}
+          {eTransfer ? (
+            <section className="jp-section" aria-labelledby="etransfer-title">
+              <div className="jp-card">
+                <h2 id="etransfer-title" className="jp-h3">{t("plans.etransferTitle")}</h2>
+                <p className="jp-muted">{t("plans.etransferText", { amount: eTransfer.amount, email: eTransfer.email, reference: eTransfer.reference })}</p>
+                <button type="button" className="jp-primary" disabled={busy !== null} onClick={() => void claimSent(eTransfer.orderId)}>
+                  {t("plans.etransferSent")}
+                </button>
+              </div>
+            </section>
+          ) : null}
+          {overview.signedIn === false ? (
+            <p className="jp-section-tight"><a href="/signin" className="jp-primary">{t("plans.signinToStart")}</a></p>
+          ) : overview.companyRequired ? (
+            <p className="jp-section-tight jp-muted">{t("plans.companyNeeded")}</p>
+          ) : overview.manager === false ? (
+            <p className="jp-section-tight jp-muted">{t("plans.managerNeeded")}</p>
+          ) : null}
+          {JOB_LENGTHS.map((track) => (
+            <TrackSection
+              key={track}
+              track={track}
+              t={t}
+              locale={locale}
+              overview={overview}
+              busy={busy}
+              onTrial={startTrial}
+              onSubscribe={subscribe}
+              onClaim={claimSent}
+              onCancel={cancel}
+            />
+          ))}
+          <p className="jp-section-tight jp-muted">{t("plans.taxNote")} {t("plans.noHidden")}</p>
+        </>
+      )}
+    </main>
+  );
+}
+
+function TrackSection({
+  track,
+  t,
+  locale,
+  overview,
+  busy,
+  onTrial,
+  onSubscribe,
+  onClaim,
+  onCancel
+}: Readonly<{
+  track: JobLength;
+  t: Translate;
+  locale: ReturnType<typeof useLocale>;
+  overview: Overview;
+  busy: string | null;
+  onTrial: (plan: EmployerPlanCode) => void;
+  onSubscribe: (plan: EmployerPlanCode, method: "e_transfer" | "stripe") => void;
+  onClaim: (orderId: string) => void;
+  onCancel: (track: JobLength) => void;
+}>) {
+  const state = overview.tracks?.find((item) => item.track === track) ?? null;
+  const canAct = overview.signedIn === true && overview.manager === true && state !== null;
+  const paidInForce = state !== null && (state.status === "active" || state.status === "trialing");
+  const plans = plansForTrack(track);
+  const titleId = `track-${track}`;
+
+  return (
+    <section className="jp-section" aria-labelledby={titleId}>
+      <h2 id={titleId} className="jp-h2">{t(`plans.track.${track}` as MessageKey)}</h2>
+      <p className="jp-muted">{t(`plans.trackText.${track}` as MessageKey)}</p>
+      <div className="jp-grid">
+        {plans.map((plan) => {
+          const isCurrent = state?.plan === plan.code;
+          const paid = plan.monthlyPriceMinor > 0;
+          const openOrder = overview.orders?.find((order) => order.plan === plan.code && (order.status === "pending_payment" || order.status === "payment_claimed"));
+          return (
+            <article key={plan.code} className={`jp-card${isCurrent ? " jp-current" : ""}`}>
+              {isCurrent && canAct ? <p className="jp-badge">{t("plans.current")}</p> : null}
+              <h3 className="jp-h3">{t(`plans.name.${plan.code}` as MessageKey)}</h3>
+              <p className="jp-price">{paid ? t("plans.perMonth", { price: money(plan.monthlyPriceMinor, locale) }) : t("plans.noMonthly")}</p>
+              <ul className="jp-list">
+                {plan.employerDiscountPpm > 0 ? <li className="jp-strong">{t("plans.discount", { percent: plan.employerDiscountPpm / 10_000 })}</li> : null}
+                {plan.urgentSurchargeFactorPpm < 1_000_000 ? <li>{t("plans.urgentHalf")}</li> : null}
+                {perkKeys(plan.code).map((key) => (
+                  <li key={key}>{t(key)}</li>
+                ))}
+              </ul>
+              {isCurrent && paidInForce && state?.endsAt ? (
+                <p className="jp-muted">
+                  {state.cancelAtPeriodEnd
+                    ? t("plans.endsNoRenew", { date: day(state.endsAt, locale) })
+                    : state.status === "trialing"
+                      ? t("plans.trialEnds", { date: day(state.endsAt, locale) })
+                      : t("plans.paidUntil", { date: day(state.endsAt, locale) })}
+                </p>
+              ) : null}
+              {canAct && paid ? (
+                <div className="jp-actions">
+                  {!paidInForce && state?.trialAvailable ? (
+                    <button type="button" className="jp-primary" disabled={busy !== null} onClick={() => onTrial(plan.code)}>
+                      {t("plans.trial")}
+                    </button>
+                  ) : null}
+                  {!paidInForce && !state?.trialAvailable && state?.status !== "none" ? <p className="jp-muted">{t("plans.trialUsed")}</p> : null}
+                  {openOrder?.status === "payment_claimed" ? (
+                    <p className="jp-muted">{t("plans.awaitingConfirm")}</p>
+                  ) : openOrder?.method === "e_transfer" ? (
+                    <button type="button" className="jp-ghost" disabled={busy !== null} onClick={() => onClaim(openOrder.id)}>
+                      {t("plans.etransferSent")}
+                    </button>
+                  ) : (!paidInForce || state?.plan !== plan.code || state.cancelAtPeriodEnd || state.status === "trialing") ? (
+                    <>
+                      <button type="button" className="jp-ghost" disabled={busy !== null} onClick={() => onSubscribe(plan.code, "e_transfer")}>
+                        {t("plans.subscribeEtransfer")}
+                      </button>
+                      {overview.cardEnabled ? (
+                        <button type="button" className="jp-ghost" disabled={busy !== null} onClick={() => onSubscribe(plan.code, "stripe")}>
+                          {t("plans.subscribeCard")}
+                        </button>
+                      ) : null}
+                    </>
+                  ) : null}
+                  {isCurrent && paidInForce && !state?.cancelAtPeriodEnd ? (
+                    <button type="button" className="jp-danger" disabled={busy !== null} onClick={() => onCancel(track)}>
+                      {t("plans.cancel")}
+                    </button>
+                  ) : null}
+                </div>
+              ) : null}
+            </article>
+          );
+        })}
+      </div>
+      <SavingsCalculator track={track} t={t} locale={locale} />
+    </section>
+  );
+}
+
+function SavingsCalculator({ track, t, locale }: Readonly<{ track: JobLength; t: Translate; locale: ReturnType<typeof useLocale> }>) {
+  const [rate, setRate] = useState("30");
+  const [hours, setHours] = useState(track === "long_term" ? "160" : "80");
+  const rateMinor = Math.max(0, Math.round(Number(rate) * 100) || 0);
+  const hoursPerMonth = Math.max(0, Number(hours) || 0);
+  // Uses the default share for the track only to apply the same clamp the invoice uses; the share
+  // itself is never shown.
+  const margin = defaultMarginPpmForJobLength(track);
+  const paidPlans = plansForTrack(track).filter((plan) => plan.monthlyPriceMinor > 0);
+  const idRate = `calc-rate-${track}`;
+  const idHours = `calc-hours-${track}`;
+
+  return (
+    <div className="jp-card jp-calc">
+      <h3 className="jp-h3">{t("plans.calcTitle")}</h3>
+      <div className="jp-calc-fields">
+        <label htmlFor={idRate} className="jp-label">
+          {t("plans.calcRate")}
+          <input id={idRate} className="jp-input" inputMode="decimal" type="number" min="0" step="0.5" value={rate} onChange={(event) => setRate(event.target.value)} />
+        </label>
+        <label htmlFor={idHours} className="jp-label">
+          {t("plans.calcHours")}
+          <input id={idHours} className="jp-input" inputMode="numeric" type="number" min="0" step="1" value={hours} onChange={(event) => setHours(event.target.value)} />
+        </label>
+      </div>
+      <ul className="jp-list" aria-live="polite">
+        {paidPlans.map((plan) => {
+          const name = t(`plans.name.${plan.code}` as MessageKey);
+          const saving = employerPlanMonthlySavingMinor({ plan: plan.code, employerHourlyRateMinor: rateMinor, hoursPerMonth, marginPpm: margin });
+          const breakEven = planBreakEvenHours(plan.code, rateMinor, margin);
+          return (
+            <li key={plan.code}>
+              {t("plans.calcSaving", { plan: name, saving: money(saving, locale), price: money(EMPLOYER_PLAN_CATALOG[plan.code].monthlyPriceMinor, locale) })}
+              {breakEven ? <> {t("plans.calcPaysFor", { plan: name, hours: breakEven })}</> : null}
+            </li>
+          );
+        })}
+      </ul>
+    </div>
+  );
+}
+
+const css = `
+  .jp-page { background: #000000; color: ${INK}; font-family: Inter, system-ui, sans-serif; min-height: 100vh; }
+  .jp-header { align-items: center; border-bottom: 1px solid ${LINE}; display: flex; flex-wrap: wrap; gap: 16px; justify-content: space-between; padding: 18px clamp(16px, 4vw, 40px); }
+  .jp-nav { align-items: center; display: flex; flex-wrap: wrap; gap: 14px; }
+  .jp-link { color: ${INK}; font-size: 14px; font-weight: 700; text-decoration: none; }
+  .jp-hero { background: #1b160e; display: grid; gap: 12px; padding: clamp(32px, 6vw, 64px) clamp(16px, 4vw, 40px); }
+  .jp-eyebrow { color: ${GOLD}; font-size: 13px; font-weight: 900; margin: 0; text-transform: uppercase; }
+  .jp-title { font-size: clamp(32px, 5vw, 54px); line-height: 1.05; margin: 0; max-width: 900px; }
+  .jp-lede { color: #f0e8d8; font-size: 18px; line-height: 1.6; margin: 0; max-width: 760px; }
+  .jp-section { padding: 36px clamp(16px, 4vw, 40px) 8px; }
+  .jp-section-tight { padding: 12px clamp(16px, 4vw, 40px); }
+  .jp-h2 { font-size: clamp(24px, 3.5vw, 36px); margin: 0 0 6px; }
+  .jp-h3 { font-size: 20px; margin: 0; }
+  .jp-muted { color: ${MUTED}; line-height: 1.55; margin: 6px 0 0; }
+  .jp-strong { font-weight: 800; }
+  .jp-notice { background: #0c0c0c; border: 1px solid ${GOLD}; border-radius: 8px; font-weight: 800; margin: 18px clamp(16px, 4vw, 40px) 0; padding: 12px 14px; }
+  .jp-grid { display: grid; gap: 14px; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); margin-top: 18px; }
+  .jp-card { background: #0c0c0c; border: 1px solid ${LINE}; border-radius: 12px; display: flex; flex-direction: column; gap: 10px; padding: 20px; }
+  .jp-current { border-color: ${GOLD}; box-shadow: 0 0 0 1px ${GOLD} inset; }
+  .jp-soon { max-width: 760px; }
+  .jp-badge { align-self: flex-start; background: ${GOLD}; border-radius: 999px; color: #000; font-size: 12px; font-weight: 900; margin: 0; padding: 3px 10px; text-transform: uppercase; }
+  .jp-price { color: ${GOLD}; font-size: 22px; font-weight: 900; margin: 0; }
+  .jp-list { display: grid; gap: 6px; line-height: 1.45; margin: 0; padding-inline-start: 20px; }
+  .jp-actions { display: grid; gap: 8px; margin-top: auto; padding-top: 8px; }
+  .jp-primary, .jp-ghost, .jp-danger { border-radius: 10px; cursor: pointer; display: inline-block; font: inherit; font-size: 15px; font-weight: 800; min-height: 44px; padding: 10px 16px; text-align: center; text-decoration: none; }
+  .jp-primary { background: ${GOLD}; border: 0; color: #000; }
+  .jp-ghost { background: transparent; border: 1px solid rgba(248, 184, 8, 0.34); color: ${INK}; }
+  .jp-danger { background: transparent; border: 1px solid #e5a4a4; color: #e5a4a4; }
+  .jp-primary:disabled, .jp-ghost:disabled, .jp-danger:disabled { cursor: wait; opacity: 0.6; }
+  .jp-calc { margin-top: 14px; }
+  .jp-calc-fields { display: grid; gap: 12px; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); }
+  .jp-label { display: grid; font-size: 14px; font-weight: 800; gap: 6px; }
+  .jp-input { background: #000; border: 1px solid ${LINE}; border-radius: 8px; color: ${INK}; font: inherit; min-height: 44px; padding: 0 12px; }
+`;

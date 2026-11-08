@@ -25,6 +25,9 @@ export default function PricingPage() {
           <a href="/pricing" style={styles.navLink} aria-current="page">
             Pricing
           </a>
+          <a href="/plans" style={styles.navLink}>
+            See plans
+          </a>
           <a href="/contact" style={styles.navLink}>
             Contact
           </a>
@@ -59,6 +62,9 @@ export default function PricingPage() {
           </a>
           <a href="#estimate" style={styles.secondaryButtonLarge}>
             Get an estimate
+          </a>
+          <a href="/plans" style={styles.secondaryButtonLarge}>
+            See plans
           </a>
         </div>
       </section>

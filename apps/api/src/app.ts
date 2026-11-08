@@ -285,6 +285,8 @@ import { createSmsSender, type SmsSender } from "./mailer/smsSender";
 import { registerInstantContactRoutes } from "./instantContactRoutes";
 import { activeBonusByJob, coverageBonusSuggestion, latestBonusByJob, registerJobBonusRoutes } from "./jobBonusRoutes";
 import { registerCalendarHubRoutes } from "./calendarHubRoutes";
+import { registerEmployerPlanRoutes } from "./employerPlanRoutes";
+import { isEmployerPlansEnabled } from "./employerPlanRepository";
 import { createMarketingContactSync, type MarketingContactSync } from "./mailer/brevoContacts";
 import { runShiftReminderSweep } from "./shiftReminderSweep";
 import { createPushSender, isExpoPushToken, isPushPlatform, noopPushSender, type PushFetch } from "./notifications/pushSender";
@@ -3320,6 +3322,13 @@ export function buildApi(options: BuildApiOptions = {}) {
     const worksiteDistanceKm = readOptionalNumber(body, "worksiteDistanceKm");
     if (worksiteDistanceKm != null && Number.isFinite(worksiteDistanceKm) && worksiteDistanceKm >= 0) {
       await prisma!.jobRequest.update({ where: { id: jobRequest.id }, data: { worksiteDistanceKm } });
+    }
+
+    // Employer-chosen job length (short_term | long_term). Only recorded while EMPLOYER_PLANS_ENABLED
+    // is on; otherwise every job keeps the column default (short_term) and today's pricing.
+    const jobLength = readOptionalString(body, "jobLength");
+    if (isEmployerPlansEnabled() && jobLength === "long_term") {
+      await prisma!.jobRequest.update({ where: { id: jobRequest.id }, data: { jobLength } });
     }
 
     return reply.code(201).send({ jobRequest: serializeJobRequest(jobRequest) });
@@ -9955,6 +9964,28 @@ export function buildApi(options: BuildApiOptions = {}) {
     if (!ok) return reply.code(404).send({ error: "RWOS_ORDER_NOT_FOUND" });
     return reply.code(200).send({ canceled: true });
   });
+
+  // EMPLOYER FIXED PLANS (short-term: pay_per_shift / shift_pro / shift_business; long-term:
+  // pay_per_contract / contract_plus). Mirrors Worker Pro above. Every route is 404 unless
+  // EMPLOYER_PLANS_ENABLED === "enabled"; card payment is Stripe TEST mode only. Employer = active
+  // owner/administrator of the organization (same rule as the job-bonus routes).
+  if (prisma) {
+    registerEmployerPlanRoutes(app, {
+      prisma,
+      fallbackOrigin: runtimeConfig.internalApiOrigin,
+      requireStaff: requireHrAuthority,
+      requireUser: async (request, reply) => {
+        const session = await authService.validateSession(readBearerToken(request.headers.authorization));
+        if (!session.authenticated || !session.user) {
+          reply.code(401).send({ error: "RWOS_EMPLOYER_PLAN_DENIED", message: "Authentication is required." });
+          return null;
+        }
+        return session.user.id;
+      },
+      isOrganizationManager: async (userId, organizationId) =>
+        (await requireActiveOrgMembership(userId, organizationId, ["ORGANIZATION_OWNER", "ORGANIZATION_ADMINISTRATOR"])) !== null
+    });
+  }
 
   // Worker's own CV attachments — workerRef is the user id from the session, never client-supplied.
   app.post("/worker/cv-assets", async (request, reply) => {
