@@ -892,3 +892,77 @@ describe("worker classification (setup) transport", () => {
     expect((await staleT.electClassification({ classification: "employee", agreementVersion: "emp-v1", agreementAccepted: true })).status).toBe("stale");
   });
 });
+
+describe("open jobs calendar transport", () => {
+  const origin = "https://api.example.com";
+  const jobId = "77777777-7777-4777-8777-777777777777";
+  function withSession() {
+    const v = vault();
+    v.stored = "session-token-jjjjjjjjjjjj";
+    return v;
+  }
+  const openJob = {
+    jobRequestId: jobId,
+    role: "Line cook",
+    areaLabel: "Plateau, Montréal",
+    startAt: "2026-11-10T14:00:00.000Z",
+    endAt: "2026-11-10T22:00:00.000Z",
+    urgency: "urgent",
+    placesLeft: 2,
+    workerRateMinor: 2250
+  };
+
+  it("lists open jobs for a window with the Bearer token", async () => {
+    const fetchMock = vi.fn(async () => response(200, { jobs: [openJob, { ...openJob, jobRequestId: "x2", workerRateMinor: null }, { bad: true }] }));
+    const transport = createMobileSessionTransport({ apiOrigin: origin, vault: withSession(), fetch: fetchMock });
+    const result = await transport.listOpenJobs({ from: "2026-11-01T00:00:00.000Z", to: "2026-12-01T00:00:00.000Z" });
+    expect(result.status).toBe("ready");
+    if (result.status === "ready") {
+      expect(result.jobs).toHaveLength(2);
+      expect(result.jobs[0]).toEqual(openJob);
+      expect(result.jobs[1]?.workerRateMinor).toBeNull();
+    }
+    expect(fetchMock).toHaveBeenCalledWith(
+      `${origin}/marketplace/open-jobs?from=${encodeURIComponent("2026-11-01T00:00:00.000Z")}&to=${encodeURIComponent("2026-12-01T00:00:00.000Z")}`,
+      expect.objectContaining({ method: "GET", headers: expect.objectContaining({ authorization: "Bearer session-token-jjjjjjjjjjjj" }) })
+    );
+  });
+
+  it("maps signed-out, 401, network failure and server errors when listing", async () => {
+    const window = { from: "2026-11-01T00:00:00.000Z", to: "2026-12-01T00:00:00.000Z" };
+    const noFetch = vi.fn();
+    expect((await createMobileSessionTransport({ apiOrigin: origin, vault: vault(), fetch: noFetch }).listOpenJobs(window)).status).toBe("denied");
+    expect(noFetch).not.toHaveBeenCalled();
+    const make = (fetchImpl: () => Promise<Response>) => createMobileSessionTransport({ apiOrigin: origin, vault: withSession(), fetch: vi.fn(fetchImpl) });
+    expect((await make(async () => response(401, {})).listOpenJobs(window)).status).toBe("denied");
+    expect((await make(async () => { throw new TypeError("Failed to fetch"); }).listOpenJobs(window)).status).toBe("offline");
+    expect((await make(async () => response(500, {})).listOpenJobs(window)).status).toBe("error");
+    expect((await make(async () => response(200, { nope: [] })).listOpenJobs(window)).status).toBe("error");
+  });
+
+  it("claims a job: 201 assigned, posted to the claim endpoint", async () => {
+    const fetchMock = vi.fn(async () => response(201, { status: "assigned" }));
+    const transport = createMobileSessionTransport({ apiOrigin: origin, vault: withSession(), fetch: fetchMock });
+    expect(await transport.claimOpenJob(jobId)).toEqual({ status: "assigned" });
+    expect(fetchMock).toHaveBeenCalledWith(
+      `${origin}/marketplace/jobs/${jobId}/claim`,
+      expect.objectContaining({ method: "POST", headers: expect.objectContaining({ authorization: "Bearer session-token-jjjjjjjjjjjj" }) })
+    );
+  });
+
+  it("maps claim outcomes: full, not_open, ineligible with reasons, denied, offline, error", async () => {
+    const make = (fetchImpl: () => Promise<Response>) => createMobileSessionTransport({ apiOrigin: origin, vault: withSession(), fetch: vi.fn(fetchImpl) });
+    expect(await make(async () => response(409, { status: "full" })).claimOpenJob(jobId)).toEqual({ status: "full" });
+    expect(await make(async () => response(409, { status: "not_open" })).claimOpenJob(jobId)).toEqual({ status: "not_open" });
+    expect(await make(async () => response(422, { status: "ineligible", reasons: ["pay_channel_election_required", 7] })).claimOpenJob(jobId)).toEqual({
+      status: "ineligible",
+      reasons: ["pay_channel_election_required"]
+    });
+    expect(await make(async () => response(401, {})).claimOpenJob(jobId)).toEqual({ status: "denied" });
+    expect(await make(async () => { throw new TypeError("Network request failed"); }).claimOpenJob(jobId)).toEqual({ status: "offline" });
+    expect(await make(async () => response(500, {})).claimOpenJob(jobId)).toEqual({ status: "error" });
+    const noFetch = vi.fn();
+    expect(await createMobileSessionTransport({ apiOrigin: origin, vault: vault(), fetch: noFetch }).claimOpenJob(jobId)).toEqual({ status: "denied" });
+    expect(noFetch).not.toHaveBeenCalled();
+  });
+});

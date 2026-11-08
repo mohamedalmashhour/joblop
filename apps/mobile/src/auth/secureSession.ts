@@ -484,6 +484,65 @@ export function createMobileSessionTransport(options: {
         return { status: "error" };
       }
     },
+    // Open Joblop jobs in a time window (GET /marketplace/open-jobs?from&to) for the jobs calendar.
+    // Real server data only. A network failure is "offline" so the screen can say so plainly.
+    async listOpenJobs(window: Readonly<{ from: string; to: string }>): Promise<OpenJobsResult> {
+      const token = await options.vault.read();
+      if (!token) return { status: "denied" };
+      const query = `?from=${encodeURIComponent(window.from)}&to=${encodeURIComponent(window.to)}`;
+      let response: Response;
+      try {
+        response = await request(`${origin}/marketplace/open-jobs${query}`, {
+          method: "GET",
+          headers: { accept: "application/json", authorization: `Bearer ${token}` },
+          cache: "no-store"
+        });
+      } catch {
+        return { status: "offline" };
+      }
+      if (response.status === 401 || response.status === 403) return { status: "denied" };
+      if (!response.ok) return { status: "error" };
+      try {
+        const payload = (await response.json()) as { jobs?: unknown };
+        if (!Array.isArray(payload.jobs)) return { status: "error" };
+        const jobs = payload.jobs.map(parseOpenJob).filter((v): v is OpenJob => v !== null);
+        return { status: "ready", jobs };
+      } catch {
+        return { status: "error" };
+      }
+    },
+    // Accept (claim) an open job (POST /marketplace/jobs/:id/claim). 201 → assigned; 409 → full or
+    // no longer open; 422 → the worker is not eligible yet (reasons say what setup is missing).
+    async claimOpenJob(jobRequestId: string): Promise<ClaimOpenJobResult> {
+      const token = await options.vault.read();
+      if (!token) return { status: "denied" };
+      if (!isOperationalReference(jobRequestId)) return { status: "error" };
+      let response: Response;
+      try {
+        response = await request(`${origin}/marketplace/jobs/${encodeURIComponent(jobRequestId)}/claim`, {
+          method: "POST",
+          headers: { accept: "application/json", "content-type": "application/json", authorization: `Bearer ${token}` },
+          body: JSON.stringify({}),
+          cache: "no-store"
+        });
+      } catch {
+        return { status: "offline" };
+      }
+      if (response.status === 401 || response.status === 403) return { status: "denied" };
+      let payload: { status?: unknown; reasons?: unknown } = {};
+      try {
+        payload = ((await response.json()) ?? {}) as typeof payload;
+      } catch {
+        payload = {};
+      }
+      if (response.ok) return { status: "assigned" };
+      if (response.status === 409) return { status: payload.status === "full" ? "full" : "not_open" };
+      if (response.status === 422) {
+        const reasons = Array.isArray(payload.reasons) ? payload.reasons.filter((r): r is string => typeof r === "string") : [];
+        return { status: "ineligible", reasons };
+      }
+      return { status: "error" };
+    },
     // The worker's own applications ("My interests") from GET /marketplace/my-interests — each with a
     // privacy-safe job summary and the linked governed-offer status when one exists. Read-only; it
     // reflects intent the worker already expressed, never creating an offer or assignment.
@@ -751,6 +810,49 @@ export function createMobileSessionTransport(options: {
 }
 
 export type MobileSessionTransport = ReturnType<typeof createMobileSessionTransport>;
+
+// One open job from GET /marketplace/open-jobs. Rates are cents per hour; null when not shared.
+export type OpenJob = Readonly<{
+  jobRequestId: string;
+  role: string;
+  areaLabel: string;
+  startAt: string;
+  endAt: string;
+  urgency: string;
+  placesLeft: number;
+  workerRateMinor: number | null;
+}>;
+
+export type OpenJobsResult =
+  | Readonly<{ status: "ready"; jobs: readonly OpenJob[] }>
+  | Readonly<{ status: "denied" | "offline" | "error" }>;
+
+export type ClaimOpenJobResult =
+  | Readonly<{ status: "assigned" | "full" | "not_open" | "denied" | "offline" | "error" }>
+  | Readonly<{ status: "ineligible"; reasons: readonly string[] }>;
+
+function parseOpenJob(input: unknown): OpenJob | null {
+  if (!input || typeof input !== "object") return null;
+  const v = input as Record<string, unknown>;
+  const str = (key: string) => (typeof v[key] === "string" ? (v[key] as string) : null);
+  const jobRequestId = str("jobRequestId");
+  const startAt = str("startAt");
+  const endAt = str("endAt");
+  if (!jobRequestId || !startAt || !endAt) return null;
+  if (!Number.isFinite(Date.parse(startAt)) || !Number.isFinite(Date.parse(endAt))) return null;
+  const placesLeft = typeof v.placesLeft === "number" && Number.isFinite(v.placesLeft) ? Math.max(0, Math.floor(v.placesLeft)) : 0;
+  const rate = v.workerRateMinor;
+  return {
+    jobRequestId,
+    role: str("role") ?? "",
+    areaLabel: str("areaLabel") ?? "",
+    startAt,
+    endAt,
+    urgency: str("urgency") ?? "standard",
+    placesLeft,
+    workerRateMinor: typeof rate === "number" && Number.isFinite(rate) && rate >= 0 ? rate : null
+  };
+}
 
 export function tryCreateMobileSessionTransport(options: {
   apiOrigin: string | undefined;
