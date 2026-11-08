@@ -927,6 +927,30 @@ export function createMobileSessionTransport(options: {
       const id = (result.payload as { id?: unknown } | null)?.id;
       return typeof id === "string" && id.length > 0 ? { status: "ready", id } : { status: "error" };
     },
+    // PUBLIC job board (GET /public/jobs) — no sign-in, no token. Area-level, privacy-safe Joblop
+    // jobs for the signed-out first screen. A network failure is "offline".
+    async listPublicJobs(params: Readonly<{ q?: string; limit?: number }> = {}): Promise<PublicJobsResult> {
+      const result = await publicGet("/public/jobs", params);
+      if (result.status !== "ok") return result;
+      const payload = (result.payload ?? {}) as { jobs?: unknown };
+      if (!Array.isArray(payload.jobs)) return { status: "error" };
+      const jobs = payload.jobs.map(parsePublicJob).filter((v): v is PublicJob => v !== null);
+      return { status: "ready", jobs };
+    },
+    // PUBLIC partner job leads (GET /public/jobscanner/leads) — no sign-in, no token. Stored leads
+    // only (apply on the source site).
+    async listPublicLeads(params: Readonly<{ q?: string; limit?: number }> = {}): Promise<PublicLeadsResult> {
+      const result = await publicGet("/public/jobscanner/leads", params);
+      if (result.status !== "ok") return result;
+      const payload = (result.payload ?? {}) as { leads?: unknown; total?: unknown };
+      if (!Array.isArray(payload.leads)) return { status: "error" };
+      const leads = payload.leads.map(parsePublicLead).filter((v): v is PublicLead => v !== null);
+      const total =
+        typeof payload.total === "number" && Number.isFinite(payload.total) && payload.total >= leads.length
+          ? Math.floor(payload.total)
+          : leads.length;
+      return { status: "ready", leads, total };
+    },
     // One conversation with its messages (GET /contact/worker/conversations/:id). Marks it read.
     async getContactConversation(id: string): Promise<ContactThreadResult> {
       if (!isOperationalReference(id)) return { status: "error" };
@@ -959,6 +983,35 @@ export function createMobileSessionTransport(options: {
       return result.status === "ok" ? { status: "ready" } : result;
     }
   };
+
+  // Shared token-free GET for the public routes. Never sends the session token.
+  async function publicGet(
+    path: string,
+    params: Readonly<{ q?: string; limit?: number }>
+  ): Promise<Readonly<{ status: "ok"; payload: unknown }> | Readonly<{ status: "offline" | "error" }>> {
+    const search: string[] = [];
+    const q = (params.q ?? "").trim().slice(0, 80);
+    if (q) search.push(`q=${encodeURIComponent(q)}`);
+    if (typeof params.limit === "number" && Number.isFinite(params.limit) && params.limit > 0) {
+      search.push(`limit=${Math.floor(params.limit)}`);
+    }
+    let response: Response;
+    try {
+      response = await request(`${origin}${path}${search.length ? `?${search.join("&")}` : ""}`, {
+        method: "GET",
+        headers: { accept: "application/json" },
+        cache: "no-store"
+      });
+    } catch {
+      return { status: "offline" };
+    }
+    if (!response.ok) return { status: "error" };
+    try {
+      return { status: "ok", payload: await response.json() };
+    } catch {
+      return { status: "error" };
+    }
+  }
 
   // Shared Bearer call for the contact routes. A network exception is "offline"; 401/403 "denied".
   async function contactCall(
@@ -1073,6 +1126,87 @@ function parseContactMessage(input: unknown): ContactMessage | null {
   return { id, authorKind: authorKind as ContactAuthor, body, createdAt: typeof v.createdAt === "string" ? v.createdAt : "" };
 }
 
+// One Joblop job from the PUBLIC board (GET /public/jobs). Area-level only; urgency is the
+// job's urgency ("normal" | "urgent" | "immediate").
+export type PublicJob = Readonly<{
+  jobCode: string;
+  role: string;
+  city: string | null;
+  province: string | null;
+  areaLabel: string;
+  openings: number;
+  startAt: string;
+  urgency: string;
+}>;
+
+// One partner job lead from GET /public/jobscanner/leads. Salaries are integer cents; null when unknown.
+export type PublicLead = Readonly<{
+  title: string;
+  employer: string;
+  areaLabel: string;
+  salaryMinMinor: number | null;
+  salaryMaxMinor: number | null;
+  salaryPeriod: string | null;
+  category: string | null;
+  postedAt: string | null;
+  url: string | null;
+  source: string;
+}>;
+
+export type PublicJobsResult =
+  | Readonly<{ status: "ready"; jobs: readonly PublicJob[] }>
+  | Readonly<{ status: "offline" | "error" }>;
+
+export type PublicLeadsResult =
+  | Readonly<{ status: "ready"; leads: readonly PublicLead[]; total: number }>
+  | Readonly<{ status: "offline" | "error" }>;
+
+function parsePublicJob(input: unknown): PublicJob | null {
+  if (!input || typeof input !== "object") return null;
+  const v = input as Record<string, unknown>;
+  const s = (key: string) => (typeof v[key] === "string" && (v[key] as string).trim() ? (v[key] as string) : null);
+  const jobCode = s("jobCode");
+  const role = s("role");
+  const startAt = s("startAt");
+  if (!jobCode || !role || !startAt || !Number.isFinite(Date.parse(startAt))) return null;
+  const openings = typeof v.openings === "number" && Number.isFinite(v.openings) ? Math.max(0, Math.floor(v.openings)) : 0;
+  return {
+    jobCode,
+    role,
+    city: s("city"),
+    province: s("province"),
+    areaLabel: s("areaLabel") ?? "Canada",
+    openings,
+    startAt,
+    urgency: s("urgency") ?? "normal"
+  };
+}
+
+function parsePublicLead(input: unknown): PublicLead | null {
+  if (!input || typeof input !== "object") return null;
+  const v = input as Record<string, unknown>;
+  const s = (key: string) => (typeof v[key] === "string" && (v[key] as string).trim() ? (v[key] as string) : null);
+  const cents = (key: string) => {
+    const n = v[key];
+    return typeof n === "number" && Number.isFinite(n) && n > 0 ? Math.round(n) : null;
+  };
+  const title = s("title");
+  if (!title) return null;
+  const url = s("url");
+  return {
+    title,
+    employer: s("employer") ?? "",
+    areaLabel: s("areaLabel") ?? "Canada",
+    salaryMinMinor: cents("salaryMinMinor"),
+    salaryMaxMinor: cents("salaryMaxMinor"),
+    salaryPeriod: s("salaryPeriod"),
+    category: s("category"),
+    postedAt: s("postedAt"),
+    url: url && /^https:\/\//i.test(url) ? url : null,
+    source: s("source") ?? ""
+  };
+}
+
 // One open job from GET /marketplace/open-jobs. Rates are cents per hour; null when not shared.
 export type OpenJob = Readonly<{
   jobRequestId: string;
@@ -1115,7 +1249,7 @@ function parseOpenJob(input: unknown): OpenJob | null {
     areaLabel: str("areaLabel") ?? "",
     startAt,
     endAt,
-    urgency: str("urgency") ?? "standard",
+    urgency: str("urgency") ?? "normal",
     placesLeft,
     workerRateMinor: typeof rate === "number" && Number.isFinite(rate) && rate >= 0 ? rate : null,
     ...(bonus ? { bonus } : {})

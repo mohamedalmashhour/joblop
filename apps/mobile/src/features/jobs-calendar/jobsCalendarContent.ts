@@ -88,8 +88,9 @@ export function formatMoney(amountMinor: number, locale: string): string {
   }
 }
 
+// The API sends "normal", "urgent" or "immediate"; only the last two are urgent.
 export function isUrgent(job: OpenJob): boolean {
-  return job.urgency !== "standard";
+  return job.urgency === "urgent" || job.urgency === "immediate";
 }
 
 /** "N places left" with a singular form. Templates use {n}. */

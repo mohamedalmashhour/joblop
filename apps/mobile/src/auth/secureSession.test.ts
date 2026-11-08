@@ -1235,3 +1235,84 @@ describe("contact Joblop transport", () => {
     expect((await make(async () => response(200, {})).startContactConversation({ text: "Hi" })).status).toBe("error");
   });
 });
+
+describe("public (signed-out) job search", () => {
+  const origin = "https://api.example.com";
+  function signedIn() {
+    const v = vault();
+    v.stored = "session-token-should-not-leak";
+    return v;
+  }
+  const job = {
+    jobCode: "JR-1001",
+    role: "Cleaner",
+    city: "Toronto",
+    province: "ON",
+    areaLabel: "Toronto, ON",
+    openings: 3,
+    startAt: "2026-11-20T13:00:00.000Z",
+    urgency: "urgent"
+  };
+  const lead = {
+    title: "Line cook",
+    employer: "Maple Diner",
+    areaLabel: "Ottawa, ON",
+    salaryMinMinor: 1800,
+    salaryMaxMinor: 2100,
+    salaryPeriod: "hour",
+    category: "Hospitality",
+    postedAt: "2026-11-01T00:00:00.000Z",
+    url: "https://www.adzuna.ca/details/1",
+    source: "adzuna"
+  };
+
+  it("lists public Joblop jobs without any token and drops malformed rows", async () => {
+    const fetchMock = vi.fn(async () =>
+      response(200, { jobs: [job, { ...job, jobCode: "" }, { role: "x" }, null, { ...job, jobCode: "JR-2", startAt: "bad" }] })
+    );
+    const transport = createMobileSessionTransport({ apiOrigin: origin, vault: signedIn(), fetch: fetchMock });
+    const result = await transport.listPublicJobs({ q: " cook ", limit: 6 });
+    expect(result).toEqual({ status: "ready", jobs: [job] });
+    expect(fetchMock).toHaveBeenCalledWith(
+      `${origin}/public/jobs?q=cook&limit=6`,
+      expect.objectContaining({ method: "GET", headers: { accept: "application/json" } })
+    );
+  });
+
+  it("omits q when empty", async () => {
+    const fetchMock = vi.fn(async () => response(200, { jobs: [] }));
+    const transport = createMobileSessionTransport({ apiOrigin: origin, vault: vault(), fetch: fetchMock });
+    expect(await transport.listPublicJobs({ limit: 6 })).toEqual({ status: "ready", jobs: [] });
+    expect(fetchMock).toHaveBeenCalledWith(`${origin}/public/jobs?limit=6`, expect.anything());
+  });
+
+  it("lists public partner leads with total, drops malformed rows and non-https links", async () => {
+    const fetchMock = vi.fn(async () =>
+      response(200, { leads: [lead, { title: "" }, 7, { ...lead, title: "Driver", url: "javascript:alert(1)", salaryMaxMinor: "x" }], total: 42 })
+    );
+    const transport = createMobileSessionTransport({ apiOrigin: origin, vault: signedIn(), fetch: fetchMock });
+    const result = await transport.listPublicLeads({ q: "cleaner cook", limit: 6 });
+    expect(result.status).toBe("ready");
+    if (result.status === "ready") {
+      expect(result.total).toBe(42);
+      expect(result.leads).toHaveLength(2);
+      expect(result.leads[0]).toEqual(lead);
+      expect(result.leads[1]?.url).toBeNull();
+      expect(result.leads[1]?.salaryMaxMinor).toBeNull();
+    }
+    expect(fetchMock).toHaveBeenCalledWith(
+      `${origin}/public/jobscanner/leads?q=cleaner%20cook&limit=6`,
+      expect.objectContaining({ headers: { accept: "application/json" } })
+    );
+  });
+
+  it("maps network failure to offline and bad answers to error", async () => {
+    const make = (fetchImpl: () => Promise<Response>) => createMobileSessionTransport({ apiOrigin: origin, vault: vault(), fetch: vi.fn(fetchImpl) });
+    expect((await make(async () => { throw new TypeError("Failed to fetch"); }).listPublicJobs()).status).toBe("offline");
+    expect((await make(async () => { throw new TypeError("Failed to fetch"); }).listPublicLeads()).status).toBe("offline");
+    expect((await make(async () => response(503, {})).listPublicJobs()).status).toBe("error");
+    expect((await make(async () => response(500, {})).listPublicLeads()).status).toBe("error");
+    expect((await make(async () => response(200, { nope: [] })).listPublicJobs()).status).toBe("error");
+    expect((await make(async () => response(200, { leads: "x" })).listPublicLeads()).status).toBe("error");
+  });
+});
