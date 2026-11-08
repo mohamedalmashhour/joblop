@@ -286,6 +286,7 @@ import { registerInstantContactRoutes } from "./instantContactRoutes";
 import { activeBonusByJob, coverageBonusSuggestion, latestBonusByJob, registerJobBonusRoutes } from "./jobBonusRoutes";
 import { registerCalendarHubRoutes } from "./calendarHubRoutes";
 import { registerEmployerPlanRoutes } from "./employerPlanRoutes";
+import { isListedForWorkers, listedJobWhere, listingVisibilitySelect } from "./jobListingVisibility";
 import { isEmployerPlansEnabled } from "./employerPlanRepository";
 import { createMarketingContactSync, type MarketingContactSync } from "./mailer/brevoContacts";
 import { runShiftReminderSweep } from "./shiftReminderSweep";
@@ -1582,13 +1583,13 @@ export function buildApi(options: BuildApiOptions = {}) {
   const loadAlertOpenJobs = async (now: Date): Promise<AlertOpenJob[]> => {
     if (!prisma) return [];
     const rows = await prisma.jobRequest.findMany({
-      where: {
+      where: listedJobWhere({
         status: "approved_for_dispatch",
         openClaim: true,
         pricingSnapshot: { isNot: null },
         startAt: { gte: now },
         residence: { status: "active" }
-      },
+      }),
       select: {
         id: true,
         title: true,
@@ -3669,7 +3670,7 @@ export function buildApi(options: BuildApiOptions = {}) {
     const offset = cursorRaw && cursorRaw > 0 ? Math.floor(cursorRaw) : 0;
 
     const rows = await prisma.jobRequest.findMany({
-      where: {
+      where: listedJobWhere({
         status: "approved_for_dispatch", // open to workers
         startAt: { gte: new Date() }, // upcoming shifts only
         residence: {
@@ -3686,7 +3687,7 @@ export function buildApi(options: BuildApiOptions = {}) {
               ]
             }
           : {})
-      },
+      }),
       select: {
         id: true,
         jobRequestNumber: true,
@@ -3743,13 +3744,13 @@ export function buildApi(options: BuildApiOptions = {}) {
     // At most ~3 months per request.
     const until = new Date(Math.min(to.getTime(), from.getTime() + 93 * 86_400_000));
     const rows = await prisma.jobRequest.findMany({
-      where: {
+      where: listedJobWhere({
         status: "approved_for_dispatch",
         openClaim: true,
         pricingSnapshot: { isNot: null },
         startAt: { gte: from < now ? now : from, lte: until },
         residence: { status: "active" }
-      },
+      }),
       select: {
         id: true,
         title: true,
@@ -3851,11 +3852,11 @@ export function buildApi(options: BuildApiOptions = {}) {
     const [externalLeadCount, openJobCount, leadProvinces] = await Promise.all([
       prisma.externalJobLead.count({ where: { ...(province ? { province } : {}) } }),
       prisma.jobRequest.count({
-        where: {
+        where: listedJobWhere({
           status: "approved_for_dispatch",
           startAt: { gte: new Date() },
           residence: { status: "active", ...(province ? { province } : {}) }
-        }
+        })
       }),
       prisma.externalJobLead.findMany({ distinct: ["province"], select: { province: true } })
     ]);
@@ -4090,7 +4091,7 @@ export function buildApi(options: BuildApiOptions = {}) {
     }
     const box = boundingBoxKm({ latitude: origin.location.latitude, longitude: origin.location.longitude }, radiusKm ?? 500);
     const rows = await prisma!.jobRequest.findMany({
-      where: {
+      where: listedJobWhere({
         status: { in: ["submitted", "approved_for_dispatch"] },
         endAt: { gt: new Date() }, // a shift that has already ended is not work anyone can take
         ...(roleFilter ? { roleDefinition: { key: roleFilter } } : {}),
@@ -4101,7 +4102,7 @@ export function buildApi(options: BuildApiOptions = {}) {
           latitude: { gte: box.minLat, lte: box.maxLat },
           longitude: { gte: box.minLng, lte: box.maxLng }
         }
-      },
+      }),
       select: {
         id: true,
         numberOfWorkers: true,
@@ -4269,17 +4270,21 @@ export function buildApi(options: BuildApiOptions = {}) {
               endAt: true,
               roleDefinition: { select: { displayLabel: true } },
               organization: { select: { id: true, displayName: true } },
-              residence: { select: { city: true, province: true, status: true } }
+              residence: { select: { city: true, province: true, status: true } },
+              ...listingVisibilitySelect()
             }
           })
         : [];
       const byId = new Map(rows.map((r) => [r.id, r]));
+      const visibleAt = new Date();
       const saved = savedRecords.map((rec) => {
         const r = byId.get(rec.jobRequestId);
+        // A long-term job with no active listing (employer plans flag) reads as unavailable.
         const available =
           !!r &&
           (r.status === "submitted" || r.status === "approved_for_dispatch") &&
-          r.residence.status === "active";
+          r.residence.status === "active" &&
+          isListedForWorkers(r as Parameters<typeof isListedForWorkers>[0], visibleAt);
         return {
           jobRequestId: rec.jobRequestId,
           savedAt: rec.savedAt,
@@ -4352,7 +4357,7 @@ export function buildApi(options: BuildApiOptions = {}) {
     // Privacy parity with the detail endpoint: a non-visible (hidden/cancelled/expired or
     // inactive-residence) job must 404, never reveal itself via an eligibility reason.
     const visible = await prisma!.jobRequest.findFirst({
-      where: { id: jobRequestId, status: { in: ["submitted", "approved_for_dispatch"] }, residence: { status: "active" } },
+      where: listedJobWhere({ id: jobRequestId, status: { in: ["submitted", "approved_for_dispatch"] }, residence: { status: "active" } }),
       select: { id: true }
     });
     if (!visible) {
@@ -4430,7 +4435,7 @@ export function buildApi(options: BuildApiOptions = {}) {
     // Privacy parity with the interest/detail endpoints: a non-visible job must 404, never reveal
     // its open-claim state. Only marketplace-visible jobs with an active residence proceed.
     const visible = await prisma.jobRequest.findFirst({
-      where: { id: jobRequestId, status: { in: ["submitted", "approved_for_dispatch"] }, residence: { status: "active" } },
+      where: listedJobWhere({ id: jobRequestId, status: { in: ["submitted", "approved_for_dispatch"] }, residence: { status: "active" } }),
       select: { id: true }
     });
     if (!visible) {
@@ -5718,11 +5723,11 @@ export function buildApi(options: BuildApiOptions = {}) {
     const normalizedPostal = postalCode && countryAddress ? countryAddress.normalizePostalCode(postalCode) : null;
 
     const row = await prisma!.jobRequest.findFirst({
-      where: {
+      where: listedJobWhere({
         id: jobRequestId,
         status: { in: ["submitted", "approved_for_dispatch"] },
         residence: { status: "active" }
-      },
+      }),
       select: {
         id: true,
         title: true,
@@ -5881,11 +5886,11 @@ export function buildApi(options: BuildApiOptions = {}) {
       return reply.code(404).send({ error: "RWOS_MARKETPLACE_EMPLOYER_NOT_FOUND", message: "That employer is not available." });
     }
     const jobRows = await prisma!.jobRequest.findMany({
-      where: {
+      where: listedJobWhere({
         organizationId: org.id,
         status: { in: ["submitted", "approved_for_dispatch"] },
         residence: { status: "active" }
-      },
+      }),
       select: {
         id: true,
         startAt: true,
@@ -7521,7 +7526,7 @@ export function buildApi(options: BuildApiOptions = {}) {
       select: {
         jobRequest: {
           select: {
-            pricingSnapshot: { select: { workerHourlyRateMinor: true, currency: true } },
+            pricingSnapshot: { select: { workerHourlyRateMinor: true, currency: true, jobLength: true } },
             organization: { select: { displayName: true } },
             residence: { select: { city: true, province: true } }
           }
@@ -7532,7 +7537,11 @@ export function buildApi(options: BuildApiOptions = {}) {
     if (!job?.pricingSnapshot) return null;
     const { workerHourlyRateMinor, currency } = job.pricingSnapshot;
     const area = [job.residence.city, job.residence.province].filter(Boolean).join(", ");
-    const pay = `${(workerHourlyRateMinor / 100).toFixed(2)} ${currency} per hour`;
+    // Long-term listing jobs (employer plans flag): the employer sets and pays the wage directly.
+    const pay =
+      job.pricingSnapshot.jobLength === "long_term"
+        ? "Pay agreed and paid directly by the employer"
+        : `${(workerHourlyRateMinor / 100).toFixed(2)} ${currency} per hour`;
     return `${pay} at ${job.organization.displayName}${area ? `, ${area}` : ""}`;
   };
 
@@ -9965,8 +9974,9 @@ export function buildApi(options: BuildApiOptions = {}) {
     return reply.code(200).send({ canceled: true });
   });
 
-  // EMPLOYER FIXED PLANS (short-term: pay_per_shift / shift_pro / shift_business; long-term:
-  // pay_per_contract / contract_plus). Mirrors Worker Pro above. Every route is 404 unless
+  // EMPLOYER FIXED PLANS (short-term jobs: pay_per_shift / shift_pro / shift_business) and LONG-TERM
+  // JOB LISTINGS (C$99/month paid in advance; registered inside registerEmployerPlanRoutes). Mirrors
+  // Worker Pro above. Every route is 404 unless
   // EMPLOYER_PLANS_ENABLED === "enabled"; card payment is Stripe TEST mode only. Employer = active
   // owner/administrator of the organization (same rule as the job-bonus routes).
   if (prisma) {

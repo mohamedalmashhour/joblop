@@ -1,9 +1,11 @@
 import type { PrismaClient } from "@rwos/database";
 import {
   EMPLOYER_PLAN_TRIAL_DAYS,
-  JOB_LENGTHS,
+  JOB_LISTING_TRIAL_DAYS,
   isPaidEmployerPlanCode,
-  plansForTrack
+  jobListingMonthPrice,
+  plansForTrack,
+  quebecSalesTax
 } from "@rwos/shared";
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import {
@@ -22,6 +24,7 @@ import {
   startEmployerPlanTrial
 } from "./employerPlanRepository";
 import { isStripeTestConfigured } from "./cvProStripeCheckout";
+import { registerJobListingRoutes } from "./jobListingRoutes";
 
 // EMPLOYER FIXED PLANS routes. Every route answers 404 unless EMPLOYER_PLANS_ENABLED === "enabled",
 // except GET /public/employer-plans, which only reports whether plans are on (so the public /plans
@@ -56,18 +59,34 @@ function notFound(reply: FastifyReply) {
   return reply.code(404).send({ error: "RWOS_RESOURCE_UNAVAILABLE", message: "Resource unavailable." });
 }
 
-/** Public, non-personal description of the plans (no platform share is ever included). */
+/**
+ * Public, non-personal description of the plans (no platform share is ever included). Plans exist for
+ * short-term jobs only; prices carry GST + QST. Long-term jobs are a paid listing (see listingPricing).
+ */
 export function publicEmployerPlanCatalog() {
-  return JOB_LENGTHS.map((track) => ({
-    track,
-    plans: plansForTrack(track).map((plan) => ({
-      code: plan.code,
-      monthlyPriceMinor: plan.monthlyPriceMinor,
-      currency: plan.currency,
-      discountPercent: plan.employerDiscountPpm / 10_000,
-      urgentFeeHalf: plan.urgentSurchargeFactorPpm < 1_000_000
-    }))
-  }));
+  return [
+    {
+      track: "short_term" as const,
+      plans: plansForTrack("short_term").map((plan) => {
+        const taxes = quebecSalesTax(plan.monthlyPriceMinor);
+        return {
+          code: plan.code,
+          monthlyPriceMinor: plan.monthlyPriceMinor,
+          gstMinor: taxes.gstMinor,
+          qstMinor: taxes.qstMinor,
+          totalMinor: taxes.totalMinor,
+          currency: plan.currency,
+          discountPercent: plan.employerDiscountPpm / 10_000,
+          urgentFeeHalf: plan.urgentSurchargeFactorPpm < 1_000_000
+        };
+      })
+    }
+  ];
+}
+
+/** Public long-term listing price: C$99/month in advance (+ taxes), 2-week trial, 50% off month one. */
+export function publicListingPricing() {
+  return { trialDays: JOB_LISTING_TRIAL_DAYS, fullMonth: jobListingMonthPrice(false), firstMonth: jobListingMonthPrice(true) };
 }
 
 export function registerEmployerPlanRoutes(app: FastifyInstance, deps: EmployerPlanRouteDeps) {
@@ -75,7 +94,7 @@ export function registerEmployerPlanRoutes(app: FastifyInstance, deps: EmployerP
   const now = deps.now ?? (() => new Date());
 
   // Resolve + authorize the organization for an employer call. Same 404 for "not yours" and "flag
-  // off" so nothing leaks.
+  // off" so nothing leaks. Shared with the long-term job listing routes.
   async function employerOrganization(
     request: FastifyRequest,
     reply: FastifyReply,
@@ -105,7 +124,11 @@ export function registerEmployerPlanRoutes(app: FastifyInstance, deps: EmployerP
     return reply
       .code(200)
       .header("cache-control", "no-store")
-      .send(enabled ? { enabled, trialDays: EMPLOYER_PLAN_TRIAL_DAYS, catalog: publicEmployerPlanCatalog() } : { enabled });
+      .send(
+        enabled
+          ? { enabled, trialDays: EMPLOYER_PLAN_TRIAL_DAYS, catalog: publicEmployerPlanCatalog(), listing: publicListingPricing() }
+          : { enabled }
+      );
   });
 
   app.get("/employer/plan", async (request, reply) => {
@@ -119,6 +142,7 @@ export function registerEmployerPlanRoutes(app: FastifyInstance, deps: EmployerP
         enabled: true,
         trialDays: EMPLOYER_PLAN_TRIAL_DAYS,
         catalog: publicEmployerPlanCatalog(),
+        listing: publicListingPricing(),
         cardEnabled: isStripeTestConfigured(),
         ...overview
       });
@@ -223,4 +247,7 @@ export function registerEmployerPlanRoutes(app: FastifyInstance, deps: EmployerP
     if (!(await adminRejectEmployerPlanOrder(prisma, id))) return notFound(reply);
     return reply.code(200).send({ canceled: true });
   });
+
+  // ── long-term job listings (paid in advance; same flag, same employer/staff rules) ──
+  registerJobListingRoutes(app, { prisma, requireStaff: deps.requireStaff, employerOrganization, fallbackOrigin: deps.fallbackOrigin, now });
 }

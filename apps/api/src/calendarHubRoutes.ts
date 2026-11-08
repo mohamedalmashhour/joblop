@@ -1,5 +1,6 @@
 import type { Prisma, PrismaClient } from "@rwos/database";
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
+import { listedJobWhere } from "./jobListingVisibility";
 import { activeBonusByJob, latestBonusByJob } from "./jobBonusRoutes";
 
 // CALENDAR HUB. One read per side (worker, employer, staff) that gathers everything dated in a window
@@ -360,13 +361,16 @@ export function registerCalendarHubRoutes(app: FastifyInstance, deps: CalendarHu
     const openRows =
       openFrom <= w.to
         ? await prisma.jobRequest.findMany({
-            where: {
-              status: "approved_for_dispatch",
-              openClaim: true,
-              pricingSnapshot: { isNot: null },
-              startAt: { gte: openFrom, lte: w.to },
-              residence: { status: "active" }
-            },
+            where: listedJobWhere(
+              {
+                status: "approved_for_dispatch",
+                openClaim: true,
+                pricingSnapshot: { isNot: null },
+                startAt: { gte: openFrom, lte: w.to },
+                residence: { status: "active" }
+              },
+              at
+            ),
             select: { ...JOB_SELECT, organization: false, pricingSnapshot: { select: { workerHourlyRateMinor: true } } },
             orderBy: [{ startAt: "asc" }],
             take: TAKE

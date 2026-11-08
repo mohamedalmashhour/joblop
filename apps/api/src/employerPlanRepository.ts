@@ -2,20 +2,21 @@ import type { PrismaClient } from "@rwos/database";
 import {
   EMPLOYER_PLAN_CATALOG,
   EMPLOYER_PLAN_TRIAL_DAYS,
-  JOB_LENGTHS,
-  defaultPlanForTrack,
   employerPlanTrack,
   isEmployerPlanCode,
   isPaidEmployerPlanCode,
   type EmployerPlanCode,
   type JobLength,
-  type PaidEmployerPlanCode
+  type PaidEmployerPlanCode,
+  quebecSalesTax
 } from "@rwos/shared";
 import { isStripeTestConfigured } from "./cvProStripeCheckout";
 import { BILLING_EMAIL } from "./cvProOrderRepository";
 import { createEmployerPlanCheckoutSession, verifyEmployerPlanCheckoutPaid } from "./employerPlanStripeCheckout";
 
-// Employer fixed plans — one row per organization per track (job length). Mirrors Worker Pro
+// Employer fixed plans — SHORT-TERM jobs only (long-term jobs are paid listings, see
+// jobListingRepository.ts; the retired long_term plan rows are ignored). One row per organization per
+// track; only the short_term track is used. Prices are shown and charged with GST + QST. Mirrors Worker Pro
 // (cvEntitlementRepository + cvProOrderRepository):
 //  - trial: 14 days, once per organization per track, no card. Plan discount applies during it.
 //  - e_transfer: employer claims it sent, staff confirms → paid, plan active for one month.
@@ -66,7 +67,7 @@ export type EffectiveEmployerPlan = Readonly<{
 
 /** Pure: what a stored row means at `now`. */
 export function effectivePlanFromRow(track: JobLength, row: PlanRow | null, now: Date): EffectiveEmployerPlan {
-  const free = defaultPlanForTrack(track);
+  const free: EmployerPlanCode = "pay_per_shift";
   const trialAvailable = !row?.trialUsedAt;
   if (!row || !isPaidEmployerPlanCode(row.plan) || employerPlanTrack(row.plan) !== track) {
     return { track, plan: free, status: row ? "expired" : "none", source: null, endsAt: null, cancelAtPeriodEnd: false, trialAvailable };
@@ -118,7 +119,13 @@ export type EmployerPlanOrderView = Readonly<{
   id: string;
   plan: string;
   track: JobLength | null;
+  /** Price before taxes (the plan's monthly price). */
   priceMinor: number;
+  subtotalMinor: number;
+  gstMinor: number;
+  qstMinor: number;
+  /** What the employer pays: subtotal + GST + QST. */
+  totalMinor: number;
   currency: string;
   periodMonths: number;
   method: string;
@@ -133,6 +140,10 @@ type OrderRow = Readonly<{
   organizationId: string;
   plan: string;
   priceMinor: number;
+  subtotalMinor?: number | null;
+  gstMinor?: number | null;
+  qstMinor?: number | null;
+  totalMinor?: number | null;
   currency: string;
   periodMonths: number;
   method: string;
@@ -142,12 +153,26 @@ type OrderRow = Readonly<{
   paidAt: Date | null;
 }>;
 
+/** Stored tax breakdown, or (orders created before taxes were stored) computed from the price. */
+function orderTaxes(row: OrderRow) {
+  if (row.totalMinor !== null && row.totalMinor !== undefined) {
+    return {
+      subtotalMinor: row.subtotalMinor ?? row.priceMinor,
+      gstMinor: row.gstMinor ?? 0,
+      qstMinor: row.qstMinor ?? 0,
+      totalMinor: row.totalMinor
+    };
+  }
+  return quebecSalesTax(row.priceMinor);
+}
+
 function toOrderView(row: OrderRow): EmployerPlanOrderView {
   return {
     id: row.id,
     plan: row.plan,
     track: isEmployerPlanCode(row.plan) ? employerPlanTrack(row.plan) : null,
     priceMinor: row.priceMinor,
+    ...orderTaxes(row),
     currency: row.currency,
     periodMonths: row.periodMonths,
     method: row.method,
@@ -159,11 +184,11 @@ function toOrderView(row: OrderRow): EmployerPlanOrderView {
   };
 }
 
-/** Both tracks + open orders, for the employer /plans page. */
+/** The short-term plan + recent plan orders, for the employer /plans page. */
 export async function getEmployerPlanOverview(prisma: PrismaClient, organizationId: string, now: Date = new Date()) {
-  const tracks = await Promise.all(JOB_LENGTHS.map((track) => getEffectiveEmployerPlan(prisma, organizationId, track, now)));
+  const tracks = [await getEffectiveEmployerPlan(prisma, organizationId, "short_term", now)];
   const orders = await prisma.employerPlanOrder.findMany({
-    where: { organizationId },
+    where: { organizationId, plan: { in: ["shift_pro", "shift_business"] } },
     orderBy: { createdAt: "desc" },
     take: 10
   });
@@ -225,7 +250,8 @@ export async function cancelEmployerPlan(
   track: unknown,
   now: Date = new Date()
 ): Promise<CancelResult> {
-  if (track !== "short_term" && track !== "long_term") return { ok: false, reason: "invalid_track" };
+  // Plans exist for short-term jobs only; long-term jobs are paid listings.
+  if (track !== "short_term") return { ok: false, reason: "invalid_track" };
   const current = await getEffectiveEmployerPlan(prisma, organizationId, track, now);
   if (current.status !== "active" && current.status !== "trialing") return { ok: false, reason: "no_paid_plan" };
   await prisma.employerPlan.update({
@@ -237,12 +263,15 @@ export async function cancelEmployerPlan(
 
 /** E-transfer instructions shown with a pending e-transfer order. */
 export function employerPlanETransferInstructions(order: EmployerPlanOrderView) {
-  const amount = `${(order.priceMinor / 100).toFixed(2)} ${order.currency}`;
+  const fmt = (minor: number) => `${(minor / 100).toFixed(2)} ${order.currency}`;
+  const amount = fmt(order.totalMinor);
+  const breakdown = `${fmt(order.subtotalMinor)} + GST ${fmt(order.gstMinor)} + QST ${fmt(order.qstMinor)}`;
   return {
     email: BILLING_EMAIL,
     amount,
+    breakdown,
     reference: order.id,
-    note: `Send an Interac e-transfer to ${BILLING_EMAIL} for ${amount}. Put this reference in the message: ${order.id}. Then tap “I've sent it”. Your plan starts once we confirm receipt.`
+    note: `Send an Interac e-transfer to ${BILLING_EMAIL} for ${amount} (${breakdown}). Put this reference in the message: ${order.id}. Then tap “I've sent it”. Your plan starts once we confirm receipt.`
   };
 }
 
@@ -259,11 +288,16 @@ export async function createPendingEmployerPlanOrder(
   });
   if (existing) return toOrderView(existing);
   const definition = EMPLOYER_PLAN_CATALOG[plan];
+  const taxes = quebecSalesTax(definition.monthlyPriceMinor);
   const row = await prisma.employerPlanOrder.create({
     data: {
       organizationId,
       plan,
       priceMinor: definition.monthlyPriceMinor,
+      subtotalMinor: taxes.subtotalMinor,
+      gstMinor: taxes.gstMinor,
+      qstMinor: taxes.qstMinor,
+      totalMinor: taxes.totalMinor,
       currency: definition.currency,
       periodMonths: EMPLOYER_PLAN_PERIOD_MONTHS,
       method,
@@ -279,8 +313,7 @@ export type StripeStartResult =
 
 const PLAN_LABEL: Record<PaidEmployerPlanCode, string> = {
   shift_pro: "Shift Pro",
-  shift_business: "Shift Business",
-  contract_plus: "Contract Plus"
+  shift_business: "Shift Business"
 };
 
 /** Begin a Stripe TEST hosted Checkout for one month of a plan. */
@@ -297,7 +330,8 @@ export async function startEmployerPlanStripeCheckout(
     orderId: order.id,
     organizationId,
     planLabel: PLAN_LABEL[plan],
-    priceMinor: order.priceMinor,
+    // Charge the total with GST + QST, as shown on the page.
+    priceMinor: order.totalMinor,
     currency: order.currency,
     successUrl: `${base}/plans?paid=success&order=${order.id}`,
     cancelUrl: `${base}/plans?paid=cancel`

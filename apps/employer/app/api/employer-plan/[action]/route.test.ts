@@ -34,18 +34,18 @@ describe("employer plan action proxy", () => {
   });
 
   it("subscribes with the public address so Stripe can send the employer back", async () => {
-    await call("subscribe", { plan: "contract_plus", method: "stripe" });
+    await call("subscribe", { plan: "shift_business", method: "stripe" });
     expect(request).toHaveBeenCalledWith("/employer/plan/subscribe", "POST", "token", {
       organizationId: "org-1",
-      plan: "contract_plus",
+      plan: "shift_business",
       method: "stripe",
       origin: "https://joblop-employer.onrender.com"
     });
   });
 
   it("cancels one track", async () => {
-    await call("cancel", { track: "long_term" });
-    expect(request).toHaveBeenCalledWith("/employer/plan/cancel", "POST", "token", { organizationId: "org-1", track: "long_term" });
+    await call("cancel", { track: "short_term" });
+    expect(request).toHaveBeenCalledWith("/employer/plan/cancel", "POST", "token", { organizationId: "org-1", track: "short_term" });
   });
 
   it("refuses unknown actions without calling the API", async () => {

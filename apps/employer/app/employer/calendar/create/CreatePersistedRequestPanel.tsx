@@ -20,6 +20,7 @@ import { useLocale, useT, type Translate } from "../../../i18n/LocaleProvider";
 import { MAX_RECURRING_SHIFTS, recurringShifts, type ShiftTimes } from "./recurringShifts";
 import { DictationButton } from "./DictationButton";
 import { requestActionNotice } from "./requestActionNotice";
+import { LongTermListingsPanel } from "../../listings/LongTermListingsPanel";
 
 type Provision = "none" | "provided" | "allowance";
 
@@ -571,6 +572,12 @@ export function CreatePersistedRequestPanel() {
         </label>
       ) : null}
 
+      {/* After a long-term job is sent: guide the employer to publish it (trial / card / e-transfer). */}
+      {status === "submitted" && plansEnabled && form.jobLength === "long_term" && draft ? (
+        <div style={{ marginTop: 18 }}>
+          <LongTermListingsPanel onlyJobRequestId={draft.id} />
+        </div>
+      ) : null}
       {status === "review" ? <RequestReview form={form} roleLabel={selectedRole?.displayLabel ?? form.roleDefinition} shiftCount={shifts.length} t={t} /> : null}
       <p style={styles.cardText}>{t("create.economicsNote")}</p>
       {actionNotice ? <div style={{ ...styles.warning, marginTop: 18 }}>{actionNotice}</div> : null}

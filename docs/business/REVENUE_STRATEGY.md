@@ -37,52 +37,70 @@ wages go to workers.
 - **Worker Pro:** C$12.99/month after a 14-day free trial. Includes the Pro CV builder and first
   pick of job offers. Basic CV and all job search stay free.
 
-## 3b. Employer fixed plans (built, switched OFF until the owner turns them on)
+## 3b. Job length: short-term plans and long-term paid listings (built, switched OFF until the owner turns them on)
 
-Status: built on branch `feat/employer-plans`, hidden behind the API setting
-`EMPLOYER_PLANS_ENABLED=enabled` (off by default). While it is off, nothing changes: no job-length
-question on the request form, no plan routes, the public `/plans` page says "coming soon", and every
-price is calculated exactly as today. Card payment for plans is Stripe **test mode** only.
+Status: built behind the API setting `EMPLOYER_PLANS_ENABLED=enabled` (off by default). While it is
+off, nothing changes: no job-length question on the request form, no plan or listing routes, the
+public `/plans` page says "coming soon", every price is calculated exactly as today and every worker
+job list shows exactly what it shows today. Card payment for plans and listings is Stripe **test
+mode** only.
 
-The employer picks the **job length** when posting a job:
+The employer picks the **job length** when posting a job. The two lengths make money differently:
 
-- **Short term** (shifts, a few hours up to 4 weeks): today's rules: 20% default share, 6-hour
-  minimum billing, urgent/immediate surcharges.
-- **Long term** (contract over 4 weeks, usually the same worker): 15% default share (unless staff set
-  a share at approval), billed on hours actually worked (no 6-hour minimum), no urgent surcharge.
+- **Short term** (shifts, a few hours up to 4 weeks): Joblop's **hourly share** as today (20% default
+  share, 6-hour minimum billing, urgent/immediate surcharges), plus the **optional plans** below.
+  Joblop runs timesheets, invoices and payroll.
+- **Long term** (contract over 4 weeks): a **paid listing**, like Indeed. Joblop is only in the
+  middle: the employer hires the worker and **pays them directly**. Joblop takes **no hourly share**
+  and runs **no timesheets, invoices or payroll** for these jobs (the approval snapshot has zero
+  money and is marked long-term; invoice and payroll generation skip it).
 
-Plans per job length (an employer can hold one short-term plan and one long-term plan at once):
+### Short-term plans (optional)
 
-| Job length | Plan | Monthly price | Employer gets |
-| --- | --- | --- | --- |
-| Short term | Pay per shift | $0 (default) | Today's prices |
-| Short term | Shift Pro | C$49 + taxes | 5% off every hour worked, urgent fee half price, jobs shown first on the shared calendar, faster support |
-| Short term | Shift Business | C$149 + taxes | 8% off every hour worked, urgent fee half price, several locations/managers, monthly report, priority support |
-| Long term | Pay per contract | $0 (default) | Today's long-term prices |
-| Long term | Contract Plus | C$99 + taxes | 5% off every hour worked, free replacement if the worker leaves in the first 2 weeks, one monthly invoice (label only for now) |
-
-Money rules:
+| Plan | Monthly price | Employer gets |
+| --- | --- | --- |
+| Pay per shift | $0 (default) | Today's prices |
+| Shift Pro | C$49 + GST + QST (C$56.34) | 5% off every hour worked, urgent fee half price, jobs shown first on the shared calendar, faster support |
+| Shift Business | C$149 + GST + QST (C$171.31) | 8% off every hour worked, urgent fee half price, several locations/managers, monthly report, priority support |
 
 - **The worker's pay never changes because of a plan.** The discount comes only out of Joblop's
-  share.
-- Joblop always keeps at least **5%** of the contract rate: the discount is capped at (share − 5%),
-  and is zero if the share is 5% or less. Short term at 20%: Shift Pro leaves 15%, Shift Business
-  12%. Long term at 15%: Contract Plus leaves 10%.
-- Allowances are unaffected. The 6-hour minimum (short term) multiplies the discounted rate.
-- 14-day free trial, once per company per job length, no card. The discount applies during the
-  trial. After the trial or a paid month ends, the company is back on the free plan automatically.
-- Payment: Interac e-transfer (employer marks it sent, staff confirm in admin → Employer plan
-  orders) or card (Stripe test mode). One month per payment. Cancel anytime: the plan stays until the
-  end of the month and does not renew.
-- Employers see "5% off every hour worked" and the monthly price, never Joblop's share.
+  share, which never drops below **5%** of the contract rate (Shift Pro leaves 15%, Shift Business
+  12% at the 20% default). Allowances are unaffected; the 6-hour minimum multiplies the discounted rate.
+- 14-day free trial, once per company, no card. Interac e-transfer (staff confirm in admin →
+  Employer plan orders) or card (Stripe test mode). One month per payment. Cancel anytime: the plan
+  stays until the end of the month and does not renew.
+- Break-even at $30/h: Shift Pro after 33 hours a month, Shift Business after 63.
 
-Break-even for the employer at $30/h: Shift Pro after 33 hours a month, Shift Business after 63,
-Contract Plus after 66. Each plan is worth it for Joblop when the monthly fee is more than the
-discount given; a busy employer is also more likely to stay.
+The old long-term plans (Pay per contract, Contract Plus) and the 15% long-term share are retired.
 
-Before switching on: decide how sales taxes are collected on the plan fee (today the order amount is
-the price before taxes), confirm the "jobs shown first" and "monthly report" perks are delivered, and
-build the one-monthly-invoice option for Contract Plus (today: one invoice per timesheet).
+### Long-term paid listing
+
+- **C$99 per long-term job listing per month, paid in advance**, plus GST 5% + QST 9.975%
+  (C$113.83 in all).
+- **2-week free trial**, once per company (its first long-term listing), no card.
+- **First paid month 50% off**: C$49.50 + taxes (C$56.92), once per company (its first paid listing
+  month, whether or not it had a trial). Then C$99/month.
+- Payment: card (Stripe test mode) or Interac e-transfer (employer marks it sent, staff confirm in
+  admin → Employer plan orders → long-term listing orders; confirming publishes the job for one month).
+- Each paid month adds one month to the listing. No auto-renew: the employer presses "Renew 1 month".
+- **A long-term job is shown to workers only while it is listed** (free trial or a paid month), and
+  only after staff approval as today. When the listing ends it disappears from the shared calendar,
+  open jobs, public job board, job alerts and the app, with no background job needed.
+- When a worker accepts, the employer is told as usual and they contact each other; no money moves
+  through Joblop for the work itself.
+
+### Taxes on Joblop's own fees
+
+Plan fees and listing fees are charged with GST 5% + QST 9.975%, each rounded to the cent. The
+breakdown (subtotal, GST, QST, total) is stored on every order, shown on the page and in the
+e-transfer instructions, and the card checkout charges the total.
+
+**Never tell workers or employers Joblop's share.** Employers see "5% off every hour worked", the
+plan price and the listing price.
+
+Before switching on: confirm the "jobs shown first" and "monthly report" perks are delivered, and
+decide what long-term job pages show workers for pay (today the approval snapshot has no wage; a
+"pay offered" field on the long-term job form is the natural next step).
 
 ## 4. Bonus strategy for jobs nobody has taken ("less money is better than nothing")
 

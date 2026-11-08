@@ -2,12 +2,13 @@
 
 import { useCallback, useEffect, useState } from "react";
 import {
+  DEFAULT_PLATFORM_MARGIN_PPM,
   EMPLOYER_PLAN_CATALOG,
-  JOB_LENGTHS,
-  defaultMarginPpmForJobLength,
   employerPlanMonthlySavingMinor,
+  jobListingMonthPrice,
   planBreakEvenHours,
   plansForTrack,
+  quebecSalesTax,
   type EmployerPlanCode,
   type JobLength
 } from "@rwos/shared";
@@ -16,9 +17,11 @@ import { LanguageSwitcher } from "../i18n/LanguageSwitcher";
 import { fmtLocale, useLocale, useT, type Translate } from "../i18n/LocaleProvider";
 import type { MessageKey } from "../i18n/messages";
 
-// Employer fixed plans page. Two sections — short-term jobs (3 cards) and long-term contracts
-// (2 cards) — each with its own trial / subscribe / cancel and a savings calculator. The page never
-// shows Joblop's share: only the employer's discount and the monthly price.
+// Employer plans page. Short-term jobs: 3 plan cards with trial / subscribe / cancel and a savings
+// calculator. Long-term jobs: no plan — an explanation of the paid listing (C$99/month in advance,
+// 2-week free trial, 50% off the first month, taxes) and a link to the company's long-term jobs,
+// where each listing is published or renewed. Prices show GST + QST. The page never shows Joblop's
+// share: only the employer's discount and the prices.
 
 type TrackState = Readonly<{
   track: JobLength;
@@ -49,7 +52,7 @@ type Overview = Readonly<{
   orders?: readonly Order[];
 }>;
 
-type ETransfer = Readonly<{ email: string; amount: string; reference: string; orderId: string }>;
+type ETransfer = Readonly<{ email: string; amount: string; breakdown: string; reference: string; orderId: string }>;
 
 const GOLD = "#f8b808";
 const INK = "#f4efe4";
@@ -68,9 +71,7 @@ function perkKeys(code: EmployerPlanCode): MessageKey[] {
   const count: Record<EmployerPlanCode, number> = {
     pay_per_shift: 1,
     shift_pro: 2,
-    shift_business: 3,
-    pay_per_contract: 1,
-    contract_plus: 2
+    shift_business: 3
   };
   return Array.from({ length: count[code] }, (_, i) => `plans.perk.${code}.${i + 1}` as MessageKey);
 }
@@ -145,6 +146,7 @@ export function PlansPanel() {
         setETransfer({
           email: String(details.email ?? ""),
           amount: String(details.amount ?? ""),
+          breakdown: String(details.breakdown ?? ""),
           reference: String(details.reference ?? order.id),
           orderId: order.id
         });
@@ -195,7 +197,7 @@ export function PlansPanel() {
             <section className="jp-section" aria-labelledby="etransfer-title">
               <div className="jp-card">
                 <h2 id="etransfer-title" className="jp-h3">{t("plans.etransferTitle")}</h2>
-                <p className="jp-muted">{t("plans.etransferText", { amount: eTransfer.amount, email: eTransfer.email, reference: eTransfer.reference })}</p>
+                <p className="jp-muted">{t("plans.etransferText", { amount: eTransfer.amount, breakdown: eTransfer.breakdown, email: eTransfer.email, reference: eTransfer.reference })}</p>
                 <button type="button" className="jp-primary" disabled={busy !== null} onClick={() => void claimSent(eTransfer.orderId)}>
                   {t("plans.etransferSent")}
                 </button>
@@ -209,20 +211,18 @@ export function PlansPanel() {
           ) : overview.manager === false ? (
             <p className="jp-section-tight jp-muted">{t("plans.managerNeeded")}</p>
           ) : null}
-          {JOB_LENGTHS.map((track) => (
-            <TrackSection
-              key={track}
-              track={track}
-              t={t}
-              locale={locale}
-              overview={overview}
-              busy={busy}
-              onTrial={startTrial}
-              onSubscribe={subscribe}
-              onClaim={claimSent}
-              onCancel={cancel}
-            />
-          ))}
+          <TrackSection
+            track="short_term"
+            t={t}
+            locale={locale}
+            overview={overview}
+            busy={busy}
+            onTrial={startTrial}
+            onSubscribe={subscribe}
+            onClaim={claimSent}
+            onCancel={cancel}
+          />
+          <LongTermListingSection t={t} locale={locale} />
           <p className="jp-section-tight jp-muted">{t("plans.taxNote")} {t("plans.noHidden")}</p>
         </>
       )}
@@ -271,6 +271,7 @@ function TrackSection({
               {isCurrent && canAct ? <p className="jp-badge">{t("plans.current")}</p> : null}
               <h3 className="jp-h3">{t(`plans.name.${plan.code}` as MessageKey)}</h3>
               <p className="jp-price">{paid ? t("plans.perMonth", { price: money(plan.monthlyPriceMinor, locale) }) : t("plans.noMonthly")}</p>
+              {paid ? <p className="jp-muted">{t("plans.withTax", { total: money(quebecSalesTax(plan.monthlyPriceMinor).totalMinor, locale) })}</p> : null}
               <ul className="jp-list">
                 {plan.employerDiscountPpm > 0 ? <li className="jp-strong">{t("plans.discount", { percent: plan.employerDiscountPpm / 10_000 })}</li> : null}
                 {plan.urgentSurchargeFactorPpm < 1_000_000 ? <li>{t("plans.urgentHalf")}</li> : null}
@@ -331,12 +332,12 @@ function TrackSection({
 
 function SavingsCalculator({ track, t, locale }: Readonly<{ track: JobLength; t: Translate; locale: ReturnType<typeof useLocale> }>) {
   const [rate, setRate] = useState("30");
-  const [hours, setHours] = useState(track === "long_term" ? "160" : "80");
+  const [hours, setHours] = useState("80");
   const rateMinor = Math.max(0, Math.round(Number(rate) * 100) || 0);
   const hoursPerMonth = Math.max(0, Number(hours) || 0);
-  // Uses the default share for the track only to apply the same clamp the invoice uses; the share
-  // itself is never shown.
-  const margin = defaultMarginPpmForJobLength(track);
+  // Uses the default share only to apply the same clamp the invoice uses; the share itself is never
+  // shown.
+  const margin = DEFAULT_PLATFORM_MARGIN_PPM;
   const paidPlans = plansForTrack(track).filter((plan) => plan.monthlyPriceMinor > 0);
   const idRate = `calc-rate-${track}`;
   const idHours = `calc-hours-${track}`;
@@ -371,6 +372,29 @@ function SavingsCalculator({ track, t, locale }: Readonly<{ track: JobLength; t:
   );
 }
 
+/** Long-term jobs: a paid listing, not a plan. Explains the price and links to the company's jobs. */
+function LongTermListingSection({ t, locale }: Readonly<{ t: Translate; locale: ReturnType<typeof useLocale> }>) {
+  const full = jobListingMonthPrice(false);
+  const half = jobListingMonthPrice(true);
+  return (
+    <section className="jp-section" aria-labelledby="track-long_term">
+      <h2 id="track-long_term" className="jp-h2">{t("plans.track.long_term")}</h2>
+      <p className="jp-muted">{t("plans.trackText.long_term")}</p>
+      <div className="jp-card jp-listing">
+        <p className="jp-price">{t("plans.perMonth", { price: money(full.subtotalMinor, locale) })}</p>
+        <ul className="jp-list">
+          <li className="jp-strong">{t("listing.price", { total: money(full.totalMinor, locale) })}</li>
+          <li>{t("listing.trial")}</li>
+          <li>{t("listing.firstMonth", { price: money(half.subtotalMinor, locale), total: money(half.totalMinor, locale) })}</li>
+          <li>{t("listing.intro")}</li>
+          <li>{t("listing.noRenew")}</li>
+        </ul>
+        <a href="/employer/calendar" className="jp-primary">{t("listing.seeJobs")}</a>
+      </div>
+    </section>
+  );
+}
+
 const css = `
   .jp-page { background: #000000; color: ${INK}; font-family: Inter, system-ui, sans-serif; min-height: 100vh; }
   .jp-header { align-items: center; border-bottom: 1px solid ${LINE}; display: flex; flex-wrap: wrap; gap: 16px; justify-content: space-between; padding: 18px clamp(16px, 4vw, 40px); }
@@ -391,6 +415,7 @@ const css = `
   .jp-card { background: #0c0c0c; border: 1px solid ${LINE}; border-radius: 12px; display: flex; flex-direction: column; gap: 10px; padding: 20px; }
   .jp-current { border-color: ${GOLD}; box-shadow: 0 0 0 1px ${GOLD} inset; }
   .jp-soon { max-width: 760px; }
+  .jp-listing { margin-top: 18px; max-width: 760px; }
   .jp-badge { align-self: flex-start; background: ${GOLD}; border-radius: 999px; color: #000; font-size: 12px; font-weight: 900; margin: 0; padding: 3px 10px; text-transform: uppercase; }
   .jp-price { color: ${GOLD}; font-size: 22px; font-weight: 900; margin: 0; }
   .jp-list { display: grid; gap: 6px; line-height: 1.45; margin: 0; padding-inline-start: 20px; }
