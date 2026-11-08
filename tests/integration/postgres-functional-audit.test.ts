@@ -349,6 +349,40 @@ suite("worker journey and payout guards", () => {
       expect(trail[0]?.actorReference.userId).toBe(worker.id);
     });
 
+    it("the shared jobs calendar lists an open job until its last place is taken, and staff see who took it", async () => {
+      const first = await makeWorker("cal-a");
+      const second = await makeWorker("cal-b");
+      // The calendar lists upcoming shifts, so this one starts later today.
+      const { job } = await makeJob({ startAt: new Date(Date.now() + 2 * HOUR), endAt: new Date(Date.now() + 8 * HOUR), openClaim: true });
+      const listFor = async (token: string) => {
+        const res = await app.inject({ method: "GET", url: "/marketplace/open-jobs", headers: auth(token) });
+        expect(res.statusCode, res.body).toBe(200);
+        return (res.json().jobs as { jobRequestId: string; placesLeft: number; workerRateMinor: number | null }[]).filter((j) => j.jobRequestId === job.id);
+      };
+      const before = await listFor(second.token);
+      expect(before).toHaveLength(1);
+      expect(before[0]?.placesLeft).toBe(1);
+      expect(before[0]?.workerRateMinor).toBe(2500); // worker pay only, never the employer rate
+
+      const claimed = await app.inject({ method: "POST", url: `/marketplace/jobs/${job.id}/claim`, headers: auth(first.token) });
+      expect(claimed.statusCode, claimed.body).toBe(201);
+      expect(await listFor(second.token)).toHaveLength(0); // gone for everyone once full
+
+      const coverage = await app.inject({ method: "GET", url: "/platform/calendar/coverage", headers: auth(staff.token) });
+      expect(coverage.statusCode, coverage.body).toBe(200);
+      const row = (coverage.json().jobs as { jobRequestId: string; coverage: string; placesLeft: number; workers: { name: string }[] }[]).find(
+        (j) => j.jobRequestId === job.id
+      );
+      expect(row?.coverage).toBe("full");
+      expect(row?.placesLeft).toBe(0);
+      expect(row?.workers.map((w) => w.name)).toEqual(["Audit Worker"]);
+
+      const denied = await app.inject({ method: "GET", url: "/platform/calendar/coverage", headers: auth(second.token) });
+      expect(denied.statusCode).toBe(403);
+      const signedOut = await app.inject({ method: "GET", url: "/marketplace/open-jobs" });
+      expect(signedOut.statusCode).toBe(401);
+    });
+
     it("the staff assignment route emails the worker, not the staff member", async () => {
       const worker = await makeWorker("assigned");
       const { job, review } = await makeJob({ ...soon(), openClaim: false });

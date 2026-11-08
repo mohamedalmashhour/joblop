@@ -3503,6 +3503,65 @@ export function buildApi(options: BuildApiOptions = {}) {
       .send({ jobs, nextCursor: hasMore ? offset + limit : null, province, q });
   });
 
+  // SHARED JOBS CALENDAR (signed-in workers). Every approved, open job with places left, by date, so a
+  // worker can pick a day and accept. A job drops off for everyone the moment its last place is taken
+  // (places are counted live from the assignments that hold one). Worker pay only; employer rate never shown.
+  app.get("/marketplace/open-jobs", async (request, reply) => {
+    const session = await authService.validateSession(readBearerToken(request.headers.authorization));
+    if (!session.authenticated || !session.user) {
+      return reply.code(401).send({ error: "RWOS_MARKETPLACE_DENIED", message: "Authentication is required." });
+    }
+    if (!prisma) return reply.code(503).send({ error: "RWOS_UNAVAILABLE", message: "Not available." });
+    const query = asRecord(request.query);
+    const now = new Date();
+    const fromRaw = readOptionalString(query, "from");
+    const toRaw = readOptionalString(query, "to");
+    const from = fromRaw && !Number.isNaN(Date.parse(fromRaw)) ? new Date(fromRaw) : now;
+    const to = toRaw && !Number.isNaN(Date.parse(toRaw)) ? new Date(toRaw) : new Date(from.getTime() + 45 * 86_400_000);
+    // At most ~3 months per request.
+    const until = new Date(Math.min(to.getTime(), from.getTime() + 93 * 86_400_000));
+    const rows = await prisma.jobRequest.findMany({
+      where: {
+        status: "approved_for_dispatch",
+        openClaim: true,
+        pricingSnapshot: { isNot: null },
+        startAt: { gte: from < now ? now : from, lte: until },
+        residence: { status: "active" }
+      },
+      select: {
+        id: true,
+        title: true,
+        numberOfWorkers: true,
+        startAt: true,
+        endAt: true,
+        urgency: true,
+        roleDefinition: { select: { displayLabel: true } },
+        residence: { select: { city: true, province: true } },
+        pricingSnapshot: { select: { workerHourlyRateMinor: true } }
+      },
+      orderBy: [{ startAt: "asc" }],
+      take: 500
+    });
+    const left = await remainingOpenings(prisma, rows);
+    const jobs = rows
+      .filter((r) => (left.get(r.id) ?? r.numberOfWorkers) > 0)
+      .map((r) => {
+        const city = r.residence?.city ?? null;
+        const prov = r.residence?.province ?? null;
+        return {
+          jobRequestId: r.id,
+          role: r.roleDefinition?.displayLabel ?? r.title,
+          areaLabel: city && prov ? `${city}, ${prov}` : (prov ?? "Canada"),
+          startAt: r.startAt.toISOString(),
+          endAt: r.endAt.toISOString(),
+          urgency: r.urgency,
+          placesLeft: left.get(r.id) ?? r.numberOfWorkers,
+          workerRateMinor: r.pricingSnapshot?.workerHourlyRateMinor ?? null
+        };
+      });
+    return reply.code(200).header("cache-control", "no-store").send({ jobs, from: from.toISOString(), to: until.toISOString() });
+  });
+
   // PUBLIC JobScanner teaser — a small, cached preview of external market leads for anonymous visitors
   // (the landing-page "magnet"). Reads ONLY stored leads from prior scans: zero live Adzuna calls per
   // request, so it never consumes the source budget and can't be abused to drain it. External leads are
@@ -4534,6 +4593,86 @@ export function buildApi(options: BuildApiOptions = {}) {
     }
     return session.user.id;
   };
+
+  // STAFF CALENDAR COVERAGE. For each job in the window: status, places asked / taken / left, and the
+  // workers who accepted, so staff can see open, partly filled and full jobs and act (e.g. a bonus).
+  app.get("/platform/calendar/coverage", async (request, reply) => {
+    const actor = await requireHrAuthority(request, reply);
+    if (!actor) return;
+    if (!prisma) return reply.code(503).send({ error: "RWOS_UNAVAILABLE", message: "Not available." });
+    const query = asRecord(request.query);
+    const fromRaw = readOptionalString(query, "from");
+    const toRaw = readOptionalString(query, "to");
+    const from = fromRaw && !Number.isNaN(Date.parse(fromRaw)) ? new Date(fromRaw) : new Date(Date.now() - 7 * 86_400_000);
+    const to = toRaw && !Number.isNaN(Date.parse(toRaw)) ? new Date(toRaw) : new Date(from.getTime() + 45 * 86_400_000);
+    const until = new Date(Math.min(to.getTime(), from.getTime() + 93 * 86_400_000));
+    const rows = await prisma.jobRequest.findMany({
+      where: {
+        startAt: { gte: from, lte: until },
+        status: { in: ["submitted", "admin_review", "information_required", "approved_for_dispatch"] }
+      },
+      select: {
+        id: true,
+        jobRequestNumber: true,
+        title: true,
+        status: true,
+        openClaim: true,
+        numberOfWorkers: true,
+        startAt: true,
+        endAt: true,
+        urgency: true,
+        roleDefinition: { select: { displayLabel: true } },
+        residence: { select: { city: true, province: true } },
+        organization: { select: { displayName: true } },
+        pricingSnapshot: { select: { workerHourlyRateMinor: true, employerHourlyRateMinor: true } }
+      },
+      orderBy: [{ startAt: "asc" }],
+      take: 500
+    });
+    const assignments = rows.length
+      ? await prisma.assignment.findMany({
+          where: { jobRequestId: { in: rows.map((r) => r.id) }, status: { in: [...PLACE_HOLDING_ASSIGNMENT_STATUSES] } },
+          select: {
+            jobRequestId: true,
+            status: true,
+            workerIdentity: { select: { displayName: true, user: { select: { displayName: true } } } }
+          }
+        })
+      : [];
+    const byJob = new Map<string, { name: string; status: string }[]>();
+    for (const a of assignments) {
+      const name = a.workerIdentity?.displayName ?? a.workerIdentity?.user?.displayName ?? "Worker";
+      const list = byJob.get(a.jobRequestId) ?? [];
+      list.push({ name, status: a.status });
+      byJob.set(a.jobRequestId, list);
+    }
+    const jobs = rows.map((r) => {
+      const workers = byJob.get(r.id) ?? [];
+      const placesLeft = Math.max(0, r.numberOfWorkers - workers.length);
+      const city = r.residence?.city ?? null;
+      const prov = r.residence?.province ?? null;
+      return {
+        jobRequestId: r.id,
+        jobCode: r.jobRequestNumber,
+        role: r.roleDefinition?.displayLabel ?? r.title,
+        employer: r.organization?.displayName ?? null,
+        areaLabel: city && prov ? `${city}, ${prov}` : (prov ?? ""),
+        status: r.status,
+        openClaim: r.openClaim,
+        startAt: r.startAt.toISOString(),
+        endAt: r.endAt.toISOString(),
+        urgency: r.urgency,
+        placesAsked: r.numberOfWorkers,
+        placesTaken: workers.length,
+        placesLeft,
+        coverage: r.status !== "approved_for_dispatch" ? "not_open" : placesLeft === 0 ? "full" : workers.length > 0 ? "partly_filled" : "open",
+        workers,
+        workerRateMinor: r.pricingSnapshot?.workerHourlyRateMinor ?? null,
+        employerRateMinor: r.pricingSnapshot?.employerHourlyRateMinor ?? null
+      };
+    });
+    return reply.code(200).header("cache-control", "no-store").send({ jobs, from: from.toISOString(), to: until.toISOString() });
+  });
 
   // HR-5: payroll governed decisions require the distinct PAYROLL authority (or platform admin).
   // Payroll authority is NOT implied by generic platform admin alone in spirit, but PLATFORM_ADMIN
@@ -5893,7 +6032,8 @@ export function buildApi(options: BuildApiOptions = {}) {
         openClaim: false,
         dispatchReviewId: null
       };
-      if (prisma && body.openClaim === true) {
+      // Every approved job goes on the shared jobs calendar (owner rule) unless staff explicitly opt out.
+      if (prisma && body.openClaim !== false) {
         await prisma.jobRequest.update({ where: { id: jobRequest.id }, data: { openClaim: true } });
         const opened = await ensureOpenClaimDispatch(
           prisma,

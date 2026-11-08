@@ -8,6 +8,7 @@ import { HomeScreen } from "../features/home";
 import { WorkerCalendarPanel } from "../features/worker-calendar";
 import { MonthCalendarScreen } from "../features/calendar-month";
 import { MarketplaceJobScreen, MarketplaceSearchScreen } from "../features/marketplace";
+import { JobsCalendarScreen } from "../features/jobs-calendar";
 import { MyWorkScreen } from "../features/my-work";
 import { WorkerScheduleScreen } from "../features/worker-attendance";
 import { WorkerTimesheetListScreen } from "../features/worker-timesheets";
@@ -23,6 +24,7 @@ import { WorkerSetupScreen } from "../features/worker-onboarding";
 type Screen =
   | { name: "home" }
   | { name: "available" }
+  | { name: "marketplaceSearch" }
   | { name: "marketplaceJob"; jobRequestId: string; postalCode: string | null }
   | { name: "myShifts" }
   | { name: "calendar" }
@@ -90,6 +92,15 @@ export function WorkerNavigator({
           />
         );
       case "available":
+        // Real open Joblop jobs (GET /marketplace/open-jobs) on a month calendar, with Accept.
+        return (
+          <JobsCalendarScreen
+            transport={transport}
+            onOpenSetup={() => push({ name: "onboarding" })}
+            onOpenSearch={() => push({ name: "marketplaceSearch" })}
+          />
+        );
+      case "marketplaceSearch":
         return (
           <MarketplaceSearchScreen
             transport={transport}

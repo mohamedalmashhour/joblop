@@ -288,7 +288,8 @@ export function PersistedAdminReviewPanel({ requestId }: Readonly<{ requestId: s
   const [reason, setReason] = useState("");
   // Hybrid auto-offer: when checked, approving opens the job for direct worker claim (first eligible
   // worker to tap Accept is assigned instantly). Unchecked keeps the manual shortlist→offer path.
-  const [openClaim, setOpenClaim] = useState(false);
+  // On by default: every approved job goes on the shared jobs calendar for all workers.
+  const [openClaim, setOpenClaim] = useState(true);
   const requestGeneration = useRef(0);
   const confirmationDialog = useRef<HTMLDialogElement>(null);
   const confirmationTrigger = useRef<HTMLButtonElement | null>(null);
@@ -379,7 +380,7 @@ export function PersistedAdminReviewPanel({ requestId }: Readonly<{ requestId: s
         body: JSON.stringify({
           expectedVersion: request.versionToken,
           ...(action === "request-information" ? { reason: reason.trim() } : {}),
-          ...(action === "approve-for-dispatch" && openClaim ? { openClaim: true } : {})
+          ...(action === "approve-for-dispatch" ? { openClaim } : {})
         })
       });
       if (response.status === 409) {

@@ -19,6 +19,8 @@ type Lead = {
 };
 
 export const NEXT_AFTER_SIGN_UP_KEY = "joblop_next_after_signup";
+// Before the visitor types anything, show everyday work first (not just the newest postings).
+const EVERYDAY_WORK = "cleaner cook warehouse driver retail labourer";
 
 const TEXT = {
   en: {
@@ -91,9 +93,10 @@ export function PublicJobSearch({ onWantDetails }: { onWantDetails: (next: strin
     setJobs(null);
     const params = new URLSearchParams({ limit: "6" });
     if (query.trim()) params.set("q", query.trim());
+    const leadParams = new URLSearchParams({ limit: "6", q: query.trim() || EVERYDAY_WORK });
     const [j, l] = await Promise.all([
       fetch(`/api/public/jobs?${params.toString()}`, { cache: "no-store" }).then((r) => r.json()).catch(() => ({})),
-      fetch(`/api/public/jobscanner/leads?${params.toString()}`, { cache: "no-store" }).then((r) => r.json()).catch(() => ({}))
+      fetch(`/api/public/jobscanner/leads?${leadParams.toString()}`, { cache: "no-store" }).then((r) => r.json()).catch(() => ({}))
     ]);
     setJobs(Array.isArray(j?.jobs) ? j.jobs : []);
     setLeads(Array.isArray(l?.leads) ? l.leads : []);
