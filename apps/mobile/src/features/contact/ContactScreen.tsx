@@ -34,13 +34,18 @@ type Failure = "denied" | "offline" | "error";
 // Real API only (/contact/worker/...). The list and an open chat refresh themselves every ~15 s.
 export function ContactScreen({
   transport,
-  draft
+  draft,
+  openConversationId
 }: {
   transport: MobileSessionTransport | null;
   /** Opens "New message" prefilled, e.g. from a shift card on the calendar. */
   draft?: ContactDraft | null;
+  /** Opens one conversation directly, e.g. from a "Joblop staff replied" push notification. */
+  openConversationId?: string | null;
 }) {
-  const [view, setView] = useState<View_>(draft ? { mode: "new" } : { mode: "list" });
+  const [view, setView] = useState<View_>(
+    openConversationId ? { mode: "chat", id: openConversationId } : draft ? { mode: "new" } : { mode: "list" }
+  );
   const [newDraft, setNewDraft] = useState<ContactDraft>(draft ?? EMPTY_DRAFT);
 
   // A new prefilled draft (another shift tapped) replaces what is on screen.
@@ -49,6 +54,10 @@ export function ContactScreen({
     setNewDraft(draft);
     setView({ mode: "new" });
   }, [draft]);
+
+  useEffect(() => {
+    if (openConversationId) setView({ mode: "chat", id: openConversationId });
+  }, [openConversationId]);
 
   if (view.mode === "chat") {
     return <ContactChat id={view.id} onBack={() => setView({ mode: "list" })} transport={transport} />;

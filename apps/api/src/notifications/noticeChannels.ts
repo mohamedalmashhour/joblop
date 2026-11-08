@@ -4,6 +4,8 @@
 //   - Text carries only what is urgent or important: codes, a confirmed shift, a shift about to
 //     start, a held shift that is cancelled or changed, and staff alerts marked urgent. Texts cost
 //     money and interrupt, so nothing else.
+//   - Push (the phone app) carries what a worker should see at once: a confirmed, upcoming,
+//     cancelled or changed shift, a staff reply, and pay sent. Push is free but still interrupts.
 // A notice not listed here is email only.
 
 export type NoticeKind =
@@ -23,24 +25,24 @@ export type NoticeKind =
   | "staff_replied"
   | "greeting";
 
-export type NoticeChannels = Readonly<{ email: boolean; text: "always" | "urgent_only" | "never" }>;
+export type NoticeChannels = Readonly<{ email: boolean; text: "always" | "urgent_only" | "never"; push?: boolean }>;
 
 export const NOTICE_CHANNELS: Readonly<Record<NoticeKind, NoticeChannels>> = {
   sign_in_code: { email: false, text: "always" },
   email_confirmation_code: { email: true, text: "always" },
-  shift_confirmed: { email: true, text: "always" },
-  shift_reminder: { email: true, text: "always" },
+  shift_confirmed: { email: true, text: "always", push: true },
+  shift_reminder: { email: true, text: "always", push: true },
   // A worker must not travel to a shift that no longer exists, or arrive at the wrong time or place.
-  shift_cancelled: { email: true, text: "always" },
-  shift_changed: { email: true, text: "always" },
+  shift_cancelled: { email: true, text: "always", push: true },
+  shift_changed: { email: true, text: "always", push: true },
   invoice_sent: { email: true, text: "never" },
   job_received: { email: true, text: "never" },
   worker_accepted: { email: true, text: "never" },
   payout_registered: { email: true, text: "never" },
-  payout_paid: { email: true, text: "never" },
+  payout_paid: { email: true, text: "never", push: true },
   account_notice: { email: true, text: "never" },
   staff_needed: { email: true, text: "urgent_only" },
-  staff_replied: { email: true, text: "never" },
+  staff_replied: { email: true, text: "never", push: true },
   greeting: { email: true, text: "never" }
 };
 
@@ -51,4 +53,8 @@ export function sendsEmail(kind: NoticeKind): boolean {
 export function sendsText(kind: NoticeKind, options: Readonly<{ urgent?: boolean }> = {}): boolean {
   const rule = NOTICE_CHANNELS[kind].text;
   return rule === "always" || (rule === "urgent_only" && options.urgent === true);
+}
+
+export function sendsPush(kind: NoticeKind): boolean {
+  return NOTICE_CHANNELS[kind].push === true;
 }

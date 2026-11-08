@@ -1,6 +1,7 @@
 import { SiteHeader } from "../SiteHeader";
 import { BackToDashboard } from "../BackToDashboard";
 import { JobsCalendar } from "./JobsCalendar";
+import { JobAlertsCard } from "../job-alerts/JobAlertsCard";
 
 export default function Page() {
   return (
@@ -9,6 +10,7 @@ export default function Page() {
       <main className="wrap">
         <BackToDashboard />
         <JobsCalendar />
+        <JobAlertsCard />
       </main>
     </>
   );

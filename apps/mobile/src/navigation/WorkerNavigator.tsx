@@ -1,4 +1,4 @@
-import { useCallback, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useLocale } from "../i18n/LocaleContext";
 import { Pressable, StyleSheet, Text, View } from "react-native";
 import { colors, spacing, typography } from "../theme";
@@ -14,6 +14,14 @@ import { WorkerScheduleScreen } from "../features/worker-attendance";
 import { WorkerTimesheetListScreen } from "../features/worker-timesheets";
 import { WorkerEarningsScreen } from "../features/worker-earnings";
 import { WorkerSetupScreen } from "../features/worker-onboarding";
+import {
+  pushPermissionPlan,
+  registerForPush,
+  rememberPushAsked,
+  setUpNotificationDisplay,
+  subscribeToNotificationTaps
+} from "../notifications/pushNotifications";
+import type { PushTarget } from "../notifications/pushTarget";
 import { ContactScreen, type ContactDraft } from "../features/contact";
 
 // The worker app's real navigation shell. A dependency-free stack + bottom-tab navigator (no
@@ -34,7 +42,7 @@ type Screen =
   | { name: "timesheet" }
   | { name: "earnings" }
   | { name: "onboarding" }
-  | { name: "contact"; draft: ContactDraft | null };
+  | { name: "contact"; draft: ContactDraft | null; conversationId?: string | null };
 
 type TabId = "home" | "available" | "myShifts" | "calendar" | "earnings" | "contact";
 
@@ -80,8 +88,59 @@ export function WorkerNavigator({
     setStack([{ name: "contact", draft }]);
   }, []);
 
+  // Push notifications: show notices while the app is open, and remember a tapped notice until the
+  // worker is inside the app.
+  const [pendingTarget, setPendingTarget] = useState<PushTarget | null>(null);
+  const [showPushAsk, setShowPushAsk] = useState(false);
+  const pushTokenRef = useRef<string | null>(null);
+  useEffect(() => {
+    void setUpNotificationDisplay();
+    return subscribeToNotificationTaps(setPendingTarget);
+  }, []);
+  useEffect(() => {
+    if (!authenticated || !pendingTarget) return;
+    if (pendingTarget.screen === "calendar") selectTab("available");
+    else if (pendingTarget.screen === "pay") selectTab("earnings");
+    else {
+      // "Joblop staff replied" → the Contact tab, straight into that conversation when known.
+      setTab("contact");
+      setStack([{ name: "contact", draft: null, conversationId: pendingTarget.conversationId ?? null }]);
+    }
+    setPendingTarget(null);
+  }, [authenticated, pendingTarget, selectTab]);
+  useEffect(() => {
+    // "authenticated" is also true for a guest who skipped sign-in, so check for a real session.
+    if (!authenticated || !transport) return;
+    let cancelled = false;
+    void (async () => {
+      if (!(await transport.hasSession())) return;
+      const plan = await pushPermissionPlan();
+      if (cancelled) return;
+      if (plan === "ask") setShowPushAsk(true);
+      else if (plan === "register") pushTokenRef.current = await registerForPush(transport, { ask: false });
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [authenticated, transport]);
+  const allowPush = useCallback(() => {
+    setShowPushAsk(false);
+    if (!transport) return;
+    void registerForPush(transport, { ask: true }).then((token) => {
+      pushTokenRef.current = token;
+    });
+  }, [transport]);
+  const declinePush = useCallback(() => {
+    setShowPushAsk(false);
+    void rememberPushAsked();
+  }, []);
+
   const signOut = useCallback(async () => {
     try {
+      const pushToken = pushTokenRef.current;
+      pushTokenRef.current = null;
+      setShowPushAsk(false);
+      if (pushToken) await transport?.unregisterPushToken(pushToken).catch(() => undefined);
       await transport?.signOut();
     } finally {
       onAuthenticatedChange(false);
@@ -161,7 +220,7 @@ export function WorkerNavigator({
         return <WorkerSetupScreen transport={transport} onBack={back} />;
       case "contact":
         // "Contact Joblop": AI assistant first, Joblop staff take over when needed.
-        return <ContactScreen draft={current.draft} transport={transport} />;
+        return <ContactScreen draft={current.draft} openConversationId={current.conversationId ?? null} transport={transport} />;
       default: {
         const _exhaustive: never = current;
         return _exhaustive;
@@ -190,6 +249,19 @@ export function WorkerNavigator({
           <Text style={styles.signOutText}>{tr("nav.signOut")}</Text>
         </Pressable>
       </View>
+      {showPushAsk ? (
+        <View accessibilityRole="alert" style={styles.pushAsk}>
+          <Text style={styles.pushAskText}>{tr("push.ask")}</Text>
+          <View style={styles.pushAskActions}>
+            <Pressable accessibilityRole="button" onPress={allowPush} style={styles.pushAllow}>
+              <Text style={styles.pushAllowText}>{tr("push.allow")}</Text>
+            </Pressable>
+            <Pressable accessibilityRole="button" onPress={declinePush} style={styles.signOut}>
+              <Text style={styles.signOutText}>{tr("push.notNow")}</Text>
+            </Pressable>
+          </View>
+        </View>
+      ) : null}
       <View style={styles.body}>{renderScreen()}</View>
       <View accessibilityRole="tablist" style={styles.tabBar}>
         {TABS.map((t) => {
@@ -227,6 +299,23 @@ const styles = StyleSheet.create({
   signOut: { paddingHorizontal: spacing.sm, paddingVertical: spacing.xs },
   signOutText: { color: colors.actionTeal, fontSize: typography.small, fontWeight: "700" },
   body: { flex: 1 },
+  pushAsk: {
+    backgroundColor: colors.surface,
+    borderBottomColor: colors.surfaceSubtle,
+    borderBottomWidth: 1,
+    gap: spacing.xs,
+    paddingHorizontal: spacing.lg,
+    paddingVertical: spacing.sm
+  },
+  pushAskText: { color: colors.deepTeal, fontSize: typography.small, fontWeight: "600" },
+  pushAskActions: { alignItems: "center", flexDirection: "row", gap: spacing.sm },
+  pushAllow: {
+    backgroundColor: colors.actionTeal,
+    borderRadius: 8,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.xs
+  },
+  pushAllowText: { color: colors.surface, fontSize: typography.small, fontWeight: "800" },
   tabBar: {
     backgroundColor: colors.surface,
     borderTopColor: colors.surfaceSubtle,

@@ -14,6 +14,7 @@ import {
 } from "./instantContact";
 import type { EmailSender } from "./mailer/emailSender";
 import type { SmsSender } from "./mailer/smsSender";
+import { pushToWorkers, type PushSender } from "./notifications/pushSender";
 import { sendsText } from "./notifications/noticeChannels";
 import { isWorksiteAddressVisible } from "./worksiteAddress";
 
@@ -242,6 +243,7 @@ export function createContactNotices(deps: {
   smsSender: SmsSender;
   adminEmail: string | undefined;
   adminPhone: string | undefined;
+  pushSender?: PushSender;
 }): ContactNotices {
   const describe = (c: ConversationRow) => `${c.requesterKind === "worker" ? "A worker" : "An employer"} (topic: ${c.topic})`;
   return {
@@ -258,7 +260,11 @@ export function createContactNotices(deps: {
         await deps.smsSender.send({ to: deps.adminPhone, text: `Joblop URGENT: ${describe(conversation)} needs a person. Open the Contact desk.` });
       }
     },
-    async adminReplied({ email }) {
+    async adminReplied({ conversation, email }) {
+      // Workers also get a push on the phone app; it never blocks the email.
+      if (conversation.requesterKind === "worker") {
+        await pushToWorkers(deps.pushSender, [conversation.requesterUserId], "staff_replied", { conversationId: conversation.id });
+      }
       if (!email) return;
       await deps.emailSender.send({
         to: email,
@@ -303,6 +309,7 @@ export function registerInstantContactRoutes(
     prisma: PrismaClient;
     emailSender: EmailSender;
     smsSender: SmsSender;
+    pushSender?: PushSender;
     isLocal: boolean;
     requireUser(request: FastifyRequest, reply: FastifyReply): Promise<{ id: string } | null>;
     requireAdmin(request: FastifyRequest, reply: FastifyReply): Promise<{ id: string } | null>;
@@ -316,7 +323,8 @@ export function registerInstantContactRoutes(
       emailSender: deps.emailSender,
       smsSender: deps.smsSender,
       adminEmail: process.env.CONTACT_ADMIN_EMAIL?.trim() || undefined,
-      adminPhone: process.env.CONTACT_ADMIN_PHONE?.trim() || undefined
+      adminPhone: process.env.CONTACT_ADMIN_PHONE?.trim() || undefined,
+      ...(deps.pushSender ? { pushSender: deps.pushSender } : {})
     }),
     ...(Number.isInteger(monthly) && monthly >= 0 && process.env.CONTACT_AI_MONTHLY_LIMIT ? { aiRepliesPerMonth: monthly } : {})
   });
