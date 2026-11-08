@@ -7,9 +7,9 @@ const appConfig = JSON.parse(
 ) as { expo: { name: string; scheme: string } };
 
 describe("mobile foundation navigation", () => {
-  it("presents the worker experience as JobLop", () => {
-    expect(productName).toBe("JobLop");
-    expect(appConfig.expo.name).toBe("JobLop");
+  it("presents the worker experience as Joblop", () => {
+    expect(productName).toBe("Joblop");
+    expect(appConfig.expo.name).toBe("Joblop");
     expect(appConfig.expo.scheme).toBe("rwos");
   });
 
