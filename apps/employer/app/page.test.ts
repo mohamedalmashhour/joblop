@@ -42,27 +42,27 @@ describe("Page 001 landing content", () => {
 
   it("separates worker and employer journeys", () => {
     expect(en.journeys.worker).toEqual([
-      "Sign in",
-      "Review owned offer",
+      "Create your free account",
+      "See jobs near you",
       "Accept or decline",
-      "See confirmed assignment",
-      "Continue to attendance handoff"
+      "Get your confirmed shift",
+      "Clock in and get paid"
     ]);
-    expect(en.journeys.employer[0]).toBe("Create request");
+    expect(en.journeys.employer[0]).toBe("Post a job");
     expect(fr.journeys.worker[0]).toBe("Se connecter");
     expect(fr.journeys.employer[0]).toBe("Créer une demande");
   });
 
   it("shows worker value and trust mechanisms without fake proof", () => {
-    expect(en.workers.benefits).toContain("Private offer visibility");
-    expect(en.workers.benefits).toContain("Truthful empty states");
+    expect(en.workers.benefits).toContain("See the pay before you accept");
+    expect(en.workers.benefits).toContain("No fake jobs");
     expect(en.trust.controls).toEqual([
-      "Database-backed roles",
-      "Tenant isolation",
-      "Worker-owned records",
-      "Human dispatch review",
-      "Version conflict checks",
-      "Attendance handoff boundary"
+      "Verified workers",
+      "Your company’s data stays private",
+      "Workers own their records",
+      "Every match checked by our team",
+      "Clear prices before you book",
+      "Hours recorded on the phone"
     ]);
   });
 
@@ -99,9 +99,9 @@ describe("Page 001 landing content", () => {
     // The staging banner and worker headline now come from getLandingContent, so the
     // raw English must NOT be inlined in the page source any more.
     expect(landingSource).toContain("c.staging.label");
-    expect(landingSource).not.toContain("Mobile-first staffing without hidden employer economics.");
+    expect(landingSource).not.toContain("Find shifts on your phone and get paid for your work.");
     expect(en.staging.label).toBe("STAGING");
-    expect(en.workers.title).toBe("Mobile-first staffing without hidden employer economics.");
+    expect(en.workers.title).toBe("Find shifts on your phone and get paid for your work.");
   });
 
   it("labels the public staging landing page without changing production access", () => {

@@ -1,6 +1,8 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
+import { usePageText } from "../i18n/pageText";
+import { disputesText } from "./text";
 
 type Dispute = Readonly<{
   id: string;
@@ -18,6 +20,7 @@ function money(minor: number, currency: string): string {
 }
 
 export function WorkerDisputesPanel() {
+  const t = usePageText(disputesText);
   const [state, setState] = useState<State>({ status: "loading" });
   const [busy, setBusy] = useState<string | null>(null);
   const [message, setMessage] = useState("");
@@ -39,47 +42,47 @@ export function WorkerDisputesPanel() {
 
   const resolve = useCallback(async (id: string) => {
     setBusy(id);
-    setMessage("Settling the dispute.");
+    setMessage(t.settling);
     try {
       const response = await fetch(`/api/worker-disputes/${encodeURIComponent(id)}/resolve`, {
         method: "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({ resolution: notes[id]?.trim() ?? "" })
       });
-      if (!response.ok) { setMessage("The dispute could not be settled. Refresh and try again."); return; }
-      setMessage("Dispute settled. The payout is back in the normal flow.");
+      if (!response.ok) { setMessage(t.settleFailed); return; }
+      setMessage(t.settled);
       await load();
     } catch {
-      setMessage("The dispute could not be settled. Refresh and try again.");
+      setMessage(t.settleFailed);
     } finally {
       setBusy(null);
     }
-  }, [notes, load]);
+  }, [notes, load, t]);
 
-  if (state.status === "loading") return <p style={styles.text}>Loading worker disputes.</p>;
-  if (state.status === "denied") return <p style={styles.text}>Your session has ended or this account has no access. <a href="/signin" style={{ color: "#fff1a8" }}>Sign in again</a>.</p>;
-  if (state.status === "error") return <p style={styles.text}>The dispute queue could not be reached.</p>;
+  if (state.status === "loading") return <p style={styles.text}>{t.loading}</p>;
+  if (state.status === "denied") return <p style={styles.text}>{t.denied} <a href="/signin" style={{ color: "#fff1a8" }}>{t.signInAgain}</a>.</p>;
+  if (state.status === "error") return <p style={styles.text}>{t.error}</p>;
 
   return (
     <section style={styles.wrap}>
       <p aria-live="polite" role="status" style={styles.text}>{message}</p>
-      {state.items.length === 0 ? <p style={styles.text}>No open disputes.</p> : null}
+      {state.items.length === 0 ? <p style={styles.text}>{t.empty}</p> : null}
       {state.items.map((dispute) => {
         const note = notes[dispute.id] ?? "";
         return (
           <article key={dispute.id} style={styles.card}>
-            <h2 style={styles.heading}>{dispute.workerDisplayName ?? "Worker"}</h2>
+            <h2 style={styles.heading}>{dispute.workerDisplayName ?? t.workerFallback}</h2>
             <p style={styles.meta}>
-              {dispute.organizationName ?? "Organization"} · {dispute.category.replaceAll("_", " ")} · raised {new Date(dispute.createdAt).toLocaleDateString()}
+              {dispute.organizationName ?? t.organizationFallback} · {t.category(dispute.category)} · {t.raisedOn(new Date(dispute.createdAt).toLocaleDateString())}
             </p>
             <p style={styles.text}>{dispute.reason}</p>
             <p style={styles.meta}>
               {dispute.payout
-                ? `Payout ${money(dispute.payout.amountMinor, dispute.payout.currency)}, currently ${dispute.payout.status}`
-                : "No payout record for this dispute."}
+                ? t.payoutLine(money(dispute.payout.amountMinor, dispute.payout.currency), t.payoutStatus(dispute.payout.status))
+                : t.noPayout}
             </p>
             <label style={styles.label}>
-              How was this settled? The worker sees this.
+              {t.settleLabel}
               <textarea
                 onChange={(event) => setNotes((prev) => ({ ...prev, [dispute.id]: event.target.value }))}
                 rows={3}
@@ -88,7 +91,7 @@ export function WorkerDisputesPanel() {
               />
             </label>
             <button disabled={busy !== null || note.trim().length === 0} onClick={() => void resolve(dispute.id)} style={styles.button} type="button">
-              {busy === dispute.id ? "Settling…" : "Settle dispute and release hold"}
+              {busy === dispute.id ? t.settlingShort : t.settle}
             </button>
           </article>
         );

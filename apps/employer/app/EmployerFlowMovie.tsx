@@ -20,7 +20,7 @@ const T: Record<Lang, {
 }> = {
   en: {
     eyebrow: "SEE IT IN ACTION", title: "How Joblop works for employers",
-    sub: "Post what you need and let verified local workers come to you — matched, confirmed, and covered, all governed.",
+    sub: "Post what you need and let verified local workers come to you: matched, confirmed and covered.",
     steps: ["Post a request", "Get matched", "Confirm & schedule", "Shift covered"],
     postTitle: "New staffing request", role: "Kitchen helper · Laval, QC", when: "Sat 8:00 AM · 6h", post: "Post request",
     matchTitle: "Matched workers", matched: (n) => `${n} available nearby`,

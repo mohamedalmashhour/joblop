@@ -1,16 +1,15 @@
+import { serverPageText } from "../i18n/serverPageText";
+import { disputesText } from "./text";
 import { WorkerDisputesPanel } from "./WorkerDisputesPanel";
 
-export default function WorkerDisputesPage() {
+export default async function WorkerDisputesPage() {
+  const t = await serverPageText(disputesText);
   return (
     <main style={styles.page}>
       <header style={styles.hero}>
-        <p style={styles.eyebrow}>Joblop / Finance</p>
-        <h1 style={styles.title}>Worker disputes</h1>
-        <p style={styles.lede}>
-          A worker&apos;s open dispute pauses their payout. Settling it here records your decision, shows it to the
-          worker, and returns the payout to the normal flow. No amount changes here: if the worker is owed something
-          different, correct it in payroll first.
-        </p>
+        <p style={styles.eyebrow}>{t.eyebrow}</p>
+        <h1 style={styles.title}>{t.title}</h1>
+        <p style={styles.lede}>{t.lede}</p>
       </header>
       <WorkerDisputesPanel />
     </main>

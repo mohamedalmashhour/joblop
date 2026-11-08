@@ -1,15 +1,15 @@
+import { serverPageText } from "../i18n/serverPageText";
+import { payoutsText } from "./text";
 import { WorkerPayoutsPanel } from "./WorkerPayoutsPanel";
 
-export default function WorkerPayoutsPage() {
+export default async function WorkerPayoutsPage() {
+  const t = await serverPageText(payoutsText);
   return (
     <main style={styles.page}>
       <header style={styles.hero}>
-        <p style={styles.eyebrow}>Joblop / Finance</p>
-        <h1 style={styles.title}>Worker payouts</h1>
-        <p style={styles.lede}>
-          Every worker payout and where it stands. A payout waits out its hold, then shows as ready to
-          pay. Test payouts use Stripe test mode, so no real money moves.
-        </p>
+        <p style={styles.eyebrow}>{t.eyebrow}</p>
+        <h1 style={styles.title}>{t.title}</h1>
+        <p style={styles.lede}>{t.lede}</p>
       </header>
       <WorkerPayoutsPanel />
     </main>

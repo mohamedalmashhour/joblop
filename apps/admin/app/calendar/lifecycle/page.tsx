@@ -1,18 +1,16 @@
 import type { CSSProperties } from "react";
+import { serverPageText } from "../../i18n/serverPageText";
+import { calendarText } from "../text";
 import { AdminLifecycleCalendarPanel } from "./AdminLifecycleCalendarPanel";
 
-export default function AdminLifecycleCalendarPage() {
+export default async function AdminLifecycleCalendarPage() {
+  const t = (await serverPageText(calendarText)).lifecyclePage;
   return (
     <main style={styles.page}>
       <header style={styles.header}>
-        <p style={styles.eyebrow}>Joblop / Administration</p>
-        <h1 style={styles.title}>Lifecycle calendar</h1>
-        <p style={styles.lede}>
-          A month view of every non-draft request across organizations, placed on its shift date and
-          coloured by status — from submission through to closure. Unlike the review calendar, which
-          shows only the intake queue, this spans the whole lifecycle. Read only: opening a request
-          does not approve, publish, assign, notify, or execute payment.
-        </p>
+        <p style={styles.eyebrow}>{t.eyebrow}</p>
+        <h1 style={styles.title}>{t.title}</h1>
+        <p style={styles.lede}>{t.lede}</p>
       </header>
 
       <AdminLifecycleCalendarPanel />

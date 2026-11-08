@@ -1,6 +1,8 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
+import { usePageText } from "../i18n/pageText";
+import { verificationText } from "./text";
 
 type Entry = Readonly<{
   subjectType: "worker" | "employer";
@@ -19,28 +21,22 @@ type State =
   | { status: "unavailable" }
   | { status: "ready"; queue: readonly Entry[] };
 
+// Codes sent to the API. The labels shown for them live in ./text.ts, keyed by these codes.
 const FILTERS = [
-  { value: "pending,review,review_required", label: "Needs action" },
-  { value: "pending", label: "Pending" },
-  { value: "review,review_required", label: "Review required" },
-  { value: "verified,business_verified", label: "Verified" },
-  { value: "expired", label: "Expiring/expired" },
-  { value: "rejected,suspended", label: "Rejected/suspended" },
-  { value: "all", label: "All" }
+  { value: "pending,review,review_required" },
+  { value: "pending" },
+  { value: "review,review_required" },
+  { value: "verified,business_verified" },
+  { value: "expired" },
+  { value: "rejected,suspended" },
+  { value: "all" }
 ] as const;
 
-const WORKER_DECISIONS = [
-  { value: "verified", label: "Verify" },
-  { value: "review", label: "Mark review" },
-  { value: "rejected", label: "Reject" }
-] as const;
-const EMPLOYER_DECISIONS = [
-  { value: "business_verified", label: "Verify business" },
-  { value: "review_required", label: "Mark review" },
-  { value: "suspended", label: "Suspend" }
-] as const;
+const WORKER_DECISIONS = [{ value: "verified" }, { value: "review" }, { value: "rejected" }] as const;
+const EMPLOYER_DECISIONS = [{ value: "business_verified" }, { value: "review_required" }, { value: "suspended" }] as const;
 
 export function VerificationQueuePanel() {
+  const t = usePageText(verificationText);
   const [state, setState] = useState<State>({ status: "loading" });
   const [filter, setFilter] = useState<string>(FILTERS[0].value);
   const [busy, setBusy] = useState<string | null>(null);
@@ -72,38 +68,38 @@ export function VerificationQueuePanel() {
         body: JSON.stringify({ subjectType: entry.subjectType, verificationId: entry.id, decision })
       });
       if (!r.ok) {
-        setNotice(r.status === 401 || r.status === 403 ? "Administrator authorization is required." : "That decision could not be recorded.");
+        setNotice(r.status === 401 || r.status === 403 ? t.authRequired : t.decisionFailed);
         return;
       }
       await load(filter);
     } finally {
       setBusy(null);
     }
-  }, [filter, load]);
+  }, [filter, load, t]);
 
   return (
     <main style={styles.page}>
       <header style={styles.hero}>
-        <p style={styles.eyebrow}>Joblop / Verification</p>
-        <h1 style={styles.title}>Verification queue</h1>
-        <p style={styles.lede}>Governed trust decisions for workers and employers. Every decision is audited. Badges and eligibility read these states — never an account, contract, or payment.</p>
+        <p style={styles.eyebrow}>{t.eyebrow}</p>
+        <h1 style={styles.title}>{t.title}</h1>
+        <p style={styles.lede}>{t.lede}</p>
       </header>
-      <div style={styles.filters} role="tablist" aria-label="Verification filters">
+      <div style={styles.filters} role="tablist" aria-label={t.filtersLabel}>
         {FILTERS.map((f) => (
           <button key={f.value} type="button" role="tab" aria-selected={filter === f.value} style={filter === f.value ? styles.filterActive : styles.filter} onClick={() => setFilter(f.value)}>
-            {f.label}
+            {t.filters[f.value] ?? f.value}
           </button>
         ))}
       </div>
       {notice ? <p role="alert" style={styles.alert}>{notice}</p> : null}
       {state.status === "loading" ? (
-        <p aria-live="polite">Loading verification queue…</p>
+        <p aria-live="polite">{t.loading}</p>
       ) : state.status === "denied" ? (
-        <p>Administrator authorization is required.</p>
+        <p>{t.authRequired}</p>
       ) : state.status === "unavailable" ? (
-        <p>Verification queue is unavailable. <button type="button" style={styles.button} onClick={() => void load(filter)}>Retry</button></p>
+        <p>{t.unavailable} <button type="button" style={styles.button} onClick={() => void load(filter)}>{t.retry}</button></p>
       ) : state.queue.length === 0 ? (
-        <p style={styles.muted}>Nothing in this view.</p>
+        <p style={styles.muted}>{t.empty}</p>
       ) : (
         <ul style={styles.list}>
           {state.queue.map((entry) => {
@@ -111,16 +107,16 @@ export function VerificationQueuePanel() {
             return (
               <li key={entry.id} style={styles.item}>
                 <div style={styles.itemHead}>
-                  <strong>{entry.subjectType === "employer" ? "Employer" : "Worker"}{entry.verificationType ? ` · ${entry.verificationType.replaceAll("_", " ")}` : ""}</strong>
-                  <span style={styles.statusBadge}>{entry.status.replaceAll("_", " ")}</span>
+                  <strong>{entry.subjectType === "employer" ? t.employer : t.worker}{entry.verificationType ? ` · ${entry.verificationType.replaceAll("_", " ")}` : ""}</strong>
+                  <span style={styles.statusBadge}>{t.statusLabel[entry.status] ?? entry.status.replaceAll("_", " ")}</span>
                 </div>
                 <div style={styles.dim}>
-                  {entry.subjectId} · {entry.provider ?? "—"}{entry.requestedAt ? ` · requested ${new Date(entry.requestedAt).toLocaleString()}` : ""}
+                  {entry.subjectId} · {entry.provider ?? "—"}{entry.requestedAt ? ` · ${t.requested(new Date(entry.requestedAt).toLocaleString())}` : ""}
                 </div>
                 <div style={styles.actions}>
                   {decisions.map((d) => (
                     <button key={d.value} type="button" style={d.value === "rejected" || d.value === "suspended" ? styles.buttonGhost : styles.button} disabled={busy === entry.id} onClick={() => void review(entry, d.value)}>
-                      {d.label}
+                      {t.decisions[d.value] ?? d.value}
                     </button>
                   ))}
                 </div>

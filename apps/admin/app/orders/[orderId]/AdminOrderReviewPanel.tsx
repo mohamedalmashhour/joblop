@@ -1,6 +1,8 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
+import { usePageText } from "../../i18n/pageText";
+import { ordersText } from "../text";
 
 type Child = Readonly<{
   jobRequestId: string;
@@ -30,14 +32,9 @@ type Order = Readonly<{
 type State = { status: "loading" } | { status: "denied" } | { status: "error" } | { status: "ready"; order: Order };
 type Action = "admin-review" | "request-information" | "approve-for-dispatch";
 
-const REASON_TEXT: Record<string, string> = {
-  standard: "Standard role",
-  urgent_premium: "Urgent \u2014 +$5/hr premium applies",
-  immediate_urgency: "Emergency (immediate) \u2014 owner review",
-  high_headcount: "Large headcount \u2014 owner review"
-};
-
 export function AdminOrderReviewPanel({ orderId }: Readonly<{ orderId: string }>) {
+  const t = usePageText(ordersText);
+  const statusLabel = (code: string) => t.statusLabel[code] ?? code.replaceAll("_", " ");
   const [state, setState] = useState<State>({ status: "loading" });
   const [busy, setBusy] = useState<string | null>(null);
   const [message, setMessage] = useState("");
@@ -65,17 +62,17 @@ export function AdminOrderReviewPanel({ orderId }: Readonly<{ orderId: string }>
   const act = useCallback(async (child: Child, action: Action) => {
     const cfg = cfgFor(child);
     if (action === "request-information" && cfg.reason.trim().length < 4) {
-      setMessage("Enter a clear reason of at least four characters.");
+      setMessage(t.reasonTooShort);
       return;
     }
     let marginPpm: number | undefined;
     if (action === "approve-for-dispatch") {
       const pct = Number(cfg.margin);
-      if (!Number.isFinite(pct) || pct < 0 || pct > 90) { setMessage("Margin must be between 0 and 90 percent."); return; }
+      if (!Number.isFinite(pct) || pct < 0 || pct > 90) { setMessage(t.marginRange); return; }
       marginPpm = Math.round(pct * 10_000);
     }
     setBusy(child.jobRequestId);
-    setMessage("Applying the governed intake transition.");
+    setMessage(t.applying);
     try {
       const response = await fetch(`/api/intake/${encodeURIComponent(child.jobRequestId)}/${action}`, {
         method: "POST",
@@ -86,55 +83,55 @@ export function AdminOrderReviewPanel({ orderId }: Readonly<{ orderId: string }>
           ...(marginPpm !== undefined ? { marginPpm } : {})
         })
       });
-      if (response.status === 409) { setMessage("This role changed. Reloading the latest."); await load(); return; }
-      if (!response.ok) { setMessage("The transition could not be applied."); return; }
+      if (response.status === 409) { setMessage(t.roleChanged); await load(); return; }
+      if (!response.ok) { setMessage(t.transitionFailed); return; }
       setMessage("");
       await load();
     } finally {
       setBusy(null);
     }
-  }, [inputs, load]);
+  }, [inputs, load, t]);
 
   const approveAll = useCallback(async () => {
     setBusy("__all__");
-    setMessage("Approving the AI-recommended roles.");
+    setMessage(t.approvingAll);
     try {
       const response = await fetch(`/api/orders/${encodeURIComponent(orderId)}/approve-standard`, {
         method: "POST",
         headers: { "content-type": "application/json" }
       });
-      if (!response.ok) { setMessage("The batch approval could not be applied."); return; }
+      if (!response.ok) { setMessage(t.batchFailed); return; }
       const payload = (await response.json()) as { summary?: { approved: number; escalated: number; skipped: number } };
       const sm = payload.summary;
-      setMessage(sm ? `Approved ${sm.approved}, escalated ${sm.escalated}, skipped ${sm.skipped}.` : "");
+      setMessage(sm ? t.batchSummary(sm.approved, sm.escalated, sm.skipped) : "");
       await load();
     } finally {
       setBusy(null);
     }
-  }, [orderId, load]);
+  }, [orderId, load, t]);
 
   const escalate = useCallback(async (child: Child) => {
     const cfg = cfgFor(child);
-    if (cfg.reason.trim().length < 4) { setMessage("Enter a reason (4+ characters) to escalate."); return; }
+    if (cfg.reason.trim().length < 4) { setMessage(t.escalateReasonTooShort); return; }
     setBusy(child.jobRequestId);
-    setMessage("Raising an owner escalation.");
+    setMessage(t.escalating);
     try {
       const response = await fetch(`/api/orders/${encodeURIComponent(orderId)}/roles/${encodeURIComponent(child.jobRequestId)}/escalate`, {
         method: "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({ reason: cfg.reason.trim() })
       });
-      if (!response.ok) { setMessage(response.status === 409 ? "This role already has an open escalation." : "The escalation could not be raised."); return; }
-      setMessage("Escalation raised for the owners.");
+      if (!response.ok) { setMessage(response.status === 409 ? t.escalationOpen : t.escalationFailed); return; }
+      setMessage(t.escalationRaised);
       await load();
     } finally {
       setBusy(null);
     }
-  }, [orderId, inputs, load]);
+  }, [orderId, inputs, load, t]);
 
-  if (state.status === "loading") return <p style={styles.text}>Loading the order.</p>;
-  if (state.status === "denied") return <p style={styles.text}>Administrator access required.</p>;
-  if (state.status === "error") return <p style={styles.text}>This order could not be reached.</p>;
+  if (state.status === "loading") return <p style={styles.text}>{t.orderLoading}</p>;
+  if (state.status === "denied") return <p style={styles.text}>{t.orderDenied}</p>;
+  if (state.status === "error") return <p style={styles.text}>{t.orderError}</p>;
 
   const order = state.order;
   const schedule = `${new Date(order.startAt).toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" })} – ${new Date(order.endAt).toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" })} (${order.timezone})`;
@@ -144,14 +141,14 @@ export function AdminOrderReviewPanel({ orderId }: Readonly<{ orderId: string }>
       <div style={styles.cardHead}>
         <div>
           <h2 style={styles.h2}>{order.title}</h2>
-          <p style={styles.meta}>{order.orderNumber} · org {order.organizationId.slice(0, 8)} · {schedule}</p>
+          <p style={styles.meta}>{order.orderNumber} · {t.org} {order.organizationId.slice(0, 8)} · {schedule}</p>
         </div>
-        <span style={styles.badge}>{order.status.replaceAll("_", " ")}</span>
+        <span style={styles.badge}>{statusLabel(order.status)}</span>
       </div>
       {message ? <p style={styles.notice} role="status">{message}</p> : null}
-      {order.perks ? <p style={styles.meta}>Perks: {order.perks}</p> : null}
+      {order.perks ? <p style={styles.meta}>{t.perks(order.perks)}</p> : null}
 
-      <button type="button" style={styles.button} disabled={busy !== null} onClick={() => void approveAll()}>Approve all recommended roles</button>
+      <button type="button" style={styles.button} disabled={busy !== null} onClick={() => void approveAll()}>{t.approveAll}</button>
 
       {order.children.map((child) => {
         const cfg = cfgFor(child);
@@ -160,38 +157,38 @@ export function AdminOrderReviewPanel({ orderId }: Readonly<{ orderId: string }>
           <article key={child.jobRequestId} style={styles.card}>
             <div style={styles.cardHead}>
               <h3 style={styles.h3}>{child.title} × {child.numberOfWorkers}</h3>
-              <span style={styles.badge}>{child.status.replaceAll("_", " ")}</span>
+              <span style={styles.badge}>{statusLabel(child.status)}</span>
             </div>
             <p style={styles.meta}>{child.jobRequestNumber}</p>
             <p style={child.recommendation === "escalate" ? styles.recEscalate : styles.recApprove}>
-              {child.recommendation === "escalate" ? "AI manager: escalate to owners" : "AI manager: approve"}
+              {child.recommendation === "escalate" ? t.aiEscalate : t.aiApprove}
               {" \u00b7 "}
-              {child.reasonCodes.map((code) => REASON_TEXT[code] ?? code).join(", ")}
+              {child.reasonCodes.map((code) => t.reasonText[code] ?? code).join(", ")}
             </p>
-            {child.adminReviewReason ? <p style={styles.meta}>Info requested: {child.adminReviewReason}</p> : null}
+            {child.adminReviewReason ? <p style={styles.meta}>{t.infoRequested(child.adminReviewReason)}</p> : null}
 
             {child.status === "submitted" ? (
-              <button type="button" style={styles.button} disabled={busyThis} onClick={() => void act(child, "admin-review")}>Begin review</button>
+              <button type="button" style={styles.button} disabled={busyThis} onClick={() => void act(child, "admin-review")}>{t.beginReview}</button>
             ) : null}
 
             {child.status === "admin_review" ? (
               <div style={styles.actions}>
-                <label style={styles.label}>Margin %
+                <label style={styles.label}>{t.marginPercent}
                   <input style={styles.input} type="number" min={0} max={90} value={cfg.margin} onChange={(e) => setInput(child, { margin: e.target.value })} />
                 </label>
-                <button type="button" style={styles.button} disabled={busyThis} onClick={() => void act(child, "approve-for-dispatch")}>Approve for dispatch</button>
-                <label style={styles.label}>Reason (to request info)
+                <button type="button" style={styles.button} disabled={busyThis} onClick={() => void act(child, "approve-for-dispatch")}>{t.approveForDispatch}</button>
+                <label style={styles.label}>{t.reasonLabel}
                   <input style={styles.input} value={cfg.reason} onChange={(e) => setInput(child, { reason: e.target.value })} />
                 </label>
-                <button type="button" style={styles.buttonAlt} disabled={busyThis} onClick={() => void act(child, "request-information")}>Request information</button>
-                <button type="button" style={styles.buttonAlt} disabled={busyThis} onClick={() => void escalate(child)}>Escalate to owner</button>
+                <button type="button" style={styles.buttonAlt} disabled={busyThis} onClick={() => void act(child, "request-information")}>{t.requestInformation}</button>
+                <button type="button" style={styles.buttonAlt} disabled={busyThis} onClick={() => void escalate(child)}>{t.escalateToOwner}</button>
               </div>
             ) : null}
           </article>
         );
       })}
 
-      <a href="/orders" style={styles.button}>Back to order review</a>
+      <a href="/orders" style={styles.button}>{t.backToOrders}</a>
     </section>
   );
 }

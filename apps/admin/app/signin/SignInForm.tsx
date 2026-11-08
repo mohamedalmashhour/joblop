@@ -3,18 +3,24 @@
 import { useEffect, useState } from "react";
 
 import { authStyles } from "../authStyles";
+import { usePageText } from "../i18n/pageText";
+
+import { signInText } from "./text";
+
+type MessageKey = "intro" | "numberRejected" | "codeSent" | "unavailable" | "codeRejected";
 
 /**
  * Staff sign-in: a phone number, then a code sent by text. The code and session are handled
  * server-side through same-origin routes; the session stays in an httpOnly cookie.
  */
 export function SignInForm() {
+  const t = usePageText(signInText);
   const [phone, setPhone] = useState("");
   const [code, setCode] = useState("");
   const [step, setStep] = useState<"phone" | "code">("phone");
   const [busy, setBusy] = useState(false);
   const [problem, setProblem] = useState(false);
-  const [message, setMessage] = useState("Enter your staff mobile number. We will text you a code.");
+  const [message, setMessage] = useState<MessageKey>("intro");
 
   useEffect(() => {
     fetch("/api/session", { cache: "no-store" })
@@ -36,14 +42,14 @@ export function SignInForm() {
       });
       if (!response.ok) {
         setProblem(true);
-        return setMessage("That number could not be used. Check it and try again.");
+        return setMessage("numberRejected");
       }
       setStep("code");
       setCode("");
-      setMessage("If this is a staff number, a 6-digit code is on its way. It expires in 10 minutes.");
+      setMessage("codeSent");
     } catch {
       setProblem(true);
-      setMessage("Sign-in is unavailable. Try again.");
+      setMessage("unavailable");
     } finally {
       setBusy(false);
     }
@@ -61,12 +67,12 @@ export function SignInForm() {
       });
       if (!response.ok) {
         setProblem(true);
-        return setMessage("That code did not work. Check it, or ask for a new one.");
+        return setMessage("codeRejected");
       }
       window.location.assign("/calendar");
     } catch {
       setProblem(true);
-      setMessage("Sign-in is unavailable. Try again.");
+      setMessage("unavailable");
     } finally {
       setBusy(false);
     }
@@ -74,7 +80,7 @@ export function SignInForm() {
 
   const status = (
     <p aria-live="polite" role={problem ? "alert" : "status"} style={problem ? authStyles.warning : authStyles.message}>
-      {message}
+      {t[message]}
     </p>
   );
 
@@ -82,11 +88,11 @@ export function SignInForm() {
     return (
       <form style={authStyles.form} onSubmit={(event) => void sendCode(event)}>
         <label style={authStyles.fieldLabel}>
-          Mobile number
+          {t.mobileNumber}
           <input
             autoComplete="tel"
             onChange={(event) => setPhone(event.target.value)}
-            placeholder="514 555 0100"
+            placeholder={t.phonePlaceholder}
             required
             style={authStyles.input}
             type="tel"
@@ -96,7 +102,7 @@ export function SignInForm() {
         {status}
         <div style={authStyles.actions}>
           <button disabled={busy} style={authStyles.primaryButton} type="submit">
-            {busy ? "Sending…" : "Text me a code"}
+            {busy ? t.sending : t.textMeACode}
           </button>
         </div>
       </form>
@@ -106,7 +112,7 @@ export function SignInForm() {
   return (
     <form style={authStyles.form} onSubmit={(event) => void verify(event)}>
       <label style={authStyles.fieldLabel}>
-        6-digit code
+        {t.codeLabel}
         <input
           autoComplete="one-time-code"
           inputMode="numeric"
@@ -121,13 +127,13 @@ export function SignInForm() {
       {status}
       <div style={authStyles.actions}>
         <button disabled={busy} style={authStyles.primaryButton} type="submit">
-          {busy ? "Checking…" : "Sign in"}
+          {busy ? t.checking : t.signIn}
         </button>
         <button disabled={busy} onClick={() => void sendCode()} style={authStyles.secondaryButton} type="button">
-          Send a new code
+          {t.sendNewCode}
         </button>
         <button disabled={busy} onClick={() => setStep("phone")} style={authStyles.secondaryButton} type="button">
-          Change number
+          {t.changeNumber}
         </button>
       </div>
     </form>

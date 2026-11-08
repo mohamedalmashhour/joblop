@@ -1,16 +1,16 @@
+import { serverPageText } from "../../i18n/serverPageText";
+import { ordersText } from "../text";
 import { AdminOrderReviewPanel } from "./AdminOrderReviewPanel";
 
 export default async function AdminOrderDetailPage({ params }: { params: Promise<{ orderId: string }> }) {
   const { orderId } = await params;
+  const t = await serverPageText(ordersText);
   return (
     <main style={styles.page}>
       <header style={styles.hero}>
-        <p style={styles.eyebrow}>Joblop / Administration</p>
-        <h1 style={styles.title}>Order review</h1>
-        <p style={styles.lede}>
-          Review each role line. Begin review, then approve for dispatch with a margin (default 20%)
-          or request information. Approving captures the immutable pricing snapshot for that role.
-        </p>
+        <p style={styles.eyebrow}>{t.eyebrow}</p>
+        <h1 style={styles.title}>{t.title}</h1>
+        <p style={styles.lede}>{t.detailLede}</p>
       </header>
       <AdminOrderReviewPanel orderId={orderId} />
     </main>

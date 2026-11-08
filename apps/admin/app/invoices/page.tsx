@@ -1,15 +1,15 @@
+import { serverPageText } from "../i18n/serverPageText";
 import { InvoiceApprovalPanel } from "./InvoiceApprovalPanel";
+import { invoicesText } from "./text";
 
-export default function InvoiceApprovalPage() {
+export default async function InvoiceApprovalPage() {
+  const t = await serverPageText(invoicesText);
   return (
     <main style={styles.page}>
       <header style={styles.hero}>
-        <p style={styles.eyebrow}>Joblop / Finance</p>
-        <h1 style={styles.title}>Invoices</h1>
-        <p style={styles.lede}>
-          A locked timesheet creates a draft invoice. Approve it, issue it to give it a number, then send it to the
-          employer, who is emailed and can pay it. No money moves here, and issuing cannot be undone from this screen.
-        </p>
+        <p style={styles.eyebrow}>{t.eyebrow}</p>
+        <h1 style={styles.title}>{t.title}</h1>
+        <p style={styles.lede}>{t.lede}</p>
       </header>
       <InvoiceApprovalPanel />
     </main>

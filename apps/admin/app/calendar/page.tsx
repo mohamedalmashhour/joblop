@@ -1,30 +1,28 @@
 import { adminCalendarBoundaries } from "./adminCalendarContent";
 import { AdminCalendarPanel } from "./AdminCalendarPanel";
+import { serverPageText } from "../i18n/serverPageText";
+import { calendarText } from "./text";
 
-export default function AdminCalendarPage() {
+export default async function AdminCalendarPage() {
+  const t = await serverPageText(calendarText);
   return (
     <main style={styles.page}>
       <header style={styles.hero}>
-        <p style={styles.eyebrow}>Joblop / Administration</p>
-        <h1 style={styles.title}>Review calendar</h1>
-        <p style={styles.lede}>
-          Authenticated client requests in one governed review queue. Opening a request does not
-          approve, publish, assign, notify, or execute payment.
-        </p>
+        <p style={styles.eyebrow}>{t.page.eyebrow}</p>
+        <h1 style={styles.title}>{t.page.title}</h1>
+        <p style={styles.lede}>{t.page.lede}</p>
       </header>
       <AdminCalendarPanel />
       <section style={styles.boundaryGrid}>
         {adminCalendarBoundaries
-          .filter((boundary) => !boundary.includes("fixture"))
-          .map((boundary) => (
+          .map((boundary, index) => ({ boundary, label: t.boundaries[index] ?? boundary }))
+          .filter(({ boundary }) => !boundary.includes("fixture"))
+          .map(({ boundary, label }) => (
             <article key={boundary} style={styles.boundaryCard}>
-              {boundary}
+              {label}
             </article>
           ))}
-        <article style={styles.boundaryCard}>
-          Persisted review actions use current version tokens and explicit human confirmation. No
-          fixture review controls are mixed into authoritative records.
-        </article>
+        <article style={styles.boundaryCard}>{t.page.persistedBoundary}</article>
       </section>
     </main>
   );

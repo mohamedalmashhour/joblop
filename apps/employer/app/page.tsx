@@ -9,6 +9,7 @@ import { HeaderNav } from "./HeaderNav";
 import { EmployerFlowMovie } from "./EmployerFlowMovie";
 import { LanguageSwitcher } from "./i18n/LanguageSwitcher";
 import { JobScannerBand } from "./JobScannerBand";
+import { PlatformLoopMovie } from "./PlatformLoopMovie";
 
 async function resolveLocale() {
   const store = await cookies();
@@ -362,6 +363,8 @@ export default async function LandingPage({ searchParams }: { searchParams?: Pro
           </div>
         </div>
       </section>
+
+      <PlatformLoopMovie lang={lang} />
 
       <JobScannerBand lang={lang} q={scanQuery} workerAppUrl={workerAppUrl} />
 

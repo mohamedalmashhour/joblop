@@ -1,12 +1,16 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { usePageText } from "../i18n/pageText";
+import { ordersText } from "./text";
 
 type Child = Readonly<{ jobRequestId: string; title: string; numberOfWorkers: number; status: string }>;
 type Order = Readonly<{ id: string; orderNumber: string; organizationId: string; title: string; status: string; children: readonly Child[] }>;
 type State = { status: "loading" } | { status: "denied" } | { status: "error" } | { status: "ready"; orders: readonly Order[] };
 
 export function AdminOrdersPanel() {
+  const t = usePageText(ordersText);
+  const statusLabel = (code: string) => t.statusLabel[code] ?? code.replaceAll("_", " ");
   const [state, setState] = useState<State>({ status: "loading" });
   useEffect(() => {
     (async () => {
@@ -22,10 +26,10 @@ export function AdminOrdersPanel() {
     })();
   }, []);
 
-  if (state.status === "loading") return <p style={styles.text}>Loading the order-review queue.</p>;
-  if (state.status === "denied") return <p style={styles.text}>Administrator access required. Sign in with an authorized platform account.</p>;
-  if (state.status === "error") return <p style={styles.text}>The order-review queue could not be reached.</p>;
-  if (state.orders.length === 0) return <p style={styles.text}>No orders are awaiting review.</p>;
+  if (state.status === "loading") return <p style={styles.text}>{t.listLoading}</p>;
+  if (state.status === "denied") return <p style={styles.text}>{t.listDenied}</p>;
+  if (state.status === "error") return <p style={styles.text}>{t.listError}</p>;
+  if (state.orders.length === 0) return <p style={styles.text}>{t.listEmpty}</p>;
 
   // Advisory jobs scan — surfaces what needs attention across all orders (read-only).
   const pendingLines = state.orders.reduce((sum, o) => sum + o.children.filter((c) => c.status === "submitted" || c.status === "admin_review").length, 0);
@@ -34,8 +38,8 @@ export function AdminOrdersPanel() {
   return (
     <div style={styles.grid}>
       <div style={{ ...styles.card, borderColor: pendingLines > 0 ? "rgba(248, 184, 8,0.5)" : undefined }}>
-        <strong>AI scan (advisory): {ordersNeedingReview > 0 ? `${ordersNeedingReview} order(s) · ${pendingLines} job line(s) awaiting review` : "all orders reviewed — nothing pending"}</strong>
-        <p style={styles.meta}>Advisory only — a human admin prices and approves each job line.</p>
+        <strong>{ordersNeedingReview > 0 ? t.scanPending(ordersNeedingReview, pendingLines) : t.scanClear}</strong>
+        <p style={styles.meta}>{t.scanNote}</p>
       </div>
       {state.orders.map((order) => {
         const pending = order.children.filter((c) => c.status === "submitted" || c.status === "admin_review").length;
@@ -43,15 +47,15 @@ export function AdminOrdersPanel() {
           <article key={order.id} style={styles.card}>
             <div style={styles.cardHead}>
               <h2 style={styles.h2}>{order.title}</h2>
-              <span style={styles.badge}>{order.status.replaceAll("_", " ")}</span>
+              <span style={styles.badge}>{statusLabel(order.status)}</span>
             </div>
-            <p style={styles.meta}>{order.orderNumber} · {order.children.length} role line(s) · {pending} awaiting action</p>
+            <p style={styles.meta}>{t.orderMeta(order.orderNumber, order.children.length, pending)}</p>
             <ul style={styles.list}>
               {order.children.map((c) => (
-                <li key={c.jobRequestId} style={styles.text}>{c.title} × {c.numberOfWorkers} <span style={styles.meta}>({c.status.replaceAll("_", " ")})</span></li>
+                <li key={c.jobRequestId} style={styles.text}>{c.title} × {c.numberOfWorkers} <span style={styles.meta}>({statusLabel(c.status)})</span></li>
               ))}
             </ul>
-            <a href={`/orders/${encodeURIComponent(order.id)}`} style={styles.button}>Review order</a>
+            <a href={`/orders/${encodeURIComponent(order.id)}`} style={styles.button}>{t.reviewOrder}</a>
           </article>
         );
       })}

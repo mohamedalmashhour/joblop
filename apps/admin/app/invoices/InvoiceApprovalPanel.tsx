@@ -2,13 +2,12 @@
 
 import { useCallback, useEffect, useState } from "react";
 import type { FinanceInvoice } from "../api/finance/financeBoundary";
+import { usePageText } from "../i18n/pageText";
 import { invoiceActionPath, invoiceIssueBody, invoiceSendBody, nextInvoiceAction, type InvoiceStaffAction } from "./invoiceIssue";
+import { invoicesText } from "./text";
 
 type Organization = Readonly<{ id: string; displayName: string }>;
 type State = { status: "idle" | "loading" | "denied" | "error" } | { status: "ready"; invoices: readonly FinanceInvoice[] };
-
-const ACTION_LABEL: Record<InvoiceStaffAction, string> = { approve: "Approve invoice", issue: "Issue invoice", send: "Send to employer" };
-const ACTION_PROGRESS: Record<InvoiceStaffAction, string> = { approve: "Approving the invoice.", issue: "Issuing the invoice.", send: "Sending the invoice." };
 
 function actionBody(invoice: FinanceInvoice, action: InvoiceStaffAction) {
   if (action === "issue") return invoiceIssueBody(invoice.organizationId, invoice.version, new Date());
@@ -16,12 +15,12 @@ function actionBody(invoice: FinanceInvoice, action: InvoiceStaffAction) {
   return { expectedVersion: invoice.version };
 }
 
-function doneMessage(action: InvoiceStaffAction, employerNotice: unknown): string {
-  if (action === "approve") return "Invoice approved. It can be issued now.";
-  if (action === "issue") return "Invoice issued. It can be sent now.";
-  return employerNotice === "sent"
-    ? "Invoice sent, and the employer has been emailed."
-    : "Invoice marked as sent and visible to the employer, but the email did not go out.";
+type InvoicesCopy = (typeof invoicesText)["en"];
+
+function doneMessage(t: InvoicesCopy, action: InvoiceStaffAction, employerNotice: unknown): string {
+  if (action === "approve") return t.approved;
+  if (action === "issue") return t.issued;
+  return employerNotice === "sent" ? t.sentEmailed : t.sentNoEmail;
 }
 
 function money(minor: number, currency: string): string {
@@ -29,6 +28,7 @@ function money(minor: number, currency: string): string {
 }
 
 export function InvoiceApprovalPanel() {
+  const t = usePageText(invoicesText);
   const [organizations, setOrganizations] = useState<readonly Organization[]>([]);
   const [organizationId, setOrganizationId] = useState("");
   const [state, setState] = useState<State>({ status: "idle" });
@@ -61,58 +61,58 @@ export function InvoiceApprovalPanel() {
 
   const act = useCallback(async (invoice: FinanceInvoice, action: InvoiceStaffAction) => {
     setBusy(invoice.id);
-    setMessage(ACTION_PROGRESS[action]);
+    setMessage(t.actionProgress[action]);
     try {
       const response = await fetch(
         `/api/finance/invoices/${encodeURIComponent(invoice.id)}/${invoiceActionPath(action)}?organizationId=${encodeURIComponent(invoice.organizationId)}`,
         { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(actionBody(invoice, action)) }
       );
       if (!response.ok) {
-        setMessage("That didn't go through. Someone may have changed this invoice, so the list has been refreshed.");
+        setMessage(t.changedRefreshed);
       } else {
         const payload = (await response.json().catch(() => ({}))) as { employerNotice?: unknown };
-        setMessage(doneMessage(action, payload.employerNotice));
+        setMessage(doneMessage(t, action, payload.employerNotice));
       }
       await load(invoice.organizationId);
     } catch {
-      setMessage("That didn't go through. Refresh and try again.");
+      setMessage(t.failedRetry);
     } finally {
       setBusy(null);
     }
-  }, [load]);
+  }, [load, t]);
 
-  if (state.status === "denied") return <p style={styles.wrapText}>Your session has ended or this account has no access. <a href="/signin" style={{ color: "#fff1a8" }}>Sign in again</a>.</p>;
+  if (state.status === "denied") return <p style={styles.wrapText}>{t.denied} <a href="/signin" style={{ color: "#fff1a8" }}>{t.signInAgain}</a>.</p>;
 
   return (
     <section style={styles.wrap}>
       <label style={styles.label}>
-        Employer
+        {t.employer}
         <select
           onChange={(event) => { setOrganizationId(event.target.value); setMessage(""); void load(event.target.value); }}
           style={styles.input}
           value={organizationId}
         >
-          <option value="">Choose employer…</option>
+          <option value="">{t.chooseEmployer}</option>
           {organizations.map((organization) => (
             <option key={organization.id} value={organization.id}>{organization.displayName}</option>
           ))}
         </select>
       </label>
       <p aria-live="polite" role="status" style={styles.text}>{message}</p>
-      {state.status === "loading" ? <p style={styles.text}>Loading invoices.</p> : null}
-      {state.status === "error" ? <p role="alert" style={styles.text}>The invoices could not be loaded.</p> : null}
-      {state.status === "ready" && state.invoices.length === 0 ? <p style={styles.text}>This employer has no invoices.</p> : null}
+      {state.status === "loading" ? <p style={styles.text}>{t.loading}</p> : null}
+      {state.status === "error" ? <p role="alert" style={styles.text}>{t.loadError}</p> : null}
+      {state.status === "ready" && state.invoices.length === 0 ? <p style={styles.text}>{t.empty}</p> : null}
       {state.status === "ready"
         ? state.invoices.map((invoice) => {
             const action = nextInvoiceAction(invoice.status);
             return (
               <article key={invoice.id} style={styles.card}>
-                <h2 style={styles.heading}>{invoice.invoiceNumber ?? "Not issued yet"}</h2>
+                <h2 style={styles.heading}>{invoice.invoiceNumber ?? t.notIssued}</h2>
                 <p style={styles.text}>{money(invoice.totalMinor, invoice.currency)}</p>
-                <p style={styles.meta}>Status: {invoice.status.replaceAll("_", " ")}</p>
+                <p style={styles.meta}>{t.status(t.statusLabel[invoice.status] ?? invoice.status.replaceAll("_", " "))}</p>
                 {action ? (
                   <button disabled={busy !== null} onClick={() => void act(invoice, action)} style={styles.button} type="button">
-                    {busy === invoice.id ? "Working…" : ACTION_LABEL[action]}
+                    {busy === invoice.id ? t.working : t.actionLabel[action]}
                   </button>
                 ) : null}
               </article>

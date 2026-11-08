@@ -10,8 +10,11 @@ import {
   type AdminCalendarDto,
   type AuthenticatedViewState
 } from "@rwos/shared";
+import { usePageText } from "../i18n/pageText";
+import { calendarText } from "./text";
 
 export function AdminCalendarPanel() {
+  const t = usePageText(calendarText).panel;
   const [state, setState] = useState<AuthenticatedViewState<readonly AdminCalendarDto[]>>({
     status: "loading"
   });
@@ -40,24 +43,23 @@ export function AdminCalendarPanel() {
 
   if (state.status === "denied") return <AdminSignIn />;
   if (state.status === "loading")
-    return <StateCard title="Loading review calendar" message="Checking platform authorization." />;
+    return <StateCard title={t.loadingTitle} message={t.loadingMessage} retryLabel={t.retry} />;
   if (state.status === "empty")
     return (
       <>
         <SessionAction />
-        <StateCard title="No persisted requests" message="The governed review queue is empty." />
+        <StateCard title={t.emptyTitle} message={t.emptyMessage} retryLabel={t.retry} />
       </>
     );
   if (state.status !== "ready" && state.status !== "partial") {
     return (
       <StateCard
         title={
-          state.status === "unavailable"
-            ? "Review calendar unavailable"
-            : "Review calendar could not be loaded"
+          state.status === "unavailable" ? t.unavailableTitle : t.errorTitle
         }
-        message="No fixture requests are substituted for persisted records."
+        message={t.noFixtureMessage}
         onRetry={load}
+        retryLabel={t.retry}
       />
     );
   }
@@ -66,9 +68,10 @@ export function AdminCalendarPanel() {
       <SessionAction />
       {state.status === "partial" ? (
         <StateCard
-          title="Some reviews could not be shown"
-          message="The records below passed the administrator privacy whitelist. Retry to check for the remaining records."
+          title={t.partialTitle}
+          message={t.partialMessage}
           onRetry={load}
+          retryLabel={t.retry}
         />
       ) : null}
       <section style={styles.grid}>
@@ -76,13 +79,13 @@ export function AdminCalendarPanel() {
           <article key={request.id} style={styles.card}>
             <span style={badgeStyle(request.status)}>{request.status.replaceAll("_", " ")}</span>
             <h2 style={styles.h2}>{request.title}</h2>
-            <p style={styles.reference}>Organization reference: {request.organizationId}</p>
+            <p style={styles.reference}>{t.organizationReference(request.organizationId)}</p>
             <p>{formatWindow(request)}</p>
             <a
               href={`/calendar/request?request=${encodeURIComponent(request.requestNumber)}`}
               style={styles.button}
             >
-              Open review detail
+              {t.openDetail}
             </a>
           </article>
         ))}
@@ -92,13 +95,14 @@ export function AdminCalendarPanel() {
 }
 
 function SessionAction() {
+  const t = usePageText(calendarText).panel;
   const [submitting, setSubmitting] = useState(false);
-  const [message, setMessage] = useState("Authenticated administrator calendar session.");
+  const [clearFailed, setClearFailed] = useState(false);
   const signOut = async () => {
     setSubmitting(true);
     try {
       const cleared = await clearWebCalendarSession(fetch);
-      if (!cleared) return setMessage("Session could not be cleared. Try again.");
+      if (!cleared) return setClearFailed(true);
       window.location.assign("/signin");
     } finally {
       setSubmitting(false);
@@ -106,14 +110,14 @@ function SessionAction() {
   };
   return (
     <section aria-busy={submitting} aria-live="polite" style={styles.stateCard}>
-      <p>{message}</p>
+      <p>{clearFailed ? t.sessionClearFailed : t.sessionMessage}</p>
       <button
         disabled={submitting}
         onClick={() => void signOut()}
         style={styles.retry}
         type="button"
       >
-        {submitting ? "Signing out…" : "Switch administrator account"}
+        {submitting ? t.signingOut : t.switchAccount}
       </button>
     </section>
   );
@@ -121,12 +125,13 @@ function SessionAction() {
 
 // Staff sign in with a mobile number and a texted code on the sign-in page.
 function AdminSignIn() {
+  const t = usePageText(calendarText).panel;
   return (
     <section style={styles.stateCard} aria-live="polite">
-      <h2 style={styles.h2}>Administrator sign-in required</h2>
-      <p>Sign in with your staff mobile number and a texted code.</p>
+      <h2 style={styles.h2}>{t.signInRequiredTitle}</h2>
+      <p>{t.signInRequiredMessage}</p>
       <a href="/signin" style={styles.button}>
-        Sign in
+        {t.signIn}
       </a>
     </section>
   );
@@ -135,15 +140,16 @@ function AdminSignIn() {
 function StateCard({
   title,
   message,
-  onRetry
-}: Readonly<{ title: string; message: string; onRetry?: () => Promise<void> }>) {
+  onRetry,
+  retryLabel
+}: Readonly<{ title: string; message: string; onRetry?: () => Promise<void>; retryLabel: string }>) {
   return (
     <section style={styles.stateCard} aria-live="polite">
       <h2 style={styles.h2}>{title}</h2>
       <p>{message}</p>
       {onRetry ? (
         <button type="button" onClick={() => void onRetry()} style={styles.retry}>
-          Retry
+          {retryLabel}
         </button>
       ) : null}
     </section>

@@ -2,6 +2,8 @@
 
 import { useEffect, useMemo, useState, type CSSProperties } from "react";
 import { parseAdminCalendarList, type AdminCalendarDto } from "@rwos/shared";
+import { usePageText } from "../../i18n/pageText";
+import { calendarText } from "../text";
 import { MonthCalendar, type CalendarEntry, type CalendarLegendItem, type CalendarTone } from "../MonthCalendar";
 
 // Admin full-lifecycle calendar: every non-draft request across organizations, placed on a month
@@ -33,16 +35,20 @@ function statusTone(status: AdminCalendarDto["status"]): CalendarTone {
   }
 }
 
-const LEGEND: readonly CalendarLegendItem[] = [
-  { label: "Submitted", tone: statusTone("submitted") },
-  { label: "Under review", tone: statusTone("under_review") },
-  { label: "Published", tone: statusTone("published") },
-  { label: "Assigned / in progress", tone: statusTone("assigned") },
-  { label: "Completed", tone: statusTone("completed") },
-  { label: "Cancelled", tone: statusTone("cancelled") }
-];
+function legendFor(labels: typeof calendarText.en.lifecycle.legend): readonly CalendarLegendItem[] {
+  return [
+    { label: labels.submitted, tone: statusTone("submitted") },
+    { label: labels.underReview, tone: statusTone("under_review") },
+    { label: labels.published, tone: statusTone("published") },
+    { label: labels.assigned, tone: statusTone("assigned") },
+    { label: labels.completed, tone: statusTone("completed") },
+    { label: labels.cancelled, tone: statusTone("cancelled") }
+  ];
+}
 
 export function AdminLifecycleCalendarPanel() {
+  const t = usePageText(calendarText).lifecycle;
+  const legend = useMemo(() => legendFor(t.legend), [t]);
   const [state, setState] = useState<LoadState>({ status: "loading" });
 
   useEffect(() => {
@@ -82,19 +88,16 @@ export function AdminLifecycleCalendarPanel() {
     <section aria-labelledby="lifecycle-calendar-title" style={styles.panel}>
       <div style={styles.header}>
         <div>
-          <h2 id="lifecycle-calendar-title" style={styles.h2}>Lifecycle calendar</h2>
-          <p style={styles.help}>
-            Every non-draft request across organizations, placed on its shift date and coloured by
-            status — from submission through to closure. Read only.
-          </p>
+          <h2 id="lifecycle-calendar-title" style={styles.h2}>{t.title}</h2>
+          <p style={styles.help}>{t.help}</p>
         </div>
-        <span style={styles.badge}>Read only</span>
+        <span style={styles.badge}>{t.readOnly}</span>
       </div>
 
-      {state.status === "loading" ? <p style={styles.state}>Loading lifecycle calendar…</p> : null}
-      {state.status === "denied" ? <p style={styles.state}>An authenticated administrator session is required.</p> : null}
-      {state.status === "error" ? <p style={styles.state}>The lifecycle calendar could not be loaded.</p> : null}
-      {state.status === "ready" ? <MonthCalendar entries={entries} legend={LEGEND} /> : null}
+      {state.status === "loading" ? <p style={styles.state}>{t.loading}</p> : null}
+      {state.status === "denied" ? <p style={styles.state}>{t.denied}</p> : null}
+      {state.status === "error" ? <p style={styles.state}>{t.error}</p> : null}
+      {state.status === "ready" ? <MonthCalendar entries={entries} legend={legend} /> : null}
     </section>
   );
 }

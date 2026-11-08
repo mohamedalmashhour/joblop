@@ -1,7 +1,8 @@
 "use client";
 
 import { useCallback, useEffect, useState, type CSSProperties } from "react";
-import { aiReviewDisclaimer, aiReviewHeading, aiReviewUnavailableText } from "./payrollContent";
+import { usePageText } from "../i18n/pageText";
+import { payrollText } from "./text";
 
 // ── Types (mirror the payroll API serializers) ──
 type Period = Readonly<{ id: string; organizationId: string; jurisdiction: { country: string; region: string }; periodStart: string; periodEnd: string; timezone?: string; status: string; currency: string; calculationCount?: number }>;
@@ -28,6 +29,7 @@ async function api(path: string, method: "GET" | "POST" = "GET", body?: unknown)
 }
 
 export function PayrollConsole() {
+  const t = usePageText(payrollText);
   const [periods, setPeriods] = useState<Period[] | null>(null);
   const [periodId, setPeriodId] = useState<string | null>(null);
   const [calcs, setCalcs] = useState<Calc[] | null>(null);
@@ -71,26 +73,26 @@ export function PayrollConsole() {
     try {
       const r = await api(path, "POST", body);
       if (!r.ok) {
-        const msg = r.status === 409 ? "This calculation changed — reload and try again (stale revision)." : r.status === 403 ? "Payroll authority required." : (r.data.reason as string) ?? "That action could not be completed.";
-        setNotice({ tone: "error", text: `${label}: ${msg}` });
+        const msg = r.status === 409 ? t.staleRevision : r.status === 403 ? t.authorityRequired : (r.data.reason as string) ?? t.actionFailed;
+        setNotice({ tone: "error", text: t.actionError(label, msg) });
         return;
       }
       setNotice({ tone: "info", text: onOk(r.data) });
       await refresh();
     } finally { setBusy(false); }
-  }, [refresh]);
+  }, [refresh, t]);
 
-  if (periods === null) return <main style={s.page}><p>Loading payroll…</p></main>;
+  if (periods === null) return <main style={s.page}><p>{t.loading}</p></main>;
 
   return (
     <main style={s.page} aria-labelledby="payroll-title">
       <header style={s.header}>
         <div>
-          <p style={s.eyebrow}>Administration / Finance & payroll</p>
-          <h1 id="payroll-title" style={s.title}>Payroll</h1>
-          <p style={s.lede}>Governed payroll calculation review. Inspect authoritative inputs and calculated outputs, replay a calculation, review revision history, and request governed corrections. No money is moved here.</p>
+          <p style={s.eyebrow}>{t.eyebrow}</p>
+          <h1 id="payroll-title" style={s.title}>{t.title}</h1>
+          <p style={s.lede}>{t.lede}</p>
         </div>
-        <p role="status" style={s.syntheticBadge}>SYNTHETIC / TEST PAYROLL — a governed calculation only. No money moves; not statutory/tax compliant.</p>
+        <p role="status" style={s.syntheticBadge}>{t.syntheticBadge}</p>
       </header>
 
       {notice ? <p role="alert" style={notice.tone === "error" ? s.errorNote : s.infoNote}>{notice.text}</p> : null}
@@ -98,38 +100,38 @@ export function PayrollConsole() {
       <div style={s.columns}>
         {/* Periods */}
         <section aria-labelledby="periods-h" style={s.panel}>
-          <h2 id="periods-h" style={s.h2}>Pay periods</h2>
+          <h2 id="periods-h" style={s.h2}>{t.payPeriods}</h2>
           <form style={s.correctForm} onSubmit={(e) => {
             e.preventDefault();
             void (async () => {
-              await act("Create pay period", "periods", {
+              await act(t.createPeriod, "periods", {
                 organizationId: newPeriod.organizationId,
                 jurisdictionCountry: newPeriod.country.trim().toUpperCase(),
                 jurisdictionRegion: newPeriod.region.trim().toUpperCase(),
                 periodStart: new Date(`${newPeriod.start}T00:00:00`).toISOString(),
                 periodEnd: new Date(`${newPeriod.end}T00:00:00`).toISOString()
-              }, () => "Pay period created.");
+              }, () => t.periodCreated);
               const r = await api("periods?limit=50");
               if (r.ok) setPeriods(r.data.items as Period[]);
             })();
           }}>
-            <select aria-label="Employer" required style={s.periodField} value={newPeriod.organizationId} onChange={(e) => setNewPeriod((v) => ({ ...v, organizationId: e.target.value }))}>
-              <option value="">Choose employer…</option>
+            <select aria-label={t.employerAria} required style={s.periodField} value={newPeriod.organizationId} onChange={(e) => setNewPeriod((v) => ({ ...v, organizationId: e.target.value }))}>
+              <option value="">{t.chooseEmployer}</option>
               {organizations.map((o) => <option key={o.id} value={o.id}>{o.displayName}</option>)}
             </select>
-            <input aria-label="Country code" required maxLength={2} placeholder="Country (e.g. CA)" style={s.periodField} value={newPeriod.country} onChange={(e) => setNewPeriod((v) => ({ ...v, country: e.target.value }))} />
-            <input aria-label="Region code" required maxLength={3} placeholder="Region (e.g. QC)" style={s.periodField} value={newPeriod.region} onChange={(e) => setNewPeriod((v) => ({ ...v, region: e.target.value }))} />
-            <input aria-label="Period start" required type="date" style={s.periodField} value={newPeriod.start} onChange={(e) => setNewPeriod((v) => ({ ...v, start: e.target.value }))} />
-            <input aria-label="Period end" required type="date" style={s.periodField} value={newPeriod.end} onChange={(e) => setNewPeriod((v) => ({ ...v, end: e.target.value }))} />
-            <button type="submit" disabled={busy} style={s.btn}>Create pay period</button>
+            <input aria-label={t.countryAria} required maxLength={2} placeholder={t.countryPlaceholder} style={s.periodField} value={newPeriod.country} onChange={(e) => setNewPeriod((v) => ({ ...v, country: e.target.value }))} />
+            <input aria-label={t.regionAria} required maxLength={3} placeholder={t.regionPlaceholder} style={s.periodField} value={newPeriod.region} onChange={(e) => setNewPeriod((v) => ({ ...v, region: e.target.value }))} />
+            <input aria-label={t.periodStart} required type="date" style={s.periodField} value={newPeriod.start} onChange={(e) => setNewPeriod((v) => ({ ...v, start: e.target.value }))} />
+            <input aria-label={t.periodEnd} required type="date" style={s.periodField} value={newPeriod.end} onChange={(e) => setNewPeriod((v) => ({ ...v, end: e.target.value }))} />
+            <button type="submit" disabled={busy} style={s.btn}>{t.createPeriod}</button>
           </form>
-          {periods.length === 0 ? <p style={s.muted}>No pay periods yet.</p> : (
+          {periods.length === 0 ? <p style={s.muted}>{t.noPeriods}</p> : (
             <ul style={s.list}>
               {periods.map((p) => (
                 <li key={p.id}>
                   <button type="button" onClick={() => openPeriod(p.id)} aria-pressed={p.id === periodId} style={{ ...s.rowBtn, ...(p.id === periodId ? s.rowBtnActive : {}) }}>
                     <span>{day(p.periodStart, p.timezone)} – {day(p.periodEnd, p.timezone)}</span>
-                    <span style={s.rowMeta}>{p.jurisdiction.country}/{p.jurisdiction.region} · {p.status} · {p.calculationCount ?? 0} calc</span>
+                    <span style={s.rowMeta}>{p.jurisdiction.country}/{p.jurisdiction.region} · {t.status(p.status)} · {t.calcCount(p.calculationCount ?? 0)}</span>
                   </button>
                 </li>
               ))}
@@ -139,15 +141,15 @@ export function PayrollConsole() {
 
         {/* Review queue */}
         <section aria-labelledby="queue-h" style={s.panel}>
-          <h2 id="queue-h" style={s.h2}>Review queue</h2>
-          {periodId ? <button type="button" disabled={busy} style={s.btn} onClick={() => void (async () => { await act("Calculate pay", `periods/${periodId}/bulk-calculate`, {}, () => "Pay calculated for this period."); await openPeriod(periodId); })()}>Calculate pay</button> : null}
-          {!periodId ? <p style={s.muted}>Select a pay period.</p> : calcs === null ? <p style={s.muted}>Loading…</p> : calcs.length === 0 ? <p style={s.muted}>No calculations in this period.</p> : (
+          <h2 id="queue-h" style={s.h2}>{t.reviewQueue}</h2>
+          {periodId ? <button type="button" disabled={busy} style={s.btn} onClick={() => void (async () => { await act(t.calculatePay, `periods/${periodId}/bulk-calculate`, {}, () => t.payCalculated); await openPeriod(periodId); })()}>{t.calculatePay}</button> : null}
+          {!periodId ? <p style={s.muted}>{t.selectPeriod}</p> : calcs === null ? <p style={s.muted}>{t.loadingShort}</p> : calcs.length === 0 ? <p style={s.muted}>{t.noCalcs}</p> : (
             <ul style={s.list}>
               {calcs.map((c) => (
                 <li key={c.id}>
                   <button type="button" onClick={() => openCalc(c.id)} aria-pressed={c.id === detail?.id} style={{ ...s.rowBtn, ...(c.id === detail?.id ? s.rowBtnActive : {}) }}>
-                    <span>rev {c.revision} · {money(c.netPayMinor, c.currency)} net {statusChip(c.status)}{c.correctionType ? <span style={s.correctChip}>{c.correctionType === "post_lock_adjustment" ? "adjustment" : "correction"}</span> : null}</span>
-                    <span style={s.rowMeta}>worker {c.workerIdentityId.slice(0, 8)} · {c.ruleProvider.key}@{c.ruleProvider.version}</span>
+                    <span>{t.rev(c.revision)} · {t.netAmount(money(c.netPayMinor, c.currency))} {statusChip(c.status, t.status(c.status))}{c.correctionType ? <span style={s.correctChip}>{c.correctionType === "post_lock_adjustment" ? t.adjustmentChip : t.correctionChip}</span> : null}</span>
+                    <span style={s.rowMeta}>{t.workerShort(c.workerIdentityId.slice(0, 8))} · {c.ruleProvider.key}@{c.ruleProvider.version}</span>
                   </button>
                 </li>
               ))}
@@ -159,29 +161,29 @@ export function PayrollConsole() {
       {/* Detail */}
       {detail ? (
         <section aria-labelledby="detail-h" style={s.detail}>
-          <h2 id="detail-h" style={s.h2}>Calculation rev {detail.revision} <span style={s.mono}>({detail.id.slice(0, 8)})</span> {statusChip(detail.status)}</h2>
+          <h2 id="detail-h" style={s.h2}>{t.calculationRev(detail.revision)} <span style={s.mono}>({detail.id.slice(0, 8)})</span> {statusChip(detail.status, t.status(detail.status))}</h2>
 
           <div style={s.detailCols}>
             <div>
-              <h3 style={s.h3}>Authoritative input snapshots</h3>
+              <h3 style={s.h3}>{t.inputsHeading}</h3>
               <dl style={s.dl}>
-                <Row k="Worker" v={detail.workerIdentityId} />
-                <Row k="Jurisdiction (worksite-derived)" v={`${detail.jurisdiction.country}/${detail.jurisdiction.region}`} />
-                <Row k="Rule provider" v={`${detail.ruleProvider.key}@${detail.ruleProvider.version}`} />
-                <Row k="Worker classification" v={detail.workerClassification ?? "employee"} />
-                <Row k="Currency" v={detail.currency} />
+                <Row k={t.worker} v={detail.workerIdentityId} />
+                <Row k={t.jurisdiction} v={`${detail.jurisdiction.country}/${detail.jurisdiction.region}`} />
+                <Row k={t.ruleProvider} v={`${detail.ruleProvider.key}@${detail.ruleProvider.version}`} />
+                <Row k={t.workerClassification} v={detail.workerClassification ?? "employee"} />
+                <Row k={t.currency} v={detail.currency} />
               </dl>
               <table style={s.table}>
-                <caption style={s.caption}>Approved worked-time + applied contract rate snapshots</caption>
-                <thead><tr><th scope="col" style={s.th}>Timesheet</th><th scope="col" style={s.th}>Shift</th><th scope="col" style={s.th}>Minutes</th><th scope="col" style={s.th}>Contract</th><th scope="col" style={s.th}>Rate</th></tr></thead>
+                <caption style={s.caption}>{t.workedCaption}</caption>
+                <thead><tr><th scope="col" style={s.th}>{t.thTimesheet}</th><th scope="col" style={s.th}>{t.thShift}</th><th scope="col" style={s.th}>{t.thMinutes}</th><th scope="col" style={s.th}>{t.thContract}</th><th scope="col" style={s.th}>{t.thRate}</th></tr></thead>
                 <tbody>
                   {detail.workedTimeRefs.map((w) => (
                     <tr key={w.timesheetId}>
-                      <td style={s.td}>{w.timesheetId.slice(0, 8)} v{w.timesheetVersion} <span style={s.muted}>({w.timesheetStatus})</span></td>
+                      <td style={s.td}>{w.timesheetId.slice(0, 8)} v{w.timesheetVersion} <span style={s.muted}>({t.status(w.timesheetStatus)})</span></td>
                       <td style={s.td}>{day(w.scheduledStartAt, periodZone)} → {day(w.scheduledEndAt, periodZone)}</td>
                       <td style={s.td}>{w.payableMinutes}</td>
-                      <td style={s.td}>{w.contractVersion} <span style={s.muted}>eff {day(w.contractEffectiveFrom, periodZone)}</span></td>
-                      <td style={s.td}>{money(w.appliedHourlyRateMinor, w.currency)}/h</td>
+                      <td style={s.td}>{w.contractVersion} <span style={s.muted}>{t.effectiveFrom(day(w.contractEffectiveFrom, periodZone))}</span></td>
+                      <td style={s.td}>{t.perHour(money(w.appliedHourlyRateMinor, w.currency))}</td>
                     </tr>
                   ))}
                 </tbody>
@@ -189,40 +191,40 @@ export function PayrollConsole() {
             </div>
 
             <div>
-              <h3 style={s.h3}>Calculated outputs</h3>
-              <LineTable title="Earnings" lines={detail.earningLines} currency={detail.currency} />
-              <LineTable title="Deductions" lines={detail.deductionLines} currency={detail.currency} />
-              <LineTable title="Employer costs" lines={detail.employerCostLines} currency={detail.currency} />
+              <h3 style={s.h3}>{t.outputsHeading}</h3>
+              <LineTable title={t.earnings} lines={detail.earningLines} currency={detail.currency} />
+              <LineTable title={t.deductions} lines={detail.deductionLines} currency={detail.currency} />
+              <LineTable title={t.employerCosts} lines={detail.employerCostLines} currency={detail.currency} />
               <dl style={s.dl}>
-                <Row k="Gross" v={money(detail.grossPayMinor, detail.currency)} />
-                <Row k="Deductions" v={`− ${money(detail.totalDeductionsMinor, detail.currency)}`} />
-                <Row k="Net" v={money(detail.netPayMinor, detail.currency)} strong />
-                <Row k="Employer cost (separate)" v={money(detail.totalEmployerCostMinor, detail.currency)} />
-                <Row k="Fingerprint" v={detail.calculationFingerprint.slice(0, 16) + "…"} mono />
-                {detail.calculatedAt ? <Row k="Calculated at" v={day(detail.calculatedAt, periodZone)} /> : null}
+                <Row k={t.gross} v={money(detail.grossPayMinor, detail.currency)} />
+                <Row k={t.deductions} v={`− ${money(detail.totalDeductionsMinor, detail.currency)}`} />
+                <Row k={t.net} v={money(detail.netPayMinor, detail.currency)} strong />
+                <Row k={t.employerCostSeparate} v={money(detail.totalEmployerCostMinor, detail.currency)} />
+                <Row k={t.fingerprint} v={detail.calculationFingerprint.slice(0, 16) + "…"} mono />
+                {detail.calculatedAt ? <Row k={t.calculatedAt} v={day(detail.calculatedAt, periodZone)} /> : null}
               </dl>
             </div>
           </div>
 
           {detail.correctionType === "post_lock_adjustment" && detail.adjustment ? (
             <div style={s.adjBox} role="note">
-              <strong>Post-lock adjustment</strong> — links to locked original <span style={s.mono}>{detail.adjustsCalculationId?.slice(0, 8)}</span>.
-              Net delta: <strong>{detail.adjustment.netDirection.toUpperCase()} {money(detail.adjustment.netDeltaMinor, detail.currency)}</strong>. Reason: {detail.correctionReason}.
-              <span style={s.muted}> A calculation artifact only — no money has been paid.</span>
+              <strong>{t.adjustmentTitle}</strong> — {t.linksToOriginal} <span style={s.mono}>{detail.adjustsCalculationId?.slice(0, 8)}</span>.
+              {t.netDelta} <strong>{detail.adjustment.netDirection.toUpperCase()} {money(detail.adjustment.netDeltaMinor, detail.currency)}</strong>. {t.reasonLabel} {detail.correctionReason}.
+              <span style={s.muted}> {t.adjustmentNote}</span>
             </div>
           ) : null}
 
           {/* AI review — ADVISORY assistance only; never authoritative payroll state. */}
           <section aria-labelledby="ai-review-h" style={s.aiPanel} role="note">
             <div style={s.aiHead}>
-              <h3 id="ai-review-h" style={s.h3}>{aiReviewHeading}</h3>
-              <span style={s.aiBadge}>ADVISORY · not payroll state</span>
+              <h3 id="ai-review-h" style={s.h3}>{t.aiReviewHeading}</h3>
+              <span style={s.aiBadge}>{t.aiBadge}</span>
             </div>
-            <p style={s.aiDisclaimer}>{aiReviewDisclaimer}</p>
+            <p style={s.aiDisclaimer}>{t.aiReviewDisclaimer}</p>
             {aiReview === null ? (
-              <p style={s.muted}>Loading advisory review…</p>
+              <p style={s.muted}>{t.loadingAi}</p>
             ) : aiReview.status === "review_unavailable" ? (
-              <p role="status" style={s.aiUnavailable}>{aiReviewUnavailableText}</p>
+              <p role="status" style={s.aiUnavailable}>{t.aiReviewUnavailableText}</p>
             ) : (
               <>
                 <p style={s.aiSummary}>{aiReview.summary}</p>
@@ -230,44 +232,44 @@ export function PayrollConsole() {
                   <ul style={s.aiList}>
                     {aiReview.findings.map((f, i) => (
                       <li key={i} style={s.aiFinding}>
-                        <span style={{ ...s.aiSeverity, ...severityStyle(f.severity) }}>{f.severity}</span>
+                        <span style={{ ...s.aiSeverity, ...severityStyle(f.severity) }}>{t.status(f.severity)}</span>
                         <span><strong>{f.title}</strong> <span style={s.muted}>({f.code})</span><br />{f.explanation}</span>
                       </li>
                     ))}
                   </ul>
-                ) : <p style={s.muted}>No advisory findings for this revision.</p>}
-                <p style={s.aiMeta}>{aiReview.synthetic ? "Synthetic (offline) reviewer" : "Reviewer"} · {aiReview.versioning.model} · prompt {aiReview.versioning.promptVersion}</p>
+                ) : <p style={s.muted}>{t.noFindings}</p>}
+                <p style={s.aiMeta}>{aiReview.synthetic ? t.syntheticReviewer : t.reviewer} · {aiReview.versioning.model} · {t.promptVersion(aiReview.versioning.promptVersion)}</p>
               </>
             )}
           </section>
 
           {/* Actions */}
           <div style={s.actions}>
-            <button type="button" disabled={busy} style={s.btn} onClick={() => act("Verify", `calculations/${detail.id}/verify`, {}, (d) => (d.ok ? "VERIFIED — recomputed from the stored snapshot + exact provider version; identical." : `MISMATCH — recomputed ${String(d.recomputedFingerprint).slice(0, 12)} ≠ stored.`))}>Verify / replay</button>
-            {(detail.status === "calculated" || detail.status === "in_review") ? <button type="button" disabled={busy} style={s.btn} onClick={() => act("Approve", `calculations/${detail.id}/transition`, { action: "approve", expectedVersion: detail.version }, () => "Approved this exact revision.")}>Approve</button> : null}
-            {detail.status === "approved" ? <button type="button" disabled={busy} style={s.btn} onClick={() => act("Lock", `calculations/${detail.id}/transition`, { action: "lock", expectedVersion: detail.version }, () => "Locked — this revision is now immutable history.")}>Lock</button> : null}
-            {(detail.status === "calculated" || detail.status === "in_review") ? <button type="button" disabled={busy} style={s.btnGhost} onClick={() => act("Reject", `calculations/${detail.id}/transition`, { action: "reject", expectedVersion: detail.version }, () => "Rejected.")}>Reject</button> : null}
+            <button type="button" disabled={busy} style={s.btn} onClick={() => act(t.verifyAction, `calculations/${detail.id}/verify`, {}, (d) => (d.ok ? t.verified : t.mismatch(String(d.recomputedFingerprint).slice(0, 12))))}>{t.verifyButton}</button>
+            {(detail.status === "calculated" || detail.status === "in_review") ? <button type="button" disabled={busy} style={s.btn} onClick={() => act(t.approve, `calculations/${detail.id}/transition`, { action: "approve", expectedVersion: detail.version }, () => t.approved)}>{t.approve}</button> : null}
+            {detail.status === "approved" ? <button type="button" disabled={busy} style={s.btn} onClick={() => act(t.lock, `calculations/${detail.id}/transition`, { action: "lock", expectedVersion: detail.version }, () => t.locked)}>{t.lock}</button> : null}
+            {(detail.status === "calculated" || detail.status === "in_review") ? <button type="button" disabled={busy} style={s.btnGhost} onClick={() => act(t.reject, `calculations/${detail.id}/transition`, { action: "reject", expectedVersion: detail.version }, () => t.rejected)}>{t.reject}</button> : null}
           </div>
 
           {/* Correction — recompute from authoritative inputs only; never accepts amounts */}
-          <form style={s.correctForm} onSubmit={(e) => { e.preventDefault(); if (reason.trim()) void act("Correction", `calculations/${detail.id}/correct`, { expectedVersion: detail.version, reason }, (d) => d.outcome === "no_change" ? "No change — inputs identical, no new revision." : d.outcome === "duplicate" ? "Duplicate — already applied." : `Correction created (${(d.calculation as { correctionType?: string })?.correctionType ?? "revision"}).`); }}>
-            <label htmlFor="correction-reason" style={s.label}>Request a governed correction (recomputes from authoritative inputs — correct the upstream contract/worked-time/jurisdiction first; amounts are never entered here)</label>
+          <form style={s.correctForm} onSubmit={(e) => { e.preventDefault(); if (reason.trim()) void act(t.correctionAction, `calculations/${detail.id}/correct`, { expectedVersion: detail.version, reason }, (d) => d.outcome === "no_change" ? t.noChange : d.outcome === "duplicate" ? t.duplicate : t.correctionCreated((d.calculation as { correctionType?: string })?.correctionType)); }}>
+            <label htmlFor="correction-reason" style={s.label}>{t.correctionLabel}</label>
             <div style={s.correctRow}>
-              <input id="correction-reason" style={s.input} value={reason} onChange={(e) => setReason(e.target.value)} placeholder="Reason for correction" />
-              <button type="submit" disabled={busy || !reason.trim()} style={s.btn}>Request correction</button>
+              <input id="correction-reason" style={s.input} value={reason} onChange={(e) => setReason(e.target.value)} placeholder={t.correctionPlaceholder} />
+              <button type="submit" disabled={busy || !reason.trim()} style={s.btn}>{t.requestCorrection}</button>
             </div>
           </form>
 
           {/* Revision history */}
           {family && family.length > 0 ? (
             <div>
-              <h3 style={s.h3}>Revision history (immutable)</h3>
+              <h3 style={s.h3}>{t.historyHeading}</h3>
               <ol style={s.history}>
                 {family.map((r) => (
                   <li key={r.id} style={r.id === detail.id ? s.historyActive : s.historyItem}>
                     <button type="button" onClick={() => openCalc(r.id)} style={s.historyBtn}>
-                      rev {r.revision} {statusChip(r.status)} {r.correctionType ? <span style={s.correctChip}>{r.correctionType}</span> : null}
-                      <span style={s.rowMeta}> net {money(r.netPayMinor, r.currency)} · fp {r.calculationFingerprint.slice(0, 8)}{r.correctionReason ? ` · ${r.correctionReason}` : ""}</span>
+                      {t.rev(r.revision)} {statusChip(r.status, t.status(r.status))} {r.correctionType ? <span style={s.correctChip}>{r.correctionType}</span> : null}
+                      <span style={s.rowMeta}> {t.netShort} {money(r.netPayMinor, r.currency)} · {t.fingerprintShort} {r.calculationFingerprint.slice(0, 8)}{r.correctionReason ? ` · ${r.correctionReason}` : ""}</span>
                     </button>
                   </li>
                 ))}
@@ -303,9 +305,9 @@ function severityStyle(severity: string): CSSProperties {
   const tone = severity === "high" ? "#8a2f20" : severity === "medium" ? "#8a5340" : severity === "low" ? "#171511" : "#555";
   return { color: tone, borderColor: tone };
 }
-function statusChip(status: string) {
+function statusChip(status: string, label: string) {
   const tone = status === "locked" ? "#1f6f43" : status === "approved" ? "#171511" : status === "superseded" || status === "rejected" ? "#8a5340" : "#555";
-  return <span style={{ ...s.chip, color: tone, borderColor: tone }}>{status}</span>;
+  return <span style={{ ...s.chip, color: tone, borderColor: tone }}>{label}</span>;
 }
 
 const s: Record<string, CSSProperties> = {

@@ -1,7 +1,9 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
+import { usePageText } from "../i18n/pageText";
 import { JobInterestPanel } from "./JobInterestPanel";
+import { hrText } from "./text";
 
 type Tab = "review" | "documents" | "expiring" | "restricted" | "search" | "interests";
 
@@ -11,6 +13,7 @@ type WorkerRow = { workerIdentityId: string; displayName: string | null; standin
 type DocRow = { id: string; workerIdentityId: string; documentType: string; expiresAt: string | null; effectiveStatus: string };
 
 export function HrConsolePanel() {
+  const t = usePageText(hrText);
   const [tab, setTab] = useState<Tab>("review");
   const [rows, setRows] = useState<unknown[]>([]);
   const [status, setStatus] = useState<"loading" | "ready" | "denied" | "unavailable">("loading");
@@ -44,14 +47,14 @@ export function HrConsolePanel() {
   return (
     <main style={styles.page}>
       <header style={styles.hero}>
-        <p style={styles.eyebrow}>Joblop / HR</p>
-        <h1 style={styles.title}>HR console</h1>
-        <p style={styles.lede}>Governed HR operations for HR administrators. HR consumes verification and eligibility — it never mutates marketplace, dispatch, or payroll. Every decision is audited.</p>
+        <p style={styles.eyebrow}>{t.eyebrow}</p>
+        <h1 style={styles.title}>{t.title}</h1>
+        <p style={styles.lede}>{t.lede}</p>
       </header>
-      <div style={styles.tabs} role="tablist" aria-label="HR views">
-        {(["review", "documents", "expiring", "restricted", "search", "interests"] as Tab[]).map((t) => (
-          <button key={t} type="button" role="tab" aria-selected={tab === t} style={tab === t ? styles.tabActive : styles.tab} onClick={() => setTab(t)}>
-            {t === "interests" ? "Job interests" : t === "review" ? "Case review" : t === "documents" ? "Documents to review" : t === "expiring" ? "Expiring credentials" : t === "restricted" ? "Restricted / suspended" : "Search"}
+      <div style={styles.tabs} role="tablist" aria-label={t.tabsAria}>
+        {(["review", "documents", "expiring", "restricted", "search", "interests"] as Tab[]).map((tabKey) => (
+          <button key={tabKey} type="button" role="tab" aria-selected={tab === tabKey} style={tab === tabKey ? styles.tabActive : styles.tab} onClick={() => setTab(tabKey)}>
+            {t.tabs[tabKey]}
           </button>
         ))}
       </div>
@@ -62,23 +65,23 @@ export function HrConsolePanel() {
           style={styles.searchBar}
           onSubmit={(e) => { e.preventDefault(); void load("search"); }}
         >
-          <input aria-label="Search name" placeholder="Worker name…" value={q} onChange={(e) => setQ(e.target.value)} style={styles.input} />
-          <select aria-label="Standing" value={searchStanding} onChange={(e) => setSearchStanding(e.target.value)} style={styles.input}>
-            <option value="">Any standing</option>
-            {["active", "review_required", "restricted", "suspended", "inactive"].map((s) => <option key={s} value={s}>{s.replaceAll("_", " ")}</option>)}
+          <input aria-label={t.searchNameAria} placeholder={t.searchNamePlaceholder} value={q} onChange={(e) => setQ(e.target.value)} style={styles.input} />
+          <select aria-label={t.standingAria} value={searchStanding} onChange={(e) => setSearchStanding(e.target.value)} style={styles.input}>
+            <option value="">{t.anyStanding}</option>
+            {["active", "review_required", "restricted", "suspended", "inactive"].map((s) => <option key={s} value={s}>{t.status(s)}</option>)}
           </select>
-          <select aria-label="Credential status" value={searchCredStatus} onChange={(e) => setSearchCredStatus(e.target.value)} style={styles.input}>
-            <option value="">Any credential status</option>
-            {["valid", "expiring", "expired", "replaced", "revoked"].map((s) => <option key={s} value={s}>{s}</option>)}
+          <select aria-label={t.credentialStatusAria} value={searchCredStatus} onChange={(e) => setSearchCredStatus(e.target.value)} style={styles.input}>
+            <option value="">{t.anyCredentialStatus}</option>
+            {["valid", "expiring", "expired", "replaced", "revoked"].map((s) => <option key={s} value={s}>{t.status(s)}</option>)}
           </select>
-          <button type="submit" style={styles.button}>Search</button>
+          <button type="submit" style={styles.button}>{t.searchButton}</button>
         </form>
       ) : null}
 
-      {status === "loading" ? <p aria-live="polite">Loading…</p>
-      : status === "denied" ? <p>HR administrator authorization is required.</p>
-      : status === "unavailable" ? <p>HR data is unavailable. <button type="button" style={styles.button} onClick={() => void load(tab)}>Retry</button></p>
-      : rows.length === 0 ? <p style={styles.muted}>Nothing in this view.</p>
+      {status === "loading" ? <p aria-live="polite">{t.loading}</p>
+      : status === "denied" ? <p>{t.denied}</p>
+      : status === "unavailable" ? <p>{t.unavailable} <button type="button" style={styles.button} onClick={() => void load(tab)}>{t.retry}</button></p>
+      : rows.length === 0 ? <p style={styles.muted}>{t.empty}</p>
       : (
         <ul style={styles.list}>
           {rows.map((row, i) => (
@@ -100,28 +103,25 @@ function link(workerIdentityId: string) {
 }
 
 function ReviewRow({ r }: { r: CaseRow }) {
+  const t = usePageText(hrText);
   return (
     <a href={link(r.workerIdentityId)} style={styles.rowLink}>
-      <span><strong>Case · {r.caseType}</strong> <span style={styles.badge}>{r.status.replaceAll("_", " ")}</span></span>
-      <span style={styles.dim}>{r.workerIdentityId.slice(0, 8)} · opened {new Date(r.createdAt).toLocaleDateString()}</span>
+      <span><strong>{t.caseLabel(r.caseType)}</strong> <span style={styles.badge}>{t.status(r.status)}</span></span>
+      <span style={styles.dim}>{r.workerIdentityId.slice(0, 8)} · {t.openedOn(new Date(r.createdAt).toLocaleDateString())}</span>
     </a>
   );
 }
 function ExpiringRow({ r }: { r: CredRow }) {
+  const t = usePageText(hrText);
   return (
     <a href={link(r.workerIdentityId)} style={styles.rowLink}>
-      <span><strong>{r.credentialType}</strong> <span style={r.effectiveStatus === "expired" ? styles.badgeBad : styles.badgeWarn}>{r.effectiveStatus}</span></span>
-      <span style={styles.dim}>{r.workerIdentityId.slice(0, 8)}{r.expiresAt ? ` · expires ${new Date(r.expiresAt).toLocaleDateString()}` : ""}</span>
+      <span><strong>{r.credentialType}</strong> <span style={r.effectiveStatus === "expired" ? styles.badgeBad : styles.badgeWarn}>{t.status(r.effectiveStatus)}</span></span>
+      <span style={styles.dim}>{r.workerIdentityId.slice(0, 8)}{r.expiresAt ? ` · ${t.expiresOn(new Date(r.expiresAt).toLocaleDateString())}` : ""}</span>
     </a>
   );
 }
-const AI_VERDICT_LABEL: Record<string, string> = {
-  ai_approved: "AI: looks good (advisory)",
-  needs_reupload: "AI: re-upload needed (advisory)",
-  human_required: "AI: human review needed",
-  error: "AI: unavailable"
-};
 function DocumentRow({ r }: { r: DocRow }) {
+  const t = usePageText(hrText);
   const [verdict, setVerdict] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const review = async () => {
@@ -139,20 +139,21 @@ function DocumentRow({ r }: { r: DocRow }) {
   };
   return (
     <div style={{ ...styles.rowLink, flexWrap: "wrap" }}>
-      <span><strong>Doc · {r.documentType}</strong> <span style={styles.badgeWarn}>{r.effectiveStatus.replaceAll("_", " ")}</span></span>
-      <span style={styles.dim}>{r.workerIdentityId.slice(0, 8)}{r.expiresAt ? ` · expires ${new Date(r.expiresAt).toLocaleDateString()}` : ""}</span>
+      <span><strong>{t.docLabel(r.documentType)}</strong> <span style={styles.badgeWarn}>{t.status(r.effectiveStatus)}</span></span>
+      <span style={styles.dim}>{r.workerIdentityId.slice(0, 8)}{r.expiresAt ? ` · ${t.expiresOn(new Date(r.expiresAt).toLocaleDateString())}` : ""}</span>
       <span style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
-        <a href={link(r.workerIdentityId)} style={styles.button}>Open worker</a>
-        <button type="button" style={styles.button} disabled={busy} onClick={() => void review()}>{busy ? "AI reviewing…" : "AI review"}</button>
-        {verdict ? <span style={styles.badge}>{AI_VERDICT_LABEL[verdict] ?? AI_VERDICT_LABEL.human_required}</span> : null}
+        <a href={link(r.workerIdentityId)} style={styles.button}>{t.openWorker}</a>
+        <button type="button" style={styles.button} disabled={busy} onClick={() => void review()}>{busy ? t.aiReviewing : t.aiReview}</button>
+        {verdict ? <span style={styles.badge}>{t.aiVerdict[verdict] ?? t.aiVerdict.human_required}</span> : null}
       </span>
     </div>
   );
 }
 function WorkerSummaryRow({ r }: { r: WorkerRow }) {
+  const t = usePageText(hrText);
   return (
     <a href={link(r.workerIdentityId)} style={styles.rowLink}>
-      <span><strong>{r.displayName ?? "Worker"}</strong> <span style={styles.badge}>{r.standing.replaceAll("_", " ")}</span></span>
+      <span><strong>{r.displayName ?? t.workerFallback}</strong> <span style={styles.badge}>{t.status(r.standing)}</span></span>
       <span style={styles.dim}>{r.workerIdentityId.slice(0, 8)}</span>
     </a>
   );
