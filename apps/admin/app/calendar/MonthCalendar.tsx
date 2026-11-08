@@ -1,6 +1,8 @@
 "use client";
 
 import { useMemo, useState, type CSSProperties } from "react";
+import { usePageText } from "../i18n/pageText";
+import { calendarText } from "./text";
 
 // Shared month-grid calendar used by the admin lifecycle calendar and the finance billing calendar
 // (and available for any other dated-record view). It owns the month navigation, the day grid, the
@@ -23,8 +25,6 @@ export type CalendarEntry = Readonly<{
 
 export type CalendarLegendItem = Readonly<{ label: string; tone: CalendarTone }>;
 
-const WEEKDAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"] as const;
-
 function isoDay(d: Date): string {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
 }
@@ -43,6 +43,7 @@ export function MonthCalendar({
   legend: readonly CalendarLegendItem[];
   maxChipsPerDay?: number;
 }>) {
+  const t = usePageText(calendarText).month;
   const today = useMemo(() => new Date(), []);
   const [view, setView] = useState({ year: today.getFullYear(), month: today.getMonth() });
   const [expandedDays, setExpandedDays] = useState<ReadonlySet<string>>(new Set());
@@ -68,7 +69,7 @@ export function MonthCalendar({
   for (let d = 1; d <= daysInMonth; d += 1) cells.push(d);
   while (cells.length % 7 !== 0) cells.push(null);
 
-  const monthTitle = first.toLocaleDateString("en-CA", { month: "long", year: "numeric" });
+  const monthTitle = first.toLocaleDateString(t.dateLocale, { month: "long", year: "numeric" });
   const todayKey = isoDay(today);
   const prev = () => setView((v) => (v.month === 0 ? { year: v.year - 1, month: 11 } : { year: v.year, month: v.month - 1 }));
   const next = () => setView((v) => (v.month === 11 ? { year: v.year + 1, month: 0 } : { year: v.year, month: v.month + 1 }));
@@ -76,13 +77,13 @@ export function MonthCalendar({
   return (
     <div>
       <div style={styles.monthBar}>
-        <button aria-label="Previous month" onClick={prev} style={styles.navButton} type="button">←</button>
+        <button aria-label={t.previousMonth} onClick={prev} style={styles.navButton} type="button">←</button>
         <strong style={styles.monthTitle}>{monthTitle}</strong>
-        <button aria-label="Next month" onClick={next} style={styles.navButton} type="button">→</button>
+        <button aria-label={t.nextMonth} onClick={next} style={styles.navButton} type="button">→</button>
       </div>
 
       <div style={styles.weekRow}>
-        {WEEKDAYS.map((w) => (
+        {t.weekdays.map((w) => (
           <span key={w} style={styles.weekday}>{w}</span>
         ))}
       </div>
@@ -120,7 +121,7 @@ export function MonthCalendar({
                 })}
                 {hidden > 0 ? (
                   <button onClick={() => setExpandedDays((p) => new Set(p).add(key))} style={styles.moreButton} type="button">
-                    +{hidden} more
+                    {t.more(hidden)}
                   </button>
                 ) : null}
                 {expanded && dayEntries.length > maxChipsPerDay ? (
@@ -129,7 +130,7 @@ export function MonthCalendar({
                     style={styles.moreButton}
                     type="button"
                   >
-                    Show less
+                    {t.showLess}
                   </button>
                 ) : null}
               </div>

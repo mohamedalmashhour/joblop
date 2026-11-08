@@ -1,15 +1,15 @@
+import { serverPageText } from "../i18n/serverPageText";
 import { AdminOrdersPanel } from "./AdminOrdersPanel";
+import { ordersText } from "./text";
 
-export default function AdminOrdersPage() {
+export default async function AdminOrdersPage() {
+  const t = await serverPageText(ordersText);
   return (
     <main style={styles.page}>
       <header style={styles.hero}>
-        <p style={styles.eyebrow}>Joblop / Administration</p>
-        <h1 style={styles.title}>Order review</h1>
-        <p style={styles.lede}>
-          Orders awaiting review, grouped so every role line in one employer submission is seen
-          together. Opening an order does not approve, publish, assign, notify, or execute payment.
-        </p>
+        <p style={styles.eyebrow}>{t.eyebrow}</p>
+        <h1 style={styles.title}>{t.title}</h1>
+        <p style={styles.lede}>{t.lede}</p>
       </header>
       <AdminOrdersPanel />
     </main>

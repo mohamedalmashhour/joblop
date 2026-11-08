@@ -1,6 +1,8 @@
 "use client";
 
 import { useCallback, useEffect, useState, type FormEvent } from "react";
+import { usePageText } from "../i18n/pageText";
+import { contactDeskText } from "./text";
 
 // One list for workers and employers, urgent first and longest-waiting next. Internal notes are never
 // shown to the worker or employer.
@@ -14,24 +16,22 @@ type Message = Readonly<{ id: string; authorKind: string; body: string; internal
 type Detail = Readonly<{ conversation: Conversation; requester: { name: string; email: string | null }; messages: readonly Message[] }>;
 type State = { status: "loading" } | { status: "denied" } | { status: "error" } | { status: "ready"; items: readonly Conversation[] };
 
-const FILTERS = [["needs_admin", "Needs a person"], ["ai", "With AI"], ["solved", "Solved"], ["all", "All"]] as const;
-const SIDES = [["", "Everyone"], ["worker", "Workers"], ["employer", "Employers"]] as const;
-const STATUS: Readonly<Record<string, string>> = { ai: "With AI", needs_admin: "Needs a person", admin_replied: "Replied, waiting", solved: "Solved" };
-const REASON: Readonly<Record<string, string>> = {
-  safety: "Safety", dispute: "Dispute", account: "Account or privacy", person_requested: "Asked for a person",
-  urgent: "Urgent", ai_unsure: "AI unsure", ai_unavailable: "AI unavailable", ai_limit: "AI limit reached"
-};
-const AUTHOR: Readonly<Record<string, string>> = { requester: "Them", ai: "AI assistant", admin: "Joblop team", system: "Record" };
+// Codes sent to the API. The labels shown for them (and for status, reason and author codes) live in
+// ./text.ts, keyed by these codes.
+const FILTERS = ["needs_admin", "ai", "solved", "all"] as const;
+const SIDES = ["", "worker", "employer"] as const;
+type DeskCopy = (typeof contactDeskText)["en"];
 const POLL_MS = 15_000;
 
-function waitingFor(iso: string) {
+function waitingFor(t: DeskCopy, iso: string) {
   const minutes = Math.max(0, Math.floor((Date.now() - new Date(iso).getTime()) / 60_000));
-  if (minutes < 60) return `${minutes} min`;
+  if (minutes < 60) return t.minutes(minutes);
   const hours = Math.floor(minutes / 60);
-  return hours < 24 ? `${hours} h` : `${Math.floor(hours / 24)} d`;
+  return hours < 24 ? t.hours(hours) : t.days(Math.floor(hours / 24));
 }
 
 function AskAi({ conversationId }: { conversationId: string | null }) {
+  const t = usePageText(contactDeskText);
   const [question, setQuestion] = useState("");
   const [answer, setAnswer] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -63,26 +63,27 @@ function AskAi({ conversationId }: { conversationId: string | null }) {
   }
 
   return (
-    <section style={styles.thread} aria-label="Ask Joblop AI">
-      <h2 style={{ fontSize: 18, margin: "0 0 4px" }}>Ask Joblop AI</h2>
-      <p style={styles.muted}>Ask how anything works, for admin or finance. It advises only and changes nothing.</p>
+    <section style={styles.thread} aria-label={t.askTitle}>
+      <h2 style={{ fontSize: 18, margin: "0 0 4px" }}>{t.askTitle}</h2>
+      <p style={styles.muted}>{t.askHelp}</p>
       <form onSubmit={submit}>
-        <label style={styles.label} htmlFor="desk-ask">Your question</label>
+        <label style={styles.label} htmlFor="desk-ask">{t.yourQuestion}</label>
         <textarea id="desk-ask" value={question} onChange={(e) => setQuestion(e.target.value)} maxLength={2000} rows={2} required style={styles.field} />
         <div style={styles.row}>
-          <button type="submit" disabled={busy || !question.trim()} style={styles.button}>{busy ? "Thinking…" : "Ask"}</button>
+          <button type="submit" disabled={busy || !question.trim()} style={styles.button}>{busy ? t.thinking : t.ask}</button>
           {conversationId ? (
-            <button type="button" disabled={busy} onClick={() => void ask("Draft a reply to this conversation.")} style={styles.ghost}>Draft a reply</button>
+            <button type="button" disabled={busy} onClick={() => void ask("Draft a reply to this conversation.")} style={styles.ghost}>{t.draftReply}</button>
           ) : null}
         </div>
       </form>
-      {failed ? <p role="alert" style={styles.error}>AI could not answer. It may not be set up yet, or you can try again.</p> : null}
+      {failed ? <p role="alert" style={styles.error}>{t.askFailed}</p> : null}
       {answer ? <div style={{ ...styles.message, marginTop: 12, whiteSpace: "pre-wrap" }}>{answer}</div> : null}
     </section>
   );
 }
 
 function Thread({ id, onChanged }: { id: string; onChanged(): void }) {
+  const t = usePageText(contactDeskText);
   const [detail, setDetail] = useState<Detail | null>(null);
   const [text, setText] = useState("");
   const [internal, setInternal] = useState(false);
@@ -126,41 +127,41 @@ function Thread({ id, onChanged }: { id: string; onChanged(): void }) {
     if (await post(`/api/contact/${encodeURIComponent(id)}/messages`, { body: text, internal })) setText("");
   }
 
-  if (!detail) return <p style={styles.muted}>Loading…</p>;
+  if (!detail) return <p style={styles.muted}>{t.loading}</p>;
   const c = detail.conversation;
   return (
     <section style={styles.thread}>
       <h2 style={{ margin: 0 }}>{detail.requester.name}</h2>
       <p style={styles.muted}>
-        {c.side === "worker" ? "Worker" : "Employer"} · {c.topic} · {STATUS[c.status] ?? c.status}
-        {c.handoffReason ? ` · ${REASON[c.handoffReason] ?? c.handoffReason}` : ""}
+        {c.side === "worker" ? t.worker : t.employer} · {c.topic} · {t.status[c.status] ?? c.status}
+        {c.handoffReason ? ` · ${t.reason[c.handoffReason] ?? c.handoffReason}` : ""}
         {detail.requester.email ? ` · ${detail.requester.email}` : ""}
       </p>
-      {c.summary ? <p><strong>AI summary:</strong> {c.summary}</p> : null}
-      {c.relatedType ? <p style={styles.muted}>About {c.relatedType}: {c.relatedId}</p> : null}
+      {c.summary ? <p><strong>{t.aiSummary}</strong> {c.summary}</p> : null}
+      {c.relatedType ? <p style={styles.muted}>{t.about(c.relatedType, c.relatedId)}</p> : null}
       <div role="log" style={styles.log}>
         {detail.messages.map((m) => (
           <div key={m.id} style={m.internal ? styles.note : styles.message}>
-            <strong style={styles.label}>{AUTHOR[m.authorKind] ?? m.authorKind}{m.internal ? " (internal)" : ""} · {new Date(m.createdAt).toLocaleString()}</strong>
+            <strong style={styles.label}>{t.author[m.authorKind] ?? m.authorKind}{m.internal ? t.internalTag : ""} · {new Date(m.createdAt).toLocaleString()}</strong>
             <div style={{ whiteSpace: "pre-wrap" }}>{m.body}</div>
           </div>
         ))}
       </div>
-      {failed ? <p role="alert" style={styles.error}>That did not work. Please try again.</p> : null}
+      {failed ? <p role="alert" style={styles.error}>{t.failed}</p> : null}
       <form onSubmit={(e) => void submit(e)}>
-        <label style={styles.label} htmlFor="desk-reply">{internal ? "Internal note" : "Reply"}</label>
+        <label style={styles.label} htmlFor="desk-reply">{internal ? t.internalNote : t.reply}</label>
         <textarea id="desk-reply" value={text} onChange={(e) => setText(e.target.value)} maxLength={2000} rows={4} required style={styles.field} />
         <label style={styles.check}>
           <input type="checkbox" checked={internal} onChange={(e) => setInternal(e.target.checked)} />
-          Internal note, never shown to them
+          {t.internalCheck}
         </label>
         <div style={styles.row}>
-          <button type="submit" disabled={busy || !text.trim()} style={styles.button}>{internal ? "Save note" : "Send reply"}</button>
-          <button type="button" disabled={busy} onClick={() => void post(`/api/contact/${encodeURIComponent(id)}/assign`, {})} style={styles.ghost}>Assign to me</button>
+          <button type="submit" disabled={busy || !text.trim()} style={styles.button}>{internal ? t.saveNote : t.sendReply}</button>
+          <button type="button" disabled={busy} onClick={() => void post(`/api/contact/${encodeURIComponent(id)}/assign`, {})} style={styles.ghost}>{t.assignToMe}</button>
           {c.status === "solved" ? (
-            <button type="button" disabled={busy} onClick={() => void post(`/api/contact/${encodeURIComponent(id)}/status`, { status: "needs_admin" })} style={styles.ghost}>Reopen</button>
+            <button type="button" disabled={busy} onClick={() => void post(`/api/contact/${encodeURIComponent(id)}/status`, { status: "needs_admin" })} style={styles.ghost}>{t.reopen}</button>
           ) : (
-            <button type="button" disabled={busy} onClick={() => void post(`/api/contact/${encodeURIComponent(id)}/status`, { status: "solved" })} style={styles.ghost}>Mark solved</button>
+            <button type="button" disabled={busy} onClick={() => void post(`/api/contact/${encodeURIComponent(id)}/status`, { status: "solved" })} style={styles.ghost}>{t.markSolved}</button>
           )}
         </div>
       </form>
@@ -169,6 +170,7 @@ function Thread({ id, onChanged }: { id: string; onChanged(): void }) {
 }
 
 export function ContactDeskPanel() {
+  const t = usePageText(contactDeskText);
   const [state, setState] = useState<State>({ status: "loading" });
   const [filter, setFilter] = useState<string>("needs_admin");
   const [side, setSide] = useState<string>("");
@@ -196,30 +198,30 @@ export function ContactDeskPanel() {
   return (
     <div style={styles.body}>
       <div style={styles.row}>
-        {FILTERS.map(([value, label]) => (
-          <button key={value} type="button" aria-pressed={filter === value} onClick={() => setFilter(value)} style={filter === value ? styles.button : styles.ghost}>{label}</button>
+        {FILTERS.map((value) => (
+          <button key={value} type="button" aria-pressed={filter === value} onClick={() => setFilter(value)} style={filter === value ? styles.button : styles.ghost}>{t.filters[value] ?? value}</button>
         ))}
-        {SIDES.map(([value, label]) => (
-          <button key={label} type="button" aria-pressed={side === value} onClick={() => setSide(value)} style={side === value ? styles.button : styles.ghost}>{label}</button>
+        {SIDES.map((value) => (
+          <button key={`side-${value}`} type="button" aria-pressed={side === value} onClick={() => setSide(value)} style={side === value ? styles.button : styles.ghost}>{t.sides[value] ?? value}</button>
         ))}
       </div>
       {state.status === "denied" ? null : <AskAi conversationId={openId} />}
-      {state.status === "loading" ? <p style={styles.muted}>Loading…</p> : null}
-      {state.status === "denied" ? <p style={styles.error}>Platform administrator access is required.</p> : null}
-      {state.status === "error" ? <p role="alert" style={styles.error}>The Contact desk could not be loaded.</p> : null}
+      {state.status === "loading" ? <p style={styles.muted}>{t.loading}</p> : null}
+      {state.status === "denied" ? <p style={styles.error}>{t.denied}</p> : null}
+      {state.status === "error" ? <p role="alert" style={styles.error}>{t.loadError}</p> : null}
       {state.status === "ready" ? (
         <div style={styles.columns}>
           <div style={styles.list}>
-            {state.items.length === 0 ? <p style={styles.muted}>Nothing here right now.</p> : null}
+            {state.items.length === 0 ? <p style={styles.muted}>{t.empty}</p> : null}
             {state.items.map((c) => (
               <button key={c.id} type="button" onClick={() => setOpenId(c.id)} style={c.id === openId ? styles.itemOpen : styles.item}>
-                <strong>{c.urgent ? "URGENT · " : ""}{c.requesterName ?? "Unknown"}{c.unread ? " ●" : ""}</strong>
-                <span style={styles.muted}>{c.side === "worker" ? "Worker" : "Employer"} · {c.topic} · {STATUS[c.status] ?? c.status}</span>
-                <span style={styles.muted}>Last message {waitingFor(c.lastMessageAt)} ago</span>
+                <strong>{c.urgent ? t.urgent : ""}{c.requesterName ?? t.unknown}{c.unread ? " ●" : ""}</strong>
+                <span style={styles.muted}>{c.side === "worker" ? t.worker : t.employer} · {c.topic} · {t.status[c.status] ?? c.status}</span>
+                <span style={styles.muted}>{t.lastMessage(waitingFor(t, c.lastMessageAt))}</span>
               </button>
             ))}
           </div>
-          {openId ? <Thread key={openId} id={openId} onChanged={() => void load()} /> : <p style={styles.muted}>Choose a conversation.</p>}
+          {openId ? <Thread key={openId} id={openId} onChanged={() => void load()} /> : <p style={styles.muted}>{t.chooseConversation}</p>}
         </div>
       ) : null}
     </div>

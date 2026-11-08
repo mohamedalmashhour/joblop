@@ -1,7 +1,9 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
+import { usePageText } from "../i18n/pageText";
 import { canSendTestPayout, payoutStatusLabel, type StaffPayout } from "./payoutCopy";
+import { payoutsText } from "./text";
 
 type State =
   | { status: "loading" }
@@ -18,6 +20,7 @@ function day(iso: string): string {
 }
 
 export function WorkerPayoutsPanel() {
+  const t = usePageText(payoutsText);
   const [state, setState] = useState<State>({ status: "loading" });
   const [busy, setBusy] = useState<string | null>(null);
   const [message, setMessage] = useState("");
@@ -42,46 +45,46 @@ export function WorkerPayoutsPanel() {
 
   const sendTestPayout = useCallback(async (id: string) => {
     setBusy(id);
-    setMessage("Sending the test payout.");
+    setMessage(t.sending);
     try {
       const response = await fetch(`/api/worker-payouts/${encodeURIComponent(id)}/test-payout`, { method: "POST" });
       if (!response.ok) {
-        setMessage("The test payout did not go through, and the payout was not marked paid. Refresh and try again.");
+        setMessage(t.sendFailed);
         return;
       }
-      setMessage("Test payout sent. No real money moved.");
+      setMessage(t.sent);
       await load();
     } catch {
-      setMessage("The test payout could not be confirmed. Refresh to check its status before trying again.");
+      setMessage(t.unconfirmed);
     } finally {
       setBusy(null);
     }
-  }, [load]);
+  }, [load, t]);
 
-  if (state.status === "loading") return <p style={styles.text}>Loading worker payouts.</p>;
-  if (state.status === "denied") return <p style={styles.text}>Your session has ended or this account has no access.</p>;
-  if (state.status === "error") return <p style={styles.text}>Worker payouts could not be reached.</p>;
+  if (state.status === "loading") return <p style={styles.text}>{t.loading}</p>;
+  if (state.status === "denied") return <p style={styles.text}>{t.denied}</p>;
+  if (state.status === "error") return <p style={styles.text}>{t.error}</p>;
 
   return (
     <section style={styles.wrap}>
       <p aria-live="polite" role="status" style={styles.text}>{message}</p>
       {state.testPayoutEnabled ? null : (
-        <p style={styles.text}>Test payouts are switched off, so payouts can be viewed here but not sent.</p>
+        <p style={styles.text}>{t.switchedOff}</p>
       )}
-      {state.items.length === 0 ? <p style={styles.text}>No worker payouts yet.</p> : null}
+      {state.items.length === 0 ? <p style={styles.text}>{t.empty}</p> : null}
       {state.items.map((payout) => (
         <article key={payout.id} style={styles.card}>
           <h2 style={styles.heading}>
-            {payout.workerDisplayName ?? "Worker"} · {money(payout.amountMinor, payout.currency)}
+            {payout.workerDisplayName ?? t.workerFallback} · {money(payout.amountMinor, payout.currency)}
           </h2>
-          <p style={styles.meta}>{payout.organizationName ?? "Employer"} · {payoutStatusLabel(payout.status)}</p>
+          <p style={styles.meta}>{payout.organizationName ?? t.employerFallback} · {payoutStatusLabel(payout.status, t.statusLabels)}</p>
           <p style={styles.meta}>
-            {payout.paidAt ? `Paid ${day(payout.paidAt)}` : `Hold ends ${day(payout.holdUntil)}`}
-            {payout.paymentRef ? ` · Reference ${payout.paymentRef}` : ""}
+            {payout.paidAt ? t.paidOn(day(payout.paidAt)) : t.holdEnds(day(payout.holdUntil))}
+            {payout.paymentRef ? ` · ${t.reference(payout.paymentRef)}` : ""}
           </p>
           {canSendTestPayout(payout, state.testPayoutEnabled) ? (
             <button disabled={busy !== null} onClick={() => void sendTestPayout(payout.id)} style={styles.button} type="button">
-              {busy === payout.id ? "Sending…" : "Send test payout"}
+              {busy === payout.id ? t.sendingShort : t.send}
             </button>
           ) : null}
         </article>

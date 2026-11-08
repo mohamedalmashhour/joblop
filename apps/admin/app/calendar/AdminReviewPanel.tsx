@@ -8,28 +8,30 @@ import {
   adminReviewActions,
   adminReviewChecks
 } from "./adminCalendarContent";
+import { usePageText } from "../i18n/pageText";
+import { calendarText } from "./text";
 
 export function AdminReviewPanel() {
-  const [localDecision, setLocalDecision] = useState<string>("No fixture action selected");
+  const text = usePageText(calendarText);
+  const t = text.fixtureReview;
+  const [localDecision, setLocalDecision] = useState<(typeof adminReviewActions)[number] | null>(null);
 
   return (
     <main style={styles.page}>
       <header style={styles.hero}>
         <div>
-          <p style={styles.eyebrow}>Joblop / Connected calendar</p>
-          <h1 style={styles.title}>Review staffing request</h1>
-          <p style={styles.lede}>
-            Review readiness and separated economics before choosing a non-persistent fixture action.
-          </p>
+          <p style={styles.eyebrow}>{t.eyebrow}</p>
+          <h1 style={styles.title}>{t.title}</h1>
+          <p style={styles.lede}>{t.lede}</p>
         </div>
         <a href="/calendar" style={styles.secondaryButton}>
-          Back to admin calendar
+          {t.back}
         </a>
       </header>
 
       <section style={styles.grid}>
         <article style={styles.panel}>
-          <p style={styles.eyebrowDark}>Required review</p>
+          <p style={styles.eyebrowDark}>{t.requiredReview}</p>
           <h2 style={styles.h2}>{adminCalendarEvent.roleLabel}</h2>
           {adminReviewChecks.map((check) => (
             <div key={check.label} style={styles.row}>
@@ -37,65 +39,63 @@ export function AdminReviewPanel() {
               <span>{check.status}</span>
             </div>
           ))}
-          <div style={styles.mapPlaceholder}>Map placeholder · no map provider connected</div>
+          <div style={styles.mapPlaceholder}>{t.mapPlaceholder}</div>
         </article>
 
         <article style={styles.panel}>
-          <p style={styles.eyebrowDark}>Economics separation</p>
+          <p style={styles.eyebrowDark}>{t.economicsSeparation}</p>
           <div style={styles.economicsCard}>
-            <h2 style={styles.h2}>Client economics</h2>
-            <p>Bill rate: $45.00 CAD / hour</p>
-            <p>Terms: {adminCalendarEvent.clientEconomics.termsVersion}</p>
+            <h2 style={styles.h2}>{t.clientEconomics}</h2>
+            <p>{t.billRate}</p>
+            <p>{t.terms(adminCalendarEvent.clientEconomics.termsVersion)}</p>
           </div>
           <div style={styles.economicsCard}>
-            <h2 style={styles.h2}>Worker-offer economics</h2>
-            <p>Worker wage: $30.00 CAD / hour</p>
-            <p>Transportation compensation: $5.00 CAD</p>
-            <p>Terms: {adminCalendarEvent.workerOfferEconomics.termsVersion}</p>
+            <h2 style={styles.h2}>{t.workerEconomics}</h2>
+            <p>{t.workerWage}</p>
+            <p>{t.transportation}</p>
+            <p>{t.terms(adminCalendarEvent.workerOfferEconomics.termsVersion)}</p>
           </div>
         </article>
       </section>
 
       <section style={styles.grid}>
         <article style={styles.panel}>
-          <p style={styles.eyebrowDark}>Local review controls</p>
-          <h2 style={styles.h2}>Decision preview</h2>
+          <p style={styles.eyebrowDark}>{t.localControls}</p>
+          <h2 style={styles.h2}>{t.decisionPreview}</h2>
           <p aria-live="polite" style={styles.localState}>
-            {localDecision}
+            {localDecision ? t.selectedLocally(t.actions[localDecision]) : t.noAction}
           </p>
           <div style={styles.actionGrid}>
             {adminReviewActions.map((action) => (
               <button
                 key={action}
-                onClick={() =>
-                  setLocalDecision(`${action} selected locally — not saved, published, or executed`)
-                }
+                onClick={() => setLocalDecision(action)}
                 style={styles.actionButton}
                 type="button"
               >
-                {action}
+                {t.actions[action]}
               </button>
             ))}
           </div>
           <a href="/calendar/assignment" style={styles.assignmentLink}>
-            Open operational assignment visibility
+            {t.openAssignment}
           </a>
         </article>
 
         <article style={styles.advisoryPanel}>
-          <p style={styles.eyebrowDark}>AI advisory fixture</p>
+          <p style={styles.eyebrowDark}>{t.aiFixture}</p>
           <h2 style={styles.h2}>{adminAiRecommendation.title}</h2>
           <p>{adminAiRecommendation.recommendation}</p>
-          <p><strong>Evidence:</strong> {adminAiRecommendation.evidence}</p>
-          <p><strong>Uncertainty:</strong> {adminAiRecommendation.uncertainty}</p>
-          <p><strong>Required decision:</strong> {adminAiRecommendation.requiredDecision}</p>
+          <p><strong>{t.evidence}</strong> {adminAiRecommendation.evidence}</p>
+          <p><strong>{t.uncertainty}</strong> {adminAiRecommendation.uncertainty}</p>
+          <p><strong>{t.requiredDecision}</strong> {adminAiRecommendation.requiredDecision}</p>
         </article>
       </section>
 
       <section style={styles.boundaryGrid}>
-        {adminCalendarBoundaries.map((boundary) => (
+        {adminCalendarBoundaries.map((boundary, index) => (
           <article key={boundary} style={styles.boundaryCard}>
-            {boundary}
+            {text.boundaries[index] ?? boundary}
           </article>
         ))}
       </section>

@@ -2,6 +2,8 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { AdminDispatchReview } from "../api/dispatches/dispatchBoundary";
+import { usePageText } from "../i18n/pageText";
+import { calendarText } from "./text";
 
 type DispatchState =
   | Readonly<{ status: "loading" }>
@@ -9,6 +11,7 @@ type DispatchState =
   | Readonly<{ status: "denied" | "unavailable" | "error" }>;
 
 export function DispatchHandoffPanel({ jobRequestId }: Readonly<{ jobRequestId: string }>) {
+  const t = usePageText(calendarText).dispatch;
   const [state, setState] = useState<DispatchState>({ status: "loading" });
   const [priority, setPriority] = useState<AdminDispatchReview["priority"]>("normal");
   const [confirming, setConfirming] = useState(false);
@@ -70,7 +73,7 @@ export function DispatchHandoffPanel({ jobRequestId }: Readonly<{ jobRequestId: 
     if (createGuard.current) return;
     createGuard.current = true;
     setCreating(true);
-    setMessage("Creating the persisted dispatch review.");
+    setMessage(t.creatingMessage);
     try {
       const response = await fetch("/api/dispatches", {
         method: "POST",
@@ -80,13 +83,13 @@ export function DispatchHandoffPanel({ jobRequestId }: Readonly<{ jobRequestId: 
       if (!response.ok) {
         setConfirming(false);
         if (response.status === 401) {
-          setMessage("Administrator authorization is required.");
+          setMessage(t.authRequired);
           return;
         }
         setMessage(
           response.status === 409
-            ? "A dispatch review changed or may already exist. Checking the current record."
-            : "Creation did not return a confirmed result. Checking for an existing review."
+            ? t.conflict
+            : t.notConfirmed
         );
         await load();
         return;
@@ -95,10 +98,10 @@ export function DispatchHandoffPanel({ jobRequestId }: Readonly<{ jobRequestId: 
       if (!payload.dispatchReview) throw new Error("RWOS_MISSING_DISPATCH");
       setState({ status: "ready", dispatch: payload.dispatchReview });
       setConfirming(false);
-      setMessage("Dispatch review created. No worker has been contacted or assigned.");
+      setMessage(t.created);
     } catch {
       setConfirming(false);
-      setMessage("The create result is unknown. Checking for an existing review before retry.");
+      setMessage(t.unknown);
       await load();
     } finally {
       createGuard.current = false;
@@ -107,18 +110,18 @@ export function DispatchHandoffPanel({ jobRequestId }: Readonly<{ jobRequestId: 
   }
 
   if (state.status === "loading") {
-    return <p aria-live="polite">Checking for an existing persisted dispatch review…</p>;
+    return <p aria-live="polite">{t.checking}</p>;
   }
   if (state.status !== "ready") {
     return (
       <>
         <p role={state.status === "denied" ? "alert" : "status"}>
           {state.status === "denied"
-            ? "Administrator authorization is required to access dispatch."
-            : "Dispatch review is unavailable. No fixture record is substituted."}
+            ? t.deniedAccess
+            : t.unavailable}
         </p>
         <button onClick={() => void load()} style={button.secondary} type="button">
-          Retry dispatch check
+          {t.retry}
         </button>
       </>
     );
@@ -127,16 +130,16 @@ export function DispatchHandoffPanel({ jobRequestId }: Readonly<{ jobRequestId: 
     return (
       <>
         <p aria-live="polite" role="status">
-          {message || "Dispatch review already exists."}
+          {message || t.exists}
         </p>
         <p>
-          State: <strong>{state.dispatch.state.replaceAll("_", " ")}</strong> · Priority:{" "}
-          <strong>{state.dispatch.priority}</strong> · Required:{" "}
-          <strong>{state.dispatch.requiredWorkerCount}</strong> · Still requested:{" "}
+          {t.state} <strong>{state.dispatch.state.replaceAll("_", " ")}</strong> · {t.priority}{" "}
+          <strong>{t.priorityNames[state.dispatch.priority] ?? state.dispatch.priority}</strong> · {t.required}{" "}
+          <strong>{state.dispatch.requiredWorkerCount}</strong> · {t.stillRequested}{" "}
           <strong>{state.dispatch.remainingWorkerCount}</strong>
         </p>
         <a href={dispatchHref(state.dispatch.id)} style={button.link}>
-          Open dispatch review
+          {t.open}
         </a>
       </>
     );
@@ -145,20 +148,19 @@ export function DispatchHandoffPanel({ jobRequestId }: Readonly<{ jobRequestId: 
   return (
     <>
       <p aria-live="polite">
-        {message ||
-          "No dispatch review exists. Creating one opens an operational review only; it does not contact or assign workers."}
+        {message || t.none}
       </p>
       <label style={button.label}>
-        Dispatch priority
+        {t.priorityLabel}
         <select
           disabled={creating || confirming}
           onChange={(event) => setPriority(event.target.value as AdminDispatchReview["priority"])}
           style={button.select}
           value={priority}
         >
-          <option value="normal">Normal</option>
-          <option value="urgent">Urgent</option>
-          <option value="emergency">Emergency</option>
+          <option value="normal">{t.priorities.normal}</option>
+          <option value="urgent">{t.priorities.urgent}</option>
+          <option value="emergency">{t.priorities.emergency}</option>
         </select>
       </label>
       <button
@@ -168,7 +170,7 @@ export function DispatchHandoffPanel({ jobRequestId }: Readonly<{ jobRequestId: 
         style={button.primary}
         type="button"
       >
-        Create dispatch review
+        {t.create}
       </button>
       {confirming ? (
         <dialog
@@ -178,10 +180,9 @@ export function DispatchHandoffPanel({ jobRequestId }: Readonly<{ jobRequestId: 
           ref={dialog}
           style={button.confirmation}
         >
-          <h3 id="confirm-dispatch">Confirm dispatch handoff</h3>
+          <h3 id="confirm-dispatch">{t.confirmTitle}</h3>
           <p id="confirm-dispatch-copy">
-            Create one {priority} dispatch review for this approved request. This does not contact,
-            shortlist, offer work to, or assign any worker.
+            {t.confirmCopy(t.priorityNames[priority] ?? priority)}
           </p>
           <div style={button.actions}>
             <button
@@ -191,7 +192,7 @@ export function DispatchHandoffPanel({ jobRequestId }: Readonly<{ jobRequestId: 
               style={button.secondary}
               type="button"
             >
-              Cancel
+              {t.cancel}
             </button>
             <button
               disabled={creating}
@@ -199,7 +200,7 @@ export function DispatchHandoffPanel({ jobRequestId }: Readonly<{ jobRequestId: 
               style={button.primary}
               type="button"
             >
-              {creating ? "Creating…" : "Confirm creation"}
+              {creating ? t.creating : t.confirm}
             </button>
           </div>
         </dialog>

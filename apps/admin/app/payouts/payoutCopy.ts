@@ -10,7 +10,7 @@ export type StaffPayout = Readonly<{
   paymentRef: string | null;
 }>;
 
-const STATUS_LABEL: Record<string, string> = {
+export const PAYOUT_STATUS_LABEL: Readonly<Record<string, string>> = {
   pending: "Waiting for release",
   released: "Ready to pay",
   held: "Paused by a dispute",
@@ -18,8 +18,9 @@ const STATUS_LABEL: Record<string, string> = {
   cancelled: "Cancelled"
 };
 
-export function payoutStatusLabel(status: string): string {
-  return STATUS_LABEL[status] ?? status.replaceAll("_", " ");
+// `labels` lets the page pass the labels for the visitor's language (see text.ts); English by default.
+export function payoutStatusLabel(status: string, labels: Readonly<Record<string, string>> = PAYOUT_STATUS_LABEL): string {
+  return labels[status] ?? status.replaceAll("_", " ");
 }
 
 export function canSendTestPayout(payout: StaffPayout, testPayoutEnabled: boolean): boolean {

@@ -1,15 +1,15 @@
+import { serverPageText } from "../i18n/serverPageText";
 import { ContactDeskPanel } from "./ContactDeskPanel";
+import { contactDeskText } from "./text";
 
-export default function ContactDeskPage() {
+export default async function ContactDeskPage() {
+  const t = await serverPageText(contactDeskText);
   return (
     <main style={styles.page}>
       <header style={styles.hero}>
-        <p style={styles.eyebrow}>Joblop / Administration</p>
-        <h1 style={styles.title}>Contact desk</h1>
-        <p style={styles.lede}>
-          Workers and employers talking to Joblop. AI answers first; everything here needing a person is
-          waiting for you. Only a person can mark a conversation solved.
-        </p>
+        <p style={styles.eyebrow}>{t.eyebrow}</p>
+        <h1 style={styles.title}>{t.title}</h1>
+        <p style={styles.lede}>{t.lede}</p>
       </header>
       <ContactDeskPanel />
     </main>

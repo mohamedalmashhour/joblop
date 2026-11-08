@@ -1,7 +1,9 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import { usePageText } from "../i18n/pageText";
 import { minorToDollars, toRoleRates, type CatalogueGroup, type CatalogueRole } from "./rateCard";
+import { contractsText } from "./text";
 
 type Organization = Readonly<{ id: string; displayName: string }>;
 type Contract = Readonly<{
@@ -13,6 +15,7 @@ type Card = Readonly<{ contract: Contract | null; roles: readonly CatalogueRole[
 type State = { status: "idle" | "loading" | "denied" | "error" } | { status: "ready"; card: Card };
 
 export function EmployerContractsPanel() {
+  const t = usePageText(contractsText);
   const [organizations, setOrganizations] = useState<readonly Organization[]>([]);
   const [organizationId, setOrganizationId] = useState("");
   const [state, setState] = useState<State>({ status: "idle" });
@@ -58,25 +61,25 @@ export function EmployerContractsPanel() {
 
   async function publish() {
     setBusy(true);
-    setMessage("Publishing the rate card.");
+    setMessage(t.publishing);
     try {
       const response = await fetch("/api/employer-contracts", {
         method: "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({ organizationId, roleRates: preview.rates })
       });
-      if (!response.ok) return setMessage("The rate card was not published. Nothing changed. Check the rates and try again.");
+      if (!response.ok) return setMessage(t.publishFailed);
       await load(organizationId);
-      setMessage("Rate card published. The employer can now review and sign it.");
+      setMessage(t.published);
     } catch {
-      setMessage("The rate card could not be confirmed. Refresh to check before trying again.");
+      setMessage(t.publishUnconfirmed);
     } finally {
       setBusy(false);
     }
   }
 
   if (state.status === "denied") {
-    return <section style={styles.wrap}><p style={styles.text}>Your session has ended or this account has no access.</p></section>;
+    return <section style={styles.wrap}><p style={styles.text}>{t.denied}</p></section>;
   }
 
   const blocked = busy || preview.rates.length === 0 || preview.invalid.length > 0;
@@ -84,27 +87,27 @@ export function EmployerContractsPanel() {
   return (
     <section style={styles.wrap}>
       <label style={styles.label}>
-        Employer
+        {t.employer}
         <select
           onChange={(event) => { setOrganizationId(event.target.value); void load(event.target.value); }}
           style={styles.input}
           value={organizationId}
         >
-          <option value="">Choose employer…</option>
+          <option value="">{t.chooseEmployer}</option>
           {organizations.map((organization) => (
             <option key={organization.id} value={organization.id}>{organization.displayName}</option>
           ))}
         </select>
       </label>
       <p aria-live="polite" role="status" style={styles.text}>{message}</p>
-      {state.status === "loading" ? <p style={styles.text}>Loading the rate card.</p> : null}
-      {state.status === "error" ? <p style={styles.text}>The rate card could not be loaded.</p> : null}
+      {state.status === "loading" ? <p style={styles.text}>{t.loading}</p> : null}
+      {state.status === "error" ? <p style={styles.text}>{t.loadError}</p> : null}
       {state.status === "ready" ? (
         <>
           <p style={styles.meta}>
             {state.card.contract
-              ? `Current contract ${state.card.contract.version}, ${state.card.contract.signedAt ? "signed by the employer" : "waiting for the employer to sign"}.`
-              : "No contract yet. This employer cannot request workers until one is published and signed."}
+              ? t.currentContract(state.card.contract.version, Boolean(state.card.contract.signedAt))
+              : t.noContract}
           </p>
           {state.card.groups.map((group) => {
             const groupRoles = roles.filter((role) => role.workGroupId === group.id);
@@ -115,11 +118,11 @@ export function EmployerContractsPanel() {
                 <div style={styles.grid}>
                   {groupRoles.map((role) => (
                     <label key={role.id} style={styles.label}>
-                      {role.displayLabel} ($ per hour)
+                      {t.perHour(role.displayLabel)}
                       <input
                         inputMode="decimal"
                         onChange={(event) => setEntries((previous) => ({ ...previous, [role.id]: event.target.value }))}
-                        placeholder="Not offered"
+                        placeholder={t.notOffered}
                         style={styles.input}
                         value={entries[role.id] ?? ""}
                       />
@@ -129,10 +132,10 @@ export function EmployerContractsPanel() {
               </article>
             );
           })}
-          {preview.invalid.length > 0 ? <p style={styles.text}>Fix these rates: {preview.invalid.join(", ")}.</p> : null}
-          <p style={styles.meta}>Roles priced: {preview.rates.length}. Blank roles are left off the contract.</p>
+          {preview.invalid.length > 0 ? <p style={styles.text}>{t.fixRates(preview.invalid.join(", "))}</p> : null}
+          <p style={styles.meta}>{t.rolesPriced(preview.rates.length)}</p>
           <button disabled={blocked} onClick={() => void publish()} style={blocked ? styles.buttonOff : styles.button} type="button">
-            {busy ? "Publishing…" : "Publish rate card"}
+            {busy ? t.publishingButton : t.publishButton}
           </button>
         </>
       ) : null}

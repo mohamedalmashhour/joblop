@@ -1,16 +1,15 @@
+import { serverPageText } from "../i18n/serverPageText";
 import { EmployerContractsPanel } from "./EmployerContractsPanel";
+import { contractsText } from "./text";
 
-export default function EmployerContractsPage() {
+export default async function EmployerContractsPage() {
+  const t = await serverPageText(contractsText);
   return (
     <main style={styles.page}>
       <header style={styles.hero}>
-        <p style={styles.eyebrow}>Joblop / Finance</p>
-        <h1 style={styles.title}>Employer contracts</h1>
-        <p style={styles.lede}>
-          Set what an employer pays per hour for each role. The employer then reviews and signs it, and
-          can only request workers for roles priced here. Publishing replaces the current rate card, so
-          the employer must sign again. Jobs already approved keep their rate.
-        </p>
+        <p style={styles.eyebrow}>{t.eyebrow}</p>
+        <h1 style={styles.title}>{t.title}</h1>
+        <p style={styles.lede}>{t.lede}</p>
       </header>
       <EmployerContractsPanel />
     </main>
