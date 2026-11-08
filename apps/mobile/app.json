@@ -1,7 +1,7 @@
 {
   "expo": {
-    "name": "JobLop",
-    "slug": "resident-workforce-os",
+    "name": "Joblop",
+    "slug": "joblop",
     "scheme": "rwos",
     "version": "0.1.0",
     "orientation": "portrait",
@@ -34,11 +34,15 @@
       }
     },
     "extra": {
-      "foundationOnly": true
+      "foundationOnly": true,
+      "eas": {
+        "projectId": "8642f7d9-97b8-4275-8d59-4adad1ae6d51"
+      }
     },
     "plugins": [
       "expo-secure-store",
       "expo-notifications"
-    ]
+    ],
+    "owner": "lecipmapp"
   }
 }
