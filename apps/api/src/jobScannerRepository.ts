@@ -155,6 +155,25 @@ export function expandLeadQueryTokens(query: string | undefined, tokens: readonl
   return [...out].slice(0, 16);
 }
 
+function escapeRegExp(text: string): string {
+  return text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+/**
+ * True when one of the search words appears as a whole word (allowing simple plural/-ing
+ * endings) in the title, employer or category. Stops "cook" from matching the employer "Cooke".
+ */
+export function leadMatchesWholeWord(
+  lead: Readonly<{ title?: string | null; employer?: string | null; category?: string | null }>,
+  tokens: readonly string[]
+): boolean {
+  if (tokens.length === 0) return true;
+  const text = [lead.title, lead.employer, lead.category].filter(Boolean).join(" | ");
+  return tokens.some((tok) =>
+    new RegExp(`(^|[^\\p{L}\\p{N}])${escapeRegExp(tok)}(s|es|ing)?($|[^\\p{L}\\p{N}])`, "iu").test(text)
+  );
+}
+
 /**
  * Query stored leads, most-recently-seen first, optionally filtered by province and/or city.
  * When `query` is given it also NARROWS to leads whose title, employer or category contains any of
@@ -180,5 +199,6 @@ export async function queryStoredLeads(prisma: PrismaClient, opts: QueryLeadsOpt
     orderBy: { lastSeenAt: "desc" },
     take: opts.limit ?? 100
   });
-  return rows.map((r) => ({ id: r.id, ...toLead(r) }));
+  const leads = rows.map((r) => ({ id: r.id, ...toLead(r) }));
+  return tokens.length > 0 ? leads.filter((l) => leadMatchesWholeWord(l, tokens)) : leads;
 }
