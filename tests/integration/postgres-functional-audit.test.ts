@@ -7,6 +7,7 @@ import { buildApi } from "../../apps/api/src/app";
 import type { EmailMessage, EmailSender } from "../../apps/api/src/mailer/emailSender";
 import type { SmsMessage, SmsSender } from "../../apps/api/src/mailer/smsSender";
 import { materializeAndListWorkerPayouts } from "../../apps/api/src/workerPayoutRepository";
+import type { PushFetch } from "../../apps/api/src/notifications/pushSender";
 
 // End-to-end guards for the worker journey and the money paths it feeds: each case drives the real
 // API routes against a real schema. TEST/SYNTHETIC. No money moves. Gated on RWOS_TEST_DATABASE_URL,
@@ -36,6 +37,18 @@ suite("worker journey and payout guards", () => {
       return { status: "sent", id: `sms-${texts.length}` };
     }
   };
+  // Push notifications are captured, never sent to Expo.
+  const pushes: { to: string; title: string; data: Record<string, unknown> }[] = [];
+  const pushFetch: PushFetch = async (_url, init) => {
+    const batch = JSON.parse(init.body) as { to: string; title: string; data: Record<string, unknown> }[];
+    pushes.push(...batch);
+    return { ok: true, status: 200, json: async () => ({ data: batch.map(() => ({ status: "ok" })) }) };
+  };
+  const SWEEP_TOKEN = `fa-alert-sweep-${randomUUID()}`;
+  const WORKER_ORIGIN = "https://worker.fa.test";
+  // Alert and push rows these tests make are removed again in afterAll.
+  const createdAlertEmails: string[] = [];
+  const createdPushTokens: string[] = [];
   let app: FastifyInstance;
   const staffIds = new Set<string>();
   const employerIds = new Set<string>();
@@ -108,7 +121,11 @@ suite("worker journey and payout guards", () => {
       countryTimezone: "America/Toronto",
       emailSender,
       smsSender,
-      env: { ...process.env, DATABASE_URL: databaseUrl, RWOS_ENV: "local", NODE_ENV: "test" },
+      pushFetch,
+      env: {
+        ...process.env, DATABASE_URL: databaseUrl, RWOS_ENV: "local", NODE_ENV: "test",
+        JOB_ALERT_SWEEP_TOKEN: SWEEP_TOKEN, WORKER_WEB_ORIGIN: WORKER_ORIGIN
+      },
       resolveAuthorizationRoles: async (userId: string) =>
         staffIds.has(userId) ? ["PLATFORM_ADMINISTRATOR", "PAYROLL_ADMINISTRATOR"] : employerIds.has(userId) ? ["ORGANIZATION_OWNER"] : ["WORKER_ACCESS"]
     });
@@ -133,6 +150,8 @@ suite("worker journey and payout guards", () => {
   const createdMembershipIds: string[] = [];
 
   afterAll(async () => {
+    if (createdAlertEmails.length > 0) await prisma.jobAlertSubscription.deleteMany({ where: { email: { in: createdAlertEmails } } });
+    if (createdPushTokens.length > 0) await prisma.pushToken.deleteMany({ where: { token: { in: createdPushTokens } } });
     if (createdMembershipIds.length > 0) {
       await prisma.membershipAccessRole.deleteMany({ where: { membershipId: { in: createdMembershipIds } } });
       await prisma.organizationMembership.deleteMany({ where: { id: { in: createdMembershipIds } } });
@@ -652,6 +671,129 @@ suite("worker journey and payout guards", () => {
       }
       expect((await app.inject({ method: "GET", url: "/platform/calendar-hub", headers: auth(worker.token) })).statusCode).toBe(403);
       expect((await app.inject({ method: "GET", url: "/employer/calendar-hub", headers: auth(worker.token) })).statusCode).toBe(403);
+    });
+  });
+  describe("job alerts and push notifications", () => {
+    const sweep = (token: string = SWEEP_TOKEN) =>
+      app.inject({ method: "POST", url: "/internal/job-alerts/sweep", headers: { "x-sweep-token": token } });
+
+    it("a worker's alert: subscribe → staff-approved open job → one digest with the job and an unsubscribe link → nothing more", async () => {
+      expect((await sweep("wrong-token-wrong-token")).statusCode).toBe(401);
+      expect((await app.inject({ method: "GET", url: "/worker/job-alerts" })).statusCode).toBe(401);
+
+      const worker = await makeWorker("alert");
+      createdAlertEmails.push(worker.email, "someone-else@fa.test");
+      const keyword = `zq${randomUUID().replace(/-/g, "").slice(0, 10)}`;
+      // The email always comes from the account; one in the body is ignored.
+      const subscribed = await app.inject({
+        method: "POST", url: "/worker/job-alerts", headers: auth(worker.token),
+        payload: { roleKeywords: keyword, province: "qc", email: "someone-else@fa.test" }
+      });
+      expect(subscribed.statusCode, subscribed.body).toBe(200);
+      expect(subscribed.json()).toEqual({ subscription: { roleKeywords: keyword, province: "QC", active: true } });
+      expect(await prisma.jobAlertSubscription.count({ where: { email: "someone-else@fa.test" } })).toBe(0);
+      const row = await prisma.jobAlertSubscription.findUniqueOrThrow({ where: { email: worker.email } });
+      expect(row.userId).toBe(worker.id);
+      expect(row.unsubscribeToken).toMatch(/^[A-Za-z0-9_-]{43}$/);
+      const read = await app.inject({ method: "GET", url: "/worker/job-alerts", headers: auth(worker.token) });
+      expect(read.json()).toEqual({ subscription: { roleKeywords: keyword, province: "QC", active: true } });
+
+      // A staff-approved job, open to claim, with places left, whose title carries the keyword.
+      const { job } = await makeJob({ startAt: new Date(Date.now() + 30 * HOUR), endAt: new Date(Date.now() + 38 * HOUR), openClaim: true });
+      await prisma.jobRequest.update({ where: { id: job.id }, data: { title: `${keyword} night shift` } });
+
+      emails.length = 0;
+      const first = await sweep();
+      expect(first.statusCode, first.body).toBe(200);
+      expect(first.json().sent).toBeGreaterThanOrEqual(1);
+      const digests = emails.filter((m) => m.to === worker.email);
+      expect(digests).toHaveLength(1);
+      expect(digests[0]?.subject).toMatch(/1 (nouvel emploi|new job)/);
+      expect(digests[0]?.text).toContain("Laval, QC");
+      expect(digests[0]?.text).toContain(`${WORKER_ORIGIN}/jobs-calendar`);
+      expect(digests[0]?.text).toContain(`${WORKER_ORIGIN}/job-alerts/unsubscribe?token=${row.unsubscribeToken}`);
+      expect(digests[0]?.text).toMatch(/Envoyé par Joblop|Sent by Joblop/);
+
+      // Within 20 hours: nothing.
+      emails.length = 0;
+      expect((await sweep()).statusCode).toBe(200);
+      expect(emails.filter((m) => m.to === worker.email)).toHaveLength(0);
+
+      // Unsubscribe (idempotent), then even a due row with a fresh job gets nothing.
+      expect((await app.inject({ method: "GET", url: "/public/job-alerts/unsubscribe?token=bad" })).statusCode).toBe(400);
+      for (let i = 0; i < 2; i += 1) {
+        const out = await app.inject({ method: "GET", url: `/public/job-alerts/unsubscribe?token=${row.unsubscribeToken}` });
+        expect(out.statusCode, out.body).toBe(200);
+        expect(out.json()).toEqual({ ok: true });
+      }
+      await prisma.jobAlertSubscription.update({ where: { id: row.id }, data: { lastSentAt: new Date(Date.now() - 21 * HOUR) } });
+      await prisma.jobRequest.update({ where: { id: job.id }, data: { title: `${keyword} day shift` } });
+      emails.length = 0;
+      expect((await sweep()).statusCode).toBe(200);
+      expect(emails.filter((m) => m.to === worker.email)).toHaveLength(0);
+      const after = await app.inject({ method: "GET", url: "/worker/job-alerts", headers: auth(worker.token) });
+      expect(after.json().subscription.active).toBe(false);
+
+      // Turning it back on, then off from the account.
+      expect((await app.inject({ method: "POST", url: "/worker/job-alerts", headers: auth(worker.token), payload: { roleKeywords: keyword } })).json().subscription.active).toBe(true);
+      expect((await app.inject({ method: "DELETE", url: "/worker/job-alerts", headers: auth(worker.token) })).json()).toEqual({ ok: true });
+      expect((await prisma.jobAlertSubscription.findUniqueOrThrow({ where: { id: row.id } })).unsubscribedAt).not.toBeNull();
+    });
+
+    it("a public sign-up gets one confirmation with who we are and an unsubscribe link", async () => {
+      const email = `alert-public-${randomUUID()}@fa.test`;
+      createdAlertEmails.push(email);
+      emails.length = 0;
+      const signUp = () => app.inject({ method: "POST", url: "/public/jobscanner/alerts", payload: { email, roleKeywords: "cuisinier", locale: "en" } });
+      expect((await signUp()).statusCode).toBe(200);
+      const row = await prisma.jobAlertSubscription.findUniqueOrThrow({ where: { email } });
+      const confirmations = emails.filter((m) => m.to === email);
+      expect(confirmations).toHaveLength(1);
+      expect(confirmations[0]?.text).toContain("Sent by Joblop");
+      expect(confirmations[0]?.text).toContain(`${WORKER_ORIGIN}/job-alerts/unsubscribe?token=${row.unsubscribeToken}`);
+      // Re-submitting only refreshes the alert; no second email.
+      expect((await signUp()).statusCode).toBe(200);
+      expect(emails.filter((m) => m.to === email)).toHaveLength(1);
+    });
+
+    it("push tokens: register, validate, move between accounts, delete; a confirmed shift pushes to the worker", async () => {
+      const worker = await makeWorker("push");
+      const other = await makeWorker("push-other");
+      const token = `ExponentPushToken[fa${randomUUID().replace(/-/g, "").slice(0, 20)}]`;
+      createdPushTokens.push(token);
+      const register = (t: string, body: Record<string, unknown>) => app.inject({ method: "POST", url: "/worker/push-tokens", headers: auth(t), payload: body });
+
+      expect((await app.inject({ method: "POST", url: "/worker/push-tokens", payload: { token, platform: "ios" } })).statusCode).toBe(401);
+      expect((await register(worker.token, { token: "not-a-token", platform: "ios" })).statusCode).toBe(400);
+      expect((await register(worker.token, { token, platform: "blackberry" })).statusCode).toBe(400);
+      const ok = await register(worker.token, { token, platform: "ios" });
+      expect(ok.statusCode, ok.body).toBe(200);
+      expect(ok.json()).toEqual({ ok: true });
+      expect((await register(worker.token, { token, platform: "ios" })).statusCode).toBe(200); // upsert
+      expect(await prisma.pushToken.count({ where: { token } })).toBe(1);
+
+      // A confirmed shift sends "You got the job" to the worker's phone, opening the calendar.
+      const { job, review } = await makeJob({ ...soon(), openClaim: false });
+      const offer = await makeAcceptedOffer(worker, job, review.id);
+      pushes.length = 0;
+      const assigned = await app.inject({
+        method: "POST", url: "/platform/assignments", headers: auth(staff.token),
+        payload: { workerOfferId: offer.id, dispatchReviewId: review.id, expectedOfferVersion: offer.version }
+      });
+      expect(assigned.statusCode, assigned.body).toBe(201);
+      const pushed = pushes.filter((p) => p.to === token);
+      expect(pushed).toHaveLength(1);
+      expect(pushed[0]?.title).toMatch(/obtenu le travail|got the job/);
+      expect(pushed[0]?.data).toMatchObject({ screen: "calendar", jobRequestId: job.id });
+
+      // Someone else cannot remove it; the same phone signing in to another account moves it there.
+      expect((await app.inject({ method: "DELETE", url: "/worker/push-tokens", headers: auth(other.token), payload: { token } })).statusCode).toBe(200);
+      expect((await prisma.pushToken.findUniqueOrThrow({ where: { token } })).revokedAt).toBeNull();
+      expect((await register(other.token, { token, platform: "android" })).statusCode).toBe(200);
+      expect(await prisma.pushToken.findUniqueOrThrow({ where: { token } })).toMatchObject({ userId: other.id, platform: "android", revokedAt: null });
+      const removed = await app.inject({ method: "DELETE", url: "/worker/push-tokens", headers: auth(other.token), payload: { token } });
+      expect(removed.statusCode, removed.body).toBe(200);
+      expect((await prisma.pushToken.findUniqueOrThrow({ where: { token } })).revokedAt).not.toBeNull();
     });
   });
 });

@@ -485,6 +485,8 @@ model User {
   completedAdminBootstraps      InitialAdminBootstrap[]      @relation("InitialAdminBootstrapCreatedUser")
   ownedUploadedDocuments        UploadedDocument[]           @relation("UploadedDocumentOwner")
   googleOAuthToken              GoogleOAuthToken?
+  pushTokens                    PushToken[]
+  jobAlertSubscriptions         JobAlertSubscription[]
 
   @@index([emailNormalized], map: "users_email_normalized_idx")
   @@index([status], map: "users_status_idx")
@@ -3398,9 +3400,39 @@ model JobAlertSubscription {
   confirmedAt  DateTime? @map("confirmed_at") @db.Timestamptz(3)
   createdAt    DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
   updatedAt    DateTime  @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(3)
+  // Random base64url secret for the one-click unsubscribe link. Nullable so rows made before it
+  // existed stay valid; the sender fills it before the first email goes out.
+  unsubscribeToken String?   @unique @map("unsubscribe_token")
+  // The signed-in worker this alert belongs to (null for a public, email-only sign-up).
+  userId           String?   @map("user_id") @db.Uuid
+  lastSentAt       DateTime? @map("last_sent_at") @db.Timestamptz(3)
+  // When the sweep last looked at this row (sent or not), so a large list is worked through in turn.
+  lastCheckedAt    DateTime? @map("last_checked_at") @db.Timestamptz(3)
+  // Set when the person unsubscribes. Never emailed again while set.
+  unsubscribedAt   DateTime? @map("unsubscribed_at") @db.Timestamptz(3)
+  user             User?     @relation(fields: [userId], references: [id], onDelete: SetNull)
 
   @@index([createdAt], map: "job_alert_subscriptions_created_at_idx")
+  @@index([userId], map: "job_alert_subscriptions_user_id_idx")
+  @@index([unsubscribedAt, lastCheckedAt], map: "job_alert_subscriptions_unsubscribed_at_last_checked_at_idx")
   @@map("job_alert_subscriptions")
+}
+
+// A phone (or browser) that can receive Joblop push notifications for a signed-in user, through
+// Expo's push service. One row per Expo push token; a token that Expo reports as no longer
+// registered is revoked, never deleted, so the history stays readable.
+model PushToken {
+  id         String    @id @default(uuid()) @db.Uuid
+  userId     String    @map("user_id") @db.Uuid
+  token      String    @unique
+  platform   String
+  createdAt  DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+  lastSeenAt DateTime  @default(now()) @map("last_seen_at") @db.Timestamptz(3)
+  revokedAt  DateTime? @map("revoked_at") @db.Timestamptz(3)
+  user       User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, revokedAt], map: "push_tokens_user_id_revoked_at_idx")
+  @@map("push_tokens")
 }
 
 // JobScanner CV builder: a worker's own CV attachments — certificates (MAPAQ, RCR, cariste, licence)

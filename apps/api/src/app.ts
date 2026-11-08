@@ -287,6 +287,15 @@ import { activeBonusByJob, coverageBonusSuggestion, latestBonusByJob, registerJo
 import { registerCalendarHubRoutes } from "./calendarHubRoutes";
 import { createMarketingContactSync, type MarketingContactSync } from "./mailer/brevoContacts";
 import { runShiftReminderSweep } from "./shiftReminderSweep";
+import { createPushSender, isExpoPushToken, isPushPlatform, noopPushSender, type PushFetch } from "./notifications/pushSender";
+import {
+  ensureUnsubscribeToken,
+  generateUnsubscribeToken,
+  isUnsubscribeToken,
+  jobAlertConfirmationEmail,
+  runJobAlertSweep,
+  type AlertOpenJob
+} from "./jobAlerts";
 import {
   createPasswordResetService,
   passwordResetAccepted,
@@ -420,6 +429,8 @@ export interface BuildApiOptions {
     releaseSha: string;
   }>;
   env?: NodeJS.ProcessEnv;
+  // Push notifications: inject the HTTP call to Expo's push service (tests); defaults to global fetch.
+  pushFetch?: PushFetch;
   documentService?: DocumentUploadService;
   documentUploadContract?: ReturnType<typeof createDocumentUploadContract>;
   invoiceRepository?: InvoiceRepository;
@@ -610,6 +621,16 @@ export function buildApi(options: BuildApiOptions = {}) {
       sender: runtimeConfig.smsSender,
       enabled: runtimeConfig.smsEnabled
     });
+  // Push notifications to the phone app (Expo). Needs the database for device tokens; with none
+  // registered it sends nothing. EXPO_ACCESS_TOKEN is optional (only if the Expo project enforces it).
+  const expoAccessToken = environment.EXPO_ACCESS_TOKEN?.trim();
+  const pushSender = prisma
+    ? createPushSender({
+        prisma,
+        ...(expoAccessToken ? { accessToken: expoAccessToken } : {}),
+        ...(options.pushFetch ? { fetch: options.pushFetch } : {})
+      })
+    : noopPushSender;
   // CASL step 2: sync opted-in workers to a Brevo marketing list. Gated OFF by default; never blocks
   // a profile save, never affects transactional email/SMS.
   const marketingContactSync =
@@ -976,7 +997,7 @@ export function buildApi(options: BuildApiOptions = {}) {
     cancelledBy: "employer" | "staff";
   }): Promise<void> => {
     if (!prisma || input.workers.length === 0) return;
-    const result = await notifyWorkersShiftCancelled(prisma, emailSender, smsSender, { ...input, workerWebOrigin: offerCtaOrigin }).catch(() => null);
+    const result = await notifyWorkersShiftCancelled(prisma, emailSender, smsSender, { ...input, workerWebOrigin: offerCtaOrigin }, pushSender).catch(() => null);
     if (!result || result.failed > 0) logger.warn("worker.shift_cancelled_notice_failed", { jobRequestId: input.jobRequestId });
   };
   const tellWorkersShiftChanged = async (input: {
@@ -985,7 +1006,7 @@ export function buildApi(options: BuildApiOptions = {}) {
     summary: ShiftChangeSummary;
   }): Promise<void> => {
     if (!prisma || input.workers.length === 0) return;
-    const result = await notifyWorkersShiftChanged(prisma, emailSender, smsSender, { ...input, workerWebOrigin: offerCtaOrigin }).catch(() => null);
+    const result = await notifyWorkersShiftChanged(prisma, emailSender, smsSender, { ...input, workerWebOrigin: offerCtaOrigin }, pushSender).catch(() => null);
     if (!result || result.failed > 0) logger.warn("worker.shift_changed_notice_failed", { jobRequestId: input.jobRequestId });
   };
   // A short, worker-facing account of a material edit, or null when nothing the worker agreed to
@@ -1544,9 +1565,76 @@ export function buildApi(options: BuildApiOptions = {}) {
     if (!prisma) {
       return reply.code(503).send({ error: "RWOS_SWEEP_UNAVAILABLE", message: "Database unavailable." });
     }
-    const metrics = await runShiftReminderSweep({ prisma, emailSender, smsSender });
+    const metrics = await runShiftReminderSweep({ prisma, emailSender, smsSender, pushSender });
     logger.info("api.shift_reminder.sweep", { ...metrics });
     return reply.code(200).send({ status: "completed", ...metrics });
+  });
+
+  // Job-alert digest sweep. Same fail-closed shape as the shift-reminder sweep: disabled (404) unless
+  // JOB_ALERT_SWEEP_TOKEN is configured (16+ characters); 401 on token mismatch. One bounded run: at
+  // most 500 subscriptions, at most one digest per subscription per ~20 h. Returns { checked, sent }.
+  const jobAlertSweepToken = (environment.JOB_ALERT_SWEEP_TOKEN ?? "").trim();
+  const jobAlertMailingAddress = (environment.JOBLOP_MAILING_ADDRESS ?? "").trim() || null;
+  // Joblop open jobs for alerts: the same rules as GET /marketplace/open-jobs (approved, open to
+  // claim, priced, upcoming, active site, places left). "New" = last updated since the previous digest.
+  const loadAlertOpenJobs = async (now: Date): Promise<AlertOpenJob[]> => {
+    if (!prisma) return [];
+    const rows = await prisma.jobRequest.findMany({
+      where: {
+        status: "approved_for_dispatch",
+        openClaim: true,
+        pricingSnapshot: { isNot: null },
+        startAt: { gte: now },
+        residence: { status: "active" }
+      },
+      select: {
+        id: true,
+        title: true,
+        numberOfWorkers: true,
+        startAt: true,
+        updatedAt: true,
+        roleDefinition: { select: { displayLabel: true } },
+        residence: { select: { city: true, province: true } },
+        pricingSnapshot: { select: { workerHourlyRateMinor: true } }
+      },
+      orderBy: [{ updatedAt: "desc" }],
+      take: 500
+    });
+    const left = await remainingOpenings(prisma, rows);
+    return rows
+      .filter((r) => (left.get(r.id) ?? r.numberOfWorkers) > 0)
+      .map((r) => ({
+        jobRequestId: r.id,
+        role: r.roleDefinition?.displayLabel ?? r.title,
+        title: r.title,
+        city: r.residence?.city ?? null,
+        province: r.residence?.province ?? null,
+        startAt: r.startAt,
+        workerRateMinor: r.pricingSnapshot?.workerHourlyRateMinor ?? null,
+        freshAt: r.updatedAt
+      }));
+  };
+  app.post("/internal/job-alerts/sweep", async (request, reply) => {
+    if (jobAlertSweepToken.length < 16) {
+      return reply.code(404).send({ error: "RWOS_NOT_FOUND", message: "Not found." });
+    }
+    const provided = request.headers["x-sweep-token"];
+    if (typeof provided !== "string" || provided !== jobAlertSweepToken) {
+      return reply.code(401).send({ error: "RWOS_SWEEP_DENIED", message: "Sweep token required." });
+    }
+    if (!prisma) {
+      return reply.code(503).send({ error: "RWOS_SWEEP_UNAVAILABLE", message: "Database unavailable." });
+    }
+    const result = await runJobAlertSweep({
+      prisma,
+      emailSender,
+      workerWebOrigin: offerCtaOrigin,
+      loadOpenJobs: loadAlertOpenJobs,
+      mailingAddress: jobAlertMailingAddress
+    });
+    if (!offerCtaOrigin) logger.warn("api.job_alert.sweep_no_worker_origin", {});
+    logger.info("api.job_alert.sweep", { ...result });
+    return reply.code(200).send(result);
   });
 
   app.get("/ready", async (_request, reply) => {
@@ -3777,8 +3865,8 @@ export function buildApi(options: BuildApiOptions = {}) {
 
   // PUBLIC job-alert capture — the landing magnet's email box. A visitor leaves their email (optionally
   // a role/province) so Joblop, not the external source, owns the lead. No auth, no account, no money.
-  // Upsert by email so re-submitting just refreshes the role/province. Delivery of alerts is a separate
-  // governed step (scheduler stays OFF) — this only records the subscription, honestly.
+  // Upsert by email so re-submitting just refreshes the role/province. Digests are sent by the
+  // token-guarded POST /internal/job-alerts/sweep; every email carries a one-click unsubscribe link.
   app.post("/public/jobscanner/alerts", async (request, reply) => {
     if (!prisma) return reply.code(503).send({ error: "RWOS_UNAVAILABLE", message: "Not available." });
     const body = asRecord(request.body);
@@ -3795,15 +3883,153 @@ export function buildApi(options: BuildApiOptions = {}) {
     const province = provinceRaw && /^[A-Za-z]{2}$/.test(provinceRaw) ? provinceRaw.toUpperCase() : null;
     const localeRaw = (readOptionalString(body, "locale") ?? "").trim().toLowerCase();
     const locale = localeRaw === "fr" || localeRaw === "en" ? localeRaw : null;
-    await prisma.jobAlertSubscription.upsert({
+    const existing = await prisma.jobAlertSubscription.findUnique({
       where: { email: emailRaw },
-      update: { roleKeywords, province, locale },
-      create: { email: emailRaw, roleKeywords, province, locale, source: "public_landing" }
+      select: { id: true, unsubscribedAt: true }
     });
+    // Re-submitting refreshes the role/province and turns a stopped alert back on.
+    const saved = await prisma.jobAlertSubscription.upsert({
+      where: { email: emailRaw },
+      update: { roleKeywords, province, locale, unsubscribedAt: null },
+      create: { email: emailRaw, roleKeywords, province, locale, source: "public_landing", unsubscribeToken: generateUnsubscribeToken() },
+      select: { id: true, unsubscribeToken: true }
+    });
+    // Confirm only when the alert just started (new, or back on), so the box cannot be used to
+    // flood someone's inbox. The email says who we are and how to unsubscribe (CASL). Best-effort.
+    if ((!existing || existing.unsubscribedAt) && offerCtaOrigin) {
+      try {
+        const token = await ensureUnsubscribeToken(prisma, saved);
+        await emailSender.send(
+          jobAlertConfirmationEmail({
+            to: emailRaw,
+            language: locale === "en" ? "en" : "fr",
+            criteria: { roleKeywords, province },
+            workerWebOrigin: offerCtaOrigin,
+            unsubscribeToken: token,
+            mailingAddress: jobAlertMailingAddress
+          })
+        );
+      } catch {
+        logger.warn("api.job_alert.confirmation_failed", {});
+      }
+    }
     return reply.code(200).send({
       status: "subscribed",
       note: "You're on Joblop's job-alert list. We'll notify you as alerts roll out — no spam, unsubscribe anytime."
     });
+  });
+
+  // One-click unsubscribe from job-alert emails (the link in every alert email). Idempotent: an
+  // unknown or already-used token still answers ok, so the link never leaks whether an email is listed.
+  app.get("/public/job-alerts/unsubscribe", async (request, reply) => {
+    if (!prisma) return reply.code(503).send({ error: "RWOS_UNAVAILABLE", message: "Not available." });
+    const token = readOptionalString(asRecord(request.query), "token");
+    if (!isUnsubscribeToken(token)) {
+      return reply.code(400).send({ error: "RWOS_ALERT_TOKEN_INVALID", message: "A valid unsubscribe link is required." });
+    }
+    await prisma.jobAlertSubscription.updateMany({
+      where: { unsubscribeToken: token, unsubscribedAt: null },
+      data: { unsubscribedAt: new Date() }
+    });
+    return reply.code(200).header("cache-control", "no-store").send({ ok: true });
+  });
+
+  // Signed-in worker's own job alert. The email is always the account's email, never from the body.
+  const requireAlertWorker = async (request: FastifyRequest, reply: FastifyReply) => {
+    const session = await authService.validateSession(readBearerToken(request.headers.authorization));
+    if (!session.authenticated || !session.user) {
+      reply.code(401).send({ error: "RWOS_JOB_ALERT_DENIED", message: "Authentication is required." });
+      return null;
+    }
+    if (!prisma) {
+      reply.code(503).send({ error: "RWOS_UNAVAILABLE", message: "Not available." });
+      return null;
+    }
+    return session.user;
+  };
+  const alertView = (row: { roleKeywords: string | null; province: string | null; unsubscribedAt: Date | null }) => ({
+    roleKeywords: row.roleKeywords,
+    province: row.province,
+    active: row.unsubscribedAt === null
+  });
+  const alertSelect = { roleKeywords: true, province: true, unsubscribedAt: true } as const;
+
+  app.get("/worker/job-alerts", async (request, reply) => {
+    const user = await requireAlertWorker(request, reply);
+    if (!user) return;
+    const row = await prisma!.jobAlertSubscription.findUnique({ where: { email: user.emailNormalized }, select: alertSelect });
+    return reply.code(200).header("cache-control", "no-store").send({ subscription: row ? alertView(row) : null });
+  });
+
+  app.post("/worker/job-alerts", async (request, reply) => {
+    const user = await requireAlertWorker(request, reply);
+    if (!user) return;
+    const body = asRecord(request.body);
+    const roleRaw = (readOptionalString(body, "roleKeywords") ?? "").trim().slice(0, 120);
+    const roleKeywords = roleRaw.length > 0 ? roleRaw : null;
+    const provinceRaw = (readOptionalString(body, "province") ?? "").trim();
+    if (provinceRaw && !/^[A-Za-z]{2}$/.test(provinceRaw)) {
+      return reply.code(400).send({ error: "RWOS_JOB_ALERT_INVALID", message: "Province must be a two-letter code." });
+    }
+    const province = provinceRaw ? provinceRaw.toUpperCase() : null;
+    const row = await prisma!.jobAlertSubscription.upsert({
+      where: { email: user.emailNormalized },
+      update: { roleKeywords, province, userId: user.id, unsubscribedAt: null },
+      create: {
+        email: user.emailNormalized,
+        roleKeywords,
+        province,
+        // No fixed locale: the digest follows the account's language.
+        userId: user.id,
+        source: "worker_account",
+        confirmedAt: new Date(),
+        unsubscribeToken: generateUnsubscribeToken()
+      },
+      select: { id: true, unsubscribeToken: true, ...alertSelect }
+    });
+    await ensureUnsubscribeToken(prisma!, row);
+    return reply.code(200).send({ subscription: alertView(row) });
+  });
+
+  app.delete("/worker/job-alerts", async (request, reply) => {
+    const user = await requireAlertWorker(request, reply);
+    if (!user) return;
+    await prisma!.jobAlertSubscription.updateMany({
+      where: { OR: [{ email: user.emailNormalized }, { userId: user.id }], unsubscribedAt: null },
+      data: { unsubscribedAt: new Date() }
+    });
+    return reply.code(200).send({ ok: true });
+  });
+
+  // Phone-app push tokens (Expo). Registering an existing token moves it to this user (a phone that
+  // changed hands) and turns it back on; removing only touches the caller's own token.
+  app.post("/worker/push-tokens", async (request, reply) => {
+    const user = await requireAlertWorker(request, reply);
+    if (!user) return;
+    const body = asRecord(request.body);
+    const token = readOptionalString(body, "token")?.trim();
+    const platform = readOptionalString(body, "platform");
+    if (!isExpoPushToken(token) || !isPushPlatform(platform)) {
+      return reply.code(400).send({ error: "RWOS_PUSH_TOKEN_INVALID", message: "A valid Expo push token and platform (ios, android, web) are required." });
+    }
+    const now = new Date();
+    await prisma!.pushToken.upsert({
+      where: { token },
+      update: { userId: user.id, platform, lastSeenAt: now, revokedAt: null },
+      create: { token, userId: user.id, platform, lastSeenAt: now }
+    });
+    return reply.code(200).send({ ok: true });
+  });
+
+  app.delete("/worker/push-tokens", async (request, reply) => {
+    const user = await requireAlertWorker(request, reply);
+    if (!user) return;
+    const token = readOptionalString(asRecord(request.body), "token")?.trim();
+    if (!isExpoPushToken(token)) {
+      return reply.code(400).send({ error: "RWOS_PUSH_TOKEN_INVALID", message: "A valid Expo push token is required." });
+    }
+    await prisma!.pushToken.updateMany({ where: { token, userId: user.id, revokedAt: null }, data: { revokedAt: new Date() } });
+    return reply.code(200).send({ ok: true });
   });
 
   // Worker marketplace job search. Cross-org, privacy-safe. Worker origin is a Canadian
@@ -4238,7 +4464,7 @@ export function buildApi(options: BuildApiOptions = {}) {
       // Mirror the manual accept path's side effects (best-effort, never block the assign).
       await notifyClient(prisma, emailSender, { jobRequestId, kind: "worker_accepted" }).catch(() => {});
       // "You got the job!" — confirm the worker by email (+ SMS when enabled).
-      await notifyWorkerAssigned(prisma, emailSender, smsSender, { userId: session.user.id, jobRequestId }).catch(() => {});
+      await notifyWorkerAssigned(prisma, emailSender, smsSender, { userId: session.user.id, jobRequestId }, pushSender).catch(() => {});
       await workerJobInterestService.markOfferAcceptedByOffer(result.workerOfferId).catch(() => {});
       void pushAssignmentToCalendar(
         { prisma, config: googleOAuthConfigFromEnv(), countryTimezone: options.countryTimezone },
@@ -6654,11 +6880,12 @@ export function buildApi(options: BuildApiOptions = {}) {
       return reply.code(409).send({ error: "RWOS_PAYOUT_CONFLICT", message: "Payout changed; retry." });
     }
 
-    const notified = await notifyWorkerPayoutPaid(prisma, emailSender, {
-      workerIdentityId: payout.workerIdentityId,
-      amountMinor: payout.amountMinor,
-      currency: payout.currency
-    });
+    const notified = await notifyWorkerPayoutPaid(
+      prisma,
+      emailSender,
+      { workerIdentityId: payout.workerIdentityId, amountMinor: payout.amountMinor, currency: payout.currency },
+      pushSender
+    );
     return reply.code(200).send({ payout: { id: payout.id, status: "paid" }, workerNotification: notified.status });
   });
 
@@ -6699,12 +6926,17 @@ export function buildApi(options: BuildApiOptions = {}) {
     // Best-effort "money received" notice, with the TEST reference. Never blocks the paid result. On a
     // successful send we stamp paid_notified_at so the background progression job does not re-send;
     // if it fails (or the mailer is unconfigured) the marker stays null and the job retries it later.
-    const notified = await notifyWorkerPayoutPaid(prisma, emailSender, {
-      workerIdentityId: result.payout.workerIdentityId,
-      amountMinor: result.payout.amountMinor,
-      currency: result.payout.currency,
-      reference: result.payout.paymentRef
-    });
+    const notified = await notifyWorkerPayoutPaid(
+      prisma,
+      emailSender,
+      {
+        workerIdentityId: result.payout.workerIdentityId,
+        amountMinor: result.payout.amountMinor,
+        currency: result.payout.currency,
+        reference: result.payout.paymentRef
+      },
+      pushSender
+    );
     if (notified.status === "sent") {
       await prisma.workerPayout.updateMany({
         where: { id: result.payout.id, paidNotifiedAt: null },
@@ -7633,10 +7865,13 @@ export function buildApi(options: BuildApiOptions = {}) {
           select: { userId: true }
         });
         if (assignedWorker) {
-          await notifyWorkerAssigned(prisma, emailSender, smsSender, {
-            userId: assignedWorker.userId,
-            jobRequestId: assignment.jobRequestId
-          });
+          await notifyWorkerAssigned(
+            prisma,
+            emailSender,
+            smsSender,
+            { userId: assignedWorker.userId, jobRequestId: assignment.jobRequestId },
+            pushSender
+          );
         }
       } catch (error) {
         logger.warn("assignment.worker_notice_failed", { assignmentId: assignment.id, error: error instanceof Error ? error.message : "unknown" });
@@ -9880,6 +10115,7 @@ export function buildApi(options: BuildApiOptions = {}) {
       prisma,
       emailSender,
       smsSender,
+      pushSender,
       isLocal: runtimeConfig.rwosEnv === "local",
       requireUser: requireRecipient,
       requireAdmin: requirePlatformAdmin

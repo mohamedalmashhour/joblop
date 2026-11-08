@@ -4,6 +4,7 @@ import type { SmsSender } from "./mailer/smsSender";
 import { sendsText } from "./notifications/noticeChannels";
 import { resolveLanguage } from "./notifications/clientNotifications";
 import { shiftReminderEmail, shiftReminderSmsText } from "./notifications/workerNotifications";
+import { pushToWorkers, type PushSender } from "./notifications/pushSender";
 
 // Bounded, idempotent pre-shift reminder sweep. One invocation finds assignments whose shift starts
 // within the window and that have NOT been reminded yet, sends the worker a reminder (email + SMS when
@@ -28,6 +29,7 @@ export async function runShiftReminderSweep(deps: {
   prisma: PrismaClient;
   emailSender: EmailSender;
   smsSender?: SmsSender;
+  pushSender?: PushSender;
   now?: () => Date;
   windowHours?: number;
   batchSize?: number;
@@ -45,10 +47,11 @@ export async function runShiftReminderSweep(deps: {
     },
     select: {
       id: true,
+      jobRequestId: true,
       confirmedTitle: true,
       confirmedStartAt: true,
       workerIdentity: {
-        select: { user: { select: { emailNormalized: true, phone: true, primaryLanguage: true } } }
+        select: { userId: true, user: { select: { emailNormalized: true, phone: true, primaryLanguage: true } } }
       }
     },
     orderBy: { confirmedStartAt: "asc" },
@@ -77,6 +80,13 @@ export async function runShiftReminderSweep(deps: {
             text: shiftReminderSmsText({ language, title: assignment.confirmedTitle, startAt: assignment.confirmedStartAt })
           })
           .catch(() => undefined);
+      }
+      const userId = assignment.workerIdentity?.userId;
+      if (userId) {
+        await pushToWorkers(deps.pushSender, [userId], "shift_reminder", {
+          role: assignment.confirmedTitle,
+          jobRequestId: assignment.jobRequestId
+        });
       }
       // Mark reminded (guarded on still-null so concurrent sweeps don't double-count).
       await deps.prisma.assignment.updateMany({

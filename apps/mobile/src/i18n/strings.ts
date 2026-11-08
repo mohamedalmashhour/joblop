@@ -141,7 +141,10 @@ const en: Dict = {
   "hub.dayShift": "you work",
   "hub.dayPay": "pay day",
   "hub.dayCancelled": "cancelled shift",
-  "hub.myOffers": "My offers (accept or decline)"
+  "hub.myOffers": "My offers (accept or decline)",
+  "push.ask": "Get alerts when a shift is confirmed, changed or cancelled.",
+  "push.allow": "Turn on alerts",
+  "push.notNow": "Not now"
 };
 
 const fr: Dict = {
@@ -272,7 +275,10 @@ const fr: Dict = {
   "hub.dayShift": "vous travaillez",
   "hub.dayPay": "jour de paie",
   "hub.dayCancelled": "quart annulé",
-  "hub.myOffers": "Mes offres (accepter ou refuser)"
+  "hub.myOffers": "Mes offres (accepter ou refuser)",
+  "push.ask": "Recevez une alerte quand un quart est confirmé, modifié ou annulé.",
+  "push.allow": "Activer les alertes",
+  "push.notNow": "Plus tard"
 };
 
 const ar: Dict = {
@@ -403,7 +409,10 @@ const ar: Dict = {
   "hub.dayShift": "لديك نوبة",
   "hub.dayPay": "يوم دفع",
   "hub.dayCancelled": "نوبة ملغاة",
-  "hub.myOffers": "عروضي (قبول أو رفض)"
+  "hub.myOffers": "عروضي (قبول أو رفض)",
+  "push.ask": "تلقَّ تنبيهاً عند تأكيد نوبة أو تغييرها أو إلغائها.",
+  "push.allow": "تفعيل التنبيهات",
+  "push.notNow": "ليس الآن"
 };
 
 export const dictionaries: Record<Locale, Dict> = { en, fr, ar };

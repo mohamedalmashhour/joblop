@@ -1052,3 +1052,71 @@ describe("open jobs calendar transport", () => {
     expect(await make(async () => response(200, { items: [] })).getCalendarHub(window)).toEqual({ status: "ready", items: [], today: [] });
   });
 });
+
+describe("push token transport", () => {
+  const expoToken = "ExponentPushToken[abcDEF123456_-xyz]";
+
+  it("posts the device token with the session and reports ready", async () => {
+    const secureVault = vault();
+    secureVault.stored = "native-session-token-123456789";
+    const fetchMock = vi.fn(async () => response(200, { ok: true }));
+    const transport = createMobileSessionTransport({
+      apiOrigin: "https://api.example.test",
+      vault: secureVault,
+      fetch: fetchMock
+    });
+    expect(await transport.registerPushToken({ token: expoToken, platform: "ios" })).toEqual({ status: "ready" });
+    const [url, init] = fetchMock.mock.calls[0] as unknown as [string, RequestInit];
+    expect(url).toBe("https://api.example.test/worker/push-tokens");
+    expect(init.method).toBe("POST");
+    expect((init.headers as Record<string, string>).authorization).toBe("Bearer native-session-token-123456789");
+    expect(JSON.parse(String(init.body))).toEqual({ token: expoToken, platform: "ios" });
+  });
+
+  it("does not call the API without a session or with a malformed token", async () => {
+    const fetchMock = vi.fn(async () => response(200, { ok: true }));
+    const guest = createMobileSessionTransport({ apiOrigin: "https://api.example.test", vault: vault(), fetch: fetchMock });
+    expect(await guest.registerPushToken({ token: expoToken, platform: "android" })).toEqual({ status: "denied" });
+    expect(await guest.hasSession()).toBe(false);
+
+    const signedIn = vault();
+    signedIn.stored = "native-session-token-123456789";
+    const worker = createMobileSessionTransport({ apiOrigin: "https://api.example.test", vault: signedIn, fetch: fetchMock });
+    expect(await worker.hasSession()).toBe(true);
+    expect(await worker.registerPushToken({ token: "not-a-token", platform: "android" })).toEqual({ status: "invalid" });
+    expect(await worker.unregisterPushToken("not-a-token")).toEqual({ status: "invalid" });
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("deletes the device token and maps API failures", async () => {
+    const secureVault = vault();
+    secureVault.stored = "native-session-token-123456789";
+    const statuses = [200, 401, 404, 500];
+    const fetchMock = vi.fn(async () => response(statuses.shift() ?? 500, {}));
+    const transport = createMobileSessionTransport({
+      apiOrigin: "https://api.example.test",
+      vault: secureVault,
+      fetch: fetchMock
+    });
+    expect(await transport.unregisterPushToken(expoToken)).toEqual({ status: "ready" });
+    const [, init] = fetchMock.mock.calls[0] as unknown as [string, RequestInit];
+    expect(init.method).toBe("DELETE");
+    expect(JSON.parse(String(init.body))).toEqual({ token: expoToken });
+    expect(await transport.unregisterPushToken(expoToken)).toEqual({ status: "denied" });
+    expect(await transport.unregisterPushToken(expoToken)).toEqual({ status: "unavailable" });
+    expect(await transport.unregisterPushToken(expoToken)).toEqual({ status: "error" });
+  });
+
+  it("reports a network failure as error", async () => {
+    const secureVault = vault();
+    secureVault.stored = "native-session-token-123456789";
+    const transport = createMobileSessionTransport({
+      apiOrigin: "https://api.example.test",
+      vault: secureVault,
+      fetch: vi.fn(async () => {
+        throw new Error("offline");
+      })
+    });
+    expect(await transport.registerPushToken({ token: expoToken, platform: "android" })).toEqual({ status: "error" });
+  });
+});

@@ -4,6 +4,7 @@ import type { SmsSender } from "../mailer/smsSender";
 import { sendsText } from "./noticeChannels";
 import { resolveLanguage, type NotificationLanguage } from "./clientNotifications";
 import { workerJobAddress, WORKSITE_ADDRESS_SELECT } from "../worksiteAddress";
+import { pushToWorkers, type PushSender } from "./pushSender";
 
 // Format a shift start in Québec local time, in the worker's language. Kept simple + fail-soft.
 function formatShiftWhen(startAt: Date, language: NotificationLanguage): string {
@@ -206,13 +207,16 @@ export type WorkerPayoutNotificationResult = Readonly<{
 export async function notifyWorkerPayoutPaid(
   prisma: PrismaClient,
   emailSender: EmailSender,
-  input: { workerIdentityId: string; amountMinor: number; currency: string; reference?: string | null }
+  input: { workerIdentityId: string; amountMinor: number; currency: string; reference?: string | null },
+  // Only the paths that just moved the payout to "paid" pass this, so a retried email never re-pushes.
+  pushSender?: PushSender
 ): Promise<WorkerPayoutNotificationResult> {
   try {
     const identity = await prisma.workerIdentity.findUnique({
       where: { id: input.workerIdentityId },
-      select: { user: { select: { emailNormalized: true, primaryLanguage: true } } }
+      select: { userId: true, user: { select: { emailNormalized: true, primaryLanguage: true } } }
     });
+    if (identity?.userId) await pushToWorkers(pushSender, [identity.userId], "payout_paid");
     const email = identity?.user?.emailNormalized;
     if (!email) return { status: "no_recipient" };
     const message = payoutPaidEmail({
@@ -287,7 +291,8 @@ export async function notifyWorkerAssigned(
   prisma: PrismaClient,
   emailSender: EmailSender,
   smsSender: SmsSender | undefined,
-  input: { userId: string; jobRequestId: string }
+  input: { userId: string; jobRequestId: string },
+  pushSender?: PushSender
 ): Promise<WorkerPayoutNotificationResult> {
   try {
     const [user, job] = await Promise.all([
@@ -297,9 +302,15 @@ export async function notifyWorkerAssigned(
       }),
       prisma.jobRequest.findUnique({
         where: { id: input.jobRequestId },
-        select: { title: true, startAt: true, residence: { select: WORKSITE_ADDRESS_SELECT }, calendarProfile: { select: { addressSummary: true } } }
+        select: { title: true, startAt: true, roleDefinition: { select: { displayLabel: true } }, residence: { select: WORKSITE_ADDRESS_SELECT }, calendarProfile: { select: { addressSummary: true } } }
       })
     ]);
+    if (job) {
+      await pushToWorkers(pushSender, [input.userId], "shift_confirmed", {
+        role: job.roleDefinition?.displayLabel?.trim() || job.title,
+        jobRequestId: input.jobRequestId
+      });
+    }
     const email = user?.emailNormalized;
     if (!email || !job) return { status: "no_recipient" };
     const language = resolveLanguage(user?.primaryLanguage);
@@ -606,11 +617,16 @@ export async function notifyWorkersShiftCancelled(
     cancelledBy: "employer" | "staff";
     reasonText?: string | null;
     workerWebOrigin?: string | null;
-  }
+  },
+  pushSender?: PushSender
 ): Promise<ShiftNoticeResult> {
   try {
     const context = await loadShiftNoticeContext(prisma, input.jobRequestId, input.workers);
     if (!context) return { sent: 0, skipped: input.workers.length, failed: 0 };
+    await pushToWorkers(pushSender, context.recipients.map((r) => r.worker.userId), "shift_cancelled", {
+      role: context.shift.role,
+      jobRequestId: input.jobRequestId
+    });
     const outcomes = await Promise.all(
       context.recipients.map((recipient) =>
         deliverShiftNotice(recipient, emailSender, smsSender, sendsText("shift_cancelled"), () => {
@@ -646,11 +662,16 @@ export async function notifyWorkersShiftChanged(
     workers: readonly ShiftNoticeWorker[];
     summary: ShiftChangeSummary;
     workerWebOrigin?: string | null;
-  }
+  },
+  pushSender?: PushSender
 ): Promise<ShiftNoticeResult> {
   try {
     const context = await loadShiftNoticeContext(prisma, input.jobRequestId, input.workers);
     if (!context) return { sent: 0, skipped: input.workers.length, failed: 0 };
+    await pushToWorkers(pushSender, context.recipients.map((r) => r.worker.userId), "shift_changed", {
+      role: context.shift.role,
+      jobRequestId: input.jobRequestId
+    });
     const outcomes = await Promise.all(
       context.recipients.map((recipient) =>
         deliverShiftNotice(recipient, emailSender, smsSender, sendsText("shift_changed"), () => ({

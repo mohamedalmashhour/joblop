@@ -1,5 +1,6 @@
 import { JobScannerFeed } from "./JobScannerFeed";
 import { SiteHeader } from "../SiteHeader";
+import { JobAlertsCard } from "../job-alerts/JobAlertsCard";
 
 export default function Page() {
   return (
@@ -10,6 +11,7 @@ export default function Page() {
         <p style={{ color: "#cabfa8", fontSize: 16, lineHeight: 1.6, margin: "0 0 4px", maxWidth: 760 }}>
           More jobs for you, gathered from partner job boards across Québec. Search freely; create a free account to apply.
         </p>
+        <JobAlertsCard />
         <JobScannerFeed />
       </main>
     </>

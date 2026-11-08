@@ -836,8 +836,78 @@ export function createMobileSessionTransport(options: {
       } catch {
         return { status: "error" };
       }
+    },
+    // True only when a real session token is stored (a guest who skipped sign-in has none).
+    async hasSession(): Promise<boolean> {
+      try {
+        return Boolean(await options.vault.read());
+      } catch {
+        return false;
+      }
+    },
+    // Push notifications: tell the API which device token to send shift notices to.
+    async registerPushToken(
+      input: Readonly<{ token: string; platform: PushPlatform }>
+    ): Promise<PushTokenResult> {
+      const token = await options.vault.read();
+      if (!token) return { status: "denied" };
+      if (!isExpoPushToken(input.token) || !pushPlatforms.includes(input.platform)) {
+        return { status: "invalid" };
+      }
+      try {
+        const response = await request(`${origin}/worker/push-tokens`, {
+          method: "POST",
+          headers: {
+            accept: "application/json",
+            authorization: `Bearer ${token}`,
+            "content-type": "application/json"
+          },
+          body: JSON.stringify({ token: input.token, platform: input.platform }),
+          cache: "no-store"
+        });
+        return pushTokenStatus(response.status);
+      } catch {
+        return { status: "error" };
+      }
+    },
+    // Called before sign-out so this device stops getting the worker's notices.
+    async unregisterPushToken(pushToken: string): Promise<PushTokenResult> {
+      const token = await options.vault.read();
+      if (!token) return { status: "denied" };
+      if (!isExpoPushToken(pushToken)) return { status: "invalid" };
+      try {
+        const response = await request(`${origin}/worker/push-tokens`, {
+          method: "DELETE",
+          headers: {
+            accept: "application/json",
+            authorization: `Bearer ${token}`,
+            "content-type": "application/json"
+          },
+          body: JSON.stringify({ token: pushToken }),
+          cache: "no-store"
+        });
+        return pushTokenStatus(response.status);
+      } catch {
+        return { status: "error" };
+      }
     }
   };
+}
+
+export type PushPlatform = "ios" | "android" | "web";
+const pushPlatforms: readonly PushPlatform[] = ["ios", "android", "web"];
+export type PushTokenResult = Readonly<{ status: "ready" | "denied" | "invalid" | "unavailable" | "error" }>;
+
+export function isExpoPushToken(value: string): boolean {
+  return /^Expo(nent)?PushToken\[[A-Za-z0-9_-]{8,200}\]$/.test(value);
+}
+
+function pushTokenStatus(status: number): PushTokenResult {
+  if (status === 401 || status === 403) return { status: "denied" };
+  if (status === 400 || status === 422) return { status: "invalid" };
+  if (status === 404 || status === 503) return { status: "unavailable" };
+  if (status < 200 || status >= 300) return { status: "error" };
+  return { status: "ready" };
 }
 
 export type MobileSessionTransport = ReturnType<typeof createMobileSessionTransport>;
