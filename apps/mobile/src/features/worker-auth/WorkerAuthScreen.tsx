@@ -46,11 +46,14 @@ export function WorkerAuthScreen({
 
   const sendCode = async () => {
     if (!transport) return;
+    if (phone.replace(/\D/g, "").length < 10) return setMessage(t("auth.msg.shortNumber"));
     setBusy(true);
     setMessage(null);
     const result = await transport.requestPhoneCode(phone.trim());
     setBusy(false);
-    if (result !== "requested") return setMessage(t("auth.msg.badNumber"));
+    if (result === "offline") return setMessage(t("auth.msg.offline"));
+    if (result === "rate_limited") return setMessage(t("auth.msg.rateLimited"));
+    if (result !== "requested") return setMessage(t("auth.msg.serverDown"));
     setStep("code");
     setCode("");
     setMessage(t("auth.msg.codeSent"));
@@ -58,14 +61,17 @@ export function WorkerAuthScreen({
 
   const verify = async () => {
     if (!transport) return;
+    if (!/^\d{6}$/.test(code.trim())) return setMessage(t("auth.msg.enterCode"));
     setBusy(true);
     setMessage(null);
     try {
       const result = await transport.verifyPhoneCode(phone.trim(), code.trim());
+      if (result.status === "offline") return setMessage(t("auth.msg.offline"));
+      if (result.status === "rate_limited") return setMessage(t("auth.msg.rateLimited"));
       if (result.status === "authenticated") return onAuthenticated();
       if (result.status === "sign_out_required") return setMessage(t("auth.msg.signedIn"));
       if (result.status === "denied") return setMessage(t("auth.msg.badCode"));
-      return setMessage(t("auth.msg.unavailable"));
+      return setMessage(t("auth.msg.serverDown"));
     } finally {
       setBusy(false);
     }

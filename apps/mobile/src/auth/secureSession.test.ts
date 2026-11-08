@@ -88,6 +88,16 @@ describe("mobile secure session transport", () => {
     expect(calls[1]?.body).toEqual({ phone: "514 555 0101", code: "123456" });
   });
 
+  it("tells apart no connection, too many tries and a server problem when asking for a code", async () => {
+    const make = (impl: () => Promise<Response>) =>
+      createMobileSessionTransport({ apiOrigin: "https://api.example.test", vault: vault(), fetch: vi.fn(impl) as never });
+    expect(await make(async () => { throw new TypeError("Failed to fetch"); }).requestPhoneCode("514 555 0101")).toBe("offline");
+    expect(await make(async () => response(429, { error: "rate_limited" })).requestPhoneCode("514 555 0101")).toBe("rate_limited");
+    expect(await make(async () => response(503, { error: "unavailable" })).requestPhoneCode("514 555 0101")).toBe("error");
+    expect(await make(async () => { throw new TypeError("Failed to fetch"); }).verifyPhoneCode("514 555 0101", "123456")).toEqual({ status: "offline" });
+    expect(await make(async () => response(429, { error: "rate_limited" })).verifyPhoneCode("514 555 0101", "123456")).toEqual({ status: "rate_limited" });
+  });
+
   it("refuses a wrong texted code without storing anything", async () => {
     const secureVault = vault();
     const transport = createMobileSessionTransport({
