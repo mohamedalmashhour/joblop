@@ -116,7 +116,15 @@ suite("worker journey and payout guards", () => {
     scope = { organizationId: org.id, residenceId: res.id, departmentId: dept.id, workGroupId: wg.id, roleDefinitionId: role.id };
   });
 
+  // Memberships made by these tests are removed again: suites share one database, and others
+  // (e.g. the QA-reset reconcile test) expect no leftover organization roles.
+  const createdMembershipIds: string[] = [];
+
   afterAll(async () => {
+    if (createdMembershipIds.length > 0) {
+      await prisma.membershipAccessRole.deleteMany({ where: { membershipId: { in: createdMembershipIds } } });
+      await prisma.organizationMembership.deleteMany({ where: { id: { in: createdMembershipIds } } });
+    }
     await app?.close();
     await prisma.$disconnect();
   });
@@ -454,6 +462,7 @@ suite("worker journey and payout guards", () => {
       const membership = await prisma.organizationMembership.create({ data: { organizationId: scope.organizationId, userId: user.id, status: "active", acceptedAt: new Date() } });
       const owner = await prisma.accessRoleDefinition.findUniqueOrThrow({ where: { key: "ORGANIZATION_OWNER" } });
       await prisma.membershipAccessRole.create({ data: { membershipId: membership.id, accessRoleDefinitionId: owner.id } });
+      createdMembershipIds.push(membership.id);
       return user;
     }
     const openJobBonus = async (token: string, jobRequestId: string) => {
