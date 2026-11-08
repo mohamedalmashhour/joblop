@@ -465,7 +465,7 @@ export function CreatePersistedRequestPanel() {
             <div style={styles.warning} role="alert">
               {t("create.minShiftMsg")} {t("create.minShiftWarn", { hours: scheduledHours.toFixed(1), min: MINIMUM_SHIFT_HOURS })}
             </div>
-          ) : (
+          ) : longTerm ? null : (
             <p style={styles.cardText}>{t("create.minShiftMsg")}</p>
           )}
         </div>
@@ -607,7 +607,7 @@ export function CreatePersistedRequestPanel() {
         </div>
       ) : null}
 
-      <AgreementClauses t={t} />
+      <AgreementClauses longTerm={longTerm} t={t} />
       {status === "editing" || status === "draft" || status === "review" ? (
         <label style={{ display: "flex", gap: 8, alignItems: "center", marginTop: 12 }}>
           <input
@@ -695,15 +695,25 @@ function AllowanceFields({
   );
 }
 
-function AgreementClauses({ t }: { t: Translate }) {
-  const clauses = [
-    t("create.clause6h"),
-    t("create.clauseTermination"),
-    t("create.clauseScope"),
-    t("create.clauseRespect"),
-    t("create.clauseExtraHours"),
-    t("create.clauseSafety")
-  ];
+function AgreementClauses({ longTerm, t }: { longTerm: boolean; t: Translate }) {
+  // Long-term job (paid listing): the employer hires and pays the worker directly, so the short-term
+  // billing clauses (6-hour minimum, billable extra hours) do not apply and are replaced.
+  const clauses = longTerm
+    ? [
+        t("create.clauseLongTermDirect"),
+        t("create.clauseLongTermListing"),
+        t("create.clauseScope"),
+        t("create.clauseRespect"),
+        t("create.clauseSafety")
+      ]
+    : [
+        t("create.clause6h"),
+        t("create.clauseTermination"),
+        t("create.clauseScope"),
+        t("create.clauseRespect"),
+        t("create.clauseExtraHours"),
+        t("create.clauseSafety")
+      ];
   return (
     <section aria-labelledby="agreement-title" style={{ ...styles.panel, marginTop: 18 }}>
       <h2 id="agreement-title" style={styles.sectionTitle}>{t("create.agreementTitle")}</h2>

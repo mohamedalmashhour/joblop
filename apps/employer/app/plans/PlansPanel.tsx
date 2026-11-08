@@ -169,7 +169,11 @@ export function PlansPanel() {
         <a href="/" aria-label="Joblop home"><JobLopLogo height={28} /></a>
         <nav aria-label="Primary navigation" className="jp-nav">
           <a href="/pricing" className="jp-link">{t("plans.back")}</a>
-          <a href="/signin" className="jp-link">{t("hub.signinButton")}</a>
+          {overview?.signedIn === true ? (
+            <a href="/employer/calendar" className="jp-link">{t("plans.myWorkspace")}</a>
+          ) : (
+            <a href="/signin" className="jp-link">{t("hub.signinButton")}</a>
+          )}
           <LanguageSwitcher />
         </nav>
       </header>
