@@ -65,3 +65,21 @@ export function formatJobDate(startAt: string, locale: string): string {
     return date.toISOString().slice(0, 10);
   }
 }
+
+/**
+ * Split a sentence around the brand name so the screen can draw "Joblop" in the brand style
+ * (white letters, gold o's), like the website's withBrand().
+ */
+export function brandParts(text: string): { text: string; brand: boolean }[] {
+  return text
+    .split(/(Joblop)/)
+    .filter((part) => part !== "")
+    .map((part) => ({ text: part, brand: part === "Joblop" }));
+}
+
+/** Job-card columns for a screen width, matching the website grid breakpoints (860 / 560 px). */
+export function columnsForWidth(width: number): 1 | 2 | 3 {
+  if (width >= 860) return 3;
+  if (width >= 560) return 2;
+  return 1;
+}
