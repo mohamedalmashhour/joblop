@@ -1517,7 +1517,7 @@ export const ar: Partial<Messages> = {
   "auth.tabCreate": "إنشاء حساب",
 
   // Landing page — hero, values, how it works
-  "land.heroTitle": "تبحث عن عمل؟ سنطابقك معه.",
+  "land.heroTitle": "تبحث عن عمل؟ ستجد أفضل العروض عندنا.",
   "land.heroSub": "أخبرنا بما تعمله وأين. يجد Joblop المناوبات القريبة منك التي تناسبك — تقدّم مجانًا، واحصل على العمل، واحصل على أجر عن كل ساعة.",
   "land.howItWorks": "كيف يعمل",
   "land.videoHowLabel": "فيديو: كيف يعمل Joblop للعمال",
