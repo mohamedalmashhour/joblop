@@ -2,6 +2,7 @@ import { EmployerShell } from "../EmployerShell";
 import { styles } from "../employerStyles";
 import { clientCalendarPrivacyBoundaries } from "./clientCalendarContent";
 import { ClientCalendarPanel } from "./ClientCalendarPanel";
+import { LongTermListingsPanel } from "../listings/LongTermListingsPanel";
 
 export default function ClientRequestCalendarPage() {
   return (
@@ -22,6 +23,8 @@ export default function ClientRequestCalendarPage() {
           <p style={styles.eyebrowDark}>Request calendar</p>
           <h2 style={styles.sectionTitle}>Coverage status stays truthful from draft to closure.</h2>
         </div>
+        {/* Long-term job listing status + "Publish / Renew" (renders nothing while employer plans are off). */}
+        <LongTermListingsPanel />
         <ClientCalendarPanel />
       </section>
       <section style={styles.whiteSection}>

@@ -191,33 +191,46 @@ describe("prisma request pricing snapshot capture (slice 4C-2)", () => {
       expect(resolved.employerPlan).toEqual({ jobLength: "short_term", planCode: null, discountPpm: 0 });
     });
 
-    it("flag on, long-term job: 15% default share, no urgent surcharge", async () => {
-      const resolved = await capture({ enabled: true, plan: "pay_per_contract", job: { ...urgentJob, jobLength: "long_term" } }).resolveAtApproval({
-        jobRequestId: "jr1",
-        marginPpm: null
+    it("flag on, long-term job = paid listing: zero money, listing marker, no plan lookup", async () => {
+      let captured: unknown = null;
+      const c = capture({ enabled: true, job: { ...urgentJob, jobLength: "long_term" }, onUpsert: (a) => (captured = a) });
+      const resolved = await c.resolveAtApproval({ jobRequestId: "jr1", marginPpm: 250_000 });
+      expect(resolved.snapshot).toEqual({
+        marginPpm: 0,
+        employerHourlyRateMinor: 0,
+        workerHourlyRateMinor: 0,
+        platformHourlyMarginMinor: 0,
+        transport: { employerMinor: 0, workerMinor: 0, platformMarginMinor: 0 },
+        meal: { employerMinor: 0, workerMinor: 0, platformMarginMinor: 0 },
+        lodging: { employerMinor: 0, workerMinor: 0, platformMarginMinor: 0 }
       });
-      expect(resolved.snapshot.marginPpm).toBe(150_000);
-      // worker = 3000 − 450 + 500 premium
-      expect(resolved.snapshot.workerHourlyRateMinor).toBe(3050);
-      expect(resolved.variable?.emergencySurchargePerHourMinor).toBe(0);
-      expect(resolved.employerPlan).toEqual({ jobLength: "long_term", planCode: null, discountPpm: 0 });
+      expect(resolved.variable).toEqual({ emergencySurchargePerHourMinor: 0, distanceSurchargeMinor: 0, distanceWorkerMinor: 0, distancePlatformMinor: 0 });
+      expect(resolved.employerPlan).toEqual({ jobLength: "long_term", planCode: "listing", discountPpm: 0 });
+      await c.persist({ resolved, capturedByUserId: "admin-1", occurredAt: new Date() });
+      expect((captured as { create: Record<string, unknown> }).create).toMatchObject({
+        jobLength: "long_term",
+        employerPlanCode: "listing",
+        employerHourlyRateMinor: 0,
+        workerHourlyRateMinor: 0,
+        platformHourlyMarginMinor: 0
+      });
     });
 
-    it("flag on, long-term on Contract Plus: 5% off, Joblop keeps 10%, worker unchanged", async () => {
-      const job = { ...jobRequest, jobLength: "long_term" };
-      const base = await capture({ enabled: true, plan: "pay_per_contract", job }).resolveAtApproval({ jobRequestId: "jr1", marginPpm: null });
-      const resolved = await capture({ enabled: true, plan: "contract_plus", job }).resolveAtApproval({ jobRequestId: "jr1", marginPpm: null });
-      expect(resolved.snapshot.workerHourlyRateMinor).toBe(base.snapshot.workerHourlyRateMinor);
-      expect(resolved.snapshot.employerHourlyRateMinor).toBe(2850);
-      expect(resolved.snapshot.platformHourlyMarginMinor).toBe(300);
+    it("flag on, long-term job approves even without an employer contract (direct hire)", async () => {
+      const c = createPrismaRequestPricingSnapshotCapture(
+        fakePrisma({ jobRequest: { ...jobRequest, jobLength: "long_term" } }),
+        fakeContracts(null),
+        { plansEnabled: () => true }
+      );
+      const resolved = await c.resolveAtApproval({ jobRequestId: "jr1", marginPpm: null });
+      expect(resolved.contractVersion).toBe("listing");
+      expect(resolved.snapshot.workerHourlyRateMinor).toBe(0);
     });
 
-    it("flag on: a share set by staff at approval wins over the long-term default", async () => {
-      const resolved = await capture({ enabled: true, plan: "pay_per_contract", job: { ...jobRequest, jobLength: "long_term" } }).resolveAtApproval({
-        jobRequestId: "jr1",
-        marginPpm: 250_000
-      });
-      expect(resolved.snapshot.marginPpm).toBe(250_000);
+    it("flag off: a long-term job is priced exactly like today (no listing)", async () => {
+      const base = await capture({ enabled: false, job: jobRequest }).resolveAtApproval({ jobRequestId: "jr1", marginPpm: null });
+      const resolved = await capture({ enabled: false, job: { ...jobRequest, jobLength: "long_term" } }).resolveAtApproval({ jobRequestId: "jr1", marginPpm: null });
+      expect(resolved).toEqual(base);
     });
   });
 });

@@ -41,7 +41,8 @@ describe("employer plans flag", () => {
 describe("effectivePlanFromRow — expiry evaluated at read time", () => {
   it("no row → the track's free plan, trial available", () => {
     expect(effectivePlanFromRow("short_term", null, NOW)).toMatchObject({ plan: "pay_per_shift", status: "none", trialAvailable: true });
-    expect(effectivePlanFromRow("long_term", null, NOW)).toMatchObject({ plan: "pay_per_contract", status: "none" });
+    // Long-term jobs have no plans any more (paid listing); the free short-term plan is reported.
+    expect(effectivePlanFromRow("long_term", null, NOW)).toMatchObject({ plan: "pay_per_shift", status: "none" });
   });
 
   it("an active paid plan inside its period applies", () => {
@@ -65,7 +66,12 @@ describe("effectivePlanFromRow — expiry evaluated at read time", () => {
   });
 
   it("a plan stored under the wrong track never applies", () => {
-    expect(effectivePlanFromRow("long_term", row(), NOW).plan).toBe("pay_per_contract");
+    expect(effectivePlanFromRow("long_term", row(), NOW)).toMatchObject({ plan: "pay_per_shift", status: "expired" });
+  });
+
+  it("a retired long-term plan row (contract_plus) never applies", () => {
+    const retired = row({ track: "long_term", plan: "contract_plus" });
+    expect(effectivePlanFromRow("long_term", retired, NOW)).toMatchObject({ plan: "pay_per_shift", status: "expired" });
   });
 });
 
@@ -121,10 +127,9 @@ describe("startEmployerPlanTrial — 14 days, once per org per track", () => {
     expect(await startEmployerPlanTrial(prisma, ORG, "shift_pro", new Date(NOW.getTime() + 20 * DAY))).toEqual({ ok: false, reason: "trial_used" });
   });
 
-  it("allows one trial per track: a long-term trial while a short-term one runs", async () => {
+  it("the retired long-term plan can no longer be trialled", async () => {
     const { prisma } = fakePrisma();
-    await startEmployerPlanTrial(prisma, ORG, "shift_pro", NOW);
-    expect(await startEmployerPlanTrial(prisma, ORG, "contract_plus", NOW)).toMatchObject({ ok: true, plan: { track: "long_term", plan: "contract_plus" } });
+    expect(await startEmployerPlanTrial(prisma, ORG, "contract_plus", NOW)).toEqual({ ok: false, reason: "invalid_plan" });
   });
 
   it("rejects free or unknown plans", async () => {

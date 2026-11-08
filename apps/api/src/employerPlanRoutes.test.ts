@@ -71,12 +71,15 @@ describe("employer plan routes", () => {
     expect(res.json()).toEqual({ enabled: false });
   });
 
-  it("flag on: public catalog has both tracks and never mentions the platform share", async () => {
+  it("flag on: public catalog has the short-term plans + listing price and never mentions the platform share", async () => {
     process.env.EMPLOYER_PLANS_ENABLED = "enabled";
     const res = await build().inject({ method: "GET", url: "/public/employer-plans" });
     const body = res.json() as { enabled: boolean; catalog: unknown };
     expect(body.enabled).toBe(true);
     expect(body.catalog).toEqual(publicEmployerPlanCatalog());
+    expect(publicEmployerPlanCatalog().map((t) => t.track)).toEqual(["short_term"]);
+    expect(publicEmployerPlanCatalog()[0]?.plans.find((p) => p.code === "shift_pro")).toMatchObject({ monthlyPriceMinor: 4_900, gstMinor: 245, qstMinor: 489, totalMinor: 5_634 });
+    expect((body as unknown as { listing: unknown }).listing).toMatchObject({ trialDays: 14, fullMonth: { totalMinor: 11_383 }, firstMonth: { subtotalMinor: 4_950, totalMinor: 5_692 } });
     expect(JSON.stringify(body)).not.toMatch(/margin|share|ppm/i);
   });
 
@@ -87,7 +90,7 @@ describe("employer plan routes", () => {
     expect((await app.inject({ method: "GET", url: `/employer/plan?organizationId=${OTHER}`, headers: { authorization: "Bearer x" } })).statusCode).toBe(404);
     const ok = await app.inject({ method: "GET", url: `/employer/plan?organizationId=${ORG}`, headers: { authorization: "Bearer x" } });
     expect(ok.statusCode).toBe(200);
-    expect(ok.json()).toMatchObject({ enabled: true, trialDays: 14, tracks: [{ track: "short_term", plan: "pay_per_shift" }, { track: "long_term", plan: "pay_per_contract" }] });
+    expect(ok.json()).toMatchObject({ enabled: true, trialDays: 14, tracks: [{ track: "short_term", plan: "pay_per_shift" }] });
   });
 
   it("flag on: staff routes need staff authority; free plans cannot be bought", async () => {

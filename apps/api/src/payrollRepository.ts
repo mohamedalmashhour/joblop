@@ -16,6 +16,19 @@ import type {
   StoredPayrollPeriod
 } from "@rwos/auth";
 
+/** Job ids (of those given) whose pricing snapshot marks a long-term listing: never paid by Joblop. */
+export async function longTermListingJobIds(
+  prisma: Pick<PrismaClient, "requestPricingSnapshot">,
+  jobRequestIds: readonly string[]
+): Promise<Set<string>> {
+  if (jobRequestIds.length === 0) return new Set();
+  const rows = await prisma.requestPricingSnapshot.findMany({
+    where: { jobRequestId: { in: [...new Set(jobRequestIds)] }, jobLength: "long_term" },
+    select: { jobRequestId: true }
+  });
+  return new Set(rows.map((r) => r.jobRequestId));
+}
+
 // AUTHORITATIVE rate resolver (slice 4D) — payroll pays the WORKER rate (W) from the immutable
 // request pricing snapshot captured at admin approval, NOT the employer contract rate (E). The
 // hidden markup (E -> W) is frozen per request, so W never changes mid-shift: the start and end
@@ -187,8 +200,12 @@ export function createPrismaPayrollRepository(prisma: PrismaClient): PayrollRepo
       // Job bonus for each shift: the bonus active for that shift on the timesheet's own job (employer-
       // or platform-funded). Hourly → amount x ACTUAL payable hours (not the 6-hour billing minimum);
       // transport/one-time → the amount once per timesheet.
-      const bonuses = await loadShiftBonuses(prisma, rows.map((r) => r.jobRequestId));
-      return rows.map((r) => {
+      // Long-term LISTING jobs (employer plans flag): the employer pays the worker directly, so their
+      // timesheets never enter Joblop payroll. Only flag-on approvals write a "long_term" snapshot.
+      const longTermJobIds = await longTermListingJobIds(prisma, rows.map((r) => r.jobRequestId));
+      const payable = longTermJobIds.size > 0 ? rows.filter((r) => !longTermJobIds.has(r.jobRequestId)) : rows;
+      const bonuses = await loadShiftBonuses(prisma, payable.map((r) => r.jobRequestId));
+      return payable.map((r) => {
         const payableMinutes = r.payableMinutes ?? 0;
         const bonus = pickShiftBonus(bonuses, r.jobRequestId, r.scheduledStartAt);
         return {

@@ -606,6 +606,10 @@ model EmployerOrganization {
   reviewedByUserId String?                    @map("reviewed_by_user_id") @db.Uuid
   createdAt        DateTime                   @default(now()) @map("created_at") @db.Timestamptz(3)
   updatedAt        DateTime                   @updatedAt @map("updated_at") @db.Timestamptz(3)
+  // Long-term job listings (EMPLOYER_PLANS_ENABLED): the 2-week free trial and the 50%-off first
+  // paid month are each once per organization. Set once by a conditional write; null = still unused.
+  jobListingTrialUsedAt      DateTime? @map("job_listing_trial_used_at") @db.Timestamptz(3)
+  jobListingFirstMonthUsedAt DateTime? @map("job_listing_first_month_used_at") @db.Timestamptz(3)
   restrictedAt     DateTime?                  @map("restricted_at") @db.Timestamptz(3)
   suspendedAt      DateTime?                  @map("suspended_at") @db.Timestamptz(3)
   closedAt         DateTime?                  @map("closed_at") @db.Timestamptz(3)
@@ -638,6 +642,8 @@ model EmployerOrganization {
   orders EmployerOrder[]
   employerPlans      EmployerPlan[]
   employerPlanOrders EmployerPlanOrder[]
+  jobListings        JobListing[]
+  jobListingOrders   JobListingOrder[]
 
   @@index([status], map: "employer_organizations_status_idx")
   @@map("employer_organizations")
@@ -1210,6 +1216,7 @@ model JobRequest {
   updatedBy         User?                           @relation("JobRequestUpdatedByUser", fields: [updatedByUserId], references: [id], onDelete: SetNull)
   calendarProfile   StaffingRequestCalendarProfile?
   pricingSnapshot   RequestPricingSnapshot?
+  jobListing        JobListing?
   order             EmployerOrder?                  @relation(fields: [orderId], references: [id], onDelete: SetNull)
   dispatchReviews   DispatchReview[]
   workerOffers      WorkerOffer[]
@@ -3611,8 +3618,9 @@ model CvProOrder {
   @@map("cv_pro_orders")
 }
 
-// Employer fixed plans — one row per organization per track (job length). Absent = the track's free
-// plan (pay_per_shift / pay_per_contract). Gated behind
+// Employer fixed plans — one row per organization per track (job length). Absent = the free plan
+// (pay_per_shift). Only short_term plans are sold now; long_term rows (contract_plus) are retired and
+// ignored — long-term jobs are paid listings (JobListing). Gated behind
 // EMPLOYER_PLANS_ENABLED (default off). Expiry is evaluated at read time: a trial past trialEndsAt or
 // a paid plan past currentPeriodEnd falls back to pay_per_shift without a background job.
 model EmployerPlan {
@@ -3648,6 +3656,11 @@ model EmployerPlanOrder {
   method         String    @default("e_transfer") // "e_transfer" | "stripe"
   status         String // "pending_payment" | "payment_claimed" | "paid" | "canceled"
   paymentRef     String?   @map("payment_ref")
+  // GST/QST breakdown charged on the order (null on orders created before taxes were added).
+  subtotalMinor  Int?      @map("subtotal_minor")
+  gstMinor       Int?      @map("gst_minor")
+  qstMinor       Int?      @map("qst_minor")
+  totalMinor     Int?      @map("total_minor")
   createdAt      DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
   updatedAt      DateTime  @updatedAt @map("updated_at") @db.Timestamptz(3)
   paidAt         DateTime? @map("paid_at") @db.Timestamptz(3)
@@ -3657,6 +3670,57 @@ model EmployerPlanOrder {
   @@index([organizationId, status], map: "employer_plan_orders_org_status_idx")
   @@index([status, createdAt], map: "employer_plan_orders_status_created_idx")
   @@map("employer_plan_orders")
+}
+
+// Long-term job listings (EMPLOYER_PLANS_ENABLED, default off). A long-term job request is shown to
+// workers only while now < listedUntil (evaluated at read time, no cron). One row per job request.
+// trialEndsAt is set when the listing started on the org's one free trial.
+model JobListing {
+  id             String    @id @default(uuid()) @db.Uuid
+  jobRequestId   String    @unique @map("job_request_id") @db.Uuid
+  organizationId String    @map("organization_id") @db.Uuid
+  status         String // "trialing" | "active" (last action; visibility is listedUntil > now)
+  trialEndsAt    DateTime? @map("trial_ends_at") @db.Timestamptz(3)
+  listedUntil    DateTime? @map("listed_until") @db.Timestamptz(3)
+  createdAt      DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt      DateTime  @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  jobRequest   JobRequest           @relation(fields: [jobRequestId], references: [id], onDelete: Cascade)
+  organization EmployerOrganization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  orders       JobListingOrder[]
+
+  @@index([organizationId], map: "job_listings_organization_idx")
+  @@index([listedUntil], map: "job_listings_listed_until_idx")
+  @@map("job_listings")
+}
+
+// Long-term job listing purchase orders — one month per order, paid in advance. Methods:
+// "e_transfer" (employer claims, staff confirms) and "stripe" (TEST-mode hosted Checkout only).
+model JobListingOrder {
+  id             String    @id @default(uuid()) @db.Uuid
+  jobListingId   String    @map("job_listing_id") @db.Uuid
+  organizationId String    @map("organization_id") @db.Uuid
+  months         Int       @default(1)
+  subtotalMinor  Int       @map("subtotal_minor")
+  gstMinor       Int       @map("gst_minor")
+  qstMinor       Int       @map("qst_minor")
+  totalMinor     Int       @map("total_minor")
+  currency       String
+  discountKind   String    @default("none") @map("discount_kind") // "first_month_half" | "none"
+  method         String    @default("e_transfer") // "e_transfer" | "stripe"
+  status         String // "pending_payment" | "payment_claimed" | "paid" | "canceled"
+  paymentRef     String?   @map("payment_ref")
+  paidAt         DateTime? @map("paid_at") @db.Timestamptz(3)
+  createdAt      DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt      DateTime  @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  jobListing   JobListing           @relation(fields: [jobListingId], references: [id], onDelete: Restrict)
+  organization EmployerOrganization @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+
+  @@index([jobListingId, status], map: "job_listing_orders_listing_status_idx")
+  @@index([organizationId, status], map: "job_listing_orders_org_status_idx")
+  @@index([status, createdAt], map: "job_listing_orders_status_created_idx")
+  @@map("job_listing_orders")
 }
 
 // Money-flow Phase 1 — employer invoice → Stripe TEST collection. One checkout per issued invoice.

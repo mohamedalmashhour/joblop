@@ -1,11 +1,11 @@
 // Employer fixed plans — an optional monthly plan an employer organization can take to lower its
-// hourly price. Plans are split by JOB LENGTH (the "track"), which the employer picks when posting:
-//  - short_term (shifts, a few hours up to 4 weeks): pay_per_shift (free, default), shift_pro,
-//    shift_business.
-//  - long_term (contract over 4 weeks, usually the same worker): pay_per_contract (free, default),
-//    contract_plus.
-// An organization can hold one plan per track at the same time. The plan applied to a job is the
-// organization's active plan for that job's track.
+// hourly price on SHORT-TERM jobs (shifts, a few hours up to 4 weeks): pay_per_shift (free, default),
+// shift_pro, shift_business.
+//
+// Job length (owner decision, Nov 2026): LONG-TERM jobs (contract over 4 weeks) are NOT on a plan and
+// carry NO hourly share. They are a paid LISTING (see jobListing.ts): the employer pays a monthly
+// listing fee in advance, hires the worker and pays them directly. The old long-term plans
+// (pay_per_contract / contract_plus) are retired; their stored rows are ignored.
 //
 // Money rule (owner decision): the WORKER's hourly pay never changes because of a plan. The plan
 // discount comes only out of the platform's share (E − W). The platform always keeps at least
@@ -13,15 +13,12 @@
 // floor the discount is 0. Allowances are unaffected. Paid short-term plans also halve the
 // urgent/immediate surcharge, which the platform keeps, so halving it never touches the worker.
 //
-// Job-length rules (only when the API flag EMPLOYER_PLANS_ENABLED is on): short_term keeps today's
-// rules (20% default share, 6-hour minimum, urgent surcharge). long_term defaults the share to 15%
-// unless staff set one, bills actual hours (no 6-hour minimum) and has no urgent surcharge.
-//
 // Everything here is pure and deterministic. All amounts are integer minor units (cents) and all
 // rates are parts-per-million (1_000_000 ppm = 100%). Rounding is half-up to whole minor units.
 
 import { DEFAULT_PLATFORM_MARGIN_PPM, resolveMarginPpm, workerAmountMinor } from "./platformPricing";
 import type { EngagementType } from "./engagementPremium";
+import { quebecSalesTax, type QuebecSalesTax } from "./quebecSalesTax";
 
 // ── Job length (track) ──────────────────────────────────────────────────────────────────────────
 
@@ -43,38 +40,18 @@ export function jobLengthToEngagementType(length: JobLength): EngagementType {
   return length === "long_term" ? "contract" : "shift";
 }
 
-/** Default platform share for long-term contracts: 15% (staff may still set a share at approval). */
-export const LONG_TERM_DEFAULT_PLATFORM_MARGIN_PPM = 150_000;
-
-/** Default platform share for a job length: short_term 20% (today), long_term 15%. */
-export function defaultMarginPpmForJobLength(length: JobLength): number {
-  return length === "long_term" ? LONG_TERM_DEFAULT_PLATFORM_MARGIN_PPM : DEFAULT_PLATFORM_MARGIN_PPM;
-}
-
-/** Whether the 6-hour minimum billing applies: yes for short_term, no for long_term. */
-export function jobLengthAppliesMinimumBilling(length: JobLength): boolean {
-  return length !== "long_term";
-}
-
-/** Whether the urgent/immediate surcharge applies: yes for short_term, no for long_term. */
-export function jobLengthAppliesUrgentSurcharge(length: JobLength): boolean {
-  return length !== "long_term";
-}
-
 // ── Plans ───────────────────────────────────────────────────────────────────────────────────────
 
 export const EMPLOYER_PLAN_CODES = [
   "pay_per_shift",
   "shift_pro",
-  "shift_business",
-  "pay_per_contract",
-  "contract_plus"
+  "shift_business"
 ] as const;
 export type EmployerPlanCode = (typeof EMPLOYER_PLAN_CODES)[number];
-export const PAID_EMPLOYER_PLAN_CODES = ["shift_pro", "shift_business", "contract_plus"] as const;
+export const PAID_EMPLOYER_PLAN_CODES = ["shift_pro", "shift_business"] as const;
 export type PaidEmployerPlanCode = (typeof PAID_EMPLOYER_PLAN_CODES)[number];
 
-/** Free trial length, once per organization per track, no card needed. */
+/** Free trial length, once per organization, no card needed. */
 export const EMPLOYER_PLAN_TRIAL_DAYS = 14;
 
 /** The platform always keeps at least 5% of the contract rate, whatever the plan. */
@@ -119,32 +96,10 @@ export const EMPLOYER_PLAN_CATALOG: Readonly<Record<EmployerPlanCode, EmployerPl
     currency: "CAD",
     employerDiscountPpm: 80_000,
     urgentSurchargeFactorPpm: 500_000
-  }),
-  pay_per_contract: Object.freeze({
-    code: "pay_per_contract",
-    track: "long_term",
-    monthlyPriceMinor: 0,
-    currency: "CAD",
-    employerDiscountPpm: 0,
-    urgentSurchargeFactorPpm: PPM
-  }),
-  contract_plus: Object.freeze({
-    code: "contract_plus",
-    track: "long_term",
-    monthlyPriceMinor: 9_900,
-    currency: "CAD",
-    employerDiscountPpm: 50_000,
-    // Long-term jobs carry no urgent surcharge at all, so there is nothing to halve.
-    urgentSurchargeFactorPpm: PPM
   })
 });
 
-/** The free plan every organization is on for a track until it takes a paid plan. */
-export function defaultPlanForTrack(track: JobLength): EmployerPlanCode {
-  return track === "long_term" ? "pay_per_contract" : "pay_per_shift";
-}
-
-/** Plans offered for a track, free plan first. */
+/** Plans are offered for short-term jobs only (free plan first). Long-term jobs are paid listings. */
 export function plansForTrack(track: JobLength): readonly EmployerPlanDefinition[] {
   return EMPLOYER_PLAN_CODES.map((code) => EMPLOYER_PLAN_CATALOG[code]).filter((plan) => plan.track === track);
 }
@@ -276,4 +231,9 @@ export function planBreakEvenHours(
   });
   if (discountMinor <= 0) return null;
   return Math.ceil(definition.monthlyPriceMinor / discountMinor);
+}
+
+/** A paid plan's monthly price with GST + QST added (each rounded to the cent). */
+export function employerPlanMonthlyPriceWithTax(plan: PaidEmployerPlanCode): QuebecSalesTax {
+  return quebecSalesTax(EMPLOYER_PLAN_CATALOG[plan].monthlyPriceMinor);
 }

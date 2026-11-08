@@ -1,4 +1,4 @@
-import { EmployerPlanOrdersPanel } from "./EmployerPlanOrdersPanel";
+import { EmployerPlanOrdersPanel, JobListingOrdersPanel } from "./EmployerPlanOrdersPanel";
 
 export default function EmployerPlanOrdersPage() {
   return (
@@ -7,13 +7,17 @@ export default function EmployerPlanOrdersPage() {
         <p style={styles.eyebrow}>Joblop / Administration</p>
         <h1 style={styles.title}>Employer plan orders</h1>
         <p style={styles.lede}>
-          Review and confirm employer plans (Shift Pro, Shift Business, Contract Plus) paid by Interac
-          e-transfer. Confirm an order only after verifying the e-transfer arrived at billing@joblop.com
-          (the reference matches the order id). Confirming starts the plan for one month. Employer plans
-          are off until EMPLOYER_PLANS_ENABLED is turned on; card payments are Stripe test mode only.
+          Review and confirm employer fees paid by Interac e-transfer: short-term plans (Shift Pro, Shift
+          Business) and long-term job listings (C$99/month paid in advance, first month 50% off). Amounts
+          include GST + QST. Confirm an order only after verifying the e-transfer arrived at
+          billing@joblop.com for the total shown (the reference matches the order id). Confirming a plan
+          starts it for one month; confirming a listing publishes that long-term job to workers for one
+          more month. All of this is off until EMPLOYER_PLANS_ENABLED is turned on; card payments are
+          Stripe test mode only.
         </p>
       </header>
       <EmployerPlanOrdersPanel />
+      <JobListingOrdersPanel />
     </main>
   );
 }

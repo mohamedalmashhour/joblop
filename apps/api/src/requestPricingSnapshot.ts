@@ -7,20 +7,50 @@ import {
   splitDistanceSurchargeMinor,
   applyEmployerPlan,
   applyPlanToUrgentSurchargeMinor,
-  defaultMarginPpmForJobLength,
   isPaidEmployerPlanCode,
-  jobLengthAppliesUrgentSurcharge,
   resolveJobLength,
   type EmployerPlanCode,
   type JobLength
 } from "@rwos/shared";
 import {
   createPrismaEmployerContractRepository,
-  type RequestPricingSnapshotCapture
+  type RequestPricingSnapshotCapture,
+  type ResolvedRequestPricing
 } from "@rwos/auth";
 import { getEffectiveEmployerPlan, isEmployerPlansEnabled } from "./employerPlanRepository";
 
 type ContractsRepository = ReturnType<typeof createPrismaEmployerContractRepository>;
+
+/** Marker stored in employer_plan_code on a long-term listing snapshot. */
+export const LONG_TERM_LISTING_PLAN_MARKER = "listing";
+const NO_CONTRACT_ID = "00000000-0000-0000-0000-000000000000";
+
+/** Zero-money pricing for a long-term listing job: Joblop bills no hours and pays no worker for it. */
+export function longTermListingPricing(
+  jobRequestId: string,
+  organizationId: string,
+  contract: Readonly<{ id: string; version: string; currency: string }> | null
+): ResolvedRequestPricing {
+  const none = { employerMinor: 0, workerMinor: 0, platformMarginMinor: 0 };
+  return {
+    jobRequestId,
+    organizationId,
+    contractId: contract?.id ?? NO_CONTRACT_ID,
+    contractVersion: contract?.version ?? "listing",
+    currency: contract?.currency ?? "CAD",
+    snapshot: {
+      marginPpm: 0,
+      employerHourlyRateMinor: 0,
+      workerHourlyRateMinor: 0,
+      platformHourlyMarginMinor: 0,
+      transport: none,
+      meal: none,
+      lodging: none
+    },
+    variable: { emergencySurchargePerHourMinor: 0, distanceSurchargeMinor: 0, distanceWorkerMinor: 0, distancePlatformMinor: 0 },
+    employerPlan: { jobLength: "long_term", planCode: LONG_TERM_LISTING_PLAN_MARKER, discountPpm: 0 }
+  };
+}
 
 /** Looks up the plan in force for an organization's track. Injected so tests need no database. */
 export type EmployerPlanLookup = (organizationId: string, track: JobLength, now: Date) => Promise<EmployerPlanCode>;
@@ -77,6 +107,15 @@ export function createPrismaRequestPricingSnapshotCapture(
         throw new Error("RWOS_PRICING_JOB_REQUEST_NOT_FOUND");
       }
 
+      // Long-term job = paid LISTING (flag on only). The employer hires and pays the worker directly,
+      // so Joblop prices nothing: a zero-money snapshot marked job_length "long_term" / plan
+      // "listing". Invoice generation and payroll skip any job with this marker. No contract needed.
+      const plansOn = plansEnabled();
+      if (plansOn && resolveJobLength(jobRequest.jobLength) === "long_term") {
+        const contract = await contracts.findContractEffectiveAt(jobRequest.organizationId, jobRequest.startAt);
+        return longTermListingPricing(jobRequest.id, jobRequest.organizationId, contract);
+      }
+
       const contract = await contracts.findContractEffectiveAt(
         jobRequest.organizationId,
         jobRequest.startAt
@@ -97,20 +136,14 @@ export function createPrismaRequestPricingSnapshotCapture(
       const funded = (provision: string | undefined, amountMinor: number | null | undefined) =>
         provision === "allowance" ? (amountMinor ?? 0) : 0;
 
-      // Employer fixed plans + job length. Flag OFF (default): none of this runs and the maths below is
-      // exactly today's. Flag ON: long_term defaults the share to 15% (unless staff set one) and drops
-      // the urgent surcharge; the org's plan for the job's track discounts the employer rate out of the
+      // Employer fixed plans (short-term jobs). Flag OFF (default): none of this runs and the maths below
+      // is exactly today's. Flag ON: the org's short-term plan discounts the employer rate out of the
       // platform share only — the worker rate is never touched.
-      const plansOn = plansEnabled();
       const jobLength = plansOn ? resolveJobLength(jobRequest.jobLength) : null;
-      const marginPpm =
-        jobLength !== null && (input.marginPpm === null || input.marginPpm === undefined)
-          ? defaultMarginPpmForJobLength(jobLength)
-          : input.marginPpm;
 
       let snapshot = computeRequestPricingSnapshot({
         employerHourlyRateMinor: roleRate.hourlyRateMinor,
-        marginPpm,
+        marginPpm: input.marginPpm,
         urgencyPremiumMinor: urgencyPremiumMinor(jobRequest.urgency),
         transportAllowanceMinor: funded(profile?.transportProvision, profile?.transportAmountMinor),
         mealAllowanceMinor: funded(profile?.mealProvision, profile?.mealAmountMinor),
@@ -128,7 +161,6 @@ export function createPrismaRequestPricingSnapshotCapture(
 
       let employerPlan: { jobLength: string; planCode: string | null; discountPpm: number } | undefined;
       if (jobLength !== null) {
-        if (!jobLengthAppliesUrgentSurcharge(jobLength)) emergencySurchargePerHourMinor = 0;
         const plan = await planLookup(jobRequest.organizationId, jobLength, now());
         employerPlan = { jobLength, planCode: null, discountPpm: 0 };
         if (isPaidEmployerPlanCode(plan)) {

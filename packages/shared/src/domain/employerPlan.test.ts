@@ -2,13 +2,9 @@ import { describe, expect, it } from "vitest";
 import {
   EMPLOYER_PLAN_CATALOG,
   JOB_LENGTHS,
-  LONG_TERM_DEFAULT_PLATFORM_MARGIN_PPM,
-  defaultMarginPpmForJobLength,
-  defaultPlanForTrack,
+  employerPlanMonthlyPriceWithTax,
   employerPlanTrack,
   isJobLength,
-  jobLengthAppliesMinimumBilling,
-  jobLengthAppliesUrgentSurcharge,
   jobLengthToEngagementType,
   plansForTrack,
   resolveJobLength,
@@ -27,31 +23,33 @@ import {
 import { billableHours, computeShiftPricing, workerAmountMinor } from "./platformPricing";
 
 describe("employer plan catalog", () => {
-  it("has five plans across two tracks with the decided prices and discounts", () => {
-    expect(EMPLOYER_PLAN_CODES).toEqual(["pay_per_shift", "shift_pro", "shift_business", "pay_per_contract", "contract_plus"]);
+  it("has the three short-term plans with the decided prices and discounts (long-term plans retired)", () => {
+    expect(EMPLOYER_PLAN_CODES).toEqual(["pay_per_shift", "shift_pro", "shift_business"]);
     expect(EMPLOYER_PLAN_CATALOG.pay_per_shift).toMatchObject({ track: "short_term", monthlyPriceMinor: 0, employerDiscountPpm: 0, urgentSurchargeFactorPpm: 1_000_000 });
     expect(EMPLOYER_PLAN_CATALOG.shift_pro).toMatchObject({ track: "short_term", monthlyPriceMinor: 4_900, employerDiscountPpm: 50_000, urgentSurchargeFactorPpm: 500_000 });
     expect(EMPLOYER_PLAN_CATALOG.shift_business).toMatchObject({ track: "short_term", monthlyPriceMinor: 14_900, employerDiscountPpm: 80_000, urgentSurchargeFactorPpm: 500_000 });
-    expect(EMPLOYER_PLAN_CATALOG.pay_per_contract).toMatchObject({ track: "long_term", monthlyPriceMinor: 0, employerDiscountPpm: 0 });
-    expect(EMPLOYER_PLAN_CATALOG.contract_plus).toMatchObject({ track: "long_term", monthlyPriceMinor: 9_900, employerDiscountPpm: 50_000 });
     expect(EMPLOYER_PLAN_TRIAL_DAYS).toBe(14);
     expect(EMPLOYER_PLAN_MIN_PLATFORM_KEEP_PPM).toBe(50_000);
   });
 
-  it("groups plans by track with the free plan first", () => {
+  it("offers plans for short-term jobs only", () => {
     expect(plansForTrack("short_term").map((p) => p.code)).toEqual(["pay_per_shift", "shift_pro", "shift_business"]);
-    expect(plansForTrack("long_term").map((p) => p.code)).toEqual(["pay_per_contract", "contract_plus"]);
-    expect(defaultPlanForTrack("short_term")).toBe("pay_per_shift");
-    expect(defaultPlanForTrack("long_term")).toBe("pay_per_contract");
-    expect(employerPlanTrack("contract_plus")).toBe("long_term");
+    expect(plansForTrack("long_term")).toEqual([]);
+    expect(employerPlanTrack("shift_pro")).toBe("short_term");
   });
 
-  it("recognises plan codes", () => {
+  it("recognises plan codes; the retired long-term codes are unknown", () => {
     expect(isEmployerPlanCode("shift_pro")).toBe(true);
     expect(isEmployerPlanCode("free")).toBe(false);
     expect(isEmployerPlanCode(undefined)).toBe(false);
-    expect(isPaidEmployerPlanCode("contract_plus")).toBe(true);
+    expect(isEmployerPlanCode("contract_plus")).toBe(false);
+    expect(isPaidEmployerPlanCode("contract_plus")).toBe(false);
     expect(isPaidEmployerPlanCode("pay_per_contract")).toBe(false);
+  });
+
+  it("adds GST 5% + QST 9.975% to the plan prices, each rounded to the cent", () => {
+    expect(employerPlanMonthlyPriceWithTax("shift_pro")).toEqual({ subtotalMinor: 4_900, gstMinor: 245, qstMinor: 489, totalMinor: 5_634 });
+    expect(employerPlanMonthlyPriceWithTax("shift_business")).toEqual({ subtotalMinor: 14_900, gstMinor: 745, qstMinor: 1_486, totalMinor: 17_131 });
   });
 });
 
@@ -64,25 +62,6 @@ describe("job length", () => {
     expect(isJobLength("long_term")).toBe(true);
     expect(jobLengthToEngagementType("short_term")).toBe("shift");
     expect(jobLengthToEngagementType("long_term")).toBe("contract");
-  });
-
-  it("long_term: 15% default share, no 6-hour minimum, no urgent surcharge", () => {
-    expect(LONG_TERM_DEFAULT_PLATFORM_MARGIN_PPM).toBe(150_000);
-    expect(defaultMarginPpmForJobLength("short_term")).toBe(200_000);
-    expect(defaultMarginPpmForJobLength("long_term")).toBe(150_000);
-    expect(jobLengthAppliesMinimumBilling("short_term")).toBe(true);
-    expect(jobLengthAppliesMinimumBilling("long_term")).toBe(false);
-    expect(jobLengthAppliesUrgentSurcharge("short_term")).toBe(true);
-    expect(jobLengthAppliesUrgentSurcharge("long_term")).toBe(false);
-  });
-
-  it("contract_plus at the 15% long-term share: 5% off, Joblop keeps 10%, worker unchanged", () => {
-    const r = applyEmployerPlan({ employerHourlyRateMinor: 3_000, marginPpm: 150_000, plan: "contract_plus" });
-    expect(r.discountMinor).toBe(150);
-    expect(r.employerHourlyRateMinor).toBe(2_850);
-    expect(r.workerHourlyRateMinor).toBe(2_550);
-    expect(r.platformHourlyMarginMinor).toBe(300);
-    expect(planBreakEvenHours("contract_plus", 3_000, 150_000)).toBe(66); // 9900 / 150 = 66
   });
 });
 
@@ -144,7 +123,7 @@ describe("applyEmployerPlan — the worker's pay never changes", () => {
   });
 
   it("never lets the platform share fall below 5% of the contract rate when a discount applies", () => {
-    for (const plan of ["shift_pro", "shift_business", "contract_plus"] as const) {
+    for (const plan of ["shift_pro", "shift_business"] as const) {
       for (const rate of rates) {
         for (const margin of margins) {
           const r = applyEmployerPlan({ employerHourlyRateMinor: rate, marginPpm: margin, plan });
@@ -237,7 +216,7 @@ describe("urgent surcharge factor", () => {
     expect(planUrgentSurchargeFactorPpm("shift_pro")).toBe(500_000);
     expect(planUrgentSurchargeFactorPpm("shift_business")).toBe(500_000);
     expect(planUrgentSurchargeFactorPpm("unknown")).toBe(1_000_000);
-    expect(planUrgentSurchargeFactorPpm("contract_plus")).toBe(1_000_000);
+    expect(planUrgentSurchargeFactorPpm("contract_plus")).toBe(1_000_000); // retired code → unchanged
     expect(applyPlanToUrgentSurchargeMinor(450, "pay_per_shift")).toBe(450);
     expect(applyPlanToUrgentSurchargeMinor(450, "shift_pro")).toBe(225);
     expect(applyPlanToUrgentSurchargeMinor(451, "shift_business")).toBe(226); // 225.5 → 226 half-up
