@@ -1,6 +1,8 @@
+import { cookies } from "next/headers";
 import { EmployerShell, WorkflowRoutes } from "../../employer/EmployerShell";
-import { accountBoundaries, accountTypeOutcomes } from "../../employer/employerJourneyContent";
 import { styles } from "../../employer/employerStyles";
+import { LOCALE_COOKIE, resolveEmployerLocale } from "../../i18n/config";
+import { dictionaries, type Messages } from "../../i18n/messages";
 
 import { SignUpForm } from "./SignUpForm";
 
@@ -8,59 +10,45 @@ import { SignUpForm } from "./SignUpForm";
  * Employer sign-up capsule (server page). Wraps the interactive form in the shared EmployerShell and
  * passes the registration gate down from the environment: backend registration returns 404 in
  * production, so we surface an honest "not open" state there rather than a form that cannot succeed.
- * The governance sections (what happens next / account boundaries) are preserved.
  */
-export default function EmployerSignUpPage() {
+export default async function EmployerSignUpPage() {
   const registrationOpen =
     process.env.RWOS_ENV !== "production" &&
     process.env.EMPLOYER_SELF_REGISTRATION_ENABLED === "enabled" &&
     Boolean(process.env.TERMS_VERSION && process.env.PRIVACY_NOTICE_VERSION);
+  const store = await cookies();
+  const locale = resolveEmployerLocale(store.get(LOCALE_COOKIE)?.value);
+  const m: Messages = { ...dictionaries["en-CA"], ...dictionaries[locale] } as Messages;
+  const steps = [m["signup.step1"], m["signup.step2"], m["signup.step3"], m["signup.step4"], m["signup.step5"]];
 
   return (
     <EmployerShell
       currentRoute="/signup/employer"
-      eyebrow="Employer sign up"
-      title="Create an employer account."
-      lede="Creating an account is the first step — organization setup, review, and activation remain separate. Self-registration opens only when the approved notice versions are configured."
+      eyebrow={m["signup.pageEyebrow"]}
+      title={m["signup.pageTitle"]}
+      lede={m["signup.pageLede"]}
     >
       <section style={styles.section}>
         <div style={styles.sectionHeader}>
-          <p style={styles.eyebrowDark}>Account type</p>
-          <h2 style={styles.sectionTitle}>Employer: I want to request staffing support.</h2>
-          <p style={styles.sectionCopy}>
-            This creates your employer login. Verification, organization setup, and approval to
-            request workers are handled as their own steps after the account exists.
-          </p>
+          <p style={styles.eyebrowDark}>{m["signup.accountEyebrow"]}</p>
+          <h2 style={styles.sectionTitle}>{m["signup.accountTitle"]}</h2>
+          <p style={styles.sectionCopy}>{m["signup.accountCopy"]}</p>
         </div>
         <SignUpForm registrationOpen={registrationOpen} />
-        <p style={styles.warning}>
-          Employer self-registration opens only when approved Terms and Privacy Notice versions are
-          configured. Creating an account does not equal employer approval.
-        </p>
       </section>
 
       <section style={styles.whiteSection}>
         <div style={styles.sectionHeader}>
-          <p style={styles.eyebrowDark}>What happens next</p>
-          <h2 style={styles.sectionTitle}>Account creation is the first step, not the approval.</h2>
+          <p style={styles.eyebrowDark}>{m["signup.nextEyebrow"]}</p>
+          <h2 style={styles.sectionTitle}>{m["signup.nextTitle"]}</h2>
         </div>
         <ol style={styles.stepList}>
-          {accountTypeOutcomes.map((outcome) => (
-            <li key={outcome} style={styles.stepItem}>
-              {outcome}
+          {steps.map((step) => (
+            <li key={step} style={styles.stepItem}>
+              {step}
             </li>
           ))}
         </ol>
-      </section>
-
-      <section style={styles.section}>
-        <div style={styles.cardGrid}>
-          {accountBoundaries.map((boundary) => (
-            <article key={boundary} style={styles.card}>
-              <p style={styles.cardText}>{boundary}</p>
-            </article>
-          ))}
-        </div>
       </section>
 
       <WorkflowRoutes currentRoute="/signup/employer" />

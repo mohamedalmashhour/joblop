@@ -15,8 +15,17 @@ export function stripeTestEnvFromProcess(): StripeTestEnvironment {
   };
 }
 
-/** True when the Stripe TEST keys are present and enabled, so a checkout can actually be created. */
+/**
+ * True when the Stripe TEST keys are present and enabled, so a checkout can actually be created.
+ * Always false when the API runs in production (RWOS_ENV="production") or on Render (RENDER=true): a TEST-mode checkout there
+ * would let anyone "pay" with the public test card and get a plan, listing, Pro month or invoice for
+ * free. Every "Pay by card" button (cardEnabled) and every test checkout/payout reads this one gate.
+ */
 export function isStripeTestConfigured(): boolean {
+  if (process.env.RWOS_ENV === "production") return false;
+  // The live Render services run as RWOS_ENV="test" during the soft launch, but they serve real
+  // people. Render sets RENDER=true on every service, so a TEST checkout is never offered there.
+  if (process.env.RENDER === "true") return false;
   const env = stripeTestEnvFromProcess();
   return (
     env.enabled === true &&

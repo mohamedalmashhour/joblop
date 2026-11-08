@@ -6,7 +6,7 @@ export const clientCalendarWorkflow = [
     title: "Request Calendar",
     route: "/employer/calendar",
     status: "Client calendar",
-    boundary: "Client-visible staffing states only; worker and platform economics remain private."
+    boundary: "Your requests and where each one stands."
   },
   {
     page: "C02",
@@ -28,7 +28,7 @@ export const clientCalendarWorkflow = [
     route: "/employer/calendar/assignment",
     status: "Dispatch progress",
     boundary:
-      "Aggregate dispatch status only; offers, assignments, worker identity, and economics remain separate."
+      "How many workers are confirmed for your request."
   }
 ] as const;
 
@@ -86,14 +86,6 @@ export const clientCalendarRows = clientCalendarStatuses.map((status, index) => 
   status,
   route: "/employer/calendar/request"
 }));
-
-export const clientCalendarPrivacyBoundaries = [
-  "Worker pay is not included.",
-  "Platform margin is not included.",
-  "Internal admin pricing and notes are not included.",
-  "Payment verification is status-only; payment details remain hidden.",
-  "Calendar entries are fixture projections, not operational records."
-] as const;
 
 export const clientCalendarPrimaryLinks = [
   { label: "Create staffing request", from: "/employer/calendar", to: "/employer/calendar/create" },

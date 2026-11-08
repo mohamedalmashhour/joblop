@@ -222,7 +222,7 @@ export const en = {
   "offers.acceptOffer": "Accept offer",
   "offers.decline": "Decline",
   "offers.viewJob": "View job",
-  "offers.footer": "Only your own offers appear here. Responding is governed and recorded by Joblop; no money is moved.",
+  "offers.footer": "Only your own offers appear here. When you answer, Joblop gets your answer right away.",
   "offers.payChoiceTitle": "One step before you can accept",
   "offers.payChoiceBody": "Choose how you want to be paid. You only need to do this once.",
   "offers.payChoiceAction": "Choose how I'm paid",
@@ -288,6 +288,7 @@ export const en = {
 
   // Pay
   "pay.defaultNotice": "These are test pay figures, not a real pay statement.",
+  "pay.productionNotice": "Your pay for the shifts you worked.",
   "pay.syntheticChip": "Test — no money is paid yet",
   "pay.line.regular": "Hours worked",
   "pay.line.overtime_premium": "Overtime premium",
@@ -313,6 +314,7 @@ export const en = {
   "pay.net": "Net pay:",
   "pay.rev": "rev {n}",
   "pay.footer": "Only your own pay appears here. Figures are synthetic (test rules) and no money is moved by Joblop.",
+  "pay.productionFooter": "Only your own pay appears here. Your pay statement shows your hours and pay for each pay period.",
   "pay.summaryTitle": "Your earnings summary",
   "pay.totalNet": "Total net earned",
   "pay.totalGross": "Total gross",
@@ -889,7 +891,7 @@ export const fr: Messages = {
   "offers.acceptOffer": "Accepter l'offre",
   "offers.decline": "Refuser",
   "offers.viewJob": "Voir l'emploi",
-  "offers.footer": "Seules vos propres offres apparaissent ici. La réponse est encadrée et enregistrée par Joblop; aucun argent n'est transféré.",
+  "offers.footer": "Seules vos propres offres apparaissent ici. Quand vous répondez, Joblop reçoit votre réponse tout de suite.",
   "offers.payChoiceTitle": "Une étape avant d'accepter",
   "offers.payChoiceBody": "Choisissez votre mode de paiement. Vous n'aurez à le faire qu'une seule fois.",
   "offers.payChoiceAction": "Choisir mon mode de paiement",
@@ -955,6 +957,7 @@ export const fr: Messages = {
 
   // Paie
   "pay.defaultNotice": "Ce sont des montants d'essai, pas un vrai bulletin de paie.",
+  "pay.productionNotice": "Votre paie pour les quarts que vous avez travaillés.",
   "pay.syntheticChip": "Essai — aucun paiement pour l'instant",
   "pay.line.regular": "Heures travaillées",
   "pay.line.overtime_premium": "Prime d'heures supplémentaires",
@@ -980,6 +983,7 @@ export const fr: Messages = {
   "pay.net": "Paie nette :",
   "pay.rev": "rév. {n}",
   "pay.footer": "Seule votre propre paie apparaît ici. Les montants sont synthétiques (règles de test) et aucun argent n'est transféré par Joblop.",
+  "pay.productionFooter": "Seule votre propre paie apparaît ici. Votre relevé de paie montre vos heures et votre paie pour chaque période de paie.",
   "pay.summaryTitle": "Résumé de vos gains",
   "pay.totalNet": "Total net gagné",
   "pay.totalGross": "Total brut",
@@ -1598,6 +1602,7 @@ export const ar: Partial<Messages> = {
 
   // My pay
   "pay.defaultNotice": "هذه أرقام أجور تجريبية، وليست كشف راتب فعليًا.",
+  "pay.productionNotice": "أجرك عن المناوبات التي عملتها.",
   "pay.syntheticChip": "تجريبي — لا يُدفع أي مال بعد",
   "pay.line.regular": "ساعات العمل",
   "pay.line.overtime_premium": "علاوة العمل الإضافي",
@@ -1623,6 +1628,8 @@ export const ar: Partial<Messages> = {
   "pay.net": "صافي المستحق:",
   "pay.rev": "مراجعة {n}",
   "pay.footer": "تظهر هنا مستحقاتك فقط. الأرقام تجريبية (قواعد اختبارية) ولا تُحوّل أي أموال من Joblop.",
+  "pay.productionFooter": "تظهر هنا مستحقاتك فقط. يعرض كشف أجرك ساعاتك وأجرك عن كل فترة دفع.",
+  "offers.footer": "تظهر هنا عروضك فقط. عندما تردّ، يصل ردّك إلى Joblop فورًا.",
   "pay.summaryTitle": "ملخص أرباحك",
   "pay.totalNet": "إجمالي الصافي المكتسب",
   "pay.totalGross": "إجمالي الأجر",

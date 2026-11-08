@@ -1,41 +1,48 @@
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 import { describe, expect, it } from "vitest";
-import { aiFaqRules, faqAnswers, faqCategories, sensitiveSearchWarning } from "./faqContent";
+import { getLandingContent } from "../landingContent";
+import { faqCopy, faqIds, homeFaqAnchors } from "./faqContent";
 
-describe("Page 006 FAQ content", () => {
-  it("keeps the approved FAQ categories visible", () => {
-    expect(faqCategories).toContain("Safety And Active-Shift Support");
-    expect(faqCategories).toContain("AI And Automated Assistance");
-    expect(faqCategories).toContain("Pricing, Billing, And Invoices");
-  });
+const locales = ["en-CA", "fr-CA", "ar"] as const;
+const pageSource = readFileSync(join(__dirname, "page.tsx"), "utf8");
 
-  it("requires visible governance metadata on every answer", () => {
-    for (const answer of faqAnswers) {
-      expect(answer.governance.owner).toBeTruthy();
-      expect(["Draft", "Under Review", "Approved", "Archived"]).toContain(
-        answer.governance.reviewStatus
-      );
-      expect(answer.governance.version).toBe("Version 1.x");
-      expect(answer.governance.lastReviewed).toBe("Pending");
-      expect(answer.governance.sourceOfTruth).toBeTruthy();
-      expect(answer.governance.escalationPath).toBeTruthy();
+describe("public /faq", () => {
+  it("has 10 to 15 real answers in English, French and Arabic", () => {
+    expect(faqIds.length).toBeGreaterThanOrEqual(10);
+    expect(faqIds.length).toBeLessThanOrEqual(15);
+    for (const locale of locales) {
+      for (const id of faqIds) {
+        const [question, answer] = faqCopy[locale].answers[id];
+        expect(question.length).toBeGreaterThan(5);
+        expect(answer.length).toBeGreaterThan(30);
+      }
     }
   });
 
-  it("keeps active-shift and AI answers truthful", () => {
-    const copy = faqAnswers.map((answer) => `${answer.summary} ${answer.detail}`).join(" ");
-    expect(copy).toContain("Replacement availability is not guaranteed");
-    expect(copy).toContain("AI cannot");
-    expect(copy).not.toMatch(/automatically assigns|staffing is guaranteed|invoice is guaranteed/i);
+  it("answers every home page FAQ question with a real anchor", () => {
+    for (const locale of locales) {
+      const home = getLandingContent(locale).faq.questions;
+      expect(homeFaqAnchors).toHaveLength(home.length);
+      home.forEach((question, i) => {
+        expect(faqCopy[locale].answers[homeFaqAnchors[i]!][0]).toBe(question);
+      });
+    }
   });
 
-  it("prevents automatic AI publication and metadata removal", () => {
-    expect(aiFaqRules).toContain("AI must not publish FAQ content automatically.");
-    expect(aiFaqRules).toContain("AI must not remove governance metadata.");
-    expect(aiFaqRules).toContain("AI must not invent policy.");
+  it("drops the placeholder search, governance metadata and share leaks", () => {
+    expect(pageSource).not.toMatch(/<input|placeholder|Governance|Review Status|Source of Truth/);
+    for (const locale of locales) {
+      const text = JSON.stringify(faqCopy[locale]);
+      expect(text).not.toMatch(/margin|marge|commission|share of|hourly share|part horaire|حصة|هامش|عمولة|20 ?%|Stripe|4242/i);
+    }
   });
 
-  it("warns against sensitive public search input", () => {
-    expect(sensitiveSearchWarning).toContain("Do not include banking credentials.");
-    expect(sensitiveSearchWarning).toContain("Do not include unnecessary health records.");
+  it("states the cancellation and payment rules", () => {
+    const en = JSON.stringify(faqCopy["en-CA"]);
+    expect(en).toContain("24 hours or more before the start is free");
+    expect(en).toContain("billed 6 hours");
+    expect(en).toContain("Interac e-transfer");
+    expect(en).toContain("Canceling stops the next month.");
   });
 });

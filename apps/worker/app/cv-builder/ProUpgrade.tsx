@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { isProductionTier } from "../deploymentTier";
 
 type ETransfer = { email: string; amount: string; reference: string; note: string };
 type Order = { id: string; status: string; method: string };
@@ -139,8 +140,10 @@ export function ProUpgrade() {
 
       {msg ? <p style={styles.err}>{msg}</p> : null}
       <p style={styles.billing}>
-        {cardEnabled
+        {cardEnabled && !isProductionTier()
           ? "Card checkout runs in Stripe TEST mode — use test card 4242 4242 4242 4242. No real money moves. Interac e-transfer is confirmed manually by the team."
+          : cardEnabled
+          ? "Pay by card or by Interac e-transfer. Our team confirms e-transfers by hand."
           : "Card payments aren’t enabled yet — Interac e-transfer is confirmed manually by the team. No card is charged."}
       </p>
     </div>

@@ -115,8 +115,8 @@ const T = {
     fSeekers: "For Workers", fEmp: "For Employers", fCo: "Company", fLegal: "Legal",
     fBrowse: "Browse jobs", fCreate: "Create account", fAlerts: "Job alerts",
     fPost: "Post a request", fFind: "Find workers", fPricing: "Pricing",
-    fAbout: "About", fContact: "Contact", fCareers: "Careers",
-    fPrivacy: "Privacy", fTerms: "Terms", fCookie: "Cookies",
+    fAbout: "About", fContact: "Contact",
+    fPrivacy: "Privacy", fTerms: "Terms",
     copyright: "Joblop. A brighter future, together."
   },
   fr: {
@@ -189,8 +189,8 @@ const T = {
     fSeekers: "Travailleurs", fEmp: "Employeurs", fCo: "Entreprise", fLegal: "Légal",
     fBrowse: "Parcourir les offres", fCreate: "Créer un compte", fAlerts: "Alertes d'emploi",
     fPost: "Publier une demande", fFind: "Trouver des travailleurs", fPricing: "Tarifs",
-    fAbout: "À propos", fContact: "Contact", fCareers: "Carrières",
-    fPrivacy: "Confidentialité", fTerms: "Conditions", fCookie: "Témoins",
+    fAbout: "À propos", fContact: "Contact",
+    fPrivacy: "Confidentialité", fTerms: "Conditions",
     copyright: "Joblop. Un avenir meilleur, ensemble."
   },
   ar: {
@@ -263,8 +263,8 @@ const T = {
     fSeekers: "للعمال", fEmp: "لأصحاب العمل", fCo: "الشركة", fLegal: "قانوني",
     fBrowse: "تصفّح الوظائف", fCreate: "إنشاء حساب", fAlerts: "تنبيهات الوظائف",
     fPost: "انشر طلبًا", fFind: "ابحث عن عمال", fPricing: "الأسعار",
-    fAbout: "من نحن", fContact: "تواصل", fCareers: "وظائف لدينا",
-    fPrivacy: "الخصوصية", fTerms: "الشروط", fCookie: "ملفات تعريف الارتباط",
+    fAbout: "من نحن", fContact: "تواصل",
+    fPrivacy: "الخصوصية", fTerms: "الشروط",
     copyright: "جوب‑لوب. مستقبل أكثر إشراقًا، معًا."
   }
 } as const;
@@ -515,9 +515,9 @@ export function PublicJobBoard() {
       <section className="jl-features" aria-label="Why Joblop">
         <div className="jl-wrap jl-features-in">
           {[
-            { ic: "🛡️", t: tr("Verified Workers", "Travailleurs vérifiés", "عمال موثّقون"), s: tr("Background checked", "Antécédents vérifiés", "تحقّق من الخلفية") },
+            { ic: "🪪", t: tr("Documents on file", "Documents au dossier", "وثائق في الملف"), s: tr("Workers upload their certificates", "Les travailleurs ajoutent leurs certificats", "يرفع العمال شهاداتهم") },
             { ic: "⚡", t: tr("Fast Matching", "Jumelage rapide", "مطابقة سريعة"), s: tr("Find staff in minutes", "Trouvez du personnel en minutes", "جد العمال في دقائق") },
-            { ic: "🔒", t: tr("Secure Payments", "Paiements sécurisés", "مدفوعات آمنة"), s: tr("Safe and transparent", "Sûrs et transparents", "آمنة وشفافة") },
+            { ic: "💸", t: tr("Free to apply", "Gratuit pour postuler", "التقديم مجاني"), s: tr("No fees for workers", "Aucuns frais pour les travailleurs", "بلا رسوم على العمال") },
             { ic: "📍", t: tr("Local Workforce", "Main-d'œuvre locale", "قوة عاملة محلية"), s: tr("Across Canada", "Partout au Canada", "في جميع أنحاء كندا") }
           ].map((f) => (
             <div className="jl-feature" key={f.t}>
@@ -804,11 +804,11 @@ export function PublicJobBoard() {
           <div className="jl-foot-cols">
             <div><h5>{t.fSeekers}</h5><a href="#jobs">{t.fBrowse}</a><a href="/">{t.fCreate}</a><a href="#jobs">{t.fAlerts}</a></div>
             <div><h5>{t.fEmp}</h5><a href={EMPLOYER_URL}>{t.fPost}</a><a href={EMPLOYER_URL}>{t.fFind}</a><a href={EMPLOYER_URL}>{t.fPricing}</a></div>
-            <div><h5>{t.fCo}</h5><a href="#about">{t.fAbout}</a><a href="#contact">{t.fContact}</a><a href="#about">{t.fCareers}</a></div>
-            <div><h5>{t.fLegal}</h5><a href="/privacy">{t.fPrivacy}</a><a href="/terms">{t.fTerms}</a><a href="/privacy">{t.fCookie}</a></div>
+            <div><h5>{t.fCo}</h5><a href="#about">{t.fAbout}</a><a href="#contact">{t.fContact}</a></div>
+            <div><h5>{t.fLegal}</h5><a href="/privacy">{t.fPrivacy}</a><a href="/terms">{t.fTerms}</a></div>
           </div>
         </div>
-        <div className="jl-foot-bar">© {new Date().getFullYear()} {t.copyright}</div>
+        <div className="jl-foot-bar">© {new Date().getFullYear()} {t.copyright} · {activeCountry().legalEntityName}</div>
       </footer>
     </div>
   );

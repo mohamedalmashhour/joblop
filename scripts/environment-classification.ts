@@ -36,6 +36,8 @@ const serverOnlySecret = new Set(["SESSION_SECRET"]);
 // inlined into any client bundle (they are not NEXT_PUBLIC_/EXPO_PUBLIC_). Secret-shaped siblings
 // (e.g. *_API_KEY) are caught by the prohibited regex below, which runs before this set is read.
 const serverOnlyNonSecret = new Set([
+  // Set to "true" by Render on every service; read server-side to keep Stripe TEST checkout off live.
+  "RENDER",
   // External job-source (Adzuna) non-secret config — the paired APP_KEY is prohibited below.
   "ADZUNA_APP_ID",
   "ADZUNA_COUNTRY",

@@ -12,8 +12,7 @@ export default function EmployerPlanOrdersPage() {
           include GST + QST. Confirm an order only after verifying the e-transfer arrived at
           billing@joblop.com for the total shown (the reference matches the order id). Confirming a plan
           starts it for one month; confirming a listing publishes that long-term job to workers for one
-          more month. All of this is off until EMPLOYER_PLANS_ENABLED is turned on; card payments are
-          Stripe test mode only.
+          more month.
         </p>
       </header>
       <EmployerPlanOrdersPanel />

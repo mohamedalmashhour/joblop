@@ -35,6 +35,14 @@ function amountCell(o: Readonly<{ priceMinor?: number; subtotalMinor?: number; g
   return `${money(o.totalMinor, o.currency)} (${money(subtotal, o.currency)} + GST ${money(o.gstMinor ?? 0, o.currency)} + QST ${money(o.qstMinor ?? 0, o.currency)})`;
 }
 
+/** The question staff must answer "yes" to before an order is marked paid. */
+export function confirmPaymentQuestion(o: Readonly<{ organizationName: string; method: string; priceMinor?: number; subtotalMinor?: number; totalMinor?: number; currency: string }>): string {
+  const amount = money(o.totalMinor ?? o.subtotalMinor ?? o.priceMinor ?? 0, o.currency);
+  return o.method === "e_transfer"
+    ? `Confirm you received ${amount} by Interac for ${o.organizationName}?`
+    : `Confirm the card payment of ${amount} for ${o.organizationName}?`;
+}
+
 export function EmployerPlanOrdersPanel() {
   const [state, setState] = useState<State>("loading");
   const [orders, setOrders] = useState<Order[]>([]);
@@ -68,7 +76,7 @@ export function EmployerPlanOrdersPanel() {
 
   if (state === "loading") return <p style={styles.text}>Loading the employer plan order queue.</p>;
   if (state === "denied") return <p style={styles.text}>Administrator access required.</p>;
-  if (state === "off") return <p style={styles.text}>Employer plans are switched off (EMPLOYER_PLANS_ENABLED).</p>;
+  if (state === "off") return <p style={styles.text}>Employer plans are switched off.</p>;
   if (state === "error") return <p style={styles.text}>The order queue could not be reached.</p>;
 
   return (
@@ -91,7 +99,7 @@ export function EmployerPlanOrdersPanel() {
                 <td style={styles.td}>{o.method === "e_transfer" ? "Interac e-transfer" : "Card (test)"}</td>
                 <td style={styles.td}>{o.status === "payment_claimed" ? "Claimed sent" : o.status === "pending_payment" ? "Awaiting payment" : o.status}</td>
                 <td style={styles.td}>
-                  <button type="button" style={styles.confirm} disabled={busy === o.id} onClick={() => void act(o.id, "confirm")}>Confirm</button>
+                  <button type="button" style={styles.confirm} disabled={busy === o.id} onClick={() => { if (window.confirm(confirmPaymentQuestion(o))) void act(o.id, "confirm"); }}>Confirm</button>
                   <button type="button" style={styles.reject} disabled={busy === o.id} onClick={() => void act(o.id, "reject")}>Reject</button>
                 </td>
               </tr>
@@ -188,7 +196,7 @@ export function JobListingOrdersPanel() {
                 <td style={styles.td}>{o.method === "e_transfer" ? "Interac e-transfer" : "Card (test)"}</td>
                 <td style={styles.td}>{o.status === "payment_claimed" ? "Claimed sent" : o.status === "pending_payment" ? "Awaiting payment" : o.status}</td>
                 <td style={styles.td}>
-                  <button type="button" style={styles.confirm} disabled={busy === o.id} onClick={() => void act(o.id, "confirm")}>Confirm</button>
+                  <button type="button" style={styles.confirm} disabled={busy === o.id} onClick={() => { if (window.confirm(confirmPaymentQuestion(o))) void act(o.id, "confirm"); }}>Confirm</button>
                   <button type="button" style={styles.reject} disabled={busy === o.id} onClick={() => void act(o.id, "reject")}>Reject</button>
                 </td>
               </tr>

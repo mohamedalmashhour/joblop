@@ -4,7 +4,6 @@ import { findLeakedEconomicsKeys } from "../../../../../contracts/security/econo
 import {
   clientCalendarEvent,
   clientCalendarPrimaryLinks,
-  clientCalendarPrivacyBoundaries,
   clientCalendarRows,
   clientCalendarStatuses,
   clientRequestDetail,
@@ -38,8 +37,7 @@ describe("client request calendar fixture", () => {
   it("does not expose worker pay, margin, or internal admin pricing", () => {
     const clientPayload = {
       event: clientCalendarEvent,
-      detail: clientRequestDetail,
-      boundaries: clientCalendarPrivacyBoundaries
+      detail: clientRequestDetail
     };
 
     expect(

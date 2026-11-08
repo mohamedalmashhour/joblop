@@ -1,18 +1,24 @@
+import { cookies } from "next/headers";
 import { EmployerShell } from "../../EmployerShell";
 import { styles } from "../../employerStyles";
 import { CreatePersistedRequestPanel } from "./CreatePersistedRequestPanel";
+import { LOCALE_COOKIE, resolveEmployerLocale } from "../../../i18n/config";
+import { dictionaries, type Messages } from "../../../i18n/messages";
 
-export default function CreateClientRequestPage() {
+export default async function CreateClientRequestPage() {
+  const store = await cookies();
+  const locale = resolveEmployerLocale(store.get(LOCALE_COOKIE)?.value);
+  const m: Messages = { ...dictionaries["en-CA"], ...dictionaries[locale] } as Messages;
   return (
     <EmployerShell
       currentRoute="/employer/calendar/create"
-      eyebrow="Connected calendar / Client request"
-      title="Create and submit a governed staffing request."
-      lede="The request is persisted inside your authenticated employer organization. Submission sends it for platform review; it does not publish a shift, assign a worker, or execute money."
+      eyebrow={m["page.createEyebrow"]}
+      title={m["page.createTitle"]}
+      lede={m["page.createLede"]}
       mode="authenticated"
       actions={
         <a href="/employer/calendar" style={styles.secondaryButton}>
-          Back to request calendar
+          {m["page.createBack"]}
         </a>
       }
     >
