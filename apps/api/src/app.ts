@@ -284,6 +284,7 @@ import { createEmailSender, type EmailSender } from "./mailer/emailSender";
 import { createSmsSender, type SmsSender } from "./mailer/smsSender";
 import { registerInstantContactRoutes } from "./instantContactRoutes";
 import { activeBonusByJob, coverageBonusSuggestion, latestBonusByJob, registerJobBonusRoutes } from "./jobBonusRoutes";
+import { registerCalendarHubRoutes } from "./calendarHubRoutes";
 import { createMarketingContactSync, type MarketingContactSync } from "./mailer/brevoContacts";
 import { runShiftReminderSweep } from "./shiftReminderSweep";
 import {
@@ -4615,6 +4616,24 @@ export function buildApi(options: BuildApiOptions = {}) {
       },
       isOrganizationManager: async (userId, organizationId) =>
         (await requireActiveOrgMembership(userId, organizationId, ["ORGANIZATION_OWNER", "ORGANIZATION_ADMINISTRATOR"])) !== null
+    });
+    // CALENDAR HUB: worker / employer / staff calendar with a "today" list (read-only).
+    registerCalendarHubRoutes(app, {
+      prisma,
+      requireStaff: requireHrAuthority,
+      requireUser: async (request, reply) => {
+        const session = await authService.validateSession(readBearerToken(request.headers.authorization));
+        if (!session.authenticated || !session.user) {
+          reply.code(401).send({ error: "RWOS_CALENDAR_HUB_DENIED", message: "Authentication is required." });
+          return null;
+        }
+        return session.user.id;
+      },
+      listActiveOrganizationIds: async (userId) =>
+        (await membershipService.listMemberships(userId)).filter((m) => m.status === "active").map((m) => m.organizationId),
+      placeHoldingStatuses: PLACE_HOLDING_ASSIGNMENT_STATUSES,
+      remainingOpenings,
+      timezone: options.countryTimezone
     });
   }
 

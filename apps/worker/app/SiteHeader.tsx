@@ -60,7 +60,7 @@ export function SiteHeader() {
               <>
                 {/* Signed-in pages grouped, so the home page keeps its space for "Find work near you". */}
                 <MenuGroup label={nav("عملي", "Mon travail", "My work")}>
-                  <a href="/jobs-calendar" onClick={close}>{nav("تقويم الوظائف", "Calendrier des emplois", "Jobs calendar")}</a>
+                  <a href="/jobs-calendar" onClick={close}>{nav("تقويمي", "Mon calendrier", "My calendar")}</a>
                   <a href="/offers" onClick={close}>{nav("العروض", "Offres", "Offers")}</a>
                   <a href="/schedule" onClick={close}>{nav("جدولي", "Mon horaire", "My schedule")}</a>
                   <a href="/timesheets" onClick={close}>{nav("سجلات الدوام", "Feuilles de temps", "Timesheets")}</a>

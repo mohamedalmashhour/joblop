@@ -1,14 +1,15 @@
 import type { PageText } from "../../i18n/pageTextCore";
 
-// Copy for the staff coverage calendar (/calendar/coverage).
+// Copy for the staff calendar (/calendar/job-coverage): jobs with coverage and bonuses, plus
+// cancellations, disputes, payouts, pay runs and the "Today" list from the calendar hub.
 
 const en = {
   eyebrow: "Joblop / Operations",
-  title: "Coverage calendar",
-  lede: "Every job on one calendar: open, partly filled or full, how many places are left, who accepted, and the pay. Act early on jobs that still need workers.",
-  loading: "Loading the coverage calendar.",
+  title: "Staff calendar",
+  lede: "Everything on one calendar: jobs and how full they are, bonuses, cancellations, disputes, payouts and pay runs. Start with Today: it lists what needs attention now.",
+  loading: "Loading the staff calendar.",
   denied: "Your session has ended or this account has no HR access.",
-  error: "The coverage calendar could not be reached.",
+  error: "The staff calendar could not be reached.",
   previous: "Previous month",
   next: "Next month",
   today: "Today",
@@ -78,18 +79,71 @@ const en = {
   bonusErrorOverShare: "This is more than Joblop's share for this job. Lower the amount, or tick \"Urgent\" to allow it.",
   bonusErrorActive: "This job already has an active bonus. Cancel it first, then try again.",
   bonusErrorDenied: "Your session has ended or this account cannot change bonuses.",
-  bonusErrorGeneric: "The bonus could not be saved. Please try again."
+  bonusErrorGeneric: "The bonus could not be saved. Please try again.",
+  todayTitle: "Today: needs attention",
+  todayEmpty: "Nothing needs attention right now.",
+  todayLoading: "Loading what needs attention.",
+  hubError: "Cancellations, disputes, payouts and pay runs could not be loaded. Jobs are still shown.",
+  severity: { urgent: "Urgent", attention: "Attention", info: "Info" } as Readonly<Record<string, string>>,
+  filtersTitle: "Show on the calendar",
+  layers: {
+    jobs: "Jobs",
+    needsWorkers: "Needs workers",
+    bonuses: "Bonuses",
+    cancellations: "Cancellations",
+    disputes: "Disputes",
+    pay: "Payouts & pay runs"
+  } as Readonly<Record<string, string>>,
+  types: {
+    cancellation: "Cancellation",
+    dispute: "Dispute",
+    payout: "Payout",
+    pay_run: "Pay run"
+  } as Readonly<Record<string, string>>,
+  typeLegend: {
+    cancellation: "Cancelled (struck through)",
+    dispute: "Open dispute",
+    payout: "Payout or pay run"
+  } as Readonly<Record<string, string>>,
+  statuses: {
+    scheduled: "Scheduled",
+    pending: "Pending",
+    sent: "Sent",
+    paid: "Paid",
+    failed: "Failed",
+    open: "Open",
+    under_review: "Under review",
+    resolved: "Resolved",
+    closed: "Closed",
+    cancelled: "Cancelled",
+    withdrawn: "Withdrawn",
+    draft: "Draft",
+    approved: "Approved",
+    processing: "Processing",
+    completed: "Completed"
+  } as Readonly<Record<string, string>>,
+  amount: "Amount",
+  openDetail: {
+    cancellation: "Open job",
+    dispute: "Open disputes",
+    payout: "Open payouts",
+    pay_run: "Open payroll"
+  } as Readonly<Record<string, string>>,
+  open: "Open",
+  dayItems: (count: number) => (count === 1 ? "1 item" : `${count} items`),
+  noItems: "Nothing on this day.",
+  hiddenByFilters: "Items on this day are hidden by the filters above."
 };
 
 export type CoverageText = typeof en;
 
 const fr: CoverageText = {
   eyebrow: "Joblop / Opérations",
-  title: "Calendrier de couverture",
-  lede: "Tous les postes sur un seul calendrier : ouverts, partiellement pourvus ou complets, les places restantes, les travailleurs qui ont accepté et la rémunération. Agissez tôt pour les postes qui manquent encore de travailleurs.",
-  loading: "Chargement du calendrier de couverture.",
+  title: "Calendrier du personnel",
+  lede: "Tout sur un seul calendrier : les postes et leur taux de remplissage, les primes, les annulations, les litiges, les versements et les cycles de paie. Commencez par Aujourd’hui : on y voit ce qui demande votre attention.",
+  loading: "Chargement du calendrier du personnel.",
   denied: "Votre session a pris fin ou ce compte n’a pas d’accès RH.",
-  error: "Le calendrier de couverture est inaccessible.",
+  error: "Le calendrier du personnel est inaccessible.",
   previous: "Mois précédent",
   next: "Mois suivant",
   today: "Aujourd’hui",
@@ -161,16 +215,69 @@ const fr: CoverageText = {
   bonusErrorOverShare: "C’est plus que la part de Joblop pour ce poste. Baissez le montant ou cochez « Urgent » pour l’autoriser.",
   bonusErrorActive: "Ce poste a déjà une prime active. Annulez-la d’abord, puis réessayez.",
   bonusErrorDenied: "Votre session a pris fin ou ce compte ne peut pas modifier les primes.",
-  bonusErrorGeneric: "La prime n’a pas pu être enregistrée. Veuillez réessayer."
+  bonusErrorGeneric: "La prime n’a pas pu être enregistrée. Veuillez réessayer.",
+  todayTitle: "Aujourd’hui : à surveiller",
+  todayEmpty: "Rien ne demande votre attention pour le moment.",
+  todayLoading: "Chargement des points à surveiller.",
+  hubError: "Les annulations, litiges, versements et cycles de paie n’ont pas pu être chargés. Les postes restent affichés.",
+  severity: { urgent: "Urgent", attention: "Attention", info: "Info" },
+  filtersTitle: "Afficher sur le calendrier",
+  layers: {
+    jobs: "Postes",
+    needsWorkers: "Travailleurs requis",
+    bonuses: "Primes",
+    cancellations: "Annulations",
+    disputes: "Litiges",
+    pay: "Versements et paie"
+  },
+  types: {
+    cancellation: "Annulation",
+    dispute: "Litige",
+    payout: "Versement",
+    pay_run: "Cycle de paie"
+  },
+  typeLegend: {
+    cancellation: "Annulé (barré)",
+    dispute: "Litige ouvert",
+    payout: "Versement ou cycle de paie"
+  },
+  statuses: {
+    scheduled: "Planifié",
+    pending: "En attente",
+    sent: "Envoyé",
+    paid: "Payé",
+    failed: "Échoué",
+    open: "Ouvert",
+    under_review: "En révision",
+    resolved: "Résolu",
+    closed: "Fermé",
+    cancelled: "Annulé",
+    withdrawn: "Retiré",
+    draft: "Brouillon",
+    approved: "Approuvé",
+    processing: "En traitement",
+    completed: "Terminé"
+  },
+  amount: "Montant",
+  openDetail: {
+    cancellation: "Ouvrir le poste",
+    dispute: "Ouvrir les litiges",
+    payout: "Ouvrir les versements",
+    pay_run: "Ouvrir la paie"
+  },
+  open: "Ouvrir",
+  dayItems: (count) => (count <= 1 ? `${count} élément` : `${count} éléments`),
+  noItems: "Rien ce jour-là.",
+  hiddenByFilters: "Les éléments de ce jour sont masqués par les filtres ci-dessus."
 };
 
 const ar: CoverageText = {
   eyebrow: "Joblop / العمليات",
-  title: "تقويم التغطية",
-  lede: "كل الوظائف في تقويم واحد: مفتوحة أو مشغولة جزئيًا أو مكتملة، وعدد الأماكن المتبقية، ومن قبِل من العمال، والأجر. تصرّف مبكرًا مع الوظائف التي ما زالت تحتاج إلى عمال.",
-  loading: "جارٍ تحميل تقويم التغطية.",
+  title: "تقويم الموظفين",
+  lede: "كل شيء في تقويم واحد: الوظائف ومدى اكتمالها، والمكافآت، والإلغاءات، والنزاعات، والدفعات، ودورات الرواتب. ابدأ بقسم اليوم: فيه ما يحتاج إلى انتباهك الآن.",
+  loading: "جارٍ تحميل تقويم الموظفين.",
   denied: "انتهت جلستك أو لا يملك هذا الحساب صلاحية الموارد البشرية.",
-  error: "تعذّر الوصول إلى تقويم التغطية.",
+  error: "تعذّر الوصول إلى تقويم الموظفين.",
   previous: "الشهر السابق",
   next: "الشهر التالي",
   today: "اليوم",
@@ -239,7 +346,60 @@ const ar: CoverageText = {
   bonusErrorOverShare: "هذا أكثر من حصة Joblop في هذه الوظيفة. خفّض المبلغ أو اختر «عاجل» للسماح به.",
   bonusErrorActive: "لهذه الوظيفة مكافأة نشطة بالفعل. ألغِها أولًا ثم حاول مرة أخرى.",
   bonusErrorDenied: "انتهت جلستك أو لا يستطيع هذا الحساب تعديل المكافآت.",
-  bonusErrorGeneric: "تعذّر حفظ المكافأة. حاول مرة أخرى."
+  bonusErrorGeneric: "تعذّر حفظ المكافأة. حاول مرة أخرى.",
+  todayTitle: "اليوم: ما يحتاج إلى انتباه",
+  todayEmpty: "لا شيء يحتاج إلى انتباهك الآن.",
+  todayLoading: "جارٍ تحميل ما يحتاج إلى انتباه.",
+  hubError: "تعذّر تحميل الإلغاءات والنزاعات والدفعات ودورات الرواتب. ما زالت الوظائف معروضة.",
+  severity: { urgent: "عاجل", attention: "انتباه", info: "معلومة" },
+  filtersTitle: "اعرض في التقويم",
+  layers: {
+    jobs: "الوظائف",
+    needsWorkers: "تحتاج إلى عمال",
+    bonuses: "المكافآت",
+    cancellations: "الإلغاءات",
+    disputes: "النزاعات",
+    pay: "الدفعات والرواتب"
+  },
+  types: {
+    cancellation: "إلغاء",
+    dispute: "نزاع",
+    payout: "دفعة",
+    pay_run: "دورة رواتب"
+  },
+  typeLegend: {
+    cancellation: "ملغى (مشطوب)",
+    dispute: "نزاع مفتوح",
+    payout: "دفعة أو دورة رواتب"
+  },
+  statuses: {
+    scheduled: "مجدولة",
+    pending: "معلّقة",
+    sent: "مُرسلة",
+    paid: "مدفوعة",
+    failed: "فشلت",
+    open: "مفتوح",
+    under_review: "قيد المراجعة",
+    resolved: "تمت تسويته",
+    closed: "مغلق",
+    cancelled: "ملغى",
+    withdrawn: "مسحوب",
+    draft: "مسودة",
+    approved: "معتمد",
+    processing: "قيد المعالجة",
+    completed: "مكتمل"
+  },
+  amount: "المبلغ",
+  openDetail: {
+    cancellation: "فتح الوظيفة",
+    dispute: "فتح النزاعات",
+    payout: "فتح الدفعات",
+    pay_run: "فتح الرواتب"
+  },
+  open: "فتح",
+  dayItems: (count) => `${count} عنصر`,
+  noItems: "لا شيء في هذا اليوم.",
+  hiddenByFilters: "عناصر هذا اليوم مخفية بسبب عوامل التصفية أعلاه."
 };
 
 export const coverageText = { en, fr, ar } satisfies PageText<CoverageText>;

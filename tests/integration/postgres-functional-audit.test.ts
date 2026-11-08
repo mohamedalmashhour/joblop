@@ -558,5 +558,47 @@ suite("worker journey and payout guards", () => {
       expect(pending.json().offer).toBeNull();
       expect(await openJobBonus(employer.token, job.id)).toBeNull();
     });
+
+    it("calendar hub: the worker sees an available job then their shift; staff and the employer see the job", async () => {
+      const employer = await makeEmployer();
+      const worker = await makeWorker("hub-w");
+      const { job } = await makeJob({ startAt: new Date(Date.now() + 3 * HOUR), endAt: new Date(Date.now() + 9 * HOUR), openClaim: true });
+      const window = `from=${encodeURIComponent(new Date(Date.now() - HOUR).toISOString())}&to=${encodeURIComponent(new Date(Date.now() + 24 * HOUR).toISOString())}`;
+      type Item = { id: string; type: string; status: string | null; subtitle: string | null; amountMinor: number | null; placesLeft: number | null; jobRequestId: string | null; refId: string | null };
+      const hub = async (path: string, token: string) => {
+        const res = await app.inject({ method: "GET", url: `${path}?${window}`, headers: auth(token) });
+        expect(res.statusCode, res.body).toBe(200);
+        const body = res.json() as { items: Item[]; today: { type: string; jobRequestId: string | null }[]; from: string; to: string };
+        return { ...body, mine: body.items.filter((i) => i.jobRequestId === job.id) };
+      };
+
+      const before = await hub("/worker/calendar-hub", worker.token);
+      expect(before.mine).toHaveLength(1);
+      expect(before.mine[0]).toMatchObject({ type: "available_job", amountMinor: 2500, placesLeft: 1 }); // worker pay only
+
+      const claimed = await app.inject({ method: "POST", url: `/marketplace/jobs/${job.id}/claim`, headers: auth(worker.token) });
+      expect(claimed.statusCode, claimed.body).toBe(201);
+      const after = await hub("/worker/calendar-hub", worker.token);
+      expect(after.mine.map((i) => i.type)).toEqual(["my_shift"]);
+      expect(after.mine[0]?.refId).toBe(claimed.json().assignmentId);
+      expect(after.today.some((t) => t.type === "my_shift" && t.jobRequestId === job.id)).toBe(true);
+
+      const staffView = await hub("/platform/calendar-hub", staff.token);
+      const staffJob = staffView.mine.find((i) => i.type === "job");
+      expect(staffJob).toMatchObject({ status: "full", placesLeft: 0 });
+      expect(staffJob?.subtitle).toContain("AuditCare");
+      expect(staffJob?.subtitle).toContain("Audit Worker");
+
+      const employerView = await hub("/employer/calendar-hub", employer.token);
+      const employerJob = employerView.mine.find((i) => i.type === "job");
+      expect(employerJob).toMatchObject({ status: "full", subtitle: "Audit" }); // first name only
+      expect(employerJob?.amountMinor).not.toBe(2500); // never worker pay
+
+      for (const path of ["/worker/calendar-hub", "/employer/calendar-hub", "/platform/calendar-hub"]) {
+        expect((await app.inject({ method: "GET", url: path })).statusCode).toBe(401);
+      }
+      expect((await app.inject({ method: "GET", url: "/platform/calendar-hub", headers: auth(worker.token) })).statusCode).toBe(403);
+      expect((await app.inject({ method: "GET", url: "/employer/calendar-hub", headers: auth(worker.token) })).statusCode).toBe(403);
+    });
   });
 });

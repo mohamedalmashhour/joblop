@@ -985,4 +985,70 @@ describe("open jobs calendar transport", () => {
     expect(await createMobileSessionTransport({ apiOrigin: origin, vault: vault(), fetch: noFetch }).claimOpenJob(jobId)).toEqual({ status: "denied" });
     expect(noFetch).not.toHaveBeenCalled();
   });
+
+  it("loads the worker calendar hub with the Bearer token and keeps only well-formed items", async () => {
+    const shift = {
+      id: "shift:a1",
+      type: "my_shift",
+      startAt: "2026-11-10T13:00:00.000Z",
+      endAt: "2026-11-10T21:00:00.000Z",
+      title: "Cook",
+      subtitle: "Laval",
+      status: "pending_start",
+      amountMinor: null,
+      bonus: null,
+      placesLeft: null,
+      placesAsked: null,
+      placesTaken: null,
+      jobRequestId: "job-1",
+      refId: "a1"
+    };
+    const fetchMock = vi.fn(async () =>
+      response(200, {
+        items: [
+          shift,
+          { ...shift, id: "job:2", type: "available_job", amountMinor: 2400, placesLeft: 2, bonus: { kind: "one_time", amountMinor: 5000 } },
+          { ...shift, id: "job:3", type: "available_job", bonus: { kind: "mystery", amountMinor: 5 } },
+          { type: "pay_day", startAt: "2026-11-14T00:00:00.000Z" },
+          { ...shift, id: "bad-date", startAt: "not a date" }
+        ],
+        today: [
+          { type: "shift_soon", title: "Shift tomorrow 8:00", detail: "Cook, Laval", severity: "attention", startAt: "2026-11-10T13:00:00.000Z", jobRequestId: null, refId: "a1" },
+          { type: "x", title: "", severity: "urgent" },
+          { type: "y", title: "Odd severity", severity: "panic" }
+        ]
+      })
+    );
+    const transport = createMobileSessionTransport({ apiOrigin: origin, vault: withSession(), fetch: fetchMock });
+    const result = await transport.getCalendarHub({ from: "2026-11-01T00:00:00.000Z", to: "2026-12-01T00:00:00.000Z" });
+    expect(result.status).toBe("ready");
+    if (result.status === "ready") {
+      expect(result.items).toHaveLength(3);
+      expect(result.items[0]).toEqual(shift);
+      expect(result.items[1]?.bonus).toEqual({ kind: "one_time", amountMinor: 5000 });
+      expect(result.items[1]?.placesLeft).toBe(2);
+      expect(result.items[2]?.bonus).toBeNull();
+      expect(result.today).toHaveLength(2);
+      expect(result.today[0]?.severity).toBe("attention");
+      expect(result.today[1]?.severity).toBe("info");
+    }
+    expect(fetchMock).toHaveBeenCalledWith(
+      `${origin}/worker/calendar-hub?from=${encodeURIComponent("2026-11-01T00:00:00.000Z")}&to=${encodeURIComponent("2026-12-01T00:00:00.000Z")}`,
+      expect.objectContaining({ method: "GET", headers: expect.objectContaining({ authorization: "Bearer session-token-jjjjjjjjjjjj" }) })
+    );
+  });
+
+  it("maps signed-out, 401, 403, network failure and server errors for the calendar hub", async () => {
+    const window = { from: "2026-11-01T00:00:00.000Z", to: "2026-12-01T00:00:00.000Z" };
+    const noFetch = vi.fn();
+    expect((await createMobileSessionTransport({ apiOrigin: origin, vault: vault(), fetch: noFetch }).getCalendarHub(window)).status).toBe("denied");
+    expect(noFetch).not.toHaveBeenCalled();
+    const make = (fetchImpl: () => Promise<Response>) => createMobileSessionTransport({ apiOrigin: origin, vault: withSession(), fetch: vi.fn(fetchImpl) });
+    expect((await make(async () => response(401, {})).getCalendarHub(window)).status).toBe("denied");
+    expect((await make(async () => response(403, {})).getCalendarHub(window)).status).toBe("denied");
+    expect((await make(async () => { throw new TypeError("Network request failed"); }).getCalendarHub(window)).status).toBe("offline");
+    expect((await make(async () => response(500, {})).getCalendarHub(window)).status).toBe("error");
+    expect((await make(async () => response(200, { nope: [] })).getCalendarHub(window)).status).toBe("error");
+    expect(await make(async () => response(200, { items: [] })).getCalendarHub(window)).toEqual({ status: "ready", items: [], today: [] });
+  });
 });

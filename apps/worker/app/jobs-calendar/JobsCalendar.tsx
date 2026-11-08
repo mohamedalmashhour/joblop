@@ -3,22 +3,50 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useLocale } from "../i18n/LocaleProvider";
 
-// Shared jobs calendar: every signed-in worker sees the same open Joblop jobs, picks a day,
-// picks a job and accepts it. The server is authoritative for what is open and for the claim
-// itself; this component only displays and asks.
+// "My calendar" hub: one calendar that shows the worker everything with a date on it —
+// open Joblop jobs they can accept (bonus ★), their confirmed shifts, cancelled shifts and pay
+// days — plus a "Today" panel of things that need attention now. The server is authoritative for
+// every item and for the claim itself; this component only displays and asks.
 
-type OpenJob = Readonly<{
-  jobRequestId: string;
-  role: string;
-  areaLabel: string;
+type Bonus = Readonly<{ kind: string; amountMinor: number }>;
+
+type HubItem = Readonly<{
+  id: string;
+  type: string;
   startAt: string;
-  endAt: string;
-  urgency: string;
-  placesLeft: number;
-  workerRateMinor: number | null;
-  // Extra pay Joblop added to fill the job faster (absent or null when there is none).
-  bonus?: Readonly<{ kind: string; amountMinor: number }> | null;
+  endAt: string | null;
+  title: string;
+  subtitle: string | null;
+  status: string | null;
+  amountMinor: number | null;
+  bonus: Bonus | null;
+  placesLeft: number | null;
+  placesAsked: number | null;
+  placesTaken: number | null;
+  jobRequestId: string | null;
+  refId: string | null;
 }>;
+
+type TodayItem = Readonly<{
+  type: string;
+  title: string;
+  detail: string | null;
+  severity: "info" | "attention" | "urgent";
+  startAt: string | null;
+  jobRequestId: string | null;
+  refId: string | null;
+}>;
+
+type Layer = "available" | "shift" | "pay" | "cancelled";
+const LAYERS: readonly Layer[] = ["available", "shift", "pay", "cancelled"];
+
+function layerOf(type: string): Layer | null {
+  if (type === "available_job") return "available";
+  if (type === "my_shift") return "shift";
+  if (type === "pay_day") return "pay";
+  if (type === "cancelled_shift") return "cancelled";
+  return null;
+}
 
 type Lang = "en" | "fr" | "ar";
 
@@ -31,28 +59,58 @@ type Notice =
 
 const TEXT = {
   en: {
-    title: "Jobs calendar",
-    sub: "Pick a day to see the Joblop jobs you can take. Accept one and it goes straight to your schedule.",
+    title: "My calendar",
+    sub: "Everything in one place: jobs you can accept, your shifts, pay days and cancellations. Tap a day to see it.",
     prev: "Previous month",
     next: "Next month",
     today: "Today",
-    loading: "Loading jobs…",
-    loadError: "We could not load the jobs. Please try again.",
+    todayTitle: "Today",
+    todayEmpty: "Nothing needs your attention right now.",
+    showDay: "Show this day",
+    loading: "Loading your calendar…",
+    loadError: "We could not load your calendar. Please try again.",
     retry: "Try again",
-    signedOut: "Create a free account to see the jobs calendar",
+    signedOut: "Create a free account to see your calendar",
     signedOutCta: "Create my free account",
-    pickDay: "Tap a day to see its jobs.",
-    noJobsDay: "No jobs available on this day.",
-    noJobsMonth: "No jobs available this month yet. Check the next month or come back soon.",
-    jobsOn: (n: number, day: string) => (n === 1 ? `1 job on ${day}` : `${n} jobs on ${day}`),
-    dayCount: (n: number) => (n === 1 ? "1 job" : `${n} jobs`),
+    pickDay: "Tap a day to see what is on it.",
+    nothingDay: "Nothing on this day.",
+    nothingMonth: "Nothing on your calendar this month yet. Check the next month or come back soon.",
+    itemsOn: (n: number, day: string) => (n === 1 ? `1 item on ${day}` : `${n} items on ${day}`),
+    dayCount: (n: number) => (n === 1 ? "1 job to accept" : `${n} jobs to accept`),
+    dayShift: "you work",
+    dayPay: "pay day",
+    dayCancelled: "cancelled shift",
     places: (n: number) => (n === 1 ? "1 place left" : `${n} places left`),
-    urgent: "Urgent",
     perHour: (amount: string) => `$${amount}/h`,
+    money: (amount: string) => `$${amount}`,
     bonusHourly: (amount: string) => `+ $${amount}/h bonus`,
     bonusTransport: (amount: string) => `+ $${amount} transport`,
     bonusOneTime: (amount: string) => `+ $${amount} bonus`,
     bonusDay: "has a bonus job",
+    layers: { available: "Available", shift: "My shifts", pay: "Pay", cancelled: "Cancelled" } as Record<Layer, string>,
+    filterLabel: "Show on the calendar",
+    legendTitle: "Legend",
+    legend: {
+      available: "Jobs you can accept (number = how many)",
+      bonus: "Job with a bonus",
+      shift: "My confirmed shift",
+      pay: "Pay day",
+      cancelled: "Cancelled shift"
+    },
+    kind: { available: "Job to accept", shift: "My shift", pay: "Pay day", cancelled: "Cancelled" } as Record<Layer, string>,
+    shiftStatus: {
+      pending_start: "Confirmed",
+      checked_in: "Checked in",
+      checked_out: "Checked out",
+      completed: "Completed",
+      missed: "Missed",
+      exception: "Needs review",
+      other: "Confirmed"
+    } as Record<string, string>,
+    payStatus: { scheduled: "Scheduled", sent: "Sent", paid: "Paid", held: "On hold", other: "Planned" } as Record<string, string>,
+    cancelledStatus: "This shift was cancelled.",
+    openShift: "Open my schedule",
+    openPay: "Open my pay",
     accept: "Accept this job",
     accepting: "Accepting…",
     details: "View details",
@@ -80,28 +138,58 @@ const TEXT = {
     } as Record<string, string>
   },
   fr: {
-    title: "Calendrier des emplois",
-    sub: "Choisissez une journée pour voir les emplois Joblop disponibles. Acceptez-en un et il s’ajoute directement à votre horaire.",
+    title: "Mon calendrier",
+    sub: "Tout au même endroit : les emplois à accepter, vos quarts, vos jours de paie et les annulations. Touchez une journée pour la voir.",
     prev: "Mois précédent",
     next: "Mois suivant",
     today: "Aujourd’hui",
-    loading: "Chargement des emplois…",
-    loadError: "Impossible de charger les emplois. Veuillez réessayer.",
+    todayTitle: "Aujourd’hui",
+    todayEmpty: "Rien ne demande votre attention pour le moment.",
+    showDay: "Voir cette journée",
+    loading: "Chargement de votre calendrier…",
+    loadError: "Impossible de charger votre calendrier. Veuillez réessayer.",
     retry: "Réessayer",
-    signedOut: "Créez un compte gratuit pour voir le calendrier des emplois",
+    signedOut: "Créez un compte gratuit pour voir votre calendrier",
     signedOutCta: "Créer mon compte gratuit",
-    pickDay: "Touchez une journée pour voir ses emplois.",
-    noJobsDay: "Aucun emploi disponible cette journée.",
-    noJobsMonth: "Aucun emploi disponible ce mois-ci pour l’instant. Regardez le mois suivant ou revenez bientôt.",
-    jobsOn: (n: number, day: string) => (n === 1 ? `1 emploi le ${day}` : `${n} emplois le ${day}`),
-    dayCount: (n: number) => (n === 1 ? "1 emploi" : `${n} emplois`),
+    pickDay: "Touchez une journée pour voir ce qu’il y a.",
+    nothingDay: "Rien cette journée.",
+    nothingMonth: "Rien dans votre calendrier ce mois-ci pour l’instant. Regardez le mois suivant ou revenez bientôt.",
+    itemsOn: (n: number, day: string) => (n === 1 ? `1 élément le ${day}` : `${n} éléments le ${day}`),
+    dayCount: (n: number) => (n === 1 ? "1 emploi à accepter" : `${n} emplois à accepter`),
+    dayShift: "vous travaillez",
+    dayPay: "jour de paie",
+    dayCancelled: "quart annulé",
     places: (n: number) => (n === 1 ? "1 place restante" : `${n} places restantes`),
-    urgent: "Urgent",
     perHour: (amount: string) => `${amount} $/h`,
+    money: (amount: string) => `${amount} $`,
     bonusHourly: (amount: string) => `+ ${amount} $/h de prime`,
     bonusTransport: (amount: string) => `+ ${amount} $ transport`,
     bonusOneTime: (amount: string) => `+ ${amount} $ de prime`,
     bonusDay: "emploi avec prime",
+    layers: { available: "Disponibles", shift: "Mes quarts", pay: "Paie", cancelled: "Annulés" } as Record<Layer, string>,
+    filterLabel: "Afficher dans le calendrier",
+    legendTitle: "Légende",
+    legend: {
+      available: "Emplois à accepter (nombre = combien)",
+      bonus: "Emploi avec prime",
+      shift: "Mon quart confirmé",
+      pay: "Jour de paie",
+      cancelled: "Quart annulé"
+    },
+    kind: { available: "Emploi à accepter", shift: "Mon quart", pay: "Jour de paie", cancelled: "Annulé" } as Record<Layer, string>,
+    shiftStatus: {
+      pending_start: "Confirmé",
+      checked_in: "Arrivée enregistrée",
+      checked_out: "Départ enregistré",
+      completed: "Terminé",
+      missed: "Manqué",
+      exception: "À vérifier",
+      other: "Confirmé"
+    } as Record<string, string>,
+    payStatus: { scheduled: "Prévu", sent: "Envoyé", paid: "Payé", held: "En attente", other: "Prévu" } as Record<string, string>,
+    cancelledStatus: "Ce quart a été annulé.",
+    openShift: "Ouvrir mon horaire",
+    openPay: "Ouvrir ma paie",
     accept: "Accepter cet emploi",
     accepting: "Acceptation…",
     details: "Voir les détails",
@@ -129,28 +217,58 @@ const TEXT = {
     } as Record<string, string>
   },
   ar: {
-    title: "تقويم الوظائف",
-    sub: "اختر يومًا لترى وظائف Joblop المتاحة. اقبل وظيفة وستُضاف مباشرة إلى جدولك.",
+    title: "تقويمي",
+    sub: "كل شيء في مكان واحد: وظائف يمكنك قبولها، نوباتك، أيام الدفع والإلغاءات. اضغط على يوم لتراه.",
     prev: "الشهر السابق",
     next: "الشهر التالي",
     today: "اليوم",
-    loading: "جارٍ تحميل الوظائف…",
-    loadError: "تعذّر تحميل الوظائف. حاول مرة أخرى.",
+    todayTitle: "اليوم",
+    todayEmpty: "لا شيء يحتاج انتباهك الآن.",
+    showDay: "اعرض هذا اليوم",
+    loading: "جارٍ تحميل تقويمك…",
+    loadError: "تعذّر تحميل تقويمك. حاول مرة أخرى.",
     retry: "حاول مرة أخرى",
-    signedOut: "أنشئ حسابًا مجانيًا لترى تقويم الوظائف",
+    signedOut: "أنشئ حسابًا مجانيًا لترى تقويمك",
     signedOutCta: "أنشئ حسابي المجاني",
-    pickDay: "اضغط على يوم لترى وظائفه.",
-    noJobsDay: "لا توجد وظائف متاحة في هذا اليوم.",
-    noJobsMonth: "لا توجد وظائف متاحة هذا الشهر بعد. انظر الشهر التالي أو عد قريبًا.",
-    jobsOn: (n: number, day: string) => (n === 1 ? `وظيفة واحدة يوم ${day}` : `${n} وظائف يوم ${day}`),
-    dayCount: (n: number) => (n === 1 ? "وظيفة واحدة" : `${n} وظائف`),
+    pickDay: "اضغط على يوم لترى ما فيه.",
+    nothingDay: "لا شيء في هذا اليوم.",
+    nothingMonth: "لا شيء في تقويمك هذا الشهر بعد. انظر الشهر التالي أو عد قريبًا.",
+    itemsOn: (n: number, day: string) => (n === 1 ? `عنصر واحد يوم ${day}` : `${n} عناصر يوم ${day}`),
+    dayCount: (n: number) => (n === 1 ? "وظيفة واحدة للقبول" : `${n} وظائف للقبول`),
+    dayShift: "لديك نوبة",
+    dayPay: "يوم دفع",
+    dayCancelled: "نوبة ملغاة",
     places: (n: number) => (n === 1 ? "بقي مكان واحد" : `بقي ${n} أماكن`),
-    urgent: "عاجل",
     perHour: (amount: string) => `${amount}$ / ساعة`,
+    money: (amount: string) => `${amount}$`,
     bonusHourly: (amount: string) => `+ ${amount}$ مكافأة في الساعة`,
     bonusTransport: (amount: string) => `+ ${amount}$ للمواصلات`,
     bonusOneTime: (amount: string) => `+ ${amount}$ مكافأة`,
     bonusDay: "فيه وظيفة بمكافأة",
+    layers: { available: "المتاحة", shift: "نوباتي", pay: "الدفع", cancelled: "الملغاة" } as Record<Layer, string>,
+    filterLabel: "اعرض في التقويم",
+    legendTitle: "دليل الرموز",
+    legend: {
+      available: "وظائف يمكنك قبولها (الرقم = عددها)",
+      bonus: "وظيفة بمكافأة",
+      shift: "نوبتي المؤكدة",
+      pay: "يوم الدفع",
+      cancelled: "نوبة ملغاة"
+    },
+    kind: { available: "وظيفة للقبول", shift: "نوبتي", pay: "يوم الدفع", cancelled: "ملغاة" } as Record<Layer, string>,
+    shiftStatus: {
+      pending_start: "مؤكدة",
+      checked_in: "تم تسجيل الحضور",
+      checked_out: "تم تسجيل الانصراف",
+      completed: "مكتملة",
+      missed: "فائتة",
+      exception: "بحاجة إلى مراجعة",
+      other: "مؤكدة"
+    } as Record<string, string>,
+    payStatus: { scheduled: "مجدول", sent: "مُرسل", paid: "مدفوع", held: "معلّق", other: "مخطط" } as Record<string, string>,
+    cancelledStatus: "أُلغيت هذه النوبة.",
+    openShift: "افتح جدولي",
+    openPay: "افتح أجري",
     accept: "اقبل هذه الوظيفة",
     accepting: "جارٍ القبول…",
     details: "عرض التفاصيل",
@@ -179,6 +297,8 @@ const TEXT = {
   }
 };
 
+type Text = (typeof TEXT)[Lang];
+
 const ONBOARDING_REASONS = new Set(["not_a_worker", "worker_inactive"]);
 
 function dayKey(date: Date): string {
@@ -191,15 +311,15 @@ function intlLocale(lang: Lang): string {
   return lang === "ar" ? "ar-u-nu-latn" : lang === "fr" ? "fr-CA" : "en-CA";
 }
 
-function hasBonus(job: OpenJob): boolean {
-  return Boolean(job.bonus && job.bonus.amountMinor > 0);
+function hasBonus(item: HubItem): boolean {
+  return item.type === "available_job" && Boolean(item.bonus && item.bonus.amountMinor > 0);
 }
 
-function bonusLabel(job: OpenJob, t: (typeof TEXT)[Lang]): string | null {
-  if (!job.bonus || !(job.bonus.amountMinor > 0)) return null;
-  const amount = formatAmount(job.bonus.amountMinor);
-  if (job.bonus.kind === "hourly") return t.bonusHourly(amount);
-  if (job.bonus.kind === "transport") return t.bonusTransport(amount);
+function bonusLabel(item: HubItem, t: Text): string | null {
+  if (!item.bonus || !(item.bonus.amountMinor > 0)) return null;
+  const amount = formatAmount(item.bonus.amountMinor);
+  if (item.bonus.kind === "hourly") return t.bonusHourly(amount);
+  if (item.bonus.kind === "transport") return t.bonusTransport(amount);
   return t.bonusOneTime(amount);
 }
 
@@ -218,6 +338,18 @@ function monthCells(year: number, month: number): (Date | null)[] {
   return cells;
 }
 
+function isHubItem(value: unknown): value is HubItem {
+  if (!value || typeof value !== "object") return false;
+  const v = value as Record<string, unknown>;
+  return typeof v.id === "string" && typeof v.type === "string" && typeof v.startAt === "string" && typeof v.title === "string";
+}
+
+function isTodayItem(value: unknown): value is TodayItem {
+  if (!value || typeof value !== "object") return false;
+  const v = value as Record<string, unknown>;
+  return typeof v.title === "string" && typeof v.type === "string";
+}
+
 export function JobsCalendar() {
   const locale = useLocale();
   const lang: Lang = locale === "ar" ? "ar" : locale.startsWith("fr") ? "fr" : "en";
@@ -231,9 +363,11 @@ export function JobsCalendar() {
   });
   const [selected, setSelected] = useState<string | null>(() => dayKey(new Date()));
   const [status, setStatus] = useState<"loading" | "ready" | "signed_out" | "error">("loading");
-  const [jobs, setJobs] = useState<OpenJob[]>([]);
+  const [items, setItems] = useState<HubItem[]>([]);
+  const [todayItems, setTodayItems] = useState<TodayItem[]>([]);
+  const [shown, setShown] = useState<Record<Layer, boolean>>({ available: true, shift: true, pay: true, cancelled: true });
   const [reloadTick, setReloadTick] = useState(0);
-  const [confirming, setConfirming] = useState<OpenJob | null>(null);
+  const [confirming, setConfirming] = useState<HubItem | null>(null);
   const [busyId, setBusyId] = useState<string | null>(null);
   const [notices, setNotices] = useState<Record<string, Notice>>({});
   const [banner, setBanner] = useState<Notice | null>(null);
@@ -246,14 +380,17 @@ export function JobsCalendar() {
     const to = new Date(view.year, view.month + 1, 1);
     const qs = new URLSearchParams({ from: from.toISOString(), to: to.toISOString() });
     if (reloadTick === 0) setStatus("loading");
-    fetch(`/api/marketplace/open-jobs?${qs.toString()}`, { cache: "no-store" })
+    fetch(`/api/calendar-hub?${qs.toString()}`, { cache: "no-store" })
       .then(async (r) => {
         if (!active) return;
         if (r.status === 401) return setStatus("signed_out");
         if (!r.ok) return setStatus("error");
-        const body = (await r.json()) as { jobs?: OpenJob[] };
+        const body = (await r.json()) as { items?: unknown; today?: unknown };
         if (!active) return;
-        setJobs(Array.isArray(body.jobs) ? body.jobs.filter((j) => j.placesLeft > 0) : []);
+        const list = Array.isArray(body.items) ? body.items.filter(isHubItem) : [];
+        // An open job with no place left can't be accepted, so it is not shown.
+        setItems(list.filter((i) => i.type !== "available_job" || (i.placesLeft ?? 0) > 0));
+        setTodayItems(Array.isArray(body.today) ? body.today.filter(isTodayItem) : []);
         setStatus("ready");
       })
       .catch(() => active && setStatus("error"));
@@ -263,16 +400,18 @@ export function JobsCalendar() {
   }, [view, reloadTick]);
 
   const byDay = useMemo(() => {
-    const map = new Map<string, OpenJob[]>();
-    for (const job of jobs) {
-      const key = dayKey(new Date(job.startAt));
+    const map = new Map<string, HubItem[]>();
+    for (const item of items) {
+      const layer = layerOf(item.type);
+      if (!layer || !shown[layer]) continue;
+      const key = dayKey(new Date(item.startAt));
       const list = map.get(key) ?? [];
-      list.push(job);
+      list.push(item);
       map.set(key, list);
     }
     for (const list of map.values()) list.sort((a, b) => a.startAt.localeCompare(b.startAt));
     return map;
-  }, [jobs]);
+  }, [items, shown]);
 
   const cells = useMemo(() => monthCells(view.year, view.month), [view]);
   const weekdays = useMemo(() => {
@@ -284,37 +423,52 @@ export function JobsCalendar() {
     new Date(view.year, view.month, 1)
   );
 
-  const changeMonth = (delta: number) => {
-    const d = new Date(view.year, view.month + delta, 1);
-    const now = new Date();
-    const isCurrentMonth = d.getMonth() === now.getMonth() && d.getFullYear() === now.getFullYear();
-    setView({ year: d.getFullYear(), month: d.getMonth() });
-    setSelected(dayKey(isCurrentMonth ? now : d));
-    setBanner(null);
-    setStatus("loading");
-  };
+  const goToDate = useCallback(
+    (d: Date, selectKey?: string) => {
+      const now = new Date();
+      const isCurrentMonth = d.getMonth() === now.getMonth() && d.getFullYear() === now.getFullYear();
+      const sameView = d.getFullYear() === view.year && d.getMonth() === view.month;
+      if (!sameView) {
+        setView({ year: d.getFullYear(), month: d.getMonth() });
+        setStatus("loading");
+      }
+      setSelected(selectKey ?? dayKey(isCurrentMonth ? now : d));
+      setBanner(null);
+    },
+    [view]
+  );
+
+  const changeMonth = (delta: number) => goToDate(new Date(view.year, view.month + delta, 1));
+  const goToday = () => goToDate(new Date(), dayKey(new Date()));
 
   const timeFmt = useMemo(() => new Intl.DateTimeFormat(loc, { hour: "numeric", minute: "2-digit" }), [loc]);
   const dayFmt = useMemo(() => new Intl.DateTimeFormat(loc, { weekday: "long", day: "numeric", month: "long" }), [loc]);
 
+  const timeRange = (item: HubItem) =>
+    item.endAt
+      ? `${timeFmt.format(new Date(item.startAt))} – ${timeFmt.format(new Date(item.endAt))}`
+      : timeFmt.format(new Date(item.startAt));
+
   const accept = useCallback(
-    async (job: OpenJob) => {
+    async (item: HubItem) => {
+      const jobId = item.jobRequestId;
+      if (!jobId) return;
       setConfirming(null);
-      setBusyId(job.jobRequestId);
+      setBusyId(item.id);
       setBanner(null);
       let notice: Notice;
       try {
-        const r = await fetch(`/api/jobs/${encodeURIComponent(job.jobRequestId)}/claim`, { method: "POST" });
+        const r = await fetch(`/api/jobs/${encodeURIComponent(jobId)}/claim`, { method: "POST" });
         const body = (await r.json().catch(() => ({}))) as { error?: string; reasons?: unknown };
         if (r.status === 201) {
           notice = { kind: "accepted" };
-          setJobs((current) => current.filter((j) => j.jobRequestId !== job.jobRequestId));
+          setItems((current) => current.filter((i) => i.id !== item.id));
           setBanner(notice);
         } else if (r.status === 409 && body.error === "RWOS_CLASSIFICATION_ELECTION_REQUIRED") {
           notice = { kind: "election" };
         } else if (r.status === 409 || r.status === 404) {
           notice = { kind: "taken" };
-          setJobs((current) => current.filter((j) => j.jobRequestId !== job.jobRequestId));
+          setItems((current) => current.filter((i) => i.id !== item.id));
           setBanner(notice);
         } else if (r.status === 401) {
           setStatus("signed_out");
@@ -330,7 +484,7 @@ export function JobsCalendar() {
       } finally {
         setBusyId(null);
       }
-      setNotices((prev) => ({ ...prev, [job.jobRequestId]: notice }));
+      setNotices((prev) => ({ ...prev, [item.id]: notice }));
       if (notice.kind === "accepted" || notice.kind === "taken") reload();
     },
     [reload]
@@ -346,8 +500,9 @@ export function JobsCalendar() {
     return () => window.removeEventListener("keydown", onKey);
   }, [confirming]);
 
-  const selectedJobs = selected ? byDay.get(selected) ?? [] : [];
+  const selectedItems = selected ? byDay.get(selected) ?? [] : [];
   const selectedDate = selected ? new Date(`${selected}T12:00:00`) : null;
+  const visibleCount = Array.from(byDay.values()).reduce((n, list) => n + list.length, 0);
 
   return (
     <section className="jc" aria-labelledby="jc-title">
@@ -362,7 +517,53 @@ export function JobsCalendar() {
         </div>
       ) : (
         <>
+          {status === "ready" ? (
+            <div className="jc-todaybox" aria-labelledby="jc-today-title">
+              <h2 id="jc-today-title" className="jc-today-title">{t.todayTitle}</h2>
+              {todayItems.length === 0 ? <p className="jc-today-empty">{t.todayEmpty}</p> : null}
+              {todayItems.length > 0 ? (
+                <ul className="jc-today-list">
+                  {todayItems.map((item, i) => (
+                    <li key={`${item.type}-${item.refId ?? item.jobRequestId ?? i}-${i}`} className={`jc-ti jc-ti-${item.severity}`}>
+                      <div className="jc-ti-text">
+                        <strong>{item.title}</strong>
+                        {item.detail ? <span>{item.detail}</span> : null}
+                      </div>
+                      {item.startAt ? (
+                        <button
+                          type="button"
+                          className="jc-ti-go"
+                          onClick={() => {
+                            const d = new Date(item.startAt as string);
+                            goToDate(d, dayKey(d));
+                          }}
+                        >
+                          {t.showDay}
+                        </button>
+                      ) : null}
+                    </li>
+                  ))}
+                </ul>
+              ) : null}
+            </div>
+          ) : null}
+
           {banner ? <BannerView notice={banner} t={t} onClose={() => setBanner(null)} /> : null}
+
+          <div className="jc-chips" role="group" aria-label={t.filterLabel}>
+            {LAYERS.map((layer) => (
+              <button
+                key={layer}
+                type="button"
+                className={`jc-chip jc-chip-${layer}${shown[layer] ? " jc-chip-on" : ""}`}
+                aria-pressed={shown[layer]}
+                onClick={() => setShown((prev) => ({ ...prev, [layer]: !prev[layer] }))}
+              >
+                <span className="jc-chip-dot" aria-hidden="true" />
+                {t.layers[layer]}
+              </button>
+            ))}
+          </div>
 
           <div className="jc-cal">
             <div className="jc-head">
@@ -370,6 +571,7 @@ export function JobsCalendar() {
                 <span aria-hidden="true">{lang === "ar" ? "›" : "‹"}</span>
               </button>
               <h2 className="jc-month" aria-live="polite">{monthLabel}</h2>
+              <button type="button" className="jc-todaybtn" onClick={goToday}>{t.today}</button>
               <button type="button" className="jc-nav" aria-label={t.next} onClick={() => changeMonth(1)}>
                 <span aria-hidden="true">{lang === "ar" ? "‹" : "›"}</span>
               </button>
@@ -381,8 +583,12 @@ export function JobsCalendar() {
               {cells.map((date, i) => {
                 if (!date) return <div key={`b${i}`} className="jc-cell jc-blank" aria-hidden="true" />;
                 const key = dayKey(date);
-                const count = byDay.get(key)?.length ?? 0;
-                const dayHasBonus = (byDay.get(key) ?? []).some(hasBonus);
+                const dayItems = byDay.get(key) ?? [];
+                const count = dayItems.filter((x) => x.type === "available_job").length;
+                const dayHasBonus = dayItems.some(hasBonus);
+                const hasShift = dayItems.some((x) => x.type === "my_shift");
+                const hasPay = dayItems.some((x) => x.type === "pay_day");
+                const hasCancelled = dayItems.some((x) => x.type === "cancelled_shift");
                 const isToday = key === todayKey;
                 const isPast = key < todayKey;
                 const isSelected = key === selected;
@@ -391,8 +597,18 @@ export function JobsCalendar() {
                   isToday ? "jc-today" : "",
                   isPast ? "jc-past" : "",
                   isSelected ? "jc-selected" : "",
-                  count > 0 ? "jc-has" : ""
+                  hasShift ? "jc-has-shift" : ""
                 ].join(" ");
+                const label = [
+                  dayFmt.format(date),
+                  count > 0 ? t.dayCount(count) : "",
+                  dayHasBonus ? t.bonusDay : "",
+                  hasShift ? t.dayShift : "",
+                  hasPay ? t.dayPay : "",
+                  hasCancelled ? t.dayCancelled : ""
+                ]
+                  .filter(Boolean)
+                  .join(", ");
                 return (
                   <button
                     key={key}
@@ -400,7 +616,7 @@ export function JobsCalendar() {
                     className={cls}
                     aria-pressed={isSelected}
                     aria-current={isToday ? "date" : undefined}
-                    aria-label={`${dayFmt.format(date)}${count > 0 ? `, ${t.dayCount(count)}` : ""}${dayHasBonus ? `, ${t.bonusDay}` : ""}`}
+                    aria-label={label}
                     onClick={() => {
                       setSelected(key);
                       setBanner(null);
@@ -408,12 +624,24 @@ export function JobsCalendar() {
                   >
                     {dayHasBonus ? <span className="jc-star" aria-hidden="true">★</span> : null}
                     <span className="jc-num">{date.getDate()}</span>
-                    {count > 0 ? <span className="jc-badge">{count}</span> : <span className="jc-badge-empty" />}
+                    <span className="jc-marks" aria-hidden="true">
+                      {count > 0 ? <span className="jc-badge">{count}</span> : null}
+                      {hasShift ? <span className="jc-dot jc-dot-shift" /> : null}
+                      {hasPay ? <span className="jc-paychip">$</span> : null}
+                      {hasCancelled ? <span className="jc-dot jc-dot-cancelled" /> : null}
+                    </span>
                   </button>
                 );
               })}
             </div>
             {status === "loading" ? <p className="jc-note">{t.loading}</p> : null}
+            <div className="jc-legend" aria-label={t.legendTitle}>
+              <span><span className="jc-badge" aria-hidden="true">2</span> {t.legend.available}</span>
+              <span><span className="jc-star-inline" aria-hidden="true">★</span> {t.legend.bonus}</span>
+              <span><span className="jc-dot jc-dot-shift" aria-hidden="true" /> {t.legend.shift}</span>
+              <span><span className="jc-paychip" aria-hidden="true">$</span> {t.legend.pay}</span>
+              <span><span className="jc-dot jc-dot-cancelled" aria-hidden="true" /> {t.legend.cancelled}</span>
+            </div>
           </div>
 
           {status === "error" ? (
@@ -423,47 +651,27 @@ export function JobsCalendar() {
             </div>
           ) : null}
 
-          {status === "ready" && jobs.length === 0 ? <p className="jc-note">{t.noJobsMonth}</p> : null}
+          {status === "ready" && visibleCount === 0 ? <p className="jc-note">{t.nothingMonth}</p> : null}
 
           {status === "ready" ? (
             <div className="jc-list" aria-live="polite">
               {selected && selectedDate ? (
                 <>
                   <h3 className="jc-day-title">
-                    {selectedJobs.length > 0 ? t.jobsOn(selectedJobs.length, dayFmt.format(selectedDate)) : dayFmt.format(selectedDate)}
+                    {selectedItems.length > 0 ? t.itemsOn(selectedItems.length, dayFmt.format(selectedDate)) : dayFmt.format(selectedDate)}
                   </h3>
-                  {selectedJobs.length === 0 ? <p className="jc-note">{t.noJobsDay}</p> : null}
-                  {selectedJobs.map((job) => {
-                    const notice = notices[job.jobRequestId];
-                    const busy = busyId === job.jobRequestId;
-                    const bonus = bonusLabel(job, t);
-                    return (
-                      <article key={job.jobRequestId} className="jc-card">
-                        <div className="jc-card-top">
-                          <h4 className="jc-role">{job.role}</h4>
-                          {job.urgency && job.urgency !== "standard" ? <span className="jc-urgent">{t.urgent}</span> : null}
-                        </div>
-                        <p className="jc-meta">📍 {job.areaLabel}</p>
-                        <p className="jc-meta">
-                          🕒 <bdi>{timeFmt.format(new Date(job.startAt))} – {timeFmt.format(new Date(job.endAt))}</bdi>
-                        </p>
-                        <div className="jc-facts">
-                          {job.workerRateMinor !== null && job.workerRateMinor !== undefined ? (
-                            <span className="jc-pay"><bdi>{t.perHour(formatAmount(job.workerRateMinor))}</bdi></span>
-                          ) : null}
-                          {bonus ? <span className="jc-bonus"><span aria-hidden="true">★ </span><bdi>{bonus}</bdi></span> : null}
-                          <span className="jc-places">{t.places(job.placesLeft)}</span>
-                        </div>
-                        {notice ? <NoticeView notice={notice} t={t} /> : null}
-                        <div className="jc-actions">
-                          <button type="button" className="jc-btn" disabled={busy} onClick={() => setConfirming(job)}>
-                            {busy ? t.accepting : t.accept}
-                          </button>
-                          <a className="jc-link" href={`/jobs/${encodeURIComponent(job.jobRequestId)}`}>{t.details}</a>
-                        </div>
-                      </article>
-                    );
-                  })}
+                  {selectedItems.length === 0 ? <p className="jc-note">{t.nothingDay}</p> : null}
+                  {selectedItems.map((item) => (
+                    <ItemCard
+                      key={item.id}
+                      item={item}
+                      t={t}
+                      timeText={timeRange(item)}
+                      notice={notices[item.id]}
+                      busy={busyId === item.id}
+                      onAccept={() => setConfirming(item)}
+                    />
+                  ))}
                 </>
               ) : (
                 <p className="jc-note">{t.pickDay}</p>
@@ -484,11 +692,11 @@ export function JobsCalendar() {
           >
             <h3 id="jc-confirm-title">{t.confirmTitle}</h3>
             <p className="jc-dialog-job">
-              <strong>{confirming.role}</strong> · {confirming.areaLabel}
+              <strong>{confirming.title}</strong>
+              {confirming.subtitle ? <> · {confirming.subtitle}</> : null}
               <br />
               <bdi>
-                {dayFmt.format(new Date(confirming.startAt))}, {timeFmt.format(new Date(confirming.startAt))} –{" "}
-                {timeFmt.format(new Date(confirming.endAt))}
+                {dayFmt.format(new Date(confirming.startAt))}, {timeRange(confirming)}
               </bdi>
             </p>
             <p>{t.confirmBody}</p>
@@ -503,7 +711,94 @@ export function JobsCalendar() {
   );
 }
 
-type Text = (typeof TEXT)[Lang];
+function ItemCard({
+  item,
+  t,
+  timeText,
+  notice,
+  busy,
+  onAccept
+}: {
+  item: HubItem;
+  t: Text;
+  timeText: string;
+  notice: Notice | undefined;
+  busy: boolean;
+  onAccept: () => void;
+}) {
+  const layer = layerOf(item.type);
+  if (!layer) return null;
+
+  if (layer === "available") {
+    const bonus = bonusLabel(item, t);
+    return (
+      <article className="jc-card jc-card-available">
+        <span className="jc-kind jc-kind-available">{t.kind.available}</span>
+        <h4 className="jc-role">{item.title}</h4>
+        {item.subtitle ? <p className="jc-meta">📍 {item.subtitle}</p> : null}
+        <p className="jc-meta">🕒 <bdi>{timeText}</bdi></p>
+        <div className="jc-facts">
+          {item.amountMinor !== null && item.amountMinor !== undefined ? (
+            <span className="jc-pay"><bdi>{t.perHour(formatAmount(item.amountMinor))}</bdi></span>
+          ) : null}
+          {bonus ? <span className="jc-bonus"><span aria-hidden="true">★ </span><bdi>{bonus}</bdi></span> : null}
+          {item.placesLeft !== null ? <span className="jc-places">{t.places(item.placesLeft)}</span> : null}
+        </div>
+        {notice ? <NoticeView notice={notice} t={t} /> : null}
+        {item.jobRequestId ? (
+          <div className="jc-actions">
+            <button type="button" className="jc-btn" disabled={busy} onClick={onAccept}>
+              {busy ? t.accepting : t.accept}
+            </button>
+            <a className="jc-link" href={`/jobs/${encodeURIComponent(item.jobRequestId)}`}>{t.details}</a>
+          </div>
+        ) : null}
+      </article>
+    );
+  }
+
+  if (layer === "shift") {
+    const statusText = t.shiftStatus[item.status ?? ""] ?? t.shiftStatus.other;
+    return (
+      <article className="jc-card jc-card-shift">
+        <span className="jc-kind jc-kind-shift">✓ {t.kind.shift} · {statusText}</span>
+        <h4 className="jc-role">{item.title}</h4>
+        {item.subtitle ? <p className="jc-meta">📍 {item.subtitle}</p> : null}
+        <p className="jc-meta">🕒 <bdi>{timeText}</bdi></p>
+        <div className="jc-actions">
+          <a className="jc-link" href="/schedule">{t.openShift}</a>
+        </div>
+      </article>
+    );
+  }
+
+  if (layer === "pay") {
+    const statusText = t.payStatus[item.status ?? ""] ?? t.payStatus.other;
+    return (
+      <article className="jc-card jc-card-pay">
+        <span className="jc-kind jc-kind-pay">$ {t.kind.pay} · {statusText}</span>
+        <h4 className="jc-role">{item.title}</h4>
+        {item.subtitle ? <p className="jc-meta">{item.subtitle}</p> : null}
+        {item.amountMinor !== null && item.amountMinor !== undefined ? (
+          <p className="jc-amount"><bdi>{t.money(formatAmount(item.amountMinor))}</bdi></p>
+        ) : null}
+        <div className="jc-actions">
+          <a className="jc-link" href="/pay">{t.openPay}</a>
+        </div>
+      </article>
+    );
+  }
+
+  return (
+    <article className="jc-card jc-card-cancelled">
+      <span className="jc-kind jc-kind-cancelled">✕ {t.kind.cancelled}</span>
+      <h4 className="jc-role jc-strike">{item.title}</h4>
+      {item.subtitle ? <p className="jc-meta jc-strike">📍 {item.subtitle}</p> : null}
+      <p className="jc-meta jc-strike">🕒 <bdi>{timeText}</bdi></p>
+      <p className="jc-cancel-reason">{t.cancelledStatus}</p>
+    </article>
+  );
+}
 
 function BannerView({ notice, t, onClose }: { notice: Notice; t: Text; onClose: () => void }) {
   if (notice.kind === "accepted") {
@@ -562,44 +857,86 @@ function NoticeView({ notice, t }: { notice: Notice; t: Text }) {
   return null;
 }
 
+// Shared hub colours: gold #f8b808 (available, bonus ★), green #3ddc84 (my shift),
+// red #e4756b (cancelled), cream #f4efe4 ("$" pay day), grey #8f8574 (waiting). No blue or teal.
 const STYLES = `
 .jc { color: #f4efe4; max-width: 760px; margin: 0 auto; padding: 8px 0 40px; }
 .jc-title { font-size: 1.6rem; margin: 8px 0 4px; color: #f4efe4; }
 .jc-sub { margin: 0 0 16px; color: rgba(244,239,228,0.75); line-height: 1.45; }
+.jc-todaybox { background: #141414; border: 1px solid rgba(248,184,8,0.45); border-radius: 16px; padding: 12px 14px; margin-bottom: 12px; }
+.jc-today-title { margin: 0 0 8px; font-size: 1.1rem; color: #f8b808; }
+.jc-today-empty { margin: 0; color: rgba(244,239,228,0.75); }
+.jc-today-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 8px; }
+.jc-ti { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding: 10px 12px; border-radius: 12px; border-inline-start: 5px solid #f4efe4; background: #f4efe4; color: #1a1a1a; }
+.jc-ti-urgent { border-inline-start-color: #e4756b; background: #fbe3e0; }
+.jc-ti-attention { border-inline-start-color: #f8b808; background: #fdf3d4; }
+.jc-ti-info { border-inline-start-color: #8f8574; background: #f4efe4; }
+.jc-ti-text { flex: 1 1 200px; display: flex; flex-direction: column; gap: 2px; font-size: 0.92rem; }
+.jc-ti-text span { color: #444; }
+.jc-ti-go { min-height: 36px; padding: 0 12px; border-radius: 999px; border: 1px solid #1a1a1a; background: transparent; color: #1a1a1a; font: inherit; font-size: 0.85rem; font-weight: 600; cursor: pointer; }
+.jc-chips { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 12px; }
+.jc-chip { display: inline-flex; align-items: center; gap: 6px; min-height: 40px; padding: 0 14px; border-radius: 999px; border: 1px solid rgba(244,239,228,0.35); background: transparent; color: rgba(244,239,228,0.7); font: inherit; font-size: 0.9rem; font-weight: 600; cursor: pointer; }
+.jc-chip-on { background: #f4efe4; color: #111; border-color: #f4efe4; }
+.jc-chip:focus-visible { outline: 2px solid #f8b808; outline-offset: 2px; }
+.jc-chip-dot { width: 10px; height: 10px; border-radius: 999px; background: #8f8574; }
+.jc-chip-available .jc-chip-dot { background: #f8b808; }
+.jc-chip-shift .jc-chip-dot { background: #3ddc84; }
+.jc-chip-pay .jc-chip-dot { background: #f4efe4; border: 1px solid #8f8574; }
+.jc-chip-cancelled .jc-chip-dot { background: #e4756b; }
 .jc-cal { background: #141414; border: 1px solid rgba(248,184,8,0.25); border-radius: 16px; padding: 12px; }
 .jc-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 8px; }
 .jc-month { margin: 0; font-size: 1.1rem; text-transform: capitalize; color: #f4efe4; text-align: center; flex: 1; }
 .jc-nav { width: 40px; height: 40px; border-radius: 999px; border: 1px solid rgba(248,184,8,0.5); background: transparent; color: #f8b808; font-size: 1.4rem; line-height: 1; cursor: pointer; }
 .jc-nav:hover, .jc-nav:focus-visible { background: rgba(248,184,8,0.12); }
+.jc-todaybtn { min-height: 36px; padding: 0 12px; border-radius: 999px; border: 1px solid rgba(248,184,8,0.5); background: transparent; color: #f8b808; font: inherit; font-size: 0.85rem; font-weight: 700; cursor: pointer; }
 .jc-grid { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 4px; }
 .jc-wd { text-align: center; font-size: 0.75rem; font-weight: 600; color: rgba(244,239,228,0.6); padding: 4px 0; }
-.jc-cell { position: relative; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 3px; min-height: 46px; padding: 4px 0; border-radius: 10px; border: 1px solid transparent; background: rgba(255,255,255,0.04); color: #f4efe4; font: inherit; cursor: pointer; }
+.jc-cell { position: relative; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 3px; min-height: 50px; padding: 4px 0; border-radius: 10px; border: 1px solid transparent; background: rgba(255,255,255,0.04); color: #f4efe4; font: inherit; cursor: pointer; }
 .jc-cell:hover, .jc-cell:focus-visible { border-color: rgba(248,184,8,0.6); outline: none; }
 .jc-blank { background: transparent; cursor: default; }
 .jc-num { font-size: 0.9rem; font-weight: 600; }
-.jc-past { opacity: 0.4; }
+.jc-past { opacity: 0.45; }
 .jc-today { border-color: #f8b808; }
 .jc-today .jc-num { color: #f8b808; }
+.jc-has-shift { box-shadow: inset 0 -3px 0 #3ddc84; }
 .jc-selected { background: #f8b808; color: #111; border-color: #f8b808; opacity: 1; }
 .jc-selected .jc-num { color: #111; }
-.jc-badge { min-width: 18px; height: 18px; padding: 0 5px; border-radius: 999px; background: #f8b808; color: #111; font-size: 0.7rem; font-weight: 700; line-height: 18px; text-align: center; }
+.jc-marks { display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 2px; min-height: 18px; }
+.jc-badge { display: inline-block; min-width: 18px; height: 18px; padding: 0 5px; border-radius: 999px; background: #f8b808; color: #111; font-size: 0.7rem; font-weight: 700; line-height: 18px; text-align: center; }
 .jc-selected .jc-badge { background: #111; color: #f8b808; }
-.jc-badge-empty { height: 18px; }
+.jc-dot { display: inline-block; width: 8px; height: 8px; border-radius: 999px; }
+.jc-dot-shift { background: #3ddc84; }
+.jc-dot-cancelled { background: #e4756b; }
+.jc-selected .jc-dot { outline: 1px solid #111; }
+.jc-paychip { display: inline-block; min-width: 16px; height: 16px; padding: 0 3px; border-radius: 4px; background: #f4efe4; color: #111; border: 1px solid #8f8574; font-size: 0.65rem; font-weight: 800; line-height: 14px; text-align: center; }
+.jc-star { position: absolute; top: 2px; inset-inline-end: 4px; color: #f8b808; font-size: 0.75rem; line-height: 1; }
+.jc-selected .jc-star { color: #111; }
+.jc-star-inline { color: #f8b808; font-size: 0.95rem; }
+.jc-legend { display: flex; flex-wrap: wrap; gap: 6px 14px; margin-top: 10px; padding-top: 10px; border-top: 1px solid rgba(244,239,228,0.12); font-size: 0.8rem; color: rgba(244,239,228,0.8); }
+.jc-legend > span { display: inline-flex; align-items: center; gap: 6px; }
 .jc-note { color: rgba(244,239,228,0.75); margin: 12px 0 0; }
 .jc-panel { margin-top: 12px; background: #141414; border: 1px solid rgba(248,184,8,0.3); border-radius: 16px; padding: 16px; }
 .jc-panel p { margin: 0 0 12px; }
 .jc-list { margin-top: 16px; display: flex; flex-direction: column; gap: 12px; }
 .jc-day-title { margin: 0; font-size: 1.05rem; color: #f4efe4; }
-.jc-card { background: #fff; color: #1a1a1a; border-radius: 14px; padding: 14px; box-shadow: 0 2px 10px rgba(0,0,0,0.3); }
-.jc-card-top { display: flex; align-items: flex-start; justify-content: space-between; gap: 8px; }
+.jc-card { background: #fff; color: #1a1a1a; border-radius: 14px; padding: 14px; box-shadow: 0 2px 10px rgba(0,0,0,0.3); border-inline-start: 6px solid #8f8574; }
+.jc-card-available { border-inline-start-color: #f8b808; }
+.jc-card-shift { border-inline-start-color: #3ddc84; }
+.jc-card-pay { border-inline-start-color: #f4efe4; background: #fbf8f1; }
+.jc-card-cancelled { border-inline-start-color: #e4756b; }
+.jc-kind { display: inline-block; margin-bottom: 6px; padding: 2px 10px; border-radius: 999px; font-size: 0.75rem; font-weight: 700; }
+.jc-kind-available { background: #fdf3d4; color: #6b4e00; }
+.jc-kind-shift { background: #e3f9ec; color: #14532d; }
+.jc-kind-pay { background: #f4efe4; color: #3d3528; border: 1px solid #8f8574; }
+.jc-kind-cancelled { background: #fbe3e0; color: #8a2a20; }
 .jc-role { margin: 0 0 6px; font-size: 1.05rem; color: #111; }
-.jc-urgent { flex: none; background: #c62828; color: #fff; font-size: 0.72rem; font-weight: 700; padding: 3px 8px; border-radius: 999px; text-transform: uppercase; }
+.jc-strike { text-decoration: line-through; color: #8a2a20; }
+.jc-cancel-reason { margin: 8px 0 0; color: #b03a2e; font-weight: 700; font-size: 0.92rem; }
 .jc-meta { margin: 2px 0; color: #444; font-size: 0.92rem; }
+.jc-amount { margin: 4px 0 0; font-size: 1.3rem; font-weight: 800; color: #111; }
 .jc-facts { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 8px; }
 .jc-pay { background: #111; color: #f8b808; font-weight: 700; padding: 3px 10px; border-radius: 999px; font-size: 0.85rem; }
-.jc-bonus { background: #F8B808; color: #111; font-weight: 800; padding: 3px 10px; border-radius: 999px; font-size: 0.85rem; }
-.jc-star { position: absolute; top: 2px; inset-inline-end: 4px; color: #F8B808; font-size: 0.75rem; line-height: 1; }
-.jc-selected .jc-star { color: #111; }
+.jc-bonus { background: #f8b808; color: #111; font-weight: 800; padding: 3px 10px; border-radius: 999px; font-size: 0.85rem; }
 .jc-places { background: #fdf3d4; color: #6b4e00; font-weight: 600; padding: 3px 10px; border-radius: 999px; font-size: 0.85rem; }
 .jc-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; margin-top: 12px; }
 .jc-btn { display: inline-flex; align-items: center; justify-content: center; min-height: 44px; padding: 0 18px; border-radius: 999px; border: 0; background: #f8b808; color: #111; font: inherit; font-weight: 700; text-decoration: none; cursor: pointer; }
@@ -612,7 +949,7 @@ const STYLES = `
 .jc-notice ul { margin: 4px 0; padding-inline-start: 20px; }
 .jc-notice a { display: inline-block; margin-top: 4px; margin-inline-end: 12px; color: #5a3400; font-weight: 700; }
 .jc-banner { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; margin-bottom: 12px; padding: 12px 14px; border-radius: 12px; font-weight: 600; }
-.jc-ok { background: #e8f5e9; color: #1b5e20; }
+.jc-ok { background: #e3f9ec; color: #14532d; }
 .jc-warn { background: #fff4e5; color: #5a3400; }
 .jc-banner span { flex: 1 1 200px; }
 .jc-banner-link { color: inherit; font-weight: 700; }
@@ -624,7 +961,7 @@ const STYLES = `
 .jc-dialog-job { background: #f6f3ea; border-radius: 10px; padding: 10px 12px; font-size: 0.92rem; }
 .jc-dialog-actions { display: flex; justify-content: flex-end; flex-wrap: wrap; gap: 10px; margin-top: 14px; }
 @media (min-width: 640px) {
-  .jc-cell { min-height: 64px; }
+  .jc-cell { min-height: 66px; }
   .jc-num { font-size: 1rem; }
   .jc-cal { padding: 16px; }
 }

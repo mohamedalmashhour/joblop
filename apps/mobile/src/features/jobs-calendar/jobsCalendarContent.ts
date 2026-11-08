@@ -1,5 +1,6 @@
-// Pure helpers for the Jobs calendar (real open Joblop jobs by day). UI-free and unit-tested.
-import type { ClaimOpenJobResult, OpenJob } from "../../auth/secureSession";
+// Pure helpers for the worker's "My calendar" hub (open jobs, own shifts, cancelled shifts and
+// pay days by day). UI-free and unit-tested.
+import type { CalendarHubItem, ClaimOpenJobResult, OpenJob, OpenJobBonus } from "../../auth/secureSession";
 import { buildMonthWeeks, isoDay } from "../calendar-month/monthGrid";
 
 /** The request window covering every cell of the visible month grid (local midnight to midnight). */
@@ -62,15 +63,29 @@ export function bonusLabel(
   templates: Readonly<{ hourly: string; transport: string; oneTime: string }>
 ): string | null {
   if (!hasBonus(job) || !job.bonus) return null;
-  const value = job.bonus.amountMinor / 100;
-  let amount: string;
-  try {
-    amount = new Intl.NumberFormat(locale, { style: "currency", currency: "CAD", currencyDisplay: "narrowSymbol" }).format(value);
-  } catch {
-    amount = `$${value.toFixed(2)}`;
-  }
-  const template = job.bonus.kind === "hourly" ? templates.hourly : job.bonus.kind === "transport" ? templates.transport : templates.oneTime;
+  return formatBonus(job.bonus, locale, templates);
+}
+
+/** Bonus text for any bonus (null when there is none). Templates use {amount}. */
+export function formatBonus(
+  bonus: OpenJobBonus | null | undefined,
+  locale: string,
+  templates: Readonly<{ hourly: string; transport: string; oneTime: string }>
+): string | null {
+  if (!bonus || !(bonus.amountMinor > 0)) return null;
+  const amount = formatMoney(bonus.amountMinor, locale);
+  const template = bonus.kind === "hourly" ? templates.hourly : bonus.kind === "transport" ? templates.transport : templates.oneTime;
   return template.replace("{amount}", amount);
+}
+
+/** Cents → "$24.00" in the worker's language. */
+export function formatMoney(amountMinor: number, locale: string): string {
+  const value = amountMinor / 100;
+  try {
+    return new Intl.NumberFormat(locale, { style: "currency", currency: "CAD", currencyDisplay: "narrowSymbol" }).format(value);
+  } catch {
+    return `$${value.toFixed(2)}`;
+  }
 }
 
 export function isUrgent(job: OpenJob): boolean {
@@ -109,3 +124,79 @@ export function humanizeReason(reason: string): string {
   const text = reason.replace(/[_-]+/g, " ").trim();
   return text ? text.charAt(0).toUpperCase() + text.slice(1) : reason;
 }
+
+// ---- Calendar hub ----------------------------------------------------------------------------
+
+export type HubLayer = "available" | "shift" | "pay" | "cancelled";
+export const HUB_LAYERS: readonly HubLayer[] = ["available", "shift", "pay", "cancelled"];
+
+/** Which filter chip an item belongs to; null for item types this screen does not show. */
+export function hubLayer(type: string): HubLayer | null {
+  if (type === "available_job") return "available";
+  if (type === "my_shift") return "shift";
+  if (type === "pay_day") return "pay";
+  if (type === "cancelled_shift") return "cancelled";
+  return null;
+}
+
+/**
+ * Bucket hub items by local start day, keeping only shown layers. Open jobs with no place left
+ * are dropped (they can't be accepted). Each day is sorted by start time.
+ */
+export function groupHubByDay(
+  items: readonly CalendarHubItem[],
+  shown: Readonly<Record<HubLayer, boolean>>
+): Map<string, CalendarHubItem[]> {
+  const byDay = new Map<string, CalendarHubItem[]>();
+  for (const item of items) {
+    const layer = hubLayer(item.type);
+    if (!layer || !shown[layer]) continue;
+    if (layer === "available" && !((item.placesLeft ?? 0) > 0)) continue;
+    const key = isoDay(new Date(item.startAt));
+    const list = byDay.get(key) ?? [];
+    list.push(item);
+    byDay.set(key, list);
+  }
+  for (const list of byDay.values()) list.sort((a, b) => Date.parse(a.startAt) - Date.parse(b.startAt));
+  return byDay;
+}
+
+export type HubDaySummary = Readonly<{ available: number; bonus: boolean; shift: boolean; pay: boolean; cancelled: boolean }>;
+
+/** What a day cell shows: gold count of open jobs, ★, green shift dot, "$" pay chip, red cancelled dot. */
+export function summarizeHubDay(items: readonly CalendarHubItem[]): HubDaySummary {
+  let available = 0;
+  let bonus = false;
+  let shift = false;
+  let pay = false;
+  let cancelled = false;
+  for (const item of items) {
+    const layer = hubLayer(item.type);
+    if (layer === "available") {
+      available += 1;
+      if (item.bonus && item.bonus.amountMinor > 0) bonus = true;
+    } else if (layer === "shift") shift = true;
+    else if (layer === "pay") pay = true;
+    else if (layer === "cancelled") cancelled = true;
+  }
+  return { available, bonus, shift, pay, cancelled };
+}
+
+/** Start–end time, or just the start time when the item has no end (e.g. a pay day). */
+export function formatHubTime(startAt: string, endAt: string | null, locale: string): string {
+  if (endAt) return formatJobTime(startAt, endAt, locale);
+  const start = new Date(startAt);
+  try {
+    return new Intl.DateTimeFormat(locale, { hour: "numeric", minute: "2-digit" }).format(start);
+  } catch {
+    return `${start.getHours()}:${`${start.getMinutes()}`.padStart(2, "0")}`;
+  }
+}
+
+/** Translation key for a status chip, falling back to the "other" key for unknown codes. */
+export function hubStatusKey(layer: "shift" | "pay", status: string | null, known: readonly string[]): string {
+  return status && known.includes(status) ? `hub.${layer}.${status}` : `hub.${layer}.other`;
+}
+
+export const SHIFT_STATUSES = ["pending_start", "checked_in", "checked_out", "completed", "missed", "exception"] as const;
+export const PAY_STATUSES = ["scheduled", "sent", "paid", "held"] as const;
