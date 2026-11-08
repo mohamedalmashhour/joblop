@@ -939,7 +939,7 @@ export function createMobileSessionTransport(options: {
     },
     // PUBLIC partner job leads (GET /public/jobscanner/leads) — no sign-in, no token. Stored leads
     // only (apply on the source site).
-    async listPublicLeads(params: Readonly<{ q?: string; limit?: number }> = {}): Promise<PublicLeadsResult> {
+    async listPublicLeads(params: Readonly<{ q?: string; city?: string; limit?: number }> = {}): Promise<PublicLeadsResult> {
       const result = await publicGet("/public/jobscanner/leads", params);
       if (result.status !== "ok") return result;
       const payload = (result.payload ?? {}) as { leads?: unknown; total?: unknown };
@@ -987,11 +987,13 @@ export function createMobileSessionTransport(options: {
   // Shared token-free GET for the public routes. Never sends the session token.
   async function publicGet(
     path: string,
-    params: Readonly<{ q?: string; limit?: number }>
+    params: Readonly<{ q?: string; city?: string; limit?: number }>
   ): Promise<Readonly<{ status: "ok"; payload: unknown }> | Readonly<{ status: "offline" | "error" }>> {
     const search: string[] = [];
     const q = (params.q ?? "").trim().slice(0, 80);
     if (q) search.push(`q=${encodeURIComponent(q)}`);
+    const city = (params.city ?? "").trim().slice(0, 60);
+    if (city) search.push(`city=${encodeURIComponent(city)}`);
     if (typeof params.limit === "number" && Number.isFinite(params.limit) && params.limit > 0) {
       search.push(`limit=${Math.floor(params.limit)}`);
     }

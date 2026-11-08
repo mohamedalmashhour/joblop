@@ -6,7 +6,7 @@ import type { PublicLead } from "../../auth/secureSession";
 export const EVERYDAY_WORK_QUERY = "cleaner cook warehouse driver retail labourer";
 
 /** How many rows of each kind the first screen asks for. */
-export const PUBLIC_LIST_LIMIT = 6;
+export const PUBLIC_LIST_LIMIT = 12;
 
 /** Adzuna's terms: an Adzuna-sourced listing must carry a link to Adzuna. */
 export const ADZUNA_URL = "https://www.adzuna.ca";
