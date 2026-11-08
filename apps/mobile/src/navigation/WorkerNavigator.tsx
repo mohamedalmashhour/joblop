@@ -22,6 +22,7 @@ import {
   subscribeToNotificationTaps
 } from "../notifications/pushNotifications";
 import type { PushTarget } from "../notifications/pushTarget";
+import { ContactScreen, type ContactDraft } from "../features/contact";
 
 // The worker app's real navigation shell. A dependency-free stack + bottom-tab navigator (no
 // react-navigation / native-screens dependency, to keep the EAS build surface minimal) that mounts
@@ -40,15 +41,17 @@ type Screen =
   | { name: "attendance" }
   | { name: "timesheet" }
   | { name: "earnings" }
-  | { name: "onboarding" };
+  | { name: "onboarding" }
+  | { name: "contact"; draft: ContactDraft | null; conversationId?: string | null };
 
-type TabId = "home" | "available" | "myShifts" | "calendar" | "earnings";
+type TabId = "home" | "available" | "myShifts" | "calendar" | "earnings" | "contact";
 
 const TABS: readonly { id: TabId; label: string; root: Screen }[] = [
   { id: "home", label: "Home", root: { name: "home" } },
   { id: "available", label: "My calendar", root: { name: "available" } },
   { id: "myShifts", label: "My Shifts", root: { name: "myShifts" } },
-  { id: "earnings", label: "Earnings", root: { name: "earnings" } }
+  { id: "earnings", label: "Earnings", root: { name: "earnings" } },
+  { id: "contact", label: "Contact", root: { name: "contact", draft: null } }
 ];
 
 
@@ -79,6 +82,11 @@ export function WorkerNavigator({
     setTab(next);
     setStack([root]);
   }, []);
+  // "Contact Joblop about this shift": open the Contact tab with a prefilled new message.
+  const contactWith = useCallback((draft: ContactDraft) => {
+    setTab("contact");
+    setStack([{ name: "contact", draft }]);
+  }, []);
 
   // Push notifications: show notices while the app is open, and remember a tapped notice until the
   // worker is inside the app.
@@ -91,10 +99,13 @@ export function WorkerNavigator({
   }, []);
   useEffect(() => {
     if (!authenticated || !pendingTarget) return;
-    // The phone app has no separate Contact tab; support starts from Home.
     if (pendingTarget.screen === "calendar") selectTab("available");
     else if (pendingTarget.screen === "pay") selectTab("earnings");
-    else selectTab("home");
+    else {
+      // "Joblop staff replied" → the Contact tab, straight into that conversation when known.
+      setTab("contact");
+      setStack([{ name: "contact", draft: null, conversationId: pendingTarget.conversationId ?? null }]);
+    }
     setPendingTarget(null);
   }, [authenticated, pendingTarget, selectTab]);
   useEffect(() => {
@@ -159,6 +170,7 @@ export function WorkerNavigator({
             onOpenSchedule={() => push({ name: "attendance" })}
             onOpenPay={() => selectTab("earnings")}
             onOpenOffers={() => push({ name: "offers" })}
+            onContactAboutShift={contactWith}
           />
         );
       case "marketplaceSearch":
@@ -202,10 +214,13 @@ export function WorkerNavigator({
         return <WorkerTimesheetListScreen transport={transport} onBack={back} />;
       case "earnings":
         return (
-          <WorkerEarningsScreen transport={transport} onOpenSupport={() => selectTab("home")} />
+          <WorkerEarningsScreen transport={transport} onOpenSupport={() => selectTab("contact")} />
         );
       case "onboarding":
         return <WorkerSetupScreen transport={transport} onBack={back} />;
+      case "contact":
+        // "Contact Joblop": AI assistant first, Joblop staff take over when needed.
+        return <ContactScreen draft={current.draft} openConversationId={current.conversationId ?? null} transport={transport} />;
       default: {
         const _exhaustive: never = current;
         return _exhaustive;

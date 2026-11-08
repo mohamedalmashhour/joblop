@@ -3,15 +3,27 @@ import {
   offlineAdvisoryVerdict,
   parseModelVerdict
 } from "@rwos/shared";
+import { maskPersonalData, reportMasked, type PrivacyLogger } from "./aiPrivacyFilter";
 
 // Claude-backed advisory review of a NON-sensitive worker document image (CV, certificate, photo,
 // first-aid). Raw HTTP to the Anthropic Messages API (no SDK), activated only when ANTHROPIC_API_KEY is
 // set — otherwise the caller uses the offline advisory verdict. Sensitive documents are never passed
 // here (the route decides that before calling). Output is ADVISORY; a human HR admin still decides.
+//
+// Privacy filter (always on): the only text sent is the document TYPE, masked and reduced to a short
+// label. No file name, document number, owner name, id or date is ever put in the request. The image
+// itself cannot be masked, which is why sensitive document types never reach this call.
 
 const ANTHROPIC_URL = "https://api.anthropic.com/v1/messages";
 
-export type ClaudeDocReviewConfig = Readonly<{ apiKey: string; model?: string; fetchImpl?: typeof fetch }>;
+export type ClaudeDocReviewConfig = Readonly<{ apiKey: string; model?: string; fetchImpl?: typeof fetch; logger?: PrivacyLogger }>;
+
+/** The document type as sent: masked, then only letters, spaces, "_" and "-", at most 60 characters. */
+export function safeDocumentTypeLabel(documentType: string): Readonly<{ label: string; masked: ReturnType<typeof maskPersonalData>["masked"] }> {
+  const r = maskPersonalData(documentType);
+  const label = r.text.replace(/[^\p{L} _-]/gu, " ").replace(/\s+/g, " ").trim().slice(0, 60) || "document";
+  return { label, masked: r.masked };
+}
 
 // Only image types the vision model accepts. PDFs/others -> caller falls back to offline (human) path.
 const SUPPORTED_IMAGE_TYPES: ReadonlySet<string> = new Set(["image/png", "image/jpeg", "image/webp", "image/gif"]);
@@ -37,11 +49,13 @@ export async function reviewDocumentImageWithClaude(
 ): Promise<DocumentAiVerdict> {
   const model = config.model ?? process.env.DOC_REVIEW_MODEL ?? "claude-opus-5-5";
   const doFetch = config.fetchImpl ?? fetch;
+  const { label: documentType, masked } = safeDocumentTypeLabel(input.documentType);
+  reportMasked("document_review", masked, 0, config.logger);
   const prompt = [
-    `You are doing an ADVISORY readability pre-check of a worker's uploaded "${input.documentType}" for a staffing platform.`,
-    `Do NOT make any identity, legal, or eligibility decision — only judge whether the image is a readable, plausible ${input.documentType}.`,
+    `You are doing an ADVISORY readability pre-check of a worker's uploaded "${documentType}" for a staffing platform.`,
+    `Do NOT make any identity, legal, or eligibility decision — only judge whether the image is a readable, plausible ${documentType}.`,
     `Answer with exactly ONE word:`,
-    `APPROVE — it is a clear, readable document that plausibly matches "${input.documentType}".`,
+    `APPROVE — it is a clear, readable document that plausibly matches "${documentType}".`,
     `REUPLOAD — it is blank, unreadable, cut off, or clearly the wrong kind of document.`,
     `HUMAN — you are unsure.`,
     `Output only that one word.`

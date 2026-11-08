@@ -890,8 +890,106 @@ export function createMobileSessionTransport(options: {
       } catch {
         return { status: "error" };
       }
+    },
+    // "Contact Joblop" (GET /contact/worker/conversations): the worker's conversations with Joblop.
+    // The AI assistant answers first; a staff member takes over when needed.
+    async listContactConversations(): Promise<ContactListResult> {
+      const result = await contactCall("/contact/worker/conversations", "GET");
+      if (result.status !== "ok") return result;
+      const payload = (result.payload ?? {}) as { conversations?: unknown; unread?: unknown };
+      if (!Array.isArray(payload.conversations)) return { status: "error" };
+      const conversations = payload.conversations
+        .map(parseContactConversation)
+        .filter((v): v is ContactConversation => v !== null);
+      const unread = typeof payload.unread === "number" && Number.isFinite(payload.unread) ? Math.max(0, Math.floor(payload.unread)) : 0;
+      return { status: "ready", conversations, unread };
+    },
+    // Start a conversation (POST /contact/worker/conversations). An assignmentId links it to one of
+    // the worker's own shifts; "urgent" goes straight to a person.
+    async startContactConversation(input: Readonly<{
+      text: string;
+      topic?: ContactTopic;
+      assignmentId?: string | null;
+      urgent?: boolean;
+      locale?: string;
+    }>): Promise<ContactStartResult> {
+      const text = input.text.trim();
+      if (!text || text.length > CONTACT_MAX_MESSAGE_LENGTH) return { status: "error" };
+      if (input.assignmentId && !isOperationalReference(input.assignmentId)) return { status: "error" };
+      const result = await contactCall("/contact/worker/conversations", "POST", {
+        topic: input.topic ?? "other",
+        body: text,
+        urgent: input.urgent === true,
+        ...(input.locale ? { locale: input.locale.slice(0, 2) } : {}),
+        ...(input.assignmentId ? { relatedType: "assignment", relatedId: input.assignmentId } : {})
+      });
+      if (result.status !== "ok") return result;
+      const id = (result.payload as { id?: unknown } | null)?.id;
+      return typeof id === "string" && id.length > 0 ? { status: "ready", id } : { status: "error" };
+    },
+    // One conversation with its messages (GET /contact/worker/conversations/:id). Marks it read.
+    async getContactConversation(id: string): Promise<ContactThreadResult> {
+      if (!isOperationalReference(id)) return { status: "error" };
+      const result = await contactCall(`/contact/worker/conversations/${encodeURIComponent(id)}`, "GET");
+      if (result.status !== "ok") return result;
+      const payload = (result.payload ?? {}) as { conversation?: unknown; messages?: unknown };
+      const conversation = parseContactConversation(payload.conversation);
+      if (!conversation || !Array.isArray(payload.messages)) return { status: "error" };
+      const messages = payload.messages.map(parseContactMessage).filter((v): v is ContactMessage => v !== null);
+      return { status: "ready", conversation, messages };
+    },
+    // Add a message (POST /contact/worker/conversations/:id/messages).
+    async sendContactMessage(id: string, text: string, locale?: string): Promise<ContactActionResult> {
+      const body = text.trim();
+      if (!isOperationalReference(id) || !body || body.length > CONTACT_MAX_MESSAGE_LENGTH) return { status: "error" };
+      const result = await contactCall(`/contact/worker/conversations/${encodeURIComponent(id)}/messages`, "POST", {
+        body,
+        ...(locale ? { locale: locale.slice(0, 2) } : {})
+      });
+      return result.status === "ok" ? { status: "ready" } : result;
+    },
+    // "Talk to a person" (POST /contact/worker/conversations/:id/person): hands the conversation to staff.
+    async askForPerson(id: string, locale?: string): Promise<ContactActionResult> {
+      if (!isOperationalReference(id)) return { status: "error" };
+      const result = await contactCall(
+        `/contact/worker/conversations/${encodeURIComponent(id)}/person`,
+        "POST",
+        locale ? { locale: locale.slice(0, 2) } : {}
+      );
+      return result.status === "ok" ? { status: "ready" } : result;
     }
   };
+
+  // Shared Bearer call for the contact routes. A network exception is "offline"; 401/403 "denied".
+  async function contactCall(
+    path: string,
+    method: "GET" | "POST",
+    body?: Readonly<Record<string, unknown>>
+  ): Promise<Readonly<{ status: "ok"; payload: unknown }> | Readonly<{ status: "denied" | "offline" | "error" }>> {
+    const token = await options.vault.read();
+    if (!token) return { status: "denied" };
+    let response: Response;
+    try {
+      response = await request(`${origin}${path}`, {
+        method,
+        headers:
+          method === "POST"
+            ? { accept: "application/json", "content-type": "application/json", authorization: `Bearer ${token}` }
+            : { accept: "application/json", authorization: `Bearer ${token}` },
+        ...(method === "POST" ? { body: JSON.stringify(body ?? {}) } : {}),
+        cache: "no-store"
+      });
+    } catch {
+      return { status: "offline" };
+    }
+    if (response.status === 401 || response.status === 403) return { status: "denied" };
+    if (!response.ok) return { status: "error" };
+    try {
+      return { status: "ok", payload: await response.json() };
+    } catch {
+      return { status: "error" };
+    }
+  }
 }
 
 export type PushPlatform = "ios" | "android" | "web";
@@ -911,6 +1009,69 @@ function pushTokenStatus(status: number): PushTokenResult {
 }
 
 export type MobileSessionTransport = ReturnType<typeof createMobileSessionTransport>;
+
+// ── Contact Joblop ─────────────────────────────────────────────────────────────
+// Same limits and values as the API (apps/api/src/instantContact.ts).
+export const CONTACT_MAX_MESSAGE_LENGTH = 2000;
+export const CONTACT_TOPICS = ["shift", "pay", "documents", "account", "other"] as const;
+export type ContactTopic = (typeof CONTACT_TOPICS)[number];
+export type ContactStatus = "ai" | "needs_admin" | "admin_replied" | "solved";
+export type ContactAuthor = "requester" | "ai" | "admin" | "system";
+
+export type ContactConversation = Readonly<{
+  id: string;
+  topic: string;
+  status: ContactStatus;
+  urgent: boolean;
+  unread: boolean;
+  lastMessageAt: string;
+  createdAt: string;
+}>;
+
+export type ContactMessage = Readonly<{ id: string; authorKind: ContactAuthor; body: string; createdAt: string }>;
+
+type ContactFailure = Readonly<{ status: "denied" | "offline" | "error" }>;
+export type ContactListResult =
+  | Readonly<{ status: "ready"; conversations: readonly ContactConversation[]; unread: number }>
+  | ContactFailure;
+export type ContactStartResult = Readonly<{ status: "ready"; id: string }> | ContactFailure;
+export type ContactThreadResult =
+  | Readonly<{ status: "ready"; conversation: ContactConversation; messages: readonly ContactMessage[] }>
+  | ContactFailure;
+export type ContactActionResult = Readonly<{ status: "ready" }> | ContactFailure;
+
+const CONTACT_STATUSES: readonly ContactStatus[] = ["ai", "needs_admin", "admin_replied", "solved"];
+const CONTACT_AUTHORS: readonly ContactAuthor[] = ["requester", "ai", "admin", "system"];
+
+function parseContactConversation(input: unknown): ContactConversation | null {
+  if (!input || typeof input !== "object") return null;
+  const v = input as Record<string, unknown>;
+  const str = (key: string) => (typeof v[key] === "string" && (v[key] as string).length > 0 ? (v[key] as string) : null);
+  const id = str("id");
+  const status = str("status");
+  if (!id || !status || !(CONTACT_STATUSES as readonly string[]).includes(status)) return null;
+  const lastMessageAt = str("lastMessageAt") ?? "";
+  const createdAt = str("createdAt") ?? lastMessageAt;
+  return {
+    id,
+    topic: str("topic") ?? "other",
+    status: status as ContactStatus,
+    urgent: v.urgent === true,
+    unread: v.unread === true,
+    lastMessageAt,
+    createdAt
+  };
+}
+
+function parseContactMessage(input: unknown): ContactMessage | null {
+  if (!input || typeof input !== "object") return null;
+  const v = input as Record<string, unknown>;
+  const id = typeof v.id === "string" ? v.id : null;
+  const authorKind = typeof v.authorKind === "string" ? v.authorKind : null;
+  const body = typeof v.body === "string" ? v.body : null;
+  if (!id || !authorKind || body === null || !(CONTACT_AUTHORS as readonly string[]).includes(authorKind)) return null;
+  return { id, authorKind: authorKind as ContactAuthor, body, createdAt: typeof v.createdAt === "string" ? v.createdAt : "" };
+}
 
 // One open job from GET /marketplace/open-jobs. Rates are cents per hour; null when not shared.
 export type OpenJob = Readonly<{
