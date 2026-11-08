@@ -211,6 +211,10 @@ function SearchPanel({ onSignedOut }: { onSignedOut: () => void }) {
           <div>
             <h1>{t("mk.heroTitle")}</h1>
             <p>{t("mk.heroIntro")}</p>
+            <a className="btn" href="/jobs-calendar" style={{ display: "inline-flex", marginTop: 8, textDecoration: "none" }}>
+              <span aria-hidden="true">📅&nbsp;</span>
+              {rawLocale === "ar" ? "افتح تقويمي" : rawLocale.startsWith("fr") ? "Ouvrir mon calendrier" : "Open my calendar"}
+            </a>
           </div>
         </div>
       </section>

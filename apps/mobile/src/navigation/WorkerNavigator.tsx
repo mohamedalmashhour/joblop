@@ -38,7 +38,7 @@ type TabId = "home" | "available" | "myShifts" | "calendar" | "earnings";
 
 const TABS: readonly { id: TabId; label: string; root: Screen }[] = [
   { id: "home", label: "Home", root: { name: "home" } },
-  { id: "available", label: "Available", root: { name: "available" } },
+  { id: "available", label: "My calendar", root: { name: "available" } },
   { id: "myShifts", label: "My Shifts", root: { name: "myShifts" } },
   { id: "calendar", label: "Calendar", root: { name: "calendar" } },
   { id: "earnings", label: "Earnings", root: { name: "earnings" } }
@@ -92,12 +92,15 @@ export function WorkerNavigator({
           />
         );
       case "available":
-        // Real open Joblop jobs (GET /marketplace/open-jobs) on a month calendar, with Accept.
+        // "My calendar" hub (GET /worker/calendar-hub): open jobs with Accept, my shifts, cancelled
+        // shifts, pay days and a Today panel on one month calendar.
         return (
           <JobsCalendarScreen
             transport={transport}
             onOpenSetup={() => push({ name: "onboarding" })}
             onOpenSearch={() => push({ name: "marketplaceSearch" })}
+            onOpenSchedule={() => push({ name: "attendance" })}
+            onOpenPay={() => selectTab("earnings")}
           />
         );
       case "marketplaceSearch":

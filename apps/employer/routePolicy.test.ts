@@ -35,6 +35,7 @@ describe("employer production route policy", () => {
       "/employer/calendar/request/edit",
       "/employer/calendar/assignment",
       "/employer/orders",
+      "/employer/my-calendar",
       "/employer/orders/create",
       "/employer/orders/2f0d7c5e-3b1a-4a1e-9c7d-6a1f2b3c4d5e",
       "/employer/money",

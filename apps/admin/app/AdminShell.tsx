@@ -10,8 +10,8 @@ import type { MessageKey } from "./i18n/messages";
 // Navigation carries a translation key (labelKey) where a catalogue entry exists; the phase-01
 // review routes bring their own (English) title and keep it until those deep pages are translated.
 const connectedNavigation = [
-  { href: "/calendar", labelKey: "nav.calendar" },
   { href: "/calendar/job-coverage", labelKey: "nav.coverageCalendar" },
+  { href: "/calendar", labelKey: "nav.calendar" },
   { href: "/orders", labelKey: "nav.orders" },
   { href: "/dispatches", labelKey: "nav.dispatches" },
   { href: "/timesheets", labelKey: "nav.timesheets" },
@@ -59,7 +59,7 @@ function resolveNavigation(source: readonly NavSource[], t: Translate): NavItem[
 // pattern — every route belongs to a section so the workspace reads as coherent groups
 // instead of one long flat list.
 const NAV_GROUPS: readonly { group: string; hrefs: readonly string[] }[] = [
-  { group: "Operations", hrefs: ["/calendar", "/calendar/job-coverage", "/calendar/lifecycle", "/orders", "/dispatches", "/timesheets", "/shifts"] },
+  { group: "Operations", hrefs: ["/calendar/job-coverage", "/calendar", "/calendar/lifecycle", "/orders", "/dispatches", "/timesheets", "/shifts"] },
   { group: "Directory", hrefs: ["/workers", "/employers", "/residences"] },
   { group: "Finance & payroll", hrefs: ["/finance", "/finance/calendar", "/payroll", "/disputes", "/payouts", "/contracts", "/invoices", "/market-wages"] },
   { group: "People & trust", hrefs: ["/contact-desk", "/verification", "/hr"] },

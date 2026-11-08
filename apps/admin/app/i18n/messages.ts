@@ -15,7 +15,7 @@ export const en = {
 
   // Navigation items
   "nav.calendar": "Request calendar",
-  "nav.coverageCalendar": "Coverage calendar",
+  "nav.coverageCalendar": "Staff calendar",
   "nav.orders": "Order review",
   "nav.dispatches": "Dispatch reviews",
   "nav.marketWages": "Market wages",
@@ -59,7 +59,7 @@ export const fr: Messages = {
   "shell.navAria": "Navigation de l'administration",
 
   "nav.calendar": "Calendrier des demandes",
-  "nav.coverageCalendar": "Calendrier de couverture",
+  "nav.coverageCalendar": "Calendrier du personnel",
   "nav.orders": "Révision des commandes",
   "nav.dispatches": "Révisions de répartition",
   "nav.marketWages": "Salaires du marché",
@@ -99,7 +99,7 @@ export const ar: Partial<Messages> = {
   "shell.navAria": "تنقّل الإدارة",
 
   "nav.calendar": "تقويم الطلبات",
-  "nav.coverageCalendar": "تقويم التغطية",
+  "nav.coverageCalendar": "تقويم الموظفين",
   "nav.orders": "مراجعة الطلبات",
   "nav.dispatches": "مراجعات التوزيع",
   "nav.marketWages": "أجور السوق",

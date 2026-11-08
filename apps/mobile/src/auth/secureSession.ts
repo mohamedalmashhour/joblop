@@ -543,6 +543,37 @@ export function createMobileSessionTransport(options: {
       }
       return { status: "error" };
     },
+    // The worker's calendar hub (GET /worker/calendar-hub?from&to): open jobs to accept, own
+    // shifts, cancelled shifts, pay days and the "Today" list. Real server data only; items that
+    // are malformed are dropped rather than guessed. A network failure is "offline".
+    async getCalendarHub(window: Readonly<{ from: string; to: string }>): Promise<CalendarHubResult> {
+      const token = await options.vault.read();
+      if (!token) return { status: "denied" };
+      const query = `?from=${encodeURIComponent(window.from)}&to=${encodeURIComponent(window.to)}`;
+      let response: Response;
+      try {
+        response = await request(`${origin}/worker/calendar-hub${query}`, {
+          method: "GET",
+          headers: { accept: "application/json", authorization: `Bearer ${token}` },
+          cache: "no-store"
+        });
+      } catch {
+        return { status: "offline" };
+      }
+      if (response.status === 401 || response.status === 403) return { status: "denied" };
+      if (!response.ok) return { status: "error" };
+      try {
+        const payload = (await response.json()) as { items?: unknown; today?: unknown };
+        if (!Array.isArray(payload.items)) return { status: "error" };
+        const items = payload.items.map(parseHubItem).filter((v): v is CalendarHubItem => v !== null);
+        const today = Array.isArray(payload.today)
+          ? payload.today.map(parseHubToday).filter((v): v is CalendarHubToday => v !== null)
+          : [];
+        return { status: "ready", items, today };
+      } catch {
+        return { status: "error" };
+      }
+    },
     // The worker's own applications ("My interests") from GET /marketplace/my-interests — each with a
     // privacy-safe job summary and the linked governed-offer status when one exists. Read-only; it
     // reflects intent the worker already expressed, never creating an offer or assignment.
@@ -868,6 +899,86 @@ function parseOpenJobBonus(input: unknown): OpenJobBonus | null {
   if (kind !== "hourly" && kind !== "transport" && kind !== "one_time") return null;
   if (typeof amount !== "number" || !Number.isFinite(amount) || amount <= 0) return null;
   return { kind, amountMinor: Math.round(amount) };
+}
+
+// One dated item from GET /worker/calendar-hub. Amounts are integer cents CAD.
+// type: available_job | my_shift | cancelled_shift | pay_day (unknown types are kept but not shown).
+export type CalendarHubItem = Readonly<{
+  id: string;
+  type: string;
+  startAt: string;
+  endAt: string | null;
+  title: string;
+  subtitle: string | null;
+  status: string | null;
+  amountMinor: number | null;
+  bonus: OpenJobBonus | null;
+  placesLeft: number | null;
+  placesAsked: number | null;
+  placesTaken: number | null;
+  jobRequestId: string | null;
+  refId: string | null;
+}>;
+
+export type CalendarHubToday = Readonly<{
+  type: string;
+  title: string;
+  detail: string | null;
+  severity: "info" | "attention" | "urgent";
+  startAt: string | null;
+  jobRequestId: string | null;
+  refId: string | null;
+}>;
+
+export type CalendarHubResult =
+  | Readonly<{ status: "ready"; items: readonly CalendarHubItem[]; today: readonly CalendarHubToday[] }>
+  | Readonly<{ status: "denied" | "offline" | "error" }>;
+
+function parseHubItem(input: unknown): CalendarHubItem | null {
+  if (!input || typeof input !== "object") return null;
+  const v = input as Record<string, unknown>;
+  const str = (key: string) => (typeof v[key] === "string" && (v[key] as string).length > 0 ? (v[key] as string) : null);
+  const num = (key: string) => (typeof v[key] === "number" && Number.isFinite(v[key]) ? (v[key] as number) : null);
+  const id = str("id");
+  const type = str("type");
+  const startAt = str("startAt");
+  if (!id || !type || !startAt || !Number.isFinite(Date.parse(startAt))) return null;
+  const endAt = str("endAt");
+  return {
+    id,
+    type,
+    startAt,
+    endAt: endAt && Number.isFinite(Date.parse(endAt)) ? endAt : null,
+    title: str("title") ?? "",
+    subtitle: str("subtitle"),
+    status: str("status"),
+    amountMinor: num("amountMinor"),
+    bonus: parseOpenJobBonus(v.bonus),
+    placesLeft: num("placesLeft"),
+    placesAsked: num("placesAsked"),
+    placesTaken: num("placesTaken"),
+    jobRequestId: str("jobRequestId"),
+    refId: str("refId")
+  };
+}
+
+function parseHubToday(input: unknown): CalendarHubToday | null {
+  if (!input || typeof input !== "object") return null;
+  const v = input as Record<string, unknown>;
+  const str = (key: string) => (typeof v[key] === "string" && (v[key] as string).length > 0 ? (v[key] as string) : null);
+  const title = str("title");
+  if (!title) return null;
+  const severity = v.severity === "urgent" || v.severity === "attention" ? v.severity : "info";
+  const startAt = str("startAt");
+  return {
+    type: str("type") ?? "info",
+    title,
+    detail: str("detail"),
+    severity,
+    startAt: startAt && Number.isFinite(Date.parse(startAt)) ? startAt : null,
+    jobRequestId: str("jobRequestId"),
+    refId: str("refId")
+  };
 }
 
 export function tryCreateMobileSessionTransport(options: {

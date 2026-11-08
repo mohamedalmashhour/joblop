@@ -15,7 +15,17 @@ import { paymentWorkflow } from "./paymentWorkflowContent";
 import { shiftWorkflow } from "./shifts/shiftManagementContent";
 import { timesheetWorkflow } from "./timesheetWorkflowContent";
 
+// The calendar hub is the centre of the employer platform: first in every menu.
+const myCalendarStep = {
+  page: "C00",
+  title: "My calendar",
+  route: "/employer/my-calendar",
+  status: "Calendar hub",
+  boundary: "Jobs and who is coming, bonus offers to answer, invoice due dates and cancellations in one calendar."
+} as const;
+
 const employerNavigation = [
+  myCalendarStep,
   ...employerWorkflow,
   ...clientCalendarWorkflow,
   ...ordersWorkflow,
@@ -44,6 +54,7 @@ function isConnectedEnvironment(): boolean {
 }
 // What a real employer sees: every working page, and no prototype pages.
 const persistedEmployerNavigation: readonly { page: string; route: string; title: string; titleKey: MessageKey }[] = [
+  { page: "", route: "/employer/my-calendar", title: "My calendar", titleKey: "shell.nav.myCalendar" },
   { page: "", route: "/employer/dashboard", title: "Home", titleKey: "shell.nav.home" },
   { page: "", route: "/employer/calendar/create", title: "Request workers", titleKey: "shell.nav.request" },
   { page: "", route: "/employer/calendar", title: "Request calendar", titleKey: "shell.nav.calendar" },
