@@ -77,13 +77,24 @@ export function LandingPanel({ onSignedIn }: { onSignedIn: () => void }) {
             <button type="button" className="btn" onClick={() => openAccount("signup")}>{copy.createAccount}</button>
             <button type="button" className="btn ghost" onClick={() => openAccount("signin")}>{copy.signIn}</button>
           </div>
+          <ul className="landing-values landing-hero-values">
+            {values.map((v) => (
+              <li key={v}>
+                <span className="landing-tick" aria-hidden="true">✓</span>
+                <span>{withBrand(v)}</span>
+              </li>
+            ))}
+          </ul>
         </div>
         <div className="landing-hero-video">
           <VideoCard
             src="/media/workers-ready.mp4"
             poster="/media/workers-ready.jpg"
             label={t("land.videoReadyLabel")}
+            soundLabel={t("land.videoSoundOn")}
+            muteLabel={t("land.videoSoundOff")}
             playLabel={t("land.videoPlay")}
+            withSound
           />
         </div>
       </section>

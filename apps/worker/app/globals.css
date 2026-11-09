@@ -944,7 +944,12 @@ dl.agreement dd { margin: 0; }
 .pjs-count { font-weight: 700; color: #f8b808; }
 .pjs-h { margin: 16px 0 8px; font-size: 15px; color: #fbf7ee; }
 .pjs-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; }
-.pjs-cell { display: flex; flex-direction: column; gap: 6px; }
+/* A partner lead is one white card: the details button plus the source line inside the same border. */
+.pjs-cell { display: flex; flex-direction: column; gap: 0; background: #fff; border-radius: 14px; border: 1px solid rgba(248, 184, 8, 0.18); overflow: hidden; transition: border-color .15s, transform .15s; }
+.pjs-cell:hover { border-color: #f8b808; transform: translateY(-2px); }
+.pjs-cell .pjs-card { border: 0; border-radius: 0; flex: 1; }
+.pjs-cell .pjs-card:hover { transform: none; }
+.pjs-source { display: flex; align-items: center; gap: 6px; padding: 0 14px 12px; color: #5c5547; font-size: 12px; }
 .pjs-card { display: flex; flex-direction: column; gap: 6px; text-align: start; width: 100%; padding: 14px; border-radius: 14px; border: 1px solid rgba(248, 184, 8, 0.18);
   background: #fff; color: #111; cursor: pointer; font-family: inherit; font-size: 14px; }
 .pjs-card:hover { border-color: #f8b808; transform: translateY(-2px); }
@@ -956,8 +961,8 @@ a.pjs-card { text-decoration: none; box-sizing: border-box; }
 .pjs-meta { color: #5c5547; font-size: 13px; }
 .pjs-foot { display: flex; justify-content: space-between; gap: 8px; margin-top: auto; font-weight: 700; }
 .pjs-foot em { font-style: normal; color: #7a5600; }
-.pjs-adzuna { align-self: flex-start; display: inline-flex; align-items: center; justify-content: center; min-width: 116px; min-height: 24px; padding: 0 10px; border-radius: 6px;
-  background: rgba(255, 255, 255, 0.1); color: #fff; font-size: 14px; font-weight: 700; text-decoration: none; }
+.pjs-adzuna { display: inline-flex; align-items: center; justify-content: center; min-width: 116px; min-height: 24px; padding: 0 10px; border-radius: 6px;
+  background: #f3efe4; color: #111; font-size: 13px; font-weight: 700; text-decoration: none; }
 .pjs-gate { margin: 16px 0 0; padding: 12px 14px; border-radius: 12px; background: rgba(248, 184, 8, 0.1); color: #f4efe4; }
 @media (max-width: 860px) { .pjs-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
 @media (max-width: 560px) { .pjs-grid { grid-template-columns: 1fr; } .pjs-form { flex-direction: column; } .pjs-form button { padding: 13px; } }
@@ -1003,3 +1008,7 @@ a.pjs-card { text-decoration: none; box-sizing: border-box; }
   .pcal-row { gap: 4px; }
   .pcal-day { min-height: 44px; border-radius: 9px; }
 }
+
+/* Front page hero: copy sits centred beside the tall video, with the four values under the buttons. */
+.landing-hero-top { align-items: center; }
+.landing-hero-values { margin-top: 22px; }
