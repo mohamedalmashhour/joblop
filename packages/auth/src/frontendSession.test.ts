@@ -257,6 +257,31 @@ describe("secure frontend session gateway", () => {
     expect(await register(429, "75")).toEqual({ status: "rate_limited", retryAfterSeconds: 75 });
   });
 
+  it("carries a shift-overlap refusal through a 409, and nothing else from a 409 body", async () => {
+    const overlap = createFrontendSessionGateway({
+      apiOrigin: "https://api.example.test",
+      fetch: async () =>
+        apiResponse(409, {
+          error: "RWOS_SHIFT_OVERLAP",
+          message: "You already have a shift at that time (Tue, Nov 10, 9:00–17:00).",
+          messages: { en: "You already have a shift at that time (Tue, Nov 10, 9:00–17:00).", fr: "Vous avez déjà…", xx: "drop" },
+          heldShift: { startAt: "2026-11-10T14:00:00.000Z" },
+          privateReason: "never-return"
+        })
+    });
+    const result = await overlap.request("/platform/assignments", "POST", "server-session-token-123456789", {});
+    expect(result).toEqual({
+      status: "stale",
+      conflict: {
+        error: "RWOS_SHIFT_OVERLAP",
+        message: "You already have a shift at that time (Tue, Nov 10, 9:00–17:00).",
+        messages: { en: "You already have a shift at that time (Tue, Nov 10, 9:00–17:00).", fr: "Vous avez déjà…" },
+        heldShift: { startAt: "2026-11-10T14:00:00.000Z" }
+      }
+    });
+    expect(JSON.stringify(result)).not.toContain("never-return");
+  });
+
   it("rejects insecure non-local origins", () => {
     expect(() =>
       createFrontendSessionGateway({

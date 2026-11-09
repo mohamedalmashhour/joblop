@@ -1042,6 +1042,19 @@ describe("open jobs calendar transport", () => {
     expect(await make(async () => response(401, {})).claimOpenJob(jobId)).toEqual({ status: "denied" });
     expect(await make(async () => { throw new TypeError("Network request failed"); }).claimOpenJob(jobId)).toEqual({ status: "offline" });
     expect(await make(async () => response(500, {})).claimOpenJob(jobId)).toEqual({ status: "error" });
+    // Already holding a shift at that time: the API's own message, in each language.
+    expect(
+      await make(async () =>
+        response(409, {
+          error: "RWOS_SHIFT_OVERLAP",
+          status: "shift_overlap",
+          messages: { en: "You already have a shift at that time (Tue, Nov 10, 9:00–17:00).", fr: "Vous avez déjà…", ar: 7 }
+        })
+      ).claimOpenJob(jobId)
+    ).toEqual({
+      status: "shift_overlap",
+      messages: { en: "You already have a shift at that time (Tue, Nov 10, 9:00–17:00).", fr: "Vous avez déjà…" }
+    });
     const noFetch = vi.fn();
     expect(await createMobileSessionTransport({ apiOrigin: origin, vault: vault(), fetch: noFetch }).claimOpenJob(jobId)).toEqual({ status: "denied" });
     expect(noFetch).not.toHaveBeenCalled();

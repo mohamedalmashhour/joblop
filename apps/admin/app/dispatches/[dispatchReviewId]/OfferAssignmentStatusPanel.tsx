@@ -2,6 +2,8 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { formatRwosDateTime } from "@rwos/shared";
+import { useLocale } from "../../i18n/LocaleProvider";
+import { readShiftOverlapNotice } from "../shiftOverlapNotice";
 import {
   eligibleOffersForAssignment,
   type AdminAssignmentSummary,
@@ -20,6 +22,7 @@ type State =
 export function OfferAssignmentStatusPanel({
   dispatchReviewId
 }: Readonly<{ dispatchReviewId: string }>) {
+  const locale = useLocale();
   const [state, setState] = useState<State>({ status: "loading" });
   const [selectedOfferId, setSelectedOfferId] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
@@ -93,6 +96,7 @@ export function OfferAssignmentStatusPanel({
             })
           }
         );
+        const overlap = await readShiftOverlapNotice(response, locale);
         const reconciled = await fetchOperationalState(dispatchReviewId);
         setState(reconciled);
         setSelectedOfferId(null);
@@ -108,6 +112,9 @@ export function OfferAssignmentStatusPanel({
             message:
               "Assignment created and verified. Worker acknowledgement and attendance remain separate."
           });
+        } else if (overlap) {
+          // The worker already holds a shift at that time; the API's message names it.
+          setNotice({ tone: "alert", message: overlap });
         } else if (response.status === 404) {
           setNotice({
             tone: "alert",
@@ -136,7 +143,7 @@ export function OfferAssignmentStatusPanel({
         setSubmitting(false);
       }
     },
-    [dispatchReviewId, submitting]
+    [dispatchReviewId, submitting, locale]
   );
 
   // Round 2b: advance a draft/approved offer (approve → send). Same rigor as assignment creation:
@@ -173,6 +180,7 @@ export function OfferAssignmentStatusPanel({
             body: JSON.stringify({ expectedVersion: current.versionToken })
           }
         );
+        const overlap = await readShiftOverlapNotice(response, locale);
         const reconciled = await fetchOperationalState(dispatchReviewId);
         setState(reconciled);
         const persisted =
@@ -186,6 +194,8 @@ export function OfferAssignmentStatusPanel({
                 ? "Offer approved and verified in persisted records."
                 : "Offer sent to the worker and verified. Delivery confirmation is separate."
           });
+        } else if (overlap) {
+          setNotice({ tone: "alert", message: overlap });
         } else if (response.status === 409 || response.status === 412) {
           setNotice({ tone: "alert", message: "The offer state changed. Review the refreshed persisted records." });
         } else {
@@ -200,7 +210,7 @@ export function OfferAssignmentStatusPanel({
         setSubmitting(false);
       }
     },
-    [dispatchReviewId, submitting]
+    [dispatchReviewId, submitting, locale]
   );
 
   if (state.status !== "ready") {

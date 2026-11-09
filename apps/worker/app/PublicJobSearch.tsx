@@ -3,10 +3,12 @@
 import { useCallback, useEffect, useState } from "react";
 import { useLocale } from "./i18n/LocaleProvider";
 import { workerPayLabel } from "./workerPayLabel";
+import { publicJobPath } from "./safeReturnPath";
 
 // Signed-out front door: a REAL job search anyone can use before having an account. Joblop's own
-// open jobs come first, then jobs scanned from partner job boards. Opening a job asks the visitor
-// to create an account first (then they are signed in and taken to what they picked).
+// open jobs come first, then jobs scanned from partner job boards. A Joblop job opens its public page
+// (what, where, when, the worker's pay, and "Create an account to take this job", which brings the
+// visitor back to that job). A partner job asks the visitor to create an account first.
 
 type PublicJob = {
   jobCode: string;
@@ -174,7 +176,7 @@ export function PublicJobSearch({ onWantDetails }: { onWantDetails: (next: strin
               <h3 className="pjs-h">{t.joblopJobs}</h3>
               <div className="pjs-grid">
                 {jobs.map((job) => (
-                  <button type="button" key={job.jobCode} className="pjs-card pjs-own" title={t.gate} onClick={() => onWantDetails("/")}>
+                  <a key={job.jobCode} className="pjs-card pjs-own" href={publicJobPath(job.jobCode)}>
                     <span className="pjs-badge">{t.joblopBadge}</span>
                     <strong>{job.role}</strong>
                     <span className="pjs-meta">📍 <bdi>{job.areaLabel}</bdi> · {new Date(job.startAt).toLocaleDateString(locale)}</span>
@@ -183,7 +185,7 @@ export function PublicJobSearch({ onWantDetails }: { onWantDetails: (next: strin
                       <em>{t.places(job.openings)}{job.urgency === "urgent" || job.urgency === "immediate" ? ` · ${t.urgent}` : ""}</em>
                       <span>{t.open} →</span>
                     </span>
-                  </button>
+                  </a>
                 ))}
               </div>
             </>

@@ -119,10 +119,10 @@ export function JobsCalendarScreen({
       const result = await transport.claimOpenJob(jobRequestId);
       setClaimingId(null);
       setConfirmingId(null);
-      setMessage(claimMessage(result));
+      setMessage(claimMessage(result, locale));
       reload();
     },
-    [transport, reload]
+    [transport, reload, locale]
   );
 
   const weeks = useMemo(() => buildMonthWeeks(view.year, view.month), [view]);
@@ -182,7 +182,7 @@ export function JobsCalendarScreen({
 
           {message ? (
             <View accessibilityLiveRegion="polite" accessibilityRole="alert" style={[styles.banner, styles[`${message.tone}Banner`]]} testID="jobs-message">
-              <Text style={[styles.bannerText, rtlText(isRtl)]}>{t(message.key)}</Text>
+              <Text style={[styles.bannerText, rtlText(isRtl)]}>{message.text ?? t(message.key)}</Text>
               {message.reasons.map((reason) => (
                 <Text key={reason} style={[styles.bannerReason, rtlText(isRtl)]}>{`• ${reason}`}</Text>
               ))}

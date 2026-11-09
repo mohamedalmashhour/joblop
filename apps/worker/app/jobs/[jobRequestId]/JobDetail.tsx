@@ -6,6 +6,7 @@ import { formatWhen } from "../../MarketplaceExplorer";
 import { useLocale, useT, fmtLocale } from "../../i18n/LocaleProvider";
 import type { MessageKey } from "../../i18n/messages";
 import { workerPayLabel } from "../../workerPayLabel";
+import { shiftOverlapNotice } from "../../shiftOverlapNotice";
 
 type JobDetailData = Readonly<{
   jobRequestId: string;
@@ -39,7 +40,7 @@ type JobDetailData = Readonly<{
 
 type JobBonus = Readonly<{ kind: string; amountMinor: number }>;
 
-type ClaimState = "idle" | "claiming" | "assigned" | "full" | "election_required" | "ineligible" | "error";
+type ClaimState = "idle" | "claiming" | "assigned" | "full" | "election_required" | "ineligible" | "overlap" | "error";
 
 type AllowanceLine = Readonly<{ provision: string; amountMinor: number | null; note: string | null }>;
 type AllowancesData = Readonly<{
@@ -65,7 +66,9 @@ export function JobDetail({ id, place }: { id: string; place: string | null }) {
   // Only a postal code is sent with an interest (for its audit distance); a city is not.
   const postalCode = place && looksLikePostalCode(place) ? place : null;
   const t = useT();
-  const locale = fmtLocale(useLocale());
+  const uiLocale = useLocale();
+  const locale = fmtLocale(uiLocale);
+  const [overlapMessage, setOverlapMessage] = useState<string | null>(null);
   const [status, setStatus] = useState<"loading" | "ready" | "not_found" | "signed_out" | "error">("loading");
   const [job, setJob] = useState<JobDetailData | null>(null);
   const [interest, setInterest] = useState<InterestState | null>(null);
@@ -133,14 +136,18 @@ export function JobDetail({ id, place }: { id: string; place: string | null }) {
         return;
       }
       const body = (await r.json().catch(() => ({}))) as { error?: string };
-      if (r.status === 409 && body.error === "RWOS_CLASSIFICATION_ELECTION_REQUIRED") setClaimState("election_required");
+      const overlap = r.status === 409 ? shiftOverlapNotice(body, uiLocale) : null;
+      if (overlap) {
+        setOverlapMessage(overlap);
+        setClaimState("overlap");
+      } else if (r.status === 409 && body.error === "RWOS_CLASSIFICATION_ELECTION_REQUIRED") setClaimState("election_required");
       else if (r.status === 409) setClaimState("full");
       else if (r.status === 422) setClaimState("ineligible");
       else setClaimState("error");
     } catch {
       setClaimState("error");
     }
-  }, [id]);
+  }, [id, uiLocale]);
 
   const toggleSaved = useCallback(async () => {
     if (!job) return;
@@ -248,7 +255,7 @@ export function JobDetail({ id, place }: { id: string; place: string | null }) {
       <AllowancesSection allowances={job.allowances} currency={job.currency} locale={locale} />
 
       {job.claimable ? (
-        <ClaimPanel state={claimState} onClaim={claimJob} />
+        <ClaimPanel state={claimState} onClaim={claimJob} overlapMessage={overlapMessage} />
       ) : (
         <InterestPanel state={interest} busy={interestBusy} onExpress={expressInterest} onWithdraw={withdrawInterest} />
       )}
@@ -427,7 +434,7 @@ function InterestPanel({
 
 // Hybrid auto-offer — direct claim CTA. First eligible worker to claim each slot is assigned
 // instantly; once slots fill, the claim returns "full". The pay-channel election gate still applies.
-function ClaimPanel({ state, onClaim }: { state: ClaimState; onClaim: () => void }) {
+function ClaimPanel({ state, onClaim, overlapMessage }: { state: ClaimState; onClaim: () => void; overlapMessage: string | null }) {
   const t = useT();
 
   if (state === "assigned") {
@@ -451,6 +458,7 @@ function ClaimPanel({ state, onClaim }: { state: ClaimState; onClaim: () => void
         </p>
       ) : null}
       {state === "ineligible" ? <p className="muted">{t("job.inelDefault")}</p> : null}
+      {state === "overlap" && overlapMessage ? <p className="muted" role="alert">{overlapMessage}</p> : null}
       {state === "error" ? <p className="muted">{t("job.loadError")}</p> : null}
       {state !== "full" ? (
         <button className="btn" type="button" onClick={onClaim} disabled={state === "claiming"}>

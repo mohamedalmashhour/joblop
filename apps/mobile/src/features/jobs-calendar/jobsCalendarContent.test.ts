@@ -65,6 +65,13 @@ describe("jobs calendar content", () => {
     expect(ineligible.reasons).toEqual(["Pay channel election required"]);
     expect(humanizeReason("")).toBe("");
   });
+
+  it("shows the API's own overlap message in the screen's language, English when missing", () => {
+    const result = { status: "shift_overlap", messages: { en: "You already have a shift at that time (Tue, Nov 10, 9:00–17:00).", fr: "Vous avez déjà un quart de travail à cette heure-là (mar. 10 nov., 9:00–17:00)." } } as const;
+    expect(claimMessage(result, "fr")).toMatchObject({ tone: "warning", key: "jobs.msg.shiftOverlap", text: result.messages.fr });
+    expect(claimMessage(result, "ar").text).toBe(result.messages.en);
+    expect(claimMessage({ status: "shift_overlap", messages: {} }, "ar")).toEqual({ tone: "warning", key: "jobs.msg.shiftOverlap", reasons: [] });
+  });
 });
 
 function hubItem(overrides: Partial<CalendarHubItem>): CalendarHubItem {

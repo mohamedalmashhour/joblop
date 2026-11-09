@@ -6,6 +6,7 @@ import {
   readAssignmentCreateInput
 } from "../../offerAssignmentBoundary";
 import { isSameOriginMutation, sessionBoundary, sessionFailure } from "../../../sessionBoundary";
+import { forwardShiftOverlap } from "../../../shiftOverlap";
 
 export async function GET(
   _request: Request,
@@ -54,7 +55,7 @@ export async function POST(
     dispatchReviewId,
     expectedOfferVersion: input.expectedOfferVersion
   });
-  if (result.status !== "ok") return assignmentMutationFailure(result.status);
+  if (result.status !== "ok") return forwardShiftOverlap(result) ?? assignmentMutationFailure(result.status);
   try {
     const payload = result.payload as { assignment?: unknown };
     const assignment = parseAdminAssignment(payload.assignment, dispatchReviewId);
