@@ -19,6 +19,18 @@ const runtimeConfigSchema = z
       .string()
       .regex(/^rwos:authrl:(?:local|test|staging|production):v1$/)
       .optional(),
+    // Which sign-in rate limiter backs the API. Unset keeps the historical choice (remote limiter in
+    // production, in-memory elsewhere). "postgres" keeps the shared buckets in the API's own database
+    // (table auth_rate_limit_buckets), so production needs no separate limiter service or Redis; it
+    // needs only DATABASE_URL, AUTH_RATE_LIMITER_KEY_SECRET and AUTH_RATE_LIMITER_NAMESPACE.
+    AUTH_RATE_LIMITER_BACKEND: z.enum(["remote", "postgres"]).optional(),
+    // Production-only feature flags (read only when RWOS_ENV=production; every other environment
+    // keeps these features on, as before). Unset = the selected country profile's default
+    // (Canada/Québec: ON); a profile without defaults keeps them OFF, the historical production
+    // behaviour. RWOS_JOB_FLOW_ENABLED opens the worker and staff job-flow write routes (offers,
+    // assignments, attendance, timesheets, dispatch); RWOS_PUBLIC_SIGNUP_ENABLED opens /auth/register.
+    RWOS_JOB_FLOW_ENABLED: z.enum(["disabled", "enabled"]).optional(),
+    RWOS_PUBLIC_SIGNUP_ENABLED: z.enum(["disabled", "enabled"]).optional(),
     CANDIDATE_SOURCE_ORIGIN: z.string().url().optional(),
     CANDIDATE_SOURCE_TOKEN: z.string().min(32).optional(),
     OFFER_DELIVERY_ORIGIN: z.string().url().optional(),
@@ -209,6 +221,22 @@ const runtimeConfigSchema = z
         message: "AUTH_RATE_LIMITER_NAMESPACE must match RWOS_ENV."
       });
     }
+    if (config.AUTH_RATE_LIMITER_BACKEND === "postgres") {
+      if (!config.DATABASE_URL) {
+        context.addIssue({
+          code: "custom",
+          path: ["DATABASE_URL"],
+          message: "AUTH_RATE_LIMITER_BACKEND=postgres requires DATABASE_URL."
+        });
+      }
+      if (!config.AUTH_RATE_LIMITER_KEY_SECRET) {
+        context.addIssue({
+          code: "custom",
+          path: ["AUTH_RATE_LIMITER_KEY_SECRET"],
+          message: "AUTH_RATE_LIMITER_BACKEND=postgres requires AUTH_RATE_LIMITER_KEY_SECRET."
+        });
+      }
+    }
     if (config.DOCUMENT_LOCAL_UPLOAD_ENABLED === "enabled") {
       if (config.RWOS_ENV !== "local" && config.RWOS_ENV !== "test") {
         context.addIssue({
@@ -298,7 +326,9 @@ const runtimeConfigSchema = z
         message: "INTERNAL_API_ORIGIN must use HTTPS when RWOS_ENV is production."
       });
     }
-    if (!config.AUTH_RATE_LIMITER_ORIGIN?.startsWith("https://")) {
+    // The Postgres limiter lives inside the API, so it needs no origin, token or key id.
+    const remoteLimiter = config.AUTH_RATE_LIMITER_BACKEND !== "postgres";
+    if (remoteLimiter && !config.AUTH_RATE_LIMITER_ORIGIN?.startsWith("https://")) {
       context.addIssue({
         code: "custom",
         path: ["AUTH_RATE_LIMITER_ORIGIN"],
@@ -315,7 +345,7 @@ const runtimeConfigSchema = z
         message: "PASSWORD_RESET_PUBLIC_ORIGIN must use HTTPS when RWOS_ENV is production."
       });
     }
-    if (!config.AUTH_RATE_LIMITER_TOKEN) {
+    if (remoteLimiter && !config.AUTH_RATE_LIMITER_TOKEN) {
       context.addIssue({
         code: "custom",
         path: ["AUTH_RATE_LIMITER_TOKEN"],
@@ -329,7 +359,7 @@ const runtimeConfigSchema = z
         message: "AUTH_RATE_LIMITER_KEY_SECRET is required when RWOS_ENV is production."
       });
     }
-    if (!config.AUTH_RATE_LIMITER_KEY_ID) {
+    if (remoteLimiter && !config.AUTH_RATE_LIMITER_KEY_ID) {
       context.addIssue({
         code: "custom",
         path: ["AUTH_RATE_LIMITER_KEY_ID"],
@@ -415,6 +445,11 @@ export function getRuntimeConfig(env: NodeJS.ProcessEnv = process.env) {
     authRateLimiterKeySecret: parsed.AUTH_RATE_LIMITER_KEY_SECRET,
     authRateLimiterKeyId: parsed.AUTH_RATE_LIMITER_KEY_ID,
     authRateLimiterNamespace: parsed.AUTH_RATE_LIMITER_NAMESPACE,
+    // null = the historical choice (remote in production, memory elsewhere).
+    authRateLimiterBackend: parsed.AUTH_RATE_LIMITER_BACKEND ?? null,
+    // Production-only feature flags as set (null = unset; the API applies the country default).
+    jobFlowFlag: parsed.RWOS_JOB_FLOW_ENABLED ?? null,
+    publicSignupFlag: parsed.RWOS_PUBLIC_SIGNUP_ENABLED ?? null,
     candidateSourceOrigin: parsed.CANDIDATE_SOURCE_ORIGIN,
     candidateSourceToken: parsed.CANDIDATE_SOURCE_TOKEN,
     offerDeliveryOrigin: parsed.OFFER_DELIVERY_ORIGIN,

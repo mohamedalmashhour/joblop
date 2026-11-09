@@ -3536,6 +3536,18 @@ model AiUsageEvent {
   @@map("ai_usage_events")
 }
 
+// Sign-in rate limiter buckets (AUTH_RATE_LIMITER_BACKEND=postgres). One row per bucket: an HMAC
+// digest of an account or an IP (never the raw value), its hit count and the end of its window. Written
+// only by apps/api postgresAuthRateLimiter.ts with one atomic INSERT ... ON CONFLICT statement.
+model AuthRateLimitBucket {
+  bucketKey    String   @id @map("bucket_key")
+  hits         Int
+  windowEndsAt DateTime @map("window_ends_at") @db.Timestamptz(3)
+
+  @@index([windowEndsAt])
+  @@map("auth_rate_limit_buckets")
+}
+
 // Invite-a-friend / referral. Each user gets ONE stable, shareable invite code; a friend who signs up
 // with that code (…/?ref=CODE) is recorded as a referral attributed to the inviter. Country-neutral,
 // no money — a growth/attribution feature. A code is created lazily the first time a user opens their
