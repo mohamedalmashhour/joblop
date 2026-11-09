@@ -2,6 +2,7 @@
 // Privacy Policy section 10 ("What is new in this version"), shared by the worker and employer
 // sites. It is ADDED after the approved October 26, 2026 text (sections 1 to 9); it does not
 // rewrite it. Every fact here was checked against the code; see docs/legal/LEGAL_REVIEW_NOTES.md.
+import { aiFeaturesSection } from "./legalAiFeatures";
 import { LEGAL_COMPANY, LEGAL_EFFECTIVE_DATE, type LegalBlock } from "./legalDocuments";
 
 export type LegalAudience = "worker" | "employer";
@@ -252,5 +253,7 @@ export function privacyAdditions(audience: LegalAudience, lang: "en" | "fr"): re
         : "La présente politique est publiée en français et en anglais, et les deux versions ont la même valeur. La page en arabe est un résumé fourni pour votre commodité seulement; les versions française et anglaise prévalent."
     }
   );
+  // Section 11 (added 2026-11-11): AI features. See legalAiFeatures.ts.
+  blocks.push(...aiFeaturesSection(audience, lang));
   return blocks;
 }

@@ -1,8 +1,13 @@
-# Legal review notes — Terms and Privacy, version 2026-11-10
+# Legal review notes — Terms and Privacy, version 2026-11-11
 
 For: the Québec lawyer reviewing Joblop (9375-7649 Québec Inc., operating as Joblop).
-Effective date of the current text: **2026-11-10**. Version string: `2026-11-10`
+Effective date of the current text: **2026-11-11**. Version string: `2026-11-11`
 (`packages/shared/src/domain/legalDocuments.ts`, `LEGAL_DOCUMENTS_VERSION`).
+
+**What changed in 2026-11-11 (versus 2026-11-10):** a new Privacy Policy section 11 "Artificial
+intelligence (AI) features" was ADDED to the worker and employer policies (EN and FR), plus one Arabic
+summary line on each. No existing sentence was edited. The full new text is in section 5 below. The page
+header now reads "Effective November 11, 2026".
 
 **What changed in 2026-11-10 (versus 2026-11-09):** four sentences of the approved October 26 worker
 Privacy Policy no longer matched how the app works. Only those sentences were edited, in English and in
@@ -250,3 +255,255 @@ the "this section applies" rule in §10/§15 is meant to cover them, but the law
   Plans page" instead of a fixed number.
 - The live `TERMS_VERSION` / `PRIVACY_NOTICE_VERSION` env vars on Render (shown as `2026-11-01` on the
   old employer pages) must be changed to `2026-11-09` by the owner; they only gate employer sign-up.
+
+---
+
+## 5. Privacy Policy section 11 "Artificial intelligence (AI) features" — added 2026-11-11, for lawyer review
+
+**Status: added 2026-11-11, for lawyer review.** New text only; sections 1 to 10 are unchanged.
+Source: `packages/shared/src/domain/legalAiFeatures.ts` (appended by `privacyAdditions`, so it shows on
+the worker `/privacy` page in EN and FR, under the Arabic summary in EN, and on the employer `/privacy`
+page in EN and FR). Arabic summary lines: `workerPrivacyArabic` (`apps/worker/app/legal/workerLegalUpdates.ts`)
+and `privacyAr` (`apps/employer/app/legal/employerLegal.ts`).
+
+### 5.1 What the code does (checked 2026-11-11, after launch step 6)
+
+- Only three features can call Anthropic, all through one module (`apps/api/src/outsideAi.ts`):
+  `contact_chat` (worker and employer "Contact Joblop", website and phone app), `staff_assistant`
+  (staff "Ask" on the contact desk) and `cv_builder` (Worker Pro CV builder and the staff CV wizard).
+- That module refuses any image, document or base64 content, refuses text that still names health
+  details, times out after 20 seconds, and has a kill switch (`AI_OUTSIDE_CALLS=disabled`). Its logs hold
+  feature, model, outcome, latency, size and HTTP status, never text.
+- Document pre-check no longer uses AI (`apps/api/src/documentAiReview.ts`): it reads only our own record
+  (type, expiry) and never opens the file; a person decides.
+- Contact chat: health, safety, dispute, account and "talk to a person" messages go to staff without the
+  AI (`instantContact.ts`). The AI receives a first name (worker) or company name (employer) and the
+  person's own recent records, all through the privacy filter.
+- CV builder: name, email and phone are never sent; on any failure, limit or kill switch the worker gets
+  the basic offline CV. CV AI use is counted in `ai_usage_events` (feature, account, time; no text).
+- "Speak": browser Web Speech API only (`DictationButton.tsx`); no request to Joblop's servers.
+- No AI feature has tools: AI cannot change pay, shifts, invoices, accounts or assignments. Suspensions
+  and closures are staff actions (`/platform/workers/:id/apply-cancellation-penalty`).
+
+### 5.2 Points to confirm
+
+1. **Overlap with §10.2 and §10.4 (draft text, not edited).** §10.2 (worker row) still says an image of a
+   document may go to Anthropic for a pre-check, and §10.4 says "an image of the document may be sent to
+   Anthropic". Since step 6 this is no longer true. §11 says so and overrides §10 ("If anything in this
+   section is different from sections 1 to 10, this section applies"). Recommend deleting those two
+   sentences at the next edit. Item 8 of section 2 above is therefore resolved in code.
+2. **Names.** The filter does not mask names typed in free text (for example a co-worker's or a manager's
+   name). The account's full name, email and phone are not sent. §11 says this plainly and asks people not
+   to type other people's names. Confirm this is enough, or ask for name masking in code.
+3. **No training / retention.** "Under our agreement with the provider" relies on Anthropic's commercial
+   API terms. The owner must confirm Joblop's Anthropic account is under those terms; retention is left
+   to the provider's terms with no number stated.
+4. **Kept text.** The Contact Joblop conversation (including AI answers) and the worker's latest CV are
+   stored in Joblop's database like other account content. §11 says so; they follow §10.7 retention.
+5. **Law 25 s. 12.1.** §11 states no decision is based only on automated processing by AI. Rule-based
+   features (job count by profile completeness, first eligible claim) are covered in §10.3, not here.
+6. **Privacy impact assessment** before communicating information outside Québec (s. 17) is still not
+   claimed (see item 7 of section 2).
+
+### 5.3 Full new text
+
+#### Worker — English
+
+##### 11. Artificial intelligence (AI) features
+
+This section explains when Joblop uses artificial intelligence (AI) and what happens to your information. It adds to sections 1 to 10. If anything in this section is different from sections 1 to 10, this section applies.
+
+**11.1 Features that may use an outside AI provider**
+
+These features may send text to Anthropic, an AI company in the United States (its AI is called Claude):
+
+- The “Contact Joblop” chat assistant, on the website and in the phone app. It answers your message first. If it cannot help, a person on the Joblop team takes over.
+- The staff assistant. When a Joblop staff member answers your message, they can ask the AI to suggest a reply. The staff member reads the suggestion and decides what to send.
+- The CV and cover-letter builder for Worker Pro members, and the same builder when Joblop staff prepare a CV for you. Free members get a basic CV made by Joblop’s own software, with no outside AI.
+
+No other Joblop feature sends your information to an outside AI. Document checks, job matching, search results, pay and invoices do not use an outside AI.
+
+**11.2 What is sent**
+
+Only the text needed for the request is sent:
+
+- For the chat assistant: your message, the earlier messages in the same conversation, the topic you chose, and a short summary of your own Joblop records needed to answer (for example your first name, your recent shifts and their city, your timesheets, your pay statement totals and the status of your documents).
+- For the staff assistant: the staff member’s question and the recent messages of your conversation.
+- For the CV builder: the CV details you enter (such as your headline, area, experience, skills, languages, certifications and education) and, if you choose one, the job you are applying for.
+
+Before anything is sent, Joblop’s software automatically masks or removes email addresses, phone numbers, street addresses and postal codes, social insurance numbers, bank account and card numbers, dates of birth, health-card, passport and driver’s licence numbers, and health details. Your full name, email address and phone number from your account are not sent: the chat assistant sees only your first name, and the CV builder adds your name and contact details back on Joblop’s side after the AI is done. Masking is automatic and may miss something, so please do not type private details, or other people’s names, that your request does not need.
+
+No document, photo, scan or other image is ever sent to an outside AI; our software blocks it. The document pre-check described in section 10.4 no longer uses AI: a Joblop staff member checks your documents.
+
+If a message mentions health (for example an illness, an injury, a pregnancy or a sick note), it is not sent to the AI. It goes straight to a person on the Joblop team. Messages about safety, a dispute or your account also go to a person. If CV details still mention health after masking, the AI is not used and you get the basic CV.
+
+**11.3 What AI does not do**
+
+AI does not make decisions about hiring, pay or the status of your account. No decision about you is based only on automated processing by AI (Québec’s Act respecting the protection of personal information in the private sector, section 12.1). The AI cannot change your pay, your shifts or your account: it only answers, drafts and suggests. Joblop staff review documents, settle disputes and decide anything that matters to you.
+
+**11.4 Where the information goes and how long it is kept**
+
+Anthropic processes the text in the United States, outside Québec. Under our agreement with the provider, Anthropic does not use this information to train its AI models. How long Anthropic keeps the text is set by its terms with us.
+
+Joblop does not keep a separate copy of what is sent to the AI. Our records of AI use show only which feature was used, by which account, when, and the result (for example, whether it worked). They do not contain the text sent or received. What stays in your account is kept like any other content: your Contact Joblop conversation, including the assistant’s answers, and your latest CV.
+
+**11.5 You can always talk to a person**
+
+You never have to use the AI. In the chat, write that you want to talk to a person (for example “I want to talk to a person”) and your message goes to the Joblop team. You can also write your CV yourself. For any question about AI and your personal information, or to ask a person to review something the AI did, contact: Privacy Officer, 9375-7649 Québec Inc., 207-805 boul. Chomedey, Laval, QC H7V 0B1, Canada. Email: contact@joblop.com.
+
+**11.6 Turning AI off**
+
+Joblop can turn off all outside AI features at any time. The service then keeps working without them: chat messages go straight to a person on the Joblop team, and the CV builder gives you a basic CV made by Joblop’s own software. The same happens if the AI is slow or unavailable.
+
+#### Worker — French
+
+##### 11. Fonctions d’intelligence artificielle (IA)
+
+La présente section explique quand Joblop utilise l’intelligence artificielle (IA) et ce qu’il advient de vos renseignements. Elle s’ajoute aux sections 1 à 10. Si un élément de la présente section diffère des sections 1 à 10, la présente section s’applique.
+
+**11.1 Fonctions qui peuvent utiliser un fournisseur d’IA externe**
+
+Les fonctions suivantes peuvent envoyer du texte à Anthropic, une entreprise d’IA située aux États-Unis (son IA s’appelle Claude) :
+
+- L’assistant de clavardage « Contacter Joblop », sur le site Web et dans l’application mobile. Il répond en premier à votre message. S’il ne peut pas vous aider, une personne de l’équipe Joblop prend le relais.
+- L’assistant du personnel. Lorsqu’un membre du personnel de Joblop répond à votre message, il peut demander à l’IA de suggérer une réponse. Le membre du personnel lit la suggestion et décide de ce qui est envoyé.
+- Le générateur de CV et de lettre de présentation pour les membres Worker Pro, ainsi que le même générateur lorsque le personnel de Joblop prépare un CV pour vous. Les membres gratuits reçoivent un CV de base produit par le logiciel de Joblop, sans IA externe.
+
+Aucune autre fonction de Joblop n’envoie vos renseignements à une IA externe. La vérification des documents, le jumelage des emplois, les résultats de recherche, la paie et la facturation n’utilisent pas d’IA externe.
+
+**11.2 Ce qui est envoyé**
+
+Seul le texte nécessaire à la demande est envoyé :
+
+- Pour l’assistant de clavardage : votre message, les messages précédents de la même conversation, le sujet choisi et un court résumé de vos propres dossiers Joblop nécessaires pour répondre (par exemple votre prénom, vos quarts récents et leur ville, vos feuilles de temps, les totaux de vos relevés de paie et l’état de vos documents).
+- Pour l’assistant du personnel : la question du membre du personnel et les messages récents de votre conversation.
+- Pour le générateur de CV : les renseignements du CV que vous saisissez (comme votre titre, votre région, votre expérience, vos compétences, vos langues, vos certifications et votre formation) et, si vous en choisissez un, l’emploi visé.
+
+Avant tout envoi, le logiciel de Joblop masque ou retire automatiquement les adresses courriel, les numéros de téléphone, les adresses et codes postaux, les numéros d’assurance sociale, les numéros de compte bancaire et de carte, les dates de naissance, les numéros de carte d’assurance maladie, de passeport et de permis de conduire, ainsi que les renseignements de santé. Votre nom complet, votre adresse courriel et votre numéro de téléphone inscrits à votre compte ne sont pas envoyés : l’assistant de clavardage voit seulement votre prénom, et le générateur de CV ajoute votre nom et vos coordonnées du côté de Joblop une fois le travail de l’IA terminé. Le masquage est automatique et peut laisser passer un élément; veuillez donc ne pas taper de renseignements privés, ni le nom d’autres personnes, dont votre demande n’a pas besoin.
+
+Aucun document, aucune photo, aucune numérisation ni aucune autre image n’est jamais envoyé à une IA externe; notre logiciel le bloque. La vérification préalable des documents décrite à la section 10.4 n’utilise plus l’IA : un membre du personnel de Joblop vérifie vos documents.
+
+Si un message mentionne la santé (par exemple une maladie, une blessure, une grossesse ou un billet médical), il n’est pas envoyé à l’IA. Il est transmis directement à une personne de l’équipe Joblop. Les messages portant sur la sécurité, un différend ou votre compte sont aussi transmis à une personne. Si les renseignements du CV mentionnent encore la santé après le masquage, l’IA n’est pas utilisée et vous recevez le CV de base.
+
+**11.3 Ce que l’IA ne fait pas**
+
+L’IA ne prend aucune décision concernant l’embauche, la rémunération ou l’état de votre compte. Aucune décision vous concernant n’est fondée uniquement sur un traitement automatisé par l’IA (Loi sur la protection des renseignements personnels dans le secteur privé du Québec, article 12.1). L’IA ne peut pas modifier votre rémunération, vos quarts ou votre compte : elle répond, rédige et suggère seulement. Le personnel de Joblop examine les documents, règle les différends et décide de tout ce qui est important pour vous.
+
+**11.4 Où vont les renseignements et combien de temps ils sont conservés**
+
+Anthropic traite le texte aux États-Unis, à l’extérieur du Québec. Selon notre entente avec le fournisseur, Anthropic n’utilise pas ces renseignements pour entraîner ses modèles d’IA. La durée pendant laquelle Anthropic conserve le texte est fixée par ses conditions avec nous.
+
+Joblop ne conserve pas de copie distincte de ce qui est envoyé à l’IA. Nos registres d’utilisation de l’IA indiquent seulement la fonction utilisée, le compte, le moment et le résultat (par exemple, si la demande a fonctionné). Ils ne contiennent pas le texte envoyé ou reçu. Ce qui reste dans votre compte est conservé comme tout autre contenu : votre conversation « Contacter Joblop », y compris les réponses de l’assistant, et votre dernier CV.
+
+**11.5 Vous pouvez toujours parler à une personne**
+
+Vous n’êtes jamais obligé d’utiliser l’IA. Dans le clavardage, écrivez que vous voulez parler à une personne (par exemple « Je veux parler à une personne ») et votre message est transmis à l’équipe Joblop. Vous pouvez aussi rédiger votre CV vous-même. Pour toute question sur l’IA et vos renseignements personnels, ou pour demander qu’une personne révise ce que l’IA a fait, communiquez avec : Responsable de la protection des renseignements personnels, 9375-7649 Québec Inc., 207-805 boul. Chomedey, Laval, QC H7V 0B1, Canada. Courriel : contact@joblop.com.
+
+**11.6 Désactivation de l’IA**
+
+Joblop peut désactiver toutes les fonctions d’IA externe en tout temps. Le service continue alors de fonctionner sans elles : les messages du clavardage sont transmis directement à une personne de l’équipe Joblop, et le générateur de CV vous remet un CV de base produit par le logiciel de Joblop. Il en va de même si l’IA est lente ou non disponible.
+
+#### Employer — English
+
+##### 11. Artificial intelligence (AI) features
+
+This section explains when Joblop uses artificial intelligence (AI) and what happens to your information. It adds to sections 1 to 10. If anything in this section is different from sections 1 to 10, this section applies.
+
+**11.1 Features that may use an outside AI provider**
+
+These features may send text to Anthropic, an AI company in the United States (its AI is called Claude):
+
+- The “Contact Joblop” chat assistant. It answers your message first. If it cannot help, a person on the Joblop team takes over.
+- The staff assistant. When a Joblop staff member answers your message, they can ask the AI to suggest a reply. The staff member reads the suggestion and decides what to send.
+
+No other Joblop feature sends your information to an outside AI. Document checks, job matching, search results, pay and invoices do not use an outside AI.
+
+**11.2 The “Speak” button**
+
+The optional “Speak” button on the request form does not use Joblop’s servers or Anthropic. It uses the speech recognition built into your browser or device (for example Google in Chrome, Apple in Safari). Your voice goes directly from your browser to that company, under its own privacy terms. Joblop receives only the text that appears in the box, when you save the form. You can always type instead.
+
+**11.3 What is sent**
+
+Only the text needed for the request is sent:
+
+- For the chat assistant: your message, the earlier messages in the same conversation, the topic you chose, and a short summary of your own Joblop records needed to answer (for example your company name, your recent requests and orders, your timesheets and your invoice totals).
+- For the staff assistant: the staff member’s question and the recent messages of your conversation.
+
+Before anything is sent, Joblop’s software automatically masks or removes email addresses, phone numbers, street addresses and postal codes, social insurance numbers, bank account and card numbers, dates of birth, health-card, passport and driver’s licence numbers, and health details. Your full name, email address and phone number from your account are not sent: the chat assistant sees your company name, not your own name. Masking is automatic and may miss something, so please do not type private details, or other people’s names, that your request does not need.
+
+No document, photo, scan or other image is ever sent to an outside AI; our software blocks it.
+
+If a message mentions health (for example an illness, an injury, a pregnancy or a sick note), it is not sent to the AI. It goes straight to a person on the Joblop team. Messages about safety, a dispute or your account also go to a person.
+
+**11.4 What AI does not do**
+
+AI does not make decisions about hiring, pay or the status of your account. No decision about you is based only on automated processing by AI (Québec’s Act respecting the protection of personal information in the private sector, section 12.1). The AI cannot change your requests, your invoices or your account: it only answers, drafts and suggests. Joblop staff settle disputes and decide anything that matters to you.
+
+**11.5 Where the information goes and how long it is kept**
+
+Anthropic processes the text in the United States, outside Québec. Under our agreement with the provider, Anthropic does not use this information to train its AI models. How long Anthropic keeps the text is set by its terms with us.
+
+Joblop does not keep a separate copy of what is sent to the AI. Our records of AI use show only which feature was used, by which account, when, and the result (for example, whether it worked). They do not contain the text sent or received. What stays in your account is kept like any other content: your Contact Joblop conversation, including the assistant’s answers.
+
+**11.6 You can always talk to a person**
+
+You never have to use the AI. In the chat, write that you want to talk to a person (for example “I want to talk to a person”) and your message goes to the Joblop team. For any question about AI and your personal information, or to ask a person to review something the AI did, contact: Privacy Officer, 9375-7649 Québec Inc., 207-805 boul. Chomedey, Laval, QC H7V 0B1, Canada. Email: contact@joblop.com.
+
+**11.7 Turning AI off**
+
+Joblop can turn off all outside AI features at any time. The service then keeps working without them: chat messages go straight to a person on the Joblop team. The same happens if the AI is slow or unavailable.
+
+#### Employer — French
+
+##### 11. Fonctions d’intelligence artificielle (IA)
+
+La présente section explique quand Joblop utilise l’intelligence artificielle (IA) et ce qu’il advient de vos renseignements. Elle s’ajoute aux sections 1 à 10. Si un élément de la présente section diffère des sections 1 à 10, la présente section s’applique.
+
+**11.1 Fonctions qui peuvent utiliser un fournisseur d’IA externe**
+
+Les fonctions suivantes peuvent envoyer du texte à Anthropic, une entreprise d’IA située aux États-Unis (son IA s’appelle Claude) :
+
+- L’assistant de clavardage « Contacter Joblop ». Il répond en premier à votre message. S’il ne peut pas vous aider, une personne de l’équipe Joblop prend le relais.
+- L’assistant du personnel. Lorsqu’un membre du personnel de Joblop répond à votre message, il peut demander à l’IA de suggérer une réponse. Le membre du personnel lit la suggestion et décide de ce qui est envoyé.
+
+Aucune autre fonction de Joblop n’envoie vos renseignements à une IA externe. La vérification des documents, le jumelage des emplois, les résultats de recherche, la paie et la facturation n’utilisent pas d’IA externe.
+
+**11.2 Le bouton « Parler »**
+
+Le bouton facultatif « Parler » du formulaire de demande n’utilise ni les serveurs de Joblop ni Anthropic. Il utilise la reconnaissance vocale intégrée à votre navigateur ou à votre appareil (par exemple Google dans Chrome, Apple dans Safari). Votre voix est transmise directement de votre navigateur à cette entreprise, selon ses propres conditions de confidentialité. Joblop reçoit seulement le texte qui apparaît dans la case, lorsque vous enregistrez le formulaire. Vous pouvez toujours taper le texte à la place.
+
+**11.3 Ce qui est envoyé**
+
+Seul le texte nécessaire à la demande est envoyé :
+
+- Pour l’assistant de clavardage : votre message, les messages précédents de la même conversation, le sujet choisi et un court résumé de vos propres dossiers Joblop nécessaires pour répondre (par exemple le nom de votre entreprise, vos demandes et commandes récentes, vos feuilles de temps et les totaux de vos factures).
+- Pour l’assistant du personnel : la question du membre du personnel et les messages récents de votre conversation.
+
+Avant tout envoi, le logiciel de Joblop masque ou retire automatiquement les adresses courriel, les numéros de téléphone, les adresses et codes postaux, les numéros d’assurance sociale, les numéros de compte bancaire et de carte, les dates de naissance, les numéros de carte d’assurance maladie, de passeport et de permis de conduire, ainsi que les renseignements de santé. Votre nom complet, votre adresse courriel et votre numéro de téléphone inscrits à votre compte ne sont pas envoyés : l’assistant de clavardage voit le nom de votre entreprise, et non votre propre nom. Le masquage est automatique et peut laisser passer un élément; veuillez donc ne pas taper de renseignements privés, ni le nom d’autres personnes, dont votre demande n’a pas besoin.
+
+Aucun document, aucune photo, aucune numérisation ni aucune autre image n’est jamais envoyé à une IA externe; notre logiciel le bloque.
+
+Si un message mentionne la santé (par exemple une maladie, une blessure, une grossesse ou un billet médical), il n’est pas envoyé à l’IA. Il est transmis directement à une personne de l’équipe Joblop. Les messages portant sur la sécurité, un différend ou votre compte sont aussi transmis à une personne.
+
+**11.4 Ce que l’IA ne fait pas**
+
+L’IA ne prend aucune décision concernant l’embauche, la rémunération ou l’état de votre compte. Aucune décision vous concernant n’est fondée uniquement sur un traitement automatisé par l’IA (Loi sur la protection des renseignements personnels dans le secteur privé du Québec, article 12.1). L’IA ne peut pas modifier vos demandes, vos factures ou votre compte : elle répond, rédige et suggère seulement. Le personnel de Joblop règle les différends et décide de tout ce qui est important pour vous.
+
+**11.5 Où vont les renseignements et combien de temps ils sont conservés**
+
+Anthropic traite le texte aux États-Unis, à l’extérieur du Québec. Selon notre entente avec le fournisseur, Anthropic n’utilise pas ces renseignements pour entraîner ses modèles d’IA. La durée pendant laquelle Anthropic conserve le texte est fixée par ses conditions avec nous.
+
+Joblop ne conserve pas de copie distincte de ce qui est envoyé à l’IA. Nos registres d’utilisation de l’IA indiquent seulement la fonction utilisée, le compte, le moment et le résultat (par exemple, si la demande a fonctionné). Ils ne contiennent pas le texte envoyé ou reçu. Ce qui reste dans votre compte est conservé comme tout autre contenu : votre conversation « Contacter Joblop », y compris les réponses de l’assistant.
+
+**11.6 Vous pouvez toujours parler à une personne**
+
+Vous n’êtes jamais obligé d’utiliser l’IA. Dans le clavardage, écrivez que vous voulez parler à une personne (par exemple « Je veux parler à une personne ») et votre message est transmis à l’équipe Joblop. Pour toute question sur l’IA et vos renseignements personnels, ou pour demander qu’une personne révise ce que l’IA a fait, communiquez avec : Responsable de la protection des renseignements personnels, 9375-7649 Québec Inc., 207-805 boul. Chomedey, Laval, QC H7V 0B1, Canada. Courriel : contact@joblop.com.
+
+**11.7 Désactivation de l’IA**
+
+Joblop peut désactiver toutes les fonctions d’IA externe en tout temps. Le service continue alors de fonctionner sans elles : les messages du clavardage sont transmis directement à une personne de l’équipe Joblop. Il en va de même si l’IA est lente ou non disponible.
+
+#### Arabic summary lines
+
+- Worker: الذكاء الاصطناعي (القسم 11): قد يُرسَل نص مساعد «تواصل مع Joblop» ومساعد الموظفين ومنشئ السيرة الذاتية إلى Anthropic في الولايات المتحدة بعد إخفاء بيانات الاتصال والمعلومات الصحية. لا تُرسَل أي وثيقة أو صورة. لا يتخذ الذكاء الاصطناعي قرارات بشأن التوظيف أو الأجر أو حسابك، ويمكنك دائماً طلب التحدث إلى شخص.
+- Employer: الذكاء الاصطناعي (القسم 11): قد يُرسَل نص مساعد «تواصل مع Joblop» ومساعد الموظفين إلى Anthropic في الولايات المتحدة بعد إخفاء بيانات الاتصال والمعلومات الصحية. لا تُرسَل أي وثيقة أو صورة. زر «تحدّث» يستخدم خدمة الكلام في متصفحك وليس خوادم جوب‑لوب. لا يتخذ الذكاء الاصطناعي قرارات بشأن التوظيف أو الأجر أو حسابك، ويمكنك دائماً طلب التحدث إلى شخص.

@@ -57,9 +57,9 @@ const cell: React.CSSProperties = {
 };
 
 const shellWords: Readonly<Record<LegalLanguage, { version: string; effective: string; operated: string; contact: string; privacy: string; terms: string; deletion: string; back: string }>> = {
-  en: { version: "Version", effective: "Effective November 9, 2026", operated: "Operated by", contact: "Contact", privacy: "Privacy Policy", terms: "Terms of Service", deletion: "Delete your account", back: "← Joblop" },
-  fr: { version: "Version", effective: "En vigueur le 9 novembre 2026", operated: "Exploité par", contact: "Nous joindre", privacy: "Politique de confidentialité", terms: "Conditions d’utilisation", deletion: "Supprimer votre compte", back: "← Joblop" },
-  ar: { version: "الإصدار", effective: "ساري المفعول من 9 نوفمبر 2026", operated: "تديره", contact: "للتواصل", privacy: "سياسة الخصوصية", terms: "شروط الاستخدام", deletion: "حذف الحساب", back: "جوب‑لوب →" }
+  en: { version: "Version", effective: "Effective November 11, 2026", operated: "Operated by", contact: "Contact", privacy: "Privacy Policy", terms: "Terms of Service", deletion: "Delete your account", back: "← Joblop" },
+  fr: { version: "Version", effective: "En vigueur le 11 novembre 2026", operated: "Exploité par", contact: "Nous joindre", privacy: "Politique de confidentialité", terms: "Conditions d’utilisation", deletion: "Supprimer votre compte", back: "← Joblop" },
+  ar: { version: "الإصدار", effective: "ساري المفعول من 11 نوفمبر 2026", operated: "تديره", contact: "للتواصل", privacy: "سياسة الخصوصية", terms: "شروط الاستخدام", deletion: "حذف الحساب", back: "جوب‑لوب →" }
 };
 
 function LegalShell({ title, lang, children }: { title: string; lang: LegalLanguage; children: ReactNode }) {
