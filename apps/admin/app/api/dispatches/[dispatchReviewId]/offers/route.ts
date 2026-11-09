@@ -46,10 +46,13 @@ export async function POST(
   if (!input) return sessionFailure("error");
 
   const { gateway, token } = await sessionBoundary();
+  // A worker missing a required certificate is refused unless staff tick the override (the screen
+  // checks first), which the API records on the offer and in the audit log.
   const result = await gateway.request("/platform/worker-offers", "POST", token, {
     dispatchReviewId,
     workerIdentityId: input.workerIdentityId,
     expiresAt: input.expiresAt,
+    ...(input.certificateOverride ? { certificateOverride: true, ...(input.certificateOverrideReason ? { certificateOverrideReason: input.certificateOverrideReason } : {}) } : {}),
     ...(input.workerVisibleTitle ? { workerVisibleTitle: input.workerVisibleTitle } : {}),
     ...(input.workerVisibleSummary ? { workerVisibleSummary: input.workerVisibleSummary } : {}),
     ...(input.compensationSummary ? { compensationSummary: input.compensationSummary } : {}),

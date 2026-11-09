@@ -1,7 +1,9 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
+import { REQUIRED_CERTIFICATE_KEYS, certificateKeyForDocumentType, certificateLabel, type RequiredCertificateKey } from "@rwos/shared";
 import { usePageText } from "../../../i18n/pageText";
+import { useLocale } from "../../../i18n/LocaleProvider";
 import { hrText } from "../../text";
 
 type Profile = { standing: string; standingReason: string | null };
@@ -23,12 +25,17 @@ const CASE_NEXT: Record2 = {
 };
 type Record2 = { [k: string]: string[] };
 
-type DocRow = { id: string; documentType: string; jurisdiction: string | null; expiresAt: string | null; effectiveStatus: string; reviewReason: string | null; supersededById: string | null };
+type DocRow = { id: string; documentType: string; jurisdiction: string | null; expiresAt: string | null; effectiveStatus: string; reviewReason: string | null; supersededById: string | null; verifiedCertificateKey?: string | null };
+const LISTED_CERTIFICATES = REQUIRED_CERTIFICATE_KEYS.filter((key) => key !== "other");
 type Compliance = { result: string; reasons: { requirementKey: string; requiredType: string; kind: string; satisfied: boolean; detail: string }[] };
 
 export function HrWorkerPanel({ workerIdentityId }: { workerIdentityId: string }) {
   const ht = usePageText(hrText);
   const t = ht.worker;
+  const locale = useLocale();
+  // Verify form per document: expiry date and the certificate a generic upload proves.
+  const [verifyExpiry, setVerifyExpiry] = useState<{ [id: string]: string }>({});
+  const [verifyKey, setVerifyKey] = useState<{ [id: string]: string }>({});
   const [record, setRecord] = useState<Record | null>(null);
   const [events, setEvents] = useState<Event[]>([]);
   const [documents, setDocuments] = useState<DocRow[]>([]);
@@ -67,12 +74,19 @@ export function HrWorkerPanel({ workerIdentityId }: { workerIdentityId: string }
     }
   }, [workerIdentityId, jurisdiction]);
 
-  const docAction = useCallback(async (documentId: string, action: "accept" | "reject" | "revoke", reason?: string) => {
+  const docAction = useCallback(async (documentId: string, action: "accept" | "reject" | "revoke", reason?: string, verify?: { expiresAt?: string; certificateKey?: string }) => {
     setBusy(true);
     setNotice(null);
     try {
-      const r = await fetch(`/api/hr/documents/${encodeURIComponent(documentId)}/${action}`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(reason ? { reason } : {}) });
-      if (!r.ok) { setNotice({ tone: "err", msg: r.status === 409 ? t.docNotReviewable : t.actionFailed }); return; }
+      const payload = action === "accept"
+        ? { ...(verify?.expiresAt ? { expiresAt: new Date(`${verify.expiresAt}T23:59:59`).toISOString() } : {}), ...(verify?.certificateKey ? { certificateKey: verify.certificateKey } : {}) }
+        : reason ? { reason } : {};
+      const r = await fetch(`/api/hr/documents/${encodeURIComponent(documentId)}/${action}`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(payload) });
+      if (!r.ok) {
+        const p = await r.json().catch(() => null) as { message?: string } | null;
+        setNotice({ tone: "err", msg: r.status === 409 ? t.docNotReviewable : r.status === 400 && p?.message ? p.message : t.actionFailed });
+        return;
+      }
       setNotice({ tone: "ok", msg: t.docDone(action) });
       await load();
     } finally {
@@ -226,11 +240,34 @@ export function HrWorkerPanel({ workerIdentityId }: { workerIdentityId: string }
                   <strong>{d.documentType}</strong> <span style={docBadge(d.effectiveStatus)}>{ht.status(d.effectiveStatus)}</span>
                   {d.jurisdiction ? <span style={styles.dim}> · {d.jurisdiction}</span> : null}
                   <div style={styles.dim}>{d.expiresAt ? ht.expiresOn(new Date(d.expiresAt).toLocaleDateString()) : t.noExpiry}{d.reviewReason ? ` · ${d.reviewReason}` : ""}</div>
+                  {(() => {
+                    const proves = d.verifiedCertificateKey ?? certificateKeyForDocumentType(d.documentType);
+                    return proves && proves !== "other" && d.effectiveStatus === "accepted"
+                      ? <div style={styles.dim}>{t.verifiedAs(certificateLabel(proves as RequiredCertificateKey, locale))}</div>
+                      : null;
+                  })()}
+                  {["submitted", "under_review"].includes(d.effectiveStatus) ? (
+                    <div style={styles.formRow}>
+                      <label style={styles.dim}>
+                        {t.verifyExpiry}{" "}
+                        <input type="date" value={verifyExpiry[d.id] ?? ""} onChange={(e) => setVerifyExpiry((v) => ({ ...v, [d.id]: e.target.value }))} style={styles.input} />
+                      </label>
+                      {certificateKeyForDocumentType(d.documentType) === null ? (
+                        <label style={styles.dim}>
+                          {t.verifyCertificate}{" "}
+                          <select value={verifyKey[d.id] ?? ""} onChange={(e) => setVerifyKey((v) => ({ ...v, [d.id]: e.target.value }))} style={styles.input}>
+                            <option value="">{t.verifyCertificateNone}</option>
+                            {LISTED_CERTIFICATES.map((key) => <option key={key} value={key}>{certificateLabel(key, locale)}</option>)}
+                          </select>
+                        </label>
+                      ) : null}
+                    </div>
+                  ) : null}
                 </div>
                 <div style={styles.rowBtns}>
                   {["submitted", "under_review"].includes(d.effectiveStatus) ? (
                     <>
-                      <button type="button" style={styles.btnSm} disabled={busy} onClick={() => void docAction(d.id, "accept")}>{t.accept}</button>
+                      <button type="button" style={styles.btnSm} disabled={busy} onClick={() => void docAction(d.id, "accept", undefined, { ...(verifyExpiry[d.id] ? { expiresAt: verifyExpiry[d.id] } : {}), ...(verifyKey[d.id] ? { certificateKey: verifyKey[d.id] } : {}) })}>{t.accept}</button>
                       <button type="button" style={styles.btnGhostSm} disabled={busy} onClick={() => { const r = window.prompt(t.rejectPrompt); if (r) void docAction(d.id, "reject", r); }}>{t.reject}</button>
                     </>
                   ) : null}
@@ -239,6 +276,7 @@ export function HrWorkerPanel({ workerIdentityId }: { workerIdentityId: string }
               </li>
             ))}
           </ul>
+          <p style={styles.note}>{t.verifyHelp}</p>
           <p style={styles.note}>{t.documentsNote}</p>
         </section>
 

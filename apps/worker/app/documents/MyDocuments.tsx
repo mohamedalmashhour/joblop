@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { workerProfileRating, type WorkerProfileTier } from "@rwos/shared";
+import { CERTIFICATE_DOCUMENT_TYPES, certificateKeyForDocumentType, certificateLabel, workerProfileRating, type ListedCertificateKey, type WorkerProfileTier } from "@rwos/shared";
 import { useLocale, useT } from "../i18n/LocaleProvider";
 import type { MessageKey } from "../i18n/messages";
 import { resolveDeniedKind } from "../resolveDenied";
@@ -42,6 +42,14 @@ const DOCUMENT_TYPES: ReadonlyArray<{ value: string; labelKey: MessageKey }> = [
 const DOC_TYPE_LABEL_KEY: Record<string, MessageKey> = Object.fromEntries(
   DOCUMENT_TYPES.map((d) => [d.value, d.labelKey])
 ) as Record<string, MessageKey>;
+
+// Certificates an employer can require on a job: one document type each (the first proving type), so
+// staff can verify it and the worker can take jobs that ask for it. Labels come from the shared list.
+const CERTIFICATE_TYPES: ReadonlyArray<{ value: string; key: ListedCertificateKey }> = (
+  Object.entries(CERTIFICATE_DOCUMENT_TYPES) as [ListedCertificateKey, readonly string[]][]
+)
+  .filter(([, types]) => !DOCUMENT_TYPES.some((d) => d.value === types[0]))
+  .map(([key, types]) => ({ value: types[0]!, key }));
 
 // Mirrors the API's allowlist and 10 MB cap, so a worker hears why a file is refused before uploading.
 const MAX_FILE_BYTES = 10 * 1024 * 1024;
@@ -250,6 +258,9 @@ export function MyDocuments() {
           <select id="doctype" value={docType} disabled={replacing !== null} onChange={(e) => setDocType(e.target.value)} aria-describedby="doctype-help">
             <option value="">{t("doc.chooseType")}</option>
             {DOCUMENT_TYPES.map((d) => <option key={d.value} value={d.value}>{t(d.labelKey)}</option>)}
+            <optgroup label={t("job.certsTitle")}>
+              {CERTIFICATE_TYPES.map((c) => <option key={c.value} value={c.value}>{certificateLabel(c.key, locale)}</option>)}
+            </optgroup>
           </select>
         </div>
         <div className="field grow">
@@ -272,6 +283,8 @@ export function MyDocuments() {
         ) : (
           active.map((d) => {
             const labelKey = DOC_TYPE_LABEL_KEY[d.documentType];
+            const certKey = labelKey ? null : certificateKeyForDocumentType(d.documentType);
+            const typeLabel = labelKey ? t(labelKey) : certKey ? certificateLabel(certKey, locale) : null;
             const verdict = aiVerdicts[d.id];
             return (
             <article key={d.id} className="card">
@@ -282,8 +295,8 @@ export function MyDocuments() {
                   {["image/jpeg", "image/png", "image/webp", "image/gif"].includes(d.contentType ?? "") ? <img src={`/api/documents/${d.id}/file?mode=view`} alt="" style={{ width: "100%", height: "100%", objectFit: "cover" }} /> : <span>{(d.fileName?.split(".").pop() ?? "FILE").slice(0, 4).toUpperCase()}</span>}
                 </a>
                 <div style={{ flex: "1 1 180px", minWidth: 0 }}>
-                  <div className="role" style={{ overflowWrap: "anywhere" }}>{d.fileName ?? (labelKey ? t(labelKey) : d.documentType)}</div>
-                  {d.fileName && labelKey ? <div className="notice" style={{ margin: 0 }}>{t(labelKey)}</div> : null}
+                  <div className="role" style={{ overflowWrap: "anywhere" }}>{d.fileName ?? typeLabel ?? d.documentType}</div>
+                  {d.fileName && typeLabel ? <div className="notice" style={{ margin: 0 }}>{typeLabel}</div> : null}
                 </div>
                 <div className="chips" style={{ flex: "none" }}>
                   <a className="btn ghost" href={`/api/documents/${d.id}/file?mode=view`} target="_blank" rel="noopener">{t("doc.view")}</a>

@@ -2,7 +2,7 @@ import { randomBytes } from "node:crypto";
 import type { PrismaClient } from "@rwos/database";
 import { payOfferedSentence, type PayOfferedView } from "@rwos/shared";
 import type { EmailMessage, EmailSender } from "./mailer/emailSender";
-import { resolveLanguage, type NotificationLanguage } from "./notifications/clientNotifications";
+import { intlLocale, moneyLocale, resolveWorkerLanguage, type WorkerLanguage } from "./notifications/workerLanguage";
 import { leadQueryTokens, queryStoredLeads } from "./jobScannerRepository";
 
 // Job alerts by email. A person (public sign-up, or a signed-in worker) asks Joblop to email them new
@@ -34,10 +34,16 @@ export function digestSince(lastSentAt: Date | null, now: Date): Date {
   return lastSentAt ?? new Date(now.getTime() - FIRST_DIGEST_LOOKBACK_MS);
 }
 
+// Job alerts are written in English, French or Arabic (the worker site's three languages).
+export type NotificationLanguage = WorkerLanguage;
+
 export function alertLanguage(locale: string | null | undefined, userLanguage: string | null | undefined): NotificationLanguage {
-  if (locale === "en" || locale === "fr") return locale;
-  return resolveLanguage(userLanguage);
+  if (locale === "en" || locale === "fr" || locale === "ar") return locale;
+  return resolveWorkerLanguage(userLanguage);
 }
+
+// Pick the text for the alert's language.
+const tr = (language: NotificationLanguage, en: string, fr: string, ar: string) => (language === "en" ? en : language === "ar" ? ar : fr);
 
 // ── Items ───────────────────────────────────────────────────────────────────────────────────────
 
@@ -136,7 +142,7 @@ export function unsubscribeUrl(workerWebOrigin: string, token: string): string {
 
 function money(minor: number, language: NotificationLanguage): string {
   try {
-    return new Intl.NumberFormat(language === "en" ? "en-CA" : "fr-CA", {
+    return new Intl.NumberFormat(moneyLocale(language), {
       style: "currency",
       currency: "CAD",
       maximumFractionDigits: minor % 100 === 0 ? 0 : 2
@@ -148,7 +154,7 @@ function money(minor: number, language: NotificationLanguage): string {
 
 function when(date: Date, language: NotificationLanguage, withTime: boolean): string {
   try {
-    return new Intl.DateTimeFormat(language === "en" ? "en-CA" : "fr-CA", {
+    return new Intl.DateTimeFormat(intlLocale(language), {
       dateStyle: "medium",
       ...(withTime ? { timeStyle: "short" as const } : {}),
       timeZone: "America/Toronto"
@@ -168,12 +174,11 @@ function leadPay(lead: AlertLead, language: NotificationLanguage): string | null
   if (!min && !max) return null;
   const range = min && max && min !== max ? `${money(min, language)}–${money(max, language)}` : money((min ?? max) as number, language);
   if (salaryPeriod === "hour") return `${range}/h`;
-  if (salaryPeriod === "year") return `${range}${language === "en" ? "/year" : "/an"}`;
+  if (salaryPeriod === "year") return `${range}${tr(language, "/year", "/an", "/سنة")}`;
   return range;
 }
 
 function itemLines(item: AlertItem, index: number, language: NotificationLanguage, origin: string): string {
-  const en = language === "en";
   if (item.kind === "job") {
     const { job } = item;
     const place = area(job.city, job.province, null);
@@ -186,29 +191,29 @@ function itemLines(item: AlertItem, index: number, language: NotificationLanguag
     return [
       `${index}. ${job.role}${place ? ` — ${place}` : ""}`,
       `   ${details}`,
-      en ? `   Joblop job: ${origin}/jobs-calendar` : `   Emploi Joblop : ${origin}/jobs-calendar`
+      tr(language, `   Joblop job: ${origin}/jobs-calendar`, `   Emploi Joblop : ${origin}/jobs-calendar`, `   وظيفة على جوب‑لوب: ${origin}/jobs-calendar`)
     ].join("\n");
   }
   const { lead } = item;
   const place = area(lead.city, lead.province, lead.locationLabel);
   const pay = leadPay(lead, language);
-  const posted = lead.postedAt ? `${en ? "Posted" : "Publié le"} ${when(lead.postedAt, language, false)}` : null;
+  const posted = lead.postedAt ? `${tr(language, "Posted", "Publié le", "نُشرت في")} ${when(lead.postedAt, language, false)}` : null;
   const details = [posted, pay].filter(Boolean).join(" · ");
   const head = [lead.title, lead.employer, place].filter(Boolean).join(" — ");
   const link = `${origin}/job-scanner?q=${encodeURIComponent(lead.title)}`;
   return [
     `${index}. ${head}`,
     ...(details ? [`   ${details}`] : []),
-    `   ${en ? "Source:" : "Source :"} ${sourceLabel(lead.source)} · ${link}`
+    `   ${tr(language, "Source:", "Source :", "المصدر:")} ${sourceLabel(lead.source)} · ${link}`
   ].join("\n");
 }
 
 function describeCriteria(criteria: AlertCriteria, language: NotificationLanguage): string {
   const parts: string[] = [];
-  if (criteria.roleKeywords) parts.push(language === "en" ? `"${criteria.roleKeywords}"` : `« ${criteria.roleKeywords} »`);
+  if (criteria.roleKeywords) parts.push(tr(language, `"${criteria.roleKeywords}"`, `« ${criteria.roleKeywords} »`, `«${criteria.roleKeywords}»`));
   if (criteria.province) parts.push(criteria.province);
-  if (parts.length === 0) return language === "en" ? "all jobs" : "tous les emplois";
-  return parts.join(", ");
+  if (parts.length === 0) return tr(language, "all jobs", "tous les emplois", "كل الوظائف");
+  return parts.join(language === "ar" ? "، " : ", ");
 }
 
 // CASL: who sends it, why the person gets it, and a working unsubscribe link.
@@ -227,6 +232,13 @@ export function alertFooter(input: {
       `You get this email because you asked Joblop for job alerts at ${input.to}. ` +
       `Sent by Joblop (${origin})${address ? `, ${address}` : ""}.\n` +
       `Unsubscribe in one click: ${link}`
+    );
+  }
+  if (input.language === "ar") {
+    return (
+      `تصلك هذه الرسالة لأنك طلبت من جوب‑لوب تنبيهات الوظائف على ${input.to}. ` +
+      `أرسلتها جوب‑لوب (${origin})${address ? `، ${address}` : ""}.\n` +
+      `إلغاء الاشتراك بنقرة واحدة: ${link}`
     );
   }
   return (
@@ -258,6 +270,15 @@ export function jobAlertDigestEmail(input: {
       text: `New jobs for you\n\n${count} new job${count === 1 ? "" : "s"} matching your alert (${what}).\n\n${list}\n\n${footer}`
     };
   }
+  if (input.language === "ar") {
+    const jobsAr = count === 1 ? "وظيفة جديدة" : count === 2 ? "وظيفتان جديدتان" : count <= 10 ? "وظائف جديدة" : "وظيفة جديدة";
+    const head = count === 2 ? jobsAr : `${count} ${jobsAr}`;
+    return {
+      to: input.to,
+      subject: `Joblop — ${head} لك`,
+      text: `وظائف جديدة لك\n\n${head} تطابق تنبيهك (${what}).\n\n${list}\n\n${footer}`
+    };
+  }
   const jobsFr = count === 1 ? "nouvel emploi" : "nouveaux emplois";
   return {
     to: input.to,
@@ -281,6 +302,13 @@ export function jobAlertConfirmationEmail(input: {
       to: input.to,
       subject: "Joblop — your job alert is on",
       text: `Your job alert is on\n\nJoblop will email you new jobs for ${what}, at most once a day.\n\n${footer}`
+    };
+  }
+  if (input.language === "ar") {
+    return {
+      to: input.to,
+      subject: "Joblop — تم تفعيل تنبيه الوظائف",
+      text: `تم تفعيل تنبيه الوظائف\n\nسترسل لك جوب‑لوب الوظائف الجديدة لـ ${what} بالبريد الإلكتروني، مرة واحدة في اليوم على الأكثر.\n\n${footer}`
     };
   }
   return {

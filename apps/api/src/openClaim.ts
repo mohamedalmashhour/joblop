@@ -31,6 +31,7 @@ import type { createPrismaClient } from "@rwos/database";
 import type { HeldShift } from "@rwos/shared";
 import { offerPayLine } from "./offerPayLine";
 import { resolveWorkerLanguage } from "./notifications/workerLanguage";
+import { certificateGapForJob, certificateReasons } from "./requiredCertificateCheck";
 
 type PrismaClient = ReturnType<typeof createPrismaClient>;
 
@@ -237,6 +238,8 @@ export async function claimOpenJob(
     return { status: "not_open" };
   }
   if (!job.pricingSnapshot) return { status: "not_open" };
+  // A long-term listing is never claimed: workers apply and the employer chooses.
+  if (job.jobLength === "long_term") return { status: "not_open" };
 
   // 3. The open-claim dispatch must be open (offer_preparation).
   const dispatch = await prisma.dispatchReview.findFirst({
@@ -271,6 +274,11 @@ export async function claimOpenJob(
     endAt: job.endAt
   });
   if (heldShift) return { status: "shift_overlap", heldShift };
+
+  // Required certificates (owner rule: whoever takes the job must hold each one). Only staff-accepted,
+  // unexpired documents count; an "other" certificate always needs a person, so it is never claimable.
+  const gap = await certificateGapForJob(prisma, { workerIdentityId: workerIdentity.id, job, now: at });
+  if (gap.missing.length > 0) return { status: "ineligible", reasons: certificateReasons(gap.missing) };
 
   // 5. Mint the accepted-offer chain atomically: offer(accepted) + terms(priced) + response(accepted).
   //    The unique index worker_offers_dispatch_worker_key makes this idempotent per (dispatch,

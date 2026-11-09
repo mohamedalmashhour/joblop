@@ -1201,6 +1201,11 @@ model JobRequest {
   payOfferedMinMinor Int?              @map("pay_offered_min_minor")
   payOfferedMaxMinor Int?              @map("pay_offered_max_minor")
   payOfferedUnit     String?           @map("pay_offered_unit")
+  // Certificates the employer requires (keys from @rwos/shared REQUIRED_CERTIFICATE_KEYS). A worker
+  // can claim, apply, accept an offer or be assigned only while holding each one (staff-verified,
+  // not expired). "other" is free text in requiredCertificateOther, checked by a person.
+  requiredCertificates     String[]        @default([]) @map("required_certificates")
+  requiredCertificateOther String?         @map("required_certificate_other")
   status             JobRequestStatus  @default(draft)
   adminReviewReason  String?           @map("admin_review_reason")
   version            Int               @default(1)
@@ -1238,6 +1243,7 @@ model JobRequest {
   workerInterests WorkerJobInterest[]
   bonuses JobBonus[]
   lateCancellationCharges LateCancellationCharge[]
+  unfilledShiftAlerts UnfilledShiftAlert[]
 
   @@unique([id, organizationId, residenceId, departmentId, workGroupId, roleDefinitionId], map: "job_requests_operational_scope_key")
   @@index([jobRequestNumber], map: "job_requests_job_request_number_idx")
@@ -2080,6 +2086,9 @@ model HrDocument {
   reviewedByUserId     String?          @map("reviewed_by_user_id") @db.Uuid
   reviewedAt           DateTime?        @map("reviewed_at") @db.Timestamptz(3)
   reviewReason         String?          @map("review_reason")
+  // Set by staff when verifying: the required-certificate key this document proves (for a generic
+  // "certificate" upload). Null = proves only what its documentType maps to.
+  verifiedCertificateKey String?        @map("verified_certificate_key")
   supersededById       String?          @unique @map("superseded_by_id") @db.Uuid
   createdAt            DateTime         @default(now()) @map("created_at") @db.Timestamptz(3)
   updatedAt            DateTime         @updatedAt @map("updated_at") @db.Timestamptz(3)
@@ -2173,6 +2182,13 @@ model WorkerJobInterest {
   // The employer's favourite mark: a suggestion to Joblop staff, never an offer or a status change.
   employerFavoritedAt       DateTime? @map("employer_favorited_at") @db.Timestamptz(3)
   employerFavoritedByUserId String?   @map("employer_favorited_by_user_id") @db.Uuid
+  // Long-term jobs: the employer chooses. "shortlisted" | "hired" | "not_selected" (null = no
+  // decision yet). The worker's contact details are shown to the employer only once
+  // employerContactRevealedAt is set (the employer chose Contact or Hire).
+  employerDecision          String?   @map("employer_decision")
+  employerDecidedAt         DateTime? @map("employer_decided_at") @db.Timestamptz(3)
+  employerDecidedByUserId   String?   @map("employer_decided_by_user_id") @db.Uuid
+  employerContactRevealedAt DateTime? @map("employer_contact_revealed_at") @db.Timestamptz(3)
   createdAt          DateTime                @default(now()) @map("created_at") @db.Timestamptz(3)
   updatedAt          DateTime                @updatedAt @map("updated_at") @db.Timestamptz(3)
   version            Int                     @default(1)
@@ -2213,6 +2229,11 @@ model WorkerOffer {
   sentByUserId          String?           @map("sent_by_user_id") @db.Uuid
   withdrawnByUserId     String?           @map("withdrawn_by_user_id") @db.Uuid
   cancelledByUserId     String?           @map("cancelled_by_user_id") @db.Uuid
+  // Staff approved this worker although they miss a required certificate (or the job's "other"
+  // certificate, which only a person can check). Logged in audit_events as certificate.override.
+  certificateOverrideAt       DateTime?     @map("certificate_override_at") @db.Timestamptz(3)
+  certificateOverrideByUserId String?       @map("certificate_override_by_user_id") @db.Uuid
+  certificateOverrideReason   String?       @map("certificate_override_reason")
   createdAt             DateTime          @default(now()) @map("created_at") @db.Timestamptz(3)
   updatedAt             DateTime          @updatedAt @map("updated_at") @db.Timestamptz(3)
   version               Int               @default(1)
@@ -3964,4 +3985,24 @@ model LateCancellationCharge {
   @@index([organizationId, createdAt], map: "late_cancellation_charges_org_created_idx")
   @@index([jobRequestId], map: "late_cancellation_charges_job_request_idx")
   @@map("late_cancellation_charges")
+}
+
+// Staff warning that an approved short-term shift is still unfilled close to its start. One row per
+// (job, threshold, start time): the hourly sweep inserts it before emailing, so each warning goes out
+// once even when sweeps overlap; a rescheduled job warns again for its new start.
+model UnfilledShiftAlert {
+  id             String    @id @default(uuid()) @db.Uuid
+  jobRequestId   String    @map("job_request_id") @db.Uuid
+  thresholdHours Int       @map("threshold_hours")
+  startAt        DateTime  @map("start_at") @db.Timestamptz(3)
+  openings       Int
+  filled         Int
+  emailedAt      DateTime? @map("emailed_at") @db.Timestamptz(3)
+  createdAt      DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  jobRequest JobRequest @relation(fields: [jobRequestId], references: [id], onDelete: Cascade)
+
+  @@unique([jobRequestId, thresholdHours, startAt], map: "unfilled_shift_alerts_job_threshold_start_key")
+  @@index([createdAt], map: "unfilled_shift_alerts_created_at_idx")
+  @@map("unfilled_shift_alerts")
 }

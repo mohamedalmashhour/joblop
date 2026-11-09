@@ -9,6 +9,7 @@ import { NEXT_AFTER_SIGN_UP_KEY } from "./PublicJobSearch";
 import { safeReturnPath } from "./safeReturnPath";
 import type { RwosLocale } from "./i18n/config";
 import { workerPayLabel, formatHourlyRate } from "./workerPayLabel";
+import { CertificateChip, type RequiredCertificatesData } from "./RequiredCertificates";
 
 export type JobResult = Readonly<{
   jobRequestId: string;
@@ -27,6 +28,8 @@ export type JobResult = Readonly<{
   /** Long-term listing only: the pay the employer offers and pays directly. */
   payOffered?: unknown;
   saved: boolean;
+  /** Certificates the employer requires (absent when none). */
+  requiredCertificates?: RequiredCertificatesData;
 }>;
 
 type SearchResponse = Readonly<{
@@ -434,6 +437,7 @@ function JobCard({
         <span className="chip">
           <bdi>{workerPayLabel(job, locale, { paidByEmployer: t("pay.paidByEmployer"), employerPaysDirectly: t("pay.employerPaysDirectly"), pending: t("pay.pending") })}</bdi>
         </span>
+        <CertificateChip required={job.requiredCertificates} />
       </div>
       <div className="when">{formatWhen(job.startAt, job.endAt, locale)}</div>
       <a className="detaillink" href={href}>{t("mk.viewDetails")}</a>

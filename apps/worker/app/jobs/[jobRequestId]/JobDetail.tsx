@@ -6,6 +6,7 @@ import { formatWhen } from "../../MarketplaceExplorer";
 import { useLocale, useT, fmtLocale } from "../../i18n/LocaleProvider";
 import type { MessageKey } from "../../i18n/messages";
 import { workerPayLabel } from "../../workerPayLabel";
+import { MissingCertificatesNotice, RequiredCertificatesSection, type RequiredCertificatesData } from "../../RequiredCertificates";
 import { shiftOverlapNotice } from "../../shiftOverlapNotice";
 
 type JobDetailData = Readonly<{
@@ -36,11 +37,17 @@ type JobDetailData = Readonly<{
   claimable?: boolean;
   // Extra pay Joblop added to fill the job faster (null when there is none).
   bonus?: JobBonus | null;
+  // Long-term listing: workers apply and the employer chooses (never claimed).
+  longTerm?: boolean;
+  // Certificates the employer requires, and the ones this worker misses (null when not a worker).
+  requiredCertificates?: RequiredCertificatesData;
+  missingCertificates?: readonly string[] | null;
 }>;
 
 type JobBonus = Readonly<{ kind: string; amountMinor: number }>;
 
 type ClaimState = "idle" | "claiming" | "assigned" | "full" | "election_required" | "ineligible" | "overlap" | "error";
+type ClaimOutcome = Readonly<{ state: ClaimState; reasons: readonly string[] }>;
 
 type AllowanceLine = Readonly<{ provision: string; amountMinor: number | null; note: string | null }>;
 type AllowancesData = Readonly<{
@@ -50,7 +57,8 @@ type AllowancesData = Readonly<{
 }>;
 
 type InterestState = Readonly<{
-  interest: { status: string } | null;
+  interest: { status: string; employerDecision?: string | null } | null;
+  lastEmployerDecision?: string | null;
   eligibility: { eligible: boolean; reasons: string[] };
 }>;
 
@@ -73,7 +81,8 @@ export function JobDetail({ id, place }: { id: string; place: string | null }) {
   const [job, setJob] = useState<JobDetailData | null>(null);
   const [interest, setInterest] = useState<InterestState | null>(null);
   const [interestBusy, setInterestBusy] = useState(false);
-  const [claimState, setClaimState] = useState<ClaimState>("idle");
+  const [claimOutcome, setClaimOutcome] = useState<ClaimOutcome>({ state: "idle", reasons: [] });
+  const setClaimState = (state: ClaimState, reasons: readonly string[] = []) => setClaimOutcome({ state, reasons });
 
   useEffect(() => {
     let active = true;
@@ -135,14 +144,14 @@ export function JobDetail({ id, place }: { id: string; place: string | null }) {
         setClaimState("assigned");
         return;
       }
-      const body = (await r.json().catch(() => ({}))) as { error?: string };
+      const body = (await r.json().catch(() => ({}))) as { error?: string; reasons?: string[] };
       const overlap = r.status === 409 ? shiftOverlapNotice(body, uiLocale) : null;
       if (overlap) {
         setOverlapMessage(overlap);
         setClaimState("overlap");
       } else if (r.status === 409 && body.error === "RWOS_CLASSIFICATION_ELECTION_REQUIRED") setClaimState("election_required");
       else if (r.status === 409) setClaimState("full");
-      else if (r.status === 422) setClaimState("ineligible");
+      else if (r.status === 422) setClaimState("ineligible", Array.isArray(body.reasons) ? body.reasons : []);
       else setClaimState("error");
     } catch {
       setClaimState("error");
@@ -252,12 +261,27 @@ export function JobDetail({ id, place }: { id: string; place: string | null }) {
         </Section>
       ) : null}
 
+      <RequiredCertificatesSection required={job.requiredCertificates} missing={job.missingCertificates} />
+
       <AllowancesSection allowances={job.allowances} currency={job.currency} locale={locale} />
 
       {job.claimable ? (
-        <ClaimPanel state={claimState} onClaim={claimJob} overlapMessage={overlapMessage} />
+        <ClaimPanel
+          outcome={claimOutcome}
+          onClaim={claimJob}
+          overlapMessage={overlapMessage}
+          blocked={(job.missingCertificates ?? []).length > 0}
+          other={job.requiredCertificates?.other ?? null}
+        />
       ) : (
-        <InterestPanel state={interest} busy={interestBusy} onExpress={expressInterest} onWithdraw={withdrawInterest} />
+        <InterestPanel
+          state={interest}
+          busy={interestBusy}
+          onExpress={expressInterest}
+          onWithdraw={withdrawInterest}
+          longTerm={job.longTerm === true}
+          other={job.requiredCertificates?.other ?? null}
+        />
       )}
 
       <div className="detail-cta no-print">
@@ -381,17 +405,44 @@ function InterestPanel({
   state,
   busy,
   onExpress,
-  onWithdraw
+  onWithdraw,
+  longTerm,
+  other
 }: {
   state: InterestState | null;
   busy: boolean;
   onExpress: () => void;
   onWithdraw: () => void;
+  longTerm: boolean;
+  other: string | null;
 }) {
   const t = useT();
   const current = state?.interest?.status ?? null;
+  const decision = state?.interest?.employerDecision ?? state?.lastEmployerDecision ?? null;
   const eligible = state?.eligibility?.eligible ?? true;
   const reasons = state?.eligibility?.reasons ?? [];
+  const certificateBlocked = reasons.some((r) => r.startsWith("missing_certificate:"));
+
+  // Long-term job: the worker applied and the employer chooses.
+  if (longTerm && decision === "hired") {
+    return (
+      <section className="detail-section interest submitted">
+        <h2>{t("job.appHiredTitle")}</h2>
+        <p>{t("job.appHiredBody")}</p>
+      </section>
+    );
+  }
+  if (longTerm && current && ["submitted", "under_review", "shortlisted"].includes(current)) {
+    return (
+      <section className="detail-section interest submitted">
+        <h2>{t("job.appliedTitle")}</h2>
+        <p>{decision === "shortlisted" ? t("job.appShortlisted") : t("job.appliedBody")}</p>
+        <button className="btn ghost" type="button" onClick={onWithdraw} disabled={busy}>
+          {t("job.withdrawApplication")}
+        </button>
+      </section>
+    );
+  }
 
   if (current && ["submitted", "under_review", "shortlisted"].includes(current)) {
     return (
@@ -417,14 +468,17 @@ function InterestPanel({
 
   return (
     <section className="detail-section interest">
-      <h2>{t("job.interestedTitle")}</h2>
+      <h2>{longTerm ? t("job.applyTitle") : t("job.interestedTitle")}</h2>
+      {longTerm && decision === "not_selected" ? <p className="muted">{t("job.appNotSelected")}</p> : null}
       {eligible ? (
         <>
-          <p>{t("job.interestedBody")}</p>
+          <p>{longTerm ? t("job.applyBody") : t("job.interestedBody")}</p>
           <button className="btn" type="button" onClick={onExpress} disabled={busy}>
-            {busy ? t("job.submitting") : t("job.expressInterest")}
+            {busy ? t("job.submitting") : longTerm ? t("job.applyButton") : t("job.expressInterest")}
           </button>
         </>
+      ) : certificateBlocked ? (
+        <MissingCertificatesNotice reasons={reasons} other={other} />
       ) : (
         <p className="muted">{t(INELIGIBLE_KEY[reasons[0] ?? ""] ?? "job.inelDefault")}</p>
       )}
@@ -434,8 +488,22 @@ function InterestPanel({
 
 // Hybrid auto-offer — direct claim CTA. First eligible worker to claim each slot is assigned
 // instantly; once slots fill, the claim returns "full". The pay-channel election gate still applies.
-function ClaimPanel({ state, onClaim, overlapMessage }: { state: ClaimState; onClaim: () => void; overlapMessage: string | null }) {
+function ClaimPanel({
+  outcome,
+  onClaim,
+  overlapMessage,
+  blocked,
+  other
+}: {
+  outcome: ClaimOutcome;
+  onClaim: () => void;
+  overlapMessage: string | null;
+  blocked: boolean;
+  other: string | null;
+}) {
   const t = useT();
+  const state = outcome.state;
+  const certificateReasons = outcome.reasons.filter((r) => r.startsWith("missing_certificate:"));
 
   if (state === "assigned") {
     return (
@@ -457,10 +525,14 @@ function ClaimPanel({ state, onClaim, overlapMessage }: { state: ClaimState; onC
           {t("job.claimElectionRequired")} <a href="/onboarding">{t("common.setUpWorker")}</a>
         </p>
       ) : null}
-      {state === "ineligible" ? <p className="muted">{t("job.inelDefault")}</p> : null}
+      {state === "ineligible" && certificateReasons.length > 0 ? (
+        <MissingCertificatesNotice reasons={certificateReasons} other={other} />
+      ) : state === "ineligible" ? (
+        <p className="muted">{t("job.inelDefault")}</p>
+      ) : null}
       {state === "overlap" && overlapMessage ? <p className="muted" role="alert">{overlapMessage}</p> : null}
       {state === "error" ? <p className="muted">{t("job.loadError")}</p> : null}
-      {state !== "full" ? (
+      {state !== "full" && !blocked && certificateReasons.length === 0 ? (
         <button className="btn" type="button" onClick={onClaim} disabled={state === "claiming"}>
           {state === "claiming" ? t("job.claiming") : t("job.claimButton")}
         </button>

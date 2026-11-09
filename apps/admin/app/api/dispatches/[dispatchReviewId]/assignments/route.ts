@@ -50,10 +50,13 @@ export async function POST(
   if (!input) return invalidAssignmentRequest();
 
   const { gateway, token } = await sessionBoundary();
+  // Refused when the worker misses a required certificate and no override is on the offer, unless
+  // staff tick the override now (the screen checks first; the API records and logs it).
   const result = await gateway.request("/platform/assignments", "POST", token, {
     workerOfferId: input.workerOfferId,
     dispatchReviewId,
-    expectedOfferVersion: input.expectedOfferVersion
+    expectedOfferVersion: input.expectedOfferVersion,
+    ...("certificateOverride" in input && input.certificateOverride ? { certificateOverride: true, ...("certificateOverrideReason" in input && input.certificateOverrideReason ? { certificateOverrideReason: input.certificateOverrideReason } : {}) } : {})
   });
   if (result.status !== "ok") return forwardShiftOverlap(result) ?? assignmentMutationFailure(result.status);
   try {

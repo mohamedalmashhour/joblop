@@ -4,6 +4,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { formatRwosDateTime } from "@rwos/shared";
 import { useLocale } from "../../i18n/LocaleProvider";
 import { readShiftOverlapNotice } from "../shiftOverlapNotice";
+import { CertificateOverrideBox, certificateOverrideBody, type CertificateOverride } from "../CertificateOverrideBox";
 import {
   eligibleOffersForAssignment,
   type AdminAssignmentSummary,
@@ -26,6 +27,8 @@ export function OfferAssignmentStatusPanel({
   const [state, setState] = useState<State>({ status: "loading" });
   const [selectedOfferId, setSelectedOfferId] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
+  // Required-certificate pre-check for the offer being assigned (override is logged by the API).
+  const [certificateOverride, setCertificateOverride] = useState<CertificateOverride | null>(null);
   const [notice, setNotice] = useState<{ tone: "status" | "alert"; message: string } | undefined>();
   const requestGeneration = useRef(0);
   const load = useCallback(async () => {
@@ -92,7 +95,8 @@ export function OfferAssignmentStatusPanel({
             headers: { "content-type": "application/json" },
             body: JSON.stringify({
               workerOfferId: currentOffer.id,
-              expectedOfferVersion: currentOffer.versionToken
+              expectedOfferVersion: currentOffer.versionToken,
+              ...certificateOverrideBody(certificateOverride)
             })
           }
         );
@@ -299,6 +303,7 @@ export function OfferAssignmentStatusPanel({
                       Create one authoritative Assignment from the latest accepted terms? This does
                       not prove notification delivery, attendance, hours, payroll or payment.
                     </p>
+                    <CertificateOverrideBox dispatchReviewId={dispatchReviewId} workerOfferId={offer.id} onChange={setCertificateOverride} />
                     <div style={styles.actions}>
                       <button
                         disabled={submitting}
@@ -309,7 +314,7 @@ export function OfferAssignmentStatusPanel({
                         Cancel
                       </button>
                       <button
-                        disabled={submitting}
+                        disabled={submitting || Boolean(certificateOverride?.needed && !certificateOverride.override)}
                         onClick={() => void createAssignment(offer)}
                         style={styles.primaryButton}
                         type="button"

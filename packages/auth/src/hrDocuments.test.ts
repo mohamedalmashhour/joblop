@@ -25,7 +25,7 @@ function makeStore() {
     },
     async getById(id) { const r = docs.find((d) => d.id === id); return r ? { ...r } : null; },
     async listForWorker(w) { return docs.filter((d) => d.workerIdentityId === w).map((d) => ({ ...d })); },
-    async setStatus({ id, status, reviewReason, supersededById }) { const r = docs.find((d) => d.id === id)!; r.status = status; if (reviewReason !== undefined) r.reviewReason = reviewReason; if (supersededById !== undefined) r.supersededById = supersededById; return { ...r }; },
+    async setStatus({ id, status, reviewReason, supersededById, expiresAt, verifiedCertificateKey }) { const r = docs.find((d) => d.id === id)!; r.status = status; if (reviewReason !== undefined) r.reviewReason = reviewReason; if (supersededById !== undefined) r.supersededById = supersededById; if (expiresAt !== undefined) r.expiresAt = expiresAt ? expiresAt.toISOString() : null; if (verifiedCertificateKey !== undefined) r.verifiedCertificateKey = verifiedCertificateKey; return { ...r }; },
     async latestAcceptedOfType({ workerIdentityId, documentType }) { const r = [...docs].reverse().find((d) => d.workerIdentityId === workerIdentityId && d.documentType === documentType && d.status === "accepted"); return r ? { ...r } : null; },
     async pageReview({ statuses, limit }): Promise<HrDocPage<HrDocumentRecord>> { return { items: docs.filter((d) => statuses.includes(d.status)).slice(0, limit).map((d) => ({ ...d })), nextCursor: null }; },
     async pageExpiring({ limit }): Promise<HrDocPage<HrDocumentRecord>> { return { items: docs.filter((d) => d.status === "accepted" && d.expiresAt).slice(0, limit).map((d) => ({ ...d })), nextCursor: null }; },
@@ -88,6 +88,16 @@ describe("HR document service", () => {
     const view = await ctx.service.submitDocument({ userId: "u-1", documentType: "licence", storageReference });
     expect(Object.keys(view)).not.toContain("reviewReason");
     expect(Object.keys(view)).not.toContain("storageReference");
+  });
+
+  it("staff verify with an expiry date and the certificate a generic upload proves; a past expiry or Other is refused", async () => {
+    const { storageReference } = await ctx.service.requestUploadReference({ userId: "u-1", documentType: "certificate" });
+    const view = await ctx.service.submitDocument({ userId: "u-1", documentType: "certificate", storageReference });
+    await expect(ctx.service.accept({ actorUserId: "hr-1", documentId: view.id, expiresAt: "2001-01-01T00:00:00.000Z" })).rejects.toMatchObject({ code: "invalid" });
+    await expect(ctx.service.accept({ actorUserId: "hr-1", documentId: view.id, certificateKey: "other" })).rejects.toMatchObject({ code: "invalid" });
+    const verified = await ctx.service.accept({ actorUserId: "hr-1", documentId: view.id, expiresAt: "2099-06-30T23:59:59.000Z", certificateKey: "pab" });
+    expect(verified).toMatchObject({ status: "accepted", expiresAt: "2099-06-30T23:59:59.000Z", verifiedCertificateKey: "pab" });
+    expect(ctx.events.find((e) => e.eventType === "document_accepted")?.reason).toContain("certificate pab");
   });
 
   it("HR accept/reject is governed; a non-reviewable state cannot be accepted", async () => {
