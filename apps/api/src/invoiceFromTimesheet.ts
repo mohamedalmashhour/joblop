@@ -3,6 +3,8 @@ import type { PrismaClient } from "@rwos/database";
 import {
   billableHours,
   calculateInvoiceSnapshot,
+  isLateCancellationTimesheet,
+  LATE_CANCELLATION_CHARGE_HOURS,
   jobBonusInvoiceMinor,
   PLATFORM_INVOICE_ISSUER,
   PLATFORM_INVOICE_TAX,
@@ -108,7 +110,8 @@ export async function autoGenerateInvoiceForLockedTimesheet(
       attendanceRecordId: true,
       jobRequestId: true,
       billableMinutes: true,
-      scheduledStartAt: true
+      scheduledStartAt: true,
+      exceptionSummary: true
     }
   });
   if (!ts || ts.status !== "locked") return { ok: false, reason: "timesheet_not_locked" };
@@ -128,6 +131,20 @@ export async function autoGenerateInvoiceForLockedTimesheet(
   // directly, so Joblop never invoices hours for them. Only flag-on approvals write "long_term".
   if (isLongTermListingSnapshot(snap)) return { ok: false, reason: "long_term_listing_not_billed" };
   if (!ts.billableMinutes || ts.billableMinutes <= 0) return { ok: false, reason: "no_billable_minutes" };
+  // Late employer cancellation: bill only 6 h x the employer rate (GST/QST added by the engine). No
+  // travel, emergency fee or bonus is billed for a shift that never happened.
+  if (isLateCancellationTimesheet(ts.exceptionSummary)) {
+    const input = buildLateCancellationInvoiceInput({
+      timesheetId: ts.id,
+      timesheetVersion: ts.version,
+      organizationId: ts.organizationId,
+      assignmentId: ts.assignmentId,
+      attendanceRecordId: ts.attendanceRecordId,
+      employerHourlyRateMinor: snap.employerHourlyRateMinor,
+      occurredAt: new Date().toISOString()
+    });
+    return createInvoice(invoiceRepository, ts, input, actorUserId);
+  }
   const job = await prisma.jobRequest.findUnique({ where: { id: ts.jobRequestId }, select: { urgency: true } });
   // Employer-funded job bonus (accepted by the employer) for this shift: hourly x billed hours (the
   // same hours as labour, with the 6-hour minimum), or the fixed transport/one-time amount.
@@ -154,6 +171,41 @@ export async function autoGenerateInvoiceForLockedTimesheet(
     bonusMinor: employerBonus ? jobBonusInvoiceMinor(employerBonus, ts.billableMinutes) : 0
   });
 
+  return createInvoice(invoiceRepository, ts, input, actorUserId);
+}
+
+/** Invoice input for a late employer cancellation: one line, 6 h x the employer's bill rate. */
+export function buildLateCancellationInvoiceInput(p: {
+  timesheetId: string;
+  timesheetVersion: number;
+  organizationId: string;
+  assignmentId: string;
+  attendanceRecordId: string;
+  employerHourlyRateMinor: number;
+  occurredAt: string;
+}): InvoiceCalculationInput {
+  const base = buildInvoiceCalculationInput({
+    ...p,
+    billableMinutes: LATE_CANCELLATION_CHARGE_HOURS * 60,
+    emergencySurchargePerHourMinor: 0,
+    distanceSurchargeMinor: 0,
+    urgency: null,
+    bonusMinor: 0
+  });
+  return {
+    ...base,
+    regularLabour: { amountMinor: LATE_CANCELLATION_CHARGE_HOURS * p.employerHourlyRateMinor, currency: "CAD" },
+    urgentLabour: { amountMinor: 0, currency: "CAD" },
+    regularLabourDescription: `Late cancellation (less than 24 h before the start): ${LATE_CANCELLATION_CHARGE_HOURS} h per confirmed worker`
+  };
+}
+
+async function createInvoice(
+  invoiceRepository: InvoiceRepository,
+  ts: Readonly<{ id: string; version: number; organizationId: string }>,
+  input: InvoiceCalculationInput,
+  actorUserId: string
+): Promise<AutoInvoiceResult> {
   try {
     const calculation = calculateInvoiceSnapshot(input);
     const invoice = await invoiceRepository.createFromLockedTimesheet({

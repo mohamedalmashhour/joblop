@@ -35,6 +35,7 @@ export function isProductionAdminRouteAllowed(pathname: string) {
     path === "/payroll" ||
     path === "/hr" ||
     path === "/employer-plan-orders" ||
+    path === "/late-cancellations" ||
     path === "/orders" ||
     path === "/timesheets" ||
     path === "/market-wages" ||

@@ -241,10 +241,10 @@ function PrivacyPolicyEnglish() {
       <ul>
         <li style={li}>Email address (to create and secure your account and sign you in)</li>
         <li style={li}>
-          Password (stored only as a salted hash — we never store your password in plain text)
+          Sign-in codes: you sign in with a one-time code texted to your mobile number; you do not create or enter a password
         </li>
         <li style={li}>Display name</li>
-        <li style={li}>Mobile number — optional; collected only if you choose to provide it (for shift alerts and account recovery)</li>
+        <li style={li}>Mobile number — required; used to sign you in with a texted code and for shift alerts and urgent notices</li>
       </ul>
       <p style={p}>
         <strong>Profile and location information</strong>
@@ -252,8 +252,8 @@ function PrivacyPolicyEnglish() {
       <ul>
         <li style={li}>Postal address (street, city, province, postal code)</li>
         <li style={li}>
-          Approximate geolocation (latitude/longitude) used to match you with nearby work and, for
-          workers, to verify check-in and check-out at a work site when you choose to clock in
+          Approximate geolocation (latitude/longitude) used to match you with nearby work. We do not
+          use your location to verify check-in or check-out.
         </li>
         <li style={li}>Work preferences, availability, roles and skills you enter</li>
       </ul>
@@ -277,9 +277,11 @@ function PrivacyPolicyEnglish() {
         </li>
       </ul>
       <p style={p}>
-        Your mobile number is <strong>optional</strong> — we collect it only if you choose to provide
-        it, and use it for shift alerts and account recovery. We do <strong>not</strong> collect
-        government identification numbers or payment card details through the app. We do not knowingly
+        Your mobile number is <strong>required</strong> — we use it to sign you in with a texted code
+        and for shift alerts and urgent notices. If you upload them on the Documents page, we collect
+        identity documents and your social insurance number (a government identification number) to
+        check that you can work and to set up your pay. We do <strong>not</strong> collect payment card
+        details through the app. We do not knowingly
         collect information from anyone under 18; Joblop is intended for adults.
       </p>
 

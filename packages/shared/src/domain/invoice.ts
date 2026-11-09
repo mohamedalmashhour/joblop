@@ -168,6 +168,8 @@ export type InvoiceCalculationInput = Readonly<{
   transferFee?: ContractMoney;
   /** Optional employer-funded job bonus (accepted by the employer). Omitted/zero -> no bonus line. */
   bonus?: ContractMoney;
+  /** Optional label for the regular labour line (e.g. a late-cancellation charge). Default "Regular labour". */
+  regularLabourDescription?: string;
   credits: ContractMoney;
   lineRuleVersions: Readonly<
     Record<
@@ -222,7 +224,7 @@ export function calculateInvoiceSnapshot(
   const untaxedLines: InvoiceLineSnapshot[] = [
     line(
       "regular_labour",
-      "Regular labour",
+      input.regularLabourDescription?.trim() || "Regular labour",
       input.regularLabour,
       input.lineRuleVersions.regular_labour
     ),
