@@ -1,4 +1,4 @@
-// DRAFT — must be reviewed by a Québec lawyer before relying on it.
+// Reviewed and accepted by the owner's Québec lawyer (2026-11-09). See docs/legal/LEGAL_REVIEW_NOTES.md before changing any wording.
 // NEW worker clauses added on top of the approved October 26, 2026 text (./content.tsx English,
 // ./workerLegalFr.ts French). Kept separate so the lawyer only has to review what is listed in
 // docs/legal/LEGAL_REVIEW_NOTES.md. Facts were checked in code (worker pay channel, Worker Pro order

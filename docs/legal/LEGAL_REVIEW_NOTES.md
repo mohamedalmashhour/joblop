@@ -511,3 +511,9 @@ Joblop peut désactiver toutes les fonctions d’IA externe en tout temps. Le se
 ## 6. Owner decision 2026-11-09: outdated section 10 image sentences removed
 
 The owner approved removing the two section 10 statements that said a document image may be sent to Anthropic, which stopped being true at launch step 6. Worker 10.2 data row: "for the document pre-check, an image of the document" removed, EN and FR. Worker 10.4: the pre-check paragraph is replaced by "A Joblop staff member checks your documents. No document, photo or other image is sent to an outside AI." with the French equivalent.
+
+## 7. Lawyer acceptance 2026-11-09
+
+The owner reports that their Québec lawyer reviewed and accepted the legal text, including the changes in sections 0, 5 and 6 (legal version 2026-11-11). The "DRAFT" notes in the source files were updated to record this.
+
+Same day, with the owner's earlier approval to remove the outdated document-AI statements: the worker privacy table row for Anthropic no longer lists "an automated pre-check of some uploaded documents" (EN) / "une vérification automatisée préalable de certains documents téléversés" (FR). Since launch step 6, no document goes to an outside AI.

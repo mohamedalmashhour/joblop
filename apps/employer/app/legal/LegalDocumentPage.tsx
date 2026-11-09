@@ -1,4 +1,4 @@
-// DRAFT — must be reviewed by a Québec lawyer before relying on it. (Code comment only.)
+// Reviewed and accepted by the owner's Québec lawyer (2026-11-09). See docs/legal/LEGAL_REVIEW_NOTES.md before changing any wording.
 // Public legal page for the employer site: public header and footer (never the signed-in
 // workspace menu), the text in the visitor's language, and the version and effective date.
 import type { CSSProperties, ReactNode } from "react";

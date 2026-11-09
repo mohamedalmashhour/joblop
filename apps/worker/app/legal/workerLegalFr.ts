@@ -1,4 +1,4 @@
-// DRAFT — must be reviewed by a Québec lawyer before relying on it.
+// Reviewed and accepted by the owner's Québec lawyer (2026-11-09). See docs/legal/LEGAL_REVIEW_NOTES.md before changing any wording.
 // French translation of the approved worker Privacy Policy, Terms of Service and account-deletion
 // page (English text in ./content.tsx, "Last updated October 26, 2026"). The translation follows the
 // English clause by clause; nothing is added or removed here. New clauses live in ./workerLegalUpdates.ts.
