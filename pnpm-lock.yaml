@@ -100,6 +100,9 @@ importers:
       '@rwos/config':
         specifier: workspace:*
         version: link:../../packages/config
+      '@rwos/country-canada':
+        specifier: workspace:*
+        version: link:../../countries/canada
       '@rwos/country-syria':
         specifier: workspace:*
         version: link:../../countries/syria

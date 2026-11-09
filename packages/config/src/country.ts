@@ -32,6 +32,17 @@ export interface CountryProfile {
   };
   /** True ONLY for the non-market local/test fixture. Never activatable. */
   readonly isNeutralFixture?: boolean;
+  /** Descriptive: interface languages offered in this market (BCP 47 primary tags). Not a gate. */
+  readonly languages?: readonly string[];
+  /** Descriptive: sales taxes charged in this market, in parts per million. Not a gate; the money
+   *  engine keeps its own rates and a country test asserts the two agree. */
+  readonly salesTaxes?: readonly Readonly<{ code: string; ratePartsPerMillion: number }>[];
+  /**
+   * Default for the production feature flags when their env var is unset (RWOS_ENV=production only).
+   * Absent = both default OFF, which is the historical production behaviour. An explicit env value
+   * (`enabled` / `disabled`) always wins over this default.
+   */
+  readonly productionDefaults?: Readonly<{ jobFlow: boolean; publicSignup: boolean }>;
 }
 
 /**
