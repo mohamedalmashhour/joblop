@@ -1,6 +1,6 @@
 import type { PrismaClient } from "@rwos/database";
 import { describe, expect, it, vi } from "vitest";
-import { firstNameOf, listEmployerApplicants, setEmployerFavorite } from "./employerApplicants";
+import { firstNameOf, listEmployerApplicants, listLongTermApplicants, setEmployerFavorite } from "./employerApplicants";
 
 const ids = { organizationId: "org", jobRequestId: "job" };
 
@@ -69,5 +69,40 @@ describe("employer applicants", () => {
     expect(
       await setEmployerFavorite(prisma as unknown as PrismaClient, { ...ids, interestId: "x", favorite: false, actorUserId: "u" })
     ).toBe(false);
+  });
+});
+
+describe("long-term applicants (the employer chooses)", () => {
+  const ltRow = (revealed: Date | null) => ({
+    id: "i",
+    workerIdentityId: "w",
+    employerDecision: revealed ? "hired" : null,
+    employerContactRevealedAt: revealed,
+    createdAt: new Date("2026-11-01T00:00:00.000Z"),
+    worker: {
+      displayName: "Sara Haddad",
+      userId: "u",
+      verifications: [],
+      hrIntake: { city: "Laval", phone: "+15145550000" },
+      user: { emailNormalized: "sara@example.com", phone: null }
+    }
+  });
+  const ltPrisma = (revealed: Date | null) => ({
+    workerJobInterest: { findMany: vi.fn(async () => [ltRow(revealed)]) },
+    hrDocument: { findMany: vi.fn(async () => [{ workerIdentityId: "w", documentType: "cert_pab", verifiedCertificateKey: null, status: "accepted", expiresAt: null }]) },
+    workerCv: { findMany: vi.fn(async () => [{ workerRef: "u", headline: "PAB, 5 years in CHSLD" }]) }
+  });
+
+  it("shows first name, city, verified certificates and summary, but no contact before Contact or Hire", async () => {
+    const [applicant] = await listLongTermApplicants(ltPrisma(null) as unknown as PrismaClient, ids);
+    expect(applicant).toMatchObject({ firstName: "Sara", city: "Laval", certificates: ["pab"], profileSummary: "PAB, 5 years in CHSLD", contact: null, decision: null });
+    expect(JSON.stringify(applicant)).not.toContain("sara@example.com");
+    expect(JSON.stringify(applicant)).not.toContain("5550000");
+  });
+
+  it("shows the contact details once the employer chose Contact or Hire", async () => {
+    const [applicant] = await listLongTermApplicants(ltPrisma(new Date()) as unknown as PrismaClient, ids);
+    expect(applicant?.contact).toEqual({ email: "sara@example.com", phone: "+15145550000" });
+    expect(applicant?.decision).toBe("hired");
   });
 });
