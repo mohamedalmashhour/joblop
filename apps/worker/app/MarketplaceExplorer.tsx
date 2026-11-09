@@ -6,6 +6,7 @@ import { useLocale, useT, fmtLocale } from "./i18n/LocaleProvider";
 import { LandingPanel } from "./LandingPanel";
 import { syncAccountLanguageOnce } from "./i18n/saveLanguage";
 import { NEXT_AFTER_SIGN_UP_KEY } from "./PublicJobSearch";
+import { safeReturnPath } from "./safeReturnPath";
 import type { RwosLocale } from "./i18n/config";
 import { workerPayLabel, formatHourlyRate } from "./workerPayLabel";
 import { CertificateChip, type RequiredCertificatesData } from "./RequiredCertificates";
@@ -50,7 +51,16 @@ export function MarketplaceExplorer() {
   useEffect(() => {
     let active = true;
     fetch("/api/session", { cache: "no-store" })
-      .then((r) => (active ? setAuthState(r.ok ? "signed_in" : "signed_out") : undefined))
+      .then((r) => {
+        if (!active) return;
+        // Already signed in and sent here with ?next= (e.g. "Sign in" on a public job): go there.
+        const next = r.ok ? safeReturnPath(new URLSearchParams(window.location.search).get("next")) : null;
+        if (next && next !== "/") {
+          window.location.replace(next);
+          return;
+        }
+        setAuthState(r.ok ? "signed_in" : "signed_out");
+      })
       .catch(() => (active ? setAuthState("signed_out") : undefined));
     return () => {
       active = false;
@@ -60,9 +70,9 @@ export function MarketplaceExplorer() {
   if (authState === "loading") return <div className="state">{t("common.loading")}</div>;
   if (authState === "signed_out") {
     const afterSignIn = () => {
-      const next = readAndClearNext();
-      // Only same-site paths, never an outside address.
-      if (next && next.startsWith("/") && !next.startsWith("//") && next !== "/") {
+      // Only a path on this site, never an outside address (safeReturnPath).
+      const next = safeReturnPath(readAndClearNext());
+      if (next && next !== "/") {
         window.location.assign(next);
         return;
       }

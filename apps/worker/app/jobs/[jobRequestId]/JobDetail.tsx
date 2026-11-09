@@ -7,6 +7,7 @@ import { useLocale, useT, fmtLocale } from "../../i18n/LocaleProvider";
 import type { MessageKey } from "../../i18n/messages";
 import { workerPayLabel } from "../../workerPayLabel";
 import { MissingCertificatesNotice, RequiredCertificatesSection, type RequiredCertificatesData } from "../../RequiredCertificates";
+import { shiftOverlapNotice } from "../../shiftOverlapNotice";
 
 type JobDetailData = Readonly<{
   jobRequestId: string;
@@ -45,7 +46,7 @@ type JobDetailData = Readonly<{
 
 type JobBonus = Readonly<{ kind: string; amountMinor: number }>;
 
-type ClaimState = "idle" | "claiming" | "assigned" | "full" | "election_required" | "ineligible" | "error";
+type ClaimState = "idle" | "claiming" | "assigned" | "full" | "election_required" | "ineligible" | "overlap" | "error";
 type ClaimOutcome = Readonly<{ state: ClaimState; reasons: readonly string[] }>;
 
 type AllowanceLine = Readonly<{ provision: string; amountMinor: number | null; note: string | null }>;
@@ -73,7 +74,9 @@ export function JobDetail({ id, place }: { id: string; place: string | null }) {
   // Only a postal code is sent with an interest (for its audit distance); a city is not.
   const postalCode = place && looksLikePostalCode(place) ? place : null;
   const t = useT();
-  const locale = fmtLocale(useLocale());
+  const uiLocale = useLocale();
+  const locale = fmtLocale(uiLocale);
+  const [overlapMessage, setOverlapMessage] = useState<string | null>(null);
   const [status, setStatus] = useState<"loading" | "ready" | "not_found" | "signed_out" | "error">("loading");
   const [job, setJob] = useState<JobDetailData | null>(null);
   const [interest, setInterest] = useState<InterestState | null>(null);
@@ -142,14 +145,18 @@ export function JobDetail({ id, place }: { id: string; place: string | null }) {
         return;
       }
       const body = (await r.json().catch(() => ({}))) as { error?: string; reasons?: string[] };
-      if (r.status === 409 && body.error === "RWOS_CLASSIFICATION_ELECTION_REQUIRED") setClaimState("election_required");
+      const overlap = r.status === 409 ? shiftOverlapNotice(body, uiLocale) : null;
+      if (overlap) {
+        setOverlapMessage(overlap);
+        setClaimState("overlap");
+      } else if (r.status === 409 && body.error === "RWOS_CLASSIFICATION_ELECTION_REQUIRED") setClaimState("election_required");
       else if (r.status === 409) setClaimState("full");
       else if (r.status === 422) setClaimState("ineligible", Array.isArray(body.reasons) ? body.reasons : []);
       else setClaimState("error");
     } catch {
       setClaimState("error");
     }
-  }, [id]);
+  }, [id, uiLocale]);
 
   const toggleSaved = useCallback(async () => {
     if (!job) return;
@@ -262,6 +269,7 @@ export function JobDetail({ id, place }: { id: string; place: string | null }) {
         <ClaimPanel
           outcome={claimOutcome}
           onClaim={claimJob}
+          overlapMessage={overlapMessage}
           blocked={(job.missingCertificates ?? []).length > 0}
           other={job.requiredCertificates?.other ?? null}
         />
@@ -483,11 +491,13 @@ function InterestPanel({
 function ClaimPanel({
   outcome,
   onClaim,
+  overlapMessage,
   blocked,
   other
 }: {
   outcome: ClaimOutcome;
   onClaim: () => void;
+  overlapMessage: string | null;
   blocked: boolean;
   other: string | null;
 }) {
@@ -520,6 +530,7 @@ function ClaimPanel({
       ) : state === "ineligible" ? (
         <p className="muted">{t("job.inelDefault")}</p>
       ) : null}
+      {state === "overlap" && overlapMessage ? <p className="muted" role="alert">{overlapMessage}</p> : null}
       {state === "error" ? <p className="muted">{t("job.loadError")}</p> : null}
       {state !== "full" && !blocked && certificateReasons.length === 0 ? (
         <button className="btn" type="button" onClick={onClaim} disabled={state === "claiming"}>

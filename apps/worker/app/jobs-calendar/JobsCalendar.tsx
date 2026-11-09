@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useLocale } from "../i18n/LocaleProvider";
 import { payOfferedLabel } from "../payOfferedLabel";
+import { shiftOverlapNotice } from "../shiftOverlapNotice";
 
 // "My calendar" hub: one calendar that shows the worker everything with a date on it —
 // open Joblop jobs they can accept (bonus ★), their confirmed shifts, cancelled shifts and pay
@@ -58,6 +59,8 @@ type Notice =
   | { kind: "taken" }
   | { kind: "election" }
   | { kind: "ineligible"; reasons: string[] }
+  // Already holding a shift at that time; the message names it (from the API, in EN / FR / AR).
+  | { kind: "overlap"; message: string }
   | { kind: "error" };
 
 const TEXT = {
@@ -475,7 +478,10 @@ export function JobsCalendar() {
       try {
         const r = await fetch(`/api/jobs/${encodeURIComponent(jobId)}/claim`, { method: "POST" });
         const body = (await r.json().catch(() => ({}))) as { error?: string; reasons?: unknown };
-        if (r.status === 201) {
+        const overlap = r.status === 409 ? shiftOverlapNotice(body, locale) : null;
+        if (overlap) {
+          notice = { kind: "overlap", message: overlap };
+        } else if (r.status === 201) {
           notice = { kind: "accepted" };
           setItems((current) => current.filter((i) => i.id !== item.id));
           setBanner(notice);
@@ -502,7 +508,7 @@ export function JobsCalendar() {
       setNotices((prev) => ({ ...prev, [item.id]: notice }));
       if (notice.kind === "accepted" || notice.kind === "taken") reload();
     },
-    [reload]
+    [reload, locale]
   );
 
   // Close the confirm dialog with Escape.
@@ -863,6 +869,13 @@ function NoticeView({ notice, t }: { notice: Notice; t: Text }) {
         </ul>
         {needsSetup ? <a href="/onboarding">{t.finishSetup}</a> : null}
         {hasOffer ? <a href="/offers">{t.seeOffers}</a> : null}
+      </div>
+    );
+  }
+  if (notice.kind === "overlap") {
+    return (
+      <div className="jc-notice" role="alert">
+        <p>{notice.message}</p>
       </div>
     );
   }

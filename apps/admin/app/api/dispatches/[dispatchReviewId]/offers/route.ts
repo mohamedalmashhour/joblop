@@ -5,6 +5,7 @@ import {
   readOfferCreateInput
 } from "../../offerAssignmentBoundary";
 import { isSameOriginMutation, sessionBoundary, sessionFailure } from "../../../sessionBoundary";
+import { forwardShiftOverlap } from "../../../shiftOverlap";
 
 export async function GET(
   _request: Request,
@@ -57,7 +58,7 @@ export async function POST(
     ...(input.compensationSummary ? { compensationSummary: input.compensationSummary } : {}),
     ...(input.policySummary ? { policySummary: input.policySummary } : {})
   });
-  if (result.status !== "ok") return sessionFailure(result.status);
+  if (result.status !== "ok") return forwardShiftOverlap(result) ?? sessionFailure(result.status);
   try {
     const payload = result.payload as { workerOffer?: unknown };
     return Response.json(

@@ -1,6 +1,8 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import { useLocale } from "../../i18n/LocaleProvider";
+import { readShiftOverlapNotice } from "../shiftOverlapNotice";
 
 // Marketplace INTEREST review, inside the existing governed dispatch review. This panel is a
 // review signal + governed handoff only:
@@ -49,6 +51,7 @@ export function InterestedWorkersPanel({
   dispatchReviewId,
   jobRequestId
 }: Readonly<{ dispatchReviewId: string; jobRequestId: string }>) {
+  const locale = useLocale();
   const [state, setState] = useState<State>({ status: "loading" });
   const [busyId, setBusyId] = useState<string | null>(null);
   const [notice, setNotice] = useState<{ tone: "status" | "alert"; message: string } | undefined>();
@@ -135,10 +138,13 @@ export function InterestedWorkersPanel({
           body: JSON.stringify({ workerIdentityId: worker.workerIdentityId, expiresAt })
         });
         if (!res.ok) {
+          // The worker already holds a shift at that time; the API's message names it.
+          const overlap = await readShiftOverlapNotice(res, locale);
           setNotice({
             tone: "alert",
-            message:
-              res.status === 401 || res.status === 403
+            message: overlap
+              ? overlap
+              : res.status === 401 || res.status === 403
                 ? "Administrator authorization is required."
                 : "The governed offer could not be created. Refresh and try again."
           });
@@ -152,7 +158,7 @@ export function InterestedWorkersPanel({
         setBusyId(null);
       }
     },
-    [busyId, dispatchReviewId, load]
+    [busyId, dispatchReviewId, load, locale]
   );
 
   if (state.status !== "ready") {

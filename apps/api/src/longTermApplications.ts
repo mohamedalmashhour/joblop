@@ -107,7 +107,7 @@ export function applicationDecisionEmail(input: {
       fr: [`Joblop — suivi de votre candidature`, `${employerName} a choisi une autre personne pour « ${jobTitle} ». Merci d'avoir postulé; d'autres emplois vous attendent sur Joblop.`],
       ar: [`Joblop — تحديث بشأن طلبك`, `اختار ${employerName} مرشحاً آخر لوظيفة «${jobTitle}». شكراً لتقديمك؛ وظائف أخرى بانتظارك على جوب‑لوب.`]
     }
-  }[decision][language];
+  }[decision][language] as readonly [string, string];
   return { to: input.to, subject: text[0], text: `${text[1]}\n\n— Joblop` };
 }
 
