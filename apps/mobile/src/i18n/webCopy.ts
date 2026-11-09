@@ -261,7 +261,13 @@ export const WEB_COPY: Readonly<Record<string, Readonly<{ en: string; fr: string
   "offers.statusWithdrawn": { en: "Withdrawn", fr: "Retirée", ar: "مسحوب" },
   "offers.viewJob": { en: "View job", fr: "Voir l'emploi", ar: "عرض الوظيفة" },
   "offers.whatYoullDo": { en: "What you'll do", fr: "Ce que vous ferez", ar: "ما ستقوم به" },
-  "offers.working": { en: "Working…", fr: "Traitement…", ar: "جارٍ التنفيذ…" }
+  "offers.working": { en: "Working…", fr: "Traitement…", ar: "جارٍ التنفيذ…" },
+  // The two landing videos (website VideoCard): sound toggle, play button and the video labels.
+  "land.videoSoundOn": { en: "Sound on", fr: "Activer le son", ar: "تشغيل الصوت" },
+  "land.videoSoundOff": { en: "Sound off", fr: "Couper le son", ar: "كتم الصوت" },
+  "land.videoPlay": { en: "Play video", fr: "Lire la vidéo", ar: "تشغيل الفيديو" },
+  "land.videoReadyLabel": { en: "Video: chefs and workers ready to help", fr: "Vidéo : des chefs et travailleurs prêts à aider", ar: "فيديو: طهاة وعمال مستعدون للمساعدة" },
+  "land.videoHowLabel": { en: "Video: how Joblop works for workers", fr: "Vidéo : comment Joblop fonctionne pour les travailleurs", ar: "فيديو: كيف يعمل Joblop للعمال" }
 };
 
 /** Keys whose Arabic is the app's own (the website shows English there for now). */
