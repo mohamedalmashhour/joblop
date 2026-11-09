@@ -3,7 +3,8 @@ import { Pressable, ScrollView, StyleSheet, View } from "react-native";
 import { colors, radii, spacing } from "../../theme";
 import type { MobileSessionTransport, WorkerElection } from "../../auth/secureSession";
 import { Badge, BodyText, Button, Card, ErrorState, Heading, LoadingState, ScreenContainer, SmallText } from "../../ui/primitives";
-import { agreementVersionFor, classificationLabel, classificationOptions, setupCopy, type Classification } from "./setupContent";
+import { agreementVersionFor, classificationOptions, setupCopyFor, type Classification } from "./setupContent";
+import { useLocale } from "../../i18n/LocaleContext";
 
 type LoadState =
   | { status: "loading" }
@@ -11,6 +12,10 @@ type LoadState =
   | { status: "denied" | "error" };
 
 export function WorkerSetupScreen({ transport, onBack }: { transport: MobileSessionTransport | null; onBack: () => void }) {
+  // Same words as the website's setup page, in EN / FR / AR. The agreement's version code is sent
+  // with the signature but no longer shown (audit S16).
+  const { locale } = useLocale();
+  const setupCopy = setupCopyFor(locale);
   const [state, setState] = useState<LoadState>({ status: "loading" });
   const [choice, setChoice] = useState<Classification | null>(null);
   const [accepted, setAccepted] = useState(false);
@@ -57,34 +62,38 @@ export function WorkerSetupScreen({ transport, onBack }: { transport: MobileSess
           : result.status === "invalid"
             ? setupCopy.invalidNote
             : result.status === "denied"
-              ? setupCopy.deniedNote
+              ? setupCopy.signInRequired
               : setupCopy.submitError
       );
       if (result.status === "stale") await load();
     }
-  }, [transport, choice, accepted, state, load]);
+  }, [transport, choice, accepted, state, load, setupCopy]);
 
   return (
     <ScreenContainer testID="worker-setup-screen">
       <ScrollView style={styles.scroll}>
         <View style={styles.stack}>
-          <Button label="Back" onPress={onBack} variant="secondary" />
+          <Button label={setupCopy.back} onPress={onBack} variant="secondary" />
           <Card>
-            <Badge label="Get set up" tone="neutral" />
             <Heading>{setupCopy.title}</Heading>
             <BodyText>{setupCopy.intro}</BodyText>
             {notice ? <SmallText>{notice}</SmallText> : null}
           </Card>
 
-          {state.status === "loading" ? <LoadingState label="Checking your setup" /> : null}
-          {state.status === "denied" ? <ErrorState title="Sign in required" body={setupCopy.signInRequired} /> : null}
-          {state.status === "error" ? <ErrorState title="Something went wrong" body={setupCopy.loadError} /> : null}
+          {state.status === "loading" ? <LoadingState label={setupCopy.loading} /> : null}
+          {state.status === "denied" ? <ErrorState title={setupCopy.title} body={setupCopy.signInRequired} /> : null}
+          {state.status === "error" ? <ErrorState title={setupCopy.title} body={setupCopy.loadError} /> : null}
 
           {state.status === "ready" && state.election ? (
             <Card testID="setup-complete">
-              <Badge label="Done" tone="success" />
+              <Badge label={setupCopy.done} tone="success" />
               <Heading>{setupCopy.successTitle}</Heading>
-              <BodyText>{`You're set up as: ${classificationLabel(state.election.classification)}.`}</BodyText>
+              <BodyText>
+                {setupCopy.setUpAs.replace(
+                  "{type}",
+                  state.election.classification === "contractor" ? setupCopy.contractorTitle : setupCopy.employeeTitle
+                )}
+              </BodyText>
               <SmallText>{setupCopy.alreadyNote}</SmallText>
             </Card>
           ) : null}
@@ -104,11 +113,10 @@ export function WorkerSetupScreen({ transport, onBack }: { transport: MobileSess
                     testID={`setup-choice-${opt.id}`}
                   >
                     <View style={styles.optionHead}>
-                      <Heading>{opt.title}</Heading>
-                      {selected ? <Badge label="Selected" tone="success" /> : null}
+                      <Heading>{opt.id === "employee" ? setupCopy.employeeTitle : setupCopy.contractorTitle}</Heading>
+                      {selected ? <Badge label={setupCopy.selected} tone="success" /> : null}
                     </View>
-                    <SmallText>{opt.summary}</SmallText>
-                    <BodyText>{opt.detail}</BodyText>
+                    <BodyText>{opt.id === "employee" ? setupCopy.employeeSummary : setupCopy.contractorSummary}</BodyText>
                   </Pressable>
                 );
               })}
@@ -125,11 +133,9 @@ export function WorkerSetupScreen({ transport, onBack }: { transport: MobileSess
                     <View style={[styles.checkbox, accepted ? styles.checkboxOn : null]}>
                       {accepted ? <SmallText>✓</SmallText> : null}
                     </View>
-                    <BodyText>
-                      {`${setupCopy.acceptPrefix} ${choice === "employee" ? "employee" : "contractor"} ${setupCopy.acceptSuffix} (${agreementVersionFor(choice, state.versions)}).`}
-                    </BodyText>
+                    <BodyText>{choice === "employee" ? setupCopy.acceptEmployee : setupCopy.acceptContractor}</BodyText>
                   </Pressable>
-                  <Button label={setupCopy.submitCta} onPress={() => void submit()} disabled={busy || !accepted} />
+                  <Button label={busy ? setupCopy.submitting : setupCopy.submitCta} onPress={() => void submit()} disabled={busy || !accepted} />
                 </Card>
               ) : null}
             </>

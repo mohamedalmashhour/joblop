@@ -1,13 +1,13 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
 import { I18nManager, Platform } from "react-native";
-import { isRtlLocale, translate, type Locale } from "./strings";
+import { isRtlLocale, translate, type Locale, type TranslateVars } from "./strings";
 
 type LocaleValue = Readonly<{
   locale: Locale;
   setLocale: (next: Locale) => void;
   dir: "ltr" | "rtl";
   isRtl: boolean;
-  t: (key: string) => string;
+  t: (key: string, vars?: TranslateVars) => string;
 }>;
 
 const LocaleCtx = createContext<LocaleValue | null>(null);
@@ -33,7 +33,7 @@ export function LocaleProvider({ children, initialLocale = "en" }: { children: R
     }
   }, [dir, locale]);
 
-  const t = useCallback((key: string) => translate(locale, key), [locale]);
+  const t = useCallback((key: string, vars?: TranslateVars) => translate(locale, key, vars), [locale]);
 
   const value = useMemo<LocaleValue>(() => ({ locale, setLocale, dir, isRtl, t }), [locale, dir, isRtl, t]);
   return <LocaleCtx.Provider value={value}>{children}</LocaleCtx.Provider>;
@@ -43,12 +43,12 @@ export function useLocale(): LocaleValue {
   const ctx = useContext(LocaleCtx);
   if (!ctx) {
     // Safe fallback so a component used outside the provider still renders in English LTR.
-    return { locale: "en", setLocale: () => undefined, dir: "ltr", isRtl: false, t: (k) => translate("en", k) };
+    return { locale: "en", setLocale: () => undefined, dir: "ltr", isRtl: false, t: (k, vars) => translate("en", k, vars) };
   }
   return ctx;
 }
 
 /** Convenience hook for the translate function alone. */
-export function useT(): (key: string) => string {
+export function useT(): (key: string, vars?: TranslateVars) => string {
   return useLocale().t;
 }

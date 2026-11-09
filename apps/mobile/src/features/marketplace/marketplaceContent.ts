@@ -27,11 +27,42 @@ const PAY_PENDING: Record<Locale, string> = {
   ar: "الأجر بالساعة: يُؤكَّد قبل أن تُعرض عليك المناوبة"
 };
 
-/** The worker's own hourly pay, or a clear line when it is not set yet. */
+/** "en-CA" / "fr-CA" / "ar" — the formatting locale for numbers, money and dates. */
+export function formatLocale(locale: Locale): string {
+  return locale === "fr" ? "fr-CA" : locale === "ar" ? "ar" : "en-CA";
+}
+
+/** The worker's own hourly pay ("$25.00/h", same format as the website), or a clear line when it is not set yet. */
 export function formatWorkerRate(workerRateMinor: number | null, currency: string, locale: Locale = "en"): string {
   if (workerRateMinor === null || !Number.isFinite(workerRateMinor) || workerRateMinor <= 0) return PAY_PENDING[locale] ?? PAY_PENDING.en;
-  return `${(workerRateMinor / 100).toFixed(2)} ${currency}/h`;
+  const amount = workerRateMinor / 100;
+  try {
+    return `${amount.toLocaleString(formatLocale(locale), { style: "currency", currency: currency || "CAD" })}/h`;
+  } catch {
+    return `$${amount.toFixed(2)}/h`;
+  }
 }
+
+/** "Wed, Jul 1 · 8:00 a.m. – 4:00 p.m." in the worker's language and time zone (as the website). */
+export function formatJobWhen(startIso: string, endIso: string, locale: Locale): string {
+  const start = new Date(startIso);
+  const end = new Date(endIso);
+  if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime())) return WHEN_TBC[locale] ?? WHEN_TBC.en;
+  const loc = formatLocale(locale);
+  try {
+    const day = start.toLocaleDateString(loc, { weekday: "short", month: "short", day: "numeric" });
+    const time = (d: Date) => d.toLocaleTimeString(loc, { hour: "numeric", minute: "2-digit" });
+    return `${day} · ${time(start)} – ${time(end)}`;
+  } catch {
+    return formatShiftWindow(startIso, endIso);
+  }
+}
+
+const WHEN_TBC: Record<Locale, string> = {
+  en: "Schedule to be confirmed",
+  fr: "Horaire à confirmer",
+  ar: "الموعد سيُؤكَّد"
+};
 
 // Long-term listing (employer plans flag): no Joblop rate — the pay the employer offers and pays
 // directly. `undefined` = not a long-term job; null = long-term without a stated amount.
@@ -55,13 +86,30 @@ export function formatJobPay(
   return payOfferedText(job.payOffered, locale) ?? formatWorkerRate(job.workerRateMinor, job.currency, locale);
 }
 
-export function formatDistance(distanceKm: number | null): string {
+const DISTANCE: Record<Locale, Readonly<{ near: string; away: string }>> = {
+  en: { near: "Less than 1 km away", away: "{km} km away" },
+  fr: { near: "À moins de 1 km", away: "À {km} km" },
+  ar: { near: "على بعد أقل من 1 كم", away: "على بعد {km} كم" }
+};
+
+export function formatDistance(distanceKm: number | null, locale: Locale = "en"): string {
   if (distanceKm === null) return "";
-  return distanceKm < 1 ? "Less than 1 km away" : `${distanceKm.toFixed(distanceKm < 10 ? 1 : 0)} km away`;
+  const copy = DISTANCE[locale] ?? DISTANCE.en;
+  if (distanceKm < 1) return copy.near;
+  const km = distanceKm.toFixed(distanceKm < 10 ? 1 : 0);
+  return copy.away.replace("{km}", locale === "fr" ? km.replace(".", ",") : km);
 }
 
-export function formatOpenings(openings: number): string {
-  return openings === 1 ? "1 opening" : `${openings} openings`;
+// Same words as the website's "mk.openingOne" / "mk.openingMany".
+const OPENINGS: Record<Locale, Readonly<{ one: string; many: string }>> = {
+  en: { one: "{count} opening", many: "{count} openings" },
+  fr: { one: "{count} poste", many: "{count} postes" },
+  ar: { one: "شاغر واحد", many: "{count} شواغر" }
+};
+
+export function formatOpenings(openings: number, locale: Locale = "en"): string {
+  const copy = OPENINGS[locale] ?? OPENINGS.en;
+  return (openings === 1 ? copy.one : copy.many).replace("{count}", String(openings));
 }
 
 import type { Locale } from "../../i18n/strings";

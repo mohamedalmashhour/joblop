@@ -1,6 +1,8 @@
 // Pure copy + helpers for the real worker setup (pay-channel classification election). UI-free so the
 // choice explanations and agreement selection are unit-tested without React Native.
 
+import type { Locale } from "../../i18n/strings";
+
 export type Classification = "employee" | "contractor";
 
 export const classificationOptions: readonly Readonly<{ id: Classification; title: string; summary: string; detail: string }>[] = [
@@ -43,3 +45,113 @@ export const setupCopy = {
   deniedNote: "Sign in required.",
   submitError: "Your election couldn't be submitted right now."
 } as const;
+
+// ── Trilingual setup words (the website's onboarding page, apps/worker/app/onboarding) ──
+
+export type SetupCopy = Readonly<{
+  title: string;
+  intro: string;
+  back: string;
+  loading: string;
+  signInRequired: string;
+  loadError: string;
+  chooseCta: string;
+  employeeTitle: string;
+  employeeSummary: string;
+  contractorTitle: string;
+  contractorSummary: string;
+  acceptEmployee: string;
+  acceptContractor: string;
+  submitCta: string;
+  submitting: string;
+  successTitle: string;
+  setUpAs: string;
+  alreadyNote: string;
+  staleNote: string;
+  invalidNote: string;
+  submitError: string;
+  selected: string;
+  done: string;
+}>;
+
+const SETUP_COPY: Readonly<Record<Locale, SetupCopy>> = {
+  en: {
+    title: "Set up your worker profile",
+    intro: "Choose your work type and sign the agreement. You can update your details and documents later in your HR Profile.",
+    back: "Back",
+    loading: "Loading…",
+    signInRequired: "Sign in to set up your pay channel.",
+    loadError: "Your setup status could not be loaded right now.",
+    chooseCta: "1. Work type",
+    employeeTitle: "Employee",
+    employeeSummary: "payroll with deductions, T4 slip.",
+    contractorTitle: "Self-employed",
+    contractorSummary: "paid gross, no deductions, T4A slip.",
+    acceptEmployee: "I accept and sign my employment agreement.",
+    acceptContractor: "I accept and sign my self-employed work agreement.",
+    submitCta: "Finish setup",
+    submitting: "Setting up…",
+    successTitle: "You're set up",
+    setUpAs: "Your work type: {type}",
+    alreadyNote: "You can apply to open shifts and receive offers.",
+    staleNote: "The agreement was updated. Reload and accept the current version.",
+    invalidNote: "You must accept the agreement to continue.",
+    submitError: "Couldn't record your work type. Please try again.",
+    selected: "Selected",
+    done: "Done"
+  },
+  fr: {
+    title: "Configurez votre profil de travailleur",
+    intro: "Choisissez votre type de travail et signez l'entente. Vous pourrez mettre à jour vos informations et documents plus tard dans votre Profil RH.",
+    back: "Retour",
+    loading: "Chargement…",
+    signInRequired: "Connectez-vous pour choisir votre mode de paie.",
+    loadError: "Impossible de charger votre configuration pour le moment.",
+    chooseCta: "1. Type de travail",
+    employeeTitle: "Employé",
+    employeeSummary: "paie avec retenues, relevé T4.",
+    contractorTitle: "Travailleur autonome",
+    contractorSummary: "payé brut sans retenues, relevé T4A.",
+    acceptEmployee: "J'accepte et je signe mon contrat de travail.",
+    acceptContractor: "J'accepte et je signe mon entente de travailleur autonome.",
+    submitCta: "Terminer la configuration",
+    submitting: "Enregistrement…",
+    successTitle: "Votre profil est configuré",
+    setUpAs: "Votre type de travail : {type}",
+    alreadyNote: "Vous pouvez postuler aux quarts ouverts et recevoir des offres.",
+    staleNote: "L'entente a été mise à jour. Rechargez et acceptez la version actuelle.",
+    invalidNote: "Vous devez accepter l'entente pour continuer.",
+    submitError: "Impossible d'enregistrer votre type de travail. Réessayez.",
+    selected: "Choisi",
+    done: "Terminé"
+  },
+  ar: {
+    title: "أكمل إعداد حساب العامل",
+    intro: "اختر نوع عملك ووقّع الاتفاقية. يمكنك تحديث بياناتك ومستنداتك لاحقًا من ملف الموارد البشرية.",
+    back: "رجوع",
+    loading: "جارٍ التحميل…",
+    signInRequired: "سجّل الدخول لاختيار طريقة الدفع.",
+    loadError: "تعذّر تحميل حالة الإعداد الآن.",
+    chooseCta: "١. نوع العمل",
+    employeeTitle: "موظف",
+    employeeSummary: "رواتب مع استقطاعات، نموذج T4.",
+    contractorTitle: "عامل مستقل",
+    contractorSummary: "يُدفع بالكامل دون استقطاعات، نموذج T4A.",
+    acceptEmployee: "أوافق على عقد عملي وأوقّعه.",
+    acceptContractor: "أوافق على اتفاقية العمل المستقل الخاصة بي وأوقّعها.",
+    submitCta: "أكمل الإعداد",
+    submitting: "جارٍ الحفظ…",
+    successTitle: "اكتمل إعدادك",
+    setUpAs: "نوع عملك: {type}",
+    alreadyNote: "يمكنك التقديم على المناوبات المتاحة وتلقي العروض.",
+    staleNote: "تم تحديث الاتفاقية. أعد التحميل واقبل النسخة الحالية.",
+    invalidNote: "يجب قبول الاتفاقية للمتابعة.",
+    submitError: "تعذّر تسجيل اختيار نوع العمل. حاول مجددًا.",
+    selected: "تم الاختيار",
+    done: "تم"
+  }
+};
+
+export function setupCopyFor(locale: Locale): SetupCopy {
+  return SETUP_COPY[locale] ?? SETUP_COPY.en;
+}

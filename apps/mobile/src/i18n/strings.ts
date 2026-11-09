@@ -1,5 +1,6 @@
 // Mobile i18n dictionaries. English, French (QC), and Arabic. Arabic drives right-to-left layout.
 // Keys are grouped; add new screens' copy here and read them with useT()/t().
+import { WEB_COPY } from "./webCopy";
 
 export const LOCALES = ["en", "fr", "ar"] as const;
 export type Locale = (typeof LOCALES)[number];
@@ -248,7 +249,45 @@ const en: Dict = {
   "land.step4Title": "Get your due",
   "land.step4Body": "Your worked hours flow into a clear statement. Everyone's rights are protected and recorded.",
   "nav.tab.available": "Calendar",
-  "hub.myOffersShort": "My offers"
+  "hub.myOffersShort": "My offers",
+  "nav.profile": "Profile",
+  "jobs.details": "See details",
+  "doc.chooseFile": "Choose a file",
+  "profile.languageTitle": "Language",
+  "profile.languageIntro": "Joblop sends your job offers, texts, emails and alerts in this language.",
+  "profile.languageSaved": "Saved on your account.",
+  "profile.languageFailed": "We couldn't save your language. Try again.",
+  "cv.title": "Build your CV",
+  "cv.intro": "Answer a few quick questions and get a ready CV and cover letter, in French or English.",
+  "cv.open": "Build my CV",
+  "cv.pageIntro": "Answer a few quick questions and get a ready CV and cover letter in minutes, in French or English. You review and edit before you apply.",
+  "cv.step1": "1 · What kind of work?",
+  "cv.step2": "2 · Your details",
+  "cv.step3": "3 · Experience",
+  "cv.step4": "4 · Languages",
+  "cv.step5": "5 · Your skills (tap all that apply)",
+  "cv.step6": "6 · Education / training",
+  "cv.step7": "7 · Availability",
+  "cv.step8": "8 · Most recent employer (optional)",
+  "cv.fullName": "Full name",
+  "cv.cvLanguage": "CV language",
+  "cv.city": "City",
+  "cv.lastJob": "Most recent employer",
+  "cv.build": "Build my CV",
+  "cv.building": "Building your CV…",
+  "cv.needName": "Please enter your name.",
+  "cv.failed": "CV generation failed. Please try again.",
+  "cv.ready": "CV ready.",
+  "cv.readySaved": "CV ready — saved to your account.",
+  "cv.coverLetter": "Cover letter",
+  "cv.aiWritten": "AI-written. Review and edit before applying.",
+  "cv.draft": "Draft — review and edit before applying.",
+  "pro.title": "Worker Pro",
+  "pro.statusNone": "Worker Pro is not active on your account. Your CV is the basic version.",
+  "pro.statusTrial": "Worker Pro free trial is active.",
+  "pro.statusTrialUntil": "Worker Pro free trial is active until {date}.",
+  "pro.statusActive": "Worker Pro is active.",
+  "pro.statusActiveUntil": "Worker Pro is active until {date}."
 };
 
 const fr: Dict = {
@@ -486,7 +525,45 @@ const fr: Dict = {
   "land.step4Title": "Recevez votre dû",
   "land.step4Body": "Vos heures travaillées sont reportées dans un relevé clair. Les droits de chacun sont protégés et consignés.",
   "nav.tab.available": "Calendrier",
-  "hub.myOffersShort": "Mes offres"
+  "hub.myOffersShort": "Mes offres",
+  "nav.profile": "Profil",
+  "jobs.details": "Voir les détails",
+  "doc.chooseFile": "Choisir un fichier",
+  "profile.languageTitle": "Langue",
+  "profile.languageIntro": "Joblop vous envoie vos offres d'emploi, textos, courriels et alertes dans cette langue.",
+  "profile.languageSaved": "Enregistrée dans votre compte.",
+  "profile.languageFailed": "Nous n'avons pas pu enregistrer votre langue. Réessayez.",
+  "cv.title": "Créer votre CV",
+  "cv.intro": "Répondez à quelques questions et obtenez un CV et une lettre de présentation prêts, en français ou en anglais.",
+  "cv.open": "Créer mon CV",
+  "cv.pageIntro": "Répondez à quelques questions rapides et obtenez en quelques minutes un CV et une lettre de présentation prêts, en français ou en anglais. Vous les relisez et les modifiez avant de postuler.",
+  "cv.step1": "1 · Quel type de travail?",
+  "cv.step2": "2 · Vos renseignements",
+  "cv.step3": "3 · Expérience",
+  "cv.step4": "4 · Langues",
+  "cv.step5": "5 · Vos compétences (touchez toutes celles qui s'appliquent)",
+  "cv.step6": "6 · Études / formation",
+  "cv.step7": "7 · Disponibilité",
+  "cv.step8": "8 · Dernier employeur (facultatif)",
+  "cv.fullName": "Nom complet",
+  "cv.cvLanguage": "Langue du CV",
+  "cv.city": "Ville",
+  "cv.lastJob": "Dernier employeur",
+  "cv.build": "Créer mon CV",
+  "cv.building": "Création de votre CV…",
+  "cv.needName": "Veuillez entrer votre nom.",
+  "cv.failed": "La création du CV a échoué. Réessayez.",
+  "cv.ready": "CV prêt.",
+  "cv.readySaved": "CV prêt — enregistré dans votre compte.",
+  "cv.coverLetter": "Lettre de présentation",
+  "cv.aiWritten": "Rédigé par l'IA. Relisez-le et modifiez-le avant de postuler.",
+  "cv.draft": "Brouillon — relisez-le et modifiez-le avant de postuler.",
+  "pro.title": "Worker Pro",
+  "pro.statusNone": "Worker Pro n'est pas actif sur votre compte. Votre CV est la version de base.",
+  "pro.statusTrial": "L'essai gratuit de Worker Pro est actif.",
+  "pro.statusTrialUntil": "L'essai gratuit de Worker Pro est actif jusqu'au {date}.",
+  "pro.statusActive": "Worker Pro est actif.",
+  "pro.statusActiveUntil": "Worker Pro est actif jusqu'au {date}."
 };
 
 const ar: Dict = {
@@ -724,12 +801,63 @@ const ar: Dict = {
   "land.step4Title": "احصل على مستحقاتك",
   "land.step4Body": "تُحوَّل ساعات عملك إلى كشف واضح. حقوق الجميع محمية ومسجّلة.",
   "nav.tab.available": "التقويم",
-  "hub.myOffersShort": "عروضي"
+  "hub.myOffersShort": "عروضي",
+  "nav.profile": "الملف الشخصي",
+  "jobs.details": "عرض التفاصيل",
+  "doc.chooseFile": "اختر ملفًا",
+  "profile.languageTitle": "اللغة",
+  "profile.languageIntro": "يرسل لك Joblop عروض العمل والرسائل النصية والبريد الإلكتروني والتنبيهات بهذه اللغة.",
+  "profile.languageSaved": "تم الحفظ في حسابك.",
+  "profile.languageFailed": "تعذّر حفظ لغتك. حاول مجددًا.",
+  "cv.title": "أنشئ سيرتك الذاتية",
+  "cv.intro": "أجب عن بضعة أسئلة واحصل على سيرة ذاتية ورسالة تقديم جاهزتين، بالفرنسية أو الإنجليزية.",
+  "cv.open": "أنشئ سيرتي الذاتية",
+  "cv.pageIntro": "أجب عن بضعة أسئلة سريعة واحصل خلال دقائق على سيرة ذاتية ورسالة تقديم جاهزتين، بالفرنسية أو الإنجليزية. تراجعهما وتعدّلهما قبل التقديم.",
+  "cv.step1": "1 · ما نوع العمل؟",
+  "cv.step2": "2 · معلوماتك",
+  "cv.step3": "3 · الخبرة",
+  "cv.step4": "4 · اللغات",
+  "cv.step5": "5 · مهاراتك (اختر كل ما ينطبق)",
+  "cv.step6": "6 · التعليم / التدريب",
+  "cv.step7": "7 · التوفّر",
+  "cv.step8": "8 · آخر صاحب عمل (اختياري)",
+  "cv.fullName": "الاسم الكامل",
+  "cv.cvLanguage": "لغة السيرة الذاتية",
+  "cv.city": "المدينة",
+  "cv.lastJob": "آخر صاحب عمل",
+  "cv.build": "أنشئ سيرتي الذاتية",
+  "cv.building": "جارٍ إنشاء سيرتك الذاتية…",
+  "cv.needName": "يرجى إدخال اسمك.",
+  "cv.failed": "تعذّر إنشاء السيرة الذاتية. حاول مجددًا.",
+  "cv.ready": "السيرة الذاتية جاهزة.",
+  "cv.readySaved": "السيرة الذاتية جاهزة — وحُفظت في حسابك.",
+  "cv.coverLetter": "رسالة التقديم",
+  "cv.aiWritten": "كُتبت بالذكاء الاصطناعي. راجعها وعدّلها قبل التقديم.",
+  "cv.draft": "مسودة — راجعها وعدّلها قبل التقديم.",
+  "pro.title": "Worker Pro",
+  "pro.statusNone": "اشتراك Worker Pro غير مفعّل في حسابك. سيرتك الذاتية هي النسخة الأساسية.",
+  "pro.statusTrial": "التجربة المجانية لـ Worker Pro مفعّلة.",
+  "pro.statusTrialUntil": "التجربة المجانية لـ Worker Pro مفعّلة حتى {date}.",
+  "pro.statusActive": "اشتراك Worker Pro مفعّل.",
+  "pro.statusActiveUntil": "اشتراك Worker Pro مفعّل حتى {date}."
 };
 
 export const dictionaries: Record<Locale, Dict> = { en, fr, ar };
 
-/** Translate a key for a locale, falling back to English then the key itself. */
-export function translate(locale: Locale, key: string): string {
-  return dictionaries[locale][key] ?? dictionaries.en[key] ?? key;
+export type TranslateVars = Readonly<Record<string, string | number>>;
+
+/** Replace {name} placeholders (same template style as the worker website). */
+export function fillTemplate(text: string, vars?: TranslateVars): string {
+  if (!vars) return text;
+  return text.replace(/\{(\w+)\}/g, (match, name: string) => (name in vars ? String(vars[name]) : match));
+}
+
+/**
+ * Translate a key for a locale. App words first, then the worker website's own words (webCopy, the
+ * owner rule "the phone app copies the website's design and words"), then English, then the key.
+ */
+export function translate(locale: Locale, key: string, vars?: TranslateVars): string {
+  const web = WEB_COPY[key];
+  const text = dictionaries[locale][key] ?? web?.[locale] ?? dictionaries.en[key] ?? web?.en ?? key;
+  return fillTemplate(text, vars);
 }

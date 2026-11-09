@@ -1,9 +1,9 @@
 import { useEffect, useState } from "react";
-import { ScrollView, StyleSheet, View } from "react-native";
+import { Pressable, ScrollView, StyleSheet, View } from "react-native";
 import { spacing } from "../../theme";
 import type { MarketplaceInterest, MobileSessionTransport, WorkerAssignmentDto } from "../../auth/secureSession";
 import { Badge, BodyText, Button, Card, EmptyState, ErrorState, Heading, LoadingState, ScreenContainer, Section, SmallText } from "../../ui/primitives";
-import { formatShiftWindow } from "../marketplace/marketplaceContent";
+import { formatJobWhen } from "../marketplace/marketplaceContent";
 import { useLocale } from "../../i18n/LocaleContext";
 import {
   assignmentStatusLabel,
@@ -26,11 +26,14 @@ type AssignmentsState =
 export function MyWorkScreen({
   transport,
   onOpenSchedule,
-  onOpenTimesheets
+  onOpenTimesheets,
+  onOpenJob
 }: {
   transport: MobileSessionTransport | null;
   onOpenSchedule?: () => void;
   onOpenTimesheets?: () => void;
+  /** Opens the job page, where the application's status (and the employer's choice) is shown. */
+  onOpenJob?: (jobRequestId: string) => void;
 }) {
   const { locale } = useLocale();
   const myWorkCopy = myWorkCopyFor(locale);
@@ -76,16 +79,23 @@ export function MyWorkScreen({
                 {interests.status === "error" ? <ErrorState title={myWorkCopy.errorTitle} body={myWorkCopy.loadError} /> : null}
                 {interests.status === "ready"
                   ? interests.data.map((it) => (
-                      <Card key={`${it.jobRequestId}-${it.createdAt}`} testID="my-work-application">
+                      <Pressable
+                        accessibilityRole="button"
+                        disabled={!onOpenJob}
+                        key={`${it.jobRequestId}-${it.createdAt}`}
+                        onPress={() => onOpenJob?.(it.jobRequestId)}
+                      >
+                      <Card testID="my-work-application">
                         <View style={styles.row}>
                           <Heading>{it.summary?.title ?? it.summary?.role ?? myWorkCopy.openShiftFallback}</Heading>
                           <Badge label={interestStatusLabel(it.status, locale)} tone={interestStatusTone(it.status)} />
                         </View>
                         {it.summary ? <SmallText>{it.summary.employerName}</SmallText> : null}
                         {it.summary?.areaLabel ? <BodyText>{it.summary.areaLabel}</BodyText> : null}
-                        {it.summary ? <SmallText>{formatShiftWindow(it.summary.startAt, it.summary.endAt)}</SmallText> : null}
+                        {it.summary ? <SmallText>{formatJobWhen(it.summary.startAt, it.summary.endAt, locale)}</SmallText> : null}
                         {it.offerStatus ? <SmallText>{myWorkCopy.offerSentNote}</SmallText> : null}
                       </Card>
+                      </Pressable>
                     ))
                   : null}
               </Section>
@@ -106,7 +116,7 @@ export function MyWorkScreen({
                         </View>
                         {a.roleSummary ? <SmallText>{a.roleSummary}</SmallText> : null}
                         {a.worksiteSummary ? <BodyText>{a.worksiteSummary}</BodyText> : null}
-                        <SmallText>{formatShiftWindow(a.startAt, a.endAt)}</SmallText>
+                        <SmallText>{formatJobWhen(a.startAt, a.endAt, locale)}</SmallText>
                       </Card>
                     ))
                   : null}
