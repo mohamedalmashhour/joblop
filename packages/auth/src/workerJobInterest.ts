@@ -51,7 +51,9 @@ export type EligibilityReason =
   | "job_not_found"
   | "job_not_open"
   | "already_assigned"
-  | "active_offer_exists";
+  | "active_offer_exists"
+  // A certificate the employer requires that the worker does not hold (staff-verified, unexpired).
+  | `missing_certificate:${string}`;
 
 export type EligibilityResult = Readonly<{
   eligible: boolean;
@@ -123,11 +125,18 @@ export type InterestStore = Readonly<{
   markAcceptedByOffer(workerOfferId: string): Promise<{ count: number }>;
 }>;
 
+// Required certificates the worker lacks for this job, as reason codes ("missing_certificate:pab").
+// Optional so a harness without certificates keeps today's behaviour.
+export type InterestCertificateReader = Readonly<{
+  missingReasons(input: { workerIdentityId: string; jobRequestId: string }): Promise<readonly `missing_certificate:${string}`[]>;
+}>;
+
 export type WorkerJobInterestDeps = Readonly<{
   identities: InterestWorkerIdentityResolver;
   jobs: InterestJobReader;
   engagement: InterestEngagementReader;
   store: InterestStore;
+  certificates?: InterestCertificateReader;
   now?: () => Date;
 }>;
 
@@ -162,6 +171,9 @@ export function createWorkerJobInterestService(deps: WorkerJobInterestDeps) {
     ]);
     if (assigned) reasons.push("already_assigned");
     if (offered) reasons.push("active_offer_exists");
+    if (deps.certificates) {
+      reasons.push(...(await deps.certificates.missingReasons({ workerIdentityId: input.workerIdentityId, jobRequestId: input.jobRequestId })));
+    }
     return {
       result: { eligible: reasons.length === 0, reasons, evaluatedAt: now().toISOString() },
       organizationId: job.organizationId

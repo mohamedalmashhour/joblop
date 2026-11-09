@@ -243,6 +243,16 @@ import { getCvProvider } from "./cvBuilderClaude";
 import { reviewDocumentAdvisory, isReviewableImageType } from "./documentAiReview";
 import { offlineAdvisoryVerdict, presentableVerdict, readAcceptedLegalVersion, workerProfileRating } from "@rwos/shared";
 import { longTermJobRequestInput } from "./longTermJobRequestInput";
+import {
+  applyBlockingCertificates,
+  certificateGapForJob,
+  certificateGapForJobId,
+  certificateReasons,
+  offerCertificateRefusal,
+  readCertificateOverride,
+  recordCertificateOverride,
+  requiredCertificatesField
+} from "./requiredCertificateCheck";
 import { createCvAsset, listCvAssets, deleteCvAsset } from "./cvAssetRepository";
 import { isPro, getActiveEntitlement, grantEntitlement, revokeEntitlement, startTrial, hasEverTrialed, TRIAL_DAYS, PRO_PLAN } from "./cvEntitlementRepository";
 import {
@@ -374,6 +384,7 @@ import { normalizeEscalationReason } from "@rwos/shared";
 import { buildCalendarExport } from "@rwos/shared";
 import { matchingPlaceNames, postalAreaOf } from "@rwos/shared";
 import { deriveOrderLifecycle } from "@rwos/shared";
+import { parseRequiredCertificates, storedRequiredCertificates } from "@rwos/shared";
 import { deriveWorkerCancellationPenalty, LATE_CANCELLATION_TIMESHEET_MARKER, WORKER_SUSPENSION_DAYS } from "@rwos/shared";
 import { notifyClient, notifyClientInvoiceSent } from "./notifications/clientNotifications";
 import { invoiceEmailAttachment } from "./invoicePdf";
@@ -822,7 +833,19 @@ export function buildApi(options: BuildApiOptions = {}) {
     identities: createPrismaInterestWorkerIdentityResolver(prisma!),
     jobs: createPrismaInterestJobReader(prisma!),
     engagement: createPrismaInterestEngagementReader(prisma!),
-    store: createPrismaInterestStore(prisma!)
+    store: createPrismaInterestStore(prisma!),
+    // Required certificates block applying too ("other" goes to a person instead; see
+    // applyBlockingCertificates). Without a database (test harness) there is nothing to check.
+    ...(prisma
+      ? {
+          certificates: {
+            async missingReasons({ workerIdentityId, jobRequestId }: { workerIdentityId: string; jobRequestId: string }) {
+              const gap = await certificateGapForJobId(prisma!, { workerIdentityId, jobRequestId });
+              return gap ? (certificateReasons(applyBlockingCertificates(gap.missing)) as `missing_certificate:${string}`[]) : [];
+            }
+          }
+        }
+      : {})
   });
   // Verification — provider-neutral trust states. Fixture providers by default (no vendor
   // lock, no network); production swaps real adapters behind the same interfaces. Callbacks
@@ -3423,6 +3446,16 @@ export function buildApi(options: BuildApiOptions = {}) {
       });
     }
 
+    // Certificates the employer requires (short-term and long-term). An unknown key, a duplicate or an
+    // "other" without text is refused, so a requirement is never dropped silently.
+    const requiredCertificates = parseRequiredCertificates(body.requiredCertificates, body.requiredCertificateOther);
+    if (!requiredCertificates) {
+      return reply.code(400).send({
+        error: "RWOS_INVALID_REQUIRED_CERTIFICATES",
+        message: "Choose required certificates from the list; describe an \"other\" certificate in 120 characters or less."
+      });
+    }
+
     const jobRequest = await jobRequestService.createDraft({
       actorUserId: session.user.id,
       organizationId: readRouteParam(request.params, "organizationId"),
@@ -3449,6 +3482,13 @@ export function buildApi(options: BuildApiOptions = {}) {
 
     if (longTerm.status === "long_term") {
       await prisma!.jobRequest.update({ where: { id: jobRequest.id }, data: longTerm.data });
+    }
+
+    if (requiredCertificates.keys.length > 0) {
+      await prisma!.jobRequest.update({
+        where: { id: jobRequest.id },
+        data: { requiredCertificates: [...requiredCertificates.keys], requiredCertificateOther: requiredCertificates.other }
+      });
     }
 
     return reply.code(201).send({ jobRequest: serializeJobRequest(jobRequest) });
@@ -3950,6 +3990,8 @@ export function buildApi(options: BuildApiOptions = {}) {
         startAt: true,
         endAt: true,
         urgency: true,
+        requiredCertificates: true,
+        requiredCertificateOther: true,
         roleDefinition: { select: { displayLabel: true } },
         residence: { select: { city: true, province: true } },
         pricingSnapshot: { select: { workerHourlyRateMinor: true } },
@@ -3978,7 +4020,9 @@ export function buildApi(options: BuildApiOptions = {}) {
           workerRateMinor: pay.rateMinor,
           ...pay.extra,
           // The job's active bonus (kind + amount only; who pays it is never shown to workers).
-          bonus: openBonus.get(r.id) ?? null
+          bonus: openBonus.get(r.id) ?? null,
+          // Certificates the employer requires (only when there are some).
+          ...requiredCertificatesField(r)
         };
       });
     return reply.code(200).header("cache-control", "no-store").send({ jobs, from: from.toISOString(), to: until.toISOString() });
@@ -4332,6 +4376,8 @@ export function buildApi(options: BuildApiOptions = {}) {
         numberOfWorkers: true,
         startAt: true,
         endAt: true,
+        requiredCertificates: true,
+        requiredCertificateOther: true,
         roleDefinition: { select: { displayLabel: true, workGroup: { select: { key: true } } } },
         organization: { select: { id: true, displayName: true } },
         residence: { select: { city: true, province: true, latitude: true, longitude: true } },
@@ -4422,7 +4468,11 @@ export function buildApi(options: BuildApiOptions = {}) {
       savedIds = []; // not a worker → no saved flags; never fail the search
     }
     const savedSet = new Set(savedIds);
-    const jobs = page.map((r) => ({ ...r, saved: savedSet.has(r.jobRequestId) }));
+    const rowById = new Map(rows.map((r) => [r.id, r]));
+    const jobs = page.map((r) => {
+      const row = rowById.get(r.jobRequestId);
+      return { ...r, saved: savedSet.has(r.jobRequestId), ...(row ? requiredCertificatesField(row) : {}) };
+    });
     return reply.code(200).send({
       origin: { province: origin.province, city: origin.city, postalCode: origin.postalCode, place: origin.label },
       count: jobs.length,
@@ -4630,12 +4680,24 @@ export function buildApi(options: BuildApiOptions = {}) {
       return reply.code(404).send({ error: "RWOS_INTEREST_NOT_FOUND", message: "That job is not available." });
     }
     try {
-      const [active, eligibility] = await Promise.all([
+      const [active, eligibility, latest] = await Promise.all([
         workerJobInterestService.getActive({ userId: session.user.id, jobRequestId }),
-        workerJobInterestService.checkEligibility({ userId: session.user.id, jobRequestId })
+        workerJobInterestService.checkEligibility({ userId: session.user.id, jobRequestId }),
+        // Long-term jobs: the employer's latest choice on this worker's application (also after a
+        // "not selected", which ends the active application).
+        prisma
+          ? prisma.workerJobInterest
+              .findFirst({
+                where: { jobRequestId, worker: { userId: session.user.id }, status: { not: "withdrawn" } },
+                orderBy: { createdAt: "desc" },
+                select: { employerDecision: true }
+              })
+              .catch(() => null)
+          : Promise.resolve(null)
       ]);
       return reply.code(200).send({
-        interest: active ? { status: active.status } : null,
+        interest: active ? { status: active.status, employerDecision: latest?.employerDecision ?? null } : null,
+        lastEmployerDecision: latest?.employerDecision ?? null,
         eligibility
       });
     } catch (error) {
@@ -5699,7 +5761,7 @@ export function buildApi(options: BuildApiOptions = {}) {
     const workerIdentityId = readRouteParam(request.params, "workerIdentityId");
     if (!isCanonicalUuid(workerIdentityId)) return reply.code(404).send({ error: "RWOS_HR_DOC_NOT_FOUND", message: "That worker was not found." });
     const documents = await hrDocumentService.listWorkerDocuments(workerIdentityId);
-    return reply.code(200).send({ documents: documents.map((d) => ({ id: d.id, documentType: d.documentType, jurisdiction: d.jurisdiction, expiresAt: d.expiresAt, effectiveStatus: d.effectiveStatus, reviewReason: d.reviewReason, supersededById: d.supersededById })) });
+    return reply.code(200).send({ documents: documents.map((d) => ({ id: d.id, documentType: d.documentType, jurisdiction: d.jurisdiction, expiresAt: d.expiresAt, effectiveStatus: d.effectiveStatus, reviewReason: d.reviewReason, supersededById: d.supersededById, verifiedCertificateKey: d.verifiedCertificateKey ?? null })) });
   });
 
   // HR authority: resolve a short-lived download URL (delegated to the storage provider).
@@ -5759,7 +5821,16 @@ export function buildApi(options: BuildApiOptions = {}) {
       }
     });
 
-  hrDocDecision("/platform/hr/documents/:documentId/accept", (actor, id) => hrDocumentService.accept({ actorUserId: actor, documentId: id }));
+  // Verify: optional expiresAt (ISO date) and certificateKey (the required certificate a generic
+  // upload proves). A verified, unexpired document is what satisfies a job's required certificates.
+  hrDocDecision("/platform/hr/documents/:documentId/accept", (actor, id, body) =>
+    hrDocumentService.accept({
+      actorUserId: actor,
+      documentId: id,
+      expiresAt: readOptionalString(body, "expiresAt"),
+      certificateKey: readOptionalString(body, "certificateKey")
+    })
+  );
   hrDocDecision("/platform/hr/documents/:documentId/reject", (actor, id, body) => hrDocumentService.reject({ actorUserId: actor, documentId: id, reason: readOptionalString(body, "reason") ?? "" }));
   hrDocDecision("/platform/hr/documents/:documentId/revoke", (actor, id, body) => hrDocumentService.revoke({ actorUserId: actor, documentId: id, reason: readOptionalString(body, "reason") }));
 
@@ -5966,6 +6037,8 @@ export function buildApi(options: BuildApiOptions = {}) {
         status: true,
         startAt: true,
         endAt: true,
+        requiredCertificates: true,
+        requiredCertificateOther: true,
         roleDefinition: { select: { displayLabel: true } },
         organization: { select: { id: true, displayName: true } },
         residence: { select: { city: true, province: true, latitude: true, longitude: true } },
@@ -6077,8 +6150,24 @@ export function buildApi(options: BuildApiOptions = {}) {
           .then((left) => left.get(row.id) ?? row.numberOfWorkers)
           .catch(() => row.numberOfWorkers)
       : row.numberOfWorkers;
+    // Required certificates (shown on the page) and, for a signed-in worker, which ones they miss.
+    // A long-term listing is never claimed (workers apply, the employer chooses); a job asking for an
+    // "other" certificate goes through Apply too, because a person must check that certificate.
+    const required = storedRequiredCertificates(row);
+    const longTerm = isLongTermListingJob(row);
+    const viewer = prisma
+      ? await prisma.workerIdentity.findUnique({ where: { userId: session.user.id }, select: { id: true } }).catch(() => null)
+      : null;
+    const missingCertificateKeys = viewer && prisma && required.keys.length > 0
+      ? (await certificateGapForJob(prisma, { workerIdentityId: viewer.id, job: row }).catch(() => ({ missing: required.keys }))).missing
+      : [];
     const claimable =
-      row.openClaim === true && row.status === "approved_for_dispatch" && !!row.pricingSnapshot && placesLeft > 0;
+      row.openClaim === true &&
+      row.status === "approved_for_dispatch" &&
+      !!row.pricingSnapshot &&
+      placesLeft > 0 &&
+      !longTerm &&
+      !required.keys.includes("other");
     // The job's active bonus (kind + amount only; who pays it is never shown to workers).
     const bonus = prisma
       ? await activeBonusByJob(prisma, [row.id])
@@ -6093,6 +6182,9 @@ export function buildApi(options: BuildApiOptions = {}) {
         allowances: workerAllowances(row.calendarProfile, row.pricingSnapshot),
         openClaim: row.openClaim === true,
         claimable,
+        longTerm,
+        requiredCertificates: required,
+        missingCertificates: viewer ? missingCertificateKeys : null,
         bonus
       }
     });
@@ -7801,9 +7893,39 @@ export function buildApi(options: BuildApiOptions = {}) {
     const expiresAt = readRequiredDate(body, "expiresAt");
     if (!expiresAt) return sendWorkerOfferDenied(reply);
 
+    // Required certificates: staff cannot offer the job to a worker who misses one unless they tick
+    // the explicit override, which is recorded on the offer and in the audit log.
+    const offerRoles = await resolveAuthorizationRoles(session.user.id);
+    const certificateOverride = readCertificateOverride(body);
+    let overrideGap: { organizationId: string; jobRequestId: string; missing: readonly string[] } | null = null;
+    if (prisma && offerRoles.includes("PLATFORM_ADMINISTRATOR")) {
+      const dispatchReviewId = readRequiredString(body, "dispatchReviewId") ?? "";
+      const workerIdentityId = readRequiredString(body, "workerIdentityId") ?? "";
+      const dispatch = isCanonicalUuid(dispatchReviewId) && isCanonicalUuid(workerIdentityId)
+        ? await prisma.dispatchReview.findUnique({
+            where: { id: dispatchReviewId },
+            select: { organizationId: true, jobRequest: { select: { id: true, startAt: true, requiredCertificates: true, requiredCertificateOther: true } } }
+          })
+        : null;
+      if (dispatch) {
+        const gap = await certificateGapForJob(prisma, { workerIdentityId, job: dispatch.jobRequest });
+        if (gap.missing.length > 0) {
+          if (!certificateOverride.override) {
+            return reply.code(422).send({
+              error: "RWOS_CERTIFICATE_REQUIRED",
+              message: "This worker does not hold every certificate the job requires. Tick the certificate override to offer it anyway; it is logged.",
+              reasons: certificateReasons(gap.missing),
+              requiredCertificateOther: gap.required.other
+            });
+          }
+          overrideGap = { organizationId: dispatch.organizationId, jobRequestId: dispatch.jobRequest.id, missing: gap.missing };
+        }
+      }
+    }
+
     const workerOffer = await workerOfferService.createOffer({
       session,
-      roles: await resolveAuthorizationRoles(session.user.id),
+      roles: offerRoles,
       dispatchReviewId: readRequiredString(body, "dispatchReviewId") ?? "",
       workerIdentityId: readRequiredString(body, "workerIdentityId") ?? "",
       expiresAt,
@@ -7814,6 +7936,18 @@ export function buildApi(options: BuildApiOptions = {}) {
         (await defaultOfferCompensation(readRequiredString(body, "dispatchReviewId") ?? "", readRequiredString(body, "workerIdentityId") ?? "")),
       policySummary: readOptionalString(body, "policySummary")
     });
+
+    if (prisma && overrideGap) {
+      await recordCertificateOverride(prisma, {
+        workerOfferId: workerOffer.id,
+        organizationId: overrideGap.organizationId,
+        jobRequestId: overrideGap.jobRequestId,
+        actorUserId: session.user.id,
+        missing: overrideGap.missing as Parameters<typeof recordCertificateOverride>[1]["missing"],
+        reason: certificateOverride.reason,
+        source: "offer_create"
+      });
+    }
 
     return reply.code(201).send({ workerOffer: serializeWorkerOffer(workerOffer) });
   });
@@ -8016,6 +8150,15 @@ export function buildApi(options: BuildApiOptions = {}) {
           agreementVersions: WORKER_AGREEMENT_VERSIONS
         });
       }
+
+      // Required certificates: the worker must hold each one, unless staff approved them with the
+      // logged certificate override on this offer. Only checked on the worker's own offer; anything
+      // else falls through to the service, which refuses it.
+      const certificateRefusal = await offerCertificateRefusal(prisma, {
+        workerOfferId: readRouteParam(request.params, "workerOfferId"),
+        userId: session.user.id
+      });
+      if (certificateRefusal) return reply.code(422).send(certificateRefusal);
     }
 
     const body = asRecord(request.body);
@@ -8090,9 +8233,47 @@ export function buildApi(options: BuildApiOptions = {}) {
         message: "Invalid assignment request."
       });
     }
+    // Required certificates: staff assignment is blocked when the worker misses one, unless the offer
+    // already carries a certificate override or staff tick the override now (recorded and logged).
+    const assignRoles = await resolveAuthorizationRoles(session.user.id);
+    if (prisma && assignRoles.includes("PLATFORM_ADMINISTRATOR")) {
+      const offer = await prisma.workerOffer.findUnique({
+        where: { id: workerOfferId },
+        select: {
+          id: true,
+          organizationId: true,
+          workerIdentityId: true,
+          certificateOverrideAt: true,
+          jobRequest: { select: { id: true, startAt: true, requiredCertificates: true, requiredCertificateOther: true } }
+        }
+      });
+      if (offer && !offer.certificateOverrideAt) {
+        const gap = await certificateGapForJob(prisma, { workerIdentityId: offer.workerIdentityId, job: offer.jobRequest });
+        if (gap.missing.length > 0) {
+          const override = readCertificateOverride(body);
+          if (!override.override) {
+            return reply.code(422).send({
+              error: "RWOS_CERTIFICATE_REQUIRED",
+              message: "This worker does not hold every certificate the job requires. Tick the certificate override to assign anyway; it is logged.",
+              reasons: certificateReasons(gap.missing),
+              requiredCertificateOther: gap.required.other
+            });
+          }
+          await recordCertificateOverride(prisma, {
+            workerOfferId: offer.id,
+            organizationId: offer.organizationId,
+            jobRequestId: offer.jobRequest.id,
+            actorUserId: session.user.id,
+            missing: gap.missing,
+            reason: override.reason,
+            source: "assignment_create"
+          });
+        }
+      }
+    }
     const assignment = await assignmentService.createFromAcceptedOffer({
       session,
-      roles: await resolveAuthorizationRoles(session.user.id),
+      roles: assignRoles,
       workerOfferId,
       expectedDispatchReviewId: dispatchReviewId,
       expectedOfferVersion: expectedOfferVersion as number

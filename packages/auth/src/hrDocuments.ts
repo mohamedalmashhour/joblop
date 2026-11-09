@@ -10,6 +10,7 @@
 //   - Every governed transition is audited (append-only).
 
 import { randomUUID } from "node:crypto";
+import { isRequiredCertificateKey } from "@rwos/shared";
 
 export type HrDocumentStatus =
   | "required" | "submitted" | "under_review" | "accepted" | "rejected"
@@ -94,6 +95,8 @@ export type HrDocumentRecord = Readonly<{
   source: string;
   supersededById: string | null;
   reviewReason: string | null; // HR-internal; stripped from worker views
+  // The required-certificate key staff verified this document as (generic uploads), else null.
+  verifiedCertificateKey?: string | null;
   updatedAt: string;
 }>;
 
@@ -131,7 +134,7 @@ export type HrDocumentStore = Readonly<{
   create(input: { workerIdentityId: string; documentType: string; storageReference: string; checksum: string | null; issuingAuthority: string | null; jurisdiction: string | null; issuedAt: Date | null; expiresAt: Date | null; source: string }): Promise<HrDocumentRecord>;
   getById(id: string): Promise<HrDocumentRecord | null>;
   listForWorker(workerIdentityId: string): Promise<readonly HrDocumentRecord[]>;
-  setStatus(input: { id: string; status: HrDocumentStatus; reviewReason?: string | null; reviewedByUserId?: string | null; supersededById?: string | null }): Promise<HrDocumentRecord>;
+  setStatus(input: { id: string; status: HrDocumentStatus; reviewReason?: string | null; reviewedByUserId?: string | null; supersededById?: string | null; expiresAt?: Date | null; verifiedCertificateKey?: string | null }): Promise<HrDocumentRecord>;
   latestAcceptedOfType(input: { workerIdentityId: string; documentType: string }): Promise<HrDocumentRecord | null>;
   pageReview(input: { statuses: readonly HrDocumentStatus[]; cursor: string | null; limit: number }): Promise<HrDocPage<HrDocumentRecord>>;
   pageExpiring(input: { before: Date; cursor: string | null; limit: number }): Promise<HrDocPage<HrDocumentRecord>>;
@@ -271,12 +274,34 @@ export function createHrDocumentService(deps: HrDocumentDeps) {
       return deps.storage.resolveDownloadUrl({ storageReference: rec.storageReference });
     },
 
-    async accept(input: { actorUserId: string; documentId: string }): Promise<HrDocumentRecord> {
+    // Staff verify a document. Optional: the date it expires (a verified certificate stops counting
+    // for job requirements after it) and, for a generic upload, the required certificate it proves.
+    async accept(input: { actorUserId: string; documentId: string; expiresAt?: string | null; certificateKey?: string | null }): Promise<HrDocumentRecord> {
       const rec = await deps.store.getById(input.documentId);
       if (!rec) throw new HrDocumentError("not_found", "That document was not found.");
       if (!canReviewDocument(rec.status)) throw new HrDocumentError("conflict", `A document in state ${rec.status} cannot be accepted.`);
-      const updated = await deps.store.setStatus({ id: rec.id, status: "accepted", reviewedByUserId: input.actorUserId });
-      await deps.store.appendEvent({ documentId: rec.id, workerIdentityId: rec.workerIdentityId, eventType: "document_accepted", priorState: rec.status, newState: "accepted", source: "hr_admin", actorUserId: input.actorUserId });
+      let expiresAt: Date | undefined;
+      if (input.expiresAt) {
+        expiresAt = new Date(input.expiresAt);
+        if (Number.isNaN(expiresAt.getTime())) throw new HrDocumentError("invalid", "The expiry date is not a valid date.");
+        if (expiresAt.getTime() <= now().getTime()) throw new HrDocumentError("invalid", "The expiry date is already past; this document cannot be verified.");
+      }
+      let verifiedCertificateKey: string | undefined;
+      if (input.certificateKey) {
+        if (!isRequiredCertificateKey(input.certificateKey) || input.certificateKey === "other") {
+          throw new HrDocumentError("invalid", "Choose a certificate from the list.");
+        }
+        verifiedCertificateKey = input.certificateKey;
+      }
+      const updated = await deps.store.setStatus({
+        id: rec.id,
+        status: "accepted",
+        reviewedByUserId: input.actorUserId,
+        ...(expiresAt ? { expiresAt } : {}),
+        ...(verifiedCertificateKey ? { verifiedCertificateKey } : {})
+      });
+      const detail = [expiresAt ? `expires ${expiresAt.toISOString().slice(0, 10)}` : null, verifiedCertificateKey ? `certificate ${verifiedCertificateKey}` : null].filter(Boolean).join("; ");
+      await deps.store.appendEvent({ documentId: rec.id, workerIdentityId: rec.workerIdentityId, eventType: "document_accepted", priorState: rec.status, newState: "accepted", ...(detail ? { reason: detail } : {}), source: "hr_admin", actorUserId: input.actorUserId });
       return withEffective(updated);
     },
     async reject(input: { actorUserId: string; documentId: string; reason: string }): Promise<HrDocumentRecord> {
@@ -320,7 +345,7 @@ export function createHrDocumentService(deps: HrDocumentDeps) {
 type DocRow = {
   id: string; workerIdentityId: string; documentType: string; issuingAuthority: string | null; jurisdiction: string | null;
   issuedAt: Date | null; expiresAt: Date | null; status: HrDocumentStatus; storageReference: string | null; checksum: string | null;
-  source: string; supersededById: string | null; reviewReason: string | null; updatedAt: Date;
+  source: string; supersededById: string | null; reviewReason: string | null; verifiedCertificateKey?: string | null; updatedAt: Date;
 };
 
 type DocPrisma = {
@@ -340,7 +365,7 @@ function toDoc(r: DocRow): HrDocumentRecord {
     id: r.id, workerIdentityId: r.workerIdentityId, documentType: r.documentType, issuingAuthority: r.issuingAuthority,
     jurisdiction: r.jurisdiction, issuedAt: r.issuedAt?.toISOString() ?? null, expiresAt: r.expiresAt?.toISOString() ?? null,
     status: r.status, effectiveStatus: r.status, storageReference: r.storageReference, checksum: r.checksum, source: r.source,
-    supersededById: r.supersededById, reviewReason: r.reviewReason, updatedAt: r.updatedAt.toISOString()
+    supersededById: r.supersededById, reviewReason: r.reviewReason, verifiedCertificateKey: r.verifiedCertificateKey ?? null, updatedAt: r.updatedAt.toISOString()
   };
 }
 
@@ -366,11 +391,13 @@ export function createPrismaHrDocumentStore(prisma: DocPrisma): HrDocumentStore 
       const rows = await prisma.hrDocument.findMany({ where: { workerIdentityId }, orderBy: { createdAt: "desc" } });
       return rows.map(toDoc);
     },
-    async setStatus({ id, status, reviewReason, reviewedByUserId, supersededById }) {
+    async setStatus({ id, status, reviewReason, reviewedByUserId, supersededById, expiresAt, verifiedCertificateKey }) {
       return toDoc(await prisma.hrDocument.update({
         where: { id },
         data: {
           status,
+          ...(expiresAt !== undefined ? { expiresAt } : {}),
+          ...(verifiedCertificateKey !== undefined ? { verifiedCertificateKey } : {}),
           ...(reviewReason !== undefined ? { reviewReason } : {}),
           ...(reviewedByUserId !== undefined ? { reviewedByUserId, reviewedAt: new Date() } : {}),
           ...(supersededById !== undefined ? { supersededById } : {})
