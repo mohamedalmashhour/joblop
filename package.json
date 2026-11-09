@@ -75,6 +75,7 @@
     "validate:evidence": "node --import tsx scripts/validate-external-evidence.ts",
     "validate:contract-kit-c3": "node --import tsx scripts/validate-contract-kit-c3.ts",
     "validate:env": "node --import tsx scripts/validate-env.ts",
+    "validate:production-switch": "node --import tsx scripts/validate-production-switch.ts",
     "validate:boundaries": "node --import tsx scripts/validate-boundaries.ts",
     "validate:migrations": "node --import tsx scripts/validate-migration-integrity.ts",
     "validate:containers:static": "vitest run scripts/container-packaging.test.ts apps/mobile/server.test.ts apps/employer/app/health/route.test.ts apps/employer/app/ready/route.test.ts apps/admin/app/health/route.test.ts apps/admin/app/ready/route.test.ts",

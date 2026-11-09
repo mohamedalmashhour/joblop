@@ -84,7 +84,17 @@ const serverOnlyNonSecret = new Set([
   // Test-mode gates for the money path (server-only booleans).
   "INVOICE_TEST_MODE_ENABLED",
   "PAYOUT_TEST_MODE_ENABLED",
-  "WORKER_PAYOUT_PROGRESSION_INTERVAL_MIN"
+  "WORKER_PAYOUT_PROGRESSION_INTERVAL_MIN",
+  // Production readiness (docs/runbooks/production-switch.md). All API-only, non-secret switches:
+  // the country profile key (e.g. "canada-quebec") and the local/test-only synthetic-country overlay,
+  "RWOS_COUNTRY",
+  "RWOS_COUNTRY_TEST_MODE",
+  // the production-only feature flags (enabled | disabled; unset = the country profile's default),
+  "RWOS_JOB_FLOW_ENABLED",
+  "RWOS_PUBLIC_SIGNUP_ENABLED",
+  // and which sign-in rate limiter backs the API (remote | postgres). The limiter's HMAC key
+  // (AUTH_RATE_LIMITER_KEY_SECRET) stays prohibited-from-bundles-and-logs via the regex above.
+  "AUTH_RATE_LIMITER_BACKEND"
 ]);
 const allowedServerPrefixes = [
   "API_",
