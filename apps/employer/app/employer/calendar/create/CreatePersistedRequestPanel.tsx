@@ -15,7 +15,11 @@ import {
   formatMoney,
   formatPayOffered,
   hoursBetween,
-  meetsMinimumShiftDuration
+  meetsMinimumShiftDuration,
+  REQUIRED_CERTIFICATE_KEYS,
+  certificateLabel,
+  parseRequiredCertificates,
+  type RequiredCertificateKey
 } from "@rwos/shared";
 import { useLocale, useT, type Translate } from "../../../i18n/LocaleProvider";
 import { MAX_RECURRING_SHIFTS, recurringShifts, type ShiftTimes } from "./recurringShifts";
@@ -44,6 +48,9 @@ type FormState = {
   payMin: string;
   payMax: string;
   payUnit: "hour" | "year";
+  // Certificates the employer requires (short-term and long-term); "other" needs a description.
+  requiredCertificates: readonly RequiredCertificateKey[];
+  requiredCertificateOther: string;
   requestType: "single_day" | "multi_day" | "recurring_intent";
   timezone: string;
   startAt: string;
@@ -78,6 +85,8 @@ const initialForm: FormState = {
   payMin: "",
   payMax: "",
   payUnit: "hour",
+  requiredCertificates: [],
+  requiredCertificateOther: "",
   requestType: "single_day",
   timezone: "America/Toronto",
   startAt: "",
@@ -208,6 +217,11 @@ export function CreatePersistedRequestPanel() {
   const validation = validate(form, t);
   const payOffered = longTerm ? formPayOffered(form) : null;
   if (longTerm && !payOffered) validation.push(t("create.payOfferedInvalid"));
+  const requiredCertificates = parseRequiredCertificates(
+    form.requiredCertificates,
+    form.requiredCertificates.includes("other") ? form.requiredCertificateOther : undefined
+  );
+  if (!requiredCertificates) validation.push(t("create.requiredCertOtherInvalid"));
   if (repeats && (shifts.length === 0 || shifts.length > MAX_RECURRING_SHIFTS)) {
     validation.push(t("create.repeatInvalid", { max: MAX_RECURRING_SHIFTS }));
   }
@@ -270,6 +284,9 @@ export function CreatePersistedRequestPanel() {
         urgency: form.urgency,
         ...(plansEnabled ? { jobLength: form.jobLength } : {}),
         ...longTermRequestBody(plansEnabled, form.jobLength, form),
+        ...(requiredCertificates && requiredCertificates.keys.length > 0
+          ? { requiredCertificates: requiredCertificates.keys, ...(requiredCertificates.other ? { requiredCertificateOther: requiredCertificates.other } : {}) }
+          : {}),
         // Each shift in a repeat is its own one-day job.
         requestType: repeats ? "single_day" : form.requestType,
         timezone: form.timezone,
@@ -503,6 +520,33 @@ export function CreatePersistedRequestPanel() {
             {payOffered ? <p style={styles.cardText}><strong>{t("create.payOfferedPreview", { pay: formatPayOffered(payOffered, locale) })}</strong></p> : null}
           </fieldset>
         ) : null}
+        <fieldset disabled={!editing} style={{ ...styles.tintedCard, border: 0, gridColumn: "1 / -1", margin: 0 }}>
+          <legend style={styles.fieldLabel}>{t("create.requiredCerts")}</legend>
+          <div style={{ display: "flex", flexWrap: "wrap", gap: 12, marginTop: 8 }}>
+            {REQUIRED_CERTIFICATE_KEYS.map((key) => (
+              <label key={key} style={{ alignItems: "center", display: "flex", gap: 6, maxWidth: 360 }}>
+                <input
+                  checked={form.requiredCertificates.includes(key)}
+                  onChange={(event) =>
+                    update(
+                      "requiredCertificates",
+                      event.target.checked ? [...form.requiredCertificates, key] : form.requiredCertificates.filter((k) => k !== key)
+                    )
+                  }
+                  type="checkbox"
+                />
+                {certificateLabel(key, locale)}
+              </label>
+            ))}
+          </div>
+          {form.requiredCertificates.includes("other") ? (
+            <label style={{ ...styles.fieldLabel, marginTop: 8 }}>
+              {t("create.requiredCertOther")}
+              <input maxLength={120} onChange={(e) => update("requiredCertificateOther", e.target.value)} required style={styles.input} value={form.requiredCertificateOther} />
+            </label>
+          ) : null}
+          <p style={styles.cardText}>{t("create.requiredCertsHint")}</p>
+        </fieldset>
         <SelectField disabled={!editing} label={t("create.requestType")} onChange={(v) => update("requestType", v as FormState["requestType"])} options={[{ label: t("create.typeSingle"), value: "single_day" }, { label: t("create.typeMulti"), value: "multi_day" }, { label: t("create.typeRecurring"), value: "recurring_intent" }]} value={form.requestType} t={t} />
         {repeats ? (
           <fieldset disabled={!editing} style={{ ...styles.tintedCard, border: 0, gridColumn: "1 / -1", margin: 0 }}>
@@ -627,7 +671,7 @@ export function CreatePersistedRequestPanel() {
           <LongTermListingsPanel onlyJobRequestId={draft.id} />
         </div>
       ) : null}
-      {status === "review" ? <RequestReview form={form} payOfferedLabel={payOffered ? formatPayOffered(payOffered, locale) : null} roleLabel={selectedRole?.displayLabel ?? form.roleDefinition} shiftCount={shifts.length} t={t} /> : null}
+      {status === "review" ? <RequestReview form={form} payOfferedLabel={payOffered ? formatPayOffered(payOffered, locale) : null} requiredCertificatesLabel={requiredCertificates && requiredCertificates.keys.length > 0 ? requiredCertificates.keys.map((key) => certificateLabel(key, locale, requiredCertificates.other)).join(", ") : t("create.requiredCertsNone")} roleLabel={selectedRole?.displayLabel ?? form.roleDefinition} shiftCount={shifts.length} t={t} /> : null}
       {longTerm ? null : <p style={styles.cardText}>{t("create.economicsNote")}</p>}
       {actionNotice ? <div style={{ ...styles.warning, marginTop: 18 }}>{actionNotice}</div> : null}
       <div style={{ display: "flex", flexWrap: "wrap", gap: 10, marginTop: 18 }}>
@@ -727,10 +771,11 @@ function AgreementClauses({ longTerm, t }: { longTerm: boolean; t: Translate }) 
   );
 }
 
-function RequestReview({ form, payOfferedLabel, roleLabel, shiftCount, t }: Readonly<{ form: FormState; payOfferedLabel: string | null; roleLabel: string; shiftCount: number; t: Translate }>) {
+function RequestReview({ form, payOfferedLabel, requiredCertificatesLabel, roleLabel, shiftCount, t }: Readonly<{ form: FormState; payOfferedLabel: string | null; requiredCertificatesLabel: string; roleLabel: string; shiftCount: number; t: Translate }>) {
   const np = t("create.notProvided");
   const rows = [
     ...(payOfferedLabel ? ([[t("create.payOffered"), payOfferedLabel]] as const) : []),
+    [t("create.requiredCerts"), requiredCertificatesLabel],
     [t("create.role"), roleLabel],
     [t("create.requestType"), form.requestType === "recurring_intent" ? t("create.repeatCount", { count: shiftCount }) : form.requestType.replaceAll("_", " ")],
     [t("create.urgency"), form.urgency],

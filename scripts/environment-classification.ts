@@ -64,6 +64,9 @@ const serverOnlyNonSecret = new Set([
   "DOC_REVIEW_MODEL",
   // Transactional email sender address (public from-line, not a credential).
   "EMAIL_FROM",
+  // Inbox for staff warnings (unfilled shifts close to their start). An address, not a credential;
+  // falls back to CONTACT_ADMIN_EMAIL when unset.
+  "STAFF_ALERT_EMAIL",
   // Employer fixed plans feature gate (server-only boolean; "enabled" turns plans on, default off).
   "EMPLOYER_PLANS_ENABLED",
   // Google integrations: non-secret public identifiers and server-side feature gates. The OAuth

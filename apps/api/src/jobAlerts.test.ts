@@ -8,6 +8,7 @@ import {
   generateUnsubscribeToken,
   isDigestDue,
   isUnsubscribeToken,
+  alertLanguage,
   jobAlertConfirmationEmail,
   jobAlertDigestEmail,
   openJobMatches,
@@ -141,6 +142,30 @@ describe("job alert emails", () => {
     expect(en.text).toContain("Sent by Joblop");
     expect(en.text).toContain("1 Main St, Montréal QC");
     expect(en.text).toContain("Unsubscribe in one click");
+  });
+
+  it("writes the digest and the confirmation in Arabic too, with the CASL footer", () => {
+    const digest = jobAlertDigestEmail({
+      to: "a@b.c", language: "ar", items, criteria: { roleKeywords: "cuisinier", province: "QC" },
+      workerWebOrigin: ORIGIN, unsubscribeToken: "tok"
+    });
+    expect(digest.subject).toBe("Joblop — وظيفتان جديدتان لك");
+    expect(digest.text).toContain("وظائف جديدة لك");
+    expect(digest.text).toContain("المصدر: Adzuna");
+    expect(digest.text).toContain(`${ORIGIN}/jobs-calendar`);
+    expect(digest.text).toContain("أرسلتها جوب‑لوب");
+    expect(digest.text).toContain(`${ORIGIN}/job-alerts/unsubscribe?token=tok`);
+    const confirmation = jobAlertConfirmationEmail({ to: "a@b.c", language: "ar", criteria: { roleKeywords: null, province: null }, workerWebOrigin: ORIGIN, unsubscribeToken: "tok" });
+    expect(confirmation.subject).toContain("تنبيه الوظائف");
+    expect(confirmation.text).toContain("كل الوظائف");
+    expect(confirmation.text).toContain("إلغاء الاشتراك بنقرة واحدة");
+  });
+
+  it("follows the alert's own locale, else the account language (Arabic included)", () => {
+    expect(alertLanguage("ar", "en-CA")).toBe("ar");
+    expect(alertLanguage(null, "ar")).toBe("ar");
+    expect(alertLanguage(null, "en-CA")).toBe("en");
+    expect(alertLanguage(null, null)).toBe("fr");
   });
 });
 

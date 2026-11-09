@@ -315,6 +315,7 @@ import { LONG_TERM_NO_TIMESHEETS_BODY, clockInFields, isLongTermAssignment, isLo
 import { isEmployerPlansEnabled } from "./employerPlanRepository";
 import { createMarketingContactSync, type MarketingContactSync } from "./mailer/brevoContacts";
 import { runShiftReminderSweep } from "./shiftReminderSweep";
+import { listUnfilledShifts, runUnfilledShiftSweep } from "./unfilledShiftAlerts";
 import { runPlanReminderSweep } from "./planReminderSweep";
 import { createPushSender, isExpoPushToken, isPushPlatform, noopPushSender, type PushFetch } from "./notifications/pushSender";
 import {
@@ -427,7 +428,8 @@ import { createStripeTestClient } from "./stripeTestProvider";
 import { stripeTestEnvFromProcess } from "./cvProStripeCheckout";
 import { claimOpenJob, ensureOpenClaimDispatch, placeClaimedShiftOnSchedule } from "./openClaim";
 import { isWorksiteAddressVisible, workerJobAddress, WORKSITE_ADDRESS_SELECT } from "./worksiteAddress";
-import { listEmployerApplicants, setEmployerFavorite } from "./employerApplicants";
+import { listEmployerApplicants, setEmployerFavorite, listLongTermApplicants } from "./employerApplicants";
+import { applyEmployerApplicantAction, isEmployerApplicantAction, notifyApplicationDecision } from "./longTermApplications";
 import { legalNameChangeBlocked } from "./organizationLegalName";
 import { normalizeStaffPhone, requestStaffPhoneCode, verifyStaffPhoneCode } from "./staffPhoneSignIn";
 import { listWorkerPayoutsForStaff } from "./workerPayoutStaffList";
@@ -1625,7 +1627,53 @@ export function buildApi(options: BuildApiOptions = {}) {
     }
     const metrics = await runShiftReminderSweep({ prisma, emailSender, smsSender, pushSender });
     logger.info("api.shift_reminder.sweep", { ...metrics });
-    return reply.code(200).send({ status: "completed", ...metrics });
+    // Same hourly run: warn staff about approved short-term shifts still unfilled under 24 h and under
+    // 4 h before the start (once per threshold). A failure here never fails the reminder sweep.
+    let unfilled: Awaited<ReturnType<typeof runUnfilledShiftSweep>> | null = null;
+    try {
+      unfilled = await runUnfilledShiftSweep({
+        prisma,
+        emailSender,
+        remaining: (jobs) => remainingOpenings(prisma!, jobs),
+        staffEmail: staffAlertEmail
+      });
+      logger.info("api.unfilled_shift.sweep", { ...unfilled });
+    } catch (error) {
+      logger.warn("api.unfilled_shift.sweep_failed", { error: error instanceof Error ? error.message : "unknown" });
+    }
+    return reply.code(200).send({ status: "completed", ...metrics, ...(unfilled ? { unfilledShifts: unfilled } : {}) });
+  });
+
+  // Where staff warnings go (unfilled shifts): STAFF_ALERT_EMAIL, else the contact-desk admin inbox.
+  const staffAlertEmail = (environment.STAFF_ALERT_EMAIL ?? "").trim() || (environment.CONTACT_ADMIN_EMAIL ?? "").trim() || null;
+
+  // Staff dashboard: approved short-term shifts starting within 24 h that still have open places,
+  // with the warnings already sent for each. Platform administrators only.
+  app.get("/platform/unfilled-shifts", async (request, reply) => {
+    const session = await authService.validateSession(readBearerToken(request.headers.authorization));
+    if (!session.authenticated || !session.user) return reply.code(401).send({ error: "RWOS_DENIED", message: "Authentication is required." });
+    const roles = await resolveAuthorizationRoles(session.user.id);
+    if (!roles.includes("PLATFORM_ADMINISTRATOR")) return reply.code(403).send({ error: "RWOS_DENIED", message: "Platform authority is required." });
+    if (!prisma) return reply.code(503).send({ error: "RWOS_UNAVAILABLE", message: "Not available." });
+    const shifts = await listUnfilledShifts(prisma, (jobs) => remainingOpenings(prisma!, jobs));
+    const alerts = shifts.length
+      ? await prisma.unfilledShiftAlert.findMany({
+          where: { jobRequestId: { in: shifts.map((s) => s.jobRequestId) } },
+          select: { jobRequestId: true, thresholdHours: true, startAt: true, createdAt: true, emailedAt: true }
+        })
+      : [];
+    return reply
+      .code(200)
+      .header("cache-control", "no-store")
+      .send({
+        shifts: shifts.map((shift) => ({
+          ...shift,
+          startAt: shift.startAt.toISOString(),
+          warnings: alerts
+            .filter((a) => a.jobRequestId === shift.jobRequestId && a.startAt.getTime() === shift.startAt.getTime())
+            .map((a) => ({ thresholdHours: a.thresholdHours, warnedAt: a.createdAt.toISOString(), emailed: a.emailedAt !== null }))
+        }))
+      });
   });
 
   // Paid plan / listing renewal reminders (7 days and 1 day before the paid period ends). Same
@@ -2967,9 +3015,46 @@ export function buildApi(options: BuildApiOptions = {}) {
   app.get("/organizations/:organizationId/job-requests/:jobRequestId/applicants", async (request, reply) => {
     const access = await requireApplicantAccess(request, reply);
     if (!access) return;
+    // Long-term listing: the employer chooses, so they get the fuller applicant view (contact details
+    // only after Contact / Hire). Short-term jobs keep the limited view; Joblop staff dispatch them.
+    const job = await access.prisma.jobRequest.findFirst({
+      where: { id: access.jobRequestId, organizationId: access.organizationId },
+      select: { jobLength: true }
+    });
+    if (job && isLongTermListingJob(job)) {
+      return reply.code(200).send({ longTerm: true, applicants: await listLongTermApplicants(access.prisma, access) });
+    }
     const applicants = await listEmployerApplicants(access.prisma, access);
     return reply.code(200).send({ applicants });
   });
+
+  // Long-term listing: the employer's choice on one applicant (contact, shortlist, hire, not selected).
+  // The worker is told in their language. Contact details are revealed by Contact or Hire only.
+  app.post(
+    "/organizations/:organizationId/job-requests/:jobRequestId/applicants/:interestId/decision",
+    async (request, reply) => {
+      const access = await requireApplicantAccess(request, reply);
+      if (!access) return;
+      const interestId = readRouteParam(request.params, "interestId");
+      const action = asRecord(request.body).action;
+      if (!isCanonicalUuid(interestId) || !isEmployerApplicantAction(action)) {
+        return reply.code(400).send({ error: "RWOS_INVALID_APPLICANT_DECISION", message: "Choose contact, shortlist, hire or not selected." });
+      }
+      if (!isEmployerPlansEnabled()) {
+        return reply.code(409).send({ error: "RWOS_APPLICANT_NOT_LONG_TERM", message: "Only long-term jobs are chosen by the employer." });
+      }
+      const result = await applyEmployerApplicantAction(access.prisma, { ...access, interestId, action });
+      if (result.status === "not_found") return reply.code(404).send({ error: "RWOS_INTEREST_NOT_FOUND", message: "That applicant is not available." });
+      if (result.status === "not_long_term") {
+        return reply.code(409).send({ error: "RWOS_APPLICANT_NOT_LONG_TERM", message: "Only long-term jobs are chosen by the employer." });
+      }
+      if (result.notify) {
+        await notifyApplicationDecision(access.prisma, emailSender, { workerUserId: result.workerUserId, jobRequestId: result.jobRequestId, decision: result.notify });
+      }
+      const applicants = await listLongTermApplicants(access.prisma, access);
+      return reply.code(200).send({ applicant: applicants.find((a) => a.interestId === interestId) ?? null });
+    }
+  );
 
   app.post(
     "/organizations/:organizationId/job-requests/:jobRequestId/applicants/:interestId/favorite",
@@ -4135,7 +4220,7 @@ export function buildApi(options: BuildApiOptions = {}) {
     const provinceRaw = readOptionalString(body, "province");
     const province = provinceRaw && /^[A-Za-z]{2}$/.test(provinceRaw) ? provinceRaw.toUpperCase() : null;
     const localeRaw = (readOptionalString(body, "locale") ?? "").trim().toLowerCase();
-    const locale = localeRaw === "fr" || localeRaw === "en" ? localeRaw : null;
+    const locale = localeRaw === "fr" || localeRaw === "en" || localeRaw === "ar" ? localeRaw : null;
     const existing = await prisma.jobAlertSubscription.findUnique({
       where: { email: emailRaw },
       select: { id: true, unsubscribedAt: true }
@@ -4155,7 +4240,7 @@ export function buildApi(options: BuildApiOptions = {}) {
         await emailSender.send(
           jobAlertConfirmationEmail({
             to: emailRaw,
-            language: locale === "en" ? "en" : "fr",
+            language: locale === "en" || locale === "ar" ? locale : "fr",
             criteria: { roleKeywords, province },
             workerWebOrigin: offerCtaOrigin,
             unsubscribeToken: token,

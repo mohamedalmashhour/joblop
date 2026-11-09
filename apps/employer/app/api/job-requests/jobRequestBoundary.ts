@@ -289,8 +289,17 @@ export function readEmployerJobRequestInput(input: unknown) {
     // { minMinor, maxMinor, unit } when valid; the API refuses a long-term job without one.
     ...(record.jobLength === "long_term" && parsePayOffered(record.payOffered)
       ? { payOffered: payOfferedBody(parsePayOffered(record.payOffered)!) }
-      : {})
+      : {}),
+    // Required certificates, forwarded as sent (the API refuses an unknown key or an empty "other").
+    ...requiredCertificatesBody(record)
   };
+}
+
+function requiredCertificatesBody(record: Readonly<Record<string, unknown>>) {
+  if (!Array.isArray(record.requiredCertificates) || record.requiredCertificates.length === 0) return {};
+  const keys = record.requiredCertificates.filter((value): value is string => typeof value === "string").slice(0, 20);
+  const other = typeof record.requiredCertificateOther === "string" ? record.requiredCertificateOther.slice(0, 200) : undefined;
+  return { requiredCertificates: keys, ...(other !== undefined ? { requiredCertificateOther: other } : {}) };
 }
 
 function payOfferedBody(pay: PayOffered) {
