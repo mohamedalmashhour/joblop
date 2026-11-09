@@ -27,9 +27,39 @@ export type FrontendSessionResult =
   | Readonly<{ status: "ok"; payload: unknown }>
   | Readonly<{ status: "denied" }>
   | Readonly<{ status: "not_found" }>
-  | Readonly<{ status: "stale" }>
+  // `conflict` is set only for RWOS_SHIFT_OVERLAP (the worker already holds a shift at that time):
+  // its body names that shift in EN / FR / AR, so a screen can say why instead of "state changed".
+  | Readonly<{ status: "stale"; conflict?: ShiftOverlapConflict }>
   | Readonly<{ status: "unavailable" }>
   | Readonly<{ status: "error" }>;
+
+export type ShiftOverlapConflict = Readonly<{
+  error: "RWOS_SHIFT_OVERLAP";
+  message?: string;
+  messages?: Readonly<Record<string, string>>;
+  heldShift?: unknown;
+}>;
+
+async function readShiftOverlapConflict(response: Readonly<{ json(): Promise<unknown> }>): Promise<ShiftOverlapConflict | null> {
+  try {
+    const body = (await response.json()) as Record<string, unknown> | null;
+    if (!body || body.error !== "RWOS_SHIFT_OVERLAP") return null;
+    const messages: Record<string, string> = {};
+    if (body.messages && typeof body.messages === "object") {
+      for (const [key, value] of Object.entries(body.messages as Record<string, unknown>)) {
+        if ((key === "en" || key === "fr" || key === "ar") && typeof value === "string") messages[key] = value;
+      }
+    }
+    return {
+      error: "RWOS_SHIFT_OVERLAP",
+      ...(typeof body.message === "string" ? { message: body.message } : {}),
+      messages,
+      ...(body.heldShift !== undefined ? { heldShift: body.heldShift } : {})
+    };
+  } catch {
+    return null;
+  }
+}
 
 export type PdfResult =
   | Readonly<{ status: "ok"; bytes: Uint8Array }>
@@ -71,7 +101,11 @@ export function createFrontendSessionGateway(options: {
       });
       if (response.status === 401 || response.status === 403) return { status: "denied" };
       if (response.status === 404) return { status: "not_found" };
-      if (response.status === 409 || response.status === 412) return { status: "stale" };
+      if (response.status === 409) {
+        const conflict = await readShiftOverlapConflict(response);
+        return conflict ? { status: "stale", conflict } : { status: "stale" };
+      }
+      if (response.status === 412) return { status: "stale" };
       if (response.status === 502 || response.status === 503 || response.status === 504) {
         return { status: "unavailable" };
       }

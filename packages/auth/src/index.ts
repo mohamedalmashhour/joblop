@@ -51,7 +51,8 @@ export {
   secureEmployerSessionCookieName,
   secureFrontendSessionCookieName,
   type FrontendSessionFetch,
-  type FrontendSessionResult
+  type FrontendSessionResult,
+  type ShiftOverlapConflict
 } from "./frontendSession";
 export {
   ProductionIntegrationError,

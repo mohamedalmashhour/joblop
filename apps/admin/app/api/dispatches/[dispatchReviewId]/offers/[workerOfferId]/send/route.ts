@@ -4,6 +4,7 @@ import {
   readOfferActionInput
 } from "../../../../offerAssignmentBoundary";
 import { isSameOriginMutation, sessionBoundary, sessionFailure } from "../../../../../sessionBoundary";
+import { forwardShiftOverlap } from "../../../../../shiftOverlap";
 
 // Round 2b: send an approved worker offer to the worker. Reuses POST /platform/worker-offers/:id/send
 // (version-guarded). No new API.
@@ -29,7 +30,7 @@ export async function POST(
     token,
     { expectedVersion: input.expectedVersion }
   );
-  if (result.status !== "ok") return sessionFailure(result.status);
+  if (result.status !== "ok") return forwardShiftOverlap(result) ?? sessionFailure(result.status);
   try {
     const payload = result.payload as { workerOffer?: unknown };
     return Response.json(
