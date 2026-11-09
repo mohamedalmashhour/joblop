@@ -178,6 +178,12 @@ export function EmployerShell({
               <a href="/pricing" style={styles.footerLink}>
                 <ShellText k="shell.pricing" />
               </a>
+              <a href="/terms" style={styles.footerLink}>
+                <ShellText k="shell.terms" />
+              </a>
+              <a href="/privacy" style={styles.footerLink}>
+                <ShellText k="shell.privacy" />
+              </a>
             </nav>
           </footer>
         </div>

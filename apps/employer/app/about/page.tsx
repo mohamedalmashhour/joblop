@@ -8,6 +8,7 @@ import {
   trustMechanisms,
   trustStatements
 } from "./aboutContent";
+import { PublicSiteFooter } from "../pricing/publicPageStyles";
 
 export default function AboutPage() {
   return (
@@ -192,24 +193,7 @@ export default function AboutPage() {
         </div>
       </section>
 
-      <footer style={styles.footer}>
-        <span>Joblop</span>
-        <nav aria-label="Footer navigation" style={styles.footerLinks}>
-          <a href="/" style={styles.footerLink}>
-            Home
-          </a>
-          <a href="/about" style={styles.footerLink}>
-            About
-          </a>
-          <a href="/contact" style={styles.footerLink}>
-            Privacy
-          </a>
-          <a href="/faq" style={styles.footerLink}>
-            Terms
-          </a>
-        </nav>
-        <span style={styles.footerNote}>Language and region selector reserved for localization.</span>
-      </footer>
+      <PublicSiteFooter />
     </main>
   );
 }

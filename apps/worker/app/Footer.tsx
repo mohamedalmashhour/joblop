@@ -1,10 +1,21 @@
 import Link from "next/link";
+import { legalLanguageFor, type LegalLanguage } from "@rwos/shared";
 import { Brand } from "./Brand";
 import { activeCountry } from "./country";
 
+// Footer words per language. The site locale is "en-CA" / "fr-CA" / "ar", so it is mapped with
+// legalLanguageFor (an exact match on the bare "fr" never matched "fr-CA").
+export const footerWords: Readonly<Record<LegalLanguage, { terms: string; privacy: string; deletion: string }>> = {
+  en: { terms: "Terms", privacy: "Privacy", deletion: "Delete my account" },
+  fr: { terms: "Conditions d’utilisation", privacy: "Confidentialité", deletion: "Supprimer mon compte" },
+  ar: { terms: "الشروط", privacy: "الخصوصية", deletion: "حذف حسابي" }
+};
+
+export const footerLinks = ["/terms", "/privacy", "/account-deletion"] as const;
+
 // Global footer for the worker app: copyright + legal links on every page.
 export function Footer({ locale }: { locale: string }) {
-  const fr = locale === "fr";
+  const words = footerWords[legalLanguageFor(locale)];
   const year = new Date().getFullYear();
   return (
     <footer
@@ -23,12 +34,15 @@ export function Footer({ locale }: { locale: string }) {
       }}
     >
       <span>© {year} <Brand /> · {activeCountry().legalEntityName}</span>
-      <nav style={{ display: "flex", gap: 20 }}>
+      <nav style={{ display: "flex", gap: 20, flexWrap: "wrap" }}>
         <Link href="/terms" style={{ color: "#f8b808", textDecoration: "none" }}>
-          {fr ? "Conditions d’utilisation" : "Terms"}
+          {words.terms}
         </Link>
         <Link href="/privacy" style={{ color: "#f8b808", textDecoration: "none" }}>
-          {fr ? "Confidentialité" : "Privacy"}
+          {words.privacy}
+        </Link>
+        <Link href="/account-deletion" style={{ color: "#f8b808", textDecoration: "none" }}>
+          {words.deletion}
         </Link>
       </nav>
     </footer>

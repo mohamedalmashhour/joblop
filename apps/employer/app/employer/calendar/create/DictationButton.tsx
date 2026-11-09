@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useLocale, useT } from "../../../i18n/LocaleProvider";
 import { styles } from "../../employerStyles";
-import { appendDictation, dictationErrorKey } from "./dictation";
+import { appendDictation, dictationErrorKey, speechLanguage } from "./dictation";
 
 // The browser's built-in speech recognition. It is not in TypeScript's DOM types yet.
 type SpeechResult = { isFinal: boolean; 0: { transcript: string } };
@@ -61,7 +61,7 @@ export function DictationButton({
     const Constructor = recognitionConstructor();
     if (!Constructor) return;
     const session = new Constructor();
-    session.lang = locale;
+    session.lang = speechLanguage(locale);
     session.continuous = true;
     session.interimResults = false;
     session.onresult = (event) => {
@@ -100,6 +100,8 @@ export function DictationButton({
       <span aria-live="polite" style={styles.cardText}>
         {problem || (listening ? t("create.dictateListening") : "")}
       </span>
+      {/* Privacy notice: the browser's own speech service (not Joblop's filter) receives the audio. */}
+      <small style={{ ...styles.cardText, flexBasis: "100%", fontSize: 12 }}>{t("create.dictatePrivacy")}</small>
     </span>
   );
 }

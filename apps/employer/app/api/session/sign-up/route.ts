@@ -1,5 +1,7 @@
 import { randomBytes } from "node:crypto";
 
+import { LEGAL_DOCUMENTS_VERSION } from "@rwos/shared";
+
 import {
   isSameOriginMutation,
   organizationContextCookieName,
@@ -38,7 +40,9 @@ export async function POST(request: Request) {
       password: `${randomBytes(32).toString("base64url")}a1`,
       displayName: body.displayName ?? null,
       phone: body.phone,
-      referralCode: body.referralCode ?? null
+      referralCode: body.referralCode ?? null,
+      // The box the person ticked accepts the Terms and Privacy Policy published at this version.
+      acceptedLegalVersion: LEGAL_DOCUMENTS_VERSION
     },
     (issuedToken) => {
       cookieStore.set(sessionCookieName, issuedToken, sessionCookieOptions);

@@ -240,7 +240,7 @@ import { startJobScannerSchedule, type ScanQuery } from "./jobScannerScheduler";
 import { type WorkerCvProfile, type TargetJob } from "./cvBuilder";
 import { getCvProvider } from "./cvBuilderClaude";
 import { reviewDocumentAdvisory, isReviewableImageType } from "./documentAiReview";
-import { offlineAdvisoryVerdict, presentableVerdict, workerProfileRating } from "@rwos/shared";
+import { offlineAdvisoryVerdict, presentableVerdict, readAcceptedLegalVersion, workerProfileRating } from "@rwos/shared";
 import { longTermJobRequestInput } from "./longTermJobRequestInput";
 import { createCvAsset, listCvAssets, deleteCvAsset } from "./cvAssetRepository";
 import { isPro, getActiveEntitlement, grantEntitlement, revokeEntitlement, startTrial, hasEverTrialed, TRIAL_DAYS, PRO_PLAN } from "./cvEntitlementRepository";
@@ -1708,6 +1708,8 @@ export function buildApi(options: BuildApiOptions = {}) {
       (phone && normalizeStaffPhone(phone) ? `${randomBytes(32).toString("base64url")}a1` : null);
     // Invite-a-friend: optional referral code captured from ?ref= at signup. Attribution is best-effort.
     const referralCode = readOptionalString(body, "referralCode");
+    // The Terms/Privacy version the person accepted (sites and app send LEGAL_DOCUMENTS_VERSION).
+    const acceptedLegalVersion = readAcceptedLegalVersion(body.acceptedLegalVersion);
 
     if (!email || !password) {
       return reply.code(400).send({
@@ -1732,6 +1734,7 @@ export function buildApi(options: BuildApiOptions = {}) {
         password,
         displayName,
         phone,
+        acceptedLegalVersion,
         source: "api",
         ipAddress: request.ip,
         userAgent: request.headers["user-agent"] ?? null

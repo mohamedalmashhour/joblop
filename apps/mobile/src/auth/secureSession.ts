@@ -174,7 +174,7 @@ export function createMobileSessionTransport(options: {
       }
     },
     async signUp(
-      input: Readonly<{ email: string; password?: string; phone?: string; displayName?: string | null }>
+      input: Readonly<{ email: string; password?: string; phone?: string; displayName?: string | null; acceptedLegalVersion?: string }>
     ): Promise<MobileRegisterState> {
       if (await options.vault.read()) return { status: "sign_out_required" };
       try {
