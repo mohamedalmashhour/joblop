@@ -3,7 +3,7 @@
 // 2026 (apps/worker/app/legal/content.tsx): same structure and, where it fits employers, the same
 // words. Every employer-specific change is listed in docs/legal/LEGAL_REVIEW_NOTES.md.
 // Prices and rules match apps/employer/app/pricing/pricingContent.ts and the code it cites.
-import { LEGAL_COMPANY, LEGAL_EFFECTIVE_DATE, privacyAdditions, type LegalBlock } from "@rwos/shared";
+import { AI_FEATURES_ARABIC_SUMMARY, LEGAL_COMPANY, LEGAL_EFFECTIVE_DATE, privacyAdditions, type LegalBlock } from "@rwos/shared";
 
 const ENTITY = LEGAL_COMPANY.legalName;
 const CONTACT = LEGAL_COMPANY.email;
@@ -520,6 +520,7 @@ const privacyAr: readonly LegalBlock[] = [
       "يرى العمّال المكلّفون بمناوباتك ما يحتاجونه فقط: اسم الشركة وعنوان الموقع والجدول والتعليمات.",
       "زر «تحدّث» اختياري: عند استخدامه يرسل متصفحك صوتك إلى خدمة الكلام لدى Google أو Apple لتحويله إلى نص.",
       "نستعين بمزوّدي خدمات مثل Render وBrevo وAnthropic وGoogle وOpenStreetMap وStripe، وقد تُعالج بياناتك خارج كيبيك، بما في ذلك في الولايات المتحدة.",
+      AI_FEATURES_ARABIC_SUMMARY.employer,
       "لك الحق في الاطلاع على بياناتك وتصحيحها وسحب موافقتك وحذفها ونقلها، وتقديم شكوى إلى لجنة الوصول إلى المعلومات في كيبيك.",
       `لإغلاق حسابك أو لأي سؤال: ${CONTACT} — مسؤول حماية المعلومات الشخصية، ${ENTITY}، ${LEGAL_COMPANY.address}.`
     ]

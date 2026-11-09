@@ -6,12 +6,13 @@ import {
   legalLanguageFor,
   readAcceptedLegalVersion
 } from "./legalDocuments";
+import { AI_FEATURES_ARABIC_SUMMARY, aiFeaturesSection } from "./legalAiFeatures";
 import { privacyAdditions } from "./legalPrivacyAdditions";
 
 describe("legal documents", () => {
-  it("is version 2026-11-10, effective the same day", () => {
-    expect(LEGAL_DOCUMENTS_VERSION).toBe("2026-11-10");
-    expect(LEGAL_EFFECTIVE_DATE).toBe("2026-11-10");
+  it("is version 2026-11-11, effective the same day", () => {
+    expect(LEGAL_DOCUMENTS_VERSION).toBe("2026-11-11");
+    expect(LEGAL_EFFECTIVE_DATE).toBe("2026-11-11");
     expect(LEGAL_COMPANY.legalName).toBe("9375-7649 Québec Inc.");
     expect(LEGAL_COMPANY.address).toBe("207-805 boul. Chomedey, Laval, QC H7V 0B1");
   });
@@ -47,5 +48,46 @@ describe("legal documents", () => {
     }
     expect(JSON.stringify(privacyAdditions("employer", "en"))).toContain("speech service (Google or Apple)");
     expect(JSON.stringify(privacyAdditions("worker", "en"))).toContain("A Joblop staff member always makes the decision");
+  });
+
+  it("adds section 11 on AI features after section 10, the same in French and English", () => {
+    for (const audience of ["worker", "employer"] as const) {
+      const en = aiFeaturesSection(audience, "en");
+      const fr = aiFeaturesSection(audience, "fr");
+      expect(fr.map((block) => block.kind)).toEqual(en.map((block) => block.kind));
+      expect(en[0]).toMatchObject({ kind: "h2", id: "ai-features", text: "11. Artificial intelligence (AI) features" });
+      expect(fr[0]).toMatchObject({ kind: "h2", text: "11. Fonctions d’intelligence artificielle (IA)" });
+      // Section 11 is added at the end of the policy additions; section 10 comes first, unchanged.
+      const all = privacyAdditions(audience, "en");
+      expect(all.slice(-en.length)).toEqual(en);
+      expect(all.findIndex((b) => b.kind === "h2" && b.id === "whats-new")).toBeLessThan(all.length - en.length);
+      const enText = JSON.stringify(en);
+      const frText = JSON.stringify(fr);
+      for (const fact of [
+        "Anthropic",
+        "United States",
+        "“Contact Joblop” chat assistant",
+        "staff assistant",
+        "No document, photo, scan or other image is ever sent",
+        "goes straight to a person",
+        "section 12.1",
+        "Under our agreement with the provider",
+        "does not use this information to train",
+        "do not contain the text sent or received",
+        "talk to a person",
+        "Privacy Officer, 9375-7649 Québec Inc.",
+        "turn off all outside AI features at any time"
+      ]) {
+        expect(enText).toContain(fact);
+      }
+      for (const fact of ["Anthropic", "États-Unis", "article 12.1", "Selon notre entente avec le fournisseur", "parler à une personne"]) {
+        expect(frText).toContain(fact);
+      }
+      expect(AI_FEATURES_ARABIC_SUMMARY[audience]).toContain("Anthropic");
+    }
+    expect(JSON.stringify(aiFeaturesSection("worker", "en"))).toContain("CV and cover-letter builder");
+    expect(JSON.stringify(aiFeaturesSection("employer", "en"))).not.toContain("CV");
+    expect(JSON.stringify(aiFeaturesSection("employer", "en"))).toContain("The optional “Speak” button on the request form does not use Joblop’s servers or Anthropic");
+    expect(JSON.stringify(aiFeaturesSection("worker", "en"))).not.toContain("Speak");
   });
 });

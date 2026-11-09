@@ -3,7 +3,7 @@
 // ./workerLegalFr.ts French). Kept separate so the lawyer only has to review what is listed in
 // docs/legal/LEGAL_REVIEW_NOTES.md. Facts were checked in code (worker pay channel, Worker Pro order
 // repository, worker cancellation penalty, long-term listings).
-import { LEGAL_COMPANY, LEGAL_EFFECTIVE_DATE, type LegalBlock } from "@rwos/shared";
+import { AI_FEATURES_ARABIC_SUMMARY, LEGAL_COMPANY, LEGAL_EFFECTIVE_DATE, type LegalBlock } from "@rwos/shared";
 
 export function workerTermsAdditions(lang: "en" | "fr"): readonly LegalBlock[] {
   const en = lang === "en";
@@ -108,6 +108,7 @@ export const workerPrivacyArabic: readonly LegalBlock[] = [
       "لا يرى وثائقك إلا أنت وموظفو الموارد البشرية المخوّلون في جوب‑لوب. أصحاب العمل لا يرون وثائقك.",
       "نستعين بمزوّدي خدمات مثل Render وBrevo وAnthropic وExpo وGoogle وStripe وAdzuna، وقد تُعالج بياناتك خارج كيبيك، بما في ذلك في الولايات المتحدة.",
       "الذكاء الاصطناعي يقترح فقط؛ أي قرار مهم يتخذه موظف من جوب‑لوب.",
+      AI_FEATURES_ARABIC_SUMMARY.worker,
       "لك الحق في الاطلاع على بياناتك وتصحيحها وسحب موافقتك وحذفها ونقلها، وتقديم شكوى إلى لجنة الوصول إلى المعلومات في كيبيك.",
       "نحتفظ بالسجلات الضريبية والمالية المدة التي يفرضها القانون (6 سنوات عموماً في كيبيك).",
       `للتواصل: ${LEGAL_COMPANY.email} — مسؤول حماية المعلومات الشخصية، ${LEGAL_COMPANY.legalName}، ${LEGAL_COMPANY.address}.`

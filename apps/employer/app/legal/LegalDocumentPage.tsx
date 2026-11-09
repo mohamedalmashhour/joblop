@@ -13,9 +13,9 @@ export function employerLegalLanguage(locale: EmployerLocale): EmployerLegalLang
 }
 
 const words: Readonly<Record<EmployerLegalLanguage, { eyebrow: string; version: string; effective: string; fullText: string }>> = {
-  en: { eyebrow: "Legal", version: "Version", effective: "Effective November 9, 2026", fullText: "" },
-  fr: { eyebrow: "Mentions légales", version: "Version", effective: "En vigueur le 9 novembre 2026", fullText: "" },
-  ar: { eyebrow: "قانوني", version: "الإصدار", effective: "ساري المفعول من 9 نوفمبر 2026", fullText: "النص الكامل باللغة الإنجليزية (معتمد)" }
+  en: { eyebrow: "Legal", version: "Version", effective: "Effective November 11, 2026", fullText: "" },
+  fr: { eyebrow: "Mentions légales", version: "Version", effective: "En vigueur le 11 novembre 2026", fullText: "" },
+  ar: { eyebrow: "قانوني", version: "الإصدار", effective: "ساري المفعول من 11 نوفمبر 2026", fullText: "النص الكامل باللغة الإنجليزية (معتمد)" }
 };
 
 function WithEmails({ text }: { text: string }) {

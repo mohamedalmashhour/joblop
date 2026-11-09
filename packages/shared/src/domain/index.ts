@@ -34,6 +34,7 @@ export * from "./documentAiReview";
 export * from "./platformInvoiceIssuer";
 export * from "./legalDocuments";
 export * from "./legalPrivacyAdditions";
+export * from "./legalAiFeatures";
 export * from "./workerPayout";
 export * from "./workerDispute";
 export * from "./employerOrder";
