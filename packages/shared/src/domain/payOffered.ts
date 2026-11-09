@@ -88,6 +88,8 @@ export function parsePayOfferedView(input: unknown): PayOfferedView | null {
 }
 
 const isFrench = (locale: string) => locale.toLowerCase().startsWith("fr");
+// Arabic text with Western digits and CAD formatted the Canadian way (same as the worker website).
+const isArabic = (locale: string) => locale.toLowerCase().startsWith("ar");
 
 function money(minor: number, unit: PayOfferedUnit, currency: string, locale: string): string {
   const whole = minor % 100 === 0;
@@ -99,11 +101,11 @@ function money(minor: number, unit: PayOfferedUnit, currency: string, locale: st
   }).format(minor / 100);
 }
 
-/** "$22–$25/h", "$45,000/year" (en) · "22 $–25 $/h", "45 000 $/an" (fr). */
+/** "$22–$25/h", "$45,000/year" (en) · "22 $–25 $/h", "45 000 $/an" (fr) · "$45,000/سنة" (ar). */
 export function formatPayOffered(pay: PayOffered, locale: string): string {
   const low = money(pay.minMinor, pay.unit, pay.currency, locale);
   const amount = pay.maxMinor === null ? low : `${low}–${money(pay.maxMinor, pay.unit, pay.currency, locale)}`;
-  const unit = pay.unit === "hour" ? "/h" : isFrench(locale) ? "/an" : "/year";
+  const unit = pay.unit === "hour" ? "/h" : isFrench(locale) ? "/an" : isArabic(locale) ? "/سنة" : "/year";
   return `${amount}${unit}`;
 }
 
@@ -111,6 +113,9 @@ export function formatPayOffered(pay: PayOffered, locale: string): string {
 export function payOfferedSentence(pay: PayOffered | null, locale: string): string {
   if (isFrench(locale)) {
     return pay ? `${formatPayOffered(pay, locale)}, payé directement par l'employeur` : "Salaire convenu et payé directement par l'employeur";
+  }
+  if (isArabic(locale)) {
+    return pay ? `${formatPayOffered(pay, locale)}، يدفعه صاحب العمل مباشرة` : "أجر متفق عليه يدفعه صاحب العمل مباشرة";
   }
   return pay ? `${formatPayOffered(pay, locale)}, paid directly by the employer` : "Pay agreed and paid directly by the employer";
 }

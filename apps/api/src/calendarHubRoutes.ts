@@ -1,6 +1,6 @@
 import type { Prisma, PrismaClient } from "@rwos/database";
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
-import { listedJobWhere } from "./jobListingVisibility";
+import { openJobWhere } from "./openJobs";
 import { activeBonusByJob, latestBonusByJob } from "./jobBonusRoutes";
 import { WORKER_PAY_SELECT, workerPay, type WorkerPay } from "./longTermWorkerPay";
 import type { PayOfferedView } from "@rwos/shared";
@@ -372,16 +372,7 @@ export function registerCalendarHubRoutes(app: FastifyInstance, deps: CalendarHu
     const openRows =
       openFrom <= w.to
         ? await prisma.jobRequest.findMany({
-            where: listedJobWhere(
-              {
-                status: "approved_for_dispatch",
-                openClaim: true,
-                pricingSnapshot: { isNot: null },
-                startAt: { gte: openFrom, lte: w.to },
-                residence: { status: "active" }
-              },
-              at
-            ),
+            where: openJobWhere({ now: at, startFrom: openFrom, startTo: w.to }),
             select: { ...JOB_SELECT, ...WORKER_PAY_SELECT, organization: false, pricingSnapshot: { select: { workerHourlyRateMinor: true } } },
             orderBy: [{ startAt: "asc" }],
             take: TAKE

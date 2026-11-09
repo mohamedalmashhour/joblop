@@ -69,4 +69,10 @@ describe("pay offered on a long-term job", () => {
     expect(payOfferedSentence(null, "en")).toBe("Pay agreed and paid directly by the employer");
     expect(payOfferedSentence(null, "fr")).toContain("directement par l'employeur");
   });
+
+  it("writes the sentence in Arabic with Canadian money formatting", () => {
+    expect(formatPayOffered({ minMinor: 4_500_000, maxMinor: null, unit: "year", currency: "CAD" }, "ar")).toBe("$45,000/سنة");
+    expect(payOfferedSentence({ minMinor: 2_200, maxMinor: null, unit: "hour", currency: "CAD" }, "ar")).toBe("$22/h، يدفعه صاحب العمل مباشرة");
+    expect(payOfferedSentence(null, "ar")).toBe("أجر متفق عليه يدفعه صاحب العمل مباشرة");
+  });
 });

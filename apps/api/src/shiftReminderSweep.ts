@@ -2,8 +2,8 @@ import type { PrismaClient } from "@rwos/database";
 import type { EmailSender } from "./mailer/emailSender";
 import type { SmsSender } from "./mailer/smsSender";
 import { sendsText } from "./notifications/noticeChannels";
-import { resolveLanguage } from "./notifications/clientNotifications";
 import { shiftReminderEmail, shiftReminderSmsText } from "./notifications/workerNotifications";
+import { resolveWorkerLanguage } from "./notifications/workerLanguage";
 import { pushToWorkers, type PushSender } from "./notifications/pushSender";
 
 // Bounded, idempotent pre-shift reminder sweep. One invocation finds assignments whose shift starts
@@ -69,7 +69,7 @@ export async function runShiftReminderSweep(deps: {
         skipped += 1;
         continue;
       }
-      const language = resolveLanguage(user?.primaryLanguage);
+      const language = resolveWorkerLanguage(user?.primaryLanguage);
       await deps.emailSender.send(
         shiftReminderEmail({ to: email, language, title: assignment.confirmedTitle, startAt: assignment.confirmedStartAt })
       );

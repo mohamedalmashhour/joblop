@@ -27,7 +27,8 @@ import type {
   WorkerOfferRepository
 } from "@rwos/auth";
 import type { createPrismaClient } from "@rwos/database";
-import { isLongTermListingJob, longTermPaySentence } from "./longTermWorkerPay";
+import { offerPayLine } from "./offerPayLine";
+import { resolveWorkerLanguage } from "./notifications/workerLanguage";
 
 type PrismaClient = ReturnType<typeof createPrismaClient>;
 
@@ -63,11 +64,6 @@ function isUniqueViolation(error: unknown): boolean {
     "code" in error &&
     (error as { code?: unknown }).code === "P2002"
   );
-}
-
-function formatRateMinor(minor: number, currency: string): string {
-  const major = (minor / 100).toLocaleString("en-CA", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-  return `${major} ${currency}/hr`;
 }
 
 // Idempotently open a DispatchReview in `offer_preparation` for an open-claim job. Called right
@@ -266,9 +262,10 @@ export async function claimOpenJob(
   //    The unique index worker_offers_dispatch_worker_key makes this idempotent per (dispatch,
   //    worker): a concurrent double-tap or a prior lost race surfaces as P2002.
   // Long-term listing (employer plans flag): the employer's own pay offer, never "0.00 CAD/hr".
-  const compensationSummary = isLongTermListingJob(job)
-    ? longTermPaySentence(job, "en")
-    : formatRateMinor(job.pricingSnapshot.workerHourlyRateMinor, job.pricingSnapshot.currency);
+  // Written in the worker's own language (EN / FR / AR) from what their account stores.
+  const owner = await prisma.user.findUnique({ where: { id: input.userId }, select: { primaryLanguage: true } }).catch(() => null);
+  const language = resolveWorkerLanguage(workerIdentity.preferredLanguage, owner?.primaryLanguage);
+  const compensationSummary = offerPayLine({ ...job, pricingSnapshot: { ...job.pricingSnapshot, jobLength: job.jobLength } }, language) ?? "";
   const offerExpiresAt = new Date(at.getTime() + 24 * 60 * 60 * 1000);
   let minted: { offerId: string; offerVersion: number };
   try {

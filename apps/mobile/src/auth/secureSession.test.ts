@@ -1340,6 +1340,25 @@ describe("public (signed-out) job search", () => {
     );
   });
 
+  it("saves the worker's language on the account, and needs a session", async () => {
+    const fetchMock = vi.fn(async () => response(200, { language: "ar" }));
+    const transport = createMobileSessionTransport({ apiOrigin: origin, vault: signedIn(), fetch: fetchMock });
+    expect(await transport.saveLanguage("ar")).toBe(true);
+    expect(fetchMock).toHaveBeenCalledWith(
+      `${origin}/worker/language`,
+      expect.objectContaining({ method: "PUT", body: JSON.stringify({ language: "ar" }) })
+    );
+    const signedOut = createMobileSessionTransport({ apiOrigin: origin, vault: vault(), fetch: fetchMock });
+    expect(await signedOut.saveLanguage("fr")).toBe(false);
+  });
+
+  it("sends Where as a city, separate from the job word", async () => {
+    const fetchMock = vi.fn(async () => response(200, { jobs: [] }));
+    const transport = createMobileSessionTransport({ apiOrigin: origin, vault: vault(), fetch: fetchMock });
+    await transport.listPublicJobs({ q: "cook", city: "Montreal", limit: 6 });
+    expect(fetchMock).toHaveBeenCalledWith(`${origin}/public/jobs?q=cook&city=Montreal&limit=6`, expect.anything());
+  });
+
   it("omits q when empty", async () => {
     const fetchMock = vi.fn(async () => response(200, { jobs: [] }));
     const transport = createMobileSessionTransport({ apiOrigin: origin, vault: vault(), fetch: fetchMock });

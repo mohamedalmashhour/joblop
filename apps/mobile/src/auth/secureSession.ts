@@ -870,6 +870,23 @@ export function createMobileSessionTransport(options: {
         return { status: "error" };
       }
     },
+    // Save the worker's language (EN / FR / AR) on their account, so job offers, texts, emails and
+    // push notices reach them in the language they use in the app. Best-effort: false on failure.
+    async saveLanguage(language: "en" | "fr" | "ar"): Promise<boolean> {
+      const token = await options.vault.read();
+      if (!token || (language !== "en" && language !== "fr" && language !== "ar")) return false;
+      try {
+        const response = await request(`${origin}/worker/language`, {
+          method: "PUT",
+          headers: { accept: "application/json", authorization: `Bearer ${token}`, "content-type": "application/json" },
+          body: JSON.stringify({ language }),
+          cache: "no-store"
+        });
+        return response.ok;
+      } catch {
+        return false;
+      }
+    },
     // Called before sign-out so this device stops getting the worker's notices.
     async unregisterPushToken(pushToken: string): Promise<PushTokenResult> {
       const token = await options.vault.read();
@@ -929,7 +946,8 @@ export function createMobileSessionTransport(options: {
     },
     // PUBLIC job board (GET /public/jobs) — no sign-in, no token. Area-level, privacy-safe Joblop
     // jobs for the signed-out first screen. A network failure is "offline".
-    async listPublicJobs(params: Readonly<{ q?: string; limit?: number }> = {}): Promise<PublicJobsResult> {
+    // `city` is the "Where?" box (a city, accents optional, or a postal code); `q` is the job word.
+    async listPublicJobs(params: Readonly<{ q?: string; city?: string; limit?: number }> = {}): Promise<PublicJobsResult> {
       const result = await publicGet("/public/jobs", params);
       if (result.status !== "ok") return result;
       const payload = (result.payload ?? {}) as { jobs?: unknown };

@@ -288,6 +288,17 @@ import { activeBonusByJob, coverageBonusSuggestion, latestBonusByJob, registerJo
 import { registerCalendarHubRoutes } from "./calendarHubRoutes";
 import { registerEmployerPlanRoutes } from "./employerPlanRoutes";
 import { isListedForWorkers, listedJobWhere, listingVisibilitySelect } from "./jobListingVisibility";
+import { openJobWhere } from "./openJobs";
+import { defaultOfferCompensationLine } from "./offerPayLine";
+import {
+  hourlyPayLine,
+  intlLocale,
+  normalizeLanguagePreference,
+  resolveWorkerLanguage,
+  type WorkerLanguage
+} from "./notifications/workerLanguage";
+import { resolveSearchPlace, searchPlaceFailure } from "./searchPlace";
+import { matchingRoleIds } from "./roleSearch";
 import { WORKER_PAY_SELECT, isLongTermListingJob, longTermPaySentence, workerPay } from "./longTermWorkerPay";
 import { LONG_TERM_NO_TIMESHEETS_BODY, clockInFields, isLongTermAssignment, isLongTermAttendance } from "./longTermNoTimesheets";
 import { isEmployerPlansEnabled } from "./employerPlanRepository";
@@ -360,6 +371,7 @@ import {
 import { isWorkerDisputeCategory, normalizeWorkerDisputeReason } from "@rwos/shared";
 import { normalizeEscalationReason } from "@rwos/shared";
 import { buildCalendarExport } from "@rwos/shared";
+import { matchingPlaceNames, postalAreaOf } from "@rwos/shared";
 import { deriveOrderLifecycle } from "@rwos/shared";
 import { deriveWorkerCancellationPenalty, WORKER_SUSPENSION_DAYS } from "@rwos/shared";
 import { notifyClient, notifyClientInvoiceSent } from "./notifications/clientNotifications";
@@ -504,8 +516,8 @@ export interface AuthenticationRateLimiter {
 }
 
 // Formats a shift window for worker-facing offer emails (localized, Canada timezone).
-function formatOfferWindow(start: Date, end: Date, lang: "en" | "fr"): string {
-  const locale = lang === "fr" ? "fr-CA" : "en-CA";
+function formatOfferWindow(start: Date, end: Date, lang: WorkerLanguage): string {
+  const locale = intlLocale(lang);
   const tz = "America/Toronto";
   try {
     const day = new Intl.DateTimeFormat(locale, { weekday: "short", month: "short", day: "numeric", timeZone: tz }).format(start);
@@ -886,7 +898,11 @@ export function buildApi(options: BuildApiOptions = {}) {
       ? createGoogleGeocodingProvider({ fetch, apiKey: mapsApiKey, countryAddress: options.countryAddress })
       : createFixtureGeocodingProvider({
       "H7V": { province: "QC", city: "Laval", latitude: 45.5701, longitude: -73.7527 },
-      "H2X": { province: "QC", city: "Montreal", latitude: 45.5088, longitude: -73.5678 },
+      "H2X": { province: "QC", city: "Montréal", latitude: 45.5088, longitude: -73.5678 },
+      "H3B": { province: "QC", city: "Montréal", latitude: 45.5005, longitude: -73.5685 },
+      "J4K": { province: "QC", city: "Longueuil", latitude: 45.5312, longitude: -73.5181 },
+      "G1R": { province: "QC", city: "Québec", latitude: 46.8123, longitude: -71.2145 },
+      "G6V": { province: "QC", city: "Lévis", latitude: 46.8033, longitude: -71.1779 },
       "M5V": { province: "ON", city: "Toronto", latitude: 43.6426, longitude: -79.3871 },
       "K1P": { province: "ON", city: "Ottawa", latitude: 45.4215, longitude: -75.6972 },
       "V6B": { province: "BC", city: "Vancouver", latitude: 49.2807, longitude: -123.1088 },
@@ -1088,16 +1104,17 @@ export function buildApi(options: BuildApiOptions = {}) {
                   select: {
                     displayName: true,
                     preferredLanguage: true,
-                    user: { select: { emailNormalized: true, displayName: true } }
+                    user: { select: { emailNormalized: true, displayName: true, primaryLanguage: true } }
                   }
                 }
               }
             });
             const email = offer?.workerIdentity?.user?.emailNormalized ?? null;
             if (!offer || !email) return null;
-            const language: "en" | "fr" = offer.workerIdentity.preferredLanguage === "fr" ? "fr" : "en";
+            // The worker's own language (EN / FR / AR), from what their account stores.
+            const language = resolveWorkerLanguage(offer.workerIdentity.preferredLanguage, offer.workerIdentity.user.primaryLanguage);
             const role = offer.jobRequest?.roleDefinition?.displayLabel ?? null;
-            const title = offer.jobRequest?.title ?? role ?? (language === "fr" ? "Quart" : "Shift");
+            const title = offer.jobRequest?.title ?? role ?? (language === "fr" ? "Quart" : language === "ar" ? "مناوبة" : "Shift");
             const city = offer.residence?.city ?? null;
             const province = offer.residence?.province ?? null;
             const areaLabel = city && province ? `${city}, ${province}` : province ?? city ?? null;
@@ -1106,10 +1123,7 @@ export function buildApi(options: BuildApiOptions = {}) {
             const compensation = isLongTermListingJob(offer.jobRequest)
               ? longTermPaySentence(offer.jobRequest!, language)
               : rateMinor != null && options.countryCurrency
-                ? `${new Intl.NumberFormat(language === "fr" ? "fr-CA" : "en-CA", {
-                    style: "currency",
-                    currency: options.countryCurrency
-                  }).format(rateMinor / 100)}/h`
+                ? hourlyPayLine(rateMinor, options.countryCurrency, language)
                 : null;
             const whenLabel =
               offer.jobRequest?.startAt && offer.jobRequest?.endAt
@@ -1611,13 +1625,7 @@ export function buildApi(options: BuildApiOptions = {}) {
   const loadAlertOpenJobs = async (now: Date): Promise<AlertOpenJob[]> => {
     if (!prisma) return [];
     const rows = await prisma.jobRequest.findMany({
-      where: listedJobWhere({
-        status: "approved_for_dispatch",
-        openClaim: true,
-        pricingSnapshot: { isNot: null },
-        startAt: { gte: now },
-        residence: { status: "active" }
-      }),
+      where: openJobWhere({ now }),
       select: {
         id: true,
         title: true,
@@ -3700,39 +3708,74 @@ export function buildApi(options: BuildApiOptions = {}) {
   });
 
   // PUBLIC job board — no sign-in. Anyone can browse Joblop's open job offers across all of Canada
-  // and filter by location (province) or search text (city / role). Privacy-safe: only area-level
-  // fields (city + province), role, headcount, date and urgency — NEVER exact address/coords, client
-  // identity, or pay rates. Read-only; a funnel to bring workers onto the platform.
+  // and filter by "What" (q: role, title or city) and "Where" (city: a city name or a postal code).
+  // Place and role names match without accents or case ("Montreal" finds "Montréal"). The jobs are
+  // the same set as the signed-in calendar and search (openJobWhere). Privacy-safe: only area-level
+  // fields (city + province), role, headcount, date, urgency and the WORKER's own pay (hourly pay for
+  // short-term jobs, the employer's pay offer for long-term listings) — NEVER the exact address or
+  // coordinates, the client identity, the employer rate or Joblop's share. Read-only.
   app.get("/public/jobs", async (request, reply) => {
     if (!prisma) return reply.code(503).send({ error: "RWOS_UNAVAILABLE", message: "Not available." });
     const query = asRecord(request.query);
     const provinceRaw = readOptionalString(query, "province");
     const province = provinceRaw && /^[A-Za-z]{2}$/.test(provinceRaw) ? provinceRaw.toUpperCase() : null;
     const q = (readOptionalString(query, "q") ?? "").trim().slice(0, 80);
+    const where = (readOptionalString(query, "city") ?? readOptionalString(query, "where") ?? "").trim().slice(0, 80);
     const limitRaw = readOptionalNumber(query, "limit");
     const limit = Math.min(Math.max(limitRaw ? Math.floor(limitRaw) : 30, 1), 60);
     const cursorRaw = readOptionalNumber(query, "cursor");
     const offset = cursorRaw && cursorRaw > 0 ? Math.floor(cursorRaw) : 0;
+    const now = new Date();
+    const emptyPage = () =>
+      reply.code(200).header("cache-control", "public, max-age=60").send({ jobs: [], nextCursor: null, province, q, city: where || null });
+
+    // City names are folded in code (Postgres `contains` keeps accents), over the distinct cities of
+    // active sites, then matched exactly. Read once and only when a word was typed.
+    let cityNames: string[] | null = null;
+    const activeCities = async () => {
+      if (cityNames === null) {
+        const rows = await prisma.residence.findMany({
+          where: { status: "active", city: { not: null } },
+          distinct: ["city"],
+          select: { city: true },
+          take: 5000
+        });
+        cityNames = rows.map((r) => r.city).filter((c): c is string => !!c);
+      }
+      return cityNames;
+    };
+
+    // Where: a postal code narrows to its area (first three characters); a city name to its sites.
+    let residence: Prisma.ResidenceWhereInput = province ? { province } : {};
+    if (where) {
+      const area = postalAreaOf(where);
+      if (area) {
+        residence = { ...residence, postalCode: { startsWith: area, mode: "insensitive" } };
+      } else {
+        const matched = matchingPlaceNames(await activeCities(), where);
+        if (matched.length === 0) return emptyPage();
+        residence = { ...residence, city: { in: matched } };
+      }
+    }
+
+    // What: matches EITHER the city, the role, or the title (not ANDed with location).
+    let whatOr: Prisma.JobRequestWhereInput[] | null = null;
+    if (q) {
+      const [cities, roles] = await Promise.all([
+        activeCities(),
+        prisma.roleDefinition.findMany({ select: { id: true, key: true, displayLabel: true } })
+      ]);
+      const matchedCities = matchingPlaceNames(cities, q);
+      const roleIds = matchingRoleIds(roles, q);
+      whatOr = [
+        ...(matchedCities.length > 0 ? [{ residence: { city: { in: matchedCities } } }] : []),
+        ...(roleIds.length > 0 ? [{ roleDefinitionId: { in: roleIds } }] : []),
+        { title: { contains: q, mode: "insensitive" as const } }
+      ];
+    }
 
     const rows = await prisma.jobRequest.findMany({
-      where: listedJobWhere({
-        status: "approved_for_dispatch", // open to workers
-        startAt: { gte: new Date() }, // upcoming shifts only
-        residence: {
-          status: "active",
-          ...(province ? { province } : {})
-        },
-        // Free-text search matches EITHER the city, the role, or the title (not ANDed with location).
-        ...(q
-          ? {
-              OR: [
-                { residence: { city: { contains: q, mode: "insensitive" } } },
-                { roleDefinition: { displayLabel: { contains: q, mode: "insensitive" } } },
-                { title: { contains: q, mode: "insensitive" } }
-              ]
-            }
-          : {})
-      }),
+      where: openJobWhere({ now, residence, ...(whatOr ? { extra: { OR: whatOr } } : {}) }),
       select: {
         id: true,
         jobRequestNumber: true,
@@ -3741,7 +3784,9 @@ export function buildApi(options: BuildApiOptions = {}) {
         startAt: true,
         urgency: true,
         roleDefinition: { select: { displayLabel: true } },
-        residence: { select: { city: true, province: true } }
+        residence: { select: { city: true, province: true } },
+        pricingSnapshot: { select: { workerHourlyRateMinor: true } },
+        ...WORKER_PAY_SELECT
       },
       orderBy: [{ urgency: "desc" }, { startAt: "asc" }],
       skip: offset,
@@ -3754,6 +3799,7 @@ export function buildApi(options: BuildApiOptions = {}) {
     const jobs = page.map((r) => {
       const city = r.residence?.city ?? null;
       const prov = r.residence?.province ?? null;
+      const pay = workerPay(r, r.pricingSnapshot?.workerHourlyRateMinor ?? null);
       return {
         jobCode: r.jobRequestNumber,
         role: r.roleDefinition?.displayLabel ?? r.title,
@@ -3762,13 +3808,17 @@ export function buildApi(options: BuildApiOptions = {}) {
         areaLabel: city && prov ? `${city}, ${prov}` : (prov ?? "Canada"),
         openings: openingsLeft.get(r.id) ?? r.numberOfWorkers,
         startAt: r.startAt.toISOString(),
-        urgency: r.urgency
+        urgency: r.urgency,
+        // The worker's own hourly pay (never the employer rate or Joblop's share).
+        workerRateMinor: pay.rateMinor,
+        currency: options.countryCurrency ?? null,
+        ...pay.extra
       };
     });
     return reply
       .code(200)
       .header("cache-control", "public, max-age=60")
-      .send({ jobs, nextCursor: hasMore ? offset + limit : null, province, q });
+      .send({ jobs, nextCursor: hasMore ? offset + limit : null, province, q, city: where || null });
   });
 
   // SHARED JOBS CALENDAR (signed-in workers). Every approved, open job with places left, by date, so a
@@ -3789,13 +3839,7 @@ export function buildApi(options: BuildApiOptions = {}) {
     // At most ~3 months per request.
     const until = new Date(Math.min(to.getTime(), from.getTime() + 93 * 86_400_000));
     const rows = await prisma.jobRequest.findMany({
-      where: listedJobWhere({
-        status: "approved_for_dispatch",
-        openClaim: true,
-        pricingSnapshot: { isNot: null },
-        startAt: { gte: from < now ? now : from, lte: until },
-        residence: { status: "active" }
-      }),
+      where: openJobWhere({ now, startFrom: from, startTo: until }),
       select: {
         id: true,
         title: true,
@@ -3846,9 +3890,16 @@ export function buildApi(options: BuildApiOptions = {}) {
     if (!prisma) return reply.code(503).send({ error: "RWOS_UNAVAILABLE", message: "Not available." });
     const query = asRecord(request.query);
     const provinceRaw = readOptionalString(query, "province");
-    const province = provinceRaw && /^[A-Za-z]{2}$/.test(provinceRaw) ? provinceRaw.toUpperCase() : undefined;
+    let province = provinceRaw && /^[A-Za-z]{2}$/.test(provinceRaw) ? provinceRaw.toUpperCase() : undefined;
     const cityRaw = (readOptionalString(query, "city") ?? "").trim().slice(0, 60);
-    const city = cityRaw.length > 0 ? cityRaw : undefined;
+    // City names match without accents or case. Leads carry no postal code, so a postal code typed in
+    // "Where" narrows to its province instead.
+    const postalArea = postalAreaOf(cityRaw);
+    const leadAddress = options.countryAddress;
+    const asPostal =
+      postalArea && leadAddress ? (leadAddress.normalizePostalCode(cityRaw) ?? leadAddress.normalizePostalCode(`${postalArea}0A0`)) : null;
+    if (asPostal && leadAddress) province = province ?? leadAddress.regionHintFromPostalCode(asPostal) ?? undefined;
+    const city = cityRaw.length > 0 && !postalArea ? cityRaw : undefined;
     // Small teaser only — the full, ranked feed is a signed-in worker benefit.
     const limitRaw = readOptionalNumber(query, "limit");
     const limit = Math.min(Math.max(limitRaw ? Math.floor(limitRaw) : 8, 1), 12);
@@ -3901,11 +3952,7 @@ export function buildApi(options: BuildApiOptions = {}) {
     const [externalLeadCount, openJobCount, leadProvinces] = await Promise.all([
       prisma.externalJobLead.count({ where: { ...(province ? { province } : {}) } }),
       prisma.jobRequest.count({
-        where: listedJobWhere({
-          status: "approved_for_dispatch",
-          startAt: { gte: new Date() },
-          residence: { status: "active", ...(province ? { province } : {}) }
-        })
+        where: openJobWhere({ now: new Date(), residence: province ? { province } : {} })
       }),
       prisma.externalJobLead.findMany({ distinct: ["province"], select: { province: true } })
     ]);
@@ -4060,6 +4107,20 @@ export function buildApi(options: BuildApiOptions = {}) {
     return reply.code(200).send({ ok: true });
   });
 
+  // The signed-in worker's language (EN / FR / AR), saved when they switch language on the website or
+  // in the app, so job offers, texts, emails and push notices reach them in that language.
+  app.put("/worker/language", async (request, reply) => {
+    const user = await requireAlertWorker(request, reply);
+    if (!user) return;
+    const language = normalizeLanguagePreference(readOptionalString(asRecord(request.body), "language"));
+    if (!language) {
+      return reply.code(400).send({ error: "RWOS_LANGUAGE_INVALID", message: "Language must be en, fr or ar." });
+    }
+    await prisma!.user.update({ where: { id: user.id }, data: { primaryLanguage: language } });
+    await prisma!.workerIdentity.updateMany({ where: { userId: user.id }, data: { preferredLanguage: language } });
+    return reply.code(200).header("cache-control", "no-store").send({ language });
+  });
+
   // Phone-app push tokens (Expo). Registering an existing token moves it to this user (a phone that
   // changed hands) and turns it back on; removing only touches the caller's own token.
   app.post("/worker/push-tokens", async (request, reply) => {
@@ -4101,25 +4162,29 @@ export function buildApi(options: BuildApiOptions = {}) {
       return reply.code(401).send({ error: "RWOS_MARKETPLACE_DENIED", message: "Authentication is required." });
     }
     const body = asRecord(request.body);
-    const postalCode = readOptionalString(body, "postalCode");
     const countryAddress = options.countryAddress;
     if (!countryAddress) {
       return reply.code(400).send({ error: "RWOS_COUNTRY_ADDRESS_UNAVAILABLE", message: "Address resolution is not configured for the selected country." });
     }
     // Stage 2b.3b-1: the (display-only, decorative) result currency is driven by the selected country's
     // currency, never a hard-coded "CAD". Absent → fail closed, never silently substitute CAD. Byte-
-    // identical for Canada (countryCurrency === "CAD"). workerRateMinor stays null (policy-gated).
+    // identical for Canada (countryCurrency === "CAD").
     const countryCurrency = options.countryCurrency;
     if (!countryCurrency) {
       return reply.code(400).send({ error: "RWOS_COUNTRY_CURRENCY_UNAVAILABLE", message: "Currency is not configured for the selected country." });
     }
-    const normalizedPostal = postalCode ? countryAddress.normalizePostalCode(postalCode) : null;
-    if (!normalizedPostal) {
-      return reply.code(400).send({ error: "RWOS_INVALID_POSTAL", message: "A valid Canadian postal code is required." });
+    // "Where?": a city name (any accents/case) or a postal code. `postalCode` is still accepted from
+    // older clients. An unknown place is a friendly 400, never a 500.
+    const placeInput = readOptionalString(body, "place") ?? readOptionalString(body, "postalCode");
+    const resolved = await resolveSearchPlace(placeInput, { countryAddress, geocoder: geocodingProvider });
+    if (resolved.status !== "ok") {
+      const failure = searchPlaceFailure(resolved.status);
+      return reply.code(failure.code).send(failure.body);
     }
+    const origin = resolved.place;
     const radiusRaw = readOptionalNumber(body, "radiusKm");
-    const radiusKm = radiusRaw && radiusRaw > 0 ? radiusRaw : undefined; // omit → any distance
-    const roleFilter = readOptionalString(body, "role");
+    const radiusKm = radiusRaw && radiusRaw > 0 ? Math.min(radiusRaw, 500) : undefined; // omit → any distance
+    const roleFilter = (readOptionalString(body, "role") ?? "").trim().slice(0, 80);
     // Additional server-authoritative filters. All optional; the browser can only NARROW.
     const dateFrom = parseIsoDate(readOptionalString(body, "dateFrom"));
     const dateTo = parseIsoDate(readOptionalString(body, "dateTo"));
@@ -4134,22 +4199,29 @@ export function buildApi(options: BuildApiOptions = {}) {
     const cursorRaw = readOptionalNumber(body, "cursor");
     const offset = cursorRaw && cursorRaw > 0 ? Math.floor(cursorRaw) : 0;
 
-    const origin = await geocodingProvider.geocode({ countryRestriction: countryAddress.geocodeCountryRestriction, postalCode: normalizedPostal });
-    if (origin.status !== "ok") {
-      return reply.code(422).send({ error: "RWOS_ORIGIN_UNRESOLVED", status: origin.status, message: "Your search location could not be resolved." });
+    // Role: matched against the role key and label, ignoring accents and case. A role that matches
+    // nothing gives an empty result (the filter is never dropped).
+    let roleIds: string[] | null = null;
+    if (roleFilter) {
+      const roles = await prisma!.roleDefinition.findMany({ select: { id: true, key: true, displayLabel: true } });
+      roleIds = matchingRoleIds(roles, roleFilter);
     }
-    const box = boundingBoxKm({ latitude: origin.location.latitude, longitude: origin.location.longitude }, radiusKm ?? 500);
-    const rows = await prisma!.jobRequest.findMany({
-      where: listedJobWhere({
-        status: { in: ["submitted", "approved_for_dispatch"] },
-        endAt: { gt: new Date() }, // a shift that has already ended is not work anyone can take
-        ...(roleFilter ? { roleDefinition: { key: roleFilter } } : {}),
-        ...(minOpenings ? { numberOfWorkers: { gte: minOpenings } } : {}),
-        ...(dateFrom || dateTo ? { startAt: { ...(dateFrom ? { gte: dateFrom } : {}), ...(dateTo ? { lte: dateTo } : {}) } } : {}),
+
+    const box = boundingBoxKm({ latitude: origin.latitude, longitude: origin.longitude }, radiusKm ?? 500);
+    const now = new Date();
+    // The same open-jobs rule as the jobs calendar (openJobWhere), so both views show the same jobs.
+    const rows = roleIds !== null && roleIds.length === 0 ? [] : await prisma!.jobRequest.findMany({
+      where: openJobWhere({
+        now,
+        startFrom: dateFrom,
+        startTo: dateTo,
         residence: {
-          status: "active",
           latitude: { gte: box.minLat, lte: box.maxLat },
           longitude: { gte: box.minLng, lte: box.maxLng }
+        },
+        extra: {
+          ...(roleIds ? { roleDefinitionId: { in: roleIds } } : {}),
+          ...(minOpenings ? { numberOfWorkers: { gte: minOpenings } } : {})
         }
       }),
       select: {
@@ -4166,7 +4238,7 @@ export function buildApi(options: BuildApiOptions = {}) {
       take: MARKETPLACE_CANDIDATE_CAP
     });
     if (rows.length === MARKETPLACE_CANDIDATE_CAP) {
-      logger.warn("marketplace.search.candidate_cap_hit", { cap: MARKETPLACE_CANDIDATE_CAP, postalCode: normalizedPostal });
+      logger.warn("marketplace.search.candidate_cap_hit", { cap: MARKETPLACE_CANDIDATE_CAP });
     }
     // Authoritative Verified-Employer state for the orgs on this result set. Read from the
     // employer_verifications record only (business_verified + not expired). Never inferred.
@@ -4184,6 +4256,7 @@ export function buildApi(options: BuildApiOptions = {}) {
     for (const r of rows) {
       const left = openingsLeft.get(r.id) ?? r.numberOfWorkers;
       if (left <= 0) continue; // every place is taken
+      if (minOpenings && left < minOpenings) continue; // places still open, not places asked
       const province = r.residence.province;
       if (!options.countryAddress?.isRegionCode(province) || r.residence.latitude === null || r.residence.longitude === null) continue;
       const isVerifiedEmployer = verifiedOrgIds.has(r.organization.id);
@@ -4208,7 +4281,7 @@ export function buildApi(options: BuildApiOptions = {}) {
     }
     // Distance ranking is authoritative + always computed first (radius applied here).
     const ranked = searchNearbyJobs({
-      origin: { latitude: origin.location.latitude, longitude: origin.location.longitude },
+      origin: { latitude: origin.latitude, longitude: origin.longitude },
       ...(radiusKm !== undefined ? { radiusKm } : {}),
       candidates,
       regionNames: countryAddress // display-name capability from the selected country (already guarded above)
@@ -4248,7 +4321,7 @@ export function buildApi(options: BuildApiOptions = {}) {
     const savedSet = new Set(savedIds);
     const jobs = page.map((r) => ({ ...r, saved: savedSet.has(r.jobRequestId) }));
     return reply.code(200).send({
-      origin: { province: origin.location.province, city: origin.location.city, postalCode: normalizedPostal },
+      origin: { province: origin.province, city: origin.city, postalCode: origin.postalCode, place: origin.label },
       count: jobs.length,
       total,
       nextCursor,
@@ -5769,10 +5842,11 @@ export function buildApi(options: BuildApiOptions = {}) {
     if (!isCanonicalUuid(jobRequestId)) {
       return reply.code(404).send({ error: "RWOS_MARKETPLACE_JOB_NOT_FOUND", message: "That job is not available." });
     }
-    const postalCode = readOptionalString(asRecord(request.query), "postalCode");
+    const detailQuery = asRecord(request.query);
+    // The worker's search place (a city or a postal code) for the distance line; optional.
+    const placeInput = readOptionalString(detailQuery, "place") ?? readOptionalString(detailQuery, "postalCode");
     const countryAddress = options.countryAddress;
     const countryCurrency = options.countryCurrency; // Stage 2b.3b-1: display-only result currency
-    const normalizedPostal = postalCode && countryAddress ? countryAddress.normalizePostalCode(postalCode) : null;
 
     const row = await prisma!.jobRequest.findFirst({
       where: listedJobWhere({
@@ -5829,9 +5903,9 @@ export function buildApi(options: BuildApiOptions = {}) {
     }
 
     let origin: { latitude: number; longitude: number } | null = null;
-    if (normalizedPostal && countryAddress) {
-      const geo = await geocodingProvider.geocode({ countryRestriction: countryAddress.geocodeCountryRestriction, postalCode: normalizedPostal });
-      if (geo.status === "ok") origin = { latitude: geo.location.latitude, longitude: geo.location.longitude };
+    if (placeInput && countryAddress) {
+      const found = await resolveSearchPlace(placeInput, { countryAddress, geocoder: geocodingProvider });
+      if (found.status === "ok") origin = { latitude: found.place.latitude, longitude: found.place.longitude };
     }
 
     // Fail closed on an unavailable country currency — never silently substitute CAD. Byte-identical
@@ -7573,35 +7647,33 @@ export function buildApi(options: BuildApiOptions = {}) {
   );
 
   // What an offer states when the admin writes nothing: the approved pay, employer and area, so a
-  // worker never accepts binding terms without seeing them.
-  const defaultOfferCompensation = async (dispatchReviewId: string): Promise<string | null> => {
+  // worker never accepts binding terms without seeing them. Written in the worker's own language.
+  const defaultOfferCompensation = async (dispatchReviewId: string, workerIdentityId: string): Promise<string | null> => {
     if (!prisma || !isCanonicalUuid(dispatchReviewId)) return null;
-    const review = await prisma.dispatchReview.findUnique({
-      where: { id: dispatchReviewId },
-      select: {
-        jobRequest: {
-          select: {
-            pricingSnapshot: { select: { workerHourlyRateMinor: true, currency: true, jobLength: true } },
-            ...WORKER_PAY_SELECT,
-            organization: { select: { displayName: true } },
-            residence: { select: { city: true, province: true } }
+    const [review, worker] = await Promise.all([
+      prisma.dispatchReview.findUnique({
+        where: { id: dispatchReviewId },
+        select: {
+          jobRequest: {
+            select: {
+              pricingSnapshot: { select: { workerHourlyRateMinor: true, currency: true, jobLength: true } },
+              ...WORKER_PAY_SELECT,
+              organization: { select: { displayName: true } },
+              residence: { select: { city: true, province: true } }
+            }
           }
         }
-      }
-    });
+      }),
+      isCanonicalUuid(workerIdentityId)
+        ? prisma.workerIdentity
+            .findUnique({ where: { id: workerIdentityId }, select: { preferredLanguage: true, user: { select: { primaryLanguage: true } } } })
+            .catch(() => null)
+        : Promise.resolve(null)
+    ]);
     const job = review?.jobRequest;
     if (!job?.pricingSnapshot) return null;
-    const { workerHourlyRateMinor, currency } = job.pricingSnapshot;
-    const area = [job.residence.city, job.residence.province].filter(Boolean).join(", ");
-    // Long-term listing jobs (employer plans flag): the employer sets and pays the wage directly.
-    // With the flag on, the employer's pay offer from the request is stated when it was given.
-    const pay =
-      job.pricingSnapshot.jobLength === "long_term"
-        ? isLongTermListingJob(job)
-          ? longTermPaySentence(job, "en")
-          : "Pay agreed and paid directly by the employer"
-        : `${(workerHourlyRateMinor / 100).toFixed(2)} ${currency} per hour`;
-    return `${pay} at ${job.organization.displayName}${area ? `, ${area}` : ""}`;
+    const language = resolveWorkerLanguage(worker?.preferredLanguage, worker?.user?.primaryLanguage);
+    return defaultOfferCompensationLine(job, language);
   };
 
   app.post("/platform/worker-offers", async (request, reply) => {
@@ -7624,7 +7696,7 @@ export function buildApi(options: BuildApiOptions = {}) {
       workerVisibleSummary: readOptionalString(body, "workerVisibleSummary"),
       compensationSummary:
         readOptionalString(body, "compensationSummary") ??
-        (await defaultOfferCompensation(readRequiredString(body, "dispatchReviewId") ?? "")),
+        (await defaultOfferCompensation(readRequiredString(body, "dispatchReviewId") ?? "", readRequiredString(body, "workerIdentityId") ?? "")),
       policySummary: readOptionalString(body, "policySummary")
     });
 

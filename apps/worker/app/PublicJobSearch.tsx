@@ -2,12 +2,24 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { useLocale } from "./i18n/LocaleProvider";
+import { workerPayLabel } from "./workerPayLabel";
 
 // Signed-out front door: a REAL job search anyone can use before having an account. Joblop's own
 // open jobs come first, then jobs scanned from partner job boards. Opening a job asks the visitor
 // to create an account first (then they are signed in and taken to what they picked).
 
-type PublicJob = { jobCode: string; role: string; areaLabel: string; openings: number; startAt: string; urgency: string };
+type PublicJob = {
+  jobCode: string;
+  role: string;
+  areaLabel: string;
+  openings: number;
+  startAt: string;
+  urgency: string;
+  // The worker's own pay (hourly for short-term jobs; the employer's pay offer for long-term ones).
+  workerRateMinor?: number | null;
+  currency?: string | null;
+  payOffered?: unknown;
+};
 type Lead = {
   title: string;
   employer: string | null;
@@ -27,6 +39,7 @@ const TEXT = {
     title: "Search jobs now, no account needed",
     sub: "Real jobs from Joblop employers and partner job boards. Create a free account when you want to see the details and apply.",
     placeholder: "What work? e.g. cleaner, cook, driver",
+    wherePlaceholder: "Where? City, e.g. Laval, Montréal",
     search: "Search",
     joblopJobs: "Joblop jobs",
     moreJobs: "More jobs near you",
@@ -35,14 +48,18 @@ const TEXT = {
     urgent: "Urgent",
     open: "See details",
     gate: "To see the details and apply, create your free account. It takes one minute.",
-    none: "No jobs found for that search yet. Try another word.",
+    none: "No jobs found for that search yet. Try another word or another place.",
     loading: "Searching…",
-    found: (n: number) => `${n} jobs found`
+    found: (n: number) => `${n} jobs found`,
+    paidByEmployer: "paid directly by the employer",
+    employerPaysDirectly: "Pay set and paid directly by the employer",
+    pending: "Hourly pay: confirmed before you're offered the shift"
   },
   fr: {
     title: "Cherchez des emplois maintenant, sans compte",
     sub: "De vrais emplois d’employeurs Joblop et de sites d’emploi partenaires. Créez un compte gratuit pour voir les détails et postuler.",
     placeholder: "Quel travail? ex. entretien, cuisinier, chauffeur",
+    wherePlaceholder: "Où? Ville, ex. Laval, Montréal",
     search: "Chercher",
     joblopJobs: "Emplois Joblop",
     moreJobs: "Autres emplois près de chez vous",
@@ -51,14 +68,18 @@ const TEXT = {
     urgent: "Urgent",
     open: "Voir les détails",
     gate: "Pour voir les détails et postuler, créez votre compte gratuit. Ça prend une minute.",
-    none: "Aucun emploi trouvé pour cette recherche. Essayez un autre mot.",
+    none: "Aucun emploi trouvé pour cette recherche. Essayez un autre mot ou un autre lieu.",
     loading: "Recherche…",
-    found: (n: number) => `${n} emplois trouvés`
+    found: (n: number) => `${n} emplois trouvés`,
+    paidByEmployer: "payé directement par l'employeur",
+    employerPaysDirectly: "Salaire fixé et payé directement par l'employeur",
+    pending: "Salaire horaire : confirmé avant qu'on vous offre le quart"
   },
   ar: {
     title: "ابحث عن وظائف الآن، دون حساب",
     sub: "وظائف حقيقية من أصحاب عمل Joblop ومواقع وظائف شريكة. أنشئ حسابًا مجانيًا عندما تريد رؤية التفاصيل والتقديم.",
     placeholder: "ما العمل؟ مثل: تنظيف، طباخ، سائق",
+    wherePlaceholder: "أين؟ المدينة، مثل: لافال، مونتريال",
     search: "ابحث",
     joblopJobs: "وظائف Joblop",
     moreJobs: "وظائف أخرى قريبة منك",
@@ -67,9 +88,12 @@ const TEXT = {
     urgent: "عاجل",
     open: "عرض التفاصيل",
     gate: "لرؤية التفاصيل والتقديم، أنشئ حسابك المجاني. يستغرق دقيقة واحدة.",
-    none: "لا توجد وظائف لهذا البحث بعد. جرّب كلمة أخرى.",
+    none: "لا توجد وظائف لهذا البحث بعد. جرّب كلمة أخرى أو مكانًا آخر.",
     loading: "جارٍ البحث…",
-    found: (n: number) => `تم العثور على ${n} وظيفة`
+    found: (n: number) => `تم العثور على ${n} وظيفة`,
+    paidByEmployer: "يدفعه صاحب العمل مباشرة",
+    employerPaysDirectly: "يحدد صاحب العمل الأجر ويدفعه مباشرة",
+    pending: "الأجر بالساعة: يُؤكَّد قبل أن تُعرض عليك المناوبة"
   }
 };
 
@@ -85,15 +109,20 @@ export function PublicJobSearch({ onWantDetails }: { onWantDetails: (next: strin
   const lang = locale === "ar" ? "ar" : locale.startsWith("fr") ? "fr" : "en";
   const t = TEXT[lang];
   const [q, setQ] = useState("");
+  // "Where?": a city (accents optional) or a postal code. Empty until the visitor types one.
+  const [where, setWhere] = useState("");
+  const moneyLocale = lang === "fr" ? "fr-CA" : "en-CA";
   const [jobs, setJobs] = useState<PublicJob[] | null>(null);
   const [leads, setLeads] = useState<Lead[]>([]);
   const [leadTotal, setLeadTotal] = useState(0);
 
-  const run = useCallback(async (query: string) => {
+  const run = useCallback(async (query: string, place: string) => {
     setJobs(null);
     const params = new URLSearchParams({ limit: "6" });
     if (query.trim()) params.set("q", query.trim());
+    if (place.trim()) params.set("city", place.trim());
     const leadParams = new URLSearchParams({ limit: "6", q: query.trim() || EVERYDAY_WORK });
+    if (place.trim()) leadParams.set("city", place.trim());
     const [j, l] = await Promise.all([
       fetch(`/api/public/jobs?${params.toString()}`, { cache: "no-store" }).then((r) => r.json()).catch(() => ({})),
       fetch(`/api/public/jobscanner/leads?${leadParams.toString()}`, { cache: "no-store" }).then((r) => r.json()).catch(() => ({}))
@@ -104,7 +133,7 @@ export function PublicJobSearch({ onWantDetails }: { onWantDetails: (next: strin
   }, []);
 
   useEffect(() => {
-    void run("");
+    void run("", "");
   }, [run]);
 
   const total = (jobs?.length ?? 0) + leadTotal;
@@ -119,10 +148,18 @@ export function PublicJobSearch({ onWantDetails }: { onWantDetails: (next: strin
         role="search"
         onSubmit={(e) => {
           e.preventDefault();
-          void run(q);
+          void run(q, where);
         }}
       >
         <input value={q} onChange={(e) => setQ(e.target.value)} placeholder={t.placeholder} aria-label={t.placeholder} maxLength={80} />
+        <input
+          value={where}
+          onChange={(e) => setWhere(e.target.value)}
+          placeholder={t.wherePlaceholder}
+          aria-label={t.wherePlaceholder}
+          maxLength={80}
+          autoComplete="off"
+        />
         <button type="submit">{t.search}</button>
       </form>
       {jobs === null ? (
@@ -140,7 +177,8 @@ export function PublicJobSearch({ onWantDetails }: { onWantDetails: (next: strin
                   <button type="button" key={job.jobCode} className="pjs-card pjs-own" title={t.gate} onClick={() => onWantDetails("/")}>
                     <span className="pjs-badge">{t.joblopBadge}</span>
                     <strong>{job.role}</strong>
-                    <span className="pjs-meta">📍 {job.areaLabel} · {new Date(job.startAt).toLocaleDateString(locale)}</span>
+                    <span className="pjs-meta">📍 <bdi>{job.areaLabel}</bdi> · {new Date(job.startAt).toLocaleDateString(locale)}</span>
+                    <span className="pjs-meta"><bdi>{workerPayLabel(job, moneyLocale, t)}</bdi></span>
                     <span className="pjs-foot">
                       <em>{t.places(job.openings)}{job.urgency === "urgent" || job.urgency === "immediate" ? ` · ${t.urgent}` : ""}</em>
                       <span>{t.open} →</span>

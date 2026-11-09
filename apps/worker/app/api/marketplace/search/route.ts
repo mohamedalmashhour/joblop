@@ -1,42 +1,49 @@
+import { getRuntimeConfig } from "@rwos/config";
 import { sessionBoundary, isSameOriginMutation, sessionFailure } from "../../sessionBoundary";
+import { PLACE_ERROR_CODES, whitelistSearchQuery } from "./searchQuery";
 
-// Worker marketplace search BFF. The browser sends only a postal code + optional radius +
-// optional role. Everything authoritative — geocoding, distance, ranking, area labels,
-// approximate map points — happens server-side in the API. The browser NEVER supplies
-// coordinates, distances, or the confirmed job set. This route just forwards a whitelisted
-// query and returns the API's privacy-safe results verbatim.
+// Worker marketplace search BFF. The browser sends only the whitelisted search fields (place,
+// radius, role, sort, dates, minimum open places, verified only, cursor). Everything authoritative —
+// resolving the place, distance, ranking, area labels, approximate map points — happens server-side
+// in the API. The browser NEVER supplies coordinates, distances, or the confirmed job set.
+//
+// An unknown place is answered with the API's own 400 + error code (never collapsed into a 500), so
+// the page can say "We couldn't find that place".
+const NO_STORE = { "cache-control": "private, no-store" };
+
 export async function POST(request: Request) {
   if (!isSameOriginMutation(request)) return sessionFailure("denied");
-  const { gateway, token } = await sessionBoundary();
+  const { token } = await sessionBoundary();
   if (!token) return sessionFailure("denied");
 
   const body = await request.json().catch(() => null);
-  const query = whitelistQuery(body);
+  const query = whitelistSearchQuery(body);
   if (!query) {
     return Response.json(
-      { status: "invalid", message: "A valid Canadian postal code is required." },
-      { status: 400, headers: { "cache-control": "private, no-store" } }
+      { status: "invalid", error: "RWOS_PLACE_REQUIRED", message: "Type a city or a postal code." },
+      { status: 400, headers: NO_STORE }
     );
   }
 
-  const result = await gateway.request("/marketplace/jobs/search", "POST", token, query);
-  if (result.status !== "ok") return sessionFailure(result.status);
-  return Response.json(result.payload, { headers: { "cache-control": "private, no-store" } });
-}
-
-// Drop anything the browser must not influence. Only these three fields are forwarded.
-function whitelistQuery(input: unknown): { postalCode: string; radiusKm?: number; role?: string } | null {
-  if (typeof input !== "object" || input === null) return null;
-  const record = input as Record<string, unknown>;
-  const postalCode = typeof record.postalCode === "string" ? record.postalCode.trim() : "";
-  if (!postalCode) return null;
-  const radiusRaw = record.radiusKm;
-  const radiusKm =
-    typeof radiusRaw === "number" && Number.isFinite(radiusRaw) && radiusRaw > 0 ? radiusRaw : undefined;
-  const role = typeof record.role === "string" && record.role.trim().length > 0 ? record.role.trim() : undefined;
-  return {
-    postalCode,
-    ...(radiusKm !== undefined ? { radiusKm } : {}),
-    ...(role !== undefined ? { role } : {})
-  };
+  let apiResponse: Response;
+  try {
+    apiResponse = await fetch(`${getRuntimeConfig().internalApiOrigin}/marketplace/jobs/search`, {
+      method: "POST",
+      headers: { accept: "application/json", authorization: `Bearer ${token}`, "content-type": "application/json" },
+      body: JSON.stringify(query),
+      cache: "no-store"
+    });
+  } catch {
+    return sessionFailure("unavailable");
+  }
+  if (apiResponse.status === 401 || apiResponse.status === 403) return sessionFailure("denied");
+  const payload = (await apiResponse.json().catch(() => null)) as { error?: unknown; message?: unknown } | null;
+  if (apiResponse.ok && payload) return Response.json(payload, { headers: NO_STORE });
+  if (payload && typeof payload.error === "string" && PLACE_ERROR_CODES.has(payload.error)) {
+    return Response.json(
+      { status: "invalid", error: payload.error, message: typeof payload.message === "string" ? payload.message : "" },
+      { status: apiResponse.status === 503 ? 503 : 400, headers: NO_STORE }
+    );
+  }
+  return sessionFailure(apiResponse.status >= 502 && apiResponse.status <= 504 ? "unavailable" : "error");
 }

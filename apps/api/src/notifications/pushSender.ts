@@ -1,5 +1,5 @@
 import type { PrismaClient } from "@rwos/database";
-import { resolveLanguage, type NotificationLanguage } from "./clientNotifications";
+import { resolveWorkerLanguage, type WorkerLanguage } from "./workerLanguage";
 import { sendsPush } from "./noticeChannels";
 
 // Push notifications to the Joblop phone app through Expo's push service. A worker's devices register
@@ -15,7 +15,7 @@ export type PushScreen = "calendar" | "contact" | "pay";
 export type PushData = Readonly<{ screen: PushScreen; jobRequestId?: string; conversationId?: string }>;
 export type PushMessage = Readonly<{ title: string; body: string; data: PushData }>;
 // A message, or one built in each recipient's language (French by default, like the other worker notices).
-export type PushContent = PushMessage | ((language: NotificationLanguage) => PushMessage);
+export type PushContent = PushMessage | ((language: WorkerLanguage) => PushMessage);
 
 export type PushSendResult = Readonly<{ sent: number; failed: number; revoked: number }>;
 
@@ -120,7 +120,7 @@ export function createPushSender(deps: {
         });
         if (tokens.length === 0) return NO_PUSH;
         const messages: ExpoPushMessage[] = tokens.map((row) => {
-          const message = typeof content === "function" ? content(resolveLanguage(row.user.primaryLanguage)) : content;
+          const message = typeof content === "function" ? content(resolveWorkerLanguage(row.user.primaryLanguage)) : content;
           return { to: row.token, title: message.title, body: message.body, data: message.data, sound: "default", priority: "high" };
         });
         let sent = 0;
@@ -161,47 +161,56 @@ export type WorkerPushKind = "shift_confirmed" | "shift_reminder" | "shift_cance
 
 export function workerPushMessage(
   kind: WorkerPushKind,
-  language: NotificationLanguage,
+  language: WorkerLanguage,
   params: Readonly<{ role?: string | null; jobRequestId?: string | null; conversationId?: string | null }> = {}
 ): PushMessage {
-  const en = language === "en";
   const role = params.role?.trim().slice(0, 60) || null;
   const job = params.jobRequestId ? { jobRequestId: params.jobRequestId } : {};
+  // One line per language; `r` is the role (when known).
+  const pick = (en: string, fr: string, ar: string) => (language === "en" ? en : language === "ar" ? ar : fr);
   switch (kind) {
     case "shift_confirmed":
       return {
-        title: en ? "You got the job" : "Vous avez obtenu le travail",
-        body: role ? (en ? `${role} — see it in your calendar.` : `${role} — voyez-le dans votre calendrier.`) : en ? "See it in your calendar." : "Voyez-le dans votre calendrier.",
+        title: pick("You got the job", "Vous avez obtenu le travail", "حصلت على العمل"),
+        body: role
+          ? pick(`${role} — see it in your calendar.`, `${role} — voyez-le dans votre calendrier.`, `${role} — تجده في تقويمك.`)
+          : pick("See it in your calendar.", "Voyez-le dans votre calendrier.", "تجده في تقويمك."),
         data: { screen: "calendar", ...job }
       };
     case "shift_reminder":
       return {
-        title: en ? "Shift tomorrow" : "Quart demain",
-        body: role ? (en ? `Reminder: ${role}. Details in your calendar.` : `Rappel : ${role}. Détails dans votre calendrier.`) : en ? "Reminder: you work soon. Details in your calendar." : "Rappel : vous travaillez bientôt. Détails dans votre calendrier.",
+        title: pick("Shift tomorrow", "Quart demain", "مناوبة غدًا"),
+        body: role
+          ? pick(`Reminder: ${role}. Details in your calendar.`, `Rappel : ${role}. Détails dans votre calendrier.`, `تذكير: ${role}. التفاصيل في تقويمك.`)
+          : pick("Reminder: you work soon. Details in your calendar.", "Rappel : vous travaillez bientôt. Détails dans votre calendrier.", "تذكير: لديك عمل قريبًا. التفاصيل في تقويمك."),
         data: { screen: "calendar", ...job }
       };
     case "shift_cancelled":
       return {
-        title: en ? "Shift cancelled" : "Quart annulé",
-        body: role ? (en ? `${role} was cancelled. You do not need to go.` : `${role} a été annulé. Vous n'avez pas à vous présenter.`) : en ? "A shift was cancelled. Check your calendar." : "Un quart a été annulé. Consultez votre calendrier.",
+        title: pick("Shift cancelled", "Quart annulé", "أُلغيت المناوبة"),
+        body: role
+          ? pick(`${role} was cancelled. You do not need to go.`, `${role} a été annulé. Vous n'avez pas à vous présenter.`, `أُلغيت ${role}. لا داعي للحضور.`)
+          : pick("A shift was cancelled. Check your calendar.", "Un quart a été annulé. Consultez votre calendrier.", "أُلغيت مناوبة. راجع تقويمك."),
         data: { screen: "calendar", ...job }
       };
     case "shift_changed":
       return {
-        title: en ? "Shift changed" : "Quart modifié",
-        body: role ? (en ? `${role} has changed. See the new details.` : `${role} a changé. Voyez les nouveaux détails.`) : en ? "A shift has changed. See the new details." : "Un quart a changé. Voyez les nouveaux détails.",
+        title: pick("Shift changed", "Quart modifié", "تغيّرت المناوبة"),
+        body: role
+          ? pick(`${role} has changed. See the new details.`, `${role} a changé. Voyez les nouveaux détails.`, `تغيّرت ${role}. اطّلع على التفاصيل الجديدة.`)
+          : pick("A shift has changed. See the new details.", "Un quart a changé. Voyez les nouveaux détails.", "تغيّرت مناوبة. اطّلع على التفاصيل الجديدة."),
         data: { screen: "calendar", ...job }
       };
     case "staff_replied":
       return {
-        title: en ? "Joblop replied" : "Joblop a répondu",
-        body: en ? "The Joblop team replied to your message." : "L'équipe Joblop a répondu à votre message.",
+        title: pick("Joblop replied", "Joblop a répondu", "ردّ فريق Joblop"),
+        body: pick("The Joblop team replied to your message.", "L'équipe Joblop a répondu à votre message.", "ردّ فريق Joblop على رسالتك."),
         data: { screen: "contact", ...(params.conversationId ? { conversationId: params.conversationId } : {}) }
       };
     case "payout_paid":
       return {
-        title: en ? "You've been paid" : "Vous avez été payé",
-        body: en ? "Your pay was sent. See your earnings." : "Votre paie a été envoyée. Voyez vos gains.",
+        title: pick("You've been paid", "Vous avez été payé", "تم الدفع لك"),
+        body: pick("Your pay was sent. See your earnings.", "Votre paie a été envoyée. Voyez vos gains.", "أُرسل أجرك. اطّلع على أرباحك."),
         data: { screen: "pay" }
       };
   }

@@ -410,7 +410,7 @@ function summaryState(input: unknown) {
 export type OfferEmailRecipient = Readonly<{
   email: string;
   name: string | null;
-  language: "en" | "fr";
+  language: "en" | "fr" | "ar"; // the worker's own language
   title: string; // worker-visible role/title
   summary: string | null; // worker-visible summary
   compensation: string | null; // compensation summary (already worker-safe)
@@ -445,22 +445,23 @@ function escapeHtml(value: string): string {
 }
 
 function composeOfferEmail(r: OfferEmailRecipient): { subject: string; html: string; text: string } {
-  const fr = r.language === "fr";
-  const L = (en: string, frl: string) => (fr ? frl : en);
-  const hello = r.name ? L(`Hi ${r.name},`, `Bonjour ${r.name},`) : L("Hi,", "Bonjour,");
-  const subject = L(`New shift offer: ${r.title}`, `Nouvelle offre de quart : ${r.title}`);
-  const intro = L("You've received a shift offer on Joblop.", "Vous avez reçu une offre de quart sur Joblop.");
+  const L = (en: string, frl: string, ar: string) => (r.language === "fr" ? frl : r.language === "ar" ? ar : en);
+  const rtl = r.language === "ar";
+  const hello = r.name ? L(`Hi ${r.name},`, `Bonjour ${r.name},`, `مرحبًا ${r.name}،`) : L("Hi,", "Bonjour,", "مرحبًا،");
+  const subject = L(`New shift offer: ${r.title}`, `Nouvelle offre de quart : ${r.title}`, `عرض مناوبة جديد: ${r.title}`);
+  const intro = L("You've received a shift offer on Joblop.", "Vous avez reçu une offre de quart sur Joblop.", "وصلك عرض مناوبة على Joblop.");
   const rows: Array<[string, string | null]> = [
-    [L("Role", "Poste"), r.title],
-    [L("When", "Quand"), r.whenLabel],
-    [L("Area", "Secteur"), r.areaLabel],
-    [L("Pay", "Rémunération"), r.compensation],
-    [L("Details", "Détails"), r.summary]
+    [L("Role", "Poste", "الوظيفة"), r.title],
+    [L("When", "Quand", "متى"), r.whenLabel],
+    [L("Area", "Secteur", "المنطقة"), r.areaLabel],
+    [L("Pay", "Rémunération", "الأجر"), r.compensation],
+    [L("Details", "Détails", "التفاصيل"), r.summary]
   ];
-  const ctaText = L("View and respond to the offer", "Voir et répondre à l'offre");
+  const ctaText = L("View and respond to the offer", "Voir et répondre à l'offre", "اطّلع على العرض وردّ عليه");
   const closing = L(
     "Please respond before the offer expires.",
-    "Veuillez répondre avant l'expiration de l'offre."
+    "Veuillez répondre avant l'expiration de l'offre.",
+    "يُرجى الرد قبل انتهاء صلاحية العرض."
   );
 
   const textLines = [
@@ -482,7 +483,7 @@ function composeOfferEmail(r: OfferEmailRecipient): { subject: string; html: str
     .filter(([, v]) => v && v.trim().length > 0)
     .map(
       ([k, v]) =>
-        `<tr><td style="padding:6px 12px 6px 0;color:#5c749c;font-size:13px;white-space:nowrap;vertical-align:top">${escapeHtml(
+        `<tr><td style="padding:${rtl ? "6px 0 6px 12px" : "6px 12px 6px 0"};color:#5c749c;font-size:13px;white-space:nowrap;vertical-align:top">${escapeHtml(
           k
         )}</td><td style="padding:6px 0;color:#0f1d33;font-size:14px">${escapeHtml(v as string)}</td></tr>`
     )
@@ -494,8 +495,8 @@ function composeOfferEmail(r: OfferEmailRecipient): { subject: string; html: str
         ctaText
       )}</a></p>`
     : "";
-  const html = `<!doctype html><html><body style="margin:0;background:#f4f7fb;font-family:-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif">
-<div style="max-width:560px;margin:0 auto;padding:24px 16px">
+  const html = `<!doctype html><html${rtl ? ' lang="ar" dir="rtl"' : ""}><body style="margin:0;background:#f4f7fb;font-family:-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif">
+<div style="max-width:560px;margin:0 auto;padding:24px 16px"${rtl ? ' dir="rtl"' : ""}>
   <div style="background:#fff;border:1px solid #e3eaf4;border-radius:14px;padding:22px 22px 10px">
     <p style="font-weight:700;font-size:18px;color:#0f1d33;margin:0 0 14px">Joblop</p>
     <p style="font-size:15px;color:#0f1d33;margin:0 0 6px">${escapeHtml(hello)}</p>

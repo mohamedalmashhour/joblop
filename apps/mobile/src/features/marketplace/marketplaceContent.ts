@@ -19,10 +19,17 @@ export function formatShiftWindow(startIso: string, endIso: string): string {
   return `${day} · ${from}–${to}`;
 }
 
-/** The worker rate is policy-gated on the backend (currently always null) — show an honest placeholder
- *  rather than invent a number. */
-export function formatWorkerRate(workerRateMinor: number | null, currency: string): string {
-  if (workerRateMinor === null) return "Rate shared after you're matched";
+// When a short-term job's hourly pay is not set yet: a clear line (same words as the website), never
+// blank and never $0.
+const PAY_PENDING: Record<Locale, string> = {
+  en: "Hourly pay: confirmed before you're offered the shift",
+  fr: "Salaire horaire : confirmé avant qu'on vous offre le quart",
+  ar: "الأجر بالساعة: يُؤكَّد قبل أن تُعرض عليك المناوبة"
+};
+
+/** The worker's own hourly pay, or a clear line when it is not set yet. */
+export function formatWorkerRate(workerRateMinor: number | null, currency: string, locale: Locale = "en"): string {
+  if (workerRateMinor === null || !Number.isFinite(workerRateMinor) || workerRateMinor <= 0) return PAY_PENDING[locale] ?? PAY_PENDING.en;
   return `${(workerRateMinor / 100).toFixed(2)} ${currency}/h`;
 }
 
@@ -45,7 +52,7 @@ export function formatJobPay(
   job: Readonly<{ workerRateMinor: number | null; currency: string; payOffered?: PayOfferedView | null }>,
   locale: Locale
 ): string {
-  return payOfferedText(job.payOffered, locale) ?? formatWorkerRate(job.workerRateMinor, job.currency);
+  return payOfferedText(job.payOffered, locale) ?? formatWorkerRate(job.workerRateMinor, job.currency, locale);
 }
 
 export function formatDistance(distanceKm: number | null): string {

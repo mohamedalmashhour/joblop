@@ -1,10 +1,11 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { formatWhen, formatRate } from "../../MarketplaceExplorer";
+import { looksLikePostalCode } from "@rwos/shared";
+import { formatWhen } from "../../MarketplaceExplorer";
 import { useLocale, useT, fmtLocale } from "../../i18n/LocaleProvider";
 import type { MessageKey } from "../../i18n/messages";
-import { payOfferedLabel } from "../../payOfferedLabel";
+import { workerPayLabel } from "../../workerPayLabel";
 
 type JobDetailData = Readonly<{
   jobRequestId: string;
@@ -60,7 +61,9 @@ const INELIGIBLE_KEY: Record<string, MessageKey> = {
   job_not_found: "job.inelNotFound"
 };
 
-export function JobDetail({ id, postalCode }: { id: string; postalCode: string | null }) {
+export function JobDetail({ id, place }: { id: string; place: string | null }) {
+  // Only a postal code is sent with an interest (for its audit distance); a city is not.
+  const postalCode = place && looksLikePostalCode(place) ? place : null;
   const t = useT();
   const locale = fmtLocale(useLocale());
   const [status, setStatus] = useState<"loading" | "ready" | "not_found" | "signed_out" | "error">("loading");
@@ -71,7 +74,7 @@ export function JobDetail({ id, postalCode }: { id: string; postalCode: string |
 
   useEffect(() => {
     let active = true;
-    const url = `/api/jobs/${encodeURIComponent(id)}${postalCode ? `?postalCode=${encodeURIComponent(postalCode)}` : ""}`;
+    const url = `/api/jobs/${encodeURIComponent(id)}${place ? `?place=${encodeURIComponent(place)}` : ""}`;
     fetch(url, { cache: "no-store" })
       .then(async (r) => {
         if (!active) return;
@@ -92,7 +95,7 @@ export function JobDetail({ id, postalCode }: { id: string; postalCode: string |
     return () => {
       active = false;
     };
-  }, [id, postalCode]);
+  }, [id, place]);
 
   const expressInterest = useCallback(async () => {
     setInterestBusy(true);
@@ -207,10 +210,9 @@ export function JobDetail({ id, postalCode }: { id: string; postalCode: string |
         ) : null}
         <Fact label={t("job.factWhen")}>{formatWhen(job.startAt, job.endAt, locale)}</Fact>
         <Fact label={t("job.factOpenings")}>{job.openings}</Fact>
-        {job.workerRateMinor !== null ? <Fact label={t("job.factPay")}>{formatRate(job.workerRateMinor, job.currency, locale)}</Fact> : null}
-        {job.payOffered !== undefined ? (
-          <Fact label={t("job.factPay")}>{payOfferedLabel(job.payOffered, locale, { paidByEmployer: t("pay.paidByEmployer"), employerPaysDirectly: t("pay.employerPaysDirectly") })}</Fact>
-        ) : null}
+        <Fact label={t("job.factPay")}>
+          <bdi>{workerPayLabel(job, locale, { paidByEmployer: t("pay.paidByEmployer"), employerPaysDirectly: t("pay.employerPaysDirectly"), pending: t("pay.pending") })}</bdi>
+        </Fact>
       </div>
 
       {job.bonus && job.bonus.amountMinor > 0 ? <BonusBox bonus={job.bonus} currency={job.currency} locale={locale} /> : null}
