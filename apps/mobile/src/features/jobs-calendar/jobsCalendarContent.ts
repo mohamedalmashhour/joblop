@@ -2,6 +2,7 @@
 // pay days by day). UI-free and unit-tested.
 import type { CalendarHubItem, ClaimOpenJobResult, OpenJob, OpenJobBonus } from "../../auth/secureSession";
 import { buildMonthWeeks, isoDay } from "../calendar-month/monthGrid";
+import { certificateKeysFromReasons, missingCertificatesNotice } from "@rwos/shared";
 
 /** The request window covering every cell of the visible month grid (local midnight to midnight). */
 export function gridWindow(year: number, month: number): { from: string; to: string } {
@@ -114,8 +115,16 @@ export function claimMessage(result: ClaimOpenJobResult, locale: "en" | "fr" | "
       return { tone: "warning", key: "jobs.msg.full", reasons: [] };
     case "not_open":
       return { tone: "warning", key: "jobs.msg.notOpen", reasons: [] };
-    case "ineligible":
+    case "ineligible": {
+      // A required certificate the worker lacks: say which one and where to add it (EN / FR / AR).
+      const certificates = certificateKeysFromReasons(result.reasons);
+      const notice = missingCertificatesNotice(certificates, locale);
+      if (notice) {
+        const others = result.reasons.filter((r) => !r.startsWith("missing_certificate:")).map(humanizeReason);
+        return { tone: "warning", key: "jobs.msg.ineligible", reasons: others, text: notice };
+      }
       return { tone: "warning", key: "jobs.msg.ineligible", reasons: result.reasons.map(humanizeReason) };
+    }
     case "denied":
       return { tone: "danger", key: "jobs.msg.denied", reasons: [] };
     case "offline":

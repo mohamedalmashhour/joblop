@@ -8058,6 +8058,44 @@ export function buildApi(options: BuildApiOptions = {}) {
     return defaultOfferCompensationLine(job, language);
   };
 
+  // Staff pre-check before offering a job to a worker or assigning them: which required certificates
+  // the worker misses (verified, unexpired documents only) and whether an override is already on the
+  // offer. The screen shows the list and the override box from this. Platform administrators only.
+  app.get("/platform/dispatches/:dispatchReviewId/certificate-check", async (request, reply) => {
+    const session = await authService.validateSession(readBearerToken(request.headers.authorization));
+    if (!session.authenticated || !session.user) return sendWorkerOfferDenied(reply);
+    const roles = await resolveAuthorizationRoles(session.user.id);
+    if (!roles.includes("PLATFORM_ADMINISTRATOR") || !prisma) return sendWorkerOfferDenied(reply);
+    const dispatchReviewId = readRouteParam(request.params, "dispatchReviewId");
+    const query = asRecord(request.query);
+    const workerOfferId = readOptionalString(query, "workerOfferId");
+    let workerIdentityId = readOptionalString(query, "workerIdentityId");
+    let overridden = false;
+    if (!isCanonicalUuid(dispatchReviewId)) return reply.code(404).send({ error: "RWOS_NOT_FOUND", message: "Not found." });
+    if (workerOfferId) {
+      if (!isCanonicalUuid(workerOfferId)) return reply.code(404).send({ error: "RWOS_NOT_FOUND", message: "Not found." });
+      const offer = await prisma.workerOffer.findFirst({
+        where: { id: workerOfferId, dispatchReviewId },
+        select: { workerIdentityId: true, certificateOverrideAt: true }
+      });
+      if (!offer) return reply.code(404).send({ error: "RWOS_NOT_FOUND", message: "Not found." });
+      workerIdentityId = offer.workerIdentityId;
+      overridden = offer.certificateOverrideAt !== null;
+    }
+    if (!workerIdentityId || !isCanonicalUuid(workerIdentityId)) return reply.code(400).send({ error: "RWOS_INVALID", message: "A worker or an offer is required." });
+    const dispatch = await prisma.dispatchReview.findUnique({
+      where: { id: dispatchReviewId },
+      select: { jobRequest: { select: { startAt: true, requiredCertificates: true, requiredCertificateOther: true } } }
+    });
+    if (!dispatch) return reply.code(404).send({ error: "RWOS_NOT_FOUND", message: "Not found." });
+    const gap = await certificateGapForJob(prisma, { workerIdentityId, job: dispatch.jobRequest });
+    return reply.code(200).header("cache-control", "no-store").send({
+      required: gap.required,
+      missing: gap.missing,
+      overridden
+    });
+  });
+
   app.post("/platform/worker-offers", async (request, reply) => {
     const session = await authService.validateSession(
       readBearerToken(request.headers.authorization)

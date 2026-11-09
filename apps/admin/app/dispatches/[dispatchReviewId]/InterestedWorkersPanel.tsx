@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useLocale } from "../../i18n/LocaleProvider";
 import { readShiftOverlapNotice } from "../shiftOverlapNotice";
+import { CertificateOverrideBox, certificateOverrideBody, type CertificateOverride } from "../CertificateOverrideBox";
 
 // Marketplace INTEREST review, inside the existing governed dispatch review. This panel is a
 // review signal + governed handoff only:
@@ -54,6 +55,17 @@ export function InterestedWorkersPanel({
   const locale = useLocale();
   const [state, setState] = useState<State>({ status: "loading" });
   const [busyId, setBusyId] = useState<string | null>(null);
+  // Required-certificate pre-check per worker (override is logged by the API).
+  const [certificateOverrides, setCertificateOverrides] = useState<Record<string, CertificateOverride>>({});
+  const overrideHandlers = useRef(new Map<string, (value: CertificateOverride) => void>());
+  const overrideHandler = (workerIdentityId: string) => {
+    let handler = overrideHandlers.current.get(workerIdentityId);
+    if (!handler) {
+      handler = (value: CertificateOverride) => setCertificateOverrides((current) => ({ ...current, [workerIdentityId]: value }));
+      overrideHandlers.current.set(workerIdentityId, handler);
+    }
+    return handler;
+  };
   const [notice, setNotice] = useState<{ tone: "status" | "alert"; message: string } | undefined>();
   const generation = useRef(0);
 
@@ -135,7 +147,7 @@ export function InterestedWorkersPanel({
         const res = await fetch(`/api/dispatches/${encodeURIComponent(dispatchReviewId)}/offers`, {
           method: "POST",
           headers: { "content-type": "application/json" },
-          body: JSON.stringify({ workerIdentityId: worker.workerIdentityId, expiresAt })
+          body: JSON.stringify({ workerIdentityId: worker.workerIdentityId, expiresAt, ...certificateOverrideBody(certificateOverrides[worker.workerIdentityId] ?? null) })
         });
         if (!res.ok) {
           // The worker already holds a shift at that time; the API's message names it.
@@ -158,7 +170,7 @@ export function InterestedWorkersPanel({
         setBusyId(null);
       }
     },
-    [busyId, dispatchReviewId, load, locale]
+    [busyId, dispatchReviewId, load, locale, certificateOverrides]
   );
 
   if (state.status !== "ready") {
@@ -237,8 +249,16 @@ export function InterestedWorkersPanel({
                       Not selected
                     </button>
                   ) : null}
+                  {canCreateOffer && w.workerIdentityId ? (
+                    <CertificateOverrideBox dispatchReviewId={dispatchReviewId} workerIdentityId={w.workerIdentityId} onChange={overrideHandler(w.workerIdentityId)} />
+                  ) : null}
                   {canCreateOffer ? (
-                    <button type="button" style={styles.button} disabled={busyId === w.interestId} onClick={() => void createOffer(w)}>
+                    <button
+                      type="button"
+                      style={styles.button}
+                      disabled={busyId === w.interestId || Boolean(w.workerIdentityId && certificateOverrides[w.workerIdentityId]?.needed && !certificateOverrides[w.workerIdentityId]?.override)}
+                      onClick={() => void createOffer(w)}
+                    >
                       Create offer
                     </button>
                   ) : null}
