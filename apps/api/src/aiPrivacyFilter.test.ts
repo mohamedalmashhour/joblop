@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { isPersonalDataKey, luhnValid, maskForAi, maskPersonalData, maskTextOrJson, reportMasked, type MaskKind } from "./aiPrivacyFilter";
+import { containsHealthDetail, isPersonalDataKey, luhnValid, maskForAi, maskPersonalData, maskTextOrJson, reportMasked, type MaskKind } from "./aiPrivacyFilter";
 
 const mask = (text: string) => maskPersonalData(text).text;
 
@@ -199,6 +199,8 @@ describe("maskForAi: deep walk", () => {
   it.each([
     ["email", true], ["workEmail", true], ["phone_number", true], ["addressLine1", true], ["postal_code", true],
     ["SIN", true], ["nas", true], ["dob", true], ["refreshToken", true], ["surname", true],
+    ["healthNotes", true], ["medicalCondition", true], ["diagnosis", true], ["disability", true], ["pregnancy", true],
+    ["medications", true], ["ramqNumber", true], ["passportNumber", true], ["driversLicenceNumber", true],
     ["status", false], ["business", false], ["title", false], ["firstName", false], ["displayName", false], ["topic", false]
   ])("isPersonalDataKey(%s) = %s", (key, expected) => {
     expect(isPersonalDataKey(key)).toBe(expected);
@@ -221,5 +223,73 @@ describe("reportMasked", () => {
     expect(info).toHaveBeenCalledWith("ai.privacy_filter", { feature: "contact_chat", maskedTotal: 2, maskedKinds: "email:1,phone:1", droppedKeys: 3 });
     expect(JSON.stringify(info.mock.calls)).not.toContain("sam@x.ca");
     expect(JSON.stringify(info.mock.calls)).not.toContain("555");
+  });
+});
+
+describe("maskPersonalData: health (launch step 6)", () => {
+  it.each([
+    // English
+    ["Hi. I have diabetes and epilepsy. Can I work Friday?", "Hi. [health detail]. Can I work Friday?"],
+    ["My doctor's note says I need rest! See you Monday.", "[health detail]! See you Monday."],
+    ["I am pregnant, so no heavy lifting", "[health detail]"],
+    ["I take medication for anxiety\nShift is fine.", "[health detail]\nShift is fine."],
+    ["I was sick yesterday; I am back today", "[health detail]; I am back today"],
+    ["He has a disability and uses a wheelchair.", "[health detail]."],
+    ["Off work after surgery. Back on the 12th.", "[health detail]. Back on the 12th."],
+    // French
+    ["Je suis enceinte de 5 mois. Est-ce que je peux travailler?", "[health detail]. Est-ce que je peux travailler?"],
+    ["J'ai un billet médical pour lundi; je reviens mardi.", "[health detail]; je reviens mardi."],
+    ["Je suis en arrêt maladie.", "[health detail]."],
+    ["Mon médecin dit que j'ai une entorse.", "[health detail]."],
+    ["Je prends des médicaments pour la dépression.", "[health detail]."],
+    // Arabic
+    ["أنا حامل ولا أستطيع العمل. هل يمكنني تغيير الوردية؟", "[health detail]. هل يمكنني تغيير الوردية؟"],
+    ["عندي شهادة طبية لهذا الأسبوع.", "[health detail]."],
+    ["أعاني من مرض السكري", "[health detail]"]
+  ])("%s", (input, expected) => {
+    const r = maskPersonalData(input);
+    expect(r.text).toBe(expected);
+    expect(r.masked.health).toBeGreaterThan(0);
+    expect(containsHealthDetail(r.text)).toBe(false);
+  });
+
+  it.each([
+    "Skills: Medication reminders, Personal care, RCR / First aid, Dementia care",
+    "Administered medications to 20 residents.",
+    "Distribution des médicaments aux résidents",
+    "Health and safety training, santé et sécurité au travail",
+    "Healthcare / PSW, Vital signs, Infection control",
+    "I'll be there at 9 for the Cook shift",
+    "Infirmier auxiliaire (OIIAQ), PAB",
+    "مساعد ممرض في دار رعاية"
+  ])("keeps work skills and ordinary text: %s", (input) => {
+    const r = maskPersonalData(input);
+    expect(r.text).toBe(input);
+    expect(r.masked.health).toBe(0);
+  });
+
+  it("masks health-card, passport and licence numbers", () => {
+    expect(mask("my RAMQ card is BOUJ 8001 0112 thanks")).toBe("my RAMQ card is [health card] thanks");
+    expect(mask("carte soleil trem90010112")).toBe("carte soleil [health card]");
+    expect(mask("passport AB123456")).toBe("passport [ID number]");
+    expect(mask("Numéro de passeport : GA654321")).toBe("Numéro de passeport : [ID number]");
+    expect(mask("driver's licence: T1234-567890-12")).toBe("driver's licence: [ID number]");
+    expect(mask("permis T1234 567890 12")).toBe("permis [ID number]");
+    expect(mask("permis de conduire classe 5")).toBe("permis de conduire classe 5");
+    expect(mask("Class 5 licence, Safe driving record")).toBe("Class 5 licence, Safe driving record");
+  });
+
+  it("masks a French street named with no street word when a direction or unit follows", () => {
+    expect(mask("J'habite au 4500 de Maisonneuve Ouest apt 12, Montréal")).toBe("J'habite au [address], Montréal");
+    expect(mask("1200 de Bleury, bureau 300")).toBe("[address]");
+    expect(mask("J'ai 2 de Laval qui viennent")).toBe("J'ai 2 de Laval qui viennent");
+  });
+
+  it("is idempotent and drops health keys in a deep walk", () => {
+    const once = mask("I am pregnant. Call 514-555-1234. RAMQ BOUJ 8001 0112");
+    expect(maskPersonalData(once).text).toBe(once);
+    const r = maskForAi<Record<string, unknown>>({ title: "Cook", medicalNotes: "asthma", note: "My asthma is bad today." });
+    expect(r.value).toEqual({ title: "Cook", note: "[health detail]." });
+    expect(r.droppedKeys).toBe(1);
   });
 });

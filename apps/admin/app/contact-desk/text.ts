@@ -58,6 +58,7 @@ const en: ContactDeskCopy = {
   status: { ai: "With AI", needs_admin: "Needs a person", admin_replied: "Replied, waiting", solved: "Solved" },
   reason: {
     safety: "Safety",
+    health: "Private health details (kept from the AI)",
     dispute: "Dispute",
     account: "Account or privacy",
     person_requested: "Asked for a person",
@@ -117,6 +118,7 @@ const fr: ContactDeskCopy = {
   },
   reason: {
     safety: "Sécurité",
+    health: "Renseignements de santé privés (cachés à l’IA)",
     dispute: "Litige",
     account: "Compte ou confidentialité",
     person_requested: "A demandé une personne",
@@ -177,6 +179,7 @@ const ar: ContactDeskCopy = {
   },
   reason: {
     safety: "السلامة",
+    health: "معلومات صحية خاصة (محجوبة عن الذكاء الاصطناعي)",
     dispute: "نزاع",
     account: "الحساب أو الخصوصية",
     person_requested: "طلب التحدث إلى شخص",
