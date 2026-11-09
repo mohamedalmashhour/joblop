@@ -9,6 +9,7 @@ import {
 } from "../../auth/secureSession";
 import { Badge, BodyText, Button, Card, EmptyState, Heading, LoadingState, ScreenContainer, SmallText } from "../../ui/primitives";
 import { useLocale } from "../../i18n/LocaleContext";
+import { LegalLinks } from "../legal";
 import {
   CONTACT_REFRESH_MS,
   EMPTY_DRAFT,
@@ -177,6 +178,12 @@ function ContactList({
                 </Pressable>
               ))
             : null}
+
+          <Card testID="contact-legal">
+            <Heading>{t("legal.title")}</Heading>
+            <SmallText>{t("legal.intro")}</SmallText>
+            <LegalLinks />
+          </Card>
         </View>
       </ScrollView>
     </ScreenContainer>

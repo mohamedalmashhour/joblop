@@ -121,6 +121,17 @@ describe("authentication service foundation", () => {
     expect(repository.auditActions()).toContain("auth.registration");
   });
 
+  it("records the Terms/Privacy version the person accepted at sign-up", async () => {
+    const repository = new MemoryAuthenticationRepository();
+    const service = createTestAuthenticationService(repository);
+    await service.register({
+      email: "legal@example.com",
+      password: "ValidPassword123",
+      acceptedLegalVersion: "2026-11-09"
+    });
+    expect(repository.auditReasons()).toContain("legal_accepted:2026-11-09");
+  });
+
   it("blocks duplicate registration without exposing account details", async () => {
     const repository = new MemoryAuthenticationRepository();
     const service = createTestAuthenticationService(repository);
@@ -263,6 +274,10 @@ class MemoryAuthenticationRepository implements AuthenticationRepository {
 
   auditActions() {
     return this.auditEvents.map((event) => event.action);
+  }
+
+  auditReasons() {
+    return this.auditEvents.map((event) => event.reason);
   }
 
   setUserStatus(userId: string, status: StoredAuthenticationUser["status"]) {

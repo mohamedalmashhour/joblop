@@ -7,6 +7,7 @@ import {
   trustLayer,
   workerJourney
 } from "./howItWorksContent";
+import { PublicSiteFooter } from "../pricing/publicPageStyles";
 
 type ResponsibilityGroup = (typeof lifecyclePhases)[number]["responsibilities"];
 const responsibilityOwners = ["Employer", "Worker", "Platform"] as const;
@@ -149,24 +150,7 @@ export default function HowItWorksPage() {
         </div>
       </section>
 
-      <footer style={styles.footer}>
-        <span>Joblop</span>
-        <nav aria-label="Footer navigation" style={styles.footerLinks}>
-          <a href="/" style={styles.footerLink}>
-            Home
-          </a>
-          <a href="/about" style={styles.footerLink}>
-            About
-          </a>
-          <a href="/how-it-works" style={styles.footerLink}>
-            How it works
-          </a>
-          <a href="/contact" style={styles.footerLink}>
-            Privacy
-          </a>
-        </nav>
-        <span style={styles.footerNote}>Language and region selector reserved for localization.</span>
-      </footer>
+      <PublicSiteFooter />
     </main>
   );
 }

@@ -10,6 +10,7 @@ import {
   generalReasons,
   immediateActions
 } from "./contactContent";
+import { PublicSiteFooter } from "../pricing/publicPageStyles";
 
 export default function ContactPage() {
   return (
@@ -247,24 +248,7 @@ export default function ContactPage() {
         </div>
       </section>
 
-      <footer style={styles.footer}>
-        <span>Joblop</span>
-        <nav aria-label="Footer navigation" style={styles.footerLinks}>
-          <a href="/" style={styles.footerLink}>
-            Home
-          </a>
-          <a href="/about" style={styles.footerLink}>
-            About
-          </a>
-          <a href="/pricing" style={styles.footerLink}>
-            Pricing
-          </a>
-          <a href="/contact" style={styles.footerLink}>
-            Contact
-          </a>
-        </nav>
-        <span style={styles.footerNote}>No fabricated phone numbers, emails, hours, or response promises.</span>
-      </footer>
+      <PublicSiteFooter />
     </main>
   );
 }
