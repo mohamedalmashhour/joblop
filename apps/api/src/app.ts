@@ -240,9 +240,11 @@ import { createAdzunaClient } from "./jobScannerClient";
 import { upsertLeads, queryStoredLeads } from "./jobScannerRepository";
 import { startJobScannerSchedule, type ScanQuery } from "./jobScannerScheduler";
 import { type WorkerCvProfile, type TargetJob } from "./cvBuilder";
-import { getCvProvider } from "./cvBuilderClaude";
-import { reviewDocumentAdvisory, isReviewableImageType } from "./documentAiReview";
-import { offlineAdvisoryVerdict, presentableVerdict, readAcceptedLegalVersion, workerProfileRating } from "@rwos/shared";
+import { generateCvSafely, getClaudeCvProvider } from "./cvBuilderClaude";
+import { outsideAiCallsEnabled } from "./outsideAi";
+import { AI_USAGE_FEATURES, createPrismaAiUsageStore, CV_STAFF_LIMITS, CV_WORKER_LIMITS } from "./outsideAiUsage";
+import { reviewDocumentAdvisory } from "./documentAiReview";
+import { presentableVerdict, readAcceptedLegalVersion, workerProfileRating } from "@rwos/shared";
 import { longTermJobRequestInput } from "./longTermJobRequestInput";
 import {
   applyBlockingCertificates,
@@ -281,7 +283,6 @@ import {
   GoogleOAuthError
 } from "./googleOAuth";
 import { pushAssignmentToCalendar } from "./googleCalendarSync";
-import { createSyntheticCvProvider } from "./cvBuilder";
 import {
   activeMembershipRoleQuery,
   activePlatformGrantQuery,
@@ -912,7 +913,7 @@ export function buildApi(options: BuildApiOptions = {}) {
   const syntheticPayrollReviewProvider = options.payrollReviewProvider ?? createSyntheticPayrollReviewProvider();
   // HR-6.1 Chunk 3 capability gate: external egress is impossible unless BOTH the non-production
   // config flag is enabled AND an external provider is injected. Default → synthetic (offline).
-  const payrollReviewEgressMode = resolveEgressMode({ externalEnabled: runtimeConfig.payrollAiExternalEnabled, externalProvider: options.payrollExternalReviewProvider });
+  const payrollReviewEgressMode = resolveEgressMode({ externalEnabled: runtimeConfig.payrollAiExternalEnabled && outsideAiCallsEnabled(environment), externalProvider: options.payrollExternalReviewProvider });
   const payrollReviewProvider =
     payrollReviewEgressMode === "external"
       ? createEgressGatedProvider(
@@ -5856,10 +5857,10 @@ export function buildApi(options: BuildApiOptions = {}) {
     }
   });
 
-  // Worker: advisory AI pre-check of their OWN uploaded document. ADVISORY ONLY — never a legal
-  // verification; a platform HR admin still accepts/rejects. Sensitive types (identity/SIN/licence/…)
-  // are never sent to the model (the domain layer forces them to "human_required"). Non-sensitive
-  // image documents are read by Claude vision when ANTHROPIC_API_KEY is set, else an offline advisory.
+  // Worker: advisory pre-check of their OWN uploaded document. ADVISORY ONLY — never a legal
+  // verification; a platform HR admin still accepts/rejects. Launch step 6: no document, photo or scan
+  // is ever sent to an outside AI. The check uses our own record (type, expiry) and never opens the
+  // file; anything not expired goes to a person.
   app.post("/hr/documents/:documentId/ai-review", async (request, reply) => {
     const userId = await requireWorkerSession(request, reply);
     if (!userId) return;
@@ -5867,33 +5868,7 @@ export function buildApi(options: BuildApiOptions = {}) {
       const documentId = (request.params as { documentId?: string }).documentId ?? "";
       const resolved = await hrDocumentService.resolveMyDocumentForReview({ userId, documentId });
       if (!resolved) return reply.code(404).send({ error: "RWOS_HR_DOC_NOT_FOUND", message: "Document not found." });
-
-      // Only fetch bytes when the type is AI-reviewable and not expired (offline fn decides otherwise),
-      // and only up to a safe size. A failed/oversized fetch degrades to the offline advisory verdict.
-      let image: { base64: string; mediaType: string } | null = null;
-      const preliminary = offlineAdvisoryVerdict(resolved.documentType, { expired: resolved.expired });
-      if (preliminary.status === "ai_approved" && resolved.storageReference && process.env.ANTHROPIC_API_KEY?.trim()) {
-        try {
-          let bytes: Uint8Array | null = null;
-          let mediaType = "";
-          if (hrDocLocalStorage) {
-            // Local storage hands out a browser-relative link, so read the stored file directly.
-            bytes = await hrDocLocalStorage.store.get(hrDocLocalStorage.objectKey(resolved.storageReference));
-            mediaType = (await hrDocLocalStorage.describe?.({ storageReference: resolved.storageReference }))?.contentType ?? "";
-          } else if (resolved.downloadUrl) {
-            const dl = await fetch(resolved.downloadUrl);
-            mediaType = dl.headers.get("content-type")?.split(";")[0]?.trim() ?? "";
-            if (dl.ok) bytes = new Uint8Array(await dl.arrayBuffer());
-          }
-          if (bytes && isReviewableImageType(mediaType) && bytes.byteLength > 0 && bytes.byteLength <= 5_000_000) {
-            image = { base64: Buffer.from(bytes).toString("base64"), mediaType };
-          }
-        } catch {
-          image = null; // provider unreachable (e.g. local fixture) -> offline advisory
-        }
-      }
-
-      const verdict = await reviewDocumentAdvisory({ documentType: resolved.documentType, expired: resolved.expired, image });
+      const verdict = reviewDocumentAdvisory({ documentType: resolved.documentType, expired: resolved.expired });
       return reply.code(200).send({ verdict: presentableVerdict(verdict) });
     } catch (error) {
       return sendHrDocError(reply, error);
@@ -5950,10 +5925,9 @@ export function buildApi(options: BuildApiOptions = {}) {
     return reply.code(200).send(url);
   });
 
-  // AI Control Center — Documents: admin-scoped advisory AI review of ANY worker's document, to help
-  // the reviewer decide. ADVISORY only (the admin still accepts/rejects). Sensitive types are never
-  // sent to the model (the domain forces "human_required"); non-sensitive images use Claude vision when
-  // configured, else an offline advisory. Reuses the same engine as the worker-facing review.
+  // AI Control Center — Documents: admin-scoped advisory review of ANY worker's document. ADVISORY
+  // only (the admin still accepts/rejects). Launch step 6: no file is ever sent to an outside AI; the
+  // verdict comes from our own record (type, expiry), so the reviewer opens the file themselves.
   app.post("/platform/hr/documents/:documentId/ai-review", async (request, reply) => {
     const actor = await requireHrAuthority(request, reply);
     if (!actor) return;
@@ -5961,24 +5935,7 @@ export function buildApi(options: BuildApiOptions = {}) {
     if (!isCanonicalUuid(documentId)) return reply.code(404).send({ error: "RWOS_HR_DOC_NOT_FOUND", message: "That document was not found." });
     const doc = await hrDocumentService.getDocument(documentId);
     if (!doc) return reply.code(404).send({ error: "RWOS_HR_DOC_NOT_FOUND", message: "That document was not found." });
-    const expired = doc.effectiveStatus === "expired";
-    let image: { base64: string; mediaType: string } | null = null;
-    if (offlineAdvisoryVerdict(doc.documentType, { expired }).status === "ai_approved" && process.env.ANTHROPIC_API_KEY?.trim()) {
-      const dl = await hrDocumentService.resolveDownloadUrl(documentId);
-      if (dl?.url) {
-        try {
-          const res = await fetch(dl.url);
-          const mediaType = res.headers.get("content-type")?.split(";")[0]?.trim() ?? "";
-          if (res.ok && isReviewableImageType(mediaType)) {
-            const buf = Buffer.from(await res.arrayBuffer());
-            if (buf.byteLength > 0 && buf.byteLength <= 5_000_000) image = { base64: buf.toString("base64"), mediaType };
-          }
-        } catch {
-          image = null;
-        }
-      }
-    }
-    const verdict = await reviewDocumentAdvisory({ documentType: doc.documentType, expired, image });
+    const verdict = reviewDocumentAdvisory({ documentType: doc.documentType, expired: doc.effectiveStatus === "expired" });
     return reply.code(200).send({ verdict: presentableVerdict(verdict) });
   });
 
@@ -9413,16 +9370,18 @@ export function buildApi(options: BuildApiOptions = {}) {
       const title = readOptionalString(j, "title");
       if (title) job = { title, employer: readOptionalString(j, "employer"), description: readOptionalString(j, "description"), city: readOptionalString(j, "city") };
     }
-    const provider = getCvProvider();
-    let result;
-    try {
-      result = await provider.generate({ profile, job });
-    } catch (err) {
-      return reply.code(502).send({ error: "RWOS_CV_PROVIDER_ERROR", message: (err as Error).message, provider: provider.kind });
-    }
+    // Launch step 6: one AI attempt with a hard timeout, 50 a day per staff member, and the basic
+    // offline CV with a friendly note on any failure or limit. Never a 502 or an internal error code.
+    const result = await generateCvSafely({
+      profile,
+      job,
+      ai: getClaudeCvProvider(),
+      usage: { store: createPrismaAiUsageStore(prisma!), feature: AI_USAGE_FEATURES.cvStaff, actorRef: actor, limits: CV_STAFF_LIMITS }
+    });
     return reply.code(200).send({
-      cv: result,
-      providerKind: provider.kind,
+      cv: result.cv,
+      providerKind: result.providerKind,
+      fallback: result.fallback,
       note: "Advisory draft — the worker reviews and edits before use. Nothing is sent. Apply is a separate, worker-confirmed step."
     });
   });
@@ -10432,44 +10391,50 @@ export function buildApi(options: BuildApiOptions = {}) {
     // Worker Pro gating: Pro workers get the AI-written CV (Claude when keyed); free workers get the
     // basic synthetic draft. Enforced server-side — the free path never reaches the paid provider.
     const pro = await isPro(prisma!, session.user.id);
-    const provider = pro ? getCvProvider() : createSyntheticCvProvider();
+    // Launch step 6: Pro workers get one AI attempt (20 s timeout, no retry, 10 a day). Any failure,
+    // limit or the kill switch gives the basic offline CV with a friendly note, never an error.
+    const generated = pro
+      ? await generateCvSafely({
+          profile,
+          job,
+          ai: getClaudeCvProvider(),
+          usage: { store: createPrismaAiUsageStore(prisma!), feature: AI_USAGE_FEATURES.cvWorker, actorRef: session.user.id, limits: CV_WORKER_LIMITS }
+        })
+      : await generateCvSafely({ profile, job, ai: null, env: {} });
+    const result = generated.cv;
+    // R2-15: persist the built CV to Joblop's DB (one current CV per worker). Best-effort — a storage
+    // hiccup must never fail the generate the worker is waiting on; we log and still return the CV.
+    let saved = false;
     try {
-      const result = await provider.generate({ profile, job });
-      // R2-15: persist the built CV to Joblop's DB (one current CV per worker). Best-effort — a storage
-      // hiccup must never fail the generate the worker is waiting on; we log and still return the CV.
-      let saved = false;
-      try {
-        const data = {
-          headline: result.headline,
-          cvMarkdown: result.cvMarkdown,
-          coverLetterMarkdown: result.coverLetterMarkdown,
-          tailoredTo: result.tailoredTo,
-          language: profile.language ?? "en",
-          profileJson: profile as unknown as Prisma.InputJsonValue,
-          providerKind: provider.kind
-        };
-        await prisma!.workerCv.upsert({
-          where: { workerRef: session.user.id },
-          create: { workerRef: session.user.id, ...data },
-          update: data
-        });
-        saved = true;
-      } catch (persistErr) {
-        app.log.error({ err: persistErr, userId: session.user.id }, "worker CV persist failed");
-      }
-      return reply.code(200).send({
-        cv: result,
-        providerKind: provider.kind,
-        pro,
-        saved,
-        upgradeAvailable: !pro,
-        note: pro
-          ? "Advisory draft — review and edit before applying. Nothing is sent."
-          : "Free basic draft. Upgrade to Worker Pro for an AI-written CV, premium designs, and best-jobs-first."
+      const data = {
+        headline: result.headline,
+        cvMarkdown: result.cvMarkdown,
+        coverLetterMarkdown: result.coverLetterMarkdown,
+        tailoredTo: result.tailoredTo,
+        language: profile.language ?? "en",
+        profileJson: profile as unknown as Prisma.InputJsonValue,
+        providerKind: generated.providerKind
+      };
+      await prisma!.workerCv.upsert({
+        where: { workerRef: session.user.id },
+        create: { workerRef: session.user.id, ...data },
+        update: data
       });
-    } catch (err) {
-      return reply.code(502).send({ error: "RWOS_CV_PROVIDER_ERROR", message: (err as Error).message, provider: provider.kind });
+      saved = true;
+    } catch (persistErr) {
+      app.log.error({ err: persistErr, userId: session.user.id }, "worker CV persist failed");
     }
+    return reply.code(200).send({
+      cv: result,
+      providerKind: generated.providerKind,
+      fallback: generated.fallback,
+      pro,
+      saved,
+      upgradeAvailable: !pro,
+      note: pro
+        ? "Advisory draft — review and edit before applying. Nothing is sent."
+        : "Free basic draft. Upgrade to Worker Pro for an AI-written CV, premium designs, and best-jobs-first."
+    });
   });
 
   // Worker Pro plan status for the signed-in worker.

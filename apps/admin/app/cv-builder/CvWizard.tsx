@@ -1,6 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
+import { useLocale } from "../i18n/LocaleProvider";
 
 // Guided CV wizard: short chip-answer questions -> a worker profile -> AI CV (synthetic now, Claude when
 // keyed) -> rendered in a chosen design. Built for low-friction use by service/trade workers.
@@ -67,6 +68,7 @@ function Chips({ options, value, onToggle, multi }: { options: string[]; value: 
 }
 
 export function CvWizard() {
+  const locale = useLocale();
   const [cat, setCat] = useState("kitchen");
   const [name, setName] = useState("");
   const [city, setCity] = useState("Laval");
@@ -144,9 +146,11 @@ export function CvWizard() {
         body: JSON.stringify({ profile, job: { title: category.label } })
       });
       if (!res.ok) { setMsg("CV generation failed."); return; }
-      const d = (await res.json()) as { cv: GeneratedCv; providerKind?: string };
+      const d = (await res.json()) as { cv: GeneratedCv; providerKind?: string; fallback?: { message: { en: string; fr: string; ar: string } } | null };
       setCv(d.cv); setProvider(d.providerKind ?? "");
-      setMsg(`CV ready${d.providerKind?.startsWith("claude") ? " (AI-written)" : " (draft)"}.`);
+      // Launch step 6: the AI writer failed, hit the daily limit or is turned off; this is the basic CV.
+      const note = d.fallback?.message ? d.fallback.message[locale.startsWith("fr") ? "fr" : locale.startsWith("ar") ? "ar" : "en"] : "";
+      setMsg(note || `CV ready${d.providerKind?.startsWith("claude") ? " (AI-written)" : " (draft)"}.`);
     } finally { setBusy(false); }
   };
 
@@ -228,7 +232,7 @@ export function CvWizard() {
           <hr style={{ margin: "20px 0", border: "none", borderTop: "1px solid currentColor", opacity: 0.2 }} />
           <h3 style={{ marginTop: 0 }}>Cover letter</h3>
           <div className="cv-rendered" dangerouslySetInnerHTML={{ __html: mdToHtml(cv.coverLetterMarkdown || "—") }} />
-          <p style={styles.prov}>{provider.startsWith("claude") ? `AI-written by ${provider}` : "Draft (synthetic — add ANTHROPIC_API_KEY for AI-written CVs)"}. Advisory — review and edit before applying.</p>
+          <p style={styles.prov}>{provider.startsWith("claude") ? `AI-written by ${provider}` : "Basic draft (written offline, no AI)"}. Advisory — review and edit before applying.</p>
         </article>
       ) : null}
     </section>

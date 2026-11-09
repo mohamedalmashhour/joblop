@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { ProUpgrade } from "./ProUpgrade";
 import { toJsonResume, type CvProfile } from "./jsonResume";
+import { useLocale } from "../i18n/LocaleProvider";
 
 // Worker-facing guided CV builder. Same flow as the admin demo, but on worker endpoints: the signed-in
 // worker builds their own CV, and CV attachments are keyed to their session server-side (no workerRef
@@ -27,6 +28,9 @@ const AVAILABILITY = ["Full-time", "Part-time", "Weekends", "Evenings / nights",
 const DESIGNS = [{ key: "service", label: "Service / Trades" }, { key: "healthcare", label: "Healthcare" }, { key: "professional", label: "Professional" }];
 
 type GeneratedCv = { headline: string; cvMarkdown: string; coverLetterMarkdown: string; tailoredTo: string | null };
+// When the AI writer is unavailable, busy, over today's limit or turned off, the API sends the basic CV
+// with this note in English, French and Arabic (launch step 6).
+type CvFallback = { reason: string; message: { en: string; fr: string; ar: string } };
 type CvAsset = { id: string; kind: "certificate" | "photo"; label: string | null; filename: string; contentType: string; size: number };
 
 function mdToHtml(md: string): string {
@@ -60,6 +64,7 @@ function Chips({ options, value, onToggle, multi }: { options: string[]; value: 
 }
 
 export function CvBuilder() {
+  const locale = useLocale();
   const [cat, setCat] = useState("kitchen");
   const [name, setName] = useState("");
   const [city, setCity] = useState("Laval");
@@ -151,9 +156,10 @@ export function CvBuilder() {
     try {
       const res = await fetch("/api/cv", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ profile, job: { title: category.label } }) });
       if (!res.ok) { setMsg("CV generation failed."); return; }
-      const d = (await res.json()) as { cv: GeneratedCv; providerKind?: string; pro?: boolean; saved?: boolean };
+      const d = (await res.json()) as { cv: GeneratedCv; providerKind?: string; pro?: boolean; saved?: boolean; fallback?: CvFallback | null };
       setCv(d.cv); setProvider(d.providerKind ?? ""); setCvPro(Boolean(d.pro));
-      setMsg(`CV ready${d.providerKind?.startsWith("claude") ? " (AI-written)" : ""}${d.saved ? " — saved to your account" : ""}.`);
+      const note = d.fallback?.message ? d.fallback.message[locale.startsWith("fr") ? "fr" : locale.startsWith("ar") ? "ar" : "en"] : "";
+      setMsg(note || `CV ready${d.providerKind?.startsWith("claude") ? " (AI-written)" : ""}${d.saved ? " — saved to your account" : ""}.`);
     } finally { setBusy(false); }
   };
 

@@ -1,9 +1,10 @@
 // Every outside-AI call site: the outgoing request body must hold no email, phone, postal code, SIN,
 // card, bank or street address from the inputs, while the useful content (role, dates, pay wording) stays.
 import type { PrismaClient } from "@rwos/database";
-import { describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import { createClaudeCvProvider } from "./cvBuilderClaude";
-import { reviewDocumentImageWithClaude } from "./documentAiReview";
+import { reviewDocumentAdvisory } from "./documentAiReview";
+import { resetOutsideAiCircuits } from "./outsideAi";
 import { createClaudeContactAi, createContactService, type ContactStore, type ConversationRow, type MessageRow } from "./instantContact";
 import { createPrismaContactStore } from "./instantContactRoutes";
 
@@ -23,6 +24,14 @@ const PERSONAL = [
   "Tremblay",
   "1990-05-12"
 ];
+
+beforeEach(() => resetOutsideAiCircuits());
+
+const HEALTH = ["diabetes", "pregnant", "enceinte", "billet médical", "حامل", "BOUJ 8001 0112", "insulin"];
+
+function expectNoHealth(body: string) {
+  for (const value of HEALTH) expect(body, `leaked ${value}`).not.toContain(value);
+}
 
 function expectClean(body: string) {
   for (const value of PERSONAL) expect(body, `leaked ${value}`).not.toContain(value);
@@ -135,7 +144,7 @@ describe("CV builder call", () => {
 
   it("sends no name or contact details, then adds them back locally", async () => {
     const modelText = "## Profil\nCuisinier de ligne.\n[phone] · [email]\n\n## Expérience\n**Line cook** — Resto Laval\n===COVER LETTER===\nMadame, Monsieur,\nJe postule.\nCordialement,\n[CANDIDATE_NAME]";
-    const { fetchImpl, sent } = capture({ content: [{ type: "text", text: modelText }] });
+    const { fetchImpl, sent } = capture({ stop_reason: "end_turn", content: [{ type: "text", text: modelText }] });
     const cv = await createClaudeCvProvider({ apiKey: "k", fetchImpl, logger: silent }).generate({
       profile,
       job: { title: "Cuisinier", employer: "Hôtel X", city: "Montréal", description: "Apply: jobs@hotelx.ca or 514-555-1234" }
@@ -157,16 +166,83 @@ describe("CV builder call", () => {
   });
 });
 
-describe("document review call", () => {
-  it("sends only a short masked document type with the image", async () => {
-    const { fetchImpl, sent } = capture({ content: [{ type: "text", text: "APPROVE" }] });
-    await reviewDocumentImageWithClaude(
-      { imageBase64: "aGVsbG8=", mediaType: "image/png", documentType: "cv of sam.tremblay@example.ca 514-555-1234 #1234567" },
-      { apiKey: "k", fetchImpl, logger: silent }
-    );
+describe("document review", () => {
+  it("never sends a document anywhere: the verdict comes from our own record", () => {
+    const fetchSpy = vi.spyOn(globalThis, "fetch");
+    for (const documentType of ["cv", "photo", "certificate", "first_aid", "cert_pab", "identity", "sin", "licence"]) {
+      const verdict = reviewDocumentAdvisory({ documentType, expired: false });
+      expect(verdict.source).toBe("offline");
+    }
+    expect(fetchSpy).not.toHaveBeenCalled();
+    fetchSpy.mockRestore();
+  });
+});
+
+describe("health details never leave (launch step 6)", () => {
+  it("contact chat: a health message goes to a person and the AI is never called", async () => {
+    const fetchImpl = vi.fn();
+    const now = new Date("2026-11-08T12:00:00.000Z");
+    const convo: ConversationRow = {
+      id: "c1", requesterUserId: "u1", requesterKind: "worker", organizationId: null, topic: "shift", relatedType: null, relatedId: null,
+      status: "ai", urgent: false, handoffReason: null, summary: null,
+      assignedToUserId: null, lastMessageAt: now, requesterReadAt: null, adminReadAt: null, createdAt: now
+    };
+    const added: string[] = [];
+    let updated: Partial<ConversationRow> = {};
+    const store = {
+      getConversation: async () => convo,
+      resolveRequester: async () => ({ userId: "u1", side: "worker", name: "Sam", email: null, organizationId: null }),
+      addMessage: async (m: { body: string }) => { added.push(m.body); return { id: "m", conversationId: "c1", authorKind: "ai", authorUserId: null, body: m.body, internal: false, createdAt: now }; },
+      updateConversation: async (_id: string, patch: Partial<ConversationRow>) => { updated = { ...updated, ...patch }; return { ...convo, ...patch }; },
+      listMessages: async () => [],
+      countAiReplies: async () => 0,
+      factsFor: async () => "{}"
+    } as unknown as ContactStore;
+    const service = createContactService({ store, ai: createClaudeContactAi({ apiKey: "k", fetchImpl: fetchImpl as unknown as typeof fetch, logger: silent }), notices: { adminNeeded: async () => {}, adminReplied: async () => {} } });
+    await service.send({ userId: "u1", side: "worker", id: "c1", body: "Je suis enceinte et j'ai un billet médical pour demain.", locale: "fr" });
+    expect(fetchImpl).not.toHaveBeenCalled();
+    expect(updated).toMatchObject({ status: "needs_admin", handoffReason: "health" });
+    expect(added.at(-1)).toContain("santé");
+  });
+
+  it("staff assistant: health sentences in the conversation are replaced before they leave", async () => {
+    const { fetchImpl, sent } = capture(contactAnswer);
+    const now = new Date("2026-11-08T12:00:00.000Z");
+    const convo: ConversationRow = {
+      id: "c1", requesterUserId: "u1", requesterKind: "worker", organizationId: null, topic: "shift", relatedType: null, relatedId: null,
+      status: "needs_admin", urgent: false, handoffReason: "health", summary: null,
+      assignedToUserId: null, lastMessageAt: now, requesterReadAt: null, adminReadAt: null, createdAt: now
+    };
+    const messages: MessageRow[] = [
+      { id: "m1", conversationId: "c1", authorKind: "requester", authorUserId: "u1", body: "I can't do Friday's Cook shift. I am pregnant and my diabetes needs insulin. My RAMQ card is BOUJ 8001 0112.", internal: false, createdAt: now },
+      { id: "m2", conversationId: "c1", authorKind: "requester", authorUserId: "u1", body: "أنا حامل ولا أستطيع العمل. Can someone call?", internal: false, createdAt: now }
+    ];
+    const store = { getConversation: async () => convo, listMessages: async () => messages } as unknown as ContactStore;
+    const service = createContactService({ store, ai: createClaudeContactAi({ apiKey: "k", fetchImpl, logger: silent }), notices: { adminNeeded: async () => {}, adminReplied: async () => {} } });
+    await service.adminAsk({ question: "Draft a kind reply.", conversationId: "c1" });
     const body = sent();
-    expectClean(body);
-    expect(body).toContain("cv of email phone");
-    expect(body).toContain("aGVsbG8=");
+    expectNoHealth(body);
+    expect(body).toContain("I can't do Friday's Cook shift.");
+    expect(body).toContain("[health detail]");
+  });
+
+  it("CV builder: a health line in the profile or the job text is replaced before it leaves", async () => {
+    const modelText = "## Profil\nCuisinier.\n===COVER LETTER===\nBonjour,\n[CANDIDATE_NAME]";
+    const { fetchImpl, sent } = capture({ stop_reason: "end_turn", content: [{ type: "text", text: modelText }] });
+    await createClaudeCvProvider({ apiKey: "k", fetchImpl, logger: silent }).generate({
+      profile: {
+        fullName: "Sam Tremblay",
+        summary: "Line cook for 5 years. I have diabetes and need insulin breaks.",
+        skills: ["Grill", "Medication reminders", "RCR / First aid"],
+        language: "en"
+      },
+      job: { title: "Cook", description: "Kitchen job. Not for pregnant workers." }
+    });
+    const body = sent();
+    expectNoHealth(body);
+    expect(body).toContain("Line cook for 5 years.");
+    expect(body).toContain("Medication reminders");
+    expect(body).toContain("RCR / First aid");
+    expect(body).toContain("Kitchen job.");
   });
 });

@@ -3523,6 +3523,19 @@ model WorkerCv {
   @@map("worker_cvs")
 }
 
+// Launch step 6 (AI safety): one row per outside-AI attempt, used for per-person daily and monthly
+// limits that survive a deploy. Feature, who and when only: never a prompt, a reply or personal data.
+model AiUsageEvent {
+  id        String   @id @default(uuid()) @db.Uuid
+  feature   String
+  actorRef  String   @map("actor_ref") // the user id of the worker or staff member
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  @@index([feature, actorRef, createdAt])
+  @@index([feature, createdAt])
+  @@map("ai_usage_events")
+}
+
 // Invite-a-friend / referral. Each user gets ONE stable, shareable invite code; a friend who signs up
 // with that code (…/?ref=CODE) is recorded as a referral attributed to the inviter. Country-neutral,
 // no money — a growth/attribution feature. A code is created lazily the first time a user opens their

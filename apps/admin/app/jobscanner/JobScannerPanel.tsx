@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useState } from "react";
+import { useLocale } from "../i18n/LocaleProvider";
 
 type Lead = {
   id?: string;
@@ -27,6 +28,7 @@ const money = (minor: number | null) =>
   minor ? `~${(minor / 100).toLocaleString("en-CA", { style: "currency", currency: "CAD", maximumFractionDigits: 0 })}/yr` : "";
 
 export function JobScannerPanel() {
+  const locale = useLocale();
   const [profile, setProfile] = useState({
     fullName: "Marie Tremblay",
     headline: "Chef de cuisine",
@@ -91,11 +93,13 @@ export function JobScannerPanel() {
         })
       });
       if (!res.ok) { setMsg("CV generation failed."); return; }
-      const d = (await res.json()) as { cv: GeneratedCv };
+      const d = (await res.json()) as { cv: GeneratedCv; fallback?: { message: { en: string; fr: string; ar: string } } | null };
       setCvByLead((m) => ({ ...m, [lead.id!]: d.cv }));
-      setMsg(`CV tailored to “${lead.title}”.`);
+      // Launch step 6: when the AI writer is unavailable the API sends a basic CV with a note.
+      const note = d.fallback?.message ? d.fallback.message[locale.startsWith("fr") ? "fr" : locale.startsWith("ar") ? "ar" : "en"] : "";
+      setMsg(note || `CV tailored to “${lead.title}”.`);
     } finally { setBusy(false); }
-  }, [profile]);
+  }, [profile, locale]);
 
   const set = (k: keyof typeof profile) => (v: string) => setProfile((p) => ({ ...p, [k]: v }));
 

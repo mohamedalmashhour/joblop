@@ -1,10 +1,13 @@
 // Advisory AI document review (worker side). PURE domain: decide which document types may be read by
 // the AI vs must be verified by a human, and shape the advisory verdict. No AI call, no I/O here.
 //
-// Privacy rule (QC): sensitive identity/financial documents are NEVER sent to an AI provider. They
-// always return "human verification required". Only low-sensitivity documents (CV, certificate,
-// photo, first-aid) may be read by the vision model, and even then the result is ADVISORY — the
-// governed accept/reject decision still belongs to a platform HR admin.
+// Privacy rule (QC, launch step 6): NO document image is ever sent to an AI provider, of any type.
+// Identity, SIN, licence, certificate, CV and photo files show a name, an address, a birth date or a
+// face, and an image cannot be masked. The pre-check is offline and text-only (our own record of the
+// type and expiry); it never opens the file. Sensitive identity/financial types always return "human
+// verification required"; the low-sensitivity types below get an offline pass, which
+// presentableVerdict turns into "a person checks it". The governed accept/reject decision always
+// belongs to a platform HR admin.
 
 export type DocumentAiStatus =
   | "ai_approved" // advisory: the model (or offline pre-check) found nothing wrong
@@ -29,7 +32,7 @@ const SENSITIVE_DOC_TYPES: ReadonlySet<string> = new Set([
   "void_cheque"
 ]);
 
-// Low-sensitivity types the AI may read to give an advisory verdict.
+// Low-sensitivity types that get an offline pre-check pass (never read by an AI; a person still checks).
 const AI_REVIEWABLE_DOC_TYPES: ReadonlySet<string> = new Set([
   "cv",
   "certificate",
@@ -45,8 +48,8 @@ export function isAiReviewableDocType(documentType: string): boolean {
   return AI_REVIEWABLE_DOC_TYPES.has(documentType);
 }
 
-/** Offline, privacy-safe advisory verdict — no file content is read. Used when the AI provider is not
- *  configured, and for every sensitive type. Honest: it never claims the content was verified. */
+/** Offline, privacy-safe advisory verdict — no file content is read. The only verdict used since launch
+ *  step 6. Honest: it never claims the content was verified. */
 export function offlineAdvisoryVerdict(documentType: string, opts?: { expired?: boolean }): DocumentAiVerdict {
   if (opts?.expired) {
     return { status: "needs_reupload", advisory: true, reason: "expired", source: "offline" };
