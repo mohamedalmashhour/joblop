@@ -507,3 +507,7 @@ Joblop peut désactiver toutes les fonctions d’IA externe en tout temps. Le se
 
 - Worker: الذكاء الاصطناعي (القسم 11): قد يُرسَل نص مساعد «تواصل مع Joblop» ومساعد الموظفين ومنشئ السيرة الذاتية إلى Anthropic في الولايات المتحدة بعد إخفاء بيانات الاتصال والمعلومات الصحية. لا تُرسَل أي وثيقة أو صورة. لا يتخذ الذكاء الاصطناعي قرارات بشأن التوظيف أو الأجر أو حسابك، ويمكنك دائماً طلب التحدث إلى شخص.
 - Employer: الذكاء الاصطناعي (القسم 11): قد يُرسَل نص مساعد «تواصل مع Joblop» ومساعد الموظفين إلى Anthropic في الولايات المتحدة بعد إخفاء بيانات الاتصال والمعلومات الصحية. لا تُرسَل أي وثيقة أو صورة. زر «تحدّث» يستخدم خدمة الكلام في متصفحك وليس خوادم جوب‑لوب. لا يتخذ الذكاء الاصطناعي قرارات بشأن التوظيف أو الأجر أو حسابك، ويمكنك دائماً طلب التحدث إلى شخص.
+
+## 6. Owner decision 2026-11-09: outdated section 10 image sentences removed
+
+The owner approved removing the two section 10 statements that said a document image may be sent to Anthropic, which stopped being true at launch step 6. Worker 10.2 data row: "for the document pre-check, an image of the document" removed, EN and FR. Worker 10.4: the pre-check paragraph is replaced by "A Joblop staff member checks your documents. No document, photo or other image is sent to an outside AI." with the French equivalent.
