@@ -38,11 +38,15 @@ import {
 import { PublicHowItWorks } from "./PublicHowItWorks";
 import { PublicJobsCalendar } from "./PublicJobsCalendar";
 import { JobScannerDemo } from "./JobScannerDemo";
+import { LandingScrollContext, VideoCard, type LandingScroll } from "./VideoCard";
+import readyVideo from "../../../assets/media/workers-ready.mp4";
+import readyPoster from "../../../assets/media/workers-ready.jpg";
 
 // The FIRST screen for a signed-out person. It mirrors the worker website's front page, section by
 // section, in the owner's order (SIGNED_OUT_SECTIONS) and with the same words:
-//   1. landing: the Joblop logo (gold on black, a short fade-in, never blocking) and the hero,
-//   2. howitworks: "How Joblop works", the website's four steps as an in-app animation,
+//   1. landing: the Joblop logo (gold on black, a short fade-in, never blocking), the hero and the
+//      website's hero video (bundled, muted loop, Sound on / off),
+//   2. howitworks: "How Joblop works": the website's real video first, then its four steps,
 //   3. calendar: open Joblop jobs this month, public with no account,
 //   4. jobscanner: the free job search (website PublicJobSearch, .pjs-*) and the JobScanner demo,
 //   5. signup: "Create your free account" / "Sign in" with the four ✓ values,
@@ -127,6 +131,17 @@ export function PublicJobsScreen({
   const [focused, setFocused] = useState<"what" | "where" | null>(null);
   const [state, setState] = useState<LoadState>({ status: "loading" });
   const runId = useRef(0);
+  // The two videos pause while scrolled off screen: each card listens to the scroll and checks itself.
+  const scrollListeners = useRef(new Set<() => void>()).current;
+  const scrollWatch = useRef<LandingScroll>({
+    subscribe: (listener) => {
+      scrollListeners.add(listener);
+      return () => {
+        scrollListeners.delete(listener);
+      };
+    }
+  }).current;
+  const notifyScroll = useCallback(() => scrollListeners.forEach((listener) => listener()), [scrollListeners]);
 
   const run = useCallback(
     async (text: string, place: string) => {
@@ -175,10 +190,18 @@ export function PublicJobsScreen({
 
   const values = [t("land.v1"), t("land.v2"), t("land.v3"), t("land.v4")];
   const steps = [1, 2, 3, 4].map((n) => ({ title: t(`land.step${n}Title`), body: t(`land.step${n}Body`) }));
+  const videoWords = { soundOn: t("land.videoSoundOn"), soundOff: t("land.videoSoundOff"), play: t("land.videoPlay"), pause: copy.pause };
 
   return (
     <ScreenContainer testID="public-jobs-screen">
-      <ScrollView keyboardShouldPersistTaps="handled" style={styles.scroll} contentContainerStyle={styles.page}>
+      <LandingScrollContext.Provider value={scrollWatch}>
+      <ScrollView
+        keyboardShouldPersistTaps="handled"
+        onScroll={notifyScroll}
+        scrollEventThrottle={250}
+        style={styles.scroll}
+        contentContainerStyle={styles.page}
+      >
         {/* 1 — Landing: the Joblop logo (gold on black) and the hero with a short value line */}
         <View style={styles.hero} testID="public-section-landing">
           <Animated.View style={[styles.logoWrap, { opacity: logoIn, transform: [{ scale: logoIn.interpolate({ inputRange: [0, 1], outputRange: [0.94, 1] }) }] }]}>
@@ -204,10 +227,21 @@ export function PublicJobsScreen({
               <Text style={styles.outlineButtonText}>{copy.signIn}</Text>
             </Pressable>
           </View>
+          {/* The website's hero video: chefs and workers ready to help (muted loop, Sound on / off) */}
+          <VideoCard
+            source={readyVideo}
+            poster={readyPoster}
+            label={t("land.videoReadyLabel")}
+            soundOnLabel={videoWords.soundOn}
+            soundOffLabel={videoWords.soundOff}
+            playLabel={videoWords.play}
+            pauseLabel={videoWords.pause}
+            testID="hero-video"
+          />
         </View>
 
-        {/* 2 — How Joblop works: the website's four steps, as an in-app animation */}
-        <PublicHowItWorks lang={lang} isRtl={isRtl} title={t("land.howItWorks")} steps={steps} />
+        {/* 2 — How Joblop works: the website's real video, then its four steps */}
+        <PublicHowItWorks isRtl={isRtl} title={t("land.howItWorks")} steps={steps} video={{ ...videoWords, label: t("land.videoHowLabel") }} />
 
         {/* 3 — Available jobs calendar (public, no account); loads on its own */}
         <PublicJobsCalendar transport={transport} lang={lang} isRtl={isRtl} onOpenJob={onWantDetails} onCreateAccount={onCreateAccount} />
@@ -420,6 +454,7 @@ export function PublicJobsScreen({
           </Pressable>
         </View>
       </ScrollView>
+      </LandingScrollContext.Provider>
     </ScreenContainer>
   );
 }

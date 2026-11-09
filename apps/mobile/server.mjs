@@ -14,6 +14,7 @@ const contentTypes = new Map([
   [".jpeg", "image/jpeg"],
   [".jpg", "image/jpeg"],
   [".json", "application/json; charset=utf-8"],
+  [".mp4", "video/mp4"],
   [".png", "image/png"],
   [".svg", "image/svg+xml"],
   [".ttf", "font/ttf"],
@@ -75,9 +76,50 @@ export function createWorkerWebServer(options = {}) {
       "cache-control",
       file === entry ? "no-store" : "public, max-age=31536000, immutable"
     );
+    // Byte ranges, so browsers (Safari above all) can play and seek the bundled landing videos.
+    const size = statSync(file).size;
+    response.setHeader("accept-ranges", "bytes");
+    const range = file === entry ? null : parseRange(request.headers.range, size);
+    if (range === "invalid") {
+      response.statusCode = 416;
+      response.setHeader("content-range", `bytes */${size}`);
+      return response.end();
+    }
+    if (range) {
+      response.statusCode = 206;
+      response.setHeader("content-range", `bytes ${range.start}-${range.end}/${size}`);
+      response.setHeader("content-length", String(range.end - range.start + 1));
+    } else {
+      response.setHeader("content-length", String(size));
+    }
     if (request.method === "HEAD") return response.end();
-    createReadStream(file).pipe(response);
+    createReadStream(file, range ?? undefined).pipe(response);
   });
+}
+
+/**
+ * One "bytes=start-end" range (end or start may be left out), or null when none was asked for.
+ * @param {string | undefined} header
+ * @param {number} size
+ * @returns {{ start: number; end: number } | "invalid" | null}
+ */
+export function parseRange(header, size) {
+  if (!header) return null;
+  const match = /^bytes=(\d*)-(\d*)$/.exec(header.trim());
+  if (!match || (match[1] === "" && match[2] === "")) return "invalid";
+  let start;
+  let end;
+  if (match[1] === "") {
+    const suffix = Number(match[2]);
+    if (suffix === 0) return "invalid";
+    start = Math.max(0, size - suffix);
+    end = size - 1;
+  } else {
+    start = Number(match[1]);
+    end = match[2] === "" ? size - 1 : Math.min(Number(match[2]), size - 1);
+  }
+  if (start >= size || start > end) return "invalid";
+  return { start, end };
 }
 
 function isApprovedStaticFile(root, file) {

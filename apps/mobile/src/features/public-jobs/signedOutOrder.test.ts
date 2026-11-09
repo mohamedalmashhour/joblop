@@ -3,10 +3,12 @@ import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { SIGNED_OUT_SECTIONS } from "@rwos/shared";
 import { translate } from "../../i18n/strings";
-import { HOW_IT_WORKS_STEP_MS, SIGNED_OUT_SECTION_TEST_IDS, nextDemoStage, nextHowItWorksStep } from "./publicLandingContent";
+import { WEB_COPY } from "../../i18n/webCopy";
+import { LANDING_VIDEO_FILES, SIGNED_OUT_SECTION_TEST_IDS, isOnScreen, nextDemoStage, shouldVideoPlay } from "./publicLandingContent";
 
 // The owner's order for a signed-out person opening the app, the same as the website's front page:
-// the Joblop logo and hero, "How Joblop works", the open-jobs calendar, JobScanner, then sign-up.
+// the Joblop logo, hero and hero video, "How Joblop works" (real video, then the four steps), the
+// open-jobs calendar, JobScanner, then sign-up.
 const read = (path: string) => readFileSync(join(__dirname, path), "utf8");
 const screen = read("PublicJobsScreen.tsx");
 const children: Record<string, string> = {
@@ -30,22 +32,68 @@ describe("signed-out first screen order (app)", () => {
     expect(drawnOrder()).toEqual([...SIGNED_OUT_SECTION_TEST_IDS]);
   });
 
-  it("starts with the Joblop logo, then the How Joblop works animation", () => {
+  it("starts with the Joblop logo, the hero buttons and the hero video, then How Joblop works", () => {
     const landing = screen.slice(screen.indexOf('testID="public-section-landing"'), screen.indexOf("<PublicHowItWorks"));
     expect(landing).toContain("source={joblopLogo}");
     expect(screen).toContain('from "../../../assets/joblop-logo.png"');
+    // Logo, then the account buttons, then the hero video, all before How Joblop works.
+    const logo = landing.indexOf("source={joblopLogo}");
+    const buttons = landing.indexOf("public-jobs-create-account");
+    const video = landing.indexOf("<VideoCard");
+    expect(logo).toBeGreaterThanOrEqual(0);
+    expect(buttons).toBeGreaterThan(logo);
+    expect(video).toBeGreaterThan(buttons);
+    expect(landing).toContain("source={readyVideo}");
+    expect(screen).toContain('from "../../../assets/media/workers-ready.mp4"');
   });
 
-  it("the animation never delays the calendar: it fetches nothing and the calendar loads by itself", () => {
+  it("How Joblop works shows the real video first, then the four steps; it never delays the calendar", () => {
     const how = children["<PublicHowItWorks"]!;
     expect(how).not.toMatch(/transport|fetch\(/);
-    expect(how).toContain("Animated");
-    expect(how).toContain("copy.pause");
-    expect(how).toContain("copy.replay");
+    expect(how).toContain('from "../../../assets/media/how-joblop-works.mp4"');
+    expect(how.indexOf("<VideoCard")).toBeGreaterThan(0);
+    expect(how.indexOf("<VideoCard")).toBeLessThan(how.indexOf("steps.map("));
     expect(children["<PublicJobsCalendar"]).toContain("listPublicCalendarJobs(");
-    // No video package was added (no new store build needed).
-    const pkg = readFileSync(join(__dirname, "../../../package.json"), "utf8");
-    expect(pkg).not.toMatch(/expo-av|expo-video|react-native-video/);
+  });
+
+  it("the videos are bundled in the app (no network) and played with expo-video", () => {
+    const pkg = JSON.parse(readFileSync(join(__dirname, "../../../package.json"), "utf8")) as { dependencies: Record<string, string> };
+    expect(pkg.dependencies["expo-video"]).toMatch(/^~57\./);
+    const media = join(__dirname, "../../../assets/media");
+    for (const files of Object.values(LANDING_VIDEO_FILES)) {
+      for (const file of [files.video, files.poster]) {
+        const bundled = readFileSync(join(media, file));
+        const website = readFileSync(join(__dirname, "../../../../worker/public/media", file));
+        expect(bundled.equals(website), file).toBe(true);
+      }
+    }
+    const card = read("VideoCard.tsx");
+    expect(card).toContain('from "expo-video"');
+    expect(card).not.toMatch(/https?:\/\//);
+    expect(card).toContain("p.loop = true");
+    expect(card).toContain("p.muted = true");
+    expect(card).toContain("isReduceMotionEnabled");
+    expect(card).toContain("AppState");
+    expect(card).toContain("nativeControls={false}");
+    expect(card).toContain("fullscreenOptions={{ enable: false }}");
+  });
+
+  it("the video buttons use the website's words in EN / FR / AR", () => {
+    for (const key of ["land.videoSoundOn", "land.videoSoundOff", "land.videoPlay", "land.videoReadyLabel", "land.videoHowLabel"]) {
+      expect(WEB_COPY[key], key).toBeDefined();
+      for (const locale of ["en", "fr", "ar"] as const) expect(translate(locale, key)).toBe(WEB_COPY[key]![locale]);
+    }
+  });
+
+  it("a video plays only when wanted, on screen and in the foreground", () => {
+    expect(shouldVideoPlay({ wantsPlay: true, onScreen: true, appActive: true })).toBe(true);
+    expect(shouldVideoPlay({ wantsPlay: false, onScreen: true, appActive: true })).toBe(false);
+    expect(shouldVideoPlay({ wantsPlay: true, onScreen: false, appActive: true })).toBe(false);
+    expect(shouldVideoPlay({ wantsPlay: true, onScreen: true, appActive: false })).toBe(false);
+    expect(isOnScreen(100, 400, 800)).toBe(true);
+    expect(isOnScreen(-399, 400, 800)).toBe(true);
+    expect(isOnScreen(-400, 400, 800)).toBe(false);
+    expect(isOnScreen(800, 400, 800)).toBe(false);
   });
 
   it("the JobScanner section holds the search and the demo; sign-up is one tap away at the top and bottom", () => {
@@ -77,10 +125,8 @@ describe("signed-out first screen order (app)", () => {
     }
   });
 
-  it("the animations loop", () => {
-    expect(nextHowItWorksStep(3, 4)).toBe(0);
-    expect(nextHowItWorksStep(1, 4)).toBe(2);
+  it("the JobScanner demo loops", () => {
     expect(nextDemoStage(3)).toBe(0);
-    expect(HOW_IT_WORKS_STEP_MS).toBeGreaterThan(1000);
+    expect(nextDemoStage(1)).toBe(2);
   });
 });
