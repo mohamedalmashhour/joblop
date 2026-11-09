@@ -205,7 +205,10 @@ export function PublicJobSearch({ onWantDetails }: { onWantDetails: (next: strin
                       </span>
                     </button>
                     {lead.source === "adzuna" ? (
-                      <a className="pjs-adzuna" href="https://www.adzuna.ca" target="_blank" rel="noreferrer">Adzuna</a>
+                      <span className="pjs-source">
+                        <span aria-hidden="true">via</span>
+                        <a className="pjs-adzuna" href="https://www.adzuna.ca" target="_blank" rel="noreferrer">Adzuna</a>
+                      </span>
                     ) : null}
                   </div>
                 ))}
