@@ -24,7 +24,8 @@ function CheckTile({ size = 34 }: { size?: number }) {
       aria-hidden="true"
       style={{
         alignItems: "center",
-        background: "#0c0c0c",
+        background: "rgba(248, 184, 8, 0.14)",
+        border: "1px solid rgba(248, 184, 8, 0.45)",
         borderRadius: 9,
         display: "inline-flex",
         flex: "none",
@@ -36,7 +37,7 @@ function CheckTile({ size = 34 }: { size?: number }) {
       <svg width={size * 0.56} height={size * 0.56} viewBox="0 0 24 24" fill="none">
         <path
           d="M5 12.5l4.2 4.2L19 6.7"
-          stroke="#2a2114"
+          stroke="#F8B808"
           strokeWidth="2.6"
           strokeLinecap="round"
           strokeLinejoin="round"
@@ -764,9 +765,9 @@ const styles: Record<string, CSSProperties> = {
   },
   primaryButton: {
     ...baseButton,
-    background: "#2a2114",
-    boxShadow: "0 8px 18px rgba(8, 42, 102, 0.18)",
-    color: "#ffffff"
+    background: "#F8B808",
+    boxShadow: "0 8px 18px rgba(248, 184, 8, 0.22)",
+    color: "#000000"
   },
   ghostButton: {
     ...baseButton,
