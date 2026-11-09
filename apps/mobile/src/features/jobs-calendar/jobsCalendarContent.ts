@@ -98,11 +98,16 @@ export function placesLeftLabel(count: number, one: string, many: string): strin
   return count === 1 ? one : many.replace("{n}", String(count));
 }
 
-export type ClaimMessage = Readonly<{ tone: "success" | "warning" | "danger"; key: string; reasons: readonly string[] }>;
+// `text`, when set, is shown instead of the translated key (the API's own words, already localized).
+export type ClaimMessage = Readonly<{ tone: "success" | "warning" | "danger"; key: string; reasons: readonly string[]; text?: string }>;
 
 /** The message (translation key) shown after an Accept attempt. */
-export function claimMessage(result: ClaimOpenJobResult): ClaimMessage {
+export function claimMessage(result: ClaimOpenJobResult, locale: "en" | "fr" | "ar" = "en"): ClaimMessage {
   switch (result.status) {
+    case "shift_overlap": {
+      const text = result.messages[locale] ?? result.messages.en;
+      return { tone: "warning", key: "jobs.msg.shiftOverlap", reasons: [], ...(text ? { text } : {}) };
+    }
     case "assigned":
       return { tone: "success", key: "jobs.msg.assigned", reasons: [] };
     case "full":

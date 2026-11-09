@@ -26,7 +26,9 @@ import type {
   StoredJobRequest,
   WorkerOfferRepository
 } from "@rwos/auth";
+import { createPrismaHeldShiftOverlapFinder } from "@rwos/auth";
 import type { createPrismaClient } from "@rwos/database";
+import type { HeldShift } from "@rwos/shared";
 import { offerPayLine } from "./offerPayLine";
 import { resolveWorkerLanguage } from "./notifications/workerLanguage";
 
@@ -48,6 +50,8 @@ const ACTIVE_OFFER_STATUSES = ["draft", "approved", "sent", "delivered", "viewed
 export type ClaimResult =
   | { status: "assigned"; assignmentId: string; workerOfferId: string }
   | { status: "full" }
+  // The worker already holds an active shift at that time (RWOS_SHIFT_OVERLAP, HTTP 409).
+  | { status: "shift_overlap"; heldShift: HeldShift }
   | { status: "not_found" }
   | { status: "not_open" }
   | { status: "ineligible"; reasons: readonly string[] };
@@ -258,6 +262,16 @@ export async function claimOpenJob(
   if (mineActiveOffer > 0) return { status: "ineligible", reasons: ["active_offer_exists"] };
   if (activeAssignments >= job.numberOfWorkers) return { status: "full" };
 
+  //    A worker can never hold two shifts at the same time. Cheap pre-check before minting; the
+  //    arbiter repeats it under the per-worker lock, so concurrent overlapping claims cannot both win.
+  const heldShift = await createPrismaHeldShiftOverlapFinder(prisma)({
+    workerIdentityId: workerIdentity.id,
+    jobRequestId: job.id,
+    startAt: job.startAt,
+    endAt: job.endAt
+  });
+  if (heldShift) return { status: "shift_overlap", heldShift };
+
   // 5. Mint the accepted-offer chain atomically: offer(accepted) + terms(priced) + response(accepted).
   //    The unique index worker_offers_dispatch_worker_key makes this idempotent per (dispatch,
   //    worker): a concurrent double-tap or a prior lost race surfaces as P2002.
@@ -378,6 +392,7 @@ export async function claimOpenJob(
 
   if (result.reason === "job_capacity_reached") return { status: "full" };
   if (result.reason === "worker_schedule_conflict") {
+    if (result.conflict) return { status: "shift_overlap", heldShift: result.conflict };
     return { status: "ineligible", reasons: ["worker_schedule_conflict"] };
   }
   // Any other arbiter guard failing means the chain was not assignable; surface as not_open so the

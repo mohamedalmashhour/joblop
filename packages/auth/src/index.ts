@@ -5,7 +5,7 @@ import {
   scrypt as scryptCallback,
   timingSafeEqual
 } from "node:crypto";
-import type { RequestPricingSnapshot } from "@rwos/shared";
+import type { HeldShift, RequestPricingSnapshot } from "@rwos/shared";
 import type {
   WorkerOfferDeliveryProvider,
   WorkerOfferDeliveryResult
@@ -1459,7 +1459,9 @@ export type WorkerOfferDecisionStatus =
   | "duplicate_response"
   | "stale_terms"
   | "capacity_exceeded"
-  | "worker_identity_inactive";
+  | "worker_identity_inactive"
+  // The worker already holds an active shift that intersects this one (RWOS_SHIFT_OVERLAP).
+  | "shift_overlap";
 
 export interface StoredWorkerIdentity {
   id: string;
@@ -1555,6 +1557,8 @@ export interface WorkerOfferDecision {
   internalReason: string | null;
   externalCode: typeof authorizationDeniedCode | null;
   externalMessage: typeof authorizationDeniedMessage | null;
+  /** Set with status "shift_overlap": the shift the worker already holds at that time. */
+  heldShift?: HeldShift | null;
 }
 
 export interface WorkerOfferRepository {
@@ -1783,7 +1787,8 @@ export type AtomicAssignmentCreateFailure =
 
 export type AtomicAssignmentCreateResult =
   | Readonly<{ ok: true; assignment: StoredAssignment }>
-  | Readonly<{ ok: false; reason: AtomicAssignmentCreateFailure }>;
+  // `conflict` is set with worker_schedule_conflict: the active shift the worker already holds.
+  | Readonly<{ ok: false; reason: AtomicAssignmentCreateFailure; conflict?: HeldShift }>;
 
 export interface AssignmentDecision {
   status: AssignmentDecisionStatus;
@@ -1793,6 +1798,8 @@ export interface AssignmentDecision {
   internalReason: string | null;
   externalCode: typeof authorizationDeniedCode | null;
   externalMessage: typeof authorizationDeniedMessage | null;
+  /** Set with worker_schedule_conflict: the shift the worker already holds at that time. */
+  heldShift?: HeldShift | null;
 }
 
 export interface AssignmentRepository {
@@ -6621,6 +6628,32 @@ export function createDispatchService(
 
 export type DispatchService = ReturnType<typeof createDispatchService>;
 
+// Finds an active shift the worker already holds that intersects [startAt, endAt). Returns null when
+// none does, or when the job is a long-term listing (no shifts). See packages/shared shiftOverlap.
+export type HeldShiftOverlapFinder = (input: {
+  workerIdentityId: string;
+  jobRequestId: string;
+  startAt: Date;
+  endAt: Date;
+}) => Promise<HeldShift | null>;
+
+async function assertNoHeldShiftOverlap(
+  finder: HeldShiftOverlapFinder | undefined,
+  input: Parameters<HeldShiftOverlapFinder>[0],
+  workerOffer: PublicWorkerOffer | null,
+  roles: readonly AuthorizationRoleKey[],
+  onOverlap?: () => Promise<void>
+) {
+  if (!finder) return;
+  const heldShift = await finder(input);
+  if (!heldShift) return;
+  if (onOverlap) await onOverlap();
+  throw new WorkerOfferError({
+    ...workerOfferDeny("shift_overlap", "worker_schedule_conflict", workerOffer, roles),
+    heldShift
+  });
+}
+
 export function createWorkerOfferService(
   workerOfferRepository: WorkerOfferRepository,
   dispatchRepository: DispatchRepository,
@@ -6629,10 +6662,14 @@ export function createWorkerOfferService(
   options: {
     now?: () => Date;
     deliveryProvider?: WorkerOfferDeliveryProvider;
+    // A worker can never hold two shifts at the same time: offers for a shift that overlaps one
+    // they already hold are not created, sent or accepted. Absent (tests without a database): off.
+    findHeldShiftOverlap?: HeldShiftOverlapFinder;
   } = {}
 ) {
   const now = options.now ?? (() => new Date());
   const deliveryProvider = options.deliveryProvider ?? unavailableWorkerOfferDeliveryProvider;
+  const findHeldShiftOverlap = options.findHeldShiftOverlap;
 
   return {
     async ensureWorkerIdentity(input: {
@@ -6739,6 +6776,18 @@ export function createWorkerOfferService(
           )
         );
       }
+      // Never offer a worker a shift that overlaps one they already hold.
+      await assertNoHeldShiftOverlap(
+        findHeldShiftOverlap,
+        {
+          workerIdentityId: workerIdentity.id,
+          jobRequestId: jobRequest.id,
+          startAt: jobRequest.startAt,
+          endAt: jobRequest.endAt
+        },
+        null,
+        input.roles ?? []
+      );
       const shortlistedCandidate =
         await dispatchRepository.findShortlistedCandidateByWorkerIdentity(
           dispatchReview.id,
@@ -6922,6 +6971,21 @@ export function createWorkerOfferService(
           )
         );
       }
+      // The worker may have taken another shift since the offer was drafted.
+      const sendTerms = authorized.publicOffer.currentTermsVersion;
+      if (sendTerms) {
+        await assertNoHeldShiftOverlap(
+          findHeldShiftOverlap,
+          {
+            workerIdentityId: authorized.stored.workerIdentityId,
+            jobRequestId: authorized.stored.jobRequestId,
+            startAt: sendTerms.startAt,
+            endAt: sendTerms.endAt
+          },
+          authorized.publicOffer,
+          input.roles ?? []
+        );
+      }
       return deliverWorkerOffer({
         workerOfferRepository,
         deliveryProvider,
@@ -7075,6 +7139,7 @@ export function createWorkerOfferService(
         ...input,
         workerOfferRepository,
         authorizationService,
+        findHeldShiftOverlap,
         responseType: "accepted",
         nextStatus: "accepted",
         action: "worker_offer.accepted",
@@ -7566,6 +7631,7 @@ async function respondToWorkerOffer(
     nextStatus: Extract<WorkerOfferStatus, "accepted" | "declined">;
     action: Parameters<WorkerOfferRepository["recordWorkerOfferAuditEvent"]>[0]["action"];
     now: Date;
+    findHeldShiftOverlap?: HeldShiftOverlapFinder | undefined;
   }
 ) {
   const workerIdentity = await requireWorkerIdentityForSession(
@@ -7627,6 +7693,22 @@ async function respondToWorkerOffer(
     });
     throw new WorkerOfferError(
       workerOfferDeny("expired", "offer_expired", offer.publicOffer, input.roles ?? [])
+    );
+  }
+  // Refuse an acceptance that would give the worker two shifts at the same time. Declining is
+  // always allowed. The assignment arbiter re-checks under the per-worker lock.
+  if (input.responseType === "accepted") {
+    await assertNoHeldShiftOverlap(
+      input.findHeldShiftOverlap,
+      {
+        workerIdentityId: workerIdentity.id,
+        jobRequestId: offer.stored.jobRequestId,
+        startAt: terms.startAt,
+        endAt: terms.endAt
+      },
+      offer.publicOffer,
+      input.roles ?? [],
+      () => recordRejectedWorkerResponse(input, offer.stored, "worker_schedule_conflict")
     );
   }
   if (await input.workerOfferRepository.findResponseByOfferId(offer.stored.id)) {
@@ -7786,14 +7868,15 @@ export function createAssignmentService(
         now: currentTime
       });
       if (!result.ok) {
-        throw new AssignmentError(
-          assignmentDeny(
+        throw new AssignmentError({
+          ...assignmentDeny(
             assignmentDecisionStatusForAtomicFailure(result.reason),
             result.reason,
             null,
             input.roles ?? []
-          )
-        );
+          ),
+          heldShift: result.conflict ?? null
+        });
       }
       return toPublicAssignment(result.assignment);
     },
@@ -8105,6 +8188,9 @@ interface AssignmentTransitionInput {
   reason?: string;
   correlationId?: string;
 }
+
+// Long-term listings (employer plans): the employer hires directly, there are no shifts.
+const LONG_TERM_JOB_LENGTH = "long_term";
 
 const activeAssignmentStates: readonly AssignmentStatus[] = [
   "pending_validation",
@@ -14159,8 +14245,20 @@ type PrismaAssignmentClient = Pick<
           confirmedStartAt?: { lt: Date } | undefined;
           confirmedEndAt?: { gt: Date } | undefined;
           id?: { not: string } | undefined;
+          jobRequest?: { jobLength: { not: string } } | undefined;
         };
       }): Promise<number>;
+      findFirst(args: {
+        where: {
+          workerIdentityId: string;
+          status: { in: readonly AssignmentStatus[] };
+          confirmedStartAt: { lt: Date };
+          confirmedEndAt: { gt: Date };
+          jobRequest: { jobLength: { not: string } };
+        };
+        orderBy: { confirmedStartAt: "asc" };
+        select: { confirmedStartAt: true; confirmedEndAt: true; timezone: true };
+      }): Promise<{ confirmedStartAt: Date; confirmedEndAt: Date; timezone: string } | null>;
       updateMany(args: {
         where: { id: string; version: number };
         data: Partial<UpdateAssignmentPrismaData>;
@@ -14216,6 +14314,42 @@ type UpdateAssignmentPrismaData = {
   updatedAt: Date;
   version: { increment: number };
 };
+
+// The database side of HeldShiftOverlapFinder: the earliest active assignment of this worker whose
+// scheduled time intersects [startAt, endAt). Long-term jobs (no shifts) never count, either as the
+// job being offered or as a shift already held. A pre-check only: the authoritative, race-safe check
+// is the one inside createAssignmentFromAcceptedOfferAtomically, under the per-worker lock.
+export function createPrismaHeldShiftOverlapFinder(prismaClient: unknown): HeldShiftOverlapFinder {
+  const prisma = prismaClient as PrismaAssignmentClient & {
+    jobRequest: {
+      findUnique(args: {
+        where: { id: string };
+        select: { jobLength: true };
+      }): Promise<{ jobLength: string | null } | null>;
+    };
+  };
+  return async (input) => {
+    const job = await prisma.jobRequest.findUnique({
+      where: { id: input.jobRequestId },
+      select: { jobLength: true }
+    });
+    if (job?.jobLength === LONG_TERM_JOB_LENGTH) return null;
+    const held = await prisma.assignment.findFirst({
+      where: {
+        workerIdentityId: input.workerIdentityId,
+        status: { in: activeAssignmentStates },
+        confirmedStartAt: { lt: input.endAt },
+        confirmedEndAt: { gt: input.startAt },
+        jobRequest: { jobLength: { not: LONG_TERM_JOB_LENGTH } }
+      },
+      orderBy: { confirmedStartAt: "asc" },
+      select: { confirmedStartAt: true, confirmedEndAt: true, timezone: true }
+    });
+    return held
+      ? { startAt: held.confirmedStartAt, endAt: held.confirmedEndAt, timezone: held.timezone }
+      : null;
+  };
+}
 
 export function createPrismaAssignmentRepository(prismaClient: unknown): AssignmentRepository {
   const prisma = prismaClient as PrismaAssignmentClient;
@@ -14340,15 +14474,38 @@ export function createPrismaAssignmentRepository(prismaClient: unknown): Assignm
             if (activeAssignments >= jobRequest.numberOfWorkers) {
               return fail("job_capacity_reached");
             }
-            const conflictCount = await transaction.assignment.count({
-              where: {
-                workerIdentityId: workerIdentity.id,
-                status: { in: activeAssignmentStates },
-                confirmedStartAt: { lt: termsVersion.endAt },
-                confirmedEndAt: { gt: termsVersion.startAt }
-              }
-            });
-            if (conflictCount > 0) return fail("worker_schedule_conflict");
+            // A worker can never hold two shifts at the same time. The per-worker advisory lock
+            // above serializes every assignment for this worker, so two concurrent claims for
+            // overlapping shifts cannot both pass this check. Touching shifts (one ends when the
+            // other starts) do not overlap. Long-term listings have no shifts and never count.
+            const isLongTermJob =
+              (jobRequest as StoredJobRequest & { jobLength?: string | null }).jobLength ===
+              LONG_TERM_JOB_LENGTH;
+            const heldShift = isLongTermJob
+              ? null
+              : await transaction.assignment.findFirst({
+                  where: {
+                    workerIdentityId: workerIdentity.id,
+                    status: { in: activeAssignmentStates },
+                    confirmedStartAt: { lt: termsVersion.endAt },
+                    confirmedEndAt: { gt: termsVersion.startAt },
+                    jobRequest: { jobLength: { not: LONG_TERM_JOB_LENGTH } }
+                  },
+                  orderBy: { confirmedStartAt: "asc" },
+                  select: { confirmedStartAt: true, confirmedEndAt: true, timezone: true }
+                });
+            const conflictCount = heldShift ? 1 : 0;
+            if (heldShift) {
+              const failed = await fail("worker_schedule_conflict");
+              return {
+                ...failed,
+                conflict: {
+                  startAt: heldShift.confirmedStartAt,
+                  endAt: heldShift.confirmedEndAt,
+                  timezone: heldShift.timezone
+                }
+              };
+            }
 
             const assignment = await transaction.assignment.create({
               data: {
@@ -14462,6 +14619,7 @@ export function createPrismaAssignmentRepository(prismaClient: unknown): Assignm
           status: { in: activeAssignmentStates },
           confirmedStartAt: { lt: input.endAt },
           confirmedEndAt: { gt: input.startAt },
+          jobRequest: { jobLength: { not: LONG_TERM_JOB_LENGTH } },
           ...(input.excludeAssignmentId ? { id: { not: input.excludeAssignmentId } } : {})
         }
       });

@@ -1,5 +1,5 @@
 import * as SecureStore from "expo-secure-store";
-import { parsePayOfferedView, parseWorkerCalendarDto, type PayOfferedView, type WorkerCalendarDto } from "@rwos/shared";
+import { SHIFT_OVERLAP_ERROR_CODE, parsePayOfferedView, parseWorkerCalendarDto, type PayOfferedView, type WorkerCalendarDto } from "@rwos/shared";
 
 const sessionKey = "rwos.mobile.session";
 
@@ -529,13 +529,21 @@ export function createMobileSessionTransport(options: {
         return { status: "offline" };
       }
       if (response.status === 401 || response.status === 403) return { status: "denied" };
-      let payload: { status?: unknown; reasons?: unknown } = {};
+      let payload: { status?: unknown; reasons?: unknown; error?: unknown; messages?: unknown } = {};
       try {
         payload = ((await response.json()) ?? {}) as typeof payload;
       } catch {
         payload = {};
       }
       if (response.ok) return { status: "assigned" };
+      if (response.status === 409 && payload.error === SHIFT_OVERLAP_ERROR_CODE) {
+        const raw = payload.messages && typeof payload.messages === "object" ? (payload.messages as Record<string, unknown>) : {};
+        const messages: Partial<Record<"en" | "fr" | "ar", string>> = {};
+        for (const lang of ["en", "fr", "ar"] as const) {
+          if (typeof raw[lang] === "string") messages[lang] = raw[lang] as string;
+        }
+        return { status: "shift_overlap", messages };
+      }
       if (response.status === 409) return { status: payload.status === "full" ? "full" : "not_open" };
       if (response.status === 422) {
         const reasons = Array.isArray(payload.reasons) ? payload.reasons.filter((r): r is string => typeof r === "string") : [];
@@ -1257,7 +1265,10 @@ export type OpenJobsResult =
 
 export type ClaimOpenJobResult =
   | Readonly<{ status: "assigned" | "full" | "not_open" | "denied" | "offline" | "error" }>
-  | Readonly<{ status: "ineligible"; reasons: readonly string[] }>;
+  | Readonly<{ status: "ineligible"; reasons: readonly string[] }>
+  // The worker already holds a shift at that time (409 RWOS_SHIFT_OVERLAP). `messages` names that
+  // shift in EN / FR / AR, as the API wrote it.
+  | Readonly<{ status: "shift_overlap"; messages: Readonly<Partial<Record<"en" | "fr" | "ar", string>>> }>;
 
 function parseOpenJob(input: unknown): OpenJob | null {
   if (!input || typeof input !== "object") return null;

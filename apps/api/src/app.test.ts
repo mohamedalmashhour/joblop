@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import {
   AssignmentError,
+  WorkerOfferError,
   AssignmentTransactionUnavailableError,
   authorizationDeniedCode,
   authorizationDeniedMessage,
@@ -2278,6 +2279,102 @@ describe("api assignment foundation", () => {
       message: "Assignment could not be created from the current offer state."
     });
     expect(JSON.stringify(response.json())).not.toContain("worker-private-id");
+    await app.close();
+  });
+
+  it("refuses a staff assignment that would give the worker two shifts at the same time (RWOS_SHIFT_OVERLAP)", async () => {
+    const authRepository = new ApiMemoryAuthenticationRepository();
+    const heldShift = {
+      startAt: new Date("2026-11-10T14:00:00.000Z"),
+      endAt: new Date("2026-11-10T22:00:00.000Z"),
+      timezone: "America/Toronto"
+    };
+    const app = buildApi({
+      authService: createAuthenticationService(authRepository, testAuthOptions()),
+      assignmentService: {
+        ...createApiUnavailableAssignmentService(),
+        async createFromAcceptedOffer() {
+          throw new AssignmentError({
+            status: "conflict_detected",
+            allow: false,
+            assignment: null,
+            roles: ["DISPATCHER"],
+            internalReason: "worker_schedule_conflict",
+            externalCode: authorizationDeniedCode,
+            externalMessage: authorizationDeniedMessage,
+            heldShift
+          });
+        }
+      },
+      resolveAuthorizationRoles: async () => ["DISPATCHER"]
+    });
+    const user = await registerApiUser(app);
+
+    const response = await app.inject({
+      method: "POST",
+      url: "/platform/assignments",
+      headers: { authorization: `Bearer ${user.token}`, "accept-language": "fr-CA,fr;q=0.9" },
+      payload: {
+        workerOfferId: "00000000-0000-4000-8000-000000000101",
+        dispatchReviewId: "00000000-0000-4000-8000-000000000102",
+        expectedOfferVersion: 1
+      }
+    });
+
+    expect(response.statusCode).toBe(409);
+    const body = response.json();
+    expect(body.error).toBe("RWOS_SHIFT_OVERLAP");
+    expect(body.message).toMatch(/^Vous avez déjà un quart de travail à cette heure-là \(.*9:00–17:00\)\.$/);
+    expect(body.messages.en).toMatch(/^You already have a shift at that time \(Tue.*9:00–17:00\)\.$/);
+    expect(body.messages.ar).toContain("9:00–17:00");
+    expect(body.heldShift).toEqual({
+      startAt: "2026-11-10T14:00:00.000Z",
+      endAt: "2026-11-10T22:00:00.000Z",
+      timezone: "America/Toronto"
+    });
+    await app.close();
+  });
+
+  it("refuses a worker offer acceptance that would overlap a held shift, with the same message", async () => {
+    const authRepository = new ApiMemoryAuthenticationRepository();
+    const app = buildApi({
+      authService: createAuthenticationService(authRepository, testAuthOptions()),
+      workerOfferService: {
+        ...createApiUnavailableWorkerOfferService(),
+        async accept() {
+          throw new WorkerOfferError({
+            status: "shift_overlap",
+            allow: false,
+            workerOffer: null,
+            roles: ["WORKER_ACCESS"],
+            internalReason: "worker_schedule_conflict",
+            externalCode: authorizationDeniedCode,
+            externalMessage: authorizationDeniedMessage,
+            heldShift: {
+              startAt: new Date("2026-11-10T14:00:00.000Z"),
+              endAt: new Date("2026-11-10T22:00:00.000Z"),
+              timezone: "America/Toronto"
+            }
+          });
+        }
+      },
+      resolveAuthorizationRoles: async () => ["WORKER_ACCESS"]
+    });
+    const user = await registerApiUser(app);
+
+    const response = await app.inject({
+      method: "POST",
+      url: "/worker/offers/00000000-0000-4000-8000-000000000101/accept",
+      headers: { authorization: `Bearer ${user.token}` },
+      payload: { expectedVersion: 2, expectedTermsVersionId: "00000000-0000-4000-8000-000000000103" }
+    });
+
+    expect(response.statusCode).toBe(409);
+    expect(response.json()).toMatchObject({
+      error: "RWOS_SHIFT_OVERLAP",
+      status: "shift_overlap",
+      message: expect.stringMatching(/^You already have a shift at that time \(Tue.*9:00–17:00\)\.$/)
+    });
     await app.close();
   });
 

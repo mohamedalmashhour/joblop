@@ -122,6 +122,7 @@ import {
   createWorkerOfferService,
   createWorkGroupService,
   createPrismaAssignmentRepository,
+  createPrismaHeldShiftOverlapFinder,
   createPrismaAttendanceRepository,
   createPrismaCalendarRequestProfileRepository,
   createPrismaConfirmedAssignmentCoverageReader,
@@ -374,6 +375,7 @@ import { normalizeEscalationReason } from "@rwos/shared";
 import { buildCalendarExport } from "@rwos/shared";
 import { matchingPlaceNames, postalAreaOf } from "@rwos/shared";
 import { deriveOrderLifecycle } from "@rwos/shared";
+import { shiftOverlapLanguageFromHeader, shiftOverlapResponseBody, type HeldShift } from "@rwos/shared";
 import { deriveWorkerCancellationPenalty, LATE_CANCELLATION_TIMESHEET_MARKER, WORKER_SUSPENSION_DAYS } from "@rwos/shared";
 import { notifyClient, notifyClientInvoiceSent } from "./notifications/clientNotifications";
 import { invoiceEmailAttachment } from "./invoicePdf";
@@ -1175,7 +1177,11 @@ export function buildApi(options: BuildApiOptions = {}) {
           createPrismaDispatchRepository(prisma),
           createPrismaJobRequestRepository(prisma),
           authorizationService,
-          workerOfferDeliveryProvider ? { deliveryProvider: workerOfferDeliveryProvider } : {}
+          {
+            ...(workerOfferDeliveryProvider ? { deliveryProvider: workerOfferDeliveryProvider } : {}),
+            // A worker can never hold two shifts at the same time (RWOS_SHIFT_OVERLAP).
+            findHeldShiftOverlap: createPrismaHeldShiftOverlapFinder(prisma)
+          }
         )
       : createUnavailableWorkerOfferService());
   const assignmentService =
@@ -1534,10 +1540,16 @@ export function buildApi(options: BuildApiOptions = {}) {
     }
 
     if (error instanceof WorkerOfferError) {
+      if (error.decision.status === "shift_overlap" && error.decision.heldShift) {
+        return sendShiftOverlap(reply, request.headers["accept-language"], error.decision.heldShift);
+      }
       return sendWorkerOfferFailure(reply, error);
     }
 
     if (error instanceof AssignmentError) {
+      if (error.decision.status === "conflict_detected" && error.decision.heldShift) {
+        return sendShiftOverlap(reply, request.headers["accept-language"], error.decision.heldShift);
+      }
       return sendAssignmentFailure(reply, error);
     }
 
@@ -4716,6 +4728,9 @@ export function buildApi(options: BuildApiOptions = {}) {
     }
     if (result.status === "full") {
       return reply.code(409).send({ status: "full", error: "RWOS_CLAIM_FULL", message: "This job is already full." });
+    }
+    if (result.status === "shift_overlap") {
+      return sendShiftOverlap(reply, request.headers["accept-language"], result.heldShift);
     }
     if (result.status === "not_found") {
       return reply.code(404).send({ error: "RWOS_CLAIM_NOT_FOUND", message: "That job is not available." });
@@ -11949,6 +11964,14 @@ function sendWorkerOfferFailure(reply: FastifyReply, error: WorkerOfferError) {
     });
   }
   return sendWorkerOfferDenied(reply);
+}
+
+// A worker can never hold two shifts at the same time. Every path that would give them one (open
+// claim, offer create / send / accept, staff assignment) answers 409 with the same body: the code,
+// the message in the caller's language, all three languages, and the shift already held.
+function sendShiftOverlap(reply: FastifyReply, acceptLanguage: string | string[] | undefined, heldShift: HeldShift) {
+  const header = Array.isArray(acceptLanguage) ? acceptLanguage[0] : acceptLanguage;
+  return reply.code(409).send(shiftOverlapResponseBody(heldShift, shiftOverlapLanguageFromHeader(header)));
 }
 
 function sendAssignmentDenied(reply: FastifyReply) {

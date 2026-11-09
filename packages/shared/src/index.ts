@@ -1,6 +1,7 @@
 export * from "./domain";
 export * from "./country";
 export * from "./holidays";
+export * from "./shiftOverlap";
 
 import type { ContractMoney } from "./domain";
 

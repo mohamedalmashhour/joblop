@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState, type ReactNode } from "react";
 import { useLocale, useT, fmtLocale, type Translate } from "../i18n/LocaleProvider";
 import type { RwosLocale } from "../i18n/config";
 import type { MessageKey } from "../i18n/messages";
+import { shiftOverlapNotice } from "../shiftOverlapNotice";
 
 type Offer = Readonly<{
   workerOfferId: string;
@@ -80,7 +81,8 @@ function expiryWhen(expiresAt: string, locale: RwosLocale): string {
 
 export function Offers() {
   const t = useT();
-  const locale = fmtLocale(useLocale());
+  const uiLocale = useLocale();
+  const locale = fmtLocale(uiLocale);
   const [state, setState] = useState<State>({ status: "loading" });
   const [busyId, setBusyId] = useState<string | null>(null);
   const [needsPayChoice, setNeedsPayChoice] = useState(false);
@@ -124,6 +126,12 @@ export function Offers() {
         body: JSON.stringify({ expectedVersion: offer.versionToken, expectedTermsVersionId: offer.termsVersionId ?? "" })
       });
       if (r.status === 409) {
+        // Already holding a shift at that time: say which one, instead of "the offer changed".
+        const overlap = shiftOverlapNotice(await r.json().catch(() => null), uiLocale);
+        if (overlap) {
+          setNotice(overlap);
+          return;
+        }
         setNotice(t("offers.changed"));
         await load();
         return;
@@ -140,7 +148,7 @@ export function Offers() {
     } finally {
       setBusyId(null);
     }
-  }, [load, t]);
+  }, [load, t, uiLocale]);
 
   if (state.status === "loading") return <div className="state">{t("common.loading")}</div>;
   if (state.status === "signed_out")

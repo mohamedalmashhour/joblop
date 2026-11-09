@@ -71,6 +71,7 @@ import type {
   UpdateEmailVerificationCodeInput,
   WorkerOfferRepository,
   WorkerOfferDeliveryProvider,
+  HeldShiftOverlapFinder,
   WorkGroupRepository,
   StoredJobRequest,
   StoredTimesheet,
@@ -3151,6 +3152,104 @@ describe("worker offer foundation", () => {
     await expect(
       workerOfferRepository.countCapacityOffersForDispatch(dispatchReview.id)
     ).resolves.toBe(1);
+  });
+
+  describe("a worker can never hold two shifts at the same time", () => {
+    const heldShift = {
+      startAt: new Date("2026-08-12T13:00:00.000Z"),
+      endAt: new Date("2026-08-12T21:00:00.000Z"),
+      timezone: "America/Toronto"
+    };
+
+    it("does not create an offer for a shift that overlaps one the worker holds", async () => {
+      const calls: Array<Parameters<HeldShiftOverlapFinder>[0]> = [];
+      const { workerOfferService, dispatchReview, adminSession, workerOne, approvedJobRequest } =
+        await createWorkerOfferContext({
+          findHeldShiftOverlap: async (input) => {
+            calls.push(input);
+            return heldShift;
+          }
+        });
+      await expect(
+        workerOfferService.createOffer({
+          session: adminSession,
+          roles: ["DISPATCHER"],
+          dispatchReviewId: dispatchReview.id,
+          workerIdentityId: workerOne.id,
+          expiresAt: new Date("2026-08-12T10:00:00.000Z")
+        })
+      ).rejects.toMatchObject({
+        decision: expect.objectContaining({
+          status: "shift_overlap",
+          internalReason: "worker_schedule_conflict",
+          heldShift
+        })
+      });
+      expect(calls).toEqual([
+        {
+          workerIdentityId: workerOne.id,
+          jobRequestId: approvedJobRequest.id,
+          startAt: approvedJobRequest.startAt,
+          endAt: approvedJobRequest.endAt
+        }
+      ]);
+    });
+
+    it("refuses to send or accept once the worker holds an overlapping shift, but always allows decline", async () => {
+      let holding = false;
+      const { workerOfferService, dispatchReview, adminSession, workerOne, workerSession } =
+        await createWorkerOfferContext({ findHeldShiftOverlap: async () => (holding ? heldShift : null) });
+      const draft = await workerOfferService.createOffer({
+        session: adminSession,
+        roles: ["DISPATCHER"],
+        dispatchReviewId: dispatchReview.id,
+        workerIdentityId: workerOne.id,
+        expiresAt: new Date("2026-08-12T10:00:00.000Z")
+      });
+      const approved = await workerOfferService.approve({
+        session: adminSession,
+        roles: ["DISPATCHER"],
+        workerOfferId: draft.id,
+        expectedVersion: draft.versionToken
+      });
+
+      holding = true;
+      await expect(
+        workerOfferService.send({
+          session: adminSession,
+          roles: ["DISPATCHER"],
+          workerOfferId: approved.id,
+          expectedVersion: approved.versionToken
+        })
+      ).rejects.toMatchObject({ decision: expect.objectContaining({ status: "shift_overlap", heldShift }) });
+
+      holding = false;
+      const sent = await workerOfferService.send({
+        session: adminSession,
+        roles: ["DISPATCHER"],
+        workerOfferId: approved.id,
+        expectedVersion: approved.versionToken
+      });
+      const viewed = await workerOfferService.workerRead({
+        session: workerSession,
+        roles: ["WORKER_ACCESS"],
+        workerOfferId: sent.id
+      });
+
+      holding = true;
+      const respond = {
+        session: workerSession,
+        roles: ["WORKER_ACCESS"] as const,
+        workerOfferId: viewed.id,
+        expectedVersion: viewed.versionToken,
+        expectedTermsVersionId: viewed.currentTermsVersion!.id
+      };
+      await expect(workerOfferService.accept({ ...respond, roles: [...respond.roles] })).rejects.toMatchObject({
+        decision: expect.objectContaining({ status: "shift_overlap", heldShift })
+      });
+      const declined = await workerOfferService.decline({ ...respond, roles: [...respond.roles] });
+      expect(declined.status).toBe("declined");
+    });
   });
 
   it("approves, sends, views, and accepts without creating Assignment", async () => {
@@ -6757,6 +6856,7 @@ async function createWorkerOfferContext(
     deliveryProvider?: WorkerOfferDeliveryProvider;
     now?: () => Date;
     numberOfWorkers?: number;
+    findHeldShiftOverlap?: HeldShiftOverlapFinder;
   } = {}
 ) {
   const { dispatchService, dispatchRepository, approvedJobRequest, adminSession, organization } =
@@ -6776,7 +6876,8 @@ async function createWorkerOfferContext(
         async deliver() {
           return { status: "sent", providerReference: "test-provider", retryable: false };
         }
-      }
+      },
+      ...(input.findHeldShiftOverlap ? { findHeldShiftOverlap: input.findHeldShiftOverlap } : {})
     }
   );
   const dispatchReview = await dispatchService.createDispatch({
