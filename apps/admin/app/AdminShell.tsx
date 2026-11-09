@@ -19,6 +19,7 @@ const connectedNavigation = [
   { href: "/payroll", labelKey: "nav.payroll" },
   { href: "/payouts", labelKey: "nav.payouts" },
   { href: "/employer-plan-orders", labelKey: "nav.employerPlanOrders" },
+  { href: "/late-cancellations", labelKey: "nav.lateCancellations" },
   { href: "/contracts", labelKey: "nav.contracts" },
   { href: "/disputes", labelKey: "nav.disputes" },
   { href: "/market-wages", labelKey: "nav.marketWages" },
@@ -62,7 +63,7 @@ function resolveNavigation(source: readonly NavSource[], t: Translate): NavItem[
 const NAV_GROUPS: readonly { group: string; hrefs: readonly string[] }[] = [
   { group: "Operations", hrefs: ["/calendar/job-coverage", "/calendar", "/calendar/lifecycle", "/orders", "/dispatches", "/timesheets", "/shifts"] },
   { group: "Directory", hrefs: ["/workers", "/employers", "/residences"] },
-  { group: "Finance & payroll", hrefs: ["/finance", "/finance/calendar", "/payroll", "/disputes", "/payouts", "/employer-plan-orders", "/contracts", "/invoices", "/market-wages"] },
+  { group: "Finance & payroll", hrefs: ["/finance", "/finance/calendar", "/payroll", "/disputes", "/payouts", "/employer-plan-orders", "/late-cancellations", "/contracts", "/invoices", "/market-wages"] },
   { group: "People & trust", hrefs: ["/contact-desk", "/verification", "/hr"] },
   { group: "Governance & compliance", hrefs: ["/escalations", "/compliance", "/audit-log", "/reports"] },
   { group: "Platform", hrefs: ["/greetings", "/system-settings", "/platform-analytics", "/notification-center", "/ai-control-center"] }

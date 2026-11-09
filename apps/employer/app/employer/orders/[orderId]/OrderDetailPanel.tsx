@@ -1,7 +1,9 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
+import { formatMoney } from "@rwos/shared";
 import { styles } from "../../employerStyles";
+import type { OrderLateCancellationDto } from "../../../api/orders/lateCancellationBoundary";
 import { useT } from "../../../i18n/LocaleProvider";
 import type { MessageKey } from "../../../i18n/messages";
 
@@ -39,6 +41,24 @@ export function OrderDetailPanel({ orderId }: { orderId: string }) {
   const [message, setMessage] = useState("");
   const [cancelOpen, setCancelOpen] = useState(false);
   const [reason, setReason] = useState("");
+  // Late-cancellation warning, read from the server when the cancel box opens ("loading" until then).
+  const [late, setLate] = useState<OrderLateCancellationDto | "loading" | null>(null);
+
+  const openCancel = useCallback(async () => {
+    setCancelOpen(true);
+    setLate("loading");
+    try {
+      const response = await fetch(`/api/orders/${encodeURIComponent(orderId)}/cancel/preview`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: "{}"
+      });
+      const payload = response.ok ? ((await response.json()) as { lateCancellation?: OrderLateCancellationDto }) : null;
+      setLate(payload?.lateCancellation ?? null);
+    } catch {
+      setLate(null);
+    }
+  }, [orderId]);
 
   const load = useCallback(async () => {
     try {
@@ -120,18 +140,32 @@ export function OrderDetailPanel({ orderId }: { orderId: string }) {
 
       <div style={styles.actionBar}>
         {canSubmit ? <button type="button" style={styles.input} disabled={busy} onClick={() => void submit()}>{t("order.submitForReview")}</button> : null}
-        {canCancel && !cancelOpen ? <button type="button" style={styles.footerLink} disabled={busy} onClick={() => setCancelOpen(true)}>{t("order.cancel")}</button> : null}
+        {canCancel && !cancelOpen ? <button type="button" style={styles.footerLink} disabled={busy} onClick={() => void openCancel()}>{t("order.cancel")}</button> : null}
         <a href="/employer/orders" style={styles.footerLink}>{t("order.backToList")}</a>
       </div>
 
       {cancelOpen ? (
         <div style={{ marginTop: 8, display: "flex", flexDirection: "column", gap: 8 }}>
+          {late === "loading" ? <p style={styles.cardText} aria-live="polite">{t("order.lateCancelChecking")}</p> : null}
+          {late !== "loading" && late?.applies ? (
+            <div style={styles.warning} role="alert">
+              <strong>{t("order.lateCancelTitle")}</strong>
+              <p style={{ ...styles.cardText, marginTop: 4 }}>
+                {t("order.lateCancelWarning", {
+                  cutoff: late.cutoffHours,
+                  hours: late.chargeHours,
+                  workers: late.confirmedWorkers,
+                  amount: formatMoney({ amountMinor: late.estimatedSubtotalMinor, currency: late.currency === "USD" ? "USD" : "CAD" })
+                })}
+              </p>
+            </div>
+          ) : null}
           <label style={styles.fieldLabel}>{t("order.cancelReason")}
             <textarea style={styles.input} rows={3} value={reason} onChange={(e) => setReason(e.target.value)} placeholder={t("order.cancelReasonPlaceholder")} />
           </label>
           <div style={styles.actionBar}>
-            <button type="button" style={styles.input} disabled={busy || reason.trim().length === 0} onClick={() => void cancel()}>{t("order.confirmCancel")}</button>
-            <button type="button" style={styles.footerLink} onClick={() => { setCancelOpen(false); setReason(""); }}>{t("order.keepOrder")}</button>
+            <button type="button" style={styles.input} disabled={busy || late === "loading" || reason.trim().length === 0} onClick={() => void cancel()}>{t(late !== "loading" && late?.applies ? "order.confirmLateCancel" : "order.confirmCancel")}</button>
+            <button type="button" style={styles.footerLink} onClick={() => { setCancelOpen(false); setReason(""); setLate(null); }}>{t("order.keepOrder")}</button>
           </div>
         </div>
       ) : null}

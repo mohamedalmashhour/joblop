@@ -105,20 +105,14 @@ export function CancelRequestPanel({ requestId }: Readonly<{ requestId: string }
       <p style={styles.cardText}>Shift starts: {start} UTC</p>
       <p style={styles.cardText}>Confirmed workers: {preview.affectedConfirmedWorkers}</p>
       {late ? (
-        <div style={styles.warning}>
-          This shift begins in less than {preview.cutoffHours} hours. Cancelling now creates a Joblop
-          commercial cancellation obligation for the affected confirmed workers.
-          <p style={{ ...styles.cardText, marginTop: 8 }}>
-            <strong>
-              {preview.affectedConfirmedWorkers} worker{preview.affectedConfirmedWorkers === 1 ? "" : "s"} ×{" "}
-              {preview.minimumShiftHours} hours ×{" "}
-              {preview.governedRateMinor !== null ? money(preview.governedRateMinor, preview.currency) : "—"}/hour ={" "}
-              {money(preview.obligationAmountMinor, preview.currency)}
-            </strong>
-          </p>
+        <div style={styles.warning} role="alert">
+          This shift starts in less than {preview.cutoffHours} hours. Canceling now bills{" "}
+          {preview.minimumShiftHours} hours for each confirmed worker ({preview.affectedConfirmedWorkers}): about{" "}
+          <strong>{money(preview.obligationAmountMinor, preview.currency)}</strong> plus taxes. It is added to your
+          invoice.
         </div>
       ) : (
-        <p style={styles.cardText}>No late-cancellation obligation applies.</p>
+        <p style={styles.cardText}>No late-cancellation charge applies.</p>
       )}
       <div style={{ display: "flex", flexWrap: "wrap", gap: 10, marginTop: 12 }}>
         <button
@@ -130,7 +124,7 @@ export function CancelRequestPanel({ requestId }: Readonly<{ requestId: string }
           {busy
             ? "Submitting…"
             : late
-              ? `Cancel & Accept ${money(preview.obligationAmountMinor, preview.currency)} Obligation`
+              ? "Cancel and accept the charge"
               : "Confirm Cancellation"}
         </button>
         <button
@@ -157,7 +151,7 @@ function CancellationResult({ result }: Readonly<{ result: CancellationConfirmat
   return (
     <div style={styles.panel} aria-live="polite">
       <h3 style={styles.cardTitle}>{completed ? "Request cancelled" : "Cancellation recorded"}</h3>
-      {amount ? <p style={styles.cardText}>Commercial cancellation obligation: <strong>{amount}</strong></p> : null}
+      {amount ? <p style={styles.cardText}>Late-cancellation charge: <strong>{amount}</strong> plus taxes, added to your invoice.</p> : null}
       {cancellation.status === "assignment_cancellation_pending" ? (
         <p style={styles.cardText}>
           <strong>Cancellation processing.</strong> Joblop is completing the governed cancellation of the
@@ -165,7 +159,7 @@ function CancellationResult({ result }: Readonly<{ result: CancellationConfirmat
         </p>
       ) : cancellation.status === "requires_reconciliation" ? (
         <p style={styles.warning}>
-          <strong>Requires Joblop review.</strong> Your cancellation and obligation are recorded, but the
+          <strong>Requires Joblop review.</strong> Your cancellation and any charge are recorded, but the
           assignment cancellation needs review by Joblop. Our team will complete it — this request is not
           yet fully cancelled.
         </p>

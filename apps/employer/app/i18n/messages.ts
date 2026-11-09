@@ -412,6 +412,10 @@ export const en = {
   "order.cancelled": "Order {num} was cancelled.",
   "order.cancelFailed": "The order could not be cancelled. Try again.",
   "order.keepOrder": "Keep order",
+  "order.lateCancelTitle": "Late cancellation",
+  "order.lateCancelWarning": "This shift starts in less than {cutoff} hours. Canceling now bills {hours} hours for each confirmed worker ({workers}): about {amount} plus taxes.",
+  "order.lateCancelChecking": "Checking whether a late-cancellation charge applies\u2026",
+  "order.confirmLateCancel": "Cancel and accept the charge",
 
   // Money / accountant summary
   "money.eyebrow": "Money",
@@ -1093,6 +1097,10 @@ export const fr: Messages = {
   "order.cancelled": "La commande {num} a \u00e9t\u00e9 annul\u00e9e.",
   "order.cancelFailed": "La commande n'a pas pu \u00eatre annul\u00e9e. R\u00e9essayez.",
   "order.keepOrder": "Conserver la commande",
+  "order.lateCancelTitle": "Annulation tardive",
+  "order.lateCancelWarning": "Ce quart commence dans moins de {cutoff} heures. Annuler maintenant facture {hours} heures pour chaque travailleur confirmé ({workers}) : environ {amount} plus les taxes.",
+  "order.lateCancelChecking": "Vérification d\u2019éventuels frais d\u2019annulation tardive\u2026",
+  "order.confirmLateCancel": "Annuler et accepter les frais",
 
   // Argent / r\u00e9sum\u00e9 comptable
   "money.eyebrow": "Argent",
@@ -1773,6 +1781,10 @@ export const ar: Partial<Messages> = {
   "order.cancelled": "تم إلغاء الطلب {num}.",
   "order.cancelFailed": "تعذّر إلغاء الطلب. حاول مرة أخرى.",
   "order.keepOrder": "الاحتفاظ بالطلب",
+  "order.lateCancelTitle": "إلغاء متأخر",
+  "order.lateCancelWarning": "تبدأ هذه المناوبة بعد أقل من {cutoff} ساعة. الإلغاء الآن يُحتسب {hours} ساعات عن كل عامل مؤكَّد ({workers}): نحو {amount} قبل الضرائب.",
+  "order.lateCancelChecking": "جارٍ التحقق من رسوم الإلغاء المتأخر\u2026",
+  "order.confirmLateCancel": "الإلغاء وقبول الرسوم",
 
   // المال / ملخّص المحاسب
   "money.eyebrow": "المال",

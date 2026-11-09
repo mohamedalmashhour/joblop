@@ -1,5 +1,5 @@
 import type { PrismaClient } from "@rwos/database";
-import { createContractMoney, jobBonusWorkerPayMinor } from "@rwos/shared";
+import { createContractMoney, jobBonusWorkerPayMinor, LATE_CANCELLATION_TIMESHEET_MARKER } from "@rwos/shared";
 import { loadShiftBonuses, pickShiftBonus } from "./jobBonusShift";
 import type {
   CreatePayrollCalculationInput,
@@ -192,7 +192,11 @@ export function createPrismaPayrollRepository(prisma: PrismaClient): PayrollRepo
           organizationId: input.organizationId,
           workerIdentityId: input.workerIdentityId,
           status: { in: ["approved", "locked"] },
-          scheduledStartAt: { gte: input.from, lt: input.to }
+          scheduledStartAt: { gte: input.from, lt: input.to },
+          // A late employer cancellation is billed through a locked timesheet but never paid to the
+          // worker automatically (owner decision 2026-11-09), so it never enters payroll.
+          // (OR with null: a plain "not equal" would also drop every timesheet with no exception.)
+          OR: [{ exceptionSummary: null }, { exceptionSummary: { not: LATE_CANCELLATION_TIMESHEET_MARKER } }]
         },
         orderBy: [{ scheduledStartAt: "asc" }, { id: "asc" }],
         select: { id: true, version: true, status: true, payableMinutes: true, billableMinutes: true, scheduledStartAt: true, scheduledEndAt: true, assignmentId: true, workGroupId: true, roleDefinitionId: true, residenceId: true, jobRequestId: true }
@@ -250,6 +254,7 @@ export function createPrismaPayrollRepository(prisma: PrismaClient): PayrollRepo
       const rows = await prisma.$queryRawUnsafe<Array<{ worker_identity_id: string }>>(
         `SELECT DISTINCT worker_identity_id FROM timesheets
          WHERE organization_id = $1::uuid AND status IN ('approved','locked')
+           AND exception_summary IS DISTINCT FROM '${LATE_CANCELLATION_TIMESHEET_MARKER}'
            AND scheduled_start_at >= $2 AND scheduled_start_at < $3
            AND ($4::uuid IS NULL OR worker_identity_id > $4::uuid)
          ORDER BY worker_identity_id ASC LIMIT $5`,
