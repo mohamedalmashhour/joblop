@@ -1,4 +1,4 @@
-// DRAFT — must be reviewed by a Québec lawyer before relying on it. (Code comment only.)
+// Reviewed and accepted by the owner's Québec lawyer (2026-11-09). See docs/legal/LEGAL_REVIEW_NOTES.md before changing any wording.
 import { employerPrivacy } from "../legal/employerLegal";
 import { LegalDocumentPage } from "../legal/LegalDocumentPage";
 

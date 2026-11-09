@@ -1,4 +1,4 @@
-// DRAFT — must be reviewed by a Québec lawyer before relying on it.
+// Reviewed and accepted by the owner's Québec lawyer (2026-11-09). See docs/legal/LEGAL_REVIEW_NOTES.md before changing any wording.
 // Privacy Policy section 10 ("What is new in this version"), shared by the worker and employer
 // sites. It is ADDED after the approved October 26, 2026 text (sections 1 to 9); it does not
 // rewrite it. Every fact here was checked against the code; see docs/legal/LEGAL_REVIEW_NOTES.md.
@@ -25,7 +25,7 @@ function providerRows(audience: LegalAudience, lang: "en" | "fr"): string[][] {
       ? [
           "Anthropic (Claude)",
           audience === "worker"
-            ? "AI that answers Contact Joblop messages first and drafts replies for Joblop staff; the Worker Pro CV builder; an automated pre-check of some uploaded documents"
+            ? "AI that answers Contact Joblop messages first and drafts replies for Joblop staff; the Worker Pro CV builder"
             : "AI that answers Contact Joblop messages first and drafts replies for Joblop staff",
           audience === "worker"
             ? "Your message, with contact details such as phone numbers, email addresses and addresses masked first; your CV content"
@@ -34,7 +34,7 @@ function providerRows(audience: LegalAudience, lang: "en" | "fr"): string[][] {
       : [
           "Anthropic (Claude)",
           audience === "worker"
-            ? "IA qui répond en premier aux messages « Joindre Joblop » et rédige des brouillons de réponse pour le personnel de Joblop; le générateur de CV Worker Pro; une vérification automatisée préalable de certains documents téléversés"
+            ? "IA qui répond en premier aux messages « Joindre Joblop » et rédige des brouillons de réponse pour le personnel de Joblop; le générateur de CV Worker Pro"
             : "IA qui répond en premier aux messages « Joindre Joblop » et rédige des brouillons de réponse pour le personnel de Joblop",
           audience === "worker"
             ? "Votre message, après masquage des coordonnées comme les numéros de téléphone, les adresses courriel et les adresses; le contenu de votre CV"

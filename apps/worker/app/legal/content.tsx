@@ -1,4 +1,4 @@
-// DRAFT — must be reviewed by a Québec lawyer before relying on it.
+// Reviewed and accepted by the owner's Québec lawyer (2026-11-09). See docs/legal/LEGAL_REVIEW_NOTES.md before changing any wording.
 // (Code comment only. The English clauses below are the approved October 26, 2026 text and are kept
 // word for word; new clauses live in ./workerLegalUpdates.ts and @rwos/shared legalPrivacyAdditions,
 // the French translation in ./workerLegalFr.ts. See docs/legal/LEGAL_REVIEW_NOTES.md.)

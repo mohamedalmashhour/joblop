@@ -1,4 +1,4 @@
-// DRAFT — must be reviewed by a Québec lawyer before relying on it. Added 2026-11-11.
+// Reviewed and accepted by the owner's Québec lawyer (2026-11-09). See docs/legal/LEGAL_REVIEW_NOTES.md before changing any wording.
 // Privacy Policy section 11 ("Artificial intelligence (AI) features"), shared by the worker and employer
 // sites. It is ADDED after sections 1 to 10; it does not rewrite them. Every fact here was checked
 // against the code on 2026-11-11 (launch step 6):

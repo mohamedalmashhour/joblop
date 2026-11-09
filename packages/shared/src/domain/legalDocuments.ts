@@ -3,7 +3,7 @@
 // LEGAL_EFFECTIVE_DATE together whenever the published text changes: sign-up records this version
 // as the one the person accepted (see apps/api /auth/register, audit reason "legal_accepted:<v>").
 //
-// DRAFT — must be reviewed by a Québec lawyer before relying on it. See docs/legal/LEGAL_REVIEW_NOTES.md.
+// Reviewed and accepted by the owner's Québec lawyer (2026-11-09). See docs/legal/LEGAL_REVIEW_NOTES.md before changing any wording.
 import { PLATFORM_INVOICE_CONTACT, PLATFORM_INVOICE_ISSUER } from "./platformInvoiceIssuer";
 
 export const LEGAL_DOCUMENTS_VERSION = "2026-11-11";

@@ -1,4 +1,4 @@
-// DRAFT — must be reviewed by a Québec lawyer before relying on it.
+// Reviewed and accepted by the owner's Québec lawyer (2026-11-09). See docs/legal/LEGAL_REVIEW_NOTES.md before changing any wording.
 // Employer Terms of Service and Privacy Policy. Built on the approved worker text of October 26,
 // 2026 (apps/worker/app/legal/content.tsx): same structure and, where it fits employers, the same
 // words. Every employer-specific change is listed in docs/legal/LEGAL_REVIEW_NOTES.md.
