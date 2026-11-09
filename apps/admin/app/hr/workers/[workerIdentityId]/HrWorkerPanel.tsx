@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { CERTIFICATE_LABELS, REQUIRED_CERTIFICATE_KEYS, certificateKeyForDocumentType, certificateLabel } from "@rwos/shared";
+import { REQUIRED_CERTIFICATE_KEYS, certificateKeyForDocumentType, certificateLabel, type RequiredCertificateKey } from "@rwos/shared";
 import { usePageText } from "../../../i18n/pageText";
 import { useLocale } from "../../../i18n/LocaleProvider";
 import { hrText } from "../../text";
@@ -243,7 +243,7 @@ export function HrWorkerPanel({ workerIdentityId }: { workerIdentityId: string }
                   {(() => {
                     const proves = d.verifiedCertificateKey ?? certificateKeyForDocumentType(d.documentType);
                     return proves && proves !== "other" && d.effectiveStatus === "accepted"
-                      ? <div style={styles.dim}>{t.verifiedAs(certificateLabel(proves as keyof typeof CERTIFICATE_LABELS, locale))}</div>
+                      ? <div style={styles.dim}>{t.verifiedAs(certificateLabel(proves as RequiredCertificateKey, locale))}</div>
                       : null;
                   })()}
                   {["submitted", "under_review"].includes(d.effectiveStatus) ? (
