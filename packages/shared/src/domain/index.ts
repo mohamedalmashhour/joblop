@@ -53,3 +53,4 @@ export * from "./employerPlan";
 export * from "./quebecSalesTax";
 export * from "./jobListing";
 export * from "./payOffered";
+export * from "./placeSearch";

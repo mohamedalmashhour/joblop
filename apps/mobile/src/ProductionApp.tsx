@@ -1,5 +1,5 @@
 import { StatusBar } from "expo-status-bar";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Image, Linking, Platform, SafeAreaView, StyleSheet, Text, View } from "react-native";
 import { colors, spacing, typography } from "./theme";
 import {
@@ -11,6 +11,7 @@ import { readWorkerCalendarOfferId } from "./features/worker-calendar/deepLink";
 import joblopLogo from "../assets/joblop-logo.png";
 import { LanguageToggle } from "./ui/LanguageToggle";
 import { useLocale } from "./i18n/LocaleContext";
+import type { MobileSessionTransport } from "./auth/secureSession";
 import { productName } from "./navigation/routes";
 import { WorkerNavigator } from "./navigation/WorkerNavigator";
 import { LocaleProvider } from "./i18n/LocaleContext";
@@ -35,6 +36,7 @@ export default function ProductionApp() {
   }, []);
   return (
     <LocaleProvider>
+    <AccountLanguageSync authenticated={authenticated} transport={transport} />
     <SafeAreaView style={styles.safeArea}>
       <StatusBar style="light" />
       <View style={styles.app}>
@@ -103,4 +105,18 @@ const styles = StyleSheet.create({
 function Tagline() {
   const { t } = useLocale();
   return <Text style={styles.subtitle}>{t("brand.tagline")}</Text>;
+}
+
+// When the worker picks a language in the app (and is signed in), save it on their account so job
+// offers and notices use it too. The app's starting language is never saved on its own, so it can't
+// overwrite a choice the worker made on the website.
+function AccountLanguageSync({ authenticated, transport }: { authenticated: boolean; transport: MobileSessionTransport | null }) {
+  const { locale } = useLocale();
+  const initial = useRef(locale);
+  const chosen = useRef(false);
+  useEffect(() => {
+    if (locale !== initial.current) chosen.current = true;
+    if (authenticated && chosen.current && transport) void transport.saveLanguage(locale).catch(() => false);
+  }, [authenticated, locale, transport]);
+  return null;
 }

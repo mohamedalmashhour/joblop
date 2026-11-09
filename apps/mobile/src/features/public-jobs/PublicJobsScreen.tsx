@@ -123,10 +123,9 @@ export function PublicJobsScreen({
       }
       const q = text.trim();
       const city = place.trim();
-      // Joblop jobs: one search word matches the role or the town, so send the job word first.
-      const jobWord = q || city;
+      // "Where" is sent as a place (matched without accents), never as the job word.
       const [jobs, leads] = await Promise.all([
-        transport.listPublicJobs({ ...(jobWord ? { q: jobWord } : {}), limit: PUBLIC_LIST_LIMIT }),
+        transport.listPublicJobs({ ...(q ? { q } : {}), ...(city ? { city } : {}), limit: PUBLIC_LIST_LIMIT }),
         transport.listPublicLeads({ q: q || EVERYDAY_WORK_QUERY, ...(city ? { city } : {}), limit: PUBLIC_LIST_LIMIT })
       ]);
       if (id !== runId.current) return; // a newer search replaced this one

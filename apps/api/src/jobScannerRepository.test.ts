@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { expandLeadQueryTokens, leadMatchesWholeWord, leadQueryTokens } from "./jobScannerRepository";
+import { expandLeadQueryTokens, leadMatchesWholeWord, leadQueryTokens, queryStoredLeads } from "./jobScannerRepository";
 
 // The role/keyword search tokenizer that powers JobScanner relevance filtering. When a visitor
 // searches "chef", queryStoredLeads narrows to leads whose title/employer/category contain a token,
@@ -58,5 +58,39 @@ describe("leadMatchesWholeWord", () => {
     expect(leadMatchesWholeWord({ title: "Préposée aux bénéficiaires" }, ["préposée"])).toBe(true);
     expect(leadMatchesWholeWord({ title: "Commis d'entrepôt" }, ["entrepôt"])).toBe(true);
     expect(leadMatchesWholeWord({ title: "Chauffeur-livreur" }, ["livreur"])).toBe(true);
+  });
+});
+
+describe("queryStoredLeads city filter", () => {
+  const lead = (id: string, city: string) => ({
+    id, source: "adzuna", sourceId: id, title: "Cook", employer: null, locationLabel: null, city, province: "QC",
+    latitude: null, longitude: null, salaryMinMinor: null, salaryMaxMinor: null, salaryPeriod: null, contractTime: null,
+    category: null, url: "https://x.test", postedAt: null, description: null
+  });
+  const rows = [lead("1", "Montréal"), lead("2", "Lévis"), lead("3", "Laval")];
+  const fake = () => {
+    const calls: unknown[] = [];
+    const prisma = {
+      externalJobLead: {
+        findMany: async (args: { distinct?: string[]; where?: { city?: { in?: string[] } } }) => {
+          calls.push(args);
+          if (args.distinct) return rows.map((r) => ({ city: r.city }));
+          const wanted = args.where?.city?.in;
+          return wanted ? rows.filter((r) => wanted.includes(r.city)) : rows;
+        }
+      }
+    } as never;
+    return { prisma, calls };
+  };
+
+  it("matches a city typed without accents or in another case", async () => {
+    expect((await queryStoredLeads(fake().prisma, { city: "Montreal" })).map((l) => l.id)).toEqual(["1"]);
+    expect((await queryStoredLeads(fake().prisma, { city: "levis" })).map((l) => l.id)).toEqual(["2"]);
+    expect((await queryStoredLeads(fake().prisma, { city: "MONTRÉAL" })).map((l) => l.id)).toEqual(["1"]);
+  });
+
+  it("returns nothing for an unknown city, and does not filter without one", async () => {
+    expect(await queryStoredLeads(fake().prisma, { city: "Atlantis" })).toEqual([]);
+    expect(await queryStoredLeads(fake().prisma, {})).toHaveLength(3);
   });
 });

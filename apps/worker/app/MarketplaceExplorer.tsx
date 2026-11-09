@@ -4,9 +4,10 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { MarketplaceMap, type MapPin } from "./MarketplaceMap";
 import { useLocale, useT, fmtLocale } from "./i18n/LocaleProvider";
 import { LandingPanel } from "./LandingPanel";
+import { syncAccountLanguageOnce } from "./i18n/saveLanguage";
 import { NEXT_AFTER_SIGN_UP_KEY } from "./PublicJobSearch";
 import type { RwosLocale } from "./i18n/config";
-import { payOfferedLabel } from "./payOfferedLabel";
+import { workerPayLabel, formatHourlyRate } from "./workerPayLabel";
 
 export type JobResult = Readonly<{
   jobRequestId: string;
@@ -28,7 +29,7 @@ export type JobResult = Readonly<{
 }>;
 
 type SearchResponse = Readonly<{
-  origin: { province: string; city: string | null; postalCode: string };
+  origin: { province: string; city: string | null; postalCode: string | null; place?: string };
   count: number;
   total: number;
   nextCursor: number | null;
@@ -73,6 +74,10 @@ function SearchPanel({ onSignedOut }: { onSignedOut: () => void }) {
   const t = useT();
   const rawLocale = useLocale();
   const locale = fmtLocale(rawLocale);
+  // Signed in: make sure offers and notices use the language this worker reads the site in.
+  useEffect(() => {
+    syncAccountLanguageOnce(rawLocale);
+  }, [rawLocale]);
   // Selectable role suggestions for the search box (worker picks a role instead of guessing free-text).
   const roleSuggestions =
     rawLocale === "ar"
@@ -80,7 +85,8 @@ function SearchPanel({ onSignedOut }: { onSignedOut: () => void }) {
       : rawLocale.startsWith("fr")
         ? ["Infirmière", "Préposé aux bénéficiaires", "Chef", "Cuisinier", "Entretien ménager", "Service en salle", "Maintenance", "Nettoyage"]
         : ["Nurse", "Personal Support", "Chef", "Cook", "Housekeeping", "Dining Support", "Maintenance", "Cleaning"];
-  const [postalCode, setPostalCode] = useState("H7V 1A1");
+  // "Where?": a city or a postal code. Starts empty: never pre-filled with a place the worker didn't type.
+  const [place, setPlace] = useState("");
   const [radiusKm, setRadiusKm] = useState<number>(25);
   const [role, setRole] = useState("");
   const [sort, setSort] = useState<string>("nearest");
@@ -107,7 +113,7 @@ function SearchPanel({ onSignedOut }: { onSignedOut: () => void }) {
         method: "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({
-          postalCode,
+          place: place.trim(),
           radiusKm,
           sort,
           ...(role.trim() ? { role: role.trim() } : {}),
@@ -119,21 +125,26 @@ function SearchPanel({ onSignedOut }: { onSignedOut: () => void }) {
       });
       return response;
     },
-    [postalCode, radiusKm, role, sort, dateFrom, minOpenings, verifiedOnly]
+    [place, radiusKm, role, sort, dateFrom, minOpenings, verifiedOnly]
   );
 
   const runSearch = useCallback(
     async (event?: React.FormEvent) => {
       event?.preventDefault();
+      setSelectedId(null);
+      if (!place.trim()) {
+        setErrorMessage(t("mk.placeRequired"));
+        setStatus("error");
+        return;
+      }
       setStatus("searching");
       setErrorMessage(null);
-      setSelectedId(null);
       try {
         const response = await fetchPage(null);
         if (response.status === 401) return onSignedOut();
         if (!response.ok) {
-          const payload = await response.json().catch(() => null);
-          setErrorMessage(payload?.message ?? t("mk.searchError"));
+          const payload = (await response.json().catch(() => null)) as { error?: string } | null;
+          setErrorMessage(searchErrorText(payload?.error, t));
           setStatus("error");
           return;
         }
@@ -149,7 +160,7 @@ function SearchPanel({ onSignedOut }: { onSignedOut: () => void }) {
         setStatus("error");
       }
     },
-    [fetchPage, onSignedOut, t]
+    [fetchPage, onSignedOut, place, t]
   );
 
   const loadMore = useCallback(async () => {
@@ -201,11 +212,12 @@ function SearchPanel({ onSignedOut }: { onSignedOut: () => void }) {
   const mapOrigin = jobs[0]
     ? { latitude: jobs[0].mapPoint.latitude, longitude: jobs[0].mapPoint.longitude }
     : null;
+  const originPlace = origin ? (origin.postalCode ?? origin.place ?? origin.city ?? "") : "";
   const detailHref = (id: string) =>
-    `/jobs/${encodeURIComponent(id)}${origin ? `?postalCode=${encodeURIComponent(origin.postalCode)}` : ""}`;
+    `/jobs/${encodeURIComponent(id)}${originPlace ? `?place=${encodeURIComponent(originPlace)}` : ""}`;
 
   const hasFilters = Boolean(role.trim() || dateFrom || minOpenings || verifiedOnly);
-  const place = origin ? `${origin.city ?? origin.postalCode}${origin.province ? `, ${origin.province}` : ""}` : "";
+  const placeLabel = origin ? `${origin.city ?? origin.postalCode ?? origin.place ?? ""}${origin.province ? `, ${origin.province}` : ""}` : "";
 
   return (
     <>
@@ -224,8 +236,15 @@ function SearchPanel({ onSignedOut }: { onSignedOut: () => void }) {
 
       <form className="searchbar" onSubmit={runSearch}>
         <div className="field grow">
-          <label htmlFor="postal">{t("mk.postalCode")}</label>
-          <input id="postal" value={postalCode} onChange={(e) => setPostalCode(e.target.value)} placeholder={t("mk.postalPlaceholder")} />
+          <label htmlFor="place">{t("mk.postalCode")}</label>
+          <input
+            id="place"
+            value={place}
+            onChange={(e) => setPlace(e.target.value)}
+            placeholder={t("mk.postalPlaceholder")}
+            autoComplete="off"
+            maxLength={80}
+          />
         </div>
         <div className="field">
           <label htmlFor="radius">{t("mk.within")}</label>
@@ -277,7 +296,7 @@ function SearchPanel({ onSignedOut }: { onSignedOut: () => void }) {
 
       {status === "done" || status === "empty" ? (
         <div className="resultbar">
-          <h2>{total === 1 ? t("mk.resultsOne", { count: total, place }) : t("mk.resultsMany", { count: total, place })}</h2>
+          <h2>{total === 1 ? t("mk.resultsOne", { count: total, place: placeLabel }) : t("mk.resultsMany", { count: total, place: placeLabel })}</h2>
           <div className="viewtoggle" role="tablist" aria-label={t("mk.viewToggleLabel")}>
             <button role="tab" aria-selected={view === "list"} className={view === "list" ? "active" : ""} onClick={() => setView("list")} type="button">
               {t("mk.viewList")}
@@ -402,10 +421,9 @@ function JobCard({
         <span className="chip">
           {job.openings === 1 ? t("mk.openingOne", { count: job.openings }) : t("mk.openingMany", { count: job.openings })}
         </span>
-        {job.workerRateMinor !== null ? <span className="chip">{formatRate(job.workerRateMinor, job.currency, locale)}</span> : null}
-        {job.payOffered !== undefined ? (
-          <span className="chip">{payOfferedLabel(job.payOffered, locale, { paidByEmployer: t("pay.paidByEmployer"), employerPaysDirectly: t("pay.employerPaysDirectly") })}</span>
-        ) : null}
+        <span className="chip">
+          <bdi>{workerPayLabel(job, locale, { paidByEmployer: t("pay.paidByEmployer"), employerPaysDirectly: t("pay.employerPaysDirectly"), pending: t("pay.pending") })}</bdi>
+        </span>
       </div>
       <div className="when">{formatWhen(job.startAt, job.endAt, locale)}</div>
       <a className="detaillink" href={href}>{t("mk.viewDetails")}</a>
@@ -469,7 +487,15 @@ export function formatWhen(startAt: string, endAt: string, locale?: RwosLocale):
 }
 
 export function formatRate(minor: number, currency: string, locale?: RwosLocale): string {
-  return `${(minor / 100).toLocaleString(locale, { style: "currency", currency })}/h`;
+  return formatHourlyRate(minor, currency, locale);
+}
+
+/** The friendly message for a search the API could not run (an unknown place is never a 500). */
+function searchErrorText(code: string | undefined, t: ReturnType<typeof useT>): string {
+  if (code === "RWOS_PLACE_NOT_FOUND") return t("mk.placeNotFound");
+  if (code === "RWOS_PLACE_REQUIRED") return t("mk.placeRequired");
+  if (code === "RWOS_PLACE_UNAVAILABLE") return t("mk.placeUnavailable");
+  return t("mk.searchError");
 }
 
 /** Where the visitor wanted to go before signing up (same-site path), read once. */

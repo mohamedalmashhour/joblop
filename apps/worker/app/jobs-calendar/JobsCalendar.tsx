@@ -89,6 +89,7 @@ const TEXT = {
     payLocale: "en-CA",
     paidByEmployer: "paid directly by the employer",
     employerPaysDirectly: "Pay set and paid directly by the employer",
+    payPending: "Hourly pay: confirmed before you're offered the shift",
     bonusHourly: (amount: string) => `+ $${amount}/h bonus`,
     bonusTransport: (amount: string) => `+ $${amount} transport`,
     bonusOneTime: (amount: string) => `+ $${amount} bonus`,
@@ -171,6 +172,7 @@ const TEXT = {
     payLocale: "fr-CA",
     paidByEmployer: "payé directement par l'employeur",
     employerPaysDirectly: "Salaire fixé et payé directement par l'employeur",
+    payPending: "Salaire horaire : confirmé avant qu'on vous offre le quart",
     bonusHourly: (amount: string) => `+ ${amount} $/h de prime`,
     bonusTransport: (amount: string) => `+ ${amount} $ transport`,
     bonusOneTime: (amount: string) => `+ ${amount} $ de prime`,
@@ -253,6 +255,7 @@ const TEXT = {
     payLocale: "en-CA",
     paidByEmployer: "يدفعه صاحب العمل مباشرة",
     employerPaysDirectly: "يحدد صاحب العمل الأجر ويدفعه مباشرة",
+    payPending: "الأجر بالساعة: يُؤكَّد قبل أن تُعرض عليك المناوبة",
     bonusHourly: (amount: string) => `+ ${amount}$ مكافأة في الساعة`,
     bonusTransport: (amount: string) => `+ ${amount}$ للمواصلات`,
     bonusOneTime: (amount: string) => `+ ${amount}$ مكافأة`,
@@ -750,12 +753,13 @@ function ItemCard({
         {item.subtitle ? <p className="jc-meta">📍 {item.subtitle}</p> : null}
         <p className="jc-meta">🕒 <bdi>{timeText}</bdi></p>
         <div className="jc-facts">
-          {item.amountMinor !== null && item.amountMinor !== undefined ? (
-            <span className="jc-pay"><bdi>{t.perHour(formatAmount(item.amountMinor))}</bdi></span>
-          ) : null}
           {item.payOffered !== undefined ? (
             <span className="jc-pay"><bdi>{payOfferedLabel(item.payOffered, t.payLocale, t)}</bdi></span>
-          ) : null}
+          ) : item.amountMinor !== null && item.amountMinor !== undefined && item.amountMinor > 0 ? (
+            <span className="jc-pay"><bdi>{t.perHour(formatAmount(item.amountMinor))}</bdi></span>
+          ) : (
+            <span className="jc-pay"><bdi>{t.payPending}</bdi></span>
+          )}
           {bonus ? <span className="jc-bonus"><span aria-hidden="true">★ </span><bdi>{bonus}</bdi></span> : null}
           {item.placesLeft !== null ? <span className="jc-places">{t.places(item.placesLeft)}</span> : null}
         </div>

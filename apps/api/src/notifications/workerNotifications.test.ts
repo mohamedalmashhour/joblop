@@ -222,3 +222,49 @@ describe("shift cancelled / changed notices", () => {
     await expect(notifyWorkersShiftChanged(broken, f.emailSender, f.smsSender, { jobRequestId: "j1", workers: [{ userId: "u1" }], summary: {} })).resolves.toEqual({ sent: 0, skipped: 0, failed: 1 });
   });
 });
+
+describe("worker notices in Arabic (the worker's chosen language)", () => {
+  const shift: ShiftNoticeDetails = {
+    role: "Cook",
+    startAt: new Date("2026-12-03T14:00:00Z"),
+    endAt: new Date("2026-12-03T22:00:00Z"),
+    timeZone: "America/Toronto",
+    area: "Laval"
+  };
+
+  it("writes every job notice in Arabic, with Western digits", () => {
+    expect(assignedJobEmail({ to: "w@x.com", language: "ar", title: "Cook", startAt: shift.startAt }).subject).toBe("Joblop — حصلت على العمل!");
+    expect(shiftCancelledSmsText({ language: "ar", shift })).toMatch(/^Joblop: أُلغيت مناوبتك Cook في .*2026.* في Laval\. راجع تقويمك\.$/);
+    expect(shiftCancelledEmail({ to: "w@x.com", language: "ar", shift, cancelledBy: "employer" }).text).toContain("من قِبل صاحب العمل");
+    expect(shiftChangedSmsText({ language: "ar", shift, summary: { newPlace: "Laval" } })).toContain("مكان جديد Laval");
+    expect(shiftChangedEmail({ to: "w@x.com", language: "ar", shift, summary: {} }).subject).toBe("Joblop — تغيّرت مناوبتك");
+    expect(describeShiftChange({ outcome: "final" }, "ar", "America/Toronto")).toBe("أصبح التغيير نهائيًا");
+    expect(payoutPaidEmail({ to: "w@x.com", language: "ar", amountMinor: 12_345, currency: "CAD" }).text).toContain("123.45 CAD");
+    expect(payoutRegisteredEmail({ to: "w@x.com", language: "ar", amountMinor: 100, currency: "CAD" }).subject).toContain("أرباحك");
+    expect(accountPenaltyEmail({ to: "w@x.com", language: "ar", penalty: "suspend", suspensionDays: 7 }).text).toContain("7 أيام");
+    expect(shiftCancelledSmsText({ language: "ar", shift })).not.toMatch(/[٠-٩]/);
+  });
+
+  it("the dispatcher uses the language stored on the worker's account", async () => {
+    const emails: EmailMessage[] = [];
+    const texts: SmsMessage[] = [];
+    const prisma = {
+      jobRequest: {
+        findUnique: async () => ({
+          title: "Kitchen",
+          startAt: shift.startAt,
+          endAt: shift.endAt,
+          timezone: "America/Toronto",
+          roleDefinition: { displayLabel: "Cook" },
+          residence: { city: "Laval", region: null, province: "QC" }
+        })
+      },
+      user: { findMany: async () => [{ id: "u1", emailNormalized: "w@x.com", phone: "+15145550000", primaryLanguage: "ar" }] }
+    } as never;
+    const emailSender = { configured: true, async send(m: EmailMessage) { emails.push(m); return { status: "sent", id: "e" } as const; } };
+    const smsSender = { configured: true, enabled: true, async send(m: SmsMessage) { texts.push(m); return { status: "sent", id: "s" } as const; } };
+    await notifyWorkersShiftCancelled(prisma, emailSender, smsSender, { jobRequestId: "j1", workers: [{ userId: "u1" }], cancelledBy: "staff" });
+    expect(emails[0]!.subject).toBe("Joblop — أُلغيت مناوبتك");
+    expect(texts[0]!.text).toContain("أُلغيت مناوبتك Cook");
+  });
+});

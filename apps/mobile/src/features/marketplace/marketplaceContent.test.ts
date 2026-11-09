@@ -11,7 +11,9 @@ describe("marketplace formatters", () => {
   });
 
   it("never invents a rate — null (policy-gated) shows an honest placeholder", () => {
-    expect(formatWorkerRate(null, "CAD")).toBe("Rate shared after you're matched");
+    expect(formatWorkerRate(null, "CAD")).toBe("Hourly pay: confirmed before you're offered the shift");
+    expect(formatWorkerRate(0, "CAD", "fr")).toBe("Salaire horaire : confirmé avant qu'on vous offre le quart");
+    expect(formatWorkerRate(null, "CAD", "ar")).toBe("الأجر بالساعة: يُؤكَّد قبل أن تُعرض عليك المناوبة");
     expect(formatWorkerRate(2500, "CAD")).toBe("25.00 CAD/h");
   });
 

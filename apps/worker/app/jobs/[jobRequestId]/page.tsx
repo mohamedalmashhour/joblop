@@ -12,12 +12,13 @@ export default async function Page({
 }) {
   const { jobRequestId } = await params;
   const sp = await searchParams;
-  const postalCode = typeof sp.postalCode === "string" ? sp.postalCode : null;
+  // The worker's search place (a city or a postal code), for the distance line.
+  const placeParam = typeof sp.place === "string" ? sp.place : typeof sp.postalCode === "string" ? sp.postalCode : null;
   return (
     <>
       <SiteHeader />
       <main className="wrap">
-        <JobDetail id={jobRequestId} postalCode={postalCode} />
+        <JobDetail id={jobRequestId} place={placeParam} />
       </main>
     </>
   );

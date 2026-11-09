@@ -384,6 +384,24 @@ describe("Brevo worker offer delivery", () => {
     expect(String(body.subject)).toContain("Nouvelle offre de quart");
   });
 
+  it("composes the Arabic offer email, right-to-left, for ar recipients", async () => {
+    let body: Record<string, unknown> = {};
+    const fetchImpl = (async (_url: string | URL | Request, init?: RequestInit) => {
+      body = JSON.parse(String(init?.body));
+      return jsonResponse({ messageId: "brevo-msg-ar" });
+    }) as unknown as typeof fetch;
+    const provider = createBrevoWorkerOfferDeliveryProvider({
+      apiKey: API_KEY,
+      fromAddress: FROM,
+      fetch: fetchImpl,
+      resolveRecipient: async () => recipient({ language: "ar", name: "Alex" })
+    });
+    await provider.deliver(deliverInput);
+    expect(String(body.subject)).toContain("عرض مناوبة جديد");
+    expect(String(body.textContent)).toContain("الأجر: $24.00/h");
+    expect(String(body.htmlContent)).toContain('dir="rtl"');
+  });
+
   it("fails closed without sending when there is no deliverable recipient", async () => {
     const fetchImpl = vi.fn(async () => jsonResponse({ messageId: "should-not-send" })) as unknown as typeof fetch;
     const provider = createBrevoWorkerOfferDeliveryProvider({

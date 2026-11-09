@@ -1,5 +1,5 @@
 import type { PrismaClient } from "@rwos/database";
-import type { ExternalJobLead, ExternalJobSource } from "@rwos/shared";
+import { matchingPlaceNames, type ExternalJobLead, type ExternalJobSource } from "@rwos/shared";
 
 // JobScanner persistence. Leads are upserted by (source, sourceId) on each scan so a re-scan refreshes
 // lastSeenAt and any changed fields without duplicating. firstSeenAt is preserved across re-scans.
@@ -182,10 +182,23 @@ export function leadMatchesWholeWord(
  */
 export async function queryStoredLeads(prisma: PrismaClient, opts: QueryLeadsOptions = {}): Promise<StoredLead[]> {
   const tokens = expandLeadQueryTokens(opts.query, leadQueryTokens(opts.query));
+  // City: accent- and case-insensitive ("Montreal" finds "Montréal"). Postgres `contains` keeps
+  // accents, so the distinct stored city names are folded in code and then matched exactly.
+  let cityIn: string[] | null = null;
+  if (opts.city && opts.city.trim()) {
+    const cities = await prisma.externalJobLead.findMany({
+      where: { ...(opts.province ? { province: opts.province } : {}), city: { not: null } },
+      distinct: ["city"],
+      select: { city: true },
+      take: 5000
+    });
+    cityIn = matchingPlaceNames(cities.map((c) => c.city), opts.city);
+    if (cityIn.length === 0) return [];
+  }
   const rows = await prisma.externalJobLead.findMany({
     where: {
       ...(opts.province ? { province: opts.province } : {}),
-      ...(opts.city ? { city: { contains: opts.city, mode: "insensitive" } } : {}),
+      ...(cityIn ? { city: { in: cityIn } } : {}),
       ...(tokens.length > 0
         ? {
             OR: tokens.flatMap((tok) => [

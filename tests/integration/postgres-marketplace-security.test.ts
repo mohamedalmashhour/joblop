@@ -69,11 +69,28 @@ suite("marketplace security + privacy (endpoint level)", () => {
           organizationId: org.id, residenceId: res.id, departmentId: dept.id, workGroupId: wg.id, roleDefinitionId: role.id,
           creatorUserId: owner, title: "Secure shift", numberOfWorkers: 2, requestType: "single_day", timezone: "America/Toronto",
           startAt: new Date(Date.now() + 20 * 3_600_000), endAt: new Date(Date.now() + 28 * 3_600_000),
-          status, createdByUserId: owner
+          status, createdByUserId: owner,
+          // Open on the shared calendar, like every job staff approve (openJobWhere).
+          openClaim: status === "approved_for_dispatch"
         }
       });
     visibleJobId = (await mkJob("approved_for_dispatch")).id;
     draftJobId = (await mkJob("draft")).id;
+    // Approval prices the job: the worker rate W is shown; the employer rate and margin never are.
+    await prisma.requestPricingSnapshot.create({
+      data: {
+        jobRequestId: visibleJobId,
+        organizationId: org.id,
+        contractId: randomUUID(),
+        contractVersion: "v1",
+        currency: "CAD",
+        marginPpm: 200_000,
+        employerHourlyRateMinor: 3137,
+        workerHourlyRateMinor: 2500,
+        platformHourlyMarginMinor: 637,
+        capturedByUserId: owner
+      }
+    });
   });
 
   afterAll(async () => {
@@ -101,6 +118,20 @@ suite("marketplace security + privacy (endpoint level)", () => {
     expect(job.mapPoint.approximate).toBe(true);
     expect(job.verifiedEmployer).toBe(false); // never inferred
     expect(job.currency).toBe("CAD"); // Stage 2b.3b-1: display currency driven by countryCurrency, byte-identical for Canada
+    // Only the worker's own pay: never the employer rate or Joblop's share.
+    expect(job.workerRateMinor).toBe(2500);
+    // No number anywhere in the answer equals the employer rate or the margin.
+    const numbers: number[] = [];
+    const walk = (v: unknown): void => {
+      if (typeof v === "number") numbers.push(v);
+      else if (Array.isArray(v)) v.forEach(walk);
+      else if (v && typeof v === "object") Object.values(v).forEach(walk);
+    };
+    walk(res.json());
+    expect(numbers).not.toContain(3137);
+    expect(numbers).not.toContain(637);
+    expect(raw).not.toContain("employerHourlyRateMinor");
+    expect(raw).not.toContain("platformHourlyMarginMinor");
   });
 
   it("detail never leaks exact coordinates / address and reports verified=false", async () => {

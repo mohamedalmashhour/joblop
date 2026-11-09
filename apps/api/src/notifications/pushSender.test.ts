@@ -129,22 +129,24 @@ describe("Expo push sender", () => {
   it("writes each device's message in its owner's language, French by default", async () => {
     const rows: Row[] = [
       { token: token(1), userId: "fr-user", revokedAt: null, language: null },
-      { token: token(2), userId: "en-user", revokedAt: null, language: "en" }
+      { token: token(2), userId: "en-user", revokedAt: null, language: "en" },
+      { token: token(3), userId: "ar-user", revokedAt: null, language: "ar" }
     ];
     let body: { to: string; title: string }[] = [];
     const fetch: PushFetch = async (_url, init) => {
       body = JSON.parse(init.body) as { to: string; title: string }[];
       return { ok: true, status: 200, json: async () => ({ data: body.map(() => ({ status: "ok" })) }) };
     };
-    await pushToWorkers(createPushSender({ prisma: fakePrisma(rows), fetch }), ["fr-user", "en-user"], "shift_confirmed", { role: "Cook", jobRequestId: "job-1" });
+    await pushToWorkers(createPushSender({ prisma: fakePrisma(rows), fetch }), ["fr-user", "en-user", "ar-user"], "shift_confirmed", { role: "Cook", jobRequestId: "job-1" });
     expect(body.find((m) => m.to === token(1))?.title).toBe("Vous avez obtenu le travail");
     expect(body.find((m) => m.to === token(2))?.title).toBe("You got the job");
+    expect(body.find((m) => m.to === token(3))?.title).toBe("حصلت على العمل");
   });
 });
 
 describe("worker push copy", () => {
   it("is short and opens the right screen", () => {
-    for (const language of ["fr", "en"] as const) {
+    for (const language of ["fr", "en", "ar"] as const) {
       const confirmed = workerPushMessage("shift_confirmed", language, { role: "Préposé", jobRequestId: "j1" });
       expect(confirmed.data).toEqual({ screen: "calendar", jobRequestId: "j1" });
       expect(workerPushMessage("shift_reminder", language, { jobRequestId: "j1" }).data.screen).toBe("calendar");
