@@ -226,8 +226,9 @@ suite("PostgreSQL a worker can never hold two shifts at the same time", () => {
     const shortTerm = await seedOpenJob(shift(40, 1, 6));
     const finder = createPrismaHeldShiftOverlapFinder(prisma);
 
-    await expect(claimOpenJob(depsFor(prisma), { userId: worker.userId, jobRequestId: longTerm.id })).resolves.toMatchObject({ status: "assigned" });
-    // A long-term hire does not block a short-term shift at the same time…
+    // Long-term listings are never claimed (workers Apply and the employer hires directly).
+    await expect(claimOpenJob(depsFor(prisma), { userId: worker.userId, jobRequestId: longTerm.id })).resolves.toMatchObject({ status: "not_open" });
+    // A long-term listing does not block a short-term shift at the same time…
     await expect(
       finder({ workerIdentityId: worker.workerIdentityId, jobRequestId: shortTerm.id, startAt: shortTerm.startAt, endAt: shortTerm.endAt })
     ).resolves.toBeNull();
