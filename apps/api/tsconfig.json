@@ -11,6 +11,7 @@
   "references": [
     { "path": "../../packages/auth" },
     { "path": "../../packages/config" },
+    { "path": "../../countries/canada" },
     { "path": "../../countries/syria" },
     { "path": "../../packages/database" },
     { "path": "../../packages/observability" },

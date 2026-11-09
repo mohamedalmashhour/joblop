@@ -1,4 +1,4 @@
-import { createHmac, randomBytes } from "node:crypto";
+import { randomBytes } from "node:crypto";
 import Fastify, { type FastifyReply, type FastifyRequest } from "fastify";
 import {
   AuthenticationError,
@@ -437,6 +437,9 @@ import { applyEmployerApplicantAction, isEmployerApplicantAction, notifyApplicat
 import { legalNameChangeBlocked } from "./organizationLegalName";
 import { normalizeStaffPhone, requestStaffPhoneCode, verifyStaffPhoneCode } from "./staffPhoneSignIn";
 import { listWorkerPayoutsForStaff } from "./workerPayoutStaffList";
+import { deriveAuthenticationRateLimitKeys } from "./authRateLimitKeys";
+import { createPostgresAuthenticationRateLimiter } from "./postgresAuthRateLimiter";
+import { resolveProductionFeatureFlags, isProductionBlockedOperation } from "./productionRoutePolicy";
 
 export interface BuildApiOptions {
   authService?: AuthenticationService;
@@ -467,6 +470,12 @@ export interface BuildApiOptions {
   ) => Promise<readonly AuthorizationRoleKey[]> | readonly AuthorizationRoleKey[];
   readinessProbe?: () => Promise<boolean>;
   authRateLimiter?: AuthenticationRateLimiter;
+  /**
+   * Defaults for the production feature flags (RWOS_JOB_FLOW_ENABLED, RWOS_PUBLIC_SIGNUP_ENABLED)
+   * when their env vars are unset, from the selected country profile. Only RWOS_ENV=production reads
+   * the flags; absent = both OFF (historical production behaviour). See productionRoutePolicy.ts.
+   */
+  productionFeatureDefaults?: Readonly<{ jobFlow: boolean; publicSignup: boolean }> | undefined;
   trustedServiceIdentity?: Readonly<{
     provider: IdentityTokenProvider;
     registry: TrustedAudienceRegistry;
@@ -620,9 +629,30 @@ export function buildApi(options: BuildApiOptions = {}) {
     });
   }
   const requestStartedAt = new WeakMap<object, bigint>();
+  const prisma = options.authService ? null : createPrismaClient(runtimeConfig.databaseUrl);
+  // Production feature flags (job flow, public sign-up). Read only when RWOS_ENV=production.
+  const productionFeatures = resolveProductionFeatureFlags(
+    { jobFlow: runtimeConfig.jobFlowFlag, publicSignup: runtimeConfig.publicSignupFlag },
+    options.productionFeatureDefaults
+  );
   const authRateLimiter =
     options.authRateLimiter ??
-    (runtimeConfig.rwosEnv === "production"
+    (runtimeConfig.authRateLimiterBackend === "postgres"
+      ? // Shared, restart-proof limiter in the API's own database (AUTH_RATE_LIMITER_BACKEND=postgres).
+        // Config validation guarantees DATABASE_URL and AUTH_RATE_LIMITER_KEY_SECRET. Fails closed:
+        // a database error refuses the sign-in (503), never allows it unchecked.
+        (() => {
+          const ownDb = prisma ? null : createPrismaClient(runtimeConfig.databaseUrl);
+          return createPostgresAuthenticationRateLimiter({
+            db: prisma ?? ownDb!,
+            keySecret: runtimeConfig.authRateLimiterKeySecret!,
+            namespace:
+              runtimeConfig.authRateLimiterNamespace ?? `rwos:authrl:${runtimeConfig.rwosEnv}:v1`,
+            ...(runtimeConfig.authRateLimiterKeyId ? { keyId: runtimeConfig.authRateLimiterKeyId } : {}),
+            ...(ownDb ? { close: () => ownDb.$disconnect() } : {})
+          });
+        })()
+      : runtimeConfig.rwosEnv === "production"
       ? createRemoteAuthenticationRateLimiter({
           origin: runtimeConfig.authRateLimiterOrigin!,
           token: runtimeConfig.authRateLimiterToken!,
@@ -646,7 +676,6 @@ export function buildApi(options: BuildApiOptions = {}) {
         // memory limiter (never lenient), so this can never weaken staging or production.
         ? createMemoryAuthenticationRateLimiter({ accountMaxAttempts: 100000, networkMaxAttempts: 100000, windowMs: 1, maxBuckets: 20000, keySecret: "rwos-local-e2e-auth-rate-limit" })
         : createMemoryAuthenticationRateLimiter());
-  const prisma = options.authService ? null : createPrismaClient(runtimeConfig.databaseUrl);
   const jobGradingAuditStore: JobGradingAuditStore | null =
     options.jobGradingAuditStore ?? (prisma ? createPrismaJobGradingAuditStore(prisma) : null);
   const authenticationRepository = prisma ? createPrismaAuthenticationRepository(prisma) : null;
@@ -1488,7 +1517,12 @@ export function buildApi(options: BuildApiOptions = {}) {
     );
     if (
       runtimeConfig.rwosEnv === "production" &&
-      isProductionDisabledOperation(request.method, request.url)
+      isProductionBlockedOperation(
+        request.method,
+        request.url,
+        request.routeOptions.url,
+        productionFeatures
+      )
     ) {
       return reply.code(404).send({
         error: "RWOS_RESOURCE_UNAVAILABLE",
@@ -1814,7 +1848,9 @@ export function buildApi(options: BuildApiOptions = {}) {
   });
 
   app.post("/auth/register", async (request, reply) => {
-    if (runtimeConfig.rwosEnv === "production") {
+    // Public sign-up in production is governed by RWOS_PUBLIC_SIGNUP_ENABLED (default from the
+    // country profile; Canada/Québec: ON). Every other environment keeps it open, as before.
+    if (runtimeConfig.rwosEnv === "production" && !productionFeatures.publicSignupEnabled) {
       return reply.code(404).send({
         error: "RWOS_RESOURCE_UNAVAILABLE",
         message: "Resource unavailable."
@@ -11923,26 +11959,6 @@ function trustedIdentityHeaders(
     }));
 }
 
-function deriveAuthenticationRateLimitKeys(
-  input: Readonly<{
-    action: "register" | "sign_in" | "email_verify_send" | "password_reset_request";
-    ip: string;
-    email: string;
-  }>,
-  secret: string,
-  namespace = "rwos:authrl:test:v1",
-  keyId = "memory"
-) {
-  const digest = (kind: "account" | "network", value: string) =>
-    createHmac("sha256", secret)
-      .update(`rwos:auth-rate-limit:v1:${input.action}:${kind}:${value}`)
-      .digest("hex");
-  return {
-    accountKey: `${namespace}:${keyId}:${input.action}:account:${digest("account", input.email.trim().toLowerCase())}`,
-    networkKey: `${namespace}:${keyId}:${input.action}:network:${digest("network", input.ip.trim().toLowerCase())}`
-  };
-}
-
 function hasEmailVerificationDelegate(prisma: unknown): boolean {
   return Boolean(
     prisma &&
@@ -12035,25 +12051,6 @@ function applySecurityHeaders(reply: FastifyReply, production: boolean) {
   if (production) {
     reply.header("strict-transport-security", "max-age=31536000; includeSubDomains");
   }
-}
-
-function isProductionDisabledOperation(method: string, url: string) {
-  const path = url.split("?")[0] ?? url;
-  if (method === "GET" && /\/platform\/dispatches\/[^/]+\/candidates\/search$/.test(path)) {
-    return true;
-  }
-  if (!["POST", "PUT", "PATCH", "DELETE"].includes(method)) return false;
-  return (
-    path.startsWith("/platform/dispatches") ||
-    path.startsWith("/platform/worker-offers") ||
-    path.startsWith("/worker/offers") ||
-    path.startsWith("/platform/assignments") ||
-    path.startsWith("/worker/assignments") ||
-    path.startsWith("/platform/attendance") ||
-    path.startsWith("/worker/attendance") ||
-    path.startsWith("/platform/timesheets") ||
-    path.startsWith("/worker/timesheets")
-  );
 }
 
 function sendAuthenticationRateLimited(reply: FastifyReply, retryAfterSeconds: number) {

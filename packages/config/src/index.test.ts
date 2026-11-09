@@ -362,3 +362,83 @@ describe("production runtime configuration", () => {
     expect(validateRuntimeConfig(env)).toMatchObject({ success: false });
   });
 });
+
+describe("production readiness settings", () => {
+  const postgresProduction = {
+    RWOS_ENV: "production",
+    NODE_ENV: "production",
+    DATABASE_URL: "postgresql://db.example.test/rwos",
+    INTERNAL_API_ORIGIN: "https://api.example.test",
+    AUTH_RATE_LIMITER_BACKEND: "postgres",
+    AUTH_RATE_LIMITER_KEY_SECRET: "test-key-secret-that-is-at-least-32-characters",
+    AUTH_RATE_LIMITER_NAMESPACE: "rwos:authrl:production:v1"
+  };
+
+  it("accepts production on the Postgres limiter without a remote origin, token or key id", () => {
+    expect(validateRuntimeConfig(postgresProduction)).toMatchObject({ success: true });
+    expect(getRuntimeConfig(postgresProduction)).toMatchObject({
+      rwosEnv: "production",
+      authRateLimiterBackend: "postgres",
+      jobFlowFlag: null,
+      publicSignupFlag: null
+    });
+  });
+
+  it.each(["AUTH_RATE_LIMITER_KEY_SECRET", "AUTH_RATE_LIMITER_NAMESPACE", "DATABASE_URL"])(
+    "fails closed for production on the Postgres limiter without %s",
+    (missing) => {
+      const env: Record<string, string> = { ...postgresProduction };
+      delete env[missing];
+      expect(validateRuntimeConfig(env)).toMatchObject({ success: false });
+    }
+  );
+
+  it("requires the key secret and a database for the Postgres limiter in any environment", () => {
+    expect(
+      validateRuntimeConfig({ RWOS_ENV: "test", AUTH_RATE_LIMITER_BACKEND: "postgres", DATABASE_URL: "postgresql://db/rwos" })
+    ).toMatchObject({ success: false });
+    expect(
+      validateRuntimeConfig({
+        RWOS_ENV: "test",
+        AUTH_RATE_LIMITER_BACKEND: "postgres",
+        AUTH_RATE_LIMITER_KEY_SECRET: "test-key-secret-that-is-at-least-32-characters"
+      })
+    ).toMatchObject({ success: false });
+  });
+
+  it("keeps the remote limiter requirements when the backend is unset or remote", () => {
+    const { AUTH_RATE_LIMITER_BACKEND: _backend, ...remoteDefault } = postgresProduction;
+    expect(validateRuntimeConfig(remoteDefault)).toMatchObject({ success: false });
+    expect(validateRuntimeConfig({ ...remoteDefault, AUTH_RATE_LIMITER_BACKEND: "remote" })).toMatchObject({
+      success: false
+    });
+  });
+
+  it("rejects an unknown limiter backend or flag value", () => {
+    expect(validateRuntimeConfig({ ...postgresProduction, AUTH_RATE_LIMITER_BACKEND: "redis" })).toMatchObject({
+      success: false
+    });
+    expect(validateRuntimeConfig({ ...postgresProduction, RWOS_JOB_FLOW_ENABLED: "yes" })).toMatchObject({
+      success: false
+    });
+    expect(validateRuntimeConfig({ ...postgresProduction, RWOS_PUBLIC_SIGNUP_ENABLED: "true" })).toMatchObject({
+      success: false
+    });
+  });
+
+  it("exposes explicit flag values", () => {
+    expect(
+      getRuntimeConfig({ ...postgresProduction, RWOS_JOB_FLOW_ENABLED: "disabled", RWOS_PUBLIC_SIGNUP_ENABLED: "enabled" })
+    ).toMatchObject({ jobFlowFlag: "disabled", publicSignupFlag: "enabled" });
+  });
+
+  it("changes nothing for the live test-mode settings, which set none of the new variables", () => {
+    const live = { RWOS_ENV: "test", NODE_ENV: "production", DATABASE_URL: "postgresql://db/rwos" };
+    expect(validateRuntimeConfig(live)).toMatchObject({ success: true });
+    expect(getRuntimeConfig(live)).toMatchObject({
+      authRateLimiterBackend: null,
+      jobFlowFlag: null,
+      publicSignupFlag: null
+    });
+  });
+});

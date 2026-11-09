@@ -16,6 +16,7 @@
   "dependencies": {
     "@rwos/auth": "workspace:*",
     "@rwos/config": "workspace:*",
+    "@rwos/country-canada": "workspace:*",
     "@rwos/country-syria": "workspace:*",
     "@rwos/database": "workspace:*",
     "@rwos/observability": "workspace:*",

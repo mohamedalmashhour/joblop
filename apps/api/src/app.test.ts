@@ -58,7 +58,14 @@ import type {
   WorkerOfferService,
   WorkGroupRepository
 } from "@rwos/auth";
-import { buildApi, createRemoteAuthenticationRateLimiter, isPublicWorkerIngressPath } from "./app";
+import {
+  buildApi,
+  createMemoryAuthenticationRateLimiter,
+  createRemoteAuthenticationRateLimiter,
+  isPublicWorkerIngressPath
+} from "./app";
+import { canadaQuebecCountryProfile } from "@rwos/country-canada";
+import { JOB_FLOW_ROUTES, JOB_FLOW_ROUTES_KEPT_BLOCKED } from "./productionRoutePolicy";
 
 describe("public worker ingress boundary", () => {
   it("allows only health, worker authentication and worker workflow routes", () => {
@@ -336,6 +343,169 @@ describe("api authentication foundation", () => {
     expect(httpsResponse.headers["strict-transport-security"]).toBe(
       "max-age=31536000; includeSubDomains"
     );
+    await app.close();
+  });
+
+  it("opens the reviewed job flow and sign-up in production with the Canada/Québec defaults", async () => {
+    const workerOfferService = createApiUnavailableWorkerOfferService();
+    const app = buildApi({
+      authService: createAuthenticationService(
+        new ApiMemoryAuthenticationRepository(),
+        testAuthOptions()
+      ),
+      authRateLimiter: createMemoryAuthenticationRateLimiter(),
+      dispatchService: createApiUnavailableDispatchService(),
+      workerOfferService,
+      assignmentService: createApiUnavailableAssignmentService(),
+      attendanceService: createApiUnavailableAttendanceService(),
+      timesheetService: createApiUnavailableTimesheetService(),
+      productionFeatureDefaults: canadaQuebecCountryProfile.productionDefaults,
+      env: productionEnv()
+    });
+    await app.ready();
+    const sample = (template: string) =>
+      template.replace(/:[A-Za-z]+/g, "00000000-0000-4000-8000-000000000001");
+    for (const entry of JOB_FLOW_ROUTES) {
+      const [method, template] = entry.split(" ") as ["GET" | "POST", string];
+      expect(app.hasRoute({ method, url: template }), `${entry} is a registered route`).toBe(true);
+      const response = await app.inject({
+        method,
+        url: sample(template),
+        ...(method === "POST" ? { payload: {} } : {})
+      });
+      expect(response.json().error, entry).not.toBe("RWOS_RESOURCE_UNAVAILABLE");
+    }
+    for (const entry of Object.keys(JOB_FLOW_ROUTES_KEPT_BLOCKED)) {
+      const [method, template] = entry.split(" ") as ["POST", string];
+      expect(app.hasRoute({ method, url: template }), `${entry} is a registered route`).toBe(true);
+      const response = await app.inject({ method, url: sample(template), payload: {} });
+      expect(response.statusCode, entry).toBe(404);
+      expect(response.json().error, entry).toBe("RWOS_RESOURCE_UNAVAILABLE");
+    }
+    const testPayout = await app.inject({
+      method: "POST",
+      url: "/platform/worker-payouts/payout-1/execute-test-payout",
+      payload: {}
+    });
+    expect(testPayout.statusCode).toBe(404);
+    expect(testPayout.json().error).toBe("RWOS_RESOURCE_UNAVAILABLE");
+    const registration = await app.inject({
+      method: "POST",
+      url: "/auth/register",
+      payload: { email: "person@example.com", password: "ValidPassword123" }
+    });
+    expect(registration.statusCode).toBe(201);
+    await app.close();
+  });
+
+  it("lets an explicit disabled flag override the Canada/Québec production default", async () => {
+    const workerOfferService = createApiUnavailableWorkerOfferService();
+    const acceptOffer = vi.spyOn(workerOfferService, "accept");
+    const app = buildApi({
+      authService: createAuthenticationService(
+        new ApiMemoryAuthenticationRepository(),
+        testAuthOptions()
+      ),
+      authRateLimiter: createMemoryAuthenticationRateLimiter(),
+      workerOfferService,
+      productionFeatureDefaults: canadaQuebecCountryProfile.productionDefaults,
+      env: {
+        ...productionEnv(),
+        RWOS_JOB_FLOW_ENABLED: "disabled",
+        RWOS_PUBLIC_SIGNUP_ENABLED: "disabled"
+      }
+    });
+    for (const url of ["/worker/offers/offer-1/accept", "/auth/register"]) {
+      const response = await app.inject({
+        method: "POST",
+        url,
+        payload: { email: "person@example.com", password: "ValidPassword123" }
+      });
+      expect(response.statusCode, url).toBe(404);
+      expect(response.json()).toEqual({
+        error: "RWOS_RESOURCE_UNAVAILABLE",
+        message: "Resource unavailable."
+      });
+    }
+    expect(acceptOffer).not.toHaveBeenCalled();
+    await app.close();
+  });
+
+  it("leaves test mode unchanged: the production flags and defaults are never read outside production", async () => {
+    for (const extra of [
+      {},
+      { RWOS_JOB_FLOW_ENABLED: "disabled", RWOS_PUBLIC_SIGNUP_ENABLED: "disabled" },
+      { RWOS_JOB_FLOW_ENABLED: "enabled", RWOS_PUBLIC_SIGNUP_ENABLED: "enabled" }
+    ]) {
+      for (const defaults of [undefined, { jobFlow: false, publicSignup: false }]) {
+        const app = buildApi({
+          authService: createAuthenticationService(
+            new ApiMemoryAuthenticationRepository(),
+            testAuthOptions()
+          ),
+          dispatchService: createApiUnavailableDispatchService(),
+          workerOfferService: createApiUnavailableWorkerOfferService(),
+          assignmentService: createApiUnavailableAssignmentService(),
+          attendanceService: createApiUnavailableAttendanceService(),
+          timesheetService: createApiUnavailableTimesheetService(),
+          productionFeatureDefaults: defaults,
+          env: { RWOS_ENV: "test", NODE_ENV: "production", ...extra }
+        });
+        for (const entry of [...JOB_FLOW_ROUTES, ...Object.keys(JOB_FLOW_ROUTES_KEPT_BLOCKED)]) {
+          const [method, template] = entry.split(" ") as ["GET" | "POST", string];
+          const response = await app.inject({
+            method,
+            url: template.replace(/:[A-Za-z]+/g, "00000000-0000-4000-8000-000000000001"),
+            ...(method === "POST" ? { payload: {} } : {})
+          });
+          expect(response.json().error, entry).not.toBe("RWOS_RESOURCE_UNAVAILABLE");
+        }
+        const registration = await app.inject({
+          method: "POST",
+          url: "/auth/register",
+          payload: { email: "person@example.com", password: "ValidPassword123" }
+        });
+        expect(registration.statusCode).toBe(201);
+        await app.close();
+      }
+    }
+  });
+
+  it("runs production on the Postgres limiter with no remote limiter settings, failing closed", async () => {
+    const env = {
+      RWOS_ENV: "production",
+      NODE_ENV: "production",
+      // Unreachable on purpose: the limiter must refuse sign-ins and fail /ready, never allow.
+      DATABASE_URL: "postgresql://rwos:rwos@127.0.0.1:1/rwos",
+      INTERNAL_API_ORIGIN: "https://api.example.test",
+      AUTH_RATE_LIMITER_BACKEND: "postgres",
+      AUTH_RATE_LIMITER_KEY_SECRET: "test-key-secret-that-is-at-least-32-characters",
+      AUTH_RATE_LIMITER_NAMESPACE: "rwos:authrl:production:v1"
+    };
+    const app = buildApi({
+      authService: createAuthenticationService(
+        new ApiMemoryAuthenticationRepository(),
+        testAuthOptions()
+      ),
+      readinessProbe: async () => true,
+      productionFeatureDefaults: canadaQuebecCountryProfile.productionDefaults,
+      env
+    });
+    const ready = await app.inject({ method: "GET", url: "/ready" });
+    expect(ready.statusCode).toBe(503);
+    const signIn = await app.inject({
+      method: "POST",
+      url: "/auth/sign-in",
+      payload: { email: "person@example.com", password: "ValidPassword123" }
+    });
+    expect(signIn.statusCode).toBe(503);
+    expect(signIn.json().error).toBe("RWOS_AUTH_UNAVAILABLE");
+    const registration = await app.inject({
+      method: "POST",
+      url: "/auth/register",
+      payload: { email: "person@example.com", password: "ValidPassword123" }
+    });
+    expect(registration.statusCode).toBe(503);
     await app.close();
   });
 
