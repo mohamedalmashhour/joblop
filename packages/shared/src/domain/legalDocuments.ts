@@ -6,8 +6,8 @@
 // DRAFT — must be reviewed by a Québec lawyer before relying on it. See docs/legal/LEGAL_REVIEW_NOTES.md.
 import { PLATFORM_INVOICE_CONTACT, PLATFORM_INVOICE_ISSUER } from "./platformInvoiceIssuer";
 
-export const LEGAL_DOCUMENTS_VERSION = "2026-11-09";
-export const LEGAL_EFFECTIVE_DATE = "2026-11-09";
+export const LEGAL_DOCUMENTS_VERSION = "2026-11-10";
+export const LEGAL_EFFECTIVE_DATE = "2026-11-10";
 
 /** The contact address shown on the public sites for privacy and legal questions. */
 export const LEGAL_CONTACT_EMAIL = "contact@joblop.com";
