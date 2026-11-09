@@ -3,6 +3,7 @@ import { cookies } from "next/headers";
 import { JobLopLogo } from "../JobLopLogo";
 import { LanguageSwitcher } from "../i18n/LanguageSwitcher";
 import { LOCALE_COOKIE, resolveEmployerLocale, type EmployerLocale } from "../i18n/config";
+import { pricingCopy } from "./pricingContent";
 
 // Shared look for the plain public pages (/pricing, /faq): black page, gold #F8B808 accents.
 export const GOLD = "#F8B808";
@@ -24,7 +25,7 @@ export type PublicNavLabels = Readonly<{
   privacy: string;
 }>;
 
-export function PublicHeader({ nav, current }: { nav: PublicNavLabels; current: "/pricing" | "/faq" }) {
+export function PublicHeader({ nav, current }: { nav: PublicNavLabels; current?: string }) {
   const links: readonly (readonly [string, string])[] = [
     ["/", nav.home],
     ["/how-it-works", nav.howItWorks],
@@ -130,3 +131,11 @@ export const publicStyles: Record<string, CSSProperties> = {
   footerLinks: { display: "flex", flexWrap: "wrap", gap: 12 },
   footerLink: { color: "#ffffff", fontWeight: 700, textDecoration: "none" }
 };
+
+/**
+ * The public footer in the visitor's language, with Terms, Privacy and FAQ. Every signed-out page on
+ * the employer site ends with this footer.
+ */
+export async function PublicSiteFooter() {
+  return <PublicFooter nav={pricingCopy[await readPublicLocale()].nav} />;
+}

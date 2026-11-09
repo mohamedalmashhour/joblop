@@ -11485,6 +11485,8 @@ export function createAuthenticationService(
       password: string;
       displayName?: string | null;
       phone?: string | null;
+      /** The Terms/Privacy version the person ticked at sign-up, kept on the registration audit. */
+      acceptedLegalVersion?: string | null;
       source?: AuthenticationAuditSource;
       correlationId?: string;
       ipAddress?: string | null;
@@ -11528,7 +11530,7 @@ export function createAuthenticationService(
         entityPublicReference: user.publicId,
         priorState: null,
         newState: user.status,
-        reason: null,
+        reason: input.acceptedLegalVersion ? `legal_accepted:${input.acceptedLegalVersion}` : null,
         source: input.source ?? "api",
         correlationId: input.correlationId,
         createdAt: currentTime

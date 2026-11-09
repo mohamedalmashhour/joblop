@@ -133,7 +133,7 @@ export function createFrontendSessionGateway(options: {
       }
     },
     async register(
-      input: Readonly<{ email: string; password: string; displayName?: string | null; phone?: string | null; referralCode?: string | null }>,
+      input: Readonly<{ email: string; password: string; displayName?: string | null; phone?: string | null; referralCode?: string | null; acceptedLegalVersion?: string | null }>,
       persistToken: (token: string) => void
     ): Promise<FrontendRegisterResult> {
       try {

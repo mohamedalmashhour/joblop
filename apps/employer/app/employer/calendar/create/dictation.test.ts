@@ -1,5 +1,8 @@
 import { describe, expect, it } from "vitest";
-import { appendDictation, dictationErrorKey } from "./dictation";
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
+import { appendDictation, dictationErrorKey, speechLanguage } from "./dictation";
+import { ar, en, fr } from "../../../i18n/messages";
 
 describe("appendDictation", () => {
   it("fills an empty box", () => {
@@ -33,5 +36,24 @@ describe("dictationErrorKey", () => {
 
   it("gives a general message for anything else", () => {
     expect(dictationErrorKey("network")).toBe("create.dictateFailed");
+  });
+});
+
+describe("speech language and privacy notice", () => {
+  it("asks the browser for Canadian English or French, never a bare en/fr", () => {
+    expect(speechLanguage("en-CA")).toBe("en-CA");
+    expect(speechLanguage("fr-CA")).toBe("fr-CA");
+    expect(speechLanguage("fr")).toBe("fr-CA");
+    expect(speechLanguage("en")).toBe("en-CA");
+    expect(speechLanguage("ar")).toBe("ar");
+  });
+
+  it("shows the speech-service notice next to the Speak button in all three languages", () => {
+    expect(en["create.dictatePrivacy"]).toBe("Your browser's speech service (Google or Apple) hears what you say.");
+    expect(fr["create.dictatePrivacy"]).toMatch(/Google ou Apple/);
+    expect(ar["create.dictatePrivacy"]).toMatch(/Google أو Apple/);
+    const button = readFileSync(join(__dirname, "DictationButton.tsx"), "utf8");
+    expect(button).toContain('t("create.dictatePrivacy")');
+    expect(button).toContain("session.lang = speechLanguage(locale)");
   });
 });

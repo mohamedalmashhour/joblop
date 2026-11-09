@@ -32,6 +32,8 @@ export * from "./variableClientPricing";
 export * from "./jobScanner";
 export * from "./documentAiReview";
 export * from "./platformInvoiceIssuer";
+export * from "./legalDocuments";
+export * from "./legalPrivacyAdditions";
 export * from "./workerPayout";
 export * from "./workerDispute";
 export * from "./employerOrder";

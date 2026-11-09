@@ -25,8 +25,8 @@ if [ -f "$ROOT/.brevo.capsule.local" ]; then . "$ROOT/.brevo.capsule.local"; ech
 export LOCAL_PAYMENT_ENABLED="enabled"
 export LOCAL_PAYMENT_WEBHOOK_SECRET="local-fake-webhook-secret-0123456789abcdef"
 # Legal version display (draft ids) so /terms and /privacy show a configured version in local flow.
-export TERMS_VERSION="ca-terms-draft-2026-10"
-export PRIVACY_NOTICE_VERSION="ca-privacy-draft-2026-10"
+export TERMS_VERSION="2026-11-09"
+export PRIVACY_NOTICE_VERSION="2026-11-09"
 # Enable signed Control Room share links locally (min 32 chars). Local/test demo secret only.
 export CONTROL_ROOM_SHARE_SECRET="local-e2e-control-room-share-secret-0123456789"
 # Activate the synthetic test-mode country so country-dependent flows work locally

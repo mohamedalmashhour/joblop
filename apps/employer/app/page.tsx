@@ -11,6 +11,7 @@ import { LanguageSwitcher } from "./i18n/LanguageSwitcher";
 import { JobScannerBand } from "./JobScannerBand";
 import { PlatformLoopMovie } from "./PlatformLoopMovie";
 import { homeFaqAnchors } from "./faq/faqContent";
+import { PublicSiteFooter } from "./pricing/publicPageStyles";
 
 async function resolveLocale() {
   const store = await cookies();
@@ -574,28 +575,7 @@ export default async function LandingPage({ searchParams }: { searchParams?: Pro
         </div>
       </section>
 
-      <footer style={styles.footer}>
-        <a href="/" style={styles.footerBrand}>
-          Joblop
-        </a>
-        <nav aria-label="Footer navigation" style={styles.footerLinks}>
-          <a href="#employers" style={styles.footerLink}>
-            Employers
-          </a>
-          <a href="#workers" style={styles.footerLink}>
-            Workers
-          </a>
-          <a href="/how-it-works" style={styles.footerLink}>
-            How It Works
-          </a>
-          <a href="/pricing" style={styles.footerLink}>
-            Pricing
-          </a>
-          <a href="/contact" style={styles.footerLink}>
-            Contact
-          </a>
-        </nav>
-      </footer>
+      <PublicSiteFooter />
     </main>
   );
 }

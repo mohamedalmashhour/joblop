@@ -14,3 +14,12 @@ export function dictationErrorKey(error: string): "create.dictateBlocked" | "cre
     ? "create.dictateBlocked"
     : "create.dictateFailed";
 }
+
+// The speech-recognition language tag. The site locale is "en-CA" / "fr-CA" / "ar"; anything
+// else (an older "en" or "fr" value) is mapped to the Canadian tag so French is heard as French.
+export function speechLanguage(locale: string): string {
+  const value = locale.toLowerCase();
+  if (value.startsWith("fr")) return "fr-CA";
+  if (value.startsWith("ar")) return "ar";
+  return "en-CA";
+}

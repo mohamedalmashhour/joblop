@@ -1,5 +1,6 @@
 import { cookies } from "next/headers";
-import { EmployerShell, WorkflowRoutes } from "../../employer/EmployerShell";
+import { WorkflowRoutes } from "../../employer/EmployerShell";
+import { PublicPageFrame } from "../../shared/PublicPageFrame";
 import { styles } from "../../employer/employerStyles";
 import { LOCALE_COOKIE, resolveEmployerLocale } from "../../i18n/config";
 import { dictionaries, type Messages } from "../../i18n/messages";
@@ -7,7 +8,7 @@ import { dictionaries, type Messages } from "../../i18n/messages";
 import { SignUpForm } from "./SignUpForm";
 
 /**
- * Employer sign-up capsule (server page). Wraps the interactive form in the shared EmployerShell and
+ * Employer sign-up capsule (server page). Wraps the interactive form in the public header/footer frame and
  * passes the registration gate down from the environment: backend registration returns 404 in
  * production, so we surface an honest "not open" state there rather than a form that cannot succeed.
  */
@@ -22,8 +23,8 @@ export default async function EmployerSignUpPage() {
   const steps = [m["signup.step1"], m["signup.step2"], m["signup.step3"], m["signup.step4"], m["signup.step5"]];
 
   return (
-    <EmployerShell
-      currentRoute="/signup/employer"
+    <PublicPageFrame
+      current="/signup/employer"
       eyebrow={m["signup.pageEyebrow"]}
       title={m["signup.pageTitle"]}
       lede={m["signup.pageLede"]}
@@ -52,6 +53,6 @@ export default async function EmployerSignUpPage() {
       </section>
 
       <WorkflowRoutes currentRoute="/signup/employer" />
-    </EmployerShell>
+    </PublicPageFrame>
   );
 }
