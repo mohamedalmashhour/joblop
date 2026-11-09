@@ -488,9 +488,6 @@ export function shiftCancelledEmail(input: ShiftCancelledCopyInput & { to: strin
           ? `أُلغيت المناوبة التي عُرضت عليك، «${shift.role}» في ${when}${whereAr}، ${whoAr}. لم يعد العرض ساريًا.\n\n`
           : `أُلغيت مناوبتك «${shift.role}» في ${when}${whereAr} ${whoAr}. لا داعي للحضور.\n\n`) +
         (reason ? `السبب: ${reason}\n\n` : "") +
-        (hours
-          ? `لأن صاحب العمل ألغى قبل أقل من 24 ساعة من البداية، يحق لك أجر ${hours} ساعات وفق قاعدة الإلغاء المتأخر في Joblop. سجّلت Joblop هذا المبلغ للدفع.\n\n`
-          : "") +
         `${calendarLine(input.workerWebOrigin, language)}\n\n` +
         `إذا كنت في الطريق بالفعل، تواصل مع Joblop.\n\n— Joblop`
     };
