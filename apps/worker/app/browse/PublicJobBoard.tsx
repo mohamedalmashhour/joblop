@@ -6,6 +6,7 @@ import { trackConversion } from "../analytics";
 import { useLocale } from "../i18n/LocaleProvider";
 import { SiteHeader } from "../SiteHeader";
 import { activeCountry } from "../country";
+import { publicJobPath } from "../safeReturnPath";
 
 // Public, no-sign-in landing + job board for Joblop. Hero search, real categories, REAL featured
 // jobs (from /public/jobs — never fabricated), job-seeker + employer sections, honest stats and
@@ -619,7 +620,7 @@ export function PublicJobBoard() {
                       {urgent ? <span className="jl-tag jl-tag-u">{t.urgent}</span> : null}
                       <span className="jl-tag">{t.openings(j.openings)}</span>
                     </div>
-                    <a href="/" className="jl-apply">{t.apply}</a>
+                    <a href={publicJobPath(j.jobCode)} className="jl-apply">{t.apply}</a>
                   </div>
                 );
               })}

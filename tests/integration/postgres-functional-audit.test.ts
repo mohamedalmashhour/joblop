@@ -527,6 +527,75 @@ suite("worker journey and payout guards", () => {
     });
   });
 
+  describe("public job page and overlapping shifts", () => {
+    it("a visitor sees a public job's role, city, times and the worker's own pay, never the address or other rates", async () => {
+      const { job } = await makeJob({ startAt: new Date(Date.now() + 30 * HOUR), endAt: new Date(Date.now() + 38 * HOUR), openClaim: true });
+      const res = await app.inject({ method: "GET", url: `/public/jobs/${job.jobRequestNumber}` });
+      expect(res.statusCode, res.body).toBe(200);
+      expect(res.json().job).toMatchObject({
+        jobCode: job.jobRequestNumber,
+        city: "Laval",
+        province: "QC",
+        areaLabel: "Laval, QC",
+        startAt: job.startAt.toISOString(),
+        endAt: job.endAt.toISOString(),
+        openings: 1,
+        workerRateMinor: 2500
+      });
+      for (const hidden of [STREET, "Door B", "H7A", "AuditCare", "employerHourlyRate", "platformHourlyMargin", "marginPpm", job.id]) {
+        expect(res.body).not.toContain(hidden);
+      }
+      expect((await app.inject({ method: "GET", url: "/public/jobs/JR-0000-000000" })).statusCode).toBe(404);
+      expect((await app.inject({ method: "GET", url: "/public/jobs/..%2F..%2Fetc" })).statusCode).toBe(404);
+
+      // After signing up, the worker is taken from the public code to the real job page.
+      const worker = await makeWorker("public-job");
+      const resolved = await app.inject({ method: "GET", url: `/marketplace/job-codes/${job.jobRequestNumber}`, headers: auth(worker.token) });
+      expect(resolved.statusCode, resolved.body).toBe(200);
+      expect(resolved.json()).toEqual({ jobRequestId: job.id });
+      expect((await app.inject({ method: "GET", url: `/marketplace/job-codes/${job.jobRequestNumber}` })).statusCode).toBe(401);
+    });
+
+    it("a worker cannot claim two shifts at the same time, but can take back-to-back shifts", async () => {
+      const worker = await makeWorker("overlap");
+      const base = Date.now() + 50 * HOUR;
+      const day = await makeJob({ startAt: new Date(base), endAt: new Date(base + 8 * HOUR), openClaim: true });
+      const overlapping = await makeJob({ startAt: new Date(base + 4 * HOUR), endAt: new Date(base + 10 * HOUR), openClaim: true });
+      const evening = await makeJob({ startAt: new Date(base + 8 * HOUR), endAt: new Date(base + 12 * HOUR), openClaim: true });
+      const claim = (jobId: string, language = "en") =>
+        app.inject({ method: "POST", url: `/marketplace/jobs/${jobId}/claim`, headers: { ...auth(worker.token), "accept-language": language } });
+
+      expect((await claim(day.job.id)).statusCode).toBe(201);
+      const refused = await claim(overlapping.job.id, "fr-CA");
+      expect(refused.statusCode, refused.body).toBe(409);
+      expect(refused.json()).toMatchObject({
+        error: "RWOS_SHIFT_OVERLAP",
+        status: "shift_overlap",
+        message: expect.stringMatching(/^Vous avez déjà un quart de travail à cette heure-là \(/),
+        messages: { en: expect.stringMatching(/^You already have a shift at that time \(/), ar: expect.any(String) },
+        heldShift: { startAt: day.job.startAt.toISOString(), endAt: day.job.endAt.toISOString(), timezone: "America/Toronto" }
+      });
+      expect((await claim(evening.job.id)).statusCode).toBe(201);
+    });
+
+    it("staff cannot assign a worker to a shift that overlaps one they already hold", async () => {
+      const worker = await makeWorker("overlap-staff");
+      const base = Date.now() + 80 * HOUR;
+      const held = await makeJob({ startAt: new Date(base), endAt: new Date(base + 8 * HOUR), openClaim: true });
+      expect((await app.inject({ method: "POST", url: `/marketplace/jobs/${held.job.id}/claim`, headers: auth(worker.token) })).statusCode).toBe(201);
+
+      const { job, review } = await makeJob({ startAt: new Date(base + 2 * HOUR), endAt: new Date(base + 6 * HOUR), openClaim: false });
+      const offer = await makeAcceptedOffer(worker, job, review.id);
+      const res = await app.inject({
+        method: "POST", url: "/platform/assignments", headers: auth(staff.token),
+        payload: { workerOfferId: offer.id, dispatchReviewId: review.id, expectedOfferVersion: offer.version }
+      });
+      expect(res.statusCode, res.body).toBe(409);
+      expect(res.json()).toMatchObject({ error: "RWOS_SHIFT_OVERLAP", heldShift: { startAt: held.job.startAt.toISOString() } });
+      expect(await prisma.assignment.count({ where: { jobRequestId: job.id } })).toBe(0);
+    });
+  });
+
   describe("job bonus", () => {
     async function makeEmployer() {
       const user = await register("fa-employer");

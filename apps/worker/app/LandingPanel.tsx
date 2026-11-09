@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { NEXT_AFTER_SIGN_UP_KEY, PublicJobSearch } from "./PublicJobSearch";
+import { safeReturnPath } from "./safeReturnPath";
 import { trackConversion } from "./analytics";
 import { withBrand } from "./Brand";
 import { useLocale, useT } from "./i18n/LocaleProvider";
@@ -15,15 +16,30 @@ export function LandingPanel({ onSignedIn }: { onSignedIn: () => void }) {
   const locale = useLocale();
   // Create account comes first (owner rule): returning workers switch to "Sign in" in one tap.
   const [tab, setTab] = useState<"signin" | "signup">("signup");
-  const wantDetails = (next: string) => {
+  const remember = (next: string) => {
+    const safe = safeReturnPath(next);
+    if (!safe) return;
     try {
-      window.sessionStorage.setItem(NEXT_AFTER_SIGN_UP_KEY, next);
+      window.sessionStorage.setItem(NEXT_AFTER_SIGN_UP_KEY, safe);
     } catch {
       /* storage blocked: they still land on the search after signing up */
     }
+  };
+  const wantDetails = (next: string) => {
+    remember(next);
     setTab("signup");
     document.getElementById("auth-card")?.scrollIntoView({ behavior: "smooth", block: "center" });
   };
+  // Arriving from a public job page ("Create an account to take this job" or "Sign in"): remember the
+  // job (an on-site path only) so sign-up or sign-in brings the visitor back to it.
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const next = params.get("next");
+    if (!next) return;
+    remember(next);
+    setTab(params.get("tab") === "signin" ? "signin" : "signup");
+    document.getElementById("auth-card")?.scrollIntoView({ behavior: "smooth", block: "center" });
+  }, []);
 
   const steps = [
     { title: t("land.step1Title"), body: t("land.step1Body") },

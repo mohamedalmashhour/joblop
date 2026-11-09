@@ -3936,6 +3936,81 @@ export function buildApi(options: BuildApiOptions = {}) {
       .send({ jobs, nextCursor: hasMore ? offset + limit : null, province, q, city: where || null });
   });
 
+  // PUBLIC job details — no sign-in. One open Joblop job by its public job code (the same code the
+  // public board shows), so a visitor can see what it is before creating an account. Same privacy
+  // rules as the board: what (the role), where (city and province only, never the address or
+  // coordinates), when, places left and the WORKER's own pay. Never the employer, the employer rate
+  // or Joblop's share. Only jobs on the open board (openJobWhere) with places left; anything else 404s.
+  app.get("/public/jobs/:jobCode", async (request, reply) => {
+    if (!prisma) return reply.code(503).send({ error: "RWOS_UNAVAILABLE", message: "Not available." });
+    const jobCode = readRouteParam(request.params, "jobCode");
+    const notFound = () =>
+      reply.code(404).header("cache-control", "public, max-age=60").send({ error: "RWOS_PUBLIC_JOB_NOT_FOUND", message: "That job is not available." });
+    if (!isPublicJobCode(jobCode)) return notFound();
+    const now = new Date();
+    const row = await prisma.jobRequest.findFirst({
+      where: openJobWhere({ now, extra: { jobRequestNumber: jobCode } }),
+      select: {
+        id: true,
+        jobRequestNumber: true,
+        title: true,
+        numberOfWorkers: true,
+        startAt: true,
+        endAt: true,
+        timezone: true,
+        urgency: true,
+        roleDefinition: { select: { displayLabel: true } },
+        residence: { select: { city: true, province: true } },
+        pricingSnapshot: { select: { workerHourlyRateMinor: true } },
+        ...WORKER_PAY_SELECT
+      }
+    });
+    if (!row) return notFound();
+    const openings = (await remainingOpenings(prisma, [row])).get(row.id) ?? row.numberOfWorkers;
+    if (openings <= 0) return notFound();
+    const city = row.residence?.city ?? null;
+    const prov = row.residence?.province ?? null;
+    const pay = workerPay(row, row.pricingSnapshot?.workerHourlyRateMinor ?? null);
+    return reply
+      .code(200)
+      .header("cache-control", "public, max-age=60")
+      .send({
+        job: {
+          jobCode: row.jobRequestNumber,
+          role: row.roleDefinition?.displayLabel ?? row.title,
+          city,
+          province: prov,
+          areaLabel: city && prov ? `${city}, ${prov}` : (prov ?? "Canada"),
+          startAt: row.startAt.toISOString(),
+          endAt: row.endAt.toISOString(),
+          timezone: row.timezone,
+          urgency: row.urgency,
+          openings,
+          // The worker's own pay (never the employer rate or Joblop's share).
+          workerRateMinor: pay.rateMinor,
+          currency: options.countryCurrency ?? null,
+          ...pay.extra
+        }
+      });
+  });
+
+  // Signed-in worker: turn a public job code into the job's id, so a visitor who opened a public job
+  // and then signed up lands on the real job page where they can take it. Same visibility rule as the
+  // public page (open board only); anything else 404s.
+  app.get("/marketplace/job-codes/:jobCode", async (request, reply) => {
+    const session = await authService.validateSession(readBearerToken(request.headers.authorization));
+    if (!session.authenticated || !session.user) {
+      return reply.code(401).send({ error: "RWOS_MARKETPLACE_DENIED", message: "Authentication is required." });
+    }
+    if (!prisma) return reply.code(503).send({ error: "RWOS_UNAVAILABLE", message: "Not available." });
+    const jobCode = readRouteParam(request.params, "jobCode");
+    const row = isPublicJobCode(jobCode)
+      ? await prisma.jobRequest.findFirst({ where: openJobWhere({ now: new Date(), extra: { jobRequestNumber: jobCode } }), select: { id: true } })
+      : null;
+    if (!row) return reply.code(404).send({ error: "RWOS_PUBLIC_JOB_NOT_FOUND", message: "That job is not available." });
+    return reply.code(200).header("cache-control", "no-store").send({ jobRequestId: row.id });
+  });
+
   // SHARED JOBS CALENDAR (signed-in workers). Every approved, open job with places left, by date, so a
   // worker can pick a day and accept. A job drops off for everyone the moment its last place is taken
   // (places are counted live from the assignments that hold one). Worker pay only; employer rate never shown.
@@ -11964,6 +12039,12 @@ function sendWorkerOfferFailure(reply: FastifyReply, error: WorkerOfferError) {
     });
   }
   return sendWorkerOfferDenied(reply);
+}
+
+// Public job codes look like "JR-2026-000123": letters, digits and dashes only. Anything else is
+// refused before a database read (the code is only ever compared for equality).
+function isPublicJobCode(value: string): boolean {
+  return /^[A-Za-z0-9][A-Za-z0-9-]{2,63}$/.test(value);
 }
 
 // A worker can never hold two shifts at the same time. Every path that would give them one (open
