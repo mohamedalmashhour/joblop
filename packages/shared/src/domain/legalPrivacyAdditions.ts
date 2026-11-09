@@ -28,7 +28,7 @@ function providerRows(audience: LegalAudience, lang: "en" | "fr"): string[][] {
             ? "AI that answers Contact Joblop messages first and drafts replies for Joblop staff; the Worker Pro CV builder; an automated pre-check of some uploaded documents"
             : "AI that answers Contact Joblop messages first and drafts replies for Joblop staff",
           audience === "worker"
-            ? "Your message, with contact details such as phone numbers, email addresses and addresses masked first; your CV content; for the document pre-check, an image of the document"
+            ? "Your message, with contact details such as phone numbers, email addresses and addresses masked first; your CV content"
             : "Your message, with contact details such as phone numbers, email addresses and addresses masked first"
         ]
       : [
@@ -37,7 +37,7 @@ function providerRows(audience: LegalAudience, lang: "en" | "fr"): string[][] {
             ? "IA qui répond en premier aux messages « Joindre Joblop » et rédige des brouillons de réponse pour le personnel de Joblop; le générateur de CV Worker Pro; une vérification automatisée préalable de certains documents téléversés"
             : "IA qui répond en premier aux messages « Joindre Joblop » et rédige des brouillons de réponse pour le personnel de Joblop",
           audience === "worker"
-            ? "Votre message, après masquage des coordonnées comme les numéros de téléphone, les adresses courriel et les adresses; le contenu de votre CV; pour la vérification préalable, une image du document"
+            ? "Votre message, après masquage des coordonnées comme les numéros de téléphone, les adresses courriel et les adresses; le contenu de votre CV"
             : "Votre message, après masquage des coordonnées comme les numéros de téléphone, les adresses courriel et les adresses"
         ],
     en
@@ -140,8 +140,8 @@ export function privacyAdditions(audience: LegalAudience, lang: "en" | "fr"): re
       {
         kind: "p",
         text: en
-          ? "For a CV, certificate, photo or first-aid card, an image of the document may be sent to Anthropic for an automated pre-check (for example, whether it is readable). A Joblop staff member always makes the decision. Identity documents, social insurance numbers, licences, work authorizations, health documents and void cheques are never sent for this pre-check."
-          : "Pour un CV, un certificat, une photo ou une carte de premiers soins, une image du document peut être envoyée à Anthropic pour une vérification automatisée préalable (par exemple, pour savoir s’il est lisible). Un membre du personnel de Joblop prend toujours la décision. Les pièces d’identité, les numéros d’assurance sociale, les permis, les autorisations de travail, les documents de santé et les chèques annulés ne sont jamais envoyés pour cette vérification."
+          ? "A Joblop staff member checks your documents. No document, photo or other image is sent to an outside AI."
+          : "Un membre du personnel de Joblop vérifie vos documents. Aucun document, aucune photo ni aucune autre image n’est envoyé à une IA externe."
       }
     );
   } else {

@@ -47,7 +47,7 @@ describe("legal documents", () => {
       expect(enText).toContain("6 years");
     }
     expect(JSON.stringify(privacyAdditions("employer", "en"))).toContain("speech service (Google or Apple)");
-    expect(JSON.stringify(privacyAdditions("worker", "en"))).toContain("A Joblop staff member always makes the decision");
+    expect(JSON.stringify(privacyAdditions("worker", "en"))).toContain("A Joblop staff member checks your documents. No document, photo or other image is sent to an outside AI.");
   });
 
   it("adds section 11 on AI features after section 10, the same in French and English", () => {
