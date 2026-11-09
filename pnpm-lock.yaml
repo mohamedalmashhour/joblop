@@ -204,8 +204,8 @@ importers:
         specifier: ^57.0.1
         version: 57.0.1(expo@57.0.8)(react-native@0.86.0(@babel/core@7.29.7)(@types/react@19.2.17)(react@19.2.3))(react@19.2.3)
       expo-video:
-        specifier: ~57.0.5
-        version: 57.0.5(expo@57.0.8)(react-native@0.86.0(@babel/core@7.29.7)(@types/react@19.2.17)(react@19.2.3))(react@19.2.3)
+        specifier: 57.0.2
+        version: 57.0.2(expo@57.0.8)(react-native@0.86.0(@babel/core@7.29.7)(@types/react@19.2.17)(react@19.2.3))(react@19.2.3)
       react:
         specifier: 19.2.3
         version: 19.2.3
@@ -2651,8 +2651,8 @@ packages:
       react: '*'
       react-native: '*'
 
-  expo-video@57.0.5:
-    resolution: {integrity: sha512-VK2o+d6rb+tVeL2DI6d0F58pRV8d8bctLpOrMJEHRYtMIK5iwvjjrRx2mciYN8/d04SgWC8TkI+wuZ8Sbp/yuA==}
+  expo-video@57.0.2:
+    resolution: {integrity: sha512-s8KDRpGNWOE7Vx7+1o89hGeXZ3evx00SrQ2+5odYcmvUikNvF59/VuFkg55+YIS981wVQz/07csK6hLAK/w4bQ==}
     peerDependencies:
       expo: '*'
       react: '*'
@@ -6939,7 +6939,7 @@ snapshots:
       react: 19.2.3
       react-native: 0.86.0(@babel/core@7.29.7)(@types/react@19.2.17)(react@19.2.3)
 
-  expo-video@57.0.5(expo@57.0.8)(react-native@0.86.0(@babel/core@7.29.7)(@types/react@19.2.17)(react@19.2.3))(react@19.2.3):
+  expo-video@57.0.2(expo@57.0.8)(react-native@0.86.0(@babel/core@7.29.7)(@types/react@19.2.17)(react@19.2.3))(react@19.2.3):
     dependencies:
       expo: 57.0.8(@babel/core@7.29.7)(@expo/dom-webview@57.0.1)(@expo/metro-runtime@57.0.7)(react-dom@19.2.3(react@19.2.3))(react-native-web@0.21.2(react-dom@19.2.3(react@19.2.3))(react@19.2.3))(react-native@0.86.0(@babel/core@7.29.7)(@types/react@19.2.17)(react@19.2.3))(react@19.2.3)(typescript@5.9.3)
       react: 19.2.3

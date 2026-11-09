@@ -58,7 +58,7 @@ describe("signed-out first screen order (app)", () => {
 
   it("the videos are bundled in the app (no network) and played with expo-video", () => {
     const pkg = JSON.parse(readFileSync(join(__dirname, "../../../package.json"), "utf8")) as { dependencies: Record<string, string> };
-    expect(pkg.dependencies["expo-video"]).toMatch(/^~57\./);
+    expect(pkg.dependencies["expo-video"]).toMatch(/^~?57\./);
     const media = join(__dirname, "../../../assets/media");
     for (const files of Object.values(LANDING_VIDEO_FILES)) {
       for (const file of [files.video, files.poster]) {
