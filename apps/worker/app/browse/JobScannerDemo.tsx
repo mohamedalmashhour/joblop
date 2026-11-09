@@ -1,51 +1,16 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { JOB_SCANNER_DEMO } from "@rwos/shared";
 
 // A short, auto-playing marketing "movie" (CSS/JS motion graphic — no video asset): a phone frame
 // looping through how a worker scans for jobs — search once → JobScanner scans the market → ranked
 // matches → apply free. Loops forever; pauses when off-screen isn't needed (it's cheap). Bilingual.
 
+// The words live in @rwos/shared so the phone app plays the same demo with the same EN/FR/AR words.
 type Lang = "en" | "fr" | "ar";
 
-const DEMO = {
-  en: {
-    steps: ["Search once", "JobScanner scans the market", "Best matches, ranked", "Apply — free"],
-    typed: "Nurse", scanning: "Scanning partner feeds across Canada…",
-    chips: ["Care homes", "Restaurants", "Agencies", "Boards"],
-    ranked: "Ranked for you", apply: "Apply — free", applied: "✓ Applied — free", urgent: "Urgent",
-    play: "Play", pause: "Pause", replay: "Replay", watch: "Watch how it works",
-    jobs: [
-      { role: "Nurse", area: "Laval, QC", pay: "$36/h", urgent: true },
-      { role: "Nurse", area: "Montréal, QC", pay: "$34/h", urgent: false },
-      { role: "Nurse", area: "Gatineau, QC", pay: "$33/h", urgent: false }
-    ]
-  },
-  fr: {
-    steps: ["Cherchez une fois", "JobScanner analyse le marché", "Meilleures offres, classées", "Postulez — gratuit"],
-    typed: "Infirmière", scanning: "Analyse des fils partenaires au Canada…",
-    chips: ["Résidences", "Restaurants", "Agences", "Babillards"],
-    ranked: "Classé pour vous", apply: "Postuler — gratuit", applied: "✓ Postulé — gratuit", urgent: "Urgent",
-    play: "Lecture", pause: "Pause", replay: "Rejouer", watch: "Voir comment ça marche",
-    jobs: [
-      { role: "Infirmière", area: "Laval, QC", pay: "36 $/h", urgent: true },
-      { role: "Infirmière", area: "Montréal, QC", pay: "34 $/h", urgent: false },
-      { role: "Infirmière", area: "Gatineau, QC", pay: "33 $/h", urgent: false }
-    ]
-  },
-  ar: {
-    steps: ["ابحث مرة واحدة", "JobScanner يمسح السوق", "أفضل التطابقات، مرتّبة", "تقدّم — مجانًا"],
-    typed: "ممرضة", scanning: "يمسح مصادر الشركاء عبر كندا…",
-    chips: ["دور رعاية", "مطاعم", "وكالات", "لوحات وظائف"],
-    ranked: "مرتّبة لك", apply: "تقدّم — مجانًا", applied: "✓ تم التقديم — مجانًا", urgent: "عاجل",
-    play: "تشغيل", pause: "إيقاف", replay: "إعادة", watch: "شاهد كيف يعمل",
-    jobs: [
-      { role: "ممرضة", area: "لافال، كيبيك", pay: "36$/س", urgent: true },
-      { role: "ممرضة", area: "مونتريال، كيبيك", pay: "34$/س", urgent: false },
-      { role: "ممرضة", area: "غاتينو، كيبيك", pay: "33$/س", urgent: false }
-    ]
-  }
-} as const;
+const DEMO = JOB_SCANNER_DEMO;
 
 export function JobScannerDemo({ lang = "en" }: { lang?: Lang }) {
   const [step, setStep] = useState(0);

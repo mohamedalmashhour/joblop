@@ -1399,6 +1399,34 @@ describe("public (signed-out) job search", () => {
     );
   });
 
+  it("lists the public jobs calendar without a token, keeps only public fields and drops bad rows", async () => {
+    const calendarJob = {
+      jobCode: "JR-2026-000123",
+      role: "Cook",
+      city: "Laval",
+      province: "QC",
+      areaLabel: "Laval, QC",
+      startAt: "2026-11-20T13:00:00.000Z",
+      endAt: "2026-11-20T21:00:00.000Z",
+      timezone: "America/Toronto",
+      placesLeft: 2,
+      workerRateMinor: 2500,
+      currency: "CAD"
+    };
+    const fetchMock = vi.fn(async () =>
+      response(200, { jobs: [{ ...calendarJob, addressLine1: "1 Secret St", employerName: "Acme" }, { ...calendarJob, endAt: "bad" }, null] })
+    );
+    const transport = createMobileSessionTransport({ apiOrigin: origin, vault: signedIn(), fetch: fetchMock });
+    const result = await transport.listPublicCalendarJobs({ from: "2026-10-31T00:00:00.000Z", to: "2026-12-02T00:00:00.000Z" });
+    expect(result).toEqual({ status: "ready", jobs: [calendarJob] });
+    expect(fetchMock).toHaveBeenCalledWith(
+      `${origin}/public/jobs/calendar?from=2026-10-31T00%3A00%3A00.000Z&to=2026-12-02T00%3A00%3A00.000Z`,
+      expect.objectContaining({ method: "GET", headers: { accept: "application/json" } })
+    );
+    const offline = createMobileSessionTransport({ apiOrigin: origin, vault: vault(), fetch: vi.fn(async () => { throw new TypeError("Failed to fetch"); }) });
+    expect((await offline.listPublicCalendarJobs({ from: "2026-10-31T00:00:00.000Z", to: "2026-12-02T00:00:00.000Z" })).status).toBe("offline");
+  });
+
   it("maps network failure to offline and bad answers to error", async () => {
     const make = (fetchImpl: () => Promise<Response>) => createMobileSessionTransport({ apiOrigin: origin, vault: vault(), fetch: vi.fn(fetchImpl) });
     expect((await make(async () => { throw new TypeError("Failed to fetch"); }).listPublicJobs()).status).toBe("offline");

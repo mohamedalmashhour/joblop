@@ -1,6 +1,8 @@
 import { Fragment, useCallback, useEffect, useRef, useState } from "react";
 import {
   ActivityIndicator,
+  Animated,
+  Image,
   Linking,
   Platform,
   Pressable,
@@ -13,6 +15,8 @@ import {
   type StyleProp,
   type TextStyle
 } from "react-native";
+import { PUBLIC_LANDING_COPY, publicLandingLang } from "@rwos/shared";
+import joblopLogo from "../../../assets/joblop-logo.png";
 import { spacing } from "../../theme";
 import type { MobileSessionTransport, PublicJob, PublicLead } from "../../auth/secureSession";
 import { ScreenContainer } from "../../ui/primitives";
@@ -31,13 +35,18 @@ import {
   isUrgentJob,
   leadSubline
 } from "./publicJobsContent";
+import { PublicHowItWorks } from "./PublicHowItWorks";
+import { PublicJobsCalendar } from "./PublicJobsCalendar";
+import { JobScannerDemo } from "./JobScannerDemo";
 
 // The FIRST screen for a signed-out person. It mirrors the worker website's front page, section by
-// section and with the same words:
-//   1. the free job search (website PublicJobSearch, .pjs-*),
-//   2. the hero with the four ✓ values and the account card (LandingPanel .landing-hero),
-//   3. "How it works" with the four numbered steps (.landing-steps),
-//   4. a short "For employers" strip, 5. a small footer with the two account links.
+// section, in the owner's order (SIGNED_OUT_SECTIONS) and with the same words:
+//   1. landing: the Joblop logo (gold on black, a short fade-in, never blocking) and the hero,
+//   2. howitworks: "How Joblop works", the website's four steps as an in-app animation,
+//   3. calendar: open Joblop jobs this month, public with no account,
+//   4. jobscanner: the free job search (website PublicJobSearch, .pjs-*) and the JobScanner demo,
+//   5. signup: "Create your free account" / "Sign in" with the four ✓ values,
+// then a short "For employers" strip and a small footer with the two account links.
 // Seeing a job's details or applying needs a free account (phone-code sign-in), so every job card
 // opens Create account. Public, token-free API calls only. The logo sits in the app header above.
 
@@ -53,7 +62,6 @@ const web = {
   page: "#000000",
   panel: "#0b0906",
   card: "#141210",
-  stepCard: "#0c0c0c",
   cream: "#f4efe4",
   heading: "#fbf7ee",
   sub: "#cabfa8",
@@ -106,6 +114,13 @@ export function PublicJobsScreen({
   onSignIn: () => void;
 }) {
   const { t, locale, isRtl } = useLocale();
+  const lang = publicLandingLang(locale);
+  const copy = PUBLIC_LANDING_COPY[lang];
+  // The logo fades in once (about a third of a second); nothing waits for it.
+  const logoIn = useRef(new Animated.Value(0)).current;
+  useEffect(() => {
+    Animated.timing(logoIn, { toValue: 1, duration: 360, useNativeDriver: Platform.OS !== "web" }).start();
+  }, [logoIn]);
   const { width } = useWindowDimensions();
   const [query, setQuery] = useState("");
   const [where, setWhere] = useState("");
@@ -155,7 +170,6 @@ export function PublicJobsScreen({
   const arrow = isRtl ? "←" : "→";
   const cols = columnsForWidth(width);
   const cellWidth = cols === 1 ? "100%" : cols === 2 ? "50%" : "33.333%";
-  const stepWidth = width >= 700 ? "50%" : "100%";
   const total = state.status === "ready" ? state.jobs.length + state.leadTotal : 0;
   const hasResults = state.status === "ready" && (state.jobs.length > 0 || state.leads.length > 0);
 
@@ -165,177 +179,21 @@ export function PublicJobsScreen({
   return (
     <ScreenContainer testID="public-jobs-screen">
       <ScrollView keyboardShouldPersistTaps="handled" style={styles.scroll} contentContainerStyle={styles.page}>
-        {/* 1 — Search block (website .pjs) */}
-        <View style={styles.pjs}>
-          <View pointerEvents="none" style={styles.pjsGlow} />
-          {/* Search first, like a job app: What + Where, then the button */}
-          <View style={styles.searchStack}>
-            <View style={[styles.field, focused === "what" ? styles.inputFocused : null, isRtl ? styles.fieldRtl : null]}>
-              <Text style={styles.fieldIcon}>🔍</Text>
-              <TextInput
-                accessibilityLabel={t("publicJobs.searchLabel")}
-                maxLength={80}
-                onBlur={() => setFocused(null)}
-                onChangeText={setQuery}
-                onFocus={() => setFocused("what")}
-                onSubmitEditing={search}
-                placeholder={t("publicJobs.placeholder")}
-                placeholderTextColor="#8a8478"
-                returnKeyType="search"
-                style={[styles.fieldInput, rtl]}
-                value={query}
-              />
-            </View>
-            <View style={[styles.field, focused === "where" ? styles.inputFocused : null, isRtl ? styles.fieldRtl : null]}>
-              <Text style={styles.fieldIcon}>📍</Text>
-              <TextInput
-                accessibilityLabel={t("publicJobs.whereLabel")}
-                maxLength={60}
-                onBlur={() => setFocused(null)}
-                onChangeText={setWhere}
-                onFocus={() => setFocused("where")}
-                onSubmitEditing={search}
-                placeholder={t("publicJobs.wherePlaceholder")}
-                placeholderTextColor="#8a8478"
-                returnKeyType="search"
-                style={[styles.fieldInput, rtl]}
-                value={where}
-              />
-            </View>
-            <Pressable
-              onPress={search}
-              accessibilityRole="button"
-              testID="public-jobs-search"
-              style={({ pressed }) => [styles.searchButtonWide, pressed ? styles.pressed : null]}
-            >
-              <Text style={styles.searchButtonText}>{t("publicJobs.findJobs")}</Text>
-            </Pressable>
-          </View>
-          <Text style={[styles.noAccount, rtl]}>{t("publicJobs.noAccount")}</Text>
-
-          {state.status === "loading" ? (
-            <View style={styles.noteRow}>
-              <ActivityIndicator color={web.gold} size="small" />
-              <Text style={[styles.note, rtl]}>{t("publicJobs.loading")}</Text>
-            </View>
-          ) : null}
-
-          {state.status === "offline" || state.status === "error" ? (
-            <View accessibilityRole="alert" style={styles.problem}>
-              <Text style={[styles.problemTitle, rtl]}>
-                {t(state.status === "offline" ? "publicJobs.offlineTitle" : "publicJobs.errorTitle")}
-              </Text>
-              <Text style={[styles.note, rtl]}>
-                {t(state.status === "offline" ? "publicJobs.offlineBody" : "publicJobs.errorBody")}
-              </Text>
-              <Pressable onPress={search} accessibilityRole="button" style={({ pressed }) => [styles.smallOutline, pressed ? styles.pressed : null]}>
-                <Text style={styles.smallOutlineText}>{t("publicJobs.retry")}</Text>
-              </Pressable>
-            </View>
-          ) : null}
-
-          {state.status === "ready" && !hasResults ? <Text style={[styles.note, rtl]}>{t("publicJobs.none")}</Text> : null}
-
-          {state.status === "ready" && hasResults ? (
-            <>
-              <Text accessibilityLiveRegion="polite" style={[styles.count, rtl]}>
-                {countLabel(total, t("publicJobs.foundOne"), t("publicJobs.foundMany"))}
-              </Text>
-
-              {state.jobs.length ? (
-                <>
-                  <Branded text={t("publicJobs.joblopJobs")} style={[styles.pjsH, rtl]} />
-                  <View style={styles.grid}>
-                    {state.jobs.map((job) => {
-                      const date = formatJobDate(job.startAt, locale);
-                      const places = countLabel(job.openings, t("publicJobs.placesOne"), t("publicJobs.placesMany"));
-                      return (
-                        <View key={job.jobCode} style={[styles.cell, { width: cellWidth }]}>
-                          <Pressable
-                            onPress={onWantDetails}
-                            accessibilityHint={t("publicJobs.detailsHint")}
-                            accessibilityRole="button"
-                            style={({ pressed }) => [styles.jobCard, styles.ownCard, pressed ? styles.cardPressed : null]}
-                          >
-                            <Text style={styles.badge}>{t("publicJobs.joblopBadge")}</Text>
-                            <Text style={[styles.cardTitle, rtl]}>{job.role}</Text>
-                            <Text style={[styles.meta, rtl]}>{`📍 ${[job.areaLabel, date].filter(Boolean).join(" · ")}`}</Text>
-                            <View style={styles.foot}>
-                              <Text style={styles.places}>
-                                {isUrgentJob(job.urgency) ? `${places} · ${t("publicJobs.urgent")}` : places}
-                              </Text>
-                              <Text style={styles.open}>{`${t("publicJobs.seeDetails")} ${arrow}`}</Text>
-                            </View>
-                          </Pressable>
-                        </View>
-                      );
-                    })}
-                  </View>
-                </>
-              ) : null}
-
-              {state.leads.length ? (
-                <>
-                  <Text style={[styles.pjsH, rtl]}>{t("publicJobs.moreJobs")}</Text>
-                  <View style={styles.grid}>
-                    {state.leads.map((lead, index) => {
-                      const pay = formatLeadPay(lead);
-                      const sub = leadSubline(lead);
-                      return (
-                        <View key={`${lead.url ?? lead.title}-${index}`} style={[styles.cell, { width: cellWidth }]}>
-                          <Pressable
-                            onPress={onWantDetails}
-                            accessibilityHint={t("publicJobs.detailsHint")}
-                            accessibilityRole="button"
-                            style={({ pressed }) => [styles.jobCard, pressed ? styles.cardPressed : null]}
-                          >
-                            <Text style={[styles.cardTitle, rtl]}>{lead.title}</Text>
-                            {sub ? <Text style={[styles.meta, rtl]}>{sub}</Text> : null}
-                            <View style={styles.foot}>
-                              <Text style={styles.places}>{pay ?? ""}</Text>
-                              <Text style={styles.open}>{`${t("publicJobs.seeDetails")} ${arrow}`}</Text>
-                            </View>
-                          </Pressable>
-                          {isAdzunaLead(lead) ? (
-                            <Pressable onPress={() => openExternal(ADZUNA_URL)} accessibilityRole="link" hitSlop={8} style={styles.adzuna}>
-                              <Text style={styles.adzunaText}>Adzuna</Text>
-                            </Pressable>
-                          ) : null}
-                        </View>
-                      );
-                    })}
-                  </View>
-                </>
-              ) : null}
-            </>
-          ) : null}
-
-          <Text style={[styles.gate, rtl]}>{`🔒 ${t("publicJobs.detailsHint")}`}</Text>
-        </View>
-
-        {/* 2 — Hero (website .landing-hero) */}
-        <View style={styles.hero}>
+        {/* 1 — Landing: the Joblop logo (gold on black) and the hero with a short value line */}
+        <View style={styles.hero} testID="public-section-landing">
+          <Animated.View style={[styles.logoWrap, { opacity: logoIn, transform: [{ scale: logoIn.interpolate({ inputRange: [0, 1], outputRange: [0.94, 1] }) }] }]}>
+            <Image accessibilityLabel="Joblop" accessibilityRole="image" resizeMode="contain" source={joblopLogo} style={styles.logo} />
+          </Animated.View>
           <Branded text={t("land.heroTitle")} style={[styles.heroTitle, rtl]} />
           <Branded text={t("land.heroSub")} style={[styles.heroSub, rtl]} />
-          <View style={styles.values}>
-            {values.map((value) => (
-              <View key={value} style={styles.valueRow}>
-                <View style={styles.tick}>
-                  <Text style={styles.tickText}>✓</Text>
-                </View>
-                <Branded text={value} style={[styles.valueText, rtl]} />
-              </View>
-            ))}
-          </View>
-
-          <View style={styles.authCard}>
+          <View style={styles.ctaRow}>
             <Pressable
               onPress={onCreateAccount}
               accessibilityRole="button"
               testID="public-jobs-create-account"
               style={({ pressed }) => [styles.goldButton, pressed ? styles.pressed : null]}
             >
-              <Text style={styles.goldButtonText}>{t("land.getStarted")}</Text>
+              <Text style={styles.goldButtonText}>{copy.createAccount}</Text>
             </Pressable>
             <Pressable
               onPress={onSignIn}
@@ -343,31 +201,199 @@ export function PublicJobsScreen({
               testID="public-jobs-sign-in"
               style={({ pressed }) => [styles.outlineButton, pressed ? styles.pressed : null]}
             >
-              <Text style={styles.outlineButtonText}>{t("land.haveAccountCta")}</Text>
+              <Text style={styles.outlineButtonText}>{copy.signIn}</Text>
             </Pressable>
           </View>
         </View>
 
-        {/* 3 — How it works (website .landing-steps) */}
-        <View style={styles.section}>
-          <Text accessibilityRole="header" style={[styles.sectionTitle, rtl]}>
-            {t("land.howItWorks")}
-          </Text>
-          <View style={styles.grid}>
-            {steps.map((step, index) => (
-              <View key={step.title} style={[styles.cell, { width: stepWidth }]}>
-                <View style={styles.stepCard}>
-                  <View style={styles.stepNumber}>
-                    <Text style={styles.stepNumberText}>{index + 1}</Text>
-                  </View>
-                  <View style={styles.stepCopy}>
-                    <Branded text={step.title} style={[styles.stepTitle, rtl]} />
-                    <Branded text={step.body} style={[styles.stepBody, rtl]} />
-                  </View>
+        {/* 2 — How Joblop works: the website's four steps, as an in-app animation */}
+        <PublicHowItWorks lang={lang} isRtl={isRtl} title={t("land.howItWorks")} steps={steps} />
+
+        {/* 3 — Available jobs calendar (public, no account); loads on its own */}
+        <PublicJobsCalendar transport={transport} lang={lang} isRtl={isRtl} onOpenJob={onWantDetails} onCreateAccount={onCreateAccount} />
+
+        {/* 4 — JobScanner: the search (Joblop jobs + partner job boards) and the JobScanner demo */}
+        <View style={styles.scanner} testID="public-section-jobscanner">
+          <Text style={[styles.eyebrow, rtl]}>{copy.scannerEyebrow.toUpperCase()}</Text>
+          <View style={styles.pjs}>
+            <View pointerEvents="none" style={styles.pjsGlow} />
+            {/* Search first, like a job app: What + Where, then the button */}
+            <View style={styles.searchStack}>
+              <View style={[styles.field, focused === "what" ? styles.inputFocused : null, isRtl ? styles.fieldRtl : null]}>
+                <Text style={styles.fieldIcon}>🔍</Text>
+                <TextInput
+                  accessibilityLabel={t("publicJobs.searchLabel")}
+                  maxLength={80}
+                  onBlur={() => setFocused(null)}
+                  onChangeText={setQuery}
+                  onFocus={() => setFocused("what")}
+                  onSubmitEditing={search}
+                  placeholder={t("publicJobs.placeholder")}
+                  placeholderTextColor="#8a8478"
+                  returnKeyType="search"
+                  style={[styles.fieldInput, rtl]}
+                  value={query}
+                />
+              </View>
+              <View style={[styles.field, focused === "where" ? styles.inputFocused : null, isRtl ? styles.fieldRtl : null]}>
+                <Text style={styles.fieldIcon}>📍</Text>
+                <TextInput
+                  accessibilityLabel={t("publicJobs.whereLabel")}
+                  maxLength={60}
+                  onBlur={() => setFocused(null)}
+                  onChangeText={setWhere}
+                  onFocus={() => setFocused("where")}
+                  onSubmitEditing={search}
+                  placeholder={t("publicJobs.wherePlaceholder")}
+                  placeholderTextColor="#8a8478"
+                  returnKeyType="search"
+                  style={[styles.fieldInput, rtl]}
+                  value={where}
+                />
+              </View>
+              <Pressable
+                onPress={search}
+                accessibilityRole="button"
+                testID="public-jobs-search"
+                style={({ pressed }) => [styles.searchButtonWide, pressed ? styles.pressed : null]}
+              >
+                <Text style={styles.searchButtonText}>{t("publicJobs.findJobs")}</Text>
+              </Pressable>
+            </View>
+            <Text style={[styles.noAccount, rtl]}>{t("publicJobs.noAccount")}</Text>
+
+            {state.status === "loading" ? (
+              <View style={styles.noteRow}>
+                <ActivityIndicator color={web.gold} size="small" />
+                <Text style={[styles.note, rtl]}>{t("publicJobs.loading")}</Text>
+              </View>
+            ) : null}
+
+            {state.status === "offline" || state.status === "error" ? (
+              <View accessibilityRole="alert" style={styles.problem}>
+                <Text style={[styles.problemTitle, rtl]}>
+                  {t(state.status === "offline" ? "publicJobs.offlineTitle" : "publicJobs.errorTitle")}
+                </Text>
+                <Text style={[styles.note, rtl]}>
+                  {t(state.status === "offline" ? "publicJobs.offlineBody" : "publicJobs.errorBody")}
+                </Text>
+                <Pressable onPress={search} accessibilityRole="button" style={({ pressed }) => [styles.smallOutline, pressed ? styles.pressed : null]}>
+                  <Text style={styles.smallOutlineText}>{t("publicJobs.retry")}</Text>
+                </Pressable>
+              </View>
+            ) : null}
+
+            {state.status === "ready" && !hasResults ? <Text style={[styles.note, rtl]}>{t("publicJobs.none")}</Text> : null}
+
+            {state.status === "ready" && hasResults ? (
+              <>
+                <Text accessibilityLiveRegion="polite" style={[styles.count, rtl]}>
+                  {countLabel(total, t("publicJobs.foundOne"), t("publicJobs.foundMany"))}
+                </Text>
+
+                {state.jobs.length ? (
+                  <>
+                    <Branded text={t("publicJobs.joblopJobs")} style={[styles.pjsH, rtl]} />
+                    <View style={styles.grid}>
+                      {state.jobs.map((job) => {
+                        const date = formatJobDate(job.startAt, locale);
+                        const places = countLabel(job.openings, t("publicJobs.placesOne"), t("publicJobs.placesMany"));
+                        return (
+                          <View key={job.jobCode} style={[styles.cell, { width: cellWidth }]}>
+                            <Pressable
+                              onPress={onWantDetails}
+                              accessibilityHint={t("publicJobs.detailsHint")}
+                              accessibilityRole="button"
+                              style={({ pressed }) => [styles.jobCard, styles.ownCard, pressed ? styles.cardPressed : null]}
+                            >
+                              <Text style={styles.badge}>{t("publicJobs.joblopBadge")}</Text>
+                              <Text style={[styles.cardTitle, rtl]}>{job.role}</Text>
+                              <Text style={[styles.meta, rtl]}>{`📍 ${[job.areaLabel, date].filter(Boolean).join(" · ")}`}</Text>
+                              <View style={styles.foot}>
+                                <Text style={styles.places}>
+                                  {isUrgentJob(job.urgency) ? `${places} · ${t("publicJobs.urgent")}` : places}
+                                </Text>
+                                <Text style={styles.open}>{`${t("publicJobs.seeDetails")} ${arrow}`}</Text>
+                              </View>
+                            </Pressable>
+                          </View>
+                        );
+                      })}
+                    </View>
+                  </>
+                ) : null}
+
+                {state.leads.length ? (
+                  <>
+                    <Text style={[styles.pjsH, rtl]}>{t("publicJobs.moreJobs")}</Text>
+                    <View style={styles.grid}>
+                      {state.leads.map((lead, index) => {
+                        const pay = formatLeadPay(lead);
+                        const sub = leadSubline(lead);
+                        return (
+                          <View key={`${lead.url ?? lead.title}-${index}`} style={[styles.cell, { width: cellWidth }]}>
+                            <Pressable
+                              onPress={onWantDetails}
+                              accessibilityHint={t("publicJobs.detailsHint")}
+                              accessibilityRole="button"
+                              style={({ pressed }) => [styles.jobCard, pressed ? styles.cardPressed : null]}
+                            >
+                              <Text style={[styles.cardTitle, rtl]}>{lead.title}</Text>
+                              {sub ? <Text style={[styles.meta, rtl]}>{sub}</Text> : null}
+                              <View style={styles.foot}>
+                                <Text style={styles.places}>{pay ?? ""}</Text>
+                                <Text style={styles.open}>{`${t("publicJobs.seeDetails")} ${arrow}`}</Text>
+                              </View>
+                            </Pressable>
+                            {isAdzunaLead(lead) ? (
+                              <Pressable onPress={() => openExternal(ADZUNA_URL)} accessibilityRole="link" hitSlop={8} style={styles.adzuna}>
+                                <Text style={styles.adzunaText}>Adzuna</Text>
+                              </Pressable>
+                            ) : null}
+                          </View>
+                        );
+                      })}
+                    </View>
+                  </>
+                ) : null}
+              </>
+            ) : null}
+
+            <Text style={[styles.gate, rtl]}>{`🔒 ${t("publicJobs.detailsHint")}`}</Text>
+          </View>
+          <JobScannerDemo lang={lang} isRtl={isRtl} />
+        </View>
+
+        {/* 5 — Sign-up call to action */}
+        <View style={styles.authCard} testID="public-section-signup">
+          <Branded text={copy.ctaTitle} style={[styles.ctaTitle, rtl]} />
+          <Branded text={copy.ctaSub} style={[styles.heroSub, rtl]} />
+          <View style={styles.values}>
+            {values.map((value) => (
+              <View key={value} style={[styles.valueRow, isRtl ? styles.rowRtl : null]}>
+                <View style={styles.tick}>
+                  <Text style={styles.tickText}>✓</Text>
                 </View>
+                <Branded text={value} style={[styles.valueText, rtl]} />
               </View>
             ))}
           </View>
+          <Pressable
+            onPress={onCreateAccount}
+            accessibilityRole="button"
+            testID="public-signup-create-account"
+            style={({ pressed }) => [styles.goldButton, pressed ? styles.pressed : null]}
+          >
+            <Text style={styles.goldButtonText}>{copy.createAccount}</Text>
+          </Pressable>
+          <Pressable
+            onPress={onSignIn}
+            accessibilityRole="button"
+            testID="public-signup-sign-in"
+            style={({ pressed }) => [styles.outlineButton, pressed ? styles.pressed : null]}
+          >
+            <Text style={styles.outlineButtonText}>{copy.signIn}</Text>
+          </Pressable>
         </View>
 
         {/* 4 — For employers */}
@@ -513,6 +539,13 @@ const styles = StyleSheet.create({
 
   // 2 — hero
   hero: { gap: 14 },
+  logoWrap: { alignItems: "center", backgroundColor: "#000000", borderRadius: 16, paddingVertical: 10 },
+  logo: { height: 64, maxWidth: "100%", width: 266 },
+  ctaRow: { gap: 10, marginTop: 4 },
+  ctaTitle: { color: web.cream, fontFamily: serif, fontSize: 26, fontWeight: "800", lineHeight: 32 },
+  scanner: { gap: 12 },
+  eyebrow: { color: web.gold, fontSize: 12, fontWeight: "800", letterSpacing: 1.2 },
+  rowRtl: { flexDirection: "row-reverse" },
   heroTitle: { color: web.cream, fontFamily: serif, fontSize: 32, fontWeight: "800", lineHeight: 38 },
   heroSub: { color: web.sub, fontSize: 17, lineHeight: 25 },
   values: { gap: 10, marginTop: 4 },
@@ -555,32 +588,6 @@ const styles = StyleSheet.create({
     paddingHorizontal: 18
   },
   outlineButtonText: { color: web.cream, fontSize: 17, fontWeight: "700", textAlign: "center" },
-
-  // 3 — how it works
-  section: { gap: 10 },
-  sectionTitle: { color: web.cream, fontFamily: serif, fontSize: 26, fontWeight: "800", marginBottom: 4 },
-  stepCard: {
-    alignItems: "flex-start",
-    backgroundColor: web.stepCard,
-    borderColor: web.goldSoft,
-    borderRadius: 16,
-    borderWidth: 1,
-    flexDirection: "row",
-    gap: 12,
-    padding: 18
-  },
-  stepNumber: {
-    alignItems: "center",
-    backgroundColor: web.gold,
-    borderRadius: 999,
-    height: 32,
-    justifyContent: "center",
-    width: 32
-  },
-  stepNumberText: { color: web.ink, fontSize: 15, fontWeight: "800" },
-  stepCopy: { flex: 1, gap: 4 },
-  stepTitle: { color: web.cream, fontSize: 16, fontWeight: "800" },
-  stepBody: { color: web.sub, fontSize: 14.5, lineHeight: 21 },
 
   // 4 — employers
   employers: {

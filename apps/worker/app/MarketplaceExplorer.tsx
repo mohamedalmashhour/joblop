@@ -4,6 +4,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { MarketplaceMap, type MapPin } from "./MarketplaceMap";
 import { useLocale, useT, fmtLocale } from "./i18n/LocaleProvider";
 import { LandingPanel } from "./LandingPanel";
+import { HowItWorksMovie } from "./HowItWorksMovie";
 import { syncAccountLanguageOnce } from "./i18n/saveLanguage";
 import { NEXT_AFTER_SIGN_UP_KEY } from "./PublicJobSearch";
 import { safeReturnPath } from "./safeReturnPath";
@@ -80,7 +81,12 @@ export function MarketplaceExplorer() {
     };
     return <LandingPanel onSignedIn={afterSignIn} />;
   }
-  return <SearchPanel onSignedOut={() => setAuthState("signed_out")} />;
+  return (
+    <>
+      <SearchPanel onSignedOut={() => setAuthState("signed_out")} />
+      <HowItWorksMovie />
+    </>
+  );
 }
 
 function SearchPanel({ onSignedOut }: { onSignedOut: () => void }) {

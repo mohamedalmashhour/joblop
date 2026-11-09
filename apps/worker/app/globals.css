@@ -961,3 +961,45 @@ a.pjs-card { text-decoration: none; box-sizing: border-box; }
 .pjs-gate { margin: 16px 0 0; padding: 12px 14px; border-radius: 12px; background: rgba(248, 184, 8, 0.1); color: #f4efe4; }
 @media (max-width: 860px) { .pjs-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
 @media (max-width: 560px) { .pjs-grid { grid-template-columns: 1fr; } .pjs-form { flex-direction: column; } .pjs-form button { padding: 13px; } }
+
+/* Signed-out front door: hero buttons, the open-jobs calendar, JobScanner and sign-up sections. */
+.landing-hero-top { grid-template-columns: minmax(0, 1.4fr) minmax(220px, 0.6fr); grid-template-areas: "copy video"; }
+.landing-cta-row { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 4px; }
+.landing-signup { display: grid; grid-template-columns: minmax(0, 1fr) minmax(300px, 0.9fr); grid-template-areas: "copy auth"; gap: 32px; align-items: start; }
+.landing-signup h2 { font-size: clamp(24px, 3vw, 32px); line-height: 1.15; margin: 0 0 10px; }
+.landing-scanner { display: flex; flex-direction: column; gap: 4px; }
+.landing-scanner .pjs { margin-top: 6px; }
+.landing-links { display: flex; flex-wrap: wrap; align-items: center; gap: 16px; }
+.pcal { padding: clamp(18px, 3vw, 28px); border-radius: 20px; border: 1px solid rgba(248, 184, 8, 0.25);
+  background: radial-gradient(600px 240px at 90% 0%, rgba(248, 184, 8, 0.12), transparent), #0b0906; color: #f4efe4; }
+.pcal-eyebrow { display: inline-block; font-size: 12px; font-weight: 800; letter-spacing: .1em; text-transform: uppercase; color: #f8b808; }
+.pcal h2 { margin: 6px 0 6px; font-size: clamp(22px, 3.2vw, 30px); color: #fbf7ee; }
+.pcal-sub { margin: 0 0 14px; color: #cabfa8; line-height: 1.5; }
+.pcal-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 10px; }
+.pcal-month { font-size: 18px; text-transform: capitalize; color: #fbf7ee; }
+.pcal-nav { width: 40px; height: 40px; border-radius: 999px; border: 1px solid rgba(248, 184, 8, 0.45); background: transparent; color: #f8b808; font-size: 22px; font-weight: 800; cursor: pointer; }
+.pcal-nav:disabled { opacity: .35; cursor: default; }
+.pcal-grid { display: flex; flex-direction: column; gap: 6px; }
+.pcal-row { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 6px; }
+.pcal-wd { text-align: center; font-size: 12px; font-weight: 700; color: #b3a894; text-transform: capitalize; }
+.pcal-day { position: relative; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px; min-height: 54px; border-radius: 12px;
+  border: 1px solid rgba(255, 255, 255, 0.08); background: rgba(255, 255, 255, 0.03); color: #cabfa8; font: inherit; cursor: pointer; }
+.pcal-day.out { opacity: .25; cursor: default; }
+.pcal-day.has { border-color: rgba(248, 184, 8, 0.45); color: #fbf7ee; }
+.pcal-day.today .pcal-num { text-decoration: underline; text-underline-offset: 3px; }
+.pcal-day.on { background: #f8b808; border-color: #f8b808; color: #111; }
+.pcal-num { font-size: 14px; font-weight: 700; }
+.pcal-count { min-width: 22px; padding: 1px 6px; border-radius: 999px; background: #f8b808; color: #111; font-size: 12px; font-weight: 800; }
+.pcal-day.on .pcal-count { background: #111; color: #f8b808; }
+.pcal-note { color: #cabfa8; margin: 14px 0 4px; }
+.pcal-link { color: #f8b808; }
+.pcal-empty { margin-top: 16px; padding: 14px; border-radius: 12px; background: rgba(248, 184, 8, 0.1); display: flex; flex-wrap: wrap; align-items: center; gap: 12px; justify-content: space-between; }
+.pcal-empty p { margin: 0; color: #f4efe4; }
+.pcal-day-list h3 { margin: 18px 0 10px; font-size: 16px; color: #fbf7ee; text-transform: capitalize; }
+.pcal-day-count { color: #f8b808; text-transform: none; }
+@media (max-width: 760px) {
+  .landing-hero-top { grid-template-columns: 1fr; grid-template-areas: "copy" "video"; }
+  .landing-signup { grid-template-columns: 1fr; grid-template-areas: "copy" "auth"; }
+  .pcal-row { gap: 4px; }
+  .pcal-day { min-height: 44px; border-radius: 9px; }
+}

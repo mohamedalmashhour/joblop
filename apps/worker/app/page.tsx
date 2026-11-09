@@ -1,4 +1,3 @@
-import { HowItWorksMovie } from "./HowItWorksMovie";
 import { MarketplaceExplorer } from "./MarketplaceExplorer";
 import { SiteHeader } from "./SiteHeader";
 
@@ -10,8 +9,8 @@ export default function Page() {
     <>
       <SiteHeader />
       <main className="wrap">
+        {/* Signed out: landing, open-jobs calendar, JobScanner, sign-up (LandingPanel). Signed in: the search. */}
         <MarketplaceExplorer />
-        <HowItWorksMovie />
       </main>
     </>
   );

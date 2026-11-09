@@ -64,6 +64,7 @@ describe("every worker job list uses openJobWhere", () => {
     'app.get("/marketplace/open-jobs"',
     'app.post("/marketplace/jobs/search"',
     'app.get("/public/jobs"',
+    'app.get("/public/jobs/calendar"',
     'app.get("/public/jobs/:jobCode"',
     'app.get("/marketplace/job-codes/:jobCode"',
     'app.get("/public/jobscanner/stats"'

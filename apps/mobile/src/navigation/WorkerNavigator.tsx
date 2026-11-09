@@ -51,7 +51,7 @@ type Screen =
   | { name: "cvBuilder" }
   | { name: "contact"; draft: ContactDraft | null; conversationId?: string | null };
 
-// What a signed-out person sees: the free public job search first; its actions open sign-up / sign-in.
+// What a signed-out person sees: the public front door first; its actions open sign-up / sign-in.
 type GuestView = { name: "publicJobs" } | { name: "auth"; mode: "sign-in" | "sign-up" };
 
 type TabId = "home" | "available" | "myShifts" | "calendar" | "earnings" | "contact" | "profile";
@@ -280,8 +280,9 @@ export function WorkerNavigator({
     }
   }
 
-  // Signed out (owner rule, same as the website): the FIRST screen is the free public job search — no
-  // account needed. Tapping a job or "Create free account" opens sign-up; "Sign in" opens phone-code
+  // Signed out (owner rule, same as the website): the FIRST screen is the public front door — the Joblop
+  // logo and hero, "How Joblop works", the open-jobs calendar, JobScanner, then sign-up — no account
+  // needed. Tapping a job or "Create free account" opens sign-up; "Sign in" opens phone-code
   // sign-in; Back from either returns to the search. Only a real sign-in opens the app (and only then
   // does a pending notification target route).
   if (!authenticated) {

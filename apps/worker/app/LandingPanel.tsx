@@ -1,7 +1,10 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { PUBLIC_LANDING_COPY, publicLandingLang } from "@rwos/shared";
 import { NEXT_AFTER_SIGN_UP_KEY, PublicJobSearch } from "./PublicJobSearch";
+import { PublicJobsCalendar } from "./PublicJobsCalendar";
+import { HowItWorksMovie } from "./HowItWorksMovie";
 import { safeReturnPath } from "./safeReturnPath";
 import { trackConversion } from "./analytics";
 import { withBrand } from "./Brand";
@@ -9,11 +12,22 @@ import { useLocale, useT } from "./i18n/LocaleProvider";
 import { VerifyEmail } from "./VerifyEmail";
 import { VideoCard } from "./VideoCard";
 
-/** Signed-out worker front door: value proposition + how-it-works, with a sign-in / create-account
- *  card. Fully bilingual (fr-CA / en-CA). On success it hands control back to the marketplace. */
+/**
+ * Signed-out worker front door, in the owner's order ("the searcher sees the landing page with the
+ * job calendar which is available, then JobScanner; if he is interested he opens an account"):
+ *   1. landing: the logo (site header) and the hero with a short value line and the two account buttons,
+ *   2. howitworks: the "How Joblop works" 4-step video section (sound on/off),
+ *   3. calendar: open Joblop jobs this month, public with no account,
+ *   4. jobscanner: the search ("What work?" + "Where?") and the JobScanner demo,
+ *   5. signup: the create-account / sign-in card,
+ * then links to the public board and the full guide. The calendar loads on its own; the videos never
+ * delay it. The phone app shows the same sections in the same order
+ * (SIGNED_OUT_SECTIONS). On success it hands control back to the marketplace.
+ */
 export function LandingPanel({ onSignedIn }: { onSignedIn: () => void }) {
   const t = useT();
   const locale = useLocale();
+  const copy = PUBLIC_LANDING_COPY[publicLandingLang(locale)];
   // Create account comes first (owner rule): returning workers switch to "Sign in" in one tap.
   const [tab, setTab] = useState<"signin" | "signup">("signup");
   const remember = (next: string) => {
@@ -25,10 +39,13 @@ export function LandingPanel({ onSignedIn }: { onSignedIn: () => void }) {
       /* storage blocked: they still land on the search after signing up */
     }
   };
+  const openAccount = (which: "signin" | "signup") => {
+    setTab(which);
+    document.getElementById("auth-card")?.scrollIntoView({ behavior: "smooth", block: "center" });
+  };
   const wantDetails = (next: string) => {
     remember(next);
-    setTab("signup");
-    document.getElementById("auth-card")?.scrollIntoView({ behavior: "smooth", block: "center" });
+    openAccount("signup");
   };
   // Arriving from a public job page ("Create an account to take this job" or "Sign in"): remember the
   // job (an on-site path only) so sign-up or sign-in brings the visitor back to it.
@@ -51,29 +68,15 @@ export function LandingPanel({ onSignedIn }: { onSignedIn: () => void }) {
 
   return (
     <div className="landing">
-      <PublicJobSearch onWantDetails={wantDetails} />
-      <section className="landing-hero">
+      {/* 1 — Landing: hero with a short value line */}
+      <section className="landing-hero landing-hero-top" data-section="landing">
         <div className="landing-copy">
           <h1>{withBrand(t("land.heroTitle"))}</h1>
           <p>{withBrand(t("land.heroSub"))}</p>
-          <ul className="landing-values">
-            {values.map((v) => (
-              <li key={v}>
-                <span className="landing-tick" aria-hidden="true">✓</span>
-                <span>{withBrand(v)}</span>
-              </li>
-            ))}
-          </ul>
-          <a href="/browse" className="landing-browse" style={{ display: "inline-block", marginTop: 14, fontWeight: 700, color: "#e0a500", textDecoration: "none" }}>
-            {t("land.browsePublic")}
-          </a>
-          <a href="/how-it-works" className="landing-guide" style={{ display: "inline-flex", alignItems: "center", gap: 8, marginTop: 12, padding: "9px 14px", border: "1px solid rgba(248,184,8,.4)", borderRadius: 999, fontWeight: 700, color: "#f4efe4", textDecoration: "none" }}>
-            <span aria-hidden="true" style={{ color: "#f8b808" }}>?</span>
-            {locale === "ar" ? "كيف يعمل جوب‑لوب — الدليل الكامل" : locale.startsWith("fr") ? "Comment fonctionne Joblop — le guide complet" : "How Joblop works — the full guide"}
-          </a>
-        </div>
-        <div className="landing-hero-side">
-          <AuthCard tab={tab} setTab={setTab} onSignedIn={onSignedIn} />
+          <div className="landing-cta-row">
+            <button type="button" className="btn" onClick={() => openAccount("signup")}>{copy.createAccount}</button>
+            <button type="button" className="btn ghost" onClick={() => openAccount("signin")}>{copy.signIn}</button>
+          </div>
         </div>
         <div className="landing-hero-video">
           <VideoCard
@@ -85,7 +88,8 @@ export function LandingPanel({ onSignedIn }: { onSignedIn: () => void }) {
         </div>
       </section>
 
-      <section className="landing-steps">
+      {/* 2 — How Joblop works: the 4-step video section (sound on/off) */}
+      <section className="landing-steps" data-section="howitworks">
         <h2>{t("land.howItWorks")}</h2>
         <div className="landing-steps-body">
           <VideoCard
@@ -110,6 +114,45 @@ export function LandingPanel({ onSignedIn }: { onSignedIn: () => void }) {
         </ol>
         </div>
       </section>
+
+      {/* 3 — Available jobs calendar (public, no account) */}
+      <PublicJobsCalendar onCreateAccount={() => openAccount("signup")} />
+
+      {/* 4 — JobScanner: Joblop jobs plus partner job boards, and the JobScanner demo */}
+      <section className="landing-scanner" data-section="jobscanner" aria-label={copy.scannerEyebrow}>
+        <span className="pcal-eyebrow">{copy.scannerEyebrow}</span>
+        <PublicJobSearch onWantDetails={wantDetails} />
+        <HowItWorksMovie />
+      </section>
+
+      {/* 5 — Sign-up call to action */}
+      <section className="landing-signup" data-section="signup" aria-labelledby="landing-signup-title">
+        <div className="landing-copy">
+          <h2 id="landing-signup-title">{withBrand(copy.ctaTitle)}</h2>
+          <p>{withBrand(copy.ctaSub)}</p>
+          <ul className="landing-values">
+            {values.map((v) => (
+              <li key={v}>
+                <span className="landing-tick" aria-hidden="true">✓</span>
+                <span>{withBrand(v)}</span>
+              </li>
+            ))}
+          </ul>
+        </div>
+        <div className="landing-hero-side">
+          <AuthCard tab={tab} setTab={setTab} onSignedIn={onSignedIn} />
+        </div>
+      </section>
+
+      <nav className="landing-links">
+        <a href="/browse" className="landing-browse" style={{ display: "inline-block", fontWeight: 700, color: "#e0a500", textDecoration: "none" }}>
+          {t("land.browsePublic")}
+        </a>
+        <a href="/how-it-works" className="landing-guide" style={{ display: "inline-flex", alignItems: "center", gap: 8, padding: "9px 14px", border: "1px solid rgba(248,184,8,.4)", borderRadius: 999, fontWeight: 700, color: "#f4efe4", textDecoration: "none" }}>
+          <span aria-hidden="true" style={{ color: "#f8b808" }}>?</span>
+          {locale === "ar" ? "كيف يعمل جوب‑لوب — الدليل الكامل" : locale.startsWith("fr") ? "Comment fonctionne Joblop — le guide complet" : "How Joblop works — the full guide"}
+        </a>
+      </nav>
     </div>
   );
 }
