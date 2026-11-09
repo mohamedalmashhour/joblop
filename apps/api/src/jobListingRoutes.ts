@@ -2,6 +2,7 @@ import type { PrismaClient } from "@rwos/database";
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import { isStripeTestConfigured } from "./cvProStripeCheckout";
 import { isEmployerPlanMethod, isEmployerPlansEnabled } from "./employerPlanRepository";
+import { orderActionError, readStaffConfirmBody } from "./paymentOrderHttp";
 import {
   adminConfirmJobListingOrder,
   adminRejectJobListingOrder,
@@ -29,6 +30,8 @@ export type JobListingRouteDeps = Readonly<{
   employerOrganization(request: FastifyRequest, reply: FastifyReply, source: "query" | "body"): Promise<string | null>;
   fallbackOrigin: string;
   now: () => Date;
+  /** Email the receipt of a just-paid order (best effort, never throws). */
+  emailReceipt?: (receiptId: string | null) => Promise<void>;
 }>;
 
 function record(value: unknown): Record<string, unknown> {
@@ -107,7 +110,7 @@ export function registerJobListingRoutes(app: FastifyInstance, deps: JobListingR
     if (!organizationId) return;
     const id = param(request, "id");
     if (!id) return notFound(reply);
-    const result = await claimJobListingETransfer(prisma, organizationId, id);
+    const result = await claimJobListingETransfer(prisma, organizationId, id, now());
     if (!result.ok) {
       return reply.code(result.reason === "order_not_found" ? 404 : 409).send({ error: "RWOS_ORDER_" + result.reason.toUpperCase() });
     }
@@ -125,6 +128,7 @@ export function registerJobListingRoutes(app: FastifyInstance, deps: JobListingR
       if (result.reason === "payment_incomplete") return reply.code(402).send({ error: "RWOS_PAYMENT_INCOMPLETE" });
       return reply.code(result.reason === "order_not_found" ? 404 : 409).send({ error: "RWOS_ORDER_" + result.reason.toUpperCase() });
     }
+    await deps.emailReceipt?.(result.receiptId);
     return reply.code(200).send({ order: result.order });
   });
 
@@ -134,7 +138,8 @@ export function registerJobListingRoutes(app: FastifyInstance, deps: JobListingR
     if (!isEmployerPlansEnabled()) return notFound(reply);
     const actor = await deps.requireStaff(request, reply);
     if (!actor) return;
-    return reply.code(200).header("cache-control", "no-store").send({ orders: await listJobListingOrdersForReview(prisma) });
+    const view = record(request.query).view === "done" ? "done" : "open";
+    return reply.code(200).header("cache-control", "no-store").send({ orders: await listJobListingOrdersForReview(prisma, view) });
   });
 
   app.post("/platform/job-listing-orders/:id/confirm", async (request, reply) => {
@@ -143,10 +148,14 @@ export function registerJobListingRoutes(app: FastifyInstance, deps: JobListingR
     if (!actor) return;
     const id = param(request, "id");
     if (!id) return notFound(reply);
-    const result = await adminConfirmJobListingOrder(prisma, id, now());
+    const input = readStaffConfirmBody(request.body);
+    if (input === "invalid") return reply.code(400).send({ error: "RWOS_ORDER_AMOUNT_INVALID", message: "Type the amount received like 56.92." });
+    const result = await adminConfirmJobListingOrder(prisma, id, now(), input);
     if (!result.ok) {
-      return reply.code(result.reason === "order_not_found" ? 404 : 409).send({ error: "RWOS_ORDER_" + result.reason.toUpperCase() });
+      const error = orderActionError(result.reason);
+      return reply.code(error.code).send(error.body);
     }
+    await deps.emailReceipt?.(result.receiptId);
     return reply.code(200).send({ order: result.order });
   });
 
@@ -156,7 +165,7 @@ export function registerJobListingRoutes(app: FastifyInstance, deps: JobListingR
     if (!actor) return;
     const id = param(request, "id");
     if (!id) return notFound(reply);
-    if (!(await adminRejectJobListingOrder(prisma, id))) return notFound(reply);
+    if (!(await adminRejectJobListingOrder(prisma, id, now()))) return notFound(reply);
     return reply.code(200).send({ canceled: true });
   });
 }

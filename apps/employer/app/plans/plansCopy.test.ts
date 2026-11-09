@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { ar, en, fr } from "../i18n/messages";
+import { pricingCopy } from "../pricing/pricingContent";
 
 const planKeys = Object.keys(en).filter(
   (key) => key.startsWith("plans.") || key.startsWith("listing.") || key.startsWith("create.jobLength")
@@ -34,5 +35,24 @@ describe("employer plans copy", () => {
     expect(en["listing.status.listed"]).toBe("Listed until {date}");
     expect(en["listing.renew"]).toBe("Renew 1 month");
     expect(Object.keys(en).some((key) => key.includes("contract_plus"))).toBe(false);
+  });
+
+  it("states the refund rule the same way on /plans, the listing panel and /pricing", () => {
+    expect(en["plans.refundRule"]).toBe("Canceling stops the next month. Months already paid are not refunded.");
+    const pairs = [
+      [en["plans.refundRule"], pricingCopy["en-CA"].cancelPoints[0]],
+      [fr["plans.refundRule"], pricingCopy["fr-CA"].cancelPoints[0]],
+      [ar["plans.refundRule"] ?? "", pricingCopy.ar.cancelPoints[0]]
+    ] as const;
+    for (const [plansLine, pricingLine] of pairs) {
+      const [stops, notRefunded] = plansLine.split(/(?<=\.)\s/u);
+      expect(pricingLine?.toLowerCase()).toContain((stops ?? "").toLowerCase());
+      expect(pricingLine).toContain(notRefunded ?? "");
+    }
+  });
+
+  it("tells a trialing employer the paid month waits for the trial end, and offers a renewal", () => {
+    expect(en["plans.paidStartsAtTrialEnd"]).toBe("Your paid month starts when your trial ends.");
+    expect(en["plans.renewEtransfer"]).toBe("Renew 1 month — Interac");
   });
 });

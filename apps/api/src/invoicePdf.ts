@@ -204,7 +204,7 @@ export function renderBilingualSyntheticCreditNotePdf(
   return page.finish(creditNote.creditNoteNumber);
 }
 
-type Colour = readonly [number, number, number];
+export type Colour = readonly [number, number, number];
 const BLACK: Colour = [0, 0, 0];
 const WHITE: Colour = [1, 1, 1];
 // The gold of the Joblop logo artwork, #F8B808.
@@ -214,6 +214,8 @@ const INK: Colour = [0.07, 0.07, 0.07];
 const MUTED: Colour = [0.42, 0.4, 0.37];
 const PANEL: Colour = [0.965, 0.949, 0.914];
 const RULE: Colour = [0.86, 0.83, 0.78];
+// Shared with the receipt PDF (receiptPdf.ts), so both documents look the same.
+export const PDF_COLOURS = { BLACK, WHITE, GOLD, GOLD_DARK, INK, MUTED, PANEL, RULE } as const;
 
 // Helvetica and Helvetica-Bold glyph widths (per 1000 units, from the standard font metrics), so
 // right-aligned figures and the two-colour logo line up. Characters not listed use an average.
@@ -242,7 +244,7 @@ function textWidth(value: string, size: number, weight: "regular" | "bold") {
   return (units / 1000) * size;
 }
 
-class PdfPage {
+export class PdfPage {
   private readonly ops: string[] = [];
   private usesLogo = false;
 
@@ -311,6 +313,10 @@ const rgb = (colour: Colour) => colour.map((part) => num(part)).join(" ");
 
 function percent(partsPerMillion: number) {
   return `${(partsPerMillion / 10_000).toFixed(3).replace(/\.?0+$/u, "")}%`;
+}
+
+export function pdfMoney(amountMinor: number) {
+  return money(amountMinor);
 }
 
 function money(amountMinor: number) {

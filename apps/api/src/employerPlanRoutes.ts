@@ -15,7 +15,7 @@ import {
   claimEmployerPlanETransfer,
   completeEmployerPlanStripeOrder,
   createPendingEmployerPlanOrder,
-  employerPlanETransferInstructions,
+  employerPlanETransferFor,
   getEmployerPlanOverview,
   isEmployerPlanMethod,
   isEmployerPlansEnabled,
@@ -25,6 +25,10 @@ import {
 } from "./employerPlanRepository";
 import { isStripeTestConfigured } from "./cvProStripeCheckout";
 import { registerJobListingRoutes } from "./jobListingRoutes";
+import type { EmailSender } from "./mailer/emailSender";
+import { orderActionError, readStaffConfirmBody } from "./paymentOrderHttp";
+import { findOrganizationReceipt, sendPaymentReceiptEmail } from "./paymentReceipts";
+import { renderPaymentReceiptPdf } from "./receiptPdf";
 
 // EMPLOYER FIXED PLANS routes. Every route answers 404 unless EMPLOYER_PLANS_ENABLED === "enabled",
 // except GET /public/employer-plans, which only reports whether plans are on (so the public /plans
@@ -45,6 +49,9 @@ export type EmployerPlanRouteDeps = Readonly<{
   isOrganizationManager(userId: string, organizationId: string): Promise<boolean>;
   fallbackOrigin: string;
   now?: () => Date;
+  /** Sends the receipt email after a payment (best effort). Without it no email is sent. */
+  emailSender?: EmailSender;
+  log?: (event: string, fields: Record<string, unknown>) => void;
 }>;
 
 function record(value: unknown): Record<string, unknown> {
@@ -119,6 +126,12 @@ export function registerEmployerPlanRoutes(app: FastifyInstance, deps: EmployerP
     return id && UUID.test(id) ? id : null;
   }
 
+  // Receipt email after a payment is saved. Never throws and never undoes the payment.
+  async function emailReceipt(receiptId: string | null) {
+    if (!receiptId || !deps.emailSender) return;
+    await sendPaymentReceiptEmail(prisma, deps.emailSender, receiptId, deps.log).catch(() => undefined);
+  }
+
   app.get("/public/employer-plans", async (_request, reply) => {
     const enabled = isEmployerPlansEnabled();
     return reply
@@ -177,7 +190,7 @@ export function registerEmployerPlanRoutes(app: FastifyInstance, deps: EmployerP
       return reply.code(201).send({ order: checkout.order, checkoutUrl: checkout.checkoutUrl });
     }
     const order = await createPendingEmployerPlanOrder(prisma, organizationId, plan, method);
-    return reply.code(201).send({ order, eTransfer: employerPlanETransferInstructions(order) });
+    return reply.code(201).send({ order, eTransfer: await employerPlanETransferFor(prisma, organizationId, order, now()) });
   });
 
   app.post("/employer/plan/orders/:id/claim-etransfer", async (request, reply) => {
@@ -185,7 +198,7 @@ export function registerEmployerPlanRoutes(app: FastifyInstance, deps: EmployerP
     if (!organizationId) return;
     const id = orderId(request);
     if (!id) return notFound(reply);
-    const result = await claimEmployerPlanETransfer(prisma, organizationId, id);
+    const result = await claimEmployerPlanETransfer(prisma, organizationId, id, now());
     if (!result.ok) {
       return reply.code(result.reason === "order_not_found" ? 404 : 409).send({ error: "RWOS_ORDER_" + result.reason.toUpperCase() });
     }
@@ -203,6 +216,7 @@ export function registerEmployerPlanRoutes(app: FastifyInstance, deps: EmployerP
       if (result.reason === "payment_incomplete") return reply.code(402).send({ error: "RWOS_PAYMENT_INCOMPLETE" });
       return reply.code(result.reason === "order_not_found" ? 404 : 409).send({ error: "RWOS_ORDER_" + result.reason.toUpperCase() });
     }
+    await emailReceipt(result.receiptId);
     return reply.code(200).send({ order: result.order });
   });
 
@@ -213,7 +227,24 @@ export function registerEmployerPlanRoutes(app: FastifyInstance, deps: EmployerP
     if (!result.ok) {
       return reply.code(result.reason === "invalid_track" ? 400 : 409).send({ error: "RWOS_EMPLOYER_PLAN_" + result.reason.toUpperCase() });
     }
-    return reply.code(200).send({ plan: result.plan });
+    return reply.code(200).send({ plan: result.plan, withdrawn: result.withdrawn });
+  });
+
+  // Receipt PDF (plans and listings) for the company's own receipts.
+  app.get("/employer/receipts/:id/pdf", async (request, reply) => {
+    const organizationId = await employerOrganization(request, reply, "query");
+    if (!organizationId) return;
+    const id = orderId(request);
+    if (!id) return notFound(reply);
+    const receipt = await findOrganizationReceipt(prisma, organizationId, id);
+    if (!receipt) return notFound(reply);
+    const rendered = renderPaymentReceiptPdf(receipt);
+    return reply
+      .code(200)
+      .type("application/pdf")
+      .header("cache-control", "private, no-store")
+      .header("content-disposition", `attachment; filename="${rendered.filename}"`)
+      .send(Buffer.from(rendered.bytes));
   });
 
   // ── staff review queue ──
@@ -222,7 +253,8 @@ export function registerEmployerPlanRoutes(app: FastifyInstance, deps: EmployerP
     if (!isEmployerPlansEnabled()) return notFound(reply);
     const actor = await deps.requireStaff(request, reply);
     if (!actor) return;
-    return reply.code(200).header("cache-control", "no-store").send({ orders: await listEmployerPlanOrdersForReview(prisma) });
+    const view = record(request.query).view === "done" ? "done" : "open";
+    return reply.code(200).header("cache-control", "no-store").send({ orders: await listEmployerPlanOrdersForReview(prisma, view) });
   });
 
   app.post("/platform/employer-plan-orders/:id/confirm", async (request, reply) => {
@@ -231,10 +263,14 @@ export function registerEmployerPlanRoutes(app: FastifyInstance, deps: EmployerP
     if (!actor) return;
     const id = orderId(request);
     if (!id) return notFound(reply);
-    const result = await adminConfirmEmployerPlanOrder(prisma, id, now());
+    const input = readStaffConfirmBody(request.body);
+    if (input === "invalid") return reply.code(400).send({ error: "RWOS_ORDER_AMOUNT_INVALID", message: "Type the amount received like 56.34." });
+    const result = await adminConfirmEmployerPlanOrder(prisma, id, now(), input);
     if (!result.ok) {
-      return reply.code(result.reason === "order_not_found" ? 404 : 409).send({ error: "RWOS_ORDER_" + result.reason.toUpperCase() });
+      const error = orderActionError(result.reason);
+      return reply.code(error.code).send(error.body);
     }
+    await emailReceipt(result.receiptId);
     return reply.code(200).send({ order: result.order });
   });
 
@@ -244,10 +280,17 @@ export function registerEmployerPlanRoutes(app: FastifyInstance, deps: EmployerP
     if (!actor) return;
     const id = orderId(request);
     if (!id) return notFound(reply);
-    if (!(await adminRejectEmployerPlanOrder(prisma, id))) return notFound(reply);
+    if (!(await adminRejectEmployerPlanOrder(prisma, id, now()))) return notFound(reply);
     return reply.code(200).send({ canceled: true });
   });
 
   // ── long-term job listings (paid in advance; same flag, same employer/staff rules) ──
-  registerJobListingRoutes(app, { prisma, requireStaff: deps.requireStaff, employerOrganization, fallbackOrigin: deps.fallbackOrigin, now });
+  registerJobListingRoutes(app, {
+    prisma,
+    requireStaff: deps.requireStaff,
+    employerOrganization,
+    fallbackOrigin: deps.fallbackOrigin,
+    now,
+    emailReceipt
+  });
 }

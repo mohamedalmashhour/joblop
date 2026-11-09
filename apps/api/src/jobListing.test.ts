@@ -1,6 +1,6 @@
-import type { PrismaClient } from "@rwos/database";
 import Fastify from "fastify";
 import { afterEach, describe, expect, it } from "vitest";
+import { adminConfirmEmployerPlanOrder, createPendingEmployerPlanOrder } from "./employerPlanRepository";
 import { registerEmployerPlanRoutes } from "./employerPlanRoutes";
 import {
   adminConfirmJobListingOrder,
@@ -8,9 +8,11 @@ import {
   claimJobListingETransfer,
   createPendingJobListingOrder,
   getJobListingOverview,
+  listJobListingOrdersForReview,
   startJobListingTrial
 } from "./jobListingRepository";
 import { isListedForWorkers, listedCondition, listedJobWhere, listingVisibilitySelect } from "./jobListingVisibility";
+import { createPaymentTestPrisma } from "./paymentTestPrisma";
 
 const ORG = "11111111-1111-4111-8111-111111111111";
 const LONG_JOB = "44444444-4444-4444-8444-444444444444";
@@ -48,119 +50,23 @@ describe("worker visibility: a long-term job shows only while listed", () => {
   });
 });
 
-type Row = Record<string, unknown>;
+const USER = "88888888-8888-4888-8888-888888888888";
+const LONG_JOB_3 = "99999999-9999-4999-8999-999999999999";
 
 function fakePrisma() {
-  const org: Row = { id: ORG, jobListingTrialUsedAt: null, jobListingFirstMonthUsedAt: null };
-  const jobs: Row[] = [
-    { id: LONG_JOB, organizationId: ORG, title: "Night caretaker", jobLength: "long_term", status: "approved_for_dispatch", startAt: NOW, createdAt: NOW },
-    { id: LONG_JOB_2, organizationId: ORG, title: "Cook", jobLength: "long_term", status: "submitted", startAt: NOW, createdAt: NOW },
-    { id: SHORT_JOB, organizationId: ORG, title: "Shift", jobLength: "short_term", status: "submitted", startAt: NOW, createdAt: NOW }
-  ];
-  const listings: Row[] = [];
-  const orders: Row[] = [];
-  let seq = 0;
-  const listingSelect = (l: Row | undefined) => (l ? { id: l.id, listedUntil: l.listedUntil ?? null, trialEndsAt: l.trialEndsAt ?? null } : null);
-  const withListing = (o: Row) => {
-    const jobRequestId = listings.find((l) => l.id === o.jobListingId)?.jobRequestId;
-    const title = jobs.find((j) => j.id === jobRequestId)?.title;
-    return { ...o, organization: { displayName: "Acme" }, jobListing: { jobRequestId, jobRequest: { title } } };
-  };
-  const statusIn = (value: unknown, where: unknown) => {
-    if (where === undefined) return true;
-    if (typeof where === "string") return value === where;
-    return ((where as { in: string[] }).in ?? []).includes(value as string);
-  };
-  const prisma: Record<string, unknown> = {
-    employerOrganization: {
-      async findUnique() {
-        return { ...org };
-      },
-      async updateMany(args: { where: Row; data: Row }) {
-        const key = Object.keys(args.where).find((k) => k !== "id") as string;
-        if (org[key] !== null) return { count: 0 };
-        Object.assign(org, args.data);
-        return { count: 1 };
-      }
-    },
-    jobRequest: {
-      async findFirst(args: { where: { id: string; organizationId: string } }) {
-        const job = jobs.find((j) => j.id === args.where.id && j.organizationId === args.where.organizationId);
-        return job ? { ...job, jobListing: listingSelect(listings.find((l) => l.jobRequestId === job.id)) } : null;
-      },
-      async findMany() {
-        return jobs
-          .filter((j) => j.jobLength === "long_term")
-          .map((j) => ({ ...j, jobListing: listingSelect(listings.find((l) => l.jobRequestId === j.id)) }));
-      }
-    },
-    jobListing: {
-      async upsert(args: { where: { jobRequestId: string }; create: Row; update: Row }) {
-        let l = listings.find((x) => x.jobRequestId === args.where.jobRequestId);
-        if (l) Object.assign(l, args.update);
-        else {
-          l = { id: `listing-${++seq}`, ...args.create };
-          listings.push(l);
-        }
-        return listingSelect(l);
-      },
-      async findUniqueOrThrow(args: { where: { id: string } }) {
-        const l = listings.find((x) => x.id === args.where.id);
-        if (!l) throw new Error("missing");
-        return listingSelect(l);
-      },
-      async update(args: { where: { id: string }; data: Row }) {
-        const l = listings.find((x) => x.id === args.where.id) as Row;
-        Object.assign(l, args.data);
-        return l;
-      }
-    },
-    jobListingOrder: {
-      async findFirst(args: { where: Row }) {
-        const w = args.where;
-        const o = orders
-          .filter(
-            (x) =>
-              (w.id === undefined || x.id === w.id) &&
-              (w.organizationId === undefined || x.organizationId === w.organizationId) &&
-              (w.jobListingId === undefined || x.jobListingId === w.jobListingId) &&
-              (w.method === undefined || x.method === w.method) &&
-              statusIn(x.status, w.status)
-          )
-          .at(-1);
-        return o ? withListing(o) : null;
-      },
-      async findMany(args: { where: Row }) {
-        return orders.filter((x) => statusIn(x.status, args.where.status)).map(withListing);
-      },
-      async findUnique(args: { where: { id: string } }) {
-        const o = orders.find((x) => x.id === args.where.id);
-        return o ? withListing(o) : null;
-      },
-      async findUniqueOrThrow(args: { where: { id: string } }) {
-        return withListing(orders.find((x) => x.id === args.where.id) as Row);
-      },
-      async create(args: { data: Row }) {
-        const o = { id: seq === 0 ? ORDER : `order-${seq}`, paymentRef: null, paidAt: null, createdAt: NOW, ...args.data };
-        seq += 1;
-        orders.push(o);
-        return withListing(o);
-      },
-      async update(args: { where: { id: string }; data: Row }) {
-        const o = orders.find((x) => x.id === args.where.id) as Row;
-        Object.assign(o, args.data);
-        return withListing(o);
-      },
-      async updateMany(args: { where: { id: string; status: unknown }; data: Row }) {
-        const o = orders.find((x) => x.id === args.where.id && statusIn(x.status, args.where.status));
-        if (!o) return { count: 0 };
-        Object.assign(o, args.data);
-        return { count: 1 };
-      }
-    }
-  };
-  prisma.$transaction = async (fn: (tx: unknown) => unknown) => fn(prisma);
-  return { prisma: prisma as unknown as PrismaClient, org, listings, orders };
+  const { prisma, tables } = createPaymentTestPrisma({
+    organizations: [
+      { id: ORG, displayName: "Acme", legalName: "Acme Care Inc.", createdByUserId: USER, jobListingTrialUsedAt: null, jobListingFirstMonthUsedAt: null }
+    ],
+    users: [{ id: USER, emailNormalized: "owner@acme.test", phone: "+15145550000", primaryLanguage: "en" }],
+    jobs: [
+      { id: LONG_JOB, organizationId: ORG, title: "Night caretaker", jobLength: "long_term", status: "approved_for_dispatch", startAt: NOW, createdAt: NOW },
+      { id: LONG_JOB_2, organizationId: ORG, title: "Cook", jobLength: "long_term", status: "submitted", startAt: NOW, createdAt: NOW },
+      { id: LONG_JOB_3, organizationId: ORG, title: "Driver", jobLength: "long_term", status: "submitted", startAt: NOW, createdAt: NOW },
+      { id: SHORT_JOB, organizationId: ORG, title: "Shift", jobLength: "short_term", status: "submitted", startAt: NOW, createdAt: NOW }
+    ]
+  });
+  return { prisma, tables, org: tables.organizations[0] as Record<string, unknown>, listings: tables.listings, orders: tables.listingOrders };
 }
 
 describe("long-term listing: trial, half-price first month, renewals", () => {
@@ -283,8 +189,140 @@ describe("listing routes", () => {
     expect(trial.json()).toMatchObject({ listing: { status: "trial" } });
     const pay = await app.inject({ method: "POST", url: `/employer/job-listings/${LONG_JOB}/pay`, headers: { authorization: "Bearer x" }, payload: { organizationId: ORG, method: "e_transfer" } });
     expect(pay.statusCode).toBe(201);
-    expect(pay.json()).toMatchObject({ order: { totalMinor: 5_692 }, eTransfer: { amount: "56.92 CAD", breakdown: "49.50 CAD + GST 2.48 CAD + QST 4.94 CAD" } });
+    expect(pay.json()).toMatchObject({ order: { totalMinor: 5_692 }, eTransfer: { amount: "$56.92", breakdown: "$49.50 + GST $2.48 + QST $4.94" } });
+    expect(pay.json().eTransfer.reference).toMatch(/^JL-[2-9A-HJ-NP-Z]{5}$/);
     expect((await app.inject({ method: "GET", url: "/platform/job-listing-orders", headers: { authorization: "Bearer x" } })).statusCode).toBe(403);
     expect((await app.inject({ method: "GET", url: "/platform/job-listing-orders", headers: { authorization: "Bearer staff" } })).statusCode).toBe(200);
+  });
+});
+
+describe("half-price first month is used once per company (S5)", () => {
+  it("three orders opened at the same moment: only one gets 50% off", async () => {
+    const { prisma, orders } = fakePrisma();
+    const results = await Promise.all(
+      [LONG_JOB, LONG_JOB_2, LONG_JOB_3].map((job) => createPendingJobListingOrder(prisma, ORG, job, "e_transfer"))
+    );
+    expect(results.every((r) => r.ok)).toBe(true);
+    const kinds = orders.map((o) => o.discountKind).sort();
+    expect(kinds).toEqual(["first_month_half", "none", "none"]);
+    expect(orders.filter((o) => o.discountKind === "none").every((o) => o.totalMinor === 11_383)).toBe(true);
+    // The overview no longer offers half price to the next job either.
+    expect(await getJobListingOverview(prisma, ORG, NOW)).toMatchObject({ firstMonthHalf: false, nextMonthPrice: { totalMinor: 11_383 } });
+  });
+
+  it("a rejected half-price order frees the discount for the next order", async () => {
+    const { prisma } = fakePrisma();
+    const first = await createPendingJobListingOrder(prisma, ORG, LONG_JOB, "e_transfer");
+    expect(first).toMatchObject({ ok: true, order: { discountKind: "first_month_half" } });
+    expect(await adminRejectJobListingOrder(prisma, first.ok ? first.order.id : "", NOW)).toBe(true);
+    expect(await createPendingJobListingOrder(prisma, ORG, LONG_JOB_2, "e_transfer")).toMatchObject({ ok: true, order: { discountKind: "first_month_half" } });
+  });
+
+  it("older half-price orders: staff can confirm only the first; the others are blocked and list nothing", async () => {
+    const { prisma, tables, org } = fakePrisma();
+    // Three half-price orders created before the fix (one per job), all claimed sent.
+    for (const [index, job] of [LONG_JOB, LONG_JOB_2, LONG_JOB_3].entries()) {
+      tables.listings.push({ id: `old-listing-${index}`, jobRequestId: job, organizationId: ORG, status: "unlisted", listedUntil: null, trialEndsAt: null });
+      tables.listingOrders.push({
+        id: `old-order-${index}`, jobListingId: `old-listing-${index}`, organizationId: ORG, months: 1,
+        subtotalMinor: 4_950, gstMinor: 248, qstMinor: 494, totalMinor: 5_692, currency: "CAD",
+        discountKind: "first_month_half", method: "e_transfer", status: "payment_claimed", paymentRef: null, shortRef: null,
+        paidAt: null, createdAt: NOW, updatedAt: NOW
+      });
+    }
+    expect(await adminConfirmJobListingOrder(prisma, "old-order-0", NOW)).toMatchObject({ ok: true, order: { status: "paid" } });
+    expect(org.jobListingFirstMonthUsedAt).toEqual(NOW);
+    expect(await adminConfirmJobListingOrder(prisma, "old-order-1", NOW)).toEqual({ ok: false, reason: "discount_already_used" });
+    expect(await adminConfirmJobListingOrder(prisma, "old-order-2", NOW)).toEqual({ ok: false, reason: "discount_already_used" });
+    expect(tables.listingOrders.find((o) => o.id === "old-order-1")?.status).toBe("payment_claimed");
+    expect(tables.listings.find((l) => l.id === "old-listing-1")?.listedUntil).toBeNull();
+    expect(tables.receipts).toHaveLength(1);
+    expect(await adminRejectJobListingOrder(prisma, "old-order-1", NOW)).toBe(true);
+  });
+});
+
+describe("listing receipts and staff confirm details (B6, S9, S19)", () => {
+  it("confirming writes one numbered receipt with the issuer, the company, the job, the period and the taxes", async () => {
+    const { prisma, tables } = fakePrisma();
+    await startJobListingTrial(prisma, ORG, LONG_JOB, NOW);
+    const created = await createPendingJobListingOrder(prisma, ORG, LONG_JOB, "e_transfer");
+    const id = created.ok ? created.order.id : "";
+    expect(created.ok && created.order.reference).toMatch(/^JL-[2-9A-HJ-NP-Z]{5}$/);
+    const claimed = await claimJobListingETransfer(prisma, ORG, id, NOW);
+    expect(claimed).toMatchObject({ ok: true, order: { status: "payment_claimed", claimedAt: NOW.toISOString() } });
+    const result = await adminConfirmJobListingOrder(prisma, id, NOW, { interacReference: "CA1234XYZ", amountReceivedMinor: 5_692 });
+    expect(result.ok && result.receiptId).toBeTruthy();
+    const receipt = tables.receipts[0]!;
+    const trialEnd = new Date(NOW.getTime() + 14 * DAY);
+    const end = new Date(trialEnd);
+    end.setMonth(end.getMonth() + 1);
+    expect(receipt).toMatchObject({
+      receiptNumber: "RCPT-2026-000001",
+      kind: "job_listing",
+      itemLabel: "Night caretaker",
+      discountKind: "first_month_half",
+      subtotalMinor: 4_950,
+      gstMinor: 248,
+      qstMinor: 494,
+      totalMinor: 5_692,
+      paymentMethod: "e_transfer",
+      paymentRef: "CA1234XYZ",
+      billedToName: "Acme",
+      billedToLegalName: "Acme Care Inc.",
+      issuerLegalName: "9375-7649 Québec Inc.",
+      issuerGstNumber: "762614485RT0001",
+      issuerQstNumber: "1225519125TQ0002"
+    });
+    expect(receipt.issuerAddress).toContain("Laval");
+    expect(receipt.periodStart).toEqual(trialEnd);
+    expect(receipt.periodEnd).toEqual(end);
+    const order = tables.listingOrders[0]!;
+    expect(order).toMatchObject({ paymentRef: "CA1234XYZ", amountReceivedMinor: 5_692, staffNote: "Amount received: $56.92" });
+    // A second confirm writes no second receipt.
+    expect(await adminConfirmJobListingOrder(prisma, id, NOW)).toEqual({ ok: false, reason: "not_pending" });
+    expect(tables.receipts).toHaveLength(1);
+  });
+
+  it("refuses to confirm when less money arrived than the total", async () => {
+    const { prisma, tables } = fakePrisma();
+    const created = await createPendingJobListingOrder(prisma, ORG, LONG_JOB, "e_transfer");
+    const id = created.ok ? created.order.id : "";
+    expect(await adminConfirmJobListingOrder(prisma, id, NOW, { amountReceivedMinor: 4_950 })).toEqual({ ok: false, reason: "amount_short" });
+    expect(tables.listingOrders[0]?.status).toBe("pending_payment");
+    expect(tables.receipts).toHaveLength(0);
+  });
+
+  it("the done list keeps confirmed and rejected orders with their dates", async () => {
+    const { prisma } = fakePrisma();
+    const a = await createPendingJobListingOrder(prisma, ORG, LONG_JOB, "e_transfer");
+    const b = await createPendingJobListingOrder(prisma, ORG, LONG_JOB_2, "e_transfer");
+    await adminConfirmJobListingOrder(prisma, a.ok ? a.order.id : "", NOW);
+    await adminRejectJobListingOrder(prisma, b.ok ? b.order.id : "", NOW);
+    const done = await listJobListingOrdersForReview(prisma, "done");
+    expect(done.map((o) => o.status).sort()).toEqual(["canceled", "paid"]);
+    expect(done.find((o) => o.status === "paid")).toMatchObject({ receiptNumber: "RCPT-2026-000001", jobTitle: "Night caretaker" });
+    expect(done.find((o) => o.status === "canceled")).toMatchObject({ cancelReason: "staff_rejected", canceledAt: NOW.toISOString() });
+    expect(await listJobListingOrdersForReview(prisma, "open")).toHaveLength(0);
+  });
+});
+
+describe("one receipt sequence for plans and listings", () => {
+  it("numbers follow each other across plan and listing payments; the lock is taken when ordering", async () => {
+    const { prisma, tables } = fakePrisma();
+    let locks = 0;
+    const raw = prisma as unknown as { $queryRaw: () => Promise<unknown[]> };
+    raw.$queryRaw = async () => {
+      locks += 1;
+      return [];
+    };
+    const listingOrder = await createPendingJobListingOrder(prisma, ORG, LONG_JOB, "e_transfer");
+    expect(locks).toBe(1);
+    const planOrder = await createPendingEmployerPlanOrder(prisma, ORG, "shift_pro", "e_transfer");
+    await adminConfirmEmployerPlanOrder(prisma, planOrder.id, NOW);
+    await adminConfirmJobListingOrder(prisma, listingOrder.ok ? listingOrder.order.id : "", NOW);
+    expect(tables.receipts.map((r) => [r.receiptNumber, r.kind])).toEqual([
+      ["RCPT-2026-000001", "employer_plan"],
+      ["RCPT-2026-000002", "job_listing"]
+    ]);
   });
 });

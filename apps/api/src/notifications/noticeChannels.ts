@@ -2,7 +2,8 @@
 //   - Sign-in is by mobile number and a texted code. No passwords.
 //   - Email carries documents and information: invoices, receipts, statements, replies, greetings.
 //   - Text carries only what is urgent or important: codes, a confirmed shift, a shift about to
-//     start, a held shift that is cancelled or changed, and staff alerts marked urgent. Texts cost
+//     start, a held shift that is cancelled or changed, a paid plan or listing ending tomorrow, and
+//     staff alerts marked urgent. Texts cost
 //     money and interrupt, so nothing else.
 //   - Push (the phone app) carries what a worker should see at once: a confirmed, upcoming,
 //     cancelled or changed shift, a staff reply, and pay sent. Push is free but still interrupts.
@@ -16,6 +17,8 @@ export type NoticeKind =
   | "shift_cancelled"
   | "shift_changed"
   | "invoice_sent"
+  | "receipt_sent"
+  | "plan_ending"
   | "job_received"
   | "worker_accepted"
   | "payout_registered"
@@ -36,6 +39,9 @@ export const NOTICE_CHANNELS: Readonly<Record<NoticeKind, NoticeChannels>> = {
   shift_cancelled: { email: true, text: "always", push: true },
   shift_changed: { email: true, text: "always", push: true },
   invoice_sent: { email: true, text: "never" },
+  receipt_sent: { email: true, text: "never" },
+  // Paid plan or listing ending: email 7 days and 1 day before; text only the day before (urgent).
+  plan_ending: { email: true, text: "urgent_only" },
   job_received: { email: true, text: "never" },
   worker_accepted: { email: true, text: "never" },
   payout_registered: { email: true, text: "never" },

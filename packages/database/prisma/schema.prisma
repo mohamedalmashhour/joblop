@@ -644,6 +644,7 @@ model EmployerOrganization {
   employerPlanOrders EmployerPlanOrder[]
   jobListings        JobListing[]
   jobListingOrders   JobListingOrder[]
+  paymentReceipts    PaymentReceipt[]
 
   @@index([status], map: "employer_organizations_status_idx")
   @@map("employer_organizations")
@@ -3640,6 +3641,10 @@ model EmployerPlan {
   cancelAtPeriodEnd Boolean   @default(false) @map("cancel_at_period_end")
   // Set once, the first time the organization starts a trial on this track (once per org per track).
   trialUsedAt       DateTime? @map("trial_used_at") @db.Timestamptz(3)
+  // Renewal reminders: the paid-until date each reminder was last sent for (a renewal moves the date,
+  // which re-arms the reminders). Written by the plan-reminder sweep only.
+  reminder7SentFor  DateTime? @map("reminder7_sent_for") @db.Timestamptz(3)
+  reminder1SentFor  DateTime? @map("reminder1_sent_for") @db.Timestamptz(3)
   createdAt         DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
   updatedAt         DateTime  @updatedAt @map("updated_at") @db.Timestamptz(3)
 
@@ -3659,8 +3664,16 @@ model EmployerPlanOrder {
   currency       String
   periodMonths   Int       @map("period_months")
   method         String    @default("e_transfer") // "e_transfer" | "stripe"
-  status         String // "pending_payment" | "payment_claimed" | "paid" | "canceled"
+  status         String // "pending_payment" | "payment_claimed" | "paid" | "canceled" | "refund_check"
   paymentRef     String?   @map("payment_ref")
+  // Short code the employer puts in the Interac message (e.g. JL-7F3K2). Null on older orders.
+  shortRef            String?   @unique(map: "employer_plan_orders_short_ref_key") @map("short_ref")
+  claimedAt           DateTime? @map("claimed_at") @db.Timestamptz(3)
+  canceledAt          DateTime? @map("canceled_at") @db.Timestamptz(3)
+  // "staff_rejected" | "employer_canceled" (status canceled, or refund_check when money was claimed sent)
+  cancelReason        String?   @map("cancel_reason")
+  amountReceivedMinor Int?      @map("amount_received_minor")
+  staffNote           String?   @map("staff_note")
   // GST/QST breakdown charged on the order (null on orders created before taxes were added).
   subtotalMinor  Int?      @map("subtotal_minor")
   gstMinor       Int?      @map("gst_minor")
@@ -3671,6 +3684,7 @@ model EmployerPlanOrder {
   paidAt         DateTime? @map("paid_at") @db.Timestamptz(3)
 
   organization EmployerOrganization @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  receipt      PaymentReceipt?
 
   @@index([organizationId, status], map: "employer_plan_orders_org_status_idx")
   @@index([status, createdAt], map: "employer_plan_orders_status_created_idx")
@@ -3687,6 +3701,9 @@ model JobListing {
   status         String // "trialing" | "active" (last action; visibility is listedUntil > now)
   trialEndsAt    DateTime? @map("trial_ends_at") @db.Timestamptz(3)
   listedUntil    DateTime? @map("listed_until") @db.Timestamptz(3)
+  // Renewal reminders: the listed-until date each reminder was last sent for (see EmployerPlan).
+  reminder7SentFor DateTime? @map("reminder7_sent_for") @db.Timestamptz(3)
+  reminder1SentFor DateTime? @map("reminder1_sent_for") @db.Timestamptz(3)
   createdAt      DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
   updatedAt      DateTime  @updatedAt @map("updated_at") @db.Timestamptz(3)
 
@@ -3715,17 +3732,74 @@ model JobListingOrder {
   method         String    @default("e_transfer") // "e_transfer" | "stripe"
   status         String // "pending_payment" | "payment_claimed" | "paid" | "canceled"
   paymentRef     String?   @map("payment_ref")
+  // Short code the employer puts in the Interac message (e.g. JL-7F3K2). Null on older orders.
+  shortRef            String?   @unique(map: "job_listing_orders_short_ref_key") @map("short_ref")
+  claimedAt           DateTime? @map("claimed_at") @db.Timestamptz(3)
+  canceledAt          DateTime? @map("canceled_at") @db.Timestamptz(3)
+  cancelReason        String?   @map("cancel_reason") // "staff_rejected"
+  amountReceivedMinor Int?      @map("amount_received_minor")
+  staffNote           String?   @map("staff_note")
   paidAt         DateTime? @map("paid_at") @db.Timestamptz(3)
   createdAt      DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
   updatedAt      DateTime  @updatedAt @map("updated_at") @db.Timestamptz(3)
 
   jobListing   JobListing           @relation(fields: [jobListingId], references: [id], onDelete: Restrict)
   organization EmployerOrganization @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  receipt      PaymentReceipt?
 
   @@index([jobListingId, status], map: "job_listing_orders_listing_status_idx")
   @@index([organizationId, status], map: "job_listing_orders_org_status_idx")
   @@index([status, createdAt], map: "job_listing_orders_status_created_idx")
   @@map("job_listing_orders")
+}
+
+// Receipts for paid plan and listing orders (GST/QST receipt, numbered RCPT-YYYY-NNNNNN). One per paid
+// order, written in the same transaction that marks the order paid. The issuer and the company are
+// snapshotted so later changes never alter an issued receipt.
+model PaymentReceipt {
+  id                  String    @id @default(uuid()) @db.Uuid
+  receiptNumber       String    @unique(map: "payment_receipts_receipt_number_key") @map("receipt_number")
+  organizationId      String    @map("organization_id") @db.Uuid
+  kind                String // "employer_plan" | "job_listing"
+  employerPlanOrderId String?   @unique(map: "payment_receipts_employer_plan_order_key") @map("employer_plan_order_id") @db.Uuid
+  jobListingOrderId   String?   @unique(map: "payment_receipts_job_listing_order_key") @map("job_listing_order_id") @db.Uuid
+  itemCode            String    @map("item_code") // "shift_pro" | "shift_business" | "job_listing"
+  itemLabel           String    @map("item_label") // plan name, or the job title for a listing
+  discountKind        String    @default("none") @map("discount_kind")
+  periodStart         DateTime  @map("period_start") @db.Timestamptz(3)
+  periodEnd           DateTime  @map("period_end") @db.Timestamptz(3)
+  subtotalMinor       Int       @map("subtotal_minor")
+  gstMinor            Int       @map("gst_minor")
+  qstMinor            Int       @map("qst_minor")
+  totalMinor          Int       @map("total_minor")
+  currency            String
+  paymentMethod       String    @map("payment_method") // "e_transfer" | "stripe"
+  paymentRef          String?   @map("payment_ref")
+  paidAt              DateTime  @map("paid_at") @db.Timestamptz(3)
+  billedToName        String    @map("billed_to_name")
+  billedToLegalName   String?   @map("billed_to_legal_name")
+  issuerLegalName     String    @map("issuer_legal_name")
+  issuerAddress       String    @map("issuer_address")
+  issuerGstNumber     String    @map("issuer_gst_number")
+  issuerQstNumber     String    @map("issuer_qst_number")
+  emailedAt           DateTime? @map("emailed_at") @db.Timestamptz(3)
+  emailStatus         String?   @map("email_status") // "sent" | "skipped" | "error" | "no_recipient"
+  createdAt           DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  organization      EmployerOrganization @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  employerPlanOrder EmployerPlanOrder?   @relation(fields: [employerPlanOrderId], references: [id], onDelete: Restrict)
+  jobListingOrder   JobListingOrder?     @relation(fields: [jobListingOrderId], references: [id], onDelete: Restrict)
+
+  @@index([organizationId, paidAt], map: "payment_receipts_org_paid_idx")
+  @@map("payment_receipts")
+}
+
+model PaymentReceiptSequence {
+  scopeYear Int      @id @map("scope_year")
+  lastValue Int      @default(0) @map("last_value")
+  updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  @@map("payment_receipt_sequences")
 }
 
 // Money-flow Phase 1 — employer invoice → Stripe TEST collection. One checkout per issued invoice.
