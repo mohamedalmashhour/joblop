@@ -293,6 +293,7 @@ import { LONG_TERM_NO_TIMESHEETS_BODY, clockInFields, isLongTermAssignment, isLo
 import { isEmployerPlansEnabled } from "./employerPlanRepository";
 import { createMarketingContactSync, type MarketingContactSync } from "./mailer/brevoContacts";
 import { runShiftReminderSweep } from "./shiftReminderSweep";
+import { runPlanReminderSweep } from "./planReminderSweep";
 import { createPushSender, isExpoPushToken, isPushPlatform, noopPushSender, type PushFetch } from "./notifications/pushSender";
 import {
   ensureUnsubscribeToken,
@@ -1576,6 +1577,27 @@ export function buildApi(options: BuildApiOptions = {}) {
     }
     const metrics = await runShiftReminderSweep({ prisma, emailSender, smsSender, pushSender });
     logger.info("api.shift_reminder.sweep", { ...metrics });
+    return reply.code(200).send({ status: "completed", ...metrics });
+  });
+
+  // Paid plan / listing renewal reminders (7 days and 1 day before the paid period ends). Same
+  // fail-closed shape: disabled (404) unless PLAN_REMINDER_SWEEP_TOKEN is configured (16+ characters);
+  // 401 on token mismatch. Idempotent: each reminder is sent once per paid-until date. Meant to be
+  // called by a scheduled job (for example every hour) with the x-sweep-token header.
+  const planReminderSweepToken = (environment.PLAN_REMINDER_SWEEP_TOKEN ?? "").trim();
+  app.post("/internal/plan-reminders/sweep", async (request, reply) => {
+    if (planReminderSweepToken.length < 16) {
+      return reply.code(404).send({ error: "RWOS_NOT_FOUND", message: "Not found." });
+    }
+    const provided = request.headers["x-sweep-token"];
+    if (typeof provided !== "string" || provided !== planReminderSweepToken) {
+      return reply.code(401).send({ error: "RWOS_SWEEP_DENIED", message: "Sweep token required." });
+    }
+    if (!prisma) {
+      return reply.code(503).send({ error: "RWOS_SWEEP_UNAVAILABLE", message: "Database unavailable." });
+    }
+    const metrics = await runPlanReminderSweep({ prisma, emailSender, smsSender });
+    logger.info("api.plan_reminder.sweep", { ...metrics });
     return reply.code(200).send({ status: "completed", ...metrics });
   });
 
@@ -10032,6 +10054,12 @@ export function buildApi(options: BuildApiOptions = {}) {
   if (prisma) {
     registerEmployerPlanRoutes(app, {
       prisma,
+      emailSender,
+      log: (event, fields) => {
+        const safe = fields as Record<string, string | number | boolean | null>;
+        if (event.endsWith("_failed")) logger.warn(event, safe);
+        else logger.info(event, safe);
+      },
       fallbackOrigin: runtimeConfig.internalApiOrigin,
       requireStaff: requireHrAuthority,
       requireUser: async (request, reply) => {

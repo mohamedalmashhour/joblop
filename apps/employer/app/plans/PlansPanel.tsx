@@ -16,12 +16,15 @@ import { JobLopLogo } from "../JobLopLogo";
 import { LanguageSwitcher } from "../i18n/LanguageSwitcher";
 import { fmtLocale, useLocale, useT, type Translate } from "../i18n/LocaleProvider";
 import type { MessageKey } from "../i18n/messages";
+import { ETransferBox, readETransferDetails } from "./ETransferBox";
 
 // Employer plans page. Short-term jobs: 3 plan cards with trial / subscribe / cancel and a savings
 // calculator. Long-term jobs: no plan — an explanation of the paid listing (C$99/month in advance,
 // 2-week free trial, 50% off the first month, taxes) and a link to the company's long-term jobs,
 // where each listing is published or renewed. Prices show GST + QST. The page never shows Joblop's
-// share: only the employer's discount and the prices.
+// share: only the employer's discount and the prices. An open Interac order shows its instructions
+// (short code, exact amount, copy buttons, one "I've sent it"); an active paid plan can be renewed for
+// a month; paid months come with a receipt, listed at the bottom with a PDF download.
 
 type TrackState = Readonly<{
   track: JobLength;
@@ -37,9 +40,27 @@ type Order = Readonly<{
   plan: string;
   track: JobLength | null;
   priceMinor: number;
+  subtotalMinor?: number;
+  gstMinor?: number;
+  qstMinor?: number;
+  totalMinor?: number;
   currency: string;
   method: string;
   status: string;
+  reference?: string;
+  eTransfer?: Record<string, unknown>;
+}>;
+
+type Receipt = Readonly<{
+  id: string;
+  receiptNumber: string;
+  kind: string;
+  itemCode: string;
+  itemLabel: string;
+  periodStart: string;
+  periodEnd: string;
+  totalMinor: number;
+  paidAt: string;
 }>;
 
 type Overview = Readonly<{
@@ -50,9 +71,8 @@ type Overview = Readonly<{
   cardEnabled?: boolean;
   tracks?: readonly TrackState[];
   orders?: readonly Order[];
+  receipts?: readonly Receipt[];
 }>;
-
-type ETransfer = Readonly<{ email: string; amount: string; breakdown: string; reference: string; orderId: string }>;
 
 const GOLD = "#f8b808";
 const INK = "#f4efe4";
@@ -92,7 +112,6 @@ export function PlansPanel() {
   const [overview, setOverview] = useState<Overview | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
   const [notice, setNotice] = useState("");
-  const [eTransfer, setETransfer] = useState<ETransfer | null>(null);
 
   const load = useCallback(async () => {
     try {
@@ -133,34 +152,30 @@ export function PlansPanel() {
   const startTrial = (plan: EmployerPlanCode) =>
     act(`trial-${plan}`, "/api/employer-plan/trial", { plan }, () => setNotice(t("plans.trialStarted")));
 
+  // The Interac instructions come back with the open order on reload, shown inside the plan card.
   const subscribe = (plan: EmployerPlanCode, method: "e_transfer" | "stripe") =>
     act(`sub-${plan}-${method}`, "/api/employer-plan/subscribe", { plan, method }, (payload) => {
-      if (method === "stripe") {
-        const url = typeof payload?.checkoutUrl === "string" ? payload.checkoutUrl : null;
-        if (url) window.location.assign(url);
-        return;
-      }
-      const details = payload?.eTransfer as Record<string, unknown> | undefined;
-      const order = payload?.order as Record<string, unknown> | undefined;
-      if (details && order && typeof order.id === "string") {
-        setETransfer({
-          email: String(details.email ?? ""),
-          amount: String(details.amount ?? ""),
-          breakdown: String(details.breakdown ?? ""),
-          reference: String(details.reference ?? order.id),
-          orderId: order.id
-        });
-      }
+      if (method !== "stripe") return;
+      const url = typeof payload?.checkoutUrl === "string" ? payload.checkoutUrl : null;
+      if (url) window.location.assign(url);
     });
 
   const claimSent = (orderId: string) =>
     act(`claim-${orderId}`, `/api/employer-plan/orders/${encodeURIComponent(orderId)}/claim-etransfer`, {}, () => {
-      setETransfer(null);
       setNotice(t("plans.etransferThanks"));
     });
 
-  const cancel = (track: JobLength) =>
-    act(`cancel-${track}`, "/api/employer-plan/cancel", { track }, () => setNotice(t("plans.canceled")));
+  const cancel = (track: JobLength, endsAt: string | null) => {
+    if (!window.confirm(t("plans.cancelConfirm", { date: endsAt ? day(endsAt, locale) : "" }))) return;
+    return act(`cancel-${track}`, "/api/employer-plan/cancel", { track }, (payload) => {
+      const withdrawn = payload?.withdrawn as { canceled?: number; refundCheck?: number } | undefined;
+      const extra = [
+        (withdrawn?.canceled ?? 0) > 0 ? t("plans.canceledWithdrawn") : "",
+        (withdrawn?.refundCheck ?? 0) > 0 ? t("plans.canceledRefund") : ""
+      ].filter(Boolean);
+      setNotice([t("plans.canceled"), ...extra].join(" "));
+    });
+  };
 
   return (
     <main className="jp-page">
@@ -182,7 +197,7 @@ export function PlansPanel() {
         <p className="jp-eyebrow">{t("plans.eyebrow")}</p>
         <h1 className="jp-title">{t("plans.title")}</h1>
         <p className="jp-lede">{t("plans.lede")}</p>
-        <p className="jp-strong">{t("plans.noHidden")}</p>
+        <p className="jp-strong">{t("plans.noHidden")} {t("plans.refundRule")}</p>
       </section>
 
       {overview === null ? (
@@ -197,17 +212,6 @@ export function PlansPanel() {
       ) : (
         <>
           {notice ? <p className="jp-notice" role="status">{notice}</p> : null}
-          {eTransfer ? (
-            <section className="jp-section" aria-labelledby="etransfer-title">
-              <div className="jp-card">
-                <h2 id="etransfer-title" className="jp-h3">{t("plans.etransferTitle")}</h2>
-                <p className="jp-muted">{t("plans.etransferText", { amount: eTransfer.amount, breakdown: eTransfer.breakdown, email: eTransfer.email, reference: eTransfer.reference })}</p>
-                <button type="button" className="jp-primary" disabled={busy !== null} onClick={() => void claimSent(eTransfer.orderId)}>
-                  {t("plans.etransferSent")}
-                </button>
-              </div>
-            </section>
-          ) : null}
           {overview.signedIn === false ? (
             <p className="jp-section-tight"><a href="/signin" className="jp-primary">{t("plans.signinToStart")}</a></p>
           ) : overview.companyRequired ? (
@@ -227,7 +231,8 @@ export function PlansPanel() {
             onCancel={cancel}
           />
           <LongTermListingSection t={t} locale={locale} />
-          <p className="jp-section-tight jp-muted">{t("plans.taxNote")} {t("plans.noHidden")}</p>
+          {overview.signedIn === true && overview.manager === true ? <ReceiptsSection t={t} locale={locale} receipts={overview.receipts ?? []} /> : null}
+          <p className="jp-section-tight jp-muted">{t("plans.taxNote")} {t("plans.noHidden")} {t("plans.refundRule")}</p>
         </>
       )}
     </main>
@@ -253,7 +258,7 @@ function TrackSection({
   onTrial: (plan: EmployerPlanCode) => void;
   onSubscribe: (plan: EmployerPlanCode, method: "e_transfer" | "stripe") => void;
   onClaim: (orderId: string) => void;
-  onCancel: (track: JobLength) => void;
+  onCancel: (track: JobLength, endsAt: string | null) => void;
 }>) {
   const state = overview.tracks?.find((item) => item.track === track) ?? null;
   const canAct = overview.signedIn === true && overview.manager === true && state !== null;
@@ -302,12 +307,33 @@ function TrackSection({
                   {!paidInForce && !state?.trialAvailable && state?.status !== "none" ? <p className="jp-muted">{t("plans.trialUsed")}</p> : null}
                   {openOrder?.status === "payment_claimed" ? (
                     <p className="jp-muted">{t("plans.awaitingConfirm")}</p>
+                  ) : openOrder?.method === "e_transfer" && readETransferDetails(openOrder) ? (
+                    <ETransferBox
+                      details={readETransferDetails(openOrder)!}
+                      startsText={t("plans.etransferStartsOnConfirm")}
+                      busy={busy !== null}
+                      onSent={() => onClaim(openOrder.id)}
+                      primaryClassName="jp-primary"
+                    />
                   ) : openOrder?.method === "e_transfer" ? (
                     <button type="button" className="jp-ghost" disabled={busy !== null} onClick={() => onClaim(openOrder.id)}>
                       {t("plans.etransferSent")}
                     </button>
-                  ) : (!paidInForce || state?.plan !== plan.code || state.cancelAtPeriodEnd || state.status === "trialing") ? (
+                  ) : isCurrent && state?.status === "active" && !state.cancelAtPeriodEnd ? (
+                    // Active paid plan: pay the next month ahead; it starts when the paid month ends.
                     <>
+                      <button type="button" className="jp-ghost" disabled={busy !== null} onClick={() => onSubscribe(plan.code, "e_transfer")}>
+                        {t("plans.renewEtransfer")}
+                      </button>
+                      {overview.cardEnabled ? (
+                        <button type="button" className="jp-ghost" disabled={busy !== null} onClick={() => onSubscribe(plan.code, "stripe")}>
+                          {t("plans.renewCard")}
+                        </button>
+                      ) : null}
+                    </>
+                  ) : (
+                    <>
+                      {isCurrent && state?.status === "trialing" ? <p className="jp-muted">{t("plans.paidStartsAtTrialEnd")}</p> : null}
                       <button type="button" className="jp-ghost" disabled={busy !== null} onClick={() => onSubscribe(plan.code, "e_transfer")}>
                         {t("plans.subscribeEtransfer")}
                       </button>
@@ -317,9 +343,9 @@ function TrackSection({
                         </button>
                       ) : null}
                     </>
-                  ) : null}
+                  )}
                   {isCurrent && paidInForce && !state?.cancelAtPeriodEnd ? (
-                    <button type="button" className="jp-danger" disabled={busy !== null} onClick={() => onCancel(track)}>
+                    <button type="button" className="jp-danger" disabled={busy !== null} onClick={() => onCancel(track, state?.endsAt ?? null)}>
                       {t("plans.cancel")}
                     </button>
                   ) : null}
@@ -393,8 +419,42 @@ function LongTermListingSection({ t, locale }: Readonly<{ t: Translate; locale: 
           <li>{t("listing.intro")}</li>
           <li>{t("listing.noRenew")}</li>
         </ul>
+        <p className="jp-muted">{t("plans.refundRule")}</p>
         <a href="/employer/calendar" className="jp-primary">{t("listing.seeJobs")}</a>
       </div>
+    </section>
+  );
+}
+
+/** Receipts for paid plan months and paid listing months, newest first, each with a PDF download. */
+function ReceiptsSection({ t, locale, receipts }: Readonly<{ t: Translate; locale: ReturnType<typeof useLocale>; receipts: readonly Receipt[] }>) {
+  const cents = (minor: number) =>
+    (minor / 100).toLocaleString(fmtLocale(locale), { style: "currency", currency: "CAD", minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  return (
+    <section className="jp-section" aria-labelledby="receipts-title">
+      <h2 id="receipts-title" className="jp-h2">{t("plans.receiptsTitle")}</h2>
+      <p className="jp-muted">{t("plans.receiptsNote")}</p>
+      {receipts.length === 0 ? (
+        <p className="jp-muted">{t("plans.receiptsEmpty")}</p>
+      ) : (
+        <ul className="jp-receipts">
+          {receipts.map((receipt) => (
+            <li key={receipt.id} className="jp-card jp-receipt">
+              <p className="jp-strong" dir="ltr">{receipt.receiptNumber}</p>
+              <p>
+                {receipt.kind === "job_listing"
+                  ? t("plans.receiptItemListing", { title: receipt.itemLabel })
+                  : t("plans.receiptItemPlan", { plan: receipt.itemLabel })}
+              </p>
+              <p className="jp-muted">{t("plans.receiptPeriod", { start: day(receipt.periodStart, locale), end: day(receipt.periodEnd, locale) })}</p>
+              <p className="jp-muted">
+                {cents(receipt.totalMinor)} · {t("plans.receiptPaid", { date: day(receipt.paidAt, locale) })}
+              </p>
+              <a className="jp-ghost" href={`/api/receipts/${encodeURIComponent(receipt.id)}/pdf`}>{t("plans.receiptDownload")}</a>
+            </li>
+          ))}
+        </ul>
+      )}
     </section>
   );
 }
@@ -430,6 +490,8 @@ const css = `
   .jp-danger { background: transparent; border: 1px solid #e5a4a4; color: #e5a4a4; }
   .jp-primary:disabled, .jp-ghost:disabled, .jp-danger:disabled { cursor: wait; opacity: 0.6; }
   .jp-calc { margin-top: 14px; }
+  .jp-receipts { display: grid; gap: 12px; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); list-style: none; margin: 14px 0 0; padding: 0; }
+  .jp-receipt p { margin: 0; }
   .jp-calc-fields { display: grid; gap: 12px; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); }
   .jp-label { display: grid; font-size: 14px; font-weight: 800; gap: 6px; }
   .jp-input { background: #000; border: 1px solid ${LINE}; border-radius: 8px; color: ${INK}; font: inherit; min-height: 44px; padding: 0 12px; }

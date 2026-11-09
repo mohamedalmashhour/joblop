@@ -3,16 +3,28 @@
 import { useCallback, useEffect, useState } from "react";
 import { fmtLocale, useLocale, useT } from "../../i18n/LocaleProvider";
 import type { MessageKey } from "../../i18n/messages";
+import { ETransferBox, readETransferDetails } from "../../plans/ETransferBox";
 import { styles } from "../employerStyles";
 
 // Long-term job listings (paid in advance; only while EMPLOYER_PLANS_ENABLED is on). A long-term job
 // is shown to workers only while its listing is active, so the employer sees each long-term job's
 // status here — "Not listed — payment needed", "Free trial until …", "Listed until …" — with the
 // "Publish your job" actions: start the company's one free trial, pay one month by card (Stripe TEST)
-// or Interac e-transfer, and "Renew 1 month". Renders nothing while the feature is off.
+// or Interac e-transfer, and "Renew 1 month". An open Interac order shows its instructions in the job's
+// row (short code, exact amount, copy buttons) with ONE "I've sent it" button. Renders nothing while
+// the feature is off.
 
 type Price = Readonly<{ subtotalMinor: number; gstMinor: number; qstMinor: number; totalMinor: number }>;
-type Order = Readonly<{ id: string; method: string; status: string }>;
+type Order = Readonly<{
+  id: string;
+  method: string;
+  status: string;
+  subtotalMinor?: number;
+  gstMinor?: number;
+  qstMinor?: number;
+  totalMinor?: number;
+  eTransfer?: Record<string, unknown>;
+}>;
 type Listing = Readonly<{
   jobRequestId: string;
   title: string;
@@ -29,7 +41,6 @@ type Overview = Readonly<{
   nextMonthPrice?: Price;
   listings?: readonly Listing[];
 }>;
-type ETransfer = Readonly<{ email: string; amount: string; breakdown: string; reference: string; orderId: string }>;
 
 async function post(url: string, body: unknown): Promise<{ ok: boolean; payload: Record<string, unknown> | null }> {
   try {
@@ -46,7 +57,6 @@ export function LongTermListingsPanel({ onlyJobRequestId }: Readonly<{ onlyJobRe
   const [overview, setOverview] = useState<Overview | null>(null);
   const [busy, setBusy] = useState(false);
   const [notice, setNotice] = useState("");
-  const [eTransfer, setETransfer] = useState<ETransfer | null>(null);
 
   const money = (minor: number) => (minor / 100).toLocaleString(fmtLocale(locale), { style: "currency", currency: "CAD" });
   const day = (iso: string) => new Date(iso).toLocaleDateString(fmtLocale(locale), { year: "numeric", month: "long", day: "numeric" });
@@ -90,29 +100,16 @@ export function LongTermListingsPanel({ onlyJobRequestId }: Readonly<{ onlyJobRe
   const startTrial = (jobRequestId: string) =>
     act(`/api/job-listings/${encodeURIComponent(jobRequestId)}/trial`, {}, () => setNotice(t("listing.trialOk")));
 
+  // The Interac instructions come back with the job's open order on reload, shown in its row.
   const pay = (jobRequestId: string, method: "e_transfer" | "stripe") =>
     act(`/api/job-listings/${encodeURIComponent(jobRequestId)}/pay`, { method }, (payload) => {
-      if (method === "stripe") {
-        const url = typeof payload?.checkoutUrl === "string" ? payload.checkoutUrl : null;
-        if (url) window.location.assign(url);
-        return;
-      }
-      const details = payload?.eTransfer as Record<string, unknown> | undefined;
-      const order = payload?.order as Record<string, unknown> | undefined;
-      if (details && order && typeof order.id === "string") {
-        setETransfer({
-          email: String(details.email ?? ""),
-          amount: String(details.amount ?? ""),
-          breakdown: String(details.breakdown ?? ""),
-          reference: String(details.reference ?? order.id),
-          orderId: order.id
-        });
-      }
+      if (method !== "stripe") return;
+      const url = typeof payload?.checkoutUrl === "string" ? payload.checkoutUrl : null;
+      if (url) window.location.assign(url);
     });
 
   const claimSent = (orderId: string) =>
     act(`/api/job-listings/orders/${encodeURIComponent(orderId)}/claim-etransfer`, {}, () => {
-      setETransfer(null);
       setNotice(t("listing.etransferThanks"));
     });
 
@@ -133,17 +130,9 @@ export function LongTermListingsPanel({ onlyJobRequestId }: Readonly<{ onlyJobRe
           {t("listing.nextPrice", { price: money(price.subtotalMinor), gst: money(price.gstMinor), qst: money(price.qstMinor), total: money(price.totalMinor) })}
         </p>
       ) : null}
+      <p style={styles.cardText}>{t("plans.noHidden")} {t("plans.refundRule")}</p>
+      <p style={styles.cardText}>{t("listing.receipts")}</p>
       {notice ? <p role="status" style={styles.warning}>{notice}</p> : null}
-      {eTransfer ? (
-        <div style={styles.card}>
-          <p style={styles.cardText}>
-            {t("listing.etransferText", { amount: eTransfer.amount, breakdown: eTransfer.breakdown, email: eTransfer.email, reference: eTransfer.reference })}
-          </p>
-          <button type="button" style={styles.primaryButton} disabled={busy} onClick={() => void claimSent(eTransfer.orderId)}>
-            {t("plans.etransferSent")}
-          </button>
-        </div>
-      ) : null}
       {!canPay ? <p style={styles.cardText}>{t("listing.managerNeeded")}</p> : null}
       {listings.length === 0 ? <p style={styles.cardText}>{t("listing.empty")}</p> : null}
       <div style={{ display: "grid", gap: 10, marginTop: 10 }}>
@@ -163,6 +152,14 @@ export function LongTermListingsPanel({ onlyJobRequestId }: Readonly<{ onlyJobRe
                 <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginTop: 8 }}>
                   {item.openOrder?.status === "payment_claimed" ? (
                     <p style={styles.cardText}>{t("listing.awaiting")}</p>
+                  ) : item.openOrder?.method === "e_transfer" && readETransferDetails(item.openOrder) ? (
+                    <ETransferBox
+                      details={readETransferDetails(item.openOrder)!}
+                      startsText={t("listing.paidStartsOnConfirm")}
+                      busy={busy}
+                      onSent={() => void claimSent(item.openOrder?.id ?? "")}
+                      primaryStyle={styles.primaryButton}
+                    />
                   ) : item.openOrder?.method === "e_transfer" ? (
                     <button type="button" style={styles.secondaryButton} disabled={busy} onClick={() => void claimSent(item.openOrder?.id ?? "")}>
                       {t("plans.etransferSent")}

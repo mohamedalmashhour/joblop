@@ -79,7 +79,7 @@ const en: PricingCopy = {
   ],
   cancelTitle: "Canceling",
   cancelPoints: [
-    "Plans and listings: canceling stops the next month.",
+    "Plans and listings: canceling stops the next month. Months already paid are not refunded.",
     "A shift can be canceled at no charge 24 hours or more before it starts. Later than that, each confirmed worker is billed 6 hours."
   ],
   ctaTitle: "Ready to request workers?",
@@ -126,7 +126,7 @@ const fr: PricingCopy = {
   ],
   cancelTitle: "Annulation",
   cancelPoints: [
-    "Forfaits et annonces : l'annulation arrête le mois suivant.",
+    "Forfaits et annonces : l'annulation arrête le mois suivant. Les mois déjà payés ne sont pas remboursés.",
     "Un quart peut être annulé sans frais 24 heures ou plus avant son début. Plus tard, 6 heures sont facturées pour chaque travailleur confirmé."
   ],
   ctaTitle: "Prêt à demander des travailleurs?",
@@ -173,7 +173,7 @@ const ar: PricingCopy = {
   ],
   cancelTitle: "الإلغاء",
   cancelPoints: [
-    "الباقات والإعلانات: الإلغاء يوقف الشهر التالي.",
+    "الباقات والإعلانات: الإلغاء يوقف الشهر التالي. لا تُسترد الأشهر المدفوعة مسبقًا.",
     "يمكن إلغاء المناوبة مجانًا قبل بدئها بـ 24 ساعة أو أكثر. بعد ذلك تُحسب 6 ساعات عن كل عامل مؤكَّد."
   ],
   ctaTitle: "هل أنت مستعد لطلب عمال؟",

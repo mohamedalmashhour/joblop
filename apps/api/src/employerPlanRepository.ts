@@ -13,6 +13,8 @@ import {
 import { isStripeTestConfigured } from "./cvProStripeCheckout";
 import { BILLING_EMAIL } from "./cvProOrderRepository";
 import { createEmployerPlanCheckoutSession, verifyEmployerPlanCheckoutPaid } from "./employerPlanStripeCheckout";
+import { createWithShortRef, formatCadMinor } from "./paymentFormat";
+import { issuePaymentReceipt, listOrganizationReceipts } from "./paymentReceipts";
 
 // Employer fixed plans — SHORT-TERM jobs only (long-term jobs are paid listings, see
 // jobListingRepository.ts; the retired long_term plan rows are ignored). One row per organization per
@@ -21,7 +23,11 @@ import { createEmployerPlanCheckoutSession, verifyEmployerPlanCheckoutPaid } fro
 //  - trial: 14 days, once per organization per track, no card. Plan discount applies during it.
 //  - e_transfer: employer claims it sent, staff confirms → paid, plan active for one month.
 //  - stripe: TEST-mode hosted Checkout only, verified paid on return before activating.
-//  - cancel: the plan stays until the end of the trial/period, then is not renewed.
+//  - cancel: the plan stays until the end of the trial/period, then is not renewed; open e-transfer
+//    orders are withdrawn (claimed-sent ones go to staff as "refund_check").
+//  - paid: a numbered receipt is written with the payment (paymentReceipts.ts) and emailed after.
+//  - buying the plan you are trialing starts the paid month at the trial end; a renewal of an active
+//    plan extends from its paid-until date.
 // Expiry is evaluated at READ time (like CvEntitlement): once trialEndsAt / currentPeriodEnd passes
 // the organization is back on the track's free plan, with no background job.
 // Everything is OFF unless EMPLOYER_PLANS_ENABLED === "enabled".
@@ -130,8 +136,13 @@ export type EmployerPlanOrderView = Readonly<{
   periodMonths: number;
   method: string;
   status: string;
+  /** What the employer puts in the Interac message: the short code (older orders: the order id). */
+  reference: string;
   paymentRef: string | null;
+  cancelReason: string | null;
   createdAt: string;
+  claimedAt: string | null;
+  canceledAt: string | null;
   paidAt: string | null;
 }>;
 
@@ -149,7 +160,14 @@ type OrderRow = Readonly<{
   method: string;
   status: string;
   paymentRef: string | null;
+  shortRef?: string | null;
+  claimedAt?: Date | null;
+  canceledAt?: Date | null;
+  cancelReason?: string | null;
+  amountReceivedMinor?: number | null;
+  staffNote?: string | null;
   createdAt: Date;
+  updatedAt?: Date;
   paidAt: Date | null;
 }>;
 
@@ -177,22 +195,67 @@ function toOrderView(row: OrderRow): EmployerPlanOrderView {
     periodMonths: row.periodMonths,
     method: row.method,
     status: row.status,
+    reference: row.shortRef ?? row.id,
     // A Stripe Checkout Session id is internal; never echo it to the employer.
     paymentRef: row.method === "e_transfer" ? row.paymentRef : null,
+    cancelReason: row.cancelReason ?? null,
     createdAt: row.createdAt.toISOString(),
+    claimedAt: row.claimedAt ? row.claimedAt.toISOString() : null,
+    canceledAt: row.canceledAt ? row.canceledAt.toISOString() : null,
     paidAt: row.paidAt ? row.paidAt.toISOString() : null
   };
 }
 
-/** The short-term plan + recent plan orders, for the employer /plans page. */
+/** When a paid month bought now would start: at the trial end while trialing the same plan, else now. */
+export function paidMonthStart(current: EffectiveEmployerPlan, plan: string, now: Date): Date {
+  if ((current.status === "active" || current.status === "trialing") && current.plan === plan && current.endsAt) {
+    const end = new Date(current.endsAt);
+    if (end.getTime() > now.getTime()) return end;
+  }
+  return now;
+}
+
+/** E-transfer instructions shown with a pending e-transfer order. Money is written like the site: $56.34. */
+export function employerPlanETransferInstructions(order: EmployerPlanOrderView, startsAtTrialEnd = false, startsAt: Date | null = null) {
+  const amount = formatCadMinor(order.totalMinor);
+  const breakdown = `${formatCadMinor(order.subtotalMinor)} + GST ${formatCadMinor(order.gstMinor)} + QST ${formatCadMinor(order.qstMinor)}`;
+  return {
+    email: BILLING_EMAIL,
+    amount,
+    amountMinor: order.totalMinor,
+    breakdown,
+    reference: order.reference,
+    startsAtTrialEnd,
+    /** When the paid month would start if it is later than now (trial end, or the current paid-until). */
+    startsAt: startsAt ? startsAt.toISOString() : null,
+    note:
+      `Send an Interac e-transfer to ${BILLING_EMAIL} for ${amount} (${breakdown}). Put this reference in the message: ${order.reference}. Then tap “I've sent it”. ` +
+      (startsAtTrialEnd ? "Your paid month starts when your trial ends." : "Your plan starts once we confirm receipt.")
+  };
+}
+
+const OPEN_PLAN_CODES = ["shift_pro", "shift_business"];
+
+/** The short-term plan, recent plan orders (open e-transfer ones with their instructions) and receipts. */
 export async function getEmployerPlanOverview(prisma: PrismaClient, organizationId: string, now: Date = new Date()) {
-  const tracks = [await getEffectiveEmployerPlan(prisma, organizationId, "short_term", now)];
+  const current = await getEffectiveEmployerPlan(prisma, organizationId, "short_term", now);
   const orders = await prisma.employerPlanOrder.findMany({
-    where: { organizationId, plan: { in: ["shift_pro", "shift_business"] } },
+    where: { organizationId, plan: { in: OPEN_PLAN_CODES } },
     orderBy: { createdAt: "desc" },
     take: 10
   });
-  return { tracks, orders: orders.map(toOrderView) };
+  const receipts = await listOrganizationReceipts(prisma, organizationId);
+  return {
+    tracks: [current],
+    orders: orders.map((row) => {
+      const view = toOrderView(row);
+      const open = view.method === "e_transfer" && OPEN_ORDER_STATUSES.includes(view.status);
+      const start = paidMonthStart(current, view.plan, now);
+      const later = start.getTime() > now.getTime();
+      return open ? { ...view, eTransfer: employerPlanETransferInstructions(view, current.status === "trialing" && later, later ? start : null) } : view;
+    }),
+    receipts
+  };
 }
 
 export type StartTrialResult =
@@ -240,10 +303,15 @@ export async function startEmployerPlanTrial(
 }
 
 export type CancelResult =
-  | Readonly<{ ok: true; plan: EffectiveEmployerPlan }>
+  | Readonly<{ ok: true; plan: EffectiveEmployerPlan; withdrawn: Readonly<{ canceled: number; refundCheck: number }> }>
   | Readonly<{ ok: false; reason: "no_paid_plan" | "invalid_track" }>;
 
-/** Cancel: the plan stays until its trial/period end, then is not renewed. */
+/**
+ * Cancel: the plan stays until its trial/period end, then is not renewed. Open e-transfer orders for
+ * the plan are withdrawn so a later staff confirm cannot quietly undo the cancel: an order not yet
+ * paid is canceled; an order the employer said was sent becomes "refund_check" — staff can no longer
+ * confirm it and must check whether money arrived and send it back.
+ */
 export async function cancelEmployerPlan(
   prisma: PrismaClient,
   organizationId: string,
@@ -254,25 +322,25 @@ export async function cancelEmployerPlan(
   if (track !== "short_term") return { ok: false, reason: "invalid_track" };
   const current = await getEffectiveEmployerPlan(prisma, organizationId, track, now);
   if (current.status !== "active" && current.status !== "trialing") return { ok: false, reason: "no_paid_plan" };
-  await prisma.employerPlan.update({
-    where: { organizationId_track: { organizationId, track } },
-    data: { cancelAtPeriodEnd: true }
+  return prisma.$transaction(async (tx) => {
+    await tx.employerPlan.update({
+      where: { organizationId_track: { organizationId, track } },
+      data: { cancelAtPeriodEnd: true }
+    });
+    const canceled = await tx.employerPlanOrder.updateMany({
+      where: { organizationId, plan: { in: OPEN_PLAN_CODES }, method: "e_transfer", status: "pending_payment" },
+      data: { status: "canceled", cancelReason: "employer_canceled", canceledAt: now }
+    });
+    const refundCheck = await tx.employerPlanOrder.updateMany({
+      where: { organizationId, plan: { in: OPEN_PLAN_CODES }, method: "e_transfer", status: "payment_claimed" },
+      data: { status: "refund_check", cancelReason: "employer_canceled", canceledAt: now }
+    });
+    return {
+      ok: true as const,
+      plan: await getEffectiveEmployerPlan(tx as unknown as PrismaClient, organizationId, track, now),
+      withdrawn: { canceled: canceled.count, refundCheck: refundCheck.count }
+    };
   });
-  return { ok: true, plan: await getEffectiveEmployerPlan(prisma, organizationId, track, now) };
-}
-
-/** E-transfer instructions shown with a pending e-transfer order. */
-export function employerPlanETransferInstructions(order: EmployerPlanOrderView) {
-  const fmt = (minor: number) => `${(minor / 100).toFixed(2)} ${order.currency}`;
-  const amount = fmt(order.totalMinor);
-  const breakdown = `${fmt(order.subtotalMinor)} + GST ${fmt(order.gstMinor)} + QST ${fmt(order.qstMinor)}`;
-  return {
-    email: BILLING_EMAIL,
-    amount,
-    breakdown,
-    reference: order.id,
-    note: `Send an Interac e-transfer to ${BILLING_EMAIL} for ${amount} (${breakdown}). Put this reference in the message: ${order.id}. Then tap “I've sent it”. Your plan starts once we confirm receipt.`
-  };
 }
 
 /** Create (or reuse) a pending order for a paid plan with the chosen method. Price from the catalog. */
@@ -289,22 +357,38 @@ export async function createPendingEmployerPlanOrder(
   if (existing) return toOrderView(existing);
   const definition = EMPLOYER_PLAN_CATALOG[plan];
   const taxes = quebecSalesTax(definition.monthlyPriceMinor);
-  const row = await prisma.employerPlanOrder.create({
-    data: {
-      organizationId,
-      plan,
-      priceMinor: definition.monthlyPriceMinor,
-      subtotalMinor: taxes.subtotalMinor,
-      gstMinor: taxes.gstMinor,
-      qstMinor: taxes.qstMinor,
-      totalMinor: taxes.totalMinor,
-      currency: definition.currency,
-      periodMonths: EMPLOYER_PLAN_PERIOD_MONTHS,
-      method,
-      status: "pending_payment"
-    }
-  });
+  const row = await createWithShortRef((shortRef) =>
+    prisma.employerPlanOrder.create({
+      data: {
+        organizationId,
+        plan,
+        priceMinor: definition.monthlyPriceMinor,
+        subtotalMinor: taxes.subtotalMinor,
+        gstMinor: taxes.gstMinor,
+        qstMinor: taxes.qstMinor,
+        totalMinor: taxes.totalMinor,
+        currency: definition.currency,
+        periodMonths: EMPLOYER_PLAN_PERIOD_MONTHS,
+        method,
+        status: "pending_payment",
+        shortRef
+      }
+    })
+  );
   return toOrderView(row);
+}
+
+/** Instructions for a new e-transfer order, telling a trialing employer the paid month waits for the trial end. */
+export async function employerPlanETransferFor(
+  prisma: PrismaClient,
+  organizationId: string,
+  order: EmployerPlanOrderView,
+  now: Date = new Date()
+) {
+  const current = await getEffectiveEmployerPlan(prisma, organizationId, "short_term", now);
+  const start = paidMonthStart(current, order.plan, now);
+  const later = start.getTime() > now.getTime();
+  return employerPlanETransferInstructions(order, current.status === "trialing" && later, later ? start : null);
 }
 
 export type StripeStartResult =
@@ -341,24 +425,32 @@ export async function startEmployerPlanStripeCheckout(
 }
 
 export type OrderActionResult =
-  | Readonly<{ ok: true; order: EmployerPlanOrderView }>
+  | Readonly<{ ok: true; order: EmployerPlanOrderView; receiptId: string | null }>
   | Readonly<{
       ok: false;
-      reason: "order_not_found" | "not_pending" | "wrong_method" | "payment_incomplete" | "stripe_unconfigured";
+      reason:
+        | "order_not_found"
+        | "not_pending"
+        | "wrong_method"
+        | "payment_incomplete"
+        | "stripe_unconfigured"
+        | "canceled_by_employer"
+        | "amount_short";
     }>;
 
 /** Employer marks an e-transfer sent: pending_payment → payment_claimed (awaiting staff). */
 export async function claimEmployerPlanETransfer(
   prisma: PrismaClient,
   organizationId: string,
-  orderId: string
+  orderId: string,
+  now: Date = new Date()
 ): Promise<OrderActionResult> {
   const order = await prisma.employerPlanOrder.findFirst({ where: { id: orderId, organizationId } });
   if (!order) return { ok: false, reason: "order_not_found" };
   if (order.method !== "e_transfer") return { ok: false, reason: "wrong_method" };
   if (order.status !== "pending_payment") return { ok: false, reason: "not_pending" };
-  const updated = await prisma.employerPlanOrder.update({ where: { id: order.id }, data: { status: "payment_claimed" } });
-  return { ok: true, order: toOrderView(updated) };
+  const updated = await prisma.employerPlanOrder.update({ where: { id: order.id }, data: { status: "payment_claimed", claimedAt: now } });
+  return { ok: true, order: toOrderView(updated), receiptId: null };
 }
 
 /** Stripe return: verify the TEST Checkout Session was paid for this order, then activate. Idempotent. */
@@ -371,48 +463,88 @@ export async function completeEmployerPlanStripeOrder(
   if (!isStripeTestConfigured()) return { ok: false, reason: "stripe_unconfigured" };
   const order = await prisma.employerPlanOrder.findFirst({ where: { id: orderId, organizationId } });
   if (!order) return { ok: false, reason: "order_not_found" };
-  if (order.status === "paid") return { ok: true, order: toOrderView(order) };
+  if (order.status === "paid") return { ok: true, order: toOrderView(order), receiptId: null };
   if (order.status !== "pending_payment") return { ok: false, reason: "not_pending" };
   if (order.method !== "stripe" || !order.paymentRef) return { ok: false, reason: "wrong_method" };
   const { paid, paymentRef } = await verifyEmployerPlanCheckoutPaid(order.paymentRef, order.id);
   if (!paid) return { ok: false, reason: "payment_incomplete" };
-  return finalizePaidOrder(prisma, order.id, paymentRef ?? `stripe-test-${order.id}`, now);
+  return finalizePaidOrder(prisma, order.id, { paymentRef: paymentRef ?? `stripe-test-${order.id}`, receiptRef: order.shortRef ?? order.id }, now);
 }
 
 // ── staff ──────────────────────────────────────────────────────────────────────────────────────
 
-export async function listEmployerPlanOrdersForReview(prisma: PrismaClient) {
+const STAFF_OPEN_STATUSES = [...OPEN_ORDER_STATUSES, "refund_check"];
+const STAFF_DONE_STATUSES = ["paid", "canceled"];
+
+export type StaffOrderView = "open" | "done";
+
+/** Staff queue: open orders (incl. canceled-by-employer orders that need a refund check), or the done history. */
+export async function listEmployerPlanOrdersForReview(prisma: PrismaClient, view: StaffOrderView = "open") {
   const rows = await prisma.employerPlanOrder.findMany({
-    where: { status: { in: OPEN_ORDER_STATUSES } },
-    orderBy: { createdAt: "asc" },
+    where: { status: { in: view === "done" ? STAFF_DONE_STATUSES : STAFF_OPEN_STATUSES } },
+    orderBy: view === "done" ? { updatedAt: "desc" } : { createdAt: "asc" },
     take: 100,
-    include: { organization: { select: { displayName: true } } }
+    include: { organization: { select: { displayName: true } }, receipt: { select: { receiptNumber: true } } }
   });
   return rows.map((row) => ({
     ...toOrderView(row),
     organizationId: row.organizationId,
-    organizationName: row.organization.displayName
+    organizationName: row.organization.displayName,
+    amountReceivedMinor: row.amountReceivedMinor ?? null,
+    staffNote: row.staffNote ?? null,
+    updatedAt: row.updatedAt.toISOString(),
+    receiptNumber: row.receipt?.receiptNumber ?? null
   }));
 }
+
+export type StaffConfirmInput = Readonly<{
+  /** The Interac reference staff read in the bank (optional). */
+  interacReference?: string | null;
+  /** The amount staff saw arrive, in cents (optional). Less than the total is refused. */
+  amountReceivedMinor?: number | null;
+}>;
 
 /** Staff confirm a received e-transfer → paid; the plan is active for one month. */
 export async function adminConfirmEmployerPlanOrder(
   prisma: PrismaClient,
   orderId: string,
-  now: Date = new Date()
+  now: Date = new Date(),
+  input: StaffConfirmInput = {}
 ): Promise<OrderActionResult> {
   const order = await prisma.employerPlanOrder.findUnique({ where: { id: orderId } });
   if (!order) return { ok: false, reason: "order_not_found" };
+  if (order.status === "refund_check") return { ok: false, reason: "canceled_by_employer" };
   if (!OPEN_ORDER_STATUSES.includes(order.status)) return { ok: false, reason: "not_pending" };
-  return finalizePaidOrder(prisma, order.id, `etransfer-confirmed-${order.id}`, now);
+  const total = orderTaxes(order).totalMinor;
+  const received = input.amountReceivedMinor ?? null;
+  if (received !== null && received < total) return { ok: false, reason: "amount_short" };
+  const interac = input.interacReference ?? null;
+  return finalizePaidOrder(
+    prisma,
+    order.id,
+    {
+      paymentRef: interac ?? `etransfer-confirmed-${order.id}`,
+      receiptRef: interac ?? order.shortRef ?? order.id,
+      amountReceivedMinor: received,
+      staffNote: received !== null ? `Amount received: ${formatCadMinor(received)}` : null
+    },
+    now
+  );
 }
 
-export async function adminRejectEmployerPlanOrder(prisma: PrismaClient, orderId: string): Promise<boolean> {
-  const res = await prisma.employerPlanOrder.updateMany({
+/** Staff reject an open order, or close a canceled-by-employer order after checking the refund. */
+export async function adminRejectEmployerPlanOrder(prisma: PrismaClient, orderId: string, now: Date = new Date()): Promise<boolean> {
+  const rejected = await prisma.employerPlanOrder.updateMany({
     where: { id: orderId, status: { in: OPEN_ORDER_STATUSES } },
-    data: { status: "canceled" }
+    data: { status: "canceled", cancelReason: "staff_rejected", canceledAt: now }
   });
-  return res.count === 1;
+  if (rejected.count === 1) return true;
+  // Canceled by the employer after saying the money was sent: keep the employer reason, close it.
+  const closed = await prisma.employerPlanOrder.updateMany({
+    where: { id: orderId, status: "refund_check" },
+    data: { status: "canceled", staffNote: "Refund checked by staff" }
+  });
+  return closed.count === 1;
 }
 
 function addMonths(date: Date, months: number): Date {
@@ -421,38 +553,50 @@ function addMonths(date: Date, months: number): Date {
   return next;
 }
 
+type FinalizeInput = Readonly<{
+  paymentRef: string;
+  /** The reference printed on the receipt (Interac reference, else the order's short code). */
+  receiptRef: string;
+  amountReceivedMinor?: number | null;
+  staffNote?: string | null;
+}>;
+
 /**
- * Mark an order paid and activate (or extend) the plan for one period. The order flip is a
- * conditional update inside the transaction, so a double confirm / double return cannot add two
- * periods. A renewal of the same plan that is still in force extends from its current end.
+ * Mark an order paid, activate (or extend) the plan for one period and write its receipt. The order
+ * flip is a conditional update inside the transaction, so a double confirm / double return cannot add
+ * two periods or two receipts. A renewal of the same plan that is still in force extends from its
+ * current end; buying the plan you are trialing starts the paid month when the trial ends (S1).
  */
-async function finalizePaidOrder(
-  prisma: PrismaClient,
-  orderId: string,
-  paymentRef: string,
-  now: Date
-): Promise<OrderActionResult> {
+async function finalizePaidOrder(prisma: PrismaClient, orderId: string, input: FinalizeInput, now: Date): Promise<OrderActionResult> {
   return prisma.$transaction(async (tx) => {
     const flipped = await tx.employerPlanOrder.updateMany({
       where: { id: orderId, status: { in: OPEN_ORDER_STATUSES } },
-      data: { status: "paid", paidAt: now, paymentRef }
+      data: {
+        status: "paid",
+        paidAt: now,
+        paymentRef: input.paymentRef,
+        ...(input.amountReceivedMinor !== undefined && input.amountReceivedMinor !== null ? { amountReceivedMinor: input.amountReceivedMinor } : {}),
+        ...(input.staffNote ? { staffNote: input.staffNote } : {})
+      }
     });
     const order = await tx.employerPlanOrder.findUniqueOrThrow({ where: { id: orderId } });
     if (flipped.count !== 1) {
-      return order.status === "paid" ? { ok: true as const, order: toOrderView(order) } : { ok: false as const, reason: "not_pending" as const };
+      return order.status === "paid"
+        ? { ok: true as const, order: toOrderView(order), receiptId: null }
+        : { ok: false as const, reason: "not_pending" as const };
     }
     if (!isPaidEmployerPlanCode(order.plan)) throw new Error("RWOS_EMPLOYER_PLAN_ORDER_PLAN_INVALID");
     const track = employerPlanTrack(order.plan);
     const existing = await tx.employerPlan.findUnique({ where: { organizationId_track: { organizationId: order.organizationId, track } } });
     const current = effectivePlanFromRow(track, existing, now);
-    const extendFrom =
-      current.status === "active" && current.plan === order.plan && current.endsAt ? new Date(current.endsAt) : now;
+    const extendFrom = paidMonthStart(current, order.plan, now);
+    const periodEnd = addMonths(extendFrom, order.periodMonths);
     const data = {
       plan: order.plan,
       status: "active",
       source: "purchase",
       trialEndsAt: null,
-      currentPeriodEnd: addMonths(extendFrom, order.periodMonths),
+      currentPeriodEnd: periodEnd,
       cancelAtPeriodEnd: false
     };
     await tx.employerPlan.upsert({
@@ -460,6 +604,21 @@ async function finalizePaidOrder(
       create: { organizationId: order.organizationId, track, ...data },
       update: data
     });
-    return { ok: true as const, order: toOrderView(order) };
+    const taxes = orderTaxes(order);
+    const receipt = await issuePaymentReceipt(tx, {
+      organizationId: order.organizationId,
+      kind: "employer_plan",
+      employerPlanOrderId: order.id,
+      itemCode: order.plan,
+      itemLabel: PLAN_LABEL[order.plan],
+      periodStart: extendFrom,
+      periodEnd,
+      ...taxes,
+      currency: order.currency,
+      paymentMethod: order.method,
+      paymentRef: input.receiptRef,
+      paidAt: now
+    });
+    return { ok: true as const, order: toOrderView(order), receiptId: receipt.id };
   });
 }
