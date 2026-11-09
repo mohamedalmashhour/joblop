@@ -20,7 +20,11 @@ describe("worker staging identity", () => {
     expect(source).toContain("NO REAL PAYMENT · NO PRODUCTION CUSTOMER DATA");
     // The calendar is now mounted by the navigator; the production build must still never enable
     // fixture previews there.
+    // The worker calendar panel (which owns the fixture preview) must never be mounted with previews
+    // on. Production offers now use OffersScreen, which has no fixture path at all.
     const navigator = readFileSync(new URL("../navigation/WorkerNavigator.tsx", import.meta.url), "utf8");
-    expect(navigator).toContain("allowFixturePreview={false}");
+    if (navigator.includes("<WorkerCalendarPanel")) expect(navigator).toContain("allowFixturePreview={false}");
+    expect(navigator).not.toMatch(/allowFixturePreview(?!=\{false\})/);
+    expect(navigator).not.toMatch(/fixture/i);
   });
 });

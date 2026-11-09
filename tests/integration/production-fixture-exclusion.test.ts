@@ -57,9 +57,11 @@ describe("production fixture exclusion policy", () => {
     // The worker calendar (which owns the fixture preview) is mounted by the navigator, which
     // hardcodes the production-safe value — ProductionApp renders the navigator rather than the
     // calendar directly. Same guard the mobile runtime test asserts on WorkerNavigator.
-    expect(source("apps/mobile/src/navigation/WorkerNavigator.tsx")).toContain(
-      "allowFixturePreview={false}"
-    );
+    // Production offers use OffersScreen (no fixture path); if the calendar panel is ever mounted
+    // again it must keep previews off.
+    const navigator = source("apps/mobile/src/navigation/WorkerNavigator.tsx");
+    if (navigator.includes("<WorkerCalendarPanel")) expect(navigator).toContain("allowFixturePreview={false}");
+    expect(navigator).not.toMatch(/fixture/i);
   });
 });
 

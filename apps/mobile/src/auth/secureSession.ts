@@ -405,7 +405,8 @@ export function createMobileSessionTransport(options: {
           method: "POST",
           headers: { accept: "application/json", "content-type": "application/json", authorization: `Bearer ${token}` },
           body: JSON.stringify({
-            postalCode: input.postalCode,
+            // The "Where?" box: a city (accents optional) or a postal code, same as the website.
+            place: input.postalCode,
             ...(input.role ? { role: input.role } : {}),
             ...(input.radiusKm ? { radiusKm: input.radiusKm } : {}),
             ...(input.verifiedOnly ? { verifiedOnly: true } : {}),
@@ -462,7 +463,8 @@ export function createMobileSessionTransport(options: {
       postalCode?: string
     ): Promise<
       | Readonly<{ status: "ready"; interestStatus: string; alreadyInterested: boolean }>
-      | Readonly<{ status: "not_found" | "denied" | "ineligible" | "error" }>
+      | Readonly<{ status: "not_found" | "denied" | "error" }>
+      | Readonly<{ status: "ineligible"; reasons: readonly string[] }>
     > {
       const token = await options.vault.read();
       if (!token) return { status: "denied" };
@@ -475,7 +477,11 @@ export function createMobileSessionTransport(options: {
         });
         if (response.status === 401 || response.status === 403) return { status: "denied" };
         if (response.status === 404) return { status: "not_found" };
-        if (response.status === 409 || response.status === 422) return { status: "ineligible" };
+        if (response.status === 409 || response.status === 422) {
+          // The reasons say why (e.g. "missing_certificate:pab"), so the screen can name the certificate.
+          const body = (await response.json().catch(() => ({}))) as { reasons?: unknown };
+          return { status: "ineligible", reasons: stringList(body.reasons) };
+        }
         if (!response.ok) return { status: "error" };
         const payload = (await response.json()) as { interest?: { status?: unknown }; alreadyInterested?: unknown };
         const interestStatus = typeof payload.interest?.status === "string" ? payload.interest.status : "submitted";
@@ -537,13 +543,9 @@ export function createMobileSessionTransport(options: {
       }
       if (response.ok) return { status: "assigned" };
       if (response.status === 409 && payload.error === SHIFT_OVERLAP_ERROR_CODE) {
-        const raw = payload.messages && typeof payload.messages === "object" ? (payload.messages as Record<string, unknown>) : {};
-        const messages: Partial<Record<"en" | "fr" | "ar", string>> = {};
-        for (const lang of ["en", "fr", "ar"] as const) {
-          if (typeof raw[lang] === "string") messages[lang] = raw[lang] as string;
-        }
-        return { status: "shift_overlap", messages };
+        return { status: "shift_overlap", messages: overlapMessages(payload.messages) };
       }
+      if (response.status === 409 && payload.error === "RWOS_CLASSIFICATION_ELECTION_REQUIRED") return { status: "election_required" };
       if (response.status === 409) return { status: payload.status === "full" ? "full" : "not_open" };
       if (response.status === 422) {
         const reasons = Array.isArray(payload.reasons) ? payload.reasons.filter((r): r is string => typeof r === "string") : [];
@@ -804,6 +806,7 @@ export function createMobileSessionTransport(options: {
     ): Promise<
       | Readonly<{ status: "ready"; data: WorkerCalendarDto }>
       | Readonly<{ status: "denied" | "error" | "unavailable" | "stale" }>
+      | Readonly<{ status: "shift_overlap"; messages: Readonly<Partial<Record<"en" | "fr" | "ar", string>>> }>
     > {
       const token = await options.vault.read();
       if (!token) return { status: "denied" };
@@ -833,7 +836,13 @@ export function createMobileSessionTransport(options: {
           }
         );
         if (response.status === 401 || response.status === 403) return { status: "denied" };
-        if (response.status === 409 || response.status === 412) return { status: "stale" };
+        if (response.status === 409) {
+          // Already holding a shift at that time: the API names it in EN / FR / AR.
+          const body = (await response.json().catch(() => ({}))) as { error?: unknown; messages?: unknown };
+          if (body.error === SHIFT_OVERLAP_ERROR_CODE) return { status: "shift_overlap", messages: overlapMessages(body.messages) };
+          return { status: "stale" };
+        }
+        if (response.status === 412) return { status: "stale" };
         if (response.status === 404) return { status: "unavailable" };
         if (response.status === 503) return { status: "unavailable" };
         if (!response.ok) return { status: "error" };
@@ -844,6 +853,147 @@ export function createMobileSessionTransport(options: {
       } catch {
         return { status: "error" };
       }
+    },
+    // The worker's interest / application on one job and whether they may apply
+    // (GET /marketplace/jobs/:id/interest). Long-term jobs carry the employer's choice.
+    async jobInterest(jobRequestId: string): Promise<
+      Readonly<{ status: "ready"; data: JobInterestState }> | Readonly<{ status: "not_found" | "denied" | "offline" | "error" }>
+    > {
+      if (!isOperationalReference(jobRequestId)) return { status: "error" };
+      const result = await workerCall(`/marketplace/jobs/${encodeURIComponent(jobRequestId)}/interest`, "GET");
+      if (result.status === "denied" || result.status === "offline") return result;
+      if (result.code === 404) return { status: "not_found" };
+      if (result.status !== "ok") return { status: "error" };
+      const p = (result.payload ?? {}) as { interest?: unknown; lastEmployerDecision?: unknown; eligibility?: unknown };
+      const i = p.interest && typeof p.interest === "object" ? (p.interest as Record<string, unknown>) : null;
+      const e = p.eligibility && typeof p.eligibility === "object" ? (p.eligibility as Record<string, unknown>) : {};
+      return {
+        status: "ready",
+        data: {
+          interest: i && typeof i.status === "string" ? { status: i.status, employerDecision: typeof i.employerDecision === "string" ? i.employerDecision : null } : null,
+          lastEmployerDecision: typeof p.lastEmployerDecision === "string" ? p.lastEmployerDecision : null,
+          eligibility: { eligible: e.eligible !== false, reasons: stringList(e.reasons) }
+        }
+      };
+    },
+    // Withdraw an interest / application (DELETE /marketplace/jobs/:id/interest). Never undoes an offer.
+    async withdrawInterest(jobRequestId: string): Promise<Readonly<{ status: "ready" | "denied" | "offline" | "error" }>> {
+      if (!isOperationalReference(jobRequestId)) return { status: "error" };
+      const result = await workerCall(`/marketplace/jobs/${encodeURIComponent(jobRequestId)}/interest`, "DELETE");
+      if (result.status === "denied" || result.status === "offline") return result;
+      return result.status === "ok" ? { status: "ready" } : { status: "error" };
+    },
+    // The worker's own documents (GET /hr/documents): type, status and the expiry staff set. No review
+    // notes and no storage references. 403 = signed in but not set up as a worker yet.
+    async workerDocuments(): Promise<
+      Readonly<{ status: "ready"; data: readonly WorkerDocument[] }> | Readonly<{ status: "denied" | "needs_setup" | "offline" | "error" }>
+    > {
+      const result = await workerCall("/hr/documents", "GET");
+      if (result.status === "offline") return result;
+      if (result.status === "denied") return result.code === 403 ? { status: "needs_setup" } : { status: "denied" };
+      if (result.status !== "ok") return { status: "error" };
+      const list = (result.payload as { documents?: unknown } | null)?.documents;
+      if (!Array.isArray(list)) return { status: "error" };
+      return { status: "ready", data: list.map(parseWorkerDocument).filter((d): d is WorkerDocument => d !== null) };
+    },
+    // Upload one document the same way the website does: a signed upload reference, the file bytes,
+    // then the submission (a replacement supersedes the old one). Joblop staff review it; the worker
+    // can never approve their own document.
+    async uploadWorkerDocument(input: Readonly<{
+      documentType: string;
+      fileName: string;
+      contentType: string;
+      dataBase64: string;
+      replace?: boolean;
+    }>): Promise<Readonly<{ status: "ready" | "denied" | "offline" | "start_failed" | "upload_failed" | "submit_failed" }>> {
+      const documentType = input.documentType.trim();
+      if (!documentType || !input.dataBase64) return { status: "start_failed" };
+      const ref = await workerCall("/hr/documents/upload-reference", "POST", { documentType });
+      if (ref.status === "denied" || ref.status === "offline") return { status: ref.status };
+      if (ref.status !== "ok") return { status: "start_failed" };
+      const payload = (ref.payload ?? {}) as { storageReference?: unknown; uploadUrl?: unknown };
+      const storageReference = typeof payload.storageReference === "string" ? payload.storageReference : "";
+      if (!storageReference) return { status: "start_failed" };
+      const signed = readUploadSignature(typeof payload.uploadUrl === "string" ? payload.uploadUrl : "");
+      if (signed) {
+        const blob = await workerCall("/hr/documents/blob", "POST", {
+          ref: signed.ref,
+          sig: signed.sig,
+          contentType: input.contentType,
+          fileName: input.fileName.slice(0, 200),
+          dataBase64: input.dataBase64
+        });
+        if (blob.status === "denied" || blob.status === "offline") return { status: blob.status };
+        if (blob.status !== "ok") return { status: "upload_failed" };
+      }
+      const submit = await workerCall(input.replace ? "/hr/documents/replace" : "/hr/documents", "POST", { documentType, storageReference });
+      if (submit.status === "denied" || submit.status === "offline") return { status: submit.status };
+      return submit.status === "ok" ? { status: "ready" } : { status: "submit_failed" };
+    },
+    // The worker deletes one of their own documents (revoked + logged); they can upload again.
+    async removeWorkerDocument(documentId: string): Promise<Readonly<{ status: "ready" | "denied" | "offline" | "error" }>> {
+      if (!isOperationalReference(documentId)) return { status: "error" };
+      const result = await workerCall(`/hr/documents/${encodeURIComponent(documentId)}/remove`, "POST", {});
+      if (result.status === "denied" || result.status === "offline") return { status: result.status };
+      return result.status === "ok" ? { status: "ready" } : { status: "error" };
+    },
+    // The worker's own HR profile (GET /hr/worker): standing, credentials and their editable details.
+    async workerProfile(): Promise<
+      Readonly<{ status: "ready"; data: WorkerProfile }> | Readonly<{ status: "denied" | "needs_setup" | "offline" | "error" }>
+    > {
+      const result = await workerCall("/hr/worker", "GET");
+      if (result.status === "offline") return result;
+      if (result.status === "denied") return result.code === 403 ? { status: "needs_setup" } : { status: "denied" };
+      if (result.status !== "ok") return { status: "error" };
+      const profile = parseWorkerProfile(result.payload);
+      return profile ? { status: "ready", data: profile } : { status: "error" };
+    },
+    // Save the worker's own details (PUT /hr/worker). Standing and credentials are never writable.
+    async saveWorkerIntake(intake: Readonly<Record<string, string | boolean | null>>): Promise<Readonly<{ status: "ready" | "denied" | "offline" | "error" }>> {
+      const result = await workerCall("/hr/worker", "PUT", intake);
+      if (result.status === "denied" || result.status === "offline") return { status: result.status };
+      return result.status === "ok" ? { status: "ready" } : { status: "error" };
+    },
+    // "Jobs I want" (GET/PUT /worker/job-categories). Each tap saves the whole choice.
+    async jobCategories(): Promise<Readonly<{ status: "ready"; data: readonly JobCategoryChoice[] }> | Readonly<{ status: "denied" | "offline" | "error" }>> {
+      const result = await workerCall("/worker/job-categories", "GET");
+      if (result.status === "denied" || result.status === "offline") return { status: result.status };
+      if (result.status !== "ok") return { status: "error" };
+      return { status: "ready", data: parseJobCategories(result.payload) };
+    },
+    async saveJobCategories(keys: readonly string[]): Promise<Readonly<{ status: "ready"; data: readonly JobCategoryChoice[] }> | Readonly<{ status: "denied" | "offline" | "error" }>> {
+      const result = await workerCall("/worker/job-categories", "PUT", { keys: keys.slice(0, 50) });
+      if (result.status === "denied" || result.status === "offline") return { status: result.status };
+      if (result.status !== "ok") return { status: "error" };
+      return { status: "ready", data: parseJobCategories(result.payload) };
+    },
+    // Build the worker's CV (POST /worker/cv). The API decides everything: Worker Pro gets the AI writer
+    // within its daily limit; anyone else, or any AI failure, gets the basic CV with a note in EN/FR/AR.
+    async buildCv(input: Readonly<{ profile: Readonly<Record<string, unknown>>; jobTitle: string }>): Promise<
+      Readonly<{ status: "ready"; data: CvResult }> | Readonly<{ status: "denied" | "invalid" | "offline" | "error" }>
+    > {
+      const result = await workerCall("/worker/cv", "POST", { profile: input.profile, job: { title: input.jobTitle } });
+      if (result.status === "denied" || result.status === "offline") return { status: result.status };
+      if (result.code === 400) return { status: "invalid" };
+      if (result.status !== "ok") return { status: "error" };
+      const cv = parseCvResult(result.payload);
+      return cv ? { status: "ready", data: cv } : { status: "error" };
+    },
+    // Worker Pro status (GET /worker/cv/plan). Read-only: the app never sells or starts Pro.
+    async cvPlan(): Promise<Readonly<{ status: "ready"; data: CvPlan }> | Readonly<{ status: "denied" | "offline" | "error" }>> {
+      const result = await workerCall("/worker/cv/plan", "GET");
+      if (result.status === "denied" || result.status === "offline") return { status: result.status };
+      if (result.status !== "ok") return { status: "error" };
+      const p = (result.payload ?? {}) as { pro?: unknown; entitlement?: unknown };
+      const e = p.entitlement && typeof p.entitlement === "object" ? (p.entitlement as Record<string, unknown>) : null;
+      return {
+        status: "ready",
+        data: {
+          pro: p.pro === true,
+          source: e && typeof e.source === "string" ? e.source : null,
+          expiresAt: e && typeof e.expiresAt === "string" ? e.expiresAt : null
+        }
+      };
     },
     // True only when a real session token is stored (a guest who skipped sign-in has none).
     async hasSession(): Promise<boolean> {
@@ -1010,6 +1160,38 @@ export function createMobileSessionTransport(options: {
     }
   };
 
+  // Shared Bearer call for the worker routes added for website parity. A network exception is
+  // "offline"; 401/403 "denied" (with the code, since 403 means "not set up as a worker yet").
+  async function workerCall(
+    path: string,
+    method: "GET" | "POST" | "PUT" | "DELETE",
+    body?: Readonly<Record<string, unknown>>
+  ): Promise<
+    | Readonly<{ status: "ok" | "failed"; code: number; payload: unknown }>
+    | Readonly<{ status: "denied"; code: number }>
+    | Readonly<{ status: "offline" }>
+  > {
+    const token = await options.vault.read();
+    if (!token) return { status: "denied", code: 401 };
+    const withBody = method === "POST" || method === "PUT";
+    let response: Response;
+    try {
+      response = await request(`${origin}${path}`, {
+        method,
+        headers: withBody
+          ? { accept: "application/json", "content-type": "application/json", authorization: `Bearer ${token}` }
+          : { accept: "application/json", authorization: `Bearer ${token}` },
+        ...(withBody ? { body: JSON.stringify(body ?? {}) } : {}),
+        cache: "no-store"
+      });
+    } catch {
+      return { status: "offline" };
+    }
+    if (response.status === 401 || response.status === 403) return { status: "denied", code: response.status };
+    const payload = await response.json().catch(() => null);
+    return { status: response.ok ? "ok" : "failed", code: response.status, payload };
+  }
+
   // Shared token-free GET for the public routes. Never sends the session token.
   async function publicGet(
     path: string,
@@ -1090,6 +1272,158 @@ function pushTokenStatus(status: number): PushTokenResult {
 }
 
 export type MobileSessionTransport = ReturnType<typeof createMobileSessionTransport>;
+
+// ── Documents, profile, CV (website parity) ─────────────────────────────────────
+
+/** One of the worker's own documents. `expiresAt` is set by Joblop staff when they verify it. */
+export type WorkerDocument = Readonly<{
+  id: string;
+  documentType: string;
+  fileName: string | null;
+  expiresAt: string | null;
+  effectiveStatus: string;
+}>;
+
+function parseWorkerDocument(input: unknown): WorkerDocument | null {
+  if (!input || typeof input !== "object") return null;
+  const d = input as Record<string, unknown>;
+  if (typeof d.id !== "string" || typeof d.documentType !== "string") return null;
+  return {
+    id: d.id,
+    documentType: d.documentType,
+    fileName: typeof d.fileName === "string" && d.fileName ? d.fileName : null,
+    expiresAt: typeof d.expiresAt === "string" && d.expiresAt ? d.expiresAt : null,
+    effectiveStatus: typeof d.effectiveStatus === "string" ? d.effectiveStatus : "submitted"
+  };
+}
+
+/** ref + sig from the API's signed upload URL ("/api/documents/blob?ref=…&sig=…"). */
+export function readUploadSignature(uploadUrl: string): Readonly<{ ref: string; sig: string }> | null {
+  const query = uploadUrl.split("?")[1];
+  if (!query) return null;
+  const values: Record<string, string> = {};
+  for (const part of query.split("&")) {
+    const [key, value = ""] = part.split("=");
+    if (!key) continue;
+    try {
+      values[key] = decodeURIComponent(value);
+    } catch {
+      return null;
+    }
+  }
+  return values.ref && values.sig ? { ref: values.ref, sig: values.sig } : null;
+}
+
+export type WorkerCredential = Readonly<{ id: string; credentialType: string; expiresAt: string | null; effectiveStatus: string }>;
+
+export type WorkerIntake = Readonly<{
+  legalFirstName: string;
+  legalLastName: string;
+  phone: string;
+  addressLine: string;
+  city: string;
+  province: string;
+  postalCode: string;
+  hasDrivingLicence: boolean;
+  licenceClass: string;
+  licenceExpiry: string;
+  hasVehicle: boolean;
+  transportNotes: string;
+  marketingEmailOptIn: boolean;
+}>;
+
+export type WorkerProfile = Readonly<{ standing: string; credentials: readonly WorkerCredential[]; intake: WorkerIntake | null }>;
+
+function parseWorkerProfile(input: unknown): WorkerProfile | null {
+  if (!input || typeof input !== "object") return null;
+  const p = input as Record<string, unknown>;
+  const credentials = Array.isArray(p.credentials)
+    ? p.credentials.flatMap((c): WorkerCredential[] => {
+        if (!c || typeof c !== "object") return [];
+        const r = c as Record<string, unknown>;
+        if (typeof r.id !== "string" || typeof r.credentialType !== "string") return [];
+        return [{
+          id: r.id,
+          credentialType: r.credentialType,
+          expiresAt: typeof r.expiresAt === "string" ? r.expiresAt : null,
+          effectiveStatus: typeof r.effectiveStatus === "string" ? r.effectiveStatus : "valid"
+        }];
+      })
+    : [];
+  const i = p.intake && typeof p.intake === "object" ? (p.intake as Record<string, unknown>) : null;
+  const text = (key: string) => (i && typeof i[key] === "string" ? (i[key] as string) : "");
+  const intake: WorkerIntake | null = i
+    ? {
+        legalFirstName: text("legalFirstName"),
+        legalLastName: text("legalLastName"),
+        phone: text("phone"),
+        addressLine: text("addressLine"),
+        city: text("city"),
+        province: text("province"),
+        postalCode: text("postalCode"),
+        hasDrivingLicence: i.hasDrivingLicence === true,
+        licenceClass: text("licenceClass"),
+        licenceExpiry: text("licenceExpiry").slice(0, 10),
+        hasVehicle: i.hasVehicle === true,
+        transportNotes: text("transportNotes"),
+        marketingEmailOptIn: i.marketingEmailOptIn === true
+      }
+    : null;
+  return { standing: typeof p.standing === "string" ? p.standing : "inactive", credentials, intake };
+}
+
+export type JobCategoryChoice = Readonly<{ key: string; label: string; selected: boolean }>;
+
+function parseJobCategories(input: unknown): JobCategoryChoice[] {
+  const list = (input as { categories?: unknown } | null)?.categories;
+  if (!Array.isArray(list)) return [];
+  return list.flatMap((c): JobCategoryChoice[] => {
+    if (!c || typeof c !== "object") return [];
+    const r = c as Record<string, unknown>;
+    return typeof r.key === "string" ? [{ key: r.key, label: typeof r.label === "string" ? r.label : r.key, selected: r.selected === true }] : [];
+  });
+}
+
+/** The API's note when the AI writer was not used (busy, over today's limit, off): EN / FR / AR. */
+export type CvFallbackNote = Readonly<{ reason: string; message: Readonly<{ en: string; fr: string; ar: string }> }>;
+
+export type CvResult = Readonly<{
+  headline: string;
+  cvMarkdown: string;
+  coverLetterMarkdown: string;
+  aiWritten: boolean;
+  saved: boolean;
+  pro: boolean;
+  fallback: CvFallbackNote | null;
+}>;
+
+function parseCvResult(input: unknown): CvResult | null {
+  if (!input || typeof input !== "object") return null;
+  const p = input as Record<string, unknown>;
+  const cv = p.cv && typeof p.cv === "object" ? (p.cv as Record<string, unknown>) : null;
+  if (!cv || typeof cv.cvMarkdown !== "string") return null;
+  const f = p.fallback && typeof p.fallback === "object" ? (p.fallback as Record<string, unknown>) : null;
+  const m = f && f.message && typeof f.message === "object" ? (f.message as Record<string, unknown>) : null;
+  const fallback =
+    f && m && typeof m.en === "string"
+      ? {
+          reason: typeof f.reason === "string" ? f.reason : "unavailable",
+          message: { en: m.en, fr: typeof m.fr === "string" ? m.fr : m.en, ar: typeof m.ar === "string" ? m.ar : m.en }
+        }
+      : null;
+  return {
+    headline: typeof cv.headline === "string" ? cv.headline : "",
+    cvMarkdown: cv.cvMarkdown,
+    coverLetterMarkdown: typeof cv.coverLetterMarkdown === "string" ? cv.coverLetterMarkdown : "",
+    aiWritten: typeof p.providerKind === "string" && p.providerKind.startsWith("claude"),
+    saved: p.saved === true,
+    pro: p.pro === true,
+    fallback
+  };
+}
+
+/** Worker Pro status only. Source: "trial" | "purchase" | "admin_grant". */
+export type CvPlan = Readonly<{ pro: boolean; source: string | null; expiresAt: string | null }>;
 
 // ── Contact Joblop ─────────────────────────────────────────────────────────────
 // Same limits and values as the API (apps/api/src/instantContact.ts).
@@ -1264,7 +1598,7 @@ export type OpenJobsResult =
   | Readonly<{ status: "denied" | "offline" | "error" }>;
 
 export type ClaimOpenJobResult =
-  | Readonly<{ status: "assigned" | "full" | "not_open" | "denied" | "offline" | "error" }>
+  | Readonly<{ status: "assigned" | "full" | "not_open" | "election_required" | "denied" | "offline" | "error" }>
   | Readonly<{ status: "ineligible"; reasons: readonly string[] }>
   // The worker already holds a shift at that time (409 RWOS_SHIFT_OVERLAP). `messages` names that
   // shift in EN / FR / AR, as the API wrote it.
@@ -1546,12 +1880,71 @@ export type MarketplaceJob = Readonly<{
   saved: boolean;
   // Long-term listing only: the employer's own pay offer, paid directly.
   payOffered?: PayOfferedView | null;
+  // Certificates the employer requires (absent when none).
+  requiredCertificates?: RequiredCertificatesView;
 }>;
+
+/** The certificates an employer requires on a job: listed keys plus their own text for "other". */
+export type RequiredCertificatesView = Readonly<{ keys: readonly string[]; other: string | null }>;
+
+export type JobBonusView = Readonly<{ kind: string; amountMinor: number }>;
+export type AllowanceLineView = Readonly<{ provision: string; amountMinor: number | null; note: string | null }>;
+export type AllowancesView = Readonly<{ transport: AllowanceLineView | null; meal: AllowanceLineView | null; lodging: AllowanceLineView | null }>;
 
 export type MarketplaceOrigin = Readonly<{ province: string; city: string; postalCode: string }>;
 
 export type MarketplaceJobDetail = MarketplaceJob &
-  Readonly<{ title: string; employerId: string; description: string | null; duties: string | null; qualifications: readonly string[] }>;
+  Readonly<{
+    title: string;
+    employerId: string;
+    description: string | null;
+    duties: string | null;
+    safetyNotes: string | null;
+    qualifications: readonly string[];
+    /** Short-term open-claim job the worker can take directly (else they express interest / apply). */
+    claimable: boolean;
+    /** Long-term listing: workers apply and the employer chooses (never claimed). */
+    longTerm: boolean;
+    /** Required certificates this worker misses; null when the viewer is not a worker yet. */
+    missingCertificates: readonly string[] | null;
+    bonus: JobBonusView | null;
+    allowances: AllowancesView | null;
+  }>;
+
+/** The worker's current interest / application on one job, and whether they may apply. */
+export type JobInterestState = Readonly<{
+  interest: Readonly<{ status: string; employerDecision: string | null }> | null;
+  lastEmployerDecision: string | null;
+  eligibility: Readonly<{ eligible: boolean; reasons: readonly string[] }>;
+}>;
+
+function stringList(value: unknown): string[] {
+  return Array.isArray(value) ? value.filter((v): v is string => typeof v === "string") : [];
+}
+
+function overlapMessages(value: unknown): Partial<Record<"en" | "fr" | "ar", string>> {
+  const raw = value && typeof value === "object" ? (value as Record<string, unknown>) : {};
+  const messages: Partial<Record<"en" | "fr" | "ar", string>> = {};
+  for (const lang of ["en", "fr", "ar"] as const) {
+    if (typeof raw[lang] === "string") messages[lang] = raw[lang] as string;
+  }
+  return messages;
+}
+
+function parseRequiredCertificates(value: unknown): RequiredCertificatesView | null {
+  if (!value || typeof value !== "object") return null;
+  const v = value as Record<string, unknown>;
+  const keys = stringList(v.keys);
+  if (keys.length === 0) return null;
+  return { keys, other: typeof v.other === "string" && v.other.trim() ? v.other : null };
+}
+
+function parseAllowanceLine(value: unknown): AllowanceLineView | null {
+  if (!value || typeof value !== "object") return null;
+  const v = value as Record<string, unknown>;
+  if (typeof v.provision !== "string") return null;
+  return { provision: v.provision, amountMinor: num(v.amountMinor), note: typeof v.note === "string" && v.note ? v.note : null };
+}
 
 function str(value: unknown, fallback = ""): string {
   return typeof value === "string" ? value : fallback;
@@ -1581,7 +1974,11 @@ function parseMarketplaceJob(input: unknown): MarketplaceJob | null {
     currency: str(j.currency, "CAD"),
     distanceKm: num(j.distanceKm),
     saved: j.saved === true,
-    ...payOfferedField(j)
+    ...payOfferedField(j),
+    ...(() => {
+      const required = parseRequiredCertificates(j.requiredCertificates);
+      return required ? { requiredCertificates: required } : {};
+    })()
   };
 }
 
@@ -1617,7 +2014,22 @@ function parseMarketplaceJobDetail(input: unknown): MarketplaceJobDetail | null 
     employerId: str(j.employerId),
     description: typeof j.description === "string" ? j.description : null,
     duties: typeof j.duties === "string" ? j.duties : null,
-    qualifications
+    safetyNotes: typeof j.safetyNotes === "string" ? j.safetyNotes : null,
+    qualifications,
+    claimable: j.claimable === true,
+    longTerm: j.longTerm === true,
+    missingCertificates: Array.isArray(j.missingCertificates) ? stringList(j.missingCertificates) : null,
+    bonus: (() => {
+      const b = j.bonus as Record<string, unknown> | null | undefined;
+      const amount = b ? num(b.amountMinor) : null;
+      return b && typeof b.kind === "string" && amount !== null && amount > 0 ? { kind: b.kind, amountMinor: amount } : null;
+    })(),
+    allowances: (() => {
+      const a = j.allowances as Record<string, unknown> | null | undefined;
+      return a && typeof a === "object"
+        ? { transport: parseAllowanceLine(a.transport), meal: parseAllowanceLine(a.meal), lodging: parseAllowanceLine(a.lodging) }
+        : null;
+    })()
   };
 }
 

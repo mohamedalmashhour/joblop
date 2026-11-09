@@ -5,7 +5,7 @@ import type { CalendarHubItem, CalendarHubToday, MobileSessionTransport } from "
 import { BodyText, Button, Card, Heading, LoadingState, ScreenContainer, SmallText } from "../../ui/primitives";
 import { useLocale } from "../../i18n/LocaleContext";
 import { shiftDraft, type ContactDraft } from "../contact/contactContent";
-import { payOfferedText } from "../marketplace/marketplaceContent";
+import { formatWorkerRate, payOfferedText } from "../marketplace/marketplaceContent";
 import { addMonths, buildMonthWeeks, dayNumber, isoDay, monthTitle, weekdayNames } from "../calendar-month/monthGrid";
 import {
   HUB_LAYERS,
@@ -52,6 +52,7 @@ export function JobsCalendarScreen({
   onOpenSchedule,
   onOpenPay,
   onOpenOffers,
+  onOpenJob,
   onContactAboutShift
 }: {
   transport: MobileSessionTransport | null;
@@ -60,6 +61,8 @@ export function JobsCalendarScreen({
   onOpenSchedule?: () => void;
   onOpenPay?: () => void;
   onOpenOffers?: () => void;
+  /** Opens the job page (details, required certificates, Apply for a long-term job). */
+  onOpenJob?: (jobRequestId: string) => void;
   /** Opens "Contact Joblop" with a new message about this shift (linked to the assignment). */
   onContactAboutShift?: (draft: ContactDraft) => void;
 }) {
@@ -423,13 +426,18 @@ export function JobsCalendarScreen({
                 // Open job to accept.
                 const jobId = item.jobRequestId;
                 // Long-term listing: the employer's pay offer (paid directly), never a $0 rate.
-                const rate = payOfferedText(item.payOffered, locale) ?? formatHourlyRate(item.amountMinor, locale, perHour);
+                // Short-term job without an approved rate: the website's clear line, never blank or $0.
+                const longTerm = item.payOffered !== undefined;
+                const rate =
+                  payOfferedText(item.payOffered, locale) ??
+                  (item.amountMinor !== null && item.amountMinor > 0 ? formatHourlyRate(item.amountMinor, locale, perHour) : null) ??
+                  formatWorkerRate(null, "CAD", locale);
                 const confirming = jobId !== null && confirmingId === jobId;
                 const claiming = jobId !== null && claimingId === jobId;
                 const bonus = formatBonus(item.bonus, locale, bonusTemplates);
                 return (
                   <Card key={item.id} testID="jobs-card">
-                    <KindPill color={GOLD} label={t("hub.kind.available")} />
+                    <KindPill color={GOLD} label={longTerm ? t("job.longTermChip") : t("hub.kind.available")} />
                     <Heading>{item.title}</Heading>
                     {item.subtitle ? <BodyText>{item.subtitle}</BodyText> : null}
                     <SmallText>{time}</SmallText>
@@ -444,7 +452,12 @@ export function JobsCalendarScreen({
                         <SmallText>{placesLeftLabel(item.placesLeft, t("jobs.placeLeft"), t("jobs.placesLeft"))}</SmallText>
                       ) : null}
                     </View>
-                    {jobId === null ? null : confirming ? (
+                    {jobId !== null && longTerm ? (
+                      // Long-term job: workers apply on the job page and the employer chooses (never claimed).
+                      <View style={styles.topAction}>
+                        {onOpenJob ? <Button label={t("job.applyButton")} onPress={() => onOpenJob(jobId)} testID="jobs-apply" /> : null}
+                      </View>
+                    ) : jobId === null ? null : confirming ? (
                       <View style={styles.confirmBox} testID="jobs-confirm">
                         <Text style={[styles.confirmTitle, rtlText(isRtl)]}>{t("jobs.confirmTitle")}</Text>
                         <SmallText>{t("jobs.confirmBody")}</SmallText>
@@ -465,6 +478,9 @@ export function JobsCalendarScreen({
                         />
                       </View>
                     )}
+                    {jobId !== null && !longTerm && onOpenJob ? (
+                      <Button label={t("jobs.details")} onPress={() => onOpenJob(jobId)} variant="secondary" testID="jobs-details" />
+                    ) : null}
                   </Card>
                 );
               })

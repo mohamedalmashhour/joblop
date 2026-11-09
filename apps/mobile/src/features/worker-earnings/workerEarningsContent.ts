@@ -21,10 +21,10 @@ export type WorkerEarningsCopy = Readonly<{
 }>;
 
 const enCopy: WorkerEarningsCopy = {
-  badge: "Worker payable summary",
+  badge: "My pay",
   title: "Earnings",
   intro:
-    "Worker-facing earnings and payable status only. This screen does not calculate payroll, execute payments, display employer invoices or guarantee settlement.",
+    "Your pay for the shifts you worked.",
   fromAccountTitle: "From your account",
   loadingLedger: "Loading your payout ledger…",
   toPayTitle: "To pay",
@@ -35,7 +35,7 @@ const enCopy: WorkerEarningsCopy = {
   back: "Back",
   contactSupport: "Contact support",
   supportNote:
-    "Failed, held or disputed payable states route to support and human review. AI may explain states but cannot calculate payroll or release funds.",
+    "Payments are released automatically about two weeks after a shift. A dispute pauses the payment until it is resolved.",
   denied: "Sign in to see the amounts registered in your account.",
   error: "Your payout ledger could not be loaded right now.",
   unavailable: "The payout service is not available right now.",
@@ -43,10 +43,10 @@ const enCopy: WorkerEarningsCopy = {
 };
 
 const frCopy: WorkerEarningsCopy = {
-  badge: "Résumé du montant payable",
+  badge: "Ma paie",
   title: "Revenus",
   intro:
-    "Revenus et statut payable côté travailleur seulement. Cet écran ne calcule pas la paie, n'exécute pas de paiements, n'affiche pas les factures de l'employeur et ne garantit pas de règlement.",
+    "Votre paie pour les quarts que vous avez travaillés.",
   fromAccountTitle: "Depuis votre compte",
   loadingLedger: "Chargement de votre registre de versements…",
   toPayTitle: "À payer",
@@ -57,7 +57,7 @@ const frCopy: WorkerEarningsCopy = {
   back: "Retour",
   contactSupport: "Contacter le soutien",
   supportNote:
-    "Les montants en échec, retenus ou contestés sont acheminés au soutien pour examen humain. L'IA peut expliquer les statuts mais ne peut ni calculer la paie ni débloquer des fonds.",
+    "Les paiements sont versés automatiquement environ deux semaines après un quart. Un litige met le paiement en pause jusqu'à sa résolution.",
   denied: "Connectez-vous pour voir les montants enregistrés sur votre compte.",
   error: "Impossible de charger votre registre de versements pour le moment.",
   unavailable: "Le service de versements n'est pas disponible pour le moment.",
@@ -65,10 +65,10 @@ const frCopy: WorkerEarningsCopy = {
 };
 
 const arCopy: WorkerEarningsCopy = {
-  badge: "ملخّص المبلغ المستحقّ",
+  badge: "مستحقاتي",
   title: "الأرباح",
   intro:
-    "الأرباح وحالة الاستحقاق الخاصة بالعامل فقط. لا تحسب هذه الشاشة الرواتب ولا تنفّذ المدفوعات ولا تعرض فواتير صاحب العمل ولا تضمن التسوية.",
+    "أجرك عن المناوبات التي عملتها.",
   fromAccountTitle: "من حسابك",
   loadingLedger: "جارٍ تحميل سجلّ مدفوعاتك…",
   toPayTitle: "مستحقّ الدفع",
@@ -79,7 +79,7 @@ const arCopy: WorkerEarningsCopy = {
   back: "رجوع",
   contactSupport: "التواصل مع الدعم",
   supportNote:
-    "تُحال الحالات الفاشلة أو المحجوزة أو المتنازع عليها إلى الدعم للمراجعة البشرية. يمكن للذكاء الاصطناعي شرح الحالات لكنه لا يحسب الرواتب ولا يُفرج عن الأموال.",
+    "تُصرف المدفوعات تلقائيًا بعد نحو أسبوعين من المناوبة. يوقف النزاع الدفعة مؤقتًا حتى يُحلّ.",
   denied: "سجّل الدخول لرؤية المبالغ المسجَّلة في حسابك.",
   error: "تعذّر تحميل سجلّ مدفوعاتك الآن.",
   unavailable: "خدمة المدفوعات غير متاحة حاليًا.",

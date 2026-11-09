@@ -6,8 +6,11 @@ import type { MobileSessionTransport } from "../auth/secureSession";
 import { WorkerAuthScreen } from "../features/worker-auth";
 import { PublicJobsScreen } from "../features/public-jobs";
 import { HomeScreen } from "../features/home";
-import { WorkerCalendarPanel } from "../features/worker-calendar";
 import { MonthCalendarScreen } from "../features/calendar-month";
+import { OffersScreen } from "../features/offers";
+import { DocumentsScreen } from "../features/documents";
+import { ProfileScreen } from "../features/profile";
+import { CvBuilderScreen } from "../features/cv-builder";
 import { MarketplaceJobScreen, MarketplaceSearchScreen } from "../features/marketplace";
 import { JobsCalendarScreen } from "../features/jobs-calendar";
 import { MyWorkScreen } from "../features/my-work";
@@ -28,7 +31,7 @@ import { ContactScreen, type ContactDraft } from "../features/contact";
 // The worker app's real navigation shell. A dependency-free stack + bottom-tab navigator (no
 // react-navigation / native-screens dependency, to keep the EAS build surface minimal) that mounts
 // the already-built feature screens and wires their callbacks into real transitions. Each screen owns
-// its own data source and fixture/real disclosure; this shell only routes between them.
+// its own data source and real-data disclosure; this shell only routes between them.
 
 
 type Screen =
@@ -43,19 +46,24 @@ type Screen =
   | { name: "timesheet" }
   | { name: "earnings" }
   | { name: "onboarding" }
+  | { name: "profile" }
+  | { name: "documents" }
+  | { name: "cvBuilder" }
   | { name: "contact"; draft: ContactDraft | null; conversationId?: string | null };
 
 // What a signed-out person sees: the free public job search first; its actions open sign-up / sign-in.
 type GuestView = { name: "publicJobs" } | { name: "auth"; mode: "sign-in" | "sign-up" };
 
-type TabId = "home" | "available" | "myShifts" | "calendar" | "earnings" | "contact";
+type TabId = "home" | "available" | "myShifts" | "calendar" | "earnings" | "contact" | "profile";
 
 const TABS: readonly { id: TabId; label: string; root: Screen }[] = [
   { id: "home", label: "Home", root: { name: "home" } },
   { id: "available", label: "My calendar", root: { name: "available" } },
   { id: "myShifts", label: "My Shifts", root: { name: "myShifts" } },
   { id: "earnings", label: "Earnings", root: { name: "earnings" } },
-  { id: "contact", label: "Contact", root: { name: "contact", draft: null } }
+  { id: "contact", label: "Contact", root: { name: "contact", draft: null } },
+  // Website parity: profile (details, language, legal), with Documents and the CV builder under it.
+  { id: "profile", label: "Profile", root: { name: "profile" } }
 ];
 
 
@@ -177,6 +185,7 @@ export function WorkerNavigator({
             onOpenSchedule={() => push({ name: "attendance" })}
             onOpenPay={() => selectTab("earnings")}
             onOpenOffers={() => push({ name: "offers" })}
+            onOpenJob={(jobRequestId) => push({ name: "marketplaceJob", jobRequestId, postalCode: null })}
             onContactAboutShift={contactWith}
           />
         );
@@ -194,6 +203,10 @@ export function WorkerNavigator({
             postalCode={current.postalCode}
             transport={transport}
             onBack={back}
+            onOpenDocuments={() => push({ name: "documents" })}
+            onOpenOffers={() => push({ name: "offers" })}
+            onOpenSchedule={() => push({ name: "attendance" })}
+            onOpenSetup={() => push({ name: "onboarding" })}
           />
         );
       case "myShifts":
@@ -202,19 +215,32 @@ export function WorkerNavigator({
             transport={transport}
             onOpenSchedule={() => push({ name: "attendance" })}
             onOpenTimesheets={() => push({ name: "timesheet" })}
+            onOpenJob={(jobRequestId) => push({ name: "marketplaceJob", jobRequestId, postalCode: null })}
           />
         );
       case "calendar":
         // Normal open → the worker's month calendar, with a button to their offers (accept/decline).
-        // A deep-linked offer → the offer panel directly so the existing accept flow still works.
+        // A deep-linked offer → "My offers" with that offer first, so the accept flow still works.
         return offerId ? (
-          <WorkerCalendarPanel allowFixturePreview={false} offerId={offerId} transport={transport} />
+          <OffersScreen
+            transport={transport}
+            focusOfferId={offerId}
+            onOpenJob={(jobRequestId) => push({ name: "marketplaceJob", jobRequestId, postalCode: null })}
+            onOpenSetup={() => push({ name: "onboarding" })}
+          />
         ) : (
           <MonthCalendarScreen transport={transport} onOpenOffers={() => push({ name: "offers" })} />
         );
       case "offers":
-        // The worker's targeted offers — accept or decline (respondToWorkerOffer, with terms confirm).
-        return <WorkerCalendarPanel allowFixturePreview={false} offerId={null} transport={transport} />;
+        // The worker's offers — the website's offers page: agreement, rights, accept or decline.
+        return (
+          <OffersScreen
+            transport={transport}
+            focusOfferId={null}
+            onOpenJob={(jobRequestId) => push({ name: "marketplaceJob", jobRequestId, postalCode: null })}
+            onOpenSetup={() => push({ name: "onboarding" })}
+          />
+        );
       case "attendance":
         return <WorkerScheduleScreen transport={transport} onBack={back} />;
       case "timesheet":
@@ -225,6 +251,25 @@ export function WorkerNavigator({
         );
       case "onboarding":
         return <WorkerSetupScreen transport={transport} onBack={back} />;
+      case "profile":
+        return (
+          <ProfileScreen
+            transport={transport}
+            onOpenDocuments={() => push({ name: "documents" })}
+            onOpenCv={() => push({ name: "cvBuilder" })}
+            onOpenSetup={() => push({ name: "onboarding" })}
+          />
+        );
+      case "documents":
+        return (
+          <DocumentsScreen
+            transport={transport}
+            onOpenSetup={() => push({ name: "onboarding" })}
+            onOpenSearch={() => push({ name: "marketplaceSearch" })}
+          />
+        );
+      case "cvBuilder":
+        return <CvBuilderScreen transport={transport} onBack={back} />;
       case "contact":
         // "Contact Joblop": AI assistant first, Joblop staff take over when needed.
         return <ContactScreen draft={current.draft} openConversationId={current.conversationId ?? null} transport={transport} />;
@@ -267,6 +312,11 @@ export function WorkerNavigator({
   return (
     <View style={styles.root}>
       <View style={styles.topBar}>
+        {stack.length > 1 ? (
+          <Pressable accessibilityRole="button" onPress={back} style={styles.signOut} testID="nav-back">
+            <Text style={styles.signOutText}>{tr("auth.back")}</Text>
+          </Pressable>
+        ) : null}
         <Text style={styles.topTitle}>{tr(`nav.${tab}`)}</Text>
         <Pressable accessibilityRole="button" onPress={() => void signOut()} style={styles.signOut}>
           <Text style={styles.signOutText}>{tr("nav.signOut")}</Text>
@@ -297,7 +347,7 @@ export function WorkerNavigator({
               onPress={() => selectTab(t.id)}
               style={styles.tab}
             >
-              <Text numberOfLines={1} style={[styles.tabLabel, active ? styles.tabLabelActive : null]}>
+              <Text numberOfLines={2} style={[styles.tabLabel, active ? styles.tabLabelActive : null]}>
                 {t.id === "available" ? tr("nav.tab.available") : tr(`nav.${t.id}`)}
               </Text>
             </Pressable>
@@ -348,6 +398,6 @@ const styles = StyleSheet.create({
     flexDirection: "row"
   },
   tab: { alignItems: "center", flex: 1, paddingVertical: spacing.sm },
-  tabLabel: { color: colors.muted, fontSize: typography.small, fontWeight: "600" },
+  tabLabel: { color: colors.muted, fontSize: typography.small, fontWeight: "600", textAlign: "center" },
   tabLabelActive: { color: colors.deepTeal, fontWeight: "800" }
 });
