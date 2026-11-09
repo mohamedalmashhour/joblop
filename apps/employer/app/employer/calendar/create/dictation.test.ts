@@ -49,7 +49,7 @@ describe("speech language and privacy notice", () => {
   });
 
   it("shows the speech-service notice next to the Speak button in all three languages", () => {
-    expect(en["create.dictatePrivacy"]).toBe("Your browser's speech service (Google or Apple) hears what you say.");
+    expect(en["create.dictatePrivacy"]).toBe("Your browser's speech service (Google or Apple) hears what you say. Do not say health details, names or door codes.");
     expect(fr["create.dictatePrivacy"]).toMatch(/Google ou Apple/);
     expect(ar["create.dictatePrivacy"]).toMatch(/Google أو Apple/);
     const button = readFileSync(join(__dirname, "DictationButton.tsx"), "utf8");

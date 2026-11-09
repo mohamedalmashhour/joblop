@@ -60,8 +60,12 @@ const serverOnlyNonSecret = new Set([
   "CONTACT_AI_MONTHLY_LIMIT",
   "CV_MODEL",
   "CV_PRO_PURCHASE_ENABLED",
-  // Advisory document-review model name (not a credential).
+  // Advisory document-review model name (not a credential). Unused since launch step 6: documents are
+  // never sent to an outside AI. Kept classified so an old setting on a service stays valid.
   "DOC_REVIEW_MODEL",
+  // Kill switch for every outside-AI call (launch step 6). "disabled" makes every AI feature use its
+  // rules (contact chat to staff, the basic CV). Unset keeps today's behaviour. A switch, not a secret.
+  "AI_OUTSIDE_CALLS",
   // Transactional email sender address (public from-line, not a credential).
   "EMAIL_FROM",
   // Inbox for staff warnings (unfilled shifts close to their start). An address, not a credential;

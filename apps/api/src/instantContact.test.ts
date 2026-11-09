@@ -75,6 +75,10 @@ describe("instant contact: who gets a person", () => {
     ["I want to dispute this pay", "dispute"],
     ["delete my account please", "account"],
     ["let me talk to a human", "person_requested"],
+    ["I am pregnant, can I still do the warehouse shift?", "health"],
+    ["J'ai un billet médical pour lundi", "health"],
+    ["أنا حامل ولا أستطيع العمل", "health"],
+    ["I can do medication reminders and first aid", null],
     ["What time is my shift?", null]
   ])("%s -> %s", (text, reason) => {
     expect(personNeeded(text)).toBe(reason);

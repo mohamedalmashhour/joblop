@@ -12,6 +12,7 @@ import {
   type ContactStore,
   type ConversationRow
 } from "./instantContact";
+import { outsideAiApiKey } from "./outsideAi";
 import type { EmailSender } from "./mailer/emailSender";
 import type { SmsSender } from "./mailer/smsSender";
 import { pushToWorkers, type PushSender } from "./notifications/pushSender";
@@ -276,7 +277,9 @@ export function createContactNotices(deps: {
 }
 
 function chooseAi(isLocal: boolean): ContactAi | null {
-  const apiKey = process.env.ANTHROPIC_API_KEY?.trim();
+  // Null when there is no key or the kill switch AI_OUTSIDE_CALLS=disabled is on: every message then
+  // goes to a person (the rule path), and the local test stack keeps its no-cost synthetic replies.
+  const apiKey = outsideAiApiKey();
   if (apiKey) {
     const model = process.env.CONTACT_AI_MODEL?.trim();
     return createClaudeContactAi({ apiKey, ...(model ? { model } : {}) });

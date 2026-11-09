@@ -9,6 +9,12 @@
 // account numbers, and labelled dates of birth. It deliberately leaves alone money amounts, times,
 // years, short counts, job reference codes (JR-2026-000123), UUIDs and ISO dates.
 //
+// Health (launch step 6, owner rule "no health information is ever sent to an outside AI"): any
+// sentence that names a diagnosis, condition, medication, disability, pregnancy, injury or sick note
+// (English, French or Arabic words) is replaced as a whole by "[health detail]". RAMQ health-card
+// numbers, passport numbers and driver's licence numbers are masked too. Work skills such as
+// "first aid" or "medication reminders" (care jobs) are not personal health and are kept.
+//
 // Pure: no I/O. `reportMasked` is the only side effect and takes its logger as an argument.
 
 import { createLogger } from "@rwos/observability";
@@ -21,7 +27,10 @@ export type MaskKind =
   | "sin"
   | "bankAccount"
   | "cardNumber"
-  | "dateOfBirth";
+  | "dateOfBirth"
+  | "health"
+  | "healthCard"
+  | "idNumber";
 
 export const MASK_PLACEHOLDER: Readonly<Record<MaskKind, string>> = {
   email: "[email]",
@@ -31,14 +40,18 @@ export const MASK_PLACEHOLDER: Readonly<Record<MaskKind, string>> = {
   sin: "[SIN]",
   bankAccount: "[bank account]",
   cardNumber: "[card number]",
-  dateOfBirth: "[date of birth]"
+  dateOfBirth: "[date of birth]",
+  health: "[health detail]",
+  healthCard: "[health card]",
+  idNumber: "[ID number]"
 };
 
 export type MaskCounts = Record<MaskKind, number>;
 export type MaskResult = Readonly<{ text: string; masked: MaskCounts }>;
 
 const emptyCounts = (): MaskCounts => ({
-  email: 0, phone: 0, postalCode: 0, address: 0, sin: 0, bankAccount: 0, cardNumber: 0, dateOfBirth: 0
+  email: 0, phone: 0, postalCode: 0, address: 0, sin: 0, bankAccount: 0, cardNumber: 0, dateOfBirth: 0,
+  health: 0, healthCard: 0, idNumber: 0
 });
 
 /** Case-insensitive alternative for one word, without the `i` flag (which would break \p{Lu}). */
@@ -155,6 +168,117 @@ const ADDRESS_EN = new RegExp(
   "gu"
 );
 
+// A French street named with no street word ("4500 de Maisonneuve Ouest apt 12"): only counted when a
+// direction or a unit follows, so "2 de Laval" style text is left alone.
+const ADDRESS_FR_NO_TYPE = new RegExp(
+  `${NB}${LEADING_UNIT}${CIVIC},?\\s+${anyOf(["de", "du", "des"])}\\s+\\p{Lu}[\\p{L}'’.-]+(?:\\s+\\p{Lu}[\\p{L}'’.-]+){0,2}(?:\\s+${anyOf(["est", "ouest", "nord", "sud"])}${NA}(?:,?\\s*${UNIT})?|,?\\s*${UNIT})`,
+  "gu"
+);
+
+// ── health ───────────────────────────────────────────────────────────────────
+// Words that make a sentence personal health information. A trailing "*" allows any word ending
+// ("pregnan*" -> pregnant, pregnancy). Latin words must start and end on a word edge.
+const HEALTH_WORDS_LATIN = [
+  // English
+  "pregnan*", "miscarriage*", "maternity leave", "disabilit*", "disabled", "handicap*", "diabet*", "epilep*", "seizure*",
+  "cancer*", "chemo*", "HIV", "hepatitis", "depression", "depressed", "anxiety", "panic attack*", "bipolar", "schizophren*",
+  "ADHD", "autis*", "PTSD", "mental health", "mental illness", "illness*", "ill", "sick*", "diagnos*", "medical condition*",
+  "health condition*", "health issue*", "health problem*", "medical note*", "medical certificate*", "medical leave",
+  "medical appointment*", "medical reason*", "medical history", "medical record*", "medication*", "my medicine*",
+  "prescri*", "doctor's note*", "doctor’s note*", "doctors note*", "doctor note*", "my doctor", "injur*", "sprain*",
+  "fracture*", "concussion*", "surgery", "surgeries", "hospitali*", "asthma*", "allergy", "allergies", "allergic",
+  "hernia*", "back pain", "migraine*", "covid*", "therap*", "psychiatr*", "wheelchair*", "deaf", "hard of hearing",
+  "physio*", "burnout", "burn-out", "WSIB", "workers' comp*", "workers’ comp*",
+  // French
+  "enceinte", "grossesse*", "fausse couche", "fausses couches", "congé de maternité", "congé maternité", "invalidit*",
+  "diabète*", "épilep*", "chimio*", "VIH", "sida", "hépatite*", "déprim*", "anxiété", "trouble anxieux", "bipolaire",
+  "schizophr*", "TDAH", "santé mentale", "maladie*", "malade*", "médicament*", "medicament*", "ordonnance*",
+  "billet médical", "billet medical", "billet du médecin", "billet de médecin", "certificat médical", "certificat medical",
+  "arrêt maladie", "arrêt de maladie", "arrêt de travail", "congé maladie", "congé de maladie", "blessure*", "blessé*",
+  "entorse*", "commotion*", "chirurgi*", "opéré", "opérée", "asthm*", "allergie*", "allergique*", "hernie*", "mal de dos",
+  "thérapi*", "fauteuil roulant", "sourd", "sourde", "mon médecin", "ma médecin", "rendez-vous médical",
+  "épuisement professionnel"
+] as const;
+// Arabic words take prefixes (ال، و، ب) and suffixes, so they match anywhere in a word.
+const HEALTH_WORDS_ARABIC = [
+  "(?<!م)مرض", "مريض", "أنا حامل", "انا حامل", "حامل في", "الحمل", "إجهاض", "اجهاض", "إعاقة", "اعاقة", "معاق", "دواء", "أدوية",
+  "ادوية", "علاج", "تشخيص", "سكري", "صرع", "سرطان", "اكتئاب", "قلق نفسي", "إصابة", "اصابة", "مصاب", "كسر في", "شهادة طبية",
+  "تقرير طبي", "إجازة مرضية", "اجازة مرضية", "حساسية", "ربو", "ضغط الدم", "جراحة", "عملية جراحية", "طبيبي", "الطبيب",
+  "نقص المناعة", "الإيدز", "كورونا", "كوفيد"
+] as const;
+const latinWord = (w: string) => (w.endsWith("*") ? `${ci(w.slice(0, -1))}[\\p{L}'’-]*` : ci(w));
+const HEALTH = new RegExp(
+  `${NB}(?:${HEALTH_WORDS_LATIN.map(latinWord).join("|")})${NA}|${HEALTH_WORDS_ARABIC.join("|")}`,
+  "gu"
+);
+// Work skills and safety words that name health without being anyone's health. Blanked before the
+// check so a care worker's "medication reminders" or a "first aid" card survives.
+const HEALTH_EXEMPT = new RegExp(
+  [
+    anyOf(["first aid", "premiers soins", "premiers secours", "health and safety", "santé et sécurité", "sante et securite"]),
+    `${anyOf(["medication", "medications"])}\\s+${anyOf(["reminder", "reminders", "administration", "distribution", "management", "pass", "rounds"])}`,
+    `${anyOf(["administer", "administers", "administered", "administering", "dispense", "dispensed", "dispensing", "distribute", "distributed", "distributing", "give", "gave", "giving"])}\\s+(?:${anyOf(["the", "of"])}\\s+)?${anyOf(["medication", "medications"])}`,
+    `${anyOf(["administration", "distribution", "rappel", "rappels", "gestion"])}\\s+${anyOf(["des", "de", "du"])}\\s+${anyOf(["médicaments", "médicament", "medicaments", "medicament"])}`
+  ].map((p) => `${NB}${p}${NA}`).join("|"),
+  "gu"
+);
+const SENTENCE_END = /[.!?؟;\n]/;
+
+/** True when the text names personal health information (same rule the filter masks by). */
+export function containsHealthDetail(text: string): boolean {
+  if (!text) return false;
+  const blanked = text.replace(HEALTH_EXEMPT, (m) => " ".repeat(m.length));
+  HEALTH.lastIndex = 0;
+  const found = HEALTH.test(blanked);
+  HEALTH.lastIndex = 0;
+  return found;
+}
+
+/** Replaces every sentence that names personal health information by one placeholder. */
+function maskHealthSentences(text: string, hit: () => string): string {
+  const blanked = text.replace(HEALTH_EXEMPT, (m) => " ".repeat(m.length));
+  const ranges: [number, number][] = [];
+  for (const m of blanked.matchAll(HEALTH)) {
+    const at = m.index ?? 0;
+    let start = at;
+    while (start > 0 && !SENTENCE_END.test(text[start - 1]!)) start--;
+    let end = at + m[0].length;
+    while (end < text.length && !SENTENCE_END.test(text[end]!)) end++;
+    while (start < at && /\s/.test(text[start]!)) start++;
+    const last = ranges[ranges.length - 1];
+    if (last && start <= last[1]) last[1] = Math.max(last[1], end);
+    else ranges.push([start, end]);
+  }
+  if (!ranges.length) return text;
+  let out = "";
+  let from = 0;
+  for (const [start, end] of ranges) {
+    out += text.slice(from, start) + hit();
+    from = end;
+  }
+  return out + text.slice(from);
+}
+
+// RAMQ health card: four letters and eight digits ("TREM 9001 0112", "trem90010112"). With a space
+// after the letters they must be capitals, so "card 4111 1111 ..." is left to the card check; a run
+// that goes on with more digits (a card, an IBAN) is never a health card.
+const HEALTH_CARD = new RegExp(
+  `(?<![\\p{L}\\p{N}_]|\\d[ -])(?:[A-Za-z]{4}|[A-Z]{4}[ -])\\d{4}[ -]?\\d{4}(?![\\p{L}\\p{N}_]|[ -]\\d)`,
+  "gu"
+);
+// Passport and driver's licence numbers: labelled, one token of 6 to 20 characters with 4+ digits.
+const ID_LABEL = anyOf([
+  "passport number", "passport no", "passport", "passeport", "numéro de passeport", "driver's licence", "driver’s licence",
+  "driver's license", "driver’s license", "drivers licence", "drivers license", "licence number", "license number",
+  "licence no", "license no", "permis de conduire", "numéro de permis", "numero de permis", "no de permis"
+]);
+const ID_LABELLED = new RegExp(
+  `${NB}(${ID_LABEL}|جواز السفر|رقم الجواز|رخصة القيادة|رقم الرخصة)(\\s*(?:${anyOf(["number", "numéro", "numero", "no", "n°", "nº"])}\\.?)?\\s*[:#]?\\s*)([A-Za-z0-9-]{6,20})${NA}`,
+  "gu"
+);
+// Québec driver's licence: one letter and twelve digits ("T1234-567890-12").
+const QC_LICENCE = new RegExp(`${NB}[A-Za-z]\\d{4}[ -]?\\d{6}[ -]?\\d{2}${NA}`, "gu");
+
 // ── masking ──────────────────────────────────────────────────────────────────
 /** Replace personal data in free text by placeholders. Idempotent: masking twice changes nothing more. */
 export function maskPersonalData(text: string): MaskResult {
@@ -166,7 +290,12 @@ export function maskPersonalData(text: string): MaskResult {
   };
 
   // U+F8FF is our sentinel delimiter, so it never survives from the input.
-  let out = text.replace(/\uF8FF/g, "").replace(EMAIL, () => hit("email"));
+  let out = maskHealthSentences(text.replace(/\uF8FF/g, ""), () => hit("health")).replace(EMAIL, () => hit("email"));
+  out = out.replace(ID_LABELLED, (m, label: string, sep: string, num: string) =>
+    onlyDigits(num).length >= 4 ? `${label}${sep}${hit("idNumber")}` : m
+  );
+  out = out.replace(QC_LICENCE, () => hit("idNumber"));
+  out = out.replace(HEALTH_CARD, () => hit("healthCard"));
   out = out.replace(DOB, (_m, label: string, sep: string) => `${label}${sep}${hit("dateOfBirth")}`);
 
   const kept: string[] = [];
@@ -190,6 +319,7 @@ export function maskPersonalData(text: string): MaskResult {
   out = out.replace(PHONE, () => hit("phone"));
   out = out.replace(POSTAL, () => hit("postalCode"));
   out = out.replace(ADDRESS_FR, () => hit("address"));
+  out = out.replace(ADDRESS_FR_NO_TYPE, () => hit("address"));
   out = out.replace(ADDRESS_EN, () => hit("address"));
 
   out = out.replace(SENTINEL, (_m, ch: string) => kept[ch.charCodeAt(0) - 0xe000] ?? "");
@@ -201,7 +331,10 @@ export function maskPersonalData(text: string): MaskResult {
 const DROP_KEY_INCLUDES = [
   "email", "phone", "mobile", "address", "street", "postalcode", "postcode", "zipcode", "dateofbirth", "birthdate",
   "bankaccount", "accountnumber", "iban", "transit", "institution", "cardnumber", "password", "token", "secret",
-  "legalname", "lastname", "familyname", "surname", "fullname", "socialinsurance"
+  "legalname", "lastname", "familyname", "surname", "fullname", "socialinsurance",
+  // Health and identity documents (launch step 6): dropped outright, never masked.
+  "health", "medical", "diagnos", "disabilit", "pregnan", "medication", "sicknote", "illness", "injur", "ramq",
+  "passport", "licencenumber", "licensenumber", "driverslicen"
 ] as const;
 const DROP_KEY_EXACT: ReadonlySet<string> = new Set(["sin", "nas", "ssn", "dob", "zip", "pan", "cvv", "cvc"]);
 
