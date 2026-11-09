@@ -56,3 +56,5 @@ export * from "./jobListing";
 export * from "./payOffered";
 export * from "./requiredCertificates";
 export * from "./placeSearch";
+export * from "./publicJobsCalendar";
+export * from "./jobScannerDemo";

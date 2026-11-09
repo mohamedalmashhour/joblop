@@ -302,6 +302,7 @@ import { registerCalendarHubRoutes } from "./calendarHubRoutes";
 import { registerEmployerPlanRoutes } from "./employerPlanRoutes";
 import { isListedForWorkers, listedJobWhere, listingVisibilitySelect } from "./jobListingVisibility";
 import { openJobWhere } from "./openJobs";
+import { PUBLIC_CALENDAR_MAX_JOBS, publicCalendarJobView, publicCalendarRange } from "./publicJobsCalendar";
 import { defaultOfferCompensationLine } from "./offerPayLine";
 import {
   hourlyPayLine,
@@ -4060,6 +4061,45 @@ export function buildApi(options: BuildApiOptions = {}) {
       .code(200)
       .header("cache-control", "public, max-age=60")
       .send({ jobs, nextCursor: hasMore ? offset + limit : null, province, q, city: where || null });
+  });
+
+  // PUBLIC jobs calendar — no sign-in. The signed-out front door (website and app) shows a month
+  // calendar of Joblop's open jobs: each day's count, and each job's role, city and province, time,
+  // places left and the WORKER's own pay. Same jobs as every other worker list (openJobWhere); full
+  // jobs drop off. Never the address, coordinates, the employer, the employer rate, Joblop's share or
+  // the internal job id (publicCalendarJobView is a field whitelist). Read-only, cacheable.
+  app.get("/public/jobs/calendar", async (request, reply) => {
+    if (!prisma) return reply.code(503).send({ error: "RWOS_UNAVAILABLE", message: "Not available." });
+    const query = asRecord(request.query);
+    const now = new Date();
+    const { from, to } = publicCalendarRange(readOptionalString(query, "from"), readOptionalString(query, "to"), now);
+    const rows = await prisma.jobRequest.findMany({
+      where: openJobWhere({ now, startFrom: from, startTo: to }),
+      select: {
+        id: true,
+        jobRequestNumber: true,
+        title: true,
+        numberOfWorkers: true,
+        startAt: true,
+        endAt: true,
+        timezone: true,
+        roleDefinition: { select: { displayLabel: true } },
+        residence: { select: { city: true, province: true } },
+        pricingSnapshot: { select: { workerHourlyRateMinor: true } },
+        ...WORKER_PAY_SELECT
+      },
+      orderBy: [{ startAt: "asc" }],
+      take: PUBLIC_CALENDAR_MAX_JOBS
+    });
+    const left = await remainingOpenings(prisma, rows);
+    const jobs = rows
+      .map((r) => ({ row: r, placesLeft: left.get(r.id) ?? r.numberOfWorkers }))
+      .filter((j) => j.placesLeft > 0)
+      .map((j) => publicCalendarJobView(j.row, j.placesLeft, options.countryCurrency ?? null));
+    return reply
+      .code(200)
+      .header("cache-control", "public, max-age=60")
+      .send({ jobs, from: from.toISOString(), to: to.toISOString() });
   });
 
   // PUBLIC job details — no sign-in. One open Joblop job by its public job code (the same code the

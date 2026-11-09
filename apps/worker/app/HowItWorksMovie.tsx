@@ -1,6 +1,7 @@
 "use client";
 
 import { JobScannerDemo } from "./browse/JobScannerDemo";
+import { HOW_IT_WORKS_MOVIE_COPY } from "@rwos/shared";
 import { useLocale } from "./i18n/LocaleProvider";
 
 // Features the auto-playing "how JobLop works" motion graphic (the JobScanner movie) on the worker
@@ -8,12 +9,7 @@ import { useLocale } from "./i18n/LocaleProvider";
 export function HowItWorksMovie() {
   const locale = useLocale();
   const lang: "en" | "fr" | "ar" = locale === "ar" ? "ar" : locale.startsWith("fr") ? "fr" : "en";
-  const t =
-    locale === "ar"
-      ? { eyebrow: "شاهدها وهي تعمل", title: "كيف يعمل جوب‑لوب", sub: "بحث واحد، والسوق كله يُفحص ويُرتّب من أجلك — ثم تتقدّم مجانًا." }
-      : locale.startsWith("fr")
-        ? { eyebrow: "VOIR EN ACTION", title: "Comment fonctionne Joblop", sub: "Une seule recherche — tout le marché analysé et classé pour vous, puis postulez gratuitement." }
-        : { eyebrow: "SEE IT IN ACTION", title: "How Joblop works", sub: "One search — the whole market scanned and ranked for you, then apply free." };
+  const t = HOW_IT_WORKS_MOVIE_COPY[lang];
 
   return (
     <section className="hiw-movie" aria-label={t.title}>

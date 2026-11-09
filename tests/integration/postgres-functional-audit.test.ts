@@ -3,6 +3,7 @@ import { randomUUID } from "node:crypto";
 import type { FastifyInstance } from "fastify";
 import { createPrismaAssignmentRepository } from "@rwos/auth";
 import { createPrismaClient } from "@rwos/database";
+import { PUBLIC_CALENDAR_JOB_FIELDS } from "@rwos/shared";
 import { buildApi } from "../../apps/api/src/app";
 import type { EmailMessage, EmailSender } from "../../apps/api/src/mailer/emailSender";
 import type { SmsMessage, SmsSender } from "../../apps/api/src/mailer/smsSender";
@@ -554,6 +555,46 @@ suite("worker journey and payout guards", () => {
       expect(resolved.statusCode, resolved.body).toBe(200);
       expect(resolved.json()).toEqual({ jobRequestId: job.id });
       expect((await app.inject({ method: "GET", url: `/marketplace/job-codes/${job.jobRequestNumber}` })).statusCode).toBe(401);
+    });
+
+    it("the public jobs calendar lists open jobs with the worker's pay only, never the address, employer or other rates", async () => {
+      // Seeded to meet openJobWhere: approved, open on the calendar, priced, upcoming, active site.
+      const { job } = await makeJob({ startAt: new Date(Date.now() + 50 * HOUR), endAt: new Date(Date.now() + 58 * HOUR), openClaim: true });
+      // Not open (openClaim off) and unpriced jobs never show.
+      const { job: closed } = await makeJob({ startAt: new Date(Date.now() + 51 * HOUR), endAt: new Date(Date.now() + 59 * HOUR), openClaim: false });
+      const { job: unpriced } = await makeJob({ startAt: new Date(Date.now() + 52 * HOUR), endAt: new Date(Date.now() + 60 * HOUR), openClaim: true, priced: false });
+      const from = new Date(Date.now()).toISOString();
+      const to = new Date(Date.now() + 10 * 24 * HOUR).toISOString();
+      const res = await app.inject({ method: "GET", url: `/public/jobs/calendar?from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}` });
+      expect(res.statusCode, res.body).toBe(200);
+      const jobs = res.json().jobs as Record<string, unknown>[];
+      const mine = jobs.find((j) => j.jobCode === job.jobRequestNumber);
+      expect(mine).toMatchObject({
+        jobCode: job.jobRequestNumber,
+        role: expect.any(String),
+        city: "Laval",
+        province: "QC",
+        areaLabel: "Laval, QC",
+        startAt: job.startAt.toISOString(),
+        endAt: job.endAt.toISOString(),
+        timezone: "America/Toronto",
+        placesLeft: 1,
+        workerRateMinor: 2500
+      });
+      // Only the public calendar fields, nothing else.
+      for (const key of Object.keys(mine ?? {})) expect(PUBLIC_CALENDAR_JOB_FIELDS as readonly string[]).toContain(key);
+      expect(jobs.some((j) => j.jobCode === closed.jobRequestNumber)).toBe(false);
+      expect(jobs.some((j) => j.jobCode === unpriced.jobRequestNumber)).toBe(false);
+      for (const hidden of [STREET, "Door B", "H7A", "AuditCare", "employerHourlyRate", "platformHourlyMargin", "marginPpm", job.id]) {
+        expect(res.body).not.toContain(hidden);
+      }
+
+      // A full job drops off the calendar.
+      const worker = await makeWorker("public-calendar");
+      const claimed = await app.inject({ method: "POST", url: `/marketplace/jobs/${job.id}/claim`, headers: auth(worker.token) });
+      expect(claimed.statusCode, claimed.body).toBe(201);
+      const after = await app.inject({ method: "GET", url: `/public/jobs/calendar?from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}` });
+      expect((after.json().jobs as Record<string, unknown>[]).some((j) => j.jobCode === job.jobRequestNumber)).toBe(false);
     });
 
     it("a worker cannot claim two shifts at the same time, but can take back-to-back shifts", async () => {

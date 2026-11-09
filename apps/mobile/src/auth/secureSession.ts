@@ -1,5 +1,5 @@
 import * as SecureStore from "expo-secure-store";
-import { SHIFT_OVERLAP_ERROR_CODE, parsePayOfferedView, parseWorkerCalendarDto, type PayOfferedView, type WorkerCalendarDto } from "@rwos/shared";
+import { SHIFT_OVERLAP_ERROR_CODE, parsePayOfferedView, parseWorkerCalendarDto, type PayOfferedView, type PublicCalendarJob, type WorkerCalendarDto } from "@rwos/shared";
 
 const sessionKey = "rwos.mobile.session";
 
@@ -1113,6 +1113,17 @@ export function createMobileSessionTransport(options: {
       const jobs = payload.jobs.map(parsePublicJob).filter((v): v is PublicJob => v !== null);
       return { status: "ready", jobs };
     },
+    // PUBLIC jobs calendar (GET /public/jobs/calendar) — no sign-in, no token. Open Joblop jobs for the
+    // signed-out first screen's month calendar: role, city and province, time, places left and the
+    // worker's own pay. A network failure is "offline".
+    async listPublicCalendarJobs(params: Readonly<{ from: string; to: string }>): Promise<PublicCalendarJobsResult> {
+      const result = await publicGet("/public/jobs/calendar", { from: params.from, to: params.to });
+      if (result.status !== "ok") return result;
+      const payload = (result.payload ?? {}) as { jobs?: unknown };
+      if (!Array.isArray(payload.jobs)) return { status: "error" };
+      const jobs = payload.jobs.map(parsePublicCalendarJob).filter((v): v is PublicCalendarJob => v !== null);
+      return { status: "ready", jobs };
+    },
     // PUBLIC partner job leads (GET /public/jobscanner/leads) — no sign-in, no token. Stored leads
     // only (apply on the source site).
     async listPublicLeads(params: Readonly<{ q?: string; city?: string; limit?: number }> = {}): Promise<PublicLeadsResult> {
@@ -1195,9 +1206,13 @@ export function createMobileSessionTransport(options: {
   // Shared token-free GET for the public routes. Never sends the session token.
   async function publicGet(
     path: string,
-    params: Readonly<{ q?: string; city?: string; limit?: number }>
+    params: Readonly<{ q?: string; city?: string; limit?: number; from?: string; to?: string }>
   ): Promise<Readonly<{ status: "ok"; payload: unknown }> | Readonly<{ status: "offline" | "error" }>> {
     const search: string[] = [];
+    for (const key of ["from", "to"] as const) {
+      const value = params[key];
+      if (value && Number.isFinite(Date.parse(value))) search.push(`${key}=${encodeURIComponent(value)}`);
+    }
     const q = (params.q ?? "").trim().slice(0, 80);
     if (q) search.push(`q=${encodeURIComponent(q)}`);
     const city = (params.city ?? "").trim().slice(0, 60);
@@ -1515,6 +1530,10 @@ export type PublicLead = Readonly<{
   source: string;
 }>;
 
+export type PublicCalendarJobsResult =
+  | Readonly<{ status: "ready"; jobs: readonly PublicCalendarJob[] }>
+  | Readonly<{ status: "offline" | "error" }>;
+
 export type PublicJobsResult =
   | Readonly<{ status: "ready"; jobs: readonly PublicJob[] }>
   | Readonly<{ status: "offline" | "error" }>;
@@ -1541,6 +1560,35 @@ function parsePublicJob(input: unknown): PublicJob | null {
     openings,
     startAt,
     urgency: s("urgency") ?? "normal"
+  };
+}
+
+// Only the public calendar fields are kept (whatever else an answer carries is dropped).
+function parsePublicCalendarJob(input: unknown): PublicCalendarJob | null {
+  if (!input || typeof input !== "object") return null;
+  const v = input as Record<string, unknown>;
+  const s = (key: string) => (typeof v[key] === "string" && (v[key] as string).trim() ? (v[key] as string) : null);
+  const jobCode = s("jobCode");
+  const role = s("role");
+  const startAt = s("startAt");
+  const endAt = s("endAt");
+  if (!jobCode || !role || !startAt || !endAt || !Number.isFinite(Date.parse(startAt)) || !Number.isFinite(Date.parse(endAt))) return null;
+  const placesLeft = typeof v.placesLeft === "number" && Number.isFinite(v.placesLeft) ? Math.max(0, Math.floor(v.placesLeft)) : 0;
+  const rate = typeof v.workerRateMinor === "number" && Number.isFinite(v.workerRateMinor) && v.workerRateMinor > 0 ? Math.round(v.workerRateMinor) : null;
+  const payOffered = "payOffered" in v ? parsePayOfferedView(v.payOffered) : undefined;
+  return {
+    jobCode,
+    role,
+    city: s("city"),
+    province: s("province"),
+    areaLabel: s("areaLabel") ?? "Canada",
+    startAt,
+    endAt,
+    timezone: s("timezone"),
+    placesLeft,
+    workerRateMinor: rate,
+    currency: s("currency"),
+    ...(payOffered !== undefined ? { payOffered } : {})
   };
 }
 
