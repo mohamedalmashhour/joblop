@@ -117,6 +117,9 @@ suite("worker journey and payout guards", () => {
   const soon = () => ({ startAt: new Date(Date.now() - HOUR), endAt: new Date(Date.now() + 7 * HOUR) });
 
   beforeAll(async () => {
+    // Many synthetic sign-ups share the loopback IP within one minute. The local-only E2E switch (read
+    // from process.env, and only honoured for RWOS_ENV local|test) keeps the per-IP limit from refusing them.
+    process.env.RWOS_LOCAL_E2E = "enabled";
     app = buildApi({
       countryCurrency: "CAD",
       countryTimezone: "America/Toronto",
