@@ -380,9 +380,6 @@ export type ShiftCancelledCopyInput = Readonly<{
   cancelledBy: "employer" | "staff";
   // True when the worker had only been sent an offer for the shift, not assigned to it.
   offerOnly?: boolean;
-  // Hours of late-cancellation pay owed to this worker. Set ONLY when the cancel path actually
-  // records that compensation (the employer cancel-confirm path, inside 24 h, with a governed rate).
-  compensationHours?: number;
   reasonText?: string | null;
   workerWebOrigin?: string | null;
 }>;
@@ -406,7 +403,6 @@ export function shiftCancelledEmail(input: ShiftCancelledCopyInput & { to: strin
   const { language, shift } = input;
   const when = shiftDateTime(shift, language);
   const reason = input.reasonText?.trim();
-  const hours = input.compensationHours && input.compensationHours > 0 ? input.compensationHours : null;
   if (language === "en") {
     const where = shift.area ? ` at ${shift.area}` : "";
     const who = input.cancelledBy === "employer" ? "by the employer" : "by Joblop";
@@ -418,9 +414,6 @@ export function shiftCancelledEmail(input: ShiftCancelledCopyInput & { to: strin
           ? `The shift you were offered, "${shift.role}" on ${when}${where}, was cancelled ${who}. The offer no longer applies.\n\n`
           : `Your shift "${shift.role}" on ${when}${where} was cancelled ${who}. You do not need to go.\n\n`) +
         (reason ? `Reason: ${reason}\n\n` : "") +
-        (hours
-          ? `Because the employer cancelled less than 24 hours before the start, you are owed ${hours} hours of pay under Joblop's late-cancellation rule. Joblop has recorded it for payment.\n\n`
-          : "") +
         `${calendarLine(input.workerWebOrigin, language)}\n\n` +
         `If you were already on your way, contact Joblop.\n\n— Joblop`
     };
@@ -435,9 +428,6 @@ export function shiftCancelledEmail(input: ShiftCancelledCopyInput & { to: strin
         ? `Le quart qui vous était offert, « ${shift.role} » le ${when}${where}, a été annulé ${who}. L'offre ne s'applique plus.\n\n`
         : `Votre quart « ${shift.role} » le ${when}${where} a été annulé ${who}. Vous n'avez pas à vous présenter.\n\n`) +
       (reason ? `Raison : ${reason}\n\n` : "") +
-      (hours
-        ? `Comme l'employeur a annulé moins de 24 heures avant le début, ${hours} heures de paie vous sont dues selon la règle d'annulation tardive de Joblop. Joblop les a enregistrées pour paiement.\n\n`
-        : "") +
       `${calendarLine(input.workerWebOrigin, language)}\n\n` +
       `Si vous étiez déjà en route, communiquez avec Joblop.\n\n— Joblop`
   };
@@ -516,8 +506,9 @@ export function shiftChangedEmail(input: {
   };
 }
 
-// One worker to tell. `offerOnly` / `compensationHours` only apply to cancellations.
-export type ShiftNoticeWorker = Readonly<{ userId: string; offerOnly?: boolean; compensationHours?: number }>;
+// One worker to tell. `offerOnly` only applies to cancellations. Cancellation notices never promise
+// pay: owner decision 2026-11-09, Joblop reviews a late employer cancellation with each worker.
+export type ShiftNoticeWorker = Readonly<{ userId: string; offerOnly?: boolean }>;
 
 export type ShiftNoticeResult = Readonly<{ sent: number; skipped: number; failed: number }>;
 
@@ -635,7 +626,6 @@ export async function notifyWorkersShiftCancelled(
             shift: context.shift,
             cancelledBy: input.cancelledBy,
             offerOnly: recipient.worker.offerOnly === true,
-            compensationHours: recipient.worker.compensationHours ?? 0,
             reasonText: input.reasonText ?? null,
             workerWebOrigin: input.workerWebOrigin ?? null
           };

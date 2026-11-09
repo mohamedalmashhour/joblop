@@ -9,9 +9,9 @@ import {
 import { privacyAdditions } from "./legalPrivacyAdditions";
 
 describe("legal documents", () => {
-  it("is version 2026-11-09, effective the same day", () => {
-    expect(LEGAL_DOCUMENTS_VERSION).toBe("2026-11-09");
-    expect(LEGAL_EFFECTIVE_DATE).toBe("2026-11-09");
+  it("is version 2026-11-10, effective the same day", () => {
+    expect(LEGAL_DOCUMENTS_VERSION).toBe("2026-11-10");
+    expect(LEGAL_EFFECTIVE_DATE).toBe("2026-11-10");
     expect(LEGAL_COMPANY.legalName).toBe("9375-7649 Québec Inc.");
     expect(LEGAL_COMPANY.address).toBe("207-805 boul. Chomedey, Laval, QC H7V 0B1");
   });

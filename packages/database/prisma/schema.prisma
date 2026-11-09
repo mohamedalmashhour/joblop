@@ -645,6 +645,7 @@ model EmployerOrganization {
   jobListings        JobListing[]
   jobListingOrders   JobListingOrder[]
   paymentReceipts    PaymentReceipt[]
+  lateCancellationCharges LateCancellationCharge[]
 
   @@index([status], map: "employer_organizations_status_idx")
   @@map("employer_organizations")
@@ -1236,6 +1237,7 @@ model JobRequest {
   savedByWorkers WorkerSavedJob[]
   workerInterests WorkerJobInterest[]
   bonuses JobBonus[]
+  lateCancellationCharges LateCancellationCharge[]
 
   @@unique([id, organizationId, residenceId, departmentId, workGroupId, roleDefinitionId], map: "job_requests_operational_scope_key")
   @@index([jobRequestNumber], map: "job_requests_job_request_number_idx")
@@ -2509,6 +2511,7 @@ model Timesheet {
   lockedBy             User?                          @relation("TimesheetLockedByUser", fields: [lockedByUserId], references: [id], onDelete: SetNull)
   calculationSnapshots TimesheetCalculationSnapshot[]
   invoices             Invoice[]
+  lateCancellationCharge LateCancellationCharge?
 
   @@index([organizationId, status, updatedAt], map: "timesheets_organization_id_status_updated_at_idx")
   @@index([workerIdentityId, status, scheduledStartAt], map: "timesheets_worker_identity_id_status_start_idx")
@@ -3922,4 +3925,43 @@ model SupportMessage {
   @@index([conversationId, createdAt], map: "support_messages_conversation_idx")
   @@index([authorKind, createdAt], map: "support_messages_ai_usage_idx")
   @@map("support_messages")
+}
+
+// Late employer cancellation (owner rule on /pricing: canceled less than 24 h before the start, each
+// confirmed worker is billed 6 hours). One row per confirmed worker charged, written when the employer
+// cancels. The money goes through the normal billing path: a locked "late_cancellation" timesheet
+// (billable 6 h, payable 0) feeds the usual draft invoice with GST/QST. Owner decision 2026-11-09: no
+// automatic worker pay; Joblop keeps the charge and staff decide case by case with each worker.
+// assignment_id and idempotency_key are unique so a charge can never be applied twice.
+model LateCancellationCharge {
+  id                      String   @id @default(uuid()) @db.Uuid
+  idempotencyKey          String   @unique(map: "late_cancellation_charges_idempotency_key") @map("idempotency_key")
+  organizationId          String   @map("organization_id") @db.Uuid
+  jobRequestId            String   @map("job_request_id") @db.Uuid
+  assignmentId            String   @unique(map: "late_cancellation_charges_assignment_key") @map("assignment_id") @db.Uuid
+  workerIdentityId        String   @map("worker_identity_id") @db.Uuid
+  cancellationId          String?  @map("cancellation_id") @db.Uuid
+  source                  String // "employer_cancel_confirm" | "employer_order_cancel" | "employer_job_cancel"
+  cancelledByUserId       String   @map("cancelled_by_user_id") @db.Uuid
+  cancelledAt             DateTime @map("cancelled_at") @db.Timestamptz(3)
+  shiftStartAt            DateTime @map("shift_start_at") @db.Timestamptz(3)
+  minutesBeforeStart      Int      @map("minutes_before_start")
+  chargeHours             Int      @map("charge_hours")
+  employerHourlyRateMinor Int      @map("employer_hourly_rate_minor")
+  subtotalMinor           Int      @map("subtotal_minor")
+  currency                String
+  timesheetId             String?  @unique(map: "late_cancellation_charges_timesheet_key") @map("timesheet_id") @db.Uuid
+  invoiceId               String?  @map("invoice_id") @db.Uuid
+  invoiceError            String?  @map("invoice_error")
+  workerFollowUp          String   @default("pending_review") @map("worker_follow_up")
+  createdAt               DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt               DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  organization EmployerOrganization @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  jobRequest   JobRequest           @relation(fields: [jobRequestId], references: [id], onDelete: Restrict)
+  timesheet    Timesheet?           @relation(fields: [timesheetId], references: [id], onDelete: Restrict)
+
+  @@index([organizationId, createdAt], map: "late_cancellation_charges_org_created_idx")
+  @@index([jobRequestId], map: "late_cancellation_charges_job_request_idx")
+  @@map("late_cancellation_charges")
 }

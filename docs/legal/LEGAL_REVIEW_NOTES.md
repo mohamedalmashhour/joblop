@@ -1,8 +1,75 @@
-# Legal review notes — Terms and Privacy, version 2026-11-09
+# Legal review notes — Terms and Privacy, version 2026-11-10
 
 For: the Québec lawyer reviewing Joblop (9375-7649 Québec Inc., operating as Joblop).
-Effective date of the new text: **2026-11-09**. Version string: `2026-11-09`
+Effective date of the current text: **2026-11-10**. Version string: `2026-11-10`
 (`packages/shared/src/domain/legalDocuments.ts`, `LEGAL_DOCUMENTS_VERSION`).
+
+**What changed in 2026-11-10 (versus 2026-11-09):** four sentences of the approved October 26 worker
+Privacy Policy no longer matched how the app works. Only those sentences were edited, in English and in
+the French translation. See section 0 below for the exact old and new wording. Everything else in the
+approved text is unchanged, word for word. Sections 1 to 4 describe the 2026-11-09 changes and still
+apply.
+
+## 0. Version 2026-11-10 — the four corrected sentences (worker Privacy Policy §1)
+
+Files: English `apps/worker/app/legal/content.tsx`, French `apps/worker/app/legal/workerLegalFr.ts`.
+What the code does, checked before editing:
+
+- Sign-in: workers sign in only with a one-time code texted to their mobile number (website and phone
+  app). Sign-up stores a random password nobody sees or uses (`apps/worker/app/api/session/sign-up/route.ts`).
+- Mobile number: required at sign-up (at least 10 digits).
+- Location: neither the website nor the phone app reads the device location. Check-in and check-out
+  send no location (`apps/worker/app/schedule/MySchedule.tsx`, `apps/mobile/src/auth/secureSession.ts`).
+- Government ID: the Documents page accepts identity documents and the social insurance number
+  (already disclosed in Privacy §10.4).
+
+### 0.1 Account information list — password
+
+- EN old: "Password (stored only as a salted hash — we never store your password in plain text)"
+- EN new: "Sign-in codes: you sign in with a one-time code texted to your mobile number; you do not create or enter a password"
+- FR old: « Mot de passe (conservé uniquement sous forme de hachage salé — nous ne conservons jamais votre mot de passe en clair) »
+- FR new: « Codes de connexion : vous vous connectez avec un code à usage unique envoyé par texto à votre numéro de cellulaire; vous ne créez ni n’entrez de mot de passe »
+
+### 0.2 Account information list — mobile number optional
+
+- EN old: "Mobile number — optional; collected only if you choose to provide it (for shift alerts and account recovery)"
+- EN new: "Mobile number — required; used to sign you in with a texted code and for shift alerts and urgent notices"
+- FR old: « Numéro de cellulaire — facultatif; recueilli seulement si vous choisissez de le fournir (pour les alertes de quart et la récupération du compte) »
+- FR new: « Numéro de cellulaire — obligatoire; utilisé pour vous connecter avec un code envoyé par texto, ainsi que pour les alertes de quart et les avis urgents »
+
+### 0.3 Profile and location list — location used for check-in
+
+- EN old: "Approximate geolocation (latitude/longitude) used to match you with nearby work and, for workers, to verify check-in and check-out at a work site when you choose to clock in"
+- EN new: "Approximate geolocation (latitude/longitude) used to match you with nearby work. We do not use your location to verify check-in or check-out."
+- FR old: « Géolocalisation approximative (latitude/longitude) utilisée pour vous jumeler à du travail à proximité et, pour les travailleurs, pour vérifier l’arrivée et le départ sur un lieu de travail lorsque vous choisissez de pointer »
+- FR new: « Géolocalisation approximative (latitude/longitude) utilisée pour vous jumeler à du travail à proximité. Nous n’utilisons pas votre localisation pour vérifier l’arrivée ou le départ. »
+
+### 0.4 Closing paragraph of §1 — mobile number optional and "no government ID numbers"
+
+- EN old: "Your mobile number is optional — we collect it only if you choose to provide it, and use it for shift alerts and account recovery. We do not collect government identification numbers or payment card details through the app."
+- EN new: "Your mobile number is required — we use it to sign you in with a texted code and for shift alerts and urgent notices. If you upload them on the Documents page, we collect identity documents and your social insurance number (a government identification number) to check that you can work and to set up your pay. We do not collect payment card details through the app."
+- FR old: « Votre numéro de cellulaire est facultatif — nous le recueillons seulement si vous choisissez de le fournir, et nous l’utilisons pour les alertes de quart et la récupération du compte. Nous ne recueillons pas de numéros d’identification gouvernementaux ni de renseignements de carte de paiement au moyen de l’application. »
+- FR new: « Votre numéro de cellulaire est obligatoire — nous l’utilisons pour vous connecter avec un code envoyé par texto, ainsi que pour les alertes de quart et les avis urgents. Si vous les téléversez sur la page Documents, nous recueillons des pièces d’identité et votre numéro d’assurance sociale (un numéro d’identification gouvernemental) pour vérifier que vous pouvez travailler et pour établir votre paie. Nous ne recueillons pas de renseignements de carte de paiement au moyen de l’application. »
+
+(The surrounding sentence "We do not knowingly collect information from anyone under 18; Joblop is
+intended for adults." is unchanged.)
+
+### 0.5 Arabic summary — no change needed
+
+The Arabic privacy summary (`workerPrivacyArabic` in `apps/worker/app/legal/workerLegalUpdates.ts`)
+already says sign-in is by texted code, lists the mobile number among collected data, mentions uploaded
+documents, and says nothing about check-in location or government ID. None of the four out-of-date
+statements appears in it, so it was not edited.
+
+### 0.6 Left as is (please confirm)
+
+- Privacy §5 "Passwords are stored only as salted hashes." — still true: the unused random password is
+  stored as a salted hash.
+- Account-deletion page: "approximate geolocation" in the list of deleted data, and "sign-in
+  credentials" — not one of the four statements; kept verbatim.
+
+---
+
 
 The owner reports that the **worker Terms of Service and Privacy Policy dated October 26, 2026**
 (`apps/worker/app/legal/content.tsx`) were already reviewed and accepted. Those English clauses are
@@ -163,14 +230,8 @@ proof of consent (date, version, account), or whether a dedicated consent table 
 The instruction was to keep the approved clauses unchanged. These sentences are not accurate today;
 the "this section applies" rule in §10/§15 is meant to cover them, but the lawyer may prefer to edit them:
 
-- Privacy §1: "Password (stored only as a salted hash…)" — workers sign in with a texted code; an unused
-  random password is stored.
-- Privacy §1: "Mobile number — optional" — the mobile number is now required at sign-up (sign-in is by
-  text message).
-- Privacy §1: "Approximate geolocation (latitude/longitude) … to verify check-in and check-out" — the code
-  does not use device location (geolocation is blocked); only addresses/postal codes are stored.
-- Privacy §1: "We do not collect government identification numbers…" — the Documents page accepts
-  identity documents and the social insurance number (now disclosed in 10.4).
+- Fixed in version 2026-11-10 (see section 0): the Privacy §1 sentences on the password, the optional
+  mobile number, check-in location and "no government identification numbers".
 - Privacy §3 table: "Render / Neon" — the database host could not be confirmed in code.
 - Account-deletion page: "approximate geolocation" in the list of deleted data (not collected).
 
@@ -181,8 +242,10 @@ the "this section applies" rule in §10/§15 is meant to cover them, but the law
 - Whether RL-1 / RL slips are produced (only T4 / T4A appear; tax slips are marked synthetic). The text
   says "the tax slips required by law".
 - Whether Worker Pro has GST/QST added.
-- The 24-hour employer cancellation charge is published on `/pricing` and computed in
-  `packages/shared/src/domain/cancellationObligation.ts`, but no billing code applies it yet.
+- The 24-hour employer cancellation charge published on `/pricing` is billed since 2026-11-10: 6 hours
+  per confirmed worker on the employer's invoice, plus GST/QST. Owner decision 2026-11-09: workers are
+  not paid automatically for a late employer cancellation; Joblop keeps the charge and reviews each case
+  with the worker. The worker "How it works" page no longer promises 3 hours of pay.
 - Plan discounts (5% / 8%) are capped in code so they can be smaller; the Terms say "as shown on the
   Plans page" instead of a fixed number.
 - The live `TERMS_VERSION` / `PRIVACY_NOTICE_VERSION` env vars on Render (shown as `2026-11-01` on the

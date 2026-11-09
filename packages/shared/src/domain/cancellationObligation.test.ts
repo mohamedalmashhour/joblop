@@ -36,16 +36,16 @@ describe("employer late-cancellation commercial obligation", () => {
     expect(o.amount).toMatchObject({ amountMinor: 36000, currency: "CAD" });
   });
 
-  it("pays affected workers 3h at the worker rate when a worker rate is supplied", () => {
+  it("pays workers nothing automatically, even with a worker rate (owner decision 2026-11-09)", () => {
     const o = computeLateCancellationObligation({
       ...base,
       workerRateMinor: 2400, // $24/hr worker pay
       nowIso: nowAtHoursBefore(5)
     });
-    // client billed 6h × $30 × 2 = $360; workers paid 3h × $24 × 2 = $144
+    // client billed 6h × $30 × 2 = $360; Joblop keeps it and reviews each worker case by hand
     expect(o.amount.amountMinor).toBe(36000);
-    expect(o.workerCompensation.amountMinor).toBe(14400);
-    expect(o.workerCompensationHours).toBe(3);
+    expect(o.workerCompensation.amountMinor).toBe(0);
+    expect(o.workerCompensationHours).toBe(0);
   });
 
   it("worker compensation is 0 when no worker rate is supplied (back-compat)", () => {

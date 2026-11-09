@@ -19,9 +19,9 @@ export const privacyPolicyFr: readonly LegalBlock[] = [
     kind: "ul",
     items: [
       "Adresse courriel (pour créer et sécuriser votre compte et vous connecter)",
-      "Mot de passe (conservé uniquement sous forme de hachage salé — nous ne conservons jamais votre mot de passe en clair)",
+      "Codes de connexion : vous vous connectez avec un code à usage unique envoyé par texto à votre numéro de cellulaire; vous ne créez ni n’entrez de mot de passe",
       "Nom affiché",
-      "Numéro de cellulaire — facultatif; recueilli seulement si vous choisissez de le fournir (pour les alertes de quart et la récupération du compte)"
+      "Numéro de cellulaire — obligatoire; utilisé pour vous connecter avec un code envoyé par texto, ainsi que pour les alertes de quart et les avis urgents"
     ]
   },
   { kind: "h3", text: "Renseignements de profil et de localisation" },
@@ -29,7 +29,7 @@ export const privacyPolicyFr: readonly LegalBlock[] = [
     kind: "ul",
     items: [
       "Adresse postale (rue, ville, province, code postal)",
-      "Géolocalisation approximative (latitude/longitude) utilisée pour vous jumeler à du travail à proximité et, pour les travailleurs, pour vérifier l’arrivée et le départ sur un lieu de travail lorsque vous choisissez de pointer",
+      "Géolocalisation approximative (latitude/longitude) utilisée pour vous jumeler à du travail à proximité. Nous n’utilisons pas votre localisation pour vérifier l’arrivée ou le départ.",
       "Préférences de travail, disponibilités, rôles et compétences que vous inscrivez"
     ]
   },
@@ -51,7 +51,7 @@ export const privacyPolicyFr: readonly LegalBlock[] = [
   },
   {
     kind: "p",
-    text: "Votre numéro de cellulaire est facultatif — nous le recueillons seulement si vous choisissez de le fournir, et nous l’utilisons pour les alertes de quart et la récupération du compte. Nous ne recueillons pas de numéros d’identification gouvernementaux ni de renseignements de carte de paiement au moyen de l’application. Nous ne recueillons pas sciemment de renseignements auprès de personnes de moins de 18 ans; Joblop s’adresse aux adultes."
+    text: "Votre numéro de cellulaire est obligatoire — nous l’utilisons pour vous connecter avec un code envoyé par texto, ainsi que pour les alertes de quart et les avis urgents. Si vous les téléversez sur la page Documents, nous recueillons des pièces d’identité et votre numéro d’assurance sociale (un numéro d’identification gouvernemental) pour vérifier que vous pouvez travailler et pour établir votre paie. Nous ne recueillons pas de renseignements de carte de paiement au moyen de l’application. Nous ne recueillons pas sciemment de renseignements auprès de personnes de moins de 18 ans; Joblop s’adresse aux adultes."
   },
   { kind: "h2", text: "2. Comment nous utilisons vos renseignements" },
   {

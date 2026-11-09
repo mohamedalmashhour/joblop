@@ -107,6 +107,7 @@ import {
   createPrismaCancellationJobRequestReader,
   createPrismaConfirmedAssignmentReader,
   createPrismaContractRateReader,
+  createPrismaRequestBillRateReader,
   createPrismaCancellationStore,
   CONFIRMED_ASSIGNMENT_STATUSES,
   EmployerCancellationError,
@@ -361,7 +362,7 @@ import { isWorkerDisputeCategory, normalizeWorkerDisputeReason } from "@rwos/sha
 import { normalizeEscalationReason } from "@rwos/shared";
 import { buildCalendarExport } from "@rwos/shared";
 import { deriveOrderLifecycle } from "@rwos/shared";
-import { deriveWorkerCancellationPenalty, WORKER_SUSPENSION_DAYS } from "@rwos/shared";
+import { deriveWorkerCancellationPenalty, LATE_CANCELLATION_TIMESHEET_MARKER, WORKER_SUSPENSION_DAYS } from "@rwos/shared";
 import { notifyClient, notifyClientInvoiceSent } from "./notifications/clientNotifications";
 import { invoiceEmailAttachment } from "./invoicePdf";
 import { invoicePdfDetails } from "./invoicePdfDetails";
@@ -384,6 +385,14 @@ import { raiseEscalation, listOpenEscalations, closeEscalation } from "./escalat
 import { workerAllowances } from "./workerAllowances";
 import { createPrismaInvoiceRepository, type InvoiceRepository } from "./invoiceRepository";
 import { autoGenerateInvoiceForLockedTimesheet } from "./invoiceFromTimesheet";
+import {
+  applyLateCancellationCharges,
+  listLateCancellationCharges,
+  previewLateCancellation,
+  readConfirmedAssignments,
+  type ConfirmedAssignment,
+  type LateCancellationSource
+} from "./lateCancellationCharges";
 import { createPrismaPayrollRepository, createPrismaPayrollRateResolver, createPrismaPayrollJurisdictionResolver, createPrismaPayrollClassificationResolver } from "./payrollRepository";
 import { registerPaymentRoutes } from "./paymentRoutes";
 import { registerStripeWebhookRoute, registerEmployerInvoiceWebhookRoute } from "./stripeWebhookRoute";
@@ -700,6 +709,8 @@ export function buildApi(options: BuildApiOptions = {}) {
     jobRequestReader: createPrismaCancellationJobRequestReader(prisma!),
     confirmedAssignmentReader: createPrismaConfirmedAssignmentReader(prisma!),
     contractRateReader: createPrismaContractRateReader(prisma!),
+    // The invoice bills the request's pricing snapshot, so the obligation uses the same rate.
+    billRateReader: createPrismaRequestBillRateReader(prisma!),
     store: createPrismaCancellationStore(prisma!),
     countryCurrency: options.countryCurrency, // Stage 2b.3b-2: no-rate preview label (fail-closed; never CAD default)
     assignmentCancelPort: {
@@ -2960,7 +2971,7 @@ export function buildApi(options: BuildApiOptions = {}) {
           organizationId: readRouteParam(request.params, "organizationId"),
           jobRequestId: readRouteParam(request.params, "jobRequestId")
         });
-        return reply.code(200).send({ preview });
+        return reply.code(200).send({ preview: employerSafePreview(preview) });
       } catch (error) {
         return sendCancellationError(reply, error);
       }
@@ -2992,27 +3003,40 @@ export function buildApi(options: BuildApiOptions = {}) {
         const holders = prisma && !alreadyCancelled
           ? await readShiftHolders(prisma, { jobRequestIds: [jobRequestId] }).catch(() => [])
           : [];
+        // Workers confirmed at the moment the employer cancels (unfilled places are never charged).
+        const cancelledAt = new Date();
+        const confirmed = prisma
+          ? await readConfirmedAssignments(prisma, organizationId, [jobRequestId]).catch(() => [] as ConfirmedAssignment[])
+          : [];
         const result = await employerCancellationService.confirmCancellation({
           actorUserId: session.user.id,
           organizationId,
           jobRequestId,
           idempotencyKey
         });
+        // Bill the late cancellation only when this cancellation recorded the obligation (less than
+        // 24 h before the start, at the time it was first made). A replay re-applies nothing: each
+        // worker's charge is unique.
+        if (result.cancellation.obligation) {
+          await chargeLateCancellation({
+            organizationId,
+            jobRequestId,
+            actorUserId: session.user.id,
+            cancelledAt,
+            source: "employer_cancel_confirm",
+            cancellationId: result.cancellation.id,
+            confirmed
+          });
+        }
         // The workers are told now, when the employer cancels. Staff completing the assignment
-        // handoff later does not tell them again. Late-cancellation pay is mentioned only when this
-        // path recorded it (inside 24 h, with a governed rate), and only to the confirmed workers it
-        // was computed for.
-        const owedHours =
-          result.preview.obligationApplies && result.preview.workerCompensationMinor > 0 ? result.preview.workerCompensationHours : 0;
+        // handoff later does not tell them again. The notice never promises cancellation pay (owner
+        // decision 2026-11-09: Joblop reviews each case with the worker).
         await tellWorkersShiftCancelled({
           jobRequestId: result.cancellation.jobRequestId,
           cancelledBy: "employer",
-          workers: holders.map((holder) => ({
-            userId: holder.userId,
-            ...(owedHours > 0 && CONFIRMED_ASSIGNMENT_STATUSES.includes(holder.status) ? { compensationHours: owedHours } : {})
-          }))
+          workers: holders.map((holder) => ({ userId: holder.userId }))
         });
-        return reply.code(200).send(result);
+        return reply.code(200).send({ ...result, preview: employerSafePreview(result.preview) });
       } catch (error) {
         return sendCancellationError(reply, error);
       }
@@ -3098,6 +3122,48 @@ export function buildApi(options: BuildApiOptions = {}) {
     const cancellations = await employerCancellationService.listReconciliation({ statuses: [...statuses] });
     return reply.code(200).send({ cancellations });
   });
+
+  // Platform-only: every late employer cancellation charge, one row per confirmed worker affected,
+  // so staff can follow up with each worker case by case (owner decision 2026-11-09: no automatic
+  // worker pay). Read-only.
+  app.get("/platform/late-cancellation-charges", async (request, reply) => {
+    const session = await authService.validateSession(readBearerToken(request.headers.authorization));
+    if (!session.authenticated || !session.user) return sendCancellationDenied(reply);
+    const roles = await resolveAuthorizationRoles(session.user.id);
+    if (!roles.includes("PLATFORM_ADMINISTRATOR")) {
+      return reply.code(403).send({ error: "RWOS_CANCELLATION_DENIED", message: "Platform authority is required." });
+    }
+    if (!prisma) return reply.code(503).send({ error: "RWOS_UNAVAILABLE", message: "The charge list is unavailable." });
+    const limit = parseQueryInt(readOptionalString(asRecord(request.query), "limit")) ?? 100;
+    const charges = await listLateCancellationCharges(prisma, limit);
+    return reply.code(200).send({ charges });
+  });
+
+  // Employer late-cancellation charge. Best-effort: a failure is logged for staff and never undoes
+  // or blocks the cancellation the employer asked for.
+  async function chargeLateCancellation(input: {
+    organizationId: string;
+    jobRequestId: string;
+    actorUserId: string;
+    cancelledAt: Date;
+    source: LateCancellationSource;
+    cancellationId?: string;
+    confirmed: readonly ConfirmedAssignment[];
+  }) {
+    if (!prisma) return;
+    try {
+      const outcome = await applyLateCancellationCharges(prisma, invoiceRepository, input);
+      if (outcome.charged.length > 0 || outcome.skipped.length > 0) {
+        logger.info("employer.late_cancellation_charged", {
+          jobRequestId: input.jobRequestId,
+          charged: outcome.charged.length,
+          skipped: outcome.skipped.length
+        });
+      }
+    } catch {
+      logger.warn("employer.late_cancellation_charge_failed", { jobRequestId: input.jobRequestId });
+    }
+  }
 
   app.get("/organizations/:organizationId/residences/:residenceId", async (request, reply) => {
     const session = await authService.validateSession(
@@ -3461,6 +3527,23 @@ export function buildApi(options: BuildApiOptions = {}) {
     return reply.code(200).send({ order: result.order });
   });
 
+  // Read-only: what canceling the whole order now would bill (late-cancellation warning). Only the
+  // number of confirmed workers and a pre-tax estimate are returned — never a rate or Joblop's share.
+  app.post("/organizations/:organizationId/orders/:orderId/cancel/preview", async (request, reply) => {
+    const session = await authService.validateSession(readBearerToken(request.headers.authorization));
+    if (!session.authenticated || !session.user) return sendJobRequestDenied(reply);
+    const organizationId = readRouteParam(request.params, "organizationId");
+    if (!(await userHasOrganizationAccess(session.user.id, organizationId))) return sendJobRequestDenied(reply);
+    const orderId = readRouteParam(request.params, "orderId");
+    const order = await prisma!.employerOrder.findFirst({ where: { id: orderId, organizationId }, select: { id: true } });
+    if (!order) return reply.code(404).send({ error: "RWOS_ORDER_NOT_FOUND", message: "The order was not found." });
+    const openJobIds = await prisma!.jobRequest
+      .findMany({ where: { orderId, organizationId, status: { not: "cancelled" } }, select: { id: true } })
+      .then((rows) => rows.map((row) => row.id));
+    const lateCancellation = await previewLateCancellation(prisma!, { organizationId, jobRequestIds: openJobIds, now: new Date() });
+    return reply.code(200).send({ lateCancellation });
+  });
+
   // Cancel the whole order (every still-cancellable child role line). A reason is required.
   app.post("/organizations/:organizationId/orders/:orderId/cancel", async (request, reply) => {
     const session = await authService.validateSession(readBearerToken(request.headers.authorization));
@@ -3476,6 +3559,8 @@ export function buildApi(options: BuildApiOptions = {}) {
       .then((rows) => rows.map((row) => row.id))
       .catch(() => [] as string[]);
     const holders = await readShiftHolders(prisma!, { jobRequestIds: openJobIds }).catch(() => [] as ShiftHolder[]);
+    const orderCancelledAt = new Date();
+    const orderConfirmed = await readConfirmedAssignments(prisma!, organizationId, openJobIds).catch(() => [] as ConfirmedAssignment[]);
     const result = await cancelEmployerOrder(prisma!, jobRequestService, {
       actorUserId: session.user.id,
       organizationId,
@@ -3486,6 +3571,24 @@ export function buildApi(options: BuildApiOptions = {}) {
     if (!result.ok) {
       const code = result.reason === "not_found" ? 404 : 422;
       return reply.code(code).send({ error: `RWOS_ORDER_${result.reason.toUpperCase()}`, message: "The order could not be cancelled." });
+    }
+    // Late-cancellation charge for each job this cancel actually moved to cancelled.
+    const confirmedJobIds = [...new Set(orderConfirmed.map((a) => a.jobRequestId))];
+    if (confirmedJobIds.length > 0) {
+      const cancelledNow = await prisma!.jobRequest
+        .findMany({ where: { id: { in: confirmedJobIds }, status: "cancelled" }, select: { id: true } })
+        .then((rows) => rows.map((row) => row.id))
+        .catch(() => [] as string[]);
+      for (const jobId of cancelledNow) {
+        await chargeLateCancellation({
+          organizationId,
+          jobRequestId: jobId,
+          actorUserId: session.user.id,
+          cancelledAt: orderCancelledAt,
+          source: "employer_order_cancel",
+          confirmed: orderConfirmed
+        });
+      }
     }
     // Tell the workers on each job this cancel actually moved to cancelled.
     if (holders.length > 0) {
@@ -6429,12 +6532,24 @@ export function buildApi(options: BuildApiOptions = {}) {
             .then((job) => (job ? readShiftHolders(prisma, { jobRequestIds: [job.id] }) : []))
             .catch(() => [] as ShiftHolder[])
         : [];
+      const directCancelledAt = new Date();
+      const directConfirmed = prisma
+        ? await readConfirmedAssignments(prisma, organizationId, [jobRequestId]).catch(() => [] as ConfirmedAssignment[])
+        : [];
       const jobRequest = await jobRequestService.cancel({
         actorUserId: session.user.id,
         organizationId,
         jobRequestId,
         expectedVersion: readOptionalNumber(body, "expectedVersion") ?? 0,
         reason
+      });
+      await chargeLateCancellation({
+        organizationId,
+        jobRequestId: jobRequest.id,
+        actorUserId: session.user.id,
+        cancelledAt: directCancelledAt,
+        source: "employer_job_cancel",
+        confirmed: directConfirmed
       });
       await tellWorkersShiftCancelled({ jobRequestId: jobRequest.id, cancelledBy: "employer", workers: holders.map((h) => ({ userId: h.userId })) });
 
@@ -10874,7 +10989,12 @@ export function buildApi(options: BuildApiOptions = {}) {
     const limit = Math.min(Math.max(parseQueryInt(readOptionalString(query, "limit")) ?? 25, 1), 100);
     const cursor = readOptionalString(query, "cursor");
     const rows = await prisma!.timesheet.findMany({
-      where: { workerIdentityId: identity.id },
+      // A late-cancellation timesheet only carries the employer's charge; it pays the worker nothing
+      // and is not work they did, so it is not shown as one of their timesheets.
+      where: {
+        workerIdentityId: identity.id,
+        OR: [{ exceptionSummary: null }, { exceptionSummary: { not: LATE_CANCELLATION_TIMESHEET_MARKER } }]
+      },
       orderBy: [{ scheduledStartAt: "desc" }, { id: "desc" }],
       take: limit + 1,
       ...(cursor && isCanonicalUuid(cursor) ? { cursor: { id: cursor }, skip: 1 } : {}),
@@ -12640,4 +12760,14 @@ export async function remainingOpenings(
     left.set(row.jobRequestId, Math.max(0, (left.get(row.jobRequestId) ?? 0) - row._count._all));
   }
   return left;
+}
+
+// The employer's view of a cancellation preview: the worker-side fields are internal and never leave
+// the API (workers' pay is not the employer's business, and it is always 0 since 2026-11-09).
+export function employerSafePreview<T extends { workerCompensationHours?: unknown; workerCompensationMinor?: unknown }>(
+  preview: T
+): Omit<T, "workerCompensationHours" | "workerCompensationMinor"> {
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  const { workerCompensationHours, workerCompensationMinor, ...rest } = preview;
+  return rest;
 }

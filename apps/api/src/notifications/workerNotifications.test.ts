@@ -144,16 +144,12 @@ describe("shift cancelled / changed notices", () => {
     expect(fr.text).toContain("par l'employeur");
   });
 
-  it("promises no money unless the path recorded late-cancellation pay", () => {
+  it("never promises cancellation pay", () => {
     for (const language of ["en", "fr"] as const) {
       const plain = shiftCancelledEmail({ to: "w@x.com", language, shift, cancelledBy: "employer" });
       expect(plain.text).not.toMatch(/owed|dues|pay|paie|\$/i);
       expect(shiftCancelledSmsText({ language, shift })).not.toMatch(/owed|dues|pay\b|paie/i);
     }
-    const owedEn = shiftCancelledEmail({ to: "w@x.com", language: "en", shift, cancelledBy: "employer", compensationHours: 3 });
-    expect(owedEn.text).toContain("you are owed 3 hours of pay");
-    const owedFr = shiftCancelledEmail({ to: "w@x.com", language: "fr", shift, cancelledBy: "employer", compensationHours: 3 });
-    expect(owedFr.text).toContain("3 heures de paie vous sont dues");
   });
 
   it("changed SMS and email carry a short plain summary", () => {
