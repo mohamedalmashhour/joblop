@@ -110,7 +110,8 @@ export function createPostgresAuthenticationRateLimiter(options: {
       return {
         allowed: accountHits <= policy.accountMaxAttempts && networkHits <= policy.networkMaxAttempts,
         retryAfterSeconds: clampRetryAfter(
-          Math.max(secondsOf(account.secondsLeft), secondsOf(network.secondsLeft))
+          Math.max(secondsOf(account.secondsLeft), secondsOf(network.secondsLeft)),
+          policy.windowSeconds
         )
       };
     },
@@ -131,6 +132,8 @@ function secondsOf(value: number | string) {
   return Number.isFinite(seconds) ? seconds : 0;
 }
 
-function clampRetryAfter(value: number) {
-  return Math.max(1, Math.min(3600, Math.ceil(value)));
+// The database clock and rounding up can put a fresh window a fraction past its length (60.2 s → 61);
+// a retry-after is never longer than the window itself.
+function clampRetryAfter(value: number, windowSeconds: number) {
+  return Math.max(1, Math.min(windowSeconds, 3600, Math.ceil(value)));
 }
