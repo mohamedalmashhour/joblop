@@ -278,6 +278,10 @@ const ID_LABELLED = new RegExp(
 );
 // Québec driver's licence: one letter and twelve digits ("T1234-567890-12").
 const QC_LICENCE = new RegExp(`${NB}[A-Za-z]\\d{4}[ -]?\\d{6}[ -]?\\d{2}${NA}`, "gu");
+// Canadian (and many other) passport numbers with no label: two capital letters and six digits as one
+// token ("AB123456"). Capitals only and a single token, so job codes with a dash (JR-2026-000123),
+// money and ordinary words are left alone.
+const PASSPORT_PLAIN = new RegExp(`${NB}[A-Z]{2}\\d{6}${NA}`, "gu");
 
 // ── masking ──────────────────────────────────────────────────────────────────
 /** Replace personal data in free text by placeholders. Idempotent: masking twice changes nothing more. */
@@ -295,6 +299,7 @@ export function maskPersonalData(text: string): MaskResult {
     onlyDigits(num).length >= 4 ? `${label}${sep}${hit("idNumber")}` : m
   );
   out = out.replace(QC_LICENCE, () => hit("idNumber"));
+  out = out.replace(PASSPORT_PLAIN, () => hit("idNumber"));
   out = out.replace(HEALTH_CARD, () => hit("healthCard"));
   out = out.replace(DOB, (_m, label: string, sep: string) => `${label}${sep}${hit("dateOfBirth")}`);
 
