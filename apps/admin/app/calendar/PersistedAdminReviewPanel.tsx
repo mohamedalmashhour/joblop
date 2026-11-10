@@ -138,16 +138,39 @@ export function PersistedAdminReviewPanel({ requestId }: Readonly<{ requestId: s
     }
     setActionBusy(true);
     setActionMessage("applying");
-    try {
-      const response = await fetch(`/api/intake/${encodeURIComponent(request.id)}/${action}`, {
+    const post = (step: IntakeAction, expectedVersion: number) =>
+      fetch(`/api/intake/${encodeURIComponent(request.id)}/${step}`, {
         method: "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({
-          expectedVersion: request.versionToken,
-          ...(action === "request-information" ? { reason: reason.trim() } : {}),
-          ...(action === "approve-for-dispatch" ? { openClaim } : {})
+          expectedVersion,
+          ...(step === "request-information" ? { reason: reason.trim() } : {}),
+          ...(step === "approve-for-dispatch" ? { openClaim } : {})
         })
       });
+    try {
+      let expectedVersion: number = request.versionToken;
+      // One step for staff: a new (submitted) request is first moved to "in review" with the same
+      // begin-review action as before, so the audit trail still records "review started", then
+      // approved or questioned with the version that step returned.
+      if (request.authoritativeStatus === "submitted" && action !== "admin-review") {
+        const started = await post("admin-review", expectedVersion);
+        if (!started.ok) {
+          setConfirmAction(null);
+          setActionMessage(started.status === 409 ? "stale" : started.status === 401 ? "authRequired" : "failed");
+          return;
+        }
+        const body = (await started.json().catch(() => null)) as { jobRequest?: { versionToken?: unknown } } | null;
+        const next = body?.jobRequest?.versionToken;
+        if (typeof next !== "number" || !Number.isInteger(next)) {
+          setConfirmAction(null);
+          setActionMessage("stale");
+          await load();
+          return;
+        }
+        expectedVersion = next;
+      }
+      const response = await post(action, expectedVersion);
       if (response.status === 409) {
         setConfirmAction(null);
         setActionMessage("stale");
@@ -156,6 +179,8 @@ export function PersistedAdminReviewPanel({ requestId }: Readonly<{ requestId: s
       if (!response.ok) {
         setConfirmAction(null);
         setActionMessage(response.status === 401 ? "authRequired" : "failed");
+        // The review was started above: reload so the page shows the request's new version.
+        if (expectedVersion !== request.versionToken) await load();
         return;
       }
       setConfirmAction(null);
@@ -313,6 +338,8 @@ export function PersistedAdminReviewPanel({ requestId }: Readonly<{ requestId: s
             )}
           </article>
         ) : null}
+        {/* Right column: the decision, then the Workers card under it once approved. */}
+        <div style={styles.column}>
         <article style={styles.panel}>
           <h2 style={styles.h2}>{t.intakeTitle}</h2>
           <p aria-live="polite" role={actionMessage === "stale" ? "alert" : "status"}>
@@ -320,20 +347,7 @@ export function PersistedAdminReviewPanel({ requestId }: Readonly<{ requestId: s
               ? t.messages[actionMessage]
               : intakeStateCopy(t, request.authoritativeStatus, request.adminReviewReason)}
           </p>
-          {request.authoritativeStatus === "submitted" ? (
-            <button
-              disabled={actionBusy}
-              onClick={(event) => {
-                confirmationTrigger.current = event.currentTarget;
-                setConfirmAction("admin-review");
-              }}
-              style={styles.primaryButton}
-              type="button"
-            >
-              {t.beginReview}
-            </button>
-          ) : null}
-          {request.authoritativeStatus === "admin_review" ? (
+          {request.authoritativeStatus === "submitted" || request.authoritativeStatus === "admin_review" ? (
             <>
               {pricing ? (
                 <p style={styles.payPreview}>
@@ -461,6 +475,7 @@ export function PersistedAdminReviewPanel({ requestId }: Readonly<{ requestId: s
             <DispatchHandoffPanel jobRequestId={request.id} />
           </article>
         ) : null}
+        </div>
       </section>
     </main>
   );
@@ -624,11 +639,13 @@ const styles = {
     padding: 18
   },
   grid: {
+    alignItems: "start",
     display: "grid",
     gap: 18,
     gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 300px), 1fr))",
     padding: "24px clamp(18px, 5vw, 64px) 48px"
   },
+  column: { display: "grid", gap: 18, minWidth: 0 },
   panel: { background: "#0c0c0c", border: "1px solid rgba(248, 184, 8, 0.16)", borderRadius: 14, padding: 24 },
   h2: { color: "#f4efe4", fontSize: 24, margin: "6px 0 14px" },
   row: {

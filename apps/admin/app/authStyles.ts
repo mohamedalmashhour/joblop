@@ -90,5 +90,7 @@ export const authStyles: Record<string, CSSProperties> = {
     lineHeight: 1.5,
     margin: 0
   },
-  actions: { display: "flex", gap: spacing.md, flexWrap: "wrap", alignItems: "center" }
+  actions: { display: "flex", gap: spacing.md, flexWrap: "wrap", alignItems: "center" },
+  /** Text link: brand gold, underlined (never browser blue/purple). */
+  inlineLink: { color: "#f8b808", fontWeight: 800, textDecoration: "underline", textUnderlineOffset: 3 }
 };

@@ -113,12 +113,18 @@ describe("authenticated calendar UI integration", () => {
       "route.ts"
     );
     const reviewCopy = read("apps", "admin", "app", "calendar", "reviewText.ts");
-    expect(reviewCopy).toContain("Start review");
+    // No separate "Start review" button any more: approval is one step.
+    expect(reviewCopy).not.toContain("beginReview");
+    expect(review).not.toContain("t.beginReview");
     expect(reviewCopy).toContain("Send question to employer");
     expect(reviewCopy).toContain("Post on the job board (first qualified worker gets it)");
     expect(reviewCopy).toContain("I'll choose the worker myself");
     expect(reviewCopy).toContain("Question for the employer (only if you need more details)");
-    expect(review).toContain("expectedVersion: request.versionToken");
+    // One-step approval: a new request is moved to review with the existing begin-review action
+    // first (audit trail unchanged), then approved or questioned with the version it returned.
+    expect(review).toContain("let expectedVersion: number = request.versionToken");
+    expect(review).toContain('post("admin-review", expectedVersion)');
+    expect(review).toContain("expectedVersion = next");
     expect(review).toContain("setConfirmAction(");
     expect(mutation).toContain("isSameOriginMutation(request)");
     expect(mutation).toContain("readAdminIntakeMutation");

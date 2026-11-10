@@ -101,7 +101,6 @@ const en = {
     archived: "Archived"
   } as Record<string, string>,
   intakeTitle: "Your decision",
-  beginReview: "Start review",
   payPreview: (worker: string, margin: string) => `Worker gets ${worker}/h · Joblop keeps ${margin}/h`,
   choiceLegend: "After approval",
   choiceBoard: "Post on the job board (first qualified worker gets it)",
@@ -115,7 +114,7 @@ const en = {
   applyingButton: "Saving…",
   confirmAction: "Yes, continue",
   loadLatest: "Reload the request",
-  stateSubmitted: "New request. Press Start review to begin.",
+  stateSubmitted: "New request. Check the details, then approve it or ask the employer a question.",
   stateAdminReview: "Check the details, then approve it or ask the employer a question.",
   stateInformationRequired: (reason: string | null) =>
     `Waiting for the employer's answer.${reason ? ` Your question: ${reason}` : ""}`,
@@ -225,7 +224,6 @@ const fr: ReviewCopy = {
     archived: "Archivée"
   },
   intakeTitle: "Votre décision",
-  beginReview: "Commencer la révision",
   payPreview: (worker: string, margin: string) => `Le travailleur reçoit ${worker}/h · Joblop garde ${margin}/h`,
   choiceLegend: "Après l’approbation",
   choiceBoard: "Publier sur le babillard d’emplois (le premier travailleur qualifié l’obtient)",
@@ -239,7 +237,7 @@ const fr: ReviewCopy = {
   applyingButton: "Enregistrement…",
   confirmAction: "Oui, continuer",
   loadLatest: "Recharger la demande",
-  stateSubmitted: "Nouvelle demande. Appuyez sur Commencer la révision.",
+  stateSubmitted: "Nouvelle demande. Vérifiez les détails, puis approuvez la demande ou posez une question à l’employeur.",
   stateAdminReview: "Vérifiez les détails, puis approuvez la demande ou posez une question à l’employeur.",
   stateInformationRequired: (reason: string | null) =>
     `En attente de la réponse de l’employeur.${reason ? ` Votre question : ${reason}` : ""}`,
@@ -345,7 +343,6 @@ const ar: ReviewCopy = {
     archived: "مؤرشف"
   },
   intakeTitle: "قرارك",
-  beginReview: "بدء المراجعة",
   payPreview: (worker: string, margin: string) => `يحصل العامل على ${worker}/ساعة · تحتفظ Joblop بـ ${margin}/ساعة`,
   choiceLegend: "بعد الموافقة",
   choiceBoard: "النشر على لوحة الوظائف (يحصل عليها أول عامل مؤهّل)",
@@ -359,7 +356,7 @@ const ar: ReviewCopy = {
   applyingButton: "جارٍ الحفظ…",
   confirmAction: "نعم، تابع",
   loadLatest: "إعادة تحميل الطلب",
-  stateSubmitted: "طلب جديد. اضغط «بدء المراجعة».",
+  stateSubmitted: "طلب جديد. راجع التفاصيل، ثم وافق على الطلب أو اسأل صاحب العمل.",
   stateAdminReview: "راجع التفاصيل، ثم وافق على الطلب أو اسأل صاحب العمل.",
   stateInformationRequired: (reason: string | null) =>
     `بانتظار ردّ صاحب العمل.${reason ? ` سؤالك: ${reason}` : ""}`,

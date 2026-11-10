@@ -1017,3 +1017,13 @@ a.pjs-card { text-decoration: none; box-sizing: border-box; }
 /* Front page hero: copy sits centred beside the tall video, with the four values under the buttons. */
 .landing-hero-top { align-items: center; }
 .landing-hero-values { margin-top: 22px; }
+
+/* Text links on the page with no style of their own: brand gold and underlined, so they read as links. */
+main a:not([class]):not([style]) { color: var(--brand); text-decoration: underline; text-underline-offset: 3px; }
+
+/* My schedule: "Ask Joblop about this shift" reads as a gold link, not grey text. */
+.sched-ask { align-self: flex-start; color: var(--brand); font-weight: 800; text-decoration: underline; text-underline-offset: 3px; }
+
+/* Radar: count badge for jobs sitting on the "You" dot (0 km away). */
+.map-here-badge { fill: var(--brand); }
+.map-here-text { fill: var(--brand-ink, #000); font-size: 12px; font-weight: 800; }

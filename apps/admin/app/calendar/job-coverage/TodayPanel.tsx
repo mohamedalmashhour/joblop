@@ -26,6 +26,9 @@ export function TodayPanel({
           {items.map((item, index) => {
             const tone = SEVERITY_STYLE[item.severity];
             const href = detailHref(item.type, item.jobRequestId);
+            // Requests waiting for review: the API sends the role and company; the words are ours.
+            const isReview = item.type === "review_request";
+            const title = isReview ? t.reviewTitle(item.title) : item.title;
             const when = item.startAt && !Number.isNaN(Date.parse(item.startAt))
               ? new Date(item.startAt).toLocaleString(undefined, { weekday: "short", hour: "2-digit", minute: "2-digit" })
               : null;
@@ -33,14 +36,15 @@ export function TodayPanel({
               <li key={`${item.type}-${item.refId ?? item.jobRequestId ?? index}-${index}`} style={{ ...styles.item, borderInlineStartColor: tone.bg }}>
                 <div style={styles.head}>
                   <span style={{ ...styles.badge, background: tone.bg, color: tone.fg }}>{t.severity[item.severity] ?? item.severity}</span>
-                  <strong style={styles.itemTitle}>{item.title}</strong>
+                  <strong style={styles.itemTitle}>{title}</strong>
                 </div>
                 {item.detail ? <p style={styles.detail}>{item.detail}</p> : null}
                 <div style={styles.actions}>
                   {when && item.startAt ? (
                     <button onClick={() => onPickDay(item.startAt as string)} style={styles.dayButton} type="button">{when}</button>
                   ) : null}
-                  {href ? <a href={href} style={styles.link}>{t.open}</a> : null}
+                  {href && isReview ? <a href={href} style={styles.reviewButton}>{t.reviewNow}</a> : null}
+                  {href && !isReview ? <a href={href} style={styles.link}>{t.open}</a> : null}
                 </div>
               </li>
             );
@@ -63,5 +67,6 @@ const styles = {
   detail: { color: "#3a3a3a", fontSize: 14, margin: 0, overflowWrap: "anywhere" as const },
   actions: { alignItems: "center", display: "flex", flexWrap: "wrap" as const, gap: 12 },
   dayButton: { background: "transparent", border: "1px solid #8f8574", borderRadius: 6, color: "#1a1a1a", cursor: "pointer", fontSize: 13, padding: "4px 10px" },
-  link: { color: "#000000", fontSize: 14, fontWeight: 800 }
+  link: { color: "#000000", fontSize: 14, fontWeight: 800 },
+  reviewButton: { background: "#F8B808", borderRadius: 8, color: "#000000", fontSize: 14, fontWeight: 800, padding: "6px 14px", textDecoration: "none" }
 } as const;

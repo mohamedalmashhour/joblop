@@ -11,6 +11,7 @@ import {
   jobItem,
   parseHubWindow,
   payoutDate,
+  reviewRequestItem,
   sortToday,
   toHubBonus,
   whenLabel,
@@ -203,5 +204,31 @@ describe("today lists", () => {
       "dispute:attention",
       "needs_workers:attention"
     ]);
+  });
+
+  it("staff: requests waiting for review are listed with a link target, urgent when they start within 48 h", () => {
+    const soon = reviewRequestItem({
+      ...job,
+      id: "job-soon",
+      status: "submitted",
+      startAt: new Date(NOW.getTime() + 20 * HOUR),
+      endAt: new Date(NOW.getTime() + 28 * HOUR),
+      organization: { displayName: "Ferme Laval" }
+    });
+    const later = reviewRequestItem({
+      ...job,
+      id: "job-later",
+      status: "admin_review",
+      startAt: new Date(NOW.getTime() + 10 * DAY),
+      endAt: new Date(NOW.getTime() + 10 * DAY + 8 * HOUR),
+      organization: null
+    });
+    expect(soon).toMatchObject({ type: "review_request", title: "Cook", subtitle: "Ferme Laval", jobRequestId: "job-soon", amountMinor: null });
+    const today = buildStaffToday([], { openDisputes: [], bonusOffersWaiting: [], waitingForReview: [later, soon] }, NOW, TZ);
+    expect(today.map((t) => `${t.type}:${t.severity}:${t.jobRequestId}`)).toEqual([
+      "review_request:urgent:job-soon",
+      "review_request:attention:job-later"
+    ]);
+    expect(today[0]).toMatchObject({ title: "Cook", detail: "Ferme Laval" });
   });
 });

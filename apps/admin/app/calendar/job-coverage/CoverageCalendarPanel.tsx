@@ -48,6 +48,8 @@ type CoverageJob = {
   workers: { name: string; status: string }[];
   workerRateMinor: number | null;
   employerRateMinor: number | null;
+  /** The two rates are the contract estimate; the real price is set on approval. */
+  rateIsEstimate?: boolean;
   bonus?: JobBonus | null;
   bonusSuggestion?: BonusSuggestion | null;
 };
@@ -106,6 +108,11 @@ function needsWorkers(job: CoverageJob, now: number): boolean {
   if (job.coverage !== "open" && job.coverage !== "partly_filled") return false;
   const start = Date.parse(job.startAt);
   return start >= now && start - now <= NEEDS_WORKERS_WINDOW_MS;
+}
+
+/** An employer request staff still have to review (new or in review). */
+function waitingForReview(job: CoverageJob): boolean {
+  return job.status === "submitted" || job.status === "admin_review";
 }
 
 function hasBonus(job: CoverageJob): boolean {
@@ -397,9 +404,17 @@ export function CoverageCalendarPanel() {
               <p style={styles.meta}>
                 <strong style={styles.strong}>{t.places(job.placesTaken, job.placesAsked)}</strong> · {t.placesLeft(job.placesLeft)}
               </p>
-              <p style={styles.meta}>
-                {t.workerPay}: {rate(job.workerRateMinor, t.notSet, t.perHour)} · {t.employerRate}: {rate(job.employerRateMinor, t.notSet, t.perHour)}
-              </p>
+              {waitingForReview(job) && (job.workerRateMinor === null || job.employerRateMinor === null) ? (
+                <p style={styles.meta}>{t.priceOnApproval}</p>
+              ) : (
+                <p style={styles.meta}>
+                  {t.employerRate}: {rate(job.employerRateMinor, t.notSet, t.perHour)} · {t.workerPay}: {rate(job.workerRateMinor, t.notSet, t.perHour)}
+                  {job.rateIsEstimate ? ` ${t.estimateNote}` : ""}
+                </p>
+              )}
+              {waitingForReview(job) ? (
+                <a href={jobHref(job.jobRequestId)} style={styles.reviewButton}>{t.reviewNow}</a>
+              ) : null}
               <div>
                 <p style={styles.label}>{t.workers}</p>
                 {job.workers.length === 0 ? (
@@ -498,6 +513,7 @@ const styles = {
   label: { color: "#fff1a8", fontSize: 12, fontWeight: 800, margin: "0 0 4px", textTransform: "uppercase" as const },
   workerList: { color: CREAM, fontSize: 14, margin: 0, paddingInlineStart: 18 },
   link: { color: "#fff1a8", fontWeight: 800, justifySelf: "start" },
+  reviewButton: { background: GOLD, borderRadius: 8, color: "#000000", fontWeight: 800, justifySelf: "start", padding: "8px 16px", textDecoration: "none" },
   extraCard: { background: "#ffffff", borderInlineStart: "6px solid", borderRadius: 8, color: "#1a1a1a", display: "grid", gap: 6, padding: "14px clamp(12px, 4vw, 20px)" },
   extraType: { fontSize: 12, fontWeight: 900, textTransform: "uppercase" as const },
   extraStatus: { background: CREAM, border: `1px solid ${GREY}`, borderRadius: 999, fontSize: 12, fontWeight: 700, padding: "1px 8px" },

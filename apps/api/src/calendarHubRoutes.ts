@@ -217,11 +217,22 @@ const PENDING_CANCELLATION = new Set(["requested", "assignment_cancellation_pend
 
 export function buildStaffToday(
   items: readonly HubItem[],
-  extras: Readonly<{ openDisputes: readonly HubItem[]; bonusOffersWaiting: readonly HubItem[] }>,
+  extras: Readonly<{
+    openDisputes: readonly HubItem[];
+    bonusOffersWaiting: readonly HubItem[];
+    /** Employer requests waiting for staff review (submitted / admin review), whatever their date. */
+    waitingForReview?: readonly HubItem[];
+  }>,
   now: Date,
   tz: string
 ): TodayItem[] {
   const out: TodayItem[] = [];
+  // Requests waiting for review: title = role, detail = company. The staff page words and dates them
+  // in the viewer's language (type "review_request") and links to the request page.
+  for (const request of extras.waitingForReview ?? []) {
+    const startsSoon = Date.parse(request.startAt) <= now.getTime() + 48 * HOUR;
+    out.push(todayFrom(request, request.title, request.subtitle, startsSoon ? "urgent" : "attention", "review_request"));
+  }
   for (const item of items) {
     const when = whenLabel(new Date(item.startAt), now, tz);
     if (item.type === "job" && startsWithin(item, now, 48) && (item.status === "open" || item.status === "partly_filled")) {
@@ -337,6 +348,28 @@ const workerNameOf = (w: { displayName: string | null; user: { displayName: stri
 const SHIFT_CANCELLED_STATUSES = ["worker_withdrawn", "employer_cancelled", "platform_cancelled"] as const;
 const UNPAID_INVOICE_STATUSES = ["issued", "sent", "viewed", "partially_paid", "overdue"] as const;
 const LIVE_JOB_STATUSES = ["submitted", "admin_review", "information_required", "approved_for_dispatch"] as const;
+const WAITING_FOR_REVIEW_STATUSES = ["submitted", "admin_review"] as const;
+const MAX_WAITING_FOR_REVIEW = 25;
+
+/** A request waiting for staff review, as a Today entry source (title = role, subtitle = company). */
+export function reviewRequestItem(job: JobRow): HubItem {
+  return {
+    id: `review_request:${job.id}`,
+    type: "review_request",
+    startAt: job.startAt.toISOString(),
+    endAt: job.endAt.toISOString(),
+    title: roleOf(job),
+    subtitle: job.organization?.displayName ?? null,
+    status: job.status,
+    amountMinor: null,
+    bonus: null,
+    placesLeft: null,
+    placesAsked: job.numberOfWorkers,
+    placesTaken: null,
+    jobRequestId: job.id,
+    refId: job.id
+  };
+}
 
 export function registerCalendarHubRoutes(app: FastifyInstance, deps: CalendarHubRouteDeps) {
   const { prisma } = deps;
@@ -588,6 +621,13 @@ export function registerCalendarHubRoutes(app: FastifyInstance, deps: CalendarHu
       names.set(a.jobRequestId, list);
     }
     const latest = await latestBonusByJob(prisma, jobs.map((j) => j.id));
+    // Requests waiting for review are listed under Today whatever month is on screen.
+    const waitingForReview = await prisma.jobRequest.findMany({
+      where: { status: { in: [...WAITING_FOR_REVIEW_STATUSES] } },
+      select: JOB_SELECT,
+      orderBy: [{ startAt: "asc" }],
+      take: MAX_WAITING_FOR_REVIEW
+    });
 
     const employerCancellations = await prisma.employerRequestCancellation.findMany({
       where: { jobRequest: { startAt: { gte: w.from, lte: w.to } } },
@@ -741,6 +781,11 @@ export function registerCalendarHubRoutes(app: FastifyInstance, deps: CalendarHu
       });
     }
     items.sort(byStart);
-    return send(reply, items, buildStaffToday(items, { openDisputes: disputeItems, bonusOffersWaiting }, at, tz), w);
+    return send(reply, items, buildStaffToday(
+        items,
+        { openDisputes: disputeItems, bonusOffersWaiting, waitingForReview: waitingForReview.map(reviewRequestItem) },
+        at,
+        tz
+      ), w);
   });
 }
