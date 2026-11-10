@@ -89,11 +89,13 @@ suite(`HR-5.1 payroll scale (${N} synthetic workers)`, () => {
     let cursor: string | undefined;
     let total = 0, calculated = 0, failed = 0;
     let pages = 0;
+    const notCalculated: Array<{ workerIdentityId: string; outcome: string; reason?: string }> = [];
     do {
       const r = await bulk(250, cursor);
       expect(r.statusCode).toBe(200);
       const b = r.json();
       total += b.attempted; calculated += b.calculated; failed += b.failed;
+      notCalculated.push(...b.results.filter((x: { outcome: string }) => x.outcome !== "calculated"));
       cursor = b.nextCursor ?? undefined;
       pages += 1;
       expect(b.results.length).toBeLessThanOrEqual(250); // bounded page — never the whole population
@@ -102,6 +104,7 @@ suite(`HR-5.1 payroll scale (${N} synthetic workers)`, () => {
     const rssAfter = process.memoryUsage().rss;
 
     expect(total).toBe(N);
+    expect(notCalculated.slice(0, 10)).toEqual([]); // names the outcome + reason if any worker is skipped
     expect(calculated).toBe(N);
     expect(failed).toBe(0);
     const rows = await prisma.$queryRawUnsafe<Array<{ c: bigint }>>(`SELECT count(*) c FROM payroll_calculations WHERE payroll_period_id=$1`, periodId);

@@ -144,7 +144,8 @@ export type HrWorkerResolver = Readonly<{
 
 export type HrStore = Readonly<{
   getProfile(workerIdentityId: string): Promise<HrProfileRecord | null>;
-  createProfile(workerIdentityId: string): Promise<HrProfileRecord>;
+  /** Creates the worker's profile; null when one already exists (a concurrent request created it). */
+  createProfile(workerIdentityId: string): Promise<HrProfileRecord | null>;
   setStanding(input: { workerIdentityId: string; standing: HrStanding; reason: string | null }): Promise<HrProfileRecord>;
 
   getIntake(workerIdentityId: string): Promise<HrIntakeRecord | null>;
@@ -246,7 +247,16 @@ export function createHrService(deps: HrDeps) {
   async function ensureProfile(workerIdentityId: string): Promise<HrProfileRecord> {
     const existing = await deps.store.getProfile(workerIdentityId);
     if (existing) return existing;
+    // The profile is created lazily on first touch, so two first requests for the same worker (two
+    // reviewers, or a reviewer and the worker) can both see "no profile". Only one insert wins the
+    // unique worker index; the other uses the winner's profile instead of failing the request and
+    // dropping its change.
     const created = await deps.store.createProfile(workerIdentityId);
+    if (!created) {
+      const winner = await deps.store.getProfile(workerIdentityId);
+      if (!winner) throw new Error("HR profile create reported a duplicate but no profile exists.");
+      return winner;
+    }
     await deps.store.appendEvent({ subjectType: "profile", subjectId: created.id, workerIdentityId, eventType: "profile_created", newState: created.standing, source: "system" });
     return created;
   }
@@ -469,7 +479,13 @@ export function createPrismaHrStore(prisma: HrPrisma): HrStore {
       return r ? toProfile(r) : null;
     },
     async createProfile(workerIdentityId) {
-      return toProfile(await prisma.hrProfile.create({ data: { workerIdentityId } }));
+      try {
+        return toProfile(await prisma.hrProfile.create({ data: { workerIdentityId } }));
+      } catch (error) {
+        // hr_profiles_worker_identity_id_key: a concurrent request created it first.
+        if (error && typeof error === "object" && (error as { code?: unknown }).code === "P2002") return null;
+        throw error;
+      }
     },
     async setStanding({ workerIdentityId, standing, reason }) {
       return toProfile(await prisma.hrProfile.update({ where: { workerIdentityId }, data: { standing, standingReason: reason } }));

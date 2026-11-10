@@ -14,6 +14,7 @@
 import { createHash, randomUUID } from "node:crypto";
 import {
   createContractMoney,
+  fullJitterBackoffMs,
   proRateMinutesAtHourlyRate,
   subtractMoney,
   sumMoney,
@@ -379,6 +380,8 @@ const CALC_TRANSITIONS: Readonly<Record<string, readonly PayrollCalculationStatu
   lock: ["approved"]
 };
 const CALC_NEXT: Readonly<Record<string, PayrollCalculationStatus>> = { review: "in_review", approve: "approved", reject: "rejected", lock: "locked" };
+const BULK_WORKER_RETRIES = 8;
+const bulkRetrySleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
 
 export function createPayrollService(deps: PayrollDeps) {
   const now = deps.now ?? (() => new Date());
@@ -647,10 +650,13 @@ export function createPayrollService(deps: PayrollDeps) {
     for (let i = 0; i < batch.length; i += POOL) {
       const slice = batch.slice(i, i + POOL);
       const settled = await Promise.all(slice.map(async (workerIdentityId) => {
-        // Independent workers can still collide on shared serializable resources (audit rows) under
-        // pooled concurrency, surfacing as a transient conflict. Retry those a bounded number of
-        // times — each worker's row is distinct, so a retry converges. A genuine domain failure
-        // (missing rate, unsupported jurisdiction, …) is NOT retried.
+        // The repository already re-runs a revision write that PostgreSQL cancelled as a
+        // serialization failure. A conflict that still reaches here is a real race (a concurrent
+        // single-worker calculation or a duplicate bulk request moved this worker on), so re-run
+        // the whole calculation: it re-reads the prior revision and converges on no_change or a
+        // new revision. The wait is randomised so pool peers that collided do not retry in
+        // lockstep and collide again. A genuine domain failure (missing rate, unsupported
+        // jurisdiction, …) is NOT retried.
         for (let attempt = 0; ; attempt += 1) {
           try {
             const prior = await deps.repository.findActiveCalculation(period.id, workerIdentityId);
@@ -659,7 +665,7 @@ export function createPayrollService(deps: PayrollDeps) {
             return { workerIdentityId, outcome, calculationId: calc.id, revision: calc.revision };
           } catch (error) {
             const retryable = (error instanceof PayrollError && error.code === "conflict") || !(error instanceof PayrollError);
-            if (retryable && attempt < 8) { await new Promise((r) => setTimeout(r, 5 * (attempt + 1))); continue; }
+            if (retryable && attempt < BULK_WORKER_RETRIES) { await bulkRetrySleep(fullJitterBackoffMs(attempt, 10, 250)); continue; }
             if (error instanceof PayrollError) return { workerIdentityId, outcome: error.code === "conflict" ? ("conflict" as const) : ("failed" as const), reason: error.reason };
             return { workerIdentityId, outcome: "failed" as const, reason: "unexpected_error" };
           }

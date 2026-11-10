@@ -1,5 +1,11 @@
 import type { PrismaClient } from "@rwos/database";
-import { createContractMoney, jobBonusWorkerPayMinor, LATE_CANCELLATION_TIMESHEET_MARKER } from "@rwos/shared";
+import {
+  createContractMoney,
+  isTransientTransactionConflict,
+  jobBonusWorkerPayMinor,
+  LATE_CANCELLATION_TIMESHEET_MARKER,
+  withTransientConflictRetry
+} from "@rwos/shared";
 import { loadShiftBonuses, pickShiftBonus } from "./jobBonusShift";
 import type {
   CreatePayrollCalculationInput,
@@ -128,12 +134,12 @@ export function createPrismaPayrollClassificationResolver(
 // (period, worker, revision) index makes a duplicate calculation request deterministic — exactly
 // one revision N can exist, so a racing duplicate loses rather than silently overwriting.
 
-const RETRYABLE = new Set(["P2034", "40001", "40P01"]);
-function isRetryable(error: unknown): boolean {
-  if (!error || typeof error !== "object") return false;
-  const code = (error as { code?: unknown }).code;
-  return typeof code === "string" && RETRYABLE.has(code);
-}
+// A SERIALIZABLE revision write can be cancelled by PostgreSQL (40001) even when no other writer
+// touched this worker: bulk calculation runs several workers at once, and their inserts land on the
+// same index pages of payroll_calculations, which SSI tracks per page. Nothing was committed, so the
+// whole transaction is re-run. A version-guard miss or a duplicate revision is a REAL lost race and
+// is never retried here.
+export const CALCULATION_WRITE_ATTEMPTS = 6;
 function isUniqueViolation(error: unknown): boolean {
   return !!error && typeof error === "object" && (error as { code?: unknown }).code === "P2002";
 }
@@ -275,7 +281,7 @@ export function createPrismaPayrollRepository(prisma: PrismaClient): PayrollRepo
 
     async createCalculationAtomically(input: CreatePayrollCalculationInput) {
       try {
-        return await prisma.$transaction(async (tx) => {
+        return await withTransientConflictRetry(() => prisma.$transaction(async (tx) => {
           if (input.supersedePriorId && input.expectedPriorVersion !== null) {
             // Version-guarded supersede of the prior active revision. A miss (0 rows) means a
             // concurrent writer already changed it — abort so the caller reports a conflict.
@@ -341,11 +347,17 @@ export function createPrismaPayrollRepository(prisma: PrismaClient): PayrollRepo
             await tx.payrollCalculation.update({ where: { id: input.supersedePriorId }, data: { supersededById: created.id } });
           }
           return mapCalc(created);
-        }, { isolationLevel: "Serializable" });
+        }, { isolationLevel: "Serializable" }), { maxAttempts: CALCULATION_WRITE_ATTEMPTS });
       } catch (error) {
-        // A duplicate revision (unique index) or a serialization/write conflict both mean this
-        // racer lost — deterministic single-winner, never a silent overwrite.
-        if (isUniqueViolation(error) || isRetryable(error)) return null;
+        if (isUniqueViolation(error)) {
+          // The new row's id is unique to this call. If it is already there, an earlier attempt of
+          // THIS call committed (its outcome was lost in transit) — that is our row, not a rival's.
+          const own = await prisma.payrollCalculation.findUnique({ where: { id: input.id } });
+          return own ? mapCalc(own) : null;
+        }
+        // A duplicate revision from a rival, or a conflict that persisted through every retry:
+        // this racer lost — deterministic single-winner, never a silent overwrite.
+        if (isTransientTransactionConflict(error)) return null;
         throw error;
       }
     },
