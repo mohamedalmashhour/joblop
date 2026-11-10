@@ -923,6 +923,21 @@ export const en = {
   "cancel.review": "Joblop will review this cancellation. It is recorded, with any charge, and our team will finish it.",
   "cancel.doneBody": "This request has been cancelled.",
   "cancel.recordedBody": "Your cancellation has been recorded.",
+  // Add your email (item 45). Sign-in stays by texted code; invoices and receipts go to this email.
+  "addEmail.title": "Add your email",
+  "addEmail.body": "We send invoices, receipts and important notices by email. You still sign in with a code by text.",
+  "addEmail.label": "Email",
+  "addEmail.send": "Send",
+  "addEmail.sending": "Sending…",
+  "addEmail.checkInbox": "Check your inbox to confirm",
+  "addEmail.sentTo": "We sent a link to {email}. Open it to confirm your email.",
+  "addEmail.resend": "Resend",
+  "addEmail.resendIn": "Resend in {seconds}s",
+  "addEmail.change": "Use a different email",
+  "addEmail.invalid": "Enter a valid email address.",
+  "addEmail.inUse": "This email is already used by another account",
+  "addEmail.error": "We could not send it right now. Try again in a minute.",
+  "addEmail.devLink": "Test mode: open this link to confirm",
 } as const;
 
 export type MessageKey = keyof typeof en;
@@ -1849,6 +1864,20 @@ export const fr: Messages = {
   "cancel.review": "Joblop va vérifier cette annulation. Elle est enregistrée, avec les frais s'il y a lieu, et notre équipe la terminera.",
   "cancel.doneBody": "Cette demande a été annulée.",
   "cancel.recordedBody": "Votre annulation a été enregistrée.",
+  "addEmail.title": "Ajoutez votre courriel",
+  "addEmail.body": "Nous envoyons les factures, les reçus et les avis importants par courriel. Vous vous connectez toujours avec un code par texto.",
+  "addEmail.label": "Courriel",
+  "addEmail.send": "Envoyer",
+  "addEmail.sending": "Envoi…",
+  "addEmail.checkInbox": "Vérifiez votre boîte de réception pour confirmer",
+  "addEmail.sentTo": "Nous avons envoyé un lien à {email}. Ouvrez-le pour confirmer votre courriel.",
+  "addEmail.resend": "Renvoyer",
+  "addEmail.resendIn": "Renvoyer dans {seconds} s",
+  "addEmail.change": "Utiliser un autre courriel",
+  "addEmail.invalid": "Entrez une adresse courriel valide.",
+  "addEmail.inUse": "Ce courriel est déjà utilisé par un autre compte",
+  "addEmail.error": "Envoi impossible pour le moment. Réessayez dans une minute.",
+  "addEmail.devLink": "Mode test : ouvrez ce lien pour confirmer",
 };
 
 // Arabic (RTL). Partial — any missing key falls back to en-CA at render time. Aim for full
@@ -2774,6 +2803,20 @@ export const ar: Partial<Messages> = {
   "cancel.review": "ستراجع Joblop هذا الإلغاء. تم تسجيله مع أي رسوم، وسيُكمله فريقنا.",
   "cancel.doneBody": "تم إلغاء هذا الطلب.",
   "cancel.recordedBody": "تم تسجيل إلغائك.",
+  "addEmail.title": "أضف بريدك الإلكتروني",
+  "addEmail.body": "نرسل الفواتير والإيصالات والإشعارات المهمة بالبريد الإلكتروني. ستبقى تسجّل الدخول برمز يصلك في رسالة نصية.",
+  "addEmail.label": "البريد الإلكتروني",
+  "addEmail.send": "إرسال",
+  "addEmail.sending": "جارٍ الإرسال…",
+  "addEmail.checkInbox": "افتح بريدك الوارد للتأكيد",
+  "addEmail.sentTo": "أرسلنا رابطًا إلى {email}. افتحه لتأكيد بريدك الإلكتروني.",
+  "addEmail.resend": "إعادة الإرسال",
+  "addEmail.resendIn": "إعادة الإرسال بعد {seconds} ث",
+  "addEmail.change": "استخدم بريدًا آخر",
+  "addEmail.invalid": "أدخل عنوان بريد إلكتروني صحيحًا.",
+  "addEmail.inUse": "هذا البريد مستخدم في حساب آخر",
+  "addEmail.error": "تعذّر الإرسال الآن. حاول مرة أخرى بعد دقيقة.",
+  "addEmail.devLink": "وضع الاختبار: افتح هذا الرابط للتأكيد",
 };
 
 export const dictionaries: Readonly<Record<EmployerLocale, Partial<Messages>>> = {

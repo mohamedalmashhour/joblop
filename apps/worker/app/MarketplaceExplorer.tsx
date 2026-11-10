@@ -4,6 +4,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { MarketplaceMap, type MapPin } from "./MarketplaceMap";
 import { useLocale, useT, fmtLocale } from "./i18n/LocaleProvider";
 import { LandingPanel } from "./LandingPanel";
+import { AddEmailCard } from "./AddEmailCard";
 import { HowItWorksMovie } from "./HowItWorksMovie";
 import { syncAccountLanguageOnce } from "./i18n/saveLanguage";
 import { NEXT_AFTER_SIGN_UP_KEY } from "./PublicJobSearch";
@@ -84,6 +85,8 @@ export function MarketplaceExplorer() {
   }
   return (
     <>
+      {/* Shown only while the worker has no confirmed email (item 45). */}
+      <AddEmailCard />
       <SearchPanel onSignedOut={() => setAuthState("signed_out")} />
       <HowItWorksMovie />
     </>
