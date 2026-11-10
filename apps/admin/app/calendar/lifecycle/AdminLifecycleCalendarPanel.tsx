@@ -5,6 +5,7 @@ import { parseAdminCalendarList, type AdminCalendarDto } from "@rwos/shared";
 import { usePageText } from "../../i18n/pageText";
 import { calendarText } from "../text";
 import { MonthCalendar, type CalendarEntry, type CalendarLegendItem, type CalendarTone } from "../MonthCalendar";
+import { SignedOut } from "../../shared/SignedOut";
 
 // Admin full-lifecycle calendar: every non-draft request across organizations, placed on a month
 // grid by its shift date and coloured by lifecycle status (submitted → under review → published →
@@ -95,7 +96,7 @@ export function AdminLifecycleCalendarPanel() {
       </div>
 
       {state.status === "loading" ? <p style={styles.state}>{t.loading}</p> : null}
-      {state.status === "denied" ? <p style={styles.state}>{t.denied}</p> : null}
+      {state.status === "denied" ? <SignedOut compact /> : null}
       {state.status === "error" ? <p style={styles.state}>{t.error}</p> : null}
       {state.status === "ready" ? <MonthCalendar entries={entries} legend={legend} /> : null}
     </section>

@@ -4,8 +4,15 @@ import { useEffect, useState } from "react";
 
 import { authStyles } from "../authStyles";
 import { usePageText } from "../i18n/pageText";
+import { safeReturnPath } from "../shared/signedOutText";
 
 import { signInText } from "./text";
+
+// After sign-in, go back to the page that sent staff here (?next=/same-site/path), else the calendar.
+function destination() {
+  if (typeof window === "undefined") return "/calendar";
+  return safeReturnPath(new URLSearchParams(window.location.search).get("next")) ?? "/calendar";
+}
 
 type MessageKey = "intro" | "numberRejected" | "codeSent" | "unavailable" | "codeRejected";
 
@@ -25,7 +32,7 @@ export function SignInForm() {
   useEffect(() => {
     fetch("/api/session", { cache: "no-store" })
       .then((response) => {
-        if (response.ok) window.location.replace("/calendar");
+        if (response.ok) window.location.replace(destination());
       })
       .catch(() => undefined);
   }, []);
@@ -69,7 +76,7 @@ export function SignInForm() {
         setProblem(true);
         return setMessage("codeRejected");
       }
-      window.location.assign("/calendar");
+      window.location.assign(destination());
     } catch {
       setProblem(true);
       setMessage("unavailable");

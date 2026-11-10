@@ -11,13 +11,18 @@ import {
   type AuthenticatedViewState
 } from "@rwos/shared";
 import { usePageText } from "../i18n/pageText";
+import { useLocale } from "../i18n/LocaleProvider";
+import { SignedOut } from "../shared/SignedOut";
+import { formatHours, intlLocale, parseRequestCards, type RequestCard } from "./requestSummary";
 import { calendarText } from "./text";
 
 export function AdminCalendarPanel() {
   const t = usePageText(calendarText).panel;
+  const locale = intlLocale(useLocale());
   const [state, setState] = useState<AuthenticatedViewState<readonly AdminCalendarDto[]>>({
     status: "loading"
   });
+  const [cards, setCards] = useState<Record<string, RequestCard>>({});
   const requestGeneration = useRef(0);
   const load = useCallback(async () => {
     const generation = ++requestGeneration.current;
@@ -28,6 +33,7 @@ export function AdminCalendarPanel() {
       if (!response.ok) return setState(calendarFailureState(response.status));
       const payload = await response.json();
       if (generation === requestGeneration.current) {
+        setCards(parseRequestCards((payload as { cards?: unknown } | null)?.cards));
         setState(calendarListState(parseAdminCalendarList(payload)));
       }
     } catch {
@@ -41,7 +47,7 @@ export function AdminCalendarPanel() {
     };
   }, [load]);
 
-  if (state.status === "denied") return <AdminSignIn />;
+  if (state.status === "denied") return <SignedOut />;
   if (state.status === "loading")
     return <StateCard title={t.loadingTitle} message={t.loadingMessage} retryLabel={t.retry} />;
   if (state.status === "empty")
@@ -75,29 +81,65 @@ export function AdminCalendarPanel() {
         />
       ) : null}
       <section style={styles.grid}>
-        {state.data.map((request) => (
-          <article key={request.id} style={styles.card}>
-            <span style={badgeStyle(request.status)}>{request.status.replaceAll("_", " ")}</span>
-            <h2 style={styles.h2}>{request.title}</h2>
-            <p style={styles.reference}>{t.organizationReference(request.organizationId)}</p>
-            <p>{formatWindow(request)}</p>
-            <a
-              href={`/calendar/request?request=${encodeURIComponent(request.requestNumber)}`}
-              style={styles.button}
-            >
-              {t.openDetail}
-            </a>
-          </article>
-        ))}
+        {state.data.map((request) => {
+          const card = cards[request.id];
+          const location = card
+            ? [card.locationName, card.locationCity].filter(Boolean).join(", ")
+            : request.addressSummary ?? "";
+          return (
+            <article key={request.id} style={styles.card}>
+              <span style={badgeStyle(request.status)}>{request.status.replaceAll("_", " ")}</span>
+              <h2 style={styles.h2}>{card?.companyName || t.companyUnknown}</h2>
+              <p style={styles.role}>{card?.roleLabel || request.title}</p>
+              {location ? <p style={styles.reference}>{location}</p> : null}
+              <p style={styles.meta}>
+                {t.workersAndHours(request.numberOfWorkers, formatHours(hoursOf(request), locale))}
+              </p>
+              <p style={styles.meta}>{formatWindow(request)}</p>
+              <a
+                href={`/calendar/request?request=${encodeURIComponent(request.requestNumber)}`}
+                style={styles.button}
+              >
+                {t.openDetail}
+              </a>
+            </article>
+          );
+        })}
       </section>
     </>
   );
 }
 
+function hoursOf(request: AdminCalendarDto) {
+  const hours = (Date.parse(request.endAt) - Date.parse(request.startAt)) / 3_600_000;
+  return Number.isFinite(hours) && hours > 0 ? Math.round(hours * 100) / 100 : 0;
+}
+
+// "Signed in as …" with a sign-out button. The name comes from the session; when it is missing the
+// line just says you're signed in.
 function SessionAction() {
   const t = usePageText(calendarText).panel;
   const [submitting, setSubmitting] = useState(false);
   const [clearFailed, setClearFailed] = useState(false);
+  const [name, setName] = useState<string | null>(null);
+  useEffect(() => {
+    let live = true;
+    fetch("/api/session", { cache: "no-store" })
+      .then(async (response) => (response.ok ? ((await response.json()) as { user?: { displayName?: unknown; emailNormalized?: unknown } }) : null))
+      .then((payload) => {
+        const user = payload?.user;
+        const value = typeof user?.displayName === "string" && user.displayName.trim()
+          ? user.displayName.trim()
+          : typeof user?.emailNormalized === "string"
+            ? user.emailNormalized
+            : null;
+        if (live) setName(value);
+      })
+      .catch(() => undefined);
+    return () => {
+      live = false;
+    };
+  }, []);
   const signOut = async () => {
     setSubmitting(true);
     try {
@@ -109,8 +151,8 @@ function SessionAction() {
     }
   };
   return (
-    <section aria-busy={submitting} aria-live="polite" style={styles.stateCard}>
-      <p>{clearFailed ? t.sessionClearFailed : t.sessionMessage}</p>
+    <section aria-busy={submitting} aria-live="polite" style={styles.sessionBar}>
+      <p style={{ margin: 0 }}>{clearFailed ? t.sessionClearFailed : name ? t.signedInAs(name) : t.sessionMessage}</p>
       <button
         disabled={submitting}
         onClick={() => void signOut()}
@@ -119,20 +161,6 @@ function SessionAction() {
       >
         {submitting ? t.signingOut : t.switchAccount}
       </button>
-    </section>
-  );
-}
-
-// Staff sign in with a mobile number and a texted code on the sign-in page.
-function AdminSignIn() {
-  const t = usePageText(calendarText).panel;
-  return (
-    <section style={styles.stateCard} aria-live="polite">
-      <h2 style={styles.h2}>{t.signInRequiredTitle}</h2>
-      <p>{t.signInRequiredMessage}</p>
-      <a href="/signin" style={styles.button}>
-        {t.signIn}
-      </a>
     </section>
   );
 }
@@ -218,9 +246,9 @@ const styles = {
   },
   button: {
     alignItems: "center",
-    background: "#171511",
+    background: "#F8B808",
     borderRadius: 8,
-    color: "#fff",
+    color: "#000000",
     cursor: "pointer",
     display: "inline-flex",
     fontWeight: 800,
@@ -230,6 +258,18 @@ const styles = {
     textDecoration: "none"
   },
   reference: { overflowWrap: "anywhere" as const },
+  role: { color: "#F8B808", fontWeight: 800, margin: "4px 0" },
+  meta: { color: "#faf6ec", margin: "4px 0" },
+  sessionBar: {
+    alignItems: "center",
+    color: "#b3a894",
+    display: "flex",
+    flexWrap: "wrap" as const,
+    gap: 12,
+    justifyContent: "space-between",
+    margin: "24px clamp(18px, 5vw, 64px) 0",
+    maxWidth: 720
+  },
   stateCard: {
     background: "#0c0c0c",
     border: "1px solid rgba(248, 184, 8, 0.16)",

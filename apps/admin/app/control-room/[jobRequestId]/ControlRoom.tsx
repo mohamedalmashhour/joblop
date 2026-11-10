@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState, type CSSProperties, type ReactNode } from "react";
+import { SignedOut } from "../../shared/SignedOut";
 
 type StageState = "done" | "current" | "pending";
 type Stage = { n: number; name: string; state: StageState };
@@ -54,15 +55,20 @@ export function ControlRoom({ jobRequestId }: Readonly<{ jobRequestId: string }>
   const [data, setData] = useState<History | null>(null);
   const [overview, setOverview] = useState<Overview | null>(null);
   const [err, setErr] = useState<string | null>(null);
+  const [signedOut, setSignedOut] = useState(false);
 
   useEffect(() => {
     let live = true;
     fetch(`/api/control-room/${encodeURIComponent(jobRequestId)}`, { cache: "no-store" })
       .then(async (res) => {
-        if (!res.ok) throw new Error(res.status === 401 ? "Sign in as an administrator to view this transaction." : "This transaction could not be loaded.");
+        if (res.status === 401 || res.status === 403) {
+          if (live) setSignedOut(true);
+          return null;
+        }
+        if (!res.ok) throw new Error("This transaction could not be loaded.");
         return (await res.json()) as History;
       })
-      .then((h) => { if (live) setData(h); })
+      .then((h) => { if (live && h) setData(h); })
       .catch((e) => { if (live) setErr(String(e.message ?? e)); });
     // Order linkage: client name + accepted worker(s) + lifecycle. Additive; failure is non-fatal.
     fetch(`/api/control-room/${encodeURIComponent(jobRequestId)}/overview`, { cache: "no-store" })
@@ -72,6 +78,7 @@ export function ControlRoom({ jobRequestId }: Readonly<{ jobRequestId: string }>
     return () => { live = false; };
   }, [jobRequestId]);
 
+  if (signedOut) return <Shell><SignedOut compact /></Shell>;
   if (err) return <Shell><div style={{ color: C.muted, padding: 24 }}>{err}</div></Shell>;
   if (!data) return <Shell><div style={{ color: C.muted, padding: 24 }}>Loading transaction…</div></Shell>;
 

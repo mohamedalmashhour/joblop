@@ -180,7 +180,9 @@ export function AdminShell({
           </div>
         ))}
       </nav>
-      {currentIndex >= 0 ? (
+      {/* The numbered "Back · 1 … N · Next" stepper was for walking the phase-01 review pages. It
+          stays in the local review build only; deployed staff pages never show it. */}
+      {!connectedEnvironment && currentIndex >= 0 ? (
         <PageNavigator
           backLabel={t("page.back")}
           currentIndex={currentIndex}

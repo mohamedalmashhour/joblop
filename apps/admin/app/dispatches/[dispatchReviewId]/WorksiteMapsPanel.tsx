@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { AdminWorksiteMap, type WorksitePoint } from "./AdminWorksiteMap";
+import { SignedOut } from "../../shared/SignedOut";
 
 // Two separate maps for the admin:
 //   1) Contract — where the contract worksite is.
@@ -52,12 +53,13 @@ export function WorksiteMapsPanel({ dispatchReviewId }: Readonly<{ dispatchRevie
     return state.schedule.days.find((d) => d.date === selectedDate) ?? state.schedule.days[0] ?? null;
   }, [state, selectedDate]);
 
+  if (state.status === "denied") return <SignedOut compact />;
   if (state.status !== "ready") {
     return (
       <div>
         <h2>Worksite maps</h2>
         <p aria-live="polite">
-          {state.status === "loading" ? "Loading worksite maps…" : state.status === "denied" ? "Administrator authorization is required." : "Worksite maps are unavailable."}
+          {state.status === "loading" ? "Loading worksite maps…" : "Worksite maps are unavailable."}
         </p>
         {state.status !== "loading" ? (
           <button type="button" style={styles.button} onClick={() => void load()}>

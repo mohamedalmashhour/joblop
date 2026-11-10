@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState, type FormEvent } from "react";
 import { usePageText } from "../i18n/pageText";
 import { contactDeskText } from "./text";
+import { SignedOut } from "../shared/SignedOut";
 
 // One list for workers and employers, urgent first and longest-waiting next. Internal notes are never
 // shown to the worker or employer.
@@ -207,7 +208,7 @@ export function ContactDeskPanel() {
       </div>
       {state.status === "denied" ? null : <AskAi conversationId={openId} />}
       {state.status === "loading" ? <p style={styles.muted}>{t.loading}</p> : null}
-      {state.status === "denied" ? <p style={styles.error}>{t.denied}</p> : null}
+      {state.status === "denied" ? <SignedOut compact /> : null}
       {state.status === "error" ? <p role="alert" style={styles.error}>{t.loadError}</p> : null}
       {state.status === "ready" ? (
         <div style={styles.columns}>

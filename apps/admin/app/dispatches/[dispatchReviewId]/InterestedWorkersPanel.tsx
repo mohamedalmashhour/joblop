@@ -4,6 +4,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { useLocale } from "../../i18n/LocaleProvider";
 import { readShiftOverlapNotice } from "../shiftOverlapNotice";
 import { CertificateOverrideBox, certificateOverrideBody, type CertificateOverride } from "../CertificateOverrideBox";
+import { SignedOut } from "../../shared/SignedOut";
 
 // Marketplace INTEREST review, inside the existing governed dispatch review. This panel is a
 // review signal + governed handoff only:
@@ -173,6 +174,7 @@ export function InterestedWorkersPanel({
     [busyId, dispatchReviewId, load, locale, certificateOverrides]
   );
 
+  if (state.status === "denied") return <SignedOut compact />;
   if (state.status !== "ready") {
     return (
       <div>
@@ -180,9 +182,7 @@ export function InterestedWorkersPanel({
         <p aria-live="polite">
           {state.status === "loading"
             ? "Loading marketplace interest…"
-            : state.status === "denied"
-              ? "Administrator authorization is required."
-              : "Marketplace interest is unavailable."}
+            : "Marketplace interest is unavailable."}
         </p>
         {state.status !== "loading" ? (
           <button type="button" style={styles.button} onClick={() => void load()}>

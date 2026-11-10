@@ -1,4 +1,5 @@
 import { AdminGreetingsPanel } from "./AdminGreetingsPanel";
+import { StaffGate } from "../shared/StaffGate";
 
 export default function AdminGreetingsPage() {
   return (
@@ -13,7 +14,9 @@ export default function AdminGreetingsPage() {
           the active country profile.
         </p>
       </header>
-      <AdminGreetingsPanel />
+      <StaffGate>
+        <AdminGreetingsPanel />
+      </StaffGate>
     </main>
   );
 }

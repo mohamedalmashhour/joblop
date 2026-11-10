@@ -5,6 +5,7 @@ import type {
   FinanceInvoice,
   FinancePayment
 } from "../api/finance/financeBoundary";
+import { SignedOut } from "../shared/SignedOut";
 
 type FinanceState =
   | { status: "idle" | "loading" }
@@ -126,8 +127,9 @@ export function FinanceDataPanel() {
             Waiting for both authoritative read paths. No prior result is presented as current.
           </State>
         ) : null}
-        {state.status === "denied" || state.status === "error" || state.status === "unavailable" ? (
-          <State title={state.status === "denied" ? "Access denied" : "Finance data unavailable"}>
+        {state.status === "denied" ? <SignedOut compact /> : null}
+        {state.status === "error" || state.status === "unavailable" ? (
+          <State title="Finance data unavailable">
             {state.message}
           </State>
         ) : null}

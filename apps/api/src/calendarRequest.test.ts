@@ -4,8 +4,9 @@ import type {
   CalendarRequestService,
   CalendarVerificationState
 } from "@rwos/auth";
-import { CalendarRequestError } from "@rwos/auth";
+import { AuthorizationDeniedError, CalendarRequestError } from "@rwos/auth";
 import { buildApi } from "./app";
+import type { AdminRequestSummary } from "./adminRequestSummary";
 
 describe("calendar request persistence API", () => {
   it("requires authentication for client, admin, and worker calendar routes", async () => {
@@ -179,6 +180,131 @@ describe("calendar request persistence API", () => {
       /clientBillRate|platformMargin|paymentMethod|internalAdminNotes/i
     );
 
+    await app.close();
+  });
+});
+
+describe("staff-only request summary on the platform calendar", () => {
+  const summary = {
+    companyName: "Ferme Laval",
+    locationName: "Main barn",
+    locationCity: "Laval",
+    roleLabel: "Farm worker",
+    workGroupLabel: "Farming / Agriculture",
+    urgency: "normal",
+    numberOfWorkers: 2,
+    hoursPerWorker: 8,
+    totalHours: 16,
+    requiredCertificates: [],
+    requiredCertificateOther: null,
+    allowances: [],
+    pricing: null,
+    pricingProblem: "no_role_rate",
+    openClaim: false,
+    confirmedWorkerCount: 0,
+    publicJobUrl: null
+  } satisfies AdminRequestSummary;
+
+  it("adds the summary and list cards only after the admin calendar authorization passed", async () => {
+    const reads: string[] = [];
+    const app = buildApi({
+      authService: authenticationService(true),
+      calendarRequestService: calendarService(),
+      resolveAuthorizationRoles: () => ["PLATFORM_ADMINISTRATOR"],
+      adminRequestSummaryReader: {
+        cards: async (ids) => {
+          reads.push(`cards:${ids.join(",")}`);
+          return { "request-1": summary };
+        },
+        summary: async (id) => {
+          reads.push(`summary:${id}`);
+          return summary;
+        }
+      }
+    });
+
+    const detail = await app.inject({
+      method: "GET",
+      url: "/platform/calendar/requests/JR-2026-000001",
+      headers: { authorization: "Bearer session-token" }
+    });
+    const list = await app.inject({
+      method: "GET",
+      url: "/platform/calendar/requests",
+      headers: { authorization: "Bearer session-token" }
+    });
+
+    expect(detail.statusCode).toBe(200);
+    expect(detail.json().summary).toMatchObject({ companyName: "Ferme Laval", roleLabel: "Farm worker" });
+    expect(list.statusCode).toBe(200);
+    expect(list.json().cards["request-1"].companyName).toBe("Ferme Laval");
+    // The summary is looked up by the authorized record's id, not the raw route value.
+    expect(reads).toEqual(["summary:request-1", "cards:request-1"]);
+    await app.close();
+  });
+
+  it("never reads the summary when the admin calendar check denies the caller", async () => {
+    let called = false;
+    const app = buildApi({
+      authService: authenticationService(true),
+      calendarRequestService: calendarService({
+        getAdminCalendarRequest: async () => {
+          throw new AuthorizationDeniedError({ allowed: false } as never);
+        },
+        listAdminCalendar: async () => {
+          throw new AuthorizationDeniedError({ allowed: false } as never);
+        }
+      }),
+      resolveAuthorizationRoles: () => [],
+      adminRequestSummaryReader: {
+        cards: async () => {
+          called = true;
+          return {};
+        },
+        summary: async () => {
+          called = true;
+          return summary;
+        }
+      }
+    });
+
+    for (const url of ["/platform/calendar/requests/request-1", "/platform/calendar/requests"]) {
+      const response = await app.inject({ method: "GET", url, headers: { authorization: "Bearer session-token" } });
+      expect(response.statusCode).not.toBe(200);
+      expect(response.body).not.toContain("Ferme Laval");
+    }
+    expect(called).toBe(false);
+    await app.close();
+  });
+
+  it("keeps the calendar working when the summary read fails", async () => {
+    const app = buildApi({
+      authService: authenticationService(true),
+      calendarRequestService: calendarService(),
+      resolveAuthorizationRoles: () => ["PLATFORM_ADMINISTRATOR"],
+      adminRequestSummaryReader: {
+        cards: async () => {
+          throw new Error("db down");
+        },
+        summary: async () => {
+          throw new Error("db down");
+        }
+      }
+    });
+    const detail = await app.inject({
+      method: "GET",
+      url: "/platform/calendar/requests/request-1",
+      headers: { authorization: "Bearer session-token" }
+    });
+    const list = await app.inject({
+      method: "GET",
+      url: "/platform/calendar/requests",
+      headers: { authorization: "Bearer session-token" }
+    });
+    expect(detail.statusCode).toBe(200);
+    expect(detail.json().summary).toBeNull();
+    expect(list.statusCode).toBe(200);
+    expect(list.json().cards).toEqual({});
     await app.close();
   });
 });

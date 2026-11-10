@@ -2,6 +2,9 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
+import { SignedOut } from "../shared/SignedOut";
+
+const SIGNED_OUT = "signed-out";
 
 // Dispatch reviews index — a live list (from /api/dispatches/list), each row opening its
 // dispatch detail workspace. Read-only; additive.
@@ -37,7 +40,7 @@ export default function DispatchReviewsPage() {
 
   useEffect(() => {
     fetch("/api/dispatches/list")
-      .then(async (r) => (r.ok ? r.json() : Promise.reject(r.status === 401 ? "Sign in to view dispatch reviews." : `Could not load dispatch reviews (HTTP ${r.status}).`)))
+      .then(async (r) => (r.ok ? r.json() : Promise.reject(r.status === 401 || r.status === 403 ? SIGNED_OUT : `Could not load dispatch reviews (HTTP ${r.status}).`)))
       .then((j) => {
         const rows: Row[] = Array.isArray(j?.dispatches) ? j.dispatches : [];
         setLoad(rows.length ? { state: "ready", rows } : { state: "empty" });
@@ -56,7 +59,8 @@ export default function DispatchReviewsPage() {
         </p>
 
         {load.state === "loading" && <div style={{ color: C.muted, fontSize: 14, padding: "10px 0" }}>Loading dispatch reviews…</div>}
-        {load.state === "error" && <div style={{ color: "#9a1f2b", fontSize: 14, padding: "10px 0" }}>{load.reason}</div>}
+        {load.state === "error" && load.reason === SIGNED_OUT && <SignedOut compact />}
+        {load.state === "error" && load.reason !== SIGNED_OUT && <div style={{ color: "#9a1f2b", fontSize: 14, padding: "10px 0" }}>{load.reason}</div>}
         {load.state === "empty" && <div style={{ color: C.muted, fontSize: 14, padding: "10px 0" }}>No dispatch reviews yet. Approve a request in the calendar to start one.</div>}
 
         {load.state === "ready" && (

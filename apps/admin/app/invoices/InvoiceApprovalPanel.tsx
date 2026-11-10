@@ -5,6 +5,7 @@ import type { FinanceInvoice } from "../api/finance/financeBoundary";
 import { usePageText } from "../i18n/pageText";
 import { invoiceActionPath, invoiceIssueBody, invoiceSendBody, nextInvoiceAction, type InvoiceStaffAction } from "./invoiceIssue";
 import { invoicesText } from "./text";
+import { SignedOut } from "../shared/SignedOut";
 
 type Organization = Readonly<{ id: string; displayName: string }>;
 type State = { status: "idle" | "loading" | "denied" | "error" } | { status: "ready"; invoices: readonly FinanceInvoice[] };
@@ -81,7 +82,7 @@ export function InvoiceApprovalPanel() {
     }
   }, [load, t]);
 
-  if (state.status === "denied") return <p style={styles.wrapText}>{t.denied} <a href="/signin" style={{ color: "#fff1a8" }}>{t.signInAgain}</a>.</p>;
+  if (state.status === "denied") return <SignedOut compact />;
 
   return (
     <section style={styles.wrap}>

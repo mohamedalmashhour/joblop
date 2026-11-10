@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState, type CSSProperties, type FormEvent } from "react";
 import type { FinanceInvoice, FinancePayment } from "../../api/finance/financeBoundary";
 import { MonthCalendar, type CalendarEntry, type CalendarLegendItem, type CalendarTone } from "../../calendar/MonthCalendar";
+import { SignedOut } from "../../shared/SignedOut";
 
 // Admin finance billing calendar: lays the authorized organization's invoices on a month grid by the
 // date each was issued (falling back to its due date), coloured by status, with a paid marker from
@@ -181,7 +182,8 @@ export function FinanceCalendarPanel() {
           <p style={styles.state}>Enter an authorized organization reference to view its billing calendar.</p>
         ) : null}
         {state.status === "loading" ? <p style={styles.state}>Loading finance records…</p> : null}
-        {state.status === "denied" || state.status === "error" || state.status === "unavailable" ? (
+        {state.status === "denied" ? <SignedOut compact /> : null}
+        {state.status === "error" || state.status === "unavailable" ? (
           <p style={styles.state}>{state.message}</p>
         ) : null}
         {state.status === "ready" ? (

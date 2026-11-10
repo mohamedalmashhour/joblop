@@ -56,9 +56,7 @@ type OrdersCopy = {
 const en: OrdersCopy = {
   eyebrow: "Joblop / Administration",
   title: "Order review",
-  lede:
-    "Orders awaiting review, grouped so every role line in one employer submission is seen " +
-    "together. Opening an order does not approve, publish, assign, notify, or execute payment.",
+  lede: "New employer requests waiting for your approval.",
   detailLede:
     "Review each role line. Begin review, then approve for dispatch with a margin (default 20%) " +
     "or request information. Approving captures the immutable pricing snapshot for that role.",
@@ -124,9 +122,7 @@ const en: OrdersCopy = {
 const fr: OrdersCopy = {
   eyebrow: "Joblop / Administration",
   title: "Révision des commandes",
-  lede:
-    "Commandes en attente de révision, regroupées pour que chaque ligne de poste d’une même demande d’employeur " +
-    "soit vue ensemble. Ouvrir une commande n’approuve, ne publie, n’assigne, n’avise et ne paie rien.",
+  lede: "Nouvelles demandes d’employeurs qui attendent votre approbation.",
   detailLede:
     "Révisez chaque ligne de poste. Commencez la révision, puis approuvez pour l’affectation avec une marge " +
     "(20 % par défaut) ou demandez des renseignements. L’approbation fige le prix de ce poste de façon définitive.",
@@ -194,9 +190,7 @@ const fr: OrdersCopy = {
 const ar: OrdersCopy = {
   eyebrow: "Joblop / الإدارة",
   title: "مراجعة الطلبات",
-  lede:
-    "الطلبات بانتظار المراجعة، مجمّعة بحيث تظهر كل بنود الوظائف في طلب صاحب العمل الواحد معًا. " +
-    "فتح الطلب لا يعتمده ولا ينشره ولا يسنده ولا يرسل إشعارًا ولا ينفّذ أي دفعة.",
+  lede: "طلبات أصحاب العمل الجديدة بانتظار موافقتك.",
   detailLede:
     "راجع كل بند وظيفة. ابدأ المراجعة، ثم اعتمده للإرسال مع هامش ربح (20% افتراضيًا) أو اطلب معلومات. " +
     "الاعتماد يثبّت تسعير تلك الوظيفة بشكل نهائي.",

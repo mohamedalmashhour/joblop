@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
+import { SignedOut } from "../shared/SignedOut";
 
 type Order = {
   id: string;
@@ -47,7 +48,7 @@ export function ProOrdersPanel() {
   }, [load]);
 
   if (state === "loading") return <p style={styles.text}>Loading the Pro order queue.</p>;
-  if (state === "denied") return <p style={styles.text}>Administrator access required.</p>;
+  if (state === "denied") return <SignedOut compact />;
   if (state === "error") return <p style={styles.text}>The order queue could not be reached.</p>;
 
   return (

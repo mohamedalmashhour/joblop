@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from "react";
 import { usePageText } from "../i18n/pageText";
 import { JobInterestPanel } from "./JobInterestPanel";
 import { hrText } from "./text";
+import { SignedOut } from "../shared/SignedOut";
 
 type Tab = "review" | "documents" | "expiring" | "restricted" | "search" | "interests";
 
@@ -79,7 +80,7 @@ export function HrConsolePanel() {
       ) : null}
 
       {status === "loading" ? <p aria-live="polite">{t.loading}</p>
-      : status === "denied" ? <p>{t.denied}</p>
+      : status === "denied" ? <SignedOut compact />
       : status === "unavailable" ? <p>{t.unavailable} <button type="button" style={styles.button} onClick={() => void load(tab)}>{t.retry}</button></p>
       : rows.length === 0 ? <p style={styles.muted}>{t.empty}</p>
       : (
