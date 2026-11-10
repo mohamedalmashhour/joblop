@@ -1082,14 +1082,14 @@ function DateTimeField({
   const shownTime = snapToQuarterHour(time);
   const fallbackDate = splitDateTime(defaultStart()).date;
   return (
-    <div style={{ display: "grid", gap: 10, gridTemplateColumns: "minmax(0, 1.2fr) minmax(0, 1fr)" }}>
+    <div style={{ display: "grid", gap: 12, gridTemplateColumns: "minmax(0, 1.2fr) minmax(0, 1fr)" }}>
       <label style={styles.fieldLabel}>
         {dateLabel}
-        <input disabled={disabled} min={minDate} onChange={(e) => onChange(combineDateTime(e.target.value, shownTime || "08:00"))} required style={styles.input} type="date" value={date} />
+        <input disabled={disabled} min={minDate} onChange={(e) => onChange(combineDateTime(e.target.value, shownTime || "08:00"))} required style={{ ...styles.input, ...fillCell }} type="date" value={date} />
       </label>
       <label style={styles.fieldLabel}>
         {timeLabel}
-        <select disabled={disabled} onChange={(e) => onChange(combineDateTime(date || fallbackDate, e.target.value))} required style={styles.input} value={shownTime}>
+        <select disabled={disabled} onChange={(e) => onChange(combineDateTime(date || fallbackDate, e.target.value))} required style={{ ...styles.input, ...fillCell }} value={shownTime}>
           {shownTime ? null : <option value="">—</option>}
           {TIME_OPTIONS.map((option) => (
             <option key={option} value={option}>{timeOptionLabel(option, locale)}</option>
@@ -1312,6 +1312,10 @@ function StateCard({
     </article>
   );
 }
+
+// A date or time box fills its own cell and never spills into the next one (the native date input has a
+// wide intrinsic size that pushed it under the time box).
+const fillCell: React.CSSProperties = { boxSizing: "border-box", minWidth: 0, width: "100%" };
 
 const successBanner: React.CSSProperties = {
   background: "#0f2a17",
