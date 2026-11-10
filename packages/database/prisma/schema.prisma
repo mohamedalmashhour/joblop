@@ -4031,3 +4031,101 @@ model UnfilledShiftAlert {
   @@index([createdAt], map: "unfilled_shift_alerts_created_at_idx")
   @@map("unfilled_shift_alerts")
 }
+
+// ── Joblop Brain (phase 1) ──────────────────────────────────────────────────────────────────────
+// Storage for the platform-neutral brain engine (@rwos/brain). Plain text keys instead of enums so
+// the same tables can hold any platform's rules and actions. Written only by apps/api/src/brain.
+
+// Brain settings: "mode" (off | watch | live; a missing row is OFF) and "switch:<key>" ("true" or
+// "false"; a missing row is OFF). Staff flip them on the admin Brain page.
+model BrainSetting {
+  key             String   @id
+  value           String
+  updatedByUserId String?  @map("updated_by_user_id") @db.Uuid
+  updatedAt       DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  @@map("brain_settings")
+}
+
+// One row per issue a rule found. The fingerprint is unique, so the same issue is stored (and acted
+// on) once; a resolved issue is never reopened.
+model BrainIssue {
+  id                String    @id @default(uuid()) @db.Uuid
+  fingerprint       String    @unique(map: "brain_issues_fingerprint_key")
+  ruleKey           String    @map("rule_key")
+  subjectType       String    @map("subject_type")
+  subjectId         String    @map("subject_id")
+  severity          String
+  summary           String
+  inputs            Json
+  recommendedAction String?   @map("recommended_action")
+  status            String    @default("open")
+  resolution        String?
+  detectedAt        DateTime  @map("detected_at") @db.Timestamptz(3)
+  lastSeenAt        DateTime  @map("last_seen_at") @db.Timestamptz(3)
+  resolvedAt        DateTime? @map("resolved_at") @db.Timestamptz(3)
+
+  actions BrainAction[]
+
+  @@index([status, detectedAt], map: "brain_issues_status_detected_at_idx")
+  @@index([ruleKey, status], map: "brain_issues_rule_key_status_idx")
+  @@index([detectedAt], map: "brain_issues_detected_at_idx")
+  @@map("brain_issues")
+}
+
+// The audit log: one row per action (done, skipped, failed, or "would have done" in watch mode) with
+// what, why (rule + inputs), when, the result and how to undo. Unique (issue, action, kind) is the
+// once-only guarantee: the same issue is never acted on twice.
+model BrainAction {
+  id             String    @id @default(uuid()) @db.Uuid
+  issueId        String    @map("issue_id") @db.Uuid
+  actionKey      String    @map("action_key")
+  kind           String
+  actorType      String    @map("actor_type")
+  actorUserId    String?   @map("actor_user_id") @db.Uuid
+  ruleKey        String    @map("rule_key")
+  reason         String
+  inputs         Json
+  status         String
+  detail         String?
+  undoKind       String?   @map("undo_kind")
+  undoData       Json?     @map("undo_data")
+  undoHint       String    @map("undo_hint")
+  createdAt      DateTime  @map("created_at") @db.Timestamptz(3)
+  finishedAt     DateTime? @map("finished_at") @db.Timestamptz(3)
+  undoneAt       DateTime? @map("undone_at") @db.Timestamptz(3)
+  undoneByUserId String?   @map("undone_by_user_id") @db.Uuid
+
+  issue BrainIssue @relation(fields: [issueId], references: [id], onDelete: Restrict)
+
+  @@unique([issueId, actionKey, kind], map: "brain_actions_issue_action_kind_key")
+  @@index([actionKey, kind, createdAt], map: "brain_actions_action_kind_created_at_idx")
+  @@index([createdAt], map: "brain_actions_created_at_idx")
+  @@map("brain_actions")
+}
+
+// Once-only markers (for example one daily summary email per day).
+model BrainMarker {
+  marker    String   @id
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  @@map("brain_markers")
+}
+
+// Email/SMS sends that failed, so the brain can find them and re-send. The message text is kept only
+// when the message is safe to re-send (never one-time codes, never attachments) and is cleared once
+// re-sent or after 7 days.
+model MessageDeliveryFailure {
+  id          String    @id @default(uuid()) @db.Uuid
+  channel     String
+  recipient   String
+  subject     String?
+  body        String?
+  retryable   Boolean   @default(false)
+  failedAt    DateTime  @map("failed_at") @db.Timestamptz(3)
+  resentAt    DateTime? @map("resent_at") @db.Timestamptz(3)
+  resendCount Int       @default(0) @map("resend_count")
+
+  @@index([failedAt], map: "message_delivery_failures_failed_at_idx")
+  @@map("message_delivery_failures")
+}

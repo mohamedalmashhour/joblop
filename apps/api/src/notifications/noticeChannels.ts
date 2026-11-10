@@ -2,7 +2,7 @@
 //   - Sign-in is by mobile number and a texted code. No passwords.
 //   - Email carries documents and information: invoices, receipts, statements, replies, greetings.
 //   - Text carries only what is urgent or important: codes, a confirmed shift, a shift about to
-//     start, a held shift that is cancelled or changed, a paid plan or listing ending tomorrow, and
+//     start, a shift started with no check-in yet, a held shift that is cancelled or changed, a paid plan or listing ending tomorrow, and
 //     staff alerts marked urgent. Texts cost
 //     money and interrupt, so nothing else.
 //   - Push (the phone app) carries what a worker should see at once: a confirmed, upcoming,
@@ -26,7 +26,10 @@ export type NoticeKind =
   | "account_notice"
   | "staff_needed"
   | "staff_replied"
-  | "greeting";
+  | "greeting"
+  | "check_in_reminder"
+  | "timesheet_reminder"
+  | "staff_summary";
 
 export type NoticeChannels = Readonly<{ email: boolean; text: "always" | "urgent_only" | "never"; push?: boolean }>;
 
@@ -49,7 +52,11 @@ export const NOTICE_CHANNELS: Readonly<Record<NoticeKind, NoticeChannels>> = {
   account_notice: { email: true, text: "never" },
   staff_needed: { email: true, text: "urgent_only" },
   staff_replied: { email: true, text: "never", push: true },
-  greeting: { email: true, text: "never" }
+  greeting: { email: true, text: "never" },
+  // Brain (phase 1): a confirmed worker who has not checked in 10 minutes after the start is urgent.
+  check_in_reminder: { email: false, text: "always" },
+  timesheet_reminder: { email: true, text: "never" },
+  staff_summary: { email: true, text: "never" }
 };
 
 export function sendsEmail(kind: NoticeKind): boolean {

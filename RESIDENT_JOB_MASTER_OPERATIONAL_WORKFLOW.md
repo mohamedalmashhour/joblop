@@ -669,36 +669,50 @@ Filters and grouping:
 
 ## 24. AI Brain
 
-AI may:
+Owner decision (2026-11-10): the Joblop Brain has **full control** of day-to-day operations. It
+finds and solves problems, checks confirmations, sends emails and SMS, and may approve jobs, assign
+workers and approve hours on its own. This replaces the earlier rule that AI may only recommend.
 
-- validate Job Request completeness
-- suggest roles
-- suggest qualification requirements
-- recommend workers
-- explain conflicts
-- flag risks
-- estimate charges
-- explain policy output
-- identify possible overtime
-- summarize completion
-- assist invoice preparation
-- detect inconsistencies
+The Brain may (each behind its own switch):
 
-AI must not:
+- find problems with deterministic rules (unfilled jobs close to start, missed check-ins, failed
+  emails/SMS, requests waiting for review, unconfirmed timesheets, overdue invoices, jobs with
+  missing information)
+- re-send failed emails and texts (never one-time codes, sign-in links or attachments)
+- remind workers to check in and employers to confirm hours
+- offer an employer a bonus for a job that is not filling (the employer is always asked first)
+- approve a Job Request for dispatch when every check passes
+- approve a timesheet when check-in and check-out exist with no exceptions and both sides confirmed
+- assign workers (phase 2)
+- validate completeness, flag risks, detect inconsistencies and summarize the day for staff
 
-- create authoritative Job Request state
-- approve dispatch
-- send an offer without authorized action
-- accept for a worker
-- assign automatically
+The Brain must never (these stay with people, whatever the switches say):
+
+- charge an employer, create a payment settlement, run a payout or mark a worker paid
+- decide a legal entitlement
 - edit attendance evidence
-- approve timesheet
-- decide legal entitlement
-- charge employer
-- create payment settlement
-- mark worker paid
+- show a worker or an employer Joblop's share or the other side's rate in any message
 
-Every AI recommendation must identify input source, freshness, policy/model version, confidence, limitations, and human decision required.
+Safeguards:
+
+- **Switches.** Every autonomous action has its own on/off switch, stored in the database and
+  flipped by staff on the admin Brain page. Every switch starts OFF.
+- **Master switch.** `off` is the kill switch (problems are listed, nothing is done); `watch`
+  records "would have done X" without doing anything, so accuracy can be measured first; `live`
+  runs only the actions whose own switch is on.
+- **Same rules as staff.** Approvals go through the same domain functions staff use (the governed
+  approve-for-dispatch flow with pricing and permission checks, the timesheet approval), acting as a
+  named staff account (`BRAIN_ACTOR_USER_ID`). Without that account the Brain changes no records.
+- **Once only, with limits.** The same issue is never acted on twice, and each action has a daily
+  cap.
+- **Audit.** Every action writes a row: what, why (rule and inputs), when, result, and how to undo.
+  Staff can undo a bonus offer the employer has not answered, or send brain-approved hours back for
+  correction.
+- **Deterministic.** Phase 1 uses no outside AI. A later language-model summary or draft must go
+  through the privacy filter.
+
+The engine is the platform-neutral `packages/brain`; Joblop's rules and actions are in
+`apps/api/src/brain`.
 
 ## 25. Notifications
 

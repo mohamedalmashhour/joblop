@@ -203,6 +203,154 @@ class BonusConflict extends Error {
 const auditReason = (bonus: BonusRow) =>
   `${bonus.fundedBy}:${bonus.kind}:${bonus.amountMinor}${bonus.urgentOverride ? ":urgent_override" : ""}${bonus.reason ? `:${bonus.reason}` : ""}`.slice(0, 1000);
 
+const BONUS_JOB_SELECT = {
+  id: true,
+  organizationId: true,
+  status: true,
+  startAt: true,
+  endAt: true,
+  pricingSnapshot: { select: { workerHourlyRateMinor: true, platformHourlyMarginMinor: true, currency: true } }
+} as const;
+
+type BonusJob = Prisma.JobRequestGetPayload<{ select: typeof BONUS_JOB_SELECT }>;
+
+const loadBonusJob = (prisma: PrismaClient, jobRequestId: string) =>
+  prisma.jobRequest.findUnique({ where: { id: jobRequestId }, select: BONUS_JOB_SELECT });
+
+// Create one bonus (offer to the employer, or a Joblop-funded approval) with its audit row, then email
+// the employer an offer. Shared by the staff route and the brain so both run the exact same steps.
+async function insertBonus(
+  prisma: PrismaClient,
+  emailSender: EmailSender,
+  input: {
+    job: BonusJob;
+    kind: JobBonusKind;
+    fundedBy: JobBonusFunding;
+    amount: number;
+    suggestedBySystem: boolean;
+    urgentOverride: boolean;
+    reason: string | null;
+    actor: string;
+    at: Date;
+  }
+): Promise<BonusRow> {
+  const { job, kind, fundedBy, amount, actor, at } = input;
+  const jobRequestId = job.id;
+  const bonus = await prisma.$transaction(async (tx) => {
+    await lockJob(tx, jobRequestId);
+    if (fundedBy === "platform" && (await hasActiveBonus(tx, jobRequestId))) {
+      throw new BonusConflict("RWOS_BONUS_ACTIVE_EXISTS", 409, "This job already has an active bonus. Cancel it first.");
+    }
+    const created = await tx.jobBonus.create({
+      data: {
+        jobRequestId,
+        organizationId: job.organizationId,
+        kind,
+        fundedBy,
+        status: fundedBy === "employer" ? "offered_to_employer" : "approved",
+        amountMinor: amount,
+        currency: job.pricingSnapshot?.currency || "CAD",
+        suggestedBySystem: input.suggestedBySystem,
+        urgentOverride: input.urgentOverride,
+        reason: input.reason,
+        createdByUserId: actor,
+        ...(fundedBy === "employer" ? { offeredAt: at } : { approvedAt: at, decidedByUserId: actor })
+      },
+      select: BONUS_SELECT
+    });
+    await recordBonusAudit(tx, {
+      bonus: created,
+      action: fundedBy === "employer" ? "bonus.offered" : "bonus.approved",
+      priorState: null,
+      actorUserId: actor,
+      reason: auditReason(created),
+      now: at
+    });
+    return created;
+  });
+  if (bonus.fundedBy === "employer") {
+    // Best-effort email; never fails the request.
+    await notifyClient(prisma, emailSender, {
+      jobRequestId,
+      kind: "bonus_offer",
+      bonus: { kind: bonus.kind, amountMinor: bonus.amountMinor }
+    }).catch(() => undefined);
+  }
+  return bonus;
+}
+
+// Cancel a bonus that is still in one of the allowed states, with its audit row.
+async function cancelBonus(
+  prisma: PrismaClient,
+  input: { bonusId: string; actor: string; at: Date; allowedFrom: readonly ("offered_to_employer" | "employer_accepted" | "approved")[] }
+): Promise<BonusRow> {
+  return prisma.$transaction(async (tx) => {
+    const current = await tx.jobBonus.findUnique({ where: { id: input.bonusId }, select: BONUS_SELECT });
+    if (!current) throw new BonusConflict("RWOS_BONUS_NOT_FOUND", 404, "That bonus was not found.");
+    const updated = await tx.jobBonus.updateMany({
+      where: { id: input.bonusId, status: { in: [...input.allowedFrom] } },
+      data: { status: "cancelled", cancelledAt: input.at }
+    });
+    if (updated.count !== 1) {
+      throw new BonusConflict("RWOS_BONUS_NOT_CANCELLABLE", 409, "Only an offered, accepted or approved bonus can be cancelled.");
+    }
+    const row = await tx.jobBonus.findUniqueOrThrow({ where: { id: input.bonusId }, select: BONUS_SELECT });
+    await recordBonusAudit(tx, { bonus: row, action: "bonus.cancelled", priorState: current.status, actorUserId: input.actor, reason: auditReason(row), now: input.at });
+    return row;
+  });
+}
+
+export type BrainBonusOfferResult =
+  | Readonly<{ status: "offered"; bonusId: string; kind: JobBonusKind; amountMinor: number }>
+  | Readonly<{ status: "not_open" | "already_has_bonus" | "no_suggestion" }>;
+
+/**
+ * Offer the system-suggested hourly bonus to the employer of an approved, priced job (the policy is to
+ * offer the employer first). Same validation, insert, audit and email as the staff route. Nothing is
+ * charged: the employer accepts or declines in Joblop.
+ */
+export async function offerSuggestedBonusToEmployer(
+  prisma: PrismaClient,
+  emailSender: EmailSender,
+  input: { jobRequestId: string; actorUserId: string; reason: string; now: Date }
+): Promise<BrainBonusOfferResult> {
+  const job = await loadBonusJob(prisma, input.jobRequestId);
+  if (!job || job.status !== "approved_for_dispatch" || !job.pricingSnapshot) return { status: "not_open" };
+  const existing = await prisma.jobBonus.findFirst({
+    where: { jobRequestId: job.id, status: { in: ["offered_to_employer", ...ACTIVE] } },
+    select: { id: true }
+  });
+  if (existing) return { status: "already_has_bonus" };
+  const suggestion = jobBonusSuggestionFor(job, input.now);
+  if (!suggestion || validateJobBonusAmount("hourly", suggestion.amountMinor) !== "ok") return { status: "no_suggestion" };
+  const bonus = await insertBonus(prisma, emailSender, {
+    job,
+    kind: "hourly",
+    fundedBy: "employer",
+    amount: suggestion.amountMinor,
+    suggestedBySystem: true,
+    urgentOverride: false,
+    reason: input.reason.slice(0, MAX_REASON_LENGTH),
+    actor: input.actorUserId,
+    at: input.now
+  });
+  return { status: "offered", bonusId: bonus.id, kind: bonus.kind, amountMinor: bonus.amountMinor };
+}
+
+/** Withdraw an offer the employer has not answered yet (the brain's undo). False when it is too late. */
+export async function withdrawBonusOffer(
+  prisma: PrismaClient,
+  input: { bonusId: string; actorUserId: string; now: Date }
+): Promise<boolean> {
+  try {
+    await cancelBonus(prisma, { bonusId: input.bonusId, actor: input.actorUserId, at: input.now, allowedFrom: ["offered_to_employer"] });
+    return true;
+  } catch (error) {
+    if (error instanceof BonusConflict) return false;
+    throw error;
+  }
+}
+
 export function registerJobBonusRoutes(app: FastifyInstance, deps: JobBonusRouteDeps) {
   const { prisma } = deps;
   const now = deps.now ?? (() => new Date());
@@ -215,18 +363,7 @@ export function registerJobBonusRoutes(app: FastifyInstance, deps: JobBonusRoute
   const bonusNotFound = (reply: FastifyReply) =>
     reply.code(404).send({ error: "RWOS_BONUS_NOT_FOUND", message: "That bonus was not found." });
 
-  const loadJob = (jobRequestId: string) =>
-    prisma.jobRequest.findUnique({
-      where: { id: jobRequestId },
-      select: {
-        id: true,
-        organizationId: true,
-        status: true,
-        startAt: true,
-        endAt: true,
-        pricingSnapshot: { select: { workerHourlyRateMinor: true, platformHourlyMarginMinor: true, currency: true } }
-      }
-    });
+  const loadJob = (jobRequestId: string) => loadBonusJob(prisma, jobRequestId);
 
   // ── Staff ──
 
@@ -322,46 +459,17 @@ export function registerJobBonusRoutes(app: FastifyInstance, deps: JobBonusRoute
     }
 
     try {
-      const bonus = await prisma.$transaction(async (tx) => {
-        await lockJob(tx, jobRequestId);
-        if (fundedBy === "platform" && (await hasActiveBonus(tx, jobRequestId))) {
-          throw new BonusConflict("RWOS_BONUS_ACTIVE_EXISTS", 409, "This job already has an active bonus. Cancel it first.");
-        }
-        const created = await tx.jobBonus.create({
-          data: {
-            jobRequestId,
-            organizationId: job.organizationId,
-            kind,
-            fundedBy,
-            status: fundedBy === "employer" ? "offered_to_employer" : "approved",
-            amountMinor: amount,
-            currency: job.pricingSnapshot!.currency || "CAD",
-            suggestedBySystem,
-            urgentOverride,
-            reason: reasonRaw.length > 0 ? reasonRaw : null,
-            createdByUserId: actor,
-            ...(fundedBy === "employer" ? { offeredAt: at } : { approvedAt: at, decidedByUserId: actor })
-          },
-          select: BONUS_SELECT
-        });
-        await recordBonusAudit(tx, {
-          bonus: created,
-          action: fundedBy === "employer" ? "bonus.offered" : "bonus.approved",
-          priorState: null,
-          actorUserId: actor,
-          reason: auditReason(created),
-          now: at
-        });
-        return created;
+      const bonus = await insertBonus(prisma, deps.emailSender, {
+        job,
+        kind,
+        fundedBy,
+        amount,
+        suggestedBySystem,
+        urgentOverride,
+        reason: reasonRaw.length > 0 ? reasonRaw : null,
+        actor,
+        at
       });
-      if (bonus.fundedBy === "employer") {
-        // Best-effort email; never fails the request.
-        await notifyClient(prisma, deps.emailSender, {
-          jobRequestId,
-          kind: "bonus_offer",
-          bonus: { kind: bonus.kind, amountMinor: bonus.amountMinor }
-        }).catch(() => undefined);
-      }
       return reply.code(201).send({ bonus: serializeJobBonus(bonus) });
     } catch (error) {
       if (error instanceof BonusConflict) return reply.code(error.status).send({ error: error.code, message: error.message });
@@ -375,20 +483,11 @@ export function registerJobBonusRoutes(app: FastifyInstance, deps: JobBonusRoute
     const bonusId = param(request.params, "bonusId");
     if (!UUID.test(bonusId)) return bonusNotFound(reply);
     try {
-      const bonus = await prisma.$transaction(async (tx) => {
-        const current = await tx.jobBonus.findUnique({ where: { id: bonusId }, select: BONUS_SELECT });
-        if (!current) throw new BonusConflict("RWOS_BONUS_NOT_FOUND", 404, "That bonus was not found.");
-        const at = now();
-        const updated = await tx.jobBonus.updateMany({
-          where: { id: bonusId, status: { in: ["offered_to_employer", "employer_accepted", "approved"] } },
-          data: { status: "cancelled", cancelledAt: at }
-        });
-        if (updated.count !== 1) {
-          throw new BonusConflict("RWOS_BONUS_NOT_CANCELLABLE", 409, "Only an offered, accepted or approved bonus can be cancelled.");
-        }
-        const row = await tx.jobBonus.findUniqueOrThrow({ where: { id: bonusId }, select: BONUS_SELECT });
-        await recordBonusAudit(tx, { bonus: row, action: "bonus.cancelled", priorState: current.status, actorUserId: actor, reason: auditReason(row), now: at });
-        return row;
+      const bonus = await cancelBonus(prisma, {
+        bonusId,
+        actor,
+        at: now(),
+        allowedFrom: ["offered_to_employer", "employer_accepted", "approved"]
       });
       return reply.code(200).send({ bonus: serializeJobBonus(bonus) });
     } catch (error) {
