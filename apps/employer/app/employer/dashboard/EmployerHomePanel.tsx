@@ -5,6 +5,7 @@ import { createContractMoney, formatMoney } from "@rwos/shared";
 import { useLocale, useT } from "../../i18n/LocaleProvider";
 import type { MessageKey } from "../../i18n/messages";
 import { styles } from "../employerStyles";
+import { RequestStatusChip } from "../RequestStatusChip";
 import { attentionItems, summarizeHome, type HomeSources } from "./homeSummary";
 
 type State =
@@ -290,15 +291,22 @@ export function EmployerHomePanel() {
                     <strong style={look.shiftTitle}>{shift.title}</strong>
                     <span style={styles.cardText}>{part({ hour: "numeric", minute: "2-digit" })}</span>
                   </span>
-                  <span style={look.pill}>{t(`home.status_${shift.status}` as MessageKey)}</span>
+                  <RequestStatusChip request={shift} style={{ alignSelf: "center" }} />
                 </a>
               );
             })}
+            {summary.draftCount ? (
+              <a href="/employer/calendar" style={look.draftsLine}>
+                <span>{t("home.drafts", { count: summary.draftCount })}</span>
+                <strong style={look.link}>{t("home.draftsOpen")}</strong>
+              </a>
+            ) : null}
           </div>
         </div>
 
         <h2 style={look.heading}>{t("home.everything")}</h2>
-        <div style={look.groupGrid}>
+        {/* 4 across on wide screens, 2 x 2 on tablets, 1 per row on phones (globals.css). */}
+        <div className="employer-group-grid">
           {groups.map(([title, links]) => (
             <section key={title} style={look.group}>
               <h3 style={look.groupTitle}>{t(title)}</h3>
@@ -343,8 +351,7 @@ const look: Record<string, CSSProperties> = {
   link: { color: gold, flex: "none" },
   dateChip: { alignItems: "center", background: "#000000", border: `1px solid ${hairline}`, borderRadius: 10, color: cream, display: "grid", flex: "none", justifyItems: "center", padding: "6px 10px" },
   shiftTitle: { color: cream, fontSize: 15, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" },
-  pill: { border: `1px solid ${hairline}`, borderRadius: 999, color: gold, flex: "none", fontSize: 12, fontWeight: 700, padding: "4px 10px" },
-  groupGrid: { display: "grid", gap: 16, gridTemplateColumns: "repeat(auto-fit, minmax(210px, 1fr))" },
+  draftsLine: { alignItems: "center", color: "#b3a894", display: "flex", fontSize: 14, gap: 12, justifyContent: "space-between", padding: "4px 14px", textDecoration: "none" },
   group: { alignContent: "start", background: raised, border: `1px solid ${hairline}`, borderRadius: 14, display: "grid", gap: 2, padding: 18 },
   groupTitle: { color: gold, fontSize: 13, fontWeight: 800, letterSpacing: 1, margin: "0 0 8px", textTransform: "uppercase" },
   groupLink: { color: cream, fontSize: 15, fontWeight: 600, padding: "7px 0", textDecoration: "none" },

@@ -140,8 +140,8 @@ describe("authenticated calendar UI integration", () => {
       expect(source).toContain('actionRequired === "information_required"');
       expect(source).toContain("actionRequiredReason");
     }
-    expect(detail).toContain("Provide requested information");
-    // The calendar card is translated (EN / FR / AR).
+    // The calendar card and the request detail are translated (EN / FR / AR).
+    expect(detail).toContain('t("calendar.provideInfo")');
     expect(list).toContain('t("calendar.provideInfo")');
   });
 

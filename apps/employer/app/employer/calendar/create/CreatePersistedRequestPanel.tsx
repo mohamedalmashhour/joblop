@@ -24,7 +24,8 @@ import {
 } from "@rwos/shared";
 import { fmtLocale, useLocale, useT, type Translate } from "../../../i18n/LocaleProvider";
 import { MAX_RECURRING_SHIFTS, recurringShifts, type ShiftTimes } from "./recurringShifts";
-import { DictationButton } from "./DictationButton";
+import { DictationButton, DictationPrivacyNote } from "./DictationButton";
+import { prefillSiteAddress, submittedConfirmation, type SubmittedConfirmation } from "./requestFormFlow";
 import { requestActionNotice } from "./requestActionNotice";
 import { LongTermListingsPanel } from "../../listings/LongTermListingsPanel";
 import { formPayOffered, longTermRequestBody, requestPricingGate } from "./longTermRequestForm";
@@ -176,6 +177,8 @@ export function CreatePersistedRequestPanel({ editRequestId = null }: Readonly<{
   const [contextLoading, setContextLoading] = useState(false);
   const [endTouched, setEndTouched] = useState(false);
   const contextRequest = useRef(0);
+  // The Site address the form filled in from the chosen Location (null when the employer typed their own).
+  const filledAddress = useRef<string | null>(null);
 
   useEffect(() => {
     setMessage(editMode ? t("create.editLoading") : t("create.msgLoadingChoices"));
@@ -266,7 +269,10 @@ export function CreatePersistedRequestPanel({ editRequestId = null }: Readonly<{
         return setMessage(t("create.msgChoicesUnavailable"));
       }
       setContext(loaded);
-      setForm(formFromDraft(jobRequest, loaded, profile?.request ?? null));
+      const filled = formFromDraft(jobRequest, loaded, profile?.request ?? null);
+      const locationAddress = loaded.residences.find((r) => r.id === filled.residenceId)?.address ?? null;
+      if (!filled.addressSummary && locationAddress) filledAddress.current = locationAddress;
+      setForm(filled.addressSummary ? filled : { ...filled, addressSummary: locationAddress ?? "" });
       setEndTouched(true);
       setStatus("editing");
       setMessage(t("create.msgCompleteFields"));
@@ -409,7 +415,12 @@ export function CreatePersistedRequestPanel({ editRequestId = null }: Readonly<{
   }
 
   async function selectResidence(residenceId: string) {
+    // Site address follows the Location right away (editable); an address the employer typed stays.
+    const locationAddress = context?.residences.find((r) => r.id === residenceId)?.address ?? null;
+    const next = prefillSiteAddress(form.addressSummary, filledAddress.current, locationAddress);
+    filledAddress.current = next.filled;
     update("residenceId", residenceId);
+    setForm((current) => ({ ...current, addressSummary: next.address }));
     if (residenceId) await reloadContext(residenceId);
   }
 
@@ -691,8 +702,18 @@ export function CreatePersistedRequestPanel({ editRequestId = null }: Readonly<{
     return <StateCard message={t("create.stateSetupIncompleteMsg")} title={t("create.stateSetupIncomplete")} t={t} />;
   }
 
+  // Sent for review: the form is replaced by a confirmation so it cannot be sent twice by accident.
+  const confirmation = submittedConfirmation({ status, draft, form, shiftCount: repeats ? shifts.length : 1 });
+  if (confirmation) {
+    return (
+      <SubmittedView confirmation={confirmation} locale={locale} message={message} t={t}>
+        {plansEnabled && form.jobLength === "long_term" && draft ? <LongTermListingsPanel onlyJobRequestId={draft.id} /> : null}
+      </SubmittedView>
+    );
+  }
+
   const editing = status === "editing";
-  const succeeded = status === "draft" || status === "submitted";
+  const succeeded = status === "draft";
   const actionNotice = requestActionNotice({ editing, message, rateUnpriced, missingFields: validation.filter((field) => field !== undefined), t });
   // One shift over 16 h usually means the wrong end day or time (a multi-day request spans days on purpose).
   const longShift = form.requestType !== "multi_day" && isLongShift(scheduledHours);
@@ -727,6 +748,7 @@ export function CreatePersistedRequestPanel({ editRequestId = null }: Readonly<{
           {message}
         </div>
       )}
+      {editing ? <DictationPrivacyNote /> : null}
       <div style={{ ...styles.formGrid, marginTop: 12 }}>
         <SelectField disabled={!editing || contextLoading} label={t("create.residence")} onChange={(v) => void selectResidence(v)} options={context.residences.map((i) => ({ label: i.name, value: i.id }))} value={form.residenceId} t={t} />
         <SelectField disabled={!editing || contextLoading || !form.residenceId} label={t("create.department")} onChange={(v) => update("departmentId", v)} options={departmentOptions.map((i) => ({ label: i.name, value: i.id }))} value={form.departmentId} t={t} />
@@ -764,7 +786,7 @@ export function CreatePersistedRequestPanel({ editRequestId = null }: Readonly<{
             <SelectField disabled={!editing} label={t("create.jobLength")} onChange={(v) => update("jobLength", v === "long_term" ? "long_term" : "short_term")} options={[{ label: t("create.jobLengthShort"), value: "short_term" }, { label: t("create.jobLengthLong"), value: "long_term" }]} value={form.jobLength} t={t} />
             <p style={styles.cardText}>
               {form.jobLength === "long_term" ? t("create.jobLengthHintLong") : t("create.jobLengthHintShort")}{" "}
-              <a href="/plans">{t("create.jobLengthSeePlans")}</a>
+              <a href="/plans" style={styles.inlineLink}>{t("create.jobLengthSeePlans")}</a>
             </p>
           </div>
         ) : null}
@@ -794,9 +816,10 @@ export function CreatePersistedRequestPanel({ editRequestId = null }: Readonly<{
         ) : null}
         <fieldset disabled={!editing} style={{ ...styles.tintedCard, border: 0, gridColumn: "1 / -1", margin: 0 }}>
           <legend style={styles.fieldLabel}>{t("create.requiredCerts")}</legend>
-          <div style={{ display: "flex", flexWrap: "wrap", gap: 12, marginTop: 8 }}>
+          {/* An even grid: 3 columns on wide screens, 2 on tablets, 1 on phones (see globals.css). */}
+          <div className="employer-cert-grid" style={{ marginTop: 8 }}>
             {REQUIRED_CERTIFICATE_KEYS.map((key) => (
-              <label key={key} style={{ alignItems: "center", display: "flex", gap: 6, maxWidth: 360 }}>
+              <label key={key} style={{ alignItems: "center", display: "flex", gap: 8, minWidth: 0 }}>
                 <input
                   checked={form.requiredCertificates.includes(key)}
                   onChange={(event) =>
@@ -805,9 +828,10 @@ export function CreatePersistedRequestPanel({ editRequestId = null }: Readonly<{
                       event.target.checked ? [...form.requiredCertificates, key] : form.requiredCertificates.filter((k) => k !== key)
                     )
                   }
+                  style={{ flexShrink: 0, margin: 0 }}
                   type="checkbox"
                 />
-                {certificateLabel(key, locale)}
+                <span style={{ overflowWrap: "anywhere" }}>{certificateLabel(key, locale)}</span>
               </label>
             ))}
           </div>
@@ -946,12 +970,6 @@ export function CreatePersistedRequestPanel({ editRequestId = null }: Readonly<{
         </label>
       ) : null}
 
-      {/* After a long-term job is sent: guide the employer to publish it (trial / card / e-transfer). */}
-      {status === "submitted" && plansEnabled && form.jobLength === "long_term" && draft ? (
-        <div style={{ marginTop: 18 }}>
-          <LongTermListingsPanel onlyJobRequestId={draft.id} />
-        </div>
-      ) : null}
       {status === "review" ? <RequestReview form={form} locale={locale} payOfferedLabel={payOffered ? formatPayOffered(payOffered, locale) : null} requiredCertificatesLabel={requiredCertificates && requiredCertificates.keys.length > 0 ? requiredCertificates.keys.map((key) => certificateLabel(key, locale, requiredCertificates.other)).join(", ") : t("create.requiredCertsNone")} roleLabel={selectedRole?.displayLabel ?? form.roleDefinition} shiftCount={shifts.length} t={t} /> : null}
       {longTerm ? null : <p style={styles.cardText}>{t("create.economicsNote")}</p>}
       {succeeded ? (
@@ -983,7 +1001,7 @@ export function CreatePersistedRequestPanel({ editRequestId = null }: Readonly<{
         {status === "draft" && !profileSaved ? (
           <button onClick={() => void retryProfile()} style={styles.secondaryButton} type="button">{t("create.retryDetails")}</button>
         ) : null}
-        {draft && (status === "draft" || status === "submitted") ? (
+        {draft && status === "draft" ? (
           <a href={`/employer/calendar/request?request=${encodeURIComponent(draft.jobRequestNumber)}`} style={styles.secondaryButton}>{t("create.openRequest")}</a>
         ) : null}
         {draft && draft.status === "draft" && (status === "editing" || status === "draft" || status === "review") ? (
@@ -1058,6 +1076,51 @@ function SuccessBanner({ message, t }: Readonly<{ message: string; t: Translate 
       <span>✓ {message}</span>{" "}
       <a href="/employer/calendar" style={{ color: "inherit", textDecoration: "underline", whiteSpace: "nowrap" }}>{t("create.openCalendar")}</a>
     </div>
+  );
+}
+
+// Shown instead of the form once the request is sent for review. A long-term job's publish step
+// (trial / card / e-transfer) comes in as children.
+function SubmittedView({ children, confirmation, locale, message, t }: Readonly<{ children?: React.ReactNode; confirmation: SubmittedConfirmation; locale: Parameters<typeof fmtLocale>[0]; message: string; t: Translate }>) {
+  const when = (local: string, options: Intl.DateTimeFormatOptions) => {
+    const date = new Date(local);
+    return Number.isNaN(date.getTime()) ? local : new Intl.DateTimeFormat(fmtLocale(locale), options).format(date);
+  };
+  const rows: readonly (readonly [string, string])[] = [
+    ...(confirmation.requestNumber ? [[t("create.sentNumber"), confirmation.requestNumber] as const] : []),
+    [t("create.title"), confirmation.title],
+    [
+      t("create.reviewSchedule"),
+      t("create.scheduleValue", {
+        start: when(confirmation.startAt, { dateStyle: "medium", timeStyle: "short" }),
+        end: when(confirmation.endAt, { dateStyle: "medium", timeStyle: "short" }),
+        tz: t("create.timezoneEastern")
+      })
+    ],
+    ...(confirmation.shiftCount > 1 ? [[t("create.requestType"), t("create.repeatCount", { count: confirmation.shiftCount })] as const] : []),
+    [t("create.workersRequired"), String(confirmation.workers)],
+    ...(confirmation.address ? [[t("create.siteAddress"), confirmation.address] as const] : [])
+  ];
+  return (
+    <section aria-labelledby="request-sent-title" style={styles.panel}>
+      <div aria-live="polite" role="status" style={successBanner}>✓ {message}</div>
+      <h2 id="request-sent-title" style={styles.sectionTitle}>{t("create.sentTitle")}</h2>
+      <p style={{ ...styles.cardText, margin: 0 }}>{t("create.sentBody")}</p>
+      <dl style={{ ...styles.cardGrid, margin: 0 }}>
+        {rows.map(([label, value]) => (
+          <div key={label} style={styles.tintedCard}>
+            <dt style={styles.metaLabel}>{label}</dt>
+            <dd style={{ margin: 0, overflowWrap: "anywhere" }}>{value}</dd>
+          </div>
+        ))}
+      </dl>
+      {children}
+      <div style={{ display: "flex", flexWrap: "wrap", gap: 10 }}>
+        {confirmation.openRequestHref ? <a href={confirmation.openRequestHref} style={styles.primaryButton}>{t("create.openRequest")}</a> : null}
+        <a href={confirmation.requestMoreHref} style={styles.secondaryButton}>{t("create.requestMore")}</a>
+        <a href={confirmation.backToCalendarHref} style={styles.secondaryButton}>{t("create.backToCalendar")}</a>
+      </div>
+    </section>
   );
 }
 

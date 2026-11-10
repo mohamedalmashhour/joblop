@@ -50,6 +50,27 @@ describe("summarizeHome", () => {
     expect(numbers).toEqual(["JR-4", "JR-5", "JR-6", "JR-7", "JR-8"]);
   });
 
+  it("keeps drafts out of Upcoming shifts and counts them on their own line", () => {
+    const now = new Date("2026-11-03T00:00:00Z");
+    const requests = [
+      { ...request("JR-draft", "2026-11-04T14:00:00Z"), status: "draft" },
+      { ...request("JR-old-draft", "2026-10-01T14:00:00Z"), status: "draft" },
+      { ...request("JR-sent", "2026-11-05T14:00:00Z"), status: "published" }
+    ];
+    const summary = summarizeHome({ requests, timesheets: [], invoices: [], ...extras }, now);
+    expect(summary.upcomingShifts.map((r) => r.requestNumber)).toEqual(["JR-sent"]);
+    expect(summary.draftCount).toBe(2);
+    expect(summarizeHome({ requests: null, timesheets: [], invoices: [], ...extras }, now).draftCount).toBeNull();
+  });
+
+  it("keeps a shift that is under way listed until it ends", () => {
+    const now = new Date("2026-11-03T16:00:00Z");
+    const working = { ...request("JR-now", "2026-11-03T14:00:00Z"), endAt: "2026-11-03T20:00:00Z", status: "in_progress" };
+    const ended = { ...request("JR-ended", "2026-11-03T08:00:00Z"), endAt: "2026-11-03T12:00:00Z", status: "assigned" };
+    const numbers = summarizeHome({ requests: [working, ended], timesheets: [], invoices: [], ...extras }, now).upcomingShifts.map((r) => r.requestNumber);
+    expect(numbers).toEqual(["JR-now"]);
+  });
+
   it("only raises items that need doing", () => {
     const summary = summarizeHome({
       requests: [request("JR-1", "2026-11-07T14:00:00Z")],

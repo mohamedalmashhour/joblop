@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useState } from "react";
+import { useT } from "../../../i18n/LocaleProvider";
 import { styles } from "../../employerStyles";
 
 // Add Workers — a live capacity increase. The employer chooses how many to add; the
@@ -11,6 +12,7 @@ export function AddWorkersPanel({
   currentWorkers,
   versionToken
 }: Readonly<{ requestId: string; currentWorkers: number; versionToken: number }>) {
+  const t = useT();
   const [open, setOpen] = useState(false);
   const [addCount, setAddCount] = useState(1);
   const [busy, setBusy] = useState(false);
@@ -27,34 +29,30 @@ export function AddWorkersPanel({
       });
       if (!res.ok) {
         setBusy(false);
-        return setError(
-          res.status === 409
-            ? "This request just changed. Refresh and try again."
-            : "Workers could not be added. Please try again."
-        );
+        return setError(res.status === 409 ? t("detail.conflict") : t("add.failed"));
       }
       window.location.reload();
     } catch {
       setBusy(false);
-      setError("Workers could not be added. Please try again.");
+      setError(t("add.failed"));
     }
-  }, [requestId, addCount, versionToken]);
+  }, [requestId, addCount, versionToken, t]);
 
   if (!open) {
     return (
       <button type="button" onClick={() => setOpen(true)} style={{ ...styles.secondaryButton, cursor: "pointer" }}>
-        Add workers
+        {t("add.open")}
       </button>
     );
   }
 
   const newTotal = currentWorkers + (Number.isInteger(addCount) && addCount >= 1 ? addCount : 0);
   return (
-    <div style={styles.panel} aria-live="polite">
-      <h3 style={styles.cardTitle}>Add workers</h3>
-      <p style={styles.cardText}>Current workers requested: {currentWorkers}</p>
-      <label style={{ ...styles.cardText, display: "flex", gap: 8, alignItems: "center" }}>
-        Add
+    <div style={{ ...styles.panel, flexBasis: "100%" }} aria-live="polite">
+      <h3 style={styles.cardTitle}>{t("add.open")}</h3>
+      <p style={{ ...styles.cardText, margin: 0 }}>{t("detail.currentWorkers", { count: currentWorkers })}</p>
+      <label style={{ ...styles.fieldLabel, maxWidth: 220 }}>
+        {t("add.label")}
         <input
           type="number"
           min={1}
@@ -62,25 +60,21 @@ export function AddWorkersPanel({
           value={addCount}
           disabled={busy}
           onChange={(e) => setAddCount(Math.max(1, Math.floor(Number(e.target.value) || 1)))}
-          style={{ width: 80 }}
-          aria-label="Number of workers to add"
+          style={styles.input}
         />
       </label>
-      <p style={styles.cardText}>
-        New total: <strong>{newTotal}</strong>. Additional staffing will be matched by Joblop; existing
-        workers and assignments are unchanged.
-      </p>
-      <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+      <p style={{ ...styles.cardText, margin: 0 }}>{t("add.newTotal", { total: newTotal })}</p>
+      <div className="employer-action-row">
         <button
           type="button"
           disabled={busy || addCount < 1}
           onClick={() => void submit()}
           style={{ ...styles.primaryButton, cursor: busy ? "wait" : "pointer" }}
         >
-          {busy ? "Adding…" : `Add ${addCount} Worker${addCount === 1 ? "" : "s"}`}
+          {busy ? t("add.adding") : addCount === 1 ? t("add.submitOne") : t("add.submitMany", { count: addCount })}
         </button>
         <button type="button" disabled={busy} onClick={() => setOpen(false)} style={{ ...styles.secondaryButton, cursor: "pointer" }}>
-          Cancel
+          {t("detail.cancel")}
         </button>
       </div>
       {error ? (

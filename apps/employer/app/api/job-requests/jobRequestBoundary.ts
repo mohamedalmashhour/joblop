@@ -1,7 +1,8 @@
 import { parsePayOffered, type PayOffered } from "@rwos/shared";
 
 export type EmployerRequestContext = Readonly<{
-  residences: readonly Readonly<{ id: string; name: string }>[];
+  // address: the employer's own site address, used to pre-fill the request's "Site address" box.
+  residences: readonly Readonly<{ id: string; name: string; address: string | null }>[];
   departments: readonly Readonly<{ id: string; name: string; residenceId: string }>[];
   workGroups: readonly Readonly<{ id: string; slug: string; displayLabel: string }>[];
   roleDefinitions: readonly Readonly<{
@@ -130,7 +131,7 @@ export function parseEmployerRequestContext(input: {
     residences: parseList(input.residences, "residences").flatMap((value) => {
       const record = asRecord(value);
       return isString(record.id) && isString(record.name)
-        ? [{ id: record.id, name: record.name }]
+        ? [{ id: record.id, name: record.name, address: residenceAddress(record) }]
         : [];
     }),
     departments: parseList(input.departments, "departments").flatMap((value) => {
@@ -168,6 +169,19 @@ export function parseEmployerRequestContext(input: {
       ];
     })
   };
+}
+
+// One line for a site's address ("901 Avenue du Parc, Laval, QC H7N 0A1"), or null when none is on file.
+function residenceAddress(record: Readonly<Record<string, unknown>>): string | null {
+  const text = (key: string) => (typeof record[key] === "string" ? (record[key] as string).trim() : "");
+  const street = text("addressSummary") || [text("addressLine1"), text("addressLine2")].filter(Boolean).join(" ");
+  const regionPostal = [text("province") || text("region"), text("postalCode")].filter(Boolean).join(" ");
+  const parts: string[] = [];
+  for (const part of [street, text("city"), regionPostal]) {
+    if (part && !parts.some((existing) => existing.toLowerCase().includes(part.toLowerCase()))) parts.push(part);
+  }
+  const line = parts.join(", ").slice(0, 500);
+  return line || null;
 }
 
 // Reads the active contract payload ({ contract: { roleRates: [...] } }) into a
