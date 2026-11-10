@@ -9,6 +9,26 @@ import {
 } from "./jobRequestBoundary";
 
 describe("employer job request BFF boundary", () => {
+  it("gives each site a one-line address so the request form can pre-fill it", () => {
+    const context = parseEmployerRequestContext({
+      residences: {
+        residences: [
+          { id: "res-1", name: "Laval", addressSummary: "901 Avenue du Parc", city: "Laval", province: "QC", postalCode: "H7N 0A1" },
+          { id: "res-2", name: "Lines", addressLine1: "12 Rue Principale", addressLine2: "Unit 4", city: "Montréal", region: "Quebec" },
+          { id: "res-3", name: "Repeat", addressSummary: "5 Main St, Laval", city: "Laval" }
+        ]
+      },
+      departments: { departments: [] },
+      workGroups: { workGroups: [] },
+      roleDefinitions: { roleDefinitions: [] }
+    });
+    expect(context.residences.map((residence) => residence.address)).toEqual([
+      "901 Avenue du Parc, Laval, QC H7N 0A1",
+      "12 Rue Principale Unit 4, Montréal, Quebec",
+      "5 Main St, Laval"
+    ]);
+  });
+
   it("allowlists only governed selector fields", () => {
     expect(
       parseEmployerRequestContext({
@@ -55,7 +75,7 @@ describe("employer job request BFF boundary", () => {
         }
       })
     ).toEqual({
-      residences: [{ id: "res-1", name: "Sunrise" }],
+      residences: [{ id: "res-1", name: "Sunrise", address: null }],
       departments: [{ id: "dep-1", residenceId: "res-1", name: "Kitchen" }],
       workGroups: [{ id: "wg-1", slug: "kitchen", displayLabel: "Kitchen" }],
       roleDefinitions: [

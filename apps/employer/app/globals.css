@@ -150,6 +150,28 @@ footer nav a {
   }
 }
 
+/* Plain links in the employer workspace use the brand link style (gold, underlined), never browser blue/purple. */
+.employer-workspace a:not([class]):not([style]) {
+  color: #f8b808;
+  font-weight: 700;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+/* Home "Everything you can do": 4 cards in one row on wide screens, 2 x 2 on tablets, 1 per row on phones. */
+.employer-group-grid { display: grid; gap: 16px; grid-template-columns: repeat(4, minmax(0, 1fr)); }
+@media (max-width: 1199px) { .employer-group-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@media (max-width: 640px) { .employer-group-grid { grid-template-columns: minmax(0, 1fr); } }
+
+/* Request form "Required certificates": an even grid of 3 / 2 / 1 columns. */
+.employer-cert-grid { display: grid; gap: 10px 16px; grid-template-columns: repeat(3, minmax(0, 1fr)); }
+@media (max-width: 1023px) { .employer-cert-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@media (max-width: 560px) { .employer-cert-grid { grid-template-columns: minmax(0, 1fr); } }
+
+/* Request detail actions: one compact row that wraps; an opened action panel takes the full width. */
+.employer-action-row { align-items: flex-start; display: flex; flex-wrap: wrap; gap: 10px; }
+.employer-action-row > * { flex: 0 0 auto; max-width: 100%; }
+
 /* --- Bill 96 language switcher --- */
 .langswitch { display: inline-flex; border: 1px solid rgba(248, 184, 8, 0.16); border-radius: 999px; overflow: hidden; }
 .langbtn { appearance: none; border: 0; background: transparent; color: #b3a894; font: inherit; font-size: 13px; font-weight: 700; padding: 5px 12px; cursor: pointer; line-height: 1.4; }

@@ -48,12 +48,16 @@ describe("speech language and privacy notice", () => {
     expect(speechLanguage("ar")).toBe("ar");
   });
 
-  it("shows the speech-service notice next to the Speak button in all three languages", () => {
+  it("shows the speech-service notice once at the top of the form, in all three languages", () => {
     expect(en["create.dictatePrivacy"]).toBe("Your browser's speech service (Google or Apple) hears what you say. Do not say health details, names or door codes.");
     expect(fr["create.dictatePrivacy"]).toMatch(/Google ou Apple/);
     expect(ar["create.dictatePrivacy"]).toMatch(/Google أو Apple/);
     const button = readFileSync(join(__dirname, "DictationButton.tsx"), "utf8");
-    expect(button).toContain('t("create.dictatePrivacy")');
     expect(button).toContain("session.lang = speechLanguage(locale)");
+    // The notice lives in its own component, not under every Speak button.
+    expect(button.match(/t\("create\.dictatePrivacy"\)/g)).toHaveLength(1);
+    expect(button.slice(button.indexOf("export function DictationPrivacyNote"))).toContain('t("create.dictatePrivacy")');
+    const form = readFileSync(join(__dirname, "CreatePersistedRequestPanel.tsx"), "utf8");
+    expect(form.match(/<DictationPrivacyNote \/>/g)).toHaveLength(1);
   });
 });

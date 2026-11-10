@@ -12,6 +12,8 @@ import {
 } from "@rwos/shared";
 import { styles } from "../employerStyles";
 import { useT } from "../../i18n/LocaleProvider";
+import { RequestStatusChip } from "../RequestStatusChip";
+import { requestPhase, requestPhaseLabel, requestPhaseTone } from "../requestStatus";
 
 type OrganizationChoice = Readonly<{ id: string; publicId: string; displayName: string }>;
 type ClientCalendarState =
@@ -164,7 +166,12 @@ function ClientCalendarGrid({
   onPrev: () => void;
   onNext: () => void;
 }>) {
+  const t = useT();
   const [expanded, setExpanded] = useState<ReadonlySet<string>>(new Set());
+  const statusText = (request: ClientCalendarDto) => {
+    const label = requestPhaseLabel(requestPhase(request), request.numberOfWorkers);
+    return t(label.key, label.vars);
+  };
   const year = month.getFullYear();
   const m = month.getMonth();
   const startWeekday = new Date(year, m, 1).getDay();
@@ -216,11 +223,11 @@ function ClientCalendarGrid({
                 <a
                   key={request.id}
                   href={`/employer/calendar/request?request=${encodeURIComponent(request.requestNumber)}`}
-                  style={{ ...gridStyles.chip, ...clientStatusTone(request.status) }}
-                  title={`${request.title} · ${request.status.replaceAll("_", " ")}`}
+                  style={{ ...gridStyles.chip, ...clientStatusTone(request) }}
+                  title={`${request.title} · ${statusText(request)}`}
                 >
                   <span style={gridStyles.chipTitle}>{request.title}</span>
-                  <span style={gridStyles.chipStatus}>{request.status.replaceAll("_", " ")}</span>
+                  <span style={gridStyles.chipStatus}>{statusText(request)}</span>
                 </a>
               ))}
               {hidden > 0 ? (
@@ -240,11 +247,13 @@ function RequestCard({ request }: Readonly<{ request: ClientCalendarDto }>) {
   const t = useT();
   return (
     <article style={styles.card}>
-      <span style={clientStatusStyle(request.status)}>{request.status.replaceAll("_", " ")}</span>
+      <RequestStatusChip request={request} />
       <h3 style={styles.cardTitle}>{request.title}</h3>
       <p style={styles.cardText}>{formatWindow(request)}</p>
       <p style={styles.cardText}>
-        {request.numberOfWorkers} worker{request.numberOfWorkers === 1 ? "" : "s"} requested
+        {request.numberOfWorkers === 1
+          ? t("detail.workersOne")
+          : t("detail.workersMany", { count: request.numberOfWorkers })}
       </p>
       {request.actionRequired === "information_required" ? (
         <p aria-live="polite" style={styles.warning}>
@@ -420,25 +429,10 @@ function parseOrganizationContext(
   return { status: "organization_required", organizations };
 }
 
-function clientStatusTone(status: ClientCalendarDto["status"]): { background: string; color: string; border: string } {
-  const [background, color]: readonly [string, string] =
-    status === "cancelled"
-      ? ["#fdecec", "#8a1c1c"]
-      : status === "under_review"
-        ? ["#fff8d8", "#725000"]
-        : status === "assigned" || status === "in_progress"
-          ? ["#e7f3ee", "#15624a"]
-          : status === "completed"
-            ? ["#eef3e3", "#3b6d11"]
-            : status === "submitted" || status === "published"
-              ? ["#eaf1fb", "#185fa5"]
-              : ["#f1efe8", "#3a3326"];
-  return { background, color, border: `1px solid ${color}22` };
-}
-
-function clientStatusStyle(status: ClientCalendarDto["status"]) {
-  const tone = clientStatusTone(status);
-  return { ...styles.pill, background: tone.background, color: tone.color };
+// Same colours as the status chip, so a request reads the same in the grid, the list and the detail.
+function clientStatusTone(request: ClientCalendarDto): { background: string; color: string; border: string } {
+  const tone = requestPhaseTone(requestPhase(request));
+  return { background: tone.background, color: tone.color, border: `1px solid ${tone.border}` };
 }
 
 const gridStyles: Record<string, React.CSSProperties> = {
@@ -460,7 +454,7 @@ const gridStyles: Record<string, React.CSSProperties> = {
   dayNumber: { color: "#f4efe4", fontSize: 12, fontWeight: 800 },
   chip: { borderRadius: 6, display: "grid", gap: 1, padding: "4px 6px", textDecoration: "none" },
   chipTitle: { fontSize: 11, fontWeight: 800, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" },
-  chipStatus: { fontSize: 10, fontWeight: 600, textTransform: "capitalize" },
+  chipStatus: { fontSize: 10, fontWeight: 600, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" },
   more: { background: "transparent", border: "1px solid #ece3d2", borderRadius: 6, color: "#6b6356", cursor: "pointer", fontSize: 10, fontWeight: 700, padding: "3px 6px", textAlign: "left" }
 };
 

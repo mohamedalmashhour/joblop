@@ -100,8 +100,20 @@ export function DictationButton({
       <span aria-live="polite" style={styles.cardText}>
         {problem || (listening ? t("create.dictateListening") : "")}
       </span>
-      {/* Privacy notice: the browser's own speech service (not Joblop's filter) receives the audio. */}
-      <small style={{ ...styles.cardText, flexBasis: "100%", fontSize: 12 }}>{t("create.dictatePrivacy")}</small>
     </span>
+  );
+}
+
+// Privacy notice, shown once at the top of the form (not under every Speak button): the browser's own
+// speech service (not Joblop's filter) receives the audio. Hidden where the browser cannot dictate.
+export function DictationPrivacyNote() {
+  const t = useT();
+  const [supported, setSupported] = useState(false);
+  useEffect(() => setSupported(recognitionConstructor() !== null), []);
+  if (!supported) return null;
+  return (
+    <p style={{ ...styles.cardText, fontSize: 12, fontWeight: 600, margin: "8px 0 0" }}>
+      🎤 {t("create.dictatePrivacy")}
+    </p>
   );
 }

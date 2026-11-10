@@ -2,8 +2,10 @@ type HomeRequest = Readonly<{
   requestNumber: string;
   title: string;
   startAt: string;
+  endAt?: string | null;
   timezone: string;
   status: string;
+  numberOfWorkers?: number;
   actionRequired: string | null;
 }>;
 type HomeTimesheet = Readonly<{ status: string }>;
@@ -11,7 +13,8 @@ type HomeInvoice = Readonly<{ status: string; totalMinor: number }>;
 type HomeAttendance = Readonly<{ status: string }>;
 
 const INVOICE_STATUSES_TO_PAY = ["sent", "viewed", "partially_paid", "overdue"];
-const CLOSED_REQUEST_STATUSES = ["completed", "cancelled"];
+// Drafts are not shifts yet (they are counted on their own line), and closed requests are over.
+const NOT_UPCOMING_STATUSES = ["draft", "completed", "cancelled"];
 // Pending and review states are Joblop's to move, so only these need the employer.
 const VERIFICATION_NEEDS_ACTION = ["unverified", "expired"];
 
@@ -40,13 +43,15 @@ export function summarizeHome(
     workingNow: attendance?.filter((record) => record.status === "checked_in").length ?? null,
     contractUnsigned,
     verificationNeeded: verificationStatus !== null && VERIFICATION_NEEDS_ACTION.includes(verificationStatus),
-    upcomingShifts: upcomingShifts(requests ?? [], now)
+    upcomingShifts: upcomingShifts(requests ?? [], now),
+    draftCount: requests?.filter((request) => request.status === "draft").length ?? null
   };
 }
 
 function upcomingShifts(requests: readonly HomeRequest[], now: Date) {
   return requests
-    .filter((request) => !CLOSED_REQUEST_STATUSES.includes(request.status) && new Date(request.startAt) >= now)
+    // A shift stays listed until it ends, so one that is under way still shows ("Working now").
+    .filter((request) => !NOT_UPCOMING_STATUSES.includes(request.status) && new Date(request.endAt ?? request.startAt) >= now)
     .sort((a, b) => a.startAt.localeCompare(b.startAt))
     .slice(0, 5);
 }

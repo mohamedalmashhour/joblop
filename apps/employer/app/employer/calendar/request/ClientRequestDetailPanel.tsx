@@ -5,25 +5,38 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import {
   buildCalendarExport,
   calendarFailureState,
+  certificateLabel,
   formatRwosDateTime,
+  isRequiredCertificateKey,
   parseClientCalendarDto,
   type AuthenticatedViewState,
   type ClientCalendarDto
 } from "@rwos/shared";
 import { styles } from "../../employerStyles";
 import { JobLocationMap } from "../../../shared/maps";
+import { fmtLocale, useLocale, useT, type Translate } from "../../../i18n/LocaleProvider";
+import type { MessageKey } from "../../../i18n/messages";
+import { RequestStatusChip } from "../../RequestStatusChip";
+import { isClosedPhase, requestPhase } from "../../requestStatus";
 import { AddWorkersPanel } from "./AddWorkersPanel";
 import { BonusOfferPanel } from "./BonusOfferPanel";
 import { CancelRequestPanel } from "./CancelRequestPanel";
 import { EditRequestPanel } from "./EditRequestPanel";
 import { DuplicateRequestButton } from "./DuplicateRequestButton";
 import { ReduceWorkersPanel } from "./ReduceWorkersPanel";
+import { requestCertificates } from "./requestDetailText";
 
+// The employer's view of one request: where it stands, the shift, and what they can do next. Shows only
+// what the employer agreed to (their own request and its status); never worker pay or Joblop's margin.
 export function ClientRequestDetailPanel({ requestId }: Readonly<{ requestId: string | null }>) {
+  const t = useT();
+  const locale = useLocale();
   const [state, setState] = useState<AuthenticatedViewState<ClientCalendarDto>>({
     status: "loading"
   });
   const [organizationRequired, setOrganizationRequired] = useState(false);
+  // The certificates chosen on the request form (best effort; the page works without them).
+  const [chosenCertificates, setChosenCertificates] = useState<readonly string[] | null>(null);
   const requestGeneration = useRef(0);
   const load = useCallback(async () => {
     if (!requestId) return;
@@ -50,7 +63,14 @@ export function ClientRequestDetailPanel({ requestId }: Readonly<{ requestId: st
       if (!response.ok) return setState(calendarFailureState(response.status));
       const payload = (await response.json()) as { request?: unknown };
       if (generation !== requestGeneration.current) return;
-      setState({ status: "ready", data: parseClientCalendarDto(payload.request) });
+      const request = parseClientCalendarDto(payload.request);
+      setState({ status: "ready", data: request });
+      const jobRequest = await fetch(`/api/job-requests/${encodeURIComponent(request.id)}`, { cache: "no-store" })
+        .then((r) => (r.ok ? (r.json() as Promise<{ jobRequest?: { edit?: { requiredCertificates?: unknown } } }>) : null))
+        .catch(() => null);
+      if (generation !== requestGeneration.current) return;
+      const keys = jobRequest?.jobRequest?.edit?.requiredCertificates;
+      setChosenCertificates(Array.isArray(keys) ? keys.filter((key): key is string => typeof key === "string") : null);
     } catch {
       if (generation !== requestGeneration.current) return;
       setState({ status: "error" });
@@ -63,14 +83,18 @@ export function ClientRequestDetailPanel({ requestId }: Readonly<{ requestId: st
     };
   }, [load]);
 
+  const backLink = (
+    <a href="/employer/calendar" style={styles.secondaryButton}>
+      {t("detail.backToCalendar")}
+    </a>
+  );
+
   if (!requestId) {
     return (
       <article style={styles.panel} aria-live="polite">
-        <h2 style={styles.sectionTitle}>Request reference required</h2>
-        <p style={styles.sectionCopy}>Open a persisted request from the authenticated calendar.</p>
-        <a href="/employer/calendar" style={styles.secondaryButton}>
-          Back to request calendar
-        </a>
+        <h2 style={styles.sectionTitle}>{t("detail.needIdTitle")}</h2>
+        <p style={styles.sectionCopy}>{t("detail.needIdBody")}</p>
+        <div className="employer-action-row">{backLink}</div>
       </article>
     );
   }
@@ -78,177 +102,156 @@ export function ClientRequestDetailPanel({ requestId }: Readonly<{ requestId: st
   if (organizationRequired) {
     return (
       <article style={styles.panel} aria-live="polite">
-        <h2 style={styles.sectionTitle}>Organization selection required</h2>
-        <p style={styles.sectionCopy}>
-          Choose an authorized employer organization before opening this persisted request.
-        </p>
-        <a href="/employer/calendar" style={styles.secondaryButton}>
-          Choose organization
-        </a>
+        <h2 style={styles.sectionTitle}>{t("detail.chooseCompanyTitle")}</h2>
+        <p style={styles.sectionCopy}>{t("detail.chooseCompanyBody")}</p>
+        <div className="employer-action-row">
+          <a href="/employer/calendar" style={styles.secondaryButton}>
+            {t("detail.chooseCompany")}
+          </a>
+        </div>
       </article>
     );
   }
 
   if (state.status !== "ready") {
-    const copy: readonly [string, string] =
+    const copy: readonly [MessageKey, MessageKey] =
       state.status === "loading"
-        ? ["Loading request detail", "Checking the persisted client-authorized record."]
+        ? ["detail.loadingTitle", "detail.loadingBody"]
         : state.status === "denied"
-          ? ["Authentication required", "Return to the calendar and sign in."]
+          ? ["detail.signInTitle", "detail.signInBody"]
           : state.status === "unavailable"
-            ? [
-                "Request service unavailable",
-                "The persisted record could not be reached. No fixture record is substituted."
-              ]
+            ? ["detail.unavailableTitle", "detail.unavailableBody"]
             : state.status === "stale"
-              ? ["Request changed", "Refresh the persisted record before continuing."]
-              : [
-                  "Request detail unavailable",
-                  "No fixture record is substituted for this persisted request."
-                ];
+              ? ["detail.changedTitle", "detail.changedBody"]
+              : ["detail.errorTitle", "detail.errorBody"];
     return (
       <article style={styles.panel} aria-live="polite">
-        <h2 style={styles.sectionTitle}>{copy[0]}</h2>
-        <p style={styles.sectionCopy}>{copy[1]}</p>
-        <a href="/employer/calendar" style={styles.secondaryButton}>
-          Back to request calendar
-        </a>
-        {state.status === "error" || state.status === "stale" || state.status === "unavailable" ? (
-          <button
-            type="button"
-            onClick={() => void load()}
-            style={{ ...styles.secondaryButton, cursor: "pointer" }}
-          >
-            Retry
-          </button>
-        ) : null}
+        <h2 style={styles.sectionTitle}>{t(copy[0])}</h2>
+        <p style={styles.sectionCopy}>{t(copy[1])}</p>
+        <div className="employer-action-row">
+          {backLink}
+          {state.status === "error" || state.status === "stale" || state.status === "unavailable" ? (
+            <button
+              type="button"
+              onClick={() => void load()}
+              style={{ ...styles.secondaryButton, cursor: "pointer" }}
+            >
+              {t("detail.retry")}
+            </button>
+          ) : null}
+        </div>
       </article>
     );
   }
 
   const request = state.data;
-  const fields = [
-    ["Request number", request.requestNumber],
-    ["Status", request.status.replaceAll("_", " ")],
-    ["Workers requested", String(request.numberOfWorkers)],
-    ["Schedule", formatWindow(request)],
-    ["Duties", request.dutiesSummary ?? "Not provided"],
-    [
-      "Qualifications",
-      request.qualifications.length ? request.qualifications.join(", ") : "Not provided"
-    ],
-    ["Location", request.addressSummary ?? "Restricted or not provided"],
-    ["Special instructions", request.specialInstructions ?? "Not provided"],
-    ["Contract verification", request.verification.contract],
-    [
-      "Payment readiness",
-      `${request.verification.paymentMethodReadiness} — payment details hidden`
-    ],
-    ["Location verification", request.verification.location]
-  ] as const;
+  const phase = requestPhase(request);
+  // Cancelled or finished: nothing left to change, so the only action is "Duplicate request".
+  const closed = isClosedPhase(phase);
+  const draft = request.status === "draft";
+  const infoRequested = request.actionRequired === "information_required";
+  const notProvided = t("detail.notProvided");
+  const certificates = requestCertificates(chosenCertificates, request.qualifications, (key) =>
+    isRequiredCertificateKey(key) ? certificateLabel(key, fmtLocale(locale)) : key
+  );
+  const fields: readonly (readonly [MessageKey, string])[] = [
+    ["detail.number", request.requestNumber],
+    ["detail.workers", String(request.numberOfWorkers)],
+    ["detail.schedule", formatWindow(request, locale, t)],
+    ["detail.duties", request.dutiesSummary ?? notProvided],
+    ["detail.certificates", certificates.length ? certificates.join(", ") : t("detail.none")],
+    ["detail.address", request.addressSummary ?? notProvided],
+    ["detail.instructions", request.specialInstructions ?? notProvided]
+  ];
   return (
     <div style={styles.twoColumn}>
-      <article style={styles.panel}>
-        <p style={styles.eyebrowDark}>Persisted client request</p>
-        <h2 style={styles.sectionTitle}>{request.title}</h2>
-        <span style={clientStatusStyle(request.status)}>{request.status.replaceAll("_", " ")}</span>
-        {request.status !== "cancelled" && request.status !== "completed" ? (
-          <BonusOfferPanel requestId={request.id} />
-        ) : null}
-        {request.actionRequired === "information_required" ? (
-          <p aria-live="polite" style={styles.warning}>
-            Information requested: {request.actionRequiredReason}
+      <article style={{ ...styles.panel, alignContent: "start", gap: 14 }}>
+        <p style={{ ...styles.eyebrowDark, margin: 0 }}>{t("detail.eyebrow", { num: request.requestNumber })}</p>
+        <h2 style={{ ...styles.sectionTitle, margin: 0 }}>{request.title}</h2>
+        <RequestStatusChip request={request} />
+        {infoRequested ? (
+          <p aria-live="polite" style={{ ...styles.warning, margin: 0 }}>
+            {t("detail.infoRequested", { reason: request.actionRequiredReason ?? "" })}
           </p>
         ) : null}
-        {request.status === "draft" || request.actionRequired === "information_required" ? (
-          <a
-            href={`/employer/calendar/request/edit?id=${encodeURIComponent(request.id)}`}
-            style={styles.primaryButton}
-          >
-            {request.actionRequired === "information_required"
-              ? "Provide requested information"
-              : "Edit persisted draft"}
-          </a>
-        ) : (
-          <p style={styles.cardText}>This request cannot be edited in its current status.</p>
-        )}
-        <a
-          href={`/employer/calendar/assignment?request=${encodeURIComponent(request.id)}`}
-          style={styles.secondaryButton}
-        >
-          View staffing progress
-        </a>
-        <button
-          type="button"
-          onClick={() => window.print()}
-          style={{ ...styles.secondaryButton, cursor: "pointer" }}
-          className="no-print"
-        >
-          🖨 Print details
-        </button>
-        <ApplicantsPanel requestId={request.id} />
-        <div style={{ marginTop: 14 }}>
+        <div className="employer-action-row no-print">
+          {!closed && (draft || infoRequested) ? (
+            <a
+              href={`/employer/calendar/request/edit?id=${encodeURIComponent(request.id)}`}
+              style={styles.primaryButton}
+            >
+              {infoRequested ? t("calendar.provideInfo") : t("create.editDraft")}
+            </a>
+          ) : null}
+          {!closed && !draft ? (
+            <a
+              href={`/employer/calendar/assignment?request=${encodeURIComponent(request.id)}`}
+              style={styles.secondaryButton}
+            >
+              {t("detail.staffing")}
+            </a>
+          ) : null}
           <DuplicateRequestButton requestId={request.id} />
+          {/* A draft is changed with "Edit draft" (the full form); live changes are for sent requests. */}
+          {!closed && !draft ? <EditRequestPanel requestId={request.id} versionToken={request.versionToken} /> : null}
+          {!closed && !draft ? (
+            <AddWorkersPanel
+              requestId={request.id}
+              currentWorkers={request.numberOfWorkers}
+              versionToken={request.versionToken}
+            />
+          ) : null}
+          {!closed && !draft && request.numberOfWorkers > 1 ? (
+            <ReduceWorkersPanel
+              requestId={request.id}
+              currentWorkers={request.numberOfWorkers}
+              versionToken={request.versionToken}
+            />
+          ) : null}
+          {!closed ? <CancelRequestPanel requestId={request.id} /> : null}
+          <button
+            type="button"
+            onClick={() => window.print()}
+            style={{ ...styles.secondaryButton, cursor: "pointer" }}
+          >
+            🖨 {t("detail.print")}
+          </button>
         </div>
-        {request.status !== "cancelled" && request.status !== "completed" ? (
-          <>
-            <div style={{ marginTop: 14 }}>
-              <EditRequestPanel requestId={request.id} versionToken={request.versionToken} />
-            </div>
-            <div style={{ marginTop: 14 }}>
-              <AddWorkersPanel
-                requestId={request.id}
-                currentWorkers={request.numberOfWorkers}
-                versionToken={request.versionToken}
-              />
-            </div>
-            {request.numberOfWorkers > 1 ? (
-              <div style={{ marginTop: 14 }}>
-                <ReduceWorkersPanel
-                  requestId={request.id}
-                  currentWorkers={request.numberOfWorkers}
-                  versionToken={request.versionToken}
-                />
-              </div>
-            ) : null}
-            <div style={{ marginTop: 14 }}>
-              <CancelRequestPanel requestId={request.id} />
-            </div>
-          </>
-        ) : null}
+        {!closed ? <BonusOfferPanel requestId={request.id} /> : null}
+        <ApplicantsPanel requestId={request.id} />
       </article>
-      <article style={styles.panel}>
-        <h2 style={styles.cardTitle}>Request details</h2>
-        {fields.map(([label, value]) => (
-          <div key={label} style={styles.tintedCard}>
-            <strong>{label}</strong>
-            <p style={styles.cardText}>{value}</p>
-          </div>
-        ))}
+      <article style={{ ...styles.panel, alignContent: "start", gap: 12 }}>
+        <h2 style={styles.cardTitle}>{t("detail.detailsTitle")}</h2>
+        <dl style={{ display: "grid", gap: 10, margin: 0 }}>
+          {fields.map(([label, value]) => (
+            <div key={label} style={{ ...styles.tintedCard, padding: "12px 14px" }}>
+              <dt style={styles.metaLabel}>{t(label)}</dt>
+              <dd style={{ ...styles.cardText, margin: 0, overflowWrap: "anywhere" }}>{value}</dd>
+            </div>
+          ))}
+        </dl>
         <JobLocationMap address={request.addressSummary} />
         {request.addressSummary ? (
-          <a
-            href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(request.addressSummary)}`}
-            target="_blank"
-            rel="noreferrer"
-            style={{ ...styles.secondaryButton, marginTop: 10, display: "inline-block" }}
-            className="no-print"
-          >
-            Open in Google Maps
-          </a>
+          <div className="employer-action-row no-print">
+            <a
+              href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(request.addressSummary)}`}
+              target="_blank"
+              rel="noreferrer"
+              style={styles.secondaryButton}
+            >
+              {t("detail.openMaps")}
+            </a>
+          </div>
         ) : null}
-        {request.status === "assigned" || request.status === "in_progress" ? (
-          <AddToCalendar request={request} />
-        ) : null}
+        {phase === "confirmed" || phase === "working" ? <AddToCalendar request={request} t={t} /> : null}
       </article>
     </div>
   );
 }
 
-// Client-side "add this confirmed shift to my own calendar" — Google Calendar link + .ics download,
-// built from the request the panel already holds. Reuses the shared, tested calendar-export capsule;
-// no account linking, no server round-trip.
-function AddToCalendar({ request }: Readonly<{ request: ClientCalendarDto }>) {
+// "Add this confirmed shift to my own calendar": Google Calendar link + .ics download, built from the
+// request the panel already holds. Reuses the shared, tested calendar-export capsule; no server round-trip.
+function AddToCalendar({ request, t }: Readonly<{ request: ClientCalendarDto; t: Translate }>) {
   const exported = buildCalendarExport({
     title: request.title,
     startAt: request.startAt,
@@ -270,44 +273,32 @@ function AddToCalendar({ request }: Readonly<{ request: ClientCalendarDto }>) {
     URL.revokeObjectURL(url);
   };
   return (
-    <div style={styles.tintedCard}>
-      <strong>Add to your calendar</strong>
-      <p style={styles.cardText}>
-        This shift is confirmed. Add it to your calendar with the job code {request.requestNumber}.
-      </p>
-      <a href={exported.googleCalendarUrl} target="_blank" rel="noopener noreferrer" style={styles.secondaryButton}>
-        Add to Google Calendar
-      </a>
-      <button type="button" onClick={downloadIcs} style={{ ...styles.secondaryButton, cursor: "pointer", marginTop: 10 }}>
-        Download .ics (Apple / Outlook)
-      </button>
+    <div className="no-print" style={{ ...styles.tintedCard, display: "grid", gap: 10 }}>
+      <strong>{t("detail.addToCalTitle")}</strong>
+      <p style={{ ...styles.cardText, margin: 0 }}>{t("detail.addToCalBody", { num: request.requestNumber })}</p>
+      <div className="employer-action-row">
+        <a href={exported.googleCalendarUrl} target="_blank" rel="noopener noreferrer" style={styles.secondaryButton}>
+          {t("detail.addGoogle")}
+        </a>
+        <button type="button" onClick={downloadIcs} style={{ ...styles.secondaryButton, cursor: "pointer" }}>
+          {t("detail.downloadIcs")}
+        </button>
+      </div>
     </div>
   );
 }
 
-function clientStatusStyle(status: ClientCalendarDto["status"]) {
-  const tone =
-    status === "cancelled"
-      ? ["#fdecec", "#8a1c1c"]
-      : status === "under_review"
-        ? ["#fff8d8", "#725000"]
-        : status === "assigned" || status === "in_progress" || status === "completed"
-          ? ["#faf6ec", "#171511"]
-          : status === "submitted" || status === "published"
-            ? ["#faf6ec", "#2a2114"]
-            : ["#fbf9f4", "#3a3326"];
-  return { ...styles.statusBadge, background: tone[0], color: tone[1] };
-}
-
-function formatWindow(request: ClientCalendarDto) {
+function formatWindow(request: ClientCalendarDto, locale: Parameters<typeof fmtLocale>[0], t: Translate) {
   const start = formatRwosDateTime(request.startAt, {
     dateStyle: "medium",
     timeStyle: "short",
-    timeZone: request.timezone
+    timeZone: request.timezone,
+    locale: fmtLocale(locale)
   });
   const end = formatRwosDateTime(request.endAt, {
     timeStyle: "short",
-    timeZone: request.timezone
+    timeZone: request.timezone,
+    locale: fmtLocale(locale)
   });
-  return start === "Unavailable" || end === "Unavailable" ? "Unavailable" : `${start}–${end}`;
+  return start === "Unavailable" || end === "Unavailable" ? t("detail.notProvided") : `${start}–${end}`;
 }
