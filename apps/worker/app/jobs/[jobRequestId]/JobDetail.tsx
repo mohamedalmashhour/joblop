@@ -9,6 +9,7 @@ import { workerPayLabel } from "../../workerPayLabel";
 import { MissingCertificatesNotice, RequiredCertificatesSection, type RequiredCertificatesData } from "../../RequiredCertificates";
 import { shiftOverlapNotice } from "../../shiftOverlapNotice";
 import { ShiftAddressMap } from "../../ShiftAddressMap";
+import { JoblopJobBadge } from "../../JobSourceBadge";
 
 type JobDetailData = Readonly<{
   jobRequestId: string;
@@ -224,6 +225,7 @@ export function JobDetail({ id, place }: { id: string; place: string | null }) {
     <article className="detail">
       <div className="detail-head">
         <div>
+          <JoblopJobBadge />
           <h1>{job.role}</h1>
           <p className="detail-title">{job.title}</p>
           <p className="employer">

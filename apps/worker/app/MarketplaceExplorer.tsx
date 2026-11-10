@@ -13,6 +13,7 @@ import type { RwosLocale } from "./i18n/config";
 import { workerPayLabel, formatHourlyRate } from "./workerPayLabel";
 import { CertificateChip, type RequiredCertificatesData } from "./RequiredCertificates";
 import { DEFAULT_ALL_JOBS_PLACE, savedSearchPlace, type SearchBody } from "./defaultJobSearch";
+import { JoblopJobBadge } from "./JobSourceBadge";
 
 export type JobResult = Readonly<{
   jobRequestId: string;
@@ -452,6 +453,7 @@ function SearchPanel({ onSignedOut }: { onSignedOut: () => void }) {
           <div className="mapcol">
             <div className="mapsticky">
               <MarketplaceMap origin={mapOrigin} pins={pins} selectedId={selectedId} onSelect={selectFromMap} radiusKm={radiusKm} />
+              <p className="map-source-note"><JoblopJobBadge /> <span>{t("src.mapAllJoblop")}</span></p>
               <p className="notice" style={{ textAlign: "center" }}>{t("mk.pinsApproximate")}</p>
             </div>
           </div>
@@ -489,6 +491,7 @@ function JobCard({
       >
         {job.saved ? "★" : "☆"}
       </button>
+      <JoblopJobBadge />
       <a className="role cardlink" href={href}>{job.role}</a>
       <div className="employer">
         {job.employerName}
@@ -506,7 +509,7 @@ function JobCard({
         <CertificateChip required={job.requiredCertificates} />
       </div>
       <div className="when">{formatWhen(job.startAt, job.endAt, locale)}</div>
-      <a className="detaillink" href={href}>{t("mk.viewDetails")}</a>
+      <a className="detaillink src-apply" href={href}>{t("src.applyHere")}</a>
     </article>
   );
 }

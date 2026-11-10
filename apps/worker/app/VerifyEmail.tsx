@@ -58,7 +58,8 @@ export function VerifyEmail({ onDone }: { onDone: () => void }) {
   return (
     <section className="auth-form" aria-label="Verify your email">
       <h2 style={{ margin: "0 0 4px", color: "#f4efe4" }}>Confirm your email</h2>
-      <p className="notice" style={{ margin: "0 0 10px" }}>{message}</p>
+      {/* Fixed-height live message: changing text never pushes the fields around. */}
+      <p className="notice verify-message" role="status" aria-live="polite" style={{ margin: "0 0 10px" }}>{message}</p>
       {devCode ? <p className="notice" style={{ color: "#8a5a00", fontWeight: 700 }}>Code: {devCode}</p> : null}
       {phase !== "unavailable" && phase !== "verified" ? (
         <>

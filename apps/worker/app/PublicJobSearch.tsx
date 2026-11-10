@@ -1,9 +1,11 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { useLocale } from "./i18n/LocaleProvider";
+import { useLocale, useT } from "./i18n/LocaleProvider";
 import { workerPayLabel } from "./workerPayLabel";
 import { publicJobPath } from "./safeReturnPath";
+import { JoblopJobBadge, OutsideApplyLink, OutsideSiteBadge } from "./JobSourceBadge";
+import { outsideApplyUrl } from "./jobSource";
 
 // Signed-out front door: a REAL job search anyone can use before having an account. Joblop's own
 // open jobs come first, then jobs scanned from partner job boards. A Joblop job opens its public page
@@ -30,6 +32,8 @@ type Lead = {
   salaryMaxMinor: number | null;
   salaryPeriod: string | null;
   source: string;
+  /** The listing on the outside site (where the worker applies). */
+  url?: string | null;
 };
 
 export const NEXT_AFTER_SIGN_UP_KEY = "joblop_next_after_signup";
@@ -110,6 +114,7 @@ export function PublicJobSearch({ onWantDetails }: { onWantDetails: (next: strin
   const locale = useLocale();
   const lang = locale === "ar" ? "ar" : locale.startsWith("fr") ? "fr" : "en";
   const t = TEXT[lang];
+  const tr = useT();
   const [q, setQ] = useState("");
   // "Where?": a city (accents optional) or a postal code. Empty until the visitor types one.
   const [where, setWhere] = useState("");
@@ -177,13 +182,13 @@ export function PublicJobSearch({ onWantDetails }: { onWantDetails: (next: strin
               <div className="pjs-grid">
                 {jobs.map((job) => (
                   <a key={job.jobCode} className="pjs-card pjs-own" href={publicJobPath(job.jobCode)}>
-                    <span className="pjs-badge">{t.joblopBadge}</span>
+                    <JoblopJobBadge />
                     <strong dir="auto">{job.role}</strong>
                     <span className="pjs-meta">📍 <bdi>{job.areaLabel}</bdi> · {new Date(job.startAt).toLocaleDateString(locale)}</span>
                     <span className="pjs-meta"><bdi>{workerPayLabel(job, moneyLocale, t)}</bdi></span>
                     <span className="pjs-foot">
                       <em>{t.places(job.openings)}{job.urgency === "urgent" || job.urgency === "immediate" ? ` · ${t.urgent}` : ""}</em>
-                      <span>{t.open} {lang === "ar" ? "←" : "→"}</span>
+                      <span>{tr("src.applyHere")} {lang === "ar" ? "←" : "→"}</span>
                     </span>
                   </a>
                 ))}
@@ -196,14 +201,22 @@ export function PublicJobSearch({ onWantDetails }: { onWantDetails: (next: strin
               <div className="pjs-grid">
                 {leads.map((lead, i) => (
                   <div key={`${lead.title}-${i}`} className="pjs-cell">
-                    <button type="button" className="pjs-card" title={t.gate} onClick={() => onWantDetails(leadNext(lead.title))}>
+                    {/* Outside listing: the worker applies on the outside site, in a new tab. */}
+                    <div className="pjs-card pjs-lead">
+                      <OutsideSiteBadge />
                       <strong dir="auto">{lead.title}</strong>
                       <span className="pjs-meta">{lead.employer ? `${lead.employer} · ` : ""}📍 {lead.areaLabel}</span>
                       <span className="pjs-foot">
                         <em dir="ltr">{pay(lead) ?? ""}</em>
-                        <span>{t.open} {lang === "ar" ? "←" : "→"}</span>
                       </span>
-                    </button>
+                    </div>
+                    <div className="src-apply-row">
+                      {outsideApplyUrl(lead.url) ? (
+                        <OutsideApplyLink url={lead.url} source={lead.source} />
+                      ) : (
+                        <button type="button" className="linkbtn" onClick={() => onWantDetails(leadNext(lead.title))}>{t.open} {lang === "ar" ? "←" : "→"}</button>
+                      )}
+                    </div>
                     {lead.source === "adzuna" ? (
                       <span className="pjs-source">
                         <span aria-hidden="true">via</span>

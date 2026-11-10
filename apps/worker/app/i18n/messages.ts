@@ -728,6 +728,19 @@ export const en = {
   "confirmEmail.failed": "This link has expired or was already used. Sign in and send a new one.",
   "confirmEmail.missing": "This link is not complete. Open the link from your email again.",
   "confirmEmail.home": "Go to Joblop",
+  // Job source badges (Joblop job vs outside site) and where to apply
+  "src.joblopBadge": "Joblop job — apply here",
+  "src.applyHere": "Apply here",
+  "src.outsideBadge": "Outside site — you apply on their website",
+  "src.applyOn": "Apply on {site}",
+  "src.theirSite": "their site",
+  "src.newTab": "Opens in a new tab",
+  "src.mapAllJoblop": "Every pin is a Joblop job. You apply here.",
+  // Jobs calendar: which days have jobs
+  "cal.legendJobs": "Gold dot: this day has jobs",
+  "cal.noJobsDay": "No jobs on this day.",
+  "cal.nearestDay": "Go to the nearest day with jobs: {day}",
+  "cal.noJobsSoon": "No jobs in the next weeks yet. Come back soon.",
 } as const;
 
 export type MessageKey = keyof typeof en;
@@ -1458,6 +1471,19 @@ export const fr: Messages = {
   "confirmEmail.failed": "Ce lien a expiré ou a déjà été utilisé. Connectez-vous et envoyez-en un nouveau.",
   "confirmEmail.missing": "Ce lien est incomplet. Ouvrez de nouveau le lien reçu par courriel.",
   "confirmEmail.home": "Aller à Joblop",
+  // Job source badges (Joblop job vs outside site) and where to apply
+  "src.joblopBadge": "Emploi Joblop — postulez ici",
+  "src.applyHere": "Postuler ici",
+  "src.outsideBadge": "Site externe — vous postulez sur leur site",
+  "src.applyOn": "Postuler sur {site}",
+  "src.theirSite": "leur site",
+  "src.newTab": "S’ouvre dans un nouvel onglet",
+  "src.mapAllJoblop": "Chaque point est un emploi Joblop. Vous postulez ici.",
+  // Jobs calendar: which days have jobs
+  "cal.legendJobs": "Point doré : ce jour a des emplois",
+  "cal.noJobsDay": "Aucun emploi ce jour-là.",
+  "cal.nearestDay": "Aller au jour le plus proche avec des emplois : {day}",
+  "cal.noJobsSoon": "Pas encore d’emplois dans les prochaines semaines. Revenez bientôt.",
 };
 
 // Arabic (Modern Standard Arabic). Partial on purpose: the core worker surfaces (shell, sign-in,
@@ -1904,6 +1930,19 @@ export const ar: Partial<Messages> = {
   "confirmEmail.failed": "انتهت صلاحية هذا الرابط أو استُخدم من قبل. سجّل الدخول وأرسل رابطًا جديدًا.",
   "confirmEmail.missing": "هذا الرابط غير مكتمل. افتح الرابط من بريدك مرة أخرى.",
   "confirmEmail.home": "الذهاب إلى Joblop",
+  // Job source badges (Joblop job vs outside site) and where to apply
+  "src.joblopBadge": "وظيفة Joblop — قدّم هنا",
+  "src.applyHere": "قدّم هنا",
+  "src.outsideBadge": "موقع خارجي — تقدّم على موقعهم",
+  "src.applyOn": "قدّم على {site}",
+  "src.theirSite": "موقعهم",
+  "src.newTab": "يفتح في علامة تبويب جديدة",
+  "src.mapAllJoblop": "كل نقطة هي وظيفة Joblop. تقدّم هنا.",
+  // Jobs calendar: which days have jobs
+  "cal.legendJobs": "نقطة ذهبية: في هذا اليوم وظائف",
+  "cal.noJobsDay": "لا توجد وظائف في هذا اليوم.",
+  "cal.nearestDay": "اذهب إلى أقرب يوم فيه وظائف: {day}",
+  "cal.noJobsSoon": "لا توجد وظائف في الأسابيع القادمة بعد. عد قريبًا.",
 };
 
 export const dictionaries: Readonly<Record<WorkerLocale, Partial<Messages>>> = {

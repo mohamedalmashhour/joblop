@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { PUBLIC_LANDING_COPY, publicLandingLang } from "@rwos/shared";
 import { NEXT_AFTER_SIGN_UP_KEY, PublicJobSearch } from "./PublicJobSearch";
 import { PublicJobsCalendar } from "./PublicJobsCalendar";
@@ -11,6 +11,8 @@ import { withBrand } from "./Brand";
 import { useLocale, useT } from "./i18n/LocaleProvider";
 import { VerifyEmail } from "./VerifyEmail";
 import { VideoCard } from "./VideoCard";
+import { HERO_VIDEO, HOW_IT_WORKS_VIDEO, videoForLocale } from "./landingVideos";
+import { OPEN_ACCOUNT_EVENT, prefersSmoothScroll, revealFormStart, type AccountTab } from "./authScroll";
 
 /**
  * Signed-out worker front door, in the owner's order ("the searcher sees the landing page with the
@@ -29,7 +31,12 @@ export function LandingPanel({ onSignedIn }: { onSignedIn: () => void }) {
   const locale = useLocale();
   const copy = PUBLIC_LANDING_COPY[publicLandingLang(locale)];
   // Create account comes first (owner rule): returning workers switch to "Sign in" in one tap.
-  const [tab, setTab] = useState<"signin" | "signup">("signup");
+  const [tab, setTab] = useState<AccountTab>("signup");
+  // Each request to open the form bumps this, so the card scrolls to its first field and focuses it
+  // after the chosen tab has rendered.
+  const [revealTick, setRevealTick] = useState(0);
+  const heroVideo = videoForLocale(HERO_VIDEO, locale);
+  const howVideo = videoForLocale(HOW_IT_WORKS_VIDEO, locale);
   const remember = (next: string) => {
     const safe = safeReturnPath(next);
     if (!safe) return;
@@ -39,10 +46,19 @@ export function LandingPanel({ onSignedIn }: { onSignedIn: () => void }) {
       /* storage blocked: they still land on the search after signing up */
     }
   };
-  const openAccount = (which: "signin" | "signup") => {
+  const openAccount = (which: AccountTab) => {
     setTab(which);
-    document.getElementById("auth-card")?.scrollIntoView({ behavior: "smooth", block: "center" });
+    setRevealTick((n) => n + 1);
   };
+  // The header's "Create account" / "Sign in" links ask for the form while it is already on the page.
+  useEffect(() => {
+    const onOpen = (event: Event) => {
+      setTab((event as CustomEvent<unknown>).detail === "signin" ? "signin" : "signup");
+      setRevealTick((n) => n + 1);
+    };
+    window.addEventListener(OPEN_ACCOUNT_EVENT, onOpen);
+    return () => window.removeEventListener(OPEN_ACCOUNT_EVENT, onOpen);
+  }, []);
   const wantDetails = (next: string) => {
     remember(next);
     openAccount("signup");
@@ -54,10 +70,10 @@ export function LandingPanel({ onSignedIn }: { onSignedIn: () => void }) {
     const next = params.get("next");
     const tabParam = params.get("tab");
     // "/signin" redirects here with ?tab=signin, so an explicit tab opens the card even without a job.
-    if (!next && tabParam !== "signin" && tabParam !== "signup") return;
+    if (!next && tabParam !== "signin" && tabParam !== "signup" && window.location.hash !== "#auth-card") return;
     if (next) remember(next);
     setTab(tabParam === "signin" ? "signin" : "signup");
-    document.getElementById("auth-card")?.scrollIntoView({ behavior: "smooth", block: "center" });
+    setRevealTick((n) => n + 1);
   }, []);
 
   const steps = [
@@ -71,7 +87,7 @@ export function LandingPanel({ onSignedIn }: { onSignedIn: () => void }) {
   return (
     <div className="landing">
       {/* 1 — Landing: hero with a short value line */}
-      <section className="landing-hero landing-hero-top" data-section="landing">
+      <section className={`landing-hero landing-hero-top${heroVideo ? "" : " landing-hero-novideo"}`} data-section="landing">
         <div className="landing-copy">
           <h1>{withBrand(t("land.heroTitle"))}</h1>
           <p>{withBrand(t("land.heroSub"))}</p>
@@ -88,32 +104,39 @@ export function LandingPanel({ onSignedIn }: { onSignedIn: () => void }) {
             ))}
           </ul>
         </div>
-        <div className="landing-hero-video">
-          <VideoCard
-            src="/media/workers-ready.mp4"
-            poster="/media/workers-ready.jpg"
-            label={t("land.videoReadyLabel")}
-            soundLabel={t("land.videoSoundOn")}
-            muteLabel={t("land.videoSoundOff")}
-            playLabel={t("land.videoPlay")}
-            withSound
-          />
-        </div>
+        {/* The hero clip has French words on screen, so it only shows in French (landingVideos.ts). */}
+        {heroVideo ? (
+          <div className="landing-hero-video">
+            <VideoCard
+              key={heroVideo.src}
+              src={heroVideo.src}
+              poster={heroVideo.poster}
+              label={t("land.videoReadyLabel")}
+              soundLabel={t("land.videoSoundOn")}
+              muteLabel={t("land.videoSoundOff")}
+              playLabel={t("land.videoPlay")}
+              withSound
+            />
+          </div>
+        ) : null}
       </section>
 
       {/* 2 — How Joblop works: the 4-step video section (sound on/off) */}
       <section className="landing-steps" data-section="howitworks">
         <h2>{t("land.howItWorks")}</h2>
         <div className="landing-steps-body">
-          <VideoCard
-            src="/media/how-joblop-works.mp4"
-            poster="/media/how-joblop-works.jpg"
-            label={t("land.videoHowLabel")}
-            soundLabel={t("land.videoSoundOn")}
-            muteLabel={t("land.videoSoundOff")}
-            playLabel={t("land.videoPlay")}
-            withSound
-          />
+          {howVideo ? (
+            <VideoCard
+              key={howVideo.src}
+              src={howVideo.src}
+              poster={howVideo.poster}
+              label={t("land.videoHowLabel")}
+              soundLabel={t("land.videoSoundOn")}
+              muteLabel={t("land.videoSoundOff")}
+              playLabel={t("land.videoPlay")}
+              withSound
+            />
+          ) : null}
         <ol>
           {steps.map((s, i) => (
             <li key={s.title}>
@@ -153,7 +176,7 @@ export function LandingPanel({ onSignedIn }: { onSignedIn: () => void }) {
           </ul>
         </div>
         <div className="landing-hero-side">
-          <AuthCard tab={tab} setTab={setTab} onSignedIn={onSignedIn} />
+          <AuthCard tab={tab} setTab={setTab} onSignedIn={onSignedIn} revealTick={revealTick} />
         </div>
       </section>
 
@@ -173,15 +196,29 @@ export function LandingPanel({ onSignedIn }: { onSignedIn: () => void }) {
 function AuthCard({
   tab,
   setTab,
-  onSignedIn
+  onSignedIn,
+  revealTick
 }: {
-  tab: "signin" | "signup";
-  setTab: (t: "signin" | "signup") => void;
+  tab: AccountTab;
+  setTab: (t: AccountTab) => void;
   onSignedIn: () => void;
+  revealTick: number;
 }) {
   const t = useT();
+  const cardRef = useRef<HTMLDivElement | null>(null);
+  // Open the form at its start: the card's top just under the sticky header, first field focused.
+  useEffect(() => {
+    if (revealTick === 0) return;
+    const frame = window.requestAnimationFrame(() => revealFormStart(cardRef.current, prefersSmoothScroll()));
+    return () => window.cancelAnimationFrame(frame);
+  }, [revealTick, tab]);
+  // A new step inside the card (the texted code, the verify-email message) keeps the card's top
+  // below the header and focuses its first field, so nothing hides behind the header.
+  const stepChanged = () => {
+    window.requestAnimationFrame(() => revealFormStart(cardRef.current, prefersSmoothScroll()));
+  };
   return (
-    <div className="auth-card" id="auth-card">
+    <div className="auth-card" id="auth-card" ref={cardRef}>
       <div className="auth-tabs" role="tablist" aria-label="Sign in or create account">
         <button role="tab" type="button" aria-selected={tab === "signin"} className={tab === "signin" ? "active" : ""} onClick={() => setTab("signin")}>
           {t("auth.tabSignIn")}
@@ -190,14 +227,14 @@ function AuthCard({
           {t("auth.tabCreate")}
         </button>
       </div>
-      {tab === "signin" ? <SignInForm onSignedIn={onSignedIn} onNeedAccount={() => setTab("signup")} /> : <SignUpForm onSignedIn={onSignedIn} onHaveAccount={() => setTab("signin")} />}
+      {tab === "signin" ? <SignInForm onSignedIn={onSignedIn} onNeedAccount={() => setTab("signup")} onStep={stepChanged} /> : <SignUpForm onSignedIn={onSignedIn} onHaveAccount={() => setTab("signin")} onStep={stepChanged} />}
     </div>
   );
 }
 
 
 // Workers sign in with a mobile number and a texted code. The session stays in an httpOnly cookie.
-function SignInForm({ onSignedIn, onNeedAccount }: { onSignedIn: () => void; onNeedAccount: () => void }) {
+function SignInForm({ onSignedIn, onNeedAccount, onStep }: { onSignedIn: () => void; onNeedAccount: () => void; onStep: () => void }) {
   const t = useT();
   const [phone, setPhone] = useState("");
   const [code, setCode] = useState("");
@@ -218,6 +255,7 @@ function SignInForm({ onSignedIn, onNeedAccount }: { onSignedIn: () => void; onN
       if (!response.ok) return setError(t("auth.numberUnusable"));
       setStep("code");
       setCode("");
+      onStep();
     } catch {
       setError(t("common.somethingWrong"));
     } finally {
@@ -273,7 +311,7 @@ function SignInForm({ onSignedIn, onNeedAccount }: { onSignedIn: () => void; onN
   );
 }
 
-function SignUpForm({ onSignedIn, onHaveAccount }: { onSignedIn: () => void; onHaveAccount: () => void }) {
+function SignUpForm({ onSignedIn, onHaveAccount, onStep }: { onSignedIn: () => void; onHaveAccount: () => void; onStep: () => void }) {
   const t = useT();
   const [name, setName] = useState("");
   const [phone, setPhone] = useState("");
@@ -313,7 +351,7 @@ function SignUpForm({ onSignedIn, onHaveAccount }: { onSignedIn: () => void; onH
           referralCode
         })
       });
-      if (response.ok) { trackConversion("sign_up", { method: "worker" }); setRegistered(true); return; }
+      if (response.ok) { trackConversion("sign_up", { method: "worker" }); setRegistered(true); onStep(); return; }
       if (response.status === 404) setError(t("signup.closed"));
       else if (response.status === 409) setError(t("signup.conflict"));
       else if (response.status === 400) setError(t("auth.numberUnusable"));
