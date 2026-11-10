@@ -6,6 +6,7 @@ import {
   timingSafeEqual
 } from "node:crypto";
 import type { HeldShift, RequestPricingSnapshot } from "@rwos/shared";
+import { assertWorkerPayMeetsMinimumWage, LONG_TERM_LISTING_MARKER } from "@rwos/shared";
 import type {
   WorkerOfferDeliveryProvider,
   WorkerOfferDeliveryResult
@@ -5221,6 +5222,16 @@ export interface RequestPricingSnapshotCapture {
   }): Promise<void>;
 }
 
+/** Refuses a resolved price whose worker pay is below the Québec minimum wage (long-term listings exempt). */
+export function assertWorkerPayMeetsResolved(resolved: ResolvedRequestPricing, at: Date): void {
+  assertWorkerPayMeetsMinimumWage({
+    workerHourlyRateMinor: resolved.snapshot.workerHourlyRateMinor,
+    currency: resolved.currency,
+    isLongTermListing: resolved.employerPlan?.planCode === LONG_TERM_LISTING_MARKER,
+    at
+  });
+}
+
 export function createJobRequestService(
   jobRequestRepository: JobRequestRepository,
   organizationRepository: EmployerOrganizationRepository,
@@ -5658,6 +5669,18 @@ export function createJobRequestService(
       expectedVersion: number;
       correlationId?: string;
     }) {
+      // Québec minimum wage, caught at submit: price the request the way approval will (contract rate,
+      // standard margin) and refuse it when the worker would get less than the minimum. A request with
+      // no priced contract yet is left to the existing approval rules (approval still checks).
+      const capture = options.pricingSnapshotCapture;
+      if (capture) {
+        const estimate = await capture
+          .resolveAtApproval({ jobRequestId: input.jobRequestId, marginPpm: null })
+          .catch(() => null);
+        if (estimate && estimate.organizationId === input.organizationId) {
+          assertWorkerPayMeetsResolved(estimate, currentTimeFrom(now));
+        }
+      }
       return transitionEmployerJobRequest({
         jobRequestRepository,
         organizationRepository,
@@ -5941,6 +5964,10 @@ export function createJobRequestService(
             marginPpm: input.marginPpm ?? null
           })
         : null;
+      // Québec minimum wage: a short-term job never goes out paying the worker less (long-term
+      // listings hold no hourly pay and are exempt). Checked before the status flip, so a refused
+      // approval changes nothing. The Brain approves through this same function.
+      if (resolved) assertWorkerPayMeetsResolved(resolved, occurredAt);
       const result = await transitionPlatformJobRequest({
         jobRequestRepository,
         authorizationService,

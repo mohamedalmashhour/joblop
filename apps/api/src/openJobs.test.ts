@@ -2,17 +2,17 @@ import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import { listedCondition } from "./jobListingVisibility";
-import { openJobWhere } from "./openJobs";
+import { openJobWhere, payMeetsMinimumWageWhere } from "./openJobs";
 
 const NOW = new Date("2026-11-09T12:00:00.000Z");
 const DAY = 86_400_000;
 
 describe("openJobWhere: one rule for every worker job list", () => {
-  it("approved, open on the calendar, priced, upcoming, active site", () => {
+  it("approved, open on the calendar, priced at or above minimum wage, upcoming, active site", () => {
     expect(openJobWhere({ now: NOW }, false)).toEqual({
       status: "approved_for_dispatch",
       openClaim: true,
-      pricingSnapshot: { isNot: null },
+      pricingSnapshot: { is: payMeetsMinimumWageWhere(NOW) },
       startAt: { gte: NOW },
       residence: { status: "active" }
     });
@@ -41,6 +41,22 @@ describe("openJobWhere: one rule for every worker job list", () => {
     expect(where.openClaim).toBe(true);
     expect(where.residence).toEqual({ status: "active", city: { in: ["Montréal"] } });
     expect(where.roleDefinitionId).toEqual({ in: ["r1"] });
+  });
+
+  it("hides short-term jobs paying below the Québec minimum wage (long-term listings and non-CAD exempt)", () => {
+    // 2026-11-09: the 2026-05-01 row of the shared table is in force.
+    expect(payMeetsMinimumWageWhere(NOW)).toEqual({
+      OR: [
+        { workerHourlyRateMinor: { gte: 1660 } },
+        { employerPlanCode: "listing" },
+        { currency: { not: "CAD" } }
+      ]
+    });
+    // Before May 1, 2026 the 2025 rate applies.
+    expect(payMeetsMinimumWageWhere(new Date("2026-02-01T12:00:00.000Z")).OR).toContainEqual({ workerHourlyRateMinor: { gte: 1610 } });
+    // Extra filters cannot widen it back.
+    const where = openJobWhere({ now: NOW, extra: { pricingSnapshot: { isNot: null } } as never }, false);
+    expect(where.pricingSnapshot).toEqual({ is: payMeetsMinimumWageWhere(NOW) });
   });
 
   it("adds the long-term listing rule when employer plans are on", () => {

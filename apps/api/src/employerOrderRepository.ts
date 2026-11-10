@@ -1,6 +1,7 @@
 import type { PrismaClient } from "@rwos/database";
 import type { JobRequestService, JobRequestUrgency, JobRequestType } from "@rwos/auth";
 import {
+  MinimumWageError,
   rollupEmployerOrderStatus,
   validateEmployerOrderLines,
   type ChildRequestStatus,
@@ -232,7 +233,11 @@ export async function submitEmployerOrder(
   prisma: PrismaClient,
   jobRequestService: OrderJobRequestService,
   input: { actorUserId: string; organizationId: string; orderId: string; now: Date }
-): Promise<{ ok: true; order: EmployerOrderView } | { ok: false; reason: "not_found" | "submit_failed" }> {
+): Promise<
+  | { ok: true; order: EmployerOrderView }
+  | { ok: false; reason: "not_found" | "submit_failed" }
+  | { ok: false; reason: "below_minimum_wage"; message: string }
+> {
   const order = await prisma.employerOrder.findFirst({ where: { id: input.orderId, organizationId: input.organizationId } });
   if (!order) return { ok: false, reason: "not_found" };
 
@@ -244,7 +249,9 @@ export async function submitEmployerOrder(
     if (child.status !== "draft" && child.status !== "information_required") continue;
     try {
       await jobRequestService.submit({ actorUserId: input.actorUserId, organizationId: input.organizationId, jobRequestId: child.id, expectedVersion: child.version });
-    } catch {
+    } catch (error) {
+      // A role line that would pay the worker less than the Québec minimum wage says so plainly.
+      if (error instanceof MinimumWageError) return { ok: false, reason: "below_minimum_wage", message: error.message };
       return { ok: false, reason: "submit_failed" };
     }
   }
