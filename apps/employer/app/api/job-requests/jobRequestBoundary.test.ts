@@ -256,6 +256,79 @@ describe("employer job request BFF boundary", () => {
     ).toBeNull();
   });
 
+  it("returns the fields the full edit form needs, and nothing else", () => {
+    const parsed = parseEmployerJobRequest({
+      jobRequest: {
+        id: "request-1",
+        jobRequestNumber: "JR-000001",
+        status: "draft",
+        title: "Farm help",
+        description: null,
+        numberOfWorkers: 1,
+        urgency: "normal",
+        requestType: "single_day",
+        timezone: "America/Toronto",
+        startAt: "2026-08-10T12:00:00.000Z",
+        endAt: "2026-08-10T18:00:00.000Z",
+        versionToken: 2,
+        residenceId: "res-1",
+        departmentId: "dep-1",
+        workGroupId: "wg-1",
+        roleDefinitionId: "role-1",
+        requiredCertificates: ["whmis"],
+        requiredCertificateOther: null,
+        allowances: {
+          transport: { provision: "allowance", amountMinor: 2000, note: "Bus" },
+          meal: { provision: "provided", amountMinor: 999, note: null },
+          lodging: { provision: "bogus" }
+        },
+        workerPayMinor: 1600
+      }
+    });
+    expect(parsed.edit).toEqual({
+      residenceId: "res-1",
+      departmentId: "dep-1",
+      workGroupId: "wg-1",
+      roleDefinitionId: "role-1",
+      requiredCertificates: ["whmis"],
+      requiredCertificateOther: null,
+      allowances: {
+        transport: { provision: "allowance", amountMinor: 2000, note: "Bus" },
+        meal: { provision: "provided", amountMinor: null, note: null },
+        lodging: { provision: "none", amountMinor: null, note: null }
+      }
+    });
+    expect(JSON.stringify(parsed)).not.toContain("workerPay");
+  });
+
+  it("forwards full-form draft changes only when well formed", () => {
+    const base = { expectedVersion: 1, title: "Farm help", description: null, numberOfWorkers: 1, urgency: "normal" };
+    expect(
+      readEmployerJobRequestUpdate({
+        ...base,
+        residenceId: "res-2",
+        departmentId: "dep-2",
+        workGroup: "farming",
+        roleDefinition: "farm-worker",
+        requestType: "single_day",
+        timezone: "America/Toronto",
+        startAt: "2026-08-10T12:00:00.000Z",
+        endAt: "2026-08-10T18:00:00.000Z",
+        requiredCertificates: ["whmis"]
+      })
+    ).toMatchObject({
+      residenceId: "res-2",
+      workGroup: "farming",
+      roleDefinition: "farm-worker",
+      startAt: "2026-08-10T12:00:00.000Z",
+      endAt: "2026-08-10T18:00:00.000Z",
+      requiredCertificates: ["whmis"]
+    });
+    expect(readEmployerJobRequestUpdate({ ...base, startAt: "2026-08-10T18:00:00.000Z", endAt: "2026-08-10T12:00:00.000Z" })).toBeNull();
+    expect(readEmployerJobRequestUpdate({ ...base, requestType: "recurring_intent" })).toBeNull();
+    expect(readEmployerJobRequestUpdate({ ...base, residenceId: "" })).toBeNull();
+  });
+
   it("projects only employer-safe dispatch state and coverage", () => {
     const jobRequestId = "11111111-1111-4111-8111-111111111111";
     expect(

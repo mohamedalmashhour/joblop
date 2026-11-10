@@ -30,6 +30,28 @@ export type EmployerJobRequestDraft = Readonly<{
   startAt: string;
   endAt: string;
   informationRequestReason: string | null;
+  // Present when the API sent them: what the "Edit draft" form needs to open fully pre-filled.
+  edit?: EmployerDraftEditFields;
+}>;
+
+export type EmployerAllowanceEntry = Readonly<{
+  provision: "none" | "provided" | "allowance";
+  amountMinor: number | null;
+  note: string | null;
+}>;
+
+export type EmployerDraftEditFields = Readonly<{
+  residenceId: string | null;
+  departmentId: string | null;
+  workGroupId: string | null;
+  roleDefinitionId: string | null;
+  requiredCertificates: readonly string[];
+  requiredCertificateOther: string | null;
+  allowances: Readonly<{
+    transport: EmployerAllowanceEntry;
+    meal: EmployerAllowanceEntry;
+    lodging: EmployerAllowanceEntry;
+  }> | null;
 }>;
 
 export type EmployerDispatchStatus = Readonly<{
@@ -209,13 +231,86 @@ export function parseEmployerJobRequest(input: unknown): EmployerJobRequestDraft
     informationRequestReason:
       record.status === "information_required" && isString(record.adminReviewReason)
         ? record.adminReviewReason
-        : null
+        : null,
+    ...draftEditFields(record)
   };
+}
+
+function draftEditFields(record: Readonly<Record<string, unknown>>): { edit?: EmployerDraftEditFields } {
+  if (!isString(record.residenceId) && !isString(record.roleDefinitionId)) return {};
+  const allowances = asRecord(record.allowances);
+  const hasAllowances = record.allowances !== null && typeof record.allowances === "object";
+  return {
+    edit: {
+      residenceId: isString(record.residenceId) ? record.residenceId : null,
+      departmentId: isString(record.departmentId) ? record.departmentId : null,
+      workGroupId: isString(record.workGroupId) ? record.workGroupId : null,
+      roleDefinitionId: isString(record.roleDefinitionId) ? record.roleDefinitionId : null,
+      requiredCertificates: Array.isArray(record.requiredCertificates)
+        ? record.requiredCertificates.filter((value): value is string => typeof value === "string").slice(0, 20)
+        : [],
+      requiredCertificateOther: isString(record.requiredCertificateOther) ? record.requiredCertificateOther : null,
+      allowances: hasAllowances
+        ? {
+            transport: allowanceEntry(allowances.transport),
+            meal: allowanceEntry(allowances.meal),
+            lodging: allowanceEntry(allowances.lodging)
+          }
+        : null
+    }
+  };
+}
+
+function allowanceEntry(input: unknown): EmployerAllowanceEntry {
+  const entry = asRecord(input);
+  const provision = entry.provision === "provided" || entry.provision === "allowance" ? entry.provision : "none";
+  const amount = entry.amountMinor;
+  return {
+    provision,
+    amountMinor: provision === "allowance" && Number.isInteger(amount) && (amount as number) >= 0 ? (amount as number) : null,
+    note: provision !== "none" && isString(entry.note) ? entry.note : null
+  };
+}
+
+// Optional full-form fields an "Edit draft" save may change (location, role, dates, certificates).
+// Each is forwarded only when present and well formed; the API re-checks every one of them.
+function draftUpdateExtras(record: Readonly<Record<string, unknown>>) {
+  const strings = ["residenceId", "departmentId", "workGroup", "roleDefinition", "timezone"] as const;
+  const extras: Record<string, unknown> = {};
+  for (const key of strings) {
+    if (record[key] === undefined) continue;
+    if (!isString(record[key]) || (record[key] as string).length > 200) return null;
+    extras[key] = (record[key] as string).trim();
+  }
+  if (record.requestType !== undefined) {
+    if (!["single_day", "multi_day"].includes(String(record.requestType))) return null;
+    extras.requestType = record.requestType;
+  }
+  if (record.startAt !== undefined || record.endAt !== undefined) {
+    if (!validDate(record.startAt) || !validDate(record.endAt)) return null;
+    const startAt = new Date(record.startAt as string);
+    const endAt = new Date(record.endAt as string);
+    if (endAt <= startAt) return null;
+    extras.startAt = startAt.toISOString();
+    extras.endAt = endAt.toISOString();
+  }
+  if (record.requiredCertificates !== undefined) {
+    if (!Array.isArray(record.requiredCertificates)) return null;
+    extras.requiredCertificates = record.requiredCertificates
+      .filter((value): value is string => typeof value === "string")
+      .slice(0, 20);
+    if (typeof record.requiredCertificateOther === "string") {
+      extras.requiredCertificateOther = record.requiredCertificateOther.slice(0, 200);
+    }
+  }
+  return extras;
 }
 
 export function readEmployerJobRequestUpdate(input: unknown) {
   const record = asRecord(input);
+  const extras = draftUpdateExtras(record);
   if (
+    !extras ||
     !Number.isInteger(record.expectedVersion) ||
     (record.expectedVersion as number) < 0 ||
     !isString(record.title) ||
@@ -237,7 +332,8 @@ export function readEmployerJobRequestUpdate(input: unknown) {
         ? record.description.trim()
         : null,
     numberOfWorkers: record.numberOfWorkers as number,
-    urgency: record.urgency as EmployerJobRequestDraft["urgency"]
+    urgency: record.urgency as EmployerJobRequestDraft["urgency"],
+    ...extras
   };
 }
 
