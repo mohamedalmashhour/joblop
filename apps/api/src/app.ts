@@ -1,4 +1,4 @@
-import { randomBytes } from "node:crypto";
+import { randomBytes, randomUUID } from "node:crypto";
 import Fastify, { type FastifyReply, type FastifyRequest } from "fastify";
 import {
   AuthenticationError,
@@ -329,6 +329,12 @@ import { checkInTooEarly, checkInTooEarlyBody } from "./checkInWindow";
 import { isEmployerPlansEnabled } from "./employerPlanRepository";
 import { createMarketingContactSync, type MarketingContactSync } from "./mailer/brevoContacts";
 import { runShiftReminderSweep } from "./shiftReminderSweep";
+import { registerBrainRoutes } from "./brain/brainRoutes";
+import { createPrismaDeliveryFailureRecorder, purgeOldDeliveryBodies, withEmailFailureRecording, withSmsFailureRecording } from "./brain/deliveryFailures";
+import { createJoblopBrain } from "./brain/joblopBrain";
+import { createPrismaJoblopBrainData } from "./brain/joblopData";
+import { createJoblopBrainEffects, type JoblopBrainDomain } from "./brain/joblopEffects";
+import { createPrismaBrainStore } from "./brain/prismaBrainStore";
 import { listUnfilledShifts, runUnfilledShiftSweep } from "./unfilledShiftAlerts";
 import { runPlanReminderSweep } from "./planReminderSweep";
 import { createPushSender, isExpoPushToken, isPushPlatform, noopPushSender, type PushFetch } from "./notifications/pushSender";
@@ -707,7 +713,7 @@ export function buildApi(options: BuildApiOptions = {}) {
   const jobGradingAuditStore: JobGradingAuditStore | null =
     options.jobGradingAuditStore ?? (prisma ? createPrismaJobGradingAuditStore(prisma) : null);
   const authenticationRepository = prisma ? createPrismaAuthenticationRepository(prisma) : null;
-  const emailSender =
+  const rawEmailSender =
     options.emailSender ??
     createEmailSender({
       apiKey: runtimeConfig.emailApiKey,
@@ -716,13 +722,18 @@ export function buildApi(options: BuildApiOptions = {}) {
   // Transactional SMS twin of emailSender. Double-gated: no-op unless the Brevo key + sender are set
   // AND SMS_ENABLED=enabled (SMS costs money per message). Threaded into notification sites alongside
   // emailSender; today it is instantiated and gated OFF by default.
-  const smsSender =
+  const rawSmsSender =
     options.smsSender ??
     createSmsSender({
       apiKey: runtimeConfig.smsApiKey,
       sender: runtimeConfig.smsSender,
       enabled: runtimeConfig.smsEnabled
     });
+  // Brain: failed email/SMS sends are recorded (message_delivery_failures) so the brain can find and
+  // re-send them. Recording never changes a send's result and never throws.
+  const deliveryFailureRecorder = prisma ? createPrismaDeliveryFailureRecorder(prisma) : null;
+  const emailSender = deliveryFailureRecorder ? withEmailFailureRecording(rawEmailSender, deliveryFailureRecorder) : rawEmailSender;
+  const smsSender = deliveryFailureRecorder ? withSmsFailureRecording(rawSmsSender, deliveryFailureRecorder) : rawSmsSender;
   // Push notifications to the phone app (Expo). Needs the database for device tokens; with none
   // registered it sends nothing. EXPO_ACCESS_TOKEN is optional (only if the Expo project enforces it).
   const expoAccessToken = environment.EXPO_ACCESS_TOKEN?.trim();
@@ -7195,6 +7206,50 @@ export function buildApi(options: BuildApiOptions = {}) {
     }
   );
 
+  // The staff approve-for-dispatch flow: the governed approval (pricing resolved before the status flip,
+  // permission-checked), then open-claim dispatch and the job-code email. The brain's auto-approval
+  // calls this same function, so it can never skip a check staff go through.
+  const approveForDispatchFlow = async (input: {
+    session: Awaited<ReturnType<typeof authService.validateSession>>;
+    roles: readonly AuthorizationRoleKey[];
+    jobRequestId: string;
+    expectedVersion: number;
+    marginPpm: number | null;
+    openClaim: boolean;
+  }) => {
+    const jobRequest = await jobRequestService.approveForDispatch({
+      session: input.session,
+      roles: input.roles,
+      jobRequestId: input.jobRequestId,
+      expectedVersion: input.expectedVersion,
+      marginPpm: input.marginPpm
+    });
+
+    // Hybrid auto-offer: when the admin approves+prices WITH open-claim, mark the job claimable and
+    // auto-open a dispatch in offer_preparation so eligible workers can self-claim instantly. When
+    // the flag is absent/false, nothing here runs and the manual shortlist→offer path is unchanged.
+    let openClaimState: { openClaim: boolean; dispatchReviewId: string | null } = {
+      openClaim: false,
+      dispatchReviewId: null
+    };
+    // Every approved job goes on the shared jobs calendar (owner rule) unless staff explicitly opt out.
+    if (prisma && input.openClaim && input.session.user) {
+      await prisma.jobRequest.update({ where: { id: jobRequest.id }, data: { openClaim: true } });
+      const opened = await ensureOpenClaimDispatch(
+        prisma,
+        { dispatchRepository: createPrismaDispatchRepository(prisma) },
+        { jobRequest, actorUserId: input.session.user.id, now: new Date() }
+      );
+      openClaimState = { openClaim: true, dispatchReviewId: opened.dispatchReviewId };
+    }
+
+    // Notify the client their request is approved, with the job code (best-effort, never blocks).
+    if (prisma) {
+      await notifyClient(prisma, emailSender, { jobRequestId: jobRequest.id, kind: "job_code" });
+    }
+    return { jobRequest, openClaimState };
+  };
+
   app.post(
     "/platform/job-requests/intake/:jobRequestId/approve-for-dispatch",
     async (request, reply) => {
@@ -7207,36 +7262,14 @@ export function buildApi(options: BuildApiOptions = {}) {
       }
 
       const body = asRecord(request.body);
-      const jobRequest = await jobRequestService.approveForDispatch({
+      const { jobRequest, openClaimState } = await approveForDispatchFlow({
         session,
         roles: await resolveAuthorizationRoles(session.user.id),
         jobRequestId: readRouteParam(request.params, "jobRequestId"),
         expectedVersion: readOptionalNumber(body, "expectedVersion") ?? 0,
-        marginPpm: readOptionalNumber(body, "marginPpm") ?? null
+        marginPpm: readOptionalNumber(body, "marginPpm") ?? null,
+        openClaim: body.openClaim !== false
       });
-
-      // Hybrid auto-offer: when the admin approves+prices WITH open-claim, mark the job claimable and
-      // auto-open a dispatch in offer_preparation so eligible workers can self-claim instantly. When
-      // the flag is absent/false, nothing here runs and the manual shortlist→offer path is unchanged.
-      let openClaimState: { openClaim: boolean; dispatchReviewId: string | null } = {
-        openClaim: false,
-        dispatchReviewId: null
-      };
-      // Every approved job goes on the shared jobs calendar (owner rule) unless staff explicitly opt out.
-      if (prisma && body.openClaim !== false) {
-        await prisma.jobRequest.update({ where: { id: jobRequest.id }, data: { openClaim: true } });
-        const opened = await ensureOpenClaimDispatch(
-          prisma,
-          { dispatchRepository: createPrismaDispatchRepository(prisma) },
-          { jobRequest, actorUserId: session.user.id, now: new Date() }
-        );
-        openClaimState = { openClaim: true, dispatchReviewId: opened.dispatchReviewId };
-      }
-
-      // Notify the client their request is approved, with the job code (best-effort, never blocks).
-      if (prisma) {
-        await notifyClient(prisma, emailSender, { jobRequestId: jobRequest.id, kind: "job_code" });
-      }
 
       return reply.code(200).send({ jobRequest: serializeJobRequest(jobRequest), openClaim: openClaimState });
     }
@@ -10943,6 +10976,92 @@ export function buildApi(options: BuildApiOptions = {}) {
     }
     return session.user;
   };
+
+  // ── Joblop Brain (phase 1) ──────────────────────────────────────────────────────────────────────
+  // Deterministic rules find problems; actions fix them only behind their own switch (all OFF by
+  // default), a master mode (off / watch / live), daily caps and once-only claims, with an audit row
+  // each. Approvals go through the same governed services staff use, acting as the staff account in
+  // BRAIN_ACTOR_USER_ID (unset = the brain changes no records). Nothing here moves money.
+  const brainActorUserId = (environment.BRAIN_ACTOR_USER_ID ?? "").trim() || null;
+  const brainSession = async (userId: string) => {
+    if (!prisma) return null;
+    const user = await prisma.user.findUnique({
+      where: { id: userId },
+      select: { id: true, publicId: true, emailNormalized: true, displayName: true, status: true }
+    });
+    if (!user || user.status !== "active") return null;
+    return {
+      authenticated: true,
+      user: { id: user.id, publicId: user.publicId, emailNormalized: user.emailNormalized, displayName: user.displayName, status: "active" as const },
+      session: { id: `brain-${randomUUID()}`, userId: user.id, expiresAt: new Date(Date.now() + 5 * 60_000) }
+    };
+  };
+  const requireBrainSession = async (userId: string) => {
+    const session = await brainSession(userId);
+    if (!session) throw new Error("The brain staff account is missing or not active.");
+    return { session, roles: await resolveAuthorizationRoles(userId) };
+  };
+  const brainDomain: JoblopBrainDomain = {
+    async approveJobRequest({ jobRequestId, actorUserId }) {
+      const { session, roles } = await requireBrainSession(actorUserId);
+      const current = await prisma!.jobRequest.findUnique({ where: { id: jobRequestId }, select: { status: true, version: true } });
+      if (!current) throw new Error("Request not found.");
+      let version = current.version;
+      if (current.status === "submitted") {
+        const reviewed = await jobRequestService.startAdminReview({ session, roles, jobRequestId, expectedVersion: version });
+        version = reviewed.version;
+      }
+      await approveForDispatchFlow({ session, roles, jobRequestId, expectedVersion: version, marginPpm: null, openClaim: true });
+    },
+    async approveTimesheet({ timesheetId, expectedVersion, actorUserId }) {
+      const { session, roles } = await requireBrainSession(actorUserId);
+      await timesheetService.approve({ session, roles, timesheetId, expectedVersion });
+    },
+    async requestTimesheetCorrection({ timesheetId, expectedVersion, reason, actorUserId }) {
+      const { session, roles } = await requireBrainSession(actorUserId);
+      await timesheetService.requestCorrection({ session, roles, timesheetId, expectedVersion, reason });
+    }
+  };
+  // Logs carry plain values only (counts, keys), never message text or personal details.
+  const brainLog = (event: string, fields?: Readonly<Record<string, unknown>>) =>
+    logger.info(
+      event,
+      Object.fromEntries(
+        Object.entries(fields ?? {}).filter(([, v]) => v === null || typeof v === "string" || typeof v === "number" || typeof v === "boolean")
+      ) as Record<string, string | number | boolean | null>
+    );
+  const brainStore = prisma ? createPrismaBrainStore(prisma) : null;
+  const brain =
+    prisma && brainStore
+      ? createJoblopBrain({
+          store: brainStore,
+          data: createPrismaJoblopBrainData(prisma, (jobs) => remainingOpenings(prisma, jobs)),
+          effects: createJoblopBrainEffects({
+            prisma,
+            emailSender,
+            smsSender,
+            rawEmailSender,
+            rawSmsSender,
+            actorUserId: brainActorUserId,
+            domain: brainDomain,
+            now: () => new Date()
+          }),
+          log: brainLog
+        })
+      : null;
+  const brainSummaryHour = Number.parseInt((environment.BRAIN_SUMMARY_HOUR_UTC ?? "").trim(), 10);
+  registerBrainRoutes(app, {
+    brain,
+    store: brainStore,
+    sweepToken: (environment.BRAIN_SWEEP_TOKEN ?? "").trim(),
+    requireStaff: async (request, reply) => (await requirePlatformAdmin(request, reply))?.id ?? null,
+    emailSender,
+    staffEmail: staffAlertEmail,
+    summaryHourUtc: Number.isInteger(brainSummaryHour) && brainSummaryHour >= 0 && brainSummaryHour <= 23 ? brainSummaryHour : 12,
+    actorConfigured: brainActorUserId !== null,
+    ...(prisma ? { afterSweep: () => purgeOldDeliveryBodies(prisma, new Date()) } : {}),
+    log: brainLog
+  });
 
   // Upcoming holiday occasions for the active country — drives the greeting-card occasion picker.
   app.get("/platform/greetings/holidays", async (request, reply) => {

@@ -28,6 +28,7 @@ describe("admin production route policy", () => {
       "/market-wages",
       "/escalations",
       "/greetings",
+      "/brain",
       "/api/session",
       "/_next/static/app.js"
     ]) {

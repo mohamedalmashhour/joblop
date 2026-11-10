@@ -32,6 +32,7 @@ export const en = {
   "nav.invoices": "Invoices",
   "nav.timesheets": "Timesheets",
   "nav.greetings": "Greetings & awards",
+  "nav.brain": "Joblop Brain",
   "nav.contactDesk": "Contact desk",
 
   // Navigation group headings
@@ -79,6 +80,7 @@ export const fr: Messages = {
   "nav.invoices": "Factures",
   "nav.timesheets": "Feuilles de temps",
   "nav.greetings": "Vœux et distinctions",
+  "nav.brain": "Cerveau Joblop",
   "nav.contactDesk": "Bureau de contact",
 
   "group.Operations": "Opérations",
@@ -122,6 +124,7 @@ export const ar: Partial<Messages> = {
   "nav.invoices": "الفواتير",
   "nav.timesheets": "سجلات الدوام",
   "nav.greetings": "التهاني والشهادات",
+  "nav.brain": "عقل Joblop",
   "nav.contactDesk": "مكتب التواصل",
 
   "group.Operations": "العمليات",

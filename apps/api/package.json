@@ -15,6 +15,7 @@
   },
   "dependencies": {
     "@rwos/auth": "workspace:*",
+    "@rwos/brain": "workspace:*",
     "@rwos/config": "workspace:*",
     "@rwos/country-canada": "workspace:*",
     "@rwos/country-syria": "workspace:*",

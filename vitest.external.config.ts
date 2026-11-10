@@ -7,6 +7,7 @@ export default defineConfig({
   resolve: {
     alias: {
       "@rwos/auth": `${root}packages/auth/src/index.ts`,
+      "@rwos/brain": `${root}packages/brain/src/index.ts`,
       "@rwos/config": `${root}packages/config/src/index.ts`,
       "@rwos/database": `${root}packages/database/src/index.ts`,
       "@rwos/observability": `${root}packages/observability/src/index.ts`,
