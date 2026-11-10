@@ -205,7 +205,7 @@ function BenefitsIllustration() {
       viewBox="0 0 240 120"
     >
       <rect fill="#000" height="120" rx="12" width="240" />
-      <circle cx="200" cy="22" fill={gold} opacity=".12" r="44" />
+      <circle cx="162" cy="62" fill={gold} opacity=".12" r="46" />
       <g fill="none" stroke={cream} strokeLinecap="round" strokeWidth="2.5">
         <rect height="62" rx="7" width="76" x="124" y="30" />
         <path d="M124 46h76M142 24v12M182 24v12" />
@@ -234,7 +234,7 @@ function BenefitsIllustration() {
 }
 
 const card: CSSProperties = {
-  alignSelf: "end",
+  alignSelf: "start",
   background: "#000000",
   border: "1px solid rgba(248, 184, 8, 0.28)",
   borderRadius: 10,
