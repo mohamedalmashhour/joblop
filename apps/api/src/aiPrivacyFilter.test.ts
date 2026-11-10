@@ -279,6 +279,37 @@ describe("maskPersonalData: health (launch step 6)", () => {
     expect(mask("Class 5 licence, Safe driving record")).toBe("Class 5 licence, Safe driving record");
   });
 
+  it("masks the audit G1 probe strings", () => {
+    const health = maskPersonalData("I have diabetes and epilepsy, my doctor note says HIV positive, I am pregnant");
+    expect(health.text).toBe("[health detail]");
+    expect(health.masked.health).toBe(1);
+    for (const word of ["diabetes", "epilepsy", "HIV", "pregnant", "doctor"]) expect(health.text).not.toContain(word);
+
+    const ids = maskPersonalData("my RAMQ health card is BOUJ 8001 0112 and passport AB123456");
+    expect(ids.text).toBe("my RAMQ health card is [health card] and passport [ID number]");
+    expect(ids.masked.healthCard).toBe(1);
+    expect(ids.masked.idNumber).toBe(1);
+  });
+
+  it("masks a passport number with no label, and a Québec licence with spaces or dashes", () => {
+    expect(mask("my number is AB123456 ok")).toBe("my number is [ID number] ok");
+    expect(mask("T1234 567890 12")).toBe("[ID number]");
+    expect(mask("t1234-567890-12")).toBe("[ID number]");
+  });
+
+  it.each([
+    "First aid certificate required (RCR / CPR)",
+    "Certificat de premiers soins à jour",
+    "Job JR-2026-000123 pays $22.50 per hour",
+    "Shift 2026-11-09 from 7 AM to 3 PM, 8 hours",
+    "Health and safety orientation on day one",
+    "Class 5 driver's licence required"
+  ])("does not over-match ordinary job text: %s", (input) => {
+    const r = maskPersonalData(input);
+    expect(r.text).toBe(input);
+    expect(containsHealthDetail(input)).toBe(false);
+  });
+
   it("masks a French street named with no street word when a direction or unit follows", () => {
     expect(mask("J'habite au 4500 de Maisonneuve Ouest apt 12, Montréal")).toBe("J'habite au [address], Montréal");
     expect(mask("1200 de Bleury, bureau 300")).toBe("[address]");
