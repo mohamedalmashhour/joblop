@@ -363,18 +363,23 @@ export async function notifyWorkerAssigned(
         jobRequestId: input.jobRequestId
       });
     }
+    // Workers sign in by phone, so many have no email. The text must go out on its own: never make
+    // it depend on an email address being on file (owner's first real job: no text, no email).
     const email = user?.emailNormalized;
-    if (!email || !job) return { status: "no_recipient" };
+    const textable = Boolean(smsSender && user?.phone && sendsText("shift_confirmed"));
+    if (!job || (!email && !textable)) return { status: "no_recipient" };
     const language = resolveWorkerLanguage(user?.primaryLanguage);
+    let texted = false;
+    if (textable && smsSender && user?.phone) {
+      texted = await smsSender
+        .send({ to: user.phone, text: assignedJobSmsText({ language, title: job.title, startAt: job.startAt }) })
+        .then((sent) => sent.status === "sent", () => false);
+    }
+    if (!email) return { status: texted ? "sent" : "error" };
     const result = await emailSender.send(
       assignedJobEmail({ to: email, language, title: job.title, startAt: job.startAt, address: workerJobAddress(job.calendarProfile?.addressSummary, job.residence) })
     );
-    if (smsSender && user?.phone && sendsText("shift_confirmed")) {
-      await smsSender
-        .send({ to: user.phone, text: assignedJobSmsText({ language, title: job.title, startAt: job.startAt }) })
-        .catch(() => undefined);
-    }
-    return { status: result.status === "sent" ? "sent" : result.status === "error" ? "error" : "skipped" };
+    return { status: result.status === "sent" || texted ? "sent" : result.status === "error" ? "error" : "skipped" };
   } catch {
     return { status: "error" };
   }
