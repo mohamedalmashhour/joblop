@@ -11,6 +11,7 @@ import { safeReturnPath } from "./safeReturnPath";
 import type { RwosLocale } from "./i18n/config";
 import { workerPayLabel, formatHourlyRate } from "./workerPayLabel";
 import { CertificateChip, type RequiredCertificatesData } from "./RequiredCertificates";
+import { DEFAULT_ALL_JOBS_PLACE, savedSearchPlace, type SearchBody } from "./defaultJobSearch";
 
 export type JobResult = Readonly<{
   jobRequestId: string;
@@ -104,7 +105,7 @@ function SearchPanel({ onSignedOut }: { onSignedOut: () => void }) {
       : rawLocale.startsWith("fr")
         ? ["Infirmière", "Préposé aux bénéficiaires", "Chef", "Cuisinier", "Entretien ménager", "Service en salle", "Maintenance", "Nettoyage"]
         : ["Nurse", "Personal Support", "Chef", "Cook", "Housekeeping", "Dining Support", "Maintenance", "Cleaning"];
-  // "Where?": a city or a postal code. Starts empty: never pre-filled with a place the worker didn't type.
+  // "Where?": a city or a postal code. Starts empty; the default list may fill it with the place the worker saved in their profile.
   const [place, setPlace] = useState("");
   const [radiusKm, setRadiusKm] = useState<number>(25);
   const [role, setRole] = useState("");
@@ -121,31 +122,88 @@ function SearchPanel({ onSignedOut }: { onSignedOut: () => void }) {
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [view, setView] = useState<"list" | "agenda" | "map">("list");
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  // "all": the default list shown before any search (open jobs, soonest first, no place typed).
+  const [defaultMode, setDefaultMode] = useState<"none" | "all">("none");
+  // The query behind the jobs on screen, so "Load more" asks for the next page of the same list.
+  const lastQuery = useRef<SearchBody | null>(null);
   const listRef = useRef<HTMLDivElement | null>(null);
 
   const sortLabel = (value: string) =>
     value === "soonest" ? t("mk.sortSoonest") : value === "highest_rate" ? t("mk.sortHighestRate") : t("mk.sortNearest");
 
-  const fetchPage = useCallback(
-    async (cursor: number | null) => {
-      const response = await fetch("/api/marketplace/search", {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({
-          place: place.trim(),
-          radiusKm,
-          sort,
-          ...(role.trim() ? { role: role.trim() } : {}),
-          ...(dateFrom ? { dateFrom: new Date(dateFrom).toISOString() } : {}),
-          ...(minOpenings && Number(minOpenings) > 0 ? { minOpenings: Number(minOpenings) } : {}),
-          ...(verifiedOnly ? { verifiedOnly: true } : {}),
-          ...(cursor !== null ? { cursor } : {})
-        })
-      });
-      return response;
-    },
+  const fetchPage = useCallback(async (query: SearchBody, cursor: number | null) => {
+    lastQuery.current = query;
+    return fetch("/api/marketplace/search", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ ...query, ...(cursor !== null ? { cursor } : {}) })
+    });
+  }, []);
+
+  const formQuery = useCallback(
+    (): SearchBody => ({
+      place: place.trim(),
+      radiusKm,
+      sort,
+      ...(role.trim() ? { role: role.trim() } : {}),
+      ...(dateFrom ? { dateFrom: new Date(dateFrom).toISOString() } : {}),
+      ...(minOpenings && Number(minOpenings) > 0 ? { minOpenings: Number(minOpenings) } : {}),
+      ...(verifiedOnly ? { verifiedOnly: true } : {})
+    }),
     [place, radiusKm, role, sort, dateFrom, minOpenings, verifiedOnly]
   );
+
+  const showPage = useCallback((payload: SearchResponse) => {
+    setOrigin(payload.origin);
+    setJobs([...payload.jobs]);
+    setTotal(payload.total);
+    setNextCursor(payload.nextCursor);
+    setHiddenJobs(payload.profile?.hiddenJobs ?? 0);
+    setStatus(payload.total === 0 ? "empty" : "done");
+  }, []);
+
+  // Before any search, show open jobs straight away (soonest first): near the worker's saved city or
+  // postal code when their profile has one, otherwise every open job. Same search API as the form.
+  useEffect(() => {
+    let active = true;
+    void (async () => {
+      setStatus("searching");
+      const saved = await fetch("/api/hr", { cache: "no-store" })
+        .then((r) => (r.ok ? r.json() : null))
+        .then((p: { intake?: { city?: string | null; postalCode?: string | null } | null } | null) => savedSearchPlace(p?.intake))
+        .catch(() => null);
+      const tries: { query: SearchBody; mode: "none" | "all" }[] = [];
+      if (saved) tries.push({ query: { place: saved, radiusKm: 100, sort: "soonest" }, mode: "none" });
+      tries.push({ query: { place: DEFAULT_ALL_JOBS_PLACE, sort: "soonest" }, mode: "all" });
+      for (const attempt of tries) {
+        try {
+          const response = await fetchPage(attempt.query, null);
+          if (!active) return;
+          if (response.status === 401) return onSignedOut();
+          if (!response.ok) continue;
+          const payload = (await response.json()) as SearchResponse;
+          if (!active) return;
+          // Nothing near the saved place: fall through to every open job.
+          if (payload.total === 0 && attempt.mode === "none") continue;
+          if (attempt.mode === "none" && saved) {
+            setPlace(saved);
+            setRadiusKm(100);
+          }
+          setSort("soonest");
+          setDefaultMode(attempt.mode);
+          showPage(payload);
+          return;
+        } catch {
+          /* try the next one */
+        }
+      }
+      if (active) setStatus("idle");
+    })();
+    return () => {
+      active = false;
+    };
+    // Runs once when the signed-in home opens.
+  }, []);
 
   const runSearch = useCallback(
     async (event?: React.FormEvent) => {
@@ -158,8 +216,9 @@ function SearchPanel({ onSignedOut }: { onSignedOut: () => void }) {
       }
       setStatus("searching");
       setErrorMessage(null);
+      setDefaultMode("none");
       try {
-        const response = await fetchPage(null);
+        const response = await fetchPage(formQuery(), null);
         if (response.status === 401) return onSignedOut();
         if (!response.ok) {
           const payload = (await response.json().catch(() => null)) as { error?: string } | null;
@@ -167,25 +226,19 @@ function SearchPanel({ onSignedOut }: { onSignedOut: () => void }) {
           setStatus("error");
           return;
         }
-        const payload = (await response.json()) as SearchResponse;
-        setOrigin(payload.origin);
-        setJobs([...payload.jobs]);
-        setTotal(payload.total);
-        setNextCursor(payload.nextCursor);
-        setHiddenJobs(payload.profile?.hiddenJobs ?? 0);
-        setStatus(payload.total === 0 ? "empty" : "done");
+        showPage((await response.json()) as SearchResponse);
       } catch {
         setErrorMessage(t("common.somethingWrong"));
         setStatus("error");
       }
     },
-    [fetchPage, onSignedOut, place, t]
+    [fetchPage, formQuery, onSignedOut, place, showPage, t]
   );
 
   const loadMore = useCallback(async () => {
-    if (nextCursor === null) return;
+    if (nextCursor === null || !lastQuery.current) return;
     try {
-      const response = await fetchPage(nextCursor);
+      const response = await fetchPage(lastQuery.current, nextCursor);
       if (response.status === 401) return onSignedOut();
       if (!response.ok) return;
       const payload = (await response.json()) as SearchResponse;
@@ -231,7 +284,7 @@ function SearchPanel({ onSignedOut }: { onSignedOut: () => void }) {
   const mapOrigin = jobs[0]
     ? { latitude: jobs[0].mapPoint.latitude, longitude: jobs[0].mapPoint.longitude }
     : null;
-  const originPlace = origin ? (origin.postalCode ?? origin.place ?? origin.city ?? "") : "";
+  const originPlace = origin && defaultMode !== "all" ? (origin.postalCode ?? origin.place ?? origin.city ?? "") : "";
   const detailHref = (id: string) =>
     `/jobs/${encodeURIComponent(id)}${originPlace ? `?place=${encodeURIComponent(originPlace)}` : ""}`;
 
@@ -315,7 +368,11 @@ function SearchPanel({ onSignedOut }: { onSignedOut: () => void }) {
 
       {status === "done" || status === "empty" ? (
         <div className="resultbar">
-          <h2>{total === 1 ? t("mk.resultsOne", { count: total, place: placeLabel }) : t("mk.resultsMany", { count: total, place: placeLabel })}</h2>
+          <h2>
+            {defaultMode === "all"
+              ? total === 1 ? t("mk.defaultAllOne", { count: total }) : t("mk.defaultAllMany", { count: total })
+              : total === 1 ? t("mk.resultsOne", { count: total, place: placeLabel }) : t("mk.resultsMany", { count: total, place: placeLabel })}
+          </h2>
           <div className="viewtoggle" role="tablist" aria-label={t("mk.viewToggleLabel")}>
             <button role="tab" aria-selected={view === "list"} className={view === "list" ? "active" : ""} onClick={() => setView("list")} type="button">
               {t("mk.viewList")}
