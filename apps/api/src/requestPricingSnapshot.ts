@@ -9,6 +9,7 @@ import {
   applyPlanToUrgentSurchargeMinor,
   isPaidEmployerPlanCode,
   resolveJobLength,
+  LONG_TERM_LISTING_MARKER,
   type EmployerPlanCode,
   type JobLength
 } from "@rwos/shared";
@@ -22,7 +23,7 @@ import { getEffectiveEmployerPlan, isEmployerPlansEnabled } from "./employerPlan
 type ContractsRepository = ReturnType<typeof createPrismaEmployerContractRepository>;
 
 /** Marker stored in employer_plan_code on a long-term listing snapshot. */
-export const LONG_TERM_LISTING_PLAN_MARKER = "listing";
+export const LONG_TERM_LISTING_PLAN_MARKER = LONG_TERM_LISTING_MARKER;
 const NO_CONTRACT_ID = "00000000-0000-0000-0000-000000000000";
 
 /** Zero-money pricing for a long-term listing job: Joblop bills no hours and pays no worker for it. */

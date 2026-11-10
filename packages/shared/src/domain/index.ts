@@ -58,3 +58,4 @@ export * from "./requiredCertificates";
 export * from "./placeSearch";
 export * from "./publicJobsCalendar";
 export * from "./jobScannerDemo";
+export * from "./minimumWage";

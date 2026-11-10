@@ -7242,6 +7242,8 @@ describe("job request approval — pricing snapshot capture (slice 4C)", () => {
       }
     };
     const { jobRequestService, adminSession, review } = await driveToAdminReview(capture, "priced");
+    // Submit already priced the request once (the minimum-wage check); only approval is followed here.
+    order.length = 0;
     const approved = await jobRequestService.approveForDispatch({
       session: adminSession,
       roles: ["PLATFORM_ADMINISTRATOR"],
@@ -7280,5 +7282,96 @@ describe("job request approval — pricing snapshot capture (slice 4C)", () => {
       roles: ["PLATFORM_ADMINISTRATOR"]
     });
     expect(intake.map((request) => request.id)).toContain(review.id);
+  });
+
+  // Live check #88: a Joblop job showed $1.60/h, below the Québec minimum wage.
+  it("blocks approval below the Québec minimum wage, with no status change and nothing persisted", async () => {
+    let persisted = false;
+    let underpaid = false;
+    const capture: RequestPricingSnapshotCapture = {
+      async resolveAtApproval(input) {
+        const base = fakeResolved(input.jobRequestId, input.marginPpm);
+        // Fine at submit, $1.60/h at approval.
+        return underpaid ? { ...base, snapshot: { ...base.snapshot, workerHourlyRateMinor: 160 } } : base;
+      },
+      async persist() {
+        persisted = true;
+      }
+    };
+    const { jobRequestService, adminSession, review } = await driveToAdminReview(capture, "underpaid");
+    underpaid = true;
+    await expect(
+      jobRequestService.approveForDispatch({
+        session: adminSession,
+        roles: ["PLATFORM_ADMINISTRATOR"],
+        jobRequestId: review.id,
+        expectedVersion: review.versionToken,
+        marginPpm: 200_000
+      })
+    ).rejects.toThrow(/Worker pay is below Québec minimum wage \(\$\d+\.\d{2}\/h\)/);
+    expect(persisted).toBe(false);
+    const intake = await jobRequestService.listAdminIntake({ session: adminSession, roles: ["PLATFORM_ADMINISTRATOR"] });
+    expect(intake.map((request) => request.id)).toContain(review.id);
+  });
+
+  it("long-term listings (no hourly pay) are exempt from the minimum-wage check", async () => {
+    const capture: RequestPricingSnapshotCapture = {
+      async resolveAtApproval(input) {
+        const base = fakeResolved(input.jobRequestId, input.marginPpm);
+        return {
+          ...base,
+          snapshot: { ...base.snapshot, employerHourlyRateMinor: 0, workerHourlyRateMinor: 0, platformHourlyMarginMinor: 0 },
+          employerPlan: { jobLength: "long_term", planCode: "listing", discountPpm: 0 }
+        };
+      },
+      async persist() {}
+    };
+    const { jobRequestService, adminSession, review } = await driveToAdminReview(capture, "listing");
+    const approved = await jobRequestService.approveForDispatch({
+      session: adminSession,
+      roles: ["PLATFORM_ADMINISTRATOR"],
+      jobRequestId: review.id,
+      expectedVersion: review.versionToken,
+      marginPpm: null
+    });
+    expect(approved.status).toBe("approved_for_dispatch");
+  });
+
+  it("refuses an employer submit whose worker pay would be below the minimum (request stays a draft)", async () => {
+    let orgId = "";
+    const capture: RequestPricingSnapshotCapture = {
+      async resolveAtApproval(input) {
+        const base = fakeResolved(input.jobRequestId, input.marginPpm);
+        return { ...base, organizationId: orgId, snapshot: { ...base.snapshot, workerHourlyRateMinor: 160 } };
+      },
+      async persist() {}
+    };
+    const { organizationService, residenceService, departmentService, jobRequestService, jobRequestRepository } =
+      createJobRequestTestServices(capture);
+    const ownerId = "owner-submit-min-wage";
+    const organization = await organizationService.createOrganization({ actorUserId: ownerId, legalName: "Min Org", displayName: "Min Org" });
+    orgId = organization.organization.id;
+    const residence = await residenceService.createResidence({ actorUserId: ownerId, organizationId: orgId, name: "Min Residence" });
+    const department = await departmentService.createDepartment({ actorUserId: ownerId, organizationId: orgId, residenceId: residence.id, name: "Kitchen" });
+    const draft = await jobRequestService.createDraft({
+      actorUserId: ownerId,
+      organizationId: orgId,
+      residenceId: residence.id,
+      departmentId: department.id,
+      workGroupSlug: "kitchen",
+      roleDefinitionIdentifier: "chef",
+      title: "Min Chef",
+      numberOfWorkers: 1,
+      urgency: "normal",
+      requestType: "single_day",
+      timezone: "America/Toronto",
+      startAt: new Date("2026-08-12T12:00:00.000Z"),
+      endAt: new Date("2026-08-12T20:00:00.000Z")
+    });
+    await expect(
+      jobRequestService.submit({ actorUserId: ownerId, organizationId: orgId, jobRequestId: draft.id, expectedVersion: draft.versionToken })
+    ).rejects.toMatchObject({ code: "RWOS_BELOW_MINIMUM_WAGE" });
+    const stored = await jobRequestRepository.findJobRequestById(draft.id);
+    expect(stored?.status).toBe("draft");
   });
 });

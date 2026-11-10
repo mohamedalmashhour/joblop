@@ -7,6 +7,7 @@ import type {
   ShiftUrgency,
   TimeOfDay
 } from "@rwos/shared";
+import { quebecMinimumWageAt } from "@rwos/shared";
 import { colors, radii, spacing, touch, typography } from "../../theme";
 import {
   Badge,
@@ -35,10 +36,18 @@ type WorkerLearningCapsule = {
 
 const urgencies: readonly ShiftUrgency[] = ["normal", "urgent", "immediate"];
 const times: readonly TimeOfDay[] = ["morning", "afternoon", "evening", "night"];
+// The Québec minimum wage comes from the one shared table (@rwos/shared minimumWage.ts), the same
+// numbers the API uses to refuse below-minimum jobs.
+const currentMinimumWage = quebecMinimumWageAt(new Date());
 const quebecMinimumWage = {
-  amount: 16.6,
-  effectiveDate: "May 1, 2026",
-  source: "CNESST / Gouvernement du Quebec"
+  amount: currentMinimumWage.hourlyMinor / 100,
+  effectiveDate: new Date(`${currentMinimumWage.effectiveFrom}T12:00:00Z`).toLocaleDateString("en-CA", {
+    month: "long",
+    day: "numeric",
+    year: "numeric",
+    timeZone: "UTC"
+  }),
+  source: currentMinimumWage.source
 } as const;
 
 const workerSearchCapsules: readonly Readonly<{

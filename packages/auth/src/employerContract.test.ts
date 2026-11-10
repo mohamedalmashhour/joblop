@@ -191,8 +191,8 @@ describe("employer contract service", () => {
       service.signContract({
         ...base,
         roleRates: [
-          { workGroupId: "wg-1", roleDefinitionId: "r", hourlyRateMinor: 100 },
-          { workGroupId: "wg-1", roleDefinitionId: "r", hourlyRateMinor: 200 }
+          { workGroupId: "wg-1", roleDefinitionId: "r", hourlyRateMinor: 2000 },
+          { workGroupId: "wg-1", roleDefinitionId: "r", hourlyRateMinor: 2100 }
         ]
       })
     ).rejects.toThrow();
@@ -225,6 +225,23 @@ describe("employer contract service", () => {
   // equal it, else the contract is rejected (fail-closed, no write); an unsupported currency (e.g. SYP)
   // is no longer silently coerced to CAD. For Canada the active currency is CAD, so omitted/explicit-CAD
   // both persist "CAD" (byte-identical to before for Canada).
+  // Live check #88: the worker's pay is the rate minus Joblop's share, so a rate below the Québec
+  // minimum wage can never pay the worker enough. Staff cannot publish one.
+  it("refuses a rate below the Québec minimum wage with a clear message (nothing written)", async () => {
+    const { repository, contracts } = fakeRepository();
+    const service = createEmployerContractService(repository, OWNER, PLATFORM, {
+      countryCurrency: "CAD",
+      now: () => new Date("2025-09-01T12:00:00.000Z")
+    });
+    const base = { actorUserId: "platform-1", organizationId: "org-1", version: "v1" };
+    await expect(
+      service.signContract({ ...base, roleRates: [{ workGroupId: "wg-1", roleDefinitionId: "r", hourlyRateMinor: 160 }] })
+    ).rejects.toMatchObject({ code: "invalid", message: "Worker pay is below Québec minimum wage ($16.10/h)." });
+    expect(contracts).toHaveLength(0);
+    const ok = await service.signContract({ ...base, roleRates: [{ workGroupId: "wg-1", roleDefinitionId: "r", hourlyRateMinor: 1610 }] });
+    expect(ok.roleRates[0]?.hourlyRateMinor).toBe(1610);
+  });
+
   it("[currency] omitted → active CAD; explicit CAD accepted; explicit USD/SYP rejected before write", async () => {
     const { repository, contracts } = fakeRepository();
     const service = makeService(repository, { platform: PLATFORM }); // countryCurrency defaults to "CAD"

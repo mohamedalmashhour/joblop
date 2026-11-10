@@ -413,6 +413,7 @@ import { normalizeEscalationReason } from "@rwos/shared";
 import { buildCalendarExport } from "@rwos/shared";
 import { matchingPlaceNames, postalAreaOf } from "@rwos/shared";
 import { deriveOrderLifecycle } from "@rwos/shared";
+import { MinimumWageError } from "@rwos/shared";
 import { parseRequiredCertificates, storedRequiredCertificates } from "@rwos/shared";
 import { shiftOverlapLanguageFromHeader, shiftOverlapResponseBody, type HeldShift } from "@rwos/shared";
 import { deriveWorkerCancellationPenalty, LATE_CANCELLATION_TIMESHEET_MARKER, WORKER_SUSPENSION_DAYS } from "@rwos/shared";
@@ -1676,6 +1677,12 @@ export function buildApi(options: BuildApiOptions = {}) {
 
     if (error instanceof JobRequestError) {
       return sendJobRequestFailure(reply, error);
+    }
+
+    // A short-term job that would pay the worker less than the Québec minimum wage (approve, submit,
+    // the Brain's approval and the staff rate card all refuse it with this one clear message).
+    if (error instanceof MinimumWageError) {
+      return reply.code(422).send({ error: error.code, message: error.message, minimumHourlyMinor: error.minimumHourlyMinor });
     }
 
     if (error instanceof DispatchError) {
@@ -3843,6 +3850,9 @@ export function buildApi(options: BuildApiOptions = {}) {
       now: new Date()
     });
     if (!result.ok) {
+      if (result.reason === "below_minimum_wage") {
+        return reply.code(422).send({ error: "RWOS_BELOW_MINIMUM_WAGE", message: result.message });
+      }
       const code = result.reason === "not_found" ? 404 : 422;
       return reply.code(code).send({ error: `RWOS_ORDER_${result.reason.toUpperCase()}`, message: "The order could not be submitted." });
     }
