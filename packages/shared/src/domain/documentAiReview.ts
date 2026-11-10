@@ -2,12 +2,12 @@
 // the AI vs must be verified by a human, and shape the advisory verdict. No AI call, no I/O here.
 //
 // Privacy rule (QC, launch step 6): NO document image is ever sent to an AI provider, of any type.
-// Identity, SIN, licence, certificate, CV and photo files show a name, an address, a birth date or a
-// face, and an image cannot be masked. The pre-check is offline and text-only (our own record of the
-// type and expiry); it never opens the file. Sensitive identity/financial types always return "human
-// verification required"; the low-sensitivity types below get an offline pass, which
-// presentableVerdict turns into "a person checks it". The governed accept/reject decision always
-// belongs to a platform HR admin.
+// Identity, SIN, licence, certificate, first-aid card, CV and photo files show a name, an address, a
+// birth date or a face, and an image cannot be masked. So no document type is AI-reviewable: the
+// pre-check is offline and text-only (our own record of the type and expiry) and never opens the file.
+// Sensitive identity/financial types return "human verification required" with reason
+// "sensitive_type"; every other type (CV, photo, certificate, first aid, unknown) returns "a person
+// checks it". The governed accept/reject decision always belongs to a platform HR admin.
 
 export type DocumentAiStatus =
   | "ai_approved" // advisory: the model (or offline pre-check) found nothing wrong
@@ -32,13 +32,11 @@ const SENSITIVE_DOC_TYPES: ReadonlySet<string> = new Set([
   "void_cheque"
 ]);
 
-// Low-sensitivity types that get an offline pre-check pass (never read by an AI; a person still checks).
-const AI_REVIEWABLE_DOC_TYPES: ReadonlySet<string> = new Set([
-  "cv",
-  "certificate",
-  "photo",
-  "first_aid"
-]);
+// Document types an AI may read. Deliberately EMPTY (audit G2, owner rule "no phone, address or
+// health information to an outside AI"): cv, photo, certificate and first_aid were removed because
+// their images show personal data. Keep it empty; a type may only be added here if its content can be
+// sent as masked text, never as an image.
+const AI_REVIEWABLE_DOC_TYPES: ReadonlySet<string> = new Set<string>([]);
 
 export function isSensitiveDocType(documentType: string): boolean {
   return SENSITIVE_DOC_TYPES.has(documentType);
@@ -58,9 +56,10 @@ export function offlineAdvisoryVerdict(documentType: string, opts?: { expired?: 
     return { status: "human_required", advisory: true, reason: "sensitive_type", source: "offline" };
   }
   if (isAiReviewableDocType(documentType)) {
+    // Unreachable while the list is empty; kept so a future text-only type still ends with a person.
     return { status: "ai_approved", advisory: true, reason: "offline_precheck", source: "offline" };
   }
-  return { status: "human_required", advisory: true, reason: "unknown_type", source: "offline" };
+  return { status: "human_required", advisory: true, reason: "person_checks", source: "offline" };
 }
 
 /** What a person may be shown. An offline pass means no file was read, so it must never read as an

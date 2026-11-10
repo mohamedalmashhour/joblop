@@ -4,7 +4,8 @@ import type { PrismaClient } from "@rwos/database";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { createClaudeCvProvider } from "./cvBuilderClaude";
 import { reviewDocumentAdvisory } from "./documentAiReview";
-import { resetOutsideAiCircuits } from "./outsideAi";
+import { isAiReviewableDocType, presentableVerdict } from "@rwos/shared";
+import { callOutsideAi, hasNonTextContent, resetOutsideAiCircuits } from "./outsideAi";
 import { createClaudeContactAi, createContactService, type ContactStore, type ConversationRow, type MessageRow } from "./instantContact";
 import { createPrismaContactStore } from "./instantContactRoutes";
 
@@ -244,5 +245,133 @@ describe("health details never leave (launch step 6)", () => {
     expect(body).toContain("Medication reminders");
     expect(body).toContain("RCR / First aid");
     expect(body).toContain("Kitchen job.");
+  });
+});
+
+// Audit G1 (2026-11-08): the two probe strings the audit found leaking must be masked or kept from the AI.
+const PROBE_HEALTH = "I have diabetes and epilepsy, my doctor note says HIV positive, I am pregnant";
+const PROBE_IDS = "my RAMQ health card is BOUJ 8001 0112 and passport AB123456";
+const PROBE_LEAKS = ["diabetes", "epilepsy", "HIV", "pregnant", "doctor note", "BOUJ", "8001 0112", "AB123456"];
+
+function expectNoProbe(body: string) {
+  for (const value of PROBE_LEAKS) expect(body, `leaked ${value}`).not.toContain(value);
+}
+
+function aiConversation(): ConversationRow {
+  const now = new Date("2026-11-10T12:00:00.000Z");
+  return {
+    id: "c1", requesterUserId: "u1", requesterKind: "worker", organizationId: null, topic: "shift", relatedType: null, relatedId: null,
+    status: "ai", urgent: false, handoffReason: null, summary: null,
+    assignedToUserId: null, lastMessageAt: now, requesterReadAt: null, adminReadAt: null, createdAt: now
+  };
+}
+
+function contactStore(convo: ConversationRow) {
+  const messages: MessageRow[] = [];
+  let updated: Partial<ConversationRow> = {};
+  const store = {
+    getConversation: async () => convo,
+    resolveRequester: async () => ({ userId: "u1", side: "worker", name: "Sam", email: null, organizationId: null }),
+    addMessage: async (m: { body: string; authorKind: MessageRow["authorKind"] }) => {
+      const row: MessageRow = { id: `m${messages.length}`, conversationId: convo.id, authorKind: m.authorKind, authorUserId: null, body: m.body, internal: false, createdAt: convo.createdAt };
+      messages.push(row);
+      return row;
+    },
+    updateConversation: async (_id: string, patch: Partial<ConversationRow>) => { updated = { ...updated, ...patch }; return { ...convo, ...patch }; },
+    listMessages: async () => messages,
+    countAiReplies: async () => 0,
+    factsFor: async () => "{}"
+  } as unknown as ContactStore;
+  return { store, messages, updated: () => updated };
+}
+
+const noNotices = { adminNeeded: async () => {}, adminReplied: async () => {} };
+
+describe("audit G1 probes", () => {
+  it("contact chat: the health probe goes to staff and the AI is never called", async () => {
+    const fetchImpl = vi.fn();
+    const { store, messages, updated } = contactStore(aiConversation());
+    const service = createContactService({ store, ai: createClaudeContactAi({ apiKey: "k", fetchImpl: fetchImpl as unknown as typeof fetch, logger: silent }), notices: noNotices });
+    await service.send({ userId: "u1", side: "worker", id: "c1", body: PROBE_HEALTH, locale: "en" });
+    expect(fetchImpl).not.toHaveBeenCalled();
+    expect(updated()).toMatchObject({ status: "needs_admin", handoffReason: "health" });
+    expect(messages.at(-1)?.authorKind).toBe("ai");
+    expect(messages.at(-1)?.body).toContain("health details are never shown to the AI");
+  });
+
+  it("contact chat: health-card and passport numbers are masked before the AI sees them", async () => {
+    const { fetchImpl, sent } = capture(contactAnswer);
+    const { store } = contactStore(aiConversation());
+    const service = createContactService({ store, ai: createClaudeContactAi({ apiKey: "k", fetchImpl, logger: silent }), notices: noNotices });
+    await service.send({ userId: "u1", side: "worker", id: "c1", body: PROBE_IDS, locale: "en" });
+    const body = sent();
+    expectNoProbe(body);
+    expect(body).toContain("[health card]");
+    expect(body).toContain("[ID number]");
+  });
+
+  it("staff assistant: both probes are masked in the conversation, the summary and the question", async () => {
+    const { fetchImpl, sent } = capture(contactAnswer);
+    const now = new Date("2026-11-10T12:00:00.000Z");
+    const convo: ConversationRow = { ...aiConversation(), status: "needs_admin", handoffReason: "health", summary: PROBE_IDS };
+    const messages: MessageRow[] = [
+      { id: "m1", conversationId: "c1", authorKind: "requester", authorUserId: "u1", body: `Can't work Friday. ${PROBE_HEALTH}.`, internal: false, createdAt: now },
+      { id: "m2", conversationId: "c1", authorKind: "requester", authorUserId: "u1", body: PROBE_IDS, internal: false, createdAt: now }
+    ];
+    const store = { getConversation: async () => convo, listMessages: async () => messages } as unknown as ContactStore;
+    const service = createContactService({ store, ai: createClaudeContactAi({ apiKey: "k", fetchImpl, logger: silent }), notices: noNotices });
+    await service.adminAsk({ question: "Draft a reply. Their passport is AB123456.", conversationId: "c1" });
+    const body = sent();
+    expectNoProbe(body);
+    expect(body).toContain("Can't work Friday.");
+    expect(body).toContain("[health detail]");
+  });
+
+  it("CV builder: both probes are masked in the profile and the job text", async () => {
+    const modelText = "## Profile\nCook.\n===COVER LETTER===\nHello,\n[CANDIDATE_NAME]";
+    const { fetchImpl, sent } = capture({ stop_reason: "end_turn", content: [{ type: "text", text: modelText }] });
+    await createClaudeCvProvider({ apiKey: "k", fetchImpl, logger: silent }).generate({
+      profile: {
+        fullName: "Sam Tremblay",
+        summary: `Line cook for 5 years. ${PROBE_HEALTH}. ${PROBE_IDS}.`,
+        skills: ["Grill", "First aid certificate"],
+        language: "en"
+      },
+      job: { title: "Cook", description: `Kitchen job. ${PROBE_IDS}` }
+    });
+    const body = sent();
+    expectNoProbe(body);
+    expect(body).toContain("Line cook for 5 years.");
+    expect(body).toContain("First aid certificate");
+    expect(body).toContain("Kitchen job.");
+  });
+});
+
+describe("audit G2: no image bytes for CV, photo, certificate or first aid", () => {
+  it("the advisory check makes no network call and a person decides", () => {
+    const fetchSpy = vi.spyOn(globalThis, "fetch");
+    for (const documentType of ["cv", "photo", "certificate", "first_aid"]) {
+      expect(isAiReviewableDocType(documentType)).toBe(false);
+      const verdict = presentableVerdict(reviewDocumentAdvisory({ documentType, expired: false }));
+      expect(verdict).toMatchObject({ status: "human_required", source: "offline" });
+    }
+    expect(fetchSpy).not.toHaveBeenCalled();
+    fetchSpy.mockRestore();
+  });
+
+  it("the one door to the outside AI refuses image bytes even if a caller tried", async () => {
+    const fetchImpl = vi.fn();
+    const imageBlock = { type: "image", source: { type: "base64", media_type: "image/jpeg", data: "A".repeat(4000) } };
+    const result = await callOutsideAi({
+      feature: "contact_chat",
+      apiKey: "k",
+      body: { model: "claude-opus-5-5", max_tokens: 10, messages: [{ role: "user", content: [imageBlock, { type: "text", text: "Check this CV" }] }] },
+      userContent: ["Check this CV"],
+      fetchImpl: fetchImpl as unknown as typeof fetch,
+      logger: silent
+    });
+    expect(result.ok).toBe(false);
+    expect(fetchImpl).not.toHaveBeenCalled();
+    expect(hasNonTextContent({ data: "data:image/png;base64,iVBORw0KGgo=" })).toBe(true);
   });
 });
