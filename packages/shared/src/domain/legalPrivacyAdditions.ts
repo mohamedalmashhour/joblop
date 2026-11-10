@@ -47,6 +47,9 @@ function providerRows(audience: LegalAudience, lang: "en" | "fr"): string[][] {
       ? ["Google Maps Platform", "Turning postal codes and addresses into map locations, maps and driving times", "Postal codes, addresses"]
       : ["Google Maps Platform", "Conversion des codes postaux et des adresses en positions, cartes et temps de route", "Codes postaux, adresses"],
     en
+      ? ["OpenStreetMap (map tiles)", "Showing the map on the Find work page of joblop.com", "Your IP address and the map area you view (your browser loads the map images directly from OpenStreetMap)"]
+      : ["OpenStreetMap (tuiles de carte)", "Affichage de la carte sur la page Trouver du travail de joblop.com", "Votre adresse IP et la zone de carte affichée (votre navigateur charge les images de carte directement d’OpenStreetMap)"],
+    en
       ? ["Stripe", "Card payments, when card payments are available", "The payment details you enter on Stripe’s secure form (Joblop does not see your full card number)"]
       : ["Stripe", "Paiements par carte, lorsque ce mode de paiement est offert", "Les données de paiement saisies dans le formulaire sécurisé de Stripe (Joblop ne voit pas le numéro complet de votre carte)"]
   ];
