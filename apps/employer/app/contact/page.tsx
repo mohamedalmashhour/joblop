@@ -3,6 +3,9 @@ import { getContactContent } from "./contactContent";
 import { PublicSiteFooter, readPublicLocale } from "../pricing/publicPageStyles";
 import { SiteHeader } from "../shared/SiteHeader";
 
+// Same order as the content paths: active-shift support first, then general contact.
+const pathAnchors = ["#active-shift", "#general-contact"] as const;
+
 export default async function ContactPage() {
   const c = getContactContent(await readPublicLocale());
   return (
@@ -31,11 +34,11 @@ export default async function ContactPage() {
           </h2>
         </div>
         <div style={styles.twoColumn}>
-          {c.paths.map((path) => (
-            <article key={path.href} style={styles.pathCard}>
+          {c.paths.map((path, index) => (
+            <article key={pathAnchors[index]} style={styles.pathCard}>
               <h3 style={styles.cardTitle}>{path.title}</h3>
               <p style={styles.cardText}>{path.text}</p>
-              <a href={path.href} style={path.href === "#active-shift" ? styles.cardButton : styles.cardButtonSecondary}>
+              <a href={pathAnchors[index]} style={index === 0 ? styles.cardButton : styles.cardButtonSecondary}>
                 {path.button}
               </a>
             </article>

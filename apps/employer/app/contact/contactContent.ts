@@ -80,7 +80,9 @@ export const faqPreview = [
 // ---------------------------------------------------------------------------------------------
 // Localized page copy (EN / FR Québec / AR). English values equal the exports above.
 // ---------------------------------------------------------------------------------------------
-export type ContactPathCopy = Readonly<{ title: string; text: string; button: string; href: string }>;
+// The two paths are always in this order: [active-shift support, general contact]. The page owns the
+// matching anchors (see pathAnchors in page.tsx).
+export type ContactPathCopy = Readonly<{ title: string; text: string; button: string }>;
 
 export type ContactCopy = Readonly<{
   eyebrow: string;
@@ -141,8 +143,8 @@ const contactEn: ContactCopy = {
   pathsEyebrow: "Support paths",
   pathsTitle: "Active-shift support is separate from ordinary contact.",
   paths: [
-    { ...contactPaths[0], button: "Start Active-Shift Support", href: "#active-shift" },
-    { ...contactPaths[1], button: "Use General Contact", href: "#general-contact" }
+    { ...contactPaths[0], button: "Start Active-Shift Support" },
+    { ...contactPaths[1], button: "Use General Contact" }
   ],
   activeEyebrow: "Active-shift support",
   activeTitle: "Operational help for a current or imminent shift.",
@@ -201,14 +203,12 @@ const contactFr: ContactCopy = {
     {
       title: "Aide pour un quart en cours",
       text: "Quart en cours, retard, absence, remplacement, problème de pointage à l'arrivée ou au départ, ou problème urgent sur place.",
-      button: "Obtenir de l'aide pour un quart",
-      href: "#active-shift"
+      button: "Obtenir de l'aide pour un quart"
     },
     {
       title: "Demande générale",
       text: "Dotation, facturation, documents, ventes, confidentialité, soutien technique, compte, ou toute question qui ne touche pas un quart en cours.",
-      button: "Faire une demande générale",
-      href: "#general-contact"
+      button: "Faire une demande générale"
     }
   ],
   activeEyebrow: "Aide pour un quart en cours",
@@ -322,14 +322,12 @@ const contactAr: ContactCopy = {
     {
       title: "مساعدة في مناوبة جارية",
       text: "مناوبة جارية، تأخر في الوصول، غياب، بديل، مشكلة في تسجيل الحضور أو الانصراف، أو مشكلة عمل عاجلة.",
-      button: "ابدأ طلب مساعدة لمناوبة",
-      href: "#active-shift"
+      button: "ابدأ طلب مساعدة لمناوبة"
     },
     {
       title: "تواصل عام",
       text: "التوظيف، الفواتير، المستندات، المبيعات، الخصوصية، الدعم التقني، الحساب، أو أي سؤال لا يخص مناوبة جارية.",
-      button: "استخدم التواصل العام",
-      href: "#general-contact"
+      button: "استخدم التواصل العام"
     }
   ],
   activeEyebrow: "مساعدة في مناوبة جارية",
