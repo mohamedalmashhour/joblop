@@ -132,7 +132,11 @@ const en = {
   open: "Open",
   dayItems: (count: number) => (count === 1 ? "1 item" : `${count} items`),
   noItems: "Nothing on this day.",
-  hiddenByFilters: "Items on this day are hidden by the filters above."
+  hiddenByFilters: "Items on this day are hidden by the filters above.",
+  reviewTitle: (role: string) => `Waiting for your review – ${role}`,
+  reviewNow: "Review now",
+  estimateNote: "(estimate – set on approval)",
+  priceOnApproval: "Price set on approval"
 };
 
 export type CoverageText = typeof en;
@@ -268,7 +272,11 @@ const fr: CoverageText = {
   open: "Ouvrir",
   dayItems: (count) => (count <= 1 ? `${count} élément` : `${count} éléments`),
   noItems: "Rien ce jour-là.",
-  hiddenByFilters: "Les éléments de ce jour sont masqués par les filtres ci-dessus."
+  hiddenByFilters: "Les éléments de ce jour sont masqués par les filtres ci-dessus.",
+  reviewTitle: (role: string) => `En attente de votre révision – ${role}`,
+  reviewNow: "Réviser maintenant",
+  estimateNote: "(estimation – fixée à l'approbation)",
+  priceOnApproval: "Prix fixé à l'approbation"
 };
 
 const ar: CoverageText = {
@@ -399,7 +407,11 @@ const ar: CoverageText = {
   open: "فتح",
   dayItems: (count) => `${count} عنصر`,
   noItems: "لا شيء في هذا اليوم.",
-  hiddenByFilters: "عناصر هذا اليوم مخفية بسبب عوامل التصفية أعلاه."
+  hiddenByFilters: "عناصر هذا اليوم مخفية بسبب عوامل التصفية أعلاه.",
+  reviewTitle: (role: string) => `بانتظار مراجعتك – ${role}`,
+  reviewNow: "راجع الآن",
+  estimateNote: "(تقدير – يُحدَّد عند الموافقة)",
+  priceOnApproval: "يُحدَّد السعر عند الموافقة"
 };
 
 export const coverageText = { en, fr, ar } satisfies PageText<CoverageText>;

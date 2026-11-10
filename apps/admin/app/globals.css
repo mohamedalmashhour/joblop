@@ -338,3 +338,6 @@ h3 {
 html[dir="rtl"] body {
   font-family: var(--font-sans, Inter), "Segoe UI", "Geeza Pro", "Noto Sans Arabic", Tahoma, system-ui, sans-serif;
 }
+
+/* Text links on the page with no style of their own: brand gold and underlined, never browser blue/purple. */
+main a:not([class]):not([style]) { color: #f8b808; text-decoration: underline; text-underline-offset: 3px; }

@@ -180,8 +180,10 @@ export function MySchedule() {
           ) : null}
         </>
       )}
-      <p className="notice"><a href="/timesheets">{t("ts.title")}</a></p>
-      <p className="notice">{t("sched.footer")}</p>
+      <div style={{ display: "grid", gap: 10, justifyItems: "start", margin: "8px 0 32px" }}>
+        <p className="notice" style={{ margin: 0 }}>{t("sched.footer")}</p>
+        <a className="btn" href="/timesheets">{t("ts.title")}</a>
+      </div>
     </>
   );
 }
@@ -205,12 +207,17 @@ function ShiftCard({ s, busy, onAct, history, t, locale }: { s: Shift; busy: boo
         {s.areaLabel ? <span className="chip">{s.areaLabel}</span> : null}
         {s.exceptionCategory ? <span className="chip status-rejected">{s.exceptionCategory.replaceAll("_", " ")}</span> : null}
       </div>
-      <div className="when">{formatShift(s.scheduledStartAt, s.scheduledEndAt, s.timezone, locale)}</div>
+      <div className="when">{formatShift(s.scheduledStartAt, s.scheduledEndAt, s.timezone, locale, t("sched.easternTime"))}</div>
       {s.worksiteAddress ? <div className="when">{t("sched.address", { address: s.worksiteAddress })}</div> : null}
       {/* The exact address only comes for a confirmed shift that is not over (worksiteAddress.ts). */}
       {!history && s.worksiteAddress ? <ShiftAddressMap address={s.worksiteAddress} /> : null}
       {s.safetyNotes ? <div className="when">{t("sched.safetyNotes", { notes: s.safetyNotes })}</div> : null}
-      <a className="muted" href={`/contact?topic=shift&relatedType=assignment&relatedId=${encodeURIComponent(s.assignmentId)}`}>{t("contact.askAbout")}</a>
+      <a
+        className="sched-ask"
+        href={`/contact?topic=shift&relatedType=assignment&relatedId=${encodeURIComponent(s.assignmentId)}`}
+      >
+        {t("sched.askJoblop")}
+      </a>
       {inTime ? <div className="when">{outTime ? t("sched.inOut", { inTime, outTime }) : t("sched.in", { time: inTime })}</div> : null}
       {s.checkInAt && s.checkOutAt ? <div className="when"><strong>{t("sched.worked", { duration: workedDuration(s.checkInAt, s.checkOutAt, t) })}</strong></div> : null}
       {noClock ? <p className="notice" style={{ margin: 0 }}>{t("sched.longTermNoClockIn")}</p> : null}
@@ -246,11 +253,13 @@ function formatClock(at: string, tz: string, locale: RwosLocale): string {
     return new Date(at).toLocaleTimeString(locale, { hour: "numeric", minute: "2-digit" });
   }
 }
-function formatShift(startAt: string, endAt: string, tz: string, locale: RwosLocale): string {
+// Québec shifts are on Eastern time: say so in plain words instead of "(America/Toronto)".
+const EASTERN_ZONES = new Set(["America/Toronto", "America/Montreal", "America/Nipigon", "America/Thunder_Bay", "America/Iqaluit", "America/New_York"]);
+function formatShift(startAt: string, endAt: string, tz: string, locale: RwosLocale, easternLabel: string): string {
   const opts: Intl.DateTimeFormatOptions = { weekday: "short", month: "short", day: "numeric", hour: "numeric", minute: "2-digit", timeZone: tz };
   const start = new Date(startAt).toLocaleString(locale, opts);
   const end = new Date(endAt).toLocaleTimeString(locale, { hour: "numeric", minute: "2-digit", timeZone: tz });
-  return `${start} – ${end} (${tz})`;
+  return EASTERN_ZONES.has(tz) ? `${start} – ${end} (${easternLabel})` : `${start} – ${end}`;
 }
 
 

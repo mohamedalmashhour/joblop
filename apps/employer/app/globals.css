@@ -265,3 +265,6 @@ html[dir="rtl"] body, html[dir="rtl"] main { font-family: var(--font-sans, Inter
 
 /* Animated job-role strip never pushes the page sideways on phones. */
 .plm { overflow-x: clip; max-width: min(1080px, 100%); }
+
+/* Text links on the page with no style of their own: brand gold and underlined, never browser blue/purple. */
+main a:not([class]):not([style]) { color: #f8b808; text-decoration: underline; text-underline-offset: 3px; }

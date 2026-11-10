@@ -364,6 +364,7 @@ import { createPrismaDocumentMetadataRepository } from "./documentUploadReposito
 import { registerDocumentRoutes } from "./documentRoutes";
 import { registerInvoiceRoutes } from "./invoiceRoutes";
 import { createPrismaRequestPricingSnapshotCapture } from "./requestPricingSnapshot";
+import { pendingRateEstimates } from "./coverageEstimate";
 import {
   readAdminRequestCards,
   readAdminRequestSummary,
@@ -5630,6 +5631,8 @@ export function buildApi(options: BuildApiOptions = {}) {
       take: 500
     });
     const latestBonus = await latestBonusByJob(prisma, rows.map((r) => r.id));
+    // Requests not yet approved have no saved price: add the contract estimate (read-only, staff only).
+    const estimates = await pendingRateEstimates(rows, createPrismaRequestPricingSnapshotCapture(prisma));
     const coverageNow = new Date();
     const assignments = rows.length
       ? await prisma.assignment.findMany({
@@ -5669,8 +5672,10 @@ export function buildApi(options: BuildApiOptions = {}) {
         placesLeft,
         coverage: r.status !== "approved_for_dispatch" ? "not_open" : placesLeft === 0 ? "full" : workers.length > 0 ? "partly_filled" : "open",
         workers,
-        workerRateMinor: r.pricingSnapshot?.workerHourlyRateMinor ?? null,
-        employerRateMinor: r.pricingSnapshot?.employerHourlyRateMinor ?? null,
+        workerRateMinor: r.pricingSnapshot?.workerHourlyRateMinor ?? estimates.get(r.id)?.workerRateMinor ?? null,
+        employerRateMinor: r.pricingSnapshot?.employerHourlyRateMinor ?? estimates.get(r.id)?.employerRateMinor ?? null,
+        // True when the two rates above are the contract estimate (set for real on approval).
+        rateIsEstimate: !r.pricingSnapshot && estimates.has(r.id),
         // Latest non-cancelled bonus, and a system suggestion for approved jobs with places left that
         // start within 48 hours (null otherwise).
         bonus: latestBonus.get(r.id) ?? null,

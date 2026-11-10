@@ -135,7 +135,7 @@ export function AdminOrderReviewPanel({ orderId }: Readonly<{ orderId: string }>
   if (state.status === "error") return <p style={styles.text}>{t.orderError}</p>;
 
   const order = state.order;
-  const schedule = `${new Date(order.startAt).toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" })} – ${new Date(order.endAt).toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" })} (${order.timezone})`;
+  const schedule = `${new Date(order.startAt).toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" })} – ${new Date(order.endAt).toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" })}`; // no "(America/Toronto)": Québec only
 
   return (
     <section style={styles.wrap}>
