@@ -52,9 +52,11 @@ export function LandingPanel({ onSignedIn }: { onSignedIn: () => void }) {
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     const next = params.get("next");
-    if (!next) return;
-    remember(next);
-    setTab(params.get("tab") === "signin" ? "signin" : "signup");
+    const tabParam = params.get("tab");
+    // "/signin" redirects here with ?tab=signin, so an explicit tab opens the card even without a job.
+    if (!next && tabParam !== "signin" && tabParam !== "signup") return;
+    if (next) remember(next);
+    setTab(tabParam === "signin" ? "signin" : "signup");
     document.getElementById("auth-card")?.scrollIntoView({ behavior: "smooth", block: "center" });
   }, []);
 

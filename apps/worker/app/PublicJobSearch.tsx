@@ -178,12 +178,12 @@ export function PublicJobSearch({ onWantDetails }: { onWantDetails: (next: strin
                 {jobs.map((job) => (
                   <a key={job.jobCode} className="pjs-card pjs-own" href={publicJobPath(job.jobCode)}>
                     <span className="pjs-badge">{t.joblopBadge}</span>
-                    <strong>{job.role}</strong>
+                    <strong dir="auto">{job.role}</strong>
                     <span className="pjs-meta">📍 <bdi>{job.areaLabel}</bdi> · {new Date(job.startAt).toLocaleDateString(locale)}</span>
                     <span className="pjs-meta"><bdi>{workerPayLabel(job, moneyLocale, t)}</bdi></span>
                     <span className="pjs-foot">
                       <em>{t.places(job.openings)}{job.urgency === "urgent" || job.urgency === "immediate" ? ` · ${t.urgent}` : ""}</em>
-                      <span>{t.open} →</span>
+                      <span>{t.open} {lang === "ar" ? "←" : "→"}</span>
                     </span>
                   </a>
                 ))}
@@ -197,11 +197,11 @@ export function PublicJobSearch({ onWantDetails }: { onWantDetails: (next: strin
                 {leads.map((lead, i) => (
                   <div key={`${lead.title}-${i}`} className="pjs-cell">
                     <button type="button" className="pjs-card" title={t.gate} onClick={() => onWantDetails(leadNext(lead.title))}>
-                      <strong>{lead.title}</strong>
+                      <strong dir="auto">{lead.title}</strong>
                       <span className="pjs-meta">{lead.employer ? `${lead.employer} · ` : ""}📍 {lead.areaLabel}</span>
                       <span className="pjs-foot">
-                        <em>{pay(lead) ?? ""}</em>
-                        <span>{t.open} →</span>
+                        <em dir="ltr">{pay(lead) ?? ""}</em>
+                        <span>{t.open} {lang === "ar" ? "←" : "→"}</span>
                       </span>
                     </button>
                     {lead.source === "adzuna" ? (

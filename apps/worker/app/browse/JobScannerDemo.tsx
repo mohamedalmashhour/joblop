@@ -140,7 +140,7 @@ const CSS = `
 .jsd-step.on{color:#fff;border-color:#f8b808;}
 .jsd-step.done{color:#58f0a8;}
 .jsd-num{width:18px;height:18px;border-radius:50%;background:rgba(255,255,255,.12);display:grid;place-items:center;font-size:11px;font-weight:800;}
-.jsd-step.on .jsd-num{background:#a8842f;color:#fff;}
+.jsd-step.on .jsd-num{background:#f8b808;color:#000;}
 .jsd-step.done .jsd-num{background:#1fbf6b;color:#06220f;}
 .jsd-controls{display:flex;gap:10px;flex-wrap:wrap;justify-content:center;}
 .jsd-ctl{font-family:inherit;cursor:pointer;border:1px solid rgba(255,255,255,.18);background:rgba(255,255,255,.06);color:#f0e2c0;font-weight:700;font-size:13px;padding:9px 16px;border-radius:999px;transition:background .2s,border-color .2s;}

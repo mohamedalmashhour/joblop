@@ -85,7 +85,7 @@ const T = {
     empBtn: "Post a request", emp1: "Reach available local workers", emp2: "Governed, compliant staffing", emp3: "Fill urgent shifts fast",
     trustTitle: "Trusted where people live and work",
     trustSub: "Care homes, restaurants, and local employers across Canada staff with Joblop.",
-    st1: "open jobs", st2: "provinces hiring", st3: "worker fees", st4: "to browse",
+    st1: "open jobs", st2: "provinces hiring", st2One: "province hiring", st3: "worker fees", st4: "to browse",
     jsTag: "⚡ JOBSCANNER", jsTitle: "The deepest job search in Canada — and it's free",
     jsSub: "JobScanner hunts the market for you: it continuously scans partner job feeds across Canada, ranks the best matches, and lets you apply free on Joblop. One search instead of ten tabs.",
     js1t: "Deep, real search", js1b: "The whole market scanned and refreshed around the clock.",
@@ -159,7 +159,7 @@ const T = {
     empBtn: "Publier une demande", emp1: "Rejoignez des travailleurs locaux", emp2: "Dotation encadrée et conforme", emp3: "Comblez les urgences vite",
     trustTitle: "La confiance, là où l'on vit et travaille",
     trustSub: "Résidences, restaurants et employeurs locaux partout au Canada recrutent avec Joblop.",
-    st1: "offres ouvertes", st2: "provinces qui embauchent", st3: "frais travailleur", st4: "pour consulter",
+    st1: "offres ouvertes", st2: "provinces qui embauchent", st2One: "province qui embauche", st3: "frais travailleur", st4: "pour consulter",
     jsTag: "⚡ JOBSCANNER", jsTitle: "La recherche d'emploi la plus poussée au Canada — gratuite",
     jsSub: "JobScanner cherche le marché pour vous : il analyse en continu des fils d'emplois partenaires partout au Canada, classe les meilleures correspondances et vous laisse postuler gratuitement sur Joblop. Une seule recherche au lieu de dix onglets.",
     js1t: "Recherche réelle et poussée", js1b: "Tout le marché analysé et rafraîchi en continu.",
@@ -233,7 +233,7 @@ const T = {
     empBtn: "انشر طلبًا", emp1: "تواصل مع عمال محليين متاحين", emp2: "توظيف منظّم ومتوافق", emp3: "املأ النوبات العاجلة بسرعة",
     trustTitle: "الثقة حيث نعيش ونعمل",
     trustSub: "دور الرعاية والمطاعم وأصحاب العمل المحليون في جميع أنحاء كندا يوظّفون عبر جوب‑لوب.",
-    st1: "وظيفة متاحة", st2: "مقاطعة توظّف", st3: "رسوم على العامل", st4: "للتصفّح",
+    st1: "وظيفة متاحة", st2: "مقاطعة توظّف", st2One: "مقاطعة توظّف", st3: "رسوم على العامل", st4: "للتصفّح",
     jsTag: "⚡ JOBSCANNER", jsTitle: "أعمق بحث عن عمل في كندا — ومجاني",
     jsSub: "JobScanner يبحث في السوق نيابة عنك: يمسح باستمرار مصادر وظائف شريكة في جميع أنحاء كندا، ويرتّب أفضل المطابقات، ويتيح لك التقديم مجانًا عبر جوب‑لوب. بحث واحد بدل عشر نوافذ.",
     js1t: "بحث حقيقي وعميق", js1b: "السوق كله يُمسح ويُحدَّث باستمرار.",
@@ -296,6 +296,8 @@ export function PublicJobBoard() {
   const [cForm, setCForm] = useState({ name: "", email: "", msg: "" });
   const gen = useRef(0);
   const t = T[lang];
+  // Arrows follow the reading direction: → in English/French, ← in Arabic.
+  const arrow = lang === "ar" ? "←" : "→";
 
   // Opens the visitor's own email client with the message pre-filled — a real, no-backend contact
   // path. We never collect or store the data ourselves.
@@ -459,7 +461,7 @@ export function PublicJobBoard() {
               <p>{t.pathWorkerDesc}</p>
               <div className="jl-path-cta">
                 <a href="/" className="jl-btn-primary">{t.create}</a>
-                <a href="/" className="jl-link">{t.signin} →</a>
+                <a href="/" className="jl-link">{t.signin} {arrow}</a>
               </div>
             </div>
             <div className="jl-path jl-path-client">
@@ -468,7 +470,7 @@ export function PublicJobBoard() {
               <p>{t.pathClientDesc}</p>
               <div className="jl-path-cta">
                 <a href={`${EMPLOYER_URL}/signup/employer`} className="jl-btn-primary">{t.create}</a>
-                <a href={`${EMPLOYER_URL}/signin`} className="jl-link">{t.signin} →</a>
+                <a href={`${EMPLOYER_URL}/signin`} className="jl-link">{t.signin} {arrow}</a>
               </div>
             </div>
           </div>
@@ -489,9 +491,9 @@ export function PublicJobBoard() {
             {/* Owner spec: hero search box removed (it read as "JobScanner"); the two role actions stay.
                 Find a job -> internal Joblop jobs on this page; Hire talent -> employer app. */}
             {tab === "find" ? (
-              <a href="/browse#jobs" className="jl-hire-cta" onClick={(e) => { e.preventDefault(); scrollToJobs(); }}>{t.tabFind} →</a>
+              <a href="/browse#jobs" className="jl-hire-cta" onClick={(e) => { e.preventDefault(); scrollToJobs(); }}>{t.tabFind} {arrow}</a>
             ) : (
-              <a href={EMPLOYER_URL} className="jl-hire-cta">{t.empBtn} →</a>
+              <a href={EMPLOYER_URL} className="jl-hire-cta">{t.empBtn} {arrow}</a>
             )}
           </div>
           <div className="jl-hero-art" aria-hidden="true">
@@ -636,7 +638,7 @@ export function PublicJobBoard() {
             <span className="jl-js-tag">📡 {t.jsTag}</span>
             <h2>{t.jsTitle}</h2>
             <p>{t.jsSub}</p>
-            <a href="/job-scanner" className="jl-js-btn">{t.jsBtn} →</a>
+            <a href="/job-scanner" className="jl-js-btn">{t.jsBtn} {arrow}</a>
           </div>
           <div className="jl-js-demo"><JobScannerDemo lang={lang} /></div>
         </div>
@@ -656,11 +658,11 @@ export function PublicJobBoard() {
                   <a href="/" className="jl-lead" title={t.leadsApplyHint}>
                     <span className="jl-lead-ic">{iconFor(l.title)}</span>
                     <span className="jl-lead-main">
-                      <strong>{l.title}</strong>
-                      <em>{l.employer ? `${l.employer} · ` : ""}📍 {l.areaLabel}</em>
+                      <strong dir="auto">{l.title}</strong>
+                      <em>{l.employer ? <bdi>{l.employer}</bdi> : null}{l.employer ? " · " : ""}📍 <bdi>{l.areaLabel}</bdi></em>
                     </span>
-                    {pay ? <span className="jl-lead-pay">{pay}</span> : null}
-                    <span className="jl-lead-go">{t.leadsApply} →</span>
+                    {pay ? <span className="jl-lead-pay" dir="ltr">{pay}</span> : null}
+                    <span className="jl-lead-go">{t.leadsApply} {arrow}</span>
                   </a>
                   {l.source === "adzuna" ? (
                     <a className="jl-adzuna" href="https://www.adzuna.ca" target="_blank" rel="noreferrer">Adzuna</a>
@@ -669,7 +671,7 @@ export function PublicJobBoard() {
                 );
               })}
             </div>
-            <p className="jl-leads-note">{t.leadsNote} <a href="/job-scanner">{t.leadsCta} →</a></p>
+            <p className="jl-leads-note">{t.leadsNote} <a href="/job-scanner">{t.leadsCta} {arrow}</a></p>
           </div>
         )}
         <div className="jl-wrap jl-alert">
@@ -733,7 +735,7 @@ export function PublicJobBoard() {
           <p className="jl-sub">{t.trustSub}</p>
           <div className="jl-stats">
             <div><strong>{openCount ?? "—"}</strong><span>{t.st1}</span></div>
-            <div><strong>{openProvinces ?? "—"}</strong><span>{t.st2}</span></div>
+            <div><strong>{openProvinces ?? "—"}</strong><span>{openProvinces === 1 ? t.st2One : t.st2}</span></div>
             <div><strong>$0</strong><span>{t.st3}</span></div>
             <div><strong>$0</strong><span>{t.st4}</span></div>
           </div>
@@ -845,14 +847,16 @@ const CSS = `
   --gold:#f8b808;           /* primary accent — pops on black */
   --gold-pri:#f8b808;--gold-pri-2:#e0a500;--gold-2:#9a7122;--accent-warm:#f8b808;--tint:#161310;--ink-dark:#000000;
   --shadow:0 24px 60px -34px rgba(0,0,0,.8),0 2px 8px rgba(0,0,0,.5);
+  /* Side margin that lines boxed bands up with the 1084px content column (18px minimum on phones). */
+  --jl-col-gutter:max(18px,calc((100% - 1084px) / 2));
   color:var(--ink);background:var(--bg);min-height:100vh;font-family:var(--jl-font-sans);-webkit-font-smoothing:antialiased;line-height:1.5;}
 .jl *{box-sizing:border-box;}
-.jl a{color:inherit;text-decoration:none;}
+:where(.jl) a{color:inherit;text-decoration:none;}
 .jl h2{font-family:var(--jl-font-serif);font-size:clamp(26px,3.6vw,38px);letter-spacing:-.015em;margin:0 0 10px;font-weight:800;color:#fbf7ee;text-wrap:balance;}
 .jl .jl-sub{color:var(--muted);margin:0 0 28px;font-size:16px;max-width:60ch;}
 .jl-wrap{max-width:1120px;margin:0 auto;padding:0 max(18px,env(safe-area-inset-left)) 0 max(18px,env(safe-area-inset-right));}
 .jl-center{text-align:center;}
-.jl-center .jl-sub{margin-left:auto;margin-right:auto;}
+.jl-center .jl-sub{margin-inline-start:auto;margin-right:auto;}
 .jl-muted{color:var(--muted);}
 :where(.jl) a:focus-visible,:where(.jl) button:focus-visible,:where(.jl) input:focus-visible,:where(.jl) select:focus-visible{outline:2px solid var(--gold);outline-offset:2px;border-radius:6px;}
 /* NAV */
@@ -863,12 +867,12 @@ const CSS = `
 .jl-links{display:flex;gap:26px;margin-left:12px;}
 .jl-links a{color:var(--muted);font-weight:600;font-size:14.5px;transition:color .15s;}
 .jl-links a:hover{color:var(--ink);}
-.jl-nav-cta{margin-left:auto;display:flex;align-items:center;gap:12px;}
+.jl-nav-cta{margin-inline-start:auto;display:flex;align-items:center;gap:12px;}
 .jl-btn-ghost{border:1px solid var(--line-2);color:var(--ink);padding:9px 16px;border-radius:10px;font-weight:700;font-size:14px;transition:background .15s,border-color .15s;}
 .jl-btn-ghost:hover{background:rgba(248, 184, 8,.08);border-color:var(--gold);}
 .jl-btn-primary{background:var(--gold);color:#000;padding:9px 18px;border-radius:10px;font-weight:800;font-size:14px;transition:background .15s,transform .12s;}
 .jl-btn-primary:hover{background:var(--gold-pri-2);transform:translateY(-1px);}
-.jl-btn-lg{display:inline-block;padding:13px 26px;font-size:15.5px;border-radius:12px;}
+.jl-btn-lg{display:inline-flex;align-items:center;justify-content:center;min-height:48px;padding:0 26px;font-size:15.5px;border-radius:12px;}
 /* HERO */
 .jl-hero{background:linear-gradient(100deg,#000 0%,#000 36%,rgba(0,0,0,.72) 58%,rgba(0,0,0,.34) 100%),radial-gradient(1100px 560px at 92% -12%,rgba(248, 184, 8,.22),transparent),url('/img/hero.png') right center/cover no-repeat,#000;border-bottom:1px solid var(--line);color:#f4efe4;}
 .jl-hero .jl-hero-copy h1{color:#fbf7ee;}
@@ -881,7 +885,7 @@ const CSS = `
 .jl-hl-accent{color:var(--gold);font-style:normal;font-weight:800;}
 .jl-hero-copy>p{color:#cdc3ae;font-size:clamp(15px,1.9vw,18px);max-width:520px;margin:0 0 22px;line-height:1.6;}
 .jl-tabs{display:inline-flex;gap:4px;background:var(--card);border:1px solid var(--line);border-radius:12px;padding:4px;margin-bottom:14px;}
-.jl-tabs button{border:0;background:transparent;padding:9px 18px;border-radius:9px;font-weight:700;font-size:14px;cursor:pointer;color:var(--muted);transition:background .15s,color .15s;}
+.jl-tabs button{border:0;background:transparent;min-height:40px;padding:0 18px;border-radius:9px;font-weight:700;font-size:14px;cursor:pointer;color:var(--muted);transition:background .15s,color .15s;}
 .jl-tabs button.on{background:rgba(248, 184, 8,.14);color:var(--gold);}
 .jl-search{display:flex;gap:8px;flex-wrap:wrap;background:var(--card);border:1px solid var(--line-2);border-radius:16px;padding:8px;box-shadow:var(--shadow);max-width:560px;}
 .jl-sf{display:flex;align-items:center;gap:8px;background:var(--chip);border:1px solid var(--line);border-radius:11px;padding:0 12px;flex:1 1 190px;min-width:0;}
@@ -892,7 +896,7 @@ const CSS = `
 .jl-sf select option{color:#111;}
 .jl-search-btn{border:0;background:var(--gold);color:#000;font-weight:800;font-size:14.5px;border-radius:11px;padding:0 24px;min-height:48px;cursor:pointer;flex:0 0 auto;transition:background .15s;}
 .jl-search-btn:hover{background:var(--gold-pri-2);}
-.jl-hire-cta{display:inline-block;background:var(--gold);color:#000;font-weight:800;padding:14px 24px;border-radius:12px;}
+.jl-hire-cta{display:inline-flex;align-items:center;min-height:48px;background:var(--gold);color:#000;font-weight:800;padding:0 24px;border-radius:12px;}
 .jl-popular{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-top:18px;font-size:13px;}
 .jl-hero .jl-popular span,.jl-popular span{color:var(--muted);font-weight:700;}
 .jl-popular button{border:1px solid var(--line);background:rgba(255,255,255,.03);border-radius:999px;padding:6px 13px;font-size:12.5px;cursor:pointer;color:var(--muted);transition:border-color .15s,color .15s;}
@@ -901,7 +905,7 @@ const CSS = `
 .jl-preview-head{display:flex;align-items:center;gap:8px;font-size:12px;font-weight:800;letter-spacing:.04em;color:var(--muted);padding:8px 8px 8px;text-transform:uppercase;}
 .jl-preview-dot{width:8px;height:8px;border-radius:50%;background:#35e08a;box-shadow:0 0 0 0 rgba(53,224,138,.5);animation:jlpulse 1.8s infinite;}
 @keyframes jlpulse{0%{box-shadow:0 0 0 0 rgba(53,224,138,.5);}70%{box-shadow:0 0 0 7px rgba(53,224,138,0);}100%{box-shadow:0 0 0 0 rgba(53,224,138,0);}}
-.jl-preview-n{margin-left:auto;color:var(--gold);}
+.jl-preview-n{margin-inline-start:auto;color:var(--gold);}
 .jl-preview-empty{padding:10px 8px 12px;color:var(--muted);font-size:13.5px;}
 .jl-preview-row{display:flex;align-items:center;gap:10px;padding:10px 8px;border-radius:10px;transition:background .15s;}
 .jl-preview-row:hover{background:rgba(255,255,255,.04);}
@@ -958,8 +962,8 @@ const CSS = `
 .jl-how-step strong{font-family:var(--jl-font-serif);font-size:18px;font-weight:800;color:#fbf7ee;}
 .jl-how-step p{margin:0;color:var(--muted);font-size:14px;line-height:1.5;}
 /* CATEGORIES */
-.jl-cats{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:14px;}
-.jl-cat{display:flex;flex-direction:column;gap:12px;align-items:flex-start;background:var(--card);border:1px solid var(--line);border-radius:16px;padding:18px;cursor:pointer;text-align:left;transition:transform .14s,box-shadow .14s,border-color .14s;}
+.jl-cats{display:grid;grid-template-columns:repeat(auto-fill,minmax(min(240px,100%),1fr));gap:14px;}
+.jl-cat{display:flex;flex-direction:column;gap:12px;align-items:flex-start;background:var(--card);border:1px solid var(--line);border-radius:16px;padding:18px;cursor:pointer;text-align:start;transition:transform .14s,box-shadow .14s,border-color .14s;}
 .jl-cat:hover{transform:translateY(-3px);box-shadow:var(--shadow);border-color:var(--line-2);}
 .jl-cat-ic{width:48px;height:48px;border-radius:13px;display:grid;place-items:center;font-size:24px;background:var(--chip);border:1px solid var(--line);}
 .jl-cat strong{font-size:14.5px;color:var(--ink);}
@@ -985,21 +989,24 @@ const CSS = `
 .jl-magnet-copy p{margin:8px 0 0;color:#d6cbb2;font-size:14.5px;max-width:52ch;}
 .jl-paths-head{text-align:center;margin-bottom:24px;}
 .jl-paths-head .jl-tag{display:inline-block;margin-bottom:10px;}
+.jl-paths-head .jl-sub{margin-inline-start:auto;margin-right:auto;}
 .jl-paths{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:18px;}
 .jl-path{background:var(--card);border:1px solid var(--line);border-radius:18px;padding:clamp(22px,2.6vw,32px);display:flex;flex-direction:column;gap:10px;transition:transform .14s,border-color .14s,box-shadow .14s;}
 .jl-path:hover{transform:translateY(-3px);border-color:var(--line-2);box-shadow:var(--shadow);}
 .jl-path-worker{border-top:3px solid var(--gold);}
-.jl-path-client{border-top:3px solid var(--gold-2);}
+.jl-path-client{border-top:3px solid var(--gold);}
 .jl-path-tag{font-size:12px;font-weight:800;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);}
 .jl-path h3{margin:2px 0 0;font-family:var(--jl-font-serif);font-weight:800;font-size:clamp(20px,2.6vw,26px);color:#fbf7ee;}
 .jl-path p{color:var(--muted);font-size:15px;margin:0;flex:1 1 auto;line-height:1.6;}
 .jl-path-cta{display:flex;align-items:center;gap:14px;flex-wrap:wrap;margin-top:6px;}
+.jl-path-cta .jl-btn-primary,.jl-path-cta .jl-link{display:inline-flex;align-items:center;min-height:44px;}
+.jl-path-cta .jl-btn-primary{padding:0 18px;}
 /* SPLIT (workers / employers) */
 .jl-split{padding:clamp(34px,5vw,64px) 0;}
 .jl-split-a,.jl-split-b{background:#060606;border-top:1px solid var(--line);border-bottom:1px solid var(--line);}
 .jl-split-in{display:grid;grid-template-columns:1.05fr .95fr;gap:36px;align-items:center;}
 .jl-eyebrow{font-size:12px;font-weight:800;letter-spacing:.1em;text-transform:uppercase;color:var(--gold);}
-.jl-eyebrow-o{color:var(--gold-2);}
+.jl-eyebrow-o{color:var(--gold);}
 .jl-split-copy h2{margin:12px 0;}
 .jl-split-copy>p{color:var(--muted);max-width:440px;margin:0 0 18px;line-height:1.6;}
 .jl-checks{list-style:none;padding:0;margin:18px 0 0;display:flex;flex-direction:column;gap:11px;color:var(--ink);font-weight:600;font-size:14.5px;}
@@ -1019,17 +1026,17 @@ const CSS = `
 .jl-js{padding:clamp(34px,5vw,64px) 0;}
 .jl-js-in{background:radial-gradient(600px 300px at 12% 0%,rgba(248, 184, 8,.22),transparent),linear-gradient(120deg,#0b0906,#16110a 60%,#000);border:1px solid var(--line-2);
   border-radius:24px;padding:clamp(28px,5vw,46px);color:#f4efe4;display:grid;grid-template-columns:1.05fr .95fr;gap:36px;align-items:center;
-  margin-left:max(18px,env(safe-area-inset-left));margin-right:max(18px,env(safe-area-inset-right));}
+  max-width:none;margin-left:var(--jl-col-gutter);margin-right:var(--jl-col-gutter);}
 .jl-js-tag{display:inline-block;font-size:12px;font-weight:800;letter-spacing:.1em;color:#e8c87a;background:rgba(248, 184, 8,.14);border:1px solid var(--line);padding:5px 12px;border-radius:999px;}
 .jl-js-copy h2{color:#fbf7ee;margin:14px 0 12px;}
 .jl-js-copy>p{color:#cabfa8;max-width:460px;margin:0 0 22px;line-height:1.6;}
-.jl-js-btn{display:inline-block;background:linear-gradient(90deg,#f8b808,#f0d9a0);color:#000;font-weight:800;padding:14px 24px;border-radius:12px;}
+.jl-js-btn{display:inline-flex;align-items:center;min-height:48px;background:var(--gold);color:#000;font-weight:800;padding:0 24px;border-radius:12px;}
 .jl-js-btn:hover{filter:brightness(1.06);}
 .jl-js-demo{display:flex;justify-content:center;}
-.jl-leads{margin-top:18px;background:radial-gradient(600px 300px at 88% 0%,rgba(248, 184, 8,.18),transparent),linear-gradient(120deg,#0b0906,#16110a 60%,#000);border:1px solid var(--line);border-radius:24px;padding:clamp(24px,4vw,36px);margin-left:max(18px,env(safe-area-inset-left));margin-right:max(18px,env(safe-area-inset-right));}
+.jl-leads{margin-top:18px;background:radial-gradient(600px 300px at 88% 0%,rgba(248, 184, 8,.18),transparent),linear-gradient(120deg,#0b0906,#16110a 60%,#000);border:1px solid var(--line);border-radius:24px;padding:clamp(18px,4vw,36px);margin-left:var(--jl-col-gutter);margin-right:var(--jl-col-gutter);}
 .jl-leads-head{display:flex;align-items:center;gap:9px;color:#ece0c4;font-weight:800;font-size:13px;letter-spacing:.05em;text-transform:uppercase;margin-bottom:16px;}
 .jl-leads-dot{width:9px;height:9px;border-radius:50%;background:#35e08a;box-shadow:0 0 0 4px rgba(53,224,138,.22);animation:jlpulse 1.8s ease-in-out infinite;}
-.jl-leads-src{margin-left:auto;font-weight:700;font-size:11px;letter-spacing:.03em;color:var(--muted);background:rgba(255,255,255,.05);border:1px solid var(--line);border-radius:999px;padding:3px 10px;}
+.jl-leads-src{margin-inline-start:auto;font-weight:700;font-size:11px;letter-spacing:.03em;color:var(--muted);background:rgba(255,255,255,.05);border:1px solid var(--line);border-radius:999px;padding:3px 10px;}
 .jl-leads-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;}
 .jl-lead-cell{display:flex;flex-direction:column;gap:6px;min-width:0;}
 .jl-adzuna{align-self:flex-start;display:inline-flex;align-items:center;justify-content:center;min-width:116px;min-height:24px;padding:0 10px;border-radius:6px;background:rgba(255,255,255,.1);color:#fff;font-size:14px;font-weight:700;}
@@ -1039,22 +1046,22 @@ const CSS = `
 .jl-lead-main{display:flex;flex-direction:column;gap:2px;min-width:0;}
 .jl-lead-main strong{color:var(--ink);font-size:14.5px;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
 .jl-lead-main em{color:var(--muted);font-size:12.5px;font-style:normal;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
-.jl-lead-pay{margin-left:auto;flex:none;color:#4fe3a0;font-weight:800;font-size:13px;}
+.jl-lead-pay{margin-inline-start:auto;flex:none;color:var(--gold);font-weight:800;font-size:13px;unicode-bidi:isolate;}
 .jl-leads-note{margin:16px 0 0;color:var(--muted);font-size:13px;}
 .jl-leads-note a{color:var(--gold);font-weight:700;}
-.jl-lead-go{flex:none;margin-left:10px;color:var(--gold);font-weight:800;font-size:12px;opacity:0;transform:translateX(-4px);transition:opacity .15s,transform .15s;white-space:nowrap;}
+.jl-lead-go{flex:none;margin-inline-start:10px;color:var(--gold);font-weight:800;font-size:12px;opacity:0;transform:translateX(-4px);transition:opacity .15s,transform .15s;white-space:nowrap;}
 .jl-lead:hover .jl-lead-go{opacity:1;transform:translateX(0);}
-.jl-alert{margin-top:18px;background:rgba(255,255,255,.03);border:1px solid var(--line);border-radius:22px;padding:clamp(24px,4vw,32px);display:flex;flex-wrap:wrap;align-items:center;gap:16px 24px;margin-left:max(18px,env(safe-area-inset-left));margin-right:max(18px,env(safe-area-inset-right));}
+.jl-alert{margin-top:18px;background:rgba(255,255,255,.03);border:1px solid var(--line);border-radius:22px;padding:clamp(20px,4vw,32px);display:flex;flex-wrap:wrap;align-items:center;gap:16px 24px;max-width:none;margin-left:var(--jl-col-gutter);margin-right:var(--jl-col-gutter);}
 .jl-alert-copy{flex:1 1 280px;min-width:0;}
 .jl-alert-copy h3{margin:0 0 6px;color:#fbf7ee;font-size:19px;font-family:var(--jl-font-serif);font-weight:800;}
 .jl-alert-copy p{margin:0;color:var(--muted);font-size:13.5px;max-width:460px;}
 .jl-alert-form{flex:1 1 300px;display:flex;gap:9px;min-width:0;}
-.jl-alert-form input{flex:1 1 auto;min-width:0;background:var(--chip);border:1px solid var(--line-2);border-radius:11px;padding:13px 14px;font-size:14.5px;color:var(--ink);}
+.jl-alert-form input{flex:1 1 auto;min-width:0;min-height:48px;background:var(--chip);border:1px solid var(--line-2);border-radius:11px;padding:0 14px;font-size:14.5px;color:var(--ink);}
 .jl-alert-form input::placeholder{color:var(--faint);}
-.jl-alert-form button{flex:none;background:var(--gold);color:#000;font-weight:800;font-size:14px;padding:12px 22px;border:none;border-radius:11px;cursor:pointer;transition:background .15s;}
+.jl-alert-form button{flex:none;min-height:48px;background:var(--gold);color:#000;font-weight:800;font-size:14px;padding:0 22px;border:none;border-radius:11px;cursor:pointer;transition:background .15s;}
 .jl-alert-form button:hover{background:var(--gold-pri-2);}
 .jl-alert-form button:disabled{opacity:.6;cursor:default;}
-.jl-alert-ok{flex:1 1 300px;margin:0;color:#4fe3a0;font-weight:700;font-size:15px;}
+.jl-alert-ok{flex:1 1 300px;margin:0;color:var(--gold);font-weight:700;font-size:15px;}
 .jl-alert-err{flex:1 1 100%;margin:2px 0 0;color:#ff9b9b;font-size:13px;}
 .jl-alert-fine{flex:1 1 100%;margin:2px 0 0;color:var(--faint);font-size:12px;}
 .jl-js-feats{display:flex;flex-direction:column;gap:12px;}
@@ -1068,7 +1075,7 @@ const CSS = `
 .jl-stats strong{font-size:clamp(30px,4vw,38px);font-weight:800;color:var(--gold);letter-spacing:-.02em;font-variant-numeric:tabular-nums;}
 .jl-stats span{font-size:12.5px;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;margin-top:4px;}
 /* WHY */
-.jl-why{display:grid;grid-template-columns:repeat(auto-fit,minmax(230px,1fr));gap:16px;margin-top:24px;text-align:left;}
+.jl-why{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(230px,100%),1fr));gap:16px;margin-top:24px;text-align:start;}
 .jl-why-c{background:var(--card);border:1px solid var(--line);border-radius:16px;padding:24px;transition:border-color .14s,transform .14s;}
 .jl-why-c:hover{border-color:var(--line-2);transform:translateY(-2px);}
 .jl-why-ic{font-size:26px;}
@@ -1090,13 +1097,13 @@ const CSS = `
 .jl-contact-form .jl-btn-lg{text-align:center;border:0;cursor:pointer;}
 /* CTA */
 .jl-cta{padding:clamp(34px,5vw,64px) 0;}
-.jl-cta .jl-wrap{background:radial-gradient(700px 300px at 85% -20%,rgba(248, 184, 8,.24),transparent),linear-gradient(120deg,#0c0a08,#17120b 55%,#1f1810);border:1px solid var(--line-2);border-radius:24px;padding:clamp(36px,6vw,58px) 24px;color:#f4efe4;}
+.jl-cta .jl-wrap{max-width:none;margin-left:var(--jl-col-gutter);margin-right:var(--jl-col-gutter);background:radial-gradient(700px 300px at 85% -20%,rgba(248, 184, 8,.24),transparent),linear-gradient(120deg,#0c0a08,#17120b 55%,#1f1810);border:1px solid var(--line-2);border-radius:24px;padding:clamp(36px,6vw,58px) 24px;color:#f4efe4;}
 .jl-cta h2{color:#fbf7ee;}
 .jl-cta p{opacity:.92;max-width:520px;margin:0 auto 22px;color:#d6cbb2;}
 .jl-cta-btns{display:flex;gap:12px;justify-content:center;flex-wrap:wrap;}
-.jl-cta-white{background:var(--gold);color:#000;font-weight:800;padding:14px 28px;border-radius:12px;transition:background .15s;}
+.jl-cta-white{display:inline-flex;align-items:center;justify-content:center;min-height:48px;background:var(--gold);color:#000;font-weight:800;padding:0 28px;border-radius:12px;transition:background .15s;}
 .jl-cta-white:hover{background:var(--gold-pri-2);}
-.jl-cta-outline{border:1.5px solid var(--line-2);color:#f4efe4;font-weight:800;padding:14px 28px;border-radius:12px;transition:background .15s,border-color .15s;}
+.jl-cta-outline{display:inline-flex;align-items:center;justify-content:center;min-height:48px;border:1.5px solid var(--line-2);color:#f4efe4;font-weight:800;padding:0 28px;border-radius:12px;transition:background .15s,border-color .15s;}
 .jl-cta-outline:hover{background:rgba(248, 184, 8,.1);border-color:var(--gold);}
 /* FOOTER */
 .jl-foot{background:#000;border-top:1px solid var(--line);color:var(--muted);padding:clamp(34px,5vw,54px) 0 0;}
@@ -1122,6 +1129,18 @@ const CSS = `
   .jl-features-in{grid-template-columns:repeat(2,1fr);gap:16px 20px;}
   .jl-how-grid{grid-template-columns:repeat(2,1fr);}
   .jl-leads-grid{grid-template-columns:1fr;}
+}
+@media (max-width:600px){
+  /* Live leads on phones: the title gets the full row; salary sits under it (W-B3). */
+  .jl-lead{flex-wrap:wrap;align-items:flex-start;}
+  .jl-lead-main{flex:1 1 calc(100% - 40px);}
+  .jl-lead-main strong{white-space:normal;overflow:visible;text-overflow:clip;overflow-wrap:anywhere;}
+  .jl-lead-pay{margin-inline-start:34px;}
+  .jl-lead-go{display:none;}
+  .jl-stats{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:22px 12px;}
+  .jl-alert-form{flex-wrap:wrap;}
+  .jl-alert-form input,.jl-alert-form button{flex:1 1 100%;}
+  .jl-cats{grid-template-columns:repeat(2,minmax(0,1fr));}
 }
 @media (max-width:520px){
   .jl-sf,.jl-sf-loc,.jl-search-btn{flex:1 1 100%;}

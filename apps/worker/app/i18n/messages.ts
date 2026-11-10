@@ -545,6 +545,7 @@ export const en = {
   "hr.savedContinue": "Saved ✓ Your details are stored. Continue building your profile.",
   "hr.continueProfile": "Continue → Upload documents",
   "nav.backDashboard": "← Back to dashboard",
+  "nav.backHome": "← Back to home",
   "hr.saveError": "We couldn't save your details. Please try again.",
   "hr.mustConsent": "Please consent to continue.",
   "doc.title": "My documents",
@@ -622,6 +623,12 @@ export const en = {
 
   // Landing / Sign-up
   "land.heroTitle": "Looking for work? We'll match you to it.",
+  "cv.pageTitle": "Build your CV",
+  "cv.pageIntro": "Answer a few quick questions, upload your certificates, pick a design — and get a ready CV and cover letter in minutes, in French or English. You review and edit before you apply.",
+  "cv.back": "Back to home",
+  "cv.gateTitle": "Create a free account to build your CV",
+  "cv.gateText": "Build CV is part of your Joblop worker account. Sign in or create a free account to build and save your CV.",
+  "cv.gateButton": "Create account / sign in",
   "land.heroSub": "Tell us what you do and where. Joblop finds the shifts near you that match — apply free, get hired, and get paid for every hour.",
   "land.getStarted": "Create your free account",
   "land.haveAccountCta": "I already have an account",
@@ -1242,6 +1249,7 @@ export const fr: Messages = {
   "hr.savedContinue": "Enregistré ✓ Vos informations sont sauvegardées. Continuez votre profil.",
   "hr.continueProfile": "Continuer → Téléverser des documents",
   "nav.backDashboard": "← Retour au tableau de bord",
+  "nav.backHome": "← Retour à l’accueil",
   "hr.saveError": "Nous n'avons pas pu enregistrer vos informations. Veuillez réessayer.",
   "hr.mustConsent": "Veuillez consentir pour continuer.",
   "doc.title": "Mes documents",
@@ -1319,6 +1327,12 @@ export const fr: Messages = {
 
   // Landing / Inscription
   "land.heroTitle": "Vous cherchez du travail ? On vous y jumelle.",
+  "cv.pageTitle": "Créez votre CV",
+  "cv.pageIntro": "Répondez à quelques questions rapides, téléversez vos certificats, choisissez un modèle — et obtenez un CV et une lettre de présentation prêts en quelques minutes, en français ou en anglais. Vous les relisez et les modifiez avant de postuler.",
+  "cv.back": "Retour à l’accueil",
+  "cv.gateTitle": "Créez un compte gratuit pour faire votre CV",
+  "cv.gateText": "L’outil CV fait partie de votre compte travailleur Joblop. Connectez-vous ou créez un compte gratuit pour créer et enregistrer votre CV.",
+  "cv.gateButton": "Créer un compte / se connecter",
   "land.heroSub": "Dites-nous ce que vous faites et où. Joblop trouve les quarts près de chez vous qui vous correspondent — postulez gratuitement, soyez embauché et soyez payé pour chaque heure.",
   "land.getStarted": "Créez votre compte gratuit",
   "land.haveAccountCta": "J'ai déjà un compte",
@@ -1496,6 +1510,7 @@ export const ar: Partial<Messages> = {
   "hr.savedContinue": "تم الحفظ ✓ تم تخزين بياناتك. تابع إكمال ملفك.",
   "hr.continueProfile": "متابعة ← رفع المستندات",
   "nav.backDashboard": "← العودة إلى لوحة التحكم",
+  "nav.backHome": "→ العودة إلى الصفحة الرئيسية",
   "offers.payChoiceTitle": "خطوة واحدة قبل القبول",
   "offers.payChoiceBody": "اختر طريقة حصولك على أجرك. ستفعل ذلك مرة واحدة فقط.",
   "offers.payChoiceAction": "اختيار طريقة الدفع",
@@ -1585,6 +1600,12 @@ export const ar: Partial<Messages> = {
 
   // Landing page — hero, values, how it works
   "land.heroTitle": "تبحث عن عمل؟ ستجد أفضل العروض عندنا.",
+  "cv.pageTitle": "أنشئ سيرتك الذاتية",
+  "cv.pageIntro": "أجب عن بضعة أسئلة سريعة، وارفع شهاداتك، واختر تصميمًا، لتحصل على سيرة ذاتية ورسالة تقديم جاهزتين خلال دقائق بالفرنسية أو الإنجليزية. تراجعهما وتعدّلهما قبل التقديم.",
+  "cv.back": "العودة إلى الصفحة الرئيسية",
+  "cv.gateTitle": "أنشئ حسابًا مجانيًا لإعداد سيرتك الذاتية",
+  "cv.gateText": "أداة السيرة الذاتية جزء من حسابك كعامل في Joblop. سجّل الدخول أو أنشئ حسابًا مجانيًا لإعداد سيرتك الذاتية وحفظها.",
+  "cv.gateButton": "إنشاء حساب / تسجيل الدخول",
   "land.heroSub": "أخبرنا بما تعمله وأين. يجد Joblop المناوبات القريبة منك التي تناسبك — تقدّم مجانًا، واحصل على العمل، واحصل على أجر عن كل ساعة.",
   "land.howItWorks": "كيف يعمل",
   "land.videoHowLabel": "فيديو: كيف يعمل Joblop للعمال",
