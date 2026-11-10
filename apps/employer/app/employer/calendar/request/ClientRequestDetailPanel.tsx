@@ -218,7 +218,8 @@ export function ClientRequestDetailPanel({ requestId }: Readonly<{ requestId: st
           </button>
         </div>
         {!closed ? <BonusOfferPanel requestId={request.id} /> : null}
-        <ApplicantsPanel requestId={request.id} />
+        {/* Interested workers no longer matter once a request is cancelled or finished. */}
+        {!closed ? <ApplicantsPanel requestId={request.id} /> : null}
       </article>
       <article style={{ ...styles.panel, alignContent: "start", gap: 12 }}>
         <h2 style={styles.cardTitle}>{t("detail.detailsTitle")}</h2>
