@@ -27,7 +27,7 @@ describe("1-2. sign-up opens at the start of the form, below the sticky header",
     expect(accountHref("signup")).toBe("/?tab=signup#auth-card");
     expect(accountHref("signin")).toBe("/?tab=signin#auth-card");
     const header = src("./SiteHeader.tsx");
-    expect(header).toContain('accountHref("signup")');
+    expect(header).toContain('accountHref("signin")');
     expect(header).not.toContain('href="/#auth-card"');
   });
 
@@ -78,10 +78,10 @@ describe("4. Joblop jobs vs outside sites", () => {
   });
 
   it("badges every list, the map, the calendars and the job pages", () => {
-    for (const file of ["./PublicJobSearch.tsx", "./PublicJobsCalendar.tsx", "./MarketplaceExplorer.tsx", "./browse/PublicJobBoard.tsx", "./job/[jobCode]/PublicJobDetail.tsx", "./jobs/[jobRequestId]/JobDetail.tsx", "./jobs-calendar/JobsCalendar.tsx"]) {
+    for (const file of ["./find-work/FindWork.tsx", "./PublicJobsCalendar.tsx", "./MarketplaceExplorer.tsx", "./browse/PublicJobBoard.tsx", "./job/[jobCode]/PublicJobDetail.tsx", "./jobs/[jobRequestId]/JobDetail.tsx", "./jobs-calendar/JobsCalendar.tsx"]) {
       expect(src(file), file).toContain("<JoblopJobBadge");
     }
-    for (const file of ["./PublicJobSearch.tsx", "./browse/PublicJobBoard.tsx", "./job-scanner/JobScannerFeed.tsx"]) {
+    for (const file of ["./find-work/FindWork.tsx", "./browse/PublicJobBoard.tsx", "./job-scanner/JobScannerFeed.tsx"]) {
       expect(src(file), file).toContain("<OutsideSiteBadge");
       expect(src(file), file).toContain("<OutsideApplyLink");
     }

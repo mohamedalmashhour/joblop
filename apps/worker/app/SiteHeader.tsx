@@ -3,13 +3,11 @@
 import { useEffect, useState, type MouseEvent, type ReactNode } from "react";
 import { usePathname } from "next/navigation";
 import { LanguageSwitcher } from "./i18n/LanguageSwitcher";
-import { useLocale } from "./i18n/LocaleProvider";
+import { useLocale, useT } from "./i18n/LocaleProvider";
 import { JoblopLogo } from "./JoblopLogo";
 import { ariaCurrent, isActivePath } from "./navActive";
 import { OPEN_ACCOUNT_EVENT, accountHref, type AccountTab } from "./authScroll";
-
-// Employer app entry — set NEXT_PUBLIC_EMPLOYER_URL in production (e.g. https://joblop-employer.onrender.com).
-const EMPLOYER_URL = process.env.NEXT_PUBLIC_EMPLOYER_URL ?? "http://localhost:3100";
+import { FIND_WORK_PATH } from "./findWorkUrl";
 
 /**
  * The single worker-app header, used on the home page, every sub-page, and the public /browse board
@@ -20,6 +18,7 @@ const EMPLOYER_URL = process.env.NEXT_PUBLIC_EMPLOYER_URL ?? "http://localhost:3
  */
 export function SiteHeader() {
   const locale = useLocale();
+  const t = useT();
   const pathname = usePathname();
   const [open, setOpen] = useState(false);
   const [signedIn, setSignedIn] = useState(false);
@@ -37,7 +36,7 @@ export function SiteHeader() {
   // (start of the form, first field focused). From any other page the link loads the home page on that tab.
   const openAccount = (event: MouseEvent<HTMLAnchorElement>, tab: AccountTab) => {
     close();
-    if (window.location.pathname === "/" && document.getElementById("auth-card")) {
+    if (window.location.pathname === "/" && document.querySelector(".home")) {
       event.preventDefault();
       window.dispatchEvent(new CustomEvent(OPEN_ACCOUNT_EVENT, { detail: tab }));
     }
@@ -65,18 +64,11 @@ export function SiteHeader() {
             <span /><span /><span />
           </button>
           <nav className={open ? "topbar-nav open" : "topbar-nav"}>
-            {!signedIn ? link("/browse", nav("الوظائف", "Emplois", "Find jobs")) : null}
-            {link("/how-it-works", nav("كيف يعمل", "Comment ça marche", "How it works"))}
-            {link("/job-scanner", "JobScanner")}
-            {link("/cv-builder", nav("إنشاء السيرة", "Créer un CV", "Build CV"))}
-            {!signedIn ? (
-              <>
-                <a className="muted" href={EMPLOYER_URL} onClick={close}>{nav("لأصحاب العمل", "Employeurs", "For Employers")}</a>
-                <a className="muted" href="/browse#contact" onClick={close}>{nav("تواصل", "Contact", "Contact")}</a>
-              </>
-            ) : null}
             {signedIn ? (
               <>
+                {link("/how-it-works", nav("كيف يعمل", "Comment ça marche", "How it works"))}
+                {link("/job-scanner", "JobScanner")}
+                {link("/cv-builder", nav("إنشاء السيرة", "Créer un CV", "Build CV"))}
                 {/* Signed-in pages grouped, so the home page keeps its space for "Find work near you". */}
                 <MenuGroup pathname={pathname} label={nav("عملي", "Mon travail", "My work")} items={[
                   ["/jobs-calendar", nav("تقويمي", "Mon calendrier", "My calendar")],
@@ -101,8 +93,10 @@ export function SiteHeader() {
               </>
             ) : (
               <>
-                <a className="topbar-cta" href={accountHref("signup")} onClick={(e) => openAccount(e, "signup")}>{nav("إنشاء حساب", "Créer un compte", "Create account")}</a>
-                <a className="muted" href={accountHref("signin")} onClick={(e) => openAccount(e, "signin")}>{nav("تسجيل الدخول", "Se connecter", "Sign in")}</a>
+                {/* Signed out: just Home · Find work · Sign in. Everything else is in the footer. */}
+                {link("/", t("nav.home"))}
+                {link(FIND_WORK_PATH, t("nav.findWork"))}
+                <a className="muted" href={accountHref("signin")} onClick={(e) => openAccount(e, "signin")}>{t("nav.signIn")}</a>
               </>
             )}
             <LanguageSwitcher />

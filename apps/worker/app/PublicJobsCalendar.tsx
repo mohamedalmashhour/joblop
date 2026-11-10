@@ -31,14 +31,21 @@ import { JoblopJobBadge } from "./JobSourceBadge";
 // to the nearest day that has jobs. Tapping a job opens its public page /job/<code>, which has
 // "Create an account to take this job". The phone app draws the same calendar with the same words.
 
-type Load = { status: "loading" } | { status: "ready"; byDay: Map<string, PublicCalendarJob[]> } | { status: "error" };
+type Load = { status: "loading" } | { status: "ready"; jobs: readonly PublicCalendarJob[] } | { status: "error" };
 
 /** How many months ahead a visitor can page (open jobs are rarely posted further out). */
 const MONTHS_AHEAD = 2;
 
 const monthKey = (year: number, month: number) => `${year}-${`${month + 1}`.padStart(2, "0")}`;
 
-export function PublicJobsCalendar({ onCreateAccount }: { onCreateAccount: () => void }) {
+export function PublicJobsCalendar({
+  onCreateAccount,
+  matches
+}: {
+  onCreateAccount: () => void;
+  /** The Find work filters (what work + city); only matching jobs show. */
+  matches?: (job: PublicCalendarJob) => boolean;
+}) {
   const locale = useLocale();
   const tr = useT();
   const lang = publicLandingLang(locale);
@@ -62,9 +69,7 @@ export function PublicJobsCalendar({ onCreateAccount }: { onCreateAccount: () =>
         setLoads((prev) => ({ ...prev, [key]: { status: "error" } }));
         return;
       }
-      // Keep only this month's days (the request has a day of slack on each side).
-      const byDay = new Map([...groupPublicJobsByDay(payload.jobs as PublicCalendarJob[])].filter(([day]) => day.startsWith(`${key}-`)));
-      setLoads((prev) => ({ ...prev, [key]: { status: "ready", byDay } }));
+      setLoads((prev) => ({ ...prev, [key]: { status: "ready", jobs: payload.jobs as PublicCalendarJob[] } }));
     } catch {
       setLoads((prev) => ({ ...prev, [key]: { status: "error" } }));
     }
@@ -77,14 +82,25 @@ export function PublicJobsCalendar({ onCreateAccount }: { onCreateAccount: () =>
     }
   }, [fetchMonth, today]);
 
+  // Each loaded month, filtered and grouped by day (only that month's days: the request has a day of
+  // slack on each side).
+  const byMonth = useMemo(() => {
+    const out = new Map<string, Map<string, PublicCalendarJob[]>>();
+    for (const [key, l] of Object.entries(loads)) {
+      if (l.status !== "ready") continue;
+      const jobs = matches ? l.jobs.filter(matches) : l.jobs;
+      out.set(key, new Map([...groupPublicJobsByDay(jobs)].filter(([day]) => day.startsWith(`${key}-`))));
+    }
+    return out;
+  }, [loads, matches]);
   const viewKey = monthKey(view.year, view.month);
   const load: Load = loads[viewKey] ?? { status: "loading" };
-  const byDay = useMemo(() => (load.status === "ready" ? load.byDay : new Map<string, PublicCalendarJob[]>()), [load]);
+  const byDay = useMemo(() => byMonth.get(viewKey) ?? new Map<string, PublicCalendarJob[]>(), [byMonth, viewKey]);
   const allDaysWithJobs = useMemo(() => {
     const days: string[] = [];
-    for (const l of Object.values(loads)) if (l.status === "ready") for (const [day, list] of l.byDay) if (list.length > 0) days.push(day);
+    for (const month of byMonth.values()) for (const [day, list] of month) if (list.length > 0) days.push(day);
     return days;
-  }, [loads]);
+  }, [byMonth]);
   const weeks = useMemo(() => publicCalendarWeeks(view.year, view.month), [view]);
   const weekdays = useMemo(() => publicCalendarWeekdays(lang), [lang]);
   const monthHasJobs = weeks.some((w) => w.some((c) => c.inMonth && (byDay.get(c.key)?.length ?? 0) > 0));

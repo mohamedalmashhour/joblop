@@ -6,7 +6,8 @@ import { outsideApplyUrl, outsideSiteName } from "./jobSource";
 // One look for "where do I apply?" across the list, the map, the calendar and the job pages:
 //   Joblop job    -> gold badge "Joblop job — apply here" and an "Apply here" button.
 //   outside site  -> outlined badge "Outside site — you apply on their website" and an
-//                    "Apply on <site>" button that opens the listing in a new tab.
+//                    "Apply on <site>" button (outlined: gold is kept for Joblop's own Apply) that
+//                    opens the listing in a new tab.
 
 export function JoblopJobBadge({ className = "" }: { className?: string }) {
   const t = useT();
@@ -33,7 +34,7 @@ export function OutsideApplyLink({
   if (!href) return null;
   const site = outsideSiteName(source, href) ?? t("src.theirSite");
   return (
-    <a className={`src-apply ${className}`.trim()} href={href} target="_blank" rel="noopener noreferrer" title={t("src.newTab")}>
+    <a className={`src-apply src-apply-out ${className}`.trim()} href={href} target="_blank" rel="noopener noreferrer" title={t("src.newTab")}>
       {t("src.applyOn", { site })} <span aria-hidden="true">↗</span>
       <span className="sr-only"> ({t("src.newTab")})</span>
     </a>

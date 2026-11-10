@@ -7,7 +7,7 @@ import { LandingPanel } from "./LandingPanel";
 import { AddEmailCard } from "./AddEmailCard";
 import { HowItWorksMovie } from "./HowItWorksMovie";
 import { syncAccountLanguageOnce } from "./i18n/saveLanguage";
-import { NEXT_AFTER_SIGN_UP_KEY } from "./PublicJobSearch";
+import { NEXT_AFTER_SIGN_UP_KEY } from "./authScroll";
 import { safeReturnPath } from "./safeReturnPath";
 import type { RwosLocale } from "./i18n/config";
 import { workerPayLabel, formatHourlyRate } from "./workerPayLabel";

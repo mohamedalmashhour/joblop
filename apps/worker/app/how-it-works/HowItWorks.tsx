@@ -622,7 +622,7 @@ export function HowItWorks() {
           <p>{c.hero.sub}</p>
           <div className="jg-actions">
             <a className="jg-btn jg-btn-gold" href="/">{c.hero.search}</a>
-            <a className="jg-btn jg-btn-line" href="/#auth-card">{c.hero.create}</a>
+            <a className="jg-btn jg-btn-line" href="/?tab=signup#auth-card">{c.hero.create}</a>
           </div>
         </div>
         <div className="jg-hero-art jg-reveal" aria-hidden="true">
@@ -732,7 +732,7 @@ export function HowItWorks() {
         <p>{c.final.sub}</p>
         <div className="jg-actions jg-actions-center">
           <a className="jg-btn jg-btn-gold" href="/">{c.final.search}</a>
-          <a className="jg-btn jg-btn-line" href="/#auth-card">{c.final.create}</a>
+          <a className="jg-btn jg-btn-line" href="/?tab=signup#auth-card">{c.final.create}</a>
           <a className="jg-btn jg-btn-line" href="/cv-builder">{c.final.cv}</a>
           <a className="jg-btn jg-btn-line" href="/jobs-calendar">{c.final.calendar}</a>
         </div>

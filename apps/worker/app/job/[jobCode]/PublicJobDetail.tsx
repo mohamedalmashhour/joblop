@@ -162,7 +162,7 @@ export function PublicJobDetail({ jobCode }: { jobCode: string }) {
       <div className={status === "error" ? "state error" : "state"} role={status === "error" ? "alert" : undefined}>
         {status === "error" ? t.error : t.notFound}
         <div style={{ marginTop: 12 }}>
-          <a className="btn" href="/browse">{t.backToSearch}</a>
+          <a className="btn" href="/find-work">{t.backToSearch}</a>
         </div>
       </div>
     );

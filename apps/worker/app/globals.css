@@ -1071,3 +1071,81 @@ html { scroll-padding-top: calc(var(--header-h) + 12px); }
 .card .src-badge + .role { margin-top: -4px; }
 /* No hero video for this language: the hero copy takes the full width. */
 .landing-hero-top.landing-hero-novideo { grid-template-columns: minmax(0, 1fr); grid-template-areas: "copy"; }
+
+/* --- Simple design (owner-approved mockup), in the dark brand --- */
+/* Secondary buttons are outlined; gold stays for the one main action. */
+.src-apply.src-apply-out { background: transparent; color: #f4efe4 !important; border: 1px solid #8a8070; }
+.src-apply.src-apply-out:hover { background: rgba(248, 184, 8, 0.08); border-color: #f8b808; }
+
+/* Short menu: plain links, the current page underlined in gold (no frames). */
+.topbar-nav > a { color: var(--text-muted); }
+.topbar-nav > a[aria-current="page"] { color: var(--text); text-decoration: none; box-shadow: inset 0 -3px 0 #f8b808; }
+@media (max-width: 900px) {
+  .topbar-nav > a[aria-current="page"] { box-shadow: none; }
+}
+
+/* Home: one question, one search, three steps. */
+.home { max-width: 680px; margin: 0 auto; padding: 8px 0 24px; display: flex; flex-direction: column; gap: 36px; }
+.home-hero { padding: clamp(28px, 6vw, 48px) clamp(18px, 4vw, 36px); border-radius: 20px; background: #0f0d09; }
+.home-hero h1 { font-size: clamp(28px, 6vw, 40px); line-height: 1.12; margin: 0 0 10px; color: #fbf7ee; }
+.home-sub { margin: 0 0 22px; color: var(--text-muted); font-size: 17px; line-height: 1.5; }
+.home-search { display: grid; gap: 10px; }
+.home-search input, .fw-filter input { width: 100%; min-width: 0; padding: 14px; border: 1px solid #3a352c; border-radius: 12px; background: #000; color: #f4efe4; font: inherit; font-size: 16px; }
+.home-search input:focus, .fw-filter input:focus { outline: 2px solid #f8b808; outline-offset: 1px; border-color: transparent; }
+.home-go { display: block; width: 100%; min-height: 52px; padding: 14px; border: 0; border-radius: 12px; background: #f8b808; color: #000; font: inherit; font-size: 16px; font-weight: 800; cursor: pointer; }
+.home-go:hover { background: #ffc928; }
+.home-steps { padding: 0 clamp(4px, 2vw, 12px); }
+.home-steps h2 { font-size: 20px; margin: 0 0 16px; color: #fbf7ee; }
+.home-steps ol { list-style: none; margin: 0; padding: 0; display: grid; gap: 18px; }
+.home-steps li { display: flex; gap: 14px; align-items: flex-start; }
+.home-num { flex: 0 0 32px; height: 32px; border-radius: 50%; border: 1px solid #f8b808; color: #f8b808; display: grid; place-items: center; font-weight: 800; }
+.home-steps strong { display: block; margin-bottom: 2px; color: #fbf7ee; }
+.home-steps li span:not(.home-num) { color: var(--text-muted); font-size: 15px; }
+.home-trust { list-style: none; margin: 0; padding: 0 clamp(4px, 2vw, 12px); display: flex; flex-wrap: wrap; gap: 8px 18px; color: var(--text-muted); font-size: 14px; }
+.home-trust li::before { content: "✓ "; color: #f8b808; font-weight: 800; }
+.home-emp { margin: 0 clamp(4px, 2vw, 12px); padding: 14px 16px; border: 1px solid var(--border); border-radius: 12px; color: var(--text-muted); font-size: 15px; }
+.home-emp a { color: #f4efe4; font-weight: 700; text-decoration: underline; text-underline-offset: 3px; }
+.home-account { max-width: 520px; gap: 14px; }
+.home-back { align-self: flex-start; color: var(--text-muted); font-weight: 700; }
+.home-account-sub { margin: 0; color: var(--text-muted); }
+
+/* Find work: tabs, two filters, Joblop jobs first, then other websites. */
+.fw { max-width: 960px; margin: 0 auto; padding: 8px 0 32px; }
+.fw-title { font-size: clamp(26px, 5vw, 34px); margin: 18px 0 4px; color: #fbf7ee; }
+.fw-sub { margin: 0 0 18px; color: var(--text-muted); }
+.fw-tabs { display: flex; gap: 6px; padding: 4px; border-radius: 12px; background: #141210; }
+.fw-tab { flex: 1; min-height: 44px; border: 0; border-radius: 9px; background: transparent; color: var(--text-muted); font: inherit; font-size: 15px; font-weight: 700; cursor: pointer; }
+.fw-tab.on { background: #2a2114; color: #f8b808; box-shadow: inset 0 -2px 0 #f8b808; }
+.fw-filter { display: flex; gap: 8px; margin: 14px 0 6px; }
+.fw-filter input { padding: 11px 12px; font-size: 15px; flex: 1; }
+.fw-search { flex: none; min-height: 44px; padding: 0 16px; border-radius: 10px; border: 1px solid #8a8070; background: transparent; color: #f4efe4; font: inherit; font-weight: 700; cursor: pointer; }
+.fw-search:hover { border-color: #f8b808; }
+.fw-sec { margin-top: 22px; }
+.fw-sec h2 { font-size: 16px; margin: 0 0 10px; color: #fbf7ee; }
+.fw-sec h2 small { font-weight: 400; color: var(--text-muted); font-size: 14px; }
+.fw-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+.fw-card { display: flex; flex-direction: column; gap: 4px; min-width: 0; padding: 14px; border: 1px solid var(--border); border-radius: 14px; }
+.fw-card h3 { margin: 4px 0 0; font-size: 16px; overflow-wrap: anywhere; }
+.fw-card h3 a { color: #fbf7ee; text-decoration: none; }
+.fw-card h3 a:hover { text-decoration: underline; }
+.fw-meta { margin: 0 0 6px; color: var(--text-muted); font-size: 13.5px; }
+.fw-row { display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px 10px; margin-top: auto; }
+.fw-pay { font-weight: 800; color: #fbf7ee; unicode-bidi: isolate; }
+.fw-pay small { font-weight: 400; color: var(--text-muted); }
+.fw-apply { display: inline-flex; align-items: center; justify-content: center; min-height: 40px; padding: 0 18px; border-radius: 10px; background: #f8b808; color: #000 !important; font-weight: 800; text-decoration: none !important; }
+.fw-apply:hover { background: #ffc928; }
+.fw-note { margin: 6px 0 0; color: var(--text-muted); font-size: 13px; }
+.fw-source { margin: 2px 0 0; font-size: 12px; color: var(--text-muted); }
+.fw-map-frame { max-width: 520px; margin: 18px auto 0; }
+.fw .pcal { margin-top: 18px; padding: 0; border: 0; background: none; }
+.fw .pcal-eyebrow, .fw .pcal > h2, .fw .pcal-sub { display: none; }
+@media (max-width: 640px) {
+  .fw-grid { grid-template-columns: 1fr; }
+  .fw-filter { flex-wrap: wrap; }
+  .fw-filter input { flex: 1 1 100%; }
+  .fw-search { flex: 1 1 100%; }
+}
+
+/* How it works page: the language-correct videos, side by side. */
+.hiw-videos { display: flex; flex-wrap: wrap; justify-content: center; gap: 24px; max-width: 760px; margin: 24px auto 0; padding: 0 16px; }
+.hiw-videos .video-card { width: min(260px, 100%); }

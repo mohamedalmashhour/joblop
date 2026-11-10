@@ -3,6 +3,9 @@
 
 export type AccountTab = "signin" | "signup";
 
+/** Session-storage key for the on-site page to return to after sign-up / sign-in (e.g. a job). */
+export const NEXT_AFTER_SIGN_UP_KEY = "joblop_next_after_signup";
+
 /** Fired by the header's "Create account" / "Sign in" links when the form is already on the page. */
 export const OPEN_ACCOUNT_EVENT = "joblop:open-account";
 
