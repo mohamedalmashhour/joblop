@@ -38,13 +38,14 @@ export const authStyles: Record<string, CSSProperties> = {
   form: { display: "grid", gap: spacing.md },
   fieldLabel: {
     display: "grid",
-    gap: spacing.xs,
+    // 8px between a label and its field so the label never looks glued to the box.
+    gap: 8,
     color: "#f4efe4",
     fontSize: 14,
     fontWeight: 700
   },
   input: {
-    border: `1px solid ${"rgba(248, 184, 8, 0.16)"}`,
+    border: `1px solid ${"rgba(248, 184, 8, 0.6)"}`,
     borderRadius: radii.sm,
     padding: "0 12px",
     minHeight: touch.minimumTarget,
@@ -56,7 +57,8 @@ export const authStyles: Record<string, CSSProperties> = {
     background: colors.actionTeal,
     border: 0,
     borderRadius: radii.sm,
-    color: "white",
+    // Black on gold: white on gold could not be read.
+    color: "#000000",
     fontWeight: 800,
     fontSize: 15,
     minHeight: touch.minimumTarget,

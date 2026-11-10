@@ -100,7 +100,7 @@ export const ar: Partial<Messages> = {
   "shell.brandTitle": "الإدارة",
   "shell.brandSub": "مساحة عمل فريق Joblop",
   "shell.sessionContext":
-    "منطقة آمنة للموظفين · يمكن لموظفي Joblop -ممن سجلوا دخولهم فقط- الاطلاع على هذه المعلومات.",
+    "منطقة آمنة للموظفين · لا يطّلع على هذه المعلومات إلا موظفو Joblop الذين سجّلوا الدخول.",
   "shell.brandHomeAria": "الصفحة الرئيسية لإدارة Joblop",
   "shell.navAria": "تنقّل الإدارة",
 

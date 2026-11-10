@@ -148,6 +148,8 @@ export function AdminShell({
           <img
             src="/img/joblop-logo.png"
             alt="Joblop"
+            width={125}
+            height={30}
             style={{ height: 30, width: "auto", display: "block", borderRadius: 6 }}
           />
           <span>

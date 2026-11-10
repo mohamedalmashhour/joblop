@@ -109,7 +109,7 @@ h3 {
   font-size: 0.8rem;
   margin: 0;
   max-width: 420px;
-  text-align: right;
+  text-align: end;
 }
 
 .admin-langswitch {
@@ -127,8 +127,8 @@ h3 {
   font: inherit;
   font-size: 0.8rem;
   line-height: 1;
-  min-height: 32px;
-  min-width: 32px;
+  min-height: 36px;
+  min-width: 36px;
   padding: 6px 10px;
 }
 
@@ -153,6 +153,21 @@ h3 {
   overflow-x: auto;
   padding: 10px clamp(12px, 3vw, 28px);
   scrollbar-width: thin;
+  /* The menu scrolls sideways: fade the far edge so it is clear there is more, instead of a
+     word cut in half at the edge. */
+  -webkit-mask-image: linear-gradient(to right, #000 calc(100% - 48px), transparent);
+  mask-image: linear-gradient(to right, #000 calc(100% - 48px), transparent);
+  scroll-padding-inline: 48px;
+}
+
+[dir="rtl"] .admin-navigation {
+  -webkit-mask-image: linear-gradient(to left, #000 calc(100% - 48px), transparent);
+  mask-image: linear-gradient(to left, #000 calc(100% - 48px), transparent);
+}
+
+.admin-navigation::after {
+  content: "";
+  flex: 0 0 32px;
 }
 
 .admin-nav-group {
@@ -160,17 +175,17 @@ h3 {
   flex: 0 0 auto;
   flex-direction: column;
   gap: 4px;
-  padding-right: 18px;
+  padding-inline-end: 18px;
 }
 
 .admin-nav-group + .admin-nav-group {
-  border-left: 1px solid rgba(248, 184, 8, 0.16);
-  padding-left: 18px;
+  border-inline-start: 1px solid rgba(248, 184, 8, 0.16);
+  padding-inline-start: 18px;
 }
 
 .admin-nav-group-label {
   color: #b3a894;
-  font-size: 0.66rem;
+  font-size: 0.72rem;
   font-weight: 700;
   letter-spacing: 0.06em;
   padding: 0 4px;
@@ -283,7 +298,19 @@ h3 {
   }
 
   .admin-session-context {
-    text-align: left;
+    text-align: start;
+  }
+
+  /* Phones: menu links and language buttons are easy to tap (44px). */
+  .admin-nav-link {
+    align-items: center;
+    display: inline-flex;
+    min-height: 44px;
+  }
+
+  .admin-langbtn {
+    min-height: 44px;
+    min-width: 44px;
   }
 
   .admin-page-navigator {
@@ -299,4 +326,15 @@ h3 {
   .admin-page-arrow:last-child {
     justify-self: end;
   }
+}
+
+/* Arabic: the Arabic group labels are not uppercase letters, so give them a readable size. */
+[dir="rtl"] .admin-nav-group-label {
+  font-size: 0.8rem;
+  letter-spacing: 0;
+}
+
+/* Arabic: system Arabic fonts that sit better next to Inter than the default fallback. */
+html[dir="rtl"] body {
+  font-family: var(--font-sans, Inter), "Segoe UI", "Geeza Pro", "Noto Sans Arabic", Tahoma, system-ui, sans-serif;
 }
