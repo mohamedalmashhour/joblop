@@ -25,7 +25,8 @@ function makeStore() {
   const iso = () => new Date(1_700_000_000_000 + seq * 1000).toISOString();
   const store: HrStore = {
     async getProfile(w) { return profiles.find((p) => p.workerIdentityId === w) ?? null; },
-    async createProfile(w) { const p = { id: `pr-${seq++}`, workerIdentityId: w, standing: "active" as const, standingReason: null, updatedAt: iso() }; profiles.push(p); return { ...p }; },
+    // Mirrors the unique worker index: a second create for the same worker loses.
+    async createProfile(w) { if (profiles.some((p) => p.workerIdentityId === w)) return null; const p = { id: `pr-${seq++}`, workerIdentityId: w, standing: "active" as const, standingReason: null, updatedAt: iso() }; profiles.push(p); return { ...p }; },
     async setStanding({ workerIdentityId, standing, reason }) { const p = profiles.find((x) => x.workerIdentityId === workerIdentityId)!; p.standing = standing; p.standingReason = reason; return { ...p }; },
     async getIntake(w) { return intakes[w] ?? null; },
     async upsertIntake({ workerIdentityId, data }) {
@@ -98,6 +99,20 @@ describe("HR service", () => {
     const updated = await ctx.service.setStanding({ actorUserId: "hr-1", workerIdentityId: "w-1", standing: "suspended", reason: "policy" });
     expect(updated.standing).toBe("suspended");
     expect(ctx.events.some((e) => e.eventType === "standing_changed" && e.newState === "suspended" && e.actorUserId === "hr-1")).toBe(true);
+  });
+
+  it("two first-time standing changes for the same worker both land (lazy profile create race)", async () => {
+    // Neither request sees a profile, both try to create one; the loser must reuse the winner's
+    // profile instead of failing and dropping its standing change.
+    await Promise.all([
+      ctx.service.setStanding({ actorUserId: "hr-a", workerIdentityId: "w-new", standing: "restricted", reason: "A" }),
+      ctx.service.setStanding({ actorUserId: "hr-b", workerIdentityId: "w-new", standing: "suspended", reason: "B" })
+    ]);
+    expect(ctx.profiles.filter((p) => p.workerIdentityId === "w-new")).toHaveLength(1);
+    const forWorker = ctx.events.filter((e) => e.workerIdentityId === "w-new");
+    expect(forWorker.filter((e) => e.eventType === "standing_changed")).toHaveLength(2);
+    expect(forWorker.filter((e) => e.eventType === "profile_created")).toHaveLength(1);
+    expect(["restricted", "suspended"]).toContain(ctx.profiles.find((p) => p.workerIdentityId === "w-new")!.standing);
   });
 
   it("rejects an unknown standing", async () => {
