@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { useLocale } from "../../i18n/LocaleProvider";
 import { workerPayLabel } from "../../workerPayLabel";
 import { publicJobPath, signUpReturningTo } from "../../safeReturnPath";
+import { JoblopJobBadge } from "../../JobSourceBadge";
 
 // Public job details for signed-out visitors: what (the role), where (city and province only, never
 // the exact address), when, places left and the worker's OWN pay. Never the employer, the employer
@@ -161,7 +162,7 @@ export function PublicJobDetail({ jobCode }: { jobCode: string }) {
       <div className={status === "error" ? "state error" : "state"} role={status === "error" ? "alert" : undefined}>
         {status === "error" ? t.error : t.notFound}
         <div style={{ marginTop: 12 }}>
-          <a className="btn" href="/browse">{t.backToSearch}</a>
+          <a className="btn" href="/find-work">{t.backToSearch}</a>
         </div>
       </div>
     );
@@ -172,7 +173,8 @@ export function PublicJobDetail({ jobCode }: { jobCode: string }) {
     <article className="detail">
       <div className="detail-head">
         <div>
-          <span className="chip">{t.badge}</span>
+          <JoblopJobBadge />
+          <span className="chip" style={{ marginInlineStart: 8 }}>{t.badge}</span>
           {urgent ? <span className="chip" style={{ marginInlineStart: 8 }}>{t.urgent}</span> : null}
           <h1>{job.role}</h1>
         </div>

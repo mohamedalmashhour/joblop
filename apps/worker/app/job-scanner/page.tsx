@@ -1,8 +1,17 @@
+import { redirect } from "next/navigation";
 import { JobScannerFeed } from "./JobScannerFeed";
 import { SiteHeader } from "../SiteHeader";
 import { JobAlertsCard } from "../job-alerts/JobAlertsCard";
+import { hasSessionCookie } from "../hasSessionCookie";
+import { findWorkHref, firstParam } from "../findWorkUrl";
 
-export default function Page() {
+// Signed-out visitors: outside listings now live in the Find work list (after Joblop jobs).
+// Signed-in workers keep their ranked JobScanner feed here.
+export default async function Page({ searchParams }: { searchParams: Promise<Record<string, string | string[] | undefined>> }) {
+  const params = await searchParams;
+  if (!(await hasSessionCookie())) {
+    redirect(findWorkHref({ tab: "list", q: firstParam(params.q), city: firstParam(params.city) }));
+  }
   return (
     <>
       <SiteHeader />

@@ -1,171 +1,136 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { PUBLIC_LANDING_COPY, publicLandingLang } from "@rwos/shared";
-import { NEXT_AFTER_SIGN_UP_KEY, PublicJobSearch } from "./PublicJobSearch";
-import { PublicJobsCalendar } from "./PublicJobsCalendar";
-import { HowItWorksMovie } from "./HowItWorksMovie";
+import { useEffect, useRef, useState } from "react";
 import { safeReturnPath } from "./safeReturnPath";
 import { trackConversion } from "./analytics";
 import { withBrand } from "./Brand";
-import { useLocale, useT } from "./i18n/LocaleProvider";
+import { useT } from "./i18n/LocaleProvider";
 import { VerifyEmail } from "./VerifyEmail";
-import { VideoCard } from "./VideoCard";
+import { NEXT_AFTER_SIGN_UP_KEY, OPEN_ACCOUNT_EVENT, prefersSmoothScroll, revealFormStart, type AccountTab } from "./authScroll";
+import { findWorkHref } from "./findWorkUrl";
+
+// Employer site — set NEXT_PUBLIC_EMPLOYER_URL in production.
+const EMPLOYER_URL = process.env.NEXT_PUBLIC_EMPLOYER_URL ?? "http://localhost:3100";
 
 /**
- * Signed-out worker front door, in the owner's order ("the searcher sees the landing page with the
- * job calendar which is available, then JobScanner; if he is interested he opens an account"):
- *   1. landing: the logo (site header) and the hero with a short value line and the two account buttons,
- *   2. howitworks: the "How Joblop works" 4-step video section (sound on/off),
- *   3. calendar: open Joblop jobs this month, public with no account,
- *   4. jobscanner: the search ("What work?" + "Where?") and the JobScanner demo,
- *   5. signup: the create-account / sign-in card,
- * then links to the public board and the full guide. The calendar loads on its own; the videos never
- * delay it. The phone app shows the same sections in the same order
- * (SIGNED_OUT_SECTIONS). On success it hands control back to the marketplace.
+ * Signed-out home page, kept to one question so a stranger knows where to click within seconds:
+ *   1. hero: "Find paid work near you, this week." with one search (what work + city) and a gold
+ *      "Show jobs" button that opens Find work with those filters,
+ *   2. howitworks: three steps (Search -> Create a free account -> Get the job),
+ *   3. trust: a small row of plain facts,
+ *   4. employer: a small "Hire on Joblop" link to the employer site.
+ * The sign-up / sign-in card appears only when it is asked for (the menu's "Sign in", "Apply" on a
+ * Joblop job, ?tab= or ?next=), in place of the home content, and opens at its first field.
+ * On success it hands control back to the marketplace (and to the job the visitor came from).
+ * The calendar, JobScanner and the job lists live on Find work; the videos on How it works.
  */
 export function LandingPanel({ onSignedIn }: { onSignedIn: () => void }) {
   const t = useT();
-  const locale = useLocale();
-  const copy = PUBLIC_LANDING_COPY[publicLandingLang(locale)];
-  // Create account comes first (owner rule): returning workers switch to "Sign in" in one tap.
-  const [tab, setTab] = useState<"signin" | "signup">("signup");
+  const [tab, setTab] = useState<AccountTab>("signup");
+  const [accountOpen, setAccountOpen] = useState(false);
+  // Each request to open the form bumps this, so the card scrolls to its first field and focuses it
+  // after the chosen tab has rendered.
+  const [revealTick, setRevealTick] = useState(0);
+  const [q, setQ] = useState("");
+  const [city, setCity] = useState("");
+
   const remember = (next: string) => {
     const safe = safeReturnPath(next);
     if (!safe) return;
     try {
       window.sessionStorage.setItem(NEXT_AFTER_SIGN_UP_KEY, safe);
     } catch {
-      /* storage blocked: they still land on the search after signing up */
+      /* storage blocked: they still land on their home after signing up */
     }
   };
-  const openAccount = (which: "signin" | "signup") => {
+  const openAccount = (which: AccountTab) => {
     setTab(which);
-    document.getElementById("auth-card")?.scrollIntoView({ behavior: "smooth", block: "center" });
+    setAccountOpen(true);
+    setRevealTick((n) => n + 1);
   };
-  const wantDetails = (next: string) => {
-    remember(next);
-    openAccount("signup");
-  };
-  // Arriving from a public job page ("Create an account to take this job" or "Sign in"): remember the
-  // job (an on-site path only) so sign-up or sign-in brings the visitor back to it.
+  // The header's "Sign in" link asks for the form while the home page is already open.
+  useEffect(() => {
+    const onOpen = (event: Event) => openAccount((event as CustomEvent<unknown>).detail === "signin" ? "signin" : "signup");
+    window.addEventListener(OPEN_ACCOUNT_EVENT, onOpen);
+    return () => window.removeEventListener(OPEN_ACCOUNT_EVENT, onOpen);
+  }, []);
+  // Arriving from "Apply" on a job ("?next=/job/…") or from "/signin" ("?tab=signin"): remember the job
+  // (an on-site path only) so sign-up or sign-in brings the visitor back to it, and open the form.
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     const next = params.get("next");
     const tabParam = params.get("tab");
-    // "/signin" redirects here with ?tab=signin, so an explicit tab opens the card even without a job.
-    if (!next && tabParam !== "signin" && tabParam !== "signup") return;
+    if (!next && tabParam !== "signin" && tabParam !== "signup" && window.location.hash !== "#auth-card") return;
     if (next) remember(next);
-    setTab(tabParam === "signin" ? "signin" : "signup");
-    document.getElementById("auth-card")?.scrollIntoView({ behavior: "smooth", block: "center" });
+    openAccount(tabParam === "signin" ? "signin" : "signup");
   }, []);
 
+  if (accountOpen) {
+    return (
+      <div className="home home-account">
+        <a className="home-back" href="/" onClick={(e) => { e.preventDefault(); setAccountOpen(false); window.history.replaceState(null, "", "/"); }}>
+          {t("nav.backHome")}
+        </a>
+        <p className="home-account-sub">{t("home.accountSub")}</p>
+        <AuthCard tab={tab} setTab={setTab} onSignedIn={onSignedIn} revealTick={revealTick} />
+      </div>
+    );
+  }
+
   const steps = [
-    { title: t("land.step1Title"), body: t("land.step1Body") },
-    { title: t("land.step2Title"), body: t("land.step2Body") },
-    { title: t("land.step3Title"), body: t("land.step3Body") },
-    { title: t("land.step4Title"), body: t("land.step4Body") }
+    { title: t("home.s1"), body: t("home.s1d") },
+    { title: t("home.s2"), body: t("home.s2d") },
+    { title: t("home.s3"), body: t("home.s3d") }
   ];
-  const values = [t("land.v1"), t("land.v2"), t("land.v3"), t("land.v4")];
 
   return (
-    <div className="landing">
-      {/* 1 — Landing: hero with a short value line */}
-      <section className="landing-hero landing-hero-top" data-section="landing">
-        <div className="landing-copy">
-          <h1>{withBrand(t("land.heroTitle"))}</h1>
-          <p>{withBrand(t("land.heroSub"))}</p>
-          <div className="landing-cta-row">
-            <button type="button" className="btn" onClick={() => openAccount("signup")}>{copy.createAccount}</button>
-            <button type="button" className="btn ghost" onClick={() => openAccount("signin")}>{copy.signIn}</button>
-          </div>
-          <ul className="landing-values landing-hero-values">
-            {values.map((v) => (
-              <li key={v}>
-                <span className="landing-tick" aria-hidden="true">✓</span>
-                <span>{withBrand(v)}</span>
-              </li>
-            ))}
-          </ul>
-        </div>
-        <div className="landing-hero-video">
-          <VideoCard
-            src="/media/workers-ready.mp4"
-            poster="/media/workers-ready.jpg"
-            label={t("land.videoReadyLabel")}
-            soundLabel={t("land.videoSoundOn")}
-            muteLabel={t("land.videoSoundOff")}
-            playLabel={t("land.videoPlay")}
-            withSound
-          />
-        </div>
+    <div className="home">
+      {/* 1 — One question, one search, one gold button */}
+      <section className="home-hero" data-section="hero" aria-labelledby="home-title">
+        <h1 id="home-title">{t("home.title")}</h1>
+        <p className="home-sub">{t("home.sub")}</p>
+        <form
+          className="home-search"
+          role="search"
+          action="/find-work"
+          onSubmit={(e) => {
+            e.preventDefault();
+            window.location.assign(findWorkHref({ q, city }));
+          }}
+        >
+          <input name="q" value={q} onChange={(e) => setQ(e.target.value)} placeholder={t("home.whatPh")} aria-label={t("home.whatPh")} maxLength={80} />
+          <input name="city" value={city} onChange={(e) => setCity(e.target.value)} placeholder={t("home.cityPh")} aria-label={t("home.cityPh")} maxLength={80} autoComplete="address-level2" />
+          <button type="submit" className="home-go">{t("home.show")}</button>
+        </form>
       </section>
 
-      {/* 2 — How Joblop works: the 4-step video section (sound on/off) */}
-      <section className="landing-steps" data-section="howitworks">
-        <h2>{t("land.howItWorks")}</h2>
-        <div className="landing-steps-body">
-          <VideoCard
-            src="/media/how-joblop-works.mp4"
-            poster="/media/how-joblop-works.jpg"
-            label={t("land.videoHowLabel")}
-            soundLabel={t("land.videoSoundOn")}
-            muteLabel={t("land.videoSoundOff")}
-            playLabel={t("land.videoPlay")}
-            withSound
-          />
+      {/* 2 — How it works, in three steps */}
+      <section className="home-steps" data-section="howitworks" aria-labelledby="home-how">
+        <h2 id="home-how">{t("home.how")}</h2>
         <ol>
           {steps.map((s, i) => (
             <li key={s.title}>
-              <span className="step-n" aria-hidden="true">{i + 1}</span>
+              <span className="home-num" aria-hidden="true">{i + 1}</span>
               <div>
-                <h3>{withBrand(s.title)}</h3>
-                <p>{withBrand(s.body)}</p>
+                <strong>{s.title}</strong>
+                <span>{s.body}</span>
               </div>
             </li>
           ))}
         </ol>
-        </div>
       </section>
 
-      {/* 3 — Available jobs calendar (public, no account) */}
-      <PublicJobsCalendar onCreateAccount={() => openAccount("signup")} />
+      {/* 3 — A small trust row */}
+      <ul className="home-trust" data-section="trust" aria-label={t("home.trustLabel")}>
+        <li>{t("home.t1")}</li>
+        <li>{t("home.t2")}</li>
+        <li>{t("home.t3")}</li>
+      </ul>
 
-      {/* 4 — JobScanner: Joblop jobs plus partner job boards, and the JobScanner demo */}
-      <section className="landing-scanner" data-section="jobscanner" aria-label={copy.scannerEyebrow}>
-        <span className="pcal-eyebrow">{copy.scannerEyebrow}</span>
-        <PublicJobSearch onWantDetails={wantDetails} />
-        <HowItWorksMovie />
-      </section>
-
-      {/* 5 — Sign-up call to action */}
-      <section className="landing-signup" data-section="signup" aria-labelledby="landing-signup-title">
-        <div className="landing-copy">
-          <h2 id="landing-signup-title">{withBrand(copy.ctaTitle)}</h2>
-          <p>{withBrand(copy.ctaSub)}</p>
-          <ul className="landing-values">
-            {values.map((v) => (
-              <li key={v}>
-                <span className="landing-tick" aria-hidden="true">✓</span>
-                <span>{withBrand(v)}</span>
-              </li>
-            ))}
-          </ul>
-        </div>
-        <div className="landing-hero-side">
-          <AuthCard tab={tab} setTab={setTab} onSignedIn={onSignedIn} />
-        </div>
-      </section>
-
-      <nav className="landing-links">
-        <a href="/browse" className="landing-browse" style={{ display: "inline-block", fontWeight: 700, color: "#e0a500", textDecoration: "none" }}>
-          {t("land.browsePublic")}
-        </a>
-        <a href="/how-it-works" className="landing-guide" style={{ display: "inline-flex", alignItems: "center", gap: 8, padding: "9px 14px", border: "1px solid rgba(248,184,8,.4)", borderRadius: 999, fontWeight: 700, color: "#f4efe4", textDecoration: "none" }}>
-          <span aria-hidden="true" style={{ color: "#f8b808" }}>?</span>
-          {locale === "ar" ? "كيف يعمل جوب‑لوب — الدليل الكامل" : locale.startsWith("fr") ? "Comment fonctionne Joblop — le guide complet" : "How Joblop works — the full guide"}
-        </a>
-      </nav>
+      {/* 4 — Employers: a small link to the employer site */}
+      <p className="home-emp" data-section="employer">
+        <span>{t("home.emp")}</span> <a href={EMPLOYER_URL}>{withBrand(t("home.empLink"))}</a>
+      </p>
     </div>
   );
 }
@@ -173,15 +138,29 @@ export function LandingPanel({ onSignedIn }: { onSignedIn: () => void }) {
 function AuthCard({
   tab,
   setTab,
-  onSignedIn
+  onSignedIn,
+  revealTick
 }: {
-  tab: "signin" | "signup";
-  setTab: (t: "signin" | "signup") => void;
+  tab: AccountTab;
+  setTab: (t: AccountTab) => void;
   onSignedIn: () => void;
+  revealTick: number;
 }) {
   const t = useT();
+  const cardRef = useRef<HTMLDivElement | null>(null);
+  // Open the form at its start: the card's top just under the sticky header, first field focused.
+  useEffect(() => {
+    if (revealTick === 0) return;
+    const frame = window.requestAnimationFrame(() => revealFormStart(cardRef.current, prefersSmoothScroll()));
+    return () => window.cancelAnimationFrame(frame);
+  }, [revealTick, tab]);
+  // A new step inside the card (the texted code, the verify-email message) keeps the card's top
+  // below the header and focuses its first field, so nothing hides behind the header.
+  const stepChanged = () => {
+    window.requestAnimationFrame(() => revealFormStart(cardRef.current, prefersSmoothScroll()));
+  };
   return (
-    <div className="auth-card" id="auth-card">
+    <div className="auth-card" id="auth-card" ref={cardRef}>
       <div className="auth-tabs" role="tablist" aria-label="Sign in or create account">
         <button role="tab" type="button" aria-selected={tab === "signin"} className={tab === "signin" ? "active" : ""} onClick={() => setTab("signin")}>
           {t("auth.tabSignIn")}
@@ -190,14 +169,14 @@ function AuthCard({
           {t("auth.tabCreate")}
         </button>
       </div>
-      {tab === "signin" ? <SignInForm onSignedIn={onSignedIn} onNeedAccount={() => setTab("signup")} /> : <SignUpForm onSignedIn={onSignedIn} onHaveAccount={() => setTab("signin")} />}
+      {tab === "signin" ? <SignInForm onSignedIn={onSignedIn} onNeedAccount={() => setTab("signup")} onStep={stepChanged} /> : <SignUpForm onSignedIn={onSignedIn} onHaveAccount={() => setTab("signin")} onStep={stepChanged} />}
     </div>
   );
 }
 
 
 // Workers sign in with a mobile number and a texted code. The session stays in an httpOnly cookie.
-function SignInForm({ onSignedIn, onNeedAccount }: { onSignedIn: () => void; onNeedAccount: () => void }) {
+function SignInForm({ onSignedIn, onNeedAccount, onStep }: { onSignedIn: () => void; onNeedAccount: () => void; onStep: () => void }) {
   const t = useT();
   const [phone, setPhone] = useState("");
   const [code, setCode] = useState("");
@@ -218,6 +197,7 @@ function SignInForm({ onSignedIn, onNeedAccount }: { onSignedIn: () => void; onN
       if (!response.ok) return setError(t("auth.numberUnusable"));
       setStep("code");
       setCode("");
+      onStep();
     } catch {
       setError(t("common.somethingWrong"));
     } finally {
@@ -273,7 +253,7 @@ function SignInForm({ onSignedIn, onNeedAccount }: { onSignedIn: () => void; onN
   );
 }
 
-function SignUpForm({ onSignedIn, onHaveAccount }: { onSignedIn: () => void; onHaveAccount: () => void }) {
+function SignUpForm({ onSignedIn, onHaveAccount, onStep }: { onSignedIn: () => void; onHaveAccount: () => void; onStep: () => void }) {
   const t = useT();
   const [name, setName] = useState("");
   const [phone, setPhone] = useState("");
@@ -313,7 +293,7 @@ function SignUpForm({ onSignedIn, onHaveAccount }: { onSignedIn: () => void; onH
           referralCode
         })
       });
-      if (response.ok) { trackConversion("sign_up", { method: "worker" }); setRegistered(true); return; }
+      if (response.ok) { trackConversion("sign_up", { method: "worker" }); setRegistered(true); onStep(); return; }
       if (response.status === 404) setError(t("signup.closed"));
       else if (response.status === 409) setError(t("signup.conflict"));
       else if (response.status === 400) setError(t("auth.numberUnusable"));

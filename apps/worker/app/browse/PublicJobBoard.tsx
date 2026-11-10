@@ -3,8 +3,10 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { JobScannerDemo } from "./JobScannerDemo";
 import { trackConversion } from "../analytics";
-import { useLocale } from "../i18n/LocaleProvider";
+import { useLocale, useT } from "../i18n/LocaleProvider";
 import { SiteHeader } from "../SiteHeader";
+import { JoblopJobBadge, OutsideApplyLink, OutsideSiteBadge } from "../JobSourceBadge";
+import { outsideApplyUrl } from "../jobSource";
 import { activeCountry } from "../country";
 import { publicJobPath } from "../safeReturnPath";
 
@@ -94,7 +96,7 @@ const T = {
     jsBtn: "Search the market — free",
     leadsLive: "Live from across the web", leadsSrc: "External leads",
     leadsApply: "Apply with Joblop", leadsApplyHint: "Create a free Joblop account to apply and get alerts",
-    leadsNote: "External roles — create a free Joblop account to apply and get alerts, all in one place.",
+    leadsNote: "These jobs are on other websites. You apply on their site.",
     leadsCta: "See the full ranked scanner (free)",
     alertTitle: "Get job alerts — from Joblop",
     alertSub: "Leave your email and we'll alert you as matching jobs appear. Free, and we never take a cut of your pay.",
@@ -168,7 +170,7 @@ const T = {
     jsBtn: "Chercher le marché — gratuit",
     leadsLive: "En direct du web", leadsSrc: "Offres externes",
     leadsApply: "Postuler avec Joblop", leadsApplyHint: "Créez un compte Joblop gratuit pour postuler et recevoir des alertes",
-    leadsNote: "Offres externes — créez un compte Joblop gratuit pour postuler et recevoir des alertes, au même endroit.",
+    leadsNote: "Ces emplois sont sur d’autres sites. Vous postulez sur leur site.",
     leadsCta: "Voir le scanner complet et classé (gratuit)",
     alertTitle: "Recevez des alertes d'emploi — de Joblop",
     alertSub: "Laissez votre courriel et nous vous alerterons dès qu'un emploi correspond. Gratuit, et nous ne prenons aucune part de votre paie.",
@@ -242,7 +244,7 @@ const T = {
     jsBtn: "ابحث في السوق — مجانًا",
     leadsLive: "مباشر من الويب", leadsSrc: "وظائف خارجية",
     leadsApply: "تقدّم عبر جوب‑لوب", leadsApplyHint: "أنشئ حساب جوب‑لوب مجاني للتقديم وتلقّي التنبيهات",
-    leadsNote: "وظائف خارجية — أنشئ حساب جوب‑لوب مجاني للتقديم وتلقّي التنبيهات، من مكان واحد.",
+    leadsNote: "هذه الوظائف على مواقع أخرى. تقدّم على موقعهم.",
     leadsCta: "اعرض الماسح الكامل والمصنّف (مجانًا)",
     alertTitle: "احصل على تنبيهات وظائف — من جوب‑لوب",
     alertSub: "اترك بريدك الإلكتروني وسننبّهك فور توفّر وظيفة مطابقة. مجانًا، ولا نقتطع أي جزء من أجرك.",
@@ -296,6 +298,7 @@ export function PublicJobBoard() {
   const [cForm, setCForm] = useState({ name: "", email: "", msg: "" });
   const gen = useRef(0);
   const t = T[lang];
+  const tm = useT();
   // Arrows follow the reading direction: → in English/French, ← in Arabic.
   const arrow = lang === "ar" ? "←" : "→";
 
@@ -615,6 +618,7 @@ export function PublicJobBoard() {
                   <div key={j.jobCode} className="jl-job">
                     <div className="jl-job-ic">{iconFor(j.role)}</div>
                     <div className="jl-job-main">
+                      <JoblopJobBadge />
                       <strong>{j.role}</strong>
                       <span className="jl-job-meta">📍 {j.areaLabel} · {t.starts} {fmtDate(j.startAt)}</span>
                     </div>
@@ -622,7 +626,7 @@ export function PublicJobBoard() {
                       {urgent ? <span className="jl-tag jl-tag-u">{t.urgent}</span> : null}
                       <span className="jl-tag">{t.openings(j.openings)}</span>
                     </div>
-                    <a href={publicJobPath(j.jobCode)} className="jl-apply">{t.apply}</a>
+                    <a href={publicJobPath(j.jobCode)} className="jl-apply">{tm("src.applyHere")}</a>
                   </div>
                 );
               })}
@@ -651,19 +655,23 @@ export function PublicJobBoard() {
             <div className="jl-leads-grid">
               {leads.map((l, i) => {
                 const pay = fmtPay(l);
-                // Funnel into Joblop first: clicking opens free sign-up (then Assisted Apply to the
-                // source), so Joblop — not the external site — owns the worker relationship.
+                // Outside listing: said plainly, and the button applies on the outside site in a new tab.
                 return (
                   <div key={`${l.source}-${i}`} className="jl-lead-cell">
-                  <a href="/" className="jl-lead" title={t.leadsApplyHint}>
+                  <div className="jl-lead">
                     <span className="jl-lead-ic">{iconFor(l.title)}</span>
                     <span className="jl-lead-main">
+                      <OutsideSiteBadge />
                       <strong dir="auto">{l.title}</strong>
                       <em>{l.employer ? <bdi>{l.employer}</bdi> : null}{l.employer ? " · " : ""}📍 <bdi>{l.areaLabel}</bdi></em>
                     </span>
                     {pay ? <span className="jl-lead-pay" dir="ltr">{pay}</span> : null}
-                    <span className="jl-lead-go">{t.leadsApply} {arrow}</span>
-                  </a>
+                  </div>
+                  {outsideApplyUrl(l.url) ? (
+                    <OutsideApplyLink url={l.url} source={l.source} className="jl-lead-apply" />
+                  ) : (
+                    <a href="/job-scanner" className="jl-lead-apply">{t.leadsCta} {arrow}</a>
+                  )}
                   {l.source === "adzuna" ? (
                     <a className="jl-adzuna" href="https://www.adzuna.ca" target="_blank" rel="noreferrer">Adzuna</a>
                   ) : null}

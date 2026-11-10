@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { HowItWorks } from "./HowItWorks";
 import { SiteHeader } from "../SiteHeader";
+import { HowItWorksVideos } from "./HowItWorksVideos";
 
 export const metadata: Metadata = {
   title: "How Joblop works — guide for workers",
@@ -13,6 +14,7 @@ export default function Page() {
     <>
       <SiteHeader />
       <main>
+        <HowItWorksVideos />
         <HowItWorks />
       </main>
     </>

@@ -20,7 +20,7 @@ export default async function NotFound() {
         <p style={{ marginTop: 6 }}>{tr("notFound.body")}</p>
         <div style={{ marginTop: 16, display: "flex", gap: 12, flexWrap: "wrap", justifyContent: "center" }}>
           <a className="btn" href="/">{tr("notFound.home")}</a>
-          <a className="btn ghost" href="/browse">{tr("notFound.browse")}</a>
+          <a className="btn ghost" href="/find-work">{tr("notFound.browse")}</a>
         </div>
       </div>
     </main>

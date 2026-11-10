@@ -1,6 +1,9 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { OutsideApplyLink, OutsideSiteBadge } from "../JobSourceBadge";
+import { outsideApplyUrl } from "../jobSource";
+import { accountHref } from "../authScroll";
 
 type Lead = { id?: string; title: string; employer: string | null; city: string | null; province: string | null; salaryMaxMinor: number | null; url: string; source?: string; score?: number; distanceKm?: number | null };
 
@@ -35,8 +38,8 @@ export function JobScannerFeed() {
         if (roleText) pub.set("q", roleText);
         if (city.trim()) pub.set("city", city.trim());
         const pr = await fetch(`/api/public/jobscanner/leads?${pub.toString()}`, { cache: "no-store" });
-        const pd = (await pr.json().catch(() => ({}))) as { leads?: Array<{ title: string; employer: string | null; areaLabel: string; salaryMaxMinor: number | null; source: string }>; total?: number };
-        const list = (pd.leads ?? []).map((l) => ({ title: l.title, employer: l.employer, city: l.areaLabel, province: null, salaryMaxMinor: l.salaryMaxMinor, url: "", source: l.source }));
+        const pd = (await pr.json().catch(() => ({}))) as { leads?: Array<{ title: string; employer: string | null; areaLabel: string; salaryMaxMinor: number | null; source: string; url?: string | null }>; total?: number };
+        const list = (pd.leads ?? []).map((l) => ({ title: l.title, employer: l.employer, city: l.areaLabel, province: null, salaryMaxMinor: l.salaryMaxMinor, url: l.url ?? "", source: l.source }));
         setLeads(list); setLoaded(true); setVisitor(true);
         setMsg(list.length ? `${pd.total ?? list.length} jobs found. Create a free account to see the full list and apply.` : "No jobs match yet — try a broader search.");
         return;
@@ -72,17 +75,19 @@ export function JobScannerFeed() {
 
       {leads.map((l, i) => (
         <article key={l.id ?? i} style={styles.card}>
+          <OutsideSiteBadge className="jsf-badge" />
           <strong style={styles.title} dir="auto">{l.title}</strong>
           <div style={styles.meta}>
             {l.employer ?? "—"} · {l.province ? `${l.city}, ${l.province}` : l.city}{money(l.salaryMaxMinor) ? ` · ${money(l.salaryMaxMinor)}` : ""}
             {typeof l.score === "number" ? ` · match ${(l.score * 100).toFixed(0)}%` : ""}
           </div>
           <div style={styles.actions}>
-            {visitor ? (
-              <a style={styles.apply} href="/#auth-card">Create a free account to apply</a>
-            ) : (
-              <a style={styles.apply} href={l.url} target="_blank" rel="noreferrer">Apply on source ↗</a>
-            )}
+            {/* Outside listing: "Apply on <site>" opens the outside site in a new tab. */}
+            {outsideApplyUrl(l.url) ? (
+              <OutsideApplyLink url={l.url} source={l.source} />
+            ) : visitor ? (
+              <a style={styles.apply} href={accountHref("signup")}>Create a free account to apply</a>
+            ) : null}
             <a style={styles.ghost} href="/cv-builder">Tailor my CV</a>
             {l.source === "adzuna" ? (
               <a style={styles.adzuna} href="https://www.adzuna.ca" target="_blank" rel="noreferrer">Adzuna</a>

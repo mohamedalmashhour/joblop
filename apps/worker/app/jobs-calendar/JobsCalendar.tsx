@@ -1,9 +1,12 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { useLocale } from "../i18n/LocaleProvider";
+import { useLocale, useT } from "../i18n/LocaleProvider";
 import { payOfferedLabel } from "../payOfferedLabel";
 import { shiftOverlapNotice } from "../shiftOverlapNotice";
+import { nearestDayWithJobs } from "../calendarDays";
+import { accountHref } from "../authScroll";
+import { JoblopJobBadge } from "../JobSourceBadge";
 
 // "My calendar" hub: one calendar that shows the worker everything with a date on it —
 // open Joblop jobs they can accept (bonus ★), their confirmed shifts, cancelled shifts and pay
@@ -372,6 +375,7 @@ export function JobsCalendar() {
   const locale = useLocale();
   const lang: Lang = locale === "ar" ? "ar" : locale.startsWith("fr") ? "fr" : "en";
   const t = TEXT[lang];
+  const tr = useT();
   const loc = intlLocale(lang);
 
   const [todayKey] = useState(() => dayKey(new Date()));
@@ -524,6 +528,12 @@ export function JobsCalendar() {
   const selectedItems = selected ? byDay.get(selected) ?? [] : [];
   const selectedDate = selected ? new Date(`${selected}T12:00:00`) : null;
   const visibleCount = Array.from(byDay.values()).reduce((n, list) => n + list.length, 0);
+  // A chosen day with no open job: point to the nearest day this month that has one.
+  const jobDays = Array.from(byDay.entries())
+    .filter(([, list]) => list.some((x) => x.type === "available_job"))
+    .map(([key]) => key);
+  const selectedHasJobs = selectedItems.some((x) => x.type === "available_job");
+  const nearestJobDay = selected && !selectedHasJobs ? nearestDayWithJobs(jobDays, selected) : null;
 
   return (
     <section className="jc" aria-labelledby="jc-title">
@@ -534,7 +544,7 @@ export function JobsCalendar() {
       {status === "signed_out" ? (
         <div className="jc-panel">
           <p>{t.signedOut}</p>
-          <a className="jc-btn" href="/#auth-card">{t.signedOutCta}</a>
+          <a className="jc-btn" href={accountHref("signin")}>{t.signedOutCta}</a>
         </div>
       ) : (
         <>
@@ -681,7 +691,23 @@ export function JobsCalendar() {
                   <h3 className="jc-day-title">
                     {selectedItems.length > 0 ? t.itemsOn(selectedItems.length, dayFmt.format(selectedDate)) : dayFmt.format(selectedDate)}
                   </h3>
-                  {selectedItems.length === 0 ? <p className="jc-note">{t.nothingDay}</p> : null}
+                  {!selectedHasJobs ? (
+                    <div className="jc-noday">
+                      <p className="jc-note">{selectedItems.length === 0 ? t.nothingDay : tr("cal.noJobsDay")}</p>
+                      {nearestJobDay ? (
+                        <button
+                          type="button"
+                          className="jc-link jc-nearest"
+                          onClick={() => {
+                            setSelected(nearestJobDay);
+                            setBanner(null);
+                          }}
+                        >
+                          {tr("cal.nearestDay", { day: dayFmt.format(new Date(`${nearestJobDay}T12:00:00`)) })} {lang === "ar" ? "←" : "→"}
+                        </button>
+                      ) : null}
+                    </div>
+                  ) : null}
                   {selectedItems.map((item) => (
                     <ItemCard
                       key={item.id}
@@ -754,6 +780,7 @@ function ItemCard({
     const bonus = bonusLabel(item, t);
     return (
       <article className="jc-card jc-card-available">
+        <JoblopJobBadge />
         <span className="jc-kind jc-kind-available">{t.kind.available}</span>
         <h4 className="jc-role">{item.title}</h4>
         {item.subtitle ? <p className="jc-meta">📍 {item.subtitle}</p> : null}
@@ -976,6 +1003,10 @@ const STYLES = `
 .jc-btn:focus-visible, .jc-btn-ghost:focus-visible { outline: 2px solid #f4efe4; outline-offset: 2px; }
 .jc-btn-ghost { min-height: 44px; padding: 0 18px; border-radius: 999px; border: 1px solid #999; background: transparent; color: #333; font: inherit; font-weight: 600; cursor: pointer; }
 .jc-link { color: #6b4e00; font-weight: 600; font-size: 0.9rem; }
+.jc-noday { margin-top: 10px; padding: 12px 14px; border-radius: 12px; background: rgba(248,184,8,0.1); }
+.jc-noday .jc-note { margin: 0 0 6px; font-weight: 700; color: #f4efe4; }
+.jc-nearest { appearance: none; border: 0; background: none; padding: 0; cursor: pointer; font: inherit; font-weight: 800; color: #f8b808; text-decoration: underline; text-underline-offset: 3px; }
+.jc-card .src-badge { margin-bottom: 6px; }
 .jc-notice { margin-top: 10px; padding: 10px 12px; border-radius: 10px; background: #fff4e5; border: 1px solid #f0b46a; color: #5a3400; font-size: 0.9rem; }
 .jc-notice p { margin: 0 0 4px; }
 .jc-notice ul { margin: 4px 0; padding-inline-start: 20px; }
