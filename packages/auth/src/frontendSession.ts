@@ -368,7 +368,7 @@ function sanitizeSessionPayload(input: unknown) {
   return {
     authenticated: source.authenticated === true,
     user: source.user
-      ? pickScalar(user, ["id", "publicId", "emailNormalized", "displayName", "status"])
+      ? pickScalar(user, ["id", "publicId", "emailNormalized", "displayName", "status", "emailVerified"])
       : null,
     session: source.session ? pickScalar(session, ["id", "userId", "expiresAt"]) : null
   };

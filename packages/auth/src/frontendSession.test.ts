@@ -47,6 +47,7 @@ describe("secure frontend session gateway", () => {
             emailNormalized: "person@example.test",
             displayName: "Person",
             status: "active",
+            emailVerified: false,
             passwordHash: "never-return"
           },
           session: {
@@ -68,7 +69,8 @@ describe("secure frontend session gateway", () => {
           publicId: "USR-1",
           emailNormalized: "person@example.test",
           displayName: "Person",
-          status: "active"
+          status: "active",
+          emailVerified: false
         },
         session: {
           id: "session-1",

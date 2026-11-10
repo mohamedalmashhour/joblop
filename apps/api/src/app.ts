@@ -295,6 +295,15 @@ import {
   emailVerificationFailure,
   type EmailVerificationService
 } from "./emailVerification";
+import {
+  addEmailInvalidMessage,
+  confirmEmailFailure,
+  createAddEmailService,
+  createPrismaAddEmailRepository,
+  emailInUseMessage,
+  resolveAddEmailLanguage,
+  type AddEmailService
+} from "./addEmail";
 import { createEmailSender, type EmailSender } from "./mailer/emailSender";
 import { createSmsSender, type SmsSender } from "./mailer/smsSender";
 import { registerInstantContactRoutes } from "./instantContactRoutes";
@@ -454,6 +463,7 @@ import { resolveProductionFeatureFlags, isProductionBlockedOperation } from "./p
 export interface BuildApiOptions {
   authService?: AuthenticationService;
   emailVerificationService?: EmailVerificationService;
+  addEmailService?: AddEmailService;
   passwordResetService?: PasswordResetService;
   emailSender?: EmailSender;
   smsSender?: SmsSender;
@@ -743,6 +753,14 @@ export function buildApi(options: BuildApiOptions = {}) {
       ? createEmailVerificationService(authenticationRepository, emailSender, {
           exposeLocalCode: runtimeConfig.rwosEnv !== "production" && !runtimeConfig.hasEmailDelivery,
           smsSender
+        })
+      : null);
+  // "Add your email" (item 45): reuses the email-verification table, repository and sender above.
+  const addEmailService =
+    options.addEmailService ??
+    (authenticationRepository && hasEmailVerificationDelegate(prisma)
+      ? createAddEmailService(createPrismaAddEmailRepository(prisma, authenticationRepository), emailSender, {
+          exposeLocalLink: runtimeConfig.rwosEnv !== "production" && !runtimeConfig.hasEmailDelivery
         })
       : null);
   const passwordResetService =
@@ -2169,6 +2187,63 @@ export function buildApi(options: BuildApiOptions = {}) {
       code
     });
     return reply.code(result.status === "verified" ? 200 : 400).send(result);
+  });
+
+  // Add (or replace, while not yet confirmed) the signed-in account's email and send a confirmation
+  // link. Sign-in stays by texted code; this only makes sure invoices and notices can reach the
+  // person by email. The link opens /confirm-email on the public site (WORKER_WEB_ORIGIN).
+  app.post("/auth/email/add", async (request, reply) => {
+    const session = await authService.validateSession(readBearerToken(request.headers.authorization));
+    if (!session.authenticated || !session.user) {
+      return reply.code(401).send({ error: authenticationRequiredCode, message: "Authentication required." });
+    }
+    const confirmBaseUrl = offerCtaOrigin ?? runtimeConfig.passwordResetPublicOrigin ?? null;
+    if (!addEmailService || !confirmBaseUrl) return sendAuthenticationUnavailable(reply);
+    const email = readRequiredString(asRecord(request.body), "email");
+    if (!email) return reply.code(400).send({ error: "RWOS_INVALID_EMAIL", message: addEmailInvalidMessage });
+
+    const rateLimit = await consumeAuthenticationRateLimit(authRateLimiter, {
+      action: "email_verify_send",
+      ip: request.ip,
+      email: `add-email:${session.user.id}`
+    });
+    if (!rateLimit) return sendAuthenticationUnavailable(reply);
+    if (!rateLimit.allowed) return sendAuthenticationRateLimited(reply, rateLimit.retryAfterSeconds);
+
+    const languageRow = prisma
+      ? await prisma.user
+          .findUnique({ where: { id: session.user.id }, select: { primaryLanguage: true } })
+          .catch(() => null)
+      : null;
+    try {
+      const result = await addEmailService.add({
+        userId: session.user.id,
+        email,
+        alreadyConfirmed: session.user.emailVerified === true,
+        confirmBaseUrl,
+        language: resolveAddEmailLanguage(languageRow?.primaryLanguage)
+      });
+      if (result.status === "invalid_email") {
+        return reply.code(400).send({ error: "RWOS_INVALID_EMAIL", message: addEmailInvalidMessage });
+      }
+      if (result.status === "in_use") {
+        return reply.code(409).send({ error: "RWOS_EMAIL_IN_USE", message: emailInUseMessage });
+      }
+      if (result.status === "already_confirmed") return reply.code(200).send(result);
+      return reply.code(202).send(result);
+    } catch {
+      logger.error("api.add_email.failed", { requestId: request.id });
+      return sendAuthenticationUnavailable(reply);
+    }
+  });
+
+  // Public: the emailed link opens /confirm-email, whose Confirm button posts the token here.
+  app.post("/auth/email/confirm", async (request, reply) => {
+    if (!addEmailService) return sendAuthenticationUnavailable(reply);
+    const token = readRequiredString(asRecord(request.body), "token");
+    if (!token) return reply.code(400).send(confirmEmailFailure);
+    const result = await addEmailService.confirm({ token });
+    return reply.code(result.status === "confirmed" ? 200 : 400).send(result);
   });
 
   app.post("/auth/sign-out", async (request, reply) => {
@@ -11754,6 +11829,8 @@ export function isPublicWorkerIngressPath(rawUrl: string) {
     path === "/auth/sign-out" ||
     path === "/auth/email/send-code" ||
     path === "/auth/email/verify-code" ||
+    path === "/auth/email/add" ||
+    path === "/auth/email/confirm" ||
     path === "/auth/password-reset/request" ||
     path === "/auth/password-reset/complete" ||
     path.startsWith("/worker/")

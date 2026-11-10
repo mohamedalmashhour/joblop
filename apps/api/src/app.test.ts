@@ -77,6 +77,8 @@ describe("public worker ingress boundary", () => {
       "/auth/sign-out",
       "/auth/email/send-code",
       "/auth/email/verify-code",
+      "/auth/email/add",
+      "/auth/email/confirm",
       "/auth/password-reset/request",
       "/auth/password-reset/complete",
       "/worker/offers",
@@ -684,6 +686,108 @@ describe("api authentication foundation", () => {
     });
     expect(accepted.statusCode).toBe(200);
     expect(accepted.json()).toEqual({ status: "verified" });
+    await app.close();
+  });
+
+  it("adds an email for a signed-in account, rejects one in use, and confirms by link", async () => {
+    const repository = new ApiMemoryAuthenticationRepository();
+    const add = vi
+      .fn()
+      .mockResolvedValueOnce({ status: "sent" as const, email: "new@example.test" })
+      .mockResolvedValueOnce({ status: "in_use" as const })
+      .mockResolvedValueOnce({ status: "invalid_email" as const });
+    const confirm = vi
+      .fn()
+      .mockResolvedValueOnce({ status: "confirmed" as const })
+      .mockResolvedValueOnce({
+        status: "confirm_failed" as const,
+        message: "This link has expired or was already used. Send a new one from your Joblop account."
+      });
+    const consume = vi.fn(async () => ({ allowed: true, retryAfterSeconds: 60 }));
+    const app = buildApi({
+      authService: createAuthenticationService(repository, testAuthOptions()),
+      addEmailService: { add, confirm },
+      authRateLimiter: { consume },
+      publicWorkerWebOrigin: "https://joblop.example.test"
+    });
+    const registration = await app.inject({
+      method: "POST",
+      url: "/auth/register",
+      payload: { email: "phone-user@example.test", password: "ValidPassword123", displayName: "Synthetic User" }
+    });
+    const token = registration.json().token as string;
+    const authorization = `Bearer ${token}`;
+
+    const anonymous = await app.inject({ method: "POST", url: "/auth/email/add", payload: { email: "a@b.test" } });
+    expect(anonymous.statusCode).toBe(401);
+    expect(add).not.toHaveBeenCalled();
+
+    const sent = await app.inject({
+      method: "POST",
+      url: "/auth/email/add",
+      headers: { authorization },
+      payload: { email: "new@example.test" }
+    });
+    expect(sent.statusCode).toBe(202);
+    expect(sent.json()).toEqual({ status: "sent", email: "new@example.test" });
+    expect(add).toHaveBeenCalledWith(
+      expect.objectContaining({
+        userId: repository.firstUserId(),
+        email: "new@example.test",
+        alreadyConfirmed: false,
+        confirmBaseUrl: "https://joblop.example.test"
+      })
+    );
+    expect(consume).toHaveBeenLastCalledWith(
+      expect.objectContaining({ action: "email_verify_send", email: `add-email:${repository.firstUserId()}` })
+    );
+
+    const inUse = await app.inject({
+      method: "POST",
+      url: "/auth/email/add",
+      headers: { authorization },
+      payload: { email: "taken@example.test" }
+    });
+    expect(inUse.statusCode).toBe(409);
+    expect(inUse.json()).toEqual({
+      error: "RWOS_EMAIL_IN_USE",
+      message: "This email is already used by another account"
+    });
+
+    const invalid = await app.inject({
+      method: "POST",
+      url: "/auth/email/add",
+      headers: { authorization },
+      payload: { email: "nope" }
+    });
+    expect(invalid.statusCode).toBe(400);
+
+    consume.mockResolvedValueOnce({ allowed: false, retryAfterSeconds: 60 });
+    const limited = await app.inject({
+      method: "POST",
+      url: "/auth/email/add",
+      headers: { authorization },
+      payload: { email: "new@example.test" }
+    });
+    expect(limited.statusCode).toBe(429);
+    expect(add).toHaveBeenCalledTimes(3);
+
+    const confirmed = await app.inject({
+      method: "POST",
+      url: "/auth/email/confirm",
+      payload: { token: "a".repeat(43) }
+    });
+    expect(confirmed.statusCode).toBe(200);
+    expect(confirmed.json()).toEqual({ status: "confirmed" });
+    const reused = await app.inject({
+      method: "POST",
+      url: "/auth/email/confirm",
+      payload: { token: "a".repeat(43) }
+    });
+    expect(reused.statusCode).toBe(400);
+    const missing = await app.inject({ method: "POST", url: "/auth/email/confirm", payload: {} });
+    expect(missing.statusCode).toBe(400);
+    expect(confirm).toHaveBeenCalledTimes(2);
     await app.close();
   });
 
