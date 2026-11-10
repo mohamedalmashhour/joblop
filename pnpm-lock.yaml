@@ -97,6 +97,9 @@ importers:
       '@rwos/auth':
         specifier: workspace:*
         version: link:../../packages/auth
+      '@rwos/brain':
+        specifier: workspace:*
+        version: link:../../packages/brain
       '@rwos/config':
         specifier: workspace:*
         version: link:../../packages/config
@@ -289,6 +292,8 @@ importers:
       '@rwos/shared':
         specifier: workspace:*
         version: link:../shared
+
+  packages/brain: {}
 
   packages/config:
     dependencies:

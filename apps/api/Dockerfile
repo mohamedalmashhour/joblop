@@ -7,6 +7,7 @@ RUN corepack enable && corepack prepare pnpm@10.33.2 --activate
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml tsconfig*.json ./
 COPY apps/api/package.json apps/api/package.json
 COPY packages/auth/package.json packages/auth/package.json
+COPY packages/brain/package.json packages/brain/package.json
 COPY packages/config/package.json packages/config/package.json
 COPY packages/database/package.json packages/database/package.json
 COPY packages/observability/package.json packages/observability/package.json
@@ -17,6 +18,7 @@ COPY countries/syria/package.json countries/syria/package.json
 RUN pnpm install --frozen-lockfile
 COPY apps/api apps/api
 COPY packages/auth packages/auth
+COPY packages/brain packages/brain
 COPY packages/config packages/config
 COPY packages/database packages/database
 COPY packages/observability packages/observability

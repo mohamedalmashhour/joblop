@@ -20,6 +20,7 @@
     { "path": "./apps/api" },
     { "path": "./apps/mobile" },
     { "path": "./packages/auth" },
+    { "path": "./packages/brain" },
     { "path": "./packages/config" },
     { "path": "./packages/database" },
     { "path": "./packages/design-system" },

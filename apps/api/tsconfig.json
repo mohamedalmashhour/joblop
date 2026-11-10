@@ -10,6 +10,7 @@
   "include": ["src/**/*.ts"],
   "references": [
     { "path": "../../packages/auth" },
+    { "path": "../../packages/brain" },
     { "path": "../../packages/config" },
     { "path": "../../countries/canada" },
     { "path": "../../countries/syria" },
