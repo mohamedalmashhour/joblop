@@ -8,7 +8,10 @@ export default function Page() {
     <>
       <SiteHeader />
       <main className="wrap">
-        <BackToDashboard />
+        {/* Lined up with the 760px calendar column; "Back to home" because this page is public. */}
+        <div style={{ maxWidth: 760, margin: "0 auto" }}>
+          <BackToDashboard labelKey="nav.backHome" />
+        </div>
         <JobsCalendar />
         <JobAlertsCard />
       </main>

@@ -45,7 +45,8 @@ describe("Page 003 how it works content", () => {
   });
 
   it("scopes responsibility heading ids to their lifecycle phase", () => {
-    expect(pageSource).toContain('idPrefix={phase.title.toLowerCase().replaceAll(" ", "-")}');
+    // Stable English phase keys ("before", "during", "after") keep ids the same in every language.
+    expect(pageSource).toContain("idPrefix={phase.key}");
     expect(pageSource).toContain("`${idPrefix}-${owner.toLowerCase()}-responsibilities`");
     expect(pageSource).not.toContain('aria-labelledby={`${owner}-responsibilities`}');
   });

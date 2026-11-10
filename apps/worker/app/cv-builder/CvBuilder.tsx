@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { ProUpgrade } from "./ProUpgrade";
 import { toJsonResume, type CvProfile } from "./jsonResume";
-import { useLocale } from "../i18n/LocaleProvider";
+import { useLocale, useT } from "../i18n/LocaleProvider";
 
 // Worker-facing guided CV builder. Same flow as the admin demo, but on worker endpoints: the signed-in
 // worker builds their own CV, and CV attachments are keyed to their session server-side (no workerRef
@@ -65,6 +65,7 @@ function Chips({ options, value, onToggle, multi }: { options: string[]; value: 
 
 export function CvBuilder() {
   const locale = useLocale();
+  const t = useT();
   const [cat, setCat] = useState("kitchen");
   const [name, setName] = useState("");
   const [city, setCity] = useState("Laval");
@@ -224,10 +225,10 @@ export function CvBuilder() {
   if (authState === "signed_out")
     return (
       <section style={styles.wrap}>
-        <div style={{ textAlign: "center", padding: "36px 16px" }}>
-          <h2 style={{ margin: "0 0 8px" }}>Create a free account to build your CV</h2>
-          <p style={styles.hint}>Build CV is part of your Joblop worker account. Sign in or create a free account to build and save your CV.</p>
-          <a href="/" style={{ display: "inline-block", marginTop: 14, background: "#a8842f", color: "#fff", textDecoration: "none", padding: "12px 24px", borderRadius: 12, fontWeight: 800 }}>Create / sign in</a>
+        <div style={{ background: "#0c0c0c", border: "1px solid rgba(248, 184, 8, 0.16)", borderRadius: 14, padding: "32px 20px", textAlign: "center" }}>
+          <h2 style={{ color: "#f4efe4", margin: "0 0 10px" }}>{t("cv.gateTitle")}</h2>
+          <p style={{ color: "#d8ccb4", fontSize: 15, lineHeight: 1.6, margin: "0 auto", maxWidth: 560 }}>{t("cv.gateText")}</p>
+          <a href="/?tab=signup#auth-card" style={{ alignItems: "center", background: "#f8b808", borderRadius: 12, color: "#000", display: "inline-flex", fontWeight: 800, justifyContent: "center", marginTop: 18, minHeight: 48, padding: "0 24px", textDecoration: "none" }}>{t("cv.gateButton")}</a>
         </div>
       </section>
     );
@@ -332,9 +333,9 @@ const styles = {
   input: { border: "1px solid #e3d7c0", borderRadius: 8, minHeight: 40, padding: "0 10px", minWidth: 180 },
   chips: { display: "flex", flexWrap: "wrap" as const, gap: 8 },
   chip: { background: "#f6efdd", border: "1px solid #ece3d2", borderRadius: 999, color: "#1b160e", cursor: "pointer", fontSize: 13, fontWeight: 600, padding: "8px 14px" },
-  chipOn: { background: "#e0a500", borderColor: "#e0a500", color: "#fff" },
-  cta: { background: "#e0a500", border: "none", borderRadius: 10, color: "#fff", cursor: "pointer", fontSize: 15, fontWeight: 800, padding: "12px 22px" },
-  notice: { color: "#e0a500", fontSize: 13, fontWeight: 700, marginLeft: 12 },
+  chipOn: { background: "#f8b808", borderColor: "#f8b808", color: "#000" },
+  cta: { background: "#f8b808", border: "none", borderRadius: 10, color: "#000", cursor: "pointer", fontSize: 15, fontWeight: 800, padding: "12px 22px" },
+  notice: { color: "#8a5a00", fontSize: 13, fontWeight: 700, marginLeft: 12 },
   prov: { fontSize: 11, marginTop: 16, opacity: 0.7 },
   warn: { background: "#fff6e6", border: "1px solid #f0d089", borderRadius: 8, color: "#8a5a00", fontSize: 12, marginTop: 8, padding: "8px 12px" },
   upsell: { background: "#fff6e6", border: "1px solid #f0d089", borderRadius: 10, color: "#8a5a00", fontSize: 13, lineHeight: 1.5, marginTop: 16, padding: "12px 14px" },
@@ -351,6 +352,6 @@ const styles = {
   scoreBarFill: { borderRadius: 999, height: "100%", transition: "width .4s ease" },
   scoreGaps: { color: "#1b160e", fontSize: 13, marginTop: 12 },
   scoreGapList: { margin: "6px 0 0", paddingLeft: 18 },
-  scoreMax: { color: "#e0a500", fontSize: 13, fontWeight: 700, margin: "12px 0 0" },
+  scoreMax: { color: "#8a5a00", fontSize: 13, fontWeight: 700, margin: "12px 0 0" },
   scoreUpsell: { background: "#fff6e6", border: "1px solid #f0d089", borderRadius: 8, color: "#8a5a00", fontSize: 12.5, lineHeight: 1.5, margin: "12px 0 0", padding: "9px 12px" }
 } as const;

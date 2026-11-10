@@ -41,7 +41,7 @@ export function SignUpForm({ registrationOpen }: { registrationOpen: boolean }) 
 
   if (!registrationOpen) {
     return (
-      <div style={styles.formGrid}>
+      <div style={styles.authForm}>
         <p style={styles.warning}>{t("auth.regClosed")}</p>
         <a href="/signin" style={styles.primaryButton}>
           {t("auth.goToSignIn")}
@@ -93,7 +93,7 @@ export function SignUpForm({ registrationOpen }: { registrationOpen: boolean }) 
   };
 
   return (
-    <form style={styles.formGrid} onSubmit={submit}>
+    <form style={styles.authForm} onSubmit={submit}>
       <label style={styles.fieldLabel}>
         {t("auth.workEmail")}
         <input
@@ -141,8 +141,9 @@ export function SignUpForm({ registrationOpen }: { registrationOpen: boolean }) 
           required
         />
       </label>
-      <label style={{ ...styles.fieldLabel, gridTemplateColumns: "auto 1fr", alignItems: "start" }}>
+      <label style={styles.checkboxLabel}>
         <input
+          style={styles.checkbox}
           type="checkbox"
           checked={acceptedNotices}
           onChange={(event) => setAcceptedNotices(event.target.checked)}
@@ -150,14 +151,14 @@ export function SignUpForm({ registrationOpen }: { registrationOpen: boolean }) 
         />
         <span>
           {t("auth.acceptPre")}
-          <a href="/terms">{t("auth.terms")}</a>
+          <a href="/terms" style={styles.inlineLink}>{t("auth.terms")}</a>
           {t("auth.acceptMid")}
-          <a href="/privacy">{t("auth.privacy")}</a>
+          <a href="/privacy" style={styles.inlineLink}>{t("auth.privacy")}</a>
           {t("auth.acceptPost")}
         </span>
       </label>
       <p style={state === "error" ? styles.warning : styles.sectionCopy}>{message}</p>
-      <div style={{ display: "flex", gap: "0.75rem", flexWrap: "wrap" }}>
+      <div style={styles.authActions}>
         <button type="submit" disabled={state === "submitting"} style={styles.primaryButton}>
           {state === "submitting" ? t("auth.creating") : t("auth.createEmployerAccount")}
         </button>

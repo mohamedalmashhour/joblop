@@ -23,7 +23,8 @@ export function Footer({ locale }: { locale: string }) {
         borderTop: "1px solid rgba(248, 184, 8, 0.16)",
         background: "#000000",
         marginTop: 56,
-        padding: "22px 16px",
+        // Lines up with the 1040px content column above (.wrap) on wide screens.
+        padding: "12px max(20px, calc((100% - 1040px) / 2))",
         display: "flex",
         gap: 16,
         flexWrap: "wrap",
@@ -34,17 +35,20 @@ export function Footer({ locale }: { locale: string }) {
       }}
     >
       <span>© {year} <Brand /> · {activeCountry().legalEntityName}</span>
-      <nav style={{ display: "flex", gap: 20, flexWrap: "wrap" }}>
-        <Link href="/terms" style={{ color: "#f8b808", textDecoration: "none" }}>
+      <nav style={{ display: "flex", gap: "0 20px", flexWrap: "wrap" }}>
+        <Link href="/terms" style={footerLinkStyle}>
           {words.terms}
         </Link>
-        <Link href="/privacy" style={{ color: "#f8b808", textDecoration: "none" }}>
+        <Link href="/privacy" style={footerLinkStyle}>
           {words.privacy}
         </Link>
-        <Link href="/account-deletion" style={{ color: "#f8b808", textDecoration: "none" }}>
+        <Link href="/account-deletion" style={footerLinkStyle}>
           {words.deletion}
         </Link>
       </nav>
     </footer>
   );
 }
+
+// 44px tall so each footer link is easy to tap on phones.
+const footerLinkStyle = { alignItems: "center", color: "#f8b808", display: "inline-flex", minHeight: 44, textDecoration: "none" } as const;

@@ -7,6 +7,9 @@ export function JoblopLogo({ height = 28 }: { height?: number }) {
     <img
       src="/img/joblop-logo.png"
       alt="Joblop"
+      // Intrinsic size (1250x300 artwork) reserves the space so the header does not jump while loading.
+      width={Math.round((height * 1250) / 300)}
+      height={height}
       style={{ height, width: "auto", display: "block", borderRadius: 6 }}
     />
   );

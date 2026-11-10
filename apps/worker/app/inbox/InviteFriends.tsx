@@ -57,6 +57,6 @@ const styles = {
   sub: { color: "#6b6356", fontSize: 13, margin: 0 },
   row: { display: "flex", flexWrap: "wrap" as const, gap: 8, marginTop: 12 },
   input: { background: "#fff", border: "1px solid #e3d7c0", borderRadius: 8, color: "#1b160e", flex: "1 1 240px", fontSize: 13, minHeight: 42, padding: "0 12px" },
-  copyBtn: { background: "#e0a500", border: "none", borderRadius: 10, color: "#fff", cursor: "pointer", fontSize: 14, fontWeight: 800, padding: "11px 18px" },
+  copyBtn: { background: "#f8b808", border: "none", borderRadius: 10, color: "#000", cursor: "pointer", fontSize: 14, fontWeight: 800, padding: "11px 18px" },
   shareBtn: { background: "transparent", border: "1px solid #a8842f", borderRadius: 10, color: "#a8842f", cursor: "pointer", fontSize: 14, fontWeight: 800, padding: "11px 18px" }
 } as const;

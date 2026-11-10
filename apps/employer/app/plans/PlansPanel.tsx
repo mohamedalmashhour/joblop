@@ -12,8 +12,6 @@ import {
   type EmployerPlanCode,
   type JobLength
 } from "@rwos/shared";
-import { JobLopLogo } from "../JobLopLogo";
-import { LanguageSwitcher } from "../i18n/LanguageSwitcher";
 import { fmtLocale, useLocale, useT, type Translate } from "../i18n/LocaleProvider";
 import type { MessageKey } from "../i18n/messages";
 import { ETransferBox, readETransferDetails } from "./ETransferBox";
@@ -180,18 +178,15 @@ export function PlansPanel() {
   return (
     <main className="jp-page">
       <style>{css}</style>
-      <header className="jp-header">
-        <a href="/" aria-label="Joblop home"><JobLopLogo height={28} /></a>
-        <nav aria-label="Primary navigation" className="jp-nav">
-          <a href="/pricing" className="jp-link">{t("plans.back")}</a>
-          {overview?.signedIn === true ? (
-            <a href="/employer/calendar" className="jp-link">{t("plans.myWorkspace")}</a>
-          ) : (
-            <a href="/signin" className="jp-link">{t("hub.signinButton")}</a>
-          )}
-          <LanguageSwitcher />
-        </nav>
-      </header>
+      {/* The site header (logo, EN/FR/ع, menu) is rendered by the page; this row keeps the plan links. */}
+      <nav aria-label="Plans navigation" className="jp-subnav">
+        <a href="/pricing" className="jp-link">{t("plans.back")}</a>
+        {overview?.signedIn === true ? (
+          <a href="/employer/calendar" className="jp-link">{t("plans.myWorkspace")}</a>
+        ) : (
+          <a href="/signin" className="jp-link">{t("hub.signinButton")}</a>
+        )}
+      </nav>
 
       <section className="jp-hero">
         <p className="jp-eyebrow">{t("plans.eyebrow")}</p>
@@ -461,9 +456,8 @@ function ReceiptsSection({ t, locale, receipts }: Readonly<{ t: Translate; local
 
 const css = `
   .jp-page { background: #000000; color: ${INK}; font-family: Inter, system-ui, sans-serif; min-height: 100vh; }
-  .jp-header { align-items: center; border-bottom: 1px solid ${LINE}; display: flex; flex-wrap: wrap; gap: 16px; justify-content: space-between; padding: 18px clamp(16px, 4vw, 40px); }
-  .jp-nav { align-items: center; display: flex; flex-wrap: wrap; gap: 14px; }
-  .jp-link { color: ${INK}; font-size: 14px; font-weight: 700; text-decoration: none; }
+  .jp-subnav { align-items: center; border-bottom: 1px solid ${LINE}; display: flex; flex-wrap: wrap; gap: 4px 18px; padding: 4px clamp(16px, 4vw, 40px); }
+  .jp-link { align-items: center; color: ${INK}; display: inline-flex; font-size: 14px; font-weight: 700; min-height: 44px; text-decoration: none; }
   .jp-hero { background: #1b160e; display: grid; gap: 12px; padding: clamp(32px, 6vw, 64px) clamp(16px, 4vw, 40px); }
   .jp-eyebrow { color: ${GOLD}; font-size: 13px; font-weight: 900; margin: 0; text-transform: uppercase; }
   .jp-title { font-size: clamp(32px, 5vw, 54px); line-height: 1.05; margin: 0; max-width: 900px; }

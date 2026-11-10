@@ -735,6 +735,9 @@ a.card.cardlink:hover {
   text-decoration: none;
 }
 .topbar-cta { color: #f8b808; font-weight: 800; }
+/* Header row: links and language buttons share one height. */
+.topbar-nav > a { display: inline-flex; align-items: center; min-height: 32px; }
+.topbar-nav .langbtn { min-height: 32px; }
 /* Hamburger — hidden on desktop, shown when the nav collapses. */
 .topbar-burger {
   display: none;
@@ -780,6 +783,8 @@ a.card.cardlink:hover {
     border-bottom: 1px solid var(--border);
   }
   .topbar-nav .langswitch { padding: 12px 2px 4px; }
+  /* Phones: language buttons are easy to tap (44px). */
+  .topbar-nav .langbtn { min-height: 44px; min-width: 44px; }
 }
 .langswitch {
   display: inline-flex;
@@ -937,30 +942,30 @@ dl.agreement dd { margin: 0; }
 .pjs h2 { margin: 0 0 6px; font-size: clamp(22px, 3.2vw, 30px); color: #fbf7ee; }
 .pjs-sub { margin: 0 0 16px; color: #cabfa8; line-height: 1.5; }
 .pjs-form { display: flex; gap: 10px; }
-.pjs-form input { flex: 1; min-width: 0; padding: 14px 16px; border-radius: 12px; border: 2px solid rgba(248, 184, 8, 0.35); background: #fff; color: #111; font-size: 16px; }
+.pjs-form input { flex: 1; min-width: 0; padding: 14px 16px; border-radius: 12px; border: 2px solid rgba(248, 184, 8, 0.35); background: #000; color: #f4efe4; font-size: 16px; }
 .pjs-form input:focus { outline: none; border-color: #f8b808; }
-.pjs-form button { padding: 0 22px; border: 0; border-radius: 12px; background: #f8b808; color: #111; font-weight: 800; font-size: 16px; cursor: pointer; }
+.pjs-form button { min-height: 48px; padding: 0 22px; border: 0; border-radius: 12px; background: #f8b808; color: #000; font-weight: 800; font-size: 16px; cursor: pointer; }
 .pjs-note, .pjs-count { color: #cabfa8; margin: 14px 0 4px; }
 .pjs-count { font-weight: 700; color: #f8b808; }
 .pjs-h { margin: 16px 0 8px; font-size: 15px; color: #fbf7ee; }
 .pjs-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; }
-/* A partner lead is one white card: the details button plus the source line inside the same border. */
-.pjs-cell { display: flex; flex-direction: column; gap: 0; background: #fff; border-radius: 14px; border: 1px solid rgba(248, 184, 8, 0.18); overflow: hidden; transition: border-color .15s, transform .15s; }
+/* A partner lead is one dark card: the details button plus the source line inside the same border. */
+.pjs-cell { display: flex; flex-direction: column; gap: 0; background: #0c0c0c; border-radius: 14px; border: 1px solid rgba(248, 184, 8, 0.18); overflow: hidden; transition: border-color .15s, transform .15s; }
 .pjs-cell:hover { border-color: #f8b808; transform: translateY(-2px); }
 .pjs-cell .pjs-card { border: 0; border-radius: 0; flex: 1; }
 .pjs-cell .pjs-card:hover { transform: none; }
-.pjs-source { display: flex; align-items: center; gap: 6px; padding: 0 14px 12px; color: #5c5547; font-size: 12px; }
+.pjs-source { display: flex; align-items: center; gap: 6px; padding: 0 14px 12px; color: #b3a894; font-size: 12px; }
 .pjs-card { display: flex; flex-direction: column; gap: 6px; text-align: start; width: 100%; padding: 14px; border-radius: 14px; border: 1px solid rgba(248, 184, 8, 0.18);
-  background: #fff; color: #111; cursor: pointer; font-family: inherit; font-size: 14px; }
+  background: #0c0c0c; color: #f4efe4; cursor: pointer; font-family: inherit; font-size: 14px; }
 .pjs-card:hover { border-color: #f8b808; transform: translateY(-2px); }
 .pjs-own { border: 2px solid #f8b808; }
 /* Joblop job cards are links to the public job page. */
 a.pjs-card { text-decoration: none; box-sizing: border-box; }
-.pjs-badge { align-self: flex-start; font-size: 11px; font-weight: 800; padding: 2px 8px; border-radius: 999px; background: #f8b808; color: #111; }
-.pjs-card strong { font-size: 15px; line-height: 1.3; }
-.pjs-meta { color: #5c5547; font-size: 13px; }
+.pjs-badge { align-self: flex-start; font-size: 11px; font-weight: 800; padding: 2px 8px; border-radius: 999px; background: #f8b808; color: #000; }
+.pjs-card strong { font-size: 15px; line-height: 1.3; overflow-wrap: anywhere; }
+.pjs-meta { color: #b3a894; font-size: 13px; }
 .pjs-foot { display: flex; justify-content: space-between; gap: 8px; margin-top: auto; font-weight: 700; }
-.pjs-foot em { font-style: normal; color: #7a5600; }
+.pjs-foot em { font-style: normal; color: #f8b808; unicode-bidi: isolate; }
 .pjs-adzuna { display: inline-flex; align-items: center; justify-content: center; min-width: 116px; min-height: 24px; padding: 0 10px; border-radius: 6px;
   background: #f3efe4; color: #111; font-size: 13px; font-weight: 700; text-decoration: none; }
 .pjs-gate { margin: 16px 0 0; padding: 12px 14px; border-radius: 12px; background: rgba(248, 184, 8, 0.1); color: #f4efe4; }

@@ -85,4 +85,4 @@ const text: React.CSSProperties = { color: "#f4efe4", margin: 0, lineHeight: 1.5
 const dim: React.CSSProperties = { color: "#b3a894", fontSize: 13, margin: 0 };
 const badgeGood: React.CSSProperties = { background: "#dcfce7", color: "#15803d", borderRadius: 999, padding: "5px 14px", fontWeight: 700, fontSize: 14 };
 const badgeNeutral: React.CSSProperties = { background: "rgba(248, 184, 8, 0.14)", color: "#f4efe4", border: "1px solid rgba(248, 184, 8, 0.3)", borderRadius: 999, padding: "5px 14px", fontWeight: 700, fontSize: 14, textTransform: "capitalize" };
-const button: React.CSSProperties = { alignSelf: "flex-start", background: "#a8842f", color: "#fff", border: "none", borderRadius: 8, padding: "10px 16px", fontSize: 14, fontWeight: 700, cursor: "pointer" };
+const button: React.CSSProperties = { alignSelf: "flex-start", background: "#f8b808", color: "#000", border: "none", borderRadius: 8, padding: "10px 16px", fontSize: 14, fontWeight: 700, cursor: "pointer" };

@@ -111,7 +111,7 @@ export function VerifyEmailPanel({ onDone }: { onDone: () => void }) {
       </div>
 
       {phase !== "unavailable" && phase !== "verified" ? (
-        <div style={styles.formGrid}>
+        <div style={styles.authForm}>
           <label style={styles.fieldLabel}>
             Verification code
             <input
@@ -123,7 +123,7 @@ export function VerifyEmailPanel({ onDone }: { onDone: () => void }) {
               placeholder="123456"
             />
           </label>
-          <div style={{ display: "flex", gap: "0.75rem", flexWrap: "wrap" }}>
+          <div style={styles.authActions}>
             <button
               type="button"
               onClick={() => void verify()}

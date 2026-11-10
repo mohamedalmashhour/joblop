@@ -72,7 +72,7 @@ export function JobScannerFeed() {
 
       {leads.map((l, i) => (
         <article key={l.id ?? i} style={styles.card}>
-          <strong style={styles.title}>{l.title}</strong>
+          <strong style={styles.title} dir="auto">{l.title}</strong>
           <div style={styles.meta}>
             {l.employer ?? "—"} · {l.province ? `${l.city}, ${l.province}` : l.city}{money(l.salaryMaxMinor) ? ` · ${money(l.salaryMaxMinor)}` : ""}
             {typeof l.score === "number" ? ` · match ${(l.score * 100).toFixed(0)}%` : ""}
@@ -95,20 +95,22 @@ export function JobScannerFeed() {
   );
 }
 
+// Same dark look as the rest of joblop.com: black inputs with a gold border, dark cards, gold links,
+// black text on gold buttons.
 const styles = {
   searchRow: { display: "flex", flexWrap: "wrap" as const, gap: 10, margin: "12px 0" },
-  input: { border: "1px solid #e3d7c0", borderRadius: 8, flex: "1 1 220px", minHeight: 42, minWidth: 0, padding: "0 12px" },
-  cta: { background: "#e0a500", border: "none", borderRadius: 8, color: "#fff", cursor: "pointer", fontWeight: 800, minHeight: 44, padding: "0 18px" },
-  msg: { color: "#e0a500", fontSize: 14, fontWeight: 700 },
-  proBanner: { background: "#faf6ec", border: "1px solid #f0e2c0", borderRadius: 8, color: "#8a5a00", fontSize: 13, fontWeight: 700, margin: "4px 0", padding: "8px 12px" },
-  upsell: { background: "#fff6e6", border: "1px solid #f0d089", borderRadius: 8, color: "#8a5a00", fontSize: 13, margin: "4px 0", padding: "8px 12px" },
+  input: { background: "#000", border: "1px solid rgba(248, 184, 8, 0.6)", borderRadius: 8, color: "#f4efe4", flex: "1 1 220px", font: "inherit", minHeight: 44, minWidth: 0, padding: "0 12px" },
+  cta: { background: "#f8b808", border: "none", borderRadius: 8, color: "#000", cursor: "pointer", fontWeight: 800, minHeight: 44, padding: "0 18px" },
+  msg: { color: "#e8c46b", fontSize: 14, fontWeight: 700 },
+  proBanner: { background: "#0c0c0c", border: "1px solid rgba(248, 184, 8, 0.34)", borderRadius: 8, color: "#f4efe4", fontSize: 13, fontWeight: 700, margin: "4px 0", padding: "8px 12px" },
+  upsell: { background: "#0c0c0c", border: "1px solid rgba(248, 184, 8, 0.34)", borderRadius: 8, color: "#f4efe4", fontSize: 13, margin: "4px 0", padding: "8px 12px" },
   note: { color: "#b3a894", fontSize: 13, margin: "4px 0 16px" },
-  link: { color: "#e0a500", fontWeight: 700 },
+  link: { color: "#f8b808", fontWeight: 700 },
   adzuna: { alignItems: "center", background: "#f3f0ea", borderRadius: 6, color: "#2b2b2b", display: "inline-flex", fontSize: 14, fontWeight: 700, justifyContent: "center", marginInlineStart: "auto", minHeight: 24, minWidth: 116, padding: "0 10px", textDecoration: "none" },
-  card: { background: "#fff", border: "1px solid #ece3d2", borderRadius: 12, marginBottom: 12, padding: 16 },
-  title: { color: "#15110b", fontSize: 16 },
-  meta: { color: "#6b6356", fontSize: 13, margin: "4px 0 10px" },
-  actions: { alignItems: "center", display: "flex", gap: 14 },
-  apply: { color: "#b23b2e", fontSize: 14, fontWeight: 800, textDecoration: "none" },
-  ghost: { color: "#e0a500", fontSize: 14, fontWeight: 700, textDecoration: "none" }
+  card: { background: "#0c0c0c", border: "1px solid rgba(248, 184, 8, 0.16)", borderRadius: 12, marginBottom: 12, padding: 16 },
+  title: { color: "#f4efe4", fontSize: 16, overflowWrap: "anywhere" as const },
+  meta: { color: "#b3a894", fontSize: 13, margin: "4px 0 10px" },
+  actions: { alignItems: "center", display: "flex", flexWrap: "wrap" as const, gap: "4px 14px" },
+  apply: { alignItems: "center", color: "#f8b808", display: "inline-flex", fontSize: 14, fontWeight: 800, minHeight: 44, textDecoration: "none" },
+  ghost: { alignItems: "center", color: "#f4efe4", display: "inline-flex", fontSize: 14, fontWeight: 700, minHeight: 44, textDecoration: "underline", textUnderlineOffset: 3 }
 } as const;
