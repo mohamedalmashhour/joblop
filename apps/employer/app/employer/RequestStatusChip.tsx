@@ -23,6 +23,10 @@ export function RequestStatusChip({
         color: tone.color,
         display: "inline-block",
         flex: "0 1 auto",
+        // Inside a grid card (the request detail) "alignSelf" alone still stretches the chip across the
+        // card; justifySelf + fit-content keep it the width of its words everywhere.
+        justifySelf: "start",
+        width: "fit-content",
         fontSize: 12,
         fontWeight: 700,
         lineHeight: 1.4,

@@ -76,6 +76,16 @@ describe("request detail page", () => {
     expect(duplicate).not.toContain("!closed");
   });
 
+  it("hides Interested workers on cancelled or finished requests", () => {
+    expect(panel).toContain("{!closed ? <ApplicantsPanel requestId={request.id} /> : null}");
+  });
+
+  it("keeps the status chip as wide as its words inside the grid card", () => {
+    const chip = read("../../RequestStatusChip.tsx");
+    expect(chip).toContain('justifySelf: "start"');
+    expect(chip).toContain('width: "fit-content"');
+  });
+
   it("never shows worker pay or Joblop's margin", () => {
     expect(all).not.toMatch(/workerPay|payRate|platformMargin|marginMinor|hourlyShare|compensation/i);
   });

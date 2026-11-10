@@ -28,9 +28,10 @@ export default async function ClientRequestCalendarPage() {
           <p style={styles.eyebrowDark}>{m["page.calendarSectionEyebrow"]}</p>
           <h2 style={styles.sectionTitle}>{m["page.calendarSectionTitle"]}</h2>
         </div>
-        {/* Long-term job listing status + "Publish / Renew" (renders nothing while employer plans are off). */}
-        <LongTermListingsPanel />
         <ClientCalendarPanel />
+        {/* Below the calendar: long-term listing status + "Publish / Renew" (one line when there are none;
+            renders nothing while employer plans are off). */}
+        <LongTermListingsPanel />
       </section>
     </EmployerShell>
   );

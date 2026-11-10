@@ -5,6 +5,7 @@ import { fmtLocale, useLocale, useT } from "../../i18n/LocaleProvider";
 import type { MessageKey } from "../../i18n/messages";
 import { ETransferBox, readETransferDetails } from "../../plans/ETransferBox";
 import { styles } from "../employerStyles";
+import { listingBoxMode } from "./listingBox";
 
 // Long-term job listings (paid in advance; only while EMPLOYER_PLANS_ENABLED is on). A long-term job
 // is shown to workers only while its listing is active, so the employer sees each long-term job's
@@ -57,6 +58,7 @@ export function LongTermListingsPanel({ onlyJobRequestId }: Readonly<{ onlyJobRe
   const [overview, setOverview] = useState<Overview | null>(null);
   const [busy, setBusy] = useState(false);
   const [notice, setNotice] = useState("");
+  const [expanded, setExpanded] = useState(false);
 
   const money = (minor: number) => (minor / 100).toLocaleString(fmtLocale(locale), { style: "currency", currency: "CAD" });
   const day = (iso: string) => new Date(iso).toLocaleDateString(fmtLocale(locale), { year: "numeric", month: "long", day: "numeric" });
@@ -118,9 +120,31 @@ export function LongTermListingsPanel({ onlyJobRequestId }: Readonly<{ onlyJobRe
   if (onlyJobRequestId && listings.length === 0) return null;
   const price = overview.nextMonthPrice;
   const canPay = overview.manager === true;
+  const mode = listingBoxMode({
+    listingCount: listings.length,
+    perJob: Boolean(onlyJobRequestId),
+    expanded,
+    hasNotice: notice !== ""
+  });
+
+  if (mode === "collapsed") {
+    return (
+      <p id="long-term-listings" style={{ ...styles.cardText, alignItems: "baseline", display: "flex", flexWrap: "wrap", gap: "4px 10px", margin: "18px 0 0" }}>
+        <span>{t("listing.noneLine")}</span>
+        <button
+          aria-expanded={false}
+          onClick={() => setExpanded(true)}
+          style={{ background: "transparent", border: 0, color: "#f8b808", cursor: "pointer", font: "inherit", fontWeight: 700, padding: 0, textDecoration: "underline" }}
+          type="button"
+        >
+          {t("listing.learnMore")}
+        </button>
+      </p>
+    );
+  }
 
   return (
-    <section aria-labelledby="long-term-listings-title" id="long-term-listings" style={{ ...styles.tintedCard, marginBottom: 18 }}>
+    <section aria-labelledby="long-term-listings-title" id="long-term-listings" style={{ ...styles.tintedCard, ...(onlyJobRequestId ? { marginBottom: 18 } : { marginTop: 18 }) }}>
       <h2 id="long-term-listings-title" style={styles.cardTitle}>
         {onlyJobRequestId ? t("listing.publishTitle") : t("listing.title")}
       </h2>

@@ -172,6 +172,19 @@ footer nav a {
 .employer-action-row { align-items: flex-start; display: flex; flex-wrap: wrap; gap: 10px; }
 .employer-action-row > * { flex: 0 0 auto; max-width: 100%; }
 
+/* Request calendar chips: title and status each wrap to at most 2 lines (never cut mid-word with "…"
+   after one line), and every chip has the same height so a week row lines up. */
+.employer-cal-chip { align-content: start; border-radius: 6px; box-sizing: border-box; display: grid; gap: 1px; min-height: 60px; min-width: 0; padding: 4px 6px; text-decoration: none; }
+.employer-cal-chip-title,
+.employer-cal-chip-status { -webkit-box-orient: vertical; -webkit-line-clamp: 2; display: -webkit-box; hyphens: auto; line-height: 1.2; overflow: hidden; overflow-wrap: anywhere; white-space: normal; }
+.employer-cal-chip-title { font-size: 11px; font-weight: 800; }
+.employer-cal-chip-status { font-size: 10px; font-weight: 600; }
+@media (max-width: 560px) {
+  .employer-cal-chip { min-height: 50px; padding: 3px 4px; }
+  .employer-cal-chip-title { font-size: 10px; }
+  .employer-cal-chip-status { font-size: 9px; }
+}
+
 /* --- Bill 96 language switcher --- */
 .langswitch { display: inline-flex; border: 1px solid rgba(248, 184, 8, 0.16); border-radius: 999px; overflow: hidden; }
 .langbtn { appearance: none; border: 0; background: transparent; color: #b3a894; font: inherit; font-size: 13px; font-weight: 700; padding: 5px 12px; cursor: pointer; line-height: 1.4; }

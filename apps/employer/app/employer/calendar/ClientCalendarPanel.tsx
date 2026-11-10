@@ -11,9 +11,10 @@ import {
   type ClientCalendarDto
 } from "@rwos/shared";
 import { styles } from "../employerStyles";
-import { useT } from "../../i18n/LocaleProvider";
+import { fmtLocale, useLocale, useT } from "../../i18n/LocaleProvider";
 import { RequestStatusChip } from "../RequestStatusChip";
 import { requestPhase, requestPhaseLabel, requestPhaseTone } from "../requestStatus";
+import { mondayFirstCells, mondayFirstWeekdays } from "./requestCalendarGrid";
 
 type OrganizationChoice = Readonly<{ id: string; publicId: string; displayName: string }>;
 type ClientCalendarState =
@@ -167,6 +168,7 @@ function ClientCalendarGrid({
   onNext: () => void;
 }>) {
   const t = useT();
+  const locale = fmtLocale(useLocale());
   const [expanded, setExpanded] = useState<ReadonlySet<string>>(new Set());
   const statusText = (request: ClientCalendarDto) => {
     const label = requestPhaseLabel(requestPhase(request), request.numberOfWorkers);
@@ -174,13 +176,8 @@ function ClientCalendarGrid({
   };
   const year = month.getFullYear();
   const m = month.getMonth();
-  const startWeekday = new Date(year, m, 1).getDay();
-  const daysInMonth = new Date(year, m + 1, 0).getDate();
-  const cells: (number | null)[] = [
-    ...Array<null>(startWeekday).fill(null),
-    ...Array.from({ length: daysInMonth }, (_, i) => i + 1)
-  ];
-  while (cells.length % 7 !== 0) cells.push(null);
+  // Weeks start on Monday, like the worker, staff and "My calendar" views.
+  const cells = mondayFirstCells(month);
 
   const byDay = new Map<string, ClientCalendarDto[]>();
   for (const request of requests) {
@@ -192,16 +189,16 @@ function ClientCalendarGrid({
     byDay.set(key, list);
   }
 
-  const monthLabel = new Date(year, m, 1).toLocaleDateString(undefined, { month: "long", year: "numeric" });
-  const weekdays = Array.from({ length: 7 }, (_, i) => new Date(2023, 0, 1 + i).toLocaleDateString(undefined, { weekday: "short" }));
+  const monthLabel = new Date(year, m, 1).toLocaleDateString(locale, { month: "long", year: "numeric" });
+  const weekdays = mondayFirstWeekdays(locale);
   const todayKey = dayKey(new Date());
 
   return (
     <div>
       <div style={gridStyles.monthBar}>
-        <button type="button" onClick={onPrev} aria-label="Previous month" style={gridStyles.nav}>&#8249;</button>
+        <button type="button" onClick={onPrev} aria-label={t("calendar.prevMonth")} style={gridStyles.nav}>&#8249;</button>
         <strong style={gridStyles.monthLabel}>{monthLabel}</strong>
-        <button type="button" onClick={onNext} aria-label="Next month" style={gridStyles.nav}>&#8250;</button>
+        <button type="button" onClick={onNext} aria-label={t("calendar.nextMonth")} style={gridStyles.nav}>&#8250;</button>
       </div>
       <div style={gridStyles.weekRow}>
         {weekdays.map((w, i) => (
@@ -223,16 +220,17 @@ function ClientCalendarGrid({
                 <a
                   key={request.id}
                   href={`/employer/calendar/request?request=${encodeURIComponent(request.requestNumber)}`}
-                  style={{ ...gridStyles.chip, ...clientStatusTone(request) }}
+                  className="employer-cal-chip"
+                  style={clientStatusTone(request)}
                   title={`${request.title} · ${statusText(request)}`}
                 >
-                  <span style={gridStyles.chipTitle}>{request.title}</span>
-                  <span style={gridStyles.chipStatus}>{statusText(request)}</span>
+                  <span className="employer-cal-chip-title">{request.title}</span>
+                  <span className="employer-cal-chip-status">{statusText(request)}</span>
                 </a>
               ))}
               {hidden > 0 ? (
                 <button type="button" onClick={() => setExpanded((p) => new Set(p).add(key))} style={gridStyles.more}>
-                  +{hidden} more
+                  {t("calendar.more", { count: hidden })}
                 </button>
               ) : null}
             </div>
@@ -280,33 +278,60 @@ function RequestCard({ request }: Readonly<{ request: ClientCalendarDto }>) {
   );
 }
 
+// One small line instead of a full panel: "Signed in as <company>" + a small "Switch account" text
+// button. Switching keeps the old behaviour: clear the calendar session, then reload (sign-in shows).
 function SessionAction({ onSignedOut }: Readonly<{ onSignedOut: () => Promise<void> }>) {
+  const t = useT();
   const [submitting, setSubmitting] = useState(false);
-  const [message, setMessage] = useState("Authenticated employer calendar session.");
+  const [failed, setFailed] = useState(false);
+  const [name, setName] = useState<string | null>(null);
+  useEffect(() => {
+    let live = true;
+    void (async () => {
+      try {
+        const response = await fetch("/api/organizations", { cache: "no-store" });
+        if (!response.ok) return;
+        const payload = (await response.json().catch(() => null)) as { displayName?: unknown } | null;
+        if (live && typeof payload?.displayName === "string" && payload.displayName.trim()) {
+          setName(payload.displayName.trim());
+        }
+      } catch {
+        // The line still reads "You are signed in." without a name.
+      }
+    })();
+    return () => {
+      live = false;
+    };
+  }, []);
   const signOut = async () => {
     setSubmitting(true);
+    setFailed(false);
     try {
       const cleared = await clearWebCalendarSession(fetch);
-      if (!cleared) return setMessage("Session could not be cleared. Try again.");
+      if (!cleared) return setFailed(true);
       await onSignedOut();
     } finally {
       setSubmitting(false);
     }
   };
   return (
-    <div aria-busy={submitting} aria-live="polite" style={{ ...styles.panel, marginBottom: 18 }}>
-      <p style={styles.sectionCopy}>{message}</p>
-      <button
-        disabled={submitting}
-        onClick={() => void signOut()}
-        style={{ ...styles.secondaryButton, cursor: "pointer" }}
-        type="button"
-      >
-        {submitting ? "Signing out…" : "Switch employer account"}
+    <p aria-busy={submitting} aria-live="polite" style={sessionStyles.line}>
+      <span style={{ overflowWrap: "anywhere" }}>
+        {name ? t("calendar.signedInAs", { name }) : t("calendar.signedIn")}
+      </span>
+      <button disabled={submitting} onClick={() => void signOut()} style={sessionStyles.link} type="button">
+        {submitting ? t("calendar.signingOut") : t("calendar.switchAccount")}
       </button>
-    </div>
+      {failed ? <span style={sessionStyles.error}>{t("calendar.signOutFailed")}</span> : null}
+    </p>
   );
 }
+
+const sessionStyles: Record<string, React.CSSProperties> = {
+  line: { alignItems: "baseline", color: "#d3d1c7", display: "flex", flexWrap: "wrap", fontSize: 13, gap: "4px 12px", margin: "0 0 14px" },
+  link: { background: "transparent", border: 0, color: "#f8b808", cursor: "pointer", font: "inherit", fontWeight: 700, padding: 0, textDecoration: "underline" },
+  error: { color: "#e4756b", fontWeight: 600 }
+};
 
 function ClientSignIn() {
   return (
@@ -445,16 +470,14 @@ const gridStyles: Record<string, React.CSSProperties> = {
   monthBar: { alignItems: "center", display: "flex", gap: 14, justifyContent: "center", margin: "4px 0 12px" },
   monthLabel: { color: "#f4efe4", fontSize: 18, minWidth: 180, textAlign: "center" },
   nav: { background: "#0c0c0c", border: "1px solid rgba(248, 184, 8, 0.3)", borderRadius: 8, color: "#f4efe4", cursor: "pointer", fontSize: 18, minHeight: 36, minWidth: 44 },
-  weekRow: { display: "grid", gap: 6, gridTemplateColumns: "repeat(7, 1fr)", marginBottom: 6 },
-  weekday: { color: "#d3d1c7", fontSize: 12, fontWeight: 700, textAlign: "center" },
-  grid: { display: "grid", gap: 6, gridTemplateColumns: "repeat(7, 1fr)" },
+  weekRow: { display: "grid", gap: 6, gridTemplateColumns: "repeat(7, minmax(0, 1fr))", marginBottom: 6 },
+  weekday: { color: "#d3d1c7", fontSize: 12, fontWeight: 700, overflow: "hidden", textAlign: "center" },
+  grid: { display: "grid", gap: 6, gridTemplateColumns: "repeat(7, minmax(0, 1fr))" },
   emptyCell: { minHeight: 96 },
-  dayCell: { background: "#0c0c0c", border: "1px solid rgba(248, 184, 8, 0.16)", borderRadius: 8, display: "flex", flexDirection: "column", gap: 4, minHeight: 96, padding: 6 },
+  dayCell: { background: "#0c0c0c", border: "1px solid rgba(248, 184, 8, 0.16)", borderRadius: 8, display: "flex", flexDirection: "column", gap: 4, minHeight: 96, minWidth: 0, padding: 4 },
   dayCellToday: { border: "2px solid #f8b808" },
   dayNumber: { color: "#f4efe4", fontSize: 12, fontWeight: 800 },
-  chip: { borderRadius: 6, display: "grid", gap: 1, padding: "4px 6px", textDecoration: "none" },
-  chipTitle: { fontSize: 11, fontWeight: 800, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" },
-  chipStatus: { fontSize: 10, fontWeight: 600, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" },
+  // Chip layout and type live in globals.css (.employer-cal-chip) so phones get smaller type.
   more: { background: "transparent", border: "1px solid #ece3d2", borderRadius: 6, color: "#6b6356", cursor: "pointer", fontSize: 10, fontWeight: 700, padding: "3px 6px", textAlign: "left" }
 };
 
