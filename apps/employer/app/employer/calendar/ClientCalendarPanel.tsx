@@ -11,6 +11,7 @@ import {
   type ClientCalendarDto
 } from "@rwos/shared";
 import { styles } from "../employerStyles";
+import { useT } from "../../i18n/LocaleProvider";
 
 type OrganizationChoice = Readonly<{ id: string; publicId: string; displayName: string }>;
 type ClientCalendarState =
@@ -236,6 +237,7 @@ function ClientCalendarGrid({
 }
 
 function RequestCard({ request }: Readonly<{ request: ClientCalendarDto }>) {
+  const t = useT();
   return (
     <article style={styles.card}>
       <span style={clientStatusStyle(request.status)}>{request.status.replaceAll("_", " ")}</span>
@@ -253,7 +255,7 @@ function RequestCard({ request }: Readonly<{ request: ClientCalendarDto }>) {
         href={`/employer/calendar/request?request=${encodeURIComponent(request.requestNumber)}`}
         style={styles.secondaryButton}
       >
-        Open request detail
+        {t("calendar.openDetail")}
       </a>
       {request.status === "draft" || request.actionRequired === "information_required" ? (
         <a
@@ -261,8 +263,8 @@ function RequestCard({ request }: Readonly<{ request: ClientCalendarDto }>) {
           style={styles.primaryButton}
         >
           {request.actionRequired === "information_required"
-            ? "Provide requested information"
-            : "Edit draft"}
+            ? t("calendar.provideInfo")
+            : t("create.editDraft")}
         </a>
       ) : null}
     </article>

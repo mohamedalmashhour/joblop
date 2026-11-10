@@ -256,6 +256,7 @@ import {
   recordCertificateOverride,
   requiredCertificatesField
 } from "./requiredCertificateCheck";
+import { draftEditExtras, readDraftCertificatesUpdate } from "./draftEditExtras";
 import { createCvAsset, listCvAssets, deleteCvAsset } from "./cvAssetRepository";
 import { isPro, getActiveEntitlement, grantEntitlement, revokeEntitlement, startTrial, hasEverTrialed, TRIAL_DAYS, PRO_PLAN } from "./cvEntitlementRepository";
 import {
@@ -6791,13 +6792,42 @@ export function buildApi(options: BuildApiOptions = {}) {
         return sendJobRequestDenied(reply);
       }
 
+      const organizationId = readRouteParam(request.params, "organizationId");
       const jobRequest = await jobRequestService.getForOrganization({
         actorUserId: session.user.id,
-        organizationId: readRouteParam(request.params, "organizationId"),
+        organizationId,
         jobRequestIdOrNumber: readRouteParam(request.params, "jobRequestIdOrNumber")
       });
+      // The employer's own certificates and allowances, so "Edit draft" opens fully pre-filled.
+      // Read only after the organization check above passed, and scoped to that organization.
+      const extrasRow = prisma
+        ? await prisma.jobRequest
+            .findFirst({
+              where: { id: jobRequest.id, organizationId },
+              select: {
+                requiredCertificates: true,
+                requiredCertificateOther: true,
+                calendarProfile: {
+                  select: {
+                    transportProvision: true,
+                    transportAmountMinor: true,
+                    transportNote: true,
+                    mealProvision: true,
+                    mealAmountMinor: true,
+                    mealNote: true,
+                    lodgingProvision: true,
+                    lodgingAmountMinor: true,
+                    lodgingNote: true
+                  }
+                }
+              }
+            })
+            .catch(() => null)
+        : null;
 
-      return reply.code(200).send({ jobRequest: serializeJobRequest(jobRequest) });
+      return reply.code(200).send({
+        jobRequest: { ...serializeJobRequest(jobRequest), ...(extrasRow ? draftEditExtras(extrasRow) : {}) }
+      });
     }
   );
 
@@ -6832,6 +6862,14 @@ export function buildApi(options: BuildApiOptions = {}) {
         .send({ error: "RWOS_INVALID_JOB_REQUEST", message: "Invalid job request." });
     }
 
+    const certificates = readDraftCertificatesUpdate(body);
+    if (certificates.status === "invalid") {
+      return reply.code(400).send({
+        error: "RWOS_INVALID_REQUIRED_CERTIFICATES",
+        message: "Choose required certificates from the list; describe an \"other\" certificate in 120 characters or less."
+      });
+    }
+
     const jobRequest = await jobRequestService.updateDraft({
       actorUserId: session.user.id,
       organizationId: readRouteParam(request.params, "organizationId"),
@@ -6850,6 +6888,14 @@ export function buildApi(options: BuildApiOptions = {}) {
       startAt: readOptionalDate(body, "startAt"),
       endAt: readOptionalDate(body, "endAt")
     });
+
+    // updateDraft above has already checked the employer may edit this draft of this organization.
+    if (certificates.status === "ok" && prisma) {
+      await prisma.jobRequest.updateMany({
+        where: { id: jobRequest.id, organizationId: jobRequest.organizationId, status: { in: ["draft", "information_required"] } },
+        data: certificates.data
+      });
+    }
 
     return reply.code(200).send({ jobRequest: serializeJobRequest(jobRequest) });
   });

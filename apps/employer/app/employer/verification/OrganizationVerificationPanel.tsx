@@ -1,6 +1,8 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
+import { fmtLocale, useLocale, useT } from "../../i18n/LocaleProvider";
+import type { MessageKey } from "../../i18n/messages";
 
 type Verification = Readonly<{ status: string; requestedAt: string | null; completedAt: string | null; expiresAt: string | null; provider: string | null }>;
 type State =
@@ -10,16 +12,13 @@ type State =
   | { status: "unavailable" }
   | { status: "ready"; verification: Verification };
 
-const STATUS_COPY: Record<string, string> = {
-  unverified: "Not started. Request verification to begin.",
-  pending: "In review. Our verification partner and team are checking your organization.",
-  business_verified: "Verified ✓ — your organization shows the Verified Employer badge in the marketplace.",
-  review_required: "A closer review is needed. Our team will follow up.",
-  suspended: "Verification is suspended. Contact support.",
-  expired: "Verification has expired — renew to keep the badge."
-};
+const KNOWN_STATUSES = ["unverified", "pending", "business_verified", "review_required", "suspended", "expired"] as const;
+type KnownStatus = (typeof KNOWN_STATUSES)[number];
+const isKnownStatus = (value: string): value is KnownStatus => (KNOWN_STATUSES as readonly string[]).includes(value);
 
 export function OrganizationVerificationPanel() {
+  const t = useT();
+  const locale = useLocale();
   const [state, setState] = useState<State>({ status: "loading" });
   const [busy, setBusy] = useState(false);
 
@@ -50,30 +49,33 @@ export function OrganizationVerificationPanel() {
     }
   }, [load]);
 
-  if (state.status === "loading") return <p aria-live="polite" style={text}>Loading verification…</p>;
-  if (state.status === "organization_required") return <p style={text}>Select an organization to view verification.</p>;
-  if (state.status === "denied") return <p style={text}>Organization owner or administrator access is required.</p>;
-  if (state.status === "unavailable") return <p role="alert" style={text}>Verification is unavailable. Please try again.</p>;
+  if (state.status === "loading") return <p aria-live="polite" style={text}>{t("verify.loading")}</p>;
+  if (state.status === "organization_required") return <p style={text}>{t("verify.orgRequired")}</p>;
+  if (state.status === "denied") return <p style={text}>{t("verify.denied")}</p>;
+  if (state.status === "unavailable") return <p role="alert" style={text}>{t("verify.unavailable")}</p>;
 
   const v = state.verification;
   const canRequest = v.status === "unverified" || v.status === "expired";
   const verified = v.status === "business_verified";
+  const known = isKnownStatus(v.status) ? v.status : null;
 
   return (
     <div style={card}>
       <div style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
         <span style={verified ? badgeGood : badgeNeutral}>
-          {verified ? "✓ Verified Employer" : v.status.replaceAll("_", " ")}
+          {known ? t(`verify.badge.${known}` as MessageKey) : v.status.replaceAll("_", " ")}
         </span>
-        {v.expiresAt && verified ? <span style={dim}>Valid until {new Date(v.expiresAt).toLocaleDateString()}</span> : null}
+        {v.expiresAt && verified ? (
+          <span style={dim}>{t("verify.validUntil", { date: new Date(v.expiresAt).toLocaleDateString(fmtLocale(locale)) })}</span>
+        ) : null}
       </div>
-      <p style={text}>{STATUS_COPY[v.status] ?? v.status}</p>
+      <p style={text}>{known ? t(`verify.status.${known}` as MessageKey) : v.status}</p>
       {canRequest ? (
         <button type="button" onClick={request} disabled={busy} style={button}>
-          {busy ? "Starting…" : v.status === "expired" ? "Renew verification" : "Request verification"}
+          {busy ? t("verify.starting") : v.status === "expired" ? t("verify.renew") : t("verify.request")}
         </button>
       ) : null}
-      <p style={dim}>Workers and the marketplace see only your trust indicator — never internal documents or provider details.</p>
+      <p style={dim}>{t("verify.privacy")}</p>
     </div>
   );
 }

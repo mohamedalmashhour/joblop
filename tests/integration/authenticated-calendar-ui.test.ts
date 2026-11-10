@@ -76,26 +76,27 @@ describe("authenticated calendar UI integration", () => {
       "request",
       "ClientRequestDetailPanel.tsx"
     );
+    // "Edit draft" reuses the full Request workers form, pre-filled with the saved draft.
+    const page = read("apps", "employer", "app", "employer", "calendar", "request", "edit", "page.tsx");
     const editor = read(
       "apps",
       "employer",
       "app",
       "employer",
       "calendar",
-      "request",
-      "edit",
-      "EditPersistedRequestPanel.tsx"
+      "create",
+      "CreatePersistedRequestPanel.tsx"
     );
     for (const source of [list, detail]) {
       expect(source).toContain('request.status === "draft"');
       expect(source).toContain("/employer/calendar/request/edit");
     }
-    expect(editor).toContain('status === "information_required"');
+    expect(page).toContain("<CreatePersistedRequestPanel editRequestId={id} />");
+    expect(editor).toContain('const EDITABLE_STATUSES = ["draft", "information_required"]');
     expect(editor).toContain('method: "PATCH"');
-    expect(editor).toContain("expectedVersion: snapshot.versionToken");
-    expect(editor).toContain("This draft changed after you opened it");
-    expect(editor).toContain("Load latest version");
-    expect(editor).toContain("Resubmit for admin review");
+    expect(editor).toContain("expectedVersion: current.versionToken");
+    expect(editor).toContain('t("create.msgDraftChanged")');
+    expect(editor).toContain('t("create.submitForReview")');
   });
 
   it("connects persisted admin intake actions without enabling downstream execution", () => {
@@ -134,8 +135,10 @@ describe("authenticated calendar UI integration", () => {
     for (const source of [list, detail]) {
       expect(source).toContain('actionRequired === "information_required"');
       expect(source).toContain("actionRequiredReason");
-      expect(source).toContain("Provide requested information");
     }
+    expect(detail).toContain("Provide requested information");
+    // The calendar card is translated (EN / FR / AR).
+    expect(list).toContain('t("calendar.provideInfo")');
   });
 
   it("never substitutes fixtures when authenticated data is denied, empty, or unavailable", () => {
