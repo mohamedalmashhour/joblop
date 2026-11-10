@@ -2,6 +2,9 @@
 
 import { useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useState, type FormEvent } from "react";
+import { useLocale, useT } from "../../i18n/LocaleProvider";
+import { AssistantActionCard } from "./AssistantActionCard";
+import { cardState, parseAssistantAction, parseAssistantResult } from "./assistantCards";
 
 // Contact Joblop for employers: AI answers first and hands over to the Joblop team when a person must
 // decide. An employer sees only their own conversations; the API enforces that.
@@ -24,7 +27,7 @@ const STATUS: Readonly<Record<string, string>> = {
   admin_replied: "Joblop team replied",
   solved: "Solved"
 };
-const AUTHOR: Readonly<Record<string, string>> = { requester: "You", ai: "Joblop AI assistant", admin: "Joblop team" };
+const AUTHOR: Readonly<Record<string, string>> = { requester: "You", ai: "Joblop AI assistant", assistant_result: "Joblop AI assistant", admin: "Joblop team" };
 const POLL_MS = 10_000;
 
 function browserLocale() {
@@ -82,6 +85,8 @@ function NewMessage({ onSent }: { onSent(id: string): void }) {
 }
 
 function Thread({ id, onBack }: { id: string; onBack(): void }) {
+  const t = useT();
+  const locale = useLocale();
   const [conversation, setConversation] = useState<Conversation | null>(null);
   const [messages, setMessages] = useState<readonly Message[] | null>(null);
   const [reply, setReply] = useState("");
@@ -127,6 +132,24 @@ function Thread({ id, onBack }: { id: string; onBack(): void }) {
     if (await post(`/api/contact/${encodeURIComponent(id)}/messages`, { body: reply })) setReply("");
   }
 
+  // Confirm or Cancel on an assistant card. The result is written into the conversation by the API.
+  async function decide(token: string, decision: "confirm" | "cancel"): Promise<string | null> {
+    try {
+      const response = await fetch(`/api/contact/${encodeURIComponent(id)}/assistant/${decision}`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ token, locale: locale.slice(0, 2) })
+      });
+      const payload = (await response.json().catch(() => null)) as { status?: unknown; text?: unknown } | null;
+      await load();
+      // A refused card (expired, already used, switched off) comes back as 200 with status "rejected".
+      if (response.ok && payload?.status !== "rejected") return null;
+      return typeof payload?.text === "string" ? payload.text : t("assistant.actionFailed");
+    } catch {
+      return t("assistant.actionFailed");
+    }
+  }
+
   if (!messages || !conversation) return <p style={styles.muted}>Loading…</p>;
   return (
     <section style={styles.card}>
@@ -136,12 +159,30 @@ function Thread({ id, onBack }: { id: string; onBack(): void }) {
         {conversation.urgent ? " · Urgent" : ""}
       </p>
       <div role="log" aria-live="polite" style={styles.log}>
-        {messages.map((m) => (
-          <div key={m.id} style={m.authorKind === "requester" ? styles.mine : styles.theirs}>
-            <strong style={styles.label}>{AUTHOR[m.authorKind] ?? "Joblop"}</strong>
-            <div style={{ whiteSpace: "pre-wrap" }}>{m.body}</div>
-          </div>
-        ))}
+        {messages.map((m) => {
+          if (m.authorKind === "assistant_action") {
+            const action = parseAssistantAction(m.body);
+            if (!action) return null;
+            return (
+              <AssistantActionCard
+                key={m.id}
+                action={action}
+                state={cardState(action, messages)}
+                locale={locale}
+                t={t}
+                onDecide={(decision) => decide(action.token, decision)}
+              />
+            );
+          }
+          const body = m.authorKind === "assistant_result" ? parseAssistantResult(m.body)?.text ?? "" : m.body;
+          if (!body) return null;
+          return (
+            <div key={m.id} style={m.authorKind === "requester" ? styles.mine : styles.theirs}>
+              <strong style={styles.label}>{AUTHOR[m.authorKind] ?? "Joblop"}</strong>
+              <div style={{ whiteSpace: "pre-wrap" }}>{body}</div>
+            </div>
+          );
+        })}
       </div>
       {failed ? <p role="alert" style={styles.error}>Your message could not be sent. Please try again.</p> : null}
       <form onSubmit={(e) => void submit(e)}>
@@ -209,8 +250,8 @@ const styles = {
   ghost: { background: "transparent", border: line, borderRadius: 8, color: "#f4efe4", cursor: "pointer", fontWeight: 700, padding: "10px 16px" },
   row: { display: "flex", flexWrap: "wrap", gap: 10 },
   log: { display: "grid", gap: 10, marginBottom: 12 },
-  mine: { background: "rgba(248, 184, 8, 0.1)", border: line, borderRadius: 10, padding: 10 },
-  theirs: { border: line, borderRadius: 10, padding: 10 },
+  mine: { background: "rgba(248, 184, 8, 0.1)", border: line, borderRadius: 10, overflowWrap: "anywhere", padding: 10 },
+  theirs: { border: line, borderRadius: 10, overflowWrap: "anywhere", padding: 10 },
   list: { display: "grid", gap: 10 },
   item: { background: "transparent", border: line, borderRadius: 10, color: "#f4efe4", cursor: "pointer", display: "grid", font: "inherit", gap: 4, padding: 12, textAlign: "start", width: "100%" }
 } as const;

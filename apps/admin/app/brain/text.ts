@@ -37,6 +37,7 @@ export type BrainCopy = {
   colUndo: string;
   byBrain: string;
   byStaff: string;
+  byUser: string;
   watchOnly: string;
   undo: string;
   status: Record<"running" | "done" | "skipped" | "failed" | "simulated" | "undone", string>;
@@ -73,6 +74,21 @@ export const brainText: PageText<BrainCopy> = {
     on: "On",
     off: "Off",
     switchNames: {
+      "assistant": "Assistant in Contact Joblop (master switch)",
+      "assistant.worker": "Assistant for workers",
+      "assistant.employer": "Assistant for employers",
+      "assistant.staff": "Assistant for staff",
+      "assistant.worker.claim_job": "Worker: claim an open job (after Confirm)",
+      "assistant.worker.cancel_shift": "Worker: cancel their shift (after Confirm)",
+      "assistant.worker.confirm_shift": "Worker: confirm their shift (after Confirm)",
+      "assistant.employer.create_draft": "Employer: create a draft request (after Confirm)",
+      "assistant.employer.submit_draft": "Employer: submit a draft (after Confirm)",
+      "assistant.employer.confirm_timesheet": "Employer: confirm hours (after Confirm)",
+      "assistant.employer.duplicate_request": "Employer: copy a request (after Confirm)",
+      "assistant.staff.brain_do_it": "Staff: run a Brain action (after Confirm)",
+      "assistant.staff.approve_request": "Staff: approve a request (after Confirm)",
+      "assistant.staff.approve_timesheet": "Staff: approve a timesheet (after Confirm)",
+
       resend_failed_message: "Re-send a failed email or text",
       remind_worker_check_in: "Text a worker who has not checked in",
       remind_employer_timesheet: "Email an employer to confirm hours",
@@ -82,6 +98,7 @@ export const brainText: PageText<BrainCopy> = {
       daily_summary_email: "Daily summary email to staff"
     },
     ruleNames: {
+      assistant: "Assistant proposal",
       job_unfilled_soon: "Job starting soon with open places",
       worker_not_checked_in: "Worker not checked in",
       delivery_failed: "Email or text failed",
@@ -106,6 +123,7 @@ export const brainText: PageText<BrainCopy> = {
     colResult: "Result",
     colUndo: "Undo",
     byBrain: "by the brain",
+    byUser: "by the person (Confirm)",
     byStaff: "by staff",
     watchOnly: "watch only",
     undo: "Undo",
@@ -141,6 +159,21 @@ export const brainText: PageText<BrainCopy> = {
     on: "Allumé",
     off: "Éteint",
     switchNames: {
+      "assistant": "Assistant dans Contacter Joblop (interrupteur principal)",
+      "assistant.worker": "Assistant pour les travailleurs",
+      "assistant.employer": "Assistant pour les employeurs",
+      "assistant.staff": "Assistant pour le personnel",
+      "assistant.worker.claim_job": "Travailleur : prendre une mission ouverte (après Confirmer)",
+      "assistant.worker.cancel_shift": "Travailleur : annuler son quart (après Confirmer)",
+      "assistant.worker.confirm_shift": "Travailleur : confirmer son quart (après Confirmer)",
+      "assistant.employer.create_draft": "Employeur : créer un brouillon de demande (après Confirmer)",
+      "assistant.employer.submit_draft": "Employeur : soumettre un brouillon (après Confirmer)",
+      "assistant.employer.confirm_timesheet": "Employeur : confirmer des heures (après Confirmer)",
+      "assistant.employer.duplicate_request": "Employeur : copier une demande (après Confirmer)",
+      "assistant.staff.brain_do_it": "Personnel : lancer une action du cerveau (après Confirmer)",
+      "assistant.staff.approve_request": "Personnel : approuver une demande (après Confirmer)",
+      "assistant.staff.approve_timesheet": "Personnel : approuver une feuille de temps (après Confirmer)",
+
       resend_failed_message: "Renvoyer un courriel ou texto non envoyé",
       remind_worker_check_in: "Texter un travailleur qui n’a pas fait son arrivée",
       remind_employer_timesheet: "Écrire à un employeur pour confirmer les heures",
@@ -150,6 +183,7 @@ export const brainText: PageText<BrainCopy> = {
       daily_summary_email: "Résumé quotidien par courriel au personnel"
     },
     ruleNames: {
+      assistant: "Proposition de l'assistant",
       job_unfilled_soon: "Mission bientôt, places libres",
       worker_not_checked_in: "Travailleur sans arrivée",
       delivery_failed: "Courriel ou texto non envoyé",
@@ -174,6 +208,7 @@ export const brainText: PageText<BrainCopy> = {
     colResult: "Résultat",
     colUndo: "Annuler",
     byBrain: "par le cerveau",
+    byUser: "par la personne (Confirmer)",
     byStaff: "par le personnel",
     watchOnly: "observation seulement",
     undo: "Annuler",
@@ -209,6 +244,21 @@ export const brainText: PageText<BrainCopy> = {
     on: "مفعّل",
     off: "متوقف",
     switchNames: {
+      "assistant": "المساعد في تواصل مع Joblop (المفتاح الرئيسي)",
+      "assistant.worker": "المساعد للعمال",
+      "assistant.employer": "المساعد لأصحاب العمل",
+      "assistant.staff": "المساعد للموظفين",
+      "assistant.worker.claim_job": "العامل: أخذ وظيفة مفتوحة (بعد التأكيد)",
+      "assistant.worker.cancel_shift": "العامل: إلغاء مناوبته (بعد التأكيد)",
+      "assistant.worker.confirm_shift": "العامل: تأكيد مناوبته (بعد التأكيد)",
+      "assistant.employer.create_draft": "صاحب العمل: إنشاء مسودة طلب (بعد التأكيد)",
+      "assistant.employer.submit_draft": "صاحب العمل: إرسال مسودة (بعد التأكيد)",
+      "assistant.employer.confirm_timesheet": "صاحب العمل: تأكيد الساعات (بعد التأكيد)",
+      "assistant.employer.duplicate_request": "صاحب العمل: نسخ طلب (بعد التأكيد)",
+      "assistant.staff.brain_do_it": "الموظفون: تنفيذ إجراء العقل (بعد التأكيد)",
+      "assistant.staff.approve_request": "الموظفون: اعتماد طلب (بعد التأكيد)",
+      "assistant.staff.approve_timesheet": "الموظفون: اعتماد ورقة وقت (بعد التأكيد)",
+
       resend_failed_message: "إعادة إرسال بريد أو رسالة نصية فشلت",
       remind_worker_check_in: "مراسلة عامل لم يسجّل وصوله",
       remind_employer_timesheet: "مراسلة صاحب عمل لتأكيد الساعات",
@@ -218,6 +268,7 @@ export const brainText: PageText<BrainCopy> = {
       daily_summary_email: "ملخص يومي بالبريد للموظفين"
     },
     ruleNames: {
+      assistant: "اقتراح المساعد",
       job_unfilled_soon: "وظيفة تبدأ قريبًا وفيها أماكن شاغرة",
       worker_not_checked_in: "عامل لم يسجّل وصوله",
       delivery_failed: "بريد أو رسالة نصية فشلت",
@@ -242,6 +293,7 @@ export const brainText: PageText<BrainCopy> = {
     colResult: "النتيجة",
     colUndo: "تراجع",
     byBrain: "بواسطة العقل",
+    byUser: "من الشخص (تأكيد)",
     byStaff: "بواسطة الموظفين",
     watchOnly: "مراقبة فقط",
     undo: "تراجع",

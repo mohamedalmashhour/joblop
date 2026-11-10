@@ -4,6 +4,8 @@ import { useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useRef, useState, type FormEvent } from "react";
 import { useLocale, useT, type Translate } from "../i18n/LocaleProvider";
 import type { MessageKey } from "../i18n/messages";
+import { AssistantActionCard } from "./AssistantActionCard";
+import { cardState, parseAssistantAction, parseAssistantResult } from "./assistantCards";
 
 // Contact Joblop: AI answers first and hands over to the Joblop team when a person must decide.
 // A worker sees only their own conversations; the API enforces that.
@@ -122,6 +124,24 @@ function Thread({ id, onBack, t }: { id: string; onBack(): void; t: Translate })
     if (await post(`/api/contact/${encodeURIComponent(id)}/messages`, { body: reply })) setReply("");
   }
 
+  // Confirm or Cancel on an assistant card. The result is written into the conversation by the API.
+  async function decide(token: string, decision: "confirm" | "cancel"): Promise<string | null> {
+    try {
+      const response = await fetch(`/api/contact/${encodeURIComponent(id)}/assistant/${decision}`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ token, locale: locale.slice(0, 2) })
+      });
+      const payload = (await response.json().catch(() => null)) as { status?: unknown; text?: unknown } | null;
+      await load();
+      // A refused card (expired, already used, switched off) comes back as 200 with status "rejected".
+      if (response.ok && payload?.status !== "rejected") return null;
+      return typeof payload?.text === "string" ? payload.text : t("assistant.actionFailed");
+    } catch {
+      return t("assistant.actionFailed");
+    }
+  }
+
   if (!messages || !conversation) return <div className="state">{t("common.loading")}</div>;
   return (
     <section className="card" aria-label={t(topicKey(conversation.topic))}>
@@ -132,12 +152,30 @@ function Thread({ id, onBack, t }: { id: string; onBack(): void; t: Translate })
         {conversation.urgent ? <span className="chip status-rejected">{t("contact.urgent")}</span> : null}
       </div>
       <div role="log" aria-live="polite" style={{ display: "grid", gap: 10, marginBottom: 12 }}>
-        {messages.map((m) => (
-          <div key={m.id} style={{ background: m.authorKind === "requester" ? "var(--surface-2, rgba(255,255,255,.08))" : "transparent", border: "1px solid var(--line, rgba(255,255,255,.14))", borderRadius: 10, padding: 10 }}>
-            <div className="role">{t(m.authorKind === "requester" ? "contact.you" : m.authorKind === "ai" ? "contact.ai" : "contact.team")}</div>
-            <div style={{ whiteSpace: "pre-wrap" }}>{m.body}</div>
-          </div>
-        ))}
+        {messages.map((m) => {
+          if (m.authorKind === "assistant_action") {
+            const action = parseAssistantAction(m.body);
+            if (!action) return null;
+            return (
+              <AssistantActionCard
+                key={m.id}
+                action={action}
+                state={cardState(action, messages)}
+                locale={locale}
+                t={t}
+                onDecide={(decision) => decide(action.token, decision)}
+              />
+            );
+          }
+          const body = m.authorKind === "assistant_result" ? parseAssistantResult(m.body)?.text ?? "" : m.body;
+          if (!body) return null;
+          return (
+            <div key={m.id} style={{ background: m.authorKind === "requester" ? "var(--surface-2, rgba(255,255,255,.08))" : "transparent", border: "1px solid var(--line, rgba(255,255,255,.14))", borderRadius: 10, padding: 10, overflowWrap: "anywhere" }}>
+              <div className="role">{t(m.authorKind === "requester" ? "contact.you" : m.authorKind === "ai" || m.authorKind === "assistant_result" ? "contact.ai" : "contact.team")}</div>
+              <div style={{ whiteSpace: "pre-wrap" }}>{body}</div>
+            </div>
+          );
+        })}
         <div ref={end} />
       </div>
       {failed ? <p className="state error" role="alert">{t("contact.sendFailed")}</p> : null}

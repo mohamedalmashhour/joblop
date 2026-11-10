@@ -10,9 +10,11 @@ import {
   type ContactNotices,
   type ContactSide,
   type ContactStore,
-  type ConversationRow
+  type ConversationRow,
+  readLocale
 } from "./instantContact";
 import { outsideAiApiKey } from "./outsideAi";
+import type { AssistantService } from "./assistant/assistantService";
 import type { EmailSender } from "./mailer/emailSender";
 import type { SmsSender } from "./mailer/smsSender";
 import { pushToWorkers, type PushSender } from "./notifications/pushSender";
@@ -300,6 +302,12 @@ const readSide = (request: FastifyRequest): ContactSide | null => {
   return side === "worker" || side === "employer" ? side : null;
 };
 
+/** The person's own bearer header, passed to the assistant so its tools act as them. */
+const bearer = (request: FastifyRequest): string | undefined => {
+  const value = request.headers.authorization;
+  return typeof value === "string" && /^Bearer \S+$/i.test(value) ? value : undefined;
+};
+
 function sendResult(reply: FastifyReply, result: { ok: true; value: unknown } | { ok: false; error: string }) {
   if (result.ok) return reply.code(200).send(result.value);
   const code = result.error === "not_found" ? 404 : 400;
@@ -316,8 +324,11 @@ export function registerInstantContactRoutes(
     isLocal: boolean;
     requireUser(request: FastifyRequest, reply: FastifyReply): Promise<{ id: string } | null>;
     requireAdmin(request: FastifyRequest, reply: FastifyReply): Promise<{ id: string } | null>;
+    /** The role assistant (phase 2). Null or switched off = the chat behaves exactly as before. */
+    assistant?: AssistantService | null;
   }
 ) {
+  const assistant = deps.assistant ?? null;
   const monthly = Number(process.env.CONTACT_AI_MONTHLY_LIMIT);
   const service = createContactService({
     store: createPrismaContactStore(deps.prisma),
@@ -329,7 +340,8 @@ export function registerInstantContactRoutes(
       adminPhone: process.env.CONTACT_ADMIN_PHONE?.trim() || undefined,
       ...(deps.pushSender ? { pushSender: deps.pushSender } : {})
     }),
-    ...(Number.isInteger(monthly) && monthly >= 0 && process.env.CONTACT_AI_MONTHLY_LIMIT ? { aiRepliesPerMonth: monthly } : {})
+    ...(Number.isInteger(monthly) && monthly >= 0 && process.env.CONTACT_AI_MONTHLY_LIMIT ? { aiRepliesPerMonth: monthly } : {}),
+    assistant
   });
 
   const requester = async (request: FastifyRequest, reply: FastifyReply) => {
@@ -358,7 +370,8 @@ export function registerInstantContactRoutes(
     const body = asObject(request.body);
     return sendResult(reply, await service.start({
       ...who, topic: body.topic, body: body.body, urgent: body.urgent,
-      relatedType: body.relatedType, relatedId: body.relatedId, locale: body.locale
+      relatedType: body.relatedType, relatedId: body.relatedId, locale: body.locale,
+      authorization: bearer(request)
     }));
   });
 
@@ -372,7 +385,7 @@ export function registerInstantContactRoutes(
     const who = await requester(request, reply);
     if (!who) return;
     const body = asObject(request.body);
-    return sendResult(reply, await service.send({ ...who, id: readParam(request, "id"), body: body.body, locale: body.locale }));
+    return sendResult(reply, await service.send({ ...who, id: readParam(request, "id"), body: body.body, locale: body.locale, authorization: bearer(request) }));
   });
 
   app.post("/contact/:side/conversations/:id/person", async (request, reply) => {
@@ -394,7 +407,9 @@ export function registerInstantContactRoutes(
     const admin = await deps.requireAdmin(request, reply);
     if (!admin) return;
     const body = asObject(request.body);
-    return sendResult(reply, await service.adminAsk({ question: body.question, conversationId: body.conversationId }));
+    return sendResult(reply, await service.adminAsk({
+      question: body.question, conversationId: body.conversationId, adminId: admin.id, authorization: bearer(request), locale: body.locale
+    }));
   });
 
   app.get("/platform/contact/conversations/:id", async (request, reply) => {
@@ -421,4 +436,48 @@ export function registerInstantContactRoutes(
     if (!admin) return;
     return sendResult(reply, await service.adminSetStatus(admin.id, readParam(request, "id"), asObject(request.body).status));
   });
+
+  // ── role assistant: Confirm / Cancel on an action card (phase 2) ──
+  // A separate, authenticated endpoint: the signed proposal is verified (signature, expiry, person,
+  // role, company), the switches are read again, the proposal is claimed once (a replay is refused),
+  // and only then does the tool run, as the person, through the same routes the apps use.
+  // A refused card is a normal answer (status "rejected" + reason + plain text), so it is a 200: the
+  // apps' session gateway drops the body of a 4xx, and the person must see why nothing happened.
+  const sendAssistant = (reply: FastifyReply, outcome: Awaited<ReturnType<AssistantService["confirm"]>>) =>
+    reply.code(200).header("cache-control", "no-store").send(outcome);
+
+  for (const action of ["confirm", "cancel"] as const) {
+    app.post(`/contact/:side/assistant/${action}`, async (request, reply) => {
+      const who = await requester(request, reply);
+      if (!who) return;
+      const authorization = bearer(request);
+      const body = asObject(request.body);
+      if (!assistant || !authorization || typeof body.conversationId !== "string") {
+        return reply.code(404).send({ error: "RWOS_CONTACT_REJECTED", message: "not_found" });
+      }
+      const target = await service.assistantTarget(who.userId, who.side, body.conversationId);
+      if (!target) return reply.code(404).send({ error: "RWOS_CONTACT_REJECTED", message: "not_found" });
+      const person = { role: who.side, userId: who.userId, organizationId: target.requester.organizationId, locale: readLocale(body.locale) };
+      const outcome = action === "confirm"
+        ? await assistant.confirm({ ...person, token: body.token, authorization })
+        : await assistant.cancel({ ...person, token: body.token });
+      if (outcome.status !== "rejected") {
+        await service.addAssistantResult(target.conversation.id, { proposalId: outcome.proposalId, status: outcome.status, text: outcome.text });
+      }
+      return sendAssistant(reply, outcome);
+    });
+
+    app.post(`/platform/assistant/${action}`, async (request, reply) => {
+      const admin = await deps.requireAdmin(request, reply);
+      if (!admin) return;
+      const authorization = bearer(request);
+      if (!assistant || !authorization) return reply.code(404).send({ error: "RWOS_CONTACT_REJECTED", message: "not_found" });
+      const body = asObject(request.body);
+      const person = { role: "staff" as const, userId: admin.id, organizationId: null, locale: readLocale(body.locale) };
+      const outcome = action === "confirm"
+        ? await assistant.confirm({ ...person, token: body.token, authorization })
+        : await assistant.cancel({ ...person, token: body.token });
+      return sendAssistant(reply, outcome);
+    });
+  }
 }

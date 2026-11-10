@@ -39,7 +39,10 @@ function toIssue(row: IssueRow): StoredIssue {
 }
 
 function toAction(row: ActionRow): StoredAction {
-  const actor: ActionActor = row.actorType === "staff" && row.actorUserId ? { type: "staff", userId: row.actorUserId } : { type: "brain" };
+  const actor: ActionActor =
+    (row.actorType === "staff" || row.actorType === "user") && row.actorUserId
+      ? { type: row.actorType, userId: row.actorUserId }
+      : { type: "brain" };
   const undo: UndoTicket | null = row.undoKind ? { kind: row.undoKind, data: asRecord(row.undoData) } : null;
   return {
     id: row.id,
@@ -154,7 +157,7 @@ export function createPrismaBrainStore(prisma: BrainPrisma): BrainStore {
             actionKey: input.actionKey,
             kind: input.kind,
             actorType: input.actor.type,
-            actorUserId: input.actor.type === "staff" ? input.actor.userId : null,
+            actorUserId: input.actor.type === "brain" ? null : input.actor.userId,
             ruleKey: input.issue.ruleKey,
             reason: input.issue.summary.slice(0, 1000),
             inputs: json(input.issue.inputs),

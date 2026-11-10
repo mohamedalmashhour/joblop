@@ -4,6 +4,9 @@ import { useCallback, useEffect, useState, type FormEvent } from "react";
 import { usePageText } from "../i18n/pageText";
 import { contactDeskText } from "./text";
 import { SignedOut } from "../shared/SignedOut";
+import { useLocale } from "../i18n/LocaleProvider";
+import { parseAssistantAction, type AssistantAction } from "./assistantCards";
+import { assistantMessageText, StaffAssistantCard } from "./StaffAssistantCard";
 
 // One list for workers and employers, urgent first and longest-waiting next. Internal notes are never
 // shown to the worker or employer.
@@ -35,6 +38,8 @@ function AskAi({ conversationId }: { conversationId: string | null }) {
   const t = usePageText(contactDeskText);
   const [question, setQuestion] = useState("");
   const [answer, setAnswer] = useState<string | null>(null);
+  const [cards, setCards] = useState<readonly AssistantAction[]>([]);
+  const locale = useLocale();
   const [busy, setBusy] = useState(false);
   const [failed, setFailed] = useState(false);
 
@@ -42,15 +47,19 @@ function AskAi({ conversationId }: { conversationId: string | null }) {
     setBusy(true);
     setFailed(false);
     setAnswer(null);
+    setCards([]);
     try {
       const response = await fetch("/api/contact/ask", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ question: text, conversationId })
+        body: JSON.stringify({ question: text, conversationId, locale: locale.slice(0, 2) })
       });
-      const payload = response.ok ? ((await response.json()) as { answer: string | null }) : null;
+      const payload = response.ok ? ((await response.json()) as { answer: string | null; cards?: unknown }) : null;
       if (payload?.answer) setAnswer(payload.answer);
       else setFailed(true);
+      // Action cards from the staff assistant (only when it is switched on). Never shows the token.
+      const raw: unknown[] = Array.isArray(payload?.cards) ? payload.cards : [];
+      setCards(raw.map((c) => parseAssistantAction(JSON.stringify(c))).filter((c): c is AssistantAction => c !== null));
     } catch {
       setFailed(true);
     } finally {
@@ -78,7 +87,8 @@ function AskAi({ conversationId }: { conversationId: string | null }) {
         </div>
       </form>
       {failed ? <p role="alert" style={styles.error}>{t.askFailed}</p> : null}
-      {answer ? <div style={{ ...styles.message, marginTop: 12, whiteSpace: "pre-wrap" }}>{answer}</div> : null}
+      {answer ? <div style={{ ...styles.message, marginTop: 12, whiteSpace: "pre-wrap", overflowWrap: "anywhere" }}>{answer}</div> : null}
+      {cards.map((card) => <StaffAssistantCard key={card.proposalId} action={card} copy={t.assistant} />)}
     </section>
   );
 }
@@ -144,7 +154,7 @@ function Thread({ id, onChanged }: { id: string; onChanged(): void }) {
         {detail.messages.map((m) => (
           <div key={m.id} style={m.internal ? styles.note : styles.message}>
             <strong style={styles.label}>{t.author[m.authorKind] ?? m.authorKind}{m.internal ? t.internalTag : ""} · {new Date(m.createdAt).toLocaleString()}</strong>
-            <div style={{ whiteSpace: "pre-wrap" }}>{m.body}</div>
+            <div style={{ whiteSpace: "pre-wrap", overflowWrap: "anywhere" }}>{assistantMessageText(m.authorKind, m.body, t.assistant)}</div>
           </div>
         ))}
       </div>
