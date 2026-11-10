@@ -315,6 +315,7 @@ import { resolveSearchPlace, searchPlaceFailure } from "./searchPlace";
 import { matchingRoleIds } from "./roleSearch";
 import { WORKER_PAY_SELECT, isLongTermListingJob, longTermPaySentence, workerPay } from "./longTermWorkerPay";
 import { LONG_TERM_NO_TIMESHEETS_BODY, clockInFields, isLongTermAssignment, isLongTermAttendance } from "./longTermNoTimesheets";
+import { checkInTooEarly, checkInTooEarlyBody } from "./checkInWindow";
 import { isEmployerPlansEnabled } from "./employerPlanRepository";
 import { createMarketingContactSync, type MarketingContactSync } from "./mailer/brevoContacts";
 import { runShiftReminderSweep } from "./shiftReminderSweep";
@@ -9113,6 +9114,9 @@ export function buildApi(options: BuildApiOptions = {}) {
     if (await isLongTermAttendance(prisma, readRouteParam(request.params, "attendanceRecordId"))) {
       return reply.code(409).send(LONG_TERM_NO_TIMESHEETS_BODY);
     }
+    // Check-in opens 30 minutes before the shift starts.
+    const checkInOpensAt = await checkInTooEarly(prisma, readRouteParam(request.params, "attendanceRecordId"), session.user.id);
+    if (checkInOpensAt) return reply.code(409).send(checkInTooEarlyBody(checkInOpensAt));
     const attendanceRecord = await attendanceService.workerCheckIn({
       session,
       roles: await resolveAuthorizationRoles(session.user.id),
@@ -9167,20 +9171,22 @@ export function buildApi(options: BuildApiOptions = {}) {
       take: limit + 1,
       ...(cursor && isCanonicalUuid(cursor) ? { cursor: { id: cursor }, skip: 1 } : {}),
       select: {
-        id: true, assignmentId: true, status: true, scheduledStartAt: true, scheduledEndAt: true, timezone: true,
+        id: true, assignmentId: true, jobRequestId: true, status: true, scheduledStartAt: true, scheduledEndAt: true, timezone: true,
         checkInAt: true, checkOutAt: true, exceptionCategory: true, version: true,
         organization: { select: { displayName: true } },
         residence: { select: WORKSITE_ADDRESS_SELECT },
-        jobRequest: { select: { jobLength: true, calendarProfile: { select: { addressSummary: true, specialInstructions: true } } } }
+        jobRequest: { select: { jobLength: true, title: true, roleDefinition: { select: { displayLabel: true } }, calendarProfile: { select: { addressSummary: true, specialInstructions: true } } } }
       }
     });
     const hasMore = rows.length > limit;
     const items = rows.slice(0, limit).map((r) => ({
-      attendanceRecordId: r.id, assignmentId: r.assignmentId, status: r.status,
+      attendanceRecordId: r.id, assignmentId: r.assignmentId, jobRequestId: r.jobRequestId, status: r.status,
       scheduledStartAt: r.scheduledStartAt.toISOString(), scheduledEndAt: r.scheduledEndAt.toISOString(), timezone: r.timezone,
       checkInAt: r.checkInAt?.toISOString() ?? null, checkOutAt: r.checkOutAt?.toISOString() ?? null,
       exceptionCategory: r.exceptionCategory, version: r.version,
       employerName: r.organization.displayName,
+      // The job the worker is doing (e.g. "Farm worker"); the schedule card shows it as the title.
+      roleLabel: r.jobRequest.roleDefinition?.displayLabel ?? r.jobRequest.title ?? null,
       areaLabel: r.residence.city && options.countryAddress?.isRegionCode(r.residence.province) ? `${r.residence.city}, ${r.residence.province}` : null,
       // This route only returns the signed-in worker's own assigned shifts.
       worksiteAddress: isWorksiteAddressVisible(r.status) ? workerJobAddress(r.jobRequest.calendarProfile?.addressSummary, r.residence) : null,

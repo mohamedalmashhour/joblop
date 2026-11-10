@@ -8,6 +8,7 @@ import type { MessageKey } from "../../i18n/messages";
 import { workerPayLabel } from "../../workerPayLabel";
 import { MissingCertificatesNotice, RequiredCertificatesSection, type RequiredCertificatesData } from "../../RequiredCertificates";
 import { shiftOverlapNotice } from "../../shiftOverlapNotice";
+import { ShiftAddressMap } from "../../ShiftAddressMap";
 
 type JobDetailData = Readonly<{
   jobRequestId: string;
@@ -83,6 +84,25 @@ export function JobDetail({ id, place }: { id: string; place: string | null }) {
   const [interestBusy, setInterestBusy] = useState(false);
   const [claimOutcome, setClaimOutcome] = useState<ClaimOutcome>({ state: "idle", reasons: [] });
   const setClaimState = (state: ClaimState, reasons: readonly string[] = []) => setClaimOutcome({ state, reasons });
+  // The exact work address, only when this worker is confirmed on this job (from their own schedule;
+  // the API sends it only for a confirmed shift that is not over). Everyone else sees the city only.
+  const [confirmedAddress, setConfirmedAddress] = useState<string | null>(null);
+  const confirmedJobId = job?.jobRequestId ?? null;
+  useEffect(() => {
+    if (!confirmedJobId) return;
+    let active = true;
+    fetch("/api/attendance?limit=100", { cache: "no-store" })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((p: { items?: { jobRequestId?: string; worksiteAddress?: string | null }[] } | null) => {
+        if (!active) return;
+        const mine = p?.items?.find((item) => item.jobRequestId === confirmedJobId && item.worksiteAddress);
+        setConfirmedAddress(mine?.worksiteAddress ?? null);
+      })
+      .catch(() => undefined);
+    return () => {
+      active = false;
+    };
+  }, [confirmedJobId, claimOutcome.state]);
 
   useEffect(() => {
     let active = true;
@@ -233,8 +253,17 @@ export function JobDetail({ id, place }: { id: string; place: string | null }) {
 
       {job.bonus && job.bonus.amountMinor > 0 ? <BonusBox bonus={job.bonus} currency={job.currency} locale={locale} /> : null}
 
-      <WorksiteMap point={job.mapPoint} locale={locale} />
-      <p className="notice">{t("job.mapApproxNotice")}</p>
+      {confirmedAddress ? (
+        <Section title={t("map.workAddress")}>
+          <p>{confirmedAddress}</p>
+          <ShiftAddressMap address={confirmedAddress} height={220} />
+        </Section>
+      ) : (
+        <>
+          <WorksiteMap point={job.mapPoint} locale={locale} />
+          <p className="notice">{t("job.mapApproxNotice")}</p>
+        </>
+      )}
 
       {job.description ? (
         <Section title={t("job.aboutShift")}>

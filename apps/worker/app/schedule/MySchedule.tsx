@@ -6,6 +6,8 @@ import type { RwosLocale } from "../i18n/config";
 import type { MessageKey } from "../i18n/messages";
 import type { Translate } from "../i18n/LocaleProvider";
 import { resolveDeniedKind } from "../resolveDenied";
+import { ShiftAddressMap } from "../ShiftAddressMap";
+import { checkInOpensAt, isCheckInOpen } from "../shiftLocation";
 
 type Shift = Readonly<{
   attendanceRecordId: string;
@@ -19,6 +21,8 @@ type Shift = Readonly<{
   exceptionCategory: string | null;
   version: number;
   employerName: string;
+  /** The job (e.g. "Farm worker"); shown as the card title, with the company under it. */
+  roleLabel?: string | null;
   areaLabel: string | null;
   worksiteAddress: string | null;
   safetyNotes: string | null;
@@ -72,6 +76,13 @@ export function MySchedule() {
 
   useEffect(() => { void load(); }, [load]);
 
+  // Re-render every 30 s so "Check in" turns on by itself when check-in opens.
+  const [, setTick] = useState(0);
+  useEffect(() => {
+    const id = setInterval(() => setTick((n) => n + 1), 30_000);
+    return () => clearInterval(id);
+  }, []);
+
   const act = useCallback(async (shift: Shift, action: "check-in" | "check-out") => {
     setBusy(shift.attendanceRecordId);
     setNotice(null);
@@ -81,6 +92,12 @@ export function MySchedule() {
         body: JSON.stringify({ expectedVersion: shift.version })
       });
       if (!r.ok) {
+        const body = (await r.json().catch(() => null)) as { error?: string; opensAt?: string } | null;
+        if (body?.error === "RWOS_CHECK_IN_TOO_EARLY") {
+          const opens = body.opensAt ?? checkInOpensAt(shift.scheduledStartAt).toISOString();
+          setNotice(t("sched.checkInTooEarly", { time: formatClock(opens, shift.timezone, locale) }));
+          return;
+        }
         setNotice(r.status === 409 ? t("sched.changed") : t("sched.actionFailed"));
         return;
       }
@@ -89,7 +106,7 @@ export function MySchedule() {
     } finally {
       setBusy(null);
     }
-  }, [load, t]);
+  }, [load, t, locale]);
 
   if (state.status === "loading") return <div className="state">{t("common.loading")}</div>;
   if (state.status === "signed_out") return <div className="state">{t("sched.signInPrompt")}<div style={{ marginTop: 12 }}><a className="btn" href="/">{t("common.goToSearch")}</a></div></div>;
@@ -173,11 +190,16 @@ function ShiftCard({ s, busy, onAct, history, t, locale }: { s: Shift; busy: boo
   const noClock = s.clockInAllowed === false;
   const canCheckIn = !noClock && s.status === "pending_start";
   const canCheckOut = !noClock && s.status === "checked_in";
+  // Check-in opens 30 minutes before the start (the API refuses earlier ones too).
+  const checkInOpen = isCheckInOpen(s.scheduledStartAt);
+  const opensAtLabel = formatClock(checkInOpensAt(s.scheduledStartAt).toISOString(), s.timezone, locale);
   const inTime = s.checkInAt ? new Date(s.checkInAt).toLocaleTimeString(locale) : null;
   const outTime = s.checkOutAt ? new Date(s.checkOutAt).toLocaleTimeString(locale) : null;
+  const title = s.roleLabel?.trim() || s.employerName;
   return (
     <article className="card">
-      <div className="role">{s.employerName}</div>
+      <div className="role">{title}</div>
+      {title !== s.employerName ? <div className="employer">{s.employerName}</div> : null}
       <div className="chips">
         <span className={`chip status-${badgeClass(s.status)}`}>{t(STATUS_COPY_KEY[s.status] ?? "sched.statusScheduled")}</span>
         {s.areaLabel ? <span className="chip">{s.areaLabel}</span> : null}
@@ -185,12 +207,19 @@ function ShiftCard({ s, busy, onAct, history, t, locale }: { s: Shift; busy: boo
       </div>
       <div className="when">{formatShift(s.scheduledStartAt, s.scheduledEndAt, s.timezone, locale)}</div>
       {s.worksiteAddress ? <div className="when">{t("sched.address", { address: s.worksiteAddress })}</div> : null}
+      {/* The exact address only comes for a confirmed shift that is not over (worksiteAddress.ts). */}
+      {!history && s.worksiteAddress ? <ShiftAddressMap address={s.worksiteAddress} /> : null}
       {s.safetyNotes ? <div className="when">{t("sched.safetyNotes", { notes: s.safetyNotes })}</div> : null}
       <a className="muted" href={`/contact?topic=shift&relatedType=assignment&relatedId=${encodeURIComponent(s.assignmentId)}`}>{t("contact.askAbout")}</a>
       {inTime ? <div className="when">{outTime ? t("sched.inOut", { inTime, outTime }) : t("sched.in", { time: inTime })}</div> : null}
       {s.checkInAt && s.checkOutAt ? <div className="when"><strong>{t("sched.worked", { duration: workedDuration(s.checkInAt, s.checkOutAt, t) })}</strong></div> : null}
       {noClock ? <p className="notice" style={{ margin: 0 }}>{t("sched.longTermNoClockIn")}</p> : null}
-      {!history && (canCheckIn || canCheckOut) ? (
+      {!history && canCheckIn && !checkInOpen ? (
+        <button className="btn" type="button" style={{ alignSelf: "flex-start" }} disabled aria-disabled="true">
+          {t("sched.checkInOpensAt", { time: opensAtLabel })}
+        </button>
+      ) : null}
+      {!history && ((canCheckIn && checkInOpen) || canCheckOut) ? (
         <button className="btn" type="button" style={{ alignSelf: "flex-start" }} disabled={busy} onClick={() => onAct(s, canCheckIn ? "check-in" : "check-out")}>
           {busy ? "…" : canCheckIn ? t("sched.checkIn") : t("sched.checkOut")}
         </button>
@@ -209,6 +238,13 @@ function workedDuration(checkInAt: string, checkOutAt: string, t: Translate): st
   const ms = new Date(checkOutAt).getTime() - new Date(checkInAt).getTime();
   const totalMin = Math.max(0, Math.round(ms / 60000));
   return t("sched.durationHm", { h: Math.floor(totalMin / 60), m: totalMin % 60 });
+}
+function formatClock(at: string, tz: string, locale: RwosLocale): string {
+  try {
+    return new Date(at).toLocaleTimeString(locale, { hour: "numeric", minute: "2-digit", timeZone: tz });
+  } catch {
+    return new Date(at).toLocaleTimeString(locale, { hour: "numeric", minute: "2-digit" });
+  }
 }
 function formatShift(startAt: string, endAt: string, tz: string, locale: RwosLocale): string {
   const opts: Intl.DateTimeFormatOptions = { weekday: "short", month: "short", day: "numeric", hour: "numeric", minute: "2-digit", timeZone: tz };

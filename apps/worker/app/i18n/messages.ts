@@ -250,7 +250,14 @@ export const en = {
   "offers.payChoiceAction": "Choose how I'm paid",
 
   // Schedule
-  "sched.intro": "Your assigned shifts. Check in and out — Joblop records the authoritative time.",
+  "sched.intro": "Check in when you arrive and check out when you leave. Your hours are saved automatically.",
+  "sched.checkInOpensAt": "Check-in opens at {time}",
+  "sched.checkInTooEarly": "It's too early to check in. Check-in opens at {time}.",
+  "map.getDirections": "Get directions",
+  "map.workAddress": "Work address",
+  "map.addressMapTitle": "Map of the work address",
+  "mk.defaultAllMany": "{count} open jobs, soonest first",
+  "mk.defaultAllOne": "{count} open job",
   "sched.statusScheduled": "Scheduled",
   "sched.statusCheckedIn": "Checked in",
   "sched.statusCheckedOut": "Checked out",
@@ -940,7 +947,14 @@ export const fr: Messages = {
   "offers.payChoiceAction": "Choisir mon mode de paiement",
 
   // Horaire
-  "sched.intro": "Vos quarts assignés. Pointez à l'arrivée et au départ — Joblop enregistre l'heure officielle.",
+  "sched.intro": "Pointez votre arrivée en arrivant et votre départ en partant. Vos heures sont enregistrées automatiquement.",
+  "sched.checkInOpensAt": "Le pointage d'arrivée ouvre à {time}",
+  "sched.checkInTooEarly": "C'est trop tôt pour pointer. Le pointage d'arrivée ouvre à {time}.",
+  "map.getDirections": "Obtenir l'itinéraire",
+  "map.workAddress": "Adresse du travail",
+  "map.addressMapTitle": "Carte de l'adresse du travail",
+  "mk.defaultAllMany": "{count} emplois ouverts, les plus tôt d'abord",
+  "mk.defaultAllOne": "{count} emploi ouvert",
   "sched.statusScheduled": "Planifié",
   "sched.statusCheckedIn": "Pointé à l'arrivée",
   "sched.statusCheckedOut": "Pointé au départ",
@@ -1697,7 +1711,14 @@ export const ar: Partial<Messages> = {
   "pay.tabPaid": "مدفوع",
 
   // Schedule
-  "sched.intro": "مناوباتك المُسندة. سجّل الدخول والخروج — يسجّل Joblop الوقت الرسمي.",
+  "sched.intro": "سجّل دخولك عند وصولك وسجّل خروجك عند مغادرتك. تُحفظ ساعاتك تلقائيًا.",
+  "sched.checkInOpensAt": "يفتح تسجيل الدخول الساعة {time}",
+  "sched.checkInTooEarly": "الوقت مبكر لتسجيل الدخول. يفتح تسجيل الدخول الساعة {time}.",
+  "map.getDirections": "احصل على الاتجاهات",
+  "map.workAddress": "عنوان العمل",
+  "map.addressMapTitle": "خريطة عنوان العمل",
+  "mk.defaultAllMany": "{count} وظيفة متاحة، الأقرب موعدًا أولًا",
+  "mk.defaultAllOne": "{count} وظيفة متاحة",
   "sched.statusScheduled": "مجدولة",
   "sched.statusCheckedIn": "تم تسجيل الدخول",
   "sched.statusCheckedOut": "تم تسجيل الخروج",
