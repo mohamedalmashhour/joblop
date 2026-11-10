@@ -129,7 +129,7 @@ export function LandingPanel({ onSignedIn }: { onSignedIn: () => void }) {
 
       {/* 4 — Employers: a small link to the employer site */}
       <p className="home-emp" data-section="employer">
-        <span>{t("home.emp")}</span> <a href={EMPLOYER_URL}>{withBrand(t("home.empLink"))}</a>
+        <span>{t("home.emp")}</span> <a href={EMPLOYER_URL}>{t("home.empLink")}</a>
       </p>
     </div>
   );

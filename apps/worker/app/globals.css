@@ -1136,7 +1136,23 @@ html { scroll-padding-top: calc(var(--header-h) + 12px); }
 .fw-apply:hover { background: #ffc928; }
 .fw-note { margin: 6px 0 0; color: var(--text-muted); font-size: 13px; }
 .fw-source { margin: 2px 0 0; font-size: 12px; color: var(--text-muted); }
-.fw-map-frame { max-width: 520px; margin: 18px auto 0; }
+.fw-map-frame { max-width: 720px; margin: 18px auto 0; }
+/* Find work map: real OpenStreetMap tiles of Québec with one pin per city (QuebecJobsMap). */
+.qmap { position: relative; width: 100%; margin: 0; overflow: hidden; border-radius: 14px; border: 1px solid var(--border); background: #d9e4e8; }
+.qmap-tiles img { position: absolute; display: block; max-width: none; user-select: none; }
+.qmap-pins { position: absolute; inset: 0; margin: 0; padding: 0; list-style: none; }
+.qmap-pins li { position: absolute; transform: translate(-50%, -50%); }
+.qmap-pin { display: inline-flex; align-items: center; gap: 6px; min-height: 32px; padding: 0 10px 0 0; border: 0; border-radius: 999px; background: rgba(0, 0, 0, 0.82); color: #fbf7ee; font: inherit; font-size: 13px; font-weight: 700; cursor: pointer; white-space: nowrap; box-shadow: 0 2px 6px rgba(0, 0, 0, 0.35); }
+.qmap-pin:focus-visible { outline: 3px solid #f8b808; outline-offset: 2px; }
+.qmap-dot { display: inline-flex; align-items: center; justify-content: center; min-width: 32px; height: 32px; padding: 0 6px; border-radius: 999px; background: #f8b808; color: #000; font-weight: 800; }
+.qmap-pin.on { background: #f8b808; color: #000; }
+.qmap-pin.on .qmap-dot { background: #000; color: #f8b808; }
+.qmap-credit { position: absolute; right: 0; bottom: 0; padding: 2px 6px; background: rgba(255, 255, 255, 0.85); color: #333; font-size: 11px; border-top-left-radius: 6px; }
+.qmap-credit a { color: #0b4f8a; }
+/* Outside listings grouped by title + company: one card, one "Apply on <site>" per city. */
+.fw-locs { display: grid; gap: 6px; margin: 8px 0 0; padding: 0; list-style: none; }
+.fw-loc { display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 6px 10px; padding-top: 6px; border-top: 1px solid var(--border); font-size: 14px; }
+.fw-locs-more summary { margin-top: 8px; cursor: pointer; color: #f8b808; font-weight: 700; font-size: 14px; }
 .fw .pcal { margin-top: 18px; padding: 0; border: 0; background: none; }
 .fw .pcal-eyebrow, .fw .pcal > h2, .fw .pcal-sub { display: none; }
 @media (max-width: 640px) {

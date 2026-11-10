@@ -7,11 +7,12 @@ import { workerPayLabel } from "../workerPayLabel";
 import { publicJobPath, signUpReturningTo } from "../safeReturnPath";
 import { JoblopJobBadge, OutsideApplyLink, OutsideSiteBadge } from "../JobSourceBadge";
 import { outsideApplyUrl } from "../jobSource";
-import { MarketplaceMap, type MapPin } from "../MarketplaceMap";
 import { PublicJobsCalendar } from "../PublicJobsCalendar";
 import { accountHref } from "../authScroll";
 import { FIND_WORK_TABS, cleanFilter, findWorkHref, type FindWorkTab } from "../findWorkUrl";
 import { mapLayout } from "./mapLayout";
+import { groupLeads } from "./groupLeads";
+import { QuebecJobsMap, type CityPin } from "./QuebecJobsMap";
 
 // The one "Find work" page. List / Map / Calendar are tabs that share the same two filters (what work +
 // city). The list shows Joblop jobs first ("apply here in one click"), then jobs on other websites
@@ -208,31 +209,69 @@ function ListTab({
         {leads === null ? <p className="fw-note">{t("fw.loading")}</p> : null}
         {leads !== null && leads.length === 0 ? <p className="fw-note">{t("fw.noneOther")}</p> : null}
         <div className="fw-grid">
-          {(leads ?? []).map((lead, i) => {
-            const pay = leadPay(lead);
-            return (
-              <article key={`${lead.source}-${lead.title}-${i}`} className="fw-card fw-card-out">
-                <OutsideSiteBadge />
-                <h3 dir="auto">{lead.title}</h3>
-                <p className="fw-meta">{lead.employer ? <><bdi>{lead.employer}</bdi> · </> : null}<bdi>{lead.areaLabel}</bdi></p>
-                <div className="fw-row">
-                  <span className={pay ? "fw-pay" : "fw-meta"} dir={pay ? "ltr" : undefined}>{pay ?? t("fw.payOnSite")}</span>
-                  {outsideApplyUrl(lead.url) ? (
-                    <OutsideApplyLink url={lead.url} source={lead.source} />
-                  ) : (
-                    <a className="src-apply src-apply-out" href="/job-scanner">{t("fw.apply")} {arrow}</a>
-                  )}
-                </div>
-                <p className="fw-note">{t("fw.newTabNote")}</p>
-                {lead.source === "adzuna" ? (
-                  <p className="fw-source">via <a href="https://www.adzuna.ca" target="_blank" rel="noopener noreferrer">Adzuna</a></p>
-                ) : null}
-              </article>
-            );
-          })}
+          {groupLeads(leads ?? []).map((group) => (
+            <OutsideLeadCard key={group.key} lead={group.lead} locations={group.locations} arrow={arrow} />
+          ))}
         </div>
       </section>
     </>
+  );
+}
+
+// How many cities a grouped card lists before the rest fold under "Show N more".
+const LOCATIONS_SHOWN = 3;
+
+function LeadApply({ lead, arrow }: { lead: Lead; arrow: string }) {
+  const t = useT();
+  return outsideApplyUrl(lead.url) ? (
+    <OutsideApplyLink url={lead.url} source={lead.source} />
+  ) : (
+    <a className="src-apply src-apply-out" href="/job-scanner">{t("fw.apply")} {arrow}</a>
+  );
+}
+
+// One outside job. Listings with the same title and company in several cities share one card that
+// says "N locations"; each city keeps its own "Apply on <site>" link.
+function OutsideLeadCard({ lead, locations, arrow }: { lead: Lead; locations: readonly Lead[]; arrow: string }) {
+  const t = useT();
+  const pay = leadPay(lead);
+  const many = locations.length > 1;
+  const row = (l: Lead) => (
+    <li key={`${l.areaLabel}-${l.url ?? ""}`} className="fw-loc">
+      <bdi>{l.areaLabel}</bdi>
+      <LeadApply lead={l} arrow={arrow} />
+    </li>
+  );
+  return (
+    <article className="fw-card fw-card-out">
+      <OutsideSiteBadge />
+      <h3 dir="auto">{lead.title}</h3>
+      <p className="fw-meta">
+        {lead.employer ? <><bdi>{lead.employer}</bdi> · </> : null}
+        {many ? <strong>{t("fw.locations", { count: locations.length })}</strong> : <bdi>{lead.areaLabel}</bdi>}
+      </p>
+      {many ? (
+        <>
+          <span className={pay ? "fw-pay" : "fw-meta"} dir={pay ? "ltr" : undefined}>{pay ?? t("fw.payOnSite")}</span>
+          <ul className="fw-locs">{locations.slice(0, LOCATIONS_SHOWN).map(row)}</ul>
+          {locations.length > LOCATIONS_SHOWN ? (
+            <details className="fw-locs-more">
+              <summary>{t("fw.moreLocations", { count: locations.length - LOCATIONS_SHOWN })}</summary>
+              <ul className="fw-locs">{locations.slice(LOCATIONS_SHOWN).map(row)}</ul>
+            </details>
+          ) : null}
+        </>
+      ) : (
+        <div className="fw-row">
+          <span className={pay ? "fw-pay" : "fw-meta"} dir={pay ? "ltr" : undefined}>{pay ?? t("fw.payOnSite")}</span>
+          <LeadApply lead={lead} arrow={arrow} />
+        </div>
+      )}
+      <p className="fw-note">{t("fw.newTabNote")}</p>
+      {lead.source === "adzuna" ? (
+        <p className="fw-source">via <a href="https://www.adzuna.ca" target="_blank" rel="noopener noreferrer">Adzuna</a></p>
+      ) : null}
+    </article>
   );
 }
 
@@ -240,24 +279,20 @@ function MapTab({ jobs, city, applyHref }: { jobs: readonly PublicJob[] | null; 
   const t = useT();
   const [selected, setSelected] = useState<string | null>(null);
   const layout = useMemo(() => mapLayout(jobs ?? [], resolveKnownPlace(city)), [jobs, city]);
+  // One pin per city; it shows how many jobs the city has.
+  const pins: CityPin[] = useMemo(
+    () => layout.pins.map((p) => ({ id: p.place, latitude: p.latitude, longitude: p.longitude, label: p.place, count: p.count })),
+    [layout]
+  );
   if (jobs === null) return <p className="fw-note">{t("fw.loading")}</p>;
-  if (layout.pins.length === 0) return <p className="fw-note">{t("fw.mapEmpty")}</p>;
-  // One dot per city; its label says the city and how many jobs it has.
-  const pins: MapPin[] = layout.pins.map((p) => ({
-    jobRequestId: p.place,
-    latitude: p.latitude,
-    longitude: p.longitude,
-    label: `${p.place} (${p.count})`,
-    saved: false
-  }));
   const selectedPlace = selected && layout.pins.some((p) => p.place === selected) ? selected : null;
   const inPlace = selectedPlace ? jobs.filter((j) => layout.placeOf.get(j.jobCode) === selectedPlace) : [];
   return (
     <div className="fw-map">
       <div className="fw-map-frame">
-        <MarketplaceMap origin={layout.origin} pins={pins} selectedId={selected} onSelect={setSelected} radiusKm={layout.radiusKm} />
+        <QuebecJobsMap pins={pins} selectedId={selectedPlace} onSelect={setSelected} withQuebec={!city} />
       </div>
-      <p className="fw-note">{t("fw.mapNote")}</p>
+      {pins.length === 0 ? <p className="fw-note">{t("fw.mapEmpty")}</p> : <p className="fw-note">{t("fw.mapNote")}</p>}
       {layout.offMap > 0 ? <p className="fw-note">{t("fw.mapOffMap", { count: layout.offMap })}</p> : null}
       {selectedPlace ? (
         <section className="fw-sec" aria-live="polite">
@@ -268,9 +303,9 @@ function MapTab({ jobs, city, applyHref }: { jobs: readonly PublicJob[] | null; 
             ))}
           </div>
         </section>
-      ) : (
+      ) : pins.length > 0 ? (
         <p className="fw-note">{t("fw.mapPick")}</p>
-      )}
+      ) : null}
     </div>
   );
 }
