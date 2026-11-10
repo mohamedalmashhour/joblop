@@ -12,6 +12,7 @@ import { pricingCopy } from "./pricingContent";
 const locales = ["en-CA", "fr-CA", "ar"] as const;
 const allText = (locale: (typeof locales)[number]) => JSON.stringify(pricingCopy[locale]);
 const pageSource = readFileSync(join(__dirname, "publicPageStyles.tsx"), "utf8");
+const siteHeaderSource = readFileSync(join(__dirname, "..", "shared", "SiteHeader.tsx"), "utf8");
 
 describe("public /pricing", () => {
   it("has the same shape in English, French and Arabic", () => {
@@ -50,6 +51,8 @@ describe("public /pricing", () => {
       expect(text).not.toMatch(/margin|marge|commission|share of|hourly share|part horaire|حصة|هامش|عمولة|20 ?%/i);
       expect(text).not.toMatch(/placeholder|universal|tariff|authorization|settlement|payment integration|Stripe|4242/i);
     }
-    expect(pageSource).toContain("<LanguageSwitcher");
+    // The public header is the shared site header, which carries the EN/FR/ع switch.
+    expect(pageSource).toContain("<SiteHeader");
+    expect(siteHeaderSource).toContain("<LanguageSwitcher");
   });
 });

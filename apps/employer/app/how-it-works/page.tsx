@@ -1,101 +1,68 @@
 import type { CSSProperties } from "react";
-import { JobLopLogo } from "../JobLopLogo";
 import {
-  aiAssistance,
-  employerJourney,
-  lifecyclePhases,
-  trustLayer,
-  workerJourney
+  getHowItWorksContent,
+  responsibilityOwners,
+  type LocalizedPhase,
+  type OwnerKey
 } from "./howItWorksContent";
-import { PublicSiteFooter } from "../pricing/publicPageStyles";
+import { PublicSiteFooter, readPublicLocale } from "../pricing/publicPageStyles";
+import { SiteHeader } from "../shared/SiteHeader";
 
-type ResponsibilityGroup = (typeof lifecyclePhases)[number]["responsibilities"];
-const responsibilityOwners = ["Employer", "Worker", "Platform"] as const;
-
-export default function HowItWorksPage() {
+export default async function HowItWorksPage() {
+  const c = getHowItWorksContent(await readPublicLocale());
+  // Same rule as the home page: production keeps "contact us first".
+  const requestHref = process.env.RWOS_ENV === "production" ? "/contact" : "/signup/employer";
   return (
     <main style={styles.page}>
-      <header style={styles.header}>
-        <a href="/" style={styles.brand} aria-label="Joblop home"><JobLopLogo height={28} /></a>
-        <nav aria-label="Primary navigation" style={styles.nav}>
-          <a href="/about" style={styles.navLink}>
-            About
-          </a>
-          <a href="/how-it-works" style={styles.navLink} aria-current="page">
-            How it works
-          </a>
-          <a href="/pricing" style={styles.navLink}>
-            Pricing
-          </a>
-          <a href="/contact" style={styles.navLink}>
-            Contact
-          </a>
-          <a href="/signin" style={styles.navLink}>
-            Sign in
-          </a>
-        </nav>
-        <div style={styles.headerActions}>
-          <a href="/#workers" style={styles.secondaryButton}>
-            I want shifts
-          </a>
-          <a href="/signup/employer" style={styles.primaryButton}>
-            I need staff
-          </a>
-        </div>
-      </header>
+      <SiteHeader current="/how-it-works" />
 
       <section style={styles.hero}>
-        <p style={styles.eyebrow}>How Joblop works</p>
-        <h1 style={styles.title}>A clear staffing workflow for workers, employers, and operations.</h1>
-        <p style={styles.lede}>
-          This public page explains the process. It does not confirm availability, dispatch,
-          pricing, attendance, payroll, or payment.
-        </p>
+        <p style={styles.eyebrow}>{c.eyebrow}</p>
+        <h1 style={styles.title}>{c.title}</h1>
+        <p style={styles.lede}>{c.lede}</p>
         <div style={styles.heroActions}>
-          <a href="/signup/employer" style={styles.primaryButtonLarge}>
-            I need staff
+          <a href={requestHref} style={styles.primaryButtonLarge}>
+            {c.needStaff}
           </a>
           <a href="/#workers" style={styles.secondaryButtonLarge}>
-            I want shifts
+            {c.wantShifts}
           </a>
         </div>
       </section>
 
       <section aria-labelledby="journeys-title" style={styles.section}>
         <div style={styles.sectionHeader}>
-          <p style={styles.eyebrowDark}>Choose your path</p>
+          <p style={styles.eyebrow}>{c.pathEyebrow}</p>
           <h2 id="journeys-title" style={styles.sectionTitle}>
-            Workers and employers see different responsibilities inside one governed workflow.
+            {c.pathTitle}
           </h2>
         </div>
         <div style={styles.twoColumn}>
-          <JourneyCard title="For workers" steps={workerJourney} />
-          <JourneyCard title="For employers" steps={employerJourney} />
+          <JourneyCard title={c.forWorkers} steps={c.workerJourney} />
+          <JourneyCard title={c.forEmployers} steps={c.employerJourney} />
         </div>
       </section>
 
       <section aria-labelledby="lifecycle-title" style={styles.lifecycleSection}>
         <div style={styles.sectionHeader}>
-          <p style={styles.eyebrowDark}>Shared operating lifecycle</p>
+          <p style={styles.eyebrow}>{c.lifecycleEyebrow}</p>
           <h2 id="lifecycle-title" style={styles.sectionTitle}>
-            Before, during, and after the shift stay distinct.
+            {c.lifecycleTitle}
           </h2>
         </div>
         <div style={styles.phaseGrid}>
-          {lifecyclePhases.map((phase) => (
-            <article key={phase.title} style={styles.phaseCard}>
+          {c.phases.map((phase) => (
+            <article key={phase.key} style={styles.phaseCard}>
               <h3 style={styles.phaseTitle}>{phase.title}</h3>
-              <div style={styles.statusRow}>
+              <p style={styles.statusRow}>
+                <span style={styles.statusLabel}>{c.statusLabel}:</span>
                 {phase.statuses.map((status) => (
-                  <span key={status} style={styles.statusPill}>
+                  <span key={status} style={styles.statusChip}>
                     {status}
                   </span>
                 ))}
-              </div>
-              <ResponsibilityList
-                groups={phase.responsibilities}
-                idPrefix={phase.title.toLowerCase().replaceAll(" ", "-")}
-              />
+              </p>
+              <ResponsibilityList groups={phase.responsibilities} labels={c.ownerLabels} idPrefix={phase.key} />
             </article>
           ))}
         </div>
@@ -103,13 +70,13 @@ export default function HowItWorksPage() {
 
       <section aria-labelledby="ai-title" style={styles.aiSection}>
         <div style={styles.sectionHeader}>
-          <p style={styles.eyebrowDark}>AI assistance</p>
+          <p style={styles.eyebrow}>{c.aiEyebrow}</p>
           <h2 id="ai-title" style={styles.sectionTitle}>
-            AI recommendation, human review, final decision.
+            {c.aiTitle}
           </h2>
         </div>
         <div style={styles.aiGrid}>
-          {aiAssistance.map((item) => (
+          {c.aiAssistance.map((item) => (
             <article key={item} style={styles.aiCard}>
               <p style={styles.cardText}>{item}</p>
             </article>
@@ -119,13 +86,13 @@ export default function HowItWorksPage() {
 
       <section aria-labelledby="trust-title" style={styles.section}>
         <div style={styles.sectionHeader}>
-          <p style={styles.eyebrowDark}>Trust and recordkeeping</p>
+          <p style={styles.eyebrow}>{c.trustEyebrow}</p>
           <h2 id="trust-title" style={styles.sectionTitle}>
-            The workflow depends on reviewable records, not unsupported promises.
+            {c.trustTitle}
           </h2>
         </div>
         <div style={styles.pillGrid}>
-          {trustLayer.map((item) => (
+          {c.trustLayer.map((item) => (
             <span key={item} style={styles.pill}>
               {item}
             </span>
@@ -134,18 +101,18 @@ export default function HowItWorksPage() {
       </section>
 
       <section aria-labelledby="questions-title" style={styles.ctaBand}>
-        <div>
-          <p style={styles.eyebrowDark}>Common questions</p>
+        <div style={{ minWidth: 0 }}>
+          <p style={styles.eyebrow}>{c.questionsEyebrow}</p>
           <h2 id="questions-title" style={styles.sectionTitle}>
-            Need more detail before choosing a path?
+            {c.questionsTitle}
           </h2>
         </div>
         <div style={styles.ctaActions}>
           <a href="/faq" style={styles.primaryButton}>
-            View FAQ
+            {c.viewFaq}
           </a>
           <a href="/contact" style={styles.secondaryButton}>
-            Contact us
+            {c.contactUs}
           </a>
         </div>
       </section>
@@ -172,9 +139,11 @@ function JourneyCard({ steps, title }: { steps: readonly string[]; title: string
 
 function ResponsibilityList({
   groups,
+  labels,
   idPrefix
 }: {
-  groups: ResponsibilityGroup;
+  groups: LocalizedPhase["responsibilities"];
+  labels: Readonly<Record<OwnerKey, string>>;
   idPrefix: string;
 }) {
   return (
@@ -184,7 +153,7 @@ function ResponsibilityList({
         return (
           <section key={owner} aria-labelledby={headingId} style={styles.ownerBlock}>
             <h4 id={headingId} style={styles.ownerTitle}>
-              {owner}
+              {labels[owner]}
             </h4>
             <ul style={styles.itemList}>
               {groups[owner].map((item) => (
@@ -200,15 +169,20 @@ function ResponsibilityList({
   );
 }
 
+const GOLD = "#F8B808";
+const line = "1px solid rgba(248, 184, 8, 0.16)";
+
 const baseButton: CSSProperties = {
   alignItems: "center",
   borderRadius: 8,
+  boxSizing: "border-box",
   display: "inline-flex",
   fontSize: 15,
   fontWeight: 800,
   justifyContent: "center",
   minHeight: 44,
   padding: "0 16px",
+  textAlign: "center",
   textDecoration: "none"
 };
 
@@ -217,66 +191,22 @@ const styles: Record<string, CSSProperties> = {
     background: "#000000",
     color: "#f4efe4",
     fontFamily: "Inter, system-ui, sans-serif",
-    minHeight: "100vh"
+    minHeight: "100vh",
+    overflowWrap: "anywhere"
   },
-  header: {
-    alignItems: "center",
-    background: "#000000",
-    borderBottom: "1px solid rgba(248, 184, 8, 0.16)",
-    display: "flex",
-    flexWrap: "wrap",
-    gap: 16,
-    justifyContent: "space-between",
-    padding: "18px clamp(16px, 4vw, 40px)",
-    position: "sticky",
-    top: 0,
-    zIndex: 1
-  },
-  brand: {
-    color: "#f4efe4",
-    fontSize: 20,
-    fontWeight: 900,
-    textDecoration: "none"
-  },
-  nav: {
-    alignItems: "center",
-    display: "flex",
-    flexWrap: "wrap",
-    gap: 14
-  },
-  navLink: {
-    color: "#f4efe4",
-    fontSize: 14,
-    fontWeight: 700,
-    textDecoration: "none"
-  },
-  headerActions: {
-    display: "flex",
-    flexWrap: "wrap",
-    gap: 8
-  },
-  primaryButton: {
-    ...baseButton,
-    background: "#1b160e",
-    color: "#ffffff"
-  },
+  primaryButton: { ...baseButton, background: GOLD, color: "#000000" },
   secondaryButton: {
     ...baseButton,
-    background: "#0c0c0c",
+    background: "#000000",
+    border: "1px solid rgba(248, 184, 8, 0.34)",
     color: "#f4efe4"
   },
-  primaryButtonLarge: {
-    ...baseButton,
-    background: "#0c0c0c",
-    color: "#f4efe4",
-    minHeight: 52,
-    padding: "0 22px"
-  },
+  primaryButtonLarge: { ...baseButton, background: GOLD, color: "#000000", minHeight: 52, padding: "0 22px" },
   secondaryButtonLarge: {
     ...baseButton,
-    background: "transparent",
-    border: "1px solid rgba(248, 184, 8, 0.16)",
-    color: "#ffffff",
+    background: "#000000",
+    border: "1px solid rgba(248, 184, 8, 0.34)",
+    color: "#f4efe4",
     minHeight: 52,
     padding: "0 22px"
   },
@@ -288,182 +218,64 @@ const styles: Record<string, CSSProperties> = {
     padding: "clamp(34px, 7vw, 72px) clamp(16px, 4vw, 40px)"
   },
   eyebrow: {
-    color: "#fff8d8",
+    color: GOLD,
     fontSize: 13,
     fontWeight: 900,
     letterSpacing: 0,
-    margin: 0,
+    margin: "0 0 8px",
     textTransform: "uppercase"
   },
-  eyebrowDark: {
-    color: "#f4efe4",
+  title: { fontSize: "clamp(34px, 5vw, 58px)", lineHeight: 1.15, margin: 0, maxWidth: 900 },
+  lede: { color: "#f0e8d8", fontSize: 18, lineHeight: 1.6, margin: 0, maxWidth: 760 },
+  heroActions: { display: "flex", flexWrap: "wrap", gap: 12, marginTop: 8 },
+  section: { padding: "48px clamp(16px, 4vw, 40px)" },
+  sectionHeader: { display: "grid", gap: 0, marginBottom: 18, maxWidth: 880 },
+  sectionTitle: { color: "#f4efe4", fontSize: "clamp(26px, 4vw, 42px)", lineHeight: 1.18, margin: 0 },
+  twoColumn: { display: "grid", gap: 16, gridTemplateColumns: "repeat(auto-fit, minmax(min(260px, 100%), 1fr))" },
+  card: { background: "#0c0c0c", border: line, borderRadius: 8, padding: 20 },
+  cardTitle: { color: "#f4efe4", fontSize: 18, lineHeight: 1.3, margin: 0 },
+  cardText: { color: "#b3a894", fontSize: 14, lineHeight: 1.55, margin: 0 },
+  stepList: { display: "grid", gap: 10, margin: "16px 0 0", paddingInlineStart: 22 },
+  stepItem: { color: "#f4efe4", fontWeight: 700, lineHeight: 1.45 },
+  lifecycleSection: { background: "#000000", borderBottom: line, borderTop: line, padding: "48px clamp(16px, 4vw, 40px)" },
+  phaseGrid: { display: "grid", gap: 18 },
+  phaseCard: { background: "#0c0c0c", border: line, borderRadius: 8, padding: 20 },
+  phaseTitle: { color: "#f4efe4", fontSize: 24, lineHeight: 1.2, margin: 0 },
+  // Statuses are labels, not buttons: small, quiet pills with no border.
+  statusRow: { alignItems: "center", display: "flex", flexWrap: "wrap", gap: 6, margin: "10px 0 0" },
+  statusLabel: { color: "#b3a894", fontSize: 12, fontWeight: 700, marginInlineEnd: 4 },
+  statusChip: {
+    background: "rgba(248, 184, 8, 0.12)",
+    borderRadius: 999,
+    color: "#e8d9b0",
     fontSize: 12,
-    fontWeight: 900,
-    letterSpacing: 0,
-    margin: 0,
-    textTransform: "uppercase"
-  },
-  title: {
-    fontSize: "clamp(34px, 5vw, 58px)",
-    lineHeight: 1.04,
-    margin: 0,
-    maxWidth: 900
-  },
-  lede: {
-    color: "#f0e8d8",
-    fontSize: 18,
-    lineHeight: 1.6,
-    margin: 0,
-    maxWidth: 760
-  },
-  heroActions: {
-    display: "flex",
-    flexWrap: "wrap",
-    gap: 12,
-    marginTop: 8
-  },
-  section: {
-    padding: "48px clamp(16px, 4vw, 40px)"
-  },
-  sectionHeader: {
-    display: "grid",
-    gap: 8,
-    marginBottom: 18,
-    maxWidth: 880
-  },
-  sectionTitle: {
-    color: "#f4efe4",
-    fontSize: "clamp(26px, 4vw, 42px)",
-    lineHeight: 1.12,
-    margin: 0
-  },
-  twoColumn: {
-    display: "grid",
-    gap: 16,
-    gridTemplateColumns: "repeat(auto-fit, minmax(260px, 1fr))"
-  },
-  card: {
-    background: "#000000",
-    border: "1px solid rgba(248, 184, 8, 0.16)",
-    borderRadius: 8,
-    padding: 20
-  },
-  cardTitle: {
-    color: "#f4efe4",
-    fontSize: 18,
-    margin: 0
-  },
-  cardText: {
-    color: "#b3a894",
-    fontSize: 14,
-    lineHeight: 1.55,
-    margin: "8px 0 0"
-  },
-  stepList: {
-    display: "grid",
-    gap: 10,
-    margin: "16px 0 0",
-    paddingLeft: 22
-  },
-  stepItem: {
-    color: "#f4efe4",
-    fontWeight: 700,
-    lineHeight: 1.45
-  },
-  lifecycleSection: {
-    background: "#000000",
-    borderBottom: "1px solid rgba(248, 184, 8, 0.16)",
-    borderTop: "1px solid rgba(248, 184, 8, 0.16)",
-    padding: "48px clamp(16px, 4vw, 40px)"
-  },
-  phaseGrid: {
-    display: "grid",
-    gap: 18
-  },
-  phaseCard: {
-    background: "#000000",
-    border: "1px solid rgba(248, 184, 8, 0.16)",
-    borderRadius: 8,
-    padding: 20
-  },
-  phaseTitle: {
-    color: "#f4efe4",
-    fontSize: 24,
-    margin: 0,
-    textTransform: "capitalize"
-  },
-  statusRow: {
-    display: "flex",
-    flexWrap: "wrap",
-    gap: 8,
-    marginTop: 12
-  },
-  statusPill: {
-    background: "#0c0c0c",
-    border: "1px solid rgba(248, 184, 8, 0.16)",
-    borderRadius: 8,
-    color: "#f4efe4",
-    fontSize: 13,
-    fontWeight: 900,
-    padding: "8px 10px"
+    fontWeight: 600,
+    lineHeight: 1.4,
+    padding: "2px 10px"
   },
   responsibilityGrid: {
     display: "grid",
     gap: 14,
-    gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))",
+    gridTemplateColumns: "repeat(auto-fit, minmax(min(220px, 100%), 1fr))",
     marginTop: 18
   },
-  ownerBlock: {
-    background: "#000000",
-    border: "1px solid rgba(248, 184, 8, 0.16)",
-    borderRadius: 8,
-    padding: 16
-  },
-  ownerTitle: {
+  // Inner boxes: no border inside the bordered card, just a slightly lighter surface.
+  ownerBlock: { background: "#141210", borderRadius: 8, padding: 16 },
+  ownerTitle: { color: GOLD, fontSize: 15, margin: 0 },
+  itemList: { display: "grid", gap: 8, margin: "12px 0 0", paddingInlineStart: 18 },
+  item: { color: "#f4efe4", lineHeight: 1.45 },
+  aiSection: { background: "#0c0c0c", borderBottom: line, borderTop: line, padding: "48px clamp(16px, 4vw, 40px)" },
+  aiGrid: { display: "grid", gap: 12, gridTemplateColumns: "repeat(auto-fit, minmax(min(220px, 100%), 1fr))" },
+  aiCard: { background: "#141210", borderRadius: 8, padding: 18 },
+  pillGrid: { display: "flex", flexWrap: "wrap", gap: 10 },
+  pill: {
+    background: "#0c0c0c",
+    border: line,
+    borderRadius: 999,
     color: "#f4efe4",
     fontSize: 15,
-    margin: 0
-  },
-  itemList: {
-    display: "grid",
-    gap: 8,
-    margin: "12px 0 0",
-    paddingLeft: 18
-  },
-  item: {
-    color: "#f4efe4",
-    lineHeight: 1.45
-  },
-  aiSection: {
-    background: "#0c0c0c",
-    borderBottom: "1px solid rgba(248, 184, 8, 0.16)",
-    borderTop: "1px solid rgba(248, 184, 8, 0.16)",
-    padding: "48px clamp(16px, 4vw, 40px)"
-  },
-  aiGrid: {
-    display: "grid",
-    gap: 12,
-    gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))"
-  },
-  aiCard: {
-    background: "#000000",
-    border: "1px solid rgba(248, 184, 8, 0.16)",
-    borderRadius: 8,
-    padding: 18
-  },
-  pillGrid: {
-    display: "grid",
-    gap: 10,
-    gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))"
-  },
-  pill: {
-    background: "#000000",
-    border: "1px solid rgba(248, 184, 8, 0.16)",
-    borderRadius: 8,
-    color: "#f4efe4",
-    fontWeight: 900,
-    minHeight: 52,
-    padding: 16
+    fontWeight: 700,
+    padding: "10px 18px"
   },
   ctaBand: {
     alignItems: "center",
@@ -473,33 +285,5 @@ const styles: Record<string, CSSProperties> = {
     justifyContent: "space-between",
     padding: "48px clamp(16px, 4vw, 40px)"
   },
-  ctaActions: {
-    display: "flex",
-    flexWrap: "wrap",
-    gap: 10
-  },
-  footer: {
-    alignItems: "center",
-    background: "#1b160e",
-    color: "#ffffff",
-    display: "flex",
-    flexWrap: "wrap",
-    gap: 16,
-    justifyContent: "space-between",
-    padding: "28px clamp(16px, 4vw, 40px)"
-  },
-  footerLinks: {
-    display: "flex",
-    flexWrap: "wrap",
-    gap: 12
-  },
-  footerLink: {
-    color: "#ffffff",
-    fontWeight: 700,
-    textDecoration: "none"
-  },
-  footerNote: {
-    color: "#f0e8d8",
-    fontSize: 13
-  }
+  ctaActions: { display: "flex", flexWrap: "wrap", gap: 10 }
 };

@@ -98,7 +98,7 @@ export function SignInForm() {
   return (
     <>
       {step === "phone" ? (
-        <form style={styles.formGrid} onSubmit={(event) => void sendCode(event)}>
+        <form style={styles.authForm} onSubmit={(event) => void sendCode(event)}>
           <label style={styles.fieldLabel}>
             {t("auth.phone")}
             <input
@@ -112,7 +112,7 @@ export function SignInForm() {
             />
           </label>
           {status}
-          <div style={{ display: "flex", gap: "0.75rem", flexWrap: "wrap" }}>
+          <div style={styles.authActions}>
             <button type="submit" disabled={busy} style={styles.primaryButton}>
               {busy ? t("auth.sendingCode") : t("auth.textMeCode")}
             </button>
@@ -122,7 +122,7 @@ export function SignInForm() {
           </div>
         </form>
       ) : (
-        <form style={styles.formGrid} onSubmit={(event) => void verify(event)}>
+        <form style={styles.authForm} onSubmit={(event) => void verify(event)}>
           <label style={styles.fieldLabel}>
             {t("auth.codeLabel")}
             <input
@@ -137,7 +137,7 @@ export function SignInForm() {
             />
           </label>
           {status}
-          <div style={{ display: "flex", gap: "0.75rem", flexWrap: "wrap" }}>
+          <div style={styles.authActions}>
             <button type="submit" disabled={busy} style={styles.primaryButton}>
               {busy ? t("auth.signingIn") : t("auth.signIn")}
             </button>

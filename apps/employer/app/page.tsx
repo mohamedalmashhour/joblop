@@ -4,10 +4,8 @@ import { LOCALE_COOKIE, resolveEmployerLocale } from "./i18n/config";
 import { getLandingContent, type LandingContent } from "./landingContent";
 import { LogoIntro } from "./LogoIntro";
 import { VideoCard } from "./VideoCard";
-import { JobLopLogo } from "./JobLopLogo";
-import { HeaderNav } from "./HeaderNav";
+import { SiteHeader } from "./shared/SiteHeader";
 import { EmployerFlowMovie } from "./EmployerFlowMovie";
-import { LanguageSwitcher } from "./i18n/LanguageSwitcher";
 import { JobScannerBand } from "./JobScannerBand";
 import { PlatformLoopMovie } from "./PlatformLoopMovie";
 import { homeFaqAnchors } from "./faq/faqContent";
@@ -85,7 +83,7 @@ function PhoneMockup({ p }: { p: LandingContent["heroPhone"] }) {
         {p.prompt}
       </div>
       <div style={{ display: "grid", gap: 12 }}>
-        <div style={{ background: "#e0a500", color: "#fff", borderRadius: 14, padding: 16 }}>
+        <div style={{ background: "#f8b808", color: "#000000", borderRadius: 14, padding: 16 }}>
           <strong>{p.findWork}</strong>
           <div style={{ fontSize: 12, opacity: 0.85 }}>{p.findWorkSub}</div>
         </div>
@@ -148,7 +146,7 @@ const hx: Record<string, CSSProperties> = {
     width: 22,
     height: 22,
     borderRadius: 999,
-    background: "#e0a500",
+    background: "#f8b808",
     display: "inline-flex",
     alignItems: "center",
     justifyContent: "center",
@@ -156,8 +154,8 @@ const hx: Record<string, CSSProperties> = {
   },
   ctaRow: { display: "flex", gap: 14, margin: "28px 0 0", flexWrap: "wrap" },
   ctaPrimary: {
-    background: "#e0a500",
-    color: "#ffffff",
+    background: "#f8b808",
+    color: "#000000",
     padding: "15px 26px",
     borderRadius: 12,
     fontWeight: 700,
@@ -166,7 +164,7 @@ const hx: Record<string, CSSProperties> = {
     display: "inline-flex",
     alignItems: "center",
     gap: 10,
-    boxShadow: "0 14px 30px rgba(37,99,235,0.28)"
+    boxShadow: "0 14px 30px rgba(248, 184, 8, 0.22)"
   },
   ctaOutline: {
     background: "#000000",
@@ -286,22 +284,7 @@ export default async function LandingPage({ searchParams }: { searchParams?: Pro
           <span>{c.staging.noProdData}</span>
         </aside>
       ) : null}
-      <header style={{ ...styles.header, position: "relative" }}>
-        <a href="/" style={styles.brand} aria-label="Joblop home">
-          <JobLopLogo height={30} />
-        </a>
-        <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
-          <LanguageSwitcher />
-          <HeaderNav
-            ctaHref={isProduction ? "/contact" : "/signup/employer"}
-            ctaLabel={isProduction ? c.header.ctaRequestAccess : c.header.ctaGetStarted}
-            links={c.header.navLinks}
-            openLabel={c.header.openMenu}
-            closeLabel={c.header.closeMenu}
-            signIn={c.header.signIn}
-          />
-        </div>
-      </header>
+      <SiteHeader current="/" />
 
       <section style={hx.hero}>
         <div style={hx.heroCopy}>
@@ -310,7 +293,7 @@ export default async function LandingPage({ searchParams }: { searchParams?: Pro
             <br />
             {c.hero.line2}
             <br />
-            <span style={{ color: "#e0a500" }}>{c.hero.line3}</span>
+            <span style={{ color: "#f8b808" }}>{c.hero.line3}</span>
           </h1>
           <p style={hx.lede}>{c.hero.lede}</p>
           <ul style={hx.chips} aria-label="Why Joblop">
@@ -333,10 +316,10 @@ export default async function LandingPage({ searchParams }: { searchParams?: Pro
           </ul>
           <div style={hx.ctaRow}>
             <a href={workerAppUrl} style={hx.ctaPrimary}>
-              {c.hero.ctaWork} <span aria-hidden="true">→</span>
+              {c.hero.ctaWork} <span aria-hidden="true">{locale === "ar" ? "←" : "→"}</span>
             </a>
             <a href={hireHref} style={hx.ctaOutline}>
-              {c.hero.ctaHire} <span aria-hidden="true">→</span>
+              {c.hero.ctaHire} <span aria-hidden="true">{locale === "ar" ? "←" : "→"}</span>
             </a>
           </div>
           <div style={hx.storeWrap}>
@@ -504,7 +487,7 @@ export default async function LandingPage({ searchParams }: { searchParams?: Pro
       </section>
 
       <section aria-labelledby="ai-title" style={styles.aiSection}>
-        <div>
+        <div style={styles.centerHeader}>
           <p style={styles.eyebrowDark}>{c.ai.eyebrow}</p>
           <h2 id="ai-title" style={styles.sectionTitle}>
             {c.ai.title}
@@ -583,8 +566,8 @@ export default async function LandingPage({ searchParams }: { searchParams?: Pro
 
 function DashboardPreview({ d }: { d: LandingContent["dashboard"] }) {
   return (
-    <article style={styles.dashboardPreview} aria-label="Employer dashboard preview">
-      <div style={styles.sidebar}>
+    <article className="jl-dash" style={styles.dashboardPreview} aria-label="Employer dashboard preview">
+      <div className="jl-dash-side" style={styles.sidebar}>
         <strong>Joblop</strong>
         {d.nav.map((item, index) => (
           <span key={item} style={index === 0 ? styles.sidebarActive : styles.sidebarItem}>
@@ -593,7 +576,7 @@ function DashboardPreview({ d }: { d: LandingContent["dashboard"] }) {
         ))}
       </div>
       <div style={styles.dashboardCanvas}>
-        <div style={styles.dashboardTop}>
+        <div className="jl-dash-top" style={styles.dashboardTop}>
           <div>
             <h3 style={styles.dashboardTitle}>{d.welcome}</h3>
             <p style={styles.dashboardSub}>{d.org}</p>
@@ -638,7 +621,7 @@ function DashboardPreview({ d }: { d: LandingContent["dashboard"] }) {
 
 function WorkerPhonePreview({ rows }: { rows: LandingContent["workerPhone"] }) {
   return (
-    <article style={styles.phoneCluster} aria-label="Worker mobile app preview">
+    <article className="jl-phones" style={styles.phoneCluster} aria-label="Worker mobile app preview">
       {rows.map(([heading, detail, meta]) => (
         <div key={heading} style={styles.phone}>
           <div style={styles.phoneTop} />
@@ -787,7 +770,7 @@ const styles: Record<string, CSSProperties> = {
     maxWidth: 760
   },
   eyebrow: {
-    color: "#9a7122",
+    color: "#f8b808",
     fontSize: 13,
     fontWeight: 900,
     letterSpacing: 0,
@@ -795,11 +778,12 @@ const styles: Record<string, CSSProperties> = {
     textTransform: "uppercase"
   },
   eyebrowDark: {
-    color: "#9a7122",
+    color: "#f8b808",
     fontSize: 12,
     fontWeight: 900,
     letterSpacing: 0,
-    margin: 0,
+    lineHeight: 1.4,
+    margin: "0 0 10px",
     textTransform: "uppercase"
   },
   title: {
@@ -825,17 +809,17 @@ const styles: Record<string, CSSProperties> = {
   },
   primaryButtonLarge: {
     ...baseButton,
-    background: "#9a7122",
-    boxShadow: "0 14px 30px rgba(11, 74, 162, 0.22)",
-    color: "#ffffff",
+    background: "#f8b808",
+    boxShadow: "0 14px 30px rgba(248, 184, 8, 0.18)",
+    color: "#000000",
     minHeight: 54,
     padding: "0 24px"
   },
   secondaryButtonLarge: {
     ...baseButton,
-    background: "#0f7f56",
-    boxShadow: "0 14px 30px rgba(15, 127, 86, 0.18)",
-    color: "#ffffff",
+    background: "#000000",
+    border: "1px solid rgba(248, 184, 8, 0.34)",
+    color: "#f4efe4",
     minHeight: 54,
     padding: "0 24px"
   },
@@ -936,7 +920,7 @@ const styles: Record<string, CSSProperties> = {
   },
   centerHeader: {
     display: "grid",
-    gap: 10,
+    gap: 4,
     justifyItems: "center",
     margin: "0 auto 28px",
     maxWidth: 820,
@@ -946,7 +930,7 @@ const styles: Record<string, CSSProperties> = {
     color: "#f4efe4",
     fontSize: "clamp(28px, 4vw, 44px)",
     letterSpacing: 0,
-    lineHeight: 1.12,
+    lineHeight: 1.18,
     margin: 0
   },
   sectionCopy: {
@@ -1054,7 +1038,12 @@ const styles: Record<string, CSSProperties> = {
     padding: "56px clamp(20px, 5vw, 72px)"
   },
   previewIntro: {
-    maxWidth: 780
+    display: "grid",
+    gap: 12,
+    justifyItems: "center",
+    margin: "0 auto",
+    maxWidth: 780,
+    textAlign: "center"
   },
   previewGrid: {
     alignItems: "start",
@@ -1085,9 +1074,9 @@ const styles: Record<string, CSSProperties> = {
     fontWeight: 800
   },
   sidebarActive: {
-    background: "#9a7122",
+    background: "#f8b808",
     borderRadius: 8,
-    color: "#ffffff",
+    color: "#000000",
     fontSize: 12,
     fontWeight: 900,
     padding: "9px 8px"
@@ -1115,9 +1104,11 @@ const styles: Record<string, CSSProperties> = {
   },
   miniButton: {
     ...baseButton,
-    background: "#9a7122",
-    color: "#ffffff",
-    minHeight: 40
+    background: "#f8b808",
+    color: "#000000",
+    flexShrink: 0,
+    minHeight: 44,
+    whiteSpace: "nowrap"
   },
   metricGrid: {
     display: "grid",
@@ -1158,10 +1149,10 @@ const styles: Record<string, CSSProperties> = {
     padding: "10px 0"
   },
   statusGreen: {
-    color: "#0f7f56"
+    color: "#f8b808"
   },
   statusAmber: {
-    color: "#b36b00"
+    color: "#b3a894"
   },
   activityLine: {
     borderTop: "1px solid rgba(248, 184, 8, 0.16)",
@@ -1174,14 +1165,14 @@ const styles: Record<string, CSSProperties> = {
     alignItems: "end",
     display: "grid",
     gap: 18,
-    gridTemplateColumns: "repeat(auto-fit, minmax(120px, 1fr))"
+    gridTemplateColumns: "repeat(3, minmax(0, 1fr))"
   },
   phone: {
     background: "#000000",
     border: "7px solid rgba(248, 184, 8, 0.16)",
     borderRadius: 30,
     boxShadow: "0 18px 45px rgba(8, 31, 73, 0.16)",
-    minHeight: 286,
+    minHeight: 220,
     padding: "18px 14px"
   },
   phoneTop: {
@@ -1203,7 +1194,7 @@ const styles: Record<string, CSSProperties> = {
     margin: "14px 0"
   },
   phoneMeta: {
-    color: "#0f7f56",
+    color: "#f8b808",
     fontSize: 20
   },
   phoneNav: {
@@ -1348,8 +1339,8 @@ const styles: Record<string, CSSProperties> = {
   },
   lightButton: {
     ...baseButton,
-    background: "#000000",
-    color: "#f4efe4",
+    background: "#f8b808",
+    color: "#000000",
     minHeight: 48,
     padding: "0 22px"
   },

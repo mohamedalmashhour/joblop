@@ -421,6 +421,41 @@ export const styles: Record<string, CSSProperties> = {
     gap: 12,
     gridTemplateColumns: "repeat(auto-fit, minmax(230px, 1fr))"
   },
+  // Sign-in / sign-up: one field per row, buttons on their own row (never squeezed into a grid column).
+  authForm: {
+    display: "grid",
+    gap: 16,
+    gridTemplateColumns: "minmax(0, 1fr)",
+    maxWidth: 520
+  },
+  authActions: {
+    alignItems: "stretch",
+    display: "flex",
+    flexWrap: "wrap",
+    gap: 12
+  },
+  checkboxLabel: {
+    alignItems: "start",
+    color: "#f4efe4",
+    display: "grid",
+    fontSize: 14,
+    fontWeight: 700,
+    gap: 12,
+    gridTemplateColumns: "auto minmax(0, 1fr)",
+    lineHeight: 1.5
+  },
+  checkbox: {
+    accentColor: "#f8b808",
+    height: 22,
+    margin: 0,
+    width: 22
+  },
+  inlineLink: {
+    color: "#f8b808",
+    fontWeight: 800,
+    textDecoration: "underline",
+    textUnderlineOffset: 3
+  },
   fieldLabel: {
     alignContent: "start",
     color: "#f4efe4",
@@ -435,6 +470,8 @@ export const styles: Record<string, CSSProperties> = {
     borderRadius: radii.sm,
     color: text,
     font: "inherit",
+    // Labels are bold; the typed text and placeholders should not be.
+    fontWeight: 500,
     minHeight: 44,
     padding: "0 12px"
   },

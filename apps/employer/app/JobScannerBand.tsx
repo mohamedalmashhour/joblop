@@ -127,13 +127,13 @@ export async function JobScannerBand({ lang, q, workerAppUrl }: { lang: Lang; q:
               return (
                 <div key={`${l.title}-${i}`} className="scan-cell">
                 <a href={signUp} className="scan-card" title={t.gate}>
-                  <strong>{l.title}</strong>
+                  <strong dir="auto">{l.title}</strong>
                   <span className="scan-meta">
-                    {l.employer ? `${l.employer} · ` : ""}📍 {l.areaLabel}
+                    {l.employer ? <bdi>{l.employer}</bdi> : null}{l.employer ? " · " : ""}📍 <bdi>{l.areaLabel}</bdi>
                   </span>
                   <span className="scan-foot">
-                    {p ? <em>{p}</em> : <span />}
-                    <span className="scan-open">{t.open} →</span>
+                    {p ? <em dir="ltr">{p}</em> : <span />}
+                    <span className="scan-open">{t.open} {lang === "ar" ? "←" : "→"}</span>
                   </span>
                 </a>
                 {l.source === "adzuna" ? (

@@ -73,8 +73,9 @@ export default async function PricingPage() {
       <section aria-labelledby="cta-title" style={s.section}>
         <h2 id="cta-title" style={s.sectionTitle}>{c.ctaTitle}</h2>
         <div style={s.actions}>
-          <a href="/signin" style={s.primaryButton}>{c.ctaPrimary}</a>
-          <a href="/contact" style={s.secondaryButton}>{c.ctaSecondary}</a>
+          {/* New visitors start by contacting Joblop (owner rule); people with an account sign in. */}
+          <a href="/contact" style={s.primaryButton}>{c.ctaSecondary}</a>
+          <a href="/signin" style={s.secondaryButton}>{c.ctaPrimary}</a>
         </div>
         <a href="/faq" style={s.link}>{c.footerFaq}</a>
       </section>

@@ -1,78 +1,42 @@
 import type { CSSProperties } from "react";
-import { JobLopLogo } from "../JobLopLogo";
-import {
-  activeShiftIssues,
-  aiSupportBoundary,
-  attachmentWarnings,
-  contactPaths,
-  escalationTimeline,
-  faqPreview,
-  generalReasons,
-  immediateActions
-} from "./contactContent";
-import { PublicSiteFooter } from "../pricing/publicPageStyles";
+import { getContactContent } from "./contactContent";
+import { PublicSiteFooter, readPublicLocale } from "../pricing/publicPageStyles";
+import { SiteHeader } from "../shared/SiteHeader";
 
-export default function ContactPage() {
+export default async function ContactPage() {
+  const c = getContactContent(await readPublicLocale());
   return (
     <main style={styles.page}>
-      <header style={styles.header}>
-        <a href="/" style={styles.brand} aria-label="Joblop home"><JobLopLogo height={28} /></a>
-        <nav aria-label="Primary navigation" style={styles.nav}>
-          <a href="/about" style={styles.navLink}>
-            About
-          </a>
-          <a href="/how-it-works" style={styles.navLink}>
-            How it works
-          </a>
-          <a href="/pricing" style={styles.navLink}>
-            Pricing
-          </a>
-          <a href="/contact" style={styles.navLink} aria-current="page">
-            Contact
-          </a>
-          <a href="/faq" style={styles.navLink}>
-            FAQ
-          </a>
-          <a href="/signin" style={styles.navLink}>
-            Sign in
-          </a>
-        </nav>
-        <div style={styles.headerActions}>
-          <a href="#active-shift" style={styles.primaryButton}>
-            Active-shift help
-          </a>
-          <a href="#general-contact" style={styles.secondaryButton}>
-            General contact
-          </a>
-        </div>
-      </header>
+      <SiteHeader current="/contact" />
 
       <section style={styles.hero}>
-        <p style={styles.eyebrow}>Contact Joblop</p>
-        <h1 style={styles.title}>Choose the right support path so your request can be routed safely.</h1>
-        <p style={styles.lede}>
-          Joblop handles staffing and operational shift issues. Medical emergencies, threats
-          to immediate safety, or public-safety emergencies must use local emergency services.
-        </p>
+        <p style={styles.eyebrow}>{c.eyebrow}</p>
+        <h1 style={styles.title}>{c.title}</h1>
+        <p style={styles.lede}>{c.lede}</p>
+        <div style={styles.heroActions}>
+          <a href="#active-shift" style={styles.primaryButton}>
+            {c.activeShortcut}
+          </a>
+          <a href="#general-contact" style={styles.secondaryButton}>
+            {c.generalShortcut}
+          </a>
+        </div>
       </section>
 
       <section aria-labelledby="paths-title" style={styles.section}>
         <div style={styles.sectionHeader}>
-          <p style={styles.eyebrowDark}>Support paths</p>
+          <p style={styles.eyebrow}>{c.pathsEyebrow}</p>
           <h2 id="paths-title" style={styles.sectionTitle}>
-            Active-shift support is separate from ordinary contact.
+            {c.pathsTitle}
           </h2>
         </div>
         <div style={styles.twoColumn}>
-          {contactPaths.map((path) => (
-            <article key={path.title} style={styles.pathCard}>
+          {c.paths.map((path) => (
+            <article key={path.href} style={styles.pathCard}>
               <h3 style={styles.cardTitle}>{path.title}</h3>
               <p style={styles.cardText}>{path.text}</p>
-              <a
-                href={path.title.startsWith("Help") ? "#active-shift" : "#general-contact"}
-                style={styles.cardButton}
-              >
-                {path.title.startsWith("Help") ? "Start Active-Shift Support" : "Use General Contact"}
+              <a href={path.href} style={path.href === "#active-shift" ? styles.cardButton : styles.cardButtonSecondary}>
+                {path.button}
               </a>
             </article>
           ))}
@@ -81,53 +45,50 @@ export default function ContactPage() {
 
       <section id="active-shift" aria-labelledby="active-title" style={styles.activeSection}>
         <div style={styles.sectionHeader}>
-          <p style={styles.eyebrowDark}>Active-shift support</p>
+          <p style={styles.eyebrow}>{c.activeEyebrow}</p>
           <h2 id="active-title" style={styles.sectionTitle}>
-            Operational help for a current or imminent shift.
+            {c.activeTitle}
           </h2>
-          <p style={styles.sectionCopy}>
-            This route prepares or routes an operational case. It does not promise automatic
-            resolution, automatic replacement, worker discipline, or confirmed staffing.
-          </p>
+          <p style={styles.sectionCopy}>{c.activeCopy}</p>
         </div>
         <div style={styles.splitSection}>
-          <div>
-            <h3 style={styles.cardTitle}>Issue category</h3>
-            <div style={styles.pillGrid}>
-              {activeShiftIssues.map((issue) => (
-                <span key={issue} style={styles.pill}>
+          <div style={{ minWidth: 0 }}>
+            <h3 style={styles.cardTitle}>{c.issueCategory}</h3>
+            <ul style={styles.choiceList}>
+              {c.activeShiftIssues.map((issue) => (
+                <li key={issue} style={styles.choice}>
                   {issue}
-                </span>
+                </li>
               ))}
-            </div>
+            </ul>
           </div>
           <aside style={styles.panel}>
-            <h3 style={styles.cardTitle}>Active case panel</h3>
-            <p style={styles.cardText}>
-              Signed-in users may see authorized shift context. Signed-out users provide only the
-              minimum details needed to identify the shift.
-            </p>
-            <div style={styles.pillGrid}>
-              {immediateActions.map((action) => (
-                <span key={action} style={styles.panelPill}>
+            <h3 style={styles.cardTitle}>{c.panelTitle}</h3>
+            <p style={styles.cardText}>{c.panelText}</p>
+            <ul style={styles.choiceList}>
+              {c.immediateActions.map((action) => (
+                <li key={action} style={styles.panelChoice}>
                   {action}
-                </span>
+                </li>
               ))}
-            </div>
+            </ul>
           </aside>
         </div>
       </section>
 
       <section aria-labelledby="timeline-title" style={styles.section}>
         <div style={styles.sectionHeader}>
-          <p style={styles.eyebrowDark}>Case escalation timeline</p>
+          <p style={styles.eyebrow}>{c.timelineEyebrow}</p>
           <h2 id="timeline-title" style={styles.sectionTitle}>
-            Case status is visible, but resolution is not fabricated.
+            {c.timelineTitle}
           </h2>
         </div>
         <ol style={styles.timeline}>
-          {escalationTimeline.map((step) => (
+          {c.escalationTimeline.map((step, index) => (
             <li key={step} style={styles.timelineItem}>
+              <span aria-hidden="true" style={styles.stepNumber}>
+                {index + 1}
+              </span>
               {step}
             </li>
           ))}
@@ -136,81 +97,74 @@ export default function ContactPage() {
 
       <section id="general-contact" aria-labelledby="general-title" style={styles.whiteSection}>
         <div style={styles.sectionHeader}>
-          <p style={styles.eyebrowDark}>General contact</p>
+          <p style={styles.eyebrow}>{c.generalEyebrow}</p>
           <h2 id="general-title" style={styles.sectionTitle}>
-            Use this route for non-active-shift questions.
+            {c.generalTitle}
           </h2>
         </div>
         <div style={styles.formGrid}>
           <label style={styles.fieldLabel}>
-            Contact reason
+            {c.reasonLabel}
             <select defaultValue="" style={styles.input}>
               <option value="" disabled>
-                Select a reason
+                {c.reasonPlaceholder}
               </option>
-              {generalReasons.map((reason) => (
+              {c.generalReasons.map((reason) => (
                 <option key={reason}>{reason}</option>
               ))}
             </select>
           </label>
           <label style={styles.fieldLabel}>
-            User type
+            {c.userTypeLabel}
             <select defaultValue="" style={styles.input}>
               <option value="" disabled>
-                Select user type
+                {c.userTypePlaceholder}
               </option>
-              <option>Worker</option>
-              <option>Employer</option>
-              <option>Residence manager</option>
-              <option>Scheduler</option>
-              <option>Applicant</option>
-              <option>Visitor</option>
+              {c.userTypes.map((type) => (
+                <option key={type}>{type}</option>
+              ))}
             </select>
           </label>
           <label style={styles.fieldLabel}>
-            Subject
-            <input placeholder="Short summary" style={styles.input} />
+            {c.subjectLabel}
+            <input placeholder={c.subjectPlaceholder} style={styles.input} />
           </label>
           <label style={styles.fieldLabel}>
-            Preferred response method
-            <input placeholder="Email or secure in-app message when available" style={styles.input} />
+            {c.responseLabel}
+            <input placeholder={c.responsePlaceholder} style={styles.input} />
           </label>
         </div>
         <label style={styles.messageLabel}>
-          Message
-          <textarea placeholder="Describe what you need. Do not include passwords or full financial details." style={styles.textarea} />
+          {c.messageLabel}
+          <textarea placeholder={c.messagePlaceholder} style={styles.textarea} />
         </label>
-        <a href="mailto:support@joblop.ca?subject=Joblop%20support%20request" style={styles.primaryButton}>
-          Email Joblop support
+        <a href="mailto:support@joblop.ca?subject=Joblop%20support%20request" style={{ ...styles.primaryButton, marginTop: 14 }}>
+          {c.emailButton}
         </a>
-        <p style={styles.guardrail}>This opens your email app to reach Joblop support directly. Don&apos;t include passwords or full financial details.</p>
+        <p style={styles.guardrail}>{c.emailNote}</p>
       </section>
 
       <section aria-labelledby="guardrails-title" style={styles.section}>
         <div style={styles.sectionHeader}>
-          <p style={styles.eyebrowDark}>Replacement and privacy guardrails</p>
+          <p style={styles.eyebrow}>{c.guardrailsEyebrow}</p>
           <h2 id="guardrails-title" style={styles.sectionTitle}>
-            Support routes issues to governed workflows.
+            {c.guardrailsTitle}
           </h2>
-          <p style={styles.sectionCopy}>
-            Availability is not guaranteed. Matching may be AI-assisted, but a person or authorized
-            employer confirms final assignment. The original shift remains unresolved until a
-            replacement is confirmed.
-          </p>
+          <p style={styles.sectionCopy}>{c.guardrailsCopy}</p>
         </div>
       </section>
 
       <section aria-labelledby="attachments-title" style={styles.whiteSection}>
         <div style={styles.sectionHeader}>
-          <p style={styles.eyebrowDark}>Attachment rules</p>
+          <p style={styles.eyebrow}>{c.attachmentsEyebrow}</p>
           <h2 id="attachments-title" style={styles.sectionTitle}>
-            Sensitive material belongs in governed secure channels.
+            {c.attachmentsTitle}
           </h2>
         </div>
         <div style={styles.cardGrid}>
-          {attachmentWarnings.map((warning) => (
+          {c.attachmentWarnings.map((warning) => (
             <article key={warning} style={styles.card}>
-              <p style={styles.cardText}>{warning}</p>
+              <p style={styles.cardTextFlat}>{warning}</p>
             </article>
           ))}
         </div>
@@ -218,15 +172,15 @@ export default function ContactPage() {
 
       <section aria-labelledby="ai-title" style={styles.aiSection}>
         <div style={styles.sectionHeader}>
-          <p style={styles.eyebrowDark}>AI support boundary</p>
+          <p style={styles.eyebrow}>{c.aiEyebrow}</p>
           <h2 id="ai-title" style={styles.sectionTitle}>
-            AI can help classify support needs, but it cannot resolve governed workflows.
+            {c.aiTitle}
           </h2>
         </div>
         <div style={styles.cardGrid}>
-          {aiSupportBoundary.map((boundary) => (
+          {c.aiSupportBoundary.map((boundary) => (
             <article key={boundary} style={styles.card}>
-              <p style={styles.cardText}>{boundary}</p>
+              <p style={styles.cardTextFlat}>{boundary}</p>
             </article>
           ))}
         </div>
@@ -234,15 +188,15 @@ export default function ContactPage() {
 
       <section aria-labelledby="faq-title" style={styles.section}>
         <div style={styles.sectionHeader}>
-          <p style={styles.eyebrowDark}>FAQ preview</p>
+          <p style={styles.eyebrow}>{c.faqEyebrow}</p>
           <h2 id="faq-title" style={styles.sectionTitle}>
-            Common support questions before contacting us.
+            {c.faqTitle}
           </h2>
         </div>
         <div style={styles.cardGrid}>
-          {faqPreview.map((question) => (
+          {c.faqPreview.map((question) => (
             <article key={question} style={styles.card}>
-              <p style={styles.cardText}>{question}</p>
+              <p style={styles.cardTextFlat}>{question}</p>
             </article>
           ))}
         </div>
@@ -253,62 +207,92 @@ export default function ContactPage() {
   );
 }
 
+const GOLD = "#F8B808";
+const line = "1px solid rgba(248, 184, 8, 0.16)";
+const pad = "48px clamp(16px, 4vw, 40px)";
+
 const baseButton: CSSProperties = {
   alignItems: "center",
   borderRadius: 8,
+  boxSizing: "border-box",
   display: "inline-flex",
   fontSize: 15,
   fontWeight: 800,
   justifyContent: "center",
   minHeight: 44,
   padding: "0 16px",
+  textAlign: "center",
   textDecoration: "none"
 };
 
 const styles: Record<string, CSSProperties> = {
-  page: { background: "#000000", color: "#f4efe4", fontFamily: "Inter, system-ui, sans-serif", minHeight: "100vh" },
-  header: { alignItems: "center", background: "#000000", borderBottom: "1px solid rgba(248, 184, 8, 0.16)", display: "flex", flexWrap: "wrap", gap: 16, justifyContent: "space-between", padding: "18px clamp(16px, 4vw, 40px)", position: "sticky", top: 0, zIndex: 1 },
-  brand: { color: "#f4efe4", fontSize: 20, fontWeight: 900, textDecoration: "none" },
-  nav: { alignItems: "center", display: "flex", flexWrap: "wrap", gap: 14 },
-  navLink: { color: "#f4efe4", fontSize: 14, fontWeight: 700, textDecoration: "none" },
-  headerActions: { display: "flex", flexWrap: "wrap", gap: 8 },
-  primaryButton: { ...baseButton, background: "#1b160e", color: "#ffffff" },
-  secondaryButton: { ...baseButton, background: "#0c0c0c", color: "#f4efe4" },
-  cardButton: { ...baseButton, background: "#1b160e", color: "#ffffff", marginTop: 14 },
+  page: { background: "#000000", color: "#f4efe4", fontFamily: "Inter, system-ui, sans-serif", minHeight: "100vh", overflowWrap: "anywhere" },
+  primaryButton: { ...baseButton, background: GOLD, color: "#000000" },
+  secondaryButton: { ...baseButton, background: "#000000", border: "1px solid rgba(248, 184, 8, 0.34)", color: "#f4efe4" },
+  cardButton: { ...baseButton, background: GOLD, color: "#000000", marginTop: 14 },
+  cardButtonSecondary: { ...baseButton, background: "#000000", border: "1px solid rgba(248, 184, 8, 0.34)", color: "#f4efe4", marginTop: 14 },
   hero: { background: "#1b160e", color: "#ffffff", display: "grid", gap: 14, padding: "clamp(34px, 7vw, 72px) clamp(16px, 4vw, 40px)" },
-  eyebrow: { color: "#fff8d8", fontSize: 13, fontWeight: 900, letterSpacing: 0, margin: 0, textTransform: "uppercase" },
-  eyebrowDark: { color: "#f4efe4", fontSize: 12, fontWeight: 900, letterSpacing: 0, margin: 0, textTransform: "uppercase" },
-  title: { fontSize: "clamp(34px, 5vw, 58px)", lineHeight: 1.04, margin: 0, maxWidth: 920 },
+  heroActions: { display: "flex", flexWrap: "wrap", gap: 12, marginTop: 8 },
+  eyebrow: { color: GOLD, fontSize: 13, fontWeight: 900, letterSpacing: 0, margin: "0 0 8px", textTransform: "uppercase" },
+  title: { fontSize: "clamp(34px, 5vw, 58px)", lineHeight: 1.15, margin: 0, maxWidth: 920 },
   lede: { color: "#f0e8d8", fontSize: 18, lineHeight: 1.6, margin: 0, maxWidth: 820 },
-  section: { padding: "48px clamp(16px, 4vw, 40px)" },
-  activeSection: { background: "#0c0c0c", borderBottom: "1px solid rgba(248, 184, 8, 0.16)", borderTop: "1px solid rgba(248, 184, 8, 0.16)", padding: "48px clamp(16px, 4vw, 40px)" },
-  whiteSection: { background: "#000000", borderBottom: "1px solid rgba(248, 184, 8, 0.16)", borderTop: "1px solid rgba(248, 184, 8, 0.16)", padding: "48px clamp(16px, 4vw, 40px)" },
-  aiSection: { background: "#0c0c0c", borderBottom: "1px solid rgba(248, 184, 8, 0.16)", borderTop: "1px solid rgba(248, 184, 8, 0.16)", padding: "48px clamp(16px, 4vw, 40px)" },
-  sectionHeader: { display: "grid", gap: 8, marginBottom: 18, maxWidth: 900 },
-  sectionTitle: { color: "#f4efe4", fontSize: "clamp(26px, 4vw, 42px)", lineHeight: 1.12, margin: 0 },
-  sectionCopy: { color: "#b3a894", fontSize: 16, lineHeight: 1.6, margin: 0, maxWidth: 780 },
-  twoColumn: { display: "grid", gap: 16, gridTemplateColumns: "repeat(auto-fit, minmax(260px, 1fr))" },
-  splitSection: { display: "grid", gap: 22, gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))" },
-  pathCard: { background: "#000000", border: "1px solid rgba(248, 184, 8, 0.16)", borderRadius: 8, padding: 20 },
-  panel: { background: "#000000", border: "1px solid rgba(248, 184, 8, 0.16)", borderRadius: 8, padding: 20 },
-  cardGrid: { display: "grid", gap: 14, gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))" },
-  card: { background: "#000000", border: "1px solid rgba(248, 184, 8, 0.16)", borderRadius: 8, padding: 18 },
-  cardTitle: { color: "#f4efe4", fontSize: 18, margin: 0 },
-  cardText: { color: "#b3a894", fontSize: 14, fontWeight: 700, lineHeight: 1.55, margin: "8px 0 0" },
-  pillGrid: { display: "grid", gap: 10, gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))", marginTop: 14 },
-  pill: { background: "#000000", border: "1px solid rgba(248, 184, 8, 0.16)", borderRadius: 8, color: "#f4efe4", fontWeight: 900, padding: 14 },
-  panelPill: { background: "#0c0c0c", border: "1px solid rgba(248, 184, 8, 0.16)", borderRadius: 8, color: "#f4efe4", fontWeight: 900, padding: 14 },
-  timeline: { display: "grid", gap: 10, gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))", listStyle: "none", margin: 0, padding: 0 },
-  timelineItem: { background: "#000000", border: "1px solid rgba(248, 184, 8, 0.16)", borderRadius: 8, color: "#f4efe4", fontWeight: 900, padding: 16 },
-  formGrid: { display: "grid", gap: 12, gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))" },
-  fieldLabel: { color: "#f4efe4", display: "grid", fontSize: 14, fontWeight: 800, gap: 6 },
-  messageLabel: { color: "#f4efe4", display: "grid", fontSize: 14, fontWeight: 800, gap: 6, marginTop: 12 },
-  input: { border: "1px solid rgba(248, 184, 8, 0.16)", borderRadius: 8, color: "#f4efe4", font: "inherit", minHeight: 44, padding: "0 12px" },
-  textarea: { border: "1px solid rgba(248, 184, 8, 0.16)", borderRadius: 8, color: "#f4efe4", font: "inherit", minHeight: 120, padding: 12 },
-  disabledButton: { background: "#0c0c0c", border: 0, borderRadius: 8, color: "#f4efe4", fontWeight: 900, marginTop: 12, minHeight: 48, padding: "0 16px" },
-  guardrail: { color: "#f4efe4", fontSize: 14, fontWeight: 900, lineHeight: 1.5, margin: "12px 0 0" },
-  footer: { alignItems: "center", background: "#1b160e", color: "#ffffff", display: "flex", flexWrap: "wrap", gap: 16, justifyContent: "space-between", padding: "28px clamp(16px, 4vw, 40px)" },
-  footerLinks: { display: "flex", flexWrap: "wrap", gap: 12 },
-  footerLink: { color: "#ffffff", fontWeight: 700, textDecoration: "none" },
-  footerNote: { color: "#f0e8d8", fontSize: 13 }
+  section: { padding: pad },
+  activeSection: { background: "#0c0c0c", borderBottom: line, borderTop: line, padding: pad },
+  whiteSection: { background: "#000000", borderBottom: line, borderTop: line, padding: pad },
+  aiSection: { background: "#0c0c0c", borderBottom: line, borderTop: line, padding: pad },
+  sectionHeader: { display: "grid", gap: 0, marginBottom: 18, maxWidth: 900 },
+  sectionTitle: { color: "#f4efe4", fontSize: "clamp(26px, 4vw, 42px)", lineHeight: 1.18, margin: 0 },
+  sectionCopy: { color: "#b3a894", fontSize: 16, lineHeight: 1.6, margin: "12px 0 0", maxWidth: 780 },
+  twoColumn: { display: "grid", gap: 16, gridTemplateColumns: "repeat(auto-fit, minmax(min(260px, 100%), 1fr))" },
+  splitSection: { display: "grid", gap: 22, gridTemplateColumns: "repeat(auto-fit, minmax(min(280px, 100%), 1fr))" },
+  pathCard: { background: "#0c0c0c", border: line, borderRadius: 8, display: "grid", alignContent: "start", justifyItems: "start", padding: 20 },
+  panel: { background: "#000000", border: line, borderRadius: 8, minWidth: 0, padding: 20 },
+  cardGrid: { display: "grid", gap: 14, gridTemplateColumns: "repeat(auto-fit, minmax(min(220px, 100%), 1fr))" },
+  card: { background: "#0c0c0c", border: line, borderRadius: 8, padding: 18 },
+  cardTitle: { color: "#f4efe4", fontSize: 18, lineHeight: 1.3, margin: 0 },
+  cardText: { color: "#b3a894", fontSize: 14, lineHeight: 1.55, margin: "8px 0 0" },
+  cardTextFlat: { color: "#f0e8d8", fontSize: 14, lineHeight: 1.55, margin: 0 },
+  // Issue categories and immediate actions are a list of choices, not big buttons: light rows.
+  choiceList: {
+    display: "grid",
+    gap: 6,
+    gridTemplateColumns: "repeat(auto-fit, minmax(min(220px, 100%), 1fr))",
+    listStyle: "none",
+    margin: "14px 0 0",
+    padding: 0
+  },
+  choice: {
+    alignItems: "center",
+    background: "#141210",
+    borderRadius: 6,
+    borderInlineStart: `3px solid ${GOLD}`,
+    color: "#f0e8d8",
+    display: "flex",
+    fontSize: 14,
+    fontWeight: 600,
+    lineHeight: 1.35,
+    minHeight: 44,
+    padding: "8px 12px"
+  },
+  panelChoice: {
+    alignItems: "center",
+    background: "#141210",
+    borderRadius: 6,
+    color: "#f0e8d8",
+    display: "flex",
+    fontSize: 14,
+    fontWeight: 600,
+    lineHeight: 1.35,
+    minHeight: 44,
+    padding: "8px 12px"
+  },
+  timeline: { display: "grid", gap: 10, gridTemplateColumns: "repeat(auto-fit, minmax(min(180px, 100%), 1fr))", listStyle: "none", margin: 0, padding: 0 },
+  timelineItem: { alignItems: "center", background: "#0c0c0c", border: line, borderRadius: 8, color: "#f4efe4", display: "flex", fontWeight: 700, gap: 10, padding: 14 },
+  stepNumber: { alignItems: "center", background: GOLD, borderRadius: 999, color: "#000000", display: "inline-flex", flexShrink: 0, fontSize: 13, fontWeight: 900, height: 26, justifyContent: "center", width: 26 },
+  formGrid: { display: "grid", gap: 14, gridTemplateColumns: "repeat(auto-fit, minmax(min(240px, 100%), 1fr))" },
+  fieldLabel: { color: "#f4efe4", display: "grid", fontSize: 14, fontWeight: 800, gap: 8, minWidth: 0 },
+  messageLabel: { color: "#f4efe4", display: "grid", fontSize: 14, fontWeight: 800, gap: 8, marginTop: 14 },
+  input: { background: "#000000", border: "1px solid rgba(248, 184, 8, 0.6)", borderRadius: 8, boxSizing: "border-box", color: "#f4efe4", font: "inherit", fontWeight: 500, minHeight: 48, padding: "0 12px", width: "100%" },
+  textarea: { background: "#000000", border: "1px solid rgba(248, 184, 8, 0.6)", borderRadius: 8, boxSizing: "border-box", color: "#f4efe4", font: "inherit", fontWeight: 500, minHeight: 120, padding: 12, width: "100%" },
+  guardrail: { color: "#b3a894", fontSize: 14, fontWeight: 600, lineHeight: 1.5, margin: "12px 0 0" }
 };
