@@ -5,6 +5,7 @@ import {
   accountPenaltyEmail,
   assignedJobEmail,
   describeShiftChange,
+  notifyWorkerAssigned,
   notifyWorkerPayoutPaid,
   notifyWorkerPayoutRegistered,
   notifyWorkersShiftCancelled,
@@ -104,6 +105,36 @@ describe("assigned job email address", () => {
 
   it("omits the line when the worksite has no address on file", () => {
     expect(assignedJobEmail({ ...base, language: "en", address: null }).text).not.toContain("Where:");
+  });
+});
+
+describe("shift confirmed notice (worker got the job)", () => {
+  const job = { title: "Farm help", startAt: new Date("2026-11-12T13:00:00Z"), roleDefinition: null, residence: { addressLine1: "901 Avenue du Parc", city: "Laval", province: "QC" }, calendarProfile: null };
+  const prismaFor = (user: Record<string, unknown> | null) =>
+    ({ user: { findUnique: async () => user }, jobRequest: { findUnique: async () => job } }) as never;
+  const emailSender = (sent: string[]) => ({ configured: true, async send(m: EmailMessage) { sent.push(m.to); return { status: "sent", id: "e" } as const; } });
+  const smsSender = (sent: string[]) => ({ configured: true, enabled: true, async send(m: SmsMessage) { sent.push(m.to); return { status: "sent", id: "s" } as const; } });
+
+  it("texts a phone-only worker even with no email on file", async () => {
+    const emails: string[] = [];
+    const texts: string[] = [];
+    const res = await notifyWorkerAssigned(prismaFor({ emailNormalized: null, phone: "+15145550000", primaryLanguage: "fr" }), emailSender(emails), smsSender(texts), { userId: "u1", jobRequestId: "j1" });
+    expect(res).toEqual({ status: "sent" });
+    expect(texts).toEqual(["+15145550000"]);
+    expect(emails).toEqual([]);
+  });
+
+  it("sends both the email and the text when both are on file", async () => {
+    const emails: string[] = [];
+    const texts: string[] = [];
+    await notifyWorkerAssigned(prismaFor({ emailNormalized: "w@x.test", phone: "+15145550000", primaryLanguage: "en" }), emailSender(emails), smsSender(texts), { userId: "u1", jobRequestId: "j1" });
+    expect(emails).toEqual(["w@x.test"]);
+    expect(texts).toEqual(["+15145550000"]);
+  });
+
+  it("is no_recipient only when there is neither an email nor a phone", async () => {
+    const res = await notifyWorkerAssigned(prismaFor({ emailNormalized: null, phone: null, primaryLanguage: "en" }), emailSender([]), smsSender([]), { userId: "u1", jobRequestId: "j1" });
+    expect(res).toEqual({ status: "no_recipient" });
   });
 });
 

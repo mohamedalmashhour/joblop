@@ -72,7 +72,7 @@ describe("shift reminder sweep", () => {
     expect(marked).toEqual(["a1"]);
   });
 
-  it("skips a row with no email and does not mark it", async () => {
+  it("skips a row with no email and no phone and does not mark it", async () => {
     const email = fakeEmail();
     const { prisma, marked } = fakePrisma([
       { id: "a2", confirmedTitle: "x", confirmedStartAt: soon, workerIdentity: { user: null } }
@@ -80,6 +80,24 @@ describe("shift reminder sweep", () => {
     const metrics = await runShiftReminderSweep({ prisma, emailSender: email.sender });
     expect(metrics).toEqual({ scanned: 1, reminded: 0, skipped: 1, failed: 0 });
     expect(marked).toEqual([]);
+  });
+
+  it("texts a phone-only worker with no email and marks them reminded", async () => {
+    const email = fakeEmail();
+    const sms = fakeSms(true);
+    const { prisma, marked } = fakePrisma([
+      {
+        id: "a4",
+        confirmedTitle: "Farm help",
+        confirmedStartAt: soon,
+        workerIdentity: { user: { emailNormalized: null, phone: "+15145559999", primaryLanguage: "fr" } }
+      }
+    ]);
+    const metrics = await runShiftReminderSweep({ prisma, emailSender: email.sender, smsSender: sms.sender });
+    expect(metrics).toEqual({ scanned: 1, reminded: 1, skipped: 0, failed: 0 });
+    expect(email.sent).toEqual([]);
+    expect(sms.sent).toEqual(["+15145559999"]);
+    expect(marked).toEqual(["a4"]);
   });
 
   it("does not send SMS when the sender is disabled (money gate)", async () => {

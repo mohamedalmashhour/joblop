@@ -64,16 +64,20 @@ export async function runShiftReminderSweep(deps: {
   for (const assignment of due) {
     try {
       const user = assignment.workerIdentity?.user;
+      // Workers sign in by phone, so many have no email: the reminder text must not depend on one.
       const email = user?.emailNormalized;
-      if (!email) {
+      const textable = Boolean(deps.smsSender && user?.phone && sendsText("shift_reminder"));
+      if (!email && !textable) {
         skipped += 1;
         continue;
       }
       const language = resolveWorkerLanguage(user?.primaryLanguage);
-      await deps.emailSender.send(
-        shiftReminderEmail({ to: email, language, title: assignment.confirmedTitle, startAt: assignment.confirmedStartAt })
-      );
-      if (deps.smsSender && user?.phone && sendsText("shift_reminder")) {
+      if (email) {
+        await deps.emailSender.send(
+          shiftReminderEmail({ to: email, language, title: assignment.confirmedTitle, startAt: assignment.confirmedStartAt })
+        );
+      }
+      if (textable && deps.smsSender && user?.phone) {
         await deps.smsSender
           .send({
             to: user.phone,
