@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { usePageText } from "../i18n/pageText";
 import { disputesText } from "./text";
+import { SignedOut } from "../shared/SignedOut";
 
 type Dispute = Readonly<{
   id: string;
@@ -60,7 +61,7 @@ export function WorkerDisputesPanel() {
   }, [notes, load, t]);
 
   if (state.status === "loading") return <p style={styles.text}>{t.loading}</p>;
-  if (state.status === "denied") return <p style={styles.text}>{t.denied} <a href="/signin" style={{ color: "#fff1a8" }}>{t.signInAgain}</a>.</p>;
+  if (state.status === "denied") return <SignedOut compact />;
   if (state.status === "error") return <p style={styles.text}>{t.error}</p>;
 
   return (

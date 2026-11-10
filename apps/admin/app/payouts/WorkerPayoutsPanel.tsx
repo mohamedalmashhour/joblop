@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from "react";
 import { usePageText } from "../i18n/pageText";
 import { canSendTestPayout, payoutStatusLabel, type StaffPayout } from "./payoutCopy";
 import { payoutsText } from "./text";
+import { SignedOut } from "../shared/SignedOut";
 
 type State =
   | { status: "loading" }
@@ -62,7 +63,7 @@ export function WorkerPayoutsPanel() {
   }, [load, t]);
 
   if (state.status === "loading") return <p style={styles.text}>{t.loading}</p>;
-  if (state.status === "denied") return <p style={styles.text}>{t.denied}</p>;
+  if (state.status === "denied") return <SignedOut compact />;
   if (state.status === "error") return <p style={styles.text}>{t.error}</p>;
 
   return (

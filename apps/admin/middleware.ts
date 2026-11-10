@@ -13,7 +13,7 @@ export async function middleware(request: NextRequest) {
   }
   if (isConnectedRuntimeEnvironment() && isProtectedAdminPage(request.nextUrl.pathname)) {
     const token = request.cookies.get("__Host-rwos_admin_session")?.value;
-    if (!token) return NextResponse.redirect(new URL("/signin", request.url));
+    if (!token) return NextResponse.redirect(signInWithReturn(request));
     const origin = process.env.INTERNAL_API_ORIGIN;
     if (!origin) return new NextResponse("Service Unavailable", { status: 503 });
     try {
@@ -24,7 +24,7 @@ export async function middleware(request: NextRequest) {
       });
       if (!authorization.ok) {
         return authorization.status === 401 || authorization.status === 403
-          ? NextResponse.redirect(new URL("/signin", request.url))
+          ? NextResponse.redirect(signInWithReturn(request))
           : new NextResponse("Service Unavailable", { status: 503 });
       }
       if (!hasPlatformAdminAuthorization(await authorization.json())) {
@@ -39,6 +39,14 @@ export async function middleware(request: NextRequest) {
     response.headers.set("strict-transport-security", "max-age=31536000; includeSubDomains");
   }
   return response;
+}
+
+// Sign-in page with a return path back to the protected page (same-site path only; the sign-in
+// form checks it again before using it).
+function signInWithReturn(request: NextRequest) {
+  const url = new URL("/signin", request.url);
+  url.searchParams.set("next", `${request.nextUrl.pathname}${request.nextUrl.search}`);
+  return url;
 }
 
 export function isConnectedRuntimeEnvironment(value = process.env.RWOS_ENV) {

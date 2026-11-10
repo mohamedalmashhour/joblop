@@ -5,6 +5,7 @@ import { REQUIRED_CERTIFICATE_KEYS, certificateKeyForDocumentType, certificateLa
 import { usePageText } from "../../../i18n/pageText";
 import { useLocale } from "../../../i18n/LocaleProvider";
 import { hrText } from "../../text";
+import { SignedOut } from "../../../shared/SignedOut";
 
 type Profile = { standing: string; standingReason: string | null };
 type Cred = { id: string; credentialType: string; issuer: string | null; expiresAt: string | null; status: string; effectiveStatus: string; supersededById: string | null };
@@ -115,7 +116,7 @@ export function HrWorkerPanel({ workerIdentityId }: { workerIdentityId: string }
   }, [load, t]);
 
   if (status === "loading") return <main style={styles.page}><p aria-live="polite">{t.loading}</p></main>;
-  if (status === "denied") return <main style={styles.page}><p>{ht.denied}</p></main>;
+  if (status === "denied") return <main style={styles.page}><SignedOut compact /></main>;
   if (status === "unavailable" || !record) return <main style={styles.page}><p role="alert">{t.unavailable} <button style={styles.btn} onClick={() => void load()}>{ht.retry}</button></p></main>;
 
   const changeStanding = async () => {

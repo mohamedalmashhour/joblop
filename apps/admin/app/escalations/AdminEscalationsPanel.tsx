@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
+import { SignedOut } from "../shared/SignedOut";
 
 type Escalation = Readonly<{
   id: string;
@@ -52,7 +53,7 @@ export function AdminEscalationsPanel() {
   }, [notes, load]);
 
   if (state.status === "loading") return <p style={styles.text}>Loading owner escalations.</p>;
-  if (state.status === "denied") return <p style={styles.text}>Administrator access required.</p>;
+  if (state.status === "denied") return <SignedOut compact />;
   if (state.status === "error") return <p style={styles.text}>The escalation queue could not be reached.</p>;
   if (state.items.length === 0) return <p style={styles.text}>No open escalations. The owners are all caught up.</p>;
 

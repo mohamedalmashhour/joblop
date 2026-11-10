@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useState } from "react";
+import { SignedOut } from "../shared/SignedOut";
 
 type DistanceSurcharge = Readonly<{ billableKm: number; gasMinor: number; travelTimeMinor: number; totalMinor: number }>;
 type Quote = Readonly<{
@@ -30,6 +31,7 @@ export function VariablePriceQuotePanel() {
   });
   const [quote, setQuote] = useState<Quote | null>(null);
   const [message, setMessage] = useState("");
+  const [signedOut, setSignedOut] = useState(false);
   const [busy, setBusy] = useState(false);
 
   const set = (k: keyof typeof form) => (v: string) => setForm((f) => ({ ...f, [k]: v }));
@@ -60,7 +62,7 @@ export function VariablePriceQuotePanel() {
         headers: { "content-type": "application/json" },
         body: JSON.stringify(body)
       });
-      if (res.status === 401 || res.status === 403) { setMessage("Administrator access required."); return; }
+      if (res.status === 401 || res.status === 403) { setMessage(""); setSignedOut(true); return; }
       if (!res.ok) { setMessage("The quote could not be computed."); return; }
       setQuote(((await res.json()) as { quote: Quote }).quote);
     } catch {
@@ -70,6 +72,7 @@ export function VariablePriceQuotePanel() {
     }
   }, [form]);
 
+  if (signedOut) return <SignedOut compact />;
   return (
     <section style={styles.wrap}>
       <article style={styles.card}>

@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import { usePageText } from "../i18n/pageText";
 import { minorToDollars, toRoleRates, type CatalogueGroup, type CatalogueRole } from "./rateCard";
 import { contractsText } from "./text";
+import { SignedOut } from "../shared/SignedOut";
 
 type Organization = Readonly<{ id: string; displayName: string }>;
 type Contract = Readonly<{
@@ -79,7 +80,7 @@ export function EmployerContractsPanel() {
   }
 
   if (state.status === "denied") {
-    return <section style={styles.wrap}><p style={styles.text}>{t.denied}</p></section>;
+    return <SignedOut compact />;
   }
 
   const blocked = busy || preview.rates.length === 0 || preview.invalid.length > 0;

@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
+import { SignedOut } from "../shared/SignedOut";
 
 type Role = Readonly<{ id: string; displayLabel: string }>;
 type Reference = Readonly<{ id: string; roleDefinitionId: string; province: string; medianHourlyRateMinor: number; currency: string; source: string | null; updatedAt: string }>;
@@ -65,7 +66,7 @@ export function AdminMarketWagesPanel() {
   }, [form, load]);
 
   if (state.status === "loading") return <p style={styles.text}>Loading market-wage references.</p>;
-  if (state.status === "denied") return <p style={styles.text}>Administrator access required.</p>;
+  if (state.status === "denied") return <SignedOut compact />;
   if (state.status === "error") return <p style={styles.text}>The market-wage references could not be reached.</p>;
 
   const roleLabel = (id: string) => roles.find((r) => r.id === id)?.displayLabel ?? id.slice(0, 8);

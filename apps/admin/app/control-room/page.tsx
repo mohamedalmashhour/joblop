@@ -2,6 +2,9 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
+import { SignedOut } from "../shared/SignedOut";
+
+const SIGNED_OUT = "signed-out";
 
 // Control Room landing — a live list of transactions (from the existing
 // /api/calendar/requests BFF), each linking into its audit view + report, plus a
@@ -41,7 +44,7 @@ export default function ControlRoomLanding() {
 
   useEffect(() => {
     fetch("/api/calendar/requests")
-      .then(async (r) => (r.ok ? r.json() : Promise.reject(r.status === 401 ? "Sign in to view transactions." : `Could not load transactions (HTTP ${r.status}).`)))
+      .then(async (r) => (r.ok ? r.json() : Promise.reject(r.status === 401 || r.status === 403 ? SIGNED_OUT : `Could not load transactions (HTTP ${r.status}).`)))
       .then((j) => {
         const rows: Row[] = Array.isArray(j?.requests) ? j.requests : [];
         setLoad(rows.length ? { state: "ready", rows } : { state: "empty" });
@@ -74,7 +77,8 @@ export default function ControlRoomLanding() {
         <div style={{ fontSize: 12, letterSpacing: 1, textTransform: "uppercase", color: C.muted, margin: "0 2px 10px" }}>Transactions</div>
 
         {load.state === "loading" && <div style={{ color: C.faint, fontSize: 13, padding: "8px 2px" }}>Loading transactions…</div>}
-        {load.state === "error" && <div style={{ color: C.hold, fontSize: 13, padding: "8px 2px" }}>{load.reason}</div>}
+        {load.state === "error" && load.reason === SIGNED_OUT && <SignedOut compact />}
+        {load.state === "error" && load.reason !== SIGNED_OUT && <div style={{ color: C.hold, fontSize: 13, padding: "8px 2px" }}>{load.reason}</div>}
         {load.state === "empty" && <div style={{ color: C.faint, fontSize: 13, padding: "8px 2px" }}>No transactions yet. Open one by id above.</div>}
 
         {load.state === "ready" && (

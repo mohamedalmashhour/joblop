@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { usePageText } from "../../i18n/pageText";
 import { ordersText } from "../text";
+import { SignedOut } from "../../shared/SignedOut";
 
 type Child = Readonly<{
   jobRequestId: string;
@@ -130,7 +131,7 @@ export function AdminOrderReviewPanel({ orderId }: Readonly<{ orderId: string }>
   }, [orderId, inputs, load, t]);
 
   if (state.status === "loading") return <p style={styles.text}>{t.orderLoading}</p>;
-  if (state.status === "denied") return <p style={styles.text}>{t.orderDenied}</p>;
+  if (state.status === "denied") return <SignedOut compact />;
   if (state.status === "error") return <p style={styles.text}>{t.orderError}</p>;
 
   const order = state.order;

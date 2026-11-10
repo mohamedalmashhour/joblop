@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { usePageText } from "../i18n/pageText";
 import { planOrdersText, type PlanOrdersCopy } from "./text";
+import { SignedOut } from "../shared/SignedOut";
 
 // Staff queue for employer fees paid by Interac e-transfer: short-term plans and long-term job
 // listings. "Waiting" lists open orders (and orders the employer canceled after saying the money was
@@ -145,7 +146,7 @@ function OrdersPanel({ kind, view, copy }: Readonly<{ kind: Kind; view: View; co
   );
 
   if (state === "loading") return <p style={styles.text}>{copy.loading}</p>;
-  if (state === "denied") return kind === "plan" ? <p style={styles.text}>{copy.denied}</p> : null;
+  if (state === "denied") return kind === "plan" ? <SignedOut compact /> : null;
   if (state === "off") return kind === "plan" ? <p style={styles.text}>{copy.off}</p> : null;
   if (state === "error") return <p style={styles.text}>{copy.error}</p>;
 

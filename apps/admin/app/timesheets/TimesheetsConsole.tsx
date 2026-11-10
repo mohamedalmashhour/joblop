@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState, type CSSProperties } from "react";
+import { SignedOut } from "../shared/SignedOut";
 
 type Ready = Readonly<{
   attendanceRecordId: string;
@@ -63,7 +64,7 @@ export function TimesheetsConsole() {
   }, [load]);
 
   if (!queue) return <main style={s.page}><p>Loading timesheets…</p></main>;
-  if (denied) return <main style={s.page}><p>Timesheet authority is required to view this page.</p></main>;
+  if (denied) return <main style={s.page}><SignedOut compact /></main>;
 
   return (
     <main style={s.page}>

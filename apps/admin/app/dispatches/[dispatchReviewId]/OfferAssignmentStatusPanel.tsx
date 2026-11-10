@@ -10,6 +10,7 @@ import {
   type AdminAssignmentSummary,
   type AdminWorkerOfferSummary
 } from "../../api/dispatches/offerAssignmentBoundary";
+import { SignedOut } from "../../shared/SignedOut";
 
 type State =
   | { status: "loading" | "empty" | "denied" | "unavailable" }
@@ -217,6 +218,7 @@ export function OfferAssignmentStatusPanel({
     [dispatchReviewId, submitting, locale]
   );
 
+  if (state.status === "denied") return <SignedOut compact />;
   if (state.status !== "ready") {
     return (
       <section aria-busy={state.status === "loading"} aria-live="polite">
@@ -226,9 +228,7 @@ export function OfferAssignmentStatusPanel({
             ? "Loading authoritative offer and assignment records…"
             : state.status === "empty"
               ? "No persisted offers or assignments exist for this dispatch."
-              : state.status === "denied"
-                ? "Administrator authorization is required."
-                : "Offer and assignment records are unavailable. No fixture state is substituted."}
+              : "Offer and assignment records are unavailable. No fixture state is substituted."}
         </p>
         {state.status !== "loading" && state.status !== "empty" ? (
           <button onClick={() => void load()} style={styles.button} type="button">

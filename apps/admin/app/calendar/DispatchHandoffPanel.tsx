@@ -4,6 +4,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import type { AdminDispatchReview } from "../api/dispatches/dispatchBoundary";
 import { usePageText } from "../i18n/pageText";
 import { calendarText } from "./text";
+import { SignedOut } from "../shared/SignedOut";
 
 type DispatchState =
   | Readonly<{ status: "loading" }>
@@ -112,14 +113,11 @@ export function DispatchHandoffPanel({ jobRequestId }: Readonly<{ jobRequestId: 
   if (state.status === "loading") {
     return <p aria-live="polite">{t.checking}</p>;
   }
+  if (state.status === "denied") return <SignedOut compact />;
   if (state.status !== "ready") {
     return (
       <>
-        <p role={state.status === "denied" ? "alert" : "status"}>
-          {state.status === "denied"
-            ? t.deniedAccess
-            : t.unavailable}
-        </p>
+        <p role="status">{t.unavailable}</p>
         <button onClick={() => void load()} style={button.secondary} type="button">
           {t.retry}
         </button>
@@ -131,12 +129,6 @@ export function DispatchHandoffPanel({ jobRequestId }: Readonly<{ jobRequestId: 
       <>
         <p aria-live="polite" role="status">
           {message || t.exists}
-        </p>
-        <p>
-          {t.state} <strong>{state.dispatch.state.replaceAll("_", " ")}</strong> · {t.priority}{" "}
-          <strong>{t.priorityNames[state.dispatch.priority] ?? state.dispatch.priority}</strong> · {t.required}{" "}
-          <strong>{state.dispatch.requiredWorkerCount}</strong> · {t.stillRequested}{" "}
-          <strong>{state.dispatch.remainingWorkerCount}</strong>
         </p>
         <a href={dispatchHref(state.dispatch.id)} style={button.link}>
           {t.open}
@@ -225,10 +217,10 @@ const button = {
   label: { display: "grid", fontWeight: 800, gap: 8, margin: "16px 0", maxWidth: 260 },
   select: { border: "1px solid rgba(248, 184, 8, 0.16)", borderRadius: 8, font: "inherit", padding: 12 },
   primary: {
-    background: "#171511",
+    background: "#F8B808",
     border: 0,
     borderRadius: 8,
-    color: "#fff",
+    color: "#000000",
     cursor: "pointer",
     fontWeight: 800,
     minHeight: 44,
@@ -246,9 +238,9 @@ const button = {
   },
   link: {
     alignItems: "center",
-    background: "#171511",
+    background: "#F8B808",
     borderRadius: 8,
-    color: "#fff",
+    color: "#000000",
     display: "inline-flex",
     fontWeight: 800,
     minHeight: 44,

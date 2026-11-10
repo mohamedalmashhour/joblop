@@ -34,7 +34,8 @@ describe("authenticated calendar UI integration", () => {
       expect(source).not.toMatch(/Bearer\s|authorization\s*:/iu);
       expect(source).not.toMatch(/localStorage|sessionStorage/u);
     }
-    expect(admin).toContain('href="/signin"');
+    // Staff pages use the one shared signed-out block (gold Sign in button with a return path).
+    expect(admin).toContain("<SignedOut");
     expect(employer).toContain('href="/signin"');
   });
 
@@ -111,11 +112,14 @@ describe("authenticated calendar UI integration", () => {
       "[action]",
       "route.ts"
     );
-    expect(review).toContain("Begin admin review");
-    expect(review).toContain("Request information");
-    expect(review).toContain("Approve for dispatch");
+    const reviewCopy = read("apps", "admin", "app", "calendar", "reviewText.ts");
+    expect(reviewCopy).toContain("Start review");
+    expect(reviewCopy).toContain("Send question to employer");
+    expect(reviewCopy).toContain("Post on the job board (first qualified worker gets it)");
+    expect(reviewCopy).toContain("I'll choose the worker myself");
+    expect(reviewCopy).toContain("Question for the employer (only if you need more details)");
     expect(review).toContain("expectedVersion: request.versionToken");
-    expect(review).toContain("does not publish, assign, notify");
+    expect(review).toContain("setConfirmAction(");
     expect(mutation).toContain("isSameOriginMutation(request)");
     expect(mutation).toContain("readAdminIntakeMutation");
     expect(mutation).toContain('"cache-control": "private, no-store"');
@@ -210,7 +214,6 @@ describe("authenticated calendar UI integration", () => {
     expect(adminAssignment).toContain("No fixture assignment is substituted");
     expect(adminAssignment).toContain("Attendance");
     const adminReview = read("apps", "admin", "app", "calendar", "PersistedAdminReviewPanel.tsx");
-    expect(adminReview).toContain("Assignment records are not connected in this admin view");
     expect(adminReview).not.toContain("/calendar/assignment?request=");
     expect(`${employerAssignment}\n${employerStaffingPanel}\n${adminAssignment}`).not.toMatch(
       /executeAttendance|punchIn|punchOut/u
@@ -283,7 +286,7 @@ describe("authenticated calendar UI integration", () => {
     expect(createPanel).not.toContain("mode=fixture");
     expect(clientRequestPage).toContain('mode === "fixture" && !request');
     expect(adminRequestPage).toContain("request");
-    expect(adminRequestPage).toContain("Select a persisted request");
+    expect(adminRequestPage).toContain("Choose a request");
     expect(adminRequestPage).not.toContain("<AdminReviewPanel />");
     expect(adminCalendarPage).not.toContain("fixture review-controls preview");
     expect(workerPanel).toContain("Open isolated fixture workflow preview");

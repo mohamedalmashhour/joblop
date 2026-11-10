@@ -31,6 +31,10 @@ describe("admin shell accessibility", () => {
     expect(styles).toContain(".admin-page-list");
   });
 
+  it("keeps the numbered review stepper out of deployed staff pages", () => {
+    expect(shell).toContain("{!connectedEnvironment && currentIndex >= 0 ? (");
+  });
+
   it("builds the client navigation with the same connected boundary as middleware", () => {
     expect(shell).toContain('["production", "staging"].includes');
     expect(packageJson).toContain(

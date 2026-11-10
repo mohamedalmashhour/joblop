@@ -2,6 +2,7 @@
 
 import { useCallback, useState } from "react";
 import { useLocale } from "../i18n/LocaleProvider";
+import { SignedOut } from "../shared/SignedOut";
 
 type Lead = {
   id?: string;
@@ -41,6 +42,7 @@ export function JobScannerPanel() {
   const [leads, setLeads] = useState<Lead[]>([]);
   const [cvByLead, setCvByLead] = useState<Record<string, GeneratedCv>>({});
   const [msg, setMsg] = useState("");
+  const [signedOut, setSignedOut] = useState(false);
   const [busy, setBusy] = useState(false);
 
   const roleKeywords = () =>
@@ -52,7 +54,7 @@ export function JobScannerPanel() {
       const qs = new URLSearchParams({ province: "QC", limit: "50", roleKeywords: roleKeywords() });
       if (city.trim()) qs.set("city", city.trim());
       const res = await fetch(`/api/jobscanner/leads?${qs.toString()}`, { cache: "no-store" });
-      if (res.status === 401 || res.status === 403) { setMsg("Administrator access required."); return; }
+      if (res.status === 401 || res.status === 403) { setMsg(""); setSignedOut(true); return; }
       if (!res.ok) { setMsg("Could not load leads."); return; }
       const data = (await res.json()) as { leads: Lead[]; leadCount: number };
       setLeads(data.leads ?? []);
@@ -103,6 +105,7 @@ export function JobScannerPanel() {
 
   const set = (k: keyof typeof profile) => (v: string) => setProfile((p) => ({ ...p, [k]: v }));
 
+  if (signedOut) return <SignedOut compact />;
   return (
     <section style={styles.wrap}>
       <article style={styles.card}>

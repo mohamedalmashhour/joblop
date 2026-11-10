@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { usePageText } from "../i18n/pageText";
 import { ordersText } from "./text";
+import { SignedOut } from "../shared/SignedOut";
 
 type Child = Readonly<{ jobRequestId: string; title: string; numberOfWorkers: number; status: string }>;
 type Order = Readonly<{ id: string; orderNumber: string; organizationId: string; title: string; status: string; children: readonly Child[] }>;
@@ -27,7 +28,7 @@ export function AdminOrdersPanel() {
   }, []);
 
   if (state.status === "loading") return <p style={styles.text}>{t.listLoading}</p>;
-  if (state.status === "denied") return <p style={styles.text}>{t.listDenied}</p>;
+  if (state.status === "denied") return <SignedOut compact />;
   if (state.status === "error") return <p style={styles.text}>{t.listError}</p>;
   if (state.orders.length === 0) return <p style={styles.text}>{t.listEmpty}</p>;
 

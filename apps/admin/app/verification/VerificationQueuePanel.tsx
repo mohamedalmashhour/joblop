@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { usePageText } from "../i18n/pageText";
 import { verificationText } from "./text";
+import { SignedOut } from "../shared/SignedOut";
 
 type Entry = Readonly<{
   subjectType: "worker" | "employer";
@@ -95,7 +96,7 @@ export function VerificationQueuePanel() {
       {state.status === "loading" ? (
         <p aria-live="polite">{t.loading}</p>
       ) : state.status === "denied" ? (
-        <p>{t.authRequired}</p>
+        <SignedOut compact />
       ) : state.status === "unavailable" ? (
         <p>{t.unavailable} <button type="button" style={styles.button} onClick={() => void load(filter)}>{t.retry}</button></p>
       ) : state.queue.length === 0 ? (

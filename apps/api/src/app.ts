@@ -364,6 +364,13 @@ import { createPrismaDocumentMetadataRepository } from "./documentUploadReposito
 import { registerDocumentRoutes } from "./documentRoutes";
 import { registerInvoiceRoutes } from "./invoiceRoutes";
 import { createPrismaRequestPricingSnapshotCapture } from "./requestPricingSnapshot";
+import {
+  readAdminRequestCards,
+  readAdminRequestSummary,
+  type AdminRequestCard,
+  type AdminRequestSummary,
+  type AdminRequestSummaryPrisma
+} from "./adminRequestSummary";
 import { materializeAndListWorkerPayouts } from "./workerPayoutRepository";
 import { executeTestWorkerPayout, isPayoutTestExecutionEnabled } from "./workerPayoutExecution";
 import {
@@ -462,6 +469,14 @@ export interface BuildApiOptions {
   attendanceService?: AttendanceService;
   timesheetService?: TimesheetService;
   calendarRequestService?: CalendarRequestService;
+  /**
+   * Staff-only extras for the platform calendar (company, location, role, prices). Injected in tests;
+   * defaults to Prisma reads. Only called after the platform calendar authorization passed.
+   */
+  adminRequestSummaryReader?: Readonly<{
+    cards(jobRequestIds: readonly string[]): Promise<Record<string, AdminRequestCard>>;
+    summary(jobRequestId: string): Promise<AdminRequestSummary | null>;
+  }>;
   geocodingProvider?: GeocodingProvider;
   travelTimeProvider?: TravelTimeProvider | null;
   workGroupService?: WorkGroupService;
@@ -1284,6 +1299,41 @@ export function buildApi(options: BuildApiOptions = {}) {
           assignmentCoverage: createPrismaConfirmedAssignmentCoverageReader(prisma)
         })
       : createUnavailableCalendarRequestService());
+  // Staff-only calendar extras (see adminRequestSummary.ts). Never throws into a request: a failed
+  // read returns empty cards / a null summary so the calendar keeps working.
+  const adminRequestSummaryReader =
+    options.adminRequestSummaryReader ??
+    (prisma
+      ? {
+          cards: (ids: readonly string[]) =>
+            readAdminRequestCards(prisma as unknown as AdminRequestSummaryPrisma, ids),
+          summary: (jobRequestId: string) =>
+            readAdminRequestSummary(
+              prisma as unknown as AdminRequestSummaryPrisma,
+              createPrismaRequestPricingSnapshotCapture(prisma),
+              jobRequestId,
+              { workerWebOrigin: offerCtaOrigin }
+            )
+        }
+      : null);
+  const readStaffRequestCards = async (ids: readonly string[]) => {
+    if (!adminRequestSummaryReader) return {};
+    try {
+      return await adminRequestSummaryReader.cards(ids);
+    } catch (error) {
+      logger.warn("api.admin_calendar.cards_failed", { reason: error instanceof Error ? error.message : "unknown" });
+      return {};
+    }
+  };
+  const readStaffRequestSummary = async (jobRequestId: string) => {
+    if (!adminRequestSummaryReader) return null;
+    try {
+      return await adminRequestSummaryReader.summary(jobRequestId);
+    } catch (error) {
+      logger.warn("api.admin_calendar.summary_failed", { reason: error instanceof Error ? error.message : "unknown" });
+      return null;
+    }
+  };
   const resolveAuthorizationRoles =
     options.resolveAuthorizationRoles ??
     (prisma
@@ -7326,8 +7376,10 @@ export function buildApi(options: BuildApiOptions = {}) {
       session,
       roles: await resolveAuthorizationRoles(session.user.id)
     });
+    // Staff-only card details (company, location, role). Read after authorization; best-effort.
+    const cards = await readStaffRequestCards(requests.map((item) => item.id));
 
-    return reply.code(200).send({ requests: requests.map(serializeCalendarRequest) });
+    return reply.code(200).send({ requests: requests.map(serializeCalendarRequest), cards });
   });
 
   // Full-lifecycle admin calendar — every non-draft request (submission → closure), not only the
@@ -7634,8 +7686,11 @@ export function buildApi(options: BuildApiOptions = {}) {
       roles: await resolveAuthorizationRoles(session.user.id),
       jobRequestIdOrNumber: readRouteParam(request.params, "jobRequestIdOrNumber")
     });
+    // Staff-only "what the employer asked for" block. Read only after the admin calendar
+    // authorization above passed; a failure leaves it null and never breaks the page.
+    const summary = await readStaffRequestSummary(calendarRequest.id);
 
-    return reply.code(200).send({ request: serializeCalendarRequest(calendarRequest) });
+    return reply.code(200).send({ request: serializeCalendarRequest(calendarRequest), summary });
   });
 
   // Control Room enrichment: the immutable pricing snapshot for one job (finance authority only).

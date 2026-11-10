@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { usePageText } from "../i18n/pageText";
 import { lateCancellationsText } from "./text";
+import { SignedOut } from "../shared/SignedOut";
 
 // Staff list of late employer cancellations: one row per confirmed worker the charge covered.
 // Read-only. Owner decision 2026-11-09: no automatic worker pay; staff follow up case by case.
@@ -57,7 +58,7 @@ export function LateCancellationsPanel() {
   }, []);
 
   if (state.status === "loading") return <p style={styles.note}>{copy.loading}</p>;
-  if (state.status === "denied") return <p style={styles.note}>{copy.denied}</p>;
+  if (state.status === "denied") return <SignedOut compact />;
   if (state.status === "error") return <p style={styles.note} role="alert">{copy.error}</p>;
   if (state.charges.length === 0) return <p style={styles.note}>{copy.empty}</p>;
 

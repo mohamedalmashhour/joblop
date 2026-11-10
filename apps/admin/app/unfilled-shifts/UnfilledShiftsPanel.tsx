@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { usePageText } from "../i18n/pageText";
 import { unfilledShiftsText } from "./text";
+import { SignedOut } from "../shared/SignedOut";
 
 // Staff list of approved short-term shifts starting within 24 h that still have open places, with
 // the warnings already sent (under 24 h, under 4 h). Read-only; refreshes every minute.
@@ -58,7 +59,7 @@ export function UnfilledShiftsPanel() {
   }, []);
 
   if (state.status === "loading") return <p style={styles.note}>{copy.loading}</p>;
-  if (state.status === "denied") return <p style={styles.note}>{copy.denied}</p>;
+  if (state.status === "denied") return <SignedOut compact />;
   if (state.status === "error") return <p style={styles.note} role="alert">{copy.error}</p>;
   if (state.shifts.length === 0) return <p style={styles.note}>{copy.empty}</p>;
 

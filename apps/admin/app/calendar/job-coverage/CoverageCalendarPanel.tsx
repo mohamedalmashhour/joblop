@@ -23,6 +23,7 @@ import {
 } from "./hub";
 import { coverageText } from "./text";
 import { TodayPanel } from "./TodayPanel";
+import { SignedOut } from "../../shared/SignedOut";
 
 // Staff calendar: every job (coverage feed: places, workers, pay, bonus actions) plus the calendar
 // hub's cancellations, disputes, payouts and pay runs, with a "Today" panel and layer filters.
@@ -264,7 +265,7 @@ export function CoverageCalendarPanel() {
       </div>
 
       {state.status === "loading" ? <p style={styles.text}>{t.loading}</p> : null}
-      {state.status === "denied" ? <p style={styles.text}>{t.denied}</p> : null}
+      {state.status === "denied" ? <SignedOut compact /> : null}
       {state.status === "error" ? <p style={styles.text}>{t.error}</p> : null}
 
       <div style={styles.gridScroll}>

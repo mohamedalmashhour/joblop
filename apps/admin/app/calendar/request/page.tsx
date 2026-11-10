@@ -5,22 +5,21 @@ import type { PageText } from "../../i18n/pageTextCore";
 // Copy stays beside the page: tests/integration/authenticated-calendar-ui.test.ts reads this file
 // and checks for the English wording.
 const requestPageTextEn = {
-  title: "Select a persisted request",
-  message: "Open a request from the authenticated review calendar to begin governed review.",
+  title: "Choose a request",
+  message: "Open a request from the review calendar to see its details.",
   back: "Back to review calendar"
 };
 
 const requestPageText = {
   en: requestPageTextEn,
   fr: {
-    title: "Choisissez une demande enregistrée",
-    message:
-      "Ouvrez une demande à partir du calendrier de révision authentifié pour commencer la révision.",
+    title: "Choisissez une demande",
+    message: "Ouvrez une demande à partir du calendrier de révision pour voir ses détails.",
     back: "Retour au calendrier de révision"
   },
   ar: {
-    title: "اختر طلبًا محفوظًا",
-    message: "افتح طلبًا من تقويم المراجعة الموثّق لبدء المراجعة.",
+    title: "اختر طلبًا",
+    message: "افتح طلبًا من تقويم المراجعة لرؤية تفاصيله.",
     back: "العودة إلى تقويم المراجعة"
   }
 } satisfies PageText<typeof requestPageTextEn>;

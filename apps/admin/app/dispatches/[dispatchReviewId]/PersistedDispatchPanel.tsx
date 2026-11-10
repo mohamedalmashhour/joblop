@@ -7,6 +7,7 @@ import { CandidateReviewPanel } from "./CandidateReviewPanel";
 import { OfferAssignmentStatusPanel } from "./OfferAssignmentStatusPanel";
 import { InterestedWorkersPanel } from "./InterestedWorkersPanel";
 import { WorksiteMapsPanel } from "./WorksiteMapsPanel";
+import { SignedOut } from "../../shared/SignedOut";
 
 export function PersistedDispatchPanel({
   dispatchReviewId
@@ -71,17 +72,14 @@ export function PersistedDispatchPanel({
   }, [load]);
 
   if (status !== "ready" || !dispatch) {
+    if (status === "denied") return <main style={styles.page}><SignedOut /></main>;
     return (
       <main style={styles.page}>
         <section aria-busy={status === "loading"} aria-live="polite" style={styles.hero}>
           <h1>
             {status === "loading" ? "Loading dispatch review" : "Dispatch review unavailable"}
           </h1>
-          <p>
-            {status === "denied"
-              ? "Administrator authorization is required."
-              : "No fixture dispatch or candidate data is substituted."}
-          </p>
+          <p>No fixture dispatch or candidate data is substituted.</p>
           {status !== "loading" ? (
             <button onClick={() => void load()} style={styles.button} type="button">
               Retry
