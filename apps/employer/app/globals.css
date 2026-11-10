@@ -55,9 +55,22 @@ footer nav a {
 
 .employer-workspace :is(a, button, input, select, textarea):focus-visible,
 .employer-sidebar a:focus-visible,
+.employer-sidebar button:focus-visible,
 #employer-main-content:focus-visible {
   outline: 3px solid #ffd44a;
   outline-offset: 3px;
+}
+
+/* Sidebar benefits card: desktop only. Hidden where the sidebar collapses (phones/narrow) and on
+   very short screens so it never pushes the menu out of view. */
+.employer-sidebar-benefits-cta:hover {
+  filter: brightness(1.06);
+}
+
+@media (max-width: 720px), (max-height: 640px) {
+  .employer-sidebar-benefits {
+    display: none !important;
+  }
 }
 
 .employer-page-navigator {

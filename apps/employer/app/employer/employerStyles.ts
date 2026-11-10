@@ -43,7 +43,8 @@ export const styles: Record<string, CSSProperties> = {
     display: "grid",
     flex: "0 0 280px",
     gap: 20,
-    gridTemplateRows: "auto 1fr auto",
+    // logo, menu (takes the free space), benefits card (desktop only), "Secure workspace" note.
+    gridTemplateRows: "auto 1fr auto auto",
     // No forced 100vh: on a flex row it stretches to the workspace height anyway; forcing it full
     // height pushed the workspace a whole screen down whenever the row wrapped (narrow/tablet),
     // leaving the employer looking at a blank page.

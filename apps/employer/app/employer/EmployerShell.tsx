@@ -6,6 +6,7 @@ import { clientCalendarWorkflow } from "./calendar/clientCalendarContent";
 import { employerWorkflow } from "./employerJourneyContent";
 import { styles } from "./employerStyles";
 import { ShellText } from "./ShellText";
+import { SidebarBenefits } from "./SidebarBenefits";
 import { LanguageSwitcher } from "../i18n/LanguageSwitcher";
 import type { MessageKey } from "../i18n/messages";
 import { invoiceWorkflow } from "./invoiceWorkflowContent";
@@ -116,6 +117,7 @@ export function EmployerShell({
               </a>
             ))}
           </nav>
+          <SidebarBenefits />
           <div style={styles.sidebarNote}>
             <strong>
               {effectiveMode === "authenticated" ? <ShellText k="shell.secureTitle" /> : "Fixture mode"}
