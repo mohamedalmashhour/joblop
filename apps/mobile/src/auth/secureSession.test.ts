@@ -840,6 +840,27 @@ describe("worker attendance transport", () => {
     const noSessionT = createMobileSessionTransport({ apiOrigin: origin, vault: vault(), fetch: vi.fn(async () => response(200, {})) });
     expect((await noSessionT.attendanceCheckOut("55555555-5555-4555-8555-555555555555", 3)).status).toBe("denied");
   });
+
+  it("cancels a booked shift by its attendance record and reports a late-cancel suspension", async () => {
+    const id = "55555555-5555-4555-8555-555555555555";
+    const fetchMock = vi.fn(async () => response(200, { status: "cancelled", lateCancellation: false, suspension: null }));
+    const okT = createMobileSessionTransport({ apiOrigin: origin, vault: withSession(), fetch: fetchMock });
+    expect(await okT.cancelShift(id)).toEqual({ status: "cancelled", suspended: false });
+    expect(fetchMock).toHaveBeenCalledWith(`${origin}/worker/attendance/${id}/cancel`, expect.objectContaining({ method: "POST" }));
+
+    const lateT = createMobileSessionTransport({
+      apiOrigin: origin, vault: withSession(),
+      fetch: vi.fn(async () => response(200, { status: "cancelled", lateCancellation: true, suspension: { suspensionDays: 7, reinstatesAt: "2027-02-18T19:00:00.000Z" } }))
+    });
+    expect(await lateT.cancelShift(id)).toEqual({ status: "cancelled", suspended: true });
+
+    const startedT = createMobileSessionTransport({ apiOrigin: origin, vault: withSession(), fetch: vi.fn(async () => response(409, { error: "RWOS_SHIFT_ALREADY_STARTED" })) });
+    expect((await startedT.cancelShift(id)).status).toBe("already_started");
+    const changedT = createMobileSessionTransport({ apiOrigin: origin, vault: withSession(), fetch: vi.fn(async () => response(409, { error: "RWOS_SHIFT_CHANGED" })) });
+    expect((await changedT.cancelShift(id)).status).toBe("conflict");
+    const noSessionT = createMobileSessionTransport({ apiOrigin: origin, vault: vault(), fetch: vi.fn(async () => response(200, {})) });
+    expect((await noSessionT.cancelShift(id)).status).toBe("denied");
+  });
 });
 
 describe("worker timesheet transport", () => {

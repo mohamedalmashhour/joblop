@@ -67,6 +67,32 @@ export function workerAcceptedEmail(params: {
   };
 }
 
+// A booked worker cancelled their shift. The place is open again and Joblop is looking for someone.
+export function workerCancelledEmail(params: {
+  to: string;
+  language: NotificationLanguage;
+  jobCode: string;
+  title: string;
+}): EmailMessage {
+  const { to, jobCode, title } = params;
+  if (params.language === "en") {
+    return {
+      to,
+      subject: `Joblop — a worker cancelled (${jobCode})`,
+      text:
+        `The worker booked for your request "${title}" (job code ${jobCode}) has cancelled.\n\n` +
+        `The place is open again and Joblop is looking for another worker. You don't need to do anything; we'll tell you when someone takes it.\n\n— Joblop`
+    };
+  }
+  return {
+    to,
+    subject: `Joblop — un travailleur a annulé (${jobCode})`,
+    text:
+      `Le travailleur réservé pour votre demande « ${title} » (code de mission ${jobCode}) a annulé.\n\n` +
+      `La place est de nouveau ouverte et Joblop cherche un autre travailleur. Vous n'avez rien à faire; nous vous avertirons quand quelqu'un la prendra.\n\n— Joblop`
+  };
+}
+
 export type BonusOfferKind = "hourly" | "transport" | "one_time";
 
 function formatCad(amountMinor: number, language: NotificationLanguage): string {
@@ -198,10 +224,10 @@ export async function notifyClientInvoiceSent(
   }
 }
 
-export type ClientNotificationKind = "job_code" | "worker_accepted" | "bonus_offer";
+export type ClientNotificationKind = "job_code" | "worker_accepted" | "worker_cancelled" | "bonus_offer";
 
 export type ClientNotificationInput =
-  | Readonly<{ jobRequestId: string; kind: "job_code" | "worker_accepted" }>
+  | Readonly<{ jobRequestId: string; kind: "job_code" | "worker_accepted" | "worker_cancelled" }>
   | Readonly<{ jobRequestId: string; kind: "bonus_offer"; bonus: Readonly<{ kind: BonusOfferKind; amountMinor: number }> }>;
 
 export type ClientNotificationResult =
@@ -236,6 +262,9 @@ export async function notifyClient(
         break;
       case "worker_accepted":
         message = workerAcceptedEmail(copy);
+        break;
+      case "worker_cancelled":
+        message = workerCancelledEmail(copy);
         break;
       case "bonus_offer":
         message = bonusOfferEmail({ ...copy, bonusKind: input.bonus.kind, amountMinor: input.bonus.amountMinor });

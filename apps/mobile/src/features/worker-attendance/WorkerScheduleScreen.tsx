@@ -5,7 +5,7 @@ import type { MobileSessionTransport, WorkerAttendanceRecord } from "../../auth/
 import { Badge, BodyText, Button, Card, EmptyState, ErrorState, Heading, LoadingState, ScreenContainer, SmallText } from "../../ui/primitives";
 import { formatShiftWindow } from "../marketplace/marketplaceContent";
 import { useLocale } from "../../i18n/LocaleContext";
-import { attendanceAction, attendanceCopyFor, attendanceStatusLabel, attendanceStatusTone } from "./attendanceScheduleContent";
+import { attendanceAction, attendanceCopyFor, attendanceStatusLabel, attendanceStatusTone, canCancelShift, isLateCancellation } from "./attendanceScheduleContent";
 
 type ScheduleState =
   | { status: "loading" }
@@ -62,6 +62,34 @@ export function WorkerScheduleScreen({ transport, onBack }: { transport: MobileS
     [transport, load, attendanceCopy]
   );
 
+  // "Cancel this shift": a confirm step that says plainly what happens (7-day suspension under 24 h),
+  // then the API cancels the booking and the schedule entry together.
+  const [confirmingId, setConfirmingId] = useState<string | null>(null);
+  const cancelShift = useCallback(
+    async (record: WorkerAttendanceRecord) => {
+      if (!transport) return;
+      setBusyId(record.attendanceRecordId);
+      setNotice(null);
+      const result = await transport.cancelShift(record.attendanceRecordId);
+      setBusyId(null);
+      setConfirmingId(null);
+      if (result.status === "cancelled") {
+        setNotice(result.suspended ? attendanceCopy.cancelledSuspendedNotice : attendanceCopy.cancelledNotice);
+        await load();
+      } else if (result.status === "already_started") {
+        setNotice(attendanceCopy.cancelStarted);
+      } else if (result.status === "conflict") {
+        setNotice(attendanceCopy.conflict);
+        await load();
+      } else if (result.status === "denied") {
+        setNotice(attendanceCopy.denied);
+      } else {
+        setNotice(attendanceCopy.actionError);
+      }
+    },
+    [transport, load, attendanceCopy]
+  );
+
   return (
     <ScreenContainer testID="worker-schedule-screen">
       <ScrollView style={styles.scroll}>
@@ -98,6 +126,17 @@ export function WorkerScheduleScreen({ transport, onBack }: { transport: MobileS
                     {action === "check_out" ? (
                       <Button label={attendanceCopy.checkOutCta} onPress={() => void act(r, "check_out")} disabled={busyId === r.attendanceRecordId} />
                     ) : null}
+                    {canCancelShift(r) && confirmingId !== r.attendanceRecordId ? (
+                      <Button label={attendanceCopy.cancelCta} variant="secondary" onPress={() => setConfirmingId(r.attendanceRecordId)} disabled={busyId === r.attendanceRecordId} />
+                    ) : null}
+                    {canCancelShift(r) && confirmingId === r.attendanceRecordId ? (
+                      <View style={styles.confirm} accessibilityRole="alert">
+                        <Heading>{attendanceCopy.cancelTitle}</Heading>
+                        <BodyText>{isLateCancellation(r.scheduledStartAt) ? attendanceCopy.cancelLateBody : attendanceCopy.cancelFreeBody}</BodyText>
+                        <Button label={attendanceCopy.cancelConfirm} onPress={() => void cancelShift(r)} disabled={busyId === r.attendanceRecordId} />
+                        <Button label={attendanceCopy.cancelKeep} variant="secondary" onPress={() => setConfirmingId(null)} disabled={busyId === r.attendanceRecordId} />
+                      </View>
+                    ) : null}
                   </Card>
                 );
               })
@@ -111,5 +150,6 @@ export function WorkerScheduleScreen({ transport, onBack }: { transport: MobileS
 const styles = StyleSheet.create({
   scroll: { flex: 1 },
   stack: { gap: spacing.lg, paddingBottom: spacing.xxl },
-  row: { alignItems: "center", flexDirection: "row", gap: spacing.sm, justifyContent: "space-between" }
+  row: { alignItems: "center", flexDirection: "row", gap: spacing.sm, justifyContent: "space-between" },
+  confirm: { gap: spacing.sm }
 });
