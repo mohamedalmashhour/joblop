@@ -42,7 +42,18 @@ const escapeHtml = (value: string) =>
 // Every Joblop email shares one design, built from its plain text: the first paragraph is the
 // headline, and a closing "— Joblop" line is dropped because the footer already signs the email.
 // Inline styles and tables, because email apps ignore most other styling.
+// Arabic (or other right-to-left) email text: the whole message is laid out right to left, so
+// Latin words inside a sentence (a role, a city, "Joblop", a link) keep their place.
+const RTL_TEXT = /[\u0590-\u08FF\uFB1D-\uFDFF\uFE70-\uFEFF]/;
+
+export function isRightToLeftText(text: string): boolean {
+  return RTL_TEXT.test(text);
+}
+
 export function brandedEmailHtml(message: Pick<EmailMessage, "subject" | "text">): string {
+  const rtl = isRightToLeftText(`${message.subject}\n${message.text}`);
+  const dirAttr = rtl ? ` dir="rtl"` : "";
+  const align = rtl ? "text-align:right;" : "";
   const paragraphs = message.text
     .split(/\n\s*\n/)
     .map((part) => part.trim())
@@ -51,19 +62,19 @@ export function brandedEmailHtml(message: Pick<EmailMessage, "subject" | "text">
   const body = rest
     .map(
       (part) =>
-        `<p style="margin:0 0 16px;font-size:16px;line-height:1.6;color:#3d3a34;">${escapeHtml(part).replace(/\n/g, "<br>")}</p>`
+        `<p${dirAttr} style="margin:0 0 16px;font-size:16px;line-height:1.6;color:#3d3a34;${align}">${escapeHtml(part).replace(/\n/g, "<br>")}</p>`
     )
     .join("");
   return [
-    `<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${escapeHtml(message.subject)}</title></head>`,
+    `<!doctype html><html${rtl ? ` dir="rtl" lang="ar"` : ""}><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${escapeHtml(message.subject)}</title></head>`,
     `<body style="margin:0;padding:0;background:#f4f1ea;font-family:Helvetica,Arial,sans-serif;">`,
     `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#f4f1ea;"><tr><td align="center" style="padding:24px 12px;">`,
     `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width:560px;background:#ffffff;border-radius:12px;overflow:hidden;">`,
     // The wordmark as in the logo: white letters with the two "o"s in the logo's gold.
     `<tr><td style="background:#000000;padding:22px 28px;font-size:28px;font-weight:800;letter-spacing:-0.5px;color:#ffffff;">J<span style="color:${LOGO_GOLD};">o</span>bl<span style="color:${LOGO_GOLD};">o</span>p</td></tr>`,
     `<tr><td style="height:4px;background:${LOGO_GOLD};font-size:0;line-height:0;">&nbsp;</td></tr>`,
-    `<tr><td style="padding:28px;">`,
-    `<p style="margin:0 0 18px;font-size:20px;line-height:1.4;font-weight:700;color:#111111;">${escapeHtml(headline ?? message.subject).replace(/\n/g, "<br>")}</p>`,
+    `<tr><td${dirAttr} style="padding:28px;${align}">`,
+    `<p${dirAttr} style="margin:0 0 18px;font-size:20px;line-height:1.4;font-weight:700;color:#111111;${align}">${escapeHtml(headline ?? message.subject).replace(/\n/g, "<br>")}</p>`,
     body,
     `</td></tr>`,
     `<tr><td style="padding:16px 28px;background:#faf8f3;font-size:13px;line-height:1.5;color:#7a7468;">Joblop</td></tr>`,

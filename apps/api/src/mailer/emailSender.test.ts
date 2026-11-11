@@ -88,5 +88,13 @@ describe("email sender capsule", () => {
     expect(html).toContain("Sign in to pay.");
     expect(html).not.toContain("— Joblop");
     expect(html).not.toContain("<b>invoice");
+    expect(html).not.toContain('dir="rtl"');
+  });
+
+  it("lays out Arabic emails right to left so Latin words keep their place", () => {
+    const html = brandedEmailHtml({ subject: "Joblop — أُلغيت مناوبتك", text: "نأسف، أُلغيت مناوبتك (Farm worker) في Laval.\n\nيمكنك مراجعة تقويمك هنا: https://joblop.com/jobs-calendar" });
+    expect(html).toContain('<html dir="rtl" lang="ar">');
+    expect(html).toContain('<p dir="rtl"');
+    expect(html).toContain("text-align:right;");
   });
 });

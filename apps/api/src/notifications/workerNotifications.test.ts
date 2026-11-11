@@ -266,7 +266,7 @@ describe("worker notices in Arabic (the worker's chosen language)", () => {
   it("writes every job notice in Arabic, with Western digits", () => {
     expect(assignedJobEmail({ to: "w@x.com", language: "ar", title: "Cook", startAt: shift.startAt }).subject).toBe("Joblop — حصلت على العمل!");
     expect(shiftCancelledSmsText({ language: "ar", shift })).toMatch(/^Joblop: أُلغيت مناوبتك Cook في .*2026.* في Laval\. راجع تقويمك\.$/);
-    expect(shiftCancelledEmail({ to: "w@x.com", language: "ar", shift, cancelledBy: "employer" }).text).toContain("من قِبل صاحب العمل");
+    expect(shiftCancelledEmail({ to: "w@x.com", language: "ar", shift, cancelledBy: "employer" }).text).toContain("ألغاها صاحب العمل");
     expect(shiftChangedSmsText({ language: "ar", shift, summary: { newPlace: "Laval" } })).toContain("مكان جديد Laval");
     expect(shiftChangedEmail({ to: "w@x.com", language: "ar", shift, summary: {} }).subject).toBe("Joblop — تغيّرت مناوبتك");
     expect(describeShiftChange({ outcome: "final" }, "ar", "America/Toronto")).toBe("أصبح التغيير نهائيًا");
