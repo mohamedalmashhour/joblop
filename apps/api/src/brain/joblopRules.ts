@@ -1,4 +1,5 @@
 import type { ActionOutcome, BrainRule, DetectedIssue } from "@rwos/brain";
+import { ATTENDANCE_DEVIATION_FLAGS, attendanceDeviationFlags } from "@rwos/shared";
 import { unfilledThreshold } from "../unfilledShiftAlerts";
 
 // Joblop's deterministic rules for the brain. Each rule reads candidate rows through the data adapter
@@ -134,6 +135,28 @@ export function requestReadiness(row: ReviewRequestRow, now: Date): { missing: s
   return { missing, needsPerson };
 }
 
+/**
+ * The exceptions on a timesheet that still need a person, under the same time-margin rule as the
+ * timesheet engine (ATTENDANCE_TIME_MARGIN_MINUTES): an arrival/departure flag is dropped when the
+ * actual time is within the margin of the schedule (e.g. a timesheet calculated before the margin
+ * existed), and the 6-hour-floor note is dropped when nothing else is left.
+ */
+export function remainingTimesheetExceptions(row: TimesheetRow): string[] {
+  const flags = (row.exceptionSummary ?? "").split(",").map((f) => f.trim()).filter(Boolean);
+  if (flags.length === 0 || !row.actualCheckInAt || !row.actualCheckOutAt) return flags;
+  const outsideMargin = new Set<string>(
+    attendanceDeviationFlags({
+      checkInAt: row.actualCheckInAt,
+      checkOutAt: row.actualCheckOutAt,
+      scheduledStartAt: row.scheduledStartAt,
+      scheduledEndAt: row.scheduledEndAt
+    })
+  );
+  const deviation = new Set<string>(ATTENDANCE_DEVIATION_FLAGS);
+  const kept = flags.filter((f) => !deviation.has(f) || outsideMargin.has(f));
+  return kept.every((f) => f === "minimum_shift_floor_applied") ? [] : kept;
+}
+
 /** Hours can be approved without a person: both sides confirmed, check-in and check-out, no exceptions. */
 export function timesheetReadyForApproval(row: TimesheetRow): boolean {
   return (
@@ -143,7 +166,7 @@ export function timesheetReadyForApproval(row: TimesheetRow): boolean {
     row.actualCheckInAt !== null &&
     row.actualCheckOutAt !== null &&
     row.actualCheckOutAt.getTime() > row.actualCheckInAt.getTime() &&
-    !row.exceptionSummary?.trim() &&
+    remainingTimesheetExceptions(row).length === 0 &&
     !row.attendanceException?.trim()
   );
 }

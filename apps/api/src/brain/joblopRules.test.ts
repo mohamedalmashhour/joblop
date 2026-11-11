@@ -5,6 +5,7 @@ import {
   invoiceOverdueRule,
   jobMissingInfoRule,
   jobUnfilledSoonRule,
+  remainingTimesheetExceptions,
   requestReadiness,
   requestWaitingReviewRule,
   timesheetReadyRule,
@@ -158,6 +159,45 @@ describe("joblop brain rules", () => {
         ]
       };
       expect(await timesheetReadyRule.detect(context(rows), NOW)).toEqual([]);
+    });
+
+    it("uses the 15-minute margin: arrival/departure flags inside it do not block auto-approval", async () => {
+      const start = ready.scheduledStartAt.getTime();
+      const end = ready.scheduledEndAt.getTime();
+      // A timesheet calculated before the margin existed: 30 min early in, 15 min late out.
+      const inside = {
+        ...ready,
+        timesheetId: "in",
+        actualCheckInAt: new Date(start - 30 * MIN),
+        actualCheckOutAt: new Date(end + 15 * MIN),
+        exceptionSummary: "early_arrival, late_departure"
+      };
+      // 08:10 in for an 08:00 start: floored to 6 h, inside the margin.
+      const floorOnly = {
+        ...ready,
+        timesheetId: "floor",
+        actualCheckInAt: new Date(start + 10 * MIN),
+        exceptionSummary: "late_arrival, minimum_shift_floor_applied"
+      };
+      const issues = await timesheetReadyRule.detect(context({ ...emptyRows(), timesheets: [inside, floorOnly] }), NOW);
+      expect(issues.map((i) => i.subjectId)).toEqual(["in", "floor"]);
+      expect(remainingTimesheetExceptions(inside)).toEqual([]);
+    });
+
+    it("still needs a person past the margin or with any other exception", async () => {
+      const start = ready.scheduledStartAt.getTime();
+      const end = ready.scheduledEndAt.getTime();
+      const rows = {
+        ...emptyRows(),
+        timesheets: [
+          { ...ready, timesheetId: "late-in", actualCheckInAt: new Date(start + 16 * MIN), exceptionSummary: "late_arrival" },
+          { ...ready, timesheetId: "late-out", actualCheckOutAt: new Date(end + 30 * MIN), exceptionSummary: "late_departure" },
+          { ...ready, timesheetId: "left", actualCheckOutAt: new Date(end - 2 * HOUR), exceptionSummary: "early_departure, minimum_shift_floor_applied" },
+          { ...ready, timesheetId: "other", exceptionSummary: "attendance_exception:injury" }
+        ]
+      };
+      expect(await timesheetReadyRule.detect(context(rows), NOW)).toEqual([]);
+      expect(remainingTimesheetExceptions(rows.timesheets[2]!)).toEqual(["early_departure", "minimum_shift_floor_applied"]);
     });
   });
 

@@ -1,4 +1,5 @@
 export * from "./application";
+export * from "./attendanceTime";
 export * from "./authenticatedCalendar";
 export * from "./authenticatedCalendarClient";
 export * from "./canadaLocation";

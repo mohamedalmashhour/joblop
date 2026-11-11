@@ -97,3 +97,26 @@ describe("buildInvoiceCalculationInput (Gap B — variable extras billed with GS
     expect(calculateInvoiceSnapshot(buildInvoiceCalculationInput(base)).lines.some((l) => l.kind === "bonus")).toBe(false);
   });
 });
+
+describe("first job: 07:30 check-in for an 08:00–14:00 shift (hours count from the scheduled start)", () => {
+  it("bills the 6.0 h the timesheet counts (360 min), not the 6.5 h on site", () => {
+    const input = buildInvoiceCalculationInput({
+      timesheetId: "00000000-0000-4000-8000-000000000004",
+      timesheetVersion: 3,
+      organizationId: "00000000-0000-4000-8000-0000000000aa",
+      assignmentId: "00000000-0000-4000-8000-0000000000bb",
+      attendanceRecordId: "00000000-0000-4000-8000-0000000000cc",
+      billableMinutes: 360, // timesheet engine: 07:30–14:00 on site, counted 08:00–14:00
+      employerHourlyRateMinor: 2250,
+      emergencySurchargePerHourMinor: 0,
+      distanceSurchargeMinor: 0,
+      urgency: "standard",
+      occurredAt: "2026-11-12T20:00:00.000Z"
+    });
+    const s = calculateInvoiceSnapshot(input);
+    expect(s.subtotal.amountMinor).toBe(13500); // $22.50 × 6
+    expect(s.lines.find((l) => l.kind === "gst")?.amount.amountMinor).toBe(675); // 5%
+    expect(s.lines.find((l) => l.kind === "qst")?.amount.amountMinor).toBe(1347); // 9.975%
+    expect(s.total.amountMinor).toBe(15522);
+  });
+});

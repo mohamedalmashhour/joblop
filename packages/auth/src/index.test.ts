@@ -4226,6 +4226,73 @@ describe("timesheet foundation", () => {
     expect(calculated.exceptionSummary ?? "").toContain("minimum_shift_floor_applied");
   });
 
+  describe("15-minute margin and counting from the scheduled start (Laval 08:00–14:00, Nov 12)", () => {
+    // EST (UTC-5): 08:00 = 13:00Z, 14:00 = 19:00Z.
+    const T = (hhmmss: string) => new Date(`2026-11-12T${hhmmss}.000Z`);
+    async function calculateShift(checkIn: string, checkOut: string) {
+      const { timesheetService, attendanceRecord, adminSession, assignmentRepository, assignment } =
+        await createTimesheetContext();
+      const stored = await assignmentRepository.findAssignmentById(assignment.id);
+      if (!stored) throw new Error("assignment missing");
+      stored.confirmedStartAt = T("13:00:00");
+      stored.confirmedEndAt = T("19:00:00");
+      attendanceRecord.checkInAt = T(checkIn);
+      attendanceRecord.checkOutAt = T(checkOut);
+      const draft = await timesheetService.createFromAttendance({
+        session: adminSession,
+        roles: ["TIMESHEET_REVIEWER"],
+        attendanceRecordId: attendanceRecord.id
+      });
+      return timesheetService.calculate({
+        session: adminSession,
+        roles: ["TIMESHEET_REVIEWER"],
+        timesheetId: draft.id,
+        expectedVersion: draft.versionToken
+      });
+    }
+
+    it("07:30 in for an 08:00 start, out 14:00: 6.0 h billed and paid, early time excluded", async () => {
+      const calculated = await calculateShift("12:30:00", "19:00:00");
+      expect(calculated.rawElapsedMinutes).toBe(390);
+      expect(calculated.payableMinutes).toBe(360);
+      expect(calculated.billableMinutes).toBe(360);
+      expect(calculated.excludedMinutes).toBe(30);
+      // Early time is simply not counted, so it needs no review.
+      expect(calculated.exceptionSummary).toBeNull();
+      expect(calculated.status).toBe("worker_review");
+    });
+
+    it("within 15 minutes is normal: no flag, straight to worker review", async () => {
+      const calculated = await calculateShift("12:46:00", "19:14:00");
+      expect(calculated.exceptionSummary).toBeNull();
+      expect(calculated.status).toBe("worker_review");
+      expect(calculated.payableMinutes).toBe(360);
+      expect(calculated.billableMinutes).toBe(360);
+    });
+
+    it("in at 08:10: no flag, the 6-hour minimum still applies", async () => {
+      const calculated = await calculateShift("13:10:00", "19:00:00");
+      expect(calculated.exceptionSummary).toBeNull();
+      expect(calculated.status).toBe("worker_review");
+      expect(calculated.payableMinutes).toBe(360);
+    });
+
+    it("check-out 40 min late: flagged for review and capped at the scheduled end", async () => {
+      const calculated = await calculateShift("13:00:00", "19:40:00");
+      expect(calculated.exceptionSummary).toBe("late_departure");
+      expect(calculated.status).toBe("review_required");
+      expect(calculated.payableMinutes).toBe(360);
+      expect(calculated.billableMinutes).toBe(360);
+    });
+
+    it("left 2 h early: flagged, and the 6-hour minimum is noted", async () => {
+      const calculated = await calculateShift("13:00:00", "17:00:00");
+      expect(calculated.exceptionSummary).toBe("early_departure, minimum_shift_floor_applied");
+      expect(calculated.status).toBe("review_required");
+      expect(calculated.payableMinutes).toBe(360);
+    });
+  });
+
   it("lets a platform reviewer override review exceptions back into the review chain", async () => {
     const { timesheetService, timesheetRepository, attendanceRecord, adminSession, workerSession } =
       await createTimesheetContext();
