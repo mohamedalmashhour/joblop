@@ -29,6 +29,26 @@ function stateFromContract(contract: EmployerContractDto | null): PanelState {
   return contract.signedAt ? { status: "signed", contract } : { status: "signable", contract };
 }
 
+/** Fill missing role names on `next` from the same roles in `previous` (matched by role id). */
+export function withKnownRoleLabels(
+  next: EmployerContractDto | null,
+  previous: EmployerContractDto | null
+): EmployerContractDto | null {
+  if (!next || !previous) return next;
+  const known = new Map(
+    previous.roleRates
+      .filter((rate) => rate.roleLabel)
+      .map((rate) => [rate.roleDefinitionId, rate.roleLabel] as const)
+  );
+  return {
+    ...next,
+    roleRates: next.roleRates.map((rate) => ({
+      ...rate,
+      roleLabel: rate.roleLabel ?? known.get(rate.roleDefinitionId) ?? null
+    }))
+  };
+}
+
 function failureState(httpStatus: number): PanelState {
   if (httpStatus === 401) return { status: "denied" };
   if (httpStatus === 503) return { status: "unavailable" };
@@ -104,7 +124,13 @@ export function ContractSignPanel() {
         return;
       }
       const payload = (await response.json()) as { contract: EmployerContractDto | null };
-      setState(stateFromContract(payload.contract ?? null));
+      // The sign response carries the bare rate card without role names, so keep the names the
+      // page already showed (otherwise every row reads "Role" right after signing).
+      setState((previous) =>
+        stateFromContract(
+          withKnownRoleLabels(payload.contract ?? null, "contract" in previous ? previous.contract : null)
+        )
+      );
       setSigning(false);
     } catch {
       setSignError(tx.signFailed);

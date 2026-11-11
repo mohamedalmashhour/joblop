@@ -561,11 +561,17 @@ function AgendaView({
   );
 }
 
-export function formatWhen(startAt: string, endAt: string, locale?: RwosLocale): string {
+// Shifts are in Québec, so the day and times are always shown in Eastern time (America/Toronto),
+// whatever the viewer's device clock says. Arabic gets Arabic day and month names with Western digits,
+// like the rest of the app.
+const SHIFT_TIME_ZONE = "America/Toronto";
+
+export function formatWhen(startAt: string, endAt: string, locale?: RwosLocale | "ar"): string {
   const start = new Date(startAt);
   const end = new Date(endAt);
-  const day = start.toLocaleDateString(locale, { weekday: "short", month: "short", day: "numeric" });
-  const time = (d: Date) => d.toLocaleTimeString(locale, { hour: "numeric", minute: "2-digit" });
+  const intlLocale = locale === "ar" ? "ar-u-nu-latn" : locale;
+  const day = start.toLocaleDateString(intlLocale, { weekday: "short", month: "short", day: "numeric", timeZone: SHIFT_TIME_ZONE });
+  const time = (d: Date) => d.toLocaleTimeString(intlLocale, { hour: "numeric", minute: "2-digit", timeZone: SHIFT_TIME_ZONE });
   return `${day} · ${time(start)} – ${time(end)}`;
 }
 

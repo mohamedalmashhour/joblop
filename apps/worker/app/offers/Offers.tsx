@@ -181,7 +181,6 @@ export function Offers() {
                     <strong>{t("offers.rightsTitle")}</strong>
                     <ul>
                       <li>{t("offers.rightBinding")}</li>
-                      <li>{t("offers.rightNoFee")}</li>
                       <li>{t("offers.rightRecorded")}</li>
                     </ul>
                     <p className="rights-note">{t("offers.allowancesNote")}</p>

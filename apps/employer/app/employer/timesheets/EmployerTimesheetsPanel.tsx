@@ -120,12 +120,8 @@ export function EmployerTimesheetsPanel() {
           {timesheet.exceptionSummary ? (
             <p style={styles.cardText}>{fill(tx.problem, { issue: timesheet.exceptionSummary })}</p>
           ) : null}
-          <a
-            href={`/employer/assignments/detail?assignment=${encodeURIComponent(timesheet.assignmentId)}`}
-            style={styles.secondaryButton}
-          >
-            {tx.openDetail}
-          </a>
+          {/* No link here: the records carry no request number, and the old assignment-detail
+              page is not available on the live site. */}
           {timesheet.status === "employer_review" ? (
             <TimesheetActions timesheet={timesheet} onDone={load} />
           ) : null}

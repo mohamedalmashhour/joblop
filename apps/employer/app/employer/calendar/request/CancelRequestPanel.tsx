@@ -26,7 +26,10 @@ const openPanel = { ...styles.panel, flexBasis: "100%" } as const;
 
 // Governed two-step cancellation. The server computes the authoritative
 // consequence; the browser only requests the preview and confirms intent.
-export function CancelRequestPanel({ requestId }: Readonly<{ requestId: string }>) {
+export function CancelRequestPanel({
+  requestId,
+  onCancelled
+}: Readonly<{ requestId: string; onCancelled?: () => void }>) {
   const t = useT();
   const locale = useLocale();
   const [phase, setPhase] = useState<Phase>({ status: "idle" });
@@ -65,11 +68,13 @@ export function CancelRequestPanel({ requestId }: Readonly<{ requestId: string }
         if (!res.ok) return setPhase({ status: "error", message: t("cancel.failed") });
         const result = (await res.json()) as CancellationConfirmationDto;
         setPhase({ status: "done", result });
+        // Let the page refresh the request so its status badge shows "Cancelled".
+        onCancelled?.();
       } catch {
         setPhase({ status: "error", message: t("cancel.failed") });
       }
     },
-    [requestId, t]
+    [requestId, t, onCancelled]
   );
 
   if (phase.status === "idle") {

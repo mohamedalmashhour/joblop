@@ -137,7 +137,6 @@ export function OffersScreen({
                       <View style={styles.rights}>
                         <Text style={[styles.dt, isRtl ? styles.rtl : null]}>{t("offers.rightsTitle")}</Text>
                         <SmallText>{`• ${t("offers.rightBinding")}`}</SmallText>
-                        <SmallText>{`• ${t("offers.rightNoFee")}`}</SmallText>
                         <SmallText>{`• ${t("offers.rightRecorded")}`}</SmallText>
                         <SmallText>{t("offers.allowancesNote")}</SmallText>
                       </View>
