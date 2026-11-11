@@ -220,6 +220,20 @@ suite("PostgreSQL a worker can never hold two shifts at the same time", () => {
     await expect(claimOpenJob(depsFor(prisma), { userId: worker.userId, jobRequestId: overlapping.id })).resolves.toMatchObject({ status: "assigned" });
   });
 
+  it("stops counting a shift once its job is cancelled, even after attendance handoff", async () => {
+    const worker = await seedWorker("JOBCANCEL");
+    const held = await seedOpenJob(shift(35, 0, 8));
+    const replacement = await seedOpenJob(shift(35, 0, 8));
+
+    const claimed = await claimOpenJob(depsFor(prisma), { userId: worker.userId, jobRequestId: held.id });
+    expect(claimed.status).toBe("assigned");
+    if (claimed.status !== "assigned") return;
+    // The assignment stays in attendance_handoff; only the job itself is cancelled.
+    await prisma.jobRequest.update({ where: { id: held.id }, data: { status: "cancelled" } });
+
+    await expect(claimOpenJob(depsFor(prisma), { userId: worker.userId, jobRequestId: replacement.id })).resolves.toMatchObject({ status: "assigned" });
+  });
+
   it("never counts long-term listings, which have no shifts", async () => {
     const worker = await seedWorker("LONG");
     const longTerm = await seedOpenJob({ ...shift(40, 0, 8), jobLength: "long_term" });
