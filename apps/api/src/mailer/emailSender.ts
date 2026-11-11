@@ -44,7 +44,7 @@ const escapeHtml = (value: string) =>
 // Inline styles and tables, because email apps ignore most other styling.
 // Arabic (or other right-to-left) email text: the whole message is laid out right to left, so
 // Latin words inside a sentence (a role, a city, "Joblop", a link) keep their place.
-const RTL_TEXT = /[֐-ࣿיִ-﷿ﹰ-﻿]/;
+const RTL_TEXT = /[\u0590-\u08FF\uFB1D-\uFDFF\uFE70-\uFEFF]/;
 
 export function isRightToLeftText(text: string): boolean {
   return RTL_TEXT.test(text);
