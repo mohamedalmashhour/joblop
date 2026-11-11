@@ -6,7 +6,12 @@ import {
   timingSafeEqual
 } from "node:crypto";
 import type { HeldShift, RequestPricingSnapshot } from "@rwos/shared";
-import { assertWorkerPayMeetsMinimumWage, LONG_TERM_LISTING_MARKER } from "@rwos/shared";
+import {
+  assertWorkerPayMeetsMinimumWage,
+  attendanceDeviationFlags,
+  countedAttendanceMinutes,
+  LONG_TERM_LISTING_MARKER
+} from "@rwos/shared";
 import type {
   WorkerOfferDeliveryProvider,
   WorkerOfferDeliveryResult
@@ -10052,16 +10057,19 @@ function calculateTimesheetMinutes(
       (attendanceRecord.checkOutAt.getTime() - attendanceRecord.checkInAt.getTime()) / 60000
     )
   );
-  const exceptionFlags: string[] = [];
-  if (attendanceRecord.checkInAt < assignment.confirmedStartAt)
-    exceptionFlags.push("early_arrival");
-  if (attendanceRecord.checkInAt > assignment.confirmedStartAt) exceptionFlags.push("late_arrival");
-  if (attendanceRecord.checkOutAt < assignment.confirmedEndAt)
-    exceptionFlags.push("early_departure");
-  if (attendanceRecord.checkOutAt > assignment.confirmedEndAt)
-    exceptionFlags.push("late_departure");
+  const attendanceTimes = {
+    checkInAt: attendanceRecord.checkInAt,
+    checkOutAt: attendanceRecord.checkOutAt,
+    scheduledStartAt: assignment.confirmedStartAt,
+    scheduledEndAt: assignment.confirmedEndAt
+  };
+  // Arrival/departure within ATTENDANCE_TIME_MARGIN_MINUTES of the schedule is normal (no flag).
+  const exceptionFlags: string[] = [...attendanceDeviationFlags(attendanceTimes)];
   if (attendanceRecord.exceptionCategory)
     exceptionFlags.push(`attendance_exception:${attendanceRecord.exceptionCategory}`);
+  // Hours count from the scheduled start to the scheduled end at most: time before the start or after
+  // the end is not billed or paid unless staff adjust it. The raw check-in/out stay on the timesheet.
+  const countedMinutes = countedAttendanceMinutes(attendanceTimes);
 
   // Authoritative 6-hour minimum applied to pay AND billing. The employer accepts, and the worker
   // relies on, "any shift shorter than 6 hours is billed as 6 hours; if the worker is dismissed for
@@ -10069,18 +10077,25 @@ function calculateTimesheetMinutes(
   // this minimum (enforced at request creation), so once attendance has a check-in and check-out the
   // worked time is floored to the minimum for both payable and billable minutes. A true no-show never
   // reaches a completed attendance record, so it is handled by the no-show/missed path, not here.
-  const flooredMinutes = Math.max(rawElapsedMinutes, MINIMUM_STAFFING_SHIFT_MINUTES);
-  if (flooredMinutes > rawElapsedMinutes) exceptionFlags.push("minimum_shift_floor_applied");
+  const flooredMinutes = Math.max(countedMinutes, MINIMUM_STAFFING_SHIFT_MINUTES);
+  // The floor flag goes with a real exception only: a few minutes short inside the margin (e.g. in at
+  // 08:10 for an 08:00–14:00 shift) is normal and must not send the timesheet to review.
+  if (flooredMinutes > countedMinutes && exceptionFlags.length > 0)
+    exceptionFlags.push("minimum_shift_floor_applied");
 
   return {
     rawCheckInAt: attendanceRecord.checkInAt,
     rawCheckOutAt: attendanceRecord.checkOutAt,
-    normalizedCheckInAt: attendanceRecord.checkInAt,
-    normalizedCheckOutAt: attendanceRecord.checkOutAt,
+    normalizedCheckInAt: new Date(
+      Math.max(attendanceRecord.checkInAt.getTime(), assignment.confirmedStartAt.getTime())
+    ),
+    normalizedCheckOutAt: new Date(
+      Math.min(attendanceRecord.checkOutAt.getTime(), assignment.confirmedEndAt.getTime())
+    ),
     rawElapsedMinutes,
     payableMinutes: flooredMinutes,
     billableMinutes: flooredMinutes,
-    excludedMinutes: 0,
+    excludedMinutes: Math.max(0, rawElapsedMinutes - countedMinutes),
     breakMinutes: 0,
     premiumCandidateMinutes: 0,
     overtimeCandidateMinutes: 0,
