@@ -14288,7 +14288,7 @@ type PrismaAssignmentClient = Pick<
           confirmedStartAt?: { lt: Date } | undefined;
           confirmedEndAt?: { gt: Date } | undefined;
           id?: { not: string } | undefined;
-          jobRequest?: { jobLength: { not: string } } | undefined;
+          jobRequest?: { jobLength: { not: string }; status?: { not: string } | undefined } | undefined;
         };
       }): Promise<number>;
       findFirst(args: {
@@ -14297,7 +14297,7 @@ type PrismaAssignmentClient = Pick<
           status: { in: readonly AssignmentStatus[] };
           confirmedStartAt: { lt: Date };
           confirmedEndAt: { gt: Date };
-          jobRequest: { jobLength: { not: string } };
+          jobRequest: { jobLength: { not: string }; status?: { not: string } | undefined };
         };
         orderBy: { confirmedStartAt: "asc" };
         select: { confirmedStartAt: true; confirmedEndAt: true; timezone: true };
@@ -14383,7 +14383,9 @@ export function createPrismaHeldShiftOverlapFinder(prismaClient: unknown): HeldS
         status: { in: activeAssignmentStates },
         confirmedStartAt: { lt: input.endAt },
         confirmedEndAt: { gt: input.startAt },
-        jobRequest: { jobLength: { not: LONG_TERM_JOB_LENGTH } }
+        // A shift on a cancelled job no longer holds the worker's time, even when its assignment
+        // already reached attendance_handoff (a state the assignment cancel path cannot leave).
+        jobRequest: { jobLength: { not: LONG_TERM_JOB_LENGTH }, status: { not: "cancelled" } }
       },
       orderBy: { confirmedStartAt: "asc" },
       select: { confirmedStartAt: true, confirmedEndAt: true, timezone: true }
