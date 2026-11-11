@@ -25,6 +25,15 @@ import {
 } from "./requestSummary";
 
 type IntakeAction = "admin-review" | "request-information" | "approve-for-dispatch";
+
+/**
+ * "I'll choose the worker myself" is hidden for now. On the live site that path is a dead end: staff
+ * can send an offer and the worker can accept it, but no assignment is ever created, because the
+ * assignment handoff (ASSIGNMENT_HANDOFF_ENABLED) is off and is not allowed in production. So every
+ * approval opens the job on the board (openClaim = true) and the first qualified worker takes it.
+ * The manual code path stays in place; set this to true once a production-safe handoff exists.
+ */
+export const MANUAL_WORKER_PICK_AVAILABLE = false;
 type Loaded = Readonly<{ request: AdminCalendarDto; summary: RequestSummary | null }>;
 
 // Staff request detail. Shows what the employer asked for (company, role, hours, extras, price with
@@ -45,7 +54,10 @@ export function PersistedAdminReviewPanel({ requestId }: Readonly<{ requestId: s
   // Hybrid auto-offer: when on, approving opens the job for direct worker claim (first eligible
   // worker to tap Accept is assigned instantly). Off keeps the manual shortlist → offer path.
   // On by default: every approved job goes on the shared jobs calendar for all workers.
-  const [openClaim, setOpenClaim] = useState(true);
+  const [openClaimChoice, setOpenClaim] = useState(true);
+  // While the manual path is switched off (see MANUAL_WORKER_PICK_AVAILABLE), every approval opens
+  // the job on the board, whatever the stored choice says.
+  const openClaim = MANUAL_WORKER_PICK_AVAILABLE ? openClaimChoice : true;
   const requestGeneration = useRef(0);
   const confirmationDialog = useRef<HTMLDialogElement>(null);
   const confirmationTrigger = useRef<HTMLButtonElement | null>(null);
@@ -354,6 +366,7 @@ export function PersistedAdminReviewPanel({ requestId }: Readonly<{ requestId: s
                   {t.payPreview(money(pricing.workerHourlyRateMinor), money(pricing.platformHourlyMarginMinor))}
                 </p>
               ) : null}
+              {MANUAL_WORKER_PICK_AVAILABLE ? (
               <fieldset style={styles.fieldset}>
                 <legend style={styles.legend}>{t.choiceLegend}</legend>
                 <label style={styles.choice}>
@@ -377,6 +390,9 @@ export function PersistedAdminReviewPanel({ requestId }: Readonly<{ requestId: s
                   <span>{t.choiceManual}</span>
                 </label>
               </fieldset>
+              ) : (
+                <p style={styles.legend}>{t.choiceBoard}</p>
+              )}
               <button
                 disabled={actionBusy}
                 onClick={(event) => {
