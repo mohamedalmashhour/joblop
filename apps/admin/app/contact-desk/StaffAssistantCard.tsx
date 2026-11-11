@@ -37,7 +37,7 @@ export function StaffAssistantCard({ action, copy }: Readonly<{ action: Assistan
   async function decide(decision: "confirm" | "cancel") {
     setBusy(true);
     try {
-      const response = await fetch(`/api/assistant/${decision}`, {
+      const response = await fetch(decision === "confirm" ? "/api/assistant/confirm" : "/api/assistant/cancel", {
         method: "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({ token: action.token, locale: locale.slice(0, 2) })

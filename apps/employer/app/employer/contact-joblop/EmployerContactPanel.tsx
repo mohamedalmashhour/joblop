@@ -135,7 +135,11 @@ function Thread({ id, onBack }: { id: string; onBack(): void }) {
   // Confirm or Cancel on an assistant card. The result is written into the conversation by the API.
   async function decide(token: string, decision: "confirm" | "cancel"): Promise<string | null> {
     try {
-      const response = await fetch(`/api/contact/${encodeURIComponent(id)}/assistant/${decision}`, {
+      const response = await fetch(
+        decision === "confirm"
+          ? `/api/contact/${encodeURIComponent(id)}/assistant/confirm`
+          : `/api/contact/${encodeURIComponent(id)}/assistant/cancel`,
+        {
         method: "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({ token, locale: locale.slice(0, 2) })
