@@ -119,12 +119,8 @@ export function EmployerAttendancePanel() {
           {record.exceptionCategory ? (
             <p style={styles.cardText}>{fill(tx.problem, { issue: record.exceptionCategory.replaceAll("_", " ") })}</p>
           ) : null}
-          <a
-            href={`/employer/assignments/detail?assignment=${encodeURIComponent(record.assignmentId)}`}
-            style={styles.secondaryButton}
-          >
-            {tx.openDetail}
-          </a>
+          {/* No link here: the records carry no request number, and the old assignment-detail
+              page is not available on the live site. */}
         </article>
       ))}
     </div>

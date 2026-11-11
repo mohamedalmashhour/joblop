@@ -120,12 +120,8 @@ export function EmployerAssignmentsPanel() {
             <p style={styles.cardText}>{assignment.worksiteSummary}</p>
           ) : null}
           <p style={styles.cardText}>{formatAssignmentWindow(assignment)}</p>
-          <a
-            href={`/employer/assignments/detail?assignment=${encodeURIComponent(assignment.assignmentId)}`}
-            style={styles.secondaryButton}
-          >
-            {tx.openDetail}
-          </a>
+          {/* No link here: the records carry no request number, and the old assignment-detail
+              page is not available on the live site. */}
         </article>
       ))}
     </div>

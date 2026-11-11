@@ -19,7 +19,6 @@ type ListText = Readonly<{
   errorTitle: string;
   errorBody: string;
   retry: string;
-  openDetail: string;
   backAction: string;
   pageEyebrow: string;
   pageTitle: string;
@@ -35,8 +34,7 @@ const shared = {
     chooseCompanyTitle: "Choose your company first",
     openCalendar: "Open the request calendar",
     errorBody: "Please try again in a moment.",
-    retry: "Try again",
-    openDetail: "See the shift"
+    retry: "Try again"
   },
   fr: {
     loadingBody: "Un instant.",
@@ -44,8 +42,7 @@ const shared = {
     chooseCompanyTitle: "Choisissez d'abord votre entreprise",
     openCalendar: "Ouvrir le calendrier des demandes",
     errorBody: "Veuillez réessayer dans un moment.",
-    retry: "Réessayer",
-    openDetail: "Voir le quart"
+    retry: "Réessayer"
   },
   ar: {
     loadingBody: "لحظة من فضلك.",
@@ -53,8 +50,7 @@ const shared = {
     chooseCompanyTitle: "اختر شركتك أولًا",
     openCalendar: "افتح تقويم الطلبات",
     errorBody: "يرجى المحاولة مرة أخرى بعد قليل.",
-    retry: "حاول مرة أخرى",
-    openDetail: "عرض المناوبة"
+    retry: "حاول مرة أخرى"
   }
 } as const;
 

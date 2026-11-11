@@ -37,17 +37,25 @@ export function ClientRequestDetailPanel({ requestId }: Readonly<{ requestId: st
   const [organizationRequired, setOrganizationRequired] = useState(false);
   // The certificates chosen on the request form (best effort; the page works without them).
   const [chosenCertificates, setChosenCertificates] = useState<readonly string[] | null>(null);
+  // Set once a cancel succeeds on this page: the badge then reads "Cancelled" and the cancel result
+  // stays on screen, even before the refreshed record arrives.
+  const [cancelledHere, setCancelledHere] = useState(false);
   const requestGeneration = useRef(0);
-  const load = useCallback(async () => {
+  // quiet: refresh in place (after a cancel) without switching the page to the loading message.
+  const load = useCallback(async (quiet = false) => {
     if (!requestId) return;
     const generation = ++requestGeneration.current;
-    setOrganizationRequired(false);
-    setState({ status: "loading" });
+    if (!quiet) {
+      setOrganizationRequired(false);
+      setState({ status: "loading" });
+    }
     try {
       const response = await fetch(`/api/calendar/requests/${encodeURIComponent(requestId)}`, {
         cache: "no-store"
       });
       if (generation !== requestGeneration.current) return;
+      // A quiet refresh only ever updates the record; on any problem the page keeps what it shows.
+      if (quiet && !response.ok) return;
       if (response.status === 409) {
         const payload = await response.json().catch(() => null);
         if (
@@ -72,7 +80,7 @@ export function ClientRequestDetailPanel({ requestId }: Readonly<{ requestId: st
       const keys = jobRequest?.jobRequest?.edit?.requiredCertificates;
       setChosenCertificates(Array.isArray(keys) ? keys.filter((key): key is string => typeof key === "string") : null);
     } catch {
-      if (generation !== requestGeneration.current) return;
+      if (generation !== requestGeneration.current || quiet) return;
       setState({ status: "error" });
     }
   }, [requestId]);
@@ -144,7 +152,8 @@ export function ClientRequestDetailPanel({ requestId }: Readonly<{ requestId: st
     );
   }
 
-  const request = state.data;
+  const request: ClientCalendarDto =
+    cancelledHere && state.data.status !== "cancelled" ? { ...state.data, status: "cancelled" } : state.data;
   const phase = requestPhase(request);
   // Cancelled or finished: nothing left to change, so the only action is "Duplicate request".
   const closed = isClosedPhase(phase);
@@ -208,7 +217,15 @@ export function ClientRequestDetailPanel({ requestId }: Readonly<{ requestId: st
               versionToken={request.versionToken}
             />
           ) : null}
-          {!closed ? <CancelRequestPanel requestId={request.id} /> : null}
+          {!closed || cancelledHere ? (
+            <CancelRequestPanel
+              requestId={request.id}
+              onCancelled={() => {
+                setCancelledHere(true);
+                void load(true);
+              }}
+            />
+          ) : null}
           <button
             type="button"
             onClick={() => window.print()}

@@ -246,7 +246,7 @@ export function JobDetail({ id, place }: { id: string; place: string | null }) {
             {job.travelTime.distanceKm !== null ? ` · ${job.travelTime.distanceKm} km` : ""}
           </Fact>
         ) : null}
-        <Fact label={t("job.factWhen")}>{formatWhen(job.startAt, job.endAt, locale)}</Fact>
+        <Fact label={t("job.factWhen")}>{formatWhen(job.startAt, job.endAt, uiLocale === "ar" ? "ar" : locale)}</Fact>
         <Fact label={t("job.factOpenings")}>{job.openings}</Fact>
         <Fact label={t("job.factPay")}>
           <bdi>{workerPayLabel(job, locale, { paidByEmployer: t("pay.paidByEmployer"), employerPaysDirectly: t("pay.employerPaysDirectly"), pending: t("pay.pending") })}</bdi>
@@ -322,7 +322,7 @@ export function JobDetail({ id, place }: { id: string; place: string | null }) {
         <a className="btn ghost" href={`/employers/${encodeURIComponent(job.employer.id)}`}>{t("job.viewEmployer")}</a>
         <a className="btn ghost" href="/my-interests">{t("nav.interests")}</a>
         <button className="btn ghost" type="button" onClick={() => window.print()}>
-          {locale.startsWith("fr") ? "🖨 Imprimer" : "🖨 Print details"}
+          {t("job.print")}
         </button>
       </div>
     </article>
