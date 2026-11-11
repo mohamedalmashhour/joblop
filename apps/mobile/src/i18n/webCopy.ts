@@ -245,7 +245,6 @@ export const WEB_COPY: Readonly<Record<string, Readonly<{ en: string; fr: string
   "offers.respondBy": { en: "Respond by", fr: "Répondre avant", ar: "الرد قبل" },
   "offers.responseFailed": { en: "We couldn't record your response. Please try again.", fr: "Impossible d'enregistrer votre réponse. Veuillez réessayer.", ar: "تعذّر تسجيل ردّك. حاول مجددًا." },
   "offers.rightBinding": { en: "Accepting binds you to these terms; declining releases the shift.", fr: "Accepter vous engage à ces conditions; refuser libère le quart.", ar: "قبول العرض يلزمك بهذه الشروط؛ والرفض يحرّر المناوبة." },
-  "offers.rightNoFee": { en: "Joblop never takes a cut of your pay — its commission is paid by the employer.", fr: "Joblop ne prélève jamais sur votre paie — sa commission est payée par l'employeur.", ar: "لا يقتطع Joblop أبداً من أجرك — عمولته يدفعها صاحب العمل." },
   "offers.rightRecorded": { en: "Your hours are recorded by Joblop when you check in and out.", fr: "Vos heures sont enregistrées par Joblop lorsque vous pointez à l'arrivée et au départ.", ar: "تُسجّل ساعاتك بواسطة Joblop عند تسجيل الدخول والخروج." },
   "offers.rightsTitle": { en: "Your rights", fr: "Vos droits", ar: "حقوقك" },
   "offers.scheduleLabel": { en: "Schedule", fr: "Horaire", ar: "الجدول" },
