@@ -427,7 +427,7 @@ function timeRange(startAt: Date, endAt: Date, language: WorkerLanguage, timeZon
 
 function calendarLine(workerWebOrigin: string | null | undefined, language: WorkerLanguage): string {
   const origin = workerWebOrigin?.trim().replace(/\/+$/, "");
-  if (language === "ar") return origin ? `اطّلع على تقويمك: ${origin}/jobs-calendar` : "افتح Joblop لرؤية تقويمك.";
+  if (language === "ar") return origin ? `يمكنك مراجعة تقويمك هنا: ${origin}/jobs-calendar` : "افتح Joblop لمراجعة تقويمك.";
   if (origin) return language === "en" ? `See your calendar: ${origin}/jobs-calendar` : `Voir votre calendrier : ${origin}/jobs-calendar`;
   return language === "en" ? "Open Joblop to see your calendar." : "Ouvrez Joblop pour voir votre calendrier.";
 }
@@ -484,17 +484,17 @@ export function shiftCancelledEmail(input: ShiftCancelledCopyInput & { to: strin
   }
   if (language === "ar") {
     const whereAr = shift.area ? ` في ${shift.area}` : "";
-    const whoAr = input.cancelledBy === "employer" ? "من قِبل صاحب العمل" : "من قِبل Joblop";
+    const whoAr = input.cancelledBy === "employer" ? "صاحب العمل" : "فريق Joblop";
     return {
       to: input.to,
       subject: "Joblop — أُلغيت مناوبتك",
       text:
         (input.offerOnly
-          ? `أُلغيت المناوبة التي عُرضت عليك، «${shift.role}» في ${when}${whereAr}، ${whoAr}. لم يعد العرض ساريًا.\n\n`
-          : `أُلغيت مناوبتك «${shift.role}» في ${when}${whereAr} ${whoAr}. لا داعي للحضور.\n\n`) +
+          ? `نأسف، أُلغيت المناوبة التي عُرضت عليك (${shift.role}) يوم ${when}${whereAr}. ألغاها ${whoAr}، ولم يعد هذا العرض متاحًا.\n\n`
+          : `نأسف، أُلغيت مناوبتك (${shift.role}) يوم ${when}${whereAr}. ألغاها ${whoAr}، فلا حاجة إلى الذهاب إلى موقع العمل.\n\n`) +
         (reason ? `السبب: ${reason}\n\n` : "") +
         `${calendarLine(input.workerWebOrigin, language)}\n\n` +
-        `إذا كنت في الطريق بالفعل، تواصل مع Joblop.\n\n— Joblop`
+        `إذا كنت في طريقك إلى العمل الآن، يُرجى التواصل مع Joblop.\n\n— Joblop`
     };
   }
   const where = shift.area ? ` à ${shift.area}` : "";
