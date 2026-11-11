@@ -4,6 +4,11 @@ import { useEffect, useState } from "react";
 import { activeCountry } from "@rwos/shared";
 import { styles } from "../../employerStyles";
 import { resumeStep, type SetupStep } from "./setupStep";
+import { useLocale } from "../../../i18n/LocaleProvider";
+import { langOf } from "../../../i18n/localText";
+import { setupText } from "../onboardingText";
+
+type SetupError = "errSaveRefused" | "errSession" | "errCheck" | "errGeneric" | "errPostal" | "errNoId";
 
 // Round 2c: real self-serve employer onboarding. Persists org → residence → department against the
 // governed API (via BFF routes), auto-selecting the new org as the active context. On completion the
@@ -13,9 +18,10 @@ import { resumeStep, type SetupStep } from "./setupStep";
 const PROVINCES = activeCountry().regions.map((r) => r.code);
 
 export function OnboardingPanel() {
+  const tx = setupText[langOf(useLocale())];
   const [step, setStep] = useState<SetupStep>("company");
   const [busy, setBusy] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState<SetupError | null>(null);
 
   const [legalName, setLegalName] = useState("");
   const [displayName, setDisplayName] = useState("");
@@ -48,15 +54,15 @@ export function OnboardingPanel() {
         const session = await fetch("/api/session", { cache: "no-store" }).catch(() => null);
         setError(
           session?.ok
-            ? "We couldn't save that. Please try again, or contact Joblop if it keeps happening."
-            : "Your session expired. Please sign in again."
+            ? "errSaveRefused"
+            : "errSession"
         );
         return null;
       }
-      if (!res.ok) { setError("That couldn't be saved. Check the details and try again."); return null; }
+      if (!res.ok) { setError("errCheck"); return null; }
       return (await res.json().catch(() => ({}))) as Record<string, unknown>;
     } catch {
-      setError("Something went wrong. Please try again.");
+      setError("errGeneric");
       return null;
     } finally {
       setBusy(false);
@@ -76,9 +82,9 @@ export function OnboardingPanel() {
       setResidenceId(id);
       setStep("department");
       const located = await post(`/api/residences/${encodeURIComponent(id)}/location`, { postalCode: postalCode.trim() });
-      if (!located) setError("The site was saved, but that postal code could not be found. Workers cannot find its jobs until you fix it on the Sites page.");
+      if (!located) setError("errPostal");
     }
-    else if (out) setError("The residence was saved but no id came back. Refresh and continue.");
+    else if (out) setError("errNoId");
   }
   async function createDepartment() {
     if (!deptName.trim() || !residenceId) return;
@@ -89,82 +95,80 @@ export function OnboardingPanel() {
   return (
     <section style={styles.section}>
       <div style={styles.sectionHeader}>
-        <p style={styles.eyebrowDark}>Set up your organization</p>
+        <p style={styles.eyebrowDark}>{tx.eyebrow}</p>
         <h2 style={styles.sectionTitle}>
-          {step === "company" ? "Step 1 of 3 — your company"
-            : step === "residence" ? "Step 2 of 3 — your first site / residence"
-            : step === "department" ? "Step 3 of 3 — a department"
-            : "You're set up"}
+          {step === "company" ? tx.step1
+            : step === "residence" ? tx.step2
+            : step === "department" ? tx.step3
+            : tx.done}
         </h2>
       </div>
 
-      {error ? <p role="alert" style={styles.warning}>{error}</p> : null}
+      {error ? <p role="alert" style={styles.warning}>{tx[error]}</p> : null}
 
       {step === "company" ? (
         <div style={styles.formGrid}>
           <label style={styles.fieldLabel}>
-            Public display name
-            <input value={displayName} onChange={(e) => setDisplayName(e.target.value)} placeholder="Worker-facing name (e.g. Oak Hill Care)" style={styles.input} />
+            {tx.publicName}
+            <input value={displayName} onChange={(e) => setDisplayName(e.target.value)} placeholder={tx.publicNamePh} style={styles.input} />
           </label>
           <label style={styles.fieldLabel}>
-            Legal organization name
-            <input value={legalName} onChange={(e) => setLegalName(e.target.value)} placeholder="Legal entity name" style={styles.input} />
+            {tx.legalName}
+            <input value={legalName} onChange={(e) => setLegalName(e.target.value)} placeholder={tx.legalNamePh} style={styles.input} />
           </label>
           <button type="button" disabled={busy || !legalName.trim() || !displayName.trim()} onClick={() => void createOrg()} style={styles.primaryButton}>
-            {busy ? "Creating…" : "Create organization"}
+            {busy ? tx.creating : tx.createCompany}
           </button>
         </div>
       ) : null}
 
       {step === "residence" ? (
         <div style={styles.formGrid}>
-          <p style={styles.cardText}>Add a site: the place where shifts happen.</p>
+          <p style={styles.cardText}>{tx.siteIntro}</p>
           <label style={styles.fieldLabel}>
-            Site / residence name
-            <input value={resName} onChange={(e) => setResName(e.target.value)} placeholder="e.g. Oak Hill Residence" style={styles.input} />
+            {tx.siteName}
+            <input value={resName} onChange={(e) => setResName(e.target.value)} placeholder={tx.siteNamePh} style={styles.input} />
           </label>
           <label style={styles.fieldLabel}>
-            Province
+            {tx.province}
             <select value={province} onChange={(e) => setProvince(e.target.value)} style={styles.input}>
               {PROVINCES.map((p) => <option key={p} value={p}>{p}</option>)}
             </select>
           </label>
           <label style={styles.fieldLabel}>
-            City
-            <input value={city} onChange={(e) => setCity(e.target.value)} placeholder="e.g. Laval" style={styles.input} />
+            {tx.city}
+            <input value={city} onChange={(e) => setCity(e.target.value)} placeholder={tx.cityPh} style={styles.input} />
           </label>
           <label style={styles.fieldLabel}>
-            Postal code
-            <input value={postalCode} onChange={(e) => setPostalCode(e.target.value)} autoComplete="postal-code" placeholder="e.g. H7V 1A1" style={styles.input} />
+            {tx.postalCode}
+            <input value={postalCode} onChange={(e) => setPostalCode(e.target.value)} autoComplete="postal-code" placeholder={tx.postalCodePh} style={styles.input} />
           </label>
           <button type="button" disabled={busy || !resName.trim() || !city.trim() || !postalCode.trim()} onClick={() => void createResidence()} style={styles.primaryButton}>
-            {busy ? "Saving…" : "Add site"}
+            {busy ? tx.saving : tx.addSite}
           </button>
         </div>
       ) : null}
 
       {step === "department" ? (
         <div style={styles.formGrid}>
-          <p style={styles.cardText}>Add a department for this site (e.g. the unit staffing requests belong to).</p>
+          <p style={styles.cardText}>{tx.deptIntro}</p>
           <label style={styles.fieldLabel}>
-            Department name
-            <input value={deptName} onChange={(e) => setDeptName(e.target.value)} placeholder="e.g. Care / Housekeeping" style={styles.input} />
+            {tx.deptName}
+            <input value={deptName} onChange={(e) => setDeptName(e.target.value)} placeholder={tx.deptNamePh} style={styles.input} />
           </label>
           <button type="button" disabled={busy || !deptName.trim()} onClick={() => void createDepartment()} style={styles.primaryButton}>
-            {busy ? "Saving…" : "Add department"}
+            {busy ? tx.saving : tx.addDept}
           </button>
         </div>
       ) : null}
 
       {step === "done" ? (
         <div style={styles.formGrid}>
-          <p style={styles.cardText}>
-            Your company and site are saved. Sign your contract, then you can request workers.
-          </p>
-          <a href="/employer/contract" style={styles.primaryButton}>Review my contract</a>
-          <button onClick={() => { setResName(""); setCity(""); setStep("residence"); }} style={styles.secondaryButton} type="button">Add another site</button>
+          <p style={styles.cardText}>{tx.doneBody}</p>
+          <a href="/employer/contract" style={styles.primaryButton}>{tx.reviewContract}</a>
+          <button onClick={() => { setResName(""); setCity(""); setStep("residence"); }} style={styles.secondaryButton} type="button">{tx.addAnotherSite}</button>
           {residenceId ? (
-            <button onClick={() => { setDeptName(""); setStep("department"); }} style={styles.secondaryButton} type="button">Add a department</button>
+            <button onClick={() => { setDeptName(""); setStep("department"); }} style={styles.secondaryButton} type="button">{tx.addAnotherDept}</button>
           ) : null}
         </div>
       ) : null}

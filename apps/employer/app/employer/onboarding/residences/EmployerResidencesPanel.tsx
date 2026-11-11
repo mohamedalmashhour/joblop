@@ -9,6 +9,9 @@ import {
   type EmployerResidenceDto
 } from "@rwos/shared";
 import { styles } from "../../employerStyles";
+import { useLocale } from "../../../i18n/LocaleProvider";
+import { fill, langOf, statusLabel } from "../../../i18n/localText";
+import { siteStatusLabels, sitesText } from "../onboardingText";
 
 type OrganizationChoice = Readonly<{ id: string; publicId: string; displayName: string }>;
 type ResidencesState =
@@ -18,6 +21,8 @@ type ResidencesState =
 // Persisted, org-scoped residences read (GET /api/residences → /organizations/:id/residences).
 // Replaces the development fixtures with authoritative data — never shows fixtures as persisted.
 export function EmployerResidencesPanel() {
+  const lang = langOf(useLocale());
+  const tx = sitesText[lang];
   const [state, setState] = useState<ResidencesState>({ status: "loading" });
   const generationRef = useRef(0);
 
@@ -55,34 +60,34 @@ export function EmployerResidencesPanel() {
   if (state.status === "loading") {
     return (
       <ResidencesMessage
-        title="Loading residences"
-        message="Checking your authenticated organization context."
+        title={tx.loading}
+        message={tx.loadingBody}
       />
     );
   }
   if (state.status === "denied") {
     return (
       <ResidencesMessage
-        title="Sign in to view residences"
-        message="Residences are shown only for your authenticated organization."
-        action={{ href: "/signin", label: "Go to sign in" }}
+        title={tx.signInTitle}
+        message={tx.signInBody}
+        action={{ href: "/signin", label: tx.goToSignIn }}
       />
     );
   }
   if (state.status === "organization_required") {
     return (
       <ResidencesMessage
-        title="Select your organization"
-        message="Choose your organization on the request calendar, then return to view its residences."
-        action={{ href: "/employer/calendar", label: "Open request calendar" }}
+        title={tx.chooseCompanyTitle}
+        message={tx.chooseCompanyBody}
+        action={{ href: "/employer/calendar", label: tx.openCalendar }}
       />
     );
   }
   if (state.status === "empty") {
     return (
       <ResidencesMessage
-        title="No residences yet"
-        message="Residences you create for this organization will appear here — no fixture records are shown."
+        title={tx.emptyTitle}
+        message={tx.emptyBody}
       />
     );
   }
@@ -91,12 +96,12 @@ export function EmployerResidencesPanel() {
       <ResidencesMessage
         title={
           state.status === "unavailable"
-            ? "Residences unavailable"
+            ? tx.unavailableTitle
             : state.status === "stale"
-              ? "Residences changed"
-              : "Residences could not be loaded"
+              ? tx.changedTitle
+              : tx.errorTitle
         }
-        message="No fixture records are shown as persisted data. Retry when the service is available."
+        message={tx.errorBody}
         onRetry={load}
       />
     );
@@ -106,12 +111,12 @@ export function EmployerResidencesPanel() {
     <div style={styles.cardGrid}>
       {state.data.map((residence) => (
         <article key={residence.residenceId} style={styles.card}>
-          <span style={styles.statusBadge}>{residence.status.replaceAll("_", " ")}</span>
+          <span style={styles.statusBadge}>{statusLabel(siteStatusLabels[lang], residence.status)}</span>
           <h3 style={styles.cardTitle}>{residence.name}</h3>
           {formatLocation(residence) ? (
             <p style={styles.cardText}>{formatLocation(residence)}</p>
           ) : null}
-          <p style={styles.cardText}>Reference: {residence.publicId}</p>
+          <p style={styles.cardText}>{fill(tx.reference, { id: residence.publicId })}</p>
           <SiteLocationForm residenceId={residence.residenceId} onSaved={load} />
         </article>
       ))}
@@ -121,6 +126,7 @@ export function EmployerResidencesPanel() {
 
 // Workers search by distance, so a site without a location never appears in their results.
 function SiteLocationForm({ residenceId, onSaved }: Readonly<{ residenceId: string; onSaved: () => Promise<void> }>) {
+  const tx = sitesText[langOf(useLocale())];
   const [postalCode, setPostalCode] = useState("");
   const [busy, setBusy] = useState(false);
   const [problem, setProblem] = useState(false);
@@ -140,19 +146,19 @@ function SiteLocationForm({ residenceId, onSaved }: Readonly<{ residenceId: stri
   return (
     <form onSubmit={(event) => void save(event)} style={styles.formGrid}>
       <label style={styles.fieldLabel}>
-        Postal code, so workers can find this site
+        {tx.postalLabel}
         <input
           autoComplete="postal-code"
           onChange={(event) => setPostalCode(event.target.value)}
-          placeholder="e.g. H7V 1A1"
+          placeholder={tx.postalPh}
           required
           style={styles.input}
           value={postalCode}
         />
       </label>
-      {problem ? <p role="alert" style={styles.warning}>That postal code could not be found. Check it and try again.</p> : null}
+      {problem ? <p role="alert" style={styles.warning}>{tx.postalProblem}</p> : null}
       <button disabled={busy} style={styles.primaryButton} type="submit">
-        {busy ? "Saving…" : "Save location"}
+        {busy ? tx.saving : tx.saveLocation}
       </button>
     </form>
   );
@@ -175,6 +181,7 @@ function ResidencesMessage({
   action?: Readonly<{ href: string; label: string }>;
   onRetry?: () => void;
 }>) {
+  const retryLabel = sitesText[langOf(useLocale())].retry;
   return (
     <div aria-live="polite" style={styles.panel}>
       <h3 style={styles.sectionTitle}>{title}</h3>
@@ -190,7 +197,7 @@ function ResidencesMessage({
           style={{ ...styles.secondaryButton, cursor: "pointer" }}
           type="button"
         >
-          Retry
+          {retryLabel}
         </button>
       ) : null}
     </div>

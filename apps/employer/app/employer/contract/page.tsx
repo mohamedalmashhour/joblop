@@ -1,25 +1,28 @@
 import { EmployerShell } from "../EmployerShell";
 import { styles } from "../employerStyles";
+import { serverLang } from "../../i18n/serverLang";
+import { contractText } from "./contractText";
 import { ContractSignPanel } from "./ContractSignPanel";
 
-export default function EmployerContractPage() {
+export default async function EmployerContractPage() {
+  const tx = contractText[await serverLang()];
   return (
     <EmployerShell
       currentRoute="/employer/contract"
-      eyebrow="Platform contract / Client"
-      title="Review and sign your platform contract before you request workers."
-      lede="The contract holds the governed rate card — the authoritative hourly rate per role. Staffing requests read these rates; they never set a price. Signing records your acceptance; it does not change any rate."
+      eyebrow={tx.pageEyebrow}
+      title={tx.pageTitle}
+      lede={tx.pageLede}
       mode="authenticated"
       actions={
         <a href="/employer/calendar/create" style={styles.primaryButton}>
-          Go to request creation
+          {tx.pageAction}
         </a>
       }
     >
       <section style={styles.section}>
         <div style={styles.sectionHeader}>
-          <p style={styles.eyebrowDark}>Governed rate card</p>
-          <h2 style={styles.sectionTitle}>One authoritative price per role, accepted by the organization owner.</h2>
+          <p style={styles.eyebrowDark}>{tx.sectionEyebrow}</p>
+          <h2 style={styles.sectionTitle}>{tx.sectionTitle}</h2>
         </div>
         <ContractSignPanel />
       </section>

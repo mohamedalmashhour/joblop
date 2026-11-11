@@ -1,18 +1,21 @@
 import { EmployerShell } from "../../EmployerShell";
 import { styles } from "../../employerStyles";
 import { OrderBuilderPanel } from "./OrderBuilderPanel";
+import { serverLang } from "../../../i18n/serverLang";
+import { pageHeaders } from "../../pageHeaderText";
 
-export default function CreateEmployerOrderPage() {
+export default async function CreateEmployerOrderPage() {
+  const h = pageHeaders[await serverLang()].orderCreate;
   return (
     <EmployerShell
       currentRoute="/employer/orders/create"
-      eyebrow="Orders / New order"
-      title="Create a multi-role staffing order."
-      lede="Set the shared worksite and time window, then add a role line for each role you need. Submission sends every role for platform review; it does not publish a shift, assign a worker, or move money."
+      eyebrow={h.eyebrow}
+      title={h.title}
+      lede={h.lede}
       mode="authenticated"
       actions={
         <a href="/employer/orders" style={styles.secondaryButton}>
-          Back to orders
+          {h.back}
         </a>
       }
     >

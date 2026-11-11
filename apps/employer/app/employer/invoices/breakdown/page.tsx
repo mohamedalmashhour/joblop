@@ -2,6 +2,8 @@ import { EmployerShell, WorkflowRoutes } from "../../EmployerShell";
 import { styles } from "../../employerStyles";
 import { InvoiceReviewPanel } from "../InvoiceReviewPanel";
 import { invoiceDetailHref, readInvoiceParam } from "../invoiceSelection";
+import { serverLang } from "../../../i18n/serverLang";
+import { pageHeaders } from "../../pageHeaderText";
 
 export default async function ChargeBreakdownPage({
   searchParams
@@ -9,15 +11,16 @@ export default async function ChargeBreakdownPage({
   searchParams: Promise<{ invoice?: string | string[] }>;
 }) {
   const invoiceId = readInvoiceParam((await searchParams).invoice);
+  const h = pageHeaders[await serverLang()].invoiceBreakdown;
   return (
     <EmployerShell
       currentRoute="/employer/invoices/breakdown"
-      eyebrow="Charge Breakdown"
-      title="Review charge breakdown before payment-state handoff."
-      lede="Charge breakdown explains invoice totals. It does not provide tax advice, post accounting, or execute charges."
+      eyebrow={h.eyebrow}
+      title={h.title}
+      lede={h.lede}
       actions={
         <a href={invoiceId ? invoiceDetailHref(invoiceId) : "/employer/invoices"} style={styles.primaryButton}>
-          {invoiceId ? "Back to invoice" : "Back to invoices"}
+          {invoiceId ? h.backToInvoice : h.backToInvoices}
         </a>
       }
     >

@@ -1,18 +1,21 @@
 import { EmployerShell } from "../EmployerShell";
 import { styles } from "../employerStyles";
 import { OrdersListPanel } from "./OrdersListPanel";
+import { serverLang } from "../../i18n/serverLang";
+import { pageHeaders } from "../pageHeaderText";
 
-export default function EmployerOrdersPage() {
+export default async function EmployerOrdersPage() {
+  const h = pageHeaders[await serverLang()].orders;
   return (
     <EmployerShell
       currentRoute="/employer/orders"
-      eyebrow="Orders"
-      title="Staffing orders"
-      lede="One order can staff several roles at once. Each role is reviewed and priced by Joblop on its own."
+      eyebrow={h.eyebrow}
+      title={h.title}
+      lede={h.lede}
       mode="authenticated"
       actions={
         <a href="/employer/calendar" style={styles.secondaryButton}>
-          Back to request calendar
+          {h.back}
         </a>
       }
     >

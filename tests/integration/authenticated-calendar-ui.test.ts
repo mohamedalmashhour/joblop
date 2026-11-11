@@ -214,9 +214,23 @@ describe("authenticated calendar UI integration", () => {
       "StaffingProgressPanel.tsx"
     );
     const adminAssignment = read("apps", "admin", "app", "calendar", "assignment", "page.tsx");
-    expect(employerAssignment).toContain("Staffing progress");
-    expect(employerStaffingPanel).toContain("No fixture status or worker identity is substituted");
-    expect(employerStaffingPanel).toContain("does not confirm accepted offers or assignments");
+    // The employer words live in staffingText.ts (en/fr/ar). They stay honest in plain language: a
+    // failed load changes nothing, and "zero places left" does not mean workers have confirmed.
+    const employerStaffingText = read(
+      "apps",
+      "employer",
+      "app",
+      "employer",
+      "calendar",
+      "assignment",
+      "staffingText.ts"
+    );
+    expect(employerAssignment).toContain("staffingText[await serverLang()]");
+    expect(employerStaffingText).toContain('pageTitle: "Staffing progress"');
+    expect(employerStaffingPanel).toContain("tx.zeroNote");
+    expect(employerStaffingText).toContain("Your request was not changed.");
+    expect(employerStaffingText).toContain("You will see them on Assigned workers once they confirm.");
+    expect(employerStaffingText).not.toMatch(/fixture|persisted|dispatch|authoritative/iu);
     expect(adminAssignment).toContain("No fixture assignment is substituted");
     expect(adminAssignment).toContain("Attendance");
     const adminReview = read("apps", "admin", "app", "calendar", "PersistedAdminReviewPanel.tsx");

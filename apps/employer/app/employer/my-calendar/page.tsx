@@ -1,17 +1,20 @@
 import { EmployerShell } from "../EmployerShell";
 import { MyCalendarPanel } from "./MyCalendarPanel";
+import { serverLang } from "../../i18n/serverLang";
+import { pageHeaders } from "../pageHeaderText";
 
 // Calendar hub: the employer's starting point. Jobs with coverage and who is coming, bonus offers
 // to answer, invoice due dates and cancellations, plus a Today panel. Text is translated in the panel.
-export default function EmployerMyCalendarPage() {
+export default async function EmployerMyCalendarPage() {
+  const h = pageHeaders[await serverLang()].myCalendar;
   return (
     <EmployerShell
       currentRoute="/employer/my-calendar"
-      eyebrow="My calendar"
+      eyebrow={h.eyebrow}
       hideHero
-      lede="Your jobs, bonus offers and invoices in one calendar."
+      lede={h.lede}
       mode="authenticated"
-      title="My calendar"
+      title={h.title}
     >
       <MyCalendarPanel />
     </EmployerShell>

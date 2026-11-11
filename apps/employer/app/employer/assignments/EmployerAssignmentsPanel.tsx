@@ -10,6 +10,9 @@ import {
   type EmployerAssignmentDto
 } from "@rwos/shared";
 import { styles } from "../employerStyles";
+import { useLocale } from "../../i18n/LocaleProvider";
+import { langOf, statusLabel } from "../../i18n/localText";
+import { assignmentStatusLabels, assignmentsText } from "../recordListText";
 
 type OrganizationChoice = Readonly<{ id: string; publicId: string; displayName: string }>;
 type AssignmentsState =
@@ -19,6 +22,8 @@ type AssignmentsState =
 // Persisted, org-scoped employer assignments read (GET /api/assignments → /organizations/:id/assignments).
 // No fixture records are ever shown as persisted data — the state machine mirrors the request calendar.
 export function EmployerAssignmentsPanel() {
+  const lang = langOf(useLocale());
+  const tx = assignmentsText[lang];
   const [state, setState] = useState<AssignmentsState>({ status: "loading" });
   const generationRef = useRef(0);
 
@@ -56,35 +61,35 @@ export function EmployerAssignmentsPanel() {
   if (state.status === "loading") {
     return (
       <AssignmentsMessage
-        title="Loading assignments"
-        message="Checking your authenticated organization context."
+        title={tx.loading}
+        message={tx.loadingBody}
       />
     );
   }
   if (state.status === "denied") {
     return (
       <AssignmentsMessage
-        title="Sign in to view assignments"
-        message="Assignments are shown only for your authenticated organization."
-        action={{ href: "/signin", label: "Go to sign in" }}
+        title={tx.signInTitle}
+        message={tx.signInBody}
+        action={{ href: "/signin", label: tx.goToSignIn }}
       />
     );
   }
   if (state.status === "organization_required") {
     return (
       <AssignmentsMessage
-        title="Select your organization"
-        message="Choose your organization on the request calendar, then return to view its assignments."
-        action={{ href: "/employer/calendar", label: "Open request calendar" }}
+        title={tx.chooseCompanyTitle}
+        message={tx.chooseCompanyBody}
+        action={{ href: "/employer/calendar", label: tx.openCalendar }}
       />
     );
   }
   if (state.status === "empty") {
     return (
       <AssignmentsMessage
-        title="No assignments yet"
-        message="Confirmed assignments for this organization will appear here — no fixture records are shown."
-        action={{ href: "/employer/calendar", label: "View request calendar" }}
+        title={tx.emptyTitle}
+        message={tx.emptyBody}
+        action={{ href: "/employer/calendar", label: tx.emptyAction }}
       />
     );
   }
@@ -93,12 +98,12 @@ export function EmployerAssignmentsPanel() {
       <AssignmentsMessage
         title={
           state.status === "unavailable"
-            ? "Assignments unavailable"
+            ? tx.unavailableTitle
             : state.status === "stale"
-              ? "Assignments changed"
-              : "Assignments could not be loaded"
+              ? tx.changedTitle
+              : tx.errorTitle
         }
-        message="No fixture records are shown as persisted data. Retry when the service is available."
+        message={tx.errorBody}
         onRetry={load}
       />
     );
@@ -108,8 +113,8 @@ export function EmployerAssignmentsPanel() {
     <div style={styles.cardGrid}>
       {state.data.map((assignment) => (
         <article key={assignment.assignmentId} style={styles.card}>
-          <span style={styles.statusBadge}>{assignment.status.replaceAll("_", " ")}</span>
-          <h3 style={styles.cardTitle}>{assignment.title ?? assignment.roleSummary ?? "Assignment"}</h3>
+          <span style={styles.statusBadge}>{statusLabel(assignmentStatusLabels[lang], assignment.status)}</span>
+          <h3 style={styles.cardTitle}>{assignment.title ?? assignment.roleSummary ?? tx.pageEyebrow}</h3>
           {assignment.roleSummary ? <p style={styles.cardText}>{assignment.roleSummary}</p> : null}
           {assignment.worksiteSummary ? (
             <p style={styles.cardText}>{assignment.worksiteSummary}</p>
@@ -119,7 +124,7 @@ export function EmployerAssignmentsPanel() {
             href={`/employer/assignments/detail?assignment=${encodeURIComponent(assignment.assignmentId)}`}
             style={styles.secondaryButton}
           >
-            Open assignment detail
+            {tx.openDetail}
           </a>
         </article>
       ))}
@@ -151,6 +156,7 @@ function AssignmentsMessage({
   action?: Readonly<{ href: string; label: string }>;
   onRetry?: () => void;
 }>) {
+  const retryLabel = assignmentsText[langOf(useLocale())].retry;
   return (
     <div aria-live="polite" style={styles.panel}>
       <h3 style={styles.sectionTitle}>{title}</h3>
@@ -166,7 +172,7 @@ function AssignmentsMessage({
           style={{ ...styles.secondaryButton, cursor: "pointer" }}
           type="button"
         >
-          Retry
+          {retryLabel}
         </button>
       ) : null}
     </div>
