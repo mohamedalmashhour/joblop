@@ -1,0 +1,840 @@
+import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
+import { randomUUID } from "node:crypto";
+import type { FastifyInstance } from "fastify";
+import { canadaAddressAdapter } from "@rwos/country-canada";
+import { createPrismaClient } from "@rwos/database";
+import { buildApi, remainingOpenings } from "../../apps/api/src/app";
+import { createPrismaJoblopBrainData } from "../../apps/api/src/brain/joblopData";
+import { createJoblopBrainEffects } from "../../apps/api/src/brain/joblopEffects";
+import {
+  jobUnfilledSoonRule,
+  requestWaitingReviewRule,
+  timesheetReadyForApproval,
+  timesheetReadyRule,
+  timesheetUnconfirmedRule,
+  workerNotCheckedInRule,
+  type JoblopBrainContext
+} from "../../apps/api/src/brain/joblopRules";
+import type { EmailMessage, EmailSender } from "../../apps/api/src/mailer/emailSender";
+import type { SmsMessage, SmsSender } from "../../apps/api/src/mailer/smsSender";
+import { executeTestWorkerPayout } from "../../apps/api/src/workerPayoutExecution";
+import { materializeAndListWorkerPayouts } from "../../apps/api/src/workerPayoutRepository";
+
+// Real-life scenarios on a SAFE COPY: one Laval farm employer, Farm worker at the legal rate (employer
+// $20.75/h, worker $16.60/h after Joblop's 20% share), driven through the real API routes, services
+// and Brain rules against a real schema. The clock is controlled: only `Date` is faked (timers stay
+// real so Prisma and Fastify work), so every "now" in the API — check-in time, check-in window,
+// cancellation cut-offs, Brain thresholds — follows the scenario. Shifts are in February 2027 (EST,
+// UTC-5) so they never meet the real-time jobs other suites create. TEST/SYNTHETIC: no money moves,
+// mail and texts are captured. Gated on RWOS_TEST_DATABASE_URL like every postgres-* suite.
+//
+// Where today's behaviour looks wrong for real life, the test states the CORRECT behaviour and is
+// marked `it.fails(...)` with a "BUG:" comment, so CI stays green until the fix lands (then the
+// `.fails` must be removed). The matching "ACTUAL:" test pins what the code does today.
+const databaseUrl = process.env.RWOS_TEST_DATABASE_URL;
+const suite = databaseUrl ? describe : describe.skip;
+
+const HOUR = 3_600_000;
+const STREET = "3200 Rang Saint-Elzéar";
+// The legal Farm worker rate (Québec minimum wage $16.60 from 2026-05-01).
+const EMPLOYER_RATE = 2075;
+const WORKER_RATE = 1660;
+const PLATFORM_SHARE = 415;
+
+/** A Toronto (EST, UTC-5 in February) wall-clock time on a day, as an instant. */
+const et = (day: string, hhmm: string) => new Date(`${day}T${hhmm}:00.000-05:00`);
+const setNow = (instant: Date) => vi.setSystemTime(instant);
+
+/** Every number anywhere in a JSON value (to prove a rate never reaches the wrong party). */
+function numbersIn(value: unknown, out: number[] = []): number[] {
+  if (typeof value === "number") out.push(value);
+  else if (Array.isArray(value)) for (const item of value) numbersIn(item, out);
+  else if (value && typeof value === "object") for (const item of Object.values(value)) numbersIn(item, out);
+  return out;
+}
+/** Every object key anywhere in a JSON value. */
+function keysIn(value: unknown, out: string[] = []): string[] {
+  if (Array.isArray(value)) for (const item of value) keysIn(item, out);
+  else if (value && typeof value === "object") {
+    for (const [key, item] of Object.entries(value)) {
+      out.push(key);
+      keysIn(item, out);
+    }
+  }
+  return out;
+}
+const EMPLOYER_SIDE_KEYS = /employerHourly|employerRate|platformHourly|platformMargin|marginPpm|platformShare|fundedBy/i;
+const WORKER_PAY_KEYS = /workerHourly|workerRate|workerPay|netPay|grossPay|workerReceives|workerCompensation/i;
+
+suite("real-life scenarios (Laval Farm worker, legal rate, controlled clock)", () => {
+  const prisma = createPrismaClient(databaseUrl!);
+  const emails: EmailMessage[] = [];
+  const emailSender: EmailSender = {
+    configured: true,
+    send: async (message) => {
+      emails.push(message);
+      return { status: "sent" } as Awaited<ReturnType<EmailSender["send"]>>;
+    }
+  };
+  const texts: SmsMessage[] = [];
+  const smsSender: SmsSender = {
+    configured: true,
+    enabled: true,
+    send: async (message) => {
+      texts.push(message);
+      return { status: "sent", id: `sms-${texts.length}` };
+    }
+  };
+
+  let app: FastifyInstance;
+  const staffIds = new Set<string>();
+  const employerIds = new Set<string>();
+  const createdMembershipIds: string[] = [];
+  // A signed-in person. Sessions last 8 hours, and the scenarios move the clock by days, so a token
+  // older than 7 hours (on the scenario clock) is replaced by signing in again.
+  type Actor = { id: string; email: string; token: string; issuedAt: number };
+  const PASSWORD = "Sup3r-Secret-Pass!";
+  let staff: Actor;
+  let employer: Actor;
+  let scope: { organizationId: string; residenceId: string; departmentId: string; workGroupId: string; roleDefinitionId: string };
+  const savedPayoutFlag = process.env.PAYOUT_TEST_MODE_ENABLED;
+  async function h(actor: Actor) {
+    if (Date.now() - actor.issuedAt > 7 * HOUR) {
+      const res = await app.inject({ method: "POST", url: "/auth/sign-in", payload: { email: actor.email, password: PASSWORD } });
+      expect(res.statusCode, res.body).toBe(200);
+      actor.token = (res.json() as { token: string }).token;
+      actor.issuedAt = Date.now();
+    }
+    return { authorization: `Bearer ${actor.token}` };
+  }
+
+  // The Brain exactly as the sweep builds it: real data adapter, real effects (texts captured).
+  const brain = (): JoblopBrainContext => ({
+    data: createPrismaJoblopBrainData(prisma, (jobs) => remainingOpenings(prisma, jobs)),
+    effects: createJoblopBrainEffects({
+      prisma,
+      emailSender,
+      smsSender,
+      rawEmailSender: emailSender,
+      rawSmsSender: smsSender,
+      actorUserId: staff.id,
+      domain: null,
+      now: () => new Date()
+    })
+  });
+
+  async function register(prefix: string): Promise<Actor> {
+    const email = `${prefix}-${randomUUID()}@real-life.test`;
+    const res = await app.inject({ method: "POST", url: "/auth/register", payload: { email, password: PASSWORD, displayName: "Real Life" } });
+    expect(res.statusCode, res.body).toBe(201);
+    const body = res.json() as { token: string; user: { id: string } };
+    return { token: body.token, id: body.user.id, email, issuedAt: Date.now() };
+  }
+
+  async function makeWorker(prefix = "w") {
+    const user = await register(prefix);
+    const identity = await prisma.workerIdentity.create({ data: { userId: user.id, displayName: "Laval Worker", status: "active" } });
+    await prisma.workerClassificationElection.create({
+      data: { workerIdentityId: identity.id, classification: "employee", status: "active", effectiveFrom: new Date(Date.now() - 24 * HOUR), electedByUserId: user.id }
+    });
+    return { ...user, workerIdentityId: identity.id };
+  }
+
+  /** The real employer → staff path: draft, submit, admin review, approve onto the job board. */
+  async function publishJob(input: { startAt: Date; endAt: Date; workers?: number; title?: string }) {
+    const created = await app.inject({
+      method: "POST", url: `/organizations/${scope.organizationId}/job-requests`, headers: await h(employer),
+      payload: {
+        residenceId: scope.residenceId, departmentId: scope.departmentId, workGroup: "farming-agriculture", roleDefinition: "farm_worker",
+        title: input.title ?? "Farm worker, Laval", description: "Harvest and pack vegetables in the greenhouse.",
+        numberOfWorkers: input.workers ?? 1, urgency: "normal", requestType: "single_day", timezone: "America/Toronto",
+        startAt: input.startAt.toISOString(), endAt: input.endAt.toISOString()
+      }
+    });
+    expect(created.statusCode, created.body).toBe(201);
+    const draft = created.json().jobRequest as { id: string; versionToken: number; jobRequestNumber: string };
+    const submitted = await app.inject({
+      method: "POST", url: `/organizations/${scope.organizationId}/job-requests/${draft.id}/submit`, headers: await h(employer),
+      payload: { expectedVersion: draft.versionToken }
+    });
+    expect(submitted.statusCode, submitted.body).toBe(200);
+    const reviewed = await app.inject({
+      method: "POST", url: `/platform/job-requests/intake/${draft.id}/admin-review`, headers: await h(staff),
+      payload: { expectedVersion: submitted.json().jobRequest.versionToken }
+    });
+    expect(reviewed.statusCode, reviewed.body).toBe(200);
+    const approved = await app.inject({
+      method: "POST", url: `/platform/job-requests/intake/${draft.id}/approve-for-dispatch`, headers: await h(staff),
+      payload: { expectedVersion: reviewed.json().jobRequest.versionToken, openClaim: true }
+    });
+    expect(approved.statusCode, approved.body).toBe(200);
+    expect(approved.json().openClaim.openClaim).toBe(true);
+    return { id: draft.id, jobRequestNumber: draft.jobRequestNumber };
+  }
+
+  async function claim(worker: Actor, jobId: string) {
+    const res = await app.inject({ method: "POST", url: `/marketplace/jobs/${jobId}/claim`, headers: await h(worker) });
+    expect(res.statusCode, res.body).toBe(201);
+    return res.json().assignmentId as string;
+  }
+
+  async function scheduleItem(worker: Actor, assignmentId: string) {
+    const res = await app.inject({ method: "GET", url: "/worker/attendance", headers: await h(worker) });
+    expect(res.statusCode, res.body).toBe(200);
+    const item = (res.json().items as { attendanceRecordId: string; assignmentId: string; version: number; status: string }[]).find(
+      (i) => i.assignmentId === assignmentId
+    );
+    expect(item, res.body).toBeDefined();
+    return item!;
+  }
+
+  /** Check in at `inAt`, check out at `outAt`, through the worker's own routes. */
+  async function workShift(worker: Actor, assignmentId: string, inAt: Date, outAt: Date) {
+    setNow(inAt);
+    const item = await scheduleItem(worker, assignmentId);
+    const checkIn = await app.inject({
+      method: "POST", url: `/worker/attendance/${item.attendanceRecordId}/check-in`, headers: await h(worker),
+      payload: { expectedVersion: item.version }
+    });
+    expect(checkIn.statusCode, checkIn.body).toBe(200);
+    setNow(outAt);
+    const checkOut = await app.inject({
+      method: "POST", url: `/worker/attendance/${item.attendanceRecordId}/check-out`, headers: await h(worker),
+      payload: { expectedVersion: (checkIn.json().attendanceRecord as { version: number }).version }
+    });
+    expect(checkOut.statusCode, checkOut.body).toBe(200);
+    return item.attendanceRecordId;
+  }
+
+  type Timesheet = {
+    id: string; version: number; status: string; exceptionSummary: string | null; rawElapsedMinutes: number;
+    payableMinutes: number; billableMinutes: number; workerReviewStatus: string; employerReviewStatus: string;
+  };
+
+  async function prepare(attendanceRecordId: string) {
+    const res = await app.inject({ method: "POST", url: "/platform/timesheets/prepare", headers: await h(staff), payload: { attendanceRecordId } });
+    expect(res.statusCode, res.body).toBe(200);
+    return res.json().timesheet as Timesheet;
+  }
+
+  async function workerConfirm(worker: Actor, ts: Timesheet) {
+    const res = await app.inject({ method: "POST", url: `/worker/timesheets/${ts.id}/confirm`, headers: await h(worker), payload: { expectedVersion: ts.version } });
+    expect(res.statusCode, res.body).toBe(200);
+    return res.json().timesheet as Timesheet;
+  }
+
+  async function employerConfirm(ts: Timesheet) {
+    const res = await app.inject({
+      method: "POST", url: `/organizations/${scope.organizationId}/timesheets/${ts.id}/confirm`, headers: await h(employer),
+      payload: { expectedVersion: ts.version }
+    });
+    expect(res.statusCode, res.body).toBe(200);
+    return res.json().timesheet as Timesheet;
+  }
+
+  async function overrideExceptions(ts: Timesheet) {
+    const res = await app.inject({
+      method: "POST", url: `/platform/timesheets/${ts.id}/override-exceptions`, headers: await h(staff),
+      payload: { expectedVersion: ts.version, reason: "Checked with the farm manager." }
+    });
+    expect(res.statusCode, res.body).toBe(200);
+    return res.json().timesheet as Timesheet;
+  }
+
+  async function approveAndLock(ts: Timesheet) {
+    const approved = await app.inject({ method: "POST", url: `/platform/timesheets/${ts.id}/approve`, headers: await h(staff), payload: { expectedVersion: ts.version } });
+    expect(approved.statusCode, approved.body).toBe(200);
+    const locked = await app.inject({
+      method: "POST", url: `/platform/timesheets/${ts.id}/lock`, headers: await h(staff),
+      payload: { expectedVersion: (approved.json().timesheet as Timesheet).version }
+    });
+    expect(locked.statusCode, locked.body).toBe(200);
+    return locked.json() as { timesheet: Timesheet; invoice: { ok: boolean; invoiceId?: string; subtotalMinor?: number; taxMinor?: number; totalMinor?: number; reason?: string } };
+  }
+
+  /** One pay period for one worker, calculated, approved and locked by staff. */
+  async function lockedPayroll(workerIdentityId: string, periodStart: string, periodEnd: string) {
+    const period = await app.inject({
+      method: "POST", url: "/platform/payroll/periods", headers: await h(staff),
+      payload: { organizationId: scope.organizationId, jurisdictionCountry: "CA", jurisdictionRegion: "QC", periodStart, periodEnd, currency: "CAD", timezone: "America/Toronto" }
+    });
+    expect(period.statusCode, period.body).toBe(201);
+    const calculated = await app.inject({
+      method: "POST", url: "/platform/payroll/calculations", headers: await h(staff),
+      payload: { payrollPeriodId: period.json().period.id, workerIdentityId }
+    });
+    expect(calculated.statusCode, calculated.body).toBe(201);
+    let calc = calculated.json().calculation as { id: string; version: number };
+    for (const action of ["approve", "lock"]) {
+      const res = await app.inject({
+        method: "POST", url: `/platform/payroll/calculations/${calc.id}/transition`, headers: await h(staff),
+        payload: { action, expectedVersion: calc.version }
+      });
+      expect(res.statusCode, res.body).toBe(200);
+      calc = res.json().calculation as { id: string; version: number };
+    }
+    const row = await prisma.payrollCalculation.findUniqueOrThrow({ where: { id: calc.id } });
+    const earnings = await prisma.payrollEarningLine.findMany({ where: { payrollCalculationId: calc.id } });
+    return { row, earnings };
+  }
+
+  beforeAll(async () => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    setNow(et("2027-02-01", "09:00"));
+    process.env.RWOS_LOCAL_E2E = "enabled";
+    delete process.env.PAYOUT_TEST_MODE_ENABLED;
+    app = buildApi({
+      countryCurrency: "CAD",
+      countryTimezone: "America/Toronto",
+      countryAddress: canadaAddressAdapter,
+      emailSender,
+      smsSender,
+      env: { ...process.env, DATABASE_URL: databaseUrl, RWOS_ENV: "local", NODE_ENV: "test" },
+      resolveAuthorizationRoles: async (userId: string) =>
+        staffIds.has(userId) ? ["PLATFORM_ADMINISTRATOR", "PAYROLL_ADMINISTRATOR"] : employerIds.has(userId) ? ["ORGANIZATION_OWNER"] : ["WORKER_ACCESS"]
+    });
+    await app.ready();
+
+    staff = await register("rl-staff");
+    staffIds.add(staff.id);
+    const org = await prisma.employerOrganization.create({
+      data: { publicId: `ORG-RL-${randomUUID().slice(0, 8)}`, legalName: "Ferme Laval Inc.", displayName: "Ferme Laval", status: "active", createdByUserId: staff.id }
+    });
+    const residence = await prisma.residence.create({
+      data: {
+        publicId: `RES-RL-${randomUUID().slice(0, 8)}`, organizationId: org.id, name: "Serres", status: "active", createdByUserId: staff.id,
+        province: "QC", city: "Laval", postalCode: "H7E 4P2", addressLine1: STREET
+      }
+    });
+    const department = await prisma.department.create({
+      data: { publicId: `DEP-RL-${randomUUID().slice(0, 8)}`, organizationId: org.id, residenceId: residence.id, name: "Greenhouse", status: "active", createdByUserId: staff.id }
+    });
+    // Seeded by migration 20261106000000_worker_job_categories.
+    const workGroup = await prisma.workGroup.findUniqueOrThrow({ where: { key: "farming_agriculture" } });
+    const role = await prisma.roleDefinition.findUniqueOrThrow({ where: { key: "farm_worker" } });
+    scope = { organizationId: org.id, residenceId: residence.id, departmentId: department.id, workGroupId: workGroup.id, roleDefinitionId: role.id };
+
+    employer = await register("rl-employer");
+    employerIds.add(employer.id);
+    const membership = await prisma.organizationMembership.create({ data: { organizationId: org.id, userId: employer.id, status: "active", acceptedAt: new Date() } });
+    const owner = await prisma.accessRoleDefinition.findUniqueOrThrow({ where: { key: "ORGANIZATION_OWNER" } });
+    await prisma.membershipAccessRole.create({ data: { membershipId: membership.id, accessRoleDefinitionId: owner.id } });
+    createdMembershipIds.push(membership.id);
+
+    // Staff publish the governed rate card: Farm worker at $20.75/h (worker gets $16.60/h).
+    const contract = await app.inject({
+      method: "POST", url: `/organizations/${org.id}/contract`, headers: await h(staff),
+      payload: { version: `farm-${randomUUID().slice(0, 8)}`, currency: "CAD", roleRates: [{ workGroupId: workGroup.id, roleDefinitionId: role.id, hourlyRateMinor: EMPLOYER_RATE }] }
+    });
+    expect(contract.statusCode, contract.body).toBe(201);
+  });
+
+  afterAll(async () => {
+    if (createdMembershipIds.length > 0) {
+      await prisma.membershipAccessRole.deleteMany({ where: { membershipId: { in: createdMembershipIds } } });
+      await prisma.organizationMembership.deleteMany({ where: { id: { in: createdMembershipIds } } });
+    }
+    if (savedPayoutFlag === undefined) delete process.env.PAYOUT_TEST_MODE_ENABLED;
+    else process.env.PAYOUT_TEST_MODE_ENABLED = savedPayoutFlag;
+    vi.useRealTimers();
+    await app?.close();
+    await prisma.$disconnect();
+  });
+
+  // ── 1. A normal day ──────────────────────────────────────────────────────────────────────────────
+  describe("1. normal day: 08:00–14:00, in 07:55, out 14:05", () => {
+    const DAY = "2027-02-10";
+
+    it("goes employer → staff → worker → timesheet → invoice → payroll → payout with the right numbers and no rate leak", async () => {
+      // The day before, 09:00: the employer asks for one Farm worker.
+      setNow(et("2027-02-09", "09:00"));
+      const created = await app.inject({
+        method: "POST", url: `/organizations/${scope.organizationId}/job-requests`, headers: await h(employer),
+        payload: {
+          residenceId: scope.residenceId, departmentId: scope.departmentId, workGroup: "farming-agriculture", roleDefinition: "farm_worker",
+          title: "Farm worker, Laval", description: "Harvest and pack vegetables in the greenhouse.", numberOfWorkers: 1, urgency: "normal",
+          requestType: "single_day", timezone: "America/Toronto", startAt: et(DAY, "08:00").toISOString(), endAt: et(DAY, "14:00").toISOString()
+        }
+      });
+      expect(created.statusCode, created.body).toBe(201);
+      const draft = created.json().jobRequest as { id: string; versionToken: number };
+      const submitted = await app.inject({
+        method: "POST", url: `/organizations/${scope.organizationId}/job-requests/${draft.id}/submit`, headers: await h(employer),
+        payload: { expectedVersion: draft.versionToken }
+      });
+      expect(submitted.statusCode, submitted.body).toBe(200);
+      expect(submitted.json().jobRequest.status).toBe("submitted");
+
+      // Brain: the request passes every check, so it is recommended for approval straight away.
+      const review = (await requestWaitingReviewRule.detect(brain(), new Date())).find((i) => i.subjectId === draft.id);
+      expect(review?.recommendedAction).toBe("auto_approve_request");
+
+      // Staff approve it onto the job board (open claim); the price is captured at the legal rate.
+      const reviewed = await app.inject({
+        method: "POST", url: `/platform/job-requests/intake/${draft.id}/admin-review`, headers: await h(staff),
+        payload: { expectedVersion: submitted.json().jobRequest.versionToken }
+      });
+      expect(reviewed.statusCode, reviewed.body).toBe(200);
+      const approved = await app.inject({
+        method: "POST", url: `/platform/job-requests/intake/${draft.id}/approve-for-dispatch`, headers: await h(staff),
+        payload: { expectedVersion: reviewed.json().jobRequest.versionToken, openClaim: true }
+      });
+      expect(approved.statusCode, approved.body).toBe(200);
+      expect(approved.json().jobRequest.status).toBe("approved_for_dispatch");
+      const pricing = await app.inject({ method: "GET", url: `/platform/job-requests/${draft.id}/pricing-snapshot`, headers: await h(staff) });
+      expect(pricing.json().pricingSnapshot).toMatchObject({
+        employerHourlyRateMinor: EMPLOYER_RATE, workerHourlyRateMinor: WORKER_RATE, platformHourlyMarginMinor: PLATFORM_SHARE, marginPpm: 200_000
+      });
+
+      // Worker: sees the job with their own pay only, then claims it.
+      const worker = await makeWorker("normal");
+      const board = await app.inject({ method: "GET", url: "/marketplace/open-jobs", headers: await h(worker) });
+      expect(board.statusCode, board.body).toBe(200);
+      const listing = (board.json().jobs as { jobRequestId: string; workerRateMinor: number | null }[]).find((j) => j.jobRequestId === draft.id);
+      expect(listing?.workerRateMinor).toBe(WORKER_RATE);
+      expect(numbersIn(listing)).not.toContain(EMPLOYER_RATE);
+      expect(numbersIn(listing)).not.toContain(PLATFORM_SHARE);
+      expect(keysIn(board.json()).filter((k) => EMPLOYER_SIDE_KEYS.test(k))).toEqual([]);
+      const assignmentId = await claim(worker, draft.id);
+
+      // Shift day: in at 07:55, out at 14:05 (both inside the 15-minute margin).
+      const attendanceId = await workShift(worker, assignmentId, et(DAY, "07:55"), et(DAY, "14:05"));
+
+      // Brain: a checked-in worker is never chased.
+      const chased = (await workerNotCheckedInRule.detect(brain(), et(DAY, "08:10"))).filter((i) => i.subjectId === assignmentId);
+      expect(chased).toEqual([]);
+
+      // Staff prepare the timesheet: 6.0 h, no review flag.
+      setNow(et(DAY, "14:30"));
+      const prepared = await prepare(attendanceId);
+      expect(prepared).toMatchObject({ status: "worker_review", exceptionSummary: null, payableMinutes: 360, billableMinutes: 360 });
+      expect(prepared.rawElapsedMinutes).toBe(370);
+
+      const byWorker = await workerConfirm(worker, prepared);
+      expect(byWorker.status).toBe("employer_review");
+      const byEmployer = await employerConfirm(byWorker);
+      expect(byEmployer.status).toBe("platform_review");
+
+      // Employer's timesheet view: hours only, never the worker's pay.
+      const employerTimesheets = await app.inject({ method: "GET", url: `/organizations/${scope.organizationId}/timesheets`, headers: await h(employer) });
+      expect(employerTimesheets.statusCode, employerTimesheets.body).toBe(200);
+      expect(numbersIn(employerTimesheets.json())).not.toContain(WORKER_RATE);
+      expect(keysIn(employerTimesheets.json()).filter((k) => WORKER_PAY_KEYS.test(k))).toEqual([]);
+
+      // Brain: both sides confirmed with no exception → eligible for auto-approval of hours.
+      setNow(et(DAY, "15:00"));
+      const ready = (await timesheetReadyRule.detect(brain(), new Date())).find((i) => i.subjectId === prepared.id);
+      expect(ready?.recommendedAction).toBe("auto_approve_timesheet");
+
+      // Staff approve and lock → the invoice: 6 h x $20.75 = $124.50 + GST 5% $6.23 + QST 9.975% $12.42.
+      const { invoice } = await approveAndLock(byEmployer);
+      expect(invoice).toMatchObject({ ok: true, subtotalMinor: 12_450, taxMinor: 623 + 1_242, totalMinor: 14_315 });
+
+      // Payroll, run after the pay week closes: 6 h x $16.60 = $99.60 + 6% vacation pay (synthetic rule) = $105.57 gross.
+      setNow(et("2027-02-14", "10:00"));
+      const { row, earnings } = await lockedPayroll(worker.workerIdentityId, "2027-02-07T05:00:00.000Z", "2027-02-14T05:00:00.000Z");
+      expect(earnings.find((e) => e.classification === "regular")?.amountMinor).toBe(9_960);
+      expect(row.grossPayMinor).toBe(9_960 + Math.floor((9_960 * 600) / 10_000));
+      expect(row.netPayMinor).toBe(row.grossPayMinor - row.totalDeductionsMinor);
+
+      // Payout = net, registered after the 48 h window, never paid by real money.
+      const { payouts } = await materializeAndListWorkerPayouts(prisma, worker.workerIdentityId, et("2027-02-14", "10:00"));
+      const payout = payouts.find((p) => p.payrollCalculationId === row.id);
+      expect(payout?.amountMinor).toBe(row.netPayMinor);
+      expect(payout?.status).not.toBe("paid");
+      const stored = await prisma.workerPayout.findUniqueOrThrow({ where: { payrollCalculationId: row.id } });
+      expect(stored.paymentRef).toBeNull();
+      expect(await executeTestWorkerPayout(prisma, { payoutId: stored.id })).toEqual({ ok: false, reason: "execution_disabled" });
+
+      // Worker's pay view: never the employer's rate, total or Joblop's share.
+      const myPay = await app.inject({ method: "GET", url: "/worker/payouts", headers: await h(worker) });
+      expect(myPay.statusCode, myPay.body).toBe(200);
+      for (const hidden of [EMPLOYER_RATE, PLATFORM_SHARE, 12_450, 14_315]) expect(numbersIn(myPay.json())).not.toContain(hidden);
+      expect(keysIn(myPay.json()).filter((k) => EMPLOYER_SIDE_KEYS.test(k))).toEqual([]);
+    });
+  });
+
+  // ── 2. Problems on the day ───────────────────────────────────────────────────────────────────────
+  describe("2. problems on the day", () => {
+    const DAY = "2027-02-11";
+    const shift = () => ({ startAt: et(DAY, "08:00"), endAt: et(DAY, "14:00") });
+
+    it("(a) in at 08:25: late flag, timesheet goes to review; staff can release it; still 6 h billed", async () => {
+      setNow(et("2027-02-10", "09:00"));
+      const job = await publishJob(shift());
+      const worker = await makeWorker("late");
+      const assignmentId = await claim(worker, job.id);
+      const attendanceId = await workShift(worker, assignmentId, et(DAY, "08:25"), et(DAY, "14:00"));
+      const ts = await prepare(attendanceId);
+      expect(ts.status).toBe("review_required");
+      expect(ts.exceptionSummary).toContain("late_arrival");
+      expect(ts.rawElapsedMinutes).toBe(335);
+      expect(ts.billableMinutes).toBe(360); // the 6-hour minimum
+      const released = await overrideExceptions(ts);
+      expect(released.status).toBe("worker_review");
+    });
+
+    it("(b) no check-in: the Brain fires at 08:10, not before, and texts the worker", async () => {
+      setNow(et("2027-02-10", "09:30"));
+      const job = await publishJob(shift());
+      const worker = await makeWorker("noshow");
+      const phone = `+1450${String(Math.floor(Math.random() * 10_000_000)).padStart(7, "0")}`;
+      await prisma.user.update({ where: { id: worker.id }, data: { phone } });
+      const assignmentId = await claim(worker, job.id);
+
+      const at0809 = (await workerNotCheckedInRule.detect(brain(), et(DAY, "08:09"))).filter((i) => i.subjectId === assignmentId);
+      expect(at0809).toEqual([]);
+      setNow(et(DAY, "08:10"));
+      const [issue] = (await workerNotCheckedInRule.detect(brain(), new Date())).filter((i) => i.subjectId === assignmentId);
+      expect(issue).toMatchObject({ ruleKey: "worker_not_checked_in", severity: "urgent", recommendedAction: "remind_worker_check_in" });
+      expect(issue?.inputs).toMatchObject({ minutesLate: 10 });
+
+      texts.length = 0;
+      const outcome = await brain().effects.remindWorkerToCheckIn(assignmentId);
+      expect(outcome.status).toBe("done");
+      expect(texts.map((t) => t.to)).toEqual([phone]);
+    });
+
+    it("(c) out at 12:30: early-departure flag, actual 4.5 h recorded, 6-hour minimum billed and paid", async () => {
+      setNow(et("2027-02-10", "10:00"));
+      const job = await publishJob(shift());
+      const worker = await makeWorker("early-out");
+      const assignmentId = await claim(worker, job.id);
+      const attendanceId = await workShift(worker, assignmentId, et(DAY, "08:00"), et(DAY, "12:30"));
+      const ts = await prepare(attendanceId);
+      expect(ts.status).toBe("review_required");
+      expect(ts.exceptionSummary).toBe("early_departure, minimum_shift_floor_applied");
+      expect(ts.rawElapsedMinutes).toBe(270);
+      expect(ts.payableMinutes).toBe(360);
+      expect(ts.billableMinutes).toBe(360);
+
+      const released = await overrideExceptions(ts);
+      const confirmed = await employerConfirm(await workerConfirm(worker, released));
+      const { invoice } = await approveAndLock(confirmed);
+      expect(invoice).toMatchObject({ ok: true, subtotalMinor: 12_450, totalMinor: 14_315 });
+    });
+
+    it("(d) employer disputes: correction_required, shown to staff, the Brain neither chases nor auto-approves", async () => {
+      setNow(et("2027-02-10", "10:30"));
+      const job = await publishJob(shift());
+      const worker = await makeWorker("disputed");
+      const assignmentId = await claim(worker, job.id);
+      const attendanceId = await workShift(worker, assignmentId, et(DAY, "08:00"), et(DAY, "14:00"));
+      const ts = await workerConfirm(worker, await prepare(attendanceId));
+
+      const disputed = await app.inject({
+        method: "POST", url: `/organizations/${scope.organizationId}/timesheets/${ts.id}/dispute`, headers: await h(employer),
+        payload: { expectedVersion: ts.version, reason: "The worker left the field at 13:00." }
+      });
+      expect(disputed.statusCode, disputed.body).toBe(200);
+      expect(disputed.json().timesheet).toMatchObject({ status: "correction_required", employerReviewStatus: "disputed" });
+
+      const queue = await app.inject({ method: "GET", url: "/platform/timesheets/queue", headers: await h(staff) });
+      expect(queue.statusCode, queue.body).toBe(200);
+      const row = (queue.json().timesheets as { id: string; status: string }[]).find((t) => t.id === ts.id);
+      expect(row?.status).toBe("correction_required");
+
+      const later = et("2027-02-12", "15:00");
+      expect((await timesheetUnconfirmedRule.detect(brain(), later)).filter((i) => i.subjectId === ts.id)).toEqual([]);
+      expect((await timesheetReadyRule.detect(brain(), later)).filter((i) => i.subjectId === ts.id)).toEqual([]);
+
+      // Staff recalculate after checking: it goes back through both confirmations.
+      const recalculated = await app.inject({
+        method: "POST", url: `/platform/timesheets/${ts.id}/calculate`, headers: await h(staff),
+        payload: { expectedVersion: (disputed.json().timesheet as Timesheet).version }
+      });
+      expect(recalculated.statusCode, recalculated.body).toBe(200);
+      expect(recalculated.json().timesheet.status).toBe("worker_review");
+    });
+  });
+
+  // ── 3. Cancellations less than 24 h before the start ─────────────────────────────────────────────
+  describe("3. cancellations under 24 h", () => {
+    const DAY = "2027-02-12";
+    const shift = () => ({ startAt: et(DAY, "08:00"), endAt: et(DAY, "14:00") });
+    const evening = et("2027-02-11", "14:00"); // 18 h before the start
+
+    // (a) The worker cancels.
+    it("(a) ACTUAL: the worker cannot cancel a booked shift themselves (withdraw is refused for a scheduled shift)", async () => {
+      setNow(et("2027-02-10", "11:00"));
+      const job = await publishJob(shift());
+      const worker = await makeWorker("w-cancel");
+      const assignmentId = await claim(worker, job.id);
+      setNow(evening);
+      const assignment = await prisma.assignment.findUniqueOrThrow({ where: { id: assignmentId } });
+      expect(assignment.status).toBe("attendance_handoff");
+      const res = await app.inject({
+        method: "POST", url: `/worker/assignments/${assignmentId}/withdraw`, headers: await h(worker),
+        payload: { expectedVersion: assignment.version, reason: "Sick child." }
+      });
+      expect(res.statusCode).not.toBe(200);
+      expect((await prisma.assignment.findUniqueOrThrow({ where: { id: assignmentId } })).status).toBe("attendance_handoff");
+    });
+
+    // BUG: every claimed or staff-assigned shift is in "attendance_handoff", which workerWithdraw does
+    // not accept (allowedFrom: confirmed | worker_acknowledged | ready_for_attendance), and the worker
+    // website has no cancel button. Correct: the worker can cancel, is told the 7-day suspension
+    // that a <24 h cancellation carries, and the place reopens for another worker.
+    it.fails("(a) the worker cancels <24 h: allowed, 7-day suspension recommended, the shift reopens", async () => {
+      setNow(et("2027-02-10", "11:10"));
+      const job = await publishJob(shift());
+      const worker = await makeWorker("w-cancel-ok");
+      const assignmentId = await claim(worker, job.id);
+      setNow(evening);
+      const assignment = await prisma.assignment.findUniqueOrThrow({ where: { id: assignmentId } });
+      const res = await app.inject({
+        method: "POST", url: `/worker/assignments/${assignmentId}/withdraw`, headers: await h(worker),
+        payload: { expectedVersion: assignment.version, reason: "Sick child." }
+      });
+      expect(res.statusCode, res.body).toBe(200);
+      expect(res.json().cancellationPenalty).toMatchObject({ penalty: "suspend", suspensionDays: 7 });
+      await claim(await makeWorker("w-replacement"), job.id);
+    });
+
+    it("(a) ACTUAL staff path for a worker who calls in: staff cancel the attendance and apply the 7-day suspension", async () => {
+      setNow(et("2027-02-10", "11:20"));
+      const job = await publishJob(shift());
+      const worker = await makeWorker("w-callin");
+      const assignmentId = await claim(worker, job.id);
+      setNow(evening);
+      const item = await scheduleItem(worker, assignmentId);
+      const cancelled = await app.inject({
+        method: "POST", url: `/platform/attendance/${item.attendanceRecordId}/cancel`, headers: await h(staff),
+        payload: { expectedVersion: item.version, reason: "worker_cancelled_by_phone" }
+      });
+      expect(cancelled.statusCode, cancelled.body).toBe(200);
+      const penalty = await app.inject({
+        method: "POST", url: `/platform/workers/${worker.workerIdentityId}/apply-cancellation-penalty`, headers: await h(staff),
+        payload: { action: "suspend" }
+      });
+      expect(penalty.statusCode, penalty.body).toBe(200);
+      expect(penalty.json()).toMatchObject({ applied: "suspend", suspensionDays: 7 });
+      const user = await prisma.user.findUniqueOrThrow({ where: { id: worker.id } });
+      expect(user.status).toBe("disabled");
+      expect(user.suspendedUntil?.toISOString()).toBe(new Date(evening.getTime() + 7 * 24 * HOUR).toISOString());
+      // ACTUAL: the assignment still holds the place, so the job stays full.
+      expect((await prisma.assignment.findUniqueOrThrow({ where: { id: assignmentId } })).status).toBe("attendance_handoff");
+      const other = await makeWorker("w-callin-other");
+      const retry = await app.inject({ method: "POST", url: `/marketplace/jobs/${job.id}/claim`, headers: await h(other) });
+      expect(retry.statusCode).toBe(409);
+      expect(retry.json().error).toBe("RWOS_CLAIM_FULL");
+    });
+
+    // (b) The employer cancels with a worker booked.
+    it("(b) ACTUAL (item 95): an employer cancel <24 h with a booked worker bills nothing and leaves the worker booked", async () => {
+      setNow(et("2027-02-10", "11:30"));
+      const job = await publishJob(shift());
+      const worker = await makeWorker("e-cancel");
+      const assignmentId = await claim(worker, job.id);
+      setNow(evening);
+      const res = await app.inject({
+        method: "POST", url: `/organizations/${scope.organizationId}/job-requests/${job.id}/cancel/confirm`, headers: await h(employer),
+        payload: { idempotencyKey: `rl-${randomUUID()}` }
+      });
+      expect(res.statusCode, res.body).toBe(200);
+      // ACTUAL: the booked worker is not counted ("attendance_handoff" is not a confirmed status), so no obligation.
+      expect(res.json().preview).toMatchObject({ affectedConfirmedWorkers: 0, obligationApplies: false });
+      expect(await prisma.lateCancellationCharge.count({ where: { jobRequestId: job.id } })).toBe(0);
+      expect((await prisma.jobRequest.findUniqueOrThrow({ where: { id: job.id } })).status).toBe("cancelled");
+      // ACTUAL: the worker still holds the assignment and the shift is still on their schedule.
+      expect((await prisma.assignment.findUniqueOrThrow({ where: { id: assignmentId } })).status).toBe("attendance_handoff");
+      expect((await scheduleItem(worker, assignmentId)).status).toBe("pending_start");
+    });
+
+    // BUG: CONFIRMED_ASSIGNMENT_STATUSES (packages/auth/src/employerCancellation.ts) leaves out
+    // "attendance_handoff", the status of every scheduled shift. So an employer who cancels <24 h
+    // before the start with a worker booked owes nothing, and the worker is neither released nor
+    // taken off the schedule. Correct: 6 h x $20.75 = $124.50 charged (one late-cancellation charge),
+    // the assignment no longer active and the attendance record cancelled.
+    it.fails("(b) an employer cancel <24 h with a booked worker charges 6 h and releases the worker", async () => {
+      setNow(et("2027-02-10", "11:40"));
+      const job = await publishJob(shift());
+      const worker = await makeWorker("e-cancel-ok");
+      const assignmentId = await claim(worker, job.id);
+      setNow(evening);
+      const res = await app.inject({
+        method: "POST", url: `/organizations/${scope.organizationId}/job-requests/${job.id}/cancel/confirm`, headers: await h(employer),
+        payload: { idempotencyKey: `rl-${randomUUID()}` }
+      });
+      expect(res.statusCode, res.body).toBe(200);
+      expect(res.json().preview).toMatchObject({ affectedConfirmedWorkers: 1, obligationApplies: true, obligationAmountMinor: 6 * EMPLOYER_RATE });
+      const charges = await prisma.lateCancellationCharge.findMany({ where: { jobRequestId: job.id } });
+      expect(charges).toHaveLength(1);
+      expect((await prisma.assignment.findUniqueOrThrow({ where: { id: assignmentId } })).status).not.toBe("attendance_handoff");
+      expect((await scheduleItem(worker, assignmentId)).status).toBe("cancelled");
+    });
+
+    // BUG: after an employer cancel, the worker's attendance record stays "pending_start", so on the day
+    // they can still check in (and be paid through a timesheet) for a job that no longer exists.
+    it.fails("(b) the worker cannot check in to a job the employer cancelled", async () => {
+      setNow(et("2027-02-10", "11:50"));
+      const job = await publishJob(shift());
+      const worker = await makeWorker("e-cancel-checkin");
+      const assignmentId = await claim(worker, job.id);
+      setNow(evening);
+      const res = await app.inject({
+        method: "POST", url: `/organizations/${scope.organizationId}/job-requests/${job.id}/cancel/confirm`, headers: await h(employer),
+        payload: { idempotencyKey: `rl-${randomUUID()}` }
+      });
+      expect(res.statusCode, res.body).toBe(200);
+      setNow(et(DAY, "07:55"));
+      const item = await scheduleItem(worker, assignmentId);
+      const checkIn = await app.inject({
+        method: "POST", url: `/worker/attendance/${item.attendanceRecordId}/check-in`, headers: await h(worker),
+        payload: { expectedVersion: item.version }
+      });
+      expect(checkIn.statusCode).not.toBe(200);
+    });
+
+    // (c) Staff cancel.
+    it("(c) ACTUAL: staff cancel a booked shift through its attendance record; the worker is told; no charge", async () => {
+      setNow(et("2027-02-10", "12:00"));
+      const job = await publishJob(shift());
+      const worker = await makeWorker("s-cancel");
+      const assignmentId = await claim(worker, job.id);
+      setNow(evening);
+      const item = await scheduleItem(worker, assignmentId);
+      emails.length = 0;
+      const res = await app.inject({
+        method: "POST", url: `/platform/attendance/${item.attendanceRecordId}/cancel`, headers: await h(staff),
+        payload: { expectedVersion: item.version, reason: "staff_cancelled" }
+      });
+      expect(res.statusCode, res.body).toBe(200);
+      expect(res.json().attendanceRecord.status).toBe("cancelled");
+      expect(emails.filter((m) => /cancelled|annulé/.test(m.subject)).map((m) => m.to)).toEqual([worker.email]);
+      expect(await prisma.lateCancellationCharge.count({ where: { jobRequestId: job.id } })).toBe(0);
+      // ACTUAL: the governed assignment cancel refuses a scheduled shift...
+      const assignment = await prisma.assignment.findUniqueOrThrow({ where: { id: assignmentId } });
+      const viaAssignment = await app.inject({
+        method: "POST", url: `/platform/assignments/${assignmentId}/cancel`, headers: await h(staff),
+        payload: { expectedVersion: assignment.version, reason: "staff_cancelled" }
+      });
+      expect(viaAssignment.statusCode).not.toBe(200);
+      // ...so the assignment keeps holding the place.
+      expect((await prisma.assignment.findUniqueOrThrow({ where: { id: assignmentId } })).status).toBe("attendance_handoff");
+    });
+
+    // BUG: a staff cancel only cancels the attendance record. The assignment stays "attendance_handoff"
+    // (staff assignment cancel refuses that status), so the place is never freed: the job board says
+    // full and nobody else can claim it. Correct: the place reopens.
+    it.fails("(c) after a staff cancel the place reopens for another worker", async () => {
+      setNow(et("2027-02-10", "12:10"));
+      const job = await publishJob(shift());
+      const worker = await makeWorker("s-cancel-reopen");
+      const assignmentId = await claim(worker, job.id);
+      setNow(evening);
+      const item = await scheduleItem(worker, assignmentId);
+      const res = await app.inject({
+        method: "POST", url: `/platform/attendance/${item.attendanceRecordId}/cancel`, headers: await h(staff),
+        payload: { expectedVersion: item.version, reason: "staff_cancelled" }
+      });
+      expect(res.statusCode, res.body).toBe(200);
+      await claim(await makeWorker("s-cancel-replacement"), job.id);
+    });
+
+    // BUG: the Brain's no-check-in rule reads assignments only, so a worker whose shift staff
+    // cancelled is still flagged at 08:10 and texted to check in to a cancelled shift.
+    it.fails("(c) the Brain does not chase a worker whose shift staff cancelled", async () => {
+      setNow(et("2027-02-10", "12:20"));
+      const job = await publishJob(shift());
+      const worker = await makeWorker("s-cancel-brain");
+      const assignmentId = await claim(worker, job.id);
+      setNow(evening);
+      const item = await scheduleItem(worker, assignmentId);
+      const res = await app.inject({
+        method: "POST", url: `/platform/attendance/${item.attendanceRecordId}/cancel`, headers: await h(staff),
+        payload: { expectedVersion: item.version, reason: "staff_cancelled" }
+      });
+      expect(res.statusCode, res.body).toBe(200);
+      const issues = (await workerNotCheckedInRule.detect(brain(), et(DAY, "08:10"))).filter((i) => i.subjectId === assignmentId);
+      expect(issues).toEqual([]);
+    });
+  });
+
+  // ── 4. Unfilled job, bonus, partial cover ────────────────────────────────────────────────────────
+  describe("4. unfilled job: Brain bonus offer, employer accepts, worker claims; and a 3-place job", () => {
+    const DAY = "2027-02-17";
+
+    it("the Brain offers the employer a bonus; accepted; the worker sees it; payroll pays it and the invoice bills it", async () => {
+      // 22:00 the evening before: the 08:00 shift starts in 10 h and nobody has claimed it.
+      setNow(et("2027-02-16", "21:00"));
+      const job = await publishJob({ startAt: et(DAY, "08:00"), endAt: et(DAY, "14:00") });
+      setNow(et("2027-02-16", "22:00"));
+      const [unfilled] = (await jobUnfilledSoonRule.detect(brain(), new Date())).filter((i) => i.subjectId === job.id);
+      expect(unfilled).toMatchObject({ ruleKey: "job_unfilled_soon", recommendedAction: "offer_employer_bonus" });
+      expect(unfilled?.inputs).toMatchObject({ openings: 1, filled: 0, thresholdHours: 24, priced: true, hasBonus: false });
+
+      // Policy: offer the employer first. Within 12 h the suggestion is 15% of $16.60 → $2.50/h.
+      emails.length = 0;
+      const offered = await brain().effects.offerEmployerBonus(job.id, unfilled!.summary);
+      expect(offered.status).toBe("done");
+      const bonus = await prisma.jobBonus.findFirstOrThrow({ where: { jobRequestId: job.id } });
+      expect(bonus).toMatchObject({ kind: "hourly", amountMinor: 250, fundedBy: "employer", status: "offered_to_employer" });
+      expect(emails.some((m) => /prime|bonus/i.test(m.subject))).toBe(true);
+
+      // The employer sees the offer (never the worker's pay) and accepts.
+      const pending = await app.inject({ method: "GET", url: `/employer/job-requests/${job.id}/bonus-offer`, headers: await h(employer) });
+      expect(pending.statusCode, pending.body).toBe(200);
+      expect(pending.json().offer).toMatchObject({ bonusId: bonus.id, kind: "hourly", amountMinor: 250 });
+      expect(numbersIn(pending.json())).not.toContain(WORKER_RATE);
+      const accepted = await app.inject({ method: "POST", url: `/employer/bonuses/${bonus.id}/accept`, headers: await h(employer) });
+      expect(accepted.statusCode, accepted.body).toBe(200);
+
+      // The Brain no longer recommends another bonus for this job.
+      const again = (await jobUnfilledSoonRule.detect(brain(), new Date())).find((i) => i.subjectId === job.id);
+      expect(again?.recommendedAction).toBeNull();
+
+      // The worker sees the bonus (kind + amount only, never who pays) and claims.
+      const worker = await makeWorker("bonus");
+      const board = await app.inject({ method: "GET", url: "/marketplace/open-jobs", headers: await h(worker) });
+      const listing = (board.json().jobs as { jobRequestId: string; workerRateMinor: number; bonus: unknown }[]).find((j) => j.jobRequestId === job.id);
+      expect(listing).toMatchObject({ workerRateMinor: WORKER_RATE, bonus: { kind: "hourly", amountMinor: 250 } });
+      expect(keysIn(listing).filter((k) => EMPLOYER_SIDE_KEYS.test(k))).toEqual([]);
+      const assignmentId = await claim(worker, job.id);
+
+      const attendanceId = await workShift(worker, assignmentId, et(DAY, "08:00"), et(DAY, "14:00"));
+      const ts = await employerConfirm(await workerConfirm(worker, await prepare(attendanceId)));
+      const { invoice } = await approveAndLock(ts);
+      // $124.50 labour + $15.00 bonus (6 h x $2.50, employer-funded) = $139.50; GST $6.98; QST $13.92.
+      expect(invoice).toMatchObject({ ok: true, subtotalMinor: 13_950, taxMinor: 698 + 1_392, totalMinor: 16_040 });
+
+      setNow(et("2027-02-21", "10:00"));
+      const { row, earnings } = await lockedPayroll(worker.workerIdentityId, "2027-02-14T05:00:00.000Z", "2027-02-21T05:00:00.000Z");
+      expect(earnings.find((e) => e.classification === "regular")?.amountMinor).toBe(9_960);
+      expect(earnings.find((e) => e.classification === "bonus")?.amountMinor).toBe(1_500);
+      expect(row.grossPayMinor).toBe(11_460 + Math.floor((11_460 * 600) / 10_000));
+      const { payouts } = await materializeAndListWorkerPayouts(prisma, worker.workerIdentityId, et("2027-02-21", "10:00"));
+      expect(payouts.find((p) => p.payrollCalculationId === row.id)?.amountMinor).toBe(row.netPayMinor);
+    });
+
+    it("a 3-place job with 2 claims shows 2/3 covered and the Brain still flags it", async () => {
+      setNow(et("2027-02-16", "09:00"));
+      const job = await publishJob({ startAt: et(DAY, "08:00"), endAt: et(DAY, "14:00"), workers: 3, title: "Farm workers, Laval (3)" });
+      await claim(await makeWorker("three-a"), job.id);
+      await claim(await makeWorker("three-b"), job.id);
+
+      const coverage = await app.inject({ method: "GET", url: "/platform/calendar/coverage", headers: await h(staff) });
+      expect(coverage.statusCode, coverage.body).toBe(200);
+      const row = (coverage.json().jobs as { jobRequestId: string; coverage: string; placesLeft: number; workers: unknown[] }[]).find((j) => j.jobRequestId === job.id);
+      expect(row).toMatchObject({ coverage: "partly_filled", placesLeft: 1 });
+      expect(row?.workers).toHaveLength(2);
+
+      const [issue] = (await jobUnfilledSoonRule.detect(brain(), new Date())).filter((i) => i.subjectId === job.id);
+      expect(issue?.inputs).toMatchObject({ openings: 3, filled: 2 });
+      expect(issue?.summary).toContain("1 of 3 places open");
+    });
+  });
+
+  // Sanity: the pure auto-approve rule agrees with the 15-minute margin used above.
+  it("the Brain's auto-approve check accepts a 07:55–14:05 timesheet without flags", () => {
+    expect(
+      timesheetReadyForApproval({
+        timesheetId: "t", jobRequestNumber: "JR", title: "Farm worker", status: "platform_review",
+        scheduledStartAt: et("2027-02-10", "08:00"), scheduledEndAt: et("2027-02-10", "14:00"),
+        workerReviewStatus: "confirmed", employerReviewStatus: "confirmed",
+        actualCheckInAt: et("2027-02-10", "07:55"), actualCheckOutAt: et("2027-02-10", "14:05"),
+        exceptionSummary: null, attendanceException: null
+      })
+    ).toBe(true);
+  });
+});
