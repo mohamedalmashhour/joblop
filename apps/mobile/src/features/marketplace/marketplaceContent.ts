@@ -8,15 +8,35 @@ function pad(n: number): string {
   return n < 10 ? `0${n}` : String(n);
 }
 
-/** "Mon, Jun 1 · 08:00–16:00" from two ISO instants. Falls back gracefully on unparseable input. */
+// Joblop shifts are in Québec: show them on Québec (Eastern) time, like the website, never in UTC.
+const SHIFT_TIME_ZONE = "America/Toronto";
+
+type ZonedParts = { year: number; month: number; day: number; hour: number; minute: number };
+
+function zonedParts(at: Date): ZonedParts {
+  const parts = new Intl.DateTimeFormat("en-US", {
+    timeZone: SHIFT_TIME_ZONE,
+    year: "numeric",
+    month: "numeric",
+    day: "numeric",
+    hour: "numeric",
+    minute: "numeric",
+    hourCycle: "h23"
+  }).formatToParts(at);
+  const get = (type: string) => Number(parts.find((p) => p.type === type)?.value ?? NaN);
+  return { year: get("year"), month: get("month"), day: get("day"), hour: get("hour") % 24, minute: get("minute") };
+}
+
+/** "Mon, Jun 1 · 08:00–16:00" (Québec time) from two ISO instants. Falls back gracefully on unparseable input. */
 export function formatShiftWindow(startIso: string, endIso: string): string {
   const start = new Date(startIso);
   const end = new Date(endIso);
   if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime())) return "Scheduled time to be confirmed";
-  const day = `${DAYS[start.getUTCDay()]}, ${MONTHS[start.getUTCMonth()]} ${start.getUTCDate()}`;
-  const from = `${pad(start.getUTCHours())}:${pad(start.getUTCMinutes())}`;
-  const to = `${pad(end.getUTCHours())}:${pad(end.getUTCMinutes())}`;
-  return `${day} · ${from}–${to}`;
+  const s = zonedParts(start);
+  const e = zonedParts(end);
+  const weekday = new Date(Date.UTC(s.year, s.month - 1, s.day)).getUTCDay();
+  const day = `${DAYS[weekday]}, ${MONTHS[s.month - 1]} ${s.day}`;
+  return `${day} · ${pad(s.hour)}:${pad(s.minute)}–${pad(e.hour)}:${pad(e.minute)}`;
 }
 
 // When a short-term job's hourly pay is not set yet: a clear line (same words as the website), never

@@ -2,8 +2,13 @@ import { describe, expect, it } from "vitest";
 import { formatDistance, formatJobPay, formatOpenings, formatShiftWindow, formatWorkerRate, payOfferedText } from "./marketplaceContent";
 
 describe("marketplace formatters", () => {
-  it("formats a shift window from two ISO instants", () => {
-    expect(formatShiftWindow("2026-07-01T12:00:00.000Z", "2026-07-01T20:00:00.000Z")).toBe("Wed, Jul 1 · 12:00–20:00");
+  it("formats a shift window from two ISO instants on Québec time, not UTC", () => {
+    // Summer (EDT, UTC-4).
+    expect(formatShiftWindow("2026-07-01T12:00:00.000Z", "2026-07-01T20:00:00.000Z")).toBe("Wed, Jul 1 · 08:00–16:00");
+    // Winter (EST, UTC-5): an 08:00–14:00 shift in Laval.
+    expect(formatShiftWindow("2026-11-12T13:00:00.000Z", "2026-11-12T19:00:00.000Z")).toBe("Thu, Nov 12 · 08:00–14:00");
+    // An evening start keeps the Québec date even when UTC is already the next day.
+    expect(formatShiftWindow("2026-11-13T00:30:00.000Z", "2026-11-13T04:00:00.000Z")).toBe("Thu, Nov 12 · 19:30–23:00");
   });
 
   it("degrades gracefully on unparseable instants", () => {
