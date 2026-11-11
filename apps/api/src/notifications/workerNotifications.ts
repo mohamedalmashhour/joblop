@@ -152,8 +152,10 @@ export function assignedJobEmail(params: {
   title: string;
   startAt: Date;
   address?: string | null;
+  jobUrl?: string | null;
 }): EmailMessage {
   const when = formatShiftWhen(params.startAt, params.language);
+  const link = params.jobUrl?.trim() || null;
   if (params.language === "en") {
     return {
       to: params.to,
@@ -162,7 +164,9 @@ export function assignedJobEmail(params: {
         `Good news — you're confirmed for "${params.title}".\n\n` +
         `When: ${when}\n\n` +
         (params.address ? `Where: ${params.address}\n\n` : "") +
-        `Open Joblop to see the full details in your schedule. See you there!\n\n— Joblop`
+        (link
+          ? `See the job details and the map: ${link}\n\nSee you there!\n\n— Joblop`
+          : `Open Joblop to see the full details in your schedule. See you there!\n\n— Joblop`)
     };
   }
   if (params.language === "ar") {
@@ -173,7 +177,9 @@ export function assignedJobEmail(params: {
         `خبر سار — تم تأكيدك في «${params.title}».\n\n` +
         `متى: ${when}\n\n` +
         (params.address ? `أين: ${params.address}\n\n` : "") +
-        `افتح Joblop لرؤية كل التفاصيل في جدولك. نراك هناك!\n\n— Joblop`
+        (link
+          ? `تفاصيل العمل والخريطة هنا: ${link}\n\nنراك هناك!\n\n— Joblop`
+          : `افتح Joblop لرؤية كل التفاصيل في جدولك. نراك هناك!\n\n— Joblop`)
     };
   }
   return {
@@ -183,7 +189,9 @@ export function assignedJobEmail(params: {
       `Bonne nouvelle — vous êtes confirmé(e) pour « ${params.title} ».\n\n` +
       `Quand : ${when}\n\n` +
       (params.address ? `Où : ${params.address}\n\n` : "") +
-      `Ouvrez Joblop pour voir tous les détails dans votre horaire. À bientôt !\n\n— Joblop`
+      (link
+        ? `Voir les détails du travail et la carte : ${link}\n\nÀ bientôt !\n\n— Joblop`
+        : `Ouvrez Joblop pour voir tous les détails dans votre horaire. À bientôt !\n\n— Joblop`)
   };
 }
 
@@ -192,12 +200,14 @@ export function assignedJobSmsText(params: {
   language: WorkerLanguage;
   title: string;
   startAt: Date;
+  jobUrl?: string | null;
 }): string {
   const when = formatShiftWhen(params.startAt, params.language);
-  if (params.language === "ar") return `JobLop: حصلت على العمل! «${params.title}» — ${when}. التفاصيل في التطبيق.`;
+  const link = params.jobUrl?.trim() || null;
+  if (params.language === "ar") return `JobLop: حصلت على العمل! «${params.title}» — ${when}. ${link ? `التفاصيل والخريطة: ${link}` : "التفاصيل في التطبيق."}`;
   return params.language === "en"
-    ? `JobLop: you got the job! "${params.title}" — ${when}. Details in the app.`
-    : `JobLop : travail obtenu ! « ${params.title} » — ${when}. Détails dans l'app.`;
+    ? `JobLop: you got the job! "${params.title}" — ${when}. ${link ? `Details and map: ${link}` : "Details in the app."}`
+    : `JobLop : travail obtenu ! « ${params.title} » — ${when}. ${link ? `Détails et carte : ${link}` : "Détails dans l'app."}`;
 }
 
 // Pre-shift reminder — "your shift is coming up". Email copy, bilingual.
@@ -343,7 +353,7 @@ export async function notifyWorkerAssigned(
   prisma: PrismaClient,
   emailSender: EmailSender,
   smsSender: SmsSender | undefined,
-  input: { userId: string; jobRequestId: string },
+  input: { userId: string; jobRequestId: string; workerWebOrigin?: string | null },
   pushSender?: PushSender
 ): Promise<WorkerPayoutNotificationResult> {
   try {
@@ -369,15 +379,18 @@ export async function notifyWorkerAssigned(
     const textable = Boolean(smsSender && user?.phone && sendsText("shift_confirmed"));
     if (!job || (!email && !textable)) return { status: "no_recipient" };
     const language = resolveWorkerLanguage(user?.primaryLanguage);
+    // The job page shows every detail plus the map and directions (address is shown once assigned).
+    const origin = input.workerWebOrigin?.trim().replace(/\/+$/, "");
+    const jobUrl = origin ? `${origin}/jobs/${encodeURIComponent(input.jobRequestId)}` : null;
     let texted = false;
     if (textable && smsSender && user?.phone) {
       texted = await smsSender
-        .send({ to: user.phone, text: assignedJobSmsText({ language, title: job.title, startAt: job.startAt }) })
+        .send({ to: user.phone, text: assignedJobSmsText({ language, title: job.title, startAt: job.startAt, jobUrl }) })
         .then((sent) => sent.status === "sent", () => false);
     }
     if (!email) return { status: texted ? "sent" : "error" };
     const result = await emailSender.send(
-      assignedJobEmail({ to: email, language, title: job.title, startAt: job.startAt, address: workerJobAddress(job.calendarProfile?.addressSummary, job.residence) })
+      assignedJobEmail({ to: email, language, title: job.title, startAt: job.startAt, address: workerJobAddress(job.calendarProfile?.addressSummary, job.residence), jobUrl })
     );
     return { status: result.status === "sent" || texted ? "sent" : result.status === "error" ? "error" : "skipped" };
   } catch {
