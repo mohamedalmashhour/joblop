@@ -5,6 +5,7 @@ import { useLocale } from "../../i18n/LocaleProvider";
 import { readShiftOverlapNotice } from "../shiftOverlapNotice";
 import { CertificateOverrideBox, certificateOverrideBody, type CertificateOverride } from "../CertificateOverrideBox";
 import { SignedOut } from "../../shared/SignedOut";
+import { BoardOnlyNotice, CreateOfferNote } from "./BoardOnlyNotice";
 
 // Marketplace INTEREST review, inside the existing governed dispatch review. This panel is a
 // review signal + governed handoff only:
@@ -202,6 +203,7 @@ export function InterestedWorkersPanel({
         already-created offer. Assignment is created only when a worker accepts through the governed
         offer flow.
       </p>
+      <BoardOnlyNotice />
       {notice ? (
         <p role={notice.tone} style={notice.tone === "alert" ? styles.alert : styles.status}>
           {notice.message}
@@ -262,6 +264,7 @@ export function InterestedWorkersPanel({
                       Create offer
                     </button>
                   ) : null}
+                  {canCreateOffer ? <CreateOfferNote /> : null}
                   {canLink ? (
                     <button type="button" style={styles.button} disabled={busyId === w.interestId} onClick={() => void act(w, "link_offer")}>
                       Link to governed offer

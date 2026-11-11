@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { formatRwosDateTime } from "@rwos/shared";
 import { useLocale } from "../../i18n/LocaleProvider";
+import { BoardOnlyNotice } from "./BoardOnlyNotice";
 import { readShiftOverlapNotice } from "../shiftOverlapNotice";
 import { CertificateOverrideBox, certificateOverrideBody, type CertificateOverride } from "../CertificateOverrideBox";
 import {
@@ -258,6 +259,7 @@ export function OfferAssignmentStatusPanel({
         </p>
       ) : null}
       <h3>Worker offers</h3>
+      <BoardOnlyNotice />
       {state.offers.length === 0 ? <p>No offers recorded.</p> : null}
       {state.offers.map((offer) => (
         <article key={offer.id} style={styles.record}>
