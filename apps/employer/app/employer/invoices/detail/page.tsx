@@ -2,6 +2,8 @@ import { EmployerShell, WorkflowRoutes } from "../../EmployerShell";
 import { styles } from "../../employerStyles";
 import { InvoiceReviewPanel } from "../InvoiceReviewPanel";
 import { invoiceBreakdownHref, readInvoiceParam } from "../invoiceSelection";
+import { serverLang } from "../../../i18n/serverLang";
+import { pageHeaders } from "../../pageHeaderText";
 
 export default async function InvoiceDetailPage({
   searchParams
@@ -9,16 +11,17 @@ export default async function InvoiceDetailPage({
   searchParams: Promise<{ invoice?: string | string[] }>;
 }) {
   const invoiceId = readInvoiceParam((await searchParams).invoice);
+  const h = pageHeaders[await serverLang()].invoiceDetail;
   return (
     <EmployerShell
       currentRoute="/employer/invoices/detail"
-      eyebrow="Invoice Detail"
-      title="Review invoice detail without treating it as paid."
-      lede="Invoice detail shows invoice state and payment state separately. Issued does not mean paid, and authorized does not mean settled."
+      eyebrow={h.eyebrow}
+      title={h.title}
+      lede={h.lede}
       actions={
         <>
-          {invoiceId ? <a href={invoiceBreakdownHref(invoiceId)} style={styles.primaryButton}>Charge breakdown</a> : null}
-          <a href="/employer/invoices" style={styles.secondaryButton}>Back to invoices</a>
+          {invoiceId ? <a href={invoiceBreakdownHref(invoiceId)} style={styles.primaryButton}>{h.breakdown}</a> : null}
+          <a href="/employer/invoices" style={styles.secondaryButton}>{h.back}</a>
         </>
       }
     >

@@ -7,6 +7,9 @@ import {
   type EmployerContractDto
 } from "@rwos/shared";
 import { styles } from "../employerStyles";
+import { useLocale } from "../../i18n/LocaleProvider";
+import { fill, langOf } from "../../i18n/localText";
+import { contractText } from "./contractText";
 
 type OrganizationChoice = Readonly<{ id: string; publicId: string; displayName: string }>;
 
@@ -36,6 +39,7 @@ function failureState(httpStatus: number): PanelState {
 // Employer contract review + signature. Security: the rate card is read-only and
 // server-authoritative; signing POSTs no rates (the browser cannot set a price).
 export function ContractSignPanel() {
+  const tx = contractText[langOf(useLocale())];
   const [state, setState] = useState<PanelState>({ status: "loading" });
   const [acknowledged, setAcknowledged] = useState(false);
   const [signing, setSigning] = useState(false);
@@ -85,17 +89,17 @@ export function ContractSignPanel() {
         body: JSON.stringify({})
       });
       if (response.status === 409) {
-        setSignError("This contract changed. Reloading the latest version.");
+        setSignError(tx.changed);
         await load();
         return;
       }
       if (response.status === 401 || response.status === 403) {
-        setSignError("Only an organization owner or administrator can sign the contract.");
+        setSignError(tx.notAllowed);
         setSigning(false);
         return;
       }
       if (!response.ok) {
-        setSignError("The contract could not be signed. Please try again.");
+        setSignError(tx.signFailed);
         setSigning(false);
         return;
       }
@@ -103,42 +107,42 @@ export function ContractSignPanel() {
       setState(stateFromContract(payload.contract ?? null));
       setSigning(false);
     } catch {
-      setSignError("The contract could not be signed. Please try again.");
+      setSignError(tx.signFailed);
       setSigning(false);
     }
-  }, [load]);
+  }, [load, tx]);
 
   if (state.status === "loading") {
     return (
       <ContractMessage
-        title="Loading your contract"
-        message="Checking your authenticated organization context."
+        title={tx.loading}
+        message={tx.loadingBody}
       />
     );
   }
   if (state.status === "denied") {
     return (
       <ContractMessage
-        title="Sign in to view your contract"
-        message="The platform contract is shown only for your authenticated organization."
-        action={{ href: "/signin", label: "Go to sign in" }}
+        title={tx.signInTitle}
+        message={tx.signInBody}
+        action={{ href: "/signin", label: tx.goToSignIn }}
       />
     );
   }
   if (state.status === "organization_required") {
     return (
       <ContractMessage
-        title="Select your organization"
-        message="Choose your organization on the request calendar, then return to review its contract."
-        action={{ href: "/employer/calendar", label: "Open request calendar" }}
+        title={tx.chooseCompanyTitle}
+        message={tx.chooseCompanyBody}
+        action={{ href: "/employer/calendar", label: tx.openCalendar }}
       />
     );
   }
   if (state.status === "no_contract") {
     return (
       <ContractMessage
-        title="No contract published yet"
-        message="Your platform rate card has not been published for signing. The platform prepares the governed rates; you will review and sign them here. No fixture rates are shown."
+        title={tx.noContractTitle}
+        message={tx.noContractBody}
         onRetry={load}
       />
     );
@@ -148,12 +152,12 @@ export function ContractSignPanel() {
       <ContractMessage
         title={
           state.status === "unavailable"
-            ? "Contract service unavailable"
+            ? tx.unavailableTitle
             : state.status === "stale"
-              ? "Contract changed"
-              : "Contract could not be loaded"
+              ? tx.changedTitle
+              : tx.errorTitle
         }
-        message="No fixture rates are shown as governed data. Retry when the service is available."
+        message={tx.errorBody}
         onRetry={load}
       />
     );
@@ -167,21 +171,18 @@ export function ContractSignPanel() {
       <ContractHeader contract={contract} signed={signed} />
       <RateCardTable contract={contract} />
 
-      <p style={styles.cardText}>
-        These hourly rates are authoritative for every staffing request. A request applies the
-        governed rate for the role you choose — it never sets or overrides a price.
-      </p>
+      <p style={styles.cardText}>{tx.pricesNote}</p>
 
       {signed ? (
         <div aria-live="polite">
           <p style={styles.cardText}>
-            <strong>Signed and active.</strong>{" "}
+            <strong>{tx.signedActive}</strong>{" "}
             {contract.signedAt
-              ? `Accepted ${formatRwosDateTime(contract.signedAt, { dateStyle: "medium", timeStyle: "short", timeZone: "UTC" })} UTC.`
-              : "This contract is active."}
+              ? fill(tx.acceptedOn, { date: formatRwosDateTime(contract.signedAt, { dateStyle: "medium", timeStyle: "short", timeZone: "UTC" }) })
+              : tx.active}
           </p>
           <a href="/employer/calendar/create" style={styles.primaryButton}>
-            Create a staffing request
+            {tx.createRequest}
           </a>
         </div>
       ) : (
@@ -203,10 +204,7 @@ export function ContractSignPanel() {
               disabled={signing}
               onChange={(event) => setAcknowledged(event.target.checked)}
             />
-            <span>
-              I am authorized to sign for this organization, and I accept the governed rate card
-              above (contract {contract.version}) as the authoritative pricing for staffing requests.
-            </span>
+            <span>{fill(tx.acknowledge, { version: contract.version })}</span>
           </label>
           <button
             type="submit"
@@ -218,7 +216,7 @@ export function ContractSignPanel() {
               opacity: !acknowledged || signing ? 0.6 : 1
             }}
           >
-            {signing ? "Signing…" : "Sign contract"}
+            {signing ? tx.signing : tx.sign}
           </button>
           {signError ? (
             <p aria-live="assertive" role="alert" style={styles.cardText}>
@@ -235,14 +233,15 @@ function ContractHeader({
   contract,
   signed
 }: Readonly<{ contract: EmployerContractDto; signed: boolean }>) {
+  const tx = contractText[langOf(useLocale())];
   return (
     <div style={{ display: "flex", flexWrap: "wrap", gap: "0.75rem", alignItems: "center" }}>
-      <span style={styles.statusBadge}>{signed ? "signed · active" : "awaiting signature"}</span>
-      <h3 style={{ ...styles.cardTitle, margin: 0 }}>Contract {contract.version}</h3>
+      <span style={styles.statusBadge}>{signed ? tx.badgeSigned : tx.badgeWaiting}</span>
+      <h3 style={{ ...styles.cardTitle, margin: 0 }}>{fill(tx.contractTitle, { version: contract.version })}</h3>
       <p style={{ ...styles.cardText, margin: 0 }}>
-        Currency {contract.currency}
+        {fill(tx.currency, { currency: contract.currency })}
         {contract.effectiveFrom
-          ? ` · effective ${formatRwosDateTime(contract.effectiveFrom, { dateStyle: "medium", timeZone: "UTC" })}`
+          ? fill(tx.effective, { date: formatRwosDateTime(contract.effectiveFrom, { dateStyle: "medium", timeZone: "UTC" }) })
           : ""}
       </p>
     </div>
@@ -250,26 +249,27 @@ function ContractHeader({
 }
 
 function RateCardTable({ contract }: Readonly<{ contract: EmployerContractDto }>) {
+  const tx = contractText[langOf(useLocale())];
   if (contract.roleRates.length === 0) {
-    return <p style={styles.cardText}>This contract has no priced roles yet.</p>;
+    return <p style={styles.cardText}>{tx.noRoles}</p>;
   }
   return (
     <div style={{ overflowX: "auto" }}>
       <table style={{ borderCollapse: "collapse", width: "100%", minWidth: "20rem" }}>
         <caption style={{ ...styles.cardText, textAlign: "left", captionSide: "top", paddingBottom: "0.5rem" }}>
-          Governed hourly rate by role
+          {tx.tableCaption}
         </caption>
         <thead>
           <tr>
-            <th scope="col" style={cellStyle(true)}>Role</th>
-            <th scope="col" style={{ ...cellStyle(true), textAlign: "right" }}>Governed hourly rate</th>
+            <th scope="col" style={cellStyle(true)}>{tx.roleHeader}</th>
+            <th scope="col" style={{ ...cellStyle(true), textAlign: "right" }}>{tx.rateHeader}</th>
           </tr>
         </thead>
         <tbody>
           {contract.roleRates.map((rate) => (
             <tr key={rate.roleDefinitionId}>
               <th scope="row" style={{ ...cellStyle(false), fontWeight: 400 }}>
-                {rate.roleLabel ?? "Role"}
+                {rate.roleLabel ?? tx.roleFallback}
               </th>
               <td style={{ ...cellStyle(false), textAlign: "right", fontVariantNumeric: "tabular-nums" }}>
                 {formatHourlyRate({
@@ -307,6 +307,7 @@ function ContractMessage({
   action?: Readonly<{ href: string; label: string }>;
   onRetry?: () => void;
 }>) {
+  const tx = contractText[langOf(useLocale())];
   return (
     <div aria-live="polite" style={styles.panel}>
       <h3 style={styles.sectionTitle}>{title}</h3>
@@ -318,7 +319,7 @@ function ContractMessage({
       ) : null}
       {onRetry ? (
         <button onClick={onRetry} style={{ ...styles.secondaryButton, cursor: "pointer" }} type="button">
-          Retry
+          {tx.retry}
         </button>
       ) : null}
     </div>

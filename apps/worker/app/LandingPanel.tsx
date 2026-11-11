@@ -161,7 +161,7 @@ function AuthCard({
   };
   return (
     <div className="auth-card" id="auth-card" ref={cardRef}>
-      <div className="auth-tabs" role="tablist" aria-label="Sign in or create account">
+      <div className="auth-tabs" role="tablist" aria-label={`${t("auth.tabSignIn")} / ${t("auth.tabCreate")}`}>
         <button role="tab" type="button" aria-selected={tab === "signin"} className={tab === "signin" ? "active" : ""} onClick={() => setTab("signin")}>
           {t("auth.tabSignIn")}
         </button>

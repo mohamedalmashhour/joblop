@@ -5,6 +5,8 @@ import { useCallback, useEffect, useState, type FormEvent } from "react";
 import { useLocale, useT } from "../../i18n/LocaleProvider";
 import { AssistantActionCard } from "./AssistantActionCard";
 import { cardState, parseAssistantAction, parseAssistantResult } from "./assistantCards";
+import { langOf } from "../../i18n/localText";
+import { contactText } from "./contactText";
 
 // Contact Joblop for employers: AI answers first and hands over to the Joblop team when a person must
 // decide. An employer sees only their own conversations; the API enforces that.
@@ -21,13 +23,6 @@ const TOPICS: Readonly<Record<string, string>> = {
   account: "Account",
   other: "Other"
 };
-const STATUS: Readonly<Record<string, string>> = {
-  ai: "With AI assistant",
-  needs_admin: "Waiting for the Joblop team",
-  admin_replied: "Joblop team replied",
-  solved: "Solved"
-};
-const AUTHOR: Readonly<Record<string, string>> = { requester: "You", ai: "Joblop AI assistant", assistant_result: "Joblop AI assistant", admin: "Joblop team" };
 const POLL_MS = 10_000;
 
 function browserLocale() {
@@ -36,6 +31,7 @@ function browserLocale() {
 }
 
 function NewMessage({ onSent }: { onSent(id: string): void }) {
+  const tx = contactText[langOf(useLocale())];
   const params = useSearchParams();
   const requested = params.get("topic") ?? "";
   const [topic, setTopic] = useState(requested in TOPICS ? requested : "shift");
@@ -67,19 +63,19 @@ function NewMessage({ onSent }: { onSent(id: string): void }) {
 
   return (
     <form onSubmit={(e) => void submit(e)} style={styles.card}>
-      <label style={styles.label} htmlFor="contact-topic">What is this about?</label>
+      <label style={styles.label} htmlFor="contact-topic">{tx.topicLabel}</label>
       <select id="contact-topic" value={topic} onChange={(e) => setTopic(e.target.value)} style={styles.field}>
-        {Object.entries(TOPICS).map(([value, label]) => <option key={value} value={value}>{label}</option>)}
+        {Object.keys(TOPICS).map((value) => <option key={value} value={value}>{tx.topics[value] ?? value}</option>)}
       </select>
-      <label style={styles.label} htmlFor="contact-body">Your message</label>
+      <label style={styles.label} htmlFor="contact-body">{tx.messageLabel}</label>
       <textarea id="contact-body" value={body} onChange={(e) => setBody(e.target.value)} maxLength={2000} rows={4} required style={styles.field} />
       <label style={styles.check}>
         <input type="checkbox" checked={urgent} onChange={(e) => setUrgent(e.target.checked)} />
-        Urgent: a shift is happening now, or starts soon
+        {tx.urgentLabel}
       </label>
-      <p style={styles.muted}>Please don&apos;t write bank or card details here.</p>
-      {failed ? <p role="alert" style={styles.error}>Your message could not be sent. Please try again.</p> : null}
-      <button type="submit" disabled={busy || !body.trim()} style={styles.button}>{busy ? "Sending…" : "Send"}</button>
+      <p style={styles.muted}>{tx.noBankDetails}</p>
+      {failed ? <p role="alert" style={styles.error}>{tx.sendFailed}</p> : null}
+      <button type="submit" disabled={busy || !body.trim()} style={styles.button}>{busy ? tx.sending : tx.send}</button>
     </form>
   );
 }
@@ -87,6 +83,7 @@ function NewMessage({ onSent }: { onSent(id: string): void }) {
 function Thread({ id, onBack }: { id: string; onBack(): void }) {
   const t = useT();
   const locale = useLocale();
+  const tx = contactText[langOf(locale)];
   const [conversation, setConversation] = useState<Conversation | null>(null);
   const [messages, setMessages] = useState<readonly Message[] | null>(null);
   const [reply, setReply] = useState("");
@@ -154,13 +151,13 @@ function Thread({ id, onBack }: { id: string; onBack(): void }) {
     }
   }
 
-  if (!messages || !conversation) return <p style={styles.muted}>Loading…</p>;
+  if (!messages || !conversation) return <p style={styles.muted}>{tx.loading}</p>;
   return (
     <section style={styles.card}>
-      <button type="button" onClick={onBack} style={styles.ghost}>← All messages</button>
+      <button type="button" onClick={onBack} style={styles.ghost}>{tx.allMessages}</button>
       <p style={styles.muted}>
-        {TOPICS[conversation.topic] ?? conversation.topic} · {STATUS[conversation.status] ?? conversation.status}
-        {conversation.urgent ? " · Urgent" : ""}
+        {tx.topics[conversation.topic] ?? conversation.topic} · {tx.status[conversation.status] ?? conversation.status}
+        {conversation.urgent ? ` · ${tx.urgent}` : ""}
       </p>
       <div role="log" aria-live="polite" style={styles.log}>
         {messages.map((m) => {
@@ -182,20 +179,20 @@ function Thread({ id, onBack }: { id: string; onBack(): void }) {
           if (!body) return null;
           return (
             <div key={m.id} style={m.authorKind === "requester" ? styles.mine : styles.theirs}>
-              <strong style={styles.label}>{AUTHOR[m.authorKind] ?? "Joblop"}</strong>
+              <strong style={styles.label}>{tx.authors[m.authorKind] ?? "Joblop"}</strong>
               <div style={{ whiteSpace: "pre-wrap" }}>{body}</div>
             </div>
           );
         })}
       </div>
-      {failed ? <p role="alert" style={styles.error}>Your message could not be sent. Please try again.</p> : null}
+      {failed ? <p role="alert" style={styles.error}>{tx.sendFailed}</p> : null}
       <form onSubmit={(e) => void submit(e)}>
-        <label style={styles.label} htmlFor="contact-reply">Your message</label>
+        <label style={styles.label} htmlFor="contact-reply">{tx.messageLabel}</label>
         <textarea id="contact-reply" value={reply} onChange={(e) => setReply(e.target.value)} maxLength={2000} rows={3} required style={styles.field} />
         <div style={styles.row}>
-          <button type="submit" disabled={busy || !reply.trim()} style={styles.button}>{busy ? "Sending…" : "Send"}</button>
+          <button type="submit" disabled={busy || !reply.trim()} style={styles.button}>{busy ? tx.sending : tx.send}</button>
           {conversation.status === "ai" ? (
-            <button type="button" disabled={busy} onClick={() => void post(`/api/contact/${encodeURIComponent(id)}/person`, {})} style={styles.ghost}>Talk to a person</button>
+            <button type="button" disabled={busy} onClick={() => void post(`/api/contact/${encodeURIComponent(id)}/person`, {})} style={styles.ghost}>{tx.askPerson}</button>
           ) : null}
         </div>
       </form>
@@ -204,6 +201,7 @@ function Thread({ id, onBack }: { id: string; onBack(): void }) {
 }
 
 export function EmployerContactPanel() {
+  const tx = contactText[langOf(useLocale())];
   const [state, setState] = useState<ListState>({ status: "loading" });
   const [openId, setOpenId] = useState<string | null>(null);
 
@@ -221,20 +219,20 @@ export function EmployerContactPanel() {
 
   useEffect(() => { void load(); }, [load]);
 
-  if (state.status === "loading") return <p style={styles.muted}>Loading…</p>;
-  if (state.status === "signed_out") return <p style={styles.muted}>Sign in to contact Joblop.</p>;
-  if (state.status === "error") return <p role="alert" style={styles.error}>Your messages could not be loaded. Please try again.</p>;
+  if (state.status === "loading") return <p style={styles.muted}>{tx.loading}</p>;
+  if (state.status === "signed_out") return <p style={styles.muted}>{tx.signIn}</p>;
+  if (state.status === "error") return <p role="alert" style={styles.error}>{tx.loadFailed}</p>;
   if (openId) return <Thread id={openId} onBack={() => { setOpenId(null); void load(); }} />;
 
   return (
     <>
       <NewMessage onSent={setOpenId} />
-      {state.items.length ? <h2 style={{ fontSize: 20 }}>Your messages</h2> : null}
+      {state.items.length ? <h2 style={{ fontSize: 20 }}>{tx.history}</h2> : null}
       <div style={styles.list}>
         {state.items.map((c) => (
           <button key={c.id} type="button" onClick={() => setOpenId(c.id)} style={styles.item}>
-            <strong>{TOPICS[c.topic] ?? c.topic}{c.unread ? " · New reply" : ""}</strong>
-            <span style={styles.muted}>{STATUS[c.status] ?? c.status} · {new Date(c.lastMessageAt).toLocaleString()}</span>
+            <strong>{tx.topics[c.topic] ?? c.topic}{c.unread ? ` · ${tx.newReply}` : ""}</strong>
+            <span style={styles.muted}>{tx.status[c.status] ?? c.status} · {new Date(c.lastMessageAt).toLocaleString()}</span>
           </button>
         ))}
       </div>

@@ -15,6 +15,8 @@ import { fmtLocale, useLocale, useT } from "../../i18n/LocaleProvider";
 import { RequestStatusChip } from "../RequestStatusChip";
 import { requestPhase, requestPhaseLabel, requestPhaseTone } from "../requestStatus";
 import { mondayFirstCells, mondayFirstWeekdays } from "./requestCalendarGrid";
+import { langOf } from "../../i18n/localText";
+import { calendarStateText } from "../recordListText";
 
 type OrganizationChoice = Readonly<{ id: string; publicId: string; displayName: string }>;
 type ClientCalendarState =
@@ -22,6 +24,7 @@ type ClientCalendarState =
   | Readonly<{ status: "organization_required"; organizations: readonly OrganizationChoice[] }>;
 
 export function ClientCalendarPanel() {
+  const tx = calendarStateText[langOf(useLocale())];
   const [state, setState] = useState<ClientCalendarState>({
     status: "loading"
   });
@@ -64,8 +67,8 @@ export function ClientCalendarPanel() {
   if (state.status === "loading")
     return (
       <CalendarState
-        title="Loading request calendar"
-        message="Checking your authenticated organization context."
+        title={tx.loading}
+        message={tx.loadingBody}
       />
     );
   if (state.status === "denied") return <ClientSignIn />;
@@ -82,8 +85,8 @@ export function ClientCalendarPanel() {
       <>
         <SessionAction onSignedOut={load} />
         <CalendarState
-          title="No persisted requests"
-          message="No governed requests exist for this organization yet."
+          title={tx.emptyTitle}
+          message={tx.emptyBody}
           action="/employer/calendar/create"
         />
       </>
@@ -93,12 +96,12 @@ export function ClientCalendarPanel() {
       <CalendarState
         title={
           state.status === "unavailable"
-            ? "Calendar unavailable"
+            ? tx.unavailableTitle
             : state.status === "stale"
-              ? "Calendar changed"
-              : "Calendar could not be loaded"
+              ? tx.changedTitle
+              : tx.errorTitle
         }
-        message="No fixture records are shown as persisted data. Retry when the service is available."
+        message={tx.errorBody}
         onRetry={load}
       />
     );
@@ -109,8 +112,8 @@ export function ClientCalendarPanel() {
       <SessionAction onSignedOut={load} />
       {state.status === "partial" ? (
         <CalendarState
-          title="Some requests could not be shown"
-          message="The records below passed the client privacy whitelist. Retry to check for the remaining records."
+          title={tx.partialTitle}
+          message={tx.partialBody}
           onRetry={load}
         />
       ) : null}
@@ -120,14 +123,14 @@ export function ClientCalendarPanel() {
           onClick={() => setView("calendar")}
           style={view === "calendar" ? gridStyles.toggleActive : gridStyles.toggle}
         >
-          Calendar
+          {tx.viewCalendar}
         </button>
         <button
           type="button"
           onClick={() => setView("list")}
           style={view === "list" ? gridStyles.toggleActive : gridStyles.toggle}
         >
-          List
+          {tx.viewList}
         </button>
       </div>
       {view === "calendar" ? (
@@ -334,12 +337,13 @@ const sessionStyles: Record<string, React.CSSProperties> = {
 };
 
 function ClientSignIn() {
+  const tx = calendarStateText[langOf(useLocale())];
   return (
     <section style={styles.panel}>
-      <h3 style={styles.cardTitle}>Employer sign-in required</h3>
-      <p style={styles.sectionCopy}>Sign in to load your organization’s request calendar.</p>
+      <h3 style={styles.cardTitle}>{tx.signInTitle}</h3>
+      <p style={styles.sectionCopy}>{tx.signInBody}</p>
       <a href="/signin" style={styles.primaryButton}>
-        Sign in
+        {tx.signIn}
       </a>
     </section>
   );
@@ -351,13 +355,14 @@ function CalendarState({
   action,
   onRetry
 }: Readonly<{ title: string; message: string; action?: string; onRetry?: () => Promise<void> }>) {
+  const tx = calendarStateText[langOf(useLocale())];
   return (
     <article style={styles.panel} aria-live="polite">
       <h3 style={styles.cardTitle}>{title}</h3>
       <p style={styles.sectionCopy}>{message}</p>
       {action ? (
         <a href={action} style={styles.primaryButton}>
-          Create staffing request
+          {tx.create}
         </a>
       ) : null}
       {onRetry ? (
@@ -366,7 +371,7 @@ function CalendarState({
           onClick={() => void onRetry()}
           style={{ ...styles.secondaryButton, cursor: "pointer" }}
         >
-          Retry
+          {tx.retry}
         </button>
       ) : null}
     </article>
@@ -377,9 +382,8 @@ function OrganizationPicker({
   organizations,
   onSelected
 }: Readonly<{ organizations: readonly OrganizationChoice[]; onSelected: () => Promise<void> }>) {
-  const [message, setMessage] = useState(
-    "Choose the organization whose persisted calendar you are authorized to access."
-  );
+  const tx = calendarStateText[langOf(useLocale())];
+  const [message, setMessage] = useState<"chooseBody" | "chooseFailed" | "chooseUnavailable">("chooseBody");
   const [submitting, setSubmitting] = useState(false);
   const select = async (organizationId: string) => {
     setSubmitting(true);
@@ -389,10 +393,10 @@ function OrganizationPicker({
         headers: { "content-type": "application/json" },
         body: JSON.stringify({ organizationId })
       });
-      if (!response.ok) return setMessage("Organization access could not be selected.");
+      if (!response.ok) return setMessage("chooseFailed");
       await onSelected();
     } catch {
-      setMessage("Organization selection is unavailable. Try again.");
+      setMessage("chooseUnavailable");
     } finally {
       setSubmitting(false);
     }
@@ -400,10 +404,10 @@ function OrganizationPicker({
   if (organizations.length === 0) {
     return (
       <article style={styles.tintedCard}>
-        <h3 style={styles.cardTitle}>Set up your company</h3>
-        <p style={styles.cardText}>You are signed in. Add your company details to start requesting workers.</p>
+        <h3 style={styles.cardTitle}>{tx.setupTitle}</h3>
+        <p style={styles.cardText}>{tx.setupBody}</p>
         <a href="/employer/onboarding/company" style={styles.primaryButton}>
-          Set up my company
+          {tx.setupAction}
         </a>
       </article>
     );
@@ -411,8 +415,8 @@ function OrganizationPicker({
 
   return (
     <article aria-busy={submitting} aria-live="polite" style={styles.panel}>
-      <h3 style={styles.cardTitle}>Select organization</h3>
-      <p style={styles.sectionCopy}>{message}</p>
+      <h3 style={styles.cardTitle}>{tx.chooseTitle}</h3>
+      <p style={styles.sectionCopy}>{tx[message]}</p>
       {organizations.map((organization) => (
         <button
           disabled={submitting}

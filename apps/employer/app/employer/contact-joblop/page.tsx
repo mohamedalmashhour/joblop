@@ -1,19 +1,19 @@
 import { Suspense } from "react";
 import { EmployerContactPanel } from "./EmployerContactPanel";
+import { serverLang } from "../../i18n/serverLang";
+import { pageHeaders } from "../pageHeaderText";
 
-export default function Page() {
+export default async function Page() {
+  const h = pageHeaders[await serverLang()].contact;
   return (
     <main style={styles.page}>
       <header style={styles.header}>
         <a href="/" style={styles.brand}>Joblop</a>
-        <a href="/employer/dashboard" style={styles.back}>← Dashboard</a>
+        <a href="/employer/dashboard" style={styles.back}>{h.back}</a>
       </header>
       <div style={styles.body}>
-        <h1 style={styles.title}>Contact Joblop</h1>
-        <p style={styles.lede}>
-          Our AI assistant answers right away, day and night. When a person needs to decide, it passes your
-          message to the Joblop team. Your conversation is private.
-        </p>
+        <h1 style={styles.title}>{h.title}</h1>
+        <p style={styles.lede}>{h.lede}</p>
         <Suspense>
           <EmployerContactPanel />
         </Suspense>
