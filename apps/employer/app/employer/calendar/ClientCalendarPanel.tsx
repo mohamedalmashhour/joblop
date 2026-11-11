@@ -255,7 +255,7 @@ function RequestCard({ request }: Readonly<{ request: ClientCalendarDto }>) {
       </p>
       {request.actionRequired === "information_required" ? (
         <p aria-live="polite" style={styles.warning}>
-          Information requested: {request.actionRequiredReason}
+          {t("detail.infoRequested", { reason: request.actionRequiredReason ?? "" })}
         </p>
       ) : null}
       <a

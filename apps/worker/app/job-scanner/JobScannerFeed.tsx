@@ -4,21 +4,29 @@ import { useEffect, useState } from "react";
 import { OutsideApplyLink, OutsideSiteBadge } from "../JobSourceBadge";
 import { outsideApplyUrl } from "../jobSource";
 import { accountHref } from "../authScroll";
+import { fmtLocale, useLocale, useT, type Translate } from "../i18n/LocaleProvider";
+import type { MessageKey } from "../i18n/messages";
 
 type Lead = { id?: string; title: string; employer: string | null; city: string | null; province: string | null; salaryMaxMinor: number | null; url: string; source?: string; score?: number; distanceKm?: number | null };
+type Msg = Readonly<{ key: MessageKey; vars?: Readonly<Record<string, string | number>> }>;
 
 // Hourly pay is stored in cents per hour (small numbers); yearly salaries are large.
-const money = (m: number | null) => {
+const money = (m: number | null, t: Translate, fmt: string) => {
   if (!m) return "";
-  if (m < 20000) return `~$${(m / 100).toFixed(2).replace(/\.00$/, "")}/h`;
-  return `~${(m / 100).toLocaleString("en-CA", { style: "currency", currency: "CAD", maximumFractionDigits: 0 })}/yr`;
+  const n = m / 100;
+  if (m < 20000) {
+    return t("scanner.perHour", { amount: n.toLocaleString(fmt, { minimumFractionDigits: Number.isInteger(n) ? 0 : 2, maximumFractionDigits: 2 }) });
+  }
+  return t("scanner.perYear", { amount: n.toLocaleString(fmt, { style: "currency", currency: "CAD", maximumFractionDigits: 0 }) });
 };
 
 export function JobScannerFeed() {
+  const t = useT();
+  const fmt = fmtLocale(useLocale());
   const [role, setRole] = useState("");
   const [city, setCity] = useState("");
   const [leads, setLeads] = useState<Lead[]>([]);
-  const [msg, setMsg] = useState("");
+  const [msg, setMsg] = useState<Msg | null>(null);
   const [busy, setBusy] = useState(false);
   const [loaded, setLoaded] = useState(false);
   const [pro, setPro] = useState(false);
@@ -26,7 +34,7 @@ export function JobScannerFeed() {
   const [visitor, setVisitor] = useState(false);
 
   const search = async (override?: string) => {
-    setBusy(true); setMsg("Searching jobs near you…");
+    setBusy(true); setMsg({ key: "scanner.searching" });
     try {
       const qs = new URLSearchParams({ province: "QC", limit: "50" });
       const roleText = (override ?? role).trim();
@@ -41,13 +49,13 @@ export function JobScannerFeed() {
         const pd = (await pr.json().catch(() => ({}))) as { leads?: Array<{ title: string; employer: string | null; areaLabel: string; salaryMaxMinor: number | null; source: string; url?: string | null }>; total?: number };
         const list = (pd.leads ?? []).map((l) => ({ title: l.title, employer: l.employer, city: l.areaLabel, province: null, salaryMaxMinor: l.salaryMaxMinor, url: l.url ?? "", source: l.source }));
         setLeads(list); setLoaded(true); setVisitor(true);
-        setMsg(list.length ? `${pd.total ?? list.length} jobs found. Create a free account to see the full list and apply.` : "No jobs match yet — try a broader search.");
+        setMsg(list.length ? { key: "scanner.visitorFound", vars: { count: pd.total ?? list.length } } : { key: "scanner.noneYet" });
         return;
       }
-      if (!res.ok) { setMsg("Could not load jobs."); return; }
+      if (!res.ok) { setMsg({ key: "scanner.loadFailed" }); return; }
       const d = (await res.json()) as { leads: Lead[]; pro?: boolean };
       setLeads(d.leads ?? []); setLoaded(true); setPro(Boolean(d.pro));
-      setMsg(d.leads?.length ? `${d.leads.length} jobs found.` : "No jobs match yet — try a broader search.");
+      setMsg(d.leads?.length ? { key: "scanner.found", vars: { count: d.leads.length } } : { key: "scanner.noneYet" });
     } finally { setBusy(false); }
   };
 
@@ -61,41 +69,41 @@ export function JobScannerFeed() {
   return (
     <section>
       <div style={styles.searchRow}>
-        <input style={styles.input} value={role} onChange={(e) => setRole(e.target.value)} placeholder="Role or skill — e.g. chef, PSW, cariste" />
-        <input style={styles.input} value={city} onChange={(e) => setCity(e.target.value)} placeholder="City (optional) — Montréal, Laval…" />
-        <button type="button" style={styles.cta} disabled={busy} onClick={() => void search()}>{busy ? "Searching…" : "Find jobs"}</button>
+        <input style={styles.input} value={role} onChange={(e) => setRole(e.target.value)} placeholder={t("scanner.rolePh")} />
+        <input style={styles.input} value={city} onChange={(e) => setCity(e.target.value)} placeholder={t("scanner.cityPh")} />
+        <button type="button" style={styles.cta} disabled={busy} onClick={() => void search()}>{busy ? t("scanner.searchingBtn") : t("scanner.find")}</button>
       </div>
-      {msg ? <p style={styles.msg}>{msg}</p> : null}
+      {msg ? <p style={styles.msg}>{t(msg.key, msg.vars)}</p> : null}
       {loaded && pro ? (
-        <p style={styles.proBanner}>⭐ Worker Pro — showing the best-paying and most urgent jobs first.</p>
+        <p style={styles.proBanner}>{t("scanner.proBanner")}</p>
       ) : loaded ? (
-        <p style={styles.upsell}>🔒 <strong>Worker Pro</strong> members see the best-paying and emergency jobs first. <a href="/cv-builder" style={styles.link}>Learn about Pro →</a></p>
+        <p style={styles.upsell}>{t("scanner.upsell")} <a href="/cv-builder" style={styles.link}>{t("scanner.learnPro")}</a></p>
       ) : null}
-      <p style={styles.note}>These are external job postings from partner sources. You apply on the source site. Want a CV first? <a href="/cv-builder" style={styles.link}>Build your CV →</a></p>
+      <p style={styles.note}>{t("scanner.note")} <a href="/cv-builder" style={styles.link}>{t("scanner.buildCv")}</a></p>
 
       {leads.map((l, i) => (
         <article key={l.id ?? i} style={styles.card}>
           <OutsideSiteBadge className="jsf-badge" />
           <strong style={styles.title} dir="auto">{l.title}</strong>
           <div style={styles.meta}>
-            {l.employer ?? "—"} · {l.province ? `${l.city}, ${l.province}` : l.city}{money(l.salaryMaxMinor) ? ` · ${money(l.salaryMaxMinor)}` : ""}
-            {typeof l.score === "number" ? ` · match ${(l.score * 100).toFixed(0)}%` : ""}
+            {l.employer ?? "—"} · {l.province ? `${l.city}, ${l.province}` : l.city}{money(l.salaryMaxMinor, t, fmt) ? ` · ${money(l.salaryMaxMinor, t, fmt)}` : ""}
+            {typeof l.score === "number" ? ` · ${t("scanner.match", { pct: (l.score * 100).toFixed(0) })}` : ""}
           </div>
           <div style={styles.actions}>
             {/* Outside listing: "Apply on <site>" opens the outside site in a new tab. */}
             {outsideApplyUrl(l.url) ? (
               <OutsideApplyLink url={l.url} source={l.source} />
             ) : visitor ? (
-              <a style={styles.apply} href={accountHref("signup")}>Create a free account to apply</a>
+              <a style={styles.apply} href={accountHref("signup")}>{t("scanner.signupToApply")}</a>
             ) : null}
-            <a style={styles.ghost} href="/cv-builder">Tailor my CV</a>
+            <a style={styles.ghost} href="/cv-builder">{t("scanner.tailorCv")}</a>
             {l.source === "adzuna" ? (
               <a style={styles.adzuna} href="https://www.adzuna.ca" target="_blank" rel="noreferrer">Adzuna</a>
             ) : null}
           </div>
         </article>
       ))}
-      {loaded && leads.length === 0 ? <p style={styles.msg}>Nothing yet — try a different role or remove the city.</p> : null}
+      {loaded && leads.length === 0 ? <p style={styles.msg}>{t("scanner.nothing")}</p> : null}
     </section>
   );
 }
