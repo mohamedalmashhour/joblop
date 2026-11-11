@@ -1,14 +1,21 @@
 import type { Metadata } from "next";
+import { cookies } from "next/headers";
 import { SiteHeader } from "../SiteHeader";
+import { LOCALE_COOKIE, resolveWorkerLocale } from "../i18n/config";
+import { dictionaries } from "../i18n/messages";
 import { ConfirmEmail } from "./ConfirmEmail";
 
 // Landing page for the "confirm your email" link (item 45). Public: the link may be opened on any
 // device, signed in or not. Confirming needs a tap, so mail scanners that open links do not use it up.
-export const metadata: Metadata = {
-  title: "Confirm your email — Joblop",
-  robots: { index: false, follow: false },
-  referrer: "no-referrer"
-};
+export async function generateMetadata(): Promise<Metadata> {
+  const store = await cookies();
+  const m = dictionaries[resolveWorkerLocale(store.get(LOCALE_COOKIE)?.value)] ?? dictionaries["en-CA"];
+  return {
+    title: `${m["confirmEmail.title"] ?? dictionaries["en-CA"]["confirmEmail.title"]} — Joblop`,
+    robots: { index: false, follow: false },
+    referrer: "no-referrer"
+  };
+}
 
 type Props = { searchParams: Promise<Record<string, string | string[] | undefined>> };
 
