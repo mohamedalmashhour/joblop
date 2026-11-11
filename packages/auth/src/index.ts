@@ -14534,7 +14534,7 @@ export function createPrismaAssignmentRepository(prismaClient: unknown): Assignm
                     status: { in: activeAssignmentStates },
                     confirmedStartAt: { lt: termsVersion.endAt },
                     confirmedEndAt: { gt: termsVersion.startAt },
-                    jobRequest: { jobLength: { not: LONG_TERM_JOB_LENGTH } }
+                    jobRequest: { jobLength: { not: LONG_TERM_JOB_LENGTH }, status: { not: "cancelled" } }
                   },
                   orderBy: { confirmedStartAt: "asc" },
                   select: { confirmedStartAt: true, confirmedEndAt: true, timezone: true }
@@ -14664,7 +14664,7 @@ export function createPrismaAssignmentRepository(prismaClient: unknown): Assignm
           status: { in: activeAssignmentStates },
           confirmedStartAt: { lt: input.endAt },
           confirmedEndAt: { gt: input.startAt },
-          jobRequest: { jobLength: { not: LONG_TERM_JOB_LENGTH } },
+          jobRequest: { jobLength: { not: LONG_TERM_JOB_LENGTH }, status: { not: "cancelled" } },
           ...(input.excludeAssignmentId ? { id: { not: input.excludeAssignmentId } } : {})
         }
       });
