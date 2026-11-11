@@ -60,6 +60,14 @@ describe("text only: no image, scan or base64 ever leaves", () => {
   it("allows plain text, a JSON schema and cache control", () => {
     expect(hasNonTextContent({ system: [{ type: "text", text: "x", cache_control: { type: "ephemeral" } }], output_config: { format: { type: "json_schema", schema: { type: "object" } } } })).toBe(false);
   });
+
+  it("allows the model's own thinking blocks in a tool loop (long opaque signature), but still refuses images beside them", () => {
+    const turn = { role: "assistant", content: [{ type: "thinking", thinking: "", signature: "S".repeat(5000) }, { type: "tool_use", id: "t", name: "x", input: {} }] };
+    expect(hasNonTextContent({ messages: [turn] })).toBe(false);
+    expect(hasNonTextContent({ messages: [{ type: "redacted_thinking", data: "D".repeat(5000) }] })).toBe(false);
+    expect(hasNonTextContent({ messages: [turn, { role: "user", content: [{ type: "image", source: { type: "base64", data: "x" } }] }] })).toBe(true);
+    expect(hasNonTextContent({ messages: [{ type: "thinking", thinking: "data:image/png;base64,AAAA", signature: "s" }] })).toBe(true);
+  });
 });
 
 describe("guards before the call", () => {

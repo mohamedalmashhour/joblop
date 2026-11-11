@@ -45,6 +45,26 @@ type ContactDeskCopy = {
   unknown: string;
   lastMessage: (ago: string) => string;
   chooseConversation: string;
+  /** Assistant action cards (Brain phase 2). */
+  assistant: AssistantCopy;
+};
+
+export type AssistantCopy = {
+  cardLabel: string;
+  titles: Readonly<Record<string, string>>;
+  otherTitle: string;
+  confirm: string;
+  cancel: string;
+  working: string;
+  workers: (n: string) => string;
+  minutes: (n: string) => string;
+  action: (key: string) => string;
+  timesheet: string;
+  lateCancel: string;
+  shown: (title: string, subject: string) => string;
+  result: (status: string, text: string) => string;
+  actionFailed: string;
+  expired: string;
 };
 
 const en: ContactDeskCopy = {
@@ -67,7 +87,7 @@ const en: ContactDeskCopy = {
     ai_unavailable: "AI unavailable",
     ai_limit: "AI limit reached"
   },
-  author: { requester: "Them", ai: "AI assistant", admin: "Joblop team", system: "Record" },
+  author: { requester: "Them", ai: "AI assistant", admin: "Joblop team", system: "Record", assistant_action: "AI assistant", assistant_result: "AI assistant" },
   minutes: (n) => `${n} min`,
   hours: (n) => `${n} h`,
   days: (n) => `${n} d`,
@@ -99,7 +119,35 @@ const en: ContactDeskCopy = {
   urgent: "URGENT · ",
   unknown: "Unknown",
   lastMessage: (ago) => `Last message ${ago} ago`,
-  chooseConversation: "Choose a conversation."
+  chooseConversation: "Choose a conversation.",
+  assistant: {
+    cardLabel: "Action to confirm",
+    titles: {
+      brain_do_it: "Run this Brain action?",
+      approve_request: "Approve this request for dispatch?",
+      approve_timesheet: "Approve this timesheet?",
+      claim_open_job: "Claim this job?",
+      cancel_my_shift: "Cancel this shift?",
+      confirm_shift: "Confirm this shift?",
+      create_draft_request: "Save this request as a draft?",
+      submit_draft: "Send this request to Joblop?",
+      confirm_timesheet: "Confirm these hours?",
+      duplicate_request: "Copy this request into a new draft?"
+    },
+    otherTitle: "Do this?",
+    confirm: "Confirm",
+    cancel: "Cancel",
+    working: "Working…",
+    workers: (n) => `${n} workers`,
+    minutes: (n) => `${n} minutes`,
+    action: (key) => `Action: ${key}`,
+    timesheet: "Timesheet",
+    lateCancel: "Less than 24 hours before the start: the late-cancellation rule applies.",
+    shown: (title, subject) => `Card shown: ${title} ${subject}`,
+    result: (status, text) => `Card result (${status}): ${text}`,
+    actionFailed: "That did not work. Refresh and try again.",
+    expired: "This card has expired. Ask again for a new one."
+  }
 };
 
 const fr: ContactDeskCopy = {
@@ -127,7 +175,7 @@ const fr: ContactDeskCopy = {
     ai_unavailable: "IA non disponible",
     ai_limit: "Limite de l’IA atteinte"
   },
-  author: { requester: "Demandeur", ai: "Assistant IA", admin: "Équipe Joblop", system: "Journal" },
+  author: { requester: "Demandeur", ai: "Assistant IA", admin: "Équipe Joblop", system: "Journal", assistant_action: "Assistant IA", assistant_result: "Assistant IA" },
   minutes: (n) => `${n} min`,
   hours: (n) => `${n} h`,
   days: (n) => `${n} j`,
@@ -160,7 +208,35 @@ const fr: ContactDeskCopy = {
   urgent: "URGENT · ",
   unknown: "Inconnu",
   lastMessage: (ago) => `Dernier message il y a ${ago}`,
-  chooseConversation: "Choisissez une conversation."
+  chooseConversation: "Choisissez une conversation.",
+  assistant: {
+    cardLabel: "Action à confirmer",
+    titles: {
+      brain_do_it: "Lancer cette action du cerveau?",
+      approve_request: "Approuver cette demande pour l'affectation?",
+      approve_timesheet: "Approuver cette feuille de temps?",
+      claim_open_job: "Prendre cette mission?",
+      cancel_my_shift: "Annuler ce quart?",
+      confirm_shift: "Confirmer ce quart?",
+      create_draft_request: "Enregistrer cette demande comme brouillon?",
+      submit_draft: "Envoyer cette demande à Joblop?",
+      confirm_timesheet: "Confirmer ces heures?",
+      duplicate_request: "Copier cette demande dans un nouveau brouillon?"
+    },
+    otherTitle: "Faire ceci?",
+    confirm: "Confirmer",
+    cancel: "Annuler",
+    working: "En cours…",
+    workers: (n) => `${n} travailleurs`,
+    minutes: (n) => `${n} minutes`,
+    action: (key) => `Action : ${key}`,
+    timesheet: "Feuille de temps",
+    lateCancel: "Moins de 24 heures avant le début : la règle d'annulation tardive s'applique.",
+    shown: (title, subject) => `Carte montrée : ${title} ${subject}`,
+    result: (status, text) => `Résultat de la carte (${status}) : ${text}`,
+    actionFailed: "Cela n'a pas fonctionné. Actualisez et réessayez.",
+    expired: "Cette carte a expiré. Redemandez pour en avoir une nouvelle."
+  }
 };
 
 const ar: ContactDeskCopy = {
@@ -188,7 +264,7 @@ const ar: ContactDeskCopy = {
     ai_unavailable: "الذكاء الاصطناعي غير متاح",
     ai_limit: "بلغ الذكاء الاصطناعي حده"
   },
-  author: { requester: "مقدّم الطلب", ai: "المساعد الذكي", admin: "فريق Joblop", system: "السجل" },
+  author: { requester: "مقدّم الطلب", ai: "المساعد الذكي", admin: "فريق Joblop", system: "السجل", assistant_action: "المساعد الذكي", assistant_result: "المساعد الذكي" },
   minutes: (n) => `${n} دقيقة`,
   hours: (n) => `${n} ساعة`,
   days: (n) => `${n} يوم`,
@@ -220,7 +296,35 @@ const ar: ContactDeskCopy = {
   urgent: "عاجل · ",
   unknown: "غير معروف",
   lastMessage: (ago) => `آخر رسالة قبل ${ago}`,
-  chooseConversation: "اختر محادثة."
+  chooseConversation: "اختر محادثة.",
+  assistant: {
+    cardLabel: "إجراء بانتظار التأكيد",
+    titles: {
+      brain_do_it: "هل تريد تنفيذ إجراء العقل هذا؟",
+      approve_request: "هل تريد اعتماد هذا الطلب للتوزيع؟",
+      approve_timesheet: "هل تريد اعتماد ورقة الوقت هذه؟",
+      claim_open_job: "هل تريد أخذ هذه الوظيفة؟",
+      cancel_my_shift: "هل تريد إلغاء هذه المناوبة؟",
+      confirm_shift: "هل تريد تأكيد هذه المناوبة؟",
+      create_draft_request: "هل تريد حفظ هذا الطلب كمسودة؟",
+      submit_draft: "هل تريد إرسال هذا الطلب إلى Joblop؟",
+      confirm_timesheet: "هل تريد تأكيد هذه الساعات؟",
+      duplicate_request: "هل تريد نسخ هذا الطلب في مسودة جديدة؟"
+    },
+    otherTitle: "هل تريد تنفيذ هذا؟",
+    confirm: "تأكيد",
+    cancel: "إلغاء",
+    working: "جارٍ التنفيذ…",
+    workers: (n) => `${n} عمال`,
+    minutes: (n) => `${n} دقيقة`,
+    action: (key) => `الإجراء: ${key}`,
+    timesheet: "ورقة الوقت",
+    lateCancel: "قبل أقل من 24 ساعة من البداية: تنطبق قاعدة الإلغاء المتأخر.",
+    shown: (title, subject) => `بطاقة معروضة: ${title} ${subject}`,
+    result: (status, text) => `نتيجة البطاقة (${status}): ${text}`,
+    actionFailed: "لم ينجح ذلك. حدّث الصفحة وحاول مرة أخرى.",
+    expired: "انتهت صلاحية هذه البطاقة. اطلب بطاقة جديدة."
+  }
 };
 
 export const contactDeskText: PageText<ContactDeskCopy> = { en, fr, ar };

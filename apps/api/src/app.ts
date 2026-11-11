@@ -335,6 +335,10 @@ import { createJoblopBrain } from "./brain/joblopBrain";
 import { createPrismaJoblopBrainData } from "./brain/joblopData";
 import { createJoblopBrainEffects, type JoblopBrainDomain } from "./brain/joblopEffects";
 import { createPrismaBrainStore } from "./brain/prismaBrainStore";
+import { assistantSwitchKeys, createAssistantService } from "./assistant/assistantService";
+import { createProposalSigner } from "./assistant/proposalToken";
+import { guideFor } from "./contactGuide";
+import { outsideAiApiKey } from "./outsideAi";
 import { listUnfilledShifts, runUnfilledShiftSweep } from "./unfilledShiftAlerts";
 import { runPlanReminderSweep } from "./planReminderSweep";
 import { createPushSender, isExpoPushToken, isPushPlatform, noopPushSender, type PushFetch } from "./notifications/pushSender";
@@ -11056,9 +11060,39 @@ export function buildApi(options: BuildApiOptions = {}) {
             domain: brainDomain,
             now: () => new Date()
           }),
+          extraSwitches: assistantSwitchKeys(),
           log: brainLog
         })
       : null;
+  // ── Joblop Brain phase 2: the role assistant inside "Contact Joblop" ─────────────────────────────
+  // Every switch starts OFF (assistant, assistant.<role>, one per action) and lives with the brain
+  // settings. Tools call the existing routes through inject, as the signed-in person (their bearer),
+  // so every permission check and validation applies. Actions only run after the person's Confirm.
+  const assistant = brainStore
+    ? createAssistantService({
+        store: brainStore,
+        signer: createProposalSigner(environment.ASSISTANT_PROPOSAL_SECRET),
+        apiKey: () => outsideAiApiKey(),
+        model: (environment.ASSISTANT_AI_MODEL ?? environment.CONTACT_AI_MODEL ?? "").trim() || "claude-opus-5-5",
+        guideFor: (role) => guideFor(role === "staff" ? "admin" : role),
+        callerFor: (authorization) => async ({ method, url, body }) => {
+          const res = await app.inject({
+            method,
+            url,
+            headers: { authorization, ...(body ? { "content-type": "application/json" } : {}) },
+            ...(body ? { payload: JSON.stringify(body) } : {})
+          });
+          let parsed: unknown;
+          try {
+            parsed = res.body ? JSON.parse(res.body) : null;
+          } catch {
+            parsed = null;
+          }
+          return { status: res.statusCode, body: parsed };
+        },
+        log: (event, fields) => logger.info(event, fields)
+      })
+    : null;
   const brainSummaryHour = Number.parseInt((environment.BRAIN_SUMMARY_HOUR_UTC ?? "").trim(), 10);
   registerBrainRoutes(app, {
     brain,
@@ -11178,7 +11212,8 @@ export function buildApi(options: BuildApiOptions = {}) {
       pushSender,
       isLocal: runtimeConfig.rwosEnv === "local",
       requireUser: requireRecipient,
-      requireAdmin: requirePlatformAdmin
+      requireAdmin: requirePlatformAdmin,
+      assistant
     });
   }
 

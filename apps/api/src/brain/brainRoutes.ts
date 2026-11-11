@@ -81,7 +81,7 @@ const serializeAction = (action: StoredAction, canUndo: boolean) => ({
   issueId: action.issueId,
   actionKey: action.actionKey,
   kind: action.kind,
-  actor: action.actor.type === "staff" ? "staff" : "brain",
+  actor: action.actor.type,
   ruleKey: action.ruleKey,
   reason: action.reason,
   inputs: action.inputs,

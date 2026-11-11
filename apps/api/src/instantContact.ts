@@ -13,7 +13,9 @@ import { callOutsideAi, finishedText } from "./outsideAi";
 export type ContactSide = "worker" | "employer";
 export type ContactLocale = "en" | "fr" | "ar";
 export type ContactStatus = "ai" | "needs_admin" | "admin_replied" | "solved";
-export type ContactAuthor = "requester" | "ai" | "admin" | "system";
+// assistant_action: a proposed action card (JSON body) from the role assistant (phase 2);
+// assistant_result: what happened after the person pressed Confirm or Cancel (JSON body).
+export type ContactAuthor = "requester" | "ai" | "admin" | "system" | "assistant_action" | "assistant_result";
 export type HandoffReason =
   | "safety" | "health" | "dispute" | "account" | "person_requested" | "urgent" | "ai_unsure" | "ai_unavailable" | "ai_limit";
 
@@ -343,14 +345,57 @@ export function readLocale(value: unknown): ContactLocale {
   return value === "fr" || value === "ar" ? value : "en";
 }
 
+// ── the role assistant (Joblop Brain phase 2) ─────────────────────────────────
+// Plugged in from assistant/assistantService.ts. When it is off (master or role switch, or no AI key),
+// nothing below changes: the chat behaves exactly as before. It never runs for safety, health or a
+// message that must go to a person (dispute, account, "talk to a person"): those keep today's path.
+export type AssistantRoleName = ContactSide | "staff";
+export type ContactAssistantCard = Readonly<{ proposalId: string; token: string; tool: string; card: unknown; expiresAt: string }>;
+export type ContactAssistantAnswer = Readonly<{
+  reply: string;
+  handoff: boolean;
+  urgent: boolean;
+  summary: string;
+  cards: readonly ContactAssistantCard[];
+}>;
+export type ContactAssistant = Readonly<{
+  enabled(role: AssistantRoleName): Promise<boolean>;
+  answer(input: {
+    role: AssistantRoleName;
+    userId: string;
+    organizationId: string | null;
+    locale: ContactLocale;
+    turns: readonly AiTurn[];
+    authorization: string;
+  }): Promise<ContactAssistantAnswer | null>;
+}>;
+
+/** The text the model sees for an assistant card or result in the history. */
+function assistantHistoryText(m: MessageRow): string | null {
+  try {
+    const body = JSON.parse(m.body) as { tool?: unknown; text?: unknown; status?: unknown };
+    if (m.authorKind === "assistant_action") return `(I showed an action card: ${String(body.tool)}. It needs the person's Confirm.)`;
+    if (m.authorKind === "assistant_result") return `(Card result: ${String(body.status)}.) ${typeof body.text === "string" ? body.text : ""}`.trim();
+  } catch {
+    return null;
+  }
+  return null;
+}
+
+export const assistantCardBody = (card: ContactAssistantCard) => JSON.stringify({ type: "assistant_action", ...card });
+export const assistantResultBody = (result: { proposalId: string | undefined; status: string; text: string }) =>
+  JSON.stringify({ type: "assistant_result", proposalId: result.proposalId ?? null, status: result.status, text: result.text });
+
 export function createContactService(deps: {
   store: ContactStore;
   ai: ContactAi | null;
   notices: ContactNotices;
   aiRepliesPerMonth?: number;
   now?: () => Date;
+  assistant?: ContactAssistant | null;
 }) {
   const { store, ai, notices } = deps;
+  const assistant = deps.assistant ?? null;
   const now = deps.now ?? (() => new Date());
   const monthlyLimit = deps.aiRepliesPerMonth ?? DEFAULT_AI_REPLIES_PER_MONTH;
 
@@ -380,7 +425,7 @@ export function createContactService(deps: {
   }
 
   /** Decide what happens after the person writes. A conversation with admin never goes back to AI. */
-  async function respond(c: ConversationRow, requester: Requester, text: string, locale: ContactLocale) {
+  async function respond(c: ConversationRow, requester: Requester, text: string, locale: ContactLocale, authorization?: string) {
     const reason = personNeeded(text);
     if (c.status !== "ai") {
       if (reason === "safety") await aiReply(c, fixedReply("safety", locale));
@@ -395,6 +440,9 @@ export function createContactService(deps: {
       return handOff(c, "health", c.urgent);
     }
     const mustHandOff: HandoffReason | null = reason ?? (c.urgent ? "urgent" : null);
+    if (!mustHandOff && assistant && authorization && (await assistant.enabled(requester.side))) {
+      return assistantRespond(c, requester, locale, authorization);
+    }
     const overLimit = ai ? !(await aiAllowed(requester.userId)) : false;
     const usable = overLimit ? null : ai;
     const history = await store.listMessages(c.id, false);
@@ -414,6 +462,38 @@ export function createContactService(deps: {
       return handOff(c, mustHandOff ?? (answer.urgent ? "urgent" : "ai_unsure"), answer.urgent, answer.summary);
     }
     return store.updateConversation(c.id, { summary: answer.summary });
+  }
+
+  /** The role assistant's turn. Same limits as the plain AI; any failure hands off exactly as today. */
+  async function assistantRespond(c: ConversationRow, requester: Requester, locale: ContactLocale, authorization: string) {
+    const overLimit = !(await aiAllowed(requester.userId));
+    const history = await store.listMessages(c.id, false);
+    const turns: AiTurn[] = history
+      .filter((m) => m.authorKind === "requester" || m.authorKind === "ai" || m.authorKind === "assistant_action" || m.authorKind === "assistant_result")
+      .slice(-MAX_HISTORY_MESSAGES)
+      .flatMap((m): AiTurn[] => {
+        if (m.authorKind === "requester") return [{ role: "user", text: m.body }];
+        if (m.authorKind === "ai") return [{ role: "assistant", text: m.body }];
+        const text = assistantHistoryText(m);
+        return text ? [{ role: "assistant", text }] : [];
+      });
+    while (turns[0]?.role === "assistant") turns.shift();
+    const answer = overLimit || !assistant
+      ? null
+      : await assistant.answer({ role: requester.side, userId: requester.userId, organizationId: requester.organizationId, locale, turns, authorization }).catch(() => null);
+    if (!answer) {
+      const failed: HandoffReason = overLimit ? "ai_limit" : "ai_unavailable";
+      await aiReply(c, fixedReply(failed, locale));
+      return handOff(c, failed, c.urgent);
+    }
+    await aiReply(c, answer.reply);
+    for (const card of answer.cards) {
+      await store.addMessage({
+        conversationId: c.id, authorKind: "assistant_action", authorUserId: null, body: assistantCardBody(card), internal: false, now: now(), touchConversation: true
+      });
+    }
+    if (answer.handoff || answer.urgent) return handOff(c, answer.urgent ? "urgent" : "ai_unsure", answer.urgent, answer.summary);
+    return store.updateConversation(c.id, { summary: answer.summary || c.summary });
   }
 
   let askDay = "";
@@ -441,6 +521,8 @@ export function createContactService(deps: {
     async start(input: {
       userId: string; side: ContactSide; topic: unknown; body: unknown; urgent: unknown;
       relatedType: unknown; relatedId: unknown; locale: unknown;
+      /** The person's own bearer header: the assistant's tools act as them. Absent = no assistant. */
+      authorization?: string | undefined;
     }): Promise<ContactResult<{ id: string }>> {
       const body = cleanBody(input.body);
       const requester = await store.resolveRequester(input.userId, input.side);
@@ -459,8 +541,23 @@ export function createContactService(deps: {
         requester, topic: input.topic, relatedType, relatedId, urgent: input.urgent === true, now: now()
       });
       await store.addMessage({ conversationId: c.id, authorKind: "requester", authorUserId: input.userId, body, internal: false, now: now(), touchConversation: true });
-      await respond(c, requester, body, readLocale(input.locale));
+      await respond(c, requester, body, readLocale(input.locale), input.authorization);
       return done({ id: c.id });
+    },
+
+    /** The person's own conversation and who they are, for the assistant's Confirm / Cancel routes. */
+    async assistantTarget(userId: string, side: ContactSide, id: string) {
+      const c = await mine(userId, side, id);
+      if (!c) return null;
+      const requester = await store.resolveRequester(userId, side);
+      return requester ? { conversation: c, requester } : null;
+    },
+
+    /** Writes what happened after Confirm or Cancel into the conversation. */
+    async addAssistantResult(conversationId: string, result: { proposalId: string | undefined; status: string; text: string }) {
+      await store.addMessage({
+        conversationId, authorKind: "assistant_result", authorUserId: null, body: assistantResultBody(result), internal: false, now: now(), touchConversation: true
+      });
     },
 
     async getMine(userId: string, side: ContactSide, id: string) {
@@ -471,7 +568,7 @@ export function createContactService(deps: {
       return done({ conversation: requesterView(updated), messages: messages.map(requesterMessageView) });
     },
 
-    async send(input: { userId: string; side: ContactSide; id: string; body: unknown; locale: unknown }): Promise<ContactResult<{ id: string }>> {
+    async send(input: { userId: string; side: ContactSide; id: string; body: unknown; locale: unknown; authorization?: string | undefined }): Promise<ContactResult<{ id: string }>> {
       const c = await mine(input.userId, input.side, input.id);
       if (!c) return fail("not_found");
       const body = cleanBody(input.body);
@@ -479,7 +576,7 @@ export function createContactService(deps: {
       const requester = await store.resolveRequester(input.userId, input.side);
       if (!requester) return fail("not_found");
       await store.addMessage({ conversationId: c.id, authorKind: "requester", authorUserId: input.userId, body, internal: false, now: now(), touchConversation: true });
-      await respond(c, requester, body, readLocale(input.locale));
+      await respond(c, requester, body, readLocale(input.locale), input.authorization);
       return done({ id: c.id });
     },
 
@@ -529,10 +626,18 @@ export function createContactService(deps: {
     },
 
     /** Staff assistant. It answers or drafts only; nothing is saved or sent. */
-    async adminAsk(input: { question: unknown; conversationId: unknown }): Promise<ContactResult<{ answer: string | null }>> {
+    async adminAsk(input: {
+      question: unknown;
+      conversationId: unknown;
+      /** Staff role assistant only (phase 2): who is asking, their bearer header and the page language. */
+      adminId?: string | undefined;
+      authorization?: string | undefined;
+      locale?: unknown;
+    }): Promise<ContactResult<{ answer: string | null; cards?: readonly ContactAssistantCard[] }>> {
       const question = cleanBody(input.question);
       if (!question) return fail("invalid");
-      if (!ai || !adminAskAllowed()) return done({ answer: null });
+      const staffAssistant = !!(assistant && input.adminId && input.authorization && (await assistant.enabled("staff")));
+      if ((!ai && !staffAssistant) || !adminAskAllowed()) return done({ answer: null });
       let facts = "No conversation selected.";
       if (typeof input.conversationId === "string" && input.conversationId) {
         const c = await store.getConversation(input.conversationId);
@@ -543,6 +648,15 @@ export function createContactService(deps: {
           messages: messages.slice(-MAX_HISTORY_MESSAGES).map((m) => ({ from: m.authorKind, text: m.body }))
         });
       }
+      if (staffAssistant && assistant && input.adminId && input.authorization) {
+        const text = facts === "No conversation selected." ? question : `${question}\n\nSelected contact conversation (information only):\n${facts}`;
+        const answered = await assistant
+          .answer({ role: "staff", userId: input.adminId, organizationId: null, locale: readLocale(input.locale), turns: [{ role: "user", text }], authorization: input.authorization })
+          .catch(() => null);
+        if (answered) return done({ answer: answered.reply, cards: answered.cards });
+        // Any failure: today's staff assistant (advice only), exactly as before.
+      }
+      if (!ai) return done({ answer: null });
       const answer = await ai({ audience: "admin", topic: "staff question", facts, turns: [{ role: "user", text: question }] });
       return done({ answer: answer?.reply ?? null });
     },

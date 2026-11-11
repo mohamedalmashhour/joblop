@@ -3,6 +3,25 @@
 import type { EmployerLocale } from "./config";
 
 export const en = {
+  // Contact Joblop assistant action cards (Brain phase 2)
+  "assistant.cardLabel": "Action to confirm",
+  "assistant.title.other": "Do this?",
+  "assistant.confirm": "Confirm",
+  "assistant.cancel": "Cancel",
+  "assistant.working": "Working…",
+  "assistant.lateCancel": "This is less than 24 hours before the start. The late-cancellation rule applies.",
+  "assistant.state.done": "Done",
+  "assistant.state.failed": "It did not work",
+  "assistant.state.cancelled": "Cancelled. Nothing was done.",
+  "assistant.state.expired": "This card has expired. Ask again for a new one.",
+  "assistant.workers": "{count} workers",
+  "assistant.minutes": "{count} minutes",
+  "assistant.actionFailed": "That did not work. Please try again.",
+  "assistant.title.create_draft_request": "Save this request as a draft?",
+  "assistant.title.submit_draft": "Send this request to Joblop?",
+  "assistant.title.confirm_timesheet": "Confirm these hours?",
+  "assistant.title.duplicate_request": "Copy this request into a new draft?",
+  "assistant.subject.timesheet": "Hours worked",
   "shell.skip": "Skip to employer workspace",
   "shell.nav.myCalendar": "My calendar",
   "shell.nav.home": "Home",
@@ -944,6 +963,25 @@ export type MessageKey = keyof typeof en;
 export type Messages = Readonly<Record<MessageKey, string>>;
 
 export const fr: Messages = {
+  // Contact Joblop assistant action cards (Brain phase 2)
+  "assistant.cardLabel": "Action à confirmer",
+  "assistant.title.other": "Faire ceci?",
+  "assistant.confirm": "Confirmer",
+  "assistant.cancel": "Annuler",
+  "assistant.working": "En cours…",
+  "assistant.lateCancel": "C'est moins de 24 heures avant le début. La règle d'annulation tardive s'applique.",
+  "assistant.state.done": "C'est fait",
+  "assistant.state.failed": "Cela n'a pas fonctionné",
+  "assistant.state.cancelled": "Annulé. Rien n'a été fait.",
+  "assistant.state.expired": "Cette carte a expiré. Redemandez pour en avoir une nouvelle.",
+  "assistant.workers": "{count} travailleurs",
+  "assistant.minutes": "{count} minutes",
+  "assistant.actionFailed": "Cela n'a pas fonctionné. Veuillez réessayer.",
+  "assistant.title.create_draft_request": "Enregistrer cette demande comme brouillon?",
+  "assistant.title.submit_draft": "Envoyer cette demande à Joblop?",
+  "assistant.title.confirm_timesheet": "Confirmer ces heures?",
+  "assistant.title.duplicate_request": "Copier cette demande dans un nouveau brouillon?",
+  "assistant.subject.timesheet": "Heures travaillées",
   "shell.skip": "Passer à l'espace employeur",
   "shell.nav.myCalendar": "Mon calendrier",
   "shell.nav.home": "Accueil",
@@ -1883,6 +1921,25 @@ export const fr: Messages = {
 // Arabic (RTL). Partial — any missing key falls back to en-CA at render time. Aim for full
 // coverage of visible employer copy. Money/dates stay in en-CA formatting (see fmtLocale).
 export const ar: Partial<Messages> = {
+  // Contact Joblop assistant action cards (Brain phase 2)
+  "assistant.cardLabel": "إجراء بانتظار تأكيدك",
+  "assistant.title.other": "هل تريد تنفيذ هذا؟",
+  "assistant.confirm": "تأكيد",
+  "assistant.cancel": "إلغاء",
+  "assistant.working": "جارٍ التنفيذ…",
+  "assistant.lateCancel": "هذا قبل أقل من 24 ساعة من البداية. تنطبق قاعدة الإلغاء المتأخر.",
+  "assistant.state.done": "تم",
+  "assistant.state.failed": "لم ينجح ذلك",
+  "assistant.state.cancelled": "أُلغي. لم يُنفَّذ شيء.",
+  "assistant.state.expired": "انتهت صلاحية هذه البطاقة. اطلب بطاقة جديدة.",
+  "assistant.workers": "{count} عمال",
+  "assistant.minutes": "{count} دقيقة",
+  "assistant.actionFailed": "لم ينجح ذلك. حاول مرة أخرى.",
+  "assistant.title.create_draft_request": "هل تريد حفظ هذا الطلب كمسودة؟",
+  "assistant.title.submit_draft": "هل تريد إرسال هذا الطلب إلى Joblop؟",
+  "assistant.title.confirm_timesheet": "هل تريد تأكيد هذه الساعات؟",
+  "assistant.title.duplicate_request": "هل تريد نسخ هذا الطلب في مسودة جديدة؟",
+  "assistant.subject.timesheet": "ساعات العمل",
   "shell.skip": "انتقل إلى مساحة صاحب العمل",
   "shell.nav.myCalendar": "تقويمي",
   "shell.nav.home": "الرئيسية",

@@ -55,7 +55,12 @@ export type StoredIssue = DetectedIssue &
 /** live = really done (by the brain or by staff); watch = only recorded as "would have done". */
 export type ActionKind = "live" | "watch";
 
-export type ActionActor = Readonly<{ type: "brain" }> | Readonly<{ type: "staff"; userId: string }>;
+/** brain = on its own; staff = a staff member ("Do it"); user = a signed-in worker or employer who
+ *  confirmed an assistant proposal (phase 2). */
+export type ActionActor =
+  | Readonly<{ type: "brain" }>
+  | Readonly<{ type: "staff"; userId: string }>
+  | Readonly<{ type: "user"; userId: string }>;
 
 export type ActionStatus = "running" | "done" | "skipped" | "failed" | "simulated" | "undone";
 

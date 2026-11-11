@@ -62,7 +62,9 @@ export const RULE_TITLES: Record<string, { en: string; fr: string }> = {
   timesheet_unconfirmed: { en: "Hours not confirmed by employer after 24 h", fr: "Heures non confirmées par l'employeur après 24 h" },
   timesheet_ready: { en: "Hours ready for approval", fr: "Heures prêtes à approuver" },
   invoice_overdue: { en: "Overdue invoice", fr: "Facture en retard" },
-  job_missing_info: { en: "Job submitted with missing information", fr: "Mission soumise avec des informations manquantes" }
+  job_missing_info: { en: "Job submitted with missing information", fr: "Mission soumise avec des informations manquantes" },
+  // Phase 2: one row per action card the assistant showed (resolved at once; not a problem).
+  assistant: { en: "Assistant action cards shown", fr: "Cartes d'action de l'assistant affichées" }
 };
 
 export const ACTION_TITLES: Record<string, { en: string; fr: string }> = {
@@ -72,7 +74,18 @@ export const ACTION_TITLES: Record<string, { en: string; fr: string }> = {
   offer_employer_bonus: { en: "Offer the employer a bonus for an unfilled job", fr: "Proposer une prime à l'employeur pour une mission non pourvue" },
   auto_approve_request: { en: "Approve a request that passes every check", fr: "Approuver une demande qui passe toutes les vérifications" },
   auto_approve_timesheet: { en: "Approve hours with check-in and check-out and no problems", fr: "Approuver des heures avec arrivée, départ et aucun problème" },
-  daily_summary_email: { en: "Daily summary email to staff", fr: "Résumé quotidien par courriel au personnel" }
+  daily_summary_email: { en: "Daily summary email to staff", fr: "Résumé quotidien par courriel au personnel" },
+  // Phase 2: actions a person confirmed on an assistant card.
+  "assistant.claim_open_job": { en: "Assistant: worker claimed a job", fr: "Assistant : un travailleur a pris une mission" },
+  "assistant.cancel_my_shift": { en: "Assistant: worker cancelled a shift", fr: "Assistant : un travailleur a annulé un quart" },
+  "assistant.confirm_shift": { en: "Assistant: worker confirmed a shift", fr: "Assistant : un travailleur a confirmé un quart" },
+  "assistant.create_draft_request": { en: "Assistant: employer created a draft request", fr: "Assistant : un employeur a créé un brouillon" },
+  "assistant.submit_draft": { en: "Assistant: employer submitted a request", fr: "Assistant : un employeur a soumis une demande" },
+  "assistant.confirm_timesheet": { en: "Assistant: employer confirmed hours", fr: "Assistant : un employeur a confirmé des heures" },
+  "assistant.duplicate_request": { en: "Assistant: employer copied a request", fr: "Assistant : un employeur a copié une demande" },
+  "assistant.brain_do_it": { en: "Assistant: staff ran a Brain action", fr: "Assistant : le personnel a lancé une action du cerveau" },
+  "assistant.approve_request": { en: "Assistant: staff approved a request", fr: "Assistant : le personnel a approuvé une demande" },
+  "assistant.approve_timesheet": { en: "Assistant: staff approved hours", fr: "Assistant : le personnel a approuvé des heures" }
 };
 
 const title = (table: Record<string, { en: string; fr: string }>, key: string, language: "en" | "fr") => table[key]?.[language] ?? key;

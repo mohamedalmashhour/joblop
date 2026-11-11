@@ -4,6 +4,23 @@
 import type { WorkerLocale } from "./config";
 
 export const en = {
+  // Contact Joblop assistant action cards (Brain phase 2)
+  "assistant.cardLabel": "Action to confirm",
+  "assistant.title.other": "Do this?",
+  "assistant.confirm": "Confirm",
+  "assistant.cancel": "Cancel",
+  "assistant.working": "Working…",
+  "assistant.lateCancel": "This is less than 24 hours before the start. The late-cancellation rule applies.",
+  "assistant.state.done": "Done",
+  "assistant.state.failed": "It did not work",
+  "assistant.state.cancelled": "Cancelled. Nothing was done.",
+  "assistant.state.expired": "This card has expired. Ask again for a new one.",
+  "assistant.workers": "{count} workers",
+  "assistant.minutes": "{count} minutes",
+  "assistant.actionFailed": "That did not work. Please try again.",
+  "assistant.title.claim_open_job": "Claim this job?",
+  "assistant.title.cancel_my_shift": "Cancel this shift?",
+  "assistant.title.confirm_shift": "Confirm this shift?",
   // Brand / shell
   "brand.tagline": "Find work near you",
   "nav.verification": "Verification",
@@ -802,6 +819,23 @@ export type MessageKey = keyof typeof en;
 export type Messages = Readonly<Record<MessageKey, string>>;
 
 export const fr: Messages = {
+  // Contact Joblop assistant action cards (Brain phase 2)
+  "assistant.cardLabel": "Action à confirmer",
+  "assistant.title.other": "Faire ceci?",
+  "assistant.confirm": "Confirmer",
+  "assistant.cancel": "Annuler",
+  "assistant.working": "En cours…",
+  "assistant.lateCancel": "C'est moins de 24 heures avant le début. La règle d'annulation tardive s'applique.",
+  "assistant.state.done": "C'est fait",
+  "assistant.state.failed": "Cela n'a pas fonctionné",
+  "assistant.state.cancelled": "Annulé. Rien n'a été fait.",
+  "assistant.state.expired": "Cette carte a expiré. Redemandez pour en avoir une nouvelle.",
+  "assistant.workers": "{count} travailleurs",
+  "assistant.minutes": "{count} minutes",
+  "assistant.actionFailed": "Cela n'a pas fonctionné. Veuillez réessayer.",
+  "assistant.title.claim_open_job": "Prendre cette mission?",
+  "assistant.title.cancel_my_shift": "Annuler ce quart?",
+  "assistant.title.confirm_shift": "Confirmer ce quart?",
   // Marque / coquille
   "brand.tagline": "Trouvez du travail près de chez vous",
   "nav.verification": "Vérification",
@@ -1600,6 +1634,23 @@ export const fr: Messages = {
 // marketplace, My pay, offers, schedule) are translated now; any key not yet translated falls back to
 // en-CA at render time (see LocaleProvider). Arabic also drives right-to-left layout (localeDir).
 export const ar: Partial<Messages> = {
+  // Contact Joblop assistant action cards (Brain phase 2)
+  "assistant.cardLabel": "إجراء بانتظار تأكيدك",
+  "assistant.title.other": "هل تريد تنفيذ هذا؟",
+  "assistant.confirm": "تأكيد",
+  "assistant.cancel": "إلغاء",
+  "assistant.working": "جارٍ التنفيذ…",
+  "assistant.lateCancel": "هذا قبل أقل من 24 ساعة من البداية. تنطبق قاعدة الإلغاء المتأخر.",
+  "assistant.state.done": "تم",
+  "assistant.state.failed": "لم ينجح ذلك",
+  "assistant.state.cancelled": "أُلغي. لم يُنفَّذ شيء.",
+  "assistant.state.expired": "انتهت صلاحية هذه البطاقة. اطلب بطاقة جديدة.",
+  "assistant.workers": "{count} عمال",
+  "assistant.minutes": "{count} دقيقة",
+  "assistant.actionFailed": "لم ينجح ذلك. حاول مرة أخرى.",
+  "assistant.title.claim_open_job": "هل تريد أخذ هذه الوظيفة؟",
+  "assistant.title.cancel_my_shift": "هل تريد إلغاء هذه المناوبة؟",
+  "assistant.title.confirm_shift": "هل تريد تأكيد هذه المناوبة؟",
   // Brand / shell + nav
   "brand.tagline": "اعثر على عمل بالقرب منك",
   "nav.verification": "التحقق",

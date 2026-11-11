@@ -21,7 +21,7 @@ type Action = {
   id: string;
   actionKey: string;
   kind: "live" | "watch";
-  actor: "brain" | "staff";
+  actor: "brain" | "staff" | "user";
   reason: string;
   status: keyof BrainCopy["status"];
   detail: string | null;
@@ -237,7 +237,7 @@ export function BrainPanel() {
                     <td style={styles.td}>{when(a.createdAt)}</td>
                     <td style={styles.td}>
                       {actionName(a.actionKey)}
-                      <span style={styles.muted}> · {a.kind === "watch" ? copy.watchOnly : a.actor === "staff" ? copy.byStaff : copy.byBrain}</span>
+                      <span style={styles.muted}> · {a.kind === "watch" ? copy.watchOnly : a.actor === "staff" ? copy.byStaff : a.actor === "user" ? copy.byUser : copy.byBrain}</span>
                     </td>
                     <td style={styles.td}>{a.reason}</td>
                     <td style={styles.td}>

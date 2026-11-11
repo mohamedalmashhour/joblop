@@ -14,7 +14,7 @@
 import { createLogger } from "@rwos/observability";
 import { containsHealthDetail, type PrivacyLogger } from "./aiPrivacyFilter";
 
-export type OutsideAiFeature = "contact_chat" | "staff_assistant" | "cv_builder";
+export type OutsideAiFeature = "contact_chat" | "staff_assistant" | "cv_builder" | "role_assistant";
 
 export type OutsideAiOutcome =
   | "ok"
@@ -61,6 +61,12 @@ export function hasNonTextContent(value: unknown): boolean {
     if (Array.isArray(v)) return v.some(walk);
     const record = v as Record<string, unknown>;
     const type = typeof record.type === "string" ? record.type.toLowerCase() : "";
+    // The model's own thinking blocks, passed back unchanged in a tool-use loop (the API requires it).
+    // Their opaque signature is long base64 written by the model, never a photo or a scan from a person,
+    // so only the readable thinking text is checked.
+    if (type === "thinking" || type === "redacted_thinking") {
+      return typeof record.thinking === "string" && walk(record.thinking);
+    }
     if (type === "image" || type === "document" || type === "file" || type === "input_image" || type === "image_url") return true;
     if ("source" in record && record.source && typeof record.source === "object") return true;
     return Object.values(record).some(walk);

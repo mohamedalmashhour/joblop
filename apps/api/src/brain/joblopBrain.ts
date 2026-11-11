@@ -11,6 +11,8 @@ export function createJoblopBrain(input: {
   store: BrainStore;
   data: JoblopBrainData;
   effects: JoblopBrainEffects;
+  /** More switches stored with the brain settings (phase 2: the assistant's switches). */
+  extraSwitches?: readonly string[];
   now?: () => Date;
   log?: BrainLog;
 }) {
@@ -19,7 +21,7 @@ export function createJoblopBrain(input: {
     rules: JOBLOP_BRAIN_RULES,
     actions: JOBLOP_BRAIN_ACTIONS,
     context: { data: input.data, effects: input.effects },
-    extraSwitches: [DAILY_SUMMARY_SWITCH],
+    extraSwitches: [DAILY_SUMMARY_SWITCH, ...(input.extraSwitches ?? [])],
     ...(input.now ? { now: input.now } : {}),
     ...(input.log ? { log: input.log } : {})
   });

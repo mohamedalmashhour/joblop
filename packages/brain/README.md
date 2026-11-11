@@ -66,6 +66,14 @@ Phase 1 is fully deterministic. `renderBrainSummaryText` accepts an optional `Br
 later language-model narrative or draft; whatever is plugged in there must pass the platform's
 privacy filter before any outside call. The engine never calls one itself.
 
+## Phase 2: a person-confirmed assistant on top
+
+A platform may add an AI assistant whose actions a signed-in person confirms (Joblop:
+`apps/api/src/assistant/`). It reuses this package without changing the engine: its switches are
+`extraSwitches`, each proposal is stored as an issue (resolved at once, so it is never an open
+problem) and each Confirm or Cancel is an action on that issue with actor `{ type: "user" }` (or
+`staff`). The unique `(issue, action, kind)` claim makes every proposal usable once.
+
 ## Hard limits
 
 Moving money (charging, settling, payouts, marking paid) and legal entitlement decisions stay with
