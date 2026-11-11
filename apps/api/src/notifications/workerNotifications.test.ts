@@ -4,6 +4,7 @@ import type { SmsMessage } from "../mailer/smsSender";
 import {
   accountPenaltyEmail,
   assignedJobEmail,
+  assignedJobSmsText,
   describeShiftChange,
   notifyWorkerAssigned,
   notifyWorkerPayoutPaid,
@@ -105,6 +106,15 @@ describe("assigned job email address", () => {
 
   it("omits the line when the worksite has no address on file", () => {
     expect(assignedJobEmail({ ...base, language: "en", address: null }).text).not.toContain("Where:");
+  });
+
+  it("links to the job page (details + map) in every language, email and text", () => {
+    const jobUrl = "https://joblop.com/jobs/abc";
+    for (const language of ["en", "fr", "ar"] as const) {
+      expect(assignedJobEmail({ ...base, language, jobUrl }).text).toContain(jobUrl);
+      expect(assignedJobSmsText({ language, title: "Shift", startAt: base.startAt, jobUrl })).toContain(jobUrl);
+    }
+    expect(assignedJobSmsText({ language: "en", title: "Shift", startAt: base.startAt })).toContain("Details in the app.");
   });
 });
 

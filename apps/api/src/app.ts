@@ -5170,7 +5170,7 @@ export function buildApi(options: BuildApiOptions = {}) {
       // Mirror the manual accept path's side effects (best-effort, never block the assign).
       await notifyClient(prisma, emailSender, { jobRequestId, kind: "worker_accepted" }).catch(() => {});
       // "You got the job!" — confirm the worker by email (+ SMS when enabled).
-      await notifyWorkerAssigned(prisma, emailSender, smsSender, { userId: session.user.id, jobRequestId }, pushSender).catch(() => {});
+      await notifyWorkerAssigned(prisma, emailSender, smsSender, { userId: session.user.id, jobRequestId, workerWebOrigin: offerCtaOrigin }, pushSender).catch(() => {});
       await workerJobInterestService.markOfferAcceptedByOffer(result.workerOfferId).catch(() => {});
       void pushAssignmentToCalendar(
         { prisma, config: googleOAuthConfigFromEnv(), countryTimezone: options.countryTimezone },
@@ -8792,7 +8792,7 @@ export function buildApi(options: BuildApiOptions = {}) {
             prisma,
             emailSender,
             smsSender,
-            { userId: assignedWorker.userId, jobRequestId: assignment.jobRequestId },
+            { userId: assignedWorker.userId, jobRequestId: assignment.jobRequestId, workerWebOrigin: offerCtaOrigin },
             pushSender
           );
         }
