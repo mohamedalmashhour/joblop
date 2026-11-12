@@ -149,6 +149,16 @@ describe("joblop brain effects", () => {
       expect((await effectsWith(prisma).remindWorkerToCheckIn("c")).status).toBe("skipped");
     });
 
+    it("never texts a worker whose shift was cancelled (attendance record or job)", async () => {
+      const cancelledAttendance = { ...liveAssignment, attendanceRecord: { checkInAt: null, status: "cancelled" } };
+      const cancelledJob = { ...liveAssignment, jobRequest: { status: "cancelled" } };
+      const sms = smsFake();
+      const { prisma } = prismaDouble({ assignments: { a: cancelledAttendance, b: cancelledJob } });
+      expect(await effectsWith(prisma, { sms: sms.sender }).remindWorkerToCheckIn("a")).toMatchObject({ status: "skipped", detail: "The shift was cancelled." });
+      expect(await effectsWith(prisma, { sms: sms.sender }).remindWorkerToCheckIn("b")).toMatchObject({ status: "skipped", detail: "The shift was cancelled." });
+      expect(sms.sent).toHaveLength(0);
+    });
+
     it("a failed text is reported as failed", async () => {
       const { prisma } = prismaDouble({ assignments: { a: liveAssignment } });
       expect((await effectsWith(prisma, { sms: smsFake("error").sender }).remindWorkerToCheckIn("a")).status).toBe("failed");

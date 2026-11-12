@@ -656,6 +656,32 @@ export function createMobileSessionTransport(options: {
         return { status: "error" };
       }
     },
+    // Worker self-cancel of a booked shift ("Cancel this shift"). The API cancels the booking and the
+    // schedule entry together, applies the 7-day suspension under 24 h and tells the employer and
+    // staff. Only the outcome comes back (never a rate).
+    async cancelShift(attendanceRecordId: string): Promise<ShiftCancelResult> {
+      const token = await options.vault.read();
+      if (!token) return { status: "denied" };
+      try {
+        const response = await request(`${origin}/worker/attendance/${encodeURIComponent(attendanceRecordId)}/cancel`, {
+          method: "POST",
+          headers: { accept: "application/json", "content-type": "application/json", authorization: `Bearer ${token}` },
+          body: "{}",
+          cache: "no-store"
+        });
+        if (response.status === 401 || response.status === 403) return { status: "denied" };
+        if (response.status === 404) return { status: "not_found" };
+        if (response.status === 409) {
+          const body = (await response.json().catch(() => ({}))) as { error?: unknown };
+          return { status: body.error === "RWOS_SHIFT_ALREADY_STARTED" ? "already_started" : "conflict" };
+        }
+        if (!response.ok) return { status: "error" };
+        const body = (await response.json().catch(() => ({}))) as { suspension?: unknown };
+        return { status: "cancelled", suspended: Boolean(body.suspension) };
+      } catch {
+        return { status: "error" };
+      }
+    },
     async attendanceCheckOut(attendanceRecordId: string, expectedVersion: number): Promise<AttendanceMutationResult> {
       const token = await options.vault.read();
       if (!token) return { status: "denied" };
@@ -2143,6 +2169,10 @@ export type WorkerAttendanceRecord = Readonly<{
 }>;
 
 export type AttendanceMutationResult = Readonly<{ status: "ready" | "denied" | "not_found" | "conflict" | "error" }>;
+
+export type ShiftCancelResult =
+  | Readonly<{ status: "cancelled"; suspended: boolean }>
+  | Readonly<{ status: "denied" | "not_found" | "already_started" | "conflict" | "error" }>;
 
 function parseWorkerAttendanceRecord(input: unknown): WorkerAttendanceRecord | null {
   if (typeof input !== "object" || input === null) return null;

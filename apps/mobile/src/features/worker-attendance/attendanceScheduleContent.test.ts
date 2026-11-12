@@ -1,5 +1,40 @@
 import { describe, expect, it } from "vitest";
-import { attendanceAction, attendanceCopyFor, attendanceStatusLabel, attendanceStatusTone } from "./attendanceScheduleContent";
+import {
+  attendanceAction,
+  attendanceCopyFor,
+  attendanceStatusLabel,
+  attendanceStatusTone,
+  canCancelShift,
+  isLateCancellation
+} from "./attendanceScheduleContent";
+
+describe("cancel this shift", () => {
+  it("offers cancel only for a booked shift that has not started (never for a long-term listing)", () => {
+    expect(canCancelShift({ status: "pending_start" })).toBe(true);
+    expect(canCancelShift({ status: "checked_in" })).toBe(false);
+    expect(canCancelShift({ status: "cancelled" })).toBe(false);
+    expect(canCancelShift({ status: "pending_start", clockInAllowed: false })).toBe(false);
+  });
+
+  it("is a late cancellation under 24 h before the start", () => {
+    const start = "2027-02-12T13:00:00.000Z";
+    expect(isLateCancellation(start, Date.parse("2027-02-11T12:59:00.000Z"))).toBe(false);
+    expect(isLateCancellation(start, Date.parse("2027-02-11T13:01:00.000Z"))).toBe(true);
+  });
+
+  it("says plainly in every language that a late cancel suspends the account for 7 days, and names no rate", () => {
+    for (const locale of ["en", "fr", "ar"] as const) {
+      const copy = attendanceCopyFor(locale);
+      expect(copy.cancelLateBody).toMatch(/7/);
+      expect(copy.cancelFreeBody).not.toMatch(/7/);
+      for (const text of [copy.cancelLateBody, copy.cancelFreeBody, copy.cancelledNotice, copy.cancelledSuspendedNotice]) {
+        expect(text).not.toMatch(/\$|\d+[.,]\d{2}/);
+      }
+      expect(copy.cancelCta.length).toBeGreaterThan(0);
+      expect(copy.cancelKeep.length).toBeGreaterThan(0);
+    }
+  });
+});
 
 describe("attendance schedule content", () => {
   it("labels + tones statuses (pass-through unknowns)", () => {

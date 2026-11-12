@@ -90,6 +90,15 @@ export type AttendanceCopy = Readonly<{
   signInRequiredTitle: string;
   errorTitle: string;
   longTermNoClockIn: string;
+  cancelCta: string;
+  cancelTitle: string;
+  cancelFreeBody: string;
+  cancelLateBody: string;
+  cancelConfirm: string;
+  cancelKeep: string;
+  cancelledNotice: string;
+  cancelledSuspendedNotice: string;
+  cancelStarted: string;
 }>;
 
 const en: AttendanceCopy = {
@@ -108,7 +117,16 @@ const en: AttendanceCopy = {
   emptyBody: "Confirmed shifts appear here.",
   signInRequiredTitle: "Sign in required",
   errorTitle: "Something went wrong",
-  longTermNoClockIn: "Long-term job: the employer pays you directly, so there is no check-in or timesheet on Joblop."
+  longTermNoClockIn: "Long-term job: the employer pays you directly, so there is no check-in or timesheet on Joblop.",
+  cancelCta: "Cancel this shift",
+  cancelTitle: "Cancel this shift?",
+  cancelFreeBody: "The shift starts in more than 24 hours, so cancelling is free. It leaves your schedule and goes back on the job board for another worker. The employer and Joblop are told.",
+  cancelLateBody: "The shift starts in less than 24 hours. If you cancel now, your account is suspended for 7 days (Joblop's rule for late cancellations) and you get an email about it. The shift leaves your schedule and goes back on the job board. The employer and Joblop are told.",
+  cancelConfirm: "Yes, cancel the shift",
+  cancelKeep: "Keep my shift",
+  cancelledNotice: "Your shift is cancelled. The employer and Joblop have been told.",
+  cancelledSuspendedNotice: "Your shift is cancelled. Your account is suspended for 7 days; check your email.",
+  cancelStarted: "This shift has already started, so it can't be cancelled here. Contact Joblop."
 };
 
 const fr: AttendanceCopy = {
@@ -127,7 +145,16 @@ const fr: AttendanceCopy = {
   emptyBody: "Les quarts confirmés apparaissent ici.",
   signInRequiredTitle: "Connexion requise",
   errorTitle: "Une erreur s'est produite",
-  longTermNoClockIn: "Emploi de longue durée : l'employeur vous paie directement, donc pas de pointage ni de feuille de temps sur Joblop."
+  longTermNoClockIn: "Emploi de longue durée : l'employeur vous paie directement, donc pas de pointage ni de feuille de temps sur Joblop.",
+  cancelCta: "Annuler ce quart",
+  cancelTitle: "Annuler ce quart?",
+  cancelFreeBody: "Le quart commence dans plus de 24 heures : l'annulation est gratuite. Il sort de votre horaire et retourne au tableau des emplois pour un autre travailleur. L'employeur et Joblop sont avisés.",
+  cancelLateBody: "Le quart commence dans moins de 24 heures. Si vous annulez maintenant, votre compte est suspendu 7 jours (règle de Joblop pour les annulations tardives) et vous recevez un courriel à ce sujet. Le quart sort de votre horaire et retourne au tableau des emplois. L'employeur et Joblop sont avisés.",
+  cancelConfirm: "Oui, annuler le quart",
+  cancelKeep: "Garder mon quart",
+  cancelledNotice: "Votre quart est annulé. L'employeur et Joblop ont été avisés.",
+  cancelledSuspendedNotice: "Votre quart est annulé. Votre compte est suspendu 7 jours; consultez vos courriels.",
+  cancelStarted: "Ce quart a déjà commencé : il ne peut plus être annulé ici. Contactez Joblop."
 };
 
 const ar: AttendanceCopy = {
@@ -146,7 +173,16 @@ const ar: AttendanceCopy = {
   emptyBody: "تظهر فرص العمل المؤكَّدة هنا.",
   signInRequiredTitle: "تسجيل الدخول مطلوب",
   errorTitle: "حدث خطأ ما",
-  longTermNoClockIn: "وظيفة طويلة: يدفع لك صاحب العمل مباشرة، لذا لا يوجد تسجيل حضور أو ورقة دوام على Joblop."
+  longTermNoClockIn: "وظيفة طويلة: يدفع لك صاحب العمل مباشرة، لذا لا يوجد تسجيل حضور أو ورقة دوام على Joblop.",
+  cancelCta: "إلغاء هذه المناوبة",
+  cancelTitle: "هل تريد إلغاء هذه المناوبة؟",
+  cancelFreeBody: "تبدأ المناوبة بعد أكثر من 24 ساعة، لذلك الإلغاء مجاني. تُحذف من جدولك وتعود إلى لوحة الوظائف لعامل آخر. يتم إبلاغ صاحب العمل وJoblop.",
+  cancelLateBody: "تبدأ المناوبة خلال أقل من 24 ساعة. إذا ألغيت الآن، يُعلَّق حسابك لمدة 7 أيام (قاعدة Joblop للإلغاء المتأخر) وتصلك رسالة بريد إلكتروني بذلك. تُحذف المناوبة من جدولك وتعود إلى لوحة الوظائف. يتم إبلاغ صاحب العمل وJoblop.",
+  cancelConfirm: "نعم، ألغِ المناوبة",
+  cancelKeep: "أبقِ مناوبتي",
+  cancelledNotice: "تم إلغاء مناوبتك. تم إبلاغ صاحب العمل وJoblop.",
+  cancelledSuspendedNotice: "تم إلغاء مناوبتك. حسابك معلَّق لمدة 7 أيام؛ راجع بريدك الإلكتروني.",
+  cancelStarted: "بدأت هذه المناوبة بالفعل، لذا لا يمكن إلغاؤها من هنا. تواصل مع Joblop."
 };
 
 const BY_LOCALE: Record<Locale, AttendanceCopy> = { en, fr, ar };
@@ -158,3 +194,13 @@ export function attendanceCopyFor(locale: Locale): AttendanceCopy {
 
 /** English copy, kept for any non-localized caller / tests. */
 export const attendanceCopy = en;
+
+/** A booked shift the worker may still cancel themselves (not started, not a long-term listing). */
+export function canCancelShift(record: { status: string; clockInAllowed?: boolean }): boolean {
+  return record.status === "pending_start" && record.clockInAllowed !== false;
+}
+
+/** True when cancelling now is a late cancellation (less than 24 h before the start): 7-day suspension. */
+export function isLateCancellation(scheduledStartAt: string, now: number = Date.now()): boolean {
+  return new Date(scheduledStartAt).getTime() - now < 24 * 3_600_000;
+}

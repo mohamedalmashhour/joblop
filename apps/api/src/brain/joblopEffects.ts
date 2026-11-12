@@ -87,11 +87,15 @@ export function createJoblopBrainEffects(deps: JoblopEffectsDeps): JoblopBrainEf
           confirmedStartAt: true,
           confirmedEndAt: true,
           timezone: true,
-          attendanceRecord: { select: { checkInAt: true } },
+          attendanceRecord: { select: { checkInAt: true, status: true } },
+          jobRequest: { select: { status: true } },
           workerIdentity: { select: { user: { select: { phone: true, primaryLanguage: true } } } }
         }
       });
       if (!a || !LIVE_ASSIGNMENT.has(a.status)) return { status: "skipped", detail: "The shift is no longer active." };
+      if (a.attendanceRecord?.status === "cancelled" || a.jobRequest?.status === "cancelled") {
+        return { status: "skipped", detail: "The shift was cancelled." };
+      }
       if (a.attendanceRecord?.checkInAt) return { status: "skipped", detail: "The worker has checked in since." };
       if (deps.now().getTime() >= a.confirmedEndAt.getTime()) return { status: "skipped", detail: "The shift is over." };
       if (!sendsText("check_in_reminder")) return { status: "skipped", detail: "Check-in texts are off in the notice rules." };

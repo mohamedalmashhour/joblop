@@ -8141,11 +8141,15 @@ export function createAssignmentService(
         assignmentRepository,
         authorizationService,
         permission: "assignment.cancel",
+        // "attendance_handoff" = the shift is on the worker's schedule. The API only cancels it while
+        // the attendance record has not started, and cancels that record in the same step
+        // (apps/api/src/cancelBookedShift.ts), so the place frees (owner decision 2026-11-11).
         allowedFrom: [
           "confirmed",
           "worker_acknowledged",
           "ready_for_attendance",
-          "in_attendance_window"
+          "in_attendance_window",
+          "attendance_handoff"
         ],
         nextStatus: status,
         action:

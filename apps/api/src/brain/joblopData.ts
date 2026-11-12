@@ -45,7 +45,10 @@ export function createPrismaJoblopBrainData(prisma: PrismaClient, remaining: Rem
         where: {
           status: { in: [...LIVE_ASSIGNMENT] },
           confirmedStartAt: { lte: now, gte: new Date(now.getTime() - 24 * HOUR_MS) },
-          confirmedEndAt: { gt: now }
+          confirmedEndAt: { gt: now },
+          // Never chase a worker whose shift was cancelled: by its attendance record or with the job.
+          NOT: { attendanceRecord: { is: { status: "cancelled" } } },
+          jobRequest: { status: { not: "cancelled" } }
         },
         select: {
           id: true,
