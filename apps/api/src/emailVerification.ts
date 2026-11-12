@@ -3,6 +3,7 @@ import type { EmailSender } from "./mailer/emailSender";
 import { verificationEmailMessage } from "./mailer/emailSender";
 import type { SmsSender } from "./mailer/smsSender";
 import { sendsText } from "./notifications/noticeChannels";
+import { codeSms } from "./notifications/smsBrand";
 
 export const emailVerificationExpiryMinutes = 10;
 export const emailVerificationMaximumAttempts = 5;
@@ -114,7 +115,7 @@ export function createEmailVerificationService(
         await options.smsSender
           .send({
             to: input.recipientPhone,
-            text: `Joblop code: ${code}. Expires in ${emailVerificationExpiryMinutes} min. Never share it.`
+            text: codeSms(`your code is ${code}. Expires in ${emailVerificationExpiryMinutes} min. Never share it.`)
           })
           .catch(() => undefined);
       }

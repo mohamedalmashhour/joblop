@@ -1,0 +1,56 @@
+// The shape of every text message Joblop sends (toll-free SMS registration, 2026-11-11):
+//   - every text starts with "Joblop:" (the brand, exactly so spelled);
+//   - every NOTICE ends with the opt-out line in the person's language;
+//   - sign-in / verification CODES carry the prefix but no opt-out line (kept short).
+// Latin-script texts are kept in the GSM-7 alphabet where possible (straight quotes and hyphens, plain
+// spaces), because one typographic character such as « or — turns the whole text into UCS-2, which
+// halves the characters per SMS segment. Arabic texts are UCS-2 by nature and are left as written.
+
+export type SmsLanguage = "en" | "fr" | "ar";
+
+export const SMS_BRAND_PREFIX = "Joblop:";
+
+export const SMS_OPT_OUT: Readonly<Record<SmsLanguage, string>> = {
+  en: "Reply STOP to opt out.",
+  fr: "Répondez STOP pour vous désabonner.",
+  ar: "أرسل STOP لإيقاف الرسائل."
+};
+
+function gsmFriendly(text: string): string {
+  return text
+    .replace(/[\u00A0\u2009\u202F]/g, " ")
+    .replace(/«\s*/g, '"')
+    .replace(/\s*»/g, '"')
+    .replace(/[“”]/g, '"')
+    .replace(/[‘’]/g, "'")
+    .replace(/[—–]/g, "-")
+    .replace(/(\w)\.\.(\s|$)/g, "$1.$2") // "8:00 a.m.." → "8:00 a.m."
+    .replace(/ {2,}/g, " ")
+    .trim();
+}
+
+/** A notice (job, reminder, change, cancellation, check-in, hours, plan, staff alert): prefix + opt-out. */
+export function noticeSms(language: SmsLanguage, body: string): string {
+  const text = `${SMS_BRAND_PREFIX} ${body.trim()} ${SMS_OPT_OUT[language]}`;
+  return language === "ar" ? text.replace(/ {2,}/g, " ") : gsmFriendly(text);
+}
+
+/** A one-time sign-in or verification code: prefix only, no opt-out line. */
+export function codeSms(body: string): string {
+  return gsmFriendly(`${SMS_BRAND_PREFIX} ${body.trim()}`);
+}
+
+// GSM 03.38 basic alphabet and its extension table (extension characters count twice).
+const GSM_BASIC = "@£$¥èéùìòÇ\nØø\rÅåΔ_ΦΓΛΩΠΨΣΘΞÆæßÉ !\"#¤%&'()*+,-./0123456789:;<=>?¡ABCDEFGHIJKLMNOPQRSTUVWXYZÄÖÑÜ§¿abcdefghijklmnopqrstuvwxyzäöñüà";
+const GSM_EXTENSION = "^{}\\[~]|€";
+
+/** How many SMS segments a text costs (GSM-7: 160 / 153 per part; UCS-2: 70 / 67 per part). */
+export function smsSegmentCount(text: string): number {
+  const chars = [...text];
+  const gsm = chars.every((c) => GSM_BASIC.includes(c) || GSM_EXTENSION.includes(c));
+  if (gsm) {
+    const units = chars.reduce((n, c) => n + (GSM_EXTENSION.includes(c) ? 2 : 1), 0);
+    return units <= 160 ? 1 : Math.ceil(units / 153);
+  }
+  return chars.length <= 70 ? 1 : Math.ceil(chars.length / 67);
+}

@@ -5,6 +5,7 @@ import { sendsText } from "./noticeChannels";
 import { intlLocale, resolveWorkerLanguage, type WorkerLanguage } from "./workerLanguage";
 import { workerJobAddress, WORKSITE_ADDRESS_SELECT } from "../worksiteAddress";
 import { pushToWorkers, type PushSender } from "./pushSender";
+import { noticeSms } from "./smsBrand";
 
 // Format a shift start in Québec local time, in the worker's language. Kept simple + fail-soft.
 function formatShiftWhen(startAt: Date, language: WorkerLanguage): string {
@@ -204,10 +205,10 @@ export function assignedJobSmsText(params: {
 }): string {
   const when = formatShiftWhen(params.startAt, params.language);
   const link = params.jobUrl?.trim() || null;
-  if (params.language === "ar") return `JobLop: حصلت على العمل! «${params.title}» — ${when}. ${link ? `التفاصيل والخريطة: ${link}` : "التفاصيل في التطبيق."}`;
+  if (params.language === "ar") return noticeSms("ar", `حصلت على العمل! «${params.title}» — ${when}. ${link ? `التفاصيل: ${link}` : "التفاصيل في التطبيق."}`);
   return params.language === "en"
-    ? `JobLop: you got the job! "${params.title}" — ${when}. ${link ? `Details and map: ${link}` : "Details in the app."}`
-    : `JobLop : travail obtenu ! « ${params.title} » — ${when}. ${link ? `Détails et carte : ${link}` : "Détails dans l'app."}`;
+    ? noticeSms("en", `you got the job! "${params.title}" - ${when}. ${link ? `Details and map: ${link}` : "Details in the app."}`)
+    : noticeSms("fr", `travail obtenu! "${params.title}" - ${when}. ${link ? `Détails et carte: ${link}` : "Détails dans l'app."}`);
 }
 
 // Pre-shift reminder — "your shift is coming up". Email copy, bilingual.
@@ -265,10 +266,10 @@ export function shiftReminderSmsText(params: {
 }): string {
   const when = formatShiftWhen(params.startAt, params.language);
   const link = params.jobUrl?.trim() || null;
-  if (params.language === "ar") return `تذكير JobLop: «${params.title}» — ${when}. ${link ? `التفاصيل والخريطة: ${link}` : "التفاصيل في التطبيق."}`;
+  if (params.language === "ar") return noticeSms("ar", `تذكير: «${params.title}» — ${when}. ${link ? `التفاصيل: ${link}` : "التفاصيل في التطبيق."}`);
   return params.language === "en"
-    ? `JobLop reminder: "${params.title}" — ${when}. ${link ? `Details and map: ${link}` : "Details in the app."}`
-    : `Rappel JobLop : « ${params.title} » — ${when}. ${link ? `Détails et carte : ${link}` : "Détails dans l'app."}`;
+    ? noticeSms("en", `reminder: "${params.title}" - ${when}. ${link ? `Details and map: ${link}` : "Details in the app."}`)
+    : noticeSms("fr", `rappel: "${params.title}" - ${when}. ${link ? `Détails et carte: ${link}` : "Détails dans l'app."}`);
 }
 
 export type WorkerPayoutNotificationResult = Readonly<{
@@ -471,19 +472,19 @@ export function shiftCancelledSmsText(input: Pick<ShiftCancelledCopyInput, "lang
   if (language === "en") {
     const where = shift.area ? ` at ${shift.area}` : "";
     return input.offerOnly
-      ? `Joblop: the shift you were offered, ${shift.role} on ${when}${where}, was cancelled. Check your calendar.`
-      : `Joblop: your shift ${shift.role} on ${when}${where} was cancelled. Check your calendar.`;
+      ? noticeSms("en", `the shift you were offered, ${shift.role} on ${when}${where}, was cancelled. Check your calendar.`)
+      : noticeSms("en", `your shift ${shift.role} on ${when}${where} was cancelled. Check your calendar.`);
   }
   if (language === "ar") {
     const whereAr = shift.area ? ` في ${shift.area}` : "";
     return input.offerOnly
-      ? `Joblop: أُلغيت المناوبة التي عُرضت عليك، ${shift.role} في ${when}${whereAr}. راجع تقويمك.`
-      : `Joblop: أُلغيت مناوبتك ${shift.role} في ${when}${whereAr}. راجع تقويمك.`;
+      ? noticeSms("ar", `أُلغيت المناوبة التي عُرضت عليك، ${shift.role} في ${when}${whereAr}. راجع تقويمك.`)
+      : noticeSms("ar", `أُلغيت مناوبتك ${shift.role} في ${when}${whereAr}. راجع تقويمك.`);
   }
   const where = shift.area ? ` à ${shift.area}` : "";
   return input.offerOnly
-    ? `Joblop : le quart qui vous était offert, ${shift.role} le ${when}${where}, a été annulé. Consultez votre calendrier.`
-    : `Joblop : votre quart ${shift.role} le ${when}${where} a été annulé. Consultez votre calendrier.`;
+    ? noticeSms("fr", `le quart offert, ${shift.role} le ${when}${where}, a été annulé. Voir votre calendrier.`)
+    : noticeSms("fr", `votre quart ${shift.role} le ${when}${where} a été annulé. Voir votre calendrier.`);
 }
 
 export function shiftCancelledEmail(input: ShiftCancelledCopyInput & { to: string }): EmailMessage {
@@ -590,10 +591,10 @@ function describeShiftChangeAr(change: ShiftChangeSummary, timeZone: string): st
 export function shiftChangedSmsText(input: { language: WorkerLanguage; shift: ShiftNoticeDetails; summary: ShiftChangeSummary }): string {
   const { language, shift } = input;
   const what = describeShiftChange(input.summary, language, shift.timeZone);
-  if (language === "ar") return `Joblop: تغيّرت مناوبتك ${shift.role} في ${shiftDate(shift, language)}: ${what}. افتح تقويمك لرؤية التفاصيل الجديدة.`;
+  if (language === "ar") return noticeSms("ar", `تغيّرت مناوبتك ${shift.role} في ${shiftDate(shift, language)}: ${what}. التفاصيل في تقويمك.`);
   return language === "en"
-    ? `Joblop: your shift ${shift.role} on ${shiftDate(shift, language)} changed: ${what}. Open your calendar to see the new details.`
-    : `Joblop : votre quart ${shift.role} le ${shiftDate(shift, language)} a changé : ${what}. Ouvrez votre calendrier pour voir les nouveaux détails.`;
+    ? noticeSms("en", `your shift ${shift.role} on ${shiftDate(shift, language)} changed: ${what}. Open your calendar to see the new details.`)
+    : noticeSms("fr", `votre quart ${shift.role} le ${shiftDate(shift, language)} a changé: ${what}. Voir les détails dans votre calendrier.`);
 }
 
 export function shiftChangedEmail(input: {

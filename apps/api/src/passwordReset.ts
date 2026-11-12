@@ -2,6 +2,7 @@ import { createHash, randomBytes, timingSafeEqual } from "node:crypto";
 import { hashPassword, normalizeEmail } from "@rwos/auth";
 import type { EmailSender } from "./mailer/emailSender";
 import type { SmsSender } from "./mailer/smsSender";
+import { codeSms } from "./notifications/smsBrand";
 
 export const passwordResetExpiryMinutes = 30;
 export const passwordResetAccepted = Object.freeze({
@@ -83,7 +84,7 @@ export function createPasswordResetService(
         await options.smsSender
           .send({
             to: user.phone,
-            text: `JobLop password reset (valid ${passwordResetExpiryMinutes} min): ${resetUrl.toString()}`
+            text: codeSms(`password reset (valid ${passwordResetExpiryMinutes} min): ${resetUrl.toString()}`)
           })
           .catch(() => undefined);
       }

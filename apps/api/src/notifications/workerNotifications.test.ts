@@ -160,16 +160,16 @@ describe("shift cancelled / changed notices", () => {
 
   it("cancelled SMS names role, date-time and area, in English and French", () => {
     const en = shiftCancelledSmsText({ language: "en", shift });
-    expect(en).toMatch(/^Joblop: your shift Préposé\(e\) on .*Dec.*3.*2026.* at Laval was cancelled\. Check your calendar\.$/);
+    expect(en).toMatch(/^Joblop: your shift Préposé\(e\) on .*Dec.*3.*2026.* at Laval was cancelled\. Check your calendar\. Reply STOP to opt out\.$/);
     expect(en).toMatch(/9:00/);
     const fr = shiftCancelledSmsText({ language: "fr", shift });
-    expect(fr).toMatch(/^Joblop : votre quart Préposé\(e\) le .*déc.* à Laval a été annulé\. Consultez votre calendrier\.$/);
+    expect(fr).toMatch(/^Joblop: votre quart Préposé\(e\) le .*déc.* à Laval a été annulé\. Voir votre calendrier\. Répondez STOP pour vous désabonner\.$/);
     expect(fr).toMatch(/9 h 00/);
   });
 
   it("an offer-only cancel says it was the offered shift", () => {
     expect(shiftCancelledSmsText({ language: "en", shift, offerOnly: true })).toContain("the shift you were offered");
-    expect(shiftCancelledSmsText({ language: "fr", shift, offerOnly: true })).toContain("qui vous était offert");
+    expect(shiftCancelledSmsText({ language: "fr", shift, offerOnly: true })).toContain("le quart offert");
   });
 
   it("cancelled email links the calendar and says to contact Joblop if already on the way", () => {
@@ -196,9 +196,9 @@ describe("shift cancelled / changed notices", () => {
   it("changed SMS and email carry a short plain summary", () => {
     const summary = { newStartAt: new Date("2026-12-03T14:00:00Z"), newEndAt: new Date("2026-12-03T20:00:00Z") };
     const en = shiftChangedSmsText({ language: "en", shift, summary });
-    expect(en).toMatch(/^Joblop: your shift Préposé\(e\) on .* changed: new time 9:00.*–3:00.*\. Open your calendar to see the new details\.$/);
+    expect(en).toMatch(/^Joblop: your shift Préposé\(e\) on .* changed: new time 9:00.*-3:00.*\. Open your calendar to see the new details\. Reply STOP to opt out\.$/);
     const fr = shiftChangedSmsText({ language: "fr", shift, summary });
-    expect(fr).toMatch(/a changé : nouvel horaire 0?9 h 00–15 h 00\. Ouvrez votre calendrier/);
+    expect(fr).toMatch(/a changé: nouvel horaire 0?9 h 00-15 h 00\. Voir les détails dans votre calendrier\. Répondez STOP pour vous désabonner\.$/);
     const email = shiftChangedEmail({ to: "w@x.com", language: "en", shift, summary: { newPlace: "77 Field Road" }, workerWebOrigin: "https://w.test" });
     expect(email.subject).toContain("changed");
     expect(email.text).toContain("new place 77 Field Road");
@@ -275,7 +275,7 @@ describe("worker notices in Arabic (the worker's chosen language)", () => {
 
   it("writes every job notice in Arabic, with Western digits", () => {
     expect(assignedJobEmail({ to: "w@x.com", language: "ar", title: "Cook", startAt: shift.startAt }).subject).toBe("Joblop — حصلت على العمل!");
-    expect(shiftCancelledSmsText({ language: "ar", shift })).toMatch(/^Joblop: أُلغيت مناوبتك Cook في .*2026.* في Laval\. راجع تقويمك\.$/);
+    expect(shiftCancelledSmsText({ language: "ar", shift })).toMatch(/^Joblop: أُلغيت مناوبتك Cook في .*2026.* في Laval\. راجع تقويمك\. أرسل STOP لإيقاف الرسائل\.$/);
     expect(shiftCancelledEmail({ to: "w@x.com", language: "ar", shift, cancelledBy: "employer" }).text).toContain("ألغاها صاحب العمل");
     expect(shiftChangedSmsText({ language: "ar", shift, summary: { newPlace: "Laval" } })).toContain("مكان جديد Laval");
     expect(shiftChangedEmail({ to: "w@x.com", language: "ar", shift, summary: {} }).subject).toBe("Joblop — تغيّرت مناوبتك");

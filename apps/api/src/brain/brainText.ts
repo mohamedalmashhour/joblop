@@ -1,11 +1,13 @@
 import type { BrainMode, SummaryCopy } from "@rwos/brain";
 import type { EmailMessage } from "../mailer/emailSender";
 import type { WorkerLanguage } from "../notifications/workerLanguage";
+import { noticeSms } from "../notifications/smsBrand";
 
 // Every word the Joblop brain sends, in plain short English and French. Messages to workers and
 // employers never carry money: no rates, no Joblop share, nothing about the other side's pay.
 
-const LOCALE: Record<WorkerLanguage, string> = { en: "en-CA", fr: "fr-CA", ar: "ar" };
+// Arabic texts use Latin digits, like every other worker notice (intlLocale).
+const LOCALE: Record<WorkerLanguage, string> = { en: "en-CA", fr: "fr-CA", ar: "ar-u-nu-latn" };
 
 function formatWhen(at: Date, language: WorkerLanguage, timeZone: string, style: "time" | "date"): string {
   const options: Intl.DateTimeFormatOptions = style === "time" ? { timeStyle: "short" } : { dateStyle: "medium" };
@@ -20,10 +22,12 @@ function formatWhen(at: Date, language: WorkerLanguage, timeZone: string, style:
 export function checkInReminderSmsText(params: { language: WorkerLanguage; title: string; startAt: Date; timezone: string }): string {
   const time = formatWhen(params.startAt, params.language, params.timezone, "time");
   if (params.language === "en") {
-    return `Joblop: your shift "${params.title}" started at ${time}. Please check in now in the app. Can't make it? Tell us right away.`;
+    return noticeSms("en", `your shift "${params.title}" started at ${time}. Please check in now in the app. Can't make it? Tell us right away.`);
   }
-  // Arabic workers get French, like other texts with no Arabic version yet.
-  return `Joblop : votre quart « ${params.title} » a commencé à ${time}. Faites votre arrivée dans l'app maintenant. Empêchement? Dites-le-nous tout de suite.`;
+  if (params.language === "ar") {
+    return noticeSms("ar", `بدأت مناوبتك «${params.title}» الساعة ${time}. سجّل وصولك في التطبيق. لا تستطيع الحضور؟ أخبرنا فورًا.`);
+  }
+  return noticeSms("fr", `votre quart "${params.title}" a commencé à ${time}. Pointez votre arrivée dans l'app. Un problème? Dites-le-nous tout de suite.`);
 }
 
 /** Employer email: hours from a finished shift are waiting for their confirmation. */
@@ -106,11 +110,10 @@ export function workerTimesheetReminderEmail(params: { to: string; language: Wor
 
 /** Worker SMS twin, for a worker with no email. */
 export function workerTimesheetReminderSmsText(params: { language: WorkerLanguage; title: string; shiftStart: Date; timezone: string }): string {
-  const language = params.language === "en" ? "en" : "fr";
-  const day = formatWhen(params.shiftStart, language, params.timezone, "date");
-  return language === "en"
-    ? `Joblop: please confirm your hours for "${params.title}" on ${day}, in the app under Timesheets.`
-    : `Joblop : veuillez confirmer vos heures pour « ${params.title} » le ${day}, dans l'app sous Feuilles de temps.`;
+  const day = formatWhen(params.shiftStart, params.language, params.timezone, "date");
+  if (params.language === "en") return noticeSms("en", `please confirm your hours for "${params.title}" on ${day}, in the app under Timesheets.`);
+  if (params.language === "ar") return noticeSms("ar", `يُرجى تأكيد ساعاتك لـ«${params.title}» يوم ${day}، في التطبيق ضمن كشوف الدوام.`);
+  return noticeSms("fr", `veuillez confirmer vos heures pour "${params.title}" le ${day}, dans l'app sous Feuilles de temps.`);
 }
 
 export const RULE_TITLES: Record<string, { en: string; fr: string }> = {
