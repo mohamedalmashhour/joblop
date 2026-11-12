@@ -12,6 +12,8 @@ import {
   type AdminWorkerOfferSummary
 } from "../../api/dispatches/offerAssignmentBoundary";
 import { SignedOut } from "../../shared/SignedOut";
+import { usePageText } from "../../i18n/pageText";
+import { dispatchPanelsText, fillIn, statusWord } from "./dispatchPanelsText";
 
 type State =
   | { status: "loading" | "empty" | "denied" | "unavailable" }
@@ -26,6 +28,8 @@ export function OfferAssignmentStatusPanel({
   dispatchReviewId
 }: Readonly<{ dispatchReviewId: string }>) {
   const locale = useLocale();
+  const t = usePageText(dispatchPanelsText).offers;
+  const dateLocale = locale;
   const [state, setState] = useState<State>({ status: "loading" });
   const [selectedOfferId, setSelectedOfferId] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
@@ -55,19 +59,13 @@ export function OfferAssignmentStatusPanel({
     async (offer: AdminWorkerOfferSummary) => {
       if (submitting) return;
       setSubmitting(true);
-      setNotice({
-        tone: "status",
-        message: "Checking the latest records before Assignment creation."
-      });
+      setNotice({ tone: "status", message: t.checking });
       try {
         const before = await fetchOperationalState(dispatchReviewId);
         setState(before);
         if (before.status !== "ready" || !before.canCreateAssignment) {
           setSelectedOfferId(null);
-          setNotice({
-            tone: "alert",
-            message: "Assignment creation is not enabled. No Assignment was created."
-          });
+          setNotice({ tone: "alert", message: t.notEnabledNotice });
           return;
         }
         const currentOffer = before.offers.find((candidate) => candidate.id === offer.id);
@@ -82,9 +80,7 @@ export function OfferAssignmentStatusPanel({
           setSelectedOfferId(null);
           setNotice({
             tone: "alert",
-            message: existing
-              ? "An Assignment already exists for this accepted offer. No duplicate was created."
-              : "The offer changed before Assignment creation. Review the latest persisted status."
+            message: existing ? t.existing : t.changedBefore
           });
           return;
         }
@@ -113,43 +109,25 @@ export function OfferAssignmentStatusPanel({
               )
             : undefined;
         if (persisted) {
-          setNotice({
-            tone: "status",
-            message:
-              "Assignment created and verified. Worker acknowledgement and attendance remain separate."
-          });
+          setNotice({ tone: "status", message: t.created });
         } else if (overlap) {
           // The worker already holds a shift at that time; the API's message names it.
           setNotice({ tone: "alert", message: overlap });
         } else if (response.status === 404) {
-          setNotice({
-            tone: "alert",
-            message: "Assignment creation is not enabled. No Assignment was created."
-          });
+          setNotice({ tone: "alert", message: t.notEnabledNotice });
         } else if (response.status === 409 || response.status === 412) {
-          setNotice({
-            tone: "alert",
-            message: "The offer or staffing state changed. Review the refreshed persisted records."
-          });
+          setNotice({ tone: "alert", message: t.stateChanged });
         } else {
-          setNotice({
-            tone: "alert",
-            message:
-              "The creation result could not be confirmed. Records were reconciled; review before trying again."
-          });
+          setNotice({ tone: "alert", message: t.unconfirmed });
         }
       } catch {
         setSelectedOfferId(null);
-        setNotice({
-          tone: "alert",
-          message:
-            "The creation result is unknown. Reconcile persisted assignments before trying again."
-        });
+        setNotice({ tone: "alert", message: t.unknown });
       } finally {
         setSubmitting(false);
       }
     },
-    [dispatchReviewId, submitting, locale]
+    [dispatchReviewId, submitting, locale, t]
   );
 
   // Round 2b: advance a draft/approved offer (approve → send). Same rigor as assignment creation:
@@ -159,7 +137,7 @@ export function OfferAssignmentStatusPanel({
     async (offer: AdminWorkerOfferSummary, action: "approve" | "send") => {
       if (submitting) return;
       setSubmitting(true);
-      setNotice({ tone: "status", message: `Checking the latest offer record before ${action}.` });
+      setNotice({ tone: "status", message: t.checking });
       try {
         const before = await fetchOperationalState(dispatchReviewId);
         setState(before);
@@ -167,10 +145,7 @@ export function OfferAssignmentStatusPanel({
           before.status === "ready" ? before.offers.find((candidate) => candidate.id === offer.id) : undefined;
         const requiredPrev = action === "approve" ? "draft" : "approved";
         if (!current || current.status !== requiredPrev || current.versionToken !== offer.versionToken) {
-          setNotice({
-            tone: "alert",
-            message: "The offer changed before the action. Review the latest persisted status."
-          });
+          setNotice({ tone: "alert", message: t.changedBefore });
           return;
         }
         const dispatchSegment = encodeURIComponent(dispatchReviewId);
@@ -193,118 +168,99 @@ export function OfferAssignmentStatusPanel({
           reconciled.status === "ready" ? reconciled.offers.find((candidate) => candidate.id === offer.id) : undefined;
         const expectedNext = action === "approve" ? "approved" : "sent";
         if (persisted?.status === expectedNext) {
-          setNotice({
-            tone: "status",
-            message:
-              action === "approve"
-                ? "Offer approved and verified in persisted records."
-                : "Offer sent to the worker and verified. Delivery confirmation is separate."
-          });
+          setNotice({ tone: "status", message: action === "approve" ? t.approved : t.sent });
         } else if (overlap) {
           setNotice({ tone: "alert", message: overlap });
         } else if (response.status === 409 || response.status === 412) {
-          setNotice({ tone: "alert", message: "The offer state changed. Review the refreshed persisted records." });
+          setNotice({ tone: "alert", message: t.stateChanged });
         } else {
-          setNotice({
-            tone: "alert",
-            message: "The action result could not be confirmed. Records were reconciled; review before retrying."
-          });
+          setNotice({ tone: "alert", message: t.unconfirmed });
         }
       } catch {
-        setNotice({ tone: "alert", message: "The action result is unknown. Reconcile persisted offers before retrying." });
+        setNotice({ tone: "alert", message: t.unknown });
       } finally {
         setSubmitting(false);
       }
     },
-    [dispatchReviewId, submitting, locale]
+    [dispatchReviewId, submitting, locale, t]
   );
 
   if (state.status === "denied") return <SignedOut compact />;
   if (state.status !== "ready") {
     return (
       <section aria-busy={state.status === "loading"} aria-live="polite">
-        <h2>Offers and assignments</h2>
+        <h2>{t.title}</h2>
         <p>
-          {state.status === "loading"
-            ? "Loading authoritative offer and assignment records…"
-            : state.status === "empty"
-              ? "No persisted offers or assignments exist for this dispatch."
-              : "Offer and assignment records are unavailable. No fixture state is substituted."}
+          {state.status === "loading" ? t.loading : state.status === "empty" ? t.empty : t.unavailable}
         </p>
         {state.status !== "loading" && state.status !== "empty" ? (
           <button onClick={() => void load()} style={styles.button} type="button">
-            Retry status
+            {t.retry}
           </button>
         ) : null}
       </section>
     );
   }
+  const windowText = (startAt: string, endAt: string, timezone: string) =>
+    formatWindow(startAt, endAt, timezone, dateLocale, t.unavailableTime);
 
   const assignedOfferIds = new Set(state.assignments.map((assignment) => assignment.workerOfferId));
   const eligibleOffers = eligibleOffersForAssignment(state.offers, state.assignments);
 
   return (
     <section aria-busy={submitting}>
-      <h2>Offers and assignments</h2>
+      <h2>{t.title}</h2>
+      <p>{t.intro}</p>
       <p>
-        These are persisted operational records. A sent offer is not proof of delivery, and an
-        accepted offer is not an Assignment.
-      </p>
-      <p>
-        Accepted offers without an Assignment: <strong>{eligibleOffers.length}</strong>.
+        {t.acceptedWithout} <strong>{eligibleOffers.length}</strong>
       </p>
       {notice ? (
         <p aria-live={notice.tone === "alert" ? "assertive" : "polite"} role={notice.tone}>
           {notice.message}
         </p>
       ) : null}
-      <h3>Worker offers</h3>
+      <h3>{t.offersTitle}</h3>
       <BoardOnlyNotice />
-      {state.offers.length === 0 ? <p>No offers recorded.</p> : null}
+      {state.offers.length === 0 ? <p>{t.noOffers}</p> : null}
       {state.offers.map((offer) => (
         <article key={offer.id} style={styles.record}>
           <h4 style={styles.recordTitle}>{offer.title}</h4>
-          <span>Offer status: {offer.status.replaceAll("_", " ")}</span>
+          <span>{fillIn(t.offerStatus, { status: statusWord(t.statusWords, offer.status) })}</span>
           <small>
-            {formatWindow(offer.startAt, offer.endAt, offer.timezone)} · version{" "}
-            {offer.versionToken}
+            {windowText(offer.startAt, offer.endAt, offer.timezone)} ·{" "}
+            {fillIn(t.version, { n: offer.versionToken })}
           </small>
           {offer.status === "draft" ? (
             <button
-              aria-label={`Approve offer for ${offer.title}`}
+              aria-label={fillIn(t.approveAria, { title: offer.title })}
               disabled={submitting}
               onClick={() => void advanceOffer(offer, "approve")}
               style={styles.primaryButton}
               type="button"
             >
-              {submitting ? "Working…" : "Approve offer"}
+              {submitting ? t.working : t.approve}
             </button>
           ) : null}
           {offer.status === "approved" ? (
             <button
-              aria-label={`Send offer to worker for ${offer.title}`}
+              aria-label={fillIn(t.sendAria, { title: offer.title })}
               disabled={submitting}
               onClick={() => void advanceOffer(offer, "send")}
               style={styles.primaryButton}
               type="button"
             >
-              {submitting ? "Working…" : "Send offer to worker"}
+              {submitting ? t.working : t.send}
             </button>
           ) : null}
-          {offer.status === "sent" && !offer.deliveredAt ? (
-            <small>Delivery is not confirmed; only the persisted sent state is known.</small>
-          ) : null}
+          {offer.status === "sent" && !offer.deliveredAt ? <small>{t.notDelivered}</small> : null}
           {offer.status === "accepted" && !assignedOfferIds.has(offer.id) ? (
             <div style={styles.reconciliation}>
-              <strong>Reconciliation required</strong>
-              <span>This accepted offer has no persisted Assignment.</span>
+              <strong>{t.reconTitle}</strong>
+              <span>{t.reconBody}</span>
               {state.canCreateAssignment ? (
                 selectedOfferId === offer.id ? (
                   <>
-                    <p>
-                      Create one authoritative Assignment from the latest accepted terms? This does
-                      not prove notification delivery, attendance, hours, payroll or payment.
-                    </p>
+                    <p>{t.createQuestion}</p>
                     <CertificateOverrideBox dispatchReviewId={dispatchReviewId} workerOfferId={offer.id} onChange={setCertificateOverride} />
                     <div style={styles.actions}>
                       <button
@@ -313,7 +269,7 @@ export function OfferAssignmentStatusPanel({
                         style={styles.button}
                         type="button"
                       >
-                        Cancel
+                        {t.cancel}
                       </button>
                       <button
                         disabled={submitting || Boolean(certificateOverride?.needed && !certificateOverride.override)}
@@ -321,29 +277,26 @@ export function OfferAssignmentStatusPanel({
                         style={styles.primaryButton}
                         type="button"
                       >
-                        {submitting ? "Creating Assignment…" : "Create Assignment"}
+                        {submitting ? t.creating : t.create}
                       </button>
                     </div>
                   </>
                 ) : (
                   <button
-                    aria-label={`Review Assignment creation for ${offer.title}`}
+                    aria-label={fillIn(t.reviewAria, { title: offer.title })}
                     disabled={submitting}
                     onClick={() => setSelectedOfferId(offer.id)}
                     style={styles.button}
                     type="button"
                   >
-                    Review Assignment creation
+                    {t.reviewCreate}
                   </button>
                 )
               ) : (
                 <>
-                  <span>
-                    Assignment creation is not enabled in this environment. No Assignment has been
-                    created.
-                  </span>
+                  <span>{t.notEnabled}</span>
                   <button onClick={() => void load()} style={styles.button} type="button">
-                    Refresh offer and assignment records
+                    {t.refresh}
                   </button>
                 </>
               )}
@@ -351,15 +304,15 @@ export function OfferAssignmentStatusPanel({
           ) : null}
         </article>
       ))}
-      <h3>Assignments</h3>
-      {state.assignments.length === 0 ? <p>No authoritative assignments recorded.</p> : null}
+      <h3>{t.assignmentsTitle}</h3>
+      {state.assignments.length === 0 ? <p>{t.noAssignments}</p> : null}
       {state.assignments.map((assignment) => (
         <article key={assignment.id} style={styles.record}>
           <h4 style={styles.recordTitle}>{assignment.title}</h4>
-          <span>Assignment status: {assignment.status.replaceAll("_", " ")}</span>
+          <span>{fillIn(t.assignmentStatus, { status: statusWord(t.statusWords, assignment.status) })}</span>
           <small>
-            {formatWindow(assignment.startAt, assignment.endAt, assignment.timezone)} · attendance{" "}
-            {assignment.attendanceBoundary.replaceAll("_", " ")}
+            {windowText(assignment.startAt, assignment.endAt, assignment.timezone)} ·{" "}
+            {fillIn(t.attendance, { state: statusWord(t.attendanceWords, assignment.attendanceBoundary) })}
           </small>
         </article>
       ))}
@@ -406,17 +359,19 @@ async function fetchOperationalState(dispatchReviewId: string): Promise<State> {
   };
 }
 
-function formatWindow(startAt: string, endAt: string, timezone: string) {
+function formatWindow(startAt: string, endAt: string, timezone: string, locale: string, unknown: string) {
   const start = formatRwosDateTime(startAt, {
     dateStyle: "medium",
     timeStyle: "short",
-    timeZone: timezone
+    timeZone: timezone,
+    locale
   });
   const end = formatRwosDateTime(endAt, {
     timeStyle: "short",
-    timeZone: timezone
+    timeZone: timezone,
+    locale
   });
-  return start === "Unavailable" || end === "Unavailable" ? "Unavailable" : `${start}–${end}`;
+  return start === "Unavailable" || end === "Unavailable" ? unknown : `${start}–${end}`;
 }
 
 const styles = {

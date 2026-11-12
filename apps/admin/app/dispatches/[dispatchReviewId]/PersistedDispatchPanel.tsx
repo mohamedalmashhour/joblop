@@ -8,10 +8,22 @@ import { OfferAssignmentStatusPanel } from "./OfferAssignmentStatusPanel";
 import { InterestedWorkersPanel } from "./InterestedWorkersPanel";
 import { WorksiteMapsPanel } from "./WorksiteMapsPanel";
 import { SignedOut } from "../../shared/SignedOut";
+import { usePageText } from "../../i18n/pageText";
+import { useLocale } from "../../i18n/LocaleProvider";
+import { dispatchPanelsText, statusWord } from "./dispatchPanelsText";
 
 export function PersistedDispatchPanel({
   dispatchReviewId
 }: Readonly<{ dispatchReviewId: string }>) {
+  const t = usePageText(dispatchPanelsText).detail;
+  const locale = useLocale();
+  const formatDate = (value: string) =>
+    formatRwosDateTime(value, {
+      dateStyle: "medium",
+      timeStyle: "short",
+      timeZone: "America/Toronto",
+      locale
+    });
   const [dispatch, setDispatch] = useState<AdminDispatchReview | null>(null);
   const [status, setStatus] = useState<"loading" | "ready" | "denied" | "unavailable">("loading");
   const [preparing, setPreparing] = useState(false);
@@ -51,21 +63,19 @@ export function PersistedDispatchPanel({
       );
       if (!response.ok) {
         setActionMessage(
-          response.status === 409
-            ? "Dispatch changed. Refresh and try again."
-            : "Could not move to offer preparation."
+          response.status === 409 ? t.changed : t.moveFailed
         );
         return;
       }
       const payload = (await response.json()) as { dispatchReview?: AdminDispatchReview };
       if (payload.dispatchReview) setDispatch(payload.dispatchReview);
-      setActionMessage("Dispatch moved to offer preparation.");
+      setActionMessage(t.moved);
     } catch {
-      setActionMessage("Offer-preparation service is unavailable.");
+      setActionMessage(t.moveUnavailable);
     } finally {
       setPreparing(false);
     }
-  }, [dispatch, dispatchReviewId]);
+  }, [dispatch, dispatchReviewId, t]);
 
   useEffect(() => {
     void load();
@@ -77,12 +87,12 @@ export function PersistedDispatchPanel({
       <main style={styles.page}>
         <section aria-busy={status === "loading"} aria-live="polite" style={styles.hero}>
           <h1>
-            {status === "loading" ? "Loading dispatch review" : "Dispatch review unavailable"}
+            {status === "loading" ? t.loading : t.unavailable}
           </h1>
-          <p>No fixture dispatch or candidate data is substituted.</p>
+          {status !== "loading" ? <p>{t.unavailableBody}</p> : null}
           {status !== "loading" ? (
             <button onClick={() => void load()} style={styles.button} type="button">
-              Retry
+              {t.retry}
             </button>
           ) : null}
         </section>
@@ -94,35 +104,32 @@ export function PersistedDispatchPanel({
     <main style={styles.page}>
       <header style={styles.hero}>
         <div>
-          <p style={styles.eyebrow}>Joblop / Dispatch review</p>
-          <h1 style={styles.title}>Operational dispatch review</h1>
+          <p style={styles.eyebrow}>{t.eyebrow}</p>
+          <h1 style={styles.title}>{t.title}</h1>
           <p style={styles.lede}>
-            {dispatch.jobRequestNumber ?? dispatch.jobRequestId} · {dispatch.state.replaceAll("_", " ")}
+            {dispatch.jobRequestNumber ?? dispatch.jobRequestId} · {statusWord(t.stateLabels, dispatch.state)}
           </p>
         </div>
         <a
           href={`/calendar/request?request=${encodeURIComponent(dispatch.jobRequestId)}`}
           style={styles.link}
         >
-          Open source request
+          {t.openRequest}
         </a>
       </header>
       <section style={styles.grid}>
         <article style={styles.panel}>
-          <h2>Persisted review state</h2>
-          <p>{dispatchStateCopy(dispatch.state)}</p>
+          <h2>{t.stateTitle}</h2>
+          <p>{t.stateHelp[dispatch.state] ?? statusWord(t.stateLabels, dispatch.state)}</p>
           {[
-            ["Priority", dispatch.priority],
-            ["Required workers", String(dispatch.requiredWorkerCount)],
-            ["Shortlisted candidates", String(dispatch.shortlistedCandidateCount)],
-            ["Offers prepared (not necessarily sent)", String(dispatch.preparedOfferCount)],
-            [
-              "Workers still requested (not assignment status)",
-              String(dispatch.remainingWorkerCount)
-            ],
-            ["Version", String(dispatch.versionToken)],
-            ["Created", formatDate(dispatch.createdAt)],
-            ["Updated", formatDate(dispatch.updatedAt)]
+            [t.rowPriority, statusWord(t.priorities, dispatch.priority)],
+            [t.rowRequired, String(dispatch.requiredWorkerCount)],
+            [t.rowShortlisted, String(dispatch.shortlistedCandidateCount)],
+            [t.rowPrepared, String(dispatch.preparedOfferCount)],
+            [t.rowRemaining, String(dispatch.remainingWorkerCount)],
+            [t.rowVersion, String(dispatch.versionToken)],
+            [t.rowCreated, formatDate(dispatch.createdAt)],
+            [t.rowUpdated, formatDate(dispatch.updatedAt)]
           ].map(([label, value]) => (
             <div key={label} style={styles.row}>
               <strong>{label}</strong>
@@ -137,7 +144,7 @@ export function PersistedDispatchPanel({
                 style={styles.button}
                 type="button"
               >
-                {preparing ? "Moving…" : "Move to offer preparation"}
+                {preparing ? t.moving : t.moveToOffers}
               </button>
               {actionMessage ? (
                 <p aria-live="polite" style={{ fontSize: 13, marginTop: 8 }}>
@@ -149,18 +156,9 @@ export function PersistedDispatchPanel({
         </article>
         <article style={styles.panel}>
           <CandidateReviewPanel dispatch={dispatch} onUpdated={setDispatch} />
-          <p>
-            Candidate sourcing and worker contact are unavailable in this view. Counts are shown
-            only from the persisted dispatch record.
-          </p>
-          <p>
-            No shortlist, offer, assignment, notification, payroll, or payment action is performed
-            here.
-          </p>
-          <p>
-            A remaining count of zero does not prove that workers were contacted, accepted work, or
-            were assigned.
-          </p>
+          <p>{t.note1}</p>
+          <p>{t.note2}</p>
+          <p>{t.note3}</p>
         </article>
         <article style={styles.panel}>
           <OfferAssignmentStatusPanel dispatchReviewId={dispatch.id} />
@@ -174,29 +172,6 @@ export function PersistedDispatchPanel({
       </section>
     </main>
   );
-}
-
-function formatDate(value: string) {
-  return formatRwosDateTime(value, {
-    dateStyle: "medium",
-    timeStyle: "short",
-    timeZone: "UTC"
-  });
-}
-
-function dispatchStateCopy(state: AdminDispatchReview["state"]) {
-  const copy: Record<AdminDispatchReview["state"], string> = {
-    draft: "Dispatch review created; operational review has not started.",
-    active: "Operational review is active; candidate review has not necessarily started.",
-    candidate_review: "Candidate review is in progress. No offer or assignment is implied.",
-    shortlist_ready: "A shortlist is prepared for governed review. No offer has been sent.",
-    offer_preparation: "Offer preparation is in progress. No assignment is confirmed.",
-    paused: "Review is paused. No further dispatch progression is occurring here.",
-    cancelled: "Review is cancelled. No active dispatch action remains.",
-    closed:
-      "Review is closed. Downstream outcomes require authoritative offer and assignment records."
-  };
-  return copy[state];
 }
 
 const styles = {
