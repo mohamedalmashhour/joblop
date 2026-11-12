@@ -109,6 +109,7 @@ describe("brain routes", () => {
         "resend_failed_message",
         "remind_worker_check_in",
         "remind_employer_timesheet",
+        "remind_worker_timesheet",
         "offer_employer_bonus",
         "auto_approve_request",
         "auto_approve_timesheet",

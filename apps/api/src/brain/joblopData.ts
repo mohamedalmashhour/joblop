@@ -11,7 +11,12 @@ const BATCH = 500;
 const LIVE_ASSIGNMENT = ["confirmed", "worker_acknowledged", "ready_for_attendance", "in_attendance_window", "attendance_handoff"] as const;
 const UNPAID_INVOICE = ["issued", "sent", "viewed", "partially_paid", "overdue"] as const;
 
-type Remaining = (jobs: readonly Readonly<{ id: string; numberOfWorkers: number }>[]) => Promise<Map<string, number>>;
+const CANCELLED_ASSIGNMENT = ["worker_withdrawn", "employer_cancelled", "platform_cancelled"] as const;
+/** Attendance states of a shift that ended and needs hours (a cancelled one never does). */
+const NEEDS_HOURS_ATTENDANCE = ["pending_start", "checked_in", "checked_out", "completed", "exception"] as const;
+const PREPARE_LOOKBACK_DAYS = 14;
+
+type Remaining =(jobs: readonly Readonly<{ id: string; numberOfWorkers: number }>[]) => Promise<Map<string, number>>;
 
 export function createPrismaJoblopBrainData(prisma: PrismaClient, remaining: Remaining): JoblopBrainData {
   return {
@@ -19,15 +24,24 @@ export function createPrismaJoblopBrainData(prisma: PrismaClient, remaining: Rem
       const shifts = await listUnfilledShifts(prisma, remaining, now);
       if (shifts.length === 0) return [];
       const ids = shifts.map((s) => s.jobRequestId);
-      const [priced, bonuses] = await Promise.all([
+      const [priced, bonuses, boards, cancelled] = await Promise.all([
         prisma.requestPricingSnapshot.findMany({ where: { jobRequestId: { in: ids } }, select: { jobRequestId: true } }),
+        // A declined offer counts: the employer is asked once.
         prisma.jobBonus.findMany({
-          where: { jobRequestId: { in: ids }, status: { in: ["offered_to_employer", "employer_accepted", "approved"] } },
+          where: { jobRequestId: { in: ids }, status: { in: ["offered_to_employer", "employer_accepted", "approved", "employer_declined"] } },
           select: { jobRequestId: true }
+        }),
+        prisma.jobRequest.findMany({ where: { id: { in: ids }, openClaim: true }, select: { id: true } }),
+        prisma.assignment.groupBy({
+          by: ["jobRequestId"],
+          where: { jobRequestId: { in: ids }, status: { in: [...CANCELLED_ASSIGNMENT] } },
+          _count: { _all: true }
         })
       ]);
       const pricedIds = new Set(priced.map((p) => p.jobRequestId));
       const bonusIds = new Set(bonuses.map((b) => b.jobRequestId));
+      const boardIds = new Set(boards.map((b) => b.id));
+      const cancelledCount = new Map(cancelled.map((c) => [c.jobRequestId, c._count._all]));
       return shifts.map((s) => ({
         jobRequestId: s.jobRequestId,
         jobRequestNumber: s.jobRequestNumber,
@@ -36,7 +50,9 @@ export function createPrismaJoblopBrainData(prisma: PrismaClient, remaining: Rem
         openings: s.openings,
         filled: s.filled,
         priced: pricedIds.has(s.jobRequestId),
-        hasBonus: bonusIds.has(s.jobRequestId)
+        hasBonus: bonusIds.has(s.jobRequestId),
+        onJobBoard: boardIds.has(s.jobRequestId),
+        cancelledBookings: cancelledCount.get(s.jobRequestId) ?? 0
       }));
     },
 
@@ -167,6 +183,35 @@ export function createPrismaJoblopBrainData(prisma: PrismaClient, remaining: Rem
         take: BATCH
       });
       return rows.flatMap((r) => (r.dueAt ? [{ invoiceId: r.id, invoiceNumber: r.invoiceNumber, status: r.status, dueAt: r.dueAt }] : []));
+    },
+
+    async finishedShiftsWithoutTimesheet(now) {
+      const rows = await prisma.attendanceRecord.findMany({
+        where: {
+          status: { in: [...NEEDS_HOURS_ATTENDANCE] },
+          scheduledEndAt: { lte: now, gte: new Date(now.getTime() - PREPARE_LOOKBACK_DAYS * 24 * HOUR_MS) },
+          timesheet: { is: null },
+          assignment: { status: { notIn: [...CANCELLED_ASSIGNMENT] } },
+          jobRequest: { status: { not: "cancelled" } }
+        },
+        select: {
+          id: true,
+          assignmentId: true,
+          scheduledEndAt: true,
+          checkInAt: true,
+          jobRequest: { select: { jobRequestNumber: true, title: true } }
+        },
+        orderBy: [{ scheduledEndAt: "asc" }],
+        take: BATCH
+      });
+      return rows.map((r) => ({
+        attendanceRecordId: r.id,
+        assignmentId: r.assignmentId,
+        jobRequestNumber: r.jobRequest.jobRequestNumber,
+        title: r.jobRequest.title,
+        scheduledEndAt: r.scheduledEndAt,
+        checkedIn: r.checkInAt !== null
+      }));
     }
   };
 }

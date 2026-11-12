@@ -216,8 +216,10 @@ export function shiftReminderEmail(params: {
   language: WorkerLanguage;
   title: string;
   startAt: Date;
+  jobUrl?: string | null;
 }): EmailMessage {
   const when = formatShiftWhen(params.startAt, params.language);
+  const link = params.jobUrl?.trim() || null;
   if (params.language === "en") {
     return {
       to: params.to,
@@ -225,7 +227,9 @@ export function shiftReminderEmail(params: {
       text:
         `This is a reminder for your upcoming shift "${params.title}".\n\n` +
         `When: ${when}\n\n` +
-        `Open Joblop for the full details. Please arrive on time.\n\n— Joblop`
+        (link
+          ? `See the job details and the map: ${link}\n\nPlease arrive on time.\n\n— Joblop`
+          : `Open Joblop for the full details. Please arrive on time.\n\n— Joblop`)
     };
   }
   if (params.language === "ar") {
@@ -235,7 +239,9 @@ export function shiftReminderEmail(params: {
       text:
         `هذا تذكير بمناوبتك القادمة «${params.title}».\n\n` +
         `متى: ${when}\n\n` +
-        `افتح Joblop لرؤية كل التفاصيل. يُرجى الحضور في الموعد.\n\n— Joblop`
+        (link
+          ? `تفاصيل العمل والخريطة هنا: ${link}\n\nيُرجى الحضور في الموعد.\n\n— Joblop`
+          : `افتح Joblop لرؤية كل التفاصيل. يُرجى الحضور في الموعد.\n\n— Joblop`)
     };
   }
   return {
@@ -244,7 +250,9 @@ export function shiftReminderEmail(params: {
     text:
       `Rappel pour votre prochain quart « ${params.title} ».\n\n` +
       `Quand : ${when}\n\n` +
-      `Ouvrez Joblop pour tous les détails. Merci d'arriver à l'heure.\n\n— Joblop`
+      (link
+        ? `Voir les détails du travail et la carte : ${link}\n\nMerci d'arriver à l'heure.\n\n— Joblop`
+        : `Ouvrez Joblop pour tous les détails. Merci d'arriver à l'heure.\n\n— Joblop`)
   };
 }
 
@@ -253,12 +261,14 @@ export function shiftReminderSmsText(params: {
   language: WorkerLanguage;
   title: string;
   startAt: Date;
+  jobUrl?: string | null;
 }): string {
   const when = formatShiftWhen(params.startAt, params.language);
-  if (params.language === "ar") return `تذكير JobLop: «${params.title}» — ${when}. التفاصيل في التطبيق.`;
+  const link = params.jobUrl?.trim() || null;
+  if (params.language === "ar") return `تذكير JobLop: «${params.title}» — ${when}. ${link ? `التفاصيل والخريطة: ${link}` : "التفاصيل في التطبيق."}`;
   return params.language === "en"
-    ? `JobLop reminder: "${params.title}" — ${when}. Details in the app.`
-    : `Rappel JobLop : « ${params.title} » — ${when}. Détails dans l'app.`;
+    ? `JobLop reminder: "${params.title}" — ${when}. ${link ? `Details and map: ${link}` : "Details in the app."}`
+    : `Rappel JobLop : « ${params.title} » — ${when}. ${link ? `Détails et carte : ${link}` : "Détails dans l'app."}`;
 }
 
 export type WorkerPayoutNotificationResult = Readonly<{

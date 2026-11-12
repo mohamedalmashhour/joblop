@@ -97,6 +97,14 @@ export function createMemoryBrainStore(initial?: Partial<{ mode: BrainMode; swit
       actions.push(created);
       return created;
     },
+    async reopenAction(input) {
+      const existing = actions.find((a) => a.issueId === input.issue.id && a.actionKey === input.actionKey && a.kind === input.kind);
+      if (!existing || (existing.status !== "skipped" && existing.status !== "failed")) return null;
+      // The earlier result stays in `detail` while running; the engine keeps it in the final detail.
+      const next: StoredAction = { ...existing, status: "running", actor: input.actor, undo: null, finishedAt: null };
+      replaceAction(next);
+      return next;
+    },
     async finishAction(actionId, input) {
       const existing = actions.find((a) => a.id === actionId);
       if (!existing) throw new Error("action not found");

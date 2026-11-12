@@ -31,11 +31,9 @@ import { ANTHROPIC_MESSAGES_URL, resetOutsideAiCircuits } from "../../apps/api/s
 // with the Brain OFF and closes whatever was already open (other suites' leftovers), so the Brain never
 // acts on data that is not this suite's. The Brain settings are restored afterwards.
 //
-// Where today's behaviour looks wrong for real life, the test states the CORRECT behaviour and is
-// marked `it.fails(...)` with a "BUG:" comment, so CI stays green until the fix lands (then the
-// `.fails` must be removed). The matching "ACTUAL:" test pins what the code does today.
-// NOTE: the cancellation checks (section 3) overlap with branch fix/cancel-booked-shift; when that
-// lands, their `.fails` will start passing and must be removed.
+// The first run of this suite found ten real-life bugs (written then as `it.fails`); they are fixed on
+// fix/brain-real-life (the cancellations by fix/cancel-booked-shift, PR #164), so every test below
+// states the correct behaviour and must pass.
 const databaseUrl = process.env.RWOS_TEST_DATABASE_URL;
 const suite = databaseUrl ? describe : describe.skip;
 
@@ -48,6 +46,7 @@ const BRAIN_TOKEN = "brain-sweep-token-real-life-0001";
 const REMINDER_TOKEN = "shift-reminder-token-real-life-01";
 const STAFF_ALERT_EMAIL = "staff-alerts@brain-real-life.test";
 const CONTACT_DESK_EMAIL = "contact-desk@brain-real-life.test";
+const WORKER_WEB = "https://work.brain-real-life.test";
 const PASSWORD = "Sup3r-Secret-Pass!";
 
 /** A Toronto (EST, UTC-5 in January) wall-clock time on a day, as an instant. */
@@ -373,16 +372,18 @@ suite("the AI Brain on the four real-life job kinds, all sides (Laval farm, live
     staffIds.add(staff.id);
     await boot.close();
 
-    app = buildApi(
-      apiOptions({
+    app = buildApi({
+      ...apiOptions({
         BRAIN_SWEEP_TOKEN: BRAIN_TOKEN,
         SHIFT_REMINDER_SWEEP_TOKEN: REMINDER_TOKEN,
         BRAIN_ACTOR_USER_ID: staff.id,
         STAFF_ALERT_EMAIL,
         BRAIN_SUMMARY_HOUR_UTC: "12", // 07:00 in Toronto (EST)
         ASSISTANT_PROPOSAL_SECRET: `brain-real-life-proposal-secret-${randomUUID()}`
-      })
-    );
+      }),
+      // The worker website: reminders link to the job page, like the "you got the job" notice.
+      publicWorkerWebOrigin: WORKER_WEB
+    });
     await app.ready();
     label(staff.email, "staff");
     label(STAFF_ALERT_EMAIL, "staff alerts");
@@ -458,7 +459,7 @@ suite("the AI Brain on the four real-life job kinds, all sides (Laval farm, live
     expect(page.mode).toBe("live");
     expect(page.switches.filter((s) => !s.enabled)).toEqual([]);
     const keys = page.switches.map((s) => s.key);
-    for (const key of ["resend_failed_message", "remind_worker_check_in", "remind_employer_timesheet", "offer_employer_bonus", "auto_approve_request", "auto_approve_timesheet", "daily_summary_email"]) {
+    for (const key of ["resend_failed_message", "remind_worker_check_in", "remind_employer_timesheet", "remind_worker_timesheet", "offer_employer_bonus", "auto_approve_request", "auto_approve_timesheet", "daily_summary_email"]) {
       expect(keys).toContain(key);
     }
     expect(keys.filter((k) => k.startsWith("assistant")).length).toBeGreaterThanOrEqual(14);
@@ -471,7 +472,10 @@ suite("the AI Brain on the four real-life job kinds, all sides (Laval farm, live
     const DAY = "2027-01-05";
     const NEXT = "2027-01-06";
     const NEXT2 = "2027-01-07";
-    const s = {} as { job: Job; worker: Worker; assignmentId: string; attendance: Attendance; timesheetId: string; statusAfterBrain: string; invoicesBefore: number };
+    const s = {} as {
+      job: Job; worker: Worker; assignmentId: string; attendance: Attendance; timesheetId: string; statusAfterBrain: string; invoicesBefore: number;
+      hoursIssueOpenAt1605: number;
+    };
 
     beforeAll(async () => {
       // 06:00 the day before: the employer asks for one Farm worker; the Brain's 06:05 sweep approves it.
@@ -490,12 +494,15 @@ suite("the AI Brain on the four real-life job kinds, all sides (Laval farm, live
       await ticks(et(DAY, "08:00"), et(DAY, "08:05"), et(DAY, "08:10"), et(DAY, "08:15"), et(DAY, "13:55"), et(DAY, "14:00"));
       setNow(et(DAY, "14:05"));
       await checkOut(s.worker, s.attendance);
-      await ticks(et(DAY, "14:05"), et(DAY, "14:10"));
-      // Staff prepare the hours at 14:30; the worker confirms at 15:00; the employer forgets.
-      setNow(et(DAY, "14:30"));
+      // Staff forget to prepare the hours: at +2 h the Brain flags it (not at 16:00, at 16:05).
+      await ticks(et(DAY, "14:05"), et(DAY, "14:10"), et(DAY, "16:00"), et(DAY, "16:05"));
+      s.hoursIssueOpenAt1605 = (await issuesOn(s.attendance.attendanceRecordId)).filter((i) => i.ruleKey === "hours_not_prepared" && i.status === "open").length;
+      // Staff prepare the hours at 16:30 (the next sweep closes the issue); the worker confirms at 16:45; the employer forgets.
+      setNow(et(DAY, "16:30"));
       const prepared = await prepare(s.attendance.attendanceRecordId);
       s.timesheetId = prepared.id;
-      setNow(et(DAY, "15:00"));
+      await tick(et(DAY, "16:35"));
+      setNow(et(DAY, "16:45"));
       await workerConfirm(s.worker, prepared);
       // +24 h after the end: the hours reminder; the employer confirms at 15:00; the Brain's 15:05 sweep.
       await ticks(et(NEXT, "07:00"), et(NEXT, "13:55"), et(NEXT, "14:00"), et(NEXT, "14:05"));
@@ -514,18 +521,16 @@ suite("the AI Brain on the four real-life job kinds, all sides (Laval farm, live
       expect(within(sentTo(employer.email), et(PREV, "06:05"), et(PREV, "06:06")).length).toBeGreaterThan(0);
     });
 
-    it("ACTUAL: the worker gets no reminder before the shift (the reminder cron skips claimed shifts)", async () => {
-      expect(within(sentTo(s.worker.email, s.worker.phone), et(PREV, "07:00"), et(DAY, "07:55"))).toEqual([]);
+    it("Worker: reminded once before the claimed shift (24 h before, email and text), with the job-page link", async () => {
+      const reminders = within(sentTo(s.worker.email, s.worker.phone), et(PREV, "07:00"), et(DAY, "07:55"));
+      expect(reminders.map((m) => [m.channel, m.at.toISOString()]).sort()).toEqual([
+        ["email", et(PREV, "08:00").toISOString()],
+        ["sms", et(PREV, "08:00").toISOString()]
+      ]);
+      for (const m of reminders) expect(m.text).toContain(`${WORKER_WEB}/jobs/${s.job.id}`);
       const assignment = await prisma.assignment.findUniqueOrThrow({ where: { id: s.assignmentId }, select: { status: true, shiftReminderSentAt: true } });
-      expect(assignment).toMatchObject({ status: "attendance_handoff", shiftReminderSentAt: null });
-    });
-
-    // BUG: runShiftReminderSweep only reminds "confirmed | worker_acknowledged | ready_for_attendance",
-    // but every claimed (or staff-assigned) shift is "attendance_handoff", so NO worker is ever reminded
-    // before a shift. The Brain has no reminder of its own either. Correct: a reminder (email and/or
-    // text) between 24 h and the start.
-    it.fails("Worker: reminded before the shift (between 24 h and the start)", async () => {
-      expect(within(sentTo(s.worker.email, s.worker.phone), et(PREV, "07:00"), et(DAY, "07:55")).length).toBeGreaterThan(0);
+      expect(assignment.status).toBe("attendance_handoff");
+      expect(assignment.shiftReminderSentAt?.toISOString()).toBe(et(PREV, "08:00").toISOString());
     });
 
     it("Worker: checked in at 07:55, so never texted to check in", async () => {
@@ -533,12 +538,13 @@ suite("the AI Brain on the four real-life job kinds, all sides (Laval farm, live
       expect(within(sentTo(s.worker.phone), et(DAY, "07:55"), et(DAY, "14:10"))).toEqual([]);
     });
 
-    // GAP: when the shift ends, nobody prepares the timesheet and the Brain has no rule for "shift over,
-    // no timesheet". Here staff prepared it at 14:30; if they forget, no hours, no reminders, no invoice.
-    // Correct: the Brain flags the finished shift without a timesheet (or prepares it).
-    it.fails("Staff: the Brain flags the finished shift that has no timesheet yet", async () => {
-      const issues = [...(await issuesOn(s.assignmentId)), ...(await issuesOn(s.attendance.attendanceRecordId))].filter((i) => i.ruleKey !== "worker_not_checked_in");
-      expect(issues.filter((i) => i.detectedAt.getTime() >= et(DAY, "14:00").getTime() && i.detectedAt.getTime() < et(DAY, "14:30").getTime()).length).toBeGreaterThan(0);
+    it("Staff: 'hours not prepared' when the shift ended over 2 h ago with no timesheet; closed once staff prepare them", async () => {
+      expect(s.hoursIssueOpenAt1605).toBe(1);
+      const [issue] = (await issuesOn(s.attendance.attendanceRecordId)).filter((i) => i.ruleKey === "hours_not_prepared");
+      expect(issue).toMatchObject({ subjectType: "attendance_record", recommendedAction: null, status: "resolved" });
+      expect(issue!.detectedAt.toISOString()).toBe(et(DAY, "16:05").toISOString());
+      expect(issue!.summary).toContain("Hours not prepared");
+      expect(issue!.resolvedAt?.toISOString()).toBe(et(DAY, "16:35").toISOString());
     });
 
     it("Employer: exactly one hours reminder, 24 h after the end (not at 13:55, not again at 14:05)", async () => {
@@ -593,7 +599,9 @@ suite("the AI Brain on the four real-life job kinds, all sides (Laval farm, live
     const c = {} as Record<Kind, Case>;
     let pageAt0830: Awaited<ReturnType<typeof brainPage>>;
     let needsPeopleAt0830: string[] = [];
-    let unconfirmedEmployerAttempt = 0;
+    let nophonePhone = "";
+    let doItStatus = 0;
+    let doItBody = "";
 
     beforeAll(async () => {
       setNow(et(PREV, "06:00"));
@@ -617,6 +625,15 @@ suite("the AI Brain on the four real-life job kinds, all sides (Laval farm, live
       await ticks(et(DAY, "08:25"), et(DAY, "08:30"));
       pageAt0830 = await brainPage();
       needsPeopleAt0830 = (await buildBrainSummary(brainStore, new Date())).needsPeople.map((i) => i.subjectId);
+      // 08:35: staff find the "no phone" worker's number and press "Do it" on the Brain page.
+      setNow(et(DAY, "08:35"));
+      nophonePhone = `+1450${String(Math.floor(Math.random() * 10_000_000)).padStart(7, "0")}`;
+      await prisma.user.update({ where: { id: c.nophone.worker.id }, data: { phone: nophonePhone } });
+      label(nophonePhone, 'worker "nophone" (phone added by staff)');
+      const nophoneIssue = pageAt0830.issues.find((i) => i.subjectId === c.nophone.assignmentId && i.ruleKey === "worker_not_checked_in");
+      const doIt = await app.inject({ method: "POST", url: `/platform/brain/issues/${nophoneIssue?.id ?? "missing"}/do`, headers: await h(staff) });
+      doItStatus = doIt.statusCode;
+      doItBody = doIt.body;
       setNow(et(DAY, "12:30"));
       await checkOut(c.early.worker, c.early.attendance!);
       await ticks(et(DAY, "13:55"));
@@ -635,14 +652,10 @@ suite("the AI Brain on the four real-life job kinds, all sides (Laval farm, live
         payload: { expectedVersion: confirmed.version, reason: "The worker left the field at 13:00." }
       });
       expect(disputed.statusCode, disputed.body).toBe(200);
-      await ticks(et(NEXT, "07:00"), et(NEXT, "13:55"), et(NEXT, "14:00"), et(NEXT, "14:05"));
-      // The employer follows the Brain's email and tries to confirm the hours the worker has not confirmed.
-      setNow(et(NEXT, "14:30"));
-      unconfirmedEmployerAttempt = (await employerConfirmAttempt(c.unconfirmed.timesheetId!)).statusCode;
-      await ticks(et(NEXT, "15:05"), et(NEXT2, "07:00"));
+      await ticks(et(NEXT, "07:00"), et(NEXT, "13:55"), et(NEXT, "14:00"), et(NEXT, "14:05"), et(NEXT, "15:05"), et(NEXT2, "07:00"));
       const subjects = KINDS.flatMap((k) => [c[k].job.id, c[k].assignmentId, ...(c[k].timesheetId ? [c[k].timesheetId!] : [])]);
       const failures = await prisma.messageDeliveryFailure.findMany({ where: { recipient: c.flaky.worker.phone! }, select: { id: true } });
-      await tell("2. problems on the day", et(PREV, "06:00"), [...subjects, ...failures.map((f) => f.id)], [...KINDS.flatMap((k) => [c[k].worker.email, c[k].worker.phone]), employer.email, STAFF_ALERT_EMAIL]);
+      await tell("2. problems on the day", et(PREV, "06:00"), [...subjects, ...failures.map((f) => f.id)], [...KINDS.flatMap((k) => [c[k].worker.email, c[k].worker.phone]), nophonePhone, employer.email, STAFF_ALERT_EMAIL]);
     }, 240_000);
 
     const textsInMorning = (kind: Kind) => within(sentTo(c[kind].worker.phone), et(DAY, "07:00"), et(DAY, "09:00"));
@@ -666,31 +679,33 @@ suite("the AI Brain on the four real-life job kinds, all sides (Laval farm, live
       expect((await actionsOn(failure!.id)).map((a) => [a.actionKey, a.status])).toEqual([["resend_failed_message", "done"]]);
     });
 
-    it("ACTUAL: a worker with no phone is not texted (skipped) and stays an open issue on the Brain page", async () => {
-      expect((await actionsOn(c.nophone.assignmentId)).map((a) => [a.actionKey, a.status, a.detail])).toEqual([
-        ["remind_worker_check_in", "skipped", "No phone number or texts not set up."]
-      ]);
+    it("Staff: a worker with no phone is listed as needing a person; 'Do it' works once a number is added", async () => {
       expect(pageAt0830.issues.filter((i) => i.subjectId === c.nophone.assignmentId).map((i) => i.ruleKey)).toEqual(["worker_not_checked_in"]);
-      expect(needsPeopleAt0830).not.toContain(c.nophone.assignmentId);
-    });
-
-    // BUG: the daily summary's "Needs a person" list skips an issue whose action is switched on, even
-    // when the action could not run (no phone). Nobody is pointed at a no-show who cannot be texted,
-    // and staff "Do it" refuses it too (already handled). Correct: it is listed as needing a person.
-    it.fails("Staff: a no-show the Brain could not text is listed as needing a person", async () => {
       expect(needsPeopleAt0830).toContain(c.nophone.assignmentId);
+      expect(doItStatus, doItBody).toBe(200);
+      expect(JSON.parse(doItBody)).toMatchObject({ status: "done" });
+      expect(within(sentTo(nophonePhone), et(DAY, "08:35"), et(DAY, "08:36")).map((t) => t.status)).toEqual(["sent"]);
+      const [action] = (await actionsOn(c.nophone.assignmentId)).filter((a) => a.actionKey === "remind_worker_check_in");
+      expect(action).toMatchObject({ status: "done", actorType: "staff", actorUserId: staff.id });
+      expect(action!.detail).toContain("Retried by staff. Earlier: No phone number or texts not set up.");
     });
 
-    // BUG: the reminder text closes the no-show issue ("Done"), so at 08:30 the staff Brain page shows
-    // nothing for a worker who is still not there. Correct: it stays open until the worker checks in.
-    it.fails("Staff: a no-show stays on the Brain page after the reminder text while the worker is still missing", async () => {
-      expect(pageAt0830.issues.map((i) => i.subjectId)).toContain(c.noshow.assignmentId);
+    it("Staff: a no-show stays on the Brain page after the reminder text while the worker is still missing; closes once they check in", async () => {
+      const open = pageAt0830.issues.map((i) => i.subjectId);
+      expect(open).toContain(c.noshow.assignmentId);
+      expect(open).not.toContain(c.late.assignmentId); // checked in at 08:25
+      const [late] = (await issuesOn(c.late.assignmentId)).filter((i) => i.ruleKey === "worker_not_checked_in");
+      expect(late?.resolvedAt?.toISOString()).toBe(et(DAY, "08:25").toISOString());
     });
 
-    // GAP: nobody tells the employer their worker has not arrived (nor staff, see above). Correct: by
-    // +30 min the employer hears about it (email or text) so they can plan, and staff can replace.
-    it.fails("Employer: told when their worker has still not checked in 30 minutes after the start", async () => {
-      expect(within(sentTo(employer.email), et(DAY, "08:09"), et(DAY, "08:31")).length).toBeGreaterThan(0);
+    it("Employer: told once per worker at 08:10 that the worker has not checked in yet and Joblop is on it", async () => {
+      const notices = within(sentTo(employer.email), et(DAY, "08:09"), et(DAY, "08:31")).filter((m) => /not checked in yet|pas encore fait son arrivée/.test(m.subject));
+      for (const kind of ["late", "noshow", "nophone", "flaky"] as const) {
+        expect(notices.filter((m) => m.subject.includes(c[kind].job.jobRequestNumber)).map((m) => m.at.toISOString()), kind).toEqual([et(DAY, "08:10").toISOString()]);
+      }
+      expect(notices).toHaveLength(4);
+      // The staff retry at 08:35 did not email the employer again.
+      expect(within(sentTo(employer.email), et(DAY, "08:35"), et(DAY, "08:36"))).toEqual([]);
     });
 
     it("Money: late, early-leave and disputed hours go to people; the Brain neither approves nor chases them", async () => {
@@ -703,25 +718,18 @@ suite("the AI Brain on the four real-life job kinds, all sides (Laval farm, live
       expect(sentTo(employer.email).filter((m) => isHoursReminder(m, c.dispute.job.jobRequestNumber))).toEqual([]);
     });
 
-    it("ACTUAL: hours the WORKER has not confirmed: the Brain emails the employer, who then cannot confirm them", async () => {
-      expect(sentTo(employer.email).filter((m) => isHoursReminder(m, c.unconfirmed.job.jobRequestNumber)).map((m) => m.at.toISOString())).toEqual([
-        et(NEXT, "14:00").toISOString()
-      ]);
-      expect(unconfirmedEmployerAttempt).not.toBe(200);
+    it("Worker: reminded once at +24 h to confirm their own hours; the employer is not asked while it waits for the worker", async () => {
+      expect(sentTo(employer.email).filter((m) => isHoursReminder(m, c.unconfirmed.job.jobRequestNumber))).toEqual([]);
+      const reminders = within(sentTo(c.unconfirmed.worker.email, c.unconfirmed.worker.phone), et(NEXT, "13:55"), et(NEXT2, "08:00"));
+      expect(reminders.map((m) => [m.channel, m.at.toISOString()])).toEqual([["email", et(NEXT, "14:00").toISOString()]]);
+      expect(reminders[0]!.subject).toMatch(/confirm your hours|confirmer vos heures/);
+      expect((await actionsOn(c.unconfirmed.timesheetId!)).map((a) => [a.actionKey, a.status])).toEqual([["remind_worker_timesheet", "done"]]);
       expect((await timesheetRow(c.unconfirmed.timesheetId!)).status).toBe("worker_review");
     });
 
-    // BUG: timesheetUnconfirmedRule fires on worker_review too and always emails the employer, who can
-    // only confirm in employer_review (409 above). The worker, who is holding it up, hears nothing.
-    // Correct: the worker is reminded, and the employer is not asked yet.
-    it.fails("Worker: reminded to confirm their own hours; the employer is not asked yet", async () => {
-      expect(sentTo(employer.email).filter((m) => isHoursReminder(m, c.unconfirmed.job.jobRequestNumber))).toEqual([]);
-      expect(within(sentTo(c.unconfirmed.worker.email, c.unconfirmed.worker.phone), et(NEXT, "13:55"), et(NEXT, "14:10")).length).toBeGreaterThan(0);
-    });
-
-    it("Staff: the next morning's summary counts the texts, the failure and the re-send", async () => {
+    it("Staff: the next morning's summary counts the texts (one a staff retry), the failure and the re-send", async () => {
       const summary = summaryEmailAt(et(NEXT, "07:00"));
-      expect(summary?.text).toContain("- Text a worker to check in: 2");
+      expect(summary?.text).toContain("- Text a worker to check in: 3");
       expect(summary?.text).toContain("- Re-send a failed email or text: 1");
       expect(summary?.text).toMatch(/Failed\n(- .*\n)*- Text a worker to check in: 1/);
     });
@@ -789,17 +797,13 @@ suite("the AI Brain on the four real-life job kinds, all sides (Laval farm, live
       expect(within(sentTo(s.staffWorker.email), et(PREV, "14:00"), et(PREV, "14:01")).filter((m) => /cancel|annul/i.test(m.subject)).length).toBe(1);
     });
 
-    // BUG: a staff cancel only cancels the attendance record; the assignment stays "attendance_handoff",
-    // which the Brain's no-check-in rule reads, so at 08:10 it texts the worker to check in to a shift
-    // that was cancelled. Correct: no text, no Brain action. (Overlaps fix/cancel-booked-shift.)
-    it.fails("Worker: not chased to check in after staff cancelled the shift", async () => {
+    // Fixed by PR #164 (one path to cancel a booked shift): the Brain never chases a cancelled shift.
+    it("Worker: not chased to check in after staff cancelled the shift", async () => {
       expect(within(sentTo(s.staffWorker.phone), et(DAY, "07:00"), et(DAY, "09:00"))).toEqual([]);
       expect((await actionsOn(s.staffAssignment)).filter((a) => a.actionKey === "remind_worker_check_in")).toEqual([]);
     });
 
-    // BUG: an employer cancel leaves the booked assignment "attendance_handoff" too, so the Brain texts
-    // the worker to check in to a job that no longer exists. Correct: no text. (Overlaps the same fix.)
-    it.fails("Worker: not chased to check in after the employer cancelled the job", async () => {
+    it("Worker: not chased to check in after the employer cancelled the job", async () => {
       expect(within(sentTo(s.employerWorker.phone), et(DAY, "07:00"), et(DAY, "09:00"))).toEqual([]);
       expect((await actionsOn(s.employerAssignment)).filter((a) => a.actionKey === "remind_worker_check_in")).toEqual([]);
     });
@@ -878,29 +882,22 @@ suite("the AI Brain on the four real-life job kinds, all sides (Laval farm, live
       expect((await bonusesFor(s.three)).map((b) => b.status)).toEqual(["offered_to_employer"]);
     });
 
-    it("ACTUAL: a job approved without the job board is still offered a bonus", async () => {
+    it("Employer: no bonus offer for a job that is not on the job board; staff still see it as unfilled", async () => {
       expect((await prisma.jobRequest.findUniqueOrThrow({ where: { id: s.offBoard.id }, select: { openClaim: true } })).openClaim).toBe(false);
-      expect((await bonusesFor(s.offBoard)).length).toBe(1);
-    });
-
-    // BUG: listUnfilledShifts (and so the Brain's unfilled rule and the bonus offer) does not look at
-    // openClaim. A job staff approved for chosen workers only, not on the job board, gets the same
-    // employer bonus email; workers cannot even see it. Correct (owner rule): offer a bonus only for an
-    // unfilled job that is on the job board.
-    it.fails("Employer: no bonus offer for a job that is not on the job board", async () => {
       expect(await bonusesFor(s.offBoard)).toEqual([]);
+      const [issue] = (await issuesOn(s.offBoard.id)).filter((i) => i.ruleKey === "job_unfilled_soon");
+      expect(issue).toMatchObject({ status: "open", recommendedAction: null, inputs: { onJobBoard: false } });
+      expect((await actionsOn(s.offBoard.id)).filter((a) => a.actionKey === "offer_employer_bonus")).toEqual([]);
     });
 
-    it("ACTUAL: after the employer declines, the Brain offers the same employer a bonus again at 4 h", async () => {
-      expect((await bonusesFor(s.declined)).map((b) => b.status)).toEqual(["employer_declined", "offered_to_employer"]);
-    });
-
-    // BUG: the "already has a bonus" checks only count offered/accepted/approved, so a declined offer
-    // does not count. At the 4 h threshold a new issue appears and the Brain emails the employer the
-    // same kind of offer again. Correct (owner rule: employer first, else platform-funded with a cap):
-    // the employer is asked once; after a "no" it goes to staff / the platform-funded path.
-    it.fails("Employer: asked once; after a 'no' the Brain does not ask the same employer again", async () => {
-      expect(await bonusesFor(s.declined)).toHaveLength(1);
+    it("Employer: asked once; after a 'no' the Brain does not ask again, and the job is left to a person", async () => {
+      expect((await bonusesFor(s.declined)).map((b) => b.status)).toEqual(["employer_declined"]);
+      expect(bonusEmails(et(DAY, "03:55"), et(DAY, "04:10"))).toEqual([]);
+      const issues = (await issuesOn(s.declined.id)).filter((i) => i.ruleKey === "job_unfilled_soon");
+      // 24 h → 4 h updates the same issue (now urgent, threshold 4) instead of closing it as "cleared".
+      expect(issues).toHaveLength(1);
+      expect(issues[0]).toMatchObject({ status: "open", severity: "urgent", recommendedAction: null, inputs: { thresholdHours: 4, hasBonus: true } });
+      expect(issues[0]!.summary).toContain("under 4 h");
     });
 
     it("Staff: the morning summary shows the bonus offers", async () => {
@@ -1012,23 +1009,17 @@ suite("the AI Brain on the four real-life job kinds, all sides (Laval farm, live
       expect(await prisma.assignment.count({ where: { jobRequestId: s.job.id, workerIdentityId: s.worker.workerIdentityId } })).toBe(1);
     });
 
-    it("ACTUAL: 'tomorrow' sent as both first and last day (dateFrom = dateTo) finds nothing", async () => {
+    it("Worker: 'tomorrow' as both first and last day (Toronto days, last day included) finds tomorrow's job, and only then", async () => {
       setNow(et(TODAY, "10:05"));
-      modelScript.push(callTools(useTool("search_open_jobs", { place: "Laval", dateFrom: SHIFT_DAY, dateTo: SHIFT_DAY })), answer("I found no job tomorrow."));
-      const turn = await chat("worker", s.other, "Any farm work tomorrow in Laval?");
-      const search = JSON.parse(turn.toolResults[0]!) as { jobs: { jobRequestId: string }[] };
-      expect(search.jobs.map((j) => j.jobRequestId)).not.toContain(s.spare.id);
-    });
-
-    // BUG: the search route reads dateTo "2027-01-22" as 2027-01-22T00:00Z, so every job ON that day is
-    // dropped. search_open_jobs tells the model dateTo is the "last day", so "tomorrow" (from = to =
-    // tomorrow) finds nothing. Correct: dateTo includes the whole day (in the job's time zone).
-    it.fails("Worker: 'tomorrow' as both first and last day finds tomorrow's open job", async () => {
-      setNow(et(TODAY, "10:06"));
       modelScript.push(callTools(useTool("search_open_jobs", { place: "Laval", dateFrom: SHIFT_DAY, dateTo: SHIFT_DAY })), answer("Here is what I found."));
       const turn = await chat("worker", s.other, "Is there farm work tomorrow in Laval?");
       const search = JSON.parse(turn.toolResults[0]!) as { jobs: { jobRequestId: string }[] };
       expect(search.jobs.map((j) => j.jobRequestId)).toContain(s.spare.id);
+      // "Today only" does not reach into tomorrow.
+      setNow(et(TODAY, "10:06"));
+      modelScript.push(callTools(useTool("search_open_jobs", { place: "Laval", dateFrom: TODAY, dateTo: TODAY })), answer("Nothing today."));
+      const today = await chat("worker", s.other, "Any farm work today in Laval?");
+      expect((JSON.parse(today.toolResults[0]!) as { jobs: { jobRequestId: string }[] }).jobs.map((j) => j.jobRequestId)).not.toContain(s.spare.id);
     });
 
     it("Guard: a card confirmed after 10 minutes has expired; nothing is claimed", async () => {
@@ -1161,18 +1152,7 @@ suite("the AI Brain on the four real-life job kinds, all sides (Laval farm, live
       startAt: et("2027-01-26", "08:00").toISOString(), endAt: et("2027-01-26", "14:00").toISOString()
     });
 
-    it("ACTUAL: the employer cannot create a draft request by chat (the tool answers unknown_role, no card)", async () => {
-      setNow(et(SHIFT_DAY, "15:30"));
-      modelScript.push(callTools(useTool("create_draft_request", draftByChat())), answer("I could not prepare that request."));
-      const turn = await chat("employer", employer, "Create a request for one farm worker next Tuesday 8 to 2 at the greenhouse.");
-      expect(turn.cards).toEqual([]);
-      expect(turn.toolResults[0]).toContain("unknown_role");
-    });
-
-    // BUG: create_draft_request looks roles up by a `key` field the real catalogue routes do not send
-    // (they send code / slug), so it never finds a role. See assistantRealLife.test.ts. Correct: a
-    // card, and after Confirm a draft (not submitted) for the farm worker role.
-    it.fails("Employer: creates a draft request by chat (card → Confirm → a draft, not yet sent)", async () => {
+    it("Employer: creates a draft request by chat (card → Confirm → a draft, not yet sent)", async () => {
       setNow(et(SHIFT_DAY, "15:35"));
       modelScript.push(callTools(useTool("create_draft_request", draftByChat())), answer("Check the card and press Confirm."));
       const turn = await chat("employer", employer, "Create a request for one farm worker next Tuesday 8 to 2 at the greenhouse.");

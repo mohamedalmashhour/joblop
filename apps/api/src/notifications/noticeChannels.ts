@@ -29,6 +29,8 @@ export type NoticeKind =
   | "greeting"
   | "check_in_reminder"
   | "timesheet_reminder"
+  | "worker_timesheet_reminder"
+  | "no_show_employer"
   | "staff_summary";
 
 export type NoticeChannels = Readonly<{ email: boolean; text: "always" | "urgent_only" | "never"; push?: boolean }>;
@@ -56,6 +58,11 @@ export const NOTICE_CHANNELS: Readonly<Record<NoticeKind, NoticeChannels>> = {
   // Brain (phase 1): a confirmed worker who has not checked in 10 minutes after the start is urgent.
   check_in_reminder: { email: false, text: "always" },
   timesheet_reminder: { email: true, text: "never" },
+  // The worker's own hours waiting for their confirmation (their pay depends on it). Email; a text
+  // only for a worker with no email (phone sign-in), who could not be reached otherwise.
+  worker_timesheet_reminder: { email: true, text: "urgent_only" },
+  // Employer: their booked worker has not checked in yet and Joblop is on it.
+  no_show_employer: { email: true, text: "never" },
   staff_summary: { email: true, text: "never" }
 };
 

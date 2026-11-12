@@ -10,6 +10,10 @@ const SCENARIOS: Record<JoblopActionKey, { rows: (n: number) => Partial<FakeRows
   resend_failed_message: { rows: (n) => ({ failures: ids(n).map((id) => failure({ id })) }), effect: "resendFailedMessage" },
   remind_worker_check_in: { rows: (n) => ({ shifts: ids(n).map((assignmentId) => shift({ assignmentId })) }), effect: "remindWorkerToCheckIn" },
   remind_employer_timesheet: { rows: (n) => ({ timesheets: ids(n).map((timesheetId) => timesheet({ timesheetId })) }), effect: "remindEmployerToConfirmHours" },
+  remind_worker_timesheet: {
+    rows: (n) => ({ timesheets: ids(n).map((timesheetId) => timesheet({ timesheetId, status: "worker_review", workerReviewStatus: "pending" })) }),
+    effect: "remindWorkerToConfirmHours"
+  },
   offer_employer_bonus: { rows: (n) => ({ unfilled: ids(n).map((jobRequestId) => unfilledJob({ jobRequestId })) }), effect: "offerEmployerBonus" },
   auto_approve_request: { rows: (n) => ({ requests: ids(n).map((jobRequestId) => request({ jobRequestId })) }), effect: "approveRequest" },
   auto_approve_timesheet: {

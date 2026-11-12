@@ -2,6 +2,7 @@ import type { ActionOutcome } from "@rwos/brain";
 import type {
   CheckInRow,
   DeliveryFailureRow,
+  FinishedShiftRow,
   InvoiceRow,
   JoblopBrainContext,
   JoblopBrainData,
@@ -25,9 +26,10 @@ export type FakeRows = {
   requests: ReviewRequestRow[];
   timesheets: TimesheetRow[];
   invoices: InvoiceRow[];
+  finished: FinishedShiftRow[];
 };
 
-export const emptyRows = (): FakeRows => ({ unfilled: [], shifts: [], failures: [], requests: [], timesheets: [], invoices: [] });
+export const emptyRows = (): FakeRows => ({ unfilled: [], shifts: [], failures: [], requests: [], timesheets: [], invoices: [], finished: [] });
 
 export function fakeData(rows: FakeRows): JoblopBrainData {
   return {
@@ -36,7 +38,8 @@ export function fakeData(rows: FakeRows): JoblopBrainData {
     deliveryFailures: async () => rows.failures,
     requestsInReview: async () => rows.requests,
     openTimesheets: async () => rows.timesheets,
-    overdueInvoices: async () => rows.invoices
+    overdueInvoices: async () => rows.invoices,
+    finishedShiftsWithoutTimesheet: async () => rows.finished
   };
 }
 
@@ -52,6 +55,7 @@ export function fakeEffects(outcome: ActionOutcome = { status: "done", detail: "
     resendFailedMessage: record("resendFailedMessage"),
     remindWorkerToCheckIn: record("remindWorkerToCheckIn"),
     remindEmployerToConfirmHours: record("remindEmployerToConfirmHours"),
+    remindWorkerToConfirmHours: record("remindWorkerToConfirmHours"),
     offerEmployerBonus: async (id) => {
       calls.push({ name: "offerEmployerBonus", id });
       return { ...outcome, undo: { kind: "withdraw_bonus_offer", data: { bonusId: "b-1" } }, resolvesIssue: false };
@@ -87,6 +91,8 @@ export const unfilledJob = (over: Partial<UnfilledJobRow> = {}): UnfilledJobRow 
   filled: 1,
   priced: true,
   hasBonus: false,
+  onJobBoard: true,
+  cancelledBookings: 0,
   ...over
 });
 

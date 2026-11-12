@@ -337,6 +337,7 @@ import {
 import { isEmployerPlansEnabled } from "./employerPlanRepository";
 import { createMarketingContactSync, type MarketingContactSync } from "./mailer/brevoContacts";
 import { runShiftReminderSweep } from "./shiftReminderSweep";
+import { searchDateBound } from "./localDay";
 import { registerBrainRoutes } from "./brain/brainRoutes";
 import { createPrismaDeliveryFailureRecorder, purgeOldDeliveryBodies, withEmailFailureRecording, withSmsFailureRecording } from "./brain/deliveryFailures";
 import { createJoblopBrain } from "./brain/joblopBrain";
@@ -1774,7 +1775,7 @@ export function buildApi(options: BuildApiOptions = {}) {
     if (!prisma) {
       return reply.code(503).send({ error: "RWOS_SWEEP_UNAVAILABLE", message: "Database unavailable." });
     }
-    const metrics = await runShiftReminderSweep({ prisma, emailSender, smsSender, pushSender });
+    const metrics = await runShiftReminderSweep({ prisma, emailSender, smsSender, pushSender, workerWebOrigin: offerCtaOrigin });
     logger.info("api.shift_reminder.sweep", { ...metrics });
     // Same hourly run: warn staff about approved short-term shifts still unfilled under 24 h and under
     // 4 h before the start (once per threshold). A failure here never fails the reminder sweep.
@@ -4749,8 +4750,11 @@ export function buildApi(options: BuildApiOptions = {}) {
     const radiusKm = radiusRaw && radiusRaw > 0 ? Math.min(radiusRaw, 500) : undefined; // omit → any distance
     const roleFilter = (readOptionalString(body, "role") ?? "").trim().slice(0, 80);
     // Additional server-authoritative filters. All optional; the browser can only NARROW.
-    const dateFrom = parseIsoDate(readOptionalString(body, "dateFrom"));
-    const dateTo = parseIsoDate(readOptionalString(body, "dateTo"));
+    // Plain days are local days where the jobs are (America/Toronto for Canada), the last day included:
+    // "2027-01-22" to "2027-01-22" is all of that day, not midnight UTC (19:00 the evening before).
+    const searchZone = options.countryTimezone ?? "America/Toronto";
+    const dateFrom = searchDateBound(readOptionalString(body, "dateFrom"), "from", searchZone);
+    const dateTo = searchDateBound(readOptionalString(body, "dateTo"), "to", searchZone);
     const minOpeningsRaw = readOptionalNumber(body, "minOpenings");
     const minOpenings = minOpeningsRaw && minOpeningsRaw > 0 ? Math.floor(minOpeningsRaw) : undefined;
     const verifiedOnly = body.verifiedOnly === true;
@@ -12252,14 +12256,6 @@ function readAllowancesInput(body: Record<string, unknown>) {
     meal: readAllowanceEntryInput(allowances, "meal"),
     lodging: readAllowanceEntryInput(allowances, "lodging")
   };
-}
-
-// Parse an ISO date/datetime string into a Date, or null if absent/invalid. Used for
-// marketplace date-range filters (server-authoritative).
-function parseIsoDate(value: string | null): Date | null {
-  if (!value) return null;
-  const date = new Date(value);
-  return Number.isNaN(date.getTime()) ? null : date;
 }
 
 function readStringArray(body: Record<string, unknown>, key: string) {
