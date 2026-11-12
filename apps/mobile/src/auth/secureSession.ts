@@ -682,6 +682,33 @@ export function createMobileSessionTransport(options: {
         return { status: "error" };
       }
     },
+    // "Report my hours": a shift worked without a check-in. Arrival and departure are "HH:MM" on the
+    // shift day (Québec time); the report waits for Joblop to approve. A refusal says why (`reason`).
+    async reportHours(
+      attendanceRecordId: string,
+      input: Readonly<{ arrivalTime: string; departureTime: string; reason: string }>
+    ): Promise<ReportHoursResult> {
+      const token = await options.vault.read();
+      if (!token) return { status: "denied" };
+      try {
+        const response = await request(`${origin}/worker/attendance/${encodeURIComponent(attendanceRecordId)}/report-hours`, {
+          method: "POST",
+          headers: { accept: "application/json", "content-type": "application/json", authorization: `Bearer ${token}` },
+          body: JSON.stringify({ arrivalTime: input.arrivalTime, departureTime: input.departureTime, reason: input.reason }),
+          cache: "no-store"
+        });
+        if (response.status === 401 || response.status === 403) return { status: "denied" };
+        if (response.status === 404) return { status: "not_found" };
+        if (response.status === 400 || response.status === 409) {
+          const body = (await response.json().catch(() => ({}))) as { reason?: unknown };
+          return { status: "refused", reason: typeof body.reason === "string" ? body.reason : null };
+        }
+        if (!response.ok) return { status: "error" };
+        return { status: "sent" };
+      } catch {
+        return { status: "error" };
+      }
+    },
     async attendanceCheckOut(attendanceRecordId: string, expectedVersion: number): Promise<AttendanceMutationResult> {
       const token = await options.vault.read();
       if (!token) return { status: "denied" };
@@ -2169,7 +2196,17 @@ export type WorkerAttendanceRecord = Readonly<{
   worksiteAddress: string | null;
   // Long-term job (employer plans flag): no check-in / check-out, the employer pays directly.
   clockInAllowed?: false;
+  // "Report my hours" (a shift worked with no check-in): offered while canReportHours, until
+  // reportHoursUntil; hoursReport is the latest report ("pending" = waiting for Joblop).
+  canReportHours: boolean;
+  reportHoursUntil: string | null;
+  hoursReport: Readonly<{ status: "pending" | "approved" | "rejected" }> | null;
 }>;
+
+export type ReportHoursResult =
+  | Readonly<{ status: "sent" }>
+  | Readonly<{ status: "refused"; reason: string | null }>
+  | Readonly<{ status: "denied" | "not_found" | "error" }>;
 
 export type AttendanceMutationResult = Readonly<{ status: "ready" | "denied" | "not_found" | "conflict" | "error" }>;
 
@@ -2197,8 +2234,17 @@ function parseWorkerAttendanceRecord(input: unknown): WorkerAttendanceRecord | n
     employerName: str(r.employerName),
     areaLabel: typeof r.areaLabel === "string" ? r.areaLabel : null,
     worksiteAddress: typeof r.worksiteAddress === "string" ? r.worksiteAddress : null,
-    ...(r.clockInAllowed === false ? { clockInAllowed: false as const } : {})
+    ...(r.clockInAllowed === false ? { clockInAllowed: false as const } : {}),
+    canReportHours: r.canReportHours === true,
+    reportHoursUntil: typeof r.reportHoursUntil === "string" ? r.reportHoursUntil : null,
+    hoursReport: parseHoursReport(r.hoursReport)
   };
+}
+
+function parseHoursReport(input: unknown): WorkerAttendanceRecord["hoursReport"] {
+  if (typeof input !== "object" || input === null) return null;
+  const status = (input as Record<string, unknown>).status;
+  return status === "pending" || status === "approved" || status === "rejected" ? { status } : null;
 }
 
 // Safe worker-facing projection of one of the worker's timesheets. No employer economics; only the

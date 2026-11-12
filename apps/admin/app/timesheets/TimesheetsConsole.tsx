@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useState, type CSSProperties } from "react";
 import { SignedOut } from "../shared/SignedOut";
+import { ReportedHours } from "./ReportedHours";
 
 type Ready = Readonly<{
   attendanceRecordId: string;
@@ -71,6 +72,8 @@ export function TimesheetsConsole() {
       <h1 style={s.h1}>Timesheets</h1>
       <p style={s.muted}>Take each finished shift through review to a locked timesheet, ready for payroll.</p>
       {notice ? <p role="status" style={s.notice}>{notice}</p> : null}
+
+      <ReportedHours onDecided={() => void load()} />
 
       <section aria-labelledby="ready-h" style={s.panel}>
         <h2 id="ready-h" style={s.h2}>Finished shifts ({queue.ready.length})</h2>

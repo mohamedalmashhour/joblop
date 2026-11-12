@@ -181,6 +181,24 @@ describe("joblop brain rules", () => {
       expect(issues[0]?.summary).toContain("Hours not prepared");
       expect(issues[1]?.summary).toContain("no check-in");
     });
+
+    it("does not chase a no-check-in shift whose reported hours are with staff (pending report)", async () => {
+      const finished = [
+        { ...row, attendanceRecordId: "pending", scheduledEndAt: at(-5 * HOUR), checkedIn: false, hoursReportPending: true },
+        { ...row, attendanceRecordId: "rejected", scheduledEndAt: at(-5 * HOUR), checkedIn: false, hoursReportPending: false }
+      ];
+      const issues = await hoursNotPreparedRule.detect(context({ ...emptyRows(), finished }), NOW);
+      expect(issues.map((i) => i.subjectId)).toEqual(["rejected"]);
+    });
+  });
+
+  describe("worker_not_checked_in after approved reported hours", () => {
+    it("an approved report writes the check-in time, so the shift is no longer a no-check-in issue", async () => {
+      const before = await workerNotCheckedInRule.detect(context({ ...emptyRows(), shifts: [shift({ checkedIn: false })] }), NOW);
+      expect(before).toHaveLength(1);
+      const after = await workerNotCheckedInRule.detect(context({ ...emptyRows(), shifts: [shift({ checkedIn: true })] }), NOW);
+      expect(after).toEqual([]);
+    });
   });
 
   describe("timesheet_ready", () => {

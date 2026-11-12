@@ -63,6 +63,8 @@ export const JOB_FLOW_ROUTES: readonly string[] = [
   "POST /worker/attendance/:attendanceRecordId/check-in",
   "POST /worker/attendance/:attendanceRecordId/check-out",
   "POST /worker/attendance/:attendanceRecordId/cancel",
+  // "Report my hours": a shift worked with no check-in (staff approve or reject below).
+  "POST /worker/attendance/:attendanceRecordId/report-hours",
   "POST /worker/timesheets/:timesheetId/confirm",
   "POST /worker/timesheets/:timesheetId/dispute",
   // Staff dispatch (admin console: create, review, source and shortlist, offer preparation, lifecycle).
@@ -100,6 +102,11 @@ export const JOB_FLOW_ROUTES: readonly string[] = [
   "POST /platform/attendance/:attendanceRecordId/missed",
   "POST /platform/attendance/:attendanceRecordId/exception",
   "POST /platform/attendance/:attendanceRecordId/cancel",
+  // Staff decision on a worker's reported hours (admin Timesheets console, "Reported hours").
+  "POST /platform/attendance/hours-reports/:hoursReportId/approve",
+  "POST /platform/attendance/hours-reports/:hoursReportId/reject",
+  // Staff override: staff enter the hours of a no-check-in shift themselves (after the 12-hour window).
+  "POST /platform/attendance/hours-reports/staff-entry",
   // Staff timesheets (admin Timesheets console: prepare, accept exceptions, approve, lock). calculate,
   // request-correction and reject are how staff move a disputed timesheet (correction_required) on.
   "POST /platform/timesheets/prepare",

@@ -8892,6 +8892,90 @@ export function createAttendanceService(
       });
     },
 
+    // "Report my hours", approved by staff: a shift worked with no check-in. The staff-approved times
+    // become the check-in and check-out, marked as reported by the worker and approved by staff, and
+    // the record moves on exactly like a normal check-out (checked_out). A "missed" mark is cleared
+    // (the worker did come), so it does not send the timesheet to review on its own.
+    async recordReportedHours(
+      input: AttendanceTransitionInput & { checkInAt: Date; checkOutAt: Date; evidenceSummary: string }
+    ) {
+      const currentTime = now();
+      const attendance = await requireAuthorizedAttendance({
+        attendanceRepository,
+        authorizationService,
+        session: input.session,
+        roles: input.roles ?? [],
+        permission: "attendance.override",
+        attendanceRecordId: input.attendanceRecordId,
+        correlationId: input.correlationId,
+        now: currentTime
+      });
+      const record = attendance.stored;
+      const actorUserId = input.session.user?.id ?? null;
+      if (
+        (record.status !== "pending_start" && record.status !== "missed") ||
+        record.checkInAt ||
+        record.checkOutAt
+      ) {
+        throw new AttendanceError(
+          attendanceDeny(
+            "invalid_transition",
+            `cannot_record_reported_hours_from_${record.status}`,
+            toPublicAttendanceRecord(record),
+            input.roles ?? []
+          )
+        );
+      }
+      if (!(input.checkOutAt.getTime() > input.checkInAt.getTime())) {
+        throw new AttendanceError(
+          attendanceDeny(
+            "check_out_before_check_in",
+            "check_out_before_check_in",
+            toPublicAttendanceRecord(record),
+            input.roles ?? []
+          )
+        );
+      }
+      const evidence = normalizeOptionalResidenceText(input.evidenceSummary, 240);
+      const updated = await attendanceRepository.updateAttendance({
+        attendanceRecordId: record.id,
+        expectedVersion: input.expectedVersion,
+        actorUserId,
+        status: "checked_out",
+        checkInAt: input.checkInAt,
+        checkInMethod: REPORTED_HOURS_METHOD,
+        checkInEvidenceSummary: evidence,
+        checkedInByUserId: actorUserId,
+        checkOutAt: input.checkOutAt,
+        checkOutMethod: REPORTED_HOURS_METHOD,
+        checkOutEvidenceSummary: evidence,
+        checkedOutByUserId: actorUserId,
+        exceptionCategory: null,
+        now: currentTime
+      });
+      if (!updated) {
+        await recordAttendanceVersionConflict(attendanceRepository, record, { ...input, now: currentTime });
+        throw new AttendanceError(
+          attendanceDeny("version_conflict", "stale_version", toPublicAttendanceRecord(record), input.roles ?? [])
+        );
+      }
+      for (const action of ["attendance.checked_in", "attendance.checked_out"] as const) {
+        await recordAttendanceAudit(attendanceRepository, {
+          action,
+          organizationId: updated.organizationId,
+          attendanceRecordId: updated.id,
+          assignmentId: updated.assignmentId,
+          actorUserId,
+          priorState: record.status,
+          newState: updated.status,
+          reason: REPORTED_HOURS_METHOD,
+          correlationId: input.correlationId,
+          createdAt: currentTime
+        });
+      }
+      return toPublicAttendanceRecord(updated);
+    },
+
     async markMissed(input: AttendanceTransitionInput & { reason: string }) {
       return transitionAttendanceById({
         ...input,
@@ -10211,6 +10295,9 @@ interface AttendanceEvidenceInput {
   locationPolicyResult?: string | null;
   correlationId?: string;
 }
+
+/** Check-in / check-out method on times a worker reported and staff approved ("Report my hours"). */
+export const REPORTED_HOURS_METHOD = "reported_by_worker_approved_by_staff";
 
 interface AttendanceTransitionInput {
   session: SessionValidationResult;
