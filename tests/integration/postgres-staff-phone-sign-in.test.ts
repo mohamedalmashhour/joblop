@@ -62,7 +62,7 @@ suite("PostgreSQL employer and worker phone sign-in", () => {
     const now = new Date();
     expect(await requestStaffPhoneCode(prisma, sender, { phone, now, audience: "staff" })).toBe("not_staff");
     expect(await requestStaffPhoneCode(prisma, sender, { phone, now, audience: "employer", generateCode: () => "222333" })).toBe("sent");
-    expect(sender.send.mock.calls[0]?.[0].text).toContain("Your Joblop sign-in code is 222333");
+    expect(sender.send.mock.calls[0]?.[0].text).toContain("Joblop: your sign-in code is 222333");
     expect(await verifyStaffPhoneCode(prisma, { phone, code: "222333", now, audience: "staff" })).toBeNull();
     expect(await verifyStaffPhoneCode(prisma, { phone, code: "222333", now, audience: "employer" })).toEqual({ emailNormalized: email });
   });

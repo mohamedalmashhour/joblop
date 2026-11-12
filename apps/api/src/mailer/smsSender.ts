@@ -30,7 +30,7 @@ export type SmsFetch = (
 // Brevo SMS sender is an alphanumeric id, max 11 chars, letters/digits/spaces. Fall back safely.
 function normalizeSmsSender(sender: string): string {
   const cleaned = sender.replace(/[^A-Za-z0-9 ]/g, "").trim().slice(0, 11);
-  return cleaned.length > 0 ? cleaned : "JobLop";
+  return cleaned.length > 0 ? cleaned : "Joblop";
 }
 
 // Brevo expects the recipient as digits with country code, no "+" and no separators.

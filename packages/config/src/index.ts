@@ -76,7 +76,7 @@ const runtimeConfigSchema = z
       .optional(),
     PASSWORD_RESET_PUBLIC_ORIGIN: z.string().url().optional(),
     // Transactional SMS (Brevo) — reuses BREVO_API_KEY. SMS_SENDER is the alphanumeric sender id shown
-    // on the recipient's phone (max 11 chars, e.g. "JobLop"). SMS costs money per message, so it is
+    // on the recipient's phone (max 11 chars, e.g. "Joblop"). SMS costs money per message, so it is
     // double-gated: it only sends when SMS_ENABLED=enabled AND the key + sender are present. Defaults OFF.
     SMS_ENABLED: z.enum(["disabled", "enabled"]).default("disabled"),
     SMS_SENDER: z.string().min(1).max(32).optional(),

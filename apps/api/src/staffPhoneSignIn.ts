@@ -1,5 +1,6 @@
 import { createHash, randomInt, randomUUID, timingSafeEqual } from "node:crypto";
 import type { SmsSender } from "./mailer/smsSender";
+import { codeSms } from "./notifications/smsBrand";
 // Sign-in codes go by text only; see notifications/noticeChannels.ts.
 
 const CODE_TTL_MS = 10 * 60_000;
@@ -111,7 +112,7 @@ export async function requestStaffPhoneCode(
   });
   const sent = await sms.send({
     to: input.phone,
-    text: `Your Joblop ${audience === "staff" ? "staff " : ""}sign-in code is ${code}. It expires in 10 minutes. Never share it.`
+    text: codeSms(`your ${audience === "staff" ? "staff " : ""}sign-in code is ${code}. It expires in 10 minutes. Never share it.`)
   });
   return sent.status === "sent" ? "sent" : "not_sent";
 }

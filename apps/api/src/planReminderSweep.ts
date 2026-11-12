@@ -3,6 +3,7 @@ import type { EmailMessage, EmailSender } from "./mailer/emailSender";
 import type { SmsSender } from "./mailer/smsSender";
 import type { NotificationLanguage } from "./notifications/clientNotifications";
 import { sendsText } from "./notifications/noticeChannels";
+import { noticeSms } from "./notifications/smsBrand";
 import { findOrganizationContact } from "./paymentReceipts";
 
 // Renewal reminders for PAID plans and PAID long-term listings (S3). Plans and listings are paid by
@@ -109,12 +110,12 @@ export function planEndingSmsText(params: { language: NotificationLanguage; subj
   const s = params.subject;
   if (params.language === "en") {
     return s.kind === "plan"
-      ? `Joblop: your ${PLAN_LABEL[s.plan] ?? s.plan} plan ends tomorrow (${date}). To renew: Joblop > Plans.`
-      : `Joblop: your job listing "${s.jobTitle}" ends tomorrow (${date}). To renew: Joblop > long-term jobs.`;
+      ? noticeSms("en", `your ${PLAN_LABEL[s.plan] ?? s.plan} plan ends tomorrow (${date}). To renew: Joblop > Plans.`)
+      : noticeSms("en", `your job listing "${s.jobTitle}" ends tomorrow (${date}). To renew: Joblop > long-term jobs.`);
   }
   return s.kind === "plan"
-    ? `Joblop : votre forfait ${PLAN_LABEL[s.plan] ?? s.plan} se termine demain (${date}). Pour renouveler : Joblop > Forfaits.`
-    : `Joblop : votre annonce « ${s.jobTitle} » se termine demain (${date}). Pour renouveler : Joblop > emplois de longue durée.`;
+    ? noticeSms("fr", `votre forfait ${PLAN_LABEL[s.plan] ?? s.plan} se termine demain (${date}). Pour renouveler: Joblop > Forfaits.`)
+    : noticeSms("fr", `votre annonce "${s.jobTitle}" se termine demain (${date}). Pour renouveler: Joblop > emplois de longue durée.`);
 }
 
 type Candidate = Readonly<{

@@ -4,7 +4,7 @@ import { createSmsSender, toBrevoRecipient, type SmsFetch } from "./smsSender";
 
 describe("sms sender capsule", () => {
   it("is a no-op reporting not_configured when the key or sender is missing", async () => {
-    const noKey = createSmsSender({ apiKey: undefined, sender: "JobLop", enabled: true });
+    const noKey = createSmsSender({ apiKey: undefined, sender: "Joblop", enabled: true });
     const noSender = createSmsSender({ apiKey: "xkeysib", sender: undefined, enabled: true });
     expect(noKey.configured).toBe(false);
     expect(noSender.configured).toBe(false);
@@ -20,7 +20,7 @@ describe("sms sender capsule", () => {
       called = true;
       return { ok: true, status: 201, async json() { return { messageId: 1 }; } };
     };
-    const sender = createSmsSender({ apiKey: "xkeysib", sender: "JobLop", enabled: false, fetch: fetchImpl });
+    const sender = createSmsSender({ apiKey: "xkeysib", sender: "Joblop", enabled: false, fetch: fetchImpl });
     expect(sender.configured).toBe(true);
     expect(sender.enabled).toBe(false);
     await expect(sender.send({ to: "+15145551234", text: "hi" })).resolves.toEqual({
@@ -36,19 +36,19 @@ describe("sms sender capsule", () => {
       captured = [url, init];
       return { ok: true, status: 201, async json() { return { messageId: 42 }; } };
     };
-    const sender = createSmsSender({ apiKey: "xkeysib_secret", sender: "JobLop!!", enabled: true, fetch: fetchImpl });
+    const sender = createSmsSender({ apiKey: "xkeysib_secret", sender: "Joblop!!", enabled: true, fetch: fetchImpl });
     const result = await sender.send({ to: "+1 (514) 555-1234", text: "Your code is 123456" });
     expect(result).toEqual({ status: "sent", id: "42" });
     expect(captured![0]).toBe("https://api.brevo.com/v3/transactionalSMS/sms");
     expect(captured![1].headers["api-key"]).toBe("xkeysib_secret");
     const body = JSON.parse(captured![1].body) as Record<string, unknown>;
     expect(body.recipient).toBe("15145551234");
-    expect(body.sender).toBe("JobLop"); // punctuation stripped, <=11 chars
+    expect(body.sender).toBe("Joblop"); // punctuation stripped, <=11 chars
     expect(body.type).toBe("transactional");
   });
 
   it("skips when the recipient is not a usable number", async () => {
-    const sender = createSmsSender({ apiKey: "xkeysib", sender: "JobLop", enabled: true, fetch: async () => {
+    const sender = createSmsSender({ apiKey: "xkeysib", sender: "Joblop", enabled: true, fetch: async () => {
       throw new Error("should not be called");
     } });
     await expect(sender.send({ to: "n/a", text: "hi" })).resolves.toEqual({
@@ -58,7 +58,7 @@ describe("sms sender capsule", () => {
   });
 
   it("returns error (not throw) when the provider rejects", async () => {
-    const sender = createSmsSender({ apiKey: "xkeysib", sender: "JobLop", enabled: true, fetch: async () => ({
+    const sender = createSmsSender({ apiKey: "xkeysib", sender: "Joblop", enabled: true, fetch: async () => ({
       ok: false,
       status: 401,
       async json() { return { message: "unauthorized" }; }
