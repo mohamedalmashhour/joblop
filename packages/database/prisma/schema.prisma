@@ -1281,6 +1281,13 @@ model StaffingRequestCalendarProfile {
   lodgingProvision            AllowanceProvision        @default(none) @map("lodging_provision")
   lodgingAmountMinor          Int?                      @map("lodging_amount_minor")
   lodgingNote                 String?                   @map("lodging_note")
+  // Shift conditions (all optional; NULL = not stated). breakMinutes 0 = no break. The break is shown
+  // to workers as information only: the timesheet engine does not deduct breaks yet.
+  breakMinutes                Int?                      @map("break_minutes")
+  dressCode                   String?                   @map("dress_code")
+  equipmentToBring            String?                   @map("equipment_to_bring")
+  arrivalInstructions         String?                   @map("arrival_instructions")
+  workerNotes                 String?                   @map("worker_notes")
   contractVerificationState   CalendarVerificationState @default(pending) @map("contract_verification_state")
   paymentMethodReadinessState CalendarVerificationState @default(pending) @map("payment_method_readiness_state")
   locationVerificationState   CalendarVerificationState @default(pending) @map("location_verification_state")

@@ -11,6 +11,8 @@ import { shiftOverlapNotice } from "../../shiftOverlapNotice";
 import { ShiftAddressMap } from "../../ShiftAddressMap";
 import { CancelShiftControl } from "../../schedule/CancelShift";
 import { ShiftCheckIn, type CheckInShift } from "../../schedule/ShiftCheckIn";
+import type { ShiftConditionsView } from "@rwos/shared";
+import { BeforeYouGo } from "./BeforeYouGo";
 import { JoblopJobBadge } from "../../JobSourceBadge";
 
 type JobDetailData = Readonly<{
@@ -50,6 +52,8 @@ type JobDetailData = Readonly<{
   missingCertificates?: readonly string[] | null;
   // This worker holds the shift (claimed, or assigned and confirmed): the page is their shift page.
   booked?: boolean;
+  // "Before you go": break, dress code, equipment, notes; arrival instructions only when booked.
+  conditions?: ShiftConditionsView | null;
 }>;
 
 // The worker's own schedule entry for this job (from /api/attendance).
@@ -318,6 +322,8 @@ export function JobDetail({ id, place }: { id: string; place: string | null }) {
           <p className="notice">{t("job.mapApproxNotice")}</p>
         </>
       )}
+
+      <BeforeYouGo conditions={job.conditions} />
 
       {job.description ? (
         <Section title={t("job.aboutShift")}>

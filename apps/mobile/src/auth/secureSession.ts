@@ -1,5 +1,5 @@
 import * as SecureStore from "expo-secure-store";
-import { SHIFT_OVERLAP_ERROR_CODE, parsePayOfferedView, parseWorkerCalendarDto, type PayOfferedView, type PublicCalendarJob, type WorkerCalendarDto } from "@rwos/shared";
+import { SHIFT_OVERLAP_ERROR_CODE, parsePayOfferedView, parseWorkerCalendarDto, type PayOfferedView, type PublicCalendarJob, type ShiftConditionsView, type WorkerCalendarDto } from "@rwos/shared";
 
 const sessionKey = "rwos.mobile.session";
 
@@ -1983,6 +1983,8 @@ export type MarketplaceJobDetail = MarketplaceJob &
     missingCertificates: readonly string[] | null;
     bonus: JobBonusView | null;
     allowances: AllowancesView | null;
+    /** "Before you go" (break, dress code, equipment, notes; arrival only for the booked worker). */
+    conditions: ShiftConditionsView | null;
   }>;
 
 /** The worker's current interest / application on one job, and whether they may apply. */
@@ -2103,8 +2105,24 @@ function parseMarketplaceJobDetail(input: unknown): MarketplaceJobDetail | null 
       return a && typeof a === "object"
         ? { transport: parseAllowanceLine(a.transport), meal: parseAllowanceLine(a.meal), lodging: parseAllowanceLine(a.lodging) }
         : null;
-    })()
+    })(),
+    conditions: parseShiftConditionsView(j.conditions)
   };
+}
+
+function parseShiftConditionsView(input: unknown): ShiftConditionsView | null {
+  if (typeof input !== "object" || input === null || Array.isArray(input)) return null;
+  const c = input as Record<string, unknown>;
+  const text = (v: unknown) => (typeof v === "string" && v.trim() ? v : null);
+  const breakMinutes = num(c.breakMinutes);
+  const view: ShiftConditionsView = {
+    breakMinutes: breakMinutes !== null && Number.isInteger(breakMinutes) && breakMinutes >= 0 && breakMinutes <= 240 ? breakMinutes : null,
+    dressCode: text(c.dressCode),
+    equipmentToBring: text(c.equipmentToBring),
+    arrivalInstructions: text(c.arrivalInstructions),
+    workerNotes: text(c.workerNotes)
+  };
+  return Object.values(view).some((v) => v !== null) ? view : null;
 }
 
 // The worker's own application to an open posting: their interest status + the linked governed-offer

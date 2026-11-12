@@ -6,6 +6,7 @@ import { intlLocale, resolveWorkerLanguage, type WorkerLanguage } from "./worker
 import { workerJobAddress, WORKSITE_ADDRESS_SELECT } from "../worksiteAddress";
 import { pushToWorkers, type PushSender } from "./pushSender";
 import { noticeSms, smsLanguage } from "./smsBrand";
+import { SHIFT_CONDITIONS_SELECT, beforeYouGoEmailBlock, workerShiftConditions, type ShiftConditions } from "../shiftConditions";
 
 // Format a shift start in Québec local time, in the worker's language. Kept simple + fail-soft.
 function formatShiftWhen(startAt: Date, language: WorkerLanguage): string {
@@ -164,9 +165,12 @@ export function assignedJobEmail(params: {
   startAt: Date;
   address?: string | null;
   jobUrl?: string | null;
+  /** "Before you go": break, dress code, equipment, arrival, notes for workers (when stated). */
+  conditions?: ShiftConditions | null;
 }): EmailMessage {
   const when = formatShiftWhen(params.startAt, params.language);
   const link = params.jobUrl?.trim() || null;
+  const beforeYouGo = beforeYouGoEmailBlock(params.conditions ?? null, params.language);
   // On the day the worker checks in from the job page: say from when, with the link.
   const opens = checkInOpensClock(params.startAt, params.language);
   if (params.language === "en") {
@@ -177,6 +181,7 @@ export function assignedJobEmail(params: {
         `Good news — you're confirmed for "${params.title}".\n\n` +
         `When: ${when}\n\n` +
         (params.address ? `Where: ${params.address}\n\n` : "") +
+        beforeYouGo +
         (link
           ? `See the job details and the map: ${link}\n\nOn the day, open this page to check in from ${opens}: ${link}\n\nSee you there!\n\n— Joblop`
           : `Open Joblop to see the full details in your schedule. See you there!\n\n— Joblop`)
@@ -190,6 +195,7 @@ export function assignedJobEmail(params: {
         `خبر سار — تم تأكيدك في «${params.title}».\n\n` +
         `متى: ${when}\n\n` +
         (params.address ? `أين: ${params.address}\n\n` : "") +
+        beforeYouGo +
         (link
           ? `تفاصيل العمل والخريطة هنا: ${link}\n\nفي يوم العمل، افتح هذه الصفحة لتسجيل وصولك ابتداءً من الساعة ${opens}: ${link}\n\nنراك هناك!\n\n— Joblop`
           : `افتح Joblop لرؤية كل التفاصيل في جدولك. نراك هناك!\n\n— Joblop`)
@@ -202,6 +208,7 @@ export function assignedJobEmail(params: {
       `Bonne nouvelle — vous êtes confirmé(e) pour « ${params.title} ».\n\n` +
       `Quand : ${when}\n\n` +
       (params.address ? `Où : ${params.address}\n\n` : "") +
+      beforeYouGo +
       (link
         ? `Voir les détails du travail et la carte : ${link}\n\nLe jour même, ouvrez cette page pour pointer votre arrivée à partir de ${opens} : ${link}\n\nÀ bientôt !\n\n— Joblop`
         : `Ouvrez Joblop pour voir tous les détails dans votre horaire. À bientôt !\n\n— Joblop`)
@@ -389,7 +396,7 @@ export async function notifyWorkerAssigned(
       }),
       prisma.jobRequest.findUnique({
         where: { id: input.jobRequestId },
-        select: { title: true, startAt: true, roleDefinition: { select: { displayLabel: true } }, residence: { select: WORKSITE_ADDRESS_SELECT }, calendarProfile: { select: { addressSummary: true } } }
+        select: { title: true, startAt: true, roleDefinition: { select: { displayLabel: true } }, residence: { select: WORKSITE_ADDRESS_SELECT }, calendarProfile: { select: { addressSummary: true, ...SHIFT_CONDITIONS_SELECT } } }
       })
     ]);
     if (job) {
@@ -415,7 +422,16 @@ export async function notifyWorkerAssigned(
     }
     if (!email) return { status: texted ? "sent" : "error" };
     const result = await emailSender.send(
-      assignedJobEmail({ to: email, language, title: job.title, startAt: job.startAt, address: workerJobAddress(job.calendarProfile?.addressSummary, job.residence), jobUrl })
+      assignedJobEmail({
+        to: email,
+        language,
+        title: job.title,
+        startAt: job.startAt,
+        address: workerJobAddress(job.calendarProfile?.addressSummary, job.residence),
+        jobUrl,
+        // The worker now holds the shift, so arrival instructions are included.
+        conditions: workerShiftConditions(job.calendarProfile, true)
+      })
     );
     return { status: result.status === "sent" || texted ? "sent" : result.status === "error" ? "error" : "skipped" };
   } catch {

@@ -1,5 +1,6 @@
 import type { RequestPricingSnapshotCapture } from "@rwos/auth";
 import { billableHours } from "@rwos/shared";
+import { SHIFT_CONDITIONS_SELECT, storedShiftConditions, type ShiftConditions } from "./shiftConditions";
 
 // STAFF-ONLY read model for the staff request calendar and request detail pages. It is attached to
 // the platform calendar responses only AFTER calendarRequestService has authorized the caller as a
@@ -50,6 +51,8 @@ export type AdminRequestSummary = AdminRequestCard &
     requiredCertificates: readonly string[];
     requiredCertificateOther: string | null;
     allowances: readonly AdminRequestAllowance[];
+    /** The employer's shift conditions (break, dress code, equipment, arrival, notes for workers). */
+    conditions: ShiftConditions;
     pricing: AdminRequestPricing | null;
     /** Why no price could be shown: the company has no contract in force, or no rate for this role. */
     pricingProblem: "no_contract" | "no_role_rate" | "unavailable" | null;
@@ -81,7 +84,7 @@ type JobRequestRow = {
     lodgingProvision: string;
     lodgingAmountMinor: number | null;
     lodgingNote: string | null;
-  } | null;
+  } & Partial<ShiftConditions> | null;
   pricingSnapshot: {
     currency: string;
     marginPpm: number;
@@ -186,7 +189,8 @@ export async function readAdminRequestSummary(
           mealNote: true,
           lodgingProvision: true,
           lodgingAmountMinor: true,
-          lodgingNote: true
+          lodgingNote: true,
+          ...SHIFT_CONDITIONS_SELECT
         }
       },
       pricingSnapshot: {
@@ -289,6 +293,7 @@ export async function readAdminRequestSummary(
     requiredCertificates: row.requiredCertificates,
     requiredCertificateOther: row.requiredCertificateOther,
     allowances,
+    conditions: storedShiftConditions(profile),
     pricing,
     pricingProblem,
     openClaim: row.openClaim,

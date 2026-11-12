@@ -53,7 +53,26 @@ export type EmployerDraftEditFields = Readonly<{
     meal: EmployerAllowanceEntry;
     lodging: EmployerAllowanceEntry;
   }> | null;
+  // The employer's own shift conditions, when the API sent them.
+  conditions?: EmployerShiftConditions;
 }>;
+
+export type EmployerShiftConditions = Readonly<{
+  breakMinutes: number | null;
+  dressCode: string | null;
+  equipmentToBring: string | null;
+  arrivalInstructions: string | null;
+  workerNotes: string | null;
+}>;
+
+/** The employer's shift conditions from an API record (unknown values dropped). */
+export function parseShiftConditions(input: unknown): EmployerShiftConditions | null {
+  if (typeof input !== "object" || input === null || Array.isArray(input)) return null;
+  const c = input as Record<string, unknown>;
+  const text = (value: unknown) => (typeof value === "string" && value.trim() ? value : null);
+  const breakMinutes = Number.isInteger(c.breakMinutes) && (c.breakMinutes as number) >= 0 && (c.breakMinutes as number) <= 240 ? (c.breakMinutes as number) : null;
+  return { breakMinutes, dressCode: text(c.dressCode), equipmentToBring: text(c.equipmentToBring), arrivalInstructions: text(c.arrivalInstructions), workerNotes: text(c.workerNotes) };
+}
 
 export type EmployerDispatchStatus = Readonly<{
   jobRequestId: string;
@@ -270,7 +289,8 @@ function draftEditFields(record: Readonly<Record<string, unknown>>): { edit?: Em
             meal: allowanceEntry(allowances.meal),
             lodging: allowanceEntry(allowances.lodging)
           }
-        : null
+        : null,
+      ...(parseShiftConditions(record.conditions) ? { conditions: parseShiftConditions(record.conditions)! } : {})
     }
   };
 }
@@ -432,13 +452,71 @@ export function readEmployerCalendarProfileInput(input: unknown) {
   ) {
     return null;
   }
+  const conditions = readShiftConditionsInput(record.conditions);
+  const allowances = readAllowancesForward(record.allowances);
+  if (conditions === "invalid" || allowances === "invalid") return null;
   return {
     dutiesSummary: normalizeNullableText(record.dutiesSummary),
     qualifications: qualifications.map((value) => value.trim().replace(/\s+/g, " ")),
     addressSummary: normalizeNullableText(record.addressSummary),
     specialInstructions: normalizeNullableText(record.specialInstructions),
-    expectedVersion: record.expectedVersion as number | null
+    expectedVersion: record.expectedVersion as number | null,
+    // Shift conditions and per-shift allowances are forwarded only when the form sends them. The API
+    // strips HTML and re-checks every limit; this only refuses obviously wrong shapes early.
+    ...(conditions ? { conditions } : {}),
+    ...(allowances ? { allowances } : {})
   };
+}
+
+/** Same limits as the API (apps/api/src/shiftConditions.ts). */
+export const SHIFT_CONDITION_LIMITS = { breakMinutesMax: 240, dressCode: 120, equipmentToBring: 300, arrivalInstructions: 500, workerNotes: 500 } as const;
+
+function readShiftConditionsInput(input: unknown) {
+  if (input === undefined) return null;
+  if (input === null) return { breakMinutes: null, dressCode: null, equipmentToBring: null, arrivalInstructions: null, workerNotes: null };
+  if (typeof input !== "object" || Array.isArray(input)) return "invalid" as const;
+  const record = input as Record<string, unknown>;
+  const rawBreak = record.breakMinutes;
+  const breakMinutes = rawBreak === undefined || rawBreak === null || rawBreak === "" ? null : rawBreak;
+  if (breakMinutes !== null && (!Number.isInteger(breakMinutes) || (breakMinutes as number) < 0 || (breakMinutes as number) > SHIFT_CONDITION_LIMITS.breakMinutesMax)) {
+    return "invalid" as const;
+  }
+  const text = (key: "dressCode" | "equipmentToBring" | "arrivalInstructions" | "workerNotes") => {
+    const value = record[key];
+    if (value === undefined || value === null) return null;
+    if (typeof value !== "string" || value.trim().length > SHIFT_CONDITION_LIMITS[key]) return undefined;
+    return value.trim() || null;
+  };
+  const out = {
+    breakMinutes: breakMinutes as number | null,
+    dressCode: text("dressCode"),
+    equipmentToBring: text("equipmentToBring"),
+    arrivalInstructions: text("arrivalInstructions"),
+    workerNotes: text("workerNotes")
+  };
+  return Object.values(out).some((value) => value === undefined) ? ("invalid" as const) : out;
+}
+
+const PROVISIONS = new Set(["none", "provided", "allowance"]);
+
+function readAllowancesForward(input: unknown) {
+  if (input === undefined || input === null) return null;
+  if (typeof input !== "object" || Array.isArray(input)) return "invalid" as const;
+  const record = input as Record<string, unknown>;
+  const entry = (value: unknown) => {
+    if (value === undefined || value === null) return null;
+    if (typeof value !== "object" || Array.isArray(value)) return undefined;
+    const e = value as Record<string, unknown>;
+    const provision = typeof e.provision === "string" ? e.provision : "none";
+    const amount = e.amountMinor === undefined || e.amountMinor === null ? null : e.amountMinor;
+    const note = e.note === undefined || e.note === null ? null : e.note;
+    if (!PROVISIONS.has(provision)) return undefined;
+    if (amount !== null && (!Number.isInteger(amount) || (amount as number) < 0 || (amount as number) > 1_000_000)) return undefined;
+    if (note !== null && (typeof note !== "string" || note.trim().length > 200)) return undefined;
+    return { provision, amountMinor: amount as number | null, note: typeof note === "string" ? note.trim() || null : null };
+  };
+  const out = { transport: entry(record.transport), meal: entry(record.meal), lodging: entry(record.lodging) };
+  return Object.values(out).some((value) => value === undefined) ? ("invalid" as const) : out;
 }
 
 function parseList(input: unknown, key: string) {

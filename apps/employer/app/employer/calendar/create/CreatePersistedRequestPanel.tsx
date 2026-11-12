@@ -26,6 +26,10 @@ import {
 import { fmtLocale, useLocale, useT, type Translate } from "../../../i18n/LocaleProvider";
 import { MAX_RECURRING_SHIFTS, recurringShifts, type ShiftTimes } from "./recurringShifts";
 import { DictationButton, DictationPrivacyNote } from "./DictationButton";
+import { ShiftConditionsFields } from "./ShiftConditionsFields";
+import { conditionsFormFrom, conditionsPayload, emptyConditionsForm, type ConditionsForm } from "./shiftConditionsForm";
+import { breakRuleLabel, dressCodeLabel } from "@rwos/shared";
+import { langOf } from "../../../i18n/localText";
 import { prefillSiteAddress, submittedConfirmation, type SubmittedConfirmation } from "./requestFormFlow";
 import { requestActionNotice } from "./requestActionNotice";
 import { LongTermListingsPanel } from "../../listings/LongTermListingsPanel";
@@ -89,6 +93,8 @@ type FormState = {
   lodgingProvision: Provision;
   lodgingAmount: string;
   lodgingNote: string;
+  // "Before the worker goes": break, dress code, equipment, arrival instructions, notes (optional).
+  conditions: ConditionsForm;
 };
 
 function initialForm(): FormState {
@@ -126,7 +132,8 @@ function initialForm(): FormState {
     mealNote: "",
     lodgingProvision: "none",
     lodgingAmount: "",
-    lodgingNote: ""
+    lodgingNote: "",
+    conditions: emptyConditionsForm()
   };
 }
 
@@ -576,6 +583,11 @@ export function CreatePersistedRequestPanel({ editRequestId = null }: Readonly<{
   }
 
   async function saveProfile(request: EmployerJobRequestDraft) {
+    const conditions = conditionsPayload(form.conditions);
+    if (conditions === "invalid") {
+      setMessage(t("create.conditionsInvalid"));
+      return false;
+    }
     try {
       const response = await fetch(`/api/calendar/requests/${encodeURIComponent(request.id)}`, {
         method: "PUT",
@@ -586,6 +598,7 @@ export function CreatePersistedRequestPanel({ editRequestId = null }: Readonly<{
           addressSummary: form.addressSummary.trim() || null,
           specialInstructions: form.specialInstructions.trim() || null,
           allowances: allowancesPayload(form),
+          conditions,
           expectedVersion: null
         })
       });
@@ -919,6 +932,8 @@ export function CreatePersistedRequestPanel({ editRequestId = null }: Readonly<{
         </div>
       </section>
 
+      <ShiftConditionsFields value={form.conditions} onChange={(v) => update("conditions", v)} disabled={!editing} lang={langOf(locale)} t={t} />
+
       {longTerm ? (
         <div style={{ ...styles.tintedCard, marginTop: 18 }}>{t("create.longTermNoHourlyCost")}</div>
       ) : null}
@@ -1072,7 +1087,8 @@ function formFromDraft(
     mealNote: allowance?.meal.note ?? "",
     lodgingProvision: allowance?.lodging.provision ?? "none",
     lodgingAmount: minorToDollars(allowance?.lodging.amountMinor),
-    lodgingNote: allowance?.lodging.note ?? ""
+    lodgingNote: allowance?.lodging.note ?? "",
+    conditions: conditionsFormFrom(edit?.conditions)
   };
 }
 
@@ -1279,7 +1295,8 @@ function RequestReview({ form, locale, payOfferedLabel, requiredCertificatesLabe
     [t("create.reviewSchedule"), t("create.scheduleValue", { start: when(form.startAt), end: when(form.endAt), tz: t("create.timezoneEastern") })],
     [t("create.siteAddress"), form.addressSummary || np],
     [t("create.duties"), form.dutiesSummary || np],
-    [t("create.safety"), form.specialInstructions || np]
+    [t("create.safety"), form.specialInstructions || np],
+    ...conditionRows(form.conditions, langOf(locale), t)
   ] as const;
   return (
     <section aria-labelledby="request-review-title" style={styles.panel}>
@@ -1294,6 +1311,20 @@ function RequestReview({ form, locale, payOfferedLabel, requiredCertificatesLabe
       </dl>
     </section>
   );
+}
+
+// The stated shift conditions as review rows (only the ones filled in).
+function conditionRows(form: ConditionsForm, lang: ReturnType<typeof langOf>, t: Translate): (readonly [string, string])[] {
+  const c = conditionsPayload(form);
+  if (c === "invalid") return [[t("create.breakLabel"), t("create.conditionsInvalid")]];
+  const rows: (readonly [string, string])[] = [];
+  const breakText = breakRuleLabel(c.breakMinutes, lang);
+  if (breakText) rows.push([t("create.breakLabel"), breakText]);
+  if (c.dressCode) rows.push([t("create.dressCode"), dressCodeLabel(c.dressCode, lang)]);
+  if (c.equipmentToBring) rows.push([t("create.equipment"), c.equipmentToBring]);
+  if (c.arrivalInstructions) rows.push([t("create.arrival"), c.arrivalInstructions]);
+  if (c.workerNotes) rows.push([t("create.workerNotes"), c.workerNotes]);
+  return rows;
 }
 
 function splitQualifications(value: string) {

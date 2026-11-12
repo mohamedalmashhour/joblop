@@ -57,6 +57,7 @@ export * from "./employerRequestEstimate";
 export * from "./jobListing";
 export * from "./payOffered";
 export * from "./requiredCertificates";
+export * from "./shiftConditions";
 export * from "./placeSearch";
 export * from "./publicJobsCalendar";
 export * from "./jobScannerDemo";

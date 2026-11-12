@@ -2,6 +2,7 @@
 // shows: the required certificates (stored on the job request) and the per-shift allowances (stored on
 // the calendar profile). These are the employer's own entries, never worker pay or Joblop's margin.
 import { parseRequiredCertificates, storedRequiredCertificates } from "@rwos/shared";
+import { storedShiftConditions, type ShiftConditions } from "./shiftConditions";
 
 type AllowanceRow = Readonly<{
   transportProvision: string;
@@ -18,7 +19,7 @@ type AllowanceRow = Readonly<{
 export type DraftEditExtrasRow = Readonly<{
   requiredCertificates?: readonly string[] | null;
   requiredCertificateOther?: string | null;
-  calendarProfile?: AllowanceRow | null;
+  calendarProfile?: (AllowanceRow & Partial<ShiftConditions>) | null;
 }>;
 
 export function draftEditExtras(row: DraftEditExtrasRow) {
@@ -33,7 +34,9 @@ export function draftEditExtras(row: DraftEditExtrasRow) {
           meal: { provision: profile.mealProvision, amountMinor: profile.mealAmountMinor, note: profile.mealNote },
           lodging: { provision: profile.lodgingProvision, amountMinor: profile.lodgingAmountMinor, note: profile.lodgingNote }
         }
-      : null
+      : null,
+    // The employer's own shift conditions (break, dress code, equipment, arrival, notes for workers).
+    conditions: profile ? storedShiftConditions(profile) : null
   };
 }
 

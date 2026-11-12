@@ -25,7 +25,7 @@ describe("draftEditExtras", () => {
   });
 
   it("returns empty values when nothing was stored", () => {
-    expect(draftEditExtras({})).toEqual({ requiredCertificates: [], requiredCertificateOther: null, allowances: null });
+    expect(draftEditExtras({})).toEqual({ requiredCertificates: [], requiredCertificateOther: null, allowances: null, conditions: null });
   });
 });
 
