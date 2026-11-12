@@ -1,6 +1,7 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
-import { STAFF_ONLY_ATTENDANCE_FIELDS, workerAttendanceView, workerCancelledBy } from "./workerCancelledBy";
+import { STAFF_ONLY_ATTENDANCE_FIELDS, employerCancelledBy, workerAttendanceView, workerCancelledBy } from "./workerCancelledBy";
+import { workerCancelledEmail } from "./notifications/clientNotifications";
 import { shiftCancelledEmail, shiftCancelledSmsText } from "./notifications/workerNotifications";
 
 // Workers never see the free-text cancel reason staff or the employer typed. Live example that
@@ -61,6 +62,42 @@ describe("the worker's cancellation email and text", () => {
         expect(text).not.toMatch(/Reason:|Raison :|السبب:/);
       }
       expect(email.text).toContain("Joblop");
+    });
+  }
+});
+
+describe("employers never see staff notes on a cancelled shift or request", () => {
+  it("says who cancelled from the company's side", () => {
+    expect(employerCancelledBy("employer")).toBe("company");
+    expect(employerCancelledBy("worker")).toBe("worker");
+    expect(employerCancelledBy("joblop")).toBe("joblop");
+    expect(employerCancelledBy(null)).toBeNull();
+  });
+
+  const app = readFileSync(new URL("./app.ts", import.meta.url), "utf8");
+
+  it("the employer attendance list sends the trimmed record and who cancelled", () => {
+    const route = app.slice(app.indexOf('  app.get("/organizations/:organizationId/attendance", async'), app.indexOf('  app.get("/worker/attendance/:attendanceRecordId", async'));
+    expect(route).toContain("...workerAttendanceView(serializeAttendanceRecord(item))");
+    expect(route).toContain("cancelledBy: cancelledBy.get(item.id) ?? null");
+    expect(route).not.toContain("map((item) => serializeAttendanceRecord(item))");
+  });
+
+  it("every employer job-request route keeps a staff note only when it is meant for the company", () => {
+    const helper = app.slice(app.indexOf("  async function serializeEmployerJobRequest("), app.indexOf("  // Who cancelled each attendance record, for the employer"));
+    expect(helper).toContain('jobRequest.status === "information_required"');
+    expect(helper).toContain("userHasOrganizationAccess(writer, jobRequest.organizationId)");
+    expect(helper).toContain("adminReviewReason: null");
+    // Employer routes use it; the bare serializer is left to the staff (/platform) routes.
+    const employerRoutes = app.slice(app.indexOf('  app.post("/organizations/:organizationId/job-requests", async'), app.indexOf('  app.get("/platform/job-requests/intake/:jobRequestIdOrNumber", async'));
+    expect([...employerRoutes.matchAll(/jobRequest: (\{ \.\.\.)?serializeJobRequest\(/g)]).toHaveLength(0);
+    expect(employerRoutes.match(/serializeEmployerJobRequest\(/g)?.length).toBeGreaterThanOrEqual(6);
+  });
+
+  for (const language of ["en", "fr", "ar"] as const) {
+    it(`the employer's "worker cancelled" email carries no reason (${language})`, () => {
+      const email = workerCancelledEmail({ to: "e@example.test", language, jobCode: "JR-2026-000004", title: "Farm worker" });
+      expect(email.text).not.toMatch(/Reason|Raison|Motif|السبب|Owner approved/);
     });
   }
 });

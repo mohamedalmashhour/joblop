@@ -116,9 +116,7 @@ export function EmployerAttendancePanel() {
           <span style={styles.statusBadge}>{statusLabel(attendanceStatusLabels[lang], record.status)}</span>
           <h3 style={styles.cardTitle}>{formatAttendanceWindow(record)}</h3>
           <p style={styles.cardText}>{formatPresence(record, tx.checkedIn)}</p>
-          {record.exceptionCategory ? (
-            <p style={styles.cardText}>{fill(tx.problem, { issue: record.exceptionCategory.replaceAll("_", " ") })}</p>
-          ) : null}
+          {record.cancelledBy ? <p style={styles.cardText}>{tx.cancelledBy[record.cancelledBy]}</p> : null}
           {/* No link here: the records carry no request number, and the old assignment-detail
               page is not available on the live site. */}
         </article>

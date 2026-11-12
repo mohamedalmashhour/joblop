@@ -226,7 +226,8 @@ export type EmployerAttendanceDto = Readonly<{
   verificationMethod: string;
   checkInAt: string | null;
   checkOutAt: string | null;
-  exceptionCategory: string | null;
+  // Who cancelled the shift. The staff's free-text reason is internal and never reaches the employer.
+  cancelledBy: "joblop" | "company" | "worker" | null;
   completedAt: string | null;
   cancelledAt: string | null;
   versionToken: number;
@@ -253,7 +254,7 @@ function parseEmployerAttendanceDto(input: unknown): EmployerAttendanceDto {
     verificationMethod: requiredString(record, "verificationMethod"),
     checkInAt: nullableString(record, "checkInAt"),
     checkOutAt: nullableString(record, "checkOutAt"),
-    exceptionCategory: nullableString(record, "exceptionCategory"),
+    cancelledBy: record.cancelledBy === "joblop" || record.cancelledBy === "company" || record.cancelledBy === "worker" ? record.cancelledBy : null,
     completedAt: nullableString(record, "completedAt"),
     cancelledAt: nullableString(record, "cancelledAt"),
     versionToken: nonNegativeInteger(record, "version"),
