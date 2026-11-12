@@ -10,7 +10,14 @@ import "./globals.css";
 
 export const metadata: Metadata = {
   title: "Joblop Administration",
-  description: "Joblop staff workspace."
+  description: "Joblop staff workspace.",
+  icons: {
+    icon: [
+      { url: "/favicon.ico", sizes: "48x48" },
+      { url: "/icon.png", type: "image/png", sizes: "512x512" }
+    ],
+    apple: "/apple-touch-icon.png"
+  }
 };
 
 export default async function RootLayout({ children }: Readonly<{ children: ReactNode }>) {

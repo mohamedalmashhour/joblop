@@ -2463,6 +2463,7 @@ model AttendanceRecord {
   checkedOutBy   User?                @relation("AttendanceCheckedOutByUser", fields: [checkedOutByUserId], references: [id], onDelete: SetNull)
   cancelledBy    User?                @relation("AttendanceCancelledByUser", fields: [cancelledByUserId], references: [id], onDelete: SetNull)
   timesheet      Timesheet?
+  hoursReports   AttendanceHoursReport[]
 
   @@unique([id, assignmentId, jobRequestId, workerIdentityId, organizationId, residenceId, departmentId, workGroupId, roleDefinitionId], map: "attendance_records_operational_scope_key")
   @@index([assignmentId, status], map: "attendance_records_assignment_id_status_idx")
@@ -2471,6 +2472,36 @@ model AttendanceRecord {
   @@index([residenceId, departmentId, scheduledStartAt], map: "attendance_records_residence_department_start_idx")
   @@index([jobRequestId, status], map: "attendance_records_job_request_id_status_idx")
   @@map("attendance_records")
+}
+
+// "Report my hours": a worker who worked a shift but never checked in reports the arrival and
+// departure times; staff approve (the times go onto the attendance record and the timesheet is
+// prepared) or reject. One PENDING report per attendance record (partial unique index in the
+// migration). No money on this table.
+model AttendanceHoursReport {
+  id                  String    @id @default(uuid()) @db.Uuid
+  attendanceRecordId  String    @map("attendance_record_id") @db.Uuid
+  workerIdentityId    String    @map("worker_identity_id") @db.Uuid
+  organizationId      String    @map("organization_id") @db.Uuid
+  status              String    @default("pending") // pending | approved | rejected
+  reportedCheckInAt   DateTime  @map("reported_check_in_at") @db.Timestamptz(3)
+  reportedCheckOutAt  DateTime  @map("reported_check_out_at") @db.Timestamptz(3)
+  reason              String
+  submittedByUserId   String    @map("submitted_by_user_id") @db.Uuid
+  submittedAt         DateTime  @map("submitted_at") @db.Timestamptz(3)
+  approvedCheckInAt   DateTime? @map("approved_check_in_at") @db.Timestamptz(3)
+  approvedCheckOutAt  DateTime? @map("approved_check_out_at") @db.Timestamptz(3)
+  decidedByUserId     String?   @map("decided_by_user_id") @db.Uuid
+  decidedAt           DateTime? @map("decided_at") @db.Timestamptz(3)
+  decisionReason      String?   @map("decision_reason")
+  createdAt           DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt           DateTime  @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  attendanceRecord AttendanceRecord @relation(fields: [attendanceRecordId], references: [id], onDelete: Restrict)
+
+  @@index([attendanceRecordId, status], map: "attendance_hours_reports_attendance_status_idx")
+  @@index([status, submittedAt], map: "attendance_hours_reports_status_submitted_idx")
+  @@map("attendance_hours_reports")
 }
 
 model Timesheet {
