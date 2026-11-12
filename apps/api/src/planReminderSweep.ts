@@ -3,7 +3,7 @@ import type { EmailMessage, EmailSender } from "./mailer/emailSender";
 import type { SmsSender } from "./mailer/smsSender";
 import type { NotificationLanguage } from "./notifications/clientNotifications";
 import { sendsText } from "./notifications/noticeChannels";
-import { noticeSms } from "./notifications/smsBrand";
+import { noticeSms, smsLanguage } from "./notifications/smsBrand";
 import { findOrganizationContact } from "./paymentReceipts";
 
 // Renewal reminders for PAID plans and PAID long-term listings (S3). Plans and listings are paid by
@@ -128,7 +128,8 @@ export function planEndingEmail(params: {
   };
 }
 
-export function planEndingSmsText(params: { language: NotificationLanguage; subject: ReminderSubject; endsAt: Date }): string {
+export function planEndingSmsText(raw: { language: NotificationLanguage; subject: ReminderSubject; endsAt: Date }): string {
+  const params = { ...raw, language: smsLanguage(raw.language) };
   const date = day(params.endsAt, params.language);
   const s = params.subject;
   if (params.language === "en") {

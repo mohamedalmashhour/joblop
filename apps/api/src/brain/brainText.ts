@@ -1,7 +1,7 @@
 import type { BrainMode, SummaryCopy } from "@rwos/brain";
 import type { EmailMessage } from "../mailer/emailSender";
 import type { WorkerLanguage } from "../notifications/workerLanguage";
-import { noticeSms } from "../notifications/smsBrand";
+import { noticeSms, smsLanguage } from "../notifications/smsBrand";
 
 // Every word the Joblop brain sends, in plain short English and French. Messages to workers and
 // employers never carry money: no rates, no Joblop share, nothing about the other side's pay.
@@ -19,7 +19,8 @@ function formatWhen(at: Date, language: WorkerLanguage, timeZone: string, style:
 }
 
 /** Worker SMS: the shift started and there is no check-in yet. */
-export function checkInReminderSmsText(params: { language: WorkerLanguage; title: string; startAt: Date; timezone: string }): string {
+export function checkInReminderSmsText(raw: { language: WorkerLanguage; title: string; startAt: Date; timezone: string }): string {
+  const params = { ...raw, language: smsLanguage(raw.language) };
   const time = formatWhen(params.startAt, params.language, params.timezone, "time");
   if (params.language === "en") {
     return noticeSms("en", `your shift "${params.title}" started at ${time}. Please check in now in the app. Can't make it? Tell us right away.`);
@@ -136,7 +137,8 @@ export function workerTimesheetReminderEmail(params: { to: string; language: Wor
 }
 
 /** Worker SMS twin, for a worker with no email. */
-export function workerTimesheetReminderSmsText(params: { language: WorkerLanguage; title: string; shiftStart: Date; timezone: string }): string {
+export function workerTimesheetReminderSmsText(raw: { language: WorkerLanguage; title: string; shiftStart: Date; timezone: string }): string {
+  const params = { ...raw, language: smsLanguage(raw.language) };
   const day = formatWhen(params.shiftStart, params.language, params.timezone, "date");
   if (params.language === "en") return noticeSms("en", `please confirm your hours for "${params.title}" on ${day}, in the app under Timesheets.`);
   if (params.language === "ar") return noticeSms("ar", `يُرجى تأكيد ساعاتك لـ«${params.title}» يوم ${day}، في التطبيق ضمن كشوف الدوام.`);

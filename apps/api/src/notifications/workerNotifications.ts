@@ -5,7 +5,7 @@ import { sendsText } from "./noticeChannels";
 import { intlLocale, resolveWorkerLanguage, type WorkerLanguage } from "./workerLanguage";
 import { workerJobAddress, WORKSITE_ADDRESS_SELECT } from "../worksiteAddress";
 import { pushToWorkers, type PushSender } from "./pushSender";
-import { noticeSms } from "./smsBrand";
+import { noticeSms, smsLanguage } from "./smsBrand";
 
 // Format a shift start in Québec local time, in the worker's language. Kept simple + fail-soft.
 function formatShiftWhen(startAt: Date, language: WorkerLanguage): string {
@@ -197,12 +197,13 @@ export function assignedJobEmail(params: {
 }
 
 // Short SMS twin of assignedJobEmail (SMS is billed per message, so keep it tight).
-export function assignedJobSmsText(params: {
+export function assignedJobSmsText(raw: {
   language: WorkerLanguage;
   title: string;
   startAt: Date;
   jobUrl?: string | null;
 }): string {
+  const params = { ...raw, language: smsLanguage(raw.language) };
   const when = formatShiftWhen(params.startAt, params.language);
   const link = params.jobUrl?.trim() || null;
   if (params.language === "ar") return noticeSms("ar", `حصلت على العمل! «${params.title}» — ${when}. ${link ? `التفاصيل: ${link}` : "التفاصيل في التطبيق."}`);
@@ -258,12 +259,13 @@ export function shiftReminderEmail(params: {
 }
 
 // Short SMS twin of shiftReminderEmail.
-export function shiftReminderSmsText(params: {
+export function shiftReminderSmsText(raw: {
   language: WorkerLanguage;
   title: string;
   startAt: Date;
   jobUrl?: string | null;
 }): string {
+  const params = { ...raw, language: smsLanguage(raw.language) };
   const when = formatShiftWhen(params.startAt, params.language);
   const link = params.jobUrl?.trim() || null;
   if (params.language === "ar") return noticeSms("ar", `تذكير: «${params.title}» — ${when}. ${link ? `التفاصيل: ${link}` : "التفاصيل في التطبيق."}`);
@@ -468,7 +470,8 @@ export type ShiftCancelledCopyInput = Readonly<{
 }>;
 
 export function shiftCancelledSmsText(input: Pick<ShiftCancelledCopyInput, "language" | "shift" | "offerOnly">): string {
-  const { language, shift } = input;
+  const { shift } = input;
+  const language = smsLanguage(input.language);
   const when = shiftDateTime(shift, language);
   if (language === "en") {
     const where = shift.area ? ` at ${shift.area}` : "";
@@ -586,7 +589,8 @@ function describeShiftChangeAr(change: ShiftChangeSummary, timeZone: string): st
 }
 
 export function shiftChangedSmsText(input: { language: WorkerLanguage; shift: ShiftNoticeDetails; summary: ShiftChangeSummary }): string {
-  const { language, shift } = input;
+  const { shift } = input;
+  const language = smsLanguage(input.language);
   const what = describeShiftChange(input.summary, language, shift.timeZone);
   if (language === "ar") return noticeSms("ar", `تغيّرت مناوبتك ${shift.role} في ${shiftDate(shift, language)}: ${what}. التفاصيل في تقويمك.`);
   return language === "en"

@@ -9,7 +9,7 @@ import { jobAlertConfirmationEmail, jobAlertDigestEmail } from "./jobAlerts";
 import { applicationDecisionEmail } from "./longTermApplications";
 import { verificationEmailMessage } from "./mailer/emailSender";
 import { bonusOfferEmail, invoiceSentEmail, jobCodeEmail, workerAcceptedEmail, workerCancelledEmail } from "./notifications/clientNotifications";
-import { passwordResetSms, signInCodeSms, verificationCodeSms } from "./notifications/smsBrand";
+import { passwordResetSms, signInCodeSms, smsSegmentCount, verificationCodeSms } from "./notifications/smsBrand";
 import {
   accountPenaltyEmail,
   assignedJobEmail,
@@ -94,16 +94,27 @@ function flat(message: { subject: string; text: string }): string {
   return `${message.subject}\n${message.text}`;
 }
 
-describe("every email and SMS exists in English, French and Arabic", () => {
+// SMS templates (by name). Owner decision 2026-11-12: Arabic SMS cost 2–3x (UCS-2), so an Arabic reader
+// gets the FRENCH text message; emails stay in Arabic. See smsLanguage() in notifications/smsBrand.ts.
+const isSms = (name: string) => /Sms(Text)?$/.test(name);
+
+describe("every email exists in English, French and Arabic; every SMS in English and French", () => {
   for (const [name, render] of Object.entries(TEMPLATES)) {
     it(name, () => {
       const en = render("en");
       const fr = render("fr");
       const ar = render("ar");
-      expect(ar, `${name}: Arabic version`).toMatch(ARABIC);
       expect(en, `${name}: English must not be Arabic`).not.toMatch(ARABIC);
       expect(fr, `${name}: French must not be Arabic`).not.toMatch(ARABIC);
       expect(fr, `${name}: French must not be the English text`).not.toBe(en);
+      if (isSms(name)) {
+        // An Arabic reader gets exactly the French text: no Arabic characters, at most 2 segments.
+        expect(ar, `${name}: Arabic reader gets the French SMS`).toBe(fr);
+        expect(ar, `${name}: no Arabic characters in an SMS`).not.toMatch(ARABIC);
+        expect(smsSegmentCount(ar), `${name}: ${ar}`).toBeLessThanOrEqual(2);
+      } else {
+        expect(ar, `${name}: Arabic version`).toMatch(ARABIC);
+      }
     });
   }
 });
