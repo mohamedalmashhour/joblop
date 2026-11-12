@@ -198,6 +198,7 @@ describe("staff-only request summary on the platform calendar", () => {
     requiredCertificates: [],
     requiredCertificateOther: null,
     allowances: [],
+    conditions: { breakMinutes: null, dressCode: null, equipmentToBring: null, arrivalInstructions: null, workerNotes: null },
     pricing: null,
     pricingProblem: "no_role_rate",
     openClaim: false,

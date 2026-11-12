@@ -2,14 +2,33 @@
 // (apps/worker/app/jobs/[jobRequestId]/JobDetail.tsx): which panel to show (claim, express interest,
 // long-term Apply and its status), and the certificate notice. UI-free so it is unit-tested.
 import {
+  BEFORE_YOU_GO_LABELS,
+  breakRuleLabel,
   certificateKeysFromReasons,
   certificateLabel,
+  dressCodeLabel,
   isRequiredCertificateKey,
   missingCertificatesNotice,
-  type RequiredCertificateKey
+  type RequiredCertificateKey,
+  type ShiftConditionsView
 } from "@rwos/shared";
 import type { JobInterestState, RequiredCertificatesView } from "../../auth/secureSession";
 import type { Locale } from "../../i18n/strings";
+
+/** The stated shift conditions as [label, text] lines (same words as the website's "Before you go"). */
+export function beforeYouGoLines(job: { conditions: ShiftConditionsView | null }, locale: Locale): [string, string][] {
+  const c = job.conditions;
+  if (!c) return [];
+  const L = BEFORE_YOU_GO_LABELS[locale];
+  const lines: [string, string][] = [];
+  const breakText = breakRuleLabel(c.breakMinutes, locale);
+  if (breakText) lines.push([L.breakRule, breakText]);
+  if (c.dressCode) lines.push([L.dressCode, dressCodeLabel(c.dressCode, locale)]);
+  if (c.equipmentToBring) lines.push([L.equipment, c.equipmentToBring]);
+  if (c.arrivalInstructions) lines.push([L.arrival, c.arrivalInstructions]);
+  if (c.workerNotes) lines.push([L.notes, c.workerNotes]);
+  return lines;
+}
 
 export type InterestPanel =
   | Readonly<{ kind: "hired" }>

@@ -11,6 +11,7 @@ import {
   type AuthenticatedViewState
 } from "@rwos/shared";
 import { DispatchHandoffPanel } from "./DispatchHandoffPanel";
+import { breakRuleLabel, dressCodeLabel, type ShiftConditionsView } from "@rwos/shared";
 import { JobLocationMap } from "../shared/maps";
 import { SignedOut } from "../shared/SignedOut";
 import { usePageText } from "../i18n/pageText";
@@ -271,7 +272,8 @@ export function PersistedAdminReviewPanel({ requestId }: Readonly<{ requestId: s
       : []),
     [t.rows.duties, request.dutiesSummary ?? t.notProvided],
     [t.rows.specialInstructions, request.specialInstructions ?? t.notProvided],
-    [t.rows.address, request.addressSummary ?? t.notProvided]
+    [t.rows.address, request.addressSummary ?? t.notProvided],
+    ...conditionRows(summary?.conditions ?? null, t)
   ];
 
   return (
@@ -514,6 +516,19 @@ function confirmationCopy(t: ReviewCopy, action: IntakeAction, openClaim: boolea
   if (action === "admin-review") return t.confirmAdminReview;
   if (action === "request-information") return t.confirmRequestInformation;
   return openClaim ? t.confirmApproveBoard : t.confirmApproveManual;
+}
+
+// The employer's shift conditions, only the ones stated (break, dress code, equipment, arrival, notes).
+function conditionRows(c: ShiftConditionsView | null, t: ReviewCopy): [string, ReactNode][] {
+  if (!c) return [];
+  const rows: [string, ReactNode][] = [];
+  const breakText = breakRuleLabel(c.breakMinutes, t.conditionsLang);
+  if (breakText) rows.push([t.rows.breakRule, breakText]);
+  if (c.dressCode) rows.push([t.rows.dressCode, dressCodeLabel(c.dressCode, t.conditionsLang)]);
+  if (c.equipmentToBring) rows.push([t.rows.equipment, c.equipmentToBring]);
+  if (c.arrivalInstructions) rows.push([t.rows.arrival, c.arrivalInstructions]);
+  if (c.workerNotes) rows.push([t.rows.workerNotes, c.workerNotes]);
+  return rows;
 }
 
 function formatWindow(request: AdminCalendarDto, unavailableLabel: string) {

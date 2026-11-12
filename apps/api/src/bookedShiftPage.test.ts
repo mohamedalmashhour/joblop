@@ -13,7 +13,7 @@ describe("job page for the worker who holds the shift", () => {
     expect(route).toContain('status: { notIn: ["worker_withdrawn", "employer_cancelled", "platform_cancelled"] }');
     expect(route).toContain('? { id: jobRequestId, status: { notIn: ["draft", "cancelled"] } }');
     expect(route).toContain(": listedJobWhere({");
-    expect(route).toContain("        booked\n");
+    expect(route).toContain("        booked,\n");
   });
 
   it("never selects or sends the employer rate or Joblop's share", () => {

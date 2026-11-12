@@ -313,6 +313,7 @@ import { registerEmployerPlanRoutes } from "./employerPlanRoutes";
 import { isListedForWorkers, listedJobWhere, listingVisibilitySelect } from "./jobListingVisibility";
 import { claimBlockReason, openJobWhere } from "./openJobs";
 import { employerCancelledBy, workerAttendanceView, workerCancelledBy } from "./workerCancelledBy";
+import { SHIFT_CONDITIONS_SELECT, parseShiftConditions, storedShiftConditions, workerShiftConditions } from "./shiftConditions";
 import { isSavedJobAvailable } from "./savedJobAvailability";
 import { sortDispatchesBySoonestShift } from "./dispatchListOrder";
 import { PUBLIC_CALENDAR_MAX_JOBS, publicCalendarJobView, publicCalendarRange } from "./publicJobsCalendar";
@@ -4029,9 +4030,9 @@ export function buildApi(options: BuildApiOptions = {}) {
           startAt: source.startAt,
           endAt: source.endAt
         });
-        // Copy the duties / qualifications / arrival notes (best-effort).
+        // Copy the duties / qualifications / arrival notes and shift conditions (best-effort).
         try {
-          await calendarRequestService.upsertClientProfile({
+          const copied = await calendarRequestService.upsertClientProfile({
             actorUserId,
             organizationId,
             jobRequestId: draft.id,
@@ -4041,6 +4042,12 @@ export function buildApi(options: BuildApiOptions = {}) {
             specialInstructions: sourceProfile.specialInstructions,
             expectedVersion: null
           });
+          const sourceConditions = prisma
+            ? await prisma.staffingRequestCalendarProfile.findUnique({ where: { jobRequestId: source.id }, select: SHIFT_CONDITIONS_SELECT })
+            : null;
+          if (prisma && sourceConditions) {
+            await prisma.staffingRequestCalendarProfile.update({ where: { id: copied.id }, data: storedShiftConditions(sourceConditions) });
+          }
         } catch {
           // The draft still exists; the employer can fill duties/qualifications.
         }
@@ -6472,7 +6479,8 @@ export function buildApi(options: BuildApiOptions = {}) {
             mealNote: true,
             lodgingProvision: true,
             lodgingAmountMinor: true,
-            lodgingNote: true
+            lodgingNote: true,
+            ...SHIFT_CONDITIONS_SELECT
           }
         },
         pricingSnapshot: {
@@ -6611,7 +6619,9 @@ export function buildApi(options: BuildApiOptions = {}) {
         missingCertificates: viewer ? missingCertificateKeys : null,
         bonus,
         // This worker holds the shift: the page shows it as their shift (address, Check in / out).
-        booked
+        booked,
+        // "Before you go": break, dress code, equipment, notes; arrival instructions only when booked.
+        conditions: workerShiftConditions(row.calendarProfile, booked)
       }
     });
   });
@@ -7034,7 +7044,8 @@ export function buildApi(options: BuildApiOptions = {}) {
                     mealNote: true,
                     lodgingProvision: true,
                     lodgingAmountMinor: true,
-                    lodgingNote: true
+                    lodgingNote: true,
+                    ...SHIFT_CONDITIONS_SELECT
                   }
                 }
               }
@@ -7502,6 +7513,16 @@ export function buildApi(options: BuildApiOptions = {}) {
           message: "Invalid calendar request."
         });
       }
+      // Optional shift conditions (break, dress code, equipment, arrival, notes for workers): plain
+      // text, length-checked. Absent → the stored values stay as they are.
+      const conditions = parseShiftConditions(body.conditions);
+      if (conditions.status === "invalid") {
+        return reply.code(400).send({
+          error: "RWOS_INVALID_SHIFT_CONDITIONS",
+          message: "Check the shift conditions: a break of 0 to 240 minutes, and short plain-text notes.",
+          field: conditions.field
+        });
+      }
 
       const profile = await calendarRequestService.upsertClientProfile({
         actorUserId: session.user.id,
@@ -7514,8 +7535,18 @@ export function buildApi(options: BuildApiOptions = {}) {
         allowances: readAllowancesInput(body),
         expectedVersion: readOptionalNumber(body, "expectedVersion")
       });
+      // The service checked the organization; write the conditions onto the same profile row.
+      let storedConditions = null as ReturnType<typeof storedShiftConditions> | null;
+      if (conditions.status === "ok" && prisma) {
+        const row = await prisma.staffingRequestCalendarProfile.update({
+          where: { id: profile.id },
+          data: conditions.data,
+          select: SHIFT_CONDITIONS_SELECT
+        });
+        storedConditions = storedShiftConditions(row);
+      }
 
-      return reply.code(200).send({ profile: serializeCalendarProfile(profile) });
+      return reply.code(200).send({ profile: serializeCalendarProfile(profile), ...(storedConditions ? { conditions: storedConditions } : {}) });
     }
   );
 

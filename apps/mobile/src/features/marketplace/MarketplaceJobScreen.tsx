@@ -5,11 +5,12 @@ import { colors, radii, spacing } from "../../theme";
 import type { AllowanceLineView, JobInterestState, MarketplaceJobDetail, MobileSessionTransport, WorkerAttendanceRecord } from "../../auth/secureSession";
 import { Badge, BodyText, Button, Card, Divider, ErrorState, Heading, LoadingState, ScreenContainer, Section, SmallText } from "../../ui/primitives";
 import { formatJobPay, formatJobWhen, formatLocale, formatOpenings } from "./marketplaceContent";
-import { certificateNotice, ineligibleKey, interestPanel, requiredCertificateRows } from "./jobDetailContent";
+import { beforeYouGoLines, certificateNotice, ineligibleKey, interestPanel, requiredCertificateRows } from "./jobDetailContent";
 import { useLocale } from "../../i18n/LocaleContext";
 import type { Locale } from "../../i18n/strings";
 import { JobLocationLink } from "../maps";
 import { ShiftCheckInCard } from "../worker-attendance/ShiftCheckInCard";
+import { BEFORE_YOU_GO_LABELS } from "@rwos/shared";
 
 type DetailState =
   | { status: "loading" }
@@ -261,6 +262,17 @@ function JobBody({
           <ShiftCheckInCard record={myRecord} transport={transport} onChanged={onShiftChanged} />
           {onOpenSchedule ? <Button label={t("job.goToSchedule")} variant="secondary" onPress={onOpenSchedule} /> : null}
         </Card>
+      ) : null}
+
+      {beforeYouGoLines(job, locale).length > 0 ? (
+        <Section title={BEFORE_YOU_GO_LABELS[locale].title}>
+          <Card testID="before-you-go">
+            {beforeYouGoLines(job, locale).map(([label, text]) => (
+              <Fact key={label} label={label} value={text} rtl={isRtl} />
+            ))}
+            {job.conditions?.breakMinutes ? <SmallText>{BEFORE_YOU_GO_LABELS[locale].breakInfo}</SmallText> : null}
+          </Card>
+        </Section>
       ) : null}
 
       {job.description ? (

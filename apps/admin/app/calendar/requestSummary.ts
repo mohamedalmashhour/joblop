@@ -2,6 +2,7 @@
 // company, location and role for each card, and "what the employer asked for" with worker pay and
 // margin on the request detail. Parsed defensively: anything malformed becomes null and the page
 // simply leaves that block out.
+import type { ShiftConditionsView } from "@rwos/shared";
 
 export type RequestCard = Readonly<{
   companyName: string;
@@ -41,6 +42,8 @@ export type RequestSummary = RequestCard &
     requiredCertificates: readonly string[];
     requiredCertificateOther: string | null;
     allowances: readonly RequestAllowance[];
+    /** The employer's shift conditions (null fields = not stated). */
+    conditions: ShiftConditionsView;
     pricing: RequestPricing | null;
     pricingProblem: "no_contract" | "no_role_rate" | "unavailable" | null;
     openClaim: boolean;
@@ -101,6 +104,18 @@ function parsePricing(input: unknown): RequestPricing | null {
   return { source: input.source, currency, ...(values as Record<(typeof keys)[number], number>) };
 }
 
+function parseConditions(input: unknown): ShiftConditionsView {
+  const c = isRec(input) ? input : {};
+  const breakMinutes = num(c.breakMinutes);
+  return {
+    breakMinutes: breakMinutes !== null && Number.isInteger(breakMinutes) && breakMinutes >= 0 && breakMinutes <= 240 ? breakMinutes : null,
+    dressCode: str(c.dressCode),
+    equipmentToBring: str(c.equipmentToBring),
+    arrivalInstructions: str(c.arrivalInstructions),
+    workerNotes: str(c.workerNotes)
+  };
+}
+
 export function parseRequestSummary(input: unknown): RequestSummary | null {
   const card = parseCard(input);
   if (!card || !isRec(input)) return null;
@@ -127,6 +142,7 @@ export function parseRequestSummary(input: unknown): RequestSummary | null {
       : [],
     requiredCertificateOther: str(input.requiredCertificateOther),
     allowances,
+    conditions: parseConditions(input.conditions),
     pricing: parsePricing(input.pricing),
     pricingProblem:
       problem === "no_contract" || problem === "no_role_rate" || problem === "unavailable" ? problem : null,

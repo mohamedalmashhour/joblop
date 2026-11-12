@@ -25,6 +25,9 @@ import { EditRequestPanel } from "./EditRequestPanel";
 import { DuplicateRequestButton } from "./DuplicateRequestButton";
 import { ReduceWorkersPanel } from "./ReduceWorkersPanel";
 import { requestCertificates } from "./requestDetailText";
+import { breakRuleLabel, dressCodeLabel } from "@rwos/shared";
+import { parseShiftConditions, type EmployerShiftConditions } from "../../../api/job-requests/jobRequestBoundary";
+import { langOf } from "../../../i18n/localText";
 
 // The employer's view of one request: where it stands, the shift, and what they can do next. Shows only
 // what the employer agreed to (their own request and its status); never worker pay or Joblop's margin.
@@ -37,6 +40,8 @@ export function ClientRequestDetailPanel({ requestId }: Readonly<{ requestId: st
   const [organizationRequired, setOrganizationRequired] = useState(false);
   // The certificates chosen on the request form (best effort; the page works without them).
   const [chosenCertificates, setChosenCertificates] = useState<readonly string[] | null>(null);
+  // The employer's own shift conditions (break, dress code, equipment, arrival, notes for workers).
+  const [conditions, setConditions] = useState<EmployerShiftConditions | null>(null);
   // Set once a cancel succeeds on this page: the badge then reads "Cancelled" and the cancel result
   // stays on screen, even before the refreshed record arrives.
   const [cancelledHere, setCancelledHere] = useState(false);
@@ -74,11 +79,12 @@ export function ClientRequestDetailPanel({ requestId }: Readonly<{ requestId: st
       const request = parseClientCalendarDto(payload.request);
       setState({ status: "ready", data: request });
       const jobRequest = await fetch(`/api/job-requests/${encodeURIComponent(request.id)}`, { cache: "no-store" })
-        .then((r) => (r.ok ? (r.json() as Promise<{ jobRequest?: { edit?: { requiredCertificates?: unknown } } }>) : null))
+        .then((r) => (r.ok ? (r.json() as Promise<{ jobRequest?: { edit?: { requiredCertificates?: unknown; conditions?: unknown } } }>) : null))
         .catch(() => null);
       if (generation !== requestGeneration.current) return;
       const keys = jobRequest?.jobRequest?.edit?.requiredCertificates;
       setChosenCertificates(Array.isArray(keys) ? keys.filter((key): key is string => typeof key === "string") : null);
+      setConditions(parseShiftConditions(jobRequest?.jobRequest?.edit?.conditions));
     } catch {
       if (generation !== requestGeneration.current || quiet) return;
       setState({ status: "error" });
@@ -170,7 +176,8 @@ export function ClientRequestDetailPanel({ requestId }: Readonly<{ requestId: st
     ["detail.duties", request.dutiesSummary ?? notProvided],
     ["detail.certificates", certificates.length ? certificates.join(", ") : t("detail.none")],
     ["detail.address", request.addressSummary ?? notProvided],
-    ["detail.instructions", request.specialInstructions ?? notProvided]
+    ["detail.instructions", request.specialInstructions ?? notProvided],
+    ...conditionFields(conditions, langOf(locale))
   ];
   return (
     <div style={styles.twoColumn}>
@@ -304,6 +311,19 @@ function AddToCalendar({ request, t }: Readonly<{ request: ClientCalendarDto; t:
       </div>
     </div>
   );
+}
+
+// The stated shift conditions, only the ones filled in (labels from the request form).
+function conditionFields(c: EmployerShiftConditions | null, lang: ReturnType<typeof langOf>): (readonly [MessageKey, string])[] {
+  if (!c) return [];
+  const rows: (readonly [MessageKey, string])[] = [];
+  const breakText = breakRuleLabel(c.breakMinutes, lang);
+  if (breakText) rows.push(["create.breakLabel", breakText]);
+  if (c.dressCode) rows.push(["create.dressCode", dressCodeLabel(c.dressCode, lang)]);
+  if (c.equipmentToBring) rows.push(["create.equipment", c.equipmentToBring]);
+  if (c.arrivalInstructions) rows.push(["create.arrival", c.arrivalInstructions]);
+  if (c.workerNotes) rows.push(["create.workerNotes", c.workerNotes]);
+  return rows;
 }
 
 function formatWindow(request: ClientCalendarDto, locale: Parameters<typeof fmtLocale>[0], t: Translate) {
