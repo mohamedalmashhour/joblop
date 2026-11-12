@@ -464,7 +464,8 @@ export type ShiftCancelledCopyInput = Readonly<{
   cancelledBy: "employer" | "staff";
   // True when the worker had only been sent an offer for the shift, not assigned to it.
   offerOnly?: boolean;
-  reasonText?: string | null;
+  // No free-text reason: what staff or the employer typed is internal and never reaches the worker.
+  // The email says only who cancelled (Joblop or the employer).
   workerWebOrigin?: string | null;
 }>;
 
@@ -493,7 +494,6 @@ export function shiftCancelledSmsText(input: Pick<ShiftCancelledCopyInput, "lang
 export function shiftCancelledEmail(input: ShiftCancelledCopyInput & { to: string }): EmailMessage {
   const { language, shift } = input;
   const when = shiftDateTime(shift, language);
-  const reason = input.reasonText?.trim();
   if (language === "en") {
     const where = shift.area ? ` at ${shift.area}` : "";
     const who = input.cancelledBy === "employer" ? "by the employer" : "by Joblop";
@@ -504,7 +504,6 @@ export function shiftCancelledEmail(input: ShiftCancelledCopyInput & { to: strin
         (input.offerOnly
           ? `The shift you were offered, "${shift.role}" on ${when}${where}, was cancelled ${who}. The offer no longer applies.\n\n`
           : `Your shift "${shift.role}" on ${when}${where} was cancelled ${who}. You do not need to go.\n\n`) +
-        (reason ? `Reason: ${reason}\n\n` : "") +
         `${calendarLine(input.workerWebOrigin, language)}\n\n` +
         `If you were already on your way, contact Joblop.\n\n— Joblop`
     };
@@ -519,7 +518,6 @@ export function shiftCancelledEmail(input: ShiftCancelledCopyInput & { to: strin
         (input.offerOnly
           ? `نأسف، أُلغيت المناوبة التي عُرضت عليك (${shift.role}) يوم ${when}${whereAr}. ألغاها ${whoAr}، ولم يعد هذا العرض متاحًا.\n\n`
           : `نأسف، أُلغيت مناوبتك (${shift.role}) يوم ${when}${whereAr}. ألغاها ${whoAr}، فلا حاجة إلى الذهاب إلى موقع العمل.\n\n`) +
-        (reason ? `السبب: ${reason}\n\n` : "") +
         `${calendarLine(input.workerWebOrigin, language)}\n\n` +
         `إذا كنت في طريقك إلى العمل الآن، يُرجى التواصل مع Joblop.\n\n— Joblop`
     };
@@ -533,7 +531,6 @@ export function shiftCancelledEmail(input: ShiftCancelledCopyInput & { to: strin
       (input.offerOnly
         ? `Le quart qui vous était offert, « ${shift.role} » le ${when}${where}, a été annulé ${who}. L'offre ne s'applique plus.\n\n`
         : `Votre quart « ${shift.role} » le ${when}${where} a été annulé ${who}. Vous n'avez pas à vous présenter.\n\n`) +
-      (reason ? `Raison : ${reason}\n\n` : "") +
       `${calendarLine(input.workerWebOrigin, language)}\n\n` +
       `Si vous étiez déjà en route, communiquez avec Joblop.\n\n— Joblop`
   };
@@ -744,7 +741,6 @@ export async function notifyWorkersShiftCancelled(
     jobRequestId: string;
     workers: readonly ShiftNoticeWorker[];
     cancelledBy: "employer" | "staff";
-    reasonText?: string | null;
     workerWebOrigin?: string | null;
   },
   pushSender?: PushSender
@@ -764,7 +760,6 @@ export async function notifyWorkersShiftCancelled(
             shift: context.shift,
             cancelledBy: input.cancelledBy,
             offerOnly: recipient.worker.offerOnly === true,
-            reasonText: input.reasonText ?? null,
             workerWebOrigin: input.workerWebOrigin ?? null
           };
           return {

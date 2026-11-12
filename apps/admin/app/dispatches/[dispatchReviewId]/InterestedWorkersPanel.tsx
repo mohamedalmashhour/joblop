@@ -6,14 +6,13 @@ import { readShiftOverlapNotice } from "../shiftOverlapNotice";
 import { CertificateOverrideBox, certificateOverrideBody, type CertificateOverride } from "../CertificateOverrideBox";
 import { SignedOut } from "../../shared/SignedOut";
 import { BoardOnlyNotice, CreateOfferNote } from "./BoardOnlyNotice";
+import { usePageText } from "../../i18n/pageText";
+import { dispatchPanelsText, fillIn, statusWord, type DispatchPanelsCopy } from "./dispatchPanelsText";
 
-// Marketplace INTEREST review, inside the existing governed dispatch review. This panel is a
-// review signal + governed handoff only:
-//   - it NEVER creates an offer or an assignment;
-//   - offers are created in the existing worker-offer flow; here the reviewer LINKS an
-//     interest to an already-created governed offer;
-//   - "Accepted / Assigned" language is shown ONLY from authoritative governed offer state,
-//     never from interest or shortlist state.
+// Workers who said they are interested in this job. This box never creates an assignment: the
+// reviewer picks workers, creates a draft offer, or links the interest to an offer that exists.
+// "Offer accepted" is shown only from the offer's own status, never from the interest status.
+// Staff words (EN/FR/AR) live in dispatchPanelsText.ts.
 
 type InterestedWorker = Readonly<{
   interestId: string | null;
@@ -27,23 +26,16 @@ type InterestedWorker = Readonly<{
   governedOffer: { workerOfferId: string | null; status: string | null; version: number | null } | null;
 }>;
 
-// Truthful marketplace-intent labels. Interest/shortlist NEVER imply a job was assigned.
-const INTEREST_LABEL: Record<string, string> = {
-  submitted: "Expressed interest",
-  under_review: "Under review",
-  shortlisted: "Shortlisted — selected for further consideration; no job assigned",
-  not_selected: "Not selected",
-  offer_created: "Governed offer linked",
-  offer_accepted: "Offer accepted"
-};
-
-// Authoritative badge from the governed offer state (not from interest state).
-function governedBadge(offerStatus: string | null): { label: string; tone: "neutral" | "info" | "good" } | null {
+// Badge from the offer's own status (not from the interest status).
+function offerBadge(
+  copy: DispatchPanelsCopy,
+  offerStatus: string | null
+): { label: string; tone: "neutral" | "info" | "good" } | null {
   if (!offerStatus) return null;
-  if (offerStatus === "accepted") return { label: "Offer accepted (governed) — assignment authoritative", tone: "good" };
-  if (["sent", "delivered", "viewed", "approved", "draft"].includes(offerStatus))
-    return { label: `Governed offer: ${offerStatus}`, tone: "info" };
-  return { label: `Governed offer: ${offerStatus}`, tone: "neutral" };
+  if (offerStatus === "accepted") return { label: copy.interested.offerAccepted, tone: "good" };
+  const label = fillIn(copy.interested.offerWithStatus, { status: statusWord(copy.offers.statusWords, offerStatus) });
+  if (["sent", "delivered", "viewed", "approved", "draft"].includes(offerStatus)) return { label, tone: "info" };
+  return { label, tone: "neutral" };
 }
 
 type State =
@@ -55,6 +47,8 @@ export function InterestedWorkersPanel({
   jobRequestId
 }: Readonly<{ dispatchReviewId: string; jobRequestId: string }>) {
   const locale = useLocale();
+  const copy = usePageText(dispatchPanelsText);
+  const t = copy.interested;
   const [state, setState] = useState<State>({ status: "loading" });
   const [busyId, setBusyId] = useState<string | null>(null);
   // Required-certificate pre-check per worker (override is logged by the API).
@@ -104,7 +98,7 @@ export function InterestedWorkersPanel({
         const body: Record<string, unknown> = { action, interestId: worker.interestId };
         if (action === "link_offer") {
           if (!worker.governedOffer?.workerOfferId) {
-            setNotice({ tone: "alert", message: "No governed offer exists for this worker yet. Create one in the offers panel first." });
+            setNotice({ tone: "alert", message: t.noOffer });
             return;
           }
           body.workerOfferId = worker.governedOffer.workerOfferId;
@@ -119,21 +113,21 @@ export function InterestedWorkersPanel({
             tone: "alert",
             message:
               res.status === 409
-                ? "That governed offer does not match this worker and job. Refresh and try again."
+                ? t.mismatch
                 : res.status === 401 || res.status === 403
-                  ? "Administrator authorization is required."
-                  : "That action could not be completed. Refresh and try again."
+                  ? t.authRequired
+                  : t.actionFailed
           });
           return;
         }
-        await load(); // re-read authoritative state
+        await load(); // re-read the saved state
       } catch {
-        setNotice({ tone: "alert", message: "Something went wrong. Please try again." });
+        setNotice({ tone: "alert", message: t.generic });
       } finally {
         setBusyId(null);
       }
     },
-    [busyId, dispatchReviewId, load]
+    [busyId, dispatchReviewId, load, t]
   );
 
   // Round 2b: create a governed DRAFT offer for a shortlisted worker (reuses the offers BFF →
@@ -159,35 +153,31 @@ export function InterestedWorkersPanel({
             message: overlap
               ? overlap
               : res.status === 401 || res.status === 403
-                ? "Administrator authorization is required."
-                : "The governed offer could not be created. Refresh and try again."
+                ? t.authRequired
+                : t.offerFailed
           });
           return;
         }
-        setNotice({ tone: "status", message: "Governed draft offer created. Approve and send it in the offers panel." });
+        setNotice({ tone: "status", message: t.offerCreated });
         await load();
       } catch {
-        setNotice({ tone: "alert", message: "Something went wrong. Please try again." });
+        setNotice({ tone: "alert", message: t.generic });
       } finally {
         setBusyId(null);
       }
     },
-    [busyId, dispatchReviewId, load, locale, certificateOverrides]
+    [busyId, dispatchReviewId, load, locale, certificateOverrides, t]
   );
 
   if (state.status === "denied") return <SignedOut compact />;
   if (state.status !== "ready") {
     return (
       <div>
-        <h2>Interested workers (marketplace)</h2>
-        <p aria-live="polite">
-          {state.status === "loading"
-            ? "Loading marketplace interest…"
-            : "Marketplace interest is unavailable."}
-        </p>
+        <h2>{t.title}</h2>
+        <p aria-live="polite">{state.status === "loading" ? t.loading : t.unavailable}</p>
         {state.status !== "loading" ? (
           <button type="button" style={styles.button} onClick={() => void load()}>
-            Retry
+            {t.retry}
           </button>
         ) : null}
       </div>
@@ -196,13 +186,8 @@ export function InterestedWorkersPanel({
 
   return (
     <div>
-      <h2>Interested workers (marketplace)</h2>
-      <p style={styles.muted}>
-        A worker expressing interest is only an intent signal. It does not create an offer or an
-        assignment. Governed offers are created in the offers panel; here you link an interest to an
-        already-created offer. Assignment is created only when a worker accepts through the governed
-        offer flow.
-      </p>
+      <h2>{t.title}</h2>
+      <p style={styles.muted}>{t.intro}</p>
       <BoardOnlyNotice />
       {notice ? (
         <p role={notice.tone} style={notice.tone === "alert" ? styles.alert : styles.status}>
@@ -210,11 +195,11 @@ export function InterestedWorkersPanel({
         </p>
       ) : null}
       {state.interested.length === 0 ? (
-        <p style={styles.muted}>No workers have expressed interest yet.</p>
+        <p style={styles.muted}>{t.none}</p>
       ) : (
         <ul style={styles.list}>
           {state.interested.map((w) => {
-            const badge = governedBadge(w.governedOffer?.status ?? null);
+            const badge = offerBadge(copy, w.governedOffer?.status ?? null);
             const canReview = w.status === "submitted";
             const canShortlist = w.status === "submitted" || w.status === "under_review";
             const canDismiss = ["submitted", "under_review", "shortlisted"].includes(w.status ?? "");
@@ -223,14 +208,14 @@ export function InterestedWorkersPanel({
             return (
               <li key={w.interestId ?? w.workerIdentityId} style={styles.item}>
                 <div style={styles.itemHead}>
-                  <strong>{w.displayName ?? "Worker"}</strong>
-                  {w.employerFavorite ? <span> ★ Employer favourite</span> : null}
+                  <strong>{w.displayName ?? t.workerFallback}</strong>
+                  {w.employerFavorite ? <span> {t.favourite}</span> : null}
                   {w.distanceKmAtInterest !== null ? (
-                    <span style={styles.dim}>{w.distanceKmAtInterest} km at interest</span>
+                    <span style={styles.dim}>{fillIn(t.kmAtInterest, { km: w.distanceKmAtInterest })}</span>
                   ) : null}
                 </div>
                 <div style={styles.badges}>
-                  <span style={styles.intentBadge}>{INTEREST_LABEL[w.status ?? ""] ?? w.status}</span>
+                  <span style={styles.intentBadge}>{w.status ? statusWord(t.labels, w.status) : ""}</span>
                   {badge ? (
                     <span style={badge.tone === "good" ? styles.goodBadge : styles.infoBadge}>{badge.label}</span>
                   ) : null}
@@ -238,17 +223,17 @@ export function InterestedWorkersPanel({
                 <div style={styles.actions}>
                   {canReview ? (
                     <button type="button" style={styles.button} disabled={busyId === w.interestId} onClick={() => void act(w, "review")}>
-                      Mark under review
+                      {t.markReview}
                     </button>
                   ) : null}
                   {canShortlist ? (
                     <button type="button" style={styles.button} disabled={busyId === w.interestId} onClick={() => void act(w, "shortlist")}>
-                      Shortlist
+                      {t.shortlist}
                     </button>
                   ) : null}
                   {canDismiss ? (
                     <button type="button" style={styles.buttonGhost} disabled={busyId === w.interestId} onClick={() => void act(w, "not_selected")}>
-                      Not selected
+                      {t.notSelected}
                     </button>
                   ) : null}
                   {canCreateOffer && w.workerIdentityId ? (
@@ -261,17 +246,17 @@ export function InterestedWorkersPanel({
                       disabled={busyId === w.interestId || Boolean(w.workerIdentityId && certificateOverrides[w.workerIdentityId]?.needed && !certificateOverrides[w.workerIdentityId]?.override)}
                       onClick={() => void createOffer(w)}
                     >
-                      Create offer
+                      {t.createOffer}
                     </button>
                   ) : null}
                   {canCreateOffer ? <CreateOfferNote /> : null}
                   {canLink ? (
                     <button type="button" style={styles.button} disabled={busyId === w.interestId} onClick={() => void act(w, "link_offer")}>
-                      Link to governed offer
+                      {t.linkOffer}
                     </button>
                   ) : null}
                   {!w.governedOffer && (w.status === "shortlisted" || w.status === "under_review" || w.status === "submitted") ? (
-                    <span style={styles.dim}>No governed offer yet — create one in the offers panel to link.</span>
+                    <span style={styles.dim}>{t.noOfferYet}</span>
                   ) : null}
                 </div>
               </li>

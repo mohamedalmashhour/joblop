@@ -2158,7 +2158,8 @@ export type WorkerAttendanceRecord = Readonly<{
   timezone: string;
   checkInAt: string | null;
   checkOutAt: string | null;
-  exceptionCategory: string | null;
+  // Who cancelled the shift; the internal reason text is never sent to the worker.
+  cancelledBy: "joblop" | "employer" | "worker" | null;
   version: number;
   employerName: string;
   areaLabel: string | null;
@@ -2188,7 +2189,7 @@ function parseWorkerAttendanceRecord(input: unknown): WorkerAttendanceRecord | n
     timezone: str(r.timezone),
     checkInAt: typeof r.checkInAt === "string" ? r.checkInAt : null,
     checkOutAt: typeof r.checkOutAt === "string" ? r.checkOutAt : null,
-    exceptionCategory: typeof r.exceptionCategory === "string" ? r.exceptionCategory : null,
+    cancelledBy: r.cancelledBy === "joblop" || r.cancelledBy === "employer" || r.cancelledBy === "worker" ? r.cancelledBy : null,
     version: num(r.version) ?? 0,
     employerName: str(r.employerName),
     areaLabel: typeof r.areaLabel === "string" ? r.areaLabel : null,
