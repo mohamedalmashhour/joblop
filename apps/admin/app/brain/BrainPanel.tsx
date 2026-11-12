@@ -166,7 +166,10 @@ export function BrainPanel() {
         <ul style={styles.switchList}>
           {data.switches.map((s) => (
             <li key={s.key} style={styles.switchRow}>
-              <span>{actionName(s.key)}</span>
+              <span style={styles.switchText}>
+                <span>{actionName(s.key)}</span>
+                {copy.switchHelp[s.key] ? <small style={styles.muted}>{copy.switchHelp[s.key]}</small> : null}
+              </span>
               <button
                 type="button"
                 role="switch"
@@ -196,6 +199,7 @@ export function BrainPanel() {
                   <span style={styles.muted}>{ruleName(issue.ruleKey)} · {when(issue.detectedAt)}</span>
                 </div>
                 <p style={styles.issueText}>{issue.summary}</p>
+                {copy.ruleHelp[issue.ruleKey] ? <p style={styles.muted}>{copy.ruleHelp[issue.ruleKey]}</p> : null}
                 <div style={styles.row}>
                   {issue.recommendedAction ? (
                     <>
@@ -285,6 +289,7 @@ const styles = {
   list: { margin: "12px 0 0", paddingInlineStart: 18, color: "#d8d1c2" },
   switchList: { listStyle: "none", padding: 0, margin: "12px 0 0", display: "grid", gap: 8 },
   switchRow: { display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12, borderBottom: "1px solid #1f1f1f", paddingBottom: 8 },
+  switchText: { display: "flex", flexDirection: "column" as const, gap: 2, minWidth: 0 },
   issueList: { listStyle: "none", padding: 0, margin: 0, display: "grid", gap: 10 },
   issue: { background: "#141414", borderRadius: 10, padding: "12px 14px" },
   urgent: { borderInlineStart: "4px solid #dc2626" },

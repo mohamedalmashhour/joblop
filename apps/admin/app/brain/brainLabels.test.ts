@@ -68,6 +68,12 @@ describe("Brain page labels cover everything the API registers", () => {
     });
   }
 
+  it("shows the help sentences on the page (under each switch and each problem)", () => {
+    const panel = readFileSync(new URL("./BrainPanel.tsx", import.meta.url), "utf8");
+    expect(panel).toContain("copy.switchHelp[s.key]");
+    expect(panel).toContain("copy.ruleHelp[issue.ruleKey]");
+  });
+
   it("explains the round-7 Brain changes in every language", () => {
     for (const locale of ["en", "fr", "ar"] as const) {
       const copy = brainText[locale];
