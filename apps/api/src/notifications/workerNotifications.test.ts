@@ -275,9 +275,10 @@ describe("worker notices in Arabic (the worker's chosen language)", () => {
 
   it("writes every job notice in Arabic, with Western digits", () => {
     expect(assignedJobEmail({ to: "w@x.com", language: "ar", title: "Cook", startAt: shift.startAt }).subject).toBe("Joblop — حصلت على العمل!");
-    expect(shiftCancelledSmsText({ language: "ar", shift })).toMatch(/^Joblop: أُلغيت مناوبتك Cook في .*2026.* في Laval\. راجع تقويمك\. أرسل STOP لإيقاف الرسائل\.$/);
+    // Texts: owner decision 2026-11-12, an Arabic reader gets the French SMS (emails stay Arabic).
+    expect(shiftCancelledSmsText({ language: "ar", shift })).toBe(shiftCancelledSmsText({ language: "fr", shift }));
     expect(shiftCancelledEmail({ to: "w@x.com", language: "ar", shift, cancelledBy: "employer" }).text).toContain("ألغاها صاحب العمل");
-    expect(shiftChangedSmsText({ language: "ar", shift, summary: { newPlace: "Laval" } })).toContain("مكان جديد Laval");
+    expect(shiftChangedSmsText({ language: "ar", shift, summary: { newPlace: "Laval" } })).toContain("nouveau lieu Laval");
     expect(shiftChangedEmail({ to: "w@x.com", language: "ar", shift, summary: {} }).subject).toBe("Joblop — تغيّرت مناوبتك");
     expect(describeShiftChange({ outcome: "final" }, "ar", "America/Toronto")).toBe("أصبح التغيير نهائيًا");
     expect(payoutPaidEmail({ to: "w@x.com", language: "ar", amountMinor: 12_345, currency: "CAD" }).text).toContain("123.45 CAD");
@@ -306,6 +307,8 @@ describe("worker notices in Arabic (the worker's chosen language)", () => {
     const smsSender = { configured: true, enabled: true, async send(m: SmsMessage) { texts.push(m); return { status: "sent", id: "s" } as const; } };
     await notifyWorkersShiftCancelled(prisma, emailSender, smsSender, { jobRequestId: "j1", workers: [{ userId: "u1" }], cancelledBy: "staff" });
     expect(emails[0]!.subject).toBe("Joblop — أُلغيت مناوبتك");
-    expect(texts[0]!.text).toContain("أُلغيت مناوبتك Cook");
+    // The text is the French one (Arabic SMS cost 2–3x); no Arabic characters.
+    expect(texts[0]!.text).toContain("votre quart Cook");
+    expect(texts[0]!.text).not.toMatch(/[؀-ۿ]/);
   });
 });

@@ -10,6 +10,18 @@ export type SmsLanguage = "en" | "fr" | "ar";
 
 export const SMS_BRAND_PREFIX = "Joblop:";
 
+/**
+ * The language a TEXT MESSAGE is written in. Every SMS template passes the person's language through
+ * here first, so this is the one place the rule lives.
+ *
+ * Owner decision 2026-11-12: Arabic SMS cost 2–3x (UCS-2); Arabic readers get the French SMS. Emails
+ * stay in Arabic. The Arabic SMS strings are kept in each template (unused) so this is easy to
+ * reverse: return `language` unchanged to send Arabic texts again.
+ */
+export function smsLanguage<T extends SmsLanguage>(language: T): T {
+  return (language === "ar" ? "fr" : language) as T;
+}
+
 export const SMS_OPT_OUT: Readonly<Record<SmsLanguage, string>> = {
   en: "Reply STOP to opt out.",
   fr: "Répondez STOP pour vous désabonner.",
@@ -41,19 +53,22 @@ export function codeSms(body: string): string {
 }
 
 // The code and password-reset texts, in the person's language (prefix only, no opt-out line).
-export function signInCodeSms(language: SmsLanguage, code: string, staff = false): string {
+export function signInCodeSms(personLanguage: SmsLanguage, code: string, staff = false): string {
+  const language = smsLanguage(personLanguage);
   if (language === "fr") return codeSms(`votre code de connexion${staff ? " (personnel)" : ""} est ${code}. Il expire dans 10 minutes. Ne le partagez jamais.`);
   if (language === "ar") return codeSms(`رمز الدخول${staff ? " للفريق" : ""} هو ${code}. ينتهي خلال 10 دقائق. لا تشاركه أبدًا.`);
   return codeSms(`your ${staff ? "staff " : ""}sign-in code is ${code}. It expires in 10 minutes. Never share it.`);
 }
 
-export function verificationCodeSms(language: SmsLanguage, code: string, minutes: number): string {
+export function verificationCodeSms(personLanguage: SmsLanguage, code: string, minutes: number): string {
+  const language = smsLanguage(personLanguage);
   if (language === "fr") return codeSms(`votre code est ${code}. Il expire dans ${minutes} min. Ne le partagez jamais.`);
   if (language === "ar") return codeSms(`رمزك هو ${code}. ينتهي خلال ${minutes} دقيقة. لا تشاركه أبدًا.`);
   return codeSms(`your code is ${code}. Expires in ${minutes} min. Never share it.`);
 }
 
-export function passwordResetSms(language: SmsLanguage, resetUrl: string, minutes: number): string {
+export function passwordResetSms(personLanguage: SmsLanguage, resetUrl: string, minutes: number): string {
+  const language = smsLanguage(personLanguage);
   if (language === "fr") return codeSms(`réinitialisation du mot de passe (valide ${minutes} min): ${resetUrl}`);
   if (language === "ar") return codeSms(`إعادة تعيين كلمة المرور (صالح ${minutes} دقيقة): ${resetUrl}`);
   return codeSms(`password reset (valid ${minutes} min): ${resetUrl}`);
