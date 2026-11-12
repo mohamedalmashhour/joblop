@@ -205,6 +205,42 @@ export function canCancelShift(record: { status: string; clockInAllowed?: boolea
   return record.status === "pending_start" && record.clockInAllowed !== false;
 }
 
+// ── Check in / Check out box (same rules as the website's ShiftCheckIn) ──
+
+export const CHECK_IN_OPENS_MINUTES_BEFORE_START = 30;
+
+export type CheckInView =
+  | Readonly<{ kind: "opens_later"; opensAt: string }>
+  | Readonly<{ kind: "check_in" }>
+  | Readonly<{ kind: "checked_in"; inAt: string }>
+  | Readonly<{ kind: "done"; inAt: string; outAt: string }>
+  | Readonly<{ kind: "none" }>;
+
+/** What the box shows for this shift now: check-in opens 30 minutes before the start. */
+export function checkInView(
+  record: { status: string; scheduledStartAt: string; checkInAt: string | null; checkOutAt: string | null; clockInAllowed?: boolean },
+  now: number = Date.now()
+): CheckInView {
+  if (record.clockInAllowed === false || record.status === "cancelled" || record.status === "missed") return { kind: "none" };
+  if (record.checkInAt && record.checkOutAt) return { kind: "done", inAt: record.checkInAt, outAt: record.checkOutAt };
+  if (record.checkInAt) return { kind: "checked_in", inAt: record.checkInAt };
+  if (record.status !== "pending_start") return { kind: "none" };
+  const opensAt = new Date(new Date(record.scheduledStartAt).getTime() - CHECK_IN_OPENS_MINUTES_BEFORE_START * 60_000);
+  return now >= opensAt.getTime() ? { kind: "check_in" } : { kind: "opens_later", opensAt: opensAt.toISOString() };
+}
+
+const INTL_LOCALE: Record<Locale, string> = { en: "en-CA", fr: "fr-CA", ar: "ar" };
+
+/** A time of day in Toronto time, in the worker's language (e.g. "7:30 a.m."). */
+export function torontoClock(iso: string, locale: Locale): string {
+  return new Date(iso).toLocaleTimeString(INTL_LOCALE[locale] ?? "en-CA", { hour: "numeric", minute: "2-digit", timeZone: "America/Toronto" });
+}
+
+/** A day in Toronto time, in the worker's language (e.g. "Thursday, February 11"). */
+export function torontoDay(iso: string, locale: Locale): string {
+  return new Date(iso).toLocaleDateString(INTL_LOCALE[locale] ?? "en-CA", { weekday: "long", month: "long", day: "numeric", timeZone: "America/Toronto" });
+}
+
 /** True when cancelling now is a late cancellation (less than 24 h before the start): 7-day suspension. */
 export function isLateCancellation(scheduledStartAt: string, now: number = Date.now()): boolean {
   return new Date(scheduledStartAt).getTime() - now < 24 * 3_600_000;

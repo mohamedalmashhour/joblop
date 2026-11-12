@@ -229,7 +229,11 @@ export function WorkerNavigator({
             onOpenSetup={() => push({ name: "onboarding" })}
           />
         ) : (
-          <MonthCalendarScreen transport={transport} onOpenOffers={() => push({ name: "offers" })} />
+          <MonthCalendarScreen
+            transport={transport}
+            onOpenOffers={() => push({ name: "offers" })}
+            onOpenJob={(jobRequestId) => push({ name: "marketplaceJob", jobRequestId, postalCode: null })}
+          />
         );
       case "offers":
         // The worker's offers — the website's offers page: agreement, rights, accept or decline.
@@ -242,7 +246,13 @@ export function WorkerNavigator({
           />
         );
       case "attendance":
-        return <WorkerScheduleScreen transport={transport} onBack={back} />;
+        return (
+          <WorkerScheduleScreen
+            transport={transport}
+            onBack={back}
+            onOpenJob={(jobRequestId) => push({ name: "marketplaceJob", jobRequestId, postalCode: null })}
+          />
+        );
       case "timesheet":
         return <WorkerTimesheetListScreen transport={transport} onBack={back} />;
       case "earnings":
