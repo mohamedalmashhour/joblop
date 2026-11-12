@@ -172,6 +172,25 @@ export function createPrismaBrainStore(prisma: BrainPrisma): BrainStore {
         throw error;
       }
     },
+    async reopenAction(input) {
+      const existing = await prisma.brainAction.findUnique({
+        where: { issueId_actionKey_kind: { issueId: input.issue.id, actionKey: input.actionKey, kind: input.kind } }
+      });
+      if (!existing || (existing.status !== "skipped" && existing.status !== "failed")) return null;
+      // Guarded on the status just read, so two people retrying at once run it once.
+      const updated = await prisma.brainAction.updateMany({
+        where: { id: existing.id, status: existing.status },
+        data: {
+          status: "running",
+          actorType: input.actor.type,
+          actorUserId: input.actor.type === "brain" ? null : input.actor.userId,
+          undoKind: null,
+          finishedAt: null
+        }
+      });
+      if (updated.count !== 1) return null;
+      return toAction(await prisma.brainAction.findUniqueOrThrow({ where: { id: existing.id } }));
+    },
     async finishAction(actionId, input) {
       const row = await prisma.brainAction.update({
         where: { id: actionId },

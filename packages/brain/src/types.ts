@@ -156,6 +156,12 @@ export interface BrainStore {
   issuesDetectedSince(since: Date): Promise<StoredIssue[]>;
 
   claimAction(input: ClaimActionInput): Promise<StoredAction | null>;
+  /**
+   * A person retries an action whose earlier run did not get it done: atomically turns the
+   * (issue, action, kind) row from "skipped" or "failed" back to "running" for the new actor. Null when
+   * there is no such row, or it is running, done, simulated or undone (then it stays handled once).
+   */
+  reopenAction(input: ClaimActionInput): Promise<StoredAction | null>;
   finishAction(actionId: string, input: FinishActionInput): Promise<StoredAction>;
   countActionsSince(actionKey: string, kind: ActionKind, since: Date): Promise<number>;
   getAction(actionId: string): Promise<StoredAction | null>;

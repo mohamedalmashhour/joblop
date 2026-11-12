@@ -6,7 +6,7 @@ import type { SmsSender } from "../mailer/smsSender";
 import { resolveLanguage } from "../notifications/clientNotifications";
 import { sendsEmail, sendsText } from "../notifications/noticeChannels";
 import { resolveWorkerLanguage } from "../notifications/workerLanguage";
-import { checkInReminderSmsText, timesheetReminderEmail } from "./brainText";
+import { checkInReminderSmsText, noShowEmployerEmail, timesheetReminderEmail, workerTimesheetReminderEmail, workerTimesheetReminderSmsText } from "./brainText";
 import type { JoblopBrainEffects } from "./joblopRules";
 import { requestReadiness, timesheetReadyForApproval } from "./joblopRules";
 
@@ -52,6 +52,36 @@ const errorDetail = (error: unknown) => {
 export function createJoblopBrainEffects(deps: JoblopEffectsDeps): JoblopBrainEffects {
   const { prisma } = deps;
 
+  /** Email the job's employer once per shift that their worker has not checked in yet. True when sent. */
+  async function tellEmployerNotCheckedIn(
+    assignmentId: string,
+    a: Readonly<{ confirmedStartAt: Date; timezone: string; jobRequest: Readonly<{ jobRequestNumber: string; title: string; createdByUserId: string | null }> | null }>
+  ): Promise<boolean> {
+    const job = a.jobRequest;
+    if (!job?.createdByUserId || !sendsEmail("no_show_employer")) return false;
+    const user = await prisma.user.findUnique({ where: { id: job.createdByUserId }, select: { emailNormalized: true, primaryLanguage: true } });
+    if (!user?.emailNormalized) return false;
+    // Once per shift, even across a staff retry: the first claim of the marker wins.
+    try {
+      await prisma.brainMarker.create({ data: { marker: `no_show_employer:${assignmentId}:${a.confirmedStartAt.toISOString()}`, createdAt: deps.now() } });
+    } catch {
+      return false;
+    }
+    const result = await deps.emailSender
+      .send(
+        noShowEmployerEmail({
+          to: user.emailNormalized,
+          language: resolveLanguage(user.primaryLanguage),
+          jobCode: job.jobRequestNumber,
+          title: job.title,
+          startAt: a.confirmedStartAt,
+          timezone: a.timezone
+        })
+      )
+      .catch(() => ({ status: "error" as const }));
+    return result.status === "sent";
+  }
+
   return {
     async resendFailedMessage(failureId): Promise<ActionOutcome> {
       const row = await prisma.messageDeliveryFailure.findUnique({ where: { id: failureId } });
@@ -88,7 +118,7 @@ export function createJoblopBrainEffects(deps: JoblopEffectsDeps): JoblopBrainEf
           confirmedEndAt: true,
           timezone: true,
           attendanceRecord: { select: { checkInAt: true, status: true } },
-          jobRequest: { select: { status: true } },
+          jobRequest: { select: { status: true, jobRequestNumber: true, title: true, createdByUserId: true } },
           workerIdentity: { select: { user: { select: { phone: true, primaryLanguage: true } } } }
         }
       });
@@ -98,9 +128,15 @@ export function createJoblopBrainEffects(deps: JoblopEffectsDeps): JoblopBrainEf
       }
       if (a.attendanceRecord?.checkInAt) return { status: "skipped", detail: "The worker has checked in since." };
       if (deps.now().getTime() >= a.confirmedEndAt.getTime()) return { status: "skipped", detail: "The shift is over." };
-      if (!sendsText("check_in_reminder")) return { status: "skipped", detail: "Check-in texts are off in the notice rules." };
+      // The employer hears about it once per shift ("not checked in yet, Joblop is on it"), whether or
+      // not the worker can be texted. A staff retry of this action never emails the employer twice.
+      const employerTold = await tellEmployerNotCheckedIn(assignmentId, a);
+      const told = employerTold ? " Told the employer." : "";
+      // Not done until the worker is reached; a skipped or failed run stays open and is listed as
+      // needing a person (staff can call, then use "Do it" again once a phone number is added).
+      if (!sendsText("check_in_reminder")) return { status: "skipped", detail: `Check-in texts are off in the notice rules.${told} A person must call the worker.` };
       const phone = a.workerIdentity?.user?.phone;
-      if (!deps.smsSender || !phone) return { status: "skipped", detail: "No phone number or texts not set up." };
+      if (!deps.smsSender || !phone) return { status: "skipped", detail: `No phone number or texts not set up.${told} A person must call the worker.` };
       const result = await deps.smsSender.send({
         to: phone,
         text: checkInReminderSmsText({
@@ -110,8 +146,42 @@ export function createJoblopBrainEffects(deps: JoblopEffectsDeps): JoblopBrainEf
           timezone: a.timezone
         })
       });
-      if (result.status === "sent") return { status: "done", detail: "Texted the worker to check in." };
-      return result.status === "error" ? { status: "failed", detail: "The text failed to send." } : { status: "skipped", detail: "Texts are switched off." };
+      // A sent text is not a worker on site: the issue stays open until they check in (or staff close it).
+      if (result.status === "sent") return { status: "done", detail: `Texted the worker to check in.${told}`, resolvesIssue: false };
+      return result.status === "error"
+        ? { status: "failed", detail: `The text failed to send.${told}` }
+        : { status: "skipped", detail: `Texts are switched off.${told} A person must call the worker.` };
+    },
+
+    async remindWorkerToConfirmHours(timesheetId): Promise<ActionOutcome> {
+      const t = await prisma.timesheet.findUnique({
+        where: { id: timesheetId },
+        select: {
+          status: true,
+          workerReviewStatus: true,
+          scheduledStartAt: true,
+          timezone: true,
+          jobRequest: { select: { title: true } },
+          workerIdentity: { select: { user: { select: { emailNormalized: true, phone: true, primaryLanguage: true } } } }
+        }
+      });
+      if (!t || t.status !== "worker_review") return { status: "skipped", detail: "The hours are no longer waiting for the worker." };
+      if (t.workerReviewStatus === "confirmed" || t.workerReviewStatus === "disputed") return { status: "skipped", detail: "The worker has answered since." };
+      const user = t.workerIdentity?.user;
+      const language = resolveWorkerLanguage(user?.primaryLanguage);
+      const copy = { language, title: t.jobRequest.title, shiftStart: t.scheduledStartAt, timezone: t.timezone };
+      if (user?.emailNormalized && sendsEmail("worker_timesheet_reminder")) {
+        const result = await deps.emailSender.send(workerTimesheetReminderEmail({ to: user.emailNormalized, ...copy }));
+        if (result.status === "sent") return { status: "done", detail: "Emailed the worker to confirm their hours." };
+        return result.status === "error" ? { status: "failed", detail: "The email failed to send." } : { status: "skipped", detail: "Email is not set up." };
+      }
+      // No email (phone sign-in): a text is the only way to reach them, so it is sent as important.
+      if (user?.phone && deps.smsSender && sendsText("worker_timesheet_reminder", { urgent: true })) {
+        const result = await deps.smsSender.send({ to: user.phone, text: workerTimesheetReminderSmsText(copy) });
+        if (result.status === "sent") return { status: "done", detail: "Texted the worker to confirm their hours." };
+        return result.status === "error" ? { status: "failed", detail: "The text failed to send." } : { status: "skipped", detail: "Texts are switched off." };
+      }
+      return { status: "skipped", detail: "The worker has no email or phone number. A person must contact them." };
     },
 
     async remindEmployerToConfirmHours(timesheetId): Promise<ActionOutcome> {
@@ -156,7 +226,13 @@ export function createJoblopBrainEffects(deps: JoblopEffectsDeps): JoblopBrainEf
           resolvesIssue: false
         };
       }
-      const why = { not_open: "The job is no longer approved and priced.", already_has_bonus: "The job already has a bonus.", no_suggestion: "No bonus can be suggested for this job." }[result.status];
+      const why = {
+        not_open: "The job is no longer approved and priced.",
+        not_on_job_board: "The job is not on the job board, so a bonus would not reach workers.",
+        already_has_bonus: "The job already has a bonus.",
+        employer_declined: "The employer already declined a bonus for this job; a person decides what is next.",
+        no_suggestion: "No bonus can be suggested for this job."
+      }[result.status];
       return { status: "skipped", detail: why };
     },
 

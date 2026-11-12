@@ -11,13 +11,19 @@ import type { ApiCaller, AssistantRole, AssistantTool } from "./assistantTypes";
 export class AssistantSetupError extends Error {}
 
 const MONEY_TOOL_NAME = /(charge|payout|pay_out|settle|mark_?paid|refund|transfer|checkout|withdraw_?funds|pay_invoice|collect)/i;
+// Stricter, for ACTION tools (read tools may name pay, e.g. my_pay_statements): any "pay" word
+// (pay, pays, pay_worker, send_pay, payment…), payout, charge, refund, and issuing an invoice or
+// locking hours (which issues one).
+const MONEY_ACTION_NAME = /(^|_)(pay|pays|paid|payment|payments|payout|payouts|charge|charges|refund|refunds|bill|billing)(_|$)|(issue|create|send|finali[sz]e|lock)_?(an_)?invoices?|invoices?_(issue|create|send)|lock_?(the_)?(timesheet|hours)/i;
 
 /** Builds the tool list for one role. Throws on any tool that could move money or is listed twice. */
 export function registerAssistantTools(role: AssistantRole, tools: readonly AssistantTool[]): ReadonlyMap<string, AssistantTool> {
   const map = new Map<string, AssistantTool>();
   for (const tool of tools) {
     if (tool.role !== role) throw new AssistantSetupError(`Tool ${tool.name} belongs to ${tool.role}, not ${role}.`);
-    if (MONEY_TOOL_NAME.test(tool.name)) throw new AssistantSetupError(`Tool ${tool.name} looks like it moves money; it cannot be registered.`);
+    if (MONEY_TOOL_NAME.test(tool.name) || (tool.kind === "action" && MONEY_ACTION_NAME.test(tool.name))) {
+      throw new AssistantSetupError(`Tool ${tool.name} looks like it moves money; it cannot be registered.`);
+    }
     if (tool.kind === "action" && (tool as { movesMoney: unknown }).movesMoney !== false) {
       throw new AssistantSetupError(`Action ${tool.name} must declare movesMoney: false.`);
     }
@@ -47,6 +53,10 @@ const MONEY_ROUTES: readonly RegExp[] = [
   /\/job-listings\/[^/]+\/(pay|trial)/,
   /\/bonuses/,
   /apply-cancellation-penalty/,
+  // Locking a timesheet issues the employer's invoice; an employer cancel confirm can create a
+  // late-cancellation charge.
+  /\/timesheets\/[^/]+\/lock(\/|$)/,
+  /\/job-requests\/[^/]+\/cancel\/confirm(\/|$)/,
   /\/cv\/(orders|subscribe|trial)/
 ];
 

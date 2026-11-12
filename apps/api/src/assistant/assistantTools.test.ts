@@ -177,7 +177,7 @@ describe("no leakage of the other side's rates or Joblop's share", () => {
 
     const contract = fakeApi({
       [`GET /organizations/${ORG_ID}/contract`]: () => ok({ contract: { status: "active", currency: "CAD", roleRates: [{ roleDefinitionId: "r1", hourlyRateMinor: 3500, workerHourlyRateMinor: 2000, marginPpm: 200000 }] } }),
-      "GET /role-definitions": () => ok({ roleDefinitions: [{ id: "r1", key: "cook", displayLabel: "Cook", workGroupId: "g" }] }),
+      "GET /role-definitions": () => ok({ roleDefinitions: [{ id: "r1", code: "COOK", slug: "cook", workGroupSlug: "food", displayLabel: "Cook", workGroupId: "g" }] }),
       "GET /work-groups": () => ok({ workGroups: [] })
     });
     const contractTool = EMPLOYER_TOOLS.find((t) => t.name === "my_contract") as ReadTool;
@@ -241,8 +241,8 @@ describe("tools call the same routes the apps use", () => {
   it("a draft request stays a draft: create posts the draft route only, never submit", async () => {
     const api = fakeApi({
       [`GET /organizations/${ORG_ID}/residences`]: () => ok({ residences: [{ id: JOB_ID, name: "Main kitchen" }] }),
-      "GET /role-definitions": () => ok({ roleDefinitions: [{ id: "r", key: "kitchen_helper", displayLabel: "Kitchen helper", workGroupId: "g" }] }),
-      "GET /work-groups": () => ok({ workGroups: [{ id: "g", key: "food" }] }),
+      "GET /role-definitions": () => ok({ roleDefinitions: [{ id: "r", code: "KITCHEN_HELPER", slug: "kitchen-helper", workGroupSlug: "food", displayLabel: "Kitchen helper", workGroupId: "g" }] }),
+      "GET /work-groups": () => ok({ workGroups: [{ id: "g", slug: "food", displayLabel: "Food" }] }),
       [`POST /organizations/${ORG_ID}/job-requests`]: () => ok({ jobRequest: { jobRequestNumber: "JR-2026-000001" } }, 201)
     });
     const tool = ASSISTANT_TOOLS.employer.get("create_draft_request") as ActionTool;

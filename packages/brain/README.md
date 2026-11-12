@@ -26,14 +26,17 @@ It imports nothing from any platform.
 | `live`  | yes       | an action runs only when its own switch is on. All start off.    |
 
 Staff can always press "Do it" on an open issue: a person decides, so switches and caps do not
-apply, but the once-only claim does.
+apply, but the once-only claim does. One exception: when the earlier run did not get it done
+(`skipped` or `failed`, e.g. no phone number), "Do it" retries it once (`reopenAction`), and the daily
+summary lists such an issue under "needs a person".
 
 ## Plugging in another platform
 
 1. **Store.** Implement `BrainStore` on your database. Use `createMemoryBrainStore()` as the
    reference behaviour. Two things are required: `upsertIssue` must never reopen a resolved issue,
    and `claimAction` must return `null` (atomically, e.g. a unique key) when the same
-   `(issue, action, kind)` was already claimed. Joblop's Postgres version is
+   `(issue, action, kind)` was already claimed (`reopenAction` turns only a skipped or failed row
+   back to running, atomically). Joblop's Postgres version is
    `apps/api/src/brain/prismaBrainStore.ts` with the tables in migration
    `20261114000000_joblop_brain`.
 2. **Context.** Define a context type holding your adapters, for example

@@ -54,12 +54,72 @@ export function timesheetReminderEmail(params: {
   };
 }
 
+/** Employer email: their booked worker has not checked in yet, and Joblop is on it. */
+export function noShowEmployerEmail(params: {
+  to: string;
+  language: "en" | "fr";
+  jobCode: string;
+  title: string;
+  startAt: Date;
+  timezone: string;
+}): EmailMessage {
+  const time = formatWhen(params.startAt, params.language, params.timezone, "time");
+  if (params.language === "en") {
+    return {
+      to: params.to,
+      subject: `Joblop — your worker has not checked in yet (${params.jobCode})`,
+      text:
+        `The worker booked for "${params.title}" (start ${time}, job code ${params.jobCode}) has not checked in yet.\n\n` +
+        `Joblop is on it: we are contacting the worker and will keep you posted. No need to do anything for now.\n\n— Joblop`
+    };
+  }
+  return {
+    to: params.to,
+    subject: `Joblop — votre travailleur n'a pas encore fait son arrivée (${params.jobCode})`,
+    text:
+      `Le travailleur prévu pour « ${params.title} » (début ${time}, code de mission ${params.jobCode}) n'a pas encore fait son arrivée.\n\n` +
+      `Joblop s'en occupe : nous contactons le travailleur et vous tiendrons au courant. Vous n'avez rien à faire pour l'instant.\n\n— Joblop`
+  };
+}
+
+/** Worker email: their own hours from a finished shift are waiting for their confirmation. */
+export function workerTimesheetReminderEmail(params: { to: string; language: WorkerLanguage; title: string; shiftStart: Date; timezone: string }): EmailMessage {
+  const language = params.language === "en" ? "en" : "fr";
+  const day = formatWhen(params.shiftStart, language, params.timezone, "date");
+  if (language === "en") {
+    return {
+      to: params.to,
+      subject: "Joblop — please confirm your hours",
+      text:
+        `Please confirm your hours for "${params.title}" on ${day}.\n\n` +
+        `Sign in to Joblop and open Timesheets. If something is wrong, you can say so there.\n\n— Joblop`
+    };
+  }
+  return {
+    to: params.to,
+    subject: "Joblop — veuillez confirmer vos heures",
+    text:
+      `Veuillez confirmer vos heures pour « ${params.title} » le ${day}.\n\n` +
+      `Connectez-vous à Joblop et ouvrez Feuilles de temps. Si quelque chose ne va pas, vous pouvez le signaler là.\n\n— Joblop`
+  };
+}
+
+/** Worker SMS twin, for a worker with no email. */
+export function workerTimesheetReminderSmsText(params: { language: WorkerLanguage; title: string; shiftStart: Date; timezone: string }): string {
+  const language = params.language === "en" ? "en" : "fr";
+  const day = formatWhen(params.shiftStart, language, params.timezone, "date");
+  return language === "en"
+    ? `Joblop: please confirm your hours for "${params.title}" on ${day}, in the app under Timesheets.`
+    : `Joblop : veuillez confirmer vos heures pour « ${params.title} » le ${day}, dans l'app sous Feuilles de temps.`;
+}
+
 export const RULE_TITLES: Record<string, { en: string; fr: string }> = {
   job_unfilled_soon: { en: "Approved job starting soon with open places", fr: "Mission approuvée bientôt, places libres" },
   worker_not_checked_in: { en: "Worker not checked in 10 min after start", fr: "Travailleur sans arrivée 10 min après le début" },
   delivery_failed: { en: "Email or text that failed", fr: "Courriel ou texto non envoyé" },
   request_waiting_review: { en: "Request waiting for staff review", fr: "Demande en attente de révision" },
-  timesheet_unconfirmed: { en: "Hours not confirmed by employer after 24 h", fr: "Heures non confirmées par l'employeur après 24 h" },
+  timesheet_unconfirmed: { en: "Hours not confirmed after 24 h (worker or employer)", fr: "Heures non confirmées après 24 h (travailleur ou employeur)" },
+  hours_not_prepared: { en: "Shift ended over 2 h ago with no hours prepared", fr: "Quart terminé depuis plus de 2 h sans heures préparées" },
   timesheet_ready: { en: "Hours ready for approval", fr: "Heures prêtes à approuver" },
   invoice_overdue: { en: "Overdue invoice", fr: "Facture en retard" },
   job_missing_info: { en: "Job submitted with missing information", fr: "Mission soumise avec des informations manquantes" },
@@ -71,6 +131,7 @@ export const ACTION_TITLES: Record<string, { en: string; fr: string }> = {
   resend_failed_message: { en: "Re-send a failed email or text", fr: "Renvoyer un courriel ou texto non envoyé" },
   remind_worker_check_in: { en: "Text a worker to check in", fr: "Texter un travailleur pour qu'il fasse son arrivée" },
   remind_employer_timesheet: { en: "Email an employer to confirm hours", fr: "Écrire à un employeur pour confirmer les heures" },
+  remind_worker_timesheet: { en: "Remind a worker to confirm their hours", fr: "Rappeler à un travailleur de confirmer ses heures" },
   offer_employer_bonus: { en: "Offer the employer a bonus for an unfilled job", fr: "Proposer une prime à l'employeur pour une mission non pourvue" },
   auto_approve_request: { en: "Approve a request that passes every check", fr: "Approuver une demande qui passe toutes les vérifications" },
   auto_approve_timesheet: { en: "Approve hours with check-in and check-out and no problems", fr: "Approuver des heures avec arrivée, départ et aucun problème" },

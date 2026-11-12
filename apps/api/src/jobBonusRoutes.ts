@@ -207,6 +207,7 @@ const BONUS_JOB_SELECT = {
   id: true,
   organizationId: true,
   status: true,
+  openClaim: true,
   startAt: true,
   endAt: true,
   pricingSnapshot: { select: { workerHourlyRateMinor: true, platformHourlyMarginMinor: true, currency: true } }
@@ -302,7 +303,7 @@ async function cancelBonus(
 
 export type BrainBonusOfferResult =
   | Readonly<{ status: "offered"; bonusId: string; kind: JobBonusKind; amountMinor: number }>
-  | Readonly<{ status: "not_open" | "already_has_bonus" | "no_suggestion" }>;
+  | Readonly<{ status: "not_open" | "not_on_job_board" | "already_has_bonus" | "employer_declined" | "no_suggestion" }>;
 
 /**
  * Offer the system-suggested hourly bonus to the employer of an approved, priced job (the policy is to
@@ -316,11 +317,14 @@ export async function offerSuggestedBonusToEmployer(
 ): Promise<BrainBonusOfferResult> {
   const job = await loadBonusJob(prisma, input.jobRequestId);
   if (!job || job.status !== "approved_for_dispatch" || !job.pricingSnapshot) return { status: "not_open" };
+  // A bonus only helps workers who can see the job: never for a job that is not on the job board.
+  if (!job.openClaim) return { status: "not_on_job_board" };
   const existing = await prisma.jobBonus.findFirst({
-    where: { jobRequestId: job.id, status: { in: ["offered_to_employer", ...ACTIVE] } },
-    select: { id: true }
+    where: { jobRequestId: job.id, status: { in: ["offered_to_employer", "employer_declined", ...ACTIVE] } },
+    select: { status: true }
   });
-  if (existing) return { status: "already_has_bonus" };
+  // The employer is asked once: after a "no" it is for staff (or the platform-funded path) to decide.
+  if (existing) return { status: existing.status === "employer_declined" ? "employer_declined" : "already_has_bonus" };
   const suggestion = jobBonusSuggestionFor(job, input.now);
   if (!suggestion || validateJobBonusAmount("hourly", suggestion.amountMinor) !== "ok") return { status: "no_suggestion" };
   const bonus = await insertBonus(prisma, emailSender, {
