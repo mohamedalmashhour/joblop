@@ -73,14 +73,16 @@ export function hoursBetween(startIso: string, endIso: string): number {
   return (end - start) / (1000 * 60 * 60);
 }
 
-// Display helpers.
-export function formatMoney(money: MoneyAmount): string {
-  return (money.amountMinor / 100).toLocaleString("en-CA", {
+// Display helpers. `locale` is the formatting locale ("en-CA" or "fr-CA"; Arabic screens pass
+// "en-CA", like the rest of the app). Without it the output is unchanged (en-CA, "/hr").
+export function formatMoney(money: MoneyAmount, locale?: string | null): string {
+  return (money.amountMinor / 100).toLocaleString(locale === "fr-CA" ? "fr-CA" : "en-CA", {
     style: "currency",
     currency: money.currency
   });
 }
 
-export function formatHourlyRate(rate: MoneyAmount): string {
-  return `${formatMoney(rate)}/hr`;
+export function formatHourlyRate(rate: MoneyAmount, locale?: string | null): string {
+  // French writes the hour as "/h" ("16,60 $/h"); English keeps "/hr".
+  return `${formatMoney(rate, locale)}${locale === "fr-CA" ? "/h" : "/hr"}`;
 }

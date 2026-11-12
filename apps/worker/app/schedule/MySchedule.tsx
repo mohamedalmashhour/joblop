@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
+import { calendarDayKey } from "@rwos/shared";
 import { useLocale, useT, fmtLocale } from "../i18n/LocaleProvider";
 import type { RwosLocale } from "../i18n/config";
 import type { MessageKey } from "../i18n/messages";
@@ -113,12 +114,7 @@ export function MySchedule() {
   if (state.status === "needs_setup") return <div className="state">{t("common.needsWorkerSetup")}<div style={{ marginTop: 12 }}><a className="btn" href="/onboarding">{t("common.setUpWorker")}</a></div></div>;
   if (state.status === "error") return <div className="state error" role="alert">{t("sched.loadError")}</div>;
 
-  const now = Date.now();
-  const upcoming = state.items.filter((s) => new Date(s.scheduledEndAt).getTime() >= now);
-  const past = state.items.filter((s) => new Date(s.scheduledEndAt).getTime() < now);
-
-  const assignedJobs = new Set(state.items.map((item) => item.assignmentId));
-  const waiting = assignedJobs.size === 0 ? pending : [];
+  const { upcoming, past, waiting } = splitSchedule(state.items, pending, Date.now());
 
   return (
     <>
@@ -135,7 +131,7 @@ export function MySchedule() {
             <article key={o.workerOfferId} className="card">
               <div className="role">{o.title ?? t("offers.shiftOffer")}</div>
               <div className="chips"><span className="chip status-pending">{t("sched.waitingConfirm")}</span></div>
-              {o.startAt ? <div className="when">{new Date(o.startAt).toLocaleString(locale)}</div> : null}
+              {o.startAt ? <div className="when">{formatShiftStart(o.startAt, locale)}</div> : null}
               <p className="notice" style={{ margin: 0 }}>{t("sched.waitingBody")}</p>
             </article>
           ))}
@@ -195,8 +191,8 @@ function ShiftCard({ s, busy, onAct, history, t, locale }: { s: Shift; busy: boo
   // Check-in opens 30 minutes before the start (the API refuses earlier ones too).
   const checkInOpen = isCheckInOpen(s.scheduledStartAt);
   const opensAtLabel = formatClock(checkInOpensAt(s.scheduledStartAt).toISOString(), s.timezone, locale);
-  const inTime = s.checkInAt ? new Date(s.checkInAt).toLocaleTimeString(locale) : null;
-  const outTime = s.checkOutAt ? new Date(s.checkOutAt).toLocaleTimeString(locale) : null;
+  const inTime = s.checkInAt ? formatClock(s.checkInAt, s.timezone, locale) : null;
+  const outTime = s.checkOutAt ? formatClock(s.checkOutAt, s.timezone, locale) : null;
   const title = s.roleLabel?.trim() || s.employerName;
   return (
     <article className="card">
@@ -263,9 +259,35 @@ function formatShift(startAt: string, endAt: string, tz: string, locale: RwosLoc
 }
 
 
-function dayKey(d: Date): string {
-  return `${d.getFullYear()}-${d.getMonth()}-${d.getDate()}`;
+/**
+ * Upcoming shifts soonest first (the API sends newest first), past shifts most recent first, and the
+ * accepted offers still waiting for Joblop: an offer leaves that list once a shift with the same start
+ * exists (it used to show only while the worker had no shift at all).
+ */
+export function splitSchedule<S extends { scheduledStartAt: string; scheduledEndAt: string }, O extends { startAt: string | null }>(
+  items: readonly S[],
+  pending: readonly O[],
+  now: number
+): { upcoming: S[]; past: S[]; waiting: O[] } {
+  const time = (iso: string) => new Date(iso).getTime();
+  const upcoming = items.filter((s) => time(s.scheduledEndAt) >= now).sort((a, b) => time(a.scheduledStartAt) - time(b.scheduledStartAt));
+  const past = items.filter((s) => time(s.scheduledEndAt) < now).sort((a, b) => time(b.scheduledStartAt) - time(a.scheduledStartAt));
+  const starts = new Set(items.map((s) => time(s.scheduledStartAt)));
+  const waiting = pending.filter((o) => !(o.startAt && starts.has(time(o.startAt))));
+  return { upcoming, past, waiting };
 }
+
+function formatShiftStart(at: string, locale: RwosLocale): string {
+  return new Date(at).toLocaleString(locale, { dateStyle: "medium", timeStyle: "short", timeZone: "America/Toronto" });
+}
+
+// Day keys follow the Québec (America/Toronto) day, so a late shift never lands on the next day for a
+// device in another time zone. Format: year-monthIndex-day, like the grid cells.
+function dayKeyOf(iso: string): string {
+  const [y, mo, d] = calendarDayKey(iso).split("-").map(Number);
+  return `${y}-${(mo ?? 1) - 1}-${d}`;
+}
+
 
 function CalendarView({ items, month, onPrev, onNext, selected, onSelect, busy, onAct, locale, t }: {
   items: readonly Shift[];
@@ -285,17 +307,14 @@ function CalendarView({ items, month, onPrev, onNext, selected, onSelect, busy, 
   const daysInMonth = new Date(year, m + 1, 0).getDate();
   const counts = new Map<string, number>();
   for (const s of items) {
-    const d = new Date(s.scheduledStartAt);
-    if (d.getFullYear() === year && d.getMonth() === m) {
-      const k = dayKey(d);
-      counts.set(k, (counts.get(k) ?? 0) + 1);
-    }
+    const k = dayKeyOf(s.scheduledStartAt);
+    if (k.startsWith(`${year}-${m}-`)) counts.set(k, (counts.get(k) ?? 0) + 1);
   }
   const monthLabel = new Date(year, m, 1).toLocaleDateString(locale, { month: "long", year: "numeric" });
   const weekdays = Array.from({ length: 7 }, (_, i) => new Date(2023, 0, 1 + i).toLocaleDateString(locale, { weekday: "narrow" }));
   const cells: (number | null)[] = [...Array<null>(startWeekday).fill(null), ...Array.from({ length: daysInMonth }, (_, i) => i + 1)];
-  const todayKey = dayKey(new Date());
-  const dayShifts = selected ? items.filter((s) => dayKey(new Date(s.scheduledStartAt)) === selected) : [];
+  const todayKey = dayKeyOf(new Date().toISOString());
+  const dayShifts = selected ? items.filter((s) => dayKeyOf(s.scheduledStartAt) === selected) : [];
   return (
     <>
       <section className="card" style={{ marginBottom: 16 }}>

@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState, type ReactNode } from "react";
+import { calendarDayKey } from "@rwos/shared";
 import { useLocale, useT, fmtLocale, type Translate } from "../i18n/LocaleProvider";
 import type { RwosLocale } from "../i18n/config";
 import type { MessageKey } from "../i18n/messages";
@@ -45,8 +46,22 @@ async function resolveDenied(): Promise<State> {
 // withdrawn/cancelled) are read-only. `draft`/`approved` are pre-delivery and never worker-visible.
 const RESPONDABLE = new Set(["sent", "delivered", "viewed"]);
 
-// Local day key for grouping offers onto calendar cells.
-function dayKey(d: Date): string { return `${d.getFullYear()}-${d.getMonth()}-${d.getDate()}`; }
+// Day key for grouping offers onto calendar cells: the Québec (America/Toronto) day of the shift, so a
+// late shift never lands on the next day for a device in another time zone (year-monthIndex-day).
+function dayKeyOf(iso: string): string {
+  const [y, mo, d] = calendarDayKey(iso).split("-").map(Number);
+  return `${y}-${(mo ?? 1) - 1}-${d}`;
+}
+
+/**
+ * Offers that still need an answer come first, soonest shift first; the rest keep the server's order
+ * (most recently changed first). The server sorts by last update only.
+ */
+export function sortOffers<O extends { status: string; startAt: string | null }>(items: readonly O[]): O[] {
+  const start = (o: O) => (o.startAt ? new Date(o.startAt).getTime() : Number.POSITIVE_INFINITY);
+  const open = items.filter((o) => RESPONDABLE.has(o.status)).sort((a, b) => start(a) - start(b));
+  return [...open, ...items.filter((o) => !RESPONDABLE.has(o.status))];
+}
 const STATUS_LABEL_KEY: Record<string, MessageKey> = {
   draft: "offers.statusPreparing",
   approved: "offers.statusPreparing",
@@ -76,7 +91,7 @@ function when(startAt: string | null, endAt: string | null, tz: string | null, l
   return `${new Date(startAt).toLocaleString(locale, opts)} – ${new Date(endAt).toLocaleString(locale, opts)}`;
 }
 function expiryWhen(expiresAt: string, locale: RwosLocale): string {
-  return new Date(expiresAt).toLocaleString(locale, { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" });
+  return new Date(expiresAt).toLocaleString(locale, { month: "short", day: "numeric", hour: "numeric", minute: "2-digit", timeZone: "America/Toronto" });
 }
 
 export function Offers() {
@@ -229,7 +244,7 @@ export function Offers() {
             <button type="button" className={`chip ${view === "calendar" ? "status-verified" : ""}`} onClick={() => setView("calendar")}>{t("sched.viewCalendar")}</button>
           </div>
           {view === "list" ? (
-            <div className="results" style={{ paddingBottom: 48 }}>{state.items.map(renderOffer)}</div>
+            <div className="results" style={{ paddingBottom: 48 }}>{sortOffers(state.items).map(renderOffer)}</div>
           ) : (
             <OffersCalendar
               items={state.items}
@@ -268,14 +283,14 @@ function OffersCalendar({ items, month, onPrev, onNext, selected, onSelect, loca
   const counts = new Map<string, number>();
   for (const o of items) {
     if (!o.startAt) continue;
-    const d = new Date(o.startAt);
-    if (d.getFullYear() === year && d.getMonth() === m) counts.set(dayKey(d), (counts.get(dayKey(d)) ?? 0) + 1);
+    const k = dayKeyOf(o.startAt);
+    if (k.startsWith(`${year}-${m}-`)) counts.set(k, (counts.get(k) ?? 0) + 1);
   }
   const monthLabel = new Date(year, m, 1).toLocaleDateString(locale, { month: "long", year: "numeric" });
   const weekdays = Array.from({ length: 7 }, (_, i) => new Date(2023, 0, 1 + i).toLocaleDateString(locale, { weekday: "narrow" }));
   const cells: (number | null)[] = [...Array<null>(startWeekday).fill(null), ...Array.from({ length: daysInMonth }, (_, i) => i + 1)];
-  const todayKey = dayKey(new Date());
-  const dayOffers = selected ? items.filter((o) => o.startAt && dayKey(new Date(o.startAt)) === selected) : [];
+  const todayKey = dayKeyOf(new Date().toISOString());
+  const dayOffers = selected ? items.filter((o) => o.startAt && dayKeyOf(o.startAt) === selected) : [];
   return (
     <>
       <section className="card" style={{ marginBottom: 16 }}>

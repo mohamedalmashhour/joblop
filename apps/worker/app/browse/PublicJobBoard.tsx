@@ -9,6 +9,7 @@ import { JoblopJobBadge, OutsideApplyLink, OutsideSiteBadge } from "../JobSource
 import { outsideApplyUrl } from "../jobSource";
 import { activeCountry } from "../country";
 import { publicJobPath } from "../safeReturnPath";
+import { leadPayLabel } from "../leadPay";
 
 // Public, no-sign-in landing + job board for Joblop. Hero search, real categories, REAL featured
 // jobs (from /public/jobs — never fabricated), job-seeker + employer sections, honest stats and
@@ -407,15 +408,8 @@ export function PublicJobBoard() {
     }
   };
 
-  const fmtPay = (l: Lead) => {
-    const sym = activeCountry().currencySymbol;
-    const toK = (minor: number | null) => (minor == null ? null : Math.round(minor / 100 / 1000));
-    const lo = toK(l.salaryMinMinor);
-    const hi = toK(l.salaryMaxMinor);
-    if (lo == null && hi == null) return null;
-    if (lo != null && hi != null) return lo === hi ? `${sym}${lo}k` : `${sym}${lo}–${hi}k`;
-    return `${sym}${lo ?? hi}k`;
-  };
+  // Hourly listings used to show "$0k"; the shared formatter tells hourly from yearly pay.
+  const fmtPay = (l: Lead) => leadPayLabel(l, locale);
 
   const scrollToJobs = () => document.getElementById("jobs")?.scrollIntoView({ behavior: "smooth" });
   const fmtDate = (iso: string) => {

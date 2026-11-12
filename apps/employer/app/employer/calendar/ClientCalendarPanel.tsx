@@ -14,7 +14,7 @@ import { styles } from "../employerStyles";
 import { fmtLocale, useLocale, useT } from "../../i18n/LocaleProvider";
 import { RequestStatusChip } from "../RequestStatusChip";
 import { requestPhase, requestPhaseLabel, requestPhaseTone } from "../requestStatus";
-import { mondayFirstCells, mondayFirstWeekdays } from "./requestCalendarGrid";
+import { mondayFirstCells, mondayFirstWeekdays, requestDayKey, sortRequestsForList } from "./requestCalendarGrid";
 import { langOf } from "../../i18n/localText";
 import { calendarStateText } from "../recordListText";
 
@@ -142,7 +142,7 @@ export function ClientCalendarPanel() {
         />
       ) : (
         <div style={styles.cardGrid}>
-          {state.data.map((request) => (
+          {sortRequestsForList(state.data, Date.now()).map((request) => (
             <RequestCard key={request.id} request={request} />
           ))}
         </div>
@@ -152,10 +152,6 @@ export function ClientCalendarPanel() {
 }
 
 const MAX_CHIPS_PER_DAY = 3;
-
-function dayKey(d: Date): string {
-  return `${d.getFullYear()}-${d.getMonth()}-${d.getDate()}`;
-}
 
 // Month-grid calendar for the client's requests, aligned with the admin and worker calendars: each
 // request sits on its shift date, coloured by status, and busy days collapse to "+N more".
@@ -184,9 +180,8 @@ function ClientCalendarGrid({
 
   const byDay = new Map<string, ClientCalendarDto[]>();
   for (const request of requests) {
-    const parsed = new Date(request.startAt);
-    if (Number.isNaN(parsed.getTime())) continue;
-    const key = dayKey(parsed);
+    const key = requestDayKey(request.startAt, request.timezone);
+    if (!key) continue;
     const list = byDay.get(key) ?? [];
     list.push(request);
     byDay.set(key, list);
@@ -194,7 +189,7 @@ function ClientCalendarGrid({
 
   const monthLabel = new Date(year, m, 1).toLocaleDateString(locale, { month: "long", year: "numeric" });
   const weekdays = mondayFirstWeekdays(locale);
-  const todayKey = dayKey(new Date());
+  const todayKey = requestDayKey(new Date().toISOString(), "America/Toronto");
 
   return (
     <div>

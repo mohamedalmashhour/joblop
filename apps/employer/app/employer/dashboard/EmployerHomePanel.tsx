@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useState, type CSSProperties, type ReactNode } from "react";
 import { createContractMoney, formatMoney } from "@rwos/shared";
-import { useLocale, useT } from "../../i18n/LocaleProvider";
+import { fmtLocale, useLocale, useT } from "../../i18n/LocaleProvider";
 import type { MessageKey } from "../../i18n/messages";
 import { styles } from "../employerStyles";
 import { RequestStatusChip } from "../RequestStatusChip";
@@ -43,8 +43,8 @@ async function readVerificationStatus(response: Response): Promise<string | null
   return typeof status === "string" ? status : null;
 }
 
-function money(minor: number): string {
-  return formatMoney(createContractMoney({ amountMinor: minor, currency: "CAD" }));
+function money(minor: number, locale: string): string {
+  return formatMoney(createContractMoney({ amountMinor: minor, currency: "CAD" }), locale);
 }
 
 const icons = {
@@ -180,7 +180,7 @@ export function EmployerHomePanel() {
   const summary = summarizeHome(state.sources);
   const items = attentionItems(summary);
   const number = (value: number | null) => (value === null ? "—" : String(value));
-  const amount = money(summary.invoicesToPayMinor ?? 0);
+  const amount = money(summary.invoicesToPayMinor ?? 0, fmtLocale(locale));
   const stats = [
     { icon: icons.workers, title: t("home.workingNow"), value: number(summary.workingNow), note: t("home.workingNowNote"), href: "/employer/attendance" },
     { icon: icons.requests, title: t("home.requests"), value: number(summary.requestCount), note: t("home.requestsNote"), href: "/employer/calendar" },

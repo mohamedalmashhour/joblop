@@ -15,7 +15,8 @@ export default async function PaymentsPage() {
       eyebrow={m["page.paymentsEyebrow"]}
       title={m["page.paymentsTitle"]}
       lede={m["page.paymentsLede"]}
-      actions={<a href="/employer/payments/method" style={styles.primaryButton}>{m["page.paymentMethod"]}</a>}
+      // The payment-method page is not open on the live site; invoices is where employers pay.
+      actions={<a href="/employer/invoices" style={styles.primaryButton}>{m["shell.nav.invoices"]}</a>}
     >
       <PaymentStatePanel mode="overview" />
       <WorkflowRoutes currentRoute="/employer/payments" />

@@ -7,7 +7,7 @@ import {
   type EmployerContractDto
 } from "@rwos/shared";
 import { styles } from "../employerStyles";
-import { useLocale } from "../../i18n/LocaleProvider";
+import { fmtLocale, useLocale } from "../../i18n/LocaleProvider";
 import { fill, langOf } from "../../i18n/localText";
 import { contractText } from "./contractText";
 
@@ -275,7 +275,8 @@ function ContractHeader({
 }
 
 function RateCardTable({ contract }: Readonly<{ contract: EmployerContractDto }>) {
-  const tx = contractText[langOf(useLocale())];
+  const locale = useLocale();
+  const tx = contractText[langOf(locale)];
   if (contract.roleRates.length === 0) {
     return <p style={styles.cardText}>{tx.noRoles}</p>;
   }
@@ -301,7 +302,7 @@ function RateCardTable({ contract }: Readonly<{ contract: EmployerContractDto }>
                 {formatHourlyRate({
                   amountMinor: rate.hourlyRateMinor,
                   currency: (rate.currency === "USD" ? "USD" : "CAD") as "CAD" | "USD"
-                })}
+                }, fmtLocale(locale))}
               </td>
             </tr>
           ))}

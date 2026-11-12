@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { calendarDayKey, formatRwosCurrency } from "@rwos/shared";
 import { useLocale, useT } from "../i18n/LocaleProvider";
 import { payOfferedLabel } from "../payOfferedLabel";
 import { shiftOverlapNotice } from "../shiftOverlapNotice";
@@ -90,15 +91,15 @@ const TEXT = {
     dayPay: "pay day",
     dayCancelled: "cancelled shift",
     places: (n: number) => (n === 1 ? "1 place left" : `${n} places left`),
-    perHour: (amount: string) => `$${amount}/h`,
-    money: (amount: string) => `$${amount}`,
+    perHour: (amount: string) => `${amount}/h`,
+    money: (amount: string) => amount,
     payLocale: "en-CA",
     paidByEmployer: "paid directly by the employer",
     employerPaysDirectly: "Pay set and paid directly by the employer",
     payPending: "Hourly pay: confirmed before you're offered the shift",
-    bonusHourly: (amount: string) => `+ $${amount}/h bonus`,
-    bonusTransport: (amount: string) => `+ $${amount} transport`,
-    bonusOneTime: (amount: string) => `+ $${amount} bonus`,
+    bonusHourly: (amount: string) => `+ ${amount}/h bonus`,
+    bonusTransport: (amount: string) => `+ ${amount} transport`,
+    bonusOneTime: (amount: string) => `+ ${amount} bonus`,
     bonusDay: "has a bonus job",
     layers: { available: "Available", shift: "My shifts", pay: "Pay", cancelled: "Cancelled" } as Record<Layer, string>,
     filterLabel: "Show on the calendar",
@@ -173,15 +174,15 @@ const TEXT = {
     dayPay: "jour de paie",
     dayCancelled: "quart annulé",
     places: (n: number) => (n === 1 ? "1 place restante" : `${n} places restantes`),
-    perHour: (amount: string) => `${amount} $/h`,
-    money: (amount: string) => `${amount} $`,
+    perHour: (amount: string) => `${amount}/h`,
+    money: (amount: string) => amount,
     payLocale: "fr-CA",
     paidByEmployer: "payé directement par l'employeur",
     employerPaysDirectly: "Salaire fixé et payé directement par l'employeur",
     payPending: "Salaire horaire : confirmé avant qu'on vous offre le quart",
-    bonusHourly: (amount: string) => `+ ${amount} $/h de prime`,
-    bonusTransport: (amount: string) => `+ ${amount} $ transport`,
-    bonusOneTime: (amount: string) => `+ ${amount} $ de prime`,
+    bonusHourly: (amount: string) => `+ ${amount}/h de prime`,
+    bonusTransport: (amount: string) => `+ ${amount} transport`,
+    bonusOneTime: (amount: string) => `+ ${amount} de prime`,
     bonusDay: "emploi avec prime",
     layers: { available: "Disponibles", shift: "Mes quarts", pay: "Paie", cancelled: "Annulés" } as Record<Layer, string>,
     filterLabel: "Afficher dans le calendrier",
@@ -256,15 +257,15 @@ const TEXT = {
     dayPay: "يوم دفع",
     dayCancelled: "نوبة ملغاة",
     places: (n: number) => (n === 1 ? "بقي مكان واحد" : `بقي ${n} أماكن`),
-    perHour: (amount: string) => `${amount}$ / ساعة`,
-    money: (amount: string) => `${amount}$`,
+    perHour: (amount: string) => `${amount} / ساعة`,
+    money: (amount: string) => amount,
     payLocale: "en-CA",
     paidByEmployer: "يدفعه صاحب العمل مباشرة",
     employerPaysDirectly: "يحدد صاحب العمل الأجر ويدفعه مباشرة",
     payPending: "الأجر بالساعة: يُؤكَّد قبل أن تُعرض عليك المناوبة",
-    bonusHourly: (amount: string) => `+ ${amount}$ مكافأة في الساعة`,
-    bonusTransport: (amount: string) => `+ ${amount}$ للمواصلات`,
-    bonusOneTime: (amount: string) => `+ ${amount}$ مكافأة`,
+    bonusHourly: (amount: string) => `+ ${amount} مكافأة في الساعة`,
+    bonusTransport: (amount: string) => `+ ${amount} للمواصلات`,
+    bonusOneTime: (amount: string) => `+ ${amount} مكافأة`,
     bonusDay: "فيه وظيفة بمكافأة",
     layers: { available: "المتاحة", shift: "نوباتي", pay: "الدفع", cancelled: "الملغاة" } as Record<Layer, string>,
     filterLabel: "اعرض في التقويم",
@@ -338,14 +339,15 @@ function hasBonus(item: HubItem): boolean {
 
 function bonusLabel(item: HubItem, t: Text): string | null {
   if (!item.bonus || !(item.bonus.amountMinor > 0)) return null;
-  const amount = formatAmount(item.bonus.amountMinor);
+  const amount = formatAmount(item.bonus.amountMinor, t.payLocale);
   if (item.bonus.kind === "hourly") return t.bonusHourly(amount);
   if (item.bonus.kind === "transport") return t.bonusTransport(amount);
   return t.bonusOneTime(amount);
 }
 
-function formatAmount(minor: number): string {
-  return (minor / 100).toFixed(2).replace(/\.00$/, "");
+/** Money in the screen's money locale: "$1,234.50" (English and Arabic) or "1 234,50 $" (French). */
+export function formatAmount(minor: number, payLocale: string): string {
+  return formatRwosCurrency(minor / 100, "CAD", { locale: payLocale });
 }
 
 // Monday-first grid: leading blanks, then each day of the month.
@@ -378,7 +380,8 @@ export function JobsCalendar() {
   const tr = useT();
   const loc = intlLocale(lang);
 
-  const [todayKey] = useState(() => dayKey(new Date()));
+  // "Today" is the Québec day, like the jobs on the calendar.
+  const [todayKey] = useState(() => calendarDayKey(new Date()));
   const [view, setView] = useState(() => {
     const now = new Date();
     return { year: now.getFullYear(), month: now.getMonth() };
@@ -426,7 +429,8 @@ export function JobsCalendar() {
     for (const item of items) {
       const layer = layerOf(item.type);
       if (!layer || !shown[layer]) continue;
-      const key = dayKey(new Date(item.startAt));
+      // Each shift sits on its Québec (America/Toronto) day, whatever the device's time zone.
+      const key = calendarDayKey(item.startAt);
       const list = map.get(key) ?? [];
       list.push(item);
       map.set(key, list);
@@ -463,7 +467,9 @@ export function JobsCalendar() {
   const changeMonth = (delta: number) => goToDate(new Date(view.year, view.month + delta, 1));
   const goToday = () => goToDate(new Date(), dayKey(new Date()));
 
-  const timeFmt = useMemo(() => new Intl.DateTimeFormat(loc, { hour: "numeric", minute: "2-digit" }), [loc]);
+  const timeFmt = useMemo(() => new Intl.DateTimeFormat(loc, { hour: "numeric", minute: "2-digit", timeZone: "America/Toronto" }), [loc]);
+  // For a shift's own start (an instant), in Québec time; dayFmt stays for the grid's calendar days.
+  const shiftDayFmt = useMemo(() => new Intl.DateTimeFormat(loc, { weekday: "long", day: "numeric", month: "long", timeZone: "America/Toronto" }), [loc]);
   const dayFmt = useMemo(() => new Intl.DateTimeFormat(loc, { weekday: "long", day: "numeric", month: "long" }), [loc]);
 
   const timeRange = (item: HubItem) =>
@@ -743,7 +749,7 @@ export function JobsCalendar() {
               {confirming.subtitle ? <> · {confirming.subtitle}</> : null}
               <br />
               <bdi>
-                {dayFmt.format(new Date(confirming.startAt))}, {timeRange(confirming)}
+                {shiftDayFmt.format(new Date(confirming.startAt))}, {timeRange(confirming)}
               </bdi>
             </p>
             <p>{t.confirmBody}</p>
@@ -789,7 +795,7 @@ function ItemCard({
           {item.payOffered !== undefined ? (
             <span className="jc-pay"><bdi>{payOfferedLabel(item.payOffered, t.payLocale, t)}</bdi></span>
           ) : item.amountMinor !== null && item.amountMinor !== undefined && item.amountMinor > 0 ? (
-            <span className="jc-pay"><bdi>{t.perHour(formatAmount(item.amountMinor))}</bdi></span>
+            <span className="jc-pay"><bdi>{t.perHour(formatAmount(item.amountMinor, t.payLocale))}</bdi></span>
           ) : (
             <span className="jc-pay"><bdi>{t.payPending}</bdi></span>
           )}
@@ -832,7 +838,7 @@ function ItemCard({
         <h4 className="jc-role">{item.title}</h4>
         {item.subtitle ? <p className="jc-meta">{item.subtitle}</p> : null}
         {item.amountMinor !== null && item.amountMinor !== undefined ? (
-          <p className="jc-amount"><bdi>{t.money(formatAmount(item.amountMinor))}</bdi></p>
+          <p className="jc-amount"><bdi>{t.money(formatAmount(item.amountMinor, t.payLocale))}</bdi></p>
         ) : null}
         <div className="jc-actions">
           <a className="jc-link" href="/pay">{t.openPay}</a>

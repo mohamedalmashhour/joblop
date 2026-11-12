@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { foldPlaceText, placeMatches, resolveKnownPlace, type PublicCalendarJob } from "@rwos/shared";
 import { useLocale, useT, fmtLocale } from "../i18n/LocaleProvider";
 import { workerPayLabel } from "../workerPayLabel";
+import { leadPayLabel } from "../leadPay";
 import { publicJobPath, signUpReturningTo } from "../safeReturnPath";
 import { JoblopJobBadge, OutsideApplyLink, OutsideSiteBadge } from "../JobSourceBadge";
 import { outsideApplyUrl } from "../jobSource";
@@ -47,12 +48,6 @@ type Lead = Readonly<{
 // Before the visitor types anything, outside listings show everyday work first.
 const EVERYDAY_WORK = "cleaner cook warehouse driver retail labourer";
 
-function leadPay(l: Lead): string | null {
-  const v = l.salaryMaxMinor ?? l.salaryMinMinor;
-  if (!v) return null;
-  const hourly = l.salaryPeriod === "hour" || v < 20000;
-  return hourly ? `$${(v / 100).toFixed(2).replace(/\.00$/, "")}/h` : `$${Math.round(v / 100000)}k/yr`;
-}
 
 export function FindWork({ initialTab, initialQ, initialCity }: { initialTab: FindWorkTab; initialQ: string; initialCity: string }) {
   const t = useT();
@@ -161,7 +156,7 @@ function JoblopJobCard({ job, applyHref }: { job: PublicJob; applyHref: string }
   const money = fmtLocale(locale);
   const when = new Date(job.startAt);
   const whenText = Number.isFinite(when.getTime())
-    ? when.toLocaleString(money, { weekday: "short", month: "short", day: "numeric", hour: "numeric", minute: "2-digit" })
+    ? when.toLocaleString(money, { weekday: "short", month: "short", day: "numeric", hour: "numeric", minute: "2-digit", timeZone: "America/Toronto" })
     : "";
   return (
     <article className="fw-card">
@@ -234,7 +229,7 @@ function LeadApply({ lead, arrow }: { lead: Lead; arrow: string }) {
 // says "N locations"; each city keeps its own "Apply on <site>" link.
 function OutsideLeadCard({ lead, locations, arrow }: { lead: Lead; locations: readonly Lead[]; arrow: string }) {
   const t = useT();
-  const pay = leadPay(lead);
+  const pay = leadPayLabel(lead, useLocale());
   const many = locations.length > 1;
   const row = (l: Lead) => (
     <li key={`${l.areaLabel}-${l.url ?? ""}`} className="fw-loc">
@@ -293,7 +288,7 @@ function MapTab({ jobs, city, applyHref }: { jobs: readonly PublicJob[] | null; 
         <QuebecJobsMap pins={pins} selectedId={selectedPlace} onSelect={setSelected} withQuebec={!city} />
       </div>
       {pins.length === 0 ? <p className="fw-note">{t("fw.mapEmpty")}</p> : <p className="fw-note">{t("fw.mapNote")}</p>}
-      {layout.offMap > 0 ? <p className="fw-note">{t("fw.mapOffMap", { count: layout.offMap })}</p> : null}
+      {layout.offMap > 0 ? <p className="fw-note">{layout.offMap === 1 ? t("fw.mapOffMapOne") : t("fw.mapOffMap", { count: layout.offMap })}</p> : null}
       {selectedPlace ? (
         <section className="fw-sec" aria-live="polite">
           <h2>{selectedPlace}</h2>

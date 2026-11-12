@@ -10,7 +10,8 @@ import { styles } from "../../employerStyles";
 import { JobLocationMap } from "../../../shared/maps";
 import {
   MINIMUM_SHIFT_HOURS,
-  estimateRequestCost,
+  employerBilledHourlyMinor,
+  estimateEmployerRequest,
   formatHourlyRate,
   formatMoney,
   formatPayOffered,
@@ -37,7 +38,6 @@ import {
   combineDateTime,
   defaultStart,
   dollarsToMinor,
-  estimateTaxLines,
   isLongShift,
   localDateTimeToIso,
   minorToDollars,
@@ -723,16 +723,23 @@ export function CreatePersistedRequestPanel({ editRequestId = null }: Readonly<{
     { label: t("create.typeMulti"), value: "multi_day" },
     ...(draft ? [] : [{ label: t("create.typeRecurring"), value: "recurring_intent" }])
   ];
-  const subtotalMinor =
+  // Same rules as the invoices: urgent premium and fee, 6 h minimum, tax per worker-shift invoice.
+  const taxes =
     selectedRole && selectedRole.hourlyRateMinor !== null && scheduledHours > 0
-      ? estimateRequestCost({
-          hourlyRate: { amountMinor: selectedRole.hourlyRateMinor, currency: rateCurrency },
-          hours: repeats && shifts.length > 1 ? scheduledHours * shifts.length : scheduledHours,
+      ? estimateEmployerRequest({
+          contractRateMinor: selectedRole.hourlyRateMinor,
+          urgency: form.urgency,
+          shiftHours: scheduledHours,
+          shiftCount: repeats && shifts.length > 1 ? shifts.length : 1,
           workers: workerCount
-        }).amountMinor
+        })
       : null;
-  const taxes = subtotalMinor !== null ? estimateTaxLines(subtotalMinor) : null;
-  const money = (amountMinor: number) => formatMoney({ amountMinor, currency: rateCurrency });
+  const urgentExtraMinor =
+    selectedRole && selectedRole.hourlyRateMinor !== null
+      ? employerBilledHourlyMinor(selectedRole.hourlyRateMinor, form.urgency) - selectedRole.hourlyRateMinor
+      : 0;
+  const moneyLocale = fmtLocale(locale);
+  const money = (amountMinor: number) => formatMoney({ amountMinor, currency: rateCurrency }, moneyLocale);
   const hoursLabel = Number.isInteger(scheduledHours) ? String(scheduledHours) : scheduledHours.toFixed(2);
 
   return (
@@ -920,7 +927,10 @@ export function CreatePersistedRequestPanel({ editRequestId = null }: Readonly<{
           <p style={styles.metaLabel}>{t("create.rateYouPay")}</p>
           {selectedRole.hourlyRateMinor !== null ? (
             <div style={{ ...styles.tintedCard, display: "grid", gap: 8 }}>
-              <PriceRow label={t("create.pricePerHour")} value={formatHourlyRate({ amountMinor: selectedRole.hourlyRateMinor, currency: rateCurrency })} />
+              <PriceRow label={t("create.pricePerHour")} value={formatHourlyRate({ amountMinor: selectedRole.hourlyRateMinor, currency: rateCurrency }, moneyLocale)} />
+              {urgentExtraMinor > 0 ? (
+                <p style={{ ...styles.cardText, margin: 0 }}>{t("create.priceUrgentExtra", { amount: money(urgentExtraMinor) })}</p>
+              ) : null}
               {taxes ? (
                 <>
                   <PriceRow
@@ -938,6 +948,7 @@ export function CreatePersistedRequestPanel({ editRequestId = null }: Readonly<{
                 </>
               ) : null}
               <p style={{ ...styles.cardText, margin: 0 }}>{t("create.priceMinimum")}</p>
+              <p style={{ ...styles.cardText, margin: 0 }}>{t("create.priceEstimateNote")}</p>
               <p style={{ ...styles.cardText, margin: 0 }}>{t("create.rateFromContract")}</p>
             </div>
           ) : (
