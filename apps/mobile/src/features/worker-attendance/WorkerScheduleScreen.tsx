@@ -5,15 +5,25 @@ import type { MobileSessionTransport, WorkerAttendanceRecord } from "../../auth/
 import { Badge, BodyText, Button, Card, EmptyState, ErrorState, Heading, LoadingState, ScreenContainer, SmallText } from "../../ui/primitives";
 import { formatShiftWindow } from "../marketplace/marketplaceContent";
 import { useLocale } from "../../i18n/LocaleContext";
-import { attendanceAction, attendanceCopyFor, attendanceStatusLabel, attendanceStatusTone, canCancelShift, isLateCancellation } from "./attendanceScheduleContent";
+import { attendanceCopyFor, attendanceStatusLabel, attendanceStatusTone, canCancelShift, isLateCancellation } from "./attendanceScheduleContent";
+import { ShiftCheckInCard } from "./ShiftCheckInCard";
 
 type ScheduleState =
   | { status: "loading" }
   | { status: "ready"; data: readonly WorkerAttendanceRecord[] }
   | { status: "empty" | "denied" | "error" };
 
-export function WorkerScheduleScreen({ transport, onBack }: { transport: MobileSessionTransport | null; onBack: () => void }) {
-  const { locale } = useLocale();
+export function WorkerScheduleScreen({
+  transport,
+  onBack,
+  onOpenJob
+}: {
+  transport: MobileSessionTransport | null;
+  onBack: () => void;
+  /** Opens a booked shift's page (the job screen: details, address, Check in / Check out). */
+  onOpenJob?: (jobRequestId: string) => void;
+}) {
+  const { locale, t } = useLocale();
   const attendanceCopy = attendanceCopyFor(locale);
   const [state, setState] = useState<ScheduleState>({ status: "loading" });
   const [busyId, setBusyId] = useState<string | null>(null);
@@ -37,30 +47,6 @@ export function WorkerScheduleScreen({ transport, onBack }: { transport: MobileS
       active = false;
     };
   }, [load]);
-
-  const act = useCallback(
-    async (record: WorkerAttendanceRecord, action: "check_in" | "check_out") => {
-      if (!transport) return;
-      setBusyId(record.attendanceRecordId);
-      setNotice(null);
-      const result =
-        action === "check_in"
-          ? await transport.attendanceCheckIn(record.attendanceRecordId, record.version)
-          : await transport.attendanceCheckOut(record.attendanceRecordId, record.version);
-      setBusyId(null);
-      if (result.status === "ready") {
-        await load();
-      } else if (result.status === "conflict") {
-        setNotice(attendanceCopy.conflict);
-        await load();
-      } else if (result.status === "denied") {
-        setNotice(attendanceCopy.denied);
-      } else {
-        setNotice(attendanceCopy.actionError);
-      }
-    },
-    [transport, load, attendanceCopy]
-  );
 
   // "Cancel this shift": a confirm step that says plainly what happens (7-day suspension under 24 h),
   // then the API cancels the booking and the schedule entry together.
@@ -109,7 +95,6 @@ export function WorkerScheduleScreen({ transport, onBack }: { transport: MobileS
 
           {state.status === "ready"
             ? state.data.map((r) => {
-                const action = attendanceAction(r);
                 return (
                   <Card key={r.attendanceRecordId} testID="schedule-shift">
                     <View style={styles.row}>
@@ -121,11 +106,10 @@ export function WorkerScheduleScreen({ transport, onBack }: { transport: MobileS
                     {r.worksiteAddress ? <BodyText>{r.worksiteAddress}</BodyText> : null}
                     <SmallText>{formatShiftWindow(r.scheduledStartAt, r.scheduledEndAt)}</SmallText>
                     {r.clockInAllowed === false ? <SmallText>{attendanceCopy.longTermNoClockIn}</SmallText> : null}
-                    {action === "check_in" ? (
-                      <Button label={attendanceCopy.checkInCta} onPress={() => void act(r, "check_in")} disabled={busyId === r.attendanceRecordId} />
-                    ) : null}
-                    {action === "check_out" ? (
-                      <Button label={attendanceCopy.checkOutCta} onPress={() => void act(r, "check_out")} disabled={busyId === r.attendanceRecordId} />
+                    {/* Same Check in / Check out box as the job screen and the website. */}
+                    <ShiftCheckInCard record={r} transport={transport} onChanged={load} />
+                    {onOpenJob && r.jobRequestId && r.status !== "cancelled" ? (
+                      <Button label={t("sched.openShift")} variant="secondary" onPress={() => onOpenJob(r.jobRequestId!)} testID="schedule-open-shift" />
                     ) : null}
                     {canCancelShift(r) && confirmingId !== r.attendanceRecordId ? (
                       <Button label={attendanceCopy.cancelCta} variant="secondary" onPress={() => setConfirmingId(r.attendanceRecordId)} disabled={busyId === r.attendanceRecordId} />

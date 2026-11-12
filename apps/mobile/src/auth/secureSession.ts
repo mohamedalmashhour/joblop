@@ -2152,6 +2152,8 @@ function parseMarketplaceInterest(input: unknown): MarketplaceInterest | null {
 export type WorkerAttendanceRecord = Readonly<{
   attendanceRecordId: string;
   assignmentId: string;
+  // The job; a booked shift opens its shift page (the job screen) from the calendar.
+  jobRequestId?: string;
   status: string;
   scheduledStartAt: string;
   scheduledEndAt: string;
@@ -2183,6 +2185,7 @@ function parseWorkerAttendanceRecord(input: unknown): WorkerAttendanceRecord | n
   return {
     attendanceRecordId,
     assignmentId: str(r.assignmentId),
+    ...(typeof r.jobRequestId === "string" && r.jobRequestId ? { jobRequestId: r.jobRequestId } : {}),
     status: str(r.status),
     scheduledStartAt: str(r.scheduledStartAt),
     scheduledEndAt: str(r.scheduledEndAt),

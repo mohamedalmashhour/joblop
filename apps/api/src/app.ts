@@ -6418,12 +6418,30 @@ export function buildApi(options: BuildApiOptions = {}) {
     const countryAddress = options.countryAddress;
     const countryCurrency = options.countryCurrency; // Stage 2b.3b-1: display-only result currency
 
+    // A worker booked on this job (claimed, or assigned and not cancelled) can always open it: it is
+    // their shift page (details, address, Check in / Check out), even once it is full, started or no
+    // longer listed on the job board.
+    const bookedViewer = await prisma!.workerIdentity
+      .findUnique({ where: { userId: session.user.id }, select: { id: true } })
+      .then((identity) =>
+        identity
+          ? prisma!.assignment.findFirst({
+              where: { jobRequestId, workerIdentityId: identity.id, status: { notIn: ["worker_withdrawn", "employer_cancelled", "platform_cancelled"] } },
+              select: { id: true }
+            })
+          : null
+      )
+      .catch(() => null);
+    const booked = bookedViewer !== null;
+
     const row = await prisma!.jobRequest.findFirst({
-      where: listedJobWhere({
-        id: jobRequestId,
-        status: { in: ["submitted", "approved_for_dispatch"] },
-        residence: { status: "active" }
-      }),
+      where: booked
+        ? { id: jobRequestId, status: { notIn: ["draft", "cancelled"] } }
+        : listedJobWhere({
+            id: jobRequestId,
+            status: { in: ["submitted", "approved_for_dispatch"] },
+            residence: { status: "active" }
+          }),
       select: {
         id: true,
         title: true,
@@ -6588,7 +6606,9 @@ export function buildApi(options: BuildApiOptions = {}) {
         longTerm,
         requiredCertificates: required,
         missingCertificates: viewer ? missingCertificateKeys : null,
-        bonus
+        bonus,
+        // This worker holds the shift: the page shows it as their shift (address, Check in / out).
+        booked
       }
     });
   });

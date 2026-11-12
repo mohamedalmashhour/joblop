@@ -146,6 +146,16 @@ export function accountPenaltyEmail(params: {
   };
 }
 
+// Check-in opens 30 minutes before the start (checkInWindow.ts), in Toronto time.
+function checkInOpensClock(startAt: Date, language: WorkerLanguage): string {
+  const opens = new Date(startAt.getTime() - 30 * 60_000);
+  try {
+    return new Intl.DateTimeFormat(intlLocale(language), { timeStyle: "short", timeZone: "America/Toronto" }).format(opens);
+  } catch {
+    return opens.toISOString();
+  }
+}
+
 // "You got the job!" — confirmation that a worker is assigned to a shift. Email copy, bilingual.
 export function assignedJobEmail(params: {
   to: string;
@@ -157,6 +167,8 @@ export function assignedJobEmail(params: {
 }): EmailMessage {
   const when = formatShiftWhen(params.startAt, params.language);
   const link = params.jobUrl?.trim() || null;
+  // On the day the worker checks in from the job page: say from when, with the link.
+  const opens = checkInOpensClock(params.startAt, params.language);
   if (params.language === "en") {
     return {
       to: params.to,
@@ -166,7 +178,7 @@ export function assignedJobEmail(params: {
         `When: ${when}\n\n` +
         (params.address ? `Where: ${params.address}\n\n` : "") +
         (link
-          ? `See the job details and the map: ${link}\n\nSee you there!\n\n— Joblop`
+          ? `See the job details and the map: ${link}\n\nOn the day, open this page to check in from ${opens}: ${link}\n\nSee you there!\n\n— Joblop`
           : `Open Joblop to see the full details in your schedule. See you there!\n\n— Joblop`)
     };
   }
@@ -179,7 +191,7 @@ export function assignedJobEmail(params: {
         `متى: ${when}\n\n` +
         (params.address ? `أين: ${params.address}\n\n` : "") +
         (link
-          ? `تفاصيل العمل والخريطة هنا: ${link}\n\nنراك هناك!\n\n— Joblop`
+          ? `تفاصيل العمل والخريطة هنا: ${link}\n\nفي يوم العمل، افتح هذه الصفحة لتسجيل وصولك ابتداءً من الساعة ${opens}: ${link}\n\nنراك هناك!\n\n— Joblop`
           : `افتح Joblop لرؤية كل التفاصيل في جدولك. نراك هناك!\n\n— Joblop`)
     };
   }
@@ -191,7 +203,7 @@ export function assignedJobEmail(params: {
       `Quand : ${when}\n\n` +
       (params.address ? `Où : ${params.address}\n\n` : "") +
       (link
-        ? `Voir les détails du travail et la carte : ${link}\n\nÀ bientôt !\n\n— Joblop`
+        ? `Voir les détails du travail et la carte : ${link}\n\nLe jour même, ouvrez cette page pour pointer votre arrivée à partir de ${opens} : ${link}\n\nÀ bientôt !\n\n— Joblop`
         : `Ouvrez Joblop pour voir tous les détails dans votre horaire. À bientôt !\n\n— Joblop`)
   };
 }

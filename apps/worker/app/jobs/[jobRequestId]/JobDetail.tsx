@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { looksLikePostalCode } from "@rwos/shared";
 import { formatWhen } from "../../MarketplaceExplorer";
 import { useLocale, useT, fmtLocale } from "../../i18n/LocaleProvider";
@@ -10,6 +10,7 @@ import { MissingCertificatesNotice, RequiredCertificatesSection, type RequiredCe
 import { shiftOverlapNotice } from "../../shiftOverlapNotice";
 import { ShiftAddressMap } from "../../ShiftAddressMap";
 import { CancelShiftControl } from "../../schedule/CancelShift";
+import { ShiftCheckIn, type CheckInShift } from "../../schedule/ShiftCheckIn";
 import { JoblopJobBadge } from "../../JobSourceBadge";
 
 type JobDetailData = Readonly<{
@@ -47,7 +48,12 @@ type JobDetailData = Readonly<{
   // Certificates the employer requires, and the ones this worker misses (null when not a worker).
   requiredCertificates?: RequiredCertificatesData;
   missingCertificates?: readonly string[] | null;
+  // This worker holds the shift (claimed, or assigned and confirmed): the page is their shift page.
+  booked?: boolean;
 }>;
+
+// The worker's own schedule entry for this job (from /api/attendance).
+type MyShiftRecord = CheckInShift & Readonly<{ assignmentId?: string; worksiteAddress?: string | null }>;
 
 type JobBonus = Readonly<{ kind: string; amountMinor: number }>;
 
@@ -91,30 +97,37 @@ export function JobDetail({ id, place }: { id: string; place: string | null }) {
   // The exact work address, only when this worker is confirmed on this job (from their own schedule;
   // the API sends it only for a confirmed shift that is not over). Everyone else sees the city only.
   const [confirmedAddress, setConfirmedAddress] = useState<string | null>(null);
-  // The worker's own booked shift on this job, while it has not started: they may cancel it here.
-  const [myShift, setMyShift] = useState<{ attendanceRecordId: string; scheduledStartAt: string } | null>(null);
+  // The worker's own schedule entry for this job (any live status): drives the "You're assigned" box
+  // with Check in / Check out, and Cancel while it has not started.
+  const [myRecord, setMyRecord] = useState<MyShiftRecord | null>(null);
   const [cancelNotice, setCancelNotice] = useState<string | null>(null);
+  const assignedRef = useRef<HTMLElement | null>(null);
   const confirmedJobId = job?.jobRequestId ?? null;
-  useEffect(() => {
+  const loadMine = useCallback(async () => {
     if (!confirmedJobId) return;
-    let active = true;
-    fetch("/api/attendance?limit=100", { cache: "no-store" })
-      .then((r) => (r.ok ? r.json() : null))
-      .then((p: { items?: { jobRequestId?: string; worksiteAddress?: string | null; attendanceRecordId?: string; status?: string; scheduledStartAt?: string; clockInAllowed?: boolean }[] } | null) => {
-        if (!active) return;
-        const mine = p?.items?.find((item) => item.jobRequestId === confirmedJobId && item.worksiteAddress);
-        setConfirmedAddress(mine?.worksiteAddress ?? null);
-        setMyShift(
-          mine && mine.status === "pending_start" && mine.clockInAllowed !== false && mine.attendanceRecordId && mine.scheduledStartAt
-            ? { attendanceRecordId: mine.attendanceRecordId, scheduledStartAt: mine.scheduledStartAt }
-            : null
-        );
-      })
-      .catch(() => undefined);
-    return () => {
-      active = false;
-    };
-  }, [confirmedJobId, claimOutcome.state]);
+    try {
+      const r = await fetch("/api/attendance?limit=100", { cache: "no-store" });
+      if (!r.ok) return;
+      const p = (await r.json()) as { items?: MyShiftRecord[] };
+      const items = (p.items ?? []).filter((item) => item.jobRequestId === confirmedJobId);
+      const mine = items.find((item) => item.status !== "cancelled") ?? null;
+      setMyRecord(mine);
+      setConfirmedAddress(mine?.worksiteAddress ?? null);
+    } catch {
+      /* keep what is shown */
+    }
+  }, [confirmedJobId]);
+  useEffect(() => {
+    void loadMine();
+  }, [loadMine, claimOutcome.state]);
+  // Right after claiming, bring the new "You're assigned" box (with Check in) into view.
+  useEffect(() => {
+    if (claimOutcome.state === "assigned" && myRecord) assignedRef.current?.scrollIntoView({ behavior: "smooth", block: "center" });
+  }, [claimOutcome.state, myRecord]);
+  const myShift =
+    myRecord && myRecord.status === "pending_start" && myRecord.clockInAllowed !== false
+      ? { attendanceRecordId: myRecord.attendanceRecordId, scheduledStartAt: myRecord.scheduledStartAt }
+      : null;
 
   useEffect(() => {
     let active = true;
@@ -267,21 +280,37 @@ export function JobDetail({ id, place }: { id: string; place: string | null }) {
       {job.bonus && job.bonus.amountMinor > 0 ? <BonusBox bonus={job.bonus} currency={job.currency} locale={locale} /> : null}
 
       {cancelNotice ? <p className="notice" role="status" style={{ color: "var(--accent)" }}>{cancelNotice}</p> : null}
-      {confirmedAddress ? (
-        <Section title={t("map.workAddress")}>
-          <p>{confirmedAddress}</p>
-          <ShiftAddressMap address={confirmedAddress} height={220} />
+      {myRecord ? (
+        <section ref={assignedRef} className="detail-section interest submitted" data-testid="my-shift" aria-labelledby="my-shift-title">
+          <h2 id="my-shift-title">{t("job.claimAssignedTitle")}</h2>
+          <p>{t("checkin.assignedBody")}</p>
+          <ShiftCheckIn shift={myRecord} onChanged={loadMine} />
+          {/* "Report my hours" (feat/report-hours) goes here, next to Check in / Check out. */}
+          <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginTop: 12 }}>
+            {myRecord.assignmentId ? (
+              <a className="btn ghost" href={`/contact?topic=shift&relatedType=assignment&relatedId=${encodeURIComponent(myRecord.assignmentId)}`}>
+                {t("sched.askJoblop")}
+              </a>
+            ) : null}
+            <a className="btn ghost" href="/schedule">{t("job.goToSchedule")}</a>
+          </div>
           {myShift ? (
             <CancelShiftControl
               attendanceRecordId={myShift.attendanceRecordId}
               scheduledStartAt={myShift.scheduledStartAt}
               onCancelled={(message) => {
                 setCancelNotice(message);
-                setMyShift(null);
+                setMyRecord(null);
                 setConfirmedAddress(null);
               }}
             />
           ) : null}
+        </section>
+      ) : null}
+      {confirmedAddress ? (
+        <Section title={t("map.workAddress")}>
+          <p>{confirmedAddress}</p>
+          <ShiftAddressMap address={confirmedAddress} height={220} />
         </Section>
       ) : (
         <>
@@ -319,7 +348,7 @@ export function JobDetail({ id, place }: { id: string; place: string | null }) {
 
       <AllowancesSection allowances={job.allowances} currency={job.currency} locale={locale} />
 
-      {blockedReasonKey(job.claimBlockedReason) ? (
+      {myRecord || job.booked ? null : blockedReasonKey(job.claimBlockedReason) ? (
         <section className="detail-section interest" role="status">
           <p className="muted">{t(blockedReasonKey(job.claimBlockedReason)!)}</p>
         </section>

@@ -2,13 +2,14 @@ import { useCallback, useEffect, useState } from "react";
 import { ScrollView, StyleSheet, Text, View } from "react-native";
 import { looksLikePostalCode } from "@rwos/shared";
 import { colors, radii, spacing } from "../../theme";
-import type { AllowanceLineView, JobInterestState, MarketplaceJobDetail, MobileSessionTransport } from "../../auth/secureSession";
+import type { AllowanceLineView, JobInterestState, MarketplaceJobDetail, MobileSessionTransport, WorkerAttendanceRecord } from "../../auth/secureSession";
 import { Badge, BodyText, Button, Card, Divider, ErrorState, Heading, LoadingState, ScreenContainer, Section, SmallText } from "../../ui/primitives";
 import { formatJobPay, formatJobWhen, formatLocale, formatOpenings } from "./marketplaceContent";
 import { certificateNotice, ineligibleKey, interestPanel, requiredCertificateRows } from "./jobDetailContent";
 import { useLocale } from "../../i18n/LocaleContext";
 import type { Locale } from "../../i18n/strings";
 import { JobLocationLink } from "../maps";
+import { ShiftCheckInCard } from "../worker-attendance/ShiftCheckInCard";
 
 type DetailState =
   | { status: "loading" }
@@ -49,6 +50,18 @@ export function MarketplaceJobScreen({
   const [interestBusy, setInterestBusy] = useState(false);
   const [interestError, setInterestError] = useState<string | null>(null);
   const [claim, setClaim] = useState<ClaimState>({ state: "idle" });
+  // The worker's own shift on this job (claimed, or assigned and confirmed): the screen becomes their
+  // shift page, with the exact address and the Check in / Check out box.
+  const [myRecord, setMyRecord] = useState<WorkerAttendanceRecord | null>(null);
+  const loadMine = useCallback(async () => {
+    if (!transport) return;
+    const result = await transport.workerAttendance();
+    if (result.status !== "ready") return;
+    setMyRecord(result.data.find((r) => r.jobRequestId === jobRequestId && r.status !== "cancelled") ?? null);
+  }, [transport, jobRequestId]);
+  useEffect(() => {
+    void loadMine();
+  }, [loadMine, claim.state]);
   // Only a postal code goes with an interest (for its distance record); a city does not.
   const interestPostal = postalCode && looksLikePostalCode(postalCode) ? postalCode : undefined;
 
@@ -149,6 +162,9 @@ export function MarketplaceJobScreen({
               interestBusy={interestBusy}
               interestError={interestError}
               claim={claim}
+              myRecord={myRecord}
+              transport={transport}
+              onShiftChanged={loadMine}
               onExpress={() => void express()}
               onWithdraw={() => void withdraw()}
               onClaim={() => void claimJob()}
@@ -171,6 +187,9 @@ function JobBody({
   interestBusy,
   interestError,
   claim,
+  myRecord,
+  transport,
+  onShiftChanged,
   onExpress,
   onWithdraw,
   onClaim,
@@ -185,6 +204,9 @@ function JobBody({
   interestBusy: boolean;
   interestError: string | null;
   claim: ClaimState;
+  myRecord: WorkerAttendanceRecord | null;
+  transport: MobileSessionTransport | null;
+  onShiftChanged: () => void | Promise<void>;
   onExpress: () => void;
   onWithdraw: () => void;
   onClaim: () => void;
@@ -224,6 +246,21 @@ function JobBody({
           <Text style={styles.bonusText}>{`★ ${bonusLabel(job.bonus, locale, t)}`}</Text>
           <SmallText>{t("job.bonusNote")}</SmallText>
         </View>
+      ) : null}
+
+      {myRecord ? (
+        <Card testID="my-shift">
+          <Heading>{t("job.claimAssignedTitle")}</Heading>
+          <BodyText>{t("checkin.assignedBody")}</BodyText>
+          {myRecord.worksiteAddress ? (
+            <>
+              <Fact label={t("map.workAddress")} value={myRecord.worksiteAddress} rtl={isRtl} />
+              <JobLocationLink address={myRecord.worksiteAddress} />
+            </>
+          ) : null}
+          <ShiftCheckInCard record={myRecord} transport={transport} onChanged={onShiftChanged} />
+          {onOpenSchedule ? <Button label={t("job.goToSchedule")} variant="secondary" onPress={onOpenSchedule} /> : null}
+        </Card>
       ) : null}
 
       {job.description ? (
@@ -279,7 +316,7 @@ function JobBody({
         </Card>
       </Section>
 
-      {job.claimable ? (
+      {myRecord ? null : job.claimable ? (
         <ClaimPanel
           claim={claim}
           blocked={(job.missingCertificates ?? []).length > 0}
