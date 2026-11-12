@@ -312,6 +312,7 @@ import { registerCalendarHubRoutes } from "./calendarHubRoutes";
 import { registerEmployerPlanRoutes } from "./employerPlanRoutes";
 import { isListedForWorkers, listedJobWhere, listingVisibilitySelect } from "./jobListingVisibility";
 import { claimBlockReason, openJobWhere } from "./openJobs";
+import { workerAttendanceView, workerCancelledBy } from "./workerCancelledBy";
 import { isSavedJobAvailable } from "./savedJobAvailability";
 import { sortDispatchesBySoonestShift } from "./dispatchListOrder";
 import { PUBLIC_CALENDAR_MAX_JOBS, publicCalendarJobView, publicCalendarRange } from "./publicJobsCalendar";
@@ -9519,7 +9520,7 @@ export function buildApi(options: BuildApiOptions = {}) {
       attendanceRecordId: readRouteParam(request.params, "attendanceRecordId")
     });
 
-    return reply.code(200).send({ attendanceRecord: serializeAttendanceRecord(attendanceRecord) });
+    return reply.code(200).send({ attendanceRecord: workerAttendanceView(serializeAttendanceRecord(attendanceRecord)) });
   });
 
   app.post("/worker/attendance/:attendanceRecordId/check-in", async (request, reply) => {
@@ -9551,7 +9552,7 @@ export function buildApi(options: BuildApiOptions = {}) {
       locationPolicyResult: readOptionalString(body, "locationPolicyResult")
     });
 
-    return reply.code(200).send({ attendanceRecord: serializeAttendanceRecord(attendanceRecord) });
+    return reply.code(200).send({ attendanceRecord: workerAttendanceView(serializeAttendanceRecord(attendanceRecord)) });
   });
 
   app.post("/worker/attendance/:attendanceRecordId/check-out", async (request, reply) => {
@@ -9575,7 +9576,7 @@ export function buildApi(options: BuildApiOptions = {}) {
       locationPolicyResult: readOptionalString(body, "locationPolicyResult")
     });
 
-    return reply.code(200).send({ attendanceRecord: serializeAttendanceRecord(attendanceRecord) });
+    return reply.code(200).send({ attendanceRecord: workerAttendanceView(serializeAttendanceRecord(attendanceRecord)) });
   });
 
   // ── HR-4: worker schedule + attendance (worker-scoped read over the EXISTING attendance
@@ -9584,7 +9585,8 @@ export function buildApi(options: BuildApiOptions = {}) {
   app.get("/worker/attendance", async (request, reply) => {
     const session = await authService.validateSession(readBearerToken(request.headers.authorization));
     if (!session.authenticated || !session.user) return sendAttendanceUnauthenticated(reply);
-    const identity = await prisma!.workerIdentity.findUnique({ where: { userId: session.user.id }, select: { id: true } });
+    const userId = session.user.id;
+    const identity = await prisma!.workerIdentity.findUnique({ where: { userId }, select: { id: true } });
     if (!identity) return reply.code(403).send({ error: "RWOS_ATTENDANCE_DENIED", message: "Only a worker can view their schedule." });
     const query = asRecord(request.query);
     const limit = Math.min(Math.max(parseQueryInt(readOptionalString(query, "limit")) ?? 25, 1), 100);
@@ -9596,10 +9598,11 @@ export function buildApi(options: BuildApiOptions = {}) {
       ...(cursor && isCanonicalUuid(cursor) ? { cursor: { id: cursor }, skip: 1 } : {}),
       select: {
         id: true, assignmentId: true, jobRequestId: true, status: true, scheduledStartAt: true, scheduledEndAt: true, timezone: true,
-        checkInAt: true, checkOutAt: true, exceptionCategory: true, version: true,
+        checkInAt: true, checkOutAt: true, version: true, cancelledByUserId: true,
+        assignment: { select: { status: true } },
         organization: { select: { displayName: true } },
         residence: { select: WORKSITE_ADDRESS_SELECT },
-        jobRequest: { select: { jobLength: true, title: true, roleDefinition: { select: { displayLabel: true } }, calendarProfile: { select: { addressSummary: true, specialInstructions: true } } } }
+        jobRequest: { select: { jobLength: true, title: true, status: true, cancellation: { select: { id: true } }, roleDefinition: { select: { displayLabel: true } }, calendarProfile: { select: { addressSummary: true, specialInstructions: true } } } }
       }
     });
     const hasMore = rows.length > limit;
@@ -9607,7 +9610,17 @@ export function buildApi(options: BuildApiOptions = {}) {
       attendanceRecordId: r.id, assignmentId: r.assignmentId, jobRequestId: r.jobRequestId, status: r.status,
       scheduledStartAt: r.scheduledStartAt.toISOString(), scheduledEndAt: r.scheduledEndAt.toISOString(), timezone: r.timezone,
       checkInAt: r.checkInAt?.toISOString() ?? null, checkOutAt: r.checkOutAt?.toISOString() ?? null,
-      exceptionCategory: r.exceptionCategory, version: r.version,
+      version: r.version,
+      // Who cancelled ("joblop" | "employer" | "worker"), shown as a plain label. The free-text
+      // reason staff or the employer typed is internal and is never sent to the worker.
+      cancelledBy: workerCancelledBy({
+        attendanceStatus: r.status,
+        attendanceCancelledByUserId: r.cancelledByUserId,
+        workerUserId: userId,
+        assignmentStatus: r.assignment.status,
+        jobStatus: r.jobRequest.status,
+        jobCancelledByEmployer: r.jobRequest.cancellation !== null
+      }),
       employerName: r.organization.displayName,
       // The job the worker is doing (e.g. "Farm worker"); the schedule card shows it as the title.
       roleLabel: r.jobRequest.roleDefinition?.displayLabel ?? r.jobRequest.title ?? null,

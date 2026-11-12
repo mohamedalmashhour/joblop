@@ -116,6 +116,7 @@ export function WorkerScheduleScreen({ transport, onBack }: { transport: MobileS
                       <Heading>{r.employerName}</Heading>
                       <Badge label={attendanceStatusLabel(r.status, locale)} tone={attendanceStatusTone(r.status)} />
                     </View>
+                    {r.cancelledBy ? <SmallText>{attendanceCopy.cancelledBy[r.cancelledBy]}</SmallText> : null}
                     {r.areaLabel ? <BodyText>{r.areaLabel}</BodyText> : null}
                     {r.worksiteAddress ? <BodyText>{r.worksiteAddress}</BodyText> : null}
                     <SmallText>{formatShiftWindow(r.scheduledStartAt, r.scheduledEndAt)}</SmallText>

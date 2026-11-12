@@ -99,6 +99,8 @@ export type AttendanceCopy = Readonly<{
   cancelledNotice: string;
   cancelledSuspendedNotice: string;
   cancelStarted: string;
+  // Who cancelled a shift (same words as the website schedule). Never the internal reason text.
+  cancelledBy: Readonly<Record<"joblop" | "employer" | "worker", string>>;
 }>;
 
 const en: AttendanceCopy = {
@@ -126,7 +128,8 @@ const en: AttendanceCopy = {
   cancelKeep: "Keep my shift",
   cancelledNotice: "Your shift is cancelled. The employer and Joblop have been told.",
   cancelledSuspendedNotice: "Your shift is cancelled. Your account is suspended for 7 days; check your email.",
-  cancelStarted: "This shift has already started, so it can't be cancelled here. Contact Joblop."
+  cancelStarted: "This shift has already started, so it can't be cancelled here. Contact Joblop.",
+  cancelledBy: { joblop: "Cancelled by Joblop", employer: "Cancelled by the employer", worker: "You cancelled this shift" }
 };
 
 const fr: AttendanceCopy = {
@@ -154,7 +157,8 @@ const fr: AttendanceCopy = {
   cancelKeep: "Garder mon quart",
   cancelledNotice: "Votre quart est annulé. L'employeur et Joblop ont été avisés.",
   cancelledSuspendedNotice: "Votre quart est annulé. Votre compte est suspendu 7 jours; consultez vos courriels.",
-  cancelStarted: "Ce quart a déjà commencé : il ne peut plus être annulé ici. Contactez Joblop."
+  cancelStarted: "Ce quart a déjà commencé : il ne peut plus être annulé ici. Contactez Joblop.",
+  cancelledBy: { joblop: "Annulé par Joblop", employer: "Annulé par l’employeur", worker: "Vous avez annulé ce quart" }
 };
 
 const ar: AttendanceCopy = {
@@ -182,7 +186,8 @@ const ar: AttendanceCopy = {
   cancelKeep: "أبقِ مناوبتي",
   cancelledNotice: "تم إلغاء مناوبتك. تم إبلاغ صاحب العمل وJoblop.",
   cancelledSuspendedNotice: "تم إلغاء مناوبتك. حسابك معلَّق لمدة 7 أيام؛ راجع بريدك الإلكتروني.",
-  cancelStarted: "بدأت هذه المناوبة بالفعل، لذا لا يمكن إلغاؤها من هنا. تواصل مع Joblop."
+  cancelStarted: "بدأت هذه المناوبة بالفعل، لذا لا يمكن إلغاؤها من هنا. تواصل مع Joblop.",
+  cancelledBy: { joblop: "ألغتها Joblop", employer: "ألغاها صاحب العمل", worker: "لقد ألغيت هذه المناوبة" }
 };
 
 const BY_LOCALE: Record<Locale, AttendanceCopy> = { en, fr, ar };
