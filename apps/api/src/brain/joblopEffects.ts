@@ -447,13 +447,10 @@ export function createJoblopBrainEffects(deps: JoblopEffectsDeps): JoblopBrainEf
       const employerUserId = a.jobRequest.createdByUserId;
       if (employerUserId && sendsEmail("shift_not_recorded_employer")) {
         const employer = await prisma.user.findUnique({ where: { id: employerUserId }, select: { emailNormalized: true, primaryLanguage: true } });
-        let first = false;
-        try {
-          await prisma.brainMarker.create({ data: { marker: `shift_not_recorded_employer:${attendanceRecordId}`, createdAt: now } });
-          first = true;
-        } catch {
-          first = false;
-        }
+        const first = await prisma.brainMarker
+          .create({ data: { marker: `shift_not_recorded_employer:${attendanceRecordId}`, createdAt: now } })
+          .then(() => true)
+          .catch(() => false);
         if (employer?.emailNormalized && first) {
           const result = await deps.emailSender
             .send(
