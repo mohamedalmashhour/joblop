@@ -281,8 +281,8 @@ const TEXT = {
     kind: { available: "وظيفة للقبول", shift: "نوبتي", pay: "يوم الدفع", cancelled: "ملغاة" } as Record<Layer, string>,
     shiftStatus: {
       pending_start: "مؤكدة",
-      checked_in: "تم تسجيل الحضور",
-      checked_out: "تم تسجيل الانصراف",
+      checked_in: "تم تسجيل الوصول",
+      checked_out: "تم تسجيل المغادرة",
       completed: "مكتملة",
       missed: "فائتة",
       exception: "بحاجة إلى مراجعة",

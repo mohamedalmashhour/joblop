@@ -168,7 +168,7 @@ export const ACTION_TITLES: Record<string, Titles> = {
   remind_worker_timesheet: { en: "Remind a worker to confirm their hours", fr: "Rappeler à un travailleur de confirmer ses heures", ar: "تذكير عامل بتأكيد ساعاته" },
   offer_employer_bonus: { en: "Offer the employer a bonus for an unfilled job", fr: "Proposer une prime à l'employeur pour une mission non pourvue", ar: "اقتراح مكافأة على صاحب العمل لمهمة غير مغطاة" },
   auto_approve_request: { en: "Approve a request that passes every check", fr: "Approuver une demande qui passe toutes les vérifications", ar: "الموافقة على طلب اجتاز كل الفحوص" },
-  auto_approve_timesheet: { en: "Approve hours with check-in and check-out and no problems", fr: "Approuver des heures avec arrivée, départ et aucun problème", ar: "الموافقة على ساعات فيها تسجيل وصول وانصراف دون مشاكل" },
+  auto_approve_timesheet: { en: "Approve hours with check-in and check-out and no problems", fr: "Approuver des heures avec arrivée, départ et aucun problème", ar: "الموافقة على ساعات فيها تسجيل وصول ومغادرة دون مشاكل" },
   daily_summary_email: { en: "Daily summary email to staff", fr: "Résumé quotidien par courriel au personnel", ar: "ملخص يومي بالبريد إلى الفريق" },
   // Phase 2: actions a person confirmed on an assistant card.
   "assistant.claim_open_job": { en: "Assistant: worker claimed a job", fr: "Assistant : un travailleur a pris une mission", ar: "المساعد: عامل أخذ مهمة" },
