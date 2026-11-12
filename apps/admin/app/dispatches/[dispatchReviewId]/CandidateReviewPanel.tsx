@@ -2,6 +2,8 @@
 
 import { useEffect, useRef, useState } from "react";
 import type { AdminDispatchReview } from "../../api/dispatches/dispatchBoundary";
+import { usePageText } from "../../i18n/pageText";
+import { dispatchPanelsText, fillIn, statusWord } from "./dispatchPanelsText";
 
 export function CandidateReviewPanel({
   dispatch,
@@ -10,9 +12,16 @@ export function CandidateReviewPanel({
   dispatch: AdminDispatchReview;
   onUpdated: (dispatch: AdminDispatchReview) => void;
 }>) {
+  const all = usePageText(dispatchPanelsText);
+  const t = all.candidates;
   const [confirming, setConfirming] = useState(false);
   const [busy, setBusy] = useState(false);
-  const [message, setMessage] = useState("");
+  const [message, setMessageText] = useState("");
+  const [messageIsAlert, setMessageIsAlert] = useState(false);
+  const setMessage = (text: string, alert = false) => {
+    setMessageText(text);
+    setMessageIsAlert(alert);
+  };
   const [sourceStatus, setSourceStatus] = useState<
     "not_checked" | "checking" | "available" | "candidate_source_unavailable" | "error"
   >("not_checked");
@@ -33,7 +42,7 @@ export function CandidateReviewPanel({
     if (guard.current) return;
     guard.current = true;
     setBusy(true);
-    setMessage("Starting governed candidate review.");
+    setMessage(t.startingMsg);
     try {
       const response = await fetch(
         `/api/dispatches/${encodeURIComponent(dispatch.id)}/candidate-review`,
@@ -45,21 +54,18 @@ export function CandidateReviewPanel({
       );
       if (!response.ok) {
         setConfirming(false);
-        setMessage(
-          response.status === 409
-            ? "This dispatch changed. Candidate review was not started; load the latest record."
-            : "Candidate review could not be started. No transition is claimed."
-        );
+        if (response.status === 409) setMessage(t.changedNotStarted, true);
+        else setMessage(t.startFailed);
         return;
       }
       const payload = (await response.json()) as { dispatchReview?: AdminDispatchReview };
       if (!payload.dispatchReview) throw new Error("RWOS_MISSING_DISPATCH");
       onUpdated(payload.dispatchReview);
       setConfirming(false);
-      setMessage("Candidate review started. Candidate availability has not been checked.");
+      setMessage(t.started);
     } catch {
       setConfirming(false);
-      setMessage("The transition result is unknown. Load the latest dispatch before trying again.");
+      setMessage(t.unknown);
     } finally {
       guard.current = false;
       setBusy(false);
@@ -89,14 +95,14 @@ export function CandidateReviewPanel({
 
   async function sourceAndShortlist() {
     setShortlisting(true);
-    setMessage("Sourcing interested workers and shortlisting them.");
+    setMessage(t.shortlistingMsg);
     try {
       const response = await fetch(
         `/api/dispatches/${encodeURIComponent(dispatch.id)}/source-and-shortlist`,
         { method: "POST", headers: { "content-type": "application/json" }, body: "{}" }
       );
       if (!response.ok) {
-        setMessage("Candidates could not be sourced. No worker was shortlisted.");
+        setMessage(t.shortlistFailed);
         return;
       }
       const result = (await response.json()) as { shortlisted?: number };
@@ -107,11 +113,10 @@ export function CandidateReviewPanel({
         const payload = (await refreshed.json()) as { dispatchReview?: AdminDispatchReview };
         if (payload.dispatchReview) onUpdated(payload.dispatchReview);
       }
-      setMessage(
-        `Shortlisted ${result.shortlisted ?? 0} interested worker(s). You can now move to offer preparation.`
-      );
+      const count = result.shortlisted ?? 0;
+      setMessage(count === 1 ? t.shortlistedOne : fillIn(t.shortlistedMany, { count }));
     } catch {
-      setMessage("The sourcing result is unknown. Load the latest dispatch before trying again.");
+      setMessage(t.unknown);
     } finally {
       setShortlisting(false);
     }
@@ -120,10 +125,9 @@ export function CandidateReviewPanel({
   const canStart = dispatch.state === "draft" || dispatch.state === "active";
   return (
     <section aria-busy={busy || sourceStatus === "checking"}>
-      <h2>Candidate review boundary</h2>
-      <p aria-live="polite" role={message.includes("changed") ? "alert" : "status"}>
-        {message ||
-          "Candidate review and candidate-source availability are separate governed steps."}
+      <h2>{t.title}</h2>
+      <p aria-live="polite" role={messageIsAlert ? "alert" : "status"}>
+        {message || t.intro}
       </p>
       {canStart ? (
         <button
@@ -133,7 +137,7 @@ export function CandidateReviewPanel({
           style={styles.primary}
           type="button"
         >
-          Start candidate review
+          {t.start}
         </button>
       ) : null}
       {dispatch.state === "candidate_review" ? (
@@ -144,33 +148,27 @@ export function CandidateReviewPanel({
             style={styles.secondary}
             type="button"
           >
-            {sourceStatus === "checking" ? "Checking…" : "Check candidate source"}
+            {sourceStatus === "checking" ? t.checking : t.check}
           </button>
           {sourceStatus === "candidate_source_unavailable" ? (
             <div role="status" style={styles.notice}>
-              <h3>Candidate source unavailable</h3>
-              <p>
-                The authorized candidate source could not provide candidates. No candidate records
-                were returned, and no worker was shortlisted, contacted, offered work, or assigned.
-              </p>
+              <h3>{t.noneTitle}</h3>
+              <p>{t.noneBody}</p>
             </div>
           ) : sourceStatus === "available" ? (
             <div role="status">
-              <p>
-                The candidate source is available. Source the interested workers to create governed
-                shortlisted candidates for this dispatch.
-              </p>
+              <p>{t.available}</p>
               <button
                 disabled={shortlisting}
                 onClick={() => void sourceAndShortlist()}
                 style={styles.primary}
                 type="button"
               >
-                {shortlisting ? "Shortlisting…" : "Source & shortlist interested workers"}
+                {shortlisting ? t.shortlisting : t.shortlist}
               </button>
             </div>
           ) : sourceStatus === "error" ? (
-            <p role="alert">Candidate-source status could not be checked. No result is claimed.</p>
+            <p role="alert">{t.checkError}</p>
           ) : null}
         </>
       ) : null}
@@ -182,11 +180,12 @@ export function CandidateReviewPanel({
           ref={dialog}
           style={styles.dialog}
         >
-          <h3 id="candidate-review-confirm">Confirm candidate review</h3>
+          <h3 id="candidate-review-confirm">{t.confirmTitle}</h3>
           <p id="candidate-review-confirm-copy">
-            Begin governed candidate review for {dispatch.requiredWorkerCount} requested worker(s)
-            at {dispatch.priority} priority. This does not find, shortlist, contact, offer work to,
-            or assign a worker by itself.
+            {fillIn(t.confirmBody, {
+              count: dispatch.requiredWorkerCount,
+              priority: statusWord(all.detail.priorities, dispatch.priority)
+            })}
           </p>
           <div style={styles.actions}>
             <button
@@ -196,7 +195,7 @@ export function CandidateReviewPanel({
               style={styles.secondary}
               type="button"
             >
-              Cancel
+              {t.cancel}
             </button>
             <button
               disabled={busy}
@@ -204,7 +203,7 @@ export function CandidateReviewPanel({
               style={styles.primary}
               type="button"
             >
-              {busy ? "Starting…" : "Confirm candidate review"}
+              {busy ? t.confirming : t.confirm}
             </button>
           </div>
         </dialog>

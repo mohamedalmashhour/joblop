@@ -21,6 +21,10 @@ export type BrainCopy = {
   off: string;
   switchNames: Record<string, string>;
   ruleNames: Record<string, string>;
+  /** One plain sentence under a switch (when it runs, what it does). Optional per key. */
+  switchHelp: Record<string, string>;
+  /** One plain sentence under a problem type. Optional per key. */
+  ruleHelp: Record<string, string>;
   issuesHeading: string;
   issuesEmpty: string;
   recommended: string;
@@ -95,7 +99,18 @@ export const brainText: PageText<BrainCopy> = {
       offer_employer_bonus: "Offer the employer a bonus for an unfilled job",
       auto_approve_request: "Approve a request that passes every check",
       auto_approve_timesheet: "Approve hours with check-in, check-out and no problems",
-      daily_summary_email: "Daily summary email to staff"
+      daily_summary_email: "Daily summary email to staff",
+      "remind_worker_timesheet": "Remind a worker to confirm their hours (email, or text without email)",
+      "assistant.claim_open_job": "Assistant: a worker claimed a job",
+      "assistant.cancel_my_shift": "Assistant: a worker cancelled a shift",
+      "assistant.confirm_shift": "Assistant: a worker confirmed a shift",
+      "assistant.create_draft_request": "Assistant: an employer created a draft request",
+      "assistant.submit_draft": "Assistant: an employer sent a request",
+      "assistant.confirm_timesheet": "Assistant: an employer confirmed hours",
+      "assistant.duplicate_request": "Assistant: an employer copied a request",
+      "assistant.brain_do_it": "Assistant: staff ran a Brain action",
+      "assistant.approve_request": "Assistant: staff approved a request",
+      "assistant.approve_timesheet": "Assistant: staff approved hours"
     },
     ruleNames: {
       assistant: "Assistant proposal",
@@ -103,10 +118,22 @@ export const brainText: PageText<BrainCopy> = {
       worker_not_checked_in: "Worker not checked in",
       delivery_failed: "Email or text failed",
       request_waiting_review: "Request waiting for review",
-      timesheet_unconfirmed: "Hours not confirmed by employer",
+      timesheet_unconfirmed: "Hours not confirmed (worker or employer)",
       timesheet_ready: "Hours ready to approve",
       invoice_overdue: "Overdue invoice",
-      job_missing_info: "Job missing information"
+      job_missing_info: "Job missing information",
+      "hours_not_prepared": "Shift ended, no hours prepared"
+    },
+    switchHelp: {
+      "remind_worker_timesheet": "24 h after the shift, if the worker has not confirmed their hours. The employer is asked only after the worker confirms.",
+      "remind_worker_check_in": "10 min after the start. The employer also gets one short email saying the worker has not checked in yet and Joblop is on it.",
+      "offer_employer_bonus": "Only for jobs on the job board, and never again after the employer said no."
+    },
+    ruleHelp: {
+      "job_unfilled_soon": "Raised 24 h before the start. At 4 h the same problem is updated and marked urgent; it is not closed and reopened.",
+      "worker_not_checked_in": "Stays open until the worker checks in or staff close it. If the worker could not be texted, it shows as needing a person.",
+      "timesheet_unconfirmed": "24 h after the shift: first the worker is reminded, then the employer once the worker has confirmed.",
+      "hours_not_prepared": "The shift ended over 2 h ago and no timesheet exists yet. A person must check it."
     },
     issuesHeading: "Open problems",
     issuesEmpty: "No open problems.",
@@ -180,7 +207,18 @@ export const brainText: PageText<BrainCopy> = {
       offer_employer_bonus: "Proposer une prime à l’employeur pour une mission non pourvue",
       auto_approve_request: "Approuver une demande qui passe toutes les vérifications",
       auto_approve_timesheet: "Approuver des heures avec arrivée, départ et aucun problème",
-      daily_summary_email: "Résumé quotidien par courriel au personnel"
+      daily_summary_email: "Résumé quotidien par courriel au personnel",
+      "remind_worker_timesheet": "Rappeler à un travailleur de confirmer ses heures (courriel, ou texto sans courriel)",
+      "assistant.claim_open_job": "Assistant : un travailleur a pris un emploi",
+      "assistant.cancel_my_shift": "Assistant : un travailleur a annulé un quart",
+      "assistant.confirm_shift": "Assistant : un travailleur a confirmé un quart",
+      "assistant.create_draft_request": "Assistant : un employeur a créé un brouillon de demande",
+      "assistant.submit_draft": "Assistant : un employeur a envoyé une demande",
+      "assistant.confirm_timesheet": "Assistant : un employeur a confirmé des heures",
+      "assistant.duplicate_request": "Assistant : un employeur a copié une demande",
+      "assistant.brain_do_it": "Assistant : le personnel a lancé une action du cerveau",
+      "assistant.approve_request": "Assistant : le personnel a approuvé une demande",
+      "assistant.approve_timesheet": "Assistant : le personnel a approuvé des heures"
     },
     ruleNames: {
       assistant: "Proposition de l'assistant",
@@ -188,10 +226,22 @@ export const brainText: PageText<BrainCopy> = {
       worker_not_checked_in: "Travailleur sans arrivée",
       delivery_failed: "Courriel ou texto non envoyé",
       request_waiting_review: "Demande en attente de révision",
-      timesheet_unconfirmed: "Heures non confirmées par l’employeur",
+      timesheet_unconfirmed: "Heures non confirmées (travailleur ou employeur)",
       timesheet_ready: "Heures prêtes à approuver",
       invoice_overdue: "Facture en retard",
-      job_missing_info: "Mission avec informations manquantes"
+      job_missing_info: "Mission avec informations manquantes",
+      "hours_not_prepared": "Quart terminé, heures non préparées"
+    },
+    switchHelp: {
+      "remind_worker_timesheet": "24 h après le quart, si le travailleur n’a pas confirmé ses heures. L’employeur n’est sollicité qu’après la confirmation du travailleur.",
+      "remind_worker_check_in": "10 min après le début. L’employeur reçoit aussi un court courriel : le travailleur n’est pas encore arrivé et Joblop s’en occupe.",
+      "offer_employer_bonus": "Seulement pour les emplois sur le babillard, et plus jamais après un refus de l’employeur."
+    },
+    ruleHelp: {
+      "job_unfilled_soon": "Signalé 24 h avant le début. À 4 h, le même problème est mis à jour et marqué urgent; il n’est pas fermé puis rouvert.",
+      "worker_not_checked_in": "Reste ouvert jusqu’à l’arrivée du travailleur ou sa fermeture par le personnel. Si le texto n’a pas pu partir, il est marqué « une personne doit s’en occuper ».",
+      "timesheet_unconfirmed": "24 h après le quart : d’abord un rappel au travailleur, puis à l’employeur une fois que le travailleur a confirmé.",
+      "hours_not_prepared": "Le quart est terminé depuis plus de 2 h et aucune feuille de temps n’existe encore. Une personne doit vérifier."
     },
     issuesHeading: "Problèmes ouverts",
     issuesEmpty: "Aucun problème ouvert.",
@@ -265,7 +315,18 @@ export const brainText: PageText<BrainCopy> = {
       offer_employer_bonus: "عرض مكافأة على صاحب العمل لوظيفة غير مشغولة",
       auto_approve_request: "الموافقة على طلب يجتاز كل الفحوص",
       auto_approve_timesheet: "الموافقة على ساعات فيها وصول ومغادرة وبلا مشكلات",
-      daily_summary_email: "ملخص يومي بالبريد للموظفين"
+      daily_summary_email: "ملخص يومي بالبريد للموظفين",
+      "remind_worker_timesheet": "تذكير العامل بتأكيد ساعاته (بريد، أو رسالة نصية إن لم يكن لديه بريد)",
+      "assistant.claim_open_job": "المساعد: عامل أخذ وظيفة",
+      "assistant.cancel_my_shift": "المساعد: عامل ألغى مناوبة",
+      "assistant.confirm_shift": "المساعد: عامل أكّد مناوبة",
+      "assistant.create_draft_request": "المساعد: صاحب عمل أنشأ مسودة طلب",
+      "assistant.submit_draft": "المساعد: صاحب عمل أرسل طلبًا",
+      "assistant.confirm_timesheet": "المساعد: صاحب عمل أكّد ساعات",
+      "assistant.duplicate_request": "المساعد: صاحب عمل نسخ طلبًا",
+      "assistant.brain_do_it": "المساعد: الموظفون شغّلوا إجراءً من العقل",
+      "assistant.approve_request": "المساعد: الموظفون وافقوا على طلب",
+      "assistant.approve_timesheet": "المساعد: الموظفون وافقوا على ساعات"
     },
     ruleNames: {
       assistant: "اقتراح المساعد",
@@ -273,10 +334,22 @@ export const brainText: PageText<BrainCopy> = {
       worker_not_checked_in: "عامل لم يسجّل وصوله",
       delivery_failed: "بريد أو رسالة نصية فشلت",
       request_waiting_review: "طلب ينتظر المراجعة",
-      timesheet_unconfirmed: "ساعات لم يؤكدها صاحب العمل",
+      timesheet_unconfirmed: "ساعات غير مؤكدة (العامل أو صاحب العمل)",
       timesheet_ready: "ساعات جاهزة للموافقة",
       invoice_overdue: "فاتورة متأخرة",
-      job_missing_info: "وظيفة تنقصها معلومات"
+      job_missing_info: "وظيفة تنقصها معلومات",
+      "hours_not_prepared": "انتهت المناوبة دون تحضير الساعات"
+    },
+    switchHelp: {
+      "remind_worker_timesheet": "بعد 24 ساعة من المناوبة إذا لم يؤكد العامل ساعاته. لا يُطلب من صاحب العمل التأكيد إلا بعد تأكيد العامل.",
+      "remind_worker_check_in": "بعد 10 دقائق من البدء. ويتلقى صاحب العمل أيضًا بريدًا قصيرًا يفيد بأن العامل لم يسجّل وصوله بعد وأن Joblop تتابع الأمر.",
+      "offer_employer_bonus": "فقط للوظائف المنشورة على لوحة الوظائف، ولا يُعاد العرض بعد رفض صاحب العمل."
+    },
+    ruleHelp: {
+      "job_unfilled_soon": "يُرفع قبل 24 ساعة من البدء. عند 4 ساعات تُحدَّث المشكلة نفسها وتُعلَّم عاجلة، ولا تُغلق ثم تُفتح من جديد.",
+      "worker_not_checked_in": "تبقى مفتوحة حتى يسجّل العامل وصوله أو يغلقها الموظفون. إذا تعذّر إرسال رسالة للعامل، تظهر على أنها تحتاج إلى شخص.",
+      "timesheet_unconfirmed": "بعد 24 ساعة من المناوبة: يُذكَّر العامل أولًا، ثم صاحب العمل بعد أن يؤكد العامل.",
+      "hours_not_prepared": "انتهت المناوبة منذ أكثر من ساعتين ولا يوجد سجل دوام بعد. يجب أن يتحقق شخص من ذلك."
     },
     issuesHeading: "المشكلات المفتوحة",
     issuesEmpty: "لا توجد مشكلات مفتوحة.",
