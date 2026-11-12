@@ -312,7 +312,7 @@ import { registerCalendarHubRoutes } from "./calendarHubRoutes";
 import { registerEmployerPlanRoutes } from "./employerPlanRoutes";
 import { isListedForWorkers, listedJobWhere, listingVisibilitySelect } from "./jobListingVisibility";
 import { claimBlockReason, openJobWhere } from "./openJobs";
-import { workerAttendanceView, workerCancelledBy } from "./workerCancelledBy";
+import { employerCancelledBy, workerAttendanceView, workerCancelledBy } from "./workerCancelledBy";
 import { isSavedJobAvailable } from "./savedJobAvailability";
 import { sortDispatchesBySoonestShift } from "./dispatchListOrder";
 import { PUBLIC_CALENDAR_MAX_JOBS, publicCalendarJobView, publicCalendarRange } from "./publicJobsCalendar";
@@ -3795,7 +3795,7 @@ export function buildApi(options: BuildApiOptions = {}) {
       });
     }
 
-    return reply.code(201).send({ jobRequest: serializeJobRequest(jobRequest) });
+    return reply.code(201).send({ jobRequest: await serializeEmployerJobRequest(jobRequest) });
   });
 
   // Create a multi-role order: one submission grouping several role lines (role + quantity +
@@ -4042,7 +4042,7 @@ export function buildApi(options: BuildApiOptions = {}) {
           // The draft still exists; the employer can fill duties/qualifications.
         }
         return reply.code(201).send({
-          jobRequest: serializeJobRequest(draft),
+          jobRequest: await serializeEmployerJobRequest(draft),
           duplicatedFromRequestNumber: source.jobRequestNumber,
           repricedFrom: "current_active_contract"
         });
@@ -7020,7 +7020,7 @@ export function buildApi(options: BuildApiOptions = {}) {
         : null;
 
       return reply.code(200).send({
-        jobRequest: { ...serializeJobRequest(jobRequest), ...(extrasRow ? draftEditExtras(extrasRow) : {}) }
+        jobRequest: { ...(await serializeEmployerJobRequest(jobRequest)), ...(extrasRow ? draftEditExtras(extrasRow) : {}) }
       });
     }
   );
@@ -7091,7 +7091,7 @@ export function buildApi(options: BuildApiOptions = {}) {
       });
     }
 
-    return reply.code(200).send({ jobRequest: serializeJobRequest(jobRequest) });
+    return reply.code(200).send({ jobRequest: await serializeEmployerJobRequest(jobRequest) });
   });
 
   app.post(
@@ -7113,7 +7113,7 @@ export function buildApi(options: BuildApiOptions = {}) {
         expectedVersion: readOptionalNumber(body, "expectedVersion") ?? 0
       });
 
-      return reply.code(200).send({ jobRequest: serializeJobRequest(jobRequest) });
+      return reply.code(200).send({ jobRequest: await serializeEmployerJobRequest(jobRequest) });
     }
   );
 
@@ -7167,7 +7167,7 @@ export function buildApi(options: BuildApiOptions = {}) {
       });
       await tellWorkersShiftCancelled({ jobRequestId: jobRequest.id, cancelledBy: "employer", workers: holders.map((h) => ({ userId: h.userId })) });
 
-      return reply.code(200).send({ jobRequest: serializeJobRequest(jobRequest) });
+      return reply.code(200).send({ jobRequest: await serializeEmployerJobRequest(jobRequest) });
     }
   );
 
@@ -9503,8 +9503,14 @@ export function buildApi(options: BuildApiOptions = {}) {
       return sendAttendanceDenied(reply);
     }
 
+    // Staff notes (the free-text exception / cancel reason, the supervisor note, evidence, staff ids)
+    // never reach the employer; a cancelled shift says only who cancelled it.
+    const cancelledBy = await employerCancelledByMap(attendanceRecords.map((item) => item.id));
     return reply.code(200).send({
-      attendanceRecords: attendanceRecords.map((item) => serializeAttendanceRecord(item))
+      attendanceRecords: attendanceRecords.map((item) => ({
+        ...workerAttendanceView(serializeAttendanceRecord(item)),
+        cancelledBy: cancelledBy.get(item.id) ?? null
+      }))
     });
   });
 
@@ -11650,6 +11656,43 @@ export function buildApi(options: BuildApiOptions = {}) {
     }
     return reply.code(200).send({ dispute: result.dispute, synthetic: true });
   });
+
+  // A job request as its employer may see it. The review note is kept only when it is meant for the
+  // employer (staff asking for information) or when the company wrote it (e.g. its own cancel reason);
+  // a note staff left on anything else (approval, a staff cancel) is internal.
+  async function serializeEmployerJobRequest(jobRequest: Parameters<typeof serializeJobRequest>[0]) {
+    const base = serializeJobRequest(jobRequest);
+    if (!base.adminReviewReason || jobRequest.status === "information_required") return base;
+    const writer = jobRequest.updatedByUserId;
+    const companyWrote = writer ? await userHasOrganizationAccess(writer, jobRequest.organizationId).catch(() => false) : false;
+    return companyWrote ? base : { ...base, adminReviewReason: null };
+  }
+
+  // Who cancelled each attendance record, for the employer: "joblop" | "company" | "worker".
+  async function employerCancelledByMap(attendanceRecordIds: readonly string[]): Promise<Map<string, ReturnType<typeof employerCancelledBy>>> {
+    const result = new Map<string, ReturnType<typeof employerCancelledBy>>();
+    if (!prisma || attendanceRecordIds.length === 0) return result;
+    const rows = await prisma.attendanceRecord.findMany({
+      where: { id: { in: [...attendanceRecordIds] } },
+      select: {
+        id: true, status: true, cancelledByUserId: true,
+        assignment: { select: { status: true } },
+        workerIdentity: { select: { userId: true } },
+        jobRequest: { select: { status: true, cancellation: { select: { id: true } } } }
+      }
+    });
+    for (const r of rows) {
+      result.set(r.id, employerCancelledBy(workerCancelledBy({
+        attendanceStatus: r.status,
+        attendanceCancelledByUserId: r.cancelledByUserId,
+        workerUserId: r.workerIdentity.userId,
+        assignmentStatus: r.assignment.status,
+        jobStatus: r.jobRequest.status,
+        jobCancelledByEmployer: r.jobRequest.cancellation !== null
+      })));
+    }
+    return result;
+  }
 
   async function userHasOrganizationAccess(userId: string, organizationId: string): Promise<boolean> {
     const memberships = await membershipService.listMemberships(userId);

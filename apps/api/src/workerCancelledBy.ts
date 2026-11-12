@@ -30,8 +30,16 @@ export function workerCancelledBy(input: Readonly<{
   return "joblop";
 }
 
+/** The same answer for the employer: "Cancelled by Joblop" / "Cancelled by your company" / "The worker cancelled". */
+export type EmployerCancelledBy = "joblop" | "company" | "worker";
+
+export function employerCancelledBy(by: WorkerCancelledBy | null): EmployerCancelledBy | null {
+  if (by === null) return null;
+  return by === "employer" ? "company" : by;
+}
+
 /**
- * One attendance record as a worker may see it: the record without the staff-only fields (the
+ * One attendance record as a worker (or an employer) may see it: the record without the staff-only fields (the
  * free-text exception / cancel reason, the supervisor note, evidence and staff user ids).
  */
 export function workerAttendanceView<T extends Record<string, unknown>>(record: T): Omit<T, (typeof STAFF_ONLY_ATTENDANCE_FIELDS)[number]> {

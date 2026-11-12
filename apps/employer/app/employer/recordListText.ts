@@ -114,7 +114,10 @@ export const assignmentsText: Trilingual<ListText> = {
   }
 };
 
-export const attendanceText: Trilingual<ListText & Readonly<{ checkedIn: string; problem: string }>> = {
+type CancelledByText = Readonly<Record<"joblop" | "company" | "worker", string>>;
+
+// A cancelled shift shows who cancelled it; never the reason staff typed (internal).
+export const attendanceText: Trilingual<ListText & Readonly<{ checkedIn: string; cancelledBy: CancelledByText }>> = {
   en: {
     ...shared.en,
     loading: "Loading attendance…",
@@ -134,7 +137,7 @@ export const attendanceText: Trilingual<ListText & Readonly<{ checkedIn: string;
     sectionEyebrow: "Attendance",
     sectionTitle: "Arrivals and departures",
     checkedIn: "Arrived {in} · left {out}",
-    problem: "Problem reported: {issue}"
+    cancelledBy: { joblop: "Cancelled by Joblop", company: "Cancelled by your company", worker: "The worker cancelled" }
   },
   fr: {
     ...shared.fr,
@@ -155,7 +158,7 @@ export const attendanceText: Trilingual<ListText & Readonly<{ checkedIn: string;
     sectionEyebrow: "Présences",
     sectionTitle: "Arrivées et départs",
     checkedIn: "Arrivé à {in} · parti à {out}",
-    problem: "Problème signalé : {issue}"
+    cancelledBy: { joblop: "Annulé par Joblop", company: "Annulé par votre entreprise", worker: "Le travailleur a annulé" }
   },
   ar: {
     ...shared.ar,
@@ -176,7 +179,7 @@ export const attendanceText: Trilingual<ListText & Readonly<{ checkedIn: string;
     sectionEyebrow: "الحضور",
     sectionTitle: "الوصول والمغادرة",
     checkedIn: "وصل {in} · غادر {out}",
-    problem: "مشكلة مُبلَّغ عنها: {issue}"
+    cancelledBy: { joblop: "ألغتها Joblop", company: "ألغتها شركتك", worker: "ألغاها العامل" }
   }
 };
 
