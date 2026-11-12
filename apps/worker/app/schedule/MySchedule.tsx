@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { calendarDayKey } from "@rwos/shared";
+import { appendUnique, nextCursorOf } from "../pagination";
 import { useLocale, useT, fmtLocale } from "../i18n/LocaleProvider";
 import type { RwosLocale } from "../i18n/config";
 import type { MessageKey } from "../i18n/messages";
@@ -53,6 +54,9 @@ export function MySchedule() {
   const [view, setView] = useState<"list" | "calendar">("list");
   const [month, setMonth] = useState(() => { const d = new Date(); return new Date(d.getFullYear(), d.getMonth(), 1); });
   const [selectedDay, setSelectedDay] = useState<string | null>(null);
+  // "Load more": older shifts come 25 at a time (the API's next-page cursor).
+  const [cursor, setCursor] = useState<string | null>(null);
+  const [loadingMore, setLoadingMore] = useState(false);
 
   const load = useCallback(async () => {
     try {
@@ -60,12 +64,33 @@ export function MySchedule() {
       if (r.status === 403) return setState({ status: "error" });
       if (r.status === 401) return setState({ status: await resolveDeniedKind() });
       if (!r.ok) return setState({ status: "error" });
-      const payload = (await r.json()) as { items: Shift[] };
+      const payload = (await r.json()) as { items: Shift[]; nextCursor?: string | null };
       setState({ status: "ready", items: payload.items });
+      setCursor(nextCursorOf(payload));
     } catch {
       setState({ status: "error" });
     }
   }, []);
+
+  const loadMore = useCallback(async () => {
+    if (cursor === null) return;
+    setLoadingMore(true);
+    try {
+      const r = await fetch(`/api/attendance?limit=25&cursor=${encodeURIComponent(cursor)}`, { cache: "no-store" });
+      if (!r.ok) return;
+      const payload = (await r.json()) as { items: Shift[]; nextCursor?: string | null };
+      setState((current) =>
+        current.status === "ready"
+          ? { status: "ready", items: appendUnique(current.items, payload.items ?? [], (s) => s.attendanceRecordId) }
+          : current
+      );
+      setCursor(nextCursorOf(payload));
+    } catch {
+      /* keep what is shown; the button stays so the worker can try again */
+    } finally {
+      setLoadingMore(false);
+    }
+  }, [cursor]);
 
   // Accepted jobs waiting for Joblop to confirm, so a worker sees them straight after accepting.
   useEffect(() => {
@@ -176,6 +201,11 @@ export function MySchedule() {
           ) : null}
         </>
       )}
+      {cursor !== null && state.items.length > 0 ? (
+        <button type="button" className="btn ghost" style={{ marginBottom: 16 }} onClick={() => void loadMore()} disabled={loadingMore}>
+          {loadingMore ? t("common.loading") : t("common.loadMore")}
+        </button>
+      ) : null}
       <div style={{ display: "grid", gap: 10, justifyItems: "start", margin: "8px 0 32px" }}>
         <p className="notice" style={{ margin: 0 }}>{t("sched.footer")}</p>
         <a className="btn" href="/timesheets">{t("ts.title")}</a>

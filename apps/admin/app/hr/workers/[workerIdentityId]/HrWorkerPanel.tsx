@@ -188,7 +188,7 @@ export function HrWorkerPanel({ workerIdentityId }: { workerIdentityId: string }
                 <div>
                   <strong>{c.credentialType}</strong> <span style={credBadge(c.effectiveStatus)}>{ht.status(c.effectiveStatus)}</span>
                   {c.supersededById ? <span style={styles.dim}> · {t.replaced}</span> : null}
-                  <div style={styles.dim}>{c.expiresAt ? ht.expiresOn(new Date(c.expiresAt).toLocaleDateString()) : t.noExpiry}</div>
+                  <div style={styles.dim}>{c.expiresAt ? ht.expiresOn(new Date(c.expiresAt).toLocaleDateString("en-CA", { timeZone: "America/Toronto" })) : t.noExpiry}</div>
                 </div>
                 {!["replaced", "revoked"].includes(c.status) ? (
                   <div style={styles.rowBtns}>
@@ -240,7 +240,7 @@ export function HrWorkerPanel({ workerIdentityId }: { workerIdentityId: string }
                 <div>
                   <strong>{d.documentType}</strong> <span style={docBadge(d.effectiveStatus)}>{ht.status(d.effectiveStatus)}</span>
                   {d.jurisdiction ? <span style={styles.dim}> · {d.jurisdiction}</span> : null}
-                  <div style={styles.dim}>{d.expiresAt ? ht.expiresOn(new Date(d.expiresAt).toLocaleDateString()) : t.noExpiry}{d.reviewReason ? ` · ${d.reviewReason}` : ""}</div>
+                  <div style={styles.dim}>{d.expiresAt ? ht.expiresOn(new Date(d.expiresAt).toLocaleDateString("en-CA", { timeZone: "America/Toronto" })) : t.noExpiry}{d.reviewReason ? ` · ${d.reviewReason}` : ""}</div>
                   {(() => {
                     const proves = d.verifiedCertificateKey ?? certificateKeyForDocumentType(d.documentType);
                     return proves && proves !== "other" && d.effectiveStatus === "accepted"
@@ -310,7 +310,7 @@ export function HrWorkerPanel({ workerIdentityId }: { workerIdentityId: string }
             {events.length === 0 ? <li style={styles.dim}>{t.noEvents}</li> : events.map((e) => (
               <li key={e.id} style={styles.timelineItem}>
                 <strong>{e.eventType.replaceAll("_", " ")}</strong> {e.priorState ? `${e.priorState} → ` : ""}{e.newState}
-                <span style={styles.dim}> · {e.source} · {new Date(e.createdAt).toLocaleString()}{e.reason ? ` · ${e.reason}` : ""}</span>
+                <span style={styles.dim}> · {e.source} · {new Date(e.createdAt).toLocaleString("en-CA", { timeZone: "America/Toronto" })}{e.reason ? ` · ${e.reason}` : ""}</span>
               </li>
             ))}
           </ul>

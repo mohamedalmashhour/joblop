@@ -32,7 +32,7 @@ function statusColor(s: string): string {
   return C.accent;
 }
 const fmtDate = (s: string) => {
-  try { return new Date(s).toLocaleString("en-CA", { dateStyle: "medium", timeStyle: "short" }); } catch { return s; }
+  try { return new Date(s).toLocaleString("en-CA", { timeZone: "America/Toronto", dateStyle: "medium", timeStyle: "short" }); } catch { return s; }
 };
 
 export default function ControlRoomLanding() {

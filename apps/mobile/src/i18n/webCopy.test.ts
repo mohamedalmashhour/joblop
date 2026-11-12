@@ -2,7 +2,7 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { WEB_AR_FROM_APP, WEB_COPY } from "./webCopy";
-import { translate } from "./strings";
+import { dictionaries, translate } from "./strings";
 import { formatWorkerRate } from "../features/marketplace/marketplaceContent";
 
 // Owner rule: "the phone app copies the website's design and words". Every line the app borrows from
@@ -41,6 +41,26 @@ describe("website words reused in the app", () => {
       }
       expect(copy.ar.length, key).toBeGreaterThan(0);
     }
+  });
+
+  // The app's own dictionary wins over WEB_COPY, so a key the website also defines must use the
+  // website's exact words there too (it used to say "Welcome to JobLop", "Contact", …).
+  it("never words a website key differently in the app's own dictionary", () => {
+    const value = (section: string, key: string): string | null => {
+      const escape = (v: string) => v.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+      const match = new RegExp(`"${escape(key)}":\\s*("(?:[^"\\\\]|\\\\.)*")`).exec(section);
+      return match ? (JSON.parse(match[1]!) as string) : null;
+    };
+    const mismatches: string[] = [];
+    for (const locale of ["en", "fr", "ar"] as const) {
+      for (const [key, text] of Object.entries(dictionaries[locale])) {
+        const website = value(sections[locale], key);
+        if (website !== null && website !== text) mismatches.push(`${locale} ${key}`);
+      }
+    }
+    expect(mismatches).toEqual([]);
+    expect(translate("en", "home.title")).not.toContain("JobLop");
+    expect(translate("en", "nav.contact")).toBe("Contact Joblop");
   });
 
   it("translates the signed-in job screens in French and Arabic, not English only (audit S9)", () => {

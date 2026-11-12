@@ -112,7 +112,7 @@ export function VerificationQueuePanel() {
                   <span style={styles.statusBadge}>{t.statusLabel[entry.status] ?? entry.status.replaceAll("_", " ")}</span>
                 </div>
                 <div style={styles.dim}>
-                  {entry.subjectId} · {entry.provider ?? "—"}{entry.requestedAt ? ` · ${t.requested(new Date(entry.requestedAt).toLocaleString())}` : ""}
+                  {entry.subjectId} · {entry.provider ?? "—"}{entry.requestedAt ? ` · ${t.requested(new Date(entry.requestedAt).toLocaleString("en-CA", { timeZone: "America/Toronto" }))}` : ""}
                 </div>
                 <div style={styles.actions}>
                   {decisions.map((d) => (

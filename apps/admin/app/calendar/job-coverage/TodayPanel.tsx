@@ -30,7 +30,7 @@ export function TodayPanel({
             const isReview = item.type === "review_request";
             const title = isReview ? t.reviewTitle(item.title) : item.title;
             const when = item.startAt && !Number.isNaN(Date.parse(item.startAt))
-              ? new Date(item.startAt).toLocaleString(undefined, { weekday: "short", hour: "2-digit", minute: "2-digit" })
+              ? new Date(item.startAt).toLocaleString("en-CA", { timeZone: "America/Toronto", weekday: "short", hour: "2-digit", minute: "2-digit" })
               : null;
             return (
               <li key={`${item.type}-${item.refId ?? item.jobRequestId ?? index}-${index}`} style={{ ...styles.item, borderInlineStartColor: tone.bg }}>

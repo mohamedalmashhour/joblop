@@ -65,6 +65,7 @@ export const en = {
 
   // Common
   "common.loading": "Loading…",
+  "common.loadMore": "Load more",
   "common.retry": "Retry",
   "common.somethingWrong": "Something went wrong. Please try again.",
   "lang.switchTo": "Switch to {language}",
@@ -204,6 +205,8 @@ export const en = {
   "job.inelNotOpen": "This job is no longer open.",
   "job.inelNotFound": "This job is no longer available.",
   "job.inelDefault": "You can't express interest in this job right now.",
+  "job.blockedStarted": "This shift has already started, so it can't be taken any more.",
+  "job.blockedBelowWage": "This job pays less than the Québec minimum wage in force on its date, so it can't be taken.",
   // Hybrid auto-offer — direct claim
   "job.claimTitle": "Claim this shift",
   "job.claimBody": "This shift is open for direct claim. The first eligible worker to claim each slot is assigned instantly.",
@@ -925,6 +928,7 @@ export const fr: Messages = {
 
   // Commun
   "common.loading": "Chargement…",
+  "common.loadMore": "Afficher plus",
   "common.retry": "Réessayer",
   "common.somethingWrong": "Une erreur s'est produite. Veuillez réessayer.",
   "lang.switchTo": "Passer à {language}",
@@ -1066,6 +1070,8 @@ export const fr: Messages = {
   "job.inelNotOpen": "Cet emploi n'est plus ouvert.",
   "job.inelNotFound": "Cet emploi n'est plus disponible.",
   "job.inelDefault": "Vous ne pouvez pas manifester d'intérêt pour cet emploi pour le moment.",
+  "job.blockedStarted": "Ce quart est déjà commencé, il ne peut plus être pris.",
+  "job.blockedBelowWage": "Cet emploi paie moins que le salaire minimum du Québec en vigueur à sa date, il ne peut donc pas être pris.",
   // Offre automatique hybride — réclamation directe
   "job.claimTitle": "Réclamer ce quart",
   "job.claimBody": "Ce quart est ouvert à la réclamation directe. Le premier travailleur admissible à réclamer chaque place est affecté instantanément.",
@@ -1786,6 +1792,7 @@ export const ar: Partial<Messages> = {
 
   // Common
   "common.loading": "جارٍ التحميل…",
+  "common.loadMore": "عرض المزيد",
   "common.retry": "إعادة المحاولة",
   "common.somethingWrong": "حدث خطأ ما. يرجى المحاولة مرة أخرى.",
   "common.findJobs": "ابحث عن عمل",
@@ -2324,6 +2331,8 @@ export const ar: Partial<Messages> = {
   "job.inelNotOpen": "لم تعد هذه الوظيفة مفتوحة.",
   "job.inelNotFound": "لم تعد هذه الوظيفة متاحة.",
   "job.inelDefault": "لا يمكنك إبداء الاهتمام بهذه الوظيفة الآن.",
+  "job.blockedStarted": "بدأت هذه المناوبة بالفعل، لذلك لم يعد بالإمكان أخذها.",
+  "job.blockedBelowWage": "هذه الوظيفة تدفع أقل من الحد الأدنى للأجور في كيبيك المعمول به في تاريخها، لذلك لا يمكن أخذها.",
   "job.claimTitle": "احجز هذه المناوبة",
   "job.claimBody": "هذه المناوبة متاحة للحجز المباشر. أول عامل مؤهَّل يحجز كل مكان يُعيَّن فورًا.",
   "job.claimButton": "قبول وحجز",

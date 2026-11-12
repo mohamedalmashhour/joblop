@@ -74,7 +74,7 @@ export function WorkerDisputesPanel() {
           <article key={dispute.id} style={styles.card}>
             <h2 style={styles.heading}>{dispute.workerDisplayName ?? t.workerFallback}</h2>
             <p style={styles.meta}>
-              {dispute.organizationName ?? t.organizationFallback} · {t.category(dispute.category)} · {t.raisedOn(new Date(dispute.createdAt).toLocaleDateString())}
+              {dispute.organizationName ?? t.organizationFallback} · {t.category(dispute.category)} · {t.raisedOn(new Date(dispute.createdAt).toLocaleDateString("en-CA", { timeZone: "America/Toronto" }))}
             </p>
             <p style={styles.text}>{dispute.reason}</p>
             <p style={styles.meta}>

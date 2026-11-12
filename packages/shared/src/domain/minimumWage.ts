@@ -54,6 +54,41 @@ export function quebecMinimumWageAt(at: Date = new Date()): MinimumWageRate {
   return current;
 }
 
+/** The instant a Québec calendar day ("YYYY-MM-DD") starts: midnight in America/Toronto. */
+export function quebecMidnight(ymd: string): Date {
+  const [y, m, d] = ymd.split("-").map(Number) as [number, number, number];
+  // Toronto midnight is 04:00 UTC in summer time and 05:00 UTC in winter.
+  for (const utcHour of [4, 5]) {
+    const instant = new Date(Date.UTC(y, m - 1, d, utcHour));
+    const hour = new Intl.DateTimeFormat("en-CA", { timeZone: "America/Toronto", hour: "2-digit", hourCycle: "h23" }).format(instant);
+    if (quebecDate(instant) === ymd && hour === "00") return instant;
+  }
+  return new Date(Date.UTC(y, m - 1, d, 5));
+}
+
+export type MinimumWagePeriod = Readonly<{
+  /** First instant the rate applies (null: everything before the table, which uses the first rate). */
+  from: Date | null;
+  /** First instant it no longer applies (null: still in force). */
+  to: Date | null;
+  hourlyMinor: number;
+}>;
+
+/**
+ * The table as time windows, so a database query can hold each job to the rate in force ON THE
+ * JOB'S DATE: a job starting June 1, 2026 is held to the 2026 rate even when searched in April.
+ */
+export function minimumWagePeriods(): readonly MinimumWagePeriod[] {
+  return QUEBEC_MINIMUM_WAGE_RATES.map((rate, index) => {
+    const next = QUEBEC_MINIMUM_WAGE_RATES[index + 1];
+    return {
+      from: index === 0 ? null : quebecMidnight(rate.effectiveFrom),
+      to: next ? quebecMidnight(next.effectiveFrom) : null,
+      hourlyMinor: rate.hourlyMinor
+    };
+  });
+}
+
 /** "$16.10" */
 export function formatMinimumWage(hourlyMinor: number): string {
   return `$${(hourlyMinor / 100).toFixed(2)}`;

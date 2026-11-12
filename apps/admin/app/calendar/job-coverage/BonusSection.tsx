@@ -2,6 +2,9 @@
 
 import { useState } from "react";
 import type { CoverageText } from "./text";
+import { useLocale } from "../../i18n/LocaleProvider";
+import { adminMoney } from "../../i18n/adminFormat";
+import type { AdminLocale } from "../../i18n/config";
 
 // Job bonus controls on a coverage card. Staff first OFFER a bonus to the employer (the employer
 // pays if they accept); if the employer says no, staff can APPROVE it from Joblop's share, capped
@@ -34,12 +37,13 @@ export function isActiveBonus(bonus: JobBonus | null | undefined): boolean {
   return bonus?.status === "employer_accepted" || bonus?.status === "approved";
 }
 
-export function formatMoney(minor: number): string {
-  return new Intl.NumberFormat(undefined, { style: "currency", currency: "CAD" }).format(minor / 100);
+/** CAD in the admin's language (en-CA when none is given), never the browser's locale. */
+export function formatMoney(minor: number, locale: AdminLocale = "en-CA"): string {
+  return adminMoney(minor, "CAD", locale);
 }
 
-export function bonusAmountLabel(kind: string, amountMinor: number, t: CoverageText): string {
-  return kind === "hourly" ? t.bonusAmountHourly(formatMoney(amountMinor)) : t.bonusAmountShift(formatMoney(amountMinor));
+export function bonusAmountLabel(kind: string, amountMinor: number, t: CoverageText, locale: AdminLocale = "en-CA"): string {
+  return kind === "hourly" ? t.bonusAmountHourly(formatMoney(amountMinor, locale)) : t.bonusAmountShift(formatMoney(amountMinor, locale));
 }
 
 function dollarsFromMinor(minor: number | null | undefined): string {
@@ -66,6 +70,7 @@ export function BonusSection({
   t: CoverageText;
   onChanged: () => void;
 }>) {
+  const adminLocale = useLocale();
   // A bonus that is offered, accepted or approved blocks a new one until it is cancelled.
   const blocking = bonus !== null && bonus.status !== "cancelled" && bonus.status !== "employer_declined";
   const showForm = canAdd && !blocking;
@@ -183,7 +188,7 @@ export function BonusSection({
         <div style={styles.current}>
           <span style={styles.status}>{t.bonusStatus[bonus.status] ?? bonus.status}</span>
           <span style={styles.meta}>
-            {t.bonusKindLabel[bonus.kind] ?? bonus.kind} · <strong style={styles.strong}>{bonusAmountLabel(bonus.kind, bonus.amountMinor, t)}</strong>
+            {t.bonusKindLabel[bonus.kind] ?? bonus.kind} · <strong style={styles.strong}>{bonusAmountLabel(bonus.kind, bonus.amountMinor, t, adminLocale)}</strong>
           </span>
           {bonus.status !== "cancelled" ? (
             <button disabled={busy} onClick={() => void cancel()} style={styles.ghostButton} type="button">
@@ -204,7 +209,7 @@ export function BonusSection({
           {loadingSuggestion ? <p style={styles.meta}>{t.bonusLoading}</p> : null}
           {!loadingSuggestion && suggestion ? (
             <p style={styles.suggestion}>
-              {t.bonusSuggested(bonusAmountLabel("hourly", suggestion.amountMinor, t), suggestion.reason)}
+              {t.bonusSuggested(bonusAmountLabel("hourly", suggestion.amountMinor, t, adminLocale), suggestion.reason)}
             </p>
           ) : null}
           {!loadingSuggestion && fetched && !suggestion ? <p style={styles.meta}>{t.bonusNoSuggestion}</p> : null}
@@ -252,7 +257,7 @@ export function BonusSection({
               </button>
               {capMinor !== null ? (
                 <span style={styles.hint}>
-                  {kind === "hourly" ? t.bonusCapHourly(formatMoney(capMinor)) : t.bonusCapShift(formatMoney(capMinor))}
+                  {kind === "hourly" ? t.bonusCapHourly(formatMoney(capMinor, adminLocale)) : t.bonusCapShift(formatMoney(capMinor, adminLocale))}
                 </span>
               ) : null}
               <label style={styles.check}>

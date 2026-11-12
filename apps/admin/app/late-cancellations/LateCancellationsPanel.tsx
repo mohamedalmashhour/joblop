@@ -32,7 +32,7 @@ type State = { status: "loading" } | { status: "denied" } | { status: "error" } 
 
 const money = (minor: number, currency: string) =>
   new Intl.NumberFormat("en-CA", { style: "currency", currency: currency === "USD" ? "USD" : "CAD" }).format(minor / 100);
-const when = (iso: string) => new Date(iso).toLocaleString("en-CA", { dateStyle: "medium", timeStyle: "short" });
+const when = (iso: string) => new Date(iso).toLocaleString("en-CA", { timeZone: "America/Toronto", dateStyle: "medium", timeStyle: "short" });
 
 export function LateCancellationsPanel() {
   const copy = usePageText(lateCancellationsText);

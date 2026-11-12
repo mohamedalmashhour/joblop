@@ -32,7 +32,7 @@ const WAITING: Record<string, string> = {
   cancelled: "Cancelled"
 };
 
-const when = (iso: string | null) => (iso ? new Date(iso).toLocaleString() : "—");
+const when = (iso: string | null) => (iso ? new Date(iso).toLocaleString("en-CA", { timeZone: "America/Toronto" }) : "—");
 const hours = (minutes: number | null) =>
   minutes === null ? "—" : `${Math.floor(minutes / 60)}h ${String(minutes % 60).padStart(2, "0")}m`;
 
