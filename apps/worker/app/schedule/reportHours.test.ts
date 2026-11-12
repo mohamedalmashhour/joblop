@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { attendanceCopyFor } from "../../../mobile/src/features/worker-attendance/attendanceScheduleContent";
 import { dictionaries } from "../i18n/messages";
-import { reportErrorKey, reportHoursView, shiftClock } from "./reportHoursView";
+import { formatReportDeadline, reportErrorKey, reportHoursView, shiftClock } from "./reportHoursView";
 
 // "Report my hours" on the website schedule card, and the phone app using the same words.
 
@@ -23,6 +23,18 @@ describe("report my hours on the schedule card", () => {
     expect(shiftClock("2027-02-18T19:00:00.000Z", "America/Toronto")).toBe("14:00");
   });
 
+  it("shows the deadline on Québec time: JR-2026-000007 ended Nov 12 14:00 → until Nov 13 2:00 a.m.", () => {
+    // The API sends reportHoursUntil = scheduled end + 12 h.
+    const deadline = new Date(new Date("2026-11-12T14:00:00.000-05:00").getTime() + 12 * 3_600_000).toISOString();
+    expect(deadline).toBe("2026-11-13T07:00:00.000Z");
+    expect(formatReportDeadline(deadline, "en-CA")).toMatch(/Nov 13.*2:00\s?a\.m\./);
+    expect(shiftClock(deadline, "America/Toronto")).toBe("02:00");
+    for (const locale of ["en", "fr", "ar"] as const) expect(attendanceCopyFor(locale).reportDeadlineNotice).toContain("{deadline}");
+    expect(dictionaries["en-CA"]["sched.reportDeadlineNotice"]).toBe(
+      "No check-in recorded. You have until {deadline} to report your hours. After that, this shift will not be recorded or paid."
+    );
+  });
+
   it("maps every refusal the API gives to a message", () => {
     expect(reportErrorKey("end_before_start")).toBe("sched.reportErrEndBeforeStart");
     expect(reportErrorKey("in_future")).toBe("sched.reportErrFuture");
@@ -34,6 +46,7 @@ describe("report my hours on the schedule card", () => {
   it("has every line in English, French and Arabic, and the phone app uses the same words", () => {
     const pairs = [
       ["sched.reportHours", "reportCta"],
+      ["sched.reportDeadlineNotice", "reportDeadlineNotice"],
       ["sched.reportHoursIntro", "reportIntro"],
       ["sched.reportArrival", "reportArrival"],
       ["sched.reportDeparture", "reportDeparture"],

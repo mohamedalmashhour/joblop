@@ -890,7 +890,7 @@ suite("real-life scenarios (Laval Farm worker, legal rate, controlled clock)", (
       const early = await report(worker, attendanceRecordId);
       expect(early.statusCode, early.body).toBe(409);
       expect(early.json()).toMatchObject({ error: "RWOS_HOURS_REPORT_NOT_AVAILABLE", reason: "not_ended" });
-      setNow(et(DAY, "15:00"));
+      setNow(et(DAY, "16:00")); // +2 h after the end: inside the 12-hour window
       const stranger = await makeWorker("report-stranger");
       expect((await report(stranger, attendanceRecordId)).statusCode).toBe(404);
       expect(await schedule(worker, assignmentId)).toMatchObject({ canReportHours: true, hoursReport: null });
@@ -974,13 +974,13 @@ suite("real-life scenarios (Laval Farm worker, legal rate, controlled clock)", (
       const attendance = await prisma.attendanceRecord.findUniqueOrThrow({ where: { id: attendanceRecordId } });
       expect(attendance).toMatchObject({ status: "pending_start", checkInAt: null, checkOutAt: null });
       expect(await prisma.timesheet.count({ where: { attendanceRecordId } })).toBe(0);
-      // Inside the 48 h the worker can send a corrected report.
+      // Inside the 12 h the worker can send a corrected report.
       expect(await schedule(worker, assignmentId)).toMatchObject({ canReportHours: true, hoursReport: { status: "rejected" } });
       const audit = await prisma.auditEvent.findMany({ where: { entityType: "attendance_hours_report", entityId: listed!.id } });
       expect(audit.map((a) => a.action).sort()).toEqual(["attendance_hours_report.rejected", "attendance_hours_report.submitted"]);
     });
 
-    it("is refused for a shift with a check-in, and more than 48 h after the end", async () => {
+    it("is refused for a shift with a check-in, and 13 h after the end; staff can still enter the hours (override)", async () => {
       setNow(et("2027-02-23", "10:00"));
       const worked = await publishJob({ startAt: et(OTHER_DAY, "08:00"), endAt: et(OTHER_DAY, "14:00") });
       const late = await publishJob({ startAt: et(OTHER_DAY, "08:00"), endAt: et(OTHER_DAY, "14:00") });
@@ -995,12 +995,33 @@ suite("real-life scenarios (Laval Farm worker, legal rate, controlled clock)", (
       expect(withCheckIn.statusCode).toBe(409);
       expect(withCheckIn.json().reason).toBe("checked_in");
 
-      setNow(et("2027-02-27", "14:01"));
+      // +13 h after the 14:00 end (the window closed at 02:00): the worker can no longer report.
+      setNow(et("2027-02-26", "03:00"));
       const { attendanceRecordId } = await scheduleItem(forgot, forgotAssignment);
       const tooLate = await report(forgot, attendanceRecordId);
       expect(tooLate.statusCode).toBe(409);
       expect(tooLate.json().reason).toBe("window_closed");
       expect(await schedule(forgot, forgotAssignment)).toMatchObject({ canReportHours: false, hoursReport: null });
+
+      // Staff override: the shift is listed for staff with the worker window closed; a reason is required.
+      setNow(et("2027-02-26", "09:00"));
+      const list = await app.inject({ method: "GET", url: "/platform/attendance/hours-reports/no-check-in", headers: await h(staff) });
+      expect(list.statusCode, list.body).toBe(200);
+      const row = (list.json().shifts as { attendanceRecordId: string; workerWindowOpen: boolean; reportDeadline: string }[]).find((s) => s.attendanceRecordId === attendanceRecordId);
+      expect(row).toMatchObject({ workerWindowOpen: false, reportDeadline: et("2027-02-26", "02:00").toISOString() });
+      const entry = async (payload: Record<string, string>) =>
+        app.inject({ method: "POST", url: "/platform/attendance/hours-reports/staff-entry", headers: await h(staff), payload: { attendanceRecordId, arrivalTime: "08:00", departureTime: "14:00", ...payload } });
+      expect((await entry({ reason: "" })).statusCode).toBe(400);
+      expect((await app.inject({ method: "POST", url: "/platform/attendance/hours-reports/staff-entry", headers: await h(forgot), payload: { attendanceRecordId, arrivalTime: "08:00", departureTime: "14:00", reason: "self" } })).statusCode).toBe(403);
+      const entered = await entry({ reason: "Confirmed with the farm manager by phone." });
+      expect(entered.statusCode, entered.body).toBe(201);
+      expect(entered.json().timesheet).toMatchObject({ status: "worker_review", payableMinutes: 360, billableMinutes: 360 });
+      const attendance = await prisma.attendanceRecord.findUniqueOrThrow({ where: { id: attendanceRecordId } });
+      expect(attendance).toMatchObject({ status: "completed", checkInMethod: "reported_by_worker_approved_by_staff" });
+      expect(attendance.checkInEvidenceSummary).toContain("staff override");
+      const audit = await prisma.auditEvent.findMany({ where: { entityType: "attendance_hours_report", entityId: entered.json().hoursReport.id } });
+      expect(audit.map((a) => a.action)).toEqual(["attendance_hours_report.staff_entered"]);
+      expect((await entry({ reason: "Twice." })).statusCode).toBe(409);
     });
 
     it("rejects times that are not on the shift day or end before they start", async () => {

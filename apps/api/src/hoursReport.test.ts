@@ -3,6 +3,8 @@ import {
   approveReportedHours,
   approvedEvidenceSummary,
   hoursReportAvailability,
+  HOURS_REPORT_WINDOW_HOURS,
+  formatHoursReportDeadline,
   hoursReportDeadline,
   hoursReportStaffAlertEmail,
   localTimeOnDay,
@@ -29,18 +31,34 @@ const shift = (overrides: Partial<HoursReportShift> = {}): HoursReportShift => (
 });
 
 describe("report my hours: when the worker can report", () => {
-  it("is available after the shift ended, with no check-in, until 48 h after the end", () => {
-    expect(hoursReportAvailability(shift(), et(DAY, "14:00"))).toEqual({ available: true });
-    expect(hoursReportAvailability(shift(), et(DAY, "15:00"))).toEqual({ available: true });
-    expect(hoursReportAvailability(shift({ attendanceStatus: "missed" }), et(DAY, "15:00"))).toEqual({ available: true });
-    expect(hoursReportDeadline(et(DAY, "14:00")).toISOString()).toBe(et("2027-02-20", "14:00").toISOString());
-    expect(hoursReportAvailability(shift(), et("2027-02-20", "14:00"))).toEqual({ available: true });
+  it("the window is 12 hours after the scheduled end", () => {
+    expect(HOURS_REPORT_WINDOW_HOURS).toBe(12);
   });
 
-  it("is refused before the end, after 48 h, with a check-in, cancelled, long-term or already reported", () => {
+  it("is available after the shift ended, with no check-in, until 12 h after the end", () => {
+    expect(hoursReportAvailability(shift(), et(DAY, "14:00"))).toEqual({ available: true });
+    expect(hoursReportAvailability(shift(), et(DAY, "16:00"))).toEqual({ available: true }); // +2 h
+    expect(hoursReportAvailability(shift({ attendanceStatus: "missed" }), et(DAY, "15:00"))).toEqual({ available: true });
+    expect(hoursReportDeadline(et(DAY, "14:00")).toISOString()).toBe(et("2027-02-19", "02:00").toISOString());
+    expect(hoursReportAvailability(shift(), et("2027-02-19", "02:00"))).toEqual({ available: true });
+  });
+
+  it("JR-2026-000007: ended Nov 12 at 14:00 Toronto → open until Nov 13 at 02:00 Toronto", () => {
+    const end = new Date("2026-11-12T14:00:00.000-05:00"); // EST (daylight saving ended Nov 1)
+    const deadline = hoursReportDeadline(end);
+    expect(deadline.toISOString()).toBe("2026-11-13T07:00:00.000Z");
+    expect(new Intl.DateTimeFormat("en-GB", { timeZone: "America/Toronto", hourCycle: "h23", hour: "2-digit", minute: "2-digit" }).format(deadline)).toBe("02:00");
+    expect(formatHoursReportDeadline(deadline, "en")).toMatch(/Nov 13.*2:00\s?a\.m\./);
+    expect(formatHoursReportDeadline(deadline, "fr")).toMatch(/13 nov.*02 h 00|13 nov.*2 h 00|13 nov.*02:00/);
+    const s = { ...shift(), scheduledStartAt: new Date("2026-11-12T08:00:00.000-05:00"), scheduledEndAt: end };
+    expect(hoursReportAvailability(s, new Date("2026-11-13T01:59:00.000-05:00"))).toEqual({ available: true });
+    expect(hoursReportAvailability(s, new Date("2026-11-13T02:01:00.000-05:00"))).toEqual({ available: false, reason: "window_closed" });
+  });
+
+  it("is refused before the end, after 12 h, with a check-in, cancelled, long-term or already reported", () => {
     const at = et(DAY, "15:00");
     expect(hoursReportAvailability(shift(), et(DAY, "13:59"))).toEqual({ available: false, reason: "not_ended" });
-    expect(hoursReportAvailability(shift(), et("2027-02-20", "14:01"))).toEqual({ available: false, reason: "window_closed" });
+    expect(hoursReportAvailability(shift(), et("2027-02-19", "03:00"))).toEqual({ available: false, reason: "window_closed" }); // +13 h
     expect(hoursReportAvailability(shift({ checkInAt: et(DAY, "08:00") }), at)).toEqual({ available: false, reason: "checked_in" });
     expect(hoursReportAvailability(shift({ checkOutAt: et(DAY, "14:00") }), at)).toEqual({ available: false, reason: "checked_in" });
     expect(hoursReportAvailability(shift({ attendanceStatus: "cancelled" }), at)).toEqual({ available: false, reason: "cancelled" });

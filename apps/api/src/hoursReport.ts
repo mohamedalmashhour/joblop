@@ -1,6 +1,6 @@
 import type { AttendanceService, AuthorizationRoleKey, SessionValidationResult, TimesheetService } from "@rwos/auth";
 import type { EmailMessage } from "./mailer/emailSender";
-import { noticeSms } from "./notifications/smsBrand";
+import { noticeSms, smsLanguage } from "./notifications/smsBrand";
 import { intlLocale, type WorkerLanguage } from "./notifications/workerLanguage";
 
 // "Report my hours": a worker who worked a shift but never checked in (or out) reports the arrival
@@ -13,7 +13,7 @@ import { intlLocale, type WorkerLanguage } from "./notifications/workerLanguage"
 const HOUR_MS = 3_600_000;
 
 /** A worker can report hours until this many hours after the scheduled end. */
-export const HOURS_REPORT_WINDOW_HOURS = 48;
+export const HOURS_REPORT_WINDOW_HOURS = 12;
 export const HOURS_REPORT_REASON_MAX = 500;
 export const HOURS_REPORT_REASON_MIN = 3;
 
@@ -43,14 +43,19 @@ export type HoursReportUnavailable =
   | "already_pending"
   | "already_approved";
 
-/** The last instant a worker can report hours for a shift. */
+/** The last instant a worker can report hours for a shift: the scheduled end + HOURS_REPORT_WINDOW_HOURS. */
 export function hoursReportDeadline(scheduledEndAt: Date): Date {
   return new Date(scheduledEndAt.getTime() + HOURS_REPORT_WINDOW_HOURS * HOUR_MS);
 }
 
+/** The deadline as a worker reads it, always on Québec time (America/Toronto), in their language. */
+export function formatHoursReportDeadline(deadline: Date, language: WorkerLanguage): string {
+  return new Intl.DateTimeFormat(intlLocale(language), { dateStyle: "medium", timeStyle: "short", timeZone: "America/Toronto" }).format(deadline);
+}
+
 /**
  * Whether the worker can report hours now: the shift ended, had no check-in or check-out, is not
- * cancelled (attendance, booking or job), is pending_start or missed, and ended at most 48 h ago.
+ * cancelled (attendance, booking or job), is pending_start or missed, and ended at most HOURS_REPORT_WINDOW_HOURS (12) h ago.
  * A rejected report can be followed by a new one inside the window; a pending or approved one cannot.
  */
 export function hoursReportAvailability(
@@ -226,7 +231,9 @@ export function hoursReportRejectedEmail(input: ShiftLine & { to: string; langua
 }
 
 /** Worker text (only for a worker with no email): staff did not accept the reported hours. */
-export function hoursReportRejectedSmsText(input: ShiftLine & { language: WorkerLanguage }): string {
+export function hoursReportRejectedSmsText(raw: ShiftLine & { language: WorkerLanguage }): string {
+  // Arabic readers get the French text message (smsLanguage); the Arabic line stays for a reversal.
+  const input = { ...raw, language: smsLanguage(raw.language) };
   const when = shiftWhen(input, input.language);
   if (input.language === "en") return noticeSms("en", `the hours you reported for ${input.title} on ${when} were not accepted. Contact Joblop if this is a mistake.`);
   if (input.language === "ar") return noticeSms("ar", `لم تُقبل الساعات التي أبلغت عنها لمناوبة ${input.title} في ${when}. تواصل مع Joblop إذا كان هذا خطأ.`);

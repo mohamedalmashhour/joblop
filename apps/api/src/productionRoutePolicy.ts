@@ -105,6 +105,8 @@ export const JOB_FLOW_ROUTES: readonly string[] = [
   // Staff decision on a worker's reported hours (admin Timesheets console, "Reported hours").
   "POST /platform/attendance/hours-reports/:hoursReportId/approve",
   "POST /platform/attendance/hours-reports/:hoursReportId/reject",
+  // Staff override: staff enter the hours of a no-check-in shift themselves (after the 12-hour window).
+  "POST /platform/attendance/hours-reports/staff-entry",
   // Staff timesheets (admin Timesheets console: prepare, accept exceptions, approve, lock). calculate,
   // request-correction and reject are how staff move a disputed timesheet (correction_required) on.
   "POST /platform/timesheets/prepare",

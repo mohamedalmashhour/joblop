@@ -12,7 +12,7 @@ import { ShiftAddressMap } from "../ShiftAddressMap";
 import { checkInOpensAt, isCheckInOpen } from "../shiftLocation";
 import { CancelShiftControl } from "./CancelShift";
 import { ReportHoursControl } from "./ReportHours";
-import { reportHoursView } from "./reportHoursView";
+import { formatReportDeadline, reportHoursView } from "./reportHoursView";
 
 type Shift = Readonly<{
   attendanceRecordId: string;
@@ -289,13 +289,18 @@ function ShiftCard({ s, busy, onAct, onCancel, history, t, locale }: { s: Shift;
       ) : null}
       {reportView === "waiting" ? <div className="chips"><span className="chip status-pending">{t("sched.reportWaiting")}</span></div> : null}
       {reportView === "rejected" ? <p className="notice" style={{ margin: 0 }}>{t("sched.reportRejected")}</p> : null}
+      {reportView === "form" && s.reportHoursUntil ? (
+        <p className="notice" role="note" style={{ margin: 0, color: "var(--accent)" }}>
+          {t("sched.reportDeadlineNotice", { deadline: formatDeadline(s.reportHoursUntil, locale) })}
+        </p>
+      ) : null}
       {reportView === "form" ? (
         <ReportHoursControl
           attendanceRecordId={s.attendanceRecordId}
           scheduledStartAt={s.scheduledStartAt}
           scheduledEndAt={s.scheduledEndAt}
           timezone={s.timezone}
-          deadlineLabel={s.reportHoursUntil ? formatDeadline(s.reportHoursUntil, s.timezone, locale) : ""}
+          deadlineLabel={s.reportHoursUntil ? formatDeadline(s.reportHoursUntil, locale) : ""}
           onSent={onCancel}
         />
       ) : null}
@@ -321,12 +326,9 @@ function formatClock(at: string, tz: string, locale: RwosLocale): string {
     return new Date(at).toLocaleTimeString(locale, { hour: "numeric", minute: "2-digit" });
   }
 }
-function formatDeadline(at: string, tz: string, locale: RwosLocale): string {
-  try {
-    return new Date(at).toLocaleString(locale, { weekday: "short", month: "short", day: "numeric", hour: "numeric", minute: "2-digit", timeZone: tz });
-  } catch {
-    return new Date(at).toLocaleString(locale);
-  }
+// The "Report my hours" deadline, always on Québec time (America/Toronto), wherever the device is.
+function formatDeadline(at: string, locale: RwosLocale): string {
+  return formatReportDeadline(at, locale);
 }
 // Québec shifts are on Eastern time: say so in plain words instead of "(America/Toronto)".
 const EASTERN_ZONES = new Set(["America/Toronto", "America/Montreal", "America/Nipigon", "America/Thunder_Bay", "America/Iqaluit", "America/New_York"]);

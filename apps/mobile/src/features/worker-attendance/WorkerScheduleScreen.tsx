@@ -187,6 +187,9 @@ export function WorkerScheduleScreen({ transport, onBack }: { transport: MobileS
                     ) : null}
                     {reportView === "waiting" ? <Badge label={attendanceCopy.reportWaiting} tone="warning" /> : null}
                     {reportView === "rejected" ? <SmallText>{attendanceCopy.reportRejected}</SmallText> : null}
+                    {reportView === "form" && r.reportHoursUntil ? (
+                      <BodyText>{attendanceCopy.reportDeadlineNotice.replace("{deadline}", formatReportDeadline(r.reportHoursUntil, locale))}</BodyText>
+                    ) : null}
                     {reportView === "form" && !form ? (
                       <Button label={attendanceCopy.reportCta} onPress={() => openReport(r)} disabled={busyId === r.attendanceRecordId} />
                     ) : null}

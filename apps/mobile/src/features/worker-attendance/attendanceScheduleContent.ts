@@ -103,6 +103,8 @@ export type AttendanceCopy = Readonly<{
   cancelledBy: Readonly<Record<"joblop" | "employer" | "worker", string>>;
   // "Report my hours" (a shift worked with no check-in): same words as the website schedule.
   reportCta: string;
+  /** Contains {deadline}: shown on the card of a finished shift with no check-in. */
+  reportDeadlineNotice: string;
   /** Contains {deadline}. */
   reportIntro: string;
   reportArrival: string;
@@ -148,6 +150,7 @@ const en: AttendanceCopy = {
   cancelStarted: "This shift has already started, so it can't be cancelled here. Contact Joblop.",
   cancelledBy: { joblop: "Cancelled by Joblop", employer: "Cancelled by the employer", worker: "You cancelled this shift" },
   reportCta: "Report my hours",
+  reportDeadlineNotice: "No check-in recorded. You have until {deadline} to report your hours. After that, this shift will not be recorded or paid.",
   reportIntro: "You worked this shift but didn't check in? Tell Joblop when you arrived and when you left. Joblop checks it before your hours count. You can do this until {deadline}.",
   reportArrival: "Arrival time",
   reportDeparture: "Departure time",
@@ -192,6 +195,7 @@ const fr: AttendanceCopy = {
   cancelStarted: "Ce quart a déjà commencé : il ne peut plus être annulé ici. Contactez Joblop.",
   cancelledBy: { joblop: "Annulé par Joblop", employer: "Annulé par l’employeur", worker: "Vous avez annulé ce quart" },
   reportCta: "Déclarer mes heures",
+  reportDeadlineNotice: "Aucun pointage enregistré. Vous avez jusqu'au {deadline} pour déclarer vos heures. Après, ce quart ne sera ni enregistré ni payé.",
   reportIntro: "Vous avez travaillé ce quart sans pointer? Indiquez à Joblop l'heure de votre arrivée et de votre départ. Joblop vérifie avant que vos heures comptent. Vous pouvez le faire jusqu'au {deadline}.",
   reportArrival: "Heure d'arrivée",
   reportDeparture: "Heure de départ",
@@ -236,6 +240,7 @@ const ar: AttendanceCopy = {
   cancelStarted: "بدأت هذه المناوبة بالفعل، لذا لا يمكن إلغاؤها من هنا. تواصل مع Joblop.",
   cancelledBy: { joblop: "ألغتها Joblop", employer: "ألغاها صاحب العمل", worker: "لقد ألغيت هذه المناوبة" },
   reportCta: "أبلغ عن ساعاتي",
+  reportDeadlineNotice: "لم يُسجَّل أي حضور. أمامك حتى {deadline} للإبلاغ عن ساعاتك. بعد ذلك لن تُسجَّل هذه المناوبة ولن تُدفع.",
   reportIntro: "عملت في هذه المناوبة ولم تسجّل دخولك؟ أخبر Joblop بوقت وصولك ووقت مغادرتك. تتحقق Joblop من ذلك قبل احتساب ساعاتك. يمكنك فعل ذلك حتى {deadline}.",
   reportArrival: "وقت الوصول",
   reportDeparture: "وقت المغادرة",

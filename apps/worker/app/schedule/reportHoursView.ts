@@ -2,7 +2,7 @@ import type { MessageKey } from "../i18n/messages";
 
 // "Report my hours" on the schedule card: what the card shows for a shift, from the API's fields
 // (canReportHours, hoursReport, reportHoursUntil). The API decides; the card only reads it, plus a
-// local deadline check so an open page stops offering the form once the 48 hours are over.
+// local deadline check so an open page stops offering the form once the 12-hour window (HOURS_REPORT_WINDOW_HOURS in the API) is over.
 
 export type HoursReportFields = Readonly<{
   canReportHours?: boolean;
@@ -26,6 +26,16 @@ export function shiftClock(iso: string, timeZone: string): string {
     return new Intl.DateTimeFormat("en-GB", { timeZone, hourCycle: "h23", hour: "2-digit", minute: "2-digit" }).format(new Date(iso));
   } catch {
     return new Date(iso).toISOString().slice(11, 16);
+  }
+}
+
+/** The report deadline as the worker reads it, always on Québec time (America/Toronto). */
+export function formatReportDeadline(iso: string, locale: string): string {
+  const options: Intl.DateTimeFormatOptions = { weekday: "short", month: "short", day: "numeric", hour: "numeric", minute: "2-digit", timeZone: "America/Toronto" };
+  try {
+    return new Intl.DateTimeFormat(locale, options).format(new Date(iso));
+  } catch {
+    return new Intl.DateTimeFormat("en-CA", options).format(new Date(iso));
   }
 }
 

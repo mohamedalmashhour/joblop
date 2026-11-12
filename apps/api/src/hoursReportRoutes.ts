@@ -7,6 +7,7 @@ import {
   approveReportedHours,
   approvedEvidenceSummary,
   hoursReportAvailability,
+  hoursReportDeadline,
   hoursReportRejectedEmail,
   hoursReportRejectedSmsText,
   hoursReportStaffAlertEmail,
@@ -40,7 +41,7 @@ const UNAVAILABLE_MESSAGE: Record<HoursReportUnavailable, string> = {
   checked_in: "This shift already has a check-in or check-out.",
   not_reportable: "Hours can no longer be reported for this shift.",
   not_ended: "You can report your hours once the shift has ended.",
-  window_closed: "Hours can be reported up to 48 hours after the shift ends. Contact Joblop.",
+  window_closed: "Hours can be reported up to 12 hours after the shift ends; after that the shift is not recorded. Contact Joblop.",
   already_pending: "Your hours for this shift are already waiting for Joblop to approve.",
   already_approved: "Your hours for this shift were already approved."
 };
@@ -112,7 +113,7 @@ async function recordHoursReportAudit(
     attendanceRecordId: string;
     actorUserId: string;
     actorLabel: string;
-    action: "attendance_hours_report.submitted" | "attendance_hours_report.approved" | "attendance_hours_report.rejected";
+    action: "attendance_hours_report.submitted" | "attendance_hours_report.approved" | "attendance_hours_report.rejected" | "attendance_hours_report.staff_entered";
     priorState: string | null;
     newState: string;
     reason: string | null;
@@ -323,6 +324,116 @@ export function registerHoursReportRoutes(app: FastifyInstance, deps: HoursRepor
           decisionReason: r.decisionReason
         };
       })
+    });
+  });
+
+  // ── Staff: finished shifts with no check-in (last 14 days), for "Enter hours" after the window ──
+  app.get("/platform/attendance/hours-reports/no-check-in", async (request, reply) => {
+    const staff = await requireStaff(request, reply);
+    if (!staff) return;
+    const currentTime = now();
+    const rows = await staff.prisma.attendanceRecord.findMany({
+      where: {
+        status: { in: ["pending_start", "missed"] },
+        checkInAt: null,
+        checkOutAt: null,
+        scheduledEndAt: { lte: currentTime, gte: new Date(currentTime.getTime() - 14 * 24 * 3_600_000) },
+        timesheet: { is: null },
+        assignment: { status: { notIn: [...CANCELLED_ASSIGNMENT_STATUSES] } },
+        jobRequest: { status: { not: "cancelled" } },
+        NOT: { hoursReports: { some: { status: { in: ["pending", "approved"] } } } }
+      },
+      orderBy: [{ scheduledEndAt: "desc" }],
+      take: 100,
+      select: {
+        id: true, status: true, scheduledStartAt: true, scheduledEndAt: true, timezone: true,
+        organization: { select: { displayName: true } },
+        workerIdentity: { select: { displayName: true, user: { select: { displayName: true } } } },
+        jobRequest: { select: { jobRequestNumber: true, title: true } }
+      }
+    });
+    return reply.code(200).send({
+      shifts: rows.map((r) => {
+        const tz = r.timezone || "America/Toronto";
+        const deadline = hoursReportDeadline(r.scheduledEndAt);
+        return {
+          attendanceRecordId: r.id,
+          attendanceStatus: r.status,
+          jobRequestNumber: r.jobRequest.jobRequestNumber,
+          title: r.jobRequest.title,
+          employerName: r.organization.displayName,
+          workerName: r.workerIdentity.displayName ?? r.workerIdentity.user?.displayName ?? null,
+          shiftDay: localDayOf(r.scheduledStartAt, tz),
+          scheduledArrival: clockIn(r.scheduledStartAt, tz),
+          scheduledDeparture: clockIn(r.scheduledEndAt, tz),
+          reportDeadline: deadline.toISOString(),
+          workerWindowOpen: currentTime.getTime() <= deadline.getTime()
+        };
+      })
+    });
+  });
+
+  // ── Staff: enter the hours of a shift with no check-in themselves (e.g. after the 12-hour window).
+  // A required reason; audited; the same approve path (attendance times + timesheet prepared). ──
+  app.post("/platform/attendance/hours-reports/staff-entry", async (request, reply) => {
+    const staff = await requireStaff(request, reply);
+    if (!staff) return;
+    const { prisma, session, roles, user } = staff;
+    const body = readBody(request);
+    const attendanceRecordId = readString(body, "attendanceRecordId") ?? "";
+    if (!UUID.test(attendanceRecordId)) return reply.code(404).send(NOT_FOUND);
+    const reason = normalizeReportReason(body.reason);
+    if (!reason) return reply.code(400).send({ error: "RWOS_HOURS_REPORT_INVALID", reason: "reason_required", message: INVALID_MESSAGE.reason_required });
+    const row = await prisma.attendanceRecord.findUnique({
+      where: { id: attendanceRecordId },
+      select: {
+        id: true, workerIdentityId: true, organizationId: true, status: true, scheduledStartAt: true, scheduledEndAt: true, timezone: true,
+        checkInAt: true, checkOutAt: true, assignment: { select: { status: true } }, jobRequest: { select: { status: true } }
+      }
+    });
+    if (!row) return reply.code(404).send(NOT_FOUND);
+    if (row.status === "cancelled" || isCancelledAssignment(row.assignment.status) || row.jobRequest.status === "cancelled") return reply.code(409).send(SHIFT_CANCELLED_BODY);
+    if (await deps.isLongTermAttendance(row.id)) return reply.code(409).send(LONG_TERM_NO_TIMESHEETS_BODY);
+    const currentTime = now();
+    const latest = (await latestHoursReports(prisma, [row.id])).get(row.id) ?? null;
+    if (row.checkInAt || row.checkOutAt) return reply.code(409).send({ error: "RWOS_HOURS_REPORT_NOT_AVAILABLE", reason: "checked_in", message: UNAVAILABLE_MESSAGE.checked_in });
+    if (latest === "pending" || latest === "approved") {
+      const why = latest === "pending" ? "already_pending" : "already_approved";
+      return reply.code(409).send({ error: "RWOS_HOURS_REPORT_NOT_AVAILABLE", reason: why, message: UNAVAILABLE_MESSAGE[why] });
+    }
+    if (row.status !== "pending_start" && row.status !== "missed") return reply.code(409).send({ error: "RWOS_HOURS_REPORT_NOT_AVAILABLE", reason: "not_reportable", message: UNAVAILABLE_MESSAGE.not_reportable });
+    if (currentTime.getTime() < row.scheduledEndAt.getTime()) return reply.code(409).send({ error: "RWOS_HOURS_REPORT_NOT_AVAILABLE", reason: "not_ended", message: UNAVAILABLE_MESSAGE.not_ended });
+    const times = resolveReportedTimes(row, readString(body, "arrivalTime") ?? "", readString(body, "departureTime") ?? "", currentTime);
+    if (!times.ok) return reply.code(400).send({ error: "RWOS_HOURS_REPORT_INVALID", reason: times.error, message: INVALID_MESSAGE[times.error] });
+
+    const entry = await prisma.attendanceHoursReport.create({
+      data: {
+        attendanceRecordId: row.id, workerIdentityId: row.workerIdentityId, organizationId: row.organizationId, status: "approved",
+        reportedCheckInAt: times.checkInAt, reportedCheckOutAt: times.checkOutAt, reason, submittedByUserId: user.id, submittedAt: currentTime,
+        approvedCheckInAt: times.checkInAt, approvedCheckOutAt: times.checkOutAt, decidedByUserId: user.id, decidedAt: currentTime,
+        decisionReason: "staff_entered_override"
+      },
+      select: { id: true }
+    });
+    const { timesheet } = await approveReportedHours(
+      { attendanceService: deps.attendanceService, timesheetService: deps.timesheetService },
+      {
+        session, roles, attendanceRecordId: row.id, checkInAt: times.checkInAt, checkOutAt: times.checkOutAt,
+        evidenceSummary: `Entered by staff ${user.emailNormalized || user.id} at ${currentTime.toISOString()} (staff override): ${reason}`.slice(0, 240)
+      },
+      // Nothing was written on the attendance record: the entry is withdrawn.
+      async () => {
+        await prisma.attendanceHoursReport.delete({ where: { id: entry.id } });
+      }
+    );
+    await recordHoursReportAudit(prisma, {
+      reportId: entry.id, organizationId: row.organizationId, attendanceRecordId: row.id, actorUserId: user.id, actorLabel: "Staff (hours entered)",
+      action: "attendance_hours_report.staff_entered", priorState: row.status, newState: "approved",
+      reason: `${times.checkInAt.toISOString()}–${times.checkOutAt.toISOString()}: ${reason}`, now: currentTime
+    });
+    return reply.code(201).send({
+      hoursReport: { id: entry.id, status: "approved", approvedCheckInAt: times.checkInAt.toISOString(), approvedCheckOutAt: times.checkOutAt.toISOString() },
+      timesheet: deps.serializeTimesheet(timesheet)
     });
   });
 
