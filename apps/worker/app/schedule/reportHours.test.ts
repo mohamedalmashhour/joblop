@@ -40,7 +40,7 @@ describe("report my hours on the schedule card", () => {
     const faq = readFileSync(new URL("../how-it-works/HowItWorks.tsx", import.meta.url), "utf8");
     expect(faq).toContain("I forgot to check in. What now?");
     expect(faq).toContain("J'ai oublié de pointer. Que faire?");
-    expect(faq).toContain("نسيت تسجيل حضوري. ماذا أفعل؟");
+    expect(faq).toContain("نسيت تسجيل وصولي. ماذا أفعل؟");
     expect(faq.match(/12 (hours|heures|ساعة)/g)?.length ?? 0).toBeGreaterThanOrEqual(3);
   });
 
