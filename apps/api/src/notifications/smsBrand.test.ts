@@ -2,7 +2,7 @@ import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import { checkInReminderSmsText, workerTimesheetReminderSmsText } from "../brain/brainText";
 import { planEndingSmsText } from "../planReminderSweep";
-import { codeSms, noticeSms, SMS_BRAND_PREFIX, SMS_OPT_OUT, smsSegmentCount } from "./smsBrand";
+import { codeSms, noticeSms, SMS_BRAND_PREFIX, SMS_OPT_OUT, smsLanguage, smsSegmentCount } from "./smsBrand";
 import { assignedJobSmsText, shiftCancelledSmsText, shiftChangedSmsText, shiftReminderSmsText } from "./workerNotifications";
 
 // Toll-free SMS registration (2026-11-11): every text starts "Joblop:", every notice ends with the
@@ -47,7 +47,18 @@ function notices(language: "en" | "fr" | "ar"): Array<[string, string, number]> 
 }
 
 describe("every SMS: brand, opt-out, length", () => {
-  for (const language of ["en", "fr", "ar"] as const) {
+  // Owner decision 2026-11-12: texts go out in English or French only; an Arabic reader gets French.
+  it("an Arabic reader gets the French text for every notice (same words, French opt-out)", () => {
+    expect(smsLanguage("ar")).toBe("fr");
+    expect(smsLanguage("en")).toBe("en");
+    const french = notices("fr");
+    notices("ar").forEach(([name, text], index) => {
+      expect(text, name).toBe(french[index]?.[1]);
+      expect(text, name).not.toMatch(/[؀-ۿ]/);
+    });
+  });
+
+  for (const language of ["en", "fr"] as const) {
     it(`${language}: each notice starts with "Joblop:", ends with the opt-out line, and keeps its segment budget`, () => {
       for (const [name, text, budget] of notices(language)) {
         expect(text.startsWith(`${SMS_BRAND_PREFIX} `), name).toBe(true);
