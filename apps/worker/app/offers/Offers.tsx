@@ -6,6 +6,7 @@ import { useLocale, useT, fmtLocale, type Translate } from "../i18n/LocaleProvid
 import type { RwosLocale } from "../i18n/config";
 import type { MessageKey } from "../i18n/messages";
 import { shiftOverlapNotice } from "../shiftOverlapNotice";
+import { ShiftCheckIn, useMyShifts } from "../schedule/ShiftCheckIn";
 
 type Offer = Readonly<{
   workerOfferId: string;
@@ -122,6 +123,10 @@ export function Offers() {
 
   useEffect(() => { void load(); }, [load]);
 
+  // An accepted offer that is now a confirmed shift shows the same Check in / Check out box as My
+  // schedule and the job page.
+  const { byJob: myShiftsByJob, reload: reloadMyShifts } = useMyShifts(state.status === "ready");
+
   // Accepting needs a signed pay choice. Ask for it up front: the API refuses without one, and that
   // refusal cannot be told apart from a changed offer once it reaches this page.
   useEffect(() => {
@@ -158,12 +163,13 @@ export function Offers() {
       }
       setNotice(action === "accept" ? t("offers.accepted") : t("offers.declined"));
       await load();
+      if (action === "accept") await reloadMyShifts();
     } catch {
       setNotice(t("offers.responseFailed"));
     } finally {
       setBusyId(null);
     }
-  }, [load, t, uiLocale]);
+  }, [load, t, uiLocale, reloadMyShifts]);
 
   if (state.status === "loading") return <div className="state">{t("common.loading")}</div>;
   if (state.status === "signed_out")
@@ -191,6 +197,9 @@ export function Offers() {
                   <dt>{t("offers.respondBy")}</dt>
                   <dd>{expiryWhen(o.expiresAt, locale)}</dd>
                 </dl>
+                {o.status === "accepted" && myShiftsByJob.get(o.jobRequestId) ? (
+                  <ShiftCheckIn shift={myShiftsByJob.get(o.jobRequestId)!} onChanged={reloadMyShifts} />
+                ) : null}
                 {respondable ? (
                   <aside className="rights" aria-label={t("offers.rightsTitle")}>
                     <strong>{t("offers.rightsTitle")}</strong>

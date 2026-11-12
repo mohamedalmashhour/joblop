@@ -13,10 +13,13 @@ import { checkInOpensAt, isCheckInOpen } from "../shiftLocation";
 import { CancelShiftControl } from "./CancelShift";
 import { ReportHoursControl } from "./ReportHours";
 import { formatReportDeadline, reportHoursView } from "./reportHoursView";
+import { shiftPageHref } from "../shiftPage";
 
 type Shift = Readonly<{
   attendanceRecordId: string;
   assignmentId: string;
+  /** The job; a booked shift opens its shift page (/jobs/<id>) from the calendar. */
+  jobRequestId?: string;
   status: string;
   scheduledStartAt: string;
   scheduledEndAt: string;
@@ -445,7 +448,12 @@ function CalendarView({ items, month, onPrev, onNext, selected, onSelect, busy, 
         dayShifts.length > 0 ? (
           <div className="results" style={{ paddingBottom: 48 }}>
             {dayShifts.map((s) => (
-              <ShiftCard key={s.attendanceRecordId} s={s} busy={busy === s.attendanceRecordId} onAct={onAct} onCancel={onCancel} t={t} locale={locale} />
+              <div key={s.attendanceRecordId} style={{ display: "grid", gap: 6 }}>
+                <ShiftCard s={s} busy={busy === s.attendanceRecordId} onAct={onAct} onCancel={onCancel} t={t} locale={locale} />
+                {s.jobRequestId && s.status !== "cancelled" ? (
+                  <a className="btn ghost" style={{ justifySelf: "start" }} href={shiftPageHref(s.jobRequestId)}>{t("sched.openShift")}</a>
+                ) : null}
+              </div>
             ))}
           </div>
         ) : (

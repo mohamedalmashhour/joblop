@@ -104,6 +104,16 @@ describe("assigned job email address", () => {
     expect(assignedJobEmail({ ...base, language: "fr", address: "1 Main St" }).text).toContain("Où : 1 Main St");
   });
 
+  it("says when check-in opens on the job page (30 min before, Toronto time), with the link", () => {
+    const jobUrl = "https://joblop.com/jobs/abc";
+    // 13:00 UTC on 2026-08-10 is 09:00 in Toronto (summer), so check-in opens at 8:30.
+    const enText = assignedJobEmail({ ...base, language: "en", jobUrl }).text;
+    expect(enText).toMatch(/On the day, open this page to check in from 8:30.*: https:\/\/joblop\.com\/jobs\/abc/);
+    expect(assignedJobEmail({ ...base, language: "fr", jobUrl }).text).toMatch(/Le jour même, ouvrez cette page pour pointer votre arrivée à partir de 0?8\D+30 : https:\/\/joblop\.com\/jobs\/abc/);
+    expect(assignedJobEmail({ ...base, language: "ar", jobUrl }).text).toContain("في يوم العمل، افتح هذه الصفحة لتسجيل وصولك");
+    expect(assignedJobEmail({ ...base, language: "en", jobUrl: null }).text).not.toContain("check in from");
+  });
+
   it("omits the line when the worksite has no address on file", () => {
     expect(assignedJobEmail({ ...base, language: "en", address: null }).text).not.toContain("Where:");
   });

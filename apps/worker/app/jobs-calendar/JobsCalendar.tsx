@@ -8,6 +8,7 @@ import { shiftOverlapNotice } from "../shiftOverlapNotice";
 import { nearestDayWithJobs } from "../calendarDays";
 import { accountHref } from "../authScroll";
 import { JoblopJobBadge } from "../JobSourceBadge";
+import { shiftPageHref } from "../shiftPage";
 
 // "My calendar" hub: one calendar that shows the worker everything with a date on it —
 // open Joblop jobs they can accept (bonus ★), their confirmed shifts, cancelled shifts and pay
@@ -123,7 +124,7 @@ const TEXT = {
     } as Record<string, string>,
     payStatus: { scheduled: "Scheduled", sent: "Sent", paid: "Paid", held: "On hold", other: "Planned" } as Record<string, string>,
     cancelledStatus: "This shift was cancelled.",
-    openShift: "Open my schedule",
+    openShift: "Open this shift",
     openPay: "Open my pay",
     accept: "Accept this job",
     accepting: "Accepting…",
@@ -206,7 +207,7 @@ const TEXT = {
     } as Record<string, string>,
     payStatus: { scheduled: "Prévu", sent: "Envoyé", paid: "Payé", held: "En attente", other: "Prévu" } as Record<string, string>,
     cancelledStatus: "Ce quart a été annulé.",
-    openShift: "Ouvrir mon horaire",
+    openShift: "Ouvrir ce quart",
     openPay: "Ouvrir ma paie",
     accept: "Accepter cet emploi",
     accepting: "Acceptation…",
@@ -289,7 +290,7 @@ const TEXT = {
     } as Record<string, string>,
     payStatus: { scheduled: "مجدول", sent: "مُرسل", paid: "مدفوع", held: "معلّق", other: "مخطط" } as Record<string, string>,
     cancelledStatus: "أُلغيت هذه النوبة.",
-    openShift: "افتح جدولي",
+    openShift: "افتح هذه المناوبة",
     openPay: "افتح أجري",
     accept: "اقبل هذه الوظيفة",
     accepting: "جارٍ القبول…",
@@ -824,7 +825,8 @@ function ItemCard({
         {item.subtitle ? <p className="jc-meta">📍 {item.subtitle}</p> : null}
         <p className="jc-meta">🕒 <bdi>{timeText}</bdi></p>
         <div className="jc-actions">
-          <a className="jc-link" href="/schedule">{t.openShift}</a>
+          {/* A booked shift opens its shift page (details, address, Check in / Check out). */}
+          <a className="jc-link" href={item.jobRequestId ? shiftPageHref(item.jobRequestId) : "/schedule"}>{t.openShift}</a>
         </div>
       </article>
     );
