@@ -38,7 +38,13 @@ export async function generateMetadata(): Promise<Metadata> {
     applicationName: "Joblop",
     manifest: "/manifest.webmanifest",
     appleWebApp: { capable: true, title: "Joblop", statusBarStyle: "default" },
-    icons: { apple: "/apple-touch-icon.png" },
+    icons: {
+      icon: [
+        { url: "/favicon.ico", sizes: "48x48" },
+        { url: "/icon.png", type: "image/png", sizes: "512x512" }
+      ],
+      apple: "/apple-touch-icon.png"
+    },
     alternates: { canonical: "/" },
     openGraph: {
       type: "website",

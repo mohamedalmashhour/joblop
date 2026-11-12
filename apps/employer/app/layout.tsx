@@ -20,7 +20,14 @@ export async function generateMetadata(): Promise<Metadata> {
   const m = dictionaries[locale] ?? enDict;
   return {
     title: `Joblop — ${m["brand.tagline"] ?? enDict["brand.tagline"]}`,
-    description: "Joblop employer workforce, staffing, scheduling and operations workspace."
+    description: "Joblop employer workforce, staffing, scheduling and operations workspace.",
+    icons: {
+      icon: [
+        { url: "/favicon.ico", sizes: "48x48" },
+        { url: "/icon.png", type: "image/png", sizes: "512x512" }
+      ],
+      apple: "/apple-touch-icon.png"
+    }
   };
 }
 
