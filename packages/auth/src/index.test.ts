@@ -1,8 +1,10 @@
 import { describe, expect, it, vi } from "vitest";
 import type { RequestPricingSnapshotCapture } from "./index";
 import {
+  AttendanceError,
   AuthenticationError,
   AuthenticationRequiredError,
+  REPORTED_HOURS_METHOD,
   AssignmentTransactionUnavailableError,
   PasswordPolicyError,
   RegistrationUnavailableError,
@@ -4056,6 +4058,79 @@ describe("attendance foundation", () => {
         "attendance.completed"
       ])
     );
+  });
+
+  it("records staff-approved reported hours (no check-in) as a normal check-out, marked as reported", async () => {
+    const { attendanceService, attendanceRepository, assignment, adminSession, workerSession } =
+      await createAttendanceContext();
+    const attendanceRecord = await attendanceService.createFromAssignment({
+      session: adminSession,
+      roles: ["DISPATCHER"],
+      assignmentId: assignment.id
+    });
+    const missed = await attendanceService.markMissed({
+      session: adminSession,
+      roles: ["DISPATCHER"],
+      attendanceRecordId: attendanceRecord.id,
+      expectedVersion: attendanceRecord.versionToken,
+      reason: "no_show"
+    });
+    const checkInAt = new Date("2026-08-12T12:00:00.000Z");
+    const checkOutAt = new Date("2026-08-12T18:00:00.000Z");
+
+    // A worker cannot do this; staff authority is required.
+    await expect(
+      attendanceService.recordReportedHours({
+        session: workerSession,
+        roles: ["WORKER_ACCESS"],
+        attendanceRecordId: missed.id,
+        expectedVersion: missed.versionToken,
+        checkInAt,
+        checkOutAt,
+        evidenceSummary: "self-approved"
+      })
+    ).rejects.toBeInstanceOf(AttendanceError);
+
+    const recorded = await attendanceService.recordReportedHours({
+      session: adminSession,
+      roles: ["PLATFORM_ADMINISTRATOR"],
+      attendanceRecordId: missed.id,
+      expectedVersion: missed.versionToken,
+      checkInAt,
+      checkOutAt,
+      evidenceSummary: "Reported by the worker; approved by staff."
+    });
+    expect(recorded.status).toBe("checked_out");
+    expect(recorded.checkInAt?.toISOString()).toBe(checkInAt.toISOString());
+    expect(recorded.checkOutAt?.toISOString()).toBe(checkOutAt.toISOString());
+    expect(recorded.checkInMethod).toBe(REPORTED_HOURS_METHOD);
+    expect(recorded.checkOutMethod).toBe(REPORTED_HOURS_METHOD);
+    expect(recorded.checkInEvidenceSummary).toContain("approved by staff");
+    // The "missed" mark is cleared: the worker did come, so it must not flag the timesheet.
+    expect(recorded.exceptionCategory).toBeNull();
+    expect(attendanceRepository.auditActions()).toEqual(
+      expect.arrayContaining(["attendance.checked_in", "attendance.checked_out"])
+    );
+
+    // Once it has times it cannot be recorded again.
+    await expect(
+      attendanceService.recordReportedHours({
+        session: adminSession,
+        roles: ["PLATFORM_ADMINISTRATOR"],
+        attendanceRecordId: recorded.id,
+        expectedVersion: recorded.versionToken,
+        checkInAt,
+        checkOutAt,
+        evidenceSummary: "again"
+      })
+    ).rejects.toMatchObject({ decision: expect.objectContaining({ status: "invalid_transition" }) });
+    const completed = await attendanceService.markCompleted({
+      session: adminSession,
+      roles: ["PLATFORM_ADMINISTRATOR"],
+      attendanceRecordId: recorded.id,
+      expectedVersion: recorded.versionToken
+    });
+    expect(completed.status).toBe("completed");
   });
 
   it("prevents duplicate check-in/check-out and workers from reading another worker attendance", async () => {

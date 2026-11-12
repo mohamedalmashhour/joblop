@@ -30,6 +30,7 @@ export type NoticeKind =
   | "check_in_reminder"
   | "timesheet_reminder"
   | "worker_timesheet_reminder"
+  | "hours_report_rejected"
   | "no_show_employer"
   | "staff_summary";
 
@@ -61,6 +62,9 @@ export const NOTICE_CHANNELS: Readonly<Record<NoticeKind, NoticeChannels>> = {
   // The worker's own hours waiting for their confirmation (their pay depends on it). Email; a text
   // only for a worker with no email (phone sign-in), who could not be reached otherwise.
   worker_timesheet_reminder: { email: true, text: "urgent_only" },
+  // Staff did not accept the hours a worker reported (no check-in): same rule as above, email, and a
+  // text only for a worker with no email.
+  hours_report_rejected: { email: true, text: "urgent_only" },
   // Employer: their booked worker has not checked in yet and Joblop is on it.
   no_show_employer: { email: true, text: "never" },
   staff_summary: { email: true, text: "never" }

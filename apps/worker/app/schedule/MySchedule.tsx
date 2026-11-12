@@ -11,6 +11,8 @@ import { resolveDeniedKind } from "../resolveDenied";
 import { ShiftAddressMap } from "../ShiftAddressMap";
 import { checkInOpensAt, isCheckInOpen } from "../shiftLocation";
 import { CancelShiftControl } from "./CancelShift";
+import { ReportHoursControl } from "./ReportHours";
+import { reportHoursView } from "./reportHoursView";
 
 type Shift = Readonly<{
   attendanceRecordId: string;
@@ -32,6 +34,11 @@ type Shift = Readonly<{
   safetyNotes: string | null;
   // Long-term job (employer plans flag): false = no check-in / check-out (the employer pays directly).
   clockInAllowed?: boolean;
+  // "Report my hours" (a shift worked with no check-in): offered while canReportHours, until
+  // reportHoursUntil; hoursReport is the latest report ("pending" = waiting for Joblop).
+  canReportHours?: boolean;
+  reportHoursUntil?: string | null;
+  hoursReport?: Readonly<{ status: string }> | null;
 }>;
 type PendingOffer = Readonly<{ workerOfferId: string; jobRequestId: string; title: string | null; startAt: string | null }>;
 type State = { status: "loading" } | { status: "signed_out" } | { status: "needs_setup" } | { status: "error" } | { status: "ready"; items: readonly Shift[] };
@@ -242,6 +249,8 @@ function ShiftCard({ s, busy, onAct, onCancel, history, t, locale }: { s: Shift;
   const inTime = s.checkInAt ? formatClock(s.checkInAt, s.timezone, locale) : null;
   const outTime = s.checkOutAt ? formatClock(s.checkOutAt, s.timezone, locale) : null;
   const title = s.roleLabel?.trim() || s.employerName;
+  // A finished shift with no check-in: "Report my hours" (or the report's state).
+  const reportView = noClock ? null : reportHoursView(s);
   return (
     <article className="card">
       <div className="role">{title}</div>
@@ -278,6 +287,18 @@ function ShiftCard({ s, busy, onAct, onCancel, history, t, locale }: { s: Shift;
       {canCancel ? (
         <CancelShiftControl attendanceRecordId={s.attendanceRecordId} scheduledStartAt={s.scheduledStartAt} disabled={busy} onCancelled={onCancel} />
       ) : null}
+      {reportView === "waiting" ? <div className="chips"><span className="chip status-pending">{t("sched.reportWaiting")}</span></div> : null}
+      {reportView === "rejected" ? <p className="notice" style={{ margin: 0 }}>{t("sched.reportRejected")}</p> : null}
+      {reportView === "form" ? (
+        <ReportHoursControl
+          attendanceRecordId={s.attendanceRecordId}
+          scheduledStartAt={s.scheduledStartAt}
+          scheduledEndAt={s.scheduledEndAt}
+          timezone={s.timezone}
+          deadlineLabel={s.reportHoursUntil ? formatDeadline(s.reportHoursUntil, s.timezone, locale) : ""}
+          onSent={onCancel}
+        />
+      ) : null}
     </article>
   );
 }
@@ -298,6 +319,13 @@ function formatClock(at: string, tz: string, locale: RwosLocale): string {
     return new Date(at).toLocaleTimeString(locale, { hour: "numeric", minute: "2-digit", timeZone: tz });
   } catch {
     return new Date(at).toLocaleTimeString(locale, { hour: "numeric", minute: "2-digit" });
+  }
+}
+function formatDeadline(at: string, tz: string, locale: RwosLocale): string {
+  try {
+    return new Date(at).toLocaleString(locale, { weekday: "short", month: "short", day: "numeric", hour: "numeric", minute: "2-digit", timeZone: tz });
+  } catch {
+    return new Date(at).toLocaleString(locale);
   }
 }
 // Québec shifts are on Eastern time: say so in plain words instead of "(America/Toronto)".

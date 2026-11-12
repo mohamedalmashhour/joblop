@@ -896,6 +896,56 @@ describe("worker attendance transport", () => {
     const noSessionT = createMobileSessionTransport({ apiOrigin: origin, vault: vault(), fetch: vi.fn(async () => response(200, {})) });
     expect((await noSessionT.cancelShift(id)).status).toBe("denied");
   });
+
+  it("reports hours for a shift with no check-in, and says why a report is refused", async () => {
+    const id = "55555555-5555-4555-8555-555555555555";
+    const input = { arrivalTime: "08:00", departureTime: "14:00", reason: "My phone died" };
+    const fetchMock = vi.fn(async () => response(201, { hoursReport: { id: "r1", status: "pending" } }));
+    const okT = createMobileSessionTransport({ apiOrigin: origin, vault: withSession(), fetch: fetchMock });
+    expect(await okT.reportHours(id, input)).toEqual({ status: "sent" });
+    expect(fetchMock).toHaveBeenCalledWith(
+      `${origin}/worker/attendance/${id}/report-hours`,
+      expect.objectContaining({ method: "POST", body: JSON.stringify(input) })
+    );
+    const closedT = createMobileSessionTransport({
+      apiOrigin: origin, vault: withSession(),
+      fetch: vi.fn(async () => response(409, { error: "RWOS_HOURS_REPORT_NOT_AVAILABLE", reason: "window_closed" }))
+    });
+    expect(await closedT.reportHours(id, input)).toEqual({ status: "refused", reason: "window_closed" });
+    const badT = createMobileSessionTransport({
+      apiOrigin: origin, vault: withSession(),
+      fetch: vi.fn(async () => response(400, { error: "RWOS_HOURS_REPORT_INVALID", reason: "end_before_start" }))
+    });
+    expect(await badT.reportHours(id, input)).toEqual({ status: "refused", reason: "end_before_start" });
+    const strangerT = createMobileSessionTransport({ apiOrigin: origin, vault: withSession(), fetch: vi.fn(async () => response(404, {})) });
+    expect((await strangerT.reportHours(id, input)).status).toBe("not_found");
+    const noSessionT = createMobileSessionTransport({ apiOrigin: origin, vault: vault(), fetch: vi.fn(async () => response(201, {})) });
+    expect((await noSessionT.reportHours(id, input)).status).toBe("denied");
+  });
+
+  it("reads the hours-report state of each shift on the schedule", async () => {
+    const transport = createMobileSessionTransport({
+      apiOrigin: origin,
+      vault: withSession(),
+      fetch: vi.fn(async () =>
+        response(200, {
+          items: [
+            {
+              attendanceRecordId: "55555555-5555-4555-8555-555555555555", assignmentId: "a1", status: "pending_start",
+              scheduledStartAt: "2027-02-18T13:00:00.000Z", scheduledEndAt: "2027-02-18T19:00:00.000Z", timezone: "America/Toronto",
+              checkInAt: null, checkOutAt: null, version: 2, employerName: "Ferme Laval", areaLabel: null,
+              canReportHours: false, reportHoursUntil: "2027-02-20T19:00:00.000Z", hoursReport: { status: "pending" }
+            }
+          ],
+          nextCursor: null
+        })
+      )
+    });
+    const result = await transport.workerAttendance();
+    expect(result.status).toBe("ready");
+    if (result.status !== "ready") return;
+    expect(result.data[0]).toMatchObject({ canReportHours: false, reportHoursUntil: "2027-02-20T19:00:00.000Z", hoursReport: { status: "pending" } });
+  });
 });
 
 describe("worker timesheet transport", () => {

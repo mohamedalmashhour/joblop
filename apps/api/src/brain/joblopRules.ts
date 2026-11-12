@@ -44,6 +44,8 @@ export type FinishedShiftRow = Readonly<{
   scheduledEndAt: Date;
   /** The worker checked in (else the shift ended with no check-in recorded). */
   checkedIn: boolean;
+  /** The worker reported their hours ("Report my hours") and the report is with staff. */
+  hoursReportPending?: boolean;
 }>;
 
 export type CheckInRow = Readonly<{
@@ -374,6 +376,8 @@ export const hoursNotPreparedRule: BrainRule<JoblopBrainContext> = {
   async detect({ data }, now) {
     const out: DetectedIssue[] = [];
     for (const row of await data.finishedShiftsWithoutTimesheet(now)) {
+      // The worker reported their hours and staff have the report: nothing to chase meanwhile.
+      if (row.hoursReportPending) continue;
       const since = now.getTime() - row.scheduledEndAt.getTime();
       if (since <= HOURS_PREPARE_GRACE_HOURS * HOUR_MS) continue;
       const hours = Math.floor(since / HOUR_MS);

@@ -3378,6 +3378,7 @@ function createApiUnavailableAttendanceService(): AttendanceService {
     workerCheckIn: unavailable,
     workerCheckOut: unavailable,
     markCompleted: unavailable,
+    recordReportedHours: unavailable,
     markMissed: unavailable,
     markException: unavailable,
     cancel: unavailable,

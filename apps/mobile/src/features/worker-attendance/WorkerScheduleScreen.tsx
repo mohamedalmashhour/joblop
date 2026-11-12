@@ -2,10 +2,25 @@ import { useCallback, useEffect, useState } from "react";
 import { ScrollView, StyleSheet, View } from "react-native";
 import { spacing } from "../../theme";
 import type { MobileSessionTransport, WorkerAttendanceRecord } from "../../auth/secureSession";
-import { Badge, BodyText, Button, Card, EmptyState, ErrorState, Heading, LoadingState, ScreenContainer, SmallText } from "../../ui/primitives";
+import { Badge, BodyText, Button, Card, EmptyState, ErrorState, Heading, Input, LoadingState, ScreenContainer, SmallText } from "../../ui/primitives";
 import { formatShiftWindow } from "../marketplace/marketplaceContent";
 import { useLocale } from "../../i18n/LocaleContext";
-import { attendanceAction, attendanceCopyFor, attendanceStatusLabel, attendanceStatusTone, canCancelShift, isLateCancellation } from "./attendanceScheduleContent";
+import {
+  attendanceAction,
+  attendanceCopyFor,
+  attendanceStatusLabel,
+  attendanceStatusTone,
+  canCancelShift,
+  formatReportDeadline,
+  isLateCancellation,
+  normalizeClock,
+  reportHoursView,
+  reportInputError,
+  reportRefusalKey,
+  shiftClock
+} from "./attendanceScheduleContent";
+
+type ReportForm = { attendanceRecordId: string; arrival: string; departure: string; reason: string; error: string | null };
 
 type ScheduleState =
   | { status: "loading" }
@@ -90,6 +105,46 @@ export function WorkerScheduleScreen({ transport, onBack }: { transport: MobileS
     [transport, load, attendanceCopy]
   );
 
+  // "Report my hours": a shift worked without a check-in (one form open at a time).
+  const [report, setReport] = useState<ReportForm | null>(null);
+  const openReport = (record: WorkerAttendanceRecord) =>
+    setReport({
+      attendanceRecordId: record.attendanceRecordId,
+      arrival: shiftClock(record.scheduledStartAt, record.timezone),
+      departure: shiftClock(record.scheduledEndAt, record.timezone),
+      reason: "",
+      error: null
+    });
+  const sendReport = useCallback(
+    async (form: ReportForm) => {
+      if (!transport) return;
+      const invalid = reportInputError(form.arrival, form.departure, form.reason);
+      if (invalid) {
+        setReport({ ...form, error: attendanceCopy[invalid] });
+        return;
+      }
+      setBusyId(form.attendanceRecordId);
+      const result = await transport.reportHours(form.attendanceRecordId, {
+        arrivalTime: normalizeClock(form.arrival) ?? form.arrival,
+        departureTime: normalizeClock(form.departure) ?? form.departure,
+        reason: form.reason.trim()
+      });
+      setBusyId(null);
+      if (result.status === "sent") {
+        setReport(null);
+        setNotice(attendanceCopy.reportSentNotice);
+        await load();
+      } else if (result.status === "refused") {
+        setReport({ ...form, error: attendanceCopy[reportRefusalKey(result.reason)] });
+      } else if (result.status === "denied") {
+        setReport({ ...form, error: attendanceCopy.denied });
+      } else {
+        setReport({ ...form, error: attendanceCopy.actionError });
+      }
+    },
+    [transport, load, attendanceCopy]
+  );
+
   return (
     <ScreenContainer testID="worker-schedule-screen">
       <ScrollView style={styles.scroll}>
@@ -109,7 +164,10 @@ export function WorkerScheduleScreen({ transport, onBack }: { transport: MobileS
 
           {state.status === "ready"
             ? state.data.map((r) => {
-                const action = attendanceAction(r);
+                const reportView = reportHoursView(r);
+                // A finished shift with no check-in offers "Report my hours" instead of check-in / cancel.
+                const action = reportView === "form" ? "none" : attendanceAction(r);
+                const form = report?.attendanceRecordId === r.attendanceRecordId ? report : null;
                 return (
                   <Card key={r.attendanceRecordId} testID="schedule-shift">
                     <View style={styles.row}>
@@ -127,7 +185,24 @@ export function WorkerScheduleScreen({ transport, onBack }: { transport: MobileS
                     {action === "check_out" ? (
                       <Button label={attendanceCopy.checkOutCta} onPress={() => void act(r, "check_out")} disabled={busyId === r.attendanceRecordId} />
                     ) : null}
-                    {canCancelShift(r) && confirmingId !== r.attendanceRecordId ? (
+                    {reportView === "waiting" ? <Badge label={attendanceCopy.reportWaiting} tone="warning" /> : null}
+                    {reportView === "rejected" ? <SmallText>{attendanceCopy.reportRejected}</SmallText> : null}
+                    {reportView === "form" && !form ? (
+                      <Button label={attendanceCopy.reportCta} onPress={() => openReport(r)} disabled={busyId === r.attendanceRecordId} />
+                    ) : null}
+                    {reportView === "form" && form ? (
+                      <View style={styles.confirm}>
+                        <Heading>{attendanceCopy.reportCta}</Heading>
+                        <BodyText>{attendanceCopy.reportIntro.replace("{deadline}", r.reportHoursUntil ? formatReportDeadline(r.reportHoursUntil, locale) : "")}</BodyText>
+                        <Input label={attendanceCopy.reportArrival} value={form.arrival} placeholder="08:00" onChangeText={(arrival) => setReport({ ...form, arrival, error: null })} />
+                        <Input label={attendanceCopy.reportDeparture} value={form.departure} placeholder="14:00" onChangeText={(departure) => setReport({ ...form, departure, error: null })} />
+                        <Input label={attendanceCopy.reportReason} value={form.reason} onChangeText={(reason) => setReport({ ...form, reason, error: null })} />
+                        {form.error ? <SmallText>{form.error}</SmallText> : null}
+                        <Button label={attendanceCopy.reportSubmit} onPress={() => void sendReport(form)} disabled={busyId === r.attendanceRecordId} />
+                        <Button label={attendanceCopy.reportClose} variant="secondary" onPress={() => setReport(null)} disabled={busyId === r.attendanceRecordId} />
+                      </View>
+                    ) : null}
+                    {reportView !== "form" && canCancelShift(r) && confirmingId !== r.attendanceRecordId ? (
                       <Button label={attendanceCopy.cancelCta} variant="secondary" onPress={() => setConfirmingId(r.attendanceRecordId)} disabled={busyId === r.attendanceRecordId} />
                     ) : null}
                     {canCancelShift(r) && confirmingId === r.attendanceRecordId ? (

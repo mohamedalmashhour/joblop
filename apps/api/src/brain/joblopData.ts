@@ -204,13 +204,22 @@ export function createPrismaJoblopBrainData(prisma: PrismaClient, remaining: Rem
         orderBy: [{ scheduledEndAt: "asc" }],
         take: BATCH
       });
+      // "Report my hours": a report waiting for staff means the hours are with staff already.
+      const pending = rows.length
+        ? await prisma.attendanceHoursReport.findMany({
+            where: { attendanceRecordId: { in: rows.map((r) => r.id) }, status: "pending" },
+            select: { attendanceRecordId: true }
+          })
+        : [];
+      const pendingIds = new Set(pending.map((p) => p.attendanceRecordId));
       return rows.map((r) => ({
         attendanceRecordId: r.id,
         assignmentId: r.assignmentId,
         jobRequestNumber: r.jobRequest.jobRequestNumber,
         title: r.jobRequest.title,
         scheduledEndAt: r.scheduledEndAt,
-        checkedIn: r.checkInAt !== null
+        checkedIn: r.checkInAt !== null,
+        hoursReportPending: pendingIds.has(r.id)
       }));
     }
   };
