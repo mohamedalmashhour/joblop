@@ -19,10 +19,13 @@ type LoadState =
 // renders right-to-left (the grid rows reverse under the page direction).
 export function MonthCalendarScreen({
   transport,
-  onOpenOffers
+  onOpenOffers,
+  onOpenJob
 }: {
   transport: MobileSessionTransport | null;
   onOpenOffers?: () => void;
+  /** Opens a booked shift's page (the job screen: details, address, Check in / Check out). */
+  onOpenJob?: (jobRequestId: string) => void;
 }) {
   const { t, locale } = useLocale();
   const today = useMemo(() => new Date(), []);
@@ -133,6 +136,9 @@ export function MonthCalendarScreen({
                       </View>
                       <SmallText>{formatShiftWindow(r.scheduledStartAt, r.scheduledEndAt)}</SmallText>
                       <JobLocationLink address={r.areaLabel} />
+                      {onOpenJob && r.jobRequestId && r.status !== "cancelled" ? (
+                        <Button label={t("sched.openShift")} onPress={() => onOpenJob(r.jobRequestId!)} testID="cal-open-shift" />
+                      ) : null}
                     </Card>
                   ))
                 )}

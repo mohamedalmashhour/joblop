@@ -22,7 +22,8 @@ describe("job page: why a job can't be taken", () => {
 
   it("shows the reason instead of Accept or Express interest", () => {
     const page = read("jobs", "[jobRequestId]", "JobDetail.tsx");
-    expect(page).toContain("{blockedReasonKey(job.claimBlockedReason) ? (");
+    // A worker who already holds the shift sees their shift box instead (feat/checkin-visible).
+    expect(page).toContain("{myRecord || job.booked ? null : blockedReasonKey(job.claimBlockedReason) ? (");
     expect(page).toContain('t(blockedKey ?? "job.inelDefault")');
   });
 });
