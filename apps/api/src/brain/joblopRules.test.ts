@@ -171,7 +171,7 @@ describe("joblop brain rules", () => {
       const finished = [
         { ...row, scheduledEndAt: at(-2 * HOUR - MIN) },
         { ...row, attendanceRecordId: "a2", scheduledEndAt: at(-2 * HOUR) },
-        { ...row, attendanceRecordId: "a3", scheduledEndAt: at(-5 * HOUR), checkedIn: false }
+        { ...row, attendanceRecordId: "a3", scheduledEndAt: at(-13 * HOUR), checkedIn: false }
       ];
       const issues = await hoursNotPreparedRule.detect(context({ ...emptyRows(), finished }), NOW);
       expect(issues.map((i) => [i.subjectId, i.recommendedAction])).toEqual([
@@ -185,7 +185,7 @@ describe("joblop brain rules", () => {
     it("does not chase a no-check-in shift whose reported hours are with staff (pending report)", async () => {
       const finished = [
         { ...row, attendanceRecordId: "pending", scheduledEndAt: at(-5 * HOUR), checkedIn: false, hoursReportPending: true },
-        { ...row, attendanceRecordId: "rejected", scheduledEndAt: at(-5 * HOUR), checkedIn: false, hoursReportPending: false }
+        { ...row, attendanceRecordId: "rejected", scheduledEndAt: at(-13 * HOUR), checkedIn: false, hoursReportPending: false }
       ];
       const issues = await hoursNotPreparedRule.detect(context({ ...emptyRows(), finished }), NOW);
       expect(issues.map((i) => i.subjectId)).toEqual(["rejected"]);

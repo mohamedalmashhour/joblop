@@ -103,6 +103,9 @@ function domainFake(fail = false) {
     },
     async requestTimesheetCorrection({ timesheetId, actorUserId }) {
       calls.push(`requestTimesheetCorrection:${timesheetId}:${actorUserId}`);
+    },
+    async markAttendanceMissed({ attendanceRecordId, reason }) {
+      calls.push(`markAttendanceMissed:${attendanceRecordId}:${reason}`);
     }
   };
   return { domain, calls };

@@ -1,4 +1,5 @@
 import type { PrismaClient } from "@rwos/database";
+import { HOURS_REPORT_WINDOW_HOURS } from "../hoursReport";
 import { listUnfilledShifts } from "../unfilledShiftAlerts";
 import type { JoblopBrainData } from "./joblopRules";
 
@@ -183,6 +184,32 @@ export function createPrismaJoblopBrainData(prisma: PrismaClient, remaining: Rem
         take: BATCH
       });
       return rows.flatMap((r) => (r.dueAt ? [{ invoiceId: r.id, invoiceNumber: r.invoiceNumber, status: r.status, dueAt: r.dueAt }] : []));
+    },
+
+    async unreportedShifts(now) {
+      // Ended inside the report window, or closed in the last 24 h (unreportedStage decides exactly).
+      const span = (HOURS_REPORT_WINDOW_HOURS + 24) * HOUR_MS;
+      const rows = await prisma.attendanceRecord.findMany({
+        where: {
+          status: { in: ["pending_start", "missed"] },
+          checkInAt: null,
+          checkOutAt: null,
+          scheduledEndAt: { lte: now, gte: new Date(now.getTime() - span) },
+          timesheet: { is: null },
+          assignment: { status: { notIn: [...CANCELLED_ASSIGNMENT] } },
+          jobRequest: { status: { not: "cancelled" }, jobLength: { not: "long_term" } },
+          NOT: { hoursReports: { some: { status: { in: ["pending", "approved"] } } } }
+        },
+        select: { id: true, scheduledEndAt: true, jobRequest: { select: { jobRequestNumber: true, title: true } } },
+        orderBy: [{ scheduledEndAt: "asc" }],
+        take: BATCH
+      });
+      return rows.map((r) => ({
+        attendanceRecordId: r.id,
+        jobRequestNumber: r.jobRequest.jobRequestNumber,
+        title: r.jobRequest.title,
+        scheduledEndAt: r.scheduledEndAt
+      }));
     },
 
     async finishedShiftsWithoutTimesheet(now) {

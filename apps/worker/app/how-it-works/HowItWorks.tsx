@@ -190,6 +190,7 @@ const COPY: Record<Lang, Copy> = {
         ["What does the ★ mean?", "It is a bonus job: it pays extra. Bonuses show on your pay statement as a “Bonus” line."],
         ["What happens when I tap Accept?", "Accepting is final. The shift goes into your schedule, the employer is told, and you get a confirmation by text and email."],
         ["How will I know if a shift changes?", "You get a text and an email right away, and the shift shows in red on your calendar."],
+        ["I forgot to check in. What now?", "Tap “Report my hours” on the shift in My schedule within 12 hours after it ends. After 12 hours, the shift is not recorded or paid."],
         ["What if the employer cancels at the last minute?", "If an employer cancels less than 24 hours before the start, Joblop reviews each case with you."],
         ["Are the jobs real?", "Yes. Joblop jobs come from real employers and every request is reviewed by Joblop staff. JobScanner jobs come from licensed partner job boards."],
         ["How do I talk to a person?", "Open Contact Joblop and ask for a person. A Joblop team member takes over, and replies also come by email."]
@@ -359,6 +360,7 @@ const COPY: Record<Lang, Copy> = {
         ["Que veut dire le ★?", "C'est un emploi avec prime : il paie plus. Les primes apparaissent sur votre relevé de paie sur une ligne « Prime »."],
         ["Que se passe-t-il quand je touche Accepter?", "Accepter est définitif. Le quart s'ajoute à votre horaire, l'employeur est avisé et vous recevez une confirmation par texto et par courriel."],
         ["Comment saurai-je si un quart change?", "Vous recevez un texto et un courriel tout de suite, et le quart s'affiche en rouge dans votre calendrier."],
+        ["J'ai oublié de pointer. Que faire?", "Touchez « Déclarer mes heures » sur le quart dans Mon horaire dans les 12 heures suivant la fin. Après 12 heures, le quart n'est ni enregistré ni payé."],
         ["Et si l'employeur annule à la dernière minute?", "Si un employeur annule moins de 24 heures avant le début, Joblop examine chaque cas avec vous."],
         ["Les emplois sont-ils vrais?", "Oui. Les emplois Joblop viennent de vrais employeurs et chaque demande est vérifiée par l'équipe Joblop. Les emplois de JobScanner viennent de sites d'emploi partenaires licenciés."],
         ["Comment parler à une personne?", "Ouvrez Contacter Joblop et demandez une personne. Un membre de l'équipe Joblop prend le relais, et les réponses arrivent aussi par courriel."]
@@ -528,6 +530,7 @@ const COPY: Record<Lang, Copy> = {
         ["ماذا تعني ★؟", "إنها وظيفة بمكافأة: أجرها أعلى. تظهر المكافآت في كشف أجرك في سطر «مكافأة»."],
         ["ماذا يحدث عندما أضغط «اقبل»؟", "القبول نهائي. تُضاف المناوبة إلى جدولك، ويُبلَّغ صاحب العمل، ويصلك تأكيد برسالة نصية وبالبريد الإلكتروني."],
         ["كيف أعرف إذا تغيّرت مناوبة؟", "تصلك رسالة نصية وبريد إلكتروني فورًا، وتظهر المناوبة باللون الأحمر في تقويمك."],
+        ["نسيت تسجيل حضوري. ماذا أفعل؟", "اضغط «أبلغ عن ساعاتي» على المناوبة في «جدولي» خلال 12 ساعة من نهايتها. بعد 12 ساعة لا تُسجَّل المناوبة ولا تُدفع."],
         ["ماذا لو ألغى صاحب العمل في آخر لحظة؟", "إذا ألغى صاحب العمل قبل أقل من 24 ساعة من البدء، تراجع جوب‑لوب كل حالة معك على حدة."],
         ["هل الوظائف حقيقية؟", "نعم. وظائف جوب‑لوب من أصحاب عمل حقيقيين، وكل طلب يراجعه فريق جوب‑لوب. ووظائف JobScanner من مواقع توظيف شريكة مرخَّصة."],
         ["كيف أتحدث مع شخص؟", "افتح «تواصل مع Joblop» واطلب التحدث مع شخص. يتولّى أحد أعضاء الفريق الأمر، وتصلك الردود أيضًا بالبريد الإلكتروني."]

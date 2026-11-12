@@ -113,6 +113,8 @@ describe("brain routes", () => {
         "offer_employer_bonus",
         "auto_approve_request",
         "auto_approve_timesheet",
+        "notify_worker_report_hours",
+        "close_unreported_shift",
         "daily_summary_email"
       ]);
       expect(body.switches.every((s) => s.enabled === false)).toBe(true);

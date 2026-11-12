@@ -13,6 +13,7 @@ import {
   type ApproveReportedHoursDeps,
   type HoursReportShift
 } from "./hoursReport";
+import { guideFor } from "./contactGuide";
 
 // Toronto EST (UTC-5) in February.
 const et = (day: string, hhmm: string) => new Date(`${day}T${hhmm}:00.000-05:00`);
@@ -178,6 +179,15 @@ describe("report my hours: staff approval", () => {
     await expect(approveReportedHours(deps, input, revert)).rejects.toThrow("invalid_transition");
     expect(revert).toHaveBeenCalledTimes(1);
     expect(calls).toEqual(["read", "record:v3"]);
+  });
+});
+
+describe("report my hours: the assistant", () => {
+  it("explains the 12-hour rule and points the worker to the Report my hours button", () => {
+    const worker = guideFor("worker");
+    expect(worker).toContain("Report my hours");
+    expect(worker).toContain("within 12 hours of the scheduled end");
+    expect(worker).toContain("/schedule");
   });
 });
 

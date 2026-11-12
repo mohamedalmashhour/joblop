@@ -19,8 +19,14 @@ const SCENARIOS: Record<JoblopActionKey, { rows: (n: number) => Partial<FakeRows
   auto_approve_timesheet: {
     rows: (n) => ({ timesheets: ids(n).map((timesheetId) => timesheet({ timesheetId, status: "platform_review", employerReviewStatus: "confirmed" })) }),
     effect: "approveTimesheet"
-  }
+  },
+  notify_worker_report_hours: { rows: (n) => ({ unreported: ids(n).map((id) => unreported(id, at(-1 * HOUR))) }), effect: "notifyWorkerToReportHours" },
+  close_unreported_shift: { rows: (n) => ({ unreported: ids(n).map((id) => unreported(id, at(-13 * HOUR))) }), effect: "closeUnreportedShift" }
 };
+
+function unreported(attendanceRecordId: string, scheduledEndAt: Date) {
+  return { attendanceRecordId, jobRequestNumber: "JR-7", title: "Farm worker", scheduledEndAt };
+}
 
 function ids(n: number) {
   return Array.from({ length: n }, (_, i) => `00000000-0000-4000-8000-${String(i + 1).padStart(12, "0")}`);
@@ -118,6 +124,28 @@ describe("joblop brain actions", () => {
     await brain.sweep();
     expect(store.issues[0]?.status).toBe("open");
     expect(effectCalls()).toHaveLength(1);
+  });
+
+  it("report my hours: one notice after the end, one last reminder 2 h before the deadline, then the closure", async () => {
+    const store = createMemoryBrainStore({ mode: "live", switches: { notify_worker_report_hours: true, close_unreported_shift: true } });
+    const rows = { ...emptyRows(), unreported: [unreported("att-1", NOW)] };
+    const { effects, calls } = fakeEffects();
+    let clock = new Date(NOW.getTime() + 5 * 60_000); // 5 min after the end
+    const brain = createJoblopBrain({ store, data: fakeData(rows), effects, now: () => clock });
+    await brain.sweep();
+    await brain.sweep();
+    clock = new Date(NOW.getTime() + 6 * HOUR);
+    await brain.sweep();
+    expect(calls.map((c) => c.name)).toEqual(["notifyWorkerToReportHours"]);
+    clock = new Date(NOW.getTime() + 10 * HOUR + 30 * 60_000); // 1 h 30 before the deadline
+    await brain.sweep();
+    await brain.sweep();
+    expect(calls.map((c) => c.name)).toEqual(["notifyWorkerToReportHours", "notifyWorkerToReportHours"]);
+    clock = new Date(NOW.getTime() + 12 * HOUR + 60_000); // the window closed
+    await brain.sweep();
+    await brain.sweep();
+    expect(calls.map((c) => c.name)).toEqual(["notifyWorkerToReportHours", "notifyWorkerToReportHours", "closeUnreportedShift"]);
+    expect(store.issues.find((i) => i.ruleKey === "shift_not_recorded")?.summary).toContain("Not recorded: no hours reported in time");
   });
 
   it("a ready request that later shows up as waiting > 2 h is still approved only once", async () => {

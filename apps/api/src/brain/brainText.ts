@@ -2,6 +2,7 @@ import type { BrainMode, SummaryCopy } from "@rwos/brain";
 import type { EmailMessage } from "../mailer/emailSender";
 import type { WorkerLanguage } from "../notifications/workerLanguage";
 import { noticeSms, smsLanguage } from "../notifications/smsBrand";
+import { formatHoursReportDeadline } from "../hoursReport";
 
 // Every word the Joblop brain sends, in plain short English and French. Messages to workers and
 // employers never carry money: no rates, no Joblop share, nothing about the other side's pay.
@@ -145,6 +146,84 @@ export function workerTimesheetReminderSmsText(raw: { language: WorkerLanguage; 
   return noticeSms("fr", `veuillez confirmer vos heures pour "${params.title}" le ${day}, dans l'app sous Feuilles de temps.`);
 }
 
+// ── "Report my hours": a shift ended with no check-in (12-hour window, HOURS_REPORT_WINDOW_HOURS) ──
+
+type ReportNoticeParams = { language: WorkerLanguage; title: string; deadline: Date; link: string | null; last: boolean };
+
+/** Worker email: the shift ended with no check-in; report the hours before the deadline or it is not recorded or paid. */
+export function reportHoursNoticeEmail(params: ReportNoticeParams & { to: string; shiftStart: Date; timezone: string }): EmailMessage {
+  const day = formatWhen(params.shiftStart, params.language, params.timezone, "date");
+  const until = formatHoursReportDeadline(params.deadline, params.language);
+  if (params.language === "en") {
+    return {
+      to: params.to,
+      subject: params.last ? "Joblop — last reminder: report your hours" : "Joblop — no check-in recorded: report your hours",
+      text:
+        `No check-in was recorded for your shift "${params.title}" on ${day}.\n\n` +
+        `If you worked it, report your arrival and departure times before ${until} (Eastern time). After that, this shift will not be recorded or paid.\n\n` +
+        `${params.link ? `Report your hours: ${params.link}` : "Open Joblop, go to My schedule and tap \"Report my hours\"."}\n\n— Joblop`
+    };
+  }
+  if (params.language === "ar") {
+    return {
+      to: params.to,
+      subject: params.last ? "Joblop — تذكير أخير: أبلغ عن ساعاتك" : "Joblop — لم يُسجَّل حضورك: أبلغ عن ساعاتك",
+      text:
+        `لم يُسجَّل أي حضور لمناوبتك «${params.title}» يوم ${day}.\n\n` +
+        `إذا عملت فيها، أبلغ عن وقت وصولك ومغادرتك قبل ${until} (توقيت الشرق). بعد ذلك لن تُسجَّل هذه المناوبة ولن تُدفع.\n\n` +
+        `${params.link ? `أبلغ عن ساعاتك: ${params.link}` : "افتح Joblop، ثم «جدولي» واضغط «أبلغ عن ساعاتي»."}\n\n— Joblop`
+    };
+  }
+  return {
+    to: params.to,
+    subject: params.last ? "Joblop — dernier rappel : déclarez vos heures" : "Joblop — aucun pointage : déclarez vos heures",
+    text:
+      `Aucun pointage n'a été enregistré pour votre quart « ${params.title} » le ${day}.\n\n` +
+      `Si vous l'avez travaillé, déclarez vos heures d'arrivée et de départ avant le ${until} (heure de l'Est). Après, ce quart ne sera ni enregistré ni payé.\n\n` +
+      `${params.link ? `Déclarer mes heures : ${params.link}` : "Ouvrez Joblop, allez dans Mon horaire et touchez « Déclarer mes heures »."}\n\n— Joblop`
+  };
+}
+
+/** Worker SMS twin (Arabic readers get the French text). Kept to at most 2 segments. */
+export function reportHoursNoticeSmsText(raw: ReportNoticeParams): string {
+  const params = { ...raw, language: smsLanguage(raw.language) };
+  const until = formatHoursReportDeadline(params.deadline, params.language);
+  const link = params.link ? ` ${params.link}` : "";
+  if (params.language === "en") return noticeSms("en", `${params.last ? "last reminder: " : ""}no check-in for "${params.title}". Report your hours before ${until} or the shift is not paid.${link}`);
+  if (params.language === "ar") return noticeSms("ar", `${params.last ? "تذكير أخير: " : ""}لا حضور مسجّل لـ«${params.title}». أبلغ عن ساعاتك قبل ${until} وإلا لن تُدفع المناوبة.${link}`);
+  return noticeSms("fr", `${params.last ? "dernier rappel : " : ""}aucun pointage pour "${params.title}". Déclarez vos heures avant le ${until}, sinon le quart n'est pas payé.${link}`);
+}
+
+/** Employer email: no hours were reported in time for a shift, so it is not recorded and will not be invoiced. */
+export function shiftNotRecordedEmployerEmail(params: { to: string; language: WorkerLanguage; jobCode: string; title: string; shiftStart: Date; timezone: string }): EmailMessage {
+  const day = formatWhen(params.shiftStart, params.language, params.timezone, "date");
+  if (params.language === "en") {
+    return {
+      to: params.to,
+      subject: `Joblop — shift not recorded (${params.jobCode})`,
+      text:
+        `No hours were recorded for the shift "${params.title}" on ${day} (job code ${params.jobCode}): the worker did not check in and did not report their hours in time.\n\n` +
+        `This shift will not be invoiced. If the worker did work it, contact Joblop.\n\n— Joblop`
+    };
+  }
+  if (params.language === "ar") {
+    return {
+      to: params.to,
+      subject: `Joblop — مناوبة غير مسجّلة (${params.jobCode})`,
+      text:
+        `لم تُسجَّل أي ساعات لمناوبة «${params.title}» يوم ${day} (رمز المهمة ${params.jobCode}): لم يسجّل العامل حضوره ولم يبلغ عن ساعاته في الوقت المحدد.\n\n` +
+        `لن تُفوتَر هذه المناوبة. إذا كان العامل قد عمل فيها، تواصل مع Joblop.\n\n— Joblop`
+    };
+  }
+  return {
+    to: params.to,
+    subject: `Joblop — quart non enregistré (${params.jobCode})`,
+    text:
+      `Aucune heure n'a été enregistrée pour le quart « ${params.title} » le ${day} (code de mission ${params.jobCode}) : le travailleur n'a pas pointé et n'a pas déclaré ses heures à temps.\n\n` +
+      `Ce quart ne sera pas facturé. Si le travailleur l'a bien travaillé, communiquez avec Joblop.\n\n— Joblop`
+  };
+}
+
 type Titles = Readonly<{ en: string; fr: string; ar: string }>;
 
 export const RULE_TITLES: Record<string, Titles> = {
@@ -153,6 +232,8 @@ export const RULE_TITLES: Record<string, Titles> = {
   delivery_failed: { en: "Email or text that failed", fr: "Courriel ou texto non envoyé", ar: "بريد أو رسالة نصية لم تُرسَل" },
   request_waiting_review: { en: "Request waiting for staff review", fr: "Demande en attente de révision", ar: "طلب ينتظر مراجعة الفريق" },
   timesheet_unconfirmed: { en: "Hours not confirmed after 24 h (worker or employer)", fr: "Heures non confirmées après 24 h (travailleur ou employeur)", ar: "ساعات غير مؤكدة بعد 24 ساعة (العامل أو صاحب العمل)" },
+  hours_not_reported: { en: "Shift ended with no check-in: worker has 12 h to report hours", fr: "Quart terminé sans pointage : le travailleur a 12 h pour déclarer ses heures", ar: "مناوبة انتهت دون تسجيل حضور: أمام العامل 12 ساعة للإبلاغ عن ساعاته" },
+  shift_not_recorded: { en: "Not recorded: no hours reported in time", fr: "Non enregistré : aucune heure déclarée à temps", ar: "غير مسجّلة: لم يُبلَغ عن أي ساعات في الوقت المحدد" },
   hours_not_prepared: { en: "Shift ended over 2 h ago with no hours prepared", fr: "Quart terminé depuis plus de 2 h sans heures préparées", ar: "مناوبة انتهت منذ أكثر من ساعتين دون تحضير الساعات" },
   timesheet_ready: { en: "Hours ready for approval", fr: "Heures prêtes à approuver", ar: "ساعات جاهزة للموافقة" },
   invoice_overdue: { en: "Overdue invoice", fr: "Facture en retard", ar: "فاتورة متأخرة" },
@@ -169,6 +250,8 @@ export const ACTION_TITLES: Record<string, Titles> = {
   offer_employer_bonus: { en: "Offer the employer a bonus for an unfilled job", fr: "Proposer une prime à l'employeur pour une mission non pourvue", ar: "اقتراح مكافأة على صاحب العمل لمهمة غير مغطاة" },
   auto_approve_request: { en: "Approve a request that passes every check", fr: "Approuver une demande qui passe toutes les vérifications", ar: "الموافقة على طلب اجتاز كل الفحوص" },
   auto_approve_timesheet: { en: "Approve hours with check-in and check-out and no problems", fr: "Approuver des heures avec arrivée, départ et aucun problème", ar: "الموافقة على ساعات فيها تسجيل وصول وانصراف دون مشاكل" },
+  notify_worker_report_hours: { en: "Tell a worker with no check-in to report their hours (12 h)", fr: "Aviser un travailleur sans pointage de déclarer ses heures (12 h)", ar: "إبلاغ عامل دون تسجيل حضور بالإبلاغ عن ساعاته (12 ساعة)" },
+  close_unreported_shift: { en: "Close a shift with no hours reported in time (not recorded; employer told)", fr: "Fermer un quart sans heures déclarées à temps (non enregistré; employeur avisé)", ar: "إغلاق مناوبة لم يُبلَغ عن ساعاتها في الوقت المحدد (غير مسجّلة؛ يُبلَّغ صاحب العمل)" },
   daily_summary_email: { en: "Daily summary email to staff", fr: "Résumé quotidien par courriel au personnel", ar: "ملخص يومي بالبريد إلى الفريق" },
   // Phase 2: actions a person confirmed on an assistant card.
   "assistant.claim_open_job": { en: "Assistant: worker claimed a job", fr: "Assistant : un travailleur a pris une mission", ar: "المساعد: عامل أخذ مهمة" },
